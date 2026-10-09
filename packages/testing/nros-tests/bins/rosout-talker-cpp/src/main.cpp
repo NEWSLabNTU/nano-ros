@@ -1,7 +1,7 @@
 /// issue 1589 — the C++ twin of `bins/rosout-talker`.
 ///
 /// Logs through its NODE's logger (RFC-0102 D4: on Humble only node loggers
-/// reach `/rosout`) and pumps `nros::rosout::Publisher` from its spin loop,
+/// reach `/rosout`) and pumps `rclcpp::rosout::Publisher` from its spin loop,
 /// printing the markers the Rust probe prints so `rosout_interop.rs` reads
 /// all three languages with one set of assertions.
 ///
@@ -32,17 +32,17 @@ int nros_app_main(int argc, char** argv) {
     const int records = env_int("ROSOUT_PROBE_RECORDS", 60);
     const int period_ms = env_int("ROSOUT_PROBE_PERIOD_MS", 250);
 
-    if (!nros::rosout::enabled()) {
+    if (!rclcpp::rosout::enabled()) {
         printf("ROSOUT_PROBE_NOT_BUILT\n");
         return 3;
     }
-    auto init = nros::init();
+    auto init = rclcpp::init_in();
     if (!init.ok()) {
-        fprintf(stderr, "nros::init failed: %d\n", init.raw());
+        fprintf(stderr, "rclcpp::init failed: %d\n", init.raw());
         return 1;
     }
     rclcpp::Node node;
-    auto created = nros::create_node(node, "rosout_talker");
+    auto created = rclcpp::create_node(node, "rosout_talker");
     if (!created.ok()) {
         fprintf(stderr, "create_node failed: %d\n", created.raw());
         return 1;
@@ -56,14 +56,14 @@ int nros_app_main(int argc, char** argv) {
 // Its own frame, so the `/rosout` publisher is destroyed BEFORE
 // `rclcpp::shutdown()` closes the session it lives on.
 static int run(rclcpp::Node& node, int records, int period_ms) {
-    nros::rosout::Publisher rosout;
+    rclcpp::rosout::Publisher rosout;
     auto made = rosout.create(node);
     if (!made.ok()) {
         fprintf(stderr, "rosout.create failed: %d\n", made.raw());
         return 1;
     }
     auto probe = node.get_logger();
-    if (!nros::rosout::enable().ok()) {
+    if (!rclcpp::rosout::enable().ok()) {
         printf("ROSOUT_PROBE_SINK_FULL\n");
         return 4;
     }
@@ -75,7 +75,7 @@ static int run(rclcpp::Node& node, int records, int period_ms) {
         if (i % 2 == 1) {
             NROS_LOG_WARN(probe, "nros rosout probe warning at %d", i);
         }
-        (void)nros::spin_once(period_ms);
+        (void)rclcpp::spin_once(period_ms);
         size_t sent = 0;
         auto pumped = rosout.pump(&sent);
         total += sent;

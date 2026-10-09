@@ -93,7 +93,7 @@ void on_tick(void*) {}
 // A `rclcpp::Node` EXISTS here at all. Before W4 the whole class sat inside
 // `#if defined(NROS_CPP_HAS_SHARED_PTR) && ...`, so this declaration was the
 // first error in the file.
-inline ::nros::Result instantiate() {
+inline ::rclcpp::Result instantiate() {
     rclcpp::Node node("freestanding_probe");
     (void)node.ok();
     (void)node.get_name();
@@ -104,13 +104,13 @@ inline ::nros::Result instantiate() {
     // The out-ref factories — caller-owned storage, `Result` channel, `const
     // char*` names. Exactly `rclcpp::Node`'s shape, which is what 27 of the 28
     // in-tree `create_*` call sites already write.
-    ::nros::Publisher<Int32> pub;
-    ::nros::Result r = node.create_publisher(pub, "/count", ::nros::QoS(10));
+    ::rclcpp::Publisher<Int32> pub;
+    ::rclcpp::Result r = node.create_publisher(pub, "/count", ::rclcpp::QoS(10));
 
-    ::nros::Subscription<Int32> sub;
-    (void)node.create_subscription(sub, "/count", ::nros::QoS(10), &on_sample);
+    ::rclcpp::Subscription<Int32> sub;
+    (void)node.create_subscription(sub, "/count", ::rclcpp::QoS(10), &on_sample);
 
-    ::nros::Timer timer;
+    ::rclcpp::Timer timer;
     (void)node.create_wall_timer(timer, 100, &on_tick, nullptr);
 
     // phase-476 W2 — the VALUE-returning timer verbs, freestanding: a
@@ -119,14 +119,14 @@ inline ::nros::Result instantiate() {
     // are distinct here too: `->reset()` restarts, `.reset()` releases.
     int ticks = 0;
     rclcpp::Timer::SharedPtr wall = node.create_wall_timer(
-        ::nros::Duration::from_nanoseconds(100000000), [&ticks]() { ++ticks; });
+        ::rclcpp::Duration::from_nanoseconds(100000000), [&ticks]() { ++ticks; });
     (void)wall->cancel();
     (void)wall->reset();
     (void)wall->is_ready();
     (void)wall->time_until_trigger();
-    rclcpp::TimerBase::SharedPtr on_clock =
-        rclcpp::create_timer(node, node.get_clock(), ::nros::Duration::from_nanoseconds(100000000),
-                             [&ticks]() { ++ticks; });
+    rclcpp::TimerBase::SharedPtr on_clock = rclcpp::create_timer(
+        node, node.get_clock(), ::rclcpp::Duration::from_nanoseconds(100000000),
+        [&ticks]() { ++ticks; });
     on_clock.reset();
     wall.reset();
 
@@ -135,7 +135,7 @@ inline ::nros::Result instantiate() {
     // function pointers for the service and client (the callable those two
     // take), and the poll forms by value.
     rclcpp::Subscription<Int32>::SharedPtr vsub = node.create_subscription<Int32>(
-        "/count", ::nros::QoS(10), [&ticks](const Int32&) { ++ticks; });
+        "/count", ::rclcpp::QoS(10), [&ticks](const Int32&) { ++ticks; });
     rclcpp::Subscription<Int32>::SharedPtr vsub_depth =
         node.create_subscription<Int32>("/count", 10, [&ticks](const Int32&) { ++ticks; });
     rclcpp::Service<AddTwoInts>::SharedPtr vsrv =
@@ -154,20 +154,20 @@ inline ::nros::Result instantiate() {
     // phase-476 W4 — the stream logging family on a freestanding target.
     RCLCPP_INFO_STREAM(node.get_logger(), "ticks=" << ticks << " ratio=" << 0.5 << " ok=" << true);
 
-    // phase-456 W5 — the poll server is `nros::PollService<S>`, a different
+    // phase-456 W5 — the poll server is `rclcpp::PollService<S>`, a different
     // type from the dispatch one below. One class used to be both.
-    ::nros::PollService<AddTwoInts> poll_service;
+    ::rclcpp::PollService<AddTwoInts> poll_service;
     (void)node.create_service<AddTwoInts>(poll_service, "/add");
-    ::nros::Service<AddTwoInts> cb_service;
+    ::rclcpp::Service<AddTwoInts> cb_service;
     (void)node.create_service<AddTwoInts>(cb_service, "/add_cb", &on_request);
 
-    // phase-456 W9 — the future-style client is `nros::PollClient<S>`, a
+    // phase-456 W9 — the future-style client is `rclcpp::PollClient<S>`, a
     // different type from the dispatch one below, for the reason the service
     // pair above states: one class used to be both, and every verb that reads
     // caller storage was offered on the half that has none.
-    ::nros::PollClient<AddTwoInts> future_client;
+    ::rclcpp::PollClient<AddTwoInts> future_client;
     (void)node.create_client<AddTwoInts>(future_client, "/add");
-    ::nros::Client<AddTwoInts> cb_client;
+    ::rclcpp::Client<AddTwoInts> cb_client;
     (void)node.create_client<AddTwoInts>(cb_client, "/add_cb", &on_response);
 
     // 2026-09-28 (the phase-456 W9 gap closure) — the two DISCOVERY verbs on the
@@ -178,7 +178,7 @@ inline ::nros::Result instantiate() {
     (void)cb_client.service_is_ready();
     (void)cb_client.wait_for_service(1000);
     // ...and on the HANDLE a porter actually holds (`Client<S>::SharedPtr`).
-    ::nros::ClientHandle<AddTwoInts> cli_handle = nullptr;
+    ::rclcpp::ClientHandle<AddTwoInts> cli_handle = nullptr;
     (void)cli_handle.service_is_ready();
     (void)cli_handle.wait_for_service(1000);
 
@@ -202,16 +202,16 @@ inline ::nros::Result instantiate() {
 class Derived : public rclcpp::Node {
   public:
     Derived() : rclcpp::Node("derived_probe") {}
-    ::nros::Result start() { return create_wall_timer(timer_, 1000, &on_tick, this); }
+    ::rclcpp::Result start() { return create_wall_timer(timer_, 1000, &on_tick, this); }
 
   private:
-    ::nros::Timer timer_;
+    ::rclcpp::Timer timer_;
 };
 
 /// phase-482 W2 — a DERIVED node's handle converts to `rclcpp::Node::SharedPtr`,
 /// the way `shared_ptr<Derived>` converts to `shared_ptr<Node>` upstream.
 inline void derived_node_handle(Derived& d) {
-    ::nros::Handle<Derived> mine(&d);
+    ::rclcpp::Handle<Derived> mine(&d);
     rclcpp::Node::SharedPtr as_base = mine;
     rclcpp::Node::SharedPtr from_this = d.shared_from_this();
     (void)(as_base == from_this);

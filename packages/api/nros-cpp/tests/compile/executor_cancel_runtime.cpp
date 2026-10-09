@@ -79,12 +79,12 @@ template <typename Pred> bool wait_until(Pred pred, int budget_ms) {
 
 /// One spin/cancel round. Returns whether the loop was observed RUNNING before
 /// the cancel — the negative control against a spin that never started.
-bool spin_and_cancel(nros::Executor& exec) {
+bool spin_and_cancel(rclcpp::Executor& exec) {
     std::atomic<bool> returned(false);
     std::atomic<int> spin_code(0);
 
     std::thread spinner([&exec, &returned, &spin_code]() {
-        nros::Result r = exec.spin(5);
+        rclcpp::Result r = exec.spin(5);
         spin_code.store(static_cast<int>(r.raw()));
         returned.store(true);
     });
@@ -114,9 +114,10 @@ bool spin_and_cancel(nros::Executor& exec) {
 } // namespace
 
 int main() {
-    nros::Executor exec;
-    check(nros::Executor::create_with_rmw(exec, NROS_STUB_RMW_NAME, nullptr, 0, "w4c_cancel").ok(),
-          "executor create on the stub backend");
+    rclcpp::Executor exec;
+    check(
+        rclcpp::Executor::create_with_rmw(exec, NROS_STUB_RMW_NAME, nullptr, 0, "w4c_cancel").ok(),
+        "executor create on the stub backend");
     check(exec.ok(), "a freshly created executor is ok()");
     check(!exec.is_spinning(), "a created-but-unspun executor is NOT spinning");
 

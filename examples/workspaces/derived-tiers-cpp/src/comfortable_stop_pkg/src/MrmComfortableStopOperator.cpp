@@ -20,8 +20,8 @@ void MrmComfortableStopOperator::on_timer() {
     count_++;
 }
 
-MrmComfortableStopOperator::MrmComfortableStopOperator(::nros::NodeHandle h)
-    : ::nros::NodeWithTimers<1>(h, "mrm_comfortable_stop_operator") {
+MrmComfortableStopOperator::MrmComfortableStopOperator(::rclcpp::NodeHandle h)
+    : ::rclcpp::NodeWithTimers<1>(h, "mrm_comfortable_stop_operator") {
     // Line-buffer stdout so each tick flushes immediately when piped.
     ::setvbuf(stdout, nullptr, _IOLBF, 0);
     pub_ = create_publisher_in<std_msgs::msg::Int32>("/system/mrm/comfortable_stop/status");

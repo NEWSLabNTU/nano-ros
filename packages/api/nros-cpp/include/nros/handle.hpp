@@ -4,7 +4,7 @@
 /**
  * @file handle.hpp
  * @ingroup grp_support
- * @brief `nros::Handle<T>` — what `X::SharedPtr` is on every target.
+ * @brief `rclcpp::Handle<T>` — what `X::SharedPtr` is on every target.
  */
 
 #ifndef NROS_CPP_HANDLE_HPP
@@ -13,7 +13,7 @@
 #include "nros/traits.hpp"
 #include "nros/std_detect.hpp" // phase-482 W2 — the hosted `shared_ptr` interop below
 
-namespace nros {
+namespace rclcpp {
 
 /// A copyable, non-owning reference to an entity — RFC-0096 D2.
 ///
@@ -121,6 +121,6 @@ template <typename T> constexpr bool operator!=(decltype(nullptr), const Handle<
     return a.get() != nullptr;
 }
 
-} // namespace nros
+} // namespace rclcpp
 
 #endif // NROS_CPP_HANDLE_HPP

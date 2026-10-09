@@ -80,7 +80,7 @@ inline void instantiate(rclcpp::Node& node) {
     (void)t;
     const char* names[2] = {"rate", "depth"};
     rclcpp::ParameterType types[2] = {rclcpp::PARAMETER_NOT_SET, rclcpp::PARAMETER_NOT_SET};
-    nros::Result r = node.get_parameter_types(names, 2, types);
+    rclcpp::Result r = node.get_parameter_types(names, 2, types);
     (void)r.ok();
 
     // describe into caller storage — one buffer, split between the two texts.

@@ -449,7 +449,7 @@ pub unsafe extern "C" fn nros_cpp_timer_reset(
 /// Would this timer fire on the next `spin_once()` pass?
 ///
 /// phase-417 G6, ledger row `cpp:Timer::is_ready`. `rcl_timer_is_ready` had
-/// shipped for C since stage 3 and `nros::Timer` had `cancel`, `reset`,
+/// shipped for C since stage 3 and `rclcpp::Timer` had `cancel`, `reset`,
 /// `is_canceled` and `is_valid` and not this.
 ///
 /// Forwards to `Executor::timer_is_ready`, which evaluates

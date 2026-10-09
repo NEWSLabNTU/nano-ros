@@ -6,7 +6,7 @@
  * `rmw_qos_profile_system_default` names no concrete policy at all: every field
  * is a sentinel meaning "let the RMW decide", and issue 0829 measured the two
  * reference RMWs resolving the depth sentinel to different numbers (Cyclone 1,
- * zenoh 42). `nros::QoS` has no sentinel — the backend is linked at build time
+ * zenoh 42). `rclcpp::QoS` has no sentinel — the backend is linked at build time
  * — so no value this could return would be right, which is why it is a refusal
  * and not a corrected constant like its six siblings.
  *

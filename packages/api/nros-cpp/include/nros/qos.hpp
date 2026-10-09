@@ -4,7 +4,7 @@
 /**
  * @file qos.hpp
  * @ingroup grp_qos
- * @brief `nros::QoS` — full DDS-shaped QoS settings (Phase 108.B.7).
+ * @brief `rclcpp::QoS` — full DDS-shaped QoS settings (Phase 108.B.7).
  */
 
 #ifndef NROS_CPP_QOS_HPP
@@ -13,7 +13,7 @@
 #include <stdint.h>
 
 // Phase 379 W5 — the deadline / lifespan / lease accessors take and return
-// `nros::Duration`, so this header names it. `nros.hpp` includes `qos.hpp`
+// `rclcpp::Duration`, so this header names it. `nros.hpp` includes `qos.hpp`
 // before `duration.hpp`, so the dependency is spelled HERE rather than left to
 // the umbrella's ordering: a header that names a type must be able to be
 // included first.
@@ -93,7 +93,7 @@ struct nros_cpp_qos_t {
 }
 #endif // NROS_CPP_FFI_H
 
-namespace nros {
+namespace rclcpp {
 
 // -- Policy enums (phase 379 W5) ------------------------------------------
 //
@@ -121,67 +121,62 @@ namespace nros {
 // A value a backend may REPORT is not a profile a caller may REQUEST, and the
 // refusal on that class stands (`NROS_RCLCPP_REFUSE_SYSTEM_DEFAULTS_QOS`).
 //
-// The enumerators are PREFIXED — `ReliabilityUnknown`, not `Unknown` — because
-// these are UNSCOPED enums at namespace scope, so four bare `Unknown`s in
-// `nros::` would be a redeclaration rather than four policies. rclcpp's are
-// `enum class` and pay no such cost. `LivelinessPolicy` already had the
-// prefix for the same reason, so this is the file's existing convention, not
-// a new one. `LivelinessSystemDefault` is absent on purpose: `LivelinessNone`
-// IS discriminant 0, which is the sentinel's value, and a second name for one
-// value is how a vocabulary starts disagreeing with itself.
-//
-// These are UNSCOPED enums, not rclcpp's `enum class`. Both spellings work as a
-// result: `nros::Reliable` (ours, historical) and `nros::ReliabilityPolicy::
-// Reliable` (rclcpp's). Switching to `enum class` would break the first and is
-// its own decision, which no ledger row makes — see the qos.json rows.
+// The enumerators are upstream's and SCOPED (phase-483 W1): one
+// `SystemDefault` and one `Unknown` per policy, reached as
+// `rclcpp::ReliabilityPolicy::Unknown`. The prefixed spellings
+// (`ReliabilityUnknown`, `LivelinessNone`) existed only because these were
+// unscoped enums, and the bare `rclcpp::Reliable` form went with them.
 
-/// Reliability policy. Matches DDS `RELIABILITY_QOS_POLICY`.
-enum ReliabilityPolicy {
+/// Reliability policy. Matches DDS `RELIABILITY_QOS_POLICY` and
+/// `rclcpp::ReliabilityPolicy`.
+///
+/// `enum class`, as upstream's is (phase-483 W1). These were unscoped while
+/// they lived in `nros::`; in `rclcpp::` an unscoped `KeepLast` enumerator
+/// would collide with upstream's `rclcpp::KeepLast` profile helper.
+enum class ReliabilityPolicy : int {
     Reliable = 0,
     BestEffort = 1,
     /// Nobody stated a reliability policy — the middleware chose. Reportable
     /// by `get_actual_qos()`; not a value to request.
-    ReliabilitySystemDefault = 2,
+    SystemDefault = 2,
     /// The backend could not determine this policy. An ABSENCE.
-    ReliabilityUnknown = 3,
+    Unknown = 3,
 };
 
 /// Durability policy. Matches DDS `DURABILITY_QOS_POLICY`.
-enum DurabilityPolicy {
+enum class DurabilityPolicy : int {
     Volatile = 0,
     TransientLocal = 1,
     /// Nobody stated a durability policy — the middleware chose.
-    DurabilitySystemDefault = 2,
+    SystemDefault = 2,
     /// The backend could not determine this policy. An ABSENCE.
-    DurabilityUnknown = 3,
+    Unknown = 3,
 };
 
 /// History policy. Matches DDS `HISTORY_QOS_POLICY`.
-enum HistoryPolicy {
+enum class HistoryPolicy : int {
     KeepLast = 0,
     KeepAll = 1,
     /// Nobody stated a history policy — the middleware chose.
-    HistorySystemDefault = 2,
+    SystemDefault = 2,
     /// The backend could not determine this policy. An ABSENCE.
-    HistoryUnknown = 3,
+    Unknown = 3,
 };
 
 /// Liveliness policy kind. Matches DDS `LIVELINESS_QOS_POLICY`.
 ///
-/// The enumerators keep their `Liveliness` prefix because these are UNSCOPED
-/// enums at namespace scope: a bare `Automatic` / `None` in `nros::` would be
-/// far worse names than the redundancy costs. `nros::LivelinessPolicy::
-/// LivelinessAutomatic` also works, so a qualified rclcpp-shaped spelling
-/// compiles. `LivelinessManualByNode` is ours-only — rmw deprecated it, so
-/// rclcpp's `LivelinessPolicy` does not list it.
-enum LivelinessPolicy {
-    LivelinessNone = 0,
-    LivelinessAutomatic = 1,
-    LivelinessManualByTopic = 2,
-    LivelinessManualByNode = 3,
+/// `SystemDefault` is discriminant 0, the value rmw gives
+/// `RMW_QOS_POLICY_LIVELINESS_SYSTEM_DEFAULT`; this enumerator was spelled
+/// `LivelinessNone` before phase-483. `ManualByNode` is ours-only — rmw
+/// deprecated it, so rclcpp's `LivelinessPolicy` does not list it.
+enum class LivelinessPolicy : int {
+    SystemDefault = 0,
+    Automatic = 1,
+    ManualByTopic = 2,
+    ManualByNode = 3,
     /// The backend could not determine this policy. An ABSENCE, reportable by
     /// `get_actual_qos()` and never a value to request.
-    LivelinessUnknown = 4,
+    Unknown = 4,
 };
 
 class QoS;
@@ -237,59 +232,63 @@ constexpr QoS qos_from_ffi(const nros_cpp_qos_t& f);
 ///
 /// Phase 379 W5 — the policy enums moved to namespace scope, the getters
 /// return them instead of `int`, and the three time windows take and return
-/// `nros::Duration` instead of carrying an `_ms` suffix. The old spellings were
+/// `rclcpp::Duration` instead of carrying an `_ms` suffix. The old spellings were
 /// deleted by phase-482 W6.
 class QoS {
   public:
     /// Default QoS: reliable, volatile, keep-last(10), automatic
     /// liveliness, no deadline / lifespan / lease.
     constexpr QoS()
-        : reliability_(Reliable), durability_(Volatile), history_(KeepLast),
-          liveliness_(::nros::LivelinessNone), depth_(10), deadline_ms_(0), lifespan_ms_(0),
-          liveliness_lease_ms_(0), avoid_ros_namespace_conventions_(0), tx_express_(0) {}
+        : reliability_(ReliabilityPolicy::Reliable), durability_(DurabilityPolicy::Volatile),
+          history_(HistoryPolicy::KeepLast), liveliness_(::rclcpp::LivelinessPolicy::SystemDefault),
+          depth_(10), deadline_ms_(0), lifespan_ms_(0), liveliness_lease_ms_(0),
+          avoid_ros_namespace_conventions_(0), tx_express_(0) {}
 
-    /// rclcpp-shape depth ctor: `QoS(1)` == default profile with
-    /// keep-last(1). Lets ported rclcpp code (`rclcpp::QoS{1}.transient_local()`)
-    /// keep its spelling on the native surface.
-    explicit constexpr QoS(int depth) : QoS() { depth_ = depth; }
+    /// rclcpp's depth ctor: `QoS(1)` == default profile with keep-last(1).
+    /// IMPLICIT, as upstream's `QoS(size_t history_depth)` is, so a bare depth
+    /// converts wherever a profile is expected (`create_publisher<M>(t, 10)`).
+    /// Before phase-483 this was an explicit `int` ctor on `nros::QoS` and a
+    /// derived `rclcpp::QoS` added the implicit one; the two are one class now.
+    // NOLINTNEXTLINE(google-explicit-constructor)
+    constexpr QoS(::size_t depth) : QoS() { depth_ = static_cast<int>(depth); }
 
     // -- Chainable setters (match rclcpp fluent API) --
 
     /// Set reliability to `RELIABLE` (acked transport, retransmits on loss).
     constexpr QoS& reliable() {
-        reliability_ = Reliable;
+        reliability_ = ReliabilityPolicy::Reliable;
         return *this;
     }
 
     /// Set reliability to `BEST_EFFORT` (fire-and-forget; default for sensors).
     constexpr QoS& best_effort() {
-        reliability_ = BestEffort;
+        reliability_ = ReliabilityPolicy::BestEffort;
         return *this;
     }
 
     /// Set durability to `TRANSIENT_LOCAL` — late joiners get the last value.
     constexpr QoS& transient_local() {
-        durability_ = TransientLocal;
+        durability_ = DurabilityPolicy::TransientLocal;
         return *this;
     }
 
     /// Set durability to `VOLATILE` — late joiners get nothing (default).
     constexpr QoS& durability_volatile() {
-        durability_ = Volatile;
+        durability_ = DurabilityPolicy::Volatile;
         return *this;
     }
 
     /// Use `KEEP_LAST` history with the given depth.
     /// @param depth maximum number of messages buffered per entity.
     constexpr QoS& keep_last(int depth) {
-        history_ = KeepLast;
+        history_ = HistoryPolicy::KeepLast;
         depth_ = depth;
         return *this;
     }
 
     /// Use `KEEP_ALL` history (bounded by transport).
     constexpr QoS& keep_all() {
-        history_ = KeepAll;
+        history_ = HistoryPolicy::KeepAll;
         return *this;
     }
 
@@ -344,7 +343,7 @@ class QoS {
 
     // -- Predefined profiles (match rclcpp named constructors) --
     //
-    // phase-428 W10 — DECLARED here, DEFINED below from `nros::detail::qos_table`,
+    // phase-428 W10 — DECLARED here, DEFINED below from `rclcpp::detail::qos_table`,
     // which is the one place this header spells a profile's fields. Until W10
     // these three carried their own literals AND the `rclcpp::*QoS` classes at
     // the bottom of the file carried a second, independent set: `sensor_data`
@@ -506,7 +505,7 @@ constexpr bool operator!=(const QoS& left, const QoS& right) {
 /// lanes and whose text points at neither file's real problem.
 extern "C" NROS_PUBLIC const char* nros_qos_policy_kind_to_cstr(uint32_t policy);
 
-/// `nros::qos_policy_kind_to_cstr` — see the entry point above, which it
+/// `rclcpp::qos_policy_kind_to_cstr` — see the entry point above, which it
 /// forwards to unchanged.
 inline const char* qos_policy_kind_to_cstr(uint32_t policy) {
     return nros_qos_policy_kind_to_cstr(policy);
@@ -517,7 +516,7 @@ namespace detail {
 // --- THE C++ QoS profile table (phase-428 W10) -------------------------------
 //
 // Every named profile the C++ surface offers is spelled HERE and nowhere else.
-// `nros::QoS`'s three named statics and all six concrete `rclcpp::*QoS` classes
+// `rclcpp::QoS`'s three named statics and all six concrete `rclcpp::*QoS` classes
 // are defined by calling into this block; none of them restates a policy.
 //
 // Why a table and not a hand copy per class: W10 exists because upstream's 7
@@ -555,7 +554,7 @@ namespace detail {
 // into `QoS`'s default constructor rather than spelled per row:
 //   * `avoid_ros_namespace_conventions` is `false` upstream, `0` here.
 //   * liveliness is `RMW_QOS_POLICY_LIVELINESS_SYSTEM_DEFAULT` upstream, and
-//     `nros::QoS` now defaults to `LivelinessNone`, which is our spelling of
+//     `rclcpp::QoS` now defaults to `LivelinessNone`, which is our spelling of
 //     that sentinel. It defaulted to `LivelinessAutomatic` — "what every
 //     reference RMW folds that sentinel to" — under a
 //     `nros-qos-mirror-deviation` record whose own reason was that this
@@ -568,7 +567,7 @@ namespace detail {
 //     `required_policies()` demand `LIVELINESS_AUTOMATIC` and refuse every C++
 //     default profile on that backend — over a policy upstream leaves unset
 //     and the application never asked for. A caller that wants automatic
-//     liveliness states `.liveliness(nros::LivelinessAutomatic)`.
+//     liveliness states `.liveliness(rclcpp::LivelinessAutomatic)`.
 //
 //   * deadline and the liveliness lease are `RMW_QOS_*_DEFAULT` (infinite)
 //     upstream and `0` here, which `qos_window_ms` above documents as infinite.
@@ -607,7 +606,7 @@ struct qos_table {
     /// TRANSIENT_LOCAL, lifespan {10, 0}.
     static constexpr QoS rosout() {
         return QoS().reliable().transient_local().keep_last(1000).lifespan(
-            ::nros::Duration::from_nanoseconds(10000000000LL));
+            ::rclcpp::Duration::from_nanoseconds(10000000000LL));
     }
 
     /// `rclcpp::ClockQoS` — KEEP_LAST(1), BEST_EFFORT, VOLATILE.
@@ -658,7 +657,7 @@ constexpr nros_cpp_qos_t qos_to_ffi(const QoS& qos) {
 /// in Rust, `NROS_RMW_QOS_PROFILE_UNKNOWN` across the RMW ABI; this is the
 /// same statement in this header's vocabulary.
 ///
-/// Written from the `nros::` enumerators and `static_cast` across, NOT from
+/// Written from the `rclcpp::` enumerators and `static_cast` across, NOT from
 /// the `NROS_CPP_QOS_*` ones: this header defines those itself only when
 /// `nros_cpp_ffi.h` was NOT included first, and when it WAS, cbindgen has
 /// spelled them `nros_cpp_qos_reliability_t_NROS_CPP_QOS_RELIABILITY_UNKNOWN`
@@ -667,10 +666,10 @@ constexpr nros_cpp_qos_t qos_to_ffi(const QoS& qos) {
 /// broke the C++ surface extraction while every C++ test still passed.
 constexpr QoS qos_all_unknown() {
     nros_cpp_qos_t f{};
-    f.reliability = static_cast<nros_cpp_qos_reliability_t>(ReliabilityUnknown);
-    f.durability = static_cast<nros_cpp_qos_durability_t>(DurabilityUnknown);
-    f.history = static_cast<nros_cpp_qos_history_t>(HistoryUnknown);
-    f.liveliness_kind = static_cast<nros_cpp_qos_liveliness_t>(LivelinessUnknown);
+    f.reliability = static_cast<nros_cpp_qos_reliability_t>(ReliabilityPolicy::Unknown);
+    f.durability = static_cast<nros_cpp_qos_durability_t>(DurabilityPolicy::Unknown);
+    f.history = static_cast<nros_cpp_qos_history_t>(HistoryPolicy::Unknown);
+    f.liveliness_kind = static_cast<nros_cpp_qos_liveliness_t>(LivelinessPolicy::Unknown);
     f.depth = 0;
     return qos_from_ffi(f);
 }
@@ -680,7 +679,7 @@ constexpr QoS qos_all_unknown() {
 /// Used by the `get_actual_qos()` family, which is the only direction that
 /// produces a profile the CALLER did not write. The four `static_cast`s are
 /// the same value-for-value mirror `qos_to_ffi` relies on in the other
-/// direction: `nros::ReliabilityPolicy` and `nros_cpp_qos_reliability_t` agree
+/// direction: `rclcpp::ReliabilityPolicy` and `nros_cpp_qos_reliability_t` agree
 /// enumerator for enumerator, sentinels included, and the static_asserts in
 /// `tests/compile/qos_policy_accessors.cpp` measure that rather than trusting
 /// it. Neither vocabulary is the RMW ABI's, whose numbering differs from both
@@ -721,7 +720,7 @@ constexpr QoS QoS::services() {
     return detail::qos_table::services_default();
 }
 
-} // namespace nros
+} // namespace rclcpp
 
 // ============================================================================
 // rclcpp:: — the ROS 2 spelling of the QoS surface (RFC-0089 stage 6, step A)
@@ -730,27 +729,14 @@ constexpr QoS QoS::services() {
 // Moved here from `nros/rclcpp_compat.hpp`, which no longer exists as a
 // separate surface: RFC-0089 §"Naming: replace, with alias as the migration
 // step" makes the ROS 2 spelling a first-class name declared by the API header
-// that owns the concept. `nros::QoS` is unchanged and still the name every
+// that owns the concept. `rclcpp::QoS` is unchanged and still the name every
 // in-tree caller writes; step B deprecates it.
 //
-// Everything below is freestanding-safe — `constexpr` classes over `nros::QoS`
+// Everything below is freestanding-safe — `constexpr` classes over `rclcpp::QoS`
 // and one `<type_traits>` predicate — so a `no_std` C++ build gets the ROS 2
 // QoS vocabulary too, which the hosted-STL shim could never offer it.
 
 namespace rclcpp {
-
-// rclcpp::QoS subclasses nros::QoS to add the `QoS(depth)` integer ctor every
-// ported source uses; the chainable setters (`reliable()`, `best_effort()`,
-// `keep_last(n)`, …) are inherited. Implicit-converts to `nros::QoS` (used in
-// the create_publisher/subscription overloads on `rclcpp::Node`).
-class QoS : public ::nros::QoS {
-  public:
-    constexpr QoS() = default;
-    // NOLINTNEXTLINE(google-explicit-constructor)
-    constexpr QoS(::size_t depth) : ::nros::QoS() { keep_last(static_cast<int>(depth)); }
-    // NOLINTNEXTLINE(google-explicit-constructor)
-    constexpr QoS(const ::nros::QoS& other) : ::nros::QoS(other) {}
-};
 
 namespace detail {
 
@@ -758,7 +744,7 @@ namespace detail {
 ///
 /// The refusing `create_service(name, F, qos)` overload on `rclcpp::Node` must
 /// not swallow `create_service<S>("name", rclcpp::ServicesQoS())`. Deducing `F`
-/// is an exact match while binding `const nros::QoS&` needs a derived-to-base
+/// is an exact match while binding `const rclcpp::QoS&` needs a derived-to-base
 /// conversion, so without this guard the callback template WINS and a perfectly
 /// good poll-style call fails with the shared_ptr-callback diagnostic — a
 /// refusal firing on something it does not describe, which is worse than no
@@ -805,7 +791,7 @@ template <typename F> class is_qos_arg {
     typedef char no_t[2];
     // Declared, never defined: both calls live in `sizeof`, which does not
     // evaluate its operand.
-    static yes_t& probe(const ::nros::QoS*);
+    static yes_t& probe(const ::rclcpp::QoS*);
     static no_t& probe(...);
     static typename qos_arg_strip<F>::type* arg();
 
@@ -817,10 +803,10 @@ template <typename F> class is_qos_arg {
 
 // --- Named QoS profiles (RFC-0089 W3.f; bound to one table, phase-428 W10) ---
 //
-// Each class below is a NAME for a row of `nros::detail::qos_table`, and states
+// Each class below is a NAME for a row of `rclcpp::detail::qos_table`, and states
 // no policy of its own. Before W10 each carried its own literals, so
-// `SensorDataQoS` and `ServicesQoS` restated what `nros::QoS::sensor_data()` and
-// `nros::QoS::services()` already said, 400 lines up in the same header — the
+// `SensorDataQoS` and `ServicesQoS` restated what `rclcpp::QoS::sensor_data()` and
+// `rclcpp::QoS::services()` already said, 400 lines up in the same header — the
 // shape upstream itself avoids: rclcpp's `SensorDataQoS` is
 // `QoSInitialization::from_rmw(rmw_qos_profile_sensor_data)`, a REFERENCE to the
 // rmw constant, never a re-transcription of it (`rclcpp/qos.hpp:391-399`).
@@ -850,7 +836,7 @@ template <typename F> class is_qos_arg {
 /// `rmw_qos_profile_sensor_data` — KEEP_LAST(5), BEST_EFFORT, VOLATILE. ADOPT.
 class SensorDataQoS : public QoS {
   public:
-    constexpr SensorDataQoS() : QoS(::nros::detail::qos_table::sensor_data()) {}
+    constexpr SensorDataQoS() : QoS(::rclcpp::detail::qos_table::sensor_data()) {}
 };
 
 /// `rmw_qos_profile_services_default` — KEEP_LAST(10), RELIABLE, VOLATILE.
@@ -859,7 +845,7 @@ class SensorDataQoS : public QoS {
 /// reliability to the default. The table row states both.)
 class ServicesQoS : public QoS {
   public:
-    constexpr ServicesQoS() : QoS(::nros::detail::qos_table::services_default()) {}
+    constexpr ServicesQoS() : QoS(::rclcpp::detail::qos_table::services_default()) {}
 };
 
 /// `rmw_qos_profile_parameters` — KEEP_LAST(**1000**), RELIABLE, VOLATILE.
@@ -867,7 +853,7 @@ class ServicesQoS : public QoS {
 /// inversions: it returned `QoS(10)`.
 class ParametersQoS : public QoS {
   public:
-    constexpr ParametersQoS() : QoS(::nros::detail::qos_table::parameters()) {}
+    constexpr ParametersQoS() : QoS(::rclcpp::detail::qos_table::parameters()) {}
 };
 
 /// `rmw_qos_profile_parameter_events` — KEEP_LAST(1000), RELIABLE, VOLATILE.
@@ -879,7 +865,7 @@ class ParametersQoS : public QoS {
 /// carrying a comment claiming it matched, is what W10's single table is for.
 class ParameterEventsQoS : public QoS {
   public:
-    constexpr ParameterEventsQoS() : QoS(::nros::detail::qos_table::parameter_events()) {}
+    constexpr ParameterEventsQoS() : QoS(::rclcpp::detail::qos_table::parameter_events()) {}
 };
 
 /// `rcl_qos_profile_rosout_default` — KEEP_LAST(1000), RELIABLE,
@@ -892,20 +878,20 @@ class ParameterEventsQoS : public QoS {
 /// runtime is already using.
 class RosoutQoS : public QoS {
   public:
-    constexpr RosoutQoS() : QoS(::nros::detail::qos_table::rosout()) {}
+    constexpr RosoutQoS() : QoS(::rclcpp::detail::qos_table::rosout()) {}
 };
 
 /// `rclcpp::ClockQoS` — KEEP_LAST(1), BEST_EFFORT, VOLATILE. ADOPT.
 class ClockQoS : public QoS {
   public:
-    constexpr ClockQoS() : QoS(::nros::detail::qos_table::clock()) {}
+    constexpr ClockQoS() : QoS(::rclcpp::detail::qos_table::clock()) {}
 };
 
 /// `rclcpp::SystemDefaultsQoS` — **REFUSE-LOUD**.
 ///
 /// Every field of `rmw_qos_profile_system_default` is a sentinel meaning "let
 /// the RMW decide", and issue 0829 measured the two reference RMWs resolving
-/// the depth sentinel to different numbers (Cyclone 1, zenoh 42). `nros::QoS`
+/// the depth sentinel to different numbers (Cyclone 1, zenoh 42). `rclcpp::QoS`
 /// has no sentinel, deliberately — the backend is linked at build time, so
 /// there is nothing to defer to. Any concrete value here would be a different
 /// profile wearing this name, which is precisely what the old `QoS(10)` was.
@@ -925,14 +911,14 @@ class SystemDefaultsQoS : public QoS {
 /// `create_publisher`, both resolve to the same profile either way. What does
 /// NOT carry over is using it as an initialiser for a profile whose other
 /// policies you meant to keep — `rclcpp::SensorDataQoS(rclcpp::KeepLast(1))`
-/// has no equivalent here; write `nros::QoS().best_effort().keep_last(1)`.
+/// has no equivalent here; write `rclcpp::QoS().best_effort().keep_last(1)`.
 constexpr QoS KeepLast(::size_t depth) {
     return QoS(depth);
 }
 
 /// `rclcpp::KeepAll()`. Same ADOPT-BOUNDED note as `KeepLast`.
 constexpr QoS KeepAll() {
-    return QoS(::nros::QoS().keep_all());
+    return QoS(::rclcpp::QoS().keep_all());
 }
 
 } // namespace rclcpp

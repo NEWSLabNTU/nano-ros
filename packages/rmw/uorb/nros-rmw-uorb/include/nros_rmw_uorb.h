@@ -16,7 +16,7 @@
  * session creation:
  *
  *     nros_rmw_uorb_register();
- *     nros::init(nullptr, 0, "my_module");
+ *     rclcpp::init_in(nullptr, 0, "my_module");
  *     // ... create publishers / subscribers ...
  *
  * Phase 115.K.4.0 (this commit) — vtable scaffold; every entry

@@ -18,7 +18,7 @@ namespace cpp_reading_talker_pkg {
 /// `/reading` and binds `on_tick` as a 1 Hz timer whose `sequence` ramps.
 class ReadingTalker {
     ::rclcpp::Publisher<::custom_msgs::msg::Reading> pub_;
-    ::nros::Timer timer_;
+    ::rclcpp::Timer timer_;
     int count_ = 0;
 
     void on_tick(); // real body; bound via &ReadingTalker::on_tick

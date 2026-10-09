@@ -209,7 +209,7 @@ void NodeA::on_msg(const ::island_msgs::msg::Report& msg) {
 }
 
 ::rclcpp::Result NodeA::configure(::rclcpp::Node& node) {
-    return ::nros::bind_subscription<::island_msgs::msg::Report, NodeA, &NodeA::on_msg>(
+    return ::rclcpp::bind_subscription<::island_msgs::msg::Report, NodeA, &NodeA::on_msg>(
         node, "/report", this);
 }
 

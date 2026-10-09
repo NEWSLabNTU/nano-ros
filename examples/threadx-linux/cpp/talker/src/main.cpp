@@ -74,13 +74,13 @@ int nros_app_main(int argc, char** argv) {
     printf("nros C++ Talker\n");
     printf("===================\n");
 
-    // Phase 212.M.2 — `nros::init()` (no-arg) pulls locator + domain_id
+    // Phase 212.M.2 — `rclcpp::init_in()` (no-arg) pulls locator + domain_id
     // from `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` at runtime. Falling back
     // defaults match the prior hand-rolled env reads.
-    NROS_TRY_RET(nros::init(), 1);
+    NROS_TRY_RET(rclcpp::init_in(), 1);
 
     rclcpp::Node node;
-    NROS_TRY_RET(nros::create_node(node, "talker"), 1);
+    NROS_TRY_RET(rclcpp::create_node(node, "talker"), 1);
     printf("Node created: %s\n", node.get_name());
 
     rclcpp::Publisher<std_msgs::msg::String> pub;
@@ -90,7 +90,7 @@ int nros_app_main(int argc, char** argv) {
     ctx.publisher = &pub;
     ctx.count = 0;
 
-    nros::Timer timer;
+    rclcpp::Timer timer;
     NROS_TRY_RET(node.create_wall_timer(timer, 1000, timer_callback, &ctx), 1);
 
     // Set up signal handler
@@ -101,7 +101,7 @@ int nros_app_main(int argc, char** argv) {
 
     // Spin
     while (g_running && rclcpp::ok()) {
-        nros::spin_once(100);
+        rclcpp::spin_once(100);
     }
 
     // Cleanup

@@ -14,12 +14,12 @@
 ///
 /// ```cpp
 /// class Talker {
-///     nros::Publisher<Int32> pub_;
-///     nros::Timer timer_;
+///     rclcpp::Publisher<Int32> pub_;
+///     rclcpp::Timer timer_;
 ///     int count_ = 0;
 ///     void on_tick() { Int32 m; m.data = count_++; pub_.publish(m); }  // real body
 ///   public:
-///     nros::Result configure(rclcpp::Node& node) {
+///     rclcpp::Result configure(rclcpp::Node& node) {
 ///         NROS_TRY(node.create_publisher(pub_, "/chatter"));
 ///         return node.create_wall_timer<Talker, &Talker::on_tick>(timer_, 1000, this);
 ///     }
@@ -38,11 +38,11 @@
 #include "nros/action_server.hpp" // raw action-server register + set_callbacks + storage size
 #include "nros/node.hpp"
 #include "nros/result.hpp"
-#include "nros/service.hpp"      // nros_cpp_service_server_register (raw callback)
-#include "nros/size_bound.hpp"   // nros::rx_size_bound<M> / rx_bound_unknown — the receive bound
+#include "nros/service.hpp"    // nros_cpp_service_server_register (raw callback)
+#include "nros/size_bound.hpp" // rclcpp::rx_size_bound<M> / rx_bound_unknown — the receive bound
 #include "nros/subscription.hpp" // nros_cpp_subscription_register (raw callback)
 
-namespace nros {
+namespace rclcpp {
 
 /// Register a **raw, zero-copy** subscription on the executor: the callback
 /// borrows the wire bytes (`data`, `len`) directly — no copy, no deserialize, no
@@ -54,9 +54,9 @@ namespace nros {
 /// the `c_raw_no_hint` registration row: priced at the executor's closure
 /// buffer rather than at the message, and invisible to the sizing descriptor,
 /// which credits every C/C++ entry with a supplied hint. A caller with a
-/// message type in scope passes `nros::rx_buffer_capacity<M>::value` (or the
-/// strict `nros::rx_size_bound<M>::value`); a caller that genuinely has only a
-/// type name passes `nros::rx_bound_unknown`, which is the same 0 said out
+/// message type in scope passes `rclcpp::rx_buffer_capacity<M>::value` (or the
+/// strict `rclcpp::rx_size_bound<M>::value`); a caller that genuinely has only a
+/// type name passes `rclcpp::rx_bound_unknown`, which is the same 0 said out
 /// loud.
 inline Result create_subscription_raw(::rclcpp::Node& node, const char* topic,
                                       const char* type_name,
@@ -70,7 +70,7 @@ inline Result create_subscription_raw(::rclcpp::Node& node, const char* topic,
     // executor's arena slot for this subscription, so a publisher-heavy image
     // stops charging every slot the largest subscription's buffer.
     //
-    // `nros::rx_bound_unknown` (0) keeps the pre-phase-403 behaviour (the
+    // `rclcpp::rx_bound_unknown` (0) keeps the pre-phase-403 behaviour (the
     // image-wide default), and is what a caller with no type in hand passes.
     // Options are stack-local: the FFI reads the struct during the call and
     // retains nothing.
@@ -88,7 +88,7 @@ inline Result create_subscription_raw(::rclcpp::Node& node, const char* topic,
 /// pointer — no heap, no `std::function`). `self` is the executor `ctx`.
 ///
 /// **This is the tree's one genuinely type-erased registration**, so it is the
-/// one site that passes `nros::rx_bound_unknown` (phase-456 W7). The callback
+/// one site that passes `rclcpp::rx_bound_unknown` (phase-456 W7). The callback
 /// takes bytes, the type arrives as a NAME, and no bound is recoverable from a
 /// string — the caller who wants one calls `bind_subscription<M, C, Method>`,
 /// which has the type, or `bind_subscription_sized`, which takes the number.
@@ -100,7 +100,7 @@ inline Result bind_subscription_raw(::rclcpp::Node& node, const char* topic, con
         [](const uint8_t* data, size_t len, void* ctx) {
             (static_cast<C*>(ctx)->*Method)(data, len);
         },
-        self, qos, ::nros::rx_bound_unknown);
+        self, qos, ::rclcpp::rx_bound_unknown);
 }
 
 /// Phase 242.2 (RFC-0044 §Design.2(1)) — bind a component **member**
@@ -127,7 +127,7 @@ inline Result bind_subscription(::rclcpp::Node& node, const char* topic, C* self
     // spent on the arena slot. This is the point the type is erased: everything
     // below takes a type NAME, and the bound cannot be recovered from a string.
     //
-    // phase-408 W1/W4 -- the number is `nros::rx_size_bound<M>`, the DERIVED
+    // phase-408 W1/W4 -- the number is `rclcpp::rx_size_bound<M>`, the DERIVED
     // bound the C++ pack now emits (`M::RX_MAX_SERIALIZED_SIZE`, from
     // `nros_serdes::size::max_serialized_size`), and NOT `M::SERIALIZED_SIZE_MAX`
     // as this line read until now. That one ESTIMATES -- flat 512 per nested
@@ -144,7 +144,7 @@ inline Result bind_subscription(::rclcpp::Node& node, const char* topic, C* self
             if (M::ffi_deserialize(data, len, &msg) != 0) return;
             (static_cast<C*>(ctx)->*Method)(msg);
         },
-        self, qos, ::nros::rx_size_bound<M>::value);
+        self, qos, ::rclcpp::rx_size_bound<M>::value);
 }
 
 /// `bind_subscription` with the receive-buffer hint supplied by the CALLER.
@@ -244,7 +244,7 @@ inline Result bind_service(::rclcpp::Node& node, const char* service, C* self,
 
 /// Storage a component must own for a raw action server (8-aligned, lives for
 /// the app lifetime — the executor arena holds it). Declare one per action:
-/// `::nros::ActionServerStorage fib_storage_;` then pass `fib_storage_.bytes`.
+/// `::rclcpp::ActionServerStorage fib_storage_;` then pass `fib_storage_.bytes`.
 struct ActionServerStorage {
     alignas(8) uint8_t bytes[NROS_CPP_ACTION_SERVER_STORAGE_SIZE];
 };
@@ -255,10 +255,10 @@ struct ActionServerStorage {
 /// discriminant (`int32_t`; 0 reject / 1 accept-and-execute / 2 accept-defer),
 /// the cancel callback 0 reject / 1 accept. These are 0-based and the C++
 /// `GoalResponse` / `CancelResponse` are upstream's 1-based values, so convert
-/// with `nros::to_ffi(...)` — a `static_cast<int32_t>` of the C++ enum is wrong. `ctx` is carried
-/// through. After a goal is accepted, complete it with `nros_cpp_action_server_complete_goal(
-/// storage, node.executor_handle(), goal_id, result_cdr, len)` (and feedback via
-/// `nros_cpp_action_server_publish_feedback`).
+/// with `rclcpp_action::to_ffi(...)` — a `static_cast<int32_t>` of the C++ enum is wrong. `ctx` is
+/// carried through. After a goal is accepted, complete it with
+/// `nros_cpp_action_server_complete_goal( storage, node.executor_handle(), goal_id, result_cdr,
+/// len)` (and feedback via `nros_cpp_action_server_publish_feedback`).
 inline Result create_action_server_raw(::rclcpp::Node& node, void* storage, const char* action_name,
                                        const char* type_name, nros_cpp_goal_callback_t goal_cb,
                                        nros_cpp_cancel_callback_t cancel_cb, void* ctx,
@@ -277,27 +277,26 @@ inline Result create_action_server_raw(::rclcpp::Node& node, void* storage, cons
 }
 
 /// Bind component **members**
-/// `nros::GoalResponse C::on_goal(const uint8_t goal_id[16], const uint8_t* data, size_t len)`
-/// and `nros::CancelResponse C::on_cancel(const uint8_t goal_id[16])` as the action server's
-/// goal/cancel callbacks (by identity, `self` as ctx, no-alloc trampolines).
-/// The members return the TYPED decision and the binder converts it with
-/// `nros::to_ffi`; a member returning a raw `int32_t` no longer binds (issue
-/// 1637), because the typed enums now carry upstream's 1-based values and a
-/// cast of one into the 0-based FFI would read reject as accept.
+/// `rclcpp_action::GoalResponse C::on_goal(const uint8_t goal_id[16], const uint8_t* data, size_t
+/// len)` and `rclcpp_action::CancelResponse C::on_cancel(const uint8_t goal_id[16])` as the action
+/// server's goal/cancel callbacks (by identity, `self` as ctx, no-alloc trampolines). The members
+/// return the TYPED decision and the binder converts it with `rclcpp::to_ffi`; a member returning a
+/// raw `int32_t` no longer binds (issue 1637), because the typed enums now carry upstream's 1-based
+/// values and a cast of one into the 0-based FFI would read reject as accept.
 template <class C,
-          ::nros::GoalResponse (C::*GoalMethod)(const uint8_t goal_id[16], const uint8_t* data,
-                                                size_t len),
-          ::nros::CancelResponse (C::*CancelMethod)(const uint8_t goal_id[16])>
+          ::rclcpp_action::GoalResponse (C::*GoalMethod)(const uint8_t goal_id[16],
+                                                         const uint8_t* data, size_t len),
+          ::rclcpp_action::CancelResponse (C::*CancelMethod)(const uint8_t goal_id[16])>
 inline Result bind_action_server_raw(::rclcpp::Node& node, void* storage, const char* action_name,
                                      const char* type_name, C* self,
                                      const QoS& qos = QoS::services()) {
     return create_action_server_raw(
         node, storage, action_name, type_name,
         [](const uint8_t goal_id[16], const uint8_t* data, size_t len, void* ctx) -> int32_t {
-            return ::nros::to_ffi((static_cast<C*>(ctx)->*GoalMethod)(goal_id, data, len));
+            return ::rclcpp_action::to_ffi((static_cast<C*>(ctx)->*GoalMethod)(goal_id, data, len));
         },
         [](const uint8_t goal_id[16], void* ctx) -> int32_t {
-            return ::nros::to_ffi((static_cast<C*>(ctx)->*CancelMethod)(goal_id));
+            return ::rclcpp_action::to_ffi((static_cast<C*>(ctx)->*CancelMethod)(goal_id));
         },
         self, qos);
 }
@@ -380,12 +379,12 @@ inline Result bind_action_client(::rclcpp::Node& node, ActionClientStorage& stor
 // ==== phase-427 W4 — Node's member-pointer subscription family ==============
 //
 // DECLARED in `node.hpp` (on `class Node`), DEFINED here. `node.hpp` cannot
-// hold these bodies: they call `nros::bind_subscription` above, and this file
+// hold these bodies: they call `rclcpp::bind_subscription` above, and this file
 // includes `node.hpp`, so a definition there would close an include cycle. The
 // umbrella `nros.hpp` pulls this file in, so the definitions are visible
 // wherever the members are reachable.
 //
-// Both came off `nros::ComponentNode`. See the rename note on
+// Both came off `rclcpp::ComponentNode`. See the rename note on
 // `Node::create_publisher_in` for why a bare `create_subscription` carrying an
 // ours-only signature is the one thing the merge could not ship.
 //
@@ -394,27 +393,27 @@ inline Result bind_action_client(::rclcpp::Node& node, ActionClientStorage& stor
 // The second one below is both — a group form of the storage-free shape — and
 // its name says the half a reader cannot infer from the argument list.
 
-} // namespace nros
+} // namespace rclcpp
 
 namespace rclcpp {
 template <typename M, class C, void (C::*Method)(const M& msg)>
-inline void Node::create_subscription_in(const char* topic, const ::nros::QoS& qos) {
+inline void Node::create_subscription_in(const char* topic, const ::rclcpp::QoS& qos) {
     if (!this->check_declared_qos(M::TYPE_NAME, topic, qos)) {
         return;
     }
-    Result r = ::nros::bind_subscription<M, C, Method>(*this, topic, static_cast<C*>(this), qos);
+    Result r = ::rclcpp::bind_subscription<M, C, Method>(*this, topic, static_cast<C*>(this), qos);
     if (!r.ok()) {
         this->set_error("create_subscription_in", r.raw());
     }
 }
 } // namespace rclcpp
 
-namespace nros {} // namespace nros
+namespace rclcpp {} // namespace rclcpp
 
 namespace rclcpp {
 template <typename M, class C, void (C::*Method)(const M& msg)>
-inline void Node::create_subscription_in_group(const ::nros::CallbackGroup& group,
-                                               const char* topic, const ::nros::QoS& qos) {
+inline void Node::create_subscription_in_group(const ::rclcpp::CallbackGroup& group,
+                                               const char* topic, const ::rclcpp::QoS& qos) {
     // phase-403 step 2 — the same boot-time check as the ungrouped form. A
     // grouped subscription costs the arena exactly what an ungrouped one does,
     // so leaving this path out would make the declared depth enforceable
@@ -427,7 +426,7 @@ inline void Node::create_subscription_in_group(const ::nros::CallbackGroup& grou
         this->set_error("create_subscription_in_group", -3);
         return;
     }
-    nros_cpp_qos_t ffi_qos = ::nros::detail::qos_to_ffi(qos);
+    nros_cpp_qos_t ffi_qos = ::rclcpp::detail::qos_to_ffi(qos);
     C* self = static_cast<C*>(this);
     size_t handle = static_cast<size_t>(-1);
     // phase-402: the group name is a FIELD now, not a trailing argument. Start
@@ -439,7 +438,7 @@ inline void Node::create_subscription_in_group(const ::nros::CallbackGroup& grou
     // taking the `c_raw_no_hint` row. It read 0 until now, which made the
     // grouped form cost the closure buffer where the ungrouped
     // `create_subscription_in` (through `bind_subscription`) costs the type.
-    sub_options.rx_buffer_hint = static_cast<uint32_t>(::nros::rx_buffer_capacity<M>::value);
+    sub_options.rx_buffer_hint = static_cast<uint32_t>(::rclcpp::rx_buffer_capacity<M>::value);
     nros_cpp_ret_t ret = nros_cpp_subscription_register(
         h, topic, M::TYPE_NAME, "", ffi_qos,
         [](const uint8_t* data, size_t len, void* ctx) {
@@ -454,7 +453,7 @@ inline void Node::create_subscription_in_group(const ::nros::CallbackGroup& grou
 }
 } // namespace rclcpp
 
-namespace nros {
+namespace rclcpp {
 
 namespace detail {
 
@@ -477,9 +476,9 @@ template <class T> struct strip_ref<T&> {
 /// the back-compatibility hinge: every call site that existed before this step,
 /// in an image with no declared depth anywhere, gets the same depth-10 profile
 /// it always got, from a `constexpr` branch the optimiser folds away.
-constexpr ::nros::QoS qos_from_declared_depth(int declared) {
-    return (declared == ::nros::DECLARED_DEPTH_UNDECLARED) ? ::nros::QoS::default_profile()
-                                                           : ::nros::QoS(declared);
+constexpr ::rclcpp::QoS qos_from_declared_depth(int declared) {
+    return (declared == ::rclcpp::DECLARED_DEPTH_UNDECLARED) ? ::rclcpp::QoS::default_profile()
+                                                             : ::rclcpp::QoS(declared);
 }
 
 // issue 1256 -- `nros/declared_qos.hpp` cannot include this header's QoS (it
@@ -487,28 +486,36 @@ constexpr ::nros::QoS qos_from_declared_depth(int declared) {
 // is the one place both are visible, so this is where they are held equal: a
 // drift fails every C++ image's build here rather than checking every call site
 // against the wrong enumerator.
-static_assert(_NROS_DQ_CPP_NROS_DQ_RELIABLE == static_cast<int>(::nros::Reliable),
-              "declared_qos.hpp's reliable ordinal drifted from nros::Reliable");
-static_assert(_NROS_DQ_CPP_NROS_DQ_BEST_EFFORT == static_cast<int>(::nros::BestEffort),
-              "declared_qos.hpp's best_effort ordinal drifted from nros::BestEffort");
-static_assert(_NROS_DQ_CPP_NROS_DQ_VOLATILE == static_cast<int>(::nros::Volatile),
-              "declared_qos.hpp's volatile ordinal drifted from nros::Volatile");
-static_assert(_NROS_DQ_CPP_NROS_DQ_TRANSIENT_LOCAL == static_cast<int>(::nros::TransientLocal),
-              "declared_qos.hpp's transient_local ordinal drifted from nros::TransientLocal");
+static_assert(
+    _NROS_DQ_CPP_NROS_DQ_RELIABLE == static_cast<int>(::rclcpp::ReliabilityPolicy::Reliable),
+    "declared_qos.hpp's reliable ordinal drifted from rclcpp::ReliabilityPolicy::Reliable");
+static_assert(
+    _NROS_DQ_CPP_NROS_DQ_BEST_EFFORT == static_cast<int>(::rclcpp::ReliabilityPolicy::BestEffort),
+    "declared_qos.hpp's best_effort ordinal drifted from rclcpp::ReliabilityPolicy::BestEffort");
+static_assert(
+    _NROS_DQ_CPP_NROS_DQ_VOLATILE == static_cast<int>(::rclcpp::DurabilityPolicy::Volatile),
+    "declared_qos.hpp's volatile ordinal drifted from rclcpp::DurabilityPolicy::Volatile");
+static_assert(_NROS_DQ_CPP_NROS_DQ_TRANSIENT_LOCAL ==
+                  static_cast<int>(::rclcpp::DurabilityPolicy::TransientLocal),
+              "declared_qos.hpp's transient_local ordinal drifted from "
+              "rclcpp::DurabilityPolicy::TransientLocal");
 
 /// `qos` with a declared reliability applied, or unchanged when none was.
-constexpr ::nros::QoS with_declared_reliability(::nros::QoS qos, int declared) {
-    return (declared == static_cast<int>(::nros::BestEffort))
+constexpr ::rclcpp::QoS with_declared_reliability(::rclcpp::QoS qos, int declared) {
+    return (declared == static_cast<int>(::rclcpp::ReliabilityPolicy::BestEffort))
                ? qos.best_effort()
-               : ((declared == static_cast<int>(::nros::Reliable)) ? qos.reliable() : qos);
+               : ((declared == static_cast<int>(::rclcpp::ReliabilityPolicy::Reliable))
+                      ? qos.reliable()
+                      : qos);
 }
 
 /// `qos` with a declared durability applied, or unchanged when none was.
-constexpr ::nros::QoS with_declared_durability(::nros::QoS qos, int declared) {
-    return (declared == static_cast<int>(::nros::TransientLocal))
+constexpr ::rclcpp::QoS with_declared_durability(::rclcpp::QoS qos, int declared) {
+    return (declared == static_cast<int>(::rclcpp::DurabilityPolicy::TransientLocal))
                ? qos.transient_local()
-               : ((declared == static_cast<int>(::nros::Volatile)) ? qos.durability_volatile()
-                                                                   : qos);
+               : ((declared == static_cast<int>(::rclcpp::DurabilityPolicy::Volatile))
+                      ? qos.durability_volatile()
+                      : qos);
 }
 
 /// issue 1256 -- the QoS a `NROS_SUBSCRIBE` with no QoS argument gets: the
@@ -516,14 +523,14 @@ constexpr ::nros::QoS with_declared_durability(::nros::QoS qos, int declared) {
 /// and durability -- and every undeclared one left at the default. With nothing
 /// declared it is `QoS::default_profile()` exactly, from a branch the optimiser
 /// folds away.
-constexpr ::nros::QoS qos_from_declared(int depth, int reliability, int durability) {
+constexpr ::rclcpp::QoS qos_from_declared(int depth, int reliability, int durability) {
     return with_declared_durability(
         with_declared_reliability(qos_from_declared_depth(depth), reliability), durability);
 }
 
 } // namespace detail
 
-} // namespace nros
+} // namespace rclcpp
 
 // Zephyr's minimal libcpp ships a STUB <new> (guard
 // ZEPHYR_SUBSYS_CPP_INCLUDE_NEW_) that declares nothrow_t but NOT placement
@@ -572,7 +579,7 @@ constexpr ::nros::QoS qos_from_declared(int depth, int reliability, int durabili
 /// SIZING, because the arena is compiled before this TU exists. Both authoring
 /// modes are legal:
 ///
-///   * **the code states the QoS** — `NROS_SUBSCRIBE(M, m, "/t", nros::QoS(1))`
+///   * **the code states the QoS** — `NROS_SUBSCRIBE(M, m, "/t", rclcpp::QoS(1))`
 ///     and `qos: { depth: 1 }`. If the two numbers differ, this macro fails the
 ///     BUILD with a `static_assert` naming the topic and both depths.
 ///   * **the contract states the QoS** — `NROS_SUBSCRIBE(M, m, "/t")` with
@@ -605,12 +612,12 @@ constexpr ::nros::QoS qos_from_declared(int depth, int reliability, int durabili
 /// there is only ever one statement of it.
 #define _NROS_SUB_3(Msg, method, topic)                                                            \
     this->template create_subscription_in<                                                         \
-        Msg, ::nros::detail::strip_ref<decltype(*this)>::type,                                     \
-        &::nros::detail::strip_ref<decltype(*this)>::type::method>(                                \
-        (topic),                                                                                   \
-        ::nros::detail::qos_from_declared(::nros::declared_depth(Msg::TYPE_NAME, (topic)),         \
-                                          ::nros::declared_reliability(Msg::TYPE_NAME, (topic)),   \
-                                          ::nros::declared_durability(Msg::TYPE_NAME, (topic))))
+        Msg, ::rclcpp::detail::strip_ref<decltype(*this)>::type,                                   \
+        &::rclcpp::detail::strip_ref<decltype(*this)>::type::method>(                              \
+        (topic), ::rclcpp::detail::qos_from_declared(                                              \
+                     ::rclcpp::declared_depth(Msg::TYPE_NAME, (topic)),                            \
+                     ::rclcpp::declared_reliability(Msg::TYPE_NAME, (topic)),                      \
+                     ::rclcpp::declared_durability(Msg::TYPE_NAME, (topic))))
 
 /// The 4-argument form: the call site states a QoS, so it must agree with every
 /// declared column -- depth, reliability and durability (issue 1256) -- and the
@@ -619,8 +626,8 @@ constexpr ::nros::QoS qos_from_declared(int depth, int reliability, int durabili
 #define _NROS_SUB_4(Msg, method, topic, qos)                                                       \
     NROS_ASSERT_DECLARED_QOS(Msg::TYPE_NAME, (topic), (qos), #topic);                              \
     this->template create_subscription_in<                                                         \
-        Msg, ::nros::detail::strip_ref<decltype(*this)>::type,                                     \
-        &::nros::detail::strip_ref<decltype(*this)>::type::method>((topic), (qos))
+        Msg, ::rclcpp::detail::strip_ref<decltype(*this)>::type,                                   \
+        &::rclcpp::detail::strip_ref<decltype(*this)>::type::method>((topic), (qos))
 
 /// Fewer than three arguments. Named rather than left undefined so the error is
 /// about the CALL and not about an identifier the reader has never seen.
@@ -643,10 +650,10 @@ constexpr ::nros::QoS qos_from_declared(int depth, int reliability, int durabili
 /// the count of call sites that gave up the compile-time check visible.
 #define NROS_SUBSCRIBE_DYNAMIC(Msg, method, topic, qos)                                            \
     this->template create_subscription_in<                                                         \
-        Msg, ::nros::detail::strip_ref<decltype(*this)>::type,                                     \
-        &::nros::detail::strip_ref<decltype(*this)>::type::method>((topic), (qos))
+        Msg, ::rclcpp::detail::strip_ref<decltype(*this)>::type,                                   \
+        &::rclcpp::detail::strip_ref<decltype(*this)>::type::method>((topic), (qos))
 
-/// Inside a `nros::NodeWithTimers<N>` constructor: create a repeating timer
+/// Inside a `rclcpp::NodeWithTimers<N>` constructor: create a repeating timer
 /// calling `void Self::method()` every `period_ms`. Derives `Self` from `this`.
 ///
 /// The verb is `create_wall_timer_in` (phase-427 W4): the pool-parked form takes
@@ -654,8 +661,8 @@ constexpr ::nros::QoS qos_from_declared(int depth, int reliability, int durabili
 /// `create_wall_timer(duration, callback)` by SIGNATURE alone.
 #define NROS_CREATE_WALL_TIMER(period_ms, method)                                                  \
     this->template create_wall_timer_in<                                                           \
-        ::nros::detail::strip_ref<decltype(*this)>::type,                                          \
-        &::nros::detail::strip_ref<decltype(*this)>::type::method>((period_ms))
+        ::rclcpp::detail::strip_ref<decltype(*this)>::type,                                        \
+        &::rclcpp::detail::strip_ref<decltype(*this)>::type::method>((period_ms))
 
 // -- NROS_COMPONENT(Class) ---------------------------------------------------
 //
@@ -688,21 +695,21 @@ constexpr ::nros::QoS qos_from_declared(int depth, int reliability, int durabili
 
 /// Register a `rclcpp::Node`-derived class as the pkg's component. Emits:
 ///  - `__nros_component_factory_<pkg>(void* storage, void* node_handle)` — a
-///    C-ABI factory that placement-news `Class(nros::NodeHandle(node_handle))`
+///    C-ABI factory that placement-news `Class(rclcpp::NodeHandle(node_handle))`
 ///    into the entry-owned arena slot and returns it as `rclcpp::Node*`.
 ///  - `__nros_component_class_<pkg>` — the `"<pkg>::<Class>"` string for lint.
 ///  - `__nros_component_shape_<pkg>` — the `"rclcpp"` shape marker.
 ///
-/// The derived class MUST have an `explicit Class(nros::NodeHandle)` ctor (it
+/// The derived class MUST have an `explicit Class(rclcpp::NodeHandle)` ctor (it
 /// forwards the handle + the node name to the `Node` base).
 ///
 /// The factory returns `::rclcpp::Node*` — phase-427 W4. It used to return
-/// `::nros::ComponentNode*`, a type that WRAPPED a node; the merged type IS one,
+/// `::rclcpp::ComponentNode*`, a type that WRAPPED a node; the merged type IS one,
 /// so the entry's post-construct `ok()` check now reads the node itself.
 #define NROS_COMPONENT(Class)                                                                      \
     extern "C" ::rclcpp::Node* _NROS_COMP_FACTORY_SYM(NROS_PKG_NAME)(void* storage,                \
                                                                      void* node_handle) {          \
-        return new (storage) Class(::nros::NodeHandle(node_handle));                               \
+        return new (storage) Class(::rclcpp::NodeHandle(node_handle));                             \
     }                                                                                              \
     extern "C" const char _NROS_COMP_CLASS_SYM(NROS_PKG_NAME)[] =                                  \
         _NROS_COMP_STR(NROS_PKG_NAME) "::" _NROS_COMP_STR(Class);                                  \
@@ -712,16 +719,16 @@ constexpr ::nros::QoS qos_from_declared(int depth, int reliability, int durabili
 /// template arguments. `Msg` is unused at runtime (the raw path is type-erased on
 /// the wire) but documents the topic's type; pass the ROS type-name string.
 #define NROS_BIND_SUB_RAW(node, Class, method, topic, type_name, self)                             \
-    ::nros::bind_subscription_raw<Class, &Class::method>((node), (topic), (type_name), (self))
+    ::rclcpp::bind_subscription_raw<Class, &Class::method>((node), (topic), (type_name), (self))
 
 /// Convenience: bind a **typed** component subscription member
 /// `void Class::method(const Msg&)` without spelling the template arguments.
 /// `Msg::TYPE_NAME` (the DDS-mangled keyexpr) is registered automatically.
 #define NROS_BIND_SUB(node, Msg, Class, method, topic, self)                                       \
-    ::nros::bind_subscription<Msg, Class, &Class::method>((node), (topic), (self))
+    ::rclcpp::bind_subscription<Msg, Class, &Class::method>((node), (topic), (self))
 
 /// Convenience: bind a component timer member. Expands to the MEMBER overload
-/// (phase-427 W3) — the retired `nros::bind_timer` would warn here, and a
+/// (phase-427 W3) — the retired `rclcpp::bind_timer` would warn here, and a
 /// deprecation a macro hides is not one.
 #define NROS_BIND_TIMER(node, Class, method, out, period_ms, self)                                 \
     (node).template create_wall_timer<Class, &Class::method>((out), (period_ms), (self))

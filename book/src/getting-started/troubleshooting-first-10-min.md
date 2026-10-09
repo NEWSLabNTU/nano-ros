@@ -225,7 +225,7 @@ not running, or wrong port). Same fix as B1 above.
 The C API entry point is `nros_support_init`, **not** `nros_init`
 or `nros::init` — those don't exist in the C API.
 
-### B3. C++: process exits 156 after a `nros::init` failure
+### B3. C++: process exits 156 after a `rclcpp::init_in` failure
 
 ```
 nros::init returned NROS_CPP_RET_TRANSPORT_ERROR (-100)

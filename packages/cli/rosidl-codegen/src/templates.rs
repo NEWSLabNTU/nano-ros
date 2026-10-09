@@ -728,7 +728,7 @@ pub struct CppField {
     pub current_package: String,
     /// RFC-0033 `mode = "view"` (Phase 235): emitted in `{Msg}View`.
     pub is_borrowed: bool,
-    /// Borrowed view type for `{Msg}View` (`nros::StringView` / `Span<T>` /
+    /// Borrowed view type for `{Msg}View` (`rclcpp::StringView` / `Span<T>` /
     /// `LeSpan<T>`). Empty unless [`is_borrowed`](Self::is_borrowed).
     pub borrowed_cpp_type: String,
 }
@@ -744,7 +744,7 @@ pub struct SequenceStructDef {
     pub capacity: usize,
     /// RFC-0033 `mode = "heap"`: the Rust mirror is a pointer trio
     /// `{ data: *mut T, size: usize, capacity: usize }` (matching
-    /// `nros::HeapSequence<T>`) rather than the fixed `{ size: u32, data: [T; N] }`.
+    /// `rclcpp::HeapSequence<T>`) rather than the fixed `{ size: u32, data: [T; N] }`.
     pub is_heap: bool,
 }
 

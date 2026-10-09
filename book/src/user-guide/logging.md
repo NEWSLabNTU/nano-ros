@@ -86,16 +86,16 @@ int main(void) {
 #include <nros/log.hpp>
 
 int main() {
-    nros::init("tcp/127.0.0.1:7447", 0);
+    rclcpp::init_in("tcp/127.0.0.1:7447", 0);
 
     rclcpp::Node node;
-    nros::create_node(node, "my_node");
+    rclcpp::create_node(node, "my_node");
 
     auto logger = node.get_logger();
     NROS_LOG_INFO(logger, "started; domain=%u", 42);
     NROS_LOG_WARN(logger, "queue depth %u exceeds soft limit", 5);
 
-    nros::shutdown();
+    rclcpp::shutdown_in();
     return 0;
 }
 ```
@@ -192,7 +192,7 @@ From C, the same three verbs are `nros_log_set_default_level`,
 NROS_LOG_SEVERITY_UNSET)` — which UNSETS the level rather than selecting a
 value, exactly as `rcutils_logging_set_logger_level(name,
 RCUTILS_LOG_SEVERITY_UNSET)` does. C++ spells the last one
-`logger.set_level(nros::Logger::Level::Unset)`.
+`logger.set_level(rclcpp::Logger::Level::Unset)`.
 
 ### Child loggers, and what an unset level inherits
 
@@ -337,11 +337,11 @@ for (;;) {
 C++ (`<nros/rosout.hpp>`):
 
 ```cpp
-nros::rosout::Publisher rosout;
-NROS_TRY(rosout.create(node));          // or create(node, nros::RosoutQoS())
-NROS_TRY(nros::rosout::enable());
+rclcpp::rosout::Publisher rosout;
+NROS_TRY(rosout.create(node));          // or create(node, rclcpp::RosoutQoS())
+NROS_TRY(rclcpp::rosout::enable());
 for (;;) {
-    nros::spin_once(10);
+    rclcpp::spin_once(10);
     rosout.pump();
 }
 ```

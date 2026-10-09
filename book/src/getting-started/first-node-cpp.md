@@ -65,7 +65,7 @@ cmake; see [First Node — C](first-node-c.md#project-layout) for the
 file in full.
 
 Native (host) talkers read the locator + domain from arguments passed to
-`nros::init(...)`; no other config is needed. An embedded image declares
+`rclcpp::init_in(...)`; no other config is needed. An embedded image declares
 `locator` / `ip` / `gateway` / `netmask` in its own `[image.<id>]` table
 and bakes them at build time. The `package.xml`
 `<nano_ros deploy=… board=… rmw=…/>` export that used to carry that
@@ -103,7 +103,7 @@ not CMake code and not a configure-line cache variable.
 The C++ entry point is **`int nros_app_main(int argc, char** argv)`**
 (same as C); `<nros/app_main.h>` provides the OS-side `main` stub.
 
-The body uses typed `nros::Publisher<M>` / `nros::Subscription<M>`
+The body uses typed `rclcpp::Publisher<M>` / `rclcpp::Subscription<M>`
 wrappers over the C ABI:
 
 ```cpp
@@ -115,12 +115,12 @@ wrappers over the C ABI:
     std::fprintf(stderr, "[nros] %s:%d %s -> %d\n", file, line, expr, (int)ret)
 
 int nros_app_main(int argc, char** argv) {
-    NROS_TRY_RET(nros::init("tcp/127.0.0.1:7447", 0), 1);
+    NROS_TRY_RET(rclcpp::init_in("tcp/127.0.0.1:7447", 0), 1);
 
     rclcpp::Node node;
-    NROS_TRY_RET(nros::create_node(node, "talker"), 1);
+    NROS_TRY_RET(rclcpp::create_node(node, "talker"), 1);
 
-    nros::Publisher<std_msgs::msg::String> pub;
+    rclcpp::Publisher<std_msgs::msg::String> pub;
     NROS_TRY_RET(node.create_publisher(pub, "/chatter"), 1);
 
     // ... register a timer + spin
@@ -133,7 +133,7 @@ expression that failed. Define `NROS_TRY_LOG` once (any sink — here
 
 ## If you write the `rclcpp::Node` constructor instead
 
-`nros::create_node(node, "talker")` above returns a `Result`, and
+`rclcpp::create_node(node, "talker")` above returns a `Result`, and
 `NROS_TRY_RET` checks it. The rclcpp-shaped constructor has no return value to
 check — and on a `-fno-exceptions` target, which every nano-ros build is
 (RFC-0018), it cannot throw the way upstream's does either. It records the
@@ -174,12 +174,12 @@ Three runtime knobs:
 
 | Knob | Default | Override |
 |---|---|---|
-| Zenoh locator | `tcp/127.0.0.1:7447` | First arg to `nros::init` |
-| ROS domain ID | `0` | Second arg to `nros::init` |
-| Node name | `talker` | First arg to `nros::create_node` |
+| Zenoh locator | `tcp/127.0.0.1:7447` | First arg to `rclcpp::init_in` |
+| ROS domain ID | `0` | Second arg to `rclcpp::init_in` |
+| Node name | `talker` | First arg to `rclcpp::create_node` |
 
 Reading from env in C++ is `std::getenv("NROS_LOCATOR")` plus the
-same `nros::init` call — see the GitHub source for the full pattern.
+same `rclcpp::init_in` call — see the GitHub source for the full pattern.
 
 ## Build
 
@@ -242,9 +242,9 @@ at 1, matching the official ROS 2 demo talker. If no `Publishing:`
 line in 30 seconds:
 
 1. Confirm the router is running (terminal 1). Without it,
-   `nros::init` returns `-100` (TransportError) — the
+   `rclcpp::init_in` returns `-100` (TransportError) — the
    `NROS_TRY_RET` macro logs the failed call to stderr.
-2. Check stderr for `[nros] …/main.cpp:LINE nros::init(...) -> -N`
+2. Check stderr for `[nros] …/main.cpp:LINE rclcpp::init_in(...) -> -N`
    diagnostics. `-3` / `-100` both indicate transport open failed.
 3. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
 

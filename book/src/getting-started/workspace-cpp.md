@@ -244,14 +244,14 @@ behaviour writes `[census] on_missing = "warn"` / `on_stale = "warn"` in its
 namespace talker_pkg {
 
 class Talker {
-    ::nros::Publisher<std_msgs::msg::Int32> pub_;
-    ::nros::Timer timer_;
+    ::rclcpp::Publisher<std_msgs::msg::Int32> pub_;
+    ::rclcpp::Timer timer_;
     int count_ = 0;
 
     void on_tick();  // real body; bound via &Talker::on_tick (no name)
 
   public:
-    ::nros::Result configure(::rclcpp::Node& node);
+    ::rclcpp::Result configure(::rclcpp::Node& node);
 };
 
 }  // namespace talker_pkg
@@ -269,8 +269,8 @@ void Talker::on_tick() {
     (void)pub_.publish(m);
 }
 
-::nros::Result Talker::configure(::rclcpp::Node& node) {
-    ::nros::Result r = node.create_publisher(pub_, "/chatter");
+::rclcpp::Result Talker::configure(::rclcpp::Node& node) {
+    ::rclcpp::Result r = node.create_publisher(pub_, "/chatter");
     if (!r.ok()) return r;
     // Member-fn-pointer-as-template-param → no-alloc trampoline; `this` is ctx.
     return node.create_wall_timer<Talker, &Talker::on_tick>(timer_, 1000, this);
@@ -374,7 +374,7 @@ There the user's `main.cpp` is a single declarative line:
 ```cpp
 // src/native_entry/src/main.cpp
 #include <nros/main.hpp>
-NROS_MAIN(nros::board::LinuxBoard, "demo_bringup:system.launch.xml")
+NROS_MAIN(rclcpp::board::LinuxBoard, "demo_bringup:system.launch.xml")
 ```
 
 `NROS_MAIN(...)` is a sentinel macro — the cmake fn owns the generated

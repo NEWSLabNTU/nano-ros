@@ -38,7 +38,7 @@
 #include <nros/nros.hpp>
 
 // Links no nano-ros archive: `require_created` is a header-only inline over
-// `nros::Result` and touches no FFI symbol. The recipe passes
+// `rclcpp::Result` and touches no FFI symbol. The recipe passes
 // `--unresolved-symbols=ignore-all` for the issue-0360 variant anchors the
 // config headers plant — see the rationale beside the compile line in
 // `just/check.just`.
@@ -112,7 +112,7 @@ int main() {
     // (1) A create that SUCCEEDED must be transparent.
     {
         const Outcome o = run_forked([] {
-            ::rclcpp::detail::require_created(::nros::Result::success(), "create_publisher",
+            ::rclcpp::detail::require_created(::rclcpp::Result::success(), "create_publisher",
                                               "chatter");
         });
         expect(WIFEXITED(o.status) && WEXITSTATUS(o.status) == 17,
@@ -124,7 +124,7 @@ int main() {
     // Pre-fix, the seven call sites discarded exactly this value and carried on.
     {
         const Outcome o = run_forked([] {
-            ::rclcpp::detail::require_created(::nros::Result(::nros::ErrorCode::NotInitialized),
+            ::rclcpp::detail::require_created(::rclcpp::Result(::rclcpp::ErrorCode::NotInitialized),
                                               "create_publisher", "chatter");
         });
         expect_aborts_loudly(o, "create_publisher",
@@ -135,7 +135,7 @@ int main() {
     // because a ported node stores the handle and never dereferences it.
     {
         const Outcome o = run_forked([] {
-            ::rclcpp::detail::require_created(::nros::Result(::nros::ErrorCode::TransportError),
+            ::rclcpp::detail::require_created(::rclcpp::Result(::rclcpp::ErrorCode::TransportError),
                                               "create_wall_timer", "");
         });
         expect_aborts_loudly(o, "create_wall_timer",

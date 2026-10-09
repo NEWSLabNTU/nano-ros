@@ -125,8 +125,8 @@ int main() {
           "the capture sink must install — an uninstalled sink never fires, which is "
           "indistinguishable from a filter that dropped everything");
 
-    nros::Executor exec;
-    check(nros::Executor::create_with_rmw(exec, NROS_STUB_RMW_NAME, nullptr, 0, "w4d_cpp").ok(),
+    rclcpp::Executor exec;
+    check(rclcpp::Executor::create_with_rmw(exec, NROS_STUB_RMW_NAME, nullptr, 0, "w4d_cpp").ok(),
           "executor create on the stub backend");
 
     rclcpp::Node alpha;

@@ -30,10 +30,10 @@ int nros_app_main(int argc, char** argv) {
     printf("===================================\n");
 
     // Launch-aware init. Env overlay active today.
-    NROS_TRY_RET(nros::init_with_launch_auto(argc, argv), 1);
+    NROS_TRY_RET(rclcpp::init_with_launch_auto(argc, argv), 1);
 
     rclcpp::Node node;
-    NROS_TRY_RET(nros::create_node(node, "fibonacci_action_client"), 1);
+    NROS_TRY_RET(rclcpp::create_node(node, "fibonacci_action_client"), 1);
     printf("Node created: %s\n", node.get_name());
 
     rclcpp_action::Client<example_interfaces::action::Fibonacci> client;
@@ -67,7 +67,7 @@ int nros_app_main(int argc, char** argv) {
     // issue 1686 — Unsupported: this backend cannot see servers at all
     // (XRCE: the Agent owns the DDS graph), so the wait answered at once.
     // Send anyway; the request's own timeout is then the probe.
-    if (!ret.ok() && ret.code() != nros::ErrorCode::Unsupported) {
+    if (!ret.ok() && ret.code() != rclcpp::ErrorCode::Unsupported) {
         fprintf(stderr, "Action server did not appear within 10s (ret=%d)\n", ret.raw());
         rclcpp::shutdown();
         return 2;
@@ -93,9 +93,9 @@ int nros_app_main(int argc, char** argv) {
         // The three became distinguishable in the same issue: before it,
         // `send_goal` returned ERROR for both "the server said no" and "the
         // goal never left", so no message here could have been accurate.
-        if (ret.code() == nros::ErrorCode::Rejected) {
+        if (ret.code() == rclcpp::ErrorCode::Rejected) {
             fprintf(stderr, "Goal was rejected by server (order=%d)\n", order);
-        } else if (ret.code() == nros::ErrorCode::Timeout) {
+        } else if (ret.code() == rclcpp::ErrorCode::Timeout) {
             fprintf(stderr,
                     "No goal response from server (order=%d, ret=%d) — the goal may never "
                     "have been received\n",
@@ -116,7 +116,7 @@ int nros_app_main(int argc, char** argv) {
     // helper.
     auto& feedback = client.feedback_stream();
     for (int i = 0; i < 20; i++) {
-        nros::spin_once(100);
+        rclcpp::spin_once(100);
 
         example_interfaces::action::Fibonacci::Feedback fb;
         while (feedback.try_next(fb).ok()) {

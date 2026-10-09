@@ -22,11 +22,11 @@ static ::talker_pkg::Talker* __nros_comp_0 = nullptr;
 
 static int32_t __nros_entry_setup() {
     {
-        ::nros::NodeHandle __h(::nros::global_handle(), "talker", nullptr);
-        if (!__h.valid()) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
+        ::rclcpp::NodeHandle __h(::rclcpp::global_handle(), "talker", nullptr);
+        if (!__h.valid()) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
         __nros_comp_0 = new (__nros_comp_buf_0) ::talker_pkg::Talker(__h);
         if (!__nros_comp_0->ok()) {
-            ::nros::detail::report_component_failure("talker", __nros_comp_0->error_what(), __nros_comp_0->error_code());
+            ::rclcpp::detail::report_component_failure("talker", __nros_comp_0->error_what(), __nros_comp_0->error_code());
             return __nros_comp_0->error_code();
         }
     }
@@ -50,5 +50,5 @@ __attribute__((section(".nros_boot_config"), used))
 };
 
 int main(int /*argc*/, char** /*argv*/) {
-    return ::nros::board::LinuxBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup);
+    return ::rclcpp::board::LinuxBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup);
 }

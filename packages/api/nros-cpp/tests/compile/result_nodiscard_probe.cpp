@@ -11,7 +11,7 @@
 // `void` here (`nros.hpp`), deliberately — a ported API keeps upstream's
 // channel, and upstream's `init` returns nothing. There is no result to drop,
 // so the TU would compile clean and the gate would be vacuous. What the RFC's
-// reasoning is actually about is the widening — `nros::init()` returns a
+// reasoning is actually about is the widening — `rclcpp::init()` returns a
 // `Result` where `rclcpp::init()` returns void, and it is the WIDENED call
 // whose discarded value nothing would otherwise point at. That call is the one
 // probed below.
@@ -22,15 +22,15 @@
 
 #include <nros/nros.hpp>
 
-static nros::Result value_less() {
-    return nros::Result::success();
+static rclcpp::Result value_less() {
+    return rclcpp::Result::success();
 }
 
-static nros::ResultOf<int> value_carrying() {
-    return nros::ResultOf<int>::ok(7);
+static rclcpp::ResultOf<int> value_carrying() {
+    return rclcpp::ResultOf<int>::ok(7);
 }
 
 void discards_both() {
-    value_less();     // nros::Result           == ResultOf<void>
-    value_carrying(); // nros::ResultOf<int>
+    value_less();     // rclcpp::Result           == ResultOf<void>
+    value_carrying(); // rclcpp::ResultOf<int>
 }

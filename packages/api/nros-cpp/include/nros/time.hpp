@@ -4,7 +4,7 @@
 /**
  * @file time.hpp
  * @ingroup grp_clock
- * @brief `nros::Time` — a timestamp, mirroring `rclcpp::Time`.
+ * @brief `rclcpp::Time` — a timestamp, mirroring `rclcpp::Time`.
  *
  * Issue 0789. `nros_time_t` and the `nros_time_*` arithmetic have existed in C
  * since the C API shipped; this is the C++ face over them, so
@@ -27,10 +27,10 @@
 // `rclcpp::Time` — DEFINED here (RFC-0089: rclcpp:: is the home)
 // ============================================================================
 //
-// phase-428: the definition moved from `nros::` to `rclcpp::` and the alias
+// phase-428: the definition moved from `rclcpp::` to `rclcpp::` and the alias
 // turned around. The type is UNCHANGED — one object, two spellings, one
 // contract — so a ported `rclcpp::Time stamp = node->now();` and an in-tree
-// `nros::Time` still name the same thing.
+// `rclcpp::Time` still name the same thing.
 namespace rclcpp {
 
 /// A point in time, held as nanoseconds on a named clock.
@@ -47,9 +47,9 @@ namespace rclcpp {
 ///
 /// Usage:
 /// ```cpp
-/// nros::Time stamp = node.now();
+/// rclcpp::Time stamp = node.now();
 /// stamp.to_msg(msg.header.stamp);
-/// nros::Duration age = node.now() - stamp;
+/// rclcpp::Duration age = node.now() - stamp;
 /// ```
 class Time {
   public:
@@ -63,7 +63,7 @@ class Time {
     /// rcl_clock_type_t)` shape.
     constexpr Time(int32_t seconds, uint32_t nanoseconds,
                    nros_clock_type_t clock_type = NROS_CLOCK_SYSTEM_TIME)
-        : ns_(static_cast<int64_t>(seconds) * ::nros::NANOSECONDS_PER_SECOND +
+        : ns_(static_cast<int64_t>(seconds) * ::rclcpp::NANOSECONDS_PER_SECOND +
               static_cast<int64_t>(nanoseconds)),
           clock_type_(clock_type) {}
 
@@ -75,7 +75,7 @@ class Time {
 
     /// (Fractional) seconds since the clock's epoch.
     constexpr double seconds() const {
-        return static_cast<double>(ns_) / static_cast<double>(::nros::NANOSECONDS_PER_SECOND);
+        return static_cast<double>(ns_) / static_cast<double>(::rclcpp::NANOSECONDS_PER_SECOND);
     }
 
     /// Which clock this value was read from.
@@ -151,12 +151,5 @@ constexpr Time operator+(const Duration& lhs, const Time& rhs) {
 }
 
 } // namespace rclcpp
-
-// ============================================================================
-// nros:: — the in-tree spelling, now the ALIAS (RFC-0089)
-// ============================================================================
-namespace nros {
-using Time = ::rclcpp::Time;
-} // namespace nros
 
 #endif // NROS_CPP_TIME_HPP

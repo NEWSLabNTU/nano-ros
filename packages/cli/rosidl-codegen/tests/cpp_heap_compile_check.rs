@@ -3,7 +3,7 @@
 //!   * the FFI Rust glue (the split `*_types.rs` + `*_exports.rs` pair,
 //!     concatenated) — the unsafe raw-pointer + shared-allocator
 //!     code — is `cargo check`'d against the real nros-serdes;
-//!   * the `.hpp` header (using `nros::HeapSequence`) is `g++ -fsyntax-only`'d.
+//!   * the `.hpp` header (using `rclcpp::HeapSequence`) is `g++ -fsyntax-only`'d.
 //!
 //! Ignored by default; run with:
 //!
@@ -144,7 +144,7 @@ include!("ffi_gen.rs");
 /// Regression test for the phase-277 W4 fixed-string NUL-truncation bug
 /// (commit 8e2076d81). The generated C++ FFI `serialize_*_fields` used to run
 /// `core::str::from_utf8` over the WHOLE fixed-capacity `char[N]` buffer
-/// before `.trim_end_matches('\0')`. `nros::FixedString` only writes bytes up
+/// before `.trim_end_matches('\0')`. `rclcpp::FixedString` only writes bytes up
 /// to the NUL terminator, so the tail is uninitialized C++ stack memory —
 /// any non-UTF8 garbage there made `from_utf8` fail on the WHOLE buffer and
 /// `.unwrap_or("")` silently serialized an EMPTY string. The fix routes
@@ -229,7 +229,7 @@ include!("ffi_gen.rs");
 fn main() {
     // "hi" + NUL terminator + non-UTF8 garbage (0xFF is never a valid UTF-8
     // byte) filling the rest of the 256-byte fixed-capacity buffer — mirrors
-    // uninitialized C++ stack memory past a short nros::FixedString.
+    // uninitialized C++ stack memory past a short rclcpp::FixedString.
     let mut data = [0xFFu8; 256];
     data[0] = b'h';
     data[1] = b'i';

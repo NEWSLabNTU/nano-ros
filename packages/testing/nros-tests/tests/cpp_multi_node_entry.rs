@@ -80,7 +80,7 @@ fn multi_node_workspace_cpp_typed_configures_and_builds() -> nros_tests::TestRes
         "generated TU missing component configure() call:\n{gen_body}"
     );
     assert!(
-        gen_body.contains("::nros::board::LinuxBoard::run_components"),
+        gen_body.contains("::rclcpp::board::LinuxBoard::run_components"),
         "generated TU missing run_components (typed real-executor entry):\n{gen_body}"
     );
     // Construct order matches launch XML (talker before listener).

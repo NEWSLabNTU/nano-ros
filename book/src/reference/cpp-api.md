@@ -14,27 +14,27 @@ public surface a user application needs.
 ## Where to start
 
 - [`nros/nros.hpp`](../api/cpp/nros_8hpp.html) — convenience umbrella include
-- [`nros::init`](../api/cpp/namespacenros.html) / `nros::shutdown` — session lifetime
+- [`rclcpp::init_in`](../api/cpp/namespacerclcpp.html) / `rclcpp::shutdown` — session lifetime
 - [`rclcpp::Node`](../api/cpp/classrclcpp_1_1Node.html) — node + create_publisher/subscription/service/client/action_*
 - [`rclcpp::Publisher<M>`](../api/cpp/classrclcpp_1_1Publisher.html) / [`Subscription<M>`](../api/cpp/classrclcpp_1_1Subscription.html)
-- [`rclcpp::Service<S>`](../api/cpp/classrclcpp_1_1Service.html) / [`Client<S>`](../api/cpp/classrclcpp_1_1Client.html) — the DISPATCH service server and client. A handler is registered into the executor arena, which owns the entity. `Service<S>::SharedPtr` is `nros::ServiceHandle<S>`, a two-word keep-alive with nothing to dereference (phase-456 W5); `Client<S>::SharedPtr` is `nros::ClientHandle<S>`, the same two words WITH one verb — `async_send_request`, which is all a census of the corpus found anyone calling on a dispatch client (phase-456 W9). Neither has an `operator->`.
-- [`nros::PollService<S>`](../api/cpp/classnros_1_1PollService.html) — L1 polling service server. The caller owns the server and drains it with `take_request` / `send_response` from its own spin loop. `node.create_service<S>(name)` with no handler hands one back.
-- [`nros::PollClient<S>`](../api/cpp/classnros_1_1PollClient.html) — L1 future-style service client, the client half of the same split (phase-456 W9). The caller owns the client and drains the reply itself: `send_request` returns a `nros::Future<T>`, `call` blocks while driving the executor, `call_polling` blocks without driving it, and `wait_for_service` / `service_is_ready` probe the server. `node.create_client<S>(name)` with no handler hands one back.
-- [`rclcpp_action::Server<A>`](../api/cpp/classrclcpp__action_1_1Server.html) / [`Client<A>`](../api/cpp/classrclcpp__action_1_1Client.html) — L2 callback model (executor-arena registered). `nros::ActionServer<A>` / `nros::ActionClient<A>` are the same two types.
-- [`nros::PollingActionServer<A>`](../api/cpp/classnros_1_1PollingActionServer.html) / [`PollingActionClient<A>`](../api/cpp/classnros_1_1PollingActionClient.html) — L1 polling model. Caller drives `take_*` / `accept_goal` / `complete_goal` from a spin loop.
-- [`nros::Future<T>`](../api/cpp/classnros_1_1Future.html) — async result handle
-- [`nros::Executor`](../api/cpp/classnros_1_1Executor.html), [`Timer`](../api/cpp/classnros_1_1Timer.html), [`GuardCondition`](../api/cpp/classnros_1_1GuardCondition.html)
-- Parameters are methods ON the node — `declare_parameter<T>` / `get_parameter<T>` / `set_parameter<T>` / `has_parameter`, upstream's names, forwarding to the one store the `rcl_interfaces` services read. [`nros::Seq<T, N>`](../api/cpp/classnros_1_1Seq.html) is the array VALUE a freestanding node declares with (`std::vector<T>` under `NROS_CPP_STD`). The standalone `nros::ParameterServer<Cap>` is GONE (phase-426 W4): it was a second store, and what it held was invisible to `ros2 param get`. See [Differences from ROS 2 §9](../concepts/ros2-comparison.md#9-parameters-node-local-server-no-descriptors-no-callbacks-yet) for what is intentionally smaller than `rclcpp`.
+- [`rclcpp::Service<S>`](../api/cpp/classrclcpp_1_1Service.html) / [`Client<S>`](../api/cpp/classrclcpp_1_1Client.html) — the DISPATCH service server and client. A handler is registered into the executor arena, which owns the entity. `Service<S>::SharedPtr` is `rclcpp::ServiceHandle<S>`, a two-word keep-alive with nothing to dereference (phase-456 W5); `Client<S>::SharedPtr` is `rclcpp::ClientHandle<S>`, the same two words WITH one verb — `async_send_request`, which is all a census of the corpus found anyone calling on a dispatch client (phase-456 W9). Neither has an `operator->`.
+- [`rclcpp::PollService<S>`](../api/cpp/classrclcpp_1_1PollService.html) — L1 polling service server. The caller owns the server and drains it with `take_request` / `send_response` from its own spin loop. `node.create_service<S>(name)` with no handler hands one back.
+- [`rclcpp::PollClient<S>`](../api/cpp/classrclcpp_1_1PollClient.html) — L1 future-style service client, the client half of the same split (phase-456 W9). The caller owns the client and drains the reply itself: `send_request` returns a `rclcpp::Future<T>`, `call` blocks while driving the executor, `call_polling` blocks without driving it, and `wait_for_service` / `service_is_ready` probe the server. `node.create_client<S>(name)` with no handler hands one back.
+- [`rclcpp_action::Server<A>`](../api/cpp/classrclcpp__action_1_1Server.html) / [`Client<A>`](../api/cpp/classrclcpp__action_1_1Client.html) — L2 callback model (executor-arena registered). `rclcpp::ActionServer<A>` / `rclcpp::ActionClient<A>` are the same two types.
+- [`rclcpp::PollingActionServer<A>`](../api/cpp/classrclcpp_1_1PollingActionServer.html) / [`PollingActionClient<A>`](../api/cpp/classrclcpp_1_1PollingActionClient.html) — L1 polling model. Caller drives `take_*` / `accept_goal` / `complete_goal` from a spin loop.
+- [`rclcpp::Future<T>`](../api/cpp/classrclcpp_1_1Future.html) — async result handle
+- [`rclcpp::Executor`](../api/cpp/classrclcpp_1_1Executor.html), [`Timer`](../api/cpp/classrclcpp_1_1Timer.html), [`GuardCondition`](../api/cpp/classrclcpp_1_1GuardCondition.html)
+- Parameters are methods ON the node — `declare_parameter<T>` / `get_parameter<T>` / `set_parameter<T>` / `has_parameter`, upstream's names, forwarding to the one store the `rcl_interfaces` services read. [`rclcpp::Seq<T, N>`](../api/cpp/classrclcpp_1_1Seq.html) is the array VALUE a freestanding node declares with (`std::vector<T>` under `NROS_CPP_STD`). The standalone `rclcpp::ParameterServer<Cap>` is GONE (phase-426 W4): it was a second store, and what it held was invisible to `ros2 param get`. See [Differences from ROS 2 §9](../concepts/ros2-comparison.md#9-parameters-node-local-server-no-descriptors-no-callbacks-yet) for what is intentionally smaller than `rclcpp`.
 
 The library is freestanding C++14 — no STL, no exceptions. A second,
 std-flavoured surface exists for porting upstream rclcpp code and is reached by
 defining `NROS_CPP_STD`; see [Two surfaces](#two-surfaces-freestanding-and-nros_cpp_std)
 below for whether you need it.
 
-> **Two-layer API.** The `nros::ActionServer<A>` / `ActionClient<A>`
+> **Two-layer API.** The `rclcpp::ActionServer<A>` / `ActionClient<A>`
 > templates are L2 callback handles (set callbacks via
 > `nros_cpp_action_server_set_callbacks`, dispatched by the
-> executor). The new `nros::PollingActionServer<A>` /
+> executor). The new `rclcpp::PollingActionServer<A>` /
 > `PollingActionClient<A>` are L1 polling
 > templates with the same typed serdes glue but caller-driven
 > control flow. Subscriptions / services / service clients are
@@ -55,7 +55,7 @@ One set of headers ships two API shapes, and a build picks one.
 
 **The freestanding surface is the default and it is not a fallback.** It is
 plain C++14 with no standard library, no exceptions and no RTTI: `rclcpp::Node`,
-`create_*` writing through an out-reference and returning an `nros::Result`,
+`create_*` writing through an out-reference and returning an `rclcpp::Result`,
 `const char*` for names, `uint64_t period_ms` for durations. Every nano-ros
 program in this repository is on it — the native/host examples included.
 
@@ -75,7 +75,7 @@ than a Cortex-M3 build does; a ported node wants it on both.
 
 | You are… | Flag | Why |
 | --- | --- | --- |
-| writing a new node against `rclcpp::Node` / `rclcpp::Publisher<M>` / `nros::Executor` | **no** | The freestanding surface is the whole API you are using. This is the common case on every platform, native included. |
+| writing a new node against `rclcpp::Node` / `rclcpp::Publisher<M>` / `rclcpp::Executor` | **no** | The freestanding surface is the whole API you are using. This is the common case on every platform, native included. |
 | compiling an upstream ROS 2 `.cpp` unmodified — it says `class MyNode : public rclcpp::Node`, `std::make_shared<MyNode>()`, `create_publisher<M>(...)` returning a `SharedPtr` | **yes** | Those signatures are *spelled in* `std::shared_ptr` and `std::string`. Without the flag they do not exist and you get a compile error naming a missing overload or an unknown `rclcpp::Node`. |
 | passing a `std::string` topic name or a `std::chrono` period into an otherwise nano-ros-native file | **yes** | Those are the `std_compat.hpp` overloads. |
 | building for Zephyr, FreeRTOS, NuttX, ThreadX, or any `-ffreestanding` toolchain | **no** | And here it is not merely unnecessary: asking for the std surface asks the headers to `#include <string>`, which on those toolchains is either absent or a hard `#error`. |

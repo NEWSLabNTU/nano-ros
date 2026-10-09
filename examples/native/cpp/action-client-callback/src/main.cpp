@@ -95,10 +95,10 @@ int nros_app_main(int argc, char** argv) {
 
     // Launch-aware init. Env overlay
     // (`$NROS_LOCATOR` / `$ROS_DOMAIN_ID`) active today.
-    NROS_TRY_RET(nros::init_with_launch_auto(argc, argv), 1);
+    NROS_TRY_RET(rclcpp::init_with_launch_auto(argc, argv), 1);
 
     rclcpp::Node node;
-    NROS_TRY_RET(nros::create_node(node, "fibonacci_action_client_cb"), 1);
+    NROS_TRY_RET(rclcpp::create_node(node, "fibonacci_action_client_cb"), 1);
     printf("Node created: %s\n", node.get_name());
 
     rclcpp_action::Client<example_interfaces::action::Fibonacci> client;
@@ -115,7 +115,7 @@ int nros_app_main(int argc, char** argv) {
 
     // Let discovery settle.
     for (int i = 0; i < 20; i++) {
-        nros::spin_once(50);
+        rclcpp::spin_once(50);
         client.poll();
     }
 
@@ -140,7 +140,7 @@ int nros_app_main(int argc, char** argv) {
     // Drive the executor: poll() dispatches goal-response → feedback → result.
     // 1) Spin until the goal is accepted (or rejected).
     for (int i = 0; i < 100 && g_accepted < 0; i++) {
-        nros::spin_once(100);
+        rclcpp::spin_once(100);
         client.poll();
     }
     if (g_accepted == 0) {
@@ -157,7 +157,7 @@ int nros_app_main(int argc, char** argv) {
     // 2) Drain feedback while the server executes (Fibonacci streams partials),
     //    mirroring the stock client's feedback window before the result.
     for (int i = 0; i < 30; i++) {
-        nros::spin_once(100);
+        rclcpp::spin_once(100);
         client.poll();
     }
 
@@ -166,7 +166,7 @@ int nros_app_main(int argc, char** argv) {
         fprintf(stderr, "get_result_async failed\n");
     }
     for (int i = 0; i < 100 && g_result_status < 0; i++) {
-        nros::spin_once(100);
+        rclcpp::spin_once(100);
         client.poll();
     }
 

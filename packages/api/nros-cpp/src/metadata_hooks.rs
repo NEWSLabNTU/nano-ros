@@ -154,9 +154,9 @@ mod census_fixture_tests {
         let _ = nros_rmw_metadata::nros_rmw_metadata_register();
     }
 
-    /// The C++ `::nros::QoS(depth)` spelling, as `to_qos_settings` reads it:
+    /// The C++ `::rclcpp::QoS(depth)` spelling, as `to_qos_settings` reads it:
     /// keep-last, reliable, volatile, no liveliness -- the profile a
-    /// `NROS_SUBSCRIBE(..., ::nros::QoS(1))` call site sends across.
+    /// `NROS_SUBSCRIBE(..., ::rclcpp::QoS(1))` call site sends across.
     fn qos_depth(depth: i32) -> nros_cpp_qos_t {
         nros_cpp_qos_t {
             reliability: crate::nros_cpp_qos_reliability_t::NROS_CPP_QOS_RELIABLE,

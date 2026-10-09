@@ -20,7 +20,7 @@ AddServer::on_request(const example_interfaces::srv::AddTwoInts::Request& req) {
     // `::setvbuf` (C global), not `std::setvbuf` — Zephyr picolibc lacks the std:: name.
     ::setvbuf(stdout, nullptr, _IONBF, 0);
     ::rclcpp::Result r =
-        ::nros::bind_service<Svc, AddServer, &AddServer::on_request>(node, "/add_two_ints", this);
+        ::rclcpp::bind_service<Svc, AddServer, &AddServer::on_request>(node, "/add_two_ints", this);
     if (r.ok()) {
         std::printf("[service_server_pkg] add_two_ints server ready\n");
     }

@@ -26,7 +26,7 @@
 
 namespace nros_cpp_param_integer_widths_test {
 
-namespace d = ::nros::detail;
+namespace d = ::rclcpp::detail;
 
 // --- the range rule ---------------------------------------------------------
 static_assert(d::node_param_fits<short>(32767), "short max fits");
@@ -53,12 +53,12 @@ template <typename T> inline void scalar(rclcpp::Node& node, const char* name, T
 }
 
 template <typename T> inline void seq(rclcpp::Node& node, const char* name) {
-    nros::Seq<T, 4> v;
+    rclcpp::Seq<T, 4> v;
     (void)v.push_back(T(1));
-    (void)node.declare_parameter<nros::Seq<T, 4>>(name, v);
-    nros::Seq<T, 4> out;
-    (void)node.get_parameter<nros::Seq<T, 4>>(name, out);
-    (void)node.set_parameter<nros::Seq<T, 4>>(name, v).ok();
+    (void)node.declare_parameter<rclcpp::Seq<T, 4>>(name, v);
+    rclcpp::Seq<T, 4> out;
+    (void)node.get_parameter<rclcpp::Seq<T, 4>>(name, out);
+    (void)node.set_parameter<rclcpp::Seq<T, 4>>(name, v).ok();
 }
 
 inline void instantiate(rclcpp::Node& node) {

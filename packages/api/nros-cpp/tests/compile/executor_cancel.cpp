@@ -23,32 +23,33 @@
 namespace {
 
 // `cancel()` exists, takes no argument, and reports like every other verb.
-static_assert(std::is_same<decltype(std::declval<nros::Executor&>().cancel()), nros::Result>::value,
-              "Executor::cancel() must exist with no argument and return Result "
-              "(rclcpp::Executor::cancel shape)");
+static_assert(
+    std::is_same<decltype(std::declval<rclcpp::Executor&>().cancel()), rclcpp::Result>::value,
+    "Executor::cancel() must exist with no argument and return Result "
+    "(rclcpp::Executor::cancel shape)");
 
 // `is_spinning()` exists and is a predicate, not a Result.
 static_assert(
-    std::is_same<decltype(std::declval<nros::Executor&>().is_spinning()), bool>::value,
+    std::is_same<decltype(std::declval<rclcpp::Executor&>().is_spinning()), bool>::value,
     "Executor::is_spinning() must exist and return bool (rclcpp::Executor::is_spinning shape)");
 
 // ...and it is askable of a CONST executor. A predicate that needs a mutable
 // reference cannot be polled by a supervisor holding `const Executor&`, which is
 // the caller this observable exists for.
 static_assert(
-    std::is_same<decltype(std::declval<const nros::Executor&>().is_spinning()), bool>::value,
+    std::is_same<decltype(std::declval<const rclcpp::Executor&>().is_spinning()), bool>::value,
     "Executor::is_spinning() must be const-callable");
 
 // `ok()` survives and stays a DIFFERENT question: "am I initialised". An
 // executor that has never spun is `ok()` and not spinning. If someone ever
 // collapses the two, this file is where the intent is written down.
-static_assert(std::is_same<decltype(std::declval<const nros::Executor&>().ok()), bool>::value,
+static_assert(std::is_same<decltype(std::declval<const rclcpp::Executor&>().ok()), bool>::value,
               "Executor::ok() must remain, answering initialisation not spinning");
 
 // `shutdown()` survives and still MEANS teardown. cancel and shutdown are
 // different verbs; collapsing them is the bug this work item fixed.
 static_assert(
-    std::is_same<decltype(std::declval<nros::Executor&>().shutdown()), nros::Result>::value,
+    std::is_same<decltype(std::declval<rclcpp::Executor&>().shutdown()), rclcpp::Result>::value,
     "Executor::shutdown() must remain the teardown verb, distinct from cancel()");
 
 // The FFI slots the two forward to are DECLARED, not merely defined. cbindgen

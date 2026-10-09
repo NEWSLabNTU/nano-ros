@@ -29,4 +29,4 @@ struct Wide {
 
 static Wide g_wide;
 
-nros::InplaceFn<void(const Msg&)> g_over([w = g_wide](const Msg&) { (void)w; });
+rclcpp::InplaceFn<void(const Msg&)> g_over([w = g_wide](const Msg&) { (void)w; });

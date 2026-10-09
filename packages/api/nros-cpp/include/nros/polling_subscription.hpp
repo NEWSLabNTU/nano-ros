@@ -4,8 +4,8 @@
 /**
  * @file polling_subscription.hpp
  * @ingroup grp_pubsub
- * @brief The two POLL-side subscribers — `nros::PollSubscription<M>` (consuming
- *        take) and `nros::PollingSubscription<M>` (retained latest value).
+ * @brief The two POLL-side subscribers — `rclcpp::PollSubscription<M>` (consuming
+ *        take) and `rclcpp::PollingSubscription<M>` (retained latest value).
  *
  * WHICH ONE DO I WANT
  *
@@ -48,14 +48,14 @@
 
 #include "nros/node.hpp"
 #include "nros/result.hpp"
-#include "nros/size_bound.hpp" // nros::rx_buffer_capacity<M> — the receive-buffer size
+#include "nros/size_bound.hpp" // rclcpp::rx_buffer_capacity<M> — the receive-buffer size
 // RFC-0088 D5 — NROS_CPP_ASSERT_MESSAGE_FORMAT, expanded in the creator below.
 #include "nros/serialization_format.hpp"
 #include "nros/stream.hpp"
 #include "nros/subscription.hpp"
 #include "nros/traits.hpp"
 
-// phase-456 W5 — the nested pointer aliases below are `nros::Owned<T>`, which
+// phase-456 W5 — the nested pointer aliases below are `rclcpp::Owned<T>`, which
 // is ours and needs no `<memory>`, so the capability probe this header used to
 // include is gone with the block it served.
 #include "nros/owned.hpp"
@@ -66,12 +66,12 @@
 // the home). The friend declaration below is qualified, and a qualified friend
 // names an existing entity rather than introducing one, so the name has to be
 // declared first — and in `rclcpp::`, because an elaborated `class Node;` in
-// `nros::` would declare a second, distinct class.
+// `rclcpp::` would declare a second, distinct class.
 namespace rclcpp {
 class Node;
 }
 
-namespace nros {
+namespace rclcpp {
 
 /// Poll-style subscription — caller-owned storage, consuming receive.
 ///
@@ -84,9 +84,9 @@ namespace nros {
 ///
 /// Usage:
 /// ```cpp
-/// nros::PollSubscription<std_msgs::msg::String> sub;
+/// rclcpp::PollSubscription<std_msgs::msg::String> sub;
 /// NROS_TRY(node.create_subscription(sub, "/chatter"));
-/// nros::spin_once(10);
+/// rclcpp::spin_once(10);
 /// uint8_t buf[256];
 /// size_t len;
 /// if (sub.take_serialized(buf, sizeof(buf), len)) {
@@ -105,7 +105,7 @@ template <typename M> class PollSubscription {
     ///         ErrorCode::TryAgain if no data is available right now;
     ///         ErrorCode::NotInitialized if the subscription is not initialized;
     ///         ErrorCode::Error if deserialization failed.
-    Result take(M& msg) { return take_sized<::nros::rx_buffer_capacity<M>::value>(msg); }
+    Result take(M& msg) { return take_sized<::rclcpp::rx_buffer_capacity<M>::value>(msg); }
 
     /// @ref take with the receive buffer sized by the CALLER.
     ///
@@ -116,14 +116,14 @@ template <typename M> class PollSubscription {
     /// @tparam Cap  Stack bytes to receive into. A sample larger than this is
     ///              refused by the backend, so under-sizing DROPS messages.
     template <size_t Cap> Result take_sized(M& msg) {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         uint8_t buf[Cap];
         size_t len = 0;
         nros_cpp_ret_t ret =
             nros_cpp_subscription_take_serialized(storage_, buf, sizeof(buf), &len);
         if (ret != 0) return Result(ret);
-        if (len == 0) return Result(::nros::ErrorCode::TryAgain);
-        if (M::ffi_deserialize(buf, len, &msg) != 0) return Result(::nros::ErrorCode::Error);
+        if (len == 0) return Result(::rclcpp::ErrorCode::TryAgain);
+        if (M::ffi_deserialize(buf, len, &msg) != 0) return Result(::rclcpp::ErrorCode::Error);
         return Result::success();
     }
 
@@ -143,20 +143,20 @@ template <typename M> class PollSubscription {
     /// @return Result::success() on a received+deserialized message; TryAgain if
     ///         none available; NotInitialized / Error otherwise.
     Result take_validated(M& msg, nros_cpp_integrity_status_t& status) {
-        return take_validated_sized<::nros::rx_buffer_capacity<M>::value>(msg, status);
+        return take_validated_sized<::rclcpp::rx_buffer_capacity<M>::value>(msg, status);
     }
 
     /// @ref take_validated with the receive buffer sized by the CALLER.
     /// See @ref take_sized (issue 0964).
     template <size_t Cap> Result take_validated_sized(M& msg, nros_cpp_integrity_status_t& status) {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         uint8_t buf[Cap];
         size_t len = 0;
         nros_cpp_ret_t ret =
             nros_cpp_subscription_take_validated(storage_, buf, sizeof(buf), &len, &status);
         if (ret != 0) return Result(ret);
-        if (len == 0) return Result(::nros::ErrorCode::TryAgain);
-        if (M::ffi_deserialize(buf, len, &msg) != 0) return Result(::nros::ErrorCode::Error);
+        if (len == 0) return Result(::rclcpp::ErrorCode::TryAgain);
+        if (M::ffi_deserialize(buf, len, &msg) != 0) return Result(::rclcpp::ErrorCode::Error);
         return Result::success();
     }
 
@@ -173,12 +173,12 @@ template <typename M> class PollSubscription {
     Result take_serialized(uint8_t* buf, size_t capacity, size_t& out_len) {
         if (!initialized_) {
             out_len = 0;
-            return Result(::nros::ErrorCode::NotInitialized);
+            return Result(::rclcpp::ErrorCode::NotInitialized);
         }
         nros_cpp_ret_t ret =
             nros_cpp_subscription_take_serialized(storage_, buf, capacity, &out_len);
         if (ret != 0) return Result(ret);
-        if (out_len == 0) return Result(::nros::ErrorCode::TryAgain);
+        if (out_len == 0) return Result(::rclcpp::ErrorCode::TryAgain);
         return Result::success();
     }
 
@@ -202,12 +202,12 @@ template <typename M> class PollSubscription {
         if (!initialized_) {
             out_len = 0;
             out_att_len = 0;
-            return Result(::nros::ErrorCode::NotInitialized);
+            return Result(::rclcpp::ErrorCode::NotInitialized);
         }
         nros_cpp_ret_t ret = nros_cpp_subscription_take_serialized_with_attachment(
             storage_, buf, capacity, &out_len, att, att_capacity, &out_att_len);
         if (ret != 0) return Result(ret);
-        if (out_len == 0) return Result(::nros::ErrorCode::TryAgain);
+        if (out_len == 0) return Result(::rclcpp::ErrorCode::TryAgain);
         return Result::success();
     }
 
@@ -265,16 +265,16 @@ template <typename M> class PollSubscription {
     /// Phase 124.A.7 — try to borrow the next message in place. Returns
     /// `View` with data when a message is ready, empty `View` when not.
     /// On error returns `ResultOf::error`.
-    ::nros::ResultOf<View> try_borrow() {
+    ::rclcpp::ResultOf<View> try_borrow() {
         if (!initialized_)
-            return ::nros::ResultOf<View>::error(Result(::nros::ErrorCode::NotInitialized));
+            return ::rclcpp::ResultOf<View>::error(Result(::rclcpp::ErrorCode::NotInitialized));
         const uint8_t* buf = nullptr;
         size_t len = 0;
         void* token = nullptr;
         int32_t rc = nros_cpp_subscription_borrow(storage_, &buf, &len, &token);
-        if (rc < 0) return ::nros::ResultOf<View>::error(Result(rc));
-        if (rc == 0) return ::nros::ResultOf<View>::ok(View{});
-        return ::nros::ResultOf<View>::ok(View{storage_, buf, len, token});
+        if (rc < 0) return ::rclcpp::ResultOf<View>::error(Result(rc));
+        if (rc == 0) return ::rclcpp::ResultOf<View>::ok(View{});
+        return ::rclcpp::ResultOf<View>::ok(View{storage_, buf, len, token});
     }
 
     /// Phase 124.D.1 — burst-take.
@@ -293,7 +293,7 @@ template <typename M> class PollSubscription {
                          size_t& out_count) {
         if (!initialized_) {
             out_count = 0;
-            return Result(::nros::ErrorCode::NotInitialized);
+            return Result(::rclcpp::ErrorCode::NotInitialized);
         }
         nros_cpp_ret_t ret = nros_cpp_subscription_take_sequence(storage_, buf, per_msg_cap,
                                                                  max_msgs, out_lens, &out_count);
@@ -311,14 +311,14 @@ template <typename M> class PollSubscription {
     /// M msg;
     /// NROS_TRY(sub.stream().wait_next(executor.handle(), 1000, msg));
     /// ```
-    ::nros::Stream<M>& stream() {
+    ::rclcpp::Stream<M>& stream() {
         if (initialized_ && !stream_.is_valid()) {
             stream_.bind(storage_, &nros_cpp_subscription_take_serialized);
         }
         return stream_;
     }
 
-    const ::nros::Stream<M>& stream() const { return stream_; }
+    const ::rclcpp::Stream<M>& stream() const { return stream_; }
 
     /// Check if the subscription is initialized and valid.
     bool is_valid() const { return initialized_; }
@@ -334,8 +334,8 @@ template <typename M> class PollSubscription {
     /// halves, unchanged: it reads `topic_name_`, which each half keeps, and
     /// takes the executor as an argument rather than holding one. A topic-wide
     /// count does not depend on which owner holds the subscriber.
-    Result get_publisher_count(::nros::Executor& executor, size_t* out_count) const {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+    Result get_publisher_count(::rclcpp::Executor& executor, size_t* out_count) const {
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return executor.count_publishers(topic_name_, out_count);
     }
 
@@ -354,14 +354,14 @@ template <typename M> class PollSubscription {
     /// signature that takes one would diverge from the upstream no-argument
     /// spelling this method exists to adopt. Recorded in phase-456 rather than
     /// guessed at here.
-    ::nros::QoS get_actual_qos() const {
+    ::rclcpp::QoS get_actual_qos() const {
         nros_cpp_qos_t f{};
-        if (!initialized_) return ::nros::detail::qos_all_unknown();
+        if (!initialized_) return ::rclcpp::detail::qos_all_unknown();
         if (nros_cpp_subscription_get_actual_qos(static_cast<const void*>(storage_), nullptr, 0,
                                                  &f) != 0) {
-            return ::nros::detail::qos_all_unknown();
+            return ::rclcpp::detail::qos_all_unknown();
         }
-        return ::nros::detail::qos_from_ffi(f);
+        return ::rclcpp::detail::qos_from_ffi(f);
     }
 
     /// Destructor — releases the subscriber this object owns.
@@ -392,14 +392,14 @@ template <typename M> class PollSubscription {
             stream_.bind(storage_, &nros_cpp_subscription_take_serialized);
         }
         other.initialized_ = false;
-        other.stream_ = ::nros::Stream<M>();
+        other.stream_ = ::rclcpp::Stream<M>();
     }
 
     PollSubscription& operator=(PollSubscription&& other) {
         if (this != &other) {
             if (initialized_) {
                 nros_cpp_subscription_destroy(storage_);
-                stream_ = ::nros::Stream<M>();
+                stream_ = ::rclcpp::Stream<M>();
             }
             initialized_ = other.initialized_;
             if (other.initialized_) {
@@ -408,7 +408,7 @@ template <typename M> class PollSubscription {
                 stream_.bind(storage_, &nros_cpp_subscription_take_serialized);
             }
             other.initialized_ = false;
-            other.stream_ = ::nros::Stream<M>();
+            other.stream_ = ::rclcpp::Stream<M>();
         }
         return *this;
     }
@@ -432,21 +432,21 @@ template <typename M> class PollSubscription {
     /// backend wires up liveliness detection.
     Result on_liveliness_changed(nros_cpp_liveliness_changed_cb_t cb,
                                  void* user_context = nullptr) {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(nros_cpp_subscription_set_liveliness_changed(storage_, cb, user_context));
     }
 
     /// Register a callback for requested-deadline-missed events.
     Result on_requested_deadline_missed(uint32_t deadline_ms, nros_cpp_subscriber_count_cb_t cb,
                                         void* user_context = nullptr) {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(nros_cpp_subscription_set_requested_deadline_missed(storage_, deadline_ms, cb,
                                                                           user_context));
     }
 
     /// Register a callback for message-lost events.
     Result on_message_lost(nros_cpp_subscriber_count_cb_t cb, void* user_context = nullptr) {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(nros_cpp_subscription_set_message_lost(storage_, cb, user_context));
     }
 
@@ -457,19 +457,19 @@ template <typename M> class PollSubscription {
     friend class ::rclcpp::Node;
 
     alignas(8) uint8_t storage_[NROS_SUBSCRIBER_SIZE];
-    char topic_name_[::nros::SUBSCRIPTION_TOPIC_NAME_MAX];
+    char topic_name_[::rclcpp::SUBSCRIPTION_TOPIC_NAME_MAX];
     bool initialized_;
-    ::nros::Stream<M> stream_;
+    ::rclcpp::Stream<M> stream_;
 };
 
 /// Latest-value polling subscription.
 ///
 /// Usage:
 /// ```cpp
-/// nros::PollingSubscription<std_msgs::msg::Int32> sub;
+/// rclcpp::PollingSubscription<std_msgs::msg::Int32> sub;
 /// NROS_TRY(node.create_polling_subscription(sub, "/count"));
 /// // ... later, in a timer tick or the main loop:
-/// nros::spin_once(executor, 0);           // pump the transport
+/// rclcpp::spin_once(executor, 0);           // pump the transport
 /// if (const auto* v = sub.take_data()) {  // newest known value, or nullptr
 ///     use(v->data);
 /// }
@@ -484,7 +484,7 @@ template <typename M> class PollingSubscription {
     /// `PollingSubscription`; the analog is `autoware_utils::
     /// InterProcessPollingSubscriber` (issue 0278).
     ///
-    /// `nros::Owned<PollingSubscription<M>>`, and the reason is the ownership
+    /// `rclcpp::Owned<PollingSubscription<M>>`, and the reason is the ownership
     /// rather than a preference: this entity's subscriber lives in the CALLER's
     /// storage, so there is no arena slot to hand back a handle to, and the
     /// object itself is what a holder must hold. `ConstSharedPtr` and
@@ -493,11 +493,11 @@ template <typename M> class PollingSubscription {
     /// It also exists on every target now, which the `std::shared_ptr` it
     /// replaced did not — a freestanding leaf that declares one of these was
     /// the case the old gate silently removed the alias from.
-    using SharedPtr = ::nros::Owned<PollingSubscription<M>>;
+    using SharedPtr = ::rclcpp::Owned<PollingSubscription<M>>;
     /// `PollingSubscription<M>::ConstSharedPtr` — see `SharedPtr`.
-    using ConstSharedPtr = ::nros::Owned<PollingSubscription<M>>;
+    using ConstSharedPtr = ::rclcpp::Owned<PollingSubscription<M>>;
     /// `PollingSubscription<M>::UniquePtr` — see `SharedPtr`.
-    using UniquePtr = ::nros::Owned<PollingSubscription<M>>;
+    using UniquePtr = ::rclcpp::Owned<PollingSubscription<M>>;
 
     PollingSubscription() : sub_(), latest_(), has_ever_(false) {}
 
@@ -567,23 +567,23 @@ template <typename M> class PollingSubscription {
     bool has_ever_;
 };
 
-} // namespace nros
+} // namespace rclcpp
 
 #include "nros/node.hpp"
 
-namespace nros {} // namespace nros
+namespace rclcpp {} // namespace rclcpp
 
 namespace rclcpp {
 
 /// phase-456 W2b — the POLL creator, moved here with the type it creates.
 template <typename M>
-Result Node::create_subscription(::nros::PollSubscription<M>& out, const char* topic,
-                                 const ::nros::QoS& qos) {
+Result Node::create_subscription(::rclcpp::PollSubscription<M>& out, const char* topic,
+                                 const ::rclcpp::QoS& qos) {
     // RFC-0088 D5 — one image, one backend, one encoding. Compile-time, so a
     // message the linked backend cannot encode never reaches the wire.
     NROS_CPP_ASSERT_MESSAGE_FORMAT(M);
-    if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
-    nros_cpp_qos_t ffi_qos = ::nros::detail::qos_to_ffi(qos);
+    if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
+    nros_cpp_qos_t ffi_qos = ::rclcpp::detail::qos_to_ffi(qos);
     nros_cpp_ret_t ret = nros_cpp_subscription_create(&handle_, topic, M::TYPE_NAME, M::TYPE_HASH,
                                                       ffi_qos, out.storage_);
     if (ret == 0) {
@@ -617,23 +617,23 @@ Result Node::create_subscription(::nros::PollSubscription<M>& out, const char* t
 /// axes and the QoS together, and because removing it would break call sites
 /// that pass a default-constructed one.
 template <typename M>
-Result Node::create_subscription(::nros::PollSubscription<M>& out, const char* topic,
-                                 const ::nros::QoS& qos,
-                                 const ::nros::SubscriptionOptions& options) {
+Result Node::create_subscription(::rclcpp::PollSubscription<M>& out, const char* topic,
+                                 const ::rclcpp::QoS& qos,
+                                 const ::rclcpp::SubscriptionOptions& options) {
     (void)options;
     return create_subscription<M>(out, topic, qos);
 }
 
 template <typename M>
-Result Node::create_polling_subscription(::nros::PollingSubscription<M>& out, const char* topic,
-                                         const ::nros::QoS& qos) {
+Result Node::create_polling_subscription(::rclcpp::PollingSubscription<M>& out, const char* topic,
+                                         const ::rclcpp::QoS& qos) {
     // Reuse the existing poll-mode subscription factory to own storage/init/
     // destroy; the wrapper only adds the retained-latest cache (issue 0278).
     return create_subscription(out.sub_, topic, qos);
 }
 } // namespace rclcpp
 
-namespace nros {
+namespace rclcpp {
 
 /// Phase 123.B.4 — value-returning subscription factory. Pairs
 /// with `create_publisher` so the full pub/sub create dance is
@@ -650,9 +650,9 @@ inline ResultOf<PollSubscription<M>> create_subscription(::rclcpp::Node& node, c
     PollSubscription<M> s;
     Result r = node.create_subscription<M>(s, topic, qos);
     if (!r.ok()) return ResultOf<PollSubscription<M>>::error(r);
-    return ResultOf<PollSubscription<M>>::ok(::nros::tr::forward_rvalue(s));
+    return ResultOf<PollSubscription<M>>::ok(::rclcpp::tr::forward_rvalue(s));
 }
 
-} // namespace nros
+} // namespace rclcpp
 
 #endif // NROS_CPP_POLLING_SUBSCRIPTION_HPP

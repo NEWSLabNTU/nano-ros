@@ -189,14 +189,14 @@ nano-ros covers the patterns a typical ROS 2 C++ node uses:
 | `create_subscription<M>(topic, qos, callback)` | registered on the executor arena; dispatched by **any** spin verb | **Capturing lambdas + `std::function` all work**. |
 | `create_wall_timer(period, callback)` | registered on the executor arena; dispatched by **any** spin verb | `std::chrono::duration` arg, capturing-lambda callback. Returns `rclcpp::TimerBase::SharedPtr`, which is `rclcpp::Timer::SharedPtr` — one flat type, two names. See below. |
 | `rclcpp::create_timer(node, clock, period, cb)` | the clock-taking verb; a `NROS_CLOCK_ROS_TIME` clock follows `/clock` | Humble's only form. `create_wall_timer` stays on the steady clock. |
-| `rclcpp::init(argc, argv) / shutdown() / ok() / spin(n) / spin_some(n)` | wraps `nros::init/shutdown/ok/spin_once` | `--ros-args -r from:=to` is honoured, beneath any remap the launch file sets for the same name. `-p [node:]name:=value` and `--params-file <file>` are honoured in an image with a parameter store: the value replaces the default when the node declares the parameter (scalars only from a file; a value of the wrong type is logged and the default kept). Any other ROS argument (`__node`, log flags) aborts, naming it. |
+| `rclcpp::init(argc, argv) / shutdown() / ok() / spin(n) / spin_some(n)` | wraps `rclcpp::init_in/shutdown_in/ok/spin_once` | `--ros-args -r from:=to` is honoured, beneath any remap the launch file sets for the same name. `-p [node:]name:=value` and `--params-file <file>` are honoured in an image with a parameter store: the value replaces the default when the node declares the parameter (scalars only from a file; a value of the wrong type is logged and the default kept). Any other ROS argument (`__node`, log flags) aborts, naming it. |
 | `RCLCPP_INFO / WARN / ERROR / DEBUG / FATAL` | dispatched through the `NROS_LOG_*` family into `nros_log` | Carries the logger, so `get_logger("x")` selects a real per-logger level, and `FATAL` is a distinct severity. Reaches `LOG_ERR`/`printk` on embedded, where the legacy `NROS_*` sink is a no-op (issue 1019). `_THROTTLE` variants are REFUSE-LOUD. |
 | `get_logger().get_child("sub")` | a real child logger, `<parent>.sub` (RFC-0102) | Its level, when unset, follows the nearest ancestor's, so `set_level` on the node logger reaches it. A full name over 48 bytes or a full runtime-logger arena emits through the PARENT and `set_level` on it is refused — never a silent move of the parent's threshold. Iron/Jazzy images publish children on `/rosout`; Humble ones, as upstream, do not. |
 | `executor.spin_once() / client->wait_for_service() / action_client->wait_for_action_server()` | **the budget is required** | Upstream defaults all three to "block forever", which nano-ros has no form of; the no-argument call is a compile error naming the alternative rather than a silently substituted 10 ms / 5 s budget. Write `spin_once(10)`, `wait_for_service(10000)`. |
-| `rclcpp::QoS / KeepLast(n) / SystemDefaultsQoS()` | subclass of `nros::QoS` with the `(depth)` ctor | Chainable setters inherited. |
+| `rclcpp::QoS / KeepLast(n) / SystemDefaultsQoS()` | one class with upstream's implicit `(depth)` ctor | Chainable setters inherited. |
 | `diagnostic_updater::Updater` + `DiagnosticStatusWrapper` | `packages/api/nros-diagnostic-updater` | Publishes `/diagnostics`. |
-| `rclcpp_action::Server<A> / Client<A>` | ours, under upstream's names (`nros::ActionServer/Client<A>` are aliases for them) | Same entities, smaller shapes: no goal handles and no futures. See [Actions](#actions-no-goal-handles-no-futures) below. |
-| `class MyNode : public rclcpp_lifecycle::LifecycleNode` | ours, under upstream's name (`<rclcpp_lifecycle/lifecycle_node.hpp>`) | It IS an `rclcpp::Node`. The `on_configure(const State&)` … `on_shutdown` overrides, `CallbackReturn::SUCCESS`, `configure()` / `activate()` / … and `get_current_state()` keep upstream's signatures; the REP-2002 services are registered by the constructor. `create_publisher<M>(topic, qos)` returns a managed `LifecyclePublisher<M>::SharedPtr` that sends only while Active. One managed node per executor. `nros::LifecycleNode` is the deprecated older spelling. |
+| `rclcpp_action::Server<A> / Client<A>` | ours, under upstream's names (`rclcpp::ActionServer/Client<A>` are aliases for them) | Same entities, smaller shapes: no goal handles and no futures. See [Actions](#actions-no-goal-handles-no-futures) below. |
+| `class MyNode : public rclcpp_lifecycle::LifecycleNode` | ours, under upstream's name (`<rclcpp_lifecycle/lifecycle_node.hpp>`) | It IS an `rclcpp::Node`. The `on_configure(const State&)` … `on_shutdown` overrides, `CallbackReturn::SUCCESS`, `configure()` / `activate()` / … and `get_current_state()` keep upstream's signatures; the REP-2002 services are registered by the constructor. `create_publisher<M>(topic, qos)` returns a managed `LifecyclePublisher<M>::SharedPtr` that sends only while Active. One managed node per executor. |
 | `RCLCPP_COMPONENTS_REGISTER_NODE(class)` | no-op macro + cmake-side `rclcpp_components_register_node()` emits a thin `int main()` per registration | Single-binary embedded. |
 | `find_package(ament_cmake_auto / rclcpp / rclcpp_components / diagnostic_updater / std_msgs / …)` | find modules at `cmake/find/` | ~28 of the most-cited ROS 2 packages; a message package not among them is found by the resolver from `NROS_INTERFACE_SEARCH_PATH` / `AMENT_PREFIX_PATH`. |
 
@@ -266,7 +266,7 @@ does warn about.
 
 ### `Node::SharedPtr` observes, it does not own
 
-`rclcpp::Node::SharedPtr` is `nros::Handle<rclcpp::Node>` on every target,
+`rclcpp::Node::SharedPtr` is `rclcpp::Handle<rclcpp::Node>` on every target,
 embedded included: a copyable reference that does not keep the node alive. A
 node is constructed by your `main` (or the generated entry) and outlives
 everything it is handed to, so storing and copying it works as upstream's does.
@@ -330,7 +330,7 @@ These are cosmetic codegen differences nano-ros's per-package codegen
 and the upstream `rosidl_default_runtime` codegen don't share; both are
 tracked as ROS-convention codegen work.
 
-- **Message string fields.** nano-ros codegen emits `nros::FixedString<N>`,
+- **Message string fields.** nano-ros codegen emits `rclcpp::FixedString<N>`,
   upstream emits `std::string`. Assigning a `std::string` needs a one-token
   adapter: `message.data = s.c_str()`. The reverse `(std::string{}.c_str())`
   is what `RCLCPP_INFO` already takes.

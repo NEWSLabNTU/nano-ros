@@ -228,12 +228,13 @@ def collect(ast, roots):
 # the exact failure the change is meant to end. It can only make the gate
 # stricter, never weaker, and it costs nothing to keep true. (`::nros::Node` was
 # a fifth; it was an alias of `::rclcpp::Node`, one layout, and phase-482 W6
-# deleted it, so the class it named is still covered by the first row.)
+# deleted it, so the class it named is still covered by the first row. phase-483
+# W1 moved the other three from `nros::` to `rclcpp::`.)
 FLOOR = (
     "::rclcpp::Node",
-    "::nros::QoS",
-    "::nros::Result",
-    "::nros::ResultOf<int>",
+    "::rclcpp::QoS",
+    "::rclcpp::Result",
+    "::rclcpp::ResultOf<int>",
 )
 
 

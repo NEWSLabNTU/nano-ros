@@ -246,7 +246,7 @@ fn exec_for(lang: ML, workload: MW) -> Exec {
             entry: || build_native_workspace_cpp_qos_talker_entry().map(|p| p.to_path_buf()),
             peer: Some(|| build_native_workspace_cpp_qos_listener_entry().map(|p| p.to_path_buf())),
             proof: Proof::QosMatchedProfile { topic: "/chatter" },
-            note: "phase-263 B4 C++ projection: fluent nros::QoS builder \
+            note: "phase-263 B4 C++ projection: fluent rclcpp::QoS builder \
                    (.reliable().transient_local().keep_last(1)) into Node::create_publisher",
         },
         (ML::Mixed, MW::Qos) => Exec {

@@ -4,7 +4,7 @@
 /**
  * @file tick_ctx.hpp
  * @ingroup grp_node
- * @brief `nros::TickCtx` — client-side dispatch from a component's `tick`
+ * @brief `rclcpp::TickCtx` — client-side dispatch from a component's `tick`
  *        body.
  *
  * Phase 212.M-F.4.c — mirror of the Rust substrate's `TickCtx` client-side
@@ -16,7 +16,7 @@
  *
  * The two raw FFI entry points (`nros_cpp_tick_ctx_call_raw` /
  * `nros_cpp_tick_ctx_send_goal_raw`) live in the C-ABI surface; this
- * header wraps them in a typed `nros::TickCtx` so user `tick` bodies can
+ * header wraps them in a typed `rclcpp::TickCtx` so user `tick` bodies can
  * write:
  *
  * ```cpp
@@ -50,18 +50,18 @@
 #include <string.h>
 
 #include "nros/result.hpp"
-#include "nros/size_bound.hpp" // nros::rx_buffer_capacity<M> — the receive-buffer size
+#include "nros/size_bound.hpp" // rclcpp::rx_buffer_capacity<M> — the receive-buffer size
 // Phase 118.D — cbindgen output is the canonical FFI surface.
 // `nros_cpp_tick_ctx_call_raw` / `_send_goal_raw` are declared in
 // nros_cpp_ffi.h; we just pull them in here. No hand-written
 // `extern "C"` redeclaration block (that pattern bit-rots).
 #include "nros_cpp_ffi.h"
 
-namespace nros {
+namespace rclcpp {
 
 /// Client-side dispatch handle handed to `ExecutableComponent::tick`.
 ///
-/// Mirrors the Rust `nros::TickCtx` substrate (Phase 212.M-F.4). The
+/// Mirrors the Rust `rclcpp::TickCtx` substrate (Phase 212.M-F.4). The
 /// generated runtime constructs one per spin and hands it to the
 /// component's `tick` body via an opaque per-tick context pointer
 /// (`handle()`); the typed `call<Req, Resp>()` / `send_goal<G>()`
@@ -90,7 +90,7 @@ class TickCtx {
     void* handle() const { return handle_; }
 
     /// Issue a raw-CDR service-client request and block on the reply.
-    /// Mirrors `nros::TickCtx::call_raw` (Rust).
+    /// Mirrors `rclcpp::TickCtx::call_raw` (Rust).
     ///
     /// @param service_entity   Stable entity id of the service client
     ///                         (NUL-terminated string).
@@ -110,15 +110,15 @@ class TickCtx {
     }
 
     /// Issue a typed service-client request and decode the reply.
-    /// Mirrors `nros::TickCtx::call<Req, Resp, REQ_N, RESP_N>` (Rust).
+    /// Mirrors `rclcpp::TickCtx::call<Req, Resp, REQ_N, RESP_N>` (Rust).
     ///
     /// `Req` / `Resp` must provide `SERIALIZED_SIZE_MAX`, `ffi_serialize`,
     /// and `ffi_deserialize` (the codegen-emitted interface, same as
-    /// `nros::Client<S>`).
+    /// `rclcpp::Client<S>`).
     template <typename Req, typename Resp>
     Result call(const char* service_entity, const Req& request, Resp& response) {
-        return call_sized<Req, Resp, ::nros::rx_buffer_capacity<Resp>::value>(service_entity,
-                                                                              request, response);
+        return call_sized<Req, Resp, ::rclcpp::rx_buffer_capacity<Resp>::value>(service_entity,
+                                                                                request, response);
     }
 
     /// @ref call with the REPLY buffer sized by the caller (issue 0964). The
@@ -126,7 +126,7 @@ class TickCtx {
     /// over-estimate only wastes stack.
     template <typename Req, typename Resp, size_t RespCap>
     Result call_sized(const char* service_entity, const Req& request, Resp& response) {
-        uint8_t req_buf[::nros::detail::buffer_bounds<Req>::tx];
+        uint8_t req_buf[::rclcpp::detail::buffer_bounds<Req>::tx];
         size_t req_len = 0;
         if (Req::ffi_serialize(&request, req_buf, sizeof(req_buf), &req_len) != 0) {
             return Result(ErrorCode::Error);
@@ -145,7 +145,7 @@ class TickCtx {
     }
 
     /// Kick a raw-CDR action-client goal. Mirrors
-    /// `nros::TickCtx::send_goal_raw` (Rust). The 16-byte goal id is
+    /// `rclcpp::TickCtx::send_goal_raw` (Rust). The 16-byte goal id is
     /// stamped by the server-side accept; result + feedback streams
     /// arrive via callback dispatch — not this method.
     ///
@@ -164,13 +164,13 @@ class TickCtx {
     }
 
     /// Kick a typed action-client goal. Mirrors
-    /// `nros::TickCtx::send_goal<G, N>` (Rust).
+    /// `rclcpp::TickCtx::send_goal<G, N>` (Rust).
     ///
     /// `G` must provide `SERIALIZED_SIZE_MAX` and `ffi_serialize` (the
-    /// codegen-emitted interface, same as `nros::ActionClient<A>`).
+    /// codegen-emitted interface, same as `rclcpp_action::Client<A>`).
     template <typename G>
     Result send_goal(const char* action_entity, const G& goal, uint8_t goal_id_out[16]) {
-        uint8_t goal_buf[::nros::detail::buffer_bounds<G>::tx];
+        uint8_t goal_buf[::rclcpp::detail::buffer_bounds<G>::tx];
         size_t goal_len = 0;
         if (G::ffi_serialize(&goal, goal_buf, sizeof(goal_buf), &goal_len) != 0) {
             return Result(ErrorCode::Error);
@@ -182,6 +182,6 @@ class TickCtx {
     void* handle_;
 };
 
-} // namespace nros
+} // namespace rclcpp
 
 #endif // NROS_CPP_TICK_CTX_HPP

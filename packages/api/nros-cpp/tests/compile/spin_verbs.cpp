@@ -17,29 +17,31 @@ namespace {
 
 // `spin()` exists and takes no required argument — the rclcpp shape. If someone
 // re-adds a required duration parameter, this stops compiling.
-static_assert(std::is_same<decltype(std::declval<nros::Executor&>().spin()), nros::Result>::value,
-              "Executor::spin() must exist with no required argument (rclcpp shape)");
+static_assert(
+    std::is_same<decltype(std::declval<rclcpp::Executor&>().spin()), rclcpp::Result>::value,
+    "Executor::spin() must exist with no required argument (rclcpp shape)");
 
 // It also accepts the optional poll interval.
-static_assert(std::is_same<decltype(std::declval<nros::Executor&>().spin(10)), nros::Result>::value,
-              "Executor::spin(poll_ms) must exist");
+static_assert(
+    std::is_same<decltype(std::declval<rclcpp::Executor&>().spin(10)), rclcpp::Result>::value,
+    "Executor::spin(poll_ms) must exist");
 
 // The BOUNDED verb is `spin_for(duration_ms[, poll_ms])`.
 static_assert(
-    std::is_same<decltype(std::declval<nros::Executor&>().spin_for(100u)), nros::Result>::value,
+    std::is_same<decltype(std::declval<rclcpp::Executor&>().spin_for(100u)), rclcpp::Result>::value,
     "Executor::spin_for(duration_ms) must exist");
-static_assert(
-    std::is_same<decltype(std::declval<nros::Executor&>().spin_for(100u, 5)), nros::Result>::value,
-    "Executor::spin_for(duration_ms, poll_ms) must exist");
+static_assert(std::is_same<decltype(std::declval<rclcpp::Executor&>().spin_for(100u, 5)),
+                           rclcpp::Result>::value,
+              "Executor::spin_for(duration_ms, poll_ms) must exist");
 
 // `spin_once` takes a REQUIRED budget — phase-417 stage 3. Upstream's default
 // is -1 (block indefinitely) and ours cannot be, so there is no default to give
 // that would not be a budget the caller never chose; the no-argument form is
 // REFUSE-LOUD and `ros2_refuse_unbounded_spin_probe.cpp` is what proves it
 // fires. This is the POSITIVE half — the budgeted form still type-checks and
-// still returns `nros::Result`.
+// still returns `rclcpp::Result`.
 static_assert(
-    std::is_same<decltype(std::declval<nros::Executor&>().spin_once(10)), nros::Result>::value,
+    std::is_same<decltype(std::declval<rclcpp::Executor&>().spin_once(10)), rclcpp::Result>::value,
     "Executor::spin_once(timeout_ms) must exist");
 
 // Deliberately NOT asserted with `decltype(…spin_once())`: the refusal is a

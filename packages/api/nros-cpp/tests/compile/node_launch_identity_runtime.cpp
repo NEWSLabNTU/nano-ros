@@ -70,21 +70,21 @@ void check(bool cond, const char* what) {
 /// member-init list. Nothing here knows about a launch file.
 class Component : public ::rclcpp::Node {
   public:
-    explicit Component(::nros::NodeHandle h) : ::rclcpp::Node(h, "class_literal") {}
+    explicit Component(::rclcpp::NodeHandle h) : ::rclcpp::Node(h, "class_literal") {}
 };
 
 /// Same, but the class also names a namespace — the case where BOTH halves of
 /// the launch identity have something of the class's to outrank.
 class ComponentWithNs : public ::rclcpp::Node {
   public:
-    explicit ComponentWithNs(::nros::NodeHandle h)
+    explicit ComponentWithNs(::rclcpp::NodeHandle h)
         : ::rclcpp::Node(h, "class_literal", "/class_ns") {}
 };
 
 void check_fqn(const ::rclcpp::Node& node, const char* expect, const char* what) {
     char buf[128];
     std::memset(buf, 0, sizeof(buf));
-    ::nros::Result r = node.get_fully_qualified_name(buf, sizeof(buf), nullptr);
+    ::rclcpp::Result r = node.get_fully_qualified_name(buf, sizeof(buf), nullptr);
     if (!r.ok()) {
         ++g_failures;
         std::fprintf(stderr, "FAIL: %s — get_fully_qualified_name returned %d\n", what, r.raw());
@@ -105,14 +105,14 @@ int main() {
     // own destructor before the next opens — not a claim that two sessions can
     // coexist.
     {
-        ::nros::Executor exec;
+        ::rclcpp::Executor exec;
         // The guard compares against the count BEFORE this round, so an
         // assertion failure in an earlier round cannot read as a setup failure
         // here — the two are different diagnoses.
         const int before = g_failures;
-        check(
-            ::nros::Executor::create_with_rmw(exec, NROS_STUB_RMW_NAME, nullptr, 0, "i1456a").ok(),
-            "executor create on the stub backend (round 1)");
+        check(::rclcpp::Executor::create_with_rmw(exec, NROS_STUB_RMW_NAME, nullptr, 0, "i1456a")
+                  .ok(),
+              "executor create on the stub backend (round 1)");
         if (g_failures != before) {
             std::fprintf(stderr, "node_launch_identity_runtime: round 1 setup failed\n");
             return 1;
@@ -120,7 +120,7 @@ int main() {
         void* h = exec.handle();
 
         // --- 1. both halves declared: the launch file is authoritative ------
-        ::nros::NodeHandle h_declared(h, "alpha", "/island");
+        ::rclcpp::NodeHandle h_declared(h, "alpha", "/island");
         Component declared(h_declared);
         check(declared.ok(), "the declared-identity node must come up");
         check_fqn(declared, "/island/alpha",
@@ -129,7 +129,7 @@ int main() {
                   "launch file, because both instances answer the same name");
 
         // --- 2. the class's literal is a DEFAULT, never dead ----------------
-        ::nros::NodeHandle h_bare(h);
+        ::rclcpp::NodeHandle h_bare(h);
         Component undeclared(h_bare);
         check(undeclared.ok(), "the undeclared node must come up");
         check_fqn(undeclared, "/class_literal",
@@ -138,13 +138,13 @@ int main() {
                   "main and every pre-1456 caller build");
 
         // --- 3. the halves are INDEPENDENT ----------------------------------
-        ::nros::NodeHandle h_ns_only(h, nullptr, "/island");
+        ::rclcpp::NodeHandle h_ns_only(h, nullptr, "/island");
         Component ns_only(h_ns_only);
         check_fqn(ns_only, "/island/class_literal",
                   "a launch file declaring only a namespace must move the node and leave its "
                   "name alone");
 
-        ::nros::NodeHandle h_name_only(h, "beta", nullptr);
+        ::rclcpp::NodeHandle h_name_only(h, "beta", nullptr);
         Component name_only(h_name_only);
         check_fqn(name_only, "/beta",
                   "a launch file declaring only a name must rename the node and leave it where "
@@ -152,11 +152,11 @@ int main() {
     }
 
     {
-        ::nros::Executor exec;
+        ::rclcpp::Executor exec;
         const int before = g_failures;
-        check(
-            ::nros::Executor::create_with_rmw(exec, NROS_STUB_RMW_NAME, nullptr, 0, "i1456b").ok(),
-            "executor create on the stub backend (round 2)");
+        check(::rclcpp::Executor::create_with_rmw(exec, NROS_STUB_RMW_NAME, nullptr, 0, "i1456b")
+                  .ok(),
+              "executor create on the stub backend (round 2)");
         if (g_failures != before) {
             std::fprintf(stderr, "node_launch_identity_runtime: round 2 setup failed\n");
             return 1;
@@ -164,19 +164,19 @@ int main() {
         void* h = exec.handle();
 
         // --- 4. a class that names BOTH is outranked in BOTH ----------------
-        ::nros::NodeHandle h_both(h, "gamma", "/island");
+        ::rclcpp::NodeHandle h_both(h, "gamma", "/island");
         ComponentWithNs both(h_both);
         check_fqn(both, "/island/gamma",
                   "the precedence is per HALF and the handle wins both: a class namespace is a "
                   "default like a class name");
 
-        ::nros::NodeHandle h_bare(h);
+        ::rclcpp::NodeHandle h_bare(h);
         ComponentWithNs both_undeclared(h_bare);
         check_fqn(both_undeclared, "/class_ns/class_literal",
                   "…and with nothing declared, BOTH of the class's own choices stand");
 
         // --- 5. `""` is UNSET, never an identity ----------------------------
-        ::nros::NodeHandle h_empty(h, "", "");
+        ::rclcpp::NodeHandle h_empty(h, "", "");
         ComponentWithNs empty(h_empty);
         check_fqn(empty, "/class_ns/class_literal",
                   "an empty name or namespace on the handle means the launch file declared "

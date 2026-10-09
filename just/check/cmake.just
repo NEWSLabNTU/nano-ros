@@ -285,6 +285,15 @@ cpp-capability-layout:
 cpp-hosted-family:
     @python3 scripts/check-cpp-hosted-family.py
 
+# phase-483 W1 — no user-facing or CLI-emitted C++ names `nros::`. The C++ API
+# lives in `rclcpp::` / `rclcpp_action::` / `rclcpp_lifecycle::`, and there is no
+# `nros::` namespace left, so a `nros::` token in code is a compile error the
+# next build of that file would report, or a reopened namespace. Comments are
+# exempt (history); string literals are not (emitted code). Source-only.
+[private]
+cpp-no-nros-namespace:
+    @python3 scripts/check-cpp-no-nros-namespace.py
+
 # RFC-0088 D5 / phase-421 W6 — `NROS_SERIALIZATION_FORMAT{,_ID}` names the
 # format of THE image's single backend. A bridge image links two and has no
 # single answer, so a bridge-linked TU referencing the macro is a wrong answer

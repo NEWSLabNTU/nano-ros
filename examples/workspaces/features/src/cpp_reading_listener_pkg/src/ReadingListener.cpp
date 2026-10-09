@@ -19,8 +19,8 @@ void ReadingListener::on_reading(const ::custom_msgs::msg::Reading& msg) {
     ::setvbuf(stdout, nullptr, _IOLBF, 0);
     // Typed member binding (RFC-0044 §242.2): keyexpr + deserialize come from
     // the generated `custom_msgs::msg::Reading`.
-    return ::nros::bind_subscription<::custom_msgs::msg::Reading, ReadingListener,
-                                     &ReadingListener::on_reading>(node, "/reading", this);
+    return ::rclcpp::bind_subscription<::custom_msgs::msg::Reading, ReadingListener,
+                                       &ReadingListener::on_reading>(node, "/reading", this);
 }
 
 } // namespace cpp_reading_listener_pkg

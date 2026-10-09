@@ -1,7 +1,7 @@
 /// @file main.cpp
 /// @brief C++ parameters example — declare / get / set on THE parameter store.
 ///
-/// phase-426 W4. This example used to build an `nros::ParameterServer<8>` on
+/// phase-426 W4. This example used to build an `rclcpp::ParameterServer<8>` on
 /// the stack and exercise it. That class was a SECOND parameter store: the six
 /// `rcl_interfaces/srv/*` servers read the executor's `nros_params` table, so
 /// every parameter this file declared was invisible to `ros2 param get` — the
@@ -25,7 +25,7 @@
 ///
 /// Scalars go through `rclcpp::Node::declare_parameter<T>` / `get_parameter<T>`
 /// / `set_parameter<T>`; the sequence parameter goes through the same methods
-/// with an `nros::Seq<double, N>` value, which is the freestanding array form
+/// with an `rclcpp::Seq<double, N>` value, which is the freestanding array form
 /// (a `-nostdinc++` board has no `std::vector`) and which now reaches the store
 /// like every scalar. The example exits 0 only when every roundtrip passes;
 /// a non-zero exit code encodes which assertion failed. Consumed by the
@@ -60,10 +60,10 @@ unsigned spin_ms() {
 }
 
 int run() {
-    NROS_TRY_RET(nros::init(), 1);
+    NROS_TRY_RET(rclcpp::init_in(), 1);
 
     rclcpp::Node node;
-    NROS_TRY_RET(nros::create_node(node, "cpp_parameters"), 1);
+    NROS_TRY_RET(rclcpp::create_node(node, "cpp_parameters"), 1);
 
     // The six `rcl_interfaces/srv/*` servers, under this node's FQN. Without
     // this the parameters are still in the right store — they are simply not
@@ -129,29 +129,30 @@ int run() {
 
     // --- a sequence parameter ------------------------------------------------
     //
-    // `nros::Seq<T, N>` is a VALUE with `N` inline slots and no heap — the
+    // `rclcpp::Seq<T, N>` is a VALUE with `N` inline slots and no heap — the
     // freestanding stand-in for `std::vector<T>` at this surface. The ELEMENTS
     // are owned by the store, so the `Seq` below does not have to outlive the
     // call, and `ros2 param get` sees the array.
 
-    nros::Seq<double, 8> weights =
-        node.declare_parameter("mpc_weights", nros::Seq<double, 8>{1.5, 2.5, 3.5});
+    rclcpp::Seq<double, 8> weights =
+        node.declare_parameter("mpc_weights", rclcpp::Seq<double, 8>{1.5, 2.5, 3.5});
     if (!node.has_parameter("mpc_weights")) return 6;
     if (weights.size() != 3) return 6;
     if (weights[0] != 1.5 || weights[1] != 2.5 || weights[2] != 3.5) return 6;
 
     // Bounds: reading into a too-small `Seq` is refused, not truncated. A short
     // weight matrix is a plausible wrong answer, which is worse than an error.
-    nros::Seq<double, 2> too_small;
+    rclcpp::Seq<double, 2> too_small;
     if (node.get_parameter("mpc_weights", too_small)) return 7;
 
-    if (!node.set_parameter("mpc_weights", nros::Seq<double, 8>{4.0, 5.0, 6.0, 7.0}).ok()) return 8;
+    if (!node.set_parameter("mpc_weights", rclcpp::Seq<double, 8>{4.0, 5.0, 6.0, 7.0}).ok())
+        return 8;
     if (!node.get_parameter("mpc_weights", weights)) return 8;
     if (weights.size() != 4 || weights[3] != 7.0) return 8;
 
     // `Seq<T, N>` is itself bounded: an over-capacity `push_back` is a no-op,
     // never UB.
-    nros::Seq<double, 2> bounded;
+    rclcpp::Seq<double, 2> bounded;
     if (!bounded.push_back(1.0) || !bounded.push_back(2.0)) return 8;
     if (bounded.push_back(3.0)) return 8;
     if (bounded.size() != 2) return 8;
@@ -162,7 +163,7 @@ int run() {
     // in the file comment have something to talk to.
     const unsigned budget = spin_ms();
     for (unsigned waited = 0; waited < budget && rclcpp::ok(); waited += 100) {
-        (void)nros::spin_once(100);
+        (void)rclcpp::spin_once(100);
     }
 
     rclcpp::shutdown();

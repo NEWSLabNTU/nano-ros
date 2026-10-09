@@ -4,7 +4,7 @@
 /**
  * @file polling_action_client.hpp
  * @ingroup grp_action
- * @brief `nros::PollingActionClient<A>` — caller-polls action client.
+ * @brief `rclcpp::PollingActionClient<A>` — caller-polls action client.
  *
  * Phase 122.3.d.b — typed C++ wrapper over the L1 polling FFI added
  * in 122.3.d.a. Mirrors `ActionClient<A>` but drops the executor
@@ -19,7 +19,7 @@
 #include <cstdint>
 #include <string.h>
 
-// phase-417 W4.b — `nros::GoalUUID`, the goal-id VALUE type, is declared
+// phase-417 W4.b — `rclcpp_action::GoalUUID`, the goal-id VALUE type, is declared
 // beside the shared action enums in action_server.hpp (which is also where
 // polling_action_server.hpp reaches for them).
 #include "nros/action_server.hpp"
@@ -28,7 +28,7 @@
 #include "nros/node.hpp"
 #include "nros/nros_cpp_config_generated.h"
 #include "nros/result.hpp"
-#include "nros/size_bound.hpp" // nros::rx_buffer_capacity<M> — the receive-buffer size
+#include "nros/size_bound.hpp" // rclcpp::rx_buffer_capacity<M> — the receive-buffer size
 
 #include "nros_cpp_ffi.h"
 
@@ -36,19 +36,19 @@
 // the home). The friend declaration below is qualified, and a qualified friend
 // names an existing entity rather than introducing one, so the name has to be
 // declared first — and in `rclcpp::`, because an elaborated `class Node;` in
-// `nros::` would declare a second, distinct class.
+// `rclcpp::` would declare a second, distinct class.
 namespace rclcpp {
 class Node;
 }
 
-namespace nros {
+namespace rclcpp {
 
 /// Typed L1 polling-mode action client.
 ///
 /// Usage:
 /// ```cpp
 /// using Fib = example_interfaces::action::Fibonacci;
-/// nros::PollingActionClient<Fib> cli;
+/// rclcpp::PollingActionClient<Fib> cli;
 /// NROS_TRY(node.create_polling_action_client(cli, "/fibonacci"));
 /// uint8_t goal_id[16];
 /// typename Fib::Goal g;  g.order = 10;
@@ -63,10 +63,10 @@ namespace nros {
 template <typename A> class PollingActionClient {
   public:
     /// phase-417 W4.b — one spelling for all four action classes; see
-    /// `nros::ACTION_NAME_MAX` in `action_server.hpp`. Kept as a member
+    /// `rclcpp_action::ACTION_NAME_MAX` in `action_server.hpp`. Kept as a member
     /// name so existing `PollingActionServer<A>::ACTION_NAME_MAX` /
     /// `PollingActionClient<A>::ACTION_NAME_MAX` call sites still resolve.
-    static constexpr size_t ACTION_NAME_MAX = ::nros::ACTION_NAME_MAX;
+    static constexpr size_t ACTION_NAME_MAX = ::rclcpp_action::ACTION_NAME_MAX;
 
     using GoalType = typename A::Goal;
     using ResultType = typename A::Result;
@@ -91,7 +91,7 @@ template <typename A> class PollingActionClient {
     /// `goal_id_out`.
     Result send_goal(const GoalType& goal, uint8_t goal_id_out[16]) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        uint8_t buf[::nros::detail::buffer_bounds<GoalType>::tx];
+        uint8_t buf[::rclcpp::detail::buffer_bounds<GoalType>::tx];
         size_t len = 0;
         if (GoalType::ffi_serialize(&goal, buf, sizeof(buf), &len) != 0)
             return Result(ErrorCode::Error);
@@ -101,7 +101,7 @@ template <typename A> class PollingActionClient {
 
     /// @ref send_goal writing the generated id into a `GoalUUID` value
     /// (phase-417 W4.b).
-    Result send_goal(const GoalType& goal, GoalUUID& goal_id_out) {
+    Result send_goal(const GoalType& goal, ::rclcpp_action::GoalUUID& goal_id_out) {
         return send_goal(goal, goal_id_out.data());
     }
 
@@ -128,7 +128,7 @@ template <typename A> class PollingActionClient {
     }
 
     /// @ref send_get_result_request taking a `GoalUUID` value (phase-417 W4.b).
-    Result send_get_result_request(const GoalUUID& goal_id) {
+    Result send_get_result_request(const ::rclcpp_action::GoalUUID& goal_id) {
         return send_get_result_request(goal_id.data());
     }
 
@@ -136,7 +136,7 @@ template <typename A> class PollingActionClient {
     /// The reply has wire layout: CDR header (4B) + status byte (1B) +
     /// result payload — deserializes the trailing payload into `out`.
     Result try_recv_result(ResultType& out) {
-        return try_recv_result_sized<::nros::rx_buffer_capacity<ResultType>::value>(out);
+        return try_recv_result_sized<::rclcpp::rx_buffer_capacity<ResultType>::value>(out);
     }
 
     /// @ref try_recv_result with the RESULT PAYLOAD capacity chosen by the
@@ -167,7 +167,7 @@ template <typename A> class PollingActionClient {
     }
 
     /// @ref send_cancel_request taking a `GoalUUID` value (phase-417 W4.b).
-    Result send_cancel_request(const GoalUUID& goal_id) {
+    Result send_cancel_request(const ::rclcpp_action::GoalUUID& goal_id) {
         return send_cancel_request(goal_id.data());
     }
 
@@ -187,20 +187,20 @@ template <typename A> class PollingActionClient {
     /// Try to receive a feedback message. Writes the source `goal_id`
     /// (16 bytes) and deserializes the payload into `out_fb`.
     Result try_recv_feedback(uint8_t goal_id_out[16], FeedbackType& out_fb) {
-        return try_recv_feedback_sized<::nros::rx_buffer_capacity<FeedbackType>::value>(goal_id_out,
-                                                                                        out_fb);
+        return try_recv_feedback_sized<::rclcpp::rx_buffer_capacity<FeedbackType>::value>(
+            goal_id_out, out_fb);
     }
 
     /// @ref try_recv_feedback writing the source id into a `GoalUUID` value
     /// (phase-417 W4.b).
-    Result try_recv_feedback(GoalUUID& goal_id_out, FeedbackType& out_fb) {
-        return try_recv_feedback_sized<::nros::rx_buffer_capacity<FeedbackType>::value>(
+    Result try_recv_feedback(::rclcpp_action::GoalUUID& goal_id_out, FeedbackType& out_fb) {
+        return try_recv_feedback_sized<::rclcpp::rx_buffer_capacity<FeedbackType>::value>(
             goal_id_out.data(), out_fb);
     }
 
     /// @ref try_recv_feedback_sized taking a `GoalUUID` value.
     template <size_t Cap>
-    Result try_recv_feedback_sized(GoalUUID& goal_id_out, FeedbackType& out_fb) {
+    Result try_recv_feedback_sized(::rclcpp_action::GoalUUID& goal_id_out, FeedbackType& out_fb) {
         return try_recv_feedback_sized<Cap>(goal_id_out.data(), out_fb);
     }
 
@@ -263,27 +263,27 @@ template <typename A> class PollingActionClient {
     bool initialized_;
 };
 
-} // namespace nros
+} // namespace rclcpp
 
 #include "nros/node.hpp"
 
-namespace nros {} // namespace nros
+namespace rclcpp {} // namespace rclcpp
 
 namespace rclcpp {
 template <typename A>
-Result Node::create_polling_action_client(::nros::PollingActionClient<A>& out,
+Result Node::create_polling_action_client(::rclcpp::PollingActionClient<A>& out,
                                           const char* action_name) {
-    if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+    if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
     nros_cpp_ret_t ret =
         nros_cpp_action_client_init_polling(&handle_, action_name, A::TYPE_NAME, A::Goal::TYPE_HASH,
                                             reinterpret_cast<void*>(out.storage_));
     if (ret != 0) return Result(ret);
-    ::nros::detail::assign_entity_name(out.action_name_, action_name);
+    ::rclcpp::detail::assign_entity_name(out.action_name_, action_name);
     out.initialized_ = true;
     return Result::success();
 }
 } // namespace rclcpp
 
-namespace nros {} // namespace nros
+namespace rclcpp {} // namespace rclcpp
 
 #endif // NROS_CPP_POLLING_ACTION_CLIENT_HPP

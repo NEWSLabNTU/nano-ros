@@ -25,7 +25,7 @@ void Listener::on_raw(const uint8_t* data, size_t len) {
     ::setvbuf(stdout, nullptr, _IONBF, 0);
     // Raw (zero-copy) subscription bound to the member by identity; type name is
     // the DDS-mangled form to match the sibling typed talker's Publisher<String>.
-    ::rclcpp::Result r = ::nros::bind_subscription_raw<Listener, &Listener::on_raw>(
+    ::rclcpp::Result r = ::rclcpp::bind_subscription_raw<Listener, &Listener::on_raw>(
         node, "/chatter", std_msgs::msg::String::TYPE_NAME, this);
     if (r.ok()) {
         // Readiness marker the rtos_e2e harness greps before driving the talker.

@@ -66,7 +66,7 @@ inline void rclcpp_node_string_values(rclcpp::Node& node) {
 // component declares its parameters, and because a member template is only
 // instantiated when something calls it.
 //
-// phase-427 W4 — this said `nros::ComponentNode`, the type that WRAPPED a node.
+// phase-427 W4 — this said `rclcpp::ComponentNode`, the type that WRAPPED a node.
 // It is deleted; a component IS-A `rclcpp::Node` now, and the facade this probe
 // compiles is the same one `rclcpp::Node` above wears, because they are one
 // type. So the two halves of this file are no longer two facades that could
@@ -74,7 +74,7 @@ inline void rclcpp_node_string_values(rclcpp::Node& node) {
 // ctor on a subclass of it) over one.
 class HostedParamNode : public ::rclcpp::Node {
   public:
-    explicit HostedParamNode(::nros::NodeHandle h) : ::rclcpp::Node(h, "hosted_params") {
+    explicit HostedParamNode(::rclcpp::NodeHandle h) : ::rclcpp::Node(h, "hosted_params") {
         // Scalars, `const char*` keyed and `std::string` keyed.
         const double period = this->declare_parameter<double>("ctrl_period", 0.15);
         const int64_t depth = this->declare_parameter<int64_t>("queue_depth", 10);

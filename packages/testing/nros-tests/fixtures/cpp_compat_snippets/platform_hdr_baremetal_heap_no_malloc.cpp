@@ -10,9 +10,9 @@
 #include <nros/heap_sequence.hpp>
 namespace {
 void use_it() {
-    nros::HeapString s;
+    rclcpp::HeapString s;
     (void)s;
-    nros::HeapSequence<int> q;
+    rclcpp::HeapSequence<int> q;
     q.reserve(4);
     q.push_back(1);
     (void)q;

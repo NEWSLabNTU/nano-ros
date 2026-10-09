@@ -5,10 +5,10 @@
  * @file service.hpp
  * @ingroup grp_service
  * @brief `rclcpp::Service<S>` — the arena-registered (callback-style) service
- *        server, and `Service<S>::SharedPtr` = `nros::ServiceHandle<S>`.
+ *        server, and `Service<S>::SharedPtr` = `rclcpp::ServiceHandle<S>`.
  *
  * The POLL-style server — caller-owned storage, `take_request()` /
- * `send_response()` — is `nros::PollService<S>` in
+ * `send_response()` — is `rclcpp::PollService<S>` in
  * `nros/polling_service.hpp` since phase-456 W5. See there for why the two
  * are separate types.
  */
@@ -24,11 +24,11 @@
 #include "nros/entity_name.hpp" // phase-444 — the one entity-name copy
 #include "nros/result.hpp"
 #include "nros/service_handle.hpp" // phase-456 W5 — what `Service<S>::SharedPtr` IS
-#include "nros/size_bound.hpp"     // nros::rx_buffer_capacity<M> — the receive-buffer size
+#include "nros/size_bound.hpp"     // rclcpp::rx_buffer_capacity<M> — the receive-buffer size
 
 #include "nros_cpp_ffi.h"
 
-// issue 1437 — the two granted-QoS accessors return a `nros::QoS` BY VALUE from
+// issue 1437 — the two granted-QoS accessors return a `rclcpp::QoS` BY VALUE from
 // an inline body, so the complete type must be here, not only by the time
 // `nros/node.hpp` is pulled in below.
 //
@@ -62,7 +62,7 @@ nros_cpp_ret_t nros_cpp_service_server_register(const nros_cpp_node_t* node,
 /// an unqualified `friend class Node;` used to supply implicitly.
 ///
 /// phase-427 W7 — declared in `rclcpp::`, which is where the definition moved.
-/// An elaborated `class Node;` in `nros::` would now declare a SECOND, distinct
+/// An elaborated `class Node;` in `rclcpp::` would now declare a SECOND, distinct
 /// class and collide with the `rclcpp::Node` alias.
 namespace rclcpp {
 class Node;
@@ -72,7 +72,7 @@ class Node;
 // `rclcpp::Service<S>` -- DEFINED here (RFC-0089: rclcpp:: is the home)
 // ============================================================================
 //
-// phase-428: the definition moved from `nros::` to `rclcpp::` and the alias
+// phase-428: the definition moved from `rclcpp::` to `rclcpp::` and the alias
 // turned around. The nested `SharedPtr` / `ConstSharedPtr` / `UniquePtr`
 // aliases live on the class itself, so the rclcpp way of indexing types
 // (`rclcpp::Service<S>::SharedPtr`) resolves with no wrapper in between.
@@ -104,7 +104,7 @@ namespace rclcpp {
 /// Measured (phase-456 W3), across `examples/`, `tests/`, `book/` and
 /// `packages/`: a dispatch service has **nothing invoked on it**, at any site,
 /// out-ref or `::SharedPtr`. It is a keep-alive — which is why
-/// `Service<S>::SharedPtr` is a two-word `nros::ServiceHandle<S>` with no
+/// `Service<S>::SharedPtr` is a two-word `rclcpp::ServiceHandle<S>` with no
 /// `operator->` rather than a pointer to one of these.
 ///
 /// Usage:
@@ -126,16 +126,16 @@ template <typename S> class Service {
     /// `std::shared_ptr` does not.
     ///
     /// IT IS NOT A POINTER TO A `Service<S>`. A registered service is the
-    /// arena's; what this names is `nros::ServiceHandle<S>` — two words,
+    /// arena's; what this names is `rclcpp::ServiceHandle<S>` — two words,
     /// copyable, carrying only what a registration can perform, which the
     /// census says is nothing but "exist". See `service_handle.hpp`.
-    using SharedPtr = ::nros::ServiceHandle<S>;
+    using SharedPtr = ::rclcpp::ServiceHandle<S>;
     /// `rclcpp::Service<S>::ConstSharedPtr` — see `SharedPtr`. The same handle:
     /// there is no mutable/const distinction to draw over a registration that
     /// exposes no operation on the entity.
-    using ConstSharedPtr = ::nros::ServiceHandle<S>;
+    using ConstSharedPtr = ::rclcpp::ServiceHandle<S>;
     /// `rclcpp::Service<S>::UniquePtr` — see `SharedPtr`.
-    using UniquePtr = ::nros::ServiceHandle<S>;
+    using UniquePtr = ::rclcpp::ServiceHandle<S>;
 
     using RequestType = typename S::Request;
     using ResponseType = typename S::Response;
@@ -149,7 +149,7 @@ template <typename S> class Service {
     /// a `void(*)(const Request&, Response&)`, so no overload could ever set it,
     /// and the `else if` branch that read it in the trampoline was unreachable.
     /// A handler that wants context binds it at compile time instead —
-    /// `nros::bind_service<Svc, C, &C::method>` in `component.hpp`, where `this` is
+    /// `rclcpp::bind_service<Svc, C, &C::method>` in `component.hpp`, where `this` is
     /// the context and no runtime pointer pair is needed.
     using TypedServiceFn = void (*)(const RequestType& request, ResponseType& response);
 
@@ -196,12 +196,12 @@ template <typename S> class Service {
     /// for the owner, `(executor, handle_id)` for the arena. So the upstream
     /// no-argument spelling is reachable here with no weakening, and no ledger
     /// row is owed.
-    ::nros::QoS get_request_subscription_actual_qos() const { return actual_qos_half(true); }
+    ::rclcpp::QoS get_request_subscription_actual_qos() const { return actual_qos_half(true); }
 
     /// The QoS the backend GRANTED this service's RESPONSE endpoint — the
     /// publisher that sends replies. Issue 1437; see
     /// @ref get_request_subscription_actual_qos.
-    ::nros::QoS get_response_publisher_actual_qos() const { return actual_qos_half(false); }
+    ::rclcpp::QoS get_response_publisher_actual_qos() const { return actual_qos_half(false); }
 
     /// Destructor — there is nothing to release.
     ///
@@ -210,7 +210,7 @@ template <typename S> class Service {
     /// object's own bookkeeping, and the registration lives until its node is
     /// destroyed or a `ServiceHandle` releases it (`srv_.reset()`, issue 1667). Until phase-456 W5
     /// the same destructor also freed a POLL server, behind an `if (initialized_ &&
-    /// !callback_mode_)`; that half moved to `nros::PollService<S>`, where the
+    /// !callback_mode_)`; that half moved to `rclcpp::PollService<S>`, where the
     /// condition is unconditional.
     ~Service() { initialized_ = false; }
 
@@ -232,7 +232,7 @@ template <typename S> class Service {
     Service(Service&& other)
         : initialized_(other.initialized_), handle_id_(other.handle_id_), service_name_{},
           executor_(other.executor_) {
-        ::nros::detail::assign_entity_name(service_name_, other.service_name_);
+        ::rclcpp::detail::assign_entity_name(service_name_, other.service_name_);
         other.initialized_ = false;
     }
 
@@ -240,7 +240,7 @@ template <typename S> class Service {
         if (this != &other) {
             initialized_ = other.initialized_;
             handle_id_ = other.handle_id_;
-            ::nros::detail::assign_entity_name(service_name_, other.service_name_);
+            ::rclcpp::detail::assign_entity_name(service_name_, other.service_name_);
             // issue 1437 — moves with the index it pairs with.
             executor_ = other.executor_;
             other.initialized_ = false;
@@ -266,13 +266,13 @@ template <typename S> class Service {
     /// request, runs the user's typed handler, serializes the response.
     ///
     /// phase-456 W3 — `ctx` is the USER'S HANDLER, carried by value in the
-    /// arena's own context slot (`nros::detail::fn_to_context`). It used to be
+    /// arena's own context slot (`rclcpp::detail::fn_to_context`). It used to be
     /// the `Service` object (`this`), which is what made the arena hold the
     /// address of a caller-side object and what the move constructor had to
     /// warn about. Nothing of the caller's is referenced here now.
     static bool request_trampoline(const uint8_t* req, size_t req_len, uint8_t* resp,
                                    size_t resp_cap, size_t* resp_len, void* ctx) {
-        const TypedServiceFn user_fn = ::nros::detail::fn_from_context<TypedServiceFn>(ctx);
+        const TypedServiceFn user_fn = ::rclcpp::detail::fn_from_context<TypedServiceFn>(ctx);
         if (user_fn == nullptr) return false;
         RequestType request;
         if (RequestType::ffi_deserialize(req, req_len, &request) != 0) return false;
@@ -290,17 +290,17 @@ template <typename S> class Service {
     /// `storage` is always NULL here: a dispatch service owns no
     /// `RmwServiceServer`, so `(executor_, handle_id_)` is the only road. The
     /// `callback_mode_ ? nullptr : storage_` branch this replaced existed
-    /// because one class served two owners; `nros::PollService<S>` takes the
+    /// because one class served two owners; `rclcpp::PollService<S>` takes the
     /// other arm and passes its `storage_` unconditionally.
-    ::nros::QoS actual_qos_half(bool request) const {
+    ::rclcpp::QoS actual_qos_half(bool request) const {
         nros_cpp_qos_t req{};
         nros_cpp_qos_t resp{};
-        if (!initialized_) return ::nros::detail::qos_all_unknown();
+        if (!initialized_) return ::rclcpp::detail::qos_all_unknown();
         if (nros_cpp_service_server_get_actual_qos(nullptr, executor_, handle_id_, &req, &resp) !=
             0) {
-            return ::nros::detail::qos_all_unknown();
+            return ::rclcpp::detail::qos_all_unknown();
         }
-        return ::nros::detail::qos_from_ffi(request ? req : resp);
+        return ::rclcpp::detail::qos_from_ffi(request ? req : resp);
     }
 
     bool initialized_;
@@ -312,7 +312,7 @@ template <typename S> class Service {
 
     /// phase-444 — the service name, kept C++-side for `get_service_name()`.
     /// See `Client`'s field of the same name.
-    char service_name_[::nros::SERVICE_NAME_MAX];
+    char service_name_[::rclcpp::SERVICE_NAME_MAX];
 
     // issue 1437 — the executor whose arena holds this service, recorded with
     // the index that names it there. `handle_id_` alone points into an arena
@@ -322,32 +322,23 @@ template <typename S> class Service {
 
 } // namespace rclcpp
 
-// ============================================================================
-// nros:: -- the in-tree spelling, now the ALIAS (RFC-0089). Declared here,
-// before the out-of-line `Node::create_*` bodies below, which are written in
-// the `nros::` vocabulary.
-// ============================================================================
-namespace nros {
-template <typename S> using Service = ::rclcpp::Service<S>;
-} // namespace nros
-
 // Phase 84.G8: out-of-line definition of Node::create_service<S>().
 #include "nros/node.hpp"
 
-namespace nros {
+namespace rclcpp {
 
 // Phase 189.M3.3.e — callback-style (arena-registered) service. The arena owns
 // the server AND the request handler, and dispatches it during spin_once, so
 // the handle is real and `options.sched_context` is functional. `out` receives
 // the handle id and nothing the arena refers back to (phase-456 W3).
-} // namespace nros
+} // namespace rclcpp
 
 namespace rclcpp {
 template <typename S, typename F, typename>
 Result Node::create_service(Service<S>& out, const char* service_name, F callback,
-                            const ::nros::QoS& qos, const ::nros::ServiceOptions& options) {
-    if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
-    nros_cpp_qos_t ffi_qos = ::nros::detail::qos_to_ffi(qos);
+                            const ::rclcpp::QoS& qos, const ::rclcpp::ServiceOptions& options) {
+    if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
+    nros_cpp_qos_t ffi_qos = ::rclcpp::detail::qos_to_ffi(qos);
 
     // The user handler becomes the ARENA's context (phase-456 W3). The
     // conversion is still the compile error for a non-convertible `F`; what
@@ -356,19 +347,19 @@ Result Node::create_service(Service<S>& out, const char* service_name, F callbac
     const typename Service<S>::TypedServiceFn user_fn =
         typename Service<S>::TypedServiceFn(callback);
 
-    uint8_t sched = (options.sched_context == ::nros::SCHED_CONTEXT_UNSET)
+    uint8_t sched = (options.sched_context == ::rclcpp::SCHED_CONTEXT_UNSET)
                         ? 0u
                         : static_cast<uint8_t>(options.sched_context);
     size_t handle = static_cast<size_t>(-1);
     nros_cpp_ret_t ret = nros_cpp_service_server_register(
         &handle_, service_name, S::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos,
         reinterpret_cast<nros_cpp_service_request_callback_t>(&Service<S>::request_trampoline),
-        ::nros::detail::fn_to_context(user_fn), sched, &handle);
+        ::rclcpp::detail::fn_to_context(user_fn), sched, &handle);
     if (ret == 0) {
         out.handle_id_ = handle;
         // phase-444 — remember the name for `get_service_name()`; the runtime
         // takes `service_name` and drops it.
-        ::nros::detail::assign_entity_name(out.service_name_, service_name);
+        ::rclcpp::detail::assign_entity_name(out.service_name_, service_name);
 
         // issue 1437 — the arena that owns the entity, beside its index.
         out.executor_ = executor_handle_;
@@ -378,6 +369,6 @@ Result Node::create_service(Service<S>& out, const char* service_name, F callbac
 }
 } // namespace rclcpp
 
-namespace nros {} // namespace nros
+namespace rclcpp {} // namespace rclcpp
 
 #endif // NROS_CPP_SERVICE_HPP

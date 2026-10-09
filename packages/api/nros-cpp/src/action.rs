@@ -76,7 +76,7 @@ pub type CppAcceptedCallback = unsafe extern "C" fn(goal_id: *const [u8; 16], ct
 ///
 /// Holds the arena handle and the user-registered callbacks. Phase 87.6
 /// thin-wrapper refactor: the `action_name` / `type_name` / `type_hash`
-/// buffers moved to the C++ `nros::ActionServer<A>` class (passed to
+/// buffers moved to the C++ `rclcpp_action::Server<A>` class (passed to
 /// `nros_cpp_action_server_register` at registration time). No C++-side
 /// goal queue — the arena in `nros-node` owns all lifecycle state.
 ///
@@ -178,7 +178,7 @@ unsafe extern "C" fn cancel_callback_trampoline(
     };
     let uuid_ptr = goal_id as *const [u8; 16];
     // issue 0796 — `nros::CancelResponse` is now the PER-GOAL decision, with
-    // the same 0/1 discriminants as C++'s `nros::CancelResponse` enum class,
+    // the same 0/1 discriminants as C++'s `rclcpp_action::CancelResponse` enum class,
     // so this is a straight translation rather than a hop through the
     // `CancelGoal` RPC return code.
     match unsafe { cb(uuid_ptr, server.cb_ctx) } {
@@ -778,7 +778,7 @@ impl Default for CppActionClientCallbacks {
 /// Lightweight — the `ActionClientCore` lives in the executor's arena.
 /// This struct stores the arena entry index, executor pointer, and callbacks.
 /// Phase 87.6: the action_name buffer moved to the C++
-/// `nros::ActionClient<A>` class.
+/// `rclcpp_action::Client<A>` class.
 ///
 /// `#[repr(C)]` is load-bearing (see `CppActionServer`): pins the layout to
 /// match `#[repr(C)]` `nros::sizes::CppActionClientLayout` on 32-bit targets
@@ -1958,8 +1958,8 @@ pub unsafe extern "C" fn nros_cpp_action_client_cancel_goal(
 /// Drain the reply to a `nros_cpp_action_client_cancel_goal` (non-blocking).
 ///
 /// Writes the `action_msgs/srv/CancelGoal` RETURN CODE (0 = Ok, 1 = Rejected,
-/// 2 = UnknownGoal, 3 = GoalTerminated — `nros::CancelReturnCode`, not the
-/// per-goal `nros::CancelResponse`; issue 0796) to `out_return_code`.
+/// 2 = UnknownGoal, 3 = GoalTerminated — `rclcpp_action::CancelReturnCode`, not the
+/// per-goal `rclcpp_action::CancelResponse`; issue 0796) to `out_return_code`.
 ///
 /// Returns `NROS_CPP_RET_OK` when a reply was consumed,
 /// `NROS_CPP_RET_TRY_AGAIN` when none has arrived yet.
@@ -2686,7 +2686,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_try_recv_cancel_request_raw(
 /// request. `return_code` matches `nros_core::CancelReturnCode`
 /// (0 = Ok, 1 = Rejected, 2 = UnknownGoal, 3 = GoalTerminated) — the
 /// `action_msgs/srv/CancelGoal` RPC status, NOT the per-goal
-/// `nros::CancelResponse` accept/reject a cancel callback returns (issue
+/// `rclcpp_action::CancelResponse` accept/reject a cancel callback returns (issue
 /// 0796; the two used to share a name and their discriminants overlap with
 /// opposite meanings).
 /// `accepted` points to `accepted_count` 16-byte goal-id arrays.

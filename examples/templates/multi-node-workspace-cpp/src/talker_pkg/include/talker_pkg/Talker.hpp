@@ -14,7 +14,7 @@ namespace talker_pkg {
 /// executor dispatches `on_tick` during `spin_once`.
 class Talker {
     ::rclcpp::Publisher<std_msgs::msg::Int32> pub_;
-    ::nros::Timer timer_;
+    ::rclcpp::Timer timer_;
     int count_ = 0;
 
     void on_tick(); // real body; bound via &Talker::on_tick (no callback name)

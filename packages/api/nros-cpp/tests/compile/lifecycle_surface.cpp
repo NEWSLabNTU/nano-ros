@@ -1,4 +1,4 @@
-// phase-417 W4.f — `nros::detail::LifecycleEngine` carries the surface
+// phase-417 W4.f — `rclcpp_lifecycle::detail::LifecycleEngine` carries the surface
 // `rclcpp_lifecycle::LifecycleNode` does.
 //
 // Fifteen ledger rows said it did not, and they split into four claims this TU
@@ -38,27 +38,32 @@ namespace {
 
 // ---- 1. register_on_* ------------------------------------------------------
 
-using RegisterFn = void (nros::detail::LifecycleEngine::*)(nros::detail::LifecycleEngine::TransitionCallbackType,
-                                                 void*);
+using RegisterFn = void (rclcpp_lifecycle::detail::LifecycleEngine::*)(
+    rclcpp_lifecycle::detail::LifecycleEngine::TransitionCallbackType, void*);
 
-constexpr RegisterFn reg_configure_ = &nros::detail::LifecycleEngine::register_on_configure;
-constexpr RegisterFn reg_activate_ = &nros::detail::LifecycleEngine::register_on_activate;
-constexpr RegisterFn reg_deactivate_ = &nros::detail::LifecycleEngine::register_on_deactivate;
-constexpr RegisterFn reg_cleanup_ = &nros::detail::LifecycleEngine::register_on_cleanup;
-constexpr RegisterFn reg_shutdown_ = &nros::detail::LifecycleEngine::register_on_shutdown;
-constexpr RegisterFn reg_error_ = &nros::detail::LifecycleEngine::register_on_error;
+constexpr RegisterFn reg_configure_ =
+    &rclcpp_lifecycle::detail::LifecycleEngine::register_on_configure;
+constexpr RegisterFn reg_activate_ =
+    &rclcpp_lifecycle::detail::LifecycleEngine::register_on_activate;
+constexpr RegisterFn reg_deactivate_ =
+    &rclcpp_lifecycle::detail::LifecycleEngine::register_on_deactivate;
+constexpr RegisterFn reg_cleanup_ = &rclcpp_lifecycle::detail::LifecycleEngine::register_on_cleanup;
+constexpr RegisterFn reg_shutdown_ =
+    &rclcpp_lifecycle::detail::LifecycleEngine::register_on_shutdown;
+constexpr RegisterFn reg_error_ = &rclcpp_lifecycle::detail::LifecycleEngine::register_on_error;
 
 /// A registered callback is a plain function, not a closure object: this one
 /// would not compile if the seam took a `std::function`, which is the
 /// divergence the ledger row records.
-nros::CallbackReturn on_configure_fn(nros::LifecycleState previous, void* context) {
+rclcpp_lifecycle::CallbackReturn on_configure_fn(rclcpp_lifecycle::LifecycleState previous,
+                                                 void* context) {
     (void)previous;
     (void)context;
-    return nros::CallbackReturn::Success;
+    return rclcpp_lifecycle::CallbackReturn::Success;
 }
 
 void registers_without_subclassing() {
-    nros::detail::LifecycleEngine node;
+    rclcpp_lifecycle::detail::LifecycleEngine node;
     int context = 0;
     node.register_on_configure(&on_configure_fn, &context);
     node.register_on_activate(&on_configure_fn, &context);
@@ -72,10 +77,10 @@ void registers_without_subclassing() {
 
 // ---- 2. clock --------------------------------------------------------------
 
-using GetClockFn = nros::Clock* (nros::detail::LifecycleEngine::*)();
-using NowFn = nros::Time (nros::detail::LifecycleEngine::*)() const;
-constexpr GetClockFn get_clock_ = &nros::detail::LifecycleEngine::get_clock;
-constexpr NowFn now_ = &nros::detail::LifecycleEngine::now;
+using GetClockFn = rclcpp::Clock* (rclcpp_lifecycle::detail::LifecycleEngine::*)();
+using NowFn = rclcpp::Time (rclcpp_lifecycle::detail::LifecycleEngine::*)() const;
+constexpr GetClockFn get_clock_ = &rclcpp_lifecycle::detail::LifecycleEngine::get_clock;
+constexpr NowFn now_ = &rclcpp_lifecycle::detail::LifecycleEngine::now;
 
 // ---- 3. the transition graph ----------------------------------------------
 
@@ -83,16 +88,17 @@ constexpr NowFn now_ = &nros::detail::LifecycleEngine::now;
 /// come from `nros_core` through the C seam on every call. A field added here
 /// would be the fourth copy of `lifecycle_msgs` in this tree, and the three
 /// that already exist are the reason issue 1099 happened.
-static_assert(sizeof(nros::Transition) == sizeof(uint8_t), "nros::Transition must stay a bare id");
+static_assert(sizeof(rclcpp_lifecycle::Transition) == sizeof(uint8_t),
+              "rclcpp_lifecycle::Transition must stay a bare id");
 
 /// The id half is `constexpr`, so it needs no runtime at all.
-constexpr nros::Transition activate_{nros::LifecycleTransition::Activate};
+constexpr rclcpp_lifecycle::Transition activate_{rclcpp_lifecycle::LifecycleTransition::Activate};
 static_assert(activate_.id() == 3, "Activate is lifecycle_msgs TRANSITION_ACTIVATE");
-static_assert(nros::Transition(static_cast<uint8_t>(60)).id() == 60,
+static_assert(rclcpp_lifecycle::Transition(static_cast<uint8_t>(60)).id() == 60,
               "an id with no enumerator is still addressable");
 
 /// The four accessors rclcpp's `Transition` carries, plus the two ours adds.
-bool visit_transition(void* ctx, const nros::Transition& t) {
+bool visit_transition(void* ctx, const rclcpp_lifecycle::Transition& t) {
     (void)ctx;
     (void)t.id();
     (void)t.label();
@@ -104,11 +110,11 @@ bool visit_transition(void* ctx, const nros::Transition& t) {
 }
 
 void reads_its_own_transition_graph() {
-    nros::detail::LifecycleEngine node;
+    rclcpp_lifecycle::detail::LifecycleEngine node;
     (void)node.get_transition_graph(&visit_transition, nullptr);
     // A null visitor is refused rather than silently doing nothing.
     (void)node.get_transition_graph(nullptr, nullptr);
-    (void)nros::state_label(nros::LifecycleState::Active);
+    (void)rclcpp_lifecycle::state_label(rclcpp_lifecycle::LifecycleState::Active);
 }
 
 // ---- 4. managed entities ---------------------------------------------------
@@ -116,12 +122,12 @@ void reads_its_own_transition_graph() {
 /// A publisher whose sends follow the node's state. Declared, not created: the
 /// creation half belongs to `rclcpp::Node` (see `bind(Node&)`), and this TU is
 /// about the surface existing with the right shapes.
-struct Gated : nros::SimpleManagedEntity {};
+struct Gated : rclcpp_lifecycle::SimpleManagedEntity {};
 
 void managed_entities_follow_activation() {
-    nros::detail::LifecycleEngine node;
+    rclcpp_lifecycle::detail::LifecycleEngine node;
     Gated entity;
-    nros::Result r = node.add_managed_entity(&entity);
+    rclcpp::Result r = node.add_managed_entity(&entity);
     (void)r;
     // Adding the same entity twice is REFUSED rather than corrupting the
     // intrusive list — the one failure mode the list shape introduces.
@@ -135,7 +141,7 @@ void managed_entities_follow_activation() {
 /// `ManagedEntityInterface`'s three verbs are non-pure with defaults, so a
 /// freestanding image needs no `__cxa_pure_virtual`. A type that overrides
 /// NONE of them must still be instantiable.
-struct BareEntity : nros::ManagedEntityInterface {};
+struct BareEntity : rclcpp_lifecycle::ManagedEntityInterface {};
 BareEntity bare_;
 
 // A codegen'd message, in shape only (cf. `serialization_format.cpp`), so the
@@ -157,19 +163,19 @@ struct Int32 {
 
 } // namespace
 
-namespace nros {
+namespace rclcpp {
 template <> struct format_of<::Int32> {
     static constexpr SerializationFormat value = SerializationFormat::Cdr;
 };
-} // namespace nros
+} // namespace rclcpp
 
 namespace {
 
 /// A gated publisher IS a managed entity, and its inner publisher is reachable
 /// for `Node::create_publisher` to fill.
 void a_lifecycle_publisher_is_gated_on_activation() {
-    nros::detail::LifecycleEngine node;
-    nros::LifecyclePublisher<::Int32> pub;
+    rclcpp_lifecycle::detail::LifecycleEngine node;
+    rclcpp_lifecycle::LifecyclePublisher<::Int32> pub;
     (void)node.add_managed_entity(&pub);
     ::rclcpp::Publisher<::Int32>& inner = pub.publisher();
     (void)inner;
@@ -185,7 +191,7 @@ void a_lifecycle_publisher_is_gated_on_activation() {
 /// forward itself, which is the half that would not compile if `Node`'s
 /// signature moved.
 void binds_a_node(::rclcpp::Node& node) {
-    nros::detail::LifecycleEngine lc;
+    rclcpp_lifecycle::detail::LifecycleEngine lc;
     lc.bind(node);
     (void)lc.declare_parameter<int64_t>("depth", 10);
     (void)lc.get_parameter<int64_t>("depth");
@@ -199,20 +205,27 @@ void binds_a_node(::rclcpp::Node& node) {
 // a forwarder that stopped forwarding would still compile at a call site that
 // happened to match another overload.
 
-using HasParamFn = bool (nros::detail::LifecycleEngine::*)(const char*) const;
-using UndeclareFn = nros::Result (nros::detail::LifecycleEngine::*)(const char*);
-using ParamTypeFn = rclcpp::ParameterType (nros::detail::LifecycleEngine::*)(const char*) const;
-using SetAtomicFn = nros::Result (nros::detail::LifecycleEngine::*)(const rclcpp::ParameterWrite*, ::size_t);
-using RemoveCbFn = nros::Result (nros::detail::LifecycleEngine::*)(rclcpp::ParameterCallbackHandle);
+using HasParamFn = bool (rclcpp_lifecycle::detail::LifecycleEngine::*)(const char*) const;
+using UndeclareFn = rclcpp::Result (rclcpp_lifecycle::detail::LifecycleEngine::*)(const char*);
+using ParamTypeFn =
+    rclcpp::ParameterType (rclcpp_lifecycle::detail::LifecycleEngine::*)(const char*) const;
+using SetAtomicFn = rclcpp::Result (rclcpp_lifecycle::detail::LifecycleEngine::*)(
+    const rclcpp::ParameterWrite*, ::size_t);
+using RemoveCbFn =
+    rclcpp::Result (rclcpp_lifecycle::detail::LifecycleEngine::*)(rclcpp::ParameterCallbackHandle);
 
-constexpr HasParamFn has_parameter_ = &nros::detail::LifecycleEngine::has_parameter;
-constexpr UndeclareFn undeclare_parameter_ = &nros::detail::LifecycleEngine::undeclare_parameter;
-constexpr ParamTypeFn get_parameter_type_ = &nros::detail::LifecycleEngine::get_parameter_type;
-constexpr SetAtomicFn set_parameters_atomically_ = &nros::detail::LifecycleEngine::set_parameters_atomically;
-constexpr RemoveCbFn remove_on_set_ = &nros::detail::LifecycleEngine::remove_on_set_parameters_callback;
+constexpr HasParamFn has_parameter_ = &rclcpp_lifecycle::detail::LifecycleEngine::has_parameter;
+constexpr UndeclareFn undeclare_parameter_ =
+    &rclcpp_lifecycle::detail::LifecycleEngine::undeclare_parameter;
+constexpr ParamTypeFn get_parameter_type_ =
+    &rclcpp_lifecycle::detail::LifecycleEngine::get_parameter_type;
+constexpr SetAtomicFn set_parameters_atomically_ =
+    &rclcpp_lifecycle::detail::LifecycleEngine::set_parameters_atomically;
+constexpr RemoveCbFn remove_on_set_ =
+    &rclcpp_lifecycle::detail::LifecycleEngine::remove_on_set_parameters_callback;
 
 void declares_and_reads_parameters() {
-    nros::detail::LifecycleEngine node;
+    rclcpp_lifecycle::detail::LifecycleEngine node;
     // UNBOUND: every one of these answers without a node, and none of them
     // writes anywhere. That is the property, not a convenience — a lifecycle
     // node that silently wrote into some other node's parameters is the defect

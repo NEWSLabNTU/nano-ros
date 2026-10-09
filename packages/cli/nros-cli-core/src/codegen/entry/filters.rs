@@ -37,7 +37,7 @@ fn pkg_ident(s: &str) -> String {
     nros_entry_lower::sanitize_pkg(s)
 }
 
-/// The C++ board class a family's entry calls (`::nros::board::LinuxBoard`).
+/// The C++ board class a family's entry calls (`::rclcpp::board::LinuxBoard`).
 ///
 /// phase-432 W2.2 / RFC-0091 §8b defect 1 — a RENDERING of the board family,
 /// not a second table: the board keys collapse onto five families in
@@ -53,11 +53,11 @@ fn cpp_board_class(family: &str) -> Result<String, Error> {
         )
     })?;
     Ok(match f {
-        BoardFamily::Native => "::nros::board::LinuxBoard",
-        BoardFamily::Zephyr => "::nros::board::ZephyrBoard",
-        BoardFamily::Nuttx => "::nros::board::NuttxBoard",
-        BoardFamily::Freertos => "::nros::board::FreertosBoard",
-        BoardFamily::Threadx => "::nros::board::ThreadxBoard",
+        BoardFamily::Native => "::rclcpp::board::LinuxBoard",
+        BoardFamily::Zephyr => "::rclcpp::board::ZephyrBoard",
+        BoardFamily::Nuttx => "::rclcpp::board::NuttxBoard",
+        BoardFamily::Freertos => "::rclcpp::board::FreertosBoard",
+        BoardFamily::Threadx => "::rclcpp::board::ThreadxBoard",
     }
     .to_string())
 }
@@ -153,7 +153,7 @@ mod tests {
     fn cpp_board_class_spells_every_family_and_refuses_the_rest() {
         for f in nros_entry_lower::BoardFamily::ALL {
             let class = cpp_board_class(f.as_str()).expect("every family has a class");
-            assert!(class.starts_with("::nros::board::"), "{class}");
+            assert!(class.starts_with("::rclcpp::board::"), "{class}");
         }
         assert!(cpp_board_class("zigos").is_err());
     }

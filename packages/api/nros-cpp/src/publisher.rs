@@ -2,7 +2,7 @@
 //!
 //! Phase 87.6 (thin-wrapper refactor): the caller's opaque storage holds the
 //! `RmwPublisher` handle -- no `CppPublisher` wrapper bundling topic-name
-//! metadata. The `nros::Publisher<M>` C++ class owns the topic name buffer
+//! metadata. The `rclcpp::Publisher<M>` C++ class owns the topic name buffer
 //! alongside the storage.
 //!
 //! phase-462 W1 (RFC-0052): the storage is [`CppPublisher`] again, but it is

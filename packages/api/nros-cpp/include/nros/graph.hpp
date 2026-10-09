@@ -1,7 +1,7 @@
 // nros-cpp: graph value types (phase-417 stage 2b, RFC-0089)
 // Freestanding C++14 — no exceptions, no RTTI, no STL, no allocation.
 //
-// The graph QUERIES live on `nros::Executor` (`executor.hpp:205-301`) because
+// The graph QUERIES live on `rclcpp::Executor` (`executor.hpp:205-301`) because
 // one session per image makes the executor the graph's receiver (RFC-0002);
 // `rclcpp::Node` and the lifecycle engine forward to it so a ported rclcpp file
 // reaches them where rclcpp puts them, on the node. This header holds the one
@@ -17,7 +17,7 @@
 /**
  * @file graph.hpp
  * @ingroup grp_support
- * @brief `nros::TopicEndpointInfo` — one discovered endpoint on a topic.
+ * @brief `rclcpp::TopicEndpointInfo` — one discovered endpoint on a topic.
  */
 
 #ifndef NROS_CPP_GRAPH_HPP
@@ -28,7 +28,7 @@
 
 #include "nros_cpp_ffi.h"
 
-namespace nros {
+namespace rclcpp {
 
 /// Bytes in an endpoint GID — upstream's `RMW_GID_STORAGE_SIZE`.
 constexpr size_t kEndpointGidSize = 24;
@@ -53,7 +53,7 @@ enum class EndpointType : uint8_t {
 /// **Copyable, but the three strings BORROW the backend's own storage for the
 /// duration of the visit.** The GID is held by value and survives a copy; a
 /// caller that needs a name afterwards copies it into its own
-/// `nros::FixedString<N>`. That borrow is what lets the graph stream without an
+/// `rclcpp::FixedString<N>`. That borrow is what lets the graph stream without an
 /// allocator, and it mirrors `nros_rmw::GraphEndpointInfo` on the Rust side.
 ///
 /// **No QoS profile, deliberately.** rclcpp's `qos_profile()` reports the
@@ -102,7 +102,7 @@ class TopicEndpointInfo {
     ///
     /// rclcpp returns a `std::array<uint8_t, RMW_GID_STORAGE_SIZE> &`. The
     /// pointer-plus-constant pair is the freestanding spelling of the same
-    /// thing, and deliberately NOT an `nros::Span`: `span.hpp` is reached by
+    /// thing, and deliberately NOT an `rclcpp::Span`: `span.hpp` is reached by
     /// nothing else in these headers, so taking it here would newly expose
     /// `Span` / `StringView` / `LeSpan` on the public C++ surface as a side
     /// effect of a graph forwarder. That is a decision for whoever classifies
@@ -160,6 +160,6 @@ struct EndpointInfoTrampoline {
 
 } // namespace detail
 
-} // namespace nros
+} // namespace rclcpp
 
 #endif // NROS_CPP_GRAPH_HPP

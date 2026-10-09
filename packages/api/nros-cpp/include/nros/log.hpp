@@ -52,7 +52,7 @@
 // family passes ("ERROR", …); `sink_severity` maps it without string
 // compares beyond the first byte.
 #include <nros/log.h>
-namespace nros {
+namespace rclcpp {
 namespace detail {
 constexpr nros_log_severity_t sink_severity(const char* level) {
     return level[0] == 'E'   ? NROS_LOG_SEVERITY_ERROR
@@ -62,9 +62,9 @@ constexpr nros_log_severity_t sink_severity(const char* level) {
                              : NROS_LOG_SEVERITY_ERROR;
 }
 } // namespace detail
-} // namespace nros
+} // namespace rclcpp
 #define NROS_LOG_SINK(level, file, line, ...)                                                      \
-    ::nros_log_emit_fmt_at(::nros_log_default_logger(), ::nros::detail::sink_severity(level),      \
+    ::nros_log_emit_fmt_at(::nros_log_default_logger(), ::rclcpp::detail::sink_severity(level),    \
                            (file), static_cast<uint32_t>(line), __VA_ARGS__)
 #endif
 #endif
@@ -94,7 +94,7 @@ constexpr nros_log_severity_t sink_severity(const char* level) {
  *
  * ```cpp
  * rclcpp::Node node;
- * NROS_TRY(nros::create_node(node, "my_node"));
+ * NROS_TRY(rclcpp::create_node(node, "my_node"));
  * auto logger = node.get_logger();
  * NROS_LOG_INFO(logger, "started; domain=%u", 42);
  * ```
@@ -121,7 +121,7 @@ constexpr nros_log_severity_t sink_severity(const char* level) {
 // shim a ported file had to be force-included with. RFC-0089 §"Naming: replace,
 // with alias as the migration step" makes the ROS 2 spelling a FIRST-CLASS name
 // declared by the API headers themselves, at which point the shim has nothing
-// left to bridge and dissolves by construction. `nros::` is untouched: both
+// left to bridge and dissolves by construction. `rclcpp::` is untouched: both
 // spellings work, and deprecating one is step B.
 //
 // This header carries the REFUSAL VOCABULARY as well as the logging surface,
@@ -214,7 +214,7 @@ template <typename T> struct refuse {
     "nros_cpp_declare_remap / nros_cpp_declare_param calls, not into the process environment "     \
     "(RFC-0046, RFC-0060); it has no runtime ComponentManager, no intra-process transport and "    \
     "no topic statistics collector, and its /rosout bridge is explicit, not automatic "            \
-    "(nros::rosout::Publisher in <nros/rosout.hpp>), so there is nothing for these knobs to "      \
+    "(rclcpp::rosout::Publisher in <nros/rosout.hpp>), so there is nothing for these knobs to "    \
     "switch. "                                                                                     \
     "Use: node->declare_parameter<T>(name, default) for parameter overrides; the launch file "     \
     "for remaps; and drop the option chain. `rclcpp::NodeOptions{}` itself still constructs, so "  \
@@ -222,7 +222,7 @@ template <typename T> struct refuse {
     "compiling."
 
 #define NROS_RCLCPP_REFUSE_INIT_ARGV                                                               \
-    "rclcpp::init(argc, argv) / nros::init_with_launch*(argc, argv) was given a --ros-args "       \
+    "rclcpp::init(argc, argv) / rclcpp::init_with_launch*(argc, argv) was given a --ros-args "     \
     "argument nano-ros cannot honour (RFC-0089). Proceeding would DISCARD it -- the 'compiles "    \
     "and differs' the rule forbids. HONOURED inside --ros-args ... --: -r / --remap "              \
     "[node:]from:=to, applied as the FALLBACK beneath any remap the launch file projected for "    \
@@ -248,8 +248,8 @@ template <typename T> struct refuse {
     "inert for create_wall_timer, whose result a ported node stores and never dereferences. "      \
     "RFC-0089's rule is that a difference the compiler cannot point at must be made loud by "      \
     "other means, so this aborts. To HANDLE the failure rather than die on it, drop to the "       \
-    "underlying nros API, where every create verb RETURNS nros::Result into caller-owned "         \
-    "storage: nros::create_node(node, name), node.create_publisher(pub, topic, qos), "             \
+    "underlying nros API, where every create verb RETURNS rclcpp::Result into caller-owned "       \
+    "storage: rclcpp::create_node(node, name), node.create_publisher(pub, topic, qos), "           \
     "node.create_subscription(sub, topic, qos, cb), node.create_service<S>(srv, name, cb), "       \
     "node.create_client<S>(cli, name), node.create_timer(t, period_ms, cb, ctx)."
 
@@ -257,12 +257,12 @@ template <typename T> struct refuse {
     "rclcpp::SystemDefaultsQoS is REFUSED by nano-ros (RFC-0089 W3.f, issue 0829). Upstream's "    \
     "rmw_qos_profile_system_default names NO concrete policy: every field is a sentinel meaning "  \
     "'let the RMW decide', and the two reference RMWs resolve the depth sentinel differently "     \
-    "(rmw_cyclonedds_cpp -> KEEP_LAST 1, rmw_zenoh_cpp -> 42). nros::QoS has no sentinel, "        \
+    "(rmw_cyclonedds_cpp -> KEEP_LAST 1, rmw_zenoh_cpp -> 42). rclcpp::QoS has no sentinel, "      \
     "deliberately: the backend is linked at build time, so there is no middleware to defer to. "   \
     "Any value this could return would be a concrete profile wearing the name of an absent one, "  \
     "and it used to return QoS(10) -- which is rmw_qos_profile_DEFAULT, a different upstream "     \
     "profile. Name the policy you want: rclcpp::QoS(10) for the ROS default, "                     \
-    "rclcpp::SensorDataQoS(), rclcpp::ServicesQoS(), or nros::QoS().best_effort().keep_last(1)."
+    "rclcpp::SensorDataQoS(), rclcpp::ServicesQoS(), or rclcpp::QoS().best_effort().keep_last(1)."
 
 #define NROS_RCLCPP_REFUSE_THROTTLE                                                                \
     "RCLCPP_*_THROTTLE is REFUSED by nano-ros (RFC-0089 W3.a, issues 1019 and 1302). Upstream "    \
@@ -442,13 +442,13 @@ class Logger {
     /// Also refused on a child `get_child` could not create (RFC-0102 D3):
     /// that child emits through its parent's handle, and writing a threshold
     /// through it would move the PARENT's level.
-    ::nros::Result set_level(Level level) {
+    ::rclcpp::Result set_level(Level level) {
         if (handle_ == nullptr || !owns_level_) {
-            return ::nros::Result(::nros::ErrorCode::InvalidArgument);
+            return ::rclcpp::Result(::rclcpp::ErrorCode::InvalidArgument);
         }
         return nros_logger_set_level(handle_, static_cast<nros_log_severity_t>(level))
-                   ? ::nros::Result::success()
-                   : ::nros::Result(::nros::ErrorCode::InvalidArgument);
+                   ? ::rclcpp::Result::success()
+                   : ::rclcpp::Result(::rclcpp::ErrorCode::InvalidArgument);
     }
 
     /// This logger's EFFECTIVE runtime threshold -- its own level if it has
@@ -544,7 +544,7 @@ class Logger {
 #endif
 
   private:
-    ::nros::FixedString<NROS_CPP_LOGGER_NAME_CAPACITY + 1> name_;
+    ::rclcpp::FixedString<NROS_CPP_LOGGER_NAME_CAPACITY + 1> name_;
     const void* handle_;
     /// False only for a child `get_child` could not create: `handle_` is then
     /// the PARENT's, good for emitting and reading, not for `set_level`.
@@ -747,7 +747,7 @@ void throttle_is_refused(Logger&&, Clock&&, Period&&, Rest&&...) {
 
 // The stream family, carrying its message — on EVERY target since phase-476
 // W4. `NROS_RCLCPP_STREAM_` builds the text once in a fixed-size
-// `nros::detail::LogStream` and forwards it as a single `%s` argument, so a `%`
+// `rclcpp::detail::LogStream` and forwards it as a single `%s` argument, so a `%`
 // inside the user's text can never be read as a conversion.
 //
 // THE DECISION (phase-476 W4, 2026-10-06): a minimal freestanding formatter,
@@ -771,7 +771,7 @@ void throttle_is_refused(Logger&&, Clock&&, Period&&, Rest&&...) {
 // user struct, `std::string`) is formatted through `std::ostringstream` where
 // `<sstream>` exists, which is the one hosted-only piece and is INTEROP: it
 // only converts into the same buffer.
-namespace nros {
+namespace rclcpp {
 namespace detail {
 
 class LogStream {
@@ -806,7 +806,7 @@ class LogStream {
         append("nullptr");
         return *this;
     }
-    template <size_t N> LogStream& operator<<(const ::nros::FixedString<N>& s) {
+    template <size_t N> LogStream& operator<<(const ::rclcpp::FixedString<N>& s) {
         append(s.c_str());
         return *this;
     }
@@ -869,12 +869,12 @@ template <typename T> inline LogStream& operator<<(LogStream& out, const T& valu
 #endif // NROS_CPP_HAS_STD_SSTREAM
 
 } // namespace detail
-} // namespace nros
+} // namespace rclcpp
 
 #if !defined(RCLCPP_INFO_STREAM)
 #define NROS_RCLCPP_STREAM_(macro, logger, ...)                                                    \
     do {                                                                                           \
-        ::nros::detail::LogStream nros_rclcpp_stream_;                                             \
+        ::rclcpp::detail::LogStream nros_rclcpp_stream_;                                           \
         nros_rclcpp_stream_ << __VA_ARGS__;                                                        \
         macro(logger, "%s", nros_rclcpp_stream_.c_str());                                          \
     } while (0)

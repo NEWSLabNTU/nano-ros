@@ -4,7 +4,7 @@
 /**
  * @file service_handle.hpp
  * @ingroup grp_service
- * @brief `nros::ServiceHandle<S>` — what `Service<S>::SharedPtr` is.
+ * @brief `rclcpp::ServiceHandle<S>` — what `Service<S>::SharedPtr` is.
  */
 
 #ifndef NROS_CPP_SERVICE_HANDLE_HPP
@@ -22,7 +22,7 @@ namespace rclcpp {
 template <typename S> class Service;
 }
 
-namespace nros {
+namespace rclcpp {
 
 /// A registered dispatch service server — phase-456 W5.
 ///
@@ -44,8 +44,8 @@ namespace nros {
 /// The taking API that used to ride along on the same class — `take_request`,
 /// `send_response` — belongs to the POLL server,
 /// which owns its own `RmwServiceServer` in caller storage. It is
-/// `nros::PollService<S>` now (`nros/polling_service.hpp`), for the reason W2b
-/// split `nros::PollSubscription<M>` out: one class serving two ownership
+/// `rclcpp::PollService<S>` now (`nros/polling_service.hpp`), for the reason W2b
+/// split `rclcpp::PollSubscription<M>` out: one class serving two ownership
 /// models behind a `callback_mode_` flag offers every caller the other one's
 /// method set, and on the dispatch path those methods read storage the arena
 /// never filled.
@@ -128,6 +128,6 @@ template <typename S> constexpr bool operator!=(decltype(nullptr), const Service
     return static_cast<bool>(a);
 }
 
-} // namespace nros
+} // namespace rclcpp
 
 #endif // NROS_CPP_SERVICE_HANDLE_HPP

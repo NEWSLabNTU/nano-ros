@@ -4,7 +4,7 @@
 /**
  * @file clock.hpp
  * @ingroup grp_clock
- * @brief `nros::Clock` — reads the current time, mirroring `rclcpp::Clock`.
+ * @brief `rclcpp::Clock` — reads the current time, mirroring `rclcpp::Clock`.
  *
  * Issue 0789. A thin C++ face over the `nros_clock_*` C surface (RFC-0073
  * defines the platform clock contract underneath it); this header invents no
@@ -27,7 +27,7 @@
 // `rclcpp::Clock` — DEFINED here (RFC-0089: rclcpp:: is the home)
 // ============================================================================
 //
-// phase-428: the definition moved from `nros::` to `rclcpp::` and the alias
+// phase-428: the definition moved from `rclcpp::` to `rclcpp::` and the alias
 // turned around. `rclcpp::Node::get_clock()` (`nros/nros.hpp`) hands back a
 // pointer to the node's own, because there is no allocator here to hand back a
 // `SharedPtr` from (RFC-0022); the `node->get_clock()->now()` spelling is
@@ -41,10 +41,10 @@ namespace rclcpp {
 ///
 /// Usage:
 /// ```cpp
-/// nros::Clock steady(NROS_CLOCK_STEADY_TIME);
-/// nros::Time t0 = steady.now();
+/// rclcpp::Clock steady(NROS_CLOCK_STEADY_TIME);
+/// rclcpp::Time t0 = steady.now();
 /// // ...
-/// nros::Duration elapsed = steady.now() - t0;
+/// rclcpp::Duration elapsed = steady.now() - t0;
 /// ```
 ///
 /// Copyable and trivially destructible on purpose. `nros_clock_t` owns no
@@ -126,12 +126,5 @@ class Clock {
 };
 
 } // namespace rclcpp
-
-// ============================================================================
-// nros:: — the in-tree spelling, now the ALIAS (RFC-0089)
-// ============================================================================
-namespace nros {
-using Clock = ::rclcpp::Clock;
-} // namespace nros
 
 #endif // NROS_CPP_CLOCK_HPP

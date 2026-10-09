@@ -17,7 +17,7 @@ namespace aux_pkg {
 /// #144 chained-spawn fix serializes (RFC-0015 Model 1).
 class Aux {
     ::rclcpp::Publisher<std_msgs::msg::Int32> pub_;
-    ::nros::Timer timer_;
+    ::rclcpp::Timer timer_;
     int count_ = 0;
 
     void on_tick();

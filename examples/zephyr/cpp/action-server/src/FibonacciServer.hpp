@@ -16,9 +16,9 @@
 namespace zephyr_cpp_action_server {
 
 class FibonacciServer {
-    ::nros::ActionServerStorage storage_; // executor-arena-held action server
-    ::nros::Timer timer_;                 // drives accepted-goal execution
-    void* executor_ = nullptr;            // stashed for complete_goal
+    ::rclcpp::ActionServerStorage storage_; // executor-arena-held action server
+    ::rclcpp::Timer timer_;                 // drives accepted-goal execution
+    void* executor_ = nullptr;              // stashed for complete_goal
 
     // One in-flight goal (this server runs goals one at a time).
     bool pending_ = false;
@@ -26,9 +26,10 @@ class FibonacciServer {
     int32_t order_ = 0;
 
     // Goal callback (by identity): stash the goal + accept-and-execute.
-    ::nros::GoalResponse on_goal(const uint8_t goal_id[16], const uint8_t* data, size_t len);
+    ::rclcpp_action::GoalResponse on_goal(const uint8_t goal_id[16], const uint8_t* data,
+                                          size_t len);
     // Cancel callback (by identity): this server does not support cancel.
-    ::nros::CancelResponse on_cancel(const uint8_t goal_id[16]);
+    ::rclcpp_action::CancelResponse on_cancel(const uint8_t goal_id[16]);
     // Timer: execute a pending goal (compute + complete).
     void on_tick();
 

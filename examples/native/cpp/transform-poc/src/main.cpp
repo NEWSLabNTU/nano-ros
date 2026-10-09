@@ -31,7 +31,7 @@ static int32_t read_i32_le(const uint8_t* p) {
 // ---- Source: timer publishes a counter on /in -----------------------------
 class Source {
     rclcpp::Publisher<Int32> pub_;
-    nros::Timer timer_;
+    rclcpp::Timer timer_;
     int count_ = 0;
 
     void on_tick() {
@@ -69,8 +69,8 @@ class Relay {
         std::setvbuf(stdout, nullptr, _IONBF, 0);
         rclcpp::Result r = node.create_publisher(out_, "/out");
         if (!r.ok()) return r;
-        return nros::bind_subscription_raw<Relay, &Relay::on_in>(node, "/in", Int32::TYPE_NAME,
-                                                                 this);
+        return rclcpp::bind_subscription_raw<Relay, &Relay::on_in>(node, "/in", Int32::TYPE_NAME,
+                                                                   this);
     }
 };
 
@@ -84,8 +84,8 @@ class Sink {
   public:
     rclcpp::Result configure(rclcpp::Node& node) {
         std::setvbuf(stdout, nullptr, _IONBF, 0);
-        rclcpp::Result r =
-            nros::bind_subscription_raw<Sink, &Sink::on_out>(node, "/out", Int32::TYPE_NAME, this);
+        rclcpp::Result r = rclcpp::bind_subscription_raw<Sink, &Sink::on_out>(
+            node, "/out", Int32::TYPE_NAME, this);
         if (r.ok()) std::printf("Waiting for messages\n");
         return r;
     }
@@ -100,8 +100,8 @@ int main(int argc, char** argv) {
     Relay relay;
     Sink sink;
 
-    return ::nros::board::LinuxBoard::run_components([&]() -> int32_t {
-        rclcpp::Result r = nros::create_node(node, "transform_poc");
+    return ::rclcpp::board::LinuxBoard::run_components([&]() -> int32_t {
+        rclcpp::Result r = rclcpp::create_node(node, "transform_poc");
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         if (std::strcmp(role, "source") == 0) {
             r = source.configure(node);

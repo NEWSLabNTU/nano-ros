@@ -27,7 +27,7 @@
 // `NROS_RCLCPP_REFUSE_NODE_OPTIONS`, used by `rclcpp::NodeOptions` below.
 #include "nros/log.hpp"
 
-namespace nros {
+namespace rclcpp {
 
 /// Sentinel meaning "no scheduling context selected" — the entity
 /// inherits the executor / Node default `Fifo` context. Matches the
@@ -42,10 +42,10 @@ static constexpr int SCHED_CONTEXT_UNSET = -1;
 ///
 /// Sits alongside the positional `QoS` argument:
 /// ```cpp
-/// nros::SubscriptionOptions opts;
+/// rclcpp::SubscriptionOptions opts;
 /// opts.sched_context = my_sc_id;
 /// NROS_TRY(node.create_subscription<Msg>(sub, "/topic",
-///                                         nros::QoS::default_profile(),
+///                                         rclcpp::QoS::default_profile(),
 ///                                         opts));
 /// ```
 ///
@@ -153,7 +153,7 @@ struct ClientOptions {
     int sched_context = SCHED_CONTEXT_UNSET;
 };
 
-} // namespace nros
+} // namespace rclcpp
 
 // ============================================================================
 // rclcpp::NodeOptions (RFC-0089 stage 6, step A)
@@ -176,7 +176,7 @@ struct ClientOptions {
 // It is not fixable by implementing them, either: nano-ros has no runtime
 // ComponentManager, no intra-process transport and no topic-statistics
 // collector; `/rosout` EXISTS in all three languages (issue 1589 — C++'s is
-// `nros::rosout::Publisher`, `<nros/rosout.hpp>`) but is never automatic: the
+// `rclcpp::rosout::Publisher`, `<nros/rosout.hpp>`) but is never automatic: the
 // publisher is a declared entity the program creates, so `enable_rosout(true)`
 // still has nothing to switch.
 // Their parameters and remaps are resolved from the
@@ -216,7 +216,7 @@ struct ClientOptions {
 // The getter returns `const char* const*` — argv's own shape, null here — for
 // the same reason its predecessor returned a reference to a static empty
 // vector: so the refusal is ONE diagnostic rather than two. Deliberately NOT
-// `nros::Span<StringView>`, which RFC-0096 D6 suggested: `span.hpp` is reached
+// `rclcpp::Span<StringView>`, which RFC-0096 D6 suggested: `span.hpp` is reached
 // by nothing else in these headers, and `graph.hpp:105` already ruled that
 // pulling it in would newly expose `Span` / `StringView` / `LeSpan` on the
 // public C++ surface as a side effect of an unrelated change. Measured: doing

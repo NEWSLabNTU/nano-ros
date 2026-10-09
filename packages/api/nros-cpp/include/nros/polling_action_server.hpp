@@ -4,7 +4,7 @@
 /**
  * @file polling_action_server.hpp
  * @ingroup grp_action
- * @brief `nros::PollingActionServer<A>` — caller-polls action server.
+ * @brief `rclcpp::PollingActionServer<A>` — caller-polls action server.
  *
  * Phase 122.3.d.b — typed C++ wrapper over the L1 polling FFI added
  * in 122.3.d.a. Mirrors `ActionServer<A>` but drops the executor
@@ -27,7 +27,7 @@
 #include "nros/node.hpp"
 #include "nros/nros_cpp_config_generated.h"
 #include "nros/result.hpp"
-#include "nros/size_bound.hpp" // nros::rx_buffer_capacity<M> — the receive-buffer size
+#include "nros/size_bound.hpp" // rclcpp::rx_buffer_capacity<M> — the receive-buffer size
 
 #include "nros_cpp_ffi.h"
 
@@ -35,12 +35,12 @@
 // the home). The friend declaration below is qualified, and a qualified friend
 // names an existing entity rather than introducing one, so the name has to be
 // declared first — and in `rclcpp::`, because an elaborated `class Node;` in
-// `nros::` would declare a second, distinct class.
+// `rclcpp::` would declare a second, distinct class.
 namespace rclcpp {
 class Node;
 }
 
-namespace nros {
+namespace rclcpp {
 
 /// Typed L1 polling-mode action server.
 ///
@@ -48,7 +48,7 @@ namespace nros {
 /// Usage:
 /// ```cpp
 /// using Fib = example_interfaces::action::Fibonacci;
-/// nros::PollingActionServer<Fib> srv;
+/// rclcpp::PollingActionServer<Fib> srv;
 /// NROS_TRY(node.create_polling_action_server(srv, "/fibonacci"));
 /// while (running) {
 ///     uint8_t goal_id[16]; int64_t seq;
@@ -56,7 +56,7 @@ namespace nros {
 ///     if (srv.try_recv_goal_request(goal_id, goal, seq).ok()) {
 ///         srv.accept_goal(goal_id, seq);
 ///         // ... execute, publish feedback, eventually complete:
-///         srv.complete_goal(goal_id, nros::GoalStatus::Succeeded, result);
+///         srv.complete_goal(goal_id, rclcpp_action::GoalStatus::Succeeded, result);
 ///     }
 ///     srv.try_handle_get_result();
 /// }
@@ -64,10 +64,10 @@ namespace nros {
 template <typename A> class PollingActionServer {
   public:
     /// phase-417 W4.b — one spelling for all four action classes; see
-    /// `nros::ACTION_NAME_MAX` in `action_server.hpp`. Kept as a member
+    /// `rclcpp_action::ACTION_NAME_MAX` in `action_server.hpp`. Kept as a member
     /// name so existing `PollingActionServer<A>::ACTION_NAME_MAX` /
     /// `PollingActionClient<A>::ACTION_NAME_MAX` call sites still resolve.
-    static constexpr size_t ACTION_NAME_MAX = ::nros::ACTION_NAME_MAX;
+    static constexpr size_t ACTION_NAME_MAX = ::rclcpp_action::ACTION_NAME_MAX;
 
     using GoalType = typename A::Goal;
     using ResultType = typename A::Result;
@@ -93,21 +93,21 @@ template <typename A> class PollingActionServer {
     /// the matching `out_sequence_number`.
     Result try_recv_goal_request(uint8_t goal_id[16], GoalType& out_goal,
                                  int64_t& out_sequence_number) {
-        return try_recv_goal_request_sized<::nros::rx_buffer_capacity<GoalType>::value>(
+        return try_recv_goal_request_sized<::rclcpp::rx_buffer_capacity<GoalType>::value>(
             goal_id, out_goal, out_sequence_number);
     }
 
     /// @ref try_recv_goal_request writing the id into a `GoalUUID` value
     /// (phase-417 W4.b) — the shape you can key a `{goal -> state}` map on.
-    Result try_recv_goal_request(GoalUUID& goal_id, GoalType& out_goal,
+    Result try_recv_goal_request(::rclcpp_action::GoalUUID& goal_id, GoalType& out_goal,
                                  int64_t& out_sequence_number) {
-        return try_recv_goal_request_sized<::nros::rx_buffer_capacity<GoalType>::value>(
+        return try_recv_goal_request_sized<::rclcpp::rx_buffer_capacity<GoalType>::value>(
             goal_id.data(), out_goal, out_sequence_number);
     }
 
     /// @ref try_recv_goal_request_sized taking a `GoalUUID` value.
     template <size_t Cap>
-    Result try_recv_goal_request_sized(GoalUUID& goal_id, GoalType& out_goal,
+    Result try_recv_goal_request_sized(::rclcpp_action::GoalUUID& goal_id, GoalType& out_goal,
                                        int64_t& out_sequence_number) {
         return try_recv_goal_request_sized<Cap>(goal_id.data(), out_goal, out_sequence_number);
     }
@@ -137,7 +137,7 @@ template <typename A> class PollingActionServer {
     }
 
     /// @ref accept_goal taking a `GoalUUID` value (phase-417 W4.b).
-    Result accept_goal(const GoalUUID& goal_id, int64_t sequence_number) {
+    Result accept_goal(const ::rclcpp_action::GoalUUID& goal_id, int64_t sequence_number) {
         return accept_goal(goal_id.data(), sequence_number);
     }
 
@@ -150,7 +150,7 @@ template <typename A> class PollingActionServer {
     /// Publish a feedback message for an accepted goal.
     Result publish_feedback(const uint8_t goal_id[16], const FeedbackType& fb) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        uint8_t buf[::nros::detail::buffer_bounds<FeedbackType>::tx];
+        uint8_t buf[::rclcpp::detail::buffer_bounds<FeedbackType>::tx];
         size_t len = 0;
         if (FeedbackType::ffi_serialize(&fb, buf, sizeof(buf), &len) != 0)
             return Result(ErrorCode::Error);
@@ -159,14 +159,15 @@ template <typename A> class PollingActionServer {
     }
 
     /// @ref publish_feedback taking a `GoalUUID` value (phase-417 W4.b).
-    Result publish_feedback(const GoalUUID& goal_id, const FeedbackType& fb) {
+    Result publish_feedback(const ::rclcpp_action::GoalUUID& goal_id, const FeedbackType& fb) {
         return publish_feedback(goal_id.data(), fb);
     }
 
     /// Mark a goal terminal with a typed result.
-    Result complete_goal(const uint8_t goal_id[16], GoalStatus status, const ResultType& result) {
+    Result complete_goal(const uint8_t goal_id[16], ::rclcpp_action::GoalStatus status,
+                         const ResultType& result) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        uint8_t buf[::nros::detail::buffer_bounds<ResultType>::tx];
+        uint8_t buf[::rclcpp::detail::buffer_bounds<ResultType>::tx];
         size_t len = 0;
         if (ResultType::ffi_serialize(&result, buf, sizeof(buf), &len) != 0)
             return Result(ErrorCode::Error);
@@ -176,7 +177,8 @@ template <typename A> class PollingActionServer {
     }
 
     /// @ref complete_goal taking a `GoalUUID` value (phase-417 W4.b).
-    Result complete_goal(const GoalUUID& goal_id, GoalStatus status, const ResultType& result) {
+    Result complete_goal(const ::rclcpp_action::GoalUUID& goal_id,
+                         ::rclcpp_action::GoalStatus status, const ResultType& result) {
         return complete_goal(goal_id.data(), status, result);
     }
 
@@ -188,65 +190,65 @@ template <typename A> class PollingActionServer {
     /// rclcpp_action `goal_handle->succeed(result)`. Forwarders onto
     /// `complete_goal` — no state, no second code path.
     Result succeed(const uint8_t goal_id[16], const ResultType& result) {
-        return complete_goal(goal_id, GoalStatus::Succeeded, result);
+        return complete_goal(goal_id, ::rclcpp_action::GoalStatus::Succeeded, result);
     }
 
     /// Terminate `goal_id` as ABORTED. See @ref succeed.
     Result abort(const uint8_t goal_id[16], const ResultType& result) {
-        return complete_goal(goal_id, GoalStatus::Aborted, result);
+        return complete_goal(goal_id, ::rclcpp_action::GoalStatus::Aborted, result);
     }
 
     /// Terminate `goal_id` as CANCELED. See @ref succeed.
     Result canceled(const uint8_t goal_id[16], const ResultType& result) {
-        return complete_goal(goal_id, GoalStatus::Canceled, result);
+        return complete_goal(goal_id, ::rclcpp_action::GoalStatus::Canceled, result);
     }
 
     /// @ref succeed taking a `GoalUUID` value.
-    Result succeed(const GoalUUID& goal_id, const ResultType& result) {
-        return complete_goal(goal_id.data(), GoalStatus::Succeeded, result);
+    Result succeed(const ::rclcpp_action::GoalUUID& goal_id, const ResultType& result) {
+        return complete_goal(goal_id.data(), ::rclcpp_action::GoalStatus::Succeeded, result);
     }
 
     /// @ref abort taking a `GoalUUID` value.
-    Result abort(const GoalUUID& goal_id, const ResultType& result) {
-        return complete_goal(goal_id.data(), GoalStatus::Aborted, result);
+    Result abort(const ::rclcpp_action::GoalUUID& goal_id, const ResultType& result) {
+        return complete_goal(goal_id.data(), ::rclcpp_action::GoalStatus::Aborted, result);
     }
 
     /// @ref canceled taking a `GoalUUID` value.
-    Result canceled(const GoalUUID& goal_id, const ResultType& result) {
-        return complete_goal(goal_id.data(), GoalStatus::Canceled, result);
+    Result canceled(const ::rclcpp_action::GoalUUID& goal_id, const ResultType& result) {
+        return complete_goal(goal_id.data(), ::rclcpp_action::GoalStatus::Canceled, result);
     }
 
     /// Phase 122.3.c.6.d — peek a pending cancel-goal request.
     /// On success fills `goal_id`, `out_sequence_number`,
-    /// `out_current_status` (matches `nros::GoalStatus` discriminants).
+    /// `out_current_status` (matches `rclcpp_action::GoalStatus` discriminants).
     /// Returns Result::success() if a request was peeked,
     /// ErrorCode::TryAgain if none pending.
     Result try_recv_cancel_request(uint8_t goal_id[16], int64_t& out_sequence_number,
-                                   GoalStatus& out_current_status) {
+                                   ::rclcpp_action::GoalStatus& out_current_status) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         int8_t status_raw = 0;
         int32_t rc = nros_cpp_action_server_try_recv_cancel_request_raw(
             storage_, reinterpret_cast<uint8_t(*)[16]>(goal_id), &out_sequence_number, &status_raw);
         if (rc < 0) return Result(static_cast<nros_cpp_ret_t>(rc));
         if (rc == 0) return Result(ErrorCode::TryAgain);
-        out_current_status = static_cast<GoalStatus>(status_raw);
+        out_current_status = static_cast<::rclcpp_action::GoalStatus>(status_raw);
         return Result::success();
     }
 
     /// @ref try_recv_cancel_request writing the id into a `GoalUUID` value
     /// (phase-417 W4.b).
-    Result try_recv_cancel_request(GoalUUID& goal_id, int64_t& out_sequence_number,
-                                   GoalStatus& out_current_status) {
+    Result try_recv_cancel_request(::rclcpp_action::GoalUUID& goal_id, int64_t& out_sequence_number,
+                                   ::rclcpp_action::GoalStatus& out_current_status) {
         return try_recv_cancel_request(goal_id.data(), out_sequence_number, out_current_status);
     }
 
     /// Phase 122.3.c.6.d — reply to a previously-peeked cancel
-    /// request. `return_code` is a `nros::CancelReturnCode`:
+    /// request. `return_code` is a `rclcpp_action::CancelReturnCode`:
     /// 0 = Ok (one+ goals canceling), 1 = Rejected, 2 = UnknownGoal,
     /// 3 = GoalTerminated. `accepted` is a contiguous array of
     /// 16-byte goal IDs that will transition to CANCELING.
     ///
-    /// Issue 0796 — this doc said `nros::CancelResponse`, which in C++ is the
+    /// Issue 0796 — this doc said `rclcpp_action::CancelResponse`, which in C++ is the
     /// PER-GOAL Reject/Accept decision and has never had four values. Prefer
     /// the `CancelReturnCode` overload below; the `int8_t` one is kept because
     /// callers pass the raw byte they read off the wire.
@@ -258,7 +260,7 @@ template <typename A> class PollingActionServer {
     }
 
     /// Typed overload of `send_cancel_reply` (issue 0796).
-    Result send_cancel_reply(int64_t sequence_number, CancelReturnCode return_code,
+    Result send_cancel_reply(int64_t sequence_number, ::rclcpp_action::CancelReturnCode return_code,
                              const uint8_t (*accepted)[16], size_t accepted_count) {
         return send_cancel_reply(sequence_number, static_cast<int8_t>(return_code), accepted,
                                  accepted_count);
@@ -270,8 +272,8 @@ template <typename A> class PollingActionServer {
     /// a single `uint8_t[16]` member and the static_asserts beside its
     /// definition pin `sizeof`/`alignof`, so an array of them IS the
     /// contiguous `uint8_t[N][16]` the FFI reads.
-    Result send_cancel_reply(int64_t sequence_number, CancelReturnCode return_code,
-                             const GoalUUID* accepted, size_t accepted_count) {
+    Result send_cancel_reply(int64_t sequence_number, ::rclcpp_action::CancelReturnCode return_code,
+                             const ::rclcpp_action::GoalUUID* accepted, size_t accepted_count) {
         return send_cancel_reply(sequence_number, static_cast<int8_t>(return_code),
                                  reinterpret_cast<const uint8_t(*)[16]>(accepted), accepted_count);
     }
@@ -314,7 +316,7 @@ template <typename A> class PollingActionServer {
     /// ErrorCode::TryAgain if none pending.
     Result try_handle_get_result(const ResultType& default_result = ResultType{}) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        uint8_t buf[::nros::detail::buffer_bounds<ResultType>::tx];
+        uint8_t buf[::rclcpp::detail::buffer_bounds<ResultType>::tx];
         size_t len = 0;
         if (ResultType::ffi_serialize(&default_result, buf, sizeof(buf), &len) != 0)
             return Result(ErrorCode::Error);
@@ -333,27 +335,27 @@ template <typename A> class PollingActionServer {
     bool initialized_;
 };
 
-} // namespace nros
+} // namespace rclcpp
 
 #include "nros/node.hpp"
 
-namespace nros {} // namespace nros
+namespace rclcpp {} // namespace rclcpp
 
 namespace rclcpp {
 template <typename A>
-Result Node::create_polling_action_server(::nros::PollingActionServer<A>& out,
+Result Node::create_polling_action_server(::rclcpp::PollingActionServer<A>& out,
                                           const char* action_name) {
-    if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+    if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
     nros_cpp_ret_t ret =
         nros_cpp_action_server_init_polling(&handle_, action_name, A::TYPE_NAME, A::Goal::TYPE_HASH,
                                             reinterpret_cast<void*>(out.storage_));
     if (ret != 0) return Result(ret);
-    ::nros::detail::assign_entity_name(out.action_name_, action_name);
+    ::rclcpp::detail::assign_entity_name(out.action_name_, action_name);
     out.initialized_ = true;
     return Result::success();
 }
 } // namespace rclcpp
 
-namespace nros {} // namespace nros
+namespace rclcpp {} // namespace rclcpp
 
 #endif // NROS_CPP_POLLING_ACTION_SERVER_HPP

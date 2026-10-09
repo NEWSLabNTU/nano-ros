@@ -76,13 +76,13 @@ impl Language {
     }
 
     /// Substring that every language-native binary prints after
-    /// `nros::init` / `nros_support_init` succeeds. Used to assert that
+    /// `rclcpp::init_in` / `nros_support_init` succeeds. Used to assert that
     /// the binary started cleanly.
     fn init_marker(&self) -> &'static str {
         match self {
             // C binaries print `"Support initialized"` from `nros_support_init`.
             Language::C => "Support initialized",
-            // C++ binaries print `"Node created: <name>"` from `nros::create_node`.
+            // C++ binaries print `"Node created: <name>"` from `rclcpp::create_node`.
             Language::Cpp => "Node created",
         }
     }
@@ -279,7 +279,7 @@ fn test_native_action_server_starts(
 /// Callback service client (C or C++) vs the stock same-language service
 /// server. Proves the RFC-0041 callback receive path E2E: replies arrive
 /// through the typed response handler dispatched at `spin_once`
-/// (`nros_executor_spin_some` / `nros::spin_once`) — no Promise/Future poll.
+/// (`nros_executor_spin_some` / `rclcpp::spin_once`) — no Promise/Future poll.
 /// Both `service-client-callback` variants log the demo result line
 /// (`Result of add_two_ints: N`) from inside the registered callback, so its
 /// presence proves the callback dispatched.

@@ -28,7 +28,7 @@ static ::rclcpp::Node __nros_node_0;
 
 static int32_t __nros_entry_setup() {
     {
-        ::nros::Result r = ::nros::create_node(__nros_node_0, "listener", "/");
+        ::rclcpp::Result r = ::rclcpp::create_node(__nros_node_0, "listener", "/");
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         void* self = __nros_c_component_listener_pkg_create();
         int32_t crc = __nros_c_component_listener_pkg_configure(__nros_node_0.ffi_handle(), __nros_node_0.executor_handle(), self);
@@ -54,7 +54,7 @@ __attribute__((section(".nros_boot_config"), used))
 };
 
 extern "C" int nros_app_main(int /*argc*/, char** /*argv*/) {
-    return ::nros::board::NuttxBoard::run_components(NROS_ENTRY_LOCATOR, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup);
+    return ::rclcpp::board::NuttxBoard::run_components(NROS_ENTRY_LOCATOR, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup);
 }
 
 NROS_APP_MAIN_REGISTER_VOID();

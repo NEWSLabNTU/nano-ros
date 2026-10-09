@@ -15,10 +15,10 @@
  *
  * TWO SESSIONS, OPENED UP FRONT (issue 0436)
  *
- *   `nros::init()` opens exactly ONE session, and `NodeBuilder::rmw(name)` only
+ *   `rclcpp::init_in()` opens exactly ONE session, and `NodeBuilder::rmw(name)` only
  *   binds a node to a session that ALREADY exists — so the single-session shape
  *   (what the phase-325 W3 note suggested) can never give a bridge its outward
- *   session. The supported shape is `nros::MultiExecutor` + `SessionSpec`
+ *   session. The supported shape is `rclcpp::MultiExecutor` + `SessionSpec`
  *   (`nros/bridge.hpp`, phase-128 F.5): every backend session is named in one spec
  *   list, `specs[0]` becomes primary, and each Node is created on that handle.
  *
@@ -84,7 +84,7 @@ constexpr const char* kOutTopic = "/fmu/out/debug_key_value";
 constexpr const char* kDefaultOutLocator = "tcp/127.0.0.1:7447";
 
 // TWO sessions on ONE executor (issue 0436). Caller-owned executor storage,
-// exactly like `nros::init()`'s global storage — `nros_cpp_init_multi` carves the
+// exactly like `rclcpp::init_in()`'s global storage — `nros_cpp_init_multi` carves the
 // executor in place inside it, so it must outlive the module.
 alignas(8) uint8_t g_exec_storage[NROS_CPP_EXECUTOR_STORAGE_SIZE];
 
@@ -132,7 +132,7 @@ class NrosUorbBridge : public ModuleBase<NrosUorbBridge>, public px4::ScheduledW
     rclcpp::Node _in_node{};
     rclcpp::Node _out_node{};
     // phase-456 W2b — `take_serialized` lives on the poll subscriber.
-    nros::PollSubscription<px4_msgs::msg::DebugKeyValue> _in_sub{};
+    rclcpp::PollSubscription<px4_msgs::msg::DebugKeyValue> _in_sub{};
     rclcpp::Publisher<px4_msgs::msg::DebugKeyValue> _out_pub{};
 
     uint32_t _forwarded{0};
@@ -157,7 +157,7 @@ bool NrosUorbBridge::init() {
     // unless overridden. The backends must be REGISTERED first — the generated
     // `nros_app_register_backends()` (from `BACKENDS uorb zenoh`) does that.
     // Register the backends FIRST. `nros_init_multi` — unlike `nros_cpp_init`,
-    // which `nros::init()` calls — does NOT invoke the generated
+    // which `rclcpp::init_in()` calls — does NOT invoke the generated
     // `nros_app_register_backends()`, so on the MultiExecutor path nothing has
     // populated the registry yet and both `open_with_rmw` lookups would miss
     // (issue 0436). The generated strong def comes from `BACKENDS uorb zenoh`.
@@ -214,14 +214,14 @@ bool NrosUorbBridge::init() {
     void* exec = g_exec_storage;
 
     // Inward node on the PRIMARY (uORB) session.
-    if (!nros::create_node_on(_in_node, exec, "px4_bridge_in").ok()) {
+    if (!rclcpp::create_node_on(_in_node, exec, "px4_bridge_in").ok()) {
         PX4_ERR("create_node_on(in) failed");
         return false;
     }
 
     // Outward node bound to the named networked session.
     {
-        auto r = nros::NodeBuilder(exec, "px4_bridge_out").rmw(NROS_BRIDGE_RMW).build(_out_node);
+        auto r = rclcpp::NodeBuilder(exec, "px4_bridge_out").rmw(NROS_BRIDGE_RMW).build(_out_node);
 
         if (!r.ok()) {
             PX4_ERR("bind outward node to %s failed: code=%d", NROS_BRIDGE_RMW,

@@ -28,7 +28,7 @@
   Issue 1568 — every RTOS board's tier runner takes storage this way now
   (FreeRTOS and NuttX joined Zephyr). The single-executor `run_components`
   needs nothing here: `Board::run_components` already reaches the same `.bss`
-  shape through `Node::GlobalStorageHolder<0>::storage`, and `nros::init` asks
+  shape through `Node::GlobalStorageHolder<0>::storage`, and `rclcpp::init` asks
   the linked library the same question the runners do.
 -#}
 {%- if boot.tier_storage -%}

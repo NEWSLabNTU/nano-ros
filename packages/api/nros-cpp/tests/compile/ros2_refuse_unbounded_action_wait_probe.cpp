@@ -47,7 +47,7 @@ struct Fib {
 
 int ros2_refuse_unbounded_action_wait_probe();
 int ros2_refuse_unbounded_action_wait_probe() {
-    nros::ActionClient<Fib> client;
+    rclcpp_action::Client<Fib> client;
     // The line upstream's own tutorials write.
     (void)client.wait_for_action_server();
     return 0;

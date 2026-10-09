@@ -21,7 +21,7 @@ namespace cpp_lifecycle_talker_pkg {
 /// Active — the `Published:` lines are the proof.
 class ManagedTalker : public ::rclcpp_lifecycle::LifecycleNode {
     ::rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Int32>::SharedPtr pub_;
-    ::nros::Timer timer_;
+    ::rclcpp::Timer timer_;
     int32_t counter_ = 0;
     // phase-417 W4.f — declared on the node, read back on every tick, and the
     // value `ros2 param get` must agree with.
@@ -30,7 +30,7 @@ class ManagedTalker : public ::rclcpp_lifecycle::LifecycleNode {
     void on_tick();
 
   public:
-    explicit ManagedTalker(::nros::NodeHandle h);
+    explicit ManagedTalker(::rclcpp::NodeHandle h);
 
     CallbackReturn on_configure(const ::rclcpp_lifecycle::State& previous) override;
     CallbackReturn on_activate(const ::rclcpp_lifecycle::State& previous) override;

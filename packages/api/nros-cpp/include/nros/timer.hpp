@@ -4,7 +4,7 @@
 /**
  * @file timer.hpp
  * @ingroup grp_executor
- * @brief `nros::Timer` — periodic callback driven by the executor.
+ * @brief `rclcpp::Timer` — periodic callback driven by the executor.
  */
 
 #ifndef NROS_CPP_TIMER_HPP
@@ -15,7 +15,7 @@
 
 #include "nros/result.hpp"
 #include "nros/hosted_block.hpp"
-// phase-417 G6 — `time_until_trigger()` returns `nros::Duration`, so this
+// phase-417 G6 — `time_until_trigger()` returns `rclcpp::Duration`, so this
 // header NAMES it and must be includable first (the rule `qos.hpp` states for
 // the same dependency). `duration.hpp` includes nothing of ours.
 #include "nros/duration.hpp"
@@ -31,12 +31,12 @@
 // the home). The friend declaration below is qualified, and a qualified friend
 // names an existing entity rather than introducing one, so the name has to be
 // declared first — and in `rclcpp::`, because an elaborated `class Node;` in
-// `nros::` would declare a second, distinct class.
+// `rclcpp::` would declare a second, distinct class.
 namespace rclcpp {
 class Node;
 }
 
-namespace nros {
+namespace rclcpp {
 
 class Timer;
 
@@ -62,13 +62,13 @@ class TimerOps {
     }
 
     /// Would the timer fire on the next `spin_once()`? — `TimerBase::is_ready()`.
-    /// See `nros::Timer::is_ready`.
+    /// See `rclcpp::Timer::is_ready`.
     bool is_ready() const {
         return executor_ != nullptr && nros_cpp_timer_is_ready(executor_, handle_id_);
     }
 
     /// Time until the timer next fires, NEGATIVE when overdue —
-    /// `TimerBase::time_until_trigger()`. See `nros::Timer::time_until_trigger`
+    /// `TimerBase::time_until_trigger()`. See `rclcpp::Timer::time_until_trigger`
     /// for the two recorded differences from rclcpp. `Duration()` for an empty,
     /// released or stale handle.
     Duration time_until_trigger() const {
@@ -118,7 +118,7 @@ class TimerHandle : private TimerOps {
     /// What this handle refers to, for generic code that spells a pointee type
     /// the way `std::shared_ptr` exposes one. A NAME only: `operator->` reaches
     /// a [`TimerOps`], not a `Timer` object.
-    using element_type = ::nros::Timer;
+    using element_type = ::rclcpp::Timer;
 
     constexpr TimerHandle() : TimerOps(nullptr, 0) {}
     /// Null, spelled the way a ported file spells it
@@ -179,9 +179,9 @@ class TimerHandle : private TimerOps {
 /// ```cpp
 /// void on_timer(void* ctx) { /* periodic work */ }
 ///
-/// nros::Timer timer;
+/// rclcpp::Timer timer;
 /// NROS_TRY(node.create_wall_timer(timer, 1000, on_timer));  // 1000ms period
-/// // timer fires during nros::spin_once()
+/// // timer fires during rclcpp::spin_once()
 /// timer.cancel();
 /// timer.reset();  // restart from zero
 /// ```
@@ -196,12 +196,12 @@ class Timer {
     /// C++ side owns nothing a smart pointer could hold, and a freestanding
     /// target gets the ported spelling too. See `TimerHandle` for what differs
     /// from a `shared_ptr` (it does not own the timer; `.reset()` releases it).
-    using SharedPtr = ::nros::TimerHandle;
+    using SharedPtr = ::rclcpp::TimerHandle;
     /// `Timer::ConstSharedPtr` — the same handle; see `SharedPtr`.
-    using ConstSharedPtr = ::nros::TimerHandle;
+    using ConstSharedPtr = ::rclcpp::TimerHandle;
     /// `Timer::UniquePtr` — the same handle; see `SharedPtr`. Upstream's is a
     /// sole owner. This one owns nothing, like the other two spellings.
-    using UniquePtr = ::nros::TimerHandle;
+    using UniquePtr = ::rclcpp::TimerHandle;
 
     /// Cancel the timer. It stops firing but remains in the executor.
     /// Use `reset()` to restart it.
@@ -247,7 +247,7 @@ class Timer {
     /// the ledger row:
     ///
     ///  * upstream returns `std::chrono::nanoseconds`; this returns
-    ///    [`nros::Duration`], because this header is freestanding and
+    ///    [`rclcpp::Duration`], because this header is freestanding and
     ///    `<chrono>` is not reachable from every target it serves (issue 0112).
     ///    The UNIT is the same — `d.nanoseconds()` is upstream's count.
     ///  * the arena's timer accounting is MICROSECOND-based (issue #505), so
@@ -350,14 +350,14 @@ class Timer {
     /// destroyed or moved-from.
     ///
     /// UNCONDITIONAL, and that is the point (issue 1225, phase-442 W1): a
-    /// member behind `NROS_CPP_STD` made `sizeof(nros::Timer)` 24 or 32
+    /// member behind `NROS_CPP_STD` made `sizeof(rclcpp::Timer)` 24 or 32
     /// depending on a flag one module of an image may set on its own, and
-    /// carried `nros::ComponentNode` (`Timer timers_[8]`) and the
+    /// carried `rclcpp::ComponentNode` (`Timer timers_[8]`) and the
     /// `rclcpp::Timer` / `rclcpp::TimerBase` aliases with it.
     void* closure_;
 };
 
-} // namespace nros
+} // namespace rclcpp
 
 // ============================================================================
 // rclcpp::Timer — FLAT. No `TimerBase`, no hierarchy (phase-430 W7 ruling)
@@ -390,7 +390,7 @@ class Timer {
 //      the header itself refuses two paragraphs later.
 //
 //   3. THE FLAT SHAPE IS A STRICTLY BETTER KEEP-ALIVE. `create_wall_timer`
-//      returned `std::shared_ptr<::nros::Timer>` aliased onto a private cell,
+//      returned `std::shared_ptr<::rclcpp::Timer>` aliased onto a private cell,
 //      as `create_subscription` did. Since phase-476 W2 both return a two-word
 //      handle and there is no cell: the callable is in the executor arena.
 //
@@ -401,7 +401,7 @@ class Timer {
 // do not take the name for it. Zero non-test call sites in this tree used it.
 //
 // `rclcpp::Timer` is an ours-only name in upstream's namespace (RFC-0089
-// §"Settled: `nros::` is phased out entirely"), so it carries a ledger row with
+// §"Settled: `rclcpp::` is phased out entirely"), so it carries a ledger row with
 // `disposition: extension` and the collision gate watches for `rclcpp::Timer`
 // appearing in the recorded upstream surface.
 //
@@ -430,16 +430,6 @@ class Timer {
 // loop.
 
 namespace rclcpp {
-
-/// `rclcpp::Timer` — the ROS 2 spelling of `nros::Timer`, and the whole timer
-/// taxonomy this API has.
-///
-/// UNCONDITIONAL, unlike the `TimerBase` it replaces: `nros::Timer` needs no
-/// `<memory>`, so a freestanding target gets the ROS 2 name too. The nested
-/// `SharedPtr` / `ConstSharedPtr` / `UniquePtr` aliases live on `nros::Timer`
-/// itself and are present where `<memory>` is, which is the only part that was
-/// ever hosted-only.
-using Timer = ::nros::Timer;
 
 /// `rclcpp::TimerBase` — the PORTED NAME for the one flat timer type. It is an
 /// ALIAS for `rclcpp::Timer`, not a base class: `std::is_same<TimerBase,
@@ -477,10 +467,10 @@ using Timer = ::nros::Timer;
 /// DERIVES from `TimerBase` is deriving from a concrete, non-polymorphic handle
 /// whose destructor is not virtual. Both are documented divergences with ledger
 /// rows rather than silent ones.
-using TimerBase = ::nros::Timer;
+using TimerBase = ::rclcpp::Timer;
 
 // phase-476 W2 deleted `detail::WallTimer`, the heap cell (a `std::function`
-// plus an `nros::Timer`) that gave a capturing timer callback a stable address
+// plus an `rclcpp::Timer`) that gave a capturing timer callback a stable address
 // and that the node kept alive through `owned_entities`. The callable now lives
 // in the executor arena (`nros_cpp_timer_create_capturing`), destroyed when the
 // timer is released, and the returned handle is two words.

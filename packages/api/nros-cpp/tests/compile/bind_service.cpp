@@ -1,4 +1,4 @@
-// Compile regression for issue 0089 gap-4: typed `nros::bind_service<Svc, C, &m>`.
+// Compile regression for issue 0089 gap-4: typed `rclcpp::bind_service<Svc, C, &m>`.
 //
 // The header `-fsyntax-only` loop in `just check cpp` only PARSES the templates;
 // it does not instantiate them. This TU instantiates `bind_service` against a
@@ -44,14 +44,14 @@ class Server {
         resp.sum = req.a + req.b;
         return resp;
     }
-    ::nros::Result configure(::rclcpp::Node& node) {
-        return ::nros::bind_service<AddTwoInts, Server, &Server::on_add>(node, "/add_two_ints",
-                                                                         this);
+    ::rclcpp::Result configure(::rclcpp::Node& node) {
+        return ::rclcpp::bind_service<AddTwoInts, Server, &Server::on_add>(node, "/add_two_ints",
+                                                                           this);
     }
 };
 
 // Force template instantiation (body type-checked at compile).
-inline ::nros::Result instantiate(::rclcpp::Node& node, Server* s) {
+inline ::rclcpp::Result instantiate(::rclcpp::Node& node, Server* s) {
     return s->configure(node);
 }
 
@@ -110,28 +110,31 @@ void w3_on_response(const AddTwoIntsFull::Response& resp) {
     (void)resp;
 }
 
-static_assert(__is_constructible(::nros::Service<AddTwoIntsFull>,
-                                 ::nros::Service<AddTwoIntsFull>&&),
+static_assert(__is_constructible(::rclcpp::Service<AddTwoIntsFull>,
+                                 ::rclcpp::Service<AddTwoIntsFull>&&),
               "phase-456 W3: a callback-style service is movable -- the arena holds the handler, "
               "not `&out`");
-static_assert(__is_constructible(::nros::Client<AddTwoIntsFull>, ::nros::Client<AddTwoIntsFull>&&),
+static_assert(__is_constructible(::rclcpp::Client<AddTwoIntsFull>,
+                                 ::rclcpp::Client<AddTwoIntsFull>&&),
               "phase-456 W3: a callback-style client is movable -- the arena holds the handler, "
               "not `&out`");
 
-inline ::nros::Result w3_move_after_register(::rclcpp::Node& node) {
-    ::nros::Service<AddTwoIntsFull> srv;
-    ::nros::Result r =
+inline ::rclcpp::Result w3_move_after_register(::rclcpp::Node& node) {
+    ::rclcpp::Service<AddTwoIntsFull> srv;
+    ::rclcpp::Result r =
         node.create_service<AddTwoIntsFull>(srv, "/add_two_ints_cb", &w3_add_two_ints);
     if (!r.ok()) return r;
     // THE OPERATION THE OLD WARNING FORBADE.
-    ::nros::Service<AddTwoIntsFull> moved_srv(static_cast<::nros::Service<AddTwoIntsFull>&&>(srv));
-    ::nros::Service<AddTwoIntsFull> assigned_srv;
-    assigned_srv = static_cast<::nros::Service<AddTwoIntsFull>&&>(moved_srv);
+    ::rclcpp::Service<AddTwoIntsFull> moved_srv(
+        static_cast<::rclcpp::Service<AddTwoIntsFull>&&>(srv));
+    ::rclcpp::Service<AddTwoIntsFull> assigned_srv;
+    assigned_srv = static_cast<::rclcpp::Service<AddTwoIntsFull>&&>(moved_srv);
 
-    ::nros::Client<AddTwoIntsFull> cli;
+    ::rclcpp::Client<AddTwoIntsFull> cli;
     r = node.create_client<AddTwoIntsFull>(cli, "/add_two_ints_cb", &w3_on_response);
     if (!r.ok()) return r;
-    ::nros::Client<AddTwoIntsFull> moved_cli(static_cast<::nros::Client<AddTwoIntsFull>&&>(cli));
+    ::rclcpp::Client<AddTwoIntsFull> moved_cli(
+        static_cast<::rclcpp::Client<AddTwoIntsFull>&&>(cli));
     // The one verb the corpus measured on a dispatch client, reached THROUGH the
     // move: `async_send_request` needs `{executor_, handle_id_}` and nothing
     // else, which is exactly what the move carries.

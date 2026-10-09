@@ -35,7 +35,7 @@
 // Backend registration — the image's, exactly as on the cmake road
 // ----------------------------------------------------------------------------
 //
-// `nros_cpp_init` (reached through `nros::init`) calls
+// `nros_cpp_init` (reached through `rclcpp::init`) calls
 // `nros_app_register_backends()` unconditionally, and every C/C++ image supplies
 // the strong definition; `nano_ros_link_rmw()` generates this TU on the cmake
 // road, and a cargo-rooted image writes it. Bare metal walks no `.init_array`.
@@ -137,7 +137,7 @@ int nros_app_main(int argc, char** argv) {
     // is `nros-cpp`'s own `.bss`, not this stack.
     rclcpp::Node node;
     rclcpp::Publisher<std_msgs::msg::String> pub;
-    nros::Timer timer;
+    rclcpp::Timer timer;
     TalkerContext ctx = {};
 
     // `NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID` are the ONE producer of the
@@ -145,12 +145,12 @@ int nros_app_main(int argc, char** argv) {
     // Here the locator is the empty bottom rung, which the linked backend fills
     // with its own default; baking this image's `[image.*] locator` from
     // `system.toml` is what the runtime lane needs and is tracked on issue 1512.
-    if (!nros::init(NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID)).ok()) {
-        emit(nros_log_default_logger(), NROS_LOG_SEVERITY_ERROR, "nros::init failed", __FILE__,
+    if (!rclcpp::init_in(NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID)).ok()) {
+        emit(nros_log_default_logger(), NROS_LOG_SEVERITY_ERROR, "rclcpp::init failed", __FILE__,
              __LINE__);
         return 1;
     }
-    if (!nros::create_node(node, "talker").ok()) {
+    if (!rclcpp::create_node(node, "talker").ok()) {
         emit(nros_log_default_logger(), NROS_LOG_SEVERITY_ERROR, "create_node failed", __FILE__,
              __LINE__);
         return 1;
@@ -171,7 +171,7 @@ int nros_app_main(int argc, char** argv) {
     // to: `app_main` returning is the end of the image, which `src/main.rs`
     // turns into a semihosting exit.
     while (rclcpp::ok()) {
-        nros::spin_once(100);
+        rclcpp::spin_once(100);
     }
     rclcpp::shutdown();
     return 0;

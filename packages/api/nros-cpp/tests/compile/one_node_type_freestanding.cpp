@@ -39,7 +39,7 @@ struct CounterMsg {
 };
 
 /// The standalone freestanding shape from RFC-0089 §"Usage — standalone,
-/// freestanding". Every line is `rclcpp::`; nothing names `nros::`.
+/// freestanding". Every line is `rclcpp::`; nothing names `rclcpp::`.
 inline int standalone_main() {
     // `rclcpp::init()` returns `void`, as upstream's does — a PORTED api keeps
     // upstream's channel even when checking it means asking a second verb.
@@ -64,7 +64,7 @@ inline int standalone_main() {
 /// The component shape — the firmware recommendation. No allocator, no
 /// derivation, no vtable, and the timer callback is a member bound through
 /// `create_wall_timer`'s template overload (phase-427 W3, which retired the
-/// free `nros::bind_timer`).
+/// free `rclcpp::bind_timer`).
 class Talker {
     rclcpp::Publisher<CounterMsg> pub_;
     rclcpp::Timer timer_;
@@ -81,7 +81,7 @@ class Talker {
     }
 };
 
-/// `rclcpp::Timer` reaches a freestanding target — it is `nros::Timer`, which
+/// `rclcpp::Timer` reaches a freestanding target — it is `rclcpp::Timer`, which
 /// needs no `<memory>`. Only the nested `SharedPtr` aliases were ever
 /// hosted-only, and the deleted `TimerBase` (phase-430 W7) was hosted-only in
 /// its entirety.

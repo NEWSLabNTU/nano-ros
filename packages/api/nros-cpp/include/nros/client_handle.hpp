@@ -4,7 +4,7 @@
 /**
  * @file client_handle.hpp
  * @ingroup grp_service
- * @brief `nros::ClientHandle<S>` — what `Client<S>::SharedPtr` is: a handle
+ * @brief `rclcpp::ClientHandle<S>` — what `Client<S>::SharedPtr` is: a handle
  *        over an arena entry, carrying the verbs `{executor, handle_id}`
  *        answers.
  */
@@ -17,7 +17,7 @@
 
 #include "nros/log.hpp" // phase-417 stage 3 — NROS_RCLCPP_REFUSE_* + rclcpp::detail::refuse
 #include "nros/result.hpp"
-#include "nros/size_bound.hpp" // nros::detail::buffer_bounds<M>::tx — the request scratch bound
+#include "nros/size_bound.hpp" // rclcpp::detail::buffer_bounds<M>::tx — the request scratch bound
 
 #include "nros_cpp_ffi.h"
 
@@ -29,7 +29,7 @@ namespace rclcpp {
 template <typename S> class Client;
 }
 
-namespace nros {
+namespace rclcpp {
 
 /// A registered dispatch service client — phase-456 W9.
 ///
@@ -84,7 +84,7 @@ namespace nros {
 ///
 /// No `send_request` / `call` / `call_polling`, nor their `_sized` forms. Those
 /// read an `RmwServiceClient` AND a reply buffer in CALLER storage, and a
-/// dispatch client has neither — that road is `nros::PollClient<S>`
+/// dispatch client has neither — that road is `rclcpp::PollClient<S>`
 /// (`nros/polling_client.hpp`). Offering them here is the defect the W2b/W5
 /// splits removed one entity at a time.
 ///
@@ -140,11 +140,11 @@ template <typename S> class ClientHandle {
     /// Returns `NotInitialized` on an empty handle, `Error` if the request does
     /// not serialize, and the transport's code otherwise.
     Result async_send_request(const RequestType& req) const {
-        if (executor_ == nullptr) return Result(::nros::ErrorCode::NotInitialized);
-        uint8_t req_buf[::nros::detail::buffer_bounds<RequestType>::tx];
+        if (executor_ == nullptr) return Result(::rclcpp::ErrorCode::NotInitialized);
+        uint8_t req_buf[::rclcpp::detail::buffer_bounds<RequestType>::tx];
         size_t req_len = 0;
         if (RequestType::ffi_serialize(&req, req_buf, sizeof(req_buf), &req_len) != 0) {
-            return Result(::nros::ErrorCode::Error);
+            return Result(::rclcpp::ErrorCode::Error);
         }
         return Result(
             nros_cpp_service_client_send_on_handle(executor_, handle_id_, req_buf, req_len));
@@ -157,16 +157,16 @@ template <typename S> class ClientHandle {
     /// result is not a bare `bool`.
     ///
     /// `NotInitialized` on an empty handle.
-    ::nros::ResultOf<bool> service_is_ready() const {
+    ::rclcpp::ResultOf<bool> service_is_ready() const {
         if (executor_ == nullptr) {
-            return ::nros::ResultOf<bool>::error(::nros::ErrorCode::NotInitialized);
+            return ::rclcpp::ResultOf<bool>::error(::rclcpp::ErrorCode::NotInitialized);
         }
         int out = -1;
         nros_cpp_ret_t ret =
             nros_cpp_service_client_server_available(nullptr, executor_, handle_id_, &out);
-        if (ret != 0) return ::nros::ResultOf<bool>::error(static_cast<::nros::ErrorCode>(ret));
-        if (out < 0) return ::nros::ResultOf<bool>::error(::nros::ErrorCode::Unsupported);
-        return ::nros::ResultOf<bool>::ok(out != 0);
+        if (ret != 0) return ::rclcpp::ResultOf<bool>::error(static_cast<::rclcpp::ErrorCode>(ret));
+        if (out < 0) return ::rclcpp::ResultOf<bool>::error(::rclcpp::ErrorCode::Unsupported);
+        return ::rclcpp::ResultOf<bool>::ok(out != 0);
     }
 
     /// Block until a matching service server is discoverable —
@@ -175,7 +175,7 @@ template <typename S> class ClientHandle {
     ///
     /// The budget is REQUIRED, and the no-argument form below says why.
     Result wait_for_service(uint32_t timeout_ms) const {
-        if (executor_ == nullptr) return Result(::nros::ErrorCode::NotInitialized);
+        if (executor_ == nullptr) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(
             nros_cpp_service_client_wait_for_service(nullptr, executor_, handle_id_, timeout_ms));
     }
@@ -186,7 +186,7 @@ template <typename S> class ClientHandle {
     /// exactly what upstream's tutorials write.
     template <typename T = void> Result wait_for_service() const {
         static_assert(::rclcpp::detail::refuse<T>::value, NROS_RCLCPP_REFUSE_UNBOUNDED_WAIT);
-        return Result(::nros::ErrorCode::Unsupported);
+        return Result(::rclcpp::ErrorCode::Unsupported);
     }
 
     /// The executor arena slot this registration occupies. Present for
@@ -232,6 +232,6 @@ template <typename S> constexpr bool operator!=(decltype(nullptr), const ClientH
     return static_cast<bool>(a);
 }
 
-} // namespace nros
+} // namespace rclcpp
 
 #endif // NROS_CPP_CLIENT_HANDLE_HPP

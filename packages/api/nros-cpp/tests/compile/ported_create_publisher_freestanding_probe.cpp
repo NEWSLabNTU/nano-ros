@@ -16,7 +16,7 @@
 // about. The file said so, and the lane's error text said so.
 //
 // W5 removed the premise rather than the rule. `Publisher<M>::SharedPtr` is
-// `nros::Owned<Publisher<M>>` now: the publisher BY VALUE, move-only, with an
+// `rclcpp::Owned<Publisher<M>>` now: the publisher BY VALUE, move-only, with an
 // `operator->` so `pub->publish(m)` keeps working, and with no allocator, no
 // control block and no `<memory>`. W4 measured the case for it — the Rust
 // `create_publisher_with_qos` returns an `EmbeddedPublisher<M>` by value with a
@@ -73,7 +73,7 @@ inline void a_ported_line_compiles_here() {
 inline void the_qos_spelling_compiles_too() {
     rclcpp::Node node("talker");
     rclcpp::Publisher<CounterMsg>::SharedPtr pub =
-        node.create_publisher<CounterMsg>("chatter", ::nros::QoS(10));
+        node.create_publisher<CounterMsg>("chatter", ::rclcpp::QoS(10));
     (void)pub;
 }
 
@@ -84,14 +84,14 @@ inline void the_qos_spelling_compiles_too() {
 // `node_ref()` rather than `std::declval` — this TU has no `<utility>`, which
 // is the whole situation being probed.
 rclcpp::Node& node_ref();
-static_assert(::nros::tr::is_same<decltype(node_ref().create_publisher<CounterMsg>("t", 10)),
-                                  rclcpp::Publisher<CounterMsg>::SharedPtr>::value,
+static_assert(::rclcpp::tr::is_same<decltype(node_ref().create_publisher<CounterMsg>("t", 10)),
+                                    rclcpp::Publisher<CounterMsg>::SharedPtr>::value,
               "the ported create_publisher must return Publisher<M>::SharedPtr on every target");
 
 // And the out-ref form is still there — W5 added an overload, it removed
 // nothing, so a freestanding file written against the out-ref family keeps
 // compiling.
-inline ::nros::Result the_out_ref_form_is_unchanged(rclcpp::Node& node) {
+inline ::rclcpp::Result the_out_ref_form_is_unchanged(rclcpp::Node& node) {
     rclcpp::Publisher<CounterMsg> pub;
     return node.create_publisher(pub, "chatter");
 }

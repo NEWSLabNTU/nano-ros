@@ -15,7 +15,7 @@
 namespace {
 
 /// Minimal stand-in for the future type the shim accepts — it only requires
-/// `is_ready()`, which both `nros::Promise` and a ported future provide.
+/// `is_ready()`, which both `rclcpp::Promise` and a ported future provide.
 struct FakeFuture {
     bool ready = false;
     bool is_ready() const { return ready; }

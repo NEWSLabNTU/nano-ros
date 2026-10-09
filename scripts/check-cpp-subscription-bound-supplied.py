@@ -27,7 +27,7 @@ THE RULE, IN TWO HALVES
 1. A call to one of the arena registration entry points must be preceded, in its
    own function body, by an assignment to `rx_buffer_hint` whose right-hand side
    NAMES where the number came from: `rx_buffer_capacity<M>`, `rx_size_bound<M>`,
-   a required `rx_bytes` parameter, or `nros::rx_bound_unknown`.
+   a required `rx_bytes` parameter, or `rclcpp::rx_bound_unknown`.
 
 2. `rx_bound_unknown` is the `unbounded` row said out loud, and it is legal
    only where no message type is in scope. A function whose template parameter
@@ -165,8 +165,8 @@ def audit_text(rel, text):
                 "%s:%d: `%s` is called with no `rx_buffer_hint` stated in its function. "
                 "This registration takes issue 1319's `unbounded` row while the sizing "
                 "descriptor credits the entry with a supplied hint. Set "
-                "`rx_buffer_hint` from `nros::rx_buffer_capacity<M>::value`, or name "
-                "`nros::rx_bound_unknown` if the site genuinely has no type."
+                "`rx_buffer_hint` from `rclcpp::rx_buffer_capacity<M>::value`, or name "
+                "`rclcpp::rx_bound_unknown` if the site genuinely has no type."
                 % (rel, idx + 1, called)
             )
             continue
@@ -185,9 +185,9 @@ def audit_text(rel, text):
             head = template_head(window)
             if TEMPLATE_M.search(head):
                 problems.append(
-                    "%s:%d: `%s` passes `nros::rx_bound_unknown` from a function that "
+                    "%s:%d: `%s` passes `rclcpp::rx_bound_unknown` from a function that "
                     "declares a message type parameter `M` (`%s`). The type is in scope, "
-                    "so the bound is too — `nros::rx_buffer_capacity<M>::value`. The "
+                    "so the bound is too — `rclcpp::rx_buffer_capacity<M>::value`. The "
                     "unknown row is for a site whose type arrives as a NAME."
                     % (rel, idx + 1, called, head.strip())
                 )
@@ -203,7 +203,7 @@ def audit_text(rel, text):
                 "%s:%d: `create_subscription_raw` gives `rx_bytes` a DEFAULT. That default "
                 "is how four registration sites came to omit the bound without anyone "
                 "writing a 0 (phase-456 W7). The parameter is required; a caller with no "
-                "type passes `nros::rx_bound_unknown`." % (rel, idx + 1)
+                "type passes `rclcpp::rx_bound_unknown`." % (rel, idx + 1)
             )
     return problems
 
@@ -238,7 +238,7 @@ def selftest():
             "subscription.hpp",
             sub_text.replace(
                 "    ffi_options.rx_buffer_hint = "
-                "static_cast<uint32_t>(::nros::rx_buffer_capacity<M>::value);\n",
+                "static_cast<uint32_t>(::rclcpp::rx_buffer_capacity<M>::value);\n",
                 "",
                 1,
             ),
@@ -249,7 +249,7 @@ def selftest():
             "subscription.hpp",
             sub_text.replace(
                 "ffi_options.rx_buffer_hint = "
-                "static_cast<uint32_t>(::nros::rx_buffer_capacity<M>::value);",
+                "static_cast<uint32_t>(::rclcpp::rx_buffer_capacity<M>::value);",
                 "ffi_options.rx_buffer_hint = 0;",
                 1,
             ),
@@ -260,8 +260,8 @@ def selftest():
             "subscription.hpp",
             sub_text.replace(
                 "ffi_options.rx_buffer_hint = "
-                "static_cast<uint32_t>(::nros::rx_buffer_capacity<M>::value);",
-                "ffi_options.rx_buffer_hint = ::nros::rx_bound_unknown;",
+                "static_cast<uint32_t>(::rclcpp::rx_buffer_capacity<M>::value);",
+                "ffi_options.rx_buffer_hint = ::rclcpp::rx_bound_unknown;",
                 1,
             ),
             "declares a message type parameter",
@@ -345,7 +345,7 @@ def main():
     print(
         "check-cpp-subscription-bound-supplied: OK — every C++ arena registration states "
         "its receive bound (%d call site(s)); `unbounded` is reachable only by naming "
-        "`nros::rx_bound_unknown` from a function with no message type in scope" % sites
+        "`rclcpp::rx_bound_unknown` from a function with no message type in scope" % sites
     )
     return 0
 

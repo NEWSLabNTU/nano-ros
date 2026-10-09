@@ -63,7 +63,7 @@
 #include "nros/owned.hpp" // phase-456 W5 — the return type of the poll `create_service`
 #include "nros/hosted_block.hpp"
 #include "nros/nros_cpp_config_generated.h"
-// phase-482 W3 — `nros::init` below reads `NROS_ENTRY_LOCATOR` /
+// phase-482 W3 — `rclcpp::init` below reads `NROS_ENTRY_LOCATOR` /
 // `NROS_ENTRY_DOMAIN_ID`, so the ladder that derives them from Kconfig must be
 // visible in EVERY TU that calls it, not only in one that also includes
 // `<nros/main.hpp>`. A ported `main.cpp` includes `<rclcpp/rclcpp.hpp>` and
@@ -97,7 +97,7 @@
 //   * `log.hpp`  — `NROS_ERROR`, the OVERRIDABLE sink `report_component_failure`
 //     routes through so a freestanding image can be given a boot diagnostic
 //     (issue 1015).
-//   * `declared_qos.hpp` — `nros::declared_depth` + `DECLARED_DEPTH_UNDECLARED`,
+//   * `declared_qos.hpp` — `rclcpp::declared_depth` + `DECLARED_DEPTH_UNDECLARED`,
 //     read by `Node::check_declared_depth` (phase-403 step 2).
 // Neither includes a nano-ros header of its own, so neither can close a cycle
 // back onto `node.hpp`. `component.hpp` — which DOES include this file — is why
@@ -114,7 +114,7 @@
 #include "nros/log.hpp"
 #include "nros/guard_condition.hpp"
 #include "nros/executor.hpp"
-// phase-417 stage 2b (RFC-0089) — `nros::TopicEndpointInfo` and the visitor
+// phase-417 stage 2b (RFC-0089) — `rclcpp::TopicEndpointInfo` and the visitor
 // typedef used by the graph forwarders below.
 #include "nros/graph.hpp"
 // Phase 273 (RFC-0047) — callback-group token (value type, no heap).
@@ -122,8 +122,8 @@
 // phase-427 W1 declared the parameter facade here; phase-426 W4 took away the
 // store it read. The hosted block no longer holds a `ParameterServer` — the
 // facade forwards to the EXECUTOR's store — so this header needs
-// `parameter.hpp` for nothing of its own. It is kept because `nros::Parameter`
-// / `nros::ParameterServer` remain a public surface a consumer reaches through
+// `parameter.hpp` for nothing of its own. It is kept because `rclcpp::Parameter`
+// / `rclcpp::ParameterServer` remain a public surface a consumer reaches through
 // the node header (`examples/native/cpp/parameters` uses the class directly),
 // and `parameter.hpp` depends on `result.hpp` and `<nros/parameter.h>` only,
 // so there is no cycle.
@@ -143,7 +143,7 @@
 // probe gates METHODS, never a member.
 
 // `NROS_RCLCPP_MAX_PARAMS` IS GONE (phase-426 W4). It sized an inline
-// `nros::ParameterServer` on the merged node's hosted block — a SECOND
+// `rclcpp::ParameterServer` on the merged node's hosted block — a SECOND
 // parameter store, node-local, which `ros2 param get` could not see and a
 // sibling node did not share. The member is deleted and the facade forwards to
 // the executor's store (`nros/node_parameters.hpp`), so there is no per-node
@@ -183,13 +183,13 @@ static_assert(NROS_CPP_RET_NOT_FOUND == -4 && NROS_CPP_RET_ALREADY_EXISTS == -5 
 //
 // phase-428 (RFC-0089): six of them are DECLARED in the upstream namespace,
 // because that is where their definition now lives, and this header names them
-// that way. The `nros::` migration alias for each is declared ONCE, beside its
+// that way. The `rclcpp::` migration alias for each is declared ONCE, beside its
 // type in that type's own header -- repeating it here would give the alias two
 // declaration sites, and `api-parity` attributes a name to the header it is
 // first seen in.
 namespace rclcpp {
 // phase-427 W7 — the node itself, defined further down in this header. Forward
-// declared up here because the `nros::` free functions BELOW take it by
+// declared up here because the `rclcpp::` free functions BELOW take it by
 // reference and are named by `Node`'s own qualified friend declarations, which
 // require a prior declaration of the function AND of its parameter type.
 class Node;
@@ -204,7 +204,7 @@ template <typename A> class Server;
 template <typename A> class Client;
 } // namespace rclcpp_action
 
-namespace nros {
+namespace rclcpp {
 
 // Phase 122.3.d.b — L1 polling-mode action wrappers.
 template <typename A> class PollingActionServer;
@@ -224,10 +224,10 @@ template <typename S> class ClientHandle;
 /// (RFC-0044 §Design.1, merged onto `Node` by phase-427 W4).
 ///
 /// Carries the opaque executor handle the node is created against — the same
-/// pointer `nros::global_handle()` / `Node::executor_handle()` expose. The entry
+/// pointer `rclcpp::global_handle()` / `Node::executor_handle()` expose. The entry
 /// obtains it post-`init` and placement-news the component with it.
 ///
-/// This was `nros::ComponentNode`'s ctor parameter. `ComponentNode` is gone; the
+/// This was `rclcpp::ComponentNode`'s ctor parameter. `ComponentNode` is gone; the
 /// handle is not, because construction against an EXPLICIT executor is a real
 /// capability and the generated entry is its caller. It is the second of the
 /// type's TWO constructors — RFC-0047's "one component, several named nodes"
@@ -250,7 +250,7 @@ template <typename S> class ClientHandle;
 /// the remap OUTRANKS the name the class's constructor writes; the handle is
 /// the value our entry hands a component, so the identity rides here and
 /// `Node`'s handle constructor applies the same precedence. **No user
-/// component's signature changes** — `explicit Comp(nros::NodeHandle)` is
+/// component's signature changes** — `explicit Comp(rclcpp::NodeHandle)` is
 /// still the one shape, and a handle built the 1-argument way declares
 /// nothing.
 ///
@@ -258,7 +258,7 @@ template <typename S> class ClientHandle;
 /// root: it keeps meaning what it means everywhere else in this header, and
 /// the class's own literal stands. `""` says the same thing, because an empty
 /// C string cannot be told apart from "unset" at this edge (the rule
-/// `nros::init`'s `node_namespace` already states for the session).
+/// `rclcpp::init`'s `node_namespace` already states for the session).
 struct NodeHandle {
     void* executor;
     /// Launch-declared node name, or `nullptr`/`""` when the launch file named
@@ -402,16 +402,18 @@ inline void report_declared_policy_mismatch(const char* node_name, const char* t
 
 /// The contract spelling of a reliability ordinal, for the report above.
 inline const char* declared_reliability_spelling(int ordinal) {
-    return ordinal == static_cast<int>(::nros::Reliable)     ? "reliable"
-           : ordinal == static_cast<int>(::nros::BestEffort) ? "best_effort"
-                                                             : "system_default";
+    return ordinal == static_cast<int>(::rclcpp::ReliabilityPolicy::Reliable) ? "reliable"
+           : ordinal == static_cast<int>(::rclcpp::ReliabilityPolicy::BestEffort)
+               ? "best_effort"
+               : "system_default";
 }
 
 /// The contract spelling of a durability ordinal, for the report above.
 inline const char* declared_durability_spelling(int ordinal) {
-    return ordinal == static_cast<int>(::nros::Volatile)         ? "volatile"
-           : ordinal == static_cast<int>(::nros::TransientLocal) ? "transient_local"
-                                                                 : "system_default";
+    return ordinal == static_cast<int>(::rclcpp::DurabilityPolicy::Volatile) ? "volatile"
+           : ordinal == static_cast<int>(::rclcpp::DurabilityPolicy::TransientLocal)
+               ? "transient_local"
+               : "system_default";
 }
 
 /// phase-446 W6 -- the code `set_error` records when a node declares a
@@ -427,16 +429,16 @@ inline void report_declared_param_mismatch(const char* fqn, const char* param, c
     const char* f = (fqn != nullptr) ? fqn : "?";
     const char* p = (param != nullptr) ? param : "?";
     const char* c = (contract != nullptr) ? contract : "?";
-    if (declared == ::nros::DECLARED_PARAM_UNDECLARED) {
+    if (declared == ::rclcpp::DECLARED_PARAM_UNDECLARED) {
         NROS_ERROR("node \"%s\": parameter \"%s\" is not declared in its contract (%s).", f, p, c);
     } else {
         NROS_ERROR("node \"%s\": parameter \"%s\" is declared %s in its contract (%s) but the "
                    "code declares it as %s.",
-                   f, p, ::nros::declared_param_type_name(declared), c,
-                   ::nros::declared_param_type_name(passed));
+                   f, p, ::rclcpp::declared_param_type_name(declared), c,
+                   ::rclcpp::declared_param_type_name(passed));
     }
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0) // hosted-family: hosted-console
-    if (declared == ::nros::DECLARED_PARAM_UNDECLARED) {
+    if (declared == ::rclcpp::DECLARED_PARAM_UNDECLARED) {
         ::fprintf(stderr,
                   "[nros] FATAL: node \"%s\": parameter \"%s\" is not declared in its "
                   "contract (%s, `params:`). The parameter store is sized from that "
@@ -448,8 +450,8 @@ inline void report_declared_param_mismatch(const char* fqn, const char* param, c
                   "[nros] FATAL: node \"%s\": parameter \"%s\" is declared `%s` in its "
                   "contract (%s) but the code declares it as `%s`. Fix the contract or "
                   "the code so they state one type.\n",
-                  f, p, ::nros::declared_param_type_name(declared), c,
-                  ::nros::declared_param_type_name(passed));
+                  f, p, ::rclcpp::declared_param_type_name(declared), c,
+                  ::rclcpp::declared_param_type_name(passed));
     }
 #endif
 }
@@ -470,10 +472,10 @@ inline void report_declared_param_mismatch(const char* fqn, const char* param, c
 ///
 /// @param locator  Middleware locator (e.g., "tcp/127.0.0.1:7447"), or nullptr for default.
 /// @param domain_id  ROS domain ID (0-232). `0` = unset (env > baked macro >
-///                   default decide); `nros::kDomainIdExplicitZero` (255) =
+///                   default decide); `rclcpp::kDomainIdExplicitZero` (255) =
 ///                   explicitly domain 0 (issue #227).
 /// @return Result indicating success or failure.
-inline Result init(const char* locator = nullptr, uint8_t domain_id = 0);
+inline Result init_in(const char* locator = nullptr, uint8_t domain_id = 0);
 
 /// Initialize the nros session with an explicit session name.
 ///
@@ -491,14 +493,14 @@ inline Result init(const char* locator = nullptr, uint8_t domain_id = 0);
 ///
 /// @param locator       Middleware locator, or nullptr for default.
 /// @param domain_id     ROS domain ID (0-232); `0` = unset,
-///                      `nros::kDomainIdExplicitZero` = explicit domain 0.
+///                      `rclcpp::kDomainIdExplicitZero` = explicit domain 0.
 /// @param session_name  Per-process session identifier. Must not be nullptr.
 /// @return Result indicating success or failure.
-inline Result init(const char* locator, uint8_t domain_id, const char* session_name);
+inline Result init_in(const char* locator, uint8_t domain_id, const char* session_name);
 
 /// Issue 1434 — [`init`] with the primary session's NAMESPACE.
 ///
-/// `nros_cpp_init` has always taken a namespace; no `nros::init` overload had
+/// `nros_cpp_init` has always taken a namespace; no `rclcpp::init` overload had
 /// one, so every C++ entry passed `nullptr` and a launch-declared namespace
 /// reached the blob and stopped there. This is the overload the generated
 /// entry's `run_components` call reaches, with
@@ -514,8 +516,8 @@ inline Result init(const char* locator, uint8_t domain_id, const char* session_n
 /// Additive rather than a fourth parameter on the 3-arg overload: that one is
 /// called by user code and by every board adapter in `<nros/main.hpp>`, and a
 /// defaulted parameter would make the two declarations ambiguous.
-inline Result init(const char* locator, uint8_t domain_id, const char* session_name,
-                   const char* node_namespace);
+inline Result init_in(const char* locator, uint8_t domain_id, const char* session_name,
+                      const char* node_namespace);
 
 /// Issue 1050 defect (3) — `init` with an explicit RMW backend name.
 ///
@@ -550,7 +552,7 @@ inline Result init_with_rmw(const char* rmw, const char* locator = nullptr, uint
 ///    `NROS_RMW`. This is the active overlay channel today.
 ///
 /// `argc` / `argv` are parsed as `--ros-args` with rcl's grammar, exactly as
-/// Rust's `nros::Context::new` does: `-r`/`--remap` rules are installed as the
+/// Rust's `rclcpp::Context::new` does: `-r`/`--remap` rules are installed as the
 /// FALLBACK beneath the launch rules the generated entry declares; `-p` and
 /// `--params-file` are installed as parameter overrides when the image has a
 /// parameter store (phase-482 W5); and any other ROS argument (`__node`,
@@ -575,10 +577,10 @@ inline Result init_with_launch(const char* path, int argc = 0, char** argv = nul
 /// Shut down the nros session.
 ///
 /// Closes the middleware connection and frees all resources.
-inline Result shutdown();
+inline Result shutdown_in();
 
-// phase-427 W7 — the remaining `nros::` free functions `Node` befriends. A
-// QUALIFIED friend declaration (`friend Result(::nros::ok)();`) names an
+// phase-427 W7 — the remaining `rclcpp::` free functions `Node` befriends. A
+// QUALIFIED friend declaration (`friend Result(::rclcpp::ok)();`) names an
 // existing entity; it cannot introduce one. These four live in `nros.hpp`,
 // which includes this header, so without these declarations the friendship
 // would be unresolvable and the private `executor_handle_` unreachable from the
@@ -589,15 +591,15 @@ inline Result create_node(::rclcpp::Node& out, const char* name, const char* ns)
 inline Result create_node_on(::rclcpp::Node& out, void* executor_handle, const char* name,
                              const char* ns);
 inline Result spin_once(int32_t timeout_ms);
-inline Result spin();
-inline Result spin(uint32_t duration_ms, int32_t poll_ms);
+inline Result spin_in();
+inline Result spin_in(uint32_t duration_ms, int32_t poll_ms);
 inline void* global_handle();
 
-} // namespace nros
+} // namespace rclcpp
 
 // ============================================================================
 // rclcpp:: — the HOME of the C++ node type (RFC-0089 §"Settled: `rclcpp::` is
-// the HOME, not an alias onto `nros::`"). phase-427 W7 flipped the direction:
+// the HOME, not an alias onto `rclcpp::`"). phase-427 W7 flipped the direction:
 // the class is DEFINED here and `rclcpp::Node` below is the migration alias, the
 // same shape the other nine types already carry (`clock.hpp`, `duration.hpp`,
 // `time.hpp`, `publisher.hpp`, `subscription.hpp`, `client.hpp`, `service.hpp`,
@@ -610,9 +612,9 @@ inline void* global_handle();
 // `scripts/api-parity.py` roots every C++ TU at `OUR_CPP_ROOTS`, both halves of
 // the vocabulary we ship.
 //
-// The body below is written in the `rclcpp::` vocabulary, so the `nros::`-only
+// The body below is written in the `rclcpp::` vocabulary, so the `rclcpp::`-only
 // names it reaches (`ErrorCode`, `detail::*`, `NodeHandle`, `SchedContext`, the
-// polling entity templates) are spelled `::nros::`-qualified. That is
+// polling entity templates) are spelled `::rclcpp::`-qualified. That is
 // deliberate and not noise: it is what a reader needs to tell an adopted name
 // from an ours-only one, and it is what keeps the two vocabularies from being
 // re-merged by a using-directive.
@@ -637,7 +639,7 @@ namespace rclcpp {
 /// one set of entities, one arena registration path and one parameter facade.
 ///
 /// THE CLASS IS DEFINED HERE, in `rclcpp::`, and `rclcpp::Node` is the alias —
-/// RFC-0089 §"Settled: `rclcpp::` is the HOME, not an alias onto `nros::`", and
+/// RFC-0089 §"Settled: `rclcpp::` is the HOME, not an alias onto `rclcpp::`", and
 /// the tenth and last type of the phase-428 flip. It was held back for two
 /// reasons, both now gone: two landed reviews (PRs #797, #806) were stacked on
 /// this header, and `scripts/api-parity.py` rooted our NATIVE C++ surface at
@@ -687,25 +689,25 @@ class Node {
     /// Re-initialising an already-initialised node is `AlreadyExists` rather
     /// than a silent re-open.
     Result init(const char* name, const char* ns = nullptr) {
-        if (initialized_) return Result(::nros::ErrorCode::AlreadyExists);
-        if (!Node::global_initialized()) return Result(::nros::ErrorCode::NotInitialized);
+        if (initialized_) return Result(::rclcpp::ErrorCode::AlreadyExists);
+        if (!Node::global_initialized()) return Result(::rclcpp::ErrorCode::NotInitialized);
         executor_handle_ = Node::global_storage();
         return Node::create(*this, name, ns);
     }
 
     /// Construct on an EXPLICIT executor handle rather than the global one —
-    /// what a generated entry writes, and what `nros::ComponentNode`'s
+    /// what a generated entry writes, and what `rclcpp::ComponentNode`'s
     /// `NodeHandle` constructor used to be (RFC-0089 §"What this means for the
     /// merge": construction is not identity).
     Result init_on(void* executor_handle, const char* name, const char* ns = nullptr) {
-        if (initialized_) return Result(::nros::ErrorCode::AlreadyExists);
-        if (executor_handle == nullptr) return Result(::nros::ErrorCode::NotInitialized);
+        if (initialized_) return Result(::rclcpp::ErrorCode::AlreadyExists);
+        if (executor_handle == nullptr) return Result(::rclcpp::ErrorCode::NotInitialized);
         executor_handle_ = executor_handle;
         return Node::create(*this, name, ns);
     }
 
     /// Construct against an EXPLICIT executor-bound handle — what a generated
-    /// entry writes, and what `nros::ComponentNode(NodeHandle, name)` was
+    /// entry writes, and what `rclcpp::ComponentNode(NodeHandle, name)` was
     /// before phase-427 W4 merged it here.
     ///
     /// This is the SECOND of the type's two constructors. On a null handle or a
@@ -731,7 +733,7 @@ class Node {
     /// neither changes nothing at all. The class's literal is a DEFAULT, never
     /// dead — which is what keeps a hand-written `main` constructing the same
     /// component (no entry, no handle identity) working unchanged.
-    explicit Node(::nros::NodeHandle handle, const char* name, const char* ns = nullptr)
+    explicit Node(::rclcpp::NodeHandle handle, const char* name, const char* ns = nullptr)
         : handle_(), initialized_(false), executor_handle_(nullptr), clock_(NROS_CLOCK_ROS_TIME) {
         if (!handle.valid()) {
             this->set_error("ctor (null executor handle)", -1);
@@ -832,20 +834,20 @@ class Node {
 
     /// `rclcpp::Node::SharedPtr` — phase-482 W2, RFC-0096 D5 item 4.
     ///
-    /// A copyable, non-owning `nros::Handle<Node>` on EVERY target, the model of
+    /// A copyable, non-owning `rclcpp::Handle<Node>` on EVERY target, the model of
     /// the entity handles (phases 456/476). It was `std::shared_ptr<Node>`
     /// behind `NROS_CPP_HAS_SHARED_PTR`, so a freestanding port could not spell
     /// the type its class body stores and passes. A node is constructed by a
     /// generated entry or by `main` and outlives everything it is handed to,
     /// which is the lifetime a handle states.
     ///
-    /// Hosted interop is in `nros::Handle`: an lvalue `std::shared_ptr<MyNode>`
+    /// Hosted interop is in `rclcpp::Handle`: an lvalue `std::shared_ptr<MyNode>`
     /// converts, a TEMPORARY one is a compile error (it would dangle), and the
     /// spin verbs take `const std::shared_ptr<N>&` so
     /// `rclcpp::spin(std::make_shared<MyNode>())` is unchanged.
-    using SharedPtr = ::nros::Handle<Node>;
+    using SharedPtr = ::rclcpp::Handle<Node>;
     /// `rclcpp::Node::ConstSharedPtr`.
-    using ConstSharedPtr = ::nros::Handle<const Node>;
+    using ConstSharedPtr = ::rclcpp::Handle<const Node>;
 
     /// `rclcpp::Node::shared_from_this()`.
     ///
@@ -883,7 +885,7 @@ class Node {
     /// This one exists for a caller that already holds a `std::string`.
     template <typename M>
     typename ::rclcpp::Publisher<M>::SharedPtr create_publisher(const ::std::string& topic,
-                                                                const ::nros::QoS& qos);
+                                                                const ::rclcpp::QoS& qos);
 
     /// `create_publisher<M>(topic, depth)` — the integer-depth spelling.
     template <typename M>
@@ -894,7 +896,7 @@ class Node {
     /// Accepts ANY callable; the executor dispatches it.
     template <typename M, typename Cb>
     typename ::rclcpp::Subscription<M>::SharedPtr
-    create_subscription(const ::std::string& topic, const ::nros::QoS& qos, Cb cb);
+    create_subscription(const ::std::string& topic, const ::rclcpp::QoS& qos, Cb cb);
 
     /// `create_subscription<M>(topic, depth, callback)`.
     template <typename M, typename Cb>
@@ -905,15 +907,15 @@ class Node {
     /// upstream signature — upstream requires a callback — so it claims
     /// nothing. Drain with `service->take_request(...)`.
     ///
-    /// phase-456 W5 — returns `nros::Owned<nros::PollService<S>>`, which is the
+    /// phase-456 W5 — returns `rclcpp::Owned<rclcpp::PollService<S>>`, which is the
     /// poll server BY VALUE with an `operator->` so the drain spelling above
     /// keeps working. It is deliberately NOT `Service<S>::SharedPtr`: that
     /// alias is a dispatch handle now, and one alias cannot be both a handle
     /// and a pointer to a poll object. W3 recorded that collision as the
     /// blocker on the flip; splitting the poll half out is its removal.
     template <typename S>
-    ::nros::Owned<::nros::PollService<S>>
-    create_service(const ::std::string& name, const ::nros::QoS& qos = ::nros::QoS::services());
+    ::rclcpp::Owned<::rclcpp::PollService<S>>
+    create_service(const ::std::string& name, const ::rclcpp::QoS& qos = ::rclcpp::QoS::services());
 
     /// Callback-style service server (`void(const S::Request&, S::Response&)`).
     template <typename S, typename F,
@@ -921,7 +923,7 @@ class Node {
                   F, void (*)(const typename S::Request&, typename S::Response&)>::value>::type>
     typename ::rclcpp::Service<S>::SharedPtr
     create_service(const ::std::string& name, F callback,
-                   const ::nros::QoS& qos = ::nros::QoS::services());
+                   const ::rclcpp::QoS& qos = ::rclcpp::QoS::services());
 
     /// **REFUSED** — upstream's `shared_ptr` handler shape. See
     /// `NROS_RCLCPP_REFUSE_SHARED_PTR_SERVICE_CALLBACK`.
@@ -932,12 +934,12 @@ class Node {
                                                    typename S::Response&)>::value>::type,
               typename = void>
     typename ::rclcpp::Service<S>::SharedPtr
-    create_service(const ::std::string&, F, const ::nros::QoS& = ::nros::QoS::services());
+    create_service(const ::std::string&, F, const ::rclcpp::QoS& = ::rclcpp::QoS::services());
 
     /// Future-style service client (`create_client<S>(name, qos)`) — pair with
     /// `spin_until_future_complete`.
     ///
-    /// phase-456 W9 — returns `nros::Owned<nros::PollClient<S>>`, which is the
+    /// phase-456 W9 — returns `rclcpp::Owned<rclcpp::PollClient<S>>`, which is the
     /// future-style client BY VALUE with an `operator->` so
     /// `client->send_request(...)` keeps working. It is deliberately NOT
     /// `Client<S>::SharedPtr`: that alias is a dispatch handle now, and one alias
@@ -951,8 +953,8 @@ class Node {
     /// future. Ours hands back the future-style client instead, because our two
     /// roads are two registrations. Ledgered at `cpp:Node::create_client`.
     template <typename S>
-    ::nros::Owned<::nros::PollClient<S>>
-    create_client(const ::std::string& name, const ::nros::QoS& qos = ::nros::QoS::services());
+    ::rclcpp::Owned<::rclcpp::PollClient<S>>
+    create_client(const ::std::string& name, const ::rclcpp::QoS& qos = ::rclcpp::QoS::services());
 
     /// Callback-style service client (`void(const S::Response&)`).
     template <typename S, typename F,
@@ -960,7 +962,7 @@ class Node {
                   std::is_convertible<F, void (*)(const typename S::Response&)>::value>::type>
     typename ::rclcpp::Client<S>::SharedPtr
     create_client(const ::std::string& name, F callback,
-                  const ::nros::QoS& qos = ::nros::QoS::services());
+                  const ::rclcpp::QoS& qos = ::rclcpp::QoS::services());
 
     /// **REFUSED** — upstream's `shared_ptr` handler shape.
     template <typename S, typename F,
@@ -969,7 +971,7 @@ class Node {
                   !std::is_convertible<F, void (*)(const typename S::Response&)>::value>::type,
               typename = void>
     typename ::rclcpp::Client<S>::SharedPtr
-    create_client(const ::std::string&, F, const ::nros::QoS& = ::nros::QoS::services());
+    create_client(const ::std::string&, F, const ::rclcpp::QoS& = ::rclcpp::QoS::services());
 
 #endif // NROS_CPP_HAS_STD_STRING
 
@@ -984,7 +986,7 @@ class Node {
     // and the lane's own error text named the reason — "the hosted overload
     // returns std::shared_ptr and there is no allocator here".
     //
-    // The return type is `Publisher<M>::SharedPtr` = `nros::Owned<Publisher<M>>`
+    // The return type is `Publisher<M>::SharedPtr` = `rclcpp::Owned<Publisher<M>>`
     // now, which needs no allocator and exists everywhere, so the reason is
     // gone and the gate goes with it. RFC-0096 D1: ONE API, byte-for-byte the
     // same shape on every target, reached by removing what made it differ.
@@ -998,7 +1000,8 @@ class Node {
     /// `create_publisher<M>(topic, qos)` — available on every target.
     template <typename M>
     typename ::rclcpp::Publisher<M>::SharedPtr
-    create_publisher(const char* topic, const ::nros::QoS& qos = ::nros::QoS::default_profile());
+    create_publisher(const char* topic,
+                     const ::rclcpp::QoS& qos = ::rclcpp::QoS::default_profile());
 
     /// `create_publisher<M>(topic, depth)` — the integer-depth spelling.
     template <typename M>
@@ -1014,7 +1017,7 @@ class Node {
     /// executor dispatches it. Available on every target.
     template <typename M, typename Cb>
     typename ::rclcpp::Subscription<M>::SharedPtr
-    create_subscription(const char* topic, const ::nros::QoS& qos, Cb cb);
+    create_subscription(const char* topic, const ::rclcpp::QoS& qos, Cb cb);
 
     /// `create_subscription<M>(topic, depth, callback)`.
     template <typename M, typename Cb>
@@ -1024,49 +1027,51 @@ class Node {
     /// Poll-style service server (`create_service<S>(name, qos)`). Not an
     /// upstream signature; see the `std::string` overload's note.
     template <typename S>
-    ::nros::Owned<::nros::PollService<S>>
-    create_service(const char* name, const ::nros::QoS& qos = ::nros::QoS::services());
+    ::rclcpp::Owned<::rclcpp::PollService<S>>
+    create_service(const char* name, const ::rclcpp::QoS& qos = ::rclcpp::QoS::services());
 
     /// Callback-style service server (`void(const S::Request&, S::Response&)`).
     template <typename S, typename F,
-              typename = typename ::nros::tr::enable_if<::nros::tr::is_convertible<
+              typename = typename ::rclcpp::tr::enable_if<::rclcpp::tr::is_convertible<
                   F, void (*)(const typename S::Request&, typename S::Response&)>::value>::type>
     typename ::rclcpp::Service<S>::SharedPtr
-    create_service(const char* name, F callback, const ::nros::QoS& qos = ::nros::QoS::services());
+    create_service(const char* name, F callback,
+                   const ::rclcpp::QoS& qos = ::rclcpp::QoS::services());
 
     /// **REFUSED** — upstream's `shared_ptr` handler shape. See
     /// `NROS_RCLCPP_REFUSE_SHARED_PTR_SERVICE_CALLBACK`.
     template <typename S, typename F,
-              typename = typename ::nros::tr::enable_if<
+              typename = typename ::rclcpp::tr::enable_if<
                   !::rclcpp::detail::is_qos_arg<F>::value &&
-                  !::nros::tr::is_convertible<F, void (*)(const typename S::Request&,
-                                                          typename S::Response&)>::value>::type,
+                  !::rclcpp::tr::is_convertible<F, void (*)(const typename S::Request&,
+                                                            typename S::Response&)>::value>::type,
               typename = void>
     typename ::rclcpp::Service<S>::SharedPtr
-    create_service(const char*, F, const ::nros::QoS& = ::nros::QoS::services());
+    create_service(const char*, F, const ::rclcpp::QoS& = ::rclcpp::QoS::services());
 
     /// Future-style service client (`create_client<S>(name, qos)`); see the
     /// `std::string` overload's note on the divergence.
     template <typename S>
-    ::nros::Owned<::nros::PollClient<S>>
-    create_client(const char* name, const ::nros::QoS& qos = ::nros::QoS::services());
+    ::rclcpp::Owned<::rclcpp::PollClient<S>>
+    create_client(const char* name, const ::rclcpp::QoS& qos = ::rclcpp::QoS::services());
 
     /// Callback-style service client (`void(const S::Response&)`).
     template <typename S, typename F,
-              typename = typename ::nros::tr::enable_if<::nros::tr::is_convertible<
+              typename = typename ::rclcpp::tr::enable_if<::rclcpp::tr::is_convertible<
                   F, void (*)(const typename S::Response&)>::value>::type>
     typename ::rclcpp::Client<S>::SharedPtr
-    create_client(const char* name, F callback, const ::nros::QoS& qos = ::nros::QoS::services());
+    create_client(const char* name, F callback,
+                  const ::rclcpp::QoS& qos = ::rclcpp::QoS::services());
 
     /// **REFUSED** — upstream's `shared_ptr` handler shape.
     template <
         typename S, typename F,
-        typename = typename ::nros::tr::enable_if<
+        typename = typename ::rclcpp::tr::enable_if<
             !::rclcpp::detail::is_qos_arg<F>::value &&
-            !::nros::tr::is_convertible<F, void (*)(const typename S::Response&)>::value>::type,
+            !::rclcpp::tr::is_convertible<F, void (*)(const typename S::Response&)>::value>::type,
         typename = void>
     typename ::rclcpp::Client<S>::SharedPtr
-    create_client(const char*, F, const ::nros::QoS& = ::nros::QoS::services());
+    create_client(const char*, F, const ::rclcpp::QoS& = ::rclcpp::QoS::services());
 
     // -- parameters (bodies in `nros.hpp`) ----------------------------------
     //
@@ -1086,12 +1091,12 @@ class Node {
     // the hosted gate decide whether a node HAS parameters rather than
     // whether it can spell them" - but the declarations stayed inside the gate,
     // so a freestanding node still had no parameter method, and
-    // `nros::ParameterServer<Cap>` (deleted with this wave) was the only C++
+    // `rclcpp::ParameterServer<Cap>` (deleted with this wave) was the only C++
     // parameter surface it had. Deleting that class while the gate stood would
     // have removed the capability from freestanding C++ instead of moving it,
     // which is what W4's ordering rule exists to prevent. The scalar FFI is
     // `<cstdint>` and a `const char*`; nothing about it needs the STL, and
-    // `nros::Seq<T, N>` gives the array form the same reach. Only the
+    // `rclcpp::Seq<T, N>` gives the array form the same reach. Only the
     // `std::string`-KEYED overloads below need it, and they keep the gate - a
     // gate on METHODS, never on a member, which is what
     // `check-cpp-capability-layout` asks.
@@ -1248,7 +1253,7 @@ class Node {
              ++it) {
             const ::std::string full = prefix.empty() ? it->first : (prefix + "." + it->first);
             const ::nros_cpp_node_t* h = this->ffi_handle();
-            Result r = ::nros::detail::node_param_declare(h, full.c_str(), it->second);
+            Result r = ::rclcpp::detail::node_param_declare(h, full.c_str(), it->second);
             if (!r.ok() && r.raw() != NROS_RET_ALREADY_EXISTS) {
                 return r;
             }
@@ -1261,7 +1266,7 @@ class Node {
     ///
     /// **Issue 1473 — `ns == nullptr` (or `""`) is UNSET, not the root.** The
     /// node INHERITS the executor's namespace, which is how a namespace given
-    /// to `nros::init(locator, domain, session, node_namespace)` (issue 1434)
+    /// to `rclcpp::init_in(locator, domain, session, node_namespace)` (issue 1434)
     /// reaches anything the image creates afterwards. To place a node at the
     /// ROOT of a namespaced executor, pass `"/"` — one character, and the
     /// spelling every generated C entry already emits. The two are different
@@ -1278,7 +1283,7 @@ class Node {
     /// @return Result indicating success or failure.
     static Result create(Node& out, const char* name, const char* ns = nullptr) {
         if (!out.executor_handle_) {
-            return Result(::nros::ErrorCode::NotInitialized);
+            return Result(::rclcpp::ErrorCode::NotInitialized);
         }
 
         nros_cpp_ret_t ret = nros_cpp_node_create(out.executor_handle_, name, ns, &out.handle_);
@@ -1316,7 +1321,7 @@ class Node {
     ///        or, when the buffer is too small, the length that WOULD be
     ///        written, so a caller can size a second attempt. May be nullptr.
     Result get_fully_qualified_name(char* buf, size_t buf_len, size_t* out_len = nullptr) const {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(nros_cpp_node_get_fully_qualified_name(&handle_, buf, buf_len, out_len));
     }
 
@@ -1379,7 +1384,7 @@ class Node {
     /// `node->get_clock()->now()` both keep their rclcpp spelling. The pointer
     /// is valid for as long as the node is.
     ///
-    /// The clock is ROS time, as rclcpp's node clock is. See `nros::Clock` for
+    /// The clock is ROS time, as rclcpp's node clock is. See `rclcpp::Clock` for
     /// what ROS time does and does not yet do here (issue 0789).
     Clock* get_clock() { return &clock_; }
     /// Const overload of `get_clock()`.
@@ -1440,7 +1445,7 @@ class Node {
 
     // ---- Graph queries — phase-417 stage 2b (RFC-0089) --------------------
     //
-    // rclcpp puts these on the node. `nros::Executor` owns them here because
+    // rclcpp puts these on the node. `rclcpp::Executor` owns them here because
     // one session per image makes the executor the graph's receiver
     // (RFC-0002), so each method below FORWARDS to the executor this node was
     // opened against and nothing else: no state, no loop, no caching, no name
@@ -1472,7 +1477,7 @@ class Node {
     /// `ErrorCode::Unsupported` from a backend with no graph stays distinct
     /// from it.
     Result get_node_names(nros_cpp_node_visit_fn visit, void* ctx) const {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(nros_cpp_executor_get_node_names(executor_handle_, visit, ctx));
     }
 
@@ -1484,7 +1489,7 @@ class Node {
     /// `types_count` may legitimately be 0 on a partially discovered graph.
     /// Same discovery envelope as [`get_node_names`].
     Result get_topic_names_and_types(nros_cpp_names_and_types_visit_fn visit, void* ctx) const {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(nros_cpp_executor_get_topic_names_and_types(executor_handle_, visit, ctx));
     }
 
@@ -1492,7 +1497,7 @@ class Node {
     /// `Node::get_service_names_and_types()`. As
     /// [`get_topic_names_and_types`], over servers and clients.
     Result get_service_names_and_types(nros_cpp_names_and_types_visit_fn visit, void* ctx) const {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(nros_cpp_executor_get_service_names_and_types(executor_handle_, visit, ctx));
     }
 
@@ -1505,14 +1510,14 @@ class Node {
     /// DISCOVERED, so it can be low right after startup and a zero is never a
     /// proof of absence.
     Result count_publishers(const char* topic_name, size_t* out_count) const {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(nros_cpp_executor_count_publishers(executor_handle_, topic_name, out_count));
     }
 
     /// How many subscribers are visible on `topic_name` — rclcpp's
     /// `Node::count_subscribers()`. See [`count_publishers`] for the caveats.
     Result count_subscribers(const char* topic_name, size_t* out_count) const {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(nros_cpp_executor_count_subscribers(executor_handle_, topic_name, out_count));
     }
 
@@ -1522,7 +1527,7 @@ class Node {
     Result get_publisher_names_and_types_by_node(const char* node_name, const char* node_namespace,
                                                  nros_cpp_names_and_types_visit_fn visit,
                                                  void* ctx) const {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(nros_cpp_executor_get_publisher_names_and_types_by_node(
             executor_handle_, node_name, node_namespace, visit, ctx));
     }
@@ -1531,7 +1536,7 @@ class Node {
     ///
     /// `subscription`, not `subscriber`: the C++ surface takes rclcpp's
     /// vocabulary (`create_subscription`, `Subscription<T>`,
-    /// `get_subscriptions_info_by_topic`), and `nros::Executor` spells it that
+    /// `get_subscriptions_info_by_topic`), and `rclcpp::Executor` spells it that
     /// way — this forwarder keeps our two spellings identical rather than
     /// introducing a third. The C surface says `subscriber` because rcl does,
     /// and the vtable slot because upstream rmw does.
@@ -1541,7 +1546,7 @@ class Node {
                                                     const char* node_namespace,
                                                     nros_cpp_names_and_types_visit_fn visit,
                                                     void* ctx) const {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(nros_cpp_executor_get_subscription_names_and_types_by_node(
             executor_handle_, node_name, node_namespace, visit, ctx));
     }
@@ -1552,7 +1557,7 @@ class Node {
     Result get_service_names_and_types_by_node(const char* node_name, const char* node_namespace,
                                                nros_cpp_names_and_types_visit_fn visit,
                                                void* ctx) const {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(nros_cpp_executor_get_service_names_and_types_by_node(
             executor_handle_, node_name, node_namespace, visit, ctx));
     }
@@ -1563,7 +1568,7 @@ class Node {
     Result get_client_names_and_types_by_node(const char* node_name, const char* node_namespace,
                                               nros_cpp_names_and_types_visit_fn visit,
                                               void* ctx) const {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(nros_cpp_executor_get_client_names_and_types_by_node(
             executor_handle_, node_name, node_namespace, visit, ctx));
     }
@@ -1575,7 +1580,7 @@ class Node {
     /// the GRANTED profile, no backend behind this API can read a remote's
     /// granted profile back, and reporting the remote's DECLARED one instead
     /// would be a confident wrong answer to the question ("why is nothing
-    /// arriving?") the field exists to answer. See [`nros::TopicEndpointInfo`].
+    /// arriving?") the field exists to answer. See [`rclcpp::TopicEndpointInfo`].
     ///
     /// rclcpp also takes `no_mangle`; there is no such parameter here, because
     /// accepting one and ignoring it would silently drop configuration —
@@ -1584,12 +1589,12 @@ class Node {
     /// Same discovery envelope as [`get_node_names`].
     Result get_publishers_info_by_topic(const char* topic_name,
                                         nros_cpp_endpoint_info_visit_fn visit, void* ctx) const {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(nros_cpp_executor_get_publishers_info_by_topic(executor_handle_, topic_name,
                                                                      visit, ctx));
     }
 
-    /// The publishers on `topic_name`, visited as [`nros::TopicEndpointInfo`]
+    /// The publishers on `topic_name`, visited as [`rclcpp::TopicEndpointInfo`]
     /// — the rclcpp-shaped overload of the call above.
     ///
     /// A pure conversion over the same query: the visitor sees an endpoint
@@ -1598,11 +1603,12 @@ class Node {
     /// `nros_cpp_endpoint_info_visit_fn` overload applies unchanged, including
     /// the absent QoS profile and the borrowed strings.
     Result get_publishers_info_by_topic(const char* topic_name,
-                                        ::nros::TopicEndpointInfoVisitFn visit, void* ctx) const {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
-        ::nros::detail::EndpointInfoTrampoline tramp{visit, ctx};
+                                        ::rclcpp::TopicEndpointInfoVisitFn visit, void* ctx) const {
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
+        ::rclcpp::detail::EndpointInfoTrampoline tramp{visit, ctx};
         return Result(nros_cpp_executor_get_publishers_info_by_topic(
-            executor_handle_, topic_name, &::nros::detail::EndpointInfoTrampoline::thunk, &tramp));
+            executor_handle_, topic_name, &::rclcpp::detail::EndpointInfoTrampoline::thunk,
+            &tramp));
     }
 
     /// The subscriptions discovered on `topic_name`, one visit each —
@@ -1611,21 +1617,22 @@ class Node {
     /// envelopes.
     Result get_subscriptions_info_by_topic(const char* topic_name,
                                            nros_cpp_endpoint_info_visit_fn visit, void* ctx) const {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(nros_cpp_executor_get_subscriptions_info_by_topic(executor_handle_,
                                                                         topic_name, visit, ctx));
     }
 
     /// The subscriptions on `topic_name`, visited as
-    /// [`nros::TopicEndpointInfo`] — the rclcpp-shaped overload of the call
+    /// [`rclcpp::TopicEndpointInfo`] — the rclcpp-shaped overload of the call
     /// above.
     Result get_subscriptions_info_by_topic(const char* topic_name,
-                                           ::nros::TopicEndpointInfoVisitFn visit,
+                                           ::rclcpp::TopicEndpointInfoVisitFn visit,
                                            void* ctx) const {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
-        ::nros::detail::EndpointInfoTrampoline tramp{visit, ctx};
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
+        ::rclcpp::detail::EndpointInfoTrampoline tramp{visit, ctx};
         return Result(nros_cpp_executor_get_subscriptions_info_by_topic(
-            executor_handle_, topic_name, &::nros::detail::EndpointInfoTrampoline::thunk, &tramp));
+            executor_handle_, topic_name, &::rclcpp::detail::EndpointInfoTrampoline::thunk,
+            &tramp));
     }
 
     /// Create a publisher for a topic.
@@ -1636,7 +1643,7 @@ class Node {
     /// @param qos    QoS profile (default: reliable, keep-last(10)).
     template <typename M>
     Result create_publisher(::rclcpp::Publisher<M>& out, const char* topic,
-                            const ::nros::QoS& qos = ::nros::QoS::default_profile());
+                            const ::rclcpp::QoS& qos = ::rclcpp::QoS::default_profile());
 
     /// Create a publisher with rclcpp-style named options (Phase 189.M3.1).
     ///
@@ -1651,13 +1658,13 @@ class Node {
     /// @param qos      QoS profile.
     /// @param options  Named publisher options.
     template <typename M>
-    Result create_publisher(::rclcpp::Publisher<M>& out, const char* topic, const ::nros::QoS& qos,
-                            const ::nros::PublisherOptions& options);
+    Result create_publisher(::rclcpp::Publisher<M>& out, const char* topic,
+                            const ::rclcpp::QoS& qos, const ::rclcpp::PublisherOptions& options);
 
     /// Create a POLL subscription for a topic — the caller owns the subscriber
     /// and drains it with `take()`; nothing dispatches.
     ///
-    /// phase-456 W2b — the out parameter is `nros::PollSubscription<M>`, not
+    /// phase-456 W2b — the out parameter is `rclcpp::PollSubscription<M>`, not
     /// `Subscription<M>`. Defined in `nros/polling_subscription.hpp`, beside
     /// the type it creates.
     ///
@@ -1666,8 +1673,8 @@ class Node {
     /// @param topic  Topic name (null-terminated).
     /// @param qos    QoS profile (default: reliable, keep-last(10)).
     template <typename M>
-    Result create_subscription(::nros::PollSubscription<M>& out, const char* topic,
-                               const ::nros::QoS& qos = ::nros::QoS::default_profile());
+    Result create_subscription(::rclcpp::PollSubscription<M>& out, const char* topic,
+                               const ::rclcpp::QoS& qos = ::rclcpp::QoS::default_profile());
 
     /// Create a subscription with rclcpp-style named options (Phase 189.M3.1).
     ///
@@ -1685,8 +1692,9 @@ class Node {
     /// @param qos      QoS profile.
     /// @param options  Named subscription options.
     template <typename M>
-    Result create_subscription(::nros::PollSubscription<M>& out, const char* topic,
-                               const ::nros::QoS& qos, const ::nros::SubscriptionOptions& options);
+    Result create_subscription(::rclcpp::PollSubscription<M>& out, const char* topic,
+                               const ::rclcpp::QoS& qos,
+                               const ::rclcpp::SubscriptionOptions& options);
 
     /// Create a **callback-style** subscription (rclcpp dispatch model; Phase
     /// 189.M3.x). The executor arena owns the subscriber and invokes `callback`
@@ -1716,7 +1724,7 @@ class Node {
     ///
     /// COST, stated: the three-argument convenience
     /// `create_subscription(sub, "chatter", cb)` is gone. Write
-    /// `create_subscription(sub, "chatter", ::nros::QoS(10), cb)`.
+    /// `create_subscription(sub, "chatter", ::rclcpp::QoS(10), cb)`.
     ///
     /// @tparam M  Message type (must define TYPE_NAME, TYPE_HASH, ffi_deserialize).
     /// @param out       Receives the initialized subscription (callback mode).
@@ -1734,8 +1742,8 @@ class Node {
         typename M, typename F,
         typename = typename std::enable_if<std::is_convertible<F, void (*)(const M&)>::value>::type>
     Result create_subscription(::rclcpp::Subscription<M>& out, const char* topic,
-                               const ::nros::QoS& qos, F callback,
-                               const ::nros::SubscriptionOptions& options = {});
+                               const ::rclcpp::QoS& qos, F callback,
+                               const ::rclcpp::SubscriptionOptions& options = {});
 
     /// Create a **callback-style** subscription that also delivers each sample's
     /// wire **attachment** (Phase 189.M3.4 — the callback analogue of
@@ -1752,8 +1760,8 @@ class Node {
               typename = typename std::enable_if<
                   std::is_convertible<F, void (*)(const M&, const uint8_t*, size_t)>::value>::type>
     Result create_subscription_with_info(::rclcpp::Subscription<M>& out, const char* topic,
-                                         const ::nros::QoS& qos, F callback,
-                                         const ::nros::SubscriptionOptions& options = {});
+                                         const ::rclcpp::QoS& qos, F callback,
+                                         const ::rclcpp::SubscriptionOptions& options = {});
 
 #if defined(NANO_ROS_SAFETY_E2E)
     /// Phase 269 W3 — Create a **callback-style** subscription that surfaces the
@@ -1778,13 +1786,13 @@ class Node {
               typename = typename std::enable_if<std::is_convertible<
                   F, void (*)(const M&, const nros_cpp_integrity_status_t&)>::value>::type>
     Result create_subscription_with_safety(::rclcpp::Subscription<M>& out, const char* topic,
-                                           const ::nros::QoS& qos, F callback,
-                                           const ::nros::SubscriptionOptions& options = {});
+                                           const ::rclcpp::QoS& qos, F callback,
+                                           const ::rclcpp::SubscriptionOptions& options = {});
 #endif // NANO_ROS_SAFETY_E2E
 
     /// Create a POLL-style service server.
     ///
-    /// phase-456 W5 — the out parameter is `nros::PollService<S>`, not
+    /// phase-456 W5 — the out parameter is `rclcpp::PollService<S>`, not
     /// `rclcpp::Service<S>`. This overload creates a server the CALLER owns, in
     /// the caller's own storage, drained with `take_request()` /
     /// `send_response()`; the dispatch overload below registers a handler into
@@ -1797,8 +1805,8 @@ class Node {
     /// @param service_name  Service name (null-terminated).
     /// @param qos           QoS profile (default: services preset).
     template <typename S>
-    Result create_service(::nros::PollService<S>& out, const char* service_name,
-                          const ::nros::QoS& qos = ::nros::QoS::services());
+    Result create_service(::rclcpp::PollService<S>& out, const char* service_name,
+                          const ::rclcpp::QoS& qos = ::rclcpp::QoS::services());
 
     /// Create a **callback-style** service server (rclcpp dispatch model;
     /// Phase 189.M3.3.e). Unlike the poll-style overload above, this
@@ -1817,12 +1825,12 @@ class Node {
               typename = typename std::enable_if<std::is_convertible<
                   F, void (*)(const typename S::Request&, typename S::Response&)>::value>::type>
     Result create_service(::rclcpp::Service<S>& out, const char* service_name, F callback,
-                          const ::nros::QoS& qos = ::nros::QoS::services(),
-                          const ::nros::ServiceOptions& options = {});
+                          const ::rclcpp::QoS& qos = ::rclcpp::QoS::services(),
+                          const ::rclcpp::ServiceOptions& options = {});
 
     /// Create a FUTURE-style service client.
     ///
-    /// phase-456 W9 — the out parameter is `nros::PollClient<S>`, not
+    /// phase-456 W9 — the out parameter is `rclcpp::PollClient<S>`, not
     /// `rclcpp::Client<S>`. This overload creates a client the CALLER owns, in
     /// the caller's own storage, drained with `send_request()` / `call()` /
     /// `call_polling()` and probed with `wait_for_service()`; the dispatch
@@ -1836,8 +1844,8 @@ class Node {
     /// @param service_name  Service name (null-terminated).
     /// @param qos           QoS profile (default: services preset).
     template <typename S>
-    Result create_client(::nros::PollClient<S>& out, const char* service_name,
-                         const ::nros::QoS& qos = ::nros::QoS::services());
+    Result create_client(::rclcpp::PollClient<S>& out, const char* service_name,
+                         const ::rclcpp::QoS& qos = ::rclcpp::QoS::services());
 
     /// Create a **callback-style** service client (rclcpp async dispatch;
     /// Phase 189.M3.3.f). Arena-registered, so it owns a real executor handle and
@@ -1854,8 +1862,8 @@ class Node {
               typename = typename std::enable_if<
                   std::is_convertible<F, void (*)(const typename S::Response&)>::value>::type>
     Result create_client(::rclcpp::Client<S>& out, const char* service_name, F callback,
-                         const ::nros::QoS& qos = ::nros::QoS::services(),
-                         const ::nros::ClientOptions& options = {});
+                         const ::rclcpp::QoS& qos = ::rclcpp::QoS::services(),
+                         const ::rclcpp::ClientOptions& options = {});
 
     /// Create an action server.
     ///
@@ -1869,8 +1877,8 @@ class Node {
     ///                     the goal-service dispatch onto a scheduling context.
     template <typename A>
     Result create_action_server(::rclcpp_action::Server<A>& out, const char* action_name,
-                                const ::nros::QoS& qos = ::nros::QoS::services(),
-                                const ::nros::ActionServerOptions& options = {});
+                                const ::rclcpp::QoS& qos = ::rclcpp::QoS::services(),
+                                const ::rclcpp::ActionServerOptions& options = {});
 
     /// Create an action client.
     ///
@@ -1880,18 +1888,18 @@ class Node {
     /// @param qos          QoS profile (default: services preset).
     template <typename A>
     Result create_action_client(::rclcpp_action::Client<A>& out, const char* action_name,
-                                const ::nros::QoS& qos = ::nros::QoS::services());
+                                const ::rclcpp::QoS& qos = ::rclcpp::QoS::services());
 
     /// Phase 122.3.d.b — Create an L1 polling-mode action server.
     /// Caller drives the lifecycle (no executor callback). See
     /// `polling_action_server.hpp` for usage.
     template <typename A>
-    Result create_polling_action_server(::nros::PollingActionServer<A>& out,
+    Result create_polling_action_server(::rclcpp::PollingActionServer<A>& out,
                                         const char* action_name);
 
     /// Phase 122.3.d.b — Create an L1 polling-mode action client.
     template <typename A>
-    Result create_polling_action_client(::nros::PollingActionClient<A>& out,
+    Result create_polling_action_client(::rclcpp::PollingActionClient<A>& out,
                                         const char* action_name);
 
     /// Issue 0278 — Create a latest-value polling subscription (the nano-ros
@@ -1900,8 +1908,8 @@ class Node {
     /// `PollingSubscription<M>::take_data()` / `take_new_data()`. See
     /// `polling_subscription.hpp`.
     template <typename M>
-    Result create_polling_subscription(::nros::PollingSubscription<M>& out, const char* topic,
-                                       const ::nros::QoS& qos = ::nros::QoS::default_profile());
+    Result create_polling_subscription(::rclcpp::PollingSubscription<M>& out, const char* topic,
+                                       const ::rclcpp::QoS& qos = ::rclcpp::QoS::default_profile());
 
     /// Create a repeating timer on a CLOCK — `rclcpp::create_timer(node, clock,
     /// period, callback)`, phase-425 W4.
@@ -1928,7 +1936,7 @@ class Node {
     /// @param context    User context passed to the callback (may be nullptr).
     Result create_timer(Timer& out, const Clock& clock, uint64_t period_ms,
                         nros_cpp_timer_callback_t callback, void* context = nullptr) {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         size_t handle_id = 0;
         nros_cpp_ret_t ret = nros_cpp_timer_create_on_clock(
             executor_handle_, static_cast<uint8_t>(clock.get_clock_type()), period_ms, callback,
@@ -1944,7 +1952,7 @@ class Node {
     /// `create_wall_timer(period, callback)` — upstream's shape, FREESTANDING.
     ///
     /// phase-476 W2. Takes any callable (a capturing lambda, a `std::bind`
-    /// result) and returns a two-word [`::nros::TimerHandle`]; the callable is
+    /// result) and returns a two-word [`::rclcpp::TimerHandle`]; the callable is
     /// copied into the executor arena, which destroys it when the timer is
     /// released, so nothing here allocates and nothing needs `<memory>` or
     /// `<functional>`. The node owns the timer: destroying the node releases it.
@@ -1952,14 +1960,14 @@ class Node {
     ///
     /// ADOPT-BOUNDED as before: the period is truncated to whole milliseconds,
     /// and a missed deadline catches up where rcl drops (see `rclcpp::Timer`).
-    template <typename Cb>::nros::TimerHandle create_wall_timer(::nros::Duration period, Cb cb);
+    template <typename Cb>::rclcpp::TimerHandle create_wall_timer(::rclcpp::Duration period, Cb cb);
 
 #ifdef NROS_CPP_HAS_STD_CHRONO // hosted-family: chrono-interop
     /// `create_wall_timer(500ms, callback)` — the `std::chrono` spelling a
-    /// ported file writes. Conversion sugar over the `nros::Duration` overload,
+    /// ported file writes. Conversion sugar over the `rclcpp::Duration` overload,
     /// which is the one that exists on every target.
     template <typename Rep, typename Period, typename Cb>
-    ::nros::TimerHandle create_wall_timer(::std::chrono::duration<Rep, Period> period, Cb cb);
+    ::rclcpp::TimerHandle create_wall_timer(::std::chrono::duration<Rep, Period> period, Cb cb);
 #endif
 
     /// Create a repeating WALL timer — `rclcpp::Node::create_wall_timer`.
@@ -1974,7 +1982,7 @@ class Node {
     /// @param context    User context passed to the callback (may be nullptr).
     Result create_wall_timer(Timer& out, uint64_t period_ms, nros_cpp_timer_callback_t callback,
                              void* context = nullptr) {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         size_t handle_id = 0;
         nros_cpp_ret_t ret =
             nros_cpp_timer_create(executor_handle_, period_ms, callback, context, &handle_id);
@@ -1988,7 +1996,7 @@ class Node {
 
     // ==== phase-427 W3 — member-function binding, on the upstream name ======
     //
-    // `nros::bind_timer<C, &C::m>(node, out, ms, self)` was a FREE function
+    // `rclcpp::bind_timer<C, &C::m>(node, out, ms, self)` was a FREE function
     // with an invented name doing what `create_wall_timer` does. Folding it in
     // removes an invention by reusing an upstream name, which is what clause 2
     // asks for — and it is the shape a component actually writes, so the verb a
@@ -2025,8 +2033,8 @@ class Node {
     /// Bind a member `void C::on_tick()` as a timer IN a callback group
     /// (RFC-0047) — the member-binding half of `create_timer_in_group`.
     template <class C, void (C::*Method)()>
-    Result create_timer_in_group(const ::nros::CallbackGroup& group, Timer& out, uint64_t period_ms,
-                                 C* self) {
+    Result create_timer_in_group(const ::rclcpp::CallbackGroup& group, Timer& out,
+                                 uint64_t period_ms, C* self) {
         return this->create_timer_in_group(
             group, out, period_ms, [](void* ctx) { (static_cast<C*>(ctx)->*Method)(); }, self);
     }
@@ -2041,7 +2049,7 @@ class Node {
     /// @param context   User context passed to the callback (may be nullptr).
     Result create_timer_oneshot(Timer& out, uint64_t delay_ms, nros_cpp_timer_callback_t callback,
                                 void* context = nullptr) {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         size_t handle_id = 0;
         nros_cpp_ret_t ret = nros_cpp_timer_create_oneshot(executor_handle_, delay_ms, callback,
                                                            context, &handle_id);
@@ -2063,8 +2071,8 @@ class Node {
     ///
     /// @param name  Group name — must be a string literal or static-lifetime
     ///              string; the pointer is stored directly (no copy).
-    ::nros::CallbackGroup create_callback_group(const char* name) {
-        return ::nros::CallbackGroup{name};
+    ::rclcpp::CallbackGroup create_callback_group(const char* name) {
+        return ::rclcpp::CallbackGroup{name};
     }
 
     /// Create a repeating timer **in** a callback group (RFC-0047).
@@ -2078,9 +2086,10 @@ class Node {
     /// @param period_ms  Timer period in milliseconds.
     /// @param callback   C function pointer invoked on each tick.
     /// @param context    User context passed to the callback (may be nullptr).
-    Result create_timer_in_group(const ::nros::CallbackGroup& group, Timer& out, uint64_t period_ms,
-                                 nros_cpp_timer_callback_t callback, void* context = nullptr) {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+    Result create_timer_in_group(const ::rclcpp::CallbackGroup& group, Timer& out,
+                                 uint64_t period_ms, nros_cpp_timer_callback_t callback,
+                                 void* context = nullptr) {
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         size_t handle_id = 0;
         nros_cpp_ret_t ret = nros_cpp_timer_create_in_group(
             executor_handle_, &handle_, period_ms, callback, context, group.get_name(), &handle_id);
@@ -2114,10 +2123,10 @@ class Node {
     template <
         typename M, typename F,
         typename = typename std::enable_if<std::is_convertible<F, void (*)(const M&)>::value>::type>
-    Result create_subscription_in_group(const ::nros::CallbackGroup& group,
+    Result create_subscription_in_group(const ::rclcpp::CallbackGroup& group,
                                         ::rclcpp::Subscription<M>& out, const char* topic,
-                                        const ::nros::QoS& qos, F callback,
-                                        const ::nros::SubscriptionOptions& options = {});
+                                        const ::rclcpp::QoS& qos, F callback,
+                                        const ::rclcpp::SubscriptionOptions& options = {});
 
     /// Create a publisher **in** a callback group (API symmetry; RFC-0047).
     ///
@@ -2131,9 +2140,9 @@ class Node {
     /// @param topic  Topic name.
     /// @param qos    QoS profile.
     template <typename M>
-    Result create_publisher_in_group(const ::nros::CallbackGroup& /* group */,
+    Result create_publisher_in_group(const ::rclcpp::CallbackGroup& /* group */,
                                      ::rclcpp::Publisher<M>& out, const char* topic,
-                                     const ::nros::QoS& qos = ::nros::QoS::default_profile()) {
+                                     const ::rclcpp::QoS& qos = ::rclcpp::QoS::default_profile()) {
         return create_publisher<M>(out, topic, qos);
     }
 
@@ -2144,9 +2153,9 @@ class Node {
     /// @param out       Receives the initialized guard condition.
     /// @param callback  C function pointer invoked when triggered.
     /// @param context   User context passed to the callback (may be nullptr).
-    Result create_guard_condition(::nros::GuardCondition& out, nros_cpp_guard_callback_t callback,
+    Result create_guard_condition(::rclcpp::GuardCondition& out, nros_cpp_guard_callback_t callback,
                                   void* context = nullptr) {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         size_t handle_id = 0;
         nros_cpp_ret_t ret = nros_cpp_guard_condition_create(executor_handle_, callback, context,
                                                              out.storage_, &handle_id);
@@ -2160,7 +2169,7 @@ class Node {
 
     // ==== phase-427 W4 — the ours-only family, under `_in` names =============
     //
-    // These came off `nros::ComponentNode`. Every one of them is spelled with
+    // These came off `rclcpp::ComponentNode`. Every one of them is spelled with
     // an `_in` SUFFIX rather than upstream's bare verb, and the rename is the
     // whole point of the item.
     //
@@ -2197,7 +2206,7 @@ class Node {
     template <typename M>
     ::rclcpp::Publisher<M>
     create_publisher_in(const char* topic,
-                        const ::nros::QoS& qos = ::nros::QoS::default_profile()) {
+                        const ::rclcpp::QoS& qos = ::rclcpp::QoS::default_profile()) {
         ::rclcpp::Publisher<M> pub;
         Result r = this->create_publisher(pub, topic, qos);
         if (!r.ok()) {
@@ -2215,19 +2224,19 @@ class Node {
     /// and nothing to park.
     ///
     /// DECLARED here and DEFINED in `component.hpp`: the body calls
-    /// `nros::bind_subscription`, which lives there, and `component.hpp`
+    /// `rclcpp::bind_subscription`, which lives there, and `component.hpp`
     /// includes THIS file — so defining it here would close an include cycle.
     /// `nros.hpp` pulls in `component.hpp`, so the definition is visible
     /// wherever the umbrella is.
     template <typename M, class C, void (C::*Method)(const M& msg)>
     void create_subscription_in(const char* topic,
-                                const ::nros::QoS& qos = ::nros::QoS::default_profile());
+                                const ::rclcpp::QoS& qos = ::rclcpp::QoS::default_profile());
 
     /// The same, **in** a callback group (RFC-0047) — the group's SchedContext
     /// is resolved via `group_sched_table`. Also defined in `component.hpp`.
     template <typename M, class C, void (C::*Method)(const M& msg)>
-    void create_subscription_in_group(const ::nros::CallbackGroup& group, const char* topic,
-                                      const ::nros::QoS& qos = ::nros::QoS::default_profile());
+    void create_subscription_in_group(const ::rclcpp::CallbackGroup& group, const char* topic,
+                                      const ::rclcpp::QoS& qos = ::rclcpp::QoS::default_profile());
 
     /// phase-403 step 2 — the BOOT-TIME half of the declared-depth check.
     ///
@@ -2237,7 +2246,7 @@ class Node {
     /// built at runtime or forwarded through a variable (the lookup key is not
     /// a constant expression), and a caller that reaches the member directly
     /// rather than through the macro. Both get the same comparison here,
-    /// against the same table, through the same `nros::declared_depth`.
+    /// against the same table, through the same `rclcpp::declared_depth`.
     ///
     /// A disagreement is a named boot failure: it goes through `set_error`,
     /// which makes the entry's post-construct `ok()` check halt boot. It does
@@ -2245,11 +2254,11 @@ class Node {
     /// did not declare is exactly the arena mis-sizing this step prevents.
     ///
     /// Returns true when the subscription may be created.
-    bool check_declared_depth(const char* type_name, const char* topic, const ::nros::QoS& qos) {
-        const int declared = ::nros::declared_depth(type_name, topic);
+    bool check_declared_depth(const char* type_name, const char* topic, const ::rclcpp::QoS& qos) {
+        const int declared = ::rclcpp::declared_depth(type_name, topic);
         // Nobody declared this endpoint. Not an error: the image has not opted
         // in, and anything sizing from depth refuses rather than defaulting.
-        if (declared == ::nros::DECLARED_DEPTH_UNDECLARED) {
+        if (declared == ::rclcpp::DECLARED_DEPTH_UNDECLARED) {
             return true;
         }
         if (declared == qos.depth()) {
@@ -2257,13 +2266,13 @@ class Node {
         }
         // The two NUMBERS and the TOPIC go out first: `set_error` records one
         // `const char*`, which cannot carry them.
-        ::nros::detail::report_declared_depth_mismatch(this->get_name(), topic, declared,
-                                                       qos.depth());
+        ::rclcpp::detail::report_declared_depth_mismatch(this->get_name(), topic, declared,
+                                                         qos.depth());
         this->set_error(
-            "create_subscription_in: ::nros::QoS depth disagrees with the depth declared for "
+            "create_subscription_in: ::rclcpp::QoS depth disagrees with the depth declared for "
             "this topic in the contract sidecar. Depth multiplies the arena, so the "
             "declaration and the code must state one number, not two.",
-            ::nros::detail::DECLARED_DEPTH_MISMATCH);
+            ::rclcpp::detail::DECLARED_DEPTH_MISMATCH);
         return false;
     }
 
@@ -2278,32 +2287,33 @@ class Node {
     /// the subscription is NOT created. An undeclared column checks nothing.
     ///
     /// Returns true when the subscription may be created.
-    bool check_declared_qos(const char* type_name, const char* topic, const ::nros::QoS& qos) {
+    bool check_declared_qos(const char* type_name, const char* topic, const ::rclcpp::QoS& qos) {
         if (!this->check_declared_depth(type_name, topic, qos)) {
             return false;
         }
-        const int rel = ::nros::declared_reliability(type_name, topic);
-        if (rel != ::nros::DECLARED_POLICY_UNDECLARED &&
+        const int rel = ::rclcpp::declared_reliability(type_name, topic);
+        if (rel != ::rclcpp::DECLARED_POLICY_UNDECLARED &&
             rel != static_cast<int>(qos.reliability())) {
-            ::nros::detail::report_declared_policy_mismatch(
+            ::rclcpp::detail::report_declared_policy_mismatch(
                 this->get_name(), topic, "reliability",
-                ::nros::detail::declared_reliability_spelling(rel),
-                ::nros::detail::declared_reliability_spelling(static_cast<int>(qos.reliability())));
-            this->set_error("create_subscription_in: ::nros::QoS reliability disagrees with the "
+                ::rclcpp::detail::declared_reliability_spelling(rel),
+                ::rclcpp::detail::declared_reliability_spelling(
+                    static_cast<int>(qos.reliability())));
+            this->set_error("create_subscription_in: ::rclcpp::QoS reliability disagrees with the "
                             "reliability declared for this topic in the contract sidecar.",
-                            ::nros::detail::DECLARED_QOS_MISMATCH);
+                            ::rclcpp::detail::DECLARED_QOS_MISMATCH);
             return false;
         }
-        const int dur = ::nros::declared_durability(type_name, topic);
-        if (dur != ::nros::DECLARED_POLICY_UNDECLARED &&
+        const int dur = ::rclcpp::declared_durability(type_name, topic);
+        if (dur != ::rclcpp::DECLARED_POLICY_UNDECLARED &&
             dur != static_cast<int>(qos.durability())) {
-            ::nros::detail::report_declared_policy_mismatch(
+            ::rclcpp::detail::report_declared_policy_mismatch(
                 this->get_name(), topic, "durability",
-                ::nros::detail::declared_durability_spelling(dur),
-                ::nros::detail::declared_durability_spelling(static_cast<int>(qos.durability())));
-            this->set_error("create_subscription_in: ::nros::QoS durability disagrees with the "
+                ::rclcpp::detail::declared_durability_spelling(dur),
+                ::rclcpp::detail::declared_durability_spelling(static_cast<int>(qos.durability())));
+            this->set_error("create_subscription_in: ::rclcpp::QoS durability disagrees with the "
                             "durability declared for this topic in the contract sidecar.",
-                            ::nros::detail::DECLARED_QOS_MISMATCH);
+                            ::rclcpp::detail::DECLARED_QOS_MISMATCH);
             return false;
         }
         return true;
@@ -2322,7 +2332,7 @@ class Node {
     /// boot. The parameter is NOT declared.
     ///
     /// A node whose contract has no `params:` is not checked, and neither are
-    /// the names every node carries (`nros::declared_param_exempt`). Runtime
+    /// the names every node carries (`rclcpp::declared_param_exempt`). Runtime
     /// rather than `static_assert`: the key is the node's fully-qualified
     /// name, which is a constructor argument, not a constant expression.
     ///
@@ -2333,22 +2343,22 @@ class Node {
         if (name == nullptr || nn == nullptr) {
             return true;
         }
-        const ::nros::declared_params::Node* declaring =
-            ::nros::declared_param_node((ns != nullptr) ? ns : "", nn);
-        if (declaring == nullptr || ::nros::declared_param_exempt(name)) {
+        const ::rclcpp::declared_params::Node* declaring =
+            ::rclcpp::declared_param_node((ns != nullptr) ? ns : "", nn);
+        if (declaring == nullptr || ::rclcpp::declared_param_exempt(name)) {
             return true;
         }
-        const int declared = ::nros::declared_param_type(declaring, name);
+        const int declared = ::rclcpp::declared_param_type(declaring, name);
         if (declared == passed_type) {
             return true;
         }
-        ::nros::detail::report_declared_param_mismatch(declaring->fqn, name, declaring->contract,
-                                                       declared, passed_type);
+        ::rclcpp::detail::report_declared_param_mismatch(declaring->fqn, name, declaring->contract,
+                                                         declared, passed_type);
         this->set_error("declare_parameter: the code does not declare this parameter the way "
                         "its contract does (see the line above for the node, the parameter and "
                         "the contract). The parameter store is sized from the contract's "
                         "`params:`, so the two must state one name and one type.",
-                        ::nros::detail::DECLARED_PARAM_MISMATCH);
+                        ::rclcpp::detail::DECLARED_PARAM_MISMATCH);
         return false;
     }
 
@@ -2369,7 +2379,7 @@ class Node {
             // RELEASE publishes the two plain writes above: a reader that
             // acquire-observes has_error_ == true is guaranteed to see them.
             __atomic_store_n(&has_error_, true, __ATOMIC_RELEASE);
-            ::nros::detail::report_component_failure(this->get_name(), what, code);
+            ::rclcpp::detail::report_component_failure(this->get_name(), what, code);
         }
     }
 
@@ -2424,7 +2434,7 @@ class Node {
 
     nros_cpp_node_t handle_;
     bool initialized_;
-    void* executor_handle_; // Set by nros::init() via friendship
+    void* executor_handle_; // Set by rclcpp::init() via friendship
     // Issue 0789 — the node's own clock, ROS time as in rclcpp. Constructing
     // it touches no platform service (only a steady clock records an epoch),
     // so a Node in static storage stays as cheap to create as it was.
@@ -2455,41 +2465,42 @@ class Node {
     int32_t error_code_ = 0;
 
     // phase-427 W7 — the class moved to `rclcpp::`; its friends did not. Every
-    // one of these is an `nros::` name, so each is QUALIFIED: an unqualified
+    // one of these is an `rclcpp::` name, so each is QUALIFIED: an unqualified
     // `friend Result init(...)` inside this namespace would befriend a
     // `rclcpp::init` that does not exist and leave the real one locked out.
     // phase-427 W7 — the class moved to `rclcpp::`; its friends did not. Every
-    // one of these is an `nros::` free function, so each is QUALIFIED: an
+    // one of these is an `rclcpp::` free function, so each is QUALIFIED: an
     // unqualified `friend Result init(...)` inside this namespace would
     // befriend a `rclcpp::init` that does not exist and leave the real one
     // locked out.
     //
     // The declarator-id is PARENTHESIZED, and that is not style. A
-    // nested-name-specifier is parsed greedily, so `friend Result ::nros::init`
-    // reads as `Result::nros::init` and fails with `'nros' in 'using Result ='
+    // nested-name-specifier is parsed greedily, so `friend Result ::rclcpp::init`
+    // reads as `Result::rclcpp::init` and fails with `'nros' in 'using Result ='
     // does not name a type` — a diagnostic that names neither the friend nor
-    // the namespace. `(::nros::init)` closes the return type first.
-    friend class ::nros::Executor;
-    friend class ::nros::NodeBuilder;
-    friend Result(::nros::init)(const char* locator, uint8_t domain_id);
-    friend Result(::nros::init)(const char* locator, uint8_t domain_id, const char* session_name);
+    // the namespace. `(::rclcpp::init)` closes the return type first.
+    friend class ::rclcpp::Executor;
+    friend class ::rclcpp::NodeBuilder;
+    friend Result(::rclcpp::init_in)(const char* locator, uint8_t domain_id);
+    friend Result(::rclcpp::init_in)(const char* locator, uint8_t domain_id,
+                                     const char* session_name);
     // Issue 1434 — the namespaced overload. A friend declaration names ONE
     // signature, so an overload that reaches `global_storage()` needs its own
     // line; without it the new body compiles everywhere the class is not
     // instantiated and fails only where a TU actually calls it.
-    friend Result(::nros::init)(const char* locator, uint8_t domain_id, const char* session_name,
-                                const char* node_namespace);
-    friend Result(::nros::init_with_rmw)(const char* rmw, const char* locator, uint8_t domain_id,
-                                         const char* session_name);
-    friend Result(::nros::shutdown)();
-    friend bool(::nros::ok)();
-    friend Result(::nros::create_node)(Node& out, const char* name, const char* ns);
-    friend Result(::nros::create_node_on)(Node& out, void* executor_handle, const char* name,
-                                          const char* ns);
-    friend Result(::nros::spin_once)(int32_t timeout_ms);
-    friend Result(::nros::spin)();
-    friend Result(::nros::spin)(uint32_t duration_ms, int32_t poll_ms);
-    friend void*(::nros::global_handle)();
+    friend Result(::rclcpp::init_in)(const char* locator, uint8_t domain_id,
+                                     const char* session_name, const char* node_namespace);
+    friend Result(::rclcpp::init_with_rmw)(const char* rmw, const char* locator, uint8_t domain_id,
+                                           const char* session_name);
+    friend Result(::rclcpp::shutdown_in)();
+    friend bool(::rclcpp::ok)();
+    friend Result(::rclcpp::create_node)(Node& out, const char* name, const char* ns);
+    friend Result(::rclcpp::create_node_on)(Node& out, void* executor_handle, const char* name,
+                                            const char* ns);
+    friend Result(::rclcpp::spin_once)(int32_t timeout_ms);
+    friend Result(::rclcpp::spin_in)();
+    friend Result(::rclcpp::spin_in)(uint32_t duration_ms, int32_t poll_ms);
+    friend void*(::rclcpp::global_handle)();
 
     // Global executor inline storage for init/shutdown free functions.
     //
@@ -2537,7 +2548,7 @@ alignas(8) uint8_t Node::GlobalStorageHolder<N>::storage[NROS_CPP_EXECUTOR_STORA
 
 } // namespace rclcpp
 
-namespace nros {
+namespace rclcpp {
 
 // ==== phase-427 W4 — the timer pool, as a TEMPLATE PARAMETER ================
 //
@@ -2582,19 +2593,19 @@ namespace nros {
 #error "NROS_COMPONENT_MAX_TIMERS must be >= 1: it sizes a C array (issue 1015)"
 #endif
 
-/// A `Node` plus an inline pool of `MaxTimers` `nros::Timer` slots.
+/// A `Node` plus an inline pool of `MaxTimers` `rclcpp::Timer` slots.
 ///
-/// `nros::Timer`'s destructor cancels its timer, so a timer created in a
+/// `rclcpp::Timer`'s destructor cancels its timer, so a timer created in a
 /// constructor must outlive the call. The out-ref `create_wall_timer(Timer&,
 /// …)` / `create_timer_in_group(group, Timer&, …)` family on `Node` makes that the
 /// caller's problem, which is the right default. This template is for the
 /// component shape, where the storage-free spelling is the ergonomic one:
 ///
 /// ```cpp
-/// class Talker : public nros::NodeWithTimers<1> {
+/// class Talker : public rclcpp::NodeWithTimers<1> {
 ///     rclcpp::Publisher<Int32> pub_;
 ///   public:
-///     explicit Talker(nros::NodeHandle h) : nros::NodeWithTimers<1>(h, "talker") {
+///     explicit Talker(rclcpp::NodeHandle h) : rclcpp::NodeWithTimers<1>(h, "talker") {
 ///         pub_ = create_publisher_in<Int32>("/chatter");
 ///         create_wall_timer_in<Talker, &Talker::on_tick>(500);
 ///     }
@@ -2692,7 +2703,7 @@ class NodeWithTimers : public ::rclcpp::Node {
 
 // -- Free function implementations --
 
-inline Result init(const char* locator, uint8_t domain_id) {
+inline Result init_in(const char* locator, uint8_t domain_id) {
     // Issue 0329 — forward RAW to the 3-arg overload, which resolves the whole
     // ladder (baked `NROS_ENTRY_LOCATOR`/`NROS_ENTRY_DOMAIN_ID` rungs, hosted
     // default, then the env overlay in the Rust resolver behind `nros_cpp_init`).
@@ -2700,19 +2711,19 @@ inline Result init(const char* locator, uint8_t domain_id) {
     // partial copy of the same ladder (it never applied `NROS_ENTRY_DOMAIN_ID`),
     // duplicating what the 3-arg already does. Phase 266: unified default session
     // name "node".
-    return init(locator, domain_id, "node");
+    return init_in(locator, domain_id, "node");
 }
 
-inline Result init(const char* locator, uint8_t domain_id, const char* session_name) {
+inline Result init_in(const char* locator, uint8_t domain_id, const char* session_name) {
     // Issue 1434 — forward RAW to the 4-arg overload, exactly as the 2-arg
     // forwards here (issue 0329): one ladder, one body. `nullptr` is "this
     // image declares no namespace", which is what every caller of this
     // overload has always meant.
-    return init(locator, domain_id, session_name, nullptr);
+    return init_in(locator, domain_id, session_name, nullptr);
 }
 
-inline Result init(const char* locator, uint8_t domain_id, const char* session_name,
-                   const char* node_namespace) {
+inline Result init_in(const char* locator, uint8_t domain_id, const char* session_name,
+                      const char* node_namespace) {
     // NROS_CPP_RET_INVALID_ARGUMENT = -3 (defined in nros_cpp_ffi.h
     // which isn't included from this header — duplicate the value
     // inline; generated header is the source of truth).
@@ -2852,7 +2863,7 @@ inline Result init_with_rmw(const char* rmw, const char* locator, uint8_t domain
     return Result(ret);
 }
 
-inline Result shutdown() {
+inline Result shutdown_in() {
     if (!::rclcpp::Node::global_initialized()) {
         return Result::success();
     }
@@ -2904,13 +2915,13 @@ inline Result init_honouring_ros_args(int argc, char const* const* argv, const c
     if (checked != 0) {
         return Result(checked);
     }
-    Result r = init(nullptr, 0, name);
+    Result r = init_in(nullptr, 0, name);
     if (!r.ok()) {
         return r;
     }
-    const int32_t installed = apply_ros_args(::nros::global_handle(), argc, argv);
+    const int32_t installed = apply_ros_args(::rclcpp::global_handle(), argc, argv);
     if (installed != 0) {
-        (void)shutdown();
+        (void)shutdown_in();
         return Result(installed);
     }
     return r;
@@ -2959,7 +2970,7 @@ inline Result init_with_launch(const char* path, int argc, char** argv, const ch
 
 /// Check if the nros session is initialized — and, like `rclcpp::ok()`, not
 /// asked to stop: issue 1732 folds in a guarded SIGTERM / SIGINT, so every
-/// `while (nros::ok())` loop returns and its `nros::shutdown()` closes the
+/// `while (rclcpp::ok())` loop returns and its `rclcpp::shutdown()` closes the
 /// session. The flag is only ever set where a hosted runner installed the
 /// guard (`nros_cpp_termination_guard_install`).
 inline bool ok() {
@@ -2968,7 +2979,7 @@ inline bool ok() {
 
 /// Create a node (convenience — uses the global executor).
 ///
-/// This is the primary way to create nodes after calling `nros::init()`.
+/// This is the primary way to create nodes after calling `rclcpp::init()`.
 ///
 /// @param out   Receives the initialized node.
 /// @param name  Node name.
@@ -3005,12 +3016,12 @@ inline Result create_node_on(::rclcpp::Node& out, void* executor_handle, const c
 
 /// Phase 123.B.4 — value-returning factory. Wraps `create_node`
 /// in the `ResultOf<Node>` envelope so users can write
-/// `auto n = nros::make_node("foo");` in the rclcpp-style.
+/// `auto n = rclcpp::make_node("foo");` in the rclcpp-style.
 inline ResultOf<::rclcpp::Node> make_node(const char* name, const char* ns = nullptr) {
     ::rclcpp::Node n;
     Result r = create_node(n, name, ns);
     if (!r.ok()) return ResultOf<::rclcpp::Node>::error(r);
-    return ResultOf<::rclcpp::Node>::ok(::nros::tr::forward_rvalue(n));
+    return ResultOf<::rclcpp::Node>::ok(::rclcpp::tr::forward_rvalue(n));
 }
 
 // -- Executor::create_node implementation (requires full Node definition) --
@@ -3121,7 +3132,7 @@ inline NodeBuilder Executor::node_builder(const char* name) {
     return NodeBuilder(initialized_ ? handle() : nullptr, name);
 }
 
-} // namespace nros
+} // namespace rclcpp
 
 // The process-level verbs — `rclcpp::init()`, `rclcpp::ok()`,
 // `rclcpp::shutdown()`, `rclcpp::spin_once()` — are declared in `nros.hpp`,

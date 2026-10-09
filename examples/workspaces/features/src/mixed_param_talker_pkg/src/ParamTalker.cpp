@@ -32,7 +32,7 @@ void ParamTalker::on_tick() {
     ::setvbuf(stdout, nullptr, _IONBF, 0);
     node_handle_ = node.ffi_handle();
     if (node_handle_ == nullptr) {
-        return ::rclcpp::Result(::nros::ErrorCode::NotInitialized);
+        return ::rclcpp::Result(::rclcpp::ErrorCode::NotInitialized);
     }
 
     // C++ SIDE: declare. The launch file seeds 250 before user code runs, so
@@ -42,14 +42,14 @@ void ParamTalker::on_tick() {
 
     // C SIDE: declare. Nothing in C++ ever names 3.0.
     if (mixed_param_c_declare_scale(node_handle_, 3.0) != NROS_CPP_RET_OK) {
-        return ::rclcpp::Result(::nros::ErrorCode::Error);
+        return ::rclcpp::Result(::rclcpp::ErrorCode::Error);
     }
 
     // C++ reads what C declared. Two stores answer `false` here.
     if (!node.get_parameter<double>("scale", scale_)) {
         std::fprintf(stderr, "[cpp] `scale` (declared in C) is not visible to C++ — "
                              "the two languages are not sharing a store\n");
-        return ::rclcpp::Result(::nros::ErrorCode::NotFound);
+        return ::rclcpp::Result(::rclcpp::ErrorCode::NotFound);
     }
 
     // And C reads what C++ declared, once, at configure — so a broken crossing
@@ -59,7 +59,7 @@ void ParamTalker::on_tick() {
         seen_by_c != period) {
         std::fprintf(stderr, "[cpp] C read publish_period_ms as %lld, C++ declared %lld\n",
                      static_cast<long long>(seen_by_c), static_cast<long long>(period));
-        return ::rclcpp::Result(::nros::ErrorCode::Error);
+        return ::rclcpp::Result(::rclcpp::ErrorCode::Error);
     }
     std::printf("Crossed: cpp declared publish_period_ms=%lld, c read %lld; "
                 "c declared scale=%.1f, cpp read %.1f\n",

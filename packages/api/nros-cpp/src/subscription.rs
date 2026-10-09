@@ -2,7 +2,7 @@
 //!
 //! Phase 87.6 (thin-wrapper refactor): caller's opaque storage holds a
 //! bare `RmwSubscriber` handle. Topic name lives on the C++
-//! `nros::Subscription<M>` class. Received CDR bytes are copied directly
+//! `rclcpp::Subscription<M>` class. Received CDR bytes are copied directly
 //! into the caller's output buffer — no runtime 1 KiB scratch buffer.
 
 use core::ffi::{c_char, c_void};
@@ -291,7 +291,7 @@ unsafe fn read_subscription_options(
 /// `HandleId` via `out_handle_id` (for cancel / introspection) and, when
 /// `sched_context != 0`, binds that handle to the scheduling context (poll-style
 /// subscriptions have no dispatched callback to schedule). `callback` is the C++
-/// template's raw trampoline; `context` is the `nros::Subscription<M>` object
+/// template's raw trampoline; `context` is the `rclcpp::Subscription<M>` object
 /// (`this`). Mirrors `nros_cpp_service_server_register` one entity over.
 ///
 /// # Safety
@@ -1222,7 +1222,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_set_message_lost(
 /// for what "actual" means and why an unreportable policy reads back as that
 /// enum's `UNKNOWN` rather than as the request.
 ///
-/// **Two roads, one entry point.** A poll-style `nros::Subscription<M>` owns
+/// **Two roads, one entry point.** A poll-style `rclcpp::Subscription<M>` owns
 /// its subscriber in `storage`; a callback-style one does NOT — the executor
 /// arena owns it and the C++ object holds only `(executor, handle_id)`. The
 /// callback form is what a ported `rclcpp` node writes, so an accessor that

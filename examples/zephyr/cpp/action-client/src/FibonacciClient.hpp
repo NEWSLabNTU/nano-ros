@@ -16,8 +16,8 @@
 namespace zephyr_cpp_action_client {
 
 class FibonacciClient {
-    ::nros::ActionClientStorage client_;
-    ::nros::Timer poll_timer_;
+    ::rclcpp::ActionClientStorage client_;
+    ::rclcpp::Timer poll_timer_;
     int32_t order_ = 10;
 
     // Member callbacks, bound by identity (no naming).

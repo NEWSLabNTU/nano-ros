@@ -1,6 +1,6 @@
 // phase-417 W4.e — the C++ guard-condition surface, INSTANTIATED.
 //
-// `nros::GuardCondition`'s members are ordinary non-template methods on a
+// `rclcpp::GuardCondition`'s members are ordinary non-template methods on a
 // non-template class, so the header loop in `just check cpp` parses them and
 // compiles NONE of them: a method nobody calls is never type-checked, which is
 // the "reads as coverage" shape one level down from `required-features`. This
@@ -44,15 +44,16 @@ static void on_guard(void* context) {
 
 // The creation verb's exact shape, taken as a pointer-to-member so a changed
 // parameter list is a compile error naming this line.
-using CreateVerb = nros::Result (rclcpp::Node::*)(nros::GuardCondition&, nros_cpp_guard_callback_t,
-                                                  void*);
+using CreateVerb = rclcpp::Result (rclcpp::Node::*)(rclcpp::GuardCondition&,
+                                                    nros_cpp_guard_callback_t, void*);
 static CreateVerb const kCreate = &rclcpp::Node::create_guard_condition;
 
 // An ours-only capability with no upstream counterpart still has to compile.
-static bool (nros::GuardCondition::*const kIsTriggered)() const =
-    &nros::GuardCondition::is_triggered;
-static nros::Result (nros::GuardCondition::*const kClear)() = &nros::GuardCondition::clear;
-static nros::Result (nros::GuardCondition::*const kTrigger)() = &nros::GuardCondition::trigger;
+static bool (rclcpp::GuardCondition::*const kIsTriggered)() const =
+    &rclcpp::GuardCondition::is_triggered;
+static rclcpp::Result (rclcpp::GuardCondition::*const kClear)() = &rclcpp::GuardCondition::clear;
+static rclcpp::Result (rclcpp::GuardCondition::*const kTrigger)() =
+    &rclcpp::GuardCondition::trigger;
 
 // `trigger` and `clear` return `Result`, which is NROS_NODISCARD (RFC-0018:
 // the error channel is the return value, because there are no exceptions), so
@@ -63,22 +64,22 @@ static nros::Result (nros::GuardCondition::*const kTrigger)() = &nros::GuardCond
 
 void instantiate(rclcpp::Node& node);
 void instantiate(rclcpp::Node& node) {
-    nros::GuardCondition guard;
+    rclcpp::GuardCondition guard;
 
     // Before creation: the accessors ANSWER; they do not read empty storage.
     if (guard.is_valid()) ++g_fires;
     if (guard.is_triggered()) ++g_fires;
-    nros::Result r = guard.clear();
+    rclcpp::Result r = guard.clear();
     (void)r.code();
 
     unsigned ctx = 0;
-    nros::Result created = (node.*kCreate)(guard, on_guard, &ctx);
+    rclcpp::Result created = (node.*kCreate)(guard, on_guard, &ctx);
     (void)created.code();
 
-    nros::Result triggered = (guard.*kTrigger)();
+    rclcpp::Result triggered = (guard.*kTrigger)();
     (void)triggered.code();
     if ((guard.*kIsTriggered)()) ++g_fires;
-    nros::Result cleared = (guard.*kClear)();
+    rclcpp::Result cleared = (guard.*kClear)();
     (void)cleared.code();
 }
 

@@ -5,7 +5,7 @@
 //       types and on `rclcpp::Timer`, so
 //       `rclcpp::Publisher<T>::SharedPtr member_;` — close to universal in
 //       real rclcpp source — declares.
-// W1.c  `std::string` interop on `nros::FixedString<N>` / `nros::HeapString`,
+// W1.c  `std::string` interop on `rclcpp::FixedString<N>` / `rclcpp::HeapString`,
 //       so `message.data = "Hello, world! " + std::to_string(n);` compiles
 //       against a codegen'd string field.
 // W1.d  `now()` / `get_clock()` / `get_name()` / `get_namespace()` on the shim
@@ -47,7 +47,7 @@ namespace nros_cpp_ros2_api_adoption_compile_test {
 // Mirror of a codegen'd message with a FIXED-capacity string field
 // (`mode = "fixed"`, the default) — cf. std_msgs/msg/String.
 struct StringMsg {
-    ::nros::FixedString<256> data;
+    ::rclcpp::FixedString<256> data;
     static const size_t SERIALIZED_SIZE_MAX = 512;
     static constexpr const char* TYPE_NAME = "std_msgs::msg::dds_::String_";
     static constexpr const char* TYPE_HASH = "RIHS01_string_stub";
@@ -61,7 +61,7 @@ struct StringMsg {
 
 // The same message with a HEAP string field (`mode = "heap"`, RFC-0033).
 struct HeapStringMsg {
-    ::nros::HeapString data;
+    ::rclcpp::HeapString data;
     static const size_t SERIALIZED_SIZE_MAX = 512;
     static constexpr const char* TYPE_NAME = "std_msgs::msg::dds_::String_";
     static constexpr const char* TYPE_HASH = "RIHS01_string_stub";
@@ -119,7 +119,7 @@ class PortedNode : public rclcpp::Node {
 
         // `(void)`, where upstream's file writes the bare call: ours
         // WIDENS the return type — `rclcpp::Publisher::publish` returns
-        // void, `nros::Publisher::publish` returns `Result` — and
+        // void, `rclcpp::Publisher::publish` returns `Result` — and
         // phase-427 W8 put `NROS_NODISCARD` on that type. So a ported
         // file has to say what it wants done with the failure. That is
         // the porting cost the attribute exists to charge, made visible
@@ -149,7 +149,7 @@ struct StubService {
 // phase-456 W5 — `Publisher<M>::SharedPtr` is DELIBERATELY not a
 // `std::shared_ptr`, and these three assertions inverted to say so.
 //
-// It is `nros::Owned<Publisher<M>>`: the publisher BY VALUE, move-only, with an
+// It is `rclcpp::Owned<Publisher<M>>`: the publisher BY VALUE, move-only, with an
 // `operator->` so every `pub_->publish(m)` in the porting corpus (41 sites)
 // keeps working, and with no allocator, control block or `<memory>` — so the
 // alias exists on a freestanding target, which is the one thing
@@ -159,9 +159,9 @@ struct StubService {
 // measured why: the Rust side returns `EmbeddedPublisher<M>` BY VALUE with a
 // `Drop`, and `Owned<T>` mirrors that lifetime exactly; an arena slot would
 // diverge from it. (W4's no-removal-path argument expired with `9768795b1d`.)
-static_assert(std::is_same<::nros::Publisher<StringMsg>::SharedPtr,
-                           ::nros::Owned<::nros::Publisher<StringMsg>>>::value,
-              "Publisher<M>::SharedPtr must be nros::Owned<Publisher<M>>");
+static_assert(std::is_same<::rclcpp::Publisher<StringMsg>::SharedPtr,
+                           ::rclcpp::Owned<::rclcpp::Publisher<StringMsg>>>::value,
+              "Publisher<M>::SharedPtr must be rclcpp::Owned<Publisher<M>>");
 // `ConstSharedPtr` and `UniquePtr` are the SAME TYPE, and each for its own
 // reason. `Owned<const T>` is a hard error (`owned.hpp` says so and names the
 // resolution: a const VIEW is `const Owned<T>&`, because a const/mutable
@@ -169,11 +169,11 @@ static_assert(std::is_same<::nros::Publisher<StringMsg>::SharedPtr,
 // got). And `Owned<T>` already IS unique ownership, so a separate unique alias
 // would be a second spelling of one type — measured zero uses in the tree
 // before the collapse.
-static_assert(std::is_same<::nros::Publisher<StringMsg>::ConstSharedPtr,
-                           ::nros::Publisher<StringMsg>::SharedPtr>::value,
+static_assert(std::is_same<::rclcpp::Publisher<StringMsg>::ConstSharedPtr,
+                           ::rclcpp::Publisher<StringMsg>::SharedPtr>::value,
               "Publisher<M>::ConstSharedPtr is the SAME type as SharedPtr");
-static_assert(std::is_same<::nros::Publisher<StringMsg>::UniquePtr,
-                           ::nros::Publisher<StringMsg>::SharedPtr>::value,
+static_assert(std::is_same<::rclcpp::Publisher<StringMsg>::UniquePtr,
+                           ::rclcpp::Publisher<StringMsg>::SharedPtr>::value,
               "Publisher<M>::UniquePtr is the SAME type as SharedPtr -- Owned<T> IS unique "
               "ownership, so a second alias would be a second spelling of one type");
 // The publisher handle DEREFERENCES, which is the property that separates it
@@ -181,8 +181,8 @@ static_assert(std::is_same<::nros::Publisher<StringMsg>::UniquePtr,
 // times across the corpus; a two-word arena handle deliberately has no
 // `operator->`, which is why a publisher could not take that shape.
 static_assert(
-    std::is_same<decltype(std::declval<::nros::Publisher<StringMsg>::SharedPtr&>().operator->()),
-                 ::nros::Publisher<StringMsg>*>::value,
+    std::is_same<decltype(std::declval<::rclcpp::Publisher<StringMsg>::SharedPtr&>().operator->()),
+                 ::rclcpp::Publisher<StringMsg>*>::value,
     "Publisher<M>::SharedPtr must dereference to the publisher -- the corpus calls publish() "
     "through it");
 // phase-456 W2 — `Subscription<M>::SharedPtr` is DELIBERATELY not a
@@ -195,23 +195,23 @@ static_assert(
 // `take_serialized()`, `take_validated()`, `take_sequence()` and `borrow()` --
 // every one of them a call into 656 zero bytes the arena never filled.
 //
-// phase-456 W2b then moved that API to `nros::PollSubscription<M>`, which is
+// phase-456 W2b then moved that API to `rclcpp::PollSubscription<M>`, which is
 // the type that owns a subscriber, and REPAID W2's stated cost: the handle can
 // name `Subscription<M>` as its `element_type` again, because every operation
 // left on that class is one an arena registration can perform.
-static_assert(std::is_same<::nros::Subscription<StringMsg>::SharedPtr,
-                           ::nros::SubscriptionHandle<StringMsg>>::value,
+static_assert(std::is_same<::rclcpp::Subscription<StringMsg>::SharedPtr,
+                           ::rclcpp::SubscriptionHandle<StringMsg>>::value,
               "Subscription<M>::SharedPtr must be the two-word arena handle");
-static_assert(sizeof(::nros::Subscription<StringMsg>::SharedPtr) == 2 * sizeof(void*),
+static_assert(sizeof(::rclcpp::Subscription<StringMsg>::SharedPtr) == 2 * sizeof(void*),
               "the dispatch handle must stay two words -- it is what replaced a 984-byte "
               "object plus a heap cell (measured phase-456 W2b; the dispatch class is "
               "304 bytes now and the poll one carries the storage)");
-static_assert(std::is_same<::nros::Subscription<StringMsg>::ConstSharedPtr,
-                           ::nros::Subscription<StringMsg>::SharedPtr>::value,
+static_assert(std::is_same<::rclcpp::Subscription<StringMsg>::ConstSharedPtr,
+                           ::rclcpp::Subscription<StringMsg>::SharedPtr>::value,
               "ConstSharedPtr is the same handle: there is no const/mutable distinction to "
               "draw over a registration that exposes no operation on the entity");
-static_assert(std::is_same<::nros::Subscription<StringMsg>::SharedPtr::element_type,
-                           ::nros::Subscription<StringMsg>>::value,
+static_assert(std::is_same<::rclcpp::Subscription<StringMsg>::SharedPtr::element_type,
+                           ::rclcpp::Subscription<StringMsg>>::value,
               "phase-456 W2b: SharedPtr::element_type names the dispatch subscription again");
 
 // And the half that makes that name honest: the taking API is NOT reachable
@@ -224,14 +224,14 @@ template <typename T, typename = void> struct has_take : std::false_type {};
 template <typename T>
 struct has_take<T, decltype(void(std::declval<T&>().take(std::declval<StringMsg&>())))>
     : std::true_type {};
-static_assert(!has_take<::nros::Subscription<StringMsg>>::value,
+static_assert(!has_take<::rclcpp::Subscription<StringMsg>>::value,
               "phase-456 W2b: the dispatch subscription must not carry a take() -- the arena "
               "owns the subscriber and this object has no storage to take from");
-static_assert(has_take<::nros::PollSubscription<StringMsg>>::value,
+static_assert(has_take<::rclcpp::PollSubscription<StringMsg>>::value,
               "phase-456 W2b: the poll subscription is where take() went");
-static_assert(std::is_same<::nros::PollingSubscription<StringMsg>::SharedPtr,
-                           ::nros::Owned<::nros::PollingSubscription<StringMsg>>>::value,
-              "PollingSubscription<M>::SharedPtr must be nros::Owned<PollingSubscription<M>> -- "
+static_assert(std::is_same<::rclcpp::PollingSubscription<StringMsg>::SharedPtr,
+                           ::rclcpp::Owned<::rclcpp::PollingSubscription<StringMsg>>>::value,
+              "PollingSubscription<M>::SharedPtr must be rclcpp::Owned<PollingSubscription<M>> -- "
               "the caller owns the subscriber, so the holder owns the object");
 // phase-456 W5 — `Service<S>::SharedPtr` is the arena handle, for the same
 // reason the subscription's is, and W3 measured the same finding one entity
@@ -240,19 +240,19 @@ static_assert(std::is_same<::nros::PollingSubscription<StringMsg>::SharedPtr,
 //
 // The blocker W3 recorded was the alias serving two owners:
 // `create_service<S>(name)` with no handler also returned it and existed to be
-// `->take_request()`'d. That poll half is `nros::PollService<S>` now, which is
+// `->take_request()`'d. That poll half is `rclcpp::PollService<S>` now, which is
 // what unblocks this line.
-static_assert(std::is_same<::nros::Service<StubService>::SharedPtr,
-                           ::nros::ServiceHandle<StubService>>::value,
+static_assert(std::is_same<::rclcpp::Service<StubService>::SharedPtr,
+                           ::rclcpp::ServiceHandle<StubService>>::value,
               "Service<S>::SharedPtr must be the two-word arena handle");
-static_assert(sizeof(::nros::Service<StubService>::SharedPtr) == 2 * sizeof(void*),
+static_assert(sizeof(::rclcpp::Service<StubService>::SharedPtr) == 2 * sizeof(void*),
               "the dispatch service handle must stay two words");
-static_assert(std::is_same<::nros::Service<StubService>::ConstSharedPtr,
-                           ::nros::Service<StubService>::SharedPtr>::value,
+static_assert(std::is_same<::rclcpp::Service<StubService>::ConstSharedPtr,
+                           ::rclcpp::Service<StubService>::SharedPtr>::value,
               "ConstSharedPtr is the same handle: there is no const/mutable distinction to "
               "draw over a registration that exposes no operation on the entity");
-static_assert(std::is_same<::nros::Service<StubService>::SharedPtr::element_type,
-                           ::nros::Service<StubService>>::value,
+static_assert(std::is_same<::rclcpp::Service<StubService>::SharedPtr::element_type,
+                           ::rclcpp::Service<StubService>>::value,
               "ServiceHandle<S>::element_type names the dispatch service");
 // And the half that makes that name honest: the taking API is NOT reachable
 // through `Service<S>`. Same REACHABILITY shape as `has_take` above, and for
@@ -265,10 +265,10 @@ struct has_take_request<T,
                         decltype(void(std::declval<T&>().take_request(
                             std::declval<typename T::RequestType&>(), std::declval<int64_t&>())))>
     : std::true_type {};
-static_assert(!has_take_request<::nros::Service<StubService>>::value,
+static_assert(!has_take_request<::rclcpp::Service<StubService>>::value,
               "phase-456 W5: the dispatch service must not carry take_request() -- the arena "
               "owns the server and this object has no storage to take from");
-static_assert(has_take_request<::nros::PollService<StubService>>::value,
+static_assert(has_take_request<::rclcpp::PollService<StubService>>::value,
               "phase-456 W5: the poll service is where take_request() went");
 // phase-456 W9 — `Client<S>::SharedPtr` is the arena handle, and this is the
 // one in the family that carries a VERB. W3's census, re-measured on W9's base:
@@ -279,21 +279,21 @@ static_assert(has_take_request<::nros::PollService<StubService>>::value,
 //
 // The blocker W5 recorded and W6 costed was the alias serving two owners:
 // `create_client<S>(name, qos)` with no handler also returned it and existed to
-// be `->send_request()`'d. That half is `nros::PollClient<S>` now, which is what
+// be `->send_request()`'d. That half is `rclcpp::PollClient<S>` now, which is what
 // unblocks this line.
-static_assert(
-    std::is_same<::nros::Client<StubService>::SharedPtr, ::nros::ClientHandle<StubService>>::value,
-    "Client<S>::SharedPtr must be the two-word arena handle");
-static_assert(sizeof(::nros::Client<StubService>::SharedPtr) == 2 * sizeof(void*),
+static_assert(std::is_same<::rclcpp::Client<StubService>::SharedPtr,
+                           ::rclcpp::ClientHandle<StubService>>::value,
+              "Client<S>::SharedPtr must be the two-word arena handle");
+static_assert(sizeof(::rclcpp::Client<StubService>::SharedPtr) == 2 * sizeof(void*),
               "the dispatch client handle must stay two words -- {executor, handle_id} is the "
               "argument list of nros_cpp_service_client_send_on_handle, which is why the verb "
               "fits on it");
-static_assert(std::is_same<::nros::Client<StubService>::ConstSharedPtr,
-                           ::nros::Client<StubService>::SharedPtr>::value,
+static_assert(std::is_same<::rclcpp::Client<StubService>::ConstSharedPtr,
+                           ::rclcpp::Client<StubService>::SharedPtr>::value,
               "ConstSharedPtr is the same handle: async_send_request is const on it, because the "
               "two words are the caller's and the mutation is the arena's");
-static_assert(std::is_same<::nros::Client<StubService>::SharedPtr::element_type,
-                           ::nros::Client<StubService>>::value,
+static_assert(std::is_same<::rclcpp::Client<StubService>::SharedPtr::element_type,
+                           ::rclcpp::Client<StubService>>::value,
               "ClientHandle<S>::element_type names the dispatch client");
 
 // THE ONE VERB, asserted in both directions, because "a handle with a method"
@@ -303,11 +303,11 @@ template <typename T, typename = void> struct has_async_send : std::false_type {
 template <typename T>
 struct has_async_send<T, decltype(void(std::declval<const T&>().async_send_request(
                              std::declval<const StubService::Request&>())))> : std::true_type {};
-static_assert(has_async_send<::nros::ClientHandle<StubService>>::value,
+static_assert(has_async_send<::rclcpp::ClientHandle<StubService>>::value,
               "phase-456 W9: the dispatch client handle carries async_send_request -- it is the "
               "one verb the census measured, and a keep-alive with no method would be wrong by "
               "exactly that much");
-static_assert(!has_async_send<::nros::ServiceHandle<StubService>>::value,
+static_assert(!has_async_send<::rclcpp::ServiceHandle<StubService>>::value,
               "phase-456 W9: the service handle is the EMPTY one -- nothing is invoked on a "
               "dispatch service, which is the measurement that made the two shapes differ");
 
@@ -322,10 +322,10 @@ template <typename T, typename = void> struct has_send_request : std::false_type
 template <typename T>
 struct has_send_request<T, decltype(void(std::declval<T&>().send_request(
                                std::declval<const StubService::Request&>())))> : std::true_type {};
-static_assert(!has_send_request<::nros::Client<StubService>>::value,
+static_assert(!has_send_request<::rclcpp::Client<StubService>>::value,
               "phase-456 W9: the dispatch client must not carry send_request() -- the arena owns "
               "the client and this object has no storage to send from");
-static_assert(has_send_request<::nros::PollClient<StubService>>::value,
+static_assert(has_send_request<::rclcpp::PollClient<StubService>>::value,
               "phase-456 W9: the poll client is where send_request() went");
 
 // ...and the line the 2026-09-28 gap closure moved, asserted in both directions
@@ -341,53 +341,53 @@ template <typename T, typename = void> struct has_service_is_ready : std::false_
 template <typename T>
 struct has_service_is_ready<T, decltype(void(std::declval<const T&>().service_is_ready()))>
     : std::true_type {};
-static_assert(has_wait_for_service<::nros::Client<StubService>>::value,
+static_assert(has_wait_for_service<::rclcpp::Client<StubService>>::value,
               "2026-09-28: the dispatch client answers a BUDGETED wait_for_service -- the FFI "
               "takes (executor, handle_id) now, so the gap phase-456 W9 ledgered is closed");
-static_assert(has_wait_for_service<::nros::ClientHandle<StubService>>::value,
+static_assert(has_wait_for_service<::rclcpp::ClientHandle<StubService>>::value,
               "2026-09-28: and so does the handle a ported Client<S>::SharedPtr member names, "
               "which is the object that could not ask at all between the split and the closure");
-static_assert(has_service_is_ready<::nros::Client<StubService>>::value,
+static_assert(has_service_is_ready<::rclcpp::Client<StubService>>::value,
               "2026-09-28: the non-blocking probe came back with it");
-static_assert(has_service_is_ready<::nros::ClientHandle<StubService>>::value,
+static_assert(has_service_is_ready<::rclcpp::ClientHandle<StubService>>::value,
               "2026-09-28: on the handle too -- neither needed a new member, only the arena arm");
-static_assert(sizeof(::nros::Client<StubService>::SharedPtr) == 2 * sizeof(void*),
+static_assert(sizeof(::rclcpp::Client<StubService>::SharedPtr) == 2 * sizeof(void*),
               "2026-09-28: and the handle is STILL two words -- the verbs were affordable "
               "precisely because an arena index is their whole argument list");
 // phase-476 W2 — all three pointer spellings name the two-word handle: the
 // callable lives in the executor arena, so there is nothing for a smart pointer
 // to own, and the aliases are present on a freestanding target too.
-static_assert(std::is_same<::nros::Timer::SharedPtr, ::nros::TimerHandle>::value,
-              "Timer::SharedPtr must be nros::TimerHandle");
-static_assert(std::is_same<rclcpp::Timer::SharedPtr, ::nros::TimerHandle>::value,
-              "rclcpp::Timer::SharedPtr must be nros::TimerHandle");
-static_assert(std::is_same<rclcpp::Timer::UniquePtr, ::nros::TimerHandle>::value,
-              "Timer::UniquePtr must be nros::TimerHandle");
+static_assert(std::is_same<::rclcpp::Timer::SharedPtr, ::rclcpp::TimerHandle>::value,
+              "Timer::SharedPtr must be rclcpp::TimerHandle");
+static_assert(std::is_same<rclcpp::Timer::SharedPtr, ::rclcpp::TimerHandle>::value,
+              "rclcpp::Timer::SharedPtr must be rclcpp::TimerHandle");
+static_assert(std::is_same<rclcpp::Timer::UniquePtr, ::rclcpp::TimerHandle>::value,
+              "Timer::UniquePtr must be rclcpp::TimerHandle");
 static_assert(std::is_same<rclcpp::Timer::SharedPtr::element_type, rclcpp::Timer>::value,
               "the handle names its referent the way std::shared_ptr does");
 
 // The rclcpp alias templates hand the SAME nested names through.
 static_assert(std::is_same<rclcpp::Publisher<StringMsg>::SharedPtr,
-                           ::nros::Publisher<StringMsg>::SharedPtr>::value,
-              "rclcpp::Publisher<M>::SharedPtr must resolve through the nros:: alias");
+                           ::rclcpp::Publisher<StringMsg>::SharedPtr>::value,
+              "rclcpp::Publisher<M>::SharedPtr must resolve through the rclcpp:: alias");
 static_assert(std::is_same<rclcpp::Subscription<StringMsg>::SharedPtr,
-                           ::nros::Subscription<StringMsg>::SharedPtr>::value,
-              "rclcpp::Subscription<M>::SharedPtr must resolve through the nros:: alias");
+                           ::rclcpp::Subscription<StringMsg>::SharedPtr>::value,
+              "rclcpp::Subscription<M>::SharedPtr must resolve through the rclcpp:: alias");
 static_assert(std::is_same<rclcpp::Service<StubService>::SharedPtr,
-                           ::nros::Service<StubService>::SharedPtr>::value,
-              "rclcpp::Service<S>::SharedPtr must resolve through the nros:: alias");
+                           ::rclcpp::Service<StubService>::SharedPtr>::value,
+              "rclcpp::Service<S>::SharedPtr must resolve through the rclcpp:: alias");
 static_assert(std::is_same<rclcpp::Client<StubService>::SharedPtr,
-                           ::nros::Client<StubService>::SharedPtr>::value,
-              "rclcpp::Client<S>::SharedPtr must resolve through the nros:: alias");
+                           ::rclcpp::Client<StubService>::SharedPtr>::value,
+              "rclcpp::Client<S>::SharedPtr must resolve through the rclcpp:: alias");
 
 // --- W1.d: the clock vocabulary is the nano-ros type, not a wrapper ---------
 
-static_assert(std::is_same<rclcpp::Time, ::nros::Time>::value,
-              "rclcpp::Time must BE nros::Time — a second type is a second contract");
-static_assert(std::is_same<rclcpp::Duration, ::nros::Duration>::value,
-              "rclcpp::Duration must BE nros::Duration");
-static_assert(std::is_same<rclcpp::Clock, ::nros::Clock>::value,
-              "rclcpp::Clock must BE nros::Clock");
+static_assert(std::is_same<rclcpp::Time, ::rclcpp::Time>::value,
+              "rclcpp::Time must BE rclcpp::Time — a second type is a second contract");
+static_assert(std::is_same<rclcpp::Duration, ::rclcpp::Duration>::value,
+              "rclcpp::Duration must BE rclcpp::Duration");
+static_assert(std::is_same<rclcpp::Clock, ::rclcpp::Clock>::value,
+              "rclcpp::Clock must BE rclcpp::Clock");
 
 // The shim's accessors have the shapes `rclcpp::Node` has, since they forward.
 static_assert(
@@ -397,11 +397,11 @@ static_assert(
     std::is_same<decltype(std::declval<const rclcpp::Node&>().get_namespace()), const char*>::value,
     "rclcpp::Node::get_namespace() must return const char*, as upstream does");
 static_assert(
-    std::is_same<decltype(std::declval<const rclcpp::Node&>().now()), ::nros::Time>::value,
-    "rclcpp::Node::now() must return nros::Time");
+    std::is_same<decltype(std::declval<const rclcpp::Node&>().now()), ::rclcpp::Time>::value,
+    "rclcpp::Node::now() must return rclcpp::Time");
 static_assert(
-    std::is_same<decltype(std::declval<rclcpp::Node&>().get_clock()), ::nros::Clock*>::value,
-    "rclcpp::Node::get_clock() must return a borrowed nros::Clock*");
+    std::is_same<decltype(std::declval<rclcpp::Node&>().get_clock()), ::rclcpp::Clock*>::value,
+    "rclcpp::Node::get_clock() must return a borrowed rclcpp::Clock*");
 
 // --- W1.c: HeapString carries the same conversions as FixedString -----------
 
@@ -424,22 +424,22 @@ inline void heap_string_round_trip(HeapStringMsg& msg) {
 //
 // W1.c adds member FUNCTIONS only. A data member would silently break every
 // generated message struct that embeds one of these.
-static_assert(sizeof(::nros::FixedString<256>) == 256,
+static_assert(sizeof(::rclcpp::FixedString<256>) == 256,
               "FixedString<N> must stay layout-identical to char[N]");
-static_assert(sizeof(::nros::FixedString<8>) == 8,
+static_assert(sizeof(::rclcpp::FixedString<8>) == 8,
               "FixedString<N> must stay layout-identical to char[N]");
-static_assert(sizeof(::nros::HeapString) == sizeof(char*) + 2 * sizeof(size_t),
+static_assert(sizeof(::rclcpp::HeapString) == sizeof(char*) + 2 * sizeof(size_t),
               "HeapString must stay { char* data; size_t size; size_t capacity; }");
 
 // Instantiate the ported node's members so the bodies above are type-checked.
 inline void instantiate() {
     // phase-456 W5 — this line used to read
-    // `= std::make_shared<::nros::Publisher<StringMsg>>()`. There is no
+    // `= std::make_shared<::rclcpp::Publisher<StringMsg>>()`. There is no
     // `make_shared` for a publisher any more, and there is nothing to allocate:
     // the entity IS the member. `= nullptr` is the ported spelling
     // `Owned<T>` exists to accept, and the publisher moves in later from
     // `create_publisher`, exactly as `owned_publisher_ported_shape.cpp` shows.
-    ::nros::Publisher<StringMsg>::SharedPtr pub = nullptr;
+    ::rclcpp::Publisher<StringMsg>::SharedPtr pub = nullptr;
     rclcpp::Timer::SharedPtr timer;
     (void)pub;
     (void)timer;

@@ -1,6 +1,6 @@
 // phase-482 W2 — EXPECTED TO FAIL TO COMPILE.
 //
-// `rclcpp::Node::SharedPtr` is `nros::Handle<Node>`, which observes and does
+// `rclcpp::Node::SharedPtr` is `rclcpp::Handle<Node>`, which observes and does
 // not own. Initialising one from a TEMPORARY `std::shared_ptr` would leave it
 // dangling at the end of the statement, where upstream's `shared_ptr` would
 // have kept the node alive. So the conversion from an rvalue is deleted, and

@@ -1,7 +1,7 @@
 // phase-427 W3 — INSTANTIATION probe for the timer-binding paths.
 //
 // `create_wall_timer<C, &C::method>(out, ms, self)` is the overload that
-// RETIRED the free `nros::bind_timer`, and every path that used to reach
+// RETIRED the free `rclcpp::bind_timer`, and every path that used to reach
 // `bind_timer` now reaches it instead. Each of those is a TEMPLATE BODY, which
 // the header parse loop never type-checks — `-include <nros/node.hpp>`
 // instantiates nothing. That is exactly how a retirement rots: the free
@@ -20,7 +20,7 @@
 //   5. `NodeWithTimers<N>::create_wall_timer_in<C, &C::m>(ms)`, whose body was the one
 //      remaining in-header caller of the free function.
 //
-// `nros::bind_timer` itself is NOT called here: its deprecation is asserted by
+// `rclcpp::bind_timer` itself is NOT called here: its deprecation is asserted by
 // the expected-failure probe `bind_timer_deprecation_probe.cpp`, which is where
 // a `-Werror=deprecated-declarations` build belongs.
 //
@@ -36,26 +36,26 @@ namespace nros_cpp_timer_binding_paths_test {
 /// member pointer is a template parameter, so the trampoline is a capture-less
 /// lambda converting to the executor's raw `void(*)(void*)`.
 struct Component {
-    nros::Timer timer;
+    rclcpp::Timer timer;
     int ticks = 0;
 
     void on_tick() { ++ticks; }
 
-    nros::Result bound_directly(rclcpp::Node& node) {
+    rclcpp::Result bound_directly(rclcpp::Node& node) {
         return node.create_wall_timer<Component, &Component::on_tick>(timer, 100, this);
     }
 
-    nros::Result bound_through_the_macro(rclcpp::Node& node) {
+    rclcpp::Result bound_through_the_macro(rclcpp::Node& node) {
         return NROS_BIND_TIMER(node, Component, on_tick, timer, 100, this);
     }
 
-    nros::Result bound_on_a_clock(rclcpp::Node& node) {
+    rclcpp::Result bound_on_a_clock(rclcpp::Node& node) {
         return node.create_timer<Component, &Component::on_tick>(timer, *node.get_clock(), 100,
                                                                  this);
     }
 
-    nros::Result bound_in_a_group(rclcpp::Node& node) {
-        nros::CallbackGroup group = node.create_callback_group("ctrl");
+    rclcpp::Result bound_in_a_group(rclcpp::Node& node) {
+        rclcpp::CallbackGroup group = node.create_callback_group("ctrl");
         return node.create_timer_in_group<Component, &Component::on_tick>(group, timer, 100, this);
     }
 };
@@ -63,13 +63,13 @@ struct Component {
 /// The RFC-0044 derivable shape. Its storage-free timer body used to call the
 /// free `bind_timer`; it calls the member now, and this is the only place that
 /// body is instantiated. phase-427 W4 moved it off `ComponentNode` onto
-/// `nros::NodeWithTimers<N>` and renamed the verb `create_wall_timer_in` — the
+/// `rclcpp::NodeWithTimers<N>` and renamed the verb `create_wall_timer_in` — the
 /// pool-parked form takes no storage argument, so under upstream's bare name it
 /// would differ from `create_wall_timer(duration, callback)` by SIGNATURE alone.
-class DerivedComponent : public nros::NodeWithTimers<1> {
+class DerivedComponent : public rclcpp::NodeWithTimers<1> {
   public:
-    explicit DerivedComponent(nros::NodeHandle handle)
-        : nros::NodeWithTimers<1>(handle, "derived_component") {
+    explicit DerivedComponent(rclcpp::NodeHandle handle)
+        : rclcpp::NodeWithTimers<1>(handle, "derived_component") {
         create_wall_timer_in<DerivedComponent, &DerivedComponent::on_tick>(100);
     }
 
@@ -83,7 +83,7 @@ inline void probe_entry_points(rclcpp::Node& node) {
     (void)c.bound_on_a_clock(node);
     (void)c.bound_in_a_group(node);
 
-    DerivedComponent d{nros::NodeHandle(node.executor_handle())};
+    DerivedComponent d{rclcpp::NodeHandle(node.executor_handle())};
     (void)d.ok();
 }
 

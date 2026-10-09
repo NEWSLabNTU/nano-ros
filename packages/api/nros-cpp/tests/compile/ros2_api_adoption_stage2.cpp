@@ -18,7 +18,7 @@
 // W2.b  parameters on the node — declare / get / set / has, both `const char*`
 //       and `std::string` keyed.
 // W2.c  create_service / create_client, poll-style and callback-style.
-// W2.d  rclcpp::Rate / WallRate as forwarders onto nros::spin.
+// W2.d  rclcpp::Rate / WallRate as forwarders onto rclcpp::spin.
 // W3.f  the named QoS profiles, transcribed from upstream. The static_asserts
 //       below ARE the table-driven test RFC-0089 W3.f asks for: the profiles
 //       are constexpr, so the check is a compile-time comparison against the
@@ -55,16 +55,17 @@ namespace nros_cpp_ros2_api_adoption_stage2_test {
 //   VOLATILE
 
 static_assert(rclcpp::SensorDataQoS().depth() == 5, "SensorDataQoS depth is 5 upstream");
-static_assert(rclcpp::SensorDataQoS().history() == ::nros::KeepLast, "SensorDataQoS is KEEP_LAST");
-static_assert(rclcpp::SensorDataQoS().reliability() == ::nros::BestEffort,
+static_assert(rclcpp::SensorDataQoS().history() == ::rclcpp::HistoryPolicy::KeepLast,
+              "SensorDataQoS is KEEP_LAST");
+static_assert(rclcpp::SensorDataQoS().reliability() == ::rclcpp::ReliabilityPolicy::BestEffort,
               "SensorDataQoS is BEST_EFFORT upstream");
-static_assert(rclcpp::SensorDataQoS().durability() == ::nros::Volatile,
+static_assert(rclcpp::SensorDataQoS().durability() == ::rclcpp::DurabilityPolicy::Volatile,
               "SensorDataQoS is VOLATILE upstream");
 
 static_assert(rclcpp::ServicesQoS().depth() == 10, "ServicesQoS depth is 10 upstream");
-static_assert(rclcpp::ServicesQoS().reliability() == ::nros::Reliable,
+static_assert(rclcpp::ServicesQoS().reliability() == ::rclcpp::ReliabilityPolicy::Reliable,
               "ServicesQoS is RELIABLE upstream");
-static_assert(rclcpp::ServicesQoS().durability() == ::nros::Volatile,
+static_assert(rclcpp::ServicesQoS().durability() == ::rclcpp::DurabilityPolicy::Volatile,
               "ServicesQoS is VOLATILE upstream");
 
 // The inversion RFC-0089 names first. 10 was the shipped value; 1000 is
@@ -72,41 +73,42 @@ static_assert(rclcpp::ServicesQoS().durability() == ::nros::Volatile,
 // with nothing to read.
 static_assert(rclcpp::ParametersQoS().depth() == 1000,
               "ParametersQoS depth is 1000 upstream (rmw_qos_profile_parameters), not 10");
-static_assert(rclcpp::ParametersQoS().reliability() == ::nros::Reliable,
+static_assert(rclcpp::ParametersQoS().reliability() == ::rclcpp::ReliabilityPolicy::Reliable,
               "ParametersQoS is RELIABLE upstream");
-static_assert(rclcpp::ParametersQoS().durability() == ::nros::Volatile,
+static_assert(rclcpp::ParametersQoS().durability() == ::rclcpp::DurabilityPolicy::Volatile,
               "ParametersQoS is VOLATILE upstream");
 
 static_assert(rclcpp::ParameterEventsQoS().depth() == 1000,
               "ParameterEventsQoS depth is 1000 upstream");
-static_assert(rclcpp::ParameterEventsQoS().reliability() == ::nros::Reliable,
+static_assert(rclcpp::ParameterEventsQoS().reliability() == ::rclcpp::ReliabilityPolicy::Reliable,
               "ParameterEventsQoS is RELIABLE upstream");
 
 static_assert(rclcpp::RosoutQoS().depth() == 1000, "RosoutQoS depth is 1000 upstream");
-static_assert(rclcpp::RosoutQoS().reliability() == ::nros::Reliable,
+static_assert(rclcpp::RosoutQoS().reliability() == ::rclcpp::ReliabilityPolicy::Reliable,
               "RosoutQoS is RELIABLE upstream");
-static_assert(rclcpp::RosoutQoS().durability() == ::nros::TransientLocal,
+static_assert(rclcpp::RosoutQoS().durability() == ::rclcpp::DurabilityPolicy::TransientLocal,
               "RosoutQoS is TRANSIENT_LOCAL upstream -- this is the policy a late joiner needs");
 static_assert(rclcpp::RosoutQoS().lifespan().nanoseconds() == 10000000000LL,
               "RosoutQoS lifespan is {10, 0} == 10 s upstream");
 
 static_assert(rclcpp::ClockQoS().depth() == 1, "ClockQoS depth is 1 upstream");
-static_assert(rclcpp::ClockQoS().reliability() == ::nros::BestEffort,
+static_assert(rclcpp::ClockQoS().reliability() == ::rclcpp::ReliabilityPolicy::BestEffort,
               "ClockQoS is BEST_EFFORT upstream");
 
 // `rclcpp::QoS(10)` is `rmw_qos_profile_default`, and nothing about the
 // correction above may move it.
 static_assert(rclcpp::QoS(10).depth() == 10, "rclcpp::QoS(depth) keeps its depth");
-static_assert(rclcpp::QoS(10).reliability() == ::nros::Reliable,
+static_assert(rclcpp::QoS(10).reliability() == ::rclcpp::ReliabilityPolicy::Reliable,
               "rmw_qos_profile_default is RELIABLE");
 static_assert(rclcpp::KeepLast(7).depth() == 7, "KeepLast(n) carries n");
-static_assert(rclcpp::KeepAll().history() == ::nros::KeepAll, "KeepAll() is KEEP_ALL");
+static_assert(rclcpp::KeepAll().history() == ::rclcpp::HistoryPolicy::KeepAll,
+              "KeepAll() is KEEP_ALL");
 
 // Both upstream spellings construct: these are classes now, as upstream's are.
 inline void qos_spellings() {
     rclcpp::SensorDataQoS braced{};
     rclcpp::SensorDataQoS called = rclcpp::SensorDataQoS();
-    ::nros::QoS as_base = rclcpp::ServicesQoS();
+    ::rclcpp::QoS as_base = rclcpp::ServicesQoS();
     rclcpp::QoS from_keep_last(rclcpp::KeepLast(10));
     (void)braced;
     (void)called;
@@ -117,7 +119,7 @@ inline void qos_spellings() {
 // --- Message / service stubs, the shapes codegen emits ----------------------
 
 struct StringMsg {
-    ::nros::FixedString<64> data;
+    ::rclcpp::FixedString<64> data;
     static const size_t SERIALIZED_SIZE_MAX = 128;
     static constexpr const char* TYPE_NAME = "std_msgs::msg::dds_::String_";
     static constexpr const char* TYPE_HASH = "RIHS01_string_stub";
@@ -174,7 +176,7 @@ class PortedServiceNode : public rclcpp::Node {
   public:
     PortedServiceNode() : rclcpp::Node("ported_service_node") {
         // W2.b — parameters, `const char*` keyed. The value-returning shape is
-        // `nros::ComponentNode`'s, so the two facades in this package agree.
+        // `rclcpp::ComponentNode`'s, so the two facades in this package agree.
         const double period = this->declare_parameter<double>("ctrl_period", 0.15);
         const int64_t depth = this->declare_parameter<int64_t>("queue_depth", 10);
         const bool verbose = this->declare_parameter<bool>("verbose", false);
@@ -198,14 +200,14 @@ class PortedServiceNode : public rclcpp::Node {
         (void)present;
         (void)present_str;
 
-        // Set forwards to nros::ParameterServer::set_parameter.
-        ::nros::Result set_result = this->set_parameter<double>("ctrl_period", 0.05);
+        // Set forwards to rclcpp::ParameterServer::set_parameter.
+        ::rclcpp::Result set_result = this->set_parameter<double>("ctrl_period", 0.05);
         (void)set_result.ok();
         (void)this->set_parameter<double>(std::string("ctrl_period"), 0.05);
 
         // phase-426 W4 — `this->parameters()` IS GONE, and this probe is where
         // its absence is pinned. It returned a reference to the node's OWN
-        // `nros::ParameterServer`, described as the escape hatch "for the C-API
+        // `rclcpp::ParameterServer`, described as the escape hatch "for the C-API
         // helpers that take an `nros_parameter_server_t*`" — of which there are
         // none: `nros_executor_register_parameter_services` takes the executor.
         // With the node-local store deleted there is nothing to hand out. The
@@ -249,15 +251,15 @@ class PortedServiceNode : public rclcpp::Node {
     rclcpp::Publisher<StringMsg>::SharedPtr publisher_;
     // phase-456 W5 — the POLL factory hands back the poll server itself, by
     // value, because `Service<S>::SharedPtr` is a dispatch handle now and one
-    // alias cannot be both. `nros::Owned<T>` is what `auto` would have
+    // alias cannot be both. `rclcpp::Owned<T>` is what `auto` would have
     // deduced; spelled out here because this file's subject is the spellings.
-    ::nros::Owned<::nros::PollService<AddTwoInts>> poll_service_;
+    ::rclcpp::Owned<::rclcpp::PollService<AddTwoInts>> poll_service_;
     rclcpp::Service<AddTwoInts>::SharedPtr cb_service_;
     rclcpp::Service<AddTwoInts>::SharedPtr cb_service_lambda_;
     // phase-456 W9 — same shape one entity over: the FUTURE-style factory hands
     // back the client itself, by value, because `Client<S>::SharedPtr` is a
     // dispatch handle now.
-    ::nros::Owned<::nros::PollClient<AddTwoInts>> future_client_;
+    ::rclcpp::Owned<::rclcpp::PollClient<AddTwoInts>> future_client_;
     rclcpp::Client<AddTwoInts>::SharedPtr cb_client_;
 };
 
@@ -270,10 +272,11 @@ class PortedServiceNode : public rclcpp::Node {
 // and `Service<S>::SharedPtr` became a two-word arena handle with no
 // `operator->`. So it hands back the poll server BY VALUE. Nothing in the
 // ported corpus calls it — measured in W3, zero sites in `examples/templates/`.
-static_assert(std::is_same<decltype(std::declval<rclcpp::Node&>().create_service<AddTwoInts>("s")),
-                           ::nros::Owned<::nros::PollService<AddTwoInts>>>::value,
-              "the POLL create_service<S>(name) must return nros::Owned<nros::PollService<S>> -- "
-              "Service<S>::SharedPtr is the DISPATCH handle and cannot be dereferenced");
+static_assert(
+    std::is_same<decltype(std::declval<rclcpp::Node&>().create_service<AddTwoInts>("s")),
+                 ::rclcpp::Owned<::rclcpp::PollService<AddTwoInts>>>::value,
+    "the POLL create_service<S>(name) must return rclcpp::Owned<rclcpp::PollService<S>> -- "
+    "Service<S>::SharedPtr is the DISPATCH handle and cannot be dereferenced");
 static_assert(std::is_same<decltype(std::declval<rclcpp::Node&>().create_service<AddTwoInts>(
                                "s", &add_two_ints)),
                            rclcpp::Service<AddTwoInts>::SharedPtr>::value,
@@ -288,9 +291,9 @@ static_assert(std::is_same<decltype(std::declval<rclcpp::Node&>().create_service
 // that must hand back something dereferenceable. Ledgered at
 // `cpp:Node::create_client`.
 static_assert(std::is_same<decltype(std::declval<rclcpp::Node&>().create_client<AddTwoInts>("s")),
-                           ::nros::Owned<::nros::PollClient<AddTwoInts>>>::value,
+                           ::rclcpp::Owned<::rclcpp::PollClient<AddTwoInts>>>::value,
               "the FUTURE-style create_client<S>(name) must return "
-              "nros::Owned<nros::PollClient<S>> -- Client<S>::SharedPtr is the DISPATCH handle "
+              "rclcpp::Owned<rclcpp::PollClient<S>> -- Client<S>::SharedPtr is the DISPATCH handle "
               "and cannot be dereferenced");
 static_assert(std::is_same<decltype(std::declval<rclcpp::Node&>().create_client<AddTwoInts>(
                                "s", &on_add_two_ints_response)),
@@ -304,7 +307,7 @@ inline void rate_loop() {
     rclcpp::WallRate rate(10.0); // 10 Hz
     rclcpp::Rate from_period(std::chrono::milliseconds(100));
     rate.reset();
-    // issue 1331 / phase-442 W5 — `period()` returns `nros::Duration`, not
+    // issue 1331 / phase-442 W5 — `period()` returns `rclcpp::Duration`, not
     // `std::chrono::nanoseconds`. That is the divergence W5 chose deliberately:
     // a return type that exists only where `<chrono>` does would keep the whole
     // `Rate` class hostage to the toolchain, which is what W5 removed. The
@@ -314,14 +317,14 @@ inline void rate_loop() {
     // written here rather than adapted so the probe measures our surface. The
     // adapter, for a ported file that must keep a chrono type, is one call:
     // `std::chrono::nanoseconds(rate.period().nanoseconds())`.
-    const nros::Duration period = rate.period();
+    const rclcpp::Duration period = rate.period();
     // ...and PINNED, because a comment that states a divergence does not fail
     // when the divergence moves. `just check cpp` was red on `main` for exactly
     // that reason: W5 changed this return type and the prose describing it was
     // elsewhere. A `static_assert` is the version of this note that a future
     // change has to argue with.
-    static_assert(std::is_same<decltype(rate.period()), ::nros::Duration>::value,
-                  "Rate::period() returns nros::Duration (RFC-0096 D1), not "
+    static_assert(std::is_same<decltype(rate.period()), ::rclcpp::Duration>::value,
+                  "Rate::period() returns rclcpp::Duration (RFC-0096 D1), not "
                   "std::chrono::nanoseconds as upstream does");
     // The adapter the comment above names, COMPILED rather than described: the
     // round trip is exact, so a ported file keeping a chrono type loses nothing

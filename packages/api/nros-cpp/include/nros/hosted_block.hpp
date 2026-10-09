@@ -4,14 +4,14 @@
 /**
  * @file hosted_block.hpp
  * @ingroup grp_support
- * @brief `nros::detail::HostedBlockBase` — the one shape state takes when it
+ * @brief `rclcpp::detail::HostedBlockBase` — the one shape state takes when it
  *        has to live behind a pointer.
  */
 
 #ifndef NROS_CPP_HOSTED_BLOCK_HPP
 #define NROS_CPP_HOSTED_BLOCK_HPP
 
-namespace nros {
+namespace rclcpp {
 namespace detail {
 
 /// Type-erased head of an out-of-line state block.
@@ -55,6 +55,6 @@ inline void destroy_hosted_block(void*& p) {
 }
 
 } // namespace detail
-} // namespace nros
+} // namespace rclcpp
 
 #endif // NROS_CPP_HOSTED_BLOCK_HPP

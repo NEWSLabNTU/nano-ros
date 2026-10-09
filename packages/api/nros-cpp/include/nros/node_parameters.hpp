@@ -4,7 +4,7 @@
 /**
  * @file node_parameters.hpp
  * @ingroup grp_parameter
- * @brief `nros::detail::node_param_*` — typed forwarders from a C++ node onto
+ * @brief `rclcpp::detail::node_param_*` — typed forwarders from a C++ node onto
  *        the executor's parameter store, across the `nros_cpp_node_param_*`
  *        FFI.
  *
@@ -12,8 +12,8 @@
  *
  * Three stores existed for one concept: the executor's `nros_params` table —
  * the one the six `rcl_interfaces/srv/*` servers read and therefore the one
- * `ros2 param get` sees — plus an inline `nros::ParameterServer` on
- * `rclcpp::Node` and another on `nros::ComponentNode`. A parameter declared
+ * `ros2 param get` sees — plus an inline `rclcpp::ParameterServer` on
+ * `rclcpp::Node` and another on `rclcpp::ComponentNode`. A parameter declared
  * through either C++ facade was invisible to `ros2 param get`, and two nodes in
  * one image could not see each other's. That is not a missing feature; it is a
  * second implementation of one, which RFC-0019/0020 forbids and RFC-0089
@@ -46,7 +46,7 @@
  *
  * The FFI entry points are defined whatever `nros-cpp` was built with. Where
  * the bringup declares no `param_services` capability there is no store, and
- * every call answers `nros::ErrorCode::Unsupported` — a code a facade can
+ * every call answers `rclcpp::ErrorCode::Unsupported` — a code a facade can
  * report, never a default that pretends to have been stored.
  */
 
@@ -60,8 +60,8 @@
 // precedent).
 #include <stddef.h>
 
-#include "nros/declared_params.hpp" // phase-446 W6 -- `nros::param_type`
-#include "nros/parameter.hpp"       // phase-426 W4 -- `nros::Seq<T, N>`
+#include "nros/declared_params.hpp" // phase-446 W6 -- `rclcpp::param_type`
+#include "nros/parameter.hpp"       // phase-426 W4 -- `rclcpp::Seq<T, N>`
 #include "nros/result.hpp"
 #include "nros/traits.hpp" // issue 1678 -- `enable_if` without <type_traits>
 #include "nros_cpp_ffi.h"
@@ -97,7 +97,7 @@
 #error "NROS_NODE_PARAM_STRING_BUF must be >= 1: it sizes a C array (issue 1015)"
 #endif
 
-namespace nros {
+namespace rclcpp {
 namespace detail {
 
 // --- the ONE type table -----------------------------------------------------
@@ -121,11 +121,11 @@ namespace detail {
 // `check-cpp`), where `<type_traits>` is not available. Anything not listed
 // is a string, which is also what the `const char*` overload stores.
 template <typename T> struct node_param_type {
-    static constexpr int value = ::nros::param_type::STRING;
+    static constexpr int value = ::rclcpp::param_type::STRING;
 };
 #define NROS_NODE_PARAM_TYPE_(T, CODE)                                                             \
     template <> struct node_param_type<T> {                                                        \
-        static constexpr int value = ::nros::param_type::CODE;                                     \
+        static constexpr int value = ::rclcpp::param_type::CODE;                                   \
     }
 NROS_NODE_PARAM_TYPE_(bool, BOOL);
 NROS_NODE_PARAM_TYPE_(char, INTEGER);
@@ -187,13 +187,13 @@ template <typename T> constexpr bool node_param_widens(T v) {
 /// FFI as. A string has no array slot, so `Seq<const char*, N>` names no type
 /// and does not compile, as it did not before.
 template <int Code> struct node_param_slot_of {};
-template <> struct node_param_slot_of<::nros::param_type::BOOL> {
+template <> struct node_param_slot_of<::rclcpp::param_type::BOOL> {
     using type = bool;
 };
-template <> struct node_param_slot_of<::nros::param_type::INTEGER> {
+template <> struct node_param_slot_of<::rclcpp::param_type::INTEGER> {
     using type = int64_t;
 };
-template <> struct node_param_slot_of<::nros::param_type::DOUBLE> {
+template <> struct node_param_slot_of<::rclcpp::param_type::DOUBLE> {
     using type = double;
 };
 template <typename T>
@@ -221,7 +221,7 @@ template <typename T> inline bool node_param_narrow(bool v, T& out) {
 /// `Result`, for a `T` the table classifies as `Code`; no overload otherwise.
 template <typename T, int Code>
 using node_param_if_kind =
-    typename ::nros::tr::enable_if<node_param_type<T>::value == Code, Result>::type;
+    typename ::rclcpp::tr::enable_if<node_param_type<T>::value == Code, Result>::type;
 
 // --- declare ----------------------------------------------------------------
 //
@@ -250,7 +250,7 @@ inline Result node_param_declare(const nros_cpp_node_t* node, const char* name, 
 /// LP64, `long` on ILP32, `short`, the unsigned types -- widens to the
 /// `int64_t` slot.
 template <typename T>
-inline node_param_if_kind<T, ::nros::param_type::INTEGER>
+inline node_param_if_kind<T, ::rclcpp::param_type::INTEGER>
 node_param_declare(const nros_cpp_node_t* node, const char* name, T v) {
     if (!node_param_widens<T>(v)) {
         return Result(NROS_CPP_RET_INVALID_ARGUMENT);
@@ -259,7 +259,7 @@ node_param_declare(const nros_cpp_node_t* node, const char* name, T v) {
 }
 /// `float` / `long double` go through the `double` slot.
 template <typename T>
-inline node_param_if_kind<T, ::nros::param_type::DOUBLE>
+inline node_param_if_kind<T, ::rclcpp::param_type::DOUBLE>
 node_param_declare(const nros_cpp_node_t* node, const char* name, T v) {
     return Result(nros_cpp_node_declare_param_double(node, name, static_cast<double>(v)));
 }
@@ -278,7 +278,7 @@ inline Result node_param_get(const nros_cpp_node_t* node, const char* name, doub
 /// Any other integer reads the `int64_t` slot, then narrows -- refused, with
 /// `out` untouched, when the stored value does not fit `T`.
 template <typename T>
-inline node_param_if_kind<T, ::nros::param_type::INTEGER>
+inline node_param_if_kind<T, ::rclcpp::param_type::INTEGER>
 node_param_get(const nros_cpp_node_t* node, const char* name, T& out) {
     int64_t v = 0;
     Result r(nros_cpp_node_get_param_integer(node, name, &v));
@@ -292,8 +292,8 @@ node_param_get(const nros_cpp_node_t* node, const char* name, T& out) {
     return r;
 }
 template <typename T>
-inline node_param_if_kind<T, ::nros::param_type::DOUBLE> node_param_get(const nros_cpp_node_t* node,
-                                                                        const char* name, T& out) {
+inline node_param_if_kind<T, ::rclcpp::param_type::DOUBLE>
+node_param_get(const nros_cpp_node_t* node, const char* name, T& out) {
     double v = 0.0;
     Result r(nros_cpp_node_get_param_double(node, name, &v));
     if (r.ok()) {
@@ -327,7 +327,7 @@ inline Result node_param_set(const nros_cpp_node_t* node, const char* name, cons
     return Result(nros_cpp_node_set_param_string(node, name, v));
 }
 template <typename T>
-inline node_param_if_kind<T, ::nros::param_type::INTEGER>
+inline node_param_if_kind<T, ::rclcpp::param_type::INTEGER>
 node_param_set(const nros_cpp_node_t* node, const char* name, T v) {
     if (!node_param_widens<T>(v)) {
         return Result(NROS_CPP_RET_INVALID_ARGUMENT);
@@ -335,8 +335,8 @@ node_param_set(const nros_cpp_node_t* node, const char* name, T v) {
     return Result(nros_cpp_node_set_param_integer(node, name, static_cast<int64_t>(v)));
 }
 template <typename T>
-inline node_param_if_kind<T, ::nros::param_type::DOUBLE> node_param_set(const nros_cpp_node_t* node,
-                                                                        const char* name, T v) {
+inline node_param_if_kind<T, ::rclcpp::param_type::DOUBLE>
+node_param_set(const nros_cpp_node_t* node, const char* name, T v) {
     return Result(nros_cpp_node_set_param_double(node, name, static_cast<double>(v)));
 }
 
@@ -353,7 +353,7 @@ inline bool node_param_has(const nros_cpp_node_t* node, const char* name) {
 // builds, which is why this block sits OUTSIDE `NROS_CPP_STD`:
 //
 //   * `Seq<T, N>` (`nros/parameter.hpp`) - freestanding, fixed capacity, no
-//     heap. Phase-426 W4: this is what `nros::ParameterServer<Cap>` used to
+//     heap. Phase-426 W4: this is what `rclcpp::ParameterServer<Cap>` used to
 //     serve out of an inline bump pool, moved onto the one store so a
 //     sequence parameter is visible to `ros2 param get` like every scalar.
 //   * `std::vector<T>` - hosted, below, behind `NROS_CPP_STD`. A ported
@@ -364,7 +364,7 @@ inline bool node_param_has(const nros_cpp_node_t* node, const char* name) {
 //
 // The store OWNS the elements (`heapless::Vec` in its slot), so there is no
 // pool to keep alive here and no borrow for the caller to outlive - which is
-// what `nros::ParameterServer`'s `seq_pool_` existed to provide and why it
+// what `rclcpp::ParameterServer`'s `seq_pool_` existed to provide and why it
 // left with the class. `std::vector<bool>` is absent for the reason it was
 // absent before: it has no `data()`. `Seq<bool, N>` is NOT - its storage is a
 // plain `bool[N]`, so it has one.
@@ -451,12 +451,12 @@ inline Result node_param_array_in(const nros_cpp_node_t* node, const char* name,
 /// `T` already is it (one element, never touched), `N` otherwise.
 template <typename T, ::size_t N> struct node_param_seq_scratch {
     static constexpr ::size_t value =
-        ::nros::tr::is_same<T, node_param_slot<T>>::value ? ::size_t(1) : N;
+        ::rclcpp::tr::is_same<T, node_param_slot<T>>::value ? ::size_t(1) : N;
 };
 
 template <typename T, ::size_t N>
 inline Result node_param_declare(const nros_cpp_node_t* node, const char* name,
-                                 const ::nros::Seq<T, N>& v) {
+                                 const ::rclcpp::Seq<T, N>& v) {
     using S = node_param_slot<T>;
     S scratch[node_param_seq_scratch<T, N>::value];
     return node_param_array_in(
@@ -466,7 +466,7 @@ inline Result node_param_declare(const nros_cpp_node_t* node, const char* name,
 
 template <typename T, ::size_t N>
 inline Result node_param_set(const nros_cpp_node_t* node, const char* name,
-                             const ::nros::Seq<T, N>& v) {
+                             const ::rclcpp::Seq<T, N>& v) {
     using S = node_param_slot<T>;
     S scratch[node_param_seq_scratch<T, N>::value];
     return node_param_array_in(node, name, v.data(), v.size(), scratch,
@@ -482,7 +482,7 @@ inline Result node_param_set(const nros_cpp_node_t* node, const char* name,
 /// not fit `T` is refused the same way (`InvalidArgument`, `out` cleared).
 template <typename T, ::size_t N>
 inline Result node_param_get(const nros_cpp_node_t* node, const char* name,
-                             ::nros::Seq<T, N>& out) {
+                             ::rclcpp::Seq<T, N>& out) {
     node_param_slot<T> buf[N];
     ::size_t len = 0;
     Result r(node_param_get_array_ffi(node, name, buf, N, &len));
@@ -527,7 +527,7 @@ template <typename T>
 inline Result node_param_declare(const nros_cpp_node_t* node, const char* name,
                                  const ::std::vector<T>& v) {
     using S = node_param_slot<T>;
-    ::std::vector<S> scratch(::nros::tr::is_same<T, S>::value ? 0 : v.size());
+    ::std::vector<S> scratch(::rclcpp::tr::is_same<T, S>::value ? 0 : v.size());
     return node_param_array_in(
         node, name, v.data(), v.size(), scratch.data(),
         static_cast<node_param_array_in_fn<S>>(&node_param_declare_array_ffi));
@@ -543,7 +543,7 @@ template <typename T>
 inline Result node_param_set(const nros_cpp_node_t* node, const char* name,
                              const ::std::vector<T>& v) {
     using S = node_param_slot<T>;
-    ::std::vector<S> scratch(::nros::tr::is_same<T, S>::value ? 0 : v.size());
+    ::std::vector<S> scratch(::rclcpp::tr::is_same<T, S>::value ? 0 : v.size());
     return node_param_array_in(node, name, v.data(), v.size(), scratch.data(),
                                static_cast<node_param_array_in_fn<S>>(&node_param_set_array_ffi));
 }
@@ -561,7 +561,7 @@ inline Result node_param_set(const nros_cpp_node_t* node, const char* name,
 /// (`InvalidArgument`, `out` untouched).
 template <typename S>
 inline Result node_param_get_vector(const nros_cpp_node_t* node, const char* name,
-                                    ::std::vector<S>& out, ::nros::tr::true_type /*T is S*/) {
+                                    ::std::vector<S>& out, ::rclcpp::tr::true_type /*T is S*/) {
     ::size_t len = 0;
     nros_cpp_ret_t probe = node_param_get_array_ffi(node, name, static_cast<S*>(nullptr), 0, &len);
     if (probe != NROS_CPP_RET_OK && probe != NROS_CPP_RET_FULL) {
@@ -575,9 +575,9 @@ inline Result node_param_get_vector(const nros_cpp_node_t* node, const char* nam
 }
 template <typename T>
 inline Result node_param_get_vector(const nros_cpp_node_t* node, const char* name,
-                                    ::std::vector<T>& out, ::nros::tr::false_type /*T is S*/) {
+                                    ::std::vector<T>& out, ::rclcpp::tr::false_type /*T is S*/) {
     ::std::vector<node_param_slot<T>> slots;
-    Result r = node_param_get_vector(node, name, slots, ::nros::tr::true_type());
+    Result r = node_param_get_vector(node, name, slots, ::rclcpp::tr::true_type());
     if (!r.ok()) {
         return r;
     }
@@ -594,7 +594,8 @@ template <typename T>
 inline Result node_param_get(const nros_cpp_node_t* node, const char* name, ::std::vector<T>& out) {
     return node_param_get_vector(
         node, name, out,
-        ::nros::tr::integral_constant<bool, ::nros::tr::is_same<T, node_param_slot<T>>::value>());
+        ::rclcpp::tr::integral_constant<bool,
+                                        ::rclcpp::tr::is_same<T, node_param_slot<T>>::value>());
 }
 
 #endif // NROS_CPP_STD
@@ -664,7 +665,7 @@ inline Result node_param_list(const nros_cpp_node_t* node, const char* prefix, c
 }
 
 } // namespace detail
-} // namespace nros
+} // namespace rclcpp
 
 namespace rclcpp {
 
@@ -680,19 +681,19 @@ namespace rclcpp {
 /// enum whose enumerators carry the `PARAMETER_` prefix, so
 /// `rclcpp::ParameterType::PARAMETER_DOUBLE` and the bare
 /// `rclcpp::PARAMETER_DOUBLE` both resolve there, and both resolve here.
-/// The values are `nros::param_type`'s, which is where the codes live; this
+/// The values are `rclcpp::param_type`'s, which is where the codes live; this
 /// enum NAMES them rather than restating them, so the two cannot drift.
 enum ParameterType {
     PARAMETER_NOT_SET = 0,
-    PARAMETER_BOOL = ::nros::param_type::BOOL,
-    PARAMETER_INTEGER = ::nros::param_type::INTEGER,
-    PARAMETER_DOUBLE = ::nros::param_type::DOUBLE,
-    PARAMETER_STRING = ::nros::param_type::STRING,
-    PARAMETER_BYTE_ARRAY = ::nros::param_type::BYTE_ARRAY,
-    PARAMETER_BOOL_ARRAY = ::nros::param_type::BOOL_ARRAY,
-    PARAMETER_INTEGER_ARRAY = ::nros::param_type::INTEGER_ARRAY,
-    PARAMETER_DOUBLE_ARRAY = ::nros::param_type::DOUBLE_ARRAY,
-    PARAMETER_STRING_ARRAY = ::nros::param_type::STRING_ARRAY,
+    PARAMETER_BOOL = ::rclcpp::param_type::BOOL,
+    PARAMETER_INTEGER = ::rclcpp::param_type::INTEGER,
+    PARAMETER_DOUBLE = ::rclcpp::param_type::DOUBLE,
+    PARAMETER_STRING = ::rclcpp::param_type::STRING,
+    PARAMETER_BYTE_ARRAY = ::rclcpp::param_type::BYTE_ARRAY,
+    PARAMETER_BOOL_ARRAY = ::rclcpp::param_type::BOOL_ARRAY,
+    PARAMETER_INTEGER_ARRAY = ::rclcpp::param_type::INTEGER_ARRAY,
+    PARAMETER_DOUBLE_ARRAY = ::rclcpp::param_type::DOUBLE_ARRAY,
+    PARAMETER_STRING_ARRAY = ::rclcpp::param_type::STRING_ARRAY,
 };
 
 /// The proposed write an on-set-parameters callback sees.
@@ -758,7 +759,7 @@ using ParameterCallbackHandle = uint16_t;
 
 } // namespace rclcpp
 
-namespace nros {
+namespace rclcpp {
 namespace detail {
 
 inline Result node_param_add_on_set_callback(const nros_cpp_node_t* node,
@@ -796,7 +797,7 @@ inline Result node_param_apply_descriptor(const nros_cpp_node_t* node, const cha
         return r;
     }
     if (d.has_range) {
-        r = (param_type == ::nros::param_type::INTEGER)
+        r = (param_type == ::rclcpp::param_type::INTEGER)
                 ? node_param_add_range(node, name, d.integer_from, d.integer_to, d.integer_step)
                 : node_param_add_range(node, name, d.double_from, d.double_to, d.double_step);
         if (!r.ok()) {
@@ -815,12 +816,12 @@ inline Result node_param_apply_descriptor(const nros_cpp_node_t* node, const cha
 /// The array code for a scalar code: `std::vector<T>` declares the array of
 /// whatever `T` declares.
 constexpr int node_param_array_type(int scalar) {
-    return (scalar == ::nros::param_type::BOOL)      ? ::nros::param_type::BOOL_ARRAY
-           : (scalar == ::nros::param_type::INTEGER) ? ::nros::param_type::INTEGER_ARRAY
-           : (scalar == ::nros::param_type::DOUBLE)  ? ::nros::param_type::DOUBLE_ARRAY
-                                                     : ::nros::param_type::STRING_ARRAY;
+    return (scalar == ::rclcpp::param_type::BOOL)      ? ::rclcpp::param_type::BOOL_ARRAY
+           : (scalar == ::rclcpp::param_type::INTEGER) ? ::rclcpp::param_type::INTEGER_ARRAY
+           : (scalar == ::rclcpp::param_type::DOUBLE)  ? ::rclcpp::param_type::DOUBLE_ARRAY
+                                                       : ::rclcpp::param_type::STRING_ARRAY;
 }
-template <typename T, ::size_t N> struct node_param_type<::nros::Seq<T, N>> {
+template <typename T, ::size_t N> struct node_param_type<::rclcpp::Seq<T, N>> {
     static constexpr int value = node_param_array_type(node_param_type<T>::value);
 };
 #ifdef NROS_CPP_STD // hosted-family: container-interop
@@ -830,6 +831,6 @@ template <typename T, typename A> struct node_param_type<::std::vector<T, A>> {
 #endif
 
 } // namespace detail
-} // namespace nros
+} // namespace rclcpp
 
 #endif // NROS_CPP_NODE_PARAMETERS_HPP

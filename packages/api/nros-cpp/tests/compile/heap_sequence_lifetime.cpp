@@ -1,4 +1,4 @@
-// issue #201 — RUNTIME lifetime probe for nros::HeapSequence element
+// issue #201 — RUNTIME lifetime probe for rclcpp::HeapSequence element
 // destructor semantics (compiled AND executed by `just check cpp`).
 //
 // Verifies, with a counting allocator, that a two-level heap shape — a heap
@@ -34,24 +34,24 @@ namespace {
 // Stand-in for a generated message struct with heap fields (the two-level
 // `mode = "heap"` shape: DiagnosticStatus-like).
 struct Inner {
-    nros::HeapString name;
-    nros::HeapSequence<int32_t> values;
+    rclcpp::HeapString name;
+    rclcpp::HeapSequence<int32_t> values;
 };
 
 int fail(const char* what, long live) {
-    std::fprintf(stderr, "heap_sequence_lifetime: %s leaked (live allocations: %ld)\n", what,
-                 live);
+    std::fprintf(stderr, "heap_sequence_lifetime: %s leaked (live allocations: %ld)\n", what, live);
     return 1;
 }
 
 int check_destructor() {
     {
-        nros::HeapSequence<Inner> outer;
+        rclcpp::HeapSequence<Inner> outer;
         for (int k = 0; k < 3; ++k) {
             Inner* e = outer.emplace_back();
             if (e == nullptr) return fail("emplace_back alloc", g_live);
             e->name.assign("motor_left", 10);
-            for (int32_t v = 0; v < 8; ++v) e->values.push_back(v);
+            for (int32_t v = 0; v < 8; ++v)
+                e->values.push_back(v);
         }
     }
     return g_live != 0 ? fail("destructor", g_live) : 0;
@@ -59,17 +59,17 @@ int check_destructor() {
 
 int check_move_assign() {
     {
-        nros::HeapSequence<Inner> a;
+        rclcpp::HeapSequence<Inner> a;
         Inner* e = a.emplace_back();
         e->name.assign("x", 1);
         e->values.push_back(42);
 
-        nros::HeapSequence<Inner> b;
+        rclcpp::HeapSequence<Inner> b;
         Inner* f = b.emplace_back();
         f->name.assign("overwritten", 11);
         f->values.push_back(7);
 
-        b = static_cast<nros::HeapSequence<Inner>&&>(a); // must tear down b's old elements
+        b = static_cast<rclcpp::HeapSequence<Inner>&&>(a); // must tear down b's old elements
         if (b.length() != 1 || b[0].values[0] != 42) {
             std::fprintf(stderr, "heap_sequence_lifetime: move-assign lost contents\n");
             return 1;
@@ -80,7 +80,7 @@ int check_move_assign() {
 
 int check_clear() {
     {
-        nros::HeapSequence<Inner> outer;
+        rclcpp::HeapSequence<Inner> outer;
         Inner* e = outer.emplace_back();
         e->name.assign("cleared", 7);
         outer.clear();
@@ -91,7 +91,7 @@ int check_clear() {
 
 int check_reserve_relocation() {
     {
-        nros::HeapSequence<Inner> outer;
+        rclcpp::HeapSequence<Inner> outer;
         // Force several growth relocations past the initial capacity of 4.
         for (int k = 0; k < 33; ++k) {
             Inner* e = outer.emplace_back();
@@ -114,8 +114,9 @@ int check_reserve_relocation() {
 
 int check_pod_push_back() {
     {
-        nros::HeapSequence<uint8_t> pixels;
-        for (int k = 0; k < 100; ++k) pixels.push_back(static_cast<uint8_t>(k));
+        rclcpp::HeapSequence<uint8_t> pixels;
+        for (int k = 0; k < 100; ++k)
+            pixels.push_back(static_cast<uint8_t>(k));
         if (pixels.length() != 100) {
             std::fprintf(stderr, "heap_sequence_lifetime: POD push_back size wrong\n");
             return 1;

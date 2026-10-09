@@ -21,7 +21,7 @@ static ::talker_pkg::TALKER __nros_comp_0;
 
 static int32_t __nros_entry_setup() {
     {
-        ::nros::Result r = ::nros::create_node(__nros_node_0, "talker", "/");
+        ::rclcpp::Result r = ::rclcpp::create_node(__nros_node_0, "talker", "/");
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         r = __nros_comp_0.configure(__nros_node_0);
         if (!r.ok()) return static_cast<int32_t>(r.raw());
@@ -43,7 +43,7 @@ extern "C" int nros_rmw_metadata_register(void);
 
 int main(int /*argc*/, char** /*argv*/) {
     (void)nros_rmw_metadata_register();
-    ::nros::Result r = ::nros::init(nullptr, 0, "nros_metadata_probe");
+    ::rclcpp::Result r = ::rclcpp::init_in(nullptr, 0, "nros_metadata_probe");
     if (!r.ok()) return 1;
     int32_t rc = __nros_entry_setup();
     if (rc != 0) return rc;

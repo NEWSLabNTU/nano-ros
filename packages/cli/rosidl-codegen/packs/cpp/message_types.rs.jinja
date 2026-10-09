@@ -15,7 +15,7 @@
 {%- if has_heap %}
 // Heap (`mode = "heap"`, RFC-0033) sequences allocate through the shared
 // platform allocator so the SAME allocator spans the Rust↔C++ FFI boundary
-// (the C++ `nros::HeapSequence` destructor frees what we allocate here).
+// (the C++ `rclcpp::HeapSequence` destructor frees what we allocate here).
 unsafe extern "C" {
     fn nros_platform_malloc(size: usize) -> *mut core::ffi::c_void;
     fn nros_platform_free(ptr: *mut core::ffi::c_void);
@@ -23,7 +23,7 @@ unsafe extern "C" {
 {%- endif %}
 {%- if has_heap_string %}
 
-/// Heap string repr — matches `nros::HeapString` (`{ char* data; size_t size;
+/// Heap string repr — matches `rclcpp::HeapString` (`{ char* data; size_t size;
 /// size_t capacity; }`). `data` is NUL-terminated; `capacity == size + 1`.
 #[repr(C)]
 pub struct nros_cpp_heap_str_t {
@@ -132,7 +132,7 @@ pub fn {{ deserialize_fn }}(reader: &mut CdrReader, out: &mut {{ repr_c_struct_n
 {%- if field.is_heap %}
     {
         // Heap string (RFC-0033): malloc len+1, copy + NUL-terminate; the C++
-        // nros::HeapString destructor frees it via the shared allocator.
+        // rclcpp::HeapString destructor frees it via the shared allocator.
         let s = reader.read_string()?;
         let bytes = s.as_bytes();
         let n = bytes.len();
@@ -175,7 +175,7 @@ pub fn {{ deserialize_fn }}(reader: &mut CdrReader, out: &mut {{ repr_c_struct_n
 {%- if field.is_heap %}
     {
         // Heap sequence (RFC-0033): allocate `len` elements via the shared
-        // platform allocator; nros::HeapSequence's destructor frees them. Frees
+        // platform allocator; rclcpp::HeapSequence's destructor frees them. Frees
         // on a mid-loop read error so a partial read never leaks.
         let len = reader.read_u32()? as usize;
         let data: *mut {{ field.element_repr_type }} = if len > 0 {
@@ -269,11 +269,11 @@ pub fn {{ deserialize_fn }}(reader: &mut CdrReader, out: &mut {{ repr_c_struct_n
 // RFC-0033 borrowed (Phase 235): zero-copy view FFI. `{{ view_repr_struct_name }}`
 // mirrors the C++ `{{ message_name }}View`; borrowed fields are `nros_cpp_borrow_t`
 // (a raw {ptr,len} into the CDR buffer) that the C++ side wraps as
-// nros::Span/StringView/LeSpan. Copied fields keep their owned repr.
+// rclcpp::Span/StringView/LeSpan. Copied fields keep their owned repr.
 // ---------------------------------------------------------------------------
 
 /// Borrowed view field — raw pointer + length into the CDR receive buffer.
-/// Layout-compatible with C++ `nros::Span<T>` / `StringView` / `LeSpan<T>`.
+/// Layout-compatible with C++ `rclcpp::Span<T>` / `StringView` / `LeSpan<T>`.
 #[repr(C)]
 pub struct nros_cpp_borrow_t {
     pub ptr: *const u8,

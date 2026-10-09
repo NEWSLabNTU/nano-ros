@@ -147,7 +147,7 @@ class Updater {
     std::string hardware_id_;
     std::vector<Task> tasks_;
     // phase-456 W5 -- the nested alias, never `std::shared_ptr<...>`. nano-ros
-    // spells a publisher handle `nros::Owned<Publisher<M>>`; upstream spells it
+    // spells a publisher handle `rclcpp::Owned<Publisher<M>>`; upstream spells it
     // `std::shared_ptr`. Only the alias compiles against both.
     ::rclcpp::Publisher<::diagnostic_msgs::msg::DiagnosticArray>::SharedPtr publisher_;
 };

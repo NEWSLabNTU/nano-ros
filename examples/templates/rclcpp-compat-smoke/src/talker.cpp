@@ -65,7 +65,7 @@ class SmokeNode : public rclcpp::Node {
 
   private:
     // phase-456 W5 — the nested alias, never `std::shared_ptr<...>`: nano-ros
-    // spells a publisher handle `nros::Owned<Publisher<M>>` (no allocator on a
+    // spells a publisher handle `rclcpp::Owned<Publisher<M>>` (no allocator on a
     // freestanding target) and upstream spells it `std::shared_ptr`, so only
     // the alias compiles both ways.
     rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr publisher_;

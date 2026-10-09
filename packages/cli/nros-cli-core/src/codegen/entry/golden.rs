@@ -209,7 +209,7 @@ fn cpp_c_node(pkg: &str, exec: &str) -> PlanNode {
 }
 
 /// A `lang == "rust"` node: installed through `__nros_component_<pkg>_install`
-/// on the shared executor, with no entry-created `::nros::Node`.
+/// on the shared executor, with no entry-created `::rclcpp::Node`.
 fn cpp_rust_node(pkg: &str, exec: &str) -> PlanNode {
     let mut n = typed_node(pkg, exec);
     n.lang = Some(Lang::Rust);

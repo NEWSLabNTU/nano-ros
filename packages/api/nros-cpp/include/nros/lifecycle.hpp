@@ -2,7 +2,7 @@
 // Freestanding C++ — no exceptions, no RTTI, no STL required.
 //
 // Phase 270 (#103) — an rclcpp-shape managed-node wrapper over the executor's
-// REP-2002 lifecycle state machine. Inherit `nros::LifecycleNode` and override
+// REP-2002 lifecycle state machine. Inherit `rclcpp::LifecycleNode` and override
 // the `on_*` transition hooks (matching
 // `rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface`); the base binds
 // the REP-2002 services and bridges each transition to your override. The C
@@ -12,7 +12,7 @@
 /**
  * @file lifecycle.hpp
  * @ingroup grp_lifecycle
- * @brief Phase 270 — `nros::LifecycleNode` (REP-2002 managed node).
+ * @brief Phase 270 — `rclcpp::LifecycleNode` (REP-2002 managed node).
  */
 
 #ifndef NROS_CPP_LIFECYCLE_HPP
@@ -22,7 +22,7 @@
 #include <cstdint>
 
 #include "nros/result.hpp"
-// phase-417 stage 2b (RFC-0089) — `nros::TopicEndpointInfo` and the visitor
+// phase-417 stage 2b (RFC-0089) — `rclcpp::TopicEndpointInfo` and the visitor
 // typedef used by the graph forwarders below.
 #include "nros/graph.hpp"
 // phase-417 W4.f — `rclcpp_lifecycle::LifecycleNode` carries the same clock and
@@ -53,7 +53,10 @@
 // home, in Rust, and a C++ table of them would be the fourth copy.
 #include "nros/lifecycle.h"
 
-namespace nros {
+// phase-483 W1: the lifecycle vocabulary lives in `rclcpp_lifecycle::`, where
+// upstream keeps it. It was `nros::` until then, with `rclcpp_lifecycle::`
+// aliasing three of the names.
+namespace rclcpp_lifecycle {
 
 /// REP-2002 primary states. Values match `nros_cpp_lifecycle_get_current_state()` /
 /// `nros_core::lifecycle::LifecycleState` (`Unknown` is the `0` sentinel returned for a
@@ -313,7 +316,7 @@ class ManagedEntityInterface {
     /// phase-482 W4 — MOVABLE, and a move keeps the node's list correct.
     ///
     /// `rclcpp_lifecycle::LifecycleNode::create_publisher` returns its
-    /// publisher in a move-only `nros::Owned<T>` (the freestanding `SharedPtr`),
+    /// publisher in a move-only `rclcpp::Owned<T>` (the freestanding `SharedPtr`),
     /// so the entity changes address at least once between registration and
     /// the member it lands in. The list is intrusive, so a move re-points the
     /// node's link at the new object and leaves the old one unlinked. Copying
@@ -360,7 +363,7 @@ namespace detail {
 
 /// The REP-2002 engine behind `rclcpp_lifecycle::LifecycleNode` (phase-482 W4).
 ///
-/// It was `nros::LifecycleNode`, a mixin a component bound to its node. That name
+/// It was `rclcpp::LifecycleNode`, a mixin a component bound to its node. That name
 /// is now a deprecated forwarder; the type a user writes is
 /// `rclcpp_lifecycle::LifecycleNode`, which IS a node and owns one of these.
 ///
@@ -525,8 +528,8 @@ class LifecycleEngine {
 
     /// Register the five REP-2002 services and bind the `on_*` trampolines. Call
     /// once during setup; afterwards `ros2 lifecycle set|get|list` drives this node.
-    Result register_services() {
-        Result r = Result(nros_cpp_register_lifecycle_services(exec_));
+    ::rclcpp::Result register_services() {
+        ::rclcpp::Result r = ::rclcpp::Result(nros_cpp_register_lifecycle_services(exec_));
         if (!r) {
             return r;
         }
@@ -536,15 +539,15 @@ class LifecycleEngine {
         nros_cpp_lifecycle_register_on_cleanup(exec_, &LifecycleEngine::tramp_cleanup, this);
         nros_cpp_lifecycle_register_on_shutdown(exec_, &LifecycleEngine::tramp_shutdown, this);
         nros_cpp_lifecycle_register_on_error(exec_, &LifecycleEngine::tramp_error, this);
-        return Result();
+        return ::rclcpp::Result();
     }
 
     /// Register services (binding the `on_*` trampolines) then drive the node to
     /// `target` at boot: `Inactive` = configure; `Active` = configure + activate.
     /// Unlike the raw `nros_cpp_lifecycle_autostart` FFI, this binds the callbacks
     /// first, so your overrides fire during the autostart transitions.
-    Result autostart(LifecycleState target) {
-        Result r = register_services();
+    ::rclcpp::Result autostart(LifecycleState target) {
+        ::rclcpp::Result r = register_services();
         if (!r) {
             return r;
         }
@@ -560,7 +563,7 @@ class LifecycleEngine {
                 return r;
             }
         }
-        return Result();
+        return ::rclcpp::Result();
     }
 
     /// Current REP-2002 state.
@@ -570,10 +573,10 @@ class LifecycleEngine {
 
     // Programmatic transitions. Spelled with the enum, never a literal —
     // issue 1099 is what a literal costs.
-    Result configure() { return trigger_transition(LifecycleTransition::Configure); }
-    Result activate() { return trigger_transition(LifecycleTransition::Activate); }
-    Result deactivate() { return trigger_transition(LifecycleTransition::Deactivate); }
-    Result cleanup() { return trigger_transition(LifecycleTransition::Cleanup); }
+    ::rclcpp::Result configure() { return trigger_transition(LifecycleTransition::Configure); }
+    ::rclcpp::Result activate() { return trigger_transition(LifecycleTransition::Activate); }
+    ::rclcpp::Result deactivate() { return trigger_transition(LifecycleTransition::Deactivate); }
+    ::rclcpp::Result cleanup() { return trigger_transition(LifecycleTransition::Cleanup); }
 
     /// Shut the node down from WHEREVER it currently is.
     ///
@@ -591,11 +594,13 @@ class LifecycleEngine {
     ///
     /// The mapping is [`shutdown_transition_for`]; see it for the
     /// no-legal-shutdown states.
-    Result shutdown() { return trigger_transition(shutdown_transition_for(get_current_state())); }
+    ::rclcpp::Result shutdown() {
+        return trigger_transition(shutdown_transition_for(get_current_state()));
+    }
 
     /// Drive an arbitrary REP-2002 transition — the type-safe spelling, and the
     /// one to prefer.
-    Result trigger_transition(LifecycleTransition transition) {
+    ::rclcpp::Result trigger_transition(LifecycleTransition transition) {
         return trigger_transition(static_cast<uint8_t>(transition));
     }
 
@@ -613,8 +618,8 @@ class LifecycleEngine {
     ///
     /// Phase 379 W5: this was the `protected` `trigger(uint8_t)`, which a
     /// ported rclcpp node could not call at all.
-    Result trigger_transition(uint8_t transition_id) {
-        return Result(nros_cpp_lifecycle_change_state(exec_, transition_id));
+    ::rclcpp::Result trigger_transition(uint8_t transition_id) {
+        return ::rclcpp::Result(nros_cpp_lifecycle_change_state(exec_, transition_id));
     }
 
     // ---- Clock — phase-417 W4.f ------------------------------------------
@@ -627,12 +632,12 @@ class LifecycleEngine {
     /// UNBOUND lifecycle node can still ask what time it is. So the accessor
     /// works with or without `bind(Node&)`, which the parameter surface below
     /// cannot say.
-    Clock* get_clock() { return &clock_; }
+    ::rclcpp::Clock* get_clock() { return &clock_; }
     /// Const overload of [`get_clock`].
-    const Clock* get_clock() const { return &clock_; }
+    const ::rclcpp::Clock* get_clock() const { return &clock_; }
 
     /// Shorthand for `get_clock()->now()` — rclcpp's `LifecycleEngine::now()`.
-    Time now() const { return clock_.now(); }
+    ::rclcpp::Time now() const { return clock_.now(); }
 
     // ---- The transition graph, in process — phase-417 W4.f ---------------
 
@@ -650,7 +655,7 @@ class LifecycleEngine {
     /// hand a container back from, and the visitor is the vocabulary those
     /// forwarders already established.
     ///
-    /// NOT an `nros::Span` over the static table, which is the shape that fits
+    /// NOT an `rclcpp::Span` over the static table, which is the shape that fits
     /// best and is nonetheless wrong here: `span.hpp` is reached by nothing
     /// else in these headers, so taking it would newly expose `Span` /
     /// `StringView` / `LeSpan` on the public C++ surface as a side effect of a
@@ -658,22 +663,22 @@ class LifecycleEngine {
     /// exactly that reason (16 unledgered items, measured), and whoever
     /// classifies those types should do it deliberately rather than inherit it
     /// from this call.
-    Result get_transition_graph(TransitionVisitFn visit, void* ctx) const {
+    ::rclcpp::Result get_transition_graph(TransitionVisitFn visit, void* ctx) const {
         if (visit == nullptr) {
-            return Result(::nros::ErrorCode::InvalidArgument);
+            return ::rclcpp::Result(::rclcpp::ErrorCode::InvalidArgument);
         }
         const uint8_t* ids = nullptr;
         ::size_t count = 0;
         const nros_ret_t r = nros_lifecycle_transition_graph(&ids, &count);
         if (r != NROS_RET_OK) {
-            return Result(r);
+            return ::rclcpp::Result(r);
         }
         for (::size_t i = 0; i < count; ++i) {
             if (!visit(ctx, Transition(ids[i]))) {
                 break;
             }
         }
-        return Result();
+        return ::rclcpp::Result();
     }
 
     // ---- Managed entities — phase-417 W4.f -------------------------------
@@ -690,23 +695,23 @@ class LifecycleEngine {
     /// The list is INTRUSIVE (see [`ManagedEntityInterface`]): `entity` must
     /// outlive this node and must not already be in another node's list.
     /// Adding the same entity twice is refused rather than corrupting the list.
-    Result add_managed_entity(ManagedEntityInterface* entity) {
+    ::rclcpp::Result add_managed_entity(ManagedEntityInterface* entity) {
         if (entity == nullptr) {
-            return Result(::nros::ErrorCode::InvalidArgument);
+            return ::rclcpp::Result(::rclcpp::ErrorCode::InvalidArgument);
         }
         for (ManagedEntityInterface* e = managed_; e != nullptr; e = e->next_managed_) {
             if (e == entity) {
-                return Result(::nros::ErrorCode::AlreadyExists);
+                return ::rclcpp::Result(::rclcpp::ErrorCode::AlreadyExists);
             }
         }
         if (entity->owner_ != nullptr) {
             // In ANOTHER node's list: one link per entity, so refuse.
-            return Result(::nros::ErrorCode::AlreadyExists);
+            return ::rclcpp::Result(::rclcpp::ErrorCode::AlreadyExists);
         }
         entity->next_managed_ = managed_;
         entity->owner_ = this;
         managed_ = entity;
-        return Result();
+        return ::rclcpp::Result();
     }
 
     /// phase-482 W4 — the moved-to entity takes the moved-from one's place in
@@ -789,8 +794,8 @@ class LifecycleEngine {
     }
     /// Set a declared parameter, through the same `apply` a remote
     /// `ros2 param set` reaches.
-    template <typename T> Result set_parameter(const char* name, T value) {
-        return node_ == nullptr ? Result(::nros::ErrorCode::InvalidArgument)
+    template <typename T>::rclcpp::Result set_parameter(const char* name, T value) {
+        return node_ == nullptr ? ::rclcpp::Result(::rclcpp::ErrorCode::InvalidArgument)
                                 : node_->template set_parameter<T>(name, value);
     }
     /// `has_parameter(name)`.
@@ -799,8 +804,8 @@ class LifecycleEngine {
     }
     /// `undeclare_parameter(name)`. Returns `Result` where upstream returns `void`
     /// and throws; on an UNBOUND lifecycle node it answers `InvalidArgument`.
-    Result undeclare_parameter(const char* name) {
-        return node_ == nullptr ? Result(::nros::ErrorCode::InvalidArgument)
+    ::rclcpp::Result undeclare_parameter(const char* name) {
+        return node_ == nullptr ? ::rclcpp::Result(::rclcpp::ErrorCode::InvalidArgument)
                                 : node_->undeclare_parameter(name);
     }
     /// The declared TYPE of one parameter.
@@ -808,40 +813,41 @@ class LifecycleEngine {
         return node_ == nullptr ? ::rclcpp::PARAMETER_NOT_SET : node_->get_parameter_type(name);
     }
     /// `get_parameter_types(names, count)`, into caller storage.
-    Result get_parameter_types(const char* const* names, ::size_t count,
-                               ::rclcpp::ParameterType* out) const {
-        return node_ == nullptr ? Result(::nros::ErrorCode::InvalidArgument)
+    ::rclcpp::Result get_parameter_types(const char* const* names, ::size_t count,
+                                         ::rclcpp::ParameterType* out) const {
+        return node_ == nullptr ? ::rclcpp::Result(::rclcpp::ErrorCode::InvalidArgument)
                                 : node_->get_parameter_types(names, count, out);
     }
     /// `describe_parameter(name)`, into caller storage. See `rclcpp::Node`.
-    Result describe_parameter(const char* name, ::rclcpp::ParameterDescriptor& out, char* text,
-                              ::size_t text_len) const {
-        return node_ == nullptr ? Result(::nros::ErrorCode::InvalidArgument)
+    ::rclcpp::Result describe_parameter(const char* name, ::rclcpp::ParameterDescriptor& out,
+                                        char* text, ::size_t text_len) const {
+        return node_ == nullptr ? ::rclcpp::Result(::rclcpp::ErrorCode::InvalidArgument)
                                 : node_->describe_parameter(name, out, text, text_len);
     }
     /// `list_parameters(prefix, …)`, into a caller-owned rectangle.
-    Result list_parameters(const char* prefix, char* out_names, ::size_t name_stride,
-                           ::size_t max_names, ::size_t& count) const {
+    ::rclcpp::Result list_parameters(const char* prefix, char* out_names, ::size_t name_stride,
+                                     ::size_t max_names, ::size_t& count) const {
         return node_ == nullptr
-                   ? Result(::nros::ErrorCode::InvalidArgument)
+                   ? ::rclcpp::Result(::rclcpp::ErrorCode::InvalidArgument)
                    : node_->list_parameters(prefix, out_names, name_stride, max_names, count);
     }
     /// `set_parameters_atomically(writes, count)` — all or nothing.
-    Result set_parameters_atomically(const ::rclcpp::ParameterWrite* writes, ::size_t count) {
-        return node_ == nullptr ? Result(::nros::ErrorCode::InvalidArgument)
+    ::rclcpp::Result set_parameters_atomically(const ::rclcpp::ParameterWrite* writes,
+                                               ::size_t count) {
+        return node_ == nullptr ? ::rclcpp::Result(::rclcpp::ErrorCode::InvalidArgument)
                                 : node_->set_parameters_atomically(writes, count);
     }
     /// `add_on_set_parameters_callback(callback, context, out_handle)`.
-    Result add_on_set_parameters_callback(::rclcpp::OnSetParametersCallbackType callback,
-                                          void* context,
-                                          ::rclcpp::ParameterCallbackHandle& out_handle) {
+    ::rclcpp::Result add_on_set_parameters_callback(::rclcpp::OnSetParametersCallbackType callback,
+                                                    void* context,
+                                                    ::rclcpp::ParameterCallbackHandle& out_handle) {
         return node_ == nullptr
-                   ? Result(::nros::ErrorCode::InvalidArgument)
+                   ? ::rclcpp::Result(::rclcpp::ErrorCode::InvalidArgument)
                    : node_->add_on_set_parameters_callback(callback, context, out_handle);
     }
     /// `remove_on_set_parameters_callback(handle)`.
-    Result remove_on_set_parameters_callback(::rclcpp::ParameterCallbackHandle handle) {
-        return node_ == nullptr ? Result(::nros::ErrorCode::InvalidArgument)
+    ::rclcpp::Result remove_on_set_parameters_callback(::rclcpp::ParameterCallbackHandle handle) {
+        return node_ == nullptr ? ::rclcpp::Result(::rclcpp::ErrorCode::InvalidArgument)
                                 : node_->remove_on_set_parameters_callback(handle);
     }
 
@@ -869,13 +875,13 @@ class LifecycleEngine {
     bool get_parameter_or(const ::std::string& name, T& out, T fallback) const {
         return this->template get_parameter_or<T>(name.c_str(), out, fallback);
     }
-    template <typename T> Result set_parameter(const ::std::string& name, T value) {
+    template <typename T>::rclcpp::Result set_parameter(const ::std::string& name, T value) {
         return this->template set_parameter<T>(name.c_str(), value);
     }
     bool has_parameter(const ::std::string& name) const {
         return this->has_parameter(name.c_str());
     }
-    Result undeclare_parameter(const ::std::string& name) {
+    ::rclcpp::Result undeclare_parameter(const ::std::string& name) {
         return this->undeclare_parameter(name.c_str());
     }
     ::rclcpp::ParameterType get_parameter_type(const ::std::string& name) const {
@@ -886,8 +892,9 @@ class LifecycleEngine {
     /// upstream's `std::vector<T>` (see `rclcpp::Node::declare_parameters`); on an
     /// UNBOUND lifecycle node it answers `InvalidArgument`.
     template <typename T>
-    Result declare_parameters(const ::std::string& prefix, const ::std::map<::std::string, T>& m) {
-        return node_ == nullptr ? Result(::nros::ErrorCode::InvalidArgument)
+    ::rclcpp::Result declare_parameters(const ::std::string& prefix,
+                                        const ::std::map<::std::string, T>& m) {
+        return node_ == nullptr ? ::rclcpp::Result(::rclcpp::ErrorCode::InvalidArgument)
                                 : node_->template declare_parameters<T>(prefix, m);
     }
 #endif // NROS_CPP_HAS_STD_STRING
@@ -916,69 +923,74 @@ class LifecycleEngine {
     /// Every node on the graph, with its namespace — rclcpp's
     /// `get_node_names()`. `enclave` is `nullptr` where the backend tracks
     /// none; strings are BORROWED for the call; return `false` to stop.
-    Result get_node_names(nros_cpp_node_visit_fn visit, void* ctx) const {
-        return Result(nros_cpp_executor_get_node_names(exec_, visit, ctx));
+    ::rclcpp::Result get_node_names(nros_cpp_node_visit_fn visit, void* ctx) const {
+        return ::rclcpp::Result(nros_cpp_executor_get_node_names(exec_, visit, ctx));
     }
 
     /// Every topic on the graph, with the types on it — rclcpp's
     /// `get_topic_names_and_types()`. One visit per distinct TOPIC.
-    Result get_topic_names_and_types(nros_cpp_names_and_types_visit_fn visit, void* ctx) const {
-        return Result(nros_cpp_executor_get_topic_names_and_types(exec_, visit, ctx));
+    ::rclcpp::Result get_topic_names_and_types(nros_cpp_names_and_types_visit_fn visit,
+                                               void* ctx) const {
+        return ::rclcpp::Result(nros_cpp_executor_get_topic_names_and_types(exec_, visit, ctx));
     }
 
     /// Every service on the graph, with its types — rclcpp's
     /// `get_service_names_and_types()`, over servers and clients.
-    Result get_service_names_and_types(nros_cpp_names_and_types_visit_fn visit, void* ctx) const {
-        return Result(nros_cpp_executor_get_service_names_and_types(exec_, visit, ctx));
+    ::rclcpp::Result get_service_names_and_types(nros_cpp_names_and_types_visit_fn visit,
+                                                 void* ctx) const {
+        return ::rclcpp::Result(nros_cpp_executor_get_service_names_and_types(exec_, visit, ctx));
     }
 
     /// How many publishers are visible on `topic_name` — rclcpp's
     /// `count_publishers()`. The name is used as given: not remapped, not
     /// expanded. A zero is never a proof of absence.
-    Result count_publishers(const char* topic_name, size_t* out_count) const {
-        return Result(nros_cpp_executor_count_publishers(exec_, topic_name, out_count));
+    ::rclcpp::Result count_publishers(const char* topic_name, size_t* out_count) const {
+        return ::rclcpp::Result(nros_cpp_executor_count_publishers(exec_, topic_name, out_count));
     }
 
     /// How many subscribers are visible on `topic_name` — rclcpp's
     /// `count_subscribers()`. See [`count_publishers`].
-    Result count_subscribers(const char* topic_name, size_t* out_count) const {
-        return Result(nros_cpp_executor_count_subscribers(exec_, topic_name, out_count));
+    ::rclcpp::Result count_subscribers(const char* topic_name, size_t* out_count) const {
+        return ::rclcpp::Result(nros_cpp_executor_count_subscribers(exec_, topic_name, out_count));
     }
 
     /// What one named node PUBLISHES, with the types.
-    Result get_publisher_names_and_types_by_node(const char* node_name, const char* node_namespace,
-                                                 nros_cpp_names_and_types_visit_fn visit,
-                                                 void* ctx) const {
-        return Result(nros_cpp_executor_get_publisher_names_and_types_by_node(
+    ::rclcpp::Result get_publisher_names_and_types_by_node(const char* node_name,
+                                                           const char* node_namespace,
+                                                           nros_cpp_names_and_types_visit_fn visit,
+                                                           void* ctx) const {
+        return ::rclcpp::Result(nros_cpp_executor_get_publisher_names_and_types_by_node(
             exec_, node_name, node_namespace, visit, ctx));
     }
 
     /// What one named node SUBSCRIBES to, with the types. `subscription`, not
     /// `subscriber` — the C++ surface takes rclcpp's vocabulary and this
-    /// matches `rclcpp::Node` / `nros::Executor` rather than adding a third
+    /// matches `rclcpp::Node` / `rclcpp::Executor` rather than adding a third
     /// spelling.
-    Result get_subscription_names_and_types_by_node(const char* node_name,
-                                                    const char* node_namespace,
-                                                    nros_cpp_names_and_types_visit_fn visit,
-                                                    void* ctx) const {
-        return Result(nros_cpp_executor_get_subscription_names_and_types_by_node(
+    ::rclcpp::Result
+    get_subscription_names_and_types_by_node(const char* node_name, const char* node_namespace,
+                                             nros_cpp_names_and_types_visit_fn visit,
+                                             void* ctx) const {
+        return ::rclcpp::Result(nros_cpp_executor_get_subscription_names_and_types_by_node(
             exec_, node_name, node_namespace, visit, ctx));
     }
 
     /// What services one named node SERVES, with the types — servers only,
     /// not clients, as upstream.
-    Result get_service_names_and_types_by_node(const char* node_name, const char* node_namespace,
-                                               nros_cpp_names_and_types_visit_fn visit,
-                                               void* ctx) const {
-        return Result(nros_cpp_executor_get_service_names_and_types_by_node(
+    ::rclcpp::Result get_service_names_and_types_by_node(const char* node_name,
+                                                         const char* node_namespace,
+                                                         nros_cpp_names_and_types_visit_fn visit,
+                                                         void* ctx) const {
+        return ::rclcpp::Result(nros_cpp_executor_get_service_names_and_types_by_node(
             exec_, node_name, node_namespace, visit, ctx));
     }
 
     /// What services one named node CALLS, with the types.
-    Result get_client_names_and_types_by_node(const char* node_name, const char* node_namespace,
-                                              nros_cpp_names_and_types_visit_fn visit,
-                                              void* ctx) const {
-        return Result(nros_cpp_executor_get_client_names_and_types_by_node(
+    ::rclcpp::Result get_client_names_and_types_by_node(const char* node_name,
+                                                        const char* node_namespace,
+                                                        nros_cpp_names_and_types_visit_fn visit,
+                                                        void* ctx) const {
+        return ::rclcpp::Result(nros_cpp_executor_get_client_names_and_types_by_node(
             exec_, node_name, node_namespace, visit, ctx));
     }
 
@@ -993,38 +1005,42 @@ class LifecycleEngine {
     ///
     /// rclcpp also takes `no_mangle`; there is no such parameter here, because
     /// accepting one and ignoring it would silently drop configuration.
-    Result get_publishers_info_by_topic(const char* topic_name,
-                                        nros_cpp_endpoint_info_visit_fn visit, void* ctx) const {
-        return Result(
+    ::rclcpp::Result get_publishers_info_by_topic(const char* topic_name,
+                                                  nros_cpp_endpoint_info_visit_fn visit,
+                                                  void* ctx) const {
+        return ::rclcpp::Result(
             nros_cpp_executor_get_publishers_info_by_topic(exec_, topic_name, visit, ctx));
     }
 
-    /// The publishers on `topic_name`, visited as [`nros::TopicEndpointInfo`]
+    /// The publishers on `topic_name`, visited as [`rclcpp::TopicEndpointInfo`]
     /// — the rclcpp-shaped overload of the call above, a pure conversion over
     /// the same query.
-    Result get_publishers_info_by_topic(const char* topic_name, TopicEndpointInfoVisitFn visit,
-                                        void* ctx) const {
-        detail::EndpointInfoTrampoline tramp{visit, ctx};
-        return Result(nros_cpp_executor_get_publishers_info_by_topic(
-            exec_, topic_name, &detail::EndpointInfoTrampoline::thunk, &tramp));
+    ::rclcpp::Result get_publishers_info_by_topic(const char* topic_name,
+                                                  ::rclcpp::TopicEndpointInfoVisitFn visit,
+                                                  void* ctx) const {
+        ::rclcpp::detail::EndpointInfoTrampoline tramp{visit, ctx};
+        return ::rclcpp::Result(nros_cpp_executor_get_publishers_info_by_topic(
+            exec_, topic_name, &::rclcpp::detail::EndpointInfoTrampoline::thunk, &tramp));
     }
 
     /// The subscriptions discovered on `topic_name`, one visit each —
     /// rclcpp's `get_subscriptions_info_by_topic()`. See
     /// [`get_publishers_info_by_topic`] for the QoS and `no_mangle` envelopes.
-    Result get_subscriptions_info_by_topic(const char* topic_name,
-                                           nros_cpp_endpoint_info_visit_fn visit, void* ctx) const {
-        return Result(
+    ::rclcpp::Result get_subscriptions_info_by_topic(const char* topic_name,
+                                                     nros_cpp_endpoint_info_visit_fn visit,
+                                                     void* ctx) const {
+        return ::rclcpp::Result(
             nros_cpp_executor_get_subscriptions_info_by_topic(exec_, topic_name, visit, ctx));
     }
 
     /// The subscriptions on `topic_name`, visited as
-    /// [`nros::TopicEndpointInfo`] — the rclcpp-shaped overload.
-    Result get_subscriptions_info_by_topic(const char* topic_name, TopicEndpointInfoVisitFn visit,
-                                           void* ctx) const {
-        detail::EndpointInfoTrampoline tramp{visit, ctx};
-        return Result(nros_cpp_executor_get_subscriptions_info_by_topic(
-            exec_, topic_name, &detail::EndpointInfoTrampoline::thunk, &tramp));
+    /// [`rclcpp::TopicEndpointInfo`] — the rclcpp-shaped overload.
+    ::rclcpp::Result get_subscriptions_info_by_topic(const char* topic_name,
+                                                     ::rclcpp::TopicEndpointInfoVisitFn visit,
+                                                     void* ctx) const {
+        ::rclcpp::detail::EndpointInfoTrampoline tramp{visit, ctx};
+        return ::rclcpp::Result(nros_cpp_executor_get_subscriptions_info_by_topic(
+            exec_, topic_name, &::rclcpp::detail::EndpointInfoTrampoline::thunk, &tramp));
     }
 
   protected:
@@ -1109,7 +1125,7 @@ class LifecycleEngine {
     // the executor was bound. A POINTER, never a node: see `bind(Node&)`.
     ::rclcpp::Node* node_ = nullptr;
     /// This node's clock (ROS time), as `rclcpp::Node` carries one.
-    Clock clock_{NROS_CLOCK_ROS_TIME};
+    ::rclcpp::Clock clock_{NROS_CLOCK_ROS_TIME};
     /// Head of the intrusive managed-entity list; see `add_managed_entity`.
     ManagedEntityInterface* managed_ = nullptr;
     TransitionCallbackType cb_configure_ = nullptr;
@@ -1161,7 +1177,7 @@ ManagedEntityInterface::operator=(ManagedEntityInterface&& other) noexcept {
 /// wrapper to the node:
 ///
 /// ```cpp
-/// nros::LifecyclePublisher<std_msgs::msg::Int32> pub_;
+/// rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Int32> pub_;
 /// // in the install hook:
 /// node.create_publisher(pub_.publisher(), "/chatter");
 /// lifecycle_node.add_managed_entity(&pub_);
@@ -1181,7 +1197,7 @@ template <typename M> class LifecyclePublisher : public SimpleManagedEntity {
     /// What `rclcpp_lifecycle::LifecycleNode::create_publisher<M>` returns:
     /// move-only, no allocator, every target (as `rclcpp::Publisher<M>::SharedPtr`
     /// is). The managed-entity link survives the moves (phase-482 W4).
-    using SharedPtr = ::nros::Owned<LifecyclePublisher>;
+    using SharedPtr = ::rclcpp::Owned<LifecyclePublisher>;
 
     LifecyclePublisher() = default;
     LifecyclePublisher(LifecyclePublisher&&) noexcept = default;
@@ -1193,9 +1209,9 @@ template <typename M> class LifecyclePublisher : public SimpleManagedEntity {
     const ::rclcpp::Publisher<M>& publisher() const { return pub_; }
 
     /// Publish `msg` if the node is Active; drop it otherwise.
-    Result publish(const M& msg) {
+    ::rclcpp::Result publish(const M& msg) {
         if (!this->is_activated()) {
-            return Result();
+            return ::rclcpp::Result();
         }
         return pub_.publish(msg);
     }
@@ -1204,42 +1220,13 @@ template <typename M> class LifecyclePublisher : public SimpleManagedEntity {
     ::rclcpp::Publisher<M> pub_;
 };
 
-/// DEPRECATED (phase-482 W4) — derive from `rclcpp_lifecycle::LifecycleNode`.
-///
-/// This was the managed-node type: a mixin a component bound to its node with
-/// `bind(Node&)`. `rclcpp_lifecycle::LifecycleNode` IS a node, takes upstream's
-/// constructor and callback signatures, and owns the same engine, so a ported
-/// lifecycle node's class body compiles against it unchanged. This forwarder
-/// keeps the old spelling compiling for one release, and the attribute names
-/// the replacement. A CLASS, not an alias: `[[deprecated]]` on an alias is
-/// silent on clang (see `nros::Expected<T>`'s note before phase-482 W6).
-/// Measured: clang warns on every use, including a base clause; GCC 12 warns
-/// on a variable or member of this type but not on `: public LifecycleNode`.
-class NROS_CPP_DEPRECATED_MSG(
-    "nros::LifecycleNode is deprecated (phase-482 W4): derive from "
-    "rclcpp_lifecycle::LifecycleNode, which IS a node and takes upstream's "
-    "constructor and on_* signatures.") LifecycleNode : public detail::LifecycleEngine {
-  public:
-    using detail::LifecycleEngine::LifecycleEngine;
-    LifecycleNode() = default;
-};
-
-} // namespace nros
+} // namespace rclcpp_lifecycle
 
 // ============================================================================
 // rclcpp_lifecycle:: — the ROS 2 spelling (phase-482 W4, RFC-0089)
 // ============================================================================
 
 namespace rclcpp_lifecycle {
-
-/// `rclcpp_lifecycle::State` — one `lifecycle_msgs/msg/State` id, with `id()`
-/// and a borrowed `label()`. See `nros::State` for the two differences.
-using State = ::nros::State;
-/// `rclcpp_lifecycle::Transition`. See `nros::Transition`.
-using Transition = ::nros::Transition;
-/// `rclcpp_lifecycle::LifecyclePublisher<M>` — drops sends while the node is
-/// not Active. See `nros::LifecyclePublisher`.
-template <typename M> using LifecyclePublisher = ::nros::LifecyclePublisher<M>;
 
 namespace node_interfaces {
 
@@ -1314,8 +1301,8 @@ class LifecycleNodeInterface {
 ///    `std::function`.
 class LifecycleNode : public ::rclcpp::Node, public node_interfaces::LifecycleNodeInterface {
   public:
-    using SharedPtr = ::nros::Handle<LifecycleNode>;
-    using ConstSharedPtr = ::nros::Handle<const LifecycleNode>;
+    using SharedPtr = ::rclcpp::Handle<LifecycleNode>;
+    using ConstSharedPtr = ::rclcpp::Handle<const LifecycleNode>;
     using CallbackReturn = node_interfaces::LifecycleNodeInterface::CallbackReturn;
 
     /// `LifecycleNode(node_name, options)` — upstream's shape, on the global
@@ -1337,7 +1324,7 @@ class LifecycleNode : public ::rclcpp::Node, public node_interfaces::LifecycleNo
     /// executor-bound handle the generated entry hands in. The launch file's
     /// name and namespace win over `node_name` / `namespace_`, as for
     /// `rclcpp::Node(NodeHandle, …)`.
-    LifecycleNode(::nros::NodeHandle handle, const char* node_name,
+    LifecycleNode(::rclcpp::NodeHandle handle, const char* node_name,
                   const char* namespace_ = nullptr)
         : ::rclcpp::Node(handle, node_name, namespace_) {
         start();
@@ -1394,16 +1381,17 @@ class LifecycleNode : public ::rclcpp::Node, public node_interfaces::LifecycleNo
     void register_on_error(TransitionCallbackType cb, void* ctx = nullptr) { set(5, cb, ctx); }
 
     /// The REP-2002 transition graph, one row per call to `visit`. See
-    /// `nros::Transition`.
-    ::nros::Result get_transition_graph(::nros::TransitionVisitFn visit, void* ctx) const {
+    /// `rclcpp_lifecycle::Transition`.
+    ::rclcpp::Result get_transition_graph(::rclcpp_lifecycle::TransitionVisitFn visit,
+                                          void* ctx) const {
         return engine_.get_transition_graph(visit, ctx);
     }
 
     /// Add an entity whose sends follow this node's state. Publishers made by
     /// `create_publisher` are added already. Upstream's is protected and takes
     /// a `std::weak_ptr`; this takes a pointer the entity's own move and
-    /// destructor keep correct (`nros::ManagedEntityInterface`).
-    ::nros::Result add_managed_entity(::nros::ManagedEntityInterface* entity) {
+    /// destructor keep correct (`rclcpp_lifecycle::ManagedEntityInterface`).
+    ::rclcpp::Result add_managed_entity(::rclcpp_lifecycle::ManagedEntityInterface* entity) {
         return engine_.add_managed_entity(entity);
     }
 
@@ -1412,13 +1400,14 @@ class LifecycleNode : public ::rclcpp::Node, public node_interfaces::LifecycleNo
     /// false, as for `rclcpp::Node::create_publisher`.
     template <typename M>
     typename LifecyclePublisher<M>::SharedPtr
-    create_publisher(const char* topic, const ::nros::QoS& qos = ::nros::QoS::default_profile()) {
+    create_publisher(const char* topic,
+                     const ::rclcpp::QoS& qos = ::rclcpp::QoS::default_profile()) {
         typename LifecyclePublisher<M>::SharedPtr out{LifecyclePublisher<M>()};
         if (!this->::rclcpp::Node::create_publisher(out->publisher(), topic, qos).ok()) {
             return typename LifecyclePublisher<M>::SharedPtr();
         }
         (void)engine_.add_managed_entity(out.get());
-        if (engine_.get_current_state() == ::nros::LifecycleState::Active) {
+        if (engine_.get_current_state() == ::rclcpp_lifecycle::LifecycleState::Active) {
             out->on_activate();
         }
         return out;
@@ -1427,14 +1416,14 @@ class LifecycleNode : public ::rclcpp::Node, public node_interfaces::LifecycleNo
     /// `create_publisher<M>(topic, depth)`.
     template <typename M>
     typename LifecyclePublisher<M>::SharedPtr create_publisher(const char* topic, ::size_t depth) {
-        return create_publisher<M>(topic, ::nros::QoS(static_cast<uint32_t>(depth)));
+        return create_publisher<M>(topic, ::rclcpp::QoS(static_cast<uint32_t>(depth)));
     }
 
 #if defined(NROS_CPP_HAS_STD_STRING) // hosted-family: string-interop
     template <typename M>
     typename LifecyclePublisher<M>::SharedPtr
     create_publisher(const ::std::string& topic,
-                     const ::nros::QoS& qos = ::nros::QoS::default_profile()) {
+                     const ::rclcpp::QoS& qos = ::rclcpp::QoS::default_profile()) {
         return create_publisher<M>(topic.c_str(), qos);
     }
     template <typename M>
@@ -1460,7 +1449,7 @@ class LifecycleNode : public ::rclcpp::Node, public node_interfaces::LifecycleNo
         state_ = State(engine_.get_current_state());
     }
 
-    const State& settle(::nros::Result) {
+    const State& settle(::rclcpp::Result) {
         state_ = State(engine_.get_current_state());
         return state_;
     }
@@ -1470,44 +1459,50 @@ class LifecycleNode : public ::rclcpp::Node, public node_interfaces::LifecycleNo
         user_ctx_[i] = ctx;
     }
     CallbackReturn
-    run(int i, ::nros::LifecycleState previous,
+    run(int i, ::rclcpp_lifecycle::LifecycleState previous,
         CallbackReturn (node_interfaces::LifecycleNodeInterface::*hook)(const State&)) {
         const State s(previous);
         return user_cb_[i] != nullptr ? user_cb_[i](s, user_ctx_[i]) : (this->*hook)(s);
     }
 
-    static ::nros::CallbackReturn to_engine(CallbackReturn r) {
-        return r == CallbackReturn::SUCCESS   ? ::nros::CallbackReturn::Success
-               : r == CallbackReturn::FAILURE ? ::nros::CallbackReturn::Failure
-                                              : ::nros::CallbackReturn::Error;
+    static ::rclcpp_lifecycle::CallbackReturn to_engine(CallbackReturn r) {
+        return r == CallbackReturn::SUCCESS   ? ::rclcpp_lifecycle::CallbackReturn::Success
+               : r == CallbackReturn::FAILURE ? ::rclcpp_lifecycle::CallbackReturn::Failure
+                                              : ::rclcpp_lifecycle::CallbackReturn::Error;
     }
-    static ::nros::CallbackReturn cb_configure(::nros::LifecycleState previous, void* self) {
+    static ::rclcpp_lifecycle::CallbackReturn
+    cb_configure(::rclcpp_lifecycle::LifecycleState previous, void* self) {
         return to_engine(static_cast<LifecycleNode*>(self)->run(
             0, previous, &node_interfaces::LifecycleNodeInterface::on_configure));
     }
-    static ::nros::CallbackReturn cb_activate(::nros::LifecycleState previous, void* self) {
+    static ::rclcpp_lifecycle::CallbackReturn
+    cb_activate(::rclcpp_lifecycle::LifecycleState previous, void* self) {
         return to_engine(static_cast<LifecycleNode*>(self)->run(
             1, previous, &node_interfaces::LifecycleNodeInterface::on_activate));
     }
-    static ::nros::CallbackReturn cb_deactivate(::nros::LifecycleState previous, void* self) {
+    static ::rclcpp_lifecycle::CallbackReturn
+    cb_deactivate(::rclcpp_lifecycle::LifecycleState previous, void* self) {
         return to_engine(static_cast<LifecycleNode*>(self)->run(
             2, previous, &node_interfaces::LifecycleNodeInterface::on_deactivate));
     }
-    static ::nros::CallbackReturn cb_cleanup(::nros::LifecycleState previous, void* self) {
+    static ::rclcpp_lifecycle::CallbackReturn
+    cb_cleanup(::rclcpp_lifecycle::LifecycleState previous, void* self) {
         return to_engine(static_cast<LifecycleNode*>(self)->run(
             3, previous, &node_interfaces::LifecycleNodeInterface::on_cleanup));
     }
-    static ::nros::CallbackReturn cb_shutdown(::nros::LifecycleState previous, void* self) {
+    static ::rclcpp_lifecycle::CallbackReturn
+    cb_shutdown(::rclcpp_lifecycle::LifecycleState previous, void* self) {
         return to_engine(static_cast<LifecycleNode*>(self)->run(
             4, previous, &node_interfaces::LifecycleNodeInterface::on_shutdown));
     }
-    static ::nros::CallbackReturn cb_error(::nros::LifecycleState previous, void* self) {
+    static ::rclcpp_lifecycle::CallbackReturn cb_error(::rclcpp_lifecycle::LifecycleState previous,
+                                                       void* self) {
         return to_engine(static_cast<LifecycleNode*>(self)->run(
             5, previous, &node_interfaces::LifecycleNodeInterface::on_error));
     }
 
-    ::nros::detail::LifecycleEngine engine_;
-    State state_{::nros::LifecycleState::Unconfigured};
+    ::rclcpp_lifecycle::detail::LifecycleEngine engine_;
+    State state_{::rclcpp_lifecycle::LifecycleState::Unconfigured};
     TransitionCallbackType user_cb_[6] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
     void* user_ctx_[6] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
 };

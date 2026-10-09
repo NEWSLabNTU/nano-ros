@@ -110,7 +110,7 @@
  * default of 10 -- a third state, which is the only honest answer when nobody
  * said. Negative so that no arithmetic on it can pass for a queue size.
  *
- * The same number and the same meaning as C++'s `nros::DECLARED_DEPTH_UNDECLARED`.
+ * The same number and the same meaning as C++'s `rclcpp::DECLARED_DEPTH_UNDECLARED`.
  */
 #define NROS_DECLARED_DEPTH_UNDECLARED (-1)
 
@@ -174,7 +174,7 @@
  *
  * An integer CONSTANT EXPRESSION when both arguments are string literals, which
  * is what every call site the compile-time half serves writes. Sibling of C++'s
- * `nros::declared_depth()`, and it answers the same numbers from the same rows.
+ * `rclcpp::declared_depth()`, and it answers the same numbers from the same rows.
  */
 #define NROS_DECLARED_DEPTH(nros_type_lit, nros_topic_lit)                                         \
     (NROS_DECLARED_QOS_ROWS_Q(_NROS_DQ_FIND_ROW, (nros_type_lit), (nros_topic_lit))                \

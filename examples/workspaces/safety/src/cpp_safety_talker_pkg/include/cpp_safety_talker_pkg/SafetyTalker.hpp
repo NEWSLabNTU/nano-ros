@@ -14,7 +14,7 @@ namespace cpp_safety_talker_pkg {
 /// `demo_bringup/system.toml`.
 class SafetyTalker {
     ::rclcpp::Publisher<std_msgs::msg::Int32> pub_;
-    ::nros::Timer timer_;
+    ::rclcpp::Timer timer_;
     int32_t counter_ = 0;
 
     void on_tick();

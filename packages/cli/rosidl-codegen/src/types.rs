@@ -1525,10 +1525,10 @@ pub fn cpp_type_for_field(field_type: &FieldType, current_package: Option<&str>)
     match field_type {
         FieldType::Primitive(prim) => c_primitive_type(prim),
 
-        FieldType::String => format!("nros::FixedString<{}>", CPP_DEFAULT_STRING_CAPACITY),
-        FieldType::BoundedString(size) => format!("nros::FixedString<{}>", size),
-        FieldType::WString => format!("nros::FixedString<{}>", CPP_DEFAULT_STRING_CAPACITY),
-        FieldType::BoundedWString(size) => format!("nros::FixedString<{}>", size),
+        FieldType::String => format!("rclcpp::FixedString<{}>", CPP_DEFAULT_STRING_CAPACITY),
+        FieldType::BoundedString(size) => format!("rclcpp::FixedString<{}>", size),
+        FieldType::WString => format!("rclcpp::FixedString<{}>", CPP_DEFAULT_STRING_CAPACITY),
+        FieldType::BoundedWString(size) => format!("rclcpp::FixedString<{}>", size),
 
         FieldType::Array { element_type, size } => {
             let elem = cpp_type_for_field(element_type, current_package);
@@ -1538,7 +1538,7 @@ pub fn cpp_type_for_field(field_type: &FieldType, current_package: Option<&str>)
         FieldType::Sequence { element_type } => {
             let elem = cpp_type_for_field(element_type, current_package);
             format!(
-                "nros::FixedSequence<{}, {}>",
+                "rclcpp::FixedSequence<{}, {}>",
                 elem, CPP_DEFAULT_SEQUENCE_CAPACITY
             )
         }
@@ -1548,7 +1548,7 @@ pub fn cpp_type_for_field(field_type: &FieldType, current_package: Option<&str>)
             max_size,
         } => {
             let elem = cpp_type_for_field(element_type, current_package);
-            format!("nros::FixedSequence<{}, {}>", elem, max_size)
+            format!("rclcpp::FixedSequence<{}, {}>", elem, max_size)
         }
 
         FieldType::NamespacedType { package, name } => {
@@ -1572,18 +1572,18 @@ pub fn cpp_type_for_field_with_capacity(
     cap: usize,
 ) -> String {
     match field_type {
-        FieldType::String | FieldType::WString => format!("nros::FixedString<{cap}>"),
+        FieldType::String | FieldType::WString => format!("rclcpp::FixedString<{cap}>"),
         FieldType::Sequence { element_type } => {
             let elem = cpp_type_for_field(element_type, current_package);
-            format!("nros::FixedSequence<{elem}, {cap}>")
+            format!("rclcpp::FixedSequence<{elem}, {cap}>")
         }
         _ => cpp_type_for_field(field_type, current_package),
     }
 }
 
 /// Heap (`mode = "heap"`, RFC-0033) C++ rendering of a **top-level unbounded**
-/// `String` / `WString` (`nros::HeapString`) or primitive `Sequence`
-/// (`nros::HeapSequence<elem>`) — both `{ ptr; size_t size; size_t capacity; }`
+/// `String` / `WString` (`rclcpp::HeapString`) or primitive `Sequence`
+/// (`rclcpp::HeapSequence<elem>`) — both `{ ptr; size_t size; size_t capacity; }`
 /// allocated via the shared platform allocator. Returns `None` for shapes
 /// C++-heap does not yet support (sequences of strings / nested messages).
 pub fn cpp_type_for_field_heap(
@@ -1591,10 +1591,10 @@ pub fn cpp_type_for_field_heap(
     current_package: Option<&str>,
 ) -> Option<String> {
     match field_type {
-        FieldType::String | FieldType::WString => Some("nros::HeapString".to_string()),
+        FieldType::String | FieldType::WString => Some("rclcpp::HeapString".to_string()),
         // Primitive / string / nested elements are all trivially-copyable inline
         // structs (`FixedString<N>` is `char[N]`; nested message structs are POD),
-        // so `nros::HeapSequence<T>` (raw-malloc'd) is safe for each.
+        // so `rclcpp::HeapSequence<T>` (raw-malloc'd) is safe for each.
         FieldType::Sequence { element_type } => match element_type.as_ref() {
             FieldType::Primitive(_)
             | FieldType::String
@@ -1603,7 +1603,7 @@ pub fn cpp_type_for_field_heap(
             | FieldType::BoundedWString(_)
             | FieldType::NamespacedType { .. } => {
                 let elem = cpp_type_for_field(element_type, current_package);
-                Some(format!("nros::HeapSequence<{elem}>"))
+                Some(format!("rclcpp::HeapSequence<{elem}>"))
             }
             _ => None,
         },

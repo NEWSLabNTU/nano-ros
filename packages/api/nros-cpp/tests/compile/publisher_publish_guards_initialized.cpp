@@ -119,10 +119,10 @@ int main() {
 
     FakeMsg msg;
     msg.value = 7;
-    nros::Result r = pub.publish(msg);
+    rclcpp::Result r = pub.publish(msg);
 
     check(!r.ok(), "publish on an uninitialised publisher must not report success");
-    check(r.code() == nros::ErrorCode::NotInitialized,
+    check(r.code() == rclcpp::ErrorCode::NotInitialized,
           "publish on an uninitialised publisher must return ErrorCode::NotInitialized");
     check(!g_ffi_publish_entered,
           "publish must not reach M::ffi_publish on an uninitialised publisher — "
@@ -132,9 +132,9 @@ int main() {
     // cannot pass: every one of these already had the guard, and this is what
     // keeps them having it.
     check(pub.publish_raw(reinterpret_cast<const uint8_t*>("x"), 1).code() ==
-              nros::ErrorCode::NotInitialized,
+              rclcpp::ErrorCode::NotInitialized,
           "publish_raw keeps its guard");
-    check(pub.assert_liveliness().code() == nros::ErrorCode::NotInitialized,
+    check(pub.assert_liveliness().code() == rclcpp::ErrorCode::NotInitialized,
           "assert_liveliness keeps its guard");
     check(!pub.loan(8).ok(), "loan keeps its guard");
     check(!g_runtime_entered,

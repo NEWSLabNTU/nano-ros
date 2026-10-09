@@ -81,7 +81,7 @@ nano-ros calls them too. The migration is a rename only where the shape differs.
 - `rcl_node_init` → `Executor::create_node` (Rust) /
   `rclc_node_init_default` (C — same name as micro-ROS, but the ARGUMENTS are
   rclc's order `(node, name, namespace, support)`).
-- `rclc_executor_t` → `nros::Executor` (Rust/C++); **unchanged** in C.
+- `rclc_executor_t` → `nros::Executor` (Rust) / `rclcpp::Executor` (C++); **unchanged** in C.
 - `rclc_publisher_init_default` → `Node::create_publisher::<M>` (Rust) or
   the identically-spelled `rclc_publisher_init_default` (C).
 - micro-ROS's `rmw_uros_set_custom_transport` → nano-ros's custom

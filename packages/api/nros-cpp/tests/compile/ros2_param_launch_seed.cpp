@@ -4,7 +4,7 @@
 //
 // WHAT IT USED TO PIN, and why the file survives the change. Before phase-426
 // W4, `rclcpp::Node::declare_parameter<T>` forwarded to a NODE-LOCAL
-// `nros::ParameterServer` — a second store. Where the EXECUTOR's store also
+// `rclcpp::ParameterServer` — a second store. Where the EXECUTOR's store also
 // existed (`NROS_SYSTEM_PARAM_SERVICES`), the generated entry had already
 // seeded launch parameters into THAT one, so `declare_parameter` had to reach
 // across and adopt the seeded value or a launch parameter would be dead

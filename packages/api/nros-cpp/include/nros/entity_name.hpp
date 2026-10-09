@@ -4,7 +4,7 @@
 /**
  * @file entity_name.hpp
  * @ingroup grp_support
- * @brief `nros::detail::assign_entity_name` and the service-name bound.
+ * @brief `rclcpp::detail::assign_entity_name` and the service-name bound.
  */
 
 #ifndef NROS_CPP_ENTITY_NAME_HPP
@@ -12,13 +12,13 @@
 
 #include <cstddef>
 
-namespace nros {
+namespace rclcpp {
 
 /// Bound on the service name a `Client` / `Service` remembers for
 /// `get_service_name()` — phase-444.
 ///
-/// ONE spelling for both, matching `nros::PUBLISHER_TOPIC_NAME_MAX`,
-/// `nros::SUBSCRIPTION_TOPIC_NAME_MAX`, `nros::ACTION_NAME_MAX` and the C
+/// ONE spelling for both, matching `rclcpp::PUBLISHER_TOPIC_NAME_MAX`,
+/// `rclcpp::SUBSCRIPTION_TOPIC_NAME_MAX`, `rclcpp_action::ACTION_NAME_MAX` and the C
 /// surface's `NROS_MAX_SERVICE_NAME_LEN`, so a name that fits one entity fits
 /// all of them and a truncation is not a per-class surprise.
 static constexpr size_t SERVICE_NAME_MAX = 256;
@@ -48,6 +48,6 @@ template <size_t N> inline void assign_entity_name(char (&dst)[N], const char* s
 }
 
 } // namespace detail
-} // namespace nros
+} // namespace rclcpp
 
 #endif // NROS_CPP_ENTITY_NAME_HPP

@@ -4,7 +4,7 @@
 /**
  * @file stream.hpp
  * @ingroup grp_executor
- * @brief `nros::Stream<T>` — multi-shot message receiver.
+ * @brief `rclcpp::Stream<T>` — multi-shot message receiver.
  */
 
 #ifndef NROS_CPP_STREAM_HPP
@@ -14,7 +14,7 @@
 #include <cstddef>
 
 #include "nros/result.hpp"
-#include "nros/size_bound.hpp" // nros::rx_buffer_capacity<T> — the receive-buffer size
+#include "nros/size_bound.hpp" // rclcpp::rx_buffer_capacity<T> — the receive-buffer size
 
 // FFI declarations
 extern "C" {
@@ -37,15 +37,15 @@ template <typename S> class Client;
 // phase-456 W2b — the subscription that BINDS a stream is the poll one: a
 // stream reads through `nros_cpp_subscription_take_serialized` on a
 // caller-owned `RmwSubscriber`, which a dispatch registration does not have.
-namespace nros {
+namespace rclcpp {
 template <typename M> class PollSubscription;
-} // namespace nros
+} // namespace rclcpp
 
 namespace rclcpp_action {
 template <typename A> class Client;
 } // namespace rclcpp_action
 
-namespace nros {
+namespace rclcpp {
 
 /// Multi-shot message receiver for subscriptions and feedback streams.
 ///
@@ -69,7 +69,7 @@ template <typename T> class Stream {
     ///         ErrorCode::NotInitialized if the stream is unbound;
     ///         ErrorCode::Error if deserialization failed; otherwise the
     ///         FFI error code.
-    Result try_next(T& out) { return try_next_sized<::nros::rx_buffer_capacity<T>::value>(out); }
+    Result try_next(T& out) { return try_next_sized<::rclcpp::rx_buffer_capacity<T>::value>(out); }
 
     /// @ref try_next with the receive buffer sized by the CALLER.
     /// See @ref PollSubscription::take_sized (issue 0964).
@@ -95,8 +95,8 @@ template <typename T> class Stream {
     ///                         frequency.
     /// @return Result::success(), ErrorCode::Timeout, or error.
     Result wait_next(void* executor_handle, uint32_t timeout_ms, T& out, uint32_t poll_ms = 10) {
-        return wait_next_sized<::nros::rx_buffer_capacity<T>::value>(executor_handle, timeout_ms,
-                                                                     out, poll_ms);
+        return wait_next_sized<::rclcpp::rx_buffer_capacity<T>::value>(executor_handle, timeout_ms,
+                                                                       out, poll_ms);
     }
 
     /// @ref wait_next with the receive buffer sized by the CALLER.
@@ -160,7 +160,7 @@ template <typename T> class Stream {
     Stream(const Stream&) = delete;
     Stream& operator=(const Stream&) = delete;
 
-    template <typename M> friend class ::nros::PollSubscription;
+    template <typename M> friend class ::rclcpp::PollSubscription;
     template <typename A> friend class ::rclcpp_action::Client;
 
     using TakeFn = nros_cpp_ret_t (*)(void*, uint8_t*, size_t, size_t*);
@@ -176,5 +176,5 @@ template <typename T> class Stream {
     TakeFn take_fn_;
 };
 
-} // namespace nros
+} // namespace rclcpp
 #endif // NROS_CPP_STREAM_HPP

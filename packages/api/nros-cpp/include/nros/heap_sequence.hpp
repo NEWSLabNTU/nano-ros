@@ -15,7 +15,7 @@
 /**
  * @file heap_sequence.hpp
  * @ingroup grp_support
- * @brief `nros::HeapSequence<T>` — heap-backed growable sequence container.
+ * @brief `rclcpp::HeapSequence<T>` — heap-backed growable sequence container.
  */
 
 #ifndef NROS_CPP_HEAP_SEQUENCE_HPP
@@ -27,7 +27,7 @@
 
 #include <nros/platform.h>
 
-namespace nros {
+namespace rclcpp {
 
 /// Heap-backed growable sequence container (`mode = "heap"`, RFC-0033).
 ///
@@ -37,7 +37,7 @@ namespace nros {
 ///
 /// **Element lifetime (issue #201).** Destruction paths (destructor,
 /// move-assign, `clear()`) run each element's destructor before freeing the
-/// buffer, so elements that OWN heap memory (`nros::HeapString`, a nested
+/// buffer, so elements that OWN heap memory (`rclcpp::HeapString`, a nested
 /// `HeapSequence`, generated message structs containing either) are torn down
 /// recursively — a two-level `mode = "heap"` config no longer leaks. The
 /// pseudo-destructor call compiles to nothing for trivially destructible
@@ -52,12 +52,12 @@ namespace nros {
 ///
 /// Usage:
 /// ```cpp
-/// nros::HeapSequence<uint8_t> pixels;
+/// rclcpp::HeapSequence<uint8_t> pixels;
 /// pixels.push_back(0xAB);
 /// for (size_t i = 0; i < pixels.length(); ++i) { use(pixels[i]); }
 ///
 /// // Owning (non-copyable) element types are built in place:
-/// nros::HeapSequence<pkg::msg::DiagnosticStatus> statuses;
+/// rclcpp::HeapSequence<pkg::msg::DiagnosticStatus> statuses;
 /// if (auto* s = statuses.emplace_back()) { s->name.assign("motor", 5); }
 /// ```
 template <typename T> struct HeapSequence {
@@ -171,6 +171,6 @@ template <typename T> struct HeapSequence {
     const T* end() const { return data + size; }
 };
 
-} // namespace nros
+} // namespace rclcpp
 
 #endif // NROS_CPP_HEAP_SEQUENCE_HPP

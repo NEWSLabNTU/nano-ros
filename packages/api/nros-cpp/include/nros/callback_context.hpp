@@ -4,7 +4,7 @@
 /**
  * @file callback_context.hpp
  * @ingroup grp_support
- * @brief `nros::detail::fn_to_context` / `fn_from_context` — W1's shape for a
+ * @brief `rclcpp::detail::fn_to_context` / `fn_from_context` — W1's shape for a
  *        capture that is exactly one function pointer.
  */
 
@@ -14,7 +14,7 @@
 #include <stddef.h>
 #include <string.h> // memcpy — `<cstring>` isn't in Zephyr's minimal libcpp
 
-namespace nros {
+namespace rclcpp {
 namespace detail {
 
 /// WHY THIS EXISTS — phase-456 W3.
@@ -79,6 +79,6 @@ template <typename Fn> inline Fn fn_from_context(void* ctx) {
 }
 
 } // namespace detail
-} // namespace nros
+} // namespace rclcpp
 
 #endif // NROS_CPP_CALLBACK_CONTEXT_HPP

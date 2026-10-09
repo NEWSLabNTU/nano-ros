@@ -60,7 +60,7 @@ pub const NROS_DEFAULT_SEQUENCE_CAPACITY: usize = 64;
 /// user is not that the data is borrowed but that NOTHING WAS DESERIALIZED —
 /// the field is a `&'a [T]` into the CDR receive buffer and the caller owns the
 /// decode. `view` says that, maps 1:1 onto the types this mode already
-/// generates (`{Msg}View<'a>`, `nros::StringView`, `Span<T>`), and resolves a
+/// generates (`{Msg}View<'a>`, `rclcpp::StringView`, `Span<T>`), and resolves a
 /// collision with [`nros_rmw::SlotBorrowing`], whose `try_borrow()` returns a
 /// `View<'a>` — the same idea at whole-message granularity, previously spelled
 /// with a second word.
@@ -973,7 +973,7 @@ fn describe_shape(ty: &rosidl_parser::ast::FieldType) -> String {
 /// Every emitter in the tree -- the Rust container
 /// (`heapless::String<N>`, whose `try_from` returns `CapacityExceeded` above
 /// `N`), the C `char[N]` that `nros_cdr_read_string` sizes with `sizeof`, the
-/// C++ `nros::FixedString<N>`, the schema value, and the emitted
+/// C++ `rclcpp::FixedString<N>`, the schema value, and the emitted
 /// `Message::FIELDS` -- ALREADY handles a bounded element correctly, because a
 /// `.msg` has always been able to say `string<=10[]`. Threading a separate
 /// "element cap" parameter through all five would be a second way to spell a

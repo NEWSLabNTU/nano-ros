@@ -383,7 +383,7 @@ pub fn generate_cpp_message_package_with_lookup(
     )?;
     let unbounded_message = bound.reason.as_ref().map(|reason| {
         cpp_string_literal_body(&format!(
-            "{package_name}/{message_name} states no serialized-size bound -- {reason}.              A bound must EXIST before a buffer can be sized from it: bound the field in              the .msg (`string<=64`, `int32[<=8]`), or give it an INLINE `cap` in              nros-codegen.toml. To size this subscription by hand instead, pass an              explicit byte count: nros::bind_subscription_sized<M, C, Method>(node, topic,              self, qos, rx_bytes). If the reason says a nested type could NOT BE RESOLVED,              that is a search-path problem and not a property of the message."
+            "{package_name}/{message_name} states no serialized-size bound -- {reason}.              A bound must EXIST before a buffer can be sized from it: bound the field in              the .msg (`string<=64`, `int32[<=8]`), or give it an INLINE `cap` in              nros-codegen.toml. To size this subscription by hand instead, pass an              explicit byte count: rclcpp::bind_subscription_sized<M, C, Method>(node, topic,              self, qos, rx_bytes). If the reason says a nested type could NOT BE RESOLVED,              that is a search-path problem and not a property of the message."
         ))
     });
 

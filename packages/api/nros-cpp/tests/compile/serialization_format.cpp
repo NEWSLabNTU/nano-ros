@@ -1,6 +1,6 @@
 // RFC-0088 D5 / phase-421 W6 — the POSITIVE half of the C++ format check.
 //
-// `nros::format_of<M>` is what a message type answers; `nros::linked_format()`
+// `rclcpp::format_of<M>` is what a message type answers; `rclcpp::linked_format()`
 // is what the image's backend speaks; `NROS_CPP_ASSERT_MESSAGE_FORMAT(M)` is
 // the `static_assert` every typed entity-creation funnel expands. The header
 // `-fsyntax-only` loop in `just check cpp` only PARSES the templates, so this TU
@@ -35,43 +35,43 @@ struct Int32 {
 } // namespace nros_cpp_serialization_format_compile_test
 
 // The specialization `packs/cpp/message.hpp.jinja` emits, verbatim in shape.
-namespace nros {
+namespace rclcpp {
 template <> struct format_of<::nros_cpp_serialization_format_compile_test::Int32> {
     static constexpr SerializationFormat value = SerializationFormat::Cdr;
 };
-} // namespace nros
+} // namespace rclcpp
 
 namespace nros_cpp_serialization_format_compile_test {
 
 // The enum is `uint8_t`-backed (RFC-0088 D5) — a wider one would not match the
 // `nros_serdes::format::SerializationFormatId` `#[repr(u8)]` it mirrors.
-static_assert(
-    std::is_same<typename std::underlying_type<::nros::SerializationFormat>::type, uint8_t>::value,
-    "nros::SerializationFormat must be uint8_t-backed to mirror the Rust repr(u8)");
+static_assert(std::is_same<typename std::underlying_type<::rclcpp::SerializationFormat>::type,
+                           uint8_t>::value,
+              "rclcpp::SerializationFormat must be uint8_t-backed to mirror the Rust repr(u8)");
 
 // The name is a `const char*`, never a `std::string`/`std::string_view`: these
 // headers compile against Zephyr's minimal libcpp, where `<string>` does not
 // exist (issue 0112). A regression to a std type stops compiling here.
-static_assert(std::is_same<decltype(::nros::linked_format_name()), const char*>::value,
-              "nros::linked_format_name() must return const char* (issue 0112)");
+static_assert(std::is_same<decltype(::rclcpp::linked_format_name()), const char*>::value,
+              "rclcpp::linked_format_name() must return const char* (issue 0112)");
 
 // A message with no specialization still ANSWERS — the C++ mirror of the
 // defaulted `nros_core::RosMessage::SERIALIZATION_FORMAT_ID` (RFC-0088 D1).
 struct Unspecialized {};
-static_assert(::nros::format_of<Unspecialized>::value == ::nros::SerializationFormat::Cdr,
+static_assert(::rclcpp::format_of<Unspecialized>::value == ::rclcpp::SerializationFormat::Cdr,
               "format_of<M> must default to Cdr, mirroring the defaulted Rust const");
 
 // Force instantiation of the entity creators, so the `static_assert` inside
 // their bodies is evaluated rather than merely parsed.
-inline ::nros::Result instantiate(::rclcpp::Node& node) {
-    ::nros::Publisher<Int32> pub;
-    ::nros::Result rp = node.create_publisher(pub, "/count");
+inline ::rclcpp::Result instantiate(::rclcpp::Node& node) {
+    ::rclcpp::Publisher<Int32> pub;
+    ::rclcpp::Result rp = node.create_publisher(pub, "/count");
 
-    ::nros::PollSubscription<Int32> sub;
-    ::nros::Result rs = node.create_subscription(sub, "/count");
+    ::rclcpp::PollSubscription<Int32> sub;
+    ::rclcpp::Result rs = node.create_subscription(sub, "/count");
 
-    ::nros::PollingSubscription<Int32> poll;
-    ::nros::Result rq = node.create_polling_subscription(poll, "/count");
+    ::rclcpp::PollingSubscription<Int32> poll;
+    ::rclcpp::Result rq = node.create_polling_subscription(poll, "/count");
 
     (void)rs;
     (void)rq;

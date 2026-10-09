@@ -106,7 +106,7 @@
 #define NROS_CPP_SERIALIZATION_FORMAT_ID 1
 
 /**
- * `nros::SchedClass` mirror. Phase 110.B.
+ * `rclcpp::SchedClass` mirror. Phase 110.B.
  */
 enum nros_cpp_sched_class_t
 #if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
@@ -128,7 +128,7 @@ typedef uint8_t nros_cpp_sched_class_t;
 #endif // __cplusplus
 
 /**
- * `nros::Priority` mirror. Phase 110.C.
+ * `rclcpp::Priority` mirror. Phase 110.C.
  */
 enum nros_cpp_priority_t
 #if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
@@ -148,7 +148,7 @@ typedef uint8_t nros_cpp_priority_t;
 #endif // __cplusplus
 
 /**
- * `nros::DeadlinePolicy` mirror. Phase 110.B.
+ * `rclcpp::DeadlinePolicy` mirror. Phase 110.B.
  */
 enum nros_cpp_deadline_policy_t
 #if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
@@ -447,7 +447,7 @@ typedef bool (*nros_cpp_endpoint_info_visit_fn)(void *ctx,
                                                 const struct nros_cpp_endpoint_info_t *info);
 
 /**
- * `nros::SchedContext` mirror passed to
+ * `rclcpp::SchedContext` mirror passed to
  * [`nros_cpp_create_sched_context`]. Time fields use `0` as
  * "absent" sentinel (mirrors the Rust `OptUs` newtype).
  */
@@ -932,7 +932,7 @@ typedef uint32_t nros_cpp_shutdown_callback_handle_t;
  * system's contract DECLARES for that topic. issue 1256 — and the same code
  * when its RELIABILITY or DURABILITY does; the log line names which.
  *
- * The same number `nros::detail::DECLARED_DEPTH_MISMATCH` carries in
+ * The same number `rclcpp::detail::DECLARED_DEPTH_MISMATCH` carries in
  * `nros/node.hpp`, which is the C++ BOOT-time half of the same check, and for
  * the reason recorded there: this is not a backend failure, it is the image
  * contradicting its own manifest, and a code that also means "the RMW said no"
@@ -1006,7 +1006,7 @@ nros_cpp_ret_t nros_cpp_init(const char *locator,
  *
  * Additive rather than a sixth parameter on `nros_cpp_init`: that symbol is
  * called by every generated C++ entry and by user code, and widening it is an
- * ABI break for all of them. `<nros/node.hpp>`'s `nros::init` reaches this
+ * ABI break for all of them. `<nros/node.hpp>`'s `rclcpp::init` reaches this
  * through the `NROS_ENTRY_RMW` bake macro.
  *
  * # Safety
@@ -1058,7 +1058,7 @@ nros_cpp_ret_t nros_cpp_init_multi(const struct NrosCppSessionSpec *specs,
  * phase-432 W3.1 (option A) — the one answer to "is the global session up".
  *
  * It used to be `Node::GlobalStorageHolder<>::initialized`, a C++ template
- * static emitted by `node.hpp`: `nros::init` set it true, `nros::shutdown` set
+ * static emitted by `node.hpp`: `rclcpp::init` set it true, `rclcpp::shutdown` set
  * it false, `nros::ok()` read it. That made the flag unreachable from C, which
  * is what blocked a pure-C `run_components` — its spin loop's EXIT CONDITION
  * is `ok()`, and C had no way to ask.
@@ -1151,7 +1151,7 @@ nros_cpp_ret_t nros_cpp_fini(void *storage);
  * `session_name` sets the primary session / node name visible via `ros2 node list`
  * (the #98 fix for C entries). NULL or empty → falls back to `"node"` (the
  * unified compiled default — same as the Rust `nros::main!` resolver compiled
- * default and the C++ 2-arg `nros::init` default after this phase).
+ * default and the C++ 2-arg `rclcpp::init` default after this phase).
  *
  * The generated typed C entry (`nros codegen entry --lang c --typed`) calls this
  * from `main`, passing `nros_boot_config_node_name(&NROS_BOOT_CONFIG)` which
@@ -1168,9 +1168,9 @@ int32_t nros_board_native_run_components_named(const char *session_name,
 
 /**
  * Issue 1419 -- the census switch, for the HOSTED runner that is not this
- * file's: `nros::board::LinuxBoard::run_components` in `<nros/main.hpp>`.
+ * file's: `rclcpp::board::LinuxBoard::run_components` in `<nros/main.hpp>`.
  *
- * That runner is header-only C++ (`nros::init` into the C++ global context,
+ * That runner is header-only C++ (`rclcpp::init` into the C++ global context,
  * `setup()`, `component_spin_loop()`), and it is what every generated typed
  * SINGLE-executor C++ native entry calls. It never reached
  * [`nros_board_native_run_components_named_ns`], so `$NROS_CENSUS_OUT` was
@@ -1181,7 +1181,7 @@ int32_t nros_board_native_run_components_named(const char *session_name,
  * half of the switch, and they reuse the funnel's own three functions rather
  * than spell a second census path.
  *
- * Call BEFORE `nros::init`: a non-zero return means a census was asked for,
+ * Call BEFORE `rclcpp::init`: a non-zero return means a census was asked for,
  * and the recording backend has already been selected by name (the session
  * the init then opens is the recorder's, so no router is needed). Zero means
  * a normal boot, and nothing was changed.
@@ -1194,7 +1194,7 @@ int32_t nros_cpp_census_begin(void);
  * [`nros_cpp_census_begin`]; the caller then shuts down and exits with the
  * returned code (0 when the census was written).
  *
- * `session_name` is the name the runner passed to `nros::init` (NULL or empty
+ * `session_name` is the name the runner passed to `rclcpp::init` (NULL or empty
  * is the unified default `"node"`), the same identity
  * [`nros_board_native_run_components_named_ns`] stamps its census with.
  *
@@ -1205,12 +1205,12 @@ int32_t nros_cpp_census_finish(const char *session_name);
 
 /**
  * Issue 1732 — install the hosted termination guard for a C++ runner whose
- * loop lives in a header (`nros::board::LinuxBoard::run_components` in
+ * loop lives in a header (`rclcpp::board::LinuxBoard::run_components` in
  * `<nros/main.hpp>`). The Rust runners in this file call
  * `nros_platform::termination` directly; this is the same call, under a C
  * name a header can reach — not a second guard.
  *
- * Call BEFORE `nros::init`, so a signal that arrives during `setup` is not
+ * Call BEFORE `rclcpp::init`, so a signal that arrives during `setup` is not
  * lost. Returns how many of SIGTERM / SIGINT now carry the guard (0 where the
  * application already handles both, or off POSIX). Idempotent.
  */
@@ -1219,7 +1219,7 @@ int32_t nros_cpp_termination_guard_install(void);
 /**
  * Issue 1732 — `true` once a guarded SIGTERM / SIGINT has arrived. `nros::ok()`
  * folds it in, which is `rclcpp::ok()`'s contract: a signal makes the spin
- * loops return, and the runner's `nros::shutdown()` then closes the session.
+ * loops return, and the runner's `rclcpp::shutdown()` then closes the session.
  * Always `false` where no guard was installed.
  */
 bool nros_cpp_termination_requested(void);
@@ -1490,7 +1490,7 @@ nros_cpp_ret_t nros_cpp_spin_once(void *handle, int32_t timeout_ms);
 /**
  * Spin the executor for `duration_ms`, budgeted by WALL-CLOCK time.
  *
- * Issue 0329 — the single budgeted-spin entry point. `nros::spin()` and
+ * Issue 0329 — the single budgeted-spin entry point. `rclcpp::spin()` and
  * `Executor::spin()` were hand-rolled loops in the C++ headers; one of them
  * (`nros.hpp`) still budgeted by ITERATION count (`elapsed += poll_ms`), the
  * exact defect `Executor::spin` documents as fixed in Phase 118.C — an early
@@ -1507,7 +1507,7 @@ nros_cpp_ret_t nros_cpp_spin_once(void *handle, int32_t timeout_ms);
 nros_cpp_ret_t nros_cpp_spin_for(void *handle, uint32_t duration_ms, int32_t poll_ms);
 
 /**
- * Spin until cancelled (blocking) — the loop behind `nros::Executor::spin()`.
+ * Spin until cancelled (blocking) — the loop behind `rclcpp::Executor::spin()`.
  *
  * phase-417 W4.c. The C++ header used to run this loop itself, on
  * `while (initialized_)`, which made `shutdown()` the ONLY way out — and
@@ -3042,7 +3042,7 @@ nros_cpp_ret_t nros_cpp_subscription_set_message_lost(void *_storage,
  * for what "actual" means and why an unreportable policy reads back as that
  * enum's `UNKNOWN` rather than as the request.
  *
- * **Two roads, one entry point.** A poll-style `nros::Subscription<M>` owns
+ * **Two roads, one entry point.** A poll-style `rclcpp::Subscription<M>` owns
  * its subscriber in `storage`; a callback-style one does NOT — the executor
  * arena owns it and the C++ object holds only `(executor, handle_id)`. The
  * callback form is what a ported `rclcpp` node writes, so an accessor that
@@ -3239,7 +3239,7 @@ nros_cpp_ret_t nros_cpp_timer_reset(void *executor_handle, size_t handle_id);
  * Would this timer fire on the next `spin_once()` pass?
  *
  * phase-417 G6, ledger row `cpp:Timer::is_ready`. `rcl_timer_is_ready` had
- * shipped for C since stage 3 and `nros::Timer` had `cancel`, `reset`,
+ * shipped for C since stage 3 and `rclcpp::Timer` had `cancel`, `reset`,
  * `is_canceled` and `is_valid` and not this.
  *
  * Forwards to `Executor::timer_is_ready`, which evaluates
@@ -3767,8 +3767,8 @@ nros_cpp_ret_t nros_cpp_action_client_cancel_goal(void *handle, const uint8_t (*
  * Drain the reply to a `nros_cpp_action_client_cancel_goal` (non-blocking).
  *
  * Writes the `action_msgs/srv/CancelGoal` RETURN CODE (0 = Ok, 1 = Rejected,
- * 2 = UnknownGoal, 3 = GoalTerminated — `nros::CancelReturnCode`, not the
- * per-goal `nros::CancelResponse`; issue 0796) to `out_return_code`.
+ * 2 = UnknownGoal, 3 = GoalTerminated — `rclcpp_action::CancelReturnCode`, not the
+ * per-goal `rclcpp_action::CancelResponse`; issue 0796) to `out_return_code`.
  *
  * Returns `NROS_CPP_RET_OK` when a reply was consumed,
  * `NROS_CPP_RET_TRY_AGAIN` when none has arrived yet.
@@ -3934,7 +3934,7 @@ int32_t nros_cpp_action_server_try_recv_cancel_request_raw(void *storage,
  * request. `return_code` matches `nros_core::CancelReturnCode`
  * (0 = Ok, 1 = Rejected, 2 = UnknownGoal, 3 = GoalTerminated) — the
  * `action_msgs/srv/CancelGoal` RPC status, NOT the per-goal
- * `nros::CancelResponse` accept/reject a cancel callback returns (issue
+ * `rclcpp_action::CancelResponse` accept/reject a cancel callback returns (issue
  * 0796; the two used to share a name and their discriminants overlap with
  * opposite meanings).
  * `accepted` points to `accepted_count` 16-byte goal-id arrays.
@@ -4081,7 +4081,7 @@ nros_cpp_ret_t nros_cpp_lifecycle_change_state(void *executor, uint8_t transitio
  * Get the current REP-2002 lifecycle state of the C++ executor's state machine.
  *
  * Returns `0` if the executor is null or lifecycle services are not registered
- * yet — that is the `Unknown` sentinel (`nros::LifecycleState::Unknown`), NOT
+ * yet — that is the `Unknown` sentinel (`rclcpp_lifecycle::LifecycleState::Unknown`), NOT
  * `Unconfigured`. State numbering is `lifecycle_msgs/msg/State`'s:
  * `Unconfigured = 1`, `Inactive = 2`, `Active = 3`, `Finalized = 4`, plus
  * `ErrorProcessing = 5` (upstream numbers that one 15; see

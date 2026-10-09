@@ -20,7 +20,7 @@ namespace subnode_pkg {
 /// The entry emits bind_group_sched("sub_node", "ctrl", SC_HIGH) and
 /// bind_group_sched("sub_node", "telem", SC_LOW) before construction, so both
 /// timers land on their respective sched contexts at registration.
-class SubNode : public ::nros::NodeWithTimers<2> {
+class SubNode : public ::rclcpp::NodeWithTimers<2> {
     ::rclcpp::Publisher<std_msgs::msg::Int32> ctrl_pub_;
     ::rclcpp::Publisher<std_msgs::msg::Int32> telem_pub_;
     int ctrl_count_ = 0;
@@ -30,7 +30,7 @@ class SubNode : public ::nros::NodeWithTimers<2> {
     void on_telem();
 
   public:
-    explicit SubNode(::nros::NodeHandle h);
+    explicit SubNode(::rclcpp::NodeHandle h);
 };
 
 } // namespace subnode_pkg

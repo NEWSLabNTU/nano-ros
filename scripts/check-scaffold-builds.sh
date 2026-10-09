@@ -4,7 +4,7 @@
 # Issue 1058 / phase-452 W2.
 #
 # `cargo-nano-ros/tests/integration_tests.rs` verifies every scaffold variant by
-# substring match — `assert!(hpp.contains("::nros::Result configure(...)"))` and
+# substring match — `assert!(hpp.contains("::rclcpp::Result configure(...)"))` and
 # ~30 siblings. Nothing compiles the result. So the suite answers "did we emit
 # the string we meant to emit", which is a question about the template, not
 # about the scaffold, and a user's first build is the first compile the emitted
@@ -511,10 +511,9 @@ self_test() {
     fi
     # A SYNTHETIC absent type, not one of the three the issue names.
     #
-    # Measured 2026-09-21: all three resolve now. `rclcpp::Result` is
-    # `using ::nros::Result;` in `result.hpp`, `rclcpp::Timer` is
-    # `using Timer = ::nros::Timer;` at `timer.hpp:268`, and `rclcpp::Node`
-    # became the node type's own home in RFC-0089 / phase-427 W7. phase-417's
+    # Measured 2026-09-21: all three resolve now, and since phase-483 W1 each
+    # is DEFINED in `rclcpp::` (`result.hpp`, `timer.hpp`, `node.hpp`) rather
+    # than aliased from `nros::`. phase-417's
     # rename was finished correctly after issue 1058 was filed, so there is no
     # historical red left to reproduce — breaking with any of them builds
     # clean, and this control reported exactly that twice before the names were
@@ -523,10 +522,10 @@ self_test() {
     # So the control synthesises a name that cannot quietly become real, which
     # proves the checker can fail without pretending to reproduce a defect the
     # tree no longer has.
-    sed -i 's|::nros::Timer timer_;|::rclcpp::NrosScaffoldSelfTestAbsentType timer_;|' "$src"
+    sed -i 's|::rclcpp::Timer timer_;|::rclcpp::NrosScaffoldSelfTestAbsentType timer_;|' "$src"
     nros_grep_q -F 'NrosScaffoldSelfTestAbsentType' "$src"
     if [ $? -ne 0 ]; then
-        echo "self-test: the emitted header no longer declares \`::nros::Timer timer_;\`," >&2
+        echo "self-test: the emitted header no longer declares \`::rclcpp::Timer timer_;\`," >&2
         echo "  so this control broke nothing. Re-derive the break before trusting a green." >&2
         return 2
     fi

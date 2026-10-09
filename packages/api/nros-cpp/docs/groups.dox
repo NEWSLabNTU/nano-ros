@@ -1,15 +1,15 @@
 /**
  * @defgroup grp_init init
- * @brief Library initialisation, the global session, and `nros::ok()`.
+ * @brief Library initialisation, the global session, and `rclcpp::ok()`.
  *
- * `nros::init()` boots the transport; `nros::shutdown()` tears it down.
- * `nros::ok()` reports whether the global session is alive (false after
+ * `rclcpp::init_in()` boots the transport; `rclcpp::shutdown_in()` tears it down.
+ * `rclcpp::ok()` reports whether the global session is alive (false after
  * `shutdown` or after a fatal transport error).
  *
  * @code
- * NROS_TRY(nros::init("tcp/127.0.0.1:7447"));
- * while (nros::ok()) nros::spin_once(100);
- * nros::shutdown();
+ * NROS_TRY(rclcpp::init_in("tcp/127.0.0.1:7447"));
+ * while (rclcpp::ok()) rclcpp::spin_once(100);
+ * rclcpp::shutdown_in();
  * @endcode
  *
  * @see @ref grp_node, @ref getting_started
@@ -19,7 +19,7 @@
  * @defgroup grp_node node
  * @brief Node creation and lifecycle (`rclcpp::Node`).
  *
- * Mirrors `rclcpp::Node`. Created via `nros::create_node(node, name)`;
+ * Mirrors `rclcpp::Node`. Created via `rclcpp::create_node(node, name)`;
  * publishers, subscriptions, services, and timers are bound to the
  * node via its `create_*` member functions.
  *
@@ -29,14 +29,14 @@
 /**
  * @defgroup grp_pubsub pubsub
  * @brief Typed publishers and subscriptions
- * (`nros::Publisher<M>`, `nros::Subscription<M>`).
+ * (`rclcpp::Publisher<M>`, `rclcpp::Subscription<M>`).
  *
  * `M` is a generated message type — see @ref message_concept for the
  * required surface. The `publish` method serialises and forwards via
  * the codegen-emitted `M::ffi_publish`.
  *
  * @code
- * nros::Publisher<std_msgs::msg::Int32> pub;
+ * rclcpp::Publisher<std_msgs::msg::Int32> pub;
  * NROS_TRY(node.create_publisher(pub, "/chatter"));
  * std_msgs::msg::Int32 m{}; m.data = 42;
  * pub.publish(m);
@@ -48,11 +48,11 @@
 /**
  * @defgroup grp_service service
  * @brief Service servers and clients
- * (`nros::Service<S>`, `nros::Client<S>`).
+ * (`rclcpp::Service<S>`, `rclcpp::Client<S>`).
  *
  * `S` is a generated service type that exposes nested `Request` and
  * `Response` types. Servers dispatch via the executor; clients return
- * a `nros::Future<typename S::Response>` from `async_send_request`.
+ * a `rclcpp::Future<typename S::Response>` from `async_send_request`.
  *
  * @see @ref grp_action for long-running calls with feedback / cancel
  * @see @ref grp_executor for callback-driven service dispatch
@@ -61,7 +61,7 @@
 /**
  * @defgroup grp_action action
  * @brief Action servers and clients
- * (`nros::ActionServer<A>`, `nros::ActionClient<A>`).
+ * (`rclcpp::ActionServer<A>`, `rclcpp::ActionClient<A>`).
  *
  * REP-2010 action protocol with goal accept/reject, periodic feedback,
  * cancel, and final result.
@@ -79,9 +79,9 @@
  * @defgroup grp_executor executor
  * @brief Callback dispatch, timers, guard conditions, futures, streams.
  *
- * `nros::Executor` polls the transport and dispatches ready callbacks.
- * `nros::Timer` fires on a periodic interval; `nros::GuardCondition`
- * is a cross-thread wake source. `nros::Future<T>` and `nros::Stream<T>`
+ * `rclcpp::Executor` polls the transport and dispatches ready callbacks.
+ * `rclcpp::Timer` fires on a periodic interval; `rclcpp::GuardCondition`
+ * is a cross-thread wake source. `rclcpp::Future<T>` and `rclcpp::Stream<T>`
  * are the futures/streams returned by service and action clients.
  *
  * @see @ref grp_pubsub, @ref grp_service, @ref grp_action — every
@@ -95,7 +95,7 @@
 
 /**
  * @defgroup grp_qos qos
- * @brief Quality-of-Service settings (`nros::QoS`).
+ * @brief Quality-of-Service settings (`rclcpp::QoS`).
  *
  * Builder-style helpers to set reliability, durability, history, depth.
  * Defaults are `BEST_EFFORT` reliability + `VOLATILE` durability +
@@ -127,8 +127,8 @@
 /**
  * @page message_concept The Message-Type Concept
  *
- * The `M` type parameter on `nros::Publisher<M>`,
- * `nros::Subscription<M>`, etc. must satisfy the following concept
+ * The `M` type parameter on `rclcpp::Publisher<M>`,
+ * `rclcpp::Subscription<M>`, etc. must satisfy the following concept
  * (provided automatically by code generated via
  * `nano_ros_generate_interfaces(... LANGUAGE CPP)`):
  *

@@ -51,12 +51,12 @@ was retired with the vendored copy.
 
 ## Move and Lifetime
 
-`nros::Publisher<M>`, `nros::Subscription<M>`, etc. are non-copyable
+`rclcpp::Publisher<M>`, `rclcpp::Subscription<M>`, etc. are non-copyable
 but movable. The Rust-side handle is relocated through a dedicated FFI
 call (`nros_cpp_*_relocate`) — moves are O(1) memcpy + an FFI hop.
 
 ```cpp
-nros::Publisher<MyMsg> pub;
+rclcpp::Publisher<MyMsg> pub;
 node.create_publisher(pub, "/topic");
 
 auto pub2 = std::move(pub);   // OK — pub2 owns the handle now
@@ -71,8 +71,8 @@ stale.
 
 ## Callback ABI in Mixed C++/C
 
-Callbacks passed to the `nros::Subscription`, `nros::Timer`, and
-`nros::Service` constructors are `void(*)(...)` C function pointers,
+Callbacks passed to the `rclcpp::Subscription`, `rclcpp::Timer`, and
+`rclcpp::Service` constructors are `void(*)(...)` C function pointers,
 not `std::function`. Lambdas without captures decay implicitly; a
 capturing lambda needs to be split into a context struct + free
 function:
@@ -85,7 +85,7 @@ static void on_tick(void* ctx_ptr) {
 }
 
 Ctx ctx{};
-nros::Timer t;
+rclcpp::Timer t;
 node.create_wall_timer(t, 1000, on_tick, &ctx);
 ```
 
@@ -101,9 +101,9 @@ form to keep the callback path allocator-free.
 
 ## Common Result Codes
 
-| `nros::Code` | Meaning |
+| `rclcpp::ErrorCode` | Meaning |
 |---|---|
-| `NotInitialized` | `nros::init()` was never called or returned an error |
+| `NotInitialized` | `rclcpp::init_in()` was never called or returned an error |
 | `InvalidArgument` | Null or empty topic/service name |
 | `Timeout` | Service / action wait deadline elapsed |
 | `Full` | Static pool exhausted (raise `NROS_*_BUFFER_SIZE`) |

@@ -1,18 +1,18 @@
 # Error Codes {#error_codes}
 
-`nros::Result` wraps an `nros::ErrorCode` (a strongly-typed `int32_t`
+`rclcpp::Result` wraps an `rclcpp::ErrorCode` (a strongly-typed `int32_t`
 enum). Use `result.ok()` for success checks, or the `NROS_TRY(expr)`
 macro to short-circuit on the first error.
 
 ## ErrorCode Table
 
-| Raw | `nros::ErrorCode` | Cause | Recovery |
+| Raw | `rclcpp::ErrorCode` | Cause | Recovery |
 |-----|------|-------|----------|
 | `0` | `Ok` | Success | — |
 | `-1` | `Error` | Generic failure not covered by a specific code. | Inspect logs and the function-specific docs. |
 | `-2` | `Timeout` | Operation deadline elapsed before completion. | Retry, increase the timeout, or verify the remote peer is reachable. |
 | `-3` | `InvalidArgument` | Null pointer, empty topic name, or out-of-range value. | Validate inputs before the call. |
-| `-4` | `NotInitialized` | `nros::init()` was never called or returned an error; or the entity (publisher, subscription, …) is in a default-constructed state. | Call `nros::init()` first; check `is_valid()`. |
+| `-4` | `NotInitialized` | `rclcpp::init_in()` was never called or returned an error; or the entity (publisher, subscription, …) is in a default-constructed state. | Call `rclcpp::init_in()` first; check `is_valid()`. |
 | `-5` | `Full` | Static pool exhausted (executor slots, subscription buffers, parameter table, …). | Raise the matching `NROS_*` env var and rebuild. See @ref configuration. |
 | `-6` | `TryAgain` | Transient — no data ready yet (non-blocking take). | Retry on the next executor tick. |
 | `-7` | `Reentrant` | A blocking call was made from inside a callback. | Re-architect to use the executor or an async path. |
@@ -21,17 +21,17 @@ macro to short-circuit on the first error.
 ## NROS_TRY
 
 ```cpp
-nros::Result init_pubsub(rclcpp::Node& node) {
-    nros::Publisher<MyMsg> pub;
+rclcpp::Result init_pubsub(rclcpp::Node& node) {
+    rclcpp::Publisher<MyMsg> pub;
     NROS_TRY(node.create_publisher(pub, "/topic"));   // early-return on error
     NROS_TRY(pub.publish(seed_msg));
-    return nros::Result::success();
+    return rclcpp::Result::success();
 }
 ```
 
 `NROS_TRY(expr)` evaluates `expr` once and, if the result is not
 success, returns it from the enclosing function. Only valid inside
-functions that themselves return `nros::Result`.
+functions that themselves return `rclcpp::Result`.
 
 ## Pattern: Manual Error Handling
 

@@ -4,7 +4,7 @@
 /**
  * @file executor.hpp
  * @ingroup grp_executor
- * @brief `nros::Executor` — drives transport I/O and dispatches callbacks.
+ * @brief `rclcpp::Executor` — drives transport I/O and dispatches callbacks.
  */
 
 #ifndef NROS_CPP_EXECUTOR_HPP
@@ -25,13 +25,13 @@
 
 // phase-427 W7 — `Node` is DEFINED in `rclcpp::` (RFC-0089: that namespace is
 // the home), so the forward declaration has to be there too: an elaborated
-// `class Node;` inside `nros::` would declare a second, distinct class and
+// `class Node;` inside `rclcpp::` would declare a second, distinct class and
 // collide with the `rclcpp::Node` alias `node.hpp` declares.
 namespace rclcpp {
 class Node;
 }
 
-namespace nros {
+namespace rclcpp {
 
 // Forward declarations
 class NodeBuilder;
@@ -95,15 +95,15 @@ class OnShutdownCallbackHandle : public ShutdownCallbackHandle {
 /// Explicit executor for managing ROS 2 entities and spinning.
 ///
 /// Mirrors `rclcpp::executors::SingleThreadedExecutor`. Provides an
-/// explicit alternative to the global `nros::init()`/`nros::spin_once()`
+/// explicit alternative to the global `rclcpp::init()`/`rclcpp::spin_once()`
 /// free functions.
 ///
 /// The executor uses inline opaque storage — no heap allocation required.
 ///
 /// Usage:
 /// ```cpp
-/// nros::Executor executor;
-/// NROS_TRY(nros::Executor::create(executor));
+/// rclcpp::Executor executor;
+/// NROS_TRY(rclcpp::Executor::create(executor));
 ///
 /// rclcpp::Node node;
 /// NROS_TRY(executor.create_node(node, "my_node"));
@@ -123,7 +123,7 @@ class Executor {
     /// Create and initialize an executor.
     ///
     /// Opens a middleware connection. This is the explicit alternative
-    /// to `nros::init()`.
+    /// to `rclcpp::init()`.
     ///
     /// @param out        Receives the initialized executor.
     /// @param locator    Middleware locator (e.g., "tcp/127.0.0.1:7447"), or nullptr.
@@ -137,7 +137,7 @@ class Executor {
     ///
     /// `session_name` flows through to the XRCE-DDS RMW backend as the
     /// per-process key derivation seed. Two processes sharing one
-    /// XRCE Agent MUST use distinct names; see `nros::init`'s named
+    /// XRCE Agent MUST use distinct names; see `rclcpp::init`'s named
     /// overload for the full discussion.
     static Result create(Executor& out, const char* locator, uint8_t domain_id,
                          const char* session_name) {
@@ -145,7 +145,7 @@ class Executor {
         if (session_name == nullptr) {
             return Result(-3);
         }
-        // Issue 1050 defect (3) — the same baked RMW selector `nros::init()`
+        // Issue 1050 defect (3) — the same baked RMW selector `rclcpp::init()`
         // reads. Both spellings of "open the one session" must apply it, or the
         // bake means one thing on one path and nothing on the other — which is
         // how `BACKENDS` came to read as a declaration that decided nothing.
@@ -168,7 +168,7 @@ class Executor {
     /// `rmw` is the baked rung of RFC-0045's precedence model A: a hosted
     /// `$NROS_RMW` still wins, and `nullptr` / `""` means "name none", which
     /// resolves only when exactly one backend is registered. See
-    /// `nros::init_with_rmw` for why naming one is sometimes the only way to
+    /// `rclcpp::init_with_rmw` for why naming one is sometimes the only way to
     /// get the backend the image declared.
     static Result create_with_rmw(Executor& out, const char* rmw, const char* locator = nullptr,
                                   uint8_t domain_id = 0, const char* session_name = "nros_cpp") {
@@ -486,7 +486,7 @@ class Executor {
         // Issue 0329 — the wall-clock budgeted loop (Phase 118.C: iteration-count
         // budgeting collapses when `spin_once` returns early on a signaled
         // condvar) now lives once, Rust-side, in `nros_cpp_spin_for`; forward to
-        // it so this and `nros::spin()` share one implementation.
+        // it so this and `rclcpp::spin()` share one implementation.
         return Result(nros_cpp_spin_for(storage_, duration_ms, poll_ms));
     }
 
@@ -619,6 +619,6 @@ class Executor {
     bool initialized_;
 };
 
-} // namespace nros
+} // namespace rclcpp
 
 #endif // NROS_CPP_EXECUTOR_HPP

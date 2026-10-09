@@ -15,7 +15,7 @@ namespace zephyr_cpp_talker {
 
 class Talker {
     ::rclcpp::Publisher<std_msgs::msg::String> pub_;
-    ::nros::Timer timer_;
+    ::rclcpp::Timer timer_;
     int count_ = 0;
 
     void on_tick(); // real body, bound by identity

@@ -12,7 +12,7 @@
 /**
  * @file sched_context.hpp
  * @ingroup grp_executor
- * @brief Phase 110.B / 110.C — `nros::SchedContext` API.
+ * @brief Phase 110.B / 110.C — `rclcpp::SchedContext` API.
  */
 
 #ifndef NROS_CPP_SCHED_CONTEXT_HPP
@@ -25,7 +25,7 @@
 
 #include "nros_cpp_ffi.h"
 
-namespace nros {
+namespace rclcpp {
 
 /// Scheduling class — picks the runtime queue + selection policy.
 enum class SchedClass : uint8_t {
@@ -123,6 +123,6 @@ inline Result bind_node_name_sched(void* executor_handle, const char* name,
     return Result(nros_cpp_bind_node_name_sched(executor_handle, name, namespace_str, sc_id));
 }
 
-} // namespace nros
+} // namespace rclcpp
 
 #endif // NROS_CPP_SCHED_CONTEXT_HPP

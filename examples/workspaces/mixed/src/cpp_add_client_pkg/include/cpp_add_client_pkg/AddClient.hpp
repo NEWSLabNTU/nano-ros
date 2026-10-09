@@ -23,8 +23,8 @@ namespace cpp_add_client_pkg {
 class AddClient {
     using Svc = example_interfaces::srv::AddTwoInts;
 
-    ::nros::ServiceClientStorage client_;
-    ::nros::Timer timer_;
+    ::rclcpp::ServiceClientStorage client_;
+    ::rclcpp::Timer timer_;
     int64_t a_ = 0;
     bool in_flight_ = false;
     int waits_ = 0;

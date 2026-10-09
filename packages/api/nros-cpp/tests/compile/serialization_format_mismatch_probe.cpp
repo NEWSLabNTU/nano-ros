@@ -8,7 +8,7 @@
 // does not speak.
 //
 // The mismatch is spelled the way a non-CDR codegen pack would spell it — the
-// message's own `nros::format_of<M>` specialization naming a different format
+// message's own `rclcpp::format_of<M>` specialization naming a different format
 // from the image's. Every in-tree pack emits CDR today, so stating the
 // discriminant here is what makes the refusal testable before a second pack
 // exists (RFC-0088 W5 ships one).
@@ -32,26 +32,26 @@ struct VehicleStatus {
 
 } // namespace nros_cpp_serialization_format_mismatch_probe
 
-namespace nros {
+namespace rclcpp {
 template <> struct format_of<::nros_cpp_serialization_format_mismatch_probe::VehicleStatus> {
     static constexpr SerializationFormat value = SerializationFormat::Uorb;
 };
-} // namespace nros
+} // namespace rclcpp
 
 namespace nros_cpp_serialization_format_mismatch_probe {
 
 // If the image itself were ever uORB this probe would be asserting a TRUE
 // condition and would compile — reporting a broken check that is in fact fine.
 // Fail loudly instead of quietly inverting.
-static_assert(::nros::linked_format() == ::nros::SerializationFormat::Cdr,
+static_assert(::rclcpp::linked_format() == ::rclcpp::SerializationFormat::Cdr,
               "this probe assumes a CDR image; specialize format_of with a format the image "
               "does NOT speak");
 
 // THIS is what must not compile: a typed entity created over a uORB message in
 // a CDR image. The assertion lives in `Node::create_publisher`'s body, so the
 // instantiation below is what evaluates it.
-inline ::nros::Result instantiate(::rclcpp::Node& node) {
-    ::nros::Publisher<VehicleStatus> pub;
+inline ::rclcpp::Result instantiate(::rclcpp::Node& node) {
+    ::rclcpp::Publisher<VehicleStatus> pub;
     return node.create_publisher(pub, "/fmu/out/vehicle_status");
 }
 

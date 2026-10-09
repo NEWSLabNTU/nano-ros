@@ -17,7 +17,7 @@
 // which is phase-438's.
 //
 // WHAT THIS PROVES
-//   1. There is ONE node type, `rclcpp::Node` (the `nros::Node` alias for it was
+//   1. There is ONE node type, `rclcpp::Node` (the `rclcpp::Node` alias for it was
 //      deleted by phase-482 W6), not two types with a converting constructor
 //      between them. This is the whole item: before the
 //      merge a ported file got a type with no graph queries, no lifecycle, no
@@ -28,7 +28,7 @@
 //   3. ONE NAME, TWO SIGNATURES: the out-ref and `shared_ptr` `create_*`
 //      families are overloads on that type and neither is ambiguous.
 //   4. `create_wall_timer` binds a MEMBER FUNCTION with no allocation and no
-//      `std::function` — the overload that retired `nros::bind_timer`.
+//      `std::function` — the overload that retired `rclcpp::bind_timer`.
 //   5. `rclcpp::create_timer(node, clock, period, cb)` — humble's only
 //      clock-taking timer verb (phase-430 W6) — compiles and returns the same
 //      cell `create_wall_timer` does.
@@ -67,7 +67,7 @@ struct CounterMsg {
 // --- (1) ONE TYPE ------------------------------------------------------------
 //
 // There is no second spelling left to compare against: phase-482 W6 deleted
-// the `nros::Node` alias. What remains of this section is the shape below.
+// the `rclcpp::Node` alias. What remains of this section is the shape below.
 
 // The deleted shim was `std::enable_shared_from_this<Node>`, a hosted-only BASE
 // carrying a weak_ptr member -- 16 bytes of layout behind a capability probe,
@@ -91,7 +91,7 @@ inline void upstream_construction_verbatim() {
     // the ownership weakening that buys.
     (void)node->shared_from_this();
 
-    // phase-482 W2 — `Node::SharedPtr` is `nros::Handle<Node>`. A caller-owned
+    // phase-482 W2 — `Node::SharedPtr` is `rclcpp::Handle<Node>`. A caller-owned
     // `shared_ptr` converts to it, and the spin verbs take the `shared_ptr`
     // directly, so upstream's `main` shapes are unchanged.
     rclcpp::Node::SharedPtr observed = node;
@@ -121,11 +121,11 @@ inline void both_create_families_on_one_object() {
 
     // Out-ref: caller-owned storage, no allocation. Forced by the arena, which
     // stores `&entity` as its dispatch context and has no unregister.
-    nros::Publisher<CounterMsg> pub;
+    rclcpp::Publisher<CounterMsg> pub;
     (void)node.create_publisher(pub, "chatter");
-    nros::Subscription<CounterMsg> sub;
+    rclcpp::Subscription<CounterMsg> sub;
     (void)node.create_subscription(
-        sub, "chatter", ::nros::QoS(10), +[](const CounterMsg&) {});
+        sub, "chatter", ::rclcpp::QoS(10), +[](const CounterMsg&) {});
 
     // shared_ptr: upstream's signatures, on the same object.
     auto pub2 = node.create_publisher<CounterMsg>("chatter", 10);
@@ -146,14 +146,14 @@ inline void both_create_families_on_one_object() {
 // `std::chrono` one does not.
 
 class Talker {
-    nros::Publisher<CounterMsg> pub_;
-    nros::Timer timer_;
+    rclcpp::Publisher<CounterMsg> pub_;
+    rclcpp::Timer timer_;
     int count_ = 0;
 
   public:
     void on_tick() { ++count_; }
 
-    nros::Result configure(rclcpp::Node& node) {
+    rclcpp::Result configure(rclcpp::Node& node) {
         NROS_TRY(node.create_publisher(pub_, "chatter"));
         return node.create_wall_timer<Talker, &Talker::on_tick>(timer_, 1000, this);
     }
@@ -165,10 +165,10 @@ class Talker {
 /// on a target with no allocator.
 static_assert(
     std::is_same<decltype(std::declval<rclcpp::Node&>().create_wall_timer<Talker, &Talker::on_tick>(
-                     std::declval<nros::Timer&>(), uint64_t(0), std::declval<Talker*>())),
-                 nros::Result>::value,
+                     std::declval<rclcpp::Timer&>(), uint64_t(0), std::declval<Talker*>())),
+                 rclcpp::Result>::value,
     "the member-binding create_wall_timer overload has changed shape -- it is what "
-    "retired the free nros::bind_timer, and a component binds through it");
+    "retired the free rclcpp::bind_timer, and a component binds through it");
 
 // --- (5) phase-430 W6: rclcpp::create_timer(node, clock, period, cb) --------
 
@@ -188,16 +188,16 @@ inline void clock_driven_timer_is_humbles_free_verb() {
     // phase-430 W7 deleted the `TimerBase` the two used to be typed as.
     static_assert(std::is_same<decltype(ros_time), decltype(wall)>::value,
                   "create_timer and create_wall_timer must return the same handle type");
-    // phase-476 W2 — the handle is `nros::TimerHandle`, and the ported
+    // phase-476 W2 — the handle is `rclcpp::TimerHandle`, and the ported
     // spelling `rclcpp::Timer::SharedPtr` names exactly it.
     static_assert(std::is_same<decltype(wall), rclcpp::Timer::SharedPtr>::value,
                   "the timer handle must be rclcpp::Timer::SharedPtr");
-    static_assert(std::is_same<decltype(wall), ::nros::TimerHandle>::value,
-                  "rclcpp::Timer::SharedPtr is the two-word nros::TimerHandle");
+    static_assert(std::is_same<decltype(wall), ::rclcpp::TimerHandle>::value,
+                  "rclcpp::Timer::SharedPtr is the two-word rclcpp::TimerHandle");
 
-    // The nros::Duration spelling of the same call.
+    // The rclcpp::Duration spelling of the same call.
     auto by_duration =
-        rclcpp::create_timer(node, node->get_clock(), nros::Duration::from_seconds(0.1), []() {});
+        rclcpp::create_timer(node, node->get_clock(), rclcpp::Duration::from_seconds(0.1), []() {});
     (void)ros_time;
     (void)wall;
     (void)by_duration;

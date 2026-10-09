@@ -28,16 +28,16 @@ int nros_app_main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 
-    // Phase 212.M.2 — `nros::init()` (no-arg) pulls locator + domain_id
+    // Phase 212.M.2 — `rclcpp::init_in()` (no-arg) pulls locator + domain_id
     // from `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` at runtime.
-    auto init = nros::init();
+    auto init = rclcpp::init_in();
     if (!init.ok()) {
-        fprintf(stderr, "nros::init failed: %d\n", init.raw());
+        fprintf(stderr, "rclcpp::init failed: %d\n", init.raw());
         return 1;
     }
 
     rclcpp::Node node;
-    auto created = nros::create_node(node, "demo");
+    auto created = rclcpp::create_node(node, "demo");
     if (!created.ok()) {
         fprintf(stderr, "create_node failed: %d\n", created.raw());
         rclcpp::shutdown();

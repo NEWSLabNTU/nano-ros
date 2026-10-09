@@ -48,12 +48,13 @@ static void signal_handler(int signum) {
 // ActionServer + counter through the `void* ctx` parameter.
 // ----------------------------------------------------------------------------
 
-static nros::GoalResponse on_goal(const uint8_t uuid[16], const Fibonacci::Goal& goal, void* ctx) {
+static rclcpp_action::GoalResponse on_goal(const uint8_t uuid[16], const Fibonacci::Goal& goal,
+                                           void* ctx) {
     auto* state = static_cast<ServerState*>(ctx);
     printf("Received goal request with order %d\n", goal.order);
     if (goal.order < 0 || goal.order >= 64) {
         printf("Goal rejected: order out of range\n");
-        return nros::GoalResponse::REJECT;
+        return rclcpp_action::GoalResponse::REJECT;
     }
 
     state->goal_count++;
@@ -90,7 +91,7 @@ static nros::GoalResponse on_goal(const uint8_t uuid[16], const Fibonacci::Goal&
     if (state->srv->complete_goal(uuid, result).ok()) {
         printf("Goal succeeded\n");
     }
-    return nros::GoalResponse::ACCEPT_AND_EXECUTE;
+    return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
 }
 
 // ----------------------------------------------------------------------------
@@ -107,10 +108,10 @@ int nros_app_main(int argc, char** argv) {
     printf("===================================\n");
 
     // Launch-aware init. Env overlay active today.
-    NROS_TRY_RET(nros::init_with_launch_auto(argc, argv), 1);
+    NROS_TRY_RET(rclcpp::init_with_launch_auto(argc, argv), 1);
 
     rclcpp::Node node;
-    NROS_TRY_RET(nros::create_node(node, "fibonacci_action_server"), 1);
+    NROS_TRY_RET(rclcpp::create_node(node, "fibonacci_action_server"), 1);
     printf("Node created: %s\n", node.get_name());
 
     rclcpp_action::Server<Fibonacci> srv;
@@ -127,7 +128,7 @@ int nros_app_main(int argc, char** argv) {
     printf("\nWaiting for action goals (Ctrl+C to exit)...\n\n");
 
     while (g_running && rclcpp::ok()) {
-        nros::spin_once(100);
+        rclcpp::spin_once(100);
     }
 
     printf("\nShutting down...\n");

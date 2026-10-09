@@ -1,7 +1,7 @@
 //! Phase 115.D — C++ FFI for the runtime-pluggable custom transport.
 //!
 //! Mirrors the C-side wrappers in `nros-c/src/transport.rs` so the
-//! C++ surface (`nros::TransportOps`, `nros::set_custom_transport`,
+//! C++ surface (`rclcpp::TransportOps`, `nros::set_custom_transport`,
 //! `nros::clear_custom_transport`, `nros::has_custom_transport`)
 //! lands without depending on `nros-c` directly.
 

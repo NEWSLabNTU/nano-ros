@@ -582,7 +582,7 @@ mod service_backed {
 //
 // These five functions are the accessor, and they are the reason the table now
 // lives in `nros_core::lifecycle` rather than privately inside
-// `nros_node::lifecycle_services` — `nros::Transition` in the C++ header calls
+// `nros_node::lifecycle_services` — `rclcpp_lifecycle::Transition` in the C++ header calls
 // straight through, so neither language carries a copy of the labels.
 //
 // Every one is PURE: no handle, no executor, no state. A transition's label and

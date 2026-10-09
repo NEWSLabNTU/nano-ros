@@ -18,7 +18,7 @@ void Listener::on_msg(const ::std_msgs::msg::Int32& msg) {
     ::setvbuf(stdout, nullptr, _IONBF, 0);
     // Typed member binding (RFC-0044): keyexpr + deserialize come from the
     // generated `std_msgs::msg::Int32` (issue #218 — hand-decode retired).
-    return ::nros::bind_subscription<::std_msgs::msg::Int32, Listener, &Listener::on_msg>(
+    return ::rclcpp::bind_subscription<::std_msgs::msg::Int32, Listener, &Listener::on_msg>(
         node, "/chatter", this);
 }
 

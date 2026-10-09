@@ -20,8 +20,8 @@
 
 #include <nros/nros.hpp>
 
-int ros2_refuse_log_throttle_probe(nros::Clock& clock);
-int ros2_refuse_log_throttle_probe(nros::Clock& clock) {
+int ros2_refuse_log_throttle_probe(rclcpp::Clock& clock);
+int ros2_refuse_log_throttle_probe(rclcpp::Clock& clock) {
     auto logger = rclcpp::get_logger("probe");
     RCLCPP_INFO_THROTTLE(logger, clock, 1000, "once per second, allegedly: %d", 1);
     RCLCPP_WARN_THROTTLE(logger, clock, 1000, "warn %d", 2);

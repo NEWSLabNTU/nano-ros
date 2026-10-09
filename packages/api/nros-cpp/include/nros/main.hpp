@@ -4,27 +4,27 @@
 // drives the per-Entry-pkg codegen via `nros codegen entry --lang cpp`,
 // then appends the generated TU to the executable target's sources.
 // The generated TU has the canonical body — `int main()` + the
-// `nros::board::LinuxBoard::run(lambda)` boot stub + the per-Node
+// `rclcpp::board::LinuxBoard::run(lambda)` boot stub + the per-Node
 // register-call sequence.
 //
 // This header provides two ingredients the generated TU needs:
 //
 //   1. `NROS_MAIN(<Board>, "<bringup>:<file>.launch.xml")` — empty-
 //      expansion macro the user's own TU may carry as a doc/IDE hint
-//      (parallels Rust's `nros::main!(launch = "…")`). It expands to
+//      (parallels Rust's `rclcpp::main!(launch = "…")`). It expands to
 //      a sentinel symbol the cmake fn can detect with
 //      `target_compile_definitions` to avoid double-emit when the
 //      user wrote it. The actual code generation happens via the CLI;
 //      the macro itself is declarative.
 //
-//   2. `nros::board::<Board>::run(register_fn)` — the Board adapter shim
+//   2. `rclcpp::board::<Board>::run(register_fn)` — the Board adapter shim
 //      the generated TU calls. Owns the
-//      `nros::init() → register_fn(context) → spin → nros::shutdown()`
+//      `rclcpp::init() → register_fn(context) → spin → rclcpp::shutdown()`
 //      lifecycle so the generated TU stays one declarative lambda.
 //
 // Two Board adapters ship (Phase 235.B):
-//   * `nros::board::LinuxBoard` — host/POSIX; runtime domain + locator.
-//   * `nros::board::ZephyrBoard` — embedded Zephyr; compile-time domain
+//   * `rclcpp::board::LinuxBoard` — host/POSIX; runtime domain + locator.
+//   * `rclcpp::board::ZephyrBoard` — embedded Zephyr; compile-time domain
 //     id, network-wait hook, cooperative spin. Selected through the
 //     Phase 215 `nano_ros_use_board(<name>)` import (board.cmake feeds
 //     the default RMW + `west` runner). cf. RFC-0032 §8a.
@@ -67,7 +67,7 @@
 #define NROS_ENTRY_MAX_ENTITIES 24
 #endif
 
-namespace nros {
+namespace rclcpp {
 namespace board {
 namespace detail {
 
@@ -97,7 +97,7 @@ inline void entry_tick_yield() {
 /// Board's `run_components`. Unlike `EntryNodeRuntime::spin`, it runs NO
 /// synthesizing interpreter: the user's components already registered their real
 /// callbacks on the executor during their `configure`, so this just pumps
-/// `spin_once` (which dispatches them) until `nros::ok()` flips false, or for
+/// `spin_once` (which dispatches them) until `rclcpp::ok()` flips false, or for
 /// `$NROS_ENTRY_SPIN_MS` ms when set (the bounded external-observer test path).
 /// Returns the first non-zero `spin_once` code, else 0.
 inline int32_t component_spin_loop() {
@@ -109,20 +109,20 @@ inline int32_t component_spin_loop() {
     }
 #endif
     // Issue 0329 — the bounded (`NROS_ENTRY_SPIN_MS`) external-observer path is
-    // exactly the shared wall-clock budgeted spin; reuse `nros::spin()` (which
+    // exactly the shared wall-clock budgeted spin; reuse `rclcpp::spin()` (which
     // forwards to the single `nros_cpp_spin_for` CFFI) instead of a fourth
     // hand-rolled budget loop.
     if (bound_ms != 0) {
-        return static_cast<int32_t>(::nros::spin(bound_ms).raw());
+        return static_cast<int32_t>(::rclcpp::spin_in(bound_ms).raw());
     }
-    // Unbounded (production): run until `nros::shutdown()` flips `ok()` false,
+    // Unbounded (production): run until `rclcpp::shutdown()` flips `ok()` false,
     // yielding to the network stack / peer threads per tick. This loop stays in
     // the header because the per-tick yield (`k_yield()` on Zephyr) and the
-    // `nros::ok()` check are platform / C++-global coupled — there is no
+    // `rclcpp::ok()` check are platform / C++-global coupled — there is no
     // Rust-side yield or shutdown primitive to move it behind the CFFI.
     for (;;) {
-        if (!::nros::ok()) break;
-        ::nros::Result last = ::nros::spin_once(10);
+        if (!::rclcpp::ok()) break;
+        ::rclcpp::Result last = ::rclcpp::spin_once(10);
         if (!last.ok()) return static_cast<int32_t>(last.raw());
         entry_tick_yield();
     }
@@ -220,14 +220,14 @@ class LinuxBoard {
         // every typed single-executor C++ native entry calls, and it used to
         // skip the switch entirely — a census run booted normally instead.
         const bool census = ::nros_cpp_census_begin() != 0;
-        // Issue 1732 — a SIGTERM / SIGINT makes `nros::ok()` false, so the
-        // spin below returns and `nros::shutdown()` closes the session instead
+        // Issue 1732 — a SIGTERM / SIGINT makes `rclcpp::ok()` false, so the
+        // spin below returns and `rclcpp::shutdown()` closes the session instead
         // of the process dying with it open. Before init: a signal during
         // `setup` is not lost.
         (void)::nros_cpp_termination_guard_install();
         // Phase 266: env overlay (NROS_LOCATOR / ROS_DOMAIN_ID) applies via
         // init — null locator and 0 domain_id both trigger the env fallback.
-        nros::Result r = nros::init(nullptr, 0, sn, node_namespace);
+        rclcpp::Result r = rclcpp::init_in(nullptr, 0, sn, node_namespace);
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         int32_t rc = setup();
         // "Write what the recorder saw and exit" exactly where the spin is:
@@ -241,15 +241,15 @@ class LinuxBoard {
         // incomplete and every check against it refuses.
         if (census) {
             int32_t cr = ::nros_cpp_census_finish(sn);
-            (void)nros::shutdown();
+            (void)rclcpp::shutdown();
             return rc != 0 ? rc : cr;
         }
         if (rc != 0) {
-            (void)nros::shutdown();
+            (void)rclcpp::shutdown();
             return rc;
         }
         int32_t sc = detail::component_spin_loop();
-        (void)nros::shutdown();
+        (void)rclcpp::shutdown();
         return sc;
     }
 
@@ -343,7 +343,7 @@ class LinuxBoard {
 /// already leaned this way: "single + metadata-driven".)
 ///
 /// Lifecycle (mirrors ASI `actuation_module/src/main.cpp`):
-///   `nros::init(domain) → network-wait → register_fn → spin → shutdown`.
+///   `rclcpp::init(domain) → network-wait → register_fn → spin → shutdown`.
 ///
 /// The runtime ops + arena are the **same** `detail::EntryNodeRuntime`
 /// machinery `LinuxBoard` uses — only the lifecycle differs:
@@ -394,7 +394,7 @@ class ZephyrBoard {
     /// it; on this board there is no environment, so it is the answer.
     ///
     /// Before this overload existed, every board here called the 3-arg
-    /// `nros::init` and the namespace reached nothing at all (issue 1434): the
+    /// `rclcpp::init` and the namespace reached nothing at all (issue 1434): the
     /// blob carried it, `nros_boot_config_namespace` could read it, and no
     /// call site did.
     ///
@@ -423,16 +423,16 @@ class ZephyrBoard {
         const char* override_loc = nros_runtime_locator_override();
         const char* effective_loc =
             (override_loc != nullptr && override_loc[0] != '\0') ? override_loc : locator;
-        nros::Result r = nros::init(effective_loc, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), sn,
-                                    node_namespace);
+        rclcpp::Result r = rclcpp::init_in(
+            effective_loc, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), sn, node_namespace);
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         int32_t rc = setup();
         if (rc != 0) {
-            (void)nros::shutdown();
+            (void)rclcpp::shutdown();
             return rc;
         }
         int32_t sc = detail::component_spin_loop();
-        (void)nros::shutdown();
+        (void)rclcpp::shutdown();
         return sc;
     }
 
@@ -575,7 +575,7 @@ class NuttxBoard {
     /// it; on this board there is no environment, so it is the answer.
     ///
     /// Before this overload existed, every board here called the 3-arg
-    /// `nros::init` and the namespace reached nothing at all (issue 1434): the
+    /// `rclcpp::init` and the namespace reached nothing at all (issue 1434): the
     /// blob carried it, `nros_boot_config_namespace` could read it, and no
     /// call site did.
     ///
@@ -588,16 +588,16 @@ class NuttxBoard {
         nros_board_network_wait();
         const char* sn =
             (session_name != nullptr && session_name[0] != '\0') ? session_name : "node";
-        nros::Result r =
-            nros::init(locator, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), sn, node_namespace);
+        rclcpp::Result r = rclcpp::init_in(locator, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), sn,
+                                           node_namespace);
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         int32_t rc = setup();
         if (rc != 0) {
-            (void)nros::shutdown();
+            (void)rclcpp::shutdown();
             return rc;
         }
         int32_t sc = detail::component_spin_loop();
-        (void)nros::shutdown();
+        (void)rclcpp::shutdown();
         return sc;
     }
 
@@ -707,7 +707,7 @@ class NuttxBoard {
 /// to the typed entry's `app_main`), and NetX Duo is already up — so
 /// `run_components` MUST NOT enter the kernel. It brings the nros runtime online
 /// and spins the real executor: `network_wait` (weak no-op — NetX is up at
-/// boot) → `nros::init` → `setup` (constructs the component + `configure(node)`
+/// boot) → `rclcpp::init` → `setup` (constructs the component + `configure(node)`
 /// binds real callbacks) → `detail::component_spin_loop` → `shutdown`.
 ///
 /// Domain id is `NROS_ENTRY_DOMAIN_ID` (embedded: compile-time, never env —
@@ -725,7 +725,7 @@ class ThreadxBoard {
     /// it; on this board there is no environment, so it is the answer.
     ///
     /// Before this overload existed, every board here called the 3-arg
-    /// `nros::init` and the namespace reached nothing at all (issue 1434): the
+    /// `rclcpp::init` and the namespace reached nothing at all (issue 1434): the
     /// blob carried it, `nros_boot_config_namespace` could read it, and no
     /// call site did.
     ///
@@ -738,16 +738,16 @@ class ThreadxBoard {
         nros_board_network_wait();
         const char* sn =
             (session_name != nullptr && session_name[0] != '\0') ? session_name : "node";
-        nros::Result r =
-            nros::init(locator, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), sn, node_namespace);
+        rclcpp::Result r = rclcpp::init_in(locator, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), sn,
+                                           node_namespace);
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         int32_t rc = setup();
         if (rc != 0) {
-            (void)nros::shutdown();
+            (void)rclcpp::shutdown();
             return rc;
         }
         int32_t sc = detail::component_spin_loop();
-        (void)nros::shutdown();
+        (void)rclcpp::shutdown();
         return sc;
     }
 
@@ -784,7 +784,7 @@ class ThreadxBoard {
 /// the typed entry's `app_main`). So the network is up and the kernel is
 /// running — `run_components` MUST NOT enter the kernel. It brings the nros
 /// runtime online and spins the real executor: `network_wait` (weak no-op — the
-/// startup task already waited on the netif) → `nros::init` → `setup` (constructs
+/// startup task already waited on the netif) → `rclcpp::init` → `setup` (constructs
 /// the component + `configure(node)` binds real callbacks) →
 /// `detail::component_spin_loop` → `shutdown`.
 ///
@@ -805,7 +805,7 @@ class FreertosBoard {
     /// it; on this board there is no environment, so it is the answer.
     ///
     /// Before this overload existed, every board here called the 3-arg
-    /// `nros::init` and the namespace reached nothing at all (issue 1434): the
+    /// `rclcpp::init` and the namespace reached nothing at all (issue 1434): the
     /// blob carried it, `nros_boot_config_namespace` could read it, and no
     /// call site did.
     ///
@@ -818,16 +818,16 @@ class FreertosBoard {
         nros_board_network_wait();
         const char* sn =
             (session_name != nullptr && session_name[0] != '\0') ? session_name : "node";
-        nros::Result r =
-            nros::init(locator, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), sn, node_namespace);
+        rclcpp::Result r = rclcpp::init_in(locator, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), sn,
+                                           node_namespace);
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         int32_t rc = setup();
         if (rc != 0) {
-            (void)nros::shutdown();
+            (void)rclcpp::shutdown();
             return rc;
         }
         int32_t sc = detail::component_spin_loop();
-        (void)nros::shutdown();
+        (void)rclcpp::shutdown();
         return sc;
     }
 
@@ -928,14 +928,14 @@ class FreertosBoard {
 };
 
 /// phase-337 W8 — back-compat spelling. C++ users write the board type BY HAND
-/// in `NROS_MAIN(::nros::board::NativeBoard, …)`, so unlike the Rust-side
+/// in `NROS_MAIN(::rclcpp::board::NativeBoard, …)`, so unlike the Rust-side
 /// rename (which the codegen emitter follows automatically) this one is a
 /// source-breaking change for hand-written entries. The alias keeps them
 /// compiling; `LinuxBoard` is the spelling to write.
 using NativeBoard = LinuxBoard;
 
 } // namespace board
-} // namespace nros
+} // namespace rclcpp
 
 // Phase 219.E — `NROS_MAIN(<Board>, "<launch_spec>")` declarative
 // marker. Expands to a sentinel TU-local symbol so the cmake fn can
@@ -947,7 +947,7 @@ using NativeBoard = LinuxBoard;
 // Usage:
 //
 //   #include <nros/main.hpp>
-//   NROS_MAIN(::nros::board::LinuxBoard, "demo_bringup:system.launch.xml")
+//   NROS_MAIN(::rclcpp::board::LinuxBoard, "demo_bringup:system.launch.xml")
 //
 // Putting it in a user TU is OPTIONAL. The generated TU (emitted by
 // `nano_ros_entry(LAUNCH …)`) carries the canonical `int main()` body

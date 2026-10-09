@@ -4,7 +4,7 @@
 /**
  * @file owned.hpp
  * @ingroup grp_support
- * @brief `nros::Owned<T>` — what an entity's `X::SharedPtr` is on every target.
+ * @brief `rclcpp::Owned<T>` — what an entity's `X::SharedPtr` is on every target.
  */
 
 #ifndef NROS_CPP_OWNED_HPP
@@ -12,7 +12,7 @@
 
 #include "nros/traits.hpp"
 
-namespace nros {
+namespace rclcpp {
 
 /// Owns an entity BY VALUE and speaks pointer — phase-442 W8.
 ///
@@ -20,7 +20,7 @@ namespace nros {
 ///
 /// An entity that the executor DISPATCHES to — a subscription, a service, an
 /// action, a timer — is owned by the Rust arena, not by C++, and its
-/// `X::SharedPtr` is a `nros::Handle` over `{executor, handle_id}`. That is
+/// `X::SharedPtr` is a `rclcpp::Handle` over `{executor, handle_id}`. That is
 /// what `Timer` already is, and the ABI has the entry point for it:
 /// `nros_cpp_subscription_register(..., out_handle_id)`, whose own doc says
 /// "arena (rclcpp dispatch model), as opposed to the poll-style
@@ -129,7 +129,7 @@ namespace nros {
 /// It is MOVE-ONLY, because a publisher is. Upstream's handle copies. The W0
 /// census found no entity handle copied anywhere in this tree or the porting
 /// corpus, so this costs nothing measured — and it applies only to the kinds
-/// listed above, because a dispatch entity's handle is `nros::Handle`, which
+/// listed above, because a dispatch entity's handle is `rclcpp::Handle`, which
 /// copies.
 ///
 /// There is also no `use_count()`, no `weak_ptr`, and no custom deleter. The
@@ -154,7 +154,7 @@ namespace nros {
 /// const view exists — it is just not a distinct type.
 template <typename T> class Owned {
     static_assert(tr::is_same<T, typename tr::remove_const<T>::type>::value,
-                  "nros::Owned<const T> is not the const flavour of nros::Owned<T> -- it "
+                  "rclcpp::Owned<const T> is not the const flavour of rclcpp::Owned<T> -- it "
                   "declares cleanly and is ill-formed on the first move or reset(). "
                   "X::ConstSharedPtr is X::SharedPtr; for a const VIEW, take a "
                   "`const Owned<T>&` and use its const operator-> / get().");
@@ -229,6 +229,6 @@ template <typename T> bool operator!=(decltype(nullptr), const Owned<T>& a) {
     return static_cast<bool>(a);
 }
 
-} // namespace nros
+} // namespace rclcpp
 
 #endif // NROS_CPP_OWNED_HPP

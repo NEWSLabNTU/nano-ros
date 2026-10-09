@@ -7,7 +7,7 @@
 /**
  * @file fixed_string.hpp
  * @ingroup grp_support
- * @brief `nros::FixedString<N>` — fixed-capacity null-terminated string.
+ * @brief `rclcpp::FixedString<N>` — fixed-capacity null-terminated string.
  */
 
 #ifndef NROS_CPP_FIXED_STRING_HPP
@@ -22,7 +22,7 @@
 // has one definition site, which carries the measurement for both cases.
 #include "nros/std_detect.hpp"
 
-namespace nros {
+namespace rclcpp {
 
 /// Fixed-capacity null-terminated string.
 ///
@@ -32,7 +32,7 @@ namespace nros {
 ///
 /// Usage:
 /// ```cpp
-/// nros::FixedString<256> name;
+/// rclcpp::FixedString<256> name;
 /// name = "hello world";
 /// printf("%s (len=%zu)\n", name.c_str(), name.length());
 /// ```
@@ -121,6 +121,6 @@ template <size_t N> struct FixedString {
 #endif
 };
 
-} // namespace nros
+} // namespace rclcpp
 
 #endif // NROS_CPP_FIXED_STRING_HPP

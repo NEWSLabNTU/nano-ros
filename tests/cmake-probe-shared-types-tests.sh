@@ -257,7 +257,7 @@ void Node$p::on_msg(const ::${msgpkg}::msg::$msgtype& msg) {
 }
 
 ::rclcpp::Result Node$p::configure(::rclcpp::Node& node) {
-    return ::nros::bind_subscription<::${msgpkg}::msg::$msgtype, Node$p, &Node$p::on_msg>(
+    return ::rclcpp::bind_subscription<::${msgpkg}::msg::$msgtype, Node$p, &Node$p::on_msg>(
         node, "/stamped_$p", this);
 }
 

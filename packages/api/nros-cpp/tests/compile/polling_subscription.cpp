@@ -1,4 +1,4 @@
-// Compile regression for issue 0278: `nros::PollingSubscription<M>` — the
+// Compile regression for issue 0278: `rclcpp::PollingSubscription<M>` — the
 // latest-value polling subscriber (analog of
 // `autoware_utils::InterProcessPollingSubscriber`).
 //
@@ -29,9 +29,9 @@ struct Int32 {
 };
 
 // Force template instantiation (bodies type-checked at compile).
-inline ::nros::Result instantiate(::rclcpp::Node& node) {
-    ::nros::PollingSubscription<Int32> sub;
-    ::nros::Result r = node.create_polling_subscription(sub, "/count");
+inline ::rclcpp::Result instantiate(::rclcpp::Node& node) {
+    ::rclcpp::PollingSubscription<Int32> sub;
+    ::rclcpp::Result r = node.create_polling_subscription(sub, "/count");
 
     // The latest-value accessors: `take_data`/`take_new_data`/`peek` return a
     // `const Int32*`; `take` copies into an out-param and returns a bool;
@@ -57,11 +57,11 @@ inline ::nros::Result instantiate(::rclcpp::Node& node) {
 // API-shape static assertions — a regression in the return types stops
 // compiling here (same intent as spin_verbs.cpp).
 static_assert(
-    std::is_same<decltype(std::declval<::nros::PollingSubscription<Int32>&>().take_data()),
+    std::is_same<decltype(std::declval<::rclcpp::PollingSubscription<Int32>&>().take_data()),
                  const Int32*>::value,
     "PollingSubscription<M>::take_data() must return const M*");
 static_assert(
-    std::is_same<decltype(std::declval<::nros::PollingSubscription<Int32>&>().take_new_data()),
+    std::is_same<decltype(std::declval<::rclcpp::PollingSubscription<Int32>&>().take_new_data()),
                  const Int32*>::value,
     "PollingSubscription<M>::take_new_data() must return const M*");
 // phase-379 W6 — no `take(M&)` assertion: the member is deliberately absent so

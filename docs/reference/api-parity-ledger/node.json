@@ -595,5 +595,17 @@
   "cpp:NodeWithTimers": {
     "verdict": "extension",
     "why": "phase-427 W4 — `nros::Node` PLUS an inline pool of N `nros::Timer` slots, and the answer to what became of `ComponentNode`'s `Timer timers_[NROS_COMPONENT_MAX_TIMERS]`. A `Timer`'s destructor cancels its timer, so one created in a constructor must outlive the call; the pool is what let a component write `create_wall_timer_in<C, &C::tick>(500)` with no storage argument. Merging that pool onto `Node` would have charged every node in the tree 192 unconditional bytes for storage most never touch, on targets chosen for having no memory to spare — so the depth is a TEMPLATE PARAMETER and the default is zero: plain `Node` carries no pool and `sizeof(Node)` is unchanged by this half of the merge. Upstream has nothing here because `rclcpp::Node::create_wall_timer` returns a `shared_ptr` the caller owns; ours cannot allocate. It is NOT a second node type — it adds storage and two verbs, declares no identity, and every instance IS-A `Node`, which is exactly the relation `ComponentNode` never had. `Node` itself could not become the template: `rclcpp::Node` is an alias asserted by `std::is_same`, 218 in-tree sites spell `Node` with no argument list, and every `Node&` parameter in the tree would otherwise accept only one depth."
+  },
+  "cpp:init_in": {
+    "verdict": "extension",
+    "why": "phase-483 W1 — the `Result`-returning session open that was `nros::init(locator, domain_id [, session_name [, node_namespace]])`. It moved into `rclcpp::` with the rest of the C++ API and took the `_in` suffix under RFC-0089's `_in` rule: upstream's `rclcpp::init` returns `void` and takes `(argc, argv)`, and `rclcpp::init(0, nullptr)` would otherwise bind ours through the null-pointer conversion, so an ours-only contract (an explicit locator and domain, a `Result` channel) needs a different NAME rather than a different signature. `rclcpp::init(argc, argv)` and `rclcpp::init()` are upstream's and forward to it."
+  },
+  "cpp:shutdown_in": {
+    "verdict": "extension",
+    "why": "phase-483 W1 — the `Result`-returning teardown that was `nros::shutdown()`. Upstream's `rclcpp::shutdown()` returns `bool` with the same empty argument list, so the two could not coexist under one name; ours takes the `_in` suffix (RFC-0089's `_in` rule: ours-only contract, `Result` channel). `rclcpp::shutdown()` is upstream's and reports `shutdown_in().ok()`."
+  },
+  "cpp:spin_in": {
+    "verdict": "extension",
+    "why": "phase-483 W1 — the `Result`-returning global spin that was `nros::spin()` / `nros::spin(duration_ms, poll_ms)`: drive the one global executor until `rclcpp::ok()` goes false, or for a wall-clock budget. Upstream's `rclcpp::spin(node)` takes the node to spin and returns `void`; ours takes none (a node is not a unit of dispatch, see `cpp:spin_once`), so it takes the `_in` suffix rather than sitting under upstream's name with a different contract."
   }
 }

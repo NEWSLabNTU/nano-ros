@@ -61,8 +61,8 @@ void FibonacciClient::on_result(const uint8_t* /*goal_id*/, int32_t /*status*/, 
     ::setvbuf(stdout, nullptr, _IONBF, 0);
 
     ::rclcpp::Result r =
-        ::nros::bind_action_client<FibonacciClient, &FibonacciClient::on_goal_response,
-                                   &FibonacciClient::on_feedback, &FibonacciClient::on_result>(
+        ::rclcpp::bind_action_client<FibonacciClient, &FibonacciClient::on_goal_response,
+                                     &FibonacciClient::on_feedback, &FibonacciClient::on_result>(
             node, client_, poll_timer_, "/fibonacci", "example_interfaces/action/Fibonacci", this);
     if (!r.ok()) return r;
 

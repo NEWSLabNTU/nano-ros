@@ -635,7 +635,7 @@
     },
     "envelope": {
       "file": "packages/api/nros-cpp/include/nros/nros.hpp",
-      "text": "ADOPT-BOUNDED: the clock is `nros::Clock*` (what `node->get_clock()` returns),"
+      "text": "ADOPT-BOUNDED: the clock is `rclcpp::Clock*` (what `node->get_clock()` returns),"
     }
   },
   "cpp:create_wall_timer": {

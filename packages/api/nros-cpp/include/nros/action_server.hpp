@@ -4,7 +4,7 @@
 /**
  * @file action_server.hpp
  * @ingroup grp_action
- * @brief `nros::ActionServer<A>` — typed action server.
+ * @brief `rclcpp_action::Server<A>` — typed action server.
  */
 
 #ifndef NROS_CPP_ACTION_SERVER_HPP
@@ -53,7 +53,10 @@ nros_cpp_action_server_set_accepted_callback(void* handle, nros_cpp_accepted_cal
                                              void* ctx);
 } // extern "C"
 
-namespace nros {
+// phase-483 W1: the goal vocabulary lives in `rclcpp_action::`, where upstream
+// keeps it. It was `nros::` until then, and `rclcpp_action::` re-exported two
+// of the five names.
+namespace rclcpp_action {
 
 /// Value type for a goal identifier — the 16 bytes ROS 2 carries as
 /// `unique_identifier_msgs/msg/UUID`.
@@ -130,9 +133,9 @@ struct GoalUUID {
 };
 
 static_assert(sizeof(GoalUUID) == 16,
-              "nros::GoalUUID must be exactly the 16 bytes the FFI passes as uint8_t[16]");
+              "rclcpp_action::GoalUUID must be exactly the 16 bytes the FFI passes as uint8_t[16]");
 static_assert(alignof(GoalUUID) == alignof(uint8_t),
-              "nros::GoalUUID must not add alignment over its uint8_t[16]");
+              "rclcpp_action::GoalUUID must not add alignment over its uint8_t[16]");
 
 /// Bound on the action name an action entity remembers for
 /// `get_action_name()` — phase-417 W4.b.
@@ -142,7 +145,7 @@ static_assert(alignof(GoalUUID) == alignof(uint8_t),
 /// the two callback tiers had neither, which is how the accessor came to
 /// exist on half the C++ action surface (ledger rows
 /// `c:action_{client,server}_get_action_name`, "four surfaces, one
-/// accessor"). Sized to match `nros::SUBSCRIPTION_TOPIC_NAME_MAX` and the C
+/// accessor"). Sized to match `rclcpp::SUBSCRIPTION_TOPIC_NAME_MAX` and the C
 /// surface's `MAX_ACTION_NAME_LEN`, so a name that fits one entity fits all
 /// of them and a truncation is not a per-class surprise.
 static const size_t ACTION_NAME_MAX = 256;
@@ -157,7 +160,7 @@ static const size_t ACTION_NAME_MAX = 256;
 ///
 /// The FFI below is 0-based (`NROS_C_GOAL_REJECT = 0` in `component.h`),
 /// because a zero-initialised decision slot must mean reject. That integer
-/// is not this enum: convert with `nros::to_ffi(GoalResponse)`, NEVER with a
+/// is not this enum: convert with `rclcpp_action::to_ffi(GoalResponse)`, NEVER with a
 /// `static_cast<int32_t>` — the cast yields upstream's value, and the FFI
 /// reads `REJECT` (1) as accept-and-execute.
 enum class GoalResponse : int8_t {
@@ -179,7 +182,7 @@ enum class GoalResponse : int8_t {
 /// `int8_t` with `REJECT = 1, ACCEPT = 2`, and so is this one (0-based and
 /// CamelCase until issue 1637). The FFI is
 /// 0-based (`NROS_C_CANCEL_REJECT = 0`): convert with
-/// `nros::to_ffi(CancelResponse)`, never with a `static_cast<int32_t>`.
+/// `rclcpp_action::to_ffi(CancelResponse)`, never with a `static_cast<int32_t>`.
 enum class CancelResponse : int8_t {
     REJECT = 1,
     ACCEPT = 2,
@@ -228,7 +231,7 @@ enum class GoalStatus : int8_t {
     Aborted = 6,
 };
 
-} // namespace nros
+} // namespace rclcpp_action
 
 /// `rclcpp::Node` is named by the friend declaration below and by the
 /// out-of-line `Node::create_*` bodies further down. `nros/node.hpp` (included
@@ -237,7 +240,7 @@ enum class GoalStatus : int8_t {
 /// an unqualified `friend class Node;` used to supply implicitly.
 ///
 /// phase-427 W7 — declared in `rclcpp::`, which is where the definition moved.
-/// An elaborated `class Node;` in `nros::` would now declare a SECOND, distinct
+/// An elaborated `class Node;` in `rclcpp::` would now declare a SECOND, distinct
 /// class and collide with the `rclcpp::Node` alias.
 namespace rclcpp {
 class Node;
@@ -247,13 +250,13 @@ class Node;
 // `rclcpp_action::Server<A>` -- DEFINED here (RFC-0089: rclcpp_action:: is the home)
 // ============================================================================
 //
-// phase-428: the definition moved from `nros::ActionServer<A>` to
+// phase-428: the definition moved from `rclcpp_action::Server<A>` to
 // `rclcpp_action::Server<A>` and the alias turned around. This one is a RENAME
 // as well as a move -- upstream's namespace already says "action", so the type
 // is `Server` there and `ActionServer` here.
 //
 // The vocabulary the signatures use (`GoalUUID`, `GoalResponse`,
-// `CancelResponse`, `GoalStatus`, `CancelReturnCode`) stays in `nros::` and is
+// `CancelResponse`, `GoalStatus`, `CancelReturnCode`) stays in `rclcpp::` and is
 // reached qualified: RFC-0089's flip is about the nine TYPES it enumerates, and
 // widening it silently to every name in the header is how a sweep stops being
 // reviewable.
@@ -265,9 +268,6 @@ class Node;
 // a compile error into a silent renumbering.
 namespace rclcpp_action {
 
-using ::nros::CancelResponse;
-using ::nros::GoalResponse;
-
 /// Typed action server for a ROS 2 action.
 ///
 /// Mirrors `rclcpp_action::Server<A>` with a callback-based API. The
@@ -278,13 +278,13 @@ using ::nros::GoalResponse;
 /// Usage:
 /// ```cpp
 /// using Fib = example_interfaces::action::Fibonacci;
-/// nros::ActionServer<Fib> srv;
+/// rclcpp_action::Server<Fib> srv;
 /// NROS_TRY(node.create_action_server(srv, "/fibonacci"));
 ///
 /// srv.set_goal_callback(
 ///     [](const uint8_t[16], const Fib::Goal& g) {
-///         if (g.order > 46) return nros::GoalResponse::REJECT;
-///         return nros::GoalResponse::ACCEPT_AND_EXECUTE;
+///         if (g.order > 46) return rclcpp_action::GoalResponse::REJECT;
+///         return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
 ///     });
 /// ```
 ///
@@ -311,20 +311,22 @@ template <typename A> class Server {
     using FeedbackType = typename A::Feedback;
 
     /// User-facing typed goal callback signature.
-    using TypedGoalFn = ::nros::GoalResponse (*)(const uint8_t uuid[16], const GoalType& goal);
+    using TypedGoalFn = ::rclcpp_action::GoalResponse (*)(const uint8_t uuid[16],
+                                                          const GoalType& goal);
     /// User-facing typed goal callback signature with user context (Phase 84.G9).
-    using TypedGoalFnWithCtx = ::nros::GoalResponse (*)(const uint8_t uuid[16],
-                                                        const GoalType& goal, void* ctx);
+    using TypedGoalFnWithCtx = ::rclcpp_action::GoalResponse (*)(const uint8_t uuid[16],
+                                                                 const GoalType& goal, void* ctx);
     /// User-facing typed cancel callback signature.
-    using TypedCancelFn = ::nros::CancelResponse (*)(const uint8_t uuid[16]);
+    using TypedCancelFn = ::rclcpp_action::CancelResponse (*)(const uint8_t uuid[16]);
     /// User-facing typed cancel callback signature with user context (Phase 84.G9).
-    using TypedCancelFnWithCtx = ::nros::CancelResponse (*)(const uint8_t uuid[16], void* ctx);
+    using TypedCancelFnWithCtx = ::rclcpp_action::CancelResponse (*)(const uint8_t uuid[16],
+                                                                     void* ctx);
     /// User-facing typed accepted-goal callback signature (issue 0796).
     using TypedAcceptedFn = void (*)(const uint8_t uuid[16]);
     /// User-facing typed accepted-goal callback signature with user context.
     using TypedAcceptedFnWithCtx = void (*)(const uint8_t uuid[16], void* ctx);
     /// User-facing visitor signature for `for_each_active_goal`.
-    using TypedVisitorFn = void (*)(const uint8_t uuid[16], ::nros::GoalStatus status);
+    using TypedVisitorFn = void (*)(const uint8_t uuid[16], ::rclcpp_action::GoalStatus status);
 
     /// Register a typed goal callback.
     ///
@@ -332,8 +334,8 @@ template <typename A> class Server {
     /// (empty-capture lambda or plain function pointer).
     /// F must be a stateless callable convertible to TypedGoalFn
     /// (empty-capture lambda or plain function pointer).
-    template <typename F>::nros::Result set_goal_callback(F f) {
-        if (!initialized_) return ::nros::Result(::nros::ErrorCode::NotInitialized);
+    template <typename F>::rclcpp::Result set_goal_callback(F f) {
+        if (!initialized_) return ::rclcpp::Result(::rclcpp::ErrorCode::NotInitialized);
         user_goal_fn_ = TypedGoalFn(f); // compile error if F is not convertible
         user_goal_fn_ctx_ = nullptr;    // mutually exclusive with _with_ctx
         user_goal_ctx_ = nullptr;
@@ -347,8 +349,8 @@ template <typename A> class Server {
     /// objects without capturing lambdas or file-scope globals. Overrides
     /// and is overridden by `set_goal_callback()` (the two modes are
     /// mutually exclusive).
-    ::nros::Result set_goal_callback_with_ctx(TypedGoalFnWithCtx f, void* ctx) {
-        if (!initialized_) return ::nros::Result(::nros::ErrorCode::NotInitialized);
+    ::rclcpp::Result set_goal_callback_with_ctx(TypedGoalFnWithCtx f, void* ctx) {
+        if (!initialized_) return ::rclcpp::Result(::rclcpp::ErrorCode::NotInitialized);
         user_goal_fn_ctx_ = f;
         user_goal_ctx_ = ctx;
         user_goal_fn_ = nullptr;
@@ -358,8 +360,8 @@ template <typename A> class Server {
     /// Register a cancel callback.
     ///
     /// F must be a stateless callable convertible to TypedCancelFn.
-    template <typename F>::nros::Result set_cancel_callback(F f) {
-        if (!initialized_) return ::nros::Result(::nros::ErrorCode::NotInitialized);
+    template <typename F>::rclcpp::Result set_cancel_callback(F f) {
+        if (!initialized_) return ::rclcpp::Result(::rclcpp::ErrorCode::NotInitialized);
         user_cancel_fn_ = TypedCancelFn(f); // compile error if F is not convertible
         user_cancel_fn_ctx_ = nullptr;      // mutually exclusive with _with_ctx
         user_cancel_ctx_ = nullptr;
@@ -372,8 +374,8 @@ template <typename A> class Server {
     /// receives a `void*` alongside each UUID so stateful cancel policies
     /// don't need captured lambdas or global state. Mutually exclusive
     /// with `set_cancel_callback()`.
-    ::nros::Result set_cancel_callback_with_ctx(TypedCancelFnWithCtx f, void* ctx) {
-        if (!initialized_) return ::nros::Result(::nros::ErrorCode::NotInitialized);
+    ::rclcpp::Result set_cancel_callback_with_ctx(TypedCancelFnWithCtx f, void* ctx) {
+        if (!initialized_) return ::rclcpp::Result(::rclcpp::ErrorCode::NotInitialized);
         user_cancel_fn_ctx_ = f;
         user_cancel_ctx_ = ctx;
         user_cancel_fn_ = nullptr;
@@ -400,8 +402,8 @@ template <typename A> class Server {
     /// been accepted.
     ///
     /// F must be a stateless callable convertible to TypedAcceptedFn.
-    template <typename F>::nros::Result set_accepted_callback(F f) {
-        if (!initialized_) return ::nros::Result(::nros::ErrorCode::NotInitialized);
+    template <typename F>::rclcpp::Result set_accepted_callback(F f) {
+        if (!initialized_) return ::rclcpp::Result(::rclcpp::ErrorCode::NotInitialized);
         user_accepted_fn_ = TypedAcceptedFn(f); // compile error if F is not convertible
         user_accepted_fn_ctx_ = nullptr;        // mutually exclusive with _with_ctx
         user_accepted_ctx_ = nullptr;
@@ -412,8 +414,8 @@ template <typename A> class Server {
     ///
     /// Mirrors `set_goal_callback_with_ctx`. Mutually exclusive with
     /// `set_accepted_callback()`.
-    ::nros::Result set_accepted_callback_with_ctx(TypedAcceptedFnWithCtx f, void* ctx) {
-        if (!initialized_) return ::nros::Result(::nros::ErrorCode::NotInitialized);
+    ::rclcpp::Result set_accepted_callback_with_ctx(TypedAcceptedFnWithCtx f, void* ctx) {
+        if (!initialized_) return ::rclcpp::Result(::rclcpp::ErrorCode::NotInitialized);
         user_accepted_fn_ctx_ = f;
         user_accepted_ctx_ = ctx;
         user_accepted_fn_ = nullptr;
@@ -429,15 +431,15 @@ template <typename A> class Server {
     /// @param goal_id  16-byte goal UUID from the goal callback.
     /// @param feedback Feedback to publish.
     /// @return Result indicating success or failure.
-    ::nros::Result publish_feedback(const uint8_t goal_id[16], const FeedbackType& feedback) {
-        if (!initialized_) return ::nros::Result(::nros::ErrorCode::NotInitialized);
+    ::rclcpp::Result publish_feedback(const uint8_t goal_id[16], const FeedbackType& feedback) {
+        if (!initialized_) return ::rclcpp::Result(::rclcpp::ErrorCode::NotInitialized);
 
-        uint8_t buf[::nros::detail::buffer_bounds<FeedbackType>::tx];
+        uint8_t buf[::rclcpp::detail::buffer_bounds<FeedbackType>::tx];
         size_t len = 0;
         if (FeedbackType::ffi_serialize(&feedback, buf, sizeof(buf), &len) != 0) {
-            return ::nros::Result(::nros::ErrorCode::Error);
+            return ::rclcpp::Result(::rclcpp::ErrorCode::Error);
         }
-        return ::nros::Result(nros_cpp_action_server_publish_feedback(
+        return ::rclcpp::Result(nros_cpp_action_server_publish_feedback(
             storage_, executor_, reinterpret_cast<const uint8_t(*)[16]>(goal_id), buf, len));
     }
 
@@ -454,40 +456,42 @@ template <typename A> class Server {
     /// `ServerGoalHandle` (`succeed` / `abort` / `canceled`). Here the terminal
     /// status is an argument and the goal is named by its id, because there is no
     /// goal handle; `succeed` / `abort` / `canceled` below are forwarders onto this.
-    ::nros::Result complete_goal(const uint8_t goal_id[16], ::nros::GoalStatus status,
-                                 const ResultType& result) {
-        if (!initialized_) return ::nros::Result(::nros::ErrorCode::NotInitialized);
+    ::rclcpp::Result complete_goal(const uint8_t goal_id[16], ::rclcpp_action::GoalStatus status,
+                                   const ResultType& result) {
+        if (!initialized_) return ::rclcpp::Result(::rclcpp::ErrorCode::NotInitialized);
 
-        uint8_t buf[::nros::detail::buffer_bounds<ResultType>::tx];
+        uint8_t buf[::rclcpp::detail::buffer_bounds<ResultType>::tx];
         size_t len = 0;
         if (ResultType::ffi_serialize(&result, buf, sizeof(buf), &len) != 0) {
-            return ::nros::Result(::nros::ErrorCode::Error);
+            return ::rclcpp::Result(::rclcpp::ErrorCode::Error);
         }
-        return ::nros::Result(nros_cpp_action_server_complete_goal(
+        return ::rclcpp::Result(nros_cpp_action_server_complete_goal(
             storage_, executor_, reinterpret_cast<const uint8_t(*)[16]>(goal_id),
             static_cast<int32_t>(status), buf, len));
     }
 
     /// Terminate a goal as SUCCEEDED. Equivalent to
     /// `complete_goal(goal_id, GoalStatus::Succeeded, result)`.
-    ::nros::Result complete_goal(const uint8_t goal_id[16], const ResultType& result) {
-        return complete_goal(goal_id, ::nros::GoalStatus::Succeeded, result);
+    ::rclcpp::Result complete_goal(const uint8_t goal_id[16], const ResultType& result) {
+        return complete_goal(goal_id, ::rclcpp_action::GoalStatus::Succeeded, result);
     }
 
     /// @ref publish_feedback taking a `GoalUUID` value (phase-417 W4.b).
-    ::nros::Result publish_feedback(const ::nros::GoalUUID& goal_id, const FeedbackType& feedback) {
+    ::rclcpp::Result publish_feedback(const ::rclcpp_action::GoalUUID& goal_id,
+                                      const FeedbackType& feedback) {
         return publish_feedback(goal_id.data(), feedback);
     }
 
     /// @ref complete_goal taking a `GoalUUID` value (phase-417 W4.b).
-    ::nros::Result complete_goal(const ::nros::GoalUUID& goal_id, ::nros::GoalStatus status,
-                                 const ResultType& result) {
+    ::rclcpp::Result complete_goal(const ::rclcpp_action::GoalUUID& goal_id,
+                                   ::rclcpp_action::GoalStatus status, const ResultType& result) {
         return complete_goal(goal_id.data(), status, result);
     }
 
     /// @ref complete_goal taking a `GoalUUID` value (phase-417 W4.b).
-    ::nros::Result complete_goal(const ::nros::GoalUUID& goal_id, const ResultType& result) {
-        return complete_goal(goal_id.data(), ::nros::GoalStatus::Succeeded, result);
+    ::rclcpp::Result complete_goal(const ::rclcpp_action::GoalUUID& goal_id,
+                                   const ResultType& result) {
+        return complete_goal(goal_id.data(), ::rclcpp_action::GoalStatus::Succeeded, result);
     }
 
     /// Terminate `goal_id` as SUCCEEDED — phase-417 W4.b.
@@ -506,16 +510,16 @@ template <typename A> class Server {
     /// Upstream's is `goal_handle->succeed(std::shared_ptr<Result>)`. Ours is on
     /// the server, keyed by goal id, result by const reference: there is no goal
     /// handle and no `shared_ptr` (goals live in the server's static arena).
-    ::nros::Result succeed(const uint8_t goal_id[16], const ResultType& result) {
-        return complete_goal(goal_id, ::nros::GoalStatus::Succeeded, result);
+    ::rclcpp::Result succeed(const uint8_t goal_id[16], const ResultType& result) {
+        return complete_goal(goal_id, ::rclcpp_action::GoalStatus::Succeeded, result);
     }
 
     /// Terminate `goal_id` as ABORTED. See @ref succeed.
     ///
     /// Upstream's is `goal_handle->abort(std::shared_ptr<Result>)`; this is on the
     /// server, keyed by goal id, result by const reference — no goal handle.
-    ::nros::Result abort(const uint8_t goal_id[16], const ResultType& result) {
-        return complete_goal(goal_id, ::nros::GoalStatus::Aborted, result);
+    ::rclcpp::Result abort(const uint8_t goal_id[16], const ResultType& result) {
+        return complete_goal(goal_id, ::rclcpp_action::GoalStatus::Aborted, result);
     }
 
     /// Terminate `goal_id` as CANCELED. See @ref succeed.
@@ -526,23 +530,23 @@ template <typename A> class Server {
     ///
     /// Upstream's is `goal_handle->canceled(std::shared_ptr<Result>)`; this is on the
     /// server, keyed by goal id, result by const reference — no goal handle.
-    ::nros::Result canceled(const uint8_t goal_id[16], const ResultType& result) {
-        return complete_goal(goal_id, ::nros::GoalStatus::Canceled, result);
+    ::rclcpp::Result canceled(const uint8_t goal_id[16], const ResultType& result) {
+        return complete_goal(goal_id, ::rclcpp_action::GoalStatus::Canceled, result);
     }
 
     /// @ref succeed taking a `GoalUUID` value.
-    ::nros::Result succeed(const ::nros::GoalUUID& goal_id, const ResultType& result) {
-        return complete_goal(goal_id.data(), ::nros::GoalStatus::Succeeded, result);
+    ::rclcpp::Result succeed(const ::rclcpp_action::GoalUUID& goal_id, const ResultType& result) {
+        return complete_goal(goal_id.data(), ::rclcpp_action::GoalStatus::Succeeded, result);
     }
 
     /// @ref abort taking a `GoalUUID` value.
-    ::nros::Result abort(const ::nros::GoalUUID& goal_id, const ResultType& result) {
-        return complete_goal(goal_id.data(), ::nros::GoalStatus::Aborted, result);
+    ::rclcpp::Result abort(const ::rclcpp_action::GoalUUID& goal_id, const ResultType& result) {
+        return complete_goal(goal_id.data(), ::rclcpp_action::GoalStatus::Aborted, result);
     }
 
     /// @ref canceled taking a `GoalUUID` value.
-    ::nros::Result canceled(const ::nros::GoalUUID& goal_id, const ResultType& result) {
-        return complete_goal(goal_id.data(), ::nros::GoalStatus::Canceled, result);
+    ::rclcpp::Result canceled(const ::rclcpp_action::GoalUUID& goal_id, const ResultType& result) {
+        return complete_goal(goal_id.data(), ::rclcpp_action::GoalStatus::Canceled, result);
     }
 
     /// Iterate over every currently live goal and invoke `f(uuid, status)`.
@@ -554,7 +558,7 @@ template <typename A> class Server {
     /// a `{uuid → state}` table from inside `set_goal_callback`.
     /// F must be a stateless callable convertible to void(*)(const uint8_t[16], GoalStatus).
     /// phase-456 W3b — the visitor rides the `void* ctx` this FFI already has,
-    /// carried by value through `nros::detail::fn_to_context`, instead of a
+    /// carried by value through `rclcpp::detail::fn_to_context`, instead of a
     /// `TypedVisitorFn user_visitor_fn_` member set on entry and cleared on
     /// exit. That member was the only piece of per-instance state on this class
     /// that was `nullptr` everywhere except inside one function body, and the
@@ -566,19 +570,19 @@ template <typename A> class Server {
     /// outlive the full-expression that built it. Nothing of the caller's is
     /// referenced after the call returns, which is also why the visitor needs
     /// no clearing step — there is nowhere for it to be left behind.
-    template <typename F>::nros::Result for_each_active_goal(F f) {
-        if (!initialized_) return ::nros::Result(::nros::ErrorCode::NotInitialized);
+    template <typename F>::rclcpp::Result for_each_active_goal(F f) {
+        if (!initialized_) return ::rclcpp::Result(::rclcpp::ErrorCode::NotInitialized);
         TypedVisitorFn visitor = TypedVisitorFn(f); // compile error if F is not convertible
 
         auto trampoline = [](const uint8_t goal_id[16], int8_t status, void* ctx) {
-            TypedVisitorFn fn = ::nros::detail::fn_from_context<TypedVisitorFn>(ctx);
+            TypedVisitorFn fn = ::rclcpp::detail::fn_from_context<TypedVisitorFn>(ctx);
             if (fn == nullptr) return;
-            fn(goal_id, static_cast<::nros::GoalStatus>(status));
+            fn(goal_id, static_cast<::rclcpp_action::GoalStatus>(status));
         };
-        return ::nros::Result(nros_cpp_action_server_for_each_active_goal(
+        return ::rclcpp::Result(nros_cpp_action_server_for_each_active_goal(
             storage_, executor_,
             reinterpret_cast<void (*)(const uint8_t(*)[16], int8_t, void*)>(+trampoline),
-            ::nros::detail::fn_to_context(visitor)));
+            ::rclcpp::detail::fn_to_context(visitor)));
     }
 
     /// Read back the action name this server was created on — phase-417 W4.b.
@@ -619,7 +623,9 @@ template <typename A> class Server {
     }
 
     /// @ref goal_exists taking a `GoalUUID` value.
-    bool goal_exists(const ::nros::GoalUUID& goal_id) const { return goal_exists(goal_id.data()); }
+    bool goal_exists(const ::rclcpp_action::GoalUUID& goal_id) const {
+        return goal_exists(goal_id.data());
+    }
 
     /// Check if the action server is initialized and valid.
     bool is_valid() const { return initialized_; }
@@ -720,30 +726,32 @@ template <typename A> class Server {
     static int32_t goal_trampoline(const uint8_t goal_id[16], const uint8_t* data, size_t len,
                                    void* ctx) {
         auto* self = static_cast<Server*>(ctx);
-        if (!self) return ::nros::to_ffi(::nros::GoalResponse::REJECT);
+        if (!self) return ::rclcpp_action::to_ffi(::rclcpp_action::GoalResponse::REJECT);
         GoalType g;
         if (GoalType::ffi_deserialize(data, len, &g) != 0) {
-            return ::nros::to_ffi(::nros::GoalResponse::REJECT);
+            return ::rclcpp_action::to_ffi(::rclcpp_action::GoalResponse::REJECT);
         }
         if (self->user_goal_fn_ctx_ != nullptr) {
-            return ::nros::to_ffi(self->user_goal_fn_ctx_(goal_id, g, self->user_goal_ctx_));
+            return ::rclcpp_action::to_ffi(
+                self->user_goal_fn_ctx_(goal_id, g, self->user_goal_ctx_));
         }
         if (self->user_goal_fn_ != nullptr) {
-            return ::nros::to_ffi(self->user_goal_fn_(goal_id, g));
+            return ::rclcpp_action::to_ffi(self->user_goal_fn_(goal_id, g));
         }
-        return ::nros::to_ffi(::nros::GoalResponse::REJECT);
+        return ::rclcpp_action::to_ffi(::rclcpp_action::GoalResponse::REJECT);
     }
 
     static int32_t cancel_trampoline(const uint8_t goal_id[16], void* ctx) {
         auto* self = static_cast<Server*>(ctx);
-        if (!self) return ::nros::to_ffi(::nros::CancelResponse::ACCEPT);
+        if (!self) return ::rclcpp_action::to_ffi(::rclcpp_action::CancelResponse::ACCEPT);
         if (self->user_cancel_fn_ctx_ != nullptr) {
-            return ::nros::to_ffi(self->user_cancel_fn_ctx_(goal_id, self->user_cancel_ctx_));
+            return ::rclcpp_action::to_ffi(
+                self->user_cancel_fn_ctx_(goal_id, self->user_cancel_ctx_));
         }
         if (self->user_cancel_fn_ != nullptr) {
-            return ::nros::to_ffi(self->user_cancel_fn_(goal_id));
+            return ::rclcpp_action::to_ffi(self->user_cancel_fn_(goal_id));
         }
-        return ::nros::to_ffi(::nros::CancelResponse::ACCEPT);
+        return ::rclcpp_action::to_ffi(::rclcpp_action::CancelResponse::ACCEPT);
     }
 
     static void accepted_trampoline(const uint8_t goal_id[16], void* ctx) {
@@ -758,21 +766,21 @@ template <typename A> class Server {
         }
     }
 
-    ::nros::Result install_callbacks() {
+    ::rclcpp::Result install_callbacks() {
         bool goal_set = (user_goal_fn_ != nullptr) || (user_goal_fn_ctx_ != nullptr);
         bool cancel_set = (user_cancel_fn_ != nullptr) || (user_cancel_fn_ctx_ != nullptr);
         bool accepted_set = (user_accepted_fn_ != nullptr) || (user_accepted_fn_ctx_ != nullptr);
         nros_cpp_goal_callback_t gcb = goal_set ? &goal_trampoline : nullptr;
         nros_cpp_cancel_callback_t ccb = cancel_set ? &cancel_trampoline : nullptr;
         nros_cpp_ret_t ret = nros_cpp_action_server_set_callbacks(storage_, gcb, ccb, this);
-        if (ret != 0) return ::nros::Result(ret);
+        if (ret != 0) return ::rclcpp::Result(ret);
         // Issue 0796 — a SECOND install call rather than a fourth parameter on
         // the first: `nros_cpp_action_server_set_callbacks` is declared in
         // three places and called directly by C components, so growing it
         // would have broken every one of them. Both calls pass the same
         // `this`, which is the shared context slot the runtime keeps.
         nros_cpp_accepted_callback_t acb = accepted_set ? &accepted_trampoline : nullptr;
-        return ::nros::Result(nros_cpp_action_server_set_accepted_callback(storage_, acb, this));
+        return ::rclcpp::Result(nros_cpp_action_server_set_accepted_callback(storage_, acb, this));
     }
 
     alignas(8) uint8_t storage_[NROS_CPP_ACTION_SERVER_STORAGE_SIZE];
@@ -793,43 +801,34 @@ template <typename A> class Server {
     // that was never written, and an earlier phase-417 W4.b wave deleted it as
     // dead state. W4.b's second half writes the accessor, so it is back and it
     // is read — see `get_action_name()` for why the FFI cannot answer instead.
-    char action_name_[::nros::ACTION_NAME_MAX];
+    char action_name_[::rclcpp_action::ACTION_NAME_MAX];
     bool initialized_;
 };
 
 } // namespace rclcpp_action
 
-// ============================================================================
-// nros:: -- the in-tree spelling, now the ALIAS (RFC-0089). Declared here,
-// before the out-of-line `Node::create_*` bodies below, which are written in
-// the `nros::` vocabulary.
-// ============================================================================
-namespace nros {
-template <typename A> using ActionServer = ::rclcpp_action::Server<A>;
-} // namespace nros
-
 // Phase 84.G8: out-of-line definition of Node::create_action_server<A>().
 #include "nros/node.hpp"
 
-namespace nros {} // namespace nros
+namespace rclcpp {} // namespace rclcpp
 
 namespace rclcpp {
 template <typename A>
-Result Node::create_action_server(::nros::ActionServer<A>& out, const char* action_name,
-                                  const ::nros::QoS& qos,
-                                  const ::nros::ActionServerOptions& options) {
-    if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
-    nros_cpp_qos_t ffi_qos = ::nros::detail::qos_to_ffi(qos);
+Result Node::create_action_server(::rclcpp_action::Server<A>& out, const char* action_name,
+                                  const ::rclcpp::QoS& qos,
+                                  const ::rclcpp::ActionServerOptions& options) {
+    if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
+    nros_cpp_qos_t ffi_qos = ::rclcpp::detail::qos_to_ffi(qos);
     nros_cpp_ret_t ret = nros_cpp_action_server_create(&handle_, action_name, A::TYPE_NAME,
                                                        A::Goal::TYPE_HASH, ffi_qos, out.storage_);
     if (ret != 0) return Result(ret);
     // Register with executor — creates transport handles (3 queryables + 2 publishers).
     // Deferred from create to avoid FreeRTOS QEMU deadlocks. Phase 87.6:
     // names are passed at register-time (buffers live on the C++
-    // `nros::ActionServer<A>` class, not in the runtime struct).
+    // `rclcpp_action::Server<A>` class, not in the runtime struct).
     // Phase 189.M3.3.c — `sched_context` binds the action's (arena-registered)
     // goal-service handle to a scheduling context. UNSET ⇒ 0 (inherit, no-op).
-    uint8_t sched = (options.sched_context == ::nros::SCHED_CONTEXT_UNSET)
+    uint8_t sched = (options.sched_context == ::rclcpp::SCHED_CONTEXT_UNSET)
                         ? 0u
                         : static_cast<uint8_t>(options.sched_context);
     ret = nros_cpp_action_server_register(out.storage_, executor_handle_, action_name, A::TYPE_NAME,
@@ -838,15 +837,15 @@ Result Node::create_action_server(::nros::ActionServer<A>& out, const char* acti
         out.executor_ = executor_handle_;
         // phase-417 W4.b — remember the name for `get_action_name()`. Truncating
         // copy, as `Subscription`'s and the two polling tiers' do: a name longer
-        // than `nros::ACTION_NAME_MAX` is not a reason to fail a create that the
+        // than `rclcpp_action::ACTION_NAME_MAX` is not a reason to fail a create that the
         // runtime already accepted.
-        ::nros::detail::assign_entity_name(out.action_name_, action_name);
+        ::rclcpp::detail::assign_entity_name(out.action_name_, action_name);
         out.initialized_ = true;
     }
     return Result(ret);
 }
 } // namespace rclcpp
 
-namespace nros {} // namespace nros
+namespace rclcpp {} // namespace rclcpp
 
 #endif // NROS_CPP_ACTION_SERVER_HPP

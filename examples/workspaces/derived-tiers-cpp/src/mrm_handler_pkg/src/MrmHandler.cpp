@@ -20,8 +20,7 @@ void MrmHandler::on_timer() {
     count_++;
 }
 
-MrmHandler::MrmHandler(::nros::NodeHandle h)
-    : ::nros::NodeWithTimers<1>(h, "mrm_handler") {
+MrmHandler::MrmHandler(::rclcpp::NodeHandle h) : ::rclcpp::NodeWithTimers<1>(h, "mrm_handler") {
     // Line-buffer stdout so each tick flushes immediately when piped.
     ::setvbuf(stdout, nullptr, _IOLBF, 0);
     pub_ = create_publisher_in<std_msgs::msg::Int32>("/system/fail_safe/mrm_state");

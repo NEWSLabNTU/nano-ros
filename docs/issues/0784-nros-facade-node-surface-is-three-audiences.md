@@ -143,3 +143,20 @@ leave the documented surface without leaving the crate.
   `NodeHandle` as the rclrs shape.
 - Export `StandaloneNodeError` beside `StandaloneNode` (moved here from issue
   0783).
+
+## Decided (2026-10-09, maintainer) — phase-483 owns the remainder
+
+The three open decisions above are settled by
+[phase-483](../roadmap/phase-483-rclcpp-rclrs-shape-only.md):
+
+- The `nros` facade takes rclrs's shape, keeping its crate name, so that
+  `use nros as rclrs;` reads as rclrs.
+- There is ONE node type, `nros::Node`, for a workspace component and a
+  standalone program alike. The component trait is renamed, so `Node` is no
+  longer a trait.
+- `StandaloneNode` and its error leave `nros::`. Its two bench consumers
+  import `nros_node` directly, and it has no rclrs or rclcpp counterpart to
+  export it as.
+- The zero-consumer types are deleted rather than hidden.
+
+The work is phase-483 W2–W4. This issue is resolved when W4 lands.
