@@ -1675,19 +1675,14 @@ pub fn is_local_tcp_listener_available() -> bool {
     TcpListener::bind("127.0.0.1:0").is_ok()
 }
 
-/// Skip test if zenohd is not available.
-///
-/// Returns `false` if zenohd is not available, printing a skip message.
-/// Returns `true` if zenohd is available and the test should proceed.
+/// Fail the test (`unmet!`) if zenohd is not available.
 ///
 /// # Example
 ///
 /// ```ignore
 /// #[test]
 /// fn test_something() {
-///     if !require_zenohd() {
-///         return;
-///     }
+///     require_zenohd();
 ///     // ... test code
 /// }
 /// ```
@@ -1742,10 +1737,7 @@ pub fn is_cmake_available() -> bool {
         .unwrap_or(false)
 }
 
-/// Skip test if cmake is not available
-///
-/// Returns `false` if cmake is not found, printing a skip message.
-/// Returns `true` if cmake is available and the test should proceed.
+/// Fail the test (`unmet!`) if cmake is not available
 pub fn require_cmake() {
     if !is_cmake_available() {
         crate::unmet!("cmake not found on PATH");
@@ -1803,19 +1795,14 @@ pub fn is_nros_ws_sync_available() -> bool {
         .unwrap_or(false)
 }
 
-/// Skip the current test if the installed `nros` CLI lacks `nros sync`.
-///
-/// Returns `false` (test should bail / early-return) with a printed
-/// skip line when unavailable; `true` when present. Phase 214.I.2.
+/// Fail the test (`unmet!`) if the installed `nros` CLI lacks `nros sync`.
 ///
 /// # Example
 ///
 /// ```ignore
 /// #[test]
 /// fn codegen_preflight() {
-///     if !require_nros_ws_sync() {
-///         return;
-///     }
+///     require_nros_ws_sync();
 ///     // ... shell out to `nros sync <dir>`
 /// }
 /// ```
@@ -1846,10 +1833,7 @@ pub fn is_docker_compose_available() -> bool {
             .unwrap_or(false)
 }
 
-/// Skip test if Docker Compose is not available
-///
-/// Returns `false` if Docker Compose or the Docker daemon is unavailable.
-/// Returns `true` if Docker is available and the test should proceed.
+/// Fail the test (`unmet!`) if Docker Compose is not available
 pub fn require_docker_compose() {
     if !is_docker_compose_available() {
         crate::unmet!("docker compose not available");

@@ -70,7 +70,7 @@ pub fn is_qemu_riscv32_available() -> bool {
     }
 }
 
-/// Skip test if qemu-system-riscv32 is not available
+/// Fail the test (`unmet!`) if qemu-system-riscv32 is not available
 pub fn require_qemu_riscv32() {
     if !is_qemu_riscv32_available() {
         crate::unmet!(
@@ -89,7 +89,7 @@ pub fn is_riscv32_target_available() -> bool {
         .unwrap_or(false)
 }
 
-/// Skip test if riscv32imc target is not available
+/// Fail the test (`unmet!`) if riscv32imc target is not available
 pub fn require_riscv32_target() {
     if !is_riscv32_target_available() {
         crate::unmet!(
@@ -115,7 +115,7 @@ pub fn is_espflash_available() -> bool {
         .unwrap_or(false)
 }
 
-/// Skip test if espflash is not available
+/// Fail the test (`unmet!`) if espflash is not available
 pub fn require_espflash() {
     if !is_espflash_available() {
         crate::unmet!("espflash not found (cargo install espflash)");

@@ -1173,7 +1173,7 @@ pub fn is_veth_bridge_available() -> bool {
     bridge_exists && veth0_exists && veth1_exists
 }
 
-/// Skip test if veth bridge is not available for ThreadX Linux simulation
+/// Fail the test (`unmet!`) if veth bridge is not available for ThreadX Linux simulation
 pub fn require_veth_bridge() {
     if !is_veth_bridge_available() {
         crate::unmet!(
@@ -1322,7 +1322,7 @@ pub fn is_zenoh_pico_arm_available() -> bool {
     lib_path.exists()
 }
 
-/// Skip test if zenoh-pico ARM library is not available
+/// Fail the test (`unmet!`) if zenoh-pico ARM library is not available
 pub fn require_zenoh_pico_arm() {
     if !is_zenoh_pico_arm_available() {
         crate::unmet!(

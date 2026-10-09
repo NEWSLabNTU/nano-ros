@@ -74,16 +74,9 @@ fn zenoh_archive_wrapper_impl_parity() {
     let root = nros_tests::project_root();
     let script = root.join(SCRIPT);
     // Issue #34 — the zenoh-posix fixture archive is built by
-    // `just build-zenoh-posix-fixture` / `build-test-fixtures`, not by the light
-    // host-integration lane. Skip cleanly there (NROS_FIXTURES_OPTIONAL set);
-    // the full `test-all` tier still fails loudly on a missing/regressed archive.
-    let archive = match resolve_archive_path(&root) {
-        Ok(p) => p,
-        Err(e) if std::env::var_os("NROS_FIXTURES_OPTIONAL").is_some() => {
-            nros_tests::unmet!("zenoh-posix archive fixture not built (light tier): {e}");
-        }
-        Err(e) => panic!("{e}"),
-    };
+    // `just build-zenoh-posix-fixture` / `build-test-fixtures`. Absent, it FAILS
+    // in every run (issue 1758 retired the light tier's opt-out).
+    let archive = resolve_archive_path(&root).unwrap_or_else(|e| nros_tests::unmet!("{e}"));
     // Touch metadata to suppress unused-import warning if path is
     // dropped in a future refactor.
     let _ = fs::metadata(&archive);

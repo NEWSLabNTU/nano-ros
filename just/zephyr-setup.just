@@ -174,6 +174,23 @@ doctor:
         echo "  [MISSING] west (run: just zephyr setup)"
         fail=1
     fi
+    # Issue 1758 — the interpreter `west build` will run under must import what
+    # Zephyr's build scripts import. The host block only WARNS about this (it is
+    # every scope's block); for THIS scope it is a prerequisite, and a doctor
+    # that said OK over it answered for a build that then failed. Same
+    # interpreter the lane resolves, same check `scripts/zephyr/setup.sh` runs.
+    zpy="$(nros_zephyr_python)"
+    [ -n "$zpy" ] || zpy="$(command -v python3 || true)"
+    if [ -z "$zpy" ]; then
+        echo "  [MISSING] python3 for west (run: just zephyr setup)"
+        fail=1
+    elif zpy_report="$(python3 scripts/check-python-deps.py --python "$zpy" west zephyr-build 2>&1)"; then
+        echo "  [OK] python: $("$zpy" -V 2>&1) ($zpy) — west + zephyr-build deps"
+    else
+        echo "  [MISSING] python deps for west build ($zpy):"
+        printf '%s\n' "$zpy_report" | sed 's/^/            /'
+        fail=1
+    fi
     if [ -d "$WORKSPACE/zephyr" ]; then
         echo "  [OK] Zephyr workspace: $WORKSPACE"
     else

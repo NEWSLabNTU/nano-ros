@@ -123,7 +123,10 @@
 //! couple of hundred cells), and ties break on the cell's debug rendering so the
 //! chosen set is deterministic for a fixed table.
 
-use crate::matrix::{Cell, PlatformId};
+use crate::{
+    lane_scope::Capability,
+    matrix::{Cell, PlatformId},
+};
 
 /// Every Runtime cell the tiers select over — baked cells (`matrix::CELLS`) AND
 /// interop/bridge cells (`crate::interop::CELLS`), issue 0352 / phase-324.
@@ -228,6 +231,31 @@ impl CiLane {
             RunScope::All => "all",
             RunScope::LaneCoords => self.lane_token(),
         }
+    }
+
+    /// The host capabilities this lane does NOT claim — issue 1758, the
+    /// scope's second axis beside its coordinates.
+    ///
+    /// Every tier lane declines a stock ROS 2 install. Their runners carry the
+    /// zenoh router and no ROS 2 CLI, and the ROS 2 interop tests belong to the
+    /// live-peer lane (`.config/interop-verdicts.toml`), so in these lanes those
+    /// tests are deselections. This is a property of the LANE: `just ci tier1`
+    /// and `just test tier1` export the same value, through
+    /// `nros_lane_unclaimed` in `scripts/build/fixture-lane.sh`, which
+    /// `tests/lane_build_covers_run.rs` binds to this declaration.
+    pub fn unclaimed(self) -> &'static [Capability] {
+        match self {
+            CiLane::Tier1 | CiLane::Tier2 | CiLane::Tier2Nightly => &[Capability::Ros2],
+        }
+    }
+
+    /// [`CiLane::unclaimed`] spelled as the `NROS_TEST_UNCLAIMED` value.
+    pub fn unclaimed_env_value(self) -> String {
+        self.unclaimed()
+            .iter()
+            .map(|c| c.token())
+            .collect::<Vec<_>>()
+            .join(",")
     }
 }
 
