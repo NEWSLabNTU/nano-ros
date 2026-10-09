@@ -12,13 +12,15 @@
 
 #![no_std]
 
-use nros::{Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult};
+use nros::{
+    Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeOptions, NodeResult,
+};
 use std_msgs::msg::Int32;
 
 /// QosListener — counts QoS-matched messages received on `/qos_chatter`.
 pub struct QosListener;
 
-impl Node for QosListener {
+impl Component for QosListener {
     const NAME: &'static str = "qos_listener";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

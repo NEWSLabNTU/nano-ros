@@ -10,13 +10,15 @@
 
 #![no_std]
 
-use nros::{Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult};
+use nros::{
+    Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeOptions, NodeResult,
+};
 use std_msgs::msg::Int32;
 
 /// Listener — counts the int32 messages seen on `/chatter`.
 pub struct Listener;
 
-impl Node for Listener {
+impl Component for Listener {
     const NAME: &'static str = "listener";
 
     // phase-391 W5-endgame step 2c (issue 0857) — exact bounds: one

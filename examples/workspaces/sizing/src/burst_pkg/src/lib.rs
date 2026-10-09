@@ -17,7 +17,7 @@
 #![no_std]
 
 use nros::{
-    Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
+    Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeOptions, NodeResult,
     TimerDuration,
 };
 use std_msgs::msg::Int32;
@@ -35,7 +35,7 @@ const TIMER_PERIODS_MS: [(&str, u64); 6] = [
 
 pub struct BurstTalker;
 
-impl Node for BurstTalker {
+impl Component for BurstTalker {
     const NAME: &'static str = "burst_talker";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

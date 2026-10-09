@@ -179,7 +179,7 @@ fn run_listener() {
         .expect("Failed to create node");
 
     let mut subscription = node
-        .create_subscription_with_qos::<std_msgs::msg::Int32, 65536>(
+        .create_polling_subscription_with_qos::<std_msgs::msg::Int32, 65536>(
             "/stress_test",
             nros::QoSProfile::RELIABLE,
         )

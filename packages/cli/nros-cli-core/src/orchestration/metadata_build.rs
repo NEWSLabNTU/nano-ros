@@ -51,7 +51,7 @@ pub struct MetadataBuildOptions {
 /// The registered type's path.
 ///
 /// A declared `class` is authoritative: the shipping `nros::node!(Class)` shape
-/// is `impl Node for Class` in the crate root, so the historical positional
+/// is `impl Component for Class` in the crate root, so the historical positional
 /// guess below (`crate::module::Component`) names a type that does not exist
 /// and the harness fails to compile. The guess survives only as the fallback
 /// for legacy `crate::module` component manifests, where it IS the convention.

@@ -28,9 +28,9 @@ use std::{
 };
 
 use nros::{
-    Callback, CallbackCtx, CdrReader, CdrWriter, DeserError, Deserialize, ExecutableNode, Executor,
-    ExecutorConfig, ExecutorNodeRuntime, Node, NodeContext, NodeDeclError, NodeOptions, NodeResult,
-    SerError, Serialize,
+    Callback, CallbackCtx, CdrReader, CdrWriter, Component, DeserError, Deserialize,
+    ExecutableNode, Executor, ExecutorConfig, ExecutorNodeRuntime, NodeContext, NodeDeclError,
+    NodeOptions, NodeResult, SerError, Serialize,
 };
 use nros_tests::fixtures::{ZenohRouter, require_zenohd, zenohd_unique};
 use rstest::rstest;
@@ -73,7 +73,7 @@ impl nros::RosMessage for TestMsg {
 /// bumps a static counter via the component `State`, which we then
 /// read out post-spin.
 struct TimerOnly;
-impl Node for TimerOnly {
+impl Component for TimerOnly {
     const NAME: &'static str = "timer_only";
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("timer_only"))?;
@@ -104,7 +104,7 @@ fn timer_only_count() -> &'static Arc<AtomicU32> {
 /// Talker: one node, one publisher on `/chatter`, one timer at 100 ms
 /// that publishes `TestMsg { data: state }` then bumps state.
 struct Talker;
-impl Node for Talker {
+impl Component for Talker {
     const NAME: &'static str = "talker";
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("talker_node"))?;
@@ -138,7 +138,7 @@ static TALKER_PUB_ERRORS: AtomicU32 = AtomicU32::new(0);
 /// Node whose declarative `register` always errors — used to
 /// verify the runtime rolls back on init failure.
 struct FailingComp;
-impl Node for FailingComp {
+impl Component for FailingComp {
     const NAME: &'static str = "failing";
     fn register(_ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         Err(NodeDeclError::Runtime)

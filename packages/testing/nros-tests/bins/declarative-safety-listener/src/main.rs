@@ -17,7 +17,7 @@
 
 use log::{error, info};
 use nros::{
-    Callback, CallbackCtx, ExecutableNode, Executor, ExecutorConfig, Node, NodeContext,
+    Callback, CallbackCtx, Component, ExecutableNode, Executor, ExecutorConfig, NodeContext,
     NodeOptions, NodeResult, node_runtime::ExecutorNodeRuntime,
 };
 use std_msgs::msg::Int32;
@@ -25,7 +25,7 @@ use std_msgs::msg::Int32;
 /// Declarative listener: a `.safety()` subscription on `/chatter`.
 struct SafetyListener;
 
-impl Node for SafetyListener {
+impl Component for SafetyListener {
     const NAME: &'static str = "listener";
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {

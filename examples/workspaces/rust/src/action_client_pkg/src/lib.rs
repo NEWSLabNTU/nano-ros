@@ -17,7 +17,7 @@
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
 use nros::{
-    Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult, TickCtx,
+    Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeOptions, NodeResult, TickCtx,
 };
 use std_msgs::msg::Int32;
 
@@ -29,7 +29,7 @@ pub struct ClientState {
     sent: bool,
 }
 
-impl Node for FibonacciClient {
+impl Component for FibonacciClient {
     const NAME: &'static str = "fibonacci_client";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

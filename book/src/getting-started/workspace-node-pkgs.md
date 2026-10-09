@@ -144,13 +144,13 @@ Here is the essential shape, drawn from
 
 ```rust
 use nros::{
-    CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
+    CallbackCtx, ExecutableNode, Component, NodeContext, NodeOptions, NodeResult,
     TimerDuration,
 };
 
 pub struct Talker;
 
-impl Node for Talker {
+impl Component for Talker {
     const NAME: &'static str = "talker";
 
     // What this class's per-instance registries hold, in order: publishers,

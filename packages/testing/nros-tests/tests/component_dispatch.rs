@@ -23,9 +23,9 @@ use std::{
 };
 
 use nros::{
-    Callback, CallbackCtx, CdrReader, CdrWriter, DeserError, Deserialize, ExecutableNode, Executor,
-    ExecutorConfig, ExecutorNodeRuntime, Node, NodeContext, NodeOptions, NodeResult, SerError,
-    Serialize, TickCtx,
+    Callback, CallbackCtx, CdrReader, CdrWriter, Component, DeserError, Deserialize,
+    ExecutableNode, Executor, ExecutorConfig, ExecutorNodeRuntime, NodeContext, NodeOptions,
+    NodeResult, SerError, Serialize, TickCtx,
 };
 use nros_platform::RuntimeCtx;
 use nros_tests::fixtures::{ZenohRouter, require_zenohd, zenohd_unique};
@@ -68,7 +68,7 @@ static TALKER_FIRES: AtomicU32 = AtomicU32::new(0);
 static TALKER_PUB_ERRORS: AtomicU32 = AtomicU32::new(0);
 
 struct Talker;
-impl Node for Talker {
+impl Component for Talker {
     const NAME: &'static str = "m5a4_talker";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

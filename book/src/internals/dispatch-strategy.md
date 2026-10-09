@@ -314,7 +314,7 @@ Two contracts:
 1. **Defaulted associated const.** `Node::DISPATCH` is
    `const DISPATCH: DispatchStrategy = DispatchStrategy::Inline;` in
    the trait definition. Edition 2024 supports defaulted associated
-   consts as stable, so every pre-216 `impl Node for ...` block that
+   consts as stable, so every pre-216 `impl Component for ...` block that
    doesn't mention `DISPATCH` continues to compile and is treated as
    `Inline`.
 2. **Closure API preserved on the Inline path.** The Inline runtime
@@ -329,7 +329,7 @@ Deferred is:
 
 ```rust
 // Before — Phase 212 Inline-by-default.
-impl Node for Listener {
+impl Component for Listener {
     const NAME: &'static str = "listener";
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         ctx.create_subscription::<Int32>("/chatter", |msg| {
@@ -340,7 +340,7 @@ impl Node for Listener {
 }
 
 // After — Phase 216 Deferred.
-impl Node for Listener {
+impl Component for Listener {
     const NAME: &'static str = "listener";
     const DISPATCH: DispatchStrategy = DispatchStrategy::Deferred;
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {

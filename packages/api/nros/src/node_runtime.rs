@@ -2669,7 +2669,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::node::Node;
+    use crate::node::Component;
 
     #[test]
     fn handle_slot_is_observable() {
@@ -2735,7 +2735,7 @@ mod tests {
     }
 
     struct DummyComp;
-    impl Node for DummyComp {
+    impl Component for DummyComp {
         const NAME: &'static str = "dummy";
         fn register(_ctx: &mut NodeContext<'_>) -> NodeResult<()> {
             Ok(())

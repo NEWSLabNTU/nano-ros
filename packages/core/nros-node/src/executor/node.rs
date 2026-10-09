@@ -1522,7 +1522,7 @@ impl<'n, 'a, 't> GenericPublisherBuilder<'n, 'a, 't> {
 
 /// A first-class callback group — a **name-only token** (rclcpp/rclrs shape).
 ///
-/// Created via [`NodeCtx::create_callback_group`].  Passed to the `_in`
+/// Created via [`Node::create_callback_group`].  Passed to the `_in`
 /// entity-create variants (`create_timer_in_group`, `create_subscription_in_group`,
 /// `create_publisher_in_group`) to label entities with a group name.
 ///
@@ -1542,23 +1542,83 @@ impl CallbackGroup {
     }
 }
 
-/// An executor-borrowing node handle — `exec.node(id)`. Hosts the
-/// callback-registering entity builders (subscriptions register into the
-/// executor's dispatch arena). It is a **short-lived `&mut Executor` borrow**:
-/// create entities, then drop it before acquiring the next node handle; entity
-/// handles (`HandleId`, publishers) are owned and outlive it (no `Arc` — see
-/// `docs/design/0022-entity-api-tiers.md` §Borrow model).
-pub struct NodeCtx<'e, 's> {
+/// A ROS 2 node — rclrs's `Node`, and the ONE node type (phase-483 W2).
+///
+/// `Executor::create_node(name)` returns it, and so does
+/// `Executor::node_mut(id)`; a component and a standalone program hold the
+/// same type. It carries rclrs's methods — `create_publisher`,
+/// `create_subscription(topic, callback)`, `create_service`, timers, the
+/// clock, `name` / `namespace` / `logger`, the graph queries — plus RTOS
+/// extensions with names of their own (`create_polling_*`, the `_sized` and
+/// `_raw` constructors).
+///
+/// ADOPT-BOUNDED: a node is a short-lived `&mut Executor` borrow, not rclrs's `Arc<Node>`.
+/// Create entities, then drop it before acquiring the next node handle; entity
+/// handles (`HandleId`, publishers) are owned and outlive it (no allocator —
+/// see `docs/design/0022-entity-api-tiers.md` §Borrow model).
+pub struct Node<'e, 's> {
     executor: &'e mut super::spin::Executor<'s>,
     node_id: super::node_record::NodeId,
 }
 
-impl<'e, 's> NodeCtx<'e, 's> {
+impl<'e, 's> Node<'e, 's> {
     pub(crate) fn new(
         executor: &'e mut super::spin::Executor<'s>,
         node_id: super::node_record::NodeId,
     ) -> Self {
         Self { executor, node_id }
+    }
+
+    /// The node's name — rclrs's `Node::name()`.
+    ///
+    /// phase-483 W2. Read from the executor's node table, where the name the
+    /// node was created with (or the launch file's override of it) lives.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        self.executor
+            .node(self.node_id)
+            .map(|r| r.name.as_str())
+            .unwrap_or("")
+    }
+
+    /// The node's namespace — rclrs's `Node::namespace()`. `""` is the root.
+    #[must_use]
+    pub fn namespace(&self) -> &str {
+        self.executor
+            .node(self.node_id)
+            .map(|r| r.namespace.as_str())
+            .unwrap_or("")
+    }
+
+    /// `/<namespace>/<name>` — rclrs's `Node::fully_qualified_name()`.
+    ///
+    /// Bounded, where rclrs returns a `String`: no allocator here, and the
+    /// two halves are each at most 64 bytes.
+    pub fn fully_qualified_name(&self) -> Result<crate::names::ResolvedName, NodeError> {
+        crate::names::fully_qualified_name(self.name(), self.namespace())
+            .map_err(|()| NodeError::NameTooLong)
+    }
+
+    /// The node's ROS domain — rclrs's `Node::domain_id()`. Every node of an
+    /// executor shares its session, so this is the executor's domain.
+    #[must_use]
+    pub fn domain_id(&self) -> u32 {
+        self.executor.domain_id
+    }
+
+    /// The logger named for this node — rclrs's `Node::logger()`. See
+    /// [`NodeHandle::logger`] for how the name is resolved.
+    #[must_use]
+    pub fn logger(&self) -> &'static nros_log::Logger {
+        nros_log::resolve_node_logger(self.name())
+    }
+
+    /// This node's id in the executor's node table — an RTOS extension, for
+    /// the APIs that address a node by id (`Executor::node_mut`, the
+    /// per-node QoS override table).
+    #[must_use]
+    pub fn id(&self) -> super::node_record::NodeId {
+        self.node_id
     }
 
     /// The node's clock — rclrs's `Node::get_clock()`, and rclcpp's.
@@ -1602,7 +1662,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
     /// Publisher builder (the `clone` tier), symmetric with
     /// [`subscription`](Self::subscription). Pick `.typed::<M>()` or
     /// `.generic(type, hash)`, set `.qos()`, then `.build()`. The returned
-    /// publisher handle is owned and outlives this `NodeCtx` — the bridge
+    /// publisher handle is owned and outlives this `Node` — the bridge
     /// builds the dest publisher on one ctx, drops it, then registers the
     /// source subscription on another (see `0022-entity-api-tiers.md`).
     pub fn publisher<'t>(&mut self, topic: &'t str) -> CtxPublisherBuilder<'_, 'e, 't, 's> {
@@ -1618,8 +1678,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
         &mut self,
         topic: &str,
     ) -> Result<EmbeddedPublisher<M>, NodeError> {
-        self.executor
-            .create_publisher_on::<M>(self.node_id, topic, QoSProfile::default())
+        self.create_publisher_with_qos::<M>(topic, QoSProfile::default())
     }
 
     /// Convenient generic (type-erased) publisher — rclcpp `create_generic_*`.
@@ -2403,11 +2462,433 @@ impl<'e, 's> NodeCtx<'e, 's> {
         self.executor
             .get_subscriptions_info_by_topic(topic_name, visit)
     }
+
+    // ------------------------------------------------------------------
+    // phase-483 W2 — the constructors that only `NodeHandle` had. `Node`
+    // is the ONE node type, so it carries them too; each forwards through
+    // `Executor::with_node_try`, which opens a `NodeHandle` on this node's
+    // session for the duration of the call. The polled subscription and
+    // service constructors are `create_polling_*`: rclrs's
+    // `create_subscription` / `create_service` take a callback, and this type
+    // already has those under exactly those names.
+    // ------------------------------------------------------------------
+
+    /// [`create_publisher`](Self::create_publisher) with an explicit profile (phase-483 W2).
+    pub fn create_publisher_with_qos<M: MessageForRmw>(
+        &mut self,
+        topic_name: &str,
+        qos: QoSProfile,
+    ) -> Result<EmbeddedPublisher<M>, NodeError> {
+        self.executor
+            .create_publisher_on::<M>(self.node_id, topic_name, qos)
+    }
+
+    /// [`NodeHandle::create_publisher_raw`] on this node (phase-483 W2).
+    pub fn create_publisher_raw(
+        &mut self,
+        topic_name: &str,
+        type_name: &str,
+        type_hash: &str,
+    ) -> Result<crate::executor::handles::EmbeddedRawPublisher, NodeError> {
+        self.executor.with_node_try(self.node_id, |h| {
+            h.create_publisher_raw(topic_name, type_name, type_hash)
+        })
+    }
+
+    /// [`NodeHandle::create_publisher_raw_with_qos`] on this node (phase-483 W2).
+    pub fn create_publisher_raw_with_qos(
+        &mut self,
+        topic_name: &str,
+        type_name: &str,
+        type_hash: &str,
+        qos: QoSProfile,
+    ) -> Result<crate::executor::handles::EmbeddedRawPublisher, NodeError> {
+        self.executor.with_node_try(self.node_id, |h| {
+            h.create_publisher_raw_with_qos(topic_name, type_name, type_hash, qos)
+        })
+    }
+
+    /// The POLLED form of [`NodeHandle::create_subscription`] (phase-483 W2): the caller
+    /// takes from it, where rclrs's `create_subscription` takes a callback.
+    pub fn create_polling_subscription<M: MessageForRmw>(
+        &mut self,
+        topic_name: &str,
+    ) -> Result<Subscription<M>, NodeError> {
+        self.executor
+            .with_node_try(self.node_id, |h| h.create_subscription::<M>(topic_name))
+    }
+
+    /// The POLLED form of [`NodeHandle::create_subscription_sized`] (phase-483 W2): the caller
+    /// takes from it, where rclrs's `create_subscription` takes a callback.
+    pub fn create_polling_subscription_sized<M: MessageForRmw, const RX_BUF: usize>(
+        &mut self,
+        topic_name: &str,
+    ) -> Result<Subscription<M, RX_BUF>, NodeError> {
+        self.executor.with_node_try(self.node_id, |h| {
+            h.create_subscription_sized::<M, RX_BUF>(topic_name)
+        })
+    }
+
+    /// The POLLED form of [`NodeHandle::create_subscription_with_qos`] (phase-483 W2): the caller
+    /// takes from it, where rclrs's `create_subscription` takes a callback.
+    pub fn create_polling_subscription_with_qos<M: MessageForRmw, const RX_BUF: usize>(
+        &mut self,
+        topic_name: &str,
+        qos: QoSProfile,
+    ) -> Result<Subscription<M, RX_BUF>, NodeError> {
+        self.executor.with_node_try(self.node_id, |h| {
+            h.create_subscription_with_qos::<M, RX_BUF>(topic_name, qos)
+        })
+    }
+
+    /// The POLLED form of [`NodeHandle::create_subscription_raw`] (phase-483 W2): the caller
+    /// takes from it, where rclrs's `create_subscription` takes a callback.
+    pub fn create_polling_subscription_raw(
+        &mut self,
+        topic_name: &str,
+        type_name: &str,
+        type_hash: &str,
+    ) -> Result<crate::executor::handles::RawSubscription, NodeError> {
+        self.executor.with_node_try(self.node_id, |h| {
+            h.create_subscription_raw(topic_name, type_name, type_hash)
+        })
+    }
+
+    /// The POLLED form of [`NodeHandle::create_subscription_raw_sized`] (phase-483 W2): the caller
+    /// takes from it, where rclrs's `create_subscription` takes a callback.
+    pub fn create_polling_subscription_raw_sized<const RX_BUF: usize>(
+        &mut self,
+        topic_name: &str,
+        type_name: &str,
+        type_hash: &str,
+    ) -> Result<crate::executor::handles::RawSubscription<RX_BUF>, NodeError> {
+        self.executor.with_node_try(self.node_id, |h| {
+            h.create_subscription_raw_sized::<RX_BUF>(topic_name, type_name, type_hash)
+        })
+    }
+
+    /// The POLLED form of [`NodeHandle::create_service`] (phase-483 W2): the caller
+    /// takes from it, where rclrs's `create_service` takes a callback.
+    pub fn create_polling_service<Svc: RosService>(
+        &mut self,
+        service_name: &str,
+    ) -> Result<EmbeddedServiceServer<Svc>, NodeError>
+    where
+        Svc::Request: MessageForRmw,
+        Svc::Reply: MessageForRmw,
+    {
+        self.executor
+            .with_node_try(self.node_id, |h| h.create_service::<Svc>(service_name))
+    }
+
+    /// The POLLED form of [`NodeHandle::create_service_with_qos`] (phase-483 W2): the caller
+    /// takes from it, where rclrs's `create_service` takes a callback.
+    pub fn create_polling_service_with_qos<Svc: RosService>(
+        &mut self,
+        service_name: &str,
+        qos: QoSProfile,
+    ) -> Result<EmbeddedServiceServer<Svc>, NodeError>
+    where
+        Svc::Request: MessageForRmw,
+        Svc::Reply: MessageForRmw,
+    {
+        self.executor.with_node_try(self.node_id, |h| {
+            h.create_service_with_qos::<Svc>(service_name, qos)
+        })
+    }
+
+    /// The POLLED form of [`NodeHandle::create_service_sized`] (phase-483 W2): the caller
+    /// takes from it, where rclrs's `create_service` takes a callback.
+    pub fn create_polling_service_sized<
+        Svc: RosService,
+        const REQ_BUF: usize,
+        const REPLY_BUF: usize,
+    >(
+        &mut self,
+        service_name: &str,
+        qos: QoSProfile,
+    ) -> Result<EmbeddedServiceServer<Svc, REQ_BUF, REPLY_BUF>, NodeError>
+    where
+        Svc::Request: MessageForRmw,
+        Svc::Reply: MessageForRmw,
+    {
+        self.executor.with_node_try(self.node_id, |h| {
+            h.create_service_sized::<Svc, REQ_BUF, REPLY_BUF>(service_name, qos)
+        })
+    }
+
+    /// [`NodeHandle::create_client`] on this node (phase-483 W2).
+    pub fn create_client<Svc: RosService>(
+        &mut self,
+        service_name: &str,
+    ) -> Result<EmbeddedServiceClient<Svc>, NodeError>
+    where
+        Svc::Request: MessageForRmw,
+        Svc::Reply: MessageForRmw,
+    {
+        self.executor
+            .with_node_try(self.node_id, |h| h.create_client::<Svc>(service_name))
+    }
+
+    /// [`NodeHandle::create_client_with_qos`] on this node (phase-483 W2).
+    pub fn create_client_with_qos<Svc: RosService>(
+        &mut self,
+        service_name: &str,
+        qos: QoSProfile,
+    ) -> Result<EmbeddedServiceClient<Svc>, NodeError>
+    where
+        Svc::Request: MessageForRmw,
+        Svc::Reply: MessageForRmw,
+    {
+        self.executor.with_node_try(self.node_id, |h| {
+            h.create_client_with_qos::<Svc>(service_name, qos)
+        })
+    }
+
+    /// [`NodeHandle::create_client_sized`] on this node (phase-483 W2).
+    pub fn create_client_sized<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>(
+        &mut self,
+        service_name: &str,
+        qos: QoSProfile,
+    ) -> Result<EmbeddedServiceClient<Svc, REQ_BUF, REPLY_BUF>, NodeError>
+    where
+        Svc::Request: MessageForRmw,
+        Svc::Reply: MessageForRmw,
+    {
+        self.executor.with_node_try(self.node_id, |h| {
+            h.create_client_sized::<Svc, REQ_BUF, REPLY_BUF>(service_name, qos)
+        })
+    }
+
+    /// The POLLED form of [`NodeHandle::create_service_raw`] (phase-483 W2): the caller
+    /// takes from it, where rclrs's `create_service` takes a callback.
+    pub fn create_polling_service_raw(
+        &mut self,
+        service_name: &str,
+        type_name: &str,
+        type_hash: &str,
+    ) -> Result<crate::executor::handles::RawServiceServer, NodeError> {
+        self.executor.with_node_try(self.node_id, |h| {
+            h.create_service_raw(service_name, type_name, type_hash)
+        })
+    }
+
+    /// The POLLED form of [`NodeHandle::create_service_raw_sized`] (phase-483 W2): the caller
+    /// takes from it, where rclrs's `create_service` takes a callback.
+    pub fn create_polling_service_raw_sized<const REQ_BUF: usize, const RESP_BUF: usize>(
+        &mut self,
+        service_name: &str,
+        type_name: &str,
+        type_hash: &str,
+    ) -> Result<crate::executor::handles::RawServiceServer<REQ_BUF, RESP_BUF>, NodeError> {
+        self.executor.with_node_try(self.node_id, |h| {
+            h.create_service_raw_sized::<REQ_BUF, RESP_BUF>(service_name, type_name, type_hash)
+        })
+    }
+
+    /// [`NodeHandle::create_client_raw`] on this node (phase-483 W2).
+    pub fn create_client_raw(
+        &mut self,
+        service_name: &str,
+        type_name: &str,
+        type_hash: &str,
+    ) -> Result<crate::executor::handles::RawServiceClient, NodeError> {
+        self.executor.with_node_try(self.node_id, |h| {
+            h.create_client_raw(service_name, type_name, type_hash)
+        })
+    }
+
+    /// [`NodeHandle::create_client_raw_sized`] on this node (phase-483 W2).
+    pub fn create_client_raw_sized<const REQ_BUF: usize, const REPLY_BUF: usize>(
+        &mut self,
+        service_name: &str,
+        type_name: &str,
+        type_hash: &str,
+    ) -> Result<crate::executor::handles::RawServiceClient<REQ_BUF, REPLY_BUF>, NodeError> {
+        self.executor.with_node_try(self.node_id, |h| {
+            h.create_client_raw_sized::<REQ_BUF, REPLY_BUF>(service_name, type_name, type_hash)
+        })
+    }
+
+    /// [`NodeHandle::create_action_server_raw`] on this node (phase-483 W2).
+    pub fn create_action_server_raw(
+        &mut self,
+        action_name: &str,
+        type_name: &str,
+        type_hash: &str,
+    ) -> Result<
+        super::action_core::ActionServerCore<
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+            4,
+        >,
+        NodeError,
+    > {
+        self.executor.with_node_try(self.node_id, |h| {
+            h.create_action_server_raw(action_name, type_name, type_hash)
+        })
+    }
+
+    /// [`NodeHandle::create_action_server_raw_sized`] on this node (phase-483 W2).
+    pub fn create_action_server_raw_sized<
+        const GOAL_BUF: usize,
+        const RESULT_BUF: usize,
+        const FEEDBACK_BUF: usize,
+        const MAX_GOALS: usize,
+    >(
+        &mut self,
+        action_name: &str,
+        type_name: &str,
+        type_hash: &str,
+    ) -> Result<
+        super::action_core::ActionServerCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>,
+        NodeError,
+    > {
+        self.executor.with_node_try(self.node_id, |h| {
+            h.create_action_server_raw_sized::<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>(
+                action_name,
+                type_name,
+                type_hash,
+            )
+        })
+    }
+
+    /// [`NodeHandle::create_action_client_raw`] on this node (phase-483 W2).
+    pub fn create_action_client_raw(
+        &mut self,
+        action_name: &str,
+        type_name: &str,
+        type_hash: &str,
+    ) -> Result<
+        super::action_core::ActionClientCore<
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+        >,
+        NodeError,
+    > {
+        self.executor.with_node_try(self.node_id, |h| {
+            h.create_action_client_raw(action_name, type_name, type_hash)
+        })
+    }
+
+    /// [`NodeHandle::create_action_client_raw_sized`] on this node (phase-483 W2).
+    pub fn create_action_client_raw_sized<
+        const GOAL_BUF: usize,
+        const RESULT_BUF: usize,
+        const FEEDBACK_BUF: usize,
+    >(
+        &mut self,
+        action_name: &str,
+        type_name: &str,
+        type_hash: &str,
+    ) -> Result<super::action_core::ActionClientCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>, NodeError>
+    {
+        self.executor.with_node_try(self.node_id, |h| {
+            h.create_action_client_raw_sized::<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>(
+                action_name,
+                type_name,
+                type_hash,
+            )
+        })
+    }
+
+    /// [`NodeHandle::create_action_server`] on this node (phase-483 W2).
+    pub fn create_action_server<A: RosAction>(
+        &mut self,
+        action_name: &str,
+    ) -> Result<ActionServer<A>, NodeError>
+    where
+        A::Goal: MessageForRmw,
+        A::Result: MessageForRmw,
+        A::Feedback: MessageForRmw,
+        A::SendGoalRequest: MessageForRmw,
+        A::SendGoalResponse: MessageForRmw,
+        A::GetResultRequest: MessageForRmw,
+        A::GetResultResponse: MessageForRmw,
+        A::FeedbackMessage: MessageForRmw,
+    {
+        self.executor
+            .with_node_try(self.node_id, |h| h.create_action_server::<A>(action_name))
+    }
+
+    /// [`NodeHandle::create_action_server_sized`] on this node (phase-483 W2).
+    pub fn create_action_server_sized<
+        A: RosAction,
+        const GOAL_BUF: usize,
+        const RESULT_BUF: usize,
+        const FEEDBACK_BUF: usize,
+        const MAX_GOALS: usize,
+    >(
+        &mut self,
+        action_name: &str,
+    ) -> Result<ActionServer<A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>, NodeError>
+    where
+        A::Goal: MessageForRmw,
+        A::Result: MessageForRmw,
+        A::Feedback: MessageForRmw,
+        A::SendGoalRequest: MessageForRmw,
+        A::SendGoalResponse: MessageForRmw,
+        A::GetResultRequest: MessageForRmw,
+        A::GetResultResponse: MessageForRmw,
+        A::FeedbackMessage: MessageForRmw,
+    {
+        self.executor.with_node_try(self.node_id, |h| {
+            h.create_action_server_sized::<A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>(
+                action_name,
+            )
+        })
+    }
+
+    /// [`NodeHandle::create_action_client`] on this node (phase-483 W2).
+    pub fn create_action_client<A: RosAction>(
+        &mut self,
+        action_name: &str,
+    ) -> Result<ActionClient<A>, NodeError>
+    where
+        A::Goal: MessageForRmw,
+        A::Result: MessageForRmw,
+        A::Feedback: MessageForRmw,
+        A::SendGoalRequest: MessageForRmw,
+        A::SendGoalResponse: MessageForRmw,
+        A::GetResultRequest: MessageForRmw,
+        A::GetResultResponse: MessageForRmw,
+        A::FeedbackMessage: MessageForRmw,
+    {
+        self.executor
+            .with_node_try(self.node_id, |h| h.create_action_client::<A>(action_name))
+    }
+
+    /// [`NodeHandle::create_action_client_sized`] on this node (phase-483 W2).
+    pub fn create_action_client_sized<
+        A: RosAction,
+        const GOAL_BUF: usize,
+        const RESULT_BUF: usize,
+        const FEEDBACK_BUF: usize,
+    >(
+        &mut self,
+        action_name: &str,
+    ) -> Result<ActionClient<A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>, NodeError>
+    where
+        A::Goal: MessageForRmw,
+        A::Result: MessageForRmw,
+        A::Feedback: MessageForRmw,
+        A::SendGoalRequest: MessageForRmw,
+        A::SendGoalResponse: MessageForRmw,
+        A::GetResultRequest: MessageForRmw,
+        A::GetResultResponse: MessageForRmw,
+        A::FeedbackMessage: MessageForRmw,
+    {
+        self.executor.with_node_try(self.node_id, |h| {
+            h.create_action_client_sized::<A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>(action_name)
+        })
+    }
 }
 
-/// Service-server builder on a [`NodeCtx`] — `node.service(name)`.
+/// Service-server builder on a [`Node`] — `node.service(name)`.
 pub struct CtxServiceBuilder<'c, 'e, 't, 's> {
-    ctx: &'c mut NodeCtx<'e, 's>,
+    ctx: &'c mut Node<'e, 's>,
     name: &'t str,
     qos: QoSProfile,
 }
@@ -2436,9 +2917,9 @@ impl<'c, 'e, 't, 's> CtxServiceBuilder<'c, 'e, 't, 's> {
     }
 }
 
-/// Publisher builder on a [`NodeCtx`] — `node.publisher(topic)`.
+/// Publisher builder on a [`Node`] — `node.publisher(topic)`.
 pub struct CtxPublisherBuilder<'c, 'e, 't, 's> {
-    ctx: &'c mut NodeCtx<'e, 's>,
+    ctx: &'c mut Node<'e, 's>,
     topic: &'t str,
     qos: QoSProfile,
 }
@@ -2475,9 +2956,9 @@ impl<'c, 'e, 't, 's> CtxPublisherBuilder<'c, 'e, 't, 's> {
     }
 }
 
-/// Typed publisher builder on a `NodeCtx` (`.typed::<M>()`).
+/// Typed publisher builder on a `Node` (`.typed::<M>()`).
 pub struct CtxTypedPublisherBuilder<'c, 'e, 't, 's, M> {
-    ctx: &'c mut NodeCtx<'e, 's>,
+    ctx: &'c mut Node<'e, 's>,
     topic: &'t str,
     qos: QoSProfile,
     _phantom: PhantomData<M>,
@@ -2496,9 +2977,9 @@ impl<'c, 'e, 't, 's, M: MessageForRmw> CtxTypedPublisherBuilder<'c, 'e, 't, 's, 
     }
 }
 
-/// Generic publisher builder on a `NodeCtx` (`.generic(type, hash)`).
+/// Generic publisher builder on a `Node` (`.generic(type, hash)`).
 pub struct CtxGenericPublisherBuilder<'c, 'e, 't, 's> {
-    ctx: &'c mut NodeCtx<'e, 's>,
+    ctx: &'c mut Node<'e, 's>,
     topic: &'t str,
     type_name: &'t str,
     type_hash: &'t str,
@@ -2524,7 +3005,7 @@ impl<'c, 'e, 't, 's> CtxGenericPublisherBuilder<'c, 'e, 't, 's> {
 
 /// Subscription builder — `node.subscription(topic)`.
 pub struct SubscriptionBuilder<'c, 'e, 't, 's> {
-    ctx: &'c mut NodeCtx<'e, 's>,
+    ctx: &'c mut Node<'e, 's>,
     topic: &'t str,
     qos: QoSProfile,
 }
@@ -2574,7 +3055,7 @@ pub struct TypedSubscriptionBuilder<
     M,
     const RX: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
 > {
-    ctx: &'c mut NodeCtx<'e, 's>,
+    ctx: &'c mut Node<'e, 's>,
     topic: &'t str,
     qos: QoSProfile,
     sched: Option<super::sched_context::SchedContextId>,
@@ -2777,7 +3258,7 @@ pub struct TypedSubBoundBuilder<
     M,
     const RX: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
 > {
-    ctx: &'c mut NodeCtx<'e, 's>,
+    ctx: &'c mut Node<'e, 's>,
     topic: &'t str,
     qos: QoSProfile,
     sched: Option<super::sched_context::SchedContextId>,
@@ -2834,7 +3315,7 @@ pub struct TypedSubInfoBuilder<
     M,
     const RX: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
 > {
-    ctx: &'c mut NodeCtx<'e, 's>,
+    ctx: &'c mut Node<'e, 's>,
     topic: &'t str,
     qos: QoSProfile,
     sched: Option<super::sched_context::SchedContextId>,
@@ -2895,7 +3376,7 @@ pub struct TypedSubSafetyBuilder<
     M,
     const RX: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
 > {
-    ctx: &'c mut NodeCtx<'e, 's>,
+    ctx: &'c mut Node<'e, 's>,
     topic: &'t str,
     qos: QoSProfile,
     sched: Option<super::sched_context::SchedContextId>,
@@ -2954,7 +3435,7 @@ pub struct GenericSubscriptionBuilder<
     's,
     const RX: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
 > {
-    ctx: &'c mut NodeCtx<'e, 's>,
+    ctx: &'c mut Node<'e, 's>,
     topic: &'t str,
     type_name: &'t str,
     type_hash: &'t str,
@@ -3029,7 +3510,7 @@ pub struct GenericSubInfoBuilder<
     's,
     const RX: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
 > {
-    ctx: &'c mut NodeCtx<'e, 's>,
+    ctx: &'c mut Node<'e, 's>,
     topic: &'t str,
     type_name: &'t str,
     type_hash: &'t str,
@@ -3310,13 +3791,13 @@ mod builder_tests {
 
     #[test]
     fn nodectx_publisher_and_bridge_shape() {
-        // NodeCtx publisher symmetry + the bridge two-ctx borrow pattern:
-        // build the dest publisher on one NodeCtx (dropped), then register
+        // Node publisher symmetry + the bridge two-ctx borrow pattern:
+        // build the dest publisher on one Node (dropped), then register
         // the source subscription on another — the owned publisher outlives.
         let mut exec: Executor = Executor::from_session(MockSession::new());
         let id = exec.node_builder("n").build().expect("node");
 
-        // convenient + builder publisher on NodeCtx
+        // convenient + builder publisher on Node
         let _p = exec
             .node_mut(id)
             .create_publisher::<TestMsg>("/p")
@@ -3326,7 +3807,7 @@ mod builder_tests {
             .publisher("/fwd")
             .generic("std_msgs/msg/Int32", "hash")
             .build()
-            .expect("ctx generic publisher builds"); // NodeCtx dropped here
+            .expect("ctx generic publisher builds"); // Node dropped here
 
         // re-borrow exec for the source sub; closure owns dest_pub
         let _s = exec

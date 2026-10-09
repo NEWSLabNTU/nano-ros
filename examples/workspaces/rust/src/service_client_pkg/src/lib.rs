@@ -15,8 +15,8 @@
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest, AddTwoIntsResponse};
 use nros::{
-    Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult, TickCtx,
-    TimerDuration,
+    Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeOptions, NodeResult,
+    TickCtx, TimerDuration,
 };
 use std_msgs::msg::Int32;
 
@@ -30,7 +30,7 @@ pub struct ClientState {
     pending: bool,
 }
 
-impl Node for AddClient {
+impl Component for AddClient {
     const NAME: &'static str = "add_client";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

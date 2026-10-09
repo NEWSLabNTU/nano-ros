@@ -4,11 +4,11 @@
 
 #![no_std]
 
-use nros::{Node, NodeContext, NodeOptions, NodeResult};
+use nros::{Component, NodeContext, NodeOptions, NodeResult};
 
 pub struct Listener;
 
-impl Node for Listener {
+impl Component for Listener {
     const NAME: &'static str = "listener";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

@@ -5,11 +5,11 @@
 //! recorder to emit `node.metadata.json`.
 
 pub mod node {
-    use nros::{Node, NodeContext, NodeOptions, NodeResult, TimerDuration};
+    use nros::{NodeContext, NodeOptions, NodeResult, TimerDuration};
 
     pub struct Component;
 
-    impl Node for Component {
+    impl nros::Component for Component {
         const NAME: &'static str = "node";
 
         fn register(context: &mut NodeContext<'_>) -> NodeResult<()> {

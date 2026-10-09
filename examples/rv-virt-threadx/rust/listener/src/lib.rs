@@ -20,13 +20,15 @@ mod app_main;
 // (issue #205 — the per-example critical-section anchor moved into the board
 // crate).
 
-use nros::{Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult};
+use nros::{
+    Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeOptions, NodeResult,
+};
 use std_msgs::msg::String as StringMsg;
 
 /// Listener node — tracks the last value seen on `/chatter`.
 pub struct Listener;
 
-impl Node for Listener {
+impl Component for Listener {
     const NAME: &'static str = "listener";
 
     // phase-391 W5-endgame (issue 0857) — exact bounds: one subscription,

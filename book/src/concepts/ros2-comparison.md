@@ -264,7 +264,7 @@ surface for embedded use. There is ONE store, and it is in Rust: the
 `rcl_interfaces/srv/*` servers read. C++ reaches it through methods on
 `rclcpp::Node`; C through `nros_executor_*_param_*` (the `_on` spellings name a
 node when an image composes several); Rust through `Executor::declare_parameter`
-and `NodeCtx::parameter`.
+and `Node::parameter`.
 
 > **If you have older nano-ros code:** `rclcpp::ParameterServer<Cap>` is gone
 > (phase-426 W4), and so is the caller-storage store it wrapped as a thing to

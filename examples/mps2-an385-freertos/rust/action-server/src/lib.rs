@@ -19,7 +19,7 @@
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
 use nros::{
-    Callback, CallbackCtx, CancelResponse, ExecutableNode, GoalResponse, GoalStatus, Node,
+    Callback, CallbackCtx, CancelResponse, Component, ExecutableNode, GoalResponse, GoalStatus,
     NodeContext, NodeOptions, NodeResult, TickCtx,
 };
 
@@ -59,7 +59,7 @@ pub struct ServerState {
 
 pub struct FibonacciServer;
 
-impl Node for FibonacciServer {
+impl Component for FibonacciServer {
     const NAME: &'static str = "fibonacci_action_server";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

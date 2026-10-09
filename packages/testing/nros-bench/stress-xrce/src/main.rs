@@ -188,7 +188,7 @@ fn run_listener() {
         .create_node("xrce_stress_listener")
         .expect("Failed to create node");
     let mut subscription = node
-        .create_subscription_sized::<std_msgs::msg::Int32, 16384>(&topic())
+        .create_polling_subscription_sized::<std_msgs::msg::Int32, 16384>(&topic())
         .expect("Failed to create subscriber");
 
     println!("Ready: listening");

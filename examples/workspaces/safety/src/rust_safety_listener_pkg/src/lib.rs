@@ -13,7 +13,9 @@
 
 #![no_std]
 
-use nros::{Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult};
+use nros::{
+    Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeOptions, NodeResult,
+};
 use std_msgs::msg::Int32;
 
 /// SafeListener — counts received messages + CRC failures / sequence gaps seen.
@@ -25,7 +27,7 @@ pub struct Counts {
     integrity_faults: u32,
 }
 
-impl Node for SafeListener {
+impl Component for SafeListener {
     const NAME: &'static str = "safe_listener";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

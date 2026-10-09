@@ -14,14 +14,14 @@
 
 use core::fmt::Write as _;
 use nros::{
-    Callback, CallbackCtx, DispatchStrategy, ExecutableNode, Node, NodeContext, NodeResult,
+    Callback, CallbackCtx, Component, DispatchStrategy, ExecutableNode, NodeContext, NodeResult,
     TickCtx, TimerDuration,
 };
 use std_msgs::msg::String as StringMsg;
 
 pub struct Talker;
 
-impl Node for Talker {
+impl Component for Talker {
     const NAME: &'static str = "talker";
 
     // phase-391 W5-endgame (issue 0857) — exact bounds: one publisher.

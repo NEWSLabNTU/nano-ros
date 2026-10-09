@@ -1224,46 +1224,6 @@
     "verdict": "divergence",
     "why": "the service-server BUILDER (`node.service(name).qos(..).build::<Svc, _>(cb)`) -- RFC-0022's `clone` tier, beside the `fork`-tier `create_service`; see `rust:Node::publisher` for the verdict and why a builder rather than rclrs's options struct. Defaults to the services profile (RELIABLE + VOLATILE + KEEP_LAST(10)), which is rclcpp's `ServicesQoS`.\n\nOn `NodeCtx`, the executor-borrowing node handle (`exec.node_mut(id)`), which the correlator folds onto `Node` (`TYPE_SYNONYMS`). MEASURABLE ONLY SINCE 2026-09-12: `nros_node::executor`'s `mod node` kept the type private while `Executor::node_mut` returned it, so every method on it was callable and none of them had ever produced a row -- issue 1351."
   },
-  "rust:NodeHandle::create_client": {
-    "verdict": "divergence",
-    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
-  },
-  "rust:NodeHandle::create_client_raw": {
-    "verdict": "divergence",
-    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
-  },
-  "rust:NodeHandle::create_client_raw_sized": {
-    "verdict": "divergence",
-    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
-  },
-  "rust:NodeHandle::create_client_sized": {
-    "verdict": "divergence",
-    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
-  },
-  "rust:NodeHandle::create_client_with_qos": {
-    "verdict": "divergence",
-    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
-  },
-  "rust:NodeHandle::create_service": {
-    "verdict": "divergence",
-    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
-  },
-  "rust:NodeHandle::create_service_raw": {
-    "verdict": "divergence",
-    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
-  },
-  "rust:NodeHandle::create_service_raw_sized": {
-    "verdict": "divergence",
-    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
-  },
-  "rust:NodeHandle::create_service_sized": {
-    "verdict": "divergence",
-    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
-  },
-  "rust:NodeHandle::create_service_with_qos": {
-    "verdict": "divergence",
-    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
-  },
   "rust:NodeServiceCallback": {
     "verdict": "divergence",
     "why": "rclrs's conversion traits normalise a plain, async or worker closure. Ours binds a NAMED callback at declaration (RFC-0043) -- one shape, nothing to convert. See the pubsub stage's identical rows."
@@ -1463,5 +1423,41 @@
     "verdict": "extension",
     "why": "issue 1631 -- in ROS 2 the DESTRUCTOR (rclcpp) or `rcl_*_fini` (rcl) is the counterpart. Ours registers the entity as an entry in the executor's statically sized arena, so freeing it is an executor call: the entry is dropped in place (its RMW handle's Drop destroys the backend entity, so it leaves the graph), its callback slot is freed, and the arena bytes its registration RECORDED -- entry and runtime-sized receive region together -- go on the released-region list for the next registration that fits. The C removers `nros_executor_remove_{subscription,timer,service,client}` call it. Unlike 1496's action releases it needs no const generics: the length is recorded at registration, so a buffered subscription and a timer (whose closure type is the caller's) are releasable too.",
     "bucket": "ours-only"
+  },
+  "rust:Node::create_client_raw": {
+    "verdict": "extension",
+    "why": "a client-constructor variant with no rclrs counterpart: an explicit QoS profile, compile-time buffer sizes (`_sized`), or a type-erased (`_raw`) form. Moved onto `nros::Node` from the retired `NodeHandle` (phase-483 W2). Bounded buffers are the RTOS reason."
+  },
+  "rust:Node::create_client_raw_sized": {
+    "verdict": "extension",
+    "why": "a client-constructor variant with no rclrs counterpart: an explicit QoS profile, compile-time buffer sizes (`_sized`), or a type-erased (`_raw`) form. Moved onto `nros::Node` from the retired `NodeHandle` (phase-483 W2). Bounded buffers are the RTOS reason."
+  },
+  "rust:Node::create_client_sized": {
+    "verdict": "extension",
+    "why": "a client-constructor variant with no rclrs counterpart: an explicit QoS profile, compile-time buffer sizes (`_sized`), or a type-erased (`_raw`) form. Moved onto `nros::Node` from the retired `NodeHandle` (phase-483 W2). Bounded buffers are the RTOS reason."
+  },
+  "rust:Node::create_client_with_qos": {
+    "verdict": "extension",
+    "why": "a client-constructor variant with no rclrs counterpart: an explicit QoS profile, compile-time buffer sizes (`_sized`), or a type-erased (`_raw`) form. Moved onto `nros::Node` from the retired `NodeHandle` (phase-483 W2). Bounded buffers are the RTOS reason."
+  },
+  "rust:Node::create_polling_service": {
+    "verdict": "extension",
+    "why": "the POLLED service-server constructor: the caller drains requests from the returned server. rclrs's `create_service` takes a callback, as `Node::create_service` does, so the polled form takes a different NAME (phase-483 W2). An RTOS extension for polling loops."
+  },
+  "rust:Node::create_polling_service_raw": {
+    "verdict": "extension",
+    "why": "the POLLED service-server constructor: the caller drains requests from the returned server. rclrs's `create_service` takes a callback, as `Node::create_service` does, so the polled form takes a different NAME (phase-483 W2). An RTOS extension for polling loops."
+  },
+  "rust:Node::create_polling_service_raw_sized": {
+    "verdict": "extension",
+    "why": "the POLLED service-server constructor: the caller drains requests from the returned server. rclrs's `create_service` takes a callback, as `Node::create_service` does, so the polled form takes a different NAME (phase-483 W2). An RTOS extension for polling loops."
+  },
+  "rust:Node::create_polling_service_sized": {
+    "verdict": "extension",
+    "why": "the POLLED service-server constructor: the caller drains requests from the returned server. rclrs's `create_service` takes a callback, as `Node::create_service` does, so the polled form takes a different NAME (phase-483 W2). An RTOS extension for polling loops."
+  },
+  "rust:Node::create_polling_service_with_qos": {
+    "verdict": "extension",
+    "why": "the POLLED service-server constructor: the caller drains requests from the returned server. rclrs's `create_service` takes a callback, as `Node::create_service` does, so the polled form takes a different NAME (phase-483 W2). An RTOS extension for polling loops."
   }
 }

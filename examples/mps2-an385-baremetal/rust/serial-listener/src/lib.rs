@@ -9,14 +9,14 @@
 #![no_std]
 
 use nros::{
-    Callback, CallbackCtx, DispatchStrategy, ExecutableNode, Node, NodeContext, NodeOptions,
+    Callback, CallbackCtx, Component, DispatchStrategy, ExecutableNode, NodeContext, NodeOptions,
     NodeResult, TickCtx,
 };
 use std_msgs::msg::String as StringMsg;
 
 pub struct SerialListenerNode;
 
-impl Node for SerialListenerNode {
+impl Component for SerialListenerNode {
     const NAME: &'static str = "serial_listener";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

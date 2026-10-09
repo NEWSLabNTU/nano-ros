@@ -3,13 +3,13 @@
 pub mod talker {
     use nros::{
         Callback, CallbackCtx, CancelResponse, CdrReader, CdrWriter, DeserError, Deserialize,
-        ExecutableNode, GoalResponse, Node, NodeContext, NodeOptions, NodeResult, RosAction,
-        RosMessage, RosService, SerError, Serialize, TimerDuration,
+        ExecutableNode, GoalResponse, NodeContext, NodeOptions, NodeResult, RosAction, RosMessage,
+        RosService, SerError, Serialize, TimerDuration,
     };
 
     pub struct Component;
 
-    impl Node for Component {
+    impl nros::Component for Component {
         const NAME: &'static str = "talker";
 
         fn register(context: &mut NodeContext<'_>) -> NodeResult<()> {
@@ -128,13 +128,13 @@ pub mod talker {
 pub mod fib_server {
     use nros::{
         Callback, CallbackCtx, CdrReader, CdrWriter, DeserError, Deserialize, ExecutableNode,
-        GoalResponse, GoalStatus, Node, NodeContext, NodeOptions, NodeResult, RosAction,
-        RosMessage, SerError, Serialize, TickCtx,
+        GoalResponse, GoalStatus, NodeContext, NodeOptions, NodeResult, RosAction, RosMessage,
+        SerError, Serialize, TickCtx,
     };
 
     pub struct Component;
 
-    impl Node for Component {
+    impl nros::Component for Component {
         const NAME: &'static str = "fib_server";
 
         fn register(context: &mut NodeContext<'_>) -> NodeResult<()> {
@@ -332,13 +332,13 @@ pub mod fib_server {
 /// example receives it. CDR matches `std_msgs::msg::Int32` byte-for-byte.
 pub mod chatter_talker {
     use nros::{
-        Callback, CallbackCtx, CdrReader, CdrWriter, DeserError, Deserialize, ExecutableNode, Node,
+        Callback, CallbackCtx, CdrReader, CdrWriter, DeserError, Deserialize, ExecutableNode,
         NodeContext, NodeOptions, NodeResult, RosMessage, SerError, Serialize, TimerDuration,
     };
 
     pub struct Component;
 
-    impl Node for Component {
+    impl nros::Component for Component {
         const NAME: &'static str = "chatter_talker";
 
         fn register(context: &mut NodeContext<'_>) -> NodeResult<()> {

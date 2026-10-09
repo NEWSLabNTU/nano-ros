@@ -35,7 +35,7 @@ use cortex_m_semihosting::{debug, hprintln};
 use nros::{
     BootConfig, ComponentSlotStorage, EntityBounds, ExecutorConfig, ExecutorSizing, NodeKey,
     ParameterServer, ParameterStorage, ParameterValue,
-    node::{Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeResult, TickCtx},
+    node::{Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeResult, TickCtx},
 };
 use panic_semihosting as _;
 
@@ -48,7 +48,7 @@ extern crate nros_platform_mps2_an385 as _;
 /// slabs are all zero-length: the whole static store is a few words.
 struct PocNode;
 
-impl Node for PocNode {
+impl Component for PocNode {
     const NAME: &'static str = "heap_free_poc";
     const ENTITY_BOUNDS: EntityBounds = EntityBounds::exact(0, 0, 0, 0, 0);
 

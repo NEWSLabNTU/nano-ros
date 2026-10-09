@@ -797,7 +797,7 @@ mod census_hooks_reach_every_api {
     #[test]
     fn a_rust_component_registered_through_the_runtime_is_attributed() {
         struct CensusComp;
-        impl nros::Node for CensusComp {
+        impl nros::Component for CensusComp {
             const NAME: &'static str = "rust_census_node";
             fn register(ctx: &mut nros::NodeContext<'_>) -> nros::NodeResult<()> {
                 let mut node = ctx.create_node(nros::NodeOptions::new("rust_census_node"))?;

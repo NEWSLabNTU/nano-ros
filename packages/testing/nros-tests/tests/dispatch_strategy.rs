@@ -22,7 +22,7 @@
 
 use std::panic;
 
-use nros::{CallbackId, DispatchStrategy, Node, NodeContext, NodeResult, SubscriptionTag};
+use nros::{CallbackId, Component, DispatchStrategy, NodeContext, NodeResult, SubscriptionTag};
 use nros_platform::{NodeDispatchRuntime, NullNodeRuntime, SignaledCallback};
 
 // ---------------------------------------------------------------------------
@@ -62,7 +62,7 @@ fn dispatch_strategy_default_const_is_inline() {
 
 struct DefaultDispatchNode;
 
-impl Node for DefaultDispatchNode {
+impl Component for DefaultDispatchNode {
     const NAME: &'static str = "default_dispatch_node";
     fn register(_: &mut NodeContext<'_>) -> NodeResult<()> {
         Ok(())
@@ -71,7 +71,7 @@ impl Node for DefaultDispatchNode {
 
 struct DeferredDispatchNode;
 
-impl Node for DeferredDispatchNode {
+impl Component for DeferredDispatchNode {
     const NAME: &'static str = "deferred_dispatch_node";
     const DISPATCH: DispatchStrategy = DispatchStrategy::Deferred;
     fn register(_: &mut NodeContext<'_>) -> NodeResult<()> {

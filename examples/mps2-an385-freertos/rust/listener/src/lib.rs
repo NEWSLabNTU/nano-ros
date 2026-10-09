@@ -5,12 +5,14 @@
 
 #![no_std]
 
-use nros::{Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult};
+use nros::{
+    Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeOptions, NodeResult,
+};
 use std_msgs::msg::String as StringMsg;
 
 pub struct Listener;
 
-impl Node for Listener {
+impl Component for Listener {
     const NAME: &'static str = "listener";
 
     // phase-391 W5-endgame (issue 0857) — exact bounds: one subscription,

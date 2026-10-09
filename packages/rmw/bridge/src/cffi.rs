@@ -260,7 +260,7 @@ pub unsafe extern "C" fn nros_pubsub_bridge_create(
         }
         Err(_) => return NROS_RMW_RET_ERROR,
     };
-    let sub = match src.create_subscription_raw(src_topic, type_name, type_hash) {
+    let sub = match src.create_polling_subscription_raw(src_topic, type_name, type_hash) {
         Ok(s) => s,
         Err(_) => return NROS_RMW_RET_ERROR,
     };

@@ -37,8 +37,8 @@ use core::time::Duration;
 
 use log::{error, info};
 use nros::{
-    Executor, ExecutorConfig, QoSOverride, QoSOverrideRole, QoSOverrideValue, QoSReliabilityPolicy,
-    QoSProfile,
+    Executor, ExecutorConfig, QoSOverride, QoSOverrideRole, QoSOverrideValue, QoSProfile,
+    QoSReliabilityPolicy,
 };
 
 const TOPIC: &str = "/chatter";
@@ -119,20 +119,21 @@ fn run_talker(exec: &mut Executor<'static>, overrides: &'static [QoSOverride]) {
     log_effective(QoSOverrideRole::Publisher, overrides);
 
     let publisher = {
-        let mut node = exec.create_node("qos_override").expect("create node");
-        node.set_qos_overrides(overrides);
+        // phase-483 W2 — `create_node` returns the one node type, which takes
+        // its QoS overrides from the executor's node table. The TYPED table this
+        // probe installs is a `NodeHandle` input, so it opens one for the call.
+        let id = exec.create_node("qos_override").expect("create node").id();
         // The raw publisher create path folds the matching override into the
         // profile, then `validate_against` the backend's supported-policy mask.
         // The `Err` arm is defensive: a backend that genuinely can't honour the
         // override would fail loudly here, never silently downgrade. (The CFFI
         // session this executor routes through advertises a broad mask, so the
         // supported `reliability=best_effort` override always passes.)
-        match node.create_publisher_raw_with_qos(
-            TOPIC,
-            TYPE_NAME,
-            TYPE_HASH,
-            QoSProfile::default(),
-        ) {
+        let created = exec.with_node_try(id, |node| {
+            node.set_qos_overrides(overrides);
+            node.create_publisher_raw_with_qos(TOPIC, TYPE_NAME, TYPE_HASH, QoSProfile::default())
+        });
+        match created {
             Ok(p) => {
                 info!("publisher created on {TOPIC} (override honoured)");
                 p
@@ -161,9 +162,12 @@ fn run_listener(exec: &mut Executor<'static>, overrides: &'static [QoSOverride])
     log_effective(QoSOverrideRole::Subscription, overrides);
 
     let mut sub = {
-        let mut node = exec.create_node("qos_override").expect("create node");
-        node.set_qos_overrides(overrides);
-        match node.create_subscription_raw(TOPIC, TYPE_NAME, TYPE_HASH) {
+        let id = exec.create_node("qos_override").expect("create node").id();
+        let created = exec.with_node_try(id, |node| {
+            node.set_qos_overrides(overrides);
+            node.create_subscription_raw(TOPIC, TYPE_NAME, TYPE_HASH)
+        });
+        match created {
             Ok(s) => {
                 info!("subscription created on {TOPIC} (override honoured)");
                 s

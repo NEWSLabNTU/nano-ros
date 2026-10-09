@@ -6,11 +6,11 @@
 
 #![no_std]
 
-use nros::{Node, NodeContext, NodeOptions, NodeResult, TimerDuration};
+use nros::{Component, NodeContext, NodeOptions, NodeResult, TimerDuration};
 
 pub struct Control;
 
-impl Node for Control {
+impl Component for Control {
     const NAME: &'static str = "control_node";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

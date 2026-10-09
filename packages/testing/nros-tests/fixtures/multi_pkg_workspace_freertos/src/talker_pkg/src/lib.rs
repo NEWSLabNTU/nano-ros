@@ -11,11 +11,11 @@
 
 #![no_std]
 
-use nros::{Node, NodeContext, NodeOptions, NodeResult};
+use nros::{Component, NodeContext, NodeOptions, NodeResult};
 
 pub struct Talker;
 
-impl Node for Talker {
+impl Component for Talker {
     const NAME: &'static str = "talker";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

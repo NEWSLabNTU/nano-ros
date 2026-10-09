@@ -11,7 +11,7 @@
 //! its override have been in `nros-core` since issue 0789, but the only way to
 //! move them was for the program to call the setter itself.
 //!
-//! The entry point is [`NodeCtx::install_ros_time_source`](crate::executor::node::NodeCtx::install_ros_time_source).
+//! The entry point is [`Node::install_ros_time_source`](crate::executor::node::Node::install_ros_time_source).
 //!
 //! # What this is not
 //!

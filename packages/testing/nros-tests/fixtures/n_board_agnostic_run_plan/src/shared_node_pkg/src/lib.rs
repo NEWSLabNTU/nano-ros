@@ -8,11 +8,11 @@
 
 #![no_std]
 
-use nros::{Node, NodeContext, NodeOptions, NodeResult};
+use nros::{Component, NodeContext, NodeOptions, NodeResult};
 
 pub struct SharedNode;
 
-impl Node for SharedNode {
+impl Component for SharedNode {
     const NAME: &'static str = "shared_node";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

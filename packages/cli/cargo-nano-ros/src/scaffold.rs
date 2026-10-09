@@ -521,7 +521,7 @@ log = {{ version = "0.4", default-features = false }}
 //! `ExecutableNode::on_callback` publishes a counter on every tick.
 
 use nros::{{
-    Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
+    Callback, CallbackCtx, ExecutableNode, Component, NodeContext, NodeOptions, NodeResult,
     TimerDuration,
 }};
 use std_msgs::msg::Int32;
@@ -529,7 +529,7 @@ use std_msgs::msg::Int32;
 /// {class_name} — counter state plus a chatter publish on every tick.
 pub struct {class_name};
 
-impl Node for {class_name} {{
+impl Component for {class_name} {{
     const NAME: &'static str = "{module}";
 
     /// Exact bounds: one publisher (a timer needs no registry slot).
@@ -590,7 +590,7 @@ component = "{crate_name}::{module}"
 # phase-307 W1 / issue 1412 — the registered type's fully qualified path.
 # Without it the metadata harness falls back to guessing
 # `<crate>::<module>::Component`, which the shipping `nros::node!(Class)` shape
-# (`impl Node for Class` at the crate root, no `Component`, no module segment)
+# (`impl Component for Class` at the crate root, no `Component`, no module segment)
 # never matches — and the harness then fails to compile.
 class = "{crate_name}::{class_name}"
 language = "rust"
@@ -1210,7 +1210,7 @@ fn self_bringup_node_lib(name: &str) -> String {
 use core::fmt::Write as _;
 
 use nros::{{
-    Callback, CallbackCtx, DispatchStrategy, ExecutableNode, Node, NodeContext, NodeResult,
+    Callback, CallbackCtx, DispatchStrategy, ExecutableNode, Component, NodeContext, NodeResult,
     TickCtx, TimerDuration,
 }};
 use nros_log::{{Logger, log_error, log_info}};
@@ -1220,7 +1220,7 @@ static LOGGER: Logger = Logger::new("{name}");
 
 pub struct Talker;
 
-impl Node for Talker {{
+impl Component for Talker {{
     const NAME: &'static str = "{name}";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

@@ -71,6 +71,7 @@ PRELUDE_EXCLUDES = {
 # reason has to be "a node cannot start without it" — not "it is convenient".
 ALLOWED_EXTENSIONS = {
     # Startup. Nothing opens a session or drives the executor without these.
+    "Component": "phase-483 W2 — the component trait (was `nros::Node`); a workspace node cannot be registered without implementing it",
     "ExecutorConfig": "nothing opens a session without it; rclrs takes a Context instead",
     "SpinOptions": "the argument to every spin call",
     "ExecutorConfigEnvExt": "issue 0687 — `from_env()` is an extension trait, so the spelling needs it in scope",

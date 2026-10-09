@@ -218,7 +218,7 @@ pub fn derive_ros_message(input: TokenStream) -> TokenStream {
 /// ```ignore
 /// struct Talker;
 ///
-/// impl nros::Node for Talker {
+/// impl nros::Component for Talker {
 ///     const NAME: &'static str = "talker";
 ///
 ///     fn register(ctx: &mut nros::NodeContext<'_>) -> nros::NodeResult<()> {
@@ -364,11 +364,11 @@ fn node_impl(input: TokenStream) -> TokenStream {
         static #component_store_name: ::nros::ComponentSlotStorage<
             #node_ty,
             { ::nros::config::MAX_CLASS_INSTANCES },
-            { <#node_ty as ::nros::Node>::ENTITY_BOUNDS.publishers },
-            { <#node_ty as ::nros::Node>::ENTITY_BOUNDS.service_clients },
-            { <#node_ty as ::nros::Node>::ENTITY_BOUNDS.action_clients },
-            { <#node_ty as ::nros::Node>::ENTITY_BOUNDS.action_servers },
-            { <#node_ty as ::nros::Node>::ENTITY_BOUNDS.service_servers },
+            { <#node_ty as ::nros::Component>::ENTITY_BOUNDS.publishers },
+            { <#node_ty as ::nros::Component>::ENTITY_BOUNDS.service_clients },
+            { <#node_ty as ::nros::Component>::ENTITY_BOUNDS.action_clients },
+            { <#node_ty as ::nros::Component>::ENTITY_BOUNDS.action_servers },
+            { <#node_ty as ::nros::Component>::ENTITY_BOUNDS.service_servers },
         > = ::nros::ComponentSlotStorage::new();
 
         #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -389,7 +389,7 @@ fn node_impl(input: TokenStream) -> TokenStream {
 
         #[unsafe(no_mangle)]
         pub extern "C" fn #dispatch_fn_name() -> u8 {
-            <#node_ty as ::nros::Node>::DISPATCH as u8
+            <#node_ty as ::nros::Component>::DISPATCH as u8
         }
 
         // Phase 216.A.5 follow-up — extern "C" trampoline the B.3 RTIC

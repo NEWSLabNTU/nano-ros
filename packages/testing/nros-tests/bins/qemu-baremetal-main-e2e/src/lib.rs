@@ -12,13 +12,13 @@
 #![no_std]
 
 use nros::{
-    Callback, CallbackCtx, DispatchStrategy, ExecutableNode, Node, NodeContext, NodeResult,
+    Callback, CallbackCtx, Component, DispatchStrategy, ExecutableNode, NodeContext, NodeResult,
     TickCtx, TimerDuration,
 };
 
 pub struct E2eNode;
 
-impl Node for E2eNode {
+impl Component for E2eNode {
     const NAME: &'static str = "qemu_baremetal_e2e";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

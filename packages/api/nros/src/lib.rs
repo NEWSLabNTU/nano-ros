@@ -318,8 +318,8 @@ pub use node::NodeExecutorRuntime;
 // sweep — the helper had no live callers after the BSP baker + macro
 // extern emit were deleted.)
 pub use node::{
-    ActionExecutor, Callback, CallbackCtx, CallbackEffects, ClientDispatch, DeclaredNode,
-    EntityBounds, ExecutableNode, Node, NodeActionClient, NodeActionServer, NodeContext,
+    ActionExecutor, Callback, CallbackCtx, CallbackEffects, ClientDispatch, Component,
+    DeclaredNode, EntityBounds, ExecutableNode, NodeActionClient, NodeActionServer, NodeContext,
     NodeDeclError, NodeOptions, NodeParameter, NodePublisher, NodeResult, NodeRuntime,
     NodeServiceClient, NodeServiceServer, NodeSubscription, NodeTimer, PublisherResolver, TickCtx,
 };
@@ -975,7 +975,7 @@ macro_rules! zephyr_component_main {
                     panic!("nros zephyr entry: baked Context is invalid: {e:?}")
                 }
             };
-            let config = ctx.config(<$node as $crate::Node>::NAME);
+            let config = ctx.config(<$node as $crate::Component>::NAME);
             // Issue 0155 — fail LOUD (repo rule: panic, not silent
             // early-return). A silent `return` here idles the image with zero
             // output; the zephyr-cyclonedds rust lane was undiagnosable until
@@ -1365,7 +1365,7 @@ pub use nros_node::{
     ActionClient, ActionClientCore, ActionServer, ActionServerCore, ActionServerHandle,
     ActionServerRawHandle, ActiveGoal, CompletedGoal, EmbeddedPublisher, EmbeddedRawPublisher,
     EmbeddedServiceClient, EmbeddedServiceServer, Executor, ExecutorSizing, FeedbackStream,
-    GoalFeedbackStream, LoanError, NodeCtx, NodeHandle, Promise, PublishLoan, RawActionClientSpec,
+    GoalFeedbackStream, LoanError, Node, Promise, PublishLoan, RawActionClientSpec,
     RawActionServerSpec, RawActiveGoal, RawSubscription, RecvView, SessionHandle, SessionSpec,
     Subscription, action_channel_type,
 };
@@ -1630,7 +1630,7 @@ pub mod prelude {
     pub use crate::NodeExecutorRuntime;
     #[cfg(feature = "alloc")]
     pub use crate::{
-        Node, NodeActionClient, NodeActionServer, NodeContext, NodeDeclError, NodeOptions,
+        Component, NodeActionClient, NodeActionServer, NodeContext, NodeDeclError, NodeOptions,
         NodeParameter, NodePublisher, NodeResult, NodeServiceClient, NodeServiceServer,
         NodeSubscription, NodeTimer, ParameterDefault, node,
     };
@@ -1658,7 +1658,7 @@ pub mod prelude {
     // Re-export RMW-dependent executor + handle types
     #[cfg(feature = "rmw-cffi")]
     pub use crate::{
-        EmbeddedPublisher, EmbeddedServiceClient, Executor, FeedbackStream, NodeHandle, Promise,
+        EmbeddedPublisher, EmbeddedServiceClient, Executor, FeedbackStream, Node, Promise,
         Subscription,
     };
 
@@ -1716,7 +1716,10 @@ mod tests {
     #[test]
     fn node_context_types_resolve() {
         // Canonical "Node*" trait + context names (post-rename).
-        fn _take_node_ctx<N: crate::Node>(_: &mut crate::NodeContext<'_, dyn crate::NodeRuntime>) {}
+        fn _take_node_ctx<N: crate::Component>(
+            _: &mut crate::NodeContext<'_, dyn crate::NodeRuntime>,
+        ) {
+        }
         // Result type resolves.
         let _: crate::NodeResult<()> = Ok(());
     }

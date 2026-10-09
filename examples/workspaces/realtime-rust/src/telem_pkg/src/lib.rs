@@ -7,14 +7,14 @@
 #![no_std]
 
 use nros::{
-    Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
+    Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeOptions, NodeResult,
     TimerDuration,
 };
 use std_msgs::msg::Int32;
 
 pub struct Telem;
 
-impl Node for Telem {
+impl Component for Telem {
     const NAME: &'static str = "telem_node";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

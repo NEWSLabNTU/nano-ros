@@ -17,11 +17,11 @@
 
 #![no_std]
 
-use nros::{Node, NodeContext, NodeOptions, NodeResult};
+use nros::{Component, NodeContext, NodeOptions, NodeResult};
 
 pub struct OneDep;
 
-impl Node for OneDep {
+impl Component for OneDep {
     const NAME: &'static str = "one_dep";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,

@@ -33,7 +33,7 @@ fn main() {
         .create_node("add_two_ints_server")
         .expect("Failed to create node");
     let mut service = node
-        .create_service::<AddTwoInts>("/add_two_ints")
+        .create_polling_service::<AddTwoInts>("/add_two_ints")
         .expect("Failed to create service");
 
     log_info!(&LOGGER, "Service server ready: /add_two_ints");

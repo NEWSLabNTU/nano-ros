@@ -4215,9 +4215,9 @@ impl<'s> Executor<'s> {
     /// Phase 189.M1 — an executor-borrowing node handle for the entity builders
     /// (`exec.node_mut(id).subscription(t)...` / `.create_subscription(...)`).
     /// A short-lived `&mut Executor` borrow — use one at a time; entity handles
-    /// are owned and outlive it (see `NodeCtx`).
-    pub fn node_mut(&mut self, id: super::node_record::NodeId) -> super::node::NodeCtx<'_, 's> {
-        super::node::NodeCtx::new(self, id)
+    /// are owned and outlive it (see `Node`).
+    pub fn node_mut(&mut self, id: super::node_record::NodeId) -> super::node::Node<'_, 's> {
+        super::node::Node::new(self, id)
     }
 
     /// Issue #52 — install the baked QoS-override table on one node. Every
@@ -4284,8 +4284,8 @@ impl<'s> Executor<'s> {
 
     /// Phase 189.M1 — create a typed publisher bound to a node's session.
     /// Backs `node.publisher(t).typed::<M>().build()` on the
-    /// executor-borrowing [`NodeCtx`](super::node::NodeCtx); the returned
-    /// handle is owned and outlives the `NodeCtx`.
+    /// executor-borrowing [`Node`](super::node::Node); the returned
+    /// handle is owned and outlives the `Node`.
     pub fn create_publisher_on<M: crate::rmw_type_registry::MessageForRmw>(
         &mut self,
         node_id: super::node_record::NodeId,
@@ -4876,45 +4876,20 @@ impl<'s> Executor<'s> {
     /// bound doing its job: a node the executor does not know about cannot
     /// carry a sched context, a QoS override, or a graph identity. Repeated
     /// calls with the SAME name are free.
-    pub fn create_node(&mut self, name: &str) -> Result<NodeHandle<'_>, NodeError> {
+    pub fn create_node(&mut self, name: &str) -> Result<super::node::Node<'_, 's>, NodeError> {
         if name.len() > 64 {
             return Err(NodeError::NameTooLong);
         }
-
-        let mut node_name = heapless::String::<64>::new();
-        node_name
-            .push_str(name)
-            .map_err(|_| NodeError::NameTooLong)?;
-
-        // Dedup against the executor's own namespace — the one this handle
-        // will carry. `node_builder` resolves the session slot to 0 (primary)
-        // when no rmw name is given, which is what this path has always used.
-        if self
-            .node_id_by_name(node_name.as_str(), self.namespace.as_str())
-            .is_none()
-        {
-            self.node_builder(name).build()?;
-        }
-
-        // issue 0801 (second half) — the executor's domain, NOT a literal 0.
-        // 429d5a581 fixed the ELEVEN arena `TopicInfo`s and left the THREE
-        // `NodeHandle::new` sites, so an entity created through a node HANDLE
-        // (`with_node`, `node`, `node_on`) still declared on domain 0 while the
-        // arena path declared on the configured one. Same split the issue is
-        // about, one constructor over: `loan_e2e` publishes through a handle and
-        // subscribes through the arena, so it delivered on domain 0 and on
-        // nothing else.
-        let domain_id = self.domain_id;
-        let mut node = NodeHandle::new(
-            node_name,
-            self.namespace.clone(),
-            &mut self.session,
-            &self.remap_table[..self.remap_len],
-            domain_id,
-        );
-        node.set_monitors(self.monitor_table);
-        node.set_age_monitors(self.age_table, self.epoch_us_fn);
-        Ok(node)
+        // Dedup against the executor's own namespace, which is the namespace
+        // `node_builder` gives a node when none is named. phase-483 W2: this
+        // returns THE node type (`Node`, re-exported as `nros::Node`), the
+        // same handle `node_mut` gives a component, where it used to return a
+        // session-borrowing `NodeHandle` with a different method set.
+        let id = match self.node_id_by_name(name, self.namespace.clone().as_str()) {
+            Some(id) => id,
+            None => self.node_builder(name).build()?,
+        };
+        Ok(super::node::Node::new(self, id))
     }
 
     /// Phase 128.F.2 — bridge-mode node factory. Registers a Node
@@ -4930,7 +4905,11 @@ impl<'s> Executor<'s> {
     /// extra session lookup and serves no purpose when only one
     /// backend is registered.
     #[cfg(feature = "rmw-cffi")]
-    pub fn create_node_on(&mut self, name: &str, rmw: &str) -> Result<NodeHandle<'_>, NodeError> {
+    pub fn create_node_on(
+        &mut self,
+        name: &str,
+        rmw: &str,
+    ) -> Result<super::node::Node<'_, 's>, NodeError> {
         self.create_node_on_with_domain(name, rmw, None, None)
     }
 
@@ -4950,7 +4929,7 @@ impl<'s> Executor<'s> {
         rmw: &str,
         domain_id: Option<u32>,
         locator: Option<&str>,
-    ) -> Result<NodeHandle<'_>, NodeError> {
+    ) -> Result<super::node::Node<'_, 's>, NodeError> {
         if name.len() > 64 {
             return Err(NodeError::NameTooLong);
         }
@@ -4960,11 +4939,9 @@ impl<'s> Executor<'s> {
         // `[[bridge]]`. Without dedup, N bridges push 2N records and overflow
         // `MAX_NODES`. Names are unique per session in a generated bridge config,
         // so matching by name is unambiguous.
-        let session_idx = if let Some(rec) = self.nodes.iter().find(|n| n.name.as_str() == name) {
-            rec.session_idx
+        let id = if let Some(i) = self.nodes.iter().position(|n| n.name.as_str() == name) {
+            super::node_record::NodeId::from_raw(i as u8)
         } else {
-            // Register the Node (opens an extra session under `rmw` if
-            // none exists yet for that backend).
             let mut builder = self.node_builder(name).rmw(rmw);
             if let Some(d) = domain_id {
                 builder = builder.domain_id(d);
@@ -4972,34 +4949,9 @@ impl<'s> Executor<'s> {
             if let Some(loc) = locator {
                 builder = builder.locator(loc);
             }
-            let id = builder.build()?;
-            self.node(id).ok_or(NodeError::NodeTableFull)?.session_idx
+            builder.build()?
         };
-
-        let mut node_name = heapless::String::<64>::new();
-        node_name
-            .push_str(name)
-            .map_err(|_| NodeError::NameTooLong)?;
-        let namespace = self.namespace.clone();
-        let monitors = self.monitor_table;
-        let age_monitors = self.age_table;
-        let epoch = self.epoch_us_fn;
-        let domain_id = self.domain_id;
-        let (session, remaps) = self
-            .session_and_remaps_at_mut(session_idx)
-            .ok_or(NodeError::NodeTableFull)?;
-        // issue 0801 (second half) — the executor's domain, NOT a literal 0.
-        // 429d5a581 fixed the ELEVEN arena `TopicInfo`s and left the THREE
-        // `NodeHandle::new` sites, so an entity created through a node HANDLE
-        // (`with_node`, `node`, `node_on`) still declared on domain 0 while the
-        // arena path declared on the configured one. Same split the issue is
-        // about, one constructor over: `loan_e2e` publishes through a handle and
-        // subscribes through the arena, so it delivered on domain 0 and on
-        // nothing else.
-        let mut node = NodeHandle::new(node_name, namespace, session, remaps, domain_id);
-        node.set_monitors(monitors);
-        node.set_age_monitors(age_monitors, epoch);
-        Ok(node)
+        Ok(super::node::Node::new(self, id))
     }
 
     /// Drive transport I/O (poll network, dispatch callbacks).
@@ -7620,7 +7572,7 @@ impl<'s> Executor<'s> {
     /// The ONE timer registration in the tree (phase-430 W4).
     ///
     /// Every timer verb — the four `Executor::register_timer*` entry points
-    /// below, `NodeCtx::create_timer_in_group` / `create_timer_on_clock*`, the
+    /// below, `Node::create_timer_in_group` / `create_timer_on_clock*`, the
     /// declarative `nros::Node` timer, and the C/C++ FFI that lower to them —
     /// constructs its arena entry HERE. Until W4 there were four copies of this
     /// body differing only in `oneshot`, `clock_source` and whether the sched
@@ -7771,7 +7723,7 @@ impl<'s> Executor<'s> {
     /// behaves like a wall timer with NTP steps, which is the same fallback
     /// `rclcpp::Clock` has: a node written for simulation still runs standalone.
     ///
-    /// The node-level spellings of this are `NodeCtx::create_timer_on_clock`
+    /// The node-level spellings of this are `Node::create_timer_on_clock`
     /// and the declarative `DeclaredNode::create_timer_on_clock` (phase-430 W4);
     /// all of them reach `register_timer_entry`, which is the only place a
     /// timer entry is built.
@@ -7857,7 +7809,7 @@ impl<'s> Executor<'s> {
     /// `None` the node's `default_sched` applies (phase-272 behavior).
     ///
     /// This is the executor-level primitive called by the Rust `_in_group` API
-    /// (`NodeCtx::create_timer_in_group`) and the C/C++ group-aware timer FFI.
+    /// (`Node::create_timer_in_group`) and the C/C++ group-aware timer FFI.
     pub fn register_timer_on<F>(
         &mut self,
         node_id: Option<super::node_record::NodeId>,
@@ -8799,7 +8751,7 @@ impl<'s> Executor<'s> {
     /// **This is the ours-only PRIMITIVE, not the verb a user reaches for.**
     /// phase-417 W4.e settled that the NODE owns a guard condition in all three
     /// languages, so the spelling an application writes is
-    /// [`NodeCtx::create_guard_condition`](crate::executor::NodeCtx::create_guard_condition)
+    /// [`Node::create_guard_condition`](crate::executor::Node::create_guard_condition)
     /// — which is this function with a node bound, so the guard inherits that
     /// node's `SchedContext` like every other entity the node creates. This one
     /// stays because the executor is what owns the arena the flag lives in, and
@@ -11840,7 +11792,7 @@ impl<'s> Executor<'s> {
     ///
     /// phase-428 W6 — `#[must_use]`, for the reason `[[nodiscard]]` went on
     /// C++'s `Result`: the `else { false }` arm is silently discarded at a
-    /// call site that drops the value, and `NodeCtx::logger` two files over
+    /// call site that drops the value, and `Node::logger` two files over
     /// already carries the attribute — so this was inconsistency, not house
     /// style. A declare that failed and was ignored is a parameter the program
     /// believes it has.
@@ -13799,7 +13751,7 @@ impl<'s> Executor<'s> {
     ///
     /// Scope: the source the EXECUTOR installed for `use_sim_time`. An
     /// application that calls
-    /// [`NodeCtx::install_ros_time_source`](super::node::NodeCtx::install_ros_time_source)
+    /// [`Node::install_ros_time_source`](super::node::Node::install_ros_time_source)
     /// directly is not watched, because the line this would print names
     /// `use_sim_time`, and that application never set it — the honest
     /// diagnostic for the explicit path would be a different sentence, and
@@ -13927,7 +13879,7 @@ impl<'s> Executor<'s> {
 
     /// phase-425 W3 — subscribe `topic` and install every sample as this
     /// image's ROS time. The registration behind
-    /// [`NodeCtx::install_ros_time_source`](super::node::NodeCtx::install_ros_time_source)
+    /// [`Node::install_ros_time_source`](super::node::Node::install_ros_time_source)
     /// and behind the `use_sim_time` reconciliation, so both spell the QoS and
     /// the conversion exactly once.
     #[cfg(all(feature = "sim-time", any(has_rmw, test)))]

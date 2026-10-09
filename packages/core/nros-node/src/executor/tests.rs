@@ -7268,7 +7268,7 @@ impl nros_core::RosService for TestService {
 
 #[test]
 fn test_service_builder_qos() {
-    // Phase 193.2 — NodeCtx service builder + convenient create_service.
+    // Phase 193.2 — Node service builder + convenient create_service.
     let mut exec: Executor = executor_with_clock(MockSession::new());
     let id = exec.node_builder("n").build().unwrap();
 
@@ -8870,7 +8870,7 @@ fn test_bind_group_sched_group_beats_node_default() {
 // Phase 273 W3 — high-level CallbackGroup API tests
 // =========================================================================
 // These tests exercise the user-facing create_callback_group / create_timer_in_group /
-// create_subscription_in_group API end-to-end through the NodeCtx, confirming that
+// create_subscription_in_group API end-to-end through the Node, confirming that
 // the group name is threaded through to apply_node_default_sched and the
 // executor's sched_context_bindings reflect the group's SC (not the node
 // default or SC 0).
@@ -10512,7 +10512,7 @@ fn spin_period_counts_its_wakes_and_keeps_late_within_total() {
 /// `ros_time_timer_follows_the_simulated_clock` above proves the executor's
 /// registrar honours `/clock`; it says nothing about whether a user who writes
 /// nodes the way the workspace examples do can ASK for one. Until W4 they could
-/// not: `NodeCtx`'s only timer verb was `create_timer_in_group`, which lowers to
+/// not: `Node`'s only timer verb was `create_timer_in_group`, which lowers to
 /// `register_timer_on` with `TimerClockSource::Steady` hardcoded.
 ///
 /// Both halves are asserted in one test for the reason the sibling gives: the
@@ -10809,7 +10809,7 @@ fn the_headroom_query_runs_at_most_once_per_interval() {
 // ===========================================================================
 // phase-444 — the graph family on upstream's receiver.
 //
-// `NodeCtx` (which the api-parity correlator sees as `Node`, the receiver
+// `Node` (which the api-parity correlator sees as `Node`, the receiver
 // rclrs hangs these off) forwards each graph verb to the executor it already
 // borrows. The capability is phase-381 W4's and is tested where it lives;
 // what these tests own is the FORWARDING, and the bug a forwarder actually
@@ -10944,7 +10944,7 @@ fn node_ctx_forwards_each_graph_verb_to_its_own_slot() {
     //
     // Spelled out per verb rather than driven from a table of fn pointers:
     // the four signatures are higher-ranked over the visitor's lifetimes and
-    // a `dyn Fn` table cannot hold them without pinning `NodeCtx`'s own two.
+    // a `dyn Fn` table cannot hold them without pinning `Node`'s own two.
     macro_rules! assert_by_node {
         ($verb:ident, $marker:expr) => {{
             let seen =
@@ -11167,7 +11167,7 @@ fn a_backend_with_no_graph_does_not_report_a_count_of_zero() {
     );
 }
 
-/// phase-444 — `NodeCtx`'s two `*_info_by_topic` forwarders reach their OWN
+/// phase-444 — `Node`'s two `*_info_by_topic` forwarders reach their OWN
 /// side of the backend slot.
 ///
 /// One backend slot serves both, discriminated by a single `bool`, so the

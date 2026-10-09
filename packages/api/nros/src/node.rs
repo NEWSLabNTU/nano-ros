@@ -281,7 +281,7 @@ impl EntityBounds {
 }
 
 /// Rust component entry point.
-pub trait Node {
+pub trait Component {
     /// Source component name used in metadata and diagnostics.
     const NAME: &'static str;
 
@@ -2671,7 +2671,7 @@ impl<'a> TickCtx<'a> {
     }
 }
 
-pub trait ExecutableNode: Node {
+pub trait ExecutableNode: Component {
     /// Per-instance mutable state shared across the component's callbacks.
     type State;
 
@@ -2697,7 +2697,7 @@ pub trait ExecutableNode: Node {
 ///
 /// ```ignore
 /// pub struct Node;
-/// impl nros::Node for Node { /* register(...) */ }
+/// impl nros::Component for Node { /* register(...) */ }
 /// nros::declarative_component!(Node);
 /// ```
 #[macro_export]
@@ -2717,7 +2717,7 @@ macro_rules! declarative_component {
 }
 
 /// Run component registration against any component runtime.
-pub fn register_node<C: Node>(runtime: &mut dyn NodeRuntime) -> NodeResult<()> {
+pub fn register_node<C: Component>(runtime: &mut dyn NodeRuntime) -> NodeResult<()> {
     let mut context = NodeContext::new(C::NAME, runtime);
     C::register(&mut context)
 }
@@ -2736,7 +2736,7 @@ pub fn __private_node_state_into_raw<C: ExecutableNode>(state: C::State) -> *mut
 }
 
 /// Run component registration against an in-memory metadata recorder.
-pub fn record_node_metadata<C: Node>(recorder: &mut dyn NodeRuntime) -> NodeResult<()> {
+pub fn record_node_metadata<C: Component>(recorder: &mut dyn NodeRuntime) -> NodeResult<()> {
     register_node::<C>(recorder)
 }
 
@@ -2826,7 +2826,7 @@ mod tests {
 
     struct TalkerComponent;
 
-    impl Node for TalkerComponent {
+    impl Component for TalkerComponent {
         const NAME: &'static str = "talker_component";
 
         fn register(context: &mut NodeContext<'_>) -> NodeResult<()> {
@@ -2877,7 +2877,7 @@ mod tests {
     // `EntityMetadata.safety` flag so the runtime registers the integrity-aware
     // subscription. A plain subscription stays `safety == false`.
     struct SafetyComponent;
-    impl Node for SafetyComponent {
+    impl Component for SafetyComponent {
         const NAME: &'static str = "safety_component";
         fn register(context: &mut NodeContext<'_>) -> NodeResult<()> {
             let mut node =
@@ -2958,7 +2958,7 @@ mod tests {
 
     struct GroupedComponent;
 
-    impl Node for GroupedComponent {
+    impl Component for GroupedComponent {
         const NAME: &'static str = "grouped_component";
 
         fn register(context: &mut NodeContext<'_>) -> NodeResult<()> {
@@ -3315,7 +3315,7 @@ mod tests {
 
     struct RobotComponent;
 
-    impl Node for RobotComponent {
+    impl Component for RobotComponent {
         const NAME: &'static str = "robot_component";
 
         fn register(context: &mut NodeContext<'_>) -> NodeResult<()> {
@@ -3783,7 +3783,7 @@ mod tests {
     #[test]
     fn node_dispatch_default_is_inline() {
         struct Dummy;
-        impl Node for Dummy {
+        impl Component for Dummy {
             const NAME: &'static str = "dummy";
             fn register(_: &mut NodeContext<'_>) -> NodeResult<()> {
                 Ok(())
@@ -3818,7 +3818,7 @@ mod tests {
 
         pub struct DispatchProbe;
 
-        impl Node for DispatchProbe {
+        impl Component for DispatchProbe {
             const NAME: &'static str = "dispatch_probe";
             // Default `DISPATCH = Inline` ⇒ discriminant 0.
             fn register(_: &mut NodeContext<'_>) -> NodeResult<()> {

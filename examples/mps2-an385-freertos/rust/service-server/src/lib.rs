@@ -7,11 +7,13 @@
 #![no_std]
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest, AddTwoIntsResponse};
-use nros::{Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult};
+use nros::{
+    Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeOptions, NodeResult,
+};
 
 pub struct AddTwoIntsServer;
 
-impl Node for AddTwoIntsServer {
+impl Component for AddTwoIntsServer {
     const NAME: &'static str = "add_two_ints_server";
 
     // issue 0857 — the cell registries this class fills, exactly: (publishers,
