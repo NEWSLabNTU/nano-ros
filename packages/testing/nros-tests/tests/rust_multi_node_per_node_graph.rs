@@ -267,6 +267,152 @@ fn rust_multi_node_entry_per_node_graph_nodes_xrce() -> nros_tests::TestResult<(
     Ok(())
 }
 
+/// How an image ends, for the issue-1732 case below.
+#[derive(Clone, Copy, Debug)]
+enum Ending {
+    /// A bounded run reaches its own end (`NROS_ENTRY_SPIN_MS`).
+    Clean,
+    /// An unbounded run is sent ONE SIGTERM, as `timeout`, systemd or a
+    /// launcher would send it.
+    Sigterm,
+}
+
+/// A domain on which `ros2 node list` shows NOTHING yet.
+///
+/// The verdict below is "the image's nodes are gone", and a node of the same
+/// name from anything else on the domain would read as a failure to close.
+/// `unique_ros_domain_id` cannot promise that on a shared host: two concurrent
+/// nextest runs (another worktree's, say) share slot numbers, and its
+/// busy-stepping lands both on the same next block. Measured while writing
+/// this test — two of its own cases, both on domain 9. So the precondition is
+/// checked rather than assumed, and a dirty domain is stepped past.
+fn quiet_domain(list: impl Fn(u8) -> String) -> u8 {
+    for _ in 0..6 {
+        let domain = nros_tests::unique_ros_domain_id();
+        if node_set(&list(domain)).is_empty() {
+            return domain;
+        }
+    }
+    panic!(
+        "no ROS domain without foreign nodes in 6 attempts — this host is too busy for a \
+         verdict about whether an image LEAVES the graph"
+    );
+}
+
+/// Issue 1732 — an XRCE image that ENDS must leave the graph.
+///
+/// The Agent is the DDS participant, and Agent 2.4.3 has no client lease: it
+/// forgets a client's participant only when the client deletes its session
+/// (`uxr_delete_session`, reached through the RMW vtable's `destroy_session`).
+/// A native image used to exit without that — the board's
+/// `std::process::exit` ran no destructor, and SIGTERM killed it outright — so
+/// `/talker` and `/listener` stayed in `ros2 node list` for as long as the
+/// Agent ran. Measured on main: both nodes listed after either ending.
+///
+/// Its own Agent per ending, so a leftover of the first cannot be read by the
+/// second.
+fn xrce_entry_leaves_the_graph(entry: &std::path::Path, ending: Ending) {
+    let list = |domain: u8| {
+        ros2_node_list_rmw_with_domain(DEFAULT_ROS_DISTRO, "rmw_fastrtps_cpp", domain)
+            .unwrap_or_default()
+    };
+    let agent = XrceAgent::start_unique().expect("failed to start the XRCE Agent");
+    let addr = agent.addr();
+    let domain = quiet_domain(list);
+
+    let mut cmd = Command::new(entry);
+    cmd.env("NROS_LOCATOR", &addr)
+        .env("XRCE_AGENT_ADDR", &addr)
+        .env("ROS_DOMAIN_ID", domain.to_string())
+        .env("NROS_DOMAIN_ID", domain.to_string())
+        .env("NROS_RMW", "xrce")
+        .env("NROS_ENTRY_SPIN_STEP_MS", "10");
+    match ending {
+        // Long enough to be seen in the graph first, short enough to end alone.
+        Ending::Clean => cmd.env("NROS_ENTRY_SPIN_MS", "12000"),
+        // The generated entry says `spin = "forever"`: unset is unbounded.
+        Ending::Sigterm => cmd.env_remove("NROS_ENTRY_SPIN_MS"),
+    };
+    let mut deploy = ManagedProcess::spawn_command(cmd, "rust-native-xrce-entry")
+        .expect("failed to start native_xrce_entry");
+
+    // Precondition: the image is IN the graph, or "gone afterwards" proves nothing.
+    let during = poll_for_expected_set(Duration::from_secs(15), || list(domain));
+    if node_set(&during) != expected_set() {
+        deploy.kill();
+        panic!(
+            "xrce ({ending:?}): the image never appeared in `ros2 node list`, so whether it \
+             LEAVES cannot be asked. Listing:\n{during}"
+        );
+    }
+
+    if let Ending::Sigterm = ending {
+        let pid = deploy.handle_mut().id() as libc::pid_t;
+        // SAFETY: signals the child this test spawned and still owns.
+        unsafe { libc::kill(pid, libc::SIGTERM) };
+    }
+    // Wait for the image to exit BY ITSELF. Past the budget it is still
+    // running, which is the failure the status check below reports (the
+    // drain after it then kills it).
+    let exit_deadline = Instant::now() + Duration::from_secs(25);
+    let status = loop {
+        match deploy.handle_mut().try_wait() {
+            Ok(Some(st)) => break Some(st),
+            Ok(None) if Instant::now() < exit_deadline => {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            _ => break None,
+        }
+    };
+    // What it printed, for the messages below. The verdicts never read it.
+    let output = match deploy.wait_for_all_output(Duration::from_secs(2)) {
+        Ok(out) => out,
+        Err(e) => format!("(the image's output could not be drained: {e})"),
+    };
+    assert!(
+        status.is_some_and(|s| s.success()),
+        "xrce ({ending:?}): the image must END by itself, with status 0 — a SIGTERM is a \
+         request to stop, and the runtime closes its session before it exits (issue 1732). \
+         Status: {status:?}. Output:\n{output}"
+    );
+
+    // The Agent drops the participant when the session is deleted, so this is
+    // immediate; the poll only absorbs the `ros2` CLI's own discovery.
+    let deadline = Instant::now() + Duration::from_secs(8);
+    let mut after = list(domain);
+    while !node_set(&after).is_empty() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(500));
+        after = list(domain);
+    }
+    drop(agent);
+    assert!(
+        node_set(&after).is_empty(),
+        "xrce ({ending:?}): an image that has ENDED must not be in `ros2 node list` — the \
+         XRCE Agent keeps a client's participant until its session is deleted, so a \
+         listing that still names the image's nodes means the session was never closed \
+         (issue 1732). Listing after exit:\n{after}\nImage output:\n{output}"
+    );
+}
+
+/// Issue 1732 — both endings close the session: the bounded run's own end, and
+/// one SIGTERM to an unbounded run. One case, run in sequence, so the two can
+/// never share a domain with each other.
+#[test]
+fn rust_multi_node_entry_leaves_the_graph_when_it_ends_xrce() -> nros_tests::TestResult<()> {
+    if !require_xrce_agent() {
+        nros_tests::skip!("XRCE agent not available");
+    }
+    if !require_ros2_dds() {
+        nros_tests::skip!("ROS 2 + rmw_fastrtps_cpp not available");
+    }
+    let entry = build_native_workspace_rust_xrce_entry()
+        .require("workspace-rust-native-xrce native_xrce_entry")
+        .to_path_buf();
+    xrce_entry_leaves_the_graph(&entry, Ending::Clean);
+    xrce_entry_leaves_the_graph(&entry, Ending::Sigterm);
+    Ok(())
+}
+
 // phase-329 W3 — bind this test to `interop::CELLS` (the pattern from
 // xrce_ros2_interop). The coordinates below must equal what the list declares
 // for `rust_multi_node_per_node_graph` — one per Runtime cell; drift turns this
