@@ -32,6 +32,7 @@ fn main() {
     println!("cargo:rerun-if-changed=../nros-platform-posix/src/platform.c");
     println!("cargo:rerun-if-changed=../nros-platform-posix/src/net.c");
     println!("cargo:rerun-if-changed=../nros-platform-posix/src/timer.c");
+    println!("cargo:rerun-if-changed=../nros-platform-posix/src/termination.c");
 
     #[cfg(all(feature = "c-stub-test", feature = "posix-c-port"))]
     compile_error!(
@@ -74,6 +75,8 @@ fn main() {
         .file("../nros-platform-posix/src/platform.c")
         .file("../nros-platform-posix/src/net.c")
         .file("../nros-platform-posix/src/timer.c")
+        // issue 1776 — the termination guard is its own archive member.
+        .file("../nros-platform-posix/src/termination.c")
         // phase-241 B.2 — the canonical `<nros/platform.h>` moved to
         // nros-platform-api; this crate's own include/ is now empty.
         .include("../nros-platform-api/include")

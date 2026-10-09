@@ -37,7 +37,9 @@ endif()
 add_library(nros_platform_posix STATIC
     src/platform.c
     src/net.c
-    src/timer.c)
+    src/timer.c
+    # issue 1776 — the termination guard is its own archive member.
+    src/termination.c)
 target_include_directories(nros_platform_posix PUBLIC
     $<BUILD_INTERFACE:${NROS_PLATFORM_CFFI_INCLUDE}>
     $<INSTALL_INTERFACE:include>)

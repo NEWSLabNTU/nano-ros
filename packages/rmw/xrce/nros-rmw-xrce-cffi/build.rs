@@ -438,7 +438,9 @@ fn main() {
             .include(workspace.join("packages/platform/nros-platform-api/include"))
             .file(posix_src.join("platform.c"))
             .file(posix_src.join("net.c"))
-            .file(posix_src.join("timer.c"));
+            .file(posix_src.join("timer.c"))
+            // issue 1776 — the termination guard is its own archive member.
+            .file(posix_src.join("termination.c"));
         nros_cc_flags::header_deps::track_header_deps(&mut posix_build);
         posix_build.compile("nros_platform_posix_link");
         println!("cargo:rerun-if-changed={}", posix_src.display());
