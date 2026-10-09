@@ -17,6 +17,13 @@ deadlock (which nobody can produce on demand; that is the whole issue):
   passthrough a failing fake make keeps its own exit status; a quick one
               returns at once even with the default 15 s poll.
   disabled    NROS_JOBSERVER_STALL_SECS=0 execs the command in place.
+  scan-hang   the scan of OTHER processes blocks (fault-injected, the way a
+              read on a hung FUSE mount does — issue 1773). The verdict must
+              still land inside the budget, the diagnostic saying the scan
+              is INCOMPLETE and where it stuck.
+  no-follow   a foreign process's fds are classified by LINK TEXT: no
+              `os.stat` reaches a file another process holds open (a followed
+              link on a hung FUSE mount never returns — issue 1773).
 
 The stall case is this gate's negative control and runs on every invocation
 (`self_test()` below). Buildless; ~10 s, most of it the productive child.
@@ -143,12 +150,72 @@ def self_test(tmp):
         holder.wait()
 
 
+def scan_hang_test(tmp):
+    """A blocked other-process scan must not stop the verdict (issue 1773)."""
+    fifo = os.path.join(tmp, "GMfifo-scanhang")
+    os.mkfifo(fifo)
+    body = f"exec 3<>{fifo}; read -r -u 3 line"
+    rc, _out, err, _diag, elapsed, leftovers, _ = run_watchdog(
+        tmp, body, {"NROS_JOBSERVER_SCAN_FAULT": "hang", "NROS_JOBSERVER_SCAN_SECS": "1"})
+    check(rc == NO_VERDICT_RC, f"scan-hang: rc {rc}, want {NO_VERDICT_RC} — a hung scan ate the verdict")
+    check(re.search(r"^NO VERDICT: jobserver stall — ", err, re.M),
+          f"scan-hang: no NO VERDICT line: {err[-300:]!r}")
+    check("SCAN INCOMPLETE: no answer within 1s, stuck reading /proc/" in err,
+          f"scan-hang: diagnostic does not say the scan was cut short: {err[-400:]!r}")
+    check("-- gdb backtrace --" in err, "scan-hang: the diagnostic stopped at the scan")
+    check(elapsed < 30, f"scan-hang: returned after {elapsed:.1f}s, the budget was 1s")
+    check(not leftovers, f"scan-hang: survivors {leftovers}")
+
+
+def no_follow_test(tmp):
+    """`_pipe_fds` on a FOREIGN pid must never stat what its fds point at."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("make_stall_watchdog", WATCHDOG)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    regular = os.path.join(tmp, "a-regular-file")
+    open(regular, "w").close()
+    fifo = os.path.join(tmp, "GMfifo-nofollow")
+    os.mkfifo(fifo)
+    holder = subprocess.Popen(
+        ["bash", "-c", f"exec 5<{regular}; exec 6<>{fifo}; exec 7< <(sleep 60); exec sleep 60"],
+        start_new_session=True)
+    seen = []
+    real_stat = os.stat
+
+    def spy(path, *a, **kw):
+        seen.append(str(path))
+        return real_stat(path, *a, **kw)
+
+    try:
+        time.sleep(0.5)
+        os.stat = spy
+        try:
+            pipes, err = mod._pipe_fds(holder.pid, {fifo})
+        except TypeError as exc:
+            pipes, err = [], f"no foreign-process mode: {exc}"
+        finally:
+            os.stat = real_stat
+        check(err is None, f"no-follow: {err}")
+        check(not seen, f"no-follow: stat followed a foreign fd link: {seen}")
+        links = {link for _fd, link, _key in pipes}
+        check(fifo in links, f"no-follow: the named FIFO was not recognised by its path: {links}")
+        check(any(link.startswith("pipe:[") for link in links),
+              f"no-follow: the anonymous pipe was not recognised: {links}")
+        check(regular not in links, f"no-follow: a regular file counted as a FIFO: {links}")
+    finally:
+        os.killpg(holder.pid, signal.SIGKILL)
+        holder.wait()
+
+
 def main():
     base = os.path.join(ROOT, "tmp")
     os.makedirs(base, exist_ok=True)
     tmp = tempfile.mkdtemp(prefix="make-stall-watchdog-", dir=base)
     try:
         self_test(tmp)
+        scan_hang_test(tmp)
+        no_follow_test(tmp)
 
         # Busy, not stalled: the only child outlives the threshold 2.5x.
         rc, out, err, diag, _el, leftovers, _ = run_watchdog(
@@ -180,7 +247,8 @@ def main():
             print(f"  - {e}", file=sys.stderr)
         return 1
     print("check-make-stall-watchdog: OK — stall caught with diagnostics and a NO VERDICT "
-          "exit; productive, failing, quick and disabled runs untouched")
+          "exit, even when the other-process scan hangs; productive, failing, quick and "
+          "disabled runs untouched")
     return 0
 
 

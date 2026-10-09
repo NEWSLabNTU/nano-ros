@@ -38,6 +38,10 @@ Knobs:
                                   watchdog fires. Default 600. 0 disables it —
                                   the wrapper then execs the command in place.
   NROS_JOBSERVER_STALL_POLL_SECS  sampling interval. Default 15.
+  NROS_JOBSERVER_SCAN_SECS        budget for the scan of OTHER processes in the
+                                  diagnostics (issue 1773). Default 60; a scan
+                                  that overruns is killed and reported
+                                  INCOMPLETE, and the verdict still lands.
 
 Usage:
   make-stall-watchdog.py --label <name> --diag-dir <dir> -- <command> [args...]
@@ -68,6 +72,13 @@ STATUS_KEYS = ("Name", "State", "PPid", "Threads", "SigPnd", "ShdPnd", "SigBlk",
 
 DEFAULT_STALL_SECS = 600
 DEFAULT_POLL_SECS = 15
+DEFAULT_SCAN_SECS = 60
+
+SCAN_SECS_ENV = "NROS_JOBSERVER_SCAN_SECS"
+# Test-only fault injection (check-make-stall-watchdog.py): "hang" makes the
+# other-process scan block the way a read on a hung FUSE mount does.
+SCAN_FAULT_ENV = "NROS_JOBSERVER_SCAN_FAULT"
+PROBE = "\x00PROBE"
 
 
 def _env_seconds(name, default):
@@ -169,9 +180,21 @@ def _pipe_bytes(path):
         os.close(fd)
 
 
-def _pipe_fds(pid):
+def _pipe_fds(pid, fifo_paths=None):
     """[(fd, link, key)] for every pipe/FIFO fd of `pid`; key identifies the
-    pipe object across processes (inode). Plus the reason fds were unreadable."""
+    pipe object across processes. Plus the reason fds were unreadable.
+
+    The key is read off the LINK TEXT — `pipe:[<ino>]` for an anonymous pipe,
+    the path for a named FIFO — so the two sides of one pipe compare equal
+    without a stat. That matters for every process except make itself (issue
+    1773): `os.stat` on `/proc/<pid>/fd/<n>` FOLLOWS the link and asks the
+    file's filesystem, and an fd open on a hung FUSE mount never answers, so
+    one stuck `find /` anywhere on the host kept the watchdog from firing.
+
+    `fifo_paths` is None for make (its own fds: stat them, which is how a
+    named FIFO is recognised at all) and the set of make's FIFO paths for a
+    foreign process, whose path links are then matched by TEXT and never
+    followed."""
     out = []
     try:
         fds = os.listdir(f"/proc/{pid}/fd")
@@ -180,12 +203,23 @@ def _pipe_fds(pid):
     for fd in fds:
         p = f"/proc/{pid}/fd/{fd}"
         try:
-            link = os.readlink(p)
-            st = os.stat(p)
+            link = os.readlink(p)  # d_path only: never reaches the filesystem
         except OSError:
             continue
-        if stat.S_ISFIFO(st.st_mode):
-            out.append((int(fd), link, (st.st_dev, st.st_ino)))
+        if link.startswith("pipe:["):
+            out.append((int(fd), link, link))
+            continue
+        if not link.startswith("/"):
+            continue  # socket:, anon_inode:, … — never a jobserver
+        if fifo_paths is None:
+            try:
+                is_fifo = stat.S_ISFIFO(os.stat(p).st_mode)
+            except OSError:
+                continue
+        else:
+            is_fifo = link in fifo_paths or "GMfifo" in link
+        if is_fifo:
+            out.append((int(fd), link, link))
     return out, None
 
 
@@ -278,12 +312,32 @@ def collect_diagnostics(pid, label, cmd, idle_secs, stall_secs):
     w("")
 
     w("-- other processes holding a jobserver --")
+    fifo_paths = {link for _fd, link, _key in make_pipes if link.startswith("/")}
     mine = set(_descendants(pid, kids)) | {pid}
+    lines.extend(_bounded_scan(pid, keys, fifo_paths, mine))
+    w("")
+
+    w("-- gdb backtrace --")
+    w(_gdb_backtrace(pid))
+    return "\n".join(lines) + "\n"
+
+
+def _scan_others(pid, keys, fifo_paths, mine, out):
+    """Write one line per process holding a jobserver to `out` (a binary fd),
+    as it goes, plus a `PROBE <pid>` progress record before each process — so
+    a scan killed mid-way still says how far it got and where it stuck."""
+
+    def emit(text):
+        os.write(out, (text + "\n").encode("utf-8", "replace"))
+
     unreadable_fd = unreadable_env = 0
     found = 0
     for other in sorted(_all_pids()):
-        if other == pid or other == os.getpid():
+        if other == pid or other == os.getpid() or other == os.getppid():
             continue
+        emit(f"{PROBE} {other}")
+        if os.environ.get(SCAN_FAULT_ENV) == "hang":
+            time.sleep(3600)  # fault injection for the gate: a read that never returns
         reasons = []
         cl, _ = _cmdline(other)
         if cl is None:
@@ -299,7 +353,7 @@ def collect_diagnostics(pid, label, cmd, idle_secs, stall_secs):
                     auth = _jobserver_auth(var.decode("utf-8", "replace"))
                     if auth:
                         reasons.append(f"{var.split(b'=')[0].decode()} jobserver {auth}")
-        opipes, oerr = _pipe_fds(other)
+        opipes, oerr = _pipe_fds(other, fifo_paths)
         if oerr:
             unreadable_fd += 1
         for fd, link, key in opipes:
@@ -311,17 +365,72 @@ def collect_diagnostics(pid, label, cmd, idle_secs, stall_secs):
             found += 1
             st = _proc_stat(other)
             where = "descendant of this make" if other in mine else "NOT in this make's tree"
-            w(f"    pid {other} ppid {st[0] if st else '?'} state {st[1] if st else '?'} "
-              f"[{where}]: {cl[:200]}")
+            emit(f"    pid {other} ppid {st[0] if st else '?'} state {st[1] if st else '?'} "
+                 f"[{where}]: {cl[:200]}")
             for r in reasons:
-                w(f"        {r}")
-    w(f"    {found} process(es) found; environ unreadable for {unreadable_env}, "
-      f"fds unreadable for {unreadable_fd} (other users' processes — not scanned)")
-    w("")
+                emit(f"        {r}")
+    emit(f"    {found} process(es) found; environ unreadable for {unreadable_env}, "
+         f"fds unreadable for {unreadable_fd} (other users' processes — not scanned)")
 
-    w("-- gdb backtrace --")
-    w(_gdb_backtrace(pid))
-    return "\n".join(lines) + "\n"
+
+def _bounded_scan(pid, keys, fifo_paths, mine):
+    """Run `_scan_others` in a forked child and give it `NROS_JOBSERVER_SCAN_SECS`.
+
+    Issue 1773. Reading ANOTHER process's /proc entries can block in the
+    kernel: `environ`/`cmdline` take the target's mmap lock, which a process
+    faulting on a hung FUSE mapping holds, and a followed fd link reaches the
+    FUSE server itself. `_pipe_fds` no longer follows foreign links, but the
+    host is shared and the scan is best-effort EVIDENCE — so it must never be
+    able to stop the VERDICT. A child blocked in a FUSE wait still dies to
+    SIGKILL (the wait is killable), and what it had written survives."""
+    budget = _env_seconds(SCAN_SECS_ENV, DEFAULT_SCAN_SECS)
+    rfd, wfd = os.pipe()
+    child = os.fork()
+    if child == 0:
+        os.close(rfd)
+        code = 0
+        try:
+            _scan_others(pid, keys, fifo_paths, mine, wfd)
+        except BaseException:  # noqa: BLE001 — a child must never return into the caller
+            code = 1
+        finally:
+            os._exit(code)
+    os.close(wfd)
+    buf = b""
+    deadline = time.monotonic() + budget
+    timed_out = False
+    while True:
+        left = deadline - time.monotonic()
+        if left <= 0:
+            timed_out = True
+            break
+        ready, _, _ = select.select([rfd], [], [], left)
+        if not ready:
+            continue
+        chunk = os.read(rfd, 65536)
+        if not chunk:
+            break
+        buf += chunk
+    if timed_out:
+        try:
+            os.kill(child, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    os.close(rfd)
+    os.waitpid(child, 0)
+    out, last = [], None
+    for line in buf.decode("utf-8", "replace").splitlines():
+        if line.startswith(PROBE + " "):
+            last = line[len(PROBE) + 1:]
+        else:
+            out.append(line)
+    if timed_out:
+        what = f"/proc/{last}" if last else "the process list"
+        out.append(f"    SCAN INCOMPLETE: no answer within {budget:.0f}s, stuck reading {what} "
+                   f"(a hung FUSE mount? `cat /proc/{last or '<pid>'}/wchan` — "
+                   "`request_wait_answer` says so). The verdict below is unaffected; "
+                   f"{SCAN_SECS_ENV} sets the budget.")
+    return out
 
 
 def _gdb_backtrace(pid):
