@@ -588,6 +588,16 @@ filter = "binary(c_riscv_nuttx_e2e)"
 slow-timeout = { period = "150s", terminate-after = 2 }
 retries = 1
 
+# issue 1706 — the carved-parameter-store boots: a NuttX arm-virt and an
+# rv-virt-threadx guest, each on its OWN allocator port
+# (`port_of(_, Rust, Params)` = 8270 / 9470), so no group serialization; the
+# budget is a cold QEMU boot + zenoh discovery + 3 deliveries (up to 60 s) + the
+# console read-back, which the default 60 s kill does not cover.
+[[profile.default.overrides]]
+filter = "binary(param_store_carve)"
+slow-timeout = { period = "120s", terminate-after = 2 }
+retries = 1
+
 # issue 0571 — five overrides stood here (phase-296 W5.5/W5.9/W5.10/W5.11,
 # phase-302 W5), each serializing ONE realtime_tiers_e2e CASE against the
 # partner e2e that shares its baked image and port. Every one of them selected a

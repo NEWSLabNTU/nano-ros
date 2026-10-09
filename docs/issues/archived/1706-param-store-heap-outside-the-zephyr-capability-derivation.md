@@ -1,7 +1,8 @@
 ---
 id: 1706
 title: "The parameter store's 285,696-byte heap allocation is sized from the declaration only on Zephyr, and only when the bringup declares `param_services`"
-status: open
+status: resolved
+resolved_in: "fix(#1706): boot the carved parameter store on rv-virt-threadx and NuttX"
 type: tech-debt
 area: [sizing, zephyr, freertos, threadx, cpp]
 severity: low
@@ -488,3 +489,86 @@ it grew to 305,688 B. That is issue 1765.
    reason is unchanged from 2026-10-07: rv-virt-threadx's leaf emits only a
    staticlib, so an ad-hoc variant needs a fixture row, and NuttX was not
    attempted.
+
+## Resolution (2026-10-10): rv-virt-threadx and NuttX booted with a carved store
+
+Status: **resolved**. Remaining item 2 (the last one) is closed: both boards
+booted an image that carves its store, under QEMU with a live `rmw_zenohd`, and
+delivered to a native listener on the host.
+
+### The images (now fixture rows, not throw-away copies)
+
+| row | leaf | road |
+| --- | --- | --- |
+| `nuttx-param-store` | `packages/testing/nros-tests/bins/param-store-nuttx-qemu-arm` | cargo leaf, `nros::main!()` |
+| `threadx-riscv64-param-store` | `packages/testing/nros-tests/bins/param-store-threadx-riscv64` | cargo leaf, `nros::main!()` |
+
+Each is the board's talker plus ONE declared parameter (`start_value`), and a
+`system.contract.yaml` declaring it, so `nros sync` writes
+`[params] store = "declared"` (`max_parameters = 2`) and `nros-params` derives
+`IMPLIED_STORE_SLOTS = 2`. The "before" image is the same leaf with the contract
+removed: `store = "none"`, so the store takes the heap road at the default
+32 slots.
+
+Why a cargo `[[bin]]` and not a row over `examples/rv-virt-threadx/rust/talker`:
+that leaf is an `app_main!` staticlib linked by CMake
+(`nros_threadx_rv64_rust_app`), and that seam names no sizing descriptor to
+cargo, so a contract beside it carves nothing. The board descriptor's
+`entry_kind = "board-run"` already supported a `nros::main!()` bin; nothing used
+it. The NuttX row pins `RUSTUP_TOOLCHAIN`, because a leaf that states its board
+is built with cargo run from the directory ABOVE it (`nros_leaf_settings_cwd`),
+where a bin under `bins/` has no `rust-toolchain.toml`, so the settings file's
+`[unstable] build-std` was read by a stable cargo and ignored
+(`can't find crate for core`, measured).
+
+### Measured (2026-10-10, QEMU + `rmw_zenohd` + `ros2 topic echo` / native listener)
+
+Heap is the Rust global allocator's peak (`nros-platform/alloc-stats`), which is
+where the heap road's `Box` lands. ThreadX also prints its byte-pool peak.
+
+| board | road | console | `.bss` | `EXECUTOR_BACKING` | Rust heap peak | pool peak | delivered |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| NuttX qemu-armv7a | heap (before) | no carve line | 240,960 | 16,520 | **297,692** | — | 24 samples in 30 s |
+| NuttX qemu-armv7a | carved (after) | `parameter store: 2 slots (17344 B) carved from the executor backing` | 253,248 | 33,864 | **10,016** | — | 34 samples in 40 s |
+| rv-virt-threadx | heap (before) | no carve line | 4,438,464 | 88,568 | **303,240** | 1,027,384 of 4,105,736 | 39 samples in 40 s |
+| rv-virt-threadx | carved (after) | `parameter store: 2 slots (17664 B) carved from the executor backing` | 4,450,944 | 106,232 | **10,700** | 734,840 of 4,105,736 | 39 samples in 40 s |
+
+`EXECUTOR_BACKING` grows by exactly the store (17,344 / 17,664 B). `.bss` grows
+by less (12,160 / 12,480 B, from `nm`), because the same contract also prices the
+parameter services' inbox (issue 1352): `BUILTIN_INBOX` shrinks by 5,184 B.
+rv-virt-threadx's `.bss` includes its 4 MiB byte pool, and its backing is the
+board's stated `backing_u64s = 11071` (88,568 B) with the store added on top,
+which is the threadx-linux rule.
+
+### Found and fixed: rv-virt-threadx dropped every `nros_log` record
+
+The first carved boot published but printed no carve line. ThreadX's log ABI is
+a function-pointer slot (`nros_platform_log_write` is a no-op until a board
+registers a writer), and `nros-board-threadx-qemu-riscv64` registered its UART
+writer only in `run_bare`. Its four session entries (`BoardEntry::run`,
+`run_with_deploy`, `run_tiers`, and `run_app_thread`, which the six
+`examples/rv-virt-threadx/rust/*` leaves boot through) never did. So every
+`nros_log` record on that board was silent, including library diagnostics and
+panic text. Measured on the same boot: a missing RMW backend surfaced only as
+`Executor::open failed: Transport(InvalidConfig)`, without the
+`cannot select an RMW backend` line that explains it. threadx-linux registers on
+all four of its entries; this board now does the same. The other Rust
+`BoardEntry` boards were checked: esp32, mps2-an385-freertos and threadx-linux
+register at each entry, and NuttX, Linux and mps2 bare-metal do not use a
+writer slot.
+
+### Test (fail-before/pass-after, mutation-checked)
+
+`tests/param_store_carve.rs`, cells `(NuttxArm, Rust, Zenoh, Params, Example)`
+and `(ThreadxRiscv64, Rust, Zenoh, Params, Example)`:
+`nuttx_arm_carves_the_parameter_store_and_delivers` and
+`threadx_riscv64_carves_the_parameter_store_and_delivers`. Each boots the image,
+requires 3 deliveries to a native listener, the carve line, and no
+`parameter store refused` line. Both pass (3.4 s and 8.8 s).
+
+- Mutation: `store_implied` in `nros-params/build.rs` forced to `false`. Both
+  images rebuilt; both cases are red with "no `carved from the executor backing`
+  line".
+- Mutation: the board's writer registration reverted. The rv-virt-threadx case
+  is red and the NuttX case stays green.
+

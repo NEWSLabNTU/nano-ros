@@ -1,0 +1,20 @@
+# Issue 1706 fixture — see Cargo.toml for what this image is for.
+
+[system]
+name = "param_store_nuttx"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "param_store_nuttx_qemu_arm"
+class = "param_store_nuttx_qemu_arm::ParamTalker"
+name = "param_talker"
+
+# NuttX on the QEMU ARM virt machine (slirp: the host is 10.0.2.2). The port is
+# this fixture's own: `nros_tests::alloc::port_of(NuttxArm, Rust, Params)`.
+[image.qemu-armv7a-nuttx]
+board = "nuttx"
+locator = "tcp/10.0.2.2:8270"
+
+[board_config."qemu-armv7a-nuttx"]
+sdk = { nuttx = "{env:NUTTX_DIR}", nuttx_apps = "{env:NUTTX_APPS_DIR}" }

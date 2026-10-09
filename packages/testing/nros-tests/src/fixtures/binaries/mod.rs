@@ -5600,6 +5600,42 @@ pub fn build_logging_smoke_threadx_riscv64() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Cached path to the issue-1706 `param-store-threadx-riscv64` fixture binary.
+static PARAM_STORE_THREADX_RISCV64_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Resolve the prebuilt issue-1706 rv-virt-threadx image that carves its
+/// parameter store from the executor backing (row `threadx-riscv64-param-store`,
+/// built by `just threadx_riscv64 build-fixture-extras`).
+pub fn build_param_store_threadx_riscv64() -> TestResult<&'static Path> {
+    PARAM_STORE_THREADX_RISCV64_BINARY
+        .get_or_try_init(|| {
+            build_test_fixture(
+                "nros-tests/bins/param-store-threadx-riscv64",
+                "param-store-threadx-riscv64",
+                Some("riscv64gc-unknown-none-elf"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Cached path to the issue-1706 `param-store-nuttx-qemu-arm` fixture binary.
+static PARAM_STORE_NUTTX_QEMU_ARM_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Resolve the prebuilt issue-1706 NuttX QEMU ARM image that carves its
+/// parameter store from the executor backing (row `nuttx-param-store`, built
+/// by `just nuttx build-fixtures-arm`).
+pub fn build_param_store_nuttx_qemu_arm() -> TestResult<&'static Path> {
+    PARAM_STORE_NUTTX_QEMU_ARM_BINARY
+        .get_or_try_init(|| {
+            build_test_fixture(
+                "nros-tests/bins/param-store-nuttx-qemu-arm",
+                "param-store-nuttx-qemu-arm",
+                Some("armv7a-nuttx-eabihf"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
 /// Cached path to the issue-0697 `pool-exhaustion-threadx-linux` fixture binary.
 static POOL_EXHAUSTION_THREADX_LINUX_BINARY: OnceCell<PathBuf> = OnceCell::new();
 

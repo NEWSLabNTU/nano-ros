@@ -740,6 +740,9 @@ pub const CELLS: &[Cell] = &[
     cell(NuttxArm, Cpp,  Zenoh, Action,  Example, Runtime),
     cell(NuttxArm, Rust, Cyclonedds, Pubsub, Example, CarveOut(CYCLONE_RUST_RTOS_CARVE)),
     cell(NuttxArm, Rust, Xrce,       Pubsub, Example, CarveOut(XRCE_RTOS_CARVE)),
+    // issue 1706 — the parameter store CARVED from the executor backing on a
+    // booted image (`bins/param-store-nuttx-qemu-arm`, tests/param_store_carve.rs).
+    cell(NuttxArm, Rust, Zenoh, Params, Example, Runtime),
 
     cell(ThreadxLinux, Rust, Zenoh, Pubsub,  Example, Runtime),
     cell(ThreadxLinux, C,    Zenoh, Pubsub,  Example, Runtime),
@@ -788,6 +791,9 @@ pub const CELLS: &[Cell] = &[
     // identity per node); the two-QEMU lane
     // (test_threadx_riscv64_cyclonedds_two_qemu_cpp_pubsub) now consumes them.
     cell(ThreadxRiscv64, Cpp,  Cyclonedds, Pubsub, Example, Runtime),
+    // issue 1706 — the parameter store CARVED from the executor backing on a
+    // booted image (`bins/param-store-threadx-riscv64`, tests/param_store_carve.rs).
+    cell(ThreadxRiscv64, Rust, Zenoh, Params, Example, Runtime),
 
     // NuttX riscv — the C talker example has a runtime lane
     // (c_riscv_nuttx_e2e); rust/cpp have NO standalone pubsub examples —

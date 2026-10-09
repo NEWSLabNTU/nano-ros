@@ -1,0 +1,18 @@
+# Issue 1706 — the declaration that makes the parameter store VISIBLE to the
+# build. `nros sync` renders it as the sizing descriptor's
+# `[params] store = "declared"`, and `nros-params` then carves the store from
+# the executor backing. Delete this file and the same image builds the store
+# on the heap instead (the "before" of issue 1706's measurement).
+version: 1
+
+nodes:
+  param_talker:
+    pub:
+      chatter: {}
+    params:
+      start_value: { type: integer }
+
+topics:
+  /chatter:
+    type: std_msgs/msg/String
+    pub: [param_talker/chatter]

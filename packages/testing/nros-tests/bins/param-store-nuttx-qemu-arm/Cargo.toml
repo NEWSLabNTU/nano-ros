@@ -1,0 +1,54 @@
+# Issue 1706 — a NuttX QEMU ARM image that CARVES its parameter store from the
+# executor backing (phase-382 W3'), with a live zenoh session.
+#
+# The talker of `examples/qemu-armv7a-nuttx/rust/talker` plus ONE declared
+# parameter (`start_value`). `system.contract.yaml` declares that parameter, so
+# `nros sync` writes the sizing descriptor's `[params] store = "declared"` and
+# `nros-params` gives the backing a store region. Remove the contract and the
+# same image takes the HEAP road (`leak_parameter_storage`); that pair is the
+# before/after issue 1706 records.
+#
+# A test bin rather than an edit to the example: the example's `lib.rs` is
+# compared byte for byte against every other platform's copy
+# (`example_portability`), and a parameter is not part of the demo.
+#
+# Consumed by tests/param_store_carve.rs.
+[package]
+name = "param_store_nuttx_qemu_arm"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Issue 1706 — NuttX QEMU ARM talker that carves its parameter store"
+
+[[bin]]
+name = "param-store-nuttx-qemu-arm"
+path = "src/main.rs"
+test = false
+bench = false
+
+[lib]
+crate-type = ["rlib"]
+path = "src/lib.rs"
+
+[dependencies]
+nros-board-nuttx-qemu = { version = "*", features = ["rmw-zenoh"] }
+# `param-services`: a declared parameter is what builds the store (the
+# declarative arm in `node_runtime.rs` stands the services up with it).
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros", "param-services"] }
+# `alloc-stats`: the Rust global allocator's peak, which is where the store
+# lands on the heap road — the number the before/after compares.
+nros-platform = { version = "*", default-features = false, features = ["platform-nuttx", "alloc-stats"] }
+std_msgs = { path = "generated/std_msgs", default-features = false }
+log = "0.4"
+
+[package.metadata.ament]
+build_depend = ["std_msgs"]
+exec_depend = ["std_msgs"]
+
+[profile.release]
+opt-level = "s"
+lto = true
+
+# A standalone workspace root, like every leaf under `bins/`.
+[workspace]

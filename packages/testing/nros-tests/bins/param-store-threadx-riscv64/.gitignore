@@ -1,0 +1,7 @@
+/target/
+/generated/
+/build/
+/metadata/
+# Message deps from an uncommitted `generated/` tree: the lock is user-side
+# (check-leaf-lockfiles).
+/Cargo.lock
