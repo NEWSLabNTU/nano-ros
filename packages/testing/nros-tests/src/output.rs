@@ -502,6 +502,18 @@ pub const ZENOH_PEER_MODE_UNSUPPORTED_MARKER: &str = "peer mode unsupported:";
 /// its service is up (`"Waiting for service requests"`).
 pub const SERVICE_SERVER_READY_MARKER: &str = "Waiting for service requests";
 
+/// issue 1750 — what a threadx-linux image prints on stderr when a host thread
+/// ThreadX did not create (a host library's own thread — Cyclone's, in the
+/// measured case) reaches a ThreadX service through the platform ABI.
+///
+/// Mirrors the text `nros_threadx_refuse_foreign` writes in
+/// `packages/platform/nros-platform-threadx/src/platform.c`, which is the
+/// definition. Before that guard the same call leaked a recursion level of the
+/// port's `_tx_linux_mutex` and wedged the kernel silently; now it is refused
+/// (a wake/condvar signal) or fatal (everything else), and either way the line
+/// names the function, so a test can tell a new foreign path from a slow peer.
+pub const THREADX_FOREIGN_THREAD_REFUSAL: &str = "called from a host thread ThreadX does not own";
+
 /// issue 0697 — the marker an exhausted zenoh session pool prints.
 ///
 /// Mirrors `nros_rmw_zenoh::zpico::SESSION_POOL_EXHAUSTED_MARKER`, which is the
