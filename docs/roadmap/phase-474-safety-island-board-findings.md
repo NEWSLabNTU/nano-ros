@@ -582,6 +582,64 @@ after arming (or allow one period of tolerance on the first window only).
 With I6-I8 in place the island's ring should read EMPTY after RUN apart
 from the silence verdict that needs an epoch clock (island phase 9 W3).
 
+**Result (2026-10-09, island rehearsal at `6cc3790a0`).** The re-anchor
+moved the figure from 9984-9990 to 9999 of 10000 mHz and the verdicts
+stayed, one per topic, once: the window's phase was not the cause. I9.
+
+### I9 -- `check_rate` floors a stream at its declared rate
+
+`check_rate` judged `published * 1e9 / window_us < min_rate`. The window
+closes at the first tick that finds it elapsed, so `window_us` is the
+interval plus that tick's lateness, while a stream at exactly its declared
+minimum has published one sample per period: 50 over 5.0005 s is 9999 mHz,
+in every window, reported once because `violated_last_window` holds the
+rest. Fix: judge the count against `floor(min_rate * window_us)`, which is
+the fewest samples a stream at the declared minimum can deliver in a window
+of that length whatever its phase; `measured` in the verdict stays the
+quotient. Test `a_stream_at_its_rate_checked_late_is_not_judged_slow`:
+10 Hz publishes on the grid, the check runs 700 us late, 60 s, no verdict;
+a 5 Hz stream checked the same way is judged at about 5000 mHz.
+
+Not covered: the island's emergency operator read 29773 of 30000 mHz on
+its two topics, 149 samples in 5.004 s. That is a real 0.76 % shortfall
+(mean period 33.59 ms on a 30 Hz timer); the executor's timer carries its
+remainder (`timer_try_process`, CatchUp subtracts the period, Skip keeps
+the modulus), so it is not the timer's own arithmetic. Open: measure the
+operator's tick spacing on the board (the island's sink drops events
+18/19; its `nros_trace_set_timer_every(slot, 1)` keeps every tick for it).
+Also a contract matter: a `min_rate_hz` equal to the producer's own timer
+rate leaves no margin.
+
+### I7, on the board -- the 15 ms were the log floor, not the reporter
+
+The rehearsal at `6cc3790a0` still stored verdicts 15-17 ms apart, each
+followed by `timer-overrun-runtime` and `release-jitter-runtime`. Cause:
+`ViolationChannel::record` calls `log_violation` at detection whenever the
+drain hook does not report, and the island's board runs
+`CONFIG_LOG_MODE_IMMEDIATE=y` with the console on an unwired lpuart0 at
+115200 baud: one ~170-character warn line is about 15 ms on the spin
+thread. The island turns its log to errors only. For nano-ros: the log
+floor (issue 0514) costs the judged tick on any immediate-mode console; an
+image that keeps the SWD record or a trace sink should be able to turn the
+detection log off (a knob beside `NROS_VIOLATION_DRAIN_REPORT`), or the
+line should leave with the deferred report. Not done here.
+
+### I6, on the board -- one verdict per monitored publisher
+
+The 250 ms overrun of the handler's tick stored three `max-latency-runtime`
+verdicts, one per publisher the tick advanced (hazard_lights_cmd 100 ms,
+mrm_state 206 ms, takeover_request_state 206 ms). That is
+`attribute_latency` as designed: each publisher's own budget was broken.
+The island's gate reads "one verdict per monitored publisher of the tick".
+
+### I5, on the board -- 106496, not 104448
+
+`CONFIG_NROS_ZEPHYR_HEAP_SIZE=104448` read `HEAP HEADROOM: REFUSED --
+24056 bytes, floor is 24576` after an encore (peak 80,904 of 104,960);
+106496 reads `ok -- 26104 bytes spare (peak 80904 of 107008, floor
+24576)`. The figure above should read 106496 for the three-node board
+image with the takes traced.
+
 ## Cross-repo
 
 - **play_launch** has a parallel phase on the same findings: F1 (charge
@@ -661,4 +719,10 @@ independent of each other.
       publishing at its declared rate. (Host half landed in #1750: the first
       window re-anchors on the first new sample, test
       `a_stream_at_its_rate_armed_mid_period_is_not_judged_slow`, issue
-      1725; the board rerun is the island's W4.)
+      1725. The board rerun of 2026-10-09 still read 9999 of 10000: I9.)
+- [ ] I9: a stream at exactly its declared rate is not judged slow in any
+      window, however late the closing tick runs. (Host half here: the count
+      is judged against floor(min_rate * window), test
+      `a_stream_at_its_rate_checked_late_is_not_judged_slow`; the board
+      rerun is the island's W4. The operator's 29773 of 30000 is a measured
+      shortfall, open.)
