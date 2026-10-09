@@ -1,9 +1,8 @@
 # Phase 480 -- what an image declares is what a stock ROS 2 peer sees
 
-**Status (2026-10-09). ACTIVE -- W1-W8 LANDED; no open work item.** All eleven founding
-issues, the five W7 issues and the three W8 issues are resolved (#1735-#1738, #1744-#1748,
-#1780-#1784, #1805, #1826, #1827). W8's fixes filed issues 1750, 1752 and 1762 (below);
-none is a wire defect, so none is a work item here yet. This is the home for wiring and interop
+**Status (2026-10-10). ACTIVE -- W1-W9 LANDED; no open work item.** All eleven founding
+issues, the five W7 issues, the three W8 issues and the three W9 follow-ups are resolved
+(#1735-#1738, #1744-#1748, #1780-#1784, #1805, #1826, #1827, #1837, #1840, #1844). This is the home for wiring and interop
 defects: an entity, a QoS profile, a remap, a node or a service that nano-ros
 DECLARES, but a stock ROS 2 peer (`ros2` CLI, `rclcpp`, `rmw_zenoh_cpp`,
 `rmw_cyclonedds_cpp`, `rmw_fastrtps_cpp` through the XRCE Agent) does not see,
@@ -161,16 +160,21 @@ Filed while fixing W1-W6, each measured or reasoned in its issue:
 
 **Acceptance:** each issue's own.
 
-**Filed while fixing W8** (each measured or reasoned in its issue):
+### W9 -- what W8 found
 
-- **Issue 1750** (from 1741): a threadx-linux Cyclone image wedges its
-  ThreadX scheduler within 2 s. The image now ends on SIGTERM anyway; the wedge
-  is a platform defect.
+- **Issue 1750** (from 1741): a threadx-linux Cyclone image wedged its ThreadX
+  scheduler within 2 s -- Cyclone's host threads entered ThreadX services.
 - **Issue 1752** (from 1741): a host-process RTOS image (threadx-linux,
-  freertos-posix) discards its app's exit status.
-- **Issue 1762** (from 1732): `unique_ros_domain_id`'s busy-stepping gives two
-  concurrent callers the same domain. The 1732 test re-draws until its domain
-  is quiet.
+  freertos-posix) discarded its app's exit status.
+- **Issue 1762** (from 1732): `unique_ros_domain_id` gave two concurrent
+  callers the same domain.
+
+**Acceptance:** each issue's own.
+
+**Filed while fixing W9, not work items here** (neither is a wire defect):
+issue 1769 (freertos-posix: Cyclone's host threads enter heap_3's scheduler
+calls -- 1750's class, read not measured) and issue 1770 (the QEMU-run boards
+do not carry the app's exit status).
 
 ## Status of the resolved issues
 
@@ -193,3 +197,6 @@ Filed while fixing W1-W6, each measured or reasoned in its issue:
 | W8 | 1741 threadx-linux image ends on one SIGTERM; every process deadline escalates | #1805 |
 | W8 | 1743 XRCE service-server slots count the parameter and lifecycle servers | #1826 |
 | W8 | 1732 a native image closes its RMW session on every exit path | #1827 |
+| W9 | 1750 foreign host threads kept out of ThreadX services (closes 0968's threadx Cyclone cluster) | #1837 |
+| W9 | 1752 the VOID entry shim hands the app's status to the board | #1840 |
+| W9 | 1762 the domain assigners step within their own block and claim | #1844 |
