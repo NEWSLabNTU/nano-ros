@@ -4665,6 +4665,15 @@ pub fn require_west_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
     // binary and fail loud instead of soft-passing. A date-only legacy stamp
     // reads as stale (one rebuild refreshes it).
     let stamp = fixture_dir.join(".compile-ok");
+    // Issue 1627 — the STAMP is the build's verdict, not the file the test
+    // reads. `west-fixtures.sh` wipes the dir, builds, and writes `.compile-ok`
+    // only when the row's declared `output` (`build.ninja` for a
+    // `west-configure` row) exists. The file a test inspects — `CMakeCache.txt`,
+    // a baked `system_config.h` — is written BEFORE CMake's generate step, so
+    // it survives a failed configure; resolving it with no stamp beside it
+    // passed a test over a build the lane had counted FAILED. Absent stamp =
+    // absent fixture, through the same tier-aware funnel as the artifact.
+    require_prebuilt_binary(&stamp)?;
     if let Ok(stamp_text) = fs::read_to_string(&stamp) {
         let stamped = stamped_tool(&stamp_text, "tool:nros=");
         let stamped_tool = stamped.as_deref();

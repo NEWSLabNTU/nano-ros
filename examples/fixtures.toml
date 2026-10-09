@@ -5737,6 +5737,15 @@ skip_probe = true
 # the failure away, and stamped on a file written before the link began. The
 # `output` field says that plainly now, and `--cmake-only` stops paying for it.
 #
+# A `west-configure` row's `output` is `build.ninja`, never the file its test
+# reads (issue 1627). CMake writes `build.ninja` only when GENERATE succeeds,
+# so its presence means configure AND generate ran; `CMakeCache.txt` and our
+# own `nros-system/system_config.h` are written BEFORE generate, so a row gated
+# on either counted `No SOURCES given to target: app` and a FATAL idlc error
+# as built. The consumers above still read their own file — the gate and the
+# evidence are different questions. `fixtures-manifest.py validate-compile-checks`
+# refuses any other `output` for this builder.
+#
 # `west_bringup_zephyr` genuinely boots its `zephyr.exe`, so it stays a full
 # `west-build`. The difference is visible in `output`, which is what makes
 # "configure only" a checkable property rather than a claim in a comment.
@@ -5783,7 +5792,7 @@ builder = "west-configure"
 dir = "packages/testing/nros-tests/fixtures/board_import_fvp"
 west_subdir = "."
 west_board = ""
-output = "CMakeCache.txt"
+output = "build.ninja"
 
 [[compile_check_fixture]]
 id = "zephyr_self_pkg_rust"
@@ -5792,7 +5801,7 @@ dir = "packages/testing/nros-tests/fixtures/zephyr_self_pkg/self"
 west_subdir = "alpha_pkg"
 west_board = "native_sim/native/64"
 west_extra = "-DCONF_FILE=prj.conf"
-output = "nros-system/system_config.h"
+output = "build.ninja"
 
 [[compile_check_fixture]]
 id = "zephyr_self_pkg_sibling"
@@ -5801,4 +5810,4 @@ dir = "packages/testing/nros-tests/fixtures/zephyr_self_pkg/sibling"
 west_subdir = "caller"
 west_board = "native_sim/native/64"
 west_extra = "-DCONF_FILE=prj.conf"
-output = "nros-system/system_config.h"
+output = "build.ninja"

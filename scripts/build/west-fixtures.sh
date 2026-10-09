@@ -126,7 +126,8 @@ write_compile_check_inputsig() {
 # The BUILDER is the contract now:
 #
 #   west-build      full `west build`; `output` is the image
-#   west-configure  `west build --cmake-only`; `output` is a configure artifact
+#   west-configure  `west build --cmake-only`; `output` is `build.ninja`, the
+#                   one file CMake writes only when GENERATE succeeded (1627)
 #
 # Three of the four are `west-configure`. Their consumers read a CMakeCache
 # variable or a baked `system_config.h` and never touch an image, so they no
@@ -347,6 +348,15 @@ while IFS= read -r record; do
     # code. A `west-configure` row is expected to stop before linking, and a
     # `west-build` row that exits 0 without its image is not built either. One
     # rule, and it is the row's own declaration.
+    #
+    # Issue 1627 — the rule holds only if `output` cannot exist unless the
+    # build succeeded. For `west-configure` it once named `CMakeCache.txt` or
+    # our own `nros-system/system_config.h`, both written BEFORE CMake's
+    # generate step, so `No SOURCES given to target: app` and a FATAL idlc
+    # error counted as ok. The row now declares `build.ninja`, which the Ninja
+    # generator discards when generate fails, and `fixtures-manifest.py
+    # validate-compile-checks` refuses any other output for that builder. The
+    # fix is to the premise, not a second rule: west's status stays unread.
     env "${tc_env[@]}" west "${args[@]}" || true
     if [ -e "$bld/$output" ]; then
         west_fixture_stamp "$bld" "$builder"

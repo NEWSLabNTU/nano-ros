@@ -3,12 +3,13 @@ id: 1627
 title: "A `west-configure` fixture whose declared `output` is written BEFORE the
   generate step counts as built, so a failed configure is indistinguishable from
   a successful one — 4 FATAL errors reported as `1 of 5 FAILED`"
-status: open
+status: resolved
 type: bug
 area: ci, testing, zephyr
 severity: medium
 found: 2026-10-02
-related: [issue-0700, issue-1016, issue-1536, issue-1453]
+resolved: 2026-10-10
+related: [issue-0700, issue-1016, issue-1536, issue-1453, issue-1777, phase-477]
 ---
 
 ## Measured
@@ -170,3 +171,95 @@ job no longer reaches any of the four.
 - **The filter:** a narrowed Zephyr lane keeps honouring
   `NROS_ZEPHYR_FIXTURE_FILTER` for the five west compile checks. Their coverage
   must come from a lane chosen for it; if none builds them, they join tier 2.
+
+## Resolved (2026-10-10) — phase-477 decisions D1 and D2
+
+The maintainer's 2026-10-09 decisions (phase-477 "Decisions — 2026-10-09"):
+**D1** — a `west-configure` row declares `build.ninja`; **D2** — the narrowed
+Zephyr lane keeps honouring `NROS_ZEPHYR_FIXTURE_FILTER`, and the five west
+compile checks get their coverage from a lane chosen for it (tier 2 if none).
+
+### D1 — what changed
+
+- `examples/fixtures.toml`: `west_board_import`, `zephyr_self_pkg_rust` and
+  `zephyr_self_pkg_sibling` declare `output = "build.ninja"`. `west-fixtures.sh`
+  keeps its one rule ("the row declares what must exist"); west's exit status is
+  still not read. CMake's Ninja generator writes `build.ninja` only when
+  GENERATE succeeds, so the premise the rule needs now holds.
+- **Gate:** `fixtures-manifest.py validate-compile-checks` (run by
+  `just check fixtures-manifest`, on the fast line) refuses a `west-configure`
+  row whose `output` is not in `WEST_CONFIGURE_GENERATE_OUTPUTS`
+  (`build.ninja`). Negative control, against the pre-fix manifest
+  (`git show origin/main:examples/fixtures.toml`, passed as `--manifest`):
+
+  ```
+  fixtures-manifest.py: west_board_import: builder 'west-configure' gates on its
+  output EXISTING, so the output must be written by CMake's GENERATE step — one
+  of build.ninja (got 'CMakeCache.txt'). …
+  rc=1
+  ```
+  and `validated 63 compile-check fixture(s)`, rc 0, against the fixed one.
+- **The test side had the same hole, one layer down.** `require_west_fixture`
+  read `.compile-ok` only if present; with no stamp it fell through to the
+  artifact the TEST reads (`CMakeCache.txt`, `system_config.h`), which a failed
+  configure leaves on disk. So the consumer passed over a build the lane had
+  counted FAILED. It now requires the stamp (written only when the declared
+  output exists), through the same tier-aware `require_prebuilt_binary` funnel.
+  Measured on the broken fixture below: with the change,
+  `zephyr_self_pkg_rust_builds_via_shim` FAILS with
+  `FixtureNotBuilt(… zephyr_self_pkg_rust/.compile-ok …)`; with that one line
+  reverted it PASSES over the same failed build.
+- Other consumers of the rows' `output`, checked: `compile-check-signature.sh`
+  hashes the whole record (the change re-stales the three rows once — one
+  rebuild), `compile-check-stale.sh` and `check-fixtures-stale.sh` ignore the
+  field, and nothing else under `scripts/` or `packages/testing/nros-tests`
+  reads it.
+
+### D1 — acceptance, run locally (Zephyr 3.7 store workspace, native_sim)
+
+Deliberately broken `zephyr_self_pkg_rust` (its `target_sources(app …)` line
+commented out, so configure succeeds and generate fails), built through
+`just zephyr build-fixtures` with the filter narrowed to that row:
+
+| `output` | west's log | verdict |
+| --- | --- | --- |
+| `build.ninja` (fixed) | `No SOURCES given to target: app` / `CMake Generate step failed` | `MISSING build.ninja` — `1 of 1 fixture(s) FAILED`, recipe exit 1 |
+| `nros-system/system_config.h` (pre-fix) | same | `ok (nros-system/system_config.h)` — `1/1 ok`, exit 0 |
+
+Restored, the genuinely configuring rows: `zephyr_self_pkg_rust` and
+`zephyr_self_pkg_sibling` both `-- Generating done`, `ok (build.ninja)`;
+`west_board_import` `ok (build.ninja)` on this host (`idlc` from
+`/opt/ros/humble`, cyclonedds submodule initialised). The `board_import` and
+`zephyr_self_pkg` nextest targets: 3 passed.
+
+**The expected red is real.** In a fresh worktree without
+`third-party/dds/cyclonedds`, `west_board_import` now reports
+`MISSING build.ninja` (configure: `Cyclone DDS submodule not initialised`),
+where it used to report ok. On a runner without `idlc` it will report the
+idlc error above. That provisioning gap is filed as **issue 1777** — it needs
+its own fix (provision `--rmw cyclonedds` in the lane, or gate the row), and
+this issue does not hide it.
+
+### D2 — which lane builds the five west compile checks
+
+**Tier 2 already does, and its fixture gate already demands them**, so no lane
+change was needed:
+
+- `.github/workflows/run-matrix.yml:148` runs `just build tier2`;
+  `justfile:295` (`_build-scope`) maps it to `build-test-fixtures lane=tier2`.
+- `lane-coords tier2 --modules` lists `zephyr` (measured: freertos, native,
+  nuttx, qemu, threadx_linux, threadx_riscv64, zephyr), so the zephyr stage runs
+  `just zephyr build-fixtures` (`justfile:2087` jobserver path, `justfile:2217`
+  make path) with NO `NROS_ZEPHYR_FIXTURE_FILTER` set.
+- `just/zephyr-ci.just:532` runs `scripts/build/west-fixtures.sh`, whose only
+  narrowing is that filter (`scripts/build/west-fixtures.sh:166`); it does not
+  read `NROS_FIXTURE_COORDS`, so all five rows build under tier 2.
+- `scripts/check-fixtures-stale.sh:339` drops the west rows only for scope
+  `native`; tier 2's `coords` scope keeps demanding their `.inputsig`, so tier 2
+  cannot go green without building them.
+- The tier-2 nightly does the same (`.github/workflows/nightly.yml:1202`,
+  `just build tier2-nightly`).
+
+The only narrowed caller is live-peer's board job
+(`scripts/check-interop-verdicts.py:263`, filter
+`build-ws-rs-qos-entry-zenoh`), which correctly builds none of them.
