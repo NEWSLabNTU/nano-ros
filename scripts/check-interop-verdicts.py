@@ -417,16 +417,48 @@ def host_builds_for(cells, ids) -> list[str]:
 # DERIVED from the test source: a row id that the test file names as a quoted
 # string literal is a row it resolves. A false match costs one extra build; a
 # missed one is that red, so the reading errs toward building.
-def _compile_check_ids() -> set[str]:
+def _table_ids(table: str) -> set[str]:
     data = tomllib.loads(FIXTURES_TOML.read_text())
-    return {r["id"] for r in data.get("compile_check_fixture", []) if "id" in r}
+    return {r["id"] for r in data.get(table, []) if "id" in r}
 
 
-def host_compile_checks_for(cells, ids, known=None, read=None) -> list[str]:
-    """Compile-check row ids the HOST cells' test binaries name."""
+def _compile_check_ids() -> set[str]:
+    return _table_ids("compile_check_fixture")
+
+
+NROS_TESTS_SRC = ROOT / "packages" / "testing" / "nros-tests" / "src"
+_FN = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)", re.M)
+
+
+def _helper_bodies(src_dir: Path = NROS_TESTS_SRC) -> dict[str, str]:
+    """{fn name: its text} for every function in the nros-tests library.
+
+    A test reaches most fixtures through a helper
+    (`build_native_workspace_rust_qos_entry()` names
+    `"workspace-features-rust-qos"` in ITS body, not the test's), so the
+    derivation has to follow that one hop. A body is the text from one `fn`
+    to the next — coarse, and it errs toward naming MORE rows, which costs a
+    build; naming fewer costs the red this exists to prevent.
+    """
+    out: dict[str, str] = {}
+    for f in sorted(src_dir.rglob("*.rs")):
+        text = f.read_text(encoding="utf-8")
+        marks = list(_FN.finditer(text))
+        for i, m in enumerate(marks):
+            end = marks[i + 1].start() if i + 1 < len(marks) else len(text)
+            out[m.group(1)] = out.get(m.group(1), "") + text[m.start():end]
+    return out
+
+
+def host_rows_for(cells, ids, known, read=None, helpers=None) -> list[str]:
+    """Row ids (from `known`) the HOST cells' test binaries resolve.
+
+    Named directly as a quoted literal in the test file, or by a nros-tests
+    helper the test calls by name.
+    """
     by_id = {c["id"]: c for c in cells}
-    known = _compile_check_ids() if known is None else known
     read = (lambda t: (TESTS_DIR / f"{t}.rs").read_text()) if read is None else read
+    helpers = _helper_bodies() if helpers is None else helpers
     out: set[str] = set()
     for test in sorted({by_id[c]["test"] for c in set(ids)
                         if c in by_id and runner_of(by_id[c]["platform"]) == "host"}):
@@ -434,8 +466,27 @@ def host_compile_checks_for(cells, ids, known=None, read=None) -> list[str]:
             text = read(test)
         except OSError:
             continue
-        out |= {i for i in known if f'"{i}"' in text}
+        reached = text + "".join(
+            body for name, body in helpers.items()
+            if re.search(rf"\b{re.escape(name)}\b", text)
+        )
+        out |= {i for i in known if f'"{i}"' in reached}
     return sorted(out)
+
+
+def host_compile_checks_for(cells, ids, known=None, read=None, helpers=None) -> list[str]:
+    """Compile-check row ids the HOST cells' test binaries resolve."""
+    known = _compile_check_ids() if known is None else known
+    return host_rows_for(cells, ids, known, read, helpers)
+
+
+# The workspace rows the host cells resolve — issue: live-peer's host job built
+# EVERY native workspace row (`just native build-workspace-fixtures`, 121 rows)
+# for a membership that reaches a handful, and filled a 146 G disk with 111 G
+# free after the reclaim (run 37883358718, 2026-10-09).
+def host_workspace_fixtures_for(cells, ids, known=None, read=None, helpers=None) -> list[str]:
+    known = _table_ids("workspace_fixture") if known is None else known
+    return host_rows_for(cells, ids, known, read, helpers)
 
 
 def in_runner(cells: list[dict], ids, runner: str) -> list[str]:
@@ -1573,6 +1624,21 @@ def _self_test_runner_split(
     assert host_compile_checks_for(
         _cc, ["h", "z"], known={"row_a", "row_b", "row_c"}, read=_src.__getitem__
     ) == ["row_a"], "selftest: compile-check derivation"
+    # One hop through a helper: the test calls it, the helper names the row.
+    # A helper the test does NOT call contributes nothing.
+    assert host_rows_for(
+        _cc, ["h"], known={"ws_a", "ws_b"},
+        read={"t_host": "let p = build_ws_a_entry()?;"}.__getitem__,
+        helpers={"build_ws_a_entry": 'fn build_ws_a_entry() { x("ws_a") }',
+                 "build_ws_b_entry": 'fn build_ws_b_entry() { x("ws_b") }'},
+    ) == ["ws_a"], "selftest: helper-hop derivation"
+    # And on the real tree, the workspace half: the qos cell reaches its row
+    # only through `build_native_workspace_rust_qos_entry`.
+    _q = [c for c in runtime_cells() if c["id"] == "native-qos-override-rust-zenoh"]
+    assert _q, "selftest: native-qos-override-rust-zenoh left CELLS — update this check"
+    assert "workspace-features-rust-qos" in host_workspace_fixtures_for(_q, [_q[0]["id"]]), \
+        "selftest: qos_override_e2e resolves workspace-features-rust-qos through its helper"
+
     # And on the real tree: the cell that was red for this reason.
     _real = [c for c in runtime_cells() if c["id"] == "native-multinode-cpp-zenoh"]
     assert _real, "selftest: native-multinode-cpp-zenoh left CELLS — update this check"
@@ -1923,6 +1989,12 @@ def main(argv: list[str]) -> int:
         "`--host-builds` cannot express",
     )
     ap.add_argument(
+        "--host-workspace-fixtures",
+        action="store_true",
+        help="with --list-passing --runner host, emit the `[[workspace_fixture]]` "
+        "ids those cells' tests resolve, directly or through a nros-tests helper",
+    )
+    ap.add_argument(
         "--assert-ran",
         metavar="DIR",
         help="phase-441 W4 — every junit in DIR, together: exit 3 naming the "
@@ -2000,6 +2072,13 @@ def main(argv: list[str]) -> int:
 
     if args.list_passing:
         by_id = {c["id"]: c for c in cells}
+        if args.host_workspace_fixtures:
+            try:
+                print("\n".join(host_workspace_fixtures_for(cells, passing)))
+            except (LedgerError, OSError, tomllib.TOMLDecodeError) as e:
+                print(f"check-interop-verdicts: {e}", file=sys.stderr)
+                return 1
+            return 0
         if args.host_compile_checks:
             try:
                 print("\n".join(host_compile_checks_for(cells, passing)))
