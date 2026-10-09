@@ -222,14 +222,11 @@ pub fn derive_ros_message(input: TokenStream) -> TokenStream {
 ///     const NAME: &'static str = "talker";
 ///
 ///     fn register(ctx: &mut nros::NodeContext<'_>) -> nros::NodeResult<()> {
-///         let mut node = ctx.create_node(
-///             nros::NodeId::new("node"),
-///             nros::NodeOptions::new("talker"),
-///         )?;
-///         let _pub = node.create_publisher::<std_msgs::msg::String>(
-///             nros::EntityId::new("pub_chatter"),
-///             "chatter",
-///         )?;
+///         use nros::DeclarativeNode;
+///         // The same `nros::Node` a standalone program gets from
+///         // `executor.create_node(name)` (phase-483).
+///         let mut node = ctx.create_node(nros::NodeOptions::new("talker"))?;
+///         let _pub = node.create_publisher_for_topic::<std_msgs::msg::String>("chatter")?;
 ///         Ok(())
 ///     }
 /// }

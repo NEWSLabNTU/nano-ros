@@ -355,7 +355,7 @@ Rust `#[deprecated]` items, and the two unused C macros. One changelog entry
 | 1042 | Resolved. The nine rows were re-verdicted against rclrs 0.7.0, the verdict-versus-bucket contradiction is gated, and `--refresh` names the rows it may invalidate. |
 | 1302 | Resolved. The refusal names the `clock` argument, and its five rows agree. |
 | 0783 | Resolved. `TransportError` got a `Display`, and the `NodeError` row is corrected. |
-| 0784 | Progress. The six plumbing exports are `#[doc(hidden)]`. Deleting zero-consumer types, choosing the facade's lead `Node` name and exporting `StandaloneNodeError` are maintainer decisions. |
+| 0784 | Resolved by phase-483 W2–W4: `nros::Node` is the one node type, the component trait is `nros::Component`, the zero-consumer types are deleted and `StandaloneNode` left the facade. |
 | 1335 | Re-scoped. The C++ half is done. The nros-c half was decided on 2026-10-10 (C follows the C++ rule) and moved to [phase-487](phase-487-c-api-dispatch-entities-are-arena-handles.md). |
 | 1303 | Resolved 2026-10-10. The route was already fixed by issue 1576; the messages were too long for `nros_log`'s buffer. Each refusal is now two bounded records, and the test program keeps its self-contained link through a stderr stand-in for `nros_log` that also enforces the length. |
 

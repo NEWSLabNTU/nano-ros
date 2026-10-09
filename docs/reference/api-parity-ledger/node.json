@@ -310,10 +310,6 @@
     "verdict": "declined",
     "why": "rclrs's worker owns a payload and serialises callbacks that touch it, so several entities can share mutable state without a mutex. Our equivalent of the sharing problem is the component's `State`, which `on_callback` already receives by `&mut` -- one owner, one task, decided at declaration rather than spawned. See `rust:Node::commands`."
   },
-  "rust:Node::new": {
-    "verdict": "divergence",
-    "why": "constructs the STANDALONE `nros_node::Node` from a `NodeConfig` -- the pre-component path RTOS images still use. rclrs builds its node through `Executor::create_node`, which needs a context to exist first."
-  },
   "rust:NodeActionClient": {
     "verdict": "divergence",
     "why": "an action client declared by a component. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
@@ -321,10 +317,6 @@
   "rust:NodeActionServer": {
     "verdict": "divergence",
     "why": "an action server declared by a component. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
-  },
-  "rust:NodeConfig": {
-    "verdict": "extension",
-    "why": "domain and identity for a standalone (non-component) node. RTOS images that predate the component model still use it; rclrs folds the same into `Context` + `NodeOptions`."
   },
   "rust:NodeContext": {
     "verdict": "divergence",

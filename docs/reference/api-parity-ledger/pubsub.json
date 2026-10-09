@@ -1503,25 +1503,9 @@
     "verdict": "divergence",
     "why": "the publisher BUILDER (`node.publisher(topic).typed::<M>().qos(..).build()`) -- RFC-0022's `clone` tier, beside the `fork`-tier `create_publisher` that mirrors rclrs's shape. rclrs has one constructor and expresses the knobs as `IntoPublisherOptions`; ours is a builder because the knobs that matter here are TYPES, not values -- `.typed::<M>()` against `.generic(type, hash)` picks the entity's storage and its receive path, and a const-generic buffer bound cannot travel through an options struct. Both tiers are public and both are supported; which one `nros::` should lead with is issue 0784.\n\nOn `NodeCtx`, the executor-borrowing node handle (`exec.node_mut(id)`), which the correlator folds onto `Node` (`TYPE_SYNONYMS`). MEASURABLE ONLY SINCE 2026-09-12: `nros_node::executor`'s `mod node` kept the type private while `Executor::node_mut` returned it, so every method on it was callable and none of them had ever produced a row -- issue 1351."
   },
-  "rust:Node::publisher_count": {
-    "verdict": "extension",
-    "why": "how many publishers this node DECLARED -- a property of the declaration, not of the graph. rclrs's `count_publishers` asks the graph about a topic; the two answer different questions and only ours works without discovery."
-  },
-  "rust:Node::publisher_topic_info": {
-    "verdict": "extension",
-    "why": "see `rust:Node::publisher_count`."
-  },
   "rust:Node::subscription": {
     "verdict": "divergence",
     "why": "the subscription BUILDER (`node.subscription(topic).typed::<M>().rx_buffer::<4096>().build(cb)`) -- RFC-0022's `clone` tier; see `rust:Node::publisher` for the verdict and why a builder rather than rclrs's options struct. The receive-buffer bound is the clearest case: it is a const generic, so it can only be supplied at a call in the type position.\n\nOn `NodeCtx`, the executor-borrowing node handle (`exec.node_mut(id)`), which the correlator folds onto `Node` (`TYPE_SYNONYMS`). MEASURABLE ONLY SINCE 2026-09-12: `nros_node::executor`'s `mod node` kept the type private while `Executor::node_mut` returned it, so every method on it was callable and none of them had ever produced a row -- issue 1351."
-  },
-  "rust:Node::subscription_count": {
-    "verdict": "extension",
-    "why": "Renamed 2026-08-26 (phase-379 W5): Rust now says `subscription`, matching rclrs, rclcpp, rclc and our own C and C++. The whole cluster moved together — the verb, `SubscriberOptions`, `subscriber_count`, `subscriber_topic_info` and `SubscriberHandle` — because renaming a verb and leaving its option and handle types behind is the half-fix this ledger keeps recording. Renamed to `subscription_count` on 2026-08-26 with the rest of the cluster; see `rust:Node::create_subscriber`. counts what THIS NODE declared -- `active` entries of its own static table (nros-node/src/node.rs:360-367) -- which is a different question from what the graph holds. rclrs's `count_subscriptions` asks the graph about a topic. Recorded as an extension, matching `rust:Node::publisher_count` three lines away in the same impl; an earlier `rename` verdict here was wrong, because giving our declaration-side counter the graph query's name would leave the graph query nowhere to land. The rename applies to `create_subscriber`, the entity-creation verb, not to this."
-  },
-  "rust:Node::subscription_topic_info": {
-    "verdict": "extension",
-    "why": "Renamed 2026-08-26 (phase-379 W5): Rust now says `subscription`, matching rclrs, rclcpp, rclc and our own C and C++. The whole cluster moved together — the verb, `SubscriberOptions`, `subscriber_count`, `subscriber_topic_info` and `SubscriberHandle` — because renaming a verb and leaving its option and handle types behind is the half-fix this ledger keeps recording. see `rust:Node::subscriber_count`."
   },
   "rust:NodeSubscriptionCallback": {
     "verdict": "divergence",
@@ -1639,10 +1623,6 @@
   "rust:PublisherGid": {
     "verdict": "divergence",
     "why": "rclrs wraps the GID in a type; ours is a fixed array plus `PUBLISHER_GID_SIZE`, because a wrapper with no allocator buys only the name."
-  },
-  "rust:PublisherHandle": {
-    "verdict": "divergence",
-    "why": "the backend-agnostic publisher a component holds. rclrs's `Publisher` IS the rcl handle; ours is an index into the executor's static entity table, because the entity outlives the borrow that created it."
   },
   "rust:PublisherOptions::qos": {
     "verdict": "divergence",
@@ -1850,14 +1830,6 @@
   "rust:Subscription::wait_next": {
     "verdict": "divergence",
     "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
-  },
-  "rust:SubscriptionHandle": {
-    "verdict": "divergence",
-    "why": "RE-VERDICTED 2026-09-04 from `rename`; the rename LANDED and the verdict rode along to the new key. `SubscriberHandle` exists nowhere in the tree as a type — the sole surviving hit is the enum variant `NodeError::InvalidSubscriberHandle` (`node.rs:53`), which is not report-keyed and so no gate can see it. Ours is `pub struct SubscriptionHandle<M>` (`nros-node/src/subscriber.rs:10`).\n\nrclrs has NO `SubscriptionHandle` at all; its analogue is `Subscription<T> = Arc<SubscriptionState<T>>`. So this is an ours-only item, and the right verdict is the one its sibling `rust:PublisherHandle` already carries: rclrs's handle IS the rcl handle, ours is a Copy index into the executor's static entity table.\n\nResidue the cluster left behind, recorded because nothing gates it: `NodeError::MaxSubscribersReached` and `::InvalidSubscriberHandle` are public variants of a public enum still spelling `subscriber`, as is the module file `subscriber.rs`.",
-    "rename": {
-      "status": "landed",
-      "resolution": "Landed 2026-08-26 with the subscriber->subscription cluster (phase-379 W5). Re-verdicted `divergence` 2026-09-04 because the row kept asserting that an already-correct name should change."
-    }
   },
   "rust:SubscriptionOptions::qos": {
     "verdict": "extension",

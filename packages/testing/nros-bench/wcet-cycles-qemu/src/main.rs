@@ -16,9 +16,9 @@ use panic_semihosting as _;
 
 use builtin_interfaces::msg::Time;
 use nros::{
-    CdrReader, CdrWriter, Deserialize, NodeConfig, PublisherOptions, SafetyValidator, Serialize,
-    StandaloneNode as Node, crc32,
+    CdrReader, CdrWriter, Deserialize, PublisherOptions, SafetyValidator, Serialize, crc32,
 };
+use nros_node::{NodeConfig, StandaloneNode as Node};
 use std_msgs::msg::Int32;
 
 const ITERATIONS: u32 = 100;

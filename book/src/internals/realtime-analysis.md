@@ -373,7 +373,7 @@ baselines needs physical hardware (e.g. STM32F4 @ 168 MHz).
 
 | Function | Notes |
 |----------|-------|
-| `Node::new()` | StandaloneNode creation |
+| `Node::new()` | standalone node creation (`nros_node::StandaloneNode`) |
 | `create_publisher()` | Register Int32 publisher |
 | `serialize_message()` | Node-level serialize to buffer |
 

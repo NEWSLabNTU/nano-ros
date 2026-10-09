@@ -9,6 +9,8 @@ supersedes: []
 superseded-by: null
 ---
 
+> **Amended by phase-483 (2026-10-10).** C++ user names live in `rclcpp::` / `rclcpp_action::` / `rclcpp_lifecycle::` (no `nros::`), and Rust's node is `nros::Node` with rclrs's methods. Rows below that name `nros::` C++ types or the Rust component trait as `nros::Node` describe the earlier surface.
+
 # RFC-0036 — Divergences from the ROS 2 standard client APIs
 
 ## Summary

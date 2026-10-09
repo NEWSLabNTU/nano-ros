@@ -9,6 +9,8 @@ supersedes: []
 superseded-by: null
 ---
 
+> **Amended by phase-483 W2 (2026-10-10).** `NodeCtx` is now `nros::Node`, and `Executor::create_node` returns it, as the borrow model below describes; the session-borrowing `NodeHandle` is no longer a user type. The polled receive constructors are `create_polling_*`.
+
 # Entity API tiers — convenient (`fork`) + customizable (`clone`)
 
 **Problem.** The executor grew a combinatorial zoo of entity constructors —

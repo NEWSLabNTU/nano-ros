@@ -14,6 +14,8 @@ bench = false
 
 [dependencies]
 nros = { path = "../../../../../packages/api/nros", default-features = false }
+# phase-483 W4 — `StandaloneNode` is not re-exported by `nros` any more.
+nros-node = { path = "../../../../../packages/core/nros-node", default-features = false }
 std_msgs = { path = "generated/std_msgs", default-features = false }
 builtin_interfaces = { path = "generated/builtin_interfaces", default-features = false }
 

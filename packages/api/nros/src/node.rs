@@ -772,7 +772,7 @@ pub trait DeclarativeNode {
 
     /// Declare a publisher using `topic` as the stable entity ID.
     ///
-    /// Use the explicit [`create_publisher`](Self::create_publisher) form when
+    /// Use the explicit [`declare_publisher`](Self::declare_publisher) form when
     /// a node declares more than one publisher on the same topic or needs a
     /// stable metadata ID that differs from the ROS topic name.
     #[track_caller]
@@ -1111,7 +1111,7 @@ pub trait DeclarativeNode {
         Ok(NodeTimer::new(id))
     }
 
-    /// [`create_timer_on_clock`](Self::create_timer_on_clock) using
+    /// [`declare_timer_on_clock`](Self::declare_timer_on_clock) using
     /// `callback_id` as the stable timer entity ID.
     #[track_caller]
     #[doc(hidden)]
@@ -1129,7 +1129,7 @@ pub trait DeclarativeNode {
         )
     }
 
-    /// [`create_timer_on_clock`](Self::create_timer_on_clock) using
+    /// [`declare_timer_on_clock`](Self::declare_timer_on_clock) using
     /// `callback_name` as the source callback name and synthesized entity ID —
     /// the spelling a `nros::main!` component writes:
     ///
@@ -1424,7 +1424,7 @@ pub trait DeclarativeNode {
     ///
     /// The synthesized callback ID is shared by the goal / cancel /
     /// accepted callbacks (matching the default behavior of
-    /// [`create_action_server`](Self::create_action_server)).
+    /// [`declare_action_server`](Self::declare_action_server)).
     ///
     /// Tag-only registration is restricted to the SERVER side: clients
     /// need a USABLE handle (`NodeActionClient`) to dispatch goals, so
@@ -2134,7 +2134,7 @@ impl<'a> CallbackCtx<'a> {
     /// Serialize `msg` and publish through the entity synthesized from `topic`.
     ///
     /// This pairs with
-    /// [`DeclaredNode::create_publisher_for_topic`], allowing simple callback
+    /// [`DeclarativeNode::create_publisher_for_topic`], allowing simple callback
     /// bodies to use the ROS topic literal instead of restating an unrelated
     /// stable entity ID.
     pub fn publish_to_topic<M: RosMessage, const N: usize>(
@@ -2342,7 +2342,7 @@ impl<'a> TickCtx<'a> {
 
     /// Serialize `msg` and publish through the entity synthesized from `topic`.
     ///
-    /// This pairs with [`DeclaredNode::create_publisher_for_topic`] for
+    /// This pairs with [`DeclarativeNode::create_publisher_for_topic`] for
     /// executable tick hooks.
     pub fn publish_to_topic<M: RosMessage, const N: usize>(
         &self,
@@ -2388,8 +2388,8 @@ impl<'a> TickCtx<'a> {
     /// Complete an action goal on the action entity synthesized from `name`.
     ///
     /// This pairs with
-    /// [`DeclaredNode::create_action_server_for_name`] and
-    /// [`DeclaredNode::create_action_server_for_name_with_callbacks`].
+    /// [`DeclarativeNode::create_action_server_for_name`] and
+    /// [`DeclarativeNode::create_action_server_for_name_with_callbacks`].
     pub fn complete_goal_for_name<R: RosMessage, const N: usize>(
         &mut self,
         name: &str,

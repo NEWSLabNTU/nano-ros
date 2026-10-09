@@ -3,10 +3,10 @@ id: 784
 title: "`nros::` publishes three different audiences under one namespace — the
   component API a user writes, the machinery `nros::node!` expands into, and
   four types nothing consumes"
-status: open
+status: resolved
 type: tech-debt
 area: api
-related: [phase-482, rfc-0043, rfc-0044, phase-379, issue-0783]
+related: [phase-483, phase-482, rfc-0043, rfc-0044, phase-379, issue-0783]
 ---
 
 ## Problem
@@ -147,7 +147,7 @@ leave the documented surface without leaving the crate.
 ## Decided (2026-10-09, maintainer) — phase-483 owns the remainder
 
 The three open decisions above are settled by
-[phase-483](../roadmap/phase-483-rclcpp-rclrs-shape-only.md):
+[phase-483](../../roadmap/phase-483-rclcpp-rclrs-shape-only.md):
 
 - The `nros` facade takes rclrs's shape, keeping its crate name, so that
   `use nros as rclrs;` reads as rclrs.
@@ -160,3 +160,25 @@ The three open decisions above are settled by
 - The zero-consumer types are deleted rather than hidden.
 
 The work is phase-483 W2–W4. This issue is resolved when W4 lands.
+
+## Resolution (2026-10-10, phase-483 W2–W4)
+
+- **Four node-shaped names became one.**
+  - `nros::Node` is the node handle; it was `NodeCtx`, and `create_node`
+    returns it.
+  - The component trait is `nros::Component`.
+  - `DeclaredNode` is gone. A component's `register` gets the same `Node`, and
+    its declarative constructors are the `nros::DeclarativeNode` extension
+    trait.
+  - `NodeHandle` and `StandaloneNode` left the facade, together with
+    `NodeConfig`, `PublisherHandle` and `SubscriptionHandle`. The two bench
+    programs import `nros_node` directly. `StandaloneNodeError` therefore
+    never needed exporting.
+- **What `nros::` leads with is rclrs's shape, under the `nros` crate name.**
+  `tests/rclrs_talker_port.rs` compiles the ported tutorial under
+  `use nros as rclrs;`, and its crate import is now upstream's own line, so
+  five lines differ instead of six.
+- **The zero-consumer types are deleted:** `NodeRuntimeAdapter`,
+  `RuntimeNodeRecord`, `DeclaredNodeRuntime`, `NodeExecutorRuntime` and
+  `MISSING_NODE_EXPORT_ERROR`. `NodeSlot` is not deleted: it is not
+  zero-consumer, because the metadata recorder's rows use it.

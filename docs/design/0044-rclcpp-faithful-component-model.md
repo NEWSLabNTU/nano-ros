@@ -9,6 +9,8 @@ supersedes: []
 superseded-by: null
 ---
 
+> **Amended by phase-483 W2/W3 (2026-10-10).** The Rust-parity question this RFC deferred (242.6) is answered: a Rust component's node IS the one `nros::Node`, the type a standalone program holds. See RFC-0089 §"Settled: `nros::` is deleted from C++, and Rust takes rclrs's shape with ONE node type".
+
 # RFC-0044 — rclcpp-faithful component model
 
 ## Summary

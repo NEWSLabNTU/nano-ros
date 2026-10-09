@@ -181,14 +181,6 @@
     "verdict": "extension",
     "why": "The trait's one method; see `rust:Deserialize`."
   },
-  "rust:Node::deserialize_message": {
-    "verdict": "extension",
-    "why": "The decode half of `rust:Node::serialize_message`; it takes the caller's `&[u8]` and does NOT touch the node's rx_buffer, so unlike its sibling it borrows nothing from the node."
-  },
-  "rust:Node::serialize_message": {
-    "verdict": "extension",
-    "why": "Reads as `Node::` in the report but the item is `nros::StandaloneNode` (nros_node::node::Node, re-exported under a second name) -- a transport-LESS node that keeps a fixed `tx_buffer: [u8; NODE_TX_BUF_LEN]`, encodes into it and returns `&[u8]`, leaving the caller to put the bytes on the wire. The scenario is the bring-your-own-link board `c:transport_ops_t` describes: a UART, a CAN controller or an IVC channel that no RMW backend drives, where the ROS-shaped part is the message encoding and nothing else. rclrs has no equivalent because `Publisher::publish` serializes into a middleware-owned buffer it never shows you. Two honest caveats: the returned slice borrows the node's single buffer, so it is invalidated by the next call (no allocator to own a per-message buffer), and the in-tree consumers are two QEMU bins (nros-tests/bins/cdr-roundtrip-qemu, nros-bench/wcet-cycles-qemu), not any example. OUR LANGUAGES DISAGREE, inside Rust: `nros::Node` is a TRAIT a component implements (RFC-0043) and `nros::StandaloneNode` is a struct whose real name is also `Node` -- two things called Node in one facade, which is why this row's key looks like it belongs to the component API and does not. Issue 0784."
-  },
   "rust:SerError": {
     "verdict": "extension",
     "why": "The write-side error: `BufferTooSmall`, `StringTooLong`, `SequenceTooLong` -- a `Copy` fieldless enum with a `Display` impl and no payload. rclrs has no counterpart because it has no serialization surface (`rust:CdrReader`); the ROS 2 equivalents are a FastCDR exception or an `rmw_ret_t` plus the thread-local error string that `rust:RclErrorMsg` in the types stage already declines. Same constraint here: no allocator for a message, no per-thread formatted buffer, and the freestanding C++ side is -fno-exceptions (RFC-0018). Routed to this stage by an authored override in topics.py."
