@@ -1298,6 +1298,122 @@ pub fn provision_source(
     dry_run: bool,
     shallow_override: Option<bool>,
 ) -> Result<SourceDisposition> {
+    // Held for the whole provision, and taken BEFORE the presence checks, so
+    // a second caller waits and then finds the source present (issue 1775).
+    let _lock = if dry_run {
+        None
+    } else {
+        provision_lock(name, src, workspace)?
+    };
+    provision_source_unlocked(name, src, workspace, dry_run, shallow_override)
+}
+
+/// Issue 1775 — one provisioner per source at a time, across PROCESSES.
+///
+/// `check fast` runs its gates in parallel, and in a fresh worktree several of
+/// them reach `provision_source` for the same submodule at once. git guards its
+/// own state with `shallow.lock` / `index.lock` and FAILS the loser rather than
+/// waiting (`Unable to create …/modules/<path>/shallow.lock: File exists`), so
+/// whichever gate lost went red for a reason that had nothing to do with what
+/// it checks. An advisory `flock` (std `File::lock`) makes the loser WAIT, and
+/// because the presence checks run under it, it then finds the work done.
+///
+/// Where the lock lives is asked, never modelled: a workspace source's under
+/// `git rev-parse --git-path` (per worktree, which is exactly the scope of the
+/// race — the submodule gitdirs live there too, and a lock file in the work
+/// tree would show up in `git status`); a STORE source's, and any source of
+/// an installed SDK root (issue 1304 — no repository), beside its `dest`.
+fn provision_lock(
+    name: &str,
+    src: &SourcePackage,
+    workspace: &Path,
+) -> Result<Option<std::fs::File>> {
+    if matches!(src.provision(), SourceProvision::None) {
+        return Ok(None);
+    }
+    // An INSTALLED SDK root (issue 1304) records its pins as data and is no
+    // repository; asking git there would find whatever repository happens to
+    // ENCLOSE it. It locks beside the dest, like the store.
+    let installed_root = match src.submodule.as_deref() {
+        Some(sub) => recorded_pin(workspace, sub)?.is_some(),
+        None => false,
+    };
+    let path = if src.location == SourceLocation::Store || installed_root {
+        // The store is SHARED between checkouts, so a per-worktree lock would
+        // not serialise two of them; the lock sits beside the store `dest`.
+        let dest = source_dir_of(name, src, workspace)
+            .or_else(|| src.submodule.as_deref().map(|sub| workspace.join(sub)));
+        let Some(dest) = dest else {
+            return Ok(None);
+        };
+        let base = dest
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| name.to_owned());
+        dest.with_file_name(format!(".{base}.nros-provision.lock"))
+    } else {
+        let ws = workspace.to_string_lossy();
+        let rel = format!("nros-provision/{name}.lock");
+        match sh_capture(
+            &[
+                "git",
+                "-C",
+                &ws,
+                "rev-parse",
+                "--path-format=absolute",
+                "--git-path",
+                &rel,
+            ],
+            None,
+        ) {
+            Ok(out) => PathBuf::from(out.trim()),
+            Err(_) => return Ok(None),
+        }
+    };
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .wrap_err_with(|| format!("create provision lock dir {}", parent.display()))?;
+    }
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&path)
+        .wrap_err_with(|| format!("open provision lock {}", path.display()))?;
+    lock_exclusive(&file).wrap_err_with(|| format!("lock {} (source {name})", path.display()))?;
+    Ok(Some(file))
+}
+
+/// A blocking exclusive `flock`, released when `file` closes. `File::lock`
+/// is the std spelling, but it is stable only since 1.89 and this crate's
+/// MSRV is older. Retries EINTR, which a blocking `flock` can return.
+#[cfg(unix)]
+fn lock_exclusive(file: &std::fs::File) -> std::io::Result<()> {
+    use std::os::fd::AsRawFd;
+    loop {
+        // SAFETY: a valid, open fd for the life of the call; flock touches no memory.
+        if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } == 0 {
+            return Ok(());
+        }
+        let err = std::io::Error::last_os_error();
+        if err.kind() != std::io::ErrorKind::Interrupted {
+            return Err(err);
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn lock_exclusive(_file: &std::fs::File) -> std::io::Result<()> {
+    Ok(())
+}
+
+fn provision_source_unlocked(
+    name: &str,
+    src: &SourcePackage,
+    workspace: &Path,
+    dry_run: bool,
+    shallow_override: Option<bool>,
+) -> Result<SourceDisposition> {
     // `--full` / `--shallow` (per-invocation) wins over the index `shallow`.
     let shallow = shallow_override.unwrap_or(src.shallow);
     match src.provision() {
@@ -2605,6 +2721,59 @@ mod tests {
             build_stage: false,
             check: None,
         }
+    }
+
+    /// Issue 1775 — two provisioners of one source EXCLUDE each other, across
+    /// open file descriptions (what two processes have), and the lock lives in
+    /// the git dir, never the work tree.
+    ///
+    /// The race itself is git's: `check fast` ran gates in parallel in a fresh
+    /// worktree, two reached `git fetch` in one submodule, and the loser died on
+    /// `shallow.lock: File exists`. Measured against a pre-fix build of this
+    /// tree, 3 parallel `nros setup --source mbedtls` failed 2/3, 1/3, 2/3
+    /// over three rounds; with the lock, 0/3 in each. What is asserted here is
+    /// the mechanism, because a network race does not reproduce on demand.
+    #[test]
+    fn two_provisioners_of_one_source_wait_for_each_other() {
+        let (ws, path) = superproject_with_submodule("provision-lock");
+        let src = submodule_source(path, false);
+        let first = provision_lock("sub", &src, &ws)
+            .unwrap()
+            .expect("a workspace checkout has a git dir to lock in");
+        let (tx, rx) = std::sync::mpsc::channel();
+        let (ws2, src2) = (ws.clone(), src.clone());
+        let second = std::thread::spawn(move || {
+            let held = provision_lock("sub", &src2, &ws2).unwrap();
+            tx.send(()).unwrap();
+            held
+        });
+        assert!(
+            rx.recv_timeout(std::time::Duration::from_millis(400))
+                .is_err(),
+            "the second provisioner did not wait for the first"
+        );
+        drop(first);
+        rx.recv_timeout(std::time::Duration::from_secs(10))
+            .expect("the second provisioner never got the lock after the first released it");
+        assert!(second.join().unwrap().is_some());
+        let ws_s = ws.to_string_lossy();
+        let status = sh_capture(
+            &[
+                "git",
+                "-C",
+                &ws_s,
+                "status",
+                "--porcelain",
+                "--untracked-files=all",
+            ],
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            status.trim(),
+            "",
+            "the provision lock must not appear in the work tree"
+        );
     }
 
     /// RFC-0099 D6 — a submodule already at its recorded pin is a SKIP, and
