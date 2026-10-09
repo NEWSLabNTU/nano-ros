@@ -41,14 +41,21 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # line-based reader sees only the first row of a `\`-wrapped list and passes
 # vacuously — which is how a list can grow without the check noticing.
 exported_list() {
+    # Command position only (`^ *export -f`): a COMMENT that quotes the
+    # statement (`# \`build_one\` is \`export -f\`'d into …`) is not a list, and
+    # reading it as one would put prose words into the exported set and mask a
+    # real gap.
     awk '
-        /export -f/ { c = 1 }
+        /^[[:space:]]*export -f/ { c = 1 }
         c {
             cont = ($0 ~ /\\$/)
             sub(/.*export -f/, ""); sub(/\\$/, "")
             print
             if (!cont) c = 0
-        }' "$@" | tr ' \t' '\n\n' | grep -v '^$' | sort -u
+        }' "$@" | tr ' \t' '\n\n' |
+        # Identifiers only: `export -f a b 2>/dev/null || true` (checkout-paths.sh)
+        # puts a redirection and an operator on the same line as the names.
+        grep -E '^[A-Za-z_][A-Za-z_0-9]*$' | sort -u
 }
 
 # Every `name() {` definition across the files — INDENTED ones included.
@@ -83,7 +90,14 @@ defined_in() {
     grep -lE "^[[:space:]]*${func}\(\)" "$@" 2>/dev/null | head -1 | sed "s|^$ROOT/||"
 }
 
+# `audit [--local "name …"] <files…>`. `--local` names the site's OWN helpers
+# (`build_one`, `check_one`, `run_talker`): they are not `nros_*`, so the walk
+# below would not see a call to one without being told the names. Issue 1656 —
+# that is why the gate read `scripts/build/*.sh` only: widening the file set
+# without this would have reported OK over closures it could not see.
 audit() {
+    local locals=""
+    if [ "${1:-}" = "--local" ]; then locals="$2"; shift 2; fi
     local sources=("$@")
     local exported defined missing=()
     # Space-separated: the membership tests below are `case " $x " in *" $c "*`,
@@ -111,8 +125,10 @@ audit() {
         # comment is not a call (fixtures-build.sh's leaf body cites the parent's
         # `nros_presync_row_dirs` while explaining why it no longer calls it).
         # Only whole lines — a trailing `#` is too often `$#` / `${x#…}`.
+        local pat='\bnros_[a-zA-Z_0-9]+\b'
+        [ -n "$locals" ] && pat="$pat|\\b($(echo $locals | tr ' ' '|'))\\b"
         called="$(printf '%s\n' "$body" | grep -vE '^[[:space:]]*#' |
-                  grep -ohE '\bnros_[a-zA-Z_0-9]+\b' | sort -u || true)"
+                  grep -ohE "$pat" | sort -u || true)"
         for c in $called; do
             [ "$c" = "$f" ] && continue
             case " $defined " in *" $c "*) ;; *) continue ;; esac
@@ -271,6 +287,37 @@ EOF
         echo "  FAIL  an undefined name in prose is not a missing export"; ok=1
     fi
 
+    # Issue 1656 — a site's OWN helper (not `nros_*`) is followed when the site
+    # names its locals: `export -f run_talker` whose body calls an unexported
+    # local `wait_router` dies in the subshell exactly like the 0400 shape.
+    cat > "$tmp/site.sh" <<'EOF'
+wait_router() { sleep 1; }
+run_talker() {
+    wait_router
+}
+    export -f run_talker
+EOF
+    if audit --local "wait_router run_talker" "$tmp/site.sh" >/dev/null; then
+        echo "  FAIL  a site-local helper missing from the list is reported"; ok=1
+    else
+        echo "  ok    a site-local helper missing from the list is reported"
+    fi
+    # ...and a COMMENT quoting the statement is not a list (it would have put
+    # `wait_router` into the exported set and masked the gap above).
+    cat > "$tmp/site.sh" <<'EOF'
+wait_router() { sleep 1; }
+run_talker() {
+    wait_router
+}
+# `wait_router` is `export -f`'d below, see …
+    export -f run_talker
+EOF
+    if audit --local "wait_router run_talker" "$tmp/site.sh" >/dev/null; then
+        echo "  FAIL  an export -f quoted in a comment is not a list"; ok=1
+    else
+        echo "  ok    an export -f quoted in a comment is not a list"
+    fi
+
     # A checker that stops checking passes silently, which is the failure shape
     # this issue is about — so assert the real tree has lists to read at all.
     local n
@@ -297,22 +344,46 @@ if [ "${1:-}" = "--self-test" ]; then
     exit 0
 fi
 
-SOURCES=("$ROOT"/scripts/build/*.sh)
-LISTS="$(grep -lE 'export -f' "${SOURCES[@]}" | sed "s|^$ROOT/||" | tr '\n' ' ')"
+# The shared libraries every site may source: their `nros_*` definitions and
+# their own `export -f` lists (which run when sourced).
+LIBS=("$ROOT"/scripts/build/*.sh "$ROOT"/scripts/lib/*.sh)
 
-if missing="$(audit "${SOURCES[@]}")"; then
-    echo "check-export-f-closure: OK ($(exported_list "${SOURCES[@]}" | wc -l) exported name(s) across ${LISTS% })"
+# Every file that RUNS an `export -f` — issue 1656: this read `scripts/build/*.sh`
+# only, leaving the lists in the root `justfile`, `just/native.just` and
+# `scripts/debug/debug-keyexpr.sh` closed by hand. Derived from the tree, never
+# listed. This gate's own file is excluded: its self-test fixtures are heredocs.
+mapfile -t SITES < <(cd "$ROOT" && git ls-files -- 'scripts/*.sh' 'scripts/**/*.sh' \
+        justfile 'just/*.just' 'just/**/*.just' |
+    grep -v '^scripts/check-export-f-closure\.sh$' |
+    xargs grep -lE '^[[:space:]]*export -f' | sed "s|^|$ROOT/|")
+
+failed=0 report="" names=0
+lib_defined=" $(defined_funcs "${LIBS[@]}" | tr '\n' ' ') "
+for site in "${SITES[@]}"; do
+    # The site's OWN helpers — defined here and not in a shared library.
+    locals=""
+    for f in $(defined_funcs "$site"); do
+        case "$lib_defined" in *" $f "*) ;; *) locals="$locals $f" ;; esac
+    done
+    if out="$(audit --local "$locals" "$site" "${LIBS[@]}")"; then
+        :
+    else
+        failed=1
+        report="$report$(printf '%s\n' "$out" | sed "s|^|  ${site#$ROOT/}: |")"$'\n'
+    fi
+    names=$((names + $(exported_list "$site" | wc -l)))
+done
+
+if [ "$failed" -eq 0 ]; then
+    echo "check-export-f-closure: OK ($names exported name(s) across ${#SITES[@]} site(s): $(printf '%s ' "${SITES[@]#$ROOT/}"))"
 else
-    echo "[FAIL] an exported helper reaches a make leaf that cannot call it:" >&2
-    # Quoted + indented: unquoted word-splitting broke "(called by …)" across
-    # several lines, which is a diagnostic nobody can read.
-    printf '%s\n' "$missing" | sed 's/^/  /' >&2
+    echo "[FAIL] an exported helper reaches a subshell that cannot call it:" >&2
+    printf '%s' "$report" >&2
     echo >&2
-    echo "  A make leaf is a fresh bash with only what \`export -f\` gave it, so this" >&2
-    echo "  dies \"<name>: command not found\" in the WORKER and nowhere else" >&2
-    echo "  (issues 0400, 0706, 0712)." >&2
+    echo "  A make leaf (or a GNU parallel / jobserver subshell) is a fresh bash with" >&2
+    echo "  only what \`export -f\` gave it, so this dies \"<name>: command not found\"" >&2
+    echo "  in the WORKER and nowhere else (issues 0400, 0706, 0712)." >&2
     echo >&2
-    echo "  Fix: add the name to an \`export -f\` list in one of:" >&2
-    echo "    ${LISTS% }" >&2
+    echo "  Fix: add the name to that site's \`export -f\` list." >&2
     exit 1
 fi

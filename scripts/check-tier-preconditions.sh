@@ -163,10 +163,17 @@ _fixture_build_lane="$(nros_lane_build_lane "${NROS_FIXTURE_LANE:-all}" 2>/dev/n
 #     Named rather than derived: there is no lane -> submodule mapping in the
 #     tree, and inventing one would flag every optional SDK. One known
 #     prerequisite for one lane is the honest size of this fact.
+#
+#     2026-10-09 (issue 1651): "tier 1 never does" stopped being true when tier 1
+#     began narrowing by COORDINATE (phase-395 W19). `px4_bridge_compile` states
+#     (linux, cpp, zenoh), which tier 1 and the native lane hold, so it runs
+#     there too, and tier 1 on the self-hosted runner went red on it nightly.
+#     `px4-autopilot` is in the index's `build_sources` union now, so
+#     `nros setup --build-sources` provisions it; the probe covers every lane.
 case "${NROS_FIXTURE_LANE:-all}" in
-    tier2 | tier2-nightly | all)
-        probe "the PX4-Autopilot submodule is not checked out (tier 2+ runs \`px4_bridge_compile\`)" \
-            "git submodule update --init --depth 1 third-party/px4/PX4-Autopilot   (~406 MB)" \
+    native | tier1 | tier2 | tier2-nightly | all)
+        probe "the PX4-Autopilot submodule is not checked out (\`px4_bridge_compile\` runs in this lane)" \
+            "nros setup --build-sources   (fetches third-party/px4/PX4-Autopilot, ~406 MB, depth 1)" \
             test -f third-party/px4/PX4-Autopilot/msg/DebugKeyValue.msg
         ;;
 esac

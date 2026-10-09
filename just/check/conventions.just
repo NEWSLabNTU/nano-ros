@@ -35,7 +35,8 @@ atomic-sync-writes:
 component-entity-bounds:
     @python3 scripts/check-component-entity-bounds.py
 
-# Issues 0400/0706/0712 — EVERY `export -f` list in scripts/build/ must close
+# Issues 0400/0706/0712 — EVERY `export -f` list (scripts/**, the justfile and
+# just/**, since issue 1656; each site's own helpers followed too) must close
 # over its call graph, or a helper added to an exported function dies
 # "<name>: command not found" in the make WORKER and nowhere else. Three times
 # now. Supersedes the #0717 gate, which checked one entry point on the reasoning

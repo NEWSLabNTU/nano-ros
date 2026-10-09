@@ -1500,22 +1500,23 @@ if _lane_on px4 && [ -d "$px4_autopilot_dir/msg" ] && command -v nros >/dev/null
                 # the two the generated headers reach are needed; parsing the
                 # cmake list for a syntax check would be more machinery than the
                 # check, so the pair is named with a pointer to its source.
+                # The sizes header is the COMMITTED snapshot, selected by
+                # `-DNROS_CONFIG_BUILDLESS` — this is a buildless syntax check,
+                # which is what the snapshot is for (issue 1569; the same
+                # spelling `api_parity/extract_cxx.py` uses). It used to probe
+                # `$repo_root/target/nros-{c,cpp}-generated`, a location only some
+                # EARLIER build happens to write: absent there, every generated
+                # header failed `nros/nros_config_generated.h: No such file`, a
+                # defect the builder's PX4-absent skip had hidden until issue
+                # 1651 provisioned the tree. The cargo check below compiles the
+                # real per-build headers.
                 bridge_incs=(
+                    -DNROS_CONFIG_BUILDLESS
                     -I "$bridge_gen"
                     -I "$repo_root/packages/api/nros-cpp/include"
+                    -I "$repo_root/packages/api/nros-c/include"
                     -I "$repo_root/packages/platform/nros-platform-api/include"
                 )
-                # The per-build config headers, as `cxx_syntax_check` takes
-                # them: every generated message header includes
-                # `<nros/nros_config_generated.h>` for the RFC-0090 version
-                # check (phase-429 W1), and without a real one this failed
-                # `fatal error: nros/nros_config_generated.h: No such file`
-                # on every host that HAS PX4 — measured 2026-10-06 while
-                # proving issue 1700's fix on `lane=tier1`.
-                [ -f "$repo_root/target/nros-cpp-generated/nros/nros_cpp_config_generated.h" ] \
-                    && bridge_incs+=(-I "$repo_root/target/nros-cpp-generated")
-                [ -f "$repo_root/target/nros-c-generated/nros/nros_config_generated.h" ] \
-                    && bridge_incs+=(-I "$repo_root/target/nros-c-generated")
                 for hpp in "$bridge_gen"/px4_msgs/msg/*.hpp; do
                     [ -f "$hpp" ] || continue
                     case "$(basename "$hpp")" in px4_msgs_msg_*) continue ;; esac

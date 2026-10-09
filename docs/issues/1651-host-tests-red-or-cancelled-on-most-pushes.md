@@ -163,3 +163,42 @@ road taken the same day. #1708 moved tier 1's run half (`just build tier1` +
 `just ci tier1 run`) to the self-hosted runner and deleted this integration
 job (the paragraph above). The alternative, narrowing tier 1 to fit this
 runner, was not taken.
+
+## 2026-10-09 — #1708 landed; tier 1 reaches a verdict, and its last two reds
+
+#1708 moved tier 1's run half to `run-matrix.yml`'s `tier1` job on the
+self-hosted runner, and `host-tests` kept the unit and gates jobs. Since then:
+
+- **`host-tests` is green** on the scheduled runs of 2026-10-07, -08 and -09.
+- **The `tier1` job reaches a VERDICT every night.** On run 37738090375
+  (2026-10-08), 2 of 2,748 tests failed and nothing timed out. That is the
+  lane answering, which is this issue's subject; the two reds are its own
+  findings.
+
+Both reds were fixed together, with a third defect one of them was hiding:
+
+1. **`native_main_macro_misuse::resolves_the_model_from_inputs_without_a_build_system`**:
+   `nros::main!` resolves the model itself when no build produced one, and
+   wrote it to `$HOME/.cache/nano-ros/models/…`, which the runner's
+   `--cap-drop ALL` non-root container refuses (`Permission denied`). So the
+   entry did not compile. The cache location is now a list:
+   `XDG_CACHE_HOME`, then `~/.cache`, then the temp dir, first creatable wins.
+   A build-chosen `NROS_MODEL_DIR`/`OUT_DIR` stays the only candidate. Nothing
+   reads the cache paths, so trying several cannot split writer from reader.
+   Unit-tested with a regular FILE standing in for `$HOME`, so it fails even
+   as root.
+2. **`px4_bridge_compile`**: the `px4_bridge_ffi` stamp needs the PX4-Autopilot
+   `msg/` tree, which NO lane provisions. Its builder skips cleanly without it,
+   and the test, at (linux, cpp, zenoh), which tier 1 holds, then fails
+   "MISSING for an in-lane coordinate". `px4-autopilot` joins the index's
+   `build_sources` union (it was listed as cross-only, and this host-side check
+   is not). `check-tier-preconditions` now probes for it in every lane that runs
+   the test; its "tier 1 never does" premise predated coordinate narrowing.
+3. **Hidden behind 2:** once the tree is present, the bridge's header-syntax
+   check failed `nros/nros_config_generated.h: No such file`. It probed
+   `$repo_root/target/nros-{c,cpp}-generated`, which only some earlier build
+   writes. It now uses the committed snapshot via `-DNROS_CONFIG_BUILDLESS`,
+   which is the buildless use that snapshot exists for (issue 1569). Measured:
+   `px4=4/4` stamped, `px4_bridge_compile` passes.
+
+Acceptance holds once a `tier1` run on `main` after this lands is green.

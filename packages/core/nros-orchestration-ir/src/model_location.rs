@@ -363,36 +363,69 @@ pub fn launch_resolver_bin_near(near: Option<&Path>) -> Option<PathBuf> {
     p.is_file().then_some(p)
 }
 
-/// Where a consumer may WRITE a model it had to resolve itself.
+/// Where a consumer may WRITE a model it had to resolve itself, in the order
+/// to try them.
 ///
 /// `$NROS_MODEL_DIR` and `$OUT_DIR` are the build-provided homes. Neither is
 /// guaranteed: a proc-macro only sees `OUT_DIR` when the crate has a build
 /// script, and nano-ros entry crates deliberately have none — so a plain
-/// `cargo build` of an entry has nowhere the build system chose. The last
-/// resort is a per-user cache keyed by the bringup's absolute path, which is
-/// stable across builds and shared between crates that name the same bringup.
-fn model_write_dir(bringup_dir: &Path) -> PathBuf {
+/// `cargo build` of an entry has nowhere the build system chose. When a build
+/// DID choose, that choice is the only candidate: failing to write where the
+/// build said is an error worth seeing, not a reason to write elsewhere.
+///
+/// Otherwise the last resort is a per-user cache keyed by the bringup's
+/// absolute path — and it is a LIST, because a cache directory is not
+/// guaranteed to be writable either. Issue 1651 measured it: on the
+/// self-hosted runner (a `--cap-drop ALL`, non-root container) `$HOME/.cache`
+/// refused `create_dir_all`, so `nros::main!` failed with "Permission denied"
+/// and the entry did not compile — a test asserting the macro resolves from
+/// its inputs went red on an environment fact, not a code one. The temp dir is
+/// the final rung. Nothing READS these cache paths (only the writer returns
+/// the path it wrote), so trying several cannot split writer from reader.
+fn model_write_dirs(bringup_dir: &Path) -> Vec<PathBuf> {
     let bringup_name = bringup_dir
         .file_name()
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("bringup"));
     if let Some(dir) = std::env::var_os("NROS_MODEL_DIR") {
-        return Path::new(&dir).join(&bringup_name);
+        return vec![Path::new(&dir).join(&bringup_name)];
     }
     if let Some(dir) = std::env::var_os("OUT_DIR") {
         // Issue 0825 — the same path-keyed name the SEARCH side uses. The two
         // must move together: a writer and a reader disagreeing about this
         // directory is the shadowing bug with the roles swapped.
-        return Path::new(&dir)
-            .join("nros")
-            .join(build_scoped_dir(bringup_dir));
+        return vec![
+            Path::new(&dir)
+                .join("nros")
+                .join(build_scoped_dir(bringup_dir)),
+        ];
     }
-    let base = std::env::var_os("XDG_CACHE_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".cache")))
-        .unwrap_or_else(std::env::temp_dir);
-    base.join("nano-ros/models")
-        .join(build_scoped_dir(bringup_dir))
+    let scoped = build_scoped_dir(bringup_dir);
+    let mut bases = Vec::new();
+    if let Some(x) = std::env::var_os("XDG_CACHE_HOME") {
+        bases.push(PathBuf::from(x));
+    }
+    if let Some(h) = std::env::var_os("HOME") {
+        bases.push(PathBuf::from(h).join(".cache"));
+    }
+    bases.push(std::env::temp_dir());
+    bases
+        .into_iter()
+        .map(|b| b.join("nano-ros/models").join(&scoped))
+        .collect()
+}
+
+/// The first of [`model_write_dirs`] that can be created, or an error naming
+/// every candidate and why each refused.
+fn create_model_write_dir(bringup_dir: &Path) -> Result<PathBuf, String> {
+    let mut refused = Vec::new();
+    for dir in model_write_dirs(bringup_dir) {
+        match std::fs::create_dir_all(&dir) {
+            Ok(()) => return Ok(dir),
+            Err(e) => refused.push(format!("create {}: {e}", dir.display())),
+        }
+    }
+    Err(refused.join("; "))
 }
 
 /// Directory name that identifies a bringup inside a SHARED build output tree.
@@ -496,8 +529,7 @@ pub fn ensure_model(
             .to_string()
     })?;
 
-    let out_dir = model_write_dir(bringup_dir);
-    std::fs::create_dir_all(&out_dir).map_err(|e| format!("create {}: {e}", out_dir.display()))?;
+    let out_dir = create_model_write_dir(bringup_dir)?;
     let out = out_dir.join(
         Path::new(model_rel)
             .file_name()
@@ -708,7 +740,7 @@ mod tests {
             &[("NROS_MODEL_DIR", None), ("OUT_DIR", Some("/build/out"))],
             || {
                 let bringup = Path::new("/ws/src/demo_bringup");
-                let written = model_write_dir(bringup).join("system_model.yaml");
+                let written = model_write_dirs(bringup)[0].join("system_model.yaml");
                 let searched = model_search_paths(bringup, "config/system_model.yaml");
                 assert_eq!(
                     written, searched[0],
@@ -716,6 +748,69 @@ mod tests {
                 );
             },
         );
+    }
+
+    /// A fresh per-test directory under the temp dir (this crate carries no
+    /// `tempfile` dev-dependency, and adding one would move the lockfile).
+    fn scratch_dir(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!(
+            "nros-orch-ir-{tag}-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    // Issue 1651 — an unwritable per-user cache must not fail the resolve. A
+    // regular FILE stands in for `$HOME`, so `create_dir_all` under it fails
+    // even when the test runs as root (a permission bit would not).
+    #[test]
+    fn an_unwritable_cache_falls_back_to_the_temp_dir() {
+        let td = scratch_dir("cache-fallback");
+        let not_a_dir = td.join("home-is-a-file");
+        std::fs::write(&not_a_dir, b"").unwrap();
+        let bringup = td.join("ws/src/demo_bringup");
+        let got = with_env(
+            &[
+                ("NROS_MODEL_DIR", None),
+                ("OUT_DIR", None),
+                ("XDG_CACHE_HOME", None),
+                ("HOME", Some(not_a_dir.to_str().unwrap())),
+            ],
+            || create_model_write_dir(&bringup),
+        )
+        .expect("the temp-dir rung must catch an unwritable cache");
+        assert!(
+            got.starts_with(std::env::temp_dir()),
+            "expected the temp-dir rung, got {}",
+            got.display()
+        );
+        let _ = std::fs::remove_dir_all(&td);
+        let _ = std::fs::remove_dir_all(&got);
+    }
+
+    // ...but a location the BUILD chose is the only candidate: writing
+    // elsewhere would hide a misconfigured build behind a model nobody asked for.
+    #[test]
+    fn a_build_chosen_model_dir_is_not_silently_replaced() {
+        let td = scratch_dir("model-dir-strict");
+        let not_a_dir = td.join("model-dir-is-a-file");
+        std::fs::write(&not_a_dir, b"").unwrap();
+        let bringup = td.join("ws/src/demo_bringup");
+        let r = with_env(
+            &[
+                ("NROS_MODEL_DIR", Some(not_a_dir.to_str().unwrap())),
+                ("OUT_DIR", None),
+            ],
+            || create_model_write_dir(&bringup),
+        );
+        assert!(
+            r.is_err(),
+            "an unwritable NROS_MODEL_DIR must be an error, got {r:?}"
+        );
+        let _ = std::fs::remove_dir_all(&td);
     }
 
     #[test]

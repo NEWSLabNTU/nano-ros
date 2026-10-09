@@ -2,7 +2,7 @@
 id: 1656
 title: "Compile-at-test residue after the verdict builders: five registry
   entries, a cxx-syntax verdict builder, and two signature gaps"
-status: open
+status: resolved
 type: tech-debt
 area: testing, build
 severity: low
@@ -223,3 +223,34 @@ template carries `config/system_model.yaml` since phase-330 W4.a) and went.
   alone would report OK over a closure it cannot see.
 * **A failing crate writes no dep-info** — inherent, as written above; the gap
   is the row's own `dir`, which is hashed.
+
+## 2026-10-09 — resolved: `check-export-f-closure` reaches every site
+
+The last open section. The gate read `scripts/build/*.sh` only; it now reads
+every file that RUNS an `export -f` (command position, derived with
+`git ls-files` over `scripts/**`, the root `justfile` and `just/**`). That's six
+sites today: `justfile`, `just/native.just`, `scripts/build/fixtures-build.sh`,
+`scripts/build/run-gates-parallel.sh`, `scripts/debug/debug-keyexpr.sh` and
+`scripts/lib/checkout-paths.sh`. Each is audited against the shared libraries
+it sources (`scripts/build`, `scripts/lib`) plus its own text.
+
+The reason this was not a file-list change, as the 2026-10-07 section said, is
+that the walk followed only `nros_*` calls. It now also follows the site's OWN
+helpers, the functions it defines that no shared library does (`build_one`,
+`check_one`, `run_talker`, `run_zsub`), passed to `audit --local`. Two more
+fixes fell out of it: an `export -f` quoted in a COMMENT is no longer read as
+a list (it would have put prose words into the exported set and masked a
+gap), and only identifiers count as exported names (`export -f a b
+2>/dev/null || true` in `checkout-paths.sh` put `||` into the set).
+
+Mutation-tested on the real tree, both directions:
+
+- dropping `nros_example_build_target_dir` from the justfile's list reports
+  `justfile: nros_example_build_target_dir (called by build_one, defined in
+  scripts/build/fixtures-target-dir.sh)`. Before this change the justfile was
+  not scanned at all.
+- an unexported local helper called by `run_zsub` in `debug-keyexpr.sh` is
+  reported.
+
+There are two new self-test cases: a site-local helper, and an `export -f` in
+a comment.
