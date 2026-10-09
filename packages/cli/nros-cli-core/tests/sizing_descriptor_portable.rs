@@ -120,6 +120,7 @@ fn descriptor_text(root: &Path) -> String {
         // and `[params]` stays empty — which is also what keeps this test's
         // subject unchanged by issue 1408.
         params: None,
+        infra: None,
         language: Some(EntryLanguage::Rust),
         backend_schema: Some(BackendSchema::Schemaless),
         // phase-454 W5 — zenoh dispatches IN PLACE (measured), which is the

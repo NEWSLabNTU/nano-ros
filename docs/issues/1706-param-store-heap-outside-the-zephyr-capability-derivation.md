@@ -6,7 +6,7 @@ type: tech-debt
 area: [sizing, zephyr, freertos, threadx, cpp]
 severity: low
 found: 2026-10-06
-related: [1702, 1677, 1529, 0756, phase-382]
+related: [1702, 1677, 1529, 0756, 1765, 1766, phase-382]
 ---
 
 ## What
@@ -344,3 +344,147 @@ the contract, or `NROS_PARAM_STORE=1`.
    FreeRTOS cmake DDS image that declares `param_services` and no contract still
    fails at 640 KiB, with the named refusal.
 2. rv-virt-threadx and NuttX have not been booted with a carved store.
+
+## Progress (2026-10-09, 2): the cargo and cmake roads carry the axis and the seed
+
+Status stays **open**, for one item only: rv-virt-threadx and NuttX have still
+not been booted with a carved store (Remaining 2 above, unchanged). Remaining 1
+is closed by this change.
+
+### Design: `[params] store`, its own field
+
+The fact travels in the sizing descriptor, not in a new env carrier (RFC-0100
+D4; no `set(ENV{})`, issue 0460). It is a NEW field rather than a reuse of
+`[params] declared`, because `declared` is a COUNT of the contract's `params:`
+that `max_parameters` is derived beside. An image that declares only the axis
+builds a store whose capacity no contract states, so writing `declared = 1` for
+it would make the count lie and drag `max_parameters` (and so the store's size)
+down with it. Before choosing, the readers of `[params]` were checked:
+`nros-params` (store knobs, `IMPLIED_STORE_SLOTS`), `nros-node` (the
+service-shape token) and the XRCE request pricing (issue 1722). None of them
+can tell a count from a yes/no.
+
+`store` is a closed vocabulary (`declared`, `param_services`, `launch_seed`,
+`none`) naming the first source that implies a store, and `none` is a
+statement, distinct from ABSENT. The composer (`sizing_descriptor::compose_store`)
+derives it from facts every road already composes:
+
+- the contract's declarations (`ParamDeclarations`);
+- the inventory's `InfraServices`. It already carried `param_services` along
+  every road (`from_model`, the shared-runtime frames, a standalone leaf's
+  `[system] features`) and gained `launch_seeds_params`, which is any node
+  `<param>` that is not a `qos_overrides.*` entry.
+
+A refused declaration refuses `store` unless the axis or a seed answers on its
+own. `nros-params` reads it through ONE accessor, `Params::implies_store()`. A
+descriptor written before the field existed answers `declared > 0`, as before.
+The Kconfig and `NROS_PARAM_STORE` sources are unchanged. The `param-services`
+cargo feature is still not a source, because every C++ image carries it (issue
+1529).
+
+D12: a shared runtime's inventory is issue 1600's fold. Its `InfraServices` are
+the union over images, and its declarations are `union_over_images`. So the
+runtime's store is the per-knob max (built if any image builds one), with no
+rule of its own. This is pinned by
+`a_shared_runtime_builds_a_store_when_any_image_does`.
+
+### All three producers, and the model with no wiring
+
+| producer | where `store` comes from |
+| --- | --- |
+| cargo leaf (`write_for_leaf`) | The model's seeds. The axis counts only when the leaf's own `nros` dependency has `param-services` (see below). |
+| `write_for_model` (workspace cargo, cmake entry, cmake runtime) | The inventory's `InfraServices` plus the contract. |
+| `--from-leaf` (standalone cmake leaf) | `[system] features`, by the same reading the queryable pool uses (issue 1142). |
+
+**A model with no wiring.** It writes no full descriptor (phase-454 W12), and
+most resolvable models are in that state. So the axis would still have reached
+nothing for most images. Such a model now writes a **store-only** descriptor
+when, and only when, a store is implied. That descriptor has `[params]`, a
+`status = refused` / `basis = closure` `[meta]`, and every other section ABSENT.
+When no store is implied it writes nothing, and it deletes a file an earlier
+configure left. The cmake side reads whatever sits at the path, and measured,
+a stale file kept carving. This is RFC-0100's 2026-10-09 ruling, which amends
+"no contract, no file" for this one fact and gives the reason. It applies on
+`write_from_model`, the D12 runtime write, `--from-leaf`, and the workspace
+cargo road (`nros build`).
+
+**The cargo leaf narrows the axis.** This was measured on
+`examples/mps2-an385-freertos/rust/talker`, a Form-1 `nros::main!()` leaf.
+With `features = ["param_services"]`, `nros` built without `param-services`
+and no store was built: the heap peak was 163,472, the parameter-less number.
+Adding the feature did not change that either, so Form 1 wires nothing from the
+axis. That is filed as issue 1766. Reading the axis alone had carved 280,832 B
+of `.bss` for nothing, so the leaf road requires both the axis and the feature.
+The launch form const-asserts the feature anyway (phase-314).
+
+### Measured (real images, 2026-10-09)
+
+**The image that refused.** This is `workspace-cpp-mps3-an536-freertos`, the
+Cyclone C++ FreeRTOS cmake entry, run under QEMU mps3-an536. Its bringup has
+`features = ["param_services"]` and its contract has no `params:`. The board's
+32 MiB heap was set to the **640 KiB** DDS default for these runs; these were
+local edits that were not committed.
+
+| build | descriptor | `NROS_EXECUTOR_SIZE` | console | heap peak | delivered |
+| --- | --- | --- | --- | --- | --- |
+| main | `[params]` empty | 24,856 | `HEAP EXHAUSTED: request 280832 bytes, free 208544 of 655360` → `parameter store refused` | 447,464 of 655,360 | yes (store absent) |
+| this change | `store = "param_services"` | **305,688** | `parameter store: 32 slots (280832 B) carved from the executor backing`, no ERROR line | **456,136** of 655,360 | 77 `Received:` in 90 s |
+
+The same image with its contract removed (no wiring, so the store-only
+descriptor):
+
+| build | descriptor | `NROS_EXECUTOR_SIZE` | console | heap peak |
+| --- | --- | --- | --- | --- |
+| main | none | 89,160 | `HEAP EXHAUSTED … request 280832` → `parameter store refused` | 447,936 |
+| this change | store-only | 369,992 | `… carved from the executor backing` | 456,624, delivers |
+
+**Zero-diff of the store-only file.** In the no-wiring pair, all 18
+build-script `OUT_DIR` files of the runtime's cargo build were diffed, along
+with both sizes headers. Only store-derived values differ:
+`IMPLIED_STORE_SLOTS` 0→32, `NROS_EXECUTOR_SIZE` /
+`NROS_EXECUTOR_STORAGE_SIZE` / `EXECUTOR_OPAQUE_U64S` /
+`NROS_CPP_EXECUTOR_STORAGE_SIZE`, and the variant hash. `.bss` grows by
+exactly 280,832.
+
+**Negative control.** The same AN536 image with no parameters at all (the
+committed bringup) has `NROS_EXECUTOR_SIZE` **24,824 on main and 24,824 here**.
+text, data and bss are identical too (1,172,848 / 14,140 / 1,187,256), and the
+descriptor says `store = "none"`. With no wiring and no axis, the stale
+store-only file is deleted and the executor returns to 89,128.
+
+**Incremental, with no stale header.** In every pair above, the descriptor
+change reached the C/C++ sizes header through `DEP_NROS_PARAMS_STORE_SHAPE` on
+an incremental build. No build dir was wiped.
+
+**Found, not fixed here.** The carved size appears a second time in `.text`:
+the size-probe marker `__NROS_SIZE_EXECUTOR_SIZE` is linked into the image, and
+it grew to 305,688 B. That is issue 1765.
+
+### Tests (fail-before/pass-after, mutation-checked)
+
+- `nros-sizing-descriptor`: `implies_store_reads_the_store_field_and_falls_back_to_declared`.
+  Mutating the `Stated` arm to `false` turns it red.
+  `the_store_field_states_every_source_and_none_and_stays_apart_from_declared`.
+  `the_store_envelope_is_the_or_over_images`.
+- `nros-cli-core` `sizing_descriptor::tests`:
+  `the_param_services_axis_with_no_contract_count_states_a_store` (the case
+  that failed: `[params]` was empty) and
+  `a_launch_param_seed_states_a_store_without_the_axis`. Mutating the axis
+  branch turns two tests red, and so does mutating the seed in
+  `InfraServices::from_model`.
+  `nothing_that_builds_a_store_states_none_and_a_qos_override_is_not_a_seed`
+  is the negative control.
+  `the_store_names_the_first_source_and_refuses_only_when_nothing_answers`,
+  `a_shared_runtime_builds_a_store_when_any_image_does`,
+  `the_cargo_leaf_road_keeps_the_axis_only_with_the_compiled_feature`.
+- The store-only file: `a_model_with_no_wiring_writes_a_store_only_descriptor_when_the_axis_implies_one`,
+  `no_store_writes_no_file_and_removes_a_stale_one` (disabling the removal
+  turns it red), and `a_shared_runtime_store_only_descriptor_names_its_entries`.
+
+### Remaining (why this stays open)
+
+1. ~~The cargo and cmake roads carry the axis and seed to nothing.~~ Closed above.
+2. rv-virt-threadx and NuttX have not been booted with a carved store. The
+   reason is unchanged from 2026-10-07: rv-virt-threadx's leaf emits only a
+   staticlib, so an ad-hoc variant needs a fixture row, and NuttX was not
+   attempted.

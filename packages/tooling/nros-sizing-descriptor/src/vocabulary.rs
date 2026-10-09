@@ -432,6 +432,55 @@ impl<'de> serde::Deserialize<'de> for CapacityNeed {
     }
 }
 
+vocabulary! {
+    /// `[params] store` — does this image BUILD a parameter store, and which
+    /// declaration says so (issue 1706, phase-382 W3').
+    ///
+    /// A different fact from `[params] declared`, and deliberately its own
+    /// field. `declared` is a COUNT of what the contract's `params:` names, and
+    /// `max_parameters` is derived from the same declarations; an image that
+    /// declares the `param_services` axis, or whose launch file seeds a
+    /// `<param>`, builds a store whose capacity no contract states. Spelling
+    /// that as `declared = 1` would make the count lie and drag
+    /// `max_parameters` down with it. So the count stays a count, and this
+    /// field answers the yes/no the executor's backing is sized from
+    /// (`nros_params::IMPLIED_STORE_SLOTS`), naming the first source in
+    /// [`Self::ALL`] order that implies it.
+    ///
+    /// NOT the `param-services` CARGO FEATURE. Every C++ image carries that
+    /// feature (issue 1529), so keying on it would carve issue 1702's
+    /// unconditional ~280 KB store into every C++ image. These sources are
+    /// what the BRINGUP declares, which is exactly the image's own need.
+    ///
+    /// `None` is a statement ("nothing this producer read builds a store"),
+    /// not an absence, the [`CapacityNeed::Unused`] rule.
+    ParamStore {
+        /// The contract's `params:` declares at least one parameter.
+        Declared => "declared",
+        /// The bringup declares the `param_services` capability axis.
+        ParamServices => "param_services",
+        /// A launch `<param>` seeds a node's parameters (issue 1706 (b)),
+        /// with or without the services.
+        LaunchSeed => "launch_seed",
+        /// Nothing the producer read builds a store.
+        None => "none",
+    }
+}
+
+impl ParamStore {
+    /// Does the image build a store?
+    pub fn is_built(self) -> bool {
+        self != ParamStore::None
+    }
+
+    /// RFC-0100 D12 — the envelope of two images that share one runtime: a
+    /// store if EITHER builds one, naming the earlier source in [`Self::ALL`]
+    /// order. The per-knob max, for a yes/no knob.
+    pub fn envelope(self, other: Self) -> Self {
+        self.min(other)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -72,7 +72,8 @@ pub use fact::Fact;
 pub use render::{portability_violation, render};
 pub use schema::{Endpoint, Image, Meta, Params, Policy, SizingDescriptor, Target, Types};
 pub use vocabulary::{
-    Basis, CapacityNeed, Durability, EndpointKind, History, RegistrationPath, Reliability, Status,
+    Basis, CapacityNeed, Durability, EndpointKind, History, ParamStore, RegistrationPath,
+    Reliability, Status,
 };
 
 /// How many TRANSIENT_LOCAL publishers this image declares.
@@ -1203,7 +1204,71 @@ mod tests {
             }))
             .set_needs_max_array_len(Some(CapacityNeed::Unused))
             .set_needs_max_byte_array_len(Some(CapacityNeed::Unused))
-            .set_service_shape(Some("4:31:1:5:1:0:0:0:0,2:17:0:0:0:0:0:0:0".into()));
+            .set_service_shape(Some("4:31:1:5:1:0:0:0:0,2:17:0:0:0:0:0:0:0".into()))
+            .set_store(Some(ParamStore::Declared));
+    }
+
+    /// Issue 1706 -- `[params] store` is its own field because it is a
+    /// different fact from `declared`: an image that declares only the
+    /// `param_services` axis builds a store whose count no contract states, and
+    /// `none` is a STATEMENT, distinguishable from the absence an older writer
+    /// leaves.
+    #[test]
+    fn the_store_field_states_every_source_and_none_and_stays_apart_from_declared() {
+        for store in ParamStore::ALL {
+            let mut d = island();
+            d.params.set_store(Some(*store));
+            let back = parse(&render(&d), Path::new("talker.toml")).unwrap();
+            assert_eq!(back.params.store().stated(), Some(store));
+            assert_eq!(
+                back.params.store().stated().unwrap().is_built(),
+                *store != ParamStore::None
+            );
+            // A store implied by the axis says nothing about the count.
+            assert_eq!(back.params.declared().tag(), "absent");
+        }
+        let older = parse(&render(&island()), Path::new("talker.toml")).unwrap();
+        assert_eq!(older.params.store().tag(), "absent");
+    }
+
+    /// Issue 1706 -- the ONE reading `nros-params` sizes the carved store from.
+    /// The case that failed before the field existed is the second: the axis
+    /// with no contract count read as "no store", so the image took the heap.
+    #[test]
+    fn implies_store_reads_the_store_field_and_falls_back_to_declared() {
+        let with = |store: Option<ParamStore>, declared: Option<usize>| {
+            let mut p = Params::default();
+            p.set_store(store).set_declared(declared);
+            p.implies_store()
+        };
+        assert!(with(Some(ParamStore::Declared), Some(2)));
+        assert!(with(Some(ParamStore::ParamServices), None));
+        assert!(with(Some(ParamStore::LaunchSeed), None));
+        assert!(!with(Some(ParamStore::None), None));
+        // An older descriptor: the count answers, as before.
+        assert!(with(None, Some(1)));
+        assert!(!with(None, Some(0)));
+        assert!(!with(None, None));
+        // A refusal carves nothing.
+        let mut refused = Params::default();
+        refused.refuse("store", "partial declarations");
+        assert!(!refused.implies_store());
+    }
+
+    /// RFC-0100 D12 -- the envelope over images sharing one runtime builds a
+    /// store when ANY of them does, and is `none` only when all are.
+    #[test]
+    fn the_store_envelope_is_the_or_over_images() {
+        use ParamStore as S;
+        assert_eq!(S::None.envelope(S::None), S::None);
+        assert_eq!(S::None.envelope(S::LaunchSeed), S::LaunchSeed);
+        assert_eq!(S::LaunchSeed.envelope(S::ParamServices), S::ParamServices);
+        assert_eq!(S::Declared.envelope(S::None), S::Declared);
+        for a in S::ALL {
+            for b in S::ALL {
+                assert_eq!(a.envelope(*b).is_built(), a.is_built() || b.is_built());
+            }
+        }
     }
 
     #[test]
@@ -1235,6 +1300,7 @@ mod tests {
             back.params.service_shape().stated().map(String::as_str),
             Some("4:31:1:5:1:0:0:0:0,2:17:0:0:0:0:0:0:0")
         );
+        assert_eq!(back.params.store().stated(), Some(&ParamStore::Declared));
 
         // The typed value and the BYTES both survive: an artifact that is
         // compared and written write-if-changed has to render identically from

@@ -326,6 +326,7 @@ fn bound_tables_turn_the_model_roads_payload_refusals_into_facts() {
         host_build: false,
         heap_budget_bytes: Some(65_536),
         params: Some(inv.param_declarations()),
+        infra: Some(inv.infra()),
         language: Some(EntryLanguage::CFamily),
         backend_schema: None,
         backend_dispatch: None,
