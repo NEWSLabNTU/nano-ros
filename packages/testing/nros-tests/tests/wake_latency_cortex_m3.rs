@@ -83,7 +83,7 @@ fn bench_image(name: &str) -> std::path::PathBuf {
 #[test]
 fn wake_latency_cortex_m3_p99_within_bound() {
     if !is_zenohd_available() || !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
+        nros_tests::unmet!("zenohd not found");
     }
 
     let sub_binary = bench_image("wake-latency-cortex-m3");
@@ -146,7 +146,7 @@ fn wake_latency_cortex_m3_p99_within_bound() {
         wake_probe::parse_csv(csv).unwrap_or_else(|e| panic!("CSV parse failed: {e}"));
 
     if total == 0 {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "wake-latency probe produced 0 samples — likely QEMU CYCCNT not \
              emulated (DWT reads return 0). Spec's P99 ≤ 100 µs validates on \
              real hardware (STM32F4). CI gate satisfied by the wake-cb path \

@@ -76,7 +76,7 @@ fn single_archive_links_via_u_force_without_allow_multiple_definition() {
         "the single-runtime link proof",
     );
     let Some(exe) = link_proof_exe(&root) else {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "no single-runtime link proof (build/link-determinism/lkproof) — run \
              `scripts/build/link-determinism-fixture.sh` first (it links with `-u` force \
              + NO --allow-multiple-definition at the build stage)"
@@ -95,8 +95,7 @@ fn single_archive_links_via_u_force_without_allow_multiple_definition() {
     // green with neither of them run claims coverage nobody measured. On any
     // host with binutils the skip never fires.
     let Some(nm) = nm_tool() else {
-        nros_tests::skip_class!(
-            capability,
+        nros_tests::unmet!(
             "no `nm` on PATH — the link itself succeeded at the build stage (lkproof exists), \
              but the register/REGISTRY symbol assertions cannot run"
         );

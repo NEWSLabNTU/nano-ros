@@ -51,9 +51,7 @@ fn spawn_sum_listener(locator: &str) -> ManagedProcess {
 /// silent.
 #[rstest]
 fn inprocess_service_roundtrip_publishes_server_computed_sums(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     let entry = build_native_workspace_rust_service_inprocess_entry()
         .map(|p| p.to_path_buf())
         .require("in-process service entry");

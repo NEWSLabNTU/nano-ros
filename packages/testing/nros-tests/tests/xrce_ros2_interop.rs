@@ -61,13 +61,9 @@ use std::{path::PathBuf, time::Duration};
 fn test_xrce_to_ros2_pubsub(xrce_talker_binary: PathBuf) {
     use std::process::Command;
 
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
+    require_xrce_agent();
 
-    if !require_ros2_dds() {
-        nros_tests::skip!("ROS 2 DDS not available");
-    }
+    require_ros2_dds();
 
     // Start XRCE Agent on ephemeral port
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
@@ -84,7 +80,7 @@ fn test_xrce_to_ros2_pubsub(xrce_talker_binary: PathBuf) {
     ) {
         Ok(p) => p,
         Err(e) => {
-            nros_tests::skip!(
+            nros_tests::unmet!(
                 "ROS 2 DDS listener could not start (missing ROS 2 demo nodes / tooling?): {}",
                 e
             );
@@ -154,13 +150,9 @@ fn test_xrce_to_ros2_pubsub(xrce_talker_binary: PathBuf) {
 fn test_ros2_to_xrce_pubsub(xrce_listener_binary: PathBuf) {
     use std::process::Command;
 
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
+    require_xrce_agent();
 
-    if !require_ros2_dds() {
-        nros_tests::skip!("ROS 2 DDS not available");
-    }
+    require_ros2_dds();
 
     // Start XRCE Agent on ephemeral port
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
@@ -202,7 +194,7 @@ fn test_ros2_to_xrce_pubsub(xrce_listener_binary: PathBuf) {
         Ok(p) => p,
         Err(e) => {
             listener.kill();
-            nros_tests::skip!(
+            nros_tests::unmet!(
                 "ROS 2 DDS publisher could not start (missing ROS 2 demo nodes / tooling?): {}",
                 e
             );
@@ -249,13 +241,9 @@ fn test_ros2_to_xrce_pubsub(xrce_listener_binary: PathBuf) {
 fn test_xrce_service_ros2_client(xrce_service_server_binary: PathBuf) {
     use std::process::Command;
 
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
+    require_xrce_agent();
 
-    if !require_ros2_dds() {
-        nros_tests::skip!("ROS 2 DDS not available");
-    }
+    require_ros2_dds();
 
     // Start XRCE Agent on ephemeral port
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
@@ -286,7 +274,7 @@ fn test_xrce_service_ros2_client(xrce_service_server_binary: PathBuf) {
         == Some(true)
     {
         drop(agent);
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "issue 0741 — `/add_two_ints` is ALREADY served on ROS domain {domain_id} by a peer \
              this test did not start, so the reply the ROS 2 client receives is not necessarily \
              ours. Kill the orphan (`pgrep -a add_two_ints_server`) and re-run; a Cyclone one \
@@ -341,7 +329,7 @@ fn test_xrce_service_ros2_client(xrce_service_server_binary: PathBuf) {
         Ok(p) => p,
         Err(e) => {
             server.kill();
-            nros_tests::skip!(
+            nros_tests::unmet!(
                 "ROS 2 DDS service call could not start (missing ROS 2 tooling?): {}",
                 e
             );
@@ -428,12 +416,8 @@ fn test_xrce_service_ros2_client(xrce_service_server_binary: PathBuf) {
 #[rstest]
 fn test_xrce_action_ros2_client(xrce_action_server_binary: PathBuf) {
     use std::process::Command;
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
-    if !require_ros2_dds() {
-        nros_tests::skip!("ROS 2 DDS not available");
-    }
+    require_xrce_agent();
+    require_ros2_dds();
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
     let addr = agent.addr();
     let domain_id = unique_ros_domain_id();
@@ -459,7 +443,7 @@ fn test_xrce_action_ros2_client(xrce_action_server_binary: PathBuf) {
         Ok(p) => p,
         Err(e) => {
             server.kill();
-            nros_tests::skip!(
+            nros_tests::unmet!(
                 "ROS 2 DDS action client could not start (requires ros-humble-example-interfaces): {e}"
             );
         }
@@ -498,12 +482,8 @@ fn test_xrce_action_ros2_client(xrce_action_server_binary: PathBuf) {
 #[rstest]
 fn test_xrce_action_ros2_concurrent(xrce_action_server_concurrent_binary: PathBuf) {
     use std::process::Command;
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
-    if !require_ros2_dds() {
-        nros_tests::skip!("ROS 2 DDS not available");
-    }
+    require_xrce_agent();
+    require_ros2_dds();
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
     let addr = agent.addr();
     let domain_id = unique_ros_domain_id();
@@ -544,7 +524,7 @@ fn test_xrce_action_ros2_concurrent(xrce_action_server_concurrent_binary: PathBu
         Ok(p) => p,
         Err(e) => {
             server.kill();
-            nros_tests::skip!("ROS 2 DDS action client could not start: {e}");
+            nros_tests::unmet!("ROS 2 DDS action client could not start: {e}");
         }
     };
     std::thread::sleep(Duration::from_millis(500));
@@ -552,7 +532,7 @@ fn test_xrce_action_ros2_concurrent(xrce_action_server_concurrent_binary: PathBu
         Ok(p) => p,
         Err(e) => {
             server.kill();
-            nros_tests::skip!("ROS 2 DDS action client 2 could not start: {e}");
+            nros_tests::unmet!("ROS 2 DDS action client 2 could not start: {e}");
         }
     };
 
@@ -580,12 +560,8 @@ fn test_xrce_action_ros2_concurrent(xrce_action_server_concurrent_binary: PathBu
 #[rstest]
 fn test_ros2_action_xrce_client(xrce_action_client_binary: PathBuf) {
     use std::process::Command;
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
-    if !require_ros2_dds() {
-        nros_tests::skip!("ROS 2 DDS not available");
-    }
+    require_xrce_agent();
+    require_ros2_dds();
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
     let addr = agent.addr();
     let domain_id = unique_ros_domain_id();
@@ -600,7 +576,7 @@ fn test_ros2_action_xrce_client(xrce_action_client_binary: PathBuf) {
                 // so the cell does not depend on the tutorials package. Naming the
                 // wrong package sends the reader to install something that would
                 // not have helped.
-                nros_tests::skip!(
+                nros_tests::unmet!(
                     "ROS 2 DDS fibonacci action server (inline rclpy, needs rclpy + \
                  example_interfaces) could not start: {e}"
                 );
@@ -707,12 +683,8 @@ fn test_ros2_action_xrce_client(xrce_action_client_binary: PathBuf) {
 #[rstest]
 fn test_ros2_service_xrce_client(xrce_service_client_binary: PathBuf) {
     use std::process::Command;
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
-    if !require_ros2_dds() {
-        nros_tests::skip!("ROS 2 DDS not available");
-    }
+    require_xrce_agent();
+    require_ros2_dds();
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
     let addr = agent.addr();
     let domain_id = unique_ros_domain_id();
@@ -723,7 +695,7 @@ fn test_ros2_service_xrce_client(xrce_service_client_binary: PathBuf) {
     ) {
         Ok(p) => p,
         Err(e) => {
-            nros_tests::skip!(
+            nros_tests::unmet!(
                 "ROS 2 DDS add_two_ints server could not start (requires ros-humble-example-interfaces): {e}"
             );
         }

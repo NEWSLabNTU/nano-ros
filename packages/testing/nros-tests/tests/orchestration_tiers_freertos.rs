@@ -95,10 +95,14 @@ fn firmware_release() -> nros_tests::TestResult<PathBuf> {
 
 #[test]
 fn multi_tier_freertos_firmware_builds_and_boots_run_tiers() -> nros_tests::TestResult<()> {
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[nros_tests::matrix::PlatformId::FreertosMps2],
+        "the multi-tier FreeRTOS firmware",
+    );
     let bin = firmware()?;
     assert!(bin.is_file(), "firmware ELF missing at {}", bin.display());
     if !tool_on_path("qemu-system-arm") {
-        nros_tests::skip!("qemu-system-arm not on PATH");
+        nros_tests::unmet!("qemu-system-arm not on PATH");
     }
 
     // Boot on QEMU (no router). `run_tiers_entry` prints the unique
@@ -134,11 +138,9 @@ fn multi_tier_freertos_firmware_connects_over_slirp_and_runs_tiers() -> nros_tes
         "the multi-tier FreeRTOS firmware",
     );
     if !tool_on_path("qemu-system-arm") {
-        nros_tests::skip!("qemu-system-arm not on PATH");
+        nros_tests::unmet!("qemu-system-arm not on PATH");
     }
-    if !nros_tests::fixtures::require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    nros_tests::fixtures::require_zenohd();
     // Release fixture — debug zenoh-pico on the emulated M3 is too slow to finish
     // the session handshake in budget (see `firmware_release`).
     let bin = firmware_release()?;

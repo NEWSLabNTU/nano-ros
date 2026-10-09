@@ -73,7 +73,7 @@ use nros_tests::{
     },
     matrix::{Lang, PlatformId, Workload},
     ros2::{DEFAULT_ROS_DISTRO, require_ros2, ros2_env_setup_with_locator},
-    skip,
+    unmet,
 };
 use std::{
     process::Command,
@@ -96,23 +96,22 @@ const DELIVERY_WINDOW: Duration = Duration::from_secs(150);
 
 #[test]
 fn nros_freertos_mps2_publisher_reaches_ros2_topic_echo() {
-    if !require_ros2() {
-        skip!(
-            "ROS 2 / rmw_zenoh_cpp not available — install it from apt \
-             (`ros-$ROS_DISTRO-rmw-zenoh-cpp`, declared in nros-sdk-index.toml)."
-        );
-    }
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[nros_tests::matrix::PlatformId::FreertosMps2],
+        "the FreeRTOS mps2 ROS 2 interop cell",
+    );
+    require_ros2();
     if !freertos::is_freertos_available() {
-        skip!("FREERTOS_DIR not set or invalid — `just setup freertos`");
+        unmet!("FREERTOS_DIR not set or invalid — `just setup freertos`");
     }
     if !freertos::is_lwip_available() {
-        skip!("LWIP_DIR not set or invalid — `just setup freertos`");
+        unmet!("LWIP_DIR not set or invalid — `just setup freertos`");
     }
     if !freertos::is_arm_gcc_available() {
-        skip!("arm-none-eabi-gcc not found — `nros setup --tool arm-none-eabi-gcc`");
+        unmet!("arm-none-eabi-gcc not found — `nros setup --tool arm-none-eabi-gcc`");
     }
     if !is_qemu_available() {
-        skip!("qemu-system-arm not found");
+        unmet!("qemu-system-arm not found");
     }
 
     let entry = build_freertos_workspace_c_entry().require("freertos C workspace entry");
@@ -121,7 +120,7 @@ fn nros_freertos_mps2_publisher_reaches_ros2_topic_echo() {
     // gateway 192.0.3.1, which is a DIFFERENT host address than loopback. The
     // ROS 2 peer below dials loopback for the same one router.
     let _router = ZenohRouter::start_on("0.0.0.0", FREERTOS_C_ENTRY_PORT)
-        .unwrap_or_else(|e| skip!("zenohd failed to start on {FREERTOS_C_ENTRY_PORT}: {e}"));
+        .unwrap_or_else(|e| unmet!("zenohd failed to start on {FREERTOS_C_ENTRY_PORT}: {e}"));
     let peer_locator = format!("tcp/127.0.0.1:{FREERTOS_C_ENTRY_PORT}");
 
     let mut guest = QemuProcess::start_mps2_an385_freertos_slirp(entry)

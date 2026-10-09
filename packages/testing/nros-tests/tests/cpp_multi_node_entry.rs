@@ -165,9 +165,7 @@ fn multi_node_workspace_cpp_typed_pubsub_e2e(
     use std::{process::Command, time::Duration};
 
     let zenohd = zenohd_unique;
-    if !nros_tests::fixtures::require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    nros_tests::fixtures::require_zenohd();
     let exe = nros_tests::fixtures::require_cmake_fixture(
         "cpp_robot_entry",
         "build/posix-zenoh-native/cmake/native_entry",
@@ -232,20 +230,12 @@ fn multi_node_workspace_cpp_per_node_graph_nodes(
     zenohd_unique: nros_tests::fixtures::ZenohRouter,
 ) -> nros_tests::TestResult<()> {
     use nros_tests::fixtures::{
-        DEFAULT_ROS_DISTRO, ManagedProcess, is_rmw_zenoh_available, is_ros2_available,
-        require_zenohd, ros2_node_list,
+        DEFAULT_ROS_DISTRO, ManagedProcess, require_zenohd, ros2_node_list,
     };
     use std::{process::Command, time::Duration};
 
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
-    if !is_ros2_available() {
-        nros_tests::skip!("ROS 2 not found");
-    }
-    if !is_rmw_zenoh_available() {
-        nros_tests::skip!("rmw_zenoh_cpp not found");
-    }
+    require_zenohd();
+    nros_tests::ros2::require_ros2();
 
     let exe = nros_tests::fixtures::require_cmake_fixture(
         "cpp_robot_entry",

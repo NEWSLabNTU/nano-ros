@@ -51,9 +51,7 @@ static SINKS: &[&dyn LogSink] = &[&SINK];
 /// fire — not that logging swallowed it.
 #[rstest]
 fn first_spin_reports_an_over_provisioned_arena(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     init(SINKS);
     CAPTURED.lock().unwrap().clear();
 

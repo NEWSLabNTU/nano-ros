@@ -24,7 +24,7 @@ fn docker_edition_cyclone_pub_echo_smoke() {
     let env = DockerRosEnv::new(&ed, Middleware::Cyclonedds { domain_id: domain });
 
     if !env.available() {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "{ed} image not built or docker absent — run `just ros_editions image {ed}`"
         );
     }

@@ -38,9 +38,7 @@ use std::{process::Command, time::Duration};
 
 #[rstest]
 fn test_custom_transport_loopback(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let talker_bin = build_native_custom_transport_talker().require("build talker");
     let listener_bin = build_native_custom_transport_listener().require("build listener");

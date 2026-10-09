@@ -118,9 +118,7 @@ fn cmake_pure_c_workspace_entry_fixture_is_prebuilt() {
 
 #[test]
 fn rust_workspace_entry_runs_prebuilt_pubsub_e2e() {
-    if !nros_tests::fixtures::require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    nros_tests::fixtures::require_zenohd();
 
     let entry = nros_tests::fixtures::build_native_workspace_rust_entry()
         .require("native Rust workspace Entry");

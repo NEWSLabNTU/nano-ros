@@ -32,9 +32,7 @@ fn spawn(bin: &std::path::Path, locator: &str, label: &'static str) -> ManagedPr
 /// service server.
 #[rstest]
 fn native_async_service_client_awaits_reply(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     let server = build_native_service_server()
         .map(|p| p.to_path_buf())
         .require("native service-server");
@@ -78,9 +76,7 @@ fn native_async_service_client_awaits_reply(zenohd_unique: ZenohRouter) {
 /// action server (and streams feedback via `StreamExt`).
 #[rstest]
 fn native_async_action_client_awaits_goal_and_result(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     let server = build_native_action_server()
         .map(|p| p.to_path_buf())
         .require("native action-server");

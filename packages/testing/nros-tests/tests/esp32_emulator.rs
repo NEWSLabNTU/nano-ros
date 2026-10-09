@@ -61,17 +61,11 @@ use std::{process::Command, time::Duration};
 #[test]
 #[ignore = "ESP32 support is dormant (issue 1525): no fixture row builds this image"]
 fn test_esp32_qemu_talker_boots() {
-    if !require_riscv32_target() {
-        nros_tests::skip!("riscv32 target not available");
-    }
+    require_riscv32_target();
 
-    if !require_qemu_riscv32() {
-        nros_tests::skip!("qemu-system-riscv32 not available");
-    }
+    require_qemu_riscv32();
 
-    if !require_espflash() {
-        nros_tests::skip!("espflash not available");
-    }
+    require_espflash();
 
     let elf = build_esp32_qemu_talker().require("esp32-qemu-talker");
 
@@ -137,7 +131,7 @@ fn build_esp32_flash_images() -> (std::path::PathBuf, std::path::PathBuf) {
 /// Require every prerequisite for networked ESP32 tests; skip loudly otherwise.
 ///
 /// Issue 1135 — this returned `bool` and every caller wrote
-/// `if !require_esp32_networked() { nros_tests::skip!("require_esp32_networked check failed"); }`. That is the
+/// `if !require_esp32_networked() { nros_tests::unmet!("require_esp32_networked check failed"); }`. That is the
 /// CORRECT verdict spelled uninformatively: the real reason was an
 /// `eprintln!` inside the helper, and `--failure-output never` (what the
 /// `just` recipes pass) eats it, so the log said only "check failed". A guard
@@ -152,18 +146,10 @@ fn require_esp32_networked() {
         &[nros_tests::matrix::PlatformId::Esp32Qemu],
         "an ESP32 QEMU image",
     );
-    if !require_riscv32_target() {
-        nros_tests::skip!("riscv32imc-unknown-none-elf target not installed");
-    }
-    if !require_qemu_riscv32() {
-        nros_tests::skip!("qemu-system-riscv32 not found");
-    }
-    if !require_espflash() {
-        nros_tests::skip!("espflash not found");
-    }
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_riscv32_target();
+    require_qemu_riscv32();
+    require_espflash();
+    require_zenohd();
 }
 
 /// Test ESP32 talker → ESP32 listener end-to-end

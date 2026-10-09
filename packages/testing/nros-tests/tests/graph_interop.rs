@@ -83,9 +83,7 @@ fn nano_ros_enumerates_a_stock_ros2_node() {
     // than let a cell drift uncovered — which is the point of it.
     interop::assert_test_bound("graph_interop", &GRAPH_COORDS);
 
-    if !require_ros2() {
-        nros_tests::skip!("ROS 2 + rmw_zenoh_cpp not available");
-    }
+    require_ros2();
     let router = fixtures::or_skip(fixtures::ZenohRouter::start_unique());
     let locator = router.locator();
 
@@ -177,9 +175,7 @@ fn cyclone_enumerates_a_stock_ros2_node() {
     // than let a cell drift uncovered — which is the point of it.
     interop::assert_test_bound("graph_interop", &GRAPH_COORDS);
 
-    if !nros_tests::ros2::require_ros2_cyclonedds() {
-        nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");
-    }
+    nros_tests::ros2::require_ros2_cyclonedds();
 
     // A domain of our own. Cyclone discovers by multicast SPDP, so a shared
     // domain would let another test's participants into this graph and make
@@ -283,9 +279,7 @@ const CHANGE_WAIT: Duration = Duration::from_secs(45);
 fn a_peer_leaving_fires_the_graph_change_guard() {
     interop::assert_test_bound("graph_interop", &GRAPH_COORDS);
 
-    if !require_ros2() {
-        nros_tests::skip!("ROS 2 + rmw_zenoh_cpp not available");
-    }
+    require_ros2();
     let router = fixtures::or_skip(fixtures::ZenohRouter::start_unique());
     let locator = router.locator();
 
@@ -342,9 +336,7 @@ fn a_peer_leaving_fires_the_graph_change_guard() {
 fn cyclone_a_peer_leaving_fires_the_graph_change_guard() {
     interop::assert_test_bound("graph_interop", &GRAPH_COORDS);
 
-    if !nros_tests::ros2::require_ros2_cyclonedds() {
-        nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");
-    }
+    nros_tests::ros2::require_ros2_cyclonedds();
 
     // A domain of our own, for the reason the enumeration case documents:
     // Cyclone discovers by multicast SPDP and a shared domain would let
@@ -507,9 +499,7 @@ fn has_stock_publisher(report: &str) -> bool {
 fn zenoh_publisher_gid_is_the_one_a_stock_peer_reads_and_reports() {
     interop::assert_test_bound("graph_interop", &GRAPH_COORDS);
 
-    if !require_ros2() {
-        nros_tests::skip!("ROS 2 + rmw_zenoh_cpp not available");
-    }
+    require_ros2();
     let router = fixtures::or_skip(fixtures::ZenohRouter::start_unique());
     let locator = router.locator();
 
@@ -645,9 +635,7 @@ fn zenoh_publisher_gid_is_the_one_a_stock_peer_reads_and_reports() {
 fn cyclone_take_gid_is_the_publishers_graph_gid() {
     interop::assert_test_bound("graph_interop", &GRAPH_COORDS);
 
-    if !nros_tests::ros2::require_ros2_cyclonedds() {
-        nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");
-    }
+    nros_tests::ros2::require_ros2_cyclonedds();
     let domain = nros_tests::unique_ros_domain_id();
 
     let probe_bin = fixtures::build_graph_probe_rmw(nros_tests::fixtures::Rmw::Cyclonedds)

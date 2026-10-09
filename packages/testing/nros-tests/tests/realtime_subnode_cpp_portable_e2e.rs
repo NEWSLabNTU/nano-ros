@@ -36,9 +36,7 @@ use std::{process::Command, time::Duration};
 /// vs "high"/"low"). Both groups still bind correctly and schedule at their cadences.
 #[rstest]
 fn realtime_subnode_cpp_portable_two_groups_bind_renamed_tiers(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     let entry = build_native_workspace_cpp_subnode_portable_entry()
         .map(|p| p.to_path_buf())
         .require("realtime-cpp entry");

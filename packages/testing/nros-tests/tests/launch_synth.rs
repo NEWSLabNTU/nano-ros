@@ -52,9 +52,7 @@ domain_id = 0
 /// wording — that path is deleted).
 #[test]
 fn nros_plan_refuses_bringup_with_no_committed_model() {
-    if !nros_tests::require_nros_cli() {
-        nros_tests::skip!("nros CLI not found (run `just setup-cli` + `source ./activate.sh`)");
-    }
+    nros_tests::require_nros_cli();
     let td = tempfile::tempdir().expect("tempdir");
     stage_path_a_bringup_no_launch(td.path());
 

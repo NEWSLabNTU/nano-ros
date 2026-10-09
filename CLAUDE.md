@@ -420,13 +420,25 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   **`tmp/` is gitignored for NEW files and holds TEN TRACKED recipes** (`collapse-*.sh`,
   `migrate-*.py`), which every ignore rule exempts — so `rm -rf tmp` deletes committed
   files, and has (issue 1524). Delete what you made, never the directory.
-- **Tests must fail on unmet preconditions** (`assert!`/`bail!`/`nros_tests::skip!`). Bare
-  `eprintln!`+`return` reports PASS — never. Same for runtime: panic, not silent early-return.
+- **A test never SKIPS because something it needs is absent — it FAILS; SCOPE decides what
+  runs** (issue 1758). Missing tool, router, SDK, peer, fixture ⇒ `nros_tests::unmet!` (a red,
+  `[UNMET PRECONDITION]`), never a pass. The only skip is `lane_skip!` (`[SKIPPED:lane]`),
+  reached from the lane's declared scope BEFORE any probe: its coordinates (`NROS_TEST_COORDS`,
+  via `fixtures::lane::require_*_in_lane`) and the host capabilities it does not claim
+  (`NROS_TEST_UNCLAIMED=ros2`, via `lane_scope`). Unset ⇒ everything claimed, so a bare
+  `cargo nextest` on a host lacking X is red, honestly. A scope is a property of the LANE, never
+  of what the host happens to have: the same lane deselects the same tests everywhere. So to
+  "not run" something, narrow the lane (or its fixture build) — do not add a probe that skips.
+  Put the scope check FIRST: a probe ahead of it turns out-of-lane into red. `check-skip-budget`
+  fails any non-`lane` skip, with no allowlist (issue 1161's capability baseline was one; its
+  router lines let a lane without `rmw_zenohd` read green). `require_*()` helpers return `()`
+  and fail themselves. Tier 1 "passed" 61 ROS 2 interop tests for months this way.
+  Bare `eprintln!`+`return` reports PASS — never. Same for runtime: panic, not silent early-return.
   Gate: `check-no-vacuous-tests` — a test body whose only effects are PRINTS. 17 of these
   existed (10 files, 2 literal cross-file duplicates), each reading `is_*_available()` probes
   and printing them, so each passed on the very host it was meant to warn about; one said so
   itself ("These are informational - don't fail if Zephyr isn't set up"). The same probes were
-  already load-bearing three lines away as the `skip!` guards, so the call read as coverage in
+  already load-bearing three lines away as the precondition guards, so the call read as coverage in
   one place and as a precondition in the other. The gate keys on "prints only", NOT on "has no
   `assert!`" — ~40 correct tests delegate to an asserting helper, and a bare call statement is
   exactly the shape whose assertion is one frame down.
@@ -533,8 +545,9 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   is NOT statically checkable: those are rstest-generated case names (`Platform__Nuttx`) that
   appear nowhere in the sources. Delete the override with the target, or keep the note in a
   COMMENT.
-- **Bare `cargo nextest` counts `nros_tests::skip!` panics as FAILURES** — only `just test-all`'s
-  junit rewrite makes them skips. Read the panic text before filing a bare-run red as a regression.
+- **Bare `cargo nextest` counts `lane_skip!` panics as FAILURES** — only `just test-all`'s
+  junit rewrite makes `[SKIPPED:lane]` a skip. Read the panic text before filing a bare-run red
+  as a regression; an `[UNMET PRECONDITION]` red is real everywhere (provision, or narrow the lane).
   And full-sweep QEMU lanes flake under load (287-W7: six nuttx lanes failed 3/3 in-sweep, passed
   solo) — retest a QEMU red SOLO before filing. A "solo red" can ALSO be a stale-build artifact,
   not code (issue 0268: the sizes-header mirror race made incremental trees red and clean trees

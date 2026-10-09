@@ -101,9 +101,7 @@ fn stock_ros2_publisher_raises_a_liveliness_event() {
         )],
     );
 
-    if !require_ros2() {
-        nros_tests::skip!("ROS 2 + rmw_zenoh_cpp not available");
-    }
+    require_ros2();
     let router = fixtures::or_skip(fixtures::ZenohRouter::start_unique());
     let locator = router.locator();
 

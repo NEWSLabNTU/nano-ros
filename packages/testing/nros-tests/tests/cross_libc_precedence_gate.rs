@@ -40,7 +40,7 @@ use nros_tests::TestResult;
 fn cross_libc_two_set_precedence_holds() -> TestResult<()> {
     let cap = nros_tests::fixtures::require_compile_verdict("cross_libc_cxx_stdlib_probe")?;
     if cap.tool_absent() {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "cross toolchain arm-none-eabi-g++ not provisioned — run `just nuttx setup` \
              (the #27/#36 two-libc gate needs the cross newlib); rebuild the \
              `cross_libc_*` compile-check rows after provisioning it"
@@ -52,7 +52,7 @@ fn cross_libc_two_set_precedence_holds() -> TestResult<()> {
     //    `<cstdlib>`). A C-only newlib cross can't compile it — that is an
     //    unmet precondition, not the #27/#36 clash. Skip rather than false-fail.
     if !cap.outcome.success() {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "cross toolchain ({gxx}) has no usable libstdc++ (`<type_traits>`/`<cstdlib>` \
              absent) — the #27/#36 two-libc gate needs a C++-capable newlib cross"
         );
@@ -62,7 +62,7 @@ fn cross_libc_two_set_precedence_holds() -> TestResult<()> {
     let broken =
         nros_tests::fixtures::require_compile_verdict("cross_libc_rtos_sysroot_not_first")?;
     if broken.outcome.success() {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "cross toolchain ({gxx}) newlib `div_t` does not conflict with the RTOS-shape \
              decl — the #27/#36 two-libc class is not reproducible on this toolchain; \
              nothing to gate"

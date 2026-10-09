@@ -58,9 +58,7 @@ const WAKE_LATENCY_BOUND_MS: u64 = 10;
 /// WAKE_LATENCY_BOUND_MS.
 #[rstest]
 fn wake_latency_cross_thread_trigger(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let locator = zenohd_unique.locator();
     let config = ExecutorConfig::new(&locator)
@@ -139,9 +137,7 @@ fn wake_latency_cross_thread_trigger(zenohd_unique: ZenohRouter) {
 /// timeout (not infinite block).
 #[rstest]
 fn spin_once_honours_timeout_without_trigger(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     let locator = zenohd_unique.locator();
     let config = ExecutorConfig::new(&locator)
         .node_name("wake_timeout_test")
@@ -192,9 +188,7 @@ fn spin_once_honours_timeout_without_trigger(zenohd_unique: ZenohRouter) {
 /// even when the cv-wait is the gating sleep.
 #[rstest]
 fn timer_fires_n_times_per_n_seconds_under_idle_subs(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     use nros_node::{QoSProfile, timer::TimerDuration};
 

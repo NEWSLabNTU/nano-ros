@@ -78,9 +78,7 @@ fn run_plan() -> serde_json::Value {
 
 #[test]
 fn set_remap_propagates_to_group_children() {
-    if !nros_tests::require_nros_cli() {
-        nros_tests::skip!("nros CLI not found");
-    }
+    nros_tests::require_nros_cli();
     let plan = run_plan();
     let instances = plan["instances"].as_array().expect("instances");
 
@@ -130,9 +128,7 @@ fn set_remap_propagates_to_group_children() {
 /// something to ship onto the spawned process.
 #[test]
 fn set_env_propagates_to_group_children() {
-    if !nros_tests::require_nros_cli() {
-        nros_tests::skip!("nros CLI not found");
-    }
+    nros_tests::require_nros_cli();
     let plan = run_plan();
     let instances = plan["instances"].as_array().expect("instances");
 
@@ -166,9 +162,7 @@ fn set_env_propagates_to_group_children() {
 /// covers cmd/args/env propagation in one go.
 #[test]
 fn executable_emits_spawn_entity() {
-    if !nros_tests::require_nros_cli() {
-        nros_tests::skip!("nros CLI not found");
-    }
+    nros_tests::require_nros_cli();
     let plan = run_plan();
     let execs = plan["executables"].as_array().unwrap_or_else(|| {
         panic!(

@@ -77,9 +77,7 @@ fn spawn(
 /// sub's age contract; both rules land on `/diagnostics`.
 #[rstest]
 fn contract_monitor_violations_report_on_diagnostics(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     let pub_bin = build_contract_monitor_pub().require("contract-monitor-pub");
     let sub_bin = build_contract_monitor_sub().require("contract-monitor-sub");
     let diagsink_bin = build_contract_monitor_diagsink().require("contract-monitor-diagsink");
@@ -164,9 +162,7 @@ fn contract_monitor_violations_report_on_diagnostics(zenohd_unique: ZenohRouter)
 /// contracts, so `/diagnostics` stays silent while messages still flow.
 #[rstest]
 fn contract_monitor_compliant_pair_stays_silent(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     let pub_bin = build_contract_monitor_pub().require("contract-monitor-pub");
     let sub_bin = build_contract_monitor_sub().require("contract-monitor-sub");
     let diagsink_bin = build_contract_monitor_diagsink().require("contract-monitor-diagsink");
@@ -241,9 +237,7 @@ const CPP_TWIN_ROW: &str = "cm_pub_cpp: row topic=/cm_header fqn=/cm/pub/cm_head
 /// Rust twin reports.
 #[rstest]
 fn contract_monitor_cpp_twin_reports_rate_violation(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     let bin = build_contract_monitor_cpp().require("contract-monitor-cpp");
     let locator = zenohd_unique.locator();
 
@@ -292,9 +286,7 @@ fn contract_monitor_cpp_twin_reports_rate_violation(zenohd_unique: ZenohRouter) 
 /// is no row to check. This is RFC-0052's zero-cost claim at the row level.
 #[rstest]
 fn contract_monitor_cpp_uncontracted_twin_carries_zero_rows(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     let bin = build_contract_monitor_cpp().require("contract-monitor-cpp");
     let locator = zenohd_unique.locator();
 
@@ -346,9 +338,7 @@ fn run_monitor_capacity(locator: &str, rows: &str) -> String {
 /// refused them (the C++ setup returned -6 before any node existed).
 #[rstest]
 fn fourteen_monitor_rows_install_on_one_executor(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     let out = run_monitor_capacity(&zenohd_unique.locator(), "14");
     assert!(
         out.contains("mc: installed 14 monitor rows (cap 14)"),
@@ -360,9 +350,7 @@ fn fourteen_monitor_rows_install_on_one_executor(zenohd_unique: ZenohRouter) {
 /// the knob to raise named in the runtime's own words.
 #[rstest]
 fn a_fifteenth_monitor_row_is_refused_naming_the_knob(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     let out = run_monitor_capacity(&zenohd_unique.locator(), "15");
     assert!(
         out.contains("mc: install refused: monitor table has 15 rows but this executor watches 14"),

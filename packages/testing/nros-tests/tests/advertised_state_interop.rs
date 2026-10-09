@@ -83,7 +83,7 @@ use nros_tests::{
     ros2::{
         DEFAULT_ROS_DISTRO, Ros2DdsProcess, await_topic_endpoints_cyclonedds, endpoint_gid_bytes,
     },
-    skip, skip_class,
+    unmet,
 };
 
 /// The coordinate `interop::CELLS` declares for this file. One cell: the four
@@ -140,12 +140,7 @@ const EDGE_BUDGET: Duration = Duration::from_secs(30);
 /// issue 1135's whole subject and the reason `params` could not produce a
 /// verdict at all.
 fn require_probe() -> &'static Path {
-    if !nros_tests::ros2::require_ros2_cyclonedds() {
-        skip!(
-            "ROS 2 + rmw_cyclonedds_cpp not available — install it from apt \
-             (`ros-$ROS_DISTRO-rmw-cyclonedds-cpp`)."
-        );
-    }
+    nros_tests::ros2::require_ros2_cyclonedds();
     build_advertised_state_probe().require("advertised-state-probe")
 }
 
@@ -603,7 +598,7 @@ fn matched_counts_rise_when_a_peer_appears_and_fall_when_it_leaves() {
 /// line.** That is not defensive coding — `ros2::topic_endpoints` keys only on
 /// `Node name:` and `Endpoint type:` precisely because the gid line appears on
 /// some distros and not others, and a distro that does not print it has not
-/// disagreed with us, it has declined to answer. `skip_class!(capability, …)`
+/// disagreed with us, it has declined to answer. `unmet!(…)`
 /// says which.
 #[test]
 fn publisher_gid_identifies_us_to_the_peer() {
@@ -642,8 +637,7 @@ fn publisher_gid_identifies_us_to_the_peer() {
     probe.kill();
 
     let Some(theirs) = endpoint_gid_bytes(&publisher) else {
-        skip_class!(
-            capability,
+        unmet!(
             "`ros2 topic info --verbose` on {DEFAULT_ROS_DISTRO} prints no `GID:` line for a \
              discovered endpoint, so this tooling cannot answer whether our gid is the one \
              that identifies us. The endpoint WAS discovered:\n{publisher}"

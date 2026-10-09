@@ -38,7 +38,7 @@ use std::{thread, time::Duration};
 /// run nothing on every host without zenohd.
 fn router() -> ZenohRouter {
     if let Some(why) = nros_tests::process::zenohd_unavailable_reason() {
-        nros_tests::skip_class!(capability, "{why}");
+        nros_tests::unmet!("{why}");
     }
     or_skip(ZenohRouter::start_unique())
 }
@@ -683,7 +683,7 @@ fn default_locator_port() -> u16 {
 #[test]
 fn client_session_with_absent_locator_dials_backend_default() {
     if let Some(why) = nros_tests::process::zenohd_unavailable_reason() {
-        nros_tests::skip!("{why}");
+        nros_tests::unmet!("{why}");
     }
 
     let port = default_locator_port();
@@ -700,8 +700,7 @@ fn client_session_with_absent_locator_dials_backend_default() {
         // load-bearing when an undeclared capability skip started failing the
         // budget: mislabelled, this would have demanded a baseline entry for a
         // condition nobody can provision away.
-        Err(e) => nros_tests::skip_class!(
-            resource,
+        Err(e) => nros_tests::unmet!(
             "default locator port {port} (from {DEFAULT_LOCATOR}) is already in use \
              by something else on this host: {e}"
         ),
@@ -826,7 +825,7 @@ fn a_declined_query_hands_its_reply_slot_back() {
     // control must never be able to pass by not running (CLAUDE.md; issue 0584
     // for the class).
     if let Some(why) = nros_tests::process::zenohd_unavailable_reason() {
-        nros_tests::skip_class!(capability, "{why}");
+        nros_tests::unmet!("{why}");
     }
     let _router = or_skip(ZenohRouter::start_unique());
     let router_locator = _router.locator();
@@ -1056,7 +1055,7 @@ const LOOKALIKE_SERVICE: ServiceInfo<'static> = ServiceInfo::new(
 #[test]
 fn a_parameter_named_queryable_and_its_look_alike_both_register_and_receive() {
     if let Some(why) = nros_tests::process::zenohd_unavailable_reason() {
-        nros_tests::skip_class!(capability, "{why}");
+        nros_tests::unmet!("{why}");
     }
     let _router = or_skip(ZenohRouter::start_unique());
     let router_locator = _router.locator();
@@ -1138,7 +1137,7 @@ fn spin_until_request(
 #[test]
 fn a_service_server_receives_through_the_ring_the_caller_supplied() {
     if let Some(why) = nros_tests::process::zenohd_unavailable_reason() {
-        nros_tests::skip_class!(capability, "{why}");
+        nros_tests::unmet!("{why}");
     }
     let _router = or_skip(ZenohRouter::start_unique());
     let router_locator = _router.locator();
@@ -1301,7 +1300,7 @@ fn refused_service_takes_name_the_size_they_needed() {
     use nros_rmw::ClientTrait;
 
     if let Some(why) = nros_tests::process::zenohd_unavailable_reason() {
-        nros_tests::skip_class!(capability, "{why}");
+        nros_tests::unmet!("{why}");
     }
     let _router = or_skip(ZenohRouter::start_unique());
     let router_locator = _router.locator();

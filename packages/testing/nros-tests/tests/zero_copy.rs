@@ -29,9 +29,7 @@ use std::time::Duration;
 fn test_zero_copy_listener_starts(zenohd_unique: ZenohRouter) {
     use std::process::Command;
 
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let listener_path =
         build_message_info_observer_zero_copy().require("the zero-copy MessageInfo observer");
@@ -69,9 +67,7 @@ fn test_zero_copy_listener_starts(zenohd_unique: ZenohRouter) {
 fn test_zero_copy_talker_listener(zenohd_unique: ZenohRouter) {
     use std::process::Command;
 
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let talker_path = build_native_talker().require("talker");
     let listener_path =
@@ -132,9 +128,7 @@ fn test_zero_copy_talker_listener(zenohd_unique: ZenohRouter) {
 fn test_zero_copy_message_info(zenohd_unique: ZenohRouter) {
     use std::process::Command;
 
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let talker_path = build_native_talker().require("talker");
     let listener_path =

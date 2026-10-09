@@ -80,7 +80,7 @@ fn zenoh_archive_wrapper_impl_parity() {
     let archive = match resolve_archive_path(&root) {
         Ok(p) => p,
         Err(e) if std::env::var_os("NROS_FIXTURES_OPTIONAL").is_some() => {
-            nros_tests::skip!("zenoh-posix archive fixture not built (light tier): {e}");
+            nros_tests::unmet!("zenoh-posix archive fixture not built (light tier): {e}");
         }
         Err(e) => panic!("{e}"),
     };

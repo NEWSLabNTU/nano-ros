@@ -46,11 +46,14 @@ fn which_in_path(bin: &str) -> bool {
 
 #[test]
 fn workspace_std_msgs_shadows_ament_in_consumer_binary() -> nros_tests::TestResult<()> {
+    // The AMENT layer this shadows IS a ROS 2 install: out of the lane's scope
+    // ⇒ lane skip; in scope and absent ⇒ FAIL (issue 1758).
+    nros_tests::lane_scope::require_ros2_claimed();
     if !which_in_path("nm") {
-        nros_tests::skip!("`nm` not on PATH — symbol-table verification skipped");
+        nros_tests::unmet!("`nm` not on PATH — symbol-table verification skipped");
     }
     let Some(ament_prefix) = ament_std_msgs_prefix() else {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "no AMENT layer ships std_msgs (AMENT_PREFIX_PATH unset or no entry has \
              share/std_msgs/) — workspace-OVER-AMENT precedence has nothing to shadow"
         );

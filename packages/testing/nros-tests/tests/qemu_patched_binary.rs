@@ -22,8 +22,8 @@
 //! missing SDK), but a reader could not tell at a glance whether the
 //! assert was reachable on the skip path. The hoisted gate makes the
 //! intent explicit, matches the Phase 212.H test pattern, and removes
-//! the in-body `if !path.is_absolute() { skip!(…) } if !path.exists()
-//! { skip!(…) }` duplication.
+//! the in-body `if !path.is_absolute() { unmet!(…) } if !path.exists()
+//! { unmet!(…) }` duplication.
 
 use std::path::PathBuf;
 
@@ -34,13 +34,13 @@ use std::path::PathBuf;
 fn require_patched_qemu() -> PathBuf {
     let path: PathBuf = nros_tests::qemu::qemu_system_arm_path().into();
     if !path.is_absolute() {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "Patched qemu-system-arm not built (resolved to bare \
              `qemu-system-arm` on PATH). Run `just qemu setup-qemu`."
         );
     }
     if !path.exists() {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "Resolved patched qemu-system-arm path does not exist: {} \
              — run `just qemu setup-qemu`.",
             path.display()

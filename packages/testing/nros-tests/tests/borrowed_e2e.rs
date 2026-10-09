@@ -42,7 +42,7 @@ fn proof_bin(name: &str) -> TestResult<PathBuf> {
     // A language whose host compiler was ABSENT at build time is a recorded
     // fact (`<bin>.skipped`, written by the build script), not a missing file.
     if let Ok(why) = std::fs::read_to_string(dir.join(format!("{name}.skipped"))) {
-        nros_tests::skip!("borrowed-e2e proof `{name}` not built: {}", why.trim());
+        nros_tests::unmet!("borrowed-e2e proof `{name}` not built: {}", why.trim());
     }
     nros_tests::fixtures::require_compile_check_bin(ROW, name)
 }

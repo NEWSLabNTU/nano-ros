@@ -125,9 +125,105 @@ pub fn skip_note(platform: PlatformId, lang: &str) -> String {
     )
 }
 
+// ---------------------------------------------------------------------------
+// Host capabilities a lane does not claim — issue 1758.
+// ---------------------------------------------------------------------------
+
+/// The env var naming the host capabilities this run's lane does NOT claim.
+///
+/// A comma-separated list of [`Capability`] tokens. Unset ⇒ the lane claims
+/// every capability, which is the same "absent means everything" reading as
+/// `NROS_TEST_COORDS`: a bare `cargo nextest` asserts it can run every test.
+///
+/// Why a lane needs this at all: the coordinate axis (platform, lang, rmw)
+/// cannot say "this lane has no stock ROS 2 peer". Tier 1 runs on a
+/// self-hosted container that carries the zenoh router and no ROS 2 CLI, so
+/// 61 interop tests "skipped" there as a missing capability and read as a pass
+/// for months — the run did less than it claimed. The cure is never to
+/// tolerate the skip; it is for the lane to SAY it does not claim ROS 2, which
+/// makes those tests deselections (counted, attributable, the same on every
+/// host), and every lane that does not say so FAILS when ROS 2 is absent.
+pub const UNCLAIMED_ENV: &str = "NROS_TEST_UNCLAIMED";
+
+/// A host capability a lane may decline to claim.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Capability {
+    /// A ROS 2 install beyond the router: the `ros2` CLI, stock RMW
+    /// implementations, ament message packages — i.e. a stock ROS 2 peer.
+    /// The zenoh router (`rmw_zenohd`) is NOT this: every lane that runs a
+    /// zenoh cell provisions it (issue 1695), so its absence always fails.
+    Ros2,
+}
+
+impl Capability {
+    /// The token a lane writes in [`UNCLAIMED_ENV`].
+    pub const fn token(self) -> &'static str {
+        match self {
+            Capability::Ros2 => "ros2",
+        }
+    }
+
+    const ALL: &[Capability] = &[Capability::Ros2];
+}
+
+/// Parse an [`UNCLAIMED_ENV`] value. An unknown token is a HARD error: a typo
+/// would otherwise claim the capability by omission and turn the lane's whole
+/// ROS 2 half red for a reason nobody wrote down.
+pub fn parse_unclaimed(value: &str) -> Vec<Capability> {
+    value
+        .split(',')
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(|t| {
+            Capability::ALL
+                .iter()
+                .copied()
+                .find(|c| c.token() == t)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{UNCLAIMED_ENV} names unknown capability {t:?}; known: {:?}",
+                        Capability::ALL
+                            .iter()
+                            .map(|c| c.token())
+                            .collect::<Vec<_>>()
+                    )
+                })
+        })
+        .collect()
+}
+
+/// Does this run's lane claim `cap`?
+pub fn claims(cap: Capability) -> bool {
+    std::env::var(UNCLAIMED_ENV).map_or(true, |v| !parse_unclaimed(&v).contains(&cap))
+}
+
+/// Lane-skip unless this run claims a stock ROS 2 install. Called FIRST by
+/// every ROS 2 precondition helper, before any probe, so a lane that does not
+/// claim ROS 2 deselects the test on every host alike — and a lane that does
+/// claim it reaches the probe, which fails when ROS 2 is absent.
+pub fn require_ros2_claimed() {
+    if !claims(Capability::Ros2) {
+        crate::lane_skip!(
+            "needs a stock ROS 2 install; this lane does not claim it ({UNCLAIMED_ENV} contains `ros2`)"
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unclaimed_parses_tokens_and_tolerates_spacing() {
+        assert_eq!(parse_unclaimed(""), vec![]);
+        assert_eq!(parse_unclaimed(" ros2 ,"), vec![Capability::Ros2]);
+    }
+
+    #[test]
+    #[should_panic(expected = "unknown capability")]
+    fn an_unknown_unclaimed_token_is_refused() {
+        parse_unclaimed("ros");
+    }
 
     /// Issue 0630 — every test that iterates platform-varying cells is either
     /// a [`CONSUMERS`] entry that calls [`admits`], or an [`EXEMPT`] one with a

@@ -59,13 +59,13 @@ fn px4_integration_template_smoke() {
     // Heavy gate: the SITL build itself.
     let px4_dir = match std::env::var("PX4_AUTOPILOT_DIR") {
         Ok(d) => PathBuf::from(d),
-        Err(_) => nros_tests::skip!(
+        Err(_) => nros_tests::unmet!(
             "PX4_AUTOPILOT_DIR unset — run via `just test-all`, load `.envrc`, \
              or set it to a PX4-Autopilot checkout"
         ),
     };
     if !px4_dir.join("Makefile").exists() {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "PX4_AUTOPILOT_DIR={} does not look like a PX4 checkout (no Makefile) — \
              run `just px4 setup` or set PX4_AUTOPILOT_DIR",
             px4_dir.display()

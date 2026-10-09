@@ -133,9 +133,7 @@ fn spawn_zenoh_talker(bin: &Path, locator: &str) -> ManagedProcess {
 /// accepted, sample delivered), no ROS 2 install needed.
 #[rstest]
 fn declarative_zenoh_to_cyclonedds_bridge_to_nano_listener() {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     // An unprovisioned cyclonedds submodule does NOT silently leave this
     // fixture absent: `workspace-fixtures-build.sh` fails loud and actionable
     // for a `NROS_RMW=cyclonedds` row on linux (issue 0120). So a resolver
@@ -215,12 +213,8 @@ fn declarative_zenoh_to_cyclonedds_bridge_to_nano_listener() {
 /// cyclone listener is Int32-only, so the receiver is ros2). Skips otherwise.
 #[rstest]
 fn declarative_zenoh_to_cyclonedds_nested_header_to_ros2() {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
-    if !require_ros2_cyclonedds() {
-        nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");
-    }
+    require_zenohd();
+    require_ros2_cyclonedds();
     let bridge_bin = build_native_workspace_rust_bridge_entry()
         .require("bridge-cyclonedds native_entry (row `workspace-rust-native-bridge`)")
         .to_path_buf();

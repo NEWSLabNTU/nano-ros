@@ -66,8 +66,7 @@ fn baremetal_board_run_executes_run_plan() {
         // prepends its own `[SKIPPED]`, so a class spelled into the message
         // lands SECOND and the classifier reads the first one — which is how
         // this still counted as `capability` on the first attempt.
-        nros_tests::skip_class!(
-            lane,
+        nros_tests::lane_skip!(
             "{}",
             nros_tests::lane_scope::skip_note(
                 nros_tests::matrix::PlatformId::QemuBaremetal,
@@ -76,14 +75,14 @@ fn baremetal_board_run_executes_run_plan() {
         );
     }
     if !thumbv7m_target_installed() {
-        nros_tests::skip!("thumbv7m-none-eabi target not installed");
+        nros_tests::unmet!("thumbv7m-none-eabi target not installed");
     }
     if !is_qemu_available() {
-        nros_tests::skip!("qemu-system-arm not found");
+        nros_tests::unmet!("qemu-system-arm not found");
     }
     let bin = match qemu_baremetal_main_e2e_binary() {
         Ok(b) => b,
-        Err(_) => nros_tests::skip!(
+        Err(_) => nros_tests::unmet!(
             "qemu-baremetal-main-e2e fixture not prebuilt — run `just qemu-baremetal build-fixtures`"
         ),
     };

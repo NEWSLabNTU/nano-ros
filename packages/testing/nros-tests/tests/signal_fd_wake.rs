@@ -71,9 +71,7 @@ fn assert_woke_on_trigger(elapsed: Duration, what: &str) {
 /// A cross-thread `write(eventfd, 1)` unblocks a parked `spin_once`.
 #[rstest]
 fn eventfd_write_unblocks_spin_once(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let mut executor = open_executor(&zenohd_unique.locator(), "signal_fd_wake_test", 94);
 
@@ -116,9 +114,7 @@ extern "C" fn sigusr1_wake_handler(_sig: core::ffi::c_int) {
 /// A real `SIGUSR1` handler writing the signalfd unblocks a parked `spin_once`.
 #[rstest]
 fn sigusr1_handler_wakes_spin_once(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let mut executor = open_executor(&zenohd_unique.locator(), "sigusr1_test", 93);
 

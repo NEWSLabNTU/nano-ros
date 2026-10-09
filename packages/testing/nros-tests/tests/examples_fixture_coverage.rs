@@ -193,7 +193,7 @@ fn every_example_has_a_fixture_or_tracked_exception() {
     let root = nros_tests::project_root();
     let examples_root = root.join("examples");
     if !examples_root.is_dir() {
-        nros_tests::skip!("examples/ missing at {}", examples_root.display());
+        nros_tests::unmet!("examples/ missing at {}", examples_root.display());
     }
 
     // ---- Build the covered set. ------------------------------------------

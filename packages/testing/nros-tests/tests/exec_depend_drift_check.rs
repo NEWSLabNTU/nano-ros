@@ -12,12 +12,10 @@ fn nros_bin() -> PathBuf {
 }
 
 /// Issue 1135 — was `-> Option<()>`, forcing every caller to spell
-/// `if require_nros_cli().is_none() { skip!(..) }`. An `Option<()>` carries no
+/// `if require_nros_cli().is_none() { unmet!(..) }`. An `Option<()>` carries no
 /// value, only a verdict the caller may drop on the floor; the guard keeps it.
 fn require_nros_cli() {
-    if !nros_tests::require_nros_cli() {
-        nros_tests::skip!("nros CLI not on PATH — run `just setup-cli` + `source ./activate.sh`");
-    }
+    nros_tests::require_nros_cli();
 }
 
 /// Drop a minimal pure-declarative bringup pkg under `parent` with the

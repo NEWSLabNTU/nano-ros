@@ -47,16 +47,14 @@ fn fixture() -> PathBuf {
 /// fix: with no value to inspect, a caller cannot get the verdict wrong.
 fn require_nuttx_setup() {
     if !is_nuttx_available() {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "NUTTX_DIR unset / NuttX submodule not provisioned — run `just nuttx setup`"
         );
     }
     if !is_arm_gcc_available() {
-        nros_tests::skip!("arm-none-eabi-gcc missing — install gcc-arm-none-eabi");
+        nros_tests::unmet!("arm-none-eabi-gcc missing — install gcc-arm-none-eabi");
     }
-    if !nros_tests::require_nros_cli() {
-        nros_tests::skip!("nros CLI not found — run `just setup-cli` + `source ./activate.sh`");
-    }
+    nros_tests::require_nros_cli();
 }
 
 #[test]

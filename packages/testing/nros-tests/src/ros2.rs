@@ -142,20 +142,35 @@ pub fn is_ros2_available() -> bool {
     is_ros2_distro_available(DEFAULT_ROS_DISTRO)
 }
 
-/// Require ROS 2 for a test (skips if not available)
+/// The failure text for "no ROS 2 install for `distro`" — one spelling for the
+/// three `require_ros2*` helpers.
+fn ros2_missing(distro: &str) -> String {
+    format!(
+        "ROS 2 {distro} not found (`source /opt/ros/{distro}/setup.bash && ros2 --help` failed). \
+         This lane claims the `ros2` capability; provision ROS 2, or run the test from a lane \
+         that sets NROS_TEST_UNCLAIMED=ros2"
+    )
+}
+
+/// The failure text for "ROS 2 is here but this RMW is not".
+fn rmw_missing(pkg: &str, apt_suffix: &str) -> String {
+    format!(
+        "{pkg} not found in the ROS 2 install — install it from apt (`ros-$ROS_DISTRO-{apt_suffix}`)"
+    )
+}
+
+/// Require ROS 2 + `rmw_zenoh_cpp` for a test.
 ///
-/// Returns true if ROS 2 is available, false otherwise.
-/// Prints a skip message when returning false.
-pub fn require_ros2() -> bool {
+/// Out of scope (the lane sets `NROS_TEST_UNCLAIMED=ros2`) ⇒ lane skip; in
+/// scope and absent ⇒ FAIL (issue 1758). Never a silent return.
+pub fn require_ros2() {
+    crate::lane_scope::require_ros2_claimed();
     if !is_ros2_available() {
-        eprintln!("Skipping test: ROS 2 not found");
-        return false;
+        crate::unmet!("{}", ros2_missing(DEFAULT_ROS_DISTRO));
     }
     if !is_rmw_zenoh_available() {
-        eprintln!("Skipping test: rmw_zenoh_cpp not found");
-        return false;
+        crate::unmet!("{}", rmw_missing("rmw_zenoh_cpp", "rmw-zenoh-cpp"));
     }
-    true
 }
 
 /// Check if rmw_zenoh_cpp is available in the [`DEFAULT_ROS_DISTRO`] install.
@@ -1678,20 +1693,16 @@ pub fn is_rmw_fastrtps_available() -> bool {
     is_ros2_package_available(DEFAULT_ROS_DISTRO, "rmw_fastrtps_cpp")
 }
 
-/// Require ROS 2 with DDS (rmw_fastrtps_cpp) for a test.
-///
-/// Returns true if both ROS 2 and rmw_fastrtps_cpp are available.
-/// Prints a skip message and returns false otherwise.
-pub fn require_ros2_dds() -> bool {
+/// Require ROS 2 with DDS (rmw_fastrtps_cpp) for a test — same contract as
+/// [`require_ros2`].
+pub fn require_ros2_dds() {
+    crate::lane_scope::require_ros2_claimed();
     if !is_ros2_available() {
-        eprintln!("Skipping test: ROS 2 not found");
-        return false;
+        crate::unmet!("{}", ros2_missing(DEFAULT_ROS_DISTRO));
     }
     if !is_rmw_fastrtps_available() {
-        eprintln!("Skipping test: rmw_fastrtps_cpp not found");
-        return false;
+        crate::unmet!("{}", rmw_missing("rmw_fastrtps_cpp", "rmw-fastrtps-cpp"));
     }
-    true
 }
 
 /// Get ROS 2 environment setup command for DDS (rmw_fastrtps_cpp).
@@ -1763,16 +1774,17 @@ pub fn is_rmw_cyclonedds_available() -> bool {
 }
 
 /// Require ROS 2 with CycloneDDS (`rmw_cyclonedds_cpp`) for a test.
-pub fn require_ros2_cyclonedds() -> bool {
+pub fn require_ros2_cyclonedds() {
+    crate::lane_scope::require_ros2_claimed();
     if !is_ros2_available() {
-        eprintln!("Skipping test: ROS 2 not found");
-        return false;
+        crate::unmet!("{}", ros2_missing(DEFAULT_ROS_DISTRO));
     }
     if !is_rmw_cyclonedds_available() {
-        eprintln!("Skipping test: rmw_cyclonedds_cpp not found");
-        return false;
+        crate::unmet!(
+            "{}",
+            rmw_missing("rmw_cyclonedds_cpp", "rmw-cyclonedds-cpp")
+        );
     }
-    true
 }
 
 /// Managed ROS 2 process using DDS (rmw_fastrtps_cpp).

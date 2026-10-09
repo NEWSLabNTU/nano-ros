@@ -50,9 +50,7 @@ fn full_goal_table_rejects_rather_than_acknowledging(
     action_server_concurrent_binary: PathBuf,
     action_client_multigoal_binary: PathBuf,
 ) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     let locator = zenohd_unique.locator();
 
     let mut server_cmd = Command::new(&action_server_concurrent_binary);
@@ -204,9 +202,7 @@ fn every_accepted_goal_returns_a_result_and_no_reply_slot_is_refused(
     action_server_concurrent_binary: PathBuf,
     action_client_multigoal_binary: PathBuf,
 ) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     let locator = zenohd_unique.locator();
 
     /// Below `MAX_GOALS`, so every goal is accepted and the equality is about

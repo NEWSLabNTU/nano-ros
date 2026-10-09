@@ -103,7 +103,7 @@ fn posix_canonical_header_matches_link_policy() {
     let header_path = match resolve_header_path() {
         Ok(p) => p,
         Err(e) if std::env::var_os("NROS_FIXTURES_OPTIONAL").is_some() => {
-            nros_tests::skip!("zenoh-posix header fixture not built (light tier): {e}");
+            nros_tests::unmet!("zenoh-posix header fixture not built (light tier): {e}");
         }
         Err(e) => panic!("{e}"),
     };

@@ -88,9 +88,7 @@ fn test_custom_msg_serialization() {
 /// Test custom message pub/sub with zenoh transport
 #[rstest]
 fn test_custom_msg_pub_sub(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let binary = build_native_custom_msg().require("with zenoh");
     let locator = zenohd_unique.locator();

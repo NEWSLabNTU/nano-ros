@@ -96,7 +96,7 @@ fn every_test_bin_is_a_row_or_a_tracked_exception() {
     let root = nros_tests::project_root();
     let bins = root.join("packages/testing/nros-tests/bins");
     if !bins.is_dir() {
-        nros_tests::skip!("bins dir missing at {}", bins.display());
+        nros_tests::unmet!("bins dir missing at {}", bins.display());
     }
 
     let dirs = manifest_dirs(&root);

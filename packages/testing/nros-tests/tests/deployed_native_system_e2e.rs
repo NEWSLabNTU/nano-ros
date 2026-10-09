@@ -43,9 +43,7 @@ use rstest::rstest;
 /// subscriber receives. Proves 211.A's deploy second-stage.
 #[rstest]
 fn deployed_native_system_publishes_to_ros_graph(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     // Prebuilt fixtures (built by `just native build-fixtures` /
     // `build-workspace-fixtures`); tier-aware skip when absent.

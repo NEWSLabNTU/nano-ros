@@ -157,7 +157,8 @@ verdict).**
   (each hit must be a version probe or a documented compile-check-fixture
   cell); `rg -L 'require_prebuilt|stale' <new fixture resolvers>`.
 - **E2 Pass-on-unmet-precondition.** Bare `eprintln!`+`return` reports PASS;
-  must `assert!`/`bail!`/`nros_tests::skip!`. Detect in test bodies.
+  must `assert!`/`bail!`/`nros_tests::unmet!` (issue 1758: a skip is only
+  `lane_skip!` from the lane's scope). Detect in test bodies.
 - **E3 Phase-numbered test names** (`phase212_n9_…`) — forbidden; name by
   behavior (CLAUDE.md). Detect: `grep -rnE 'fn .*phase[0-9]' packages/`.
 - **E4 Skipped / ignored / flaky** (`#[ignore]`, issue 0035 native_sim);

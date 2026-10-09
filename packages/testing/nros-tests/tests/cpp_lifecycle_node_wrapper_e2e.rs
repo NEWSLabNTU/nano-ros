@@ -35,9 +35,7 @@ use std::{process::Command, time::Duration};
 /// The wrapper-managed node reaches Active on its own and its overrides fire.
 #[rstest]
 fn managed_node_wrapper_reaches_active_and_publishes(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     let entry = build_native_workspace_cpp_lifecycle_managed_entry()
         .map(|p| p.to_path_buf())
         .require("managed lifecycle entry");
@@ -107,12 +105,8 @@ fn managed_node_wrapper_reaches_active_and_publishes(zenohd_unique: ZenohRouter)
 /// test above uses, so a host without ROS 2 SKIPS rather than reporting a pass.
 #[rstest]
 fn a_parameter_declared_through_the_lifecycle_node_reaches_ros2(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
-    if !require_ros2() {
-        nros_tests::skip!("ROS 2 not found");
-    }
+    require_zenohd();
+    require_ros2();
     let entry = build_native_workspace_cpp_lifecycle_managed_entry()
         .map(|p| p.to_path_buf())
         .require("managed lifecycle entry");

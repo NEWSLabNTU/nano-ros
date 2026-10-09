@@ -37,20 +37,17 @@ fn idlc_path() -> Option<PathBuf> {
         .find(|p| p.is_file())
 }
 
-/// Skip-or-proceed: every K.4 test needs both the `nros` CLI and `idlc`.
-fn require_preconditions() -> Option<(PathBuf, PathBuf)> {
-    if !nros_tests::require_nros_cli() {
-        return None;
-    }
+/// Every K.4 test needs both the `nros` CLI and `idlc`; either absent FAILS
+/// (issue 1758).
+fn require_preconditions() -> (PathBuf, PathBuf) {
+    nros_tests::require_nros_cli();
     let Some(idlc) = idlc_path() else {
-        eprintln!(
-            "Skipping test: idlc not found at build/cyclonedds/bin/idlc \
-             (run `just cyclonedds setup`)"
+        nros_tests::unmet!(
+            "idlc not found at build/cyclonedds/bin/idlc (run `just cyclonedds setup`)"
         );
-        return None;
     };
     let nros = nros_tests::nros_cli_bin_path().expect("nros CLI resolved");
-    Some((nros, idlc))
+    (nros, idlc)
 }
 
 /// Stage `<root>/std_msgs/msg/Int32.msg` + `<root>/include` and return
@@ -67,9 +64,7 @@ fn stage_std_msgs_int32(root: &std::path::Path) -> PathBuf {
 /// Verifies CycloneDDS descriptor codegen emits C for `std_msgs/Int32`.
 #[test]
 fn codegen_cyclonedds_emits_std_msgs() {
-    let Some((nros, idlc)) = require_preconditions() else {
-        nros_tests::skip!("nros CLI or idlc not available");
-    };
+    let (nros, idlc) = require_preconditions();
 
     let dir = tempfile::tempdir().expect("tempdir");
     let root = dir.path();
@@ -124,9 +119,7 @@ fn codegen_cyclonedds_emits_std_msgs() {
 
 #[test]
 fn nros_codegen_cyclonedds_descriptors_emits_register_tu() {
-    let Some((nros, idlc)) = require_preconditions() else {
-        nros_tests::skip!("nros CLI or idlc not available");
-    };
+    let (nros, idlc) = require_preconditions();
 
     let dir = tempfile::tempdir().expect("tempdir");
     let root = dir.path();
@@ -193,9 +186,7 @@ fn nros_codegen_cyclonedds_descriptors_emits_register_tu() {
 ///   emitted cmake file list keeps the sources and drops the derived pair.
 #[test]
 fn resolve_deps_skips_derived_srv_sibling_msgs() {
-    if !nros_tests::require_nros_cli() {
-        nros_tests::skip!("nros CLI not available");
-    }
+    nros_tests::require_nros_cli();
     let nros = nros_tests::nros_cli_bin_path().expect("nros CLI resolved");
 
     let dir = tempfile::tempdir().expect("tempdir");

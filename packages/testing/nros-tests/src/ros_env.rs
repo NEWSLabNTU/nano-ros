@@ -849,7 +849,7 @@ pub fn e2e_setup(example: &str) -> (DockerRosEnv, std::path::PathBuf, u8) {
     let domain = crate::unique_ros_domain_id();
     let env = DockerRosEnv::new(&ed, Middleware::Cyclonedds { domain_id: domain });
     if !env.available() {
-        crate::skip!("{ed} image not built or docker absent — run `just ros_editions image {ed}`");
+        crate::unmet!("{ed} image not built or docker absent — run `just ros_editions image {ed}`");
     }
     (env, bin, domain)
 }
@@ -1078,14 +1078,14 @@ pub fn e2e_setup_xrce(
         &format!("just ros_editions build-e2e-fixtures {ed} xrce"),
     );
     let agent = host_xrce_agent_bin().unwrap_or_else(|| {
-        crate::skip!("micro-XRCE Agent not in the nros store — run `nros setup … --rmw xrce`")
+        crate::unmet!("micro-XRCE Agent not in the nros store — run `nros setup … --rmw xrce`")
     });
     let domain = crate::unique_ros_domain_id();
     // UDP port unique per-domain so parallel xrce lanes don't collide.
     let port = 8000 + domain as u16;
     let env = DockerRosEnv::new(&ed, Middleware::FastRtps { domain_id: domain });
     if !env.available() {
-        crate::skip!("{ed} image not built or docker absent — run `just ros_editions image {ed}`");
+        crate::unmet!("{ed} image not built or docker absent — run `just ros_editions image {ed}`");
     }
     (env, bin, domain, agent, port)
 }
@@ -1118,7 +1118,7 @@ pub fn e2e_setup_zenoh(example: &str) -> (DockerRosEnv, std::path::PathBuf, u8, 
         },
     );
     if !env.available() {
-        crate::skip!("{ed} image not built or docker absent — run `just ros_editions image {ed}`");
+        crate::unmet!("{ed} image not built or docker absent — run `just ros_editions image {ed}`");
     }
     // Only editions that SHIP `rmw_zenoh_cpp` can be a zenoh peer (jazzy; iron
     // and humble have no official apt package). Skip loudly otherwise — never a
@@ -1128,7 +1128,7 @@ pub fn e2e_setup_zenoh(example: &str) -> (DockerRosEnv, std::path::PathBuf, u8, 
         .map(|s| s.contains("OK"))
         .unwrap_or(false);
     if !has_zenoh {
-        crate::skip!(
+        crate::unmet!(
             "{ed} ships no rmw_zenoh_cpp (only jazzy does) — zenoh interop lane N/A for this edition"
         );
     }

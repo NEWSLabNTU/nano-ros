@@ -116,9 +116,7 @@ use self::register as talker_register;
 
 #[rstest]
 fn dispatch_fires_timer_callback(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     TALKER_FIRES.store(0, Ordering::SeqCst);
     TALKER_PUB_ERRORS.store(0, Ordering::SeqCst);
 
@@ -165,9 +163,7 @@ fn dispatch_fires_timer_callback(zenohd_unique: ZenohRouter) {
 
 #[rstest]
 fn dispatch_routes_publisher_resolver(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     TALKER_FIRES.store(0, Ordering::SeqCst);
     TALKER_PUB_ERRORS.store(0, Ordering::SeqCst);
 

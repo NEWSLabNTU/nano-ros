@@ -48,7 +48,7 @@ const WINDOW: Duration = Duration::from_secs(30);
 
 fn require_freertos() {
     if !freertos::is_freertos_available() {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "FREERTOS_DIR not set or invalid — `just freertos setup`, then \
              export FREERTOS_DIR=$PWD/third-party/freertos/kernel"
         );
@@ -128,7 +128,7 @@ fn assert_delivered(out: &str, talker_marker: &str, domain: u8, label: &str) {
 fn freertos_posix_c_entry_delivers_over_cyclonedds() {
     require_freertos();
     let entry = build_freertos_posix_workspace_c_entry().unwrap_or_else(|e| {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "freertos-posix C workspace entry not built \
              (just freertos build-fixtures): {e:?}"
         )
@@ -149,7 +149,7 @@ fn freertos_posix_c_entry_delivers_over_cyclonedds() {
 fn freertos_posix_cpp_entry_delivers_over_cyclonedds() {
     require_freertos();
     let entry = build_freertos_posix_workspace_cpp_entry().unwrap_or_else(|e| {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "freertos-posix C++ workspace entry not built \
              (just freertos build-fixtures): {e:?}"
         )

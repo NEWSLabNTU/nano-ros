@@ -58,9 +58,7 @@ const SERVICE_RETRY_EVIDENCE: usize = 3;
 
 #[rstest]
 fn test_service_server_starts(zenohd_unique: ZenohRouter, service_server_binary: PathBuf) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let locator = zenohd_unique.locator();
 
@@ -84,7 +82,7 @@ fn test_service_server_starts(zenohd_unique: ZenohRouter, service_server_binary:
     // = readiness unverified → SKIP (CLAUDE.md-banned to claim PASS on
     // an unmet precondition). Process exited → real failure → panic.
     if server.is_running() {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "native-rs-service-server did not print 'Waiting for service' marker within 5s"
         );
     } else {
@@ -107,9 +105,7 @@ fn test_service_client_starts_without_server(
     zenohd_unique: ZenohRouter,
     service_client_binary: PathBuf,
 ) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let locator = zenohd_unique.locator();
 
@@ -175,9 +171,7 @@ fn test_service_multiple_sequential_calls(
     service_server_binary: PathBuf,
     service_client_binary: PathBuf,
 ) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let locator = zenohd_unique.locator();
 
@@ -239,9 +233,7 @@ fn test_service_multiple_sequential_calls(
 
 #[rstest]
 fn test_service_client_timeout(zenohd_unique: ZenohRouter, service_client_binary: PathBuf) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let locator = zenohd_unique.locator();
 
@@ -314,9 +306,7 @@ fn test_service_server_multiple_clients(
     service_server_binary: PathBuf,
     service_client_binary: PathBuf,
 ) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let locator = zenohd_unique.locator();
 

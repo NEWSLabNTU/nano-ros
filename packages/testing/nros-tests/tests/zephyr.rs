@@ -142,7 +142,7 @@ fn resolve_example(lang: Lang, case: &str, rmw: Rmw) -> PathBuf {
         (Lang::Mixed, _) => unreachable!("no mixed example cells"),
     };
     get_prebuilt_zephyr_example(&alias, ZephyrPlatform::NativeSim).unwrap_or_else(|e| {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "zephyr/{}/{case} {} image not prebuilt or stale \
              (run `just zephyr build-fixtures`): {e:?}",
             lang.as_str(),
@@ -575,11 +575,9 @@ fn assert_heap_verdicts(cell: &Cell, verdicts: Vec<(String, Result<String, Strin
            result and streams NO feedback (result-only gate; the #164 marker class)",
 })]
 fn example_e2e(#[case] cell: Cell) {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-    if matches!(cell.iso, Iso::BakedXrceAgent) && !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
+    require_zephyr();
+    if matches!(cell.iso, Iso::BakedXrceAgent) {
+        require_xrce_agent();
     }
 
     let (first_role, second_role) = match cell.workload {
@@ -801,9 +799,7 @@ struct Smoke {
 #[case::cyclonedds_rust_talker_boots(Smoke { rmw: Rmw::Cyclonedds, lang: Lang::Rust, case: "talker", proof: SmokeProof::TalkerPublishes })]
 #[case::cyclonedds_rust_listener_boots(Smoke { rmw: Rmw::Cyclonedds, lang: Lang::Rust, case: "listener", proof: SmokeProof::ListenerReady })]
 fn boot_smoke(#[case] smoke: Smoke) {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
+    require_zephyr();
     let bin = resolve_example(smoke.lang, smoke.case, smoke.rmw);
     let id = format!(
         "{}/{}/{}",
@@ -870,9 +866,7 @@ fn boot_smoke(#[case] smoke: Smoke) {
 /// Tests that a Zephyr talker can send messages to a native Rust listener.
 #[test]
 fn test_zephyr_to_native_e2e() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
+    require_zephyr();
 
     // #166 / phase-286 W1 — per-test ephemeral zenohd + locator override (both
     // the native listener via NROS_LOCATOR and the Zephyr talker via
@@ -981,9 +975,7 @@ fn test_zephyr_to_native_e2e() {
 /// This is the reverse direction of `test_zephyr_to_native_e2e`.
 #[test]
 fn test_native_to_zephyr_e2e() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
+    require_zephyr();
 
     // #166 / phase-286 W1 — per-test ephemeral zenohd + locator override.
     eprintln!("Starting per-test zenohd router (ephemeral, #166)...");
@@ -1090,9 +1082,7 @@ fn test_native_to_zephyr_e2e() {
 /// multiple clients and bidirectional traffic.
 #[test]
 fn test_bidirectional_native_zephyr_e2e() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
+    require_zephyr();
 
     // #166 / phase-286 W1 — per-test ephemeral zenohd + locator override (all
     // four peers dial THIS router: natives via NROS_LOCATOR, Zephyr images via
@@ -1257,9 +1247,7 @@ fn test_bidirectional_native_zephyr_e2e() {
 /// Tests cross-platform service communication with native server and Zephyr client.
 #[test]
 fn test_native_server_zephyr_client() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
+    require_zephyr();
 
     // Start zenohd router
     // #166 / phase-286 W1 slice 4 — per-test ephemeral zenohd + locator override.
@@ -1382,9 +1370,7 @@ fn test_native_server_zephyr_client() {
 /// Tests cross-platform service communication with Zephyr server and native client.
 #[test]
 fn test_zephyr_server_native_client() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
+    require_zephyr();
 
     // Start zenohd router
     eprintln!("Starting zenohd router...");
@@ -1484,9 +1470,7 @@ fn test_zephyr_server_native_client() {
 /// Test: Zephyr C++ talker → native Rust listener (cross-platform)
 #[test]
 fn test_zephyr_cpp_talker_to_native_listener() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
+    require_zephyr();
 
     // #166 / phase-286 W1 slice 2 — per-test ephemeral zenohd + locator override.
     let router = nros_tests::fixtures::or_skip(ZenohRouter::start_unique());
@@ -1561,9 +1545,7 @@ fn test_zephyr_cpp_talker_to_native_listener() {
 /// Test: native Rust talker → Zephyr C++ listener (cross-platform)
 #[test]
 fn test_native_talker_to_zephyr_cpp_listener() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
+    require_zephyr();
 
     // #166 / phase-286 W1 slice 2 — per-test ephemeral zenohd + locator override.
     let router = nros_tests::fixtures::or_skip(ZenohRouter::start_unique());
@@ -1662,9 +1644,7 @@ fn test_native_talker_to_zephyr_cpp_listener() {
 /// delivered cross-process to an external native listener.
 #[test]
 fn test_zephyr_workspace_entry_native_sim_e2e() {
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
+    require_zephyr();
 
     // Resolve the prebuilt workspace-Entry binary. Tests never build
     // fixtures in-body; a missing/stale image fails fast with a
@@ -1848,12 +1828,8 @@ fn zephyr_rust_zenoh_action_goal_completion_rate() {
     };
     use std::process::Command;
 
-    if !require_zephyr() {
-        nros_tests::skip!("Zephyr not available");
-    }
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zephyr();
+    require_zenohd();
 
     /// Below the server's goal table, so every goal is accepted and the
     /// equality below is about RESULTS rather than about rejections.

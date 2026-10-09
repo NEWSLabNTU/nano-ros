@@ -31,12 +31,12 @@ def generate_launch_description():
 #[test]
 fn a_python_launch_file_resolves_through_the_shipped_pair() {
     let Some(resolver) = nros_tests::launch_resolver_bin() else {
-        nros_tests::skip!("nros-launch-resolve not built (run `just setup-launch-resolve`)");
+        nros_tests::unmet!("nros-launch-resolve not built (run `just setup-launch-resolve`)");
     };
     if !nros_tests::host_python_available() {
         // NOT a pass: a host with no interpreter cannot answer this question,
         // and saying "green" would be the vacuous shape issue 0914 warned about.
-        nros_tests::skip!("no usable python3 on this host");
+        nros_tests::unmet!("no usable python3 on this host");
     }
 
     let tmp = tempfile::tempdir().expect("tempdir");

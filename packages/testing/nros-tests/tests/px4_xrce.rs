@@ -28,9 +28,7 @@ use rstest::rstest;
 /// through the agent and receives its own samples back.
 #[rstest]
 fn test_px4_msgs_roundtrip_over_agent(px4_stub_binary: PathBuf) {
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
+    require_xrce_agent();
 
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
     let addr = agent.addr();
@@ -66,9 +64,7 @@ fn test_px4_companion_cross_session_receive(
     px4_companion_binary: PathBuf,
     px4_stub_binary: PathBuf,
 ) {
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
+    require_xrce_agent();
 
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
     let addr = agent.addr();

@@ -115,9 +115,7 @@ impl ExecutableNode for LowTierNode {
 
 #[rstest]
 fn tier_filter_gates_off_tier_callbacks_over_shared_session(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     for c in [
         high_node_high(),
         high_node_low(),
@@ -260,9 +258,7 @@ impl ExecutableNode for SharedGroupB {
 fn a_tier_admits_one_node_s_group_and_not_another_node_s_same_named_one(
     zenohd_unique: ZenohRouter,
 ) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     a_ctrl().store(0, Ordering::SeqCst);
     b_ctrl().store(0, Ordering::SeqCst);
 

@@ -574,7 +574,7 @@ pub fn require_coord_in_lane_within(
         return Ok(());
     };
     if let Some(reason) = skip_reason_for_coord(coord, label, coords) {
-        crate::skip_class!(lane, "{reason}");
+        crate::lane_skip!("{reason}");
     }
     Ok(())
 }
@@ -649,7 +649,7 @@ pub fn require_platform_in_lane(platforms: &[crate::matrix::PlatformId], what: &
         return;
     };
     if let Some(reason) = skip_reason_for_platforms(platforms, what, coords) {
-        crate::skip_class!(lane, "{reason}");
+        crate::lane_skip!("{reason}");
     }
 }
 
@@ -719,7 +719,7 @@ pub fn require_in_lane(binary_path: &Path) -> TestResult<()> {
         return Ok(());
     };
     if let Some(reason) = skip_reason_for_path(binary_path, coords) {
-        crate::skip_class!(lane, "{reason}");
+        crate::lane_skip!("{reason}");
     }
     Ok(())
 }
@@ -730,7 +730,7 @@ pub fn require_workspace_in_lane(fixture_id: &str) -> TestResult<()> {
         return Ok(());
     };
     if let Some(reason) = skip_reason_for_workspace_id(fixture_id, coords) {
-        crate::skip_class!(lane, "{reason}");
+        crate::lane_skip!("{reason}");
     }
     Ok(())
 }

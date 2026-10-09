@@ -62,9 +62,7 @@ fn spawn_param_entry(locator: &str, spin_ms: u32) -> ManagedProcess {
 /// asserted against a real process.
 #[rstest]
 fn param_live_read_publishes_resolved_value(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     let locator = zenohd_unique.locator();
 
     let mut listener = nros_tests::fixtures::spawn_int32_sink(None, &locator);

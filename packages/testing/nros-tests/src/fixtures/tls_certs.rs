@@ -89,7 +89,7 @@ mod tests {
     #[test]
     fn test_generate_certs() {
         if !is_openssl_available() {
-            crate::skip!("openssl not available");
+            crate::unmet!("openssl not available");
         }
 
         let certs = TlsCerts::generate().expect("Failed to generate certs");

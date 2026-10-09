@@ -66,70 +66,55 @@ pub mod ros_env;
 pub mod treewalk;
 pub mod zephyr;
 
-/// Skip the current test with a reason.
+/// A precondition this test needs is NOT met — the test FAILS.
 ///
-/// Panics with a `[SKIPPED]` prefix so that CI tooling and test reports
-/// can distinguish skips from real failures. Tests that use this will
-/// show as FAILED rather than silently passing when prerequisites are
-/// missing.
+/// **The rule (issue 1758): a test never skips because something it needs is
+/// absent.** It fails, naming what is missing and how to provide it. A missing
+/// tool, router, SDK, peer or fixture means the run did less than it claimed,
+/// and a test that reports anything but red there is the "skip and pass" shape
+/// issues 0584 and 1161 measured: `check-required-features-tests` ran 7 of its
+/// 20 tests and reported pass, and tier 1 "passed" 61 ROS 2 interop tests that
+/// never ran.
 ///
-/// Configure nextest to treat `[SKIPPED]` panics as expected failures
-/// if desired (via `expected` in `.config/nextest.toml`).
+/// What a run must NOT attempt is decided by its SCOPE, before any probe: the
+/// lane's coordinates (`NROS_TEST_COORDS`) and the host capabilities it does
+/// not claim (`NROS_TEST_UNCLAIMED`, see [`lane_scope`]). Out of scope is
+/// [`lane_skip!`]; in scope and unmet is this macro. There is no third answer.
+///
+/// The marker is `[UNMET PRECONDITION]`, deliberately NOT `[SKIPPED…]`, so the
+/// junit rewrite leaves it a failure and `check-skip-budget` never reads it as
+/// a skip.
 ///
 /// # Example
 ///
 /// ```ignore
 /// #[test]
-/// fn test_needs_zenohd() {
-///     if !is_zenohd_available() {
-///         nros_tests::skip!("zenohd not found");
+/// fn test_needs_qemu() {
+///     if !is_qemu_available() {
+///         nros_tests::unmet!("qemu-system-arm not on PATH (run `just setup qemu`)");
 ///     }
 ///     // ... test code
 /// }
 /// ```
 #[macro_export]
-macro_rules! skip {
+macro_rules! unmet {
     ($($arg:tt)*) => {
-        panic!("[SKIPPED] {}", format_args!($($arg)*))
+        panic!("[UNMET PRECONDITION] {}", format_args!($($arg)*))
     };
 }
 
-/// [`skip!`] carrying a machine-readable CLASS — issue 0584.
+/// This test is OUTSIDE the running lane's scope — the one legitimate skip.
 ///
-/// "Could not run" is several different facts, and a consumer that cannot tell
-/// them apart cannot act on any of them. A sweep's junit held 170 skips of
-/// which only 4 could be classified after the fact, because the reason lived as
-/// prose inside a panic body and the `<skipped message=…>` that survived held
-/// `thread '…' panicked at …` instead.
-///
-/// The classes, and why they differ:
-///
-/// * `lane` — this coordinate is not in the running lane. Expected, and the
-///   count should match what the lane declares.
-/// * `capability` — this HOST cannot run it (no cross toolchain, no docker, no
-///   emulator). Expected on a lighter machine, never in full CI.
-/// * `resource` — a runtime prerequisite was unavailable (a port, a device, a
-///   peer process). Usually worth investigating even though it is not a
-///   regression.
-///
-/// There is deliberately NO `fixture` class: a missing in-lane fixture is not a
-/// skip at all, it is a broken promise by the build stage, and
-/// `fixtures::binaries` fails hard on it.
-///
-/// Plain [`skip!`] remains valid and is read as `capability`, which is what the
-/// overwhelming majority of its ~500 call sites actually mean.
-///
-/// A class makes skips COUNTABLE; issue 0584 tracks the half that makes them
-/// CHECKABLE — comparing a lane's actual skips against the set it declares, so
-/// a surprise skip fails instead of blending into a number nobody reads.
+/// Reached only from a scope predicate (the lane's coordinates, or a host
+/// capability the lane declares it does not claim), never from a probe of what
+/// the host happens to have: a scope is a property of the LANE, fixed before
+/// the run, so the same lane skips the same tests on every host.
+/// `check-skip-budget` counts these as deselected, and fails a run in which one
+/// names a coordinate the run selected.
 #[macro_export]
-macro_rules! skip_class {
-    ($class:ident, $($arg:tt)*) => {
-        panic!(
-            "[SKIPPED:{}] {}",
-            stringify!($class),
-            format_args!($($arg)*)
-        )
+macro_rules! lane_skip {
+    ($($arg:tt)*) => {
+        panic!("[SKIPPED:lane] {}", format_args!($($arg)*))
     };
 }
 
@@ -137,7 +122,7 @@ macro_rules! skip_class {
 ///
 /// The ONE Rust spelling. Five matrix aggregators independently wrote
 /// `msg.contains("[SKIPPED]")`, which is the BARE marker: `[SKIPPED:lane]` does
-/// not contain that substring, so every classed skip [`skip_class!`] produces
+/// not contain that substring, so every classed skip `skip_class!` produced
 /// was filed as a FAILED cell. That turned five lane skips into five tier-2
 /// reds, and the junit rewriter could not rescue them because by then the
 /// marker sat nested inside an aggregate panic body rather than starting it.
@@ -152,8 +137,10 @@ pub mod skip_marker {
     /// The class of the skip this message carries, or `None` if it is a real
     /// failure.
     ///
-    /// An unclassed `[SKIPPED]` reads as `"capability"`, matching
-    /// [`skip_class!`]'s documented default and the Python side.
+    /// An unclassed `[SKIPPED]` reads as `"capability"`, matching the Python
+    /// side. Nothing produces one any more — the only skip is [`lane_skip!`]
+    /// (issue 1758) — but a marker from an older binary still parses, and
+    /// `check-skip-budget` fails any class but `lane`.
     ///
     /// Searches ANYWHERE in the message, deliberately: a captured panic from an
     /// inner cell arrives wrapped in the outer test's own prose, and that
@@ -1185,14 +1172,10 @@ pub fn nros_cli_bin_path() -> Option<std::path::PathBuf> {
 /// Skip-or-proceed guard for tests that need the `nros` CLI. Mirrors
 /// `require_xrce_agent` / `require_zenohd`: prints an install hint and returns
 /// `false` when missing (caller `nros_tests::skip!`), `true` otherwise.
-pub fn require_nros_cli() -> bool {
+pub fn require_nros_cli() {
     if nros_cli_bin_path().is_none() {
-        eprintln!(
-            "Skipping test: nros CLI not found (run `just setup-cli` + `source ./activate.sh`)"
-        );
-        return false;
+        crate::unmet!("nros CLI not found (run `just setup-cli` + `source ./activate.sh`)");
     }
-    true
 }
 
 /// Resolve the PX4-Autopilot tree from env. Checks `$PX4_AUTOPILOT_DIR`
@@ -1215,15 +1198,13 @@ pub fn px4_autopilot_dir() -> Option<std::path::PathBuf> {
 /// Skip-or-proceed guard for tests that need a PX4-Autopilot checkout
 /// reachable via `$PX4_AUTOPILOT_DIR` (or the `$PX4_DIR` alias). Phase
 /// 212.H.7.
-pub fn require_px4() -> bool {
+pub fn require_px4() {
     if px4_autopilot_dir().is_none() {
-        eprintln!(
-            "Skipping test: PX4_AUTOPILOT_DIR / PX4_DIR unset or not a PX4 checkout \
+        crate::unmet!(
+            "PX4_AUTOPILOT_DIR / PX4_DIR unset or not a PX4 checkout \
              (run `just px4 setup`, load `.envrc`, or point at a PX4-Autopilot tree)"
         );
-        return false;
     }
-    true
 }
 
 /// Read the pinned nightly channel from `tools/rust-toolchain.toml`.
@@ -1300,7 +1281,7 @@ mod tests {
         let Some(domain) = (1..=super::TEST_DOMAIN_MAX as u8).find(|d| {
             !super::domain_daemon_port_busy(*d) && !super::domain_discovery_port_busy(*d)
         }) else {
-            crate::skip!(
+            crate::unmet!(
                 "every test domain's daemon port is already bound; nothing free \
                  to measure against"
             );
@@ -1378,7 +1359,7 @@ mod tests {
             }
         }
         let Some((domain, port, sock)) = acquired else {
-            crate::skip!(
+            crate::unmet!(
                 "every domain in 1..={} has its discovery port bound — the host \
                  has no free bus to test the probe against",
                 super::TEST_DOMAIN_MAX

@@ -55,12 +55,8 @@ fn test_zenoh_to_xrce_bridge_e2e(
     talker_binary: PathBuf,
     xrce_listener_binary: PathBuf,
 ) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE-DDS Agent not found");
-    }
+    require_zenohd();
+    require_xrce_agent();
 
     // HARD FAILURE, not a skip — issue 1124. `require_in_lane` runs inside the
     // resolver BEFORE the existence check, so an out-of-lane coordinate has

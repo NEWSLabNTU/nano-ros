@@ -162,12 +162,8 @@ fn stdbuf_command(binary: &Path) -> Command {
 /// dead branch was a standing invitation to add a third arm that returns
 /// `false` instead of skipping. Returning `()` removes the invitation.
 fn require_native_env() {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
-    if !require_cmake() {
-        nros_tests::skip!("cmake not found");
-    }
+    require_zenohd();
+    require_cmake();
 }
 
 // =============================================================================
@@ -938,9 +934,7 @@ fn spawn_cyclone_binary(binary: &Path, name: &str, domain_id: &str) -> ManagedPr
 fn test_native_cyclonedds_talker_to_rust_listener(
     #[values(Language::C, Language::Cpp)] lang: Language,
 ) {
-    if !require_cmake() {
-        nros_tests::skip!("cmake not found");
-    }
+    require_cmake();
     let domain_id = next_cyclonedds_domain();
     let listener_bin = rust_cyclone_listener_binary();
     let talker_bin = cyclone_talker_binary(lang);
@@ -992,9 +986,7 @@ fn test_native_cyclonedds_talker_to_rust_listener(
 fn test_native_cyclonedds_rust_talker_to_listener(
     #[values(Language::C, Language::Cpp)] lang: Language,
 ) {
-    if !require_cmake() {
-        nros_tests::skip!("cmake not found");
-    }
+    require_cmake();
     let domain_id = next_cyclonedds_domain();
     let listener_bin = cyclone_listener_binary(lang);
     let talker_bin = rust_cyclone_talker_binary();
@@ -1058,9 +1050,7 @@ fn test_native_cyclonedds_rust_talker_to_listener(
 /// (the cyclone fixtures are gated on the Cyclone install).
 #[test]
 fn test_threadx_linux_cyclonedds_talker_to_native_listener() {
-    if !require_cmake() {
-        nros_tests::skip!("cmake not found");
-    }
+    require_cmake();
     // Phase 186.6.4 — the build/install gate is obsolete: threadx-linux Cyclone
     // self-provisions from source (no host install), so the fixture binary's
     // presence is the real precondition.
@@ -1123,9 +1113,7 @@ fn test_threadx_linux_cyclonedds_talker_to_native_listener() {
 /// sibling of the #215 C pubsub lane; the C++ cyclone image linked BuildOnly).
 #[test]
 fn test_threadx_linux_cyclonedds_cpp_talker_to_native_listener() {
-    if !require_cmake() {
-        nros_tests::skip!("cmake not found");
-    }
+    require_cmake();
     let talker_bin = nros_tests::fixtures::threadx_linux::build_threadx_cmake_example_rmw(
         "cpp",
         "talker",
@@ -1176,9 +1164,7 @@ fn test_threadx_linux_cyclonedds_cpp_talker_to_native_listener() {
 /// exception).
 #[test]
 fn test_threadx_linux_cyclonedds_service() {
-    if !require_cmake() {
-        nros_tests::skip!("cmake not found");
-    }
+    require_cmake();
     let server_bin = nros_tests::fixtures::threadx_linux::build_threadx_cmake_example_rmw(
         "c",
         "service-server",
@@ -1218,9 +1204,7 @@ fn test_threadx_linux_cyclonedds_service() {
 /// succeeds).
 #[test]
 fn test_threadx_linux_cyclonedds_action() {
-    if !require_cmake() {
-        nros_tests::skip!("cmake not found");
-    }
+    require_cmake();
     let server_bin = nros_tests::fixtures::threadx_linux::build_threadx_cmake_example_rmw(
         "c",
         "action-server",
@@ -1354,9 +1338,7 @@ fn cyclone_role_binary(lang: Language, case: &str) -> PathBuf {
 /// issue #233.
 #[rstest]
 fn test_native_cyclonedds_rust_service() {
-    if !require_cmake() {
-        nros_tests::skip!("cmake not found");
-    }
+    require_cmake();
     let domain = next_cyclonedds_domain();
     let server_bin = nros_tests::fixtures::build_native_rust_example_rmw(
         "service-server",
@@ -1413,9 +1395,7 @@ fn test_native_cyclonedds_rust_service() {
 /// `cyclone_role_binary`.
 #[rstest]
 fn test_native_cyclonedds_rust_action() {
-    if !require_cmake() {
-        nros_tests::skip!("cmake not found");
-    }
+    require_cmake();
     let domain = next_cyclonedds_domain();
     let server_bin = nros_tests::fixtures::build_native_rust_example_rmw(
         "action-server",
@@ -1455,9 +1435,7 @@ fn test_native_cyclonedds_rust_action() {
 /// spin-time callback over CycloneDDS, no `Promise::wait` budget-burn.
 #[rstest]
 fn test_native_cyclonedds_service_callback(#[values(Language::C, Language::Cpp)] lang: Language) {
-    if !require_cmake() {
-        nros_tests::skip!("cmake not found");
-    }
+    require_cmake();
     let domain = next_cyclonedds_domain();
     let server_bin = cyclone_role_binary(lang, "service-server");
     let client_bin = cyclone_role_binary(lang, "service-client-callback");

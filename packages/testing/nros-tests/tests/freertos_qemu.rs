@@ -39,7 +39,7 @@ use std::time::Duration;
 /// Require the FreeRTOS prerequisites; skip loudly (naming which one) otherwise.
 ///
 /// Issue 1135 — this returned `bool` and every caller wrote
-/// `if !require_freertos() { nros_tests::skip!("require_freertos check failed"); }`. That is the
+/// `if !require_freertos() { nros_tests::unmet!("require_freertos check failed"); }`. That is the
 /// CORRECT verdict spelled uninformatively: the real reason was an
 /// `eprintln!` inside the helper, and `--failure-output never` (what the
 /// `just` recipes pass) eats it, so the log said only "check failed". A guard
@@ -47,17 +47,17 @@ use std::time::Duration;
 /// misused by a caller who writes a bare `return` instead.
 fn require_freertos() {
     if !is_freertos_available() {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "FREERTOS_DIR not set or invalid — run `just freertos setup` + `source .envrc`"
         );
     }
     if !is_lwip_available() {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "LWIP_DIR not set or invalid — run `just freertos setup` + `source .envrc`"
         );
     }
     if !is_arm_gcc_available() {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "arm-none-eabi-gcc not found — install it (`sudo apt install gcc-arm-none-eabi`)"
         );
     }
@@ -85,7 +85,7 @@ fn require_freertos() {
 fn test_freertos_rust_talker_cyclonedds_boot() {
     require_freertos();
     if !is_qemu_available() {
-        nros_tests::skip!("qemu-system-arm not found");
+        nros_tests::unmet!("qemu-system-arm not found");
     }
 
     let path = build_freertos_rust_example_rmw(
@@ -94,7 +94,7 @@ fn test_freertos_rust_talker_cyclonedds_boot() {
         Rmw::Cyclonedds,
     )
     .unwrap_or_else(|e| {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "mps2-an385-freertos/rust/talker cyclonedds not prebuilt; run \
              `just freertos build-fixtures` first: {:?}",
             e
@@ -165,7 +165,7 @@ fn test_freertos_rust_talker_cyclonedds_boot() {
 fn test_freertos_rust_cyclonedds_local_pubsub_e2e() {
     require_freertos();
     if !is_qemu_available() {
-        nros_tests::skip!("qemu-system-arm not found");
+        nros_tests::unmet!("qemu-system-arm not found");
     }
 
     let talker_path = build_freertos_rust_example_rmw(
@@ -174,7 +174,7 @@ fn test_freertos_rust_cyclonedds_local_pubsub_e2e() {
         Rmw::Cyclonedds,
     )
     .unwrap_or_else(|e| {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "mps2-an385-freertos/rust/talker cyclonedds not prebuilt; run \
              `just freertos build-fixtures` first: {:?}",
             e
@@ -242,7 +242,7 @@ fn heap_peak_bytes(output: &str) -> Option<usize> {
 fn an536_cyclonedds_cpp_entry_delivers_within_the_dds_heap_default() {
     require_freertos();
     if !is_qemu_available() {
-        nros_tests::skip!("qemu-system-arm not found");
+        nros_tests::unmet!("qemu-system-arm not found");
     }
     let binary = build_freertos_workspace_cpp_an536_entry().require("mps3-an536 Cyclone C++ entry");
     // A group per process, so two runs on one host do not share a LAN.

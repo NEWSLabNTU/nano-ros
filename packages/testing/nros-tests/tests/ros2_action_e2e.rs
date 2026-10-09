@@ -145,9 +145,7 @@ fn await_fibonacci_action(env: &HostRosEnv, whose: &str) {
 /// Interop cell: `native-action-rust-cyclone-r2n`.
 #[test]
 fn a_stock_ros2_client_drives_the_nano_ros_action_server() {
-    if !require_ros2_cyclonedds() {
-        nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");
-    }
+    require_ros2_cyclonedds();
 
     let server_bin = fixtures::build_native_rust_example_rmw(
         "action-server",
@@ -155,7 +153,7 @@ fn a_stock_ros2_client_drives_the_nano_ros_action_server() {
         fixtures::Rmw::Cyclonedds,
     )
     .unwrap_or_else(|e| {
-        nros_tests::skip!("native rust cyclonedds action-server fixture: {e}");
+        nros_tests::unmet!("native rust cyclonedds action-server fixture: {e}");
     });
 
     let domain = action_domain();
@@ -261,16 +259,14 @@ fn the_nano_ros_action_client_drives_a_stock_ros2_server() {
         &[nros_tests::matrix::PlatformId::Linux],
         "the native action client",
     );
-    if !require_ros2_cyclonedds() {
-        nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");
-    }
+    require_ros2_cyclonedds();
     // The peer is a SEPARATE apt package from the distro and from the RMW, so a
     // host that has both can still lack it. Without this guard the absence
     // lands as a failed `Goal accepted` — an unprovisioned host reported as a
     // wire-format red, which is the inverse of a false skip and just as
     // misleading (`HostRosEnv::available`'s reasoning, one package further out).
     if !is_ros2_package_available(DEFAULT_ROS_DISTRO, PEER_ACTION_SERVER_PKG) {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "ROS 2 peer package `{PEER_ACTION_SERVER_PKG}` not installed \
              (apt: ros-{DEFAULT_ROS_DISTRO}-examples-rclcpp-minimal-action-server)"
         );
@@ -282,7 +278,7 @@ fn the_nano_ros_action_client_drives_a_stock_ros2_server() {
         fixtures::Rmw::Cyclonedds,
     )
     .unwrap_or_else(|e| {
-        nros_tests::skip!("native rust cyclonedds action-client fixture: {e}");
+        nros_tests::unmet!("native rust cyclonedds action-client fixture: {e}");
     });
 
     let domain = action_domain();
@@ -434,9 +430,7 @@ fn zenoh_env(locator: &str) -> HostRosEnv {
 /// Interop cell: `native-action-rust-zenoh-r2n`.
 #[test]
 fn a_stock_ros2_client_drives_the_nano_ros_action_server_over_zenoh() {
-    if !require_ros2() {
-        nros_tests::skip!("ROS 2 + rmw_zenoh_cpp not available");
-    }
+    require_ros2();
 
     let server_bin = fixtures::build_native_rust_example_rmw(
         "action-server",
@@ -444,7 +438,7 @@ fn a_stock_ros2_client_drives_the_nano_ros_action_server_over_zenoh() {
         fixtures::Rmw::Zenoh,
     )
     .unwrap_or_else(|e| {
-        nros_tests::skip!("native rust zenoh action-server fixture: {e}");
+        nros_tests::unmet!("native rust zenoh action-server fixture: {e}");
     });
 
     let router = fixtures::or_skip(fixtures::ZenohRouter::start_unique());
@@ -573,14 +567,12 @@ fn the_nano_ros_action_client_drives_a_stock_ros2_server_over_zenoh() {
         &[nros_tests::matrix::PlatformId::Linux],
         "the native action client",
     );
-    if !require_ros2() {
-        nros_tests::skip!("ROS 2 + rmw_zenoh_cpp not available");
-    }
+    require_ros2();
     // Same separate-package guard as the Cyclone n2r cell: without it a host
     // that has ROS 2 and `rmw_zenoh_cpp` but not this peer reports a
     // wire-format red instead of a skip.
     if !is_ros2_package_available(DEFAULT_ROS_DISTRO, PEER_ACTION_SERVER_PKG) {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "ROS 2 peer package `{PEER_ACTION_SERVER_PKG}` not installed \
              (apt: ros-{DEFAULT_ROS_DISTRO}-examples-rclcpp-minimal-action-server)"
         );
@@ -592,7 +584,7 @@ fn the_nano_ros_action_client_drives_a_stock_ros2_server_over_zenoh() {
         fixtures::Rmw::Zenoh,
     )
     .unwrap_or_else(|e| {
-        nros_tests::skip!("native rust zenoh action-client fixture: {e}");
+        nros_tests::unmet!("native rust zenoh action-client fixture: {e}");
     });
 
     let router = fixtures::or_skip(fixtures::ZenohRouter::start_unique());

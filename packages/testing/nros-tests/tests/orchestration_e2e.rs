@@ -22,9 +22,7 @@ fn fixture_dir() -> PathBuf {
 
 #[test]
 fn orchestration_plan_emits_expected_entities() {
-    if !nros_tests::require_nros_cli() {
-        nros_tests::skip!("nros CLI not found");
-    }
+    nros_tests::require_nros_cli();
     let nros = nros_tests::nros_cli_bin_path().expect("require_nros_cli passed");
     let fixture = fixture_dir();
     let system_toml = fixture.join("demo_pkg_bringup/system.toml");

@@ -48,13 +48,16 @@ fi
 # issue 0698 follow-up — the Zephyr venv is this lane's, not the session's.
 source "$repo_root/scripts/build/zephyr-python.sh"
 nros_zephyr_activate
+# Issue 1758 — FATAL, not "skipping" + exit 0. A caller that may legitimately
+# lack Zephyr decides that BEFORE invoking this (the zephyr lane's own
+# `nros_lane_skip` guard); reaching here means west fixtures were asked for.
 if ! command -v west >/dev/null 2>&1; then
-    echo "west-fixtures: west unavailable — skipping" >&2
-    exit 0
+    echo "west-fixtures: FAILED — west unavailable (just zephyr setup)" >&2
+    exit 1
 fi
 if [ -z "${ZEPHYR_BASE:-}" ] || [ ! -d "$ZEPHYR_BASE" ]; then
-    echo "west-fixtures: ZEPHYR_BASE unset/invalid — skipping" >&2
-    exit 0
+    echo "west-fixtures: FAILED — ZEPHYR_BASE unset/invalid (just zephyr setup)" >&2
+    exit 1
 fi
 
 # #185 (the #182 guard, west edition) — every west fixture's bake runs the
@@ -366,9 +369,8 @@ echo "west fixtures: $n/$total ok ($reused reused, $((n - reused)) built)."
 # wrapped it in `|| true`, so a west fixture that failed to build left a green
 # lane and a test failure far away that blamed staleness.
 #
-# The `west unavailable` / `ZEPHYR_BASE unset` paths still exit 0 above: an
-# unprovisioned host legitimately builds nothing. Producing nothing while
-# provisioned is a failure.
+# The `west unavailable` / `ZEPHYR_BASE unset` paths above are failures too
+# since issue 1758; whether a host may lack Zephyr is the caller's lane scope.
 if [ "$failed" -ne 0 ]; then
     echo "west-fixtures: $failed of $total fixture(s) FAILED to build." >&2
     echo "               A fixture build that produces nothing is a build FAILURE," >&2

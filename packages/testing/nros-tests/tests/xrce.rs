@@ -48,9 +48,7 @@ fn set_xrce_udp_locator<'a>(cmd: &'a mut Command, addr: &str, domain: &str) -> &
 
 #[rstest]
 fn test_xrce_talker_starts(xrce_talker_binary: PathBuf) {
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
+    require_xrce_agent();
 
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
     let addr = agent.addr();
@@ -85,9 +83,7 @@ fn test_xrce_talker_starts(xrce_talker_binary: PathBuf) {
 
 #[rstest]
 fn test_xrce_listener_starts(xrce_listener_binary: PathBuf) {
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
+    require_xrce_agent();
 
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
     let addr = agent.addr();
@@ -130,9 +126,7 @@ fn test_xrce_listener_starts(xrce_listener_binary: PathBuf) {
 /// slot, exercising the fragmented output stream path (Phase 40.3).
 #[rstest]
 fn test_xrce_large_message_publish(xrce_large_msg_test_binary: PathBuf) {
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
+    require_xrce_agent();
 
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
     let addr = agent.addr();
@@ -167,13 +161,9 @@ fn test_xrce_large_message_publish(xrce_large_msg_test_binary: PathBuf) {
 fn test_xrce_serial_talker_starts(xrce_serial_talker_binary: PathBuf) {
     use std::process::Command;
 
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
+    require_xrce_agent();
 
-    if !require_socat() {
-        nros_tests::skip!("socat not available");
-    }
+    require_socat();
 
     let agent = XrceSerialAgent::start(1).expect("Failed to start XRCE Serial Agent");
     let domain = nros_tests::unique_ros_domain_id().to_string();
@@ -209,13 +199,9 @@ fn test_xrce_serial_talker_starts(xrce_serial_talker_binary: PathBuf) {
 fn test_xrce_serial_listener_starts(xrce_serial_listener_binary: PathBuf) {
     use std::process::Command;
 
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
+    require_xrce_agent();
 
-    if !require_socat() {
-        nros_tests::skip!("socat not available");
-    }
+    require_socat();
 
     let agent = XrceSerialAgent::start(1).expect("Failed to start XRCE Serial Agent");
     let domain = nros_tests::unique_ros_domain_id().to_string();
@@ -257,13 +243,9 @@ fn test_xrce_serial_communication(
 ) {
     use std::process::Command;
 
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
+    require_xrce_agent();
 
-    if !require_socat() {
-        nros_tests::skip!("socat not available");
-    }
+    require_socat();
 
     // Serial is point-to-point: use a single agent in multiserial mode with
     // two PTY pairs so both clients route through the same agent.

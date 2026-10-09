@@ -153,9 +153,7 @@ fn run_plan_and_assert(root: &Path) {
 /// is the only loader path.
 #[test]
 fn nros_plan_discovers_sibling_bringup_via_dirwalk() {
-    if !nros_tests::require_nros_cli() {
-        nros_tests::skip!("nros CLI not found (run `just setup-cli` + `source ./activate.sh`)");
-    }
+    nros_tests::require_nros_cli();
     let td = tempfile::tempdir().expect("tempdir");
     stage_fixture(
         td.path(),
@@ -175,9 +173,7 @@ default_system = "demo_bringup"
 /// finds it, exclude just keeps `cargo build` quiet about the non-Cargo dir.
 #[test]
 fn nros_plan_finds_bringup_when_in_workspace_exclude() {
-    if !nros_tests::require_nros_cli() {
-        nros_tests::skip!("nros CLI not found (run `just setup-cli` + `source ./activate.sh`)");
-    }
+    nros_tests::require_nros_cli();
     let td = tempfile::tempdir().expect("tempdir");
     stage_fixture(
         td.path(),

@@ -40,9 +40,7 @@ use std::{process::Command, time::Duration};
 /// 3. Not crash or hang indefinitely
 #[test]
 fn test_connection_timeout_talker() {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let talker_binary = build_native_talker().require("talker");
 
@@ -97,9 +95,7 @@ fn test_connection_timeout_talker() {
 /// Test that listener handles missing router gracefully
 #[test]
 fn test_connection_timeout_listener() {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let listener_binary = build_native_listener().require("listener");
 
@@ -142,9 +138,7 @@ fn test_connection_timeout_listener() {
 /// Verify the talker doesn't crash and handles the disconnect.
 #[rstest]
 fn test_router_disconnect(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let talker_binary = build_native_talker().require("talker");
     let locator = zenohd_unique.locator();
@@ -192,9 +186,7 @@ fn test_router_disconnect(zenohd_unique: ZenohRouter) {
 /// Test that listener handles router disconnect gracefully
 #[rstest]
 fn test_listener_router_disconnect(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let talker_binary = build_native_talker().require("talker");
     let listener_binary = build_native_listener().require("listener");
@@ -273,9 +265,7 @@ fn test_listener_router_disconnect(zenohd_unique: ZenohRouter) {
 /// 5. Verify communication resumes
 #[test]
 fn test_router_reconnect() {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let talker_binary = build_native_talker().require("talker");
     let listener_binary = build_native_listener().require("listener");
@@ -391,9 +381,7 @@ fn test_router_reconnect() {
 /// Test that multiple rapid restarts don't cause issues
 #[rstest]
 fn test_rapid_start_stop(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let talker_binary = build_native_talker().require("talker");
     let locator = zenohd_unique.locator();
@@ -422,9 +410,7 @@ fn test_rapid_start_stop(zenohd_unique: ZenohRouter) {
 /// Test that empty/minimal runtime works
 #[rstest]
 fn test_minimal_runtime(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let talker_binary = build_native_talker().require("talker");
     let locator = zenohd_unique.locator();
@@ -455,9 +441,7 @@ fn test_minimal_runtime(zenohd_unique: ZenohRouter) {
 /// Test behavior with debug logging enabled
 #[rstest]
 fn test_debug_logging_overhead(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let talker_binary = build_native_talker().require("talker");
     let listener_binary = build_native_listener().require("listener");

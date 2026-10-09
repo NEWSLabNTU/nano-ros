@@ -268,11 +268,9 @@ fn run_cell(cell: &MCell) {
 
     match cell.rmw {
         MR::Zenoh => {
-            if !require_zenohd() {
-                nros_tests::skip!("zenohd not found");
-            }
+            require_zenohd();
             let router = ZenohRouter::start_unique()
-                .unwrap_or_else(|e| nros_tests::skip!("zenohd failed to start: {e}"));
+                .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start: {e}"));
             server_cmd.env("NROS_LOCATOR", router.locator());
             client_cmd.env("NROS_LOCATOR", router.locator());
             _zenohd = Some(router);
@@ -294,11 +292,9 @@ fn run_cell(cell: &MCell) {
             }
         }
         MR::Xrce => {
-            if !require_xrce_agent() {
-                nros_tests::skip!("XRCE agent not available");
-            }
+            require_xrce_agent();
             let agent = XrceAgent::start_unique()
-                .unwrap_or_else(|e| nros_tests::skip!("XRCE Agent failed to start: {e:?}"));
+                .unwrap_or_else(|e| nros_tests::unmet!("XRCE Agent failed to start: {e:?}"));
             let addr = agent.addr();
             let domain = nros_tests::unique_ros_domain_id().to_string();
             for cmd in [&mut server_cmd, &mut client_cmd] {
@@ -308,7 +304,7 @@ fn run_cell(cell: &MCell) {
             }
             _agent = Some(agent);
         }
-        MR::Uorb => nros_tests::skip!("uorb has no native example req/resp cell"),
+        MR::Uorb => nros_tests::unmet!("uorb has no native example req/resp cell"),
     }
 
     // Server first; wait its ready marker so the client's request finds it.

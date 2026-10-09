@@ -404,12 +404,10 @@ pub fn is_xrce_agent_available() -> bool {
 ///
 /// Returns `false` (test should skip) if the agent binary is not found.
 /// Returns `true` if the agent is available and the test should proceed.
-pub fn require_xrce_agent() -> bool {
+pub fn require_xrce_agent() {
     if !is_xrce_agent_available() {
-        eprintln!("Skipping test: XRCE Agent not found (run `just xrce setup`)");
-        return false;
+        crate::unmet!("XRCE Agent not found (run `just xrce setup`)");
     }
-    true
 }
 
 /// rstest fixture for XRCE Agent on default port 2019.
@@ -621,12 +619,10 @@ pub fn is_socat_available() -> bool {
 ///
 /// Returns `false` (test should skip) if socat is not found.
 /// Returns `true` if socat is available and the test should proceed.
-pub fn require_socat() -> bool {
+pub fn require_socat() {
     if !is_socat_available() {
-        eprintln!("Skipping test: socat not found (run `sudo apt install socat`)");
-        return false;
+        crate::unmet!("socat not found (run `sudo apt install socat`)");
     }
-    true
 }
 
 /// rstest fixture for XRCE Serial Agent with a single PTY pair.

@@ -173,6 +173,12 @@ _tier1-step step:
     # Exported rather than prefixed per command: every step below needs both,
     # and the step runner (issue 1500) invokes them as `just <step>`.
     export NROS_FIXTURE_LANE=tier1 NROS_TEST_COORDS="$coords"
+    # issue 1758 — the scope's OTHER half. Coordinates cannot say "no stock ROS 2
+    # peer", and this lane's runner has the zenoh router and no ROS 2 CLI: the ROS
+    # 2 interop tests belong to live-peer (`.config/interop-verdicts.toml`). Said
+    # here, they deselect as `[SKIPPED:lane]` on every host alike; unsaid, every
+    # one of them FAILS where ROS 2 is absent — never a skip that reads as a pass.
+    export NROS_TEST_UNCLAIMED=ros2
     # issue 1500 — each part runs through the step runner so the log says WHERE
     # the time went: each step prints its wall clock as it finishes, which a
     # lane killed by a CI ceiling keeps (run 37176625915 spent 75 minutes here
@@ -413,6 +419,12 @@ _matrix-run:
     coords="$(cd "$(dirname "$coords")" && pwd)/$(basename "$coords")"
     # Steps and timing through the shared runner — see the tier1 lane.
     export NROS_FIXTURE_LANE=tier2 NROS_TEST_COORDS="$coords"
+    # issue 1758 — the scope's OTHER half. Coordinates cannot say "no stock ROS 2
+    # peer", and this lane's runner has the zenoh router and no ROS 2 CLI: the ROS
+    # 2 interop tests belong to live-peer (`.config/interop-verdicts.toml`). Said
+    # here, they deselect as `[SKIPPED:lane]` on every host alike; unsaid, every
+    # one of them FAILS where ROS 2 is absent — never a skip that reads as a pass.
+    export NROS_TEST_UNCLAIMED=ros2
     # issue 1739 — `weak-symbols-image` nm's the prebuilt cross images, so it
     # needs the fixture build this lane just did and belongs AFTER it; it ran
     # nowhere before. A row it cannot find is a reported `nros_check_skip`.
@@ -484,6 +496,12 @@ matrix-nightly:
     coords="$(cd "$(dirname "$coords")" && pwd)/$(basename "$coords")"
     # Steps and timing through the shared runner — see the tier1 lane.
     export NROS_FIXTURE_LANE=tier2-nightly NROS_TEST_COORDS="$coords"
+    # issue 1758 — the scope's OTHER half. Coordinates cannot say "no stock ROS 2
+    # peer", and this lane's runner has the zenoh router and no ROS 2 CLI: the ROS
+    # 2 interop tests belong to live-peer (`.config/interop-verdicts.toml`). Said
+    # here, they deselect as `[SKIPPED:lane]` on every host alike; unsaid, every
+    # one of them FAILS where ROS 2 is absent — never a skip that reads as a pass.
+    export NROS_TEST_UNCLAIMED=ros2
     steps=(check::default rust-rtos-link-check test-all test-ignored)
     bash scripts/ci/run-lane-steps.sh tier2-nightly "${steps[@]}"
     echo "CI passed (tier 2 nightly — pairwise cover)!"
@@ -598,7 +616,7 @@ provision-zenohd:
         # CI runs as root, so this branch is the workstation case: nothing is
         # installed behind your back, and the command comes from the index.
         source scripts/build/lane-skip.sh
-        nros_lane_skip "not root: $pkg not installed. It is a declared prereq, so 'nros setup --system' prints the install command for this host and --sudo runs it. Without it the zenoh lanes report [SKIPPED:capability]."
+        nros_lane_skip "not root: $pkg not installed. It is a declared prereq, so 'nros setup --system' prints the install command for this host and --sudo runs it. Without it every zenoh test FAILS (issue 1758)."
     fi
     if apt-get install -y --no-install-recommends "$pkg" 2>/dev/null; then
         echo "provision-zenohd: installed $pkg"
@@ -611,7 +629,11 @@ provision-zenohd:
         echo "provision-zenohd: installed $pkg (after apt-get update)"
         exit 0
     fi
-    echo "::warning::no rmw_zenoh_cpp available — zenoh lanes will skip"
+    # Issue 1758 — a lane that asked for the router and cannot get one FAILS
+    # here. This was a warning that fell off the end with exit 0, and "zenoh
+    # lanes will skip" is no longer true: a zenoh test without a router is red.
+    echo "::error::provision-zenohd: $pkg could not be installed — every zenoh test in this lane would fail" >&2
+    exit 1
 
 [group("ci")]
 fast:

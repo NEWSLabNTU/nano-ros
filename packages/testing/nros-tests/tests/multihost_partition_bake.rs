@@ -64,13 +64,13 @@ fn resolve_with_host(host: &str, out: &std::path::Path) -> String {
 #[test]
 fn resolving_with_host_arg_partitions_the_model() {
     if launch_resolver().is_none() {
-        nros_tests::skip!("nros-launch-resolve not built (run `just setup-launch-resolve`)");
+        nros_tests::unmet!("nros-launch-resolve not built (run `just setup-launch-resolve`)");
     }
     if !nros_tests::host_python_available() {
         // Issue 0914's residue: `$(eval …)` needs an interpreter, and without
         // one this failed rather than skipping — "no Python here" and "the
         // shipped pair is broken" produce the same parse error.
-        nros_tests::skip!("no usable python3 on this host");
+        nros_tests::unmet!("no usable python3 on this host");
     }
     let tmp = tempfile::tempdir().expect("tempdir");
 
@@ -120,13 +120,13 @@ fn resolving_with_host_arg_partitions_the_model() {
 #[test]
 fn per_host_resolves_partition_and_carry_their_binding() {
     if launch_resolver().is_none() {
-        nros_tests::skip!("nros-launch-resolve not built (run `just setup-launch-resolve`)");
+        nros_tests::unmet!("nros-launch-resolve not built (run `just setup-launch-resolve`)");
     }
     if !nros_tests::host_python_available() {
         // Issue 0914's residue: `$(eval …)` needs an interpreter, and without
         // one this failed rather than skipping — "no Python here" and "the
         // shipped pair is broken" produce the same parse error.
-        nros_tests::skip!("no usable python3 on this host");
+        nros_tests::unmet!("no usable python3 on this host");
     }
     let tmp = tempfile::tempdir().expect("tempdir");
     // (workspace, host, must-contain node keys, must-NOT-contain node keys)

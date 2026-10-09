@@ -605,7 +605,10 @@ fn sched_dims_applied() {
         failed.join("\n  ")
     );
     if ran == 0 || skipped.len() == ran {
-        nros_tests::skip!(
+        // Issue 1758 — every inner unmet precondition is a FAILURE (it lands in
+        // `failed`, asserted above), so what is left in `skipped` is lane
+        // deselection only: nothing ran because nothing was in scope.
+        nros_tests::lane_skip!(
             "no sched-dim cell RAN ({} skipped, {} out of lane):\n  {}",
             skipped.len(),
             out_of_lane.len(),
@@ -655,11 +658,11 @@ fn run_cell(cell: &SchedCell) {
     // Router: ephemeral (posix) or the allocator's baked RealtimeTiers port.
     let router = match ex.router {
         Router::Ephemeral => ZenohRouter::start_unique()
-            .unwrap_or_else(|e| nros_tests::skip!("zenohd failed to start: {e}")),
+            .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start: {e}")),
         Router::Baked(host) => {
             let port = port_of(cell.platform, cell.lang, MW::RealtimeTiers);
             ZenohRouter::start_on(host, port)
-                .unwrap_or_else(|e| nros_tests::skip!("zenohd failed to start on {port}: {e}"))
+                .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start on {port}: {e}"))
         }
     };
     let timeout = Duration::from_secs(ex.timeout_secs);

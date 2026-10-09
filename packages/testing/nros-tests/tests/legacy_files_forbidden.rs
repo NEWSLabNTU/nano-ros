@@ -109,7 +109,7 @@ fn examples_tree_has_no_pre_212_files() {
     let root = nros_tests::project_root();
     let examples_root = root.join("examples");
     if !examples_root.is_dir() {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "examples/ directory missing at {} — wrong project_root?",
             examples_root.display()
         );
@@ -140,7 +140,7 @@ fn nros_tests_fixtures_have_no_pre_212_files() {
     let root = nros_tests::project_root();
     let fixtures_root = root.join("packages/testing/nros-tests/fixtures");
     if !fixtures_root.is_dir() {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "fixtures/ directory missing at {} — wrong project_root?",
             fixtures_root.display()
         );

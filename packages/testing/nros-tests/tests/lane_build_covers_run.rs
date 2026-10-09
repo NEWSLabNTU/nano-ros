@@ -119,7 +119,7 @@ fn lane_coords_bin() -> PathBuf {
         .max_by_key(|(t, _)| *t);
     match newest {
         Some((_, bin)) => bin,
-        None => nros_tests::skip!(
+        None => nros_tests::unmet!(
             "lane-coords not prebuilt under any {}/<profile>/ — run \
              `just test-lane-contracts` (which builds it) or `just build`. This \
              test must NOT compile it (issues 0523, 1314).",

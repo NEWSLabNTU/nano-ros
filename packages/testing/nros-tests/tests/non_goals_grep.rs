@@ -112,7 +112,7 @@ fn assert_verb_absent(verb: &str) {
 #[test]
 fn nros_help_lacks_emit_verb() {
     if nros_bin().is_none() {
-        nros_tests::skip!("nros binary missing — run `just setup-cli` + `source ./activate.sh`");
+        nros_tests::unmet!("nros binary missing — run `just setup-cli` + `source ./activate.sh`");
     }
     assert_verb_absent("emit");
 }
@@ -120,7 +120,7 @@ fn nros_help_lacks_emit_verb() {
 #[test]
 fn nros_help_lacks_sign_verb() {
     if nros_bin().is_none() {
-        nros_tests::skip!("nros binary missing — run `just setup-cli` + `source ./activate.sh`");
+        nros_tests::unmet!("nros binary missing — run `just setup-cli` + `source ./activate.sh`");
     }
     assert_verb_absent("sign");
 }
@@ -128,7 +128,7 @@ fn nros_help_lacks_sign_verb() {
 #[test]
 fn nros_help_lacks_flash_verb() {
     if nros_bin().is_none() {
-        nros_tests::skip!("nros binary missing — run `just setup-cli` + `source ./activate.sh`");
+        nros_tests::unmet!("nros binary missing — run `just setup-cli` + `source ./activate.sh`");
     }
     assert_verb_absent("flash");
 }
@@ -141,7 +141,7 @@ fn nros_help_lacks_flash_verb() {
 #[test]
 fn cargo_nros_binary_absent() {
     let Some(home) = std::env::var_os("HOME") else {
-        nros_tests::skip!("$HOME unset — cannot probe ~/.nros/bin/");
+        nros_tests::unmet!("$HOME unset — cannot probe ~/.nros/bin/");
     };
     let bin = PathBuf::from(home).join(".nros/bin/cargo-nros");
     assert!(

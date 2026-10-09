@@ -70,7 +70,7 @@ use nros_tests::{
     fixtures::{QemuProcess, Rmw, ZenohRouter, build_zephyr_cortex_m_example, is_qemu_available},
     matrix::{Lang, PlatformId, Workload},
     ros2::{DEFAULT_ROS_DISTRO, require_ros2, ros2_env_setup_with_locator},
-    skip,
+    unmet,
 };
 use std::{
     process::Command,
@@ -100,16 +100,13 @@ const ECHO_BUDGET: Duration = Duration::from_secs(45);
 
 #[test]
 fn nros_zephyr_cortex_m_publisher_reaches_ros2_topic_echo() {
-    if !require_ros2() {
-        skip!(
-            "ROS 2 / rmw_zenoh_cpp not available — install it from apt \
-             (`ros-$ROS_DISTRO-rmw-zenoh-cpp`, declared in nros-sdk-index.toml). \
-             This cell's peer IS a stock ROS 2 node; there is nothing to measure \
-             without one."
-        );
-    }
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[nros_tests::matrix::PlatformId::ZephyrQemuCortexM],
+        "the Zephyr Cortex-M ROS 2 interop cell",
+    );
+    require_ros2();
     if !is_qemu_available() {
-        skip!("qemu-system-arm not found — this cell boots an mps2_an385 guest");
+        unmet!("qemu-system-arm not found — this cell boots an mps2_an385 guest");
     }
 
     // Not a `skip!` on error: since issue 0584 an absent IN-LANE fixture is a

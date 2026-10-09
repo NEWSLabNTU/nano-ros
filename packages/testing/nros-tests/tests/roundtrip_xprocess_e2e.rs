@@ -260,8 +260,7 @@ fn roundtrip_xprocess() {
         // machine cannot do it", and the two are counted separately in the
         // sweep summary. `baremetal_run_plan_runtime` already carries the
         // classed spelling and a comment about getting it wrong once.
-        nros_tests::skip_class!(
-            lane,
+        nros_tests::lane_skip!(
             "every cell is out of this run's lane:\n  {}",
             out_of_lane.join("\n  ")
         );
@@ -297,7 +296,10 @@ fn roundtrip_xprocess() {
         failed.join("\n  ")
     );
     if skipped.len() == cells.len() {
-        nros_tests::skip!(
+        // Issue 1758 — every inner unmet precondition is a FAILURE (it lands in
+        // `failed`, asserted above), so what is left in `skipped` is lane
+        // deselection only: nothing ran because nothing was in scope.
+        nros_tests::lane_skip!(
             "all {} roundtrip cell(s) skipped:\n  {}",
             skipped.len(),
             skipped.join("\n  ")
@@ -312,15 +314,13 @@ fn run_cell(pcell: &MCell) {
     let lang = pcell.lang.as_str();
     let workload = wl_str(pcell.workload);
     let cell = exec_for(pcell.lang, pcell.workload);
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     let server = (cell.server)().require(&format!("{lang} {workload} server entry"));
     let client = (cell.client)().require(&format!("{lang} {workload} client entry"));
 
     // Native-only family: every cell gets an ephemeral router.
     let router = ZenohRouter::start_unique()
-        .unwrap_or_else(|e| nros_tests::skip!("zenohd failed to start: {e}"));
+        .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start: {e}"));
     let locator = router.locator();
 
     match cell.proof {
@@ -522,7 +522,7 @@ fn two_template_built_entries_register_distinct_names() {
     let probe = nros_tests::fixtures::build_graph_probe().require("graph-probe");
 
     let router = ZenohRouter::start_unique()
-        .unwrap_or_else(|e| nros_tests::skip!("zenohd failed to start: {e}"));
+        .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start: {e}"));
     let locator = router.locator();
 
     // Both must be LIVE while the probe polls: the graph is what the router can

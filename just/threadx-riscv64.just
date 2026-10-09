@@ -375,8 +375,12 @@ build-fixture-extras:
     # Opt out with NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=0 (e.g. a fast local loop).
     if [ "${NROS_THREADX_RV64_CYCLONEDDS_FIXTURES:-1}" = "0" ]; then
         echo "  → skipping ThreadX-RV64 Cyclone fixtures (NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=0 opt-out)"
+    elif ! { source scripts/build/fixture-lane.sh; nros_lane_wants_rmw threadx-riscv64 cyclonedds; }; then
+        echo "  → ThreadX-RV64 Cyclone fixtures: this run selects no threadx-riscv64 cyclonedds row"
     elif [ -z "$(nros_riscv64_prefix)" ]; then
-        echo "  → skipping ThreadX-RV64 Cyclone fixtures (no riscv64 bare-metal gcc — cannot self-provision Cyclone)"
+        # Issue 1758 — the run selected these rows, so a missing prerequisite is
+        # a missing prerequisite: named or coordinate-scoped ⇒ FAILURE.
+        nros_lane_skip_note threadx-riscv64 "Cyclone fixtures need a riscv64 bare-metal gcc to self-provision Cyclone (nros setup rv-virt-threadx)"
     else
         # Phase 186 — self-provision Cyclone from source via CMake
         # (nros_provide_cyclonedds() + the ThreadX flags staged in
@@ -392,17 +396,14 @@ build-fixture-extras:
         # (NrosRmwCycloneddsTypeSupport.cmake), but an incremental build dir with
         # a stale cached idlc path dies as an opaque rc 127 when the missing
         # binary is invoked as a build-time custom command (known-issues #16).
-        # Guard here so the absence is an actionable skip, not a 127. Fold the
+        # Guard here so the absence is an actionable failure, not a 127. Fold the
         # project-local idlc onto PATH when present so the existing cmake
         # find_program(idlc) resolves it for every Cyclone cell unchanged.
         if ! command -v idlc >/dev/null 2>&1 && [ -x "$root/build/cyclonedds/bin/idlc" ]; then
             export PATH="$root/build/cyclonedds/bin:$PATH"
         fi
         if ! command -v idlc >/dev/null 2>&1; then
-            echo "  → skipping ThreadX-RV64 Cyclone fixtures: host 'idlc' (Cyclone DDS IDL compiler) not found."
-            echo "     Provision it with: just cyclonedds setup   (builds build/cyclonedds/bin/idlc),"
-            echo "     or put an idlc on PATH (e.g. a ROS 2 / CycloneDDS install),"
-            echo "     or set NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=0 to skip Cyclone fixtures entirely."
+            nros_lane_skip_note threadx-riscv64 "Cyclone fixtures need a host 'idlc' — just cyclonedds setup (builds build/cyclonedds/bin/idlc), or put an idlc on PATH, or NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=0 to opt out"
         else
             # phase-295 W4 (ex Phase 177.38) — each ThreadX-RV64 Cyclone lang
             # pass bakes ITS allocator domain (alloc::domain_of(ThreadxRiscv64,
