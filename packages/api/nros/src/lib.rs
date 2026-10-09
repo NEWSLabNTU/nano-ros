@@ -1443,6 +1443,18 @@ pub mod __macro_support {
     /// returns nothing.
     pub const PARAM_SERVICES_ENABLED: bool = cfg!(feature = "param-services");
 
+    /// Issue 1766 — the same answer for the other capability axes a leaf
+    /// can declare in `[system] features`. A Form-1 `nros::main!()`
+    /// const-asserts the flag of every declared axis
+    /// (`nros_orchestration_ir::leaf_capabilities::LeafAxis::compiled_flag`),
+    /// because without the feature the axis is compiled out and the
+    /// declaration would be dropped in silence.
+    pub const LIFECYCLE_SERVICES_ENABLED: bool = cfg!(feature = "lifecycle-services");
+    /// See [`LIFECYCLE_SERVICES_ENABLED`].
+    pub const SAFETY_E2E_ENABLED: bool = cfg!(feature = "safety-e2e");
+    /// See [`LIFECYCLE_SERVICES_ENABLED`].
+    pub const ROSOUT_ENABLED: bool = cfg!(feature = "rosout");
+
     /// Issue 0257 — the build-time executor callback-table size
     /// (`NROS_EXECUTOR_MAX_CBS`, default 4). Re-exported so the `nros::main!`
     /// expansion can `const`-assert the model's entity count against the

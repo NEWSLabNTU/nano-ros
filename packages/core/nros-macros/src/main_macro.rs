@@ -381,6 +381,33 @@ impl Parse for TupleStrPair {
     }
 }
 
+/// The cargo-provided variable `key` of the crate being expanded
+/// (`CARGO_MANIFEST_DIR`, `CARGO_PKG_NAME`).
+///
+/// Issue 1766 — one reader, so a unit test can expand the macro over a
+/// throwaway leaf through a per-thread override instead of mutating the
+/// process environment (which needs `unsafe` and races every other test).
+fn entry_env(key: &str) -> Option<std::ffi::OsString> {
+    #[cfg(test)]
+    if let Some(v) = ENTRY_ENV_OVERRIDE.with(|m| m.borrow().get(key).cloned()) {
+        return Some(v.into());
+    }
+    std::env::var_os(key)
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Per-thread `entry_env` overrides for the unit tests (issue 1766).
+    static ENTRY_ENV_OVERRIDE: std::cell::RefCell<BTreeMap<String, String>> =
+        const { std::cell::RefCell::new(BTreeMap::new()) };
+}
+
+/// Issue 1766 — serialises the tests that set `NROS_BOARD_FRAMEWORK`, a
+/// process environment variable `build_main` reads, against the tests that
+/// expand the macro. Test threads share one environment.
+#[cfg(test)]
+static TEST_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Entry point — emits the `fn main()` body. Errors surface as
 /// `compile_error!()` spans pointing at the macro invocation.
 pub fn expand(input: TokenStream) -> TokenStream {
@@ -401,7 +428,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // consumers; if missing we fail loud — proc-macros without a
     // manifest dir would have no way to find Cargo.toml or workspace
     // root.
-    let manifest_dir = std::env::var_os("CARGO_MANIFEST_DIR").ok_or_else(|| {
+    let manifest_dir = entry_env("CARGO_MANIFEST_DIR").ok_or_else(|| {
         syn::Error::new(
             Span::call_site(),
             "nros::main!: CARGO_MANIFEST_DIR not set (cargo must drive the build)",
@@ -525,7 +552,9 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // A leaf's own `system.toml`, else the bringup image that claims
             // this entry (phase-445 W5) — keyed on the PACKAGE name cargo is
             // compiling, which is `<id>_entry` for a generated entry.
-            let entry_pkg = std::env::var("CARGO_PKG_NAME").unwrap_or_default();
+            let entry_pkg = entry_env("CARGO_PKG_NAME")
+                .and_then(|v| v.into_string().ok())
+                .unwrap_or_default();
             let leaf = match &entry_bringup {
                 Some(b) => {
                     nros_orchestration_ir::leaf_system::for_entry(&manifest_dir, &entry_pkg, b)
@@ -1267,9 +1296,11 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 // pkg via Cargo's automatic `extern crate <my_pkg>;`,
                 // so `<my_pkg>::register(runtime)?;` resolves at build
                 // time.
-                let pkg_name = std::env::var("CARGO_PKG_NAME").map_err(|_| {
-                    syn::Error::new(Span::call_site(), "nros::main!: CARGO_PKG_NAME not set")
-                })?;
+                let pkg_name = entry_env("CARGO_PKG_NAME")
+                    .and_then(|v| v.into_string().ok())
+                    .ok_or_else(|| {
+                        syn::Error::new(Span::call_site(), "nros::main!: CARGO_PKG_NAME not set")
+                    })?;
                 let crate_ident = pkg_to_crate_ident(&pkg_name);
                 // Form 1 self-bringup is opt-in: the user's lib crate
                 // must expose a `pub fn register(runtime)`. If this
@@ -1289,6 +1320,47 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             }
         }
     };
+
+    // Issue 1766 — the self-bringup arm (Form 1 / Form 2) has no model, but a
+    // leaf still DECLARES its capability axes in `system.toml`'s
+    // `[system] features`, the key the launch arm reads from the model and the
+    // sizing descriptor reads from the leaf. They used to be dropped here in
+    // silence: no services, no const-assert, while the descriptor sized the
+    // queryable pool and carved the parameter store for them.
+    let leaf_axis_asserts = wire_leaf_axes(&args, &manifest_dir, leaf_decl.as_ref(), &mut tracked)?
+        .map_or_else(proc_macro2::TokenStream::new, |caps| {
+            param_services_enabled |= caps.param_services;
+            if caps.lifecycle_autostart.is_some() {
+                lifecycle_code = caps.lifecycle_autostart;
+            }
+            leaf_axis_assert_tokens(&caps)
+        });
+    // Issue 1766 — RTIC and Embassy splice the nodes into a framework `#[init]`
+    // and emit neither the parameter nor the lifecycle services, on EITHER arm.
+    // A declaration they cannot honour is refused, never dropped.
+    if matches!(framework, Framework::Rtic | Framework::Embassy)
+        && (param_services_enabled || lifecycle_code.is_some())
+    {
+        return Err(syn::Error::new(
+            Span::call_site(),
+            format!(
+                "nros::main!: this system declares {} but the {} framework entry does not \
+                 register the runtime's parameter or lifecycle services, so the declaration \
+                 would be dropped in silence (issue 1766). Remove it from `[system] features`, \
+                 or deploy on a board whose entry runs the OwnedSpin, Zephyr or ESP32 shape.",
+                match (param_services_enabled, lifecycle_code.is_some()) {
+                    (true, true) => "`param_services` and `lifecycle`",
+                    (true, false) => "`param_services`",
+                    _ => "`lifecycle`",
+                },
+                if framework == Framework::Rtic {
+                    "RTIC"
+                } else {
+                    "Embassy"
+                },
+            ),
+        ));
+    }
 
     // De-duplicate the tracked list — pkg-index walks can revisit
     // a pkg dir's `package.xml` from multiple paths.
@@ -1451,6 +1523,10 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     } else {
         quote! {}
     };
+    // Issue 1766 — a Form-1 leaf's per-axis feature asserts ride in front of
+    // the parameter services, so every arm that wires the capabilities also
+    // checks them (the `const _` items are legal inside the closure body).
+    let param_services_call = quote! { #leaf_axis_asserts #param_services_call };
 
     // Phase 228.G (RFC-0032 §5) — the OwnedSpin entry call. Multi-tier
     // (`[tiers.*]` present, more than the synthesized `default` tier) emits
@@ -1819,9 +1895,14 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 None => {
                     // Self-bringup fallback: strip `_entry` suffix
                     // from the Entry pkg's own name.
-                    let pkg_name = std::env::var("CARGO_PKG_NAME").map_err(|_| {
-                        syn::Error::new(Span::call_site(), "nros::main!: CARGO_PKG_NAME not set")
-                    })?;
+                    let pkg_name = entry_env("CARGO_PKG_NAME")
+                        .and_then(|v| v.into_string().ok())
+                        .ok_or_else(|| {
+                            syn::Error::new(
+                                Span::call_site(),
+                                "nros::main!: CARGO_PKG_NAME not set",
+                            )
+                        })?;
                     let stripped = pkg_name
                         .strip_suffix("_entry")
                         .or_else(|| pkg_name.strip_suffix("-entry"))
@@ -2948,6 +3029,69 @@ fn read_entry_executor_sizing(cargo_toml: &Path) -> Option<(usize, usize)> {
         .filter(|n| *n > 0)
         .unwrap_or(0);
     Some((max_cbs as usize, max_sc as usize))
+}
+
+/// Issue 1766 — the capability axes a self-bringup entry (Form 1 / Form 2)
+/// must wire, read from the leaf's own `system.toml`.
+///
+/// `None` on the model arm (the model states the axes there) and for a leaf
+/// with no `system.toml`. Form 1 already read the leaf to find its board;
+/// Form 2 names its board and reads the leaf only for this.
+fn wire_leaf_axes(
+    args: &MainArgs,
+    manifest_dir: &std::path::Path,
+    leaf_decl: Option<&nros_orchestration_ir::leaf_system::LeafSystem>,
+    tracked: &mut Vec<PathBuf>,
+) -> MacroResult<Option<nros_orchestration_ir::leaf_capabilities::LeafCapabilities>> {
+    if args.model.is_some() {
+        return Ok(None);
+    }
+    let read_leaf;
+    let leaf = match leaf_decl {
+        Some(l) => l,
+        None => {
+            read_leaf = nros_orchestration_ir::leaf_system::read(manifest_dir)
+                .map_err(|e| syn::Error::new(Span::call_site(), format!("nros::main!: {e}")))?;
+            match &read_leaf {
+                Some(l) => l,
+                None => return Ok(None),
+            }
+        }
+    };
+    let file = leaf.origin_path();
+    tracked.push(file.to_path_buf());
+    nros_orchestration_ir::leaf_capabilities::read_file(&leaf.features, file)
+        .map(Some)
+        .map_err(|e| syn::Error::new(Span::call_site(), format!("nros::main!: {e}")))
+}
+
+/// Issue 1766 — one const-assert per declared axis that the `nros` build
+/// carries the axis's feature. `param_services` is asserted by the shared
+/// `param_services_call` (phase-314), so it is skipped here rather than
+/// reported twice.
+fn leaf_axis_assert_tokens(
+    caps: &nros_orchestration_ir::leaf_capabilities::LeafCapabilities,
+) -> proc_macro2::TokenStream {
+    let asserts = caps
+        .axes
+        .iter()
+        .filter(|a| a.declared != "param_services")
+        .map(|a| {
+            let flag = Ident::new(a.compiled_flag, Span::call_site());
+            let msg = LitStr::new(
+                &format!(
+                    "this leaf declares `{}` in `[system] features` but this `nros` build does \
+                     not carry the `{}` feature, so the axis would be silently dropped. Add it \
+                     to this pkg's nros dependency features (issue 1766).",
+                    a.declared, a.nros_feature
+                ),
+                Span::call_site(),
+            );
+            quote! {
+                const _: () = ::core::assert!(::nros::__macro_support::#flag, #msg);
+            }
+        });
+    quote! { #( #asserts )* }
 }
 
 /// Issue 0257 — how the emitted entry sizes its executor.
@@ -5079,7 +5223,14 @@ mod framework_ssot_tests {
     /// the framework was for).
     #[test]
     fn an_unknown_framework_is_an_error_not_owned_spin() {
-        // SAFETY: single-threaded test process; the var is removed below.
+        // Issue 1766 — tests run on parallel threads, and `build_main` (the
+        // leaf-axis tests) reads this variable too, so it is set under the
+        // crate's one env lock rather than on a "single-threaded" assumption.
+        let _env = super::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        // SAFETY: every reader of the variable in this crate's tests holds
+        // `TEST_ENV_LOCK`; the var is removed below.
         unsafe { std::env::set_var("NROS_BOARD_FRAMEWORK", "embasy") };
         let err = try_framework_for("native").unwrap_err();
         assert!(
@@ -5310,5 +5461,139 @@ mod contract_monitor_tests {
             "{call}"
         );
         assert!(!call.contains("logger"), "{call}");
+    }
+}
+
+#[cfg(test)]
+mod leaf_axis_tests {
+    //! Issue 1766 — a Form-1 `nros::main!()` wires the capability axes its
+    //! leaf declares in `[system] features`, and refuses one it cannot honour.
+    //! Each case expands the macro over a throwaway leaf (`Cargo.toml` +
+    //! `system.toml`), so what is asserted is the emitted entry itself.
+    use super::*;
+
+    struct Leaf(PathBuf);
+    impl Drop for Leaf {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// Expand `nros::main!(<args>)` in a leaf whose `system.toml` carries
+    /// `extra` in `[system]`, with one image on `board`.
+    fn expand(args: &str, board: &str, extra: &str) -> Result<String, String> {
+        static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "nros-macros-leaf-axes-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let leaf = Leaf(dir.clone());
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"axis_leaf\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("system.toml"),
+            format!(
+                "[system]\nname = \"axis_leaf\"\nrmw = \"zenoh\"\n{extra}\n\n\
+                 [image.a]\nboard = \"{board}\"\n"
+            ),
+        )
+        .unwrap();
+        let args: MainArgs = syn::parse_str(args).map_err(|e| e.to_string())?;
+        // Held because `build_main` also reads `NROS_BOARD_FRAMEWORK`, which
+        // `an_unknown_framework_is_an_error_not_owned_spin` sets.
+        let _env = TEST_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        ENTRY_ENV_OVERRIDE.with(|m| {
+            let mut m = m.borrow_mut();
+            m.insert(
+                "CARGO_MANIFEST_DIR".into(),
+                leaf.0.to_string_lossy().into_owned(),
+            );
+            m.insert("CARGO_PKG_NAME".into(), "axis_leaf".into());
+        });
+        let out = build_main(args)
+            .map(|t| t.to_string())
+            .map_err(|e| e.to_string());
+        ENTRY_ENV_OVERRIDE.with(|m| m.borrow_mut().clear());
+        out
+    }
+
+    /// The case issue 1766 measured: `param_services` declared, nothing
+    /// registered.
+    #[test]
+    fn form1_wires_a_declared_param_services_axis() {
+        let out = expand("", "native", "features = [\"param_services\"]").unwrap();
+        assert!(
+            out.contains("apply_param_services"),
+            "no services wired:\n{out}"
+        );
+        assert!(
+            out.contains("PARAM_SERVICES_ENABLED"),
+            "no feature assert:\n{out}"
+        );
+        // Form 2 names its board and still reads the leaf's axes.
+        let out = expand(
+            "board = ::nros_board_linux::LinuxBoard",
+            "native",
+            "features = [\"param_services\"]",
+        )
+        .unwrap();
+        assert!(
+            out.contains("apply_param_services"),
+            "Form 2 dropped it:\n{out}"
+        );
+    }
+
+    #[test]
+    fn form1_wires_lifecycle_with_its_autostart_and_asserts_every_axis_feature() {
+        let out = expand(
+            "",
+            "native",
+            "features = [\"lifecycle\", \"rosout\", \"safety\"]\n\n[lifecycle]\nautostart = \"active\"",
+        )
+        .unwrap();
+        assert!(
+            out.contains("apply_lifecycle (2u8)"),
+            "lifecycle not wired:\n{out}"
+        );
+        for flag in [
+            "LIFECYCLE_SERVICES_ENABLED",
+            "ROSOUT_ENABLED",
+            "SAFETY_E2E_ENABLED",
+        ] {
+            assert!(out.contains(flag), "no `{flag}` assert:\n{out}");
+        }
+        assert!(!out.contains("apply_param_services"));
+    }
+
+    /// Negative control: a leaf declaring nothing emits none of it, so the
+    /// assertions above are about the declaration.
+    #[test]
+    fn a_leaf_with_no_features_wires_nothing() {
+        let out = expand("", "native", "").unwrap();
+        for absent in [
+            "apply_param_services",
+            "apply_lifecycle",
+            "PARAM_SERVICES_ENABLED",
+            "LIFECYCLE_SERVICES_ENABLED",
+        ] {
+            assert!(!out.contains(absent), "`{absent}` emitted:\n{out}");
+        }
+    }
+
+    #[test]
+    fn an_axis_that_cannot_be_honoured_is_refused_by_name() {
+        let e = expand("", "native", "features = [\"param_servics\"]").unwrap_err();
+        assert!(
+            e.contains("param_servics") && e.contains("known axes"),
+            "{e}"
+        );
+        // RTIC registers no runtime services: refused, not dropped.
+        let e = expand("", "rtic-mps2-an385", "features = [\"param_services\"]").unwrap_err();
+        assert!(e.contains("RTIC") && e.contains("param_services"), "{e}");
     }
 }
