@@ -74,7 +74,7 @@ A Node pkg has three files:
 src/talker_pkg/
 ├── package.xml          # ROS 2 manifest — <exec_depend> per message package
 ├── Cargo.toml           # [lib] + dependencies — Rust-toolchain facts only
-└── src/lib.rs           # impl Node + ExecutableNode; ends with nros::node!(Talker);
+└── src/lib.rs           # impl Component + ExecutableNode; ends with nros::node!(Talker);
 ```
 
 No `fn main()` here — a Node pkg is a library linked into the entry that
@@ -134,9 +134,19 @@ host and a Cortex-M board without a fork — the difference between them is an
 
 ## `src/lib.rs` — the node implementation
 
-A Node pkg implements two traits: `Node` (declarative registration) and
+A Node pkg implements two traits: `Component` (declarative registration) and
 `ExecutableNode` (per-callback body), then calls `nros::node!` to export the
 trampolines the entry macro expects.
+
+**The node is the same type everywhere.** `ctx.create_node(...)` returns an
+`nros::Node`, the type a standalone program gets from
+`executor.create_node(name)`, with rclrs's methods: `create_publisher`,
+`create_subscription(topic, callback)`, timers, `name()`, `logger()`, the graph
+queries. A function written against `&mut nros::Node` serves both. What a
+component adds is the `DeclarativeNode` extension (bring it into scope with
+`use nros::DeclarativeNode;`): constructors that declare an entity by stable id
+and bind its callback by NAME, which is what lets the board dispatch callbacks
+from its own tasks and lets `nros sync` measure the component without running it.
 
 Here is the essential shape, drawn from
 [`examples/workspaces/rust/src/talker_pkg/src/lib.rs`](../../../examples/workspaces/rust/src/talker_pkg/src/lib.rs)
@@ -144,7 +154,7 @@ Here is the essential shape, drawn from
 
 ```rust
 use nros::{
-    CallbackCtx, ExecutableNode, Component, NodeContext, NodeOptions, NodeResult,
+    CallbackCtx, ExecutableNode, Component, NodeContext, DeclarativeNode, NodeOptions, NodeResult,
     TimerDuration,
 };
 
@@ -181,7 +191,7 @@ nros::node!(Talker);   // <-- exports the trampolines; this is the last line
 
 Key points:
 
-- `Node::register` is **declarative** — it runs once at startup to declare
+- `Component::register` is **declarative** — it runs once at startup to declare
   publishers, subscriptions, timers, and callback edges. No message bytes
   flow here.
 - `ExecutableNode::on_callback` is the **body** — called by the image's
@@ -232,7 +242,7 @@ omitted.
 
 ### Server (responds to requests)
 
-Declare the service in `Node::register` and handle requests in the node body.
+Declare the service in `Component::register` and handle requests in the node body.
 
 - **Rust** — declare a service edge in `register`; requests dispatch into
   `ExecutableNode::on_callback` like any other callback (read the request and

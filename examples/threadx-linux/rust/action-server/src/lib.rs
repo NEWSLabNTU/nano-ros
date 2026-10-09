@@ -17,8 +17,8 @@
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
 use nros::{
-    Callback, CallbackCtx, CancelResponse, Component, ExecutableNode, GoalResponse, GoalStatus,
-    NodeContext, NodeOptions, NodeResult, TickCtx,
+    Callback, CallbackCtx, CancelResponse, Component, DeclarativeNode, ExecutableNode,
+    GoalResponse, GoalStatus, NodeContext, NodeOptions, NodeResult, TickCtx,
 };
 
 /// issue 0450 — the largest order this demo will compute.

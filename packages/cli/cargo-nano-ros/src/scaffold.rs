@@ -521,7 +521,7 @@ log = {{ version = "0.4", default-features = false }}
 //! `ExecutableNode::on_callback` publishes a counter on every tick.
 
 use nros::{{
-    Callback, CallbackCtx, ExecutableNode, Component, NodeContext, NodeOptions, NodeResult,
+    Callback, CallbackCtx, ExecutableNode, Component, NodeContext, DeclarativeNode, NodeOptions, NodeResult,
     TimerDuration,
 }};
 use std_msgs::msg::Int32;
@@ -1210,7 +1210,7 @@ fn self_bringup_node_lib(name: &str) -> String {
 use core::fmt::Write as _;
 
 use nros::{{
-    Callback, CallbackCtx, DispatchStrategy, ExecutableNode, Component, NodeContext, NodeResult,
+    Callback, CallbackCtx, DispatchStrategy, ExecutableNode, Component, NodeContext, DeclarativeNode, NodeResult,
     TickCtx, TimerDuration,
 }};
 use nros_log::{{Logger, log_error, log_info}};

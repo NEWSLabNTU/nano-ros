@@ -15,8 +15,8 @@
 
 use custom_msgs::msg::Reading;
 use nros::{
-    Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeOptions, NodeResult,
-    TimerDuration,
+    Callback, CallbackCtx, Component, DeclarativeNode, ExecutableNode, NodeContext, NodeOptions,
+    NodeResult, TimerDuration,
 };
 
 /// ReadingTalker — emits a synthetic sensor `Reading` every second.

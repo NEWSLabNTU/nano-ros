@@ -23,9 +23,9 @@ use std::{
 };
 
 use nros::{
-    Callback, CallbackCtx, CdrReader, CdrWriter, Component, DeserError, Deserialize,
-    ExecutableNode, Executor, ExecutorConfig, ExecutorNodeRuntime, NodeContext, NodeOptions,
-    NodeResult, SerError, Serialize, TickCtx,
+    Callback, CallbackCtx, CdrReader, CdrWriter, Component, DeclarativeNode, DeserError,
+    Deserialize, ExecutableNode, Executor, ExecutorConfig, ExecutorNodeRuntime, NodeContext,
+    NodeOptions, NodeResult, SerError, Serialize, TickCtx,
 };
 use nros_platform::RuntimeCtx;
 use nros_tests::fixtures::{ZenohRouter, require_zenohd, zenohd_unique};

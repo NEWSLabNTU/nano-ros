@@ -15,8 +15,8 @@
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest, AddTwoIntsResponse};
 use nros::{
-    Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeOptions, NodeResult,
-    TickCtx, TimerDuration,
+    Callback, CallbackCtx, Component, DeclarativeNode, ExecutableNode, NodeContext, NodeOptions,
+    NodeResult, TickCtx, TimerDuration,
 };
 use std_msgs::msg::Int32;
 

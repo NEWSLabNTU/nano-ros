@@ -12,8 +12,8 @@
 #![no_std]
 
 use nros::{
-    Callback, CallbackCtx, Component, DispatchStrategy, ExecutableNode, NodeContext, NodeResult,
-    TickCtx, TimerDuration,
+    Callback, CallbackCtx, Component, DeclarativeNode, DispatchStrategy, ExecutableNode,
+    NodeContext, NodeResult, TickCtx, TimerDuration,
 };
 
 pub struct E2eNode;

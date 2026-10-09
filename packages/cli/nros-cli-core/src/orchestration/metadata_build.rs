@@ -282,7 +282,12 @@ pub fn render_harness_cargo_toml(o: &MetadataBuildOptions) -> Result<String> {
          name = \"probe-{slug}\"\n\
          path = \"src/main.rs\"\n\n\
          [dependencies]\n\
-         nros = {{ path = {nros:?}, features = [\"std\"] }}\n\
+         nros = {{ path = {nros:?}, features = [\"std\", \"alloc\", \"rmw-cffi\"] }}\n\
+         # phase-483 W3 — a component registers into a REAL executor (its\n\
+         # `register` gets the same `nros::Node` a program does), so the probe\n\
+         # opens one on the `metadata` backend, which records and transmits\n\
+         # nothing.\n\
+         nros-rmw-metadata = {{ path = {rmw_metadata:?} }}\n\
          # issue 0288 layer 5 — a deploy-bound example deps its BOARD crate,\n\
          # whose C build provides the ~90 `nros_platform_*` extern-C ABI symbols\n\
          # that `nros-platform-cffi`'s `CffiPlatform` calls. On the host probe the\n\
@@ -307,6 +312,11 @@ pub fn render_harness_cargo_toml(o: &MetadataBuildOptions) -> Result<String> {
             .to_string(),
         comp = o.component_dir.display().to_string(),
         pkg = cargo_package_name(&o.component_dir).unwrap_or_else(|| krate.to_string()),
+        rmw_metadata = o
+            .nano_ros_workspace
+            .join("packages/rmw/metadata")
+            .display()
+            .to_string(),
     ))
 }
 
@@ -351,11 +361,19 @@ pub fn render_harness_main(o: &MetadataBuildOptions) -> Result<String> {
         .unwrap_or_default();
     Ok(format!(
         "// Generated metadata-mode harness (Phase 172.E). Records {type_path}'s\n\
-         // declarations against an in-memory recorder; opens no transport.\n\
+         // declarations against an in-memory recorder, on an executor opened\n\
+         // on the `metadata` backend (phase-483 W3); opens no transport.\n\
+         // The posix C port DEFINES the `nros_platform_*` symbols the executor\n\
+         // calls; naming the crate is what links it.\n\
+         extern crate nros_platform_cffi as _;\n\
          fn main() {{\n\
          \x20   // Bare type ⇒ default capacity const-params.\n\
          \x20   let mut recorder: nros::MetadataRecorder = nros::MetadataRecorder::default();\n\
-         \x20   nros::record_node_metadata::<{type_path}>(&mut recorder)\n\
+         \x20   let _ = nros_rmw_metadata::nros_rmw_metadata_register();\n\
+         \x20   let config = nros::ExecutorConfig::new(\"\").rmw(\"metadata\");\n\
+         \x20   let mut executor = nros::Executor::open(&config)\n\
+         \x20       .expect(\"open the metadata backend\");\n\
+         \x20   nros::record_node_metadata::<{type_path}>(&mut recorder, &mut executor)\n\
          \x20       .expect(\"component register (metadata mode)\");\n\
          \x20   let export = nros::SourceMetadataExport::new({pkg:?}, {comp:?}){exe}{sym};\n\
          \x20   let json = recorder\n\
@@ -1216,7 +1234,7 @@ some later noise
         let toml = render_harness_cargo_toml(&opts()).unwrap();
         assert!(
             toml.contains(
-                "nros = { path = \"/nano-ros/packages/api/nros\", features = [\"std\"] }"
+                "nros = { path = \"/nano-ros/packages/api/nros\", features = [\"std\", \"alloc\", \"rmw-cffi\"] }"
             )
         );
         assert!(

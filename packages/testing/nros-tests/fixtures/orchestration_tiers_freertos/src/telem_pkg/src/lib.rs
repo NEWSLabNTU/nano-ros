@@ -2,7 +2,7 @@
 
 #![no_std]
 
-use nros::{Component, NodeContext, NodeOptions, NodeResult, TimerDuration};
+use nros::{Component, DeclarativeNode, NodeContext, NodeOptions, NodeResult, TimerDuration};
 
 pub struct Telem;
 

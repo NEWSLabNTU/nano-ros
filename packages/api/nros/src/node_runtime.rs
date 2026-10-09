@@ -1,8 +1,7 @@
-//! Phase 212.M.5.a.2 — Executor-backed `NodeRuntime` /
-//! `DeclaredNodeRuntime` for nano-ros.
+//! Phase 212.M.5.a.2 — the executor-backed component runtime for nano-ros.
 //!
-//! [`MetadataRecorder`] (the planner sink) binds the [`Component`] /
-//! [`ExecutableNode`] traits to a pure metadata target. This module is the
+//! [`MetadataRecorder`] (the planner sink) records what a [`Component`] /
+//! [`ExecutableNode`] declares. This module is the
 //! missing twin: it binds the same traits to a live [`Executor`] so
 //! a Node pkg can actually run — nodes, publishers,
 //! subscriptions, timers materialise as real executor handles, and
@@ -120,7 +119,7 @@ use crate::{
     EmbeddedRawPublisher, Executor, GoalId, GoalStatus,
     node::{
         ActionExecutor, Callback, CallbackCtx, ClientDispatch, ExecutableNode, NodeContext,
-        NodeDeclError, NodeOptions, NodeResult, NodeRuntime, PublisherResolver, TickCtx,
+        NodeDeclError, NodeOptions, NodeResult, PublisherResolver, TickCtx,
     },
     node_metadata::{
         CallbackEffectKind, CallbackId, EntityId, EntityKind, EntityMetadata, NodeId as MetaNodeId,
@@ -934,7 +933,6 @@ impl ExecutorNodeRuntime {
         self.components.push(cell.clone());
 
         let mut sink = ExecutorSink {
-            executor: &mut self.executor,
             cell: CellHandle::Pooled(cell.clone()),
             nodes: heapless::Vec::new(),
             node_identity: None, // direct API — no launch injection
@@ -942,9 +940,11 @@ impl ExecutorNodeRuntime {
             qos_overrides: &[],  // direct API — no plan overrides
             launch_params: &[],  // direct API -- no launch params
         };
-        let sink_dyn: &mut dyn NodeRuntime = &mut sink;
-        let mut context = NodeContext::new(C::NAME, sink_dyn);
-        let result = C::register(&mut context);
+        let result = {
+            let mut frame = crate::node::ComponentFrame::new(&mut sink);
+            let mut context = NodeContext::new(C::NAME, &mut self.executor, &mut frame);
+            C::register(&mut context)
+        };
         // phase-426 W3 — the node this component actually created, so its
         // callbacks read ITS parameters and not the primary's. First node: a
         // component declares one in every shipped shape, and the reads are
@@ -1310,8 +1310,10 @@ impl ::nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime {
 // live executor.
 // =============================================================================
 
+/// phase-483 W3 — the live component runtime's registration sink. It no
+/// longer holds the executor: the [`crate::Node`] a component's `register`
+/// holds borrows it, so the sink receives it per call (`FrameSink`).
 struct ExecutorSink<'a> {
-    executor: &'a mut Executor<'static>,
     cell: CellHandle,
     /// Per-registration node mapping: stable id → executor `NodeId` plus the
     /// EFFECTIVE `(name, namespace)` the node was created with (launch identity
@@ -1372,8 +1374,12 @@ impl ExecutorSink<'_> {
     /// A `false` from the store is a refusal only if the name is still absent
     /// afterwards: the store also answers `false` for "already declared".
     #[cfg(feature = "param-services")]
-    fn seed_launch_params(&mut self, node: nros_node::executor::NodeId) -> NodeResult<()> {
-        if self.executor.params().is_none() {
+    fn seed_launch_params(
+        &mut self,
+        executor: &mut Executor<'static>,
+        node: nros_node::executor::NodeId,
+    ) -> NodeResult<()> {
+        if executor.params().is_none() {
             return Ok(());
         }
         let params = self.launch_params;
@@ -1381,8 +1387,8 @@ impl ExecutorSink<'_> {
             // phase-446 seam: the value's type is inferred from the launch
             // string; a type declared in the contract replaces this call.
             let value = infer_param_value(raw);
-            if !self.executor.declare_parameter_on(node, name, value)
-                && self.executor.get_parameter_on(node, name).is_none()
+            if !executor.declare_parameter_on(node, name, value)
+                && executor.get_parameter_on(node, name).is_none()
             {
                 nros_log::log_error!(
                     nros_log::get_logger("nros"),
@@ -1397,8 +1403,13 @@ impl ExecutorSink<'_> {
     }
 }
 
-impl NodeRuntime for ExecutorSink<'_> {
-    fn create_node(&mut self, id: MetaNodeId<'_>, options: NodeOptions<'_>) -> NodeResult<()> {
+impl crate::node::FrameSink for ExecutorSink<'_> {
+    fn create_node(
+        &mut self,
+        executor: &mut Executor<'static>,
+        id: MetaNodeId<'_>,
+        options: NodeOptions<'_>,
+    ) -> NodeResult<nros_node::executor::NodeId> {
         if self.nodes.iter().any(|n| n.stable_id == id.as_str()) {
             return Err(NodeDeclError::Runtime);
         }
@@ -1409,8 +1420,7 @@ impl NodeRuntime for ExecutorSink<'_> {
             Some((n, s)) => (n, s),
             None => (options.name, options.namespace),
         };
-        let node_id = self
-            .executor
+        let node_id = executor
             .node_builder(name)
             .namespace(ns)
             .domain_id(options.domain_id)
@@ -1423,7 +1433,7 @@ impl NodeRuntime for ExecutorSink<'_> {
         // `metadata-mode` is on -- and under `ACTIVE`, because the namespace
         // lookup is work an empty hook body does not remove (phase-463 W5 I4).
         if crate::census_hooks::ACTIVE {
-            let landed = match self.executor.node(node_id).map(|r| r.namespace.as_str()) {
+            let landed = match executor.node(node_id).map(|r| r.namespace.as_str()) {
                 Some(s) if !s.is_empty() => s,
                 _ => "/",
             };
@@ -1432,8 +1442,7 @@ impl NodeRuntime for ExecutorSink<'_> {
         // Issue #52 — install the bake BEFORE the component declares any
         // entity on this node; entities created earlier could not be folded.
         if !self.qos_overrides.is_empty() {
-            self.executor
-                .set_node_qos_overrides(node_id, self.qos_overrides);
+            executor.set_node_qos_overrides(node_id, self.qos_overrides);
         }
         // issue 1272 -- the launch values belong to the component's launch
         // node, which is the FIRST node it builds (the same node its cell reads
@@ -1441,7 +1450,7 @@ impl NodeRuntime for ExecutorSink<'_> {
         // component declares any entity, so its own declarations adopt them.
         #[cfg(feature = "param-services")]
         if self.nodes.is_empty() {
-            self.seed_launch_params(node_id)?;
+            self.seed_launch_params(executor, node_id)?;
         }
         self.nodes
             .push(SinkNode {
@@ -1451,10 +1460,14 @@ impl NodeRuntime for ExecutorSink<'_> {
                 namespace: id_str(ns)?,
             })
             .map_err(|_| NodeDeclError::Runtime)?;
-        Ok(())
+        Ok(node_id)
     }
 
-    fn create_entity(&mut self, metadata: EntityMetadata) -> NodeResult<()> {
+    fn create_entity(
+        &mut self,
+        executor: &mut Executor<'static>,
+        metadata: EntityMetadata,
+    ) -> NodeResult<()> {
         // Phase 228.C tier gate: when this executor runs a specific tier
         // (`active_groups` set by codegen), an entity whose callback group
         // is not active on this tier is a no-op — no RMW handle, no slot.
@@ -1478,9 +1491,7 @@ impl NodeRuntime for ExecutorSink<'_> {
             (entry.node_id, entry.name.clone(), entry.namespace.clone())
         };
         if let Some(group) = metadata.callback_group.as_ref()
-            && !self
-                .executor
-                .group_active(node_name.as_str(), node_ns.as_str(), group.as_str())
+            && !executor.group_active(node_name.as_str(), node_ns.as_str(), group.as_str())
         {
             return Ok(());
         }
@@ -1505,7 +1516,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                     &node_name,
                     &node_ns,
                     self.remaps.iter().copied(),
-                    nros_node::ros_args::argv_fallback(&*self.executor, &node_name, &node_ns),
+                    nros_node::ros_args::argv_fallback(&*executor, &node_name, &node_ns),
                 )
                 .map_err(|_| NodeDeclError::Runtime)?,
             ),
@@ -1520,8 +1531,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                 // `QoSProfile::default()` and a node's own QoS was silently
                 // discarded. Plan overrides still win: they fold in below this,
                 // inside the executor's create path.
-                let handle = self
-                    .executor
+                let handle = executor
                     .node_mut(node)
                     .create_generic_publisher_with_qos(
                         entity_name,
@@ -1574,7 +1584,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                 if shape == DeclaredSubscriptionShape::BufferedRawSafety {
                     let cell_s = self.cell.clone();
                     let cb_s = cb_id_owned.clone();
-                    self.executor
+                    executor
                         .node_mut(node)
                         .create_generic_subscription_with_integrity(
                             entity_name,
@@ -1597,7 +1607,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                 //
                 // Issue 0306 — same as the publisher branch: honour the
                 // node's declared profile instead of defaulting it.
-                self.executor
+                executor
                     .node_mut(node)
                     .create_generic_subscription_with_qos(
                         entity_name,
@@ -1634,7 +1644,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                 // called `register_timer` unconditionally and the declarative
                 // surface could not express a clock, which is why a
                 // `nros::main!` component had no way to own a ROS-time timer.
-                self.executor
+                executor
                     .register_timer_on_clock(period, metadata.timer_clock, move || {
                         dispatch_into_cell(cell.view(), &cb_id_owned, &[]);
                     })
@@ -1675,7 +1685,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                         callback_id: id_str(cb_id.as_str())?,
                     })
                     .map_err(|_| cell_full("service servers"))?;
-                self.executor
+                executor
                     .register_service_raw_sized_on::<1024, 1024>(
                         node,
                         entity_name,
@@ -1689,8 +1699,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                 Ok(())
             }
             EntityKind::ServiceClient => {
-                let hid = self
-                    .executor
+                let hid = executor
                     .register_service_client_raw_sized_on::<1024>(
                         node,
                         entity_name,
@@ -1731,8 +1740,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                         accepted_callback_id: accepted_cb,
                     })
                     .map_err(|_| cell_full("action servers"))?;
-                let handle = self
-                    .executor
+                let handle = executor
                     .register_action_server_raw_sized::<1024, 1024, 1024, 4>(
                         crate::RawActionServerSpec {
                             node_id: Some(node),
@@ -1783,8 +1791,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                     }
                     None => (None, None, core::ptr::null_mut()),
                 };
-                let handle = self
-                    .executor
+                let handle = executor
                     .register_action_client_raw_sized::<1024, 1024, 1024>(
                         crate::RawActionClientSpec {
                             node_id: Some(node),
@@ -1822,8 +1829,8 @@ impl NodeRuntime for ExecutorSink<'_> {
                 // identical to the pre-Wave-2 behavior.
                 #[cfg(feature = "param-services")]
                 {
-                    if self.executor.params().is_none() {
-                        self.executor
+                    if executor.params().is_none() {
+                        executor
                             .register_parameter_services()
                             .map_err(decl_err_from_node)?;
                     }
@@ -1832,7 +1839,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                     // phase-446 W6 -- the code must declare what the node's
                     // contract declares: the store was sized from it (W4). A
                     // node whose contract has no `params:` is not checked.
-                    if let Err(m) = self.executor.declared_params().check(
+                    if let Err(m) = executor.declared_params().check(
                         node_ns.as_str(),
                         node_name.as_str(),
                         name,
@@ -1871,8 +1878,8 @@ impl NodeRuntime for ExecutorSink<'_> {
                     // entity's node, not the executor's primary (issue 1272):
                     // a second node declaring a name the first also declares
                     // is its own parameter, not a duplicate.
-                    if !self.executor.declare_parameter_on(node, name, value)
-                        && self.executor.get_parameter_on(node, name).is_none()
+                    if !executor.declare_parameter_on(node, name, value)
+                        && executor.get_parameter_on(node, name).is_none()
                     {
                         nros_log::log_error!(
                             nros_log::get_logger("nros"),
@@ -1888,6 +1895,7 @@ impl NodeRuntime for ExecutorSink<'_> {
 
     fn record_callback_effect(
         &mut self,
+        _executor: &mut Executor<'static>,
         _callback_id: CallbackId<'_>,
         _kind: CallbackEffectKind,
         _entity_id: EntityId<'_>,
@@ -2391,9 +2399,6 @@ where
         param_node: core::cell::Cell::new(0),
     });
     let mut sink = ExecutorSink {
-        // Reborrow so `executor` stays usable for `enroll_component` after the
-        // sink (which holds `&mut Executor<'static>`) is dropped below.
-        executor: &mut *executor,
         cell: CellHandle::Static(cell),
         nodes: heapless::Vec::new(),
         // Phase 268 W1 — thread the per-component identity bake (RFC-0046).
@@ -2406,12 +2411,14 @@ where
         // `create_node` builds rather than on the executor's primary node.
         launch_params: params,
     };
-    let sink_dyn: &mut dyn NodeRuntime = &mut sink;
-    let mut context = NodeContext::new(C::NAME, sink_dyn);
-    // Phase 264 W4a — seed the baked launch-param initials so `register()` can read
-    // them via `NodeContext::param`.
-    context.set_params(params);
-    C::register(&mut context)?;
+    {
+        let mut frame = crate::node::ComponentFrame::new(&mut sink);
+        let mut context = NodeContext::new(C::NAME, &mut *executor, &mut frame);
+        // Phase 264 W4a — seed the baked launch-param initials so `register()` can read
+        // them via `NodeContext::param`.
+        context.set_params(params);
+        C::register(&mut context)?;
+    }
     // phase-426 W3 — see the sibling in `register_node`: the cell records the
     // node it created, so `ctx.parameter::<T>(name)` reads that node's slot.
     #[cfg(feature = "param-services")]

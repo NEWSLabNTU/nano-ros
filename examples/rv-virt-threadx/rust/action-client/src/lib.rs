@@ -23,7 +23,8 @@ mod app_main;
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
 use nros::{
-    Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeOptions, NodeResult, TickCtx,
+    Callback, CallbackCtx, Component, DeclarativeNode, ExecutableNode, NodeContext, NodeOptions,
+    NodeResult, TickCtx,
 };
 
 /// Fibonacci action client — declares the client, then issues a single goal

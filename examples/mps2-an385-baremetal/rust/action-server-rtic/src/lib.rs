@@ -13,8 +13,8 @@
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
 use nros::{
-    Callback, CallbackCtx, CancelResponse, Component, ExecutableNode, GoalId, GoalResponse,
-    GoalStatus, NodeContext, NodeOptions, NodeResult, TickCtx,
+    Callback, CallbackCtx, CancelResponse, Component, DeclarativeNode, ExecutableNode, GoalId,
+    GoalResponse, GoalStatus, NodeContext, NodeOptions, NodeResult, TickCtx,
 };
 
 // Diagnostics route through `nros-log`.

@@ -223,7 +223,7 @@ fn render_lib_rs(name: &str, type_name: &str, node_name: &str) -> String {
 #![no_std]
 
 use nros::{{
-    Callback, CallbackCtx, ExecutableNode, Component, NodeContext, NodeOptions, NodeResult,
+    Callback, CallbackCtx, ExecutableNode, Component, NodeContext, DeclarativeNode, NodeOptions, NodeResult,
     TimerDuration,
 }};
 

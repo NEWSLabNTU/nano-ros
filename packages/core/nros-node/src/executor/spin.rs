@@ -1917,6 +1917,12 @@ pub struct Executor<'s> {
     pub(crate) consecutive_io_failures: u32,
     /// RFC-0052 W3b.2 — wall-clock (epoch µs) source for age monitors.
     pub(crate) epoch_us_fn: Option<fn() -> u64>,
+    /// phase-483 W3 — the component registration frame the `nros` facade
+    /// installs for the duration of a component's `register`, so the
+    /// declarative entity constructors on [`Node`](super::node::Node) can reach
+    /// the sink that owns the component's cell. Opaque here: nros-node sits
+    /// below the crate that defines the frame. `None` outside a registration.
+    pub(crate) component_frame: Option<core::ptr::NonNull<()>>,
     /// RFC-0052 W3b.4 — baked contract-monitor table (empty = uncontracted
     /// image; every monitor path below folds away).
     pub(crate) monitor_table: &'static [super::monitor::MonitorSpec],
@@ -2225,6 +2231,7 @@ impl<'s> Executor<'s> {
             // above" for the board install; those blocks are no longer
             // cfg-gated — the config override applies on every flavour now.)
             epoch_us_fn: super::types::default_epoch_us_fn(),
+            component_frame: None,
             monitor_table: &[],
             monitor_states: [super::monitor::MonitorState::default(); super::monitor::MAX_MONITORS],
             age_table: &[],
@@ -4216,6 +4223,20 @@ impl<'s> Executor<'s> {
     /// (`exec.node_mut(id).subscription(t)...` / `.create_subscription(...)`).
     /// A short-lived `&mut Executor` borrow — use one at a time; entity handles
     /// are owned and outlive it (see `Node`).
+    /// phase-483 W3 — the component registration frame, for the `nros`
+    /// facade's declarative constructors. Not a user API.
+    #[doc(hidden)]
+    pub fn __component_frame(&self) -> Option<core::ptr::NonNull<()>> {
+        self.component_frame
+    }
+
+    /// phase-483 W3 — install or clear the component registration frame.
+    /// The caller guarantees the pointee outlives the installation.
+    #[doc(hidden)]
+    pub fn __set_component_frame(&mut self, frame: Option<core::ptr::NonNull<()>>) {
+        self.component_frame = frame;
+    }
+
     pub fn node_mut(&mut self, id: super::node_record::NodeId) -> super::node::Node<'_, 's> {
         super::node::Node::new(self, id)
     }

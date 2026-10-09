@@ -800,6 +800,7 @@ mod census_hooks_reach_every_api {
         impl nros::Component for CensusComp {
             const NAME: &'static str = "rust_census_node";
             fn register(ctx: &mut nros::NodeContext<'_>) -> nros::NodeResult<()> {
+                use nros::DeclarativeNode as _;
                 let mut node = ctx.create_node(nros::NodeOptions::new("rust_census_node"))?;
                 let _t = node.create_timer_for_callback_name(
                     "on_tick",

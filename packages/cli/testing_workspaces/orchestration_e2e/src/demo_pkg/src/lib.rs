@@ -2,9 +2,9 @@
 
 pub mod talker {
     use nros::{
-        Callback, CallbackCtx, CancelResponse, CdrReader, CdrWriter, DeserError, Deserialize,
-        ExecutableNode, GoalResponse, NodeContext, NodeOptions, NodeResult, RosAction, RosMessage,
-        RosService, SerError, Serialize, TimerDuration,
+        Callback, CallbackCtx, CancelResponse, CdrReader, CdrWriter, DeclarativeNode, DeserError,
+        Deserialize, ExecutableNode, GoalResponse, NodeContext, NodeOptions, NodeResult, RosAction,
+        RosMessage, RosService, SerError, Serialize, TimerDuration,
     };
 
     pub struct Component;
@@ -127,9 +127,9 @@ pub mod talker {
 /// the prebuilt `action-client` example interoperates with this generated server.
 pub mod fib_server {
     use nros::{
-        Callback, CallbackCtx, CdrReader, CdrWriter, DeserError, Deserialize, ExecutableNode,
-        GoalResponse, GoalStatus, NodeContext, NodeOptions, NodeResult, RosAction, RosMessage,
-        SerError, Serialize, TickCtx,
+        Callback, CallbackCtx, CdrReader, CdrWriter, DeclarativeNode, DeserError, Deserialize,
+        ExecutableNode, GoalResponse, GoalStatus, NodeContext, NodeOptions, NodeResult, RosAction,
+        RosMessage, SerError, Serialize, TickCtx,
     };
 
     pub struct Component;
@@ -332,8 +332,9 @@ pub mod fib_server {
 /// example receives it. CDR matches `std_msgs::msg::Int32` byte-for-byte.
 pub mod chatter_talker {
     use nros::{
-        Callback, CallbackCtx, CdrReader, CdrWriter, DeserError, Deserialize, ExecutableNode,
-        NodeContext, NodeOptions, NodeResult, RosMessage, SerError, Serialize, TimerDuration,
+        Callback, CallbackCtx, CdrReader, CdrWriter, DeclarativeNode, DeserError, Deserialize,
+        ExecutableNode, NodeContext, NodeOptions, NodeResult, RosMessage, SerError, Serialize,
+        TimerDuration,
     };
 
     pub struct Component;

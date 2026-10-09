@@ -13,7 +13,8 @@
 #![no_std]
 
 use nros::{
-    Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeOptions, NodeResult,
+    Callback, CallbackCtx, Component, DeclarativeNode, ExecutableNode, NodeContext, NodeOptions,
+    NodeResult,
 };
 use std_msgs::msg::Int32;
 
