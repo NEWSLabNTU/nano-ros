@@ -600,15 +600,20 @@ quotient. Test `a_stream_at_its_rate_checked_late_is_not_judged_slow`:
 10 Hz publishes on the grid, the check runs 700 us late, 60 s, no verdict;
 a 5 Hz stream checked the same way is judged at about 5000 mHz.
 
-Not covered: the island's emergency operator read 29773 of 30000 mHz on
-its two topics, 149 samples in 5.004 s. That is a real 0.76 % shortfall
-(mean period 33.59 ms on a 30 Hz timer); the executor's timer carries its
-remainder (`timer_try_process`, CatchUp subtracts the period, Skip keeps
-the modulus), so it is not the timer's own arithmetic. Open: measure the
-operator's tick spacing on the board (the island's sink drops events
-18/19; its `nros_trace_set_timer_every(slot, 1)` keeps every tick for it).
-Also a contract matter: a `min_rate_hz` equal to the producer's own timer
-rate leaves no margin.
+The island's emergency operator read 29773 of 30000 mHz on its two topics
+in the same window, 149 samples in 5.004 s. Measured on the board
+(2026-10-09, island run `w4r-ticks`, the timer's events 18/19 forwarded):
+the operator's timer ticks every 33.000 ms (1073 ticks over 35.4 s, mean
+32.999 ms, 28.9-37.3 ms; its period is `1000 / update_rate` in integer
+milliseconds, 30.30 Hz), and the executor loses no time (the spin
+accumulates `now - last_spin_end`, `timer_try_process` carries the
+remainder). The shortfall was the log floor above: six verdicts logged
+back to back stalled the spin about 100 ms, the timer's `Skip` policy
+fired once and dropped two periods (`timer-overrun-runtime timer
+measured=2`), and 151.6 - 2 = 149 in that window. With the island's log at
+errors only the record holds no operator rate verdict. Not a nano-ros
+defect; what remains is the contract's margin: a `min_rate_hz` equal to
+the producer's own timer rate makes any two-period stall a rate verdict.
 
 ### I7, on the board -- the 15 ms were the log floor, not the reporter
 
@@ -724,5 +729,5 @@ independent of each other.
       window, however late the closing tick runs. (Host half here: the count
       is judged against floor(min_rate * window), test
       `a_stream_at_its_rate_checked_late_is_not_judged_slow`; the board
-      rerun is the island's W4. The operator's 29773 of 30000 is a measured
-      shortfall, open.)
+      rerun is the island's W4. The operator's 29773 of 30000 was two ticks
+      dropped under the log-floor stall, measured on the board; not open.)
