@@ -109,7 +109,7 @@ are the `Workload::Port` cells of `matrix::CELLS`.
 
 ## Caveats found during this port (all in `book/.../porting-a-cpp-node.md`)
 
-- nano-ros codegen emits message string fields as `nros::FixedString<N>` (not
+- nano-ros codegen emits message string fields as `rclcpp::FixedString<N>` (not
   `std::string`). Assignments stay one-liners (`message.data = s.c_str()`)
   but cross-package code may need a small adapter. **Tracked: 209.E should
   emit a `std::string`-compatible field type alongside FixedString.**

@@ -73,7 +73,7 @@ extern "C" {
 }
 {% endif %}
 {% if rust_pkgs %}
-// Rust component install seam (nros::node!); the Rust node
+// Rust component install seam (rclcpp::node!); the Rust node
 // self-creates its node on the shared executor handle (phase-257).
 extern "C" {
 {%- for c in rust_pkgs %}
@@ -124,7 +124,7 @@ alignas(8) static unsigned char __nros_age_storage{{ tag }}[{{ m.ages | length }
 {%- for setup in tiers.setups -%}
 /* Phase 274.W2 — tier[{{ setup.index }}] ({{ setup.name }}) setup: creates only this tier's nodes. */
 static int32_t __nros_entry_setup_tier_{{ setup.index }}(void* executor) {
-    if (executor == nullptr) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
+    if (executor == nullptr) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
 {%- if setup.monitors %}
 {%- with m = setup.monitors, mexec = "executor" %}
 {%- include "monitor_install_cpp.jinja" %}
@@ -159,7 +159,7 @@ static int32_t __nros_entry_setup_tier_{{ setup.index }}(void* executor) {
 static const char* __nros_tier_{{ t.index }}_groups[] = {{ "{" }}{% for g in t.groups %}"{{ g[0] | c_str }}", "{{ g[1] | c_str }}", "{{ g[2] | c_str }}", {% endfor %}};
 {%- endif %}
 {%- endfor %}
-static const ::nros::board::NativeTierSpec __nros_tiers[{{ tiers.n }}] = {
+static const ::rclcpp::board::NativeTierSpec __nros_tiers[{{ tiers.n }}] = {
 {%- for t in tiers.rows %}
     {
         .name = "{{ t.name | c_str }}",
@@ -188,8 +188,8 @@ static int32_t __nros_entry_setup() {
     /* Phase 269 (W4) — sched-context wiring (multi-tier scheduling). */
     uint8_t __nros_sc_ids[{{ sched.n }}] = {0};
     {
-        void* __exec = ::nros::global_handle();
-        if (__exec == nullptr) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
+        void* __exec = ::rclcpp::global_handle();
+        if (__exec == nullptr) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
 {%- for c in sched.contexts %}
         {
             nros_cpp_ret_t __scr{{ c.index }} = nros_cpp_create_sched_context_from_policy(__exec, {% if c.class %}"{{ c.class | c_str }}"{% else %}nullptr{% endif %}, {{ c.period_us }}ull, {{ c.budget_us }}ull, {{ c.deadline_us }}ull, {% if c.deadline_policy %}"{{ c.deadline_policy | c_str }}"{% else %}nullptr{% endif %}, {{ c.os_pri }}u, &__nros_sc_ids[{{ c.index }}]);
@@ -199,8 +199,8 @@ static int32_t __nros_entry_setup() {
     }
     /* Phase 272 (W2) — seed node-name → sched-context table (RFC-0047). */
     {
-        void* __exec = ::nros::global_handle();
-        if (__exec == nullptr) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
+        void* __exec = ::rclcpp::global_handle();
+        if (__exec == nullptr) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
 {#- A bind that does not fit is REFUSED by the runtime, never dropped (issue
     1172); ignoring the refusal here would drop it anyway, one level up. Each
     is checked like the context it names, and a failure aborts setup. #}
@@ -213,8 +213,8 @@ static int32_t __nros_entry_setup() {
     }
     /* Phase 273 (W2) — seed group → sched-context table (RFC-0047). */
     {
-        void* __exec = ::nros::global_handle();
-        if (__exec == nullptr) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
+        void* __exec = ::rclcpp::global_handle();
+        if (__exec == nullptr) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
 {%- for b in sched.group_binds %}
         {
             nros_cpp_ret_t __gbr{{ loop.index0 }} = nros_cpp_bind_group_sched(__exec, "{{ b.name | c_str }}", "{{ b.namespace | c_str }}", "{{ b.group | c_str }}", __nros_sc_ids[{{ b.tier_index }}]);
@@ -224,13 +224,13 @@ static int32_t __nros_entry_setup() {
     }
 {%- endif %}
 {%- if monitors %}
-{%- with m = monitors, mexec = "::nros::global_handle()" %}
+{%- with m = monitors, mexec = "::rclcpp::global_handle()" %}
 {%- include "monitor_install_cpp.jinja" %}
 {%- endwith %}
 {%- endif %}
 {%- for n in nodes %}
     {
-{%- with dexec = "::nros::global_handle()", at = loop.index0, idx = loop.index0, tiered = false %}
+{%- with dexec = "::rclcpp::global_handle()", at = loop.index0, idx = loop.index0, tiered = false %}
 {%- include "declare_calls.jinja" %}
 {%- include "node_body_cpp.jinja" %}
 {%- endwith %}
@@ -257,7 +257,7 @@ extern "C" int nros_rmw_metadata_register(void);
 
 int main(int /*argc*/, char** /*argv*/) {
     (void)nros_rmw_metadata_register();
-    ::nros::Result r = ::nros::init(nullptr, 0, "nros_metadata_probe");
+    ::rclcpp::Result r = ::rclcpp::init_in(nullptr, 0, "nros_metadata_probe");
     if (!r.ok()) return 1;
     int32_t rc = __nros_entry_setup();
     if (rc != 0) return rc;

@@ -729,11 +729,11 @@ mod tests {
             "view struct missing:\n{h}"
         );
         assert!(
-            h.contains("nros::Span<uint8_t> data;"),
+            h.contains("rclcpp::Span<uint8_t> data;"),
             "byte span missing:\n{h}"
         );
         assert!(
-            h.contains("nros::LeSpan<float> ranges;"),
+            h.contains("rclcpp::LeSpan<float> ranges;"),
             "LE span missing:\n{h}"
         );
         assert!(
@@ -780,7 +780,7 @@ mod tests {
         .unwrap();
         let pkg = generate_cpp_message_package("test_msgs", "Tag", &msg, "h", &resolver).unwrap();
         assert!(
-            pkg.header.contains("nros::StringView label;"),
+            pkg.header.contains("rclcpp::StringView label;"),
             "{}",
             pkg.header
         );
@@ -1384,7 +1384,7 @@ mod tests {
         let pkg = result.unwrap();
 
         // C++ header should use FixedString
-        assert!(pkg.header.contains("nros::FixedString<256>"));
+        assert!(pkg.header.contains("rclcpp::FixedString<256>"));
         assert!(pkg.header.contains("fixed_string.hpp"));
 
         // Rust FFI should use [u8; 256] and write_string
@@ -1434,7 +1434,7 @@ mod tests {
         let pkg = result.unwrap();
 
         // C++ header: FixedSequence
-        assert!(pkg.header.contains("nros::FixedSequence<int32_t, 64>"));
+        assert!(pkg.header.contains("rclcpp::FixedSequence<int32_t, 64>"));
 
         // Rust FFI: sequence struct with size + data
         assert!(pkg.ffi.combined().contains("_seq_t"));
@@ -1458,12 +1458,13 @@ mod tests {
 
         // Header: configured sequence + string capacities.
         assert!(
-            pkg.header.contains("nros::FixedSequence<uint8_t, 921600>"),
+            pkg.header
+                .contains("rclcpp::FixedSequence<uint8_t, 921600>"),
             "header seq cap:\n{}",
             pkg.header
         );
         assert!(
-            pkg.header.contains("nros::FixedString<16>"),
+            pkg.header.contains("rclcpp::FixedString<16>"),
             "header string cap:\n{}",
             pkg.header
         );
@@ -1484,7 +1485,7 @@ mod tests {
 
     #[test]
     fn test_cpp_heap_string() {
-        // RFC-0033 mode = "heap" on a string → nros::HeapString + nros_cpp_heap_str_t FFI repr.
+        // RFC-0033 mode = "heap" on a string → rclcpp::HeapString + nros_cpp_heap_str_t FFI repr.
         let msg = parse_message("string label\n").unwrap();
         let resolver = crate::config::CapacityResolver::from_toml_str(
             r#"
@@ -1495,7 +1496,7 @@ mod tests {
         .unwrap();
         let pkg = generate_cpp_message_package("my_msgs", "M", &msg, "h", &resolver).unwrap();
         assert!(
-            pkg.header.contains("nros::HeapString"),
+            pkg.header.contains("rclcpp::HeapString"),
             "header heap string:\n{}",
             pkg.header
         );
@@ -1518,7 +1519,7 @@ mod tests {
 
     #[test]
     fn test_cpp_heap_seq_of_strings() {
-        // RFC-0033 heap string[] → nros::HeapSequence<nros::FixedString<N>>
+        // RFC-0033 heap string[] → rclcpp::HeapSequence<rclcpp::FixedString<N>>
         // (FixedString<N> is char[N], trivially copyable → safe in HeapSequence).
         let msg = parse_message("string[] tags\n").unwrap();
         let resolver = crate::config::CapacityResolver::from_toml_str(
@@ -1531,7 +1532,7 @@ mod tests {
         let pkg = generate_cpp_message_package("my_msgs", "M", &msg, "h", &resolver).unwrap();
         assert!(
             pkg.header
-                .contains("nros::HeapSequence<nros::FixedString<256>>"),
+                .contains("rclcpp::HeapSequence<rclcpp::FixedString<256>>"),
             "header heap string-seq:\n{}",
             pkg.header
         );
@@ -1561,7 +1562,7 @@ mod tests {
         let pkg = generate_cpp_message_package("my_msgs", "M", &msg, "h", &resolver).unwrap();
         assert!(
             pkg.header
-                .contains("nros::HeapSequence<geometry_msgs::msg::Point>"),
+                .contains("rclcpp::HeapSequence<geometry_msgs::msg::Point>"),
             "header heap nested-seq:\n{}",
             pkg.header
         );
@@ -1654,7 +1655,7 @@ mod tests {
 
     #[test]
     fn test_cpp_heap_primitive_sequence() {
-        // RFC-0033 mode = "heap" → nros::HeapSequence<T> header + pointer-trio FFI repr.
+        // RFC-0033 mode = "heap" → rclcpp::HeapSequence<T> header + pointer-trio FFI repr.
         let msg = parse_message("uint8[] pixels\nint32 seq\n").unwrap();
         let resolver = crate::config::CapacityResolver::from_toml_str(
             r#"
@@ -1666,7 +1667,7 @@ mod tests {
         let pkg = generate_cpp_message_package("my_msgs", "Frame", &msg, "h", &resolver).unwrap();
         // Header: HeapSequence type + include.
         assert!(
-            pkg.header.contains("nros::HeapSequence<uint8_t>"),
+            pkg.header.contains("rclcpp::HeapSequence<uint8_t>"),
             "header heap type:\n{}",
             pkg.header
         );

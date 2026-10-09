@@ -2,7 +2,7 @@
 
 ## Runtime Environment Variables
 
-`nros::init()` reads these at startup when the locator argument is
+`rclcpp::init_in()` reads these at startup when the locator argument is
 empty:
 
 | Variable | Description | Default |
@@ -31,8 +31,8 @@ C++ APIs share the same compile-time pool sizes.
 
 ## C++ Storage Sizes
 
-The compile-time storage occupied by `nros::Publisher<M>`,
-`nros::Subscription<M>`, etc. is derived from the matching Rust
+The compile-time storage occupied by `rclcpp::Publisher<M>`,
+`rclcpp::Subscription<M>`, etc. is derived from the matching Rust
 `size_of::<RmwPublisher>()` via the `nros-sizes-build` probe (Phase 87).
 You should not need to override these manually — they are populated in
 the generated `nros_cpp_config_generated.h` header at build time.

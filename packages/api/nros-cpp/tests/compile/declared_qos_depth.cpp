@@ -54,37 +54,37 @@ struct Bool {
 // If these three drift, every assertion below becomes vacuous while still
 // compiling, which is the failure mode this whole step was written against.
 
-static_assert(::nros::declared_depth(Int32::TYPE_NAME, "/chatter") == 1,
+static_assert(::rclcpp::declared_depth(Int32::TYPE_NAME, "/chatter") == 1,
               "the fixture declares sub:std_msgs/msg/Int32:/chatter@depth=1");
 
-static_assert(::nros::declared_depth("std_msgs/msg/Int32", "/chatter") == 1,
+static_assert(::rclcpp::declared_depth("std_msgs/msg/Int32", "/chatter") == 1,
               "the ROS spelling of the type is a key too -- a hand-written message class may "
               "carry it instead of the DDS-mangled one");
 
-static_assert(::nros::declared_depth(Bool::TYPE_NAME, "/undeclared") ==
-                  ::nros::DECLARED_DEPTH_UNDECLARED,
+static_assert(::rclcpp::declared_depth(Bool::TYPE_NAME, "/undeclared") ==
+                  ::rclcpp::DECLARED_DEPTH_UNDECLARED,
               "an endpoint that declared no depth is UNDECLARED, which is -1 and not 0. A 0 "
               "here would make every QoS(0)-free call site look like a mismatch, and would let "
               "a size consumer read a queue of zero as an answer");
 
-static_assert(::nros::DECLARED_DEPTH_UNDECLARED != 0,
+static_assert(::rclcpp::DECLARED_DEPTH_UNDECLARED != 0,
               "absence must never be spelled the same as a depth");
 
-static_assert(::nros::declared_depth(Int32::TYPE_NAME, "/a_topic_nobody_declared") ==
-                  ::nros::DECLARED_DEPTH_UNDECLARED,
+static_assert(::rclcpp::declared_depth(Int32::TYPE_NAME, "/a_topic_nobody_declared") ==
+                  ::rclcpp::DECLARED_DEPTH_UNDECLARED,
               "the table is keyed on the PAIR: a declared type on an undeclared topic is not a "
               "hit, or one @depth= would size every topic that type is carried on");
 
 // -- The QoS the 3-argument form fills in -----------------------------------
 
-static_assert(::nros::detail::qos_from_declared_depth(::nros::declared_depth(Int32::TYPE_NAME,
-                                                                             "/chatter"))
+static_assert(::rclcpp::detail::qos_from_declared_depth(::rclcpp::declared_depth(Int32::TYPE_NAME,
+                                                                                 "/chatter"))
                       .depth() == 1,
               "mode 2: the contract states the depth and NROS_SUBSCRIBE(M, m, topic) takes it");
 
-static_assert(::nros::detail::qos_from_declared_depth(::nros::declared_depth(Bool::TYPE_NAME,
-                                                                             "/undeclared"))
-                      .depth() == ::nros::QoS::default_profile().depth(),
+static_assert(::rclcpp::detail::qos_from_declared_depth(::rclcpp::declared_depth(Bool::TYPE_NAME,
+                                                                                 "/undeclared"))
+                      .depth() == ::rclcpp::QoS::default_profile().depth(),
               "and an undeclared endpoint keeps the historical default profile, so every call "
               "site that predates this step compiles and behaves unchanged");
 
@@ -96,34 +96,37 @@ static_assert(::nros::detail::qos_from_declared_depth(::nros::declared_depth(Boo
 // site that passes `reliable`) is case F3 of `just check declared-qos-header`,
 // which renders that contract through the real CLI rather than a fixture.
 
-static_assert(::nros::declared_reliability(Int32::TYPE_NAME, "/chatter") ==
-                  ::nros::DECLARED_POLICY_UNDECLARED,
+static_assert(::rclcpp::declared_reliability(Int32::TYPE_NAME, "/chatter") ==
+                  ::rclcpp::DECLARED_POLICY_UNDECLARED,
               "a row with a declared DEPTH has not declared a reliability; reading the row's "
               "existence as a declaration would make every QoS the code passes a mismatch");
-static_assert(::nros::declared_durability(Int32::TYPE_NAME, "/chatter") ==
-                  ::nros::DECLARED_POLICY_UNDECLARED,
+static_assert(::rclcpp::declared_durability(Int32::TYPE_NAME, "/chatter") ==
+                  ::rclcpp::DECLARED_POLICY_UNDECLARED,
               "and not a durability either");
-static_assert(::nros::declared_reliability(Bool::TYPE_NAME, "/undeclared") ==
-                  ::nros::DECLARED_POLICY_UNDECLARED,
+static_assert(::rclcpp::declared_reliability(Bool::TYPE_NAME, "/undeclared") ==
+                  ::rclcpp::DECLARED_POLICY_UNDECLARED,
               "no row at all is undeclared too");
 
 // The 3-argument form's QoS fills EVERY declared column in, and nothing else.
-static_assert(::nros::detail::qos_from_declared(2, static_cast<int>(::nros::BestEffort),
-                                                static_cast<int>(::nros::TransientLocal))
-                      .reliability() == ::nros::BestEffort,
+static_assert(::rclcpp::detail::qos_from_declared(
+                  2, static_cast<int>(::rclcpp::ReliabilityPolicy::BestEffort),
+                  static_cast<int>(::rclcpp::DurabilityPolicy::TransientLocal))
+                      .reliability() == ::rclcpp::ReliabilityPolicy::BestEffort,
               "a declared best_effort reaches the QoS NROS_SUBSCRIBE(M, m, topic) registers");
-static_assert(::nros::detail::qos_from_declared(2, static_cast<int>(::nros::BestEffort),
-                                                static_cast<int>(::nros::TransientLocal))
-                      .durability() == ::nros::TransientLocal,
+static_assert(::rclcpp::detail::qos_from_declared(
+                  2, static_cast<int>(::rclcpp::ReliabilityPolicy::BestEffort),
+                  static_cast<int>(::rclcpp::DurabilityPolicy::TransientLocal))
+                      .durability() == ::rclcpp::DurabilityPolicy::TransientLocal,
               "and so does a declared transient_local");
-static_assert(::nros::detail::qos_from_declared(2, static_cast<int>(::nros::BestEffort),
-                                                static_cast<int>(::nros::TransientLocal))
+static_assert(::rclcpp::detail::qos_from_declared(
+                  2, static_cast<int>(::rclcpp::ReliabilityPolicy::BestEffort),
+                  static_cast<int>(::rclcpp::DurabilityPolicy::TransientLocal))
                       .depth() == 2,
               "and the depth beside them");
-static_assert(::nros::detail::qos_from_declared(::nros::DECLARED_DEPTH_UNDECLARED,
-                                                ::nros::DECLARED_POLICY_UNDECLARED,
-                                                ::nros::DECLARED_POLICY_UNDECLARED) ==
-                  ::nros::QoS::default_profile(),
+static_assert(::rclcpp::detail::qos_from_declared(::rclcpp::DECLARED_DEPTH_UNDECLARED,
+                                                  ::rclcpp::DECLARED_POLICY_UNDECLARED,
+                                                  ::rclcpp::DECLARED_POLICY_UNDECLARED) ==
+                  ::rclcpp::QoS::default_profile(),
               "with nothing declared the 3-argument form is the historical default profile, "
               "field for field");
 
@@ -131,22 +134,22 @@ static_assert(::nros::detail::qos_from_declared(::nros::DECLARED_DEPTH_UNDECLARE
 
 class Listener : public ::rclcpp::Node {
   public:
-    explicit Listener(::nros::NodeHandle h) : ::rclcpp::Node(h, "listener") {
+    explicit Listener(::rclcpp::NodeHandle h) : ::rclcpp::Node(h, "listener") {
         // Mode 1: the code states the QoS and the declaration agrees.
-        NROS_SUBSCRIBE(Int32, on_int, "/chatter", ::nros::QoS(1));
+        NROS_SUBSCRIBE(Int32, on_int, "/chatter", ::rclcpp::QoS(1));
         // Mode 2: the code states no QoS, and the declared depth fills in.
         NROS_SUBSCRIBE(Int32, on_int, "/chatter");
         // Neither declared nor passed: not an error, not a default anybody
         // guessed -- the pre-existing QoS::default_profile().
         NROS_SUBSCRIBE(Bool, on_bool, "/undeclared");
         // Declared nowhere, QoS passed: nothing to disagree with.
-        NROS_SUBSCRIBE(Bool, on_bool, "/undeclared", ::nros::QoS(3));
+        NROS_SUBSCRIBE(Bool, on_bool, "/undeclared", ::rclcpp::QoS(3));
         // A constant expression that is not a literal is still a constant
         // expression, so mode 1 works through one.
-        NROS_SUBSCRIBE(Int32, on_int, kChatter, ::nros::QoS(1));
+        NROS_SUBSCRIBE(Int32, on_int, kChatter, ::rclcpp::QoS(1));
         // The escape hatch for a topic that is NOT a constant expression. It
         // takes the boot-time check instead; see create_subscription.
-        NROS_SUBSCRIBE_DYNAMIC(Int32, on_int, runtime_topic(), ::nros::QoS(1));
+        NROS_SUBSCRIBE_DYNAMIC(Int32, on_int, runtime_topic(), ::rclcpp::QoS(1));
     }
 
   private:

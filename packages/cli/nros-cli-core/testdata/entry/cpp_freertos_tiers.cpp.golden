@@ -25,9 +25,9 @@ static ::telem_pkg::TELEM __nros_comp_1;
 
 /* Phase 274.W2 — tier[0] (high) setup: creates only this tier's nodes. */
 static int32_t __nros_entry_setup_tier_0(void* executor) {
-    if (executor == nullptr) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
+    if (executor == nullptr) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
     {
-        ::nros::Result r = ::nros::create_node_on(__nros_node_0, executor, "ctrl", "/");
+        ::rclcpp::Result r = ::rclcpp::create_node_on(__nros_node_0, executor, "ctrl", "/");
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         r = __nros_comp_0.configure(__nros_node_0);
         if (!r.ok()) return static_cast<int32_t>(r.raw());
@@ -37,9 +37,9 @@ static int32_t __nros_entry_setup_tier_0(void* executor) {
 
 /* Phase 274.W2 — tier[1] (low) setup: creates only this tier's nodes. */
 static int32_t __nros_entry_setup_tier_1(void* executor) {
-    if (executor == nullptr) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
+    if (executor == nullptr) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
     {
-        ::nros::Result r = ::nros::create_node_on(__nros_node_1, executor, "telem", "/");
+        ::rclcpp::Result r = ::rclcpp::create_node_on(__nros_node_1, executor, "telem", "/");
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         r = __nros_comp_1.configure(__nros_node_1);
         if (!r.ok()) return static_cast<int32_t>(r.raw());
@@ -56,7 +56,7 @@ static int32_t __nros_entry_setup_tier_1(void* executor) {
  * that names groups must never render an empty one. */
 static const char* __nros_tier_0_groups[] = {"ctrl", "/", "ctrl_grp", };
 static const char* __nros_tier_1_groups[] = {"telem", "/", "telem_grp", };
-static const ::nros::board::NativeTierSpec __nros_tiers[2] = {
+static const ::rclcpp::board::NativeTierSpec __nros_tiers[2] = {
     {
         .name = "high",
         .groups = __nros_tier_0_groups,
@@ -130,7 +130,7 @@ static const nros_tier_task_memory_t __nros_tier_task_memory[2] = {
 };
 
 extern "C" int nros_app_main(int /*argc*/, char** /*argv*/) {
-    return ::nros::board::FreertosBoard::run_tiers(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_tiers, 2u, __nros_tier_executor_storage, sizeof(__nros_tier_executor_storage[0]), __nros_tier_task_memory);
+    return ::rclcpp::board::FreertosBoard::run_tiers(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_tiers, 2u, __nros_tier_executor_storage, sizeof(__nros_tier_executor_storage[0]), __nros_tier_task_memory);
 }
 
 NROS_APP_MAIN_REGISTER_VOID();

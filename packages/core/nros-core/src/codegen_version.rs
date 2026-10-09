@@ -35,7 +35,7 @@
 ///
 /// Gated by `check-codegen-version-surface`, which fails when the surface
 /// generated code names changes and this constant does not.
-pub const NROS_CODEGEN_VERSION: u32 = 9;
+pub const NROS_CODEGEN_VERSION: u32 = 10;
 
 /// The oldest codegen version this runtime still accepts.
 ///
@@ -158,11 +158,23 @@ pub const NROS_CODEGEN_VERSION: u32 = 9;
 /// the behaviour the tree already had, not a new mismatch the runtime
 /// introduces, so the floor stays where it is.
 ///
+/// RAISED to 10 when [`NROS_CODEGEN_VERSION`] moved to 10 (phase-483 W1), and
+/// this is the first move that needs it. The C++ user API left `nros::` for
+/// `rclcpp::`, and `nros::` was deleted rather than kept as an alias, so every
+/// name a version-9 C++ tree spells — `nros::FixedString<N>`,
+/// `nros::FixedSequence<T, N>`, `nros::HeapString`, `nros::HeapSequence<T>`,
+/// `nros::Span<T>` / `LeSpan<T>` / `StringView`, `nros::bind_subscription_sized`
+/// and `nros::detail::size_bound_dependent_false` — is WITHDRAWN. A version-9
+/// C++ tree does not compile against this runtime, so accepting it would
+/// replace the version mismatch this constant reports with a wall of
+/// unresolved-name errors. Rust and C trees are unaffected by the move, but the
+/// version is one number for all three, so they regenerate too.
+///
 /// The range `[NROS_CODEGEN_VERSION_MIN, NROS_CODEGEN_VERSION]` is expressed to
 /// C and C++ as a SET OF DEFINED SYMBOLS rather than as a comparison — see
 /// `nros-build-helpers`' codegen-version anchor — so there is no range check on
 /// that side that could itself be wrong.
-pub const NROS_CODEGEN_VERSION_MIN: u32 = 2;
+pub const NROS_CODEGEN_VERSION_MIN: u32 = 10;
 
 /// Does `emitted` fall in the range this runtime accepts?
 ///

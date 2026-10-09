@@ -7,7 +7,7 @@
 /**
  * @file fixed_sequence.hpp
  * @ingroup grp_support
- * @brief `nros::FixedSequence<T,N>` — fixed-capacity sequence container.
+ * @brief `rclcpp::FixedSequence<T,N>` — fixed-capacity sequence container.
  */
 
 #ifndef NROS_CPP_FIXED_SEQUENCE_HPP
@@ -16,7 +16,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace nros {
+namespace rclcpp {
 
 /// Fixed-capacity sequence container.
 ///
@@ -26,7 +26,7 @@ namespace nros {
 ///
 /// Usage:
 /// ```cpp
-/// nros::FixedSequence<int32_t, 64> values;
+/// rclcpp::FixedSequence<int32_t, 64> values;
 /// values.push_back(42);
 /// values.push_back(7);
 /// for (uint32_t i = 0; i < values.length(); ++i) {
@@ -64,6 +64,6 @@ template <typename T, size_t N> struct FixedSequence {
     const T* end() const { return data + size; }
 };
 
-} // namespace nros
+} // namespace rclcpp
 
 #endif // NROS_CPP_FIXED_SEQUENCE_HPP

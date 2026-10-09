@@ -1544,7 +1544,7 @@ size_t nros_rmw_cffi_registered_names(const char **buf, size_t cap);
  *  HOSTED (Rust + C/C++ on a hosted loader): the macro expands to an
  *  `.init_array` constructor (`__attribute__((constructor))`) that the
  *  loader fires before `main()` — hence before `nros_support_init` /
- *  `nros::init` — calling `REGISTER_FN`. The `--whole-archive` link
+ *  `rclcpp::init` — calling `REGISTER_FN`. The `--whole-archive` link
  *  keeps this object's `.init_array` slot. `nros_rmw_cffi_register_named`
  *  is idempotent (same-name overwrite), so re-registration is harmless.
  *  This consolidates the former `linkme` section walk onto the ctor

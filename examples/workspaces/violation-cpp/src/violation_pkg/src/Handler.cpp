@@ -37,7 +37,7 @@ void Handler::on_timer() {
     }
     if (tick_ == RUN_AT_TICK) {
         std::printf("[handler] RUN at tick %d: arming the monitors\n", tick_);
-        ::nros::arm_monitors();
+        ::rclcpp::arm_monitors();
     }
     if (tick_ == OVERRUN_AT_TICK) {
         std::printf("[handler] overrun at tick %d: 150 ms\n", tick_);
@@ -46,7 +46,7 @@ void Handler::on_timer() {
     std::printf("[handler] tick=%d\n", tick_);
 }
 
-Handler::Handler(::nros::NodeHandle h) : ::nros::NodeWithTimers<1>(h, "handler") {
+Handler::Handler(::rclcpp::NodeHandle h) : ::rclcpp::NodeWithTimers<1>(h, "handler") {
     ::setvbuf(stdout, nullptr, _IOLBF, 0);
     pub_ = create_publisher_in<std_msgs::msg::Int32>("/t4/state");
     create_wall_timer_in<Handler, &Handler::on_timer>(100);

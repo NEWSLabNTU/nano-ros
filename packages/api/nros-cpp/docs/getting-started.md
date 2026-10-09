@@ -76,7 +76,7 @@ static volatile sig_atomic_t g_running = 1;
 static void on_signal(int) { g_running = 0; }
 
 struct Ctx {
-    nros::Publisher<std_msgs::msg::Int32>* pub;
+    rclcpp::Publisher<std_msgs::msg::Int32>* pub;
     int count;
 };
 
@@ -90,24 +90,24 @@ static void on_tick(void* ctx_ptr) {
 }
 
 int main() {
-    NROS_TRY(nros::init("tcp/127.0.0.1:7447"));
+    NROS_TRY(rclcpp::init_in("tcp/127.0.0.1:7447"));
 
     rclcpp::Node node;
-    NROS_TRY(nros::create_node(node, "cpp_talker"));
+    NROS_TRY(rclcpp::create_node(node, "cpp_talker"));
 
-    nros::Publisher<std_msgs::msg::Int32> pub;
+    rclcpp::Publisher<std_msgs::msg::Int32> pub;
     NROS_TRY(node.create_publisher(pub, "/chatter"));
 
     Ctx ctx{ &pub, 0 };
-    nros::Timer timer;
+    rclcpp::Timer timer;
     NROS_TRY(node.create_wall_timer(timer, 1000, on_tick, &ctx));
 
     std::signal(SIGINT, on_signal);
-    while (g_running && nros::ok()) {
-        nros::spin_once(100);
+    while (g_running && rclcpp::ok()) {
+        rclcpp::spin_once(100);
     }
 
-    nros::shutdown();
+    rclcpp::shutdown_in();
     return 0;
 }
 ```
@@ -134,13 +134,13 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicas
 Replace the publisher loop with a subscription:
 
 ```cpp
-nros::Subscription<std_msgs::msg::Int32> sub;
-NROS_TRY(node.create_subscription(sub, "/chatter", nros::QoS(10),
+rclcpp::Subscription<std_msgs::msg::Int32> sub;
+NROS_TRY(node.create_subscription(sub, "/chatter", rclcpp::QoS(10),
     [](const std_msgs::msg::Int32& msg) {
         std::printf("Received: %d\n", msg.data);
     }));
 
-while (nros::ok()) nros::spin_once(100);
+while (rclcpp::ok()) rclcpp::spin_once(100);
 ```
 
 ## Zephyr Integration
@@ -177,8 +177,8 @@ For host platforms where the STL is available:
 
 using namespace std::chrono_literals;
 
-nros::create_node(node, std::string("cpp_talker"));
-node.create_subscription(sub, "/chatter", nros::QoS(10),
+rclcpp::create_node(node, std::string("cpp_talker"));
+node.create_subscription(sub, "/chatter", rclcpp::QoS(10),
     std::function<void(const std_msgs::msg::Int32&)>{...});
 node.create_wall_timer(timer, 100ms, ...);
 ```

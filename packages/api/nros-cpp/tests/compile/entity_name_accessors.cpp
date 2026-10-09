@@ -106,23 +106,23 @@ ServiceServiceNameFn service_service_name = &::rclcpp::Service<StubService>::get
 
 // phase-456 W5 — the service server became TWO classes, so the family gained a
 // ninth member and this list is where that has to show. `rclcpp::Service<S>`
-// above is the DISPATCH half (the arena owns the server); `nros::PollService<S>`
+// above is the DISPATCH half (the arena owns the server); `rclcpp::PollService<S>`
 // is the POLL half (the caller owns it). Each keeps its own `service_name_`,
 // because the copy is made at create from the caller's argument and no FFI
 // reads a name back out of either owner — so "one of them answers" would be a
 // silent per-class drift of exactly the kind this probe exists to catch.
-using PollServiceServiceNameFn = const char* (::nros::PollService<StubService>::*)() const;
+using PollServiceServiceNameFn = const char* (::rclcpp::PollService<StubService>::*)() const;
 PollServiceServiceNameFn poll_service_service_name =
-    &::nros::PollService<StubService>::get_service_name;
+    &::rclcpp::PollService<StubService>::get_service_name;
 
 // phase-456 W9 — and the CLIENT became two classes for the same reason, so the
 // family has a tenth member. `rclcpp::Client<S>` above is the DISPATCH half;
-// `nros::PollClient<S>` is the FUTURE-style half the caller owns. Same argument
+// `rclcpp::PollClient<S>` is the FUTURE-style half the caller owns. Same argument
 // as the service pair: each keeps its own `service_name_`, so a per-class drift
 // is exactly what this list exists to catch.
-using PollClientServiceNameFn = const char* (::nros::PollClient<StubService>::*)() const;
+using PollClientServiceNameFn = const char* (::rclcpp::PollClient<StubService>::*)() const;
 PollClientServiceNameFn poll_client_service_name =
-    &::nros::PollClient<StubService>::get_service_name;
+    &::rclcpp::PollClient<StubService>::get_service_name;
 
 using ActionServerNameFn = const char* (::rclcpp_action::Server<StubAction>::*)() const;
 ActionServerNameFn action_server_name = &::rclcpp_action::Server<StubAction>::get_action_name;
@@ -130,11 +130,13 @@ ActionServerNameFn action_server_name = &::rclcpp_action::Server<StubAction>::ge
 using ActionClientNameFn = const char* (::rclcpp_action::Client<StubAction>::*)() const;
 ActionClientNameFn action_client_name = &::rclcpp_action::Client<StubAction>::get_action_name;
 
-using PollingServerNameFn = const char* (::nros::PollingActionServer<StubAction>::*)() const;
-PollingServerNameFn polling_server_name = &::nros::PollingActionServer<StubAction>::get_action_name;
+using PollingServerNameFn = const char* (::rclcpp::PollingActionServer<StubAction>::*)() const;
+PollingServerNameFn polling_server_name =
+    &::rclcpp::PollingActionServer<StubAction>::get_action_name;
 
-using PollingClientNameFn = const char* (::nros::PollingActionClient<StubAction>::*)() const;
-PollingClientNameFn polling_client_name = &::nros::PollingActionClient<StubAction>::get_action_name;
+using PollingClientNameFn = const char* (::rclcpp::PollingActionClient<StubAction>::*)() const;
+PollingClientNameFn polling_client_name =
+    &::rclcpp::PollingActionClient<StubAction>::get_action_name;
 
 // ── The MATCHED-COUNT pair, phase-444 ──────────────────────────────────────
 //
@@ -148,12 +150,12 @@ PollingClientNameFn polling_client_name = &::nros::PollingActionClient<StubActio
 // `const`, because upstream's is (`rclcpp::PublisherBase::
 // get_subscription_count() const`) and a ported file often holds a const ref.
 
-using PubCountFn = ::nros::Result (::rclcpp::Publisher<Payload>::*)(::nros::Executor&,
-                                                                    size_t*) const;
+using PubCountFn = ::rclcpp::Result (::rclcpp::Publisher<Payload>::*)(::rclcpp::Executor&,
+                                                                      size_t*) const;
 PubCountFn publisher_subscription_count = &::rclcpp::Publisher<Payload>::get_subscription_count;
 
-using SubCountFn = ::nros::Result (::rclcpp::Subscription<Payload>::*)(::nros::Executor&,
-                                                                       size_t*) const;
+using SubCountFn = ::rclcpp::Result (::rclcpp::Subscription<Payload>::*)(::rclcpp::Executor&,
+                                                                         size_t*) const;
 SubCountFn subscription_publisher_count = &::rclcpp::Subscription<Payload>::get_publisher_count;
 
 // ── The contract every one of them keeps ───────────────────────────────────
@@ -171,9 +173,9 @@ inline bool uninitialised_entities_answer_empty_never_null() {
     ::rclcpp::Publisher<Payload> publisher;
     ::rclcpp::Subscription<Payload> subscription;
     ::rclcpp::Client<StubService> client;
-    ::nros::PollClient<StubService> poll_client;
+    ::rclcpp::PollClient<StubService> poll_client;
     ::rclcpp::Service<StubService> service;
-    ::nros::PollService<StubService> poll_service;
+    ::rclcpp::PollService<StubService> poll_service;
 
     const char* names[] = {
         publisher.get_topic_name(), subscription.get_topic_name(),

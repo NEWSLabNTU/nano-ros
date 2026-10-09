@@ -44,13 +44,13 @@ int nros_app_main(int argc, char** argv) {
 
     // Launch-aware init. Env overlay is the active source today
     // (`$NROS_LOCATOR` / `$ROS_DOMAIN_ID`).
-    NROS_TRY_RET(nros::init_with_launch_auto(argc, argv), 1);
+    NROS_TRY_RET(rclcpp::init_with_launch_auto(argc, argv), 1);
 
     rclcpp::Node node;
-    NROS_TRY_RET(nros::create_node(node, "add_two_ints_server"), 1);
+    NROS_TRY_RET(rclcpp::create_node(node, "add_two_ints_server"), 1);
     printf("Node created: %s\n", node.get_name());
 
-    nros::PollService<example_interfaces::srv::AddTwoInts> srv;
+    rclcpp::PollService<example_interfaces::srv::AddTwoInts> srv;
     NROS_TRY_RET(node.create_service(srv, "/add_two_ints"), 1);
     rclcpp::Result ret;
 
@@ -64,7 +64,7 @@ int nros_app_main(int argc, char** argv) {
 
     // Spin + poll loop
     while (g_running && rclcpp::ok()) {
-        nros::spin_once(100);
+        rclcpp::spin_once(100);
 
         example_interfaces::srv::AddTwoInts::Request req;
         int64_t seq_id = 0;

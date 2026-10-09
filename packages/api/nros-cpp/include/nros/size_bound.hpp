@@ -1,6 +1,6 @@
 // nros-cpp: ask a message type how big it can get (freestanding C++14)
 //
-// phase-408 W1/W4, issue 0896 — one spelling, `nros::rx_size_bound<M>::value`,
+// phase-408 W1/W4, issue 0896 — one spelling, `rclcpp::rx_size_bound<M>::value`,
 // for "how many bytes must a receive buffer for M hold". Every C++ subscribe
 // path fills `rx_buffer_hint` from it, so the number reaching the executor
 // arena and the zenoh payload class is the type's OWN derived bound and not a
@@ -9,7 +9,7 @@
 // while the message type was in scope. It is true now, and
 // `check-cpp-subscription-bound-supplied` keeps it true.)
 //
-// issue 0964 — a SECOND spelling, `nros::rx_buffer_capacity<M>::value`, for the
+// issue 0964 — a SECOND spelling, `rclcpp::rx_buffer_capacity<M>::value`, for the
 // ~13 places inside these headers that stack an actual `uint8_t buf[N]` on the
 // stack and receive into it. It answers the same question wherever a derived
 // bound exists, and falls back to the legacy `SERIALIZED_SIZE_MAX` ESTIMATE
@@ -21,10 +21,10 @@
 /**
  * @file size_bound.hpp
  * @ingroup grp_support
- * @brief `nros::rx_size_bound<M>` / `nros::tx_size_bound<M>` — a message
+ * @brief `rclcpp::rx_size_bound<M>` / `rclcpp::tx_size_bound<M>` — a message
  *        type's derived serialized-size bound, or a compile error saying why
- *        it has none; `nros::rx_buffer_capacity<M>` /
- *        `nros::tx_buffer_capacity<M>` — the same number where it exists, the
+ *        it has none; `rclcpp::rx_buffer_capacity<M>` /
+ *        `rclcpp::tx_buffer_capacity<M>` — the same number where it exists, the
  *        legacy estimate where it does not.
  */
 
@@ -33,7 +33,7 @@
 
 #include <cstddef>
 
-namespace nros {
+namespace rclcpp {
 namespace detail {
 
 /// A `false` that DEPENDS on a template parameter.
@@ -101,7 +101,7 @@ template <class M> constexpr bound_shape shape_of() {
 }
 
 /// STRICT: the DERIVED bound, or a compile error naming the member that costs
-/// this type its bound. Backs `nros::tx_size_bound` / `nros::rx_size_bound`.
+/// this type its bound. Backs `rclcpp::tx_size_bound` / `rclcpp::rx_size_bound`.
 template <class M, bound_shape = shape_of<M>()> struct strict_bounds;
 
 template <class M> struct strict_bounds<M, bound_shape::legacy> {
@@ -234,6 +234,6 @@ template <class M> struct rx_buffer_capacity {
 /// `M` sitting in scope, and they were indistinguishable from this one.
 constexpr size_t rx_bound_unknown = 0;
 
-} // namespace nros
+} // namespace rclcpp
 
 #endif // NROS_CPP_SIZE_BOUND_HPP

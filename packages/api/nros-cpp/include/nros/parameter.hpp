@@ -4,12 +4,12 @@
 /**
  * @file parameter.hpp
  * @ingroup grp_parameter
- * @brief `nros::Seq<T, N>` - the fixed-capacity, inline sequence VALUE a
+ * @brief `rclcpp::Seq<T, N>` - the fixed-capacity, inline sequence VALUE a
  *        freestanding node declares an array parameter with.
  *
  * ## What this file used to be, and why it is not that any more (phase-426 W4)
  *
- * Until now this header also defined `nros::ParameterServer<Capacity,
+ * Until now this header also defined `rclcpp::ParameterServer<Capacity,
  * SeqSlots, SeqPoolBytes>`: a second parameter STORE, inline on the caller,
  * over the caller-storage C `nros_parameter_server_t`. The first half of W4
  * deleted the two node-owned stores (`rclcpp::Node`'s inline member and
@@ -70,7 +70,7 @@
 #include <vector>
 #endif
 
-namespace nros {
+namespace rclcpp {
 
 /// Fixed-capacity, inline sequence value — the `no_std` stand-in for
 /// `std::vector<T>` at the parameter API surface.
@@ -168,6 +168,6 @@ template <typename T, ::size_t N> class Seq {
     bool overflow_ = false;
 };
 
-} // namespace nros
+} // namespace rclcpp
 
 #endif // NROS_CPP_PARAMETER_HPP

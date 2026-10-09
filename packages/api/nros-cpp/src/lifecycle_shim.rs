@@ -95,7 +95,7 @@ pub unsafe extern "C" fn nros_cpp_lifecycle_change_state(
 /// Get the current REP-2002 lifecycle state of the C++ executor's state machine.
 ///
 /// Returns `0` if the executor is null or lifecycle services are not registered
-/// yet — that is the `Unknown` sentinel (`nros::LifecycleState::Unknown`), NOT
+/// yet — that is the `Unknown` sentinel (`rclcpp_lifecycle::LifecycleState::Unknown`), NOT
 /// `Unconfigured`. State numbering is `lifecycle_msgs/msg/State`'s:
 /// `Unconfigured = 1`, `Inactive = 2`, `Active = 3`, `Finalized = 4`, plus
 /// `ErrorProcessing = 5` (upstream numbers that one 15; see

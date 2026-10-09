@@ -95,13 +95,13 @@ that event.
 ### C++
 
 ```cpp
-sub.on_liveliness_changed([&](nros::LivelinessChangedStatus status) {
+sub.on_liveliness_changed([&](rclcpp::LivelinessChangedStatus status) {
     if (status.alive_count == 0) trigger_failover();
 });
 
 sub.on_requested_deadline_missed(
     std::chrono::milliseconds(15),
-    [&](nros::DeadlineMissedStatus status) {
+    [&](rclcpp::DeadlineMissedStatus status) {
         late_count_ += status.total_count_change;
     });
 ```

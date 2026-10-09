@@ -1,6 +1,6 @@
 /*
  * NEGATIVE probe — `wait_for_service()` with no budget on
- * `nros::ClientHandle<S>`, which is what `rclcpp::Client<S>::SharedPtr` names.
+ * `rclcpp::ClientHandle<S>`, which is what `rclcpp::Client<S>::SharedPtr` names.
  *
  * The third site of ONE refusal concept (see
  * `ros2_refuse_unbounded_wait_dispatch_probe.cpp` for why each site is its own
@@ -35,7 +35,7 @@ struct FakeService {
 
 int ros2_refuse_unbounded_wait_handle_probe();
 int ros2_refuse_unbounded_wait_handle_probe() {
-    nros::ClientHandle<FakeService> cli = nullptr;
+    rclcpp::ClientHandle<FakeService> cli = nullptr;
     (void)cli.wait_for_service();
     return 0;
 }

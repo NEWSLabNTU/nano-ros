@@ -2810,7 +2810,7 @@ pub fn build_native_workspace_c_qos_listener_entry() -> TestResult<&'static Path
 
 /// phase-263 B4 (QoS, C++) — the per-entity QoS-override TALKER single-node entry (cached).
 /// A C++ talker publishes `std_msgs/Int32` on /chatter with a NON-DEFAULT QoS profile (reliable +
-/// transient-local + keep-last-10) built via the `nros::QoS` builder. Cross-process (issue 0096);
+/// transient-local + keep-last-10) built via the `rclcpp::QoS` builder. Cross-process (issue 0096);
 /// consumed by tests/workspace_features_e2e.rs.
 pub fn build_native_workspace_cpp_qos_talker_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_CPP_QOS_TALKER_ENTRY_BINARY
@@ -3476,7 +3476,7 @@ pub fn build_freertos_workspace_cpp_realtime_entry() -> TestResult<&'static Path
 
 /// phase-427 W12 (issue 1247) — the FREESTANDING `SHAPE rclcpp` entry
 /// (`realtime-cpp-subnode-portable`): ONE `subnode_pkg::SubNode`, which IS-A
-/// `nros::NodeWithTimers<2>` IS-A `rclcpp::Node`, with two callback groups on
+/// `rclcpp::NodeWithTimers<2>` IS-A `rclcpp::Node`, with two callback groups on
 /// two tiers, cross-linked for `thumbv7m-none-eabi`.
 ///
 /// Its groups span tiers, so the plan's `ExecutorShape` is `SchedContexts` and

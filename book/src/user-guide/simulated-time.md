@@ -28,7 +28,7 @@ used to mean the wall timer here; it does not any more, and there is no alias.
 A node's clock is ROS time, as in rclcpp:
 
 ```cpp
-nros::Time now = node.get_clock()->now();
+rclcpp::Time now = node.get_clock()->now();
 ```
 
 With no `/clock` source installed, a ROS-time clock reads system time. That is
@@ -92,7 +92,7 @@ the next sample, not a replay of the simulation's history.
 ### C++
 
 ```cpp
-nros::Timer t;
+rclcpp::Timer t;
 NROS_TRY(node.create_timer(t, *node.get_clock(), 100, on_tick));
 ```
 

@@ -14,14 +14,14 @@ namespace emergency_stop_pkg {
 /// on the tier the rate-monotonic derivation assigns from the contract's
 /// 30 Hz timer path. No tier, priority or period is written anywhere but the
 /// timer call below and the contract beside the launch file.
-class MrmEmergencyStopOperator : public ::nros::NodeWithTimers<1> {
+class MrmEmergencyStopOperator : public ::rclcpp::NodeWithTimers<1> {
     ::rclcpp::Publisher<std_msgs::msg::Int32> pub_;
     int count_ = 0;
 
     void on_timer();
 
   public:
-    explicit MrmEmergencyStopOperator(::nros::NodeHandle h);
+    explicit MrmEmergencyStopOperator(::rclcpp::NodeHandle h);
 };
 
 } // namespace emergency_stop_pkg

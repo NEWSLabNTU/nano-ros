@@ -21,7 +21,7 @@ static ::talker_pkg::TALKER __nros_comp_0;
 
 static int32_t __nros_entry_setup() {
     {
-        ::nros::Result r = ::nros::create_node(__nros_node_0, "talker", "/");
+        ::rclcpp::Result r = ::rclcpp::create_node(__nros_node_0, "talker", "/");
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         r = __nros_comp_0.configure(__nros_node_0);
         if (!r.ok()) return static_cast<int32_t>(r.raw());
@@ -29,8 +29,8 @@ static int32_t __nros_entry_setup() {
     /* Phase 269 (W1) — param-services: register the runtime get/set surface
      * (seeding: emit_declare_params, pre-construction — issue 0745). */
     {
-        void* __exec = ::nros::global_handle();
-        if (__exec == nullptr) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
+        void* __exec = ::rclcpp::global_handle();
+        if (__exec == nullptr) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
         /* Non-fatal (issue 0745): on RMWs without service-server support
          * registration fails — the seeded store already carries the launch
          * initials, so boot proceeds without the get/set RPC. */
@@ -38,8 +38,8 @@ static int32_t __nros_entry_setup() {
     }
     /* Phase 269 (W2) — lifecycle-services: register + autostart. */
     {
-        void* __exec = ::nros::global_handle();
-        if (__exec == nullptr) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
+        void* __exec = ::rclcpp::global_handle();
+        if (__exec == nullptr) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
         nros_cpp_lifecycle_autostart(__exec, 2u);
     }
     return 0;
@@ -62,5 +62,5 @@ __attribute__((section(".nros_boot_config"), used))
 };
 
 int main(int /*argc*/, char** /*argv*/) {
-    return ::nros::board::LinuxBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup);
+    return ::rclcpp::board::LinuxBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup);
 }

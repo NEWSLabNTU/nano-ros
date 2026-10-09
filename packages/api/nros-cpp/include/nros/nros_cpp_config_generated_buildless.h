@@ -98,8 +98,8 @@
  *
  * EXACT values, not upper bounds — a version range has no bound to be safe on.
  * Gated by `check-config-fallback-macros`. */
-#define NROS_CODEGEN_VERSION 9
-#define NROS_CODEGEN_VERSION_MIN 2
+#define NROS_CODEGEN_VERSION 10
+#define NROS_CODEGEN_VERSION_MIN 10
 
 /* Issue 0464 — the generator computes
  *   NROS_CPP_EXECUTOR_STORAGE_SIZE = NROS_EXECUTOR_SIZE + CPP_CONTEXT_OVERHEAD

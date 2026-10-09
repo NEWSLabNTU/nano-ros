@@ -266,7 +266,7 @@ surface for embedded use. There is ONE store, and it is in Rust: the
 node when an image composes several); Rust through `Executor::declare_parameter`
 and `NodeCtx::parameter`.
 
-> **If you have older nano-ros code:** `nros::ParameterServer<Cap>` is gone
+> **If you have older nano-ros code:** `rclcpp::ParameterServer<Cap>` is gone
 > (phase-426 W4), and so is the caller-storage store it wrapped as a thing to
 > reach for. Both were node-LOCAL: the parameter services read a different
 > object, so `ros2 param list` never saw what you declared. The C
@@ -305,7 +305,7 @@ and `NodeCtx::parameter`.
 |---|---|---|
 | Container | `std::map<string, ParameterValue>` per node (heap) | one fixed table on the executor, keyed by `(node, name)` |
 | String value | `std::string` (heap) | fixed slot, copy semantics |
-| Array params | `std::vector<T>` (heap) | `nros::Seq<T, N>` in, elements copied into the store's own slot — nothing for the caller to keep alive |
+| Array params | `std::vector<T>` (heap) | `rclcpp::Seq<T, N>` in, elements copied into the store's own slot — nothing for the caller to keep alive |
 | Total fixed cost | unbounded | `NROS_MAX_PARAMETERS` slots, known at build time, shared by every node |
 
 **Class shape difference**
@@ -328,8 +328,8 @@ node.get_parameter<double>("ctrl_period", v);
 
 // an array parameter, with no heap: `Seq<T, N>` is the value, the store
 // owns the elements
-nros::Seq<double, 8> w = node.declare_parameter("mpc_weights",
-                                                nros::Seq<double, 8>{1.0, 2.0});
+rclcpp::Seq<double, 8> w = node.declare_parameter("mpc_weights",
+                                                rclcpp::Seq<double, 8>{1.0, 2.0});
 ```
 
 **Why the executor owns it.** Templating `Node` on a capacity would propagate
@@ -358,7 +358,7 @@ subscriber.
 
 If you are coming from `rclcpp`:
 
-- Open an [`Executor`](../api/cpp/classnros_1_1Executor.html), then
+- Open an [`Executor`](../api/cpp/classrclcpp_1_1Executor.html), then
   create the node from it.
 - Decide poll vs. callback per subscription, not globally.
 - If the platform has `std`, `nros::init()` looks identical; if it is

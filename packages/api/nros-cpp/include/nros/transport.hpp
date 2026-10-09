@@ -4,7 +4,7 @@
 /**
  * @file transport.hpp
  * @ingroup grp_transport
- * @brief `nros::TransportOps` — register a custom transport at runtime.
+ * @brief `rclcpp::TransportOps` — register a custom transport at runtime.
  */
 
 #ifndef NROS_CPP_TRANSPORT_HPP
@@ -23,7 +23,7 @@
 // code should use `nros_cpp_ret_t` directly.
 using nros_cpp_transport_ret_t = nros_cpp_ret_t;
 
-namespace nros {
+namespace rclcpp {
 
 /// Phase 115.D — wraps the four C function pointers into a typed
 /// builder-style struct that mirrors `rmw_uros_set_custom_transport`'s
@@ -31,7 +31,7 @@ namespace nros {
 ///
 /// Usage:
 /// ```cpp
-/// nros::TransportOps ops;
+/// rclcpp::TransportOps ops;
 /// ops.user_data = &my_uart;
 /// ops.open  = [](void* ctx, const void*) -> int {
 ///     reinterpret_cast<MyUart*>(ctx)->open(); return 0;
@@ -43,7 +43,7 @@ namespace nros {
 /// ops.read  = [](void* ctx, uint8_t* buf, size_t len, uint32_t to) -> int32_t {
 ///     return reinterpret_cast<MyUart*>(ctx)->read(buf, len, to);
 /// };
-/// nros::set_custom_transport(ops);
+/// rclcpp::set_custom_transport(ops);
 /// ```
 ///
 /// Lambdas with captures are NOT allowed — the four fields are raw C
@@ -57,7 +57,7 @@ struct TransportOps {
 };
 
 /// Phase 115.D — register a custom transport. Must be called before
-/// the first `nros::Executor::open()`. Subsequent calls overwrite
+/// the first `rclcpp::Executor::open()`. Subsequent calls overwrite
 /// the slot.
 ///
 /// Returns `Result(0)` on success, `Result(NROS_CPP_RET_INVALID_ARGUMENT)`
@@ -88,6 +88,6 @@ inline bool has_custom_transport() {
     return nros_cpp_has_custom_transport() == 1;
 }
 
-} // namespace nros
+} // namespace rclcpp
 
 #endif // NROS_CPP_TRANSPORT_HPP

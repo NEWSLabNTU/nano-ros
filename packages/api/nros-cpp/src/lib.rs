@@ -220,7 +220,7 @@ pub type nros_cpp_ret_t = c_int;
 
 // Issue #229 — ONE return-code numbering across all three spaces: these
 // constants are value-identical to nros-c's `NROS_RET_*` (and to C++
-// `nros::ErrorCode`); `Result(any C code)` is correct by identity. The
+// `rclcpp::ErrorCode`); `Result(any C code)` is correct by identity. The
 // static_assert pin tables in nros-cpp's result.hpp / parameter.hpp fail
 // the build on any re-divergence. (Pre-#229 this space numbered -4..-8
 // differently from nros_ret_t — a raw -5 read as "Full" when the C side
@@ -268,7 +268,7 @@ pub const NROS_CPP_RET_TRANSPORT_ERROR: nros_cpp_ret_t = -100;
 /// system's contract DECLARES for that topic. issue 1256 — and the same code
 /// when its RELIABILITY or DURABILITY does; the log line names which.
 ///
-/// The same number `nros::detail::DECLARED_DEPTH_MISMATCH` carries in
+/// The same number `rclcpp::detail::DECLARED_DEPTH_MISMATCH` carries in
 /// `nros/node.hpp`, which is the C++ BOOT-time half of the same check, and for
 /// the reason recorded there: this is not a backend failure, it is the image
 /// contradicting its own manifest, and a code that also means "the RMW said no"
@@ -316,7 +316,7 @@ const fn u64s_for<T>() -> usize {
 // layout-mirror equality asserts.
 
 // Phase 87.6: `CPP_GUARD_HANDLE_OPAQUE_U64S` removed — the C++
-// `nros::GuardCondition` class sizes its `storage_` from
+// `rclcpp::GuardCondition` class sizes its `storage_` from
 // `NROS_GUARD_CONDITION_SIZE` (`size_of::<GuardCondition>()`
 // probed from the nros rlib).
 
@@ -334,7 +334,7 @@ const fn u64s_for<T>() -> usize {
 // `SYSTEM_DEFAULT` ("nobody stated this policy, so the middleware chose").
 // Appended, never renumbered.
 //
-// Values are IDENTICAL to `nros::ReliabilityPolicy` and its three siblings in
+// Values are IDENTICAL to `rclcpp::ReliabilityPolicy` and its three siblings in
 // `<nros/qos.hpp>`, which is what lets `detail::qos_to_ffi` /
 // `detail::qos_from_ffi` `static_cast` between them. That is a deliberate
 // value-for-value mirror between two C++-side vocabularies — NOT the RMW
@@ -856,7 +856,7 @@ pub unsafe extern "C" fn nros_cpp_init(
 ///
 /// Additive rather than a sixth parameter on `nros_cpp_init`: that symbol is
 /// called by every generated C++ entry and by user code, and widening it is an
-/// ABI break for all of them. `<nros/node.hpp>`'s `nros::init` reaches this
+/// ABI break for all of them. `<nros/node.hpp>`'s `rclcpp::init` reaches this
 /// through the `NROS_ENTRY_RMW` bake macro.
 ///
 /// # Safety
@@ -1024,7 +1024,7 @@ pub unsafe extern "C" fn nros_cpp_init_rmw(
         // specific `NROS_CPP_RET_*` code instead of collapsing every
         // backend failure to TRANSPORT_ERROR. Mirrors the C-side
         // `transport_error_to_ret` mapping from Phase 155.B so the
-        // next `nros::init -> -X` log line in the FreeRTOS / RV64
+        // next `rclcpp::init -> -X` log line in the FreeRTOS / RV64
         // C++ tests identifies which precondition the backend
         // rejected.
         Err(e) => {
@@ -1347,7 +1347,7 @@ pub(crate) fn node_error_to_cpp_ret(err: nros_node::NodeError) -> nros_cpp_ret_t
         E::InvalidSchedContextBinding => NROS_CPP_RET_INVALID_ARGUMENT,
         E::NodeTableFull | E::ExecutorFull | E::ShutdownCallbacksFull => NROS_CPP_RET_FULL,
         E::BackendMismatch => NROS_CPP_RET_UNSUPPORTED,
-        // phase-454 W10 — its OWN code, for the reason `nros::detail::
+        // phase-454 W10 — its OWN code, for the reason `rclcpp::detail::
         // DECLARED_DEPTH_MISMATCH` gives in `nros/node.hpp`: this is not a
         // backend failure, it is the image contradicting its own manifest, and
         // a code that also means "the RMW said no" would send the reader to the
@@ -1508,7 +1508,7 @@ pub struct NrosCppSessionSpec {
 /// phase-432 W3.1 (option A) — the one answer to "is the global session up".
 ///
 /// It used to be `Node::GlobalStorageHolder<>::initialized`, a C++ template
-/// static emitted by `node.hpp`: `nros::init` set it true, `nros::shutdown` set
+/// static emitted by `node.hpp`: `rclcpp::init` set it true, `rclcpp::shutdown` set
 /// it false, `nros::ok()` read it. That made the flag unreachable from C, which
 /// is what blocked a pure-C `run_components` — its spin loop's EXIT CONDITION
 /// is `ok()`, and C had no way to ask.
@@ -1654,7 +1654,7 @@ pub unsafe extern "C" fn nros_cpp_fini(storage: *mut c_void) -> nros_cpp_ret_t {
 /// `session_name` sets the primary session / node name visible via `ros2 node list`
 /// (the #98 fix for C entries). NULL or empty → falls back to `"node"` (the
 /// unified compiled default — same as the Rust `nros::main!` resolver compiled
-/// default and the C++ 2-arg `nros::init` default after this phase).
+/// default and the C++ 2-arg `rclcpp::init` default after this phase).
 ///
 /// The generated typed C entry (`nros codegen entry --lang c --typed`) calls this
 /// from `main`, passing `nros_boot_config_node_name(&NROS_BOOT_CONFIG)` which
@@ -1971,9 +1971,9 @@ fn census_write(_session: &core::ffi::CStr, out_path: &str) -> i32 {
 }
 
 /// Issue 1419 -- the census switch, for the HOSTED runner that is not this
-/// file's: `nros::board::LinuxBoard::run_components` in `<nros/main.hpp>`.
+/// file's: `rclcpp::board::LinuxBoard::run_components` in `<nros/main.hpp>`.
 ///
-/// That runner is header-only C++ (`nros::init` into the C++ global context,
+/// That runner is header-only C++ (`rclcpp::init` into the C++ global context,
 /// `setup()`, `component_spin_loop()`), and it is what every generated typed
 /// SINGLE-executor C++ native entry calls. It never reached
 /// [`nros_board_native_run_components_named_ns`], so `$NROS_CENSUS_OUT` was
@@ -1984,7 +1984,7 @@ fn census_write(_session: &core::ffi::CStr, out_path: &str) -> i32 {
 /// half of the switch, and they reuse the funnel's own three functions rather
 /// than spell a second census path.
 ///
-/// Call BEFORE `nros::init`: a non-zero return means a census was asked for,
+/// Call BEFORE `rclcpp::init`: a non-zero return means a census was asked for,
 /// and the recording backend has already been selected by name (the session
 /// the init then opens is the recorder's, so no router is needed). Zero means
 /// a normal boot, and nothing was changed.
@@ -2003,7 +2003,7 @@ pub extern "C" fn nros_cpp_census_begin() -> i32 {
 /// [`nros_cpp_census_begin`]; the caller then shuts down and exits with the
 /// returned code (0 when the census was written).
 ///
-/// `session_name` is the name the runner passed to `nros::init` (NULL or empty
+/// `session_name` is the name the runner passed to `rclcpp::init` (NULL or empty
 /// is the unified default `"node"`), the same identity
 /// [`nros_board_native_run_components_named_ns`] stamps its census with.
 ///
@@ -2030,12 +2030,12 @@ pub unsafe extern "C" fn nros_cpp_census_finish(session_name: *const c_char) -> 
 }
 
 /// Issue 1732 — install the hosted termination guard for a C++ runner whose
-/// loop lives in a header (`nros::board::LinuxBoard::run_components` in
+/// loop lives in a header (`rclcpp::board::LinuxBoard::run_components` in
 /// `<nros/main.hpp>`). The Rust runners in this file call
 /// `nros_platform::termination` directly; this is the same call, under a C
 /// name a header can reach — not a second guard.
 ///
-/// Call BEFORE `nros::init`, so a signal that arrives during `setup` is not
+/// Call BEFORE `rclcpp::init`, so a signal that arrives during `setup` is not
 /// lost. Returns how many of SIGTERM / SIGINT now carry the guard (0 where the
 /// application already handles both, or off POSIX). Idempotent.
 #[unsafe(no_mangle)]
@@ -2045,7 +2045,7 @@ pub extern "C" fn nros_cpp_termination_guard_install() -> i32 {
 
 /// Issue 1732 — `true` once a guarded SIGTERM / SIGINT has arrived. `nros::ok()`
 /// folds it in, which is `rclcpp::ok()`'s contract: a signal makes the spin
-/// loops return, and the runner's `nros::shutdown()` then closes the session.
+/// loops return, and the runner's `rclcpp::shutdown()` then closes the session.
 /// Always `false` where no guard was installed.
 #[unsafe(no_mangle)]
 pub extern "C" fn nros_cpp_termination_requested() -> bool {
@@ -2054,11 +2054,11 @@ pub extern "C" fn nros_cpp_termination_requested() -> bool {
 
 // ---------------------------------------------------------------------------
 // Issue 1556 (c) -- the census switch for a C++ APPLICATION that owns its own
-// `main` and its own loop (`nros_app_main` + `nros::init*` + `nros::spin_once`
+// `main` and its own loop (`nros_app_main` + `rclcpp::init*` + `rclcpp::spin_once`
 // / `wait_for_service` / `call`), the C++ sibling of `nros-c`'s `census.rs`.
 //
 // The two runners above answer `$NROS_CENSUS_OUT` where the BOARD owns the
-// boot: they select the recorder before `nros::init`, run `setup`, and write
+// boot: they select the recorder before `rclcpp::init`, run `setup`, and write
 // instead of spinning. A standalone application has no such runner, so the
 // switch rides the two calls every such program makes, in the order it makes
 // them -- the C half's shape, on this crate's own funnel:
@@ -2097,7 +2097,7 @@ static APPLICATION_CENSUS: nros_rmw::sync::Mutex<Option<alloc::ffi::CString>> =
 ///
 /// `Ok(())` means "carry on": no census was asked for, a runner owns it, or the
 /// recorder is now selected and the first blocking call will write it. An image
-/// without the recorder REFUSES (non-zero from `nros::init`, no file) rather
+/// without the recorder REFUSES (non-zero from `rclcpp::init`, no file) rather
 /// than booting normally and dialling a router -- `nros-c`'s rule.
 #[cfg(all(feature = "rmw-cffi", feature = "env"))]
 fn census_arm_application(session: &str) -> Result<(), nros_cpp_ret_t> {
@@ -2706,7 +2706,7 @@ pub unsafe extern "C" fn nros_cpp_node_create(
     // `nros_cpp_node_create_ex` — the function this one is documented as a
     // shorthand for — inherited it. `""` is unset too: an empty C string
     // cannot be told apart from "the caller filled nothing in", which is the
-    // rule `nros::init`'s `node_namespace` and `NodeHandle::resolve_namespace`
+    // rule `rclcpp::init`'s `node_namespace` and `NodeHandle::resolve_namespace`
     // already state, and it is the 4-arg spelling of `namespace_len == 0`.
     let ns_arg = if namespace.is_null() {
         None
@@ -3357,7 +3357,7 @@ pub unsafe extern "C" fn nros_cpp_spin_once(
 
 /// Spin the executor for `duration_ms`, budgeted by WALL-CLOCK time.
 ///
-/// Issue 0329 — the single budgeted-spin entry point. `nros::spin()` and
+/// Issue 0329 — the single budgeted-spin entry point. `rclcpp::spin()` and
 /// `Executor::spin()` were hand-rolled loops in the C++ headers; one of them
 /// (`nros.hpp`) still budgeted by ITERATION count (`elapsed += poll_ms`), the
 /// exact defect `Executor::spin` documents as fixed in Phase 118.C — an early
@@ -3399,7 +3399,7 @@ pub unsafe extern "C" fn nros_cpp_spin_for(
     }
 }
 
-/// Spin until cancelled (blocking) — the loop behind `nros::Executor::spin()`.
+/// Spin until cancelled (blocking) — the loop behind `rclcpp::Executor::spin()`.
 ///
 /// phase-417 W4.c. The C++ header used to run this loop itself, on
 /// `while (initialized_)`, which made `shutdown()` the ONLY way out — and
@@ -4031,7 +4031,7 @@ pub unsafe extern "C" fn nros_cpp_executor_get_subscriptions_info_by_topic(
 // Phase 110.B / 110.C — SchedContext FFI for the C++ wrapper
 // =============================================================================
 
-/// `nros::SchedClass` mirror. Phase 110.B.
+/// `rclcpp::SchedClass` mirror. Phase 110.B.
 #[cfg(feature = "rmw-cffi")]
 #[repr(u8)]
 pub enum nros_cpp_sched_class_t {
@@ -4042,7 +4042,7 @@ pub enum nros_cpp_sched_class_t {
     TimeTriggered = 4,
 }
 
-/// `nros::Priority` mirror. Phase 110.C.
+/// `rclcpp::Priority` mirror. Phase 110.C.
 #[cfg(feature = "rmw-cffi")]
 #[repr(u8)]
 pub enum nros_cpp_priority_t {
@@ -4051,7 +4051,7 @@ pub enum nros_cpp_priority_t {
     BestEffort = 2,
 }
 
-/// `nros::DeadlinePolicy` mirror. Phase 110.B.
+/// `rclcpp::DeadlinePolicy` mirror. Phase 110.B.
 #[cfg(feature = "rmw-cffi")]
 #[repr(u8)]
 pub enum nros_cpp_deadline_policy_t {
@@ -4060,7 +4060,7 @@ pub enum nros_cpp_deadline_policy_t {
     Inherited = 2,
 }
 
-/// `nros::SchedContext` mirror passed to
+/// `rclcpp::SchedContext` mirror passed to
 /// [`nros_cpp_create_sched_context`]. Time fields use `0` as
 /// "absent" sentinel (mirrors the Rust `OptUs` newtype).
 #[cfg(feature = "rmw-cffi")]
@@ -7041,7 +7041,7 @@ fn entry_spin_ms() -> u64 {
 // The discriminant of the format the linked backend speaks, lowered by
 // `cbindgen` into `nros_cpp_ffi.h` as
 // `#define NROS_CPP_SERIALIZATION_FORMAT_ID`. `nros/serialization_format.hpp`
-// lifts it into `nros::SerializationFormat` and asserts every typed entity's
+// lifts it into `rclcpp::SerializationFormat` and asserts every typed entity's
 // message type against it.
 //
 // It is emitted HERE, into the C++ crate's own FFI header, rather than reused

@@ -3932,3 +3932,49 @@ this defect passes; two negative controls measured, 8 and 5 failures) and
 `an_unnamed_namespace_inherits_the_executors_and_an_explicit_root_does_not`,
 which pins the builder half that had no test and is where a fix aimed at the
 wrong layer would have landed.
+
+## Settled: `nros::` is deleted from C++, and Rust takes rclrs's shape with ONE node type (2026-10-09)
+
+Maintainer decision, implemented by
+[phase-483](../roadmap/phase-483-rclcpp-rclrs-shape-only.md). It finishes the
+two halves this RFC's "The intent" section states as the end state.
+
+**C++.** "`nros::` is phased out entirely" (2026-09-05) is now a deletion, not
+a migration. Every user-facing C++ name is DEFINED in `rclcpp::`,
+`rclcpp_action::` or `rclcpp_lifecycle::`, wherever upstream keeps the
+concept, and no `nros::` alias is left behind. The collisions this exposed
+were settled in upstream's favour:
+
+* The QoS policy enums are `enum class` with upstream's enumerator names
+  (`rclcpp::ReliabilityPolicy::Reliable`, `…::SystemDefault`,
+  `rclcpp::LivelinessPolicy::SystemDefault`, which was `LivelinessNone`).
+  An unscoped `KeepLast` enumerator in `rclcpp::` would collide with
+  upstream's `rclcpp::KeepLast` profile helper.
+* The base `QoS` class and its `rclcpp::QoS` subclass are one class, with
+  upstream's implicit `QoS(size_t depth)` constructor.
+* Three `Result`-returning process verbs had upstream's names with a
+  different contract (`void` / `bool`), so under the `_in` rule they take a
+  different name: `rclcpp::init_in(locator, domain, …)`,
+  `rclcpp::shutdown_in()` and `rclcpp::spin_in(…)`. `rclcpp::init(argc,
+  argv)`, `rclcpp::shutdown()` (`bool`) and `rclcpp::ok()` are upstream's.
+* The goal vocabulary (`GoalUUID`, `GoalResponse`, `CancelResponse`,
+  `CancelReturnCode`, `GoalStatus`) is defined in `rclcpp_action::`, and the
+  lifecycle vocabulary (`State`, `Transition`, `LifecyclePublisher`, the
+  managed-entity classes and the engine) in `rclcpp_lifecycle::`.
+* RTOS extensions with no upstream counterpart (`Poll*`, the `*Storage`
+  types, `NodeWithTimers<N>`, `FixedString` / `FixedSequence`, `board::`,
+  the scheduling contexts) stay, in `rclcpp::`, under the extension tripwire
+  above.
+
+Gate: `check-cpp-no-nros-namespace`, which refuses a `nros::` token in any
+user-facing or CLI-emitted C++ (comments exempt, string literals not).
+
+**Rust.** The `nros` crate takes rclrs's shape and keeps its name, so a user
+may write `use nros as rclrs;`. And a node is ONE type: the node a workspace
+component receives and the node a standalone program creates are both
+`nros::Node`, carrying rclrs's methods. The declarative component model of
+RFC-0043/0044 survives as the per-type hook a component needs for static
+sizing, the C-ABI install symbols, name-keyed RTIC/Embassy dispatch and the
+metadata probe, but it no longer hands the component a different node-shaped
+type. That supersedes the split recorded as a `divergence` in the API-parity
+ledger's `node.json`, and the "Rust parity → defer (242.6)" note in RFC-0044.

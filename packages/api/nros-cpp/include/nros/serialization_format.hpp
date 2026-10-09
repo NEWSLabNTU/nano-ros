@@ -12,8 +12,8 @@
 /**
  * @file serialization_format.hpp
  * @ingroup grp_support
- * @brief `nros::format_of<M>` — a message type's serialization format;
- *        `nros::linked_format()` — the linked backend's; and the
+ * @brief `rclcpp::format_of<M>` — a message type's serialization format;
+ *        `rclcpp::linked_format()` — the linked backend's; and the
  *        `static_assert` that refuses to create a typed entity over a message
  *        the backend cannot encode.
  */
@@ -31,7 +31,7 @@
 // struct mirrors make that include order one-way).
 #include "nros_cpp_ffi.h"
 
-namespace nros {
+namespace rclcpp {
 
 /// The serialization formats this image can name.
 ///
@@ -83,7 +83,7 @@ constexpr const char* linked_format_name() {
                : (linked_format() == SerializationFormat::Uorb ? "uorb" : "unknown");
 }
 
-} // namespace nros
+} // namespace rclcpp
 
 /**
  * Assert that message type @p M is encoded in the format the linked backend
@@ -95,7 +95,7 @@ constexpr const char* linked_format_name() {
  * line inside this header.
  */
 #define NROS_CPP_ASSERT_MESSAGE_FORMAT(M)                                                          \
-    static_assert(::nros::format_of<M>::value == ::nros::linked_format(),                          \
+    static_assert(::rclcpp::format_of<M>::value == ::rclcpp::linked_format(),                      \
                   "RFC-0088: this message type is not encoded in the format the linked "           \
                   "backend speaks: one image, one backend, one encoding. A bridge image "          \
                   "is the only place two formats legitimately meet, and it converts "              \

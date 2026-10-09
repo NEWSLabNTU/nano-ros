@@ -25,8 +25,8 @@
          * initials, so boot proceeds. */
         (void)nros_cpp_register_parameter_services(executor);
 {%- else %}
-        void* __exec = ::nros::global_handle();
-        if (__exec == nullptr) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
+        void* __exec = ::rclcpp::global_handle();
+        if (__exec == nullptr) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
         /* Non-fatal (issue 0745): on RMWs without service-server support
          * registration fails — the seeded store already carries the launch
          * initials, so boot proceeds without the get/set RPC. */
@@ -38,8 +38,8 @@
     /* Phase 269 (W2) — lifecycle-services: register + autostart. */
     {
 {%- if not tiered %}
-        void* __exec = ::nros::global_handle();
-        if (__exec == nullptr) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
+        void* __exec = ::rclcpp::global_handle();
+        if (__exec == nullptr) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
 {%- endif %}
         nros_cpp_lifecycle_autostart({% if tiered %}executor{% else %}__exec{% endif %}, {{ services.lifecycle_code }}u);
     }

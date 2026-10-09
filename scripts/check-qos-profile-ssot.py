@@ -642,10 +642,12 @@ def _cpp_base_profile(text, where):
         "durability": {"Volatile": "VOLATILE", "TransientLocal": "TRANSIENT_LOCAL"},
         "history": {"KeepLast": "KEEP_LAST", "KeepAll": "KEEP_ALL"},
         "liveliness": {
-            "LivelinessNone": "SYSTEM_DEFAULT",
-            "LivelinessAutomatic": "AUTOMATIC",
-            "LivelinessManualByTopic": "MANUAL_BY_TOPIC",
-            "LivelinessManualByNode": "MANUAL_BY_NODE",
+            # phase-483 W1: `enum class`, so the enumerator is unprefixed and
+            # `LivelinessNone` is spelled `SystemDefault`, as upstream's is.
+            "SystemDefault": "SYSTEM_DEFAULT",
+            "Automatic": "AUTOMATIC",
+            "ManualByTopic": "MANUAL_BY_TOPIC",
+            "ManualByNode": "MANUAL_BY_NODE",
         },
     }
     for field, table in spellings.items():
@@ -673,7 +675,7 @@ def _cpp_base_profile(text, where):
 
 
 def _cpp_qos_table(text, where):
-    """`nros::detail::qos_table`, interpreted.
+    """`rclcpp::detail::qos_table`, interpreted.
 
     The rows are builder chains off `QoS()` rather than field lists, so the
     gate evaluates them: the ctor supplies the base row and each chained call
@@ -710,7 +712,7 @@ def _cpp_qos_table(text, where):
                 fields["history"] = "KEEP_LAST"
                 fields["depth"] = int(arg)
             elif call in ("deadline", "lifespan", "liveliness_lease_duration"):
-                ns = re.fullmatch(r"::nros::Duration::from_nanoseconds\((\d+)LL?\)", arg)
+                ns = re.fullmatch(r"::rclcpp::Duration::from_nanoseconds\((\d+)LL?\)", arg)
                 if not ns:
                     raise Fail(
                         f"{where}: qos_table::{row}() {call}({arg!r}) is not a nanosecond literal"

@@ -4,7 +4,7 @@
 /**
  * @file inplace_fn.hpp
  * @ingroup grp_support
- * @brief `nros::InplaceFn<Sig, Cap>` — a capturing lambda, with no heap.
+ * @brief `rclcpp::InplaceFn<Sig, Cap>` — a capturing lambda, with no heap.
  */
 
 #ifndef NROS_CPP_INPLACE_FN_HPP
@@ -43,7 +43,7 @@
 #define NROS_CPP_CALLBACK_CAPACITY (4 * sizeof(void*))
 #endif
 
-namespace nros {
+namespace rclcpp {
 
 template <typename Sig, tr::size_type Cap = NROS_CPP_CALLBACK_CAPACITY> class InplaceFn;
 
@@ -195,6 +195,6 @@ template <typename R, typename... A, tr::size_type Cap> class InplaceFn<R(A...),
     Storage storage_;
 };
 
-} // namespace nros
+} // namespace rclcpp
 
 #endif // NROS_CPP_INPLACE_FN_HPP

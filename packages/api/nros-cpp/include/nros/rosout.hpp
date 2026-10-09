@@ -4,16 +4,16 @@
 /**
  * @file rosout.hpp
  * @ingroup grp_misc
- * @brief `nros::rosout` — publish this image's log records on `/rosout`.
+ * @brief `rclcpp::rosout` — publish this image's log records on `/rosout`.
  *
  * Upstream republishes every node's log records on `/rosout` as
  * `rcl_interfaces/msg/Log`; that topic is what `ros2 topic echo /rosout` and
  * `rqt_console` read. Here it is three steps, and the program takes them:
  *
  * @code
- * nros::rosout::Publisher rosout;
- * NROS_TRY(rosout.create(node));          // bounded QoS; or create(node, nros::RosoutQoS())
- * NROS_TRY(nros::rosout::enable());       // AFTER the publisher
+ * rclcpp::rosout::Publisher rosout;
+ * NROS_TRY(rosout.create(node));          // bounded QoS; or create(node, rclcpp::RosoutQoS())
+ * NROS_TRY(rclcpp::rosout::enable());       // AFTER the publisher
  * for (;;) {
  *     executor.spin_some(10ms);
  *     rosout.pump();
@@ -24,7 +24,7 @@
  * flag turns on a publisher the runtime creates for you. A publisher is an
  * ENTITY here — it counts against the image's pools and sizing descriptor — so
  * the runtime never conjures one below the declaration (issue 1341's shape).
- * This class is the explicit spelling; the Rust bridge (`nros::rosout`) and
+ * This class is the explicit spelling; the Rust bridge (`rclcpp::rosout`) and
  * the C one (`<nros/rosout.h>`) have the same three steps.
  *
  * **Which records** follow the image's ROS release (RFC-0102 D4): on Humble,
@@ -49,7 +49,7 @@
 #include "nros/result.hpp"
 #include "nros_cpp_ffi.h"
 
-namespace nros {
+namespace rclcpp {
 namespace rosout {
 
 /// `rcl_logging_rosout_enabled()`: true iff this image was built with the
@@ -87,10 +87,10 @@ class Publisher {
     /// /rosout` still matches it.
     Result create(::rclcpp::Node& node) { return create_impl(node, nullptr); }
 
-    /// Create it with an explicit profile — `::nros::RosoutQoS()` is upstream's
+    /// Create it with an explicit profile — `::rclcpp::RosoutQoS()` is upstream's
     /// TRANSIENT_LOCAL KEEP_LAST(1000), for a target that has budgeted for it.
-    Result create(::rclcpp::Node& node, const ::nros::QoS& qos) {
-        nros_cpp_qos_t ffi = ::nros::detail::qos_to_ffi(qos);
+    Result create(::rclcpp::Node& node, const ::rclcpp::QoS& qos) {
+        nros_cpp_qos_t ffi = ::rclcpp::detail::qos_to_ffi(qos);
         return create_impl(node, &ffi);
     }
 
@@ -98,7 +98,7 @@ class Publisher {
     /// blocks on the queue and never allocates. `out_sent`, if non-null,
     /// receives how many messages reached the transport.
     Result pump(size_t* out_sent = nullptr) {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(nros_cpp_rosout_pump(storage_, out_sent));
     }
 
@@ -106,9 +106,9 @@ class Publisher {
 
   private:
     Result create_impl(::rclcpp::Node& node, const nros_cpp_qos_t* qos) {
-        if (initialized_) return Result(::nros::ErrorCode::AlreadyExists);
+        if (initialized_) return Result(::rclcpp::ErrorCode::AlreadyExists);
         const nros_cpp_node_t* h = node.ffi_handle();
-        if (h == nullptr) return Result(::nros::ErrorCode::NotInitialized);
+        if (h == nullptr) return Result(::rclcpp::ErrorCode::NotInitialized);
         nros_cpp_ret_t ret = nros_cpp_rosout_publisher_create(h, qos, storage_);
         if (ret == 0) initialized_ = true;
         return Result(ret);
@@ -120,6 +120,6 @@ class Publisher {
 };
 
 } // namespace rosout
-} // namespace nros
+} // namespace rclcpp
 
 #endif // NROS_CPP_ROSOUT_HPP

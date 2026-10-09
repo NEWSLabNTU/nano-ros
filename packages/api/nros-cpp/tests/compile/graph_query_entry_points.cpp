@@ -21,7 +21,7 @@
 
 namespace {
 
-bool visit_node(void *ctx, const char *name, const char *ns, const char *enclave) {
+bool visit_node(void* ctx, const char* name, const char* ns, const char* enclave) {
     (void)ctx;
     (void)name;
     (void)ns;
@@ -30,7 +30,7 @@ bool visit_node(void *ctx, const char *name, const char *ns, const char *enclave
     return enclave == nullptr;
 }
 
-bool visit_names_and_types(void *ctx, const char *name, const char *const *types,
+bool visit_names_and_types(void* ctx, const char* name, const char* const* types,
                            size_t types_count) {
     (void)ctx;
     (void)name;
@@ -39,42 +39,38 @@ bool visit_names_and_types(void *ctx, const char *name, const char *const *types
     return types_count == types_count;
 }
 
-}  // namespace
+} // namespace
 
 int main() {
-    using nros::Executor;
-    using nros::Result;
+    using rclcpp::Executor;
+    using rclcpp::Result;
 
     // Method pointers: a missing method, or one whose signature drifted, fails
     // to compile here rather than at a user's build.
-    Result (Executor::*p_node_names)(nros_cpp_node_visit_fn, void *) = &Executor::get_node_names;
-    Result (Executor::*p_topics)(nros_cpp_names_and_types_visit_fn, void *) =
+    Result (Executor::*p_node_names)(nros_cpp_node_visit_fn, void*) = &Executor::get_node_names;
+    Result (Executor::*p_topics)(nros_cpp_names_and_types_visit_fn, void*) =
         &Executor::get_topic_names_and_types;
-    Result (Executor::*p_services)(nros_cpp_names_and_types_visit_fn, void *) =
+    Result (Executor::*p_services)(nros_cpp_names_and_types_visit_fn, void*) =
         &Executor::get_service_names_and_types;
-    Result (Executor::*p_count_pub)(const char *, size_t *) = &Executor::count_publishers;
-    Result (Executor::*p_count_sub)(const char *, size_t *) = &Executor::count_subscribers;
+    Result (Executor::*p_count_pub)(const char*, size_t*) = &Executor::count_publishers;
+    Result (Executor::*p_count_sub)(const char*, size_t*) = &Executor::count_subscribers;
 
     // phase-381 W3/W4 — the six per-node and per-topic forms.
     //
     // `get_subscription_names_and_types_by_node`, NOT `subscriber`: the C++
     // surface takes rclcpp's vocabulary while C takes rcl's. If someone
     // "aligns" the three languages, this line stops compiling.
-    Result (Executor::*p_pub_by_node)(const char *, const char *,
-                                      nros_cpp_names_and_types_visit_fn, void *) =
-        &Executor::get_publisher_names_and_types_by_node;
-    Result (Executor::*p_sub_by_node)(const char *, const char *,
-                                      nros_cpp_names_and_types_visit_fn, void *) =
-        &Executor::get_subscription_names_and_types_by_node;
-    Result (Executor::*p_srv_by_node)(const char *, const char *,
-                                      nros_cpp_names_and_types_visit_fn, void *) =
-        &Executor::get_service_names_and_types_by_node;
-    Result (Executor::*p_cli_by_node)(const char *, const char *,
-                                      nros_cpp_names_and_types_visit_fn, void *) =
-        &Executor::get_client_names_and_types_by_node;
-    Result (Executor::*p_pubs_info)(const char *, nros_cpp_endpoint_info_visit_fn, void *) =
+    Result (Executor::*p_pub_by_node)(const char*, const char*, nros_cpp_names_and_types_visit_fn,
+                                      void*) = &Executor::get_publisher_names_and_types_by_node;
+    Result (Executor::*p_sub_by_node)(const char*, const char*, nros_cpp_names_and_types_visit_fn,
+                                      void*) = &Executor::get_subscription_names_and_types_by_node;
+    Result (Executor::*p_srv_by_node)(const char*, const char*, nros_cpp_names_and_types_visit_fn,
+                                      void*) = &Executor::get_service_names_and_types_by_node;
+    Result (Executor::*p_cli_by_node)(const char*, const char*, nros_cpp_names_and_types_visit_fn,
+                                      void*) = &Executor::get_client_names_and_types_by_node;
+    Result (Executor::*p_pubs_info)(const char*, nros_cpp_endpoint_info_visit_fn, void*) =
         &Executor::get_publishers_info_by_topic;
-    Result (Executor::*p_subs_info)(const char *, nros_cpp_endpoint_info_visit_fn, void *) =
+    Result (Executor::*p_subs_info)(const char*, nros_cpp_endpoint_info_visit_fn, void*) =
         &Executor::get_subscriptions_info_by_topic;
 
     (void)p_pub_by_node;

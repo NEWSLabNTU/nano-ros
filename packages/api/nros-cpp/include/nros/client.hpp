@@ -5,10 +5,10 @@
  * @file client.hpp
  * @ingroup grp_service
  * @brief `rclcpp::Client<S>` — the arena-registered (callback-style) service
- *        client, and `Client<S>::SharedPtr` = `nros::ClientHandle<S>`.
+ *        client, and `Client<S>::SharedPtr` = `rclcpp::ClientHandle<S>`.
  *
  * The FUTURE-style client — caller-owned storage, `send_request()` / `call()` /
- * `wait_for_service()` — is `nros::PollClient<S>` in
+ * `wait_for_service()` — is `rclcpp::PollClient<S>` in
  * `nros/polling_client.hpp` since phase-456 W9. See there for why the two are
  * separate types.
  */
@@ -25,11 +25,11 @@
 #include "nros/entity_name.hpp" // phase-444 — the one entity-name copy
 #include "nros/log.hpp" // phase-417 stage 3 — NROS_RCLCPP_REFUSE_* + rclcpp::detail::refuse
 #include "nros/result.hpp"
-#include "nros/size_bound.hpp" // nros::detail::buffer_bounds<M>::tx — the request scratch bound
+#include "nros/size_bound.hpp" // rclcpp::detail::buffer_bounds<M>::tx — the request scratch bound
 
 #include "nros_cpp_ffi.h"
 
-// issue 1437 — `get_actual_qos()` returns a `nros::QoS` BY VALUE from an
+// issue 1437 — `get_actual_qos()` returns a `rclcpp::QoS` BY VALUE from an
 // inline body, so the complete type must be here, not only by the time
 // `nros/node.hpp` is pulled in below.
 //
@@ -61,7 +61,7 @@ nros_cpp_ret_t nros_cpp_service_client_register(const nros_cpp_node_t* node,
 /// an unqualified `friend class Node;` used to supply implicitly.
 ///
 /// phase-427 W7 — declared in `rclcpp::`, which is where the definition moved.
-/// An elaborated `class Node;` in `nros::` would now declare a SECOND, distinct
+/// An elaborated `class Node;` in `rclcpp::` would now declare a SECOND, distinct
 /// class and collide with the `rclcpp::Node` alias.
 namespace rclcpp {
 class Node;
@@ -71,7 +71,7 @@ class Node;
 // `rclcpp::Client<S>` -- DEFINED here (RFC-0089: rclcpp:: is the home)
 // ============================================================================
 //
-// phase-428: the definition moved from `nros::` to `rclcpp::` and the alias
+// phase-428: the definition moved from `rclcpp::` to `rclcpp::` and the alias
 // turned around. The nested `SharedPtr` / `ConstSharedPtr` / `UniquePtr`
 // aliases live on the class itself, so the rclcpp way of indexing types
 // (`rclcpp::Client<S>::SharedPtr`) resolves with no wrapper in between.
@@ -111,7 +111,7 @@ namespace rclcpp {
 /// Measured (phase-456 W3, re-measured W9), across `examples/`, `tests/`,
 /// `book/` and `packages/`: a dispatch client has exactly ONE verb INVOKED on
 /// it, `async_send_request`, at one example site plus the move probe W3 added.
-/// That is why `Client<S>::SharedPtr` is a two-word `nros::ClientHandle<S>` — a
+/// That is why `Client<S>::SharedPtr` is a two-word `rclcpp::ClientHandle<S>` — a
 /// handle with verbs, not the empty keep-alive `ServiceHandle<S>` is, and not an
 /// `Owned<Client<S>>`, because the arena owns the entity and the caller does
 /// not. The census says what ported source REACHES FOR today; it is not the
@@ -137,17 +137,17 @@ template <typename S> class Client {
     /// `std::shared_ptr` does not.
     ///
     /// IT IS NOT A POINTER TO A `Client<S>`. A registered client is the
-    /// arena's; what this names is `nros::ClientHandle<S>` — two words,
+    /// arena's; what this names is `rclcpp::ClientHandle<S>` — two words,
     /// copyable, carrying exactly the one verb the census says a dispatch client
     /// is asked for. See `client_handle.hpp`.
-    using SharedPtr = ::nros::ClientHandle<S>;
+    using SharedPtr = ::rclcpp::ClientHandle<S>;
     /// `rclcpp::Client<S>::ConstSharedPtr` — see `SharedPtr`. The same handle:
     /// `async_send_request` is `const` on it (the handle is two words the caller
     /// owns; the mutation is the arena's), so there is no mutable/const
     /// distinction to draw.
-    using ConstSharedPtr = ::nros::ClientHandle<S>;
+    using ConstSharedPtr = ::rclcpp::ClientHandle<S>;
     /// `rclcpp::Client<S>::UniquePtr` — see `SharedPtr`.
-    using UniquePtr = ::nros::ClientHandle<S>;
+    using UniquePtr = ::rclcpp::ClientHandle<S>;
 
     using RequestType = typename S::Request;
     using ResponseType = typename S::Response;
@@ -174,13 +174,13 @@ template <typename S> class Client {
     /// divergence / adopt. What changed in phase-456 W9 is only that the
     /// `callback_mode_` check is gone with the flag: every `rclcpp::Client<S>`
     /// is a dispatch client now, and the future-style road is
-    /// `nros::PollClient<S>`.
+    /// `rclcpp::PollClient<S>`.
     Result async_send_request(const RequestType& req) {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
-        uint8_t req_buf[::nros::detail::buffer_bounds<RequestType>::tx];
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
+        uint8_t req_buf[::rclcpp::detail::buffer_bounds<RequestType>::tx];
         size_t req_len = 0;
         if (RequestType::ffi_serialize(&req, req_buf, sizeof(req_buf), &req_len) != 0) {
-            return Result(::nros::ErrorCode::Error);
+            return Result(::rclcpp::ErrorCode::Error);
         }
         return Result(
             nros_cpp_service_client_send_on_handle(executor_, handle_id_, req_buf, req_len));
@@ -241,12 +241,12 @@ template <typename S> class Client {
     /// changing a signature — the subscription carries its executor since
     /// phase-467 (2026-09-25, its ledger row deleted), and this class's own
     /// @ref service_is_ready / @ref wait_for_service since 2026-09-28.
-    ::nros::QoS get_request_publisher_actual_qos() const { return actual_qos_half(true); }
+    ::rclcpp::QoS get_request_publisher_actual_qos() const { return actual_qos_half(true); }
 
     /// The QoS the backend GRANTED this client's RESPONSE endpoint — the
     /// subscription that receives replies. Issue 1437; see
     /// @ref get_request_publisher_actual_qos.
-    ::nros::QoS get_response_subscription_actual_qos() const { return actual_qos_half(false); }
+    ::rclcpp::QoS get_response_subscription_actual_qos() const { return actual_qos_half(false); }
 
     /// Is a matching service server visible? — `rclcpp::ClientBase::
     /// service_is_ready`, no arguments, as upstream's is.
@@ -273,16 +273,17 @@ template <typename S> class Client {
     /// since issue 1437, and this class already holds `{executor_, handle_id_}`.
     /// Inventing an `Executor&` parameter here was refused — a method that
     /// exists to adopt the upstream spelling cannot close a gap by leaving it.
-    ::nros::ResultOf<bool> service_is_ready() const {
-        if (!initialized_) return ::nros::ResultOf<bool>::error(::nros::ErrorCode::NotInitialized);
+    ::rclcpp::ResultOf<bool> service_is_ready() const {
+        if (!initialized_)
+            return ::rclcpp::ResultOf<bool>::error(::rclcpp::ErrorCode::NotInitialized);
         int out = -1;
         nros_cpp_ret_t ret =
             nros_cpp_service_client_server_available(nullptr, executor_, handle_id_, &out);
         // A failed CALL and a backend that cannot ANSWER are different facts;
         // the retired `int` form reported both as `-1`. Keep them apart.
-        if (ret != 0) return ::nros::ResultOf<bool>::error(static_cast<::nros::ErrorCode>(ret));
-        if (out < 0) return ::nros::ResultOf<bool>::error(::nros::ErrorCode::Unsupported);
-        return ::nros::ResultOf<bool>::ok(out != 0);
+        if (ret != 0) return ::rclcpp::ResultOf<bool>::error(static_cast<::rclcpp::ErrorCode>(ret));
+        if (out < 0) return ::rclcpp::ResultOf<bool>::error(::rclcpp::ErrorCode::Unsupported);
+        return ::rclcpp::ResultOf<bool>::ok(out != 0);
     }
 
     /// Block until a matching service server is discoverable —
@@ -299,13 +300,13 @@ template <typename S> class Client {
     /// executor, so a wait that never returns starves every other entity, and
     /// `uint32_t` has no value to port upstream's `-1` to. The no-argument form
     /// is a compile error carrying `NROS_RCLCPP_REFUSE_UNBOUNDED_WAIT`, exactly
-    /// as it is on `nros::PollClient<S>` and `rclcpp_action::Client<A>` — one
+    /// as it is on `rclcpp::PollClient<S>` and `rclcpp_action::Client<A>` — one
     /// concept, now three sites, each with its own expected-failure TU.
     ///
     /// Closed 2026-09-28 with @ref service_is_ready; that method's note carries
     /// why the remedy was the FFI's argument list and not this one.
     Result wait_for_service(uint32_t timeout_ms) {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(
             nros_cpp_service_client_wait_for_service(nullptr, executor_, handle_id_, timeout_ms));
     }
@@ -316,7 +317,7 @@ template <typename S> class Client {
     /// `Executor::spin_once()`: a deleted function carries no message.
     template <typename T = void> Result wait_for_service() {
         static_assert(::rclcpp::detail::refuse<T>::value, NROS_RCLCPP_REFUSE_UNBOUNDED_WAIT);
-        return Result(::nros::ErrorCode::Unsupported);
+        return Result(::rclcpp::ErrorCode::Unsupported);
     }
 
     /// Executor arena slot for the registration; `SIZE_MAX` until registered.
@@ -329,7 +330,7 @@ template <typename S> class Client {
     /// object's own bookkeeping, and the registration lives until its node is
     /// destroyed or a `ClientHandle` releases it (`cli_.reset()`, issue 1667). Until phase-456 W9
     /// the same destructor also freed a FUTURE-style client, behind an `if (initialized_ &&
-    /// !callback_mode_)`; that half moved to `nros::PollClient<S>`, where the
+    /// !callback_mode_)`; that half moved to `rclcpp::PollClient<S>`, where the
     /// condition is unconditional.
     ~Client() { initialized_ = false; }
 
@@ -346,7 +347,7 @@ template <typename S> class Client {
     Client(Client&& other)
         : executor_(other.executor_), initialized_(other.initialized_),
           handle_id_(other.handle_id_), service_name_{} {
-        ::nros::detail::assign_entity_name(service_name_, other.service_name_);
+        ::rclcpp::detail::assign_entity_name(service_name_, other.service_name_);
         other.initialized_ = false;
     }
 
@@ -355,7 +356,7 @@ template <typename S> class Client {
             executor_ = other.executor_;
             initialized_ = other.initialized_;
             handle_id_ = other.handle_id_;
-            ::nros::detail::assign_entity_name(service_name_, other.service_name_);
+            ::rclcpp::detail::assign_entity_name(service_name_, other.service_name_);
             other.initialized_ = false;
         }
         return *this;
@@ -378,7 +379,7 @@ template <typename S> class Client {
     /// phase-456 W3 — `ctx` is the USER'S HANDLER, carried by value in the
     /// arena's context slot, not the `Client` object (`this`).
     static void response_trampoline(const uint8_t* data, size_t len, void* ctx) {
-        const TypedResponseFn user_fn = ::nros::detail::fn_from_context<TypedResponseFn>(ctx);
+        const TypedResponseFn user_fn = ::rclcpp::detail::fn_from_context<TypedResponseFn>(ctx);
         if (user_fn == nullptr) return;
         ResponseType response;
         if (ResponseType::ffi_deserialize(data, len, &response) != 0) return;
@@ -391,17 +392,17 @@ template <typename S> class Client {
     /// `storage` is always NULL here: a dispatch client owns no
     /// `RmwServiceClient`, so `(executor_, handle_id_)` is the only road. The
     /// `callback_mode_ ? nullptr : storage_` branch this replaced existed
-    /// because one class served two owners; `nros::PollClient<S>` takes the
+    /// because one class served two owners; `rclcpp::PollClient<S>` takes the
     /// other arm and passes its `storage_` unconditionally.
-    ::nros::QoS actual_qos_half(bool request) const {
+    ::rclcpp::QoS actual_qos_half(bool request) const {
         nros_cpp_qos_t req{};
         nros_cpp_qos_t resp{};
-        if (!initialized_) return ::nros::detail::qos_all_unknown();
+        if (!initialized_) return ::rclcpp::detail::qos_all_unknown();
         if (nros_cpp_service_client_get_actual_qos(nullptr, executor_, handle_id_, &req, &resp) !=
             0) {
-            return ::nros::detail::qos_all_unknown();
+            return ::rclcpp::detail::qos_all_unknown();
         }
-        return ::nros::detail::qos_from_ffi(request ? req : resp);
+        return ::rclcpp::detail::qos_from_ffi(request ? req : resp);
     }
 
     // Callback-style BOOKKEEPING (Phase 189.M3.3.f). The handler itself is not
@@ -414,64 +415,55 @@ template <typename S> class Client {
     bool initialized_;
     size_t handle_id_ = static_cast<size_t>(-1);
     /// phase-444 — the service name, kept C++-side for `get_service_name()`.
-    /// `::nros::SERVICE_NAME_MAX` bytes, the same bound every other entity
+    /// `::rclcpp::SERVICE_NAME_MAX` bytes, the same bound every other entity
     /// family uses.
-    char service_name_[::nros::SERVICE_NAME_MAX];
+    char service_name_[::rclcpp::SERVICE_NAME_MAX];
 };
 
 } // namespace rclcpp
 
-// ============================================================================
-// nros:: -- the in-tree spelling, now the ALIAS (RFC-0089). Declared here,
-// before the out-of-line `Node::create_*` bodies below, which are written in
-// the `nros::` vocabulary.
-// ============================================================================
-namespace nros {
-template <typename S> using Client = ::rclcpp::Client<S>;
-} // namespace nros
-
 // Phase 84.G8: out-of-line definition of Node::create_client<S>().
 #include "nros/node.hpp"
 
-namespace nros {
+namespace rclcpp {
 
 // Phase 189.M3.3.f — callback-style (arena-registered) client. The arena owns
 // the client AND the response handler, and dispatches it during spin_once;
 // requests go through `async_send_request`, which needs only `out`'s own
 // `{executor_, handle_id_}`. `options.sched_context` is functional.
-} // namespace nros
+} // namespace rclcpp
 
 namespace rclcpp {
 template <typename S, typename F, typename>
 Result Node::create_client(Client<S>& out, const char* service_name, F callback,
-                           const ::nros::QoS& qos, const ::nros::ClientOptions& options) {
-    if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
-    nros_cpp_qos_t ffi_qos = ::nros::detail::qos_to_ffi(qos);
+                           const ::rclcpp::QoS& qos, const ::rclcpp::ClientOptions& options) {
+    if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
+    nros_cpp_qos_t ffi_qos = ::rclcpp::detail::qos_to_ffi(qos);
 
     // The user handler becomes the ARENA's context (phase-456 W3); the
     // conversion is still the compile error for a non-convertible `F`.
     const typename Client<S>::TypedResponseFn user_fn =
         typename Client<S>::TypedResponseFn(callback);
 
-    uint8_t sched = (options.sched_context == ::nros::SCHED_CONTEXT_UNSET)
+    uint8_t sched = (options.sched_context == ::rclcpp::SCHED_CONTEXT_UNSET)
                         ? 0u
                         : static_cast<uint8_t>(options.sched_context);
     size_t handle = static_cast<size_t>(-1);
     nros_cpp_ret_t ret = nros_cpp_service_client_register(
         &handle_, service_name, S::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos,
         reinterpret_cast<nros_cpp_service_response_callback_t>(&Client<S>::response_trampoline),
-        ::nros::detail::fn_to_context(user_fn), sched, &handle);
+        ::rclcpp::detail::fn_to_context(user_fn), sched, &handle);
     if (ret == 0) {
         out.executor_ = executor_handle_;
         out.handle_id_ = handle;
-        // phase-444 — see `nros::PollClient`'s overload, which does the same.
-        ::nros::detail::assign_entity_name(out.service_name_, service_name);
+        // phase-444 — see `rclcpp::PollClient`'s overload, which does the same.
+        ::rclcpp::detail::assign_entity_name(out.service_name_, service_name);
         out.initialized_ = true;
     }
     return Result(ret);
 }
 } // namespace rclcpp
 
-namespace nros {} // namespace nros
+namespace rclcpp {} // namespace rclcpp
 
 #endif // NROS_CPP_CLIENT_HPP

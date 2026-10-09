@@ -20,8 +20,8 @@ void MrmEmergencyStopOperator::on_timer() {
     count_++;
 }
 
-MrmEmergencyStopOperator::MrmEmergencyStopOperator(::nros::NodeHandle h)
-    : ::nros::NodeWithTimers<1>(h, "mrm_emergency_stop_operator") {
+MrmEmergencyStopOperator::MrmEmergencyStopOperator(::rclcpp::NodeHandle h)
+    : ::rclcpp::NodeWithTimers<1>(h, "mrm_emergency_stop_operator") {
     // Line-buffer stdout so each tick flushes immediately when piped.
     ::setvbuf(stdout, nullptr, _IOLBF, 0);
     pub_ = create_publisher_in<std_msgs::msg::Int32>("/system/emergency/control_cmd");

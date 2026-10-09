@@ -35,6 +35,14 @@
 # issue was already stale when it was written. Templates that declare none are
 # REPORTED as skipped with that reason, never silently dropped.
 #
+# HOST images only. This lane builds on the host with `nros build --workspace`,
+# so an image counts when its `board` is `native`. A template whose images are
+# all cross-board (`cpp-port-minimal-publisher`'s FreeRTOS and Zephyr leaves,
+# phase-482 W3) has nothing this lane can build — its leaves are fixture rows
+# built by the FreeRTOS and Zephyr lanes — and is reported skipped with that
+# reason. Counting it made the gate try to build the template ROOT, which is
+# not a workspace, and fail with "declares no `[image.*]`".
+#
 # ## What counts as built
 #
 # rc=0 alone is vacuous — a builder that configures and links nothing also
@@ -79,7 +87,7 @@ discover_templates() {
 image_declaring_manifest() {
     local tmpl="$1" f
     for f in $(git ls-files "$templates_dir/$tmpl" | grep '/system\.toml$'); do
-        nros_grep_q '^\[image\.' "$f"
+        nros_grep_q '^board = "native"' "$f"
         case $? in
             0) printf '%s' "$f"; return 0 ;;
             1) : ;;
@@ -301,7 +309,7 @@ done
 if [ "$mode" = "list" ]; then
     echo "buildable (a tracked system.toml declares an [image.*]):"
     printf '  %s\n' "${buildable[@]}"
-    echo "skipped (no [image.*] — nothing for \`nros build\` to build):"
+    echo "skipped (no host [image.*] — nothing this lane can build):"
     printf '  %s\n' "${skipped[@]}"
     exit 0
 fi
@@ -323,7 +331,7 @@ for tmpl in "${buildable[@]}"; do
     [ "$rc" -eq 2 ] && missing_tool=1
 done
 for tmpl in "${skipped[@]}"; do
-    echo "  $tmpl: skipped — declares no [image.*]"
+    echo "  $tmpl: skipped — declares no host (board = \"native\") image"
 done
 
 if [ "$fail" -ne 0 ]; then

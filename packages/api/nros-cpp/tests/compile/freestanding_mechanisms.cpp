@@ -15,7 +15,7 @@
 #include "nros/inplace_fn.hpp"
 #include "nros/owned.hpp"
 
-namespace tr = nros::tr;
+namespace tr = rclcpp::tr;
 static_assert(tr::is_same<tr::decay<const int&>::type, int>::value, "decay cv-ref");
 static_assert(tr::is_same<tr::decay<int[4]>::type, int*>::value, "decay array");
 static_assert(tr::is_same<tr::decay<void(int)>::type, void (*)(int)>::value, "decay function");
@@ -30,13 +30,13 @@ struct Sub {
 static Sub g_sub;
 
 // Handle
-static_assert(sizeof(nros::Handle<Sub>) == sizeof(void*), "one pointer");
+static_assert(sizeof(rclcpp::Handle<Sub>) == sizeof(void*), "one pointer");
 static void handle_ops() {
-    nros::Handle<Sub> a;
-    nros::Handle<Sub> b(&g_sub);
-    nros::Handle<Sub> c = b;       // copyable
-    nros::Handle<const Sub> d = c; // converts to const
-    a = c;                         // assignable
+    rclcpp::Handle<Sub> a;
+    rclcpp::Handle<Sub> b(&g_sub);
+    rclcpp::Handle<Sub> c = b;       // copyable
+    rclcpp::Handle<const Sub> d = c; // converts to const
+    a = c;                           // assignable
     (void)(a == b);
     (void)(a != nullptr);
     if (a) {
@@ -53,7 +53,7 @@ struct Obj {
 };
 static Obj g_obj;
 
-using Cb = nros::InplaceFn<void(const Msg&)>;
+using Cb = rclcpp::InplaceFn<void(const Msg&)>;
 
 static Cb c_empty([](const Msg&) {});
 static Cb c_this([sub = &g_sub](const Msg& m) { sub->n += m.data; });
@@ -108,7 +108,7 @@ class FakePublisher {
     void publish(const Msg&) {}
     void mark_live() { initialized_ = true; }
 
-    using SharedPtr = nros::Owned<FakePublisher>;
+    using SharedPtr = rclcpp::Owned<FakePublisher>;
 
   private:
     alignas(8) unsigned char storage_[64];
@@ -136,13 +136,13 @@ class PortedNode {
     FakePublisher::SharedPtr pub_;
 };
 
-static_assert(!nros::tr::is_same<FakePublisher::SharedPtr, FakePublisher*>::value,
+static_assert(!rclcpp::tr::is_same<FakePublisher::SharedPtr, FakePublisher*>::value,
               "Owned is not a raw pointer");
 
 extern "C" int nros_w8_owned_probe() {
     PortedNode n;
     n.tick();
-    nros::Owned<FakePublisher> empty;
+    rclcpp::Owned<FakePublisher> empty;
     if (empty != nullptr) {
         return -1;
     }

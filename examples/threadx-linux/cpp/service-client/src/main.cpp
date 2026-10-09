@@ -32,7 +32,7 @@ int nros_app_main(int argc, char** argv) {
     // Launch-aware init. Falls back to the env overlay
     // (`$NROS_LOCATOR` / `$ROS_DOMAIN_ID` / `$RMW_IMPLEMENTATION`) when
     // no `$NROS_RUNTIME_OVERLAY` / launch XML is in scope.
-    NROS_TRY_RET(nros::init_with_launch_auto(argc, argv), 1);
+    NROS_TRY_RET(rclcpp::init_with_launch_auto(argc, argv), 1);
 
     // Operands from the first two positional args (default: 2 3).
     int64_t a = 2;
@@ -53,15 +53,15 @@ int nros_app_main(int argc, char** argv) {
 #endif
 
     rclcpp::Node node;
-    NROS_TRY_RET(nros::create_node(node, "add_two_ints_client"), 1);
+    NROS_TRY_RET(rclcpp::create_node(node, "add_two_ints_client"), 1);
     printf("Node created: %s\n", node.get_name());
 
-    // phase-456 W9 — the FUTURE-style client is `nros::PollClient<S>`: this
+    // phase-456 W9 — the FUTURE-style client is `rclcpp::PollClient<S>`: this
     // caller owns the `RmwServiceClient`, drives `spin_once` itself, and drains
     // the reply below. `rclcpp::Client<S>` is the DISPATCH client, whose one verb
     // is `async_send_request` and whose entity the executor arena owns — see
     // `service-client-callback` for that road.
-    nros::PollClient<example_interfaces::srv::AddTwoInts> client;
+    rclcpp::PollClient<example_interfaces::srv::AddTwoInts> client;
     NROS_TRY_RET(node.create_client(client, "/add_two_ints"), 1);
 
     example_interfaces::srv::AddTwoInts::Request req;
@@ -86,7 +86,7 @@ int nros_app_main(int argc, char** argv) {
     // issue 1686 — Unsupported: this backend cannot see servers at all
     // (XRCE: the Agent owns the DDS graph), so the wait answered at once.
     // Send anyway; the request's own timeout is then the probe.
-    if (!ret.ok() && ret.code() != nros::ErrorCode::Unsupported) {
+    if (!ret.ok() && ret.code() != rclcpp::ErrorCode::Unsupported) {
         fprintf(stderr, "Service did not appear within 10s (ret=%d)\n", ret.raw());
         rclcpp::shutdown();
         return 1;
@@ -99,7 +99,7 @@ int nros_app_main(int argc, char** argv) {
         rclcpp::shutdown();
         return 1;
     }
-    ret = fut.wait(nros::global_handle(), 5000, resp);
+    ret = fut.wait(rclcpp::global_handle(), 5000, resp);
 
     int exit_code = 0;
     if (ret.ok()) {

@@ -4,14 +4,14 @@
 /**
  * @file traits.hpp
  * @ingroup grp_support
- * @brief `nros::tr` — the handful of traits this API needs, carried rather
+ * @brief `rclcpp::tr` — the handful of traits this API needs, carried rather
  *        than borrowed.
  */
 
 #ifndef NROS_CPP_TRAITS_HPP
 #define NROS_CPP_TRAITS_HPP
 
-namespace nros {
+namespace rclcpp {
 
 /// The API's own traits — RFC-0096 D3.
 ///
@@ -149,7 +149,7 @@ template <typename T> struct decay {
 
 /// `std::move`, without `<utility>`.
 ///
-/// Named `forward_rvalue` rather than `move` on purpose: `nros::tr::move` beside
+/// Named `forward_rvalue` rather than `move` on purpose: `rclcpp::tr::move` beside
 /// a `using namespace std` would be an overload-resolution coin flip in a ported
 /// file, and this namespace is not a `std` replacement.
 template <typename T> constexpr typename remove_reference<T>::type&& forward_rvalue(T&& v) {
@@ -170,6 +170,6 @@ template <typename T> constexpr T&& relay(typename remove_reference<T>::type&& v
 }
 
 } // namespace tr
-} // namespace nros
+} // namespace rclcpp
 
 #endif // NROS_CPP_TRAITS_HPP

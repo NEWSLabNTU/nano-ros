@@ -16,7 +16,7 @@
  * `-DNROS_CPP_RMW=cyclonedds` is set):
  *
  *     nros_rmw_cyclonedds_register();
- *     nros::init(nullptr, 0, "my_node");
+ *     rclcpp::init_in(nullptr, 0, "my_node");
  *     // ... create publishers / subscribers ...
  *
  * Phase 117.3 — vtable scaffold; every entry returns

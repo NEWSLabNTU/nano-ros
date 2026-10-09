@@ -67,15 +67,15 @@ The `nros::sizes` module exports:
 |---|---|---|
 | `SESSION_SIZE` | `RmwSession` | `nros_support_t._opaque` |
 | `PUBLISHER_SIZE` | `RmwPublisher` | `nros_publisher_t._opaque`, `nros::Publisher<M>::storage_` |
-| `SUBSCRIBER_SIZE` | `RmwSubscriber` | `nros::PollSubscription<M>::storage_` |
-| `SERVICE_CLIENT_SIZE` | `RmwServiceClient` | `nros::PollClient<S>::storage_` |
-| `SERVICE_SERVER_SIZE` | `RmwServiceServer` | `nros::PollService<S>::storage_` |
+| `SUBSCRIBER_SIZE` | `RmwSubscriber` | `rclcpp::PollSubscription<M>::storage_` |
+| `SERVICE_CLIENT_SIZE` | `RmwServiceClient` | `rclcpp::PollClient<S>::storage_` |
+| `SERVICE_SERVER_SIZE` | `RmwServiceServer` | `rclcpp::PollService<S>::storage_` |
 | `EXECUTOR_SIZE` | `nros_node::Executor` | `nros_executor_t._opaque`, `nros::Executor::storage_` |
 | `GUARD_CONDITION_SIZE` | `nros_node::GuardCondition` | `nros_guard_condition_t._guard_opaque`, `nros::GuardCondition::storage_` |
 | `LIFECYCLE_CTX_SIZE` | `nros_node::lifecycle::LifecyclePollingNodeCtx` | `nros_lifecycle_state_machine_t._opaque_storage` |
 | `ACTION_SERVER_INTERNAL_SIZE` | `ActionServerInternalLayout` | `nros_action_server_t._internal` |
-| `CPP_ACTION_SERVER_SIZE` | `CppActionServerLayout` | `nros::ActionServer<A>::storage_` |
-| `CPP_ACTION_CLIENT_SIZE` | `CppActionClientLayout` | `nros::ActionClient<A>::storage_` |
+| `CPP_ACTION_SERVER_SIZE` | `CppActionServerLayout` | `rclcpp::ActionServer<A>::storage_` |
+| `CPP_ACTION_CLIENT_SIZE` | `CppActionClientLayout` | `rclcpp::ActionClient<A>::storage_` |
 
 Plus three `*Internal` C-API shim structs (`ServiceServerInternal`,
 `ServiceClientInternal`, `ActionClientInternal`) that cbindgen now

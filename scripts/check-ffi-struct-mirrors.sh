@@ -250,7 +250,7 @@ TIER_INITIALISERS = [
     (f"{ENTRY_PACKS}/c/entry.c.jinja", "nros_native_tier_spec_t __nros_tiers["),
     (
         f"{ENTRY_PACKS}/cpp/entry.cpp.jinja",
-        "::nros::board::NativeTierSpec __nros_tiers[",
+        "::rclcpp::board::NativeTierSpec __nros_tiers[",
     ),
 ]
 

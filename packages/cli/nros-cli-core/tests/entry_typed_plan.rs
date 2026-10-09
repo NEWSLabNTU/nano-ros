@@ -130,7 +130,7 @@ fn typed_plan_from_template_emits_constructed_components() {
     // a namespace anywhere else in the file would satisfy a split assertion.
     assert!(src.contains("NROS_BOOT_CONFIG_MAGIC"));
     assert!(src.contains(
-        "::nros::board::LinuxBoard::run_components(\
+        "::rclcpp::board::LinuxBoard::run_components(\
          nros_boot_config_node_name(&NROS_BOOT_CONFIG), \
          nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
     ));

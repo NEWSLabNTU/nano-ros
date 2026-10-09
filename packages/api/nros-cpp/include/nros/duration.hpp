@@ -4,7 +4,7 @@
 /**
  * @file duration.hpp
  * @ingroup grp_clock
- * @brief `nros::Duration` — a signed nanosecond span, mirroring `rclcpp::Duration`.
+ * @brief `rclcpp::Duration` — a signed nanosecond span, mirroring `rclcpp::Duration`.
  *
  * Issue 0789. The value surface already existed in C (`nros_duration_t`,
  * `nros_time_add`, `nros_time_sub`) and in Rust (`Duration`, `TimerDuration`);
@@ -31,26 +31,26 @@
 // through. `nros_generated.h` carries its own `extern "C"` guard.
 #include "nros/clock.h"
 
-namespace nros {
+namespace rclcpp {
 
 /// Nanoseconds in one second. Named once here; `time.hpp` reuses it.
 ///
-/// Stays in `nros::` deliberately: RFC-0089's flip is about the nine TYPES,
+/// Stays in `rclcpp::` deliberately: RFC-0089's flip is about the nine TYPES,
 /// and this is an implementation constant of two of them, not a name upstream
 /// declares. `rclcpp::Duration` and `rclcpp::Time` reach it qualified.
 constexpr int64_t NANOSECONDS_PER_SECOND = 1000000000LL;
 
-} // namespace nros
+} // namespace rclcpp
 
 // ============================================================================
 // `rclcpp::Duration` — DEFINED here (RFC-0089: rclcpp:: is the home)
 // ============================================================================
 //
-// phase-428: the definition moved from `nros::` to `rclcpp::` and the alias
+// phase-428: the definition moved from `rclcpp::` to `rclcpp::` and the alias
 // turned around. RFC-0089 settles that the ROS 2 spelling is the name this
-// project ships and `nros::Duration` is the migration alias, not the other way
+// project ships and `rclcpp::Duration` is the migration alias, not the other way
 // round. The type is UNCHANGED — the same object under both names, so a ported
-// `rclcpp::Duration d = …;` and an in-tree `nros::Duration` are one type with
+// `rclcpp::Duration d = …;` and an in-tree `rclcpp::Duration` are one type with
 // one contract.
 namespace rclcpp {
 
@@ -62,8 +62,8 @@ namespace rclcpp {
 ///
 /// Usage:
 /// ```cpp
-/// auto period = nros::Duration::from_seconds(0.1);
-/// auto budget = nros::Duration::from_nanoseconds(500000);
+/// auto period = rclcpp::Duration::from_seconds(0.1);
+/// auto budget = rclcpp::Duration::from_nanoseconds(500000);
 /// if (elapsed > period) { /* overrun */ }
 /// ```
 class Duration {
@@ -74,7 +74,7 @@ class Duration {
 
     /// Seconds + nanoseconds, the `rclcpp::Duration(int32_t, uint32_t)` shape.
     constexpr Duration(int32_t seconds, uint32_t nanoseconds)
-        : ns_(static_cast<int64_t>(seconds) * ::nros::NANOSECONDS_PER_SECOND +
+        : ns_(static_cast<int64_t>(seconds) * ::rclcpp::NANOSECONDS_PER_SECOND +
               static_cast<int64_t>(nanoseconds)) {}
 
     /// Build from a raw signed nanosecond count.
@@ -85,7 +85,7 @@ class Duration {
     /// Build from fractional seconds. Truncates toward zero, as rclcpp does.
     static constexpr Duration from_seconds(double seconds) {
         return Duration(RawNanoseconds{
-            static_cast<int64_t>(seconds * static_cast<double>(::nros::NANOSECONDS_PER_SECOND))});
+            static_cast<int64_t>(seconds * static_cast<double>(::rclcpp::NANOSECONDS_PER_SECOND))});
     }
 
     /// The largest representable duration — `rclcpp::Duration::max()`'s value.
@@ -96,7 +96,7 @@ class Duration {
 
     /// The span in (fractional) seconds.
     constexpr double seconds() const {
-        return static_cast<double>(ns_) / static_cast<double>(::nros::NANOSECONDS_PER_SECOND);
+        return static_cast<double>(ns_) / static_cast<double>(::rclcpp::NANOSECONDS_PER_SECOND);
     }
 
     // -- Arithmetic -------------------------------------------------------
@@ -145,7 +145,7 @@ class Duration {
     /// dependency.
     ///
     /// ```cpp
-    /// nros::Duration::from_seconds(0.1).to_msg(msg.lifespan);
+    /// rclcpp::Duration::from_seconds(0.1).to_msg(msg.lifespan);
     /// ```
     template <typename DurationMsgT> void to_msg(DurationMsgT& out) const {
         nros_duration_t d = nros_duration_from_nanoseconds(ns_);
@@ -165,16 +165,5 @@ class Duration {
 };
 
 } // namespace rclcpp
-
-// ============================================================================
-// nros:: — the in-tree spelling, now the ALIAS (RFC-0089)
-// ============================================================================
-//
-// Every in-tree call site still writes `nros::Duration`; migrating them is its
-// own wave. The alias is not deprecated: an attribute here would warn at every
-// in-tree site at once, in a workspace that denies warnings.
-namespace nros {
-using Duration = ::rclcpp::Duration;
-} // namespace nros
 
 #endif // NROS_CPP_DURATION_HPP

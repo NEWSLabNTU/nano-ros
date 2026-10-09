@@ -5,10 +5,10 @@
  * upstream's default is -1 (WAIT FOREVER), this helper drives the executor
  * cooperatively (RFC-0021), and `uint32_t` has no value to port -1 to. When
  * phase-456 W9 split the client in two, the verb existed only on
- * `nros::PollClient<S>`, so ONE probe covered the whole surface.
+ * `rclcpp::PollClient<S>`, so ONE probe covered the whole surface.
  *
  * The 2026-09-28 gap closure put `wait_for_service` back on the dispatch road —
- * `rclcpp::Client<S>` here, `nros::ClientHandle<S>` in the sibling TU — so the
+ * `rclcpp::Client<S>` here, `rclcpp::ClientHandle<S>` in the sibling TU — so the
  * refusal has THREE sites and needs three TUs. Same reason phase-417 gave for
  * splitting the service and action halves: an expected-failure compile proves
  * only that a file does not build, so two refusals in one TU cannot be told

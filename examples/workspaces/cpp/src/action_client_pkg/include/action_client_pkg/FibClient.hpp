@@ -36,8 +36,8 @@ class FibClient {
         Done = 4         // result received + printed
     };
 
-    ::nros::ActionClientStorage client_;
-    ::nros::Timer timer_;
+    ::rclcpp::ActionClientStorage client_;
+    ::rclcpp::Timer timer_;
     uint8_t goal_id_[16];
     int phase_ = Idle;
     int waits_ = 0; // ticks waited in the current phase (resend guard)

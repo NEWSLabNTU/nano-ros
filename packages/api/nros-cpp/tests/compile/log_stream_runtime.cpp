@@ -76,7 +76,7 @@ int main() {
     RCLCPP_ERROR_STREAM(logger, true << false << ' ' << 'x');
     expect("10 x", "bool as 1/0 and char verbatim");
 
-    ::nros::FixedString<16> fs;
+    ::rclcpp::FixedString<16> fs;
     fs = "fixed";
     RCLCPP_DEBUG_STREAM(logger, "fs=" << fs << " pct=100%d%s");
     expect("fs=fixed pct=100%d%s", "FixedString, and a % in the text is never a conversion");

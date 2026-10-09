@@ -43,8 +43,8 @@ struct AddTwoInts {
 };
 
 // 1. The renamed methods exist and their bodies type-check.
-inline ::nros::Result instantiate_new(::nros::PollSubscription<Int32>& sub,
-                                      ::nros::PollService<AddTwoInts>& srv) {
+inline ::rclcpp::Result instantiate_new(::rclcpp::PollSubscription<Int32>& sub,
+                                        ::rclcpp::PollService<AddTwoInts>& srv) {
     Int32 msg{};
     uint8_t buf[64];
     uint8_t att[16];
@@ -55,7 +55,7 @@ inline ::nros::Result instantiate_new(::nros::PollSubscription<Int32>& sub,
     int64_t seq = 0;
     nros_cpp_integrity_status_t status{};
 
-    ::nros::Result r = sub.take(msg);
+    ::rclcpp::Result r = sub.take(msg);
     (void)sub.take_serialized(buf, sizeof(buf), len);
     (void)sub.take_serialized_with_attachment(buf, sizeof(buf), len, att, sizeof(att), att_len);
     (void)sub.take_sequence(buf, 16, 4, lens, count);
@@ -64,9 +64,9 @@ inline ::nros::Result instantiate_new(::nros::PollSubscription<Int32>& sub,
     return r;
 }
 
-static_assert(std::is_same<decltype(std::declval<::nros::PollSubscription<Int32>&>().take(
+static_assert(std::is_same<decltype(std::declval<::rclcpp::PollSubscription<Int32>&>().take(
                                std::declval<Int32&>())),
-                           ::nros::Result>::value,
-              "PollSubscription<M>::take must return nros::Result");
+                           ::rclcpp::Result>::value,
+              "PollSubscription<M>::take must return rclcpp::Result");
 
 } // namespace nros_cpp_receive_verb_alias_test

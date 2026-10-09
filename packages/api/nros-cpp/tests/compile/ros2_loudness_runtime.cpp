@@ -164,11 +164,11 @@ int main() {
 
     // --- cpp:Executor::spin_once, the VALUE half ----------------------------
     size_t before = g_count;
-    nros::Executor exec;
-    nros::Result r = exec.spin_once(-1);
-    check(r.code() == nros::ErrorCode::Unsupported,
+    rclcpp::Executor exec;
+    rclcpp::Result r = exec.spin_once(-1);
+    check(r.code() == rclcpp::ErrorCode::Unsupported,
           "spin_once(-1) must return ErrorCode::Unsupported, not poll with a 0 ms budget");
-    check(r.code() != nros::ErrorCode::NotInitialized,
+    check(r.code() != rclcpp::ErrorCode::NotInitialized,
           "the -1 refusal must fire BEFORE the initialized_ check — the defect is in the value, "
           "and a caller must not have to open a session to be told");
     bool said_so = false;

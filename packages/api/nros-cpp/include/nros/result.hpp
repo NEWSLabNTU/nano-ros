@@ -4,7 +4,7 @@
 /**
  * @file result.hpp
  * @ingroup grp_errors
- * @brief `nros::Result`, `nros::ErrorCode`, and the `NROS_TRY` macro.
+ * @brief `rclcpp::Result`, `rclcpp::ErrorCode`, and the `NROS_TRY` macro.
  *
  * See @ref error_codes for the full code table and recovery guidance.
  */
@@ -101,7 +101,7 @@
 #endif
 #endif
 
-namespace nros {
+namespace rclcpp {
 
 /// Error codes returned by nros-cpp functions.
 ///
@@ -125,7 +125,7 @@ enum class ErrorCode : int32_t {
     AlreadyExists = -5,
     /// Static pool exhausted (executor slots, subscription buffers, …).
     Full = -6,
-    /// `nros::init()` was never called or the entity is in a default
+    /// `rclcpp::init()` was never called or the entity is in a default
     /// state. See `is_valid()` on entity classes.
     NotInitialized = -7,
     /// Operation invalid in the current state (bad call sequence).
@@ -249,15 +249,15 @@ using Result = ResultOf<void>;
 ///
 /// Usage:
 /// ```cpp
-/// nros::Result do_stuff() {
-///     NROS_TRY(nros::init());
+/// rclcpp::Result do_stuff() {
+///     NROS_TRY(rclcpp::init());
 ///     NROS_TRY(node.create_publisher(pub, "/topic"));
-///     return nros::Result::success();
+///     return rclcpp::Result::success();
 /// }
 /// ```
 #define NROS_TRY(expr)                                                                             \
     do {                                                                                           \
-        ::nros::Result _nros_r = (expr);                                                           \
+        ::rclcpp::Result _nros_r = (expr);                                                         \
         if (!_nros_r.ok()) return _nros_r;                                                         \
     } while (0)
 
@@ -285,7 +285,7 @@ using Result = ResultOf<void>;
 
 #define NROS_TRY_RET(expr, retval)                                                                 \
     do {                                                                                           \
-        ::nros::Result _nros_r = (expr);                                                           \
+        ::rclcpp::Result _nros_r = (expr);                                                         \
         if (!_nros_r.ok()) {                                                                       \
             NROS_TRY_LOG(__FILE__, __LINE__, #expr, _nros_r.raw());                                \
             return (retval);                                                                       \
@@ -297,7 +297,7 @@ using Result = ResultOf<void>;
 /// hook as `NROS_TRY_RET` and bails with a bare `return;`.
 #define NROS_CHECK(expr)                                                                           \
     do {                                                                                           \
-        ::nros::Result _nros_r = (expr);                                                           \
+        ::rclcpp::Result _nros_r = (expr);                                                         \
         if (!_nros_r.ok()) {                                                                       \
             NROS_TRY_LOG(__FILE__, __LINE__, #expr, _nros_r.raw());                                \
             return;                                                                                \
@@ -332,7 +332,7 @@ template <typename T> class NROS_NODISCARD ResultOf {
     static ResultOf ok(T value) {
         ResultOf e;
         e.ok_ = true;
-        e.value_ = ::nros::tr::forward_rvalue(value);
+        e.value_ = ::rclcpp::tr::forward_rvalue(value);
         return e;
     }
     static ResultOf error(ErrorCode code) {
@@ -348,7 +348,7 @@ template <typename T> class NROS_NODISCARD ResultOf {
 
     T& value() & { return value_; }
     const T& value() const& { return value_; }
-    T&& value() && { return ::nros::tr::forward_rvalue(value_); }
+    T&& value() && { return ::rclcpp::tr::forward_rvalue(value_); }
 
     ErrorCode error() const { return error_; }
     Result error_as_result() const { return Result(error_); }
@@ -361,7 +361,7 @@ template <typename T> class NROS_NODISCARD ResultOf {
     T value_;
 };
 
-} // namespace nros
+} // namespace rclcpp
 
 // ============================================================================
 // rclcpp:: — the ROS 2 spelling (RFC-0089 stage 6, step A)
@@ -374,10 +374,10 @@ template <typename T> class NROS_NODISCARD ResultOf {
 
 // `rclcpp::Result` is NOT an upstream rclcpp name — it is a convenience the
 // compat header carried, kept here because step A must not lose anything. It
-// names `nros::Result` exactly; RFC-0018 forbids exceptions, so there is no
+// names `rclcpp::Result` exactly; RFC-0018 forbids exceptions, so there is no
 // upstream error type to adopt in its place.
 namespace rclcpp {
-using ::nros::Result;
+using ::rclcpp::Result;
 } // namespace rclcpp
 
 #endif // NROS_CPP_RESULT_HPP

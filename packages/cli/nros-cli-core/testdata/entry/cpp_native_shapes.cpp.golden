@@ -26,7 +26,7 @@ extern "C" {
 }
 
 
-// Rust component install seam (nros::node!); the Rust node
+// Rust component install seam (rclcpp::node!); the Rust node
 // self-creates its node on the shared executor handle (phase-257).
 extern "C" {
     int32_t __nros_component_rust_pkg_install(const void* node, void* executor, void* self);
@@ -46,58 +46,58 @@ static ::rclcpp_pkg::RCL_TWO* __nros_comp_7 = nullptr;
 
 static int32_t __nros_entry_setup() {
     {
-        ::nros::Result r = ::nros::create_node(__nros_node_0, "talker", "/");
+        ::rclcpp::Result r = ::rclcpp::create_node(__nros_node_0, "talker", "/");
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         r = __nros_comp_0.configure(__nros_node_0);
         if (!r.ok()) return static_cast<int32_t>(r.raw());
     }
     {
-        ::nros::Result r = ::nros::create_node(__nros_node_1, "talker2", "/");
+        ::rclcpp::Result r = ::rclcpp::create_node(__nros_node_1, "talker2", "/");
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         r = __nros_comp_1.configure(__nros_node_1);
         if (!r.ok()) return static_cast<int32_t>(r.raw());
     }
     {
-        ::nros::Result r = ::nros::create_node(__nros_node_2, "c_one", "/");
+        ::rclcpp::Result r = ::rclcpp::create_node(__nros_node_2, "c_one", "/");
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         void* self = __nros_c_component_c_pkg_create();
         int32_t crc = __nros_c_component_c_pkg_configure(__nros_node_2.ffi_handle(), __nros_node_2.executor_handle(), self);
         if (crc != 0) return crc;
     }
     {
-        ::nros::Result r = ::nros::create_node(__nros_node_3, "c_two", "/");
+        ::rclcpp::Result r = ::rclcpp::create_node(__nros_node_3, "c_two", "/");
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         void* self = __nros_c_component_c_pkg_create();
         int32_t crc = __nros_c_component_c_pkg_configure(__nros_node_3.ffi_handle(), __nros_node_3.executor_handle(), self);
         if (crc != 0) return crc;
     }
     {
-        void* __exec = ::nros::global_handle();
-        if (__exec == nullptr) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
+        void* __exec = ::rclcpp::global_handle();
+        if (__exec == nullptr) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
         int32_t crc = __nros_component_rust_pkg_install(nullptr, __exec, nullptr);
         if (crc != 0) return crc;
     }
     {
-        void* __exec = ::nros::global_handle();
-        if (__exec == nullptr) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
+        void* __exec = ::rclcpp::global_handle();
+        if (__exec == nullptr) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
         int32_t crc = __nros_component_rust_pkg_install(nullptr, __exec, nullptr);
         if (crc != 0) return crc;
     }
     {
-        ::nros::NodeHandle __h(::nros::global_handle(), nullptr, nullptr);
-        if (!__h.valid()) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
+        ::rclcpp::NodeHandle __h(::rclcpp::global_handle(), nullptr, nullptr);
+        if (!__h.valid()) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
         __nros_comp_6 = new (__nros_comp_buf_6) ::rclcpp_pkg::RCL_ONE(__h);
         if (!__nros_comp_6->ok()) {
-            ::nros::detail::report_component_failure("rcl_one", __nros_comp_6->error_what(), __nros_comp_6->error_code());
+            ::rclcpp::detail::report_component_failure("rcl_one", __nros_comp_6->error_what(), __nros_comp_6->error_code());
             return __nros_comp_6->error_code();
         }
     }
     {
-        ::nros::NodeHandle __h(::nros::global_handle(), "alpha", "/island");
-        if (!__h.valid()) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
+        ::rclcpp::NodeHandle __h(::rclcpp::global_handle(), "alpha", "/island");
+        if (!__h.valid()) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
         __nros_comp_7 = new (__nros_comp_buf_7) ::rclcpp_pkg::RCL_TWO(__h);
         if (!__nros_comp_7->ok()) {
-            ::nros::detail::report_component_failure("alpha", __nros_comp_7->error_what(), __nros_comp_7->error_code());
+            ::rclcpp::detail::report_component_failure("alpha", __nros_comp_7->error_what(), __nros_comp_7->error_code());
             return __nros_comp_7->error_code();
         }
     }
@@ -121,5 +121,5 @@ __attribute__((section(".nros_boot_config"), used))
 };
 
 int main(int /*argc*/, char** /*argv*/) {
-    return ::nros::board::LinuxBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup);
+    return ::rclcpp::board::LinuxBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup);
 }

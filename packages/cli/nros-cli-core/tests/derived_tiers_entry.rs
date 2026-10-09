@@ -110,7 +110,7 @@ fn the_entry_derives_its_tiers_and_emits_run_tiers() {
 
     let src = emit::emit_typed(Lang::Cpp, &plan).expect("the typed C++ entry emits");
     assert!(
-        src.contains("::nros::board::ZephyrBoard::run_tiers("),
+        src.contains("::rclcpp::board::ZephyrBoard::run_tiers("),
         "the entry must end in ZephyrBoard::run_tiers, not run_components; src:\n{src}"
     );
     assert!(

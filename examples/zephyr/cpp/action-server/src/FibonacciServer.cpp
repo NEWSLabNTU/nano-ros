@@ -22,22 +22,22 @@ static void write_u32_le(uint8_t* p, uint32_t v) {
 }
 
 // Goal callback: decode `int32 order`, stash the goal, accept-and-execute.
-::nros::GoalResponse FibonacciServer::on_goal(const uint8_t goal_id[16], const uint8_t* data,
-                                              size_t len) {
+::rclcpp_action::GoalResponse FibonacciServer::on_goal(const uint8_t goal_id[16],
+                                                       const uint8_t* data, size_t len) {
     // Goal CDR: 4-byte encapsulation header, then int32 order (offset 4).
     if (len < 8 || pending_) {
-        return ::nros::GoalResponse::REJECT;
+        return ::rclcpp_action::GoalResponse::REJECT;
     }
     std::memcpy(goal_id_, goal_id, 16);
     order_ = read_i32_le(data + 4);
     pending_ = true;
     std::printf("Received goal request with order %d\n", static_cast<int>(order_));
-    return ::nros::GoalResponse::ACCEPT_AND_EXECUTE;
+    return ::rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
 }
 
 // Cancel callback: this server does not support cancellation.
-::nros::CancelResponse FibonacciServer::on_cancel(const uint8_t /*goal_id*/[16]) {
-    return ::nros::CancelResponse::REJECT;
+::rclcpp_action::CancelResponse FibonacciServer::on_cancel(const uint8_t /*goal_id*/[16]) {
+    return ::rclcpp_action::CancelResponse::REJECT;
 }
 
 // Timer: execute one pending goal (compute the sequence + complete the goal).
@@ -82,7 +82,7 @@ void FibonacciServer::on_tick() {
 
     nros_cpp_ret_t rc = nros_cpp_action_server_complete_goal(
         storage_.bytes, executor_, reinterpret_cast<const uint8_t(*)[16]>(goal_id_),
-        static_cast<int32_t>(nros::GoalStatus::Succeeded), buf, result_len);
+        static_cast<int32_t>(rclcpp_action::GoalStatus::Succeeded), buf, result_len);
     if (rc == 0) {
         std::printf("Goal succeeded\n");
     } else {
@@ -97,9 +97,10 @@ void FibonacciServer::on_tick() {
     // `<cstdio>` declares it in the global namespace only.
     ::setvbuf(stdout, nullptr, _IONBF, 0);
     executor_ = node.executor_handle();
-    ::rclcpp::Result r = ::nros::bind_action_server_raw<FibonacciServer, &FibonacciServer::on_goal,
-                                                        &FibonacciServer::on_cancel>(
-        node, storage_.bytes, "/fibonacci", "example_interfaces/action/Fibonacci", this);
+    ::rclcpp::Result r =
+        ::rclcpp::bind_action_server_raw<FibonacciServer, &FibonacciServer::on_goal,
+                                         &FibonacciServer::on_cancel>(
+            node, storage_.bytes, "/fibonacci", "example_interfaces/action/Fibonacci", this);
     if (!r.ok()) {
         return r;
     }

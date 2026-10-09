@@ -52,7 +52,7 @@
 #endif
 #endif
 
-namespace nros {
+namespace rclcpp {
 
 /// The node has no `params:` in its contract, so nothing is checked.
 constexpr int DECLARED_PARAM_NODE_UNCHECKED = -1;
@@ -138,8 +138,8 @@ constexpr bool declared_params_fqn_eq(const char* fqn, const char* ns, const cha
                : ((*fqn == *ns) ? declared_params_fqn_eq(fqn + 1, ns + 1, name) : false);
 }
 
-constexpr const ::nros::declared_params::Node*
-declared_params_find_node(const ::nros::declared_params::Node* nodes, size_t n, const char* ns,
+constexpr const ::rclcpp::declared_params::Node*
+declared_params_find_node(const ::rclcpp::declared_params::Node* nodes, size_t n, const char* ns,
                           const char* name) {
     return (n == 0) ? nullptr
                     : (declared_params_fqn_eq(nodes[0].fqn, ns, name)
@@ -147,9 +147,9 @@ declared_params_find_node(const ::nros::declared_params::Node* nodes, size_t n, 
                            : declared_params_find_node(nodes + 1, n - 1, ns, name));
 }
 
-constexpr int declared_params_find_row(const ::nros::declared_params::Row* rows, size_t n,
+constexpr int declared_params_find_row(const ::rclcpp::declared_params::Row* rows, size_t n,
                                        const char* fqn, const char* param) {
-    return (n == 0) ? ::nros::DECLARED_PARAM_UNDECLARED
+    return (n == 0) ? ::rclcpp::DECLARED_PARAM_UNDECLARED
                     : ((declared_params_streq(rows[0].fqn, fqn) &&
                         declared_params_streq(rows[0].name, param))
                            ? rows[0].type
@@ -196,6 +196,6 @@ constexpr const char* declared_param_type_name(int type) {
                                                : "?";
 }
 
-} // namespace nros
+} // namespace rclcpp
 
 #endif // NROS_CPP_DECLARED_PARAMS_HPP

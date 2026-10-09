@@ -101,7 +101,7 @@ The same Future/Promise + explicit-executor model is preserved in C and C++ wrap
 
 **Rust** uses `Promise<'_, T>` directly. It implements `core::future::Future` and exposes `take()` + `wait(&mut executor, ms)`.
 
-**C++** wraps the promise as `nros::Future<T>`:
+**C++** wraps the promise as `rclcpp::Future<T>`:
 
 ```cpp
 auto fut = client.send_request(req);
@@ -109,7 +109,7 @@ ResponseType resp;
 NROS_TRY(fut.wait(executor.handle(), 5000, resp));
 ```
 
-`Future::wait()` takes `void* executor_handle` (from `executor.handle()` or `nros::global_handle()`) for the same reason the Rust API takes `&mut executor`. There is no global executor singleton; the handle is explicit.
+`Future::wait()` takes `void* executor_handle` (from `executor.handle()` or `rclcpp::global_handle()`) for the same reason the Rust API takes `&mut executor`. There is no global executor singleton; the handle is explicit.
 
 **C** uses paired `_async` and blocking entry points:
 

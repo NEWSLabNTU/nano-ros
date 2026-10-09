@@ -4,7 +4,7 @@
 /**
  * @file publisher.hpp
  * @ingroup grp_pubsub
- * @brief `nros::Publisher<M>` — typed topic publisher.
+ * @brief `rclcpp::Publisher<M>` — typed topic publisher.
  */
 
 #ifndef NROS_CPP_PUBLISHER_HPP
@@ -25,7 +25,7 @@
 
 #include "nros_cpp_ffi.h"
 
-// issue 1437 — `get_actual_qos()` returns a `nros::QoS` BY VALUE from an
+// issue 1437 — `get_actual_qos()` returns a `rclcpp::QoS` BY VALUE from an
 // inline body, so the complete type must be here, not only by the time
 // `nros/node.hpp` is pulled in below.
 //
@@ -45,22 +45,22 @@
 // on. The predicate that decided it needed three separate corrections to get
 // right (issues 0112, 1187, 1240).
 //
-// The aliases name `nros::Owned<Publisher<M>>` now, which is ours and exists
+// The aliases name `rclcpp::Owned<Publisher<M>>` now, which is ours and exists
 // everywhere, so there is no capability left to probe: the alias is present
 // unconditionally and means the same thing on every target. That is RFC-0096 D1
 // — one API, no shape decided by a toolchain flag — reached by deleting the
 // question rather than by answering it more carefully.
 
-namespace nros {
+namespace rclcpp {
 
 /// Maximum topic name length stored inside a publisher (256).
 /// The topic name is owned C++-side, not inside the runtime handle.
 ///
-/// Stays in `nros::`: RFC-0089's flip moves the nine TYPES, and this is an
+/// Stays in `rclcpp::`: RFC-0089's flip moves the nine TYPES, and this is an
 /// implementation bound of one of them, not a name upstream declares.
 static constexpr size_t PUBLISHER_TOPIC_NAME_MAX = 256;
 
-} // namespace nros
+} // namespace rclcpp
 
 /// `rclcpp::Node` is named by the friend declaration below and by the
 /// out-of-line `Node::create_*` bodies further down. `nros/node.hpp` (included
@@ -69,7 +69,7 @@ static constexpr size_t PUBLISHER_TOPIC_NAME_MAX = 256;
 /// an unqualified `friend class Node;` used to supply implicitly.
 ///
 /// phase-427 W7 — declared in `rclcpp::`, which is where the definition moved.
-/// An elaborated `class Node;` in `nros::` would now declare a SECOND, distinct
+/// An elaborated `class Node;` in `rclcpp::` would now declare a SECOND, distinct
 /// class and collide with the `rclcpp::Node` alias.
 namespace rclcpp {
 class Node;
@@ -79,7 +79,7 @@ class Node;
 // `rclcpp::Publisher<M>` -- DEFINED here (RFC-0089: rclcpp:: is the home)
 // ============================================================================
 //
-// phase-428: the definition moved from `nros::` to `rclcpp::` and the alias
+// phase-428: the definition moved from `rclcpp::` to `rclcpp::` and the alias
 // turned around. The nested `SharedPtr` / `ConstSharedPtr` / `UniquePtr`
 // aliases live on the class itself, so `rclcpp::Publisher<M>::SharedPtr` -- the
 // way rclcpp users index types -- resolves with no wrapper in between.
@@ -114,7 +114,7 @@ namespace rclcpp {
 /// construction: `Node::create_publisher_with_qos` hands back an
 /// `EmbeddedPublisher<M>` BY VALUE, a caller-owned value with a `Drop`. So the
 /// phase's principle, that entity lifetime is a Rust data structure's, is
-/// already satisfied here, and `nros::Owned<Publisher<M>>` mirrors that
+/// already satisfied here, and `rclcpp::Owned<Publisher<M>>` mirrors that
 /// structure exactly.
 ///
 /// It was also argued that it could not be moved without losing something —
@@ -135,7 +135,7 @@ namespace rclcpp {
 ///
 /// Usage:
 /// ```cpp
-/// nros::Publisher<std_msgs::msg::String> pub;
+/// rclcpp::Publisher<std_msgs::msg::String> pub;
 /// NROS_TRY(node.create_publisher(pub, "/chatter"));
 /// pub.publish_raw(cdr_data, cdr_len);
 /// ```
@@ -145,7 +145,7 @@ template <typename M> class Publisher {
     ///
     /// `rclcpp::Publisher<M>::SharedPtr member_;` is close to universal in
     /// ported source, so this alias must exist on EVERY target — which
-    /// `std::shared_ptr` does not. It names `nros::Owned<Publisher<M>>`: the
+    /// `std::shared_ptr` does not. It names `rclcpp::Owned<Publisher<M>>`: the
     /// publisher BY VALUE, with `operator->` so every ported `pub_->publish(m)`
     /// keeps working, and no allocator, control block or `<memory>` anywhere.
     ///
@@ -163,7 +163,7 @@ template <typename M> class Publisher {
     /// entity is destroyed when the holder is, which is what upstream does when
     /// the holder was the last owner — and the W0 census found no entity handle
     /// copied anywhere in this tree or the porting corpus.
-    using SharedPtr = ::nros::Owned<Publisher<M>>;
+    using SharedPtr = ::rclcpp::Owned<Publisher<M>>;
     /// `rclcpp::Publisher<M>::ConstSharedPtr` — the SAME type as `SharedPtr`.
     ///
     /// `Owned<const T>` is refused by a `static_assert` in `owned.hpp`: it
@@ -171,14 +171,14 @@ template <typename M> class Publisher {
     /// is worse than a refusal. A const/mutable distinction drawn over a
     /// handle presupposes shared ownership, which a sole owner does not have;
     /// `const SharedPtr&` already yields the `const Publisher<M>*` view.
-    using ConstSharedPtr = ::nros::Owned<Publisher<M>>;
+    using ConstSharedPtr = ::rclcpp::Owned<Publisher<M>>;
     /// `rclcpp::Publisher<M>::UniquePtr` — also the SAME type as `SharedPtr`.
     ///
     /// `Owned<T>` IS unique ownership — move-only, one owner, destroys on scope
     /// exit — so a separate alias would be a second spelling of one type.
     /// Measured before the collapse (phase-456 W5): zero uses in the tree
     /// outside this definition and the one probe asserting its old shape.
-    using UniquePtr = ::nros::Owned<Publisher<M>>;
+    using UniquePtr = ::rclcpp::Owned<Publisher<M>>;
 
     /// Width of the buffer `get_gid()` fills — upstream's
     /// `RMW_GID_STORAGE_SIZE`, the phase-467 RMW gap-closure design study's
@@ -205,13 +205,13 @@ template <typename M> class Publisher {
     /// here (RFC-0018). `Result` is `[[nodiscard]]`, so a ported `pub->publish(msg);`
     /// warns; an uninitialised publisher answers `NotInitialized` and sends nothing.
     Result publish(const M& msg) {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(M::ffi_publish(storage_, &msg));
     }
 
     /// Publish raw CDR bytes.
     Result publish_raw(const uint8_t* data, size_t len) {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(nros_cpp_publish_raw(storage_, data, len));
     }
 
@@ -226,7 +226,7 @@ template <typename M> class Publisher {
     ///
     /// `writer` signature: `size_t(uint8_t* chunk, size_t cap)`.
     template <typename W> Result publish_streamed(size_t total_len, W&& writer) {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         struct Ctx {
             W writer;
             size_t total;
@@ -282,7 +282,7 @@ template <typename M> class Publisher {
 
         /// Send `actual_len` bytes. Consumes the loan.
         Result commit(size_t actual_len) {
-            if (!token_) return Result(::nros::ErrorCode::NotInitialized);
+            if (!token_) return Result(::rclcpp::ErrorCode::NotInitialized);
             nros_cpp_ret_t ret = nros_cpp_publisher_commit(pub_, token_, actual_len);
             pub_ = nullptr;
             token_ = nullptr;
@@ -324,15 +324,15 @@ template <typename M> class Publisher {
     /// Loan a writable slot of at least `requested_len` bytes. The returned
     /// `Loan` is RAII: call `commit(actual_len)` to send, `discard()` to
     /// abandon, or let it drop (auto-discard).
-    ::nros::ResultOf<Loan> loan(size_t requested_len) {
+    ::rclcpp::ResultOf<Loan> loan(size_t requested_len) {
         if (!initialized_)
-            return ::nros::ResultOf<Loan>::error(Result(::nros::ErrorCode::NotInitialized));
+            return ::rclcpp::ResultOf<Loan>::error(Result(::rclcpp::ErrorCode::NotInitialized));
         uint8_t* buf = nullptr;
         size_t cap = 0;
         void* token = nullptr;
         nros_cpp_ret_t ret = nros_cpp_publisher_loan(storage_, requested_len, &buf, &cap, &token);
-        if (ret != 0) return ::nros::ResultOf<Loan>::error(Result(ret));
-        return ::nros::ResultOf<Loan>::ok(Loan{storage_, buf, cap, token});
+        if (ret != 0) return ::rclcpp::ResultOf<Loan>::error(Result(ret));
+        return ::rclcpp::ResultOf<Loan>::ok(Loan{storage_, buf, cap, token});
     }
 
     /// Get the topic name.
@@ -357,12 +357,12 @@ template <typename M> class Publisher {
     /// Free: read once at create and retained on the handle, so this never
     /// re-enters the transport and is safe from a callback. An uninitialized
     /// publisher answers the all-absent profile.
-    ::nros::QoS get_actual_qos() const {
+    ::rclcpp::QoS get_actual_qos() const {
         nros_cpp_qos_t f{};
         if (!initialized_ || nros_cpp_publisher_get_actual_qos(storage_, &f) != 0) {
-            return ::nros::detail::qos_all_unknown();
+            return ::rclcpp::detail::qos_all_unknown();
         }
-        return ::nros::detail::qos_from_ffi(f);
+        return ::rclcpp::detail::qos_from_ffi(f);
     }
 
     /// How many subscriptions are on this publisher's topic, RIGHT NOW —
@@ -393,8 +393,8 @@ template <typename M> class Publisher {
     /// right after startup is "not seen yet", never "not there"; a backend
     /// that cannot read the graph returns an error, which is a DIFFERENT
     /// answer from `0` and leaves `*out_count` untouched.
-    Result get_subscription_count(::nros::Executor& executor, size_t* out_count) const {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+    Result get_subscription_count(::rclcpp::Executor& executor, size_t* out_count) const {
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return executor.count_subscribers(topic_name_, out_count);
     }
 
@@ -445,7 +445,7 @@ template <typename M> class Publisher {
 
     /// Register a callback for liveliness-lost events on this publisher.
     Result on_liveliness_lost(nros_cpp_publisher_count_cb_t cb, void* user_context = nullptr) {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(nros_cpp_publisher_set_liveliness_lost(storage_, cb, user_context));
     }
 
@@ -453,7 +453,7 @@ template <typename M> class Publisher {
     /// publisher.
     Result on_offered_deadline_missed(uint32_t deadline_ms, nros_cpp_publisher_count_cb_t cb,
                                       void* user_context = nullptr) {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(nros_cpp_publisher_set_offered_deadline_missed(storage_, deadline_ms, cb,
                                                                      user_context));
     }
@@ -469,7 +469,7 @@ template <typename M> class Publisher {
     /// simply did not reach a peer, which is the one thing a caller uses this
     /// for. cyclonedds performs it for real.
     Result assert_liveliness() {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(nros_cpp_publisher_assert_liveliness(storage_));
     }
 
@@ -499,7 +499,7 @@ template <typename M> class Publisher {
     ///   `ErrorCode::Unsupported`, because all-zero is what an unwritten
     ///   buffer holds and the two must not read alike.
     Result get_gid(uint8_t (&out_gid)[GID_SIZE]) const {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(nros_cpp_publisher_get_gid(storage_, out_gid, GID_SIZE));
     }
 
@@ -513,20 +513,11 @@ template <typename M> class Publisher {
     // the handle (`CppPublisher` in nros-cpp's publisher.rs, whose
     // compile-time assert is the other half of this number).
     alignas(8) uint8_t storage_[NROS_PUBLISHER_SIZE + sizeof(void*)];
-    char topic_name_[::nros::PUBLISHER_TOPIC_NAME_MAX];
+    char topic_name_[::rclcpp::PUBLISHER_TOPIC_NAME_MAX];
     bool initialized_;
 };
 
 } // namespace rclcpp
-
-// ============================================================================
-// nros:: -- the in-tree spelling, now the ALIAS (RFC-0089). Declared here,
-// before the out-of-line `Node::create_*` bodies below, which are written in
-// the `nros::` vocabulary.
-// ============================================================================
-namespace nros {
-template <typename M> using Publisher = ::rclcpp::Publisher<M>;
-} // namespace nros
 
 // Phase 84.G8: out-of-line definition of Node::create_publisher<M>().
 // Placed here so consumers only pay for this template when they actually
@@ -534,52 +525,52 @@ template <typename M> using Publisher = ::rclcpp::Publisher<M>;
 // every entity's code path.
 #include "nros/node.hpp"
 
-namespace nros {} // namespace nros
+namespace rclcpp {} // namespace rclcpp
 
 namespace rclcpp {
 template <typename M>
-Result Node::create_publisher(Publisher<M>& out, const char* topic, const ::nros::QoS& qos) {
+Result Node::create_publisher(Publisher<M>& out, const char* topic, const ::rclcpp::QoS& qos) {
     // RFC-0088 D5 — one image, one backend, one encoding. Compile-time, so a
     // message the linked backend cannot encode never reaches the wire.
     NROS_CPP_ASSERT_MESSAGE_FORMAT(M);
-    if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
-    nros_cpp_qos_t ffi_qos = ::nros::detail::qos_to_ffi(qos);
+    if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
+    nros_cpp_qos_t ffi_qos = ::rclcpp::detail::qos_to_ffi(qos);
     nros_cpp_ret_t ret = nros_cpp_publisher_create(&handle_, topic, M::TYPE_NAME, M::TYPE_HASH,
                                                    ffi_qos, out.storage_);
     if (ret == 0) {
         // Topic name lives C++-side; copy + null-terminate into the
         // fixed-size buffer. Truncation is silent.
-        ::nros::detail::assign_entity_name(out.topic_name_, topic);
+        ::rclcpp::detail::assign_entity_name(out.topic_name_, topic);
         out.initialized_ = true;
     }
     return Result(ret);
 }
 } // namespace rclcpp
 
-namespace nros {
+namespace rclcpp {
 
 /// Phase 189.M3.1 — named-options overload. `PublisherOptions` is a
 /// reserved/empty struct (a publisher has no callback ⇒ no sched-context
 /// or message-info axis), so this simply forwards to the qos-only create.
 /// It exists for rclcpp symmetry and as the seam for future intra-process
 /// / loaned-message knobs.
-} // namespace nros
+} // namespace rclcpp
 
 namespace rclcpp {
 template <typename M>
-Result Node::create_publisher(Publisher<M>& out, const char* topic, const ::nros::QoS& qos,
-                              const ::nros::PublisherOptions& options) {
+Result Node::create_publisher(Publisher<M>& out, const char* topic, const ::rclcpp::QoS& qos,
+                              const ::rclcpp::PublisherOptions& options) {
     (void)options; // reserved — no live fields today
     return create_publisher<M>(out, topic, qos);
 }
 } // namespace rclcpp
 
-namespace nros {
+namespace rclcpp {
 
 /// Phase 123.B.4 — value-returning publisher factory. Wraps the
 /// out-param `Node::create_publisher` in `ResultOf<Publisher<M>>`
 /// so users can write
-/// `auto pub = nros::create_publisher<Int32>(node, "/chatter");`
+/// `auto pub = rclcpp::create_publisher<Int32>(node, "/chatter");`
 /// in the rclcpp-style.
 ///
 /// Returns `ResultOf<Publisher<M>>`, not upstream's `std::shared_ptr<Publisher<M>>`:
@@ -591,9 +582,9 @@ inline ResultOf<Publisher<M>> create_publisher(::rclcpp::Node& node, const char*
     Publisher<M> p;
     Result r = node.create_publisher<M>(p, topic, qos);
     if (!r.ok()) return ResultOf<Publisher<M>>::error(r);
-    return ResultOf<Publisher<M>>::ok(::nros::tr::forward_rvalue(p));
+    return ResultOf<Publisher<M>>::ok(::rclcpp::tr::forward_rvalue(p));
 }
 
-} // namespace nros
+} // namespace rclcpp
 
 #endif // NROS_CPP_PUBLISHER_HPP

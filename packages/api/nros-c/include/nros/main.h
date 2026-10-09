@@ -16,8 +16,8 @@
  *
  *   2. `nros_board_native_run(nros_node_register_fn entry)` — the
  *      C-FFI Board adapter the generated TU calls. Owns the
- *      `nros::init() → entry(context) → nros::spin() →
- *      nros::shutdown()` lifecycle.
+ *      `rclcpp::init_in() → entry(context) → rclcpp::spin_in() →
+ *      rclcpp::shutdown_in()` lifecycle.
  *
  * Phase 212.L.2 keeps Entry pkgs `native`-only at the cmake surface
  * for v1.
@@ -342,7 +342,7 @@ NROS_PUBLIC int32_t nros_board_freertos_run_tiers_tasks_in(
     size_t storage_stride, const nros_tier_task_memory_t* task_memory);
 
 /* phase-432 W3.1 — run a SINGLE-executor embedded C entry on ANY RTOS board:
- * the C-ABI twin of `nros::board::<Rtos>Board::run_components`, so a C-only
+ * the C-ABI twin of `rclcpp::board::<Rtos>Board::run_components`, so a C-only
  * consumer (certified C compiler, MISRA-style, no C++ runtime) can boot an
  * image without a C++ toolchain in the build.
  *

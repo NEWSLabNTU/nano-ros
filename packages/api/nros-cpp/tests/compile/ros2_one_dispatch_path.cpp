@@ -6,7 +6,7 @@
 // wall-timer period arithmetic, catch-up snapping, callback ordering, a
 // `std::chrono::steady_clock` read — driven ONLY from `rclcpp::spin(node)` /
 // `rclcpp::spin_some(node)`. A ported file that instead called
-// `nros::spin_once()`, `nros::spin()`, or drove an `nros::Executor` got zero
+// `rclcpp::spin_once()`, `rclcpp::spin()`, or drove an `rclcpp::Executor` got zero
 // callbacks and no diagnostic. Both spin spellings are legitimate API; which
 // one is wrong depends on which node object the file holds, so NO diagnostic
 // can cover it. Today the two node types have different names, which is the
@@ -15,24 +15,24 @@
 //
 // WHAT THIS PROBE PROVES
 //   1. The mixed shape TYPE-CHECKS: a shim `rclcpp::Node` subclass that creates
-//      a wall timer and a subscription, driven by `nros::spin_once()` and
-//      `nros::spin(ms, ms)` — NOT `rclcpp::spin` — with no compat spin verb
+//      a wall timer and a subscription, driven by `rclcpp::spin_once()` and
+//      `rclcpp::spin(ms, ms)` — NOT `rclcpp::spin` — with no compat spin verb
 //      anywhere in the file.
 //   2. `rclcpp::Node` has NO `pump()` member. This is a REACHABILITY assertion,
 //      not a style one: `pump()` existing at all means a second dispatch path
 //      exists, whether or not this TU calls it. The detector is SFINAE over
 //      `declval<Node&>().pump()`, so it fails if the member comes back under
 //      any signature.
-//   3. A shim wall timer OWNS an `nros::Timer` — i.e. `create_wall_timer`
+//   3. A shim wall timer OWNS an `rclcpp::Timer` — i.e. `create_wall_timer`
 //      registers on the executor arena rather than parking a deadline in the
-//      node. `nros::Timer`'s handle is an arena `HandleId`, so this is the
+//      node. `rclcpp::Timer`'s handle is an arena `HandleId`, so this is the
 //      structural evidence that the schedule left the wrapper.
 //   4. `create_subscription` hands back the `rclcpp::Subscription<M>::SharedPtr`
 //      a ported file declares, and the callable may capture (the shape the
 //      native `void(*)(const M&)` overload cannot take).
 //
 // WHAT IT DOES NOT PROVE
-//   That a callback FIRES under `nros::spin_once()`. That needs a running
+//   That a callback FIRES under `rclcpp::spin_once()`. That needs a running
 //   session: linking the library (including these headers emits a
 //   config-variant anchor), a backend, and a peer. A runtime cell for this
 //   belongs in `nros_tests` beside the other rclcpp-compat fixtures; the
@@ -94,7 +94,7 @@ static_assert(!has_pump<NoPump>::value, "the pump() detector fires on a type wit
 
 static_assert(!has_pump<rclcpp::Node>::value,
               "rclcpp::Node has a pump() again -- that is a SECOND dispatch path, driven only "
-              "by rclcpp::spin/spin_some, and a file spinning nros::spin_once() would get no "
+              "by rclcpp::spin/spin_some, and a file spinning rclcpp::spin_once() would get no "
               "callbacks with no diagnostic possible (phase-417 structural blocker)");
 
 // --- (3) a wall timer is an EXECUTOR timer ----------------------------------
@@ -105,15 +105,15 @@ static_assert(!has_pump<rclcpp::Node>::value,
 // took that to its end: there is no C++ cell at all any more (the callable is in
 // the arena), and the handle is two words — the executor pointer and the packed
 // slot handle — so there is no room for a deadline to move back into.
-static_assert(sizeof(::nros::TimerHandle) == 2 * sizeof(void*),
-              "nros::TimerHandle grew -- something other than the executor and the slot "
+static_assert(sizeof(::rclcpp::TimerHandle) == 2 * sizeof(void*),
+              "rclcpp::TimerHandle grew -- something other than the executor and the slot "
               "handle moved into the wrapper");
 
 // phase-430 W7 — `rclcpp::TimerBase` IS DELETED as a hierarchy, and the timer is
 // FLAT. phase-476 W2 deleted the cell, so the flatness is now pinned on the
 // handle: no vtable, nothing to dispatch virtually.
-static_assert(!std::is_polymorphic<::nros::TimerHandle>::value,
-              "nros::TimerHandle has a vtable -- the executor dispatches through a raw "
+static_assert(!std::is_polymorphic<::rclcpp::TimerHandle>::value,
+              "rclcpp::TimerHandle has a vtable -- the executor dispatches through a raw "
               "function pointer and no virtual call exists");
 // A named functor, not a lambda: a lambda-expression in an unevaluated context
 // is C++20 and these probes are compiled at C++14.
@@ -130,7 +130,7 @@ static_assert(std::is_same<decltype(std::declval<rclcpp::Node&>().create_wall_ti
 // This class is deliberately written the way a ported rclcpp file is —
 // `create_wall_timer` with a capturing lambda, `create_subscription` with a
 // capturing lambda, members typed as the nested `SharedPtr` aliases — and then
-// driven by `nros::` spin verbs. Before phase-417 this compiled and dispatched
+// driven by `rclcpp::` spin verbs. Before phase-417 this compiled and dispatched
 // NOTHING, which is the whole reason a compile probe cannot be the last word
 // here (see "WHAT IT DOES NOT PROVE").
 
@@ -170,10 +170,10 @@ inline void drive_with_native_spin_verbs() {
     auto node = std::make_shared<MixedSpinNode>();
 
     // A single progress sweep.
-    (void)::nros::spin_once(0);
+    (void)::rclcpp::spin_once(0);
     // A budgeted sweep — the same entry point `rclcpp::Rate::sleep()` forwards
     // onto, which therefore also dispatches this node's timer now.
-    (void)::nros::spin(10, 5);
+    (void)::rclcpp::spin_in(10, 5);
 
     (void)node->ticks();
     (void)node->last();

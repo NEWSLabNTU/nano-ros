@@ -98,7 +98,7 @@ void FibClient::on_tick() {
     waits_ = 0;
 
     ::rclcpp::Result r =
-        ::nros::create_action_client_raw(node, client_.bytes, "/fibonacci", Action::TYPE_NAME);
+        ::rclcpp::create_action_client_raw(node, client_.bytes, "/fibonacci", Action::TYPE_NAME);
     if (!r.ok()) {
         return r;
     }

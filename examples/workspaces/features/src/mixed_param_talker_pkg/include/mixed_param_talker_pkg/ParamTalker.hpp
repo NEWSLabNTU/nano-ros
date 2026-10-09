@@ -24,7 +24,7 @@ namespace mixed_param_talker_pkg {
 /// the chain publishes a default instead.
 class ParamTalker {
     ::rclcpp::Publisher<std_msgs::msg::Int32> pub_;
-    ::nros::Timer timer_;
+    ::rclcpp::Timer timer_;
     /// Saved at configure: the C half is a free function over this handle, and
     /// the parameter store is keyed by NODE (phase-426 W1), so naming the node
     /// is what makes "the other language's parameter" resolvable at all.

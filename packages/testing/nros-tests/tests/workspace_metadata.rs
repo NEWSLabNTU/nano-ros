@@ -256,7 +256,7 @@ fn assert_entry_writes_a_complete_census(entry: &std::path::Path, lang: &str) {
 /// with no router and no spin.
 ///
 /// The generated C++ entry calls the header-only
-/// `nros::board::LinuxBoard::run_components`, which never reached the Rust
+/// `rclcpp::board::LinuxBoard::run_components`, which never reached the Rust
 /// funnel phase-463 W2 put the census switch in. Before 1419 this binary
 /// ignored the variable, dialled zenoh and exited 156 on `ConnectionFailed`
 /// with no file written -- so no in-tree C++ workspace could produce the
@@ -347,12 +347,12 @@ fn an_rclc_c_application_writes_a_census_without_a_router() {
     );
 }
 
-/// Issue 1556 (c) -- a C++ APPLICATION that owns its own `main` (`nros::init`,
+/// Issue 1556 (c) -- a C++ APPLICATION that owns its own `main` (`rclcpp::init_in`,
 /// then its own loop) is a census producer: `nros_cpp_init_rmw` selects the
 /// recording backend, the application creates its node and entities through
 /// the hooked `nros_cpp_*` ABI, and its FIRST BLOCKING CALL writes the census
 /// and exits 0 -- no router. Two programs, because "the first blocking call"
-/// is not one function: the talker's first block is `nros::spin_once`, the
+/// is not one function: the talker's first block is `rclcpp::spin_once`, the
 /// service client's is `wait_for_service`, which never spins.
 ///
 /// Before: only the two board RUNNERS answered `$NROS_CENSUS_OUT`, so both

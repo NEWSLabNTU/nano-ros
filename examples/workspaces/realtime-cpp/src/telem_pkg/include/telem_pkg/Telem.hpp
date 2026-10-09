@@ -13,7 +13,7 @@ namespace telem_pkg {
 /// asserts ctrl publishes ≥3× as many messages as telem.
 class Telem {
     ::rclcpp::Publisher<std_msgs::msg::Int32> pub_;
-    ::nros::Timer timer_;
+    ::rclcpp::Timer timer_;
     int count_ = 0;
 
     void on_tick();

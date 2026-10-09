@@ -27,8 +27,8 @@ static int32_t __nros_entry_setup() {
     /* Phase 269 (W4) — sched-context wiring (multi-tier scheduling). */
     uint8_t __nros_sc_ids[2] = {0};
     {
-        void* __exec = ::nros::global_handle();
-        if (__exec == nullptr) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
+        void* __exec = ::rclcpp::global_handle();
+        if (__exec == nullptr) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
         {
             nros_cpp_ret_t __scr0 = nros_cpp_create_sched_context_from_policy(__exec, nullptr, 0ull, 0ull, 0ull, nullptr, 80u, &__nros_sc_ids[0]);
             if (__scr0 != NROS_CPP_RET_OK) return static_cast<int32_t>(__scr0);
@@ -40,8 +40,8 @@ static int32_t __nros_entry_setup() {
     }
     /* Phase 272 (W2) — seed node-name → sched-context table (RFC-0047). */
     {
-        void* __exec = ::nros::global_handle();
-        if (__exec == nullptr) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
+        void* __exec = ::rclcpp::global_handle();
+        if (__exec == nullptr) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
         {
             nros_cpp_ret_t __nbr0 = nros_cpp_bind_node_name_sched(__exec, "ctrl", "/", __nros_sc_ids[0]);
             if (__nbr0 != NROS_CPP_RET_OK) return static_cast<int32_t>(__nbr0);
@@ -53,8 +53,8 @@ static int32_t __nros_entry_setup() {
     }
     /* Phase 273 (W2) — seed group → sched-context table (RFC-0047). */
     {
-        void* __exec = ::nros::global_handle();
-        if (__exec == nullptr) return static_cast<int32_t>(::nros::ErrorCode::NotInitialized);
+        void* __exec = ::rclcpp::global_handle();
+        if (__exec == nullptr) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
         {
             nros_cpp_ret_t __gbr0 = nros_cpp_bind_group_sched(__exec, "ctrl", "/", "ctrl_grp", __nros_sc_ids[0]);
             if (__gbr0 != NROS_CPP_RET_OK) return static_cast<int32_t>(__gbr0);
@@ -65,13 +65,13 @@ static int32_t __nros_entry_setup() {
         }
     }
     {
-        ::nros::Result r = ::nros::create_node(__nros_node_0, "ctrl", "/");
+        ::rclcpp::Result r = ::rclcpp::create_node(__nros_node_0, "ctrl", "/");
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         r = __nros_comp_0.configure(__nros_node_0);
         if (!r.ok()) return static_cast<int32_t>(r.raw());
     }
     {
-        ::nros::Result r = ::nros::create_node(__nros_node_1, "telem", "/");
+        ::rclcpp::Result r = ::rclcpp::create_node(__nros_node_1, "telem", "/");
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         r = __nros_comp_1.configure(__nros_node_1);
         if (!r.ok()) return static_cast<int32_t>(r.raw());
@@ -96,7 +96,7 @@ __attribute__((section(".nros_boot_config"), used))
 };
 
 extern "C" int nros_app_main(int /*argc*/, char** /*argv*/) {
-    return ::nros::board::ThreadxBoard::run_components(NROS_ENTRY_LOCATOR, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup);
+    return ::rclcpp::board::ThreadxBoard::run_components(NROS_ENTRY_LOCATOR, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup);
 }
 
 NROS_APP_MAIN_REGISTER_VOID();

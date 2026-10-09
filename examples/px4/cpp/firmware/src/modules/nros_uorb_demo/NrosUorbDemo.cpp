@@ -99,7 +99,7 @@ class NrosUorbDemo : public ModuleBase<NrosUorbDemo>, public px4::ScheduledWorkI
     rclcpp::Node _node{};
     rclcpp::Publisher<DebugKeyValueTag> _debug_pub{};
     // phase-456 W2b — `take_serialized` lives on the poll subscriber.
-    nros::PollSubscription<VehicleStatusTag> _status_sub{};
+    rclcpp::PollSubscription<VehicleStatusTag> _status_sub{};
 
     uint32_t _published{0};
     uint32_t _received{0};
@@ -126,12 +126,12 @@ bool NrosUorbDemo::init() {
 
     // 2. Ordinary nano-ros bring-up. Nothing here is uORB-specific — the same
     //    three calls appear in every nano-ros example on every backend.
-    if (!nros::init().ok()) {
-        PX4_ERR("nros::init() failed");
+    if (!rclcpp::init_in().ok()) {
+        PX4_ERR("rclcpp::init_in() failed");
         return false;
     }
 
-    if (!nros::create_node(_node, "nros_uorb_demo").ok()) {
+    if (!rclcpp::create_node(_node, "nros_uorb_demo").ok()) {
         PX4_ERR("create_node failed");
         return false;
     }

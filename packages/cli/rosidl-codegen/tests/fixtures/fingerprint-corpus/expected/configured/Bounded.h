@@ -15,8 +15,8 @@
 
 #include <nros/nros_config_generated.h>
 
-/* RFC-0090 — emitted by nano-ros codegen version 9. */
-#define NROS_EMITTED_CODEGEN_VERSION 9
+/* RFC-0090 — emitted by nano-ros codegen version 10. */
+#define NROS_EMITTED_CODEGEN_VERSION 10
 
 #ifndef NROS_CODEGEN_VERSION
 #error "nros: the generated config header did not define NROS_CODEGEN_VERSION. This generated artifact cannot tell whether the runtime accepts it; rebuild the nano-ros runtime so its config header is regenerated."
@@ -162,7 +162,7 @@ static inline nros_ret_t fingerprint_corpus_msg_bounded_publish(struct nros_publ
 /// C ONLY. The options struct is passed as a compound literal, and C++ cannot
 /// take the address of one ("taking address of rvalue"), so the C++ arm below
 /// names a C++ answer instead of leaving that diagnostic to be decoded. C++
-/// callers have a typed subscription already -- nros::Subscription<M> over the
+/// callers have a typed subscription already -- rclcpp::Subscription<M> over the
 /// generated .hpp -- and it carries no hint yet; that is the C++ sibling of
 /// this work, not something this macro can supply.
 #define fingerprint_corpus_msg_bounded_subscribe_sized(node, topic, cb, ctx, out_handle, rx_bytes) \

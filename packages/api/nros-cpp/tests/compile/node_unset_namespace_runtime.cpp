@@ -124,12 +124,12 @@ nros_cpp_node_options_t options_with_namespace(const char* ns) {
 } // namespace
 
 int main() {
-    // The executor's namespace is the whole point: `nros::init(locator, domain,
+    // The executor's namespace is the whole point: `rclcpp::init_in(locator, domain,
     // session, node_namespace)` (issue 1434) is how a launch-declared namespace
     // reaches the session, and before this fix nothing a C++ entry created
     // afterwards could inherit it. `Executor::create*` passes `nullptr` for the
     // namespace, so the probe reaches `nros_cpp_init_rmw` directly — which is
-    // what that overload of `nros::init` does.
+    // what that overload of `rclcpp::init` does.
     nros_cpp_ret_t rc =
         nros_cpp_init_rmw(NROS_STUB_RMW_NAME, nullptr, 0, "i1473", "/island", g_storage);
     if (rc != NROS_CPP_RET_OK) {
@@ -225,7 +225,7 @@ int main() {
     check_str(nros_cpp_node_get_namespace(&epsilon), "/island",
               "an EMPTY namespace string is \"the caller filled nothing in\", never the empty "
               "namespace — an unresolved bake macro expands to \"\", and this is the rule "
-              "nros::init's node_namespace and NodeHandle::resolve_namespace already state");
+              "rclcpp::init's node_namespace and NodeHandle::resolve_namespace already state");
     check_fqn(&epsilon, "/island/epsilon", "…so it must answer exactly as NULL does");
 
     (void)nros_cpp_fini(h);

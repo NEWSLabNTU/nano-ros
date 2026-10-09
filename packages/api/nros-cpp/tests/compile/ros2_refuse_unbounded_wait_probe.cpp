@@ -17,7 +17,7 @@
  * read as green. The siblings are
  * `ros2_refuse_unbounded_action_wait_probe.cpp` (the action client),
  * `ros2_refuse_unbounded_wait_dispatch_probe.cpp` (`rclcpp::Client<S>`) and
- * `ros2_refuse_unbounded_wait_handle_probe.cpp` (`nros::ClientHandle<S>`, what
+ * `ros2_refuse_unbounded_wait_handle_probe.cpp` (`rclcpp::ClientHandle<S>`, what
  * `Client<S>::SharedPtr` names) — the last two added 2026-09-28 with the verb
  * itself.
  *
@@ -37,7 +37,7 @@
 //
 // 2026-09-28 gave the dispatch road the verb (its FFI takes `(executor,
 // handle_id)` now), so that second TU exists and asserts its own refusal. This
-// one stays pointed at `nros::PollClient<S>`: the refusal is per DECLARING type,
+// one stays pointed at `rclcpp::PollClient<S>`: the refusal is per DECLARING type,
 // and each type's needs its own file.
 #include <nros/polling_client.hpp>
 
@@ -62,7 +62,7 @@ struct FakeService {
 
 int ros2_refuse_unbounded_wait_probe();
 int ros2_refuse_unbounded_wait_probe() {
-    nros::PollClient<FakeService> client;
+    rclcpp::PollClient<FakeService> client;
     // The line upstream's own tutorials write.
     (void)client.wait_for_service();
     return 0;

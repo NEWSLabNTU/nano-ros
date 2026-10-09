@@ -151,7 +151,7 @@ nros_publisher_init_with_qos(&pub, &node, "/cmd_vel", ts, &qos);
 C++:
 
 ```cpp
-auto pub = node.create_publisher<Twist>("/cmd_vel", nros::QoS().tx_express(true));
+auto pub = node.create_publisher<Twist>("/cmd_vel", rclcpp::QoS().tx_express(true));
 ```
 
 ## Pitfalls

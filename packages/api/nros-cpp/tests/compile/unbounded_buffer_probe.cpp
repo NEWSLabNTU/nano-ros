@@ -31,13 +31,13 @@ struct Unbounded {
     static const size_t SERIALIZED_SIZE_MAX = 264;
     using nros_derived_size_bounds = void;
     template <class NROS_size_bound_required = void> struct tx_size_bound {
-        static_assert(::nros::detail::size_bound_dependent_false<NROS_size_bound_required>::value,
+        static_assert(::rclcpp::detail::size_bound_dependent_false<NROS_size_bound_required>::value,
                       "NROS_UNBOUNDED__p_msg_unbounded__field_data: p/Unbounded states no "
                       "serialized-size bound -- unbounded member: data (string).");
         static constexpr size_t value = 0;
     };
     template <class NROS_size_bound_required = void> struct rx_size_bound {
-        static_assert(::nros::detail::size_bound_dependent_false<NROS_size_bound_required>::value,
+        static_assert(::rclcpp::detail::size_bound_dependent_false<NROS_size_bound_required>::value,
                       "NROS_UNBOUNDED__p_msg_unbounded__field_data: p/Unbounded states no "
                       "serialized-size bound -- unbounded member: data (string).");
         static constexpr size_t value = 0;
@@ -46,9 +46,11 @@ struct Unbounded {
 
 // THE ASSERTION OF THIS FILE: asking an unbounded type to size a buffer is a
 // build error. Both directions, because both stack an array.
-constexpr size_t rx = ::nros::detail::buffer_bounds<Unbounded>::rx;
-constexpr size_t tx = ::nros::detail::buffer_bounds<Unbounded>::tx;
+constexpr size_t rx = ::rclcpp::detail::buffer_bounds<Unbounded>::rx;
+constexpr size_t tx = ::rclcpp::detail::buffer_bounds<Unbounded>::tx;
 
 } // namespace
 
-int main() { return static_cast<int>(rx + tx); }
+int main() {
+    return static_cast<int>(rx + tx);
+}

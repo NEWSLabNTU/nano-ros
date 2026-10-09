@@ -17,7 +17,7 @@ void Listener::on_msg(const ::std_msgs::msg::Int32& msg) {
     // The typed `Publisher<Int32>` registers the DDS-mangled keyexpr, so the
     // raw sub must match on `Int32::TYPE_NAME` (240.1 finding; raw↔typed
     // type-name unification is a separate concern).
-    return ::nros::bind_subscription<::std_msgs::msg::Int32, Listener, &Listener::on_msg>(
+    return ::rclcpp::bind_subscription<::std_msgs::msg::Int32, Listener, &Listener::on_msg>(
         node, "/chatter", this);
 }
 

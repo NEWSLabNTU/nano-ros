@@ -117,7 +117,7 @@ void on_request(const AddTwoInts::Request&, AddTwoInts::Response&) {}
 void on_response(const AddTwoInts::Response&) {}
 
 /// Spin until `pred` holds, or give up after ~1 s of 10 ms spins.
-template <typename P> bool spin_until(nros::Executor& exec, P pred) {
+template <typename P> bool spin_until(rclcpp::Executor& exec, P pred) {
     for (int i = 0; i < 100; ++i) {
         (void)exec.spin_once(10);
         if (pred()) return true;
@@ -130,8 +130,8 @@ template <typename P> bool spin_until(nros::Executor& exec, P pred) {
 int main() {
     // A subscription needs the backend to accept entities; timers never reach it.
     nros_stub_rmw_set_accept_entities(true);
-    nros::Executor exec;
-    check(nros::Executor::create_with_rmw(exec, NROS_STUB_RMW_NAME, nullptr, 0, "w2_timer").ok(),
+    rclcpp::Executor exec;
+    check(rclcpp::Executor::create_with_rmw(exec, NROS_STUB_RMW_NAME, nullptr, 0, "w2_timer").ok(),
           "executor create on the stub backend");
 
     int fires = 0;
@@ -263,7 +263,7 @@ int main() {
         {
             bool all_created = true;
             for (int i = 0; i < 100 && all_created; ++i) {
-                nros::GuardCondition guard;
+                rclcpp::GuardCondition guard;
                 all_created = node.create_guard_condition(guard, &on_guard).ok();
                 if (all_created) {
                     all_created = guard.trigger().ok();

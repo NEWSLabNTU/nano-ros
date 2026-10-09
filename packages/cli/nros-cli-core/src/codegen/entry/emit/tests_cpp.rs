@@ -195,12 +195,12 @@ fn typed_emit_includes_headers_constructs_and_runs_components() {
     assert!(src.contains("static ::talker_pkg::Talker __nros_comp_0;"));
     assert!(src.contains("static ::listener_pkg::Listener __nros_comp_1;"));
     // setup constructs the node + configures the component
-    assert!(src.contains("::nros::create_node(__nros_node_0, \"talker\", \"/\")"));
+    assert!(src.contains("::rclcpp::create_node(__nros_node_0, \"talker\", \"/\")"));
     assert!(src.contains("__nros_comp_0.configure(__nros_node_0)"));
     assert!(src.contains("__nros_comp_1.configure(__nros_node_1)"));
     // routes to the real executor via the named overload (phase 266)
     assert!(src.contains(
-        "::nros::board::LinuxBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
+        "::rclcpp::board::LinuxBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
     ));
     assert!(!src.contains("__nros_component_"));
     assert!(!src.contains("NodeContext"));
@@ -228,7 +228,7 @@ fn typed_emit_remaps_declared_before_configure() {
     let src = emit_typed(&plan).expect("typed emit ok");
     assert!(
         src.contains(
-            "nros_cpp_declare_remap(::nros::global_handle(), \"talker\", \"/\", \"chatter\", \"chatter_remapped\")"
+            "nros_cpp_declare_remap(::rclcpp::global_handle(), \"talker\", \"/\", \"chatter\", \"chatter_remapped\")"
         ),
         "expected declare_remap call; src:\n{src}"
     );
@@ -347,7 +347,9 @@ fn typed_emit_rclcpp_shape_constructs_with_handle() {
     // must stand — is `typed_emit_rclcpp_undeclared_identity_is_nullptr`
     // below, and both are in the `cpp_native_shapes` golden.
     assert!(
-        src.contains("::nros::NodeHandle __h(::nros::global_handle(), \"controller\", nullptr);")
+        src.contains(
+            "::rclcpp::NodeHandle __h(::rclcpp::global_handle(), \"controller\", nullptr);"
+        )
     );
     assert!(src.contains("__nros_comp_0 = new (__nros_comp_buf_0) ::ctrl_pkg::Controller(__h);"));
     assert!(src.contains("if (!__nros_comp_0->ok()) {"));
@@ -358,7 +360,7 @@ fn typed_emit_rclcpp_shape_constructs_with_handle() {
     assert!(!src.contains("create_node(__nros_node_0"));
     // still routes to the real executor via the named overload (phase 266)
     assert!(src.contains(
-        "::nros::board::LinuxBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
+        "::rclcpp::board::LinuxBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
     ));
 }
 
@@ -388,7 +390,9 @@ fn typed_emit_rclcpp_launch_identity_rides_the_handle() {
     plan.nodes[0].namespace = Some("/island".into());
     let src = emit_typed(&plan).expect("rclcpp emit ok");
     assert!(
-        src.contains("::nros::NodeHandle __h(::nros::global_handle(), \"alpha\", \"/island\");"),
+        src.contains(
+            "::rclcpp::NodeHandle __h(::rclcpp::global_handle(), \"alpha\", \"/island\");"
+        ),
         "a launch-declared name and namespace must reach the component's handle;\n{src}"
     );
 }
@@ -406,12 +410,12 @@ fn typed_emit_rclcpp_undeclared_identity_is_nullptr() {
     plan.nodes[0].namespace = None;
     let src = emit_typed(&plan).expect("rclcpp emit ok");
     assert!(
-        src.contains("::nros::NodeHandle __h(::nros::global_handle(), nullptr, nullptr);"),
+        src.contains("::rclcpp::NodeHandle __h(::rclcpp::global_handle(), nullptr, nullptr);"),
         "a node the launch file did not name must hand its component NO identity, so \
          the class's own literal stands;\n{src}"
     );
     assert!(
-        !src.contains("__h(::nros::global_handle(), \"controller\""),
+        !src.contains("__h(::rclcpp::global_handle(), \"controller\""),
         "`controller` is the EXEC, not a declared name — passing it would silently \
          outrank the component class's literal for every node in every launch file \
          that omits `name=`"
@@ -421,7 +425,7 @@ fn typed_emit_rclcpp_undeclared_identity_is_nullptr() {
     // nothing.
     let handle_line = src
         .lines()
-        .find(|l| l.contains("::nros::NodeHandle __h("))
+        .find(|l| l.contains("::rclcpp::NodeHandle __h("))
         .expect("the rclcpp arm emits a handle");
     assert!(
         !handle_line.contains("\"\""),
@@ -447,7 +451,7 @@ fn typed_emit_rclcpp_empty_launch_identity_is_unset() {
     plan.nodes[0].namespace = Some(String::new());
     let src = emit_typed(&plan).expect("rclcpp emit ok");
     assert!(
-        src.contains("::nros::NodeHandle __h(::nros::global_handle(), nullptr, nullptr);"),
+        src.contains("::rclcpp::NodeHandle __h(::rclcpp::global_handle(), nullptr, nullptr);"),
         "an empty declared name or namespace is `unset`, so the handle carries \
          nothing and the component class's literal stands;\n{src}"
     );
@@ -470,11 +474,11 @@ fn typed_emit_rclcpp_launch_identity_reaches_the_tiered_arm() {
     plan.nodes[0].namespace = Some("/island".into());
     let src = emit_typed(&plan).expect("tiered rclcpp emit ok");
     assert!(
-        src.contains("::nros::NodeHandle __h(executor, \"ctrl\", \"/island\");"),
+        src.contains("::rclcpp::NodeHandle __h(executor, \"ctrl\", \"/island\");"),
         "the tiered arm must carry the launch identity too;\n{src}"
     );
     assert!(
-        src.contains("::nros::NodeHandle __h(executor, \"telem\", nullptr);"),
+        src.contains("::rclcpp::NodeHandle __h(executor, \"telem\", nullptr);"),
         "and the sibling that declared no namespace must still get nullptr there;\n{src}"
     );
 }
@@ -531,8 +535,8 @@ fn typed_emit_duplicate_pkg_makes_two_instances_one_include() {
     assert_eq!(src.matches("#include \"twin_pkg/Twin.hpp\"").count(), 1);
     assert!(src.contains("static ::twin_pkg::Twin __nros_comp_0;"));
     assert!(src.contains("static ::twin_pkg::Twin __nros_comp_1;"));
-    assert!(src.contains("::nros::create_node(__nros_node_0, \"a\", \"/\")"));
-    assert!(src.contains("::nros::create_node(__nros_node_1, \"b\", \"/\")"));
+    assert!(src.contains("::rclcpp::create_node(__nros_node_0, \"a\", \"/\")"));
+    assert!(src.contains("::rclcpp::create_node(__nros_node_1, \"b\", \"/\")"));
 }
 
 #[test]
@@ -564,7 +568,7 @@ fn typed_emit_c_node_uses_factory_configure_seam() {
     assert!(!src.contains("__nros_comp_0.configure"));
     // Still routes to the real executor via the named overload (phase 266).
     assert!(src.contains(
-        "::nros::board::LinuxBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
+        "::rclcpp::board::LinuxBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
     ));
 }
 
@@ -604,7 +608,7 @@ fn typed_emit_nuttx_board_uses_nuttxboard_run_components() {
     plan.board = "nuttx".into();
     let src = emit_typed(&plan).expect("typed emit ok");
     assert!(src.contains(
-        "::nros::board::NuttxBoard::run_components(NROS_ENTRY_LOCATOR, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
+        "::rclcpp::board::NuttxBoard::run_components(NROS_ENTRY_LOCATOR, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
     ));
 }
 
@@ -624,7 +628,7 @@ fn typed_emit_threadx_board_uses_threadxboard_run_components() {
         let src = emit_typed(&plan).expect("typed emit ok");
         assert!(
             src.contains(
-                "::nros::board::ThreadxBoard::run_components(NROS_ENTRY_LOCATOR, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
+                "::rclcpp::board::ThreadxBoard::run_components(NROS_ENTRY_LOCATOR, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
             ),
             "board key {key} must map to ThreadxBoard::run_components with named overload"
         );
@@ -646,7 +650,7 @@ fn typed_emit_native_single_node_bakes_name_in_boot_config() {
     assert!(src.contains("NROS_BOOT_SET_NODE_NAME"));
     assert!(src.contains(".node_name  = \"talker\""));
     assert!(src.contains(
-        "::nros::board::LinuxBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
+        "::rclcpp::board::LinuxBoard::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
     ));
 }
 
@@ -676,7 +680,7 @@ fn typed_emit_param_services_block_present_when_enabled() {
     let src = emit_typed(&plan).expect("typed cpp emit ok");
     assert!(src.contains("nros_cpp_register_parameter_services(__exec)"));
     assert!(src.contains(
-        "nros_cpp_declare_param(::nros::global_handle(), 0, \"publish_period_ms\", \"250\")"
+        "nros_cpp_declare_param(::rclcpp::global_handle(), 0, \"publish_period_ms\", \"250\")"
     ));
     // issue 0745 — seeding precedes construction.
     let seed_at = src.find("nros_cpp_declare_param").unwrap();
@@ -693,7 +697,7 @@ fn typed_emit_param_services_block_present_when_enabled() {
     let ret_at = src.rfind("return 0;").unwrap();
     assert!(reg_at < ret_at, "param block must precede return 0");
     // confirms executor handle fetched from global
-    assert!(src.contains("::nros::global_handle()"));
+    assert!(src.contains("::rclcpp::global_handle()"));
 }
 
 #[test]
@@ -730,7 +734,7 @@ fn typed_emit_lifecycle_active_emits_autostart_block() {
         "expected nros_cpp_lifecycle_autostart(__exec, 2u) in:\n{src}"
     );
     // executor handle from global_handle
-    assert!(src.contains("::nros::global_handle()"));
+    assert!(src.contains("::rclcpp::global_handle()"));
     // AFTER configure loop (configure call or C factory), BEFORE return 0
     let autostart_at = src.find("nros_cpp_lifecycle_autostart").unwrap();
     let ret_at = src.rfind("return 0;").unwrap();
@@ -886,10 +890,10 @@ fn typed_emit_seeds_each_node_on_its_own_index() {
     plan.nodes[1].params = vec![("rate".into(), "20".into())];
     let src = emit_typed(&plan).expect("typed cpp emit ok");
 
-    let seed_a = "nros_cpp_declare_param(::nros::global_handle(), 0, \"rate\", \"10\")";
-    let seed_b = "nros_cpp_declare_param(::nros::global_handle(), 1, \"rate\", \"20\")";
-    let create_a = "::nros::create_node(__nros_node_0, \"alpha\", \"/\")";
-    let create_b = "::nros::create_node(__nros_node_1, \"beta\", \"/\")";
+    let seed_a = "nros_cpp_declare_param(::rclcpp::global_handle(), 0, \"rate\", \"10\")";
+    let seed_b = "nros_cpp_declare_param(::rclcpp::global_handle(), 1, \"rate\", \"20\")";
+    let create_a = "::rclcpp::create_node(__nros_node_0, \"alpha\", \"/\")";
+    let create_b = "::rclcpp::create_node(__nros_node_1, \"beta\", \"/\")";
     let at = |s: &str| {
         src.find(s)
             .unwrap_or_else(|| panic!("missing `{s}`; got:\n{src}"))
@@ -1014,16 +1018,16 @@ fn typed_emit_tiers_native_uses_run_tiers_path() {
     );
     // Each setup fn creates only its tier's nodes via create_node_on.
     assert!(
-        src.contains("::nros::create_node_on(__nros_node_0, executor, \"ctrl\", \"/\")"),
+        src.contains("::rclcpp::create_node_on(__nros_node_0, executor, \"ctrl\", \"/\")"),
         "ctrl node must use create_node_on in tier-0 setup; src:\n{src}"
     );
     assert!(
-        src.contains("::nros::create_node_on(__nros_node_1, executor, \"telem\", \"/\")"),
+        src.contains("::rclcpp::create_node_on(__nros_node_1, executor, \"telem\", \"/\")"),
         "telem node must use create_node_on in tier-1 setup; src:\n{src}"
     );
     // NativeTierSpec array emitted.
     assert!(
-        src.contains("static const ::nros::board::NativeTierSpec __nros_tiers[2]"),
+        src.contains("static const ::rclcpp::board::NativeTierSpec __nros_tiers[2]"),
         "expected 2-element NativeTierSpec array; src:\n{src}"
     );
     assert!(
@@ -1038,7 +1042,7 @@ fn typed_emit_tiers_native_uses_run_tiers_path() {
     assert!(src.contains("10LL"), "low priority 10LL; src:\n{src}");
     // main calls run_tiers.
     assert!(
-        src.contains("::nros::board::LinuxBoard::run_tiers("),
+        src.contains("::rclcpp::board::LinuxBoard::run_tiers("),
         "main must call LinuxBoard::run_tiers; src:\n{src}"
     );
     // Old sched-context wiring must NOT appear in the run_tiers path.
@@ -1229,12 +1233,12 @@ fn typed_emit_tiers_freertos_embedded_uses_run_tiers_path() {
     );
     // NativeTierSpec array emitted.
     assert!(
-        src.contains("static const ::nros::board::NativeTierSpec __nros_tiers[2]"),
+        src.contains("static const ::rclcpp::board::NativeTierSpec __nros_tiers[2]"),
         "expected 2-element NativeTierSpec array; src:\n{src}"
     );
     // FreertosBoard::run_tiers called (not LinuxBoard).
     assert!(
-        src.contains("::nros::board::FreertosBoard::run_tiers("),
+        src.contains("::rclcpp::board::FreertosBoard::run_tiers("),
         "nros_app_main must call FreertosBoard::run_tiers; src:\n{src}"
     );
     // FreeRTOS embedded entry point: nros_app_main + NROS_APP_MAIN_REGISTER_VOID.
@@ -1283,12 +1287,12 @@ fn typed_emit_tiers_zephyr_embedded_uses_run_tiers_path() {
     );
     // NativeTierSpec array emitted.
     assert!(
-        src.contains("static const ::nros::board::NativeTierSpec __nros_tiers[2]"),
+        src.contains("static const ::rclcpp::board::NativeTierSpec __nros_tiers[2]"),
         "expected 2-element NativeTierSpec array; src:\n{src}"
     );
     // ZephyrBoard::run_tiers called (not LinuxBoard / FreertosBoard).
     assert!(
-        src.contains("::nros::board::ZephyrBoard::run_tiers("),
+        src.contains("::rclcpp::board::ZephyrBoard::run_tiers("),
         "main must call ZephyrBoard::run_tiers; src:\n{src}"
     );
     // Zephyr entry point: plain int main(void), kernel calls it directly.
@@ -1344,12 +1348,12 @@ fn typed_emit_tiers_nuttx_embedded_uses_run_tiers_path() {
     );
     // NativeTierSpec array emitted.
     assert!(
-        src.contains("static const ::nros::board::NativeTierSpec __nros_tiers[2]"),
+        src.contains("static const ::rclcpp::board::NativeTierSpec __nros_tiers[2]"),
         "expected 2-element NativeTierSpec array; src:\n{src}"
     );
     // NuttxBoard::run_tiers called (not LinuxBoard / FreertosBoard / ZephyrBoard).
     assert!(
-        src.contains("::nros::board::NuttxBoard::run_tiers("),
+        src.contains("::rclcpp::board::NuttxBoard::run_tiers("),
         "nros_app_main must call NuttxBoard::run_tiers; src:\n{src}"
     );
     // NuttX embedded entry point: nros_app_main + NROS_APP_MAIN_REGISTER_VOID
@@ -1459,7 +1463,7 @@ fn typed_emit_no_tiers_uses_plain_create_node() {
         "no-tier plan must not emit bind_node_name_sched"
     );
     assert!(
-        src.contains("::nros::create_node(__nros_node_0, \"talker\", \"/\")"),
+        src.contains("::rclcpp::create_node(__nros_node_0, \"talker\", \"/\")"),
         "no-tier plan must use plain create_node"
     );
     assert!(
@@ -1495,12 +1499,12 @@ fn typed_emit_creates_each_node_at_its_plan_namespace() {
         let src = emit_typed(&plan).expect("typed cpp emit ok");
         assert!(
             src.contains(&format!(
-                "::nros::create_node(__nros_node_0, \"talker\", \"{rendered}\")"
+                "::rclcpp::create_node(__nros_node_0, \"talker\", \"{rendered}\")"
             )),
             "namespace {declared:?} must render as {rendered:?}; src:\n{src}"
         );
         assert!(
-            !src.contains("::nros::create_node(__nros_node_0, \"talker\", \"\")"),
+            !src.contains("::rclcpp::create_node(__nros_node_0, \"talker\", \"\")"),
             "an empty namespace must never reach the C++ edge; src:\n{src}"
         );
     }
@@ -1514,11 +1518,11 @@ fn typed_emit_tiered_creates_each_node_at_its_plan_namespace() {
     // nodes[1] keeps `None`, so both arms appear in one render.
     let src = emit_typed(&plan).expect("typed cpp tiered emit ok");
     assert!(
-        src.contains("::nros::create_node_on(__nros_node_0, executor, \"ctrl\", \"/island\")"),
+        src.contains("::rclcpp::create_node_on(__nros_node_0, executor, \"ctrl\", \"/island\")"),
         "tier-0 node must be created under its plan namespace; src:\n{src}"
     );
     assert!(
-        src.contains("::nros::create_node_on(__nros_node_1, executor, \"telem\", \"/\")"),
+        src.contains("::rclcpp::create_node_on(__nros_node_1, executor, \"telem\", \"/\")"),
         "a node the plan gives no namespace stays at the root; src:\n{src}"
     );
 }
@@ -1723,13 +1727,13 @@ fn typed_emit_bakes_monitor_table_before_nodes() {
     let install_at = src
         .find("nros_cpp_install_monitors(")
         .expect("install call");
-    let create_at = src.find("::nros::create_node(").expect("create_node");
+    let create_at = src.find("::rclcpp::create_node(").expect("create_node");
     assert!(
         install_at < create_at,
         "install must precede create_node; src:\n{src}"
     );
     assert!(
-        src.contains("void* __mexec = ::nros::global_handle();"),
+        src.contains("void* __mexec = ::rclcpp::global_handle();"),
         "{src}"
     );
 }
@@ -1844,7 +1848,7 @@ fn typed_emit_tiers_slice_monitor_rows_per_tier() {
     assert!(setup1.contains("void* __mexec = executor;"), "{setup1}");
     // Each install precedes that tier's first node.
     let i0 = setup0.find("nros_cpp_install_monitors(").unwrap();
-    let c0 = setup0.find("::nros::create_node_on(").unwrap();
+    let c0 = setup0.find("::rclcpp::create_node_on(").unwrap();
     assert!(i0 < c0, "{setup0}");
     // And the whole tier table region is absent when no tier has rows.
     assert!(

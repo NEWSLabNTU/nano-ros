@@ -4,7 +4,7 @@
 // and so must every `Result` our own headers produce along the way: this TU
 // includes the umbrella, so a header that drops a `Result` on the floor fails
 // HERE rather than in a user's build. That is not hypothetical — writing this
-// probe is what surfaced `rclcpp::shutdown()` discarding `nros::shutdown()`
+// probe is what surfaced `rclcpp::shutdown()` discarding `rclcpp::shutdown()`
 // and answering `true` unconditionally.
 //
 // It is compiled BEFORE the expected-failure probe beside it, because an
@@ -13,21 +13,21 @@
 
 #include <nros/nros.hpp>
 
-static nros::Result value_less() {
-    return nros::Result::success();
+static rclcpp::Result value_less() {
+    return rclcpp::Result::success();
 }
 
-static nros::ResultOf<int> value_carrying() {
-    return nros::ResultOf<int>::ok(7);
+static rclcpp::ResultOf<int> value_carrying() {
+    return rclcpp::ResultOf<int>::ok(7);
 }
 
 int main() {
     // Checked.
-    nros::Result r = value_less();
+    rclcpp::Result r = value_less();
     if (!r.ok()) return r.raw();
 
     // Checked, then consumed.
-    nros::ResultOf<int> v = value_carrying();
+    rclcpp::ResultOf<int> v = value_carrying();
     if (!v.ok()) return v.error_as_result().raw();
 
     // Deliberately ignored. `(void)` is the sanctioned way to say "I looked at

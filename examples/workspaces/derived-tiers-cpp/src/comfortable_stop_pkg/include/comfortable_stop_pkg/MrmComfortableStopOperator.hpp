@@ -14,14 +14,14 @@ namespace comfortable_stop_pkg {
 /// on the tier the rate-monotonic derivation assigns from the contract's
 /// 10 Hz timer path. No tier, priority or period is written anywhere but the
 /// timer call below and the contract beside the launch file.
-class MrmComfortableStopOperator : public ::nros::NodeWithTimers<1> {
+class MrmComfortableStopOperator : public ::rclcpp::NodeWithTimers<1> {
     ::rclcpp::Publisher<std_msgs::msg::Int32> pub_;
     int count_ = 0;
 
     void on_timer();
 
   public:
-    explicit MrmComfortableStopOperator(::nros::NodeHandle h);
+    explicit MrmComfortableStopOperator(::rclcpp::NodeHandle h);
 };
 
 } // namespace comfortable_stop_pkg

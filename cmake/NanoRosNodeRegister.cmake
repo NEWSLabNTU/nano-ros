@@ -439,11 +439,11 @@ endfunction()
 macro(_nros_rtos_entry_family _fam)
     set(NROS_ENTRY_RTOS_TAG "${_fam}")
     string(TOUPPER "${_fam}" NROS_ENTRY_RTOS_UPPER)
-    # `nuttx` -> `Nuttx`, so `::nros::board::NuttxBoard`.
+    # `nuttx` -> `Nuttx`, so `::rclcpp::board::NuttxBoard`.
     string(SUBSTRING "${_fam}" 0 1 _nros_fam_head)
     string(SUBSTRING "${_fam}" 1 -1 _nros_fam_tail)
     string(TOUPPER "${_nros_fam_head}" _nros_fam_head)
-    set(NROS_ENTRY_BOARD_CPP "::nros::board::${_nros_fam_head}${_nros_fam_tail}Board")
+    set(NROS_ENTRY_BOARD_CPP "::rclcpp::board::${_nros_fam_head}${_nros_fam_tail}Board")
 endmacro()
 
 # ---------------------------------------------------------------------------

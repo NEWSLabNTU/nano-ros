@@ -16,7 +16,7 @@
 /**
  * @file heap_string.hpp
  * @ingroup grp_support
- * @brief `nros::HeapString` — heap-backed growable string container.
+ * @brief `rclcpp::HeapString` — heap-backed growable string container.
  */
 
 #ifndef NROS_CPP_HEAP_STRING_HPP
@@ -31,7 +31,7 @@
 // gates it, on `NROS_CPP_HAS_STD_STRING` from the one detection site.
 #include "nros/std_detect.hpp"
 
-namespace nros {
+namespace rclcpp {
 
 /// Heap-backed string container (`mode = "heap"`, RFC-0033).
 ///
@@ -160,6 +160,6 @@ struct HeapString {
 #endif
 };
 
-} // namespace nros
+} // namespace rclcpp
 
 #endif // NROS_CPP_HEAP_STRING_HPP

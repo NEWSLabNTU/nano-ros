@@ -20,8 +20,8 @@ void StopModeOperator::on_timer() {
     count_++;
 }
 
-StopModeOperator::StopModeOperator(::nros::NodeHandle h)
-    : ::nros::NodeWithTimers<1>(h, "stop_mode_operator") {
+StopModeOperator::StopModeOperator(::rclcpp::NodeHandle h)
+    : ::rclcpp::NodeWithTimers<1>(h, "stop_mode_operator") {
     // Line-buffer stdout so each tick flushes immediately when piped.
     ::setvbuf(stdout, nullptr, _IOLBF, 0);
     pub_ = create_publisher_in<std_msgs::msg::Int32>("/system/stop_mode/control");

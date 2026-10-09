@@ -1,4 +1,4 @@
-// `rclcpp::init(argc, argv)` and `nros::init_with_launch*(argc, argv)` HONOUR
+// `rclcpp::init(argc, argv)` and `rclcpp::init_with_launch*(argc, argv)` HONOUR
 // `--ros-args` — the C++ half of phase-467 Row 11.
 //
 // RUNTIME probe, because every property here is an ORDER or a side effect, and
@@ -120,28 +120,28 @@ int main() {
     std::printf("init_honours_ros_args:\n");
 
     reset();
-    nros::Result res = nros::init_with_launch_auto(4, remap_argv);
+    rclcpp::Result res = rclcpp::init_with_launch_auto(4, remap_argv);
     check(res.ok(), "init_with_launch_auto accepts `-r a:=b`");
     check(events_are({Ev::Validate, Ev::Init, Ev::Install}),
           "  ...validated BEFORE init, installed into the open executor AFTER it");
 
     reset();
-    res = nros::init_with_launch_auto(4, param_argv);
+    res = rclcpp::init_with_launch_auto(4, param_argv);
     check(!res.ok() && res.raw() == -3, "init_with_launch_auto RETURNS the `-p` refusal");
     check(events_are({Ev::Validate}), "  ...and never opened a session");
 
     reset();
-    res = nros::init_with_launch_auto(1, plain_argv);
+    res = rclcpp::init_with_launch_auto(1, plain_argv);
     check(res.ok() && events_are({Ev::Init}),
           "no `--ros-args`: the parser is never reached, init proceeds");
 
     reset();
-    res = nros::init_with_launch_auto(0, nullptr);
+    res = rclcpp::init_with_launch_auto(0, nullptr);
     check(res.ok() && events_are({Ev::Init}), "(0, NULL) — what RTOS boards pass — is a no-op");
 
     reset();
     g_install_full = true;
-    res = nros::init_with_launch_auto(4, remap_argv);
+    res = rclcpp::init_with_launch_auto(4, remap_argv);
     check(!res.ok() && res.raw() == -6, "a rule that does not fit is RETURNED");
     check(events_are({Ev::Validate, Ev::Init, Ev::Install, Ev::Fini}) && !g_live,
           "  ...and the session it opened is closed again");

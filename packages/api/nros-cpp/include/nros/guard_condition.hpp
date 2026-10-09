@@ -4,7 +4,7 @@
 /**
  * @file guard_condition.hpp
  * @ingroup grp_executor
- * @brief `nros::GuardCondition` — cross-thread wake source.
+ * @brief `rclcpp::GuardCondition` — cross-thread wake source.
  */
 
 #ifndef NROS_CPP_GUARD_CONDITION_HPP
@@ -23,12 +23,12 @@
 // the home). The friend declaration below is qualified, and a qualified friend
 // names an existing entity rather than introducing one, so the name has to be
 // declared first — and in `rclcpp::`, because an elaborated `class Node;` in
-// `nros::` would declare a second, distinct class.
+// `rclcpp::` would declare a second, distinct class.
 namespace rclcpp {
 class Node;
 }
 
-namespace nros {
+namespace rclcpp {
 
 /// Guard condition for cross-thread signaling.
 ///
@@ -40,7 +40,7 @@ namespace nros {
 /// ```cpp
 /// void on_signal(void* ctx) { /* handle event */ }
 ///
-/// nros::GuardCondition guard;
+/// rclcpp::GuardCondition guard;
 /// NROS_TRY(node.create_guard_condition(guard, on_signal));
 ///
 /// // From another thread:
@@ -171,6 +171,6 @@ class GuardCondition {
     size_t handle_id_;
 };
 
-} // namespace nros
+} // namespace rclcpp
 
 #endif // NROS_CPP_GUARD_CONDITION_HPP

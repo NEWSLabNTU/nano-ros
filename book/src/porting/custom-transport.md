@@ -31,7 +31,7 @@ interface, designed per
 | Layer | Owns | Crates / files |
 |-------|------|----------------|
 | **L0 — canonical C ABI** | `#[repr(C)]` struct + `abi_version: u32` field + four `unsafe extern "C" fn` pointers + `user_data: *mut c_void` | `nros-rmw::custom_transport` (Rust source); `<nros/transport.h>` is the cbindgen-emitted C header |
-| **L1 — language wrappers** | mechanical glue, no new design decisions | `nros-rmw::set_custom_transport` (Rust); `nros_set_custom_transport` (C); `nros::set_custom_transport` (C++) |
+| **L1 — language wrappers** | mechanical glue, no new design decisions | `nros-rmw::set_custom_transport` (Rust); `nros_set_custom_transport` (C); `rclcpp::set_custom_transport` (C++) |
 | **L2 — typed app API** | n/a — transport is platform-side | — |
 
 **All design decisions live at L0.** A new feature — say, a `flush`
@@ -49,7 +49,7 @@ The `abi_version: u32` field at the head of the struct is mandatory.
 Consumers must fill in `NROS_TRANSPORT_OPS_ABI_VERSION_V1` (Rust:
 `nros_rmw::NROS_TRANSPORT_OPS_ABI_VERSION_V1`; C:
 `NROS_TRANSPORT_OPS_ABI_VERSION_V1`; C++: filled in automatically by
-`nros::set_custom_transport`). Mismatched versions are rejected at
+`rclcpp::set_custom_transport`). Mismatched versions are rejected at
 registration time with `NROS_RMW_RET_INCOMPATIBLE_ABI` (`-14`); the
 slot stays whatever it was before the bad call.
 
@@ -155,7 +155,7 @@ int main(void) {
 ```cpp
 #include <nros/transport.hpp>
 
-nros::TransportOps ops;
+rclcpp::TransportOps ops;
 ops.user_data = &g_uart;
 ops.open  = [](void *ud, const void*) -> int { return my_uart_open((MyUart*)ud); };
 ops.close = [](void *ud)               { my_uart_close((MyUart*)ud); };
@@ -165,7 +165,7 @@ ops.write = [](void *ud, const uint8_t *buf, std::size_t len) -> int {
 ops.read  = [](void *ud, uint8_t *buf, std::size_t len, std::uint32_t to) -> std::int32_t {
     return my_uart_read((MyUart*)ud, buf, len, to);
 };
-auto r = nros::set_custom_transport(ops);
+auto r = rclcpp::set_custom_transport(ops);
 NROS_TRY(r);
 ```
 

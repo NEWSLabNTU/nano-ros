@@ -12,7 +12,7 @@ namespace cpp_param_talker_pkg {
 /// the value on /chatter.
 class ParamTalker {
     ::rclcpp::Publisher<std_msgs::msg::Int32> pub_;
-    ::nros::Timer timer_;
+    ::rclcpp::Timer timer_;
     void* executor_handle_ = nullptr; /* saved at configure for live reads in on_tick */
 
     void on_tick();

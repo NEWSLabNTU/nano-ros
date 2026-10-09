@@ -4,7 +4,7 @@
 /**
  * @file polling_client.hpp
  * @ingroup grp_service
- * @brief `nros::PollClient<S>` — the service client the CALLER owns and drains.
+ * @brief `rclcpp::PollClient<S>` — the service client the CALLER owns and drains.
  *
  * WHICH ONE DO I WANT
  *
@@ -36,7 +36,7 @@
  * `server_available()`, `send_request()`, `call()` and `call_polling()` were all
  * reachable the same way. The split is what makes those calls UNWRITABLE rather
  * than merely wrong, which is the same reason and the same remedy W2b applied to
- * `nros::PollSubscription<M>` and W5 to `nros::PollService<S>`.
+ * `rclcpp::PollSubscription<M>` and W5 to `rclcpp::PollService<S>`.
  *
  * The 2026-09-28 follow-up then closed the gap the split RECORDED, and the
  * distinction it draws is worth keeping: two of those verbs read nothing of the
@@ -74,11 +74,11 @@
 #include "nros/future.hpp"
 #include "nros/log.hpp" // phase-417 stage 3 — NROS_RCLCPP_REFUSE_* + rclcpp::detail::refuse
 #include "nros/result.hpp"
-#include "nros/size_bound.hpp" // nros::rx_buffer_capacity<M> — the receive-buffer size
+#include "nros/size_bound.hpp" // rclcpp::rx_buffer_capacity<M> — the receive-buffer size
 
 #include "nros_cpp_ffi.h"
 
-// issue 1437 — the two granted-QoS accessors return a `nros::QoS` BY VALUE from
+// issue 1437 — the two granted-QoS accessors return a `rclcpp::QoS` BY VALUE from
 // an inline body, so the complete type must be here, not only by the time
 // `nros/node.hpp` is pulled in below.
 //
@@ -90,13 +90,13 @@
 // phase-427 W7 — `Node` is DEFINED in `rclcpp::`. The friend declaration below
 // is qualified, and a qualified friend names an existing entity rather than
 // introducing one, so the name has to be declared first — and in `rclcpp::`,
-// because an elaborated `class Node;` in `nros::` would declare a second,
+// because an elaborated `class Node;` in `rclcpp::` would declare a second,
 // distinct class.
 namespace rclcpp {
 class Node;
 }
 
-namespace nros {
+namespace rclcpp {
 
 /// Poll-style service client — caller-owned storage, caller-driven reply.
 ///
@@ -105,7 +105,7 @@ namespace nros {
 ///
 /// Usage (future — preferred):
 /// ```cpp
-/// nros::PollClient<example_interfaces::srv::AddTwoInts> client;
+/// rclcpp::PollClient<example_interfaces::srv::AddTwoInts> client;
 /// NROS_TRY(node.create_client(client, "/add_two_ints"));
 /// NROS_TRY(client.wait_for_service(10000));
 /// auto fut = client.send_request(req);
@@ -125,8 +125,8 @@ template <typename S> class PollClient {
     /// @param req  Request to send.
     /// @return Future that resolves to the response. Returns a consumed
     ///         (empty) future on serialization or send failure.
-    ::nros::Future<ResponseType> send_request(const RequestType& req) {
-        return send_request_sized<::nros::rx_buffer_capacity<ResponseType>::value>(req);
+    ::rclcpp::Future<ResponseType> send_request(const RequestType& req) {
+        return send_request_sized<::rclcpp::rx_buffer_capacity<ResponseType>::value>(req);
     }
 
     /// @ref send_request with the REPLY buffer sized by the caller.
@@ -139,11 +139,11 @@ template <typename S> class PollClient {
     ///
     /// @tparam RespCap  Stack bytes the returned future holds for the reply.
     template <size_t RespCap>
-    ::nros::Future<ResponseType, RespCap> send_request_sized(const RequestType& req) {
-        using Fut = ::nros::Future<ResponseType, RespCap>;
+    ::rclcpp::Future<ResponseType, RespCap> send_request_sized(const RequestType& req) {
+        using Fut = ::rclcpp::Future<ResponseType, RespCap>;
         if (!initialized_) return Fut();
 
-        uint8_t req_buf[::nros::detail::buffer_bounds<RequestType>::tx];
+        uint8_t req_buf[::rclcpp::detail::buffer_bounds<RequestType>::tx];
         size_t req_len = 0;
         if (RequestType::ffi_serialize(&req, req_buf, sizeof(req_buf), &req_len) != 0) {
             return Fut();
@@ -167,13 +167,13 @@ template <typename S> class PollClient {
     /// @param timeout_ms   Maximum wait time (default 5000ms).
     /// @return Result indicating success, timeout, or failure.
     Result call(const RequestType& req, ResponseType& resp, uint32_t timeout_ms = 5000) {
-        return call_sized<::nros::rx_buffer_capacity<ResponseType>::value>(req, resp, timeout_ms);
+        return call_sized<::rclcpp::rx_buffer_capacity<ResponseType>::value>(req, resp, timeout_ms);
     }
 
     /// @ref call with the REPLY buffer sized by the caller (issue 0964).
     template <size_t RespCap>
     Result call_sized(const RequestType& req, ResponseType& resp, uint32_t timeout_ms = 5000) {
-        if (!initialized_ || !executor_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_ || !executor_) return Result(::rclcpp::ErrorCode::NotInitialized);
         auto fut = send_request_sized<RespCap>(req);
         return fut.wait(executor_, timeout_ms, resp);
     }
@@ -197,8 +197,8 @@ template <typename S> class PollClient {
     /// @return success on a received reply; ErrorCode::Timeout on no reply in
     ///         time; NotInitialized / Error otherwise.
     Result call_polling(const RequestType& req, ResponseType& resp, uint32_t timeout_ms = 100) {
-        return call_polling_sized<::nros::rx_buffer_capacity<ResponseType>::value>(req, resp,
-                                                                                   timeout_ms);
+        return call_polling_sized<::rclcpp::rx_buffer_capacity<ResponseType>::value>(req, resp,
+                                                                                     timeout_ms);
     }
 
     /// @ref call_polling with the REPLY buffer sized by the caller (issue
@@ -207,20 +207,20 @@ template <typename S> class PollClient {
     template <size_t RespCap>
     Result call_polling_sized(const RequestType& req, ResponseType& resp,
                               uint32_t timeout_ms = 100) {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
-        uint8_t req_buf[::nros::detail::buffer_bounds<RequestType>::tx];
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
+        uint8_t req_buf[::rclcpp::detail::buffer_bounds<RequestType>::tx];
         size_t req_len = 0;
         if (RequestType::ffi_serialize(&req, req_buf, sizeof(req_buf), &req_len) != 0) {
-            return Result(::nros::ErrorCode::Error);
+            return Result(::rclcpp::ErrorCode::Error);
         }
         uint8_t resp_buf[RespCap];
         size_t resp_len = 0;
         nros_cpp_ret_t ret = nros_cpp_service_client_call_raw(
             storage_, req_buf, req_len, resp_buf, sizeof(resp_buf), &resp_len, timeout_ms);
         if (ret != 0) return Result(ret);
-        if (resp_len == 0) return Result(::nros::ErrorCode::Timeout);
+        if (resp_len == 0) return Result(::rclcpp::ErrorCode::Timeout);
         if (ResponseType::ffi_deserialize(resp_buf, resp_len, &resp) != 0) {
-            return Result(::nros::ErrorCode::Error);
+            return Result(::rclcpp::ErrorCode::Error);
         }
         return Result::success();
     }
@@ -253,12 +253,12 @@ template <typename S> class PollClient {
     ///
     /// UPSTREAM PARITY: upstream has no poll-style service client, so the method
     /// name is borrowed from `rclcpp::Client` on the type that is ours.
-    ::nros::QoS get_request_publisher_actual_qos() const { return actual_qos_half(true); }
+    ::rclcpp::QoS get_request_publisher_actual_qos() const { return actual_qos_half(true); }
 
     /// The QoS the backend GRANTED this client's RESPONSE endpoint — the
     /// subscription that receives replies. Issue 1437; see
     /// @ref get_request_publisher_actual_qos.
-    ::nros::QoS get_response_subscription_actual_qos() const { return actual_qos_half(false); }
+    ::rclcpp::QoS get_response_subscription_actual_qos() const { return actual_qos_half(false); }
 
     /// Phase 124.C.3 — graph-aware "is the matching server up?" probe.
     ///
@@ -279,18 +279,19 @@ template <typename S> class PollClient {
     /// `nros_cpp_service_client_server_available` read the `RmwServiceClient` in
     /// `storage_` and a dispatch client has none. The 2026-09-28 follow-up gave
     /// that entry point the `(executor, handle_id)` arm, so `rclcpp::Client<S>`
-    /// and `nros::ClientHandle<S>` answer it too; this half keeps passing its
+    /// and `rclcpp::ClientHandle<S>` answer it too; this half keeps passing its
     /// own `storage_`, and the FFI takes exactly one of the two roads.
-    ::nros::ResultOf<bool> service_is_ready() const {
-        if (!initialized_) return ::nros::ResultOf<bool>::error(::nros::ErrorCode::NotInitialized);
+    ::rclcpp::ResultOf<bool> service_is_ready() const {
+        if (!initialized_)
+            return ::rclcpp::ResultOf<bool>::error(::rclcpp::ErrorCode::NotInitialized);
         int out = -1;
         nros_cpp_ret_t ret = nros_cpp_service_client_server_available(
             const_cast<uint8_t*>(storage_), nullptr, 0, &out);
         // A failed CALL and a backend that cannot ANSWER are different facts,
         // and the old `int` form reported both as `-1`. Keep them apart.
-        if (ret != 0) return ::nros::ResultOf<bool>::error(static_cast<::nros::ErrorCode>(ret));
-        if (out < 0) return ::nros::ResultOf<bool>::error(::nros::ErrorCode::Unsupported);
-        return ::nros::ResultOf<bool>::ok(out != 0);
+        if (ret != 0) return ::rclcpp::ResultOf<bool>::error(static_cast<::rclcpp::ErrorCode>(ret));
+        if (out < 0) return ::rclcpp::ResultOf<bool>::error(::rclcpp::ErrorCode::Unsupported);
+        return ::rclcpp::ResultOf<bool>::ok(out != 0);
     }
 
     /// phase-338 W8 — block until a matching service server is discoverable.
@@ -325,7 +326,7 @@ template <typename S> class PollClient {
     /// @ref service_is_ready. This half passes its own `storage_` and a
     /// `handle_id` the FFI ignores on that road.
     Result wait_for_service(uint32_t timeout_ms) {
-        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(nros_cpp_service_client_wait_for_service(storage_, executor_, 0, timeout_ms));
     }
 
@@ -335,7 +336,7 @@ template <typename S> class PollClient {
     /// `Executor::spin_once()`: a deleted function carries no message there.
     template <typename T = void> Result wait_for_service() {
         static_assert(::rclcpp::detail::refuse<T>::value, NROS_RCLCPP_REFUSE_UNBOUNDED_WAIT);
-        return Result(::nros::ErrorCode::Unsupported);
+        return Result(::rclcpp::ErrorCode::Unsupported);
     }
 
     /// Destructor -- releases the service client.
@@ -355,7 +356,7 @@ template <typename S> class PollClient {
     // `nros_cpp_service_client_relocate` runtime call (Phase 84.C1).
     PollClient(PollClient&& other)
         : executor_(other.executor_), initialized_(other.initialized_), service_name_{} {
-        ::nros::detail::assign_entity_name(service_name_, other.service_name_);
+        ::rclcpp::detail::assign_entity_name(service_name_, other.service_name_);
         if (other.initialized_) {
             nros_cpp_service_client_relocate(other.storage_, storage_);
         }
@@ -369,7 +370,7 @@ template <typename S> class PollClient {
             }
             executor_ = other.executor_;
             initialized_ = other.initialized_;
-            ::nros::detail::assign_entity_name(service_name_, other.service_name_);
+            ::rclcpp::detail::assign_entity_name(service_name_, other.service_name_);
             if (other.initialized_) {
                 nros_cpp_service_client_relocate(other.storage_, storage_);
             }
@@ -394,15 +395,15 @@ template <typename S> class PollClient {
     /// `executor` is always NULL and `handle_id` always 0 here: this half owns
     /// its client, so `storage_` is the road, and the FFI takes exactly one of
     /// the two.
-    ::nros::QoS actual_qos_half(bool request) const {
+    ::rclcpp::QoS actual_qos_half(bool request) const {
         nros_cpp_qos_t req{};
         nros_cpp_qos_t resp{};
-        if (!initialized_) return ::nros::detail::qos_all_unknown();
+        if (!initialized_) return ::rclcpp::detail::qos_all_unknown();
         if (nros_cpp_service_client_get_actual_qos(static_cast<const void*>(storage_), nullptr, 0,
                                                    &req, &resp) != 0) {
-            return ::nros::detail::qos_all_unknown();
+            return ::rclcpp::detail::qos_all_unknown();
         }
-        return ::nros::detail::qos_from_ffi(request ? req : resp);
+        return ::rclcpp::detail::qos_from_ffi(request ? req : resp);
     }
 
     alignas(8) uint8_t storage_[NROS_SERVICE_CLIENT_SIZE];
@@ -410,10 +411,10 @@ template <typename S> class PollClient {
     bool initialized_;
     /// phase-444 — the service name, kept C++-side for `get_service_name()`.
     /// See `rclcpp::Client`'s field of the same name.
-    char service_name_[::nros::SERVICE_NAME_MAX];
+    char service_name_[::rclcpp::SERVICE_NAME_MAX];
 };
 
-} // namespace nros
+} // namespace rclcpp
 
 // Out-of-line definition of the future-style `Node::create_client<S>()`. Placed
 // after the class for the reason Phase 84.G8 gives for every entity: a consumer
@@ -422,17 +423,17 @@ template <typename S> class PollClient {
 
 namespace rclcpp {
 template <typename S>
-Result Node::create_client(::nros::PollClient<S>& out, const char* service_name,
-                           const ::nros::QoS& qos) {
-    if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
-    nros_cpp_qos_t ffi_qos = ::nros::detail::qos_to_ffi(qos);
+Result Node::create_client(::rclcpp::PollClient<S>& out, const char* service_name,
+                           const ::rclcpp::QoS& qos) {
+    if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
+    nros_cpp_qos_t ffi_qos = ::rclcpp::detail::qos_to_ffi(qos);
     nros_cpp_ret_t ret = nros_cpp_service_client_create(
         &handle_, service_name, S::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos, out.storage_);
     if (ret == 0) {
         out.executor_ = executor_handle_;
         // phase-444 — remember the name for `get_service_name()`; the runtime
         // takes `service_name` and drops it.
-        ::nros::detail::assign_entity_name(out.service_name_, service_name);
+        ::rclcpp::detail::assign_entity_name(out.service_name_, service_name);
         out.initialized_ = true;
     }
     return Result(ret);

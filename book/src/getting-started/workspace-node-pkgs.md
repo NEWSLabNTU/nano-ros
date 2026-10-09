@@ -238,15 +238,15 @@ Declare the service in `Node::register` and handle requests in the node body.
   `ExecutableNode::on_callback` like any other callback (read the request and
   write the reply through the `CallbackCtx`).
 - **C++/C** (the `configure(Node&)` component shape) — bind a **typed** member
-  with `nros::bind_service`:
+  with `rclcpp::bind_service`:
 
   ```cpp
   // Response on_request(const Request&) — no hand-rolled CDR.
   AddTwoInts::Response on_add(const AddTwoInts::Request& req) {
       AddTwoInts::Response r; r.sum = req.a + req.b; return r;
   }
-  ::nros::Result configure(::rclcpp::Node& node) {
-      return ::nros::bind_service<AddTwoInts, MyServer, &MyServer::on_add>(
+  ::rclcpp::Result configure(::rclcpp::Node& node) {
+      return ::rclcpp::bind_service<AddTwoInts, MyServer, &MyServer::on_add>(
           node, "/add_two_ints", this);   // service-type name from AddTwoInts::TYPE_NAME
   }
   ```

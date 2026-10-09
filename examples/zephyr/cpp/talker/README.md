@@ -10,7 +10,7 @@ carrier** generates the entry:
   `NANO_ROS_PLATFORM=zephyr`) `configure_file`s
   the shared entry pack (`nros codegen entry-node`) — a plain `int main(void)`
   that constructs the component, calls `configure(node)`, and runs
-  `::nros::board::ZephyrBoard::run_components(&setup)`.
+  `::rclcpp::board::ZephyrBoard::run_components(&setup)`.
 - The carrier branch composes the generated entry + the component lib into the
   global `find_package(Zephyr)` `app` target
   (`target_sources`/`target_link_libraries`) — no second executable.

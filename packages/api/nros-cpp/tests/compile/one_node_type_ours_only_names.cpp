@@ -3,7 +3,7 @@
 //
 // THE COLLISION THE MERGE WOULD HAVE MANUFACTURED
 //
-// `nros::ComponentNode::create_publisher<M>(const char*, const QoS&)` returned a
+// `rclcpp::ComponentNode::create_publisher<M>(const char*, const QoS&)` returned a
 // publisher BY VALUE and reported failure through an `ok()` latch. Upstream's
 // `rclcpp::Node::create_publisher<M>(const std::string&, …)` returns a
 // `shared_ptr` and throws. Those are two different types, two different
@@ -86,7 +86,7 @@ struct CounterMsg {
 // phase-456 W5 — WHAT THESE TWO ASSERTIONS USED TO SAY, and why the change is
 // not a weakening. They named `std::shared_ptr<Publisher<M>>` literally, which
 // was the ported family's return type until W5 made it
-// `nros::Owned<Publisher<M>>`. The distinction this file exists to draw is
+// `rclcpp::Owned<Publisher<M>>`. The distinction this file exists to draw is
 // between the PORTED family and the OURS-ONLY one, and both are still
 // distinguishable by return type: the ported verb hands back a HOLDER
 // (`::SharedPtr`), the `_in` verb hands back the publisher itself. Naming the
@@ -98,7 +98,7 @@ struct CounterMsg {
 void ported_spellings_bind_upstream(::rclcpp::Node& node) {
     using DepthCall = decltype(node.create_publisher<CounterMsg>(::std::string("chatter"), 10));
     static_assert(
-        ::std::is_same<DepthCall, typename ::nros::Publisher<CounterMsg>::SharedPtr>::value,
+        ::std::is_same<DepthCall, typename ::rclcpp::Publisher<CounterMsg>::SharedPtr>::value,
         "create_publisher(topic, depth) must reach the PORTED overload, which returns the "
         "Publisher<M>::SharedPtr holder");
 
@@ -107,13 +107,13 @@ void ported_spellings_bind_upstream(::rclcpp::Node& node) {
     // line returned `Publisher<CounterMsg>` by value.
     using QosCall = decltype(node.create_publisher<CounterMsg>("chatter", ::rclcpp::QoS(10)));
     static_assert(
-        ::std::is_same<QosCall, typename ::nros::Publisher<CounterMsg>::SharedPtr>::value,
+        ::std::is_same<QosCall, typename ::rclcpp::Publisher<CounterMsg>::SharedPtr>::value,
         "create_publisher(\"literal\", QoS) must reach the PORTED overload -- if this fires, "
         "an ours-only create_publisher is back on the type and a ported file is silently "
         "getting a different type, lifetime and failure channel");
     // The two are still DIFFERENT types, which is what makes the pair above a
     // question rather than a tautology.
-    static_assert(!::std::is_same<QosCall, ::nros::Publisher<CounterMsg>>::value,
+    static_assert(!::std::is_same<QosCall, ::rclcpp::Publisher<CounterMsg>>::value,
                   "the ported verb must not return the publisher by value -- that IS the "
                   "ours-only shape, and the collision is what the `_in` rename removed");
 
@@ -121,7 +121,7 @@ void ported_spellings_bind_upstream(::rclcpp::Node& node) {
     // value. `_in` is REACHABLE — the rename must not have deleted the
     // capability, only moved it off the colliding spelling.
     using OursCall = decltype(node.create_publisher_in<CounterMsg>("chatter"));
-    static_assert(::std::is_same<OursCall, ::nros::Publisher<CounterMsg>>::value,
+    static_assert(::std::is_same<OursCall, ::rclcpp::Publisher<CounterMsg>>::value,
                   "create_publisher_in<M>(topic) must return the publisher BY VALUE");
 }
 
@@ -131,14 +131,14 @@ void ported_spellings_bind_upstream(::rclcpp::Node& node) {
 // `NodeWithTimers<N>` IS-A `Node`, so this also pins that the merge kept the
 // IS-A relationship `ComponentNode` never had.
 
-class PooledNode : public ::nros::NodeWithTimers<2> {
+class PooledNode : public ::rclcpp::NodeWithTimers<2> {
   public:
-    explicit PooledNode(::nros::NodeHandle h) : ::nros::NodeWithTimers<2>(h, "pooled") {
+    explicit PooledNode(::rclcpp::NodeHandle h) : ::rclcpp::NodeWithTimers<2>(h, "pooled") {
         pub_ = create_publisher_in<CounterMsg>("/chatter");
         create_wall_timer_in<PooledNode, &PooledNode::on_tick>(500);
         create_subscription_in<CounterMsg, PooledNode, &PooledNode::on_msg>("/chatter");
 
-        ::nros::CallbackGroup grp = create_callback_group("ctrl");
+        ::rclcpp::CallbackGroup grp = create_callback_group("ctrl");
         create_timer_in_group<PooledNode, &PooledNode::on_tick>(grp, 10);
         create_subscription_in_group<CounterMsg, PooledNode, &PooledNode::on_msg>(grp, "/grouped");
 
@@ -150,7 +150,7 @@ class PooledNode : public ::nros::NodeWithTimers<2> {
         // SITE — which is precisely how the `bind_timer` retirement rotted:
         // header-parse lanes never instantiate a template body.
         NROS_SUBSCRIBE(CounterMsg, on_msg, "/macro");
-        NROS_SUBSCRIBE(CounterMsg, on_msg, "/macro-qos", ::nros::QoS(10));
+        NROS_SUBSCRIBE(CounterMsg, on_msg, "/macro-qos", ::rclcpp::QoS(10));
         NROS_CREATE_WALL_TIMER(250, on_tick);
     }
 
@@ -158,7 +158,7 @@ class PooledNode : public ::nros::NodeWithTimers<2> {
     void on_msg(const CounterMsg&) {}
 
   private:
-    ::nros::Publisher<CounterMsg> pub_;
+    ::rclcpp::Publisher<CounterMsg> pub_;
 };
 
 static_assert(::std::is_base_of<::rclcpp::Node, PooledNode>::value,
@@ -166,7 +166,7 @@ static_assert(::std::is_base_of<::rclcpp::Node, PooledNode>::value,
 
 // The pool is opt-in, and that is the whole point of making its depth a
 // template parameter: a plain `Node` must not carry the bytes.
-static_assert(sizeof(::nros::NodeWithTimers<2>) > sizeof(::rclcpp::Node),
+static_assert(sizeof(::rclcpp::NodeWithTimers<2>) > sizeof(::rclcpp::Node),
               "NodeWithTimers<N> is the node PLUS a pool");
 
 // --- (3) NEGATIVE CONTROL — the pre-rename shape binds the wrong overload ----
@@ -183,19 +183,33 @@ static_assert(sizeof(::nros::NodeWithTimers<2>) > sizeof(::rclcpp::Node),
 template <typename M> struct ValuePub {};
 template <typename M> struct SharedPub {};
 
+// The two QoS classes as they were at the time: a base with an EXPLICIT `int`
+// ctor (then `nros::QoS`) and a derived class adding the implicit depth ctor
+// (then `rclcpp::QoS`). phase-483 W1 merged them into one `rclcpp::QoS`, so the
+// control models the pair locally rather than naming types that no longer
+// exist separately.
+struct ThenBaseQoS {
+    ThenBaseQoS() {}
+    explicit ThenBaseQoS(int) {}
+};
+struct ThenPortedQoS : ThenBaseQoS {
+    // NOLINTNEXTLINE(google-explicit-constructor)
+    ThenPortedQoS(::size_t) {}
+};
+
 struct MergedBeforeRename {
     // OURS, under upstream's bare name — the shape W4 refused to ship.
     template <typename M>
-    ValuePub<M> create_publisher(const char*, const ::nros::QoS& = ::nros::QoS::default_profile());
+    ValuePub<M> create_publisher(const char*, const ThenBaseQoS& = ThenBaseQoS());
     // UPSTREAM.
-    template <typename M> SharedPub<M> create_publisher(const ::std::string&, const ::rclcpp::QoS&);
+    template <typename M> SharedPub<M> create_publisher(const ::std::string&, const ThenPortedQoS&);
     template <typename M> SharedPub<M> create_publisher(const ::std::string&, ::size_t);
 };
 
 void pre_rename_negative_control(MergedBeforeRename& n) {
     // THE DEFECT: a ported call with an explicit QoS silently takes the
     // by-value, latch-reporting overload.
-    using Bad = decltype(n.create_publisher<CounterMsg>("chatter", ::rclcpp::QoS(10)));
+    using Bad = decltype(n.create_publisher<CounterMsg>("chatter", ThenPortedQoS(10)));
     static_assert(::std::is_same<Bad, ValuePub<CounterMsg>>::value,
                   "NEGATIVE CONTROL: the pre-rename shape must bind OURS here. If this fires, the "
                   "collision this rename exists to prevent no longer reproduces, and the positive "
@@ -240,16 +254,16 @@ template <class N, class = void> struct pub_short_name_takes_group : ::std::fals
 template <class N>
 struct pub_short_name_takes_group<
     N, void_t_<decltype(::std::declval<N&>().template create_publisher_in<CounterMsg>(
-           ::std::declval<const ::nros::CallbackGroup&>(),
-           ::std::declval<::nros::Publisher<CounterMsg>&>(), "t"))>> : ::std::true_type {};
+           ::std::declval<const ::rclcpp::CallbackGroup&>(),
+           ::std::declval<::rclcpp::Publisher<CounterMsg>&>(), "t"))>> : ::std::true_type {};
 
 // Does the LONG name exist?
 template <class N, class = void> struct pub_has_group_verb : ::std::false_type {};
 template <class N>
 struct pub_has_group_verb<
     N, void_t_<decltype(::std::declval<N&>().template create_publisher_in_group<CounterMsg>(
-           ::std::declval<const ::nros::CallbackGroup&>(),
-           ::std::declval<::nros::Publisher<CounterMsg>&>(), "t"))>> : ::std::true_type {};
+           ::std::declval<const ::rclcpp::CallbackGroup&>(),
+           ::std::declval<::rclcpp::Publisher<CounterMsg>&>(), "t"))>> : ::std::true_type {};
 
 static_assert(!pub_short_name_takes_group<::rclcpp::Node>::value,
               "`create_publisher_in` must be the OURS-ONLY form only. A callback group as the "
@@ -264,22 +278,22 @@ static_assert(pub_has_group_verb<::rclcpp::Node>::value,
 template <class N, class = void> struct timer_short_name_takes_group : ::std::false_type {};
 template <class N>
 struct timer_short_name_takes_group<N, void_t_<decltype(::std::declval<N&>().create_timer_in(
-                                           ::std::declval<const ::nros::CallbackGroup&>(),
+                                           ::std::declval<const ::rclcpp::CallbackGroup&>(),
                                            static_cast<uint64_t>(10), nullptr, nullptr))>>
     : ::std::true_type {};
 
 template <class N, class = void> struct timer_has_group_verb : ::std::false_type {};
 template <class N>
 struct timer_has_group_verb<N, void_t_<decltype(::std::declval<N&>().create_timer_in_group(
-                                   ::std::declval<const ::nros::CallbackGroup&>(),
+                                   ::std::declval<const ::rclcpp::CallbackGroup&>(),
                                    static_cast<uint64_t>(10), nullptr, nullptr))>>
     : ::std::true_type {};
 
-static_assert(!timer_short_name_takes_group<::nros::NodeWithTimers<2>>::value,
+static_assert(!timer_short_name_takes_group<::rclcpp::NodeWithTimers<2>>::value,
               "`create_timer_in` is gone from the pool type -- the pool-parked group form is "
               "`create_timer_in_group`, and it is the overload that made the split necessary "
               "(storage-free AND in a group, so the short name could say neither)");
-static_assert(timer_has_group_verb<::nros::NodeWithTimers<2>>::value,
+static_assert(timer_has_group_verb<::rclcpp::NodeWithTimers<2>>::value,
               "`create_timer_in_group` must be reachable on the pool type, including the plain "
               "callback + ctx form");
 
@@ -292,17 +306,17 @@ static_assert(timer_has_group_verb<::nros::NodeWithTimers<2>>::value,
 struct PreSplitPublisherNode {
     // The group form, under the SHORT name -- what `rclcpp::Node` carried before.
     template <typename M>
-    ::nros::Result create_publisher_in(const ::nros::CallbackGroup&, ::nros::Publisher<M>&,
-                                       const char*,
-                                       const ::nros::QoS& = ::nros::QoS::default_profile());
+    ::rclcpp::Result create_publisher_in(const ::rclcpp::CallbackGroup&, ::rclcpp::Publisher<M>&,
+                                         const char*,
+                                         const ::rclcpp::QoS& = ::rclcpp::QoS::default_profile());
     // The ours-only form, which keeps the short name after the split.
     template <typename M>
-    ::nros::Publisher<M> create_publisher_in(const char*,
-                                             const ::nros::QoS& = ::nros::QoS::default_profile());
+    ::rclcpp::Publisher<M>
+    create_publisher_in(const char*, const ::rclcpp::QoS& = ::rclcpp::QoS::default_profile());
 };
 
 struct PreSplitTimerNode {
-    void create_timer_in(const ::nros::CallbackGroup&, uint64_t, nros_cpp_timer_callback_t,
+    void create_timer_in(const ::rclcpp::CallbackGroup&, uint64_t, nros_cpp_timer_callback_t,
                          void* = nullptr);
 };
 

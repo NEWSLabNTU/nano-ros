@@ -1,5 +1,5 @@
 // phase-417 stage 2b (RFC-0089) — the graph surface must be reachable on
-// `rclcpp::Node` and `nros::detail::LifecycleEngine`, not only on `nros::Executor`.
+// `rclcpp::Node` and `rclcpp_lifecycle::detail::LifecycleEngine`, not only on `rclcpp::Executor`.
 //
 // Why this probe exists: rclcpp puts the graph calls on the NODE, and 18
 // ledger rows were open purely because ours were only on the executor. The
@@ -54,7 +54,7 @@ bool visit_endpoint_ffi(void* ctx, const nros_cpp_endpoint_info_t* info) {
 
 // The typed visitor — the rclcpp-shaped half of stage 2b. Every accessor a
 // ported file reaches for is named here, so dropping one is a build failure.
-bool visit_endpoint_typed(void* ctx, const nros::TopicEndpointInfo& info) {
+bool visit_endpoint_typed(void* ctx, const rclcpp::TopicEndpointInfo& info) {
     (void)ctx;
     const char* n = info.node_name();
     const char* ns = info.node_namespace();
@@ -65,17 +65,17 @@ bool visit_endpoint_typed(void* ctx, const nros::TopicEndpointInfo& info) {
 
     // The GID is held BY VALUE (24 bytes), so it outlives the visit even
     // though the three strings above do not. Pointer-plus-constant, not an
-    // `nros::Span` — see `graph.hpp`.
+    // `rclcpp::Span` — see `graph.hpp`.
     const uint8_t* gid = info.endpoint_gid();
     if (gid == nullptr) return false;
-    if (nros::TopicEndpointInfo::endpoint_gid_size() != nros::kEndpointGidSize) return false;
+    if (rclcpp::TopicEndpointInfo::endpoint_gid_size() != rclcpp::kEndpointGidSize) return false;
     uint8_t first = gid[0];
     (void)first;
 
     // rclcpp's `EndpointType`, upstream `rmw_endpoint_type_t` values.
-    if (info.endpoint_type() == nros::EndpointType::Invalid) return false;
-    if (info.endpoint_type() != nros::EndpointType::Publisher &&
-        info.endpoint_type() != nros::EndpointType::Subscription) {
+    if (info.endpoint_type() == rclcpp::EndpointType::Invalid) return false;
+    if (info.endpoint_type() != rclcpp::EndpointType::Publisher &&
+        info.endpoint_type() != rclcpp::EndpointType::Subscription) {
         return false;
     }
 
@@ -91,8 +91,8 @@ bool visit_endpoint_typed(void* ctx, const nros::TopicEndpointInfo& info) {
 // A default-constructed endpoint is `Invalid` and has no strings — it must be
 // constructible without a session, or it is not a value type.
 bool default_endpoint_is_invalid() {
-    nros::TopicEndpointInfo empty;
-    return !empty.is_valid() && empty.endpoint_type() == nros::EndpointType::Invalid &&
+    rclcpp::TopicEndpointInfo empty;
+    return !empty.is_valid() && empty.endpoint_type() == rclcpp::EndpointType::Invalid &&
            empty.node_name()[0] == '\0' && empty.node_namespace()[0] == '\0' &&
            empty.topic_type()[0] == '\0';
 }
@@ -103,8 +103,8 @@ bool default_endpoint_is_invalid() {
 // checks are written once against a template parameter: a signature that
 // drifts on one and not the other stops instantiating.
 template <typename N> void graph_surface_exists() {
-    using nros::Result;
-    using nros::TopicEndpointInfoVisitFn;
+    using rclcpp::Result;
+    using rclcpp::TopicEndpointInfoVisitFn;
 
     Result (N::*p_node_names)(nros_cpp_node_visit_fn, void*) const = &N::get_node_names;
     Result (N::*p_topics)(nros_cpp_names_and_types_visit_fn, void*) const =
@@ -115,7 +115,7 @@ template <typename N> void graph_surface_exists() {
     Result (N::*p_count_sub)(const char*, size_t*) const = &N::count_subscribers;
 
     // `get_subscription_names_and_types_by_node`, NOT `subscriber`: the C++
-    // surface takes rclcpp's vocabulary and `nros::Executor` already spells it
+    // surface takes rclcpp's vocabulary and `rclcpp::Executor` already spells it
     // this way. If someone "aligns" the three languages, this line stops
     // compiling.
     Result (N::*p_pub_by_node)(const char*, const char*, nros_cpp_names_and_types_visit_fn, void*)
@@ -176,7 +176,7 @@ template <typename N> bool graph_surface_calls(N& node) {
     ok = ok && !node.get_publishers_info_by_topic("/chatter", visit_endpoint_ffi, nullptr);
     ok = ok && !node.get_subscriptions_info_by_topic("/chatter", visit_endpoint_ffi, nullptr);
     // The typed overloads; `visit_endpoint_typed` is a
-    // `nros::TopicEndpointInfoVisitFn`, so this is also the overload-resolution
+    // `rclcpp::TopicEndpointInfoVisitFn`, so this is also the overload-resolution
     // check.
     ok = ok && !node.get_publishers_info_by_topic("/chatter", visit_endpoint_typed, nullptr);
     ok = ok && !node.get_subscriptions_info_by_topic("/chatter", visit_endpoint_typed, nullptr);
@@ -185,14 +185,14 @@ template <typename N> bool graph_surface_calls(N& node) {
 
 int main() {
     graph_surface_exists<rclcpp::Node>();
-    graph_surface_exists<nros::detail::LifecycleEngine>();
+    graph_surface_exists<rclcpp_lifecycle::detail::LifecycleEngine>();
 
     rclcpp::Node node;
-    nros::detail::LifecycleEngine lifecycle;
+    rclcpp_lifecycle::detail::LifecycleEngine lifecycle;
 
     // `const` reachability: a ported file often holds a `const Node &`.
     const rclcpp::Node& const_node = node;
-    const nros::detail::LifecycleEngine& const_lifecycle = lifecycle;
+    const rclcpp_lifecycle::detail::LifecycleEngine& const_lifecycle = lifecycle;
 
     bool ok = graph_surface_calls(const_node);
     ok = ok && graph_surface_calls(const_lifecycle);

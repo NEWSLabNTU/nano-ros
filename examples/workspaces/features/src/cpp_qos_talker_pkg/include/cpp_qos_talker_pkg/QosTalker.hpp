@@ -16,7 +16,7 @@ namespace cpp_qos_talker_pkg {
 /// profile so the two endpoints connect.
 class QosTalker {
     ::rclcpp::Publisher<std_msgs::msg::Int32> pub_;
-    ::nros::Timer timer_;
+    ::rclcpp::Timer timer_;
     int count_ = 0;
 
     void on_tick(); // real body; bound via &QosTalker::on_tick (no callback name)

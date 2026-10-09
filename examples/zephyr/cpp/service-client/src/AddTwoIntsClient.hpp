@@ -16,8 +16,8 @@
 namespace zephyr_cpp_service_client {
 
 class AddTwoIntsClient {
-    ::nros::ServiceClientStorage client_;
-    ::nros::Timer timer_;
+    ::rclcpp::ServiceClientStorage client_;
+    ::rclcpp::Timer timer_;
     int64_t a_ = 2;
     int64_t b_ = 3;
     bool awaiting_ = false;

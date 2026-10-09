@@ -84,7 +84,7 @@ class MixedConsumer : public rclcpp::Node {
     // phase-456 W5 — `Publisher<M>::SharedPtr` is the ONLY spelling that
     // compiles both ways now, and for a sharper reason than the timer above.
     // Upstream's alias is `std::shared_ptr<Publisher<M>>`; nano-ros's is
-    // `nros::Owned<Publisher<M>>`, the publisher by value, because a
+    // `rclcpp::Owned<Publisher<M>>`, the publisher by value, because a
     // freestanding target has no allocator and no `<memory>`. Writing
     // `std::shared_ptr<rclcpp::Publisher<M>>` here would pin one of the two and
     // stop compiling against the other. Do not "modernise" these either.

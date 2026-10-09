@@ -321,7 +321,7 @@ fn the_entry_runs_an_allocated_authored_tier() {
 
     let src = emit::emit_typed(Lang::Cpp, &plan).expect("the typed C++ entry emits");
     assert!(
-        src.contains("::nros::board::ZephyrBoard::run_tiers("),
+        src.contains("::rclcpp::board::ZephyrBoard::run_tiers("),
         "an allocated tier must reach the IMAGE, not just the plan; src:\n{src}"
     );
     assert!(

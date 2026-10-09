@@ -29,7 +29,7 @@ Both halves are extracted, neither is authored:
   DEMAND  — `packages/cli/rosidl-codegen/{packs,templates}/**`, comment-stripped
             (jinja `{# #}`, `//`, `/* */`), harvested for `nros_core::…` /
             `nros_serdes::…` paths, `use nros_*::{…}` lists, `nros_*` / `NROS_*`
-            C identifiers and `nros::…` C++ paths. An identifier written
+            C identifiers and `rclcpp::…` C++ paths. An identifier written
             immediately before a `{{` interpolation (`nros_cdr_{{ method }}`) is
             a PREFIX and pulls in every declaration that starts with it — that
             is the one place a literal harvest would otherwise go blind.
@@ -72,7 +72,7 @@ OUT, and why each:
     Those are the HAND-WRITTEN API: break them and the compiler reports it at
     the call site the same day. `NROS_CODEGEN_VERSION` exists for the code no
     human wrote, so the surface is exactly the code no human wrote names. For
-    the one demanded member of a hand-written class (`nros::Node::create_
+    the one demanded member of a hand-written class (`rclcpp::Node::create_
     publisher`) only that member is taken, never the class.
   * Private items. Generated code cannot name them.
   * `#[cfg(test)]` items and `mod tests`.
@@ -127,8 +127,8 @@ TEMPLATE_DIRS = [
     "packages/cli/rosidl-codegen/packs",
     "packages/cli/rosidl-codegen/templates",
 ]
-# The templates are only HALF the emitter. `nros::HeapString`, `nros::Span<T>`
-# and `nros::HeapSequence<T>` are never written in a `.jinja` — they are built
+# The templates are only HALF the emitter. `rclcpp::HeapString`, `rclcpp::Span<T>`
+# and `rclcpp::HeapSequence<T>` are never written in a `.jinja` — they are built
 # in `types.rs` / `generator/common.rs` and interpolated as `{{ field | cpp_type
 # }}`, so a template-only harvest saw one C++ name where there are seven. Here
 # the identifiers live INSIDE string literals, which is the exact opposite of
@@ -369,7 +369,9 @@ def demand(text=None):
         for seg in m.group(1).split("::"):
             rust.add(seg)
 
-    for m in re.finditer(r"\bnros::((?:[A-Za-z_][A-Za-z0-9_]*::)*[A-Za-z_][A-Za-z0-9_]*)", text):
+    # phase-483 W1: the C++ names generated code spells live in `rclcpp::` (and
+    # its action / lifecycle siblings); `nros::` was deleted.
+    for m in re.finditer(r"\b(?:rclcpp|rclcpp_action|rclcpp_lifecycle)::((?:[A-Za-z_][A-Za-z0-9_]*::)*[A-Za-z_][A-Za-z0-9_]*)", text):
         cpp.add(m.group(1))
 
     for m in re.finditer(r"\b(nros_[A-Za-z0-9_]*|NROS_[A-Z0-9_]*)(\{)?", text):
@@ -651,7 +653,7 @@ CPP_DECL_KEYWORD = re.compile(
 
 
 def cpp_surface(wanted):
-    """`wanted` holds `nros::` paths — `Span`, `Node::create_publisher`, …"""
+    """`wanted` holds `rclcpp::` paths — `Span`, `Node::create_publisher`, …"""
     # Every segment is a type candidate: `detail::size_bound_dependent_false`
     # is a struct in a NAMESPACE, not a member of a class called `detail`.
     types = {seg for p in wanted for seg in p.split("::")}

@@ -2,7 +2,7 @@
 //
 // The contract in `declared-qos-fixture/declared_qos.yaml` says `/chatter` is
 // subscribed at `qos: { depth: 1 }`. The call site below passes
-// `nros::QoS(10)`. One subscription, two different depths, and depth is a
+// `rclcpp::QoS(10)`. One subscription, two different depths, and depth is a
 // multiplier on the executor arena -- so the build has to stop.
 //
 // WHY THIS FILE EXISTS AT ALL. This campaign has produced six sizing mechanisms
@@ -36,9 +36,9 @@ struct Int32 {
 
 class Listener : public ::rclcpp::Node {
   public:
-    explicit Listener(::nros::NodeHandle h) : ::rclcpp::Node(h, "listener") {
+    explicit Listener(::rclcpp::NodeHandle h) : ::rclcpp::Node(h, "listener") {
         // DECLARED @depth=1. PASSED depth 10. This line is the whole test.
-        NROS_SUBSCRIBE(Int32, on_int, "/chatter", ::nros::QoS(10));
+        NROS_SUBSCRIBE(Int32, on_int, "/chatter", ::rclcpp::QoS(10));
     }
 
   private:

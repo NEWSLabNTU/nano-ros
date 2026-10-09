@@ -26,7 +26,7 @@ void SubNode::on_telem() {
     telem_count_++;
 }
 
-SubNode::SubNode(::nros::NodeHandle h) : ::nros::NodeWithTimers<2>(h, "sub_node") {
+SubNode::SubNode(::rclcpp::NodeHandle h) : ::rclcpp::NodeWithTimers<2>(h, "sub_node") {
     ::setvbuf(stdout, nullptr, _IOLBF, 0);
     auto ctrl_grp = create_callback_group("ctrl");
     auto telem_grp = create_callback_group("telem");

@@ -2,7 +2,7 @@
 //!
 //! Phase 87.6 (thin-wrapper refactor): caller's opaque storage holds a bare
 //! `RmwServiceServer` / `RmwServiceClient` handle. Service-name buffers live
-//! on the C++ `nros::Service<S>` / `nros::Client<S>` classes. Received CDR
+//! on the C++ `rclcpp::Service<S>` / `rclcpp::Client<S>` classes. Received CDR
 //! bytes are copied directly into caller-provided output buffers — no
 //! runtime scratch.
 //!
@@ -158,7 +158,7 @@ pub unsafe extern "C" fn nros_cpp_service_server_create(
 /// whatever capture that trampoline needs, copied in by value.
 ///
 /// phase-456 W3: the C++ side passes the USER'S HANDLER here, one word, rather
-/// than the address of its `nros::Service<S>` object. That is W1's "the arena
+/// than the address of its `rclcpp::Service<S>` object. That is W1's "the arena
 /// carries the callback's capture" for a capture that already fits the slot, and
 /// it is why a callback-style service is movable again.
 ///

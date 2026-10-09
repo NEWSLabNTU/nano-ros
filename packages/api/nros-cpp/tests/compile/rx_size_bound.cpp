@@ -2,8 +2,8 @@
 // its receive buffer from the subscribed type's OWN derived bound.
 //
 // The header `-fsyntax-only` loop in `just check cpp` only PARSES templates. The
-// seam this phase changed is a template BODY — `nros::bind_subscription<M, C,
-// Method>` now passes `nros::rx_size_bound<M>::value` as the `rx_buffer_hint`
+// seam this phase changed is a template BODY — `rclcpp::bind_subscription<M, C,
+// Method>` now passes `rclcpp::rx_size_bound<M>::value` as the `rx_buffer_hint`
 // where it passed `M::SERIALIZED_SIZE_MAX`, which is an ESTIMATE that was wrong
 // in both directions (issue 0964). So this TU instantiates it, and pins the
 // three shapes `rx_size_bound` has to distinguish.
@@ -73,13 +73,13 @@ struct Unbounded {
     static const size_t SERIALIZED_SIZE_MAX = 264;
     using nros_derived_size_bounds = void;
     template <class NROS_size_bound_required = void> struct tx_size_bound {
-        static_assert(::nros::detail::size_bound_dependent_false<NROS_size_bound_required>::value,
+        static_assert(::rclcpp::detail::size_bound_dependent_false<NROS_size_bound_required>::value,
                       "NROS_UNBOUNDED__p_msg_unbounded__field_data: p/Unbounded states no "
                       "serialized-size bound -- unbounded member: data (string).");
         static constexpr size_t value = 0;
     };
     template <class NROS_size_bound_required = void> struct rx_size_bound {
-        static_assert(::nros::detail::size_bound_dependent_false<NROS_size_bound_required>::value,
+        static_assert(::rclcpp::detail::size_bound_dependent_false<NROS_size_bound_required>::value,
                       "NROS_UNBOUNDED__p_msg_unbounded__field_data: p/Unbounded states no "
                       "serialized-size bound -- unbounded member: data (string).");
         static constexpr size_t value = 0;
@@ -91,12 +91,12 @@ struct Unbounded {
     }
 };
 
-static_assert(::nros::rx_size_bound<Bounded>::value == 137,
+static_assert(::rclcpp::rx_size_bound<Bounded>::value == 137,
               "a derived type's receive hint is RX_MAX_SERIALIZED_SIZE -- max(XCDR1, XCDR2), "
               "never the SERIALIZED_SIZE_MAX estimate");
-static_assert(::nros::tx_size_bound<Bounded>::value == 133,
+static_assert(::rclcpp::tx_size_bound<Bounded>::value == 133,
               "a derived type's transmit bound is TX_MAX_SERIALIZED_SIZE -- XCDR1");
-static_assert(::nros::rx_size_bound<Legacy>::value == 16,
+static_assert(::rclcpp::rx_size_bound<Legacy>::value == 16,
               "a type with no derivation keeps the pre-phase-408 behaviour");
 
 class Listener {
@@ -105,17 +105,17 @@ class Listener {
   public:
     // Instantiates the changed template BODY: the hint reaching
     // `create_subscription_raw` is the derived bound.
-    ::nros::Result configure(::rclcpp::Node& node) {
-        ::nros::Result r =
-            ::nros::bind_subscription<Bounded, Listener, &Listener::on_msg>(node, "/chatter", this);
+    ::rclcpp::Result configure(::rclcpp::Node& node) {
+        ::rclcpp::Result r = ::rclcpp::bind_subscription<Bounded, Listener, &Listener::on_msg>(
+            node, "/chatter", this);
         if (!r.ok()) return r;
         // The escape hatch, for a type with no bound or a deliberate override.
-        return ::nros::bind_subscription_sized<Bounded, Listener, &Listener::on_msg>(
+        return ::rclcpp::bind_subscription_sized<Bounded, Listener, &Listener::on_msg>(
             node, "/chatter_sized", this, 2048);
     }
 };
 
-inline ::nros::Result instantiate(::rclcpp::Node& node) {
+inline ::rclcpp::Result instantiate(::rclcpp::Node& node) {
     static Listener listener;
     (void)sizeof(Unbounded); // included, never asked for its bound
     return listener.configure(node);
@@ -125,7 +125,7 @@ inline ::nros::Result instantiate(::rclcpp::Node& node) {
 // issue 0964 — the RECEIVE buffers inside these headers stop sizing themselves
 // from the estimate.
 //
-// `nros::rx_buffer_capacity<M>` is what the ~13 receive sites now stack, and it
+// `rclcpp::rx_buffer_capacity<M>` is what the ~13 receive sites now stack, and it
 // selects its arm with the SAME `detail::shape_of<M>()` predicate as
 // `rx_size_bound<M>` — one question, two answers, so the two cannot disagree
 // about which arm a type is in. It differs from `rx_size_bound<M>` in exactly
@@ -134,19 +134,19 @@ inline ::nros::Result instantiate(::rclcpp::Node& node) {
 // decision this issue leaves open.
 // ===========================================================================
 
-static_assert(::nros::has_derived_size_bound<Bounded>::value,
+static_assert(::rclcpp::has_derived_size_bound<Bounded>::value,
               "a type that states RX/TX_MAX_SERIALIZED_SIZE has a derived bound");
-static_assert(!::nros::has_derived_size_bound<Legacy>::value,
+static_assert(!::rclcpp::has_derived_size_bound<Legacy>::value,
               "no marker at all is NOT the same fact as 'marked, and has no bound'");
-static_assert(!::nros::has_derived_size_bound<Unbounded>::value,
+static_assert(!::rclcpp::has_derived_size_bound<Unbounded>::value,
               "marked but stating no constants means the bound was computed and does not exist");
 
-static_assert(::nros::rx_buffer_capacity<Bounded>::value == 137,
+static_assert(::rclcpp::rx_buffer_capacity<Bounded>::value == 137,
               "a bounded type's receive buffer is RX_MAX_SERIALIZED_SIZE -- max(XCDR1, XCDR2), "
               "never the 1170-byte SERIALIZED_SIZE_MAX estimate beside it");
-static_assert(::nros::tx_buffer_capacity<Bounded>::value == 133,
+static_assert(::rclcpp::tx_buffer_capacity<Bounded>::value == 133,
               "a bounded type's transmit capacity is TX_MAX_SERIALIZED_SIZE -- XCDR1");
-static_assert(::nros::rx_buffer_capacity<Legacy>::value == Legacy::SERIALIZED_SIZE_MAX,
+static_assert(::rclcpp::rx_buffer_capacity<Legacy>::value == Legacy::SERIALIZED_SIZE_MAX,
               "a type with no derivation keeps the pre-phase-408 behaviour");
 // Issue 0964, DECIDED 2026-09-05: `rx_buffer_capacity<Unbounded>` no longer
 // HAS a value -- instantiating it is the deliberate compile error, so it cannot
@@ -162,11 +162,12 @@ static_assert(::nros::rx_buffer_capacity<Legacy>::value == Legacy::SERIALIZED_SI
 // one `{% if tx_max_serialized_size %}` in `packs/cpp/message.hpp.jinja`, so for
 // a bounded type the two spellings must return the same number. If codegen ever
 // emits one without the other, this is what says so.
-static_assert(::nros::rx_size_bound<Bounded>::value == Bounded::rx_size_bound<>::value,
+static_assert(::rclcpp::rx_size_bound<Bounded>::value == Bounded::rx_size_bound<>::value,
               "the constant and the nested template are one emitted fact");
-static_assert(::nros::tx_size_bound<Bounded>::value == Bounded::tx_size_bound<>::value,
+static_assert(::rclcpp::tx_size_bound<Bounded>::value == Bounded::tx_size_bound<>::value,
               "the constant and the nested template are one emitted fact");
-static_assert(::nros::rx_buffer_capacity<Bounded>::value == ::nros::rx_size_bound<Bounded>::value,
+static_assert(::rclcpp::rx_buffer_capacity<Bounded>::value ==
+                  ::rclcpp::rx_size_bound<Bounded>::value,
               "where a derived bound EXISTS the two traits agree -- the capacity trait is a "
               "fallback for the types that have none, not a second opinion for the ones that do");
 
@@ -190,8 +191,8 @@ template <class Payload> struct ActionOf {
 // Every RECEIVE site issue 0964 enumerates, instantiated. Taken by reference:
 // constructing these needs a Node, and the point is the template BODY.
 template <class M>
-inline ::nros::Result recv_paths(::nros::PollSubscription<M>& sub, ::nros::Stream<M>& stream,
-                                 M& msg) {
+inline ::rclcpp::Result recv_paths(::rclcpp::PollSubscription<M>& sub, ::rclcpp::Stream<M>& stream,
+                                   M& msg) {
     // phase-456 W2b — the taking API is `PollSubscription<M>`'s; see
     // `nros/polling_subscription.hpp`.
     (void)sub.take(msg); // polling_subscription.hpp -- derived where one exists
@@ -203,13 +204,13 @@ inline ::nros::Result recv_paths(::nros::PollSubscription<M>& sub, ::nros::Strea
     (void)stream.template try_next_sized<4096>(msg);
     (void)stream.wait_next(nullptr, 1, msg);
     (void)stream.template wait_next_sized<4096>(nullptr, 1, msg);
-    return ::nros::Result::success();
+    return ::rclcpp::Result::success();
 }
 
 template <class M>
-inline ::nros::Result client_paths(::nros::PollClient<SvcOf<M>>& client,
-                                   ::nros::PollService<SvcOf<M>>& service, ::nros::TickCtx& tick,
-                                   M& payload) {
+inline ::rclcpp::Result client_paths(::rclcpp::PollClient<SvcOf<M>>& client,
+                                     ::rclcpp::PollService<SvcOf<M>>& service,
+                                     ::rclcpp::TickCtx& tick, M& payload) {
     (void)client.send_request(payload); // future.hpp -- Future<T>'s cached_buf_
     (void)client.template send_request_sized<4096>(payload);
     (void)client.call(payload, payload, 1);
@@ -221,14 +222,14 @@ inline ::nros::Result client_paths(::nros::PollClient<SvcOf<M>>& client,
     (void)service.template try_recv_request_sized<4096>(payload, seq);
     (void)tick.template call<M, M>("e", payload, payload); // tick_ctx.hpp resp_buf
     (void)tick.template call_sized<M, M, 4096>("e", payload, payload);
-    return ::nros::Result::success();
+    return ::rclcpp::Result::success();
 }
 
 template <class M>
-inline ::nros::Result action_paths(::nros::ActionClient<ActionOf<M>>& client,
-                                   ::nros::PollingActionClient<ActionOf<M>>& polling_client,
-                                   ::nros::PollingActionServer<ActionOf<M>>& polling_server,
-                                   M& payload) {
+inline ::rclcpp::Result action_paths(::rclcpp_action::Client<ActionOf<M>>& client,
+                                     ::rclcpp::PollingActionClient<ActionOf<M>>& polling_client,
+                                     ::rclcpp::PollingActionServer<ActionOf<M>>& polling_server,
+                                     M& payload) {
     uint8_t goal_id[16] = {0};
     (void)client.get_result(goal_id, payload); // action_client.hpp result
     (void)client.template get_result_sized<4096>(goal_id, payload);
@@ -243,7 +244,7 @@ inline ::nros::Result action_paths(::nros::ActionClient<ActionOf<M>>& client,
     int64_t seq = 0;
     (void)polling_server.try_recv_goal_request(goal_id, payload, seq); // polling server goal
     (void)polling_server.template try_recv_goal_request_sized<4096>(goal_id, payload, seq);
-    return ::nros::Result::success();
+    return ::rclcpp::Result::success();
 }
 
 // A SITE-level assertion, not just a trait-level one. `Future<T, Cap>` carries
@@ -253,12 +254,12 @@ inline ::nros::Result action_paths(::nros::ActionClient<ActionOf<M>>& client,
 // call site to the estimate -- with `rx_buffer_capacity` left entirely correct
 // -- fails THIS line and nothing else.
 //
-// phase-456 W9 — the type is `nros::PollClient<S>`; `send_request` and the
+// phase-456 W9 — the type is `rclcpp::PollClient<S>`; `send_request` and the
 // `Future` it hands back belong to the half that owns the `RmwServiceClient`.
 static_assert(
-    std::is_same<decltype(std::declval<::nros::PollClient<SvcOf<Bounded>>&>().send_request(
+    std::is_same<decltype(std::declval<::rclcpp::PollClient<SvcOf<Bounded>>&>().send_request(
                      std::declval<const Bounded&>())),
-                 ::nros::Future<Bounded, 137>>::value,
+                 ::rclcpp::Future<Bounded, 137>>::value,
     "PollClient<S>::send_request must hand back a Future sized from the response type's DERIVED "
     "bound, not from its SERIALIZED_SIZE_MAX estimate");
 // Issue 0964: the matching `PollClient<SvcOf<Unbounded>>` assertion is gone for
@@ -280,18 +281,16 @@ static_assert(
 /// `nros-codegen.toml`) or call the `_sized` form. The trade accepted is that a
 /// wrong number found at build time beats a buffer that cannot hold what the
 /// program sends.
-inline ::nros::Result instantiate_recv_paths(::nros::PollSubscription<Bounded>& bsub,
-                                             ::nros::Stream<Bounded>& bstream, Bounded& bmsg,
-                                             ::nros::PollClient<SvcOf<Bounded>>& bclient,
-                                             ::nros::PollService<SvcOf<Bounded>>& bservice,
-                                             ::nros::TickCtx& tick,
-                                             ::nros::ActionClient<ActionOf<Bounded>>& bac,
-                                             ::nros::PollingActionClient<ActionOf<Bounded>>& bpac,
-                                             ::nros::PollingActionServer<ActionOf<Bounded>>& bpas) {
+inline ::rclcpp::Result instantiate_recv_paths(
+    ::rclcpp::PollSubscription<Bounded>& bsub, ::rclcpp::Stream<Bounded>& bstream, Bounded& bmsg,
+    ::rclcpp::PollClient<SvcOf<Bounded>>& bclient, ::rclcpp::PollService<SvcOf<Bounded>>& bservice,
+    ::rclcpp::TickCtx& tick, ::rclcpp_action::Client<ActionOf<Bounded>>& bac,
+    ::rclcpp::PollingActionClient<ActionOf<Bounded>>& bpac,
+    ::rclcpp::PollingActionServer<ActionOf<Bounded>>& bpas) {
     (void)recv_paths<Bounded>(bsub, bstream, bmsg);
     (void)client_paths<Bounded>(bclient, bservice, tick, bmsg);
     (void)action_paths<Bounded>(bac, bpac, bpas, bmsg);
-    return ::nros::Result::success();
+    return ::rclcpp::Result::success();
 }
 
 } // namespace nros_cpp_rx_size_bound_compile_test

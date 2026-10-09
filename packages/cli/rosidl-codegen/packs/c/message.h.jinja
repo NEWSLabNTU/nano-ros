@@ -210,7 +210,7 @@ static inline nros_ret_t {{ struct_name }}_publish(struct nros_publisher_t* publ
 /// C ONLY. The options struct is passed as a compound literal, and C++ cannot
 /// take the address of one ("taking address of rvalue"), so the C++ arm below
 /// names a C++ answer instead of leaving that diagnostic to be decoded. C++
-/// callers have a typed subscription already -- nros::Subscription<M> over the
+/// callers have a typed subscription already -- rclcpp::Subscription<M> over the
 /// generated .hpp -- and it carries no hint yet; that is the C++ sibling of
 /// this work, not something this macro can supply.
 #define {{ struct_name }}_subscribe_sized(node, topic, cb, ctx, out_handle, rx_bytes) \

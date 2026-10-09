@@ -1,0 +1,218 @@
+# Phase 483 — the user API has ROS 2's shape only: `rclcpp::` in C++, rclrs in Rust
+
+**Status (2026-10-09). Opened.** Settles issue 0784 and finishes what
+[RFC-0089](../design/0089-ros2-api-adoption-and-the-compile-or-conform-rule.md)
+§"Settled: `nros::` is phased out entirely" decided for C++ and stated as the
+end state for Rust ("`rclrs::` for Rust"). Follows
+[phase-482](phase-482-rclcpp-drop-in-residue.md), which made a ported ROS 2
+C++ node build and run with no compat layer but left the `nros::` vocabulary
+standing beside `rclcpp::`.
+
+## Decisions taken when this phase was opened (2026-10-09, maintainer)
+
+1. **C++: `nros::` stops being a namespace a user writes.** Every user-facing
+   C++ name is defined in `rclcpp::`, `rclcpp_action::` or
+   `rclcpp_lifecycle::`. There is no `nros::` alias left behind, because
+   RFC-0089 already settled that `rclcpp::` is the HOME and not an alias onto
+   `nros::`, and because no release carries the old spellings (the same
+   argument phase-482 W6 used to delete 32 deprecated aliases in one batch).
+2. **RTOS extensions stay.** A name with no upstream counterpart that exists
+   for an RTOS reason (caller-supplied static storage, polling entities,
+   scheduling contexts, board run loops, fixed-capacity strings and
+   sequences) keeps existing. Per RFC-0089 it lives in upstream's namespace
+   with ledger `disposition: extension`, and the existing tripwire refuses it
+   if upstream ever defines the same name. Where an extension would sit under
+   an upstream NAME with a different contract, the `_in` rule applies and it
+   takes a different name.
+3. **Rust: the `nros` crate has rclrs's shape, and a user may rename it.**
+   `use nros as rclrs;` (or `rclrs = { package = "nros", … }` in
+   `Cargo.toml`) must make a ported rclrs program read as rclrs. The crate
+   keeps its name.
+4. **Rust: one node type.** A node in a workspace component and a node in a
+   standalone program are the same type, `nros::Node`, with rclrs's methods.
+   Today there are five node-shaped types (the `Node` trait, `DeclaredNode`,
+   `NodeHandle`, `NodeCtx`, `StandaloneNode`), and which one a user holds
+   depends on how the program is built. That split is what this phase removes.
+
+## Where the tree stands (measured 2026-10-09, `origin/main` `2b81536214`)
+
+**C++.** The node class is already unified: `rclcpp::Node` is both the
+workspace component base and the standalone node (phase-427 merged
+`nros::ComponentNode` into it). What is left is the namespace. 147 names are
+declared in `nros::` across `packages/api/nros-cpp/include/nros/*.hpp`
+(23,787 lines), and `nros::` appears 1,598 times in those headers, 923 times
+in `nros-cpp/tests`, 377 in `examples/`, 233 in `book/` and about 130 in the
+C++ the CLI emits (entry packs, scaffold, `rosidl-codegen` message headers).
+Examples write `nros::create_node`, `nros::init`, `nros::spin_once`,
+`nros::Timer`, `nros::ErrorCode`, `nros::GoalResponse`, the `Poll*` family and
+the `*Storage` types.
+
+**Rust.** Five node-shaped types, split by program shape:
+
+| type | how a user gets it | used by |
+| --- | --- | --- |
+| `nros::Node` trait + `nros::node!` | implement it; `register(&mut NodeContext)` | 78 example files (every workspace component) |
+| `DeclaredNode` | `NodeContext::create_node` inside `register` | the same 78 |
+| `NodeHandle<'a>` | `Executor::create_node` | 17 example files (native RTIC/async/serial, px4) |
+| `NodeCtx<'e,'s>` | `Executor::node_mut(id)` | 7 of those 17 |
+| `StandaloneNode` | `StandaloneNode::new` | two bench programs |
+
+`NodeHandle` and `NodeCtx` are siblings, not one wrapping the other, and
+neither carries rclrs's whole method set: callbacks, timers and graph queries
+are on `NodeCtx`, while `name`/`logger`/`create_client` are on `NodeHandle`.
+RFC-0089's own sketch already says `Executor::create_node -> Node`.
+
+What a single type must keep working, from the survey:
+
+1. **Per-class static sizing.** `ComponentSlotStorage` is sized in
+   const-generic position from a per-type const (`ENTITY_BOUNDS`).
+2. **Per-package C-ABI exports** for install, dispatch strategy and the
+   framework callback trampoline.
+3. **Name-keyed dispatch for RTIC/Embassy** (RFC-0043 Q10). This is an RTOS
+   extension and stays one.
+4. **The metadata probe** runs a component's registration with no transport.
+5. **Borrowing.** `NodeCtx` holds `&mut Executor`, so only one is live at a
+   time. rclrs nodes are `Arc`, so several can be held at once.
+
+## Work items
+
+### W1 — C++: the user API moves out of `nros::`
+
+- Every declaration in `namespace nros` moves to `rclcpp::` (or
+  `rclcpp_action::` / `rclcpp_lifecycle::` where upstream keeps the
+  concept). Internals stay in a `detail` namespace.
+- Self-aliases disappear (`nros::Publisher<M> = rclcpp::Publisher<M>` and
+  its siblings).
+- Collisions are resolved by upstream's shape, not ours:
+  - the QoS policy enums become `enum class` with upstream's enumerator
+    names, which frees `rclcpp::KeepLast` / `KeepAll` for the upstream
+    profile helpers;
+  - the base `QoS` class merges with `rclcpp::QoS`;
+  - `Result`-returning `init` / `shutdown` / `spin` overloads that would sit
+    under upstream's names with a different contract take the `_in` suffix.
+- Every in-tree consumer moves in the same change: examples, templates,
+  `nros-cpp/tests`, the CLI's C++ emitters and their goldens, the
+  `rosidl-codegen` message headers, the book, the gates and the API-parity
+  extractor and ledger.
+
+**Acceptance:** no `nros::` in any C++ a user writes or the CLI emits; a gate
+keeps it so; `just check cpp` and `just ci gate` green; the Zephyr and
+FreeRTOS port templates still run.
+
+**Status 2026-10-10: done.**
+
+- The namespace moved, and no alias was left. Collisions went upstream's way:
+  - the QoS policy enums are `enum class`, with `LivelinessNone` now
+    `LivelinessPolicy::SystemDefault`;
+  - the two QoS classes are one class, with upstream's implicit
+    `QoS(size_t)` constructor;
+  - `init_in` / `shutdown_in` / `spin_in` carry the `Result`-returning forms
+    whose names upstream uses with a `void` / `bool` contract;
+  - the goal vocabulary lives in `rclcpp_action::`, and the lifecycle
+    vocabulary in `rclcpp_lifecycle::`;
+  - the deprecated `nros::LifecycleNode` forwarder and its warning probe are
+    deleted.
+- Generated C++ names the new spellings, so `NROS_CODEGEN_VERSION` and its
+  minimum are both 10. The committed interface crates are restamped, and the
+  `nros --codegen-version` smoke expectation follows.
+- Gate `check-cpp-no-nros-namespace` (fast line). `check-codegen-version-surface`,
+  `check-qos-profile-ssot`, `check-cpp-subscription-bound-supplied` and
+  `check-cpp-capability-layout` now read `rclcpp::`.
+- API-parity ledger:
+  - rows `cpp:init_in`, `cpp:shutdown_in` and `cpp:spin_in` are added;
+  - `cpp:ActionClient` and `cpp:ActionServer` are deleted, because they
+    described aliases that no longer exist.
+- `check-template-copy-out` builds only HOST images. The port template's
+  leaves are cross-board, and the gate had tried to build the template root
+  as a workspace (red on main since W3).
+- Measured:
+  - `just check cpp` passes;
+  - the CLI's 2288 tests pass;
+  - 403/403 fast gates pass;
+  - `test-unit` and `test-lane-contracts` pass;
+  - `build-test-fixtures lane=native` passes;
+  - the native C++ e2e tests pass.
+- Pre-existing and unrelated, so not fixed here:
+  - `check build`'s `workspace-features` fails on a duplicate-symbol link in
+    `nros-board-threadx`'s lib test (issue 1772);
+  - `dist-runtime-deps` needs `libatomic` for the local `arm-fvp` dist.
+
+### W2 — Rust: one `Node` type, rclrs-shaped
+
+- `nros::Node` becomes the node struct. It carries the union of today's
+  `NodeHandle` and `NodeCtx` methods under rclrs's names: `name`,
+  `namespace`, `fully_qualified_name`, `logger`, `domain_id`, `get_clock`,
+  `create_publisher`, `create_subscription(topic, closure)`,
+  `create_service`, `create_client`, `create_action_server` / `client`,
+  `create_timer_repeating` / `oneshot`, `declare_parameter` and the graph
+  queries.
+- `Executor::create_node` returns it.
+- The component trait is renamed (it is the analogue of
+  `rclcpp_components`, not of a node). Its registration receives
+  `&mut Node`, the same type a standalone program holds, so one body of
+  node code works in both.
+- The per-type const, the C-ABI exports and the probe's recording runtime
+  stay behind the trait. The node itself does not know whether it is live or
+  being recorded.
+- `NodeHandle`, `NodeCtx`, `DeclaredNode` and `NodeContext` stop being
+  public names.
+
+**Design (2026-10-10).** The unifying move is to make the component register
+against the SAME live executor a standalone program uses, rather than against
+a declaration-recording runtime:
+
+1. `NodeCtx` (the executor-borrowing handle that already carries rclrs's
+   callback-taking `create_subscription` / `create_service`, timers, clock and
+   the graph queries) becomes `nros::Node`. It gains what only `NodeHandle`
+   has: `name`, `namespace`, `fully_qualified_name`, `logger`, `domain_id`,
+   and the polled entity constructors, which are RTOS extensions and take
+   `create_polling_*` names so they do not sit under rclrs's callback-taking
+   `create_*` names with a different contract (the `_in` rule's reasoning,
+   applied to Rust). `Executor::create_node` returns it.
+2. The component trait is renamed `nros::Component` (it is the analogue of
+   `rclcpp_components`, and `Node` is now the node). Its registration takes
+   the executor and creates its node exactly as a standalone `main` does:
+   `fn register(executor: &mut Executor) -> Result<(), NodeError>`. The
+   launch identity, QoS overrides, parameters and remaps that
+   `ExecutorSink` applies today are installed on the executor before
+   `register` runs and consumed by the component's first `create_node`.
+3. The metadata probe stops needing a recording runtime: it opens an executor
+   on the metadata backend and runs `register` against it, which is how the C
+   and C++ probes already work (`nros::census_hooks`, issue 1419). A Rust
+   component therefore records through the same hooks a C++ one does.
+4. Name-keyed dispatch (`ExecutableNode`, `on_callback`) stays as the
+   RTIC/Embassy extension, reached through `Node` extension methods that bind
+   a callback NAME instead of a closure. A component that is not
+   framework-dispatched writes closures, as rclrs does.
+
+### W3 — Rust: migrate every consumer
+
+The 78 component files, the 17 imperative files, `packages/testing`, the
+`nros::node!` / `nros::main!` expansions, the CLI's Rust emitters and the
+metadata probe harness all move to W2's `Node`. Name-keyed framework dispatch
+stays as the RTIC/Embassy extension.
+
+### W4 — Rust: the facade's surface
+
+- `StandaloneNode` and its error leave `nros::`; the two bench programs
+  import `nros_node` directly.
+- Remove the zero-consumer types from issue 0784.
+- Move the remaining RTOS extensions out of the prelude into
+  `nros::embedded`, which is already the stated rule.
+- A test compiles a ported rclrs program under `use nros as rclrs;`.
+
+### W5 — book, RFCs and ledger
+
+- RFC-0089 gains the Rust half of the decision; RFC-0043, RFC-0044, RFC-0022
+  and RFC-0036 note where they are superseded.
+- The book's C++ and Rust chapters use only the upstream spellings.
+- The API-parity ledger's `node.json` / `exec.json` rows stop describing the
+  two-model split.
+- Issue 0784 is resolved and archived.
+
+## Acceptance
+
+- A C++ user writes no `nros::`.
+- A Rust user writes `use nros as rclrs;` and gets rclrs's shape, with one
+  `Node` type in every program.
+- Both are enforced by gates, not by review.

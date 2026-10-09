@@ -19,7 +19,7 @@ void Listener::on_msg(const ::std_msgs::msg::Int32& msg) {
     // Typed member binding (RFC-0044): keyexpr + deserialize come from the
     // generated `std_msgs::msg::Int32` (issue #218 — hand-decode retired).
     ::rclcpp::Result r =
-        ::nros::bind_subscription<::std_msgs::msg::Int32, Listener, &Listener::on_msg>(
+        ::rclcpp::bind_subscription<::std_msgs::msg::Int32, Listener, &Listener::on_msg>(
             node, "/chatter", this);
     if (r.ok()) {
         std::printf("[pkg_cpp_listener] subscribed to /chatter\n");

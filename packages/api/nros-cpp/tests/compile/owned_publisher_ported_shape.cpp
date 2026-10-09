@@ -1,4 +1,4 @@
-// phase-456 W4 — `nros::Owned<Publisher<M>>` supports the ported publisher
+// phase-456 W4 — `rclcpp::Owned<Publisher<M>>` supports the ported publisher
 // member pattern, proven BEFORE W5 flips `Publisher<M>::SharedPtr` to it.
 //
 // W4 decided the open question the phase doc raised: a publisher does NOT get
@@ -47,7 +47,7 @@ struct Int32 {
 };
 
 /// What `Publisher<M>::SharedPtr` becomes in W5.
-using PublisherOwned = ::nros::Owned<::nros::Publisher<Int32>>;
+using PublisherOwned = ::rclcpp::Owned<::rclcpp::Publisher<Int32>>;
 
 // A publisher holds no state derived from `M`, which is the measured reason the
 // arena argument does not reach it: 872 bytes for every message type, being the
@@ -63,7 +63,7 @@ struct BigPayload {
     static int ffi_deserialize(const uint8_t*, size_t, void*) { return 0; }
 };
 
-static_assert(sizeof(::nros::Publisher<Int32>) == sizeof(::nros::Publisher<BigPayload>),
+static_assert(sizeof(::rclcpp::Publisher<Int32>) == sizeof(::rclcpp::Publisher<BigPayload>),
               "phase-456 W4 -- a publisher carries nothing sized from the message type, which "
               "is why moving it into the arena would relocate its bytes rather than remove "
               "them. A message 8000x larger must not make the publisher one byte bigger.");
@@ -71,17 +71,17 @@ static_assert(sizeof(::nros::Publisher<Int32>) == sizeof(::nros::Publisher<BigPa
 // `Owned<T>` adds one flag word to the entity it holds, and nothing else. No
 // control block, no allocation -- which is the whole reason it exists where
 // `std::shared_ptr` cannot go.
-static_assert(sizeof(PublisherOwned) <= sizeof(::nros::Publisher<Int32>) + sizeof(void*),
-              "nros::Owned<T> must cost at most one word over T");
+static_assert(sizeof(PublisherOwned) <= sizeof(::rclcpp::Publisher<Int32>) + sizeof(void*),
+              "rclcpp::Owned<T> must cost at most one word over T");
 
 /// The ported node body, written the way the upstream tutorial writes it.
 class PortedTalker {
   public:
     explicit PortedTalker(::rclcpp::Node& node) {
-        ::nros::Publisher<Int32> created;
+        ::rclcpp::Publisher<Int32> created;
         if (node.create_publisher<Int32>(created, "topic").ok()) {
             // W5's `publisher_ = this->create_publisher<Int32>("topic", 10);`
-            publisher_ = PublisherOwned(::nros::tr::forward_rvalue(created));
+            publisher_ = PublisherOwned(::rclcpp::tr::forward_rvalue(created));
         }
     }
 
@@ -124,7 +124,7 @@ class PortedTalker {
 /// `static_assert` naming this resolution, because that spelling declares
 /// cleanly and is ill-formed on its first move or `reset()`.
 inline const char* const_view(const PublisherOwned& p) {
-    const ::nros::Publisher<Int32>* view = p.get();
+    const ::rclcpp::Publisher<Int32>* view = p.get();
     return view ? view->get_topic_name() : "";
 }
 
@@ -133,7 +133,7 @@ inline const char* const_view(const PublisherOwned& p) {
 /// supported operation and not merely a compiling one.
 inline PublisherOwned relocate(PublisherOwned src) {
     PublisherOwned dst;
-    dst = ::nros::tr::forward_rvalue(src);
+    dst = ::rclcpp::tr::forward_rvalue(src);
     return dst;
 }
 
@@ -146,7 +146,7 @@ inline bool instantiate(::rclcpp::Node& node) {
     talker.release();
     PublisherOwned empty;
     (void)const_view(empty);
-    (void)relocate(::nros::tr::forward_rvalue(empty));
+    (void)relocate(::rclcpp::tr::forward_rvalue(empty));
     return was_held && (empty == nullptr);
 }
 

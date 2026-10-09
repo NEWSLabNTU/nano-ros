@@ -4,7 +4,7 @@
 /**
  * @file future.hpp
  * @ingroup grp_executor
- * @brief `nros::Future<T>` — single-shot deferred result.
+ * @brief `rclcpp::Future<T>` — single-shot deferred result.
  */
 
 #ifndef NROS_CPP_FUTURE_HPP
@@ -14,7 +14,7 @@
 #include <cstddef>
 
 #include "nros/result.hpp"
-#include "nros/size_bound.hpp" // nros::rx_buffer_capacity<T> — the receive-buffer size
+#include "nros/size_bound.hpp" // rclcpp::rx_buffer_capacity<T> — the receive-buffer size
 
 // FFI declarations
 extern "C" {
@@ -37,10 +37,10 @@ namespace rclcpp_action {
 template <typename A> class Client;
 } // namespace rclcpp_action
 
-namespace nros {
+namespace rclcpp {
 
 // phase-456 W9 — `send_request` and the `Future` it hands back moved off
-// `rclcpp::Client<S>` onto `nros::PollClient<S>`, the half that owns the
+// `rclcpp::Client<S>` onto `rclcpp::PollClient<S>`, the half that owns the
 // `RmwServiceClient` this future takes from. The friend list FOLLOWS the method:
 // the poll client is declared here, and `rclcpp::Client<S>` left both this
 // declaration and the friend list below, because a friendship nothing uses is a
@@ -67,7 +67,7 @@ template <typename S> class PollClient;
 ///              `ActionClient::get_result_future_sized`, which hand back a
 ///              `Future<T, N>` (issue 0964). This buffer IS the capacity:
 ///              under-sizing it truncates the reply.
-template <typename T, size_t Cap = ::nros::rx_buffer_capacity<T>::value> class Future {
+template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class Future {
   public:
     /// Check if the result has arrived (non-blocking).
     bool is_ready() {
@@ -179,7 +179,7 @@ template <typename T, size_t Cap = ::nros::rx_buffer_capacity<T>::value> class F
     Future(const Future&) = delete;
     Future& operator=(const Future&) = delete;
 
-    template <typename S> friend class ::nros::PollClient;
+    template <typename S> friend class ::rclcpp::PollClient;
     template <typename A> friend class ::rclcpp_action::Client;
 
     using TryRecvFn = nros_cpp_ret_t (*)(void*, uint8_t*, size_t, size_t*);
@@ -195,5 +195,5 @@ template <typename T, size_t Cap = ::nros::rx_buffer_capacity<T>::value> class F
     uint8_t cached_buf_[Cap];
 };
 
-} // namespace nros
+} // namespace rclcpp
 #endif // NROS_CPP_FUTURE_HPP

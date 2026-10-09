@@ -1,10 +1,10 @@
 // Compile regression for issue 0278 Half B:
-// `nros::PollClient<Svc>::call_polling` — a bounded service call that does NOT
+// `rclcpp::PollClient<Svc>::call_polling` — a bounded service call that does NOT
 // spin the executor, so it is safe from inside a subscription/timer callback
 // (on a multi-threaded backend).
 //
-// phase-456 W9 — the type is `nros::PollClient<S>`, which is what
-// `nros::Client<S>` was on this road. `call_polling` reads the
+// phase-456 W9 — the type is `rclcpp::PollClient<S>`, which is what
+// `rclcpp::Client<S>` was on this road. `call_polling` reads the
 // `RmwServiceClient` in CALLER storage, so it belongs to the half that owns
 // one; the dispatch `rclcpp::Client<S>` has no storage and no longer offers it.
 //
@@ -50,18 +50,18 @@ struct AddTwoInts {
 };
 
 // Force instantiation of call_polling (body type-checked at compile).
-inline ::nros::Result instantiate(::nros::PollClient<AddTwoInts>& client) {
+inline ::rclcpp::Result instantiate(::rclcpp::PollClient<AddTwoInts>& client) {
     AddTwoInts::Request req;
     AddTwoInts::Response resp;
     // The callback-safe bounded call with an explicit timeout.
     return client.call_polling(req, resp, /*timeout_ms=*/10);
 }
 
-// API-shape assertion — call_polling returns nros::Result and takes a timeout.
-static_assert(std::is_same<decltype(std::declval<::nros::PollClient<AddTwoInts>&>().call_polling(
+// API-shape assertion — call_polling returns rclcpp::Result and takes a timeout.
+static_assert(std::is_same<decltype(std::declval<::rclcpp::PollClient<AddTwoInts>&>().call_polling(
                                std::declval<const AddTwoInts::Request&>(),
                                std::declval<AddTwoInts::Response&>(), 10u)),
-                           ::nros::Result>::value,
-              "PollClient<Svc>::call_polling(req, resp, timeout_ms) must return nros::Result");
+                           ::rclcpp::Result>::value,
+              "PollClient<Svc>::call_polling(req, resp, timeout_ms) must return rclcpp::Result");
 
 } // namespace nros_cpp_service_client_call_polling_compile_test

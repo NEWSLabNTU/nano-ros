@@ -30,7 +30,7 @@ void Talker::on_tick() {
     // and if the two ever disagree -- depth, reliability or durability -- the
     // assertion below fails to COMPILE, naming the topic and both values
     // (issue 1608; the listener holds its subscription the same way, 1564).
-    constexpr ::nros::QoS kChatterQos = ::nros::QoS(1);
+    constexpr ::rclcpp::QoS kChatterQos = ::rclcpp::QoS(1);
     NROS_ASSERT_DECLARED_PUB_QOS(::std_msgs::msg::Int32::TYPE_NAME, "/chatter", kChatterQos,
                                  "\"/chatter\"");
     ::rclcpp::Result r = node.create_publisher(pub_, "/chatter", kChatterQos);

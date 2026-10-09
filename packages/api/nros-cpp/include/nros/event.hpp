@@ -1,8 +1,8 @@
 /**
  * @file event.hpp
  * @ingroup grp_support
- * @brief Phase 108 — status events on `nros::Subscription` and
- *        `nros::Publisher`.
+ * @brief Phase 108 — status events on `rclcpp::Subscription` and
+ *        `rclcpp::Publisher`.
  *
  * Tier-1 status-event surface for the C++ user-facing API. Mirrors
  * the C surface in `<nros/event.h>` (cbindgen-generated from
@@ -20,7 +20,7 @@
 
 #include "nros/result.hpp"
 
-namespace nros {
+namespace rclcpp {
 
 /// Liveliness status payload.
 struct LivelinessChangedStatus {
@@ -44,6 +44,6 @@ using DeadlineMissedStatus = CountStatus;
 /// [`CountStatus`].
 using MessageLostStatus = CountStatus;
 
-} // namespace nros
+} // namespace rclcpp
 
 #endif // NROS_CPP_EVENT_HPP

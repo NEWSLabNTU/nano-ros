@@ -9,7 +9,7 @@
 //     `==`, cannot be returned by value, and cannot be stored in a container.
 //     `rclcpp_action::GoalUUID` is a `std::array<uint8_t, 16>` and is a map key
 //     in most real action servers, so this was a drop-in blocker rather than a
-//     style difference. `nros::GoalUUID` is that type, over the SAME 16 bytes.
+//     style difference. `rclcpp_action::GoalUUID` is that type, over the SAME 16 bytes.
 //
 //  2. C++ had no terminal verbs. C has `nros_action_succeed` / `_abort` /
 //     `_canceled`, Rust has `ActionServerHandle::succeed` / `abort` /
@@ -59,25 +59,25 @@ struct Fib {
 // Not "a pointer with a nicer name": these are the properties a map key and a
 // freestanding target both need. A regression in any of them is a compile
 // error here rather than a link-time surprise on an MCU.
-static_assert(sizeof(::nros::GoalUUID) == 16, "GoalUUID must be exactly 16 bytes");
-static_assert(std::is_trivially_copyable<::nros::GoalUUID>::value,
+static_assert(sizeof(::rclcpp_action::GoalUUID) == 16, "GoalUUID must be exactly 16 bytes");
+static_assert(std::is_trivially_copyable<::rclcpp_action::GoalUUID>::value,
               "GoalUUID must be trivially copyable — it is memcpy'd across the FFI boundary");
-static_assert(std::is_standard_layout<::nros::GoalUUID>::value,
+static_assert(std::is_standard_layout<::rclcpp_action::GoalUUID>::value,
               "GoalUUID must be standard-layout — an array of them IS the uint8_t[N][16] the FFI "
               "reads in send_cancel_reply");
 
 // The converting constructor is `explicit`, which is what keeps the raw-array
 // overloads reachable. If it ever became implicit, every raw call site would
 // go ambiguous — so assert the property directly, not just the outcome.
-static_assert(!std::is_convertible<const uint8_t*, ::nros::GoalUUID>::value,
+static_assert(!std::is_convertible<const uint8_t*, ::rclcpp_action::GoalUUID>::value,
               "GoalUUID(const uint8_t*) must stay explicit, or the raw-array overloads become "
               "ambiguous at every call site");
 
 // ── 2. It behaves like a value: compare, copy, store ──────────────────────
 
 inline bool comparisons_and_container_use(const uint8_t raw_a[16], const uint8_t raw_b[16]) {
-    ::nros::GoalUUID a(raw_a);
-    ::nros::GoalUUID b(raw_b);
+    ::rclcpp_action::GoalUUID a(raw_a);
+    ::rclcpp_action::GoalUUID b(raw_b);
 
     // The thing a raw `uint8_t[16]` cannot do.
     if (a == b) return true;
@@ -85,16 +85,16 @@ inline bool comparisons_and_container_use(const uint8_t raw_a[16], const uint8_t
     }
 
     // Copyable and assignable — needed to stash the id from a callback.
-    ::nros::GoalUUID copy = a;
+    ::rclcpp_action::GoalUUID copy = a;
     copy = b;
 
     // The default is the zero ("null") id, mirroring `GoalId::zero()`.
-    ::nros::GoalUUID zero;
+    ::rclcpp_action::GoalUUID zero;
     if (!zero.is_zero()) return false;
 
     // The drop-in case: `{goal -> state}`, which is how nearly every real
     // rclcpp_action server tracks work it accepted.
-    std::map<::nros::GoalUUID, int> per_goal_state;
+    std::map<::rclcpp_action::GoalUUID, int> per_goal_state;
     per_goal_state[a] = 1;
     per_goal_state[b] = 2;
     return per_goal_state.find(copy) != per_goal_state.end();
@@ -102,28 +102,28 @@ inline bool comparisons_and_container_use(const uint8_t raw_a[16], const uint8_t
 
 // ── 3. The callback tier: verbs + both id spellings ───────────────────────
 
-inline ::nros::Result callback_tier_server(::rclcpp::Node& node) {
-    ::nros::ActionServer<Fib> server;
-    ::nros::Result r = node.create_action_server(server, "/fib");
+inline ::rclcpp::Result callback_tier_server(::rclcpp::Node& node) {
+    ::rclcpp_action::Server<Fib> server;
+    ::rclcpp::Result r = node.create_action_server(server, "/fib");
 
     Fib::Result result;
 
     // The goal callback still receives a raw `const uint8_t[16]` from the FFI
     // trampoline; lifting it to a value is one token.
     (void)server.set_goal_callback([](const uint8_t uuid[16], const Fib::Goal&) {
-        ::nros::GoalUUID id(uuid);
-        return id.is_zero() ? ::nros::GoalResponse::REJECT
-                            : ::nros::GoalResponse::ACCEPT_AND_EXECUTE;
+        ::rclcpp_action::GoalUUID id(uuid);
+        return id.is_zero() ? ::rclcpp_action::GoalResponse::REJECT
+                            : ::rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
     });
 
-    ::nros::GoalUUID id;
+    ::rclcpp_action::GoalUUID id;
 
     // The three verbs, on a value id — `goal_handle->succeed(result)` shaped.
     (void)server.succeed(id, result);
     (void)server.abort(id, result);
     (void)server.canceled(id, result);
     (void)server.publish_feedback(id, result);
-    (void)server.complete_goal(id, ::nros::GoalStatus::Canceling, result);
+    (void)server.complete_goal(id, ::rclcpp_action::GoalStatus::Canceling, result);
 
     // …and on a raw array, which must still resolve — every in-tree C++ action
     // example spells it this way.
@@ -131,22 +131,22 @@ inline ::nros::Result callback_tier_server(::rclcpp::Node& node) {
     (void)server.succeed(raw, result);
     (void)server.abort(raw, result);
     (void)server.canceled(raw, result);
-    (void)server.complete_goal(raw, ::nros::GoalStatus::Aborted, result);
+    (void)server.complete_goal(raw, ::rclcpp_action::GoalStatus::Aborted, result);
     (void)server.complete_goal(raw, result);
     (void)server.publish_feedback(raw, result);
     return r;
 }
 
-inline ::nros::Result callback_tier_client(::rclcpp::Node& node) {
-    ::nros::ActionClient<Fib> client;
-    ::nros::Result r = node.create_action_client(client, "/fib");
+inline ::rclcpp::Result callback_tier_client(::rclcpp::Node& node) {
+    ::rclcpp_action::Client<Fib> client;
+    ::rclcpp::Result r = node.create_action_client(client, "/fib");
 
     Fib::Goal goal;
     Fib::Result result;
 
     // `send_goal` HANDS BACK an id — the direction that most wanted a value
     // type, because the caller then has to keep it.
-    ::nros::GoalUUID id;
+    ::rclcpp_action::GoalUUID id;
     (void)client.send_goal(goal, id);
     (void)client.send_goal_async(goal, id);
     (void)client.get_result(id, result);
@@ -162,19 +162,19 @@ inline ::nros::Result callback_tier_client(::rclcpp::Node& node) {
 
     // `GoalAccept::goal_id` stays a raw array (the FFI decoder writes it);
     // lifting it is the same one token.
-    typename ::nros::ActionClient<Fib>::GoalAccept accept;
-    ::nros::GoalUUID accepted_id(accept.goal_id);
+    typename ::rclcpp_action::Client<Fib>::GoalAccept accept;
+    ::rclcpp_action::GoalUUID accepted_id(accept.goal_id);
     (void)client.get_result(accepted_id, result);
     return r;
 }
 
 // ── 4. The polling (L1) tier — the same four surfaces ─────────────────────
 
-inline ::nros::Result polling_tier_server(::rclcpp::Node& node) {
-    ::nros::PollingActionServer<Fib> server;
-    ::nros::Result r = node.create_polling_action_server(server, "/fib");
+inline ::rclcpp::Result polling_tier_server(::rclcpp::Node& node) {
+    ::rclcpp::PollingActionServer<Fib> server;
+    ::rclcpp::Result r = node.create_polling_action_server(server, "/fib");
 
-    ::nros::GoalUUID id;
+    ::rclcpp_action::GoalUUID id;
     Fib::Goal goal;
     Fib::Result result;
     int64_t seq = 0;
@@ -185,29 +185,29 @@ inline ::nros::Result polling_tier_server(::rclcpp::Node& node) {
     (void)server.succeed(id, result);
     (void)server.abort(id, result);
     (void)server.canceled(id, result);
-    (void)server.complete_goal(id, ::nros::GoalStatus::Succeeded, result);
+    (void)server.complete_goal(id, ::rclcpp_action::GoalStatus::Succeeded, result);
 
-    ::nros::GoalStatus status = ::nros::GoalStatus::Unknown;
+    ::rclcpp_action::GoalStatus status = ::rclcpp_action::GoalStatus::Unknown;
     (void)server.try_recv_cancel_request(id, seq, status);
 
     // The array-of-ids reply. Building this is what a raw `uint8_t[N][16]`
     // made awkward and a value type makes ordinary.
-    ::nros::GoalUUID accepted[2];
-    (void)server.send_cancel_reply(seq, ::nros::CancelReturnCode::Ok, accepted, 2);
+    ::rclcpp_action::GoalUUID accepted[2];
+    (void)server.send_cancel_reply(seq, ::rclcpp_action::CancelReturnCode::Ok, accepted, 2);
 
     // Raw array still resolves.
     uint8_t raw[16] = {0};
     (void)server.try_recv_goal_request(raw, goal, seq);
     (void)server.accept_goal(raw, seq);
-    (void)server.complete_goal(raw, ::nros::GoalStatus::Aborted, result);
+    (void)server.complete_goal(raw, ::rclcpp_action::GoalStatus::Aborted, result);
     return r;
 }
 
-inline ::nros::Result polling_tier_client(::rclcpp::Node& node) {
-    ::nros::PollingActionClient<Fib> client;
-    ::nros::Result r = node.create_polling_action_client(client, "/fib");
+inline ::rclcpp::Result polling_tier_client(::rclcpp::Node& node) {
+    ::rclcpp::PollingActionClient<Fib> client;
+    ::rclcpp::Result r = node.create_polling_action_client(client, "/fib");
 
-    ::nros::GoalUUID id;
+    ::rclcpp_action::GoalUUID id;
     Fib::Goal goal;
     Fib::Feedback feedback;
 
@@ -228,23 +228,23 @@ inline ::nros::Result polling_tier_client(::rclcpp::Node& node) {
 // A verb that came back as `void`, or that quietly took a `GoalStatus`, would
 // pass a name check and re-introduce exactly the "compiles and differs" hazard
 // RFC-0089 is written against.
-static_assert(
-    std::is_same<decltype(std::declval<::nros::ActionServer<Fib>&>().succeed(
-                     std::declval<const ::nros::GoalUUID&>(), std::declval<const Fib::Result&>())),
-                 ::nros::Result>::value,
-    "ActionServer<A>::succeed must return nros::Result");
-static_assert(
-    std::is_same<decltype(std::declval<::nros::ActionServer<Fib>&>().canceled(
-                     std::declval<const ::nros::GoalUUID&>(), std::declval<const Fib::Result&>())),
-                 ::nros::Result>::value,
-    "ActionServer<A>::canceled must return nros::Result — and be spelled `canceled`, "
-    "not `cancel`: C says `nros_action_canceled`, rclcpp_action says `canceled`, and "
-    "Rust was renamed to match in phase-417 W4.b");
-static_assert(
-    std::is_same<decltype(std::declval<::nros::PollingActionServer<Fib>&>().abort(
-                     std::declval<const ::nros::GoalUUID&>(), std::declval<const Fib::Result&>())),
-                 ::nros::Result>::value,
-    "PollingActionServer<A>::abort must return nros::Result");
+static_assert(std::is_same<decltype(std::declval<::rclcpp_action::Server<Fib>&>().succeed(
+                               std::declval<const ::rclcpp_action::GoalUUID&>(),
+                               std::declval<const Fib::Result&>())),
+                           ::rclcpp::Result>::value,
+              "ActionServer<A>::succeed must return rclcpp::Result");
+static_assert(std::is_same<decltype(std::declval<::rclcpp_action::Server<Fib>&>().canceled(
+                               std::declval<const ::rclcpp_action::GoalUUID&>(),
+                               std::declval<const Fib::Result&>())),
+                           ::rclcpp::Result>::value,
+              "ActionServer<A>::canceled must return rclcpp::Result — and be spelled `canceled`, "
+              "not `cancel`: C says `nros_action_canceled`, rclcpp_action says `canceled`, and "
+              "Rust was renamed to match in phase-417 W4.b");
+static_assert(std::is_same<decltype(std::declval<::rclcpp::PollingActionServer<Fib>&>().abort(
+                               std::declval<const ::rclcpp_action::GoalUUID&>(),
+                               std::declval<const Fib::Result&>())),
+                           ::rclcpp::Result>::value,
+              "PollingActionServer<A>::abort must return rclcpp::Result");
 
 // ── 6. The accessors the four action tiers now agree on ───────────────────
 //
@@ -255,24 +255,24 @@ static_assert(
 //
 //  * `get_action_name` was on the POLLING tiers only. C now has
 //    `rcl_action_{client,server}_get_action_name`, and the callback tiers have
-//    it here. All four C++ classes read ONE bound, `nros::ACTION_NAME_MAX`.
+//    it here. All four C++ classes read ONE bound, `rclcpp_action::ACTION_NAME_MAX`.
 //  * `action_server_is_ready` existed in C and Rust and NOT in C++, so the
 //    only way to ask here was to block in `wait_for_action_server`.
 //  * `goal_exists` is rcl's; C now has `nros_action_server_goal_exists` and
 //    this is its C++ binding.
 //
 // Return types are asserted, not just names: a `get_action_name` that came
-// back as `nros::Result`, or a predicate that came back as `nros::Result`,
+// back as `rclcpp::Result`, or a predicate that came back as `rclcpp::Result`,
 // would compile at every call site above and mean something else — RFC-0089's
 // "compiles and differs".
 inline void accessors(::rclcpp::Node& node) {
-    ::nros::ActionServer<Fib> server;
-    ::nros::ActionClient<Fib> client;
+    ::rclcpp_action::Server<Fib> server;
+    ::rclcpp_action::Client<Fib> client;
     (void)node.create_action_server(server, "/fib");
     (void)node.create_action_client(client, "/fib");
 
-    const ::nros::ActionServer<Fib>& cserver = server;
-    const ::nros::ActionClient<Fib>& cclient = client;
+    const ::rclcpp_action::Server<Fib>& cserver = server;
+    const ::rclcpp_action::Client<Fib>& cclient = client;
 
     // Readable from a const handle, like every other accessor here.
     (void)cserver.get_action_name();
@@ -280,37 +280,39 @@ inline void accessors(::rclcpp::Node& node) {
     (void)cclient.action_server_is_ready();
 
     // Both goal-id spellings reach `goal_exists`, same as the verbs above.
-    ::nros::GoalUUID id;
+    ::rclcpp_action::GoalUUID id;
     uint8_t raw[16] = {0};
     (void)cserver.goal_exists(id);
     (void)cserver.goal_exists(raw);
 }
 
 static_assert(
-    std::is_same<decltype(std::declval<const ::nros::ActionServer<Fib>&>().get_action_name()),
+    std::is_same<decltype(std::declval<const ::rclcpp_action::Server<Fib>&>().get_action_name()),
                  const char*>::value,
     "ActionServer<A>::get_action_name must return const char* — the same shape "
     "PollingActionServer<A> and Subscription<M> already return, and never a Result");
 static_assert(
-    std::is_same<decltype(std::declval<const ::nros::ActionClient<Fib>&>().get_action_name()),
+    std::is_same<decltype(std::declval<const ::rclcpp_action::Client<Fib>&>().get_action_name()),
                  const char*>::value,
     "ActionClient<A>::get_action_name must return const char*");
-static_assert(std::is_same<decltype(std::declval<const ::nros::ActionClient<Fib>&>()
+static_assert(std::is_same<decltype(std::declval<const ::rclcpp_action::Client<Fib>&>()
                                         .action_server_is_ready()),
                            bool>::value,
               "ActionClient<A>::action_server_is_ready must be a PREDICATE — a Result here "
               "would make the ported `if (client.action_server_is_ready())` mean readiness "
               "OR an error, which is the pair rclcpp_action's bool exists to separate");
-static_assert(std::is_same<decltype(std::declval<const ::nros::ActionServer<Fib>&>().goal_exists(
-                               std::declval<const ::nros::GoalUUID&>())),
+static_assert(std::is_same<decltype(std::declval<const ::rclcpp_action::Server<Fib>&>().goal_exists(
+                               std::declval<const ::rclcpp_action::GoalUUID&>())),
                            bool>::value,
               "ActionServer<A>::goal_exists must be a PREDICATE — rcl's "
               "rcl_action_server_goal_exists returns bool and the ported idiom is a guard");
 
 // One bound for the four action classes, not four literals (phase-417 W4.b).
-static_assert(::nros::PollingActionServer<Fib>::ACTION_NAME_MAX == ::nros::ACTION_NAME_MAX,
-              "PollingActionServer<A>::ACTION_NAME_MAX must BE nros::ACTION_NAME_MAX");
-static_assert(::nros::PollingActionClient<Fib>::ACTION_NAME_MAX == ::nros::ACTION_NAME_MAX,
-              "PollingActionClient<A>::ACTION_NAME_MAX must BE nros::ACTION_NAME_MAX");
+static_assert(::rclcpp::PollingActionServer<Fib>::ACTION_NAME_MAX ==
+                  ::rclcpp_action::ACTION_NAME_MAX,
+              "PollingActionServer<A>::ACTION_NAME_MAX must BE rclcpp_action::ACTION_NAME_MAX");
+static_assert(::rclcpp::PollingActionClient<Fib>::ACTION_NAME_MAX ==
+                  ::rclcpp_action::ACTION_NAME_MAX,
+              "PollingActionClient<A>::ACTION_NAME_MAX must BE rclcpp_action::ACTION_NAME_MAX");
 
 } // namespace nros_cpp_action_goal_uuid_compile_test

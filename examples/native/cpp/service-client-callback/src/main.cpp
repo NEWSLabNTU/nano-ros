@@ -51,7 +51,7 @@ int nros_app_main(int argc, char** argv) {
 
     // Launch-aware init. Env overlay
     // (`$NROS_LOCATOR` / `$ROS_DOMAIN_ID`) active today.
-    NROS_TRY_RET(nros::init_with_launch_auto(argc, argv), 1);
+    NROS_TRY_RET(rclcpp::init_with_launch_auto(argc, argv), 1);
 
     // Operands from the first two positional args (default: 2 3).
     int64_t a = 2;
@@ -72,7 +72,7 @@ int nros_app_main(int argc, char** argv) {
 #endif
 
     rclcpp::Node node;
-    NROS_TRY_RET(nros::create_node(node, "add_two_ints_client_cb"), 1);
+    NROS_TRY_RET(rclcpp::create_node(node, "add_two_ints_client_cb"), 1);
     printf("Node created: %s\n", node.get_name());
 
     // Callback-style client. The arena dispatches `on_response` at
@@ -83,7 +83,7 @@ int nros_app_main(int argc, char** argv) {
 
     // Let discovery settle (the callback client has no Future to gate on).
     for (int i = 0; i < 20; i++) {
-        nros::spin_once(50);
+        rclcpp::spin_once(50);
     }
 
     example_interfaces::srv::AddTwoInts::Request req;
@@ -100,7 +100,7 @@ int nros_app_main(int argc, char** argv) {
         // Spin until the reply callback fires (or a 5 s budget elapses).
         int waited_ms = 0;
         while (g_reply_count == 0 && waited_ms < 5000) {
-            nros::spin_once(50);
+            rclcpp::spin_once(50);
             waited_ms += 50;
         }
 

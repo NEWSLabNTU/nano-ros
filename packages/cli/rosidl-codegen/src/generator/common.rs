@@ -789,7 +789,7 @@ pub(super) fn build_c_field(
 
 /// Resolved C++ storage for a field (RFC-0033). `Owned(cap)` keeps a
 /// fixed-capacity container (`cap` = `Some` only for the configurable
-/// string/sequence shapes); `Heap` is an `nros::HeapSequence<T>` primitive
+/// string/sequence shapes); `Heap` is an `rclcpp::HeapSequence<T>` primitive
 /// sequence.
 #[derive(Clone, Copy)]
 pub(super) enum CppStorage {
@@ -805,14 +805,14 @@ pub(super) enum CppStorage {
 /// Carries `'static` strings so `CppStorage` stays `Copy`.
 #[derive(Clone, Copy)]
 pub(super) enum CppView {
-    /// `nros::StringView` via `CdrReader::read_string`.
+    /// `rclcpp::StringView` via `CdrReader::read_string`.
     Str,
-    /// `nros::Span<cpp>` via `reader` (`read_slice_u8`/`_i8`/`_bool`).
+    /// `rclcpp::Span<cpp>` via `reader` (`read_slice_u8`/`_i8`/`_bool`).
     Bytes {
         cpp: &'static str,
         reader: &'static str,
     },
-    /// `nros::LeSpan<cpp>` via `read_le_slice::<suffix>` (alignment-agnostic).
+    /// `rclcpp::LeSpan<cpp>` via `read_le_slice::<suffix>` (alignment-agnostic).
     Le {
         cpp: &'static str,
         suffix: &'static str,
@@ -823,9 +823,9 @@ impl CppView {
     /// The C++ view type for the header (`{Msg}View`) field.
     pub(super) fn cpp_view_type(self) -> String {
         match self {
-            CppView::Str => "nros::StringView".to_string(),
-            CppView::Bytes { cpp, .. } => format!("nros::Span<{cpp}>"),
-            CppView::Le { cpp, .. } => format!("nros::LeSpan<{cpp}>"),
+            CppView::Str => "rclcpp::StringView".to_string(),
+            CppView::Bytes { cpp, .. } => format!("rclcpp::Span<{cpp}>"),
+            CppView::Le { cpp, .. } => format!("rclcpp::LeSpan<{cpp}>"),
         }
     }
     /// The `CdrReader` call (no `?`) that borrows this field's bytes.
@@ -958,7 +958,7 @@ pub(super) fn resolve_cap_override(
 /// Build a CppField for C++ header generation.
 ///
 /// `storage` is the resolved per-field storage (RFC-0033): an owned
-/// fixed-capacity container or an `nros::HeapSequence<T>` heap sequence.
+/// fixed-capacity container or an `rclcpp::HeapSequence<T>` heap sequence.
 pub(super) fn build_cpp_field(
     field: &rosidl_lower::LoweredField,
     current_package: Option<&str>,
@@ -969,7 +969,7 @@ pub(super) fn build_cpp_field(
     let field_type: &FieldType = capped.as_ref();
     // phase-335 step 2 — CppField carries the NEUTRAL facts; the `cpp_type` /
     // `cpp_array_suffix` pack filters compose the C++ type string. The borrowed
-    // VIEW type (`nros::StringView` / `Span<T>` / `LeSpan<T>`) stays computed here
+    // VIEW type (`rclcpp::StringView` / `Span<T>` / `LeSpan<T>`) stays computed here
     // (it derives from the CppViewKind, not `field_type`).
     let cp = current_package.unwrap_or("").to_string();
     match storage {

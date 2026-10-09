@@ -22,7 +22,7 @@ using Int32 = std_msgs::msg::Int32;
 // ---- Talker: a timer member callback publishes a real counter --------------
 class Talker {
     rclcpp::Publisher<Int32> pub_;
-    nros::Timer timer_;
+    rclcpp::Timer timer_;
     int count_ = 0;
 
     void on_tick() { // real body, bound by identity (no name)
@@ -62,8 +62,8 @@ class Listener {
         // `Publisher<Int32>` registers (`std_msgs::msg::dds_::Int32_`), not the
         // ROS slash form — so the raw sub must pass `Int32::TYPE_NAME` to match.
         // (Raw-vs-typed type-name-form unification is a separate concern.)
-        return nros::bind_subscription_raw<Listener, &Listener::on_raw>(node, "/chatter",
-                                                                        Int32::TYPE_NAME, this);
+        return rclcpp::bind_subscription_raw<Listener, &Listener::on_raw>(node, "/chatter",
+                                                                          Int32::TYPE_NAME, this);
     }
 };
 
@@ -82,8 +82,8 @@ int main(int argc, char** argv) {
     // Phase 240.2 — the board owns init → setup → spin_once loop → shutdown,
     // driving the REAL executor (no synthesizing interpreter). `setup`
     // constructs the topology + binds the real member callbacks.
-    return ::nros::board::LinuxBoard::run_components([&]() -> int32_t {
-        rclcpp::Result r = nros::create_node(node, "component_poc");
+    return ::rclcpp::board::LinuxBoard::run_components([&]() -> int32_t {
+        rclcpp::Result r = rclcpp::create_node(node, "component_poc");
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         if (std::strcmp(role, "listener") != 0) {
             r = talker.configure(node);

@@ -28,7 +28,7 @@
 #include "nros/bridge.h"
 #include "nros/result.hpp"
 
-namespace nros {
+namespace rclcpp {
 
 /// Mirror of `nros_session_spec_t` — one entry per backend session.
 /// Use `SessionSpec("zenoh", "tcp/127.0.0.1:7447")` for the common
@@ -41,18 +41,19 @@ struct SessionSpec {
     std::string namespace_;
 
     SessionSpec(std::string rmw_, std::string locator_)
-        : rmw(::nros::tr::forward_rvalue(rmw_)), locator(::nros::tr::forward_rvalue(locator_)) {}
+        : rmw(::rclcpp::tr::forward_rvalue(rmw_)), locator(::rclcpp::tr::forward_rvalue(locator_)) {
+    }
 
     SessionSpec& with_domain_id(uint32_t id) {
         domain_id = id;
         return *this;
     }
     SessionSpec& with_node_name(std::string name) {
-        node_name = ::nros::tr::forward_rvalue(name);
+        node_name = ::rclcpp::tr::forward_rvalue(name);
         return *this;
     }
     SessionSpec& with_namespace(std::string ns) {
-        namespace_ = ::nros::tr::forward_rvalue(ns);
+        namespace_ = ::rclcpp::tr::forward_rvalue(ns);
         return *this;
     }
 };
@@ -200,7 +201,7 @@ inline ResultOf<PubSubBridge> pubsub_raw(MultiExecutor& exec, const std::string&
 }
 
 } // namespace bridge
-} // namespace nros
+} // namespace rclcpp
 
 #endif // NROS_CPP_STD
 

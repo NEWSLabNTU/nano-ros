@@ -13,7 +13,7 @@ namespace ctrl_pkg {
 /// context via nros_cpp_node_create_ex (emitted by the C++ codegen path).
 class Ctrl {
     ::rclcpp::Publisher<std_msgs::msg::Int32> pub_;
-    ::nros::Timer timer_;
+    ::rclcpp::Timer timer_;
     int count_ = 0;
 
     void on_tick();

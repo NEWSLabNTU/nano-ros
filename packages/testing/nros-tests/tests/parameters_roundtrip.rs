@@ -7,7 +7,7 @@
 //! the lines are the case data.
 //!
 //! phase-426 W4 — the examples moved onto THE parameter store. They used to
-//! exercise a caller-owned second store (`nros::ParameterServer<8>` in C++, an
+//! exercise a caller-owned second store (`rclcpp::ParameterServer<8>` in C++, an
 //! `nros_parameter_server_t` over a static array in C), whose contents the six
 //! `rcl_interfaces/srv/*` servers could not read — so both shipped the exact
 //! defect this phase exists to remove. They are ROS nodes now, which is why
@@ -45,7 +45,7 @@ const C_EXPECTED: &[&str] = &[
 ];
 
 /// The C++ example: scalars through `rclcpp::Node::declare_parameter<T>`, then
-/// the `nros::Seq<double, 8>` sequence parameter (declared with three elements,
+/// the `rclcpp::Seq<double, 8>` sequence parameter (declared with three elements,
 /// updated to four, read back).
 const CPP_EXPECTED: &[&str] = &[
     "Parameters: verbose=false, max_iters=100, ctrl_period=0.150000, frame_id=base_link",

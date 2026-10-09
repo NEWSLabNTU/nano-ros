@@ -491,17 +491,9 @@
     "verdict": "divergence",
     "why": "see `c:goal_response_callback_t`."
   },
-  "cpp:ActionClient": {
-    "verdict": "divergence",
-    "why": "see `cpp:ActionServer`. phase-428 (RFC-0089): `nros::ActionClient<A>` is now the migration ALIAS — `template <typename A> using ActionClient = ::rclcpp_action::Client<A>;` at the foot of `packages/api/nros-cpp/include/nros/action_client.hpp` — and the definition it names lives in `rclcpp_action`. The row stays because the alias is still a name we ship that ROS 2 does not."
-  },
   "cpp:ActionClientStorage": {
     "verdict": "extension",
     "why": "the action-client twin of `cpp:ActionServerStorage`: `alignas(8) uint8_t bytes[NROS_CPP_ACTION_CLIENT_STORAGE_SIZE]`, declared by the component, passed to `cpp:create_action_client_raw` or `cpp:bind_action_client`. USER-FACING -- `examples/workspaces/cpp/src/action_client_pkg` declares one."
-  },
-  "cpp:ActionServer": {
-    "verdict": "divergence",
-    "why": "rclcpp_action puts the action entities in their OWN namespace, so they can be called `Client<ActionT>` and `Server<ActionT>` beside `rclcpp::Client`. We ship one namespace, `nros`, where `Client` is already the service client -- so ours are `nros::ActionClient<A>` / `nros::ActionServer<A>` and every rclcpp_action member correlates as theirs-only even where we have it. Ours is additionally constructed into caller-owned storage by `Node::create_action_server` rather than reached through `make_shared` -- the `out-param-first` and `no-shared-ptr` rules; see the pubsub stage's `cpp:Publisher::Publisher<M>`.\n\nphase-428 (RFC-0089): THE OPEN QUESTION THIS ROW LEFT IS ANSWERED. The definition moved to `rclcpp_action::Client<A>` / `rclcpp_action::Server<A>` and `nros::ActionClient<A>` / `nros::ActionServer<A>` became the migration aliases -- so the constraint the paragraph above describes (\"we ship one namespace, `nros`, where `Client` is already the service client\") no longer holds: we ship `rclcpp_action` too, and the action client is `Client` there beside `rclcpp::Client`. What remains ours is the STORAGE shape, not the NAME."
   },
   "cpp:ActionServerOptions": {
     "verdict": "extension",

@@ -39,7 +39,7 @@
  *
  * | the code writes                            | the contract says        |
  * | ------------------------------------------ | ------------------------ |
- * | `NROS_SUBSCRIBE(M, m, "/t", nros::QoS(1))` | `qos: { depth: 1 }`      |
+ * | `NROS_SUBSCRIBE(M, m, "/t", rclcpp::QoS(1))` | `qos: { depth: 1 }`      |
  * | `NROS_SUBSCRIBE(M, m, "/t")`               | `qos: { depth: 1 }` fills in |
  *
  * Both are legal. What is not legal is the two stating DIFFERENT numbers, and
@@ -70,7 +70,7 @@
  * # ABSENCE IS NOT ZERO
  *
  * A `(type, topic)` with no row is "nobody declared this endpoint", spelled
- * @ref nros::DECLARED_DEPTH_UNDECLARED and equal to -1 rather than 0. Nothing
+ * @ref rclcpp::DECLARED_DEPTH_UNDECLARED and equal to -1 rather than 0. Nothing
  * asserts against it, `NROS_SUBSCRIBE` without a QoS keeps its historical
  * `QoS::default_profile()`, and anything that would SIZE from depth must refuse
  * rather than default. An image that has not opted in is not an image in error.
@@ -107,7 +107,7 @@
 #endif
 #endif
 
-namespace nros {
+namespace rclcpp {
 
 /// "No depth was declared for this endpoint." NOT a depth of 0, and not the ROS
 /// default of 10 -- a third state, which is the only honest answer when nobody
@@ -120,10 +120,10 @@ constexpr int DECLARED_DEPTH_UNDECLARED = -1;
 constexpr int DECLARED_POLICY_UNDECLARED = -1;
 
 // issue 1256 -- the policy TOKENS the generated header carries, mapped to this
-// language's own enumerator ordinals (`nros::ReliabilityPolicy` /
-// `nros::DurabilityPolicy` in `nros/qos.hpp`). The header carries TOKENS rather
+// language's own enumerator ordinals (`rclcpp::ReliabilityPolicy` /
+// `rclcpp::DurabilityPolicy` in `nros/qos.hpp`). The header carries TOKENS rather
 // than numbers because C numbers the same enums differently
-// (`NROS_QOS_RELIABILITY_RELIABLE` is 1, `nros::Reliable` is 0), so each
+// (`NROS_QOS_RELIABILITY_RELIABLE` is 1, `rclcpp::Reliable` is 0), so each
 // language pastes the token onto a prefix of its own. This header cannot
 // include `nros/qos.hpp` -- that one needs per-build generated config headers,
 // and this one must stay freestanding -- so the ordinals are literals here and
@@ -146,9 +146,9 @@ struct Entry {
     const char* type;
     const char* topic;
     int depth;
-    /// `nros::ReliabilityPolicy` ordinal, or @ref DECLARED_POLICY_UNDECLARED.
+    /// `rclcpp::ReliabilityPolicy` ordinal, or @ref DECLARED_POLICY_UNDECLARED.
     int reliability;
-    /// `nros::DurabilityPolicy` ordinal, or @ref DECLARED_POLICY_UNDECLARED.
+    /// `rclcpp::DurabilityPolicy` ordinal, or @ref DECLARED_POLICY_UNDECLARED.
     int durability;
 };
 
@@ -158,9 +158,9 @@ struct Entry {
 /// The declared endpoints of THIS component. The trailing sentinel keeps the
 /// array non-empty, which C++ requires; `COUNT` is what the search reads, so
 /// the sentinel is never examined.
-constexpr Entry TABLE[] = {
-    NROS_DECLARED_QOS_ROWS{nullptr, nullptr, ::nros::DECLARED_DEPTH_UNDECLARED,
-                           ::nros::DECLARED_POLICY_UNDECLARED, ::nros::DECLARED_POLICY_UNDECLARED}};
+constexpr Entry TABLE[] = {NROS_DECLARED_QOS_ROWS{
+    nullptr, nullptr, ::rclcpp::DECLARED_DEPTH_UNDECLARED, ::rclcpp::DECLARED_POLICY_UNDECLARED,
+    ::rclcpp::DECLARED_POLICY_UNDECLARED}};
 #undef NROS_DECLARED_QOS_ROW
 constexpr size_t COUNT = NROS_DECLARED_QOS_ROW_COUNT;
 #else
@@ -168,9 +168,9 @@ constexpr size_t COUNT = NROS_DECLARED_QOS_ROW_COUNT;
 /// ZERO -- which is "the table holds nothing", a different claim from "this
 /// endpoint was declared depth zero", and the reason `COUNT` exists separately
 /// from the array's length.
-constexpr Entry TABLE[] = {{nullptr, nullptr, ::nros::DECLARED_DEPTH_UNDECLARED,
-                            ::nros::DECLARED_POLICY_UNDECLARED,
-                            ::nros::DECLARED_POLICY_UNDECLARED}};
+constexpr Entry TABLE[] = {{nullptr, nullptr, ::rclcpp::DECLARED_DEPTH_UNDECLARED,
+                            ::rclcpp::DECLARED_POLICY_UNDECLARED,
+                            ::rclcpp::DECLARED_POLICY_UNDECLARED}};
 constexpr size_t COUNT = 0;
 #endif
 
@@ -181,14 +181,14 @@ constexpr size_t COUNT = 0;
 #define NROS_DECLARED_PUB_QOS_ROW(nros_type, nros_topic, nros_depth, nros_rel, nros_dur)           \
     {(nros_type), (nros_topic), (nros_depth), _NROS_DQ_CPP_##nros_rel, _NROS_DQ_CPP_##nros_dur},
 constexpr Entry PUB_TABLE[] = {NROS_DECLARED_PUB_QOS_ROWS{
-    nullptr, nullptr, ::nros::DECLARED_DEPTH_UNDECLARED, ::nros::DECLARED_POLICY_UNDECLARED,
-    ::nros::DECLARED_POLICY_UNDECLARED}};
+    nullptr, nullptr, ::rclcpp::DECLARED_DEPTH_UNDECLARED, ::rclcpp::DECLARED_POLICY_UNDECLARED,
+    ::rclcpp::DECLARED_POLICY_UNDECLARED}};
 #undef NROS_DECLARED_PUB_QOS_ROW
 constexpr size_t PUB_COUNT = NROS_DECLARED_PUB_QOS_ROW_COUNT;
 #else
-constexpr Entry PUB_TABLE[] = {{nullptr, nullptr, ::nros::DECLARED_DEPTH_UNDECLARED,
-                                ::nros::DECLARED_POLICY_UNDECLARED,
-                                ::nros::DECLARED_POLICY_UNDECLARED}};
+constexpr Entry PUB_TABLE[] = {{nullptr, nullptr, ::rclcpp::DECLARED_DEPTH_UNDECLARED,
+                                ::rclcpp::DECLARED_POLICY_UNDECLARED,
+                                ::rclcpp::DECLARED_POLICY_UNDECLARED}};
 constexpr size_t PUB_COUNT = 0;
 #endif
 
@@ -206,8 +206,8 @@ constexpr bool declared_qos_streq(const char* a, const char* b) {
 /// Linear search of the table: the row for `(type, topic)`, or `nullptr`. Tens
 /// of entries evaluated at compile time; the cost is a constexpr loop nobody
 /// notices and no runtime storage at all.
-constexpr const ::nros::declared_qos::Entry*
-declared_qos_row(const ::nros::declared_qos::Entry* rows, size_t n, const char* type,
+constexpr const ::rclcpp::declared_qos::Entry*
+declared_qos_row(const ::rclcpp::declared_qos::Entry* rows, size_t n, const char* type,
                  const char* topic) {
     return (n == 0) ? nullptr
                     : ((declared_qos_streq(rows[0].type, type) &&
@@ -217,10 +217,10 @@ declared_qos_row(const ::nros::declared_qos::Entry* rows, size_t n, const char* 
 }
 
 /// The declared DEPTH for `(type, topic)` in `rows`, or the undeclared sentinel.
-constexpr int declared_qos_find(const ::nros::declared_qos::Entry* rows, size_t n, const char* type,
-                                const char* topic) {
+constexpr int declared_qos_find(const ::rclcpp::declared_qos::Entry* rows, size_t n,
+                                const char* type, const char* topic) {
     return (declared_qos_row(rows, n, type, topic) == nullptr)
-               ? ::nros::DECLARED_DEPTH_UNDECLARED
+               ? ::rclcpp::DECLARED_DEPTH_UNDECLARED
                : declared_qos_row(rows, n, type, topic)->depth;
 }
 
@@ -231,7 +231,7 @@ constexpr int declared_qos_find(const ::nros::declared_qos::Entry* rows, size_t 
 /// two `constexpr int`s. Template ARGUMENTS can be printed by the compiler,
 /// though, and both gcc and clang name the instantiation:
 ///
-///     In instantiation of 'struct nros::detail::declared_depth_agrees<10, 1>'
+///     In instantiation of 'struct rclcpp::detail::declared_depth_agrees<10, 1>'
 ///     error: static assertion failed: nros: this subscription's QoS depth ...
 ///     note: '(10 == 1)' evaluates to false
 ///
@@ -246,7 +246,7 @@ template <int Declared, int Passed> struct declared_depth_agrees {
                   "DECLARED for that topic in the contract sidecar beside the launch file "
                   "(<bringup>/launch/<stem>.contract.yaml, contracts.sub_endpoints.<ep>.qos). "
                   "The two numbers are the template arguments of "
-                  "nros::detail::declared_depth_agrees<declared, passed> named just above -- "
+                  "rclcpp::detail::declared_depth_agrees<declared, passed> named just above -- "
                   "declared first, passed second. The TOPIC is named by the assertion beside "
                   "this one. Fix whichever is wrong: the contract row, or the QoS at the "
                   "call site. Depth is a multiplier on the arena, so the two must agree.");
@@ -257,7 +257,7 @@ template <int Declared, int Passed> struct declared_depth_agrees {
 /// disagree with, so the passed depth is compared with itself and the assertion
 /// above holds trivially -- an image that has not opted in is not in error.
 constexpr int declared_depth_or(int declared, int passed) {
-    return (declared == ::nros::DECLARED_DEPTH_UNDECLARED) ? passed : declared;
+    return (declared == ::rclcpp::DECLARED_DEPTH_UNDECLARED) ? passed : declared;
 }
 
 /// issue 1256 -- the reliability verdict, shaped like `declared_depth_agrees`
@@ -269,9 +269,9 @@ template <int Declared, int Passed> struct declared_reliability_agrees {
                   "system DECLARED for that topic in the contract sidecar "
                   "(<bringup>/launch/<stem>.contract.yaml, contracts.sub_endpoints.<ep>.qos). "
                   "The two values are the template arguments of "
-                  "nros::detail::declared_reliability_agrees<declared, passed> named just above "
+                  "rclcpp::detail::declared_reliability_agrees<declared, passed> named just above "
                   "-- declared first, passed second; 0 is reliable, 1 is best_effort "
-                  "(nros::ReliabilityPolicy). An incompatible-QoS match never delivers, so the "
+                  "(rclcpp::ReliabilityPolicy). An incompatible-QoS match never delivers, so the "
                   "two must agree: fix the contract row or the QoS at the call site.");
     static constexpr bool value = (Declared == Passed);
 };
@@ -283,16 +283,16 @@ template <int Declared, int Passed> struct declared_durability_agrees {
                   "system DECLARED for that topic in the contract sidecar "
                   "(<bringup>/launch/<stem>.contract.yaml, contracts.sub_endpoints.<ep>.qos). "
                   "The two values are the template arguments of "
-                  "nros::detail::declared_durability_agrees<declared, passed> named just above "
+                  "rclcpp::detail::declared_durability_agrees<declared, passed> named just above "
                   "-- declared first, passed second; 0 is volatile, 1 is transient_local "
-                  "(nros::DurabilityPolicy). Fix the contract row or the QoS at the call site.");
+                  "(rclcpp::DurabilityPolicy). Fix the contract row or the QoS at the call site.");
     static constexpr bool value = (Declared == Passed);
 };
 
 /// The policy to CHECK against, on `declared_depth_or`'s rule: nothing
 /// declared compares the passed value with itself.
 constexpr int declared_policy_or(int declared, int passed) {
-    return (declared == ::nros::DECLARED_POLICY_UNDECLARED) ? passed : declared;
+    return (declared == ::rclcpp::DECLARED_POLICY_UNDECLARED) ? passed : declared;
 }
 
 /// Issue 1608 -- the PUBLISHER verdicts, shaped like the three above so the
@@ -304,7 +304,7 @@ template <int Declared, int Passed> struct declared_pub_depth_agrees {
                   "DECLARED for that topic in the contract sidecar "
                   "(<bringup>/launch/<stem>.contract.yaml, contracts.pub_endpoints.<ep>.qos). "
                   "The two numbers are the template arguments of "
-                  "nros::detail::declared_pub_depth_agrees<declared, passed> named just above "
+                  "rclcpp::detail::declared_pub_depth_agrees<declared, passed> named just above "
                   "-- declared first, passed second. Fix the contract row or the QoS at the "
                   "call site.");
     static constexpr bool value = (Declared == Passed);
@@ -314,9 +314,9 @@ template <int Declared, int Passed> struct declared_pub_reliability_agrees {
                   "nros: this PUBLISHER's QoS RELIABILITY disagrees with the reliability its "
                   "system DECLARED for that topic in the contract sidecar "
                   "(contracts.pub_endpoints.<ep>.qos). The two values are the template "
-                  "arguments of nros::detail::declared_pub_reliability_agrees<declared, passed> "
+                  "arguments of rclcpp::detail::declared_pub_reliability_agrees<declared, passed> "
                   "named just above -- declared first, passed second; 0 is reliable, 1 is "
-                  "best_effort (nros::ReliabilityPolicy).");
+                  "best_effort (rclcpp::ReliabilityPolicy).");
     static constexpr bool value = (Declared == Passed);
 };
 template <int Declared, int Passed> struct declared_pub_durability_agrees {
@@ -324,9 +324,9 @@ template <int Declared, int Passed> struct declared_pub_durability_agrees {
                   "nros: this PUBLISHER's QoS DURABILITY disagrees with the durability its "
                   "system DECLARED for that topic in the contract sidecar "
                   "(contracts.pub_endpoints.<ep>.qos). The two values are the template "
-                  "arguments of nros::detail::declared_pub_durability_agrees<declared, passed> "
+                  "arguments of rclcpp::detail::declared_pub_durability_agrees<declared, passed> "
                   "named just above -- declared first, passed second; 0 is volatile, 1 is "
-                  "transient_local (nros::DurabilityPolicy). A transient-local publisher is a "
+                  "transient_local (rclcpp::DurabilityPolicy). A transient-local publisher is a "
                   "zenoh cache queryable the build counts, so this is a sizing error too.");
     static constexpr bool value = (Declared == Passed);
 };
@@ -345,7 +345,7 @@ constexpr int declared_depth(const char* type, const char* topic) {
 }
 
 /// issue 1256 -- the declared RELIABILITY for `(type, topic)`, as a
-/// `nros::ReliabilityPolicy` ordinal, or @ref DECLARED_POLICY_UNDECLARED.
+/// `rclcpp::ReliabilityPolicy` ordinal, or @ref DECLARED_POLICY_UNDECLARED.
 /// `constexpr` on the same terms as @ref declared_depth.
 constexpr int declared_reliability(const char* type, const char* topic) {
     return (detail::declared_qos_row(declared_qos::TABLE, declared_qos::COUNT, type, topic) ==
@@ -356,7 +356,7 @@ constexpr int declared_reliability(const char* type, const char* topic) {
 }
 
 /// issue 1256 -- the declared DURABILITY for `(type, topic)`, as a
-/// `nros::DurabilityPolicy` ordinal, or @ref DECLARED_POLICY_UNDECLARED.
+/// `rclcpp::DurabilityPolicy` ordinal, or @ref DECLARED_POLICY_UNDECLARED.
 constexpr int declared_durability(const char* type, const char* topic) {
     return (detail::declared_qos_row(declared_qos::TABLE, declared_qos::COUNT, type, topic) ==
             nullptr)
@@ -391,7 +391,7 @@ constexpr int declared_pub_durability(const char* type, const char* topic) {
                      ->durability;
 }
 
-} // namespace nros
+} // namespace rclcpp
 
 /// Fail the BUILD when a declared depth and a passed QoS depth disagree.
 ///
@@ -418,62 +418,62 @@ constexpr int declared_pub_durability(const char* type, const char* topic) {
 /// boot-time check in `Node::check_declared_depth` instead; see
 /// `NROS_SUBSCRIBE_DYNAMIC`.
 #define NROS_ASSERT_DECLARED_DEPTH(type_name, topic_expr, qos_expr, topic_text)                    \
-    static_assert(::nros::declared_depth((type_name), (topic_expr)) ==                             \
-                          ::nros::DECLARED_DEPTH_UNDECLARED ||                                     \
-                      ::nros::declared_depth((type_name), (topic_expr)) == (qos_expr).depth(),     \
+    static_assert(::rclcpp::declared_depth((type_name), (topic_expr)) ==                           \
+                          ::rclcpp::DECLARED_DEPTH_UNDECLARED ||                                   \
+                      ::rclcpp::declared_depth((type_name), (topic_expr)) == (qos_expr).depth(),   \
                   "nros: the QoS depth passed for topic " topic_text                               \
                   " disagrees with the depth declared for that topic in the contract "             \
                   "sidecar (<stem>.contract.yaml). Both numbers are in the "                       \
                   "declared_depth_agrees<declared, passed> diagnostic beside this one.");          \
-    (void)sizeof(::nros::detail::declared_depth_agrees<                                            \
-                 ::nros::detail::declared_depth_or(                                                \
-                     ::nros::declared_depth((type_name), (topic_expr)), (qos_expr).depth()),       \
+    (void)sizeof(::rclcpp::detail::declared_depth_agrees<                                          \
+                 ::rclcpp::detail::declared_depth_or(                                              \
+                     ::rclcpp::declared_depth((type_name), (topic_expr)), (qos_expr).depth()),     \
                  (qos_expr).depth()>)
 
 /// issue 1256 -- fail the BUILD when a declared RELIABILITY and the passed
 /// QoS's disagree. Same four arguments and the same two-statement shape as
 /// @ref NROS_ASSERT_DECLARED_DEPTH; `qos_expr` must have a `constexpr
-/// reliability()` (an `nros::QoS` does).
+/// reliability()` (an `rclcpp::QoS` does).
 ///
 /// This disagreement is not about memory. An incompatible-QoS match never
 /// delivers -- a RELIABLE subscription is never matched to a BEST_EFFORT
 /// publisher -- so a call site that contradicts its contract is a link that
 /// silently carries nothing, and the build is the cheapest place to say so.
 #define NROS_ASSERT_DECLARED_RELIABILITY(type_name, topic_expr, qos_expr, topic_text)              \
-    static_assert(::nros::declared_reliability((type_name), (topic_expr)) ==                       \
-                          ::nros::DECLARED_POLICY_UNDECLARED ||                                    \
-                      ::nros::declared_reliability((type_name), (topic_expr)) ==                   \
+    static_assert(::rclcpp::declared_reliability((type_name), (topic_expr)) ==                     \
+                          ::rclcpp::DECLARED_POLICY_UNDECLARED ||                                  \
+                      ::rclcpp::declared_reliability((type_name), (topic_expr)) ==                 \
                           static_cast<int>((qos_expr).reliability()),                              \
                   "nros: the QoS reliability passed for topic " topic_text                         \
                   " disagrees with the reliability declared for that topic in the contract "       \
                   "sidecar (<stem>.contract.yaml). Both values are in the "                        \
                   "declared_reliability_agrees<declared, passed> diagnostic beside this one.");    \
-    (void)sizeof(::nros::detail::declared_reliability_agrees<                                      \
-                 ::nros::detail::declared_policy_or(                                               \
-                     ::nros::declared_reliability((type_name), (topic_expr)),                      \
+    (void)sizeof(::rclcpp::detail::declared_reliability_agrees<                                    \
+                 ::rclcpp::detail::declared_policy_or(                                             \
+                     ::rclcpp::declared_reliability((type_name), (topic_expr)),                    \
                      static_cast<int>((qos_expr).reliability())),                                  \
                  static_cast<int>((qos_expr).reliability())>)
 
 /// issue 1256 -- the same for DURABILITY. `qos_expr` must have a `constexpr
 /// durability()`.
 #define NROS_ASSERT_DECLARED_DURABILITY(type_name, topic_expr, qos_expr, topic_text)               \
-    static_assert(::nros::declared_durability((type_name), (topic_expr)) ==                        \
-                          ::nros::DECLARED_POLICY_UNDECLARED ||                                    \
-                      ::nros::declared_durability((type_name), (topic_expr)) ==                    \
+    static_assert(::rclcpp::declared_durability((type_name), (topic_expr)) ==                      \
+                          ::rclcpp::DECLARED_POLICY_UNDECLARED ||                                  \
+                      ::rclcpp::declared_durability((type_name), (topic_expr)) ==                  \
                           static_cast<int>((qos_expr).durability()),                               \
                   "nros: the QoS durability passed for topic " topic_text                          \
                   " disagrees with the durability declared for that topic in the contract "        \
                   "sidecar (<stem>.contract.yaml). Both values are in the "                        \
                   "declared_durability_agrees<declared, passed> diagnostic beside this one.");     \
-    (void)sizeof(::nros::detail::declared_durability_agrees<                                       \
-                 ::nros::detail::declared_policy_or(                                               \
-                     ::nros::declared_durability((type_name), (topic_expr)),                       \
+    (void)sizeof(::rclcpp::detail::declared_durability_agrees<                                     \
+                 ::rclcpp::detail::declared_policy_or(                                             \
+                     ::rclcpp::declared_durability((type_name), (topic_expr)),                     \
                      static_cast<int>((qos_expr).durability())),                                   \
                  static_cast<int>((qos_expr).durability())>)
 
 /// issue 1256 -- every declared column at once: depth, reliability and
 /// durability. What `NROS_SUBSCRIBE`'s four-argument form asserts, and what a
-/// call site that registers through `nros::bind_subscription` writes beside it
+/// call site that registers through `rclcpp::bind_subscription` writes beside it
 /// when it states its QoS (see `examples/workspaces/cpp/src/listener_pkg`).
 #define NROS_ASSERT_DECLARED_QOS(type_name, topic_expr, qos_expr, topic_text)                      \
     NROS_ASSERT_DECLARED_DEPTH(type_name, topic_expr, qos_expr, topic_text);                       \
@@ -488,48 +488,49 @@ constexpr int declared_pub_durability(const char* type, const char* topic) {
 /// `bind_subscription`. A non-constant call site is held to the same rows at
 /// registration (`nros_node::declared_qos::honour_publisher`).
 #define NROS_ASSERT_DECLARED_PUB_DEPTH(type_name, topic_expr, qos_expr, topic_text)                \
-    static_assert(::nros::declared_pub_depth((type_name), (topic_expr)) ==                         \
-                          ::nros::DECLARED_DEPTH_UNDECLARED ||                                     \
-                      ::nros::declared_pub_depth((type_name), (topic_expr)) == (qos_expr).depth(), \
+    static_assert(::rclcpp::declared_pub_depth((type_name), (topic_expr)) ==                       \
+                          ::rclcpp::DECLARED_DEPTH_UNDECLARED ||                                   \
+                      ::rclcpp::declared_pub_depth((type_name), (topic_expr)) ==                   \
+                          (qos_expr).depth(),                                                      \
                   "nros: the QoS depth passed for the publisher on topic " topic_text              \
                   " disagrees with the depth declared for that publisher in the contract "         \
                   "sidecar (<stem>.contract.yaml). Both numbers are in the "                       \
                   "declared_pub_depth_agrees<declared, passed> diagnostic beside this one.");      \
-    (void)sizeof(::nros::detail::declared_pub_depth_agrees<                                        \
-                 ::nros::detail::declared_depth_or(                                                \
-                     ::nros::declared_pub_depth((type_name), (topic_expr)), (qos_expr).depth()),   \
+    (void)sizeof(::rclcpp::detail::declared_pub_depth_agrees<                                      \
+                 ::rclcpp::detail::declared_depth_or(                                              \
+                     ::rclcpp::declared_pub_depth((type_name), (topic_expr)), (qos_expr).depth()), \
                  (qos_expr).depth()>)
 
 /// Issue 1608 -- @ref NROS_ASSERT_DECLARED_RELIABILITY for a PUBLISHER.
 #define NROS_ASSERT_DECLARED_PUB_RELIABILITY(type_name, topic_expr, qos_expr, topic_text)          \
     static_assert(                                                                                 \
-        ::nros::declared_pub_reliability((type_name), (topic_expr)) ==                             \
-                ::nros::DECLARED_POLICY_UNDECLARED ||                                              \
-            ::nros::declared_pub_reliability((type_name), (topic_expr)) ==                         \
+        ::rclcpp::declared_pub_reliability((type_name), (topic_expr)) ==                           \
+                ::rclcpp::DECLARED_POLICY_UNDECLARED ||                                            \
+            ::rclcpp::declared_pub_reliability((type_name), (topic_expr)) ==                       \
                 static_cast<int>((qos_expr).reliability()),                                        \
         "nros: the QoS reliability passed for the publisher on topic " topic_text                  \
         " disagrees with the reliability declared for that publisher in the contract "             \
         "sidecar (<stem>.contract.yaml). Both values are in the "                                  \
         "declared_pub_reliability_agrees<declared, passed> diagnostic beside this one.");          \
-    (void)sizeof(::nros::detail::declared_pub_reliability_agrees<                                  \
-                 ::nros::detail::declared_policy_or(                                               \
-                     ::nros::declared_pub_reliability((type_name), (topic_expr)),                  \
+    (void)sizeof(::rclcpp::detail::declared_pub_reliability_agrees<                                \
+                 ::rclcpp::detail::declared_policy_or(                                             \
+                     ::rclcpp::declared_pub_reliability((type_name), (topic_expr)),                \
                      static_cast<int>((qos_expr).reliability())),                                  \
                  static_cast<int>((qos_expr).reliability())>)
 
 /// Issue 1608 -- @ref NROS_ASSERT_DECLARED_DURABILITY for a PUBLISHER.
 #define NROS_ASSERT_DECLARED_PUB_DURABILITY(type_name, topic_expr, qos_expr, topic_text)           \
-    static_assert(::nros::declared_pub_durability((type_name), (topic_expr)) ==                    \
-                          ::nros::DECLARED_POLICY_UNDECLARED ||                                    \
-                      ::nros::declared_pub_durability((type_name), (topic_expr)) ==                \
+    static_assert(::rclcpp::declared_pub_durability((type_name), (topic_expr)) ==                  \
+                          ::rclcpp::DECLARED_POLICY_UNDECLARED ||                                  \
+                      ::rclcpp::declared_pub_durability((type_name), (topic_expr)) ==              \
                           static_cast<int>((qos_expr).durability()),                               \
                   "nros: the QoS durability passed for the publisher on topic " topic_text         \
                   " disagrees with the durability declared for that publisher in the contract "    \
                   "sidecar (<stem>.contract.yaml). Both values are in the "                        \
                   "declared_pub_durability_agrees<declared, passed> diagnostic beside this one."); \
-    (void)sizeof(::nros::detail::declared_pub_durability_agrees<                                   \
-                 ::nros::detail::declared_policy_or(                                               \
-                     ::nros::declared_pub_durability((type_name), (topic_expr)),                   \
+    (void)sizeof(::rclcpp::detail::declared_pub_durability_agrees<                                 \
+                 ::rclcpp::detail::declared_policy_or(                                             \
+                     ::rclcpp::declared_pub_durability((type_name), (topic_expr)),                 \
                      static_cast<int>((qos_expr).durability())),                                   \
                  static_cast<int>((qos_expr).durability())>)
 

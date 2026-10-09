@@ -14,14 +14,14 @@ namespace stop_mode_pkg {
 /// on the tier the rate-monotonic derivation assigns from the contract's
 /// 30 Hz timer path. No tier, priority or period is written anywhere but the
 /// timer call below and the contract beside the launch file.
-class StopModeOperator : public ::nros::NodeWithTimers<1> {
+class StopModeOperator : public ::rclcpp::NodeWithTimers<1> {
     ::rclcpp::Publisher<std_msgs::msg::Int32> pub_;
     int count_ = 0;
 
     void on_timer();
 
   public:
-    explicit StopModeOperator(::nros::NodeHandle h);
+    explicit StopModeOperator(::rclcpp::NodeHandle h);
 };
 
 } // namespace stop_mode_pkg

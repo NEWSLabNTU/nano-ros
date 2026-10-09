@@ -149,7 +149,7 @@ thin header layer; the linker work is identical. Use the
 `Executor::node_builder(name)` chain:
 
 ```cpp
-auto exec = nros::Executor::open_with_rmw("zenoh", cfg);
+auto exec = rclcpp::Executor::open_with_rmw("zenoh", cfg);
 auto ingress = exec.node_builder("ingress").rmw("zenoh").build();
 auto egress  = exec.node_builder("egress").rmw("xrce").build();
 auto pub = egress.create_publisher<std_msgs::String>("/chatter");

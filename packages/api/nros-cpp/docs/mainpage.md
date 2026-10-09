@@ -11,25 +11,25 @@ freestanding C++14 surface that mirrors `rclcpp`.
 
 int main() {
     // 1. Initialise the global session.
-    NROS_TRY(nros::init("tcp/127.0.0.1:7447"));
+    NROS_TRY(rclcpp::init_in("tcp/127.0.0.1:7447"));
 
     // 2. Create a node.
     rclcpp::Node node;
-    NROS_TRY(nros::create_node(node, "cpp_talker"));
+    NROS_TRY(rclcpp::create_node(node, "cpp_talker"));
 
     // 3. Create a typed publisher.
-    nros::Publisher<std_msgs::msg::Int32> pub;
+    rclcpp::Publisher<std_msgs::msg::Int32> pub;
     NROS_TRY(node.create_publisher(pub, "/chatter"));
 
     // 4. Publish messages.
     std_msgs::msg::Int32 msg{};
-    for (int i = 0; nros::ok() && i < 10; ++i) {
+    for (int i = 0; rclcpp::ok() && i < 10; ++i) {
         msg.data = i;
         pub.publish(msg);
-        nros::spin(1000);
+        rclcpp::spin_in(1000);
     }
 
-    nros::shutdown();
+    rclcpp::shutdown_in();
     return 0;
 }
 ```
@@ -43,15 +43,15 @@ The C++ API is organised into the following module groups (see the
 
 | Group | Description |
 |-------|-------------|
-| @ref grp_init "init"           | Library initialisation, global session, `nros::ok()` |
+| @ref grp_init "init"           | Library initialisation, global session, `rclcpp::ok()` |
 | @ref grp_node "node"           | Node creation and lifecycle (`rclcpp::Node`) |
-| @ref grp_pubsub "pubsub"       | Publishers and subscriptions (`nros::Publisher<M>`, `nros::Subscription<M>`) |
-| @ref grp_service "service"     | Service servers and clients (`nros::Service<S>`, `nros::Client<S>`) |
-| @ref grp_action "action"       | Action servers and clients (`nros::ActionServer<A>`, `nros::ActionClient<A>`) |
+| @ref grp_pubsub "pubsub"       | Publishers and subscriptions (`rclcpp::Publisher<M>`, `rclcpp::Subscription<M>`) |
+| @ref grp_service "service"     | Service servers and clients (`rclcpp::Service<S>`, `rclcpp::Client<S>`) |
+| @ref grp_action "action"       | Action servers and clients (`rclcpp::ActionServer<A>`, `rclcpp::ActionClient<A>`) |
 | @ref grp_executor "executor"   | Callback dispatch, timers, guard conditions |
 | @ref grp_clock "clock"         | Monotonic and wall-clock time |
 | @ref grp_qos "qos"             | Quality-of-Service settings |
-| @ref grp_errors "errors"       | Error codes, `nros::Result`, `NROS_TRY` |
+| @ref grp_errors "errors"       | Error codes, `rclcpp::Result`, `NROS_TRY` |
 | @ref grp_support "support"     | `Span`, `FixedString`, `FixedSequence`, `std_compat` |
 
 ## Header Organisation
@@ -70,7 +70,7 @@ compile times in large projects.
 
 - @subpage message_concept — what a generated message type `M` must
   provide (`TYPE_NAME`, `TYPE_HASH`, `ffi_publish`, …)
-- @subpage error_codes — return codes, `nros::Result`, and recovery
+- @subpage error_codes — return codes, `rclcpp::Result`, and recovery
   guidance
 
 ## Guides

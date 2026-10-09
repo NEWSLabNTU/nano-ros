@@ -12,7 +12,7 @@
  * typo in an include path, which would make the check prove nothing.
  *
  * The POSITIVE half is `spin_verbs.cpp`, which proves the BUDGETED form still
- * compiles and still returns `nros::Result`. Compile that one first: an
+ * compiles and still returns `rclcpp::Result`. Compile that one first: an
  * expected-failure compile cannot tell "the refusal fired" from "the file is
  * not there".
  *
@@ -25,7 +25,7 @@
 
 int ros2_refuse_unbounded_spin_probe();
 int ros2_refuse_unbounded_spin_probe() {
-    nros::Executor exec;
+    rclcpp::Executor exec;
     // The line upstream's own tutorials write.
     (void)exec.spin_once();
     return 0;

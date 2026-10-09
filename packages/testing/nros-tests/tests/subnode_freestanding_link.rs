@@ -11,7 +11,7 @@
 //! with callback groups, on a target with no allocator, LINKED".
 //!
 //! `workspace-cpp-freertos-realtime-subnode-portable` is that image:
-//! `subnode_pkg::SubNode` IS-A `nros::NodeWithTimers<2>` IS-A `rclcpp::Node`,
+//! `subnode_pkg::SubNode` IS-A `rclcpp::NodeWithTimers<2>` IS-A `rclcpp::Node`,
 //! two callback groups on two tiers, cross-linked for `thumbv7m-none-eabi` with
 //! `arm-none-eabi-g++`. This file reads the linked ELF.
 //!
@@ -126,7 +126,7 @@ fn the_derived_node_is_instantiated_and_carries_no_vtable() -> TestResult<()> {
 
     // The derived type was CONSTRUCTED, not merely parsed.
     assert!(
-        syms.contains("subnode_pkg::SubNode::SubNode(nros::NodeHandle)"),
+        syms.contains("subnode_pkg::SubNode::SubNode(rclcpp::NodeHandle)"),
         "no defined SubNode constructor in {} — the `SHAPE rclcpp` package did \
          not reach the image; symbols:\n{syms}",
         binary.display()

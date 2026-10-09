@@ -692,15 +692,9 @@ target_link_libraries({pkg_sym}_{node_name}_component
     fs::write(dir.join("CMakeLists.txt"), cmake)?;
 
     let class_hpp = format!(
-        // phase-417 W-B3 -- the C++ template STAYS on `::nros::` spellings, and the
-        // attempt to migrate it is worth recording because three of the four names do
-        // not exist. `rclcpp::Publisher<M>` is a real alias; `rclcpp::Result` and
-        // `rclcpp::Timer` are not declared anywhere, and `rclcpp::Node` is a DISTINCT
-        // hosted class whose `create_publisher<M>(name)` returns a `shared_ptr` where
-        // the body below passes an out-ref. So the migrated template compiled in no
-        // configuration -- and the scaffold test greps the emitted TEXT rather than
-        // building it, so it reported the rename as a success. Migrating this template
-        // waits on the same node-type merge W-B5 waits on.
+        // phase-483 W1 -- the template writes `rclcpp::` only. phase-417 W-B3 had
+        // kept it on `::nros::` because three of the four names did not exist under
+        // `rclcpp::` then; they are defined there now, and `nros::` is gone.
         r#"#pragma once
 
 #include <nros/component.hpp>
@@ -716,14 +710,14 @@ namespace {pkg_sym} {{
 /// Entry constructs this object + calls `configure(node)`; the executor
 /// dispatches `on_tick` during `spin_once`.
 class {class_name} {{
-    ::nros::Publisher<std_msgs::msg::Int32> pub_;
-    ::nros::Timer timer_;
+    ::rclcpp::Publisher<std_msgs::msg::Int32> pub_;
+    ::rclcpp::Timer timer_;
     int count_ = 0;
 
     void on_tick(); // real body; bound via &{class_name}::on_tick (no name)
 
   public:
-    ::nros::Result configure(::rclcpp::Node& node);
+    ::rclcpp::Result configure(::rclcpp::Node& node);
 }};
 
 }} // namespace {pkg_sym}
@@ -757,9 +751,9 @@ void {class_name}::on_tick() {{
     }}
 }}
 
-::nros::Result {class_name}::configure(::rclcpp::Node& node) {{
+::rclcpp::Result {class_name}::configure(::rclcpp::Node& node) {{
     std::setvbuf(stdout, nullptr, _IONBF, 0);
-    ::nros::Result r = node.create_publisher(pub_, "/chatter");
+    ::rclcpp::Result r = node.create_publisher(pub_, "/chatter");
     if (!r.ok()) return r;
     // Member-fn-pointer-as-template-param → no-alloc trampoline; `this` is ctx.
     return node.create_wall_timer<{class_name}, &{class_name}::on_tick>(timer_, 1000, this);
@@ -1453,18 +1447,18 @@ int main(int argc, char** argv) {{
     (void)argc;
     (void)argv;
 
-    if (auto r = nros::init(); !r.ok()) {{
-        std::fprintf(stderr, "nros::init failed: %d\n", r.raw());
+    if (auto r = rclcpp::init_in(); !r.ok()) {{
+        std::fprintf(stderr, "rclcpp::init failed: %d\n", r.raw());
         return 1;
     }}
 
     rclcpp::Node node;
-    if (auto r = nros::create_node(node, "{name}"); !r.ok()) {{
+    if (auto r = rclcpp::create_node(node, "{name}"); !r.ok()) {{
         std::fprintf(stderr, "create_node failed: %d\n", r.raw());
         return 1;
     }}
 
-    nros::Publisher<std_msgs::msg::Int32> pub;
+    rclcpp::Publisher<std_msgs::msg::Int32> pub;
     if (auto r = node.create_publisher(pub, "/chatter"); !r.ok()) {{
         std::fprintf(stderr, "create_publisher failed: %d\n", r.raw());
         return 1;
@@ -1475,7 +1469,7 @@ int main(int argc, char** argv) {{
     (void)pub.publish(msg);
     std::printf("{name}: published 0 on /chatter\n");
 
-    nros::shutdown();
+    rclcpp::shutdown();
     return 0;
 }}
 "#,

@@ -45,17 +45,17 @@ int nros_app_main(int argc, char** argv) {
     printf("nros C++ Listener\n");
     printf("===================\n");
 
-    // Phase 212.M.2 — `nros::init()` (no-arg) pulls locator + domain_id
+    // Phase 212.M.2 — `rclcpp::init_in()` (no-arg) pulls locator + domain_id
     // from `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` at runtime.
-    NROS_TRY_RET(nros::init(), 1);
+    NROS_TRY_RET(rclcpp::init_in(), 1);
 
     rclcpp::Node node;
-    NROS_TRY_RET(nros::create_node(node, "listener"), 1);
+    NROS_TRY_RET(rclcpp::create_node(node, "listener"), 1);
     printf("Node created: %s\n", node.get_name());
 
-    // phase-456 W2b — the taking subscriber is `nros::PollSubscription<M>`;
+    // phase-456 W2b — the taking subscriber is `rclcpp::PollSubscription<M>`;
     // `rclcpp::Subscription<M>` is the one the executor dispatches into.
-    nros::PollSubscription<std_msgs::msg::String> sub;
+    rclcpp::PollSubscription<std_msgs::msg::String> sub;
     NROS_TRY_RET(node.create_subscription(sub, "/chatter"), 1);
     // phase-342 W7 — the READINESS marker the test harness waits on
     // (`nros_tests::output::LISTENER_READY_MARKER`, via `expect_ready`). Every
@@ -73,11 +73,11 @@ int nros_app_main(int argc, char** argv) {
 
     // Alternative: use Stream::wait_next for blocking reception
     // std_msgs::msg::String msg;
-    // sub.stream().wait_next(nros::global_handle(), 1000, msg);
+    // sub.stream().wait_next(rclcpp::global_handle(), 1000, msg);
 
     // Spin + poll loop
     while (g_running && rclcpp::ok()) {
-        nros::spin_once(100);
+        rclcpp::spin_once(100);
 
         std_msgs::msg::String msg;
         while (sub.take(msg)) {

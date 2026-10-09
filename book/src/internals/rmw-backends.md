@@ -246,8 +246,8 @@ Use the named entry points:
   for additional Nodes.
 - C: `nros_node_init_ex` with `nros_node_options_t.rmw_name`
   set.
-- C++: `nros::Executor::open_with_rmw(...)` and
-  `nros::NodeBuilder::rmw(...)` mirror the Rust API (Phase
+- C++: `rclcpp::Executor::open_with_rmw(...)` and
+  `rclcpp::NodeBuilder::rmw(...)` mirror the Rust API (Phase
   104.C.9).
 
 The `packages/testing/nros-tests/bins/bridge-zenoh-to-cyclonedds-fwd/`

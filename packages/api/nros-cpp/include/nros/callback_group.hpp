@@ -4,7 +4,7 @@
 /**
  * @file callback_group.hpp
  * @ingroup grp_node
- * @brief `nros::CallbackGroup` — named scheduling group token (RFC-0047).
+ * @brief `rclcpp::CallbackGroup` — named scheduling group token (RFC-0047).
  *
  * A `CallbackGroup` is a name-only token produced by
  * `Node::create_callback_group("name")` or
@@ -24,7 +24,7 @@
 #ifndef NROS_CPP_CALLBACK_GROUP_HPP
 #define NROS_CPP_CALLBACK_GROUP_HPP
 
-namespace nros {
+namespace rclcpp {
 
 /// Named callback-group token (RFC-0047 / Phase 273).
 ///
@@ -47,6 +47,6 @@ struct CallbackGroup {
     const char* get_name() const { return name; }
 };
 
-} // namespace nros
+} // namespace rclcpp
 
 #endif // NROS_CPP_CALLBACK_GROUP_HPP

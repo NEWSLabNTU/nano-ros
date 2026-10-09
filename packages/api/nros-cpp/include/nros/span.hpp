@@ -1,6 +1,6 @@
 // nros-cpp: Lightweight non-owning view types
 //
-// Provides nros::Span<T> and nros::StringView as zero-overhead alternatives
+// Provides rclcpp::Span<T> and rclcpp::StringView as zero-overhead alternatives
 // to std::span (C++20) and std::string_view (C++17). Compatible with GCC 5+,
 // Clang 3.5+, and all embedded toolchains.
 //
@@ -19,7 +19,7 @@
 /**
  * @file span.hpp
  * @ingroup grp_support
- * @brief `nros::Span<T>` and `nros::StringView` — non-owning views.
+ * @brief `rclcpp::Span<T>` and `rclcpp::StringView` — non-owning views.
  */
 
 #ifndef NROS_CPP_SPAN_HPP
@@ -29,7 +29,7 @@
 #include <cstdint>
 #include <string.h>
 
-namespace nros {
+namespace rclcpp {
 
 /// Non-owning view over a contiguous sequence of `T` values.
 ///
@@ -124,6 +124,6 @@ template <typename T> struct LeSpan {
     }
 };
 
-} // namespace nros
+} // namespace rclcpp
 
 #endif // NROS_CPP_SPAN_HPP

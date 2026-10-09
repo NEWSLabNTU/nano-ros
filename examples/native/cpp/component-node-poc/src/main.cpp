@@ -23,14 +23,14 @@
 using Int32 = std_msgs::msg::Int32;
 
 // ---- Talker: IS-A node; ctor creates a publisher + a typed member timer ----
-class Talker : public nros::NodeWithTimers<1> {
+class Talker : public rclcpp::NodeWithTimers<1> {
     rclcpp::Publisher<Int32> pub_;
     int count_ = 0;
 
   public:
     // Ctor receives the executor-bound handle and wires entities (rclcpp-style).
     // Creation failure aborts (boot-fatal) — no Result threading here.
-    explicit Talker(nros::NodeHandle h) : nros::NodeWithTimers<1>(h, "cn_talker") {
+    explicit Talker(rclcpp::NodeHandle h) : rclcpp::NodeWithTimers<1>(h, "cn_talker") {
         pub_ = create_publisher_in<Int32>("/chatter");
         create_wall_timer_in<Talker, &Talker::on_tick>(500);
     }
@@ -49,7 +49,7 @@ class Listener : public rclcpp::Node {
     int recv_ = 0;
 
   public:
-    explicit Listener(nros::NodeHandle h) : rclcpp::Node(h, "cn_listener") {
+    explicit Listener(rclcpp::NodeHandle h) : rclcpp::Node(h, "cn_listener") {
         // Typed member-callback subscription (242.2). The macro derives Self from
         // `this`; it registers M::TYPE_NAME (DDS-mangled) + deserializes each
         // sample into a typed Int32 before dispatching to on_msg.
@@ -75,10 +75,10 @@ int main(int argc, char** argv) {
     // The board owns init → setup → spin_once loop → shutdown, driving the REAL
     // executor. The components are CONSTRUCTED INSIDE setup (after init), because
     // a component ctor creates its node against the now-valid executor handle.
-    return ::nros::board::LinuxBoard::run_components([&]() -> int32_t {
-        nros::NodeHandle handle(nros::global_handle());
+    return ::rclcpp::board::LinuxBoard::run_components([&]() -> int32_t {
+        rclcpp::NodeHandle handle(rclcpp::global_handle());
         if (!handle.valid()) {
-            return static_cast<int32_t>(nros::ErrorCode::NotInitialized);
+            return static_cast<int32_t>(rclcpp::ErrorCode::NotInitialized);
         }
         if (std::strcmp(role, "listener") != 0) {
             new (g_talker_buf) Talker(handle); // ctor wires the topology

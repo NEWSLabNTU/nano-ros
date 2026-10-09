@@ -4,7 +4,7 @@
 /**
  * @file subscription_handle.hpp
  * @ingroup grp_pubsub
- * @brief `nros::SubscriptionHandle<M>` — what `Subscription<M>::SharedPtr` is.
+ * @brief `rclcpp::SubscriptionHandle<M>` — what `Subscription<M>::SharedPtr` is.
  */
 
 #ifndef NROS_CPP_SUBSCRIPTION_HANDLE_HPP
@@ -22,7 +22,7 @@ namespace rclcpp {
 template <typename M> class Subscription;
 }
 
-namespace nros {
+namespace rclcpp {
 
 /// A registered dispatch subscription — phase-456 W2.
 ///
@@ -85,7 +85,7 @@ template <typename M> class SubscriptionHandle {
     /// `borrow()`, so naming it as the referent would have promised operations
     /// a registration cannot perform, and the alias was left off with the cost
     /// recorded in the ledger instead. W2b moved that API to
-    /// `nros::PollSubscription<M>`, which is what repays it: every operation
+    /// `rclcpp::PollSubscription<M>`, which is what repays it: every operation
     /// `Subscription<M>` now has is one an arena registration has.
     ///
     /// It is a NAME, not a dereference — there is still no `operator->`, and
@@ -147,6 +147,6 @@ template <typename M> constexpr bool operator!=(decltype(nullptr), const Subscri
     return static_cast<bool>(a);
 }
 
-} // namespace nros
+} // namespace rclcpp
 
 #endif // NROS_CPP_SUBSCRIPTION_HANDLE_HPP

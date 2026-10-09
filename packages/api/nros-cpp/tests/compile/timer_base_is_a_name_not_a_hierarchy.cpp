@@ -19,7 +19,7 @@
 // break that property on purpose.
 //
 // WHAT MUST NOT COME BACK is the hierarchy. `ros2_one_dispatch_path.cpp` holds
-// that end — `!is_polymorphic<nros::TimerHandle>` plus `create_wall_timer`'s
+// that end — `!is_polymorphic<rclcpp::TimerHandle>` plus `create_wall_timer`'s
 // return type. This file holds the other: the two spellings are ONE FLAT TYPE,
 // so the name cannot quietly regrow a base underneath it.
 //
@@ -41,8 +41,8 @@ static_assert(std::is_same<rclcpp::TimerBase, rclcpp::Timer>::value,
               "through a raw function pointer, so a polymorphic base is a vtable no dispatch "
               "uses");
 
-static_assert(std::is_same<rclcpp::TimerBase, ::nros::Timer>::value,
-              "the ported name must resolve to nros::Timer -- one timer type across both "
+static_assert(std::is_same<rclcpp::TimerBase, ::rclcpp::Timer>::value,
+              "the ported name must resolve to rclcpp::Timer -- one timer type across both "
               "vocabularies");
 
 // No vtable behind either spelling. This is the cost half of the ruling: a
@@ -54,8 +54,8 @@ static_assert(!std::is_polymorphic<rclcpp::TimerBase>::value,
 // spellings, and they must name the same thing.
 static_assert(std::is_same<rclcpp::TimerBase::SharedPtr, rclcpp::Timer::SharedPtr>::value,
               "TimerBase::SharedPtr and Timer::SharedPtr must be the same type");
-static_assert(std::is_same<rclcpp::TimerBase::SharedPtr, ::nros::TimerHandle>::value,
-              "TimerBase::SharedPtr must be nros::TimerHandle (phase-476 W2)");
+static_assert(std::is_same<rclcpp::TimerBase::SharedPtr, ::rclcpp::TimerHandle>::value,
+              "TimerBase::SharedPtr must be rclcpp::TimerHandle (phase-476 W2)");
 
 /// The member declaration the dual-compile templates contain
 /// (`local-msg-package`, `workspace-shadowing`, `cpp-port-minimal-publisher`
