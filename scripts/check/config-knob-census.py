@@ -320,6 +320,13 @@ KNOB_CLASS = {
     # forwards the status by environment (the CMake road stops in cmake).
     "NROS_PARAM_DECLARATION_STATUS": ("infra", "a STATUS the inventory passes down, not a knob"),
     "NROS_PARAM_DECLARATION_REASON": ("infra", "the refusal's reason, quoted back, not a knob"),
+    # phase-382 W3' -- two DECLARATIONS read as 0/1, not sizes: whether the
+    # image builds a parameter store, so the executor carves it from its
+    # backing (`nros_params::IMPLIED_STORE_SLOTS`). The Zephyr west road sets
+    # both from the bringup (`[system] features`, a launch `<param>`); nothing
+    # derives them from a type, and they size nothing on their own.
+    "NROS_CAPABILITY_PARAM_SERVICES": ("infra", "a DECLARATION the build passes down, not a knob"),
+    "NROS_PARAM_STORE": ("infra", "a DECLARATION the build passes down, not a knob"),
     "NROS_PICOLIBC_SYSROOT": ("infra", "path"),
     "NROS_RISCV64_PREFIX": ("infra", "toolchain prefix"),
     "NROS_SDK_STORE": ("infra", "path"),

@@ -240,6 +240,7 @@ pub(crate) struct ExecutorStorage<
     const SC: usize,
     const ARENA: usize,
     const NODES: usize,
+    const PARAMS: usize,
 > {
     arena: [MaybeUninit<u8>; ARENA],
     entries: [Option<CallbackMeta>; CBS],
@@ -261,6 +262,8 @@ pub(crate) struct ExecutorStorage<
     monitor_violations: [MaybeUninit<Violation>; MAX_VIOLATIONS],
     alive_slots: [AliveSlot; SC],
     slot_tags: [SlotTag; CBS],
+    // phase-382 W3' — the parameter store, LAST.
+    params: [MaybeUninit<nros_params::ParameterSlot>; PARAMS],
 }
 
 /// The typed, mutable sub-slices an [`Executor`](super::spin::Executor) borrows
@@ -306,6 +309,14 @@ pub(crate) struct ExecutorSlices<'s> {
     /// `entries`. Initialised by [`carve`] to the default (generation 0, no
     /// owner), which is what a never-used slot is.
     pub(crate) slot_tags: &'s mut [SlotTag],
+    /// phase-382 W3' — the EIGHTH sized table phase-382 planned and the region
+    /// issue 1706 asked for: the parameter store's slots, handed over
+    /// UNINITIALISED. The executor initialises them the first time something
+    /// declares a parameter (`nros_params::ParameterTable::init_in`), so an
+    /// image that carves a store and never declares pays the `.bss` and no
+    /// boot time. Empty when the sizing carves no store, which is every image
+    /// the build does not know to build one ([`ExecutorSizing::params`]).
+    pub(crate) params: &'s mut [MaybeUninit<nros_params::ParameterSlot>],
 }
 
 /// Byte offsets of each field within the backing + total size/align. Computed
@@ -331,6 +342,7 @@ struct FieldOffsets {
     monitor_violations: usize,
     alive_slots: usize,
     slot_tags: usize,
+    params: usize,
     size: usize,
     align: usize,
 }
@@ -367,6 +379,7 @@ pub const NATIVE_UNITS: RegionUnits = RegionUnits {
     violation: unit_of::<Violation>(),
     alive_slot: unit_of::<AliveSlot>(),
     slot_tag: unit_of::<SlotTag>(),
+    parameter_slot: unit_of::<nros_params::ParameterSlot>(),
 };
 
 /// issue 1197 — publish the backing's TOTAL size as a symbol whose storage size
@@ -414,6 +427,7 @@ const fn counts_for(sizing: ExecutorSizing) -> RegionCounts {
         remaps: MAX_REMAPS,
         violations: MAX_VIOLATIONS,
         alloc: cfg!(feature = "alloc"),
+        params: sizing.params,
     }
 }
 
@@ -449,6 +463,7 @@ const fn compute_offsets_with(sizing: ExecutorSizing, units: &RegionUnits) -> Fi
         monitor_violations: o.monitor_violations,
         alive_slots: o.alive_slots,
         slot_tags: o.slot_tags,
+        params: o.params,
         size: o.size,
         align: o.align,
     }
@@ -510,6 +525,22 @@ pub struct ExecutorSizing {
     /// filter entry per Node, so ONE count covers all seven tables (that is the
     /// upper bound each of them already assumed under `MAX_NODES`).
     pub nodes: usize,
+    /// phase-382 W3' — parameter-store slots carved from the backing.
+    ///
+    /// The default is [`nros_params::IMPLIED_STORE_SLOTS`]: the store's full
+    /// `MAX_PARAMETERS` when the build KNOWS the image builds one (the
+    /// contract declares a parameter, the bringup declares `param_services`,
+    /// or the launch seeds a `<param>`), and ZERO otherwise. Zero is not a
+    /// degraded mode: an executor that carved no store and is asked for one
+    /// allocates it from the heap exactly as before, with issue 1706's named
+    /// refusal if the heap cannot hold it.
+    ///
+    /// Conditional rather than fixed, and that is a decision measured in
+    /// phase-382's W3' notes: a fixed `MAX_PARAMETERS` region adds the whole
+    /// store (280,832 B on armv7m at the default 32 slots) to every image's
+    /// backing — Rust `EXECUTOR_BACKING`, every C/C++ `nros_executor_t`, every
+    /// tier slot — which is issue 1702's rejected `.bss` static, everywhere.
+    pub params: usize,
 }
 
 impl ExecutorSizing {
@@ -521,6 +552,7 @@ impl ExecutorSizing {
         sc: crate::config::MAX_SC,
         arena: crate::config::ARENA_SIZE,
         nodes: crate::config::MAX_NODES,
+        params: nros_params::IMPLIED_STORE_SLOTS,
     };
 
     /// `u64` words a backing must hold for this sizing (see
@@ -597,6 +629,7 @@ pub(crate) unsafe fn carve<'s>(
         sc,
         arena,
         nodes: node_slots,
+        params: param_slots,
     } = sizing;
     let o = compute_offsets(sizing);
     // Fail-loud on EVERY profile (not `debug_assert!`): embedded release builds
@@ -701,6 +734,13 @@ pub(crate) unsafe fn carve<'s>(
         }
         let tags_s = core::slice::from_raw_parts_mut(tags_p, cbs);
 
+        // phase-382 W3' — no init: the slots are `MaybeUninit` until the
+        // first declaration initialises them through `ParameterTable::init_in`.
+        let params_s = core::slice::from_raw_parts_mut(
+            base.add(o.params) as *mut MaybeUninit<nros_params::ParameterSlot>,
+            param_slots,
+        );
+
         ExecutorSlices {
             arena: arena_s,
             entries: entries_s,
@@ -721,6 +761,7 @@ pub(crate) unsafe fn carve<'s>(
             monitor_violations: carved!(o.monitor_violations, MAX_VIOLATIONS, Violation),
             alive_slots: alive_s,
             slot_tags: tags_s,
+            params: params_s,
         }
     }
 }
@@ -745,6 +786,7 @@ mod tests {
             sc: 0,
             arena: 0,
             nodes: 0,
+            params: 0,
         };
         let native = executor_storage_layout_with(sizing, NATIVE_UNITS);
 
@@ -784,6 +826,7 @@ mod tests {
             violation: RegionUnit { size: 0, align: 1 },
             alive_slot: RegionUnit { size: 0, align: 1 },
             slot_tag: RegionUnit { size: 0, align: 1 },
+            parameter_slot: RegionUnit { size: 0, align: 1 },
         };
         let arena_only = executor_storage_layout_with(
             ExecutorSizing {
@@ -791,6 +834,7 @@ mod tests {
                 sc: SC,
                 arena: 4096,
                 nodes: 4,
+                params: 3,
             },
             zeroed,
         );
@@ -806,15 +850,71 @@ mod tests {
     const ARENA: usize = crate::config::ARENA_SIZE;
     const NODES: usize = crate::config::MAX_NODES;
     const DEFAULT: ExecutorSizing = ExecutorSizing::DEFAULT;
+    /// phase-382 W3' — a store carved in the layout tests whatever this build
+    /// implies (`DEFAULT.params` is 0 in a unit-test build: nothing declares a
+    /// parameter), so the region is placed and checked on every run.
+    const PARAMS: usize = 3;
+    const WITH_STORE: ExecutorSizing = ExecutorSizing {
+        params: PARAMS,
+        ..DEFAULT
+    };
+    /// The build's own default. Its `params` is `nros_params::IMPLIED_STORE_SLOTS`.
+    const DEFAULT_PARAMS: usize = DEFAULT.params;
 
     #[test]
     fn layout_matches_typed_repr_c() {
         // The manual const-fn layout must equal the compiler's `#[repr(C)]` layout
         // of the typed storage — proof the carve offsets are the real field offsets.
         let got = executor_storage_layout(DEFAULT);
-        let want = Layout::new::<ExecutorStorage<CBS, SC, ARENA, NODES>>();
+        let want = Layout::new::<ExecutorStorage<CBS, SC, ARENA, NODES, DEFAULT_PARAMS>>();
         assert_eq!(got.size(), want.size(), "size");
         assert_eq!(got.align(), want.align(), "align");
+        // phase-382 W3' — and with a store carved, which is the layout every
+        // image that declares a parameter links.
+        let got = executor_storage_layout(WITH_STORE);
+        let want = Layout::new::<ExecutorStorage<CBS, SC, ARENA, NODES, PARAMS>>();
+        assert_eq!(got.size(), want.size(), "size with a carved store");
+        assert_eq!(got.align(), want.align(), "align with a carved store");
+    }
+
+    /// phase-382 W3' — the negative control for the CONDITIONAL region: zero
+    /// store slots must leave the backing byte-for-byte what it was before the
+    /// region existed. `nros_executor_layout::offsets` skips the placement
+    /// entirely at zero (an aligned-up `off` would be padding an image with no
+    /// store paid for nothing), so the total is the one the seventeen older
+    /// regions produce on their own — computed here by zeroing the unit, which
+    /// is the layout the region cannot reach.
+    #[test]
+    fn a_backing_that_carves_no_store_does_not_grow() {
+        let none = ExecutorSizing {
+            params: 0,
+            ..DEFAULT
+        };
+        let mut no_unit = NATIVE_UNITS;
+        no_unit.parameter_slot = RegionUnit { size: 0, align: 1 };
+        assert_eq!(
+            executor_storage_layout(none).size(),
+            executor_storage_layout_with(WITH_STORE, no_unit).size(),
+            "a backing with no store slots must cost exactly the backing without the region"
+        );
+        assert_eq!(
+            executor_storage_layout(none).align(),
+            executor_storage_layout_with(WITH_STORE, no_unit).align(),
+        );
+        // And a store costs at least its slots, charged to the backing.
+        let grown =
+            executor_storage_layout(WITH_STORE).size() - executor_storage_layout(none).size();
+        assert!(
+            grown >= PARAMS * size_of::<nros_params::ParameterSlot>(),
+            "{PARAMS} store slots cost {grown} B, less than {PARAMS} x {} B",
+            size_of::<nros_params::ParameterSlot>()
+        );
+        // The layout's slot IS the store's slot, so a carved table is exactly
+        // a `ParameterStorage<PARAMS>`'s worth of slots.
+        assert_eq!(
+            PARAMS * size_of::<nros_params::ParameterSlot>(),
+            size_of::<nros_params::ParameterStorage<PARAMS>>()
+        );
     }
 
     /// phase-409 — and the FIELD offsets, one by one. The size/align check above
@@ -825,8 +925,8 @@ mod tests {
     /// `extra_sessions`' memory, which is not a size bug and no total would show.
     #[test]
     fn every_carved_region_starts_where_repr_c_puts_it() {
-        type Ref = ExecutorStorage<CBS, SC, ARENA, NODES>;
-        let o = compute_offsets(DEFAULT);
+        type Ref = ExecutorStorage<CBS, SC, ARENA, NODES, PARAMS>;
+        let o = compute_offsets(WITH_STORE);
         macro_rules! same {
             ($f:ident) => {
                 assert_eq!(
@@ -855,6 +955,8 @@ mod tests {
         same!(monitor_violations);
         same!(alive_slots);
         same!(slot_tags);
+        // phase-382 W3' — the store, last.
+        same!(params);
     }
 
     #[test]
@@ -876,7 +978,10 @@ mod tests {
         assert!(align_of::<AliveSlot>() <= 8);
         assert!(align_of::<GroupSchedEntry>() <= 8);
         assert!(align_of::<Violation>() <= 8);
+        // phase-382 W3' — the store's slot.
+        assert!(align_of::<nros_params::ParameterSlot>() <= 8);
         assert!(executor_storage_layout(DEFAULT).align() <= 8);
+        assert!(executor_storage_layout(WITH_STORE).align() <= 8);
     }
 
     /// phase-409 (issue 0961) — every knob-scaled table's per-slot cost is
@@ -1020,6 +1125,13 @@ mod tests {
         {
             ceiling += size_of::<super::super::os_priority::OsPriorityPool>();
         }
+        // phase-382 W3' -- the parameter store's TABLE is carved (it scales
+        // with `MAX_PARAMETERS` and lives in the backing); this value holds one
+        // slice reference to it, which scales with nothing.
+        #[cfg(feature = "param-services")]
+        {
+            ceiling += size_of::<&mut [MaybeUninit<nros_params::ParameterSlot>]>();
+        }
         assert!(
             value <= ceiling,
             "`Executor` is {value} B at MAX_CBS={CBS} / MAX_NODES={NODES}, over \
@@ -1070,6 +1182,53 @@ mod tests {
         );
         assert_eq!(s.nodes.len(), 0);
         assert_eq!(s.group_sched_table.len(), 0);
+        // phase-382 W3' — the store region, at this build's implied count.
+        assert_eq!(s.params.len(), DEFAULT.params);
+    }
+
+    /// phase-382 W3' — carve a store and USE it, with no allocator anywhere.
+    ///
+    /// Outside the `alloc` gate on purpose (phase-382's trap): the point of
+    /// carving is a store an image without a heap can hold, and
+    /// `carve_yields_right_lengths_and_inits` above needs `alloc` only for
+    /// its own default-sized backing. The backing here is a STATIC sized for a
+    /// minimal executor plus the store, so nothing in this test allocates.
+    #[test]
+    fn a_carved_store_is_usable_without_an_allocator() {
+        const TINY: ExecutorSizing = ExecutorSizing {
+            cbs: 1,
+            sc: 1,
+            arena: 64,
+            nodes: 1,
+            params: PARAMS,
+        };
+        const WORDS: usize = executor_storage_u64_len(TINY);
+        static mut BACKING: [MaybeUninit<u64>; WORDS] = [MaybeUninit::uninit(); WORDS];
+        // SAFETY: this test is the only reader of `BACKING`, and it takes the
+        // one reference once.
+        // The raw pointer is bound first, as in `backing::take`: clippy reads
+        // `&mut *(&raw mut X)` as `deref_addrof`, and its rewrite is the
+        // `static_mut_refs` hazard.
+        let ptr = &raw mut BACKING;
+        let backing: &'static mut [MaybeUninit<u64>; WORDS] = unsafe { &mut *ptr };
+        // SAFETY: `backing` is exactly `executor_storage_u64_len(TINY)` words.
+        let s = unsafe { carve(backing, TINY) };
+        assert_eq!(s.params.len(), PARAMS, "the store's slots are carved");
+        let table = nros_params::ParameterTable::init_in(s.params);
+        assert_eq!(table.capacity(), PARAMS);
+        assert_eq!(table.occupied(), 0, "carved slots start empty");
+        let mut server = nros_params::ParameterServer::new_in(table);
+        let key = nros_params::NodeKey::PRIMARY;
+        for i in 0..PARAMS {
+            let mut name = heapless::String::<8>::new();
+            let _ = core::fmt::write(&mut name, format_args!("p{i}"));
+            assert!(server.declare(key, &name, nros_params::ParameterValue::Integer(i as i64)));
+        }
+        assert!(
+            !server.declare(key, "over", nros_params::ParameterValue::Bool(true)),
+            "capacity is the carved length"
+        );
+        assert_eq!(server.get(key, "p1").and_then(|v| v.as_integer()), Some(1));
     }
 
     #[test]

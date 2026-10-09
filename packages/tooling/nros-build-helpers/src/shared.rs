@@ -985,6 +985,26 @@ pub fn env_usize(name: &str, default: usize) -> usize {
         .unwrap_or(default)
 }
 
+/// phase-382 W3' -- the carved parameter store's shape, from `nros-node`'s
+/// `links` metadata: an input to the probed executor size.
+pub const PARAM_STORE_SHAPE_DEP: &str = "DEP_NROS_NODE_PARAM_STORE_SHAPE";
+
+/// phase-382 W3' -- read [`PARAM_STORE_SHAPE_DEP`] for its FINGERPRINT, not a
+/// number. When the build carves a parameter store, the store's shape sizes
+/// the executor backing. A sizes probe whose build script does not re-run when
+/// the shape moves emits a museum `NROS_EXECUTOR_SIZE` (measured:
+/// `NROS_PARAM_STORE=1` tripped nros-c's `EXECUTOR_OPAQUE_U64S too small`
+/// assert). Watched explicitly, so the re-run does not depend on how cargo
+/// treats a dependency's metadata.
+pub fn watch_param_store_shape() -> String {
+    println!("cargo:rerun-if-env-changed={PARAM_STORE_SHAPE_DEP}");
+    env::var(PARAM_STORE_SHAPE_DEP).unwrap_or_else(|_| {
+        panic!(
+            "{PARAM_STORE_SHAPE_DEP} not set — is nros-node's `links = \"nros_node\"` configured?"
+        )
+    })
+}
+
 pub fn dep_usize(name: &str) -> usize {
     env::var(name)
         .unwrap_or_else(|_| {

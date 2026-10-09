@@ -131,6 +131,20 @@ use super::storage::ExecutorSizing;
 #[allow(dead_code)]
 pub const EXECUTOR_BACKING_DEFAULT_U64S: usize = ExecutorSizing::DEFAULT.u64_len();
 
+/// phase-382 W3' -- the words the DEFAULT backing spends on the carved
+/// parameter store: zero unless the build implies a store
+/// (`nros_params::IMPLIED_STORE_SLOTS`). A STATED reservation
+/// (`NROS_EXECUTOR_BACKING_U64S`, a board's `backing_u64s`) covers the
+/// executor's tables and gets this added on top -- see `nros-node/build.rs`'s
+/// `emit_executor_backing` for why the statement does not absorb it.
+#[allow(dead_code)]
+pub const PARAMETER_STORE_U64S: usize = ExecutorSizing::DEFAULT.u64_len()
+    - ExecutorSizing {
+        params: 0,
+        ..ExecutorSizing::DEFAULT
+    }
+    .u64_len();
+
 // `EXECUTOR_BACKING`, its size const, and the optional
 // `#[unsafe(link_section = …)]` on it are emitted by `build.rs`: `link_section`
 // takes a string LITERAL and the section name is a build-time input, and the

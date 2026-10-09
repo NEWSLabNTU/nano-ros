@@ -11,7 +11,8 @@ use std::{env, path::PathBuf};
 
 use crate::shared::{
     compile_c_stub, dep_usize, generate_cbindgen_header, non_zero_or, probe_nros_sizes,
-    target_pointer_bytes, write_header_to_corrosion, write_header_to_target_dir,
+    target_pointer_bytes, watch_param_store_shape, write_header_to_corrosion,
+    write_header_to_target_dir,
 };
 
 // Phase 87.11: `target_pointer_bytes()` and `align_up()` removed —
@@ -82,6 +83,9 @@ fn generate_config(
     // is gone (Phase 118.B closure of Phase 87.6).
     let _ = dep_usize("DEP_NROS_NODE_MAX_CBS");
     let _ = dep_usize("DEP_NROS_NODE_ARENA_SIZE");
+    // phase-382 W3' -- the carved parameter store, an input to the probed
+    // executor size (see `shared::dep_watch`).
+    let _ = watch_param_store_shape();
 
     // CppContext = Executor + domain_id (u32) + padding. Phase 118.B —
     // sourced from `nros::sizes::EXECUTOR_SIZE` via the probe; the

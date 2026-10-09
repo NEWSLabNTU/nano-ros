@@ -28,6 +28,9 @@ const EXEC_SIZING: nros::ExecutorSizing = nros::ExecutorSizing {
     // the point. Trimming it is a separate decision, and one no host lane here
     // can check.
     nodes: nros::ExecutorSizing::DEFAULT.nodes,
+    // phase-382 W3' — no parameters here; the build-implied store slots (zero
+    // for this bench) are kept rather than restated.
+    params: nros::ExecutorSizing::DEFAULT.params,
 };
 // phase-412 #4 — this is the image's ONE executor, so its caller-supplied arena
 // must hold everything the image declares. Held at compile time against the
