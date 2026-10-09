@@ -216,11 +216,9 @@ fn run_cell(cell: &MCell) {
     // ready-marker + stabilisation wait before the talker starts).
     let (min_count, needs_settle) = match cell.rmw {
         MR::Zenoh => {
-            if !require_zenohd() {
-                nros_tests::skip!("zenohd not found");
-            }
+            require_zenohd();
             let router = ZenohRouter::start_unique()
-                .unwrap_or_else(|e| nros_tests::skip!("zenohd failed to start: {e}"));
+                .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start: {e}"));
             talker_cmd.env("NROS_LOCATOR", router.locator());
             listener_cmd.env("NROS_LOCATOR", router.locator());
             _zenohd = Some(router);
@@ -248,11 +246,9 @@ fn run_cell(cell: &MCell) {
             (2, true)
         }
         MR::Xrce => {
-            if !require_xrce_agent() {
-                nros_tests::skip!("XRCE agent not available");
-            }
+            require_xrce_agent();
             let agent = XrceAgent::start_unique()
-                .unwrap_or_else(|e| nros_tests::skip!("XRCE Agent failed to start: {e:?}"));
+                .unwrap_or_else(|e| nros_tests::unmet!("XRCE Agent failed to start: {e:?}"));
             let addr = agent.addr();
             let domain = unique_ros_domain_id().to_string();
             for cmd in [&mut talker_cmd, &mut listener_cmd] {
@@ -266,7 +262,7 @@ fn run_cell(cell: &MCell) {
             _agent = Some(agent);
             (1, true)
         }
-        MR::Uorb => nros_tests::skip!("uorb has no native pubsub example cell"),
+        MR::Uorb => nros_tests::unmet!("uorb has no native pubsub example cell"),
     };
 
     // Listener first, so its subscription is live before the talker publishes.

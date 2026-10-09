@@ -33,8 +33,8 @@ use nros_tests::{
     fixtures::{
         DEFAULT_ROS_DISTRO, ManagedProcess, RequireFixture, XrceAgent, ZenohRouter,
         build_native_workspace_rust_cyclonedds_entry, build_native_workspace_rust_entry,
-        build_native_workspace_rust_xrce_entry, is_rmw_zenoh_available, is_ros2_available,
-        require_ros2_dds, require_xrce_agent, require_zenohd, ros2_node_list, zenohd_unique,
+        build_native_workspace_rust_xrce_entry, require_ros2_dds, require_xrce_agent,
+        require_zenohd, ros2_node_list, zenohd_unique,
     },
     ros2::{
         require_ros2_cyclonedds, ros2_node_info_rmw_with_domain, ros2_node_list_rmw_with_domain,
@@ -106,15 +106,8 @@ fn assert_node_set(rmw: &str, listing: &str) {
 fn rust_multi_node_entry_per_node_graph_nodes(
     zenohd_unique: ZenohRouter,
 ) -> nros_tests::TestResult<()> {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
-    if !is_ros2_available() {
-        nros_tests::skip!("ROS 2 not found");
-    }
-    if !is_rmw_zenoh_available() {
-        nros_tests::skip!("rmw_zenoh_cpp not found");
-    }
+    require_zenohd();
+    nros_tests::ros2::require_ros2();
 
     let entry = build_native_workspace_rust_entry()
         .require("workspace-rust-native native_entry")
@@ -146,9 +139,7 @@ fn rust_multi_node_entry_per_node_graph_nodes(
 /// pin is no discovery, and reads as an empty graph).
 #[test]
 fn rust_multi_node_entry_per_node_graph_nodes_cyclonedds() -> nros_tests::TestResult<()> {
-    if !require_ros2_cyclonedds() {
-        nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");
-    }
+    require_ros2_cyclonedds();
 
     let entry = build_native_workspace_rust_cyclonedds_entry()
         .require("workspace-rust-native-cyclonedds native_cyclonedds_entry")
@@ -210,12 +201,8 @@ fn node_info_section(info: &str, section: &str) -> Vec<String> {
 /// `rmw_fastrtps_cpp` peer pinned by its env string.
 #[test]
 fn rust_multi_node_entry_per_node_graph_nodes_xrce() -> nros_tests::TestResult<()> {
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
-    if !require_ros2_dds() {
-        nros_tests::skip!("ROS 2 + rmw_fastrtps_cpp not available");
-    }
+    require_xrce_agent();
+    require_ros2_dds();
 
     let entry = build_native_workspace_rust_xrce_entry()
         .require("workspace-rust-native-xrce native_xrce_entry")

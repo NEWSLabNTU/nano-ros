@@ -558,10 +558,10 @@ mod tests {
             .current_dir(root)
             .output();
         let Ok(out) = out else {
-            crate::skip!("python3 unavailable — cannot read the board registry");
+            crate::unmet!("python3 unavailable — cannot read the board registry");
         };
         if !out.status.success() {
-            crate::skip!("check-board-tiers --print-tiers failed; the registry could not be read");
+            crate::unmet!("check-board-tiers --print-tiers failed; the registry could not be read");
         }
         let text = String::from_utf8_lossy(&out.stdout);
         let mut registry: Vec<&str> = text
@@ -609,10 +609,7 @@ mod tests {
         let Ok(text) = std::fs::read_to_string(justfile) else {
             // A SKIP, not a `return`: a return from a test is a PASS, and this
             // one would pass having gated nothing.
-            crate::skip_class!(
-                capability,
-                "no root justfile at {justfile} (out-of-tree checkout)"
-            );
+            crate::unmet!("no root justfile at {justfile} (out-of-tree checkout)");
         };
         // The canonical ordered list — the one the make graph filters.
         let line = text
@@ -1045,10 +1042,7 @@ _tier-build:
             .output();
         // A SKIP, not a `return` — a return from a test is a PASS over nothing.
         let Ok(out) = out else {
-            crate::skip_class!(
-                capability,
-                "cannot run scripts/test/lane-filter.sh (out-of-tree checkout)"
-            );
+            crate::unmet!("cannot run scripts/test/lane-filter.sh (out-of-tree checkout)");
         };
         if !out.status.success() {
             panic!(
@@ -1177,10 +1171,7 @@ _tier-build:
             .arg("native")
             .output();
         let Ok(out) = out else {
-            crate::skip_class!(
-                capability,
-                "cannot run scripts/test/lane-filter.sh (out-of-tree checkout)"
-            );
+            crate::unmet!("cannot run scripts/test/lane-filter.sh (out-of-tree checkout)");
         };
         if !out.status.success() {
             panic!(

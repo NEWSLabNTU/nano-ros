@@ -32,7 +32,7 @@ fn edition_domain_bridge_posestamped_survives() {
     let env_to = DockerRosEnv::new(&ed, Middleware::Cyclonedds { domain_id: d_to });
 
     if !env_to.available() {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "{ed} image not built or docker absent — run `just ros_editions image {ed}`"
         );
     }

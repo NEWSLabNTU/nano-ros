@@ -471,30 +471,15 @@ stage_and_configure_verdict() {
 # template into a PERSISTENT build dir (build/cmake-fixtures/<id>) so the test
 # can inspect generated TUs / link sidecars / depfiles AND run/`nm` the produced
 # executable — instead of running cmake at test time (issue 0034). The codegen
-# step shells the `nros` CLI; the build is skipped (no stamp → test skips/fails
-# per tier) when cmake or a `codegen entry`-capable `nros` is unavailable.
+# step shells the `nros` CLI; cmake or a `codegen entry`-capable `nros` missing
+# for a selected row FAILS the build (issue 1758).
 cmake_out="$(nros_build_dir "$NROS_KIND_CMAKE_FIXTURES")"
 
-# Issue 0695 — these four prereqs used to answer to ONE verdict (print, return 1,
-# skip every cmake fixture, run on green), and they do not deserve the same one.
-#
-#   cmake absent            a host that cannot build C at all. A real skip — but
-#                           a RECORDED one, because `cmake=0` in the summary read
-#                           identically for "skipped them all" and "there were
-#                           none", which is how a partial fixture set came out
-#                           looking complete.
-#   nros / codegen entry /  the SWEEP CONTRACT. CLAUDE.md requires
-#   play_launch_parser      `source ./activate.sh` before any build; that is what
-#                           puts all three on PATH. Missing one is operator
-#                           error, and `stage_and_check` below ALREADY takes the
-#                           whole build down for the very same missing binary
-#                           ("compile-check: nros CLI not found"). One condition
-#                           answered two ways in one script is the defect; the
-#                           fatal half is the correct half.
-#
-# Skips are reported through `_note_lane_skip` so the final summary names them
-# instead of printing a zero that means two different things.
-lane_skips=()
+# Issue 0695 split these prereqs into "a recorded skip" (cmake absent) and
+# "fatal" (nros / codegen entry — the sweep contract). Issue 1758 finished the
+# job: every one is fatal now, but only for an invocation that SELECTED rows
+# needing it. A missing tool is never a reason to build less and exit 0; what
+# an invocation does not need, its narrowing (ids, builders, lanes) leaves out.
 
 # LANE FILTER — phase-395. Empty (the default) means every lane, which is what
 # `build-test-fixtures` wants.
@@ -520,9 +505,17 @@ _lane_on() {
     case " $CC_LANES " in *" $1 "*) return 0 ;; *) return 1 ;; esac
 }
 
-_note_lane_skip() {
-    lane_skips+=("$1")
-    echo "$1 — skipping (recorded in the summary)" >&2
+# Issue 1758 — a prerequisite missing for a SELECTED row is a FAILURE. This
+# recorded the gap and exited 0, so a lane that needed the rows "built" nothing
+# and passed; the consuming test then failed on a missing stamp, far from the
+# cause, or — before 0584 — skipped. Called only once a lane has rows to build:
+# a lane with nothing selected never asks for its prerequisites at all.
+_unmet_lane_prereq() {
+    echo "compile-check: FAILED — $1" >&2
+    echo "  This invocation selected rows that need it. Provision it, or narrow the" >&2
+    echo "  run (NROS_FIXTURE_ID[S] / NROS_FIXTURE_BUILDER / NROS_COMPILE_CHECK_LANES)" >&2
+    echo "  so it does not claim them." >&2
+    exit 1
 }
 
 # The count a lane reports: its number, or SKIPPED(<why>) when the lane never ran.
@@ -531,17 +524,10 @@ _lane_count() {
 }
 
 cmake_skipped=""
-cmake_fixture_prereqs_ok() {
-    # A lane the caller filtered OUT must not run its prerequisite check either.
-    # The `nros` CLI check below is deliberately FATAL (a stale CLI is a defect,
-    # not a host capability), and leaving it reachable meant a caller asking for
-    # only `cargo-check` still died on a cmake prerequisite it had opted out of.
-    _lane_on cmake-configure || { cmake_skipped="not in NROS_COMPILE_CHECK_LANES"; return 1; }
-    command -v cmake >/dev/null 2>&1 || {
-        cmake_skipped="cmake absent"
-        _note_lane_skip "cmake-fixtures: cmake absent"
-        return 1
-    }
+# Called only when cmake rows are SELECTED (issue 1758), so a caller that asked
+# for none never reaches a cmake prerequisite — and one that did fails on it.
+cmake_fixture_prereqs() {
+    command -v cmake >/dev/null 2>&1 || _unmet_lane_prereq "cmake-fixtures: cmake not on PATH"
     local nb="${NROS_CLI:-$(command -v nros || true)}"
     [ -n "$nb" ] || {
         echo "cmake-fixtures: nros CLI not found — cannot codegen entries (source ./activate.sh, or just setup-cli)" >&2
@@ -551,38 +537,13 @@ cmake_fixture_prereqs_ok() {
         echo "cmake-fixtures: '$nb' lacks 'codegen entry' — stale CLI (just setup-cli)" >&2
         exit 2
     }
-    # "The C/mixed Entry templates parse launch XML via play_launch_parser."
-    #
-    # MEASURED FALSE, 2026-09-24 (issue 1454), and left in place deliberately:
-    # `strace -f -e trace=execve` over a `pure_c_workspace` cmake-configure
-    # build — 37,244 calls — spawns `nros-launch-resolve` twice and this binary
-    # ZERO times. The templates' launch XML is resolved by `nros sync` through
-    # the resolver, which statically links the parser crate from the
-    # `packages/cli/third-party/play_launch` submodule; the SDK-store binary is
-    # a standalone CLI nothing here runs. So on a host with a provisioned
-    # resolver and no store binary this skips every cmake fixture for a reason
-    # that is not true.
-    #
-    # NOT changed with 1454's fix: dropping it makes this lane RUN where it used
-    # to skip, which is a behaviour change that wants its own measurement rather
-    # than a ride on a fix about freshness. Recorded in the issue's Residue.
-    #
-    # A LANE SKIP, not `exit 2`, and the distinction is the point: a missing
-    # play_launch_parser is a HOST CAPABILITY question, exactly like the
-    # `cmake absent` case a few lines up, which has always skipped. Killing the
-    # whole script for it meant a caller that needs only the compile-check
-    # SNIPPETS could not get them — `check-source-gates` builds its own stamps
-    # for `platform_header_compile`, and on a CI runner that never sources
-    # `activate.sh` this turned into a required status check that could not
-    # pass. A stale or absent `nros` CLI stays hard below: that is a defect,
-    # not a capability.
-    command -v play_launch_parser >/dev/null 2>&1 || {
-        cmake_skipped="play_launch_parser absent"
-        _note_lane_skip "cmake-fixtures: play_launch_parser not found (source ./activate.sh)"
-        return 1
-    }
+    # No `play_launch_parser` check. Issue 1454 MEASURED it unused here (an
+    # strace over a cmake-configure build: the resolver runs, this binary never
+    # does), and it was the most common reason the whole cmake lane "skipped"
+    # (issue 1718: `cpp_robot_entry` never built on live-peer). Issue 1758
+    # retired the skip; a check for a tool nothing runs would only turn that
+    # into a false failure.
     NROS_CLI_BIN="$nb"
-    return 0
 }
 
 build_cmake_fixture() {
@@ -747,6 +708,23 @@ if [ -n "$builder_filter" ]; then
     done
 fi
 
+# The PX4 compile checks are not manifest rows (their leaves generate
+# `px4_msgs` from the PX4-Autopilot submodule), but they are selectable the same
+# way: by id, one pool unit each. Before issue 1758 this section ran inside
+# EVERY unit regardless of its id — 87 redundant px4 codegens per sweep — and
+# skipped with exit 0 when the submodule was absent, so a lane that needed
+# `px4_bridge_ffi` built nothing and said so only on stderr.
+_cc_px4_ids="px4_probe px4_stub px4_offboard_companion px4_bridge_ffi"
+_cc_is_px4_id() { case " $_cc_px4_ids " in *" $1 "*) return 0 ;; esac; return 1; }
+# Selected when the px4 lane is on, no builder narrowing excludes it (px4 is
+# not a manifest builder, so any NROS_FIXTURE_BUILDER narrowing leaves it out),
+# and the id narrowing names it — or there is none.
+_cc_px4_selected() {
+    _lane_on px4 || return 1
+    [ -z "$builder_filter" ] || return 1
+    [ -z "$id_filter" ] || _cc_is_px4_id "$id_filter"
+}
+
 # Is this builder in the current narrowing? No filter = every builder.
 _cc_builder_enabled() {
     [ -z "$builder_filter" ] && return 0
@@ -770,6 +748,7 @@ compile_check_records() {
 # broken invocation; the guard owns the distinction.
 if [ -n "$id_filter" ]; then
     _cc_matched=0
+    _cc_is_px4_id "$id_filter" && _cc_matched=1
     for _cc_builder in $_cc_all_builders; do
         # Deliberately NOT `compile_check_records` — that honours the builder
         # narrowing, and "this id is in a builder you did not ask for" is not
@@ -829,7 +808,7 @@ if [ -n "${NROS_FIXTURE_IDS+set}" ]; then
         echo "compile-check: NROS_FIXTURE_IDS is empty — nothing to build."
         exit 0
     fi
-    _cc_known=" "
+    _cc_known=" $_cc_px4_ids "
     for _cc_builder in $_cc_all_builders; do
         while IFS=$'\x1f' read -r _id _rest; do
             [ -n "$_id" ] && _cc_known="$_cc_known$_id "
@@ -859,6 +838,14 @@ if [ -z "$id_filter" ] && { [ "${NROS_COMPILE_CHECK_POOL:-1}" = "1" ] || [ -n "$
         done < <(compile_check_records "$_cc_builder")
     done
     unset _cc_builder _id _rest
+    if _lane_on px4 && [ -z "$builder_filter" ]; then
+        for _id in $_cc_px4_ids; do
+            if [ -n "$ids_filter" ]; then
+                case " $ids_filter " in *" $_id "*) ;; *) continue ;; esac
+            fi
+            _cc_ids="$_cc_ids $_id"
+        done
+    fi
     if [ -n "$_cc_ids" ]; then
         # shellcheck source=scripts/build/jobserver-pool.sh
         source "$repo_root/scripts/build/jobserver-pool.sh"
@@ -1204,14 +1191,17 @@ while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
 done < <(_lane_on cxx-compile-verdict && compile_check_records cxx-compile-verdict || true)
 
 cmake_n=0
-if cmake_fixture_prereqs_ok; then
+_cc_cmake_rows="$( { _lane_on cmake-configure && compile_check_records cmake-configure; } || true)"
+_lane_on cmake-configure || cmake_skipped="not in NROS_COMPILE_CHECK_LANES"
+if [ -n "$_cc_cmake_rows" ]; then
+    cmake_fixture_prereqs
     mkdir -p "$cmake_out"
     while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
         [ -n "$id" ] || continue
         run_fixture "$cmake_out/$id" "$id" "$builder" build_cmake_fixture "$id" "$dir"
         write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$cmake_out/$id"
         cmake_n=$((cmake_n + 1))
-    done < <(_lane_on cmake-configure && compile_check_records cmake-configure || true)
+    done <<< "$_cc_cmake_rows"
     # Phase 246 — the ThreadX `threadx_bringup_rv64` configure-only baker-audit
     # leg is retired with `NanoRosThreadxSystemCodegen.cmake`; the bare-metal
     # riscv64 typed-carrier examples (examples/rv-virt-threadx/{c,cpp}/*)
@@ -1284,8 +1274,7 @@ elif command -v "${CXX:-c++}" >/dev/null 2>&1; then
         cxx_n=$((cxx_n + 1))
     done <<< "$_cc_cxxv_rows"
 else
-    cxx_skipped="no C++ compiler (${CXX:-c++})"
-    _note_lane_skip "cxx-syntax: $cxx_skipped"
+    _unmet_lane_prereq "cxx-syntax: no C++ compiler (${CXX:-c++})"
 fi
 
 # cargo-check of an existing example dir for a cross target (id : dir : target).
@@ -1294,14 +1283,14 @@ fi
 # the board memory layout). Stamped into build/compile-check (same resolver).
 # Gated on the rust target being installed; absent → no stamp → test skips.
 cargo_check_n=0
+cargo_check_fail_n=0
 while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
     [ -n "$id" ] || continue
     # Only the target-bearing cargo-check rows reach here; the staged ones ran above.
     [ -n "$target" ] || continue
-    [ -d "$repo_root/$dir" ] || { echo "cargo-check: example missing: $dir" >&2; continue; }
+    [ -d "$repo_root/$dir" ] || _unmet_lane_prereq "cargo-check: example dir missing for $id: $dir"
     if ! rustup target list --installed 2>/dev/null | grep -qx "$target"; then
-        echo "cargo-check: target $target not installed — skipping $id" >&2
-        continue
+        _unmet_lane_prereq "cargo-check: rust target $target not installed (needed by $id; rustup target add $target)"
     fi
     echo "== cargo-check: $id ($target) =="
     mkdir -p "$out_root/$id"
@@ -1313,6 +1302,7 @@ while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
         cargo_check_n=$((cargo_check_n + 1))
     else
         echo "   cargo-check FAILED for $id (no stamp)" >&2
+        cargo_check_fail_n=$((cargo_check_fail_n + 1))
     fi
 done < <(_lane_on cargo-check-target && compile_check_records cargo-check || true)
 
@@ -1335,7 +1325,10 @@ px4_autopilot_dir="$repo_root/third-party/px4/PX4-Autopilot"
 px4_n=0
 px4_skipped=""
 px4_fail_n=0
-if _lane_on px4 && [ -d "$px4_autopilot_dir/msg" ] && command -v nros >/dev/null 2>&1; then
+if _cc_px4_selected; then
+    [ -d "$px4_autopilot_dir/msg" ] || _unmet_lane_prereq \
+        "px4: PX4-Autopilot submodule absent (git submodule update --init third-party/px4/PX4-Autopilot)"
+    command -v nros >/dev/null 2>&1 || _unmet_lane_prereq "px4: nros CLI not on PATH (source ./activate.sh)"
     # issue 0520 — this script is invoked ONCE PER COMPILE-CHECK UNIT (87 of them
     # under `build-test-fixtures lane=all`, in parallel), and every invocation
     # regenerates px4_msgs into the SAME three `<leaf>/generated` dirs. The
@@ -1371,10 +1364,12 @@ if _lane_on px4 && [ -d "$px4_autopilot_dir/msg" ] && command -v nros >/dev/null
     }
     for entry in "${PX4_XRCE_EXAMPLES[@]}"; do
         id="${entry%%:*}"; dir="${entry#*:}"
-        [ -d "$repo_root/$dir" ] || { echo "px4: example missing: $dir" >&2; continue; }
+        [ -z "$id_filter" ] || [ "$id_filter" = "$id" ] || continue
+        [ -d "$repo_root/$dir" ] || _unmet_lane_prereq "px4: example dir missing for $id: $dir"
         echo "== px4-compile-check: $id =="
         if ! px4_gen "$px4_autopilot_dir" "$repo_root/$dir/generated"; then
             echo "   px4_msgs codegen FAILED for $id (no stamp)" >&2
+            px4_fail_n=$((px4_fail_n + 1))
             continue
         fi
         # issue 0546 — SYNC before checking. These leaves name the runtime by
@@ -1452,7 +1447,8 @@ if _lane_on px4 && [ -d "$px4_autopilot_dir/msg" ] && command -v nros >/dev/null
     # match it — the FFI `build.rs` globs whatever the generator wrote, which is
     # the whole reason the topic list is not restated in the crate.
     px4_bridge_dir="$repo_root/examples/px4/cpp/bridge"
-    if [ -d "$px4_bridge_dir/ffi" ]; then
+    if { [ -z "$id_filter" ] || [ "$id_filter" = px4_bridge_ffi ]; } \
+        && { [ -d "$px4_bridge_dir/ffi" ] || _unmet_lane_prereq "px4: $px4_bridge_dir/ffi missing"; }; then
         id="px4_bridge_ffi"
         echo "== px4-compile-check: $id =="
         bridge_gen="$(nros_build_dir "$NROS_KIND_PX4_MSGS_CODEGEN")/bridge-cpp"
@@ -1526,7 +1522,8 @@ if _lane_on px4 && [ -d "$px4_autopilot_dir/msg" ] && command -v nros >/dev/null
                     fi
                 done
             else
-                echo "   px4: no C++ compiler ($cxx) — header syntax check skipped" >&2
+                echo "   px4: no C++ compiler ($cxx) — cannot syntax-check the generated headers" >&2
+                bridge_ok=0
             fi
         fi
 
@@ -1560,8 +1557,7 @@ if _lane_on px4 && [ -d "$px4_autopilot_dir/msg" ] && command -v nros >/dev/null
         fi
     fi
 else
-    px4_skipped="PX4-Autopilot submodule absent (third-party/px4/PX4-Autopilot)"
-    _note_lane_skip "px4: $px4_skipped"
+    px4_skipped="not selected"
 fi
 
 # phase-319 W2 — counts come from the manifest now, not from array lengths.
@@ -1573,7 +1569,9 @@ build_n="$(compile_check_records cargo-build | wc -l)"
 # and a reader downstream cannot tell those apart from an artifact that isn't
 # there either way.
 echo "fixtures built (check=$check_n verdict=$verdict_n build=$build_n cmake=$(_lane_count "$cmake_n" "$cmake_skipped") cxx=$(_lane_count "$cxx_n" "$cxx_skipped") cargo-check=$cargo_check_n px4=$(_lane_count "$px4_n/$((px4_n + px4_fail_n))" "$px4_skipped"))."
-if [ "${#lane_skips[@]}" -gt 0 ]; then
-    echo "compile-check: ${#lane_skips[@]} lane(s) SKIPPED — their fixtures are NOT built:" >&2
-    printf '  - %s\n' "${lane_skips[@]}" >&2
+# Issue 1758 — a selected row that failed to build fails the invocation. These
+# two counted failures and printed them, and the script still exited 0.
+if [ $((cargo_check_fail_n + px4_fail_n)) -gt 0 ]; then
+    echo "compile-check: FAILED — $cargo_check_fail_n cargo-check and $px4_fail_n px4 row(s) did not build" >&2
+    exit 1
 fi

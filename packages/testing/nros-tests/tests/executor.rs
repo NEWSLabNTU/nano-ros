@@ -31,9 +31,7 @@ use std::{process::Command, time::Duration};
 /// in a given time window.
 #[rstest]
 fn test_timer_interval_basic(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let binary = build_native_talker().require("talker");
     let locator = zenohd_unique.locator();
@@ -73,9 +71,7 @@ fn test_timer_interval_basic(zenohd_unique: ZenohRouter) {
 /// Test that messages are published at regular intervals (timing consistency)
 #[rstest]
 fn test_timer_regular_publishing(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let binary = build_native_talker().require("talker");
     let locator = zenohd_unique.locator();
@@ -116,9 +112,7 @@ fn test_timer_regular_publishing(zenohd_unique: ZenohRouter) {
 /// Test that messages are received in the order they were sent
 #[rstest]
 fn test_callback_execution_order(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let talker_binary = build_native_talker().require("talker");
     let listener_binary = build_native_listener().require("listener");
@@ -183,9 +177,7 @@ fn test_callback_execution_order(zenohd_unique: ZenohRouter) {
 /// This tests that both types of callbacks work together.
 #[rstest]
 fn test_mixed_callbacks(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let talker_binary = build_native_talker().require("talker");
     let listener_binary = build_native_listener().require("listener");
@@ -267,9 +259,7 @@ fn test_mixed_callbacks(zenohd_unique: ZenohRouter) {
 /// which requires spin_once to be processing callbacks.
 #[rstest]
 fn test_spin_once_processes_work(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let talker_binary = build_native_talker().require("talker");
     let locator = zenohd_unique.locator();
@@ -308,9 +298,7 @@ fn test_spin_once_processes_work(zenohd_unique: ZenohRouter) {
 /// Test executor handles multiple publishers
 #[rstest]
 fn test_executor_multiple_timers_via_publishers(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     // While we can't easily create multiple timers in one process from tests,
     // we can verify the executor handles multiple processes with timers correctly.
@@ -371,9 +359,7 @@ fn test_executor_multiple_timers_via_publishers(zenohd_unique: ZenohRouter) {
 /// We verify this works by checking the output shows timer-driven publishing.
 #[rstest]
 fn test_spin_result_timers_fired(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let binary = build_native_talker().require("fixture");
     let locator = zenohd_unique.locator();

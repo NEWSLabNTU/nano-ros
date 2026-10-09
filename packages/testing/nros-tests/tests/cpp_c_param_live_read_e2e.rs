@@ -42,9 +42,7 @@ fn spawn_entry(path: PathBuf, label: &str, locator: &str, spin_ms: u32) -> Manag
 /// C component reads the launch-baked initial (250) LIVE via nros_cpp_get_param_integer.
 #[rstest]
 fn c_param_live_read_publishes_baked_initial(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     let path = build_native_workspace_c_params_entry()
         .map(|p| p.to_path_buf())
         .require("ws-params-c entry");
@@ -85,9 +83,7 @@ fn c_param_live_read_publishes_baked_initial(zenohd_unique: ZenohRouter) {
 /// on the executor handle saved from node.executor_handle() at configure time.
 #[rstest]
 fn cpp_param_live_read_publishes_baked_initial(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     let path = build_native_workspace_cpp_params_entry()
         .map(|p| p.to_path_buf())
         .require("ws-params-cpp entry");
@@ -131,9 +127,7 @@ fn cpp_param_live_read_publishes_baked_initial(zenohd_unique: ZenohRouter) {
 /// first.
 #[rstest]
 fn mixed_c_cpp_param_declare_and_read_cross_languages(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     let path = build_native_workspace_mixed_params_entry()
         .map(|p| p.to_path_buf())
         .require("mixed-params entry");

@@ -80,7 +80,7 @@ fn prebuilt_posix_archive() -> PathBuf {
     // host-integration lane. Skip cleanly there (NROS_FIXTURES_OPTIONAL set);
     // the full `test-all` tier still fails loudly on the missing archive.
     if std::env::var_os("NROS_FIXTURES_OPTIONAL").is_some() {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "zenoh-posix staticlib fixture not built (light tier); searched {}",
             nros_tests::build_dir(nros_tests::kind::ZENOH_FIXTURE_POSIX, &[]).display()
         );

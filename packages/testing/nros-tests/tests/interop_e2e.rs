@@ -54,7 +54,7 @@ use nros_tests::{
         ros2_env_setup_with_locator, service_client_binary, service_server_binary, talker_binary,
     },
     matrix::{Lang, PlatformId, Rmw, Workload},
-    output, skip,
+    output, unmet,
 };
 use rstest::rstest;
 use std::{
@@ -156,26 +156,21 @@ struct Cell {
 // Shared helpers
 // =============================================================================
 
-/// Skip-precondition gate: cyclone cells need ROS 2 + `rmw_cyclonedds_cpp`;
-/// zenoh + lifecycle cells need ROS 2 + `rmw_zenoh_cpp`. Identical semantics
-/// to the pre-consolidation files.
+/// Precondition gate: cyclone cells need ROS 2 + `rmw_cyclonedds_cpp`;
+/// zenoh + lifecycle cells need ROS 2 + `rmw_zenoh_cpp`. Out of the lane's
+/// scope ⇒ lane skip; in scope and absent ⇒ FAIL (issue 1758).
 fn require_cell_env(scenario: Scenario) {
     if scenario.is_cyclone() {
-        if !require_ros2_cyclonedds() {
-            skip!("ROS 2 + rmw_cyclonedds_cpp not available");
-        }
-    } else if !require_ros2() {
-        skip!(
-            "ROS 2 / rmw_zenoh_cpp not available — install it from apt \
-             (`ros-$ROS_DISTRO-rmw-zenoh-cpp`, declared in nros-sdk-index.toml)."
-        );
+        require_ros2_cyclonedds();
+    } else {
+        require_ros2();
     }
 }
 
 /// Start an ephemeral zenohd for the zenoh cells; a missing/unstartable
 /// zenohd is a clean skip (the SUT is the interop, not the router).
 fn start_zenoh_router() -> ZenohRouter {
-    ZenohRouter::start_unique().unwrap_or_else(|e| skip!("zenohd failed to start: {e}"))
+    ZenohRouter::start_unique().unwrap_or_else(|e| unmet!("zenohd failed to start: {e}"))
 }
 
 /// Spawn a native nano-ros zenoh binary dialing `locator`.
@@ -343,7 +338,7 @@ fn interop(#[case] cell: Cell) {
                 ECHO_WINDOW,
             ) {
                 Ok(p) => p,
-                Err(e) => skip!("ROS 2 topic echo could not start: {e}"),
+                Err(e) => unmet!("ROS 2 topic echo could not start: {e}"),
             };
             let mut talker = spawn_nano_zenoh(&talker_binary(), "native-rs-talker", &locator);
             // Bound stated: this cell asserts FIRST delivery only. It cannot
@@ -400,7 +395,7 @@ fn interop(#[case] cell: Cell) {
                 Ok(p) => p,
                 Err(e) => {
                     listener.kill();
-                    skip!("ROS 2 publisher could not start: {e}");
+                    unmet!("ROS 2 publisher could not start: {e}");
                 }
             };
 
@@ -495,7 +490,7 @@ fn interop(#[case] cell: Cell) {
                 Ok(p) => p,
                 Err(e) => {
                     server.kill();
-                    skip!("ROS 2 service call could not start: {e}");
+                    unmet!("ROS 2 service call could not start: {e}");
                 }
             };
             let out = client
@@ -552,7 +547,7 @@ fn interop(#[case] cell: Cell) {
             let mut ros2_server =
                 match Ros2Process::add_two_ints_server(&locator, DEFAULT_ROS_DISTRO) {
                     Ok(p) => p,
-                    Err(e) => skip!("ROS 2 service server could not start: {e}"),
+                    Err(e) => unmet!("ROS 2 service server could not start: {e}"),
                 };
             // issue 1026 — was `wait_for_all_output(15s)`, which KILLS at the
             // deadline: the SUT's whole life was the wait window, so the cell

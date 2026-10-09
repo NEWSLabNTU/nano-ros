@@ -42,7 +42,7 @@ use nros_tests::fixtures::{
 /// Require the ThreadX RISC-V prerequisites; skip loudly (naming which one).
 ///
 /// Issue 1135 — this returned `bool` and every caller wrote
-/// `if !require_threadx_riscv64() { nros_tests::skip!("require_threadx_riscv64 check failed"); }`. That is the
+/// `if !require_threadx_riscv64() { nros_tests::unmet!("require_threadx_riscv64 check failed"); }`. That is the
 /// CORRECT verdict spelled uninformatively: the real reason was an
 /// `eprintln!` inside the helper, and `--failure-output never` (what the
 /// `just` recipes pass) eats it, so the log said only "check failed". A guard
@@ -56,17 +56,17 @@ fn require_threadx_riscv64() {
         "a ThreadX riscv64 QEMU image",
     );
     if !is_threadx_available() {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "THREADX_DIR not set or invalid — run `just setup-threadx` + `source .envrc`"
         );
     }
     if !is_netx_available() {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "NETX_DIR not set or invalid — run `just setup-threadx` + `source .envrc`"
         );
     }
     if !is_riscv_gcc_available() {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "riscv64-unknown-elf-gcc not found — install it              (`sudo apt install gcc-riscv64-unknown-elf`)"
         );
     }
@@ -122,7 +122,7 @@ fn require_threadx_riscv64() {
 fn test_threadx_riscv64_cyclonedds_two_qemu_pubsub() {
     require_threadx_riscv64();
     if !is_qemu_riscv64_available() {
-        nros_tests::skip!("qemu-system-riscv64 not found");
+        nros_tests::unmet!("qemu-system-riscv64 not found");
     }
 
     let root = nros_tests::project_root();
@@ -249,7 +249,7 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_rust_pubsub() {
 
     require_threadx_riscv64();
     if !is_qemu_riscv64_available() {
-        nros_tests::skip!("qemu-system-riscv64 not found");
+        nros_tests::unmet!("qemu-system-riscv64 not found");
     }
 
     let talker_bin = build_threadx_rv64_rust_example_rmw(
@@ -258,7 +258,7 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_rust_pubsub() {
         Rmw::Cyclonedds,
     )
     .unwrap_or_else(|e| {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "rust cyclone talker fixture missing (just threadx_riscv64 build-fixtures): {e:?}"
         )
     });
@@ -268,7 +268,7 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_rust_pubsub() {
         Rmw::Cyclonedds,
     )
     .unwrap_or_else(|e| {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "rust cyclone listener fixture missing (just threadx_riscv64 build-fixtures): {e:?}"
         )
     });
@@ -368,7 +368,7 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_rust_pubsub() {
 fn test_threadx_riscv64_cyclonedds_two_qemu_cpp_pubsub() {
     require_threadx_riscv64();
     if !is_qemu_riscv64_available() {
-        nros_tests::skip!("qemu-system-riscv64 not found");
+        nros_tests::unmet!("qemu-system-riscv64 not found");
     }
 
     let root = nros_tests::project_root();
@@ -480,7 +480,7 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_cpp_pubsub() {
 fn test_threadx_riscv64_errno_is_per_thread() {
     require_threadx_riscv64();
     if !is_qemu_riscv64_available() {
-        nros_tests::skip!("qemu-system-riscv64 not found");
+        nros_tests::unmet!("qemu-system-riscv64 not found");
     }
 
     let binary = nros_tests::fixtures::threadx_riscv64::build_rv64_c_errno_isolation()

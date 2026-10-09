@@ -1508,13 +1508,9 @@ pub fn is_local_tcp_listener_available() -> bool {
 ///     // ... test code
 /// }
 /// ```
-pub fn require_zenohd() -> bool {
-    match zenohd_unavailable_reason() {
-        Some(why) => {
-            eprintln!("Skipping test: {why}");
-            false
-        }
-        None => true,
+pub fn require_zenohd() {
+    if let Some(why) = zenohd_unavailable_reason() {
+        crate::unmet!("{why}");
     }
 }
 
@@ -1567,12 +1563,10 @@ pub fn is_cmake_available() -> bool {
 ///
 /// Returns `false` if cmake is not found, printing a skip message.
 /// Returns `true` if cmake is available and the test should proceed.
-pub fn require_cmake() -> bool {
+pub fn require_cmake() {
     if !is_cmake_available() {
-        eprintln!("Skipping test: cmake not found");
-        return false;
+        crate::unmet!("cmake not found on PATH");
     }
-    true
 }
 
 /// Resolve the `nros` CLI path: `$NROS_CLI` → `PATH` (incl in-tree
@@ -1642,15 +1636,13 @@ pub fn is_nros_ws_sync_available() -> bool {
 ///     // ... shell out to `nros sync <dir>`
 /// }
 /// ```
-pub fn require_nros_ws_sync() -> bool {
+pub fn require_nros_ws_sync() {
     if !is_nros_ws_sync_available() {
-        eprintln!(
-            "Skipping test: `nros sync` verb unavailable (installed nros lacks Phase 210.D.1; \
+        crate::unmet!(
+            "`nros sync` verb unavailable (installed nros lacks Phase 210.D.1; \
              rebuild via `just setup-cli` to pick up the in-tree CLI — Phase 218)"
         );
-        return false;
     }
-    true
 }
 
 /// Check if `docker compose` is available and the Docker daemon is running
@@ -1675,12 +1667,10 @@ pub fn is_docker_compose_available() -> bool {
 ///
 /// Returns `false` if Docker Compose or the Docker daemon is unavailable.
 /// Returns `true` if Docker is available and the test should proceed.
-pub fn require_docker_compose() -> bool {
+pub fn require_docker_compose() {
     if !is_docker_compose_available() {
-        eprintln!("Skipping test: docker compose not available");
-        return false;
+        crate::unmet!("docker compose not available");
     }
-    true
 }
 
 #[cfg(test)]

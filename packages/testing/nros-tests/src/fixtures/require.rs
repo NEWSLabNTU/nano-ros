@@ -37,14 +37,15 @@
 //! is the only place that reads it, and the gate keys on call sites of this
 //! helper rather than on anybody's wording.
 //!
-//! # Skip or fail
+//! # Always a failure
 //!
-//! `FixtureNotBuilt` skips; everything else panics. That is not a softening:
-//! a run that PROMISED its fixtures never reaches here, because
-//! `require_prebuilt_binary_checks` panics outright when `gate_promised_fixtures()`
-//! — a broken promise is a failure, not an environment skip. So the only way to
-//! arrive here with `FixtureNotBuilt` is an ungated run that built nothing, and
-//! there a skip is the honest verdict.
+//! Every `Err` panics without a skip marker. A gated run never reaches here
+//! with `FixtureNotBuilt` (its resolver panics first, naming the broken
+//! promise); an UNGATED run that built nothing used to get a skip here, and
+//! issue 1758 retired it: an absent fixture means the run did less than it
+//! claimed, whoever asked. A test that is not meant to run on a coordinate is
+//! deselected by the lane BEFORE it resolves anything (`[SKIPPED:lane]` from
+//! `fixtures::lane`), never by its fixture being missing.
 //!
 //! A STALE fixture is deliberately not in that set. It stays `BuildFailed` and
 //! so panics here, because a stale artifact laundered into a skip is issue
@@ -52,13 +53,13 @@
 
 use crate::{TestError, TestResult};
 
-/// The canonical marker every not-built skip carries.
+/// The canonical marker every not-built failure carries.
 ///
 /// `check-skip-budget` keys on THIS, one string emitted from one place, rather
 /// than on the wording of whichever call site produced it.
 pub const FIXTURE_NOT_BUILT_MARKER: &str = "fixture not built";
 
-/// Convert a fixture-resolver `Result` into a value, a skip, or a panic.
+/// Convert a fixture-resolver `Result` into a value or a failure.
 pub trait RequireFixture<T> {
     /// Unwrap a `build_*` resolver's result.
     ///
@@ -72,7 +73,7 @@ impl<T> RequireFixture<T> for TestResult<T> {
         match self {
             Ok(v) => v,
             Err(TestError::FixtureNotBuilt(msg)) => {
-                crate::skip!("{FIXTURE_NOT_BUILT_MARKER}: {what}: {msg}");
+                crate::unmet!("{FIXTURE_NOT_BUILT_MARKER}: {what}: {msg}");
             }
             Err(other) => panic!("failed to resolve the {what} fixture: {other:?}"),
         }
@@ -111,13 +112,18 @@ mod tests {
         assert!(msg.contains("STALE"), "the reason is lost: {msg}");
     }
 
-    /// The other arm, so the test above cannot pass by `require` panicking
-    /// for everything: an UNGATED not-built fixture stays a skip (issue 0584
-    /// part 2 — a gated run never gets here, its resolver panics first).
+    /// Issue 1758 — an UNGATED not-built fixture is a failure too. It was the
+    /// last skip `require` could produce: a bare `cargo nextest` on a host that
+    /// built nothing reported every fixture-backed test as skipped, and a
+    /// tolerant tally read that as a pass.
     #[test]
-    fn an_ungated_unbuilt_fixture_is_a_skip() {
+    fn an_ungated_unbuilt_fixture_is_a_failure() {
         let (skip, msg) = verdict(Err(TestError::FixtureNotBuilt("not prebuilt".into())));
-        assert!(skip, "an ungated unbuilt fixture was not a skip: {msg}");
+        assert!(
+            !skip,
+            "an ungated unbuilt fixture was classified as a skip: {msg}"
+        );
         assert!(msg.contains(FIXTURE_NOT_BUILT_MARKER), "{msg}");
+        assert!(msg.contains("[UNMET PRECONDITION]"), "{msg}");
     }
 }

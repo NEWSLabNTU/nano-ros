@@ -49,7 +49,7 @@ use std::{path::PathBuf, time::Duration};
 /// Skip test if QEMU is not available
 fn require_qemu() {
     if !is_qemu_available() {
-        nros_tests::skip!("qemu-system-arm not found");
+        nros_tests::unmet!("qemu-system-arm not found");
     }
 }
 
@@ -62,7 +62,7 @@ fn require_arm_toolchain() {
         "a bare-metal QEMU image",
     );
     if !is_arm_toolchain_available() {
-        nros_tests::skip!("thumbv7m-none-eabi target not installed");
+        nros_tests::unmet!("thumbv7m-none-eabi target not installed");
     }
 }
 
@@ -191,7 +191,7 @@ fn test_qemu_output_format(qemu_binary: PathBuf) {
 #[test]
 fn test_qemu_wcet_benchmark() {
     if !is_qemu_available() || !is_arm_toolchain_available() {
-        nros_tests::skip!("qemu-system-arm or ARM toolchain not available");
+        nros_tests::unmet!("qemu-system-arm or ARM toolchain not available");
     }
 
     let binary = build_qemu_wcet_bench().require("qemu-wcet-bench");
@@ -217,8 +217,7 @@ fn test_qemu_wcet_benchmark() {
     // verdict, and keep the assertions live for every other outcome: real
     // hardware still has to complete, and any OTHER failure still fails.
     if output.contains(nros_tests::output::WCET_DEAD_COUNTER_MARKER) {
-        nros_tests::skip_class!(
-            capability,
+        nros_tests::unmet!(
             "the WCET bench refused to measure: {} — QEMU has no DWT cycle \
              counter, so there is nothing to measure here (issue 0403). Run \
              this on real hardware.",
@@ -239,7 +238,7 @@ fn test_qemu_wcet_benchmark() {
 #[test]
 fn test_qemu_lan9118_driver() {
     if !is_qemu_available() || !is_arm_toolchain_available() {
-        nros_tests::skip!("qemu-system-arm or ARM toolchain not available");
+        nros_tests::unmet!("qemu-system-arm or ARM toolchain not available");
     }
 
     let binary = build_qemu_lan9118().require("qemu-lan9118");
@@ -324,9 +323,7 @@ fn test_qemu_lan9118_driver() {
 fn test_qemu_bsp_pubsub_e2e() {
     require_arm_toolchain();
     require_qemu();
-    if !require_zenoh_pico_arm() {
-        nros_tests::skip!("zenoh-pico arm build not available");
-    }
+    require_zenoh_pico_arm();
 
     let port = nros_tests::alloc::BAREMETAL_BSP_PORT; // the baked BSP locator port
     let talker_bin = build_qemu_bsp_talker().require("qemu-bsp-talker");
@@ -391,11 +388,9 @@ fn test_qemu_bsp_pubsub_e2e() {
 fn test_qemu_serial_pubsub_e2e() {
     require_arm_toolchain();
     require_qemu();
-    if !require_zenoh_pico_arm() {
-        nros_tests::skip!("zenoh-pico arm build not available");
-    }
+    require_zenoh_pico_arm();
     if !is_socat_available() {
-        nros_tests::skip!("socat not found");
+        nros_tests::unmet!("socat not found");
     }
 
     // Build both binaries
@@ -497,11 +492,9 @@ fn test_qemu_xrce_pubsub_e2e() {
     require_arm_toolchain();
     require_qemu();
     if !is_socat_available() {
-        nros_tests::skip!("socat not found");
+        nros_tests::unmet!("socat not found");
     }
-    if !require_xrce_agent() {
-        nros_tests::skip!("MicroXRCEAgent not available (run `nros setup --rmw xrce`)");
-    }
+    require_xrce_agent();
 
     let talker_bin = build_qemu_talker_xrce().require("talker-xrce");
 
@@ -550,9 +543,7 @@ fn test_qemu_xrce_pubsub_e2e() {
 #[test]
 fn test_qemu_rtic_pubsub_e2e() {
     require_arm_toolchain();
-    if !require_zenoh_pico_arm() {
-        nros_tests::skip!("zenoh-pico arm build not available");
-    }
+    require_zenoh_pico_arm();
 
     // Build both binaries
     let talker_bin = build_qemu_rtic_talker().require("rtic-talker");
@@ -636,9 +627,7 @@ fn test_qemu_rtic_pubsub_e2e() {
 #[test]
 fn test_qemu_rtic_service_e2e() {
     require_arm_toolchain();
-    if !require_zenoh_pico_arm() {
-        nros_tests::skip!("zenoh-pico arm build not available");
-    }
+    require_zenoh_pico_arm();
 
     // Build both binaries
     let server_bin = build_qemu_rtic_service_server().require("rtic-service-server");
@@ -720,9 +709,7 @@ fn test_qemu_rtic_service_e2e() {
 #[test]
 fn test_qemu_rtic_action_e2e() {
     require_arm_toolchain();
-    if !require_zenoh_pico_arm() {
-        nros_tests::skip!("zenoh-pico arm build not available");
-    }
+    require_zenoh_pico_arm();
 
     // Build both binaries
     let server_bin = build_qemu_rtic_action_server().require("rtic-action-server");
@@ -818,9 +805,7 @@ fn test_qemu_rtic_action_e2e() {
 #[test]
 fn test_qemu_rtic_mixed_priority_pubsub_e2e() {
     require_arm_toolchain();
-    if !require_zenoh_pico_arm() {
-        nros_tests::skip!("zenoh-pico arm build not available");
-    }
+    require_zenoh_pico_arm();
 
     // Build both binaries
     let talker_bin = build_qemu_rtic_mixed_talker().require("rtic-mixed-talker");

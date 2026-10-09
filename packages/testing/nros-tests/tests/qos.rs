@@ -42,9 +42,7 @@ fn received_values(output: &str) -> Vec<i32> {
 /// Both talker and listener use RELIABLE QoS, so messages should be delivered.
 #[rstest]
 fn test_qos_reliable_delivery(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let talker_binary = build_native_talker().require("talker");
     let listener_binary = build_native_listener().require("listener");
@@ -131,9 +129,7 @@ fn test_qos_reliable_delivery(zenohd_unique: ZenohRouter) {
 /// After initial connection, RELIABLE QoS should not drop messages.
 #[rstest]
 fn test_qos_reliable_no_loss(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let talker_binary = build_native_talker().require("talker");
     let listener_binary = build_native_listener().require("listener");
@@ -228,9 +224,7 @@ fn test_qos_reliable_no_loss(zenohd_unique: ZenohRouter) {
 /// We verify that messages are received in order, which indicates proper history handling.
 #[rstest]
 fn test_qos_history_ordering(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let talker_binary = build_native_talker().require("talker");
     let listener_binary = build_native_listener().require("listener");
@@ -308,9 +302,7 @@ fn test_qos_history_ordering(zenohd_unique: ZenohRouter) {
 /// When both sides use compatible QoS (RELIABLE + RELIABLE), communication works.
 #[rstest]
 fn test_qos_compatible_settings(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let talker_binary = build_native_talker().require("talker");
     let listener_binary = build_native_listener().require("listener");
@@ -383,9 +375,7 @@ fn test_qos_compatible_settings(zenohd_unique: ZenohRouter) {
 /// With RELIABLE QoS, all subscribers should receive published messages.
 #[rstest]
 fn test_qos_multiple_subscribers(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let talker_binary = build_native_talker().require("talker");
     let listener_binary = build_native_listener().require("listener");
@@ -483,9 +473,7 @@ fn test_qos_multiple_subscribers(zenohd_unique: ZenohRouter) {
 /// This test verifies the QoS encoding is present.
 #[rstest]
 fn test_qos_keyexpr_encoding(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let talker_binary = build_native_talker().require("talker");
     let locator = zenohd_unique.locator();

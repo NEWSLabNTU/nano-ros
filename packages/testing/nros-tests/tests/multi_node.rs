@@ -43,9 +43,7 @@ fn received_values(output: &str) -> Vec<i32> {
 /// from all publishers.
 #[rstest]
 fn test_multiple_publishers_single_topic(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let talker_binary = build_native_talker().require("talker");
     let listener_binary = build_native_listener().require("listener");
@@ -122,9 +120,7 @@ fn test_multiple_publishers_single_topic(zenohd_unique: ZenohRouter) {
 /// Start 1 talker and 3 listeners, verify each listener receives messages.
 #[rstest]
 fn test_multiple_subscribers_single_topic(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let talker_binary = build_native_talker().require("talker");
     let listener_binary = build_native_listener().require("listener");
@@ -219,9 +215,7 @@ fn test_multiple_subscribers_single_topic(zenohd_unique: ZenohRouter) {
 /// Start 2 talkers and 2 listeners, verify all messages are delivered.
 #[rstest]
 fn test_many_to_many(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let talker_binary = build_native_talker().require("talker");
     let listener_binary = build_native_listener().require("listener");
@@ -303,9 +297,7 @@ fn test_many_to_many(zenohd_unique: ZenohRouter) {
 /// Run talker and listener for 10 seconds, verify consistent message delivery.
 #[rstest]
 fn test_sustained_communication(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let talker_binary = build_native_talker().require("talker");
     let listener_binary = build_native_listener().require("listener");
@@ -385,9 +377,7 @@ fn test_sustained_communication(zenohd_unique: ZenohRouter) {
 /// Test message ordering is preserved over time
 #[rstest]
 fn test_message_ordering_sustained(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let talker_binary = build_native_talker().require("talker");
     let listener_binary = build_native_listener().require("listener");
@@ -483,9 +473,7 @@ fn test_message_ordering_sustained(zenohd_unique: ZenohRouter) {
 /// Start with 1 listener, add more, verify all receive messages.
 #[rstest]
 fn test_subscriber_scalability(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let talker_binary = build_native_talker().require("talker");
     let listener_binary = build_native_listener().require("listener");
@@ -567,9 +555,7 @@ fn test_subscriber_scalability(zenohd_unique: ZenohRouter) {
 /// Test scaling up the number of publishers
 #[rstest]
 fn test_publisher_scalability(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let talker_binary = build_native_talker().require("talker");
     let listener_binary = build_native_listener().require("listener");
@@ -647,9 +633,7 @@ fn test_publisher_scalability(zenohd_unique: ZenohRouter) {
 /// Test that concurrent startup of multiple nodes works
 #[rstest]
 fn test_concurrent_startup(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let talker_binary = build_native_talker().require("talker");
     let listener_binary = build_native_listener().require("listener");

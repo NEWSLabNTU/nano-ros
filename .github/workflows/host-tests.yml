@@ -277,8 +277,16 @@ jobs:
 
       - name: Export play_launch_parser on PATH
         run: |
-          plp_bin="$(dirname "$(find "$HOME/.nros/sdk/play_launch_parser" -type f -name play_launch_parser -path '*/bin/*' 2>/dev/null | head -1)")"
-          [ -n "$plp_bin" ] && echo "$plp_bin" >> "$GITHUB_PATH" || true
+          # issue 1758 — `just setup native` provisions it; not finding it is a
+          # provisioning failure, not a step to wave through with `|| true`.
+          # Resolved through activate.sh (the store's PATH SSoT), not a find
+          # under a guessed store root.
+          source ./activate.sh
+          if ! plp="$(command -v play_launch_parser)"; then
+            echo "::error::play_launch_parser not on PATH after just setup native + activate.sh"
+            exit 1
+          fi
+          dirname "$plp" >> "$GITHUB_PATH"
 
       # The two artifacts `check build` asserts and does not produce — see the
       # same two steps in gate.yml (issue 0898) for the measurement.

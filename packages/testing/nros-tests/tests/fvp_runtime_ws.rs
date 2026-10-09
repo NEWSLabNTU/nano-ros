@@ -30,7 +30,7 @@ use std::{
     time::Duration,
 };
 
-use nros_tests::{process::ManagedProcess, project_root, skip};
+use nros_tests::{process::ManagedProcess, project_root, unmet};
 
 /// Publish-success markers — printed by the tier components ONLY when
 /// `publish().ok()` (Ctrl.cpp:19 / Telem.cpp:18). NOT banner strings; do not
@@ -73,7 +73,7 @@ fn fvp_ws_entry_two_tier_publishes() {
 
     // 1. FVP installed?
     if resolve_fvp_dir(&root).is_none() {
-        skip!(
+        unmet!(
             "ARM FVP not resolvable (set ARMFVP_BIN_PATH or ARM_FVP_DIR; \
              gated install — accept Arm EULA at \
              https://developer.arm.com/downloads/-/arm-ecosystem-fvps)"
@@ -82,12 +82,14 @@ fn fvp_ws_entry_two_tier_publishes() {
 
     // 2. west on PATH?
     if !have("west") {
-        skip!("west not on PATH (Zephyr SDK not provisioned)");
+        unmet!("west not on PATH (Zephyr SDK not provisioned)");
     }
 
     // 3. Zephyr workspace set up?
     if resolve_zephyr_workspace(&root).is_none() {
-        skip!("Zephyr workspace not set up (run `just zephyr setup` or set NROS_ZEPHYR_WORKSPACE)");
+        unmet!(
+            "Zephyr workspace not set up (run `just zephyr setup` or set NROS_ZEPHYR_WORKSPACE)"
+        );
     }
 
     // 4. ws-entry ELF prebuilt?
@@ -98,7 +100,7 @@ fn fvp_ws_entry_two_tier_publishes() {
         .join("zephyr")
         .join("zephyr.elf");
     if !elf.is_file() {
-        skip!(
+        unmet!(
             "FVP ws-entry ELF missing at {}; run `just zephyr build-fvp-ws-entry` first",
             elf.display()
         );

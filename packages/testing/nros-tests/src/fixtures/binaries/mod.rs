@@ -688,15 +688,11 @@ fn absent_fixture_verdict(binary_path: &Path, remedy: &str) -> TestResult<PathBu
 ///   reaches it through ONE helper with three call sites, and a defaulting wrapper
 ///   left the other 73 signatures alone.
 ///
-/// `NROS_FIXTURES_OPTIONAL` is in here for the same reason even though no test
-/// wrote it: the pair reads as env-independent now, and it was not — a host with
-/// that variable exported turns the gated case's panic into a `skip!`, so
-/// `#[should_panic(expected = "MISSING for an in-lane coordinate")]` would fail
-/// for a reason no message explains.
+/// (`NROS_FIXTURES_OPTIONAL`, the light tier's opt-out, used to be a third
+/// input here. It turned an absent fixture into a skip, which is exactly the
+/// skip-and-pass issue 1758 retired, so it is gone rather than kept as a knob.)
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct AbsenceEnv {
-    /// `NROS_FIXTURES_OPTIONAL` — the light tier's opt-out.
-    pub(crate) fixtures_optional: bool,
     /// A gate has already PROMISED this lane's fixtures exist and are fresh.
     pub(crate) gate_promised: bool,
 }
@@ -705,7 +701,6 @@ impl AbsenceEnv {
     /// What a real run is: the one place these two variables are read.
     fn from_process_env() -> Self {
         Self {
-            fixtures_optional: std::env::var_os("NROS_FIXTURES_OPTIONAL").is_some(),
             gate_promised: gate_promised_fixtures(),
         }
     }
@@ -716,12 +711,6 @@ fn absent_fixture_verdict_in(
     remedy: &str,
     env: AbsenceEnv,
 ) -> TestResult<PathBuf> {
-    // Tier-aware (#25): the LIGHT host-integration lane (`NROS_FIXTURES_OPTIONAL=1`)
-    // does not build every native fixture variant (TLS / cyclonedds / zero-copy /
-    // workspace-entry need extra system deps + tools). There an unstaged fixture
-    // is an environment-conditional skip, not a failure — `skip!` ([SKIPPED]) so
-    // the [SKIPPED]-aware recipe treats it as a skip. The FULL `test-all` tier
-    // leaves the var unset and still hard-fails, surfacing any real fixture gap.
     // phase-319 W3 (issue 0351) — a BROKEN fixture is not a skip in any tier.
     //
     // The light tier's skip is right for "this machine lacks the toolchain" and
@@ -743,12 +732,6 @@ fn absent_fixture_verdict_in(
             binary_path.display(),
             reason.trim(),
         )));
-    }
-    if env.fixtures_optional {
-        crate::skip!(
-            "fixture binary not prebuilt: {} (light tier; run `{remedy}` for full coverage)",
-            binary_path.display()
-        );
     }
     // Issue 0584 part 2 — an ABSENT in-lane fixture is not a skip.
     //
@@ -791,9 +774,8 @@ fn absent_fixture_verdict_in(
              3. the staleness gate does not cover this row.\n\
              \n\
              Build it:   just build-test-fixtures\n\
-             Ungate:     unset NROS_TEST_SCOPE / NROS_TEST_COORDS (then it \n\
-             degrades to a skip again), or NROS_FIXTURES_OPTIONAL=1 for the \n\
-             light tier.",
+             An absent fixture is a failure in every run (issue 1758); \n\
+             narrow the lane instead if this coordinate is not meant to run.",
             binary_path.display()
         );
     }
@@ -812,7 +794,7 @@ fn absent_fixture_verdict_in(
     // this cannot turn a present, fresh fixture into a skip, which is the
     // issue-0445 hazard.
     if let Some(reason) = crate::fixtures::lane::recorded_build_omits(binary_path) {
-        crate::skip_class!(lane, "not built: {}\n  {reason}", binary_path.display());
+        crate::lane_skip!("not built: {}\n  {reason}", binary_path.display());
     }
     Err(TestError::FixtureNotBuilt(format!(
         "Test fixture binary not prebuilt: {}\n\
@@ -4025,7 +4007,7 @@ fn shared_group_lane_check(
         &format!("the shared `{platform}` fixture `{binary_name}`"),
         coords,
     ) {
-        crate::skip_class!(lane, "{reason}");
+        crate::lane_skip!("{reason}");
     }
     Ok(())
 }
@@ -6573,7 +6555,6 @@ mod fixture_absence_class_tests {
         let got = require_prebuilt_binary_checks_in(
             missing,
             AbsenceEnv {
-                fixtures_optional: false,
                 gate_promised: false,
             },
         );
@@ -6590,21 +6571,11 @@ mod fixture_absence_class_tests {
         let _ = require_prebuilt_binary_checks_in(
             missing,
             AbsenceEnv {
-                fixtures_optional: false,
                 gate_promised: true,
             },
         );
     }
 
-    /// The light tier's opt-out is a THIRD arm of the same branch, and it had no
-    /// coverage — so nothing said what happens when both it and the gate are on.
-    ///
-    /// It is checked BEFORE the gate panic, which is the answer a reader would
-    /// not guess: `NROS_FIXTURES_OPTIONAL=1` wins, and the verdict is a skip.
-    /// Worth pinning now that the input is a parameter, because that ordering is
-    /// also why the gated arm above has to state `fixtures_optional: false`
-    /// rather than leave it to the host — on a machine with the variable
-    /// exported, the panic it expects never happens.
     /// Injecting the decision's inputs must not mean NOTHING checks that a real
     /// run derives them — that is issue 0196's shape in miniature, and it is the
     /// cost the two arms above would otherwise pay for becoming hermetic.
@@ -6623,23 +6594,20 @@ mod fixture_absence_class_tests {
         const MARKER: &str = "NROS_ABSENCE_ENV_EXPECT";
 
         // Child branch: assert that what we derived is what the parent asked
-        // for. `gate/optional` as two `0`/`1` digits.
+        // for: the gate as one `0`/`1` digit.
         if let Some(want) = std::env::var_os(MARKER) {
             let want = want.to_string_lossy().into_owned();
             let got = AbsenceEnv::from_process_env();
             let expect = AbsenceEnv {
                 gate_promised: want.starts_with('1'),
-                fixtures_optional: want.ends_with('1'),
             };
             assert_eq!(
                 got,
                 expect,
                 "AbsenceEnv::from_process_env misread the environment \
-                 (marker {want}): NROS_TEST_SCOPE={:?} NROS_TEST_COORDS={:?} \
-                 NROS_FIXTURES_OPTIONAL={:?}",
+                 (marker {want}): NROS_TEST_SCOPE={:?} NROS_TEST_COORDS={:?}",
                 std::env::var_os("NROS_TEST_SCOPE"),
                 std::env::var_os("NROS_TEST_COORDS"),
-                std::env::var_os("NROS_FIXTURES_OPTIONAL"),
             );
             return;
         }
@@ -6648,18 +6616,10 @@ mod fixture_absence_class_tests {
         // variables are covered separately — `gate_promised_fixtures` is an OR,
         // so testing one of them would leave the other free to be deleted.
         let exe = std::env::current_exe().expect("current_exe");
-        let cases: [(&str, &[(&str, &str)]); 5] = [
-            ("00", &[]),
-            ("10", &[("NROS_TEST_SCOPE", "native")]),
-            ("10", &[("NROS_TEST_COORDS", "/dev/null")]),
-            ("01", &[("NROS_FIXTURES_OPTIONAL", "1")]),
-            (
-                "11",
-                &[
-                    ("NROS_TEST_SCOPE", "native"),
-                    ("NROS_FIXTURES_OPTIONAL", "1"),
-                ],
-            ),
+        let cases: [(&str, &[(&str, &str)]); 3] = [
+            ("0", &[]),
+            ("1", &[("NROS_TEST_SCOPE", "native")]),
+            ("1", &[("NROS_TEST_COORDS", "/dev/null")]),
         ];
         for (want, vars) in cases {
             let mut cmd = std::process::Command::new(&exe);
@@ -6669,11 +6629,7 @@ mod fixture_absence_class_tests {
                  from_process_env_reads_the_two_gate_variables",
                 "--nocapture",
             ]);
-            for k in [
-                "NROS_TEST_SCOPE",
-                "NROS_TEST_COORDS",
-                "NROS_FIXTURES_OPTIONAL",
-            ] {
+            for k in ["NROS_TEST_SCOPE", "NROS_TEST_COORDS"] {
                 cmd.env_remove(k);
             }
             cmd.env(MARKER, want);
@@ -6697,19 +6653,6 @@ mod fixture_absence_class_tests {
                  filter no longer names this function:\n{text}"
             );
         }
-    }
-
-    #[test]
-    #[should_panic(expected = "[SKIPPED]")]
-    fn the_light_tier_opt_out_wins_over_the_gate_promise() {
-        let missing = std::path::Path::new("/nonexistent/nros-fixture-absence-probe");
-        let _ = require_prebuilt_binary_checks_in(
-            missing,
-            AbsenceEnv {
-                fixtures_optional: true,
-                gate_promised: true,
-            },
-        );
     }
 }
 
@@ -7548,7 +7491,6 @@ mod tests {
                 &rel,
                 None,
                 AbsenceEnv {
-                    fixtures_optional: false,
                     gate_promised: true,
                 },
             )

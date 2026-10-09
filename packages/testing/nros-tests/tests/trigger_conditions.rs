@@ -31,9 +31,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 fn test_guard_condition_with_zenoh(zenohd_unique: ZenohRouter) {
     use nros_node::executor::*;
 
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let locator = zenohd_unique.locator();
     let config = ExecutorConfig::new(&locator)

@@ -539,9 +539,7 @@ fn require_cell_env(boot: Boot) {
         | Boot::NuttxRiscv
         | Boot::FreertosMps2
         | Boot::ThreadxLinux => {
-            if !require_zenohd() {
-                nros_tests::skip!("zenohd not found");
-            }
+            require_zenohd();
         }
         // The zephyr cells historically gate on the router START (below)
         // rather than a zenohd probe — keep that shape.
@@ -550,26 +548,26 @@ fn require_cell_env(boot: Boot) {
     match boot {
         Boot::NuttxArm => {
             if !is_qemu_available() {
-                nros_tests::skip!("qemu-system-arm not found");
+                nros_tests::unmet!("qemu-system-arm not found");
             }
         }
         Boot::NuttxRiscv => {
             if !nros_tests::esp32::is_qemu_riscv32_available() {
-                nros_tests::skip!("qemu-system-riscv32 not found");
+                nros_tests::unmet!("qemu-system-riscv32 not found");
             }
         }
         Boot::FreertosMps2 => {
             if !freertos::is_freertos_available() {
-                nros_tests::skip!("FREERTOS_DIR not set or invalid");
+                nros_tests::unmet!("FREERTOS_DIR not set or invalid");
             }
             if !freertos::is_lwip_available() {
-                nros_tests::skip!("LWIP_DIR not set or invalid");
+                nros_tests::unmet!("LWIP_DIR not set or invalid");
             }
             if !freertos::is_arm_gcc_available() {
-                nros_tests::skip!("arm-none-eabi-gcc not found");
+                nros_tests::unmet!("arm-none-eabi-gcc not found");
             }
             if !is_qemu_available() {
-                nros_tests::skip!("qemu-system-arm not found");
+                nros_tests::unmet!("qemu-system-arm not found");
             }
         }
         Boot::Native | Boot::ZephyrNativeSim | Boot::ThreadxLinux => {}
@@ -669,7 +667,10 @@ fn realtime_tiers() {
         failed.join("\n  ")
     );
     if ran == 0 || skipped.len() == ran {
-        nros_tests::skip!(
+        // Issue 1758 — every inner unmet precondition is a FAILURE (it lands in
+        // `failed`, asserted above), so what is left in `skipped` is lane
+        // deselection only: nothing ran because nothing was in scope.
+        nros_tests::lane_skip!(
             "no realtime-tiers row RAN ({} skipped, {} out of lane):\n  {}",
             skipped.len(),
             out_of_lane.len(),
@@ -699,15 +700,15 @@ fn run_one(pcell: &MCell, cell: &Exec) {
     // to the host; 127.0.0.1 suffices for native_sim NSOS sockets).
     let router = match (cell.boot, cell.port) {
         (Boot::Native, _) => ZenohRouter::start_unique()
-            .unwrap_or_else(|e| nros_tests::skip!("zenohd failed to start: {e}")),
+            .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start: {e}")),
         // Loopback suffices for native_sim NSOS sockets and the ThreadX-Linux
         // host process (both dial 127.0.0.1 directly — no slirp gateway).
         (Boot::ZephyrNativeSim | Boot::ThreadxLinux, Some(port)) => {
             ZenohRouter::start_on("127.0.0.1", port)
-                .unwrap_or_else(|e| nros_tests::skip!("zenohd failed to start on {port}: {e}"))
+                .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start on {port}: {e}"))
         }
         (_, Some(port)) => ZenohRouter::start_on("0.0.0.0", port)
-            .unwrap_or_else(|e| nros_tests::skip!("zenohd failed to start on {port}: {e}")),
+            .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start on {port}: {e}")),
         (_, None) => unreachable!("non-native cells carry a baked port"),
     };
     // Observers always dial the host loopback (the guest side dials the

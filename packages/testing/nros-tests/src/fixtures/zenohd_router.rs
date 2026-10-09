@@ -672,7 +672,7 @@ pub fn or_skip(res: TestResult<ZenohRouter>) -> ZenohRouter {
     match res {
         Ok(router) => router,
         Err(TestError::RouterUnavailable(why)) => {
-            crate::skip_class!(capability, "{why}")
+            crate::unmet!("{why}")
         }
         Err(e) => panic!("the ROS zenoh router failed to start: {e}"),
     }

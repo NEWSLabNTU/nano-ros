@@ -111,7 +111,7 @@ fn keys_the_hand_written_map_lacked_are_accepted() {
         // The RESOLVER's reason, not a restatement of it (issue 1161): a skip
         // that invents its own wording gives one missing thing several names,
         // and `check-skip-budget`'s baseline is keyed on that text.
-        nros_tests::skip!("{why}");
+        nros_tests::unmet!("{why}");
     }
     let router = nros_tests::fixtures::or_skip(nros_tests::fixtures::ZenohRouter::start_unique());
     let locator = router.locator();

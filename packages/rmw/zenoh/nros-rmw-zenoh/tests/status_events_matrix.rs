@@ -105,7 +105,7 @@ fn zenoh_event_matrix() {
     let Some(mut sess) = open_session() else {
         let why = nros_tests::process::zenohd_unavailable_reason()
             .unwrap_or_else(|| "the router resolved but the session did not open".to_string());
-        nros_tests::skip!("{why}");
+        nros_tests::unmet!("{why}");
     };
 
     // ---- Subscriber-side mask ----

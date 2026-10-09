@@ -29,7 +29,7 @@ use nros_tests::{
     },
     matrix::{Lang, PlatformId, Workload},
     ros2::{DEFAULT_ROS_DISTRO, require_ros2, ros2_env_setup_with_locator},
-    skip,
+    unmet,
 };
 use std::{
     process::Command,
@@ -43,17 +43,16 @@ const QOS_ZEPHYR_ENTRY_PORT: u16 = port_of(PlatformId::ZephyrNativeSim, Lang::Ru
 
 #[test]
 fn nros_zephyr_publisher_reaches_ros2_topic_echo() {
-    if !require_ros2() {
-        skip!(
-            "ROS 2 / rmw_zenoh_cpp not available — install it from apt \
-             (`ros-$ROS_DISTRO-rmw-zenoh-cpp`, declared in nros-sdk-index.toml)."
-        );
-    }
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[nros_tests::matrix::PlatformId::ZephyrNativeSim],
+        "the Zephyr QoS ROS 2 interop cell",
+    );
+    require_ros2();
     let entry =
         build_zephyr_workspace_rust_qos_entry().require("zephyr qos workspace entry (west)");
 
     let router = ZenohRouter::start_on("127.0.0.1", QOS_ZEPHYR_ENTRY_PORT)
-        .unwrap_or_else(|e| skip!("zenohd failed to start on {QOS_ZEPHYR_ENTRY_PORT}: {e}"));
+        .unwrap_or_else(|e| unmet!("zenohd failed to start on {QOS_ZEPHYR_ENTRY_PORT}: {e}"));
     let locator = router.locator();
 
     let mut zephyr = ZephyrProcess::start(&entry, ZephyrPlatform::NativeSim)

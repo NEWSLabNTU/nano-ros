@@ -182,7 +182,13 @@ build-fixture-extras:
         NROS_CMAKE_EXTRA_DEFS="$NROS_CMAKE_EXTRA_DEFS -DNROS_DOMAIN_ID=108" \
             bash scripts/build/fixtures-build.sh threadx-linux cpp cyclonedds
     else
-        echo "  → threadx-linux c/cpp cyclonedds skipped (idlc not found on PATH — install a CycloneDDS/ROS 2 idlc, or set IDLC_EXECUTABLE)"
+        # Issue 1758 — not "skipped" + carry on: when this run selects the
+        # cyclonedds rows, a missing idlc is a missing prerequisite (named or
+        # coordinate-scoped ⇒ FAILURE; only the unscoped sweep reports SKIPPED).
+        source scripts/build/fixture-lane.sh
+        if nros_lane_wants_rmw threadx-linux cyclonedds; then
+            nros_lane_skip_note threadx-linux "c/cpp cyclonedds fixtures need a host idlc (not on PATH) — install a CycloneDDS/ROS 2 idlc, or set IDLC_EXECUTABLE"
+        fi
     fi
     unset NROS_CMAKE_EXTRA_DEFS
 

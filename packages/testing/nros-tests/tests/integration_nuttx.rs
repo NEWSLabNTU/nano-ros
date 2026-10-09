@@ -21,12 +21,12 @@ fn nuttx_integration_shell_smoke() {
     // NuttX builds normally use `arm-none-eabi-gcc` for ARM
     // configurations. Use that as the toolchain discriminator.
     if !have("arm-none-eabi-gcc") {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "arm-none-eabi-gcc not on PATH — install gcc-arm-none-eabi for NuttX builds"
         );
     }
     if std::env::var("NUTTX_DIR").is_err() {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "NUTTX_DIR unset — point at a configured NuttX checkout (`apps/` sibling)"
         );
     }

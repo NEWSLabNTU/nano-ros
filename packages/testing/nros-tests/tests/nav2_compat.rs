@@ -81,7 +81,7 @@ fn n11_launch_xml_ros2_compat_smoke() -> nros_tests::TestResult<()> {
             .lines()
             .find_map(|l| l.trim().strip_prefix("// reason: "))
             .unwrap_or("no reason recorded — build.rs predates issue 0683");
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "nav2_compat_smoke build-fixture emitted the Placeholder stub at {} \
              — no codegen evidence to assert. nros-build said: {reason}",
             run_plan_path.display()

@@ -408,59 +408,52 @@ impl Guest {
 fn require_cell_env(cell: &Exec) {
     match cell.proof {
         Proof::LifecycleActive => {
-            if !require_ros2() {
-                nros_tests::skip!(
-                    "ROS 2 / rmw_zenoh_cpp not available — install it from apt \
-             (`ros-$ROS_DISTRO-rmw-zenoh-cpp`, declared in nros-sdk-index.toml)."
-                );
-            }
+            require_ros2();
         }
         Proof::SinkCount { .. } => {}
         Proof::ChatterToCListener { .. }
         | Proof::ChatterToRustListener { .. }
         | Proof::SinkValueLine { .. } => {
-            if !require_zenohd() {
-                nros_tests::skip!("zenohd not found");
-            }
+            require_zenohd();
         }
     }
     match cell.boot {
         Boot::ThreadxLinux => {
             if !is_threadx_available() {
-                nros_tests::skip!("THREADX_DIR not set or invalid");
+                nros_tests::unmet!("THREADX_DIR not set or invalid");
             }
             if !is_nsos_netx_available() {
-                nros_tests::skip!("nsos-netx not found at packages/drivers/net/nsos-netx/");
+                nros_tests::unmet!("nsos-netx not found at packages/drivers/net/nsos-netx/");
             }
         }
         Boot::FreertosMps2 => {
             if !freertos::is_freertos_available() {
-                nros_tests::skip!("FREERTOS_DIR not set or invalid");
+                nros_tests::unmet!("FREERTOS_DIR not set or invalid");
             }
             if !freertos::is_lwip_available() {
-                nros_tests::skip!("LWIP_DIR not set or invalid");
+                nros_tests::unmet!("LWIP_DIR not set or invalid");
             }
             if !freertos::is_arm_gcc_available() {
-                nros_tests::skip!("arm-none-eabi-gcc not found");
+                nros_tests::unmet!("arm-none-eabi-gcc not found");
             }
             if !is_qemu_available() {
-                nros_tests::skip!("qemu-system-arm not found");
+                nros_tests::unmet!("qemu-system-arm not found");
             }
         }
         Boot::NuttxArm => {
             if !is_qemu_available() {
-                nros_tests::skip!("qemu-system-arm not found");
+                nros_tests::unmet!("qemu-system-arm not found");
             }
         }
         Boot::ThreadxRiscv64 => {
             if !threadx_riscv64::is_threadx_available() {
-                nros_tests::skip!("THREADX_DIR not set or invalid");
+                nros_tests::unmet!("THREADX_DIR not set or invalid");
             }
             if !threadx_riscv64::is_netx_available() {
-                nros_tests::skip!("NETX_DIR not set or invalid");
+                nros_tests::unmet!("NETX_DIR not set or invalid");
             }
             if !is_qemu_riscv64_available() {
-                nros_tests::skip!("qemu-system-riscv64 not found");
+                nros_tests::unmet!("qemu-system-riscv64 not found");
             }
         }
         Boot::ZephyrNativeSim => {}
@@ -681,8 +674,7 @@ fn entry_matrix() {
         // machine cannot do it", and the two are counted separately in the
         // sweep summary. `baremetal_run_plan_runtime` already carries the
         // classed spelling and a comment about getting it wrong once.
-        nros_tests::skip_class!(
-            lane,
+        nros_tests::lane_skip!(
             "every cell is out of this run's lane:\n  {}",
             out_of_lane.join("\n  ")
         );
@@ -750,7 +742,10 @@ fn entry_matrix() {
         failed.join("\n  ")
     );
     if skipped.len() == cells.len() {
-        nros_tests::skip!(
+        // Issue 1758 — every inner unmet precondition is a FAILURE (it lands in
+        // `failed`, asserted above), so what is left in `skipped` is lane
+        // deselection only: nothing ran because nothing was in scope.
+        nros_tests::lane_skip!(
             "all {} entry cell(s) skipped:\n  {}",
             skipped.len(),
             skipped.join("\n  ")
@@ -782,7 +777,7 @@ fn run_cell(pcell: &MCell) {
     // Bound to `_router` (NOT `let _ = router` — that pattern drops the
     // guard, and Drop kills zenohd) so the router lives for the whole cell.
     let _router = ZenohRouter::start_on(bind_host, cell.port)
-        .unwrap_or_else(|e| nros_tests::skip!("zenohd failed to start on {}: {e}", cell.port));
+        .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start on {}: {e}", cell.port));
     let observer_locator = format!("tcp/127.0.0.1:{}", cell.port);
 
     match cell.proof {

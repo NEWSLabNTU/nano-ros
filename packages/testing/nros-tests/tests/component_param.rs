@@ -65,9 +65,7 @@ use self::register as param_register;
 /// ROS 2 parameter services on the executor and seed the declared default.
 #[rstest]
 fn dispatch_declares_and_seeds_parameter(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     // The 6 parameter service servers carry inline 4 KiB req/reply buffers and
     // the `ParameterServer`'s parameter store holds the large (embedded-sized)

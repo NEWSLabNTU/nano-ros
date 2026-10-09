@@ -1098,8 +1098,8 @@ fn no_committed_metadata_json_artifacts() {
         .output()
     {
         Ok(o) if o.status.success() => o,
-        Ok(_) => nros_tests::skip!("git ls-files failed (non-zero) — cannot verify committed set"),
-        Err(e) => nros_tests::skip!("git unavailable ({e}) — cannot verify committed set"),
+        Ok(_) => nros_tests::unmet!("git ls-files failed (non-zero) — cannot verify committed set"),
+        Err(e) => nros_tests::unmet!("git unavailable ({e}) — cannot verify committed set"),
     };
     let tracked: BTreeSet<String> = String::from_utf8_lossy(&out.stdout)
         .lines()

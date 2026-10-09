@@ -38,7 +38,7 @@ use std::{
     time::Duration,
 };
 
-use nros_tests::{process::ManagedProcess, project_root, skip};
+use nros_tests::{process::ManagedProcess, project_root, unmet};
 
 fn have(cmd: &str) -> bool {
     Command::new("which")
@@ -81,7 +81,7 @@ fn fvp_board_import_fixture_boots() {
 
     // 1. FVP installed?
     if resolve_fvp_dir(&root).is_none() {
-        skip!(
+        unmet!(
             "ARM FVP not resolvable (set ARMFVP_BIN_PATH or ARM_FVP_DIR; \
              gated install — accept Arm EULA at \
              https://developer.arm.com/downloads/-/arm-ecosystem-fvps)"
@@ -90,12 +90,14 @@ fn fvp_board_import_fixture_boots() {
 
     // 2. west on PATH?
     if !have("west") {
-        skip!("west not on PATH (Zephyr SDK not provisioned)");
+        unmet!("west not on PATH (Zephyr SDK not provisioned)");
     }
 
     // 3. Zephyr workspace set up?
     if resolve_zephyr_workspace(&root).is_none() {
-        skip!("Zephyr workspace not set up (run `just zephyr setup` or set NROS_ZEPHYR_WORKSPACE)");
+        unmet!(
+            "Zephyr workspace not set up (run `just zephyr setup` or set NROS_ZEPHYR_WORKSPACE)"
+        );
     }
 
     // 4. Fixture ELF prebuilt? `build-fvp-board-import/zephyr/zephyr.elf`
@@ -107,7 +109,7 @@ fn fvp_board_import_fixture_boots() {
         .join("zephyr")
         .join("zephyr.elf");
     if !elf.is_file() {
-        skip!(
+        unmet!(
             "FVP board-import fixture ELF missing at {}; \
              run `just zephyr build-fvp-board-import` first",
             elf.display()

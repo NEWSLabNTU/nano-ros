@@ -158,22 +158,26 @@ fn require_freertos_qemu_prereqs() -> Option<String> {
 /// `qemu-freertos-entry` nextest group (they reuse the SAME images/ports as
 /// rtos_e2e's freertos rust lanes + a QEMU slirp guest each).
 fn boot_and_connect(entry: &str, bin_name: &str) {
+    // Scope before probes (issue 1758): a lane selecting no FreeRTOS
+    // coordinate deselects here; one that selects it fails on a missing tool.
+    nros_tests::fixtures::lane::require_platform_in_lane(
+        &[nros_tests::matrix::PlatformId::FreertosMps2],
+        "a FreeRTOS run-plan entry image",
+    );
     if let Some(reason) = require_freertos_qemu_prereqs() {
-        nros_tests::skip!("{reason}");
+        nros_tests::unmet!("{reason}");
     }
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let dir = entry_dir(entry);
     if !dir.is_dir() {
-        nros_tests::skip!("FreeRTOS Entry pkg fixture missing at {}", dir.display());
+        nros_tests::unmet!("FreeRTOS Entry pkg fixture missing at {}", dir.display());
     }
     // The Entry pkg's `[patch.crates-io]` points its msg deps at `generated/`,
     // which `nros sync` (run by `just freertos build-examples`) produces. Skip
     // — rather than fail the in-place build — when that build step hasn't run.
     if !dir.join("generated").is_dir() {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "{} has no `generated/` msg crates — run `just freertos build-examples` first",
             dir.display()
         );
@@ -187,7 +191,7 @@ fn boot_and_connect(entry: &str, bin_name: &str) {
     // cargo-group rewrite, so it follows the build across a platform migration.
     let bin = match freertos::require_entry_binary(bin_name) {
         Ok(b) => b,
-        Err(e) => nros_tests::skip!(
+        Err(e) => nros_tests::unmet!(
             "FreeRTOS Entry `{bin_name}` not prebuilt \
              — run `just freertos build-examples` first: {e:?}"
         ),

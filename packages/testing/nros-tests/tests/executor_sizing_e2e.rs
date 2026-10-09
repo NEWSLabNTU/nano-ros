@@ -48,9 +48,7 @@ fn spawn_sizing_entry(locator: &str, spin_ms: u32) -> ManagedProcess {
 /// entity count and not from the model's blind zero.
 #[rstest]
 fn six_timer_node_boots_on_a_metadata_derived_executor(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     let mut entry = spawn_sizing_entry(&zenohd_unique.locator(), 3000);
 
     let out = entry
@@ -82,9 +80,7 @@ fn six_timer_node_boots_on_a_metadata_derived_executor(zenohd_unique: ZenohRoute
 /// actually dispatch and their publishes must reach another process.
 #[rstest]
 fn six_timer_node_delivers_to_a_separate_process(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     let locator = zenohd_unique.locator();
 
     let listener = build_int32_sink()

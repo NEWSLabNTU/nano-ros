@@ -30,9 +30,7 @@ static XRCE_LARGE_MSG_LOCK: Mutex<()> = Mutex::new(());
 fn test_zenoh_large_publish_sizes(zenohd_unique: ZenohRouter, zenoh_stress_test_binary: PathBuf) {
     use std::process::Command;
 
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let locator = zenohd_unique.locator();
 
@@ -67,9 +65,7 @@ fn test_zenoh_large_publish_sizes(zenohd_unique: ZenohRouter, zenoh_stress_test_
 fn test_zenoh_e2e_integrity(zenohd_unique: ZenohRouter, zenoh_stress_test_binary: PathBuf) {
     use std::process::Command;
 
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let locator = zenohd_unique.locator();
 
@@ -132,9 +128,7 @@ fn test_zenoh_e2e_integrity(zenohd_unique: ZenohRouter, zenoh_stress_test_binary
 fn test_zenoh_overflow_detection(zenohd_unique: ZenohRouter, zenoh_stress_test_binary: PathBuf) {
     use std::process::Command;
 
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let locator = zenohd_unique.locator();
 
@@ -237,9 +231,7 @@ fn test_zenoh_e2e_large_receive(
 ) {
     use std::process::Command;
 
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let locator = zenohd_unique.locator();
 
@@ -358,9 +350,7 @@ fn xrce_roundtrip(binary: &std::path::Path, payload: &str, topic: &str) -> Strin
 /// of it. Asserting only "delivery fails" would pass on that tree.
 #[rstest]
 fn xrce_payload_over_the_ring_is_refused_by_name(xrce_stress_test_binary: PathBuf) {
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
+    require_xrce_agent();
     let _guard = XRCE_LARGE_MSG_LOCK.lock().expect("XRCE test lock poisoned");
 
     let output = xrce_roundtrip(&xrce_stress_test_binary, "1025", "/stress_xrce_ring_over");
@@ -398,9 +388,7 @@ fn xrce_payload_over_the_ring_is_refused_by_name(xrce_stress_test_binary: PathBu
 /// pass straight through it.
 #[rstest]
 fn xrce_raising_the_ring_delivers_the_same_payload(xrce_stress_test_large_buf_binary: PathBuf) {
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
+    require_xrce_agent();
     let _guard = XRCE_LARGE_MSG_LOCK.lock().expect("XRCE test lock poisoned");
 
     let output = xrce_roundtrip(
@@ -448,9 +436,7 @@ fn xrce_raising_the_ring_delivers_the_same_payload(xrce_stress_test_large_buf_bi
 /// otherwise this would pass for phase-384's reason rather than this one.
 #[rstest]
 fn xrce_fragmented_payload_is_delivered_intact(xrce_stress_test_large_buf_binary: PathBuf) {
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
+    require_xrce_agent();
     let _guard = XRCE_LARGE_MSG_LOCK.lock().expect("XRCE test lock poisoned");
 
     let output = xrce_roundtrip(
@@ -481,9 +467,7 @@ fn xrce_fragmented_payload_is_delivered_intact(xrce_stress_test_large_buf_binary
 fn test_zenoh_throughput_100hz(zenohd_unique: ZenohRouter, zenoh_stress_test_binary: PathBuf) {
     use std::process::Command;
 
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let locator = zenohd_unique.locator();
 
@@ -537,9 +521,7 @@ fn test_zenoh_throughput_100hz(zenohd_unique: ZenohRouter, zenoh_stress_test_bin
 fn test_zenoh_throughput_burst(zenohd_unique: ZenohRouter, zenoh_stress_test_binary: PathBuf) {
     use std::process::Command;
 
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let locator = zenohd_unique.locator();
 
@@ -598,9 +580,7 @@ fn test_zenoh_throughput_burst(zenohd_unique: ZenohRouter, zenoh_stress_test_bin
 fn test_xrce_e2e_integrity(xrce_stress_test_binary: PathBuf) {
     use std::process::Command;
 
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
+    require_xrce_agent();
 
     let _xrce_guard = XRCE_LARGE_MSG_LOCK.lock().expect("XRCE test lock poisoned");
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
@@ -667,9 +647,7 @@ fn test_xrce_e2e_integrity(xrce_stress_test_binary: PathBuf) {
 fn test_xrce_large_publish_sizes(xrce_stress_test_binary: PathBuf) {
     use std::process::Command;
 
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
+    require_xrce_agent();
 
     let _xrce_guard = XRCE_LARGE_MSG_LOCK.lock().expect("XRCE test lock poisoned");
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
@@ -709,9 +687,7 @@ fn test_xrce_large_publish_sizes(xrce_stress_test_binary: PathBuf) {
 fn test_xrce_throughput_100hz(xrce_stress_test_binary: PathBuf) {
     use std::process::Command;
 
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
+    require_xrce_agent();
 
     let _xrce_guard = XRCE_LARGE_MSG_LOCK.lock().expect("XRCE test lock poisoned");
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
@@ -769,9 +745,7 @@ fn test_xrce_throughput_100hz(xrce_stress_test_binary: PathBuf) {
 fn test_xrce_throughput_burst(xrce_stress_test_binary: PathBuf) {
     use std::process::Command;
 
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
+    require_xrce_agent();
 
     let _xrce_guard = XRCE_LARGE_MSG_LOCK.lock().expect("XRCE test lock poisoned");
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
@@ -840,7 +814,7 @@ fn test_qemu_zenoh_large_publish(qemu_large_msg_test_binary: PathBuf) {
         .output()
         .is_ok();
     if !qemu_available {
-        nros_tests::skip!("qemu-system-arm not found");
+        nros_tests::unmet!("qemu-system-arm not found");
     }
 
     // The bench firmware bakes its own allocator aux slot (phase-295 W4) —

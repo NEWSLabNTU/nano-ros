@@ -52,7 +52,6 @@ use nros_tests::{
         require_zenohd, zenohd_unique,
     },
     ros2::{DEFAULT_ROS_DISTRO, require_ros2},
-    skip,
 };
 use rstest::rstest;
 use std::{process::Command, time::Duration};
@@ -124,15 +123,8 @@ fn the_bringup_declares_a_reliability_override_that_lowers() {
 /// ---------------------------------------------------------------------------
 #[rstest]
 fn a_ros2_peer_sees_the_overridden_publisher_profile(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        skip!("zenohd not found");
-    }
-    if !require_ros2() {
-        skip!(
-            "ROS 2 / rmw_zenoh_cpp not available — install it from apt \
-             (`ros-$ROS_DISTRO-rmw-zenoh-cpp`, declared in nros-sdk-index.toml)."
-        );
-    }
+    require_zenohd();
+    require_ros2();
     let locator = zenohd_unique.locator();
 
     let entry = build_native_workspace_rust_qos_entry()
@@ -262,15 +254,8 @@ fn a_ros2_peer_sees_the_overridden_publisher_profile(zenohd_unique: ZenohRouter)
 /// here means a service that never appeared, not one that was slow.
 #[rstest]
 fn every_parameter_service_is_visible_to_a_ros2_peer(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        skip!("zenohd not found");
-    }
-    if !require_ros2() {
-        skip!(
-            "ROS 2 / rmw_zenoh_cpp not available — install it from apt \
-             (`ros-$ROS_DISTRO-rmw-zenoh-cpp`, declared in nros-sdk-index.toml)."
-        );
-    }
+    require_zenohd();
+    require_ros2();
     let locator = zenohd_unique.locator();
     let entry = build_native_workspace_rust_qos_entry()
         .map(|p| p.to_path_buf())
@@ -338,15 +323,8 @@ fn every_parameter_service_is_visible_to_a_ros2_peer(zenohd_unique: ZenohRouter)
 /// 1 Hz -- the retention ring was one sample deep whatever was declared.
 #[rstest]
 fn a_late_joiner_receives_the_declared_history(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        skip!("zenohd not found");
-    }
-    if !require_ros2() {
-        skip!(
-            "ROS 2 / rmw_zenoh_cpp not available — install it from apt \
-             (`ros-$ROS_DISTRO-rmw-zenoh-cpp`, declared in nros-sdk-index.toml)."
-        );
-    }
+    require_zenohd();
+    require_ros2();
     let locator = zenohd_unique.locator();
     let entry = build_native_workspace_rust_qos_entry()
         .map(|p| p.to_path_buf())

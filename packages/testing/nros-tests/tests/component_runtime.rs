@@ -157,9 +157,7 @@ impl ExecutableNode for FailingComp {
 
 #[rstest]
 fn runtime_registers_single_component_and_spins_once(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     timer_only_count().store(0, Ordering::SeqCst);
 
     let locator = zenohd_unique.locator();
@@ -203,9 +201,7 @@ fn runtime_registers_single_component_and_spins_once(zenohd_unique: ZenohRouter)
 /// runtime error even though no subscriber is matched.
 #[rstest]
 fn runtime_creates_publisher_for_declared_entity(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     TALKER_FIRES.store(0, Ordering::SeqCst);
     TALKER_PUB_ERRORS.store(0, Ordering::SeqCst);
 
@@ -240,9 +236,7 @@ fn runtime_creates_publisher_for_declared_entity(zenohd_unique: ZenohRouter) {
 
 #[rstest]
 fn runtime_propagates_init_failure(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let locator = zenohd_unique.locator();
     let config = ExecutorConfig::new(&locator)

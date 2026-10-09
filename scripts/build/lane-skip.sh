@@ -106,9 +106,17 @@ nros_lane_platform() {
 
 # nros_lane_named
 #
-# True when the caller's platform was NAMED rather than included by a fan-out.
+# True when the caller's platform was NAMED rather than included by a fan-out —
+# or included by a COORDINATE-SCOPED lane (issue 1758). A tier lane fans out
+# only the platforms its coordinate file selects (`nros_lane_modules`), so an
+# included platform there IS the lane's specification: its rows are claimed,
+# and a missing prerequisite is a failure exactly as if it had been typed. The
+# halves a lane narrows away go through `nros_lane_out_of_scope_note`, which
+# this does not touch. Only the unscoped `lane=all` sweep keeps SKIPPED (78),
+# and its test run still fails on the skipped modules (`_require-fixtures`).
 nros_lane_named() {
-    [ -z "${NROS_LANE_INCLUDED:-}" ]
+    [ -z "${NROS_LANE_INCLUDED:-}" ] && return 0
+    [ -n "${NROS_FIXTURE_COORDS:-}" ]
 }
 
 # _nros_lane_named_fail <lane> <reason…>

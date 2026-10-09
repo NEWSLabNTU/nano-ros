@@ -44,13 +44,9 @@ fn stdbuf_command(binary: &Path) -> Command {
 
 #[rstest]
 fn test_c_xrce_talker_starts(c_xrce_talker_binary: PathBuf) {
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
+    require_xrce_agent();
 
-    if !require_cmake() {
-        nros_tests::skip!("cmake not found");
-    }
+    require_cmake();
 
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
     let addr = agent.addr();
@@ -82,13 +78,9 @@ fn test_c_xrce_talker_starts(c_xrce_talker_binary: PathBuf) {
 
 #[rstest]
 fn test_c_xrce_listener_starts(c_xrce_listener_binary: PathBuf) {
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
+    require_xrce_agent();
 
-    if !require_cmake() {
-        nros_tests::skip!("cmake not found");
-    }
+    require_cmake();
 
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
     let addr = agent.addr();
@@ -120,13 +112,9 @@ fn test_c_xrce_talker_listener_communication(
     c_xrce_talker_binary: PathBuf,
     c_xrce_listener_binary: PathBuf,
 ) {
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
+    require_xrce_agent();
 
-    if !require_cmake() {
-        nros_tests::skip!("cmake not found");
-    }
+    require_cmake();
 
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
     let addr = agent.addr();
@@ -194,7 +182,7 @@ fn test_c_xrce_talker_listener_communication(
 /// Resolve a native C XRCE example binary (prebuilt), or skip.
 fn nano_c_xrce(case: &str, binary: &str) -> PathBuf {
     build_native_c_example_rmw(case, binary, Rmw::Xrce).unwrap_or_else(|e| {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "native/c/{case} xrce fixture not prebuilt (run `just native build-fixtures`): {e:?}"
         )
     })
@@ -203,12 +191,8 @@ fn nano_c_xrce(case: &str, binary: &str) -> PathBuf {
 /// C XRCE service server ↔ client (AddTwoInts roundtrip).
 #[test]
 fn test_c_xrce_service_request_response() {
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
-    if !require_cmake() {
-        nros_tests::skip!("cmake not found");
-    }
+    require_xrce_agent();
+    require_cmake();
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
     let addr = agent.addr();
 
@@ -256,12 +240,8 @@ fn test_c_xrce_service_request_response() {
 /// C XRCE action server ↔ client (Fibonacci goal → feedback → result).
 #[test]
 fn test_c_xrce_action_fibonacci() {
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
-    if !require_cmake() {
-        nros_tests::skip!("cmake not found");
-    }
+    require_xrce_agent();
+    require_cmake();
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
     let addr = agent.addr();
 

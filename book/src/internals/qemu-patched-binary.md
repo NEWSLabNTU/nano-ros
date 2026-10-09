@@ -123,9 +123,9 @@ QEMU_BIN := absolute_path("build/qemu") / "bin/qemu-system-arm"
 - The patched binary reports version ≥ 7.2.
 - `-netdev help` advertises `dgram` (the multi-instance backend).
 
-Tests use `nros_tests::skip!` when the patched build is absent —
-a fresh clone without `just qemu setup-qemu` surfaces a clear
-`[SKIPPED]` with the suggested remedy instead of silently passing.
+Tests use `nros_tests::unmet!` when the patched build is absent —
+a fresh clone without `just qemu setup-qemu` FAILS with a clear
+`[UNMET PRECONDITION]` naming the remedy instead of silently passing.
 
 ## Adding a new patch
 

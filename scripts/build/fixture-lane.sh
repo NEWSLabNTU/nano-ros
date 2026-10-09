@@ -311,6 +311,24 @@ nros_lane_wants_platform() {
     grep -q "^${platform}," "$NROS_FIXTURE_COORDS"
 }
 
+# nros_lane_wants_rmw <platform> <rmw>
+#
+# Issue 1758 — the RMW-level twin of `nros_lane_wants_platform`: does this run
+# select any `<platform>,<lang>,<rmw>` row? A step with an RMW-specific
+# prerequisite (the cyclonedds passes need a host `idlc`) asks this BEFORE the
+# probe, so a lane that never selected the rows does not ask for the tool, and
+# one that did fails without it rather than skipping. Unset coords = every row.
+nros_lane_wants_rmw() {
+    local platform="${1:?usage: nros_lane_wants_rmw <platform> <rmw>}"
+    local rmw="${2:?usage: nros_lane_wants_rmw <platform> <rmw>}"
+    [ -n "${NROS_FIXTURE_COORDS:-}" ] || return 0
+    [ -s "${NROS_FIXTURE_COORDS}" ] || {
+        echo "fixture-lane: NROS_FIXTURE_COORDS=${NROS_FIXTURE_COORDS} is empty or absent" >&2
+        return 2
+    }
+    grep -q "^${platform},[^,]*,${rmw}\$" "$NROS_FIXTURE_COORDS"
+}
+
 # --- the stamp -------------------------------------------------------------
 #
 # Format (line-oriented, greppable):

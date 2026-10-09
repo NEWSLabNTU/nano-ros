@@ -69,9 +69,7 @@ fn qos_cmd(
 /// receives the publisher's samples cross-process.
 #[rstest]
 fn qos_override_best_effort_honored_and_delivers(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     let bin = build_qos_override_pubsub()
         .require("qos-override-pubsub")
         .to_path_buf();
@@ -145,9 +143,7 @@ fn qos_override_best_effort_honored_and_delivers(zenohd_unique: ZenohRouter) {
 /// taking effect, not a constant the fixture always prints.
 #[rstest]
 fn qos_default_without_override_is_reliable(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     let bin = build_qos_override_pubsub()
         .require("qos-override-pubsub")
         .to_path_buf();

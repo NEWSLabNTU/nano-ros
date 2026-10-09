@@ -585,7 +585,7 @@ fn binaries(platform: Platform, lang: Lang, variant: Variant) -> BinaryPair {
 ///   tests used, expressed at runtime because rstest `#[values]` cannot
 ///   attach `#[ignore]` per case" — but the pre-1135 spelling was a printed
 ///   `[SKIP]` and a bare `return`, which reports PASS, and `#[ignore]` does
-///   not. `skip_class!(capability, …)` is the spelling that actually matches
+///   not. `unmet!(…)` is the spelling that actually matches
 ///   the intent.
 /// - **Missing prerequisite** (`require_e2e` returns `Err`): SDK / env
 ///   var / toolchain missing. Per CLAUDE.md, this must not silently turn into
@@ -600,14 +600,7 @@ fn require_cell_runnable(platform: Platform, lang: Lang, variant: Variant) {
     // Skipping HERE, and returning nothing, means a future `Some(reason)` is
     // reported as a skip by construction.
     if let Some(reason) = platform.skip_reason(lang, variant) {
-        nros_tests::skip_class!(
-            capability,
-            "{} {} {:?}: {}",
-            platform,
-            lang,
-            variant,
-            reason
-        );
+        nros_tests::unmet!("{} {} {:?}: {}", platform, lang, variant, reason);
     }
     // Issue 1685 — a lane holding no coordinate on this platform deselects
     // BEFORE `require_e2e`'s host probes, which would otherwise report a
@@ -626,7 +619,7 @@ fn require_cell_runnable(platform: Platform, lang: Lang, variant: Variant) {
         // reasons are a mix of noun phrases ("arm-none-eabi-gcc not found") and
         // full sentences ("the NuttX kernel at … is a RiscV image, but this
         // lane needs Arm"), and only the colon reads correctly for both.
-        nros_tests::skip!("{}: {}", platform, why);
+        nros_tests::unmet!("{}: {}", platform, why);
     }
 }
 

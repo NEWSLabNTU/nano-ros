@@ -80,9 +80,7 @@ const TYPE_HASH: &str = "RIHS01_loan_e2e_test_42424242424242424242424242424242";
 
 #[rstest]
 fn loan_commit_delivers_to_subscriber(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     // Two separate executors → two zenoh-pico sessions. Same-process
     // pub/sub on a SINGLE session hits zenoh-pico's write filter; the
@@ -150,7 +148,7 @@ fn loan_commit_delivers_to_subscriber(zenohd_unique: ZenohRouter) {
         Err(e) => {
             stop.store(true, Ordering::SeqCst);
             let _ = sub_handle.join();
-            nros_tests::skip!("pub executor open failed: {:?}", e);
+            nros_tests::unmet!("pub executor open failed: {:?}", e);
         }
     };
     let node_id = pub_exec
@@ -219,9 +217,7 @@ fn loan_path_is_alloc_free_on_native_zenoh(zenohd_unique: ZenohRouter) {
     // potential transient log/string allocs in error paths only.
     const ALLOC_BUDGET_PER_PUBLISH: usize = 4;
 
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let locator = zenohd_unique.locator();
 
@@ -230,7 +226,7 @@ fn loan_path_is_alloc_free_on_native_zenoh(zenohd_unique: ZenohRouter) {
         .domain_id(200);
     let mut pub_exec = match Executor::open(&cfg) {
         Ok(e) => e,
-        Err(e) => nros_tests::skip!("pub executor open failed: {:?}", e),
+        Err(e) => nros_tests::unmet!("pub executor open failed: {:?}", e),
     };
     let node_id = pub_exec
         .node_builder("loan_alloc_node")

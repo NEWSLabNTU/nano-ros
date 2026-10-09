@@ -306,7 +306,7 @@ fn none_located(promised: usize, why: &str) -> ! {
          lane=<this lane>`), or, if they ARE built, `row_binary` no longer \
          models where they land."
     );
-    nros_tests::skip!("no generated entry could be checked here — {why}");
+    nros_tests::unmet!("no generated entry could be checked here — {why}");
 }
 
 /// Does this workspace declare a `[[bridge]]`?
@@ -411,7 +411,7 @@ fn a_rows_rmw_is_the_backend_its_artifact_linked() {
         none_located(promised, "no workspace artifact was located");
     }
     if checked == 0 {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "no workspace artifact with readable backend symbols was built for \
              this lane ({unreadable} unreadable) — build fixtures first"
         );
@@ -622,7 +622,7 @@ fn a_rows_entry_registers_its_nodes_at_runtime() {
                 no_peer.join("\n")
             )
         };
-        nros_tests::skip!("no generated entry could be RUN here — {why}");
+        nros_tests::unmet!("no generated entry could be RUN here — {why}");
     }
     if !no_peer.is_empty() {
         eprintln!(

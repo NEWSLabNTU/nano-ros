@@ -34,7 +34,7 @@ use nros_tests::{
     fixtures::{RequireFixture, require_prebuilt_artifact},
     process::ManagedProcess,
     ros2::{DEFAULT_ROS_DISTRO, require_ros2, ros2_env_setup_cyclonedds_with_profile},
-    skip,
+    unmet,
 };
 use std::{
     io::{Read, Write},
@@ -66,12 +66,10 @@ fn guest_binary() -> PathBuf {
 fn preconditions() -> String {
     // Host tools and kernel features only; the guest binary is a build-stage
     // artifact and goes through `guest_binary`'s fixture funnel instead.
-    if !require_ros2() {
-        skip!("ROS 2 is not installed");
-    }
+    require_ros2();
     for tool in ["unshare", "slirp4netns"] {
         if !on_path(tool) {
-            skip!("`{tool}` is not on PATH (issue 1251's libslirp guest needs it)");
+            unmet!("`{tool}` is not on PATH (issue 1251's libslirp guest needs it)");
         }
     }
     let userns = Command::new("unshare")
@@ -79,10 +77,10 @@ fn preconditions() -> String {
         .status()
         .is_ok_and(|s| s.success());
     if !userns {
-        skip!("unprivileged user + network namespaces are not available on this host");
+        unmet!("unprivileged user + network namespaces are not available on this host");
     }
     default_route_interface()
-        .unwrap_or_else(|| skip!("no default IPv4 route: the host half needs one interface"))
+        .unwrap_or_else(|| unmet!("no default IPv4 route: the host half needs one interface"))
 }
 
 /// The pid of `unshare --fork`'s child, which is the process inside the new

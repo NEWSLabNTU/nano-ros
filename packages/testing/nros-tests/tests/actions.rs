@@ -21,9 +21,7 @@ use std::{path::PathBuf, time::Duration};
 fn test_action_server_starts(zenohd_unique: ZenohRouter, action_server_binary: PathBuf) {
     use std::process::Command;
 
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let locator = zenohd_unique.locator();
 
@@ -50,7 +48,7 @@ fn test_action_server_starts(zenohd_unique: ZenohRouter, action_server_binary: P
     // = readiness unverified → SKIP (CLAUDE.md-banned to claim PASS on
     // an unmet precondition). Process exited → real failure → panic.
     if server.is_running() {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "native-rs-action-server did not print 'Waiting for action' marker within 5s"
         );
     } else {
@@ -63,9 +61,7 @@ fn test_action_server_starts(zenohd_unique: ZenohRouter, action_server_binary: P
 fn test_action_client_starts(zenohd_unique: ZenohRouter, action_client_binary: PathBuf) {
     use std::process::Command;
 
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let locator = zenohd_unique.locator();
 
@@ -151,9 +147,7 @@ fn goal_order_reaches_the_server(
 ) {
     use std::process::Command;
 
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     let locator = zenohd_unique.locator();
 
     let mut scmd = Command::new(&action_server_binary);

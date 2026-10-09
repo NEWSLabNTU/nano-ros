@@ -37,7 +37,7 @@ fn require_prebuilt(
     match result {
         Ok(p) => p,
         Err(nros_tests::TestError::FixtureNotBuilt(msg)) => {
-            nros_tests::skip!("{name}: {msg}")
+            nros_tests::unmet!("{name}: {msg}")
         }
         Err(e) => panic!("Failed to build {name}: {e:?}"),
     }
@@ -51,9 +51,7 @@ fn require_prebuilt(
 fn test_native_talker_starts(zenohd_unique: ZenohRouter, talker_binary: PathBuf) {
     use std::process::Command;
 
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let locator = zenohd_unique.locator();
 
@@ -88,9 +86,7 @@ fn test_native_talker_starts(zenohd_unique: ZenohRouter, talker_binary: PathBuf)
 fn test_native_listener_starts(zenohd_unique: ZenohRouter, listener_binary: PathBuf) {
     use std::process::Command;
 
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let locator = zenohd_unique.locator();
 
@@ -329,9 +325,7 @@ fn test_sequence_number_increment(
     talker_binary: PathBuf,
     listener_binary: PathBuf,
 ) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     let out =
         capture_publisher_msginfo_trace(&zenohd_unique.locator(), &talker_binary, &listener_binary);
 
@@ -368,9 +362,7 @@ fn test_gid_consistency(
     talker_binary: PathBuf,
     listener_binary: PathBuf,
 ) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     let out =
         capture_publisher_msginfo_trace(&zenohd_unique.locator(), &talker_binary, &listener_binary);
 
@@ -431,12 +423,10 @@ fn test_tls_talker_listener_communication(
 ) {
     use std::process::Command;
 
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     if !tls_certs::is_openssl_available() {
-        nros_tests::skip!("openssl not available — cannot generate TLS certs");
+        nros_tests::unmet!("openssl not available — cannot generate TLS certs");
     }
 
     // Generate self-signed certificate
@@ -507,9 +497,7 @@ fn test_tls_talker_listener_communication(
 fn test_rtic_pattern_communication(zenohd_unique: ZenohRouter) {
     use std::process::Command;
 
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let rtic_talker = require_prebuilt(
         nros_tests::fixtures::build_native_rtic_talker(),
@@ -571,9 +559,7 @@ fn test_rtic_pattern_service(zenohd_unique: ZenohRouter) {
     use nros_tests::count_pattern;
     use std::process::Command;
 
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let rtic_server = require_prebuilt(
         nros_tests::fixtures::build_native_rtic_service_server(),
@@ -633,9 +619,7 @@ fn test_rtic_pattern_action(zenohd_unique: ZenohRouter) {
     use nros_tests::count_pattern;
     use std::process::Command;
 
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let rtic_server = require_prebuilt(
         nros_tests::fixtures::build_native_rtic_action_server(),

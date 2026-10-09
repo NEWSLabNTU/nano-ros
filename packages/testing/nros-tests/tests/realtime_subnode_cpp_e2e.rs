@@ -49,9 +49,7 @@ use std::{process::Command, time::Duration};
 /// — both callbacks of ONE node run at their declared cadences on distinct tiers.
 #[rstest]
 fn realtime_subnode_cpp_two_groups_on_two_tiers(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     let entry = build_native_workspace_cpp_subnode_realtime_entry()
         .map(|p| p.to_path_buf())
         .require("realtime-cpp entry");

@@ -71,15 +71,13 @@ pub fn is_qemu_riscv32_available() -> bool {
 }
 
 /// Skip test if qemu-system-riscv32 is not available
-pub fn require_qemu_riscv32() -> bool {
+pub fn require_qemu_riscv32() {
     if !is_qemu_riscv32_available() {
-        eprintln!("Skipping test: qemu-system-riscv32 not found");
-        eprintln!(
-            "Install Espressif's QEMU fork: nros setup --tool esp32-qemu (or: just esp32 setup)"
+        crate::unmet!(
+            "qemu-system-riscv32 not found — install Espressif's QEMU fork: \
+             nros setup --tool esp32-qemu (or: just esp32 setup)"
         );
-        return false;
     }
-    true
 }
 
 /// Check if the riscv32imc-unknown-none-elf target is installed
@@ -92,13 +90,13 @@ pub fn is_riscv32_target_available() -> bool {
 }
 
 /// Skip test if riscv32imc target is not available
-pub fn require_riscv32_target() -> bool {
+pub fn require_riscv32_target() {
     if !is_riscv32_target_available() {
-        eprintln!("Skipping test: riscv32imc-unknown-none-elf target not installed");
-        eprintln!("Install with: rustup target add riscv32imc-unknown-none-elf");
-        return false;
+        crate::unmet!(
+            "riscv32imc-unknown-none-elf target not installed \
+             (rustup target add riscv32imc-unknown-none-elf)"
+        );
     }
-    true
 }
 
 // `require_zenoh_pico_riscv` removed — Phase 84.F4 replaced the
@@ -118,13 +116,10 @@ pub fn is_espflash_available() -> bool {
 }
 
 /// Skip test if espflash is not available
-pub fn require_espflash() -> bool {
+pub fn require_espflash() {
     if !is_espflash_available() {
-        eprintln!("Skipping test: espflash not found");
-        eprintln!("Install with: cargo install espflash");
-        return false;
+        crate::unmet!("espflash not found (cargo install espflash)");
     }
-    true
 }
 
 // =============================================================================

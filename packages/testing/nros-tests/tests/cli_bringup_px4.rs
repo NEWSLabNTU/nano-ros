@@ -46,14 +46,8 @@ fn px4_sitl_2_component_module_builds() {
     // codegen subcommand check below is a soft gate (the verb may not
     // yet exist while the nros-cli side of 212.H.7 lands), surfaced via
     // `skip!` so the test doesn't fail the run.
-    if !nros_tests::require_nros_cli() {
-        nros_tests::skip!("nros CLI not found — run `just setup-cli` + `source ./activate.sh`");
-    }
-    if !nros_tests::require_px4() {
-        nros_tests::skip!(
-            "PX4_AUTOPILOT_DIR / PX4_DIR unset — run `just px4 setup` or load `.envrc`"
-        );
-    }
+    nros_tests::require_nros_cli();
+    nros_tests::require_px4();
 
     let nros = nros_tests::nros_cli_bin_path().expect("require_nros_cli passed");
     let px4_dir = nros_tests::px4_autopilot_dir().expect("require_px4 passed");
@@ -135,7 +129,7 @@ fn px4_sitl_2_component_module_builds() {
             || stdout.contains("TODO(212.H.7)");
         drop(cleanup);
         if looks_unimpl {
-            nros_tests::skip!(
+            nros_tests::unmet!(
                 "nros codegen-system --ahead-of-vendor --target px4 not yet implemented \
                  in the installed CLI (Phase 212.H.7 nros-cli side still landing):\n\
                  stdout:\n{stdout}\nstderr:\n{stderr}"

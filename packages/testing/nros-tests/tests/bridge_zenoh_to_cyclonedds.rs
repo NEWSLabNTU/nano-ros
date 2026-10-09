@@ -127,9 +127,7 @@ fn spawn_zenoh_talker(bin: &Path, locator: &str, label: &'static str) -> Managed
 
 #[rstest]
 fn test_zenoh_to_cyclonedds_bridge_e2e(zenohd_unique: ZenohRouter, talker_binary: PathBuf) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let bridge_bin = build_bridge_zenoh_to_cyclonedds_fwd()
         .require("bridge-zenoh-to-cyclonedds-fwd (bins/bridge-zenoh-to-cyclonedds-fwd)")
@@ -202,9 +200,7 @@ fn test_zenoh_to_cyclonedds_bridge_to_nano_listener(
     zenohd_unique: ZenohRouter,
     talker_binary: PathBuf,
 ) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     let bridge_bin = build_bridge_zenoh_to_cyclonedds_fwd()
         .require("bridge-zenoh-to-cyclonedds-fwd (bins/bridge-zenoh-to-cyclonedds-fwd)")
         .to_path_buf();
@@ -258,12 +254,8 @@ fn test_zenoh_to_cyclonedds_bridge_to_nano_listener(
 /// zenoh talker → bridge → stock `ros2 topic echo` over `rmw_cyclonedds_cpp`.
 #[rstest]
 fn test_zenoh_to_cyclonedds_bridge_ros2(zenohd_unique: ZenohRouter, talker_binary: PathBuf) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
-    if !require_ros2_cyclonedds() {
-        nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");
-    }
+    require_zenohd();
+    require_ros2_cyclonedds();
     let bridge_bin = build_bridge_zenoh_to_cyclonedds_fwd()
         .require("bridge-zenoh-to-cyclonedds-fwd (bins/bridge-zenoh-to-cyclonedds-fwd)")
         .to_path_buf();

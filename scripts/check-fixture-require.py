@@ -252,7 +252,7 @@ def _bypassing_calls(f, text, call, decl):
 EXISTENCE_GUARD = re.compile(
     r"\bif\s+!\s*[^{};]*?\.(?:is_file|exists|is_dir)\s*\(\s*\)\s*\{"
 )
-SKIP_CALL = re.compile(r"\bskip(?:_class)?!\s*\(")
+SKIP_CALL = re.compile(r"\b(?:skip(?:_class)?|unmet|lane_skip)!\s*\(")
 EXISTENCE_BASELINE = ROOT / ".config" / "fixture-existence-skip-baseline.txt"
 
 

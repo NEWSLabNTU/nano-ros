@@ -78,7 +78,7 @@ pub fn spawn_int32_sink(topic: Option<&str>, locator: &str) -> crate::process::M
 
     let listener = build_int32_sink()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| crate::skip!("int32-sink fixture not built: {e}"));
+        .unwrap_or_else(|e| crate::unmet!("int32-sink fixture not built: {e}"));
 
     let label = topic.unwrap_or("listener").to_string();
     let mut cmd = Command::new(listener);

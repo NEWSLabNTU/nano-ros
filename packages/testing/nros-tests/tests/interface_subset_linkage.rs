@@ -86,12 +86,12 @@ fn exported_symbols(archive: &PathBuf) -> nros_tests::TestResult<Vec<String>> {
         .output();
     let out = match out {
         Ok(o) if o.status.success() => o,
-        Ok(o) => nros_tests::skip!(
+        Ok(o) => nros_tests::unmet!(
             "nm failed on {}: {}",
             archive.display(),
             String::from_utf8_lossy(&o.stderr)
         ),
-        Err(e) => nros_tests::skip!("nm unavailable ({e}) — cannot inspect FFI archives"),
+        Err(e) => nros_tests::unmet!("nm unavailable ({e}) — cannot inspect FFI archives"),
     };
     Ok(String::from_utf8_lossy(&out.stdout)
         .lines()

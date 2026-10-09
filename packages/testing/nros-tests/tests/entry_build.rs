@@ -63,20 +63,22 @@ impl Platform {
         match self {
             Platform::Nuttx => {
                 if !nuttx::is_nuttx_available() {
-                    nros_tests::skip!("NUTTX_DIR unset/invalid — run `just nuttx setup`");
+                    nros_tests::unmet!("NUTTX_DIR unset/invalid — run `just nuttx setup`");
                 }
                 if !nuttx::is_nuttx_configured() {
-                    nros_tests::skip!(
+                    nros_tests::unmet!(
                         "NuttX tree not configured (no include/nuttx/config.h) — run `just nuttx build`"
                     );
                 }
             }
             Platform::ThreadxLinux => {
                 if !threadx_linux::is_threadx_available() {
-                    nros_tests::skip!("THREADX_DIR unset/invalid — run `just threadx_linux setup`");
+                    nros_tests::unmet!(
+                        "THREADX_DIR unset/invalid — run `just threadx_linux setup`"
+                    );
                 }
                 if !threadx_linux::is_nsos_netx_available() {
-                    nros_tests::skip!(
+                    nros_tests::unmet!(
                         "NetX Duo (NSOS) unavailable — run `just threadx_linux setup`"
                     );
                 }

@@ -110,8 +110,7 @@ fn the_derived_node_is_instantiated_and_carries_no_vtable() -> TestResult<()> {
     let binary = build_freertos_workspace_cpp_subnode_portable_entry()?;
 
     if !arm_nm_available() {
-        nros_tests::skip_class!(
-            capability,
+        nros_tests::unmet!(
             "arm-none-eabi-nm is not on PATH; the linked image at {} cannot be \
              read symbolically on this host",
             binary.display()
@@ -172,8 +171,7 @@ fn the_group_split_entry_links_the_sched_context_abi() -> TestResult<()> {
     let binary = build_freertos_workspace_cpp_subnode_portable_entry()?;
 
     if !arm_nm_available() {
-        nros_tests::skip_class!(
-            capability,
+        nros_tests::unmet!(
             "arm-none-eabi-nm is not on PATH; cannot read {}",
             binary.display()
         );

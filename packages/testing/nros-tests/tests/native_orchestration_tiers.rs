@@ -103,9 +103,7 @@ fn multi_tier_binary_runs_both_tiers_with_router() -> nros_tests::TestResult<()>
     // With a live zenohd the binary gets past `Executor::open`, spawns the low
     // tier, and the boot tier prints the `multi-tier run — N tier(s)` marker
     // before its forever-spin (the timeout kills it).
-    if !nros_tests::fixtures::require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    nros_tests::fixtures::require_zenohd();
     let bin = multi_tier_bin()?;
     let domain = nros_tests::unique_ros_domain_id();
     let port = 17_400u16 + u16::from(domain);

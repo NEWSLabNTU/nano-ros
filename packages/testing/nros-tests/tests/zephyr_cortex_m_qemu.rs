@@ -92,10 +92,10 @@ const NET_STACK_READY_MARKER: &str = "IPv4 address: 10.0.2.15";
 /// line, so its accumulated output is the superset instead.
 fn run_pubsub_cell(lang: &str, matrix_lang: Lang, wait_marker: &str, budget: Duration) {
     if !is_qemu_available() {
-        nros_tests::skip!("qemu-system-arm not found");
+        nros_tests::unmet!("qemu-system-arm not found");
     }
     if !is_zenohd_available() {
-        nros_tests::skip!("zenohd not found — run `just setup` / source ./activate.sh");
+        nros_tests::unmet!("zenohd not found — run `just setup` / source ./activate.sh");
     }
 
     // issue 0807 — this used to `skip!` on ANY resolver error, with a message

@@ -25,9 +25,7 @@ use std::time::Duration;
 fn test_safety_e2e_talker_listener(zenohd_unique: ZenohRouter) {
     use std::process::Command;
 
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let talker_path = build_native_talker_safety().require("safety talker");
     let listener_path = build_native_listener_safety().require("safety listener");
@@ -107,9 +105,7 @@ fn test_safety_e2e_talker_listener(zenohd_unique: ZenohRouter) {
 fn test_safety_talker_standard_listener(zenohd_unique: ZenohRouter) {
     use std::process::Command;
 
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let talker_path = build_native_talker_safety().require("safety talker");
     let listener_path = build_int32_sink().require("standard listener");
@@ -176,9 +172,7 @@ fn test_safety_talker_standard_listener(zenohd_unique: ZenohRouter) {
 fn test_declarative_safety_listener_receives_integrity(zenohd_unique: ZenohRouter) {
     use std::process::Command;
 
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let listener_path =
         build_native_declarative_safety_listener().require("declarative-safety-listener");
@@ -259,9 +253,7 @@ fn test_declarative_safety_listener_receives_integrity(zenohd_unique: ZenohRoute
 fn test_c_safety_listener_validates_crc(zenohd_unique: ZenohRouter) {
     use std::process::Command;
 
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let listener = build_native_c_example_rmw("safety-listener", "c_safety_listener", Rmw::Zenoh)
         .require("c safety-listener");
@@ -308,9 +300,7 @@ fn test_c_safety_listener_validates_crc(zenohd_unique: ZenohRouter) {
 fn test_cpp_safety_listener_validates_crc(zenohd_unique: ZenohRouter) {
     use std::process::Command;
 
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let listener =
         build_native_cpp_example_rmw("safety-listener", "cpp_safety_listener", Rmw::Zenoh)

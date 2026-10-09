@@ -17,8 +17,11 @@ skipped with the reason "every cell is out of this run's lane" through a plain
 2 — small, but the summary exists to be trusted, and `baremetal_run_plan_runtime`
 carries a comment about getting this exact classification wrong once already.
 
-THE RULE — a `skip!` whose message names being out of lane must be
-`skip_class!(lane, …)`.
+THE RULE — a precondition panic whose message names being out of lane must be
+the lane skip. Since issue 1758 the spellings are `nros_tests::unmet!` (a
+FAILURE: in scope and unmet) and `nros_tests::lane_skip!` (out of scope), so an
+`unmet!` that says "out of lane" is now worse than a miscount — it turns a
+deselection into a red.
 
 DELIBERATELY NARROW. Only the unambiguous phrasing is matched. Two aggregators
 (`realtime_tiers`, `sched_dims_applied`) report "N skipped, M out of lane" from
@@ -42,7 +45,7 @@ LANE_PHRASES = (
     "out of the run's lane",
     "not selected by this lane",
 )
-SKIP_CALL = re.compile(r"\bskip!\s*\(", re.M)
+SKIP_CALL = re.compile(r"\bunmet!\s*\(", re.M)
 
 
 def offenders(paths):
@@ -55,10 +58,6 @@ def offenders(paths):
             continue
         for n, line in enumerate(lines):
             if not SKIP_CALL.search(line):
-                continue
-            # `skip_class!(` also contains `skip!(`? No — but `nros_tests::skip!`
-            # and `skip_class!` are distinct tokens; require the bare one.
-            if "skip_class!" in line:
                 continue
             window = "\n".join(lines[n : n + 6]).lower()
             if any(p in window for p in LANE_PHRASES):
@@ -90,14 +89,14 @@ def self_test():
             with open(probe, "w") as fh:
                 fh.write(t)
 
-        write('fn t(){ nros_tests::skip!("every cell is out of this run\'s lane:\\n{}", x); }\n')
-        assert offenders([rel]), "an unclassed out-of-lane skip was NOT reported"
-        write('fn t(){ nros_tests::skip_class!(lane, "every cell is out of this run\'s lane"); }\n')
-        assert not offenders([rel]), "the classed spelling was reported"
-        write('fn t(){ nros_tests::skip!("qemu not installed"); }\n')
-        assert not offenders([rel]), "an ordinary capability skip was reported"
-        write('fn t(){ nros_tests::skip!("no rows RAN (2 skipped, 3 out of lane)"); }\n')
-        assert not offenders([rel]), "a MIXED-reason skip must not be forced to `lane`"
+        write('fn t(){ nros_tests::unmet!("every cell is out of this run\'s lane:\\n{}", x); }\n')
+        assert offenders([rel]), "an out-of-lane `unmet!` was NOT reported"
+        write('fn t(){ nros_tests::lane_skip!("every cell is out of this run\'s lane"); }\n')
+        assert not offenders([rel]), "the lane spelling was reported"
+        write('fn t(){ nros_tests::unmet!("qemu not installed"); }\n')
+        assert not offenders([rel]), "an ordinary unmet precondition was reported"
+        write('fn t(){ nros_tests::unmet!("no rows RAN (2 skipped, 3 out of lane)"); }\n')
+        assert not offenders([rel]), "a MIXED-reason message must not be forced to `lane`"
     sys.stdout.write("check-lane-skip-class self-test: OK\n")
 
 
@@ -113,10 +112,8 @@ def main():
         for rel, line, snip in bad:
             sys.stderr.write(f"  {rel}:{line}\n      {snip}\n")
         sys.stderr.write(
-            "\nUse `nros_tests::skip_class!(lane, …)`. A plain `skip!` is read as\n"
-            "`capability`, so a fixture the lane deliberately did not build gets\n"
-            "counted as a missing capability and the sweep summary lies about\n"
-            "which kind of gap a run has (issue 0584).\n"
+            "\nUse `nros_tests::lane_skip!(…)`. `unmet!` is a FAILURE (issue 1758),\n"
+            "so a cell the lane deliberately did not select would read as red.\n"
         )
         sys.exit(1)
     sys.stdout.write("lane-skip-class OK — %d test file(s).\n" % len(files))

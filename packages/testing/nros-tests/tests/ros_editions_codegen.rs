@@ -19,12 +19,12 @@ fn codegen_edition_std_msgs_in_container() {
     let ed = ros_env::test_edition();
     let env = DockerRosEnv::new(&ed, Middleware::Cyclonedds { domain_id: 1 });
     if !env.available() {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "{ed} image not built or docker absent — run `just ros_editions image {ed}`"
         );
     }
     let Some(nros_bin) = ros_env::host_nros_bin() else {
-        nros_tests::skip!("host `nros` binary not found — run `just setup-cli`");
+        nros_tests::unmet!("host `nros` binary not found — run `just setup-cli`");
     };
 
     let out = tempfile::tempdir().expect("tempdir");
@@ -81,18 +81,18 @@ fn codegen_geometry_msgs_matches_edition_golden() {
     let ed = ros_env::test_edition();
     let env = DockerRosEnv::new(&ed, Middleware::Cyclonedds { domain_id: 1 });
     if !env.available() {
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "{ed} image not built or docker absent — run `just ros_editions image {ed}`"
         );
     }
     let Some(nros_bin) = ros_env::host_nros_bin() else {
-        nros_tests::skip!("host `nros` binary not found — run `just setup-cli`");
+        nros_tests::unmet!("host `nros` binary not found — run `just setup-cli`");
     };
 
     let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/ros-editions");
     let golden_path = fixtures.join(&ed).join("geometry_msgs-modules.txt");
     let Ok(golden_body) = std::fs::read_to_string(&golden_path) else {
-        nros_tests::skip!("no geometry_msgs golden for edition {ed} at {golden_path:?}");
+        nros_tests::unmet!("no geometry_msgs golden for edition {ed} at {golden_path:?}");
     };
     // Sort the golden the same way the manifest is sorted (Rust byte order), so
     // the compare is order-independent of how the golden file was written.

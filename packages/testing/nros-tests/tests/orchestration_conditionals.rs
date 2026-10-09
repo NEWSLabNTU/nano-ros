@@ -74,9 +74,7 @@ fn plan_with_record(record: &str) -> serde_json::Value {
 
 #[test]
 fn conditionals_disabled_omits_logger() {
-    if !nros_tests::require_nros_cli() {
-        nros_tests::skip!("nros CLI not found");
-    }
+    nros_tests::require_nros_cli();
     let plan = plan_with_record("record-false.json");
     let instances = plan["instances"].as_array().expect("instances array");
 
@@ -105,9 +103,7 @@ fn conditionals_disabled_omits_logger() {
 
 #[test]
 fn conditionals_enabled_keeps_logger_and_scopes_namespace() {
-    if !nros_tests::require_nros_cli() {
-        nros_tests::skip!("nros CLI not found");
-    }
+    nros_tests::require_nros_cli();
     let plan = plan_with_record("record-true.json");
     let instances = plan["instances"].as_array().expect("instances array");
 

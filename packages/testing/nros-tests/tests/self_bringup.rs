@@ -22,9 +22,7 @@ use std::{fs, path::Path, process::Command};
 // (plan.rs `synthesise_self_model`) and never shells to the parser, so a
 // parser-availability skip only hid these tests on every host without it.
 fn require_nros_cli_only() {
-    if !nros_tests::require_nros_cli() {
-        nros_tests::skip!("nros CLI not found (run `just setup-cli` + `source ./activate.sh`)");
-    }
+    nros_tests::require_nros_cli();
 }
 
 /// Stage a self-bringup component pkg fixture: a single workspace member

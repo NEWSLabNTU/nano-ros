@@ -62,13 +62,8 @@ fn parameters_roundtrip(
     #[case] expected: &[&str],
     zenohd_unique: ZenohRouter,
 ) {
-    assert!(
-        require_cmake(),
-        "{lang}_parameters_roundtrip requires `cmake` on PATH"
-    );
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_cmake();
+    require_zenohd();
 
     let binary = build().require(&format!("{lang}-parameters"));
 

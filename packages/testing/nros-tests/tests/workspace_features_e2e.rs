@@ -522,18 +522,13 @@ fn run_cell(pcell: &MCell) {
     let lang = pcell.lang.as_str();
     let workload = wl_str(pcell.workload);
     let cell = exec_for(pcell.lang, pcell.workload);
-    // Gate: lifecycle cells assert over the ros2 CLI (skip without ROS 2 +
-    // rmw_zenoh_cpp — same contract as the other interop tests); everything
-    // else needs only zenohd.
+    // Gate: lifecycle cells assert over the ros2 CLI (ROS 2 + rmw_zenoh_cpp —
+    // same contract as the other interop tests: out of the lane's scope ⇒ lane
+    // skip, in scope and absent ⇒ FAIL); everything else needs only zenohd.
     if matches!(cell.proof, Proof::LifecycleActive) {
-        if !require_ros2() {
-            nros_tests::skip!(
-                "ROS 2 / rmw_zenoh_cpp not available — install it from apt \
-             (`ros-$ROS_DISTRO-rmw-zenoh-cpp`, declared in nros-sdk-index.toml)."
-            );
-        }
-    } else if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
+        require_ros2();
+    } else {
+        require_zenohd();
     }
 
     let entry = resolve(cell.entry, lang, workload, "talker/entry");
@@ -542,7 +537,7 @@ fn run_cell(pcell: &MCell) {
     // Native-only family: every cell gets an ephemeral router (no fixture
     // bakes a port for any of these workspaces — see the module doc).
     let router = ZenohRouter::start_unique()
-        .unwrap_or_else(|e| nros_tests::skip!("zenohd failed to start: {e}"));
+        .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start: {e}"));
     let locator = router.locator();
 
     match cell.proof {
@@ -677,10 +672,14 @@ fn run_cell(pcell: &MCell) {
                 });
             // Issue 0309 — the delivery count above cannot tell the DECLARED
             // profile from any compatible one, so read what the endpoints
-            // actually advertise while both are still alive. Skips (rather than
-            // fails) without ROS 2, so the cell keeps its delivery coverage
-            // everywhere and gains the profile check where a peer exists.
-            if require_ros2() {
+            // actually advertise while both are still alive. The profile check
+            // is part of the cell exactly where the lane CLAIMS a stock ROS 2
+            // peer; a lane that does not claim one keeps the delivery coverage
+            // above and states the omission (issue 1758). What it never does is
+            // decide by probing the host — that was a profile check silently
+            // absent on every host without ROS 2, reported as a full pass.
+            if nros_tests::lane_scope::claims(nros_tests::lane_scope::Capability::Ros2) {
+                require_ros2();
                 // POLL, do not sample once. ROS 2 discovery is eventually
                 // consistent: the delivery wait above already proves both
                 // endpoints exist and are QoS-matched, but a liveliness token
@@ -822,6 +821,12 @@ fn run_cell(pcell: &MCell) {
                         }
                     }
                 }
+            } else {
+                eprintln!(
+                    "[{lang} {workload}] advertised-profile check NOT RUN: this lane does not \
+                     claim a stock ROS 2 peer ({}=ros2)",
+                    nros_tests::lane_scope::UNCLAIMED_ENV
+                );
             }
 
             lis.kill();

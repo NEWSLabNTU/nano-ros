@@ -59,9 +59,7 @@ fn plan(record_name: &str, launch_name: &str) -> (std::process::Output, Option<s
 
 #[test]
 fn chain_3_levels_resolves_to_leaf() {
-    if !nros_tests::require_nros_cli() {
-        nros_tests::skip!("nros CLI not found");
-    }
+    nros_tests::require_nros_cli();
     let (result, plan) = plan("record-chain.json", "system.launch.xml");
     assert!(
         result.status.success(),

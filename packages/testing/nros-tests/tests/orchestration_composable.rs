@@ -35,9 +35,7 @@ fn fixture_dir() -> PathBuf {
 
 #[test]
 fn composable_container_plan_shape() {
-    if !nros_tests::require_nros_cli() {
-        nros_tests::skip!("nros CLI not found");
-    }
+    nros_tests::require_nros_cli();
     let nros = nros_tests::nros_cli_bin_path().expect("require_nros_cli passed");
     let fixture = fixture_dir();
     let record = fixture.join("record.json");

@@ -1174,13 +1174,13 @@ pub fn is_veth_bridge_available() -> bool {
 }
 
 /// Skip test if veth bridge is not available for ThreadX Linux simulation
-pub fn require_veth_bridge() -> bool {
+pub fn require_veth_bridge() {
     if !is_veth_bridge_available() {
-        eprintln!("Skipping test: veth bridge not available for ThreadX Linux");
-        eprintln!("Setup: sudo ./scripts/qemu/setup-network.sh");
-        return false;
+        crate::unmet!(
+            "veth bridge not available for ThreadX Linux \
+             (setup: sudo ./scripts/qemu/setup-network.sh)"
+        );
     }
-    true
 }
 
 /// Phase 127.B.5 — check whether the host has a route for the given
@@ -1215,13 +1215,13 @@ pub fn is_mcast_loopback_route_present(group: &str) -> bool {
 /// route for the test's multicast group. Returns `true` if the route
 /// is present (test may proceed), `false` otherwise. Tests should
 /// `nros_tests::skip!` (or equivalent panic-skip) on `false`.
-pub fn require_mcast_loopback_route(group: &str) -> bool {
+pub fn require_mcast_loopback_route(group: &str) {
     let group_only = group.split(':').next().unwrap_or(group);
     if is_mcast_loopback_route_present(group_only) {
-        return true;
+        return;
     }
-    eprintln!(
-        "Skipping test: host route for multicast group {group_only} not on lo.\n\
+    crate::unmet!(
+        "host route for multicast group {group_only} not on lo.\n\
          QEMU `-netdev socket,mcast=…,localaddr=127.0.0.1` needs the kernel\n\
          to loop the egress back to the sibling QEMU; without a `dev lo`\n\
          route the default route picks a real LAN NIC and cross-process\n\
@@ -1235,7 +1235,6 @@ pub fn require_mcast_loopback_route(group: &str) -> bool {
          `systemd-networkd` unit, NetworkManager dispatcher script, or\n\
          `/etc/network/if-up.d/`."
     );
-    false
 }
 
 /// Check if QEMU RISC-V 64-bit is available
@@ -1324,14 +1323,13 @@ pub fn is_zenoh_pico_arm_available() -> bool {
 }
 
 /// Skip test if zenoh-pico ARM library is not available
-pub fn require_zenoh_pico_arm() -> bool {
+pub fn require_zenoh_pico_arm() {
     if !is_zenoh_pico_arm_available() {
-        eprintln!("Skipping test: libzenohpico.a not found");
-        eprintln!("Build with: just qemu build-zenoh-pico   (or: just qemu setup)");
-        eprintln!("Note: `just qemu build-fixtures` does NOT build it (issue 0483).");
-        return false;
+        crate::unmet!(
+            "libzenohpico.a not found — build with `just qemu build-zenoh-pico` \
+             (or `just qemu setup`); `just qemu build-fixtures` does NOT build it (issue 0483)"
+        );
     }
-    true
 }
 
 /// A socat-managed virtual serial pair (two linked PTYs).

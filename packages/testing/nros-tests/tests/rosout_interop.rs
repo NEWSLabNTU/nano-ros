@@ -36,7 +36,7 @@ use nros_tests::{
     interop, output,
     process::ManagedProcess,
     ros2::{DEFAULT_ROS_DISTRO, Ros2Process, require_ros2},
-    skip,
+    unmet,
 };
 
 /// The coordinates this binary covers, one per language; `interop::CELLS`
@@ -141,9 +141,7 @@ fn a_cpp_log_call_reaches_ros2_topic_echo_rosout() {
 fn run_cell(probe_bin: &Path) {
     interop::assert_test_bound("rosout_interop", &ROSOUT_COORDS);
 
-    if !require_ros2() {
-        skip!("ROS 2 + rmw_zenoh_cpp not available");
-    }
+    require_ros2();
     let router = fixtures::or_skip(fixtures::ZenohRouter::start_unique());
     let locator = router.locator();
 
@@ -155,7 +153,7 @@ fn run_cell(probe_bin: &Path) {
         ECHO_WINDOW,
     ) {
         Ok(p) => p,
-        Err(e) => skip!("ROS 2 topic echo could not start: {e}"),
+        Err(e) => unmet!("ROS 2 topic echo could not start: {e}"),
     };
 
     let mut probe = spawn_probe(probe_bin, &locator, 80);

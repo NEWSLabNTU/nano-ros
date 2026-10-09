@@ -50,26 +50,27 @@ falls back to existence-only, so non-cargo/non-ninja fixtures
 
 ## Skip vs. failure tally semantics
 
-### The skip contract
+### The skip contract (issue 1758)
 
-CLAUDE.md → "Practices" mandates:
+CLAUDE.md → "Practices" mandates: **a test never skips because something
+it needs is absent — it fails; the lane's SCOPE decides what runs.**
 
-> Tests must fail on unmet preconditions. `assert!()` / `bail!()` for
-> missing env/binary. `nros_tests::skip!` panics with `[SKIPPED]` (OK).
-> Bare `eprintln!` + `return` reports PASS — never. Same rule at
-> runtime: panic, not silent early-return.
+* **In scope, precondition unmet** → `nros_tests::unmet!` panics with
+  `[UNMET PRECONDITION] …`. The junit rewrite leaves it a failure.
+  Missing zenohd, QEMU, cross toolchain, ROS 2, fixture — all red.
+  The `require_*()` helpers (`require_zenohd`, `require_ros2`, …)
+  return `()` and fail by themselves.
+* **Out of scope** → `nros_tests::lane_skip!` panics with
+  `[SKIPPED:lane] …`, which the junit rewrite turns into `<skipped>`.
+  It is reached ONLY from a scope predicate, checked before any host
+  probe: the lane's coordinates (`NROS_TEST_COORDS` →
+  `fixtures::lane::require_*_in_lane`) and the host capabilities the
+  lane does not claim (`NROS_TEST_UNCLAIMED=ros2` → `lane_scope`).
+  Both unset ⇒ the run claims everything.
 
-A test that quietly returns when its preconditions are not met
-**reports PASS** — masking every CI regression in that area. The
-project's response is to **panic with a `[SKIPPED]` marker** for
-environment-conditional skips: missing zenohd binary, missing QEMU,
-missing cross toolchain, missing fixture. The `nros_tests::skip!`
-macro (defined in `packages/testing/nros-tests/src/lib.rs`) expands
-to:
-
-```rust
-panic!("[SKIPPED] {}", format_args!($($arg)*))
-```
+`check-skip-budget` fails any skip that is not `lane`, any `lane` skip
+for a coordinate the run selected, and a run in which nothing ran. There
+is no allowlist.
 
 The literal `[SKIPPED] ` prefix is **load-bearing**: every downstream
 consumer (the post-processor, the failure counters, the rerun-failed
@@ -188,7 +189,7 @@ anything break?".
 
 Per CLAUDE.md, never:
 
-* **Bare `eprintln!` + `return`** in place of `skip!` — the test
+* **Bare `eprintln!` + `return`** in place of `unmet!` — the test
   reports PASS, hiding the precondition gap.
 * **Silent early return** in runtime code — panic, don't swallow.
 * **Change the `[SKIPPED]` prefix** without sweeping every consumer
@@ -202,7 +203,8 @@ documented escape hatch. Use it sparingly.
 ## See also
 
 * CLAUDE.md → "Practices" — the parent contract.
-* `packages/testing/nros-tests/src/lib.rs:51` — `skip!` macro.
+* `packages/testing/nros-tests/src/lib.rs` — `unmet!` / `lane_skip!`.
+* `packages/testing/nros-tests/src/lane_scope.rs` — `NROS_TEST_UNCLAIMED`.
 * `packages/testing/nros-tests/src/fixtures/binaries/mod.rs` —
   `require_prebuilt_binary` (Build-fixtures ordering contract).
 * `scripts/test/rewrite-skipped-junit.py` — the post-processor.

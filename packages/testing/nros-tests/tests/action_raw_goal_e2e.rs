@@ -43,9 +43,7 @@ fn action_raw_goal_ships_one_cdr_header(
     zenohd_unique: ZenohRouter,
     c_action_server_binary: PathBuf,
 ) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let probe = build_action_raw_goal_probe()
         .require("raw-goal probe")

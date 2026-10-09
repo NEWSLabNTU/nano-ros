@@ -40,9 +40,7 @@ use std::time::Duration;
 /// nothing would satisfy a liveness check while failing the actual promise.
 #[rstest]
 fn cpp_port_minimal_publisher_publishes(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let bin = nros_tests::fixtures::require_cmake_fixture(
         "cpp_port_minimal_publisher",

@@ -150,8 +150,7 @@ fn require_both_nodes_discoverable(image: &TwoNodeImage, locator: &str) {
             std::thread::sleep(Duration::from_secs(1));
         }
     }
-    nros_tests::skip_class!(
-        resource,
+    nros_tests::unmet!(
         "the image's nodes ({}, {}) are not both in `ros2 node list` after 5 attempts \
          (locator {locator}). zenohd, ROS 2 and the fixture were all present, so this is \
          our image failing to reach the ROS graph, not a missing prerequisite. \
@@ -195,12 +194,8 @@ fn param_set(node: &str, name: &str, value: &str, locator: &str) -> String {
 /// name, and answers with its OWN value for a parameter name they share.
 #[rstest]
 fn ros2_param_cli_addresses_each_node_by_its_own_fqn(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
-    if !require_ros2() {
-        nros_tests::skip!("ROS 2 not found");
-    }
+    require_zenohd();
+    require_ros2();
     let locator = zenohd_unique.locator();
     let image = start_two_node_image(&locator);
     require_both_nodes_discoverable(&image, &locator);
@@ -301,12 +296,8 @@ fn ros2_param_cli_addresses_each_node_by_its_own_fqn(zenohd_unique: ZenohRouter)
 /// control showing the refusals are a constraint rather than a broken writer.
 #[rstest]
 fn ros2_param_set_refuses_undeclared_and_off_step(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
-    if !require_ros2() {
-        nros_tests::skip!("ROS 2 not found");
-    }
+    require_zenohd();
+    require_ros2();
     let locator = zenohd_unique.locator();
     let image = start_two_node_image(&locator);
     require_both_nodes_discoverable(&image, &locator);
@@ -391,9 +382,7 @@ fn ros2_param_set_refuses_undeclared_and_off_step(zenohd_unique: ZenohRouter) {
 /// an empty graph rather than as a failure (issues 1009 / 1137).
 #[test]
 fn ros2_param_cli_addresses_each_node_on_cyclonedds() -> nros_tests::TestResult<()> {
-    if !nros_tests::ros2::require_ros2_cyclonedds() {
-        nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");
-    }
+    nros_tests::ros2::require_ros2_cyclonedds();
     let binary =
         build_native_param_two_node_talker_cyclonedds().require("param-two-node-talker-cyclone");
 
@@ -553,12 +542,8 @@ fn xrce_set_parameters_naming_25_declared_lands() -> nros_tests::TestResult<()> 
         XrceAgent, build_native_workspace_rust_params_xrce_entry, require_ros2_dds,
         require_xrce_agent,
     };
-    if !require_xrce_agent() {
-        nros_tests::skip!("XRCE agent not available");
-    }
-    if !require_ros2_dds() {
-        nros_tests::skip!("ROS 2 + rmw_fastrtps_cpp not available");
-    }
+    require_xrce_agent();
+    require_ros2_dds();
     let binary = build_native_workspace_rust_params_xrce_entry()
         .require("workspace-features-rust-params-xrce native_rust_params_xrce_entry")
         .to_path_buf();

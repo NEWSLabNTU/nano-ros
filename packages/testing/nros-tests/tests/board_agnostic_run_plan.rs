@@ -115,7 +115,7 @@ fn board_agnostic_run_plan_links_against_any_board() -> nros_tests::TestResult<(
             .lines()
             .find_map(|l| l.trim().strip_prefix("// reason: "))
             .unwrap_or("no reason recorded — build.rs predates issue 0683");
-        nros_tests::skip!(
+        nros_tests::unmet!(
             "board_agnostic_run_plan build-fixture emitted the Placeholder stub at {} \
              — no emit to assert. nros-build said: {reason}",
             run_plan_path.display()

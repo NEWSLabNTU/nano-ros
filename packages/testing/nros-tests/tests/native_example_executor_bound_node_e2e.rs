@@ -92,11 +92,9 @@ fn an_executor_bound_node_creates_its_eager_publisher_and_publishes() {
     let binary = build_native_c_example_rmw("custom-platform", "baremetal_demo", FixtureRmw::Zenoh)
         .require("examples/native/c/custom-platform (baremetal_demo, zenoh)");
 
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     let router = ZenohRouter::start_unique()
-        .unwrap_or_else(|e| nros_tests::skip!("zenohd failed to start: {e}"));
+        .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start: {e}"));
 
     let mut cmd = Command::new(&binary);
     cmd.env("NROS_LOCATOR", router.locator())

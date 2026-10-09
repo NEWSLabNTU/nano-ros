@@ -1764,7 +1764,7 @@ test *scope:
     nros_nextest_record_finish
     echo ""
     echo "JUnit XML: $junit"
-    just _check-skip-budget || failed=1
+    just _check-skip-budget "$(dirname "$junit")/junit-real.xml" || failed=1
     if [ $failed -ne 0 ]; then
         echo "FAIL: Some tests failed."
         exit 1
@@ -2705,7 +2705,7 @@ test-all verbose="": _require-fixtures-ready test-zpico-multisession
     # actually runs — reports through this path instead, so a full sweep never
     # reached it. Same class as the fixture gate: the sites that were found got
     # the fix, the site in use did not.
-    just _check-skip-budget || failed=1
+    just _check-skip-budget "$(dirname "$junit")/junit-real.xml" || failed=1
     if [ $failed -ne 0 ]; then
         echo "FAIL: Some tests failed."
         exit 1

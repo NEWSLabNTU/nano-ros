@@ -27,9 +27,7 @@ use std::{process::Command, time::Duration};
 /// Test that talker starts and uses default parameter value
 #[rstest]
 fn test_talker_uses_default_param(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let binary = build_native_param_talker().require("fixture");
     let locator = zenohd_unique.locator();
@@ -75,9 +73,7 @@ fn test_talker_uses_default_param(zenohd_unique: ZenohRouter) {
 /// Test that talker declares parameter with correct constraints
 #[rstest]
 fn test_talker_param_declaration(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let binary = build_native_param_talker().require("fixture");
     let locator = zenohd_unique.locator();
@@ -191,8 +187,7 @@ fn require_node_discoverable(locator: &str) {
             std::thread::sleep(Duration::from_secs(1));
         }
     }
-    nros_tests::skip_class!(
-        resource,
+    nros_tests::unmet!(
         "nros node /talker not discoverable via `ros2 node list` after 3 attempts \
          (locator {locator}) — zenohd, ROS 2 and the talker fixture were all present, so \
          this is our node failing to reach the ROS graph, not a missing prerequisite"
@@ -202,13 +197,9 @@ fn require_node_discoverable(locator: &str) {
 /// Test that ROS 2 can list parameters on nros node
 #[rstest]
 fn test_ros2_param_list(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
-    if !require_ros2() {
-        nros_tests::skip!("ROS 2 not found");
-    }
+    require_ros2();
 
     let locator = zenohd_unique.locator();
     let _talker = start_talker_with_params(&locator);
@@ -243,13 +234,9 @@ fn test_ros2_param_list(zenohd_unique: ZenohRouter) {
 /// Test that ROS 2 can get parameter value from nros node
 #[rstest]
 fn test_ros2_param_get(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
-    if !require_ros2() {
-        nros_tests::skip!("ROS 2 not found");
-    }
+    require_ros2();
 
     let locator = zenohd_unique.locator();
     let _talker = start_talker_with_params(&locator);
@@ -289,13 +276,9 @@ fn test_ros2_param_get(zenohd_unique: ZenohRouter) {
 /// Test that ROS 2 can set and read back a parameter on nros node
 #[rstest]
 fn test_ros2_param_set(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
-    if !require_ros2() {
-        nros_tests::skip!("ROS 2 not found");
-    }
+    require_ros2();
 
     let locator = zenohd_unique.locator();
     let _talker = start_talker_with_params(&locator);
@@ -339,13 +322,9 @@ fn test_ros2_param_set(zenohd_unique: ZenohRouter) {
 /// Test that ROS 2 can describe parameter on nros node
 #[rstest]
 fn test_ros2_param_describe(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
-    if !require_ros2() {
-        nros_tests::skip!("ROS 2 not found");
-    }
+    require_ros2();
 
     let locator = zenohd_unique.locator();
     let _talker = start_talker_with_params(&locator);
@@ -391,9 +370,7 @@ fn test_ros2_param_describe(zenohd_unique: ZenohRouter) {
 /// Test that parameter is correctly typed as integer
 #[rstest]
 fn test_param_integer_type(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
 
     let binary = build_native_param_talker().require("fixture");
     let locator = zenohd_unique.locator();
@@ -446,12 +423,8 @@ fn test_param_integer_type(zenohd_unique: ZenohRouter) {
 /// zenoh wire version) it `skip!`s.
 #[rstest]
 fn test_ros2_param_set_reconfigures_live_read(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
-    if !require_ros2() {
-        nros_tests::skip!("ROS 2 not found");
-    }
+    require_zenohd();
+    require_ros2();
     let locator = zenohd_unique.locator();
 
     // nros `/chatter` subscriber (prints `Received: <data>`).
@@ -539,7 +512,7 @@ fn test_ros2_param_set_reconfigures_live_read(zenohd_unique: ZenohRouter) {
             None => {
                 entry.kill();
                 listener.kill();
-                nros_tests::skip!(
+                nros_tests::unmet!(
                     "param_talker not discoverable via ros2. NOT a wire mismatch — \
                      issue 0291 showed zenoh's wire is proto-stable across 1.x, so \
                      zpico 1.7.2 talks to a much newer distro RMW; the real cause there \

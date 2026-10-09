@@ -289,8 +289,7 @@ fn multihost() {
         // machine cannot do it", and the two are counted separately in the
         // sweep summary. `baremetal_run_plan_runtime` already carries the
         // classed spelling and a comment about getting it wrong once.
-        nros_tests::skip_class!(
-            lane,
+        nros_tests::lane_skip!(
             "every cell is out of this run's lane:\n  {}",
             out_of_lane.join("\n  ")
         );
@@ -328,7 +327,10 @@ fn multihost() {
         failed.join("\n  ")
     );
     if skipped.len() == cells.len() {
-        nros_tests::skip!(
+        // Issue 1758 — every inner unmet precondition is a FAILURE (it lands in
+        // `failed`, asserted above), so what is left in `skipped` is lane
+        // deselection only: nothing ran because nothing was in scope.
+        nros_tests::lane_skip!(
             "all {} multihost cell(s) skipped:\n  {}",
             skipped.len(),
             skipped.join("\n  ")
@@ -345,8 +347,8 @@ fn run_cell(pcell: &MCell) {
     let cell = exec_for(pcell.platform, pcell.lang);
     // The zephyr cell historically gates on the router START (below) rather
     // than a zenohd probe — keep that shape.
-    if cell.boot == Boot::Native && !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
+    if cell.boot == Boot::Native {
+        require_zenohd();
     }
     let robot1 = (cell.robot1)().require(&format!("{platform} {lang} robot1 entry"));
     let robot2 = (cell.robot2)().require(&format!("{platform} {lang} robot2 entry"));
@@ -355,9 +357,9 @@ fn run_cell(pcell: &MCell) {
     // fixture's CONFIG_NROS_ZENOH_LOCATOR was baked with.
     let router = match cell.port {
         None => ZenohRouter::start_unique()
-            .unwrap_or_else(|e| nros_tests::skip!("zenohd failed to start: {e}")),
+            .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start: {e}")),
         Some(port) => ZenohRouter::start_on("127.0.0.1", port)
-            .unwrap_or_else(|e| nros_tests::skip!("zenohd failed to start on {port}: {e}")),
+            .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start on {port}: {e}")),
     };
     let locator = router.locator();
 

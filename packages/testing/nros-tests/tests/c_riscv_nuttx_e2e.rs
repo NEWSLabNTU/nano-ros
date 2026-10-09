@@ -43,11 +43,9 @@ fn c_riscv_nuttx_talker_delivers_cross_process() {
         &[PlatformId::NuttxRiscv],
         "the riscv NuttX C talker",
     );
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
+    require_zenohd();
     if !nros_tests::esp32::is_qemu_riscv32_available() {
-        nros_tests::skip!("qemu-system-riscv32 not found");
+        nros_tests::unmet!("qemu-system-riscv32 not found");
     }
 
     let talker = build_nuttx_riscv_c_talker()
@@ -60,7 +58,7 @@ fn c_riscv_nuttx_talker_delivers_cross_process() {
     // Router on the baked port; listen on 0.0.0.0 so the slirp guest
     // (10.0.2.2 gateway) can reach it.
     let router = ZenohRouter::start_on("0.0.0.0", C_RISCV_NUTTX_TALKER_PORT).unwrap_or_else(|e| {
-        nros_tests::skip!("zenohd failed to start on {C_RISCV_NUTTX_TALKER_PORT}: {e}")
+        nros_tests::unmet!("zenohd failed to start on {C_RISCV_NUTTX_TALKER_PORT}: {e}")
     });
     let _ = &router;
 
