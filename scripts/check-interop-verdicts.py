@@ -440,8 +440,16 @@ def _helper_bodies(src_dir: Path = NROS_TESTS_SRC) -> dict[str, str]:
     to the next — coarse, and it errs toward naming MORE rows, which costs a
     build; naming fewer costs the red this exists to prevent.
     """
+    # The sources are TRACKED, so ask the index, never walk the tree
+    # (`check-no-tracked-file-find`).
+    listed = subprocess.run(
+        ["git", "-C", str(ROOT), "ls-files", "-z", "--", str(src_dir.relative_to(ROOT))],
+        capture_output=True, text=True, check=True,
+    ).stdout
     out: dict[str, str] = {}
-    for f in sorted(src_dir.rglob("*.rs")):
+    for f in sorted(ROOT / p for p in listed.split("\0") if p.endswith(".rs")):
+        if not f.is_file():  # tracked, but deleted in this worktree
+            continue
         text = f.read_text(encoding="utf-8")
         marks = list(_FN.finditer(text))
         for i, m in enumerate(marks):
