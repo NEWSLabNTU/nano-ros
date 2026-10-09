@@ -1,0 +1,59 @@
+# Issue 1706 — an rv-virt-threadx (QEMU riscv64, ThreadX + NetX Duo) image
+# that CARVES its parameter store from the executor backing (phase-382 W3'),
+# with a live zenoh session.
+#
+# The sibling of `bins/param-store-nuttx-qemu-arm` (same `lib.rs`): a talker
+# with ONE declared parameter (`start_value`) whose `system.contract.yaml`
+# makes the store visible to the build, so `nros sync` writes the sizing
+# descriptor's `[params] store = "declared"`. Without the contract the same
+# image takes the HEAP road, which is the before/after issue 1706 records.
+#
+# A cargo `[[bin]]` with `nros::main!()`, not the `app_main!` staticlib the
+# `examples/rv-virt-threadx/rust/*` leaves are: those link through
+# `nros_threadx_rv64_rust_app` (CMake), which names no sizing descriptor to
+# cargo, so a contract beside them reaches nothing. This bin goes through the
+# cargo-leaf road (`build/<image>/nros-cargo.toml`), where it does.
+#
+# Consumed by tests/param_store_carve.rs.
+[package]
+name = "param_store_threadx_riscv64"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Issue 1706 — rv-virt-threadx talker that carves its parameter store"
+
+[[bin]]
+name = "param-store-threadx-riscv64"
+path = "src/main.rs"
+test = false
+bench = false
+
+[lib]
+crate-type = ["rlib"]
+path = "src/lib.rs"
+
+[dependencies]
+# `param-services`: a declared parameter is what builds the store.
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "macros", "param-services"] }
+std_msgs = { path = "generated/std_msgs", default-features = false }
+log = "0.4"
+
+# Everything only the IMAGE needs is TARGET-scoped, so the node in `lib.rs`
+# builds for the host as well and `nros sync` can PROBE what it creates
+# (issues 1265, 1603) — the shape of `examples/rv-virt-threadx/rust/talker`.
+[target.'cfg(target_os = "none")'.dependencies]
+# `rmw-zenoh`: the board's `run_entry` registers the backend explicitly (a
+# bare-metal image has no constructor section to do it).
+nros-board-threadx-qemu-riscv64 = { version = "*", features = ["rmw-zenoh"] }
+# `alloc-stats`: the Rust global allocator's peak — where the store lands on
+# the heap road.
+nros-platform = { version = "*", default-features = false, features = ["platform-threadx", "global-allocator", "critical-section", "alloc-stats"] }
+nros-rmw-zenoh = { version = "*", features = ["platform-threadx", "ros-humble"] }
+
+[package.metadata.ament]
+build_depend = ["std_msgs"]
+exec_depend = ["std_msgs"]
+
+# A standalone workspace root, like every leaf under `bins/`.
+[workspace]

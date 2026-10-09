@@ -267,6 +267,12 @@ build-fixture-extras:
     # nothing here ever depended on it; the fixture is a plain Rust build.)
     THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
         bash scripts/build/fixtures-build.sh threadx-riscv64 rust --id threadx-riscv64-logging-smoke
+    # Issue 1706 — the parameter-store image (a cargo `[[bin]]` on the
+    # cargo-leaf road, so its contract reaches the sizing descriptor). Its
+    # `system.toml` names the board, so the board descriptor's cargo config
+    # carries the triple and the ThreadX/NetX dirs; the env above is harmless.
+    THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
+        bash scripts/build/fixtures-build.sh threadx-riscv64 rust --id threadx-riscv64-param-store
     # Phase 160.J — ThreadX RV64 C/C++ examples now build via cmake.
     # Corrosion handles the riscv64gc-unknown-none-elf cross under
     # the bundled toolchain file; the ThreadX + NetX Duo include

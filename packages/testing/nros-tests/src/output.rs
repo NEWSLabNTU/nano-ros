@@ -239,6 +239,17 @@ pub const INT32_SINK_READY_MARKER: &str = "Waiting for Int32";
 /// services it is about to call actually exist.
 pub const PARAM_TALKER_READY_MARKER: &str = "Publishing Int32 messages";
 
+/// Issue 1706 / phase-382 W3' — the executor logs this ONCE when it builds a
+/// parameter store out of the backing's carved region
+/// (`parameter store: N slots (B B) carved from the executor backing`). Its
+/// absence on an image whose build implied a store means the store took the
+/// heap road instead.
+pub const PARAM_STORE_CARVED_MARKER: &str = "carved from the executor backing";
+
+/// Issue 1706 — the executor's named refusal when the HEAP road could not hold
+/// the store (`parameter store refused: needs N bytes in one allocation …`).
+pub const PARAM_STORE_REFUSED_MARKER: &str = "parameter store refused";
+
 /// phase-426 W6 — the `param-two-node-talker` fixture prints one of these per
 /// node once the first spin has reconciled the per-node parameter services,
 /// followed by that node's fully-qualified name.

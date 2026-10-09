@@ -177,6 +177,13 @@ impl nros_platform::BoardEntry for ThreadxQemuRiscv64 {
         F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
         E: core::fmt::Debug,
     {
+        // Issue 1706 — the platform's log ABI is a fn-ptr slot this board fills
+        // (`nros-platform-threadx`'s `nros_platform_log_write` is a no-op until a
+        // writer is registered). Only `run_bare` registered it, so on every
+        // SESSION entry each `nros_log` record — library diagnostics and the
+        // parameter store's boot line included — and the panic text were dropped.
+        // threadx-linux registers on all four of its entries; so does this now.
+        node::register_log_writer_public();
         let cfg = Config::default();
         nros_board_threadx::run_entry::<ThreadxQemuRiscv64, Config, F, E>(cfg, None, setup)
     }
@@ -194,6 +201,7 @@ impl nros_platform::BoardEntry for ThreadxQemuRiscv64 {
         F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
         E: core::fmt::Debug,
     {
+        node::register_log_writer_public();
         nros_board_threadx::run_entry::<ThreadxQemuRiscv64, Config, F, E>(
             config_with_overlay(deploy),
             deploy.boot_config,
@@ -237,6 +245,7 @@ impl ThreadxQemuRiscv64 {
         F: Fn(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E> + Copy,
         E: core::fmt::Debug,
     {
+        node::register_log_writer_public();
         nros_board_threadx::run_tiers_entry::<ThreadxQemuRiscv64, Config, F, E>(
             config_with_overlay(deploy),
             deploy.boot_config,
@@ -267,6 +276,8 @@ where
     F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
     E: core::fmt::Debug,
 {
+    // Issue 1706 — see `BoardEntry::run`: register the platform log writer.
+    node::register_log_writer_public();
     nros_board_threadx::run_app_thread::<ThreadxQemuRiscv64, Config, F, E>(
         image_config(),
         None,

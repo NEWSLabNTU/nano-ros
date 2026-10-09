@@ -430,6 +430,11 @@ Real images, measured on 2026-10-09 (each image prints
 * **threadx-linux**: the same probe. Carved 2 slots (17,664 B) on top of the
   board's stated backing. `byte pool peak 201744`.
 * **Zephyr native_sim**: see issue 1706's 2026-10-09 progress.
+* **rv-virt-threadx and NuttX qemu-armv7a** (measured 2026-10-10, issue 1706's
+  closing section): booted with a live `rmw_zenohd`, each carving 2 slots
+  (17,664 B / 17,344 B) and delivering to a native listener. Kept as runtime
+  cells (`tests/param_store_carve.rs`, rows `threadx-riscv64-param-store` and
+  `nuttx-param-store`).
 
 **Extend the layout test first.** `layout_matches_typed_repr_c` asserts only the
 whole struct's `size` and `align` — a carve that permuted two same-size tables
