@@ -24,6 +24,8 @@ use std::{env, path::Path};
 fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
 
+    refuse_size_markers_outside_the_probe();
+
     // phase-427 W9 — `Context::baked()` (`src/init.rs`) reads
     // `option_env!("NROS_LOCATOR")` / `option_env!("NROS_DOMAIN_ID")` in THIS
     // crate, so this crate's build has to carry them. A leaf's `cargo:rustc-env`
@@ -150,4 +152,37 @@ fn described_cell_entities() -> Option<usize> {
 /// so nowhere.)
 fn env_usize(name: &str, rung: Option<usize>, default: usize) -> usize {
     nros_zephyr_build::knob(name).rung(rung).resolve(default)
+}
+
+/// The variable the size probe's nested cargo sets, and nothing else does.
+/// Its other spelling is `nros_sizes_build::PROBE_BUILD_ENV`;
+/// `check-size-markers-unlinked` asserts the two agree.
+const PROBE_BUILD_ENV: &str = "NROS_SIZES_PROBE_BUILD";
+
+/// Issue 1765 — `ffi-size-markers` is for the size probe's OWN build of this
+/// crate, never for one that is linked.
+///
+/// The markers are zero-filled statics whose byte size IS the measured number
+/// (`src/sizes.rs`), so an image that links them carries the sum of every
+/// probed size in flash: 111,252 B of a 587,256 B FreeRTOS C zenoh talker, and
+/// 327,784 B of the AN536 Cyclone C++ entry once its parameter store is carved.
+/// The probe builds `nros` in a separate target directory and marks that
+/// build with `NROS_SIZES_PROBE_BUILD=1`; any other build that turns the
+/// feature on (a dep-site, a `--features` flag, a cmake `FEATURES` list, a
+/// whole-workspace unification) stops here instead of shipping the bytes.
+fn refuse_size_markers_outside_the_probe() {
+    println!("cargo:rerun-if-env-changed={PROBE_BUILD_ENV}");
+    let markers = env::var_os("CARGO_FEATURE_FFI_SIZE_MARKERS").is_some();
+    let probe = env::var(PROBE_BUILD_ENV).is_ok_and(|v| v == "1");
+    if markers && !probe {
+        panic!(
+            "nros: feature `ffi-size-markers` is enabled outside the size probe \
+             (issue 1765).\n\
+             The markers exist to be MEASURED by the probe's own nested build \
+             (`nros-sizes-build`, which sets {PROBE_BUILD_ENV}=1); in a linked \
+             image they are zero-filled flash the size of every probed type. \
+             Remove `ffi-size-markers` from the dep-site or `--features` that \
+             enabled it."
+        );
+    }
 }

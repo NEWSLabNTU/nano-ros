@@ -47,15 +47,18 @@ default = []
 # That is issue 0593 exactly, and `check-feature-contract` clause (d) rejects
 # it. A crate that invokes a macro names this feature at its own dep-site.
 macros = ["dep:nros-macros"]
-# Phase 11.3.C — `#[used]` markers on the `__NROS_SIZE_*` opaque-storage
-# statics. nros-c / nros-cpp build scripts probe these out of the rlib
-# to derive C/C++ FFI macros (Phase 87). Pure-Rust applications (e.g.
-# autoware-sentinel's SPE firmware) don't need them — the markers are
-# `#[used]` so `--gc-sections` cannot drop the underlying [u8; N]
-# arrays from the final binary, which costs ~340 KB on Cortex-R5
-# because `size_of::<Executor>()` ≈ 348 KB. Disable this feature with
-# `default-features = false` + opt back into `std` to recover the
-# 340 KB at link time.
+# Phase 11.3.C — the `__NROS_SIZE_*` opaque-storage markers. nros-c / nros-cpp
+# build scripts probe these out of the rlib to derive C/C++ FFI macros
+# (Phase 87).
+#
+# PROBE-ONLY (issue 1765). The size probe turns this on for its OWN nested
+# build of this crate (`probe_rlib` in the C/C++ build helper crate), in a separate
+# target directory; `build.rs` refuses it in any build the probe did not start
+# (`NROS_SIZES_PROBE_BUILD`). Never name it at a dep-site: the markers are
+# zero-filled statics whose byte size IS the number, so a linked image carries
+# the sum of every probed size in flash — 111,252 B of a 587,256 B FreeRTOS C
+# talker, 327,784 B of the AN536 Cyclone C++ entry with a carved parameter
+# store. Gate: `check-size-markers-unlinked`.
 ffi-size-markers = []
 # phase-308 — the process-global recorder non-Rust adapters feed (see
 # `src/metadata_mode.rs`). Host probe only: it never ships in firmware, and a

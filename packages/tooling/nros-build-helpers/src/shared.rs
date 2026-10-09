@@ -25,7 +25,7 @@ pub type SizeMap = HashMap<String, u64>;
 /// not find the rlib — the caller then treats the stamp as unknown, which is
 /// the conservative direction (it cannot claim a mismatch is stale).
 fn probe_artifact_stamp() -> Option<String> {
-    let rlib = nros_sizes_build::find_dep_rlib("nros", "__NROS_SIZE_").ok()?;
+    let rlib = probe_rlib().ok()?;
     let meta = std::fs::metadata(&rlib).ok()?;
     let mtime = meta
         .modified()
@@ -36,8 +36,27 @@ fn probe_artifact_stamp() -> Option<String> {
     Some(format!("{} {} {}", rlib.display(), mtime, meta.len()))
 }
 
+/// The feature that compiles the `__NROS_SIZE_*` markers into `nros`.
+///
+/// Issue 1765 — requested HERE, for the probe's own nested build, and nowhere
+/// else. It used to sit on `nros-c`'s and `nros-cpp`'s `nros` dependency, which
+/// put the markers in every linked C/C++ image as zero-filled flash (111,252 B
+/// of a 587,256 B FreeRTOS C zenoh talker). `nros/build.rs` now refuses it in
+/// any build the probe did not start.
+const SIZE_MARKER_FEATURE: &str = "ffi-size-markers";
+
+/// The `nros` rlib the probe measured — ONE call shape for both readers, so the
+/// stamp and the sizes always name the same probe directory.
+fn probe_rlib() -> Result<PathBuf, nros_sizes_build::Error> {
+    nros_sizes_build::find_dep_rlib_with_probe_features(
+        "nros",
+        "__NROS_SIZE_",
+        &[SIZE_MARKER_FEATURE],
+    )
+}
+
 pub fn probe_nros_sizes(crate_label: &str) -> SizeMap {
-    let rlib = match nros_sizes_build::find_dep_rlib("nros", "__NROS_SIZE_") {
+    let rlib = match probe_rlib() {
         Ok(p) => p,
         Err(e) => panic!(
             "{crate_label}: size probe could not locate the `nros` rlib: {e}\n\

@@ -369,13 +369,14 @@ host-only = true
 host-only-reason = "cdylib/staticlib C ABI surface, built per-platform by cmake not by the workspace lane"
 
 [dependencies]
-# phase-361 W3 — `ffi-size-markers` is REQUESTED here, not inherited. It used to
-# ride in on `nros`'s `default`, which this dep-site disables, so a `-p nros-c`
-# build (what cmake/corrosion actually runs) resolved `nros` to `alloc,std` and
-# got no markers; only a whole-workspace build did, by unification. The `#[used]`
-# attribute those markers carry is what keeps `--gc-sections` from dropping the
-# `__NROS_SIZE_*` arrays the build script probes (cf. issue 0464).
-nros = { version = "0.5.0", path = "../nros", default-features = false, features = ["ffi-size-markers"] }
+# issue 1765 — NO `ffi-size-markers` here. phase-361 W3 requested it on this
+# dep-site so that probe forwarding (issue 0665) carried it into the nested size
+# probe, and that also compiled the `__NROS_SIZE_*` arrays into THIS staticlib:
+# zero-filled `.text` the size of every probed type in every C image (111,252 B
+# of a 587,256 B FreeRTOS zenoh talker). The probe now requests the feature for
+# its own nested build (`nros-build-helpers::shared::probe_rlib`), and
+# `nros/build.rs` refuses it anywhere else. Gate: `check-size-markers-unlinked`.
+nros = { version = "0.5.0", path = "../nros", default-features = false }
 nros-node.workspace = true
 nros-rmw.workspace = true
 nros-core.workspace = true
@@ -454,8 +455,8 @@ nros-build-helpers = { workspace = true }
 # product/build-graph overlap 12 -> 8 on its removal.
 #
 # `nros` remains a REGULAR dependency below, which is what the nested probe's
-# `cargo build -p nros` resolves through — with `ffi-size-markers` requested at
-# that dep-site (issue 0593), so the probe's `--features=<resolved>` carries it.
+# `cargo build -p nros` resolves through. The probe adds `ffi-size-markers` to
+# its own `--features=<resolved>` (issue 1765); this dep-site no longer names it.
 
 # phase-361 W3 fallout — the crate's OWN tests need `std` spelled.
 #
