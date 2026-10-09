@@ -998,6 +998,10 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
 - **Zephyr zsock serializes send/recv per-fd:** `Z_CONFIG_SOCKET_TIMEOUT` must stay 100 ms (5 s
   starves tx → lease death, silent session drop); intra-image pub→sub needs
   `Z_FEATURE_LOCAL_SUBSCRIBER=1`. → platform-implementation-notes.md (issues 0129/0139).
+- **On a host-sim RTOS board (threadx-linux, freertos-posix) a HOST library's own threads
+  (Cyclone's) are not kernel threads — never let them enter a kernel service.** On threadx-linux
+  one call leaks the port's `_tx_linux_mutex` and the kernel wedges in ~2 s; the platform seam
+  now routes/refuses them (`nros-platform-threadx/src/threadx_context.h`). → issues 1750, 1237, 1769.
 - **NuttX spin uses `sem_timedwait`** (pthread condvar hangs). → platform-implementation-notes.md.
 - **NetX Duo BSD `SO_RCVTIMEO` takes `nx_bsd_timeval*`, not `INT` ms** (deadlock otherwise).
 - **A task's `stack_bytes` is a FLOOR the PORT raises, never a size the caller can get right**
