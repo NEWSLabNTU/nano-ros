@@ -16,7 +16,9 @@ nano-ros-app/            # this repo (the west manifest repo)
 ├── west.yml             # pins Zephyr (v3.7.0) + imports nano-ros
 └── app/                 # the application
     ├── CMakeLists.txt   # find_package(Zephyr) + nano_ros_node_register(TYPED C)
-    ├── prj.conf         # CONFIG_NROS=y + zenoh RMW
+    ├── system.toml      # the image: board + RMW (zenoh); the module renders it
+    ├── package.xml      # the package `nros sync` scans (system.toml needs one)
+    ├── prj.conf         # CONFIG_NROS=y + Zephyr's own settings
     └── src/Talker.c     # std_msgs/Int32 talker on /chatter (typed C component)
 ```
 After `west update` the workspace gains `zephyr/` and `modules/nano-ros/`

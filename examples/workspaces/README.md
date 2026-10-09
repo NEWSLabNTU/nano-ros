@@ -57,8 +57,9 @@ its board are kept for future use, but no lane builds or runs them and the
 `src/zephyr_entry/` is a single Zephyr application that hosts the whole launch
 graph (talker + listener) in one process, and covers **every Zephyr board** —
 the board is chosen at `west build -b` time, not baked into the package. On
-Zephyr the RTOS framework is the workflow: `west build` is the build verb and
-Kconfig selects the RMW. There is no `nros build` / `nros launch` build path.
+Zephyr the RTOS framework is the workflow: `west build` is the build verb, and
+the bringup image's `rmw` (`system.toml`) selects the RMW -- the nano-ros Zephyr
+module renders it into Kconfig (phase-481). There is no `nros launch` build path.
 
 ```bash
 source ./activate.sh
@@ -66,8 +67,8 @@ source ./activate.sh
 # Platform-agnostic message provisioning (once; sibling to `west update`).
 nros sync
 
-# west is the build verb. `-b` picks the board; the -DCONF_FILE Kconfig
-# overlay picks the RMW (prj-zenoh.conf / prj-xrce.conf / prj-cyclonedds.conf).
+# west is the build verb. `-b` picks the board; the image (its `rmw`, `env`
+# knobs and Zephyr-native `conf` fragment) is the bringup's `system.toml`.
 west build -b native_sim/native/64 src/zephyr_entry \
     -- -DCONF_FILE="prj.conf;prj-zenoh.conf"
 

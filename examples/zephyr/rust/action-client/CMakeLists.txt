@@ -17,8 +17,9 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
     nros_zephyr_add_cyclonedds_action_descriptors(app)
 else()
     message(FATAL_ERROR
-        "Phase 168 requires an RMW overlay. Build with: "
-        "west build -- -DCONF_FILE=\"prj.conf;prj-<rmw>.conf\"")
+        "no RMW selected -- build one of this leaf's images: "
+        "west build -- -DNROS_IMAGE=zephyr_<rmw> (system.toml; <rmw> is "
+        "zenoh, xrce or cyclonedds; phase-481)")
 endif()
 
 rust_cargo_application()

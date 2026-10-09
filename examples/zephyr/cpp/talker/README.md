@@ -25,8 +25,9 @@ just zephyr build-one cpp/talker xrce
 just zephyr build-one cpp/talker cyclonedds
 ```
 
-The RMW is selected by conf overlay: `CONF_FILE = prj.conf;prj-<rmw>.conf`
-(this dir carries `prj-zenoh.conf`, `prj-xrce.conf`, `prj-cyclonedds.conf`).
+The RMW is one of the `system.toml` images, selected with
+`-DNROS_IMAGE=zephyr_<rmw>` (`zephyr_zenoh`, `zephyr_xrce`, `zephyr_cyclonedds`);
+each image's `conf` names its Zephyr-native `prj-<rmw>.conf` (phase-481).
 
 ## History
 

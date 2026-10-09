@@ -128,8 +128,7 @@ fn dim_keys(d: SchedDim) -> &'static [&'static [&'static str]] {
 /// must AUTHOR no tiers (else `nros::main!` reads them and never derives, and
 /// the cell's runtime assert passes over a code path it never exercised), must
 /// state the rates the derivation ranks by (the contract beside the launch
-/// file), and its image must name the lowered-band fragment, which must set the
-/// band. Each problem is a string naming what is wrong.
+/// file), and its image must lower the band (`env ZPICO_READ_TASK_PRIORITY`). Each problem is a string naming what is wrong.
 fn derived_bringup_problems(system_toml: &std::path::Path, doc: &toml::Value) -> Vec<String> {
     let bringup = system_toml.parent().expect("system.toml has a parent");
     let mut out = Vec::new();
@@ -174,34 +173,26 @@ fn derived_bringup_problems(system_toml: &std::path::Path, doc: &toml::Value) ->
             contract.display()
         ));
     }
-    let conf = doc
-        .get("image")
-        .and_then(|i| i.get(DERIVED_IMAGE))
-        .and_then(|z| z.get("conf"))
-        .and_then(|c| c.as_array())
-        .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
-        .unwrap_or_default();
-    const FRAGMENT: &str = "prj-lowered-band.conf";
     // issue 1582 — not `zephyr`: that id is `demo_bringup`'s, and a generated
     // entry is keyed on the id, so two bringups sharing it share one west
     // application directory.
     const DERIVED_IMAGE: &str = "zephyr_derived";
-    if conf.last() != Some(&FRAGMENT) {
+    // phase-481 W3 — the band is the IMAGE's `env` row now (rendered into
+    // `CONFIG_NROS_ZENOH_READ_PRIORITY` by the Zephyr module, after every conf
+    // file), not a `prj-lowered-band.conf` that had to be named LAST in `conf`
+    // to survive Kconfig's last-wins merge (issue 0876).
+    const BAND_KEY: &str = "ZPICO_READ_TASK_PRIORITY";
+    let band = doc
+        .get("image")
+        .and_then(|i| i.get(DERIVED_IMAGE))
+        .and_then(|z| z.get("env"))
+        .and_then(|e| e.get(BAND_KEY))
+        .and_then(|v| v.as_str());
+    if band != Some("100") {
         out.push(format!(
-            "`[image.{DERIVED_IMAGE}] conf` must name `{FRAGMENT}` LAST (Kconfig merges last-wins, issue 0876); it is {conf:?}"
-        ));
-    }
-    let fragment = bringup.join("boards/native_sim_native_64").join(FRAGMENT);
-    let sets_band = std::fs::read_to_string(&fragment)
-        .map(|t| {
-            t.lines()
-                .any(|l| l.trim() == "CONFIG_NROS_ZENOH_READ_PRIORITY=100")
-        })
-        .unwrap_or(false);
-    if !sets_band {
-        out.push(format!(
-            "{} does not set CONFIG_NROS_ZENOH_READ_PRIORITY=100 — on a default band the projection and the image's plan agree, and the cell cannot see a regression",
-            fragment.display()
+            "`[image.{DERIVED_IMAGE}] env` does not set {BAND_KEY} = \"100\" (it is {band:?}) — on a \
+             default band the projection and the image's plan agree, and the cell cannot see a \
+             regression"
         ));
     }
     out

@@ -4715,7 +4715,8 @@ rmw = "zenoh"
 builder = "west"
 dir = "examples/zephyr/rust/talker"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_zenoh"
 
 [[fixture]]
 platform = "zephyr"
@@ -4724,7 +4725,8 @@ rmw = "zenoh"
 builder = "west"
 dir = "examples/zephyr/rust/listener"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_zenoh"
 
 [[fixture]]
 platform = "zephyr"
@@ -4733,7 +4735,8 @@ rmw = "zenoh"
 builder = "west"
 dir = "examples/zephyr/rust/service-server"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_zenoh"
 
 [[fixture]]
 platform = "zephyr"
@@ -4742,7 +4745,8 @@ rmw = "zenoh"
 builder = "west"
 dir = "examples/zephyr/rust/service-client"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_zenoh"
 
 [[fixture]]
 platform = "zephyr"
@@ -4751,7 +4755,8 @@ rmw = "zenoh"
 builder = "west"
 dir = "examples/zephyr/rust/action-server"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_zenoh"
 
 [[fixture]]
 platform = "zephyr"
@@ -4760,7 +4765,8 @@ rmw = "zenoh"
 builder = "west"
 dir = "examples/zephyr/rust/action-client"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_zenoh"
 
 [[fixture]]
 platform = "zephyr"
@@ -4769,7 +4775,8 @@ rmw = "xrce"
 builder = "west"
 dir = "examples/zephyr/rust/talker"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-xrce.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_xrce"
 
 [[fixture]]
 platform = "zephyr"
@@ -4778,7 +4785,8 @@ rmw = "xrce"
 builder = "west"
 dir = "examples/zephyr/rust/listener"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-xrce.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_xrce"
 
 [[fixture]]
 platform = "zephyr"
@@ -4787,7 +4795,8 @@ rmw = "xrce"
 builder = "west"
 dir = "examples/zephyr/rust/service-server"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-xrce.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_xrce"
 
 [[fixture]]
 platform = "zephyr"
@@ -4796,7 +4805,8 @@ rmw = "xrce"
 builder = "west"
 dir = "examples/zephyr/rust/service-client"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-xrce.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_xrce"
 
 [[fixture]]
 platform = "zephyr"
@@ -4805,7 +4815,8 @@ rmw = "xrce"
 builder = "west"
 dir = "examples/zephyr/rust/action-server"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-xrce.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_xrce"
 
 [[fixture]]
 platform = "zephyr"
@@ -4814,7 +4825,8 @@ rmw = "xrce"
 builder = "west"
 dir = "examples/zephyr/rust/action-client"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-xrce.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_xrce"
 
 [[fixture]]
 platform = "zephyr"
@@ -4823,7 +4835,8 @@ rmw = "cyclonedds"
 builder = "west"
 dir = "examples/zephyr/rust/talker"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-cyclonedds.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_cyclonedds"
 
 [[fixture]]
 platform = "zephyr"
@@ -4832,7 +4845,8 @@ rmw = "cyclonedds"
 builder = "west"
 dir = "examples/zephyr/rust/listener"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-cyclonedds.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_cyclonedds"
 
 [[fixture]]
 platform = "zephyr"
@@ -4841,7 +4855,8 @@ rmw = "cyclonedds"
 builder = "west"
 dir = "examples/zephyr/rust/service-server"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-cyclonedds.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_cyclonedds"
 
 [[fixture]]
 platform = "zephyr"
@@ -4850,7 +4865,8 @@ rmw = "cyclonedds"
 builder = "west"
 dir = "examples/zephyr/rust/service-client"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-cyclonedds.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_cyclonedds"
 
 [[fixture]]
 platform = "zephyr"
@@ -4859,7 +4875,8 @@ rmw = "cyclonedds"
 builder = "west"
 dir = "examples/zephyr/rust/action-server"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-cyclonedds.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_cyclonedds"
 
 [[fixture]]
 platform = "zephyr"
@@ -4868,7 +4885,8 @@ rmw = "cyclonedds"
 builder = "west"
 dir = "examples/zephyr/rust/action-client"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-cyclonedds.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_cyclonedds"
 
 [[fixture]]
 platform = "zephyr"
@@ -4877,7 +4895,8 @@ rmw = "zenoh"
 builder = "west"
 dir = "examples/zephyr/c/talker"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_zenoh"
 
 [[fixture]]
 platform = "zephyr"
@@ -4886,7 +4905,8 @@ rmw = "zenoh"
 builder = "west"
 dir = "examples/zephyr/c/listener"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_zenoh"
 
 [[fixture]]
 platform = "zephyr"
@@ -4895,7 +4915,8 @@ rmw = "zenoh"
 builder = "west"
 dir = "examples/zephyr/c/service-server"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_zenoh"
 
 [[fixture]]
 platform = "zephyr"
@@ -4904,7 +4925,8 @@ rmw = "zenoh"
 builder = "west"
 dir = "examples/zephyr/c/service-client"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_zenoh"
 
 [[fixture]]
 platform = "zephyr"
@@ -4913,7 +4935,8 @@ rmw = "zenoh"
 builder = "west"
 dir = "examples/zephyr/c/action-server"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_zenoh"
 
 [[fixture]]
 platform = "zephyr"
@@ -4922,7 +4945,8 @@ rmw = "zenoh"
 builder = "west"
 dir = "examples/zephyr/c/action-client"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_zenoh"
 
 [[fixture]]
 platform = "zephyr"
@@ -4931,7 +4955,8 @@ rmw = "xrce"
 builder = "west"
 dir = "examples/zephyr/c/talker"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-xrce.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_xrce"
 
 [[fixture]]
 platform = "zephyr"
@@ -4940,7 +4965,8 @@ rmw = "xrce"
 builder = "west"
 dir = "examples/zephyr/c/listener"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-xrce.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_xrce"
 
 [[fixture]]
 platform = "zephyr"
@@ -4949,7 +4975,8 @@ rmw = "xrce"
 builder = "west"
 dir = "examples/zephyr/c/service-server"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-xrce.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_xrce"
 
 [[fixture]]
 platform = "zephyr"
@@ -4958,7 +4985,8 @@ rmw = "xrce"
 builder = "west"
 dir = "examples/zephyr/c/service-client"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-xrce.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_xrce"
 
 [[fixture]]
 platform = "zephyr"
@@ -4967,7 +4995,8 @@ rmw = "xrce"
 builder = "west"
 dir = "examples/zephyr/c/action-server"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-xrce.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_xrce"
 
 [[fixture]]
 platform = "zephyr"
@@ -4976,7 +5005,8 @@ rmw = "xrce"
 builder = "west"
 dir = "examples/zephyr/c/action-client"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-xrce.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_xrce"
 
 [[fixture]]
 platform = "zephyr"
@@ -4985,7 +5015,8 @@ rmw = "cyclonedds"
 builder = "west"
 dir = "examples/zephyr/c/talker"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-cyclonedds.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_cyclonedds"
 
 [[fixture]]
 platform = "zephyr"
@@ -4994,7 +5025,8 @@ rmw = "cyclonedds"
 builder = "west"
 dir = "examples/zephyr/c/listener"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-cyclonedds.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_cyclonedds"
 
 [[fixture]]
 platform = "zephyr"
@@ -5003,7 +5035,8 @@ rmw = "cyclonedds"
 builder = "west"
 dir = "examples/zephyr/c/service-server"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-cyclonedds.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_cyclonedds"
 
 [[fixture]]
 platform = "zephyr"
@@ -5012,7 +5045,8 @@ rmw = "cyclonedds"
 builder = "west"
 dir = "examples/zephyr/c/service-client"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-cyclonedds.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_cyclonedds"
 
 [[fixture]]
 platform = "zephyr"
@@ -5021,7 +5055,8 @@ rmw = "cyclonedds"
 builder = "west"
 dir = "examples/zephyr/c/action-server"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-cyclonedds.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_cyclonedds"
 
 [[fixture]]
 platform = "zephyr"
@@ -5030,7 +5065,8 @@ rmw = "cyclonedds"
 builder = "west"
 dir = "examples/zephyr/c/action-client"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-cyclonedds.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_cyclonedds"
 
 [[fixture]]
 platform = "zephyr"
@@ -5039,7 +5075,8 @@ rmw = "zenoh"
 builder = "west"
 dir = "examples/zephyr/cpp/talker"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_zenoh"
 
 [[fixture]]
 platform = "zephyr"
@@ -5048,7 +5085,8 @@ rmw = "zenoh"
 builder = "west"
 dir = "examples/zephyr/cpp/listener"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_zenoh"
 
 [[fixture]]
 platform = "zephyr"
@@ -5057,7 +5095,8 @@ rmw = "zenoh"
 builder = "west"
 dir = "examples/zephyr/cpp/service-server"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_zenoh"
 
 [[fixture]]
 platform = "zephyr"
@@ -5066,7 +5105,8 @@ rmw = "zenoh"
 builder = "west"
 dir = "examples/zephyr/cpp/service-client"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_zenoh"
 
 [[fixture]]
 platform = "zephyr"
@@ -5075,7 +5115,8 @@ rmw = "zenoh"
 builder = "west"
 dir = "examples/zephyr/cpp/action-server"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_zenoh"
 
 [[fixture]]
 platform = "zephyr"
@@ -5084,7 +5125,8 @@ rmw = "zenoh"
 builder = "west"
 dir = "examples/zephyr/cpp/action-client"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_zenoh"
 
 [[fixture]]
 platform = "zephyr"
@@ -5093,7 +5135,8 @@ rmw = "xrce"
 builder = "west"
 dir = "examples/zephyr/cpp/talker"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-xrce.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_xrce"
 
 [[fixture]]
 platform = "zephyr"
@@ -5102,7 +5145,8 @@ rmw = "xrce"
 builder = "west"
 dir = "examples/zephyr/cpp/listener"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-xrce.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_xrce"
 
 [[fixture]]
 platform = "zephyr"
@@ -5111,7 +5155,8 @@ rmw = "xrce"
 builder = "west"
 dir = "examples/zephyr/cpp/service-server"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-xrce.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_xrce"
 
 [[fixture]]
 platform = "zephyr"
@@ -5120,7 +5165,8 @@ rmw = "xrce"
 builder = "west"
 dir = "examples/zephyr/cpp/service-client"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-xrce.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_xrce"
 
 [[fixture]]
 platform = "zephyr"
@@ -5129,7 +5175,8 @@ rmw = "xrce"
 builder = "west"
 dir = "examples/zephyr/cpp/action-server"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-xrce.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_xrce"
 
 [[fixture]]
 platform = "zephyr"
@@ -5138,7 +5185,8 @@ rmw = "xrce"
 builder = "west"
 dir = "examples/zephyr/cpp/action-client"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-xrce.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_xrce"
 
 [[fixture]]
 platform = "zephyr"
@@ -5147,7 +5195,8 @@ rmw = "cyclonedds"
 builder = "west"
 dir = "examples/zephyr/cpp/talker"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-cyclonedds.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_cyclonedds"
 
 [[fixture]]
 platform = "zephyr"
@@ -5156,7 +5205,8 @@ rmw = "cyclonedds"
 builder = "west"
 dir = "examples/zephyr/cpp/listener"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-cyclonedds.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_cyclonedds"
 
 [[fixture]]
 platform = "zephyr"
@@ -5165,7 +5215,8 @@ rmw = "cyclonedds"
 builder = "west"
 dir = "examples/zephyr/cpp/service-server"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-cyclonedds.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_cyclonedds"
 
 [[fixture]]
 platform = "zephyr"
@@ -5174,7 +5225,8 @@ rmw = "cyclonedds"
 builder = "west"
 dir = "examples/zephyr/cpp/service-client"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-cyclonedds.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_cyclonedds"
 
 [[fixture]]
 platform = "zephyr"
@@ -5183,7 +5235,8 @@ rmw = "cyclonedds"
 builder = "west"
 dir = "examples/zephyr/cpp/action-server"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-cyclonedds.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_cyclonedds"
 
 [[fixture]]
 platform = "zephyr"
@@ -5192,7 +5245,8 @@ rmw = "cyclonedds"
 builder = "west"
 dir = "examples/zephyr/cpp/action-client"
 board = "native_sim/native/64"
-conf_files = ["prj.conf", "prj-cyclonedds.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_cyclonedds"
 
 [[fixture]]
 platform = "zephyr-cortex-m"
@@ -5203,7 +5257,8 @@ dir = "examples/zephyr/c/talker"
 board = "mps2_an385"
 west_build_name = "build-cortex-m-c-talker-zenoh"
 west_zenoh_locator = "tcp/10.0.2.2:10700"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_zenoh"
 
 [[fixture]]
 platform = "zephyr-cortex-m"
@@ -5214,7 +5269,8 @@ dir = "examples/zephyr/cpp/talker"
 board = "mps2_an385"
 west_build_name = "build-cortex-m-cpp-talker-zenoh"
 west_zenoh_locator = "tcp/10.0.2.2:10800"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_zenoh"
 
 # phase-482 W3 — the ported ROS 2 tutorial publisher on Zephyr, the
 # (ZephyrQemuCortexM, Cpp, Port) cell. Port 10898 =
@@ -5230,7 +5286,8 @@ board = "mps2_an385"
 west_role = "port-minimal-publisher"
 west_build_name = "build-cortex-m-cpp-port-minimal-publisher-zenoh"
 west_zenoh_locator = "tcp/10.0.2.2:10898"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr"
 
 # phase-482 W3 — the other two port templates on Zephyr, the
 # (ZephyrQemuCortexM, Cpp, PortSmoke / PortMonitor) cells. Ports 10888 / 10889
@@ -5269,7 +5326,8 @@ dir = "examples/zephyr/rust/talker"
 board = "mps2_an385"
 west_build_name = "build-cortex-m-rust-talker-zenoh"
 west_zenoh_locator = "tcp/10.0.2.2:10600"
-conf_files = ["prj.conf", "prj-zenoh.conf"]
+conf_files = ["prj.conf"]
+west_image = "zephyr_zenoh"
 
 [[fixture]]
 platform = "zephyr"
@@ -5504,7 +5562,7 @@ skip_probe = true
 # whose tier table `nros::main!` derives instead of reading authored
 # `[tiers.*]`. Same workspace and node packages as the row above; the axis is
 # the BRINGUP (`derived_bringup`: a contract, no tiers) and its image's Kconfig
-# (`prj-lowered-band.conf`: `CONFIG_NROS_ZENOH_READ_PRIORITY=100`, transport
+# (`[image.zephyr_derived] env ZPICO_READ_TASK_PRIORITY = "100"` -> `CONFIG_NROS_ZENOH_READ_PRIORITY=100`, transport
 # band [4, 9], tier pool [10, 14]). The `workspace-zephyr-c-realtime-smp` row is
 # the precedent for a second bringup of one workspace carrying a second image.
 #

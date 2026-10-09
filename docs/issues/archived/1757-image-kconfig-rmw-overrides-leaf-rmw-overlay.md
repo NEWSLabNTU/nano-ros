@@ -1,7 +1,7 @@
 ---
 id: 1757
 title: "The module's image Kconfig fragment states `rmw = \"zenoh\"` LAST, so a Zephyr leaf's XRCE variant builds zenoh-pico and fails on `struct addrinfo`"
-status: open
+status: resolved
 type: bug
 area: [zephyr, build, ci]
 severity: high
@@ -114,3 +114,29 @@ error: recipe `build-fixtures` failed with exit code 2
 The five jobs after it were skipped, so no cell ran again. Nothing has landed
 that changes the fragment's rmw order. This is the expected recurrence, not
 new information about the cause.
+
+## Resolution
+
+Resolved 2026-10-09 by phase-481 W3, the first of the two shapes above. Every
+standalone Zephyr leaf states one image per RMW (`[image.zephyr_zenoh]`,
+`[image.zephyr_xrce]`, `[image.zephyr_cyclonedds]`, `default_images` zenoh), its
+`prj-<rmw>.conf` holds Zephyr-native lines only, and every single-package west
+fixture row names the image it builds (`west_image`), which the leaves script
+passes as `-DNROS_IMAGE`.
+
+Measured with the filter this issue asked for, on the fixture road (Zephyr 3.7,
+native_sim): `build-{c,cpp,rust}-talker-{xrce,cyclonedds}` each configure
+`CONFIG_NROS_RMW_XRCE=y` / `CONFIG_NROS_RMW_CYCLONEDDS=y`, and their whole
+`.config` is identical to the pre-W1 merge (main with the hook bypassed). All 75
+Zephyr 3.7 west leaves build, including every `*-xrce` and `*-cyclonedds` one.
+
+**Regression guard (merge-gating, no build).** `fixtures-manifest.py
+west-leaves` now refuses a west row that names no `west_image` when the leaf's
+DEFAULT image (its one image, else `[system] default_images[0]`) does not link
+the row's `rmw` -- exactly the configuration that built zenoh-pico under an
+`-xrce` name -- and, for a row that does name one, the image must exist and link
+the row's `rmw` (`_require_image_rmw`, issue 0831). Negative control: deleting
+`west_image = "zephyr_xrce"` from the `rust/talker` xrce row fails the manifest
+with `declares rmw 'xrce', which the image 'zephyr_zenoh' it builds does not
+link ... (issue 1757)`. The reader runs on the fast line through
+`check-generated-output-collisions`.

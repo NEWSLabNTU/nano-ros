@@ -194,6 +194,11 @@ locator = "tcp/127.0.0.1:9030"
 board = "zephyr"
 conf = ["prj-zenoh.conf"]
 locator = "tcp/10.0.2.2:7430"
+# issue 1324 / phase-481 W3 -- the nano-ros platform heap (zenoh-pico and the
+# Rust global allocator both allocate from it). 256 KiB on native_sim (host
+# RAM); every e2e run scores it against the image's MEASURED heap peak, so an
+# outgrown value fails a cell by name. Moved from the board's prj-zenoh.conf.
+env = { NROS_ZEPHYR_HEAP_SIZE = "262144" }
 
 # Generated like its sibling (issue 1288). It was the last image whose
 # `entry =` named a package other than `<id>_entry`; that precedence is now held
@@ -205,6 +210,11 @@ conf = ["prj-zenoh.conf"]
 launch = "multihost.launch.xml"
 args = { host = "robot1" }
 locator = "tcp/10.0.2.2:7469"
+# issue 1324 / phase-481 W3 -- the nano-ros platform heap (zenoh-pico and the
+# Rust global allocator both allocate from it). 256 KiB on native_sim (host
+# RAM); every e2e run scores it against the image's MEASURED heap peak, so an
+# outgrown value fails a cell by name. Moved from the board's prj-zenoh.conf.
+env = { NROS_ZEPHYR_HEAP_SIZE = "262144" }
 
 # SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
 # SDK roots it builds against. Keyed by BOARD, not by a deploy or image

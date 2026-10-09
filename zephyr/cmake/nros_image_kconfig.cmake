@@ -46,6 +46,16 @@
 #    variable, above a derived or default value — the same number cargo and the
 #    C defines read (issue 0135).
 #
+# 4. THE IMAGE'S OWN FRAGMENTS (phase-481 W3). A single-package leaf's image
+#    names the Zephyr-native fragment its RMW needs (`conf = ["prj-xrce.conf"]`:
+#    TCP, POSIX, heap sizing -- facts about Zephyr, not nano-ros). They join the
+#    cache value AHEAD of the caller's own `EXTRA_CONF_FILE` entries and the
+#    rendering, so a plain `west build -- -DNROS_IMAGE=zephyr_xrce` gets them
+#    with no `CONF_FILE` to assemble, a board tail passed as an extra still
+#    overrides them, and a fragment the caller already names is left where it
+#    is. A bringup's `conf` is `nros build`'s to pass (RFC-0085 D4), never added
+#    here.
+#
 # The hook is a no-op for an application with no `system.toml`, except that it
 # drops a stale rendering of its own from the cache.
 #
@@ -75,6 +85,9 @@ function(nros_image_kconfig_hook)
 
     # Drop an earlier rendering of ours from the cache value, whatever happens
     # below. A path that no longer exists would otherwise fail Kconfig.
+    # phase-481 W3 -- and the image's own `conf` fragments an earlier configure
+    # inserted (recorded in NROS_IMAGE_CONF_FILES), so an image switch leaves
+    # none of the previous image's behind.
     set(_user "")
     set(_had_ours FALSE)
     if(DEFINED CACHE{EXTRA_CONF_FILE})
@@ -82,6 +95,8 @@ function(nros_image_kconfig_hook)
         foreach(_f IN LISTS _cached)
             get_filename_component(_fdir "${_f}" DIRECTORY)
             if(_fdir STREQUAL _nros_dir AND _f MATCHES "\\.conf$")
+                set(_had_ours TRUE)
+            elseif(_f IN_LIST NROS_IMAGE_CONF_FILES)
                 set(_had_ours TRUE)
             else()
                 list(APPEND _user "${_f}")
@@ -111,6 +126,8 @@ function(nros_image_kconfig_hook)
     elseif(EXISTS "${APPLICATION_SOURCE_DIR}/system.toml")
         set(_dir "${APPLICATION_SOURCE_DIR}")
     else()
+        set(NROS_IMAGE_CONF_FILES "" CACHE INTERNAL
+            "phase-481 W3: the image conf fragments the module hook added to EXTRA_CONF_FILE")
         if(_had_ours)
             _nros_image_kconfig_set_cache("${_user}")
         endif()
@@ -169,12 +186,15 @@ function(nros_image_kconfig_hook)
     set(_kconfig "")
     set(_envcfg "")
     set(_keys "")
+    set(_image_conf "")
     string(REPLACE "\n" ";" _lines "${_out}")
     foreach(_l IN LISTS _lines)
         if(_l MATCHES "^NROS_LEAF_KCONFIG=(.*)$")
             set(_kconfig "${CMAKE_MATCH_1}")
         elseif(_l MATCHES "^NROS_LEAF_IMAGE_ENV=(.*)$")
             set(_envcfg "${CMAKE_MATCH_1}")
+        elseif(_l MATCHES "^NROS_LEAF_CONF=(.*)$")
+            set(_image_conf "${CMAKE_MATCH_1}")
         elseif(_l MATCHES "^NROS_LEAF_IMAGE_ENV_ROW=([A-Za-z0-9_]+)=(.*)$")
             list(APPEND _keys "${CMAKE_MATCH_1}")
             set(NROS_IMAGE_ENV_ROW_${CMAKE_MATCH_1} "${CMAKE_MATCH_2}" CACHE INTERNAL
@@ -184,14 +204,38 @@ function(nros_image_kconfig_hook)
     set(NROS_IMAGE_ENV_ROWS "${_keys}" CACHE INTERNAL
         "phase-481 W1: [image.<id>] env rows with no Kconfig symbol")
 
+    # phase-481 W3 -- the image's Zephyr-native fragments (`[image.<id>] conf`
+    # of a single-package leaf; the CLI answers nothing for a bringup, whose
+    # `conf` `nros build` passes itself). They go FIRST in the cache value:
+    # before the user's own entries -- a board tail a harness passes as
+    # `-DEXTRA_CONF_FILE` must still override them, exactly as it did when the
+    # same file sat in `CONF_FILE` ahead of it -- and before the rendering. A
+    # fragment the build already names (in `CONF_FILE`, or among the user's
+    # extras) is left where the caller put it, so a harness that lists it
+    # explicitly gets byte-for-byte the merge order it asked for.
+    _nros_image_kconfig_named_confs(_named)
+    set(_inserted "")
+    foreach(_c IN LISTS _image_conf)
+        if(NOT _c IN_LIST _named AND NOT _c IN_LIST _user)
+            list(APPEND _inserted "${_c}")
+        endif()
+    endforeach()
+    set(NROS_IMAGE_CONF_FILES "${_inserted}" CACHE INTERNAL
+        "phase-481 W3: the image conf fragments the module hook added to EXTRA_CONF_FILE")
+    if(NOT _inserted STREQUAL "")
+        message(STATUS
+            "nano-ros: image `${_image}` conf -> ${_inserted} "
+            "(ahead of the caller's EXTRA_CONF_FILE; phase-481 W3)")
+    endif()
+    set(_new ${_inserted} ${_user})
     if(NOT _kconfig STREQUAL "")
-        list(APPEND _user "${_kconfig}")
+        list(APPEND _new "${_kconfig}")
         message(STATUS
             "nano-ros: image `${_image}` from ${_dir}/system.toml -> ${_kconfig} "
             "(last of EXTRA_CONF_FILE; RFC-0098 D11)")
     endif()
-    if(_had_ours OR NOT _kconfig STREQUAL "")
-        _nros_image_kconfig_set_cache("${_user}")
+    if(_had_ours OR NOT _kconfig STREQUAL "" OR NOT _inserted STREQUAL "")
+        _nros_image_kconfig_set_cache("${_new}")
     endif()
 
     if(NOT _envcfg STREQUAL "")
@@ -202,6 +246,34 @@ function(nros_image_kconfig_hook)
             "nano-ros: image `${_image}` env rows with no Kconfig symbol (${_keys}) -> "
             "every cargo command gets --config ${_envcfg} (issue 1712)")
     endif()
+endfunction()
+
+# The conf files the caller already names, as absolute paths: every
+# `CONF_FILE` entry (cache, else local -- the scopes Zephyr's own
+# `zephyr_get(CONF_FILE SYSBUILD LOCAL)` reads next), a relative one resolved
+# against the application config dir as Zephyr resolves it.
+function(_nros_image_kconfig_named_confs _out)
+    if(DEFINED CACHE{CONF_FILE})
+        set(_cf "$CACHE{CONF_FILE}")
+    elseif(DEFINED CONF_FILE)
+        set(_cf "${CONF_FILE}")
+    else()
+        set(_cf "")
+    endif()
+    if(DEFINED APPLICATION_CONFIG_DIR AND NOT APPLICATION_CONFIG_DIR STREQUAL "")
+        set(_base "${APPLICATION_CONFIG_DIR}")
+    else()
+        set(_base "${APPLICATION_SOURCE_DIR}")
+    endif()
+    string(REPLACE " " ";" _cf "${_cf}")
+    set(_abs "")
+    foreach(_f IN LISTS _cf)
+        if(NOT _f STREQUAL "")
+            get_filename_component(_a "${_f}" ABSOLUTE BASE_DIR "${_base}")
+            list(APPEND _abs "${_a}")
+        endif()
+    endforeach()
+    set(${_out} "${_abs}" PARENT_SCOPE)
 endfunction()
 
 # Write the cache value of EXTRA_CONF_FILE, or remove it when nothing is left.

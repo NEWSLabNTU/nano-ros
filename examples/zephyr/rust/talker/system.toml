@@ -2,15 +2,21 @@
 # schema a workspace bringup uses. Switching board is editing `[image.*] board`
 # and re-running `nros sync`.
 #
-# On Zephyr the RMW actually linked is still chosen by the Kconfig overlay
-# (`prj-<rmw>.conf` → CMakeLists.txt `EXTRA_CARGO_ARGS`); `rmw` here is the
-# declaration the resolver and `nros ws board-facts` read (RFC-0098 "What is NOT
-# decided": Kconfig stays the Zephyr front-end).
+# ONE IMAGE PER RMW (phase-481 W3, RFC-0098 D10/D11). The nano-ros Zephyr
+# module renders the selected image into a Kconfig fragment merged after every
+# conf file: the RMW choice from `rmw`, the language API from the package, the
+# agent endpoint from `locator`, and every `env` knob. So the `prj*.conf` files
+# hold Zephyr's own settings only, and each image's `conf` names the fragment
+# its RMW needs (networking, POSIX, heap), which the module adds before that
+# rendering. Build one with `west build ... -- -DNROS_IMAGE=<id>`; with none,
+# `default_images` builds zenoh.
 
 [system]
 name = "zephyr_talker"
+# The system default every image below overrides with its own `rmw`.
 rmw = "zenoh"
 domain_id = 0
+default_images = ["zephyr_zenoh"]
 
 [[component]]
 pkg = "zephyr_talker_node"
@@ -19,5 +25,35 @@ name = "talker"
 
 # The Zephyr family; the concrete Zephyr board (`native_sim/native/64`) is the
 # west `-b` argument, resolved through the board catalog.
-[image.zephyr]
+[image.zephyr_zenoh]
 board = "zephyr"
+rmw = "zenoh"
+conf = ["prj-zenoh.conf"]
+
+[image.zephyr_xrce]
+board = "zephyr"
+rmw = "xrce"
+conf = ["prj-xrce.conf"]
+# The Micro-XRCE-DDS agent. A test harness passes its own port per run
+# (`-DCONFIG_NROS_XRCE_AGENT_PORT=…`, which merges after this).
+locator = "udp/127.0.0.1:2018"
+# This image creates: pub:std_msgs/msg/String:/chatter + timer
+# so: no subscription, no service of either direction.
+# Issue 1033 -- `xrce_session_state_t` is one platform-heap allocation sized
+# by these three caps at BUILD time; at the crate defaults it is 6.4x the
+# 64 KiB arena and the image cannot boot. STATED, all three, though this is
+# the one standalone Zephyr leaf whose entity inventory composes (`derived`,
+# MAX_SUBSCRIBERS 0, MAX_QUERYABLES 1 -- measured, phase-481 W3):
+#   * SUBSCRIBERS: the derived 0 equals the stated 0, but it reaches only the
+#     CMAKE rung. The Rust lane's cargo build reads the Kconfig value this row
+#     renders, so deleting the row was measured to boot `HEAP EXHAUSTED
+#     (TOO SMALL): request 283912 bytes, arena 131584` -- the crate default;
+#   * SERVICE_SERVERS: the derived 1 is the queryable a TRANSIENT_LOCAL
+#     publisher costs on ZENOH, which XRCE does not create;
+#   * SERVICE_CLIENTS has no derivation at all.
+env = { NROS_XRCE_MAX_SUBSCRIBERS = "0", NROS_XRCE_MAX_SERVICE_SERVERS = "0", NROS_XRCE_MAX_SERVICE_CLIENTS = "0" }
+
+[image.zephyr_cyclonedds]
+board = "zephyr"
+rmw = "cyclonedds"
+conf = ["prj-cyclonedds.conf"]
