@@ -80,10 +80,11 @@ VENDORED = {"uxr", "ucdr"}
 # build.rs also compiles the sibling `nros-platform-posix` C port into its own
 # archive (phase-129.NET.3) so a Rust image gets a platform provider. The CMake
 # lane reaches the same code a different way — `add_subdirectory()` on that
-# project's own CMakeLists — so those three files are NOT a shared list and have
+# project's own CMakeLists — so those four files are NOT a shared list and have
 # no business in the XRCE manifest.
 LANE_SOURCE_ALLOWLIST = {
-    BUILD_RS: {"platform.c", "net.c", "timer.c"},
+    # `termination.c` joined the port as its own TU in issue 1776.
+    BUILD_RS: {"platform.c", "net.c", "timer.c", "termination.c"},
     CMAKE: set(),
 }
 
