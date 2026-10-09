@@ -321,9 +321,11 @@ const DOMAINS_PER_SLOT: u32 = 4;
 /// had, and the fix there would be to cap `test-threads`, not to widen a range
 /// whose upper bound is set by Linux's ephemeral port floor.
 ///
-/// `seq % DOMAINS_PER_SLOT` rather than `seq`: a process that allocates a fifth
-/// domain reuses its own first one, which is safe (it owns both), where letting
-/// it run past the block would put it on a neighbour's.
+/// `seq % DOMAINS_PER_SLOT` rather than `seq`: a fifth allocation's FIRST
+/// candidate is the process's own first domain, never a neighbour's. Since issue
+/// 1762 that candidate is also claimed by the process, so
+/// [`domain_avoiding_busy`] steps past it rather than handing the same domain
+/// out twice.
 fn domain_in_slot(slot: u32, seq: u32) -> u8 {
     let block = slot.wrapping_mul(DOMAINS_PER_SLOT);
     ((block.wrapping_add(seq % DOMAINS_PER_SLOT) % TEST_DOMAIN_MAX) + 1) as u8
@@ -459,23 +461,100 @@ fn domain_busy(domain: u8) -> bool {
 /// which is the whole disagreement issue 0707 recorded between reproducibility
 /// and isolation — this keeps the former until it costs the latter.
 ///
-/// Bounded at 25 attempts (the slot count the partition supports) and then
-/// gives up and returns the first candidate: an environment where every domain
-/// looks busy is not one this function can fix, and failing to return a domain
-/// would break every caller.
-fn domain_avoiding_busy(slot: u32, seq: u32, busy: impl Fn(u8) -> bool) -> u8 {
+/// Issue 1762 — the ORDER of the candidates, and the CLAIM, are what keep two
+/// concurrent callers apart once stepping starts. The busy probe alone cannot:
+/// it reads who has BOUND a port, and neither caller has bound anything yet when
+/// the other one probes.
+///
+/// * Order: the caller's OWN block first (`seq`, `seq+1`, … within its slot),
+///   and only then the next slots' blocks. The old order jumped straight to
+///   `domain_in_slot(slot + step, seq)`, i.e. the next slot's FIRST choice, so
+///   with domains 1 and 5 busy, slot 0 stepped twice and slot 1 once, and both
+///   landed on 9 (measured: `Clean domain=9` / `Sigterm domain=9` in one run).
+/// * Claim: `claim(d)` must also say yes before `d` is returned. The real one
+///   ([`claim_domain`]) takes an exclusive lock on a per-domain file held for
+///   the rest of the process, so a second caller ANYWHERE on the host (another
+///   slot, another worktree's run, the shell or C++ assigner) reads that domain
+///   as taken. That is the tie-breaker the probe could not provide.
+///
+/// Every domain is a candidate, then it gives up and returns the first one: an
+/// environment where every domain looks busy is not one this function can fix,
+/// and failing to return a domain would break every caller.
+fn domain_avoiding_busy(
+    slot: u32,
+    seq: u32,
+    busy: impl Fn(u8) -> bool,
+    mut claim: impl FnMut(u8) -> bool,
+) -> u8 {
     let first = domain_in_slot(slot, seq);
-    if !busy(first) {
-        return first;
-    }
     let slots = TEST_DOMAIN_MAX / DOMAINS_PER_SLOT;
-    for step in 1..=slots {
-        let candidate = domain_in_slot(slot.wrapping_add(step), seq);
-        if !busy(candidate) {
-            return candidate;
+    for step in 0..=slots {
+        for k in 0..DOMAINS_PER_SLOT {
+            let candidate = domain_in_slot(slot.wrapping_add(step), seq.wrapping_add(k));
+            if !busy(candidate) && claim(candidate) {
+                return candidate;
+            }
         }
     }
     first
+}
+
+/// Where the per-domain claim files live: ONE directory shared by the three
+/// assigners (this one, `nros_test_domain.h`'s C++ `nros_test_domain()` and
+/// `ros2_e2e_common.sh`'s `nros_unique_ros_domain_id`), so a claim taken in
+/// any language is seen by the other two. `$TMPDIR`, else `/tmp`.
+fn domain_claim_dir() -> std::path::PathBuf {
+    std::env::temp_dir().join("nros-test-domain-claims")
+}
+
+/// Issue 1762 — claim `domain` for the rest of this process, or report that
+/// another process holds it.
+///
+/// An exclusive, non-blocking `flock` on `<claim dir>/<domain>.lock`. The
+/// descriptor is kept for the life of the process, so the claim lasts exactly
+/// as long as the caller can be on the bus, and the kernel drops it when the
+/// process ends however it ends (no stale-claim cleanup to get wrong). `flock`
+/// locks belong to the open file DESCRIPTION, so a second claim of the same
+/// domain from this same process is refused too: one process asking twice gets
+/// two domains.
+///
+/// When the claim cannot be MADE (no writable temp dir, not Unix), it answers
+/// "claimed" and the assignment is what the probe alone gives — the same
+/// degradation rule as the probes: what cannot be seen must not be invented.
+#[cfg(unix)]
+fn claim_domain(domain: u8) -> bool {
+    use std::os::unix::io::AsRawFd;
+    static CLAIMS: std::sync::Mutex<Vec<std::fs::File>> = std::sync::Mutex::new(Vec::new());
+
+    let dir = domain_claim_dir();
+    if std::fs::create_dir_all(&dir).is_err() {
+        return true;
+    }
+    let Ok(file) = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(dir.join(format!("{domain}.lock")))
+    else {
+        return true;
+    };
+    // SAFETY: flock(2) on a descriptor this function owns and keeps open.
+    let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+    if rc != 0 {
+        // EWOULDBLOCK is "somebody holds it". Any other error is a lock we
+        // could not take for reasons unrelated to the domain: degrade.
+        return std::io::Error::last_os_error().raw_os_error() != Some(libc::EWOULDBLOCK);
+    }
+    CLAIMS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .push(file);
+    true
+}
+
+#[cfg(not(unix))]
+fn claim_domain(_domain: u8) -> bool {
+    true
 }
 
 pub fn unique_ros_domain_id() -> u8 {
@@ -489,10 +568,10 @@ pub fn unique_ros_domain_id() -> u8 {
         // engineer does when retesting a red solo (which CLAUDE.md prescribes),
         // i.e. the moment they are most likely to be chasing a ghost is the one
         // guaranteed to reuse the bus that produced it.
-        return domain_avoiding_busy(slot, seq, domain_busy);
+        return domain_avoiding_busy(slot, seq, domain_busy, claim_domain);
     }
     let pid = std::process::id();
-    domain_avoiding_busy(pid, seq, domain_busy)
+    domain_avoiding_busy(pid, seq, domain_busy, claim_domain)
 }
 
 /// Poll a file descriptor for readability using poll(2).
@@ -1240,7 +1319,7 @@ mod tests {
         for slot in 0..30u32 {
             for seq in 0..6u32 {
                 assert_eq!(
-                    super::domain_avoiding_busy(slot, seq, |_| false),
+                    super::domain_avoiding_busy(slot, seq, |_| false, |_| true),
                     super::domain_in_slot(slot, seq),
                     "slot {slot} seq {seq} moved with nothing to avoid"
                 );
@@ -1254,7 +1333,7 @@ mod tests {
         // first candidate is domain 1 and an orphan is sitting on it.
         let first = super::domain_in_slot(0, 0);
         assert_eq!(first, 1, "the hazard's precondition changed");
-        let got = super::domain_avoiding_busy(0, 0, |d| d == first);
+        let got = super::domain_avoiding_busy(0, 0, |d| d == first, |_| true);
         assert_ne!(got, first, "stayed on the occupied domain");
         assert!((1..=super::TEST_DOMAIN_MAX as u8).contains(&got));
     }
@@ -1310,7 +1389,8 @@ mod tests {
         );
 
         // And the allocator must actually move off it.
-        let stepped = super::domain_avoiding_busy(0, 0, |d| d == domain || super::domain_busy(d));
+        let stepped =
+            super::domain_avoiding_busy(0, 0, |d| d == domain || super::domain_busy(d), |_| true);
         assert_ne!(
             stepped, domain,
             "the allocator handed out a domain carrying a foreign daemon"
@@ -1325,8 +1405,98 @@ mod tests {
         // probe says everything is taken is not something this can fix, and a
         // caller with no domain has nowhere to go.
         assert_eq!(
-            super::domain_avoiding_busy(0, 0, |_| true),
+            super::domain_avoiding_busy(0, 0, |_| true, |_| true),
             super::domain_in_slot(0, 0)
+        );
+    }
+
+    // ---- issue 1762: concurrent callers must not converge once they step ----
+
+    /// The measured case: slots 0 and 1 in one run, their first candidates
+    /// (domains 1 and 5) busy, two threads asking at once. Before the fix both
+    /// stepped to slot 2's first choice and got domain 9. The claim is a SHARED
+    /// fake registry here, the in-process analogue of the lock files.
+    #[test]
+    fn two_concurrent_callers_whose_first_choices_are_busy_get_distinct_domains() {
+        use std::{
+            collections::HashSet,
+            sync::{Arc, Barrier, Mutex},
+        };
+        assert_eq!(
+            (super::domain_in_slot(0, 0), super::domain_in_slot(1, 0)),
+            (1, 5),
+            "the reproduction's precondition changed"
+        );
+        let first_choices_busy = |d: u8| d == 1 || d == 5;
+        let claimed: Arc<Mutex<HashSet<u8>>> = Arc::default();
+        let barrier = Arc::new(Barrier::new(2));
+        let handles: Vec<_> = [0u32, 1]
+            .into_iter()
+            .map(|slot| {
+                let claimed = Arc::clone(&claimed);
+                let barrier = Arc::clone(&barrier);
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    super::domain_avoiding_busy(slot, 0, first_choices_busy, |d| {
+                        claimed.lock().unwrap().insert(d)
+                    })
+                })
+            })
+            .collect();
+        let got: Vec<u8> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+        assert_ne!(
+            got[0], got[1],
+            "slots 0 and 1 were handed the SAME domain {} (issue 1762)",
+            got[0]
+        );
+        assert!(
+            got.iter().all(|d| !first_choices_busy(*d)),
+            "an answer is a busy domain: {got:?}"
+        );
+    }
+
+    /// The ORDER half on its own, with no claim to rescue it: a busy first
+    /// choice moves within the caller's own block, so slot 0 and slot 1 stay in
+    /// their own blocks (2 and 6) rather than both reaching slot 2's 9.
+    #[test]
+    fn a_busy_first_choice_steps_within_the_callers_own_block() {
+        let busy = |d: u8| d == 1 || d == 5;
+        let a = super::domain_avoiding_busy(0, 0, busy, |_| true);
+        let b = super::domain_avoiding_busy(1, 0, busy, |_| true);
+        assert_eq!(
+            (a, b),
+            (2, 6),
+            "a busy first choice left the caller's block"
+        );
+    }
+
+    /// The CLAIM half on its own: both slots' whole blocks are busy, so both
+    /// must leave them, and both reach the same next block. Order alone gives
+    /// them the same answer there; only the claim keeps them apart.
+    #[test]
+    fn a_claimed_domain_is_not_handed_out_again() {
+        use std::collections::HashSet;
+        let busy = |d: u8| (1..=8).contains(&d);
+        let mut claimed = HashSet::new();
+        let a = super::domain_avoiding_busy(0, 0, busy, |d| claimed.insert(d));
+        let b = super::domain_avoiding_busy(1, 0, busy, |d| claimed.insert(d));
+        assert_ne!(a, b, "two callers leaving busy blocks converged on {a}");
+    }
+
+    /// The REAL claim: a domain claimed by this process is refused to a second
+    /// claim (flock locks belong to the open file description, so this holds
+    /// within one process exactly as across two), and a fresh domain is not.
+    #[cfg(unix)]
+    #[test]
+    fn the_lock_file_claim_refuses_a_second_holder() {
+        // A domain nobody on this host has claimed yet, found by claiming it.
+        let Some(domain) = (1..=super::TEST_DOMAIN_MAX as u8).find(|d| super::claim_domain(*d))
+        else {
+            crate::unmet!("every test domain is already claimed on this host");
+        };
+        assert!(
+            !super::claim_domain(domain),
+            "domain {domain} was claimed and a second claim still succeeded"
         );
     }
 
