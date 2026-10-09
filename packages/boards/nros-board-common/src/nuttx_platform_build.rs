@@ -24,6 +24,12 @@ use std::env;
 ///   (default `arch/arm/src/{chip,common,armv7-a}`). Same var the FFI helper
 ///   reads, so a board sets it once.
 pub fn run_platform() {
+    // Issue 1779 — one nros_platform_* provider per linked graph; this
+    // compiles `nros_platform_nuttx` below.
+    let caller = env::var("CARGO_PKG_NAME").unwrap_or_else(|_| "nuttx board".to_string());
+    if crate::platform_port::defer_to_graph_provider(&caller, "NuttX") {
+        return;
+    }
     let nuttx_dir = nros_build_paths::nuttx_dir();
     // Match the legacy guard: skip when the NuttX tree isn't populated yet
     // (a clean checkout before `make export`).

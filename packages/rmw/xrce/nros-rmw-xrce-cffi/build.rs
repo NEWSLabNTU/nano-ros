@@ -442,6 +442,7 @@ fn main() {
             // issue 1776 — the termination guard is its own archive member.
             .file(posix_src.join("termination.c"));
         nros_cc_flags::header_deps::track_header_deps(&mut posix_build);
+        // platform-port-provider-exempt: the SAME `nros-platform-posix` sources nros-platform-cffi's `posix-c-port` compiles, in a demand-driven (not whole-archive) archive — identical symbol sets, so a second member is never pulled (issue 1779: only a whole-archive or different port collides)
         posix_build.compile("nros_platform_posix_link");
         println!("cargo:rerun-if-changed={}", posix_src.display());
     }

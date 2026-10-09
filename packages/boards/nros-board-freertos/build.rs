@@ -56,6 +56,13 @@ fn main() {
     if nros_board_common::host_probe::skip_cross_build("nros-board-freertos", &["thumb", "arm"]) {
         return;
     }
+    // Issue 1779 — one nros_platform_* provider per linked graph; this script
+    // compiles `nros_platform_freertos` below.
+    if nros_board_common::platform_port::defer_to_graph_provider("nros-board-freertos", "FreeRTOS")
+    {
+        println!("cargo:rerun-if-changed=build.rs");
+        return;
+    }
 
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
 

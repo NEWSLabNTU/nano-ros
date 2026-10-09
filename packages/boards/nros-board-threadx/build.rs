@@ -40,6 +40,16 @@ use std::{env, path::PathBuf};
 use nros_board_common::nros_build_paths;
 
 fn main() {
+    // Issue 1779 — ONE nros_platform_* provider per linked graph. Asked first,
+    // so the answer does not depend on whether the ThreadX sources happen to be
+    // initialised here: `cargo test --workspace` unifies the POSIX port into
+    // this crate's host test binary, and the ThreadX port below (whole-archive)
+    // then defined every symbol a second time.
+    if nros_board_common::platform_port::defer_to_graph_provider("nros-board-threadx", "ThreadX") {
+        println!("cargo:rerun-if-changed=build.rs");
+        return;
+    }
+
     let Some(threadx_dir) = nros_build_paths::env_path("THREADX_DIR") else {
         println!(
             "cargo:warning=nros-board-threadx: THREADX_DIR not set; \

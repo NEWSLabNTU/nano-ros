@@ -955,6 +955,14 @@ zephyr-workspace-foreign-checkout:
 board-build-wiring:
     @python3 scripts/check-board-build-wiring.py
 
+# Issue 1779 — one `nros_platform_*` provider per linked graph. Every build-time
+# compile of a platform port asks `nros-platform-cffi` (which STATES the provider
+# it compiled, through its `links` key) before compiling a second one. Without
+# the ask, `cargo test --workspace` linked the POSIX and ThreadX ports into one
+# host test binary wherever the ThreadX submodule was initialised.
+platform-port-single-provider:
+    @python3 scripts/check-platform-port-single-provider.py
+
 # Every `Driver` variant is a road the build-wiring map knows, both directions
 # (issue-0196 shape: an authored structure beside a live enum drifts, and this
 # repo has measured that drift three times in the safe-looking direction).
