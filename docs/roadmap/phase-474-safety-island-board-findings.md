@@ -648,10 +648,17 @@ independent of each other.
       the board run stay open.)
 - [ ] I6: a timer-fired callback that overruns its `max_latency` produces a
       `max-latency-runtime` verdict, on the host test and on the S32K344.
+      (Host half landed in #1750: the trigger-miss sweep times each timer
+      dispatch and charges it through `attribute_latency`, test
+      `t4_a_timer_overrun_beside_an_idle_subscription_is_judged`, issue
+      1724; the board rerun is the island's W4.)
 - [x] I7: the reporter neither overflows the main stack nor costs the spin
       thread a tick per verdict; the island's 24 KiB workaround can go.
       (Host: frame ~1 KB (issue 1726); reports queued, coalesced and sent off
       the judged tick, cost not charged as jitter (issue 1727). The 16 KiB
       re-try on the board is the island's.)
 - [ ] I8: no rate verdict in the first window after arming on a stream
-      publishing at its declared rate.
+      publishing at its declared rate. (Host half landed in #1750: the first
+      window re-anchors on the first new sample, test
+      `a_stream_at_its_rate_armed_mid_period_is_not_judged_slow`, issue
+      1725; the board rerun is the island's W4.)
