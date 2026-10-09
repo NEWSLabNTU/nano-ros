@@ -6,6 +6,7 @@
 const c = @cImport({
     @cInclude("nros/boot_config.h");
     @cInclude("nros/main.h");
+    @cInclude("nros/app_main.h");
     @cInclude("nros/nros_cpp_ffi.h");
     @cInclude("nros/nros_cpp_config_generated.h");
 });
@@ -75,7 +76,15 @@ export fn nros_app_main(_: c_int, _: [*c][*c]u8) c_int {
     return run();
 }
 
-// `NROS_APP_MAIN_REGISTER_VOID()`'s body: the board's startup calls this.
+// `NROS_APP_MAIN_REGISTER_VOID()`'s body: the board's startup calls this. The
+// status goes to the board (issue 1752) through the header's own normaliser and
+// hook, never a Zig copy of either; the weak no-op is the macro's default for a
+// board that does not take it.
+fn nrosAppMainReturnedDefault(_: c_int) callconv(.c) void {}
+comptime {
+    @export(&nrosAppMainReturnedDefault, .{ .name = "nros_app_main_returned", .linkage = .weak });
+}
+
 export fn app_main() void {
-    _ = nros_app_main(0, null);
+    c.nros_app_main_returned(c.nros_app_exit_code(nros_app_main(0, null)));
 }
