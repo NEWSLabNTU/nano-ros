@@ -178,7 +178,8 @@ _tier1-step step:
     # 2 interop tests belong to live-peer (`.config/interop-verdicts.toml`). Said
     # here, they deselect as `[SKIPPED:lane]` on every host alike; unsaid, every
     # one of them FAILS where ROS 2 is absent — never a skip that reads as a pass.
-    export NROS_TEST_UNCLAIMED=ros2
+    unclaimed="$(nros_lane_unclaimed tier1)"
+    export NROS_TEST_UNCLAIMED="$unclaimed"
     # issue 1500 — each part runs through the step runner so the log says WHERE
     # the time went: each step prints its wall clock as it finishes, which a
     # lane killed by a CI ceiling keeps (run 37176625915 spent 75 minutes here
@@ -424,7 +425,8 @@ _matrix-run:
     # 2 interop tests belong to live-peer (`.config/interop-verdicts.toml`). Said
     # here, they deselect as `[SKIPPED:lane]` on every host alike; unsaid, every
     # one of them FAILS where ROS 2 is absent — never a skip that reads as a pass.
-    export NROS_TEST_UNCLAIMED=ros2
+    unclaimed="$(nros_lane_unclaimed tier2)"
+    export NROS_TEST_UNCLAIMED="$unclaimed"
     # issue 1739 — `weak-symbols-image` nm's the prebuilt cross images, so it
     # needs the fixture build this lane just did and belongs AFTER it; it ran
     # nowhere before. A row it cannot find is a reported `nros_check_skip`.
@@ -501,7 +503,8 @@ matrix-nightly:
     # 2 interop tests belong to live-peer (`.config/interop-verdicts.toml`). Said
     # here, they deselect as `[SKIPPED:lane]` on every host alike; unsaid, every
     # one of them FAILS where ROS 2 is absent — never a skip that reads as a pass.
-    export NROS_TEST_UNCLAIMED=ros2
+    unclaimed="$(nros_lane_unclaimed tier2-nightly)"
+    export NROS_TEST_UNCLAIMED="$unclaimed"
     steps=(check::default rust-rtos-link-check test-all test-ignored)
     bash scripts/ci/run-lane-steps.sh tier2-nightly "${steps[@]}"
     echo "CI passed (tier 2 nightly — pairwise cover)!"

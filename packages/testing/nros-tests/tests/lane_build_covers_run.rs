@@ -250,6 +250,35 @@ fn shell_build_lane_matches_the_rust_declaration() {
     }
 }
 
+/// Issue 1758 — a lane's UNCLAIMED capabilities have the same two spellings as
+/// its build lane: `nros_lane_unclaimed` (what `just ci <tier>` and `just test
+/// <tier>` export) and `CiLane::unclaimed`. If they drift, the same lane
+/// deselects different tests depending on which recipe ran it.
+#[test]
+fn shell_unclaimed_matches_the_rust_declaration() {
+    use nros_tests::ci_lane::ALL;
+
+    for lane in ALL {
+        let token = lane.lane_token();
+        let (code, out) = lane_sh(&format!("nros_lane_unclaimed {token}"), None);
+        assert_eq!(code, 0, "nros_lane_unclaimed {token} failed:\n{out}");
+        assert_eq!(
+            out.trim(),
+            lane.unclaimed_env_value(),
+            "fixture-lane.sh and CiLane::unclaimed disagree about what a {token} run \
+             does not claim. They are two spellings of ONE fact; fix both."
+        );
+    }
+    // The module-level lanes claim everything they select.
+    for token in ["all", "native"] {
+        let (code, out) = lane_sh(&format!("nros_lane_unclaimed {token}"), None);
+        assert_eq!(code, 0, "nros_lane_unclaimed {token} failed:\n{out}");
+        assert_eq!(out.trim(), "", "{token} must claim every capability");
+    }
+    let (code, out) = lane_sh("nros_lane_unclaimed not-a-lane", None);
+    assert_ne!(code, 0, "an unknown lane must fail, got:\n{out}");
+}
+
 /// An unknown lane must be REFUSED, not defaulted.
 ///
 /// The two silent readings are both wrong in dangerous ways: an empty answer

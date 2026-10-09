@@ -135,3 +135,58 @@ to narrow the invocation.
   - `NROS_SKIP_STALE_CHECK`
   - `NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=0`
 - **Historical prose.** About 80 comments still say `skip!`.
+
+## Follow-up: the scope must reach every runner, and every link of the chain
+
+### Reds since the merge (976ab0e0d, 2026-10-09 10:04 UTC)
+
+- **Merge queue.** Eight batches were ejected, all with
+  `error[E0433]: cannot find skip in nros_tests`. They came from PRs written
+  against the old API: #1764 and #1805 (`violation_channel_e2e`), and #1808
+  and #1823 (`native_api`). 2b8153621 fixed the first on main, the PRs
+  rebased, and all four have merged.
+- **Scheduled lanes.** None has run since the merge. Every red on the
+  2026-10-09 nightly predates it.
+
+### Gaps found by walking `just setup|doctor|build|test <scope>`
+
+1. **`just test tier1` did not deselect what `just ci tier1` deselects.**
+   `NROS_TEST_UNCLAIMED=ros2` was a literal in three `ci.just` recipes, and
+   the scope verb never set it. The value is now a lane property:
+   `CiLane::unclaimed` declares it, `nros_lane_unclaimed` in
+   `fixture-lane.sh` implements it, and `lane_build_covers_run.rs` binds the
+   two. Both runners read it from there.
+2. **`just test <platform>` ran unscoped.** `just test native` selects 770
+   tests, including `rtos_e2e`, `threadx_riscv64_qemu`,
+   `zephyr_cortex_m_qemu` and `cli_bringup_nuttx`. Before this issue, an
+   unbuilt fixture for another platform skipped. After it, such a fixture
+   fails. A platform run is now narrowed to the rows that platform owns (`lane-coords
+   --scope <module>`, `nros_scope_coords_file`), which is exactly what
+   `just <module> build-fixtures` builds. A module that owns no fixture row
+   (`px4`), or is not a platform (`xrce`, `cyclonedds`), stays unscoped and
+   claims everything.
+3. **`just doctor` said OK over a stale CLI.** It printed
+   `[OK] nros CLI` while `just build` refused the same binary within a
+   second. A missing CLI also printed `[MISSING]` and still exited 0. Both
+   now fail, through `scripts/check-cli-fresh.sh`, the binary's own
+   `source-stamp`. The same block now fails on a submodule BEHIND its pin
+   (`scripts/check-submodule-drift.sh`). Measured: `just test native` died
+   54 minutes in, on `nros-launch-resolve`'s `--locked` refusal, with
+   `play_launch` 123 commits behind, while `doctor` had said OK.
+4. **`just doctor zephyr` said OK without `jsonschema`.** `west build` needs
+   it. The host block reported it only as a WARN shared by every scope. The
+   Zephyr doctor now checks the interpreter the lane resolves
+   (`nros_zephyr_python`) and fails.
+5. **The light tier's opt-out was still read in four places.** These were
+   `fixtures::lane::absent_row_breaks_promise`, `zenoh_archive_symbols`,
+   `zenoh_header_parity` and `zpico_build_matrix`. All four now ignore it.
+
+### Verified
+
+- `lane-coords --scope native` selects the 10 `linux,*` coordinates.
+- Under that scope, `rtos_e2e`, `threadx_riscv64_qemu`,
+  `zephyr_cortex_m_qemu`, `cli_bringup_nuttx` and `emulator` gave 4 ran and
+  54 deselected as `[SKIPPED:lane]`. None failed on an unmet precondition,
+  and `check-skip-budget` passed.
+- `lane_build_covers_run::shell_unclaimed_matches_the_rust_declaration` and
+  the other 428 lane-contract tests pass.

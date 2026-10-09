@@ -530,11 +530,11 @@ pub fn is_in_lane(row: &Row, coords: &BTreeSet<Coord>) -> bool {
 /// issue 0584's laundering with no skip line for any scan to see.
 ///
 /// True exactly when `absent_fixture_verdict_in` (in `fixtures::binaries`) would
-/// panic for a resolver: the run is scoped by coordinate, the row is inside
-/// it, and the light tier's `NROS_FIXTURES_OPTIONAL` opt-out is not set.
+/// panic for a resolver: the run is scoped by coordinate and the row is inside
+/// it. (The light tier's `NROS_FIXTURES_OPTIONAL` opt-out was a third condition;
+/// issue 1758 removed it — an absent fixture is never a skip.)
 pub fn absent_row_breaks_promise(row: &Row) -> bool {
-    std::env::var_os("NROS_FIXTURES_OPTIONAL").is_none()
-        && run_coords().is_some_and(|c| is_in_lane(row, c))
+    run_coords().is_some_and(|c| is_in_lane(row, c))
 }
 
 /// Skip when a coordinate the caller ALREADY resolved is outside this run's

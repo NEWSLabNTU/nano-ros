@@ -400,10 +400,7 @@ pub fn is_xrce_agent_available() -> bool {
     )
 }
 
-/// Skip test if the XRCE Agent is not available.
-///
-/// Returns `false` (test should skip) if the agent binary is not found.
-/// Returns `true` if the agent is available and the test should proceed.
+/// Fail the test (`unmet!`) if the XRCE Agent is not available.
 pub fn require_xrce_agent() {
     if !is_xrce_agent_available() {
         crate::unmet!("XRCE Agent not found (run `just xrce setup`)");
@@ -615,10 +612,7 @@ pub fn is_socat_available() -> bool {
     )
 }
 
-/// Skip test if socat is not available.
-///
-/// Returns `false` (test should skip) if socat is not found.
-/// Returns `true` if socat is available and the test should proceed.
+/// Fail the test (`unmet!`) if socat is not available.
 pub fn require_socat() {
     if !is_socat_available() {
         crate::unmet!("socat not found (run `sudo apt install socat`)");

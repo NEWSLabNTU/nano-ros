@@ -67,6 +67,15 @@ it needs is absent — it fails; the lane's SCOPE decides what runs.**
   `fixtures::lane::require_*_in_lane`) and the host capabilities the
   lane does not claim (`NROS_TEST_UNCLAIMED=ros2` → `lane_scope`).
   Both unset ⇒ the run claims everything.
+* **Who sets the scope.** Every runner of a scope reads both axes from
+  `scripts/build/fixture-lane.sh`:
+  * `nros_lane_unclaimed <lane>` is the declaration `CiLane::unclaimed`
+    makes, bound by `lane_build_covers_run.rs`.
+  * `nros_scope_coords_file <module>` is a platform's own rows, from
+    `lane-coords --scope`.
+
+  So `just ci tier1` and `just test tier1` deselect the same tests, and
+  `just test native` does not claim a NuttX coordinate.
 
 `check-skip-budget` fails any skip that is not `lane`, any `lane` skip
 for a coordinate the run selected, and a run in which nothing ran. There

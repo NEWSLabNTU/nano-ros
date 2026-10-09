@@ -200,6 +200,74 @@ nros_lane_coords_file() {
     echo "$out"
 }
 
+# nros_lane_unclaimed <lane> — the host capabilities a lane does NOT claim.
+#
+# Issue 1758: the scope's second axis beside the coordinates. Prints the
+# `NROS_TEST_UNCLAIMED` value (possibly empty: the lane claims everything). It
+# is a property of the LANE, so every runner of the lane exports the same value
+# — `just ci tier1` and `just test tier1` included. Pure bash for the same
+# reason as `nros_lane_build_lane` below; `CiLane::unclaimed` is the
+# declaration, and `tests/lane_build_covers_run.rs` asserts the two agree.
+nros_lane_unclaimed() {
+    local lane="$1"
+    nros_lane_validate "$lane" || return 2
+    case "$lane" in
+        # The tier runners carry the zenoh router and no ROS 2 CLI; their ROS 2
+        # interop tests belong to live-peer (`.config/interop-verdicts.toml`).
+        tier1 | tier2 | tier2-nightly) echo "ros2" ;;
+        # Module-level lanes claim everything they select.
+        all | native) echo "" ;;
+        *)
+            echo "fixture-lane: no unclaimed set declared for '$lane' — add it to" >&2
+            echo "              nros_lane_unclaimed AND CiLane::unclaimed" >&2
+            return 2
+            ;;
+    esac
+}
+
+# nros_scope_coords_file <just module> — a PLATFORM scope's coordinate file.
+#
+# Issue 1758. `just test <platform>` runs that module's suite; unscoped, a test
+# of ANOTHER platform its filter reaches would claim its coordinate and fail on
+# a fixture this scope never built. This writes every manifest row (west leaves
+# included) the module owns — what `just <module> build-fixtures` builds — and
+# echoes the path, for `NROS_TEST_COORDS`.
+#
+# rc 0 with NO output: the module owns no fixture row (`px4`) or is not a
+# platform (`xrce`, `cyclonedds`), so its run stays unscoped and claims every
+# coordinate. Any other failure is fatal: an unscoped run here would be the
+# laundering this exists to prevent, in the other direction.
+nros_scope_coords_file() {
+    local module="${1:?usage: nros_scope_coords_file <just module>}"
+    local out="target/nextest/scope-coords-${module}.txt"
+    local tmp="${out}.tmp.$$" rc=0 bin
+    mkdir -p target/nextest
+    bin="$(_nros_lane_coords_bin)"
+    if [ -n "$bin" ]; then
+        "$bin" --scope "$module" > "$tmp" 2> "${tmp}.err" || rc=$?
+    else
+        cargo run -q -p nros-tests --bin lane-coords -- --scope "$module" \
+            > "$tmp" 2> "${tmp}.err" || rc=$?
+    fi
+    case "$rc" in
+        0)
+            mv -f "$tmp" "$out"
+            rm -f "${tmp}.err"
+            echo "$(cd "$(dirname "$out")" && pwd)/$(basename "$out")"
+            ;;
+        1 | 2)
+            # lane-coords' two refusals: no rows (1), not a platform module (2).
+            rm -f "$tmp" "${tmp}.err"
+            ;;
+        *)
+            echo "fixture-lane: lane-coords --scope $module failed (rc $rc):" >&2
+            cat "${tmp}.err" >&2
+            rm -f "$tmp" "${tmp}.err"
+            return 1
+            ;;
+    esac
+}
+
 # The fixture BUILD lane a RUN of `<lane>` needs — issue 0482.
 #
 # `nros_lane_coords_file` answers "which fixtures must be FRESH": the lane's own

@@ -1787,16 +1787,31 @@ _test-scope tok verbose="":
     # shellcheck source=scripts/build/scope.sh
     source scripts/build/scope.sh
     tok="$(nros_scope_normalize "{{tok}}")"
+    # shellcheck source=scripts/build/fixture-lane.sh
+    source scripts/build/fixture-lane.sh
     if nros_scope_is_platform "$tok"; then
         nros_scope_require_module_verb "$tok" test
-        nros_scope_exec just "$tok" test {{verbose}}
+        # Issue 1758 — the platform's run is SCOPED to the rows the platform
+        # owns. Unscoped, a test of another platform that the module's filter
+        # reaches claims a coordinate this scope never built and FAILS (it used
+        # to skip, which read as a pass). Empty: the module owns no fixture row
+        # (`px4`) or is not a platform (`xrce`), so its run claims everything.
+        coords="$(nros_scope_coords_file "$tok")" || exit 1
+        if [ -n "$coords" ]; then
+            echo "scope: $tok run narrowed to its own coordinates ($coords)"
+            nros_scope_exec env "NROS_TEST_COORDS=$coords" just "$tok" test {{verbose}}
+        else
+            nros_scope_exec just "$tok" test {{verbose}}
+        fi
         exit 0
     fi
     if nros_scope_is_preset "$tok"; then
-        # shellcheck source=scripts/build/fixture-lane.sh
-        source scripts/build/fixture-lane.sh
+        # Issue 1758 — the lane's unclaimed capabilities travel with its
+        # coordinates, so `just test tier1` deselects what `just ci tier1` does.
+        unclaimed="$(nros_lane_unclaimed "$tok")"
         if [ "$tok" = "all" ]; then
-            nros_scope_exec env NROS_FIXTURE_LANE=all just test-all {{verbose}}
+            nros_scope_exec env NROS_FIXTURE_LANE=all "NROS_TEST_UNCLAIMED=$unclaimed" \
+                just test-all {{verbose}}
             exit 0
         fi
         # The lane's own coordinate file reaching BOTH the preflight and the
@@ -1806,7 +1821,7 @@ _test-scope tok verbose="":
         coords="$(nros_lane_coords_file "$tok")"
         coords="$(cd "$(dirname "$coords")" && pwd)/$(basename "$coords")"
         nros_scope_exec env "NROS_FIXTURE_LANE=$tok" "NROS_TEST_COORDS=$coords" \
-            just test-all {{verbose}}
+            "NROS_TEST_UNCLAIMED=$unclaimed" just test-all {{verbose}}
         exit 0
     fi
     nros_scope_reject "$tok"
@@ -5093,9 +5108,31 @@ _doctor-host:
     if . "{{justfile_directory()}}/scripts/build/cargo.sh" 2>/dev/null && \
        cli_bin="$(nros_cli_bin 2>/dev/null)"; then
         cli_ver="$("$cli_bin" --version 2>/dev/null | head -1)"
-        echo "  [OK] nros CLI: ${cli_ver:-unknown} ($cli_bin)"
+        # Issue 1758 — "present" is not "ready". A STALE in-tree CLI is the
+        # first thing `just build`/`just test` refuse, so a doctor that said OK
+        # over it answered for a chain that then failed in its first second.
+        # One spelling of the predicate: the binary's own `source-stamp`.
+        if fresh_out="$(bash "{{justfile_directory()}}/scripts/check-cli-fresh.sh" 2>&1)"; then
+            echo "  [OK] nros CLI: ${cli_ver:-unknown} ($cli_bin)"
+        else
+            echo "  [STALE] nros CLI: ${cli_ver:-unknown} ($cli_bin) — run: just setup-cli"
+            printf '%s\n' "$fresh_out" | sed -n '1p' | sed 's/^/          /'
+            host_rc=1
+        fi
     else
         echo "  [MISSING] nros CLI — run: just setup-cli"
+        host_rc=1
+    fi
+    # Issue 1758 — a submodule BEHIND its recorded pin is the next thing the
+    # chain trips on (measured: `nros-launch-resolve`'s `--locked` refusal 54
+    # minutes into `just test native`, on a `play_launch` 123 commits behind).
+    # Same probe `check tier-preconditions` runs first; summary lines only.
+    if drift_out="$(bash "{{justfile_directory()}}/scripts/check-submodule-drift.sh" 2>&1)"; then
+        echo "  [OK] submodules at the commits this checkout records"
+    else
+        echo "  [BEHIND] submodules not at the recorded commit:"
+        printf '%s\n' "$drift_out" | grep -E '^\s+\[x\]|^\s+remedy:' | sed 's/^\s*/          /'
+        host_rc=1
     fi
     # phase-431 W2 — A SHADOWING `nros` IS A FAILURE, not a warning.
     #

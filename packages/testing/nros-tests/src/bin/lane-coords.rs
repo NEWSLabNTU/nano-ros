@@ -8,7 +8,18 @@
 //! $ lane-coords tier2 --cells                    # full cells, for inspection
 //! $ lane-coords tier2 --run-scope                # NROS_TEST_SCOPE for this lane
 //! $ lane-coords tier2 --build-lane               # build-test-fixtures lane= it needs
+//! $ lane-coords tier2 --unclaimed                # NROS_TEST_UNCLAIMED for this lane
+//! $ lane-coords --scope nuttx                    # every row a `just nuttx` run owns
 //! ```
+//!
+//! # `--scope <module>` is a PLATFORM scope's coordinates (issue 1758)
+//!
+//! `just test <platform>` runs that platform module's suite, and before issue
+//! 1758 it ran it UNSCOPED: a test of another platform reached by the module's
+//! filter found its fixture unbuilt and skipped, which read as a pass. Now an
+//! unscoped run claims every coordinate, so the platform run needs a scope of
+//! its own — every manifest row (west leaves included) whose platform the
+//! module owns, which is exactly what `just <module> build-fixtures` builds.
 //!
 //! # Why coordinates and not cells
 //!
@@ -50,6 +61,7 @@
 
 use nros_tests::{
     ci_lane::{CiLane, cells, coords},
+    fixtures::lane::{manifest_rows, west_leaves},
     matrix::PlatformId,
 };
 use std::collections::BTreeSet;
@@ -58,7 +70,7 @@ fn usage(got: Option<&str>) -> ! {
     eprintln!(
         "usage: lane-coords <tier1|tier2|tier2-nightly> \
 [--cells | --modules | --platform <token> | --module <name> | --run-scope | \
---build-lane]   (got {got:?})\n\
+--build-lane | --unclaimed]\n       lane-coords --scope <just module>   (got {got:?})\n\
          \n\
          Prints `platform,lang,rmw` triples — the FIXTURE coordinates a lane\n\
          needs, which is what its cost is measured in. Cells share fixtures, so\n\
@@ -69,6 +81,13 @@ fn usage(got: Option<&str>) -> ! {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("--scope") {
+        let Some(module) = args.get(1) else {
+            usage(Some("--scope without a module"))
+        };
+        print_scope(module);
+        return;
+    }
     let lane = match args.first().map(String::as_str) {
         Some("tier1") => CiLane::Tier1,
         Some("tier2") => CiLane::Tier2,
@@ -90,6 +109,9 @@ fn main() {
         // Issue 0482 — one line, no trailing anything, so a shell can `$( )` it.
         Some("--run-scope") => println!("{}", lane.run_scope().test_scope()),
         Some("--build-lane") => println!("{}", lane.build_lane()),
+        // Issue 1758 — may be EMPTY (a lane that claims everything), so the
+        // line is printed either way and a shell `$( )` reads "".
+        Some("--unclaimed") => println!("{}", lane.unclaimed_env_value()),
         Some("--modules") => {
             // Deduped: `nuttx` owns both NuttxArm and NuttxRiscv, `zephyr` owns
             // both ZephyrNativeSim and Fvp — one job each, not two.
@@ -125,28 +147,57 @@ fn main() {
             let Some(want) = args.get(2) else {
                 usage(Some("--module without a name"))
             };
-            let tokens: Vec<&str> = PlatformId::ALL
-                .iter()
-                .filter(|p| p.just_module() == want)
-                .flat_map(|p| p.fixture_tokens())
-                .copied()
-                .collect();
-            if tokens.is_empty() {
-                eprintln!(
-                    "unknown just module {want:?} — expected one of: {}",
-                    PlatformId::ALL
-                        .iter()
-                        .map(|p| p.just_module())
-                        .collect::<BTreeSet<_>>()
-                        .into_iter()
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                );
-                std::process::exit(2);
-            }
+            let tokens = module_tokens(want);
             print_prefixed(lane, &tokens);
         }
         other => usage(other),
+    }
+}
+
+/// The fixture-platform tokens a `just` module owns, or exit 2 naming the
+/// known modules — an unknown name must not scope a run to nothing.
+fn module_tokens(want: &str) -> Vec<&'static str> {
+    let tokens: Vec<&str> = PlatformId::ALL
+        .iter()
+        .filter(|p| p.just_module() == want)
+        .flat_map(|p| p.fixture_tokens())
+        .copied()
+        .collect();
+    if tokens.is_empty() {
+        eprintln!(
+            "unknown just module {want:?} — expected one of: {}",
+            PlatformId::ALL
+                .iter()
+                .map(|p| p.just_module())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        std::process::exit(2);
+    }
+    tokens
+}
+
+/// Print every manifest coordinate (west leaves included) on a platform the
+/// module owns. A module with no rows is REFUSED: `NROS_TEST_COORDS` over an
+/// empty file is itself refused by the resolver, and printing nothing would
+/// hand the caller a file that fails every test for a reason about the file.
+fn print_scope(module: &str) {
+    let tokens = module_tokens(module);
+    let set: BTreeSet<String> = manifest_rows()
+        .iter()
+        .map(|r| &r.coord)
+        .chain(west_leaves().iter().map(|l| &l.coord))
+        .filter(|(p, _, _)| tokens.contains(&p.as_str()))
+        .map(|(p, l, r)| format!("{p},{l},{r}"))
+        .collect();
+    if set.is_empty() {
+        eprintln!("module {module:?} owns no fixture row — refusing an empty scope");
+        std::process::exit(1);
+    }
+    for c in set {
+        println!("{c}");
     }
 }
 

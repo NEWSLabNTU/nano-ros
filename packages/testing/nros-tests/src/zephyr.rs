@@ -970,10 +970,7 @@ pub fn is_zephyr_available() -> bool {
     is_west_available() && is_zephyr_workspace_available()
 }
 
-/// Skip test if Zephyr is not available
-///
-/// Returns `false` if Zephyr prerequisites are not met, printing a skip message.
-/// Returns `true` if Zephyr is available and the test should proceed.
+/// Fail the test (`unmet!`) if Zephyr is not available
 pub fn require_zephyr() {
     // Issue 1685 — a run whose lane selects no Zephyr coordinate deselects
     // here, BEFORE the workspace probe; otherwise a runner the lane never asked

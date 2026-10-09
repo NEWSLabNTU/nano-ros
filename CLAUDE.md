@@ -429,6 +429,11 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   `cargo nextest` on a host lacking X is red, honestly. A scope is a property of the LANE, never
   of what the host happens to have: the same lane deselects the same tests everywhere. So to
   "not run" something, narrow the lane (or its fixture build) — do not add a probe that skips.
+  Every runner of a scope takes BOTH axes from one place in `scripts/build/fixture-lane.sh`
+  (`nros_lane_unclaimed`, `nros_scope_coords_file`): `just ci tier1` and `just test tier1`
+  deselect the same tests, and `just test <platform>` is narrowed to that platform's rows. The
+  chain `just setup|doctor|build|test <scope>` must agree link by link — a `doctor` that says OK
+  over something `build` then refuses (a stale CLI was one) is the same lie.
   Put the scope check FIRST: a probe ahead of it turns out-of-lane into red. `check-skip-budget`
   fails any non-`lane` skip, with no allowlist (issue 1161's capability baseline was one; its
   router lines let a lane without `rmw_zenohd` read green). `require_*()` helpers return `()`
