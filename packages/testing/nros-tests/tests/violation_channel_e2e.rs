@@ -34,7 +34,7 @@ fn zephyr_cpp_violation_channel_reports_one_overrun_after_arming() -> TestResult
     let entry = build_zephyr_workspace_cpp_violation_entry()
         .require("violation-cpp (NROS_ZEPHYR_FIXTURE_FILTER=violation just zephyr build-fixtures)");
     let _router = ZenohRouter::start_on("127.0.0.1", PORT)
-        .unwrap_or_else(|e| nros_tests::skip!("zenohd failed to start on {PORT}: {e}"));
+        .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start on {PORT}: {e}"));
     let mut guest = ZephyrProcess::start(&entry, ZephyrPlatform::NativeSim)
         .unwrap_or_else(|e| panic!("boot zephyr native_sim: {e}"));
     let console = guest.wait_for_pattern("[handler] tick=12", Duration::from_secs(60));
