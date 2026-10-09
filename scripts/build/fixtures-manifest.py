@@ -141,7 +141,9 @@ COMPILE_CHECK_BUILDERS = (
     # what they ARE — "configure (or build) succeeded and artifact X exists" —
     # and because a row here is what `output` was invented for.
     "west-build",  # full `west build`; `output` is the image
-    "west-configure",  # `west build --cmake-only`; `output` is a configure artifact
+    # `west build --cmake-only`; `output` is `build.ninja`, which only a
+    # successful GENERATE writes (issue 1627)
+    "west-configure",
 )
 
 # The builders whose build stage never fails on the compile's own status, so a
@@ -178,6 +180,12 @@ SNIPPET_COMPILE_CHECK_BUILDERS = ("cxx-syntax", "cxx-syntax-verdict")
 # The two builders above, so the west lane and the compile-check lane can each
 # ask "is this one of mine?" without restating the pair.
 WEST_COMPILE_CHECK_BUILDERS = ("west-build", "west-configure")
+
+# Issue 1627 — what a `west-configure` row may declare as its `output`: files
+# CMake's GENERATE step writes, and only those. Zephyr always generates Ninja,
+# and CMake's Ninja generator discards `build.ninja` when generate reports an
+# error, so its presence means configure AND generate succeeded.
+WEST_CONFIGURE_GENERATE_OUTPUTS = ("build.ninja",)
 
 
 def load_compile_check_fixtures(path):
@@ -287,6 +295,28 @@ def validate_compile_check_fixture(entry):
         # "configure only" checkable rather than a claim in a comment (0536).
         if not entry.get("output"):
             _fail(entry, f"missing required key 'output' for builder {builder!r}")
+        # Issue 1627 — a `west-configure` row stops before linking, so
+        # `west-fixtures.sh` gates on `output` EXISTING rather than on west's
+        # exit status. That rule is only honest if the output cannot exist
+        # unless the configure succeeded. `CMakeCache.txt` (written early by
+        # CMake) and `nros-system/system_config.h` (written by our module
+        # mid-configure) both precede the GENERATE step, so three rows counted
+        # `No SOURCES given to target: app` and a FATAL idlc error as built.
+        # The output must be one GENERATE writes.
+        if (
+            builder == "west-configure"
+            and entry["output"] not in WEST_CONFIGURE_GENERATE_OUTPUTS
+        ):
+            _fail(
+                entry,
+                f"builder 'west-configure' gates on its output EXISTING, so the "
+                f"output must be written by CMake's GENERATE step — one of "
+                f"{', '.join(WEST_CONFIGURE_GENERATE_OUTPUTS)} (got "
+                f"{entry['output']!r}). A file written during CONFIGURE exists "
+                f"even when generate fails, which counts a failed build as ok "
+                f"(issue 1627). The test still reads its own file through "
+                f"`require_west_fixture`; this field is only the gate.",
+            )
 
 
 # Where a `cxx-syntax` row's stamp is asserted. One directory, because these

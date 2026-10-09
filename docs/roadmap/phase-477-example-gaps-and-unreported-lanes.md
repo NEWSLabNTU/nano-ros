@@ -96,9 +96,11 @@ the census (not a path list) keeps the class closed.
   cancelled by the next merge, the rest failing at `just ci tier1`. The highest-
   severity item in this phase: it is the only lane running the fixture-backed
   `nros-tests` suite on the host.
-- Issue [1627](../issues/1627-west-configure-fixture-passes-on-failed-configure.md)
+- Issue [1627](../issues/archived/1627-west-configure-fixture-passes-on-failed-configure.md)
   — a `west-configure` fixture counts a failed configure as built when its
-  declared output is written before the generate step.
+  declared output is written before the generate step. **Resolved 2026-10-10
+  (D1):** the rows declare `build.ninja`, gated by `validate-compile-checks`;
+  the Cyclone provisioning red it uncovers is issue 1777.
 - **The FVP lanes were exempt on a false premise** (2026-10-05). Five recipes
   (`build-/run-fvp-ws-entry`, `build-/run-fvp-board-import`,
   `verify-fvp-runtime`) were excluded from "a NAMED lane must work" as
@@ -111,7 +113,9 @@ the census (not a path list) keeps the class closed.
   Zephyr lane honours `NROS_ZEPHYR_FIXTURE_FILTER` for the five west compile
   checks, so `just zephyr build-rust-examples` and its siblings no longer build
   them. Keep that (the filter now means what it says) or restore the old
-  coverage.
+  coverage. **Taken 2026-10-09 (D2), recorded in 1627:** kept; tier 2 already
+  builds all five unfiltered (`just build tier2` → `just zephyr build-fixtures`
+  → `west-fixtures.sh`), and its `coords` stale gate demands them.
 
 **Acceptance:** `host-tests.yml` reports a `success` on `main` and a regression
 as a `failure`; 1627 closed; the filter decision recorded.
@@ -256,3 +260,8 @@ work items above still leave open.
 SEGV — a real bug, not a lane) → D3 (1650) → D5 (1652) and D6's two entries →
 D4's recording in 1512 and the mechanical C++ roles. W3's 1684/1685 close on
 the tier-1 job of run 37945434581.
+
+**Status 2026-10-10:** D1 + D2 done — issue 1627 resolved and archived (rows
+declare `build.ninja`, gated by `validate-compile-checks`; `require_west_fixture`
+requires the build stamp; D2 needed no lane change, tier 2 already builds the
+five rows). The Cyclone provisioning red D1 exposes is issue 1777.
