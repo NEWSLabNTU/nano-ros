@@ -61,7 +61,7 @@ did not regenerate and produced a byte-identical binary; only an explicit
 `nros sync` regenerated. Filed as
 [issue 1780](../issues/1780-nros-build-keeps-generated-code-after-ament-change.md)
 — W5's acceptance. Getting there found
-[issue 1781](../issues/1781-ament-index-last-prefix-wins.md): the CLI's ament
+[issue 1781](../issues/archived/1781-ament-index-last-prefix-wins.md): the CLI's ament
 index lets the LAST `AMENT_PREFIX_PATH` entry win, so an overlay's interface
 package is silently replaced by the underlay's — the overlay had to be put
 LAST for the experiment to see it at all. The cmake and west roads are not

@@ -224,7 +224,9 @@ function(nros_generate_interfaces target)
     file(GLOB _local_action CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/action/*.action")
     list(APPEND _interface_files ${_local_msg} ${_local_srv} ${_local_action})
 
-    # 2. Ament index
+    # 2. Ament index — the FIRST prefix that has the package, as in ament
+    #    (issue 1781). Appending every prefix's files gave a package present
+    #    in an overlay AND its underlay both copies of each interface.
     if(NOT _interface_files AND DEFINED ENV{AMENT_PREFIX_PATH})
       string(REPLACE ":" ";" _ament_paths "$ENV{AMENT_PREFIX_PATH}")
       foreach(_prefix ${_ament_paths})
@@ -232,6 +234,9 @@ function(nros_generate_interfaces target)
         file(GLOB _ament_srv CONFIGURE_DEPENDS "${_prefix}/share/${target}/srv/*.srv")
         file(GLOB _ament_action CONFIGURE_DEPENDS "${_prefix}/share/${target}/action/*.action")
         list(APPEND _interface_files ${_ament_msg} ${_ament_srv} ${_ament_action})
+        if(_interface_files)
+          break()
+        endif()
       endforeach()
     endif()
 

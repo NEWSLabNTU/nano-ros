@@ -3,7 +3,7 @@ id: 1781
 title: "`AmentIndex::from_path_string` lets the LAST `AMENT_PREFIX_PATH` entry win
   — ament's rule is the FIRST — so a colcon overlay's copy of an interface package
   is silently replaced by the underlay's (`/opt/ros`)"
-status: open
+status: resolved
 type: bug
 area: cli, codegen
 severity: high
@@ -42,3 +42,28 @@ prefixes holding the same package. Check the other `AMENT_PREFIX_PATH` readers
 for the same shape (`git grep -n AMENT_PREFIX_PATH -- packages/cli`:
 `cargo-nano-ros/src/{package_discovery,provider_scan,workflow}.rs`,
 `nros-cli-core/src/{cmd/build,cmd/ws,orchestration/prereq_resolve}.rs`).
+
+## Resolved (2026-10-10)
+
+The first prefix wins, in every reader that picks one:
+
+- `rosidl-bindgen` `AmentIndex::from_path_string` — `entry().or_insert`.
+- `cargo-nano-ros` `discover_installed_ament_packages` (the `rust_packages`
+  index) — same, split into `discover_installed_ament_packages_in(path)` so the
+  test needs no process environment.
+- `cmake/NanoRosGenerateInterfaces.cmake` step 2 APPENDED every prefix's
+  interface files, so a package in an overlay and its underlay got both
+  copies; it now stops at the first prefix that has the package.
+
+Already first-wins: `NanoRosCodegenCore.cmake` and
+`find/_NrosFindRosMsgPackage.cmake` (return on first hit), and the cross-layer
+`AmentIndex::merge`. Order-insensitive: `prereq_resolve::ros_packages` (a name
+set) and `generate-rust-incremental.sh` (a signature over every prefix).
+
+Guards, both FAILING with the old `insert` restored:
+`first_prefix_wins_so_an_overlay_shadows_its_underlay` (rosidl-bindgen) and
+`installed_ament_packages_first_prefix_wins` (cargo-nano-ros). End to end, the
+phase-485 M2 overlay put FIRST now generates its added field via `nros sync`,
+and the host install alone reverts it. The cmake change was checked with a
+`cmake -P` probe of the loop (one `String.msg`, the overlay's), not with a cmake
+build.
