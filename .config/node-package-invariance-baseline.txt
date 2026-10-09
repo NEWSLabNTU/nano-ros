@@ -13,6 +13,7 @@ examples/workspaces/violation-cpp/src/violation_pkg/src/Handler.cpp  # __ZEPHYR_
 examples/templates/cpp-port-minimal-publisher/zephyr/CMakeLists.txt  # the template's Zephyr wrapper package: find_package(Zephyr)
 examples/templates/rclcpp-compat-smoke/zephyr/CMakeLists.txt  # the template's Zephyr wrapper package: find_package(Zephyr)
 examples/templates/topic-state-monitor-port/zephyr/CMakeLists.txt  # the template's Zephyr wrapper package: find_package(Zephyr)
+examples/templates/zephyr-byo/app/CMakeLists.txt  # the bring-your-own template IS a Zephyr application: find_package(Zephyr); its package.xml exists for the self-pkg gate (phase-481 W3)
 # DEBT, not a ruling: the node package's own CMakeLists defaults the RMW. The
 # RMW belongs to the bringup (system.toml); move it there and delete this line.
 examples/templates/cpp-port-minimal-publisher/CMakeLists.txt  # DEBT: `set(NROS_RMW "zenoh" CACHE …)` in the node package

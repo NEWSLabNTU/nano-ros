@@ -97,19 +97,30 @@ build-one example rmw="zenoh" board="native_sim/native/64":
         NROS_REPO_DIR="$(pwd)" nros_codegen_stamp_write "$src"
         ;;
     esac
-    # CONF_FILE = base + RMW overlay + (native_sim) the version-aware NSOS
+    # phase-481 W3 — the leaf builds ONE of its `system.toml` images, one per
+    # RMW (`zephyr_<rmw>`), selected with -DNROS_IMAGE. The image's RMW, API,
+    # agent endpoint and knobs reach Kconfig through the nano-ros module's
+    # rendering, and the module adds the image's own `conf` fragment (the
+    # Zephyr-native `prj-<rmw>.conf`) AHEAD of the caller's EXTRA_CONF_FILE.
+    # So CONF_FILE is just `prj.conf` (explicit, which keeps Zephyr from
+    # auto-merging the per-leaf `boards/*.conf`), and the board tail rides
+    # EXTRA_CONF_FILE so it still merges AFTER the image's fragment, exactly
+    # where it sat in the old `prj.conf;prj-<rmw>.conf;<tail>` CONF_FILE.
+    #
+    # The (native_sim) tail is the version-aware NSOS
     # line overlay. The line overlay (cmake/zephyr/native-sim-line-<v>.conf)
     # supplies the native-eth-driver disable under the right symbol for the
     # line (ETH_NATIVE_POSIX on 3.7, ETH_NATIVE_TAP on 4.4) plus the shared
     # NSOS settings — so NSOS works on BOTH lines. It supersedes the legacy
     # per-example boards/native_sim_*.conf (which hardcodes the 3.7 symbol);
     # that file is left for the not-yet-version-gated build-fixtures path.
-    conf="prj.conf;prj-{{rmw}}.conf"
+    conf="prj.conf"
+    tail=""
     case "{{board}}" in
     native_sim*)
         line_overlay="$(pwd)/cmake/zephyr/native-sim-line-{{NROS_ZEPHYR_VERSION}}.conf"
         if [ -f "$line_overlay" ]; then
-            conf="$conf;$line_overlay"
+            tail="$line_overlay"
         else
             echo "WARN: no native_sim line overlay at $line_overlay" >&2
         fi
@@ -127,7 +138,7 @@ build-one example rmw="zenoh" board="native_sim/native/64":
         # NOTE `qemu_cortex_m3` itself is the TI LM3S6965 (256K flash / 64K
         # RAM) — far too small for a zenoh image; mps2/an385 is the Cortex-M
         # board this repo actually targets.
-        conf="$conf;$(pwd)/cmake/zephyr/qemu-cortex-m3.conf"
+        tail="$(pwd)/cmake/zephyr/qemu-cortex-m3.conf"
         ;;
     esac
     bd="build-$(echo '{{example}}' | tr '/' '-')-{{rmw}}"
@@ -146,7 +157,8 @@ build-one example rmw="zenoh" board="native_sim/native/64":
     # without its headers.
     shared_cargo_root="$(nros_build_dir "$NROS_KIND_CORROSION_CARGO" zephyr)"
     "${west_cmd[@]}" build -b "{{board}}" -d "$bd" "$src" -- \
-        -DCONF_FILE="$conf" -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" \
+        -DCONF_FILE="$conf" ${tail:+-DEXTRA_CONF_FILE="$tail"} \
+        -DNROS_IMAGE="zephyr_{{rmw}}" -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" \
         -DNROS_SHARED_CARGO_ROOT="$shared_cargo_root" "$nros_module_arg"
     echo "Built: $workspace/$bd/zephyr/zephyr.elf"
 

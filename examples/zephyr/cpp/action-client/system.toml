@@ -5,15 +5,21 @@
 # derives the platform (`zephyr`) from the board. Switching board is editing
 # `[image.*] board`.
 #
-# On Zephyr the RMW actually linked is still chosen by the Kconfig overlay
-# (`prj-<rmw>.conf`); Kconfig stays the Zephyr front-end (RFC-0098 "What is NOT
-# decided").
-
+# ONE IMAGE PER RMW (phase-481 W3, RFC-0098 D10/D11). The nano-ros Zephyr
+# module renders the selected image into a Kconfig fragment merged after every
+# conf file: the RMW choice from `rmw`, the language API from the package, the
+# agent endpoint from `locator`, and every `env` knob. So the `prj*.conf` files
+# hold Zephyr's own settings only, and each image's `conf` names the fragment
+# its RMW needs (networking, POSIX, heap), which the module adds before that
+# rendering. Build one with `west build ... -- -DNROS_IMAGE=<id>`; with none,
+# `default_images` builds zenoh.
 
 [system]
 name = "zephyr_cpp_action_client"
+# The system default every image below overrides with its own `rmw`.
 rmw = "zenoh"
 domain_id = 0
+default_images = ["zephyr_zenoh"]
 
 [[component]]
 pkg = "zephyr_cpp_action_client"
@@ -22,5 +28,35 @@ name = "fibonacci_action_client"
 
 # The Zephyr family; the concrete Zephyr board (`native_sim/native/64`) is the
 # west `-b` argument, resolved through the board catalog.
-[image.zephyr]
+[image.zephyr_zenoh]
 board = "zephyr"
+rmw = "zenoh"
+conf = ["prj-zenoh.conf"]
+
+[image.zephyr_xrce]
+board = "zephyr"
+rmw = "xrce"
+conf = ["prj-xrce.conf"]
+# The Micro-XRCE-DDS agent. A test harness passes its own port per run
+# (`-DCONFIG_NROS_XRCE_AGENT_PORT=…`, which merges after this).
+locator = "udp/127.0.0.1:2018"
+# This image creates: action_client:example_interfaces/action/Fibonacci:/fibonacci
+# so: one action client = 3 service clients (send_goal / cancel_goal /
+# get_result) + ACTION_CLIENT_SUBSCRIPTIONS (1) subscription (feedback).
+# Issue 1033 -- `xrce_session_state_t` is one platform-heap allocation sized
+# by these three caps at BUILD time; at the crate defaults it is 6.4x the
+# 64 KiB arena and the image cannot boot. STATED, not derived: a standalone
+# Zephyr leaf's entity inventory does not compose (measured, phase-481 W3:
+# refused for every C/C++ leaf and five of the six Rust ones), and the client
+# cap has no derivation at all, so `-1` would fall to the crate default.
+# Issue 1761 -- the platform arena, from the issue-1424 heap gate's dump
+# (2026-10-09, native_sim, `example_e2e` action cell): this image peaked at
+# 55,616 of the 66,048-byte default and kept 10,432 B, under the gate's
+# 24,576 floor ("set CONFIG_NROS_ZEPHYR_HEAP_SIZE >= 80192"). 96 KiB keeps
+# the floor with room for the run-to-run variance one dump cannot show.
+env = { NROS_XRCE_MAX_SUBSCRIBERS = "1", NROS_XRCE_MAX_SERVICE_SERVERS = "0", NROS_XRCE_MAX_SERVICE_CLIENTS = "3", NROS_ZEPHYR_HEAP_SIZE = "98304" }
+
+[image.zephyr_cyclonedds]
+board = "zephyr"
+rmw = "cyclonedds"
+conf = ["prj-cyclonedds.conf"]

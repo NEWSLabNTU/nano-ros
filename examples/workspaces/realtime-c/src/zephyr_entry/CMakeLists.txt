@@ -17,6 +17,31 @@
 
 cmake_minimum_required(VERSION 3.20.0)
 
+# issue 0260 / phase-356 W3 — the bringup is a per-row FIXTURE AXIS, keyed on
+# the BOARD. An SMP board takes `smp_bringup`, whose only difference is
+# `core = 1` on the zephyr high tier — a value native_sim cannot honour, being
+# uniprocessor, which is exactly why it cannot live in the shared bringup.
+# Everything else takes `demo_bringup`.
+#
+# phase-481 W3 — decided HERE, before `find_package(Zephyr)`, because the
+# bringup's image is also what the nano-ros module renders into Kconfig (the RMW,
+# the API, `[image.zephyr] env`) during that call: this hand-written application
+# states its image the way a generated one does (`builder/west_app.rs`). The
+# board is read as the caller PASSED it (`-b`/`-DBOARD`, the qualified string);
+# Zephyr later normalises `BOARD` to the bare name and moves `/…/smp` to
+# `BOARD_QUALIFIERS`, which is why the CONFIG_SMP cross-check below exists.
+if(NOT NROS_ENTRY_BRINGUP)
+    if("$CACHE{BOARD}" MATCHES "/smp$" OR "$ENV{BOARD}" MATCHES "/smp$")
+        set(NROS_ENTRY_BRINGUP "smp_bringup")
+    else()
+        set(NROS_ENTRY_BRINGUP "demo_bringup")
+    endif()
+endif()
+get_filename_component(NROS_IMAGE_SYSTEM_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/../${NROS_ENTRY_BRINGUP}" ABSOLUTE)
+set(NROS_IMAGE zephyr)
+set(NROS_IMAGE_LANGUAGE cpp)
+
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(nros_zephyr_ws_realtime_entry_c)
 
@@ -30,30 +55,15 @@ find_package(nano_ros REQUIRED)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../ctrl_pkg" ctrl_pkg)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../telem_pkg" telem_pkg)
 
-# issue 0260 / phase-356 W3 — the bringup is a per-row FIXTURE AXIS, keyed on
-# the BOARD. `board` is already a `[[workspace_fixture]]` field, so this needs no
-# new row field and no widening of the west leaf record (which carries no slot
-# for arbitrary cmake defs).
-#
-# An SMP board takes `smp_bringup`, whose only difference is `core = 1` on the
-# zephyr high tier — a value native_sim cannot honour, being uniprocessor, which
-# is exactly why it cannot live in the shared bringup. Everything else defaults
-# to `demo_bringup`, so every existing row builds byte-identically.
-if(NOT NROS_ENTRY_BRINGUP)
-    # `CONFIG_SMP`, not the board name. Two reasons, the second learned the hard
-    # way: it is the SEMANTIC condition (an image with more than one CPU gets the
-    # bringup that pins to a second one), and `BOARD` is NOT the qualified board
-    # string here. Zephyr normalises it to the board NAME — `qemu_cortex_a53` —
-    # and puts `/qemu_cortex_a53/smp` in `BOARD_QUALIFIERS`, so
-    # `BOARD MATCHES "smp"` silently never matched and the fixture built
-    # `demo_bringup`, ran unpinned, and reported `running_on=0`. The CMakeCache
-    # shows the qualified string because that is what was PASSED, which is what
-    # made the wrong predicate look right.
-    if(CONFIG_SMP)
-        set(NROS_ENTRY_BRINGUP "smp_bringup")
-    else()
-        set(NROS_ENTRY_BRINGUP "demo_bringup")
-    endif()
+# The bringup chosen above from the board string must agree with the image
+# Kconfig actually built: `CONFIG_SMP` is the SEMANTIC condition (an image with
+# more than one CPU gets the bringup that pins to a second one). A mismatch used
+# to build `demo_bringup`, run unpinned and report `running_on=0`.
+if(CONFIG_SMP AND NOT NROS_ENTRY_BRINGUP STREQUAL "smp_bringup")
+    message(FATAL_ERROR
+        "zephyr_entry: CONFIG_SMP image but bringup ${NROS_ENTRY_BRINGUP} -- the board "
+        "`${BOARD}${BOARD_QUALIFIERS}` did not select smp_bringup before find_package(Zephyr); "
+        "pass -DNROS_ENTRY_BRINGUP=smp_bringup")
 endif()
 
 nano_ros_add_executable(zephyr_entry

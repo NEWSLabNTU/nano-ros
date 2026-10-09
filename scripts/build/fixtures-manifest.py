@@ -1158,6 +1158,79 @@ def _require_image_rmw(entry, system_toml, image):
     )
 
 
+def _require_default_image_rmw(entry):
+    """Issue 1757 -- a west row that names NO `west_image` builds the image the
+    leaf's own rule picks (its one image, else `[system] default_images[0]`),
+    because that is what the nano-ros module renders when no `-DNROS_IMAGE`
+    arrives. That image's `rmw` must be the row's: the rendering merges LAST,
+    so a row claiming xrce over a zenoh default image builds zenoh-pico under
+    an `-xrce` name (measured on the tier-2 nightly, 2026-10-08). Rows whose
+    `dir` holds no `system.toml` (or one with no `[image.*]`) render nothing and
+    pass. Only `builder = "west"` single-package rows reach here.
+    """
+    if not entry.get("dir"):
+        return
+    system_toml = SCRIPT_ROOT / entry["dir"] / "system.toml"
+    if not system_toml.is_file():
+        return
+    doc = _load_toml(entry, system_toml)
+    images = doc.get("image") or {}
+    if not images:
+        return
+    if len(images) == 1:
+        default = next(iter(images))
+    else:
+        named = (doc.get("system") or {}).get("default_images") or []
+        if not named:
+            _fail(entry, f"builds {system_toml}, which declares {len(images)} images "
+                         f"and no `[system] default_images` -- name the one this row "
+                         f"builds with `west_image = \"<id>\"`")
+        default = named[0]
+    try:
+        _require_image_rmw(entry, system_toml, default)
+    except ValueError as e:
+        raise ValueError(
+            f"{e} -- this row names no `west_image`, so it builds the leaf's "
+            f"DEFAULT image {default!r}; select the image that links "
+            f"{entry['rmw']!r} with `west_image = \"<id>\"` (issue 1757)"
+        ) from None
+
+
+def west_leaf_image(entry):
+    """phase-481 W3 -- `(image, conf)` for a single-package Zephyr row that
+    names `west_image`, or `("", [])`.
+
+    The row SELECTS an image of the leaf's own `system.toml`; it no longer
+    spells the per-RMW `prj-<rmw>.conf`. That fragment is the image's
+    `conf` (Zephyr-native networking/POSIX/heap lines its RMW needs), read
+    here and appended to the row's `conf_files`, so the west `CONF_FILE` keeps
+    exactly the merge order it had -- `prj.conf`, the image's fragments, then
+    the board tail the leaves script adds -- and a board tail still overrides
+    them (measured: mps2-an385.conf and prj-zenoh.conf disagree on six
+    symbols). The nano-ros module adds the same fragments itself for a plain
+    `west build -- -DNROS_IMAGE=<id>`, skipping any the build already names.
+
+    Read like `ImageBlock::with_base` does: `[image_defaults] conf` then the
+    image's own. The image must exist and its `rmw` must be the row's, the
+    same refusal `_require_image_rmw` gives a workspace row (issue 0831).
+    """
+    image = entry.get("west_image")
+    if not image:
+        _require_default_image_rmw(entry)
+        return "", []
+    system_toml = SCRIPT_ROOT / entry["dir"] / "system.toml"
+    if not system_toml.is_file():
+        _fail(entry, f"names west_image {image!r} but {system_toml} does not exist")
+    _require_image(entry, system_toml, image)
+    _require_image_rmw(entry, system_toml, image)
+    doc = _load_toml(entry, system_toml)
+    conf = list((doc.get("image_defaults") or {}).get("conf") or [])
+    conf += list(((doc.get("image") or {}).get(image) or {}).get("conf") or [])
+    for name in conf:
+        _require_file(entry, system_toml.parent / name, f"[image.{image}] conf fragment")
+    return image, conf
+
+
 def _system_default_launch(entry, path):
     system = _load_toml(entry, path).get("system") or {}
     return system.get("default_launch")
@@ -1747,14 +1820,19 @@ def main():
                         west_build_name(e),
                         west_id(e),
                         *(str(v or "") for v in authored),
-                        ";".join(e.get("conf_files", [])),
+                        ";".join(e.get("conf_files", []) + west_leaf_image(e)[1]),
                         # (issue 0549 — a `west_bare` field rode here, blanking
                         # a leaf's cmake defs and staleness signature. Exactly
                         # one row used it, and that row turned out to be a
                         # vestigial duplicate; the field went with the fix. The
                         # trailing position is kept EMPTY rather than removed so
                         # the record width does not change under readers.)
-                        "",
+                        #
+                        # phase-481 W3 -- the slot now carries the leaf IMAGE a
+                        # single-package row selects (`west_image`), which the
+                        # leaves script passes as `-DNROS_IMAGE`. Empty for every
+                        # other row, so their records are byte-identical.
+                        west_leaf_image(e)[0],
                         # phase-383 W9.b — the retarget columns. EMPTY on every
                         # unmigrated row, which is how the emitter tells "build
                         # this leaf with `west build`" from "build it with

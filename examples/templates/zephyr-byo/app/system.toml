@@ -1,0 +1,22 @@
+# What this app deploys to, and the nano-ros half of its configuration
+# (RFC-0098 D3/D10). The nano-ros Zephyr module renders the image below into a
+# Kconfig fragment merged after `prj.conf` -- the RMW choice from `rmw`, the
+# API from the app's C++ carrier, and any `env` knob -- so `prj.conf` holds
+# Zephyr's own settings only (phase-481). Switching RMW is editing `rmw` here
+# (xrce/cyclonedds also need their Zephyr-native networking: see the
+# multi-RMW `examples/zephyr/c/talker`, whose images name a `conf` each).
+
+[system]
+name = "nano_ros_byo_talker"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "nano_ros_byo_talker"
+class = "nano_ros_byo_talker::Talker"
+name = "talker"
+
+# The Zephyr family; the concrete board is west's `-b`.
+[image.zephyr]
+board = "zephyr"
+rmw = "zenoh"

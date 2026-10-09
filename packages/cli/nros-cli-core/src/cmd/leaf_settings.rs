@@ -143,7 +143,7 @@ fn package_name(leaf: &Path) -> Option<String> {
 /// phase-445 W5 made `leaf_system::read` refuse it instead, so it never
 /// reaches this function.)
 pub fn resolve(leaf: &Path, nano_ros_root: &Path) -> Result<Option<LeafImage>> {
-    resolve_for(leaf, nano_ros_root, Driver::Cargo)
+    resolve_for(leaf, nano_ros_root, Driver::Cargo, None)
 }
 
 /// Issue 1662 -- the same resolution for a leaf whose board's road is WEST: a
@@ -153,17 +153,39 @@ pub fn resolve(leaf: &Path, nano_ros_root: &Path) -> Result<Option<LeafImage>> {
 /// inventory and the same descriptor writer, so the leaf is resolved once,
 /// here. `None` for anything else, exactly as [`resolve`].
 pub fn resolve_west(leaf: &Path, nano_ros_root: &Path) -> Result<Option<LeafImage>> {
-    resolve_for(leaf, nano_ros_root, Driver::West)
+    resolve_for(leaf, nano_ros_root, Driver::West, None)
 }
 
-fn resolve_for(leaf: &Path, nano_ros_root: &Path, want: Driver) -> Result<Option<LeafImage>> {
+/// [`resolve_west`] for ONE named image of the leaf (phase-481 W3). A Zephyr
+/// leaf states one image per RMW and the configure builds the one
+/// `-DNROS_IMAGE=<id>` names, so a reader that sizes that build must read THAT
+/// image -- its `rmw` decides which backend the descriptor speaks for. `None`
+/// keeps the leaf's own rule (one image, or `[system] default_images`).
+pub fn resolve_west_image(
+    leaf: &Path,
+    nano_ros_root: &Path,
+    image: Option<&str>,
+) -> Result<Option<LeafImage>> {
+    resolve_for(leaf, nano_ros_root, Driver::West, image)
+}
+
+fn resolve_for(
+    leaf: &Path,
+    nano_ros_root: &Path,
+    want: Driver,
+    image: Option<&str>,
+) -> Result<Option<LeafImage>> {
     if !leaf.join(leaf_system::SYSTEM_TOML).is_file() {
         return Ok(None);
     }
     let Some(package) = package_name(leaf) else {
         return Ok(None);
     };
-    let Some(decl) = leaf_system::read(leaf).map_err(|e| eyre!(e))? else {
+    let decl = match image {
+        Some(id) => leaf_system::read_image(leaf, id),
+        None => leaf_system::read(leaf),
+    };
+    let Some(decl) = decl.map_err(|e| eyre!(e))? else {
         return Ok(None);
     };
     let Some(board) = decl.board.clone() else {
@@ -559,6 +581,7 @@ mod tests {
             // in here asks about the runtime service families, so the helper
             // states the empty claim once instead of per test.
             features: Vec::new(),
+            conf: Vec::new(),
         }
     }
 

@@ -11,8 +11,9 @@ export NROS_REPO_DIR=/path/to/nano-ros   # your nano-ros checkout
 nros sync                                # generated/ message crates
 ```
 
-Zephyr is the carve-out: the build verb is `west`, not `nros build`, and
-the board plus the `CONF_FILE` RMW overlay are west arguments — see the
+Zephyr is the carve-out: the build verb is `west`, not `nros build`. The
+board is west's `-b`, and the RMW is one of this leaf's `system.toml`
+images (`-DNROS_IMAGE=zephyr_<rmw>`) — see the
 [zephyr README](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/zephyr/README.md).
 
 ## Run
@@ -23,7 +24,7 @@ QEMU / flashing steps live in the [zephyr README](https://github.com/NEWSLabNTU/
 ## Config
 
 Board, RMW, domain and locator: `system.toml` beside `Cargo.toml`
-(`[image.zephyr]` + `[system]`, RFC-0098 D3/D5). No build command
+(`[image.zephyr_zenoh]` + `[system]`, RFC-0098 D3/D5). No build command
 carries any of them.
 
 Switching board is two edits today, not one: the `[image.*] board` line

@@ -10,11 +10,11 @@
 //! self-package Rust application.
 //! The user authors *only* the declarative + body bits.
 //!
-//! RMW selection still flows through the Kconfig `prj-<rmw>.conf`
-//! overlay (vendor-native per L.12). The example `CMakeLists.txt`
-//! threads the Kconfig `CONFIG_NROS_RMW_*` choice into Cargo feature
-//! selection; `system.toml`'s `[system] rmw` is the planner-side
-//! declaration (RFC-0098 D5).
+//! RMW selection is the IMAGE's `rmw` in `system.toml` (one image per RMW,
+//! picked with `-DNROS_IMAGE=<id>`); the nano-ros Zephyr module renders it
+//! into Kconfig `CONFIG_NROS_RMW_*` (phase-481, RFC-0098 D11), and the
+//! example `CMakeLists.txt` threads that choice into Cargo feature
+//! selection.
 //!
 //! Issue 1603 -- the node itself is `zephyr_talker_node` (`node/`), a
 //! package with no Zephyr dependency, so the host metadata probe can build it.

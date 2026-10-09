@@ -30,11 +30,13 @@ the shared board fragments under `cmake/zephyr/` — the BOARD layer, not a leaf
 file — and the per-run `-DCONFIG_*` values fixture scripts pass, which are
 command-line, not files.
 
-A RATCHET, because today's tree still holds the W3 migration's inventory: the
-baseline records each offending file's line count, and BOTH directions fail
-(`scripts/lib/ratchet.py`) — a new line anywhere is a rise, and a file W3
-drains must lower or delete its row in the same change, so the debt can only
-shrink. The refusal names the `system.toml` and the line to write there.
+A RATCHET whose baseline is EMPTY. It landed (phase-481 W2) holding the 226
+lines / 104 files the W3 migration then moved into `system.toml`; W3 drained
+it, and the file stays -- header only -- because an absent baseline and an
+empty one are different states. BOTH directions still fail
+(`scripts/lib/ratchet.py`): a new line anywhere is a rise over zero, so the
+rule is now absolute, and the refusal names the `system.toml` and the line to
+write there. Never `--write-baseline` to admit a line: move it.
 
 Usage::
 
@@ -69,11 +71,13 @@ ASSIGN = re.compile(r"^\s*(CONFIG_NROS_[A-Za-z0-9_]+)\s*=\s*(.*?)\s*$")
 HEADER = (
     "# phase-481 W2 — tracked examples/**/*.conf files that still assign a\n"
     "# nano-ros knob (`check-leaf-conf-nros-knobs`), with the number of such\n"
-    "# lines. A RATCHET: it may only SHRINK, and a file that drains must lower or\n"
-    "# delete its row in the same change. W3 empties it.\n"
+    "# lines. A RATCHET: it may only SHRINK.\n"
     "#\n"
-    "# Regenerate ONLY to record lines that moved into system.toml:\n"
-    "#     python3 scripts/check-leaf-conf-nros-knobs.py --write-baseline\n"
+    "# EMPTY, and that is the end state: phase-481 W3 moved all 226 lines (104\n"
+    "# files) into the images' system.toml -- the RMW to `rmw`, the API to\n"
+    "# nothing (derived), the agent endpoint to `locator`, every knob to\n"
+    "# `[image.<id>] env`. A row here now is a regression, not debt: move the line\n"
+    "# instead of regenerating this file.\n"
 )
 
 
@@ -343,7 +347,8 @@ def main() -> int:
             print(line, file=sys.stderr)
         return 1
     print(f"check-leaf-conf-nros-knobs: OK — {len(found)} baselined line(s) in "
-          f"{len(counts(found))} file(s) left for phase-481 W3, nothing new.")
+          f"{len(counts(found))} file(s) (the baseline is empty since phase-481 W3), "
+          f"nothing new.")
     return 0
 
 

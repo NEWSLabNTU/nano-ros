@@ -36,10 +36,21 @@ include($ENV{NROS_REPO_DIR}/zephyr/cmake/nano_ros_use_board.cmake)
 nano_ros_use_board(fvp-aemv8r-smp)
 
 # Layer this entry's config over the board crate's base prj.conf (already on
-# EXTRA_CONF_FILE): C++ API + tiers seam + the cyclone RMW selection.
+# EXTRA_CONF_FILE): its Zephyr-native settings and Cyclone's. The C++ API and the
+# cyclone RMW selection are the image's (`[image.fvp]`), rendered by the module.
 list(APPEND EXTRA_CONF_FILE
     "${CMAKE_CURRENT_SOURCE_DIR}/prj.conf"
     "${CMAKE_CURRENT_SOURCE_DIR}/prj-cyclonedds.conf")
+
+# Which image this is (phase-481 W3, RFC-0098 D11): the nano-ros Zephyr
+# module's `module_ext_root` hook reads these DURING `find_package(Zephyr)` and
+# renders the image's RMW, API and `env` into a Kconfig fragment merged after
+# every conf file -- the same three lines a GENERATED application states
+# (`builder/west_app.rs`). This application is hand-written, so it says them.
+get_filename_component(NROS_IMAGE_SYSTEM_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup" ABSOLUTE)
+set(NROS_IMAGE fvp)
+set(NROS_IMAGE_LANGUAGE cpp)
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(nros_zephyr_ws_realtime_entry_cpp_fvp)

@@ -139,3 +139,8 @@ board = "zephyr"
 conf = ["prj-zenoh.conf"]
 launch = "rust_safety.launch.xml"
 locator = "tcp/10.0.2.2:7467"
+# issue 1324 / phase-481 W3 -- the nano-ros platform heap (zenoh-pico and the
+# Rust global allocator both allocate from it). 256 KiB on native_sim (host
+# RAM); every e2e run scores it against the image's MEASURED heap peak, so an
+# outgrown value fails a cell by name. Moved from the board's prj-zenoh.conf.
+env = { NROS_ZEPHYR_HEAP_SIZE = "262144" }

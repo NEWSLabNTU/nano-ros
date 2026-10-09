@@ -135,3 +135,8 @@ rmw = "zenoh"
 [image.zephyr]
 board = "zephyr"
 conf = ["prj-zenoh.conf"]
+# phase-276 W2 / phase-481 W3 -- the tiers need tx windows well inside their
+# period: Zephyr zsock serializes send behind the read task's recv window
+# (issues 0129/0139). Moved from the board's prj-zenoh.conf: a nano-ros knob
+# is the image's (RFC-0098 D10), rendered into Kconfig by the module.
+env = { NROS_ZENOH_SOCKET_TIMEOUT_MS = "5" }

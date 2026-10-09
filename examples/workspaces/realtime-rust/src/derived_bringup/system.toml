@@ -39,9 +39,9 @@ group_tiers = { telem = "derived" }
 [image_defaults]
 rmw = "zenoh"
 
-# The one image, and the reason this bringup exists. `prj-lowered-band.conf`
-# moves the zenoh read task's band so the image's own priority plan DIFFERS
-# from the Kconfig defaults projection (read the fragment for the numbers). On
+# The one image, and the reason this bringup exists. Its `ZPICO_READ_TASK_PRIORITY`
+# row (below) moves the zenoh read task's band so the image's own priority plan
+# DIFFERS from the Kconfig defaults projection. On
 # a default-band image the two agree and a regression back to the projection
 # would be invisible; here it is 5 / 6 inside the transport vs 10 / 11 below
 # it, and the Zephyr boot report is what tells them apart at runtime.
@@ -61,8 +61,26 @@ rmw = "zenoh"
 # `nros build` refuses two bringups generating one id now.
 [image.zephyr_derived]
 board = "zephyr"
-conf = ["prj-zenoh.conf", "prj-lowered-band.conf"]
+conf = ["prj-zenoh.conf"]
 locator = "tcp/127.0.0.1:7491"
+# Issue 1537 -- THE AXIS OF THIS IMAGE: a lowered transport band. On the
+# 15-priority native_sim image `ZPICO_READ_TASK_PRIORITY = 100` (Kconfig
+# `CONFIG_NROS_ZENOH_READ_PRIORITY`) moves the zenoh read task from k_thread 4
+# (the default band, 200) to k_thread 9, so the transport band is [4, 9] and the
+# tier pool [10, 14]. The Kconfig DEFAULTS projection still says pool [5, 14],
+# so a derived tier allocated out of the projection lands at 5 / 6 -- INSIDE the
+# transport -- and the Zephyr boot report fires; allocated out of the image's
+# own `.config` (what `nros::main!` does since issue 1537) they land at 10 / 11
+# and the report is silent. It lived in its own `prj-lowered-band.conf`, merged
+# last so nothing could shadow it; the module's rendering of this table is last
+# of every conf file by construction (phase-481 W3), and
+# `sched_dims_applied_e2e` still reads the BUILT `.config` back.
+#
+# The other two rows moved from the board's prj-zenoh.conf: the nano-ros
+# platform heap (issue 1324, 256 KiB on native_sim, scored against the measured
+# peak by every e2e run) and the zsock window the 100 Hz tier needs (issues
+# 0129/0139).
+env = { ZPICO_READ_TASK_PRIORITY = "100", NROS_ZEPHYR_HEAP_SIZE = "262144", NROS_ZENOH_SOCKET_TIMEOUT_MS = "5" }
 
 # Issue 1419 -- the HOST sibling `zephyr_derived`'s census is taken with. The
 # west road's `nros build` stage 4 checks a Rust Zephyr image's census against

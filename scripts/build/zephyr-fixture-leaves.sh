@@ -362,7 +362,7 @@ selected=0
 # field cannot be absorbed by `row_nros_image` — `read` puts the remainder in the
 # last variable, so an unnamed column silently corrupts the one before it.
 while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
-    row_zenoh_locator row_xrce_port row_cyclone_domain row_conf_files _row_reserved \
+    row_zenoh_locator row_xrce_port row_cyclone_domain row_conf_files row_west_image \
     row_ws_dir row_nros_image _row_coord; do
     [ -n "$board" ] || continue
 
@@ -451,6 +451,12 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
     [ -z "$zenoh_locator" ] || extra_cmake_defs="$extra_cmake_defs -DCONFIG_NROS_ZENOH_LOCATOR=\"$zenoh_locator\""
     [ -z "$cyclone_domain" ] || extra_cmake_defs="$extra_cmake_defs -DCONFIG_NROS_DOMAIN_ID=$cyclone_domain"
     [ -z "$conf_files" ] || extra_cmake_defs="$extra_cmake_defs -DCONF_FILE=$conf_files"
+    # phase-481 W3 — a single-package leaf builds ONE of its `system.toml`
+    # images (one per RMW). The row selects it; the image's `rmw`, API, agent
+    # endpoint and `env` knobs reach Kconfig through the nano-ros module's
+    # rendering, and its `conf` fragment is already in `$conf_files` above (the
+    # manifest appended it, in the order the old per-RMW CONF_FILE had).
+    [ -z "$row_west_image" ] || extra_cmake_defs="$extra_cmake_defs -DNROS_IMAGE=$row_west_image"
 
     sccache_launcher=0
     if [ "$sccache_disable" = "0" ] && command -v sccache >/dev/null 2>&1; then
@@ -482,6 +488,11 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
     # rows it does not describe.
     if [ -n "$row_nros_image" ]; then
         sig="$(printf '%s\n%s\n%s' "$sig" "ws_dir=$ws_dir" "nros_image=$row_nros_image")"
+    fi
+    # phase-481 W3 — same rule for the selected leaf image: only rows that name
+    # one carry the line, so no other leaf's signature moves.
+    if [ -n "$row_west_image" ]; then
+        sig="$(printf '%s\n%s' "$sig" "west_image=$row_west_image")"
     fi
     emit_record fixture "$id" "$target" "$board" "$lang" "$lang_tag" "$role" "$rmw" \
         "$src_rel" "$src_dir" "$build_name" "$build_dir" "$log_dir/${build_name}.log" \

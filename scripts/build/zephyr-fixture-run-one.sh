@@ -198,7 +198,11 @@ fi
 if [ -n "$cache_make" ] && ! grep -qxF "$cache_make" "$build_dir/CMakeCache.txt"; then
     needs_west=1
 fi
-if [ ! -f "$sig_file" ] || [ "$(cat "$sig_file")" != "$sig" ]; then
+# A retargeted row's stored signature also carries its planned west line
+# (phase-481 W3, below), so it is compared there, once the plan is known --
+# comparing the bare record signature here would never match and would send
+# every retargeted row down the west path.
+if [ -z "$nros_image" ] && { [ ! -f "$sig_file" ] || [ "$(cat "$sig_file")" != "$sig" ]; }; then
     needs_west=1
 fi
 
@@ -270,9 +274,40 @@ fi
 # in `zephyr_fixture_app_regen.sh`); a changed one makes it newer than
 # `build.ninja`, and ninja's RERUN_CMAKE edge re-runs cmake from the new file,
 # whose `CONFIG_*` assignments Zephyr merges into a fresh `.config`.
+#
+# phase-481 W3 — and the ninja path can only be taken when the configure it
+# would reuse was made by the SAME west command the image now plans. The plan
+# is the dry run's printed `west build …` line, whose cmake zone carries the
+# image's resolved `conf` overlays (`-DEXTRA_CONF_FILE=…`, cache values west
+# never re-reads on a ninja rebuild). The signature above covers none of them,
+# so an image that dropped a fragment kept naming it in CMakeCache.txt and the
+# reconfigure died on `File not found` — measured on `zephyr_derived` when its
+# `prj-lowered-band.conf` became an `env` row. The plan joins the signature
+# (only for a retargeted row, so no other leaf's signature moves), and a moved
+# plan re-runs west. The dry run IS the regen above, so it runs once.
 regen_argv=()
-if [ "$needs_west" = "0" ] && [ -n "$nros_image" ]; then
-    regen_argv=("$nros_bin" build "$nros_image" --workspace "$ws_dir" --offline --dry-run)
+if [ -n "$nros_image" ]; then
+    plan_out=""
+    plan_err="$(mktemp)"
+    if ! plan_out="$(cd "$workspace" && env PATH="$tool_path" \
+            "$nros_bin" build "$nros_image" --workspace "$ws_dir" --offline --dry-run 2>"$plan_err")"; then
+        tail -40 "$plan_err" >&2
+        rm -f "$plan_err"
+        die "nros build --dry-run failed for $nros_image ($id)"
+    fi
+    # The plan is the dry run's STDOUT (its progress goes to stderr).
+    west_plan="$(printf '%s\n' "$plan_out" | grep -m1 'west build ' || true)"
+    if [ -z "$west_plan" ]; then
+        printf '%s\n' "$plan_out" | tail -20 >&2
+        tail -20 "$plan_err" >&2
+        rm -f "$plan_err"
+        die "nros build --dry-run printed no west command for $nros_image ($id)"
+    fi
+    rm -f "$plan_err"
+    sig="$(printf '%s\n%s' "$sig" "west_plan=$west_plan")"
+    if [ ! -f "$sig_file" ] || [ "$(cat "$sig_file")" != "$sig" ]; then
+        needs_west=1
+    fi
 fi
 
 use_west=0

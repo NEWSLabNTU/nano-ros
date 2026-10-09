@@ -444,6 +444,12 @@ function(_nros_west_leaf_sizing)
     if(NROS_RUST_TARGET)
         list(APPEND _args --target-triple "${NROS_RUST_TARGET}")
     endif()
+    # phase-481 W3 -- the image this configure builds. A leaf states one image
+    # per RMW (`-DNROS_IMAGE=zephyr_xrce`), and the descriptor speaks for the
+    # backend that links, so it must be THAT image's, never the default's.
+    if(DEFINED NROS_IMAGE AND NOT NROS_IMAGE STREQUAL "")
+        list(APPEND _args --image "${NROS_IMAGE}")
+    endif()
     execute_process(
         COMMAND "${_nros}" ${_args}
         OUTPUT_VARIABLE _out

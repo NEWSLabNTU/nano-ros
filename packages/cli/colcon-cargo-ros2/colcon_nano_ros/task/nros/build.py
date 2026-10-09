@@ -95,6 +95,20 @@ SDK_ENV_VARS = (
 _bindings_generated = False
 
 
+
+def _declares_image(system_toml, image):
+    """True when `system_toml` has an `[image.<image>]` table (phase-481 W3).
+
+    A line match, not a TOML parse: the header is the whole question, and this
+    plugin runs on interpreters older than `tomllib`.
+    """
+    try:
+        text = Path(system_toml).read_text(encoding="utf8")
+    except OSError:
+        return False
+    header = f"[image.{image}]"
+    return any(line.strip() == header for line in text.splitlines())
+
 class NrosBuildTask(TaskExtensionPoint):
     """Build task for nano-ros packages (`nros_cargo` / `nros_cmake`).
 
@@ -331,10 +345,20 @@ class NrosBuildTask(TaskExtensionPoint):
             prefix_paths.append(env_prefix)
         west_defs = [f"-DCMAKE_PREFIX_PATH={';'.join(prefix_paths)}"]
 
-        # Select the RMW Kconfig overlay (Phase 172.M): base prj.conf + the
-        # per-RMW overlay, the same shape the `just zephyr` recipes use. RMW
-        # from the single source (NANO_ROS_RMW env).
-        west_defs.append(f"-DCONF_FILE=prj.conf;prj-{resolve_rmw()}.conf")
+        # Select the RMW (Phase 172.M), from the single source (NANO_ROS_RMW
+        # env). phase-481 W3: a leaf whose `system.toml` states one image per
+        # RMW (`[image.zephyr_<rmw>]`) is built by NAMING that image -- the
+        # nano-ros Zephyr module renders its RMW, API and knobs and adds the
+        # image's own Zephyr-native `conf` fragment, so the overlay is not
+        # assembled here. A package without such an image keeps the old
+        # base + per-RMW overlay shape.
+        rmw = resolve_rmw()
+        image = f"zephyr_{rmw}"
+        if _declares_image(pkg_path / "system.toml", image):
+            west_defs.append("-DCONF_FILE=prj.conf")
+            west_defs.append(f"-DNROS_IMAGE={image}")
+        else:
+            west_defs.append(f"-DCONF_FILE=prj.conf;prj-{rmw}.conf")
 
         # Name THIS checkout's `nros` Zephyr module (issue 1379). A west
         # workspace can be shared by every checkout on the host, so without the

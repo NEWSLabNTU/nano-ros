@@ -506,7 +506,7 @@ just qemu talker      # spawns QEMU + nros-rs-talker
 just setup zephyr
 source ~/nano-ros-workspace/env.sh
 west build -b native_sim/native/64 nano-ros/examples/zephyr/c/talker \
-  -- -DCONF_FILE="prj.conf;prj-cyclonedds.conf"
+  -- -DCONF_FILE=prj.conf -DNROS_IMAGE=zephyr_cyclonedds
 ./build/zephyr/zephyr.exe
 ```
 

@@ -177,6 +177,17 @@ pub struct LeafSystem {
     /// much as the `entities` declaration beside it, which is why it is read
     /// only where that declaration exists.
     pub features: Vec<String>,
+    /// `[image.<id>] conf` — the framework config fragments this image needs,
+    /// in merge order: `[image_defaults] conf` first, then the image's own,
+    /// CONCATENATED (the overlay `ImageBlock::with_base` gives a list).
+    ///
+    /// phase-481 W3. On Zephyr these are the Zephyr-native fragments an RMW
+    /// needs (`prj-xrce.conf`'s `CONFIG_NET_TCP`, heap and POSIX sizing): the
+    /// nano-ros half of the image is rendered from this file, the Zephyr half
+    /// stays a Kconfig fragment, and the image names which one. Names are
+    /// relative to the directory holding `system.toml`; this reader keeps them
+    /// as written and leaves resolution to the caller, which knows the road.
+    pub conf: Vec<String>,
 }
 
 impl LeafSystem {
@@ -554,6 +565,21 @@ fn image_system(
                 format!("{}: every `[[component]]` must be a table", path.display())
             })?;
             let (entities, entities_from_census) = entities_key(t, path)?;
+            // phase-481 W3 -- eight Zephyr leaves shipped `name =
+            // "${NROS_CYCLONE_IDLC}"`, a build-system variable copied into a
+            // file nothing substitutes (a phase-445 W3b slip). TOML has no
+            // interpolation, so a `${` in an identifier is never what the
+            // author meant; refuse it naming the row rather than registering
+            // a node by that literal.
+            for key in ["pkg", "class", "name"] {
+                if let Some(v) = str_key(Some(t), key).filter(|v| v.contains("${")) {
+                    return Err(format!(
+                        "{}: `[[component]] {key} = \"{v}\"` holds an unsubstituted `${{…}}` -- \
+                         system.toml is not expanded by any build system; write the literal {key}",
+                        path.display()
+                    ));
+                }
+            }
             components.push(LeafComponent {
                 pkg: str_key(Some(t), "pkg"),
                 class: str_key(Some(t), "class"),
@@ -570,6 +596,8 @@ fn image_system(
     // and the image overwrites only what it also names.
     let mut env = env_table(defaults, path, id)?;
     env.extend(env_table(image, path, id)?);
+    let mut conf = conf_list(defaults, path, "image_defaults")?;
+    conf.extend(conf_list(image, path, &format!("image.{id}"))?);
 
     Ok(LeafSystem {
         origin,
@@ -580,7 +608,31 @@ fn image_system(
         components,
         env,
         features: features_key(system, path)?,
+        conf,
     })
+}
+
+/// `conf = ["<fragment>", …]` of one table — an array of strings, or absent.
+fn conf_list(block: Option<&toml::Table>, path: &Path, table: &str) -> Result<Vec<String>, String> {
+    let Some(v) = block.and_then(|b| b.get("conf")) else {
+        return Ok(Vec::new());
+    };
+    let arr = v.as_array().ok_or_else(|| {
+        format!(
+            "{}: `[{table}] conf` must be an ARRAY of fragment names, e.g. [\"prj-xrce.conf\"]",
+            path.display()
+        )
+    })?;
+    arr.iter()
+        .map(|item| {
+            item.as_str().map(str::to_string).ok_or_else(|| {
+                format!(
+                    "{}: every `[{table}] conf` element must be a string; found {item}",
+                    path.display()
+                )
+            })
+        })
+        .collect()
 }
 
 /// `env = { KEY = "VALUE" }` of one image block.
@@ -768,6 +820,53 @@ locator = "tcp/10.0.2.2:9800"
 
         let empty = leaf(&[("Cargo.toml", CARGO)]);
         assert_eq!(read_image(empty.path(), "x").unwrap(), None);
+    }
+
+    /// phase-481 W3 — `conf` names the image's framework fragments:
+    /// `[image_defaults] conf` first, then the image's own (concatenated, the
+    /// `ImageBlock::with_base` overlay for a list); absent is empty; a non-array
+    /// or a non-string element is refused naming the table.
+    #[test]
+    fn conf_concatenates_defaults_then_the_image() {
+        let t = "[system]\nname = \"t\"\nrmw = \"zenoh\"\ndefault_images = [\"a\"]\n\n\
+                 [image_defaults]\nconf = [\"base.conf\"]\n\n\
+                 [image.a]\nboard = \"zephyr\"\nconf = [\"prj-zenoh.conf\"]\n\n\
+                 [image.b]\nboard = \"zephyr\"\n";
+        let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", t)]);
+        assert_eq!(
+            read(d.path()).unwrap().unwrap().conf,
+            vec!["base.conf", "prj-zenoh.conf"]
+        );
+        assert_eq!(
+            read_image(d.path(), "b").unwrap().unwrap().conf,
+            vec!["base.conf"]
+        );
+        let none = leaf(&[("Cargo.toml", CARGO), ("system.toml", SYSTEM)]);
+        assert!(read(none.path()).unwrap().unwrap().conf.is_empty());
+        let bad = leaf(&[
+            ("Cargo.toml", CARGO),
+            (
+                "system.toml",
+                "[image.a]\nboard = \"zephyr\"\nconf = \"prj.conf\"\n",
+            ),
+        ]);
+        let e = read(bad.path()).unwrap_err();
+        assert!(e.contains("[image.a] conf") && e.contains("ARRAY"), "{e}");
+    }
+
+    /// phase-481 W3 -- a `${VAR}` in a component identifier is a build-system
+    /// variable nothing expands; refused naming the key.
+    #[test]
+    fn an_unsubstituted_variable_in_a_component_is_refused() {
+        let t = "[system]\nname = \"t\"\n\n[[component]]\npkg = \"p\"\n\
+                 class = \"p::C\"\nname = \"${NROS_CYCLONE_IDLC}\"\n\n\
+                 [image.a]\nboard = \"zephyr\"\n";
+        let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", t)]);
+        let e = read(d.path()).unwrap_err();
+        assert!(
+            e.contains("[[component]] name") && e.contains("${NROS_CYCLONE_IDLC}"),
+            "{e}"
+        );
     }
 
     #[test]

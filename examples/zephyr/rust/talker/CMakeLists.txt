@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # nros Zephyr Talker (Rust) — Phase 168.1 collapsed shape.
 #
-# RMW choice flows from prj-<rmw>.conf overlay → Kconfig
+# RMW choice flows from the image's `rmw` (system.toml, -DNROS_IMAGE=<id>,
+# rendered by the nano-ros module, phase-481) → Kconfig
 # CONFIG_NROS_RMW_<X> → EXTRA_CARGO_ARGS=--no-default-features
 # --features rmw-<x>. zephyr-lang-rust's rust_cargo_application()
 # reads EXTRA_CARGO_ARGS at scope.
@@ -35,9 +36,9 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
     target_sources(app PRIVATE ${_nros_cyc_types})
 else()
     message(FATAL_ERROR
-        "Phase 168.1 talker requires an RMW overlay. Build with: "
-        "west build -- -DCONF_FILE=\"prj.conf;prj-<rmw>.conf\" "
-        "where <rmw> is zenoh, xrce, or cyclonedds.")
+        "no RMW selected -- build one of this leaf's images: "
+        "west build -- -DNROS_IMAGE=zephyr_<rmw> (system.toml; <rmw> is "
+        "zenoh, xrce or cyclonedds; phase-481)")
 endif()
 
 rust_cargo_application()

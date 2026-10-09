@@ -1356,6 +1356,10 @@ pub(crate) fn source_dir_is_stale(
     // library fix has already landed.
     let mut candidates = vec![
         example_dir.join("prj.conf"),
+        // phase-481 W3 -- the image's RMW, API, endpoint and knobs live here
+        // now (the nano-ros module renders them into Kconfig), and its `conf`
+        // names the Zephyr-native fragment; an edit re-configures the image.
+        example_dir.join("system.toml"),
         example_dir.join("CMakeLists.txt"),
         example_dir.join("Cargo.toml"),
         example_dir.join("Cargo.lock"),

@@ -211,7 +211,7 @@ build_zephyr_examples() {
 
     # Build C talker for native_sim/native/64
     log_info "Building zephyr-c-talker for native_sim/native/64..."
-    if west build -b native_sim/native/64 "$example_path" -d build-c-talker -p auto -- -DCONF_FILE="prj.conf;prj-zenoh.conf" "$nros_module_arg" 2>&1 | tee "$(tmpfile zephyr_build.txt)" | tail -10; then
+    if west build -b native_sim/native/64 "$example_path" -d build-c-talker -p auto -- -DCONF_FILE="prj.conf" -DNROS_IMAGE=zephyr_zenoh "$nros_module_arg" 2>&1 | tee "$(tmpfile zephyr_build.txt)" | tail -10; then
         log_success "Talker build complete"
     else
         log_error "Talker build failed"

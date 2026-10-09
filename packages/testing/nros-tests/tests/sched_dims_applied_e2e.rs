@@ -458,7 +458,7 @@ fn exec_for(dim: SD, platform: MP, lang: ML) -> Exec {
             note: "tx_thread_time_slice_change applied for the one declaring tier",
         },
         // issue 1537 — the derived-tier Rust image on a lowered transport band
-        // (`realtime-rust/src/derived_bringup`, `prj-lowered-band.conf`).
+        // (`realtime-rust/src/derived_bringup`, `[image.zephyr_derived] env`).
         //
         // WHAT THIS CATCHES, MEASURED: with `nros::main!` reverted to the
         // Kconfig defaults projection, this image derives its tiers at 5 / 6 —
