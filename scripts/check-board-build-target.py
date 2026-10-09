@@ -25,6 +25,13 @@ Exempt, and REPORTED as exempt rather than silently skipped:
   * `zephyr-staticlib` with no `[target.*]` — zephyr-lang-rust's
     `_rust_map_target` chooses the triple inside the Zephyr build, and RFC-0098
     leaves the Zephyr lane's configuration where it is.
+  * `board-run` on a HOST-SIMULATOR platform with no `[target.*]` — issue
+    1759. `entry_kind` states the entry's SHAPE, not whether the build crosses:
+    `threadx-linux` is a `#![no_std]` + `#![no_main]` entry that glibc's crt0
+    calls, built for the host triple. "`board-run` implies a cross triple" was
+    true of every board until then and is a correlation, not the rule; the
+    platform is what says the triple is the host's. A host-simulator board that
+    DOES configure a `[target.*]` is still judged.
 
 Whether `[build] target` NAMES one of the configured triples is
 `check-board-cargo-config-shape`'s rule, not repeated here.
@@ -59,6 +66,13 @@ EXEMPT_KINDS = {
 }
 
 
+# Platforms whose port runs inside a host process, so a `board-run` entry on
+# them builds for the HOST triple and has none of its own to state (issue 1759).
+HOST_TRIPLE_PLATFORMS = {
+    "threadx-linux": "ThreadX's Linux simulator: board-run entry, host triple",
+}
+
+
 def descriptors(root):
     """Tracked board descriptors — never a leaf's `.cargo/nros-board.toml`
     projection, which shares the file name."""
@@ -87,6 +101,9 @@ def check_entry(rel, entry):
 
     if not triples and kind in EXEMPT_KINDS:
         return "exempt", f"{names} ({kind}: {EXEMPT_KINDS[kind]})"
+    platform = entry.get("platform", "")
+    if not triples and kind == "board-run" and platform in HOST_TRIPLE_PLATFORMS:
+        return "exempt", f"{names} ({kind} on {platform}: {HOST_TRIPLE_PLATFORMS[platform]})"
     has_triple = bool(triples) or kind == "board-run"
     if not has_triple:
         # A kind this gate does not know and no triple configured: say so
@@ -134,8 +151,10 @@ def self_test():
         proj = d / "leaf" / ".cargo"
         proj.mkdir(parents=True)
 
-        def run(kind, blob=None):
+        def run(kind, blob=None, platform=None):
             text = head.format(kind=kind)
+            if platform is not None:
+                text += 'platform = "%s"\n' % platform
             if blob is not None:
                 text += "cargo_config = '''\n%s'''\n" % blob
             path.write_text(text, encoding="utf-8")
@@ -161,6 +180,16 @@ def self_test():
 
         _, exempt, problems = run("hosted-main")
         assert not problems and exempt, (exempt, problems)
+
+        # issue 1759 — a board-run entry on a host simulator states no triple.
+        _, exempt, problems = run("board-run", platform="threadx-linux")
+        assert not problems and exempt, (exempt, problems)
+        # …but only there: the same row on a cross platform is still the gap.
+        _, _, problems = run("board-run", platform="threadx-riscv64")
+        assert any("`board-run` board" in p for p in problems), problems
+        # …and a host-simulator board that configures a triple is judged.
+        _, _, problems = run("board-run", target, platform="threadx-linux")
+        assert any("no `[build] target`" in p for p in problems), problems
         _, exempt, problems = run("zephyr-staticlib")
         assert not problems and exempt, (exempt, problems)
 

@@ -20,8 +20,8 @@ crate-type = ["rlib"]
 # names a `.a`. A `staticlib` is a FINAL artifact and rustc holds it to that —
 # it needs its own lang items — so declaring one nothing builds is a standing
 # obligation with no consumer. Same removal, same reasoning, as phase-359 W7 on
-# qemu-armv7a-nuttx. threadx-linux is a hosted (`std`) sim, which is why the
-# obligation was invisible: libstd supplied the items and no one had to notice.
+# qemu-armv7a-nuttx. threadx-linux was a hosted (`std`) sim then, which is why
+# the obligation was invisible: libstd supplied the items and no one had to notice.
 
 [features]
 # Phase 248 C6e — RMW is selected by config (`system.toml`'s `[system] rmw`)
@@ -41,7 +41,7 @@ rmw-cyclonedds = []
 # thread → executor → spin). Selected at the `main.rs` Board::run call;
 # the codegen-emitted `run_plan` stays board-agnostic.
 # #131 / #194 — forward the family board's zenoh-backend link + boot-path register().
-nros-board-threadx-linux = { version = "*", features = ["rmw-zenoh"] }
+nros-board-threadx-linux = { version = "*", features = ["rmw-zenoh", "image-runtime"] }
 # issue 0644 — `alloc`, not `std`. The `std` here was never about the API: it
 # was there because removing it left the image with neither per-image lang item.
 # That is fixed, and NOT the way the issue's Direction expected.
@@ -52,15 +52,13 @@ nros-board-threadx-linux = { version = "*", features = ["rmw-zenoh"] }
 # nothing could supply them. phase-366 dropped the staticlib (nothing consumed
 # it), and the obligation went with it.
 #
-# What remains needs NO board feature and NO `panic_to_platform!()`, and that is
-# the part worth writing down: on THIS family the Rust bin IS the Linux process
-# entry, so `src/main.rs` links std for its runtime (crt0 + the `main` shim) and
-# std legitimately owns both lang items. Adding either would be wrong —
-# `panic_to_platform!()` is an E0152 conflict with std's handler (measured), and
-# a board `#[global_allocator]` would reroute every allocation through
-# `tx_byte_allocate` for no reason. The RISC-V sibling differs precisely here:
-# its entry is `app_main.rs` in a staticlib called from C, so it has no std
-# runtime and must declare both.
+# issue 1759 — and since then the image links no libstd at all. `src/main.rs`
+# is `#![no_std]` + `#![no_main]` (the board's `entry_kind` is `board-run`):
+# glibc's crt0 calls the C-ABI `main(argc, argv)` that `nros::main!` emits, the
+# macro's `panic = "platform"` ends a panic in `nros_platform_panic`, and the
+# board's `image-runtime` feature installs the `#[global_allocator]` over the
+# ThreadX byte pool — the same three lang items the RISC-V sibling declares, and
+# the allocator real ThreadX hardware uses.
 #
 # Acceptance is the issue's own: this leaf builds with `nros`'s `std` OFF.
 nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }

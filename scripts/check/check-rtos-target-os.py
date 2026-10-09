@@ -138,6 +138,15 @@ CLASSIFIED: dict[tuple[str, str], str] = {
     "(phase-244 D1) is for images whose C runtime calls `main` directly. NuttX "
     "uses the board-run entry shape and must not take this arm.",
     (
+        "packages/core/nros-macros/src/main_macro.rs",
+        'cfg(not(target_os = "none"))',
+    ): "C-runtime question, emitted only for a `#![no_std]` entry (issue 1759, "
+    "`c_runtime_main_cfg`): does an OS's C runtime call `main(argc, argv)`? "
+    "Every target with an OS does — NuttX's task dispatch and glibc's crt0 "
+    "(threadx-linux, `board-run` on the host triple) — so NuttX is INSIDE the "
+    "arm, deliberately; `none` keeps its own no-argument arm. Whether the entry "
+    "is hosted was already decided by the board fact that chose this arm.",
+    (
         "packages/rmw/cffi/src/rust_adapter.rs",
         'cfg(all(target_os = "none", not(feature = "std")))',
     ): "Allocator question, not a hosted one: the static subscriber pool exists "

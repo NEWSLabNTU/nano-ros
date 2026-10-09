@@ -110,7 +110,7 @@ A design that assumes a configure-time hook silently excludes PX4 and PIO.
 | baremetal | bare-metal | none | board-run | nanoros-owned | **runner**, linker script |
 | nuttx | nuttx | nuttx-staging | board-run | rtos-owned | linker script, `${workspace}` |
 | nuttx-riscv | nuttx | nuttx-staging | board-run | rtos-owned | `${workspace}` |
-| threadx | threadx-linux | none | hosted-main | nanoros-owned | — |
+| threadx | threadx-linux | none | board-run (host triple, issue 1759) | nanoros-owned | — |
 | threadx | threadx-riscv64 | none | board-run | nanoros-owned | linker script, `${workspace}` |
 | zephyr | zephyr | none | zephyr-staticlib | rtos-owned | — |
 

@@ -491,12 +491,15 @@ function(nros_apply_panic_policy policy context)
             # `panic_halt` crate — and rustc refuses the pair as E0152
             # "duplicate lang item `panic_impl`", inside `nros-c`, naming no
             # policy. Say it here, at configure, where the request was made.
+            # Keyed on `std` in the STATICLIB, not on the board: a threadx-linux
+            # Rust image is `no_std` since issue 1759 and takes `halt`; its
+            # C/C++ carriers keep a `std` staticlib until issue 1763.
             get_target_property(_app_feats ${_app_target} CORROSION_FEATURES)
             if(_app_policy STREQUAL "halt" AND _app_feats AND "std" IN_LIST _app_feats)
                 message(FATAL_ERROR
                     "${context}: PANIC halt cannot apply to this image — its "
                     "nros-c/nros-cpp staticlib is built with `std` (a hosted tier: "
-                    "threadx-linux, posix, hosted FreeRTOS), and `std` already supplies "
+                    "a threadx-linux C/C++ carrier, posix, hosted FreeRTOS), and `std` already supplies "
                     "the #[panic_handler]. `panic-halt` would be a second one "
                     "(rustc E0152, duplicate lang item `panic_impl`). Use PANIC "
                     "platform — on a std tier std's own handler ends the image — "

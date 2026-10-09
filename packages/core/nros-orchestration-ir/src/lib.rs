@@ -221,10 +221,14 @@ pub const BOARD_PATHS: &[(&str, &str, bool)] = &[
         "::nros_board_mps2_an385_freertos::Mps2An385",
         false,
     ),
+    // issue 1759 — `false` although it builds for the HOST triple: the entry is
+    // `#![no_std]` + `#![no_main]` (descriptor `entry_kind = "board-run"`), glibc's
+    // crt0 calls the C-ABI `main` the macro emits, and nothing links libstd. The
+    // triple is not the question; whether the entry CRATE has `std` is.
     (
         "threadx-linux",
         "::nros_board_threadx_linux::ThreadxLinux",
-        true,
+        false,
     ),
     (
         "threadx-qemu-riscv64",

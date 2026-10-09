@@ -159,6 +159,14 @@ fn main() {
     // replace were an attempt to fix member selection by repeating the archive
     // later on the command line; `+whole-archive` fixes it at the source.
     println!("cargo:rustc-link-lib=pthread");
+    // issue 1759 — and glibc itself. The port is C on glibc (pthreads, signals,
+    // `setvbuf`, the BSD sockets NSOS forwards to) and the process starts in
+    // glibc's crt0 (`__libc_start_main`). rustc links the gnu target with
+    // `-nodefaultlibs`; a `std` image got `-lc` from libstd's `libc` crate, so
+    // nothing here had to say it. A `#![no_std]` entry (`entry_kind =
+    // "board-run"`) links no libstd, and the link failed on `__libc_start_main`,
+    // `memcpy`, `socket`, … — the board's own C dependency, stated by the board.
+    println!("cargo:rustc-link-lib=c");
 
     // ---- Rerun triggers ----
     println!("cargo:rerun-if-changed=build.rs");

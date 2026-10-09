@@ -1527,13 +1527,14 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     );
 
     // Phase 244.D1 — `target_os = "none"` entry shape for the OwnedSpin
-    // framework. FreeRTOS / threadx-linux have a C runtime that calls `main`,
-    // so they keep the `extern "C" fn main`. A pure bare-metal Cortex-M image
+    // framework. FreeRTOS has a C runtime that calls `main`,
+    // so it keeps the `extern "C" fn main`. A pure bare-metal Cortex-M image
     // has no C runtime; its reset vector needs a `#[cortex_m_rt::entry]`. Both
     // funnel through the shared `__nros_entry_run`.
     // issue 1381 — every `std`-naming token the OwnedSpin entry emits, in one
     // place and behind one predicate. See [`hosted_std_scaffold_ts`].
     let hosted_std_scaffold_ts = hosted_std_scaffold_ts(entry_links_std);
+    let c_runtime_main_cfg = c_runtime_main_cfg(entry_links_std);
 
     let none_entry_ts: proc_macro2::TokenStream =
         if is_baremetal_cortexm_deploy(deploy_for_framework.as_deref()) {
@@ -1952,7 +1953,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     let body_ts: proc_macro2::TokenStream = match framework {
         Framework::OwnedSpin => quote! {
             // Phase 213.C follow-up — emit two cfg-gated entry shapes so
-            // both hosted (POSIX / NuttX / threadx-linux) and embedded
+            // hosted (POSIX), C-runtime (NuttX / threadx-linux) and embedded
             // (FreeRTOS / bare-metal `target_os = "none"`) targets resolve
             // a working `main`. The shared body is factored into a private
             // `__nros_entry_run` returning `Result` so neither arm
@@ -1996,7 +1997,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // family is `no_std` now, which removes `lang_start`, so the entry
             // symbol NuttX's task dispatch calls has to be emitted directly —
             // the same shape the `target_os = "none"` C-runtime boards
-            // (FreeRTOS / threadx-linux) already use, for the same reason: a C
+            // (FreeRTOS) already use, for the same reason: a C
             // runtime calls `main`, and nothing is left to wrap it.
             //
             // The status mapping matches what `lang_start` did with a
@@ -2011,7 +2012,10 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // — the caller passes them in registers the callee may leave alone
             // — but the definition should match the declaration that already
             // exists rather than rely on that.
-            #[cfg(target_os = "nuttx")]
+            //
+            // issue 1759 — WHICH targets take this arm is a BOARD fact, not a
+            // `target_os` one. See [`c_runtime_main_cfg`].
+            #c_runtime_main_cfg
             #[unsafe(no_mangle)]
             pub extern "C" fn main(
                 _argc: i32,
@@ -2024,7 +2028,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             }
 
             // Phase 244.D1 — `target_os = "none"` entry: `extern "C" fn main`
-            // for C-runtime boards (FreeRTOS / threadx-linux), or a
+            // for C-runtime boards (FreeRTOS), or a
             // `#[cortex_m_rt::entry]` reset for pure bare-metal Cortex-M.
             #none_entry_ts
         },
@@ -2743,7 +2747,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     //
     // The question this gate is really asking is "does libstd already define the
     // lang item here?", and that is answered by the hosted list, which is short
-    // and closed for this tree: native and threadx-linux are Linux, and macOS is
+    // and closed for this tree: native is Linux, and macOS is
     // a supported host for the native family.
     //
     // The *BSDs are on that list too, and were missing — the mirror of the bug
@@ -2758,33 +2762,42 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // …unless this package also produces a `staticlib`, in which case the LIB
     // owns the item for BOTH artifacts and emitting here would be a duplicate.
     // Derived, so every image can write the same `panic = …` regardless of shape.
+    //
+    // issue 1759 — and the hosted list applies only to an entry that LINKS
+    // `std`. It answers "does libstd define the lang item here?" by asking
+    // about the TARGET, which is right exactly when the entry has `std`: a
+    // `board-run` entry built for a hosted triple (`threadx-linux`,
+    // `x86_64-unknown-linux-gnu`) is `#![no_std]` and links no libstd, so
+    // nothing else provides the handler and the gate would leave the image
+    // with none (`#[panic_handler] function required`). Such an entry takes
+    // the policy unconditionally — the same board fact (`entry_links_std`)
+    // that chooses its `main` arm.
     let lib_owns_panic = package_emits_staticlib(&manifest_dir.join("Cargo.toml"));
+    let libstd_may_own_panic: proc_macro2::TokenStream = if entry_links_std {
+        quote! {
+            #[cfg(not(any(
+                target_os = "linux",
+                target_os = "macos",
+                target_os = "windows",
+                target_os = "freebsd",
+                target_os = "netbsd",
+                target_os = "openbsd",
+                target_os = "dragonfly"
+            )))]
+        }
+    } else {
+        quote! {}
+    };
     let panic_ts: proc_macro2::TokenStream = if lib_owns_panic {
         quote! {}
     } else {
         match args.panic {
             PanicPolicy::Platform => quote! {
-                #[cfg(not(any(
-                    target_os = "linux",
-                    target_os = "macos",
-                    target_os = "windows",
-                    target_os = "freebsd",
-                    target_os = "netbsd",
-                    target_os = "openbsd",
-                    target_os = "dragonfly"
-                )))]
+                #libstd_may_own_panic
                 ::nros::panic_to_platform!();
             },
             PanicPolicy::Halt => quote! {
-                #[cfg(not(any(
-                    target_os = "linux",
-                    target_os = "macos",
-                    target_os = "windows",
-                    target_os = "freebsd",
-                    target_os = "netbsd",
-                    target_os = "openbsd",
-                    target_os = "dragonfly"
-                )))]
+                #libstd_may_own_panic
                 ::nros::panic_halt!();
             },
             // `own` emits nothing — the image said it brings its own.
@@ -4144,12 +4157,42 @@ fn known_boards_csv() -> String {
 
 /// Phase 244.D1 — does this deploy key name a pure bare-metal Cortex-M
 /// direct-exec board? Such boards run `OwnedSpin` but, unlike the FreeRTOS /
-/// threadx-linux `target_os = "none"` boards (whose C runtime calls `main`),
+/// rv-virt-threadx `target_os = "none"` boards (whose C runtime calls `main`),
 /// have no C runtime — the reset vector needs a `#[cortex_m_rt::entry]`. The
 /// macro keys the entry-emit shape off this. RTIC bare-metal boards are NOT
 /// here: they route through the RTIC framework, which owns its own entry.
 fn is_baremetal_cortexm_deploy(deploy: Option<&str>) -> bool {
     matches!(deploy, Some("qemu-mps2-an385" | "mps2-an385"))
+}
+
+/// Issue 1759 — the `cfg` on the C-ABI `main(argc, argv)` arm.
+///
+/// That arm is for a board whose image is `#![no_std]` + `#![no_main]` on a
+/// target WITH an OS: a C runtime (`crt0`, NuttX's task dispatch, glibc's
+/// `__libc_start_main`) calls `main`, and libstd's `lang_start` is not there
+/// to wrap a Rust one. Which boards that is was spelled `target_os = "nuttx"`,
+/// i.e. "is this NuttX", and the question is "does this board's entry link
+/// `std`" — the same fact [`hosted_std_scaffold_ts`] is gated on, and the one
+/// the board descriptor's `entry_kind` states.
+///
+/// The two diverged on `threadx-linux`: a `board-run` image built for
+/// `x86_64-unknown-linux-gnu`. `target_os = "linux"` is neither `"nuttx"` nor
+/// `"none"`, so with the hosted `fn main()` gone (its entry no longer links
+/// `std`) no arm defined `main` at all.
+///
+/// * `links_std == false` — every target that has an OS takes it. `none`
+///   keeps its own arm (no `argc`/`argv`, or a reset vector), so the two
+///   still never both apply.
+/// * `links_std == true` — NuttX only, as before. That row is reached by an
+///   UNKNOWN board (an out-of-tree one through `NROS_BOARD_FRAMEWORK` is
+///   assumed hosted), and an out-of-tree NuttX board must keep the entry it
+///   had.
+fn c_runtime_main_cfg(links_std: bool) -> proc_macro2::TokenStream {
+    if links_std {
+        quote! { #[cfg(target_os = "nuttx")] }
+    } else {
+        quote! { #[cfg(not(target_os = "none"))] }
+    }
 }
 
 /// Issue 1381 — THE ONE place `nros::main!` writes a `std` path.
@@ -4167,7 +4210,7 @@ fn is_baremetal_cortexm_deploy(deploy: Option<&str>) -> bool {
 /// build` that names no `--target` compiles for the host, takes the hosted arm,
 /// and fails with `cannot find std in the crate root` pointing at the macro
 /// call. The cfg stays on what IS emitted, because a hosted-main board (native,
-/// `freertos-posix`, `threadx-linux`) is still built for more than one OS.
+/// `freertos-posix`) is still built for more than one OS.
 ///
 /// Keeping it in one function is also what makes the rule checkable without a
 /// build: `scripts/check-no-std-entry-emission.py` allows a `std::` path inside
@@ -5083,6 +5126,47 @@ mod framework_ssot_tests {
         assert!(
             freestanding >= 10,
             "only {freestanding} freestanding board key(s)"
+        );
+    }
+
+    /// Issue 1759 — every board key gets a `main` on a target with an OS: the
+    /// hosted `fn main()` when its entry links `std`, the C-ABI `main(argc,
+    /// argv)` on EVERY OS target when it does not.
+    ///
+    /// The C-ABI arm used to be `#[cfg(target_os = "nuttx")]` for every board,
+    /// which said "a C runtime calls `main` only on NuttX". `threadx-linux` is a
+    /// `board-run` (`#![no_std]` + `#![no_main]`) entry built for
+    /// `x86_64-unknown-linux-gnu`, so under that cfg it had no `main` at all.
+    /// Asserted per KEY over the whole table, through the composition the entry
+    /// point performs, so a board added later is covered without an edit here.
+    #[test]
+    fn a_no_std_board_gets_the_c_runtime_main_on_every_os_target() {
+        let mut freestanding = 0;
+        for key in nros_orchestration_ir::board_path_keys() {
+            let links_std = nros_orchestration_ir::board_entry_links_std(key).unwrap_or(true);
+            let cfg = c_runtime_main_cfg(links_std).to_string();
+            if links_std {
+                assert!(
+                    cfg.contains("target_os = \"nuttx\"") && !cfg.contains("not"),
+                    "`{key}`: hosted entry, but the C-runtime arm is `{cfg}`"
+                );
+            } else {
+                freestanding += 1;
+                assert!(
+                    cfg.contains("not (target_os = \"none\")"),
+                    "`{key}`: `#![no_std]` entry, but the C-runtime arm is `{cfg}` — \
+                     a `board-run` image on an OS target other than the one named \
+                     would have no `main`"
+                );
+            }
+        }
+        assert!(
+            nros_orchestration_ir::board_entry_links_std("threadx-linux") == Some(false),
+            "threadx-linux is the case this test exists for (issue 1759)"
+        );
+        assert!(
+            freestanding >= 10,
+            "only {freestanding} freestanding key(s)"
         );
     }
 

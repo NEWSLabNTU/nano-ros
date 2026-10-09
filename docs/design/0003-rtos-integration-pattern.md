@@ -197,7 +197,7 @@ never in core.** A platform picks it via the node-pkg feature
 | Platform | Feature | Why |
 |---|---|---|
 | native (posix) | `std` | hosted |
-| threadx-linux | `std` | hosted Linux simulation |
+| threadx-linux | `alloc` | Linux simulation, but the Rust image is `#![no_std]` (issue 1759): crt0 calls a C-ABI `main`, ThreadX byte pool is the heap. C/C++ carriers keep a `std` runtime staticlib (issue 1763) |
 | **NuttX** | **`std`** | `*-nuttx-*` is a **std-capable POSIX Rust target** — NuttX ships a std port mapping std's unix-pal onto NuttX libc |
 | freertos | `alloc` | bare embedded; RTOS heap via `pvPortMalloc`, no std port |
 | esp32 (bare-metal) | `alloc` | `riscv32imc-unknown-none-elf`, no std |
