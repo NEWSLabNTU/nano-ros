@@ -17,7 +17,7 @@ use std::{
 
 use crate::shared::{
     compile_c_stub, dep_usize, env_usize, generate_cbindgen_header, probe_nros_sizes,
-    write_header_to_corrosion, write_header_to_target_dir,
+    watch_param_store_shape, write_header_to_corrosion, write_header_to_target_dir,
 };
 
 pub fn run() {
@@ -106,6 +106,9 @@ fn generate_config(
     let max_cbs = dep_usize("DEP_NROS_NODE_MAX_CBS");
     let arena_size = dep_usize("DEP_NROS_NODE_ARENA_SIZE");
     let message_buffer_size = dep_usize("DEP_NROS_NODE_RX_BUF_SIZE");
+    // phase-382 W3' -- the carved parameter store's shape: an input to the
+    // probed `EXECUTOR_SIZE`, so a change must re-run this script.
+    let _ = watch_param_store_shape();
 
     // --- C API knobs (nros-c only, not shared with nros-node) ---
     // phase-400 W6 — the `[knobs.runtime]` rungs for the LET buffer.

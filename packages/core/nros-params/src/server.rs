@@ -192,6 +192,43 @@ impl<'s> ParameterTable<'s> {
     }
 }
 
+/// One slot of a [`ParameterTable`], opaque.
+///
+/// phase-382 W3' — what a caller CARVES when it places a table in memory it
+/// already owns (the executor's backing). The slot layout is
+/// `Option<ParameterEntry>` and stays private; this wrapper publishes only its
+/// size and alignment (`size_of::<ParameterSlot>()`), which is exactly what a
+/// region placement needs, and [`ParameterTable::init_in`] is the one way to
+/// turn carved, uninitialised slots into a table.
+///
+/// `repr(transparent)`, so a `[ParameterSlot]` IS a `[Option<ParameterEntry>]`
+/// and the table borrows it without a copy.
+#[repr(transparent)]
+pub struct ParameterSlot(Option<ParameterEntry>);
+
+impl<'s> ParameterTable<'s> {
+    /// Initialise `slots` to empty IN PLACE and borrow them as a table.
+    ///
+    /// phase-382 W3' — the home the executor carves for its store. Each slot
+    /// is written through its own pointer, so the largest stack temporary is
+    /// one slot, never the table (issue 0756's hazard, which a carved region
+    /// avoids by construction as long as nothing builds the table by value).
+    /// Any length works; the length is the capacity, as for every table.
+    pub fn init_in(slots: &'s mut [core::mem::MaybeUninit<ParameterSlot>]) -> Self {
+        for slot in slots.iter_mut() {
+            slot.write(ParameterSlot(None));
+        }
+        let len = slots.len();
+        let base = slots.as_mut_ptr().cast::<Option<ParameterEntry>>();
+        // SAFETY: every element was written above, so the slice is initialised;
+        // `ParameterSlot` is `repr(transparent)` over `Option<ParameterEntry>`,
+        // so the element layouts are identical; the borrow is `slots`' own,
+        // for `'s`, and `slots` is not reachable again while it lives.
+        let entries = unsafe { core::slice::from_raw_parts_mut(base, len) };
+        Self::new(entries)
+    }
+}
+
 impl core::fmt::Debug for ParameterTable<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("ParameterTable")

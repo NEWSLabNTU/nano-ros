@@ -1,5 +1,9 @@
 # Phase 382 — one parameter store, caller-owned and alloc-free
 
+**Status (2026-10-09). W0, W1', W2' and W3' LANDED; W4'–W7' open.** W3' carves
+the store from the executor backing as a CONDITIONAL region (see W3' for the
+measured decision that overturned the plan's "fixed region").
+
 **Status (2026-08-25). NOT STARTED — designed, EXPLORED, and re-planned.** The
 first plan (W1–W6, below the line) would not have survived contact: three of its
 load-bearing claims were wrong and one acceptance criterion was unsatisfiable
@@ -305,10 +309,108 @@ Known fallout, all of which the first plan missed:
 * `Executor` is already `Executor<'s>`, so `params: Option<ParamState<'s>>` is
   expressible. That part works.
 
-### W3' — carve it, as a FIXED region
+### W3' — carve it. **LANDED 2026-10-09, as a CONDITIONAL region.**
 
-`MAX_PARAMETERS` count, no `ExecutorSizing` change — the issue-0563 shape.
-Report `NROS_EXECUTOR_SIZE` before and after in the commit, as 0563 did.
+The store is the backing's last region, `ExecutorSizing::params` slots of
+`nros_params::ParameterSlot`, and `ParameterTable::init_in` initialises them
+the first time something declares a parameter. `leak_parameter_storage` stays,
+with issue 1706's named refusal, for an executor whose backing carved none.
+
+**Decided 2026-10-09: conditional, not fixed. This reverses the plan's
+"fixed `MAX_PARAMETERS` region, no `ExecutorSizing` change".** The plan was
+written in August, before issue 1702 measured what an unconditional store costs.
+The decision follows from measurement:
+
+| build | `NROS_EXECUTOR_SIZE` (x86_64, `nros-c` std+param-services) |
+| --- | ---: |
+| before W3' (no region) | 90,632 |
+| W3', no store implied | **90,632**, byte for byte |
+| W3', store implied, 32 default slots (= a FIXED region) | **376,328** (+285,696) |
+
+A FIXED region is the third row in every image: every C/C++ `nros_executor_t`,
+the Rust `EXECUTOR_BACKING`, and every tier slot. That is issue 1702's rejected
+`.bss` static (280,832 B on armv7m in a talker that never builds a store),
+copied into every executor. So the count follows what the build KNOWS about the
+image. `nros_params::IMPLIED_STORE_SLOTS` is `MAX_PARAMETERS` when one of these
+holds, and 0 otherwise:
+
+* the contract declares a parameter (descriptor `[params] declared > 0`);
+* the bringup declares `param_services` (`NROS_CAPABILITY_PARAM_SERVICES`,
+  Kconfig on the west road, issue 1702);
+* the launch seeds a `<param>` (`NROS_PARAM_STORE`, Kconfig on the west road,
+  issue 1706), or a person states it (`[image.<id>] env`).
+
+`nros-params` is the one reader, beside `MAX_PARAMETERS`. The `param-services`
+cargo feature is NOT the condition, because every C++ image carries it (issue
+1529). That would be 1702 again.
+
+Kept from both plans: the size is `size_of` in the crate that owns the type, so
+it is right for the target by construction. The store is carved from
+caller-placed backing. The heap is the fallback only.
+
+**The `ExecutorSizing` field went in after all.** The plan avoided it to keep
+struct literals stable. The cost was three external literals
+(`census_hooks`, `nros-board-linux` via `..DEFAULT`, `large-msg-baremetal`).
+The field is what gives tests a seam (`params: 3` on any build) and lets one
+executor carve differently from another. The C ABI is unchanged:
+`ExecutorInlineStorage` still embeds `DEFAULT`.
+
+What the arena's consumers needed:
+
+* **The layout** (`nros-executor-layout`): a `parameter_slot` unit and a
+  `params` count, placed LAST. Zero slots places nothing and does not align
+  `off`, so an image with no store keeps every offset and its total.
+* **Rust `EXECUTOR_BACKING`, tier slots, C/C++ `nros_executor_t`**: all sized
+  by `ExecutorSizing::DEFAULT.u64_len()`, so they agree by construction.
+* **The C/C++ sizes probe**: this was the 0088/0268 class, measured. With
+  `NROS_PARAM_STORE=1` the first build failed `nros-c`'s
+  `EXECUTOR_OPAQUE_U64S too small` assert, because nros-c's build script never
+  learned that the store had moved. The store's shape now travels over `links`
+  metadata: `nros-params` sends `DEP_NROS_PARAMS_STORE_SHAPE` to `nros-node`,
+  which sends `DEP_NROS_NODE_PARAM_STORE_SHAPE` to `nros-build-helpers`
+  (`dep_watch`), where both the C and the C++ probe re-run.
+* **A STATED backing** (`NROS_EXECUTOR_BACKING_U64S`, ThreadX's
+  `backing_u64s = 11071`): the statement covers the executor's tables, and
+  `PARAMETER_STORE_U64S` is added on top. The statement exists so an allocator
+  can give back exactly `8 * words`. The store was never part of that
+  subtraction, so a board fact did not have to be restated for an image fact.
+  Measured on threadx-linux: 11,071 x 8 + 17,664 = 106,232 B, the symbol's size.
+* **`check-executor-backing-arena-pairing`** needed no change. No conf states a
+  backing, and the stated rule is unchanged for the tables.
+* **Zephyr**: the C lane resolves both bools as 1/0 knobs
+  (`nros_cargo_build.cmake`). The Rust lane reads them from `$DOTCONFIG`.
+
+The traps listed when this was planned:
+
+* The per-field `offset_of!` test already existed
+  (`every_carved_region_starts_where_repr_c_puts_it`, phase-409). It now runs
+  with a 3-slot store and checks `params` too.
+* The alloc-free carve test is `a_carved_store_is_usable_without_an_allocator`.
+  It uses a `static` backing, outside the `alloc` gate.
+* The store is carved, never inline. `the_executor_value_does_not_scale_with_the_knobs`
+  is unchanged: the executor value gained one slice reference.
+
+Tests:
+* fail-before/pass-after: `a_store_carved_from_the_backing_never_asks_the_heap`.
+  It runs with the heap refused for the whole test, and three declarations land.
+  Forcing the heap road in `new_param_state` turns it red (mutation-checked).
+* the negative control: `a_backing_that_carves_no_store_does_not_grow`, plus
+  `a_backing_that_carved_no_store_falls_back_to_the_heap`.
+* the reference layout with and without a store: `layout_matches_typed_repr_c`.
+
+Real images, measured on 2026-10-09 (each image prints
+`parameter store: N slots (B) carved from the executor backing` when it carves):
+
+* **FreeRTOS mps2-an385** (QEMU, live `rmw_zenohd`): the rust talker with
+  `param_services`, a contract declaring `rate`, and `declare_parameter`.
+  Carved: 2 slots, 17,344 B of `.bss`, and `heap peak 185848 of 720896`.
+  The same image without the contract takes the heap road:
+  `heap peak 473536 of 720896`. At `NROS_FREERTOS_HEAP_KB=400`, which issue
+  1706 measured REFUSING the store, the carved image publishes
+  (`heap peak 185848 of 409600`).
+* **threadx-linux**: the same probe. Carved 2 slots (17,664 B) on top of the
+  board's stated backing. `byte pool peak 201744`.
+* **Zephyr native_sim**: see issue 1706's 2026-10-09 progress.
 
 **Extend the layout test first.** `layout_matches_typed_repr_c` asserts only the
 whole struct's `size` and `align` — a carve that permuted two same-size tables

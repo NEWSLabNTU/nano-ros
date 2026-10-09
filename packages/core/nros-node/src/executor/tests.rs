@@ -12536,6 +12536,104 @@ fn a_heap_too_small_for_the_parameter_store_refuses_the_declaration() {
     assert!(ok.declare_parameter("rate", ParameterValue::Integer(10)));
 }
 
+/// phase-382 W3' — a backing that CARVED the store supplies it, and the heap is
+/// never asked.
+///
+/// The shape of the test above with one difference, the sizing: this executor
+/// carves `slots` parameter slots from its own backing. The heap refusal is
+/// armed for the whole test, so a store reached through
+/// `leak_parameter_storage` would refuse the declaration exactly as above.
+/// Before W3' the backing had no such region and every store came from the
+/// heap, so this declaration FAILED; it succeeds now, which is the store
+/// coming from the arena and nothing else.
+///
+/// The capacity is the carved length and not `MAX_PARAMETERS` — a fourth
+/// declaration over three carved slots is refused as FULL, which also rules
+/// out a store that came from somewhere else and merely happened to fit.
+#[cfg(all(feature = "std", feature = "param-services"))]
+#[test]
+fn a_store_carved_from_the_backing_never_asks_the_heap() {
+    use nros_params::ParameterValue;
+    // phase-430 W2 -- under `sim-time` the store seeds `use_sim_time` on the
+    // PRIMARY node the moment it exists, and that placeholder is a real slot.
+    let seeded = usize::from(cfg!(feature = "sim-time"));
+    let slots = 3 + seeded;
+    let sizing = super::storage::ExecutorSizing {
+        params: slots,
+        ..super::storage::ExecutorSizing::DEFAULT
+    };
+    let backing: &'static mut [core::mem::MaybeUninit<u64>] =
+        alloc::boxed::Box::leak(alloc::boxed::Box::new_uninit_slice(sizing.u64_len()));
+    let _refuse = super::spin::RefuseParameterStore::arm();
+    // SAFETY: `backing` is exactly `sizing.u64_len()` words, `'static`, and is
+    // handed to this executor alone.
+    let mut executor: Executor =
+        unsafe { Executor::from_session_in(MockSession::new(), backing, sizing) };
+    executor.clock_us_fn = Some(test_clock_us);
+    for (i, name) in ["a", "b", "c"].iter().enumerate() {
+        assert!(
+            executor.declare_parameter(name, ParameterValue::Integer(i as i64)),
+            "declaration {i} must land in the CARVED store; the heap is refused"
+        );
+    }
+    assert!(
+        !executor.declare_parameter("d", ParameterValue::Integer(3)),
+        "the carved store holds exactly {slots} slots ({seeded} seeded)"
+    );
+    assert!(
+        executor.register_parameter_services().is_ok(),
+        "the services attach to the carved store, no heap store needed"
+    );
+    assert_eq!(
+        executor.get_parameter("b").and_then(|v| v.as_integer()),
+        Some(1),
+        "values read back from the carved slots"
+    );
+}
+
+/// phase-382 W3' — the negative control's other half: a sizing that carves
+/// NOTHING still gets a store, from the heap, exactly as before W3'. Zero
+/// slots is the default for every image the build does not know to build a
+/// store, so this is the road an undeclared store takes.
+#[cfg(all(feature = "std", feature = "param-services"))]
+#[test]
+fn a_backing_that_carved_no_store_falls_back_to_the_heap() {
+    use nros_params::ParameterValue;
+    let sizing = super::storage::ExecutorSizing {
+        params: 0,
+        ..super::storage::ExecutorSizing::DEFAULT
+    };
+    let backing: &'static mut [core::mem::MaybeUninit<u64>] =
+        alloc::boxed::Box::leak(alloc::boxed::Box::new_uninit_slice(sizing.u64_len()));
+    // SAFETY: as above.
+    let mut executor: Executor =
+        unsafe { Executor::from_session_in(MockSession::new(), backing, sizing) };
+    executor.clock_us_fn = Some(test_clock_us);
+    {
+        let _refuse = super::spin::RefuseParameterStore::arm();
+        assert!(
+            !executor.declare_parameter("rate", ParameterValue::Integer(10)),
+            "no carved slots: the store is the heap's, and the heap refused"
+        );
+    }
+    let mut heaped: Executor = unsafe {
+        Executor::from_session_in(
+            MockSession::new(),
+            alloc::boxed::Box::leak(alloc::boxed::Box::new_uninit_slice(sizing.u64_len())),
+            sizing,
+        )
+    };
+    heaped.clock_us_fn = Some(test_clock_us);
+    assert!(
+        heaped.declare_parameter("rate", ParameterValue::Integer(10)),
+        "an uncapped heap supplies the fallback store"
+    );
+    assert!(
+        heaped.declare_parameter("burst", ParameterValue::Integer(1)),
+        "the fallback store is MAX_PARAMETERS long, not the carved zero"
+    );
+}
+
 /// Issue 1667 — the workload issue 1496's 8-region table was never measured
 /// against: entries of FOUR sizes (40 B to 4.6 KiB) created and released in a
 /// pseudo-random order, at most three live at once, for 100 000 rounds.

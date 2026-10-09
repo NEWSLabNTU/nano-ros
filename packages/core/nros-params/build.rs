@@ -135,6 +135,14 @@ fn main() {
         0,
     );
 
+    // phase-382 W3' -- does this build KNOW the image builds a store? Then the
+    // executor carves it from its backing instead of asking the heap for it.
+    let implied_store_slots = if store_implied(params) {
+        max_parameters
+    } else {
+        0
+    };
+
     let contents = format!(
         "/// Maximum number of parameters the server can store \
          (set via NROS_MAX_PARAMETERS, default 32).\n\
@@ -173,10 +181,69 @@ fn main() {
          /// Maximum length for a parameter's `additional_constraints`, in \
          bytes (set via NROS_MAX_PARAM_CONSTRAINTS_LEN, default 0 = no \
          constraint text). phase-417 W4.a.\n\
-         pub const MAX_PARAM_CONSTRAINTS_LEN: usize = {max_param_constraints_len};\n"
+         pub const MAX_PARAM_CONSTRAINTS_LEN: usize = {max_param_constraints_len};\n\
+         \n\
+         /// Slots of the parameter store this build KNOWS the image builds: \
+         `MAX_PARAMETERS` when the contract declares a parameter, the bringup \
+         declares `param_services`, or the launch seeds a `<param>` \
+         (`NROS_PARAM_STORE`); 0 otherwise. phase-382 W3'.\n\
+         ///\n\
+         /// A caller that places the store in memory it already owns (the \
+         executor's backing) reserves exactly this many slots. ZERO is the \
+         answer for every image that merely LINKS the declare path, which is \
+         why it is conditional: issue 1702 measured an unconditional `.bss` \
+         store at 280,832 B in a talker that never builds one.\n\
+         pub const IMPLIED_STORE_SLOTS: usize = {implied_store_slots};\n"
     );
 
     std::fs::write(Path::new(&out_dir).join("nros_params_config.rs"), contents).unwrap();
+
+    // phase-382 W3' -- `DEP_NROS_PARAMS_STORE_SHAPE` for `nros-node`, which
+    // forwards it to the C/C++ sizes probe. EVERY input to the carved region's
+    // size is in it: the slot count and each capacity that sizes a slot. A
+    // store the executor does not carve contributes nothing to the backing, so
+    // its shape is just `0` -- a capacity change then re-runs no dependent.
+    let store_shape = if implied_store_slots == 0 {
+        "0".to_string()
+    } else {
+        format!(
+            "{implied_store_slots}x{max_param_name_len}.{max_string_value_len}.{max_array_len}.\
+             {max_byte_array_len}.{max_param_description_len}.{max_param_constraints_len}"
+        )
+    };
+    println!("cargo:store_shape={store_shape}");
+}
+
+/// phase-382 W3' -- is the parameter store IMPLIED by what this build was told?
+///
+/// Three sources, any of which suffices, because each is a different road's
+/// statement of the same fact:
+///
+/// * the descriptor's `[params] declared` is STATED and above zero: the
+///   contract declares a parameter (the cargo-leaf, workspace and cmake
+///   roads, RFC-0100 D4);
+/// * `NROS_CAPABILITY_PARAM_SERVICES` -- the bringup declares the axis. The
+///   Zephyr west road states it as Kconfig (issue 1702), and on that road the
+///   descriptor is not named to cargo (issue 1407), so this is its only
+///   carrier;
+/// * `NROS_PARAM_STORE` -- the launch seeds a `<param>` (issue 1706's implied
+///   store, Kconfig on the west road), or a person states it in the
+///   environment / an image's `[image.<id>] env` for a store only application
+///   code reaches.
+///
+/// A source stating 0 is "this source says no", never a veto over another:
+/// the west road writes `CONFIG_NROS_PARAM_STORE=n` for every image without a
+/// seed, including ones that declare `param_services`.
+///
+/// NOT the `param-services` cargo feature. Every C++ image carries it (issue
+/// 1529), so keying on it is issue 1702's unconditional store again.
+fn store_implied(params: Option<&nros_sizing_descriptor::Params>) -> bool {
+    let declared = params
+        .and_then(|p| p.declared().get())
+        .is_some_and(|n| n > 0);
+    let axis = nros_zephyr_build::knob("NROS_CAPABILITY_PARAM_SERVICES").stated();
+    let seed = nros_zephyr_build::knob("NROS_PARAM_STORE").stated();
+    declared || axis.unwrap_or(0) != 0 || seed.unwrap_or(0) != 0
 }
 
 /// The STATED rungs of one parameter knob: env, then Kconfig, then the descriptor

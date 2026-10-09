@@ -69,6 +69,9 @@ pub const CENSUS_SIZING: nros_node::ExecutorSizing = {
         } else {
             16 << 20
         },
+        // phase-382 W3' — the census declares nothing, so the store (if the
+        // build implies one) is carved exactly as the image would carve it.
+        params: d.params,
     }
 };
 

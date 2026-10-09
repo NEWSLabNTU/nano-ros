@@ -1857,29 +1857,37 @@ config NROS_PARAM_STORE
 config NROS_ZEPHYR_HEAP_SIZE
     int "Application heap arena size (bytes)"
     default 1048576 if NROS_RMW_CYCLONEDDS
-    default 524288 if NROS_CAPABILITY_PARAM_SERVICES || NROS_PARAM_STORE
-    default 196608 if NROS_CAPABILITY_LIFECYCLE
+    default 196608 if NROS_CAPABILITY_PARAM_SERVICES || NROS_PARAM_STORE || NROS_CAPABILITY_LIFECYCLE
     default 131072 if RUST
     default 65536
     help
-      A PARAM_SERVICES image, or one whose launch seeds a parameter
-      (NROS_PARAM_STORE, issue 1706), gets 512 KiB, and a LIFECYCLE one 192 KiB
-      (issue 1702): both capabilities allocate from this arena and nothing
-      sized it from the declaration, so such an image LINKED and then halted
-      at boot (`HEAP EXHAUSTED (TOO SMALL): request 285696 bytes`). The
-      parameter store is ONE allocation of ~8.5 KiB a slot, 285,696 bytes at
-      the default 32 slots, made the first time anything declares a
-      parameter. MEASURED on native_sim/native/64 (boot record, live router,
+      A PARAM_SERVICES image, one whose launch seeds a parameter
+      (NROS_PARAM_STORE, issue 1706), and a LIFECYCLE one get 192 KiB (issue
+      1702): those capabilities allocate their services' buffers from this
+      arena, and nothing sized it from the declaration, so such an image
+      LINKED and then halted at boot.
+
+      The PARAMETER STORE is NOT in this arena any more (phase-382 W3'). Those
+      two symbols are exactly what makes nros-params carve the store out of
+      the executor's .bss backing (nros_params::IMPLIED_STORE_SLOTS), so the
+      store's ~8.5 KiB a slot -- 285,696 bytes at the default 32 slots, the
+      `HEAP EXHAUSTED (TOO SMALL): request 285696` of issue 1702 -- moved to
+      the linker and out of this default. It was 512 KiB for param_services
+      until 2026-10-09; MEASURED after the move, zephyr_cpp_params (both axes)
+      boots at 192 KiB, prints `parameter store: 32 slots (285696 B) carved
+      from the executor backing` and reads its launch-seeded 250 back. A store
+      only application code reaches is invisible to the build, stays on this
+      heap, and is refused at run time with its size (issue 1706).
+
+      MEASURED on native_sim/native/64 (boot record, live router,
       `read-boot-report.py --heap-headroom`), on features' images that
       declare BOTH axes: zephyr_cpp_params peaks at 111,360 without the store
       (46,848 with param_services alone, so lifecycle costs ~64.5 KiB --
       five services, each owning a 2 x 4,096-byte buffer pair); the Rust
       params image at 114,144 without it, and issue 1677's lifecycle and qos
       peaks less the store at 113,904 and 120,896.
-      Store + worst + the 24,576-byte floor is 431,168, hence 512 KiB; worst
-      + floor is 145,472, hence 192 KiB for lifecycle without the store.
-      A bringup whose contracts declare `params:` derives a far smaller store
-      (phase-446 W4) and may state a lower value.
+      Worst + the 24,576-byte floor is 145,472, hence 192 KiB for either axis
+      now that the store is carved.
 
       A CYCLONE image gets 1 MiB (issue 1633): ddsrt's whole heap lands here
       since the Zephyr road compiles the platform funnel (heap/nros/heap.c),
@@ -1949,7 +1957,12 @@ config NROS_EXECUTOR_BACKING_U64S
       every target.
 
       -1 DERIVES it, from ExecutorSizing::DEFAULT: MAX_CBS, MAX_SC, MAX_NODES
-      and the arena. That is the right answer for an image that does not care
+      and the arena (and the parameter store, when the image builds one).
+
+      A STATED number covers the executor's tables only: when the image builds
+      a parameter store (NROS_CAPABILITY_PARAM_SERVICES or NROS_PARAM_STORE),
+      the store's words are carved from the same static and added ON TOP, so
+      the reservation is then 8 x (this + the store). phase-382 W3'. That is the right answer for an image that does not care
       which budget the bytes come out of.
 
       STATE A NUMBER when the image lowers CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE

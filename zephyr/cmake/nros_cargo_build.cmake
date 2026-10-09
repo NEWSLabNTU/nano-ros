@@ -1580,6 +1580,25 @@ function(nros_resolve_knobs)
     # parameter-declaring west image). The script is where the environment,
     # Kconfig and the `[knobs.params]` board rung all meet, so it is the one
     # place "declared a string, and nothing states a length" can refuse.
+    # phase-382 W3' -- does the image build a parameter STORE? Then the
+    # executor carves it from its backing (`nros_params::IMPLIED_STORE_SLOTS`)
+    # instead of the nros heap. Two declarations say so on this road, both set
+    # by `nros build`: the bringup's `param_services` axis and a launch
+    # `<param>` seed (issue 1706). A Kconfig bool reads `y` or nothing here,
+    # and nros-params' ladder parses a NUMBER, so each is spelled 1 / 0. The
+    # Rust lane reads the same two symbols from $DOTCONFIG.
+    if(CONFIG_NROS_CAPABILITY_PARAM_SERVICES)
+        set(_nros_store_axis 1)
+    else()
+        set(_nros_store_axis 0)
+    endif()
+    _nros_resolve_knob(NROS_CAPABILITY_PARAM_SERVICES "${_nros_store_axis}")
+    if(CONFIG_NROS_PARAM_STORE)
+        set(_nros_store_seed 1)
+    else()
+        set(_nros_store_seed 0)
+    endif()
+    _nros_resolve_knob(NROS_PARAM_STORE "${_nros_store_seed}")
     # phase-446 F2 -- a description's capacity. NOT derivable (the contract
     # declares no descriptions), so it rides the plain ladder like
     # NROS_PARAM_SERVICE_BUFFER_SIZE: Kconfig states it, the environment wins.

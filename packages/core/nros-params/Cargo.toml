@@ -12,6 +12,14 @@ documentation.workspace = true
 readme = "README.md"
 keywords = ["ros2", "parameters", "embedded", "no-std"]
 categories = ["embedded", "no-std"]
+# phase-382 W3' -- the store's SHAPE rides `links` metadata to `nros-node`,
+# which forwards it to the C/C++ sizes probe (`DEP_NROS_NODE_PARAM_STORE_SHAPE`).
+# The store is now carved from the executor backing, so its size is part of
+# `NROS_EXECUTOR_SIZE`, and a dependent build script that never learns the
+# store moved keeps a museum `EXECUTOR_OPAQUE_U64S` (the 0088/0268 class:
+# measured, `NROS_PARAM_STORE=1` failed nros-c's `EXECUTOR_OPAQUE_U64S too
+# small` assert until this channel existed).
+links = "nros_params"
 
 [features]
 # phase-361 W3 — EMPTY; `std` is opt-in per dep-site.

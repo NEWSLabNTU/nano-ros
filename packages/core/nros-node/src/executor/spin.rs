@@ -795,9 +795,16 @@ fn report_parameter_store_refused() {
         logger,
         "every parameter declaration on this executor is refused (issue 1706)"
     );
+    // phase-382 W3' -- the remedy that takes the store OUT of the heap comes
+    // first: a build that knows the image builds a store carves it from the
+    // executor backing instead (`nros_params::IMPLIED_STORE_SLOTS`).
     nros_log::log_error!(
         logger,
-        "raise the image heap, or declare the parameters in the contract (params:)"
+        "declare the parameters in the contract (params:) or state NROS_PARAM_STORE=1"
+    );
+    nros_log::log_error!(
+        logger,
+        "and the store is carved from the executor backing; or raise the image heap"
     );
 }
 
@@ -1821,6 +1828,12 @@ pub struct Executor<'s> {
     pub(crate) signal_fd: Option<WakeSignalFd>,
     #[cfg(feature = "param-services")]
     pub(crate) params: Option<alloc::boxed::Box<crate::parameter_services::ParamState<'s>>>,
+    /// phase-382 W3' — the parameter store's slots, CARVED from this
+    /// executor's backing and still uninitialised. Taken (left empty) the
+    /// first time something builds the store; empty from the start when the
+    /// sizing carved none, in which case the store comes from the heap.
+    #[cfg(feature = "param-services")]
+    pub(crate) param_slots: &'s mut [MaybeUninit<nros_params::ParameterSlot>],
     /// Issue 1706 -- the parameter store's one allocation was refused by the
     /// platform heap. Recorded so the refusal is REPORTED once and not retried
     /// on every declaration: a retry cannot succeed on a heap that only shrinks
@@ -2075,7 +2088,14 @@ impl<'s> Executor<'s> {
             monitor_violations,
             alive_slots,
             slot_tags,
+            params: param_slots,
         } = slices;
+        // phase-382 W3' — only an executor that can build a store keeps the
+        // carved slots; without `param-services` the region (sized by the
+        // build, not by a feature, so the layout never depends on one) is
+        // simply never initialised.
+        #[cfg(not(feature = "param-services"))]
+        let _ = param_slots;
         // Slot 0 = the auto-created default Fifo SC (see field doc). carve
         // initialised the whole table to `None`; populate the reserved slot.
         if let Some(slot0) = sched_contexts.first_mut() {
@@ -2166,6 +2186,8 @@ impl<'s> Executor<'s> {
             signal_fd: None,
             #[cfg(feature = "param-services")]
             params: None,
+            #[cfg(feature = "param-services")]
+            param_slots,
             #[cfg(feature = "param-services")]
             param_store_refused: false,
             #[cfg(feature = "param-services")]
@@ -10868,7 +10890,9 @@ impl<'s> Executor<'s> {
                     if self.param_store_refused {
                         return Err(NodeError::Transport(TransportError::BadAlloc));
                     }
-                    let Some(mut state) = Self::new_param_state() else {
+                    let Some(mut state) =
+                        Self::new_param_state(core::mem::take(&mut self.param_slots))
+                    else {
                         self.param_store_refused = true;
                         report_parameter_store_refused();
                         return Err(NodeError::Transport(TransportError::BadAlloc));
@@ -11424,7 +11448,7 @@ impl<'s> Executor<'s> {
             if self.param_store_refused {
                 return false;
             }
-            let Some(state) = Self::new_param_state() else {
+            let Some(state) = Self::new_param_state(core::mem::take(&mut self.param_slots)) else {
                 self.param_store_refused = true;
                 report_parameter_store_refused();
                 return false;
@@ -11516,14 +11540,18 @@ impl<'s> Executor<'s> {
         false
     }
 
-    /// Produce the parameter slot table the executor's store will borrow.
+    /// The HEAP home for the parameter slot table, used only when the
+    /// executor's backing carved none.
     ///
     /// phase-382 W2' — `ParameterServer` no longer OWNS its slots; it borrows
-    /// a caller-placed [`nros_params::ParameterTable`]. W3' carves that table
-    /// out of the caller's executor backing, at which point this function goes
-    /// away. Until then the executor has no caller-supplied home to borrow
-    /// from, so it makes one: a single heap allocation, leaked, one per
-    /// executor that touches parameters. The leak is what buys the `'static`
+    /// a caller-placed [`nros_params::ParameterTable`]. phase-382 W3' carves
+    /// that table out of the caller's executor backing whenever the build
+    /// KNOWS the image builds a store ([`ExecutorSizing::params`](super::storage::ExecutorSizing::params), from
+    /// `nros_params::IMPLIED_STORE_SLOTS`); this function is what remains for a
+    /// store the build could not see — one reached only from application
+    /// code — and for an executor opened with a sizing that carves none. It
+    /// makes a single heap allocation, leaked, one per such executor that
+    /// touches parameters. The leak is what buys the `'static`
     /// the borrow needs without making `ParamState` self-referential (a
     /// `ParamState` that owned the storage AND a server borrowing it is not
     /// expressible), and it is bounded — `ensure_parameter_store` runs this
@@ -11574,8 +11602,27 @@ impl<'s> Executor<'s> {
     /// nothing about constructing one depends on `MAX_PARAMETERS`. The bulk
     /// (and issue 0756's placement requirement with it) lives in
     /// [`leak_parameter_storage`](Self::leak_parameter_storage).
-    fn new_param_state() -> Option<alloc::boxed::Box<crate::parameter_services::ParamState<'s>>> {
-        let table = Self::leak_parameter_storage()?;
+    ///
+    /// phase-382 W3' — `carved` are the backing's store slots: non-empty, they
+    /// ARE the store and the heap is not asked; empty, the store falls back to
+    /// [`leak_parameter_storage`](Self::leak_parameter_storage).
+    fn new_param_state(
+        carved: &'s mut [MaybeUninit<nros_params::ParameterSlot>],
+    ) -> Option<alloc::boxed::Box<crate::parameter_services::ParamState<'s>>> {
+        let table = if carved.is_empty() {
+            Self::leak_parameter_storage()?
+        } else {
+            // Said once per store, so a boot log answers "where did the store
+            // come from" without a debugger: issue 1706's measurements were
+            // all heap-peak arithmetic, and this line is the direct answer.
+            nros_log::log_info!(
+                nros_log::get_logger("nros"),
+                "parameter store: {} slots ({} B) carved from the executor backing",
+                carved.len(),
+                core::mem::size_of_val(carved)
+            );
+            nros_params::ParameterTable::init_in(carved)
+        };
         Some(alloc::boxed::Box::new(
             crate::parameter_services::ParamState {
                 server: nros_params::ParameterServer::new_in(table),

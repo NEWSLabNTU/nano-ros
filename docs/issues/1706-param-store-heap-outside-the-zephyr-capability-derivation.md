@@ -267,3 +267,80 @@ On **(c)**, item by item:
   (`app_main!`), and the bootable image is linked elsewhere. An ad-hoc
   variant therefore needs a fixture row, which is out of scope here. NuttX
   was not attempted.
+
+## Progress (2026-10-09): phase-382 W3' takes the store out of the heap
+
+Status stays **open**, but its subject narrowed. It is no longer "a heap default
+must follow the store". It is "two non-Zephyr roads cannot yet tell the build
+an image builds a store".
+
+### What landed
+
+The route recommended above, as a CONDITIONAL region. The store is now a region
+of the executor's backing (`ExecutorSizing::params`). Its default is
+`nros_params::IMPLIED_STORE_SLOTS`: `MAX_PARAMETERS` when the build knows the
+image builds a store, and 0 otherwise. The size is `size_of` in the crate that
+owns the type, so it is right for the target, and no formula and no descriptor
+capacity is needed (RFC-0100 D1 holds). The store is implied by ANY of these:
+
+| source | road that carries it |
+| --- | --- |
+| the descriptor's `[params] declared > 0` (the contract declares a parameter) | cargo leaf, workspace cargo, cmake (wherever a descriptor is named) |
+| `NROS_CAPABILITY_PARAM_SERVICES` (the bringup declares the axis) | Zephyr west: Kconfig, which `nros build` already sets (issue 1702) |
+| `NROS_PARAM_STORE` (a launch `<param>` seed, this issue's item 3) | Zephyr west: Kconfig. Elsewhere: a person or `[image.<id>] env` |
+
+An image that implies none of them carves nothing. Its backing is byte for byte
+what it was before. Measured: `NROS_EXECUTOR_SIZE` is 90,632 both before and
+after, and 376,328 with a store implied. That is why the region is conditional:
+issue 1702's unconditional `.bss` store is the third number, in every image.
+`leak_parameter_storage` and its named refusal remain for a store the build
+could not see. The refusal now names the two remedies that carve: `params:` in
+the contract, or `NROS_PARAM_STORE=1`.
+
+### Measured (real images, 2026-10-09)
+
+| image | road | result |
+| --- | --- | --- |
+| Zephyr native_sim `zephyr_cpp_params` (both axes, no contract) | carved | `parameter store: 32 slots (285696 B) carved from the executor backing`, publishes 250 |
+| same, with the Kconfig default lowered to **196,608** (was 524,288) | carved | boots, 29 x `Published: 250` in 20 s. The old code halted at this size (`HEAP EXHAUSTED … request 285696`, the table above) |
+| FreeRTOS mps2-an385 rust talker + `param_services` + contract `rate` + `declare_parameter` (QEMU, live router) | carved | 2 slots, 17,344 B of `.bss`; `heap peak 185848 of 720896` |
+| same image, contract removed | heap | `heap peak 473536 of 720896` (the 2026-10-06 number, reproduced) |
+| carved image at `NROS_FREERTOS_HEAP_KB=400` (this issue measured a REFUSAL there) | carved | publishes; `heap peak 185848 of 409600` |
+| threadx-linux rust talker, same probe | carved | 2 slots (17,664 B) ADDED to the board's stated `backing_u64s = 11071` (symbol 106,232 B = 11,071 x 8 + 17,664); `byte pool peak 201744` |
+
+### (a), (b), (c), item by item
+
+- **(a) Zephyr: CLOSED.** The two capability symbols that sized the 512 KiB
+  default now carve the store, so the default drops to 192 KiB for
+  `param_services`, a seed, or `lifecycle` (the previous lifecycle number:
+  worst measured peak without the store plus the floor). Measured above.
+- **(a) FreeRTOS cargo: CLOSED for a contract that declares its parameters.**
+  The store leaves heap_4 (473,536 -> 185,848). An image that declares
+  `param_services` with NO contract still takes the heap road, which the
+  default heap holds (473,536 of 720,896). See "Remaining".
+- **(a) FreeRTOS cmake DDS road: CLOSED for a contract that declares its
+  parameters.** The store is no longer in heap_4, so 447,944 + store no longer
+  applies. For an image with no contract, see "Remaining". Not run: no in-tree
+  Cyclone FreeRTOS image declares parameters, the same reason as on 2026-10-06.
+- **(b) a C++ image with a launch `<param>` and no axis: CLOSED on Zephyr**
+  (`CONFIG_NROS_PARAM_STORE`, set by `nros build`, now carves). On other roads
+  the seed is not carried: see "Remaining".
+- **(c) ThreadX: CLOSED for threadx-linux** (measured above). That includes a
+  board that STATES its backing: the statement covers the executor's tables, and
+  the store is added on top, so a board fact does not have to be restated for an
+  image fact. **rv-virt-threadx: not booted.** It has the same board-stated
+  path, `backing_u64s = 11071`. Its leaf still emits only a staticlib, which is
+  the reason recorded on 2026-10-07. **NuttX: not attempted.**
+  **esp32-c3: by construction.** A declared store is carved from
+  `EXECUTOR_BACKING` in `.bss` instead of the 16 KB heap. No image was built.
+
+### Remaining (why this stays open)
+
+1. **The cargo and cmake roads carry the `param_services` axis and a launch
+   seed to nothing the store reads.** Zephyr has Kconfig for both. Elsewhere,
+   only a contract that declares parameters, or an explicit `NROS_PARAM_STORE=1`,
+   carves the store. The cmake road knows the axis (`NANO_ROS_FEATURES`), so it
+   could forward it the way `nros_cargo_build.cmake` now does on Zephyr. A
+   FreeRTOS cmake DDS image that declares `param_services` and no contract still
+   fails at 640 KiB, with the named refusal.
+2. rv-virt-threadx and NuttX have not been booted with a carved store.

@@ -1351,6 +1351,18 @@ fn main() {
     println!("cargo:max_cbs={max_cbs}");
     println!("cargo:arena_size={arena_size}");
     println!("cargo:rx_buf_size={rx_buf_size}");
+    // phase-382 W3' -- the parameter store is carved from the executor
+    // backing when the build implies one, so its shape is a size input of
+    // `ExecutorInlineStorage` exactly as `arena_size` is. Forwarded verbatim:
+    // `nros-params` owns the store and is the one reader of its inputs.
+    // Watched, so a moved store re-runs this script and so its dependents.
+    println!("cargo:rerun-if-env-changed=DEP_NROS_PARAMS_STORE_SHAPE");
+    println!(
+        "cargo:param_store_shape={}",
+        env::var("DEP_NROS_PARAMS_STORE_SHAPE").unwrap_or_else(|_| {
+            panic!("DEP_NROS_PARAMS_STORE_SHAPE not set -- is nros-params' `links` configured?")
+        })
+    );
 }
 
 /// phase-392 W6 — emit the ONE item that has to be generated for
@@ -1418,8 +1430,17 @@ fn emit_executor_backing(out_dir: &str) {
         return;
     }
     println!("cargo:rustc-cfg=nros_executor_backing_static");
+    // phase-382 W3' -- a STATED reservation covers the executor's tables; a
+    // carved parameter store is added ON TOP (`PARAMETER_STORE_U64S`, zero for
+    // every image the build does not know to build one). The statement exists
+    // so an allocator arena can give back exactly `8 * words` (ThreadX's byte
+    // pool, `threadx_hooks.c`), and the store never came out of that subtraction:
+    // it was a separate heap allocation, and carving it moves it out of the
+    // allocator rather than into the paired number. So a board statement keeps
+    // its meaning, and an image that declares parameters does not have to
+    // restate a BOARD fact for an IMAGE one.
     let len = match words {
-        Some(n) => n.to_string(),
+        Some(n) => format!("{n} + PARAMETER_STORE_U64S"),
         None => "EXECUTOR_BACKING_DEFAULT_U64S".to_string(),
     };
     println!("cargo:rerun-if-env-changed=NROS_EXECUTOR_BACKING_SECTION");

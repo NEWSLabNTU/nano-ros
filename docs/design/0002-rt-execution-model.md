@@ -448,6 +448,23 @@ picolibc's arena, so there is no arena the backing was paid out of and no
 lowering to check; the gate now refuses the old `# nros-arena-base:` marker.
 ThreadX's rung pairing is unaffected.
 
+**The parameter store is a region of the same backing, when the build knows
+the image builds one** (phase-382 W3', 2026-10-09). `ExecutorSizing::params`
+carves that many `nros_params::ParameterSlot`s after every older region, and
+the executor initialises them the first time something declares a parameter.
+The count's default is `nros_params::IMPLIED_STORE_SLOTS`: the store's
+`MAX_PARAMETERS` when the contract declares a parameter (the descriptor's
+`[params] declared > 0`), the bringup declares `param_services`, or the launch
+seeds a `<param>` (`NROS_PARAM_STORE`; both Kconfig on the west road), and
+**zero otherwise**. Zero places nothing and moves no offset, so an image that
+merely links the declare path keeps its backing byte for byte. Issue 1702
+rejected an unconditional `.bss` store for exactly that reason. An executor
+whose backing carved no store still builds one from the heap, with issue 1706's
+named refusal. So the store follows every placement rule above: it is in
+`EXECUTOR_BACKING`, in every C/C++ `nros_executor_t` (`NROS_EXECUTOR_SIZE`), and
+in every tier slot, all sized by the one `ExecutorSizing::DEFAULT.u64_len()`.
+Its shape reaches the C/C++ sizes probe as `DEP_NROS_NODE_PARAM_STORE_SHAPE`.
+
 **What this does NOT buy, contrary to the original text.** It does not shrink a
 task stack. The claim that raising `NROS_SUBSCRIPTION_BUFFER_SIZE` "lands on
 that stack", and that a five-subscription image reserves ~320 KiB of *stack*,

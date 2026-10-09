@@ -71,8 +71,10 @@ NROS_LOG_EARLY_RECORDS | pool | nros_log::early::SLOTS | records held before `in
 NROS_LOG_ROSOUT_RECORDS | pool | nros_log::rosout::SLOTS | the `/rosout` queue (issue 1037), linked only with `nros-node/rosout`: each slot holds a message of `NROS_LOG_BUFFER_SIZE` bytes plus a logger name
 NROS_LOG_BUFFER_SIZE | stack | | the per-call Rust `FormatBuffer` is a stack frame in the logging caller (issue 1037); it is also the message element of `nros_log::early::SLOTS` and `nros_log::rosout::SLOTS`
 NROS_LOG_MAX_LEVEL | not-a-size | | the compile-time severity CEILING (issue 1037): a threshold, not a count; a lower ceiling can only REMOVE code (Rust call sites below it fold away), never add storage
-NROS_MAX_PARAMETERS | heap | | slots of `ParameterStorage`, which `ensure_parameter_store` boxes on the heap once per executor (issue 0756) — no static symbol, so `mem-report` cannot see it
-NROS_MAX_PARAM_NAME_LEN | element | | bounds a parameter NAME inside every `ParameterStorage` slot (heap, see `NROS_MAX_PARAMETERS`)
+NROS_MAX_PARAMETERS | executor | | slots of the parameter store. CARVED into the executor's storage when the build implies a store (`NROS_PARAM_STORE` / `NROS_CAPABILITY_PARAM_SERVICES` / a contract `params:`, phase-382 W3'), so `mem-report`'s `[executor storage]` prices it; otherwise boxed on the heap once per executor that declares (issue 0756)
+NROS_PARAM_STORE | executor | | a switch: the image builds a parameter store, so the executor's storage carves `NROS_MAX_PARAMETERS` slots of it (phase-382 W3'); off, the store costs the backing nothing
+NROS_CAPABILITY_PARAM_SERVICES | executor | | a switch: the bringup declares `param_services` (Zephyr Kconfig); like `NROS_PARAM_STORE` it makes the executor's storage carve the parameter store (phase-382 W3')
+NROS_MAX_PARAM_NAME_LEN | element | | bounds a parameter NAME inside every parameter-store slot (executor storage or heap, see `NROS_MAX_PARAMETERS`)
 NROS_MAX_PARAM_DESCRIPTION_LEN | element | | bounds a parameter descriptor's description inside every `ParameterStorage` slot
 NROS_MAX_PARAM_CONSTRAINTS_LEN | element | | bounds a parameter descriptor's constraints text inside every `ParameterStorage` slot
 NROS_MAX_STRING_VALUE_LEN | element | | bounds a string parameter VALUE — `ParameterValue` is sized by its largest variant, so this is paid by every slot

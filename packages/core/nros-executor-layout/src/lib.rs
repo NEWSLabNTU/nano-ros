@@ -67,8 +67,14 @@ pub struct RegionUnits {
     /// Alive supervision's per-SchedContext record, one per `sc`.
     pub alive_slot: RegionUnit,
     /// phase-476 W0 — the per-callback-slot lifetime tag (generation + owning
-    /// node), one per `cbs`. Placed LAST so every older region keeps its offset.
+    /// node), one per `cbs`. Placed after every older region so each keeps
+    /// its offset.
     pub slot_tag: RegionUnit,
+    /// phase-382 W3' — one parameter-store slot (`nros_params::ParameterSlot`),
+    /// one per [`Counts::params`]. Placed LAST, for the reason `slot_tag` was:
+    /// an image that carves no store (`params == 0`) keeps every offset and
+    /// the total it had before the region existed.
+    pub parameter_slot: RegionUnit,
 }
 
 /// How many of each region the image needs.
@@ -86,6 +92,12 @@ pub struct Counts {
     /// `nros-node`'s `alloc` feature — it adds the sporadic-atomic table, so it
     /// changes the SIZE and cannot be inferred from the counts.
     pub alloc: bool,
+    /// phase-382 W3' — parameter-store slots carved from the backing. ZERO for
+    /// an image the build does not know to build a store, which is what keeps
+    /// the region off every image that merely links the declare path (issue
+    /// 1702's rejected `.bss` static was unconditional). Policy is
+    /// `nros-params`'; this crate only places the region.
+    pub params: usize,
 }
 
 /// Byte offset of each region, plus the total size and alignment.
@@ -109,6 +121,7 @@ pub struct Offsets {
     pub monitor_violations: usize,
     pub alive_slots: usize,
     pub slot_tags: usize,
+    pub params: usize,
     pub size: usize,
     pub align: usize,
 }
@@ -131,6 +144,7 @@ pub const fn offsets(counts: Counts, units: RegionUnits) -> Offsets {
         remaps: remap_slots,
         violations: violation_slots,
         alloc,
+        params: param_slots,
     } = counts;
 
     let mut off = 0usize;
@@ -180,6 +194,14 @@ pub const fn offsets(counts: Counts, units: RegionUnits) -> Offsets {
     let monitor_violations = place!(violation_slots, units.violation);
     let alive_slots = place!(sc, units.alive_slot);
     let slot_tags = place!(cbs, units.slot_tag);
+    // Zero slots must not move `off` either: `place!` would still align it up
+    // to the slot's alignment, which is padding an image with no store would
+    // pay for nothing (and a total that moved for it).
+    let params = if param_slots > 0 {
+        place!(param_slots, units.parameter_slot)
+    } else {
+        off
+    };
 
     Offsets {
         arena: arena_off,
@@ -200,6 +222,7 @@ pub const fn offsets(counts: Counts, units: RegionUnits) -> Offsets {
         monitor_violations,
         alive_slots,
         slot_tags,
+        params,
         size: align_up(off, max_align),
         align: max_align,
     }
