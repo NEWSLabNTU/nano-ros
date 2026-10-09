@@ -33,6 +33,7 @@
 #include "task.h"
 
 #include <nros/app_config.h>
+#include <nros/app_main.h> /* nros_app_main_returned's prototype (issue 1752) */
 
 /* ---- Provided elsewhere ---- */
 /* nros-board-freertos/c/freertos_task_glue.c */
@@ -46,6 +47,17 @@ extern void nros_platform_register_log_writer(void (*writer)(uint8_t, const uint
                                               void (*flusher)(void));
 /* the user application (nros-c's NROS_APP_MAIN macro emits it) */
 extern void app_main(void);
+
+/* Issue 1752 — the strong recorder for `<nros/app_main.h>`'s VOID shim, which
+ * calls it with `nros_app_main`'s status (as an exit code) just before its
+ * `app_main` returns. It must live in THIS object, beside the call to
+ * `app_main`: the shim carries a weak no-op of its own, and a linker never
+ * pulls an archive member merely to replace a weak definition. */
+static int app_exit_code = 0;
+
+void nros_app_main_returned(int exit_code) {
+    app_exit_code = exit_code;
+}
 
 /* ---- nros-log writer ----
  *
@@ -126,9 +138,10 @@ static void app_task_entry(void *arg) {
     /* The image is a host process, so ending is `exit`, and the status is the
      * one a harness reads. `vTaskDelete(NULL)` would leave the scheduler
      * running with nothing to run — the family file's semihosting trap is the
-     * equivalent statement for QEMU. */
+     * equivalent statement for QEMU. The status is the app's (issue 1752), so a
+     * failed app does not read as success. */
     fflush(NULL);
-    exit(0);
+    exit(app_exit_code);
 }
 
 int main(void) {
