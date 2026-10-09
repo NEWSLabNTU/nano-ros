@@ -658,14 +658,13 @@ pub(crate) unsafe fn carve<'s>(
     macro_rules! carved {
         ($at:expr, $n:expr, $ty:ty) => {{
             let p = base.add($at) as *mut MaybeUninit<$ty>;
-            CarvedVec::new(core::slice::from_raw_parts_mut(p, $n))
+            CarvedVec::new(region_slice(p, $n))
         }};
     }
 
     unsafe {
         // arena — no init needed (MaybeUninit).
-        let arena_s =
-            core::slice::from_raw_parts_mut(base.add(o.arena) as *mut MaybeUninit<u8>, arena);
+        let arena_s = region_slice(base.add(o.arena) as *mut MaybeUninit<u8>, arena);
 
         let entries_p = base.add(o.entries) as *mut Option<CallbackMeta>;
         let mut i = 0;
@@ -673,7 +672,7 @@ pub(crate) unsafe fn carve<'s>(
             entries_p.add(i).write(None);
             i += 1;
         }
-        let entries_s = core::slice::from_raw_parts_mut(entries_p, cbs);
+        let entries_s = region_slice(entries_p, cbs);
 
         let sc_p = base.add(o.sched_contexts) as *mut Option<SchedContext>;
         let mut i = 0;
@@ -681,7 +680,7 @@ pub(crate) unsafe fn carve<'s>(
             sc_p.add(i).write(None);
             i += 1;
         }
-        let sched_contexts_s = core::slice::from_raw_parts_mut(sc_p, sc);
+        let sched_contexts_s = region_slice(sc_p, sc);
 
         let bind_p = base.add(o.sched_context_bindings) as *mut SchedContextId;
         let mut i = 0;
@@ -689,7 +688,7 @@ pub(crate) unsafe fn carve<'s>(
             bind_p.add(i).write(SchedContextId(0));
             i += 1;
         }
-        let bindings_s = core::slice::from_raw_parts_mut(bind_p, cbs);
+        let bindings_s = region_slice(bind_p, cbs);
 
         let sp_p = base.add(o.sporadic_states) as *mut Option<SporadicState>;
         let mut i = 0;
@@ -697,7 +696,7 @@ pub(crate) unsafe fn carve<'s>(
             sp_p.add(i).write(None);
             i += 1;
         }
-        let sporadic_s = core::slice::from_raw_parts_mut(sp_p, sc);
+        let sporadic_s = region_slice(sp_p, sc);
 
         #[cfg(feature = "alloc")]
         let atomic_s = {
@@ -707,7 +706,7 @@ pub(crate) unsafe fn carve<'s>(
                 ap.add(i).write(None);
                 i += 1;
             }
-            core::slice::from_raw_parts_mut(ap, sc)
+            region_slice(ap, sc)
         };
 
         let remaps_p = base.add(o.remaps) as *mut Option<RemapRule>;
@@ -716,7 +715,7 @@ pub(crate) unsafe fn carve<'s>(
             remaps_p.add(i).write(None);
             i += 1;
         }
-        let remaps_s = core::slice::from_raw_parts_mut(remaps_p, MAX_REMAPS);
+        let remaps_s = region_slice(remaps_p, MAX_REMAPS);
 
         let alive_p = base.add(o.alive_slots) as *mut AliveSlot;
         let mut i = 0;
@@ -724,7 +723,7 @@ pub(crate) unsafe fn carve<'s>(
             alive_p.add(i).write(AliveSlot::default());
             i += 1;
         }
-        let alive_s = core::slice::from_raw_parts_mut(alive_p, sc);
+        let alive_s = region_slice(alive_p, sc);
 
         let tags_p = base.add(o.slot_tags) as *mut SlotTag;
         let mut i = 0;
@@ -732,11 +731,11 @@ pub(crate) unsafe fn carve<'s>(
             tags_p.add(i).write(SlotTag::default());
             i += 1;
         }
-        let tags_s = core::slice::from_raw_parts_mut(tags_p, cbs);
+        let tags_s = region_slice(tags_p, cbs);
 
         // phase-382 W3' — no init: the slots are `MaybeUninit` until the
         // first declaration initialises them through `ParameterTable::init_in`.
-        let params_s = core::slice::from_raw_parts_mut(
+        let params_s = region_slice(
             base.add(o.params) as *mut MaybeUninit<nros_params::ParameterSlot>,
             param_slots,
         );
@@ -764,6 +763,28 @@ pub(crate) unsafe fn carve<'s>(
             params: params_s,
         }
     }
+}
+
+/// One carved region as a slice — the ONLY way `carve` builds one (issue 1771).
+///
+/// `slice::from_raw_parts_mut` requires an ALIGNED, non-null pointer even for
+/// a zero-length slice, and an empty region's offset is not always aligned:
+/// `nros_executor_layout::offsets` deliberately leaves `off` where it is for a
+/// region with no slots (the parameter store in an image without one, the
+/// atomic sporadic states without `alloc`), so the total does not grow by
+/// padding nothing uses. On thumbv7m that offset is misaligned for
+/// `ParameterSlot`, and the debug precondition check panicked at boot. An
+/// empty region needs no address at all, so it gets a dangling one.
+///
+/// # Safety
+/// For `n > 0`, `p` points at `n` properly aligned `T`s inside the backing
+/// that no other live slice covers.
+unsafe fn region_slice<'s, T>(p: *mut T, n: usize) -> &'s mut [T] {
+    if n == 0 {
+        return &mut [];
+    }
+    // SAFETY: the caller's contract, for a non-empty region.
+    unsafe { core::slice::from_raw_parts_mut(p, n) }
 }
 
 #[cfg(test)]
@@ -1141,6 +1162,71 @@ mod tests {
             "`Executor` is {value} B at MAX_CBS={CBS} / MAX_NODES={NODES}, over \
              the {ceiling} B this value is budgeted; a table that scales with a \
              knob has come back inline (issue 0961)."
+        );
+    }
+
+    /// issue 1771 — an empty region at a MISALIGNED offset is legal.
+    ///
+    /// The layout leaves an empty region's offset unaligned (no padding for
+    /// nothing), and `carve` used to hand that pointer to
+    /// `slice::from_raw_parts_mut`, whose debug precondition check aborts the
+    /// image — on thumbv7m, where the offset is not a multiple of
+    /// `ParameterSlot`'s alignment. x86_64 happened to align, so carve's own
+    /// tests could not see it; this asks the helper at an offset that is
+    /// misaligned on every target. Passing `p` straight to
+    /// `from_raw_parts_mut` here aborts the test process (not catchable).
+    #[test]
+    fn an_empty_region_at_a_misaligned_offset_carves_to_an_empty_slice() {
+        assert!(align_of::<nros_params::ParameterSlot>() > 1, "the premise");
+        let mut backing = [0u64; 4];
+        let p = (backing.as_mut_ptr() as *mut u8).wrapping_add(1)
+            as *mut MaybeUninit<nros_params::ParameterSlot>;
+        assert!(!p.is_aligned(), "the premise: the offset is misaligned");
+        let s = unsafe { region_slice(p, 0) };
+        assert!(s.is_empty());
+        assert!(s.as_ptr().is_aligned());
+    }
+
+    /// issue 1771 — `carve` itself, over layouts whose empty parameter region
+    /// lands misaligned.
+    ///
+    /// Which knob values misalign `o.params` depends on every region before it,
+    /// so a fixed config proves nothing on the next knob move: the mps2 talker
+    /// panicked in one build and booted in another of the same leaf. Sweep the
+    /// callback count and require that the sweep REACHES a misaligned offset
+    /// (else this test has stopped asking the question), then carve each one.
+    /// With the slice built straight from the pointer, the first misaligned
+    /// case aborts the test process at the precondition check.
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn carve_survives_an_empty_parameter_region_at_any_alignment() {
+        let align = align_of::<nros_params::ParameterSlot>();
+        let mut misaligned = 0;
+        for cbs in 1..=16 {
+            let sizing = ExecutorSizing {
+                cbs,
+                sc: 1,
+                arena: 1,
+                nodes: 1,
+                params: 0,
+            };
+            if !compute_offsets(sizing).params.is_multiple_of(align) {
+                misaligned += 1;
+            }
+            let mut backing = alloc::vec![
+                const { MaybeUninit::<u64>::uninit() };
+                executor_storage_u64_len(sizing)
+            ]
+            .into_boxed_slice();
+            let s = unsafe { carve(&mut backing, sizing) };
+            assert!(s.params.is_empty());
+            assert_eq!(s.entries.len(), cbs);
+        }
+        assert!(
+            misaligned > 0,
+            "no swept layout leaves the empty parameter region misaligned for \
+             ParameterSlot (align {align}) — widen the sweep, or this test no \
+             longer covers issue 1771"
         );
     }
 
