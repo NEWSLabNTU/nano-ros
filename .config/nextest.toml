@@ -374,6 +374,13 @@ retries = 2
 filter = "binary(zenoh_integration) and test(declares_keep_running_across_a_reconnect)"
 slow-timeout = { period = "45s", terminate-after = 2 }
 
+# Issue 1732 -- two endings in sequence, each with its own XRCE Agent, a domain
+# checked quiet with the `ros2` CLI, and a 12 s bounded run. 17-25 s solo; one
+# run on a loaded host (load average ~10) passed the default 60 s ceiling.
+[[profile.default.overrides]]
+filter = "binary(rust_multi_node_per_node_graph) and test(rust_multi_node_entry_leaves_the_graph_when_it_ends_xrce)"
+slow-timeout = { period = "60s", terminate-after = 2 }
+
 # issue #139 follow-up — the lifecycle zephyr e2e polls `ros2 lifecycle` CLIs
 # (multi-second python startup per poll); solo it finishes in ~10 s but under
 # a parallel suite the CLI contention pushes past the default 60 s ceiling.
