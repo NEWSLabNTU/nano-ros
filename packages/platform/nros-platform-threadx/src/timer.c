@@ -11,6 +11,8 @@
 
 #include <tx_api.h>
 
+#include "threadx_context.h"
+
 #include <stddef.h>
 #include <stdint.h>
 
@@ -81,6 +83,7 @@ static void timer_trampoline(ULONG id) {
 static void *create_timer(uint32_t value_us, int periodic,
                           nros_platform_timer_callback_t callback,
                           void *user_data) {
+    NROS_THREADX_KERNEL_ONLY_FATAL(); /* issue 1750 -- see threadx_context.h */
     if (callback == NULL || value_us == 0 || s_timer_pool == NULL) return NULL;
 
     void *raw = NULL;
@@ -143,6 +146,7 @@ void *nros_platform_timer_create_oneshot(uint32_t timeout_us,
 }
 
 void nros_platform_timer_destroy(void *handle) {
+    NROS_THREADX_KERNEL_ONLY_FATAL();
     if (handle == NULL) return;
     nros_threadx_timer_t *t = (nros_threadx_timer_t *) handle;
     int slot = t->periodic >> 8;
@@ -154,6 +158,7 @@ void nros_platform_timer_destroy(void *handle) {
 }
 
 int8_t nros_platform_timer_cancel(void *handle) {
+    NROS_THREADX_KERNEL_ONLY_FATAL();
     if (handle == NULL) return -1;
     nros_threadx_timer_t *t = (nros_threadx_timer_t *) handle;
     int prev_fired = t->fired;

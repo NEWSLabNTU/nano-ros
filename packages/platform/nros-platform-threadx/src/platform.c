@@ -32,11 +32,78 @@
 
 #include <tx_api.h>
 
+#include "threadx_context.h"
+
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
 #include <sys/types.h>
 #include <errno.h>
+
+#if NROS_THREADX_HOSTED_PORT
+/* Issue 1750 -- the kernel state the context test and the foreign paths read.
+ * Internal headers, deliberately: "is this a thread ThreadX owns?" is a
+ * question only the kernel and its port can answer. */
+#include <tx_initialize.h>
+#include <tx_thread.h>
+#include <tx_timer.h>
+
+#include <pthread.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+/* `ports/linux/gnu/src/tx_initialize_low_level.c` -- the timer-ISR thread. */
+extern pthread_t _tx_linux_timer_id;
+
+int nros_threadx_in_kernel_context(void) {
+    /* Set by the port in every thread it creates (`_tx_linux_thread_entry`)
+     * and thread-local, so it can be neither stale nor another thread's. */
+    if (_tx_linux_threadx_thread) {
+        return 1;
+    }
+    /* The ISR thread, identified by IDENTITY. Never by reading the global
+     * system state: a foreign thread reads that as non-zero whenever the ISR
+     * happens to be running, and would be waved through. */
+    if (pthread_equal(pthread_self(), _tx_linux_timer_id)) {
+        return 1;
+    }
+    /* `tx_application_define`, on the boot thread. No foreign thread can hold
+     * this answer: the RMW's threads are created from the app thread, after
+     * the scheduler starts and this state has been cleared. */
+    if (_tx_thread_system_state == TX_INITIALIZE_IN_PROGRESS) {
+        return 1;
+    }
+    return 0;
+}
+
+static void nros_threadx_stderr(const char *s) {
+    size_t n = strlen(s);
+    while (n > 0) {
+        ssize_t w = write(2, s, n);
+        if (w <= 0) {
+            return;
+        }
+        s += w;
+        n -= (size_t) w;
+    }
+}
+
+void nros_threadx_refuse_foreign(const char *fn, int fatal) {
+    static int reported = 0;
+    if (!fatal && __atomic_exchange_n(&reported, 1, __ATOMIC_RELAXED)) {
+        return;
+    }
+    nros_threadx_stderr("nros: ");
+    nros_threadx_stderr(fn != NULL ? fn : "?");
+    nros_threadx_stderr(fatal ? "() called from a host thread ThreadX does not own - aborting"
+                              : "() called from a host thread ThreadX does not own - refused"
+                                " (reported once)");
+    nros_threadx_stderr(" (issue 1750)\n");
+    if (fatal) {
+        abort();
+    }
+}
+#endif /* NROS_THREADX_HOSTED_PORT */
 
 #ifndef TX_TIMER_TICKS_PER_SECOND
 #  define TX_TIMER_TICKS_PER_SECOND 100u
@@ -55,6 +122,15 @@
 #define NS_PER_TICK ((uint64_t) (1000000000ULL / TX_TIMER_TICKS_PER_SECOND))
 
 uint64_t nros_platform_clock_ns(void) {
+#if NROS_THREADX_HOSTED_PORT
+    /* Issue 1750 -- `tx_time_get` is TX_DISABLE + one read + TX_RESTORE, and
+     * the bracket is the part a foreign thread cannot do. The read alone is a
+     * naturally aligned `volatile ULONG` (32-bit on this port), single-copy
+     * atomic, so a foreign caller gets the same tick without it. */
+    if (!nros_threadx_in_kernel_context()) {
+        return (uint64_t) _tx_timer_system_clock * NS_PER_TICK;
+    }
+#endif
     return (uint64_t) tx_time_get() * NS_PER_TICK;
 }
 
@@ -94,10 +170,84 @@ void nros_platform_threadx_set_byte_pool(void *pool) {
     nros_platform_threadx_note_pool_usage();
 }
 
+/* ---- Foreign host threads and the heap (issue 1750) ----
+ *
+ * On the hosted port the heap has two OWNERS, and each block is released by
+ * its owner's rules:
+ *
+ *   - the byte pool, which only a ThreadX context may enter
+ *     (`threadx_context.h` says why it wedges the kernel otherwise);
+ *   - the host C library heap, for a foreign thread's allocations. The board
+ *     is a host process and that heap is already in it (C stdio, a Rust
+ *     image's std allocator); `malloc` is safe from any host thread.
+ *
+ * A block's owner is decided by its ADDRESS, never by who frees it: Cyclone
+ * hands buffers across threads both ways (a serdata built on its receive
+ * thread is freed by the app thread, and the reverse), so "the caller is
+ * foreign" says nothing about which heap a pointer came from. The pool is one
+ * contiguous region, so the test is two compares.
+ *
+ * The one case with no direct answer is a foreign thread releasing a POOL
+ * block. It is pushed onto a lock-free list instead, and the next ThreadX
+ * context to enter the allocator releases it. The list costs nothing to drain
+ * when it is empty (one atomic exchange), needs no lock a suspended ThreadX
+ * thread could hold, and stores its link in the freed block itself -- every
+ * pool block has at least `sizeof(ALIGN_TYPE)` user bytes, which holds a
+ * pointer. A pushed block is released by the next pool allocation or free a
+ * ThreadX thread makes, so the backlog is bounded by what foreign threads free
+ * between two of those, never by uptime.
+ *
+ * NOT counted: a foreign thread's host-heap allocations are not in
+ * `nros_platform_heap_used_bytes`, which reports the byte pool. */
+#if NROS_THREADX_HOSTED_PORT
+_Static_assert(sizeof(ALIGN_TYPE) >= sizeof(void *),
+               "a deferred pool block must hold the list link (issue 1750)");
+
+static void *s_foreign_released = NULL;
+
+static int nros_threadx_pool_owns(const void *ptr) {
+    if (s_byte_pool == NULL || ptr == NULL) {
+        return 0;
+    }
+    const UCHAR *start = (const UCHAR *) s_byte_pool->tx_byte_pool_start;
+    const UCHAR *p = (const UCHAR *) ptr;
+    return p >= start && p < start + s_byte_pool->tx_byte_pool_size;
+}
+
+static void nros_threadx_defer_pool_release(void *ptr) {
+    void *head = __atomic_load_n(&s_foreign_released, __ATOMIC_RELAXED);
+    do {
+        *(void **) ptr = head;
+    } while (!__atomic_compare_exchange_n(&s_foreign_released, &head, ptr, 1, __ATOMIC_RELEASE,
+                                          __ATOMIC_RELAXED));
+}
+
+/* Kernel context only. Takes the whole list in one exchange, so a push racing
+ * it lands on the fresh list and is drained next time -- never lost, never
+ * released twice. */
+static void nros_threadx_drain_foreign_releases(void) {
+    void *p = __atomic_exchange_n(&s_foreign_released, NULL, __ATOMIC_ACQUIRE);
+    while (p != NULL) {
+        void *next = *(void **) p;
+        (void) tx_byte_release(p);
+        p = next;
+    }
+}
+#endif /* NROS_THREADX_HOSTED_PORT */
+
 /* ---- Alloc ---- */
 
 void *nros_platform_alloc(size_t size) {
-    if (size == 0 || s_byte_pool == NULL) {
+    if (size == 0) {
+        return NULL;
+    }
+#if NROS_THREADX_HOSTED_PORT
+    if (!nros_threadx_in_kernel_context()) {
+        return malloc(size);
+    }
+    nros_threadx_drain_foreign_releases();
+#endif
+    if (s_byte_pool == NULL) {
         return NULL;
     }
     void *p = NULL;
@@ -115,9 +265,21 @@ void *nros_platform_alloc(size_t size) {
 }
 
 void nros_platform_dealloc(void *ptr) {
-    if (ptr != NULL) {
-        (void) tx_byte_release(ptr);
+    if (ptr == NULL) {
+        return;
     }
+#if NROS_THREADX_HOSTED_PORT
+    if (!nros_threadx_pool_owns(ptr)) {
+        free(ptr); /* a foreign thread's block, from any caller */
+        return;
+    }
+    if (!nros_threadx_in_kernel_context()) {
+        nros_threadx_defer_pool_release(ptr);
+        return;
+    }
+    nros_threadx_drain_foreign_releases();
+#endif
+    (void) tx_byte_release(ptr);
 }
 
 /* ---- Heap stats (phase-230 1b / RFC-0034 D7) ----
@@ -130,6 +292,14 @@ size_t nros_platform_heap_used_bytes(void) {
         return 0u;
     }
     ULONG available = 0;
+#if NROS_THREADX_HOSTED_PORT
+    if (!nros_threadx_in_kernel_context()) {
+        /* Issue 1750 -- the info call is TX_DISABLE-bracketed. A statistic
+         * needs no snapshot consistency, so a foreign caller reads the field
+         * the call would have copied. */
+        available = s_byte_pool->tx_byte_pool_available;
+    } else
+#endif
     if (tx_byte_pool_info_get(s_byte_pool, TX_NULL, &available, TX_NULL, TX_NULL, TX_NULL,
                               TX_NULL) != TX_SUCCESS) {
         return 0u;
@@ -336,6 +506,15 @@ void *nros_platform_realloc(void *ptr, size_t size) {
     if (ptr == NULL) {
         return nros_platform_alloc(size);
     }
+#if NROS_THREADX_HOSTED_PORT
+    /* Issue 1750 -- a host-heap block stays on the host heap, whoever resizes
+     * it: the C library's `realloc` is the exact answer and enters no ThreadX
+     * service. A POOL block falls through: the alloc and dealloc below route by
+     * caller, so a foreign thread gets a host block and a deferred release. */
+    if (!nros_threadx_pool_owns(ptr)) {
+        return realloc(ptr, size);
+    }
+#endif
     const size_t old_bytes = nros_threadx_block_bytes(ptr);
     if (old_bytes == 0u) {
         return NULL;
@@ -355,7 +534,12 @@ static inline ULONG ms_to_ticks(size_t ms) {
     return (ULONG) ((ms * TX_TIMER_TICKS_PER_SECOND + 999U) / 1000U);
 }
 
+/* Issue 1750 -- every entry point from here on that enters a ThreadX service
+ * opens with a `threadx_context.h` guard (a no-op on bare-metal ports). The
+ * heap and the clock above have real foreign-thread answers; these do not. */
+
 void nros_platform_sleep_us(size_t us) {
+    NROS_THREADX_KERNEL_ONLY_FATAL();
     if (us == 0) return;
     ULONG ticks = (ULONG) ((us + 9999U) / 10000U);  /* assumes 100Hz tick */
     if (ticks == 0) ticks = 1;
@@ -363,16 +547,19 @@ void nros_platform_sleep_us(size_t us) {
 }
 
 void nros_platform_sleep_ms(size_t ms) {
+    NROS_THREADX_KERNEL_ONLY_FATAL();
     tx_thread_sleep(ms_to_ticks(ms));
 }
 
 void nros_platform_sleep_s(size_t s) {
+    NROS_THREADX_KERNEL_ONLY_FATAL();
     tx_thread_sleep(ms_to_ticks(s * 1000U));
 }
 
 /* ---- Yield ---- */
 
 void nros_platform_yield_now(void) {
+    NROS_THREADX_KERNEL_ONLY_FATAL();
     tx_thread_relinquish();
 }
 
@@ -476,6 +663,7 @@ int8_t nros_platform_task_init(void *task, void *attr,
                                void *(*entry)(void *), void *arg) {
     /* phase-364 W1/W3 — INVALID for a caller-side impossibility. `attr` is NO
      * LONGER among them: a NULL means every default, as on every other port. */
+    NROS_THREADX_KERNEL_ONLY_FATAL();
     if (task == NULL || entry == NULL) {
         return NROS_PLATFORM_RET_INVALID;
     }
@@ -637,6 +825,7 @@ int8_t nros_platform_task_init(void *task, void *attr,
 }
 
 int8_t nros_platform_task_join(void *task) {
+    NROS_THREADX_KERNEL_ONLY_FATAL();
     if (task == NULL) return -1;
     /* ThreadX has no native join. Poll the thread state until it
      * reports completed/terminated. */
@@ -661,6 +850,7 @@ int8_t nros_platform_task_detach(void *task) {
 }
 
 int8_t nros_platform_task_cancel(void *task) {
+    NROS_THREADX_KERNEL_ONLY_FATAL();
     if (task == NULL) return -1;
     return tx_thread_terminate(&((nros_threadx_task_t *) task)->thread) == TX_SUCCESS
                ? NROS_PLATFORM_RET_OK
@@ -673,6 +863,7 @@ void nros_platform_task_exit(void) {
 }
 
 void nros_platform_task_free(void **task) {
+    NROS_THREADX_KERNEL_ONLY_FATAL();
     if (task == NULL || *task == NULL) return;
     nros_threadx_task_t *slot = (nros_threadx_task_t *) *task;
     (void) tx_thread_delete(&slot->thread);
@@ -706,22 +897,26 @@ void nros_platform_task_free(void **task) {
  */
 
 int8_t nros_platform_mutex_init(void *m) {
+    NROS_THREADX_KERNEL_ONLY_FATAL();
     if (m == NULL) return -1;
     return tx_mutex_create((TX_MUTEX *) m, (char *) "nros", TX_INHERIT) == TX_SUCCESS
         ? 0 : -1;
 }
 
 int8_t nros_platform_mutex_drop(void *m) {
+    NROS_THREADX_KERNEL_ONLY_FATAL();
     if (m == NULL) return -1;
     return tx_mutex_delete((TX_MUTEX *) m) == TX_SUCCESS ? 0 : -1;
 }
 
 int8_t nros_platform_mutex_lock(void *m) {
+    NROS_THREADX_KERNEL_ONLY_FATAL();
     if (m == NULL) return -1;
     return tx_mutex_get((TX_MUTEX *) m, TX_WAIT_FOREVER) == TX_SUCCESS ? 0 : -1;
 }
 
 int8_t nros_platform_mutex_try_lock(void *m) {
+    NROS_THREADX_KERNEL_ONLY_FATAL();
     if (m == NULL) return -1;
     UINT rc = tx_mutex_get((TX_MUTEX *) m, TX_NO_WAIT);
     if (rc == TX_SUCCESS)         return 0;
@@ -730,6 +925,7 @@ int8_t nros_platform_mutex_try_lock(void *m) {
 }
 
 int8_t nros_platform_mutex_unlock(void *m) {
+    NROS_THREADX_KERNEL_ONLY_FATAL();
     if (m == NULL) return -1;
     return tx_mutex_put((TX_MUTEX *) m) == TX_SUCCESS ? 0 : -1;
 }
@@ -748,17 +944,23 @@ int8_t nros_platform_mutex_rec_unlock(void *m)   { return nros_platform_mutex_un
  */
 
 int8_t nros_platform_condvar_init(void *cv) {
+    NROS_THREADX_KERNEL_ONLY_FATAL();
     if (cv == NULL) return -1;
     return tx_semaphore_create((TX_SEMAPHORE *) cv, (char *) "nros_cv", 0) == TX_SUCCESS
         ? 0 : -1;
 }
 
 int8_t nros_platform_condvar_drop(void *cv) {
+    NROS_THREADX_KERNEL_ONLY_FATAL();
     if (cv == NULL) return -1;
     return tx_semaphore_delete((TX_SEMAPHORE *) cv) == TX_SUCCESS ? 0 : -1;
 }
 
+/* Issue 1750 -- a SIGNAL from a foreign thread is refused rather than fatal:
+ * its waiter waits with a bound (every wait here takes a timeout or is woken
+ * by a ThreadX peer), so a lost signal costs latency and nothing else. */
 int8_t nros_platform_condvar_signal(void *cv) {
+    NROS_THREADX_KERNEL_ONLY_OR_RETURN(-1);
     if (cv == NULL) return -1;
     return tx_semaphore_put((TX_SEMAPHORE *) cv) == TX_SUCCESS ? 0 : -1;
 }
@@ -775,11 +977,13 @@ int8_t nros_platform_condvar_signal_all(void *cv) {
  * tx_semaphore_put is ISR-safe under ThreadX (callable from any
  * context, including ISRs). Same impl as the thread-context path. */
 int8_t nros_platform_condvar_signal_from_isr(void *cv) {
+    NROS_THREADX_KERNEL_ONLY_OR_RETURN(-1);
     if (cv == NULL) return -1;
     return tx_semaphore_put((TX_SEMAPHORE *) cv) == TX_SUCCESS ? 0 : -1;
 }
 
 int8_t nros_platform_condvar_wait(void *cv, void *m) {
+    NROS_THREADX_KERNEL_ONLY_FATAL();
     if (cv == NULL || m == NULL) return -1;
     nros_platform_mutex_unlock(m);
     UINT rc = tx_semaphore_get((TX_SEMAPHORE *) cv, TX_WAIT_FOREVER);
@@ -788,6 +992,7 @@ int8_t nros_platform_condvar_wait(void *cv, void *m) {
 }
 
 int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) {
+    NROS_THREADX_KERNEL_ONLY_FATAL();
     if (cv == NULL || m == NULL) return -1;
     uint64_t now = (nros_platform_clock_ns() / 1000000ULL);
     ULONG timeout_ticks = abstime_ms > now
@@ -813,6 +1018,7 @@ int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) 
 typedef TX_SEMAPHORE nros_wake_t;
 
 int8_t nros_platform_wake_init(void *w) {
+    NROS_THREADX_KERNEL_ONLY_FATAL();
     if (w == NULL) return -1;
     /* Initial count 0 (waiter blocks until first put). */
     UINT rc = tx_semaphore_create((TX_SEMAPHORE *) w, (CHAR *) "nros_wake", 0u);
@@ -820,12 +1026,14 @@ int8_t nros_platform_wake_init(void *w) {
 }
 
 int8_t nros_platform_wake_drop(void *w) {
+    NROS_THREADX_KERNEL_ONLY_FATAL();
     if (w == NULL) return 0;
     (void) tx_semaphore_delete((TX_SEMAPHORE *) w);
     return 0;
 }
 
 int8_t nros_platform_wake_wait_ms(void *w, uint32_t timeout_ms) {
+    NROS_THREADX_KERNEL_ONLY_FATAL();
     if (w == NULL) return -1;
     /* ThreadX ticks come from `TX_TIMER_TICKS_PER_SECOND`; convert
      * ms via the same formula nros_platform_clock_ms uses. */
@@ -845,7 +1053,14 @@ int8_t nros_platform_wake_wait_ms(void *w, uint32_t timeout_ms) {
     return -1;
 }
 
+/* Issue 1750 -- refused, not fatal, from a foreign thread: the waiter's wait
+ * is bounded, so a lost wake is latency. This is the call Cyclone's
+ * data-available listener reaches from its receive thread, which is why
+ * threadx-linux declines that listener outright (the board's
+ * NROS_RMW_CYCLONEDDS_FOREIGN_WAKE, issue 1237's rule); this guard is what
+ * keeps any OTHER foreign signaller from wedging the kernel. */
 int8_t nros_platform_wake_signal(void *w) {
+    NROS_THREADX_KERNEL_ONLY_OR_RETURN(-1);
     if (w == NULL) return -1;
     UINT rc = tx_semaphore_ceiling_put((TX_SEMAPHORE *) w, 1u);
     /* Ceiling-put with limit 1 = binary semaphore semantics:
@@ -886,6 +1101,7 @@ size_t nros_platform_wake_storage_align(void) {
  *
  * Contract: 0 = signalled, 1 = deadline expired, -1 = cannot park. */
 int8_t nros_platform_wake_park_until_us(void *w, uint64_t deadline_us) {
+    NROS_THREADX_KERNEL_ONLY_FATAL();
     if (w == NULL) return -1;
     ULONG ticks;
     if (deadline_us == 0u) {
@@ -961,10 +1177,16 @@ _Static_assert(NROS_PLATFORM_TASK_STORAGE_SIZE >= sizeof(nros_threadx_task_t),
  * `tx_interrupt_control(token)` to restore. ThreadX's port already
  * stacks interrupt state across nested acquire/release pairs. */
 uint32_t nros_platform_critical_section_acquire(void) {
+    /* Issue 1750 -- this IS the call that leaks `_tx_linux_mutex` from a
+     * foreign thread, and no substitute exists: holding the port's mutex
+     * excludes the scheduler and the ISR but not a ThreadX thread already
+     * running, so a foreign "critical section" would not be one. */
+    NROS_THREADX_KERNEL_ONLY_FATAL();
     return (uint32_t) tx_interrupt_control(TX_INT_DISABLE);
 }
 
 void nros_platform_critical_section_release(uint32_t token) {
+    NROS_THREADX_KERNEL_ONLY_FATAL();
     (void) tx_interrupt_control((UINT) token);
 }
 
@@ -1064,6 +1286,8 @@ _Noreturn void nros_platform_panic(const char *msg, size_t len) {
  * minus the stack start. */
 size_t nros_platform_task_stack_unused_bytes(void) {
 #ifdef TX_ENABLE_STACK_CHECKING
+    /* A foreign thread has no ThreadX stack to measure (issue 1750). */
+    NROS_THREADX_KERNEL_ONLY_OR_RETURN(0);
     TX_THREAD *self = tx_thread_identify();
     if (self == TX_NULL || self->tx_thread_stack_highest_ptr == TX_NULL ||
         self->tx_thread_stack_start == TX_NULL) {
