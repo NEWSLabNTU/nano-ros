@@ -1662,6 +1662,54 @@ fn is_false(b: &bool) -> bool {
 
 #[cfg(test)]
 mod tests {
+    /// Issue 1766 -- the leaf road's axis table (`nros_orchestration_ir::
+    /// leaf_capabilities`, which a Form-1 `nros::main!()` reads) and the
+    /// lowering registry the workspace road reads are the SAME set of axes,
+    /// lowering to the same `nros` feature, in both directions; and every
+    /// `compiled_flag` the macro asserts is the `nros::__macro_support` const
+    /// that reports exactly that feature.
+    #[test]
+    fn leaf_capability_axes_match_the_capability_registry() {
+        use cargo_nano_ros::capability_resolver::CAPABILITIES;
+        use nros_orchestration_ir::leaf_capabilities::LEAF_CAPABILITY_AXES;
+
+        let registry: Vec<(&str, &str)> = CAPABILITIES
+            .iter()
+            .map(|c| (c.declared, c.nros_feature))
+            .collect();
+        let leaf: Vec<(&str, &str)> = LEAF_CAPABILITY_AXES
+            .iter()
+            .map(|a| (a.declared, a.nros_feature))
+            .collect();
+        for r in &registry {
+            assert!(
+                leaf.contains(r),
+                "registry axis {r:?} missing from LEAF_CAPABILITY_AXES"
+            );
+        }
+        for l in &leaf {
+            assert!(
+                registry.contains(l),
+                "leaf axis {l:?} is not in CAPABILITIES"
+            );
+        }
+
+        let nros_lib =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../api/nros/src/lib.rs");
+        let src = std::fs::read_to_string(&nros_lib).expect("read nros/src/lib.rs");
+        for a in LEAF_CAPABILITY_AXES {
+            let decl = format!(
+                "pub const {}: bool = cfg!(feature = \"{}\");",
+                a.compiled_flag, a.nros_feature
+            );
+            assert!(
+                src.contains(&decl),
+                "{}: `__macro_support` must declare `{decl}`",
+                nros_lib.display()
+            );
+        }
+    }
+
     /// phase-463 W4 -- `[census] on_missing` / `on_stale`, the two policy keys
     /// a configure reads, and the landing default when neither is written.
     #[test]

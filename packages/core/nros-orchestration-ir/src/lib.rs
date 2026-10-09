@@ -50,6 +50,9 @@ pub mod executor_sizing;
 // phase-445 W3 (RFC-0098 D3/D5/D8) — the ONE reader of what a single-package
 // leaf deploys to (`<leaf>/system.toml`, with the retiring manifest keys as a
 // deletable fallback), shared by the proc-macro and the CLI.
+// Issue 1766 — which capability axes its `[system] features` declares, and
+// what each lowers to on a Form-1 entry.
+pub mod leaf_capabilities;
 pub mod leaf_system;
 pub mod mapper_input;
 // phase-330 W3.b — the ONE place that decides where a SystemModel is read
