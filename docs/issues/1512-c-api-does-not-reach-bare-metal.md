@@ -610,3 +610,13 @@ action-server 413844/4980/551744, action-client 405736/4988/551072, C++ talker
    * then `nros_board_capability_defines()` and the bare-metal arm of
      `nros_feature_set()` (both landed in the first pass, measured in `cmake -P`
      only) would get their first real consumer.
+
+## 2026-10-09 — the C-rooted road: not pursued for now (phase-477 D4)
+
+Maintainer decision. The cargo-rooted road already boots the six C roles and a
+C++ talker on bare metal (#1585), so a C user has a working road. The C-rooted
+cmake road — a linker script with `SECTIONS`/`ENTRY`, a C reset/vector startup
+and a C-callable board init through a new board-seam staticlib — is recorded as
+NOT PURSUED until a consumer asks for a CMake-rooted bare-metal project. The
+remaining C++ roles on the cargo-rooted road stay in scope; this issue closes
+when they land, with this section as the record for the C-rooted half.

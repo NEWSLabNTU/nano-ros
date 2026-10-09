@@ -188,18 +188,71 @@ reporter count + resolved-seed configure edge; in-lane fixture errors fail
 through `RequireFixture::require`; `name-real-failures.py` reads the
 failure message only).
 
-**In flight — resume here:**
-- **Issue 1746** — branch `fix/1746-shared-cargo-repoint`, one WIP commit,
-  NOT verified (draft PR). Next: reconfigure a native cpp leaf and build ONCE
-  (must link), `build-test-fixtures` after a reconfigure, `just format`,
-  `just ci gate`; then reword the commit and arm. Until it lands, the first
-  build after any reconfigure of a native cpp leaf can fail once with
-  undefined `nros_config_variant_sz_*` (a second `ninja` settles it).
-- **First `run-matrix` tier-1 run** — not yet dispatched (single-occupancy
-  self-hosted runner; maintainer's call). It is the CI acceptance for issues
-  1684 and 1685; dispatch after 1746 lands.
+**In flight at the checkpoint — since closed (2026-10-09):**
+- **Issue 1746** — landed as #1808. The configure-time sizes-header heal ran
+  before the entity-facts flush re-pointed `<build>/cargo` to its final key,
+  so it copied the provisional key's header; the heal is now deferred behind
+  the flush (`nros_config_header_heal`). Guarded by
+  `check-config-header-single-writer` and case G of
+  `tests/cmake-resolved-seed-tests.sh`, both red against the pre-fix tree.
+- **First `run-matrix` tier-1 run** — dispatched on `main` at `2b8153621`,
+  run 37945434581. Its `tier1` job is the CI acceptance for issues 1684 and
+  1685.
 
 **Still open in this phase:** W1 (`fvp_entry` to a generated west app; the
 `realtime-c` SMP image id + board; robot1 precedence unit test), W2 (1650),
 W3 (tier-1 residue 1686–1688, 1690–1692; 1627; the narrowing-filter
 decision), W4 (1509, 1644's lane decision), W5 (1512), W6 (1652), W7 (1535).
+
+## Decisions — 2026-10-09
+
+Taken by the maintainer, each on the recommended option. They narrow what the
+work items above still leave open.
+
+- **D1 — issue 1627, how a `west-configure` row proves it built (W3).**
+  The row's declared output becomes `build.ninja`, which CMake writes only
+  when GENERATE succeeds. This keeps the one rule `west-fixtures.sh` states
+  ("the row declares what must exist") and fixes its premise, rather than
+  adding an exit-status test beside it. Rejected: checking west's exit status
+  (a second rule, and the case the script's comment warns about); documenting
+  the hole. Expected consequence: `west_board_import` goes visibly red on the
+  idlc provisioning gap, which is real and gets its own fix (provision
+  `--rmw cyclonedds` in that lane or gate the row) — not a reason to keep the
+  silence. Acceptance as written in 1627: a deliberately broken
+  `west-configure` fixture counts FAILED, the genuinely-configuring rows stay
+  ok.
+- **D2 — the `NROS_ZEPHYR_FIXTURE_FILTER` decision 1627 records (W3).**
+  Keep the narrowing: the filter means what it says. Coverage of the five
+  west compile checks must come from a lane CHOSEN for it — prove one builds
+  them, and if none does, add them to tier 2. Rejected: exempting compile
+  checks from the filter (the filter would stop meaning what it says);
+  keeping the narrowing with no lane (it re-creates issue 1650's class).
+- **D3 — issue 1650, per tree (W2).** `workspaces/launch` gets a row (the
+  only end-to-end exercise of launch-v1 composition); `templates/
+  multi-package-workspace` gets a build-only row; `templates/
+  multi-node-workspace` gets a row (the scaffold embeds it, so a break ships
+  to users); `templates/zephyr-byo` gets a RECORDED REASON — it documents a
+  bring-your-own-manifest shape, not a build target — and keeps its lint.
+  Then the gate: every example root has a row or a recorded reason, keyed on
+  the census's shape detection.
+- **D4 — issue 1512, the C-rooted bare-metal road (W5).** Not pursued for now,
+  and recorded as such in 1512: the cargo-rooted road already boots the six C
+  roles and a C++ talker (#1585), and no consumer has asked for a
+  CMake-rooted bare-metal project. The remaining C++ roles on the
+  cargo-rooted road are mechanical and stay in scope. Revisit on a consumer.
+- **D5 — issue 1652, framework board strings (W6).** A typed table per
+  ecosystem, on the `[board.zephyr] west_board` precedent:
+  `[board.nuttx] board_config` carries `qemu-armv7a-nsh`, its consumer reads
+  the field, and the one NuttX row moves to the nano-ros id. `esp32dev` has
+  no row; delete it from `names` once a search shows nothing reads it, else
+  give it `[board.platformio] board`. Extend `check-deploy-board-resolves`'
+  framework-id rule to the new field.
+- **D6 — W1 ownership.** Split: the `fvp_entry` migration stays with the
+  session on `fix/477-fvp-lane`; this campaign takes `zephyr_entry_robot1`
+  (the precedence unit test, then the migration) and `realtime-c` (its own
+  image id + the corrected board).
+
+**Resulting order:** D1 + D2 (one PR, on 1627) → W7 (issue 1535, the `mixed`
+SEGV — a real bug, not a lane) → D3 (1650) → D5 (1652) and D6's two entries →
+D4's recording in 1512 and the mechanical C++ roles. W3's 1684/1685 close on
+the tier-1 job of run 37945434581.

@@ -161,3 +161,12 @@ issue proposes would hold for them. `west_board_import` (idlc) remains a row it
 would turn red. Separately, a narrowed Zephyr lane no longer builds these rows at
 all (1536 widened `NROS_ZEPHYR_FIXTURE_FILTER` to them), so the live-peer board
 job no longer reaches any of the four.
+
+## 2026-10-09 — decisions (phase-477 D1, D2)
+
+- **The fix:** a `west-configure` row declares `build.ninja` as its output — the
+  "What would close this" section above, taken as written. `west_board_import`
+  is expected to turn red on the idlc provisioning gap; that red is real.
+- **The filter:** a narrowed Zephyr lane keeps honouring
+  `NROS_ZEPHYR_FIXTURE_FILTER` for the five west compile checks. Their coverage
+  must come from a lane chosen for it; if none builds them, they join tier 2.
