@@ -1,6 +1,8 @@
 # RFC-0100 — One sizing model: the contract states facts, every backend derives its own buffers
 
-**Status:** Draft (2026-09-11; last reviewed 2026-10-03 — see
+**Status:** Draft (2026-09-11; last reviewed 2026-10-10 — the
+[2026-10-10 ruling](#ruling-2026-10-10--a-stated-fact-earns-a-file-whatever-it-came-from)
+restates the file rule over the nano-ros overlay; see also
 [Amendment 1](#amendment-1-2026-10-03--the-unified-build-path-moved-under-this-model),
 which adds D12 and revises D4's producer and road language against RFC-0065's
 unified build path)
@@ -485,7 +487,9 @@ model that describes no wiring — 109 of 114 resolvable models — and the prod
 is not reached for one. An all-refused descriptor would move the `[meta] basis`
 every consumer guards on in order to say nothing, which is W12's own control
 held on a second road. (One exception, ruled 2026-10-09 below: a model that
-implies a parameter store writes a STORE-ONLY file.)
+implies a parameter store writes a STORE-ONLY file. The 2026-10-10 ruling
+restates the rule over the nano-ros overlay as well and retires the exception
+once phase-486 W4 lands.)
 
 **One composer, two callers.** `write_for_leaf` and `write_for_model` both go
 through `sizing_descriptor::build`, differing by a `ModelHorizon` and nothing
@@ -1161,6 +1165,9 @@ are `ByDesign` rows in `check-knob-single-reader`, citing D4.
 
 ### Ruling, 2026-10-09 — the parameter store earns a file of its own (issue 1706)
 
+*Superseded by the [2026-10-10 ruling](#ruling-2026-10-10--a-stated-fact-earns-a-file-whatever-it-came-from)
+once phase-486 W4 lands; kept as the record of why the store got a file.*
+
 `[params] store` (`declared` / `param_services` / `launch_seed` / `none`) says
 whether the image BUILDS a parameter store, which since phase-382 W3' decides
 whether the executor's backing carves it (`nros_params::IMPLIED_STORE_SLOTS`).
@@ -1194,6 +1201,47 @@ and the workspace cargo road) write a store-only file exactly when `store`
 implies a store. When it does not, they write nothing and DELETE a stale file
 at that path, because the cmake side reads whatever sits there. "No stated
 entity fact ⇒ no file" stands for everything else.
+
+### Ruling, 2026-10-10 — a stated fact earns a file, whatever it came from
+
+**Takes effect when phase-486 W4 lands; until then the 2026-10-09 ruling above
+describes the code.** RFC-0060's
+[2026-10-10 amendment](0060-launch-toolchain-three-layers.md#amendment-2026-10-10--what-the-systemmodel-may-carry-and-where-nano-ross-own-facts-go)
+moves nano-ros's capability switches out of the SystemModel into a nano-ros
+overlay (`nros.toml`, written beside the model by `nros sync`). The 2026-10-09
+ruling rested on the parameter store being a "model-only" fact, and the
+premise is gone:
+
+- the store SWITCH (`param_services`) is an overlay fact — nano-ros build
+  policy, read per image;
+- the launch parameter SEED (`structure.nodes[].params`) and the contract's
+  `params:` are model facts — ROS and platform-agnostic, unchanged.
+
+So `[params] store` is composed from both inputs and is not a model-only fact.
+The rule that decides whether a descriptor file exists is restated over both:
+
+> **No stated fact ⇒ no file.** A fact is stated when the composer derives it
+> from the model, the contract, the probe, or the overlay. A descriptor whose
+> every section is absent or refused is still not written, and a stale one at
+> that path is deleted, because the cmake side reads whatever sits there.
+
+The 2026-10-03 ruling's restatement ("no stated ENTITY fact ⇒ no file") is the
+special case where the overlay states nothing. Its examples still hold: the
+largest wire bound in the link closure is not an image fact and states
+nothing.
+
+**What retires.** The store-only file stops being an exception: it is the
+general rule applied to a descriptor whose only stated section is `[params]`.
+The code path that wrote it specially (the model producers' store-only branch, PR #1830)
+folds into the ordinary write. The `store` field, its four values and
+`Params::implies_store()` are unchanged, so no consumer moves.
+
+**What it opens, not done here.** The two carriers the 2026-10-03 ruling kept
+"by design" — `NROS_DECLARED_NODES` and `NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE`
+— exist because a model-only fact had no file. Under this rule, the
+parameter-service node count is an overlay-plus-model fact and can travel in
+the descriptor. Retiring them is phase-486 W9, measured per road. Retirement
+remains a question about the ROAD, never the field (CLAUDE.md, issue 1407).
 
 ### What this amendment does not change
 
