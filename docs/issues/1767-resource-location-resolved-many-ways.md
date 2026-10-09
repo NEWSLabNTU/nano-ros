@@ -112,7 +112,8 @@ RFC-0101 §5's conformance table is also partly stale: the ThreadX RISC-V
 
 ## Direction
 
-A design is being explored: one resolution authority per resource kind, with
-every road reading its answer rather than re-deriving it — the RFC-0094 rule
+The design is RFC-0103 ([one owner per fact](../design/0103-one-owner-per-fact.md)):
+one resolver (`nros_build_paths` + `nros locate`), store first, and every road
+reading the resolved answer rather than re-deriving it — the RFC-0094 rule
 ("one place decides, every other place reads") extended from knobs to
-locations. Not decided here.
+locations and selections.
