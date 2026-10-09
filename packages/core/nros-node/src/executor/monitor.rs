@@ -946,12 +946,21 @@ pub(crate) fn check_rate(
     // milli-Hz = published * 1e3 / window_s = published * 1e9 / window_us
     let measured_milli_hz =
         (published.saturating_mul(1_000_000_000) / window_us.max(1)).min(u32::MAX as u64) as u32;
+    // phase-474 I9 -- judge the count, not the floored quotient. The window
+    // closes at the first tick that finds it elapsed, so `window_us` is the
+    // declared interval plus that tick's lateness, while a stream at exactly
+    // its declared minimum has published one sample per period: 50 over
+    // 5.0005 s reads 9999 of 10000 mHz and was judged slow (the island, every
+    // window, reported once thanks to `violated_last_window`). A stream at
+    // the declared minimum delivers at least floor(min_rate * window) samples
+    // in any window, whatever its phase; fewer than that is slow.
+    let required = (spec.min_rate_hz_milli as u64).saturating_mul(window_us) / 1_000_000_000;
 
     // Roll the window.
     state.window_start_us = now_us;
     state.count_at_window_start = count;
 
-    if measured_milli_hz < spec.min_rate_hz_milli {
+    if published < required {
         if state.violated_last_window {
             return None; // still violated — already reported
         }
@@ -1244,6 +1253,51 @@ mod tests {
         let v = check_rate(&dead, &mut st, 50_003_000 + RATE_CHECK_INTERVAL_US)
             .expect("silent stream judged");
         assert_eq!(v.measured, 0);
+    }
+
+    /// phase-474 I9 -- the island's 10 Hz publishers read 9999 of 10000 mHz
+    /// in every window once I8 aligned the first one: the spin that closes a
+    /// window runs some hundreds of microseconds after the interval, so the
+    /// quotient floors under the declared rate while the count is exact. The
+    /// count judges; a stream at its declared rate checked late is not slow,
+    /// a stream at half its rate still is.
+    #[test]
+    fn a_stream_at_its_rate_checked_late_is_not_judged_slow() {
+        static C11: PubMonitorCell = PubMonitorCell::new();
+        let s = MonitorSpec {
+            topic: "/i9",
+            fqn: "/n/i9",
+            min_rate_hz_milli: 10_000,
+            max_latency_ms: 0,
+            cell: &C11,
+        };
+        let mut st = MonitorState::default();
+        // Publishes at 0, 100 ms, ...; the monitor tick runs 700 us after
+        // each publish, so every window spans the interval plus 700 us.
+        let mut t = 0u64;
+        while t <= 60_000_000 {
+            if t.is_multiple_of(100_000) {
+                C11.count.fetch_add(1, Ordering::Relaxed);
+            }
+            let v = check_rate(&s, &mut st, t + 700);
+            assert!(v.is_none(), "judged slow at {t} us: {v:?}");
+            t += 10_000;
+        }
+        // Half the rate, checked the same way: judged, measured about 5 Hz.
+        static C12: PubMonitorCell = PubMonitorCell::new();
+        let slow = MonitorSpec { cell: &C12, ..s };
+        let mut st = MonitorState::default();
+        let mut t = 0u64;
+        let mut fired = None;
+        while t <= 20_000_000 && fired.is_none() {
+            if t.is_multiple_of(200_000) {
+                C12.count.fetch_add(1, Ordering::Relaxed);
+            }
+            fired = check_rate(&slow, &mut st, t + 700).map(|v| v.measured);
+            t += 10_000;
+        }
+        let measured = fired.expect("a 5 Hz stream against 10 Hz is judged");
+        assert!((4_900..=5_100).contains(&measured), "{measured}");
     }
 
     #[test]
