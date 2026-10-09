@@ -11,9 +11,8 @@ use cortex_m_semihosting::hprintln;
 use panic_semihosting as _;
 
 use builtin_interfaces::msg::Time;
-use nros::{
-    CdrReader, CdrWriter, Deserialize, NodeConfig, RosMessage, Serialize, StandaloneNode as Node,
-};
+use nros::{CdrReader, CdrWriter, Deserialize, RosMessage, Serialize};
+use nros_node::{NodeConfig, StandaloneNode as Node};
 use std_msgs::msg::{Float64, Int32};
 
 /// Test primitive type serialization

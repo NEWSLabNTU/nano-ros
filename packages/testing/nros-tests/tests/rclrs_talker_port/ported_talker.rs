@@ -1,4 +1,4 @@
-use nros::*;
+use rclrs::*;
 use nros_std_msgs::msg::String as StringMsg;
 
 fn main() -> Result<(), Box<dyn core::error::Error>> {

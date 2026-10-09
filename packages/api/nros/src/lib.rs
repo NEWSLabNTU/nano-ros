@@ -862,8 +862,11 @@ macro_rules! zephyr_component_main {
     };
 }
 
-// Re-export node types
-pub use nros_node::{NodeConfig, PublisherHandle, StandaloneNode, SubscriptionHandle};
+// phase-483 W4 (issue 0784) — `StandaloneNode` (the transport-less
+// pre-component node) and its `NodeConfig` / `PublisherHandle` /
+// `SubscriptionHandle` are no longer re-exported. `nros::Node` is THE node,
+// and these have no rclrs counterpart; the two bench programs that use them
+// import `nros_node` directly.
 
 // Re-export publisher/subscriber options (topic + QoS; always available).
 pub use nros_node::{PublisherOptions, SubscriptionOptions};
@@ -1458,9 +1461,8 @@ pub mod prelude {
     // drags tier two in through the glob is one tier with extra words.
 
     pub use crate::{
-        Deserialize, Logger, MessageInfo, NodeConfig, PublisherHandle, QoSDurabilityPolicy,
-        QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy, RosMessage, RosService, Serialize,
-        StandaloneNode, SubscriptionHandle, TopicInfo,
+        Deserialize, Logger, MessageInfo, QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile,
+        QoSReliabilityPolicy, RosMessage, RosService, Serialize, TopicInfo,
     };
 
     // phase-417 / issue 0589 — logging, in the glob a node author already
@@ -1569,7 +1571,6 @@ mod tests {
         // This test just verifies that the prelude compiles
         use crate::prelude::*;
 
-        let _ = NodeConfig::new("test_node", "/");
         let _ = QoSProfile::BEST_EFFORT;
     }
 

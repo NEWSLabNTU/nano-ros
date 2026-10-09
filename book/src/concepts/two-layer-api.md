@@ -4,7 +4,7 @@ nano-ros exposes the same communication primitives — subscriptions, publishers
 
 | | Layer 1 — caller polls | Layer 2 — executor dispatches |
 |---|---|---|
-| **Verb** | `Node::create_*` | `Executor::register_*` |
+| **Verb** | `Node::create_polling_*` (receive side), `Node::create_publisher` / `create_client` | `Executor::register_*`, or rclrs's `Node::create_subscription(topic, callback)` / `create_service(name, callback)` |
 | **Returns** | Owned handle | Handle ID + dispatched closure |
 | **Receive shape** | `take()` / `call()` → `Promise<T>` / `try_accept_goal(...)` | Closure runs on rx / reply / timer fire |
 | **Scheduler** | Caller (RTIC, embassy, app loop) | `Executor::spin_once` |
@@ -18,8 +18,15 @@ But a posix app that handles a dozen topics + a couple of services + an action s
 
 The two layers are deliberately **separate verb sets** so the choice is explicit in source:
 
-- `node.create_subscription::<M>("/topic")` — caller polls. No executor magic.
-- `executor.register_subscription::<M, _>("/topic", |m| { ... })` — executor dispatches.
+- `node.create_polling_subscription::<M>("/topic")` — caller polls. No executor magic.
+- `executor.register_subscription::<M, _>("/topic", |m| { ... })`, or rclrs's
+  spelling `node.create_subscription::<M, _>("/topic", |m| { ... })` — executor
+  dispatches.
+
+phase-483 W2 gave the polled receive-side constructors their `create_polling_*`
+names: on `nros::Node`, rclrs's `create_subscription` and `create_service` take
+a callback, and a polled form under the same name would compile a ported line
+into a different contract.
 
 The C / C++ FFI mirrors this split: `nros_subscription_init_polling` + `nros_subscription_take_serialized` (L1, inline storage — the caller takes from the entity) vs `rclc_subscription_init_default` + `nros_executor_add_subscription*` (L2, executor arena, callback supplied at registration).
 
@@ -41,8 +48,8 @@ graph LR
     subgraph "L1 — create_*"
       direction LR
       NODE --> C_P["create_publisher"]
-      NODE --> C_S["create_subscription"]
-      NODE --> C_SS["create_service"]
+      NODE --> C_S["create_polling_subscription"]
+      NODE --> C_SS["create_polling_service"]
       NODE --> C_SC["create_client"]
       NODE --> C_AS["create_action_server"]
       NODE --> C_AC["create_action_client"]

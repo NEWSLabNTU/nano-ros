@@ -34,6 +34,11 @@
 // spins), and changing that would be an edit this file exists to count.
 #[allow(unused_variables, dead_code)]
 mod ported {
+    // phase-483 W4 — the `nros` crate has rclrs's shape and a user may give it
+    // rclrs's name. Here it is a `use` rename; in a ported crate it is
+    // `rclrs = { package = "nros", ... }` in `Cargo.toml`. Either way the
+    // ported file's own first line is upstream's, unedited.
+    use nros as rclrs;
     include!("rclrs_talker_port/ported_talker.rs");
 
     /// The included `main` under a name the harness can reach — inside the
@@ -53,14 +58,6 @@ const PORTED: &str = include_str!("rclrs_talker_port/ported_talker.rs");
 /// it too. That is the point — this is the acceptance measurement for W10, so
 /// it must break when either side moves.
 const EXPECTED: &[(usize, &str, &str, Kind)] = &[
-    (
-        0,
-        "use rclrs::*;",
-        "use nros::*;",
-        // Every port has this line. Not an API difference: the glob is the
-        // same glob, over a different crate.
-        Kind::Import,
-    ),
     (
         1,
         "use example_interfaces::msg::String as StringMsg;",
@@ -99,10 +96,10 @@ const EXPECTED: &[(usize, &str, &str, Kind)] = &[
         6,
         "    let node = executor.create_node(\"talker\")?;",
         "    let mut node = executor.create_node(\"talker\")?;",
-        // `mut`, and nothing else. Ledger row `rust:Executor::create_node`
-        // already records why: ours hands back a borrowing `NodeHandle` from a
-        // compile-time-sized table rather than an `Arc<Node>`, so creating an
-        // entity on it is `&mut`. Loud: rustc names the binding.
+        // `mut`, and nothing else. Ledger row `rust:Node` records why: ours
+        // hands back `nros::Node`, a borrow of the executor sized at compile
+        // time, rather than an `Arc<Node>`, so creating an entity on it is
+        // `&mut`. Loud: rustc names the binding.
         Kind::Mutability,
     ),
     (
@@ -189,17 +186,19 @@ fn exactly_two_of_the_changed_lines_are_the_ones_rfc_0089_predicts() {
 }
 
 #[test]
-fn the_total_is_six_and_the_remainder_is_accounted_for() {
+fn the_total_is_five_and_the_remainder_is_accounted_for() {
     // The honest number, recorded so a future wave that shrinks it has to come
     // back here and say so. "Exactly two edits" is NOT what the port costs
-    // today; it is what W10's half of the port costs.
-    assert_eq!(EXPECTED.len(), 6, "six lines differ, not two");
+    // today; it is what W10's half of the port costs. phase-483 W4 took it
+    // from six to five: under `rclrs = { package = "nros" }` the crate import
+    // is upstream's line.
+    assert_eq!(EXPECTED.len(), 5, "five lines differ, not two");
 
     let count = |k: Kind| EXPECTED.iter().filter(|(.., kind)| *kind == k).count();
-    // Two imports (any port has them), one error type (which W10's
+    // One import (the message crate, which is the user's), one error type (which W10's
     // `Display for NodeError` is what makes possible at all), one `mut` the
     // ledger already records as structural, two predicted `?`s.
-    assert_eq!(count(Kind::Import), 2);
+    assert_eq!(count(Kind::Import), 1);
     assert_eq!(count(Kind::ErrorType), 1);
     assert_eq!(count(Kind::Mutability), 1);
     assert_eq!(count(Kind::PredictedEdit), 2);

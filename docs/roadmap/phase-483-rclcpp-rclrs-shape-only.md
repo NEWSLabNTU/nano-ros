@@ -1,6 +1,6 @@
 # Phase 483 — the user API has ROS 2's shape only: `rclcpp::` in C++, rclrs in Rust
 
-**Status (2026-10-09). Opened.** Settles issue 0784 and finishes what
+**Status (2026-10-10). W1–W4 done; W5 (book/RFC/ledger sweep) in progress.** Settles issue 0784 and finishes what
 [RFC-0089](../design/0089-ros2-api-adoption-and-the-compile-or-conform-rule.md)
 §"Settled: `nros::` is phased out entirely" decided for C++ and stated as the
 end state for Rust ("`rclrs::` for Rust"). Follows
@@ -264,6 +264,20 @@ example and not required by the acceptance.
 - Move the remaining RTOS extensions out of the prelude into
   `nros::embedded`, which is already the stated rule.
 - A test compiles a ported rclrs program under `use nros as rclrs;`.
+
+**Status 2026-10-10: done.**
+
+- `StandaloneNode`, `NodeConfig`, `PublisherHandle` and `SubscriptionHandle`
+  left `nros::` and its prelude. The two bench programs depend on
+  `nros-node` directly. Their ledger rows are retired.
+- The zero-consumer types were deleted in W3.
+- `tests/rclrs_talker_port.rs` compiles the ported tutorial under
+  `use nros as rclrs;`. Its first line is now upstream's `use rclrs::*;`, so
+  the port differs from upstream on five lines instead of six.
+- The prelude's remaining extensions are each argued in
+  `check-prelude-tiers`'s allow-list. `Component` and `DeclarativeNode` were
+  added to it, because a component cannot register without them.
+- Issue 0784 is resolved and archived.
 
 ### W5 — book, RFCs and ledger
 

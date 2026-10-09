@@ -44,7 +44,7 @@ event.
 ```rust
 use core::time::Duration;
 
-let mut sub = node.create_subscription::<SensorReading>("/sensor")?;
+let mut sub = node.create_polling_subscription::<SensorReading>("/sensor")?;
 
 // Liveliness — fires when the publisher comes / goes
 sub.on_liveliness_changed(|status| {
@@ -215,7 +215,7 @@ at creation. No runtime event.
 ### Drone-bridge fail-over on liveliness loss
 
 ```rust
-let mut sub = node.create_subscription::<VehicleAttitude>("/vehicle_attitude")?;
+let mut sub = node.create_polling_subscription::<VehicleAttitude>("/vehicle_attitude")?;
 sub.on_liveliness_changed(|status| {
     if status.alive_count == 0 {
         // PX4 commander.cpp went silent — trigger MRM
@@ -232,7 +232,7 @@ This pairs with the cross-backend bridge example pattern.
 ### 100 Hz sensor with deadline alarm
 
 ```rust
-let mut sub = node.create_subscription::<SensorReading>("/imu")?;
+let mut sub = node.create_polling_subscription::<SensorReading>("/imu")?;
 sub.on_requested_deadline_missed(
     Duration::from_millis(15),    // expected 100 Hz, allow 15 ms deadline
     |status| {
@@ -247,7 +247,7 @@ sub.on_requested_deadline_missed(
 ### Slow-consumer logging
 
 ```rust
-let mut sub = node.create_subscription::<Pointcloud>("/lidar")?;
+let mut sub = node.create_polling_subscription::<Pointcloud>("/lidar")?;
 sub.on_message_lost(|status| {
     log::warn!("dropped {} pointcloud frames (total: {})",
                status.total_count_change, status.total_count);

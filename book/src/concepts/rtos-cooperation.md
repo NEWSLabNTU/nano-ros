@@ -93,7 +93,7 @@ Don't use the spin loop. Use the async path — a buffered subscription
 handle whose `recv()` is an async fn with waker integration:
 
 ```rust
-let mut sub = node.create_subscription::<MyMsg>("/topic")?;
+let mut sub = node.create_polling_subscription::<MyMsg>("/topic")?;
 loop {
     let msg = sub.recv().await?;        // suspends; waker integration
     handle(msg);

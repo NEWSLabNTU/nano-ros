@@ -9,6 +9,8 @@ supersedes: []
 superseded-by: null
 ---
 
+> **Amended by phase-483 W2/W3 (2026-10-10).** In Rust, a component's `register` no longer receives a separate `DeclaredNode`: `NodeContext::create_node` returns `nros::Node`, the same type `Executor::create_node` returns, and the name-keyed declarations this RFC describes are the `nros::DeclarativeNode` extension trait on it. The component trait is `nros::Component`. Name-keyed framework dispatch (Q10) is unchanged. See RFC-0089 §"Settled: `nros::` is deleted from C++, and Rust takes rclrs's shape with ONE node type".
+
 # RFC-0043 — Entry real-callback binding (executor-routed, no naming)
 
 ## Summary

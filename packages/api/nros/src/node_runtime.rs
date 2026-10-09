@@ -709,8 +709,8 @@ impl PublisherResolver for CellResolver<'_> {
 /// 1. [`from_executor`](Self::from_executor) wraps an open
 ///    [`Executor`].
 /// 2. [`register_node`](Self::register_node) builds the
-///    component's `State`, runs [`Component::register`](crate::node::Component::register) over an
-///    internal [`NodeRuntime`] adapter that materialises nodes /
+///    component's `State`, runs [`Component::register`](crate::node::Component::register)
+///    against the live executor, whose registration sink materialises nodes /
 ///    pubs / subs / timers on the real executor, and wires each
 ///    subscription + timer callback to dispatch into
 ///    [`ExecutableNode::on_callback`] with the right
