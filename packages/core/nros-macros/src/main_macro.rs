@@ -4196,8 +4196,10 @@ fn hosted_std_scaffold_ts(links_std: bool) -> proc_macro2::TokenStream {
         }
 
         // issue 0274 — unbounded hosted spin (`spin = "forever"` macro
-        // arg / `NROS_ENTRY_SPIN_MS=forever` env). Runs until a spin
-        // error; the process lifetime is the supervisor's problem.
+        // arg / `NROS_ENTRY_SPIN_MS=forever` env). Runs until a spin error
+        // or a termination signal: issue 1732 — the board's guard turns
+        // SIGTERM / SIGINT into a flag, this returns `Ok`, and the board
+        // closes the RMW session before the process exits.
         #[cfg(not(any(target_os = "none", target_os = "nuttx")))]
         #[allow(dead_code)]
         fn __nros_hosted_spin_forever(
@@ -4207,6 +4209,9 @@ fn hosted_std_scaffold_ts(links_std: bool) -> proc_macro2::TokenStream {
             ::nros::__macro_support::nros_platform::RuntimeError,
         > {
             loop {
+                if ::nros::__macro_support::nros_platform::termination::requested() {
+                    return ::core::result::Result::Ok(());
+                }
                 runtime
                     .runtime
                     .spin_once(10)
@@ -4267,6 +4272,10 @@ fn hosted_std_scaffold_ts(links_std: bool) -> proc_macro2::TokenStream {
                 + ::std::time::Duration::from_millis(total_ms as u64);
 
             loop {
+                // issue 1732 — a termination signal ends a bounded spin too.
+                if ::nros::__macro_support::nros_platform::termination::requested() {
+                    return ::core::result::Result::Ok(());
+                }
                 runtime
                     .runtime
                     .spin_once(step_ms as u32)

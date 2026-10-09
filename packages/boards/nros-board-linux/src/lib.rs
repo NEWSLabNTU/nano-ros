@@ -466,6 +466,31 @@ fn hosted_baked_rung(deploy: &nros_platform::DeployOverlay) -> ::nros::BootConfi
     }
 }
 
+/// Issue 1732 — close a hosted image's RMW session before the process exits.
+///
+/// `Executor::close` first, then the drop: the same order `nros_cpp_fini` uses
+/// for the C and C++ entries, so the pre-shutdown hooks run while the session
+/// is still open (issue 0790) and the backend's `destroy_session` is what ends
+/// it — for XRCE that is `uxr_delete_session`, which is the only thing that
+/// makes an Agent forget a client's participant.
+///
+/// A failed close is reported and not fatal: the process is exiting either
+/// way, and the report is the only trace the operator gets.
+fn close_session<B: BoardPrint>(crt: Option<::nros::node_runtime::ExecutorNodeRuntime>) {
+    let Some(mut crt) = crt else {
+        return;
+    };
+    if ::nros_platform::termination::requested() {
+        B::println(format_args!(
+            "nros: termination signal received; closing the RMW session"
+        ));
+    }
+    if let Err(e) = crt.executor_mut().close() {
+        B::println(format_args!("nros: closing the RMW session failed: {e:?}"));
+    }
+    drop(crt);
+}
+
 impl LinuxBoard {
     /// phase-271 (issue #98 + #110) — the single hosted boot body shared by
     /// [`BoardEntry::run_with_deploy`] (default sizing, `sizing = None`) and
@@ -499,6 +524,10 @@ impl LinuxBoard {
         // ran on native and printed nothing at all. Bridging both here lets ONE
         // node body work on every board. W7 unifies the two stacks.
         install_stdout_log_bridge();
+        // Issue 1732 — a SIGTERM / SIGINT ends the spin instead of the process,
+        // so the session below is closed on the way out. Before the session
+        // opens, so a signal during registration is not lost.
+        ::nros_platform::termination::install_guard();
 
         // Phase 212.N.7 step-3.5 — open the executor + wrap it in an
         // `ExecutorNodeRuntime` so the codegen-emitted `run_plan(runtime)` body
@@ -601,6 +630,14 @@ impl LinuxBoard {
             let session = deploy.node_name.unwrap_or("node");
             census_finish(&path, session, result.is_ok());
         }
+        // Issue 1732 — close the session BEFORE the process exits, on the
+        // success path and the error path alike. `exit_*` is
+        // `std::process::exit`, which runs no destructor, so the executor (and
+        // the session inside it) used to die with the process without ever
+        // reaching `destroy_session`. An XRCE Agent has no lease on its
+        // clients: it kept the dead image's participant, with every topic,
+        // service and node on it, until the Agent itself restarted.
+        close_session::<Self>(crt_real.take());
         match result {
             Ok(()) => {
                 <Self as BoardPrint>::println(format_args!("nros: application complete"));
@@ -619,7 +656,8 @@ impl LinuxBoard {
     /// `boot_tier_index` — issue 0636, because an owner that outranks its peers
     /// and then spins starves them); the rest are spawned as `std::thread`s. Each tier sets its
     /// `active_groups` filter, runs `setup` (register-only — only this
-    /// tier's callbacks take), then spins forever.
+    /// tier's callbacks take), then spins until a termination signal
+    /// (issue 1732).
     ///
     /// `setup` is `Fn` (not `FnOnce`) — it is invoked once per tier
     /// executor — and `Sync`, since spawned tiers share `&setup`. It
@@ -631,8 +669,8 @@ impl LinuxBoard {
     /// Native preemption uses the default scheduler; the normalized
     /// [`TierSpec::priority`] is advisory here (strict ordering needs
     /// `SCHED_FIFO` + privileges). The FreeRTOS port maps it to real
-    /// task priorities (RFC-0016). Blocks forever (server semantics);
-    /// returns only if a tier `setup` fails before the spin loop.
+    /// task priorities (RFC-0016). Blocks until SIGTERM / SIGINT (server
+    /// semantics), then closes the session and returns `Ok` (issue 1732).
     pub fn run_tiers<F, E>(
         deploy: &nros_platform::DeployOverlay,
         tiers: &[TierSpec<'_>],
@@ -661,6 +699,9 @@ impl LinuxBoard {
         // too, or a node body using `log::info!` prints nothing on the
         // multi-tier native entry while working on every RTOS board.
         install_stdout_log_bridge();
+        // Issue 1732 — see `boot_hosted`: a termination signal ends every
+        // tier's spin, and the session is closed once they have all returned.
+        ::nros_platform::termination::install_guard();
 
         if tiers.is_empty() {
             <Self as BoardPrint>::println(format_args!(
@@ -744,7 +785,7 @@ impl LinuxBoard {
         }
 
         // Open the one session on the boot task; it owns the session for
-        // the program's life (the boot tier's spin loop never returns).
+        // the program's life (until a termination signal ends every spin).
         //
         // Issue 1434 — this was `ExecutorConfig::from_env()`, which issue
         // 0687's own test pins as `resolve_hosted(BootConfig::default())`: the
@@ -916,7 +957,13 @@ impl LinuxBoard {
             run_boot_tier::<Self, F, E>(&mut boot_crt, &tiers[boot_index], setup, setup_lock);
         });
 
-        // Unreachable: the boot tier's spin loop never returns.
+        // Issue 1732 — reached once a termination signal has ended every tier's
+        // spin and `thread::scope` has joined the spawned ones, so no tier
+        // executor still borrows the session. Close it, then return: the
+        // generated `main` returns and the process exits 0. (Before 1732 this
+        // was unreachable and a signal killed the image with the session open.)
+        close_session::<Self>(Some(boot_crt));
+        <Self as BoardPrint>::println(format_args!("nros: application complete"));
         Ok(())
     }
 }
@@ -1119,7 +1166,8 @@ fn run_boot_tier<B, F, E>(
     spin_forever::<B>(crt, tier);
 }
 
-/// Drive a tier executor's `spin_once` at its declared period, forever.
+/// Drive a tier executor's `spin_once` at its declared period until a
+/// termination signal arrives (issue 1732).
 fn spin_forever<B: BoardPrint>(
     crt: &mut ::nros::node_runtime::ExecutorNodeRuntime,
     tier: &TierSpec<'_>,
@@ -1132,7 +1180,7 @@ fn spin_forever<B: BoardPrint>(
     // asks for when it can get it, a thread that never blocks never lets a
     // lower-priority tier run. Costs nothing while the spins do block.
     let mut gap = ::nros_platform::TierSpinGap::new(tier.spin_period_us);
-    loop {
+    while !::nros_platform::termination::requested() {
         let iter = gap.mark();
         if let Err(e) = crt.spin_once(period) {
             B::println(format_args!("nros: tier `{}` spin error: {e:?}", tier.name));

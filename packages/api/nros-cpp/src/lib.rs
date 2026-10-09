@@ -2029,6 +2029,29 @@ pub unsafe extern "C" fn nros_cpp_census_finish(session_name: *const c_char) -> 
     census_write(name, &path)
 }
 
+/// Issue 1732 — install the hosted termination guard for a C++ runner whose
+/// loop lives in a header (`nros::board::LinuxBoard::run_components` in
+/// `<nros/main.hpp>`). The Rust runners in this file call
+/// `nros_platform::termination` directly; this is the same call, under a C
+/// name a header can reach — not a second guard.
+///
+/// Call BEFORE `nros::init`, so a signal that arrives during `setup` is not
+/// lost. Returns how many of SIGTERM / SIGINT now carry the guard (0 where the
+/// application already handles both, or off POSIX). Idempotent.
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_cpp_termination_guard_install() -> i32 {
+    nros_platform::termination::install_guard() as i32
+}
+
+/// Issue 1732 — `true` once a guarded SIGTERM / SIGINT has arrived. `nros::ok()`
+/// folds it in, which is `rclcpp::ok()`'s contract: a signal makes the spin
+/// loops return, and the runner's `nros::shutdown()` then closes the session.
+/// Always `false` where no guard was installed.
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_cpp_termination_requested() -> bool {
+    nros_platform::termination::requested()
+}
+
 // ---------------------------------------------------------------------------
 // Issue 1556 (c) -- the census switch for a C++ APPLICATION that owns its own
 // `main` and its own loop (`nros_app_main` + `nros::init*` + `nros::spin_once`
@@ -2233,6 +2256,12 @@ pub unsafe extern "C" fn nros_board_native_run_components_named_in(
         census_select_backend();
     }
 
+    // Issue 1732 — a SIGTERM / SIGINT ends the spin below instead of the
+    // process, so `nros_cpp_fini` closes the session on the way out. Before
+    // the session opens, so a signal during `setup` is not lost. The shared
+    // spelling (`nros_platform::termination`) the Rust board uses too.
+    nros_platform::termination::install_guard();
+
     let sptr = executor_storage;
     let rc = unsafe {
         nros_cpp_init(
@@ -2281,6 +2310,10 @@ pub unsafe extern "C" fn nros_board_native_run_components_named_in(
         unsafe { nros_cpp_spin_for(sptr, bound_ms, 10) as i32 }
     } else {
         loop {
+            // Issue 1732 — the guard's flag ends the unbounded run cleanly.
+            if nros_platform::termination::requested() {
+                break 0;
+            }
             let last = unsafe { nros_cpp_spin_once(sptr, 10) };
             if last != NROS_CPP_RET_OK {
                 break last as i32;
@@ -2288,6 +2321,12 @@ pub unsafe extern "C" fn nros_board_native_run_components_named_in(
         }
     };
 
+    if nros_platform::termination::requested() {
+        nros_log::log_info!(
+            nros_log::get_logger("nros_cpp"),
+            "nros: termination signal received; closing the RMW session"
+        );
+    }
     unsafe { nros_cpp_fini(sptr) };
     ret
 }
@@ -3349,6 +3388,12 @@ pub unsafe extern "C" fn nros_cpp_spin_for(
             return last;
         }
         if nros_cpp_time_ns() - start_ns >= budget_ns {
+            return last;
+        }
+        // Issue 1732 — a guarded termination signal ends the budget early, so
+        // a bounded native entry closes its session instead of dying with it.
+        // Never set unless a hosted runner installed the guard.
+        if nros_platform::termination::requested() {
             return last;
         }
     }
@@ -5814,6 +5859,9 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_in(
         census_select_backend();
     }
 
+    // Issue 1732 — see `nros_board_native_run_components_named_in`.
+    nros_platform::termination::install_guard();
+
     // Block 0 of the caller's storage is the boot tier's executor.
     let sptr = storage as *mut c_void;
     let rc = unsafe {
@@ -5964,6 +6012,15 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_in(
     unsafe { nros_cpp_executor_set_spin_nominal_us(sptr, boot_period_us) };
     let mut ret = 0i32;
     loop {
+        // Issue 1732 — the guard's flag ends the boot spin; the tiers are then
+        // stopped and joined and the session closed below, as on a bounded run.
+        if nros_platform::termination::requested() {
+            nros_log::log_info!(
+                nros_log::get_logger("nros_cpp"),
+                "nros: termination signal received; closing the RMW session"
+            );
+            break;
+        }
         let last = unsafe { nros_cpp_spin_once(sptr, 10) };
         if last != NROS_CPP_RET_OK {
             ret = last as i32;

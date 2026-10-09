@@ -114,6 +114,66 @@ pub use nros_platform_api::*;
 #[used]
 pub static __FORCE_LINK_CFFI: extern "C" fn() = nros_platform_cffi::_nros_force_link_cffi;
 
+/// Issue 1732 — a termination signal ENDS a hosted image's spin, so the boot
+/// funnel can close the RMW session before the process exits.
+///
+/// The one spelling for every hosted funnel: the Rust board
+/// (`nros-board-linux`, both its single-executor and its tiered path), the
+/// `nros::main!` hosted spin loops, and the native C/C++ runners in
+/// `nros-cpp`. The guard itself is C, in the POSIX port
+/// (`nros_posix_install_termination_guard` in `nros-platform-posix`), because
+/// that is the one translation unit every hosted image already links.
+///
+/// The contract, all of it in the port:
+///
+/// * installed only over the DEFAULT disposition of SIGTERM / SIGINT — an
+///   application's own handler and `SIG_IGN` are left alone;
+/// * the handler only sets a flag; nothing is torn down in a signal frame;
+/// * a SECOND signal ends the image by the default action, so a wedged
+///   teardown is still stoppable without SIGKILL.
+///
+/// On a build without the POSIX port nothing is installed and
+/// [`requested`](termination::requested) is always `false`, so a loop that
+/// polls it costs a constant.
+pub mod termination {
+    #[cfg(feature = "platform-posix")]
+    unsafe extern "C" {
+        fn nros_posix_install_termination_guard() -> i32;
+        fn nros_posix_termination_requested() -> i32;
+    }
+
+    /// Install the guard; returns how many of SIGTERM / SIGINT carry it (0 when
+    /// the application already handles both, or on a non-POSIX build).
+    /// Idempotent. Call it before the session opens, so a signal that arrives
+    /// during registration is not lost.
+    pub fn install_guard() -> usize {
+        #[cfg(feature = "platform-posix")]
+        {
+            // SAFETY: plain C call; `sigaction` on the process's own handlers.
+            let n = unsafe { nros_posix_install_termination_guard() };
+            if n > 0 { n as usize } else { 0 }
+        }
+        #[cfg(not(feature = "platform-posix"))]
+        {
+            0
+        }
+    }
+
+    /// `true` once a guarded termination signal has arrived. A spin loop that
+    /// sees it returns, and its funnel closes the session.
+    pub fn requested() -> bool {
+        #[cfg(feature = "platform-posix")]
+        {
+            // SAFETY: reads a `sig_atomic_t`.
+            unsafe { nros_posix_termination_requested() != 0 }
+        }
+        #[cfg(not(feature = "platform-posix"))]
+        {
+            false
+        }
+    }
+}
+
 // ============================================================================
 // Phase 248 C7 — Zephyr platform helper (relocated from `nros::platform::zephyr`)
 // ============================================================================
