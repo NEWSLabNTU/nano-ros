@@ -43,8 +43,17 @@
 # or rmw was provisioned. `nros setup --build-sources` provisions them all;
 # `nros setup --build-sources --check` is the preflight the two recipes run.
 # Curated from what the ROOT workspace + metadata refresh actually touch on the
-# host — NOT the cross-only trees (freertos/threadx/nuttx kernels, px4-autopilot,
-# rosidl), which only a target build for that board pulls in.
+# host — NOT the cross-only trees (freertos/threadx/nuttx kernels, rosidl), which
+# only a target build for that board pulls in.
+#
+# `px4-autopilot` WAS on that cross-only list and is not cross-only: the
+# `px4_bridge_ffi` compile-check fixture generates the bridge's C++ `px4_msgs`
+# from its `msg/` tree and compiles them on the HOST, at coordinate
+# (linux, cpp, zenoh) — which tier 1 runs. Its builder skips cleanly without the
+# tree and `px4_bridge_compile` then fails "MISSING for an in-lane coordinate",
+# so tier 1 on the self-hosted runner was red on it every night (issue 1651).
+# The top tree is a depth-1 fetch by SHA (~406 MB); PX4's own sub-submodules are
+# `just px4 setup`'s concern and this fixture does not need them.
 build_sources = [
     "zenoh-pico",             # zpico-sys build.rs (root member)
     "mbedtls",                # zpico-sys TLS build (root member)
@@ -54,6 +63,7 @@ build_sources = [
     "px4-rs",                 # px4-sitl-tests is a root cargo path-dep — the
                               # workspace cannot even LOAD without it
     "nuttx-libc",             # build-test-fixtures metadata refresh path-deps it
+    "px4-autopilot",          # px4_bridge_ffi compile check reads its msg/ tree
 ]
 
 # --- build types -> the host tools that BUILDER shells out to ---

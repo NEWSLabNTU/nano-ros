@@ -172,10 +172,11 @@ build-fixtures: build-fixture-rust build-fixture-extras build-workspace-fixtures
 # cannot reach".
 #
 # SOURCES COME FROM THE INDEX, NOT A LIST HERE. `--build-sources` resolves the
-# top-level `build_sources` union — which is byte for byte the seven sources the
-# workflow was naming by hand (zenoh-pico, mbedtls, cyclonedds-src,
-# micro-xrce-dds-client, micro-cdr, px4-rs, nuttx-libc). Restating it here would
-# reintroduce the second copy W3 just deleted one level down.
+# top-level `build_sources` union — which was byte for byte the seven sources
+# the workflow named by hand, and has since gained `px4-autopilot` (issue 1651:
+# the `px4_bridge_ffi` compile check reads its `msg/` tree on the host). Read the
+# index for the current set; restating it here would reintroduce the second copy
+# W3 deleted one level down.
 #
 # `--prefix build/qemu` is not a CI detail: `nros setup --help` documents it as
 # where the test harness already looks for the emulator.
