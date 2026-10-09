@@ -64,11 +64,9 @@ PANIC = ("panic-platform", "panic-halt")
 STD_BACKED = {"platform-posix"}
 # issue 1763 — provider ports (their nros-c row names `global-allocator`) that
 # `nros_feature_set()` still emits with `std`, each with the reason. Anything
-# not here that does so fails. ThreadX left this list in issue 1763.
+# not here that does so fails. ThreadX left this list in issue 1763, and
+# FreeRTOS (the POSIX simulator) in issue 1778.
 STD_TIER_KNOWN = {
-    # The FreeRTOS POSIX simulator (`freertos-posix`, a host build). It is the
-    # same position threadx-linux was in, and it is tracked: issue 1778.
-    "platform-freertos": "issue 1778 (freertos-posix drops std)",
     # NuttX ships a real `std` port (`*-nuttx-*` is std-capable, built with
     # build-std); RFC-0003's tier table records the choice.
     "platform-nuttx": "NuttX's own std port (RFC-0003)",

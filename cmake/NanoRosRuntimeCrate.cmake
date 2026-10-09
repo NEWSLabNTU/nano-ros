@@ -43,8 +43,8 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRosEdition.cmake")
 # the umbrella for the board triple (the board overlay set it), but the Rust TIER must match
 # what the board builds plain nros-cpp with: `alloc;panic-halt` (NO `std` — thumbv7m et al.
 # have no std; nros-serdes/nros-params pull `extern crate std` only under the std feature).
-# Hosted builds (posix, hosted FreeRTOS) keep the `std` host staticlib; threadx-linux is
-# `alloc` since issue 1763, like every ThreadX board.
+# Hosted posix builds keep the `std` host staticlib; threadx-linux and freertos-posix are
+# `alloc` (issues 1763, 1778), like every ThreadX and FreeRTOS board.
 # phase-314 — `_nros_runtime_platform_features` is GONE. It was the weaker of
 # the two platform mappings: no BOARD input, so it could not split threadx-linux
 # (std) from rv-virt-threadx (no_std). `nros_feature_set` in

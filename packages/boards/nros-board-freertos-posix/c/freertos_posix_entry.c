@@ -47,6 +47,10 @@ extern void nros_platform_register_log_writer(void (*writer)(uint8_t, const uint
                                               void (*flusher)(void));
 /* the user application (nros-c's NROS_APP_MAIN macro emits it) */
 extern void app_main(void);
+/* nros-platform-freertos (heap_3 build: `mallinfo2`, i.e. the host allocator
+ * that heap_3 and, since issue 1778, the Rust `#[global_allocator]` draw from) */
+extern size_t nros_platform_heap_used_bytes(void);
+extern size_t nros_platform_heap_total_bytes(void);
 
 /* Issue 1752 — the strong recorder for `<nros/app_main.h>`'s VOID shim, which
  * calls it with `nros_app_main`'s status (as an exit code) just before its
@@ -124,6 +128,52 @@ static void seed_platform_rng(const uint8_t ip[4], const uint8_t mac[6]) {
     nros_platform_freertos_seed_rng(seed);
 }
 
+/* ---- Heap peak (issue 1778) ----
+ *
+ * Every image prints its own heap peak, the way the ThreadX boards print
+ * `nros: byte pool peak` (issue 1145): a reader gets a measurement from the
+ * image instead of copying a number from a document. heap_3 keeps no
+ * high-water mark, because it is a thin wrapper over the host `malloc`, and
+ * `xPortGetMinimumEverFreeHeapSize` is a heap_4/heap_5 API. So the peak is
+ * SAMPLED: `nros_platform_heap_used_bytes()` (glibc `mallinfo2`) every
+ * `HEAP_PEAK_PERIOD_MS`, reported once the maximum has held for
+ * `HEAP_PEAK_STABLE_SAMPLES` samples (the session up and traffic flowing), and
+ * again at exit if it moved after that. Sampling can miss a spike shorter than
+ * a period. That is stated in the line, not hidden.
+ *
+ * Since issue 1778 the Rust half allocates from this same heap, through the
+ * platform `#[global_allocator]`, so the figure covers the whole image. */
+#define HEAP_PEAK_PERIOD_MS       100u
+#define HEAP_PEAK_STABLE_SAMPLES  20u
+
+static volatile size_t s_heap_peak = 0;
+static volatile size_t s_heap_peak_reported = 0;
+
+static void heap_peak_report(const char *when) {
+    size_t peak = s_heap_peak;
+    printf("nros: heap peak %zu bytes (sampled every %u ms; heap_3 = host malloc, "
+           "%zu bytes in the arena) — %s (issue 1778)\n",
+           peak, (unsigned)HEAP_PEAK_PERIOD_MS, nros_platform_heap_total_bytes(), when);
+    s_heap_peak_reported = peak;
+}
+
+static void heap_peak_task(void *arg) {
+    (void)arg;
+    uint32_t stable = 0;
+    int reported = 0;
+    for (;;) {
+        size_t used = nros_platform_heap_used_bytes();
+        if (used > s_heap_peak) {
+            s_heap_peak = used;
+            stable = 0;
+        } else if (!reported && ++stable >= HEAP_PEAK_STABLE_SAMPLES) {
+            heap_peak_report("stable");
+            reported = 1;
+        }
+        vTaskDelay(pdMS_TO_TICKS(HEAP_PEAK_PERIOD_MS));
+    }
+}
+
 static void app_task_entry(void *arg) {
     (void)arg;
 
@@ -133,7 +183,19 @@ static void app_task_entry(void *arg) {
     seed_platform_rng(NROS_APP_CONFIG.network.ip, NROS_APP_CONFIG.network.mac);
     nros_platform_register_log_writer(board_log_writer, board_log_flush);
 
+    /* Issue 1778: the heap-peak sampler, at the LOWEST priority above idle, so it
+     * never competes with the application or the transport. Failure is
+     * reported, never fatal: a missing measurement must not cost the run. */
+    if (nros_freertos_create_task(heap_peak_task, "heap_peak", configMINIMAL_STACK_SIZE * 4u,
+                                  NULL, (uint32_t)(tskIDLE_PRIORITY + 1)) != 0) {
+        fprintf(stderr, "nros: heap peak reporter not started (task create failed)\n");
+    }
+
     app_main();
+
+    if (s_heap_peak != s_heap_peak_reported) {
+        heap_peak_report("at exit");
+    }
 
     /* The image is a host process, so ending is `exit`, and the status is the
      * one a harness reads. `vTaskDelete(NULL)` would leave the scheduler

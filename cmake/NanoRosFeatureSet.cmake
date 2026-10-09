@@ -197,24 +197,19 @@ function(nros_feature_set out_var)
     if(_FS_PLATFORM STREQUAL "posix")
         list(APPEND _feats std platform-posix)
     elseif(_FS_PLATFORM STREQUAL "freertos" OR _FS_PLATFORM STREQUAL "freertos_armcm3")
-        # phase-370 — FreeRTOS gained the same two tiers ThreadX has, and for the
-        # same reason, so it takes the same test. `mps2-an385-freertos` is a
-        # cross build with no hosted libc; the POSIX simulator
-        # (`freertos-posix`) is a HOST build whose FreeRTOS tasks are pthreads.
-        # The phase-338 W5.a note below argues at length that the property, not
-        # the board name, is what decides this — deriving it here rather than
-        # naming the board is that argument applied one platform over.
+        # issue 1778 — ONE tier, `alloc`, host or cross, as issue 1763 made it
+        # for ThreadX.
         #
-        # It is not cosmetic. `alloc` without `std` on a HOST target links the
-        # sysroot's `alloc` rlib, which is built for unwinding and references
-        # `rust_eh_personality` from a `.data.DW.ref` section; with no `std` in
-        # the link nothing defines it, and the image fails on a symbol no
-        # nano-ros source mentions.
-        if(_cross)
-            list(APPEND _feats alloc platform-freertos)
-        else()
-            list(APPEND _feats std platform-freertos)
-        endif()
+        # phase-370 gave FreeRTOS two tiers: `mps2-an385-freertos` (cross) took
+        # `alloc`, and the POSIX simulator (`freertos-posix`, a HOST build whose
+        # tasks are pthreads) took `std`. Its stated reason was a link failure:
+        # `alloc` without `std` on a host target links the sysroot's unwinding
+        # `alloc` rlib, which references `rust_eh_personality`, and nothing
+        # defined it. Since issue 1763 the port's `platform.c` defines it WEAK on
+        # `__linux__`, so the reason is gone. What `std` cost was real:
+        # `panic-platform` stood down, so a panic never reached
+        # `nros_platform_panic`, and `PANIC halt` was refused (E0152, issue 1742).
+        list(APPEND _feats alloc platform-freertos)
     elseif(_FS_PLATFORM STREQUAL "nuttx" OR _FS_PLATFORM STREQUAL "nuttx_armv7a")
         list(APPEND _feats std platform-nuttx)
     elseif(_FS_PLATFORM STREQUAL "threadx"
@@ -492,16 +487,16 @@ function(nros_apply_panic_policy policy context)
             # "duplicate lang item `panic_impl`", inside `nros-c`, naming no
             # policy. Say it here, at configure, where the request was made.
             # Keyed on `std` in the STATICLIB, not on the board. Every ThreadX
-            # image is `no_std` now: the Rust ones since issue 1759, and the
-            # C/C++/mixed carriers since issue 1763. So the refusal stays live
-            # only for the `std` tiers (posix, hosted FreeRTOS), and there it
+            # and FreeRTOS image is `no_std` now: threadx-linux Rust since 1759,
+            # its C/C++/mixed since 1763, freertos-posix since 1778. It stays live
+            # only for the `std` tiers (posix, NuttX), and there it
             # is still right.
             get_target_property(_app_feats ${_app_target} CORROSION_FEATURES)
             if(_app_policy STREQUAL "halt" AND _app_feats AND "std" IN_LIST _app_feats)
                 message(FATAL_ERROR
                     "${context}: PANIC halt cannot apply to this image — its "
-                    "nros-c/nros-cpp staticlib is built with `std` (a hosted tier: "
-                    "posix, hosted FreeRTOS), and `std` already supplies "
+                    "nros-c/nros-cpp staticlib is built with `std` (a `std` tier: "
+                    "posix, NuttX), and `std` already supplies "
                     "the #[panic_handler]. `panic-halt` would be a second one "
                     "(rustc E0152, duplicate lang item `panic_impl`). Use PANIC "
                     "platform — on a std tier std's own handler ends the image — "
