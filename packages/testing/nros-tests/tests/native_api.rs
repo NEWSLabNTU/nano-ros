@@ -930,6 +930,34 @@ fn spawn_cyclone_binary(binary: &Path, name: &str, domain_id: &str) -> ManagedPr
     ManagedProcess::spawn_command(cmd, name).unwrap_or_else(|_| panic!("Failed to start {name}"))
 }
 
+/// Issue 1750 — a threadx-linux Cyclone image must keep every host thread it
+/// does not own out of ThreadX.
+///
+/// Cyclone's ddsrt threads are plain host pthreads on this board. Before the
+/// platform guard, ddsrt's heap (`nros_platform_alloc`) and the data-available
+/// wake (`nros_platform_wake_signal`) entered ThreadX from them, leaked the
+/// port's `_tx_linux_mutex` one level per call and wedged the kernel within
+/// ~2 s — which is what these four cells failed on (issue 0968's
+/// "participant never admitted"). The heap is now host-thread-safe and the
+/// board declines the foreign wake, so the guard's refusal line must never
+/// print: if it does, a NEW foreign path has reached ThreadX. Measured: with
+/// the wake left ON the cells still pass on latency alone and print exactly
+/// this line, so the roundtrip assertion by itself could not see it.
+///
+/// `seen` is what the test already read from the image; the rest is drained
+/// here, which ends the process.
+fn assert_threadx_image_kept_foreign_threads_out(image: &mut ManagedProcess, seen: &str) {
+    let rest = image
+        .wait_for_all_output(Duration::from_millis(500))
+        .unwrap_or_default();
+    let all = format!("{seen}{rest}");
+    assert!(
+        !all.contains(nros_tests::output::THREADX_FOREIGN_THREAD_REFUSAL),
+        "issue 1750: a host thread ThreadX does not own reached a ThreadX service \
+         in the threadx-linux image.\nimage output:\n{all}"
+    );
+}
+
 #[rstest]
 fn test_native_cyclonedds_talker_to_rust_listener(
     #[values(Language::C, Language::Cpp)] lang: Language,
@@ -1097,7 +1125,7 @@ fn test_threadx_linux_cyclonedds_talker_to_native_listener() {
             Duration::from_secs(20),
         )
         .unwrap_or_else(|e| panic!("listener never received 2 messages: {e}"));
-    talker.kill();
+    assert_threadx_image_kept_foreign_threads_out(&mut talker, "");
     eprintln!("Native listener output (threadx-linux talker):\n{listener_output}");
 
     let received_count = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
@@ -1144,7 +1172,7 @@ fn test_threadx_linux_cyclonedds_cpp_talker_to_native_listener() {
             Duration::from_secs(20),
         )
         .unwrap_or_else(|e| panic!("listener never received 2 messages: {e}"));
-    talker.kill();
+    assert_threadx_image_kept_foreign_threads_out(&mut talker, "");
     eprintln!("Native C++ listener output (threadx-linux C++ talker):\n{listener_output}");
 
     let received = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
@@ -1175,17 +1203,20 @@ fn test_threadx_linux_cyclonedds_service() {
     let client_bin = cyclone_role_binary(Language::C, "service-client");
 
     let mut server = spawn_cyclone_binary(&server_bin, "threadx-cyclonedds-service-server", "107");
-    let _ = server.wait_for_output_pattern(
-        nros_tests::output::SERVICE_SERVER_READY_MARKER,
-        Duration::from_secs(30),
-    );
+    // Kept, not discarded: issue 1750's assertion below reads the WHOLE image
+    // output, and a foreign thread can reach ThreadX before the banner ends.
+    let server_ready = server
+        .wait_for_output_pattern(
+            nros_tests::output::SERVICE_SERVER_READY_MARKER,
+            Duration::from_secs(30),
+        )
+        .unwrap_or_else(|e| e.to_string());
     let mut client = spawn_cyclone_binary(&client_bin, "native-cyclonedds-service-client", "107");
 
     let client_out = client.collect_until(SERVICE_RESULT_PREFIX, Duration::from_secs(30));
     std::thread::sleep(Duration::from_millis(500));
     let server_out = server.collect_until("Incoming request", Duration::from_secs(2));
     client.kill();
-    server.kill();
 
     eprintln!("threadx→native Cyclone service client:\n{client_out}\n--- server ---\n{server_out}");
     let calls = count_pattern(&client_out, SERVICE_RESULT_PREFIX);
@@ -1194,6 +1225,10 @@ fn test_threadx_linux_cyclonedds_service() {
         calls >= 1 || handled >= 1,
         "threadx-linux C Cyclone service roundtrip produced no calls/requests.\n\
          client:\n{client_out}\nserver:\n{server_out}"
+    );
+    assert_threadx_image_kept_foreign_threads_out(
+        &mut server,
+        &format!("{server_ready}{server_out}"),
     );
 }
 
@@ -1215,12 +1250,13 @@ fn test_threadx_linux_cyclonedds_action() {
     let client_bin = cyclone_role_binary(Language::C, "action-client");
 
     let mut server = spawn_cyclone_binary(&server_bin, "threadx-cyclonedds-action-server", "107");
-    let _ = server.wait_for_output_pattern(ACTION_SERVER_READY_MARKER, Duration::from_secs(30));
+    let server_ready = server
+        .wait_for_output_pattern(ACTION_SERVER_READY_MARKER, Duration::from_secs(30))
+        .unwrap_or_else(|e| e.to_string());
     let mut client = spawn_cyclone_binary(&client_bin, "native-cyclonedds-action-client", "107");
 
     let client_out = client.collect_until(ACTION_RESULT_PREFIX, Duration::from_secs(40));
     client.kill();
-    server.kill();
 
     eprintln!("threadx→native Cyclone action client:\n{client_out}");
     let results = count_pattern(&client_out, ACTION_RESULT_PREFIX);
@@ -1228,6 +1264,7 @@ fn test_threadx_linux_cyclonedds_action() {
         results >= 1,
         "threadx-linux C Cyclone action produced no result.\nclient:\n{client_out}"
     );
+    assert_threadx_image_kept_foreign_threads_out(&mut server, &server_ready);
 }
 
 fn native_rust_service_interop(lang: Language, locator: &str) {
