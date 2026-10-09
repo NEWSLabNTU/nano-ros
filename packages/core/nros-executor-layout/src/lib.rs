@@ -196,7 +196,9 @@ pub const fn offsets(counts: Counts, units: RegionUnits) -> Offsets {
     let slot_tags = place!(cbs, units.slot_tag);
     // Zero slots must not move `off` either: `place!` would still align it up
     // to the slot's alignment, which is padding an image with no store would
-    // pay for nothing (and a total that moved for it).
+    // pay for nothing (and a total that moved for it). So an EMPTY region's
+    // offset may be misaligned for its type: a consumer must not build a slice
+    // from it (`nros_node`'s `carve` uses `region_slice`, issue 1771).
     let params = if param_slots > 0 {
         place!(param_slots, units.parameter_slot)
     } else {
