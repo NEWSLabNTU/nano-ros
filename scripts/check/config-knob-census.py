@@ -337,7 +337,6 @@ KNOB_CLASS = {
     "NROS_PARAM_STORE": ("infra", "a DECLARATION the build passes down, not a knob"),
     "NROS_PICOLIBC_SYSROOT": ("infra", "path"),
     "NROS_RISCV64_PREFIX": ("infra", "toolchain prefix"),
-    "NROS_SDK_STORE": ("infra", "path"),
     "NROS_SIZES_PROBE_TARGET_DIR": ("infra", "path"),
     "NROS_ZPICO_DEBUG": ("infra", "debug flag"),
     "ZPICO_NO_SMOLTCP": ("infra", "link toggle"),
@@ -469,10 +468,6 @@ KNOB_CLASS = {
         "only for the boot record"),
     "NROS_EXTRA_BOARD_PATH": ("infra", "extra board search roots"),
     "NROS_HOME": ("infra", "path"),
-    # phase-440 W6 / RFC-0095 D2 — the store ROOT, of which `NROS_HOME` names
-    # the same directory. A path, not a knob: it configures nothing about an
-    # image, it says where provisioned artifacts live.
-    "NROS_STORE": ("infra", "path"),
     "NROS_MODEL_DIR": ("infra", "path"),
     "NROS_WORKSPACE": ("infra", "path"),
     "NROS_WORKSPACE_ROOT": ("infra", "path"),

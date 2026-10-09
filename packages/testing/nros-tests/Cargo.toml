@@ -18,6 +18,8 @@ host-only = true
 host-only-reason = "the host test harness"
 
 [dependencies]
+# RFC-0103 D6 — the store root has one Rust spelling (`store_root()`).
+nros-build-paths = { path = "../../tooling/nros-build-paths" }
 # Test framework
 rstest = "0.24"
 duct = "0.13"

@@ -46,15 +46,15 @@ use super::{
 
 /// The store ROOT — `~/.nros`, the parent of `sdk/`, `bin/`, `toolchains/`.
 ///
-/// RFC-0095 D2: "resolved via `NROS_HOME`/`NROS_STORE`, never an absolute
-/// literal". `NROS_STORE` is the name the RFC gives the root itself and takes
-/// precedence; `NROS_HOME` is what every existing consumer already sets and
-/// keeps working unchanged.
+/// RFC-0095 D2: "never an absolute literal". ONE variable names it since
+/// RFC-0103 D6: `$NROS_HOME`, else `$HOME/.nros`. `NROS_STORE` (which the CLI
+/// alone read) and `NROS_SDK_STORE` (which cmake read, meaning `<root>/sdk`)
+/// are retired and refused at startup.
 ///
 /// [`super::sdk_store::store_root`] (`<root>/sdk`) and
 /// [`super::sdk_store::front_dir`] (`<root>/bin`) are its two established
 /// children and now derive from it, so the resolution order has one spelling
-/// rather than three copies that could disagree about `NROS_STORE`.
+/// rather than three copies that could disagree about which variable wins.
 ///
 /// MOVED to `nros_launcher::store_root` by phase-443 W3 and re-exported here:
 /// the launcher is a separate binary now (RFC-0097 D4) and constructs every
@@ -69,6 +69,12 @@ pub fn root() -> PathBuf {
 /// reader never has to guess whose store they are about to shrink.
 pub fn root_origin() -> &'static str {
     nros_launcher::store_root::root_origin()
+}
+
+/// The refusal for a set RETIRED store-root variable (`NROS_STORE`,
+/// `NROS_SDK_STORE`), if any — RFC-0103 D6. `nros`'s `main` checks it first.
+pub fn retired_in_env() -> Option<String> {
+    nros_launcher::store_root::retired_in_env()
 }
 
 /// A top-level directory of the store, and how deep its entries sit.

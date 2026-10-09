@@ -145,7 +145,7 @@ for d in third-party/*/; do
     problems=$((problems + 1))
     echo "check-third-party-is-submodules: third-party/$name is not a submodule parent" >&2
     echo "    $(du -sh "$d" 2>/dev/null | cut -f1) — provisioning belongs in the store" >&2
-    echo "    (\$NROS_STORE), not beside pinned source. RFC-0095 D2/D3." >&2
+    echo "    (\$NROS_HOME), not beside pinned source. RFC-0095 D2/D3." >&2
 done
 
 # A declared exception that no longer exists is a stale rule, and a stale rule

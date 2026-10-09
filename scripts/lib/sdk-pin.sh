@@ -19,8 +19,8 @@
 #
 # Where the `nros` CLI is available and the caller's store root is the CLI's,
 # `nros sdk-path <tool>` is the better answer. This exists for the callers
-# whose store root is `NROS_SDK_STORE` (the cross-toolchain family), which the
-# CLI does not read, and for jobs that run before the CLI is built.
+# that run before the CLI is built (the cross-toolchain family; the store root
+# itself is `scripts/lib/store-root.sh`).
 #
 # Plain awk, not python: a `tomllib`-less python3 (stock 22.04) fails with
 # empty output, which a caller cannot tell from "no pin" (issue 1264).

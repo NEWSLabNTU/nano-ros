@@ -1761,11 +1761,7 @@ fn nros_cli_path() -> std::path::PathBuf {
             return std::path::PathBuf::from(s);
         }
     }
-    let home = std::env::var("NROS_HOME")
-        .ok()
-        .or_else(|| std::env::var("HOME").ok().map(|h| format!("{h}/.nros")))
-        .unwrap_or_else(|| "/root/.nros".to_string());
-    std::path::PathBuf::from(format!("{home}/bin/nros"))
+    crate::store_root().join("bin/nros")
 }
 
 /// Check whether the installed `nros` CLI exposes the `nros sync` verb.

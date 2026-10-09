@@ -191,7 +191,7 @@ fi
 #     PERSISTENT Zephyr workspace: every freshness edge a codegen emitter has
 #     names the `nros` binary that build dir CACHED (`_NANO_ROS_CODEGEN_TOOL` is
 #     `CACHE INTERNAL`, dropped only when the path stops existing), and a build
-#     dir under `$NROS_STORE/workspaces/` outlives every checkout — so the
+#     dir under `$NROS_HOME/workspaces/` outlives every checkout — so the
 #     binary CI never rebuilds satisfied all of them while the trees sat below
 #     `NROS_CODEGEN_VERSION_MIN`. `nros_codegen_version_stale()` adds the one
 #     input that is a property of the tree on disk rather than of a timestamp.

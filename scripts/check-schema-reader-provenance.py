@@ -14,7 +14,7 @@ is where the provenance and the direction of the mismatch are spelled once.
 WHY
 
 tier 2 died in cmake configure of `build-cortex-m-c-talker-zenoh`, against the
-persistent workspace under `$NROS_STORE/workspaces/zephyr/3.7/`::
+persistent workspace under `$NROS_HOME/workspaces/zephyr/3.7/`::
 
     ... states entity-inventory schema version 6; this reader understands 3.
       Rebuild the `nros` CLI so the producer and the reader come from one tree

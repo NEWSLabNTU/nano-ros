@@ -118,13 +118,12 @@ function(_nros_corrosion_stale_cache_report out_var)
         PARENT_SCOPE)
 endfunction()
 
-# The store root — the same `$NROS_HOME` the CLI writes (`sdk_store.rs`).
+# The SDK store: `<store>/sdk` under `nros_store_root()` — the same store the
+# CLI writes (RFC-0103 D6).
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosStoreRoot.cmake")
 function(_nros_corrosion_store out_var)
-    if(DEFINED ENV{NROS_HOME})
-        set(${out_var} "$ENV{NROS_HOME}/sdk" PARENT_SCOPE)
-    else()
-        set(${out_var} "$ENV{HOME}/.nros/sdk" PARENT_SCOPE)
-    endif()
+    nros_store_root(_root)
+    set(${out_var} "${_root}/sdk" PARENT_SCOPE)
 endfunction()
 
 # Candidate `find_package` prefixes for an SDK-provisioned Corrosion, NEWEST
@@ -323,10 +322,9 @@ function(_nros_corrosion_fetch_cache out_var)
         set(_dir "${NROS_FETCH_CACHE}")
     elseif(DEFINED ENV{NROS_FETCH_CACHE})
         set(_dir "$ENV{NROS_FETCH_CACHE}")
-    elseif(DEFINED ENV{NROS_HOME})
-        set(_dir "$ENV{NROS_HOME}/fetch")
-    elseif(DEFINED ENV{HOME})
-        set(_dir "$ENV{HOME}/.nros/fetch")
+    elseif(DEFINED ENV{NROS_HOME} OR DEFINED ENV{HOME})
+        nros_store_root(_root)
+        set(_dir "${_root}/fetch")
     else()
         return()
     endif()

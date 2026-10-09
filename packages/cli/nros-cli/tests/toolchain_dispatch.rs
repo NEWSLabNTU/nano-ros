@@ -20,7 +20,7 @@
 //! received in a way a second copy of the same binary cannot.
 //!
 //! Cheap by construction: no fixtures, no provisioning, no network, and the
-//! store is a tempdir named by `$NROS_STORE`.
+//! store is a tempdir named by `$NROS_HOME`.
 
 use std::{
     path::{Path, PathBuf},
@@ -75,8 +75,7 @@ fn run(launcher: &Path, cwd: &Path, store: &Path, args: &[&str]) -> (bool, Strin
     let out = Command::new(launcher)
         .args(args)
         .current_dir(cwd)
-        .env("NROS_STORE", store)
-        .env_remove("NROS_HOME")
+        .env("NROS_HOME", store)
         .env_remove("NROS_TOOLCHAIN_DISPATCH")
         .env_remove("NROS_SKIP_TOOLCHAIN_DISPATCH")
         .output()

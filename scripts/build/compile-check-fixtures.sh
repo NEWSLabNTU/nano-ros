@@ -1118,7 +1118,7 @@ _cc_resolve_cxx() {
     fi
     while IFS= read -r bin; do
         [ -x "$bin" ] && { printf '%s\n' "$bin"; return 0; }
-    done < <(compgen -G "$HOME/.nros/sdk/${target}-gcc/*/bin/${target}-g++" | sort -Vr)
+    done < <(compgen -G "${NROS_HOME:-$HOME/.nros}/sdk/${target}-gcc/*/bin/${target}-g++" | sort -Vr)
     if "${target}-g++" --version >/dev/null 2>&1; then
         command -v "${target}-g++"
     fi

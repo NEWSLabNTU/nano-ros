@@ -356,10 +356,7 @@ pub fn launch_resolver_bin_near(near: Option<&Path>) -> Option<PathBuf> {
             return Some(p);
         }
     }
-    let home = std::env::var_os("NROS_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".nros")))?;
-    let p = home.join("bin/nros-launch-resolve");
+    let p = nros_build_paths::store::root_unchecked().join("bin/nros-launch-resolve");
     p.is_file().then_some(p)
 }
 

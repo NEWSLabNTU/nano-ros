@@ -356,7 +356,7 @@ _nros_runner_check_sdk_zephyr() {
             _nros_runner_detail "  sources come from this one. A result from that pair is a fact"
             _nros_runner_detail "  about neither (issue 1166)."
             _nros_runner_fix "point NROS_ZEPHYR_WORKSPACE at this checkout's workspace or at the store"
-            _nros_runner_fix "(the store is \$NROS_STORE/workspaces/zephyr/<version> — shared on purpose)"
+            _nros_runner_fix "(the store is \$NROS_HOME/workspaces/zephyr/<version> — shared on purpose)"
             return 1
         fi
         _nros_runner_ok "Zephyr workspace: $ws"
@@ -840,11 +840,11 @@ _nros_runner_self_test() {
         printf '%s\n' "$3/cmake" > "$1/home/.cmake/packages/Zephyr-sdk/$2"
     }
     # _st_resolve <case-dir> -> "<path>\t<origin>"
-    # `NROS_STORE`/`NROS_HOME` are unset alongside `HOME` because the store arm
-    # (issue 1254) reads them: a developer running this with a real store set
+    # `NROS_HOME` is pointed at the case alongside `HOME` because the store arm
+    # (issue 1254) reads it: a developer running this with a real store set
     # would otherwise have their own SDK leak into a staged case.
     _st_resolve() {
-        HOME="$1/home" NROS_STORE="$1/store" NROS_HOME="$1/store" \
+        HOME="$1/home" NROS_HOME="$1/store" \
             _nros_runner_zephyr_sdk_path 0.16.8 "$1/root"
     }
     _st_expect() { # <label> <got> <want>

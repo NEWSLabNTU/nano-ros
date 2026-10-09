@@ -1027,14 +1027,7 @@ pub fn nano_node_cmd_rmw(
 /// (a launcher that resolves its bundled Fast-DDS/fastcdr `.so`s next to itself,
 /// so it runs on the host with no system Fast-DDS). `None` → the lane `skip!`s.
 pub fn host_xrce_agent_bin() -> Option<std::path::PathBuf> {
-    let home = std::env::var("NROS_HOME")
-        .ok()
-        .map(std::path::PathBuf::from)
-        .or_else(|| {
-            std::env::var("HOME")
-                .ok()
-                .map(|h| std::path::PathBuf::from(h).join(".nros"))
-        })?;
+    let home = crate::store_root();
     // The PINNED version, constructed — never the newest in the store (issue
     // 1546): the store is shared between checkouts, and a sibling's newer
     // Agent is not the one this tree's XRCE lane was pinned against.

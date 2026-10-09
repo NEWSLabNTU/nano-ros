@@ -72,7 +72,13 @@ export NROS_REPO_DIR="$_nros_root"
 # order choose: measured, `13.2-nros4` beat the pinned `13.2-nros5`.
 # shellcheck source=scripts/lib/sdk-pin.sh
 . "$_nros_root/scripts/lib/sdk-pin.sh"
-_nros_sdk_store() { printf '%s' "${NROS_SDK_STORE:-${NROS_HOME:-$HOME/.nros}/sdk}"; }
+# RFC-0103 D6 — the store root is `$NROS_HOME`, else `~/.nros`
+# (scripts/lib/store-root.sh). A retired root variable is reported here, once;
+# activation carries on, and every `nros`/cmake/build-script run refuses it.
+# shellcheck source=scripts/lib/store-root.sh
+. "$_nros_root/scripts/lib/store-root.sh"
+nros_store_retired || true
+_nros_sdk_store() { printf '%s/sdk' "${NROS_HOME:-$HOME/.nros}"; }
 
 # _nros_store_tool_bin <tool> <out-var> — the pinned bin dir of <tool> in the
 # store (`nros_sdk_pinned_version`, scripts/lib/sdk-pin.sh — the one shell pin

@@ -80,7 +80,8 @@ def pinned_arm_gxx():
         return None
     if not pin:
         return None
-    store = os.environ.get("NROS_SDK_STORE") or os.path.expanduser("~/.nros/sdk")
+    # RFC-0103 D6 — the store root is `$NROS_HOME`, else `~/.nros`.
+    store = os.path.join(os.environ.get("NROS_HOME") or os.path.expanduser("~/.nros"), "sdk")
     return os.path.join(store, "arm-none-eabi-gcc", pin, "bin", "arm-none-eabi-g++")
 
 

@@ -516,9 +516,9 @@ jobs:
       # BIND MOUNT the runner lays over the image, so an `~/.nros` baked into
       # `ci/docker/ci-base` is masked before the first step runs. The store root
       # the cmake resolver reads is `$NROS_HOME/sdk` or `$HOME/.nros/sdk`
-      # (`_nros_corrosion_store`) and nothing else — the CLI's own `NROS_STORE`
-      # knob does not reach it — so the only prefix an image could fill is one
-      # that moves every lane's workspaces and fetch cache with it.
+      # (`nros_store_root()`, the one root variable since RFC-0103 D6), so
+      # the only prefix an image could fill is one that moves every lane's
+      # workspaces and fetch cache with it.
       #
       # Cheap enough to sit beside clang-format on every event: `[tool.corrosion]`
       # is config-only at install time (a small CMake superproject staged into

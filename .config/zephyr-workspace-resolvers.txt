@@ -7,7 +7,7 @@
 #       -> the checkout-relative trees for the selected line
 #            3.7:  zephyr-workspace, ../nano-ros-workspace
 #            4.4:  ../nano-ros-workspace-4.4
-#       -> $NROS_STORE/workspaces/zephyr/<version>
+#       -> $NROS_HOME/workspaces/zephyr/<version>
 #
 # and until W1 it had THREE spellings that did not agree: on the 4.4 line
 # `just zephyr` named the 4.4 sibling, `scripts/build/west-fixtures.sh` resolved

@@ -2,7 +2,7 @@
 //! phase-440 W7).
 //!
 //! ```text
-//!   $NROS_STORE/bin/nros   ->  sdk/nros/<newest>/bin/nros     the launcher
+//!   $NROS_HOME/bin/nros   ->  sdk/nros/<newest>/bin/nros     the launcher
 //!                              read nros-toolchain.toml
 //!                              ensure sdk/nros/<pinned>
 //!                              exec  sdk/nros/<pinned>/bin/nros "$@"

@@ -44,7 +44,7 @@ pub enum Sub {
 
 #[derive(Debug, ClapArgs)]
 pub struct ListArgs {
-    /// Store root. Defaults to `$NROS_STORE`, else `$NROS_HOME`, else
+    /// Store root. Defaults to `$NROS_HOME`, else
     /// `~/.nros` — never an absolute literal (RFC-0095 D2).
     #[arg(long)]
     pub root: Option<PathBuf>,

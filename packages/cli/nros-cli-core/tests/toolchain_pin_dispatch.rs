@@ -2,7 +2,7 @@
 //! RFC-0095 D7/D8/D9.
 //!
 //! Every test here builds a FAKE STORE in a tempdir and asks a pure function
-//! about it. Nothing reads `$NROS_HOME`, `$NROS_STORE` or the process working
+//! about it. Nothing reads `$NROS_HOME` or the process working
 //! directory: the store root, the running-binary path and the project directory
 //! are all parameters, so these run in parallel with everything else and observe
 //! nothing global (issue 1101's hazard, and the rule `store_reclaim.rs` already
@@ -311,7 +311,7 @@ fn the_escape_hatch_lets_an_automated_session_write_a_pin() {
 /// The property the whole wave turns on (RFC-0095 D8): *"it must keep working
 /// when it is OLDER than what it launches"*.
 ///
-/// The launcher is 0.5.0-nros1 — the version `$NROS_STORE/bin/nros` was fronted
+/// The launcher is 0.5.0-nros1 — the version `$NROS_HOME/bin/nros` was fronted
 /// at before the newer one was installed. The project pins 0.6.0-nros1. The
 /// decision must be `Exec` at the NEWER binary, and it must be reached without
 /// parsing anything: `decide` takes no `argv`, which is what makes "older" a

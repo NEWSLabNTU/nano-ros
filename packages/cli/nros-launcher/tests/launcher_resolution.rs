@@ -2,7 +2,7 @@
 //!
 //! Every test builds a fake store in a tempdir and asks
 //! [`launch::resolve`](nros_launcher::launch::resolve) about it. Nothing reads
-//! `$NROS_STORE`, `$CI` or the process working directory: the store root, the
+//! `$NROS_HOME`, `$CI` or the process working directory: the store root, the
 //! project directory and the session are all parameters, so these run in
 //! parallel with everything else and observe nothing global — and, importantly
 //! for W4, they measure the same thing on a laptop and on a runner that

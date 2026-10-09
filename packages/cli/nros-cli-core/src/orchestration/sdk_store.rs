@@ -28,7 +28,7 @@ pub const LOCK_FILE: &str = "nros-sdk.lock";
 ///
 /// phase-440 W6: the resolution itself moved to [`super::store::root`], the ONE
 /// spelling of "where is the store" (RFC-0095 D2), which also honours
-/// `$NROS_STORE`. This stays the name every existing consumer calls; it is now
+/// `$NROS_HOME`. This stays the name every existing consumer calls; it is now
 /// `sdk/` under that root rather than a second copy of the same three arms.
 pub fn store_root() -> PathBuf {
     super::store::root().join("sdk")
@@ -62,7 +62,7 @@ pub fn tool_prefix(root: &Path, tool: &str, version: &str) -> PathBuf {
 /// Returns `None` when the index has no such tool; the caller reports it with
 /// the provisioning command, and must NEVER substitute another version.
 /// Where a `[source.*]` with `location = "store"` is provisioned —
-/// `$NROS_STORE/sources/<name>/<version>` (phase-440, RFC-0095 D1/D2).
+/// `$NROS_HOME/sources/<name>/<version>` (phase-440, RFC-0095 D1/D2).
 ///
 /// DERIVED, never authored: the same reason [`tool_dir`] derives rather than
 /// reading a path out of the index. An authored store path is a second spelling
@@ -99,7 +99,7 @@ pub fn source_dir(index: &super::sdk_index::SdkIndex, source: &str) -> Option<Pa
 /// called across the layer: `orchestration` reaching up into `cmd` for a path
 /// derivation is how the third consumer gets missed again.
 ///
-/// `location = "store"` derives `$NROS_STORE/sources/<name>/<version>` from the
+/// `location = "store"` derives `$NROS_HOME/sources/<name>/<version>` from the
 /// index rather than reading a path out of it; `workspace` (the default) keeps
 /// the historical workspace-relative `dest`, so every existing entry means what
 /// it meant.

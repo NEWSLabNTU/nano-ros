@@ -79,7 +79,7 @@ fn gc_refuses_a_duration_with_no_unit() {
 /// `list` on a store that does not exist reports that and exits 0 — an
 /// inspection verb must not fail on a host that has provisioned nothing.
 ///
-/// `--root` keeps this off the real store: the verb reads `$NROS_STORE` /
+/// `--root` keeps this off the real store: the verb reads `$NROS_HOME` /
 /// `$NROS_HOME` / `$HOME` otherwise, and a test must not depend on, or disturb,
 /// whatever this machine has installed.
 #[test]

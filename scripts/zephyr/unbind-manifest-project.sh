@@ -15,7 +15,7 @@
 #     "nros":"<workspace>/nano-ros"
 #
 # That was harmless while a workspace sat beside ONE checkout. Since phase-440
-# W4 the default target is `$NROS_STORE/workspaces/zephyr/<version>`, and
+# W4 the default target is `$NROS_HOME/workspaces/zephyr/<version>`, and
 # RFC-0095 D2's whole point is that one workspace is SHARED by every project
 # wanting that version. The first project to provision a line then bound every
 # later project on the host to its nano-ros tree, and nothing reported the mix.

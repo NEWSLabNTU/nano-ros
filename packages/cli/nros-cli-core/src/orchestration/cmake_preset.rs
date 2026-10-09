@@ -19,20 +19,10 @@ use std::path::{Path, PathBuf};
 use eyre::{Result, WrapErr};
 use serde_json::json;
 
-/// Where per-board preset fragments live: `$NROS_HOME/presets`, else
-/// `~/.nros/presets`, else `.nros/presets` (last resort).
+/// Where per-board preset fragments live: `<store>/presets` (RFC-0103 D6 —
+/// constructed under the one store root, never a root of its own).
 pub fn presets_dir() -> PathBuf {
-    if let Ok(home) = std::env::var("NROS_HOME")
-        && !home.is_empty()
-    {
-        return PathBuf::from(home).join("presets");
-    }
-    if let Ok(home) = std::env::var("HOME")
-        && !home.is_empty()
-    {
-        return PathBuf::from(home).join(".nros").join("presets");
-    }
-    PathBuf::from(".nros").join("presets")
+    super::store::root().join("presets")
 }
 
 /// Emit `~/.nros/presets/<board>.json` for one board.

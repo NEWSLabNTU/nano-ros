@@ -35,6 +35,8 @@
 _NROS_RV64_HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # shellcheck source=scripts/lib/sdk-pin.sh
 . "$_NROS_RV64_HERE/../lib/sdk-pin.sh"
+# shellcheck source=scripts/lib/store-root.sh
+. "$_NROS_RV64_HERE/../lib/store-root.sh"
 
 # _nros_riscv64_store_bin
 #
@@ -42,7 +44,9 @@ _NROS_RV64_HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 _nros_riscv64_store_bin() {
     local pin
     pin="$(nros_sdk_pinned_version riscv-none-elf-gcc)" || return 0
-    local bin="${NROS_SDK_STORE:-$HOME/.nros/sdk}/riscv-none-elf-gcc/$pin/bin"
+    local root
+    root="$(nros_store_root)" || return 1
+    local bin="$root/sdk/riscv-none-elf-gcc/$pin/bin"
     if [ -x "$bin/riscv-none-elf-gcc" ]; then
         printf '%s' "$bin"
     fi
@@ -54,7 +58,9 @@ _nros_riscv64_store_bin() {
 # — for a human to read, never for the resolver to pick from, which is why it is
 # not sorted and nothing is chosen from it.
 _nros_riscv64_report_unpinned() {
-    local dir="${NROS_SDK_STORE:-$HOME/.nros/sdk}/riscv-none-elf-gcc"
+    local root
+    root="$(nros_store_root)" || return 1
+    local dir="$root/sdk/riscv-none-elf-gcc"
     [ -d "$dir" ] || return 0
     local pin found="" d
     pin="$(nros_sdk_pinned_version riscv-none-elf-gcc)" || pin="(no pin: nros-sdk-index.toml unreadable)"

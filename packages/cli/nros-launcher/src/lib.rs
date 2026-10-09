@@ -14,12 +14,12 @@
 //! So the split is by ARTIFACT, and this crate is the small half:
 //!
 //! ```text
-//!   $NROS_STORE/bin/nros              the launcher   (this crate's bin)
+//!   $NROS_HOME/bin/nros              the launcher   (this crate's bin)
 //!     read nros-toolchain.toml
 //!     ensure toolchains/<pinned>
 //!     exec  toolchains/<pinned>/bin/nros "$@"
 //!
-//!   $NROS_STORE/toolchains/<v>/bin/nros   the toolchain (packages/cli/nros-cli)
+//!   $NROS_HOME/toolchains/<v>/bin/nros   the toolchain (packages/cli/nros-cli)
 //! ```
 //!
 //! ## What moved here, and what did NOT get copied

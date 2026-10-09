@@ -316,7 +316,7 @@ function(nros_generate_interfaces target)
   # issue 1360 — and the EMITTED CODEGEN VERSION, which no mtime can express.
   #
   # This lane's build dirs live in the provisioned Zephyr workspace
-  # (`$NROS_STORE/workspaces/zephyr/<version>`, RFC-0095 D4), which outlives
+  # (`$NROS_HOME/workspaces/zephyr/<version>`, RFC-0095 D4), which outlives
   # every checkout: both edges above are keyed on the tool THIS DIRECTORY cached,
   # and on the self-hosted runner that is the provisioning checkout's binary,
   # which CI never rebuilds. So a `NROS_CODEGEN_VERSION_MIN` move left every

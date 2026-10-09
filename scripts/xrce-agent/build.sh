@@ -121,8 +121,10 @@ fi
 # `nros setup … --rmw xrce`) — no source build, no submodule, no cmake/g++
 # needed. Publish it at build/xrce-agent/MicroXRCEAgent where tests + recipes
 # look. Source build below is the fallback for trees without nros provisioning.
-NROS_STORE="${NROS_HOME:-$HOME/.nros}/sdk"
-store_agent="$(ls -d "$NROS_STORE"/xrce-agent/*/bin/MicroXRCEAgent 2>/dev/null | tail -1 || true)"
+# shellcheck source=scripts/lib/store-root.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/store-root.sh"
+store_sdk="$(nros_store_root)/sdk"
+store_agent="$(ls -d "$store_sdk"/xrce-agent/*/bin/MicroXRCEAgent 2>/dev/null | tail -1 || true)"
 if [ -n "$store_agent" ] && [ -x "$store_agent" ]; then
     echo "Using prebuilt Micro-XRCE-DDS Agent from the nros store: $store_agent"
     # The store binary is a relocatable launcher that resolves its bundled

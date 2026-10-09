@@ -3,7 +3,7 @@
 
 phase-440 W1, RFC-0095 D4. `scripts/lib/zephyr-workspace.sh` is the ONE
 resolver: `$NROS_ZEPHYR_WORKSPACE` -> the checkout-relative trees for the
-selected line -> `$NROS_STORE/workspaces/zephyr/<version>`. Before it existed
+selected line -> `$NROS_HOME/workspaces/zephyr/<version>`. Before it existed
 the chain was spelled three times — a `just` expression, a shell `for` loop and
 a third, shorter shell copy — and the three did not agree. Measured on the 4.4
 line, `just zephyr` named the 4.4 sibling while `scripts/build/west-fixtures.sh`
@@ -285,7 +285,7 @@ def main():
             "  or, from a non-shell caller, run it as a command:\n"
             "      scripts/lib/zephyr-workspace.sh [--version V] [--absolute] resolve\n"
             "  It already walks $NROS_ZEPHYR_WORKSPACE, the checkout-relative trees\n"
-            "  for the selected line, and $NROS_STORE/workspaces/zephyr/<version>\n"
+            "  for the selected line, and $NROS_HOME/workspaces/zephyr/<version>\n"
             "  (RFC-0095 D4). If this caller genuinely cannot use it, add the path\n"
             f"  to {RATCHET} with a reason saying WHY."
         )

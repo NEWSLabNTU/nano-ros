@@ -879,6 +879,7 @@ name = "nros-launcher"
 version = "0.1.0"
 dependencies = [
  "eyre",
+ "nros-build-paths",
  "serde",
  "tempfile",
  "toml",

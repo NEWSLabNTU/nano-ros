@@ -56,6 +56,11 @@ fn main() -> Result<()> {
     //
     // Returns when this process should carry on (no pin, the pin names it, a
     // contributor's checkout, a non-store build); otherwise it never returns.
+    // RFC-0103 D6 — one store-root variable. Refused before the dispatch,
+    // which is the first thing that resolves the store.
+    if let Some(e) = nros_cli_core::orchestration::store::retired_in_env() {
+        eyre::bail!(e);
+    }
     nros_cli_core::orchestration::dispatch::redispatch()?;
     let cli = Cli::parse();
     if cli.codegen_version {

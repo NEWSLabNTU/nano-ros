@@ -37,7 +37,7 @@ pub struct Args {
     /// Ask about a `[source.*]` instead of a `[tool.*]` (phase-440).
     ///
     /// A source with `location = "store"` is provisioned to
-    /// `$NROS_STORE/sources/<name>/<version>`, DERIVED from the index exactly
+    /// `$NROS_HOME/sources/<name>/<version>`, DERIVED from the index exactly
     /// as a tool's prefix is. A consumer that needs to find one must ask rather
     /// than spell it — the same rule this command exists to enforce for tools,
     /// and the reason `msg_to_cyclone_idl.py` no longer carries a literal

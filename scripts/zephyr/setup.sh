@@ -537,7 +537,7 @@ cd "$WORKSPACE_DIR"
 # checkout that ran setup. West's project list is what Zephyr's module discovery
 # reads, so every build in the workspace took its `nros` module from that one
 # tree. Harmless beside a single checkout; since phase-440 W4 the default target
-# is the shared store (`$NROS_STORE/workspaces/zephyr/<version>`), and RFC-0095
+# is the shared store (`$NROS_HOME/workspaces/zephyr/<version>`), and RFC-0095
 # D2 is that ONE workspace serves every project wanting that version — so the
 # first project to provision a line bound every later one to its nano-ros, with
 # nothing reporting the mix.

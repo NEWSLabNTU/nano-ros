@@ -160,3 +160,13 @@ example-parameter-stores:
 [private]
 node-ref-fresh-mint:
     @python3 scripts/check-node-ref-fresh-mint.py
+
+# phase-484 W1 (RFC-0103 D6) — the nano-ros store root has ONE variable,
+# `NROS_HOME`. `NROS_STORE` (read by the CLI first) and `NROS_SDK_STORE` (read
+# by cmake's cross toolchain and the riscv64 helpers, which ignored NROS_HOME)
+# let one host resolve two stores (issue 1767); both are retired and refused.
+# This keeps a READ of either from coming back outside the refusal sites.
+# Buildless, ~0.3 s; self-tests every read shape on each run.
+[private]
+retired-store-vars:
+    @python3 scripts/check/check-retired-store-vars.py

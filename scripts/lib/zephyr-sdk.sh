@@ -73,13 +73,15 @@ nros_zephyr_sdk_tool() {
     esac
 }
 
-# Same resolution order as `nros_zephyr_ws_store_root`, deliberately — one
-# store, one spelling of where it is.
+# The store root — `scripts/lib/store-root.sh`, the one shell spelling
+# (RFC-0103 D6).
 nros_zephyr_sdk_store_root() {
-    printf '%s\n' "${NROS_STORE:-${NROS_HOME:-$HOME/.nros}}"
+    # shellcheck source=scripts/lib/store-root.sh
+    . "$(dirname "${BASH_SOURCE[0]}")/store-root.sh"
+    nros_store_root
 }
 
-# `$NROS_STORE/sdk/<tool>/<version>/zephyr-sdk-<version>`.
+# `$NROS_HOME/sdk/<tool>/<version>/zephyr-sdk-<version>`.
 #
 # The trailing component is not decoration: the tarball carries a top-level
 # directory and is unpacked WITHOUT `--strip-components`, so the store holds

@@ -1063,6 +1063,13 @@ pub fn launch_resolver_bin() -> Option<std::path::PathBuf> {
     p.is_file().then_some(p)
 }
 
+/// The nano-ros store root — `nros_build_paths::store`, the one spelling
+/// (RFC-0103 D6). A retired root variable panics the test with its
+/// replacement named, rather than probing a store nobody chose.
+pub fn store_root() -> std::path::PathBuf {
+    nros_build_paths::store::root()
+}
+
 /// Resolve a tool binary from the `nros setup` shared store
 /// (`$NROS_HOME/sdk/<tool>/<version>/bin/<exe>`, else `~/.nros/sdk/...`),
 /// mirroring `nros-cli-core`'s `store_root` + `tool_prefix` layout. Returns the
@@ -1070,11 +1077,7 @@ pub fn launch_resolver_bin() -> Option<std::path::PathBuf> {
 /// `nros setup <board>` installed — without it the resolvers only see the
 /// `build/<tool>/` (`just`-built) path or the system PATH.
 pub fn nros_store_bin(tool: &str, exe: &str) -> Option<std::path::PathBuf> {
-    let root = std::env::var_os("NROS_HOME")
-        .map(|h| std::path::PathBuf::from(h).join("sdk"))
-        .or_else(|| {
-            std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".nros/sdk"))
-        })?;
+    let root = store_root().join("sdk");
     for entry in std::fs::read_dir(root.join(tool)).ok()?.flatten() {
         let cand = entry.path().join("bin").join(exe);
         if cand.is_file() {
@@ -1162,10 +1165,7 @@ pub fn nros_cli_bin_path() -> Option<std::path::PathBuf> {
             return Some(std::path::PathBuf::from(s));
         }
     }
-    let home = std::env::var_os("NROS_HOME")
-        .map(std::path::PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".nros")))?;
-    let cand = home.join("bin/nros");
+    let cand = store_root().join("bin/nros");
     cand.is_file().then_some(cand)
 }
 
