@@ -12,6 +12,14 @@ documentation.workspace = true
 readme = "README.md"
 keywords = ["embedded", "no-std", "rtos", "ffi"]
 categories = ["embedded", "no-std", "os"]
+# Issue 1779 — the `links` key is how this crate tells a DEPENDENT's build
+# script which `nros_platform_*` provider it already compiled into the graph
+# (`DEP_NROS_PLATFORM_CFFI_ABI_PROVIDER`, emitted by build.rs). A board that
+# compiles its own C port asks it first, so a host build that feature
+# unification gave the POSIX port (`cargo test --workspace`) does not link a
+# second definition of every symbol. Read through
+# `nros_board_common::platform_port`, never directly.
+links = "nros_platform_cffi"
 
 [features]
 default = []

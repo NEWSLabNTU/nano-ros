@@ -1,12 +1,13 @@
 ---
 id: 1772
 title: "`check workspace-features` fails to link `nros-board-threadx`'s lib test: the POSIX and ThreadX platform archives both define `nros_platform_*`"
-status: open
+status: resolved
 type: bug
 area: build
 severity: medium
 found: 2026-10-10
-related: [issue-1732, issue-1309]
+related: [issue-1732, issue-1309, issue-1779]
+resolved_in: "one nros_platform_* provider per linked graph: boards ask nros-platform-cffi first (issue 1779)"
 ---
 
 ## Symptom
@@ -49,3 +50,7 @@ To confirm: check out `0e01ffb4d4^` and run the same `cargo test --no-run`.
 
 phase-483 W1. That branch changes no Rust code in either platform crate, so
 its build of these crates is byte-identical to main's.
+
+## Resolution
+
+Resolved together with issue 1779, which is the same defect filed the same day. The mechanism this issue predicted is the one measured there: issue 1732 put the termination guard in the POSIX `platform.o`, and that member is now pulled into a binary that also whole-archives the ThreadX port. See `archived/1779-*` for the fix, the gate and the mutation checks.

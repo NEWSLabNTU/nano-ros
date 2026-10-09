@@ -34,6 +34,21 @@ fn main() {
     println!("cargo:rerun-if-changed=../nros-platform-posix/src/timer.c");
     println!("cargo:rerun-if-changed=../nros-platform-posix/src/termination.c");
 
+    // Issue 1779 — say which `nros_platform_*` provider this crate compiled,
+    // to every dependent's build script (`links = "nros_platform_cffi"` turns
+    // this into `DEP_NROS_PLATFORM_CFFI_ABI_PROVIDER`). The two features below
+    // are mutually exclusive inside THIS crate; the same rule across crates —
+    // one provider per linked graph — is enforced by the board build scripts
+    // that read this (`nros_board_common::platform_port`).
+    let provider = if cfg!(feature = "posix-c-port") {
+        "posix"
+    } else if cfg!(feature = "c-stub-test") {
+        "stubs"
+    } else {
+        "none"
+    };
+    println!("cargo:abi_provider={provider}");
+
     #[cfg(all(feature = "c-stub-test", feature = "posix-c-port"))]
     compile_error!(
         "features `c-stub-test` and `posix-c-port` are mutually exclusive — \
