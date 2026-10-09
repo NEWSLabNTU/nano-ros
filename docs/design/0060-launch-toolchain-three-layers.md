@@ -1,11 +1,131 @@
 # RFC-0060 — Three layers: spec, resolver, runtime
 
-**Status:** Stable (2026-07-28)
+**Status:** Stable (2026-07-28; amended 2026-10-10 — [what the SystemModel may carry](#amendment-2026-10-10--what-the-systemmodel-may-carry-and-where-nano-ross-own-facts-go))
 **Supersedes nothing. Amends:** RFC-0059 (launch-toolchain-split) — this is the
 repository-level answer to the same problem RFC-0059 framed at crate level.
 **Motivated by:** issue 0285 (a PATH-resolved `play_launch` broke every
 platform's fixture build), issue 0293 (two parsers for one file), and the
 submodule drift that bit three times during the 0285 work.
+
+## Amendment (2026-10-10) — what the SystemModel may carry, and where nano-ros's own facts go
+
+**The layers, the repositories and the linking rule are unchanged. This
+amendment rules on the CONTENT of the artifact that crosses the layer 2 →
+layer 4 seam.** Work items, retirement and migration: [phase-486](../roadmap/phase-486-launch-model-boundary.md).
+
+### The rule
+
+> **The SystemModel holds what any realizer reads with the same meaning:
+> the system's topology, its platform-agnostic contract, and its scheduling.
+> A fact that means something to one realizer's BUILD belongs to that
+> realizer's own layer, never to the model.**
+
+The test is asked per field: *would play_launch on Linux, given this field,
+do the same thing nano-ros does with it?* If the field has no Linux meaning,
+or a different one, it fails.
+
+The model is shared by two realizers (rlm's own crate description: "shared by
+play_launch (Linux runtime) and nano-ros (embedded build)") and by any later
+one. A realizer-specific field in it costs every other realizer twice: it
+carries a field it must ignore, and it cannot tell an ignored field from a
+missing one.
+
+### What failed the test, measured 2026-10-10
+
+`ros_launch_manifest_model::system_config::SystemConfigToml` (rlm `v0.1.40`,
+unchanged at `v0.1.49`) parses nano-ros's `system.toml` — its own doc comments
+name the owner: "nano-ros `[lifecycle]`", "nano-ros `[param_services]`",
+"nano-ros `[[component]]` rows". `apply_to_launch` projects it into the model:
+
+| `system.toml` input | model field | verdict |
+| --- | --- | --- |
+| `[system] features`, `[param_services]` (sugar for `features = ["param_services"]`) | `execution.features` | **fails.** nano-ros capability switches. In ROS every rclcpp node has parameter services unless its CODE opts out (`start_parameter_services`); nano-ros defaults them off. Opting in is nano-ros build policy |
+| `[lifecycle] autostart` (system-wide, `none\|configure\|active`) | each lifecycle node's `lifecycle_autostart` | **the TABLE fails; the per-node FIELD passes.** Managed nodes are ROS; Jazzy `launch_ros` `LifecycleNode(autostart=True)` drives one node to `active` (verified against the `jazzy` branch). Humble has no `autostart` at all. A system-wide default is nano-ros boot policy |
+| `[deploy.<n>]` `board` / `framework` / `profile` / `optimize` / `features` / `[deploy.<n>.nros]` | `execution.deploy.<n>.target = mcu:<board>`, `.extra` | **fails.** These describe a build. rlm's own comment says so ("describes a BUILD"), and nano-ros already moved them out of placement: `[image.*]` (phase-383, RFC-0065 D6) and `[board_config.*]` (RFC-0072 §5). No tracked `system.toml` writes `[deploy.*]` today (0 of 189) |
+| `[host.<n>]`, `[deploy.<n>] kind`/`nodes`/`launch` | `execution.deploy` placement | **passes** — which machine runs which node is topology |
+| `[tiers.*]`, `[[component]] group_tiers` | `execution.tiers`, `execution.bindings` | **passes** — scheduling, in the shared `sched` schema |
+| `[[component]] params` / `params_files` | `structure.nodes[].params` | **passes** — ROS parameter values |
+| `[system] rmw` / `domain_id` / `locator`, `[[transport]]`, `[[bridge]]` | `execution.deploy`, `transports`, `bridges` | **passes** — ROS environment and topology |
+
+So three things leave the model: `execution.features`, the system-wide
+lifecycle default, and the build half of `execution.deploy`
+(`target = mcu:<board>` and `extra`).
+
+### Where they go: a nano-ros OVERLAY beside the model
+
+`nros sync` already writes the model to `<ws>/build/nros/models/<bringup>/`,
+located through `nros_orchestration_ir::model_location`. It now also writes
+**`nros.toml`** in the same directory: the nano-ros facts resolved from
+`system.toml` by nano-ros's own strict parser
+(`nros_cli_core::orchestration::cargo_metadata_schema::SystemToml`,
+`deny_unknown_fields`). It is located by the same helper, so a build step that
+can find the model can find the overlay, and no consumer derives a second
+path. Its first contents:
+
+- the capability switches **per image** — `[image.<id>] features`, defaulting
+  to `[image_defaults] features`, then to `[system] features`. Per image
+  because the cost is per image: `examples/workspaces/features` says in a
+  comment that its switches are "NATIVE ONLY" and an embedded image must opt in
+  separately, which a system-wide list cannot state;
+- the lifecycle boot default (`[lifecycle] autostart`), applied by nano-ros
+  only to lifecycle nodes whose own `lifecycle_autostart` the model left
+  unset;
+- whatever later fact fails the test above. The overlay is the one place a
+  nano-ros build fact travels with the model; nothing new goes into the model
+  to save writing it.
+
+**Why a second artifact and not a second parse.** The six readers of
+`execution.features` (`entity_facts`, `codegen entry`, the entity inventory's
+`InfraServices::from_model`, `model_ingest`, `leaf_system`, `nros::main!`)
+receive the MODEL, not `system.toml`. Making each of them find and parse
+`system.toml` would be six locators and six parses of one file. One overlay,
+written where the model is written, keeps it one of each.
+
+### The lifecycle fact has the right shape already
+
+`structure.nodes[]` carries `lifecycle: bool` and `lifecycle_autostart:
+Option<Autostart>` (`None | Configure | Active`). That stays. Its inputs
+change:
+
+- the launch file — `<lifecycle_node autostart="true">` and Python
+  `LifecycleNode(autostart=True)` → `Active`. play_launch's parser handles
+  neither today: its `attr_spec.rs` says the `lifecycle_node` element is not
+  dispatched at all. (play_launch phase 86.)
+- the contract's `lifecycle: true` → `lifecycle`.
+- nothing from a system-wide table.
+
+`Configure` stays in the enum. A launch file can state only `Active` or
+nothing, but "configure and wait" is meaningful to any lifecycle manager,
+play_launch included, so it is not nano-ros-specific — only its system-wide
+DEFAULT is.
+
+### rlm stays lax about keys it does not own
+
+rlm's `SystemConfigToml` reads the same file nano-ros's strict parser reads.
+If rlm REFUSED a key it no longer projects, every valid nano-ros
+`system.toml` would fail to resolve. So rlm stops projecting the keys and
+keeps ignoring them; validation stays where it already is, in nano-ros's
+`deny_unknown_fields` parser. A model written before the change still LOADS:
+the model types have no `deny_unknown_fields`, which is how rlm already
+retired `jitter_ms` (rlm phase 68) without a schema version bump.
+
+### Consequence for RFC-0100
+
+The 2026-10-09 ruling (a model-only parameter-store fact earns a file of its
+own) loses its premise: the store switch is an overlay fact, and launch
+parameter seeds and contract `params:` are model facts. RFC-0100's
+[Ruling, 2026-10-10](0100-rmw-agnostic-sizing-model.md#ruling-2026-10-10--a-stated-fact-earns-a-file-whatever-it-came-from)
+restates the file rule over both inputs and retires the exception.
+
+### What this does not change
+
+`[host.*]` placement and play_launch's `<arg>` + `if=` + `host:=` are two
+spellings of one topology fact; both pass the test, and reconciling them is
+out of scope here. `[tiers.<n>.<rtos>]` sub-tables carry platform numbers into
+the model where play_launch keeps them in per-target platform files
+(`<stem>.system.<target>.yaml`); scheduling is in the model by this rule, and
+moving nano-ros onto platform files is play_launch's Phase 41.6, not this
+amendment.
 
 ## Amendment (2026-08-02) — two repositories, not three
 
