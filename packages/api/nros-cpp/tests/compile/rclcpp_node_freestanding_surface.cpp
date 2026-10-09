@@ -1,8 +1,8 @@
 // phase-438 W4 — `rclcpp::Node`'s UNCONDITIONAL surface, instantiated.
 //
-// phase-427 W1-W3/W5 made `rclcpp::Node` one class (`= ::rclcpp::Node`) with a
-// fixed layout on every target, and made the std-flavoured factories ADDITIVE
-// overloads beside out-ref forms that mirror `rclcpp::Node`.
+// phase-427 W1-W3/W5 made `rclcpp::Node` one class (then `= ::nros::Node`) with
+// a fixed layout on every target, and made the std-flavoured factories ADDITIVE
+// overloads beside out-ref forms that mirror upstream's `rclcpp::Node`.
 // `check-cpp-capability-layout` measures the layout half; nothing measured the
 // method half, and it could not have:
 //

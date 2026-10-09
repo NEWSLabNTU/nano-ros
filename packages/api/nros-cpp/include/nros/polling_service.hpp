@@ -162,7 +162,7 @@ template <typename S> class PollService {
     /// ONE create builds TWO endpoints that negotiate against DIFFERENT peers,
     /// so this and @ref get_response_publisher_actual_qos are two answers and
     /// neither stands for the other. A policy the backend cannot report is an
-    /// ABSENCE (`ReliabilityUnknown` and friends), never the request echoed
+    /// ABSENCE (`ReliabilityPolicy::Unknown` and friends), never the request echoed
     /// back — see @ref Publisher::get_actual_qos.
     ///
     /// This half OWNS its `RmwServiceServer`, so it passes `storage_` and the

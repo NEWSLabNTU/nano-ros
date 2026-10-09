@@ -61,7 +61,7 @@ namespace rclcpp {
 
 /// Client-side dispatch handle handed to `ExecutableComponent::tick`.
 ///
-/// Mirrors the Rust `rclcpp::TickCtx` substrate (Phase 212.M-F.4). The
+/// Mirrors the Rust `nros::TickCtx` substrate (Phase 212.M-F.4). The
 /// generated runtime constructs one per spin and hands it to the
 /// component's `tick` body via an opaque per-tick context pointer
 /// (`handle()`); the typed `call<Req, Resp>()` / `send_goal<G>()`
@@ -90,7 +90,7 @@ class TickCtx {
     void* handle() const { return handle_; }
 
     /// Issue a raw-CDR service-client request and block on the reply.
-    /// Mirrors `rclcpp::TickCtx::call_raw` (Rust).
+    /// Mirrors `nros::TickCtx::call_raw` (Rust).
     ///
     /// @param service_entity   Stable entity id of the service client
     ///                         (NUL-terminated string).
@@ -110,7 +110,7 @@ class TickCtx {
     }
 
     /// Issue a typed service-client request and decode the reply.
-    /// Mirrors `rclcpp::TickCtx::call<Req, Resp, REQ_N, RESP_N>` (Rust).
+    /// Mirrors `nros::TickCtx::call<Req, Resp, REQ_N, RESP_N>` (Rust).
     ///
     /// `Req` / `Resp` must provide `SERIALIZED_SIZE_MAX`, `ffi_serialize`,
     /// and `ffi_deserialize` (the codegen-emitted interface, same as
@@ -145,7 +145,7 @@ class TickCtx {
     }
 
     /// Kick a raw-CDR action-client goal. Mirrors
-    /// `rclcpp::TickCtx::send_goal_raw` (Rust). The 16-byte goal id is
+    /// `nros::TickCtx::send_goal_raw` (Rust). The 16-byte goal id is
     /// stamped by the server-side accept; result + feedback streams
     /// arrive via callback dispatch — not this method.
     ///
@@ -164,7 +164,7 @@ class TickCtx {
     }
 
     /// Kick a typed action-client goal. Mirrors
-    /// `rclcpp::TickCtx::send_goal<G, N>` (Rust).
+    /// `nros::TickCtx::send_goal<G, N>` (Rust).
     ///
     /// `G` must provide `SERIALIZED_SIZE_MAX` and `ffi_serialize` (the
     /// codegen-emitted interface, same as `rclcpp_action::Client<A>`).

@@ -16,7 +16,7 @@
 // WHAT THIS PROBE PROVES
 //   1. The mixed shape TYPE-CHECKS: a shim `rclcpp::Node` subclass that creates
 //      a wall timer and a subscription, driven by `rclcpp::spin_once()` and
-//      `rclcpp::spin(ms, ms)` — NOT `rclcpp::spin` — with no compat spin verb
+//      `rclcpp::spin(ms, ms)` — NOT `rclcpp::spin(node)` — with no compat spin verb
 //      anywhere in the file.
 //   2. `rclcpp::Node` has NO `pump()` member. This is a REACHABILITY assertion,
 //      not a style one: `pump()` existing at all means a second dispatch path
@@ -130,7 +130,8 @@ static_assert(std::is_same<decltype(std::declval<rclcpp::Node&>().create_wall_ti
 // This class is deliberately written the way a ported rclcpp file is —
 // `create_wall_timer` with a capturing lambda, `create_subscription` with a
 // capturing lambda, members typed as the nested `SharedPtr` aliases — and then
-// driven by `rclcpp::` spin verbs. Before phase-417 this compiled and dispatched
+// driven by the executor-level spin verbs (`rclcpp::spin_once()`,
+// `rclcpp::spin(ms, ms)`). Before phase-417 this compiled and dispatched
 // NOTHING, which is the whole reason a compile probe cannot be the last word
 // here (see "WHAT IT DOES NOT PROVE").
 

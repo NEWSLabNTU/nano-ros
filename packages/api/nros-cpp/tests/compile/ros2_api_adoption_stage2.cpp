@@ -176,7 +176,7 @@ class PortedServiceNode : public rclcpp::Node {
   public:
     PortedServiceNode() : rclcpp::Node("ported_service_node") {
         // W2.b — parameters, `const char*` keyed. The value-returning shape is
-        // `rclcpp::ComponentNode`'s, so the two facades in this package agree.
+        // `nros::ComponentNode`'s, so the two facades in this package agree.
         const double period = this->declare_parameter<double>("ctrl_period", 0.15);
         const int64_t depth = this->declare_parameter<int64_t>("queue_depth", 10);
         const bool verbose = this->declare_parameter<bool>("verbose", false);
@@ -200,14 +200,14 @@ class PortedServiceNode : public rclcpp::Node {
         (void)present;
         (void)present_str;
 
-        // Set forwards to rclcpp::ParameterServer::set_parameter.
+        // Set forwards to nros::ParameterServer::set_parameter.
         ::rclcpp::Result set_result = this->set_parameter<double>("ctrl_period", 0.05);
         (void)set_result.ok();
         (void)this->set_parameter<double>(std::string("ctrl_period"), 0.05);
 
         // phase-426 W4 — `this->parameters()` IS GONE, and this probe is where
         // its absence is pinned. It returned a reference to the node's OWN
-        // `rclcpp::ParameterServer`, described as the escape hatch "for the C-API
+        // `nros::ParameterServer`, described as the escape hatch "for the C-API
         // helpers that take an `nros_parameter_server_t*`" — of which there are
         // none: `nros_executor_register_parameter_services` takes the executor.
         // With the node-local store deleted there is nothing to hand out. The

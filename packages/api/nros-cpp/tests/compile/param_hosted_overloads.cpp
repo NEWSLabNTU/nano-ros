@@ -66,7 +66,7 @@ inline void rclcpp_node_string_values(rclcpp::Node& node) {
 // component declares its parameters, and because a member template is only
 // instantiated when something calls it.
 //
-// phase-427 W4 — this said `rclcpp::ComponentNode`, the type that WRAPPED a node.
+// phase-427 W4 — this said `nros::ComponentNode`, the type that WRAPPED a node.
 // It is deleted; a component IS-A `rclcpp::Node` now, and the facade this probe
 // compiles is the same one `rclcpp::Node` above wears, because they are one
 // type. So the two halves of this file are no longer two facades that could

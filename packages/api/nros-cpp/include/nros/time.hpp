@@ -4,7 +4,7 @@
 /**
  * @file time.hpp
  * @ingroup grp_clock
- * @brief `rclcpp::Time` — a timestamp, mirroring `rclcpp::Time`.
+ * @brief `rclcpp::Time` — a timestamp, mirroring upstream's `rclcpp::Time`.
  *
  * Issue 0789. `nros_time_t` and the `nros_time_*` arithmetic have existed in C
  * since the C API shipped; this is the C++ face over them, so
@@ -27,15 +27,14 @@
 // `rclcpp::Time` — DEFINED here (RFC-0089: rclcpp:: is the home)
 // ============================================================================
 //
-// phase-428: the definition moved from `rclcpp::` to `rclcpp::` and the alias
-// turned around. The type is UNCHANGED — one object, two spellings, one
-// contract — so a ported `rclcpp::Time stamp = node->now();` and an in-tree
-// `rclcpp::Time` still name the same thing.
+// phase-428: the definition moved from `nros::` to `rclcpp::` (the `nros::`
+// alias went in phase-483 W1), so a ported `rclcpp::Time stamp = node->now();`
+// and in-tree code name the same type.
 namespace rclcpp {
 
 /// A point in time, held as nanoseconds on a named clock.
 ///
-/// Mirrors `rclcpp::Time`. The clock TYPE travels with the value, as it does in
+/// Mirrors upstream's `rclcpp::Time`. The clock TYPE travels with the value, as it does in
 /// rclcpp, so a steady-clock reading and a system-clock reading are
 /// distinguishable after the fact.
 ///

@@ -60,9 +60,7 @@ nros_cpp_ret_t nros_cpp_service_client_register(const nros_cpp_node_t* node,
 /// has the definition; a qualified friend needs the name to EXIST first, which
 /// an unqualified `friend class Node;` used to supply implicitly.
 ///
-/// phase-427 W7 — declared in `rclcpp::`, which is where the definition moved.
-/// An elaborated `class Node;` in `rclcpp::` would now declare a SECOND, distinct
-/// class and collide with the `rclcpp::Node` alias.
+/// phase-427 W7 — declared in `rclcpp::`, which is where the definition lives.
 namespace rclcpp {
 class Node;
 }
@@ -71,8 +69,8 @@ class Node;
 // `rclcpp::Client<S>` -- DEFINED here (RFC-0089: rclcpp:: is the home)
 // ============================================================================
 //
-// phase-428: the definition moved from `rclcpp::` to `rclcpp::` and the alias
-// turned around. The nested `SharedPtr` / `ConstSharedPtr` / `UniquePtr`
+// phase-428: the definition moved from `nros::` to `rclcpp::` (the `nros::`
+// alias went in phase-483 W1). The nested `SharedPtr` / `ConstSharedPtr` / `UniquePtr`
 // aliases live on the class itself, so the rclcpp way of indexing types
 // (`rclcpp::Client<S>::SharedPtr`) resolves with no wrapper in between.
 namespace rclcpp {
@@ -223,7 +221,7 @@ template <typename S> class Client {
     /// peers, so this and @ref get_response_subscription_actual_qos are two
     /// answers and neither stands for the other.
     ///
-    /// A policy the backend cannot report is an ABSENCE (`ReliabilityUnknown`
+    /// A policy the backend cannot report is an ABSENCE (`ReliabilityPolicy::Unknown`
     /// and friends), never the request echoed back — see
     /// @ref Publisher::get_actual_qos.
     ///

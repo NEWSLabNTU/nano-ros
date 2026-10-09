@@ -17,7 +17,7 @@
 // which is phase-438's.
 //
 // WHAT THIS PROVES
-//   1. There is ONE node type, `rclcpp::Node` (the `rclcpp::Node` alias for it was
+//   1. There is ONE node type, `rclcpp::Node` (the `nros::Node` alias for it was
 //      deleted by phase-482 W6), not two types with a converting constructor
 //      between them. This is the whole item: before the
 //      merge a ported file got a type with no graph queries, no lifecycle, no
@@ -28,7 +28,7 @@
 //   3. ONE NAME, TWO SIGNATURES: the out-ref and `shared_ptr` `create_*`
 //      families are overloads on that type and neither is ambiguous.
 //   4. `create_wall_timer` binds a MEMBER FUNCTION with no allocation and no
-//      `std::function` — the overload that retired `rclcpp::bind_timer`.
+//      `std::function` — the overload that retired `nros::bind_timer`.
 //   5. `rclcpp::create_timer(node, clock, period, cb)` — humble's only
 //      clock-taking timer verb (phase-430 W6) — compiles and returns the same
 //      cell `create_wall_timer` does.
@@ -67,7 +67,7 @@ struct CounterMsg {
 // --- (1) ONE TYPE ------------------------------------------------------------
 //
 // There is no second spelling left to compare against: phase-482 W6 deleted
-// the `rclcpp::Node` alias. What remains of this section is the shape below.
+// the `nros::Node` alias. What remains of this section is the shape below.
 
 // The deleted shim was `std::enable_shared_from_this<Node>`, a hosted-only BASE
 // carrying a weak_ptr member -- 16 bytes of layout behind a capability probe,

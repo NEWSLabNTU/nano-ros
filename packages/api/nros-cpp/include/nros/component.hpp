@@ -280,9 +280,9 @@ inline Result create_action_server_raw(::rclcpp::Node& node, void* storage, cons
 /// `rclcpp_action::GoalResponse C::on_goal(const uint8_t goal_id[16], const uint8_t* data, size_t
 /// len)` and `rclcpp_action::CancelResponse C::on_cancel(const uint8_t goal_id[16])` as the action
 /// server's goal/cancel callbacks (by identity, `self` as ctx, no-alloc trampolines). The members
-/// return the TYPED decision and the binder converts it with `rclcpp::to_ffi`; a member returning a
-/// raw `int32_t` no longer binds (issue 1637), because the typed enums now carry upstream's 1-based
-/// values and a cast of one into the 0-based FFI would read reject as accept.
+/// return the TYPED decision and the binder converts it with `rclcpp_action::to_ffi`; a member
+/// returning a raw `int32_t` no longer binds (issue 1637), because the typed enums now carry
+/// upstream's 1-based values and a cast of one into the 0-based FFI would read reject as accept.
 template <class C,
           ::rclcpp_action::GoalResponse (C::*GoalMethod)(const uint8_t goal_id[16],
                                                          const uint8_t* data, size_t len),
@@ -384,7 +384,7 @@ inline Result bind_action_client(::rclcpp::Node& node, ActionClientStorage& stor
 // umbrella `nros.hpp` pulls this file in, so the definitions are visible
 // wherever the members are reachable.
 //
-// Both came off `rclcpp::ComponentNode`. See the rename note on
+// Both came off `nros::ComponentNode`. See the rename note on
 // `Node::create_publisher_in` for why a bare `create_subscription` carrying an
 // ours-only signature is the one thing the merge could not ship.
 //
@@ -704,7 +704,7 @@ constexpr ::rclcpp::QoS qos_from_declared(int depth, int reliability, int durabi
 /// forwards the handle + the node name to the `Node` base).
 ///
 /// The factory returns `::rclcpp::Node*` — phase-427 W4. It used to return
-/// `::rclcpp::ComponentNode*`, a type that WRAPPED a node; the merged type IS one,
+/// `::nros::ComponentNode*`, a type that WRAPPED a node; the merged type IS one,
 /// so the entry's post-construct `ok()` check now reads the node itself.
 #define NROS_COMPONENT(Class)                                                                      \
     extern "C" ::rclcpp::Node* _NROS_COMP_FACTORY_SYM(NROS_PKG_NAME)(void* storage,                \
@@ -728,7 +728,7 @@ constexpr ::rclcpp::QoS qos_from_declared(int depth, int reliability, int durabi
     ::rclcpp::bind_subscription<Msg, Class, &Class::method>((node), (topic), (self))
 
 /// Convenience: bind a component timer member. Expands to the MEMBER overload
-/// (phase-427 W3) — the retired `rclcpp::bind_timer` would warn here, and a
+/// (phase-427 W3) — the retired `nros::bind_timer` would warn here, and a
 /// deprecation a macro hides is not one.
 #define NROS_BIND_TIMER(node, Class, method, out, period_ms, self)                                 \
     (node).template create_wall_timer<Class, &Class::method>((out), (period_ms), (self))

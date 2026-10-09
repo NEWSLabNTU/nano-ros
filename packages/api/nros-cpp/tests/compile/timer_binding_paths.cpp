@@ -1,7 +1,7 @@
 // phase-427 W3 — INSTANTIATION probe for the timer-binding paths.
 //
 // `create_wall_timer<C, &C::method>(out, ms, self)` is the overload that
-// RETIRED the free `rclcpp::bind_timer`, and every path that used to reach
+// RETIRED the free `nros::bind_timer`, and every path that used to reach
 // `bind_timer` now reaches it instead. Each of those is a TEMPLATE BODY, which
 // the header parse loop never type-checks — `-include <nros/node.hpp>`
 // instantiates nothing. That is exactly how a retirement rots: the free
@@ -20,7 +20,7 @@
 //   5. `NodeWithTimers<N>::create_wall_timer_in<C, &C::m>(ms)`, whose body was the one
 //      remaining in-header caller of the free function.
 //
-// `rclcpp::bind_timer` itself is NOT called here: its deprecation is asserted by
+// `nros::bind_timer` itself is NOT called here: its deprecation is asserted by
 // the expected-failure probe `bind_timer_deprecation_probe.cpp`, which is where
 // a `-Werror=deprecated-declarations` build belongs.
 //

@@ -343,7 +343,7 @@ template <typename M> class PollSubscription {
     ///
     /// `rclcpp::Subscription::get_actual_qos`. See
     /// @ref Publisher::get_actual_qos for what "actual" means and why a policy
-    /// the backend cannot report is an ABSENCE (`ReliabilityUnknown`, ...)
+    /// the backend cannot report is an ABSENCE (`ReliabilityPolicy::Unknown`, ...)
     /// rather than your request echoed back.
     ///
     /// phase-456 W2b: issue 1437 wrote this to answer on BOTH roads from one

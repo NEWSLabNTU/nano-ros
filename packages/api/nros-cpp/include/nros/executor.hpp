@@ -24,9 +24,7 @@
 #include "nros_cpp_ffi.h"
 
 // phase-427 W7 — `Node` is DEFINED in `rclcpp::` (RFC-0089: that namespace is
-// the home), so the forward declaration has to be there too: an elaborated
-// `class Node;` inside `rclcpp::` would declare a second, distinct class and
-// collide with the `rclcpp::Node` alias `node.hpp` declares.
+// the home), so the forward declaration has to be there too.
 namespace rclcpp {
 class Node;
 }
