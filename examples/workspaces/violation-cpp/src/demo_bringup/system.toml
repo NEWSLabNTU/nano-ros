@@ -24,3 +24,9 @@ board = "native"
 board = "zephyr"
 conf = ["prj-zenoh.conf"]
 panic = "platform"
+# phase-481 W2: nano-ros knobs live here, not in the conf files (RFC-0098
+# D10/D11). The socket timeout keeps tx windows inside the 10 Hz period
+# (issues 0129/0139); the two phase-474 knobs are the fixture's point: verdicts
+# before the handler's RUN are counted, not stored (I2), and the ring is
+# drained and logged every spin (I1) so the test can read the console line.
+env = { NROS_ZENOH_SOCKET_TIMEOUT_MS = "5", NROS_MONITOR_ARM_ON_CALL = "1", NROS_VIOLATION_DRAIN_REPORT = "1" }
