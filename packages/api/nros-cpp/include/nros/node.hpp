@@ -2957,9 +2957,13 @@ inline Result init_with_launch(const char* path, int argc, char** argv, const ch
     return detail::init_honouring_ros_args(argc, argv, name);
 }
 
-/// Check if the nros session is initialized.
+/// Check if the nros session is initialized — and, like `rclcpp::ok()`, not
+/// asked to stop: issue 1732 folds in a guarded SIGTERM / SIGINT, so every
+/// `while (nros::ok())` loop returns and its `nros::shutdown()` closes the
+/// session. The flag is only ever set where a hosted runner installed the
+/// guard (`nros_cpp_termination_guard_install`).
 inline bool ok() {
-    return ::rclcpp::Node::global_initialized();
+    return ::rclcpp::Node::global_initialized() && !::nros_cpp_termination_requested();
 }
 
 /// Create a node (convenience — uses the global executor).

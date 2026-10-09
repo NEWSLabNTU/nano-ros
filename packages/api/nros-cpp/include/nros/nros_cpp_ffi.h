@@ -1204,6 +1204,27 @@ int32_t nros_cpp_census_begin(void);
 int32_t nros_cpp_census_finish(const char *session_name);
 
 /**
+ * Issue 1732 — install the hosted termination guard for a C++ runner whose
+ * loop lives in a header (`nros::board::LinuxBoard::run_components` in
+ * `<nros/main.hpp>`). The Rust runners in this file call
+ * `nros_platform::termination` directly; this is the same call, under a C
+ * name a header can reach — not a second guard.
+ *
+ * Call BEFORE `nros::init`, so a signal that arrives during `setup` is not
+ * lost. Returns how many of SIGTERM / SIGINT now carry the guard (0 where the
+ * application already handles both, or off POSIX). Idempotent.
+ */
+int32_t nros_cpp_termination_guard_install(void);
+
+/**
+ * Issue 1732 — `true` once a guarded SIGTERM / SIGINT has arrived. `nros::ok()`
+ * folds it in, which is `rclcpp::ok()`'s contract: a signal makes the spin
+ * loops return, and the runner's `nros::shutdown()` then closes the session.
+ * Always `false` where no guard was installed.
+ */
+bool nros_cpp_termination_requested(void);
+
+/**
  * Issue 1434 — [`nros_board_native_run_components_named`] with the primary
  * session's NAMESPACE.
  *

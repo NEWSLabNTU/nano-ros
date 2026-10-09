@@ -220,6 +220,11 @@ class LinuxBoard {
         // every typed single-executor C++ native entry calls, and it used to
         // skip the switch entirely — a census run booted normally instead.
         const bool census = ::nros_cpp_census_begin() != 0;
+        // Issue 1732 — a SIGTERM / SIGINT makes `nros::ok()` false, so the
+        // spin below returns and `nros::shutdown()` closes the session instead
+        // of the process dying with it open. Before init: a signal during
+        // `setup` is not lost.
+        (void)::nros_cpp_termination_guard_install();
         // Phase 266: env overlay (NROS_LOCATOR / ROS_DOMAIN_ID) applies via
         // init — null locator and 0 domain_id both trigger the env fallback.
         nros::Result r = nros::init(nullptr, 0, sn, node_namespace);
