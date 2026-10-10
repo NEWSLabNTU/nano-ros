@@ -275,3 +275,39 @@ still carry `[[package.metadata.nros.node.publishes]]` entity rows in their
 manifests, which RFC-0098 D5 moves to the bringup's `[[component]]` row and has
 not yet moved — that is issue 1289, and it is a different axis (declaration
 location) from this one (platform/RMW invariance).
+
+## 2026-10-10 — rules 1 and 3 land; rules 2 and 4 remain
+
+`just check node-package-invariance` (`scripts/check-node-package-invariance.py`,
+on the fast line, ~0.1 s, reads tracked files only):
+
+- **Rule 1** — no platform/RMW token in node-package CODE, comments stripped
+  (`*.rs *.c *.h *.cc *.cpp *.hpp *.hh *.cxx`, plus `CMakeLists.txt` /
+  `Cargo.toml` with `#` comments); a `build.rs` in a node package is reported.
+- **Rule 3** — `.colcon_workspace` tracked at every `examples/workspaces/*`
+  root, and no node package commits `generated/`. The root-build-file and
+  lockfile halves keep their existing owners (`check-workspace-root-build-files`,
+  `check-leaf-lockfiles`) and are not restated.
+- **Scope** by the issue's predicate: 117 node packages in 24 roots (17
+  workspaces + 7 template roots — `cpp-port-minimal-publisher` arrived after
+  the issue was written). Entries are `_entry` as a whole name segment, which
+  also exempts `zephyr_entry_robot1`; `zephyr-byo` is exempt by name.
+- **Baseline**, ratcheted both ways, 3 lines, each with its reason: the
+  `__ZEPHYR__` busy-wait in `violation-cpp`'s `Handler.cpp` (call-site
+  portability, the `::setvbuf` class); the port template's Zephyr wrapper
+  package; and one marked DEBT — `cpp-port-minimal-publisher/CMakeLists.txt`
+  defaults `NROS_RMW "zenoh"` in the node package, where the bringup should own
+  it.
+- **Acceptance, measured:** green on landing; `use nros_rmw_zenoh as _;`
+  appended to `rust/src/action_client_pkg/src/lib.rs` fails naming the file and
+  `zenoh`; the same token as a `//` comment stays green. The first version
+  failed that second direction — a Rust lifetime (`'a`) read as a char literal
+  swallowed the comment — and the selftest now holds both cases (11 in all).
+  Registered in `just/check/cargo.just` (a fast gate by derivation) and
+  `.config/gate-registry-baseline.txt`; `check-gate-lists`,
+  `check-default-gates-run-somewhere` and `check-gate-selftests` pass.
+
+**Still open:** rule 2 (every `<depend>` resolves) needs the CLI's
+`prereq_resolve::classify` ladder exposed to a fast-line check — a second
+spelling of the ladder is ruled out by this issue — and rule 4 (tracked-set
+completeness of referenced paths). Neither is attempted here.

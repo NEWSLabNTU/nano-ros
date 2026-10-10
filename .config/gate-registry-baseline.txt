@@ -197,6 +197,7 @@ no-tracked-file-find
 no-tracked-models
 no-tracked-workspace-roots
 no-vacuous-tests
+node-package-invariance
 node-std-tests
 nros-installer
 nros-log-riscv32

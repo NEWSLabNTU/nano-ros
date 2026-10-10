@@ -152,6 +152,13 @@ example-cargo-dirs:
 workspace-root-build-files:
     @python3 scripts/check-workspace-root-build-files.py
 
+# issue 1509 (phase-477 W4) — a node package names no platform and no RMW in
+# CODE (comments stripped); the platform seam is the `*_entry` package and the
+# declaration is the bringup. Reads tracked files only (~0.1 s); ratcheted
+# exceptions in `.config/node-package-invariance-baseline.txt`.
+node-package-invariance:
+    @python3 scripts/check-node-package-invariance.py
+
 # issue 1366 (RFC-0098 D9) — the ON-DISK half of the rule above. The root that
 # takes a build down is the one phase-383 W3.a GENERATED: it is gitignored, so
 # the tracked-file gate cannot see it, and it sits in every checkout that ran
