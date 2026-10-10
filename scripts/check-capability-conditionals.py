@@ -79,7 +79,10 @@ except ModuleNotFoundError:  # 3.10 backport, as the sibling gates spell it
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 POLICY_RS = ROOT / "packages/boards/nros-board-common/src/policy.rs"
-ZENOH_PICO = ROOT / "packages/rmw/zenoh/zpico-sys/zenoh-pico"
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+from source_locate import located_or_dest  # noqa: E402 — RFC-0103 D5: the tree is located
+
+ZENOH_PICO = located_or_dest("zenoh-pico")
 PLATFORM_DISPATCH = ZENOH_PICO / "include/zenoh-pico/system/common/platform.h"
 PLATFORM_INCLUDE_ROOT = ZENOH_PICO / "include"
 

@@ -74,19 +74,24 @@ nros_rustdoc_package_args() {
 # 1138 comes back under a different source name. Issue 1116 / phase-452 W4 did
 # exactly that and its three extra rows are below, spliced onto these.
 #
-# Rows are `path|source-name|who-needs-it`.
+# Rows are `marker|source-name|who-needs-it`. The marker is a path INSIDE the
+# `[source.<name>]` tree, which is LOCATED (RFC-0103 D5 — store copy, local edit
+# or checkout), never assumed to be the checkout's submodule.
 NROS_RUSTDOC_SOURCE_REQS=(
-    "packages/rmw/zenoh/zpico-sys/zenoh-pico/include|zenoh-pico|nros-rmw-zenoh -> zpico-sys build script (nros-zpico-build, issue 0390)"
+    "include|zenoh-pico|nros-rmw-zenoh -> zpico-sys build script (nros-zpico-build, issue 0390)"
 )
 
 # Prints one row per REQUIRED source that is absent in this checkout; prints
 # nothing (and succeeds) when every one is present. The rows come in as
 # ARGUMENTS so the two scopes below cannot grow two copies of the loop.
 _nros_rustdoc_missing_from() {
-    local row path
+    local row marker rest name
     for row in "$@"; do
-        path="${row%%|*}"
-        [ -e "$path" ] || printf '%s\n' "$row"
+        marker="${row%%|*}"
+        rest="${row#*|}"
+        name="${rest%%|*}"
+        python3 scripts/lib/source_locate.py "$name" "$marker" >/dev/null \
+            || printf '%s\n' "$row"
     done
 }
 
@@ -134,9 +139,9 @@ nros_rustdoc_workspace_scope_args() {
 # reported skip for no reason at all.
 NROS_RUSTDOC_WORKSPACE_SOURCE_REQS=(
     "${NROS_RUSTDOC_SOURCE_REQS[@]}"
-    "third-party/dds/cyclonedds/CMakeLists.txt|cyclonedds-src|cyclonedds-sys build script (issue 0390)"
-    "packages/rmw/xrce/xrce-sys/micro-xrce-dds-client/CMakeLists.txt|micro-xrce-dds-client|nros-rmw-xrce-cffi build script (vendored_project_version)"
-    "packages/rmw/xrce/xrce-sys/micro-cdr/CMakeLists.txt|micro-cdr|nros-rmw-xrce-cffi build script (vendored_project_version)"
+    "CMakeLists.txt|cyclonedds-src|cyclonedds-sys build script (issue 0390)"
+    "CMakeLists.txt|micro-xrce-dds-client|nros-rmw-xrce-cffi build script (vendored_project_version)"
+    "CMakeLists.txt|micro-cdr|nros-rmw-xrce-cffi build script (vendored_project_version)"
 )
 
 nros_rustdoc_missing_workspace_sources() {

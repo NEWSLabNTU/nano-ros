@@ -194,7 +194,7 @@ run_gate() {
             IFS='|' read -r path name why <<< "$row"
             names+=("$name")
             echo "rustdoc-workspace: NOT VERIFIED — vendored source '$name' is not provisioned here." >&2
-            echo "    expected at: $path" >&2
+            echo "    expected:    $path inside [source.$name] (nros locate --why $name)" >&2
             echo "    needed by:   $why" >&2
         done
         list="$(IFS=','; printf '%s' "${names[*]}")"
