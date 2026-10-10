@@ -146,6 +146,34 @@ worktree with no exported SDK variable; `check-inherited-checkout-paths` has
 nothing left to re-root on the shell side; the gate's negative control
 catches a re-added literal.
 
+**Progress (2026-10-10).** Split by what kind of variable each export is:
+
+- **W2a — first-party dirs (#1861).** The eight dirs a build script compiles
+  from THIS checkout (`NROS_PLATFORM_*`, `NROS_LAN9118_LWIP_DIR`,
+  `NROS_VIRTIO_NET_NETX_DIR`, `NROS_{C,CPP}_INCLUDE`) are no longer exported;
+  every reader already defaulted to the in-repo path.
+- **W2b — board facts.** `FREERTOS_PORT`, `FREERTOS_CONFIG_DIR`,
+  `THREADX_CONFIG_DIR`, `NETX_CONFIG_DIR` are stated by each board's
+  `nros-board.toml` (`force = true`, RFC-0103 D3) and no longer exported; the
+  repo-wide default was one board's answer. Three roads carry them: the
+  generated cargo config (`nros build`), `nros ws board-facts` → Corrosion
+  env (cmake), and `nros ws board-facts` for a cargo leaf with no
+  `system.toml` (test bins, benches), which now DERIVES its board from the one
+  board crate it depends on instead of answering nothing. The generic
+  `nros-board-{freertos,threadx}` crates skip their C compile when no board
+  stated the facts (a workspace-wide `cargo check`), as they already did for an
+  absent submodule. Found on the way: cmake memoised board facts in the CACHE
+  with no freshness input, so a descriptor edit never reached an existing
+  build dir; the memo is now per configure. Measured with every retired
+  export unset: FreeRTOS + ThreadX-linux single-package Rust, workspace Rust,
+  workspace C, and the s32z270 (Cortex-R) workspace C++ row build.
+
+Remaining in W2: the source-tree exports (`FREERTOS_DIR` … `PX4_AUTOPILOT_DIR`,
+`TBAND_DIR`) wait for W3's `[sources]` rung, since their `system.toml`
+`{env:}` readers have no default; `nano_ros_ROOT`/`NROS_REPO_DIR` exports;
+the RISC-V recipe exports in `just/threadx-riscv64.just` (now duplicates of
+its descriptor).
+
 ### W3 -- source trees into the store
 
 - Every `[source.*]` row gains `ref = "<sha>"`; a gate holds gitlink ==

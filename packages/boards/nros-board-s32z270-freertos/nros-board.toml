@@ -31,6 +31,16 @@ rustflags = [
     "-C", "link-arg=--nmagic",
     "-C", "link-arg=--gc-sections",
 ]
+
+[env]
+# phase-484 W2b (RFC-0103 D1/D3) — the board's OWN port and RTOS config dir,
+# stated here and nowhere else. `just/sdk-env.just` used to export one
+# repo-wide default for every board (`GCC/ARM_CM3` + the mps2 config), which
+# two board modules had to write code to refuse. `force`: these are board facts
+# the ambient environment must not replace; an image overrides one through its
+# own `[image.<id>] env` row (the project rung).
+FREERTOS_PORT = { value = "GCC/ARM_CRx_No_GIC", force = true }
+FREERTOS_CONFIG_DIR = { value = "${workspace}/packages/boards/nros-board-s32z270-freertos/config", force = true }
 '''
 
 [board.entry]

@@ -218,6 +218,16 @@ fn resolve_one(
     }
     out.insert("NROS_BOARD".into(), board_name.clone());
 
+    // phase-484 W2b (RFC-0103 D1) — the board's OWN `[env]` facts from its
+    // `cargo_config` (RTOS port, config dirs): the generated cargo config
+    // carries them on the `nros build` road, and this carries the SAME rows on
+    // the cmake road, so a board states them once and both roads deliver them.
+    // Before, the cmake road had only `just/sdk-env.just`'s one repo-wide
+    // export, which was the right answer for exactly one board.
+    for (key, value) in descriptor_env_rows(descriptor, nano_ros_root) {
+        out.entry(key).or_insert(value);
+    }
+
     // phase-400 W6 — the board's PLATFORM, by name.
     //
     // `nros-node` deliberately has no `platform-*` cargo feature (phase-248 C2:
@@ -285,6 +295,34 @@ fn env_key(name: &str) -> String {
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
         .collect::<String>()
         .to_ascii_uppercase()
+}
+
+/// The `[env]` rows of a board descriptor's `cargo_config`, `${workspace}`
+/// resolved. A row is a string or `{ value = "…", … }`; `force`/`relative` are
+/// cargo-config spellings and mean nothing to a process environment.
+fn descriptor_env_rows(
+    descriptor: &BoardDescriptor,
+    nano_ros_root: &Path,
+) -> Vec<(String, String)> {
+    let Some(text) = descriptor.cargo_config_rendered(nano_ros_root) else {
+        return Vec::new();
+    };
+    let Ok(doc) = text.parse::<toml::Table>() else {
+        return Vec::new();
+    };
+    let Some(env) = doc.get("env").and_then(toml::Value::as_table) else {
+        return Vec::new();
+    };
+    env.iter()
+        .filter_map(|(k, v)| {
+            let value = match v {
+                toml::Value::String(s) => s.clone(),
+                toml::Value::Table(t) => t.get("value")?.as_str()?.to_string(),
+                _ => return None,
+            };
+            Some((k.clone(), value))
+        })
+        .collect()
 }
 
 /// Descriptor for a `[deploy.*].board` value — the catalog's ONE rule.
@@ -479,17 +517,95 @@ pub fn run(args: BoardFactsArgs) -> Result<()> {
     let root = crate::orchestration::nano_ros_root::resolve(args.nano_ros_path, &ws)
         .ok_or_else(|| eyre!("{}", crate::orchestration::nano_ros_root::not_found_help()))?;
 
-    let facts = resolve(
-        &ws,
-        &root,
-        args.deploy.as_deref(),
-        args.board.as_deref(),
-        &|k| std::env::var(k).ok(),
-    )?;
+    let has_system = ws.join("system.toml").is_file()
+        || std::fs::read_dir(ws.join("src"))
+            .is_ok_and(|d| d.flatten().any(|e| e.path().join("system.toml").is_file()));
+    let facts = if has_system {
+        resolve(
+            &ws,
+            &root,
+            args.deploy.as_deref(),
+            args.board.as_deref(),
+            &|k| std::env::var(k).ok(),
+        )?
+    } else {
+        // phase-484 W2b (RFC-0103 D1) — a leaf with no `system.toml` (a test
+        // bin, a bench) still names its board: it depends on exactly one board
+        // crate, and every descriptor records its `board_crate`. Derive the
+        // board from that rather than ask the leaf to author it twice, and
+        // answer with the descriptor's facts alone (there is no site block).
+        let board = match args.board.clone() {
+            Some(b) => b,
+            None => board_of_cargo_leaf(&ws, &root)?,
+        };
+        resolve_one(
+            &ws.join("Cargo.toml").display().to_string(),
+            &root,
+            &board,
+            &board,
+            &BTreeMap::new(),
+            &|k| std::env::var(k).ok(),
+        )?
+    };
     for (k, v) in facts {
         println!("{k}={v}");
     }
     Ok(())
+}
+
+/// The board a `system.toml`-less cargo leaf builds for: the one board
+/// descriptor whose `board_crate` the leaf's `Cargo.toml` depends on.
+fn board_of_cargo_leaf(ws: &Path, root: &Path) -> Result<String> {
+    let manifest = ws.join("Cargo.toml");
+    let raw = std::fs::read_to_string(&manifest).map_err(|e| {
+        eyre!(
+            "no system.toml at {} and no Cargo.toml either: {e}",
+            ws.display()
+        )
+    })?;
+    let doc: toml::Table =
+        toml::from_str(&raw).map_err(|e| eyre!("{}: {e}", manifest.display()))?;
+    let deps: Vec<&str> = ["dependencies", "build-dependencies"]
+        .iter()
+        .filter_map(|t| doc.get(*t).and_then(toml::Value::as_table))
+        .flat_map(|t| t.keys().map(String::as_str))
+        .collect();
+    let catalog = BoardCatalog::load(root)
+        .map_err(|e| eyre!("board catalog under {}: {e}", root.display()))?;
+    let hits: Vec<&BoardDescriptor> = catalog
+        .descriptors()
+        .iter()
+        .filter(|d| d.board_crate.as_deref().is_some_and(|c| deps.contains(&c)))
+        .collect();
+    match hits.as_slice() {
+        // The first of its names that resolves back to THIS descriptor — a
+        // short alias (`threadx`) can be claimed by another board too.
+        [one] => one
+            .names
+            .iter()
+            .find(|n| resolve_board(&catalog, n).is_some_and(|d| same_board(d, one)))
+            .cloned()
+            .ok_or_else(|| {
+                eyre!(
+                    "no name of the board descriptor for `{:?}` resolves to it",
+                    one.board_crate
+                )
+            }),
+        [] => Err(eyre!(
+            "no system.toml at {} and its Cargo.toml depends on no board crate a \
+             descriptor claims — pass --board",
+            ws.display()
+        )),
+        many => Err(eyre!(
+            "{}: depends on {} board crates ({}) — pass --board",
+            manifest.display(),
+            many.len(),
+            many.iter()
+                .filter_map(|d| d.board_crate.as_deref())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )),
+    }
 }
 
 /// Directories in `ws` that CONTAIN platform packages.
@@ -540,6 +656,42 @@ fn workspace_platform_roots(ws: &Path) -> Vec<std::path::PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// phase-484 W2b — a board's own `[env]` facts reach every road through
+    /// this verb, and a `system.toml`-less cargo leaf is attributed to the one
+    /// board crate it depends on.
+    #[test]
+    fn a_cargo_leaf_gets_its_boards_descriptor_env_rows() {
+        let root = repo_root();
+        let leaf = tempfile::tempdir().unwrap();
+        std::fs::write(
+            leaf.path().join("Cargo.toml"),
+            "[package]\nname = \"x\"\n[dependencies]\nnros-board-mps2-an385-freertos = \"*\"\n",
+        )
+        .unwrap();
+        let board = board_of_cargo_leaf(leaf.path(), &root).expect("attributed");
+        let facts = resolve_one("t", &root, &board, &board, &BTreeMap::new(), &|_| None).unwrap();
+        assert_eq!(
+            facts.get("FREERTOS_PORT").map(String::as_str),
+            Some("GCC/ARM_CM3")
+        );
+        assert!(
+            facts
+                .get("FREERTOS_CONFIG_DIR")
+                .is_some_and(|d| d.ends_with("nros-board-mps2-an385-freertos/config")),
+            "{facts:?}"
+        );
+    }
+
+    #[test]
+    fn a_cargo_leaf_on_no_board_crate_is_refused_not_guessed() {
+        let leaf = tempfile::tempdir().unwrap();
+        std::fs::write(leaf.path().join("Cargo.toml"), "[package]\nname = \"x\"\n").unwrap();
+        let e = board_of_cargo_leaf(leaf.path(), &repo_root())
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("pass --board"), "{e}");
+    }
 
     fn ws_with(system: &str) -> tempfile::TempDir {
         let d = tempfile::tempdir().unwrap();
