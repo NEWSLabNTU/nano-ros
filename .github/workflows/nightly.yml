@@ -1210,6 +1210,11 @@ jobs:
         run: ./scripts/ci/runner-sweep.sh || true
 
   coverage-matrix-nightly:
+    # issue 1790 — `report-interlock-coverage.sh` reads the gated job's
+    # step record when the job left no stage label (a lost runner).
+    permissions:
+      contents: read
+      actions: read
     name: coverage report (did tier 2 nightly run?)
     needs: [matrix-nightly]
     if: always()
@@ -1217,4 +1222,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Report whether the interlocked lane ran
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: ./scripts/ci/report-interlock-coverage.sh "tier 2 nightly (pairwise cover)" "${{ needs.matrix-nightly.result }}" "${{ vars.NROS_SELF_HOSTED_READY }}"

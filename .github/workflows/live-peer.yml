@@ -667,10 +667,12 @@ jobs:
   # nobody reads until something is already wrong.
   #
   # `if: always()` and `needs`, so it reports on a failure and a skip alike;
-  # `|| 'DID NOT START'` covers the run where `regression` produces no outputs
-  # at all, which is neither a verdict nor a lane failure.
+  # No outputs at all has TWO causes (issue 1790): the job was SKIPPED (it
+  # never started — `DID NOT START`), or it started and lost its runner before
+  # its own `if: always()` reporter ran. Only `result == 'skipped'` tells them
+  # apart; the old bare `|| 'DID NOT START'` named a lost runner as a skip.
   stage:
-    name: "live-peer host — ${{ needs.regression.outputs.stage_label || 'DID NOT START' }}"
+    name: "live-peer host — ${{ needs.regression.outputs.stage_label || (needs.regression.result == 'skipped' && 'DID NOT START') || 'NO VERDICT: the job ended before it reported' }}"
     needs: [regression]
     if: always()
     runs-on: ubuntu-22.04
@@ -680,7 +682,7 @@ jobs:
       # label carrying a quote would be a shell injection rather than a string.
       - name: Say in the run list what the log would have to be opened for
         env:
-          LABEL: ${{ needs.regression.outputs.stage_label || 'DID NOT START' }}
+          LABEL: "${{ needs.regression.outputs.stage_label || (needs.regression.result == 'skipped' && 'DID NOT START') || 'NO VERDICT: the job ended before it reported' }}"
           REACHED: ${{ needs.regression.outputs.reached_cells }}
         run: |
           label="$LABEL"
@@ -703,7 +705,7 @@ jobs:
   # non-verdicts happened: the split could not be computed, there was nothing to
   # run, or the job was to run and never started.
   stage-board:
-    name: "live-peer board — ${{ needs.board.outputs.stage_label || (needs.membership.result != 'success' && 'NO VERDICT: could not split the ledger by runner') || (needs.membership.outputs.has_board == 'true' && 'DID NOT START') || 'no cell on a board has a recorded PASS' }}"
+    name: "live-peer board — ${{ needs.board.outputs.stage_label || (needs.membership.result != 'success' && 'NO VERDICT: could not split the ledger by runner') || (needs.membership.outputs.has_board == 'true' && needs.board.result == 'skipped' && 'DID NOT START') || (needs.membership.outputs.has_board == 'true' && 'NO VERDICT: the job ended before it reported') || 'no cell on a board has a recorded PASS' }}"
     needs: [membership, board]
     if: always()
     runs-on: ubuntu-22.04
@@ -715,6 +717,7 @@ jobs:
           HAS_BOARD: ${{ needs.membership.outputs.has_board }}
           CELLS: ${{ needs.membership.outputs.board_cells }}
           SPLIT: ${{ needs.membership.result }}
+          BOARD_RESULT: ${{ needs.board.result }}
         run: |
           label="$LABEL"
           reached="$REACHED"
@@ -729,7 +732,13 @@ jobs:
               echo "coverage, not a green: see phase-441 W1-W3."
               exit 0
           fi
-          echo "live-peer regression (board): ${label:-DID NOT START}"
+          if [ -z "$label" ]; then
+              # issue 1790 — empty means the job never started only if it was
+              # SKIPPED; a job that started and lost its runner reports nothing too.
+              if [ "$BOARD_RESULT" = "skipped" ]; then label="DID NOT START"
+              else label="NO VERDICT: the job ended before it reported"; fi
+          fi
+          echo "live-peer regression (board): $label"
           echo "  rows: $CELLS"
           if [ "$reached" != "true" ]; then
               echo ""

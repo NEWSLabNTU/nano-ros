@@ -48,8 +48,21 @@
 # wording, which is correct for a caller that cannot compute one — the same
 # "reported skip rather than a false claim" shape as issue 1043.
 #
+# A LOST RUNNER LEAVES NO STAGE — issue 1790
+#
+# The stage label comes from a step INSIDE the lane job, so a job whose runner
+# went away mid-step (stopped, crashed, lost its network) never writes one.
+# An empty label on a `failure`/`cancelled` result then read as "RAN and
+# FAILED" — run 37893868358's tier 1 built for 68 minutes, entered its cells,
+# lost its runner, and was reported as a code failure here and as `DID NOT
+# START` in the job name. GitHub still has the job's step record (the step it
+# died in is `in_progress` in a completed job), so when there is no label this
+# asks `lane-stage.py --job-label`, the same classifier `--history` uses. It
+# needs `GH_TOKEN` and `actions: read`; without them the old wording stays.
+#
 # Usage:
 #   report-interlock-coverage.sh <lane-name> <needs-result> <interlock-value> [<stage-label>]
+#   <lane-name> is the gated job's NAME, which is how its steps are looked up.
 set -uo pipefail
 
 lane="${1:?lane name}"
@@ -58,6 +71,13 @@ interlock="${3-}"
 stage="${4-}"
 
 summary="${GITHUB_STEP_SUMMARY:-/dev/null}"
+
+if [ -z "$stage" ] && { [ "$result" = failure ] || [ "$result" = cancelled ]; } \
+        && [ -n "${GH_TOKEN:-}" ] && [ -n "${GITHUB_RUN_ID:-}" ]; then
+    here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    stage="$(python3 "$here/lane-stage.py" --job-label --lane "$lane" \
+        --run "$GITHUB_RUN_ID" 2>/dev/null | tail -n 1)" || stage=""
+fi
 
 case "$result" in
     success)
@@ -69,6 +89,15 @@ case "$result" in
         # The gated job already reddens the run; say which lane, then let its
         # own verdict stand rather than double-reporting.
         case "$stage" in
+            *"runner lost"*|*"ended before it reported"*)
+                echo "$lane: $stage" >&2
+                echo "" >&2
+                echo "  The job's runner went away mid-step, so the lane produced no" >&2
+                echo "  verdict — whatever it had started (possibly its cells) did not" >&2
+                echo "  finish. Re-run it; this red is about the runner. Issue 1790." >&2
+                printf '### %s: %s ❌\n\n' "$lane" "$stage" >> "$summary"
+                printf 'The red above is about the RUNNER, not about the code — the job was cut off mid-step.\n' >> "$summary"
+                ;;
             *"NO VERDICT"*)
                 echo "$lane: $stage" >&2
                 echo "" >&2
@@ -90,6 +119,11 @@ case "$result" in
         exit 0
         ;;
     cancelled)
+        if [ -n "$stage" ]; then
+            echo "$lane: $stage" >&2
+            printf '### %s: %s\n' "$lane" "$stage" >> "$summary"
+            exit 0
+        fi
         echo "$lane: cancelled."
         printf '### %s: cancelled\n' "$lane" >> "$summary"
         exit 0

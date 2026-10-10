@@ -193,6 +193,11 @@ jobs:
   #
   # `if: always()` so it reports on a skip; `needs` so it sees the result.
   coverage:
+    # issue 1790 — `report-interlock-coverage.sh` reads the gated job's
+    # step record when the job left no stage label (a lost runner).
+    permissions:
+      contents: read
+      actions: read
     name: coverage report (did L3 run?)
     needs: [l3]
     if: always()
@@ -200,4 +205,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Report whether the interlocked lane ran
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: ./scripts/ci/report-interlock-coverage.sh "L3 (cross build + link)" "${{ needs.l3.result }}" "${{ vars.NROS_SELF_HOSTED_READY }}"
