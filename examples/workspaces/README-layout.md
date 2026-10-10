@@ -40,12 +40,12 @@ for the rest of Rust, W5.b3 for six C/C++ images. Each one still hand-written is
 blocked by something other than the generator, recorded in issue 1288. **Recount
 with the commands below rather than reading a number here.**
 
-Two C/C++ packages are deliberately NOT migrated, and both reasons are about
-the generated application's ADDRESS rather than its content. `realtime-c`'s one
-package serves an `[image.zephyr]` in two bringups, and the generated directory
-is keyed on `coordinate(platform, image)` — (platform, rmw), not the bringup —
-so both images resolve to one path and the second write wins (measured,
-phase-470 W5.b3). `realtime-cpp/src/fvp_entry` states its own board through
+`realtime-c` was the second C/C++ package left hand-written: its one
+`zephyr_entry` served an `[image.zephyr]` in two bringups, and the generated
+application is addressed by image id, so both resolved to one path (measured,
+phase-470 W5.b3). Phase-477 W1 gave the SMP bringup its own image id
+(`zephyr_smp`) and then generated both. The one C/C++ package still
+hand-written is `realtime-cpp/src/fvp_entry`, which states its own board through
 `nano_ros_use_board(fvp-aemv8r-smp)` and needs a Zephyr 3.7 workspace plus the
 Arm FVP to build, and acceptance for a migration here is a build.
 

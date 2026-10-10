@@ -72,6 +72,12 @@ its own id and the board its row really builds (`nros build` now runs `-b
 qemu_cortex_a53/qemu_cortex_a53/smp` and links an SMP image). Migrating the
 shared hand-written `zephyr_entry` is the remaining step.
 
+**Status 2026-10-11 (realtime-c):** migrated — both images' west applications
+are generated and `src/zephyr_entry` is deleted; merged `.config` identical to
+the hand-written baseline for both, and the `zephyr/c` realtime and SMP
+core-pin cells run green. W1's only remaining entry is `fvp_entry` (another
+session).
+
 Also in this theme: [1289](../issues/1289-workspace-node-tables-still-in-manifests.md)
 (45 node packages still declare their class in `[package.metadata.nros.node]`),
 [1520](../issues/1520-ambiguity-example-cited-everywhere-was-the-manufactured-one.md)

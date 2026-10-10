@@ -489,6 +489,11 @@ cross-check that fails the configure on a mismatch) and
 `rust/src/zephyr_entry_robot1`, was deleted on main by issue 1288 while W3 was
 in review: that entry is now generated, so it states its image like every other
 generated one.
+`realtime-c/src/zephyr_entry` followed (phase-477 W1, issue 1288): its two
+images now have their own ids (`zephyr`, `zephyr_smp`), so each gets a
+generated application that states its image, and the board-string switch above
+went with the deleted package. `realtime-cpp/src/fvp_entry` is the one
+hand-written application left.
 
 **The standalone Rust sizing reader takes the image.** `nros ws
 west-leaf-sizing` read the leaf's DEFAULT image, so an XRCE or Cyclone Rust

@@ -262,10 +262,12 @@ src/demo_bringup/boards/native_sim_native_64/
 
 That directory is what `[image.<id>] board` selects, and switching boards
 selects a different one rather than editing a package. Every Zephyr image in
-`examples/workspaces/{rust,c,cpp,mixed,derived-tiers-cpp,realtime-cpp}` is
-built this way; `realtime-c` still carries a hand-written `src/zephyr_entry`,
-because its one package serves an `[image.zephyr]` in *two* bringups and the
-generated directory is keyed on (platform, RMW) alone.
+`examples/workspaces/{rust,c,cpp,mixed,derived-tiers-cpp,realtime-c,realtime-cpp}`
+is built this way. `realtime-c` shows the two-bringup case: `demo_bringup`
+declares `[image.zephyr]` (native_sim) and `smp_bringup` declares
+`[image.zephyr_smp]` (`qemu-cortex-a53`), so each image names its own bringup
+and gets its own generated application and its own `boards/<board>/`
+directory.
 
 For a Rust workspace whose image needs a hand-written application after all —
 Kconfig `nros build` cannot express, a `nano_ros_use_board()` preamble — the
