@@ -618,9 +618,19 @@ pub(crate) const CPP_EXECUTOR_BACKING_U64S: usize = nros_node::ExecutorSizing::D
 /// phase-271 — `backing` is the executor's per-entry storage, carved in place by
 /// `nros_cpp_init`. `executor` borrows it (a self-borrow within this struct);
 /// sound because the buffer is pinned (caller-owned, initialised in place, only
-/// reached through a stable `*mut CppContext`, never moved). Keep `backing` last
-/// so `executor` stays at offset 0 for the `*mut c_void as *mut CppContext` casts.
+/// reached through a stable `*mut CppContext`, never moved).
+///
+/// Issue 1535 — `repr(C)`, so the layout is a CONTRACT rather than whatever
+/// rustc picked. The `tag` sits at offset 0 (asserted below), which is what lets
+/// a reader that only knows the handle is a `void*` — this crate's
+/// [`cpp_ctx_checked`] AND `nros::executor_handle::check_executor_handle` —
+/// tell a context from a bare `Executor`. The executor is therefore NOT at
+/// offset 0, and nothing may cast this handle to one: a Rust component install
+/// takes `nros_cpp_executor_inner(handle)`. Before this was `repr(C)` the
+/// generated C++ entry DID cast it, and it worked exactly as long as rustc put
+/// `executor` first — the mixed Zephyr image is the layout where it did not.
 #[cfg(feature = "rmw-cffi")]
+#[repr(C)]
 pub(crate) struct CppContext {
     /// Issue 0436 — handle type tag, FIRST so it can be read before the struct is
     /// trusted. `nros_cpp_init`/`_init_multi` stamp it; every entry point that
@@ -721,8 +731,40 @@ impl Drop for DispatchGuard<'_> {
 
 /// Issue 0436 — marks a buffer as an nros-cpp executor context. Value is
 /// arbitrary but must not be a plausible pointer or small integer.
+///
+/// Issue 1535 — defined in `nros`, because the Rust install seam there reads it
+/// too (to refuse a context handed over where an `Executor` belongs).
 #[cfg(feature = "rmw-cffi")]
-pub(crate) const CPP_CONTEXT_TAG: u64 = 0x6E52_4F53_4350_5001; // "nROSCP\x50\x01"
+pub(crate) const CPP_CONTEXT_TAG: u64 = nros::executor_handle::CPP_CONTEXT_TAG;
+
+// Issue 1535 — the tag is the FIRST word of a context, so a reader holding only
+// a `void*` can classify it. `repr(C)` makes this true; the assert keeps it true.
+#[cfg(feature = "rmw-cffi")]
+const _: () = assert!(core::mem::offset_of!(CppContext, tag) == 0);
+
+/// Issue 1535 — the `Executor` inside an nros-cpp executor handle, for a seam
+/// that takes a BARE `*mut Executor<'static>`: a Rust component's
+/// `__nros_component_<pkg>_install(node, executor, self)`.
+///
+/// `rclcpp::global_handle()` and every tier's `executor` are `CppContext`s, and
+/// the executor sits behind the tag word, so passing the handle itself hands
+/// the Rust side a pointer eight bytes short of the executor. The generated
+/// C++ entry calls this before every Rust install; the install refuses an
+/// unwrapped context (`-4`).
+///
+/// Returns NULL for a null handle or a buffer that is not a live context.
+///
+/// # Safety
+/// `handle` must be null or point to a readable 8-byte-aligned allocation (see
+/// [`cpp_ctx_checked`]).
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_inner(handle: *mut c_void) -> *mut c_void {
+    match unsafe { cpp_ctx_checked(handle) } {
+        Some(ctx) => core::ptr::addr_of_mut!(ctx.executor).cast(),
+        None => core::ptr::null_mut(),
+    }
+}
 
 /// Issue 0436 — validate a caller-supplied executor handle before treating it as a
 /// [`CppContext`]. Returns `None` for null or for a buffer this crate did not

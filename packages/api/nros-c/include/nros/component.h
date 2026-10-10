@@ -43,7 +43,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "nros/types.h" /* nros_ret_t */
+#include "nros/types.h"                /* nros_ret_t */
+#include "nros/serialization_format.h" /* NROS_STATIC_ASSERT (issue 1535) */
 /* phase-454 W10 — `NROS_ASSERT_DECLARED_DEPTH`, for a C component that states a
  * QoS depth on a `nros_cpp_subscription_register()` call. The C component
  * surface is where a C node writes its subscriptions, so the check has to be
@@ -335,6 +336,19 @@ int32_t nros_cpp_subscription_register_validated(const nros_cpp_node_t* node, co
     NROS_C_STORAGE_SIZE_REFUSED_NO_PER_BUILD_nros_cpp_config_generated_h
 #endif
 #endif
+/* Issue 1535 — and the size is CHECKED, not just derived. The mixed Zephyr
+ * image SEGVed on its first publish because this buffer was the literal 560:
+ * the 640-byte write ran past the talker's 568-byte instance into the Rust
+ * heartbeat's slot store, the heartbeat's install then zeroed it, and the
+ * publisher's vtable reference (at offset 616) read back as NULL. The formula
+ * above cannot be short, but the macro is still `#ifndef`-overridable and a
+ * literal is one edit away; either now fails to COMPILE wherever the per-build
+ * size is known. */
+#ifdef NROS_PUBLISHER_SIZE
+NROS_STATIC_ASSERT(NROS_C_PUBLISHER_STORAGE_SIZE >= NROS_PUBLISHER_SIZE + sizeof(void*),
+                   "NROS_C_PUBLISHER_STORAGE_SIZE is smaller than the CppPublisher "
+                   "nros_cpp_publisher_create writes (issues 1535/1566)");
+#endif
 
 /** Create a publisher into the component-owned `storage`, then publish CDR bytes
  *  with `nros_cpp_publish_raw`. C-ABI symbols from nros-cpp. */
@@ -377,6 +391,12 @@ int32_t nros_cpp_service_server_register(const nros_cpp_node_t* node, const char
     NROS_C_STORAGE_SIZE_REFUSED_NO_PER_BUILD_nros_cpp_config_generated_h
 #endif
 #endif
+/* Issue 1535 — checked like the publisher's, against an override. */
+#ifdef NROS_CPP_ACTION_SERVER_STORAGE_SIZE
+NROS_STATIC_ASSERT(NROS_C_ACTION_SERVER_STORAGE_SIZE >= NROS_CPP_ACTION_SERVER_STORAGE_SIZE,
+                   "NROS_C_ACTION_SERVER_STORAGE_SIZE is smaller than what "
+                   "nros_cpp_action_server_register writes (issue 1535)");
+#endif
 /* `nros_cpp_service_client_create` writes an `RmwServiceClient`, which is
  * `NROS_SERVICE_CLIENT_SIZE` (the C++ `PollingServiceClient` buffer's size). */
 #ifndef NROS_C_SERVICE_CLIENT_STORAGE_SIZE
@@ -386,6 +406,11 @@ int32_t nros_cpp_service_server_register(const nros_cpp_node_t* node, const char
 #define NROS_C_SERVICE_CLIENT_STORAGE_SIZE                                                         \
     NROS_C_STORAGE_SIZE_REFUSED_NO_PER_BUILD_nros_cpp_config_generated_h
 #endif
+#endif
+#ifdef NROS_SERVICE_CLIENT_SIZE
+NROS_STATIC_ASSERT(NROS_C_SERVICE_CLIENT_STORAGE_SIZE >= NROS_SERVICE_CLIENT_SIZE,
+                   "NROS_C_SERVICE_CLIENT_STORAGE_SIZE is smaller than what "
+                   "nros_cpp_service_client_create writes (issue 1535)");
 #endif
 
 /** GoalResponse discriminant returned from the goal callback. */
@@ -466,6 +491,11 @@ int32_t nros_cpp_service_client_take_response(void* storage, uint8_t* resp_data,
 #define NROS_C_ACTION_CLIENT_STORAGE_SIZE                                                          \
     NROS_C_STORAGE_SIZE_REFUSED_NO_PER_BUILD_nros_cpp_config_generated_h
 #endif
+#endif
+#ifdef NROS_CPP_ACTION_CLIENT_STORAGE_SIZE
+NROS_STATIC_ASSERT(NROS_C_ACTION_CLIENT_STORAGE_SIZE >= NROS_CPP_ACTION_CLIENT_STORAGE_SIZE,
+                   "NROS_C_ACTION_CLIENT_STORAGE_SIZE is smaller than what "
+                   "nros_cpp_action_client_create writes (issue 1535)");
 #endif
 
 int32_t nros_cpp_action_client_create(const nros_cpp_node_t* node, const char* action_name,

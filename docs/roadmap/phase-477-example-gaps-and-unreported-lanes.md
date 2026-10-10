@@ -178,11 +178,27 @@ first.
 
 ### W7 — a runtime bug the migration exposed
 
-Issue [1535](../issues/1535-mixed-zephyr-entry-segv-in-cffi-publisher-vtable.md) — the
+Issue [1535](../issues/archived/1535-mixed-zephyr-entry-segv-in-cffi-publisher-vtable.md) — the
 `mixed` Zephyr image SEGVs on its first publish
 (`CffiPublisher::poll_status_events` reads an unusable vtable). Pre-existing: the
 hand-written image did the same, and the generated one reproduces it byte for
 byte.
+
+**Status (2026-10-10): fix in a draft PR, not yet merged.** The cause was issue 1566's 560-byte C
+publisher buffer. The 640-byte write ran into the Rust heartbeat's slot store,
+the heartbeat's install zeroed it, and the publisher's vtable read back as
+NULL. Putting that literal back at `85ae1d156` reproduces the backtrace exactly.
+1566/1568 had already fixed it before the issue was filed, and on `main` the
+image publishes and receives. What this change adds: `component.h` now asserts
+all four C storage sizes against the per-build header, so a short buffer fails
+to compile, with an expected-failure probe in `just check c`. It also fixes
+[1787](../issues/archived/1787-cpp-entry-hands-rust-install-a-context-not-an-executor.md),
+a second latent corruption on the same path: the C++ entry handed the Rust
+install an nros-cpp context, not an executor.
+
+**Status 2026-10-11:** done — issue 1535 resolved (PR #1891). `just ci gate`
+6/6 and the `zephyr/mixed/entry_pubsub` cell green on the rebased tree. The
+probe gap found on the way is issue 1794.
 
 ## Out of scope, with where they belong
 
@@ -305,8 +321,8 @@ first-prefix), #1862 (arm-fvp libatomic), #1868 (runner name required).
   fixes a second defect it files there (the C++ entry handed Rust the nros-cpp context instead of
   its executor). Remaining: `just ci gate` steps 4–6 and a re-run of the
   `entry_e2e zephyr/mixed/entry_pubsub` cell; if green, archive 1535, ready,
-  arm. Unfiled: the mixed Zephyr fixture's probe reports "DEGRADED … examined
-  0 input(s)".
+  arm. The mixed Zephyr fixture's probe reports "DEGRADED … examined
+  0 input(s)" — filed 2026-10-11 as issue 1794.
 
 **Still open in this phase:** 1509 rules 2 and 4; W1 `fvp_entry` (another
 session, `fix/477-fvp-lane`); 1512's runtime lane (entry locator bake).
