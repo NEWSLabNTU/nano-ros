@@ -170,3 +170,14 @@ node-ref-fresh-mint:
 [private]
 retired-store-vars:
     @python3 scripts/check/check-retired-store-vars.py
+
+# phase-484 W3 (RFC-0103 D5) — every `[source.*]` row that names a `submodule`
+# states its pin (`git` + `ref`), so the pin can be read without a checkout: an
+# installed SDK root clones from it, and the store keys a tree by its sha. Issue
+# 0602 removed those keys once because nothing compared them with git; this
+# holds `ref` == the staged gitlink and `git` == the `.gitmodules` URL. A
+# submodule bump runs `python3 scripts/check/check-source-refs.py --write`.
+# Buildless, ~0.1 s; self-tests its row rewriter on each run.
+[private]
+source-refs:
+    @python3 scripts/check/check-source-refs.py

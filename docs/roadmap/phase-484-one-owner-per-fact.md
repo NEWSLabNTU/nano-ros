@@ -193,6 +193,20 @@ its descriptor).
 - Board-owned config dirs (`THREADX_CONFIG_DIR` for the RISC-V board) become
   board-relative descriptor paths; `force = true` is removed.
 
+**W3a — the pin has one owner.** All 14 submodule
+rows state `git` + `ref`, written by `check-source-refs.py --write` from
+`.gitmodules` and the staged gitlink, and the gate `check-source-refs` (fast
+line) refuses any disagreement — the comparison issue 0602 lacked when it
+removed these keys. `SdkIndex::validate` and `verify-index.py` require both on
+a submodule row. An installed SDK root reads its pins from its OWN index copy
+(`sdk_store::recorded_pin`, behind a `.git` absence test, version-locked to the
+release rather than to a fetched index); `stage-sdk-root.sh` no longer writes
+`nros-submodule-pins.toml` and instead runs `check-source-refs.py --rev HEAD`
+on the commit it stages; `nros-rmw-provision.cmake` recognises an installed
+root by the same absence. `check-release-manifest` R6 holds the three together
+and refuses the pins file's return. Cost: a submodule bump is now a two-line
+change, and the gate prints the one command that makes it.
+
 **Acceptance:** an agent worktree with NO submodule initialized builds tier 1
 from the store; editing a zenoh-pico submodule commit makes the next build use
 and announce the checkout; an installed (no-checkout) project builds a
