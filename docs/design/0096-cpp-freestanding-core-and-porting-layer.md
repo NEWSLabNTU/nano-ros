@@ -720,6 +720,14 @@ has to be in the struct because rclc's order is init first and
 The callback and its context are NOT kept: they are arguments of the
 registration call, as in rclc, and the arena entry owns them.
 
+**The client's response callback lives in the arena entry too.** It was the
+one entity whose arena entry dispatched through a trampoline that read the
+callback back out of the C struct, so a reply landing after
+`nros_client_fini` read freed or stack memory (issue 1631). The entry holds
+the user's pair now; `nros_client_set_response_callback` writes it there, which
+makes "added first" part of that setter's contract, and `nros_client_call`
+swaps its one-shot capture in and out of the same slot.
+
 **Polled forms are separate types (shape 1 of phase-487 W1).** A polled entity
 has no arena slot, so it needs its storage, and one type holding both meant
 every dispatched entity carried the polled form's storage unused. So each
@@ -733,11 +741,14 @@ amendment removes.
 | entity | C struct after phase-487 | polled form |
 | --- | --- | --- |
 | subscription | handle + description (W1) | `nros_polling_subscription_t` |
+| service server | handle + description (W2) | `nros_polling_service_t` |
+| service client | handle + description + call timeout (W2) | `nros_polling_client_t` |
 | publisher | caller storage, unchanged: nothing dispatches it | — |
 
-Measured (sizeof, the shipped host feature set and thumbv7m): a dispatched
-`nros_subscription_t` went from 2 536 to 744 bytes on x86_64 and from 2 368 to
-700 on Cortex-M3. The executor arena does NOT grow by the difference: on the
+Measured (sizeof, the shipped host feature set and thumbv7m), x86_64 /
+Cortex-M3: `nros_subscription_t` 2 536 / 2 368 → 744 / 700 bytes,
+`nros_service_t` 2 368 / 2 312 → 736 / 700, `nros_client_t` 2 376 / 2 312 →
+744 / 704. The executor arena does NOT grow by the difference: on the
 dispatched road the arena already held the subscriber, so the struct's
 `_opaque` was a second, unused copy, not storage being moved.
 

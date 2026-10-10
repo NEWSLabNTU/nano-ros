@@ -24,8 +24,10 @@
 #include "nros/service.h"
 
 /* The live entry point, under the name the ROS client libraries use. */
-static nros_ret_t (*const k_send_response_raw)(struct nros_service_t*, int64_t, const uint8_t*,
-                                               size_t) = nros_service_send_response_raw;
+/* phase-487 W2: on the polled type, the only one with a server to reply from. */
+static nros_ret_t (*const k_send_response_raw)(struct nros_polling_service_t*, int64_t,
+                                               const uint8_t*,
+                                               size_t) = nros_polling_service_send_response_raw;
 
 /* Reference it so no compiler prunes the lookup this file exists to force. */
 const void* nros_service_reply_entry_point_anchors[] = {

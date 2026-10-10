@@ -64,9 +64,11 @@ static nros_ret_t install_swapped_handler(void) {
 static fingerprint_corpus_srv_probe_client_handler_t g_wrong_block;
 static struct nros_service_t g_service;
 
-static nros_ret_t bring_up_with_client_block(const struct nros_node_t* node) {
-    /* Expected: incompatible pointer type, naming both handler structs. */
-    return fingerprint_corpus_srv_probe_service_init(&g_service, node, "/add", &g_wrong_block);
+static nros_ret_t bring_up_with_client_block(struct nros_executor_t* executor) {
+    /* Expected: incompatible pointer type, naming both handler structs. Since
+     * phase-487 W2 the handler is bound at registration, so this is the call
+     * that takes it. */
+    return fingerprint_corpus_srv_probe_executor_add_service(executor, &g_service, &g_wrong_block);
 }
 
 const void* nros_typed_service_mismatch_anchors[] = {

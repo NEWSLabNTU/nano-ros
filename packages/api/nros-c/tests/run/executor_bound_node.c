@@ -13,7 +13,7 @@
  * legacy arm of `resolve_session_and_domain` had nothing to read and answered
  * `None`. Every C entity created EAGERLY rather than at registration —
  * `rclc_publisher_init_default` and its QoS/options siblings, the polling
- * subscription, `nros_service_init_polling`, `nros_client_init_polling` —
+ * subscription, `nros_polling_service_init`, `nros_polling_client_init` —
  * therefore failed `NROS_RET_NOT_INIT` on the primary node, BEFORE reaching the
  * backend at all.
  *
@@ -140,16 +140,16 @@ static void eager_creates(const nros_node_t* node, const char* label, const char
              "%s: polling subscription reached the backend under its RESOLVED name", label);
     CHECK_STR(nros_stub_rmw_last_entity_name(), expected_topic, msg);
 
-    nros_service_t service = rcl_get_zero_initialized_service();
+    nros_polling_service_t service = nros_get_zero_initialized_polling_service();
     nros_stub_rmw_clear_last_entity_name();
-    out->service = nros_service_init_polling(&service, node, &SRV_TYPE, "add");
+    out->service = nros_polling_service_init(&service, node, &SRV_TYPE, "add");
     snprintf(msg, sizeof(msg), "%s: polling service reached the backend under its RESOLVED name",
              label);
     CHECK_STR(nros_stub_rmw_last_entity_name(), expected_service, msg);
 
-    nros_client_t client = rcl_get_zero_initialized_client();
+    nros_polling_client_t client = nros_get_zero_initialized_polling_client();
     nros_stub_rmw_clear_last_entity_name();
-    out->client = nros_client_init_polling(&client, node, &SRV_TYPE, "add");
+    out->client = nros_polling_client_init(&client, node, &SRV_TYPE, "add");
     snprintf(msg, sizeof(msg), "%s: polling client reached the backend under its RESOLVED name",
              label);
     CHECK_STR(nros_stub_rmw_last_entity_name(), expected_service, msg);

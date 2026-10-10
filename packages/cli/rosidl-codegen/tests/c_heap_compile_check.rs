@@ -45,6 +45,8 @@ nros_ret_t nros_publish_raw(struct nros_publisher_t* p, const uint8_t* buf, size
 struct nros_node_t;
 struct nros_service_t;
 struct nros_client_t;
+struct nros_executor_t;
+struct nros_qos_t;
 
 typedef bool (*nros_service_callback_t)(const uint8_t* request_data, size_t request_len,
                                         uint8_t* response_data, size_t response_capacity,
@@ -53,9 +55,13 @@ typedef void (*nros_response_callback_t)(const uint8_t* response, size_t respons
                                          void* context);
 
 void nros_service_typed_report_error(int32_t error, const char* type_name);
-nros_ret_t nros_service_init(struct nros_service_t* service, const struct nros_node_t* node,
-                             const struct nros_service_type_t* type_info, const char* service_name,
-                             nros_service_callback_t callback, void* context);
+nros_ret_t nros_service_init_with_qos(struct nros_service_t* service,
+                                      const struct nros_node_t* node,
+                                      const struct nros_service_type_t* type_info,
+                                      const char* service_name, const struct nros_qos_t* qos);
+nros_ret_t nros_executor_add_service_raw(struct nros_executor_t* executor,
+                                         struct nros_service_t* service,
+                                         nros_service_callback_t callback, void* context);
 nros_ret_t nros_client_set_response_callback(struct nros_client_t* client,
                                              nros_response_callback_t callback, void* context);
 nros_ret_t nros_client_send_request_async(struct nros_client_t* client,

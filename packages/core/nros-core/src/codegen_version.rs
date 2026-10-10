@@ -35,7 +35,7 @@
 ///
 /// Gated by `check-codegen-version-surface`, which fails when the surface
 /// generated code names changes and this constant does not.
-pub const NROS_CODEGEN_VERSION: u32 = 11;
+pub const NROS_CODEGEN_VERSION: u32 = 12;
 
 /// The oldest codegen version this runtime still accepts.
 ///
@@ -180,11 +180,21 @@ pub const NROS_CODEGEN_VERSION: u32 = 11;
 /// layout shrank but which generated code never dereferences. A version-10
 /// tree therefore still compiles and runs.
 ///
+/// RAISED to 12 when [`NROS_CODEGEN_VERSION`] moved to 12 (phase-487 W2). A
+/// generated C service header's `<Srv>_service_init` called
+/// `nros_service_init_with_qos` with the trampoline and handler in two
+/// positions that function no longer has, because the executor arena owns a
+/// dispatched server's callback and the struct keeps none. The binding moved
+/// to a new generated `<Srv>_executor_add_service` over
+/// `nros_executor_add_service_raw`. A version-10 or -11 C tree with a service
+/// therefore does not compile against this runtime, so it is refused by
+/// version rather than by a wall of argument-count errors.
+///
 /// The range `[NROS_CODEGEN_VERSION_MIN, NROS_CODEGEN_VERSION]` is expressed to
 /// C and C++ as a SET OF DEFINED SYMBOLS rather than as a comparison — see
 /// `nros-build-helpers`' codegen-version anchor — so there is no range check on
 /// that side that could itself be wrong.
-pub const NROS_CODEGEN_VERSION_MIN: u32 = 10;
+pub const NROS_CODEGEN_VERSION_MIN: u32 = 12;
 
 /// Does `emitted` fall in the range this runtime accepts?
 ///

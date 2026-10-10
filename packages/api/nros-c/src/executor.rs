@@ -17,10 +17,7 @@ use crate::{
     },
     error::*,
     node::nros_node_t,
-    service::{
-        client_response_trampoline, nros_client_state_t, nros_client_t, nros_service_state_t,
-        nros_service_t,
-    },
+    service::{nros_client_state_t, nros_client_t, nros_service_state_t, nros_service_t},
     subscription::{nros_subscription_state_t, nros_subscription_t},
     support::{nros_support_state_t, nros_support_t},
     timer::{nros_timer_state_t, nros_timer_t},
@@ -2628,17 +2625,40 @@ pub unsafe extern "C" fn nros_executor_add_timer_in_group(
     }
 }
 
-/// Add a service to the executor.
+/// phase-417 stage 6 — register a service server, supplying its request
+/// callback HERE rather than at `*_init`.
 ///
-/// Extracts metadata from the service struct and registers a raw-bytes
-/// service callback with the internal nros-node executor.
+/// `rclc_service_init_default` takes no callback (rclc's arity), so the handler
+/// that used to ride on `nros_service_init` is supplied at registration — the
+/// call rclc calls `rclc_executor_add_service`. The `nros_` prefix is kept for
+/// the same reason as `nros_executor_add_subscription_raw`: rclc's
+/// `rclc_executor_add_service` carries caller-owned `request_msg` /
+/// `response_msg` storage and a `void (*)(const void *, void *)` handler, while
+/// ours is a CDR-byte handler that RETURNS a value. Same capability, different
+/// signature, and only a signature can carry a name. A generated
+/// `<Srv>_executor_add_service(executor, service, &handler)` wraps it for the
+/// typed path.
+///
+/// The arena entry owns `callback` and `context`; the service struct keeps
+/// neither (phase-487 W2). This replaced the two-argument
+/// `nros_executor_add_service`, which dispatched a callback an init call had
+/// stored in the struct.
+///
+/// # Returns
+/// * `NROS_RET_OK` on success
+/// * `NROS_RET_INVALID_ARGUMENT` for a NULL `callback`
+/// * `NROS_RET_FULL` when the executor has no handle left
+/// * `NROS_RET_ERROR` when the server could not be created
 ///
 /// # Safety
-/// * All pointers must be valid and point to initialized objects
+/// * Both pointers must reference initialized objects.
+/// * `context` is passed through untouched and may be NULL.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_add_service(
+pub unsafe extern "C" fn nros_executor_add_service_raw(
     executor: *mut nros_executor_t,
     service: *mut nros_service_t,
+    callback: crate::service::nros_service_callback_t,
+    context: *mut core::ffi::c_void,
 ) -> nros_ret_t {
     validate_not_null!(executor, service);
 
@@ -2671,12 +2691,10 @@ pub unsafe extern "C" fn nros_executor_add_service(
         let type_hash_str =
             core::str::from_utf8_unchecked(&service_ref.type_hash[..service_ref.type_hash_len]);
 
-        // Get callback and context
-        let callback = match service_ref.get_callback() {
+        let callback = match callback {
             Some(cb) => cb,
             None => return NROS_RET_INVALID_ARGUMENT,
         };
-        let context = service_ref.get_context();
 
         // Propagate node identity for liveliness key expression.
         set_executor_node_identity(rust_exec, service_ref.node);
@@ -2760,34 +2778,6 @@ pub unsafe extern "C" fn nros_executor_add_service(
     }
 }
 
-/// phase-417 stage 6 — register a service server, supplying its request
-/// callback HERE rather than at `*_init`.
-///
-/// `rclc_service_init_default` takes no callback (rclc's arity), so the handler
-/// that used to ride on `nros_service_init` is supplied at registration — the
-/// call rclc calls `rclc_executor_add_service`. The `nros_` prefix is kept for
-/// the same reason as `nros_executor_add_subscription_raw`: rclc's
-/// `rclc_executor_add_service` carries caller-owned `request_msg` /
-/// `response_msg` storage and a `void (*)(const void *, void *)` handler, while
-/// ours is a CDR-byte handler that RETURNS a value. Same capability, different
-/// signature, and only a signature can carry a name.
-///
-/// # Safety
-/// * Both pointers must reference initialized objects.
-/// * `context` is passed through untouched and may be NULL.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_add_service_raw(
-    executor: *mut nros_executor_t,
-    service: *mut nros_service_t,
-    callback: crate::service::nros_service_callback_t,
-    context: *mut core::ffi::c_void,
-) -> nros_ret_t {
-    validate_not_null!(executor, service);
-    (*service).callback = callback;
-    (*service).context = context;
-    nros_executor_add_service(executor, service)
-}
-
 /// Add a service client to the executor (Phase 82).
 ///
 /// Creates the underlying `RmwServiceClient` inside the executor's arena
@@ -2836,12 +2826,13 @@ pub unsafe extern "C" fn nros_executor_add_client(
         let type_hash_str =
             core::str::from_utf8_unchecked(&client_ref.type_hash[..client_ref.type_hash_len]);
 
-        // Trampoline always installed — checks the C struct's
-        // response_callback at invocation time, so blocking wrappers
-        // (nros_client_call) can install one-shot callbacks AFTER
-        // registration without re-registering with the arena.
-        let cb: Option<nros_node::RawResponseCallback> = Some(client_response_trampoline);
-        let client_ctx = client as *mut core::ffi::c_void;
+        // phase-487 W2 — no callback yet: `nros_client_set_response_callback`
+        // writes the user's pair into this entry, and `nros_client_call`
+        // swaps a one-shot capture in and out of it. Until W2 the entry held
+        // a trampoline whose context was the `nros_client_t` itself, so a
+        // late reply read the C struct (issue 1631's use-after-free).
+        let cb: Option<nros_node::RawResponseCallback> = None;
+        let client_ctx = core::ptr::null_mut();
 
         // Propagate node identity for liveliness key expression.
         set_executor_node_identity(rust_exec, client_ref.node);
@@ -3519,7 +3510,7 @@ pub unsafe extern "C" fn nros_executor_remove_timer(
 /// Remove a service server from the executor — issue 1631, rclc's
 /// `rclc_executor_remove_service`.
 ///
-/// Drops the arena entry `nros_executor_add_service{,_raw}` registered (the
+/// Drops the arena entry `nros_executor_add_service_raw` registered (the
 /// server leaves the graph; its slot and bytes are reused) and undoes
 /// `handle_count`, `service_count` and the trigger table, as
 /// [`nros_executor_remove_subscription`] does. The service stays INITIALIZED.
@@ -3571,10 +3562,10 @@ pub unsafe extern "C" fn nros_executor_remove_service(
 /// Remove a service client from the executor — issue 1631, rclc's
 /// `rclc_executor_remove_client`.
 ///
-/// The arena entry `nros_executor_add_client` registered dispatches replies
-/// through `client_response_trampoline`, which READS the `nros_client_t`, so
+/// Until phase-487 W2 the arena entry `nros_executor_add_client` registered
+/// dispatched replies through a trampoline that READ the `nros_client_t`, so
 /// after `nros_client_fini` alone a late reply was a use-after-free of a stack
-/// or freed client. This drops the entry (the client leaves the graph, and a
+/// or freed client; the entry now holds the user's callback itself. This drops the entry (the client leaves the graph, and a
 /// reply it was still waiting for is abandoned), undoes `handle_count` and the
 /// trigger table, and returns the client from REGISTERED to INITIALIZED — so
 /// it can be re-added, or finalised with `nros_client_fini`. Its timeout

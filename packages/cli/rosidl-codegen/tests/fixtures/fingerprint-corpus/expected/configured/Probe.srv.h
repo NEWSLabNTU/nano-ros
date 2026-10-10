@@ -15,8 +15,8 @@
 
 #include <nros/nros_config_generated.h>
 
-/* RFC-0090 — emitted by nano-ros codegen version 11. */
-#define NROS_EMITTED_CODEGEN_VERSION 11
+/* RFC-0090 — emitted by nano-ros codegen version 12. */
+#define NROS_EMITTED_CODEGEN_VERSION 12
 
 #ifndef NROS_CODEGEN_VERSION
 #error "nros: the generated config header did not define NROS_CODEGEN_VERSION. This generated artifact cannot tell whether the runtime accepts it; rebuild the nano-ros runtime so its config header is regenerated."
@@ -253,29 +253,35 @@ static inline bool fingerprint_corpus_srv_probe_service_handle_request(
     return true;
 }
 
-/// Create a typed Probe server. The forwarder onto
-/// `nros_service_init_with_qos` that names the type support, the trampoline and
-/// the handler together, so the three cannot disagree.
-///
-/// Register it with `nros_executor_add_service()` exactly as for a raw server.
-///
-/// phase-417 stage 6 — this delegates to `nros_service_init_with_qos(..., NULL)`
-/// rather than to `nros_service_init`, which step B retired. The
-/// typed macro binds its trampoline at CREATION on purpose: the
-/// trampoline is derived from the type, not chosen by the caller, so there is
-/// nothing for a later `nros_executor_add_service_raw()` to decide. rclc's
-/// four-argument `rclc_service_init_default` is the shape for a caller who
-/// supplies their own handler at registration.
+/// Create a typed Probe server: `nros_service_init_with_qos` with
+/// this type's support and the services default QoS. Register it, with its
+/// handler, through fingerprint_corpus_srv_probe_executor_add_service().
 static inline nros_ret_t fingerprint_corpus_srv_probe_service_init(
-    struct nros_service_t* service, const struct nros_node_t* node, const char* service_name,
+    struct nros_service_t* service, const struct nros_node_t* node, const char* service_name) {
+    return nros_service_init_with_qos(service, node,
+                                      fingerprint_corpus_srv_probe_get_type_support(), service_name,
+                                      NULL);
+}
+
+/// Add a typed Probe server to an executor: the forwarder onto
+/// `nros_executor_add_service_raw` that names the trampoline and the handler
+/// together, so the two cannot disagree. rclc's counterpart is
+/// `rclc_executor_add_service(executor, service, &req, &res, callback)`; the
+/// request and response storage live in the handler here.
+///
+/// phase-487 W2 — the trampoline used to be bound at CREATION, by
+/// fingerprint_corpus_srv_probe_service_init(), and stored in the service struct
+/// until registration. The executor arena owns a dispatched server's callback
+/// now and the struct keeps none, so the binding moved here, which is also
+/// where rclc binds its handler. The handler must outlive the registration.
+static inline nros_ret_t fingerprint_corpus_srv_probe_executor_add_service(
+    struct nros_executor_t* executor, struct nros_service_t* service,
     fingerprint_corpus_srv_probe_service_handler_t* handler) {
     if (handler == NULL || handler->callback == NULL) {
         return NROS_RET_INVALID_ARGUMENT;
     }
-    return nros_service_init_with_qos(service, node,
-                                      fingerprint_corpus_srv_probe_get_type_support(), service_name,
-                                      fingerprint_corpus_srv_probe_service_handle_request, handler,
-                                      NULL);
+    return nros_executor_add_service_raw(executor, service,
+                                         fingerprint_corpus_srv_probe_service_handle_request, handler);
 }
 
 // ============================================================================
@@ -355,7 +361,10 @@ static inline void fingerprint_corpus_srv_probe_client_handle_response(const uin
     fingerprint_corpus_srv_probe_response_fini(&handler->response);
 }
 
-/// Route this client's replies through the typed handler.
+/// Route this client's replies through the typed handler. The client must
+/// already be added (`nros_executor_add_client`): since phase-487 W2 the
+/// executor arena owns the response callback, so there is nowhere to keep it
+/// before registration (`NROS_RET_NOT_INIT`).
 static inline nros_ret_t fingerprint_corpus_srv_probe_client_set_response_callback(
     struct nros_client_t* client, fingerprint_corpus_srv_probe_client_handler_t* handler) {
     if (handler == NULL || handler->callback == NULL) {

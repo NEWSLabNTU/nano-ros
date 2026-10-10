@@ -781,21 +781,15 @@ typedef enum nros_service_state_t {
    */
   NROS_SERVICE_STATE_UNINITIALIZED = 0,
   /**
-   * L2 callback-mode: initialized via `nros_service_init`, transport
-   * creation deferred to `nros_executor_add_service`.
+   * Initialized. For a `nros_service_t` the server is created later, by
+   * `nros_executor_add_service_raw`, inside the executor arena. For a
+   * `nros_polling_service_t` the server is live in the struct's storage.
    */
   NROS_SERVICE_STATE_INITIALIZED = 1,
   /**
    * Shutdown
    */
   NROS_SERVICE_STATE_SHUTDOWN = 2,
-  /**
-   * Phase 122.3.c.4 — L1 polling-mode: transport entity lives inline
-   * in `_opaque`; caller drains via
-   * `nros_service_take_request_raw` and replies via
-   * `nros_service_send_response_raw`. No executor registration.
-   */
-  NROS_SERVICE_STATE_POLLING = 3,
 } nros_service_state_t;
 
 /**
@@ -818,12 +812,6 @@ typedef enum nros_client_state_t {
    * Shutdown
    */
   NROS_CLIENT_STATE_SHUTDOWN = 3,
-  /**
-   * Phase 122.3.c.5 — L1 polling-mode: transport entity lives inline
-   * in `_opaque`; caller drives via `nros_client_send_request_raw`
-   * and `nros_client_take_response_raw`. No executor registration.
-   */
-  NROS_CLIENT_STATE_POLLING = 4,
 } nros_client_state_t;
 
 /**
@@ -1640,7 +1628,7 @@ typedef struct nros_action_client_options_t {
  * per (entity, channel) pair next to the entity, passes a pointer
  * to it into the matching `nros_*_set_wake_callback` and keeps it
  * alive at the same address for as long as the entity is in
- * POLLING state. Two `uint64_t` slots are enough to hold the
+ * initialized. Two `uint64_t` slots are enough to hold the
  * `(fn_ptr, ctx)` pair plus 8-byte alignment.
  */
 typedef struct nros_wake_state_t {
@@ -2301,28 +2289,6 @@ typedef struct nros_timer_t {
 } nros_timer_t;
 
 /**
- * Service server callback function type.
- *
- * # Parameters
- * * `request_data` - Pointer to CDR-serialized request data
- * * `request_len` - Length of request data in bytes
- * * `response_data` - Pointer to buffer for CDR-serialized response
- * * `response_capacity` - Capacity of response buffer
- * * `response_len` - Output: actual length of response data written
- * * `context` - User-provided context pointer
- *
- * # Returns
- * * `true` if the request was handled successfully
- * * `false` if there was an error handling the request
- */
-typedef bool (*nros_service_callback_t)(const uint8_t *request_data,
-                                        size_t request_len,
-                                        uint8_t *response_data,
-                                        size_t response_capacity,
-                                        size_t *response_len,
-                                        void *context);
-
-/**
  * Internal state for the service server (Phase 82.7).
  *
  * Lightweight — stores only the arena entry index and the executor
@@ -2344,7 +2310,13 @@ typedef struct ServiceServerInternal {
 } ServiceServerInternal;
 
 /**
- * Service server structure.
+ * A service server the executor dispatches (rclc's `rcl_service_t`).
+ *
+ * phase-487 W2 (RFC-0096 D9, the C half): the arena entry owns the server,
+ * its request and reply buffers, the callback and its context. This struct
+ * keeps the arena handle (`_internal`) and the description the
+ * registration reads. A server the caller drains itself is a
+ * [`nros_polling_service_t`].
  */
 typedef struct nros_service_t {
   /**
@@ -2376,14 +2348,6 @@ typedef struct nros_service_t {
    */
   size_t type_hash_len;
   /**
-   * User callback function
-   */
-  nros_service_callback_t callback;
-  /**
-   * User context pointer
-   */
-  void *context;
-  /**
    * Pointer to parent node
    */
   struct nros_node_ref_t node;
@@ -2397,8 +2361,8 @@ typedef struct nros_service_t {
    * Phase 189.M3.3.a — scheduling-context slot to bind the service's
    * executor handle to. `0` = inherit the executor / Node default (no
    * explicit bind); set via `nros_service_init_with_options`. When non-zero,
-   * `nros_executor_add_service` binds the freshly-created handle to this
-   * SC after registration. No effect on the L1 polling path.
+   * `nros_executor_add_service_raw` binds the freshly-created handle to
+   * this SC after registration.
    */
   nros_sched_context_id_t sched_context_id;
   /**
@@ -2406,24 +2370,29 @@ typedef struct nros_service_t {
    * Typed C-ABI handle field (was an opaque blob in earlier versions).
    */
   struct ServiceServerInternal _internal;
-  /**
-   * Phase 122.3.c.4 — inline opaque storage for the L1 polling-mode
-   * `RawServiceServer<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE>`.
-   * Zeroed in L2 (callback + executor arena) mode; populated by
-   * `nros_service_init_polling`.
-   */
-  uint64_t _opaque[SERVICE_SERVER_OPAQUE_U64S];
 } nros_service_t;
 
 /**
- * Service-client response callback type (Phase 82).
+ * Service server callback function type.
  *
- * Invoked by the executor's `spin_some` dispatch when a previously-sent
- * request has its response delivered. The CDR bytes are owned by the
- * arena entry's reply buffer for the duration of the call — copy if you
- * need to keep them.
+ * # Parameters
+ * * `request_data` - Pointer to CDR-serialized request data
+ * * `request_len` - Length of request data in bytes
+ * * `response_data` - Pointer to buffer for CDR-serialized response
+ * * `response_capacity` - Capacity of response buffer
+ * * `response_len` - Output: actual length of response data written
+ * * `context` - User-provided context pointer
+ *
+ * # Returns
+ * * `true` if the request was handled successfully
+ * * `false` if there was an error handling the request
  */
-typedef void (*nros_response_callback_t)(const uint8_t *response, size_t response_len, void *context);
+typedef bool (*nros_service_callback_t)(const uint8_t *request_data,
+                                        size_t request_len,
+                                        uint8_t *response_data,
+                                        size_t response_capacity,
+                                        size_t *response_len,
+                                        void *context);
 
 /**
  * Internal state for the service client (Phase 82).
@@ -2448,7 +2417,17 @@ typedef struct ServiceClientInternal {
 } ServiceClientInternal;
 
 /**
- * Service client structure.
+ * A service client the executor dispatches (rclc's `rcl_client_t`).
+ *
+ * phase-487 W2 (RFC-0096 D9, the C half): the arena entry owns the client,
+ * its reply buffer, the response callback and its context. This struct
+ * keeps the arena handle (`_internal`, with the `nros_client_call` timeout)
+ * and the description the registration reads. Before W2 the arena entry's
+ * callback was a trampoline that read the callback out of THIS struct, a
+ * back-reference that made a late reply after `nros_client_fini` a
+ * use-after-free (issue 1631); the entry now holds the user's callback
+ * directly. A client the caller drives itself is a
+ * [`nros_polling_client_t`].
  */
 typedef struct nros_client_t {
   /**
@@ -2480,15 +2459,6 @@ typedef struct nros_client_t {
    */
   size_t type_hash_len;
   /**
-   * User response callback, fired from `rclc_executor_spin_some` when
-   * a response to a previously-sent async request arrives.
-   */
-  nros_response_callback_t response_callback;
-  /**
-   * User context pointer passed to `response_callback`.
-   */
-  void *context;
-  /**
    * Pointer to parent node
    */
   struct nros_node_ref_t node;
@@ -2503,7 +2473,7 @@ typedef struct nros_client_t {
    * handle to. `0` = inherit the executor / Node default; set via
    * `nros_client_init_with_options`. When non-zero,
    * `nros_executor_add_client` binds the freshly-created handle to this
-   * SC after registration. No effect on the L1 polling path.
+   * SC after registration.
    */
   nros_sched_context_id_t sched_context_id;
   /**
@@ -2511,13 +2481,6 @@ typedef struct nros_client_t {
    * Typed C-ABI handle field.
    */
   struct ServiceClientInternal _internal;
-  /**
-   * Phase 122.3.c.5 — inline opaque storage for the L1 polling-mode
-   * `RawServiceClient<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE>`.
-   * Zeroed in L2 (callback + executor arena) mode; populated by
-   * `nros_client_init_polling`.
-   */
-  uint64_t _opaque[SERVICE_CLIENT_OPAQUE_U64S];
 } nros_client_t;
 
 /**
@@ -2715,6 +2678,31 @@ typedef struct nros_message_type_t {
 } nros_message_type_t;
 
 /**
+ * A service server the CALLER drains, with no executor (phase-487 W2).
+ *
+ * The C counterpart of C++'s `nros::PollService<S>`. Nothing dispatches it,
+ * so it has no arena slot: `_opaque` holds a `RawServiceServer` from
+ * `nros_polling_service_init` until `nros_polling_service_fini`.
+ * Zero-initialised is UNINITIALIZED. Until phase-487 it was the
+ * `NROS_SERVICE_STATE_POLLING` state of `nros_service_t`, which made every
+ * dispatched server carry this storage unused.
+ */
+typedef struct nros_polling_service_t {
+  /**
+   * Current state: UNINITIALIZED, INITIALIZED (server live) or SHUTDOWN.
+   */
+  enum nros_service_state_t state;
+  /**
+   * The node the server was created on.
+   */
+  struct nros_node_ref_t node;
+  /**
+   * Inline storage for the `RawServiceServer`. Internal: treat as opaque.
+   */
+  uint64_t _opaque[SERVICE_SERVER_OPAQUE_U64S];
+} nros_polling_service_t;
+
+/**
  * Service type information.
  *
  * Provides type name and hash for a ROS 2 service type.
@@ -2746,8 +2734,7 @@ typedef struct nros_service_options_t {
    * `0` = inherit the executor / Node default (no explicit bind). A non-zero
    * value must be an id previously returned from
    * `nros_executor_create_sched_context`; the bind is applied by
-   * `nros_executor_add_service` once the handle exists. No effect on the
-   * L1 polling path.
+   * `nros_executor_add_service_raw` once the handle exists.
    */
   nros_sched_context_id_t sched_context;
   /**
@@ -2755,6 +2742,30 @@ typedef struct nros_service_options_t {
    */
   uint8_t _reserved[3];
 } nros_service_options_t;
+
+/**
+ * A service client the CALLER drives, with no executor (phase-487 W2).
+ *
+ * The C counterpart of C++'s `nros::PollClient<S>`. `_opaque` holds a
+ * `RawServiceClient` from `nros_polling_client_init` until
+ * `nros_polling_client_fini`. Zero-initialised is UNINITIALIZED. Until
+ * phase-487 it was the `NROS_CLIENT_STATE_POLLING` state of
+ * `nros_client_t`.
+ */
+typedef struct nros_polling_client_t {
+  /**
+   * Current state: UNINITIALIZED, INITIALIZED (client live) or SHUTDOWN.
+   */
+  enum nros_client_state_t state;
+  /**
+   * The node the client was created on.
+   */
+  struct nros_node_ref_t node;
+  /**
+   * Inline storage for the `RawServiceClient`. Internal: treat as opaque.
+   */
+  uint64_t _opaque[SERVICE_CLIENT_OPAQUE_U64S];
+} nros_polling_client_t;
 
 /**
  * Phase 189.M3.3.a — rclc-style named service-client options (mirrors
@@ -2766,7 +2777,7 @@ typedef struct nros_client_options_t {
    * Scheduling-context slot to bind the client's executor handle to.
    * `0` = inherit the executor / Node default. A non-zero value must be an id
    * from `nros_executor_create_sched_context`; the bind is applied by
-   * `nros_executor_add_client` once the handle exists. No effect on L1.
+   * `nros_executor_add_client` once the handle exists.
    */
   nros_sched_context_id_t sched_context;
   /**
@@ -2774,6 +2785,16 @@ typedef struct nros_client_options_t {
    */
   uint8_t _reserved[3];
 } nros_client_options_t;
+
+/**
+ * Service-client response callback type (Phase 82).
+ *
+ * Invoked by the executor's `spin_some` dispatch when a previously-sent
+ * request has its response delivered. The CDR bytes are owned by the
+ * arena entry's reply buffer for the duration of the call — copy if you
+ * need to keep them.
+ */
+typedef void (*nros_response_callback_t)(const uint8_t *response, size_t response_len, void *context);
 
 /**
  * A subscription the CALLER drains, with no executor (phase-487 W1).
@@ -5789,19 +5810,6 @@ nros_ret_t nros_executor_add_timer_in_group(struct nros_executor_t *executor,
                                             const char *callback_group);
 
 /**
- * Add a service to the executor.
- *
- * Extracts metadata from the service struct and registers a raw-bytes
- * service callback with the internal nros-node executor.
- *
- * # Safety
- * * All pointers must be valid and point to initialized objects
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_add_service(struct nros_executor_t *executor,
-                                     struct nros_service_t *service);
-
-/**
  * phase-417 stage 6 — register a service server, supplying its request
  * callback HERE rather than at `*_init`.
  *
@@ -5812,7 +5820,20 @@ nros_ret_t nros_executor_add_service(struct nros_executor_t *executor,
  * `rclc_executor_add_service` carries caller-owned `request_msg` /
  * `response_msg` storage and a `void (*)(const void *, void *)` handler, while
  * ours is a CDR-byte handler that RETURNS a value. Same capability, different
- * signature, and only a signature can carry a name.
+ * signature, and only a signature can carry a name. A generated
+ * `<Srv>_executor_add_service(executor, service, &handler)` wraps it for the
+ * typed path.
+ *
+ * The arena entry owns `callback` and `context`; the service struct keeps
+ * neither (phase-487 W2). This replaced the two-argument
+ * `nros_executor_add_service`, which dispatched a callback an init call had
+ * stored in the struct.
+ *
+ * # Returns
+ * * `NROS_RET_OK` on success
+ * * `NROS_RET_INVALID_ARGUMENT` for a NULL `callback`
+ * * `NROS_RET_FULL` when the executor has no handle left
+ * * `NROS_RET_ERROR` when the server could not be created
  *
  * # Safety
  * * Both pointers must reference initialized objects.
@@ -6007,7 +6028,7 @@ nros_ret_t nros_executor_remove_timer(struct nros_executor_t *executor,
  * Remove a service server from the executor — issue 1631, rclc's
  * `rclc_executor_remove_service`.
  *
- * Drops the arena entry `nros_executor_add_service{,_raw}` registered (the
+ * Drops the arena entry `nros_executor_add_service_raw` registered (the
  * server leaves the graph; its slot and bytes are reused) and undoes
  * `handle_count`, `service_count` and the trigger table, as
  * [`nros_executor_remove_subscription`] does. The service stays INITIALIZED.
@@ -6026,10 +6047,10 @@ nros_ret_t nros_executor_remove_service(struct nros_executor_t *executor,
  * Remove a service client from the executor — issue 1631, rclc's
  * `rclc_executor_remove_client`.
  *
- * The arena entry `nros_executor_add_client` registered dispatches replies
- * through `client_response_trampoline`, which READS the `nros_client_t`, so
+ * Until phase-487 W2 the arena entry `nros_executor_add_client` registered
+ * dispatched replies through a trampoline that READ the `nros_client_t`, so
  * after `nros_client_fini` alone a late reply was a use-after-free of a stack
- * or freed client. This drops the entry (the client leaves the graph, and a
+ * or freed client; the entry now holds the user's callback itself. This drops the entry (the client leaves the graph, and a
  * reply it was still waiting for is abandoned), undoes `handle_count` and the
  * trigger table, and returns the client from REGISTERED to INITIALIZED — so
  * it can be re-added, or finalised with `nros_client_fini`. Its timeout
@@ -7705,20 +7726,24 @@ nros_ret_t rcl_publisher_get_subscription_count(const struct nros_publisher_t *p
 NROS_PUBLIC bool rcl_publisher_is_valid(const struct nros_publisher_t *publisher);
 
 /**
+ * Get a zero-initialized polling service server.
+ */
+NROS_PUBLIC struct nros_polling_service_t nros_get_zero_initialized_polling_service(void);
+
+/**
  * Get a zero-initialized service server.
  */
 NROS_PUBLIC struct nros_service_t rcl_get_zero_initialized_service(void);
 
 /**
- * Initialize a service server.
+ * Initialize a service server with an explicit QoS profile.
  *
  * # Parameters
  * * `service` - Pointer to a zero-initialized service
  * * `node` - Pointer to an initialized node
  * * `type_info` - Pointer to service type information
  * * `service_name` - Service name (null-terminated string)
- * * `callback` - Callback function to invoke when requests arrive
- * * `context` - User context pointer passed to callback (can be NULL)
+ * * `qos` - QoS for both endpoints, or NULL for the services default
  *
  * # Returns
  * * `NROS_RET_OK` on success
@@ -7726,24 +7751,19 @@ NROS_PUBLIC struct nros_service_t rcl_get_zero_initialized_service(void);
  * * `NROS_RET_NOT_INIT` if node is not initialized
  * * `NROS_RET_ERROR` on initialization failure
  *
- * phase-417 stage 6 — the callback-carrying core. `qos` NULL ⇒ the services
- * default profile. This is the entry point the deprecated six-argument
- * `nros_service_init` forwards to, so the pre-stage-6 behaviour is preserved
- * byte for byte.
- *
- * A NULL `callback` is LEGAL here, and it is [`rclc_service_init_default`]'s
- * shape: the callback is supplied at registration by
- * `nros_executor_add_service_raw`, exactly as rclc supplies it at
- * `rclc_executor_add_service`. `nros_executor_add_service` treats an absent
- * callback as nothing to dispatch.
+ * phase-487 W2 removed the `callback` and `context` this took between the
+ * name and the QoS: the struct stored them only for the (since removed)
+ * two-argument `nros_executor_add_service` to read back, while the arena
+ * entry kept its own copies. The callback is supplied at registration, by
+ * `nros_executor_add_service_raw` or a generated
+ * `<Srv>_executor_add_service`, as rclc supplies it at
+ * `rclc_executor_add_service`.
  */
 NROS_PUBLIC
 nros_ret_t nros_service_init_with_qos(struct nros_service_t *service,
                                       const struct nros_node_t *node,
                                       const struct nros_service_type_t *type_info,
                                       const char *service_name,
-                                      nros_service_callback_t callback,
-                                      void *context,
                                       const struct nros_qos_t *qos);
 
 /**
@@ -7759,9 +7779,7 @@ nros_ret_t nros_service_init_with_qos(struct nros_service_t *service,
  * `func` dispatcher we do not have.
  *
  * The six-argument `nros_service_init` is GONE (phase-417 stage 6 step B
- * retired it). Its behaviour is not: [`nros_service_init_with_qos`] takes the
- * same six arguments, so a caller who needs the old shape names that
- * instead.
+ * retired it), and since phase-487 no init entry point takes a callback.
  *
  * # Safety
  * All non-NULL pointers must be valid + the node initialized.
@@ -7781,7 +7799,7 @@ NROS_PUBLIC struct nros_service_options_t rcl_service_get_default_options(void);
  * Phase 189.M3.3.a — initialize a service server with custom QoS + named
  * options. Behaves like [`nros_service_init_with_qos`] except a non-zero
  * `options->sched_context` is stashed on the service so that
- * `nros_executor_add_service` binds the resulting executor handle to
+ * `nros_executor_add_service_raw` binds the resulting executor handle to
  * that scheduling context once the handle is known (server creation is
  * deferred to registration, so the handle does not exist at init time).
  *
@@ -7794,13 +7812,15 @@ nros_ret_t nros_service_init_with_options(struct nros_service_t *service,
                                           const struct nros_node_t *node,
                                           const struct nros_service_type_t *type_info,
                                           const char *service_name,
-                                          nros_service_callback_t callback,
-                                          void *context,
                                           const struct nros_qos_t *qos,
                                           const struct nros_service_options_t *options);
 
 /**
  * Finalize a service server.
+ *
+ * The server is the executor arena's: remove it with
+ * `nros_executor_remove_service` first if it was added and the executor
+ * keeps running. This resets the description and the handle.
  *
  * # Parameters
  * * `service` - Pointer to an initialized service
@@ -7817,8 +7837,8 @@ NROS_PUBLIC nros_ret_t nros_service_fini(struct nros_service_t *service);
  *
  * Creates the underlying RMW server immediately and stores it inline
  * in the service's `_opaque` field. The caller drains received
- * requests via `nros_service_take_request_raw` and sends replies
- * via `nros_service_send_response_raw`.
+ * requests via `nros_polling_service_take_request_raw` and sends replies
+ * via `nros_polling_service_send_response_raw`.
  *
  * # Parameters
  * * `service` - Pointer to a zero-initialized service
@@ -7837,10 +7857,26 @@ NROS_PUBLIC nros_ret_t nros_service_fini(struct nros_service_t *service);
  * null-terminated string.
  */
 NROS_PUBLIC
-nros_ret_t nros_service_init_polling(struct nros_service_t *service,
+nros_ret_t nros_polling_service_init(struct nros_polling_service_t *service,
                                      const struct nros_node_t *node,
                                      const struct nros_service_type_t *type_info,
                                      const char *service_name);
+
+/**
+ * Finalize a polled service server: drops the inline server, which closes
+ * the RMW entity.
+ *
+ * # Returns
+ * * `NROS_RET_OK` on success
+ * * `NROS_RET_INVALID_ARGUMENT` if `service` is NULL
+ * * `NROS_RET_NOT_INIT` if it is not initialised
+ * * `NROS_RET_STALE_NODE` if its node has already been finalised — the
+ *   teardown order was wrong, and nothing is dropped (issue 1386)
+ *
+ * # Safety
+ * `service` must be a valid pointer.
+ */
+NROS_PUBLIC nros_ret_t nros_polling_service_fini(struct nros_polling_service_t *service);
 
 /**
  * Phase 122.3.c.6.e — zero-initialise a wake-state slot.
@@ -7852,7 +7888,7 @@ NROS_PUBLIC struct nros_wake_state_t nros_wake_state_get_zero_initialized(void);
  * polling-mode service server. `state` must point to a
  * `nros_wake_state_t` allocated by the caller; it must outlive
  * the service (typically declared inline next to the
- * `nros_service_t`) and must not move after this call.
+ * `nros_polling_service_t`) and must not move after this call.
  * Pass `cb = NULL` to disable. The backend wakes the callback
  * when a new request arrives.
  *
@@ -7861,21 +7897,21 @@ NROS_PUBLIC struct nros_wake_state_t nros_wake_state_get_zero_initialized(void);
  * lifetime.
  */
 NROS_PUBLIC
-nros_ret_t nros_service_set_wake_callback(struct nros_service_t *service,
-                                          struct nros_wake_state_t *state,
-                                          void (*cb)(void*),
-                                          void *ctx);
+nros_ret_t nros_polling_service_set_wake_callback(struct nros_polling_service_t *service,
+                                                  struct nros_wake_state_t *state,
+                                                  void (*cb)(void*),
+                                                  void *ctx);
 
 /**
  * Phase 122.3.c.6.e — register a C wake callback on an L1
  * polling-mode service client. Wakes when a reply lands. See
- * `nros_service_set_wake_callback` for the lifetime contract.
+ * `nros_polling_service_set_wake_callback` for the lifetime contract.
  */
 NROS_PUBLIC
-nros_ret_t nros_client_set_wake_callback(struct nros_client_t *client,
-                                         struct nros_wake_state_t *state,
-                                         void (*cb)(void*),
-                                         void *ctx);
+nros_ret_t nros_polling_client_set_wake_callback(struct nros_polling_client_t *client,
+                                                 struct nros_wake_state_t *state,
+                                                 void (*cb)(void*),
+                                                 void *ctx);
 
 /**
  * Phase 122.3.c.4 — non-blocking poll for a pending request on an L1
@@ -7891,31 +7927,31 @@ nros_ret_t nros_client_set_wake_callback(struct nros_client_t *client,
  * * `NROS_RET_ERROR` on transport failure
  *
  * # Safety
- * `service` must be in `POLLING` state. `buf` writable for `buf_len`
+ * `service` must be an initialized polling service. `buf` writable for `buf_len`
  * bytes. `sequence_number` writable for `i64`.
  */
 NROS_PUBLIC
-int32_t nros_service_take_request_raw(struct nros_service_t *service,
-                                      uint8_t *buf,
-                                      size_t buf_len,
-                                      int64_t *sequence_number);
+int32_t nros_polling_service_take_request_raw(struct nros_polling_service_t *service,
+                                              uint8_t *buf,
+                                              size_t buf_len,
+                                              int64_t *sequence_number);
 
 /**
  * Phase 122.3.c.4 — send a reply on an L1 polling-mode service.
  *
  * `sequence_number` must equal the value returned by the most recent
- * `nros_service_take_request_raw` for the request being replied
+ * `nros_polling_service_take_request_raw` for the request being replied
  * to.
  *
  * # Safety
- * `service` must be in `POLLING` state. `data` readable for `len`
+ * `service` must be an initialized polling service. `data` readable for `len`
  * bytes.
  */
 NROS_PUBLIC
-nros_ret_t nros_service_send_response_raw(struct nros_service_t *service,
-                                          int64_t sequence_number,
-                                          const uint8_t *data,
-                                          size_t len);
+nros_ret_t nros_polling_service_send_response_raw(struct nros_polling_service_t *service,
+                                                  int64_t sequence_number,
+                                                  const uint8_t *data,
+                                                  size_t len);
 
 /**
  * Report a typed service/client glue failure as an `ERROR` log record.
@@ -7959,6 +7995,11 @@ NROS_PUBLIC const char *rcl_service_get_service_name(const struct nros_service_t
  * * `true` if usable, `false` if finalised, uninitialised or NULL
  */
 NROS_PUBLIC bool rcl_service_is_valid(const struct nros_service_t *service);
+
+/**
+ * Get a zero-initialized polling service client.
+ */
+NROS_PUBLIC struct nros_polling_client_t nros_get_zero_initialized_polling_client(void);
 
 /**
  * Get a zero-initialized client.
@@ -8059,8 +8100,8 @@ NROS_PUBLIC nros_ret_t nros_client_fini(struct nros_client_t *client);
  *
  * Creates the underlying RMW client immediately and stores it inline
  * in the client's `_opaque` field. The caller drives the
- * request/reply cycle via `nros_client_send_request_raw` +
- * `nros_client_take_response_raw`.
+ * request/reply cycle via `nros_polling_client_send_request_raw` +
+ * `nros_polling_client_take_response_raw`.
  *
  * # Parameters
  * * `client` - Pointer to a zero-initialized client
@@ -8079,24 +8120,39 @@ NROS_PUBLIC nros_ret_t nros_client_fini(struct nros_client_t *client);
  * null-terminated string.
  */
 NROS_PUBLIC
-nros_ret_t nros_client_init_polling(struct nros_client_t *client,
+nros_ret_t nros_polling_client_init(struct nros_polling_client_t *client,
                                     const struct nros_node_t *node,
                                     const struct nros_service_type_t *type_info,
                                     const char *service_name);
 
 /**
- * Phase 122.3.c.5 — send a raw request on an L1 polling-mode client.
- * Non-blocking. Poll for the reply via
- * `nros_client_take_response_raw`.
+ * Finalize a polled service client: drops the inline client, which closes
+ * the RMW entity.
+ *
+ * # Returns
+ * * `NROS_RET_OK` on success
+ * * `NROS_RET_INVALID_ARGUMENT` if `client` is NULL
+ * * `NROS_RET_NOT_INIT` if it is not initialised
+ * * `NROS_RET_STALE_NODE` if its node has already been finalised (issue 1386)
  *
  * # Safety
- * `client` must be in `POLLING` state. `data` readable for `len`
+ * `client` must be a valid pointer.
+ */
+NROS_PUBLIC nros_ret_t nros_polling_client_fini(struct nros_polling_client_t *client);
+
+/**
+ * Phase 122.3.c.5 — send a raw request on an L1 polling-mode client.
+ * Non-blocking. Poll for the reply via
+ * `nros_polling_client_take_response_raw`.
+ *
+ * # Safety
+ * `client` must be an initialized polling client. `data` readable for `len`
  * bytes.
  */
 NROS_PUBLIC
-nros_ret_t nros_client_send_request_raw(struct nros_client_t *client,
-                                        const uint8_t *data,
-                                        size_t len);
+nros_ret_t nros_polling_client_send_request_raw(struct nros_polling_client_t *client,
+                                                const uint8_t *data,
+                                                size_t len);
 
 /**
  * Phase 122.3.c.5 — non-blocking poll for a reply on an L1
@@ -8108,17 +8164,32 @@ nros_ret_t nros_client_send_request_raw(struct nros_client_t *client,
  * * `NROS_RET_ERROR` on transport failure
  *
  * # Safety
- * `client` must be in `POLLING` state. `buf` writable for `buf_len`
+ * `client` must be an initialized polling client. `buf` writable for `buf_len`
  * bytes.
  */
 NROS_PUBLIC
-int32_t nros_client_take_response_raw(struct nros_client_t *client,
-                                      uint8_t *buf,
-                                      size_t buf_len);
+int32_t nros_polling_client_take_response_raw(struct nros_polling_client_t *client,
+                                              uint8_t *buf,
+                                              size_t buf_len);
 
 /**
  * Set the response callback fired by `rclc_executor_spin_some` when an
  * async request has its reply delivered.
+ *
+ * phase-487 W2 — the callback and `context` are written into the client's
+ * executor-arena entry, which owns them; the client struct keeps neither.
+ * So the client must be ADDED first (`nros_executor_add_client`), and a
+ * client removed and re-added starts with no callback. Before W2 the setter
+ * wrote the struct and the arena dispatched through a trampoline that read
+ * it back, which is the back-reference RFC-0096 D9 removes.
+ *
+ * # Returns
+ * * `NROS_RET_OK` on success
+ * * `NROS_RET_INVALID_ARGUMENT` if `client` is NULL
+ * * `NROS_RET_NOT_INIT` if the client is not added to an executor
+ *
+ * # Safety
+ * `client` must be a valid pointer; `context` is passed through untouched.
  */
 NROS_PUBLIC
 nros_ret_t nros_client_set_response_callback(struct nros_client_t *client,
@@ -8370,6 +8441,50 @@ nros_ret_t nros_client_request_publisher_get_actual_qos(const struct nros_client
 NROS_PUBLIC
 nros_ret_t nros_client_response_subscription_get_actual_qos(const struct nros_client_t *handle,
                                                             struct nros_qos_t *out_qos);
+
+/**
+ * The QoS a polled entity's backend GRANTED: the polled twin of [`nros_service_request_subscription_get_actual_qos`], which carries the
+ * contract. Returns `NROS_RET_NOT_INIT` when the handle is not initialised.
+ *
+ * # Safety
+ * Both pointers must be valid; `out_qos` must be writable.
+ */
+NROS_PUBLIC
+nros_ret_t nros_polling_service_request_subscription_get_actual_qos(struct nros_polling_service_t *handle,
+                                                                    struct nros_qos_t *out_qos);
+
+/**
+ * The QoS a polled entity's backend GRANTED: the polled twin of [`nros_service_response_publisher_get_actual_qos`], which carries the
+ * contract. Returns `NROS_RET_NOT_INIT` when the handle is not initialised.
+ *
+ * # Safety
+ * Both pointers must be valid; `out_qos` must be writable.
+ */
+NROS_PUBLIC
+nros_ret_t nros_polling_service_response_publisher_get_actual_qos(struct nros_polling_service_t *handle,
+                                                                  struct nros_qos_t *out_qos);
+
+/**
+ * The QoS a polled entity's backend GRANTED: the polled twin of [`nros_client_request_publisher_get_actual_qos`], which carries the
+ * contract. Returns `NROS_RET_NOT_INIT` when the handle is not initialised.
+ *
+ * # Safety
+ * Both pointers must be valid; `out_qos` must be writable.
+ */
+NROS_PUBLIC
+nros_ret_t nros_polling_client_request_publisher_get_actual_qos(struct nros_polling_client_t *handle,
+                                                                struct nros_qos_t *out_qos);
+
+/**
+ * The QoS a polled entity's backend GRANTED: the polled twin of [`nros_client_response_subscription_get_actual_qos`], which carries the
+ * contract. Returns `NROS_RET_NOT_INIT` when the handle is not initialised.
+ *
+ * # Safety
+ * Both pointers must be valid; `out_qos` must be writable.
+ */
+NROS_PUBLIC
+nros_ret_t nros_polling_client_response_subscription_get_actual_qos(struct nros_polling_client_t *handle,
+                                                                    struct nros_qos_t *out_qos);
 
 /**
  * Get a zero-initialized polling subscription.

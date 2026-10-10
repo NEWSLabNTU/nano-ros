@@ -36,9 +36,9 @@
       "text": "argument keeps OUR type: `const nros_service_type_t*` where rclc takes a"
     }
   },
-  "c:client_init_polling": {
+  "c:polling_client_init": {
     "verdict": "extension",
-    "why": "RFC-0022's polling tier. See the pubsub stage's `cpp:PollingSubscription`."
+    "why": "RFC-0022's polling tier. See the pubsub stage's `cpp:PollingSubscription`. Renamed from `nros_client_init_polling` by phase-487 W2, when the polled client became its own type, `nros_polling_client_t`: a dispatched client's entity lives in the executor arena, a polled one's in the struct, and one type holding both meant every dispatched client carried storage only the polled road fills."
   },
   "c:client_init_with_options": {
     "verdict": "extension",
@@ -62,9 +62,9 @@
     "verdict": "divergence",
     "why": "see `cpp:Client::async_send_request`."
   },
-  "c:client_send_request_raw": {
+  "c:polling_client_send_request_raw": {
     "verdict": "extension",
-    "why": "the raw form; see the pubsub stage's `c:publish_raw`."
+    "why": "the raw form; see the pubsub stage's `c:publish_raw`. Renamed from `nros_client_send_request_raw` by phase-487 W2, when the polled client became its own type, `nros_polling_client_t`: a dispatched client's entity lives in the executor arena, a polled one's in the struct, and one type holding both meant every dispatched client carried storage only the polled road fills."
   },
   "c:client_server_available": {
     "verdict": "rename",
@@ -86,15 +86,15 @@
   },
   "c:client_set_response_callback": {
     "verdict": "divergence",
-    "why": "the reply arrives at a callback bound to the CLIENT at creation, rather than resolving a future. `executor-owns-no-entity-storage` and RFC-0041, on the client side."
+    "why": "the reply arrives at a callback rather than resolving a future. CORRECTED by phase-487 W2: this row said the callback is bound to the CLIENT at creation; it is written into the client's executor-ARENA entry, which owns it, so the client must be added (`nros_executor_add_client`) before the setter is called, and `NROS_RET_NOT_INIT` answers one that is not. Before W2 the arena dispatched through a trampoline that read the callback out of the `nros_client_t`, a back-reference RFC-0096 D9 removes. rclc's counterpart passes the callback to `rclc_executor_add_client`; ours keeps a setter because `nros_client_call` swaps a one-shot capture into the same slot. Earlier text: the reply arrives at a callback bound to the CLIENT at creation, rather than resolving a future. `executor-owns-no-entity-storage` and RFC-0041, on the client side."
   },
   "c:client_set_timeout": {
     "verdict": "extension",
     "why": "a per-client default deadline for a pending request, so a device that must not wait forever states the bound once rather than at every call. rclcpp has no client-level timeout -- the caller passes one to `spin_until_future_complete` each time."
   },
-  "c:client_set_wake_callback": {
+  "c:polling_client_set_wake_callback": {
     "verdict": "extension",
-    "why": "see the pubsub stage's `c:subscription_set_wake_callback`."
+    "why": "see the pubsub stage's `c:polling_subscription_set_wake_callback`. Renamed from `nros_client_set_wake_callback` by phase-487 W2, when the polled client became its own type, `nros_polling_client_t`: a dispatched client's entity lives in the executor arena, a polled one's in the struct, and one type holding both meant every dispatched client carried storage only the polled road fills."
   },
   "c:client_state_t": {
     "verdict": "extension",
@@ -104,9 +104,9 @@
     "verdict": "extension",
     "why": "the ours-only half of `c:take_response`: poll for the reply to the most recent `nros_client_send_request_async`. Renamed from `nros_client_try_recv_response` by phase-379 W6 decision 1 (2026-09-03)."
   },
-  "c:client_take_response_raw": {
+  "c:polling_client_take_response_raw": {
     "verdict": "extension",
-    "why": "the L1 polling-client half of `c:take_response`. `reply` -> `response` moved with the verb. Renamed from `nros_client_try_recv_reply_raw` by phase-379 W6 decision 1 (2026-09-03)."
+    "why": "the L1 polling-client half of `c:take_response`. `reply` -> `response` moved with the verb. Renamed from `nros_client_try_recv_reply_raw` by phase-379 W6 decision 1 (2026-09-03). Renamed from `nros_client_take_response_raw` by phase-487 W2, when the polled client became its own type, `nros_polling_client_t`: a dispatched client's entity lives in the executor arena, a polled one's in the struct, and one type holding both meant every dispatched client carried storage only the polled road fills."
   },
   "c:client_try_recv_reply_raw": {
     "verdict": "extension",
@@ -124,7 +124,7 @@
   },
   "c:executor_add_service_raw": {
     "verdict": "divergence",
-    "why": "phase-417 stage 6 — the callback moved OFF `*_init` and onto registration, so `rclc_{subscription,service}_init_default` now matches rclc's four-argument shape and the callback arrives here, exactly as rclc supplies it at `rclc_executor_add_subscription`.\n\nIt keeps the `nros_` prefix DELIBERATELY, and that is the whole content of this row. rclc's same-named calls deliver a DESERIALISED message into caller-owned storage; these deliver CDR BYTES. Taking rclc's spelling for a byte-oriented entry point would be a name whose contract differs -- the `PollingSubscription::take()` failure, which had rclcpp's name, rclcpp's signature and the opposite contract, and cost a spinning loop with no compile error.\n\nThe faithful rclc-shaped entry point exists beside it and DOES take the name: `nros_executor_add_subscription_typed` (W5.a), reached per-message as `<Msg>_executor_add_subscription(exec, sub, &msg, cb, ctx, invocation)` -- rclc's six arguments in rclc's order. So the two shapes are distinguished by NAME rather than by a reader noticing which one deserialises, which is what RFC-0089 asks for."
+    "why": "phase-417 stage 6 — the callback moved OFF `*_init` and onto registration, so `rclc_{subscription,service}_init_default` now matches rclc's four-argument shape and the callback arrives here, exactly as rclc supplies it at `rclc_executor_add_subscription`.\n\nIt keeps the `nros_` prefix DELIBERATELY, and that is the whole content of this row. rclc's same-named calls deliver a DESERIALISED message into caller-owned storage; these deliver CDR BYTES. Taking rclc's spelling for a byte-oriented entry point would be a name whose contract differs -- the `PollingSubscription::take()` failure, which had rclcpp's name, rclcpp's signature and the opposite contract, and cost a spinning loop with no compile error.\n\nThe faithful rclc-shaped entry point exists beside it and DOES take the name: `nros_executor_add_subscription_typed` (W5.a), reached per-message as `<Msg>_executor_add_subscription(exec, sub, &msg, cb, ctx, invocation)` -- rclc's six arguments in rclc's order. So the two shapes are distinguished by NAME rather than by a reader noticing which one deserialises, which is what RFC-0089 asks for. Since phase-487 W2 it is the ONLY service registration: the two-argument `nros_executor_add_service`, which dispatched a callback the init call stored in the struct, is gone, and a generated `<Srv>_executor_add_service(executor, service, &handler)` wraps this call for the typed path."
   },
   "c:executor_register_lifecycle_services": {
     "verdict": "extension",
@@ -157,7 +157,7 @@
     "verdict": "divergence",
     "provides": [
       "nros_client_send_request_async",
-      "nros_client_send_request_raw"
+      "nros_polling_client_send_request_raw"
     ],
     "why": "CORRECTED 2026-08-26 (phase-379 W5), re-verdicted rename -> divergence, with two factual errors fixed.\n(1) There is no bare `nros_client_send_request` -- the brace spelling `nros_client_send_request{,_async,_raw}` claimed one. Verified word-boundary, repo-wide: the C API ships exactly `nros_client_send_request_async(client, request_data, request_len)` (executor-registered client) and `nros_client_send_request_raw(client, data, len)` (L1 polling-mode client). The `_async` / `_raw` split is two client MODES, not two spellings of one call.\n(2) 'only the free-function shape differs' is wrong the same way `c:publish` was: both of ours ARE free functions taking the client first, exactly rcl's shape. `nros_client_` is a module prefix -- rcl uses the identical construction for `rcl_client_fini` / `rcl_client_request_publisher_get_actual_qos`. And the chain of precedent argues the other way in any case: `c:get_zero_initialized_client` defers to `c:get_zero_initialized_publisher`, which is verdict DECLINED, i.e. it argues for KEEPING our spelling.\nWhat actually differs, and the constraint for each: `rcl_send_request(client, ros_request, sequence_number)` takes a typed `const void *` plus an OUT sequence number. Ours take bytes (`const uint8_t *`, `size_t`) because there is no runtime typesupport dispatch and no allocator to serialize into -- the same reason `c:publish` splits. And neither returns a sequence number because a nano-ros client keeps ONE call in flight (the `in_flight` flag and `reset_in_flight()` on the handle, `nros-node/src/executor/handles.rs`) rather than a correlation table; the backend does hand one back since issue 0778 and the raw handle drops it explicitly rather than by omission. Correlating replies across a client restart is the `rust:RequestId` divergence, one layer down.",
     "rename": {
@@ -207,9 +207,9 @@
     },
     "why": "see `c:client_init_default`.\n\nphase-428 Q1 (2026-09-06) — refuse-loud -> adopt-bounded. `rclc_service_init_default` EXISTS at rclc's arity (`packages/api/nros-c/src/service.rs:325`: service, node, type, name) and the correlator files it `same`; the old row promised a refusal nothing emits.\n\nWHAT THE COMPILER POINTS AT: argument 3. rclc takes `const rosidl_service_type_support_t*` and a ported file passes `ROSIDL_GET_SRV_TYPE_SUPPORT(pkg, srv, Name)`; ours takes `const struct nros_service_type_t*` (the generated `<name>_type` descriptor, e.g. `&add_two_ints_type` in `examples/threadx-linux/c/service-server/src/main.c:138`). An rcl typesupport pointer at that position is an incompatible-pointer diagnostic on the call, naming both types. That is a mechanical edit, not a message with the migration attached, which is why this is adopt-bounded and not refuse-loud.\n\nTHE ENVELOPE: the callback is not on this call in either library — rclc supplies it at `rclc_executor_add_service`, ours at `nros_executor_add_service_raw` (`packages/api/nros-c/include/nros/nros_generated.h:4942`), so that half ports one-for-one. The service-name expansion caveat in `c:publisher_init` does not apply: services reach `resolve_entity_name` at registration."
   },
-  "c:service_init_polling": {
+  "c:polling_service_init": {
     "verdict": "extension",
-    "why": "RFC-0022's polling tier. See the pubsub stage's `cpp:PollingSubscription`."
+    "why": "RFC-0022's polling tier. See the pubsub stage's `cpp:PollingSubscription`. Renamed from `nros_service_init_polling` by phase-487 W2, when the polled service became its own type, `nros_polling_service_t`: a dispatched service's entity lives in the executor arena, a polled one's in the struct, and one type holding both meant every dispatched service carried storage only the polled road fills."
   },
   "c:service_init_with_options": {
     "verdict": "extension",
@@ -253,17 +253,17 @@
     },
     "retired": "a deprecated alias, deleted after its one release; the row records the rename"
   },
-  "c:service_send_response_raw": {
+  "c:polling_service_send_response_raw": {
     "verdict": "extension",
-    "why": "the ours-only half of `c:send_response`; recorded so the pair is visible from both sides. LANDED 2026-08-27 (phase-379 W5): this is the renamed `nros_service_send_reply_raw`, and it is now the ONE exported symbol of the reply verb in C. `_raw` is the family convention for the byte-buffer entry points (`nros_publish_raw`, `nros_client_send_request_raw`, the `nros_action_*_raw` family) -- not a marker that a typed non-raw twin exists, because in C there is none. Reached on a server created with `nros_service_init_polling`; `sequence_number` is the value the matching `nros_service_try_recv_request_raw` returned (see `rust:RequestId` for why that token is a bare integer)."
+    "why": "the ours-only half of `c:send_response`; recorded so the pair is visible from both sides. LANDED 2026-08-27 (phase-379 W5): this is the renamed `nros_service_send_reply_raw`, and it is now the ONE exported symbol of the reply verb in C. `_raw` is the family convention for the byte-buffer entry points (`nros_publish_raw`, `nros_client_send_request_raw`, the `nros_action_*_raw` family) -- not a marker that a typed non-raw twin exists, because in C there is none. Reached on a server created with `nros_service_init_polling`; `sequence_number` is the value the matching `nros_service_try_recv_request_raw` returned (see `rust:RequestId` for why that token is a bare integer). Renamed from `nros_service_send_response_raw` by phase-487 W2, when the polled service became its own type, `nros_polling_service_t`: a dispatched service's entity lives in the executor arena, a polled one's in the struct, and one type holding both meant every dispatched service carried storage only the polled road fills."
   },
   "c:service_set_on_new_request_callback": {
     "verdict": "divergence",
     "why": "see the pubsub stage's `c:subscription_set_on_new_message_callback`."
   },
-  "c:service_set_wake_callback": {
+  "c:polling_service_set_wake_callback": {
     "verdict": "extension",
-    "why": "see the pubsub stage's `c:subscription_set_wake_callback`."
+    "why": "see the pubsub stage's `c:polling_subscription_set_wake_callback`. Renamed from `nros_service_set_wake_callback` by phase-487 W2, when the polled service became its own type, `nros_polling_service_t`: a dispatched service's entity lives in the executor arena, a polled one's in the struct, and one type holding both meant every dispatched service carried storage only the polled road fills."
   },
   "c:service_state_t": {
     "verdict": "extension",
@@ -274,9 +274,9 @@
     "why": "the ours-only half of `c:take_request`. Two entry points carry it: this one, a permanent `NROS_RET_NOT_INIT` stub from before the polling API existed, and `nros_service_take_request_raw`, the L1 polling drain (renamed from `nros_service_try_recv_request_raw` by phase-379 W6 decision 1, 2026-09-03). Which of the two spellings survives is still open.",
     "retired": "a deprecated alias, deleted after its one release; the row records the rename"
   },
-  "c:service_take_request_raw": {
+  "c:polling_service_take_request_raw": {
     "verdict": "extension",
-    "why": "the L1 polling-mode drain, the working half of `c:service_take_request`. Byte-oriented for the reason `c:take` names -- no typesupport dispatch, no allocator. Renamed from `nros_service_try_recv_request_raw` by phase-379 W6 decision 1 (2026-09-03)."
+    "why": "the L1 polling-mode drain, the working half of `c:service_take_request`. Byte-oriented for the reason `c:take` names -- no typesupport dispatch, no allocator. Renamed from `nros_service_try_recv_request_raw` by phase-379 W6 decision 1 (2026-09-03). Renamed from `nros_service_take_request_raw` by phase-487 W2, when the polled service became its own type, `nros_polling_service_t`: a dispatched service's entity lives in the executor arena, a polled one's in the struct, and one type holding both meant every dispatched service carried storage only the polled road fills."
   },
   "c:service_try_recv_request_raw": {
     "verdict": "extension",
@@ -306,7 +306,7 @@
     "disposition": "absent",
     "provides": [
       "nros_client_take_response",
-      "nros_client_take_response_raw"
+      "nros_polling_client_take_response_raw"
     ],
     "why": "RE-VERDICTED 2026-09-03 (phase-379 W6 decision 1), rename -> declined -- the client side of `c:take_request`. Ours is `nros_client_take_response` (executor-registered client) and `nros_client_take_response_raw` (L1 polling client), renamed from `nros_client_try_recv_response` / `nros_client_try_recv_reply_raw`; `reply` -> `response` moved with the verb because rcl, rclcpp and rclrs all say RESPONSE. Only the module prefix remains."
   },
@@ -1459,5 +1459,29 @@
   "rust:Node::create_polling_service_with_qos": {
     "verdict": "extension",
     "why": "the POLLED service-server constructor: the caller drains requests from the returned server. rclrs's `create_service` takes a callback, as `Node::create_service` does, so the polled form takes a different NAME (phase-483 W2). An RTOS extension for polling loops."
+  },
+  "c:polling_service_t": {
+    "verdict": "extension",
+    "why": "RFC-0022's polling tier, as its own type since phase-487 W2 (RFC-0096 D9, the C half). Nothing dispatches a polled service, so it has no arena slot and keeps its entity inline. The C++ twin is `nros::PollService<S>`."
+  },
+  "c:get_zero_initialized_polling_service": {
+    "verdict": "extension",
+    "why": "the zero-initialiser of `nros_polling_service_t`, in rcl's `rcl_get_zero_initialized_*` shape. RFC-0022's polling tier, as its own type since phase-487 W2 (RFC-0096 D9, the C half). Nothing dispatches a polled service, so it has no arena slot and keeps its entity inline. The C++ twin is `nros::PollService<S>`."
+  },
+  "c:polling_service_fini": {
+    "verdict": "extension",
+    "why": "finalises a `nros_polling_service_t`: drops the inline entity, refusing with `NROS_RET_STALE_NODE` when the node went first (issue 1386). The polled half of what `nros_service_fini` did for both roads before phase-487 W2. RFC-0022's polling tier, as its own type since phase-487 W2 (RFC-0096 D9, the C half). Nothing dispatches a polled service, so it has no arena slot and keeps its entity inline. The C++ twin is `nros::PollService<S>`."
+  },
+  "c:polling_client_t": {
+    "verdict": "extension",
+    "why": "RFC-0022's polling tier, as its own type since phase-487 W2 (RFC-0096 D9, the C half). Nothing dispatches a polled client, so it has no arena slot and keeps its entity inline. The C++ twin is `nros::PollClient<S>`."
+  },
+  "c:get_zero_initialized_polling_client": {
+    "verdict": "extension",
+    "why": "the zero-initialiser of `nros_polling_client_t`, in rcl's `rcl_get_zero_initialized_*` shape. RFC-0022's polling tier, as its own type since phase-487 W2 (RFC-0096 D9, the C half). Nothing dispatches a polled client, so it has no arena slot and keeps its entity inline. The C++ twin is `nros::PollClient<S>`."
+  },
+  "c:polling_client_fini": {
+    "verdict": "extension",
+    "why": "finalises a `nros_polling_client_t`: drops the inline entity, refusing with `NROS_RET_STALE_NODE` when the node went first (issue 1386). The polled half of what `nros_client_fini` did for both roads before phase-487 W2. RFC-0022's polling tier, as its own type since phase-487 W2 (RFC-0096 D9, the C half). Nothing dispatches a polled client, so it has no arena slot and keeps its entity inline. The C++ twin is `nros::PollClient<S>`."
   }
 }

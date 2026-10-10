@@ -3,24 +3,26 @@
  * @ingroup grp_service
  * @brief Service server API.
  *
- * Create service servers with nros_service_init().  For executor-driven
- * dispatch — the usual shape — register a `nros_service_callback_t` at init
- * time and let the executor deliver requests and send responses for you.
+ * Create a service server with rclc_service_init_default() (or
+ * nros_service_init_with_qos()) and add it to an executor with
+ * nros_executor_add_service_raw(), which takes the `nros_service_callback_t`.
+ * The executor arena owns the server and the callback, delivers requests and
+ * sends responses for you.
  *
- * For manual polling, create the server with nros_service_init_polling(),
- * take requests with nros_service_take_request_raw(), and send responses
- * with nros_service_send_response_raw().
+ * For manual polling with no executor, use the separate type
+ * ::nros_polling_service_t: create it with nros_polling_service_init(), take
+ * requests with nros_polling_service_take_request_raw(), and send responses
+ * with nros_polling_service_send_response_raw(). The two types are separate
+ * since phase-487: a dispatched server's storage is in the executor arena, a
+ * polled one's is in the struct.
  *
  * For a TYPED handler — a deserialised request in, a typed response out,
  * with no hand-written CDR — the generated per-service header emits
- * `<Srv>_service_handler_t`, `<Srv>_service_handler_init()` and
- * `<Srv>_service_init()`; see `packs/c/service.h.jinja` (phase-417 W5.e).
- * Those are `static inline` glue over the same entry points documented
- * here, so the two paths cannot diverge.
- *
- * (The `c:take_request` question in the phase-379 parity ledger is
- * ANSWERED: `nros_service_take_request()` is now a deprecated forwarder
- * onto `nros_service_take_request_raw()` — see below.)
+ * `<Srv>_service_handler_t`, `<Srv>_service_handler_init()`,
+ * `<Srv>_service_init()` and `<Srv>_executor_add_service()`; see
+ * `packs/c/service.h.jinja` (phase-417 W5.e). Those are `static inline` glue
+ * over the same entry points documented here, so the two paths cannot
+ * diverge.
  */
 
 #ifndef NROS_SERVICE_H
@@ -89,7 +91,7 @@ static inline nros_ret_t rclc_service_init_best_effort(struct nros_service_t* se
                                                        const struct nros_service_type_t* type_info,
                                                        const char* service_name) {
     struct nros_qos_t qos = nros_qos_services_best_effort();
-    return nros_service_init_with_qos(service, node, type_info, service_name, NULL, NULL, &qos);
+    return nros_service_init_with_qos(service, node, type_info, service_name, &qos);
 }
 
 #endif /* NROS_SERVICE_H */
