@@ -1,6 +1,6 @@
 # Phase 486 — the launch model carries what every realizer reads; nano-ros's own facts move to an overlay
 
-**Status (2026-10-10). DESIGNED; no wave started.** Implements RFC-0060's
+**Status (2026-10-11). W0 LANDED (census below, two design corrections); W1–W9 not started.** Implements RFC-0060's
 [2026-10-10 amendment](../design/0060-launch-toolchain-three-layers.md#amendment-2026-10-10--what-the-systemmodel-may-carry-and-where-nano-ross-own-facts-go)
 and RFC-0100's
 [2026-10-10 ruling](../design/0100-rmw-agnostic-sizing-model.md#ruling-2026-10-10--a-stated-fact-earns-a-file-whatever-it-came-from).
@@ -23,7 +23,7 @@ projects three nano-ros build facts into it:
 | --- | --- | --- |
 | `execution.features` | `[system] features`, `[param_services]` | none. rclcpp nodes have parameter services unless their code opts out |
 | each lifecycle node's `lifecycle_autostart`, set system-wide | `[lifecycle] autostart` | the per-node field is ROS (Jazzy `LifecycleNode(autostart=)`); the system-wide default is not |
-| `execution.deploy.<n>.target = mcu:<board>`, `.extra` | `[deploy.<n>]` board/framework/profile/optimize/features, `[deploy.<n>.nros]` | none. These describe a build; nano-ros itself moved them to `[image.*]` and `[board_config.*]` |
+| `execution.deploy.<n>.extra` (W0: `target = mcu:<board>` stays, it is placement) | `[deploy.<n>]` framework/profile/optimize/features/kind, `[deploy.<n>.nros]` | none. These describe a build; nano-ros itself moved them to `[image.*]` and `[board_config.*]` |
 
 Measured consequences:
 
@@ -72,6 +72,53 @@ W0 census ─► W1 overlay (additive) ─► W2 per-image switches ─► W3 re
 
 **Acceptance:** a census table committed in this doc. Any reader W0 finds
 outside the list becomes a W3 row.
+
+### W0 result (2026-10-11)
+
+**Readers: three code sites and one funnel, not six.** Every read of a
+moving field in `packages/` (tests excluded), by `git grep`:
+
+| Field | Reader | What it does |
+| --- | --- | --- |
+| `execution.features` | `entity_inventory.rs` `InfraServices::from_model` | the FUNNEL. It is the only model reader feeding `cmd/entity_facts.rs`, `cmd/sizing_descriptor.rs` (×2), `cmd/build.rs` (the store infra) and `orchestration/model_ingest.rs`. The leaf roads already use `InfraServices::from_features` over the leaf's own `system.toml`, so they are overlay-shaped today |
+| `execution.features` | `codegen/entry/mod.rs` (`param_services`, `safety` for the entry `Plan`) | direct read |
+| `execution.features` | `nros-macros/src/main_macro.rs` (launch-arm axis asserts, PR #1872) | direct read |
+| `lifecycle_autostart` | `codegen/entry/mod.rs`, `entity_inventory.rs` (`InfraServices`), `main_macro.rs` | all three REDUCE per-node to one image value: `find_map` / `any` over `structure.nodes`, first node wins |
+| `Deploy.target = Mcu{board}`, `Deploy.extra["kind"]` | `codegen/entry/mod.rs` and `main_macro.rs` (the same board-slice rule, twice: issue 0358's class) | which nodes an entry keeps for its board |
+| `Deploy.extra` (any other key) | none. `nros-orchestration-ir/src/derive.rs` records that the `edf`/`cores` readers were removed (issue 0951) | — |
+
+**Inputs (189 tracked `system.toml`):** `[system] features` in 3 files
+(`examples/workspaces/{features,managed,safety}`), `[lifecycle]` in 1
+(`features`), `[param_services]` in 0, `[deploy.*]` in 0. No tracked model
+(they are build artifacts).
+
+**Byte-identical set for W1–W4:**
+- every `[image.*]` of the three bringups above: `features` (lifecycle, params,
+  custom-msg images), `managed` (`native_managed`) and `safety` (four
+  native C/C++ images);
+- the store images from PRs #1823, #1830 and #1846: the AN536 FreeRTOS Cyclone
+  C++ entry, `param-store-nuttx-qemu-arm` and `param-store-threadx-riscv64`;
+- one bringup with no switches, as the negative control:
+  `examples/workspaces/cpp`.
+
+**Correction 1: `Target::Mcu{board}` stays in the model.** The board-slice
+readers use it as PLACEMENT ("this node runs on that board"), and placement
+passes the RFC-0060 test: play_launch reads `Mcu` as "not a node this machine
+runs", which is the same meaning. What retires is `Deploy.extra`, including
+its `kind` fallback in the slice. No authoring path writes `[deploy.*]` (0 of
+189), so that fallback is reachable only from the deprecated table. W6 and W8
+are narrowed to `extra`. The RFC-0060 amendment's table is corrected to match.
+
+**Correction 2: the lifecycle reduction needs a rule.** The runtime has ONE
+executor-wide autostart (`nros_cpp_lifecycle_autostart(executor, level)`), and
+all three readers collapse per-node values with first-node-wins. Once W5 lets
+launch files state `autostart` per node, two lifecycle nodes in one image can
+disagree. W3 replaces first-wins with one shared reducer:
+- every node that states a value agrees, and that value wins;
+- if none states one, the overlay default applies;
+- if two disagree, sync refuses and names both nodes.
+
+The reducer replaces the three copies.
 
 ## W1 — the overlay, written but not read (additive)
 
