@@ -30,11 +30,15 @@ RULES CHECKED HERE:
      rules have owners already and are NOT restated:
      `check-workspace-root-build-files` (no root build file) and
      `check-leaf-lockfiles` (the lock invariant).
+  4. tracked-set completeness: every path a `CMakeLists.txt` or
+     `system.toml` in scope names is in `git ls-files` (reach stated beside
+     `untracked_refs`; `package.xml` names packages, never paths).
 
-NOT CHECKED HERE (issue 1509 stays open for them):
-  2. every `<depend>` resolves — needs the CLI's `prereq_resolve::classify`
-     ladder, which no fast-line artifact exposes;
-  4. tracked-set completeness of referenced paths.
+CHECKED ELSEWHERE, OVER THIS SCOPE (`--list-roots` prints it):
+  2. every `<depend>` resolves — `packages/cli/nros-cli-core/tests/
+     declared_depends_resolve.rs`, through the CLI's own ladder (no fast-line
+     gate may exec the CLI, issue 0466; it runs in `check-cli-tests`).
+
 And no static rule covers issue 1453's residual: tracked content that is
 complete and still does not build is the copy-out lane's question.
 
@@ -179,7 +183,136 @@ def violations(files):
     for r in roots:
         if r.startswith("examples/workspaces/") and (r + "/.colcon_workspace") not in set(files):
             found.setdefault(r, []).append("no tracked .colcon_workspace")
+    for f, why in untracked_refs(files, roots).items():
+        found.setdefault(f, []).extend(why)
     return roots, pkgs, found
+
+
+# --- Rule 4 — every path a build declaration names is TRACKED ---------------
+#
+# The static analogue of copying out: `check-template-copy-out` copies the
+# TRACKED set and builds it, so a file that exists only in the author's
+# worktree is what it catches. Asking "is every referenced path tracked" gets
+# most of that with no build. NOT all: tracked content that is wrong still
+# builds nowhere, and that residual (issue 1453) stays with the copy-out lane.
+#
+# REACH, stated so it is not over-read:
+#   * `CMakeLists.txt` — a relative path with a source/data extension, bare or
+#     under `${CMAKE_CURRENT_SOURCE_DIR}` / `${CMAKE_CURRENT_LIST_DIR}` /
+#     `${PROJECT_SOURCE_DIR}`, and every `add_subdirectory(<dir>)`. A path under
+#     any OTHER variable is a build product or a toolchain file, not ours.
+#   * `system.toml` — `launch` / `default_launch` (under `launch/` or beside
+#     the file) and `conf` fragments (anywhere under the bringup, which is
+#     where the Zephyr overlay resolver looks once the application is
+#     generated). `out` names OUTPUTS and `params_files` holds inline YAML.
+#   * `package.xml` names packages, never paths: nothing to check.
+PATH_EXT = r"(?:c|cc|cpp|cxx|h|hh|hpp|rs|msg|srv|action|idl|yaml|yml|xml|toml|conf|overlay|ld|py|json)"
+CMAKE_PATH = re.compile(
+    r'(?<![\w${}/.-])(?:\$\{(?:CMAKE_CURRENT_SOURCE_DIR|CMAKE_CURRENT_LIST_DIR|PROJECT_SOURCE_DIR)\}/)?'
+    r'((?:\.\.?/)*[A-Za-z0-9_][A-Za-z0-9_.\-/]*\.' + PATH_EXT + r')(?![\w.-])')
+ADD_SUBDIR = re.compile(
+    r'add_subdirectory\(\s*"?(?:\$\{(?:CMAKE_CURRENT_SOURCE_DIR|CMAKE_CURRENT_LIST_DIR)\}/)?([^"\s)$]+)"?')
+
+
+def _tracked(path, tracked, tracked_dirs):
+    return path in tracked or path in tracked_dirs
+
+
+def _norm(base, rel):
+    return os.path.normpath(os.path.join(base, rel)).replace(os.sep, "/")
+
+
+def cmake_refs(text):
+    code = strip_hash_comments(text)
+    refs = [m.group(1) for m in CMAKE_PATH.finditer(code)]
+    subdirs = [m.group(1) for m in ADD_SUBDIR.finditer(code)]
+    return refs, subdirs
+
+
+def _toml_values(node, keys):
+    if isinstance(node, dict):
+        for k, v in node.items():
+            if k in keys:
+                for x in (v if isinstance(v, list) else [v]):
+                    if isinstance(x, str):
+                        yield k, x
+            else:
+                yield from _toml_values(v, keys)
+    elif isinstance(node, list):
+        for x in node:
+            yield from _toml_values(x, keys)
+
+
+def untracked_refs(files, roots):
+    """{declaring file: [problem, ...]} for rule 4."""
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # Python < 3.11
+        import tomli as tomllib
+    tracked = set(files)
+    tracked_dirs = set()
+    for f in files:
+        d = os.path.dirname(f)
+        while d and d not in tracked_dirs:
+            tracked_dirs.add(d)
+            d = os.path.dirname(d)
+    found = {}
+    for f in files:
+        if not any(f.startswith(r + "/") for r in roots):
+            continue
+        base = os.path.dirname(f)
+        name = os.path.basename(f)
+        if name == "CMakeLists.txt":
+            try:
+                text = open(os.path.join(ROOT, f), errors="replace").read()
+            except OSError:
+                continue
+            refs, subdirs = cmake_refs(text)
+            for r in refs:
+                # A header is named as the code `#include`s it (`HEADER
+                # ctrl_pkg/Ctrl.hpp`), so it resolves through the package's
+                # include roots as well as beside the file.
+                cands = [_norm(base, r)]
+                if r.endswith((".h", ".hh", ".hpp")):
+                    cands += [_norm(base, "include/" + r), _norm(base, "src/" + r)]
+                if not any(_tracked(c, tracked, tracked_dirs) for c in cands):
+                    found.setdefault(f, []).append(f"names `{r}`, which is not tracked")
+            for d in subdirs:
+                p = _norm(base, d)
+                if (p + "/CMakeLists.txt") not in tracked:
+                    found.setdefault(f, []).append(
+                        f"add_subdirectory(`{d}`) has no tracked CMakeLists.txt")
+        elif name == "system.toml":
+            try:
+                doc = tomllib.load(open(os.path.join(ROOT, f), "rb"))
+            except (OSError, tomllib.TOMLDecodeError):
+                continue
+            under = [t for t in tracked if t.startswith(base + "/")]
+            # `conf` fragments, per image: the overlay resolver looks under the
+            # bringup's board directory, then in the image's west APPLICATION
+            # (a hand-written `[image.<id>] entry`, else `<id>_entry`), then in
+            # the bringup (`builder/zephyr.rs::resolve_fragment`).
+            for img_id, img in (doc.get("image") or {}).items():
+                if not isinstance(img, dict):
+                    continue
+                app = _norm(base, "../" + (img.get("entry") or f"{img_id}_entry"))
+                for v in img.get("conf") or []:
+                    ok = any(os.path.basename(t) == v for t in under) or \
+                        any(t.startswith(app + "/") and os.path.basename(t) == v
+                            for t in tracked)
+                    if not ok:
+                        found.setdefault(f, []).append(
+                            f"[image.{img_id}] conf `{v}` is tracked neither under the "
+                            f"bringup nor in its application")
+            for key, v in _toml_values(doc, {"launch", "default_launch"}):
+                pkg_dir, file_ = base, v
+                if ":" in v:
+                    pkg, file_ = v.split(":", 1)
+                    pkg_dir = _norm(base, "../" + pkg) if pkg else base
+                cands = (_norm(pkg_dir, "launch/" + file_), _norm(pkg_dir, file_))
+                if not any(c in tracked for c in cands):
+                    found.setdefault(f, []).append(f"{key} `{v}` is not tracked")
+    return found
 
 
 def load_baseline():
@@ -226,13 +359,31 @@ def self_test():
            "every entry spelling is recognised")
     expect(not any(entry.search(n) for n in ("sentry_pkg", "entrypoint_pkg", "talker_pkg")),
            "a name merely CONTAINING 'entry' is not an entry")
+    # Rule 4's reader: a path under OUR source dir counts, a build product
+    # does not, a comment does not, and add_subdirectory names a directory.
+    expect(cmake_refs("add_library(x src/a.c)\n# src/b.c\n") == (["src/a.c"], []),
+           "rule 4 reads a source path and skips a commented one")
+    expect(cmake_refs("target_sources(x PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/gen.c)\n")
+           == ([], []), "rule 4 ignores a build-dir product")
+    expect(cmake_refs('add_library(x "${CMAKE_CURRENT_SOURCE_DIR}/src/a.cpp")\n')
+           == (["src/a.cpp"], []), "rule 4 reads a CMAKE_CURRENT_SOURCE_DIR path")
+    expect(cmake_refs('add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../ctrl_pkg" ctrl_pkg)\n')
+           == ([], ["../ctrl_pkg"]), "rule 4 reads add_subdirectory")
     return ok
 
 
 def main():
+    # Issue 1509 rule 2 lives in the CLI's own tests (it needs the CLI's
+    # `<depend>` ladder, and no fast-line gate may exec the CLI — issue 0466),
+    # but its SCOPE is this one: it asks for the roots here rather than
+    # re-deriving them.
+    if "--list-roots" in sys.argv:
+        roots, _ = scope(git_files())
+        print("\n".join(roots))
+        return 0
     if not self_test():
         return 1
-    print("check-node-package-invariance self-test: OK (11 cases)")
+    print("check-node-package-invariance self-test: OK (15 cases)")
     if "--self-test" in sys.argv:
         return 0
     files = git_files()
@@ -244,10 +395,17 @@ def main():
         print("check-node-package-invariance: FAILED (issue 1509)", file=sys.stderr)
         for p, why in sorted(new.items()):
             print(f"  {p}: {'; '.join(why)}", file=sys.stderr)
-        if new:
+        msgs = [m for v in new.values() for m in v]
+        if any("tracked" in m for m in msgs):
+            print("  Rule 4: a build declaration names a path git does not carry, so a\n"
+                  "  clone or a copied-out template cannot build it. `git add` the file\n"
+                  "  (or fix the reference).", file=sys.stderr)
+        if any("tracked" not in m for m in msgs):
             print("  A node package must look the same on every platform and RMW: move the\n"
-                  "  platform/RMW fact to the bringup (system.toml) or an *_entry package. A\n"
-                  "  justified exception goes in .config/node-package-invariance-baseline.txt\n"
+                  "  platform/RMW fact to the bringup (system.toml) or an *_entry package.",
+                  file=sys.stderr)
+        if new:
+            print("  A justified exception goes in .config/node-package-invariance-baseline.txt\n"
                   "  with its reason.", file=sys.stderr)
         for p in stale:
             print(f"  {p}: baselined but no longer violates — delete its line", file=sys.stderr)

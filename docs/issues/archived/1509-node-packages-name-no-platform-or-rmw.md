@@ -2,11 +2,12 @@
 id: 1509
 title: "A node package names no platform and no RMW — measured true today, gated
   by nothing; the end-to-end lane that would notice is `schedule`-only"
-status: open
+status: resolved
 type: enhancement
 area: testing, build
 severity: medium
 found: 2026-09-27
+resolved_in: "rules 1/3/4 in check-node-package-invariance; rule 2 in nros-cli-core tests/declared_depends_resolve.rs"
 related: [issue-1453, issue-1429, issue-1108, issue-1226, issue-1040, issue-0196, issue-0743, issue-1043, issue-1289]
 ---
 
@@ -311,3 +312,39 @@ on the fast line, ~0.1 s, reads tracked files only):
 `prereq_resolve::classify` ladder exposed to a fast-line check — a second
 spelling of the ladder is ruled out by this issue — and rule 4 (tracked-set
 completeness of referenced paths). Neither is attempted here.
+
+## 2026-10-11 — rules 2 and 4 land; resolved
+
+**Rule 2 — every `<depend>` resolves.** `nros build`'s phase-398 W3 check is
+split into `cmd::build::declared_depends_report` (the ladder, as data) and the
+part that refuses, so the CLI's own tests ask the SAME ladder of every root in
+scope: `packages/cli/nros-cli-core/tests/declared_depends_resolve.rs`. Scope is
+asked of `check-node-package-invariance.py --list-roots`, not re-derived.
+
+- **Where it runs, and why there:** no fast-line gate may exec the CLI (issue
+  0466), and the ladder lives in the CLI. `check-cli-tests` is in the required
+  pull-request context, so it still runs on every PR.
+- **Measured:** 26 roots, 0 unresolved — with ROS sourced AND with
+  `AMENT_PREFIX_PATH` unset (the bundled-message and nano-ros-provided rungs
+  answer everything the ament rung would). Negative controls: issue 1108's
+  `<depend>nano-ros</depend>` added to `pure-c-workspace`'s `c_listener_pkg`
+  fails naming the file and the name; a built-in test refuses it in a scratch
+  workspace while resolving `std_msgs` beside it.
+- **NOT VERIFIED is printed, not a ledger entry.** Without an ament index the
+  test reports any unresolved name as NOT VERIFIED rather than failing; every
+  other rung still fails it. It is a Rust test, so it cannot reach the shell
+  `nros_check_skip` ledger; today the list is empty either way.
+
+**Rule 4 — tracked-set completeness**, in `check-node-package-invariance`
+(fast line, the whole gate 0.07 s). Every path a `CMakeLists.txt` names (a
+source/data path under our own source dir — headers through `include/` and
+`src/` as they are `#include`d — and every `add_subdirectory`) and every
+`launch` / `default_launch` / `[image.*] conf` a `system.toml` names (conf
+through the overlay resolver's own rungs: under the bringup, then the image's
+application) must be in `git ls-files`. 90 CMake paths, 4 subdirectories, and
+every bringup's launch/conf examined; 0 findings. Negative control: an
+untracked `src/Extra.c` added to `realtime-c`'s `ctrl_pkg` fails naming it.
+`package.xml` names packages, never paths. Four new selftest cases (15 now).
+What it does not cover is stated in the gate's header: tracked content that is
+complete and still does not build is issue 1453's residual.
+
