@@ -46,12 +46,27 @@ endif()
 # in our in-tree case; the inline-compile approach was proven by the
 # Rust lane first, and since issue 1068 the two lanes share ONE source
 # list (`../xrce-sources.txt`) rather than mirroring it.
-set(MICROXRCEDDS_CLIENT_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}/../xrce-sys/micro-xrce-dds-client"
-    CACHE PATH "Path to vendored micro-xrce-dds-client checkout")
-set(MICROCDR_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}/../xrce-sys/micro-cdr"
-    CACHE PATH "Path to vendored micro-cdr checkout")
+#
+# phase-484 W3c (RFC-0103 D5) — both trees are LOCATED (a local edit in the
+# checkout submodule, the store copy at the pin, the checkout), the same answer
+# the cargo lane's build script gets. An explicit `-D<VAR>` still wins. Normal
+# variables, never CACHE: a cached store path would outlive the pin it names.
+# The fallback (no CLI to ask) is the checkout directory.
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/../../../../cmake/NanoRosLocate.cmake")
+    include("${CMAKE_CURRENT_LIST_DIR}/../../../../cmake/NanoRosLocate.cmake")
+endif()
+if(NOT MICROXRCEDDS_CLIENT_DIR AND COMMAND nros_locate_source)
+    nros_locate_source(MICROXRCEDDS_CLIENT_DIR micro-xrce-dds-client)
+endif()
+if(NOT MICROXRCEDDS_CLIENT_DIR)
+    set(MICROXRCEDDS_CLIENT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../xrce-sys/micro-xrce-dds-client")
+endif()
+if(NOT MICROCDR_DIR AND COMMAND nros_locate_source)
+    nros_locate_source(MICROCDR_DIR micro-cdr)
+endif()
+if(NOT MICROCDR_DIR)
+    set(MICROCDR_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../xrce-sys/micro-cdr")
+endif()
 
 # ---- The vendored compile: NOT HERE ANY MORE (phase-420 W9 step 4) ---------
 #

@@ -1391,6 +1391,7 @@ ref = "5e146adef63b326b04282252639bebc2730939c6"
 # what we actually know.
 [source.micro-xrce-dds-client]
 version = "3.0.1"
+location = "store"
 dest = "packages/rmw/xrce/xrce-sys/micro-xrce-dds-client"
 submodule = "packages/rmw/xrce/xrce-sys/micro-xrce-dds-client"
 git = "https://github.com/eProsima/Micro-XRCE-DDS-Client.git"
@@ -1398,6 +1399,7 @@ ref = "bdfa28090efc8c0e89aa5c95cdf0878c8289a18b"
 
 [source.micro-cdr]
 version = "2.0.2"
+location = "store"
 dest = "packages/rmw/xrce/xrce-sys/micro-cdr"
 submodule = "packages/rmw/xrce/xrce-sys/micro-cdr"
 git = "https://github.com/eProsima/Micro-CDR.git"

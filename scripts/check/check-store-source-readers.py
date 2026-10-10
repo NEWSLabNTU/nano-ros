@@ -16,6 +16,12 @@ about where a tree used to be is not a read). A listed file that no longer
 names any such path is reported too, so the list cannot rot into a blanket
 exemption.
 
+What it CANNOT see: a path assembled from pieces (`xrce_sys.join("micro-cdr")`,
+`"${CMAKE_CURRENT_SOURCE_DIR}/../xrce-sys/micro-cdr"`), because it matches the
+row's whole `dest`. Those were swept by hand when each row flipped; a fallback
+of that shape is legitimate when it follows a locate call (the ladder's last
+rung), which is why this is not widened to a per-segment match.
+
 Buildless, tracked files only, ~0.2 s. Self-tests its comment filter.
 """
 
@@ -59,6 +65,9 @@ ALLOWED = {
     "packages/rmw/zenoh/nros-zpico-build/src/runner.rs": "error text naming the submodule",
     "just/check/docs.just": "skip text naming the submodule",
     "just/check/rmw.just": "skip text naming the submodule",
+    "just/check/lanes.just": "skip text naming the submodule",
+    "packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs": "error text naming the submodule",
+    "packages/cli/nros-cli-core/src/orchestration/metadata_build.rs": "test fixture: a build-script panic text",
     "scripts/check-c-array-guard-probe.py": "skip text naming the submodule",
     "scripts/check-zenoh-feature-off-compile.py": "skip text naming the submodule",
     "packages/testing/nros-tests/src/process.rs": "diagnostic version label, `unknown` when absent",

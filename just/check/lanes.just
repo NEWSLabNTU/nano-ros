@@ -3199,7 +3199,8 @@ rmw-xrce:
     #!/usr/bin/env bash
     set -e
     source scripts/build/build-root.sh
-    if [ ! -f packages/rmw/xrce/xrce-sys/micro-xrce-dds-client/CMakeLists.txt ]; then
+    # RFC-0103 D5 — located (store copy, local edit or checkout).
+    if ! python3 scripts/lib/source_locate.py micro-xrce-dds-client CMakeLists.txt >/dev/null; then
         source scripts/build/check-skip.sh
         nros_check_skip rmw-xrce \
             "micro-XRCE-DDS-Client submodule not initialised (git submodule update --init packages/rmw/xrce/xrce-sys/micro-xrce-dds-client)"
