@@ -830,3 +830,24 @@ exception.
 Hand-written entries: 3 → 2. Left: `realtime-c/src/zephyr_entry` (phase-477
 W1, an image id + board correction) and `realtime-cpp/src/fvp_entry` (with the
 session on `fix/477-fvp-lane`).
+
+## 2026-10-10 — `realtime-c`'s SMP image gets its own id and its real board (phase-477 W1, D6)
+
+`smp_bringup` declared `[image.zephyr] board = "zephyr"` — native_sim,
+uniprocessor, the same id as `demo_bringup`'s image — while the only row that
+builds it (`workspace-zephyr-c-realtime-smp`) targets
+`qemu_cortex_a53/qemu_cortex_a53/smp`, the one board where its `core = 1`
+means anything. It is now `[image.zephyr_smp] board = "qemu-cortex-a53"` (the
+descriptor whose `[board.zephyr] west_board` is that SMP string) with
+`entry = "zephyr_entry"`, so it keeps the shared hand-written application —
+without `entry` the `<id>_entry` rung would look for `zephyr_smp_entry` and
+generate one. Measured: `nros build smp_bringup:zephyr_smp` runs `west build
+-b qemu_cortex_a53/qemu_cortex_a53/smp` on `src/zephyr_entry` and links
+`zephyr.elf` (`CONFIG_SMP=y`, `CONFIG_MP_MAX_NUM_CPUS=2`); before, the same
+command would have built native_sim. `demo_bringup:zephyr` is unchanged
+(`-b native_sim/native/64`, same application).
+
+That was the blocker this issue recorded for `realtime-c`: with distinct ids,
+the two images no longer share a generated-entry name. Migrating `zephyr_entry`
+itself — one application serving two bringups, selected by `CONFIG_SMP` — is
+the remaining step, and the last hand-written entry besides `fvp_entry`.
