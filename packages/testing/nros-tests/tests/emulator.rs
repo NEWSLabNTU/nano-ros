@@ -39,8 +39,10 @@ use nros_tests::{
         build_qemu_rtic_service_client, build_qemu_rtic_service_server, build_qemu_rtic_talker,
         build_qemu_serial_listener, build_qemu_serial_talker, build_qemu_talker_xrce,
         build_qemu_wcet_bench, is_arm_toolchain_available, is_qemu_available, is_socat_available,
-        or_unmet, parse_test_results, qemu_binary, require_xrce_agent, require_zenoh_pico_arm,
+        or_unmet, parse_test_results, qemu_baremetal_capi_binary, qemu_binary, require_xrce_agent,
+        require_zenoh_pico_arm,
     },
+    matrix::{Lang, PlatformId, Workload},
     platform, wait_for_port,
 };
 use rstest::rstest;
@@ -364,6 +366,96 @@ fn test_qemu_bsp_pubsub_e2e() {
 
     assert!(published > 0, "BSP talker published 0 messages");
     assert!(received > 0, "BSP listener received 0 messages");
+}
+
+/// Issue 1512 — the C and C++ API on bare metal, end to end: every
+/// `(QemuBaremetal, C|Cpp, Zenoh, Pubsub|Service)` Runtime cell. The action
+/// pairs are `BuildOnly` (issue 1797); add their cases back with the cells.
+///
+/// Each pair is a cargo-rooted leaf under `examples/mps2-an385-baremetal/`:
+/// the Rust startup owns the link and compiles the C/C++ application in. Both
+/// images dial the locator their `system.toml` declares — `tcp/10.0.2.2:<port>`
+/// with `<port>` = `alloc::port` of THIS cell, so the cases never share a
+/// router — which reaches the C/C++ TU as `NROS_ENTRY_LOCATOR` and the boot
+/// config as `Config::from_image`. Before both existed every C/C++ image
+/// dialled the backend's own default (the guest's loopback) and the cells
+/// were `BuildOnly`.
+///
+/// The first image is the one that must be up first (listener / server); the
+/// marker is what proves the round trip, read from the image that observes it.
+#[rstest]
+#[case::c_pubsub(
+    Lang::C,
+    Workload::Pubsub,
+    "baremetal-c-listener",
+    "baremetal-c-talker"
+)]
+#[case::c_service(
+    Lang::C,
+    Workload::Service,
+    "baremetal-c-service-server",
+    "baremetal-c-service-client"
+)]
+#[case::cpp_pubsub(
+    Lang::Cpp,
+    Workload::Pubsub,
+    "baremetal-cpp-listener",
+    "baremetal-cpp-talker"
+)]
+#[case::cpp_service(
+    Lang::Cpp,
+    Workload::Service,
+    "baremetal-cpp-service-server",
+    "baremetal-cpp-service-client"
+)]
+fn test_qemu_baremetal_capi_e2e(
+    #[case] lang: Lang,
+    #[case] workload: Workload,
+    #[case] first: &str,
+    #[case] second: &str,
+) {
+    require_arm_toolchain();
+    require_qemu();
+
+    let port = nros_tests::alloc::port_of(PlatformId::QemuBaremetal, lang, workload);
+    let first_bin = qemu_baremetal_capi_binary(first).require(first);
+    let second_bin = qemu_baremetal_capi_binary(second).require(second);
+
+    let _zenohd = or_unmet(ZenohRouter::start_slirp(port));
+
+    let mut a = QemuProcess::start_mps2_an385_networked(&first_bin)
+        .unwrap_or_else(|e| panic!("start {first}: {e:?}"));
+    std::thread::sleep(Duration::from_secs(5));
+    let mut b = QemuProcess::start_mps2_an385_networked(&second_bin)
+        .unwrap_or_else(|e| panic!("start {second}: {e:?}"));
+
+    // Who observes the round trip: the listener hears the talker; the
+    // CLIENT sees the reply (service sum / action result).
+    let (marker, observer_is_first) = match workload {
+        Workload::Pubsub => (nros_tests::output::LISTENER_LOG_PREFIX, true),
+        Workload::Service => (nros_tests::output::SERVICE_RESULT_PREFIX, false),
+        other => unreachable!("no bare-metal C/C++ case for {other:?}"),
+    };
+    let observed = if observer_is_first {
+        a.collect_until(marker, Duration::from_secs(60))
+    } else {
+        b.collect_until(marker, Duration::from_secs(60))
+    };
+    b.kill();
+    a.kill();
+    let observer = if observer_is_first { first } else { second };
+    eprintln!("{observer} output:\n{observed}");
+
+    assert!(
+        !observed.contains(nros_tests::output::SESSION_OPEN_FAILED_MARKER),
+        "{observer} failed to open its session — check that its `[image.*] \
+         locator` names port {port}, this cell's `alloc::port`"
+    );
+    assert!(
+        observed.contains(marker),
+        "{first} + {second} on port {port}: {observer} never printed `{marker}` \
+         — the pair did not complete a round trip"
+    );
 }
 
 // (Phase 182.3) `test_qemu_bsp_both_build` + `test_qemu_serial_{talker,listener}_builds`

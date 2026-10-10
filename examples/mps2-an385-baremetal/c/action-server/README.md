@@ -21,6 +21,7 @@ cd examples/mps2-an385-baremetal/c/action-server && cargo build --release
 
 ## Status
 
-Build-only (issue 1512): it boots in QEMU as far as the session open, and has no
-runtime lane until the entry locator reaches a cargo-rooted C image — see the
-talker's README.
+Builds and boots, and reaches a router on the port its `system.toml` locator
+names (issue 1512 — the locator reaches the C TU as `NROS_ENTRY_LOCATOR` and
+the boot config as `Config::from_image()`). The action round trip is not yet
+reliable on bare metal, so its cell is `BuildOnly`: issue 1797.

@@ -80,7 +80,7 @@ fn main() -> ! {
     // cmake road generates. Bare metal walks no `.init_array`.
     // Issue 1770 — the app's STATUS decides how QEMU exits; see the C leaves'
     // `main.rs` for why this calls `nros_app_main` rather than `app_main`.
-    run_bare(Config::default(), |_cfg| {
+    run_bare(Config::from_image(), |_cfg| {
         // SAFETY: `nros_app_main` is the `extern "C"` entry every leaf defines;
         // `argc = 0` with a null `argv` is what the header's VOID shim passes,
         // and the board is up by now.

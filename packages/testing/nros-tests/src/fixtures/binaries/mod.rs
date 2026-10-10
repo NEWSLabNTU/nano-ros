@@ -6336,6 +6336,14 @@ pub fn qemu_baremetal_main_e2e_binary() -> TestResult<PathBuf> {
     require_qemu_baremetal_fixture("qemu-baremetal-main-e2e")
 }
 
+/// Issue 1512 — a cargo-rooted C or C++ bare-metal leaf
+/// (`examples/mps2-an385-baremetal/{c,cpp}/<role>`, `builder = "cargo"`
+/// rows), by its package name (`baremetal-c-talker`, `baremetal-cpp-action-server`,
+/// …), from the same shared `baremetal` fixture target dir as every Rust leaf.
+pub fn qemu_baremetal_capi_binary(package: &str) -> TestResult<PathBuf> {
+    require_qemu_baremetal_fixture(package)
+}
+
 // Phase 169.4 — bare-metal DDS fixture builders deleted with the
 // Rust DDS examples (Phase 169.2).
 /// rstest fixture that provides the qemu-bsp-talker binary path

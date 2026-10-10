@@ -4,11 +4,12 @@ title: "The C/C++ API does not reach either bare-metal family, and the reason
   on record — \"assumes a hosted RTOS for startup, heap, libc, RNG, clock\" —
   is no longer true: what is missing is a `nros-c`/`nros-cpp` platform arm and
   a board that declares the heap it already has"
-status: open
+status: resolved
 type: tech-debt
 area: [build, cmake, memory]
 related: [rfc-0026, rfc-0034, rfc-0042, rfc-0064, rfc-0093, 0038, 0594, 0617]
 found: 2026-09-27
+resolved_in: "cargo-rooted C/C++ bare-metal leaves run end to end (NROS_ENTRY_* rows, Config::from_image, zpico smoltcp quiet tick); C-rooted road not pursued (D4)"
 ---
 
 ## What happens
@@ -620,3 +621,54 @@ and a C-callable board init through a new board-seam staticlib — is recorded a
 NOT PURSUED until a consumer asks for a CMake-rooted bare-metal project. The
 remaining C++ roles on the cargo-rooted road stay in scope; this issue closes
 when they land, with this section as the record for the C-rooted half.
+
+## 2026-10-11 — the runtime lane, and the defect its absence was hiding; resolved
+
+The last open item — the entry locator — landed, and running the images for
+the first time found a second, independent defect that would have stopped
+every one of them anyway.
+
+**1. The image's network identity reaches a cargo-rooted C/C++ image.**
+`nros sync` (`cmd::leaf_settings`) now writes the image's declared
+`locator` / `domain_id` / `ip` / `gateway` / `netmask` into
+`build/<image>/nros-cargo.toml` as `NROS_ENTRY_*` `[env]` rows — the resolved
+declaration, never derived. Two readers:
+
+- `nros_cc_flags::entry_config::bake(&mut cc::Build)` defines
+  `NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID` on the app TU. That is the
+  carrier `<nros/entry_config.h>` already allows (`#ifndef`): the header stays
+  the one producer of the ladder (issue 0946), exactly as the cmake road's
+  `-DNROS_ENTRY_LOCATOR` does. It lives in `nros-cc-flags` because every such
+  `build.rs` already depends on it; all 12 leaves call it, one line each.
+- `nros_board_mps2_an385::Config::from_image()` overlays the same rows on the
+  board default, so the boot config matches. Measured before it: the C image
+  booted `IP: 192.0.3.10` (the board default) while its `system.toml` said
+  `10.0.2.10`; the Rust leaf gets the same overlay from `nros::main!`.
+
+**2. A quiet smoltcp spin was reported as a connection failure (issue 0387's
+class, at the sibling arm).** With the locator right, the C talker opened its
+session, published once and stopped at 1.9 s with `executor spin failed`. The
+smoltcp arm of `zpico_spin_once` returned `zp_read`'s "no complete frame
+buffered" code — `_Z_ERR_TRANSPORT_NOT_ENOUGH_BYTES`, the steady state of a
+live-but-quiet session — and Rust maps it to `Generic` → ConnectionFailed. The
+Rust talker had been logging that on EVERY spin all along (1975 lines in 20 s)
+and tolerates it; `nros_executor_spin_period` counts it toward
+SPIN_ERROR_TOLERANCE and gives up. That arm now returns 0 for it, as every
+other backend does on a quiet tick (issue 0387 made the ThreadX arm do the
+same); a real failure keeps its own code. Measured after: the C talker ran 20 s,
+19 publishes, 0 `ConnectionFailed`; the Rust talker's log is clean too.
+
+**3. Four cells are Runtime.** `(QemuBaremetal, C|Cpp, Zenoh,
+Pubsub|Service)` (the C++ service cell is new, from #1890's roles). Each leaf's
+`locator` names its cell's `alloc::port` (C 10300/10310/10320, C++
+10400/10410/10420) so the cases never share a router;
+`tests/emulator.rs::test_qemu_baremetal_capi_e2e` runs every pubsub and
+service pair, all four green on the first try. The two ACTION cells stay
+`BuildOnly`: their images build, boot and reach the server, but the round trip
+is not reliable (C passed 1 run in 2, C++ 0 in 3 — the client never sees its
+goal accepted) — issue 1797, a defect of its own rather than this issue's.
+
+The C-rooted cmake road stays NOT PURSUED (D4, above). With the C++ roles
+(#1890) and this, the cargo-rooted road is complete, which is what D4 named
+as this issue's close.
+

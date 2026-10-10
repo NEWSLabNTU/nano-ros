@@ -13,10 +13,13 @@ class = "baremetal_c_talker::Talker"
 name = "talker"
 
 # Bare-metal MPS2-AN385 (QEMU). The network identity overlays the board's
-# compiled-in `Config::default()`.
+# compiled-in `Config::default()` through `Config::from_image()`.
 [image.mps2-an385-baremetal]
 board = "qemu-mps2-an385"
-locator = "tcp/10.0.2.2:10500"
+# `nros_tests::alloc::port_of(QemuBaremetal, C, Pubsub)` —
+# THIS cell's router port, so `tests/emulator.rs` runs each pair against its
+# own router (issue 1512). 10.0.2.2 is the guest's route to the host (slirp).
+locator = "tcp/10.0.2.2:10300"
 ip = "10.0.2.10"
 gateway = "10.0.2.2"
 netmask = "255.255.255.0"

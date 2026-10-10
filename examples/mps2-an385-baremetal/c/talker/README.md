@@ -88,12 +88,15 @@ leaf as a `[[fixture]]` row (`builder = "cargo"`):
 
 ## Status
 
-Build-only, and booted by hand: the image comes up in QEMU, runs
-`nros_support_init`, and stops at the session open (`zpico Session ->
-ConnectionFailed`). `matrix::CELLS` carries the cell as `BuildOnly`, and issue
-1512 records what a runtime lane needs next: this image dials
-`NROS_ENTRY_LOCATOR`, whose bare-metal bottom rung is the empty string, so the
-backend picks its own default instead of the `[image.*] locator` in
-`system.toml`. Baking that is an entry-codegen job, not a thing this leaf should
-re-derive — `<nros/entry_config.h>` is the one producer of that ladder
-(issue 0946).
+Runs end to end under QEMU (issue 1512): `tests/emulator.rs`'s
+`test_qemu_baremetal_capi_e2e` pairs it with its peer against a router on the
+port its `system.toml` locator names (this cell's `alloc::port`). The locator
+reaches the C TU as `NROS_ENTRY_LOCATOR` and the boot config as
+`Config::from_image()`.
+
+How it got there: the image used to dial `NROS_ENTRY_LOCATOR`'s empty bottom
+rung, so the backend substituted its own default (the guest's loopback). The
+leaf still derives nothing — `<nros/entry_config.h>` stays the one producer of
+that ladder (issue 0946); `nros sync` writes the image's declared values into
+`build/<image>/nros-cargo.toml` as `NROS_ENTRY_*` rows, and
+`nros_cc_flags::entry_config::bake` defines the macro from them.
