@@ -54,7 +54,10 @@ def rust_toolchain():
 
 
 def zpico_version_txt():
-    p = os.path.join(ROOT, "packages/rmw/zenoh/zpico-sys/zenoh-pico/version.txt")
+    sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+    from source_locate import located_or_dest  # RFC-0103 D5: the tree is located
+
+    p = os.path.join(located_or_dest("zenoh-pico"), "version.txt")
     return open(p, encoding="utf8").read().strip() if os.path.exists(p) else None
 
 

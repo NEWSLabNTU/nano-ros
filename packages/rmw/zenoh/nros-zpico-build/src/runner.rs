@@ -1554,7 +1554,7 @@ pub fn run() {
     // in the manifest. Full set-equality vs. the cc-rs source list
     // lands with 136.4 once the per-RTOS functions collapse into a
     // single manifest-driven path.
-    let zenoh_pico_src = manifest_dir.join("zenoh-pico").join("src");
+    let zenoh_pico_src = zenoh_pico_dir(&manifest_dir).join("src");
     if zenoh_pico_src.exists() {
         for name in platform_manifest.platform.keys() {
             let resolved = platform_manifest.for_platform(name).unwrap();
@@ -1686,7 +1686,7 @@ pub fn run() {
     println!("cargo:rustc-check-cfg=cfg(feature, values(\"link-ivc\"))");
 
     // Paths
-    let zenoh_pico_src = manifest_dir.join("zenoh-pico");
+    let zenoh_pico_src = zenoh_pico_dir(&manifest_dir);
     let c_dir = manifest_dir.join("c");
     let include_dir = c_dir.join("include");
     let use_system = env::var("CARGO_FEATURE_SYSTEM_ZENOHPICO").is_ok();
@@ -2331,9 +2331,15 @@ pub fn run() {
     // a new member no depfile can have named. (`zenoh-pico/include` is gone —
     // a header matters only once something includes it, and that includer is
     // in a depfile.)
-    println!("cargo:rerun-if-changed=zenoh-pico/src");
+    println!(
+        "cargo:rerun-if-changed={}",
+        zenoh_pico_src.join("src").display()
+    );
     println!("cargo:rerun-if-changed=c/zenoh-pico-version.h.in");
-    println!("cargo:rerun-if-changed=zenoh-pico/version.txt");
+    println!(
+        "cargo:rerun-if-changed={}",
+        zenoh_pico_src.join("version.txt").display()
+    );
     println!("cargo:rerun-if-changed=src/ffi.rs");
     println!("cargo:rerun-if-changed=src/lib.rs");
     println!("cargo:rerun-if-changed=cbindgen.toml");
@@ -2664,6 +2670,16 @@ fn probe_net_type_sizes(
     // comment for what used to be emitted here and why it is gone.
     let sizes_file = out_dir.join("net_type_sizes.txt");
     std::fs::write(&sizes_file, format!("{}\n{}\n", socket_size, endpoint_size)).unwrap();
+}
+
+/// The vendored zenoh-pico tree — RFC-0103 D5 / phase-484 W3c: through the one
+/// ladder (a local edit in the checkout submodule, the store copy at the pin,
+/// the checkout), so the cargo lane and the Zephyr module
+/// (`zephyr/cmake/nros_rmw_zenoh.cmake`) compile the same tree. Falls back to
+/// zpico-sys's own submodule directory, so the presence check names the remedy.
+fn zenoh_pico_dir(manifest_dir: &Path) -> PathBuf {
+    nros_build_paths::locate::try_source("zenoh-pico")
+        .unwrap_or_else(|_| manifest_dir.join("zenoh-pico"))
 }
 
 /// Compare the committed `zpico.h` against a fresh cbindgen render and warn on
@@ -3214,8 +3230,13 @@ fn build_zenoh_pico_unified(
             }
             Some("vendored") | None => {
                 // Bare-metal default — pull vendor sources.
-                let zpico_sys_dir = zenoh_pico_src.parent().unwrap();
-                let mbedtls_dir = zpico_sys_dir.join("mbedtls");
+                // RFC-0103 D5 — located like zenoh-pico (store-first, a local
+                // edit outranks it), falling back to zpico-sys's submodule so
+                // the presence check below names the remedy.
+                let mbedtls_dir =
+                    nros_build_paths::locate::try_source("mbedtls").unwrap_or_else(|_| {
+                        PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("mbedtls")
+                    });
                 let mbedtls_include = mbedtls_dir.join("include");
                 let mbedtls_library = mbedtls_dir.join("library");
                 if !mbedtls_include.exists() {

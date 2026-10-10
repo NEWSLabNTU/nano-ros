@@ -481,7 +481,9 @@ zenohd-spawn-sites:
 zpico-config-keys:
     #!/usr/bin/env bash
     set -euo pipefail
-    if [ ! -f packages/rmw/zenoh/zpico-sys/zenoh-pico/include/zenoh-pico/config.h ]; then
+    # RFC-0103 D5 — located (store copy, local edit or checkout), never assumed
+    # to be the checkout's submodule.
+    if ! python3 scripts/lib/source_locate.py zenoh-pico include/zenoh-pico/config.h >/dev/null; then
         # shellcheck source=scripts/build/check-skip.sh
         source scripts/build/check-skip.sh
         nros_check_skip zpico-config-keys \

@@ -1309,8 +1309,12 @@ git = "https://github.com/NEWSLabNTU/threadx.git"
 ref = "9a29f1bd3f07bd19d085b9e90f8fa7a77479dfa7"
 
 [source.zenoh-pico]
-env = "ZENOH_PICO_DIR"
+# No `env` override, on purpose: `ZENOH_PICO_DIR` already means the INSTALL
+# PREFIX of a user's own zenoh-pico build (zpico-sys `system-zenohpico`), and one
+# name with two meanings is RFC-0103 D6's defect. Edit the checkout submodule
+# instead — the local-edit rung (HEAD off `ref`, or dirty) outranks the store.
 version = "1.7.2"
+location = "store"
 dest = "packages/rmw/zenoh/zpico-sys/zenoh-pico"
 submodule = "packages/rmw/zenoh/zpico-sys/zenoh-pico"
 git = "https://github.com/jerry73204/zenoh-pico.git"
@@ -1359,6 +1363,7 @@ ref = "2314625c5226f5c2b6853ecc493f9e24ce17b91d"
 # zenoh-pico TLS dep (zpico-sys C build gates on its presence).
 [source.mbedtls]
 version = "3.x"
+location = "store"
 dest = "packages/rmw/zenoh/zpico-sys/mbedtls"
 submodule = "packages/rmw/zenoh/zpico-sys/mbedtls"
 git = "https://github.com/Mbed-TLS/mbedtls.git"

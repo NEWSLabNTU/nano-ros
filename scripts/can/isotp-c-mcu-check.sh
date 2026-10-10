@@ -20,7 +20,13 @@ done
 
 CC=${ISOTP_C_CC:-arm-none-eabi-gcc}
 NM=${ISOTP_C_NM:-arm-none-eabi-nm}
-SRC="packages/rmw/zenoh/zpico-sys/zenoh-pico/third_party/isotp-c"
+# The zenoh-pico tree is LOCATED (RFC-0103 D5: store copy, local edit or
+# checkout); the isotp-c sources ride inside it.
+if ! zp="$(python3 scripts/lib/source_locate.py zenoh-pico third_party/isotp-c/isotp.c)"; then
+    echo "[isotp-c] zenoh-pico not provisioned (nros setup --source zenoh-pico)" >&2
+    exit 1
+fi
+SRC="$zp/third_party/isotp-c"
 OBJ="$(mktemp -d)/isotp-$CPU.o"
 trap 'rm -rf "$(dirname "$OBJ")"' EXIT
 
