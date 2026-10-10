@@ -128,10 +128,19 @@ rmw = "zenoh"
 # a cmake target keyed on its image id into the same `build/<coord>/` root as
 # its `demo_bringup` twin: building `smp_bringup:native` would have replaced the
 # `native_entry` every realtime-c native cell runs with one generated from THIS
-# bringup's launch and tiers. `nros build` now refuses the pair outright. The Zephyr
-# image is legitimately shared: `src/zephyr_entry` is hand-written and picks
-# the bringup itself (`CONFIG_SMP`), and each fixture row gets its own west
-# build dir.
-[image.zephyr]
-board = "zephyr"
+# bringup's launch and tiers. `nros build` now refuses the pair outright.
+#
+# Issue 1288 / phase-477 W1 — the Zephyr image has its OWN id and states the
+# board it is actually built for. It was `[image.zephyr] board = "zephyr"`
+# (native_sim, uniprocessor) while the one row that builds this bringup,
+# `workspace-zephyr-c-realtime-smp`, targets `qemu_cortex_a53/.../smp` — the
+# only board where this bringup's `core = 1` means anything. And it shared the
+# id `zephyr` with `demo_bringup`, which a generated entry would key into the
+# same `(platform, rmw)` directory. `entry = "zephyr_entry"` keeps it on the
+# shared hand-written application, which picks this bringup itself
+# (`CONFIG_SMP`); without it the `<id>_entry` rung would look for
+# `zephyr_smp_entry` and generate one.
+[image.zephyr_smp]
+board = "qemu-cortex-a53"
+entry = "zephyr_entry"
 conf = ["prj-zenoh.conf"]
