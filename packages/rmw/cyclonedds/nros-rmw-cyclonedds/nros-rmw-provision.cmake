@@ -39,17 +39,19 @@ endif()
 # NanoRosCorrosion.cmake uses — never a glob of the store, issue 0625), from
 # the root so it reads the index this root ships.
 #
-# Only for an installed root, and only for a host build. The root carries
-# `nros-submodule-pins.toml` exactly when a release staged it
-# (scripts/stage-sdk-root.sh); a CHECKOUT never does, so a contributor keeps
-# building the fork submodule they may be editing — RFC-0099 D3's ownership
-# argument one layer down: a store copy must not silently replace a tree
-# someone owns. A cross build never takes find_package's answer anyway (see
-# ProvideCycloneDDS.cmake). The name is held against the reader and the stager
-# by `check-release-manifest` R6.
+# Only for an installed root, and only for a host build. An installed root is
+# a `git archive` (scripts/stage-sdk-root.sh) and has no `.git`; a CHECKOUT
+# always has one (a directory, or a linked worktree's file — an existence test,
+# never a layout model, issue 1336), so a contributor keeps building the fork
+# submodule they may be editing — RFC-0099 D3's ownership argument one layer
+# down: a store copy must not silently replace a tree someone owns. The same
+# test `sdk_store::recorded_pin` uses, held together by `check-release-manifest`
+# R6. A cross build never takes find_package's answer anyway (see
+# ProvideCycloneDDS.cmake).
 if(NOT CMAKE_CROSSCOMPILING
    AND NOT DEFINED CycloneDDS_DIR
-   AND EXISTS "${_nros_cyclone_tree}/nros-submodule-pins.toml"
+   AND EXISTS "${_nros_cyclone_tree}/nros-sdk-index.toml"
+   AND NOT EXISTS "${_nros_cyclone_tree}/.git"
    AND COMMAND nros_resolve_cli)
     nros_resolve_cli(_nros_cyclone_cli OPTIONAL CONTEXT "nros-rmw-cyclonedds")
     if(_nros_cyclone_cli AND NOT _nros_cyclone_cli STREQUAL "NOTFOUND")

@@ -219,7 +219,9 @@ that to every row rather than adding a second spelling:
   does; a submodule row's sha lives in the superproject gitlink (checkout) or
   in `nros-submodule-pins.toml` written by `stage-sdk-root.sh` (install) —
   two owners of one fact. A gate asserts gitlink == `ref`, and
-  `nros-submodule-pins.toml` retires.
+  `nros-submodule-pins.toml` retires. (Landed, phase-484 W3a:
+  `check-source-refs`; an installed root reads its own index copy, recognised
+  by having no `.git`.)
 - **Materialised by `git archive <ref>`, hardlinking files unchanged from the
   nearest existing pin of the same source**, then `chmod a-w` (a shared inode
   must never be written). Measured on zenoh-pico (D5-M below): no `.git` in
