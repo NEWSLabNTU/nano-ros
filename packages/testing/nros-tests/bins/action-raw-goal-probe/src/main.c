@@ -1,10 +1,10 @@
 /// @file main.c
-/// @brief Wire proof that `nros_action_client_send_goal_raw` ships exactly ONE
+/// @brief Wire proof that `nros_polling_action_client_send_goal_raw` ships exactly ONE
 ///        CDR encapsulation header (issue 0454 / phase-354 W3).
 ///
 /// WHY THIS BINARY EXISTS AT ALL
 ///
-/// Before it, NOTHING in the tree called `nros_action_client_send_goal_raw` —
+/// Before it, NOTHING in the tree called `nros_polling_action_client_send_goal_raw` —
 /// no example, no fixture, no test. That is why the double-header defect
 /// survived review and shipped: an FFI with no caller has no failing test to
 /// write, and `scripts/check-goal-cdr-stripped.py` could only guard the shape
@@ -74,7 +74,7 @@
 static struct {
     nros_support_t support;
     nros_node_t node;
-    nros_action_client_t action_client;
+    nros_polling_action_client_t action_client;
 } app;
 
 static void sleep_tick(void) {
@@ -130,7 +130,7 @@ int nros_app_main(int argc, char** argv) {
     NROS_CHECK_RET(rclc_node_init_default(&app.node, "raw_goal_probe", "/", &app.support), 1);
     // The RAW arms live on the polling (L1) core — `polling_client_core()`
     // returns NULL for an executor-mode client, so this must be init_polling.
-    NROS_CHECK_RET(nros_action_client_init_polling(&app.action_client, &app.node, &fibonacci_type,
+    NROS_CHECK_RET(nros_polling_action_client_init(&app.action_client, &app.node, &fibonacci_type,
                                                    "/fibonacci"),
                    1);
     printf("raw-goal probe ready\n");
@@ -155,8 +155,8 @@ int nros_app_main(int argc, char** argv) {
     int accepted = 0;
 
     for (int attempt = 0; attempt < SEND_ATTEMPTS && !accepted; attempt++) {
-        nros_ret_t sent = nros_action_client_send_goal_raw(&app.action_client, goal_cdr,
-                                                           sizeof(goal_cdr), &goal_id);
+        nros_ret_t sent = nros_polling_action_client_send_goal_raw(&app.action_client, goal_cdr,
+                                                                   sizeof(goal_cdr), &goal_id);
         if (sent != NROS_RET_OK) {
             // The server's queryable may not be routable yet; retry.
             sleep_tick();
@@ -169,8 +169,8 @@ int nros_app_main(int argc, char** argv) {
         // INITIALIZED). On a hosted build the zenoh session has its own read
         // task, so `take_*_raw` is the whole pump.
         for (int i = 0; i < POLLS_PER_ATTEMPT; i++) {
-            got = nros_action_client_try_recv_goal_response_raw(&app.action_client, resp,
-                                                                sizeof(resp));
+            got = nros_polling_action_client_try_recv_goal_response_raw(&app.action_client, resp,
+                                                                        sizeof(resp));
             if (got > 0) {
                 break;
             }
@@ -206,12 +206,14 @@ int nros_app_main(int argc, char** argv) {
     // Ask for the result. Acceptance alone is NOT the proof: a server could
     // accept a garbage order. The sequence LENGTH is a function of the order the
     // peer parsed, so it pins the bytes that actually crossed.
-    NROS_CHECK_RET(nros_action_client_send_get_result_request_raw(&app.action_client, &goal_id), 4);
+    NROS_CHECK_RET(
+        nros_polling_action_client_send_get_result_request_raw(&app.action_client, &goal_id), 4);
 
     uint8_t result[512];
     int32_t rlen = 0;
     for (int i = 0; i < RESULT_POLLS; i++) {
-        rlen = nros_action_client_try_recv_result_raw(&app.action_client, result, sizeof(result));
+        rlen = nros_polling_action_client_try_recv_result_raw(&app.action_client, result,
+                                                              sizeof(result));
         if (rlen > 0) {
             break;
         }
@@ -246,7 +248,7 @@ int nros_app_main(int argc, char** argv) {
 
     printf("raw goal shipped exactly one encapsulation header\n");
 
-    nros_action_client_fini(&app.action_client);
+    nros_polling_action_client_fini(&app.action_client);
     rcl_node_fini(&app.node);
     rclc_support_fini(&app.support);
     return 0;

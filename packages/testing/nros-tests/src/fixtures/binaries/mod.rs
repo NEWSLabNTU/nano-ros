@@ -7051,7 +7051,7 @@ pub fn build_c_action_server() -> TestResult<&'static Path> {
 /// Build the raw-goal wire probe (cached).
 ///
 /// Issue 0454 / phase-354 W3 — the only caller of
-/// `nros_action_client_send_goal_raw`. Not an example: it lives under
+/// `nros_polling_action_client_send_goal_raw`. Not an example: it lives under
 /// `packages/testing/nros-tests/bins/`, so it resolves through
 /// [`build_cmake_leaf_rmw`] rather than the `examples/`-rooted wrapper.
 pub fn build_action_raw_goal_probe() -> TestResult<&'static Path> {

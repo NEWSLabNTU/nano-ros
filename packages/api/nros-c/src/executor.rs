@@ -2969,11 +2969,10 @@ pub unsafe extern "C" fn nros_executor_add_action_server(
         let type_hash_str =
             core::str::from_utf8_unchecked(&server_ref.type_hash[..server_ref.type_hash_len]);
 
-        // Get the goal callback (required — validated during init)
-        let c_goal_callback = match server_ref.goal_callback {
-            Some(cb) => cb,
-            None => return NROS_RET_INVALID_ARGUMENT,
-        };
+        // The goal callback is required (validated during init too).
+        if server_ref.goal_callback.is_none() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
 
         // Create the internal struct (handle filled after registration).
         // Phase 87.5: ActionServerInternal is now a typed `#[repr(C)]` field,
@@ -2982,14 +2981,14 @@ pub unsafe extern "C" fn nros_executor_add_action_server(
         server_mut._internal = ActionServerInternal {
             handle: nros_node::ActionServerRawHandle::invalid(),
             executor_ptr: opaque_ptr,
-            c_goal_callback,
-            c_cancel_callback: server_ref.cancel_callback,
-            c_accepted_callback: server_ref.accepted_callback,
-            c_context: server_ref.context,
-            server_ptr: server,
         };
-        let context =
-            (&mut server_mut._internal) as *mut ActionServerInternal as *mut core::ffi::c_void;
+        // phase-487 W4 — the trampolines' context is the server itself, whose
+        // callback record they read. It was `&_internal`, which held a second
+        // copy of that record and a pointer back to the server. The server
+        // stays the arena entry's context either way: its callbacks receive
+        // it, and the C++ action server is the same shape (phase-456 W3b-ii
+        // refused moving the record into the arena; RFC-0096 D9's C half).
+        let context = server as *mut core::ffi::c_void;
 
         // Propagate node identity for liveliness key expression.
         set_executor_node_identity(rust_exec, server_ref.node);

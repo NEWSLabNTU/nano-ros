@@ -33,14 +33,22 @@ pub enum nros_timer_state_t {
 }
 
 /// Timer structure.
+///
+/// Already an arena handle before phase-487: `rclc_executor_add_timer`
+/// creates the timer inside the executor arena and records
+/// `(handle_id, _executor)` here, and every live accessor forwards there. The
+/// period, callback, context, support and clock are the REGISTRATION INPUTS:
+/// rclc's `rclc_timer_init_default(timer, support, period, callback)` takes
+/// them at init, before any executor exists, and a removed timer can be added
+/// again, so they stay. phase-487 W3 removed the one field that was a copy,
+/// `last_call_time_ns`: written by init and reset, read by nothing, and stale
+/// for any timer the executor ran (issue 1049).
 #[repr(C)]
 pub struct nros_timer_t {
     /// Current state
     pub state: nros_timer_state_t,
     /// Period in nanoseconds
     pub period_ns: u64,
-    /// Last trigger time in nanoseconds
-    pub last_call_time_ns: u64,
     /// User callback function
     pub callback: nros_timer_callback_t,
     /// User context pointer
@@ -66,7 +74,6 @@ impl Default for nros_timer_t {
         Self {
             state: nros_timer_state_t::NROS_TIMER_STATE_UNINITIALIZED,
             period_ns: 0,
-            last_call_time_ns: 0,
             callback: None,
             context: ptr::null_mut(),
             support: ptr::null(),
@@ -255,7 +262,6 @@ unsafe fn timer_init_inner(
     timer.context = context;
     timer.support = support;
     timer.clock = clock;
-    timer.last_call_time_ns = 0;
     timer.state = nros_timer_state_t::NROS_TIMER_STATE_RUNNING;
 
     NROS_RET_OK
@@ -326,7 +332,6 @@ pub unsafe extern "C" fn rcl_timer_reset(timer: *mut nros_timer_t) -> nros_ret_t
                 let _ = exec.reset_timer(nros_node::HandleId::from_raw(timer.handle_id));
             }
 
-            timer.last_call_time_ns = 0;
             timer.state = nros_timer_state_t::NROS_TIMER_STATE_RUNNING;
             NROS_RET_OK
         }
@@ -435,9 +440,9 @@ pub unsafe extern "C" fn nros_timer_get_period(timer: *const nros_timer_t) -> u6
 /// * OVERDUE. rcl's header: "a negative value indicates the timer call is
 ///   overdue by that amount". Unsigned cannot express it, so lateness read as
 ///   `0` — which is also what "fires now" reads as.
-/// * the SOURCE OF TRUTH. It computed from `nros_timer_t::last_call_time_ns`,
-///   which `nros_timer_init` and `rcl_timer_reset` write and no dispatch path
-///   ever updates, so for any timer the executor was actually running the
+/// * the SOURCE OF TRUTH. It computed from `nros_timer_t::last_call_time_ns`
+///   (removed by phase-487 W3), which `nros_timer_init` and `rcl_timer_reset`
+///   wrote and no dispatch path ever updated, so for any timer the executor was actually running the
 ///   answer was permanently `0` (issue 1049). It forwards to the arena now, the
 ///   same way W5.c's [`nros_timer_get_time_since_last_call`] and
 ///   [`rcl_timer_is_ready`] do, and the caller-supplied "now" is gone with it —
@@ -520,8 +525,8 @@ unsafe fn time_until_next_call_ns_of(timer: &nros_timer_t) -> Result<i64, nros_r
 // installs — the same pair `rcl_timer_cancel` and `rcl_timer_reset` have
 // always used. That indirection is why these were gaps: a registered timer's
 // live state is the arena's, not this struct's, and this struct's copy is
-// stale by construction (nothing writes `last_call_time_ns` after
-// registration). Reading the arena is a forward to the source of truth, not
+// stale by construction (nothing wrote `last_call_time_ns` after
+// registration, and phase-487 W3 removed it). Reading the arena is a forward to the source of truth, not
 // a second one (RFC-0002 / RFC-0019).
 //
 // Shape: `nros_ret_t` + an out-param, per rcl's own
@@ -646,10 +651,10 @@ pub unsafe extern "C" fn rcl_timer_is_ready(
 ///
 /// Forwards to `Executor::timer_elapsed_us`, the arena's `elapsed_us`
 /// counter. **This is why the accessor could not read `nros_timer_t` and had
-/// to reach the executor:** `nros_timer_t::last_call_time_ns` is written by
+/// to reach the executor:** `nros_timer_t::last_call_time_ns` was written by
 /// `nros_timer_init` and `rcl_timer_reset` and by nothing else — no
-/// dispatch path updates it — so a struct-local computation answers `0` for
-/// every timer that has ever fired.
+/// dispatch path updated it — so a struct-local computation answered `0` for
+/// every timer that had ever fired. phase-487 W3 removed the field.
 ///
 /// **Divergence from rcl, inherited:** the executor's timer accounting is
 /// MICROSECOND-based (issue #505), so the nanosecond value this reports is a
@@ -902,9 +907,9 @@ mod tests {
     /// phase-417 W5.c — "no executor" is reported, not answered as zero.
     ///
     /// This is the whole reason the accessor forwards to the arena instead of
-    /// reading `nros_timer_t`: the struct's `last_call_time_ns` is written by
-    /// `init`/`reset` and by nothing else, so a struct-local computation
-    /// returns `0` for every timer — including this one, which has no elapsed
+    /// reading `nros_timer_t`: the struct's `last_call_time_ns` (removed by
+    /// phase-487 W3) was written by `init`/`reset` and by nothing else, so a
+    /// struct-local computation returned `0` for every timer — including this one, which has no elapsed
     /// time at all rather than an elapsed time of zero (issue 1008's shape).
     #[test]
     fn elapsed_on_an_unregistered_timer_is_unanswerable_not_zero() {

@@ -53,7 +53,7 @@
  * hand-maintained twin did not. */
 #define NROS_SESSION_SIZE 536
 #define NROS_LIFECYCLE_CTX_SIZE 64
-#define NROS_ACTION_SERVER_INTERNAL_SIZE 96
+#define NROS_ACTION_SERVER_INTERNAL_SIZE 72
 #define SESSION_OPAQUE_U64S 67 /* 67 * 8 = 536, issue 0954 */
 #define PUBLISHER_OPAQUE_U64S 80
 /* #464 — was 9912, i.e. 79296 bytes: the value #167 REPLACED in the two macros

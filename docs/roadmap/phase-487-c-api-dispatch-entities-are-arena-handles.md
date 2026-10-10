@@ -1,6 +1,6 @@
 # Phase 487 — the C API's dispatched entities are arena handles; its publisher keeps its storage
 
-**Status (2026-10-11). In progress: W0, W1 and W2 done.** Answers issue
+**Status (2026-10-11). In progress: W0 to W4 done.** Answers issue
 [1335](../issues/1335-entity-storage-split-timer-arena-vs-caller-buffer.md)'s
 last open question (its question 3: does the C API follow the C++ entity
 model?). Implements the C half of
@@ -201,10 +201,61 @@ the second one now at `_executor_add_service` (checked in its log).
 `nros_timer_t` drops its copies of the period, the last-call time, the
 callback and the context.
 
+**Status: done 2026-10-11, and smaller than written.** The item assumed
+the period, callback and context were copies of the arena's. Read against the
+code they are not: rclc's `rclc_timer_init_default(timer, support, period,
+callback)` takes them at INIT, before any executor exists, and
+`nros_executor_remove_timer` returns a timer that can be added again, so the
+struct is the only place those inputs can wait. They are the timer's
+description, the same role a subscription's topic plays. `nros_timer_init`
+keeps its rclc arity, which `<nros/rcl_compat.h>` already records as a
+decision.
+
+The one real copy was `last_call_time_ns`: written by init and
+`rcl_timer_reset`, read by nothing, and stale for any timer the executor
+ran (issue 1049, whose fix already moved every reader to the arena). It is
+removed.
+
+| type | x86_64 | thumbv7m |
+| --- | ---: | ---: |
+| `nros_timer_t` | 72 → **64** | 48 → **40** |
+
 ### W4 — actions
 
 Check the C action server and client against the same rule. On the C++ side
 actions were already furthest along (issue 1335's measured correction).
+
+**Status: done 2026-10-11.** C follows the C++ rule for actions too, and the
+C++ rule for actions is NOT "the arena owns the callbacks": phase-456 W3b-ii
+measured and refused that move for the C++ action server, because the arena's
+trampolines translate the callback ABI (an `int32_t` goal verdict against the
+core's `i8`, a two- against a three-argument cancel callback) and reframe the
+goal payload. So the dispatched action struct keeps one callback record, read
+by the trampolines with the struct as context, beside its arena handle.
+
+- **Polled forms split**, as W1 and W2: `nros_polling_action_server_t` /
+  `nros_polling_action_client_t`, with the `_raw` families, the wake
+  callbacks, init and fini renamed to `nros_polling_action_{server,client}_*`.
+  The server's active-goal count, goal-exists and expire-goals had a polled
+  arm each; they got polled twins.
+- **The server held its callback record twice.** `ActionServerInternal`
+  carried `c_goal_callback`, `c_cancel_callback`, `c_accepted_callback`,
+  `c_context` and a `server_ptr` back to the struct containing it, and the
+  trampolines took `&_internal` as context. It is `{handle, executor_ptr}`
+  now; the trampolines take the server and read its one record. The layout
+  mirror in `nros::sizes` and the buildless `NROS_ACTION_SERVER_INTERNAL_SIZE`
+  follow (96 → 72).
+
+| type | x86_64 | thumbv7m |
+| --- | ---: | ---: |
+| `nros_action_server_t` | 7 592 → **824** | 7 312 → **752** |
+| `nros_action_client_t` | 6 296 → **736** | 6 136 → **692** |
+| `nros_polling_action_server_t` (new) | 6 744 | 6 560 |
+| `nros_polling_action_client_t` (new) | 5 576 | 5 456 |
+| `nros_executor_t` (control) | 90 928, unchanged | 89 240, unchanged |
+
+Consumers: the `action-raw-goal-probe` test program (the one polled C action
+in the tree), `action.h`, the book's C API page, three comments.
 
 ### W5 — consumers, docs and ledger
 

@@ -36,7 +36,8 @@
  *
  * This is the CALLBACK-mode client (rclc registers the goal/feedback/result
  * callbacks later, at `rclc_executor_add_action_client`), so it forwards to
- * nros_action_client_init() and not to nros_action_client_init_polling().
+ * nros_action_client_init() and not to nros_polling_action_client_init(),
+ * which builds the separate polled type (phase-487 W4).
  *
  * `static inline`: no symbol, no writable data.
  *
@@ -77,7 +78,9 @@ static inline nros_ret_t rclc_action_client_init_default(struct nros_action_clie
  * `rclc_executor_add_action_server`; ours are bound at init
  * (`nros_action_server_init(server, node, action_name, type_info, goal_cb,
  * cancel_cb, accepted_cb, ...)`). Forwarding to the callback-free
- * `nros_action_server_init_polling` instead would compile and then dispatch
+ * `nros_polling_action_server_init` instead would not even compile since
+ * phase-487 W4 (it takes a `nros_polling_action_server_t`), and before that it
+ * compiled and then dispatched
  * nothing, which is the "plausible name over an opposite data contract" class.
  *
  * Closing this needs the `rclc_executor_add_action_server` binding site, not a

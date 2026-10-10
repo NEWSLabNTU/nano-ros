@@ -284,7 +284,7 @@ impl<
 {
     /// Phase 122.3.c.6.b — construct an `ActionServerCore` from the
     /// 5 already-built transport channels. Caller (typically the C
-    /// API's `nros_action_server_init_polling`) owns wiring the
+    /// API's `nros_polling_action_server_init`) owns wiring the
     /// channels via the session's `create_*` methods.
     pub fn from_channels(
         send_goal_server: session::RmwServiceServer,
