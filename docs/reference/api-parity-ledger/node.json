@@ -248,7 +248,7 @@
   },
   "rust:ActionExecutor": {
     "verdict": "extension",
-    "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
+    "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 1789: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
   },
   "rust:Callback": {
     "verdict": "divergence",
@@ -264,7 +264,7 @@
   },
   "rust:ClientDispatch": {
     "verdict": "extension",
-    "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
+    "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 1789: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
   },
   "rust:EntityBounds": {
     "verdict": "extension",
@@ -332,7 +332,7 @@
   },
   "rust:NodeId": {
     "verdict": "extension",
-    "why": "a stable identity for a declared node, so the launch resolver and the image agree on which node a model entry refers to (RFC-0046). machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
+    "why": "a stable identity for a declared node, so the launch resolver and the image agree on which node a model entry refers to (RFC-0046). machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 1789: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
   },
   "rust:NodeKey": {
     "verdict": "extension",
@@ -394,7 +394,7 @@
   },
   "rust:NodeSlot": {
     "verdict": "extension",
-    "why": "the index a declared node occupies in the static table. machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is. Zero consumers outside its defining module -- see 0784's table."
+    "why": "the index a declared node occupies in the static table. machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 1789: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is. Zero consumers outside its defining module -- see 1789's table."
   },
   "rust:NodeSubscription": {
     "verdict": "divergence",
@@ -406,15 +406,15 @@
   },
   "rust:PublisherResolver": {
     "verdict": "extension",
-    "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
+    "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 1789: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
   },
   "rust:RegisteredNode": {
     "verdict": "divergence",
-    "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+    "why": "The witness `ExecutorNodeRuntime::register_node` returns for a registered component: a slot index typed by the component (`RegisteredNode<C>`), so a caller who keeps it can tell which component it names. rclrs has no component runtime, so there is nothing to correlate it with; it is the component model's (RFC-0043/0044) bookkeeping, not a node. Until 2026-10-11 this row carried a pasted copy of `rust:NodeHandle`'s text (\"Four node-shaped things\", issue 0784), which described the facade's node types, not this name. phase-483 W2–W4 settled that: `nros::Node` is the one node type, the component trait is `nros::Component`, and `NodeHandle` / `StandaloneNode` left `nros::`."
   },
   "rust:RegisteredNode::slot": {
     "verdict": "divergence",
-    "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+    "why": "The slot index inside the component runtime that `rust:RegisteredNode` witnesses. Same reasoning as that row. Until 2026-10-11 this row carried a pasted copy of `rust:NodeHandle`'s text (\"Four node-shaped things\", issue 0784), which described the facade's node types, not this name. phase-483 W2–W4 settled that: `nros::Node` is the one node type, the component trait is `nros::Component`, and `NodeHandle` / `StandaloneNode` left `nros::`."
   },
   "rust:TopicInfo::with_node_name": {
     "verdict": "extension",
@@ -422,11 +422,11 @@
   },
   "rust:declarative_component": {
     "verdict": "extension",
-    "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
+    "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 1789: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
   },
   "rust:install_node_typed": {
     "verdict": "divergence",
-    "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+    "why": "The C-ABI typed component install (phase-257 W0-B): it backs the `__nros_component_<pkg>_install(node, executor, self)` symbol `nros::node!()` emits, recovering the shared `Executor` from a foreign entry's opaque handle and registering the component on it. `unsafe` because it takes that raw handle. Machinery a generated entry calls, not a user API; that it is `pub` from `nros::` beside the user API is issue 1789. rclrs has no component runtime to correlate it with. Until 2026-10-11 this row carried a pasted copy of `rust:NodeHandle`'s text (\"Four node-shaped things\", issue 0784), which described the facade's node types, not this name. phase-483 W2–W4 settled that: `nros::Node` is the one node type, the component trait is `nros::Component`, and `NodeHandle` / `StandaloneNode` left `nros::`."
   },
   "rust:install_node_typed_in": {
     "verdict": "extension",
@@ -434,7 +434,7 @@
   },
   "rust:install_node_typed_with_launch": {
     "verdict": "divergence",
-    "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+    "why": "The C-ABI typed component install (phase-257 W0-B): it backs the `__nros_component_<pkg>_install(node, executor, self)` symbol `nros::node!()` emits, recovering the shared `Executor` from a foreign entry's opaque handle and registering the component on it. `unsafe` because it takes that raw handle. Machinery a generated entry calls, not a user API; that it is `pub` from `nros::` beside the user API is issue 1789. rclrs has no component runtime to correlate it with. Until 2026-10-11 this row carried a pasted copy of `rust:NodeHandle`'s text (\"Four node-shaped things\", issue 0784), which described the facade's node types, not this name. phase-483 W2–W4 settled that: `nros::Node` is the one node type, the component trait is `nros::Component`, and `NodeHandle` / `StandaloneNode` left `nros::`."
   },
   "rust:install_node_typed_with_launch_in": {
     "verdict": "extension",
@@ -442,19 +442,19 @@
   },
   "rust:install_node_typed_with_node_identity": {
     "verdict": "divergence",
-    "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+    "why": "The C-ABI typed component install (phase-257 W0-B): it backs the `__nros_component_<pkg>_install(node, executor, self)` symbol `nros::node!()` emits, recovering the shared `Executor` from a foreign entry's opaque handle and registering the component on it. `unsafe` because it takes that raw handle. Machinery a generated entry calls, not a user API; that it is `pub` from `nros::` beside the user API is issue 1789. rclrs has no component runtime to correlate it with. Until 2026-10-11 this row carried a pasted copy of `rust:NodeHandle`'s text (\"Four node-shaped things\", issue 0784), which described the facade's node types, not this name. phase-483 W2–W4 settled that: `nros::Node` is the one node type, the component trait is `nros::Component`, and `NodeHandle` / `StandaloneNode` left `nros::`."
   },
   "rust:install_node_typed_with_params": {
     "verdict": "divergence",
-    "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+    "why": "The C-ABI typed component install (phase-257 W0-B): it backs the `__nros_component_<pkg>_install(node, executor, self)` symbol `nros::node!()` emits, recovering the shared `Executor` from a foreign entry's opaque handle and registering the component on it. `unsafe` because it takes that raw handle. Machinery a generated entry calls, not a user API; that it is `pub` from `nros::` beside the user API is issue 1789. rclrs has no component runtime to correlate it with. Until 2026-10-11 this row carried a pasted copy of `rust:NodeHandle`'s text (\"Four node-shaped things\", issue 0784), which described the facade's node types, not this name. phase-483 W2–W4 settled that: `nros::Node` is the one node type, the component trait is `nros::Component`, and `NodeHandle` / `StandaloneNode` left `nros::`."
   },
   "rust:record_node_metadata": {
     "verdict": "extension",
-    "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
+    "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 1789: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
   },
   "rust:register_node": {
     "verdict": "extension",
-    "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
+    "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 1789: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
   },
   "cpp:Node::initialized": {
     "verdict": "extension",
@@ -559,6 +559,6 @@
   },
   "rust:DeclarativeNode": {
     "verdict": "extension",
-    "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is.\n\nphase-483 W3 — re-keyed from `DeclaredNode`: the declarative constructors are now the `nros::DeclarativeNode` extension trait on `nros::Node`, so a component's node and a program's node are one type."
+    "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 1789: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is.\n\nphase-483 W3 — re-keyed from `DeclaredNode`: the declarative constructors are now the `nros::DeclarativeNode` extension trait on `nros::Node`, so a component's node and a program's node are one type."
   }
 }

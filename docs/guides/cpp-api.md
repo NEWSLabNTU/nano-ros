@@ -6,8 +6,8 @@ The nros C++ API (`nros-cpp`) provides a freestanding C++14 interface for embedd
 
 - **Freestanding C++14** — no STL dependency in default mode
 - **Direct Rust FFI** — wraps `nros-node` directly via typed `extern "C"` FFI (not the C API), preserving type safety per message type
-- **rclcpp naming** — `Node`, `Publisher<M>`, `Subscription<M>`, `Service<S>`, `Client<S>`, `ActionServer<A>`, `ActionClient<A>`, `Timer`, `GuardCondition`, `Executor`
-- **Result-based error handling** — `nros::Result` + `NROS_TRY` macro (no exceptions)
+- **rclcpp naming, in upstream's namespaces** — `rclcpp::Node`, `Publisher<M>`, `Subscription<M>`, `Service<S>`, `Client<S>`, `Timer`, `GuardCondition`, `Executor`, and `rclcpp_action::Server<A>` / `Client<A>`. There is no `nros::` namespace: every user-facing name is in `rclcpp::`, `rclcpp_action::` or `rclcpp_lifecycle::` (RFC-0089, phase-483). The RTOS extensions with no upstream counterpart (`Poll*`, the `*Storage` types, `FixedString`, …) are in `rclcpp::` too
+- **Result-based error handling** — `rclcpp::Result` + `NROS_TRY` macro (no exceptions)
 - **Generated message types** — `std_msgs::msg::Int32`, `example_interfaces::srv::AddTwoInts`, etc.
 - **Opt-in std surface** — `NROS_CPP_STD` enables `std::string`, `std::function`, `std::chrono` conveniences and `rclcpp::Node`. It is a PORTING surface, requested by the build; it is never detected from the toolchain
 
@@ -120,19 +120,21 @@ Requires `CONFIG_NROS=y` and `CONFIG_NROS_CPP_API=y` in `prj.conf`.
 ```cpp
 #include <nros/nros.hpp>
 
-// Global init (simple applications)
-nros::Result ret = nros::init("tcp/127.0.0.1:7447", 0);
+// Global init (simple applications). `init_in` is the Result-returning form:
+// upstream's `rclcpp::init(argc, argv)` returns `void`, so the name differs
+// where the contract does (RFC-0089's `_in` rule).
+rclcpp::Result ret = rclcpp::init_in("tcp/127.0.0.1:7447", 0);
 
 // Or explicit executor (multi-executor patterns)
-nros::Executor executor;
-NROS_TRY(nros::Executor::create(executor, "tcp/127.0.0.1:7447"));
+rclcpp::Executor executor;
+NROS_TRY(rclcpp::Executor::create(executor, "tcp/127.0.0.1:7447"));
 ```
 
 ### Node
 
 ```cpp
 rclcpp::Node node;
-NROS_TRY(nros::create_node(node, "my_node"));
+NROS_TRY(rclcpp::create_node(node, "my_node"));
 
 // Or with explicit executor:
 NROS_TRY(executor.create_node(node, "my_node", "/namespace"));
@@ -143,7 +145,7 @@ NROS_TRY(executor.create_node(node, "my_node", "/namespace"));
 ```cpp
 #include "std_msgs.hpp"
 
-nros::Publisher<std_msgs::msg::Int32> pub;
+rclcpp::Publisher<std_msgs::msg::Int32> pub;
 NROS_TRY(node.create_publisher(pub, "/chatter"));
 
 std_msgs::msg::Int32 msg;
@@ -154,19 +156,19 @@ NROS_TRY(pub.publish(msg));
 ### Subscription
 
 Poll-style subscriptions — call `spin_once()` to drive I/O, then `take()` to check
-for messages. The type is `nros::PollSubscription<M>` (phase-456 W2b): the caller
-owns the subscriber, so the caller is the one that can take from it.
-`nros::Subscription<M>` is the DISPATCH subscription, whose samples the executor
-arena delivers to a callback.
+for messages. The type is `rclcpp::PollSubscription<M>` (phase-456 W2b): the
+caller owns the subscriber, so the caller is the one that can take from it.
+`rclcpp::Subscription<M>` is the DISPATCH subscription, whose samples the
+executor arena delivers to a callback.
 
 ```cpp
-nros::PollSubscription<std_msgs::msg::Int32> sub;
+rclcpp::PollSubscription<std_msgs::msg::Int32> sub;
 NROS_TRY(node.create_subscription(sub, "/chatter"));
 
-nros::spin_once(100);
+rclcpp::spin_once(100);
 
 std_msgs::msg::Int32 msg;
-if (sub.take(msg)) {
+if (sub.take(msg).ok()) {
     printf("Received: %d\n", msg.data);
 }
 ```
@@ -178,16 +180,16 @@ if (sub.take(msg)) {
 
 using AddTwoInts = example_interfaces::srv::AddTwoInts;
 
-// `nros::PollService<S>` (phase-456 W5) — the caller owns the server and drains
-// it. `nros::Service<S>` is the DISPATCH server, which takes a handler instead.
-nros::PollService<AddTwoInts> srv;
+// `rclcpp::PollService<S>` (phase-456 W5) — the caller owns the server and
+// drains it. `rclcpp::Service<S>` is the DISPATCH server, which takes a handler.
+rclcpp::PollService<AddTwoInts> srv;
 NROS_TRY(node.create_service(srv, "/add_two_ints"));
 
 // In your main loop:
-nros::spin_once(10);
+rclcpp::spin_once(10);
 AddTwoInts::Request req;
 int64_t seq;
-if (srv.take_request(req, seq)) {
+if (srv.take_request(req, seq).ok()) {
     AddTwoInts::Response resp;
     resp.sum = req.a + req.b;
     srv.send_response(seq, resp);
@@ -197,10 +199,10 @@ if (srv.take_request(req, seq)) {
 ### Service Client
 
 ```cpp
-// `nros::PollClient<S>` (phase-456 W9) — the caller owns the client and drains
-// the reply. `nros::Client<S>` is the DISPATCH client, whose one verb is
+// `rclcpp::PollClient<S>` (phase-456 W9) — the caller owns the client and drains
+// the reply. `rclcpp::Client<S>` is the DISPATCH client, whose one verb is
 // `async_send_request` and whose reply reaches a handler during `spin_once`.
-nros::PollClient<AddTwoInts> client;
+rclcpp::PollClient<AddTwoInts> client;
 NROS_TRY(node.create_client(client, "/add_two_ints"));
 
 AddTwoInts::Request req;
@@ -212,39 +214,50 @@ NROS_TRY(client.call(req, resp));
 
 ### Action Server
 
+`rclcpp_action::Server<A>` is a DISPATCH server: the executor answers goal and
+cancel requests through callbacks you install, and the goal itself is driven
+through the server by its 16-byte id. Upstream hands `handle_accepted` an owning
+`std::shared_ptr<ServerGoalHandle>`; here the goals live in the server's static
+arena, so the callback receives the id instead. A polled form, where the caller
+takes each goal request itself, is `rclcpp::PollingActionServer<A>`.
+
 ```cpp
 #include "example_interfaces.hpp"
 
 using Fibonacci = example_interfaces::action::Fibonacci;
 
-nros::ActionServer<Fibonacci> srv;
+rclcpp_action::Server<Fibonacci> srv;
 NROS_TRY(node.create_action_server(srv, "/fibonacci"));
 
-// Goals are auto-accepted during spin_once()
-nros::spin_once(10);
-Fibonacci::Goal goal;
-uint8_t goal_id[16];
-if (srv.try_recv_goal(goal, goal_id)) {
-    // Publish feedback
-    Fibonacci::Feedback fb;
-    // ... fill feedback ...
-    srv.publish_feedback(goal_id, fb);
+// Stateless callables: an empty-capture lambda or a plain function pointer.
+// The `*_with_ctx` forms add a `void*` for state.
+NROS_TRY(srv.set_goal_callback([](const uint8_t id[16], const Fibonacci::Goal& goal) {
+    return goal.order > 0 ? rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE
+                          : rclcpp_action::GoalResponse::REJECT;
+}));
+NROS_TRY(srv.set_accepted_callback([](const uint8_t id[16]) {
+    // Record `id`; the work happens outside the callback, which must return
+    // promptly.
+}));
 
-    // Complete goal
-    Fibonacci::Result result;
-    // ... fill result ...
-    srv.complete_goal(goal_id, result);
-}
+// Later, from the main loop, for an accepted goal `goal_id`:
+Fibonacci::Feedback fb;
+// ... fill feedback ...
+srv.publish_feedback(goal_id, fb);
+
+Fibonacci::Result result;
+// ... fill result ...
+srv.complete_goal(goal_id, result);  // GoalStatus::Succeeded; another overload takes a status
 ```
 
 ### Action Client
 
-`ActionClient<A>` is an arena-storage handle: the goal, feedback, and result buffers (plus the four underlying transport channels) live in fixed-size storage inside the `ActionClient<A>` instance itself. Nothing is heap-allocated per `send_goal` call, and the type is move-only — moves go through `nros_cpp_action_client_relocate` so the trampoline `context` pointer follows the new `this`.
+`rclcpp_action::Client<A>` is an arena-storage handle: the goal, feedback, and result buffers (plus the four underlying transport channels) live in fixed-size storage inside the `Client<A>` instance itself. Nothing is heap-allocated per `send_goal` call, and the type is move-only — moves go through `nros_cpp_action_client_relocate` so the trampoline `context` pointer follows the new `this`.
 
 **Blocking convenience.** `send_goal()` and `get_result()` spin the executor internally until the server replies or the per-call timeout expires:
 
 ```cpp
-nros::ActionClient<Fibonacci> client;
+rclcpp_action::Client<Fibonacci> client;
 NROS_TRY(node.create_action_client(client, "/fibonacci"));
 
 Fibonacci::Goal goal;
@@ -271,7 +284,7 @@ if (accept.accepted) {
 }
 ```
 
-`GoalAccept` is a nested type on `ActionClient<A>` (16-byte UUID + `bool accepted`).
+`GoalAccept` is a nested type on `rclcpp_action::Client<A>` (16-byte UUID + `bool accepted`).
 
 **Feedback.** Feedback is not goal-scoped at the stream layer — `feedback_stream()` yields `FeedbackType` across every active goal for this client:
 
@@ -285,7 +298,7 @@ NROS_TRY(fb_stream.wait_next(executor.handle(), 500, fb));
 
 For per-goal feedback dispatch, use the callback API.
 
-**Callback API: `SendGoalOptions` + `set_callbacks()`.** This is the rclcpp-style entry point. `SendGoalOptions` is a nested POD on `ActionClient<A>`; populate the three function-pointer fields (`goal_response`, `feedback`, `result`) plus an optional `context` pointer, then install once. Callbacks fire from `spin_once()`:
+**Callback API: `SendGoalOptions` + `set_callbacks()`.** This is the rclcpp-style entry point. `SendGoalOptions` is a nested POD on `rclcpp_action::Client<A>`; populate the three function-pointer fields (`goal_response`, `feedback`, `result`) plus an optional `context` pointer, then install once. Callbacks fire from `spin_once()`:
 
 ```cpp
 typename decltype(client)::SendGoalOptions opts;
@@ -307,10 +320,10 @@ opts.context = &my_state;
 NROS_TRY(client.set_callbacks(opts));
 
 NROS_TRY(client.send_goal_async(goal, goal_id));  // fire-and-forget
-while (!my_state.done) { nros::spin_once(10); }
+while (!my_state.done) { rclcpp::spin_once(10); }
 ```
 
-Because callback storage lives in the arena, `set_callbacks()` may be called before or after `send_goal_async()` — the executor's trampoline reads the latest pointers on each dispatch. The C++-side trampoline always stashes the most recent feedback / result bytes too, so the same `ActionClient` can drive `feedback_stream().try_next()` and `get_result_future().wait()` even with callbacks installed.
+Because callback storage lives in the arena, `set_callbacks()` may be called before or after `send_goal_async()` — the executor's trampoline reads the latest pointers on each dispatch. The C++-side trampoline always stashes the most recent feedback / result bytes too, so the same `Client` can drive `feedback_stream().try_next()` and `get_result_future().wait()` even with callbacks installed.
 
 ### Timer
 
@@ -321,7 +334,7 @@ void on_timer(void* ctx) {
     // periodic work
 }
 
-nros::Timer timer;
+rclcpp::Timer timer;
 NROS_TRY(node.create_wall_timer(timer, 1000, on_timer));      // 1000ms period
 NROS_TRY(node.create_timer_oneshot(timer, 5000, on_timer)); // one-shot after 5s
 
@@ -338,7 +351,7 @@ void on_signal(void* ctx) {
     // handle event
 }
 
-nros::GuardCondition guard;
+rclcpp::GuardCondition guard;
 NROS_TRY(node.create_guard_condition(guard, on_signal));
 
 // From another thread:
@@ -349,8 +362,8 @@ guard.trigger();
 ### Executor
 
 ```cpp
-nros::Executor executor;
-NROS_TRY(nros::Executor::create(executor));
+rclcpp::Executor executor;
+NROS_TRY(rclcpp::Executor::create(executor));
 
 rclcpp::Node node;
 NROS_TRY(executor.create_node(node, "my_node"));
@@ -366,10 +379,11 @@ executor.shutdown();
 ### Spinning
 
 ```cpp
-// Global spin (after nros::init())
-nros::spin_once(10);             // single poll, 10ms timeout
-nros::spin(5000);                // spin for 5 seconds
-nros::spin(5000, 50);            // spin for 5s, 50ms poll interval
+// Global spin (after rclcpp::init_in())
+rclcpp::spin_once(10);           // single poll, 10ms timeout
+rclcpp::spin_in(5000);           // spin for 5 seconds
+rclcpp::spin_in(5000, 50);       // spin for 5s, 50ms poll interval
+rclcpp::spin_in();               // until rclcpp::shutdown() flips rclcpp::ok()
 
 // Explicit executor
 executor.spin_once(10);
@@ -378,27 +392,27 @@ executor.spin_for(5000, 50);    // bounded; executor.spin() blocks until shutdow
 
 ## Error Handling
 
-All fallible operations return `nros::Result`. Use `NROS_TRY` for early return:
+All fallible operations return `rclcpp::Result`. Use `NROS_TRY` for early return:
 
 ```cpp
-nros::Result setup() {
-    NROS_TRY(nros::init());
-    NROS_TRY(nros::create_node(node, "my_node"));
+rclcpp::Result setup() {
+    NROS_TRY(rclcpp::init_in());
+    NROS_TRY(rclcpp::create_node(node, "my_node"));
     NROS_TRY(node.create_publisher(pub, "/topic"));
-    return nros::Result::success();
+    return rclcpp::Result::success();
 }
 ```
 
 Check results manually when needed:
 
 ```cpp
-nros::Result ret = pub.publish(msg);
+rclcpp::Result ret = pub.publish(msg);
 if (!ret.ok()) {
     printf("Error: %d\n", ret.raw());
 }
 ```
 
-Error codes (`nros::ErrorCode`):
+Error codes (`rclcpp::ErrorCode`):
 - `Ok` (0) — success
 - `Error` (-1) — generic error
 - `Timeout` (-2) — operation timed out
@@ -436,34 +450,38 @@ If you build a ported package through nano-ros's ament surface
 (`cmake/NanoRosAmentSurface.cmake`, `find_package(rclcpp)`), the flag is
 already set on every target it creates or links and you need nothing here.
 
-### `std::string` overloads
+### The ported shape
+
+With the flag set, an upstream node's own spelling compiles: `std::make_shared`,
+`SharedPtr` returns, a `std::string` topic, a QoS depth, a capturing lambda and a
+`std::chrono` period.
 
 ```cpp
-std::string locator = "tcp/127.0.0.1:7447";
-nros::init(locator);
+#include <rclcpp/rclcpp.hpp>
+#include "std_msgs/std_msgs.hpp"
 
-std::string topic = "/chatter";
-nros::create_publisher<std_msgs::msg::Int32>(node, pub, topic);
-```
-
-### `std::function` callbacks
-
-```cpp
-nros::Timer timer;
-nros::create_wall_timer(node, timer, std::chrono::milliseconds(1000), [&count, &pub]() {
-    std_msgs::msg::Int32 msg;
-    msg.data = ++count;
-    pub.publish(msg);
-});
-```
-
-### `std::chrono` durations
-
-```cpp
 using namespace std::chrono_literals;
-nros::spin_once(100ms);
-nros::spin(5s, 50ms);
+
+int main(int argc, char** argv) {
+    rclcpp::init(argc, argv);
+    auto node = std::make_shared<rclcpp::Node>("talker");
+    auto pub = node->create_publisher<std_msgs::msg::Int32>("chatter", 10);
+    int count = 0;
+    auto timer = node->create_wall_timer(1s, [&]() {
+        std_msgs::msg::Int32 msg;
+        msg.data = ++count;
+        pub->publish(msg);
+    });
+    rclcpp::spin(node);
+    rclcpp::shutdown();
+}
 ```
+
+A failed `create_*` here ABORTS, naming the call, because upstream throws and
+nano-ros has no exceptions (RFC-0018). To handle the failure instead, use the
+`Result`-returning forms above. `examples/templates/cpp-port-minimal-publisher`
+is the ROS 2 tutorial publisher in this shape, unmodified, with runtime tests on
+posix, FreeRTOS and Zephyr.
 
 ## Zephyr Integration
 
@@ -513,16 +531,16 @@ int main(void)
 {
     zpico_zephyr_wait_network(CONFIG_NROS_INIT_DELAY_MS);
 
-    nros::Result ret = nros::init(CONFIG_NROS_ZENOH_LOCATOR, CONFIG_NROS_DOMAIN_ID);
+    rclcpp::Result ret = rclcpp::init_in(CONFIG_NROS_ZENOH_LOCATOR, CONFIG_NROS_DOMAIN_ID);
     if (!ret.ok()) return 1;
 
     rclcpp::Node node;
-    NROS_TRY(nros::create_node(node, "my_node"));
+    if (!rclcpp::create_node(node, "my_node").ok()) return 1;
 
     // ... create publishers, subscriptions, etc.
 
     while (true) {
-        nros::spin_once(100);
+        rclcpp::spin_once(100);
     }
 }
 ```

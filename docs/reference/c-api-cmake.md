@@ -204,7 +204,7 @@ probes for it.
 
 - **Freestanding (default).** C++14, no standard library, no exceptions, no
   RTTI. `rclcpp::Node`, `create_*` writing through an out-reference and returning
-  `nros::Result`, `const char *` names, `uint64_t` millisecond durations. This
+  `rclcpp::Result`, `const char *` names, `uint64_t` millisecond durations. This
   is the surface every nano-ros application in this repository is built
   against, `posix` host builds included.
 - **std (`NROS_CPP_STD`).** Defining it turns on the six `NROS_CPP_HAS_*`

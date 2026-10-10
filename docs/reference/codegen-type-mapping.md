@@ -154,16 +154,16 @@ the pointer+length fields.
 
 ## C++ type mapping
 
-| ROS type                 | C++ type                    |
-|--------------------------|-----------------------------|
-| `string` (unbounded)     | `nros::StringView`          |
-| `string<=N` (bounded)    | `nros::FixedString<N>`      |
-| `uint8[]` (unbounded)    | `nros::Span<uint8_t>`       |
-| `T[]` (unbounded, other) | `nros::Span<T>`             |
-| `T[<=N]` (bounded)       | `nros::FixedSequence<T, N>` |
-| `T[N]` (fixed)           | `T name[N]`                 |
+| ROS type                 | C++ type                      |
+|--------------------------|-------------------------------|
+| `string` (unbounded)     | `rclcpp::StringView`          |
+| `string<=N` (bounded)    | `rclcpp::FixedString<N>`      |
+| `uint8[]` (unbounded)    | `rclcpp::Span<uint8_t>`       |
+| `T[]` (unbounded, other) | `rclcpp::Span<T>`             |
+| `T[<=N]` (bounded)       | `rclcpp::FixedSequence<T, N>` |
+| `T[N]` (fixed)           | `T name[N]`                   |
 
-`nros::Span<T>` and `nros::StringView` are freestanding C++14 types
+`rclcpp::Span<T>` and `rclcpp::StringView` are freestanding C++14 types
 defined in `nros/span.hpp`. They provide `data()`, `size()`, `begin()`,
 `end()`, and `operator[]` — same API as `std::span` / `std::string_view`.
 

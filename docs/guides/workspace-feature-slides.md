@@ -38,7 +38,7 @@ src/talker_pkg/
 Rust shape:
 
 ```rust
-impl Node for Talker {
+impl Component for Talker {
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         /* declare publishers, subscriptions, timers */
         Ok(())

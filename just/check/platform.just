@@ -711,6 +711,15 @@ posix-platform-purity:
 prelude-tiers:
     @python3 scripts/check-prelude-tiers.py
 
+# phase-483 — the Rust facade has ONE node type, `nros::Node`, and the
+# component trait is `nros::Component`. Refuses a `pub trait Node` and any
+# re-export of the node-shaped names phase-483 retired from `nros::`
+# (`NodeHandle`, `NodeCtx`, `StandaloneNode`, `DeclaredNode`, ...). The
+# Rust half of the acceptance; `cpp-no-nros-namespace` is the C++ half.
+[private]
+rust-one-node-type:
+    @python3 scripts/check-rust-one-node-type.py
+
 # A PX4 module compiles against a per-build generated header and links a
 # separately-built `libnros_cpp.a`. The two are independent files that each
 # outlive the build that wrote them, so nothing made them agree — issue 1050's

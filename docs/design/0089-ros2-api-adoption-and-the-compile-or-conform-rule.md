@@ -3936,7 +3936,7 @@ wrong layer would have landed.
 ## Settled: `nros::` is deleted from C++, and Rust takes rclrs's shape with ONE node type (2026-10-09)
 
 Maintainer decision, implemented by
-[phase-483](../roadmap/phase-483-rclcpp-rclrs-shape-only.md). It finishes the
+[phase-483](../roadmap/archived/phase-483-rclcpp-rclrs-shape-only.md). It finishes the
 two halves this RFC's "The intent" section states as the end state.
 
 **C++.** "`nros::` is phased out entirely" (2026-09-05) is now a deletion, not
@@ -3978,3 +3978,10 @@ sizing, the C-ABI install symbols, name-keyed RTIC/Embassy dispatch and the
 metadata probe, but it no longer hands the component a different node-shaped
 type. That supersedes the split recorded as a `divergence` in the API-parity
 ledger's `node.json`, and the "Rust parity → defer (242.6)" note in RFC-0044.
+
+Gates: `check-rust-one-node-type` refuses a `pub trait Node` in the `nros`
+facade and any re-export of the node-shaped names phase-483 retired
+(`NodeHandle`, `NodeCtx`, `StandaloneNode`, `DeclaredNode`, `NodeConfig`,
+`PublisherHandle`, `SubscriptionHandle`). The ported rclrs talker in
+`packages/testing/nros-tests/tests/rclrs_talker_port.rs` compiles under
+`use nros as rclrs;` in `just check required-features-tests`.

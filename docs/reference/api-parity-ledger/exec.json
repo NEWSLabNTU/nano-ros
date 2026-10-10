@@ -707,12 +707,12 @@
   },
   "rust:Executor::*component*": {
     "verdict": "extension",
-    "why": "the component enrolment table the `nros::node!` macro expands into -- how many slots exist, which are filled, and each enrolled component's state. Machinery a generated entry point needs and a hand-written user does not; issue 0784. RFC-0043/0044.",
+    "why": "the component enrolment table the `nros::node!` macro expands into -- how many slots exist, which are filled, and each enrolled component's state. Machinery a generated entry point needs and a hand-written user does not; issue 1789. RFC-0043/0044.",
     "bucket": "ours-only"
   },
   "rust:Executor::*dispatch*": {
     "verdict": "extension",
-    "why": "the generated-entry-point dispatch table: reserve a slot, count them, and invoke one by index. A static table indexed by slot is how a callback reaches its component body with no trait object and no allocation. Machinery `nros::node!` expands into; issue 0784.",
+    "why": "the generated-entry-point dispatch table: reserve a slot, count them, and invoke one by index. A static table indexed by slot is how a callback reaches its component body with no trait object and no allocation. Machinery `nros::node!` expands into; issue 1789.",
     "bucket": "ours-only"
   },
   "rust:Executor::*domain_id": {
@@ -1058,7 +1058,7 @@
   },
   "rust:ExecutorNodeRuntime": {
     "verdict": "extension",
-    "why": "the adapter that lets a declarative component (RFC-0043/0044) run against a real `Executor`: it registers the component's declared entities, owns the spin loop, and routes each callback back into `ExecutableNode::on_callback`. rclrs has no counterpart because a user there constructs entities and closures directly. Machinery `nros::node!` and the orchestration codegen expand into; issue 0784. Covers its members (`register_node`, `spin`, `spin_once`, `spin_once_counted`, `dispatch_callback`, `apply_tier_sched_policy`, `component_count`, `halt`, `executor`, `executor_mut`, `from_executor`)."
+    "why": "the adapter that lets a declarative component (RFC-0043/0044) run against a real `Executor`: it registers the component's declared entities, owns the spin loop, and routes each callback back into `ExecutableNode::on_callback`. rclrs has no counterpart because a user there constructs entities and closures directly. Machinery `nros::node!` and the orchestration codegen expand into; issue 1789. Covers its members (`register_node`, `spin`, `spin_once`, `spin_once_counted`, `dispatch_callback`, `apply_tier_sched_policy`, `component_count`, `halt`, `executor`, `executor_mut`, `from_executor`)."
   },
   "rust:ExecutorRuntime": {
     "verdict": "declined",
@@ -1125,7 +1125,7 @@
   },
   "rust:Node::create_callback_group": {
     "verdict": "extension",
-    "why": "RFC-0047 / phase 273. The group decides which `SchedContext` the callback runs under -- which RTOS priority tier, and the deadline policy when it overruns. Same verdict and same reason as `rust:SchedContext`: rclrs 0.7.0 has NO callback groups at all (measured: zero `CallbackGroup` / `callback_group` identifiers in the recorded surface -- its isolation primitive is `Worker`, `rust:Node::create_worker`, which is `declined` here), and rclcpp's callback groups carry CONCURRENCY rules and no priority, so neither library has the concept this takes. This names one: it returns a `CallbackGroup` token to pass to the `_in_group` create variants. The token is a `heapless::String<32>` rather than an `Arc` because there is no allocator -- a name longer than 32 bytes is truncated, which is the constraint made visible in the contract.\n\nOn `NodeCtx`, the executor-borrowing node handle (`exec.node_mut(id)`), which the correlator folds onto `Node` (`TYPE_SYNONYMS`). MEASURABLE ONLY SINCE 2026-09-12: `nros_node::executor`'s `mod node` kept the type private while `Executor::node_mut` returned it, so every method on it was callable and none of them had ever produced a row -- issue 1351."
+    "why": "RFC-0047 / phase 273. The group decides which `SchedContext` the callback runs under -- which RTOS priority tier, and the deadline policy when it overruns. Same verdict and same reason as `rust:SchedContext`: rclrs 0.7.0 has NO callback groups at all (measured: zero `CallbackGroup` / `callback_group` identifiers in the recorded surface -- its isolation primitive is `Worker`, `rust:Node::create_worker`, which is `declined` here), and rclcpp's callback groups carry CONCURRENCY rules and no priority, so neither library has the concept this takes. This names one: it returns a `CallbackGroup` token to pass to the `_in_group` create variants. The token is a `heapless::String<32>` rather than an `Arc` because there is no allocator -- a name longer than 32 bytes is truncated, which is the constraint made visible in the contract.\n\nOn `nros::Node`, the executor-borrowing node handle (`exec.node_mut(id)`); it was `NodeCtx` until phase-483 W2, which the correlator folded onto `Node` (`TYPE_SYNONYMS`). MEASURABLE ONLY SINCE 2026-09-12: `nros_node::executor`'s `mod node` kept the type private while `Executor::node_mut` returned it, so every method on it was callable and none of them had ever produced a row -- issue 1351."
   },
   "rust:Node::create_guard_condition": {
     "verdict": "extension",

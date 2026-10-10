@@ -36,7 +36,7 @@ All ports surface a monotonic clock. Resolution varies:
 - **Bare-metal (Cortex-M)**: hardware timer counter (CMSDK Timer0, DWT cycle counter). µs is the native resolution; ms is `µs / 1000`.
 - **Bare-metal (ESP32)**: `esp_timer_get_time` returns µs natively.
 
-The clock is monotonic and wraparound-free for the duration of `nros::init` → `nros::shutdown`. Platforms with 32-bit timers run a software extender on overflow.
+The clock is monotonic and wraparound-free from init to shutdown. Platforms with 32-bit timers run a software extender on overflow.
 
 ### Memory (`PlatformAlloc`)
 

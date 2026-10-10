@@ -413,8 +413,8 @@ fn scaffold_component_rust(cfg: &ComponentScaffoldConfig) -> Result<()> {
     let crate_name = cfg.name.replace('-', "_");
     let module = &cfg.use_case; // constrained by the CLI to a valid Rust ident
     // The node TYPE. `nros::node!()` and `[package.metadata.nros.node] class`
-    // both name it, and every in-tree Node pkg names it after the node rather
-    // than calling it `Component` — a word the 212.N.12 rename retired.
+    // both name it, and every in-tree Node pkg names it after the node. Not
+    // `Component`: that is the trait it implements (phase-483 W2).
     let class_name = {
         let mut c = module.chars();
         match c.next() {

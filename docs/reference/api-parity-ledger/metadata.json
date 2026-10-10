@@ -9,7 +9,7 @@
   },
   "rust:CallbackSlot": {
     "verdict": "extension",
-    "why": "the declaration-order index a callback occupies in the static table -- the sibling of `rust:NodeSlot`, which the node stage already recorded, defined in the same 40-line block. The count these carry is the whole reason the sidecar exists (issue 0257): the entry codegen const-asserts the model's entity count against the executor capacity that actually compiles in. machinery `nros::node!` and the generated runtime expand into, not something a user writes -- `node_metadata.rs`'s own first line says \"shared by metadata discovery and generated runtimes\". Issue 0784: it should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is. Consumers outside `packages/api/nros`: none."
+    "why": "the declaration-order index a callback occupies in the static table -- the sibling of `rust:NodeSlot`, which the node stage already recorded, defined in the same 40-line block. The count these carry is the whole reason the sidecar exists (issue 0257): the entry codegen const-asserts the model's entity count against the executor capacity that actually compiles in. machinery `nros::node!` and the generated runtime expand into, not something a user writes -- `node_metadata.rs`'s own first line says \"shared by metadata discovery and generated runtimes\". Issue 1789: it should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is. Consumers outside `packages/api/nros`: none."
   },
   "rust:CallbackSlot::index": {
     "verdict": "extension",
@@ -49,7 +49,7 @@
   },
   "rust:EntitySlot": {
     "verdict": "extension",
-    "why": "the declaration-order index a entity occupies in the static table -- the sibling of `rust:NodeSlot`, which the node stage already recorded, defined in the same 40-line block. The count these carry is the whole reason the sidecar exists (issue 0257): the entry codegen const-asserts the model's entity count against the executor capacity that actually compiles in. machinery `nros::node!` and the generated runtime expand into, not something a user writes -- `node_metadata.rs`'s own first line says \"shared by metadata discovery and generated runtimes\". Issue 0784: it should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is. Consumers outside `packages/api/nros`: none."
+    "why": "the declaration-order index a entity occupies in the static table -- the sibling of `rust:NodeSlot`, which the node stage already recorded, defined in the same 40-line block. The count these carry is the whole reason the sidecar exists (issue 0257): the entry codegen const-asserts the model's entity count against the executor capacity that actually compiles in. machinery `nros::node!` and the generated runtime expand into, not something a user writes -- `node_metadata.rs`'s own first line says \"shared by metadata discovery and generated runtimes\". Issue 1789: it should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is. Consumers outside `packages/api/nros`: none."
   },
   "rust:EntitySlot::index": {
     "verdict": "extension",

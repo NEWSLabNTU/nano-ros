@@ -15,7 +15,11 @@ Scope — the C++ that users read and copy, and the C++ the CLI generates:
   holds the emitted goldens and message-header fixtures);
 * the C++ emitter templates (`packages/cli/**/packs/**/cpp/**` and the
   `*.cpp.golden` / `*.hpp.golden` outputs);
-* every ```cpp fenced block in `book/`.
+* every ```cpp fenced block in the documents a user reads: `book/`,
+  `docs/guides/`, `docs/reference/`, and every `README.md` / other `.md`
+  under `examples/`. Until phase-483 W5 this read `book/` alone, and
+  `docs/guides/cpp-api.md` kept 35 lines of the retired `nros::` API on a
+  green gate. RFCs, phase docs and issues are history and are not read.
 
 Comments are exempt: a comment saying what a name WAS is history, not a use.
 String literals are not exempt — an emitted string is emitted code.
@@ -33,6 +37,9 @@ REPO = Path(__file__).resolve().parents[1]
 
 CPP_EXT = (".cpp", ".cc", ".hpp", ".hh", ".h", ".cpp.golden", ".hpp.golden")
 CPP_ROOTS = ("examples/", "packages/api/nros-cpp/", "packages/testing/", "packages/cli/")
+# The live documentation whose ```cpp blocks a user copies. History (RFCs,
+# phase docs, issues, the changelog) is deliberately not here.
+DOC_ROOTS = ("book/", "docs/guides/", "docs/reference/", "examples/", "README.md")
 TEMPLATE_MARK = "/packs/"
 # `nros::main!` and its siblings are RUST macros, which a refusal message may
 # name; `\w+!` after the path is never C++.
@@ -111,6 +118,10 @@ def scan_markdown(text: str) -> list[int]:
     return hits
 
 
+def is_doc_subject(path: str) -> bool:
+    return path.endswith(".md") and path.startswith(DOC_ROOTS)
+
+
 def is_cpp_subject(path: str) -> bool:
     if path.startswith("book/"):
         return False
@@ -121,7 +132,7 @@ def is_cpp_subject(path: str) -> bool:
 
 def tracked() -> list[str]:
     out = subprocess.run(
-        ["git", "ls-files", "-z", "--", *CPP_ROOTS, "book/"],
+        ["git", "ls-files", "-z", "--", *CPP_ROOTS, *DOC_ROOTS],
         cwd=REPO, check=True, capture_output=True,
     ).stdout.decode()
     return [p for p in out.split("\0") if p]
@@ -173,7 +184,7 @@ def main() -> int:
         full = REPO / path
         if not full.is_file():
             continue
-        if path.startswith("book/") and path.endswith(".md"):
+        if is_doc_subject(path):
             lines = scan_markdown(full.read_text(encoding="utf-8", errors="replace"))
         elif is_cpp_subject(path):
             lines = scan_cpp(full.read_text(encoding="utf-8", errors="replace"))

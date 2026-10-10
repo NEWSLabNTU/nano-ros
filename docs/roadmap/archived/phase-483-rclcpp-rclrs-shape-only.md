@@ -1,10 +1,10 @@
 # Phase 483 — the user API has ROS 2's shape only: `rclcpp::` in C++, rclrs in Rust
 
-**Status (2026-10-10). W1–W4 done; W5 (book/RFC/ledger sweep) in progress.** Settles issue 0784 and finishes what
-[RFC-0089](../design/0089-ros2-api-adoption-and-the-compile-or-conform-rule.md)
+**Status (2026-10-11). Done; archived.** W1 merged as #1835, W2 as #1842, W3 and W4 as #1881, W5 with this archive. Settles issue 0784 and finishes what
+[RFC-0089](../../design/0089-ros2-api-adoption-and-the-compile-or-conform-rule.md)
 §"Settled: `nros::` is phased out entirely" decided for C++ and stated as the
 end state for Rust ("`rclrs::` for Rust"). Follows
-[phase-482](phase-482-rclcpp-drop-in-residue.md), which made a ported ROS 2
+[phase-482](../phase-482-rclcpp-drop-in-residue.md), which made a ported ROS 2
 C++ node build and run with no compat layer but left the `nros::` vocabulary
 standing beside `rclcpp::`.
 
@@ -288,9 +288,59 @@ example and not required by the acceptance.
   two-model split.
 - Issue 0784 is resolved and archived.
 
+**Status 2026-10-11: done.**
+
+- **RFCs.** RFC-0089 carries the Rust half of the decision (§"Settled: `nros::`
+  is deleted from C++, and Rust takes rclrs's shape with ONE node type") and
+  now names both gates. RFC-0022, RFC-0036, RFC-0043 and RFC-0044 carry their
+  supersession notes (W4).
+- **Docs.** `docs/guides/cpp-api.md` still taught the retired `nros::` API in
+  35 code lines. The `cpp-no-nros-namespace` gate read only `book/`, so it was
+  green over them. The guide now uses `rclcpp::` / `rclcpp_action::`, with
+  `init_in` / `spin_in` where the contract differs. Three of its sections had
+  drifted further than the namespace and were rewritten against the headers:
+  the action server (it is callback-driven, `rclcpp_action::Server<A>`), the
+  `NROS_CPP_STD` section (free functions that do not exist, replaced by the
+  ported `make_shared` / `SharedPtr` shape), and spinning (`spin_in`). Its code
+  was compile-checked against the headers with a stub message type. Smaller
+  fixes landed in `codegen-type-mapping.md`, `c-api-cmake.md`,
+  `platform-implementation-notes.md`, `platform-differences.md`, the
+  `violation-cpp` README and the workspace slides (`impl Component for`).
+- **Ledger.** 100 rows ended "Whether the two Rust APIs should both be public,
+  and which one `nros::` should lead with, is issue 0784"; they now state the
+  answer. 22 rows described `NodeCtx` in the present tense and now say
+  `nros::Node`. Six `node.json` rows (`RegisteredNode`, `install_node_typed*`)
+  carried a pasted copy of `NodeHandle`'s "four node-shaped things" text and
+  now describe their own names. 64 rows complained that `nros::` exports
+  machinery beside the user API, citing 0784. That half was never settled, so
+  those rows now cite [issue 1789](../../issues/1789-nros-facade-exports-runtime-machinery.md), filed for it.
+- **Two gates that had gone blind, found during the sweep:**
+  - `check-component-entity-bounds` matched `impl … Node for`, so after W2
+    renamed the trait it read 2 classes of ~104 and reported OK. It now
+    matches `Component` and counts the post-W3 `declare_*` constructors.
+    Self-tests cover both; the old regex fails 5 of them.
+  - The two classes it still read were
+    `packages/testing/nros-tests/bins/param-store-{nuttx-qemu-arm,threadx-riscv64}`,
+    which still wrote `impl Node for` and no longer compiled. Both are ported.
+    The NuttX row builds; the two sources are identical. The ThreadX row stops
+    earlier, in the NetX Duo build (`nx_port.h: No such file or directory`),
+    which this change does not touch.
+- **Rust gate.** `check-rust-one-node-type` is new (below).
+
 ## Acceptance
 
 - A C++ user writes no `nros::`.
 - A Rust user writes `use nros as rclrs;` and gets rclrs's shape, with one
   `Node` type in every program.
 - Both are enforced by gates, not by review.
+
+**Met 2026-10-11.**
+
+- **C++:** `check-cpp-no-nros-namespace` reads the C++ sources, the CLI's
+  emitted C++, and every ```cpp block in `book/`, `docs/guides/`,
+  `docs/reference/` and `examples/**/*.md`.
+- **Rust:** `check-rust-one-node-type` refuses a `pub trait Node` in the
+  facade and a re-export of any node-shaped name phase-483 retired. It flags
+  eight retired-name exports in the pre-W2 `lib.rs`.
+- **Rust compile check:** `tests/rclrs_talker_port.rs` compiles the ported
+  rclrs talker under `use nros as rclrs;`, in `required-features-tests`.
