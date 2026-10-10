@@ -52,3 +52,7 @@ Run the threadx-linux C, C++ and Rust cells with the descriptor's locator set
 to each value; keep the one that passes everywhere (or make every in-tree
 image state its locator and give the board one fallback), then move the
 locator into `[board.net]` and delete the two C copies.
+
+Not measurable on newslab-server-241 (2026-10-11): the threadx-linux cells need
+the user-owned TAP/veth interfaces the `setup-network` recipe creates, which takes
+root once, and that host grants none. Run it on a host that has them.

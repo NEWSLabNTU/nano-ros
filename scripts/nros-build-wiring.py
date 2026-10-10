@@ -118,8 +118,13 @@ ROLES = [
         "linker-script",
         "places a linker script in OUT_DIR and compiles nothing",
         lambda t, ctx: (
-            re.search(r"rustc-link-search", t)
-            and re.search(r"\.x\"|\.x\b", t)
+            (
+                # phase-471 W4's converged shape: one `link_script!` call
+                # (issue 1768 — the predicate only knew the hand-written form
+                # it replaced, so the migration moved 8 scripts OUT of this role).
+                re.search(r"nros_build_paths::link_script!\s*\(", t)
+                or (re.search(r"rustc-link-search", t) and re.search(r"\.x\"|\.x\b", t))
+            )
             and not re.search(r"cc::Build|cmake::Config", t)
         ),
         "a self-contained job with no knob, no path and no SDK — correct as it is",
@@ -593,15 +598,39 @@ def inventory() -> dict:
     }
 
 
+def self_test() -> None:
+    """Negative control on every run (issue 1768): a `link_script!` shim must
+    classify as `linker-script`, and a C compile must not."""
+    shim = 'fn main() { nros_build_paths::link_script!("memory.x"); }'
+    cc = 'fn main() { cc::Build::new().file("x.c").compile("x"); }'
+    role = lambda text: next((n for n, _, rule, _ in ROLES if rule(text, {})), None)
+    assert role(shim) == "linker-script", role(shim)
+    assert role(cc) != "linker-script", role(cc)
+
+
 def main() -> int:
+    self_test()
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--roads", action="store_true", help="only the road table")
     ap.add_argument("--scripts", action="store_true", help="only the build.rs census")
     ap.add_argument("--json", action="store_true", help="machine-readable")
+    ap.add_argument("--check-classified", action="store_true",
+                    help="exit 1 when any build script matches no ROLE (issue 1768)")
     args = ap.parse_args()
 
     inv = inventory()
+    if args.check_classified:
+        left = inv["build_scripts"]["unclassified"]
+        if left:
+            print("nros-build-wiring: FAIL — build script(s) match no ROLE (issue 1768); "
+                  "rule them, do not add an 'other' bucket:")
+            for p in left:
+                print(f"    {p}")
+            return 1
+        print(f"nros-build-wiring: OK — every one of {inv['build_scripts']['total']} "
+              "build scripts has a ROLE")
+        return 0
     if args.json:
         print(json.dumps(inv, indent=2, sort_keys=True))
         return 0

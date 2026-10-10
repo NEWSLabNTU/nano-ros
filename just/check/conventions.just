@@ -209,3 +209,12 @@ cargo-json-reader:
 [private]
 board-net-one-home:
     @python3 scripts/check/check-board-net-one-home.py
+
+# Issue 1768 (phase-484 W7) — every tracked `build.rs` has a ROLE in the
+# build-wiring census (`scripts/nros-build-wiring.py`). The census printed an
+# UNCLASSIFIED list nothing read, so phase-471's migration of 8 scripts onto
+# `link_script!` moved them out of their role silently. Buildless, ~1 s;
+# self-tests the linker-script predicate on each run.
+[private]
+build-wiring-classified:
+    @python3 scripts/nros-build-wiring.py --check-classified
