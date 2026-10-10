@@ -35,6 +35,7 @@ fn locate(
         .current_dir(root)
         .env("NROS_HOME", store)
         .env_remove("ZENOH_PICO_DIR")
+        .env_remove("NROS_WORKSPACE_ROOT")
         .env_remove("NROS_STORE")
         .env_remove("NROS_SDK_STORE");
     for (k, v) in env {
@@ -103,5 +104,32 @@ fn batch_cmake_output_is_one_normal_variable_per_row() {
     assert!(
         !out.contains("NROS_LOCATE_ROSIDL"),
         "an unprovisioned row is not invented: {out}"
+    );
+}
+
+/// RFC-0103 D3 rung 3: a project's `[sources]` row (project-relative) outranks
+/// the checkout, and `--why` names it.
+#[test]
+fn a_project_sources_row_outranks_the_checkout() {
+    let tmp = tempfile::tempdir().unwrap();
+    let r = root(tmp.path());
+    let proj = tmp.path().join("proj");
+    std::fs::create_dir_all(proj.join("forks/zenoh-pico")).unwrap();
+    std::fs::write(
+        proj.join("system.toml"),
+        "[system]\nname = \"p\"\n\n[sources]\nzenoh-pico = \"forks/zenoh-pico\"\n",
+    )
+    .unwrap();
+    let (ok, out, err) = locate(
+        &r,
+        &tmp.path().join("store"),
+        &["zenoh-pico", "--why", "--project", proj.to_str().unwrap()],
+        &[],
+    );
+    assert!(ok, "{err}");
+    assert!(out.trim().ends_with("proj/forks/zenoh-pico"), "{out}");
+    assert!(
+        err.contains("[sources] zenoh-pico") && err.contains("<- chosen"),
+        "{err}"
     );
 }

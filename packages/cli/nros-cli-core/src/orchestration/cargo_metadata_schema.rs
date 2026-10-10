@@ -648,6 +648,14 @@ pub struct SystemToml {
     /// here exactly as it does everywhere else.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub board_config: BTreeMap<String, toml::Value>,
+    /// `[sources]` — `<source-row> = "<path>"`, PROJECT-relative (RFC-0103 D3
+    /// rung 3, phase-484 W3). Where THIS project keeps a `[source.*]` tree
+    /// instead of the store or the checkout: a vendor fork it maintains, an SDK
+    /// it cannot redistribute. Read by the one ladder
+    /// (`nros_build_paths::locate`), never by a consumer: below an explicit
+    /// argument and the row's env override, above a local edit and the store.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub sources: BTreeMap<String, String>,
     #[serde(default, rename = "domain", skip_serializing_if = "Vec::is_empty")]
     pub domains: Vec<SystemDomainEntry>,
     #[serde(default, rename = "bridge", skip_serializing_if = "Vec::is_empty")]
