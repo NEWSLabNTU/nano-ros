@@ -14,7 +14,7 @@
 #     consumer's entry, not here.
 
 [[board]]
-names = ["s32z270-freertos", "s32z270", "S32Z270"]
+names = ["s32z270-freertos", "s32z270"]
 platform = "freertos"
 toolchain = "stable"
 entry_kind = "board-run"
