@@ -45,7 +45,8 @@
 # carries unrelated work, that boundary is the point.
 #
 # Usage:
-#   scripts/ci/runner-container.sh <labels> [--build] [--run] [--check]
+#   NROS_RUNNER_NAME=<unique> scripts/ci/runner-container.sh <labels> [--build] [--run] [--check]
+#   (the name is REQUIRED — it is the GitHub registration; scripts/lib/runner-name.sh)
 #
 #   <labels>   comma- or space-separated, e.g. nros-qemu,nros-sdk-zephyr,nros-big
 #   --build    build the image only
@@ -62,7 +63,6 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 IMAGE="${NROS_RUNNER_IMAGE:-nano-ros-runner:local}"
-NAME="${NROS_RUNNER_NAME:-nano-ros-runner}"
 ENGINE="${NROS_CONTAINER_ENGINE:-docker}"
 DO_BUILD=0 DO_RUN=0 CHECK=0 ATTACH=0
 LABELS=""
@@ -92,6 +92,8 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
+. "$REPO_ROOT/scripts/lib/runner-name.sh"
+NAME="$(nros_require_runner_name runner-container)"
 
 [ -n "$LABELS" ] || { echo "runner-container: need <labels>, e.g. nros-qemu,nros-sdk-zephyr,nros-big" >&2; exit 2; }
 LABELS="${LABELS// /,}"
