@@ -522,6 +522,25 @@ def _make_workspace(here: Path, name: str = "nano-ros") -> str:
 
 
 def self_test(verbose: bool = False) -> bool:
+    """The negative controls, run against a clean slate of the escape hatch.
+
+    `NROS_ALLOW_FOREIGN_BUILD_ARTIFACTS=1` is the CALLER's decision about the
+    real tree, and the controls below set and clear it themselves to prove
+    what it silences. Inherited, it silenced the controls too: every planted
+    crossing came back `[]`, so exporting the documented hatch made the gate
+    fail its own self-test instead of passing the tree. Hidden here, restored
+    after, so the real scan still honours it.
+    """
+    saved = os.environ.pop("NROS_ALLOW_FOREIGN_BUILD_ARTIFACTS", None)
+    try:
+        return _self_test(verbose)
+    finally:
+        os.environ.pop("NROS_ALLOW_FOREIGN_BUILD_ARTIFACTS", None)
+        if saved is not None:
+            os.environ["NROS_ALLOW_FOREIGN_BUILD_ARTIFACTS"] = saved
+
+
+def _self_test(verbose: bool = False) -> bool:
     """Plant each crossing and prove it is REPORTED; plant the legitimate
     shape and prove it is not. Runs on the normal path, every invocation — a
     negative control nobody runs decays into a comment (issue 1280's gate).
