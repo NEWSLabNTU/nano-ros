@@ -2894,7 +2894,7 @@ dir = "examples/native/c/action-client"
 # regression probe, so it lives under packages/testing/ per the examples-are-
 # copy-out-projects rule), but it is a CMake C leaf like any other and builds
 # through the same `linux c zenoh` group. It is the ONLY caller of
-# `nros_action_client_send_goal_raw` in the tree: the FFI shipped a double
+# `nros_polling_action_client_send_goal_raw` in the tree: the FFI shipped a double
 # encapsulation header precisely because nothing called it.
 [[fixture]]
 platform = "linux"

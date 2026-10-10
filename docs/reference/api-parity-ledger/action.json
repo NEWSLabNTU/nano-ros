@@ -22,7 +22,7 @@
     "provides": [
       "NROS_GOAL_ACCEPT_AND_EXECUTE",
       "NROS_GOAL_ACCEPT_AND_DEFER",
-      "nros_action_server_accept_goal_raw"
+      "nros_polling_action_server_accept_goal_raw"
     ],
     "why": "rcl allocates a goal handle and returns it; ours accepts by RETURN VALUE from the goal callback (`NROS_GOAL_ACCEPT_AND_EXECUTE` / `_AND_DEFER`) or, on the L1 tier, by `nros_action_server_accept_goal_raw(server, goal_id, sequence_number)`. our goal handle is a 16-byte UUID TOKEN, not an owning object: `nros_goal_handle_t` holds the uuid and nothing else, and every lifecycle fact lives in the executor's static goal arena (read back with `nros_action_get_goal_status`). rcl's `rcl_action_goal_handle_t` is allocator-constructed, carries its own state machine and is finalised by the caller -- no allocator, so there is nothing to construct, nothing to fini, and no object to hang the lifecycle methods on. It is also why our terminal verbs take `(server, goal)` where rclcpp's are members: see `c:action_succeed`."
   },
@@ -33,14 +33,14 @@
   "c:action_cancel_request_t": {
     "verdict": "divergence",
     "provides": [
-      "nros_action_server_try_recv_cancel_request_raw"
+      "nros_polling_action_server_try_recv_cancel_request_raw"
     ],
     "why": "rcl's `action_msgs/srv/CancelGoal` request struct. Ours never surfaces the request as a type: `nros_action_server_try_recv_cancel_request_raw` writes the named goal id, the service sequence number and the goal's current status into caller storage. and the payload is CDR bytes (`const uint8_t*, size_t`) rather than rcl's `void* ros_message`, because the C ABI has no runtime typesupport -- the only publish in the whole C surface is `nros_publish_raw`. See the pubsub stage's `c:publish_raw` and `c:message_type_t`."
   },
   "c:action_cancel_response_*": {
     "verdict": "divergence",
     "provides": [
-      "nros_action_server_send_cancel_reply_raw"
+      "nros_polling_action_server_send_cancel_reply_raw"
     ],
     "bucket": "theirs-only",
     "why": "rcl builds the `action_msgs/srv/CancelGoal` response as a heap array of `goal_info` sized by `rcl_action_process_cancel_request`, so it needs an init/fini pair and an allocator. Ours is `nros_action_server_send_cancel_reply_raw(server, sequence_number, return_code, accepted[16][], count)`: the caller names the goals it accepted out of its own storage and the arena writes the reply. No allocator, so the response cannot be a constructed object. Our `nros_cancel_response_t` is a different thing -- the per-goal ACCEPT/REJECT decision; see `c:cancel_return_code_t`."
@@ -78,9 +78,9 @@
     "disposition": "absent",
     "why": "rcl's pimpl; our handles carry their state inline because there is no allocator to put it behind a pointer. See the pubsub stage's `c:publisher_impl_t`."
   },
-  "c:action_client_init_polling": {
+  "c:polling_action_client_init": {
     "verdict": "extension",
-    "why": "RFC-0022's polling tier for actions: an entity a task drains itself instead of receiving a callback, for code that owns its own loop. See the pubsub stage's `cpp:PollingSubscription`."
+    "why": "RFC-0022's polling tier for actions: an entity a task drains itself instead of receiving a callback, for code that owns its own loop. See the pubsub stage's `cpp:PollingSubscription`. Renamed from `nros_action_client_init_polling` by phase-487 W4, when the polled action client became its own type, `nros_polling_action_client_t`: a dispatched action's channels and goal table live in the executor arena, a polled one's `ActionServerCore`/`ActionClientCore` in the struct, and one type holding both made every dispatched action carry storage only the polled road fills."
   },
   "c:action_client_init_with_options": {
     "verdict": "extension",
@@ -94,20 +94,20 @@
     "verdict": "extension",
     "why": "drains the client's four reply channels once and dispatches the bound callbacks, without the executor. rclcpp_action has no counterpart because its executor always owns dispatch. See the pubsub stage's `cpp:PollingSubscription`."
   },
-  "c:action_client_send_*_raw": {
+  "c:polling_action_client_send_*_raw": {
     "verdict": "extension",
     "bucket": "ours-only",
-    "why": "RFC-0022's polling tier for actions: an entity a task drains itself instead of receiving a callback, for code that owns its own loop. See the pubsub stage's `cpp:PollingSubscription`."
+    "why": "RFC-0022's polling tier for actions: an entity a task drains itself instead of receiving a callback, for code that owns its own loop. See the pubsub stage's `cpp:PollingSubscription`. Renamed from `nros_action_client_send_*_raw` by phase-487 W4, when the polled action client became its own type, `nros_polling_action_client_t`: a dispatched action's channels and goal table live in the executor arena, a polled one's `ActionServerCore`/`ActionClientCore` in the struct, and one type holding both made every dispatched action carry storage only the polled road fills."
   },
   "c:action_client_set_*": {
     "verdict": "divergence",
     "bucket": "theirs-only",
     "why": "rcl lets a caller install a notify-on-arrival hook per action channel AFTER creation, so a wait set can attach itself to an existing entity. Ours is bound at creation and the notify half is the `_wake_callback` family, which fires the platform's own wake primitive rather than a wait set we do not have. See the pubsub stage's `c:subscription_set_on_new_message_callback`."
   },
-  "c:action_client_set_*_wake_callback": {
+  "c:polling_action_client_set_*_wake_callback": {
     "verdict": "extension",
     "bucket": "ours-only",
-    "why": "the platform wake primitive fired when a reply or feedback lands on one of the client's four channels, so a task blocked on the platform's own primitive is released without the executor polling. rcl's nearest is the `set_*_client_callback` family, which notifies a wait set we do not have. See the pubsub stage's `c:subscription_set_wake_callback`."
+    "why": "the platform wake primitive fired when a reply or feedback lands on one of the client's four channels, so a task blocked on the platform's own primitive is released without the executor polling. rcl's nearest is the `set_*_client_callback` family, which notifies a wait set we do not have. See the pubsub stage's `c:subscription_set_wake_callback`. Renamed from `nros_action_client_set_*_wake_callback` by phase-487 W4, when the polled action client became its own type, `nros_polling_action_client_t`: a dispatched action's channels and goal table live in the executor arena, a polled one's `ActionServerCore`/`ActionClientCore` in the struct, and one type holding both made every dispatched action carry storage only the polled road fills."
   },
   "c:action_client_set_feedback_callback": {
     "verdict": "extension",
@@ -125,10 +125,10 @@
     "verdict": "extension",
     "why": "explicit entity lifecycle so double-init and use-after-fini return a code instead of being undefined, and so the L1 and L2 tiers are distinguishable at runtime. See the pubsub stage's `c:publisher_state_t`."
   },
-  "c:action_client_try_recv_*_raw": {
+  "c:polling_action_client_try_recv_*_raw": {
     "verdict": "extension",
     "bucket": "ours-only",
-    "why": "RFC-0022's polling tier for actions: an entity a task drains itself instead of receiving a callback, for code that owns its own loop. See the pubsub stage's `cpp:PollingSubscription`."
+    "why": "RFC-0022's polling tier for actions: an entity a task drains itself instead of receiving a callback, for code that owns its own loop. See the pubsub stage's `cpp:PollingSubscription`. Renamed from `nros_action_client_try_recv_*_raw` by phase-487 W4, when the polled action client became its own type, `nros_polling_action_client_t`: a dispatched action's channels and goal table live in the executor arena, a polled one's `ActionServerCore`/`ActionClientCore` in the struct, and one type holding both made every dispatched action carry storage only the polled road fills."
   },
   "c:action_client_wait_for_action_server": {
     "verdict": "extension",
@@ -245,7 +245,7 @@
     "verdict": "divergence",
     "provides": [
       "nros_cancel_callback_t",
-      "nros_action_server_send_cancel_reply_raw"
+      "nros_polling_action_server_send_cancel_reply_raw"
     ],
     "why": "rcl matches a `CancelGoal` request against its goal handles and builds the response array for the caller. Ours splits the same work: the arena matches, the user's `nros_cancel_callback_t` decides per goal, and `nros_action_server_send_cancel_reply_raw` writes the reply on the L1 tier. The matching cannot be a caller-visible step because the goal set lives in the arena, not in caller storage. our goal handle is a 16-byte UUID TOKEN, not an owning object: `nros_goal_handle_t` holds the uuid and nothing else, and every lifecycle fact lives in the executor's static goal arena (read back with `nros_action_get_goal_status`). rcl's `rcl_action_goal_handle_t` is allocator-constructed, carries its own state machine and is finalised by the caller -- no allocator, so there is nothing to construct, nothing to fini, and no object to hang the lifecycle methods on. It is also why our terminal verbs take `(server, goal)` where rclcpp's are members: see `c:action_succeed`."
   },
@@ -271,10 +271,10 @@
     "verdict": "divergence",
     "why": "rclcpp_action returns a `std::shared_future<GoalHandle::SharedPtr>`; ours writes the generated goal uuid into caller storage and delivers the accept/reject to `nros_goal_response_callback_t`. No futures and no async runtime (RFC-0021); no allocator for the shared goal handle. See the service stage's `cpp:Client::async_send_request`."
   },
-  "c:action_server_*_raw": {
+  "c:polling_action_server_*_raw": {
     "verdict": "extension",
     "bucket": "ours-only",
-    "why": "RFC-0022's polling tier for actions: an entity a task drains itself instead of receiving a callback, for code that owns its own loop. See the pubsub stage's `cpp:PollingSubscription`."
+    "why": "RFC-0022's polling tier for actions: an entity a task drains itself instead of receiving a callback, for code that owns its own loop. See the pubsub stage's `cpp:PollingSubscription`. Renamed from `nros_action_server_*_raw` by phase-487 W4, when the polled action server became its own type, `nros_polling_action_server_t`: a dispatched action's channels and goal table live in the executor arena, a polled one's `ActionServerCore`/`ActionClientCore` in the struct, and one type holding both made every dispatched action carry storage only the polled road fills."
   },
   "c:action_server_active_goal_count_raw": {
     "verdict": "rename",
@@ -325,9 +325,9 @@
     "disposition": "absent",
     "why": "rclc's default-QoS action-server constructor. phase-417 W5.d adopted its SIBLING (`rclc_action_client_init_default`, a `static inline` in <nros/action.h>) and refused this one, so the old `see `c:action_client_init_default`` no longer carries a reason and the reason is recorded here. TWO things block it, and neither is the QoS. (1) The `support` PARAMETER. rclc takes `rclc_support_t *` in slot 3 and reads it for exactly one thing -- it passes `&support->clock` to `rcl_action_server_init` (`rclc/src/rclc/action_server.c` @ `10eadcc`). `nros_action_server_init` stores metadata and defers RMW entity creation to `nros_executor_add_action_server`, so it takes neither a clock nor a support handle: a five-argument forwarder would carry an argument it IGNORES, which is the inert-parameter defect RFC-0089 exists to end and the same refusal `nros_node_resolve_name` makes for rcl's `allocator` and `is_service`. (2) The CALLBACK BINDING SITE. rclc registers goal and cancel handlers at `rclc_executor_add_action_server`; ours are bound at init. Forwarding to the callback-free `nros_action_server_init_polling` instead would compile and then dispatch nothing -- a plausible name over an opposite data contract. Closing this needs the executor-side binding site, not a wrapper. `absent` rather than `refuse-loud`: nothing declares the name, so a ported file gets `undeclared identifier` (the disposition read `adopt` until W5.d, which described a state that had never existed)."
   },
-  "c:action_server_init_polling": {
+  "c:polling_action_server_init": {
     "verdict": "extension",
-    "why": "RFC-0022's polling tier for actions: an entity a task drains itself instead of receiving a callback, for code that owns its own loop. See the pubsub stage's `cpp:PollingSubscription`."
+    "why": "RFC-0022's polling tier for actions: an entity a task drains itself instead of receiving a callback, for code that owns its own loop. See the pubsub stage's `cpp:PollingSubscription`. Renamed from `nros_action_server_init_polling` by phase-487 W4, when the polled action server became its own type, `nros_polling_action_server_t`: a dispatched action's channels and goal table live in the executor arena, a polled one's `ActionServerCore`/`ActionClientCore` in the struct, and one type holding both made every dispatched action carry storage only the polled road fills."
   },
   "c:action_server_init_with_options": {
     "verdict": "extension",
@@ -370,10 +370,10 @@
     "bucket": "theirs-only",
     "why": "rcl lets a caller install a notify-on-arrival hook per action channel AFTER creation, so a wait set can attach itself to an existing entity. Ours is bound at creation and the notify half is the `_wake_callback` family, which fires the platform's own wake primitive rather than a wait set we do not have. See the pubsub stage's `c:subscription_set_on_new_message_callback`."
   },
-  "c:action_server_set_*_wake_callback": {
+  "c:polling_action_server_set_*_wake_callback": {
     "verdict": "extension",
     "bucket": "ours-only",
-    "why": "the server side of `c:action_client_set_*_wake_callback`, one per service channel (goal / cancel / get_result)."
+    "why": "the server side of `c:polling_action_client_set_*_wake_callback`, one per service channel (goal / cancel / get_result). Renamed from `nros_action_server_set_*_wake_callback` by phase-487 W4, when the polled action server became its own type, `nros_polling_action_server_t`: a dispatched action's channels and goal table live in the executor arena, a polled one's `ActionServerCore`/`ActionClientCore` in the struct, and one type holding both made every dispatched action carry storage only the polled road fills."
   },
   "c:action_server_state_t": {
     "verdict": "extension",
@@ -1597,5 +1597,41 @@
   "rust:Node::create_action_server_sized": {
     "verdict": "extension",
     "why": "an action-constructor variant with no rclrs counterpart: compile-time buffer sizes (`_sized`) or a type-erased (`_raw`) form. Moved onto `nros::Node` from the retired `NodeHandle` (phase-483 W2). Bounded buffers are the RTOS reason."
+  },
+  "c:polling_action_server_t": {
+    "verdict": "extension",
+    "why": "RFC-0022's polling tier for actions, as its own type since phase-487 W4 (RFC-0096 D9, the C half). Nothing dispatches it, so it has no arena slot and keeps its core inline. The C++ twin is `nros::PollingActionServer<A>`."
+  },
+  "c:get_zero_initialized_polling_action_server": {
+    "verdict": "extension",
+    "why": "the zero-initialiser of `nros_polling_action_server_t`, in rcl's `rcl_action_get_zero_initialized_*` role. RFC-0022's polling tier for actions, as its own type since phase-487 W4 (RFC-0096 D9, the C half). Nothing dispatches it, so it has no arena slot and keeps its core inline. The C++ twin is `nros::PollingActionServer<A>`."
+  },
+  "c:polling_action_server_fini": {
+    "verdict": "extension",
+    "why": "finalises a `nros_polling_action_server_t`: drops the inline core and its channels, refusing with `NROS_RET_STALE_NODE` when the node went first (issue 1386). The polled half of what `nros_action_server_fini` did for both roads before phase-487 W4. RFC-0022's polling tier for actions, as its own type since phase-487 W4 (RFC-0096 D9, the C half). Nothing dispatches it, so it has no arena slot and keeps its core inline. The C++ twin is `nros::PollingActionServer<A>`."
+  },
+  "c:polling_action_client_t": {
+    "verdict": "extension",
+    "why": "RFC-0022's polling tier for actions, as its own type since phase-487 W4 (RFC-0096 D9, the C half). Nothing dispatches it, so it has no arena slot and keeps its core inline. The C++ twin is `nros::PollingActionClient<A>`."
+  },
+  "c:get_zero_initialized_polling_action_client": {
+    "verdict": "extension",
+    "why": "the zero-initialiser of `nros_polling_action_client_t`, in rcl's `rcl_action_get_zero_initialized_*` role. RFC-0022's polling tier for actions, as its own type since phase-487 W4 (RFC-0096 D9, the C half). Nothing dispatches it, so it has no arena slot and keeps its core inline. The C++ twin is `nros::PollingActionClient<A>`."
+  },
+  "c:polling_action_client_fini": {
+    "verdict": "extension",
+    "why": "finalises a `nros_polling_action_client_t`: drops the inline core and its channels, refusing with `NROS_RET_STALE_NODE` when the node went first (issue 1386). The polled half of what `nros_action_client_fini` did for both roads before phase-487 W4. RFC-0022's polling tier for actions, as its own type since phase-487 W4 (RFC-0096 D9, the C half). Nothing dispatches it, so it has no arena slot and keeps its core inline. The C++ twin is `nros::PollingActionClient<A>`."
+  },
+  "c:polling_action_server_get_active_goal_count": {
+    "verdict": "extension",
+    "why": "the polled half of `c:action_server_get_active_goal_count`, which carries the contract, read from the inline `ActionServerCore`. Split out by phase-487 W4 with the type; until then both tiers shared one entry point and were told apart by state."
+  },
+  "c:polling_action_server_goal_exists": {
+    "verdict": "extension",
+    "why": "the polled half of `c:action_server_goal_exists`, which carries the contract, read from the inline `ActionServerCore`. Split out by phase-487 W4 with the type; until then both tiers shared one entry point and were told apart by state."
+  },
+  "c:polling_action_server_expire_goals": {
+    "verdict": "extension",
+    "why": "the polled half of `c:action_expire_goals`, which carries the contract, read from the inline `ActionServerCore`. Split out by phase-487 W4 with the type; until then both tiers shared one entry point and were told apart by state."
   }
 }

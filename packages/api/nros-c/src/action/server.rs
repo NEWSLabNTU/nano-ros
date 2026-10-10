@@ -32,19 +32,25 @@ const GOAL_REQUEST_FRAMING_LEN: usize = CDR_HEADER_LEN + GOAL_ID_SEQ_PREFIX_LEN 
 pub enum nros_action_server_state_t {
     /// Not initialized
     NROS_ACTION_SERVER_STATE_UNINITIALIZED = 0,
-    /// L2 callback-mode: initialized via `nros_action_server_init`;
-    /// transport creation deferred to
-    /// `nros_executor_add_action_server`.
+    /// Initialized. For a `nros_action_server_t` the transport is created
+    /// by `nros_executor_add_action_server`; for a
+    /// `nros_polling_action_server_t` its `ActionServerCore` is live in the
+    /// struct.
     NROS_ACTION_SERVER_STATE_INITIALIZED = 1,
     /// Shutdown
     NROS_ACTION_SERVER_STATE_SHUTDOWN = 2,
-    /// Phase 122.3.c.6.b — L1 polling-mode: `ActionServerCore` lives
-    /// inline in `_opaque`; caller drives via the
-    /// `nros_action_server_*_raw` family. No executor registration.
-    NROS_ACTION_SERVER_STATE_POLLING = 3,
 }
 
-/// Action server structure.
+/// An action server the executor dispatches.
+///
+/// phase-487 W4 (RFC-0096 D9, the C half): the executor arena owns the five
+/// channels, the goal table and every buffer; this struct holds the arena
+/// handle (`_internal`), the registration description and the one callback
+/// record, which the arena's trampolines read with this struct as their
+/// context. That record stays here, as the C++ action server's does
+/// (phase-456 W3b-ii refused moving it into the arena: the trampolines
+/// translate the ABI and reframe the goal payload). A server the caller
+/// drives itself is a [`nros_polling_action_server_t`].
 #[repr(C)]
 pub struct nros_action_server_t {
     /// Current state
@@ -87,10 +93,41 @@ pub struct nros_action_server_t {
     /// Internal state — set by `nros_executor_add_action_server`.
     /// Typed C-ABI handle field (was an opaque blob in earlier versions).
     pub _internal: ActionServerInternal,
-    /// Phase 122.3.c.6.b — inline opaque storage for the L1
-    /// polling-mode `ActionServerCore`. Zeroed in L2 mode; populated
-    /// by `nros_action_server_init_polling`.
+}
+
+/// An action server the CALLER drives, with no executor (phase-487 W4).
+///
+/// The C counterpart of C++'s `nros::PollingActionServer<A>`. `_opaque` holds
+/// an `ActionServerCore` (five channels, goal table, buffers) from
+/// `nros_polling_action_server_init` until
+/// `nros_polling_action_server_fini`. Zero-initialised is UNINITIALIZED.
+/// Until phase-487 it was the `NROS_ACTION_SERVER_STATE_POLLING` state of
+/// `nros_action_server_t`.
+#[repr(C)]
+pub struct nros_polling_action_server_t {
+    /// Current state: UNINITIALIZED, INITIALIZED (core live) or SHUTDOWN.
+    pub state: nros_action_server_state_t,
+    /// The node the channels were created on.
+    pub node: crate::node::nros_node_ref_t,
+    /// Inline storage for the `ActionServerCore`. Internal: treat as opaque.
     pub _opaque: [u64; crate::opaque_sizes::ACTION_SERVER_OPAQUE_U64S],
+}
+
+impl Default for nros_polling_action_server_t {
+    fn default() -> Self {
+        Self {
+            state: nros_action_server_state_t::NROS_ACTION_SERVER_STATE_UNINITIALIZED,
+            node: crate::node::nros_node_ref_t::none(),
+            _opaque: [0u64; crate::opaque_sizes::ACTION_SERVER_OPAQUE_U64S],
+        }
+    }
+}
+
+/// Get a zero-initialized polling action server.
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_get_zero_initialized_polling_action_server() -> nros_polling_action_server_t
+{
+    nros_polling_action_server_t::default()
 }
 
 impl Default for nros_action_server_t {
@@ -111,7 +148,6 @@ impl Default for nros_action_server_t {
             qos: crate::qos::nros_qos_t::default(),
             sched_context_id: 0,
             _internal: ActionServerInternal::invalid_default(),
-            _opaque: [0u64; crate::opaque_sizes::ACTION_SERVER_OPAQUE_U64S],
         }
     }
 }
@@ -127,14 +163,17 @@ impl nros_action_server_t {
 // Internal implementation (delegates to nros-node executor)
 // ============================================================================
 
-/// Internal state created during executor registration.
-///
-/// Holds the action server handle and C callback pointers needed by
-/// the goal/cancel trampolines.
+/// The arena handle, filled in by executor registration.
 ///
 /// `handle` was `Option<ActionServerRawHandle>` previously; now it is
 /// always present, with the sentinel `INVALID_ENTRY_INDEX` indicating
 /// "not registered yet". Use `is_handle_set()` to check.
+///
+/// phase-487 W4 — this used to carry a SECOND copy of the server's callback
+/// record (`c_goal_callback`, `c_cancel_callback`, `c_accepted_callback`,
+/// `c_context`) plus a `server_ptr` back to the struct that contains it, so
+/// the trampolines could take `&_internal` as their context. The trampolines
+/// take the server itself now and read the one record it already has.
 #[repr(C)]
 pub struct ActionServerInternal {
     /// Handle returned by executor registration. `entry_index ==
@@ -142,22 +181,6 @@ pub struct ActionServerInternal {
     pub handle: nros_node::ActionServerRawHandle,
     /// Pointer to the internal executor (`CExecutor`).
     pub executor_ptr: *mut c_void,
-    /// C goal callback from init. Required.
-    pub c_goal_callback: unsafe extern "C" fn(
-        *mut nros_action_server_t,
-        *const nros_goal_handle_t,
-        *const u8,
-        usize,
-        *mut c_void,
-    ) -> nros_goal_response_t,
-    /// C cancel callback from init (may be None).
-    pub c_cancel_callback: nros_cancel_callback_t,
-    /// C accepted callback from init (may be None).
-    pub c_accepted_callback: nros_accepted_callback_t,
-    /// C user context from init.
-    pub c_context: *mut c_void,
-    /// Pointer back to the C action server struct.
-    pub server_ptr: *mut nros_action_server_t,
 }
 
 impl ActionServerInternal {
@@ -167,17 +190,12 @@ impl ActionServerInternal {
         !self.handle.is_invalid()
     }
 
-    /// Construct a zero-initialised internal — sentinel handle, null pointers,
-    /// no callbacks. Used for the default state of `nros_action_server_t._internal`.
+    /// Construct a zero-initialised internal — sentinel handle, null
+    /// executor. Used for the default state of `nros_action_server_t._internal`.
     pub fn invalid_default() -> Self {
         Self {
             handle: nros_node::ActionServerRawHandle::invalid(),
             executor_ptr: ptr::null_mut(),
-            c_goal_callback: dummy_goal_callback,
-            c_cancel_callback: None,
-            c_accepted_callback: None,
-            c_context: ptr::null_mut(),
-            server_ptr: ptr::null_mut(),
         }
     }
 }
@@ -186,19 +204,6 @@ impl Default for ActionServerInternal {
     fn default() -> Self {
         Self::invalid_default()
     }
-}
-
-/// Stub for the required `c_goal_callback` field when the internal is in
-/// its uninitialised state. Never called — the dispatch path checks
-/// `is_handle_set()` first.
-unsafe extern "C" fn dummy_goal_callback(
-    _server: *mut nros_action_server_t,
-    _goal: *const nros_goal_handle_t,
-    _data: *const u8,
-    _len: usize,
-    _ctx: *mut c_void,
-) -> nros_goal_response_t {
-    nros_goal_response_t::NROS_GOAL_REJECT
 }
 
 /// Build a stack-local `nros_goal_handle_t` from an arena-supplied UUID.
@@ -218,8 +223,8 @@ unsafe fn handle_from_goal_id(goal_id: *const nros_node::GoalId) -> nros_goal_ha
 /// Goal callback trampoline for nros-node.
 ///
 /// Builds a stack-local `nros_goal_handle_t` from the incoming goal_id
-/// and forwards to the user's `c_goal_callback` with `(server, goal,
-/// request, len, ctx)`. The handle lives on this stack frame; users that
+/// and forwards to the user's `goal_callback` with `(server, goal,
+/// request, len, ctx)`. `context` is the `nros_action_server_t` itself. The handle lives on this stack frame; users that
 /// need to reference the goal later copy it by value.
 pub(crate) unsafe extern "C" fn goal_callback_trampoline(
     goal_id: *const nros_node::GoalId,
@@ -227,8 +232,13 @@ pub(crate) unsafe extern "C" fn goal_callback_trampoline(
     goal_len: usize,
     context: *mut c_void,
 ) -> nros_node::GoalResponse {
-    let internal = &*(context as *const ActionServerInternal);
+    let server = context as *mut nros_action_server_t;
     let goal_handle = handle_from_goal_id(goal_id);
+    // `nros_executor_add_action_server` refuses a server with no goal
+    // callback, so this is only reached with one installed.
+    let Some(goal_cb) = (*server).goal_callback else {
+        return nros_node::GoalResponse::Reject;
+    };
 
     // goal_data contains the full CDR request: [CDR_HDR][GoalId seq][UUID][goal_fields].
     // The C callback expects CDR-encoded goal data: [CDR_HDR][goal_fields].
@@ -248,13 +258,7 @@ pub(crate) unsafe extern "C" fn goal_callback_trampoline(
         (goal_data, goal_len)
     };
 
-    let c_response = (internal.c_goal_callback)(
-        internal.server_ptr,
-        &goal_handle,
-        cb_ptr,
-        cb_len,
-        internal.c_context,
-    );
+    let c_response = goal_cb(server, &goal_handle, cb_ptr, cb_len, (*server).context);
 
     match c_response {
         nros_goal_response_t::NROS_GOAL_REJECT => nros_node::GoalResponse::Reject,
@@ -269,21 +273,21 @@ pub(crate) unsafe extern "C" fn goal_callback_trampoline(
 ///
 /// Invoked by the arena *after* `ActionServerCore::accept_goal` has sent
 /// the accept reply to the client. Forwards to the user's
-/// `c_accepted_callback` with a stack-local handle.
+/// `accepted_callback` with a stack-local handle.
 pub(crate) unsafe extern "C" fn accepted_callback_trampoline(
     goal_id: *const nros_node::GoalId,
     context: *mut c_void,
 ) {
-    let internal = &*(context as *const ActionServerInternal);
-    if let Some(cb) = internal.c_accepted_callback {
+    let server = context as *mut nros_action_server_t;
+    if let Some(cb) = (*server).accepted_callback {
         let goal_handle = handle_from_goal_id(goal_id);
-        cb(internal.server_ptr, &goal_handle, internal.c_context);
+        cb(server, &goal_handle, (*server).context);
     }
 }
 
 /// Cancel callback trampoline for nros-node.
 ///
-/// Forwards to the user's `c_cancel_callback` with a stack-local handle.
+/// Forwards to the user's `cancel_callback` with a stack-local handle.
 /// Status transitions (CANCELING, etc.) are performed by the arena in
 /// `ActionServerCore`; this trampoline only translates the ABI.
 pub(crate) unsafe extern "C" fn cancel_callback_trampoline(
@@ -291,15 +295,15 @@ pub(crate) unsafe extern "C" fn cancel_callback_trampoline(
     _status: nros_node::GoalStatus,
     context: *mut c_void,
 ) -> nros_node::CancelResponse {
-    let internal = &*(context as *const ActionServerInternal);
+    let server = context as *mut nros_action_server_t;
 
-    let Some(cb) = internal.c_cancel_callback else {
+    let Some(cb) = (*server).cancel_callback else {
         // No cancel callback — accept by default.
         return nros_node::CancelResponse::Accept;
     };
 
     let goal_handle = handle_from_goal_id(goal_id);
-    let c_response = cb(internal.server_ptr, &goal_handle, internal.c_context);
+    let c_response = cb(server, &goal_handle, (*server).context);
     // issue 0796 — one-to-one now: C's REJECT=0/ACCEPT=1 and Rust's
     // `CancelResponse::{Reject,Accept}` are the same per-goal decision with the
     // same discriminants. This used to translate into the RPC-level return
@@ -708,14 +712,11 @@ pub unsafe extern "C" fn nros_action_execute(
 /// (negative = error code), each of which collapsed the two channels
 /// into one value.
 ///
-/// The tier is selected by `server->state`, and the two tiers read
-/// DIFFERENT STORAGE — this was never one field behind two names:
-///
-/// * `NROS_ACTION_SERVER_STATE_INITIALIZED` (L2, callback tier) reads
-///   the executor arena through `ActionServerRawHandle::active_goal_count`.
-/// * `NROS_ACTION_SERVER_STATE_POLLING` (L1, polling tier) reads the
-///   `ActionServerCore` living inline in `_opaque`, with no executor and
-///   no arena indirection, behind `#[cfg(feature = "rmw-cffi")]`.
+/// Reads the executor arena through
+/// `ActionServerRawHandle::active_goal_count`. A polled server, whose
+/// `ActionServerCore` is inline, answers through
+/// [`nros_polling_action_server_get_active_goal_count`]; until phase-487 W4
+/// both tiers shared this entry point and were told apart by state.
 ///
 /// Returns:
 ///
@@ -723,8 +724,7 @@ pub unsafe extern "C" fn nros_action_execute(
 /// * `NROS_RET_INVALID_ARGUMENT` — `server` or `out` is NULL.
 /// * `NROS_RET_NOT_INIT` — the server is UNINITIALIZED or SHUTDOWN; or it
 ///   is INITIALIZED but was never registered with an executor (or has
-///   been finalised); or it is POLLING in a build without `rmw-cffi`,
-///   where the inline core was never constructed.
+///   been finalised).
 ///
 /// `*out` is left untouched on every error path, so a caller that ignores
 /// the return code reads back its own initialiser rather than a
@@ -747,30 +747,6 @@ pub unsafe extern "C" fn nros_action_server_get_active_goal_count(
             let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
             *out = handle.active_goal_count(executor);
             NROS_RET_OK
-        }
-        nros_action_server_state_t::NROS_ACTION_SERVER_STATE_POLLING => {
-            #[cfg(feature = "rmw-cffi")]
-            {
-                match polling_server_core(server) {
-                    Some(core) => {
-                        *out = core.active_goal_count();
-                        NROS_RET_OK
-                    }
-                    // Unreachable: `polling_server_core` rejects only NULL
-                    // (excluded above) and a non-POLLING state (this arm).
-                    // Mapped rather than `unreachable!()` so a future
-                    // rejection reason cannot turn into a panic across the
-                    // FFI boundary.
-                    None => NROS_RET_NOT_INIT,
-                }
-            }
-            // `nros_action_server_init_polling` sets `state = POLLING`
-            // outside the `rmw-cffi` gate, so this arm is reachable: the
-            // state says polling and `_opaque` holds no core.
-            #[cfg(not(feature = "rmw-cffi"))]
-            {
-                NROS_RET_NOT_INIT
-            }
         }
         _ => NROS_RET_NOT_INIT,
     }
@@ -801,8 +777,7 @@ pub unsafe extern "C" fn rcl_action_server_get_action_name(
     }
     let server = &*server;
     match server.state {
-        nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED
-        | nros_action_server_state_t::NROS_ACTION_SERVER_STATE_POLLING => {
+        nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED => {
             server.action_name.as_ptr() as *const core::ffi::c_char
         }
         _ => core::ptr::null(),
@@ -855,19 +830,6 @@ pub unsafe extern "C" fn nros_action_server_goal_exists(
             let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
             handle.goal_exists(executor, &goal_id)
         }
-        nros_action_server_state_t::NROS_ACTION_SERVER_STATE_POLLING => {
-            #[cfg(feature = "rmw-cffi")]
-            {
-                match polling_server_core(server) {
-                    Some(core) => core.goal_exists(&goal_id),
-                    None => false,
-                }
-            }
-            #[cfg(not(feature = "rmw-cffi"))]
-            {
-                false
-            }
-        }
         _ => false,
     }
 }
@@ -903,7 +865,7 @@ pub unsafe extern "C" fn nros_action_server_goal_exists(
 /// * `NROS_RET_OK` — `*num_expired` holds the count, which may legitimately be 0.
 /// * `NROS_RET_INVALID_ARGUMENT` — `server` or `num_expired` is NULL.
 /// * `NROS_RET_NOT_INIT` — the server is UNINITIALIZED or SHUTDOWN, was never
-///   registered with an executor, or is POLLING in a build without `rmw-cffi`.
+///   registered with an executor.
 ///
 /// `*num_expired` is left untouched on every error path, for the same reason
 /// [`nros_action_server_get_active_goal_count`] leaves its own out-parameter
@@ -925,22 +887,6 @@ pub unsafe extern "C" fn nros_action_expire_goals(
             let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
             *num_expired = handle.expire_goals(executor);
             NROS_RET_OK
-        }
-        nros_action_server_state_t::NROS_ACTION_SERVER_STATE_POLLING => {
-            #[cfg(feature = "rmw-cffi")]
-            {
-                match polling_server_core(server) {
-                    Some(core) => {
-                        *num_expired = core.expire_completed_results();
-                        NROS_RET_OK
-                    }
-                    None => NROS_RET_NOT_INIT,
-                }
-            }
-            #[cfg(not(feature = "rmw-cffi"))]
-            {
-                NROS_RET_NOT_INIT
-            }
         }
         _ => NROS_RET_NOT_INIT,
     }
@@ -1014,8 +960,8 @@ fn c_status_to_rust(status: nros_goal_status_t) -> nros_node::GoalStatus {
 ///
 /// Issue 1609 — `fini` does NOT remove the server from an executor. It is
 /// handed only the entity, and an executor-registered server's arena entry
-/// (its three service servers, two publishers and the callback `context`
-/// `&server->_internal`) is undone by
+/// (its three service servers, two publishers and the callback `context`,
+/// which is `server` itself) is undone by
 /// `nros_executor_remove_action_server(executor, server)`, which also brings
 /// the executor's `handle_count` back down. Call that first; a server that is
 /// finalised while still registered keeps answering goals into this struct
@@ -1032,21 +978,6 @@ pub unsafe extern "C" fn nros_action_server_fini(server: *mut nros_action_server
             // reset metadata only. Releasing the entry needs the owning
             // `nros_executor_t` (issue 1609): that is
             // `nros_executor_remove_action_server`.
-        }
-        nros_action_server_state_t::NROS_ACTION_SERVER_STATE_POLLING => {
-            // L1: drop the inline ActionServerCore so its 5 channel
-            // handles' Drops run.
-            #[cfg(feature = "rmw-cffi")]
-            {
-                core::ptr::drop_in_place(server._opaque.as_mut_ptr()
-                    as *mut nros_node::ActionServerCore<
-                        { crate::config::MESSAGE_BUFFER_SIZE },
-                        { crate::config::MESSAGE_BUFFER_SIZE },
-                        { crate::config::MESSAGE_BUFFER_SIZE },
-                        4,
-                    >);
-                server._opaque = [0u64; crate::opaque_sizes::ACTION_SERVER_OPAQUE_U64S];
-            }
         }
         _ => return NROS_RET_NOT_INIT,
     }
@@ -1069,24 +1000,24 @@ pub unsafe extern "C" fn nros_action_server_fini(server: *mut nros_action_server
 /// Phase 122.3.c.6.b — initialize an L1 polling-mode action server.
 ///
 /// Creates the 5 transport channels immediately and stores the
-/// `ActionServerCore` inline in `_opaque`. The caller drives the
+/// `ActionServerCore` inline in the `nros_polling_action_server_t`. The caller drives the
 /// goal lifecycle via:
-/// * `nros_action_server_try_recv_goal_request_raw` — poll for new
+/// * `nros_polling_action_server_try_recv_goal_request_raw` — poll for new
 ///   goal requests (returns goal_id + sequence + payload).
-/// * `nros_action_server_accept_goal_raw` / `_reject_goal_raw` —
+/// * `nros_polling_action_server_accept_goal_raw` / `_reject_goal_raw` —
 ///   reply to the send_goal RPC.
-/// * `nros_action_server_publish_feedback_raw` — push feedback.
-/// * `nros_action_server_complete_goal_raw` — terminate (SUCCEEDED /
+/// * `nros_polling_action_server_publish_feedback_raw` — push feedback.
+/// * `nros_polling_action_server_complete_goal_raw` — terminate (SUCCEEDED /
 ///   ABORTED / CANCELED).
-/// * `nros_action_server_try_handle_cancel_raw` /
+/// * `nros_polling_action_server_try_handle_cancel_raw` /
 ///   `_try_handle_get_result_raw` — service cancel / get_result RPCs.
 ///
 /// # Safety
 /// All pointers must be valid; `action_name` must be a valid
 /// null-terminated string.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_server_init_polling(
-    server: *mut nros_action_server_t,
+pub unsafe extern "C" fn nros_polling_action_server_init(
+    server: *mut nros_polling_action_server_t,
     node: *const nros_node_t,
     type_info: *const super::common::nros_action_type_t,
     action_name: *const core::ffi::c_char,
@@ -1104,24 +1035,26 @@ pub unsafe extern "C" fn nros_action_server_init_polling(
     );
     validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
 
-    server_mut.action_name_len =
-        crate::util::copy_cstr_into(action_name, &mut server_mut.action_name);
-    if server_mut.action_name_len == 0 {
+    // Read into locals: the polled struct keeps the core, not the
+    // description it was created from.
+    let mut name_buf = [0u8; MAX_ACTION_NAME_LEN];
+    let name_len = crate::util::copy_cstr_into(action_name, &mut name_buf);
+    if name_len == 0 {
         return NROS_RET_INVALID_ARGUMENT;
     }
-    server_mut.type_name_len =
-        crate::util::copy_cstr_into(type_info_ref.type_name, &mut server_mut.type_name);
-    server_mut.type_hash_len =
-        crate::util::copy_cstr_into(type_info_ref.type_hash, &mut server_mut.type_hash);
-
-    server_mut.node = unsafe { crate::node::node_ref_of(node) };
+    let mut type_buf = [0u8; MAX_TYPE_NAME_LEN];
+    let type_len = crate::util::copy_cstr_into(type_info_ref.type_name, &mut type_buf);
+    let mut hash_buf = [0u8; MAX_TYPE_HASH_LEN];
+    let hash_len = crate::util::copy_cstr_into(type_info_ref.type_hash, &mut hash_buf);
+    // Read only by the channel creation below, which a no-RMW build omits.
+    #[cfg(not(feature = "rmw-cffi"))]
+    let _ = (&type_buf, type_len, &hash_buf, hash_len);
 
     // Resolve the SOURCE action name to its wire name — see
     // `nros_publisher_init_with_qos`. All five channel keyexprs are derived
     // from it below, so resolving once here moves the whole action.
     let _resolved_name = {
-        let source =
-            core::str::from_utf8_unchecked(&server_mut.action_name[..server_mut.action_name_len]);
+        let source = core::str::from_utf8_unchecked(&name_buf[..name_len]);
         match crate::node::resolve_entity_name_on_node(node_ref, source) {
             Some(r) => r,
             None => return NROS_RET_INVALID_ARGUMENT,
@@ -1139,10 +1072,8 @@ pub unsafe extern "C" fn nros_action_server_init_polling(
 
         // RESOLVED name on the wire — see the resolution above.
         let action_str = _resolved_name.as_str();
-        let type_str =
-            core::str::from_utf8_unchecked(&server_mut.type_name[..server_mut.type_name_len]);
-        let type_hash_str =
-            core::str::from_utf8_unchecked(&server_mut.type_hash[..server_mut.type_hash_len]);
+        let type_str = core::str::from_utf8_unchecked(&type_buf[..type_len]);
+        let type_hash_str = core::str::from_utf8_unchecked(&hash_buf[..hash_len]);
         let node_name_str = core::str::from_utf8_unchecked(&node_ref.name[..node_ref.name_len]);
         let namespace_str =
             core::str::from_utf8_unchecked(&node_ref.namespace[..node_ref.namespace_len]);
@@ -1249,7 +1180,41 @@ pub unsafe extern "C" fn nros_action_server_init_polling(
         core::ptr::write(server_mut._opaque.as_mut_ptr() as *mut Core, core);
     }
 
-    server_mut.state = nros_action_server_state_t::NROS_ACTION_SERVER_STATE_POLLING;
+    server_mut.node = unsafe { crate::node::node_ref_of(node) };
+    server_mut.state = nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED;
+    NROS_RET_OK
+}
+
+/// Finalize a polled action server: drops the inline core, which closes its
+/// five channels.
+///
+/// # Returns
+/// * `NROS_RET_OK` on success
+/// * `NROS_RET_INVALID_ARGUMENT` if `server` is NULL
+/// * `NROS_RET_NOT_INIT` if it is not initialised
+/// * `NROS_RET_STALE_NODE` if its node has already been finalised (issue 1386)
+///
+/// # Safety
+/// `server` must be a valid pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_polling_action_server_fini(
+    server: *mut nros_polling_action_server_t,
+) -> nros_ret_t {
+    validate_not_null!(server);
+    let server = &mut *server;
+    if server.state != nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED {
+        return NROS_RET_NOT_INIT;
+    }
+    if server.node.is_bound() && !crate::node::node_ref_is_live(server.node) {
+        return crate::error::NROS_RET_STALE_NODE;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        core::ptr::drop_in_place(server._opaque.as_mut_ptr() as *mut PollingServerCore);
+        server._opaque = [0u64; crate::opaque_sizes::ACTION_SERVER_OPAQUE_U64S];
+    }
+    server.node = crate::node::nros_node_ref_t::none();
+    server.state = nros_action_server_state_t::NROS_ACTION_SERVER_STATE_SHUTDOWN;
     NROS_RET_OK
 }
 
@@ -1264,16 +1229,100 @@ type PollingServerCore = nros_node::ActionServerCore<
 #[cfg(feature = "rmw-cffi")]
 #[inline]
 unsafe fn polling_server_core(
-    server: *mut nros_action_server_t,
+    server: *mut nros_polling_action_server_t,
 ) -> Option<&'static mut PollingServerCore> {
     if server.is_null() {
         return None;
     }
     let server_mut = &mut *server;
-    if server_mut.state != nros_action_server_state_t::NROS_ACTION_SERVER_STATE_POLLING {
+    if server_mut.state != nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED {
         return None;
     }
     Some(&mut *(server_mut._opaque.as_mut_ptr() as *mut PollingServerCore))
+}
+
+/// The polled twin of [`nros_action_server_get_active_goal_count`].
+///
+/// # Returns
+/// `NROS_RET_OK` with `*out` written, `NROS_RET_INVALID_ARGUMENT` for a NULL
+/// argument, `NROS_RET_NOT_INIT` when the server is not initialised.
+///
+/// # Safety
+/// `server` and `out` must be valid pointers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_polling_action_server_get_active_goal_count(
+    server: *mut nros_polling_action_server_t,
+    out: *mut usize,
+) -> nros_ret_t {
+    validate_not_null!(server, out);
+    #[cfg(feature = "rmw-cffi")]
+    {
+        match polling_server_core(server) {
+            Some(core) => {
+                *out = core.active_goal_count();
+                NROS_RET_OK
+            }
+            None => NROS_RET_NOT_INIT,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        NROS_RET_NOT_INIT
+    }
+}
+
+/// The polled twin of [`nros_action_server_goal_exists`].
+///
+/// # Safety
+/// `server` and `goal` must be NULL or valid pointers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_polling_action_server_goal_exists(
+    server: *mut nros_polling_action_server_t,
+    goal: *const nros_goal_handle_t,
+) -> bool {
+    if server.is_null() || goal.is_null() {
+        return false;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let goal_id = nros_node::GoalId {
+            uuid: (*goal).uuid.uuid,
+        };
+        match polling_server_core(server) {
+            Some(core) => core.goal_exists(&goal_id),
+            None => false,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        false
+    }
+}
+
+/// The polled twin of [`nros_action_expire_goals`].
+///
+/// # Safety
+/// `server` and `num_expired` must be valid pointers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_polling_action_server_expire_goals(
+    server: *mut nros_polling_action_server_t,
+    num_expired: *mut usize,
+) -> nros_ret_t {
+    validate_not_null!(server, num_expired);
+    #[cfg(feature = "rmw-cffi")]
+    {
+        match polling_server_core(server) {
+            Some(core) => {
+                *num_expired = core.expire_completed_results();
+                NROS_RET_OK
+            }
+            None => NROS_RET_NOT_INIT,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        NROS_RET_NOT_INIT
+    }
 }
 
 /// Phase 122.3.c.6.b — L1 polling: try to receive a goal request.
@@ -1281,14 +1330,14 @@ unsafe fn polling_server_core(
 /// On success writes the goal payload bytes (already stripped of CDR
 /// framing) into `buf`, returns the number of bytes copied (>= 0),
 /// and fills `goal_id_out` (16 bytes) + `sequence_number_out`. Use
-/// the sequence number with `nros_action_server_accept_goal_raw` /
+/// the sequence number with `nros_polling_action_server_accept_goal_raw` /
 /// `_reject_goal_raw`.
 ///
 /// Returns `0` when no request is pending; negative `nros_ret_t` on
 /// error.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_server_try_recv_goal_request_raw(
-    server: *mut nros_action_server_t,
+pub unsafe extern "C" fn nros_polling_action_server_try_recv_goal_request_raw(
+    server: *mut nros_polling_action_server_t,
     buf: *mut u8,
     buf_len: usize,
     goal_id_out: *mut [u8; 16],
@@ -1341,8 +1390,8 @@ pub unsafe extern "C" fn nros_action_server_try_recv_goal_request_raw(
 /// Phase 122.3.c.6.b — L1 polling: accept a goal received via
 /// `try_recv_goal_request_raw`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_server_accept_goal_raw(
-    server: *mut nros_action_server_t,
+pub unsafe extern "C" fn nros_polling_action_server_accept_goal_raw(
+    server: *mut nros_polling_action_server_t,
     goal_id: *const [u8; 16],
     sequence_number: i64,
 ) -> nros_ret_t {
@@ -1370,8 +1419,8 @@ pub unsafe extern "C" fn nros_action_server_accept_goal_raw(
 /// Phase 122.3.c.6.b — L1 polling: reject a goal received via
 /// `try_recv_goal_request_raw`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_server_reject_goal_raw(
-    server: *mut nros_action_server_t,
+pub unsafe extern "C" fn nros_polling_action_server_reject_goal_raw(
+    server: *mut nros_polling_action_server_t,
     sequence_number: i64,
 ) -> nros_ret_t {
     if server.is_null() {
@@ -1399,8 +1448,8 @@ pub unsafe extern "C" fn nros_action_server_reject_goal_raw(
 /// `feedback_cdr` is the CDR-encoded `<Action>_Feedback_` payload
 /// (without the goal_id prefix — the core wraps it).
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_server_publish_feedback_raw(
-    server: *mut nros_action_server_t,
+pub unsafe extern "C" fn nros_polling_action_server_publish_feedback_raw(
+    server: *mut nros_polling_action_server_t,
     goal_id: *const [u8; 16],
     feedback_cdr: *const u8,
     feedback_len: usize,
@@ -1433,8 +1482,8 @@ pub unsafe extern "C" fn nros_action_server_publish_feedback_raw(
 /// `result_cdr` is the CDR-encoded `<Action>_Result_` payload (the
 /// core handles the status wrapper before storing in the slab).
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_server_complete_goal_raw(
-    server: *mut nros_action_server_t,
+pub unsafe extern "C" fn nros_polling_action_server_complete_goal_raw(
+    server: *mut nros_polling_action_server_t,
     goal_id: *const [u8; 16],
     status: nros_goal_status_t,
     result_cdr: *const u8,
@@ -1474,11 +1523,11 @@ pub unsafe extern "C" fn nros_action_server_complete_goal_raw(
 /// negative `nros_ret_t` on error.
 ///
 /// After a successful peek, call
-/// `nros_action_server_send_cancel_reply_raw` with the recorded
+/// `nros_polling_action_server_send_cancel_reply_raw` with the recorded
 /// `sequence_number` and the list of goals to accept-cancel.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_server_try_recv_cancel_request_raw(
-    server: *mut nros_action_server_t,
+pub unsafe extern "C" fn nros_polling_action_server_try_recv_cancel_request_raw(
+    server: *mut nros_polling_action_server_t,
     goal_id_out: *mut [u8; 16],
     sequence_number_out: *mut i64,
     current_status_out: *mut nros_goal_status_t,
@@ -1538,8 +1587,8 @@ pub enum nros_cancel_return_code_t {
 /// `return_code=NROS_CANCEL_RC_REJECTED` to refuse the request
 /// entirely.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_server_send_cancel_reply_raw(
-    server: *mut nros_action_server_t,
+pub unsafe extern "C" fn nros_polling_action_server_send_cancel_reply_raw(
+    server: *mut nros_polling_action_server_t,
     sequence_number: i64,
     return_code: nros_cancel_return_code_t,
     accepted: *const [u8; 16],
@@ -1601,8 +1650,8 @@ pub unsafe extern "C" fn nros_action_server_send_cancel_reply_raw(
 /// Returns `0` when no query is pending; `1` when one was served;
 /// negative `nros_ret_t` on error.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_server_try_handle_get_result_raw(
-    server: *mut nros_action_server_t,
+pub unsafe extern "C" fn nros_polling_action_server_try_handle_get_result_raw(
+    server: *mut nros_polling_action_server_t,
     default_result_cdr: *const u8,
     default_result_len: usize,
 ) -> i32 {
@@ -1634,8 +1683,8 @@ pub unsafe extern "C" fn nros_action_server_try_handle_get_result_raw(
 /// is a caller-owned `nros_wake_state_t` that must outlive the
 /// server and not move.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_server_set_goal_wake_callback(
-    server: *mut nros_action_server_t,
+pub unsafe extern "C" fn nros_polling_action_server_set_goal_wake_callback(
+    server: *mut nros_polling_action_server_t,
     state: *mut crate::service::nros_wake_state_t,
     cb: Option<unsafe extern "C" fn(*mut c_void)>,
     ctx: *mut c_void,
@@ -1648,8 +1697,8 @@ pub unsafe extern "C" fn nros_action_server_set_goal_wake_callback(
 /// primary use case from the .c.6.e design discussion — RTOS /
 /// event-driven cancel handling.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_server_set_cancel_wake_callback(
-    server: *mut nros_action_server_t,
+pub unsafe extern "C" fn nros_polling_action_server_set_cancel_wake_callback(
+    server: *mut nros_polling_action_server_t,
     state: *mut crate::service::nros_wake_state_t,
     cb: Option<unsafe extern "C" fn(*mut c_void)>,
     ctx: *mut c_void,
@@ -1660,8 +1709,8 @@ pub unsafe extern "C" fn nros_action_server_set_cancel_wake_callback(
 /// Phase 122.3.c.6.e — register a C wake callback on the
 /// get_result channel of an L1 polling-mode action server.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_server_set_get_result_wake_callback(
-    server: *mut nros_action_server_t,
+pub unsafe extern "C" fn nros_polling_action_server_set_get_result_wake_callback(
+    server: *mut nros_polling_action_server_t,
     state: *mut crate::service::nros_wake_state_t,
     cb: Option<unsafe extern "C" fn(*mut c_void)>,
     ctx: *mut c_void,
@@ -1676,7 +1725,7 @@ enum ChannelKind {
 }
 
 unsafe fn set_action_server_wake_callback(
-    server: *mut nros_action_server_t,
+    server: *mut nros_polling_action_server_t,
     state: *mut crate::service::nros_wake_state_t,
     cb: Option<unsafe extern "C" fn(*mut c_void)>,
     ctx: *mut c_void,

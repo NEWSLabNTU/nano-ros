@@ -1,6 +1,6 @@
 //! Raw-goal wire proof — issue 0454 / phase-354 W3.
 //!
-//! `nros_action_client_send_goal_raw` takes a parameter named `goal_cdr` and
+//! `nros_polling_action_client_send_goal_raw` takes a parameter named `goal_cdr` and
 //! fed it, unstripped, to a core that appends its own encapsulation header.
 //! Two headers reached the wire and every field shifted right by four bytes.
 //!

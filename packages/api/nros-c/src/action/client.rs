@@ -79,19 +79,22 @@ impl Default for ActionClientInternal {
 pub enum nros_action_client_state_t {
     /// Not initialized
     NROS_ACTION_CLIENT_STATE_UNINITIALIZED = 0,
-    /// L2 callback-mode: initialized via `nros_action_client_init`;
-    /// transport creation deferred to
-    /// `nros_executor_add_action_client`.
+    /// Initialized. For a `nros_action_client_t` the transport is created
+    /// by `nros_executor_add_action_client`; for a
+    /// `nros_polling_action_client_t` its `ActionClientCore` is live in the
+    /// struct.
     NROS_ACTION_CLIENT_STATE_INITIALIZED = 1,
     /// Shutdown
     NROS_ACTION_CLIENT_STATE_SHUTDOWN = 2,
-    /// Phase 122.3.c.6.b — L1 polling-mode: `ActionClientCore` lives
-    /// inline in `_opaque`; caller drives via the
-    /// `nros_action_client_*_raw` family. No executor registration.
-    NROS_ACTION_CLIENT_STATE_POLLING = 3,
 }
 
-/// Action client structure.
+/// An action client the executor dispatches.
+///
+/// phase-487 W4 (RFC-0096 D9, the C half): the executor arena owns the
+/// channels and buffers; this struct holds the arena handle (`_internal`),
+/// the registration description and the callback record the arena's
+/// trampolines read, as the C++ action client does. A client the caller
+/// drives itself is a [`nros_polling_action_client_t`].
 #[repr(C)]
 pub struct nros_action_client_t {
     /// Current state
@@ -127,17 +130,48 @@ pub struct nros_action_client_t {
     /// Internal state (arena entry index + executor pointer). Phase 87.5:
     /// Typed C-ABI handle field.
     pub _internal: ActionClientInternal,
-    /// Phase 122.3.c.6.b — inline opaque storage for the L1
-    /// polling-mode `ActionClientCore`. Zeroed in L2 mode; populated
-    /// by `nros_action_client_init_polling`.
+}
+
+/// An action client the CALLER drives, with no executor (phase-487 W4).
+///
+/// The C counterpart of C++'s `nros::PollingActionClient<A>`. `_opaque` holds
+/// an `ActionClientCore` from `nros_polling_action_client_init` until
+/// `nros_polling_action_client_fini`. Zero-initialised is UNINITIALIZED.
+/// Until phase-487 it was the `NROS_ACTION_CLIENT_STATE_POLLING` state of
+/// `nros_action_client_t`.
+#[repr(C)]
+pub struct nros_polling_action_client_t {
+    /// Current state: UNINITIALIZED, INITIALIZED (core live) or SHUTDOWN.
+    pub state: nros_action_client_state_t,
+    /// The node the channels were created on.
+    pub node: crate::node::nros_node_ref_t,
+    /// Inline storage for the `ActionClientCore`. Internal: treat as opaque.
     pub _opaque: [u64; crate::opaque_sizes::ACTION_CLIENT_OPAQUE_U64S],
 }
 
-impl Default for nros_action_client_t {
-    // The default `_opaque` array sizes to the probed ActionClient size,
-    // which exceeds clippy's 16 KB stack-array threshold. It is RVO'd
-    // into its destination by the optimiser.
+impl Default for nros_polling_action_client_t {
+    // The `_opaque` array sizes to the probed ActionClient size, which
+    // exceeds clippy's 16 KB stack-array threshold. It is RVO'd into its
+    // destination by the optimiser.
     #[allow(clippy::large_stack_arrays)]
+    fn default() -> Self {
+        Self {
+            state: nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_UNINITIALIZED,
+            node: crate::node::nros_node_ref_t::none(),
+            _opaque: [0u64; crate::opaque_sizes::ACTION_CLIENT_OPAQUE_U64S],
+        }
+    }
+}
+
+/// Get a zero-initialized polling action client.
+#[unsafe(no_mangle)]
+#[allow(clippy::large_stack_arrays)]
+pub extern "C" fn nros_get_zero_initialized_polling_action_client() -> nros_polling_action_client_t
+{
+    nros_polling_action_client_t::default()
+}
+
+impl Default for nros_action_client_t {
     fn default() -> Self {
         Self {
             state: nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_UNINITIALIZED,
@@ -154,7 +188,6 @@ impl Default for nros_action_client_t {
             node: crate::node::nros_node_ref_t::none(),
             sched_context_id: 0,
             _internal: ActionClientInternal::new(),
-            _opaque: [0u64; crate::opaque_sizes::ACTION_CLIENT_OPAQUE_U64S],
         }
     }
 }
@@ -390,11 +423,8 @@ pub unsafe extern "C" fn nros_action_client_wait_for_action_server(
 ///
 /// # Returns
 /// * Pointer to the action name (NUL-terminated), or NULL when `client` is
-///   NULL or was never initialised. Every live state answers — an L1 polling
-///   client (`nros_action_client_init_polling`) names its action just as an
-///   executor-registered one does, which is the distinction
-///   `nros_service_t::is_usable` exists to make (ledger row
-///   `c:service_is_valid`).
+///   NULL or was never initialised. A polled client is its own type since
+///   phase-487 W4 (`nros_polling_action_client_t`) and keeps no name.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_action_client_get_action_name(
     client: *const nros_action_client_t,
@@ -404,8 +434,7 @@ pub unsafe extern "C" fn rcl_action_client_get_action_name(
     }
     let client = &*client;
     match client.state {
-        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
-        | nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_POLLING => {
+        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED => {
             client.action_name.as_ptr() as *const core::ffi::c_char
         }
         _ => core::ptr::null(),
@@ -1017,10 +1046,6 @@ pub unsafe extern "C" fn nros_action_client_poll(client: *mut nros_action_client
 /// `nros_executor_remove_action_client(executor, client)` first, which drops
 /// the entry (the action leaves the graph) and brings the executor's
 /// `handle_count` back down.
-// The reset path zeroes the probed-size `_opaque` slot, which exceeds
-// clippy's 16 KB stack-array threshold. The assignment writes directly
-// through the existing `*mut` — no transient stack copy in release.
-#[allow(clippy::large_stack_arrays)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_action_client_fini(client: *mut nros_action_client_t) -> nros_ret_t {
     validate_not_null!(client);
@@ -1033,20 +1058,6 @@ pub unsafe extern "C" fn nros_action_client_fini(client: *mut nros_action_client
             // reset metadata only. Releasing the entry needs the owning
             // `nros_executor_t` (issue 1609): that is
             // `nros_executor_remove_action_client`.
-        }
-        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_POLLING => {
-            // L1: drop the inline ActionClientCore so its channel
-            // handles' Drops run.
-            #[cfg(feature = "rmw-cffi")]
-            {
-                core::ptr::drop_in_place(client._opaque.as_mut_ptr()
-                    as *mut nros_node::ActionClientCore<
-                        { crate::config::MESSAGE_BUFFER_SIZE },
-                        { crate::config::MESSAGE_BUFFER_SIZE },
-                        { crate::config::MESSAGE_BUFFER_SIZE },
-                    >);
-                client._opaque = [0u64; crate::opaque_sizes::ACTION_CLIENT_OPAQUE_U64S];
-            }
         }
         _ => return NROS_RET_NOT_INIT,
     }
@@ -1069,23 +1080,23 @@ pub unsafe extern "C" fn nros_action_client_fini(client: *mut nros_action_client
 ///
 /// Creates the 4 transport channels (3 service clients + feedback
 /// subscriber) immediately and stores the `ActionClientCore` inline
-/// in `_opaque`. The caller drives the goal lifecycle via:
-/// * `nros_action_client_send_goal_raw` — start a new goal; returns
+/// in the `nros_polling_action_client_t`. The caller drives the goal lifecycle via:
+/// * `nros_polling_action_client_send_goal_raw` — start a new goal; returns
 ///   the generated 16-byte UUID.
-/// * `nros_action_client_try_recv_goal_response_raw` — poll for the
+/// * `nros_polling_action_client_try_recv_goal_response_raw` — poll for the
 ///   send_goal RPC reply (accepted / rejected).
-/// * `nros_action_client_send_get_result_request_raw` +
+/// * `nros_polling_action_client_send_get_result_request_raw` +
 ///   `_try_recv_result_raw` — fetch the terminal result.
-/// * `nros_action_client_send_cancel_request_raw` +
+/// * `nros_polling_action_client_send_cancel_request_raw` +
 ///   `_try_recv_cancel_response_raw` — cancel a goal.
-/// * `nros_action_client_try_recv_feedback_raw` — drain feedback.
+/// * `nros_polling_action_client_try_recv_feedback_raw` — drain feedback.
 ///
 /// # Safety
 /// All pointers must be valid; `action_name` must be a valid
 /// null-terminated string.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_client_init_polling(
-    client: *mut nros_action_client_t,
+pub unsafe extern "C" fn nros_polling_action_client_init(
+    client: *mut nros_polling_action_client_t,
     node: *const nros_node_t,
     type_info: *const super::common::nros_action_type_t,
     action_name: *const core::ffi::c_char,
@@ -1103,24 +1114,26 @@ pub unsafe extern "C" fn nros_action_client_init_polling(
     );
     validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
 
-    client_mut.action_name_len =
-        crate::util::copy_cstr_into(action_name, &mut client_mut.action_name);
-    if client_mut.action_name_len == 0 {
+    // Read into locals: the polled struct keeps the core, not the
+    // description it was created from.
+    let mut name_buf = [0u8; MAX_ACTION_NAME_LEN];
+    let name_len = crate::util::copy_cstr_into(action_name, &mut name_buf);
+    if name_len == 0 {
         return NROS_RET_INVALID_ARGUMENT;
     }
-    client_mut.type_name_len =
-        crate::util::copy_cstr_into(type_info_ref.type_name, &mut client_mut.type_name);
-    client_mut.type_hash_len =
-        crate::util::copy_cstr_into(type_info_ref.type_hash, &mut client_mut.type_hash);
-
-    client_mut.node = unsafe { crate::node::node_ref_of(node) };
+    let mut type_buf = [0u8; MAX_TYPE_NAME_LEN];
+    let type_len = crate::util::copy_cstr_into(type_info_ref.type_name, &mut type_buf);
+    let mut hash_buf = [0u8; MAX_TYPE_HASH_LEN];
+    let hash_len = crate::util::copy_cstr_into(type_info_ref.type_hash, &mut hash_buf);
+    // Read only by the channel creation below, which a no-RMW build omits.
+    #[cfg(not(feature = "rmw-cffi"))]
+    let _ = (&type_buf, type_len, &hash_buf, hash_len);
 
     // Resolve the SOURCE action name to its wire name — see
     // `nros_publisher_init_with_qos`. All five channel keyexprs are derived
     // from it below, so resolving once here moves the whole action.
     let _resolved_name = {
-        let source =
-            core::str::from_utf8_unchecked(&client_mut.action_name[..client_mut.action_name_len]);
+        let source = core::str::from_utf8_unchecked(&name_buf[..name_len]);
         match crate::node::resolve_entity_name_on_node(node_ref, source) {
             Some(r) => r,
             None => return NROS_RET_INVALID_ARGUMENT,
@@ -1138,10 +1151,8 @@ pub unsafe extern "C" fn nros_action_client_init_polling(
 
         // RESOLVED name on the wire — see the resolution above.
         let action_str = _resolved_name.as_str();
-        let type_str =
-            core::str::from_utf8_unchecked(&client_mut.type_name[..client_mut.type_name_len]);
-        let type_hash_str =
-            core::str::from_utf8_unchecked(&client_mut.type_hash[..client_mut.type_hash_len]);
+        let type_str = core::str::from_utf8_unchecked(&type_buf[..type_len]);
+        let type_hash_str = core::str::from_utf8_unchecked(&hash_buf[..hash_len]);
         let node_name_str = core::str::from_utf8_unchecked(&node_ref.name[..node_ref.name_len]);
         let namespace_str =
             core::str::from_utf8_unchecked(&node_ref.namespace[..node_ref.namespace_len]);
@@ -1227,7 +1238,45 @@ pub unsafe extern "C" fn nros_action_client_init_polling(
         core::ptr::write(client_mut._opaque.as_mut_ptr() as *mut Core, core);
     }
 
-    client_mut.state = nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_POLLING;
+    client_mut.node = unsafe { crate::node::node_ref_of(node) };
+    client_mut.state = nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED;
+    NROS_RET_OK
+}
+
+/// Finalize a polled action client: drops the inline core, which closes its
+/// channels.
+///
+/// # Returns
+/// * `NROS_RET_OK` on success
+/// * `NROS_RET_INVALID_ARGUMENT` if `client` is NULL
+/// * `NROS_RET_NOT_INIT` if it is not initialised
+/// * `NROS_RET_STALE_NODE` if its node has already been finalised (issue 1386)
+///
+/// # Safety
+/// `client` must be a valid pointer.
+// The reset path zeroes the probed-size `_opaque` slot, which exceeds
+// clippy's 16 KB stack-array threshold. The assignment writes directly
+// through the existing `*mut` — no transient stack copy in release.
+#[allow(clippy::large_stack_arrays)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_polling_action_client_fini(
+    client: *mut nros_polling_action_client_t,
+) -> nros_ret_t {
+    validate_not_null!(client);
+    let client = &mut *client;
+    if client.state != nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED {
+        return NROS_RET_NOT_INIT;
+    }
+    if client.node.is_bound() && !crate::node::node_ref_is_live(client.node) {
+        return crate::error::NROS_RET_STALE_NODE;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        core::ptr::drop_in_place(client._opaque.as_mut_ptr() as *mut PollingClientCore);
+        client._opaque = [0u64; crate::opaque_sizes::ACTION_CLIENT_OPAQUE_U64S];
+    }
+    client.node = crate::node::nros_node_ref_t::none();
+    client.state = nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_SHUTDOWN;
     NROS_RET_OK
 }
 
@@ -1241,13 +1290,13 @@ type PollingClientCore = nros_node::ActionClientCore<
 #[cfg(feature = "rmw-cffi")]
 #[inline]
 unsafe fn polling_client_core(
-    client: *mut nros_action_client_t,
+    client: *mut nros_polling_action_client_t,
 ) -> Option<&'static mut PollingClientCore> {
     if client.is_null() {
         return None;
     }
     let client_mut = &mut *client;
-    if client_mut.state != nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_POLLING {
+    if client_mut.state != nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED {
         return None;
     }
     Some(&mut *(client_mut._opaque.as_mut_ptr() as *mut PollingClientCore))
@@ -1255,10 +1304,10 @@ unsafe fn polling_client_core(
 
 /// Phase 122.3.c.6.b — L1 polling: send a goal. Writes the generated
 /// 16-byte UUID into `goal_id_out`. Poll for the accept/reject reply
-/// via `nros_action_client_try_recv_goal_response_raw`.
+/// via `nros_polling_action_client_try_recv_goal_response_raw`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_client_send_goal_raw(
-    client: *mut nros_action_client_t,
+pub unsafe extern "C" fn nros_polling_action_client_send_goal_raw(
+    client: *mut nros_polling_action_client_t,
     goal_cdr: *const u8,
     goal_len: usize,
     goal_id_out: *mut [u8; 16],
@@ -1305,8 +1354,8 @@ pub unsafe extern "C" fn nros_action_client_send_goal_raw(
 /// (the accept/reject response). Returns `0` when no reply yet, `>0`
 /// bytes when one was copied into `buf`, negative on error.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_client_try_recv_goal_response_raw(
-    client: *mut nros_action_client_t,
+pub unsafe extern "C" fn nros_polling_action_client_try_recv_goal_response_raw(
+    client: *mut nros_polling_action_client_t,
     buf: *mut u8,
     buf_len: usize,
 ) -> i32 {
@@ -1340,8 +1389,8 @@ pub unsafe extern "C" fn nros_action_client_try_recv_goal_response_raw(
 /// Phase 122.3.c.6.b — L1 polling: send a get_result request for the
 /// given goal. Reply lands via `_try_recv_result_raw`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_client_send_get_result_request_raw(
-    client: *mut nros_action_client_t,
+pub unsafe extern "C" fn nros_polling_action_client_send_get_result_request_raw(
+    client: *mut nros_polling_action_client_t,
     goal_id: *const [u8; 16],
 ) -> nros_ret_t {
     if client.is_null() || goal_id.is_null() {
@@ -1370,8 +1419,8 @@ pub unsafe extern "C" fn nros_action_client_send_get_result_request_raw(
 /// reply. Returns `0` when no reply yet, `>0` bytes copied, negative
 /// on error.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_client_try_recv_result_raw(
-    client: *mut nros_action_client_t,
+pub unsafe extern "C" fn nros_polling_action_client_try_recv_result_raw(
+    client: *mut nros_polling_action_client_t,
     buf: *mut u8,
     buf_len: usize,
 ) -> i32 {
@@ -1404,8 +1453,8 @@ pub unsafe extern "C" fn nros_action_client_try_recv_result_raw(
 
 /// Phase 122.3.c.6.b — L1 polling: send a cancel request.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_client_send_cancel_request_raw(
-    client: *mut nros_action_client_t,
+pub unsafe extern "C" fn nros_polling_action_client_send_cancel_request_raw(
+    client: *mut nros_polling_action_client_t,
     goal_id: *const [u8; 16],
 ) -> nros_ret_t {
     if client.is_null() || goal_id.is_null() {
@@ -1434,8 +1483,8 @@ pub unsafe extern "C" fn nros_action_client_send_cancel_request_raw(
 /// reply. Returns `0` when no reply yet, `>0` bytes copied into
 /// `buf`, negative on error.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_client_try_recv_cancel_response_raw(
-    client: *mut nros_action_client_t,
+pub unsafe extern "C" fn nros_polling_action_client_try_recv_cancel_response_raw(
+    client: *mut nros_polling_action_client_t,
     buf: *mut u8,
     buf_len: usize,
 ) -> i32 {
@@ -1469,8 +1518,8 @@ pub unsafe extern "C" fn nros_action_client_try_recv_cancel_response_raw(
 /// Phase 122.3.c.6.e — register a C wake callback on the
 /// send_goal-reply channel of an L1 polling-mode action client.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_client_set_goal_response_wake_callback(
-    client: *mut nros_action_client_t,
+pub unsafe extern "C" fn nros_polling_action_client_set_goal_response_wake_callback(
+    client: *mut nros_polling_action_client_t,
     state: *mut crate::service::nros_wake_state_t,
     cb: Option<unsafe extern "C" fn(*mut c_void)>,
     ctx: *mut c_void,
@@ -1480,8 +1529,8 @@ pub unsafe extern "C" fn nros_action_client_set_goal_response_wake_callback(
 
 /// Phase 122.3.c.6.e — wake on the cancel-reply channel.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_client_set_cancel_response_wake_callback(
-    client: *mut nros_action_client_t,
+pub unsafe extern "C" fn nros_polling_action_client_set_cancel_response_wake_callback(
+    client: *mut nros_polling_action_client_t,
     state: *mut crate::service::nros_wake_state_t,
     cb: Option<unsafe extern "C" fn(*mut c_void)>,
     ctx: *mut c_void,
@@ -1491,8 +1540,8 @@ pub unsafe extern "C" fn nros_action_client_set_cancel_response_wake_callback(
 
 /// Phase 122.3.c.6.e — wake on the get_result-reply channel.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_client_set_result_wake_callback(
-    client: *mut nros_action_client_t,
+pub unsafe extern "C" fn nros_polling_action_client_set_result_wake_callback(
+    client: *mut nros_polling_action_client_t,
     state: *mut crate::service::nros_wake_state_t,
     cb: Option<unsafe extern "C" fn(*mut c_void)>,
     ctx: *mut c_void,
@@ -1502,8 +1551,8 @@ pub unsafe extern "C" fn nros_action_client_set_result_wake_callback(
 
 /// Phase 122.3.c.6.e — wake on the feedback channel.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_client_set_feedback_wake_callback(
-    client: *mut nros_action_client_t,
+pub unsafe extern "C" fn nros_polling_action_client_set_feedback_wake_callback(
+    client: *mut nros_polling_action_client_t,
     state: *mut crate::service::nros_wake_state_t,
     cb: Option<unsafe extern "C" fn(*mut c_void)>,
     ctx: *mut c_void,
@@ -1519,7 +1568,7 @@ enum ClientChannel {
 }
 
 unsafe fn set_action_client_wake_callback(
-    client: *mut nros_action_client_t,
+    client: *mut nros_polling_action_client_t,
     state: *mut crate::service::nros_wake_state_t,
     cb: Option<unsafe extern "C" fn(*mut c_void)>,
     ctx: *mut c_void,
@@ -1559,8 +1608,8 @@ unsafe fn set_action_client_wake_callback(
 /// goal. Returns `0` when no feedback yet, `>0` bytes copied (with
 /// `goal_id_out` filled), negative on error.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_client_try_recv_feedback_raw(
-    client: *mut nros_action_client_t,
+pub unsafe extern "C" fn nros_polling_action_client_try_recv_feedback_raw(
+    client: *mut nros_polling_action_client_t,
     buf: *mut u8,
     buf_len: usize,
     goal_id_out: *mut [u8; 16],

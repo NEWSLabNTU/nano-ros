@@ -101,9 +101,9 @@ the example layouts in `examples/native/c/action-client/` and
 `examples/mps2-an385-freertos/c/action-client/`.
 
 Phase 122.3 added a separate L1 polling family
-(`nros_action_client_init_polling` + the `_raw` send/recv siblings)
-that stores `ActionClientCore` inline in the
-`nros_action_client_t._opaque` slot and skips the executor entirely;
+(`nros_polling_action_client_init` + the `_raw` send/recv siblings)
+that stores `ActionClientCore` inline in the separate type
+`nros_polling_action_client_t` (phase-487 W4) and skips the executor entirely;
 see the Doxygen for the full L1 verb list.
 
 ## CMake integration

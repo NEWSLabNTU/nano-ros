@@ -728,6 +728,14 @@ the user's pair now; `nros_client_set_response_callback` writes it there, which
 makes "added first" part of that setter's contract, and `nros_client_call`
 swaps its one-shot capture in and out of the same slot.
 
+**Actions keep their callback record in the struct, as C++'s do.** The arena's
+action trampolines translate the C callback ABI (an `int32_t` goal verdict where
+the core reads an `i8`, a two-argument cancel callback where the core passes
+three) and reframe the goal payload, which is why phase-456 W3b-ii refused
+moving the C++ record into the arena. The C server held the record TWICE (its
+own fields plus a copy in `_internal` with a pointer back to the struct); W4
+removed the copy, so the trampolines take the server itself as their context.
+
 **Polled forms are separate types (shape 1 of phase-487 W1).** A polled entity
 has no arena slot, so it needs its storage, and one type holding both meant
 every dispatched entity carried the polled form's storage unused. So each
@@ -743,12 +751,17 @@ amendment removes.
 | subscription | handle + description (W1) | `nros_polling_subscription_t` |
 | service server | handle + description (W2) | `nros_polling_service_t` |
 | service client | handle + description + call timeout (W2) | `nros_polling_client_t` |
+| timer | handle + registration inputs; the stale `last_call_time_ns` copy removed (W3) | — (no polled form) |
+| action server | handle + description + ONE callback record, which the arena's trampolines read with the struct as context (W4) | `nros_polling_action_server_t` |
+| action client | handle + description + its callback record, same reading (W4) | `nros_polling_action_client_t` |
 | publisher | caller storage, unchanged: nothing dispatches it | — |
 
 Measured (sizeof, the shipped host feature set and thumbv7m), x86_64 /
 Cortex-M3: `nros_subscription_t` 2 536 / 2 368 → 744 / 700 bytes,
 `nros_service_t` 2 368 / 2 312 → 736 / 700, `nros_client_t` 2 376 / 2 312 →
-744 / 704. The executor arena does NOT grow by the difference: on the
+744 / 704, `nros_timer_t` 72 / 48 → 64 / 40, `nros_action_server_t`
+7 592 / 7 312 → 824 / 752, `nros_action_client_t` 6 296 / 6 136 → 736 / 692.
+`nros_executor_t` is unchanged at 90 928 / 89 240. The executor arena does NOT grow by the difference: on the
 dispatched road the arena already held the subscriber, so the struct's
 `_opaque` was a second, unused copy, not storage being moved.
 

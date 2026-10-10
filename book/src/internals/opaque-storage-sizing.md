@@ -103,9 +103,6 @@ The fix is a layout-mirror struct in `nros::sizes`:
 pub struct ActionServerInternalLayout {
     pub handle: nros_node::ActionServerRawHandle,
     pub executor_ptr: *mut c_void,
-    pub c_goal_callback: unsafe extern "C" fn(
-        *mut c_void, *const c_void, *const u8, usize, *mut c_void,
-    ) -> i32,
     // ...same field shape as the real `ActionServerInternal`,
     // with C-API pointers replaced by `*mut c_void`...
 }

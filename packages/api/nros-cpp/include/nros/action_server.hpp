@@ -443,7 +443,7 @@ template <typename A> class Server {
     /// Issue 0796 — `status` used to be hardcoded `Succeeded` inside the shim,
     /// so a server that aborted a goal reported success to the client. The
     /// parameter order matches `PollingActionServer::complete_goal` and the C
-    /// API's `nros_action_server_complete_goal_raw`, so the three surfaces
+    /// API's `nros_polling_action_server_complete_goal_raw`, so the three surfaces
     /// agree; `Succeeded` is defaulted because it is the common case and
     /// because that keeps existing two-argument calls compiling.
     ///

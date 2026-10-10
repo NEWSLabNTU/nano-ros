@@ -464,21 +464,16 @@ typedef enum nros_action_client_state_t {
    */
   NROS_ACTION_CLIENT_STATE_UNINITIALIZED = 0,
   /**
-   * L2 callback-mode: initialized via `nros_action_client_init`;
-   * transport creation deferred to
-   * `nros_executor_add_action_client`.
+   * Initialized. For a `nros_action_client_t` the transport is created
+   * by `nros_executor_add_action_client`; for a
+   * `nros_polling_action_client_t` its `ActionClientCore` is live in the
+   * struct.
    */
   NROS_ACTION_CLIENT_STATE_INITIALIZED = 1,
   /**
    * Shutdown
    */
   NROS_ACTION_CLIENT_STATE_SHUTDOWN = 2,
-  /**
-   * Phase 122.3.c.6.b — L1 polling-mode: `ActionClientCore` lives
-   * inline in `_opaque`; caller drives via the
-   * `nros_action_client_*_raw` family. No executor registration.
-   */
-  NROS_ACTION_CLIENT_STATE_POLLING = 3,
 } nros_action_client_state_t;
 
 /**
@@ -526,21 +521,16 @@ typedef enum nros_action_server_state_t {
    */
   NROS_ACTION_SERVER_STATE_UNINITIALIZED = 0,
   /**
-   * L2 callback-mode: initialized via `nros_action_server_init`;
-   * transport creation deferred to
-   * `nros_executor_add_action_server`.
+   * Initialized. For a `nros_action_server_t` the transport is created
+   * by `nros_executor_add_action_server`; for a
+   * `nros_polling_action_server_t` its `ActionServerCore` is live in the
+   * struct.
    */
   NROS_ACTION_SERVER_STATE_INITIALIZED = 1,
   /**
    * Shutdown
    */
   NROS_ACTION_SERVER_STATE_SHUTDOWN = 2,
-  /**
-   * Phase 122.3.c.6.b — L1 polling-mode: `ActionServerCore` lives
-   * inline in `_opaque`; caller drives via the
-   * `nros_action_server_*_raw` family. No executor registration.
-   */
-  NROS_ACTION_SERVER_STATE_POLLING = 3,
 } nros_action_server_state_t;
 
 /**
@@ -1410,41 +1400,6 @@ typedef struct nros_transport_ops_t {
 } nros_transport_ops_t;
 
 /**
- * Goal UUID structure (16 bytes).
- */
-typedef struct nros_goal_uuid_t {
-  /**
-   * UUID bytes
-   */
-  uint8_t uuid[16];
-} nros_goal_uuid_t;
-
-/**
- * Goal response callback type (for async client).
- * Called when the action server accepts or rejects a goal.
- */
-typedef void (*nros_goal_response_callback_t)(const struct nros_goal_uuid_t *goal_uuid,
-                                              bool accepted,
-                                              void *context);
-
-/**
- * Feedback callback type (for client).
- */
-typedef void (*nros_feedback_callback_t)(const struct nros_goal_uuid_t *goal_uuid,
-                                         const uint8_t *feedback,
-                                         size_t feedback_len,
-                                         void *context);
-
-/**
- * Result callback type (for client).
- */
-typedef void (*nros_result_callback_t)(const struct nros_goal_uuid_t *goal_uuid,
-                                       enum nros_goal_status_t status,
-                                       const uint8_t *result,
-                                       size_t result_len,
-                                       void *context);
-
-/**
  * phase-379 W4 — a checkable reference to the node an entity was created on.
  *
  * Replaces the `*const nros_node_t` each entity used to store. That pointer
@@ -1480,6 +1435,65 @@ typedef struct nros_node_ref_t {
 } nros_node_ref_t;
 
 /**
+ * An action client the CALLER drives, with no executor (phase-487 W4).
+ *
+ * The C counterpart of C++'s `nros::PollingActionClient<A>`. `_opaque` holds
+ * an `ActionClientCore` from `nros_polling_action_client_init` until
+ * `nros_polling_action_client_fini`. Zero-initialised is UNINITIALIZED.
+ * Until phase-487 it was the `NROS_ACTION_CLIENT_STATE_POLLING` state of
+ * `nros_action_client_t`.
+ */
+typedef struct nros_polling_action_client_t {
+  /**
+   * Current state: UNINITIALIZED, INITIALIZED (core live) or SHUTDOWN.
+   */
+  enum nros_action_client_state_t state;
+  /**
+   * The node the channels were created on.
+   */
+  struct nros_node_ref_t node;
+  /**
+   * Inline storage for the `ActionClientCore`. Internal: treat as opaque.
+   */
+  uint64_t _opaque[ACTION_CLIENT_OPAQUE_U64S];
+} nros_polling_action_client_t;
+
+/**
+ * Goal UUID structure (16 bytes).
+ */
+typedef struct nros_goal_uuid_t {
+  /**
+   * UUID bytes
+   */
+  uint8_t uuid[16];
+} nros_goal_uuid_t;
+
+/**
+ * Goal response callback type (for async client).
+ * Called when the action server accepts or rejects a goal.
+ */
+typedef void (*nros_goal_response_callback_t)(const struct nros_goal_uuid_t *goal_uuid,
+                                              bool accepted,
+                                              void *context);
+
+/**
+ * Feedback callback type (for client).
+ */
+typedef void (*nros_feedback_callback_t)(const struct nros_goal_uuid_t *goal_uuid,
+                                         const uint8_t *feedback,
+                                         size_t feedback_len,
+                                         void *context);
+
+/**
+ * Result callback type (for client).
+ */
+typedef void (*nros_result_callback_t)(const struct nros_goal_uuid_t *goal_uuid,
+                                       enum nros_goal_status_t status,
+                                       const uint8_t *result,
+                                       size_t result_len,
+                                       void *context);
+
+/**
  * Identifier of a registered scheduling context. `0` is the
  * auto-created default `Fifo` SC. Mirrors
  * `nros_node::executor::sched_context::SchedContextId`.
@@ -1506,7 +1520,13 @@ typedef struct ActionClientInternal {
 } ActionClientInternal;
 
 /**
- * Action client structure.
+ * An action client the executor dispatches.
+ *
+ * phase-487 W4 (RFC-0096 D9, the C half): the executor arena owns the
+ * channels and buffers; this struct holds the arena handle (`_internal`),
+ * the registration description and the callback record the arena's
+ * trampolines read, as the C++ action client does. A client the caller
+ * drives itself is a [`nros_polling_action_client_t`].
  */
 typedef struct nros_action_client_t {
   /**
@@ -1570,12 +1590,6 @@ typedef struct nros_action_client_t {
    * Typed C-ABI handle field.
    */
   struct ActionClientInternal _internal;
-  /**
-   * Phase 122.3.c.6.b — inline opaque storage for the L1
-   * polling-mode `ActionClientCore`. Zeroed in L2 mode; populated
-   * by `nros_action_client_init_polling`.
-   */
-  uint64_t _opaque[ACTION_CLIENT_OPAQUE_U64S];
 } nros_action_client_t;
 
 /**
@@ -1634,6 +1648,31 @@ typedef struct nros_action_client_options_t {
 typedef struct nros_wake_state_t {
   uint64_t _opaque[2];
 } nros_wake_state_t;
+
+/**
+ * An action server the CALLER drives, with no executor (phase-487 W4).
+ *
+ * The C counterpart of C++'s `nros::PollingActionServer<A>`. `_opaque` holds
+ * an `ActionServerCore` (five channels, goal table, buffers) from
+ * `nros_polling_action_server_init` until
+ * `nros_polling_action_server_fini`. Zero-initialised is UNINITIALIZED.
+ * Until phase-487 it was the `NROS_ACTION_SERVER_STATE_POLLING` state of
+ * `nros_action_server_t`.
+ */
+typedef struct nros_polling_action_server_t {
+  /**
+   * Current state: UNINITIALIZED, INITIALIZED (core live) or SHUTDOWN.
+   */
+  enum nros_action_server_state_t state;
+  /**
+   * The node the channels were created on.
+   */
+  struct nros_node_ref_t node;
+  /**
+   * Inline storage for the `ActionServerCore`. Internal: treat as opaque.
+   */
+  uint64_t _opaque[ACTION_SERVER_OPAQUE_U64S];
+} nros_polling_action_server_t;
 
 /**
  * Goal handle — a pure UUID identity card.
@@ -1745,14 +1784,17 @@ typedef struct nros_qos_t {
 } nros_qos_t;
 
 /**
- * Internal state created during executor registration.
- *
- * Holds the action server handle and C callback pointers needed by
- * the goal/cancel trampolines.
+ * The arena handle, filled in by executor registration.
  *
  * `handle` was `Option<ActionServerRawHandle>` previously; now it is
  * always present, with the sentinel `INVALID_ENTRY_INDEX` indicating
  * "not registered yet". Use `is_handle_set()` to check.
+ *
+ * phase-487 W4 — this used to carry a SECOND copy of the server's callback
+ * record (`c_goal_callback`, `c_cancel_callback`, `c_accepted_callback`,
+ * `c_context`) plus a `server_ptr` back to the struct that contains it, so
+ * the trampolines could take `&_internal` as their context. The trampolines
+ * take the server itself now and read the one record it already has.
  */
 typedef struct ActionServerInternal {
   /**
@@ -1764,34 +1806,19 @@ typedef struct ActionServerInternal {
    * Pointer to the internal executor (`CExecutor`).
    */
   void *executor_ptr;
-  /**
-   * C goal callback from init. Required.
-   */
-  enum nros_goal_response_t (*c_goal_callback)(struct nros_action_server_t*,
-                                               const struct nros_goal_handle_t*,
-                                               const uint8_t*,
-                                               size_t,
-                                               void*);
-  /**
-   * C cancel callback from init (may be None).
-   */
-  nros_cancel_callback_t c_cancel_callback;
-  /**
-   * C accepted callback from init (may be None).
-   */
-  nros_accepted_callback_t c_accepted_callback;
-  /**
-   * C user context from init.
-   */
-  void *c_context;
-  /**
-   * Pointer back to the C action server struct.
-   */
-  struct nros_action_server_t *server_ptr;
 } ActionServerInternal;
 
 /**
- * Action server structure.
+ * An action server the executor dispatches.
+ *
+ * phase-487 W4 (RFC-0096 D9, the C half): the executor arena owns the five
+ * channels, the goal table and every buffer; this struct holds the arena
+ * handle (`_internal`), the registration description and the one callback
+ * record, which the arena's trampolines read with this struct as their
+ * context. That record stays here, as the C++ action server's does
+ * (phase-456 W3b-ii refused moving it into the arena: the trampolines
+ * translate the ABI and reframe the goal payload). A server the caller
+ * drives itself is a [`nros_polling_action_server_t`].
  */
 typedef struct nros_action_server_t {
   /**
@@ -1864,12 +1891,6 @@ typedef struct nros_action_server_t {
    * Typed C-ABI handle field (was an opaque blob in earlier versions).
    */
   struct ActionServerInternal _internal;
-  /**
-   * Phase 122.3.c.6.b — inline opaque storage for the L1
-   * polling-mode `ActionServerCore`. Zeroed in L2 mode; populated
-   * by `nros_action_server_init_polling`.
-   */
-  uint64_t _opaque[ACTION_SERVER_OPAQUE_U64S];
 } nros_action_server_t;
 
 /**
@@ -2242,6 +2263,16 @@ typedef void (*nros_timer_callback_t)(struct nros_timer_t *timer, void *context)
 
 /**
  * Timer structure.
+ *
+ * Already an arena handle before phase-487: `rclc_executor_add_timer`
+ * creates the timer inside the executor arena and records
+ * `(handle_id, _executor)` here, and every live accessor forwards there. The
+ * period, callback, context, support and clock are the REGISTRATION INPUTS:
+ * rclc's `rclc_timer_init_default(timer, support, period, callback)` takes
+ * them at init, before any executor exists, and a removed timer can be added
+ * again, so they stay. phase-487 W3 removed the one field that was a copy,
+ * `last_call_time_ns`: written by init and reset, read by nothing, and stale
+ * for any timer the executor ran (issue 1049).
  */
 typedef struct nros_timer_t {
   /**
@@ -2252,10 +2283,6 @@ typedef struct nros_timer_t {
    * Period in nanoseconds
    */
   uint64_t period_ns;
-  /**
-   * Last trigger time in nanoseconds
-   */
-  uint64_t last_call_time_ns;
   /**
    * User callback function
    */
@@ -4123,6 +4150,12 @@ NROS_PUBLIC nros_ret_t nros_clear_custom_transport(void);
 NROS_PUBLIC nros_ret_t nros_has_custom_transport(void);
 
 /**
+ * Get a zero-initialized polling action client.
+ */
+NROS_PUBLIC
+struct nros_polling_action_client_t nros_get_zero_initialized_polling_action_client(void);
+
+/**
  * Get a zero-initialized action client.
  */
 NROS_PUBLIC struct nros_action_client_t rcl_action_get_zero_initialized_client(void);
@@ -4216,11 +4249,8 @@ nros_ret_t nros_action_client_wait_for_action_server(struct nros_action_client_t
  *
  * # Returns
  * * Pointer to the action name (NUL-terminated), or NULL when `client` is
- *   NULL or was never initialised. Every live state answers — an L1 polling
- *   client (`nros_action_client_init_polling`) names its action just as an
- *   executor-registered one does, which is the distinction
- *   `nros_service_t::is_usable` exists to make (ledger row
- *   `c:service_is_valid`).
+ *   NULL or was never initialised. A polled client is its own type since
+ *   phase-487 W4 (`nros_polling_action_client_t`) and keeps no name.
  */
 NROS_PUBLIC
 const char *rcl_action_client_get_action_name(const struct nros_action_client_t *client);
@@ -4372,37 +4402,52 @@ NROS_PUBLIC nros_ret_t nros_action_client_fini(struct nros_action_client_t *clie
  *
  * Creates the 4 transport channels (3 service clients + feedback
  * subscriber) immediately and stores the `ActionClientCore` inline
- * in `_opaque`. The caller drives the goal lifecycle via:
- * * `nros_action_client_send_goal_raw` — start a new goal; returns
+ * in the `nros_polling_action_client_t`. The caller drives the goal lifecycle via:
+ * * `nros_polling_action_client_send_goal_raw` — start a new goal; returns
  *   the generated 16-byte UUID.
- * * `nros_action_client_try_recv_goal_response_raw` — poll for the
+ * * `nros_polling_action_client_try_recv_goal_response_raw` — poll for the
  *   send_goal RPC reply (accepted / rejected).
- * * `nros_action_client_send_get_result_request_raw` +
+ * * `nros_polling_action_client_send_get_result_request_raw` +
  *   `_try_recv_result_raw` — fetch the terminal result.
- * * `nros_action_client_send_cancel_request_raw` +
+ * * `nros_polling_action_client_send_cancel_request_raw` +
  *   `_try_recv_cancel_response_raw` — cancel a goal.
- * * `nros_action_client_try_recv_feedback_raw` — drain feedback.
+ * * `nros_polling_action_client_try_recv_feedback_raw` — drain feedback.
  *
  * # Safety
  * All pointers must be valid; `action_name` must be a valid
  * null-terminated string.
  */
 NROS_PUBLIC
-nros_ret_t nros_action_client_init_polling(struct nros_action_client_t *client,
+nros_ret_t nros_polling_action_client_init(struct nros_polling_action_client_t *client,
                                            const struct nros_node_t *node,
                                            const struct nros_action_type_t *type_info,
                                            const char *action_name);
 
 /**
+ * Finalize a polled action client: drops the inline core, which closes its
+ * channels.
+ *
+ * # Returns
+ * * `NROS_RET_OK` on success
+ * * `NROS_RET_INVALID_ARGUMENT` if `client` is NULL
+ * * `NROS_RET_NOT_INIT` if it is not initialised
+ * * `NROS_RET_STALE_NODE` if its node has already been finalised (issue 1386)
+ *
+ * # Safety
+ * `client` must be a valid pointer.
+ */
+NROS_PUBLIC nros_ret_t nros_polling_action_client_fini(struct nros_polling_action_client_t *client);
+
+/**
  * Phase 122.3.c.6.b — L1 polling: send a goal. Writes the generated
  * 16-byte UUID into `goal_id_out`. Poll for the accept/reject reply
- * via `nros_action_client_try_recv_goal_response_raw`.
+ * via `nros_polling_action_client_try_recv_goal_response_raw`.
  */
 NROS_PUBLIC
-nros_ret_t nros_action_client_send_goal_raw(struct nros_action_client_t *client,
-                                            const uint8_t *goal_cdr,
-                                            size_t goal_len,
-                                            uint8_t (*goal_id_out)[16]);
+nros_ret_t nros_polling_action_client_send_goal_raw(struct nros_polling_action_client_t *client,
+                                                    const uint8_t *goal_cdr,
+                                                    size_t goal_len,
+                                                    uint8_t (*goal_id_out)[16]);
 
 /**
  * Phase 122.3.c.6.b — L1 polling: try to receive a send_goal reply
@@ -4410,17 +4455,17 @@ nros_ret_t nros_action_client_send_goal_raw(struct nros_action_client_t *client,
  * bytes when one was copied into `buf`, negative on error.
  */
 NROS_PUBLIC
-int32_t nros_action_client_try_recv_goal_response_raw(struct nros_action_client_t *client,
-                                                      uint8_t *buf,
-                                                      size_t buf_len);
+int32_t nros_polling_action_client_try_recv_goal_response_raw(struct nros_polling_action_client_t *client,
+                                                              uint8_t *buf,
+                                                              size_t buf_len);
 
 /**
  * Phase 122.3.c.6.b — L1 polling: send a get_result request for the
  * given goal. Reply lands via `_try_recv_result_raw`.
  */
 NROS_PUBLIC
-nros_ret_t nros_action_client_send_get_result_request_raw(struct nros_action_client_t *client,
-                                                          const uint8_t (*goal_id)[16]);
+nros_ret_t nros_polling_action_client_send_get_result_request_raw(struct nros_polling_action_client_t *client,
+                                                                  const uint8_t (*goal_id)[16]);
 
 /**
  * Phase 122.3.c.6.b — L1 polling: try to receive a get_result
@@ -4428,16 +4473,16 @@ nros_ret_t nros_action_client_send_get_result_request_raw(struct nros_action_cli
  * on error.
  */
 NROS_PUBLIC
-int32_t nros_action_client_try_recv_result_raw(struct nros_action_client_t *client,
-                                               uint8_t *buf,
-                                               size_t buf_len);
+int32_t nros_polling_action_client_try_recv_result_raw(struct nros_polling_action_client_t *client,
+                                                       uint8_t *buf,
+                                                       size_t buf_len);
 
 /**
  * Phase 122.3.c.6.b — L1 polling: send a cancel request.
  */
 NROS_PUBLIC
-nros_ret_t nros_action_client_send_cancel_request_raw(struct nros_action_client_t *client,
-                                                      const uint8_t (*goal_id)[16]);
+nros_ret_t nros_polling_action_client_send_cancel_request_raw(struct nros_polling_action_client_t *client,
+                                                              const uint8_t (*goal_id)[16]);
 
 /**
  * Phase 122.3.c.6.c — L1 polling: try to receive the cancel-RPC
@@ -4445,46 +4490,46 @@ nros_ret_t nros_action_client_send_cancel_request_raw(struct nros_action_client_
  * `buf`, negative on error.
  */
 NROS_PUBLIC
-int32_t nros_action_client_try_recv_cancel_response_raw(struct nros_action_client_t *client,
-                                                        uint8_t *buf,
-                                                        size_t buf_len);
+int32_t nros_polling_action_client_try_recv_cancel_response_raw(struct nros_polling_action_client_t *client,
+                                                                uint8_t *buf,
+                                                                size_t buf_len);
 
 /**
  * Phase 122.3.c.6.e — register a C wake callback on the
  * send_goal-reply channel of an L1 polling-mode action client.
  */
 NROS_PUBLIC
-nros_ret_t nros_action_client_set_goal_response_wake_callback(struct nros_action_client_t *client,
-                                                              struct nros_wake_state_t *state,
-                                                              void (*cb)(void*),
-                                                              void *ctx);
+nros_ret_t nros_polling_action_client_set_goal_response_wake_callback(struct nros_polling_action_client_t *client,
+                                                                      struct nros_wake_state_t *state,
+                                                                      void (*cb)(void*),
+                                                                      void *ctx);
 
 /**
  * Phase 122.3.c.6.e — wake on the cancel-reply channel.
  */
 NROS_PUBLIC
-nros_ret_t nros_action_client_set_cancel_response_wake_callback(struct nros_action_client_t *client,
-                                                                struct nros_wake_state_t *state,
-                                                                void (*cb)(void*),
-                                                                void *ctx);
+nros_ret_t nros_polling_action_client_set_cancel_response_wake_callback(struct nros_polling_action_client_t *client,
+                                                                        struct nros_wake_state_t *state,
+                                                                        void (*cb)(void*),
+                                                                        void *ctx);
 
 /**
  * Phase 122.3.c.6.e — wake on the get_result-reply channel.
  */
 NROS_PUBLIC
-nros_ret_t nros_action_client_set_result_wake_callback(struct nros_action_client_t *client,
-                                                       struct nros_wake_state_t *state,
-                                                       void (*cb)(void*),
-                                                       void *ctx);
+nros_ret_t nros_polling_action_client_set_result_wake_callback(struct nros_polling_action_client_t *client,
+                                                               struct nros_wake_state_t *state,
+                                                               void (*cb)(void*),
+                                                               void *ctx);
 
 /**
  * Phase 122.3.c.6.e — wake on the feedback channel.
  */
 NROS_PUBLIC
-nros_ret_t nros_action_client_set_feedback_wake_callback(struct nros_action_client_t *client,
-                                                         struct nros_wake_state_t *state,
-                                                         void (*cb)(void*),
-                                                         void *ctx);
+nros_ret_t nros_polling_action_client_set_feedback_wake_callback(struct nros_polling_action_client_t *client,
+                                                                 struct nros_wake_state_t *state,
+                                                                 void (*cb)(void*),
+                                                                 void *ctx);
 
 /**
  * Phase 122.3.c.6.b — L1 polling: try to receive feedback for any
@@ -4492,10 +4537,10 @@ nros_ret_t nros_action_client_set_feedback_wake_callback(struct nros_action_clie
  * `goal_id_out` filled), negative on error.
  */
 NROS_PUBLIC
-int32_t nros_action_client_try_recv_feedback_raw(struct nros_action_client_t *client,
-                                                 uint8_t *buf,
-                                                 size_t buf_len,
-                                                 uint8_t (*goal_id_out)[16]);
+int32_t nros_polling_action_client_try_recv_feedback_raw(struct nros_polling_action_client_t *client,
+                                                         uint8_t *buf,
+                                                         size_t buf_len,
+                                                         uint8_t (*goal_id_out)[16]);
 
 /**
  * Generate a new random goal UUID.
@@ -4513,6 +4558,12 @@ bool nros_goal_uuid_equal(const struct nros_goal_uuid_t *a,
  * Get status name as string.
  */
 NROS_PUBLIC const char *nros_goal_status_to_string(enum nros_goal_status_t status);
+
+/**
+ * Get a zero-initialized polling action server.
+ */
+NROS_PUBLIC
+struct nros_polling_action_server_t nros_get_zero_initialized_polling_action_server(void);
 
 /**
  * Get a zero-initialized action server.
@@ -4661,14 +4712,11 @@ nros_ret_t nros_action_execute(struct nros_action_server_t *server,
  * (negative = error code), each of which collapsed the two channels
  * into one value.
  *
- * The tier is selected by `server->state`, and the two tiers read
- * DIFFERENT STORAGE — this was never one field behind two names:
- *
- * * `NROS_ACTION_SERVER_STATE_INITIALIZED` (L2, callback tier) reads
- *   the executor arena through `ActionServerRawHandle::active_goal_count`.
- * * `NROS_ACTION_SERVER_STATE_POLLING` (L1, polling tier) reads the
- *   `ActionServerCore` living inline in `_opaque`, with no executor and
- *   no arena indirection, behind `#[cfg(feature = "rmw-cffi")]`.
+ * Reads the executor arena through
+ * `ActionServerRawHandle::active_goal_count`. A polled server, whose
+ * `ActionServerCore` is inline, answers through
+ * [`nros_polling_action_server_get_active_goal_count`]; until phase-487 W4
+ * both tiers shared this entry point and were told apart by state.
  *
  * Returns:
  *
@@ -4676,8 +4724,7 @@ nros_ret_t nros_action_execute(struct nros_action_server_t *server,
  * * `NROS_RET_INVALID_ARGUMENT` — `server` or `out` is NULL.
  * * `NROS_RET_NOT_INIT` — the server is UNINITIALIZED or SHUTDOWN; or it
  *   is INITIALIZED but was never registered with an executor (or has
- *   been finalised); or it is POLLING in a build without `rmw-cffi`,
- *   where the inline core was never constructed.
+ *   been finalised).
  *
  * `*out` is left untouched on every error path, so a caller that ignores
  * the return code reads back its own initialiser rather than a
@@ -4772,7 +4819,7 @@ bool nros_action_server_goal_exists(struct nros_action_server_t *server,
  * * `NROS_RET_OK` — `*num_expired` holds the count, which may legitimately be 0.
  * * `NROS_RET_INVALID_ARGUMENT` — `server` or `num_expired` is NULL.
  * * `NROS_RET_NOT_INIT` — the server is UNINITIALIZED or SHUTDOWN, was never
- *   registered with an executor, or is POLLING in a build without `rmw-cffi`.
+ *   registered with an executor.
  *
  * `*num_expired` is left untouched on every error path, for the same reason
  * [`nros_action_server_get_active_goal_count`] leaves its own out-parameter
@@ -4804,8 +4851,8 @@ nros_ret_t nros_action_get_goal_status(const struct nros_action_server_t *server
  *
  * Issue 1609 — `fini` does NOT remove the server from an executor. It is
  * handed only the entity, and an executor-registered server's arena entry
- * (its three service servers, two publishers and the callback `context`
- * `&server->_internal`) is undone by
+ * (its three service servers, two publishers and the callback `context`,
+ * which is `server` itself) is undone by
  * `nros_executor_remove_action_server(executor, server)`, which also brings
  * the executor's `handle_count` back down. Call that first; a server that is
  * finalised while still registered keeps answering goals into this struct
@@ -4817,16 +4864,16 @@ NROS_PUBLIC nros_ret_t nros_action_server_fini(struct nros_action_server_t *serv
  * Phase 122.3.c.6.b — initialize an L1 polling-mode action server.
  *
  * Creates the 5 transport channels immediately and stores the
- * `ActionServerCore` inline in `_opaque`. The caller drives the
+ * `ActionServerCore` inline in the `nros_polling_action_server_t`. The caller drives the
  * goal lifecycle via:
- * * `nros_action_server_try_recv_goal_request_raw` — poll for new
+ * * `nros_polling_action_server_try_recv_goal_request_raw` — poll for new
  *   goal requests (returns goal_id + sequence + payload).
- * * `nros_action_server_accept_goal_raw` / `_reject_goal_raw` —
+ * * `nros_polling_action_server_accept_goal_raw` / `_reject_goal_raw` —
  *   reply to the send_goal RPC.
- * * `nros_action_server_publish_feedback_raw` — push feedback.
- * * `nros_action_server_complete_goal_raw` — terminate (SUCCEEDED /
+ * * `nros_polling_action_server_publish_feedback_raw` — push feedback.
+ * * `nros_polling_action_server_complete_goal_raw` — terminate (SUCCEEDED /
  *   ABORTED / CANCELED).
- * * `nros_action_server_try_handle_cancel_raw` /
+ * * `nros_polling_action_server_try_handle_cancel_raw` /
  *   `_try_handle_get_result_raw` — service cancel / get_result RPCs.
  *
  * # Safety
@@ -4834,10 +4881,59 @@ NROS_PUBLIC nros_ret_t nros_action_server_fini(struct nros_action_server_t *serv
  * null-terminated string.
  */
 NROS_PUBLIC
-nros_ret_t nros_action_server_init_polling(struct nros_action_server_t *server,
+nros_ret_t nros_polling_action_server_init(struct nros_polling_action_server_t *server,
                                            const struct nros_node_t *node,
                                            const struct nros_action_type_t *type_info,
                                            const char *action_name);
+
+/**
+ * Finalize a polled action server: drops the inline core, which closes its
+ * five channels.
+ *
+ * # Returns
+ * * `NROS_RET_OK` on success
+ * * `NROS_RET_INVALID_ARGUMENT` if `server` is NULL
+ * * `NROS_RET_NOT_INIT` if it is not initialised
+ * * `NROS_RET_STALE_NODE` if its node has already been finalised (issue 1386)
+ *
+ * # Safety
+ * `server` must be a valid pointer.
+ */
+NROS_PUBLIC nros_ret_t nros_polling_action_server_fini(struct nros_polling_action_server_t *server);
+
+/**
+ * The polled twin of [`nros_action_server_get_active_goal_count`].
+ *
+ * # Returns
+ * `NROS_RET_OK` with `*out` written, `NROS_RET_INVALID_ARGUMENT` for a NULL
+ * argument, `NROS_RET_NOT_INIT` when the server is not initialised.
+ *
+ * # Safety
+ * `server` and `out` must be valid pointers.
+ */
+NROS_PUBLIC
+nros_ret_t nros_polling_action_server_get_active_goal_count(struct nros_polling_action_server_t *server,
+                                                            size_t *out);
+
+/**
+ * The polled twin of [`nros_action_server_goal_exists`].
+ *
+ * # Safety
+ * `server` and `goal` must be NULL or valid pointers.
+ */
+NROS_PUBLIC
+bool nros_polling_action_server_goal_exists(struct nros_polling_action_server_t *server,
+                                            const struct nros_goal_handle_t *goal);
+
+/**
+ * The polled twin of [`nros_action_expire_goals`].
+ *
+ * # Safety
+ * `server` and `num_expired` must be valid pointers.
+ */
+NROS_PUBLIC
+nros_ret_t nros_polling_action_server_expire_goals(struct nros_polling_action_server_t *server,
+                                                   size_t *num_expired);
 
 /**
  * Phase 122.3.c.6.b — L1 polling: try to receive a goal request.
@@ -4845,35 +4941,35 @@ nros_ret_t nros_action_server_init_polling(struct nros_action_server_t *server,
  * On success writes the goal payload bytes (already stripped of CDR
  * framing) into `buf`, returns the number of bytes copied (>= 0),
  * and fills `goal_id_out` (16 bytes) + `sequence_number_out`. Use
- * the sequence number with `nros_action_server_accept_goal_raw` /
+ * the sequence number with `nros_polling_action_server_accept_goal_raw` /
  * `_reject_goal_raw`.
  *
  * Returns `0` when no request is pending; negative `nros_ret_t` on
  * error.
  */
 NROS_PUBLIC
-int32_t nros_action_server_try_recv_goal_request_raw(struct nros_action_server_t *server,
-                                                     uint8_t *buf,
-                                                     size_t buf_len,
-                                                     uint8_t (*goal_id_out)[16],
-                                                     int64_t *sequence_number_out);
+int32_t nros_polling_action_server_try_recv_goal_request_raw(struct nros_polling_action_server_t *server,
+                                                             uint8_t *buf,
+                                                             size_t buf_len,
+                                                             uint8_t (*goal_id_out)[16],
+                                                             int64_t *sequence_number_out);
 
 /**
  * Phase 122.3.c.6.b — L1 polling: accept a goal received via
  * `try_recv_goal_request_raw`.
  */
 NROS_PUBLIC
-nros_ret_t nros_action_server_accept_goal_raw(struct nros_action_server_t *server,
-                                              const uint8_t (*goal_id)[16],
-                                              int64_t sequence_number);
+nros_ret_t nros_polling_action_server_accept_goal_raw(struct nros_polling_action_server_t *server,
+                                                      const uint8_t (*goal_id)[16],
+                                                      int64_t sequence_number);
 
 /**
  * Phase 122.3.c.6.b — L1 polling: reject a goal received via
  * `try_recv_goal_request_raw`.
  */
 NROS_PUBLIC
-nros_ret_t nros_action_server_reject_goal_raw(struct nros_action_server_t *server,
-                                              int64_t sequence_number);
+nros_ret_t nros_polling_action_server_reject_goal_raw(struct nros_polling_action_server_t *server,
+                                                      int64_t sequence_number);
 
 /**
  * Phase 122.3.c.6.b — L1 polling: publish a feedback message.
@@ -4882,10 +4978,10 @@ nros_ret_t nros_action_server_reject_goal_raw(struct nros_action_server_t *serve
  * (without the goal_id prefix — the core wraps it).
  */
 NROS_PUBLIC
-nros_ret_t nros_action_server_publish_feedback_raw(struct nros_action_server_t *server,
-                                                   const uint8_t (*goal_id)[16],
-                                                   const uint8_t *feedback_cdr,
-                                                   size_t feedback_len);
+nros_ret_t nros_polling_action_server_publish_feedback_raw(struct nros_polling_action_server_t *server,
+                                                           const uint8_t (*goal_id)[16],
+                                                           const uint8_t *feedback_cdr,
+                                                           size_t feedback_len);
 
 /**
  * Phase 122.3.c.6.b — L1 polling: mark a goal terminal.
@@ -4895,11 +4991,11 @@ nros_ret_t nros_action_server_publish_feedback_raw(struct nros_action_server_t *
  * core handles the status wrapper before storing in the slab).
  */
 NROS_PUBLIC
-nros_ret_t nros_action_server_complete_goal_raw(struct nros_action_server_t *server,
-                                                const uint8_t (*goal_id)[16],
-                                                enum nros_goal_status_t status,
-                                                const uint8_t *result_cdr,
-                                                size_t result_len);
+nros_ret_t nros_polling_action_server_complete_goal_raw(struct nros_polling_action_server_t *server,
+                                                        const uint8_t (*goal_id)[16],
+                                                        enum nros_goal_status_t status,
+                                                        const uint8_t *result_cdr,
+                                                        size_t result_len);
 
 /**
  * Phase 122.3.c.6.d — L1 polling: peek a pending cancel-goal
@@ -4911,14 +5007,14 @@ nros_ret_t nros_action_server_complete_goal_raw(struct nros_action_server_t *ser
  * negative `nros_ret_t` on error.
  *
  * After a successful peek, call
- * `nros_action_server_send_cancel_reply_raw` with the recorded
+ * `nros_polling_action_server_send_cancel_reply_raw` with the recorded
  * `sequence_number` and the list of goals to accept-cancel.
  */
 NROS_PUBLIC
-int32_t nros_action_server_try_recv_cancel_request_raw(struct nros_action_server_t *server,
-                                                       uint8_t (*goal_id_out)[16],
-                                                       int64_t *sequence_number_out,
-                                                       enum nros_goal_status_t *current_status_out);
+int32_t nros_polling_action_server_try_recv_cancel_request_raw(struct nros_polling_action_server_t *server,
+                                                               uint8_t (*goal_id_out)[16],
+                                                               int64_t *sequence_number_out,
+                                                               enum nros_goal_status_t *current_status_out);
 
 /**
  * Phase 122.3.c.6.d — L1 polling: reply to a cancel-goal request
@@ -4930,11 +5026,11 @@ int32_t nros_action_server_try_recv_cancel_request_raw(struct nros_action_server
  * entirely.
  */
 NROS_PUBLIC
-nros_ret_t nros_action_server_send_cancel_reply_raw(struct nros_action_server_t *server,
-                                                    int64_t sequence_number,
-                                                    enum nros_cancel_return_code_t return_code,
-                                                    const uint8_t (*accepted)[16],
-                                                    size_t accepted_count);
+nros_ret_t nros_polling_action_server_send_cancel_reply_raw(struct nros_polling_action_server_t *server,
+                                                            int64_t sequence_number,
+                                                            enum nros_cancel_return_code_t return_code,
+                                                            const uint8_t (*accepted)[16],
+                                                            size_t accepted_count);
 
 /**
  * Phase 122.3.c.6.b — L1 polling: serve a pending get_result query.
@@ -4947,9 +5043,9 @@ nros_ret_t nros_action_server_send_cancel_reply_raw(struct nros_action_server_t 
  * negative `nros_ret_t` on error.
  */
 NROS_PUBLIC
-int32_t nros_action_server_try_handle_get_result_raw(struct nros_action_server_t *server,
-                                                     const uint8_t *default_result_cdr,
-                                                     size_t default_result_len);
+int32_t nros_polling_action_server_try_handle_get_result_raw(struct nros_polling_action_server_t *server,
+                                                             const uint8_t *default_result_cdr,
+                                                             size_t default_result_len);
 
 /**
  * Phase 122.3.c.6.e — register a C wake callback on the
@@ -4958,10 +5054,10 @@ int32_t nros_action_server_try_handle_get_result_raw(struct nros_action_server_t
  * server and not move.
  */
 NROS_PUBLIC
-nros_ret_t nros_action_server_set_goal_wake_callback(struct nros_action_server_t *server,
-                                                     struct nros_wake_state_t *state,
-                                                     void (*cb)(void*),
-                                                     void *ctx);
+nros_ret_t nros_polling_action_server_set_goal_wake_callback(struct nros_polling_action_server_t *server,
+                                                             struct nros_wake_state_t *state,
+                                                             void (*cb)(void*),
+                                                             void *ctx);
 
 /**
  * Phase 122.3.c.6.e — register a C wake callback on the
@@ -4970,20 +5066,20 @@ nros_ret_t nros_action_server_set_goal_wake_callback(struct nros_action_server_t
  * event-driven cancel handling.
  */
 NROS_PUBLIC
-nros_ret_t nros_action_server_set_cancel_wake_callback(struct nros_action_server_t *server,
-                                                       struct nros_wake_state_t *state,
-                                                       void (*cb)(void*),
-                                                       void *ctx);
+nros_ret_t nros_polling_action_server_set_cancel_wake_callback(struct nros_polling_action_server_t *server,
+                                                               struct nros_wake_state_t *state,
+                                                               void (*cb)(void*),
+                                                               void *ctx);
 
 /**
  * Phase 122.3.c.6.e — register a C wake callback on the
  * get_result channel of an L1 polling-mode action server.
  */
 NROS_PUBLIC
-nros_ret_t nros_action_server_set_get_result_wake_callback(struct nros_action_server_t *server,
-                                                           struct nros_wake_state_t *state,
-                                                           void (*cb)(void*),
-                                                           void *ctx);
+nros_ret_t nros_polling_action_server_set_get_result_wake_callback(struct nros_polling_action_server_t *server,
+                                                                   struct nros_wake_state_t *state,
+                                                                   void (*cb)(void*),
+                                                                   void *ctx);
 
 /**
  * Register a callback for `NROS_EVENT_LIVELINESS_CHANGED`.
@@ -9272,9 +9368,9 @@ NROS_PUBLIC uint64_t nros_timer_get_period(const struct nros_timer_t *timer);
  * * OVERDUE. rcl's header: "a negative value indicates the timer call is
  *   overdue by that amount". Unsigned cannot express it, so lateness read as
  *   `0` — which is also what "fires now" reads as.
- * * the SOURCE OF TRUTH. It computed from `nros_timer_t::last_call_time_ns`,
- *   which `nros_timer_init` and `rcl_timer_reset` write and no dispatch path
- *   ever updates, so for any timer the executor was actually running the
+ * * the SOURCE OF TRUTH. It computed from `nros_timer_t::last_call_time_ns`
+ *   (removed by phase-487 W3), which `nros_timer_init` and `rcl_timer_reset`
+ *   wrote and no dispatch path ever updated, so for any timer the executor was actually running the
  *   answer was permanently `0` (issue 1049). It forwards to the arena now, the
  *   same way W5.c's [`nros_timer_get_time_since_last_call`] and
  *   [`rcl_timer_is_ready`] do, and the caller-supplied "now" is gone with it —
@@ -9362,10 +9458,10 @@ NROS_PUBLIC nros_ret_t rcl_timer_is_ready(const struct nros_timer_t *timer, bool
  *
  * Forwards to `Executor::timer_elapsed_us`, the arena's `elapsed_us`
  * counter. **This is why the accessor could not read `nros_timer_t` and had
- * to reach the executor:** `nros_timer_t::last_call_time_ns` is written by
+ * to reach the executor:** `nros_timer_t::last_call_time_ns` was written by
  * `nros_timer_init` and `rcl_timer_reset` and by nothing else — no
- * dispatch path updates it — so a struct-local computation answers `0` for
- * every timer that has ever fired.
+ * dispatch path updated it — so a struct-local computation answered `0` for
+ * every timer that had ever fired. phase-487 W3 removed the field.
  *
  * **Divergence from rcl, inherited:** the executor's timer accounting is
  * MICROSECOND-based (issue #505), so the nanosecond value this reports is a
