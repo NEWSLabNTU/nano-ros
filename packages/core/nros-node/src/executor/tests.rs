@@ -3411,7 +3411,7 @@ fn use_sim_time_attaches_and_detaches_the_clock_source() {
          node table entry that does not exist"
     );
 
-    drop(executor.create_node("sim_node").expect("create node"));
+    let _ = executor.create_node("sim_node").expect("create node");
     let _ = executor.spin_once(core::time::Duration::from_millis(0));
     assert!(
         executor.ros_time_source_installed(),
@@ -3482,7 +3482,7 @@ fn use_sim_time_follows_the_store_verdict_not_the_caller() {
     let _sim_time = SimTimeGuard::acquire();
     let session = MockSession::new();
     let mut executor: Executor = executor_with_clock(session);
-    drop(executor.create_node("verdict_node").expect("create node"));
+    let _ = executor.create_node("verdict_node").expect("create node");
 
     // Accepted `true` attaches.
     assert!(
@@ -3578,11 +3578,9 @@ fn use_sim_time_declared_with_a_descriptor_attaches_the_clock_source() {
     let _sim_time = SimTimeGuard::acquire();
     let session = MockSession::new();
     let mut executor: Executor = executor_with_clock(session);
-    drop(
-        executor
-            .create_node("descriptor_node")
-            .expect("create node"),
-    );
+    let _ = executor
+        .create_node("descriptor_node")
+        .expect("create node");
 
     let descriptor =
         nros_params::ParameterDescriptor::new("use_sim_time", nros_params::ParameterType::Bool)
@@ -3893,7 +3891,7 @@ fn use_sim_time_with_no_clock_sample_is_reported_exactly_once() {
         executor.declare_parameter("use_sim_time", nros_params::ParameterValue::Bool(true)),
         "the app's own declaration must be accepted"
     );
-    drop(executor.create_node("silent_sim").expect("create node"));
+    let _ = executor.create_node("silent_sim").expect("create node");
     let _ = executor.spin_once(core::time::Duration::from_millis(0));
     assert!(
         executor.ros_time_source_installed(),
@@ -4024,7 +4022,7 @@ fn use_sim_time_is_declared_on_a_node_that_never_named_it() {
     // The auto-declared default is NOT a statement by anyone: it must not touch
     // the process-global gate and must not attach a source. An image where
     // every executor wrote its default onto that gate is issue 1104.
-    drop(executor.create_node("plain").expect("create node"));
+    let _ = executor.create_node("plain").expect("create node");
     let _ = executor.spin_once(core::time::Duration::from_millis(0));
     assert!(
         !executor.ros_time_source_installed(),
@@ -4141,7 +4139,7 @@ fn use_sim_time_is_declared_by_registering_the_parameter_services_alone() {
     // The six service names are built from the EXECUTOR's identity, which
     // `from_session_with` does not take from the config the way `open` does.
     executor.set_node_identity("bare", "/");
-    drop(executor.create_node("bare").expect("create node"));
+    let _ = executor.create_node("bare").expect("create node");
     executor
         .register_parameter_services()
         .expect("mock services register");
@@ -4291,7 +4289,7 @@ fn an_apps_own_use_sim_time_declaration_beats_the_auto_declared_default() {
 
     // And it is a real declaration, not just a stored value: it attaches the
     // source, which the seeded default deliberately does not.
-    drop(executor.create_node("app").expect("create node"));
+    let _ = executor.create_node("app").expect("create node");
     let _ = executor.spin_once(core::time::Duration::from_millis(0));
     assert!(
         executor.ros_time_source_installed(),
@@ -7297,7 +7295,7 @@ fn test_node_service_client_with_qos() {
     let mut node = executor.create_node("n").unwrap();
     let q = QoSProfile::default().reliable().keep_last(7);
     let _srv = node
-        .create_service_with_qos::<TestService>("/svc", q)
+        .create_polling_service_with_qos::<TestService>("/svc", q)
         .expect("service with qos");
     let _cli = node
         .create_client_with_qos::<TestService>("/svc", q)
@@ -9466,14 +9464,14 @@ fn create_node_registers_and_dedups_by_name() {
     );
 
     let ns: heapless::String<64> = executor.namespace.clone();
-    drop(executor.create_node("talker").unwrap());
+    let _ = executor.create_node("talker").unwrap();
     let first = executor
         .node_id_by_name("talker", ns.as_str())
         .expect("create_node must put the node in the table");
 
     // The second call is the one that used to hand out an unregistered
     // duplicate. It must reuse the record, not push a second one.
-    drop(executor.create_node("talker").unwrap());
+    let _ = executor.create_node("talker").unwrap();
     let second = executor
         .node_id_by_name("talker", ns.as_str())
         .expect("still registered");
@@ -9483,7 +9481,7 @@ fn create_node_registers_and_dedups_by_name() {
     );
 
     // A DIFFERENT name is a different node and does get its own record.
-    drop(executor.create_node("listener").unwrap());
+    let _ = executor.create_node("listener").unwrap();
     let other = executor
         .node_id_by_name("listener", ns.as_str())
         .expect("a distinct name registers separately");
@@ -11034,22 +11032,22 @@ fn every_entity_handle_reads_back_its_own_name() {
         .create_publisher::<TestMsg>("/typed_pub")
         .expect("typed publisher");
     let subscription = node
-        .create_subscription::<TestMsg>("/typed_sub")
+        .create_polling_subscription::<TestMsg>("/typed_sub")
         .expect("typed subscription");
     let raw_publisher = node
         .create_publisher_raw("/raw_pub", "test/msg/TestMsg", "test_hash")
         .expect("raw publisher");
     let raw_subscription = node
-        .create_subscription_raw("/raw_sub", "test/msg/TestMsg", "test_hash")
+        .create_polling_subscription_raw("/raw_sub", "test/msg/TestMsg", "test_hash")
         .expect("raw subscription");
     let server = node
-        .create_service::<TestService>("/typed_server")
+        .create_polling_service::<TestService>("/typed_server")
         .expect("typed service server");
     let client = node
         .create_client::<TestService>("/typed_client")
         .expect("typed service client");
     let raw_server = node
-        .create_service_raw("/raw_server", "test/srv/TestService", "test_hash")
+        .create_polling_service_raw("/raw_server", "test/srv/TestService", "test_hash")
         .expect("raw service server");
     let raw_client = node
         .create_client_raw("/raw_client", "test/srv/TestService", "test_hash")
@@ -11080,7 +11078,7 @@ fn the_matched_counts_reach_their_own_graph_counter() {
             .create_publisher::<TestMsg>("/counted")
             .expect("publisher");
         let subscription = node
-            .create_subscription::<TestMsg>("/counted")
+            .create_polling_subscription::<TestMsg>("/counted")
             .expect("subscription");
         (publisher, subscription)
     };
@@ -11114,7 +11112,7 @@ fn a_backend_matched_count_wins_over_the_graph_count() {
             .create_publisher::<TestMsg>("/counted")
             .expect("publisher");
         let subscription = node
-            .create_subscription::<TestMsg>("/counted")
+            .create_polling_subscription::<TestMsg>("/counted")
             .expect("subscription");
         (publisher, subscription)
     };
@@ -11146,7 +11144,7 @@ fn a_backend_with_no_graph_does_not_report_a_count_of_zero() {
             .create_publisher::<TestMsg>("/counted")
             .expect("publisher");
         let subscription = node
-            .create_subscription::<TestMsg>("/counted")
+            .create_polling_subscription::<TestMsg>("/counted")
             .expect("subscription");
         (publisher, subscription)
     };
