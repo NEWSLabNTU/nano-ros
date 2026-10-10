@@ -17,8 +17,8 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
 
     // Source dir — default to the pinned submodule; user override wins.
-    let src =
-        nros_build_paths::env_or_repo_path("CYCLONEDDS_SOURCE_DIR", "third-party/dds/cyclonedds");
+    let src = nros_build_paths::locate::try_source("cyclonedds-src")
+        .unwrap_or_else(|_| nros_build_paths::repo_root().join("third-party/dds/cyclonedds"));
     println!("cargo:rerun-if-changed={}", src.display());
     if !src.join("CMakeLists.txt").is_file() {
         panic!(

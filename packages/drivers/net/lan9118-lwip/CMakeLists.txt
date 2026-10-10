@@ -2,6 +2,11 @@ cmake_minimum_required(VERSION 3.22)
 project(lan9118-lwip LANGUAGES C)
 
 # LWIP_DIR is required — consumer must set it (or inherit from env)
+# phase-484 W2c — `nros locate` first (RFC-0103 D4), when this is built inside
+# a nano-ros configure that loaded it; a standalone configure keeps `-D`/env.
+if(NOT DEFINED LWIP_DIR AND COMMAND nros_locate_var)
+    nros_locate_var(LWIP_DIR)
+endif()
 if(NOT DEFINED LWIP_DIR)
     if(DEFINED ENV{LWIP_DIR})
         set(LWIP_DIR $ENV{LWIP_DIR})
