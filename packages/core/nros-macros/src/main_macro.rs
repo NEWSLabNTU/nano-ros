@@ -684,6 +684,11 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // issue 0274 — `[param_services] node = "<name>"`: executor identity for
     // the parameter services on multi-node entries (model arm).
     let mut param_services_node: Option<String> = None;
+    // Issue 1766 follow-up — on the LAUNCH arm, the const-asserts for every
+    // capability axis the model's `execution.features` declares, except the two
+    // whose wiring calls assert their own feature (`param_services_call`,
+    // `lifecycle_call_tokens`). The Form-1 arm's twin is `leaf_axis_asserts`.
+    let mut launch_axis_asserts = proc_macro2::TokenStream::new();
     // phase-267 W1c/C4 — when `system.toml` declares a `[[bridge]]` AND `nros sync`
     // has generated `<bringup>/nros-bridge.toml`, the entry is a cross-RMW bridge:
     // the macro emits a `run_from_config_str(include_str!(<that file>))` main
@@ -1210,24 +1215,10 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         // Lifecycle autostart + param-services capability from the model.
         // `lifecycle_code` is the u8 boot-transition level (0 none / 1
         // configure / 2 active), same encoding as `read_lifecycle_autostart`.
-        lifecycle_code = model
-            .structure
-            .nodes
-            .values()
-            .find_map(|n| n.lifecycle_autostart)
-            .map(|a| {
-                use ros_launch_manifest_model::Autostart;
-                match a {
-                    Autostart::None => 0u8,
-                    Autostart::Configure => 1,
-                    Autostart::Active => 2,
-                }
-            });
-        param_services_enabled = model
-            .execution
-            .features
-            .iter()
-            .any(|f| f == "param_services");
+        let model_caps = model_capabilities(&model);
+        lifecycle_code = model_caps.lifecycle_code;
+        param_services_enabled = model_caps.param_services;
+        launch_axis_asserts = model_axis_assert_tokens(&model_caps);
         // issue 0274 (walls 2+3) — `play_launch resolve` does not populate
         // `execution.features` yet, so ALSO read `[param_services]` straight
         // from the bringup's system.toml. The optional `node = "<name>"`
@@ -1448,19 +1439,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // `register` calls (the executor is built, the nodes are installed). No-op token
     // stream when absent. `apply_lifecycle` is a no-op unless the Entry enabled
     // `nros/lifecycle-services`, so this is inert without the feature.
-    let lifecycle_call: proc_macro2::TokenStream = match lifecycle_code {
-        Some(code) => quote! {
-            // issue 0460 — carry the reason. Not a `log::` call: an entry crate
-            // need not depend on `log` (`native_rust_qos_entry` does not).
-            runtime.apply_lifecycle(#code).map_err(|reason| {
-                ::nros::__macro_support::nros_platform::RuntimeError::Capability {
-                    name: "lifecycle",
-                    reason,
-                }
-            })?;
-        },
-        None => quote! {},
-    };
+    let lifecycle_call = lifecycle_call_tokens(lifecycle_code);
 
     // Phase 264 W4b -- `[param_services]` wiring: when `system.toml` declares it, register
     // the 6 ROS 2 parameter services and create the param store, BEFORE the per-node
@@ -1526,7 +1505,8 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // Issue 1766 — a Form-1 leaf's per-axis feature asserts ride in front of
     // the parameter services, so every arm that wires the capabilities also
     // checks them (the `const _` items are legal inside the closure body).
-    let param_services_call = quote! { #leaf_axis_asserts #param_services_call };
+    let param_services_call =
+        quote! { #leaf_axis_asserts #launch_axis_asserts #param_services_call };
 
     // Phase 228.G (RFC-0032 §5) — the OwnedSpin entry call. Multi-tier
     // (`[tiers.*]` present, more than the synthesized `default` tier) emits
@@ -3075,23 +3055,137 @@ fn leaf_axis_assert_tokens(
     let asserts = caps
         .axes
         .iter()
-        .filter(|a| a.declared != "param_services")
+        // `param_services_call` and `lifecycle_call_tokens` assert their own
+        // feature on every arm, so neither is reported twice.
+        .filter(|a| a.declared != "param_services" && a.declared != "lifecycle")
         .map(|a| {
-            let flag = Ident::new(a.compiled_flag, Span::call_site());
-            let msg = LitStr::new(
-                &format!(
-                    "this leaf declares `{}` in `[system] features` but this `nros` build does \
-                     not carry the `{}` feature, so the axis would be silently dropped. Add it \
-                     to this pkg's nros dependency features (issue 1766).",
-                    a.declared, a.nros_feature
-                ),
-                Span::call_site(),
-            );
-            quote! {
-                const _: () = ::core::assert!(::nros::__macro_support::#flag, #msg);
-            }
+            axis_assert_tokens(
+                a,
+                &format!("this leaf declares `{}` in `[system] features`", a.declared),
+            )
         });
     quote! { #( #asserts )* }
+}
+
+/// One `const _` assert that this `nros` build carries `axis`'s feature;
+/// `declared` says where the system declared the axis.
+fn axis_assert_tokens(
+    axis: &nros_orchestration_ir::leaf_capabilities::LeafAxis,
+    declared: &str,
+) -> proc_macro2::TokenStream {
+    let flag = Ident::new(axis.compiled_flag, Span::call_site());
+    let msg = LitStr::new(
+        &format!(
+            "{declared} but this `nros` build does not carry the `{}` feature, so the axis \
+             would be silently dropped. Add it to this pkg's nros dependency features \
+             (issue 1766).",
+            axis.nros_feature
+        ),
+        Span::call_site(),
+    );
+    quote! {
+        const _: () = ::core::assert!(::nros::__macro_support::#flag, #msg);
+    }
+}
+
+/// Issue 1766 follow-up — the capabilities a resolved SystemModel declares,
+/// read the way the launch arm wires them.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct ModelCapabilities {
+    /// The first node `lifecycle_autostart` (0 none / 1 configure / 2 active,
+    /// the `apply_lifecycle` encoding).
+    lifecycle_code: Option<u8>,
+    /// `param_services` is in `execution.features`.
+    param_services: bool,
+    /// Every capability axis `execution.features` names, de-duplicated.
+    axes: Vec<&'static nros_orchestration_ir::leaf_capabilities::LeafAxis>,
+}
+
+fn model_capabilities(model: &ros_launch_manifest_model::SystemModel) -> ModelCapabilities {
+    use ros_launch_manifest_model::Autostart;
+    let lifecycle_code = model
+        .structure
+        .nodes
+        .values()
+        .find_map(|n| n.lifecycle_autostart)
+        .map(|a| match a {
+            Autostart::None => 0u8,
+            Autostart::Configure => 1,
+            Autostart::Active => 2,
+        });
+    let mut axes: Vec<&'static nros_orchestration_ir::leaf_capabilities::LeafAxis> = Vec::new();
+    for f in &model.execution.features {
+        if let Some(a) = nros_orchestration_ir::leaf_capabilities::axis(f)
+            && !axes.iter().any(|x| x.declared == a.declared)
+        {
+            axes.push(a);
+        }
+    }
+    ModelCapabilities {
+        lifecycle_code,
+        param_services: model
+            .execution
+            .features
+            .iter()
+            .any(|f| f == "param_services"),
+        axes,
+    }
+}
+
+/// Issue 1766 follow-up — the launch arm's per-axis feature asserts.
+///
+/// `param_services` is asserted by `param_services_call`, and a WIRED
+/// lifecycle by `lifecycle_call_tokens`, so neither is repeated. A model that
+/// names `lifecycle` in `execution.features` while no node carries an
+/// autostart wires nothing, so that declaration is asserted here.
+fn model_axis_assert_tokens(caps: &ModelCapabilities) -> proc_macro2::TokenStream {
+    let asserts = caps
+        .axes
+        .iter()
+        .filter(|a| a.declared != "param_services")
+        .filter(|a| !(a.declared == "lifecycle" && caps.lifecycle_code.is_some()))
+        .map(|a| {
+            axis_assert_tokens(
+                a,
+                &format!(
+                    "this system declares `{}` in its model's `execution.features`",
+                    a.declared
+                ),
+            )
+        });
+    quote! { #( #asserts )* }
+}
+
+/// Phase 264 W2 — lifecycle wiring, on EVERY arm: register the REP-2002
+/// services and drive boot autostart right after the per-node `register`
+/// calls. Empty when nothing declares lifecycle.
+///
+/// Issue 1766 follow-up — it carries the `LIFECYCLE_SERVICES_ENABLED` assert,
+/// as `param_services_call` carries `PARAM_SERVICES_ENABLED` (phase-314).
+/// `apply_lifecycle` is a no-op without `nros/lifecycle-services`, so a
+/// declaration without the feature built, booted, and registered nothing. The
+/// launch arm (a node's `lifecycle_autostart`) had no assert at all.
+fn lifecycle_call_tokens(lifecycle_code: Option<u8>) -> proc_macro2::TokenStream {
+    let Some(code) = lifecycle_code else {
+        return quote! {};
+    };
+    quote! {
+        const _: () = ::core::assert!(
+            ::nros::__macro_support::LIFECYCLE_SERVICES_ENABLED,
+            "this system declares `lifecycle` (a node's lifecycle autostart, or \
+             `[system] features`) but this `nros` build does not carry the \
+             `lifecycle-services` feature, so the lifecycle services would be silently \
+             dropped. Add it to this pkg's nros dependency features (issue 1766)."
+        );
+        // issue 0460 — carry the reason. Not a `log::` call: an entry crate
+        // need not depend on `log` (`native_rust_qos_entry` does not).
+        runtime.apply_lifecycle(#code).map_err(|reason| {
+            ::nros::__macro_support::nros_platform::RuntimeError::Capability {
+                name: "lifecycle",
+                reason,
+            }
+        })?;
+    }
 }
 
 /// Issue 0257 — how the emitted entry sizes its executor.
@@ -5595,5 +5689,87 @@ mod leaf_axis_tests {
         // RTIC registers no runtime services: refused, not dropped.
         let e = expand("", "rtic-mps2-an385", "features = [\"param_services\"]").unwrap_err();
         assert!(e.contains("RTIC") && e.contains("param_services"), "{e}");
+    }
+}
+
+#[cfg(test)]
+mod launch_axis_tests {
+    //! Issue 1766 follow-up — the LAUNCH arm (`nros::main!(launch = …)`) wires
+    //! lifecycle from a node's `lifecycle_autostart`, and until now asserted no
+    //! feature for it: an entry without `nros/lifecycle-services` built, booted
+    //! and registered no lifecycle services. These cases read a SystemModel the
+    //! way the launch arm does and check the tokens it emits.
+    use super::*;
+    use ros_launch_manifest_model::{Autostart, NodeInstance, SystemModel};
+
+    fn model(autostart: Option<Autostart>, features: &[&str]) -> SystemModel {
+        let mut m = SystemModel::default();
+        m.structure.nodes.insert(
+            "/talker".into(),
+            NodeInstance {
+                lifecycle_autostart: autostart,
+                ..NodeInstance::default()
+            },
+        );
+        m.execution.features = features.iter().map(|f| f.to_string()).collect();
+        m
+    }
+
+    /// The emitted capability tokens of a launch-arm entry over `m`.
+    fn emitted(m: &SystemModel) -> String {
+        let caps = model_capabilities(m);
+        let lifecycle = lifecycle_call_tokens(caps.lifecycle_code);
+        let axes = model_axis_assert_tokens(&caps);
+        quote! { #axes #lifecycle }.to_string()
+    }
+
+    /// The case this follow-up closes: a node with a lifecycle autostart is
+    /// wired AND asserted, so a build without the feature is a named compile
+    /// error instead of a silent drop.
+    #[test]
+    fn a_lifecycle_node_is_asserted_on_the_launch_arm() {
+        let out = emitted(&model(Some(Autostart::Active), &[]));
+        assert!(out.contains("apply_lifecycle (2u8)"), "not wired:\n{out}");
+        assert!(
+            out.contains("LIFECYCLE_SERVICES_ENABLED"),
+            "no feature assert:\n{out}"
+        );
+        assert!(
+            out.contains("lifecycle-services"),
+            "message names no feature:\n{out}"
+        );
+        // Asserted once, not once per arm that reaches it.
+        assert_eq!(
+            out.matches("LIFECYCLE_SERVICES_ENABLED").count(),
+            1,
+            "{out}"
+        );
+    }
+
+    /// The sweep: every other axis the model's `execution.features` declares
+    /// is asserted, including `lifecycle` with no node to wire it.
+    #[test]
+    fn every_declared_model_axis_is_asserted() {
+        let out = emitted(&model(None, &["rosout", "safety", "lifecycle"]));
+        for flag in [
+            "ROSOUT_ENABLED",
+            "SAFETY_E2E_ENABLED",
+            "LIFECYCLE_SERVICES_ENABLED",
+        ] {
+            assert!(out.contains(flag), "no `{flag}` assert:\n{out}");
+        }
+        assert!(!out.contains("apply_lifecycle"), "nothing to wire:\n{out}");
+        // `param_services` is asserted by `param_services_call`, not here.
+        let out = emitted(&model(None, &["param_services"]));
+        assert!(!out.contains("PARAM_SERVICES_ENABLED"), "{out}");
+        assert!(model_capabilities(&model(None, &["param_services"])).param_services);
+    }
+
+    /// Negative control: a model declaring nothing emits none of it, so the
+    /// assertions above are about the declaration.
+    #[test]
+    fn a_model_with_no_capabilities_emits_nothing() {
+        let out = emitted(&model(None, &[]));
+        assert!(out.trim().is_empty(), "emitted:\n{out}");
     }
 }
