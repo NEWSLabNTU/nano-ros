@@ -14,6 +14,7 @@
 //! | `CONFIG_NROS_RMW_<X>=y` | the image's `rmw` |
 //! | `CONFIG_NROS_{C,CPP,RUST}_API=y` | the package's language |
 //! | `CONFIG_NROS_ZENOH_LOCATOR` / `CONFIG_NROS_XRCE_AGENT_{ADDR,PORT}` | the image's `locator` |
+//! | `CONFIG_NROS_DOMAIN_ID` | the image's `domain_id` (else `[defaults]`, else `[system]`) |
 //! | one row per `[image.<id>] env` row whose Kconfig symbol EXISTS | the image's `env` (and what its `transport` implies) |
 //!
 //! The env↔Kconfig pairing is `nros_zephyr_build::kconfig_key_for` — the
@@ -297,6 +298,24 @@ pub fn render(
         )?;
     }
 
+    // The ROS domain. `leaf_system` already resolved image > `[defaults]` >
+    // `[system]`; without this row a stated domain reached no Zephyr image
+    // and every one built on the Kconfig default — the D10 promise broken for
+    // the one deploy fact that decides who an image can hear.
+    if let Some(domain) = leaf.network.domain_id {
+        if syms.get("NROS_DOMAIN_ID").is_some() {
+            push(
+                &mut out,
+                "NROS_DOMAIN_ID",
+                domain.to_string(),
+                format!("domain_id = {domain}"),
+            )?;
+        } else {
+            out.cargo_rows
+                .insert("NROS_DOMAIN_ID".to_string(), domain.to_string());
+        }
+    }
+
     // The deploy endpoint.
     if let Some(locator) = leaf.network.locator.as_deref() {
         let from = format!("locator = \"{locator}\"");
@@ -417,6 +436,9 @@ endchoice
 config NROS_EXECUTOR_MAX_CBS
     int \"cbs\"
     default -1
+config NROS_DOMAIN_ID
+    int \"domain\"
+    default 0
 config NROS_LOG_MAX_LEVEL
     int \"ceiling\"
 if NROS_RMW_ZENOH
@@ -583,6 +605,36 @@ endif # NROS
         );
         let e = render(&bad, None, &syms).unwrap_err();
         assert!(e.contains("udp/<host>:<port>"), "{e}");
+    }
+
+    /// The image's domain reaches `CONFIG_NROS_DOMAIN_ID`, resolved image over
+    /// `[system]`, and an `env` row stating it too is refused as a second source.
+    #[test]
+    fn the_domain_id_becomes_the_kconfig_domain() {
+        let syms = KconfigSymbols::parse(KCONFIG);
+        let (_d, l) = leaf(
+            "[system]\nname = \"t\"\nrmw = \"zenoh\"\ndomain_id = 3\n\n\
+             [image.zephyr]\nboard = \"zephyr\"\ndomain_id = 7\n",
+            &[],
+        );
+        let m = rows(&render(&l, None, &syms).unwrap());
+        assert_eq!(m["CONFIG_NROS_DOMAIN_ID"], "7", "the image's own wins");
+
+        let (_d, l) = leaf(
+            "[system]\nname = \"t\"\nrmw = \"zenoh\"\ndomain_id = 3\n\n\
+             [image.zephyr]\nboard = \"zephyr\"\n",
+            &[],
+        );
+        let m = rows(&render(&l, None, &syms).unwrap());
+        assert_eq!(m["CONFIG_NROS_DOMAIN_ID"], "3", "else the system's");
+
+        let (_d, twice) = leaf(
+            "[system]\nname = \"t\"\nrmw = \"zenoh\"\ndomain_id = 3\n\n\
+             [image.zephyr]\nboard = \"zephyr\"\nenv = { NROS_DOMAIN_ID = \"9\" }\n",
+            &[],
+        );
+        let e = render(&twice, None, &syms).unwrap_err();
+        assert!(e.contains("say it once"), "{e}");
     }
 
     /// The refusals name the row: a value the symbol's type cannot hold, a
