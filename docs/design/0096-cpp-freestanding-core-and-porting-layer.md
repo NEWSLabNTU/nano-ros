@@ -710,7 +710,7 @@ executor, and its C struct holds the arena handle, not the entity.** The C
 user still DECLARES the struct (`nros_subscription_t sub;`), which is rclc's
 idiom, since `rcl_subscription_t` is also caller-declared; what changes is
 the struct's content. Implemented by
-[phase-487](../roadmap/phase-487-c-api-dispatch-entities-are-arena-handles.md).
+[phase-487](../roadmap/archived/phase-487-c-api-dispatch-entities-are-arena-handles.md).
 
 **What a dispatched C struct keeps.** The arena handle `(handle_id, _executor)`
 and, until registration, the entity's DESCRIPTION: topic or service name, type
