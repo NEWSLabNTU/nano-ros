@@ -5,7 +5,13 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
 set(REPO_ROOT "${CMAKE_CURRENT_LIST_DIR}/../..")
-set(FREERTOS_KERNEL_PATH "${REPO_ROOT}/third-party/freertos/kernel")
+# `-DFREERTOS_DIR=` from the recipe (`nros locate freertos-kernel`, RFC-0103
+# D5 — possibly the store copy), else this checkout's submodule.
+if(DEFINED FREERTOS_DIR)
+    set(FREERTOS_KERNEL_PATH "${FREERTOS_DIR}")
+else()
+    set(FREERTOS_KERNEL_PATH "${REPO_ROOT}/third-party/freertos/kernel")
+endif()
 
 # 1. FreeRTOS-Kernel config target: points the kernel at our
 #    FreeRTOSConfig.h.

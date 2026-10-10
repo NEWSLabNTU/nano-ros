@@ -954,7 +954,7 @@ pub mod locate {
                 self.name
             )?;
             for s in &self.trace {
-                writeln!(f, "  {:<9} {}", s.rung, s.saw)?;
+                writeln!(f, "  {:<10} {}", s.rung, s.saw)?;
             }
             write!(f, "run: nros setup --source {}", self.name)
         }
