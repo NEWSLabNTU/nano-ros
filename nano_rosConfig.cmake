@@ -45,6 +45,7 @@ if(DEFINED ZEPHYR_BASE AND TARGET zephyr_interface)
     # deploy="zephyr" (board/RMW stay with Zephyr's own BOARD/Kconfig axes).
     set(NANO_ROS_PLATFORM zephyr)
     set(NROS_DEPLOY "${NANO_ROS_EXPORT_DEPLOY}")
+    set(NROS_LEAF_IMAGE_ID "${NANO_ROS_EXPORT_IMAGE}")
     set(NROS_BOARD  "${NANO_ROS_EXPORT_BOARD}")
     set(NROS_FIND_PACKAGE_VALIDATE_ONLY TRUE)
     # find_package(<msg_pkg>) validate modules, WITHOUT the full ament surface
@@ -166,6 +167,7 @@ if(NANO_ROS_EXPORT_FOUND)
     endif()
     # The verbs pick DEPLOY/BOARD up from these directory-scope vars.
     set(NROS_DEPLOY "${NANO_ROS_EXPORT_DEPLOY}")
+    set(NROS_LEAF_IMAGE_ID "${NANO_ROS_EXPORT_IMAGE}")
     set(NROS_BOARD  "${NANO_ROS_EXPORT_BOARD}")
 endif()
 

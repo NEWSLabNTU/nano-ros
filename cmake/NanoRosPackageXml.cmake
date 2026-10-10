@@ -187,6 +187,7 @@ function(nano_ros_read_package_export)
     endif()
 
     set(NANO_ROS_EXPORT_DEPLOY "" PARENT_SCOPE)
+    set(NANO_ROS_EXPORT_IMAGE  "" PARENT_SCOPE)
     set(NANO_ROS_EXPORT_BOARD  "" PARENT_SCOPE)
     set(NANO_ROS_EXPORT_RMW    "" PARENT_SCOPE)
     set(NANO_ROS_EXPORT_FOUND  FALSE PARENT_SCOPE)
@@ -404,6 +405,11 @@ function(nano_ros_read_leaf_system)
     set(_kinds "${NANO_ROS_EXPORT_USES_KINDS}")
     set(NANO_ROS_EXPORT_FOUND TRUE PARENT_SCOPE)
     set(NANO_ROS_EXPORT_DEPLOY "${_NROS_LEAF_DEPLOY}" PARENT_SCOPE)
+    # The `[image.<id>]` this leaf resolved to. NOT the deploy token above,
+    # which is the PLATFORM (`threadx`), while every lookup keyed by the
+    # leaf's own tables needs the id (`threadx-linux`) — see
+    # `nros_resolve_board_facts` (phase-484 W2b).
+    set(NANO_ROS_EXPORT_IMAGE "${_NROS_LEAF_IMAGE}" PARENT_SCOPE)
     set(NANO_ROS_EXPORT_BOARD "${_board}" PARENT_SCOPE)
     set(NANO_ROS_EXPORT_RMW "${_NROS_LEAF_RMW}" PARENT_SCOPE)
     # board= and rmw= are provider selections (RFC-0087 D3) — desugar them the

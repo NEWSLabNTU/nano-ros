@@ -16,8 +16,8 @@
 
 use core::fmt::Write as _;
 use nros::{
-    Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult,
-    ParameterDefault, TimerDuration,
+    Callback, CallbackCtx, Component, DeclarativeNode, ExecutableNode, NodeContext, NodeOptions,
+    NodeResult, ParameterDefault, TimerDuration,
 };
 
 use std_msgs::msg::String as StringMsg;
@@ -25,7 +25,7 @@ use std_msgs::msg::String as StringMsg;
 /// Talker with one declared parameter.
 pub struct ParamTalker;
 
-impl Node for ParamTalker {
+impl Component for ParamTalker {
     const NAME: &'static str = "param_talker";
 
     // One publisher; the parameter services are the executor's, not a cell's.
