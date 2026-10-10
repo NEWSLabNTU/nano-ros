@@ -1971,6 +1971,9 @@ pub struct Executor<'s> {
     /// jitter is measured over. `None` until the first spin, and reset by
     /// `clear_release_jitter_stats` so a window starts clean.
     pub(crate) last_spin_entry_us: Option<u64>,
+    /// phase-474 I11 -- the release grid of a `spin_once(timeout)` loop with
+    /// no declared cadence. See [`ReleaseGrid`].
+    pub(crate) grid: ReleaseGrid,
     /// Jitter high-water at the previous `release-jitter-runtime` check, so
     /// the rule reports the DELTA. Same shape as `overruns_reported` on a
     /// timer header, and for the same reason: a maximum that has not moved
@@ -2234,6 +2237,11 @@ impl<'s> Executor<'s> {
             spin_quantization_us: 0,
             max_release_jitter_us: 0,
             last_spin_entry_us: None,
+            grid: ReleaseGrid {
+                period_us: 0,
+                next_us: 0,
+                skipped: 0,
+            },
             jitter_reported_us: 0,
             min_stack_headroom_bytes: 0,
             stack_headroom_reported: usize::MAX,
@@ -2362,6 +2370,21 @@ impl Executor<'static> {
         // forwarded to `from_session_ptr_in`.
         unsafe { Self::from_session_ptr_in(session_ptr, default_backing(sizing), sizing) }
     }
+}
+
+/// phase-474 I11 -- the release grid of a `spin_once(timeout)` loop with no
+/// declared cadence: the period it was built for (`0` = no grid yet), the next
+/// scheduled release, and the releases skipped because the loop came back a
+/// whole period or more after they were due (the timer `Skip` policy: the
+/// latest due point is served once, the older ones are dropped and counted,
+/// never released in a burst). The park is bounded by `next_us`, so a loop is
+/// released on `anchor + k * period` instead of `period` after its previous
+/// spin ended. Scales with no knob; named in the header-size budget.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct ReleaseGrid {
+    pub(crate) period_us: u64,
+    pub(crate) next_us: u64,
+    pub(crate) skipped: u32,
 }
 
 /// The two cadences a `period_us` timer alternates between under a `spin_us`
@@ -3059,29 +3082,70 @@ impl<'s> Executor<'s> {
     /// W3b.5 — install the `DeadlineAction::Fault` hook. Without one a
     /// fault-class deadline miss panics (watchdog-visible stop on
     /// embedded targets).
-    /// Record one `spin_once` entry against the caller's intended cadence.
+    /// Plan one `spin_once` against the caller's intended cadence, and return
+    /// the park budget in microseconds.
     ///
-    /// Late is `(now - last_entry) - timeout`, clamped at zero: arriving early
-    /// is not jitter, it is a poll that had nothing to wait for. A zero
-    /// timeout claims no cadence and is skipped entirely, which keeps
-    /// `Future::wait`-style busy spins out of the statistic.
-    fn record_release_jitter(&mut self, timeout: core::time::Duration) {
+    /// phase-474 I11 -- two cases:
+    ///
+    /// * **No declared cadence, non-zero timeout** (the generated entries'
+    ///   `spin_once(10)` loop, `spin`, `spin_period`): the timeout is the
+    ///   period and the loop runs on an absolute RELEASE GRID. The budget is
+    ///   the time to the next grid point, not a whole period from now, so the
+    ///   previous spin's work no longer pushes every later release back. A
+    ///   loop that comes back after its next point was due is released at
+    ///   once, late by the difference; one that comes back a whole period or
+    ///   more after it is released once for the LATEST due point and the
+    ///   older ones are skipped and counted -- the timer `Skip` policy, never
+    ///   a burst. Lateness is judged at the release (`record_grid_release`).
+    ///   A change of timeout re-anchors the grid at this entry.
+    /// * **A declared cadence** (`set_spin_nominal_us`, the tier loops that
+    ///   sleep between spins themselves): unchanged. Late is
+    ///   `(now - last_entry) - cadence`, clamped at zero, and the budget is
+    ///   the timeout.
+    ///
+    /// A zero timeout claims no cadence and is skipped entirely, which keeps
+    /// `Future::wait`-style busy spins out of the statistic and off the grid.
+    fn record_release_jitter(&mut self, timeout: core::time::Duration) -> u64 {
+        let timeout_us = timeout.as_micros().min(u64::MAX as u128) as u64;
+        if self.spin_nominal_declared_us == 0 {
+            if timeout_us == 0 {
+                return 0;
+            }
+            let Some(now) = self.now_us() else {
+                return timeout_us;
+            };
+            self.spin_nominal_us = timeout_us;
+            if self.grid.period_us != timeout_us {
+                // First periodic spin, or a new period: anchor here, so the
+                // first park is a whole period exactly as before.
+                self.grid.period_us = timeout_us;
+                self.grid.next_us = now.saturating_add(timeout_us);
+            } else if now >= self.grid.next_us.saturating_add(timeout_us) {
+                // The loop came back a whole period or more after its next
+                // release was due: serve the latest due point once and drop
+                // the ones before it. The first dropped point is a release
+                // that never happened, so its lateness at this moment (a
+                // period or more) is what the jitter rule judges.
+                let missed = (now - self.grid.next_us) / timeout_us;
+                self.note_dropped_release(now - self.grid.next_us);
+                self.grid.skipped = self
+                    .grid
+                    .skipped
+                    .saturating_add(missed.min(u32::MAX as u64) as u32);
+                self.grid.next_us = self
+                    .grid
+                    .next_us
+                    .saturating_add(missed.saturating_mul(timeout_us));
+            }
+            return self.grid.next_us.saturating_sub(now);
+        }
         // phase-474 I7 -- the violation reporter's own time since the last
         // sample is not a late release (see `flush_violation_reports`). Taken
         // first, so a spin that judges nothing does not carry it forward.
         let report_us = core::mem::take(&mut self.violations.reports.debt_us);
-        // A declared cadence wins over the timeout: see
-        // `spin_nominal_declared_us` for why they are different quantities.
-        let nominal_us = if self.spin_nominal_declared_us != 0 {
-            self.spin_nominal_declared_us
-        } else {
-            timeout.as_micros().min(u64::MAX as u128) as u64
-        };
-        if nominal_us == 0 {
-            return;
-        }
+        let nominal_us = self.spin_nominal_declared_us;
         let Some(now) = self.now_us() else {
-            return;
+            return timeout_us;
         };
         self.spin_nominal_us = nominal_us;
         if let Some(last) = self.last_spin_entry_us {
@@ -3097,6 +3161,67 @@ impl<'s> Executor<'s> {
             }
         }
         self.last_spin_entry_us = Some(now);
+        timeout_us
+    }
+
+    /// phase-474 I11 -- judge a grid release, at the clock read after the
+    /// park. A spin that wakes before its grid point (data arrived, a timer
+    /// or another source was due first) is not a release: it dispatches and
+    /// leaves the grid where it was. One that wakes at or after it is THE
+    /// release of that point, late by `now - grid.next_us` (less the
+    /// violation reporter's own time, phase-474 I7), and the grid advances by
+    /// one period. Points the park itself overslept by a whole period are
+    /// skipped at the next entry, not served in a burst.
+    fn record_grid_release(&mut self, now: u64) {
+        if self.spin_nominal_declared_us != 0 || self.grid.period_us == 0 {
+            return;
+        }
+        if now < self.grid.next_us {
+            return;
+        }
+        let report_us = core::mem::take(&mut self.violations.reports.debt_us);
+        let late = now
+            .saturating_sub(self.grid.next_us)
+            .saturating_sub(report_us);
+        self.total_wakes = self.total_wakes.saturating_add(1);
+        if late > 0 {
+            self.late_wakes = self.late_wakes.saturating_add(1);
+            if late > self.max_release_jitter_us {
+                self.max_release_jitter_us = late;
+            }
+        }
+        self.grid.next_us = self.grid.next_us.saturating_add(self.grid.period_us);
+        if now >= self.grid.next_us {
+            // The park overslept the following point(s) too. This wake serves
+            // one release; the points it ran past are skipped, not released
+            // back to back on the next spins.
+            let missed = (now - self.grid.next_us) / self.grid.period_us + 1;
+            self.grid.skipped = self
+                .grid
+                .skipped
+                .saturating_add(missed.min(u32::MAX as u64) as u32);
+            self.grid.next_us = self
+                .grid
+                .next_us
+                .saturating_add(missed.saturating_mul(self.grid.period_us));
+        }
+    }
+
+    /// The lateness of a grid release that was dropped rather than served,
+    /// into the high-water the jitter rule reads (not into the wake counts:
+    /// no wake happened).
+    fn note_dropped_release(&mut self, late_us: u64) {
+        let late = late_us.saturating_sub(core::mem::take(&mut self.violations.reports.debt_us));
+        if late > self.max_release_jitter_us {
+            self.max_release_jitter_us = late;
+        }
+    }
+
+    /// phase-474 I11 -- grid releases skipped since the last
+    /// `clear_release_jitter_stats`, because the loop came back after they
+    /// were due. Zero for a declared-cadence or zero-timeout caller.
+    pub fn skipped_releases(&self) -> u32 {
+        self.grid.skipped
     }
 
     /// Release-jitter statistics from the spin loop: worst lateness in
@@ -3126,6 +3251,7 @@ impl<'s> Executor<'s> {
         self.total_wakes = 0;
         self.last_spin_entry_us = None;
         self.jitter_reported_us = 0;
+        self.grid.skipped = 0;
     }
 
     pub fn set_fault_handler(&mut self, f: fn(&super::monitor::Violation)) {
@@ -9317,8 +9443,8 @@ impl<'s> Executor<'s> {
         // `0`, and a zero timeout selects the non-blocking path — so a
         // sub-millisecond `spin()` was a 100 % CPU loop with no warning. The
         // conversion to whatever the platform primitive accepts happens once,
-        // at the park, and rounds UP.
-        let timeout_us = timeout.as_micros().min(u64::MAX as u128) as u64;
+        // at the park, and rounds UP. The budget itself is `grid_budget_us`
+        // below (phase-474 I11).
 
         // phase-425 W3b — bring the `/clock` subscription in line with
         // `use_sim_time`. One bool comparison in the settled case; the work only
@@ -9356,11 +9482,13 @@ impl<'s> Executor<'s> {
         // The field recorded zero forever while claiming to measure cadence.
         //
         // `timeout` is the caller's intended pacing quantum: `spin_period`
-        // passes its period, and the tier loop passes `spin_period_us`. A wake
-        // that arrives later than that is late by the difference, which is the
-        // `cyclictest` quantity. A zero timeout means "poll, no cadence
-        // claimed", so it is not judged.
-        self.record_release_jitter(timeout);
+        // passes its period, and the generated entries pass 10 ms. phase-474
+        // I11 -- with no declared cadence it is the period of an absolute
+        // release grid, and the park budget is the time to the next grid
+        // point (see `record_release_jitter`); the release is judged after the
+        // park, against the grid (`record_grid_release`). A zero timeout means
+        // "poll, no cadence claimed", so it is neither judged nor gridded.
+        let grid_budget_us = self.record_release_jitter(timeout);
 
         // issue 0900 — one-shot advisory when the arena is far larger than what
         // registered. First spin rather than "end of registration", because
@@ -9395,7 +9523,7 @@ impl<'s> Executor<'s> {
         // Attribution is recorded here rather than derived later: this is the
         // only point where the losing candidates are still in hand.
         let (park_bound_us, park_source) =
-            self.next_wake_bound_attributed_us(timeout_us, session_us);
+            self.next_wake_bound_attributed_us(grid_budget_us, session_us);
         self.last_park_bound_us = park_bound_us;
         self.last_park_source = park_source;
         // phase-436 W2 (issue 1193) — round UP to what the primitive can
@@ -9627,6 +9755,11 @@ impl<'s> Executor<'s> {
         // two ad-hoc `static EPOCH: OnceLock<Instant>` blocks that each kept
         // their own std-only epoch.
         let now_us_this_spin = self.now_us();
+        // phase-474 I11 -- the release instant is the end of the park, so it
+        // is judged on this read, before any dispatch of this spin.
+        if let Some(now) = now_us_this_spin {
+            self.record_grid_release(now);
+        }
 
         // Same rule on both flavours: measure elapsed when a clock exists, else
         // credit the REQUESTED timeout. That fallback was previously reachable

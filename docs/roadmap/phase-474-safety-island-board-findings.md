@@ -645,6 +645,45 @@ The island's gate reads "one verdict per monitored publisher of the tick".
 24576)`. The figure above should read 106496 for the three-node board
 image with the takes traced.
 
+### I11 -- a periodic spin is released on a grid, not after its last end
+
+After I10 (PR #1857) a `spin_once(10)` loop still parked 10 ms from its own
+entry: every interval was the previous spin's work plus up to a tick late
+(603 of 3997 at 1 ms or more, island run `sl-diag-fix`), and
+`release-jitter-runtime` judged exactly that entry-to-entry interval.
+
+**Changed** (spin.rs `record_release_jitter`, `record_grid_release`,
+`ReleaseGrid`). With no declared cadence and a non-zero timeout, the
+timeout is the period of an absolute release grid: the first spin anchors
+it (its park is a whole period, as before), and every later park is
+bounded by the time left to the next grid point, not a period from now.
+The release instant is the clock read after the park. A spin woken before
+its grid point (data, a timer, a platform source) dispatches and is not a
+release; the grid does not move. A changed timeout re-anchors.
+Unchanged: a zero timeout (poll, `spin_some`) and a declared cadence
+(`set_spin_nominal_us`, the tier loops that sleep themselves).
+
+**Catch-up** (the timer `Skip` policy). A loop that comes back after its
+next point was due is released at once, late by the difference. One that
+comes back a whole period or more after it is released once, for the
+latest due point; the older points are dropped and counted
+(`Executor::skipped_releases`), never released back to back. A park that
+oversleeps past the following point serves one release and skips the rest.
+
+**Measured now.** Lateness is release minus scheduled grid point (less the
+reporter's own time, I7); a dropped point counts as late by its age when
+dropped. `release-jitter-runtime` still fires at one period, so a 1.5
+period callback is 5 ms of jitter and no verdict, while 2.5 periods (a
+lost release) is. This is the contract's `jitter:`.
+
+**Zephyr wait.** `nros_platform_wake_wait_ms` used `K_MSEC(n)`, which
+Zephyr extends by a tick, so every grid release on the tick clock was one
+tick late. It now waits for the absolute tick `now + n`
+(`CONFIG_TIMEOUT_64BIT`); a wait that ends early is re-parked.
+
+Host tests: tests.rs `an_idle_periodic_spin_releases_on_the_grid` and the
+three after it (overrun, data-driven early spin, the rule's measure).
+
 ## Cross-repo
 
 - **play_launch** has a parallel phase on the same findings: F1 (charge

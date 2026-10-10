@@ -1569,6 +1569,11 @@ pub(crate) fn check_timer_overrun(
 /// ordinary is being a full period late, because by then the wake that
 /// should have happened in between never did.
 ///
+/// phase-474 I11 -- for a `spin_once(period)` loop with no declared cadence
+/// the lateness is release minus scheduled release on the executor's release
+/// grid (a dropped release counts its age when dropped), not entry-to-entry
+/// minus the period; see `Executor::record_release_jitter`.
+///
 /// `max_jitter_us` is the executor's high-water since the last check and
 /// `last_reported` the value at the previous one, so the verdict is on the
 /// delta -- the same shape as the overrun counter, and for the same reason:
