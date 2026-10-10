@@ -168,6 +168,28 @@ changes.
 the store in that image only (`IMPLIED_STORE_SLOTS` 32 vs 0), measured. Every
 existing bringup is byte-identical, since none states per-image switches yet.
 
+### W2 result (2026-10-11)
+
+- **Found:** `[image.<id>] features` already parsed in `ImageBlock`, documented
+  as "capability axes for this image, over the system's own list", and
+  `ImageBlock::merged_over` already concatenated `[image_defaults]` into it.
+  But **nothing read it**, so an image that stated a switch was silently built
+  without it. W2 keeps the documented ADDITIVE meaning rather than the
+  override the design sketched. Additive matches `merged_over`, and turning a
+  system-wide switch OFF for one image is not needed by any tracked bringup:
+  the `features` workspace's switches are native-only, and all of its images
+  are native.
+- The overlay carries `[image.<id>] features` (only the images that add
+  something), and `Overlay::features_for_image(id)` returns the system list
+  plus the image's additions.
+- An unknown per-image switch is refused when the overlay is derived, so at
+  `nros sync` and in `ensure_model`, naming the image and the known axes. The
+  system-level list keeps rlm's lax reading until W8.
+- The `IMPLIED_STORE_SLOTS` 32-vs-0 measurement moves to W3, the first wave
+  where a reader asks per image.
+- Tests: 3 new unit tests. Mutation: disabling the axis check turns the
+  refusal test red.
+
 ## W3 — every reader moves to the overlay
 
 - The six readers, and any W0 adds, read the overlay. The model's

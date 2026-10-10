@@ -21,7 +21,10 @@
 //! 2026-10-10 rule, and the PR #1830 lesson: a reader acts on whatever file
 //! sits at the path).
 
-use std::path::{Path, PathBuf};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 
 /// The overlay's file name, beside the model.
 pub const OVERLAY_FILE: &str = "nros.toml";
@@ -38,12 +41,29 @@ pub struct Overlay {
     /// `[lifecycle] autostart`: `none`, `configure` or `active`. An
     /// unrecognised value is dropped, as rlm's `lifecycle_autostart()` drops it.
     pub lifecycle_autostart: Option<String>,
+    /// phase-486 W2 — per-image switches ADDED over [`Self::features`]:
+    /// `[image_defaults] features` then `[image.<id>] features`, the same
+    /// base-then-specific concatenation `ImageBlock::merged_over` applies.
+    /// Only images that add something appear.
+    pub images: BTreeMap<String, Vec<String>>,
 }
 
 impl Overlay {
     /// True when the overlay states nothing, so no file is written.
     pub fn is_empty(&self) -> bool {
-        self.features.is_empty() && self.lifecycle_autostart.is_none()
+        self.features.is_empty() && self.lifecycle_autostart.is_none() && self.images.is_empty()
+    }
+
+    /// The switches image `id` builds with: the system list plus whatever the
+    /// image adds, first spelling kept.
+    pub fn features_for_image(&self, id: &str) -> Vec<String> {
+        let mut out = self.features.clone();
+        for f in self.images.get(id).into_iter().flatten() {
+            if !out.contains(f) {
+                out.push(f.clone());
+            }
+        }
+        out
     }
 
     /// Derive the overlay from a bringup's `system.toml` text.
@@ -86,9 +106,64 @@ impl Overlay {
             .and_then(|a| a.as_str())
             .filter(|a| matches!(*a, "none" | "configure" | "active"))
             .map(str::to_string);
+        // phase-486 W2 — per-image switches. A NEW reader of an existing key:
+        // `ImageBlock.features` parsed and was read by nothing, so an image
+        // stating one was silently built without it. Unknown names are refused
+        // here, naming the image — this key has no compatibility to keep.
+        let list_at = |t: Option<&toml::Value>, what: &str| -> Result<Vec<String>, String> {
+            let Some(v) = t.and_then(|t| t.get("features")) else {
+                return Ok(Vec::new());
+            };
+            let arr = v.as_array().ok_or_else(|| {
+                format!(
+                    "{}: `{what} features` must be an array of strings",
+                    origin.display()
+                )
+            })?;
+            let mut out = Vec::new();
+            for item in arr {
+                let f = item.as_str().ok_or_else(|| {
+                    format!(
+                        "{}: every `{what} features` element must be a string",
+                        origin.display()
+                    )
+                })?;
+                if crate::leaf_capabilities::axis(f).is_none() {
+                    let known: Vec<&str> = crate::leaf_capabilities::LEAF_CAPABILITY_AXES
+                        .iter()
+                        .map(|a| a.declared)
+                        .collect();
+                    return Err(format!(
+                        "{}: `{what} features` names `{f}`, which is not a capability axis \
+                         (known: {})",
+                        origin.display(),
+                        known.join(", ")
+                    ));
+                }
+                out.push(f.to_string());
+            }
+            Ok(out)
+        };
+        let defaults = list_at(doc.get("image_defaults"), "[image_defaults]")?;
+        let mut images = BTreeMap::new();
+        if let Some(tbl) = doc.get("image").and_then(|i| i.as_table()) {
+            for (id, block) in tbl {
+                let mut add = defaults.clone();
+                for f in list_at(Some(block), &format!("[image.{id}]"))? {
+                    if !add.contains(&f) {
+                        add.push(f);
+                    }
+                }
+                add.retain(|f| !features.contains(f));
+                if !add.is_empty() {
+                    images.insert(id.clone(), add);
+                }
+            }
+        }
         Ok(Self {
             features,
             lifecycle_autostart,
+            images,
         })
     }
 
@@ -114,6 +189,13 @@ impl Overlay {
         if let Some(a) = &self.lifecycle_autostart {
             out.push_str(&format!("\n[lifecycle]\nautostart = {a:?}\n"));
         }
+        for (id, feats) in &self.images {
+            let items: Vec<String> = feats.iter().map(|f| format!("{f:?}")).collect();
+            out.push_str(&format!(
+                "\n[image.{id:?}]\nfeatures = [{}]\n",
+                items.join(", ")
+            ));
+        }
         out
     }
 
@@ -123,7 +205,7 @@ impl Overlay {
         let doc: toml::Table =
             toml::from_str(text).map_err(|e| format!("{}: cannot parse: {e}", origin.display()))?;
         for k in doc.keys() {
-            if !matches!(k.as_str(), "meta" | "system" | "lifecycle") {
+            if !matches!(k.as_str(), "meta" | "system" | "lifecycle" | "image") {
                 return Err(format!(
                     "{}: unknown overlay table `[{k}]`",
                     origin.display()
@@ -157,9 +239,25 @@ impl Overlay {
             .and_then(|l| l.get("autostart"))
             .and_then(|a| a.as_str())
             .map(str::to_string);
+        let mut images = BTreeMap::new();
+        if let Some(tbl) = doc.get("image").and_then(|i| i.as_table()) {
+            for (id, block) in tbl {
+                let feats: Vec<String> = block
+                    .get("features")
+                    .and_then(|f| f.as_array())
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|x| x.as_str().map(str::to_string))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                images.insert(id.clone(), feats);
+            }
+        }
         Ok(Self {
             features,
             lifecycle_autostart,
+            images,
         })
     }
 }
@@ -260,9 +358,47 @@ mod tests {
                 .contains("newer")
         );
         assert!(
-            Overlay::parse("[meta]\nversion = 1\n[image]\n", p)
+            Overlay::parse("[meta]\nversion = 1\n[deploy]\n", p)
                 .unwrap_err()
                 .contains("unknown")
+        );
+    }
+
+    #[test]
+    fn an_image_adds_switches_over_the_system_list_and_defaults_apply_to_every_image() {
+        let ov = o("[system]\nfeatures = [\"safety\"]\n\
+                    [image_defaults]\nfeatures = [\"rosout\"]\n\
+                    [image.a]\nboard = \"native\"\nfeatures = [\"param_services\"]\n\
+                    [image.b]\nboard = \"native\"\n");
+        assert_eq!(
+            ov.features_for_image("a"),
+            vec!["safety", "rosout", "param_services"]
+        );
+        assert_eq!(ov.features_for_image("b"), vec!["safety", "rosout"]);
+        // An image the overlay does not mention builds with the system list.
+        assert_eq!(ov.features_for_image("c"), vec!["safety"]);
+        let back = Overlay::parse(&ov.render(), Path::new("nros.toml")).unwrap();
+        assert_eq!(back, ov);
+    }
+
+    #[test]
+    fn a_switch_only_one_image_states_stays_off_the_others() {
+        let ov = o("[image.native]\nfeatures = [\"param_services\"]\n[image.mcu]\nboard = \"x\"\n");
+        assert!(ov.features.is_empty());
+        assert_eq!(ov.features_for_image("native"), vec!["param_services"]);
+        assert!(ov.features_for_image("mcu").is_empty());
+    }
+
+    #[test]
+    fn an_unknown_image_switch_is_refused_naming_the_image() {
+        let e = Overlay::from_system_toml_str(
+            "[image.native]\nfeatures = [\"param_servics\"]\n",
+            Path::new("system.toml"),
+        )
+        .unwrap_err();
+        assert!(
+            e.contains("[image.native]") && e.contains("param_servics"),
+            "{e}"
         );
     }
 
