@@ -1,13 +1,13 @@
 # Phase 480 -- what an image declares is what a stock ROS 2 peer sees
 
-**Status (2026-10-10). ACTIVE -- W1-W9 LANDED; no open work item.** All eleven founding
+**Status (2026-10-11). COMPLETE -- W1-W9 LANDED; archived.** All eleven founding
 issues, the five W7 issues, the three W8 issues and the three W9 follow-ups are resolved
-(#1735-#1738, #1744-#1748, #1780-#1784, #1805, #1826, #1827, #1837, #1840, #1844). This is the home for wiring and interop
+(#1735-#1738, #1744-#1748, #1780-#1784, #1805, #1826, #1827, #1837, #1840, #1844). This was the home for wiring and interop
 defects: an entity, a QoS profile, a remap, a node or a service that nano-ros
 DECLARES, but a stock ROS 2 peer (`ros2` CLI, `rclcpp`, `rmw_zenoh_cpp`,
 `rmw_cyclonedds_cpp`, `rmw_fastrtps_cpp` through the XRCE Agent) does not see,
-or sees wrongly. New issues of that class should name this phase in
-`related:`, and gain a work item here.
+or sees wrongly. A new issue of that class now opens a new phase. Issues 1769
+and 1770, filed while fixing W9, were never work items here (see W9).
 
 **Prior:** issue 1651 (the tier-1 `test-all` had not run in CI since
 2026-06-17, which is why W1-W3 surfaced together on 2026-10-05), issue 1269
