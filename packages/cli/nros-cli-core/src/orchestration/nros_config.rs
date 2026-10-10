@@ -863,6 +863,7 @@ fn synthesise_self_bringup(comp: &ComponentPackageEntry) -> BringupPackageEntry 
 
     let system = SystemToml {
         board_config: Default::default(),
+        sources: Default::default(),
         system: system_header,
         components,
         deploy,

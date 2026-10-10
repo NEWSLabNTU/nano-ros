@@ -888,6 +888,8 @@ pub mod locate {
     pub enum Rung {
         Arg,
         Env,
+        /// The project's `[sources]` row (`system.toml`, project-relative).
+        Project,
         /// A checkout submodule moved off its pin, or dirty — a contributor's
         /// edit in progress, which outranks the store (RFC-0103 D5).
         LocalEdit,
@@ -901,6 +903,7 @@ pub mod locate {
             match self {
                 Rung::Arg => "arg",
                 Rung::Env => "env",
+                Rung::Project => "project",
                 Rung::LocalEdit => "local-edit",
                 Rung::Store => "store",
                 Rung::Checkout => "checkout",
@@ -915,6 +918,9 @@ pub mod locate {
         pub arg: Option<PathBuf>,
         /// The value of the row's `env` variable, if set and non-empty.
         pub env_value: Option<PathBuf>,
+        /// The project's `[sources]` row for this source, already resolved
+        /// against the project directory ([`project_source`]).
+        pub project: Option<PathBuf>,
         /// The checkout this resolution runs in, if any.
         pub checkout: Option<PathBuf>,
         /// The store root (`crate::store::root()`).
@@ -1085,6 +1091,18 @@ pub mod locate {
             }),
         }
 
+        match &ctx.project {
+            Some(p) => {
+                let saw = format!("[sources] {} = {}", row.name, p.display());
+                return Ok(take(Rung::Project, p.clone(), saw, &mut trace));
+            }
+            None => trace.push(Step {
+                rung: "project",
+                saw: "no [sources] row in the project's system.toml".into(),
+                chosen: false,
+            }),
+        }
+
         if let (Some(why), Some(d), Some(c)) = (&ctx.checkout_edit, &row.dest, &ctx.checkout) {
             return Ok(take(Rung::LocalEdit, c.join(d), why.clone(), &mut trace));
         }
@@ -1143,6 +1161,40 @@ pub mod locate {
             name: row.name.clone(),
             trace,
         })
+    }
+
+    /// The project's `[sources] <name> = "<path>"`, resolved against the
+    /// directory holding `system.toml` (RFC-0103 D3 rung 3). `None` when the
+    /// project has no such row. Same dependency-free `key = "value"` reader as
+    /// [`row_from_index`]; a quoted key (`"zenoh-pico" = …`) is accepted too.
+    #[must_use]
+    pub fn project_source(project_dir: &Path, name: &str) -> Option<PathBuf> {
+        let text = std::fs::read_to_string(project_dir.join("system.toml")).ok()?;
+        let mut inside = false;
+        for line in text.lines() {
+            let line = line.trim();
+            if line.starts_with('[') {
+                inside = line == "[sources]";
+                continue;
+            }
+            if !inside {
+                continue;
+            }
+            let Some((k, v)) = line.split_once('=') else {
+                continue;
+            };
+            if k.trim().trim_matches('"') != name {
+                continue;
+            }
+            let v = v.trim().strip_prefix('"')?.split('"').next()?;
+            let p = Path::new(v);
+            return Some(if p.is_absolute() {
+                p.to_path_buf()
+            } else {
+                project_dir.join(p)
+            });
+        }
+        None
     }
 
     /// `[source.<name>]` read from index text — the dependency-free reader
@@ -1215,9 +1267,20 @@ pub mod locate {
         // variable as text — issue 0491: one directory has three spellings
         // here, and `rerun-if-env-changed` on a path fingerprints the spelling.
         let checkout_edit = checkout_edit(&row, Some(&root));
+        // Rung 3: the project the generated cargo config names
+        // (`NROS_WORKSPACE_ROOT`, a `relative = true` row). Its `system.toml`
+        // is watched by CONTENT, never the variable (issue 0491).
+        let project = crate::env_path("NROS_WORKSPACE_ROOT").and_then(|dir| {
+            let toml = dir.join("system.toml");
+            if toml.is_file() {
+                println!("cargo:rerun-if-changed={}", toml.display());
+            }
+            project_source(&dir, name)
+        });
         let ctx = Ctx {
             arg: None,
             env_value: row.env.as_deref().and_then(crate::env_path),
+            project,
             checkout: Some(root),
             store: crate::store::root(),
             checkout_edit,
@@ -1376,6 +1439,38 @@ ref = \"0123456789abcdef0123456789abcdef01234567\"
             ctx.checkout_edit = Some("edited".into());
             let a = resolve(&row, &ctx).unwrap();
             assert_eq!((a.rung, a.path), (Rung::LocalEdit, d));
+        }
+
+        #[test]
+        fn a_project_sources_row_beats_a_local_edit_and_the_store_but_not_env() {
+            let t = tmp("project");
+            let proj = t.join("proj");
+            std::fs::create_dir_all(&proj).unwrap();
+            std::fs::write(
+                proj.join("system.toml"),
+                "[system]\nname = \"x\"\n\n[sources]\n\"zp\" = \"vendor/zp\"\nother = \"/abs/o\"\n",
+            )
+            .unwrap();
+            assert_eq!(project_source(&proj, "zp"), Some(proj.join("vendor/zp")));
+            assert_eq!(
+                project_source(&proj, "other"),
+                Some(PathBuf::from("/abs/o"))
+            );
+            assert_eq!(project_source(&proj, "nope"), None);
+
+            let row = row_from_index(SUB, "zp").unwrap();
+            let mut ctx = Ctx {
+                project: project_source(&proj, "zp"),
+                checkout_edit: Some("edited".into()),
+                store: t.join("s"),
+                ..Ctx::default()
+            };
+            fill(&store_path(&row, &ctx.store));
+            assert_eq!(resolve(&row, &ctx).unwrap().rung, Rung::Project);
+            ctx.env_value = Some(t.join("envtree"));
+            let mut with_env = row.clone();
+            with_env.env = Some("ZP_DIR".into());
+            assert_eq!(resolve(&with_env, &ctx).unwrap().rung, Rung::Env);
         }
 
         #[test]
