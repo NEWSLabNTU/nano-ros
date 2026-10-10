@@ -29,6 +29,5 @@
     -->
     <nano_ros_provides kind="board" name="mps3-an536-freertos"/>
     <nano_ros_provides kind="board" name="an536"/>
-    <nano_ros_provides kind="board" name="AN536"/>
   </export>
 </package>

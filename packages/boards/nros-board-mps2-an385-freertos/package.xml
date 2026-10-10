@@ -22,7 +22,5 @@
       spellings of one fact drift.
     -->
     <nano_ros_provides kind="board" name="freertos"/>
-    <nano_ros_provides kind="board" name="freeRTOS"/>
-    <nano_ros_provides kind="board" name="FreeRTOS"/>
   </export>
 </package>

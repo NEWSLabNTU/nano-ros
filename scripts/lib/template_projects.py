@@ -82,7 +82,8 @@ def descriptor_value(path: str, board: str, key: str) -> str:
     # several `[[board]]`s (nros-board-nuttx-qemu) is disambiguated by `names`,
     # and a single-block file is the answer whatever its aliases say
     # (`nros-board-mps2-an385-freertos` names itself `freertos`).
-    chosen = [b for b in blocks if board in (b.get("names") or [])]
+    # Board names match case-insensitively (phase-484 W4), as every resolver does.
+    chosen = [b for b in blocks if board.lower() in [n.lower() for n in (b.get("names") or [])]]
     if not chosen and len(blocks) == 1:
         chosen = blocks
     if len(chosen) != 1:

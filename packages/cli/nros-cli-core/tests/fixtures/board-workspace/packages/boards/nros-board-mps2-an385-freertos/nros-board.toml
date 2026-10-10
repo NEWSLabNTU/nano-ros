@@ -1,7 +1,7 @@
 # Phase 195.C — board profile descriptor. FreeRTOS on MPS2-AN385.
 
 [[board]]
-names = ["freertos", "freeRTOS", "FreeRTOS"]
+names = ["freertos"]
 platform = "freertos"
 toolchain = "stable"
 platform_feature = "platform-freertos"

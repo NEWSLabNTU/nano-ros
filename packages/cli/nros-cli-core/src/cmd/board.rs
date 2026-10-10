@@ -199,7 +199,7 @@ fn resolve(root: &Path, name: &str) -> Result<(BoardDescriptor, PathBuf)> {
     let board = catalog
         .descriptors()
         .iter()
-        .find(|d| d.names.iter().any(|n| n == name))
+        .find(|d| d.answers_to(name))
         .ok_or_else(|| {
             let mut known: Vec<&str> = catalog
                 .descriptors()

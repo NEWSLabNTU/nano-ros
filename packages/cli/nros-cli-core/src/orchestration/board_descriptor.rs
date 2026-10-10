@@ -739,7 +739,11 @@ impl BoardDescriptor {
     /// ANOTHER board's descriptor as an alias. That file is gone; this is the
     /// same capability, taken from the board's own descriptor.
     pub fn answers_to(&self, key: &str) -> bool {
-        self.names.iter().any(|n| n == key)
+        // phase-484 W4 (RFC-0103) — a board NAME is matched case-insensitively,
+        // so `FreeRTOS` / `freertos` are one alias, not two entries to keep in
+        // step. The framework ids below are the downstream ecosystem's own
+        // spellings and stay exact.
+        self.names.iter().any(|n| n.eq_ignore_ascii_case(key))
             || self.zephyr.as_ref().is_some_and(|z| z.west_board == key)
             || self.nuttx.as_ref().is_some_and(|n| n.board_config == key)
             || self.platformio.as_ref().is_some_and(|p| p.board == key)
@@ -1371,7 +1375,10 @@ impl BoardCatalog {
         let by_dir: Vec<&BoardDescriptor> = self
             .descriptors
             .iter()
-            .filter(|d| d.directory_alias().as_deref() == Some(deploy))
+            .filter(|d| {
+                d.directory_alias()
+                    .is_some_and(|a| a.eq_ignore_ascii_case(deploy))
+            })
             .collect();
         match by_dir.len() {
             1 => return DeployResolution::Board(by_dir[0]),
@@ -1381,7 +1388,7 @@ impl BoardCatalog {
         let by_platform: Vec<&BoardDescriptor> = self
             .descriptors
             .iter()
-            .filter(|d| d.platform.kebab() == deploy)
+            .filter(|d| d.platform.kebab().eq_ignore_ascii_case(deploy))
             .collect();
         match by_platform.len() {
             1 => DeployResolution::Board(by_platform[0]),
@@ -1548,6 +1555,41 @@ mod tests {
             );
         }
         assert!(checked > 0, "no shipped board declares a netstack");
+    }
+
+    /// phase-484 W4 — board names match case-insensitively (`answers_to`), so
+    /// two aliases of ONE board that differ only by case are one alias written
+    /// twice; and two DIFFERENT boards claiming such a pair would be an
+    /// ambiguity no lookup can split.
+    #[test]
+    fn no_board_carries_two_names_that_differ_only_by_case() {
+        let catalog = BoardCatalog::load(&repo_root_for_tests()).expect("load catalog");
+        let mut bad = Vec::new();
+        for d in catalog.descriptors() {
+            let mut seen: Vec<String> = Vec::new();
+            for n in &d.names {
+                let low = n.to_ascii_lowercase();
+                if seen.contains(&low) {
+                    bad.push(format!(
+                        "{} names {n:?} twice (ignoring case)",
+                        d.source.as_deref().unwrap_or("?")
+                    ));
+                }
+                seen.push(low);
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+    }
+
+    #[test]
+    fn a_board_name_matches_whatever_its_case() {
+        let catalog = BoardCatalog::load(&repo_root_for_tests()).expect("load catalog");
+        for spelling in ["mps2-an385-freertos", "MPS2-AN385-FreeRTOS"] {
+            assert!(
+                matches!(catalog.resolve_deploy(spelling), DeployResolution::Board(_)),
+                "{spelling} did not resolve"
+            );
+        }
     }
 
     // ── NROS_EXTRA_BOARD_PATH — out-of-tree board roots ──────────────────

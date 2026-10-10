@@ -508,11 +508,7 @@ fn emit_board_cmake_preset(board: &str, workspace: &Path, bin_dirs: &[PathBuf]) 
 
     let catalog =
         BoardCatalog::load(workspace).map_err(|e| eyre::eyre!("load board catalog: {e}"))?;
-    let Some(desc) = catalog
-        .descriptors()
-        .iter()
-        .find(|d| d.names.iter().any(|n| n == board))
-    else {
+    let Some(desc) = catalog.descriptors().iter().find(|d| d.answers_to(board)) else {
         // Not a board descriptor (tool-only setup, alias mismatch) — no preset.
         return Ok(());
     };

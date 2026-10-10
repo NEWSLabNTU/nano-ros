@@ -1,7 +1,7 @@
 # Phase 195.C — board profile descriptor. NuttX QEMU ARM (Cortex-A7).
 
 [[board]]
-names = ["nuttx", "NuttX"]
+names = ["nuttx"]
 platform = "nuttx"
 toolchain = "nightly"
 platform_feature = "platform-nuttx"
