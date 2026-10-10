@@ -97,3 +97,20 @@ and reading each `.config`'s `CONFIG_NROS_RMW_*`:
 A regression guard belongs with the fix. A merge-gating lane needs one cheap
 check that a `*-xrce` fixture's rendered fragment does not state
 `NROS_RMW_ZENOH`. A configure-only probe suffices; it needs no full build.
+
+## Recurrence, 2026-10-10
+
+`nightly` run **38026708158** on `main` @ `553cb75e9` (schedule, 05:12Z), job
+**114138973993** `tier 2 nightly (pairwise cover)`. It ran on the
+re-registered runner `nano-ros-runner-newslab-118-server` (05:18:17Z →
+05:52:14Z) and failed the same way, in `just build tier2-nightly`:
+
+```
+.../zpico-sys/zenoh-pico/src/system/zephyr/network.c:278:21: error: storage size of 'hints' isn't known
+.../zpico-sys/zenoh-pico/src/system/zephyr/network.c:302:57: error: invalid use of undefined type 'struct addrinfo'
+error: recipe `build-fixtures` failed with exit code 2
+```
+
+The five jobs after it were skipped, so no cell ran again. Nothing has landed
+that changes the fragment's rmw order. This is the expected recurrence, not
+new information about the cause.
