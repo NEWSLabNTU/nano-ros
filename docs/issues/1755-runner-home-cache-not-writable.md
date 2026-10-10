@@ -60,6 +60,39 @@ ls -lnd /home/runner/.cache /home/runner/.cache/nano-ros /home/runner/.cache/mir
 id
 ```
 
+## Cause (measured 2026-10-11)
+
+The engine creates a missing mount point, and every missing parent, as ROOT.
+The image has no `/home/runner/.cache`, and `runner-container.sh --run` mounts
+`nros-runner-sccache` at `/home/runner/.cache/sccache`, so every container
+starts with a root-owned `~/.cache`. The sccache volume inside it is writable,
+which is why the same job could use sccache. Reproduced against the local
+`nano-ros-runner:local` image as uid 1001:
+
+```
+drwxr-xr-x 3    0    0 /home/runner/.cache
+mkdir: cannot create directory '/home/runner/.cache/nano-ros': Permission denied
+```
+
+No uid change is involved; the "likely cause" above was wrong. The restart
+mattered only because it was the first container built from an image without
+the directory.
+
+## Fix
+
+- The generated Dockerfile creates every `-v` mount point under
+  `/home/runner` before its `chown -R runner:runner`. A layer doing the same
+  over the old image was measured: `~/.cache` and `~/.cache/sccache` come up
+  owned by 1001, and `mkdir -p ~/.cache/nano-ros/models ~/.cache/miri`
+  succeeds.
+- `runner-doctor.sh` checks, for every runner whatever its labels, that the
+  user cache dir can hold a new directory. Its self-test covers both directions
+  (a read-only `.cache` fails; a writable one passes and is left empty).
+
+It closes when the runner image is rebuilt
+(`scripts/ci/runner-container.sh <labels> --build`, then `--run`) and the next
+tier-1 run creates both directories.
+
 ## What would close it
 
 - The next tier-1 run creates both directories. That means either fixing their

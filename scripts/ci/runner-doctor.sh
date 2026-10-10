@@ -693,6 +693,26 @@ _nros_runner_check_big() {
     return 0
 }
 
+# Issue 1755 — not a label, a property of EVERY runner: the user cache dir can
+# hold new directories. `nros::main!` writes its model cache under it and Miri
+# its sysroot, and both failed on a container whose `~/.cache` the engine had
+# created as root (the parent of a volume mount point the image lacked). The
+# sccache volume inside it stayed writable, so "is ~/.cache usable" by any
+# narrower test read yes. Probe by creating a directory, the operation that
+# failed.
+_nros_runner_check_cache_home() {
+    local base="${XDG_CACHE_HOME:-$HOME/.cache}" probe
+    probe="$base/.nros-runner-doctor.$$"
+    if mkdir -p "$probe" 2>/dev/null && rmdir "$probe" 2>/dev/null; then
+        _nros_runner_ok "user cache dir is writable: $base"
+        return 0
+    fi
+    _nros_runner_missing "user cache dir is not writable: $base ($(ls -lnd "$base" 2>/dev/null || echo absent))"
+    _nros_runner_fix "nros::main!'s model cache and Miri's sysroot are created under it (issue 1755)."
+    _nros_runner_fix "In the runner container, rebuild the image: scripts/ci/runner-container.sh <labels> --build"
+    return 1
+}
+
 # --- dispatch ----------------------------------------------------------------
 
 # `nros_runner_label_known <label>` — is this one of ours?
@@ -789,6 +809,8 @@ nros_runner_doctor() {
     fi
     _nros_runner_selftest_guard || return 1
     _nros_runner_activate
+    [ -n "${NROS_RUNNER_QUIET:-}" ] || printf '\n=== every runner ===\n'
+    _nros_runner_check_cache_home || fail=1
     while read -r label; do
         [ -n "$label" ] || continue
         n=$((n + 1))
@@ -950,7 +972,7 @@ _nros_runner_self_test() {
         # normal-path selftest that invoked it — this case IS that selftest.
         PATH="$e2e/bin:$PATH" HOME="$1" NROS_RUNNER_REPO_ROOT="$e2e/root" \
         NROS_ZEPHYR_WORKSPACE="$e2e/ws" NROS_RUNNER_NO_ACTIVATE=1 \
-        _NROS_RUNNER_SELFTEST_CHILD=1 \
+        _NROS_RUNNER_SELFTEST_CHILD=1 XDG_CACHE_HOME= \
         ZEPHYR_SDK_INSTALL_DIR= bash "$self" nros-sdk-zephyr 2>&1
     }
 
@@ -988,9 +1010,27 @@ _nros_runner_self_test() {
     _st_doctor_ws() { # <workspace>
         PATH="$e2e/bin:$PATH" HOME="$e2e/home" NROS_RUNNER_REPO_ROOT="$e2e/root" \
         NROS_ZEPHYR_WORKSPACE="$1" NROS_RUNNER_NO_ACTIVATE=1 \
-        _NROS_RUNNER_SELFTEST_CHILD=1 \
+        _NROS_RUNNER_SELFTEST_CHILD=1 XDG_CACHE_HOME= \
         ZEPHYR_SDK_INSTALL_DIR= bash "$self" nros-sdk-zephyr 2>&1
     }
+    # Issue 1755 — the every-runner cache check, both directions: a HOME whose
+    # `.cache` cannot hold a new directory fails, and the probe leaves nothing
+    # behind in one that can.
+    mkdir -p "$tmp/cache-ro/.cache" "$tmp/cache-rw/.cache"
+    chmod 555 "$tmp/cache-ro/.cache"
+    out="$(HOME="$tmp/cache-ro" XDG_CACHE_HOME= _nros_runner_check_cache_home 2>&1)" && st=0 || st=1
+    case "$st$out" in
+        1*"not writable"*) _st_ok "a root-owned ~/.cache is REFUSED" ;;
+        *) _st_bad "a root-owned ~/.cache is REFUSED" "rc=$st, got '$out'" ;;
+    esac
+    chmod 755 "$tmp/cache-ro/.cache"
+    out="$(HOME="$tmp/cache-rw" XDG_CACHE_HOME= _nros_runner_check_cache_home 2>&1)" && st=0 || st=1
+    if [ "$st" = 0 ] && [ -z "$(ls -A "$tmp/cache-rw/.cache")" ]; then
+        _st_ok "a writable ~/.cache passes and is left empty"
+    else
+        _st_bad "a writable ~/.cache passes and is left empty" "rc=$st, left: $(ls -A "$tmp/cache-rw/.cache")"
+    fi
+
     out="$(_st_doctor_ws "$e2e/other/ws")"
     case "$out" in
         *"belongs to another checkout"*) _st_ok "a workspace inside another checkout is REFUSED" ;;
