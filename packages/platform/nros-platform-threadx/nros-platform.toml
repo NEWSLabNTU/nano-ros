@@ -71,10 +71,12 @@ extra_sources = [
 ]
 arch = "riscv64gc"
 compile = { opt_level = "s", warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
+# phase-484 W2c — the source TREES (kernel, lwIP, ThreadX, NetX Duo) are not
+# required env any more: `{source:<name>}` below locates each through the one
+# ladder and refuses with the remedy when none answers. Only board facts the
+# board descriptor carries remain here.
 required_env = [
-  { name = "THREADX_DIR", help = "ThreadX kernel source. just setup-threadx; export THREADX_DIR=$PWD/third-party/threadx/kernel", validate_subdir = "common/inc" },
   { name = "THREADX_CONFIG_DIR", help = "Directory containing tx_user.h. Example: packages/boards/nros-board-threadx-linux/config" },
-  { name = "NETX_DIR", help = "NetX Duo source. just setup-threadx; export NETX_DIR=$PWD/third-party/threadx/netxduo", validate_subdir = "common/inc" },
   { name = "NETX_CONFIG_DIR", help = "Directory containing nx_user.h. Example: packages/boards/nros-board-threadx-linux/config" },
 ]
 include_paths = [
@@ -96,10 +98,10 @@ include_paths = [
   # depending on the per-RTOS socket-struct layout).
   "{nros}/../../platform/nros-platform-api/include",
   "{nros}/c/include",
-  "{envpath:THREADX_DIR}/common/inc",
+  "{source:threadx}/common/inc",
   "{envpath:THREADX_CONFIG_DIR}",
-  "{envpath:NETX_DIR}/common/inc",
-  "{envpath:NETX_DIR}/addons/BSD",
+  "{source:threadx-netxduo}/common/inc",
+  "{source:threadx-netxduo}/addons/BSD",
   "{envpath:NETX_CONFIG_DIR}",
 ]
 # issue 0491 — VALUE knobs only. The four PATH variables this platform
@@ -119,7 +121,7 @@ rerun_if_env_changed = [
   "NROS_ZENOH_READ_PRIORITY", "NROS_ZENOH_LEASE_PRIORITY",
 ]
 [[build.zenoh.include_paths_conditional]]
-path = "{envpath:THREADX_DIR}/ports/linux/gnu/inc"
+path = "{source:threadx}/ports/linux/gnu/inc"
 when = { target_not = "embedded" }
 # phase-337 W4.a — the ARCH-PORT override must precede upstream's port inc
 # below. `tx_port.h` used to reach this build through `THREADX_CONFIG_DIR`
@@ -132,10 +134,10 @@ when = { target_not = "embedded" }
 path = "{nros}/../../../boards/nros-board-threadx-port-riscv64/port/inc"
 when = { target_match = "riscv64" }
 [[build.zenoh.include_paths_conditional]]
-path = "{envpath:THREADX_DIR}/ports/risc-v64/gnu/inc"
+path = "{source:threadx}/ports/risc-v64/gnu/inc"
 when = { target_match = "riscv64" }
 [[build.zenoh.include_paths_conditional]]
-path = "{envpath:NETX_DIR}/ports/linux/gnu/inc"
+path = "{source:threadx-netxduo}/ports/linux/gnu/inc"
 when = { target_not = "embedded" }
 
 

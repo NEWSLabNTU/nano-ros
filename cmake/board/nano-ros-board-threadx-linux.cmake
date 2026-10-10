@@ -67,15 +67,12 @@ set(_NROS_BOARD_APP_DEFINE_C "${_NROS_BOARD_DIR}/c/board_threadx_linux.c")
 set(_NROS_BOARD_THREADX_HOOKS_C
     "${_NROS_BOARD_ROOT}/packages/boards/nros-board-common/c/threadx_hooks.c")
 
-# Default vendored locations — overridable via -D/env.
+# Vendored trees — `-D` wins, else `nros locate` (its `$THREADX_DIR` /
+# `$NETX_DIR` rung is re-rooted; the store; this checkout). phase-484 W2c.
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosLocate.cmake")
+nros_locate_var(THREADX_DIR)
 if(NOT DEFINED THREADX_DIR)
-    if(DEFINED ENV{THREADX_DIR})
-        set(THREADX_DIR "$ENV{THREADX_DIR}"
-            CACHE PATH "ThreadX kernel source root (from env)")
-    else()
-        set(THREADX_DIR "${_NROS_BOARD_ROOT}/third-party/threadx/kernel"
-            CACHE PATH "ThreadX kernel source root")
-    endif()
+    set(THREADX_DIR "${_NROS_BOARD_ROOT}/third-party/threadx/kernel")  # no CLI yet: the checkout's copy
 endif()
 # THREADX_CONFIG_DIR is board-specific (each board ships its own
 # tx_user.h / nx_user.h). FORCE the right per-board path here — the
@@ -85,14 +82,9 @@ endif()
 # same shell session.
 set(THREADX_CONFIG_DIR "${_NROS_BOARD_CONFIG_DIR}"
     CACHE PATH "Directory containing tx_user.h / nx_user.h" FORCE)
+nros_locate_var(NETX_DIR)
 if(NOT DEFINED NETX_DIR)
-    if(DEFINED ENV{NETX_DIR})
-        set(NETX_DIR "$ENV{NETX_DIR}"
-            CACHE PATH "NetX Duo source root (from env)")
-    else()
-        set(NETX_DIR "${_NROS_BOARD_ROOT}/third-party/threadx/netxduo"
-            CACHE PATH "NetX Duo source root (BSD addon headers only on Linux)")
-    endif()
+    set(NETX_DIR "${_NROS_BOARD_ROOT}/third-party/threadx/netxduo")  # no CLI yet: the checkout's copy
 endif()
 if(NOT DEFINED NSOS_NETX_DIR AND NOT DEFINED ENV{NSOS_NETX_DIR})
     set(NSOS_NETX_DIR "${_NROS_BOARD_ROOT}/packages/drivers/net/nsos-netx"

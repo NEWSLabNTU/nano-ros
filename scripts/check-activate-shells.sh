@@ -38,6 +38,22 @@ if [ -z "${SSOT_VARS// /}" ]; then
     echo "FAIL: no exports parsed from just/sdk-env.just — the gate would pass vacuously" >&2
     exit 1
 fi
+# phase-484 W2c (RFC-0103 D4) — the index's `[source.*] env` names are NOT
+# delivered into the user's shell: every resolver locates the tree itself, and
+# a path in the shell is what a linked worktree inherits (issue 1280). So the
+# rule splits: the REST of the SSoT must survive activation (0451), and these
+# must NOT appear. Both sets are read, never restated.
+SOURCE_VARS="$(sed -n 's/^env = "\([A-Za-z_][A-Za-z0-9_]*\)"$/\1/p' \
+    "$REPO_ROOT/nros-sdk-index.toml" | tr '\n' ' ')"
+if [ -z "${SOURCE_VARS// /}" ]; then
+    echo "FAIL: no [source.*] env names parsed from nros-sdk-index.toml" >&2
+    exit 1
+fi
+_kept=""
+for _v in $SSOT_VARS; do
+    case " $SOURCE_VARS " in *" $_v "*) ;; *) _kept="$_kept $_v" ;; esac
+done
+SSOT_VARS="$_kept"
 
 fail() {
     echo "FAIL: $*" >&2
@@ -59,6 +75,11 @@ for _nros_v in '"$SSOT_VARS"'; do
     eval "[ -n \"\${$_nros_v+x}\" ]" || _nros_miss="$_nros_miss $_nros_v"
 done
 printf "PROBEVARS missing=%s\n" "$_nros_miss"
+_nros_leak=""
+for _nros_v in '"$SOURCE_VARS"'; do
+    eval "[ -n \"\${$_nros_v+x}\" ]" && _nros_leak="$_nros_leak $_nros_v"
+done
+printf "PROBELEAK leaked=%s\n" "$_nros_leak"
 '
 
 PROBE_FISH='
@@ -70,6 +91,13 @@ for _nros_v in '"$SSOT_VARS"'
     end
 end
 printf "PROBEVARS missing=%s\n" "$_nros_miss"
+set -l _nros_leak ""
+for _nros_v in '"$SOURCE_VARS"'
+    if set -q $_nros_v
+        set _nros_leak "$_nros_leak $_nros_v"
+    end
+end
+printf "PROBELEAK leaked=%s\n" "$_nros_leak"
 '
 
 # Issue 0451 — each probe runs in a CLEARED environment (`env -i`, keeping only
@@ -143,6 +171,15 @@ run_case() {
         echo "    Every var exported there must survive activation in every supported" >&2
         echo "    shell; otherwise an embedded build fails much later on an unset path" >&2
         echo "    and reads like a code fault (issue 0451)." >&2
+        return 0
+    fi
+    local leaked
+    leaked="$(printf '%s\n' "$out" | grep '^PROBELEAK ' || true)"
+    leaked="${leaked#PROBELEAK leaked=}"
+    if [ -n "${leaked// /}" ]; then
+        fail "$shell/$label: activation exported source-tree paths into the shell:${leaked}"
+        echo "    A source tree is LOCATED by its resolver (RFC-0103 D4); a path in the" >&2
+        echo "    shell is what a linked worktree inherits (issue 1280)." >&2
         return 0
     fi
 

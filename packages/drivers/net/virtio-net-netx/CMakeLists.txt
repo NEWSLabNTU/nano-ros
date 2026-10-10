@@ -2,6 +2,11 @@ cmake_minimum_required(VERSION 3.22)
 project(virtio-net-netx LANGUAGES C)
 
 # NETX_DIR is required -- consumer must set it (or inherit from env)
+# phase-484 W2c — `nros locate` first (RFC-0103 D4), when this is built inside
+# a nano-ros configure that loaded it; a standalone configure keeps `-D`/env.
+if(NOT DEFINED NETX_DIR AND COMMAND nros_locate_var)
+    nros_locate_var(NETX_DIR)
+endif()
 if(NOT DEFINED NETX_DIR)
     if(DEFINED ENV{NETX_DIR})
         set(NETX_DIR $ENV{NETX_DIR})

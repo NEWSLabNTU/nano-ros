@@ -189,17 +189,9 @@ nros_fixture_require_known_platform "$platform"
 # invocations, not repo breakage): the platform just recipes wrap this
 # script with required env — direct calls must fail LOUD, not deep-panic.
 case "$platform" in
-    freertos|freertos-posix)
-        # phase-484 W2a — the first-party platform dirs are no longer exported
-        # (their readers default to the in-repo path), so the guard asks for
-        # the one external tree this lane still reads from the environment.
-        if [ -z "${FREERTOS_DIR:-}" ]; then
-            echo "[ERROR] the freertos lane needs FREERTOS_DIR (just/sdk-env.just)." >&2
-            echo "        Run via the just recipe (e.g. \`just freertos build-fixtures\`)" >&2
-            echo "        instead of invoking this script directly." >&2
-            exit 2
-        fi
-        ;;
+    # phase-484 W2c — no freertos guard: every input the lane needs is located
+    # by its own resolver (`nros locate`, the board descriptor), not read from
+    # an export a direct invocation might lack.
     nuttx|nuttx-riscv)
         if [ "${lang_filter:-}" = "rust" ] && [ -z "${NUTTX_DIR:-}" ]; then
             echo "[ERROR] NUTTX_DIR not set — the NuttX rust workspace entry links" >&2

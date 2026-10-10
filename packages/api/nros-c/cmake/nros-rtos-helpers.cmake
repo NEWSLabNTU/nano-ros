@@ -112,8 +112,21 @@ endfunction()
 # ----------------------------------------------------------------------
 # nros_validate_vars
 # ----------------------------------------------------------------------
+# phase-484 W2c — a missing SOURCE-TREE variable is located (`nros locate`,
+# RFC-0103 D4) before anything reads the environment raw. Guarded: an
+# installed SDK root ships `cmake/` beside `packages/`, a stripped tree may not.
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/../../../../cmake/NanoRosLocate.cmake")
+    include("${CMAKE_CURRENT_LIST_DIR}/../../../../cmake/NanoRosLocate.cmake")
+endif()
+
 function(nros_validate_vars)
     foreach(_var ${ARGN})
+        if(NOT DEFINED ${_var} AND COMMAND nros_locate_var)
+            nros_locate_var(${_var})
+            if(DEFINED ${_var})
+                set(${_var} "${${_var}}" PARENT_SCOPE)
+            endif()
+        endif()
         if(NOT DEFINED ${_var})
             if(DEFINED ENV{${_var}})
                 set(${_var} "$ENV{${_var}}" PARENT_SCOPE)
