@@ -21,7 +21,8 @@
 //! receiver (the bridge links the vendored CycloneDDS), so it runs with just
 //! zenohd + the zenoh talker fixture.
 //!
-//! Skips cleanly when `zenohd` or the prebuilt bridge binary is missing — same
+//! Fails as an unmet precondition when `zenohd` or the prebuilt bridge binary
+//! is missing — same
 //! `require_*` pattern as the rest of the suite.
 //!
 //! ## Receiver-asserting variants ("both A and B")

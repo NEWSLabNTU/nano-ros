@@ -438,7 +438,7 @@ test-xrce verbose="":
 # `ros2 topic echo`
 # subscriber (issue #141) — the only `interop::CELLS` cell built through the
 # west leaves rather than native fixtures, so it has TWO build channels and
-# skips on either (phase-433 / issue 1127).
+# fails on either missing (phase-433 / issue 1127; a skip before issue 1758).
 #
 # Deliberately NOT sequenced after `build-fixtures` the way `just zephyr test`
 # is: this is an aimable unit, and running the whole west lane to reach one
@@ -465,7 +465,7 @@ test-ros2-qos verbose="":
 # something anyone would type. Build the leaf
 # (`just zephyr build-fixtures`, `build-cortex-m-c-talker-zenoh`), then aim.
 #
-# Needs ROS 2 + `rmw_zenoh_cpp` + `qemu-system-arm`; skips on any of them.
+# Needs ROS 2 + `rmw_zenoh_cpp` + `qemu-system-arm`; a missing one is an `unmet!` red (issue 1758).
 [group("debug")]
 test-ros2-cortex-m verbose="":
     @just _test-focused 'binary(=pubsub_zephyr_cortex_m_ros2_interop_e2e)' {{verbose}}

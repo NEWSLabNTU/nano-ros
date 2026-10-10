@@ -1340,7 +1340,8 @@ fn test_cpp_rust_service_interop(zenohd_unique: ZenohRouter) {
 // action roundtrips for C and C++ — the CMake/Corrosion `build-cyclonedds/`
 // binaries (Phase 175) on a per-test ROS_DOMAIN_ID over SPDP discovery,
 // pinning the Cyclone C++ action get_result/feedback path (28e9e6502 +
-// Phase 171.0.b). Skip cleanly when `just cyclonedds setup` hasn't built them.
+// Phase 171.0.b). Unmet precondition when `just cyclonedds setup` hasn't built
+// them.
 // =============================================================================
 
 /// Resolve a native Cyclone C/C++ example role binary (prebuilt), or skip.

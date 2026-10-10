@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""A test that cannot reach a ROS router must SKIP, not fail.
+"""A test that cannot reach a ROS router must say so, not crash.
 
 `ZenohRouter::start*` returns `TestResult`, and its `RouterUnavailable` variant
 means one specific thing: this host has no `rmw_zenoh_cpp/rmw_zenohd`, so the
-lane is not runnable here. `fixtures::or_skip` is the one place that reading
-lives — it turns `RouterUnavailable` into a capability skip and leaves every
-other error a hard failure, because a router that IS present and refuses to
+lane is not runnable here. `fixtures::or_unmet` is the one place that reading
+lives — it turns `RouterUnavailable` into an `[UNMET PRECONDITION]` naming the
+missing router (a capability skip until issue 1758, when it was `or_skip`)
+and leaves every other error a plain failure, because a router that IS present and refuses to
 start is a real fault.
 
 `.expect(...)` on that call collapses the distinction. Thirty-one call sites did
@@ -17,7 +18,8 @@ without a ROS install. (This repo's ROS lives in a distrobox, and CLAUDE.md
 forbids mixing that into the host tree, so "just install ROS" is not the
 answer.)
 
-The same shape as issue 0599, which is what `or_skip` was written for. It was
+The same shape as issue 0599, which is what `or_unmet` (then `or_skip`) was
+written for. It was
 reachable only through the `zenohd()` / `zenohd_unique()` rstest fixtures; every
 direct caller went around it.
 
@@ -108,8 +110,8 @@ def self_test():
         bad.append("a plain .expect on start_unique was not caught")
     if offenders_in("let r = ZenohRouter::start(port).unwrap();") != [(1, "unwrap()")]:
         bad.append(".unwrap() was not caught")
-    if offenders_in("let r = or_skip(ZenohRouter::start_unique());"):
-        bad.append("the correct or_skip form was flagged")
+    if offenders_in("let r = or_unmet(ZenohRouter::start_unique());"):
+        bad.append("the correct or_unmet form was flagged")
     # A nested paren and a string containing ')' must not end the call early.
     src = 'let r = ZenohRouter::start_serial(&[a(b), ")"]).expect("x");'
     if offenders_in(src) != [(1, "expect(")]:
@@ -167,7 +169,8 @@ def main(argv):
         for rel, line, what in hits:
             sys.stderr.write(f"  {rel}:{line}  .{what}\n")
         sys.stderr.write(
-            "\nWrap the call in `fixtures::or_skip(...)`. It skips ONLY on\n"
+            "\nWrap the call in `fixtures::or_unmet(...)`. It reports an unmet\n"
+            "precondition ONLY on\n"
             "`RouterUnavailable` — a router that is present and will not start still\n"
             "fails, which is the distinction `.expect` throws away.\n"
         )

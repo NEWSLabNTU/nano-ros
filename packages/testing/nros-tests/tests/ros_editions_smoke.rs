@@ -3,8 +3,8 @@
 //! Proves the docker-backed [`RosEnv`] can spawn a live ROS 2 peer in an
 //! edition image the host does NOT have installed, run a one-shot command
 //! against it, and observe delivery — the primitive every extra-edition lane is
-//! built on. Skips cleanly (never a silent pass) when the image is not built or
-//! docker is absent, matching the QEMU-lane contract.
+//! built on. Fails as an unmet precondition (never a silent pass) when the
+//! image is not built or docker is absent, matching the QEMU-lane contract.
 //!
 //! Run it (jazzy image must exist — `just ros_editions image jazzy`):
 //!   cargo test -p nros-tests --test ros_editions_smoke -- --nocapture

@@ -31,7 +31,7 @@
 //! - **Lifecycle** (phase-263 A3 / phase-269 W2): `[lifecycle] autostart =
 //!   "active"` drives Configure→Activate at boot with NO manual `ros2
 //!   lifecycle set`, observed over the REP-2002 service surface (requires
-//!   ROS 2 + rmw_zenoh_cpp; skips when absent).
+//!   ROS 2 + rmw_zenoh_cpp; fails when absent).
 //! - **Safety** (phase-263 B1 / phase-269 W3): CRC-validated delivery —
 //!   talker attaches a CRC per `/chatter` publish, the listener's
 //!   validated subscription republishes the CRC-valid count on `/safe_ok`,

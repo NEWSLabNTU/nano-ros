@@ -84,7 +84,7 @@ fn nano_ros_enumerates_a_stock_ros2_node() {
     interop::assert_test_bound("graph_interop", &GRAPH_COORDS);
 
     require_ros2();
-    let router = fixtures::or_skip(fixtures::ZenohRouter::start_unique());
+    let router = fixtures::or_unmet(fixtures::ZenohRouter::start_unique());
     let locator = router.locator();
 
     let _talker = Ros2Process::demo_nodes_cpp_talker(&locator, DEFAULT_ROS_DISTRO)
@@ -280,7 +280,7 @@ fn a_peer_leaving_fires_the_graph_change_guard() {
     interop::assert_test_bound("graph_interop", &GRAPH_COORDS);
 
     require_ros2();
-    let router = fixtures::or_skip(fixtures::ZenohRouter::start_unique());
+    let router = fixtures::or_unmet(fixtures::ZenohRouter::start_unique());
     let locator = router.locator();
 
     let talker = Ros2Process::demo_nodes_cpp_talker(&locator, DEFAULT_ROS_DISTRO)
@@ -500,7 +500,7 @@ fn zenoh_publisher_gid_is_the_one_a_stock_peer_reads_and_reports() {
     interop::assert_test_bound("graph_interop", &GRAPH_COORDS);
 
     require_ros2();
-    let router = fixtures::or_skip(fixtures::ZenohRouter::start_unique());
+    let router = fixtures::or_unmet(fixtures::ZenohRouter::start_unique());
     let locator = router.locator();
 
     let probe_bin = fixtures::build_graph_probe().require("prebuilt graph-probe");

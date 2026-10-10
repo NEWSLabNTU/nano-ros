@@ -299,12 +299,12 @@ fn wait_for_router_ready(handle: &mut Child, locator: &str, port: u16) -> TestRe
 /// # Example
 ///
 /// ```ignore
-/// use nros_tests::fixtures::{ZenohRouter, or_skip};
+/// use nros_tests::fixtures::{ZenohRouter, or_unmet};
 ///
-/// // `or_skip`, never `.unwrap()`: a host with no `rmw_zenohd` must SKIP the
-/// // lane, and only `or_skip` tells that apart from a router that is present
+/// // `or_unmet`, never `.unwrap()`: a host with no `rmw_zenohd` must SKIP the
+/// // lane, and only `or_unmet` tells that apart from a router that is present
 /// // and refuses to start (issues 0599, 0804).
-/// let router = or_skip(ZenohRouter::start_unique());
+/// let router = or_unmet(ZenohRouter::start_unique());
 /// println!("Router at: {}", router.locator());
 /// // Router is automatically stopped when dropped
 /// ```
@@ -643,22 +643,23 @@ impl Drop for ZenohRouter {
 /// ```
 #[rstest::fixture]
 pub fn zenohd() -> ZenohRouter {
-    or_skip(ZenohRouter::start(7447))
+    or_unmet(ZenohRouter::start(7447))
 }
 
 /// rstest fixture for zenohd on an OS-assigned ephemeral port (parallel-safe)
 #[rstest::fixture]
 pub fn zenohd_unique() -> ZenohRouter {
-    or_skip(ZenohRouter::start_unique())
+    or_unmet(ZenohRouter::start_unique())
 }
 
-/// phase-362 W3 — a host with no ROS router SKIPS, it does not fail.
+/// phase-362 W3 — a host with no ROS router reports THAT, not a router crash.
 ///
 /// The three outcomes this phase allows for a lane that used to spawn our
-/// vendored router are: run routerless, run on `rmw_zenohd`, or skip with a
-/// reason naming what is missing. This is the third — and the class is
-/// `capability`, because a missing `rmw_zenoh_cpp` install is a property of the
-/// HOST, like an absent cross toolchain or emulator.
+/// vendored router are: run routerless, run on `rmw_zenohd`, or stop with a
+/// reason naming what is missing. This is the third. It was a `capability`
+/// skip and was named `or_skip`; since issue 1758 a missing prerequisite is an
+/// `unmet!` red, and a lane that does not mean to run the test narrows its
+/// scope instead.
 ///
 /// The rule it serves is issue 0599's: a lane that cannot run must say so. The
 /// alternative — falling back to a router no ROS 2 deployment runs — is how
@@ -668,7 +669,7 @@ pub fn zenohd_unique() -> ZenohRouter {
 /// Every other error stays a failure. `RouterUnavailable` is the only one that
 /// means "not runnable here"; a router that is present and will not start is a
 /// real fault.
-pub fn or_skip(res: TestResult<ZenohRouter>) -> ZenohRouter {
+pub fn or_unmet(res: TestResult<ZenohRouter>) -> ZenohRouter {
     match res {
         Ok(router) => router,
         Err(TestError::RouterUnavailable(why)) => {

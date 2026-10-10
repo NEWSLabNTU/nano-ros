@@ -1768,8 +1768,8 @@ fn nros_cli_path() -> std::path::PathBuf {
 ///
 /// Added by Phase 210.D.1 / 210.E.3.d.native; the shipped 0.3.7 release
 /// predates it. Tests that shell out to `nros sync …` (e.g. codegen-
-/// preflight integration tests) should gate on this and skip cleanly
-/// rather than burying the run in a clap "unrecognized subcommand 'ws'"
+/// preflight integration tests) should gate on this and fail as an
+/// unmet precondition rather than burying the run in a clap "unrecognized subcommand 'ws'"
 /// stack trace. Phase 214.I.2.
 pub fn is_nros_ws_sync_available() -> bool {
     let bin = nros_cli_path();

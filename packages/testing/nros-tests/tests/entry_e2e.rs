@@ -28,7 +28,7 @@
 //!   listener's republished count on `/qos_ok` reaches an external sink.
 //! - **Lifecycle** (phase-276 W3 / #128): `apply_lifecycle` autostart drives
 //!   Configure→Activate at boot, observed over the REP-2002 service surface
-//!   (`ros2 lifecycle …`; requires ROS 2 + rmw_zenoh_cpp, skips when absent).
+//!   (`ros2 lifecycle …`; requires ROS 2 + rmw_zenoh_cpp, fails when absent).
 //! - **Safety** (phase-276 W4): the CRC attach → in-image deliver → validate
 //!   chain republishes the CRC-valid count on `/safe_ok` to an external sink.
 //!

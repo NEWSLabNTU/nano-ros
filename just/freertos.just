@@ -411,7 +411,7 @@ test-all verbose="":
 # Its baked router port is shared with `entry_e2e`'s freertos_c cell, so nextest
 # serializes the two in `matrix-consumers-serial`.
 # Needs ROS 2 + `rmw_zenoh_cpp`, `arm-none-eabi-gcc`, `qemu-system-arm`, the
-# FreeRTOS + lwIP trees and that fixture; skips on each.
+# FreeRTOS + lwIP trees and that fixture; a missing one is an `unmet!` red (issue 1758).
 [group("debug")]
 test-ros2 verbose="":
     @just _test-focused 'binary(=pubsub_freertos_ros2_interop_e2e)' {{verbose}}

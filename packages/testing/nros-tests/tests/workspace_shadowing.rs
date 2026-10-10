@@ -14,8 +14,8 @@
 //! prebuilt consumer rather than running cmake at run time (issue 0034 /
 //! AGENTS.md "No compilation inside tests").
 //!
-//! Skips when no AMENT layer ships `std_msgs` (nothing to shadow → the contract
-//! degenerates) or `nm` is absent.
+//! Fails as an unmet precondition when no AMENT layer ships `std_msgs`
+//! (nothing to shadow → the contract degenerates) or `nm` is absent.
 
 use std::{
     path::{Path, PathBuf},

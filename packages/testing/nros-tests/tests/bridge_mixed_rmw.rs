@@ -22,8 +22,8 @@
 //!                                            (rmw-xrce fixture)
 //! ```
 //!
-//! Skips cleanly when any of `zenohd` / XRCE-DDS Agent / the prebuilt bridge
-//! binary is missing — same `require_*` pattern as the rest of the suite.
+//! Fails as an unmet precondition when any of `zenohd` / XRCE-DDS Agent / the
+//! prebuilt bridge binary is missing — same `require_*` pattern as the rest of the suite.
 //!
 //! Closes Phase 211.I's "headline use case" bullet: nano-ros nodes on
 //! different RMWs discovering each other through `nros-bridge` /

@@ -433,7 +433,7 @@ fn test_tls_talker_listener_communication(
     let certs = tls_certs::TlsCerts::generate().expect("Failed to generate TLS certs");
 
     // Start zenohd with TLS listener
-    let router = nros_tests::fixtures::or_skip(ZenohRouter::start_tls_unique(
+    let router = nros_tests::fixtures::or_unmet(ZenohRouter::start_tls_unique(
         certs.cert_path(),
         certs.key_path(),
     ));

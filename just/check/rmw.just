@@ -454,8 +454,10 @@ zenohd-resolution-parity:
     @bash scripts/check-zenohd-resolution-parity.sh
 
 # issue 0804 — `ZenohRouter::start*(...).expect(...)` turns "this host has no ROS
-# router" into a test failure. `fixtures::or_skip` is the one reading of
-# `RouterUnavailable` (skip), and it keeps every other router error a failure.
+# router" into an anonymous test failure. `fixtures::or_unmet` is the one
+# reading of `RouterUnavailable` (an `unmet!` naming the missing router; it was
+# `or_skip` and a skip until issue 1758), and it keeps every other router error
+# a plain failure.
 # 31 sites went around it, which is why tier 2 reported 7 real failures on a
 # host whose ROS lives in a distrobox. Source-only, fast line.
 zenohd-router-skips:

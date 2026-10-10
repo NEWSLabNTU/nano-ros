@@ -56,8 +56,8 @@
 //!
 //! ## Prerequisites
 //!
-//! - ROS 2 + `rmw_zenoh_cpp` (skips when absent — a host with no `/opt/ros`
-//!   cannot run this cell at all)
+//! - ROS 2 + `rmw_zenoh_cpp` (an `unmet!` red when absent — a host with no
+//!   `/opt/ros` cannot run this cell at all, so only live-peer claims it)
 //! - `just zephyr build-fixtures` (the west leaves lane builds
 //!   `build-cortex-m-c-talker-zenoh`)
 //! - `qemu-system-arm` with `mps2-an385` machine support
