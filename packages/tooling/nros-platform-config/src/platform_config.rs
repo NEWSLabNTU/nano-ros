@@ -2016,7 +2016,7 @@ impl PlatformsTree {
         }
         self.files
             .iter()
-            .find(|(_, f)| f.names.iter().any(|n| n == name))
+            .find(|(_, f)| f.names.iter().any(|n| n.eq_ignore_ascii_case(name)))
             .map(|(dir, _)| dir.as_str())
             .unwrap_or(name)
     }
@@ -3170,7 +3170,7 @@ impl BoardKnobsFile {
             && let Some(entry) = self
                 .boards
                 .iter()
-                .find(|b| b.names.iter().any(|n| n == want))
+                .find(|b| b.names.iter().any(|n| n.eq_ignore_ascii_case(want)))
         {
             return Ok(entry.knobs.clone());
         }
@@ -3204,7 +3204,7 @@ impl BoardKnobsFile {
             && let Some(entry) = self
                 .boards
                 .iter()
-                .find(|b| b.names.iter().any(|n| n == want))
+                .find(|b| b.names.iter().any(|n| n.eq_ignore_ascii_case(want)))
         {
             return Ok(entry.capabilities.clone());
         }

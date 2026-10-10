@@ -300,7 +300,7 @@ pub const BOARD_PATHS: &[(&str, &str, bool)] = &[
 pub fn board_path_for(key: &str) -> Option<&'static str> {
     BOARD_PATHS
         .iter()
-        .find(|(k, _, _)| *k == key)
+        .find(|(k, _, _)| k.eq_ignore_ascii_case(key))
         .map(|(_, path, _)| *path)
 }
 

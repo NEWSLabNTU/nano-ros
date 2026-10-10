@@ -25,7 +25,7 @@
 # stays required until an SDK re-cut ships it.
 
 [[board]]
-names = ["mps3-an536-freertos", "an536", "AN536"]
+names = ["mps3-an536-freertos", "an536"]
 platform = "freertos"
 toolchain = "stable"
 entry_kind = "board-run"
