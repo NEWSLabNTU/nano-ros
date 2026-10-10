@@ -147,7 +147,7 @@ leave the documented surface without leaving the crate.
 ## Decided (2026-10-09, maintainer) — phase-483 owns the remainder
 
 The three open decisions above are settled by
-[phase-483](../../roadmap/phase-483-rclcpp-rclrs-shape-only.md):
+[phase-483](../../roadmap/archived/phase-483-rclcpp-rclrs-shape-only.md):
 
 - The `nros` facade takes rclrs's shape, keeping its crate name, so that
   `use nros as rclrs;` reads as rclrs.

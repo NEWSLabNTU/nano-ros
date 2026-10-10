@@ -85,7 +85,7 @@ SKIP_DIR_PARTS = (
 # with `///` or `//!`, and inside a string template it is indented under a
 # `quote!`/`format!` — neither of which this anchors on, so both are excluded by
 # requiring the invocation to start the line (after indentation) and the file to
-# also contain the matching `impl Node for`.
+# also contain the matching `impl Component for`.
 #
 # The class name also matches a `{placeholder}` so the two SCAFFOLD templates
 # — Rust source inside a `format!` string — are checked like any other class.
@@ -97,7 +97,12 @@ NODE_MACRO_RE = re.compile(
     re.MULTILINE,
 )
 
-IMPL_NODE_RE = r"impl\s+(?:(?:::)?[A-Za-z_][A-Za-z0-9_]*::)*Node\s+for\s+{name}\s*\{{"
+# The component trait is `nros::Component` since phase-483 W2, which renamed
+# it from `Node` (that name is now the one node TYPE). This regex matched
+# `Node` until the rename landed, and the gate then read 2 classes of ~116:
+# the two whose source still said `impl Node for`, and which no longer
+# compiled. A green gate over a trait nobody implements says nothing.
+IMPL_NODE_RE = r"impl\s+(?:(?:::)?[A-Za-z_][A-Za-z0-9_]*::)*Component\s+for\s+{name}\s*\{{"
 
 # `EntityBounds::exact(p, ss, sc, ac, as)` — the five bounds, positionally, in
 # the order the constructor takes them.
@@ -111,12 +116,21 @@ EXACT_RE = re.compile(
 # `create_service_static` / `create_action_static` are the tag-only SERVER
 # spellings (they delegate to `create_service_server_for_name` /
 # `create_action_server_for_name`), so they count as servers.
+#
+# phase-483 W3 moved these to `nros::DeclarativeNode` and renamed the ones
+# whose name collides with an rclrs-shaped inherent method on `nros::Node`:
+# `declare_publisher*`, `declare_action_client`, `declare_action_server`. The
+# inherent `create_publisher` / `create_action_client` / `create_action_server`
+# on `Node` create executor entities directly, outside the component's static
+# cell, so they are NOT counted here: the bare prefixes would count them. The
+# `create_*_for_*` / `_with_callbacks*` declarative spellings keep their names
+# and are matched by the trailing underscore.
 KINDS = (
-    ("publishers", ("create_publisher",)),
+    ("publishers", ("declare_publisher", "create_publisher_for_topic")),
     ("service_servers", ("create_service_server", "create_service_static")),
     ("service_clients", ("create_service_client",)),
-    ("action_clients", ("create_action_client",)),
-    ("action_servers", ("create_action_server", "create_action_static")),
+    ("action_clients", ("declare_action_client", "create_action_client_")),
+    ("action_servers", ("declare_action_server", "create_action_server_", "create_action_static")),
 )
 
 
@@ -176,13 +190,13 @@ def scan_source(src: str, rel: str) -> tuple[list[Finding], list[tuple[str, dict
     for cls in classes:
         im = re.search(IMPL_NODE_RE.format(name=re.escape(cls)), clean)
         if not im:
-            # No `impl Node for <cls>` here: a doc example, a scaffold template
+            # No `impl Component for <cls>` here: a doc example, a scaffold template
             # string, or an impl in another file. Nothing to check, and nothing
             # to claim — the macro is only load-bearing where the impl is.
             continue
         # From the END of the match, which IS the opening brace: starting at
         # `im.start()` finds the first `{` after `impl`, and for a scaffold
-        # template's `impl Node for {type_name}` that is the PLACEHOLDER, so
+        # template's `impl Component for {type_name}` that is the PLACEHOLDER, so
         # the "body" came back as `{type_name}` and every check read empty.
         impl_body = block_from(clean, im.end() - 1)
         reg = re.search(r"fn\s+register\s*\(", impl_body)
@@ -249,10 +263,43 @@ def rust_files() -> list[Path]:
 
 
 SELF_TESTS = [
+    # phase-483 W2/W3 — the trait is `Component`, qualified or not, and the
+    # declarative publisher is `declare_publisher*`. A short declaration over
+    # them must be found: the gate read none of these spellings until the
+    # rename was followed, and was green over a tree it could not see.
+    (
+        "a qualified `impl nros::Component for` with a short declaration is a finding",
+        """
+impl nros::Component for Talker {
+    const ENTITY_BOUNDS: nros::EntityBounds = nros::EntityBounds::exact(0, 0, 0, 0, 0);
+    fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
+        let p = node.declare_publisher_with_qos::<Int32>(PUB, "/chatter", qos)?;
+        Ok(())
+    }
+}
+nros::node!(Talker);
+""",
+        1,
+    ),
+    (
+        "the inherent rclrs-shaped `create_publisher` is not a cell entity",
+        """
+impl Component for Talker {
+    const ENTITY_BOUNDS: nros::EntityBounds = nros::EntityBounds::exact(1, 0, 0, 0, 0);
+    fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
+        let p = node.declare_publisher::<Int32>(PUB, "/chatter")?;
+        let q = node.create_publisher::<Int32>("/direct")?;
+        Ok(())
+    }
+}
+nros::node!(Talker);
+""",
+        0,
+    ),
     (
         "absent bounds is a finding",
         """
-impl Node for Talker {
+impl Component for Talker {
     const NAME: &'static str = "talker";
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let p = node.create_publisher_for_topic::<Int32>("/chatter")?;
@@ -266,7 +313,7 @@ nros::node!(Talker);
     (
         "exact bounds matching the body passes",
         """
-impl Node for Talker {
+impl Component for Talker {
     const ENTITY_BOUNDS: nros::EntityBounds = nros::EntityBounds::exact(1, 0, 0, 0, 0);
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let p = node.create_publisher_for_topic::<Int32>("/chatter")?;
@@ -280,7 +327,7 @@ nros::node!(Talker);
     (
         "a declaration SHORTER than the body is a finding",
         """
-impl Node for Server {
+impl Component for Server {
     const ENTITY_BOUNDS: nros::EntityBounds = nros::EntityBounds::exact(0, 0, 0, 0, 0);
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let s = node.create_service_server_for_name::<AddTwoInts>("/add")?;
@@ -294,7 +341,7 @@ nros::node!(Server);
     (
         "the tag-only static spellings count as servers",
         """
-impl Node for Server {
+impl Component for Server {
     const ENTITY_BOUNDS: nros::EntityBounds = nros::EntityBounds::exact(0, 0, 0, 0, 0);
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let s = node.create_service_static::<AddTwoInts>("/add")?;
@@ -309,7 +356,7 @@ nros::node!(Server);
     (
         "subscriptions and timers claim NO cell slot",
         """
-impl Node for Listener {
+impl Component for Listener {
     const ENTITY_BOUNDS: nros::EntityBounds = nros::EntityBounds::exact(0, 0, 0, 0, 0);
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         node.create_subscription_for_callback_name::<Int32>("/chatter", "on_msg")?;
@@ -332,7 +379,7 @@ let t = "nros::node!(Talker);";
     (
         "a commented-out creator is not counted",
         """
-impl Node for Talker {
+impl Component for Talker {
     const ENTITY_BOUNDS: nros::EntityBounds = nros::EntityBounds::exact(0, 0, 0, 0, 0);
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         // node.create_publisher_for_topic::<Int32>("/chatter")?;
@@ -346,7 +393,7 @@ nros::node!(Talker);
     (
         "a scaffold template's placeholder class is checked, doubled braces and all",
         """
-impl Node for {type_name} {{
+impl Component for {type_name} {{
     const NAME: &'static str = "{node_name}";
     const ENTITY_BOUNDS: nros::EntityBounds = nros::EntityBounds::exact(0, 0, 0, 0, 0);
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {{
@@ -361,7 +408,7 @@ nros::node!({type_name});
     (
         "and a template that declares nothing is still a finding",
         """
-impl Node for {type_name} {{
+impl Component for {type_name} {{
     const NAME: &'static str = "{node_name}";
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {{
         let _p = node.create_publisher_for_topic::<M>("/t")?;
@@ -375,7 +422,7 @@ nros::node!({type_name});
     (
         "an explicit knob_caps() declaration is a choice, not a finding",
         """
-impl Node for Big {
+impl Component for Big {
     const ENTITY_BOUNDS: nros::EntityBounds = nros::EntityBounds::knob_caps();
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         for t in TOPICS { node.create_publisher_for_topic::<Int32>(t)?; }

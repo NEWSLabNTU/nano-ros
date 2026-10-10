@@ -405,7 +405,7 @@
   },
   "rust:CallbackId": {
     "verdict": "extension",
-    "why": "the stable source-level identifier a component-mode callback declaration must carry, so the sidecar, the launch model and the image all name the same callback across rebuilds (RFC-0046). rclrs creates entities anonymously at runtime and has nothing to key. Note it is already `#[doc(hidden)]` in the facade, alongside `NodeId` -- which the node stage recorded as an extension for the same reason. machinery `nros::node!` and the generated runtime expand into, not something a user writes -- `node_metadata.rs`'s own first line says \"shared by metadata discovery and generated runtimes\". Issue 0784: it should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
+    "why": "the stable source-level identifier a component-mode callback declaration must carry, so the sidecar, the launch model and the image all name the same callback across rebuilds (RFC-0046). rclrs creates entities anonymously at runtime and has nothing to key. Note it is already `#[doc(hidden)]` in the facade, alongside `NodeId` -- which the node stage recorded as an extension for the same reason. machinery `nros::node!` and the generated runtime expand into, not something a user writes -- `node_metadata.rs`'s own first line says \"shared by metadata discovery and generated runtimes\". Issue 1789: it should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
   },
   "rust:CallbackId::as_str": {
     "verdict": "extension",
@@ -727,7 +727,7 @@
   },
   "rust:EntityId": {
     "verdict": "extension",
-    "why": "the stable source-level identifier a component-mode entity declaration must carry, so the sidecar, the launch model and the image all name the same entity across rebuilds (RFC-0046). rclrs creates entities anonymously at runtime and has nothing to key. Note it is already `#[doc(hidden)]` in the facade, alongside `NodeId` -- which the node stage recorded as an extension for the same reason. machinery `nros::node!` and the generated runtime expand into, not something a user writes -- `node_metadata.rs`'s own first line says \"shared by metadata discovery and generated runtimes\". Issue 0784: it should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
+    "why": "the stable source-level identifier a component-mode entity declaration must carry, so the sidecar, the launch model and the image all name the same entity across rebuilds (RFC-0046). rclrs creates entities anonymously at runtime and has nothing to key. Note it is already `#[doc(hidden)]` in the facade, alongside `NodeId` -- which the node stage recorded as an extension for the same reason. machinery `nros::node!` and the generated runtime expand into, not something a user writes -- `node_metadata.rs`'s own first line says \"shared by metadata discovery and generated runtimes\". Issue 1789: it should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
   },
   "rust:EntityId::as_str": {
     "verdict": "extension",
@@ -996,7 +996,7 @@
   },
   "rust:Rmw": {
     "verdict": "extension",
-    "why": "the compile-time backend factory a backend crate implements: `open(&RmwConfig) -> Session`. the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 0784's complaint. See `rust:Session::create_publisher` in the pubsub stage."
+    "why": "the compile-time backend factory a backend crate implements: `open(&RmwConfig) -> Session`. the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 1789's complaint. See `rust:Session::create_publisher` in the pubsub stage."
   },
   "rust:Rmw::open": {
     "verdict": "extension",
@@ -1004,11 +1004,11 @@
   },
   "rust:RmwConfig": {
     "verdict": "extension",
-    "why": "the middleware-agnostic open parameters (locator, mode, domain, node name, namespace, properties) a backend maps onto its own. the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 0784's complaint. See `rust:Session::create_publisher` in the pubsub stage."
+    "why": "the middleware-agnostic open parameters (locator, mode, domain, node name, namespace, properties) a backend maps onto its own. the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 1789's complaint. See `rust:Session::create_publisher` in the pubsub stage."
   },
   "rust:RmwSession": {
     "verdict": "extension",
-    "why": "`nros::internals` -- backend-agnostic aliases resolving to the ACTIVE backend's concrete types, and the entry points the C API drives them through. Named `internals` and documented as \"implementation details of the transport backends\", which is the honest half of issue 0784's complaint: the module says what it is, unlike the machinery sitting at the top level of `nros::`. rclrs needs no equivalent because rcl is its only backend and it is resolved at runtime, not by a type alias."
+    "why": "`nros::internals` -- backend-agnostic aliases resolving to the ACTIVE backend's concrete types, and the entry points the C API drives them through. Named `internals` and documented as \"implementation details of the transport backends\", which is the honest half of issue 1789's complaint: the module says what it is, unlike the machinery sitting at the top level of `nros::`. rclrs needs no equivalent because rcl is its only backend and it is resolved at runtime, not by a type alias."
   },
   "rust:RmwSubscriber": {
     "verdict": "extension",
@@ -1077,7 +1077,7 @@
   },
   "rust:Session": {
     "verdict": "extension",
-    "why": "the per-process anchor a backend hands the executor; every method takes `&mut self`, which is how the single-threaded-transport contract is expressed in the type system. the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 0784's complaint. See `rust:Session::create_publisher` in the pubsub stage."
+    "why": "the per-process anchor a backend hands the executor; every method takes `&mut self`, which is how the single-threaded-transport contract is expressed in the type system. the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 1789's complaint. See `rust:Session::create_publisher` in the pubsub stage."
   },
   "rust:Session::close": {
     "verdict": "extension",
@@ -1097,7 +1097,7 @@
   },
   "rust:Session::set_wake_callback": {
     "verdict": "extension",
-    "why": "the backend-side half of the wake primitive; see the pubsub stage's `c:subscription_set_wake_callback` for what it buys. the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 0784's complaint. See `rust:Session::create_publisher` in the pubsub stage."
+    "why": "the backend-side half of the wake primitive; see the pubsub stage's `c:subscription_set_wake_callback` for what it buys. the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 1789's complaint. See `rust:Session::create_publisher` in the pubsub stage."
   },
   "rust:Session::supports_wake_callback": {
     "verdict": "extension",
@@ -1117,7 +1117,7 @@
   },
   "rust:SessionMode": {
     "verdict": "extension",
-    "why": "Client (connect to a router) or Peer (direct). A zenoh concept with no rcl counterpart: ROS 2 nodes are always peers of a DDS domain, while an embedded image usually cannot afford peer-mode discovery and connects to `rmw_zenohd` instead (RFC-0075). the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 0784's complaint. See `rust:Session::create_publisher` in the pubsub stage."
+    "why": "Client (connect to a router) or Peer (direct). A zenoh concept with no rcl counterpart: ROS 2 nodes are always peers of a DDS domain, while an embedded image usually cannot afford peer-mode discovery and connects to `rmw_zenohd` instead (RFC-0075). the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 1789's complaint. See `rust:Session::create_publisher` in the pubsub stage."
   },
   "rust:SessionSpec": {
     "verdict": "extension",
@@ -1234,7 +1234,7 @@
   },
   "rust:TopicInfo": {
     "verdict": "extension",
-    "why": "the topic descriptor a backend creates an endpoint from: name, type name, type hash, domain, node name and namespace for the liveliness token, plus two embedded-only hints. the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 0784's complaint. See `rust:Session::create_publisher` in the pubsub stage."
+    "why": "the topic descriptor a backend creates an endpoint from: name, type name, type hash, domain, node name and namespace for the liveliness token, plus two embedded-only hints. the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 1789's complaint. See `rust:Session::create_publisher` in the pubsub stage."
   },
   "rust:TopicInfo::new": {
     "verdict": "extension",
@@ -1258,7 +1258,7 @@
   },
   "rust:Transport": {
     "verdict": "extension",
-    "why": "a SECOND factory trait beside `rust:Rmw`, differing only in taking `TransportConfig` rather than `RmwConfig`. Exactly one backend implements it (`ZenohTransport` in `nros-rmw-zenoh/src/shim/transport.rs`) while all five implement `Rmw`, and both are re-exported from `nros::`. Worth a decision in W5: two public spellings of \"open a session\" is a choice nobody makes on purpose. the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 0784's complaint. See `rust:Session::create_publisher` in the pubsub stage."
+    "why": "a SECOND factory trait beside `rust:Rmw`, differing only in taking `TransportConfig` rather than `RmwConfig`. Exactly one backend implements it (`ZenohTransport` in `nros-rmw-zenoh/src/shim/transport.rs`) while all five implement `Rmw`, and both are re-exported from `nros::`. Worth a decision in W5: two public spellings of \"open a session\" is a choice nobody makes on purpose. the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 1789's complaint. See `rust:Session::create_publisher` in the pubsub stage."
   },
   "rust:Transport::open": {
     "verdict": "extension",
@@ -1270,7 +1270,7 @@
   },
   "rust:TransportError": {
     "verdict": "extension",
-    "why": "the error every backend operation returns, and the payload of `NodeError::Transport` -- which is what a Rust user actually matches on. Its variants name transport preconditions rcl has no vocabulary for (`IncompatibleQos`, `IncompatibleAbi`, `Disconnected`). the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 0784's complaint. See `rust:Session::create_publisher` in the pubsub stage.\nCORRECTION to issue 0783: that issue says the facade \"exports no way to inspect\" `NodeError` because `TransportError` is not exported. It IS -- `packages/api/nros/src/lib.rs:682` re-exports it unconditionally from `nros_rmw`. What 0783 actually found is that it is missing from the \"Re-export core types\" BLOCK at line 206 and lives in the transport block instead. `RclReturnCode` is genuinely unreachable (types stage, `rust:RclReturnCode`)."
+    "why": "the error every backend operation returns, and the payload of `NodeError::Transport` -- which is what a Rust user actually matches on. Its variants name transport preconditions rcl has no vocabulary for (`IncompatibleQos`, `IncompatibleAbi`, `Disconnected`). the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 1789's complaint. See `rust:Session::create_publisher` in the pubsub stage.\nCORRECTION to issue 0783: that issue says the facade \"exports no way to inspect\" `NodeError` because `TransportError` is not exported. It IS -- `packages/api/nros/src/lib.rs:682` re-exports it unconditionally from `nros_rmw`. What 0783 actually found is that it is missing from the \"Re-export core types\" BLOCK at line 206 and lives in the transport block instead. `RclReturnCode` is genuinely unreachable (types stage, `rust:RclReturnCode`)."
   },
   "rust:Value": {
     "verdict": "divergence",

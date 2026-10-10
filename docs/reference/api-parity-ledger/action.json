@@ -607,7 +607,7 @@
   },
   "cpp:TickCtx::send_goal_raw": {
     "verdict": "extension",
-    "why": "the generated dispatch path for sending a goal from inside a component's tick. Machinery `nros::node!` expands into; see issue 0784 and the service stage's `rust:ClientDispatch::call_raw`."
+    "why": "the generated dispatch path for sending a goal from inside a component's tick. Machinery `nros::node!` expands into; see issue 1789 and the service stage's `rust:ClientDispatch::call_raw`."
   },
   "cpp:bind_action_client": {
     "verdict": "extension",
@@ -788,7 +788,7 @@
   },
   "rust:ActionClientCore": {
     "verdict": "divergence",
-    "why": "the untyped half of `rust:ActionClient`: the four channels, the goal counter, the discovery probe and the waker registrations, over CDR bytes. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 0784's complaint. See the service stage's `rust:ServiceTrait`. rclrs 0.5.1 ships NO action API at all -- the recorded surface has zero action, goal or feedback items -- so every action item in our Rust API is ours-only by construction rather than by an RTOS need. Ours mirror rclcpp_action's and `action_msgs`' concepts and are shared with our C and C++ surfaces. The convergence point is whenever rclrs grows actions."
+    "why": "the untyped half of `rust:ActionClient`: the four channels, the goal counter, the discovery probe and the waker registrations, over CDR bytes. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 1789's complaint. See the service stage's `rust:ServiceTrait`. rclrs 0.5.1 ships NO action API at all -- the recorded surface has zero action, goal or feedback items -- so every action item in our Rust API is ours-only by construction rather than by an RTOS need. Ours mirror rclcpp_action's and `action_msgs`' concepts and are shared with our C and C++ surfaces. The convergence point is whenever rclrs grows actions."
   },
   "rust:ActionClientCore::is_server_ready": {
     "verdict": "rename",
@@ -897,11 +897,11 @@
   },
   "rust:ActionServerCore": {
     "verdict": "divergence",
-    "why": "the arena side of the action protocol over CDR bytes: the goal table, the status topic (`publish_status_array`), the cancel matcher, the result slab. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 0784's complaint. See the service stage's `rust:ServiceTrait`. It also owns result reclamation (`expire_completed_results` / `completed_result_count` / `result_slab_used` / `has_completed_result`, issue 0796) -- rcl puts that behind `rcl_action_expire_goals`; see `c:action_expire_goals`."
+    "why": "the arena side of the action protocol over CDR bytes: the goal table, the status topic (`publish_status_array`), the cancel matcher, the result slab. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 1789's complaint. See the service stage's `rust:ServiceTrait`. It also owns result reclamation (`expire_completed_results` / `completed_result_count` / `result_slab_used` / `has_completed_result`, issue 0796) -- rcl puts that behind `rcl_action_expire_goals`; see `c:action_expire_goals`."
   },
   "rust:ActionServerHandle": {
     "verdict": "divergence",
-    "why": "an index into the executor's static entity table rather than an owning handle, because the entity outlives the borrow that created it. See the pubsub stage's `rust:PublisherHandle`. The typed action-server handle a registered entity is reached through. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 0784's complaint. See the service stage's `rust:ServiceTrait`."
+    "why": "an index into the executor's static entity table rather than an owning handle, because the entity outlives the borrow that created it. See the pubsub stage's `rust:PublisherHandle`. The typed action-server handle a registered entity is reached through. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 1789's complaint. See the service stage's `rust:ServiceTrait`."
   },
   "rust:ActionServerOptions": {
     "verdict": "divergence",
@@ -913,7 +913,7 @@
   },
   "rust:ActionServerRawHandle": {
     "verdict": "divergence",
-    "why": "the CDR-bytes form of `rust:ActionServerHandle` -- what the C and C++ shims call. an index into the executor's static entity table rather than an owning handle, because the entity outlives the borrow that created it. See the pubsub stage's `rust:PublisherHandle`. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 0784's complaint. See the service stage's `rust:ServiceTrait`."
+    "why": "the CDR-bytes form of `rust:ActionServerHandle` -- what the C and C++ shims call. an index into the executor's static entity table rather than an owning handle, because the entity outlives the borrow that created it. See the pubsub stage's `rust:PublisherHandle`. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 1789's complaint. See the service stage's `rust:ServiceTrait`."
   },
   "rust:ActionServerReady::any_ready": {
     "verdict": "divergence",
@@ -1017,7 +1017,7 @@
   },
   "rust:Executor::action_client_core_mut": {
     "verdict": "divergence",
-    "why": "borrows a registered action client's core out of the executor's entity table, so generated dispatch can drive it. an index into the executor's static entity table rather than an owning handle, because the entity outlives the borrow that created it. See the pubsub stage's `rust:PublisherHandle`. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 0784's complaint. See the service stage's `rust:ServiceTrait`."
+    "why": "borrows a registered action client's core out of the executor's entity table, so generated dispatch can drive it. an index into the executor's static entity table rather than an owning handle, because the entity outlives the borrow that created it. See the pubsub stage's `rust:PublisherHandle`. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 1789's complaint. See the service stage's `rust:ServiceTrait`."
   },
   "rust:Executor::detach_action_client_raw": {
     "verdict": "extension",
@@ -1033,31 +1033,31 @@
   },
   "rust:Executor::register_action_client_core": {
     "verdict": "divergence",
-    "why": "registering an action entity on the executor. rclrs has no actions at all, and rclcpp_action registers through `NodeWaitablesInterface`. Ours names the entity's static storage at registration because the executor's entity table is a compile-time-sized array (RFC-0002); the `_sized` variants let a caller override the buffer const generics, and the `_raw` variants take CDR bytes for the C and C++ shims. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 0784's complaint. See the service stage's `rust:ServiceTrait`."
+    "why": "registering an action entity on the executor. rclrs has no actions at all, and rclcpp_action registers through `NodeWaitablesInterface`. Ours names the entity's static storage at registration because the executor's entity table is a compile-time-sized array (RFC-0002); the `_sized` variants let a caller override the buffer const generics, and the `_raw` variants take CDR bytes for the C and C++ shims. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 1789's complaint. See the service stage's `rust:ServiceTrait`."
   },
   "rust:Executor::register_action_client_raw": {
     "verdict": "divergence",
-    "why": "registering an action entity on the executor. rclrs has no actions at all, and rclcpp_action registers through `NodeWaitablesInterface`. Ours names the entity's static storage at registration because the executor's entity table is a compile-time-sized array (RFC-0002); the `_sized` variants let a caller override the buffer const generics, and the `_raw` variants take CDR bytes for the C and C++ shims. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 0784's complaint. See the service stage's `rust:ServiceTrait`."
+    "why": "registering an action entity on the executor. rclrs has no actions at all, and rclcpp_action registers through `NodeWaitablesInterface`. Ours names the entity's static storage at registration because the executor's entity table is a compile-time-sized array (RFC-0002); the `_sized` variants let a caller override the buffer const generics, and the `_raw` variants take CDR bytes for the C and C++ shims. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 1789's complaint. See the service stage's `rust:ServiceTrait`."
   },
   "rust:Executor::register_action_client_raw_sized": {
     "verdict": "divergence",
-    "why": "registering an action entity on the executor. rclrs has no actions at all, and rclcpp_action registers through `NodeWaitablesInterface`. Ours names the entity's static storage at registration because the executor's entity table is a compile-time-sized array (RFC-0002); the `_sized` variants let a caller override the buffer const generics, and the `_raw` variants take CDR bytes for the C and C++ shims. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 0784's complaint. See the service stage's `rust:ServiceTrait`."
+    "why": "registering an action entity on the executor. rclrs has no actions at all, and rclcpp_action registers through `NodeWaitablesInterface`. Ours names the entity's static storage at registration because the executor's entity table is a compile-time-sized array (RFC-0002); the `_sized` variants let a caller override the buffer const generics, and the `_raw` variants take CDR bytes for the C and C++ shims. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 1789's complaint. See the service stage's `rust:ServiceTrait`."
   },
   "rust:Executor::register_action_server": {
     "verdict": "divergence",
-    "why": "registering an action entity on the executor. rclrs has no actions at all, and rclcpp_action registers through `NodeWaitablesInterface`. Ours names the entity's static storage at registration because the executor's entity table is a compile-time-sized array (RFC-0002); the `_sized` variants let a caller override the buffer const generics, and the `_raw` variants take CDR bytes for the C and C++ shims. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 0784's complaint. See the service stage's `rust:ServiceTrait`."
+    "why": "registering an action entity on the executor. rclrs has no actions at all, and rclcpp_action registers through `NodeWaitablesInterface`. Ours names the entity's static storage at registration because the executor's entity table is a compile-time-sized array (RFC-0002); the `_sized` variants let a caller override the buffer const generics, and the `_raw` variants take CDR bytes for the C and C++ shims. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 1789's complaint. See the service stage's `rust:ServiceTrait`."
   },
   "rust:Executor::register_action_server_raw": {
     "verdict": "divergence",
-    "why": "registering an action entity on the executor. rclrs has no actions at all, and rclcpp_action registers through `NodeWaitablesInterface`. Ours names the entity's static storage at registration because the executor's entity table is a compile-time-sized array (RFC-0002); the `_sized` variants let a caller override the buffer const generics, and the `_raw` variants take CDR bytes for the C and C++ shims. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 0784's complaint. See the service stage's `rust:ServiceTrait`."
+    "why": "registering an action entity on the executor. rclrs has no actions at all, and rclcpp_action registers through `NodeWaitablesInterface`. Ours names the entity's static storage at registration because the executor's entity table is a compile-time-sized array (RFC-0002); the `_sized` variants let a caller override the buffer const generics, and the `_raw` variants take CDR bytes for the C and C++ shims. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 1789's complaint. See the service stage's `rust:ServiceTrait`."
   },
   "rust:Executor::register_action_server_raw_sized": {
     "verdict": "divergence",
-    "why": "registering an action entity on the executor. rclrs has no actions at all, and rclcpp_action registers through `NodeWaitablesInterface`. Ours names the entity's static storage at registration because the executor's entity table is a compile-time-sized array (RFC-0002); the `_sized` variants let a caller override the buffer const generics, and the `_raw` variants take CDR bytes for the C and C++ shims. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 0784's complaint. See the service stage's `rust:ServiceTrait`."
+    "why": "registering an action entity on the executor. rclrs has no actions at all, and rclcpp_action registers through `NodeWaitablesInterface`. Ours names the entity's static storage at registration because the executor's entity table is a compile-time-sized array (RFC-0002); the `_sized` variants let a caller override the buffer const generics, and the `_raw` variants take CDR bytes for the C and C++ shims. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 1789's complaint. See the service stage's `rust:ServiceTrait`."
   },
   "rust:Executor::register_action_server_sized": {
     "verdict": "divergence",
-    "why": "registering an action entity on the executor. rclrs has no actions at all, and rclcpp_action registers through `NodeWaitablesInterface`. Ours names the entity's static storage at registration because the executor's entity table is a compile-time-sized array (RFC-0002); the `_sized` variants let a caller override the buffer const generics, and the `_raw` variants take CDR bytes for the C and C++ shims. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 0784's complaint. See the service stage's `rust:ServiceTrait`."
+    "why": "registering an action entity on the executor. rclrs has no actions at all, and rclcpp_action registers through `NodeWaitablesInterface`. Ours names the entity's static storage at registration because the executor's entity table is a compile-time-sized array (RFC-0002); the `_sized` variants let a caller override the buffer const generics, and the `_raw` variants take CDR bytes for the C and C++ shims. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 1789's complaint. See the service stage's `rust:ServiceTrait`."
   },
   "rust:FeedbackClient": {
     "verdict": "divergence",
@@ -1221,11 +1221,11 @@
   },
   "rust:Node::create_action_client_with_callbacks": {
     "verdict": "divergence",
-    "why": "RFC-0041 / phase 239.2 -- an action client that takes THREE callbacks at creation (goal response, feedback, result) and hands back a send handle, rather than returning futures to await. Same constraint as `rust:Node::create_client_with_callback` one entity over, and the same one `rust:Node::create_action_client` records against rclrs's typestate chain: with no async runtime there is nothing to await on, and with no allocator the goal state cannot follow an owning handle out of the executor's arena. The `Promise`-based `create_action_client` is unchanged and both remain public.\n\nOn `NodeCtx`, the executor-borrowing node handle (`exec.node_mut(id)`), which the correlator folds onto `Node` (`TYPE_SYNONYMS`). MEASURABLE ONLY SINCE 2026-09-12: `nros_node::executor`'s `mod node` kept the type private while `Executor::node_mut` returned it, so every method on it was callable and none of them had ever produced a row -- issue 1351."
+    "why": "RFC-0041 / phase 239.2 -- an action client that takes THREE callbacks at creation (goal response, feedback, result) and hands back a send handle, rather than returning futures to await. Same constraint as `rust:Node::create_client_with_callback` one entity over, and the same one `rust:Node::create_action_client` records against rclrs's typestate chain: with no async runtime there is nothing to await on, and with no allocator the goal state cannot follow an owning handle out of the executor's arena. The `Promise`-based `create_action_client` is unchanged and both remain public.\n\nOn `nros::Node`, the executor-borrowing node handle (`exec.node_mut(id)`); it was `NodeCtx` until phase-483 W2, which the correlator folded onto `Node` (`TYPE_SYNONYMS`). MEASURABLE ONLY SINCE 2026-09-12: `nros_node::executor`'s `mod node` kept the type private while `Executor::node_mut` returned it, so every method on it was callable and none of them had ever produced a row -- issue 1351."
   },
   "rust:Node::create_action_client_with_callbacks_sized": {
     "verdict": "divergence",
-    "why": "`rust:Node::create_action_client_with_callbacks` with the goal, result and feedback buffer bounds supplied as const generics instead of defaulted. Same `_sized` convention and same reason as `rust:NodeHandle::create_action_client_sized`: the storage is static, so the bound is part of the type.\n\nOn `NodeCtx`, the executor-borrowing node handle (`exec.node_mut(id)`), which the correlator folds onto `Node` (`TYPE_SYNONYMS`). MEASURABLE ONLY SINCE 2026-09-12: `nros_node::executor`'s `mod node` kept the type private while `Executor::node_mut` returned it, so every method on it was callable and none of them had ever produced a row -- issue 1351."
+    "why": "`rust:Node::create_action_client_with_callbacks` with the goal, result and feedback buffer bounds supplied as const generics instead of defaulted. Same `_sized` convention and same reason as `rust:NodeHandle::create_action_client_sized`: the storage is static, so the bound is part of the type.\n\nOn `nros::Node`, the executor-borrowing node handle (`exec.node_mut(id)`); it was `NodeCtx` until phase-483 W2, which the correlator folded onto `Node` (`TYPE_SYNONYMS`). MEASURABLE ONLY SINCE 2026-09-12: `nros_node::executor`'s `mod node` kept the type private while `Executor::node_mut` returned it, so every method on it was callable and none of them had ever produced a row -- issue 1351."
   },
   "rust:Node::create_action_server": {
     "verdict": "divergence",
@@ -1241,7 +1241,7 @@
   },
   "rust:RawActionServerSpec": {
     "verdict": "divergence",
-    "why": "the registration record for a raw action server (name, type names, hashes, QoS, callbacks) -- the values rclcpp_action passes to `create_server` as separate arguments, gathered into one struct because the entity is registered from generated code rather than written by hand. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 0784's complaint. See the service stage's `rust:ServiceTrait`."
+    "why": "the registration record for a raw action server (name, type names, hashes, QoS, callbacks) -- the values rclcpp_action passes to `create_server` as separate arguments, gathered into one struct because the entity is registered from generated code rather than written by hand. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. It is `pub` from `nros::` alongside the user API, which is issue 1789's complaint. See the service stage's `rust:ServiceTrait`."
   },
   "rust:RawActiveGoal": {
     "verdict": "extension",

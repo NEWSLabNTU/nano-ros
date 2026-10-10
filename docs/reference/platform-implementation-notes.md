@@ -239,7 +239,7 @@ Consequences and rules:
   (20×)** with a tight-loop publisher completing instead of stalling. Wire
   order stays == SN order. Per-publisher escape: `tx_express` in the QoS
   profile (Rust `.tx_express(true)` / C `nros_qos_t.tx_express` / C++
-  `nros::QoS().tx_express(true)`) bypasses the batch for latency-critical
+  `rclcpp::QoS().tx_express(true)`) bypasses the batch for latency-critical
   low-rate topics (on Zephyr an express put pays the socket window itself —
   never use it for streams). Flush-thread attrs:
   `zpico_set_flush_task_config()`. Gets + query replies go express under the

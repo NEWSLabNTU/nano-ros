@@ -10,7 +10,7 @@ The handler is an INIT/RUN state machine in the safety island's shape:
 | tick | what it does | what the monitors do |
 | --- | --- | --- |
 | 1 | 80 ms of start-up work | not armed: counted in `suppressed_before_arm`, not stored |
-| 3 | `nros::arm_monitors()` (RUN) | armed |
+| 3 | `rclcpp::arm_monitors()` (RUN) | armed |
 | 6 | 150 ms overrun | one stored `max-latency-runtime /handler/state` verdict |
 
 The native_sim conf states `CONFIG_NROS_MONITOR_ARM_ON_CALL=y` and
