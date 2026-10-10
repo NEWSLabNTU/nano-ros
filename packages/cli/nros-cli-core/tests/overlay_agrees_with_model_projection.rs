@@ -9,6 +9,9 @@
 
 use std::path::{Path, PathBuf};
 
+// Issue 1659 -- every git the CLI tree spawns clears the inherited git env.
+include!("../../build-support/git_env.rs");
+
 use nros_orchestration_ir::overlay::Overlay;
 use ros_launch_manifest_model::{Autostart, Execution, system_config::parse_system_config};
 
@@ -23,7 +26,7 @@ fn repo_root() -> PathBuf {
 /// Tracked `system.toml` files — `git ls-files`, not a walk (issue 1565: a
 /// walk counts other worktrees' and submodules' files).
 fn tracked_system_tomls(root: &Path) -> Vec<PathBuf> {
-    let out = std::process::Command::new("git")
+    let out = nros_git_command("git")
         .arg("-C")
         .arg(root)
         .args(["ls-files", "-z", "--", "*system.toml"])
