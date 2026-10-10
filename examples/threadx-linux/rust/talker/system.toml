@@ -24,4 +24,3 @@ locator = "tcp/127.0.0.1:9000"
 # rather than a literal so the value survives a second checkout.
 [board_config."threadx-linux"]
 netstack = "netxduo"
-sdk = { threadx = "{env:THREADX_DIR}", netxduo = "{env:NETX_DIR}" }
