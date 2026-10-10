@@ -2755,6 +2755,14 @@ pub unsafe extern "C" fn nros_cpp_node_create(
     store_recorded_namespace(&ctx.executor, node_id, out);
     store_node_id(out, node_id);
     out._reserved = [0u8; NROS_CPP_NODE_RESERVED];
+    // Every field of an OUT parameter is written here: a caller may hand in
+    // uninitialised storage (a `MaybeUninit`, or C stack), and
+    // `nros_cpp_subscription_create` / `_publisher_create` READ these two. Left
+    // unwritten, a census run dereferenced stack garbage as the override table
+    // and died with SIGSEGV in `apply_qos_overrides`.
+    // `nros_cpp_node_set_qos_overrides` sets them afterwards.
+    out.qos_overrides = core::ptr::null();
+    out.qos_overrides_len = 0;
 
     // phase-308 — open this node in the metadata recorder so the entities
     // declared next attribute to it (the RMW seam carries no node). No-op
@@ -2963,6 +2971,14 @@ pub unsafe extern "C" fn nros_cpp_node_create_ex(
     store_recorded_namespace(&ctx.executor, node_id, out);
     store_node_id(out, node_id);
     out._reserved = [0u8; NROS_CPP_NODE_RESERVED];
+    // Every field of an OUT parameter is written here: a caller may hand in
+    // uninitialised storage (a `MaybeUninit`, or C stack), and
+    // `nros_cpp_subscription_create` / `_publisher_create` READ these two. Left
+    // unwritten, a census run dereferenced stack garbage as the override table
+    // and died with SIGSEGV in `apply_qos_overrides`.
+    // `nros_cpp_node_set_qos_overrides` sets them afterwards.
+    out.qos_overrides = core::ptr::null();
+    out.qos_overrides_len = 0;
 
     // phase-308 — open this node in the metadata recorder so the entities
     // declared next attribute to it (the RMW seam carries no node). Read out
