@@ -344,7 +344,21 @@ RUN curl -fsSL -o actions-runner.tar.gz \
       "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz" \
     && tar xzf actions-runner.tar.gz && rm actions-runner.tar.gz \
     && ./bin/installdependencies.sh \
+    && mkdir -p /home/runner/.cache/sccache /home/runner/_work /home/runner/.cargo \
+         /home/runner/.nros /home/runner/.rustup /home/runner/.local \
+         /home/runner/.cmake /home/runner/src \
     && chown -R runner:runner /home/runner
+
+# Issue 1755 — every `-v` mount point of `runner-container.sh --run` exists in the image,
+# owned by `runner`. A mount point the image lacks is created by the engine as
+# ROOT, and so is every missing parent: `nros-runner-sccache` at
+# `.cache/sccache` left `/home/runner/.cache` root-owned in every container, so
+# `nros::main!`'s model cache and Miri's sysroot could not create their
+# directories beside it (measured: `mkdir ~/.cache/nano-ros` -> Permission
+# denied as uid 1001). A NEW named volume also takes its root's ownership from
+# the image's directory, so the same list covers a first `--run` on a fresh
+# host. Keep it in step with the `-v` list; `runner-doctor.sh` checks the
+# result from inside the running container.
 
 COPY --chown=runner:runner entrypoint.sh /home/runner/entrypoint.sh
 RUN chmod +x /home/runner/entrypoint.sh
