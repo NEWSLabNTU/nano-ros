@@ -844,6 +844,407 @@ pub mod store {
     }
 }
 
+/// Where a resource is — RFC-0103 D3/D4, phase-484 W1.
+///
+/// ONE implementation of the location ladder. Build scripts call it directly;
+/// `nros locate` (cmake, `just`, shell) wraps it; the CLI builds the [`Row`]
+/// from its full index model and hands it here rather than walking the ladder
+/// itself. Parsing the index has two readers (this crate's dependency-free
+/// [`locate::row_from_index`] and the CLI's serde model); walking it has one.
+///
+/// Rungs, first match wins:
+///
+/// 1. an explicit argument;
+/// 2. the row's `env` variable, re-rooted onto this checkout when it names
+///    another one (issue 1280);
+/// 3. the store, `<store>/sources/<name>/<version>` for a `location = "store"`
+///    row;
+/// 4. this checkout's copy at the row's `dest`.
+///
+/// Phase-484 W3 adds the project `[sources]` rung and the local-edit rung, and
+/// keys the store path by `+<sha8>`. A miss is an [`locate::Refusal`] naming
+/// `nros setup --source <name>`, never a guess.
+pub mod locate {
+    use std::path::{Path, PathBuf};
+
+    /// One `[source.<name>]` row, as much of it as locating needs.
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    pub struct Row {
+        pub name: String,
+        pub version: String,
+        pub env: Option<String>,
+        /// Checkout-relative destination (`location = "workspace"`).
+        pub dest: Option<String>,
+        /// `location = "store"`.
+        pub in_store: bool,
+    }
+
+    /// Which rung answered.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum Rung {
+        Arg,
+        Env,
+        Store,
+        Checkout,
+    }
+
+    impl Rung {
+        #[must_use]
+        pub fn label(self) -> &'static str {
+            match self {
+                Rung::Arg => "arg",
+                Rung::Env => "env",
+                Rung::Store => "store",
+                Rung::Checkout => "checkout",
+            }
+        }
+    }
+
+    /// Everything outside the row that the ladder reads, gathered by the
+    /// caller so the walk itself is a pure function (and testable as one).
+    #[derive(Clone, Debug, Default)]
+    pub struct Ctx {
+        pub arg: Option<PathBuf>,
+        /// The value of the row's `env` variable, if set and non-empty.
+        pub env_value: Option<PathBuf>,
+        /// The checkout this resolution runs in, if any.
+        pub checkout: Option<PathBuf>,
+        /// The store root (`crate::store::root()`).
+        pub store: PathBuf,
+    }
+
+    /// One line of `--why`: the rung, and what it saw.
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub struct Step {
+        pub rung: &'static str,
+        pub saw: String,
+        pub chosen: bool,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub struct Answer {
+        pub path: PathBuf,
+        pub rung: Rung,
+        pub trace: Vec<Step>,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub struct Refusal {
+        pub name: String,
+        pub trace: Vec<Step>,
+    }
+
+    impl std::fmt::Display for Refusal {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            writeln!(
+                f,
+                "{}: not provisioned anywhere this build looks:",
+                self.name
+            )?;
+            for s in &self.trace {
+                writeln!(f, "  {:<9} {}", s.rung, s.saw)?;
+            }
+            write!(f, "run: nros setup --source {}", self.name)
+        }
+    }
+
+    /// The store path of a `location = "store"` row — the derivation
+    /// `nros setup` writes to (`sdk_store::source_dir`).
+    #[must_use]
+    pub fn store_path(row: &Row, store: &Path) -> PathBuf {
+        store.join("sources").join(&row.name).join(&row.version)
+    }
+
+    fn present(p: &Path) -> bool {
+        // A checked-out tree, not an uninitialised submodule's empty dir.
+        std::fs::read_dir(p).is_ok_and(|mut d| d.next().is_some())
+    }
+
+    /// Walk the ladder.
+    pub fn resolve(row: &Row, ctx: &Ctx) -> Result<Answer, Refusal> {
+        let mut trace = Vec::new();
+        let take = |rung: Rung, path: PathBuf, saw: String, trace: &mut Vec<Step>| {
+            trace.push(Step {
+                rung: rung.label(),
+                saw,
+                chosen: true,
+            });
+            Answer {
+                path,
+                rung,
+                trace: std::mem::take(trace),
+            }
+        };
+
+        if let Some(a) = &ctx.arg {
+            return Ok(take(
+                Rung::Arg,
+                a.clone(),
+                a.display().to_string(),
+                &mut trace,
+            ));
+        }
+        trace.push(Step {
+            rung: "arg",
+            saw: "-".into(),
+            chosen: false,
+        });
+
+        match (&row.env, &ctx.env_value) {
+            (Some(var), Some(v)) => {
+                let here = ctx.checkout.as_deref();
+                let p = match here {
+                    Some(h) => crate::reroot_foreign(v, h),
+                    None => v.clone(),
+                };
+                let note = if &p == v {
+                    format!("${var} = {}", v.display())
+                } else {
+                    format!("${var} = {} (re-rooted onto this checkout)", v.display())
+                };
+                return Ok(take(Rung::Env, p, note, &mut trace));
+            }
+            (Some(var), None) => trace.push(Step {
+                rung: "env",
+                saw: format!("${var} unset"),
+                chosen: false,
+            }),
+            (None, _) => trace.push(Step {
+                rung: "env",
+                saw: "no env override declared for this row".into(),
+                chosen: false,
+            }),
+        }
+
+        if row.in_store {
+            let p = store_path(row, &ctx.store);
+            if present(&p) {
+                let saw = format!("{} (pin {})", p.display(), row.version);
+                return Ok(take(Rung::Store, p, saw, &mut trace));
+            }
+            trace.push(Step {
+                rung: "store",
+                saw: format!("{} absent", p.display()),
+                chosen: false,
+            });
+        } else {
+            trace.push(Step {
+                rung: "store",
+                saw: "row is a checkout source (location = \"workspace\")".into(),
+                chosen: false,
+            });
+        }
+
+        match (&row.dest, &ctx.checkout) {
+            (Some(d), Some(c)) => {
+                let p = c.join(d);
+                if present(&p) {
+                    let saw = p.display().to_string();
+                    return Ok(take(Rung::Checkout, p, saw, &mut trace));
+                }
+                trace.push(Step {
+                    rung: "checkout",
+                    saw: format!("{} not initialised", p.display()),
+                    chosen: false,
+                });
+            }
+            (Some(_), None) => trace.push(Step {
+                rung: "checkout",
+                saw: "not inside a nano-ros checkout".into(),
+                chosen: false,
+            }),
+            (None, _) => trace.push(Step {
+                rung: "checkout",
+                saw: "row has no checkout dest".into(),
+                chosen: false,
+            }),
+        }
+        Err(Refusal {
+            name: row.name.clone(),
+            trace,
+        })
+    }
+
+    /// `[source.<name>]` read from index text — the dependency-free reader
+    /// build scripts use (simple `key = "value"` lines only, which is every
+    /// field locating needs).
+    #[must_use]
+    pub fn row_from_index(text: &str, name: &str) -> Option<Row> {
+        let header = format!("[source.{name}]");
+        let mut inside = false;
+        let mut row = Row {
+            name: name.to_string(),
+            ..Row::default()
+        };
+        let mut found = false;
+        for line in text.lines() {
+            let line = line.trim();
+            if line == header {
+                inside = true;
+                found = true;
+                continue;
+            }
+            if line.starts_with('[') {
+                if inside {
+                    break;
+                }
+                continue;
+            }
+            if !inside {
+                continue;
+            }
+            let Some((k, v)) = line.split_once('=') else {
+                continue;
+            };
+            let v = v.trim();
+            let Some(v) = v.strip_prefix('"').and_then(|v| v.split('"').next()) else {
+                continue;
+            };
+            match k.trim() {
+                "version" => row.version = v.to_string(),
+                "env" => row.env = Some(v.to_string()),
+                "dest" => row.dest = Some(v.to_string()),
+                "location" => row.in_store = v == "store",
+                _ => {}
+            }
+        }
+        found.then_some(row)
+    }
+
+    /// Locate `name` from a build script: the index beside the crate being
+    /// compiled (RFC-0103 D6-M), the environment, this checkout, the store.
+    /// Panics with the refusal — the right failure in a build script.
+    #[must_use]
+    pub fn source(name: &str) -> PathBuf {
+        let root = crate::repo_root();
+        let index = root.join("nros-sdk-index.toml");
+        println!("cargo:rerun-if-changed={}", index.display());
+        let text = std::fs::read_to_string(&index)
+            .unwrap_or_else(|e| panic!("nros-build-paths: read {}: {e}", index.display()));
+        let row = row_from_index(&text, name).unwrap_or_else(|| {
+            panic!(
+                "nros-build-paths: no [source.{name}] in {}",
+                index.display()
+            )
+        });
+        // The env value goes through `env_path` (re-root + canonical spelling),
+        // and the build script watches the ANSWER's content, never the
+        // variable as text — issue 0491: one directory has three spellings
+        // here, and `rerun-if-env-changed` on a path fingerprints the spelling.
+        let ctx = Ctx {
+            arg: None,
+            env_value: row.env.as_deref().and_then(crate::env_path),
+            checkout: Some(root),
+            store: crate::store::root(),
+        };
+        match resolve(&row, &ctx) {
+            Ok(a) => crate::watch_path(&crate::canonical(&a.path)),
+            Err(r) => panic!("{r}"),
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        const INDEX: &str = "\
+[source.zenoh-pico]
+env = \"ZENOH_PICO_DIR\"
+version = \"1.7.2\"
+dest = \"packages/rmw/zenoh/zpico-sys/zenoh-pico\"
+
+[source.rosidl]
+version = \"humble-5621b26\"
+location = \"store\"
+";
+
+        fn tmp(tag: &str) -> PathBuf {
+            let d = std::env::temp_dir().join(format!("nros-locate-{tag}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&d);
+            std::fs::create_dir_all(&d).unwrap();
+            d
+        }
+
+        fn fill(p: &Path) {
+            std::fs::create_dir_all(p).unwrap();
+            std::fs::write(p.join("x"), "").unwrap();
+        }
+
+        #[test]
+        fn rows_parse_with_and_without_env() {
+            let z = row_from_index(INDEX, "zenoh-pico").unwrap();
+            assert_eq!(z.env.as_deref(), Some("ZENOH_PICO_DIR"));
+            assert!(!z.in_store);
+            let r = row_from_index(INDEX, "rosidl").unwrap();
+            assert!(r.in_store && r.env.is_none());
+            assert!(row_from_index(INDEX, "nope").is_none());
+        }
+
+        #[test]
+        fn env_beats_checkout_and_the_trace_says_why() {
+            let t = tmp("env");
+            let checkout = t.join("co");
+            fill(&checkout.join("packages/rmw/zenoh/zpico-sys/zenoh-pico"));
+            let row = row_from_index(INDEX, "zenoh-pico").unwrap();
+            let ctx = Ctx {
+                env_value: Some(t.join("vendor")),
+                checkout: Some(checkout),
+                store: t.join("store"),
+                ..Ctx::default()
+            };
+            let a = resolve(&row, &ctx).unwrap();
+            assert_eq!(a.rung, Rung::Env);
+            assert_eq!(a.trace.last().unwrap().rung, "env");
+        }
+
+        #[test]
+        fn a_workspace_row_falls_to_the_checkout() {
+            let t = tmp("co");
+            let checkout = t.join("co");
+            let d = checkout.join("packages/rmw/zenoh/zpico-sys/zenoh-pico");
+            fill(&d);
+            let row = row_from_index(INDEX, "zenoh-pico").unwrap();
+            let ctx = Ctx {
+                checkout: Some(checkout),
+                store: t.join("s"),
+                ..Ctx::default()
+            };
+            let a = resolve(&row, &ctx).unwrap();
+            assert_eq!((a.rung, a.path), (Rung::Checkout, d));
+        }
+
+        #[test]
+        fn a_store_row_is_found_in_the_store_and_refused_when_absent() {
+            let t = tmp("store");
+            let row = row_from_index(INDEX, "rosidl").unwrap();
+            let ctx = Ctx {
+                store: t.join("s"),
+                ..Ctx::default()
+            };
+            let r = resolve(&row, &ctx).unwrap_err();
+            assert!(r.to_string().contains("nros setup --source rosidl"), "{r}");
+            fill(&store_path(&row, &ctx.store));
+            assert_eq!(resolve(&row, &ctx).unwrap().rung, Rung::Store);
+        }
+
+        #[test]
+        fn an_uninitialised_submodule_dir_is_not_a_copy() {
+            let t = tmp("empty");
+            let checkout = t.join("co");
+            std::fs::create_dir_all(checkout.join("packages/rmw/zenoh/zpico-sys/zenoh-pico"))
+                .unwrap();
+            let row = row_from_index(INDEX, "zenoh-pico").unwrap();
+            let ctx = Ctx {
+                checkout: Some(checkout),
+                store: t.join("s"),
+                ..Ctx::default()
+            };
+            let r = resolve(&row, &ctx).unwrap_err();
+            assert!(r.to_string().contains("not initialised"), "{r}");
+        }
+    }
+}
+
 /// The riscv64 bare-metal toolchain, resolved rather than spelled — issue 0657.
 ///
 /// `[board.rv-virt-threadx]` provisions xPack's `riscv-none-elf-gcc`, and

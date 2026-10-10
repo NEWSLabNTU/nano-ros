@@ -33,6 +33,9 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 ] }
 
 [dependencies]
+# phase-484 W1 (RFC-0103 D4) — `nros locate` wraps the one location ladder,
+# `nros_build_paths::locate`, rather than keeping a second copy here.
+nros-build-paths = { path = "../../tooling/nros-build-paths" }
 # issue 0382 — model node maps preserve launch declaration order.
 indexmap = "2"
 clap = { workspace = true }

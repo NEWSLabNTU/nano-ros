@@ -242,6 +242,7 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
         cmd::Cmd::CodegenSystem(args) => cmd::codegen_system::run(args),
         cmd::Cmd::ModelPath(args) => cmd::model_path::run(args),
         cmd::Cmd::SdkPath(args) => cmd::sdk_path::run(args),
+        cmd::Cmd::Locate(args) => cmd::locate::run(args),
         cmd::Cmd::SdkFront(args) => cmd::sdk_front::run(args),
         cmd::Cmd::SdkRoot(args) => cmd::sdk_root::run(args),
         // phase-440 W6 — deliberately NOT in `cmd_name`'s guarded set. These

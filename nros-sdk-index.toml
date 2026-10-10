@@ -1261,16 +1261,19 @@ dist.macos-x86_64 = { url = "https://github.com/verus-lang/verus/releases/downlo
 # workspace-relative — never a path baked into the `nros` binary.
 
 [source.freertos-kernel]
+env = "FREERTOS_DIR"
 version = "10.6.2"
 dest = "third-party/freertos/kernel"
 submodule = "third-party/freertos/kernel"
 
 [source.lwip]
+env = "LWIP_DIR"
 version = "2.2.0"
 dest = "third-party/freertos/lwip"
 submodule = "third-party/freertos/lwip"
 
 [source.threadx]
+env = "THREADX_DIR"
 version = "6.4.1"
 # issue 0602 — this pointed at UPSTREAM (`eclipse-threadx/threadx`) at
 # `4b6e8100`, while `.gitmodules` declares this fork and the superproject
@@ -1288,6 +1291,7 @@ dest = "third-party/threadx/kernel"
 submodule = "third-party/threadx/kernel"
 
 [source.zenoh-pico]
+env = "ZENOH_PICO_DIR"
 version = "1.7.2"
 dest = "packages/rmw/zenoh/zpico-sys/zenoh-pico"
 submodule = "packages/rmw/zenoh/zpico-sys/zenoh-pico"
@@ -1316,6 +1320,7 @@ submodule = "third-party/px4/px4-rs"
 # package refs to `cyclonedds` keep resolving unambiguously to the tool.
 # Provisioned by `nros setup --source cyclonedds-src`.
 [source.cyclonedds-src]
+env = "CYCLONEDDS_SOURCE_DIR"
 version = "0.10.5-nros1"
 dest = "third-party/dds/cyclonedds"
 submodule = "third-party/dds/cyclonedds"
@@ -1364,6 +1369,7 @@ submodule = "packages/rmw/xrce/xrce-sys/micro-cdr"
 # NetX Duo network stack (ThreadX boards link it; virtio-net-netx CMake + the
 # threadx board build.rs expect it checked out).
 [source.threadx-netxduo]
+env = "NETX_DIR"
 version = "6.4.x"
 dest = "third-party/threadx/netxduo"
 submodule = "third-party/threadx/netxduo"
@@ -1372,11 +1378,13 @@ submodule = "third-party/threadx/netxduo"
 # them present (the export is built with the app, per Phase 194). The Rust libc
 # fork is the separate `[source.nuttx-libc]` (it's a board package).
 [source.nuttx-kernel]
+env = "NUTTX_DIR"
 version = "12.13.0"
 dest = "third-party/nuttx/nuttx"
 submodule = "third-party/nuttx/nuttx"
 
 [source.nuttx-apps]
+env = "NUTTX_APPS_DIR"
 version = "12.13.0"
 dest = "third-party/nuttx/nuttx-apps"
 submodule = "third-party/nuttx/nuttx-apps"
@@ -1384,6 +1392,7 @@ submodule = "third-party/nuttx/nuttx-apps"
 # PX4-Autopilot — the heavy (>1 GB) reference tree (extended/opt-in). px4-rs (the
 # bindings) is the separate `[source.px4-rs]`.
 [source.px4-autopilot]
+env = "PX4_AUTOPILOT_DIR"
 version = "1.17.0"
 dest = "third-party/px4/PX4-Autopilot"
 submodule = "third-party/px4/PX4-Autopilot"
