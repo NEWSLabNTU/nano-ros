@@ -248,12 +248,22 @@ helper moved to `nros-build-paths/src/git_env.rs` (it ships in an SDK root;
 changes for any build until a row says `location = "store"`, and a store miss
 still falls to the checkout.
 
-Remaining in W3: flip the rows whose readers all go through `locate`
-(FreeRTOS, lwIP, ThreadX, NetX Duo first — their direct readers are listed
-by `git grep -F <dest>`; the `just/sdk-env.just` exports of those four trees
-go with them, since an env value outranks the store), then the cargo
-path-dep rows (`nuttx-libc`, `px4-rs`), zenoh-pico/mbedtls, xrce and
-cyclonedds; a census gate that a store row has no direct reader; gc liveness
+**W3c-2 — FreeRTOS, lwIP, ThreadX and NetX Duo are store-first.** Their rows
+say `location = "store"`; `nros setup --source <name>` materialises them
+(measured: 19 M, 9.6 M, 113 M, 152 M). Readers moved onto the ladder: the
+`threadx-linux` and riscv64 board build scripts (`locate::source`), the
+ThreadX/FreeRTOS `just` recipes and C-port smoke tests (`nros_locate_source`
+in `scripts/build/cargo.sh`, passing `-D<VAR>=` to the smoke CMakeLists). `THREADX_EXTRA_INCLUDES` takes a path RELATIVE to
+the located kernel, so the riscv64 descriptor no longer spells
+`${workspace}/third-party/threadx/kernel/…`. `just/sdk-env.just` stops
+exporting the four trees (an env value is rung 2 and would outrank the store).
+New gate `check-store-source-readers` refuses a store-first row's `dest` in
+code outside a reasoned allowlist (no-CLI cmake fallbacks, messages, dev
+audits) and reports stale entries.
+
+Remaining in W3: move the readers of, then flip, the cargo path-dep rows
+(`nuttx-libc`, `px4-rs`), zenoh-pico/mbedtls, xrce and cyclonedds (the
+census gate then holds each one as it flips); gc liveness
 from installed toolchains' indexes (today gc consults the pin files above the
 cwd, as for tools); project `[sources]`.
 

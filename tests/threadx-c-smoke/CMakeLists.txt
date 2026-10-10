@@ -4,9 +4,14 @@ cmake_minimum_required(VERSION 3.20)
 # compiler is selected. The toolchain file sets THREADX_ARCH +
 # THREADX_TOOLCHAIN to "linux" / "gnu".
 set(REPO_ROOT "${CMAKE_CURRENT_LIST_DIR}/../..")
+# The kernel tree: `-DTHREADX_DIR=` from the recipe (`nros locate threadx`,
+# RFC-0103 D5 — possibly the store copy), else this checkout's submodule.
+if(NOT DEFINED THREADX_DIR)
+    set(THREADX_DIR "${REPO_ROOT}/third-party/threadx/kernel")
+endif()
 if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
     set(CMAKE_TOOLCHAIN_FILE
-        "${REPO_ROOT}/third-party/threadx/kernel/cmake/linux.cmake"
+        "${THREADX_DIR}/cmake/linux.cmake"
         CACHE FILEPATH "" FORCE)
 endif()
 
@@ -16,7 +21,7 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
 # 1. Add ThreadX kernel.
-add_subdirectory("${REPO_ROOT}/third-party/threadx/kernel"
+add_subdirectory("${THREADX_DIR}"
                  threadx-kernel EXCLUDE_FROM_ALL)
 
 # 2. Add nros-platform-threadx without NetX Duo + without install.

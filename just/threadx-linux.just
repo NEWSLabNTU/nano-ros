@@ -125,14 +125,13 @@ build-fixture-extras:
     export cargo_profile_args
     cargo_frontends="$(nros_cargo_frontend_jobs)"
     cmake_frontends="$(nros_cmake_frontend_jobs)"
-    if nros_sdk_missing THREADX_DIR common/inc; then
-        nros_lane_skip_note threadx-linux "THREADX_DIR unset and third-party/threadx/kernel absent"; exit 0
+    if ! threadx_dir="$(nros_locate_source threadx)"; then
+        nros_lane_skip_note threadx-linux "the ThreadX kernel is not provisioned (nros locate threadx)"; exit 0
     fi
     echo "Building ThreadX-Linux test fixtures..."
     # Phase 176 — cmake parallelism via the fifo jobserver when present.
     if [ "${NROS_JOBSERVER:-}" = "1" ] || [ "${NROS_INHERIT_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
     root="$(pwd)"
-    threadx_dir="${THREADX_DIR:-$root/third-party/threadx/kernel}"
     nsos_netx_dir="${NSOS_NETX_DIR:-$root/packages/drivers/net/nsos-netx}"
     config_dir="${THREADX_CONFIG_DIR:-$root/packages/boards/nros-board-threadx-linux/config}"
     app_define="$root/packages/boards/nros-board-threadx-linux/c/app_define.c"
@@ -243,9 +242,11 @@ test-all verbose="":
 build-c-port:
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    threadx_dir="$(nros_locate_source threadx)" || { echo "ThreadX kernel not provisioned — nros setup --source threadx" >&2; exit 1; }
     cd tests/threadx-c-smoke
     # nros-cmake-prefix-exempt: pure-C ThreadX port smoke test, no Rust.
-    cmake -B build >/dev/null
+    cmake -B build -DTHREADX_DIR="$threadx_dir" >/dev/null
     cmake --build build
 
 # Phase 121.6 — run the ThreadX-linux smoke test on the host: the REAL kernel
@@ -260,9 +261,10 @@ build-c-port:
 test-c-port:
     #!/usr/bin/env bash
     set -euo pipefail
-    if [ ! -f third-party/threadx/kernel/CMakeLists.txt ]; then
+    source scripts/build/cargo.sh
+    if ! nros_locate_source threadx >/dev/null; then
         source scripts/build/check-skip.sh
-        nros_check_unverified threadx-c-port-smoke "the ThreadX kernel is not checked out (third-party/threadx/kernel) — nros setup --source threadx" || exit 1
+        nros_check_unverified threadx-c-port-smoke "the ThreadX kernel is not provisioned (nros locate threadx) — nros setup --source threadx" || exit 1
         exit 0
     fi
     "{{just_executable()}}" threadx_linux build-c-port

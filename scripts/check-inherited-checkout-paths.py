@@ -476,7 +476,7 @@ def probe_just_nested(tmp: Path) -> list[str]:
         name = line.split(None, 1)[0]
         values[name] = line.split(' := "', 1)[1].rstrip('"')
 
-    if len(values) < 10:  # sanity floor; phase-484 W2 shrinks the export set
+    if len(values) < 5:  # sanity floor; phase-484 W2/W3 shrink the export set (6 after W3c)
         return [
             f"just (nested checkout): only {len(values)} variables parsed — "
             "the probe is not measuring what it claims"
@@ -514,11 +514,11 @@ def probe_just_nested(tmp: Path) -> list[str]:
 
     # 4. The 1391 row, explicitly: a DEFAULTED value is already correct and
     #    must be left alone.
-    want = f"{inner}/third-party/freertos/lwip"
-    if values.get("LWIP_DIR") != want:
+    want = f"{inner}/third-party/nuttx/nuttx-apps"
+    if values.get("NUTTX_APPS_DIR") != want:
         problems.append(
-            "just (nested checkout): a DEFAULTED LWIP_DIR was rewritten "
-            f"— got {values.get('LWIP_DIR')!r}, expected {want!r} "
+            "just (nested checkout): a DEFAULTED NUTTX_APPS_DIR was rewritten "
+            f"— got {values.get('NUTTX_APPS_DIR')!r}, expected {want!r} "
             "(issue 1391)"
         )
 
@@ -573,10 +573,10 @@ def self_test() -> bool:
     # Non-vacuous first: a parser that finds nothing reports nothing wrong.
     # The floor is a parser sanity check, not a target: phase-484 W2 (RFC-0103
     # D4) deletes these exports wave by wave, so it tracks what is left
-    # (14 after W2a) rather than the 21 the file once held.
+    # (6 after W3c) rather than the 21 the file once held.
     chk(
         f"only {len(exports)} exports parsed out of {SDK_ENV.name} — the parser is broken",
-        len(exports) >= 10,
+        len(exports) >= 5,
     )
 
     # Mutations are measured as a DELTA against whatever the live file says.
