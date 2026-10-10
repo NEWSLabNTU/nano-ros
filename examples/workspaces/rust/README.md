@@ -9,19 +9,15 @@ rust/
 └── src/
     ├── talker_pkg/       # Node pkg: publishes std_msgs/Int32 on /chatter
     ├── listener_pkg/     # Node pkg: subscribes std_msgs/Int32 on /chatter
-    ├── demo_bringup/     # Bringup pkg: package.xml + system.toml + launch/,
-    │   └── boards/       #   plus the per-board Kconfig each Zephyr image names
-    └── zephyr_entry_robot1/   # this workspace's last hand-written west app
+    └── demo_bringup/     # Bringup pkg: package.xml + system.toml + launch/,
+        └── boards/       #   plus the per-board Kconfig each Zephyr image names
 ```
 
-Every `[image.*]` here is generated except `zephyr_robot1`, and that one is
-KEPT deliberately (phase-470 W5.b1). Its package name is not `<image>_entry`,
-so `[image.zephyr_robot1] entry = "zephyr_entry_robot1"` is the only place in
-the tree where that key CHANGES the answer: `cmd::build`'s discriminator checks
-`entry` first and a hand-written `src/<id>_entry` second, and every other
-surviving `entry =` names exactly `<image>_entry`, so deleting it there would
-resolve the same application by the second rung. Nothing else — no unit test —
-exercises the first rung. Migrating this one is safe only once something does.
+Every `[image.*]` here is generated — `zephyr_robot1` too, since phase-477 W1
+(issue 1288). It was kept hand-written for a while as the only evidence that an
+explicit `entry =` key outranks the `src/<id>_entry` rung of `cmd::build`'s
+discriminator; that precedence is now a unit test there
+(`an_explicit_entry_outranks_the_id_entry_package`), so the leaf went.
 
 `[image.zephyr]`'s
 west application — `CMakeLists.txt`, `build.rs`, the staticlib manifest and

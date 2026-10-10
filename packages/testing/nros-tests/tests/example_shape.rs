@@ -1070,10 +1070,14 @@ fn zephyr_leaf_buildrs_uses_shared_bake() {
     // load-bearing, so migrating it would retire the only evidence for a live
     // branch of `cmd::build`'s discriminator.
     //
-    // 6 (examples/zephyr/rust) + 1 (zephyr_entry_robot1) = 7.
+    // 7 -> 6 (phase-477 W1, issue 1288): `zephyr_entry_robot1` is generated
+    // too. The `entry` key's precedence it was kept as evidence for is now a
+    // unit test in `cmd::build` (`an_explicit_entry_outranks_the_id_entry_package`),
+    // which asks the discriminator directly instead of through a committed leaf.
+    // What remains is the six standalone leaves under `examples/zephyr/rust/`.
     assert!(
-        zephyr_leaves >= 7,
-        "expected >=7 zephyr rust leaf build.rs, walked only {zephyr_leaves} — layout moved?"
+        zephyr_leaves >= 6,
+        "expected >=6 zephyr rust leaf build.rs, walked only {zephyr_leaves} — layout moved?"
     );
 }
 
