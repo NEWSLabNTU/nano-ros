@@ -7,7 +7,7 @@
 //!   `*mut Executor<'static>`;
 //! * a C/C++ entry's `rclcpp::global_handle()` (and every tier's `executor`) —
 //!   an nros-cpp `CppContext`, which carries the executor at a NON-zero offset,
-//!   behind the [`CPP_CONTEXT_TAG`] word at offset 0.
+//!   behind the [`CPP_CONTEXT_TAG`](crate::executor_handle::CPP_CONTEXT_TAG) word at offset 0.
 //!
 //! nros-cpp's own entry points tell them apart by that tag (issue 0436). The
 //! seams in THIS crate that take a handle — the cross-language component
@@ -20,7 +20,7 @@
 //!
 //! One answer now, two halves: nros-cpp pins the tag at offset 0 (`repr(C)`)
 //! and exports `nros_cpp_executor_inner`, which the generated C++ entry calls
-//! before it reaches a Rust install; and [`executor_from_handle`] here REFUSES a
+//! before it reaches a Rust install; and `executor_from_handle` here REFUSES a
 //! handle that is still tagged, so a caller that forgets is a clean error
 //! rather than a corrupted executor.
 
@@ -33,7 +33,7 @@ use core::ffi::c_void;
 /// The word nros-cpp stamps at offset 0 of a live `CppContext` (issue 0436).
 ///
 /// Defined HERE, in the lower crate, because both sides read it: nros-cpp
-/// stamps and checks it, and [`executor_from_handle`] refuses a handle that
+/// stamps and checks it, and `executor_from_handle` refuses a handle that
 /// carries it. One constant, so the two cannot drift. Arbitrary, but not a
 /// plausible pointer or small integer.
 pub const CPP_CONTEXT_TAG: u64 = 0x6E52_4F53_4350_5001; // "nROSCP\x50\x01"
