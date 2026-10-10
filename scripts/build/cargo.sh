@@ -382,6 +382,17 @@ nros_cargo_fetch_root() {
 # including the two this function could not. Re-adding a check here would be a
 # second spelling of one predicate, which is what issue 0363 set out to remove.
 
+# nros_locate_source <name> — a `[source.*]` tree through the ONE ladder
+# (RFC-0103 D4/D5: env override, local edit, store, checkout), from a recipe.
+# Prints the path; prints nothing and returns 1 when it is provisioned nowhere
+# (or no CLI resolves). Never read a tree's variable directly: the trees are
+# store-first, and an exported default would outrank the store.
+nros_locate_source() {
+    local name="${1:?nros_locate_source: source name}" bin
+    bin="$(nros_cli_bin 2>/dev/null)" || return 1
+    "$bin" locate --format path "$name" 2>/dev/null
+}
+
 nros_cli_bin() {
     # Phase 218.D.3 — resolution order:
     #   1. $NROS_CLI                                — explicit override

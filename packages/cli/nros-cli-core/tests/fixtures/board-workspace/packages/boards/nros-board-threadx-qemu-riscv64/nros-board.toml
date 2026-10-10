@@ -26,7 +26,7 @@ rustflags = [
 NETX_CONFIG_DIR = { value = "${workspace}/packages/boards/nros-board-threadx-qemu-riscv64/config", force = true }
 THREADX_CONFIG_DIR = { value = "${workspace}/packages/boards/nros-board-threadx-qemu-riscv64/config", force = true }
 THREADX_PORT = { value = "risc-v64/gnu", force = true }
-THREADX_EXTRA_INCLUDES = { value = "${workspace}/third-party/threadx/kernel/ports/risc-v64/gnu/example_build/qemu_virt", force = true }
+THREADX_EXTRA_INCLUDES = { value = "ports/risc-v64/gnu/example_build/qemu_virt", force = true }
 '''
 
 [board.entry]

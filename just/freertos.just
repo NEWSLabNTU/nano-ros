@@ -423,12 +423,14 @@ test-ros2 verbose="":
 build-c-port:
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    freertos_dir="$(nros_locate_source freertos-kernel)" || { echo "FreeRTOS kernel not provisioned — nros setup --source freertos-kernel" >&2; exit 1; }
     cd tests/freertos-c-smoke
     # Once per heap scheme: the port's allocator differs between heap_4 (every
     # in-tree board) and heap_3 (the freertos-posix board), issue 1719.
     for heap in 4 3; do
         # nros-cmake-prefix-exempt: pure-C FreeRTOS port smoke test, no Rust.
-        cmake -B "build/heap$heap" -DNROS_SMOKE_FREERTOS_HEAP="$heap" >/dev/null
+        cmake -B "build/heap$heap" -DNROS_SMOKE_FREERTOS_HEAP="$heap" -DFREERTOS_DIR="$freertos_dir" >/dev/null
         cmake --build "build/heap$heap"
     done
 
@@ -443,9 +445,10 @@ build-c-port:
 test-c-port:
     #!/usr/bin/env bash
     set -euo pipefail
-    if [ ! -f third-party/freertos/kernel/include/FreeRTOS.h ]; then
+    source scripts/build/cargo.sh
+    if ! nros_locate_source freertos-kernel >/dev/null; then
         source scripts/build/check-skip.sh
-        nros_check_unverified freertos-c-port-smoke "the FreeRTOS kernel is not checked out (third-party/freertos/kernel) — nros setup --source freertos-kernel" || exit 1
+        nros_check_unverified freertos-c-port-smoke "the FreeRTOS kernel is not provisioned (nros locate freertos-kernel) — nros setup --source freertos-kernel" || exit 1
         exit 0
     fi
     "{{just_executable()}}" freertos build-c-port

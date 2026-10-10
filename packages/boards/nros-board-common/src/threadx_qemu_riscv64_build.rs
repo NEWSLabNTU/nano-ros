@@ -55,15 +55,11 @@ pub fn run(linker_script: &[u8], port_dir: &Path) {
     // fell back to builtins.
     let workspace_root = nros_build_paths::repo_root();
 
-    let threadx_dir = env_path_or(
-        "THREADX_DIR",
-        workspace_root.join("third-party/threadx/kernel"),
-    );
-    let netx_dir = env_path_or(
-        "NETX_DIR",
-        workspace_root.join("third-party/threadx/netxduo"),
-    );
-    // 192.3: env-overridable like THREADX_DIR/NETX_DIR above (default in sdk-env.just).
+    // phase-484 W3c (RFC-0103 D4/D5) — both trees through the one ladder
+    // (env override, local edit, store, checkout), never a raw variable.
+    let threadx_dir = nros_build_paths::locate::source("threadx");
+    let netx_dir = nros_build_paths::locate::source("threadx-netxduo");
+    // 192.3: a first-party dir, env-overridable (`env_or_repo_path` shape).
     let virtio_driver_dir = env_path_or(
         "NROS_VIRTIO_NET_NETX_DIR",
         workspace_root.join("packages/drivers/net/virtio-net-netx"),
