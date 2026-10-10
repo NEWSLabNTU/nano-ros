@@ -158,7 +158,7 @@ thread_local! {
     static EXEMPT_OUTDIR: Cell<usize> = const { Cell::new(0) };
     static EXEMPT_STAMP: Cell<usize> = const { Cell::new(0) };
     /// issue 1710 — inputs a byte-identical relink answered (see
-    /// [`cargo_unit_link_cover`]). Counted, never silent: a probe that stops
+    /// `binaries::cargo_unit_link_cover`). Counted, never silent: a probe that stops
     /// comparing something must say so on its `probe:` line.
     static LINK_COVERED: Cell<usize> = const { Cell::new(0) };
     /// phase-363 — set when an arm could not obtain the MEASURED input set and
@@ -214,7 +214,7 @@ pub fn note_unmeasured_input_set() {
 }
 
 /// Record that one input was answered by the build rather than compared
-/// against the binary — issue 1710, [`cargo_unit_link_cover`].
+/// against the binary — issue 1710, `binaries::cargo_unit_link_cover`.
 pub fn note_link_covered() {
     LINK_COVERED.with(|c| c.set(c.get() + 1));
 }
