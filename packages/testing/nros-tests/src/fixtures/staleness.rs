@@ -157,6 +157,10 @@ thread_local! {
     static EXEMPT_INPLACE: Cell<usize> = const { Cell::new(0) };
     static EXEMPT_OUTDIR: Cell<usize> = const { Cell::new(0) };
     static EXEMPT_STAMP: Cell<usize> = const { Cell::new(0) };
+    /// issue 1710 — inputs a byte-identical relink answered (see
+    /// `binaries::cargo_unit_link_cover`). Counted, never silent: a probe that stops
+    /// comparing something must say so on its `probe:` line.
+    static LINK_COVERED: Cell<usize> = const { Cell::new(0) };
     /// phase-363 — set when an arm could not obtain the MEASURED input set and
     /// fell back to a hand-authored one.
     static UNMEASURED: Cell<bool> = const { Cell::new(false) };
@@ -170,6 +174,7 @@ pub fn begin_probe() {
     EXEMPT_INPLACE.with(|c| c.set(0));
     EXEMPT_OUTDIR.with(|c| c.set(0));
     EXEMPT_STAMP.with(|c| c.set(0));
+    LINK_COVERED.with(|c| c.set(0));
     UNMEASURED.with(|c| c.set(false));
 }
 
@@ -208,6 +213,12 @@ pub fn note_unmeasured_input_set() {
     UNMEASURED.with(|c| c.set(true));
 }
 
+/// Record that one input was answered by the build rather than compared
+/// against the binary — issue 1710, `binaries::cargo_unit_link_cover`.
+pub fn note_link_covered() {
+    LINK_COVERED.with(|c| c.set(c.get() + 1));
+}
+
 /// What the probe compared, in one line.
 pub fn probe_accounting() -> String {
     let examined = EXAMINED.with(Cell::get);
@@ -220,6 +231,14 @@ pub fn probe_accounting() -> String {
         Exemption::CargoOutDir.label(),
         Exemption::ConfigHeaderStamp.label(),
     );
+    let covered = LINK_COVERED.with(Cell::get);
+    if covered > 0 {
+        line.push_str(&format!(
+            "; {covered} cargo input(s) answered by a byte-identical relink \
+             (cargo rebuilt after them, and the archive the binary links is \
+             that output)"
+        ));
+    }
     if UNMEASURED.with(Cell::get) {
         line.push_str(
             "; INPUT SET UNMEASURED — no build-script record found, \

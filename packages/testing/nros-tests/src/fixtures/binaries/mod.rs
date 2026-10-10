@@ -1620,6 +1620,14 @@ fn cargo_rust_inputs(
     let mut candidates: Vec<PathBuf> = Vec::new();
     let mut newer: Option<PathBuf> = None;
     for dep_file in cargo_unit_dep_files(build_dir) {
+        // issue 1710 — a unit whose rebuild the binary already LINKS answers
+        // its own inputs. See `cargo_unit_link_cover`.
+        if let Some(covered) = cargo_unit_link_cover(build_dir, &dep_file, bin_mtime) {
+            for _ in 0..covered {
+                staleness::note_link_covered();
+            }
+            continue;
+        }
         // issue 0764's rule, and the reason this does NOT call
         // `dep_file_newer_than_for`: that helper RETURNS at the first newer
         // entry, so its `walked` list is truncated there. The ninja arm above
@@ -1644,6 +1652,99 @@ fn cargo_rust_inputs(
         }
     }
     (newer, candidates)
+}
+
+/// issue 1710 — whether the binary already links what cargo last built from
+/// `dep_file`'s inputs, and if so how many inputs that answers.
+///
+/// The build judges by CONTENT at every step: cargo rebuilds the staticlib
+/// when an input moves, cmake copies it into the build dir only if the bytes
+/// differ (`copy_if_different`), and ninja relinks only when that COPY moves.
+/// So an edit that changes no object code — `rustfmt` reflowing a comment —
+/// legitimately ends with an old, correct binary. The source-content arm then
+/// sees a source whose bytes really did change and calls the fixture STALE,
+/// and no build can ever clear it (measured: `c_service_server` held its
+/// 08:14 mtime against an 08:40 `libnros_cpp.a` that `cmp` called identical).
+///
+/// Those inputs are answered here, not compared, when all three hold:
+///
+/// 1. cargo's own output (`<stem>.a` beside `<stem>.d`) is at least as new as
+///    every input the `.d` lists — cargo ran after the last edit;
+/// 2. every copy of that archive in the cmake build dir is byte-identical to
+///    it — what the binary links is that output;
+/// 3. the binary is at least as new as every such copy — it was linked from
+///    them, not from something older.
+///
+/// Anything short of all three returns `None` and the inputs go through the
+/// normal arm: no copy found is "not shown", never "covered".
+fn cargo_unit_link_cover(
+    build_dir: &Path,
+    dep_file: &Path,
+    bin_mtime: std::time::SystemTime,
+) -> Option<usize> {
+    let archive = dep_file.with_extension("a");
+    let archive_mtime = fs::metadata(&archive).ok()?.modified().ok()?;
+    let inputs = staleness::dep_file_paths(dep_file);
+    for input in &inputs {
+        let m = fs::metadata(input).ok()?.modified().ok()?;
+        if m > archive_mtime {
+            return None; // (1) an input moved after cargo's last build
+        }
+    }
+    let name = archive.file_name()?;
+    let original = fs::canonicalize(&archive).ok()?;
+    let copies: Vec<PathBuf> = linked_archive_copies(build_dir, name, 0)
+        .into_iter()
+        .filter(|c| fs::canonicalize(c).ok().as_ref() != Some(&original))
+        .collect();
+    if copies.is_empty() {
+        return None;
+    }
+    let want = staleness::hash_file_content(&archive)?;
+    for copy in &copies {
+        if staleness::hash_file_content(copy)? != want {
+            return None; // (2) the binary links different bytes
+        }
+        if fs::metadata(copy).ok()?.modified().ok()? > bin_mtime {
+            return None; // (3) the copy moved after the link
+        }
+    }
+    Some(inputs.len())
+}
+
+/// Copies of a cargo archive named `name` that cmake placed in `build_dir`
+/// (e.g. `nano_ros/packages/api/nros-cpp/libnros_cpp.a`). Bounded, and never
+/// descends into the cargo target dir — the original lives there, and it is
+/// what the copies are compared against.
+fn linked_archive_copies(dir: &Path, name: &std::ffi::OsStr, depth: usize) -> Vec<PathBuf> {
+    const MAX_DEPTH: usize = 6;
+    let mut found = Vec::new();
+    if depth > MAX_DEPTH {
+        return found;
+    }
+    let Ok(entries) = fs::read_dir(dir) else {
+        return found;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let fname = entry.file_name();
+        let Ok(ft) = entry.file_type() else { continue };
+        if ft.is_symlink() {
+            continue; // `cargo` -> the shared group dir: the originals, not copies
+        }
+        if ft.is_dir() {
+            if matches!(
+                fname.to_string_lossy().as_ref(),
+                "cargo" | "CMakeFiles" | "corrosion" | "_deps" | ".fingerprint"
+            ) {
+                continue;
+            }
+            found.extend(linked_archive_copies(&path, name, depth + 1));
+        } else if fname == name {
+            found.push(path);
+        }
+    }
+    found
 }
 
 /// The per-unit `.d` files cargo left at the top level of each profile dir
@@ -7889,6 +7990,102 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// issue 1710 — a source edit that changes no object code is answered by
+    /// the build, and only when the binary provably links that build.
+    ///
+    /// Measured: `rustfmt` reflowed two lines of `nros-cpp/src/action.rs`,
+    /// cargo rebuilt `libnros_cpp.a` byte-identical, `copy_if_different` left
+    /// the linked copy alone, nothing relinked — and the source-content arm
+    /// called `c_service_server` STALE forever. Hermetic: a synthetic corrosion
+    /// layout with mtimes set explicitly, so this asserts the rule rather than
+    /// anybody's build tree. Each negative case breaks exactly one condition.
+    #[test]
+    fn a_byte_identical_cargo_rebuild_the_binary_links_answers_its_inputs() {
+        use std::time::{Duration, SystemTime};
+        let root = project_root();
+        let tmp = root.join("tmp/issue-1710-probe");
+        let _ = fs::remove_dir_all(&tmp);
+
+        let t = |secs: u64| SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000 + secs);
+        let set_mtime = |p: &Path, when: SystemTime| {
+            fs::File::options()
+                .write(true)
+                .open(p)
+                .unwrap()
+                .set_modified(when)
+                .unwrap();
+        };
+
+        // cargo/<pkg>_<hash>/<triple>/<profile>/{deps/,libnros_cpp.{a,d}}, plus
+        // the copy cmake links at nano_ros/packages/api/nros-cpp/libnros_cpp.a.
+        let profile = tmp.join("cargo/nano-ros_1147c/x86_64-unknown-linux-gnu/release");
+        fs::create_dir_all(profile.join("deps")).unwrap();
+        let copy_dir = tmp.join("nano_ros/packages/api/nros-cpp");
+        fs::create_dir_all(&copy_dir).unwrap();
+        let src = tmp.join("src/action.rs");
+        fs::create_dir_all(src.parent().unwrap()).unwrap();
+        fs::write(&src, "//! reflowed by rustfmt\n").unwrap();
+        let archive = profile.join("libnros_cpp.a");
+        let copy = copy_dir.join("libnros_cpp.a");
+        let binary = tmp.join("c_service_server");
+        fs::write(&archive, b"!<arch>\nsame bytes").unwrap();
+        fs::write(&copy, b"!<arch>\nsame bytes").unwrap();
+        fs::write(&binary, b"ELF").unwrap();
+        let dep_file = profile.join("libnros_cpp.d");
+        fs::write(
+            &dep_file,
+            format!("{}: {}\n", archive.display(), src.display()),
+        )
+        .unwrap();
+
+        // The measured timeline: copy + link at 08:14, the edit, then cargo's
+        // byte-identical rebuild at 08:40 that nothing copied or relinked.
+        set_mtime(&copy, t(0));
+        set_mtime(&binary, t(1));
+        set_mtime(&src, t(100));
+        set_mtime(&archive, t(200));
+        let bin_mtime = t(1);
+
+        assert_eq!(
+            cargo_unit_link_cover(&tmp, &dep_file, bin_mtime),
+            Some(1),
+            "cargo rebuilt after the edit and the binary links those bytes"
+        );
+        let (newer, candidates) = cargo_rust_inputs(&tmp, bin_mtime);
+        assert!(
+            newer.is_none() && candidates.is_empty(),
+            "a covered unit's inputs are answered, not compared: {newer:?} {candidates:?}"
+        );
+
+        // (2) the linked copy differs: the edit DID change the code.
+        fs::write(&copy, b"!<arch>\nold bytes").unwrap();
+        set_mtime(&copy, t(0));
+        assert_eq!(cargo_unit_link_cover(&tmp, &dep_file, bin_mtime), None);
+        assert_eq!(
+            cargo_rust_inputs(&tmp, bin_mtime).0.as_deref(),
+            Some(src.as_path()),
+            "an uncovered unit falls back to the normal arm"
+        );
+        fs::write(&copy, b"!<arch>\nsame bytes").unwrap();
+        set_mtime(&copy, t(0));
+
+        // (1) the source moved after cargo's last build: cargo never saw it.
+        set_mtime(&src, t(300));
+        assert_eq!(cargo_unit_link_cover(&tmp, &dep_file, bin_mtime), None);
+        set_mtime(&src, t(100));
+
+        // (3) the copy moved after the link: the binary predates it.
+        set_mtime(&copy, t(50));
+        assert_eq!(cargo_unit_link_cover(&tmp, &dep_file, bin_mtime), None);
+        set_mtime(&copy, t(0));
+
+        // No copy at all: "not shown", never "covered".
+        fs::remove_file(&copy).unwrap();
+        assert_eq!(cargo_unit_link_cover(&tmp, &dep_file, bin_mtime), None);
+
+        fs::remove_dir_all(&tmp).unwrap();
     }
 
     /// issue 1005 — a build-script DEPENDENCY crate is an input of a cmake
