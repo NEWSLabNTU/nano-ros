@@ -149,6 +149,10 @@ codegen-version-refusal:
 # Static, no build. The whole 0088 -> 0114 -> 0122 -> 0123 -> 0245 -> 0268 ->
 # 0978 -> 0985 family is one shape: two ways to answer "which bytes are the
 # current sizes header".
+# Issue 1783 adds WHAT the build-time writer keys on (rules E1-E5): the mirror
+# and its per-consumer stamp re-run every build instead of keying on the
+# staticlib, which a codegen-version bump leaves byte-identical; and every
+# consumer names BOTH crates' mirrors through one helper.
 [private]
 config-header-single-writer:
     @python3 scripts/check-config-header-single-writer.py

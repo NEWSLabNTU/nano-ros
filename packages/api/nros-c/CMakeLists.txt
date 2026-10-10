@@ -249,38 +249,25 @@ file(MAKE_DIRECTORY "${_nros_c_intree_include_dir}/nros")
 set(_nros_c_gen_config_header "${_nros_c_intree_include_dir}/nros/nros_config_generated.h")
 # Issue 0268 — `DEPENDS <target-name>` alone is ORDER-ONLY in the generated Ninja
 # graph (`|| cargo-build_nros_c`): it guarantees the cargo build runs FIRST, but a
-# rebuilt crate never makes this copy out of date. Once the mirror exists it is
-# never refreshed again, so an incremental build that grows the Rust `Executor`
-# (e.g. 296-W3b.4 adding `monitor_states`) leaves a MUSEUM mirror on the include
-# path while `${CMAKE_CURRENT_BINARY_DIR}/nros_config_generated.h` carries the new
-# size. The C `_opaque` buffer is then sized from the stale header and the Rust
-# object is placement-constructed 336 bytes past its end — memory corruption that
-# surfaces as unrelated runtime failures (freertos C: register_subscription -1,
-# zenoh session self-close). Adding the staticlib — a REAL Ninja output of the
-# cargo edge — as a file-level DEPENDS gives the copy an actual input edge, so any
-# cargo rebuild re-mirrors. `copy_if_different` keeps the mtime (and therefore
-# consumer recompiles) tied to genuine content changes.
-if(TARGET nros_c-static)
-    set(_nros_c_mirror_trigger "$<TARGET_FILE:nros_c-static>")
-else()
-    set(_nros_c_mirror_trigger "")
-endif()
-set(_NROS_C_MIRROR_SH "${CMAKE_CURRENT_LIST_DIR}/../../../scripts/build/mirror-generated-header.sh")
-add_custom_command(
-    OUTPUT "${_nros_c_gen_config_header}"
-    # issue 0805 — the leaf's own copy exists only if the build script RAN for
-    # this leaf, and once leaves share a cargo target dir cargo skips it for
-    # every leaf after the first. The helper falls back to the leaf-independent
-    # `nros-c-generated/` copy, which is the same bytes.
-    COMMAND bash "${_NROS_C_MIRROR_SH}"
-        "${CMAKE_CURRENT_BINARY_DIR}/nros_config_generated.h"
-        "${CMAKE_BINARY_DIR}" "nros-c-generated" "nros_config_generated.h"
-        "${_nros_c_gen_config_header}"
-    DEPENDS cargo-build_nros_c ${_nros_c_mirror_trigger}
-    COMMENT "nros-c: mirroring nros_config_generated.h for in-tree consumers"
-    VERBATIM
-)
-add_custom_target(nros_c_config_header DEPENDS "${_nros_c_gen_config_header}")
+# rebuilt crate never makes this copy out of date, so an incremental build that
+# grew the Rust `Executor` left a MUSEUM mirror on the include path (the C
+# `_opaque` buffer sized from it, the Rust object 336 bytes past its end).
+# 0268 answered with the staticlib FILE as an input; issue 1783 measured that
+# proxy failing — a codegen-version bump rewrites the header and leaves the
+# archive byte-identical, so Corrosion's copy keeps its mtime and the mirror
+# never runs. The mirror now re-runs every build, write-if-changed + restat:
+# `nros_config_header_mirror` (cmake/NanoRosConfigHeaderMirror.cmake) is the one
+# spelling for both crates.
+#
+# issue 0805 — the leaf's own copy exists only if the build script RAN for this
+# leaf, and once leaves share a cargo target dir cargo skips it for every leaf
+# after the first. The script falls back to the leaf-independent
+# `nros-c-generated/` copy, which is the same bytes.
+include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosConfigHeaderMirror.cmake")
+nros_config_header_mirror(nros_c_config_header cargo-build_nros_c
+    "${CMAKE_CURRENT_BINARY_DIR}/nros_config_generated.h"
+    "nros-c-generated" "nros_config_generated.h"
+    "${_nros_c_gen_config_header}")
 # Issue 0090 — export the absolute mirror-header path so NanoRosNodeRegister can set
 # a FILE-level OBJECT_DEPENDS on it. The threadx carrier's link-time
 # `add_dependencies(<carrier> nros_c_config_header)` does not stop a TU from

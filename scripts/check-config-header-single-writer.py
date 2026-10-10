@@ -184,6 +184,215 @@ def immediate_heals(text: str) -> list[tuple[int, str]]:
     return found
 
 
+# Issue 1783 -- WHAT the build-time writer keys on is the third half. The
+# mirror's source is a file cargo writes as a side effect, which no CMake rule
+# produces, so 0268 keyed the mirror (and 0740's per-consumer stamp) on a PROXY:
+# `$<TARGET_FILE:nros_{c,cpp}-static>`. A codegen-version bump rewrites the
+# header and leaves the archive byte-identical, Corrosion's `copy_if_different`
+# keeps its mtime, and every message TU compiled against the museum mirror. The
+# rules, all over the same cmake population:
+#
+#   E1  the build-time mirror rule (an `add_custom_command` running the writer)
+#       is spelled ONLY in `nros_config_header_mirror`;
+#   E2  no custom command keys on the staticlib proxy;
+#   E3  the mirror and the stamp each re-run every build -- an input on the
+#       always-out-of-date node (`_nros_config_header_rerun_node`) -- and have
+#       ONE output each (Make `touch_nocreate`s every output after the first,
+#       which would re-stamp the header on every build);
+#   E4  a consumer reaches the mirrors only through `nros_config_header_files`
+#       / `nros_config_header_object_depends`, so no consumer can stamp ONE
+#       crate's mirror while its include path resolves the OTHER's (a C message
+#       library linked through `NanoRosCpp` did exactly that);
+#   E5  the helpers exist -- otherwise E1..E4 hold vacuously.
+#   E6  every image/library CREATOR that compiles a TU including the mirror
+#       still calls the consumer helper, as often as it creates such a target.
+#       E1..E4 police HOW a consumer spells its edge and are silent on one that
+#       has no edge at all: commenting out the message library's call left the
+#       gate green (measured). The creators are named below with why, and a
+#       creator that disappears or loses a call fails, so the table cannot
+#       quietly go stale toward OK.
+CONSUMERS = {
+    # creator function: (calls required, what it compiles)
+    "nros_generate_interfaces": (1, "the generated <pkg>__nano_ros_c library"),
+    "nano_ros_entry": (2, "the entry's generated TU and its app sources"),
+    "nano_ros_node_register": (2, "both ThreadX carrier arms"),
+}
+MIRROR_FN = "nros_config_header_mirror"
+STAMP_FN = "_nros_config_header_stamp"
+RERUN_FN = "_nros_config_header_rerun_node"
+FILES_FN = "nros_config_header_files"
+DEPENDS_FN = "nros_config_header_object_depends"
+_ACC = re.compile(r"\badd_custom_command\s*\(", re.I)
+_PROXY = re.compile(r"\$<TARGET_FILE:nros_c(?:pp)?-static>")
+_HDR_PROP = re.compile(r"\bget_property\s*\([^)]*\bNROS_C(?:PP)?_CONFIG_HEADER_FILE\b", re.I)
+_STAMP_CALL = re.compile(r"\b" + STAMP_FN + r"\s*\(")
+_KEYWORDS = r"(?:COMMAND|DEPENDS|BYPRODUCTS|COMMENT|VERBATIM|WORKING_DIRECTORY|MAIN_DEPENDENCY|IMPLICIT_DEPENDS|DEPFILE|JOB_POOL|USES_TERMINAL|APPEND|COMMAND_EXPAND_LISTS)"
+_OUTPUTS = re.compile(r"\bOUTPUT\s+(.*?)(?=\b" + _KEYWORDS + r"\b|\)\s*$)", re.S)
+
+
+def _span(stripped: str, start: int) -> tuple[str, int]:
+    """The balanced `name( ... )` call starting at `start` (inclusive)."""
+    depth, i = 0, stripped.index("(", start)
+    begin = start
+    while i < len(stripped):
+        if stripped[i] == "(":
+            depth += 1
+        elif stripped[i] == ")":
+            depth -= 1
+            if depth == 0:
+                return stripped[begin: i + 1], i + 1
+        i += 1
+    return stripped[begin:], len(stripped)
+
+
+def _enclosing(stripped: str, pos: int) -> str | None:
+    before = stripped[:pos]
+    opens = list(_FUNC.finditer(before))
+    if opens and len(opens) > len(_ENDFUNC.findall(before)):
+        return opens[-1].group(2)
+    return None
+
+
+def _defines(stripped: str, name: str) -> bool:
+    return any(m.group(2) == name for m in _FUNC.finditer(stripped))
+
+
+def consumer_calls(text: str) -> dict[str, int]:
+    """{creator: number of DEPENDS_FN calls in its body} for the CONSUMERS
+    this file defines (E6)."""
+    stripped = strip_comments(text)
+    out = {}
+    for m in _FUNC.finditer(stripped):
+        if m.group(2) not in CONSUMERS:
+            continue
+        end = re.compile(r"\bend" + m.group(1) + r"\s*\(", re.I).search(stripped, m.end())
+        body = stripped[m.end(): end.start() if end else len(stripped)]
+        out[m.group(2)] = len(re.findall(r"\b" + DEPENDS_FN + r"\s*\(", body))
+    return out
+
+
+def edge_offenders(text: str) -> list[tuple[int, str]]:
+    """(line, reason) for every 1783-class edge defect in one cmake file."""
+    stripped = strip_comments(text)
+    writer_vars = {m.group(1) for m in _BINDS.finditer(stripped) if WRITER in m.group(2)}
+    # Both pre-1783 sites spelled the proxy through a VARIABLE -- the mirror as
+    # `set(_trigger "$<TARGET_FILE:nros_c-static>")`, the stamp as
+    # `foreach(_lib nros_c-static ...)` + `$<TARGET_FILE:${_lib}>` -- so a
+    # literal-only E2 passed on both (measured: the first draft of this rule).
+    proxy_vars = {m.group(1) for m in _BINDS.finditer(stripped)
+                  if _PROXY.search(m.group(2))}
+    lib_vars = {m.group(1) for m in _BINDS.finditer(stripped)
+                if re.search(r"\bnros_c(?:pp)?-static\b", m.group(2))}
+    found = []
+
+    def hit(pos: int, why: str) -> None:
+        found.append((stripped.count("\n", 0, pos) + 1, why))
+
+    for m in _ACC.finditer(stripped):
+        span, _ = _span(stripped, m.start())
+        fn = _enclosing(stripped, m.start())
+        runs_writer = WRITER in span or any(f"${{{v}}}" in span for v in writer_vars)
+        if runs_writer and fn != MIRROR_FN:
+            hit(m.start(), f"E1 build-time mirror rule outside {MIRROR_FN}(): "
+                + " ".join(span.split())[:90])
+        if (_PROXY.search(span) or any(f"${{{v}}}" in span for v in proxy_vars)
+                or any(f"$<TARGET_FILE:${{{v}}}>" in span for v in lib_vars)):
+            hit(m.start(), "E2 custom command keyed on the staticlib proxy "
+                "(a header can change while the archive does not): "
+                + " ".join(span.split())[:90])
+        if fn in (MIRROR_FN, STAMP_FN):
+            if "${_rerun}" not in span:
+                hit(m.start(), f"E3 {fn}() command does not depend on the "
+                    f"always-out-of-date node ({RERUN_FN}), so it can skip a "
+                    "header that moved")
+            o = _OUTPUTS.search(span)
+            if o and len(o.group(1).split()) != 1:
+                hit(m.start(), f"E3 {fn}() command has {len(o.group(1).split())} "
+                    "OUTPUTs; Make touch_nocreate's every output after the first")
+    for fn in (MIRROR_FN, STAMP_FN):
+        for m in _FUNC.finditer(stripped):
+            if m.group(2) != fn:
+                continue
+            body, _ = _span(stripped, m.start())
+            end = stripped.find("endfunction", m.start())
+            body = stripped[m.start(): end if end > 0 else len(stripped)]
+            if RERUN_FN + "(" not in body:
+                hit(m.start(), f"E3 {fn}() never declares the rerun node ({RERUN_FN})")
+    for m in _HDR_PROP.finditer(stripped):
+        if _enclosing(stripped, m.start()) != FILES_FN:
+            hit(m.start(), f"E4 reads a mirror-header property directly; use "
+                f"{FILES_FN}() / {DEPENDS_FN}() so BOTH crates' mirrors are named")
+    for m in _STAMP_CALL.finditer(stripped):
+        line_start = stripped.rfind("\n", 0, m.start()) + 1
+        if stripped[line_start: m.start()].strip().lower().startswith("function("):
+            continue  # the definition
+        if _enclosing(stripped, m.start()) != DEPENDS_FN:
+            hit(m.start(), f"E4 {STAMP_FN}() called directly; use {DEPENDS_FN}()")
+    return found
+
+
+def self_test_edges() -> None:
+    good = (
+        'function(_nros_config_header_rerun_node _o _p)\nendfunction()\n'
+        'function(nros_config_header_mirror _t _a)\n'
+        '  _nros_config_header_rerun_node(_rerun "${X}")\n'
+        '  add_custom_command(OUTPUT "${_dest}" COMMAND bash "${_NROS_CFG_MIRROR_SH}" a\n'
+        '      DEPENDS "${_rerun}" ${_after_dep} VERBATIM)\n'
+        'endfunction()\n'
+        'set(_NROS_CFG_MIRROR_SH "${D}/scripts/build/mirror-generated-header.sh")\n'
+        'function(nros_config_header_files _o)\n'
+        '  get_property(_c GLOBAL PROPERTY NROS_C_CONFIG_HEADER_FILE)\n'
+        'endfunction()\n'
+        'function(nros_config_header_object_depends _o)\n'
+        '  _nros_config_header_stamp(_s "${_o}" ${_h})\n'
+        'endfunction()\n'
+        'function(_nros_config_header_stamp _v _o)\n'
+        '  _nros_config_header_rerun_node(_rerun "${D}/rerun")\n'
+        '  add_custom_command(OUTPUT "${_stamp}" COMMAND x DEPENDS "${_rerun}" ${_deps})\n'
+        'endfunction()\n')
+    assert not edge_offenders(good), edge_offenders(good)
+    # 0268's spelling, verbatim in shape: the mirror keyed on the archive, at
+    # package scope.
+    pre = ('add_custom_command(OUTPUT "${H}" COMMAND bash "${_NROS_C_MIRROR_SH}" a b c d "${H}"\n'
+           '    DEPENDS cargo-build_nros_c $<TARGET_FILE:nros_c-static> VERBATIM)\n'
+           'set(_NROS_C_MIRROR_SH "${D}/scripts/build/mirror-generated-header.sh")\n')
+    rules = {w.split()[0] for _, w in edge_offenders(pre)}
+    assert rules == {"E1", "E2"}, f"0268's mirror must be E1+E2, got {rules}"
+    # The pre-1783 stamp: proxy input, no rerun node.
+    stamp = ('function(_nros_config_header_stamp _v _o)\n'
+             '  add_custom_command(OUTPUT "${_stamp}" COMMAND x\n'
+             '      DEPENDS ${_deps} "$<TARGET_FILE:nros_cpp-static>")\nendfunction()\n')
+    rules = {w.split()[0] for _, w in edge_offenders(stamp)}
+    assert rules == {"E2", "E3"}, f"the pre-1783 stamp must be E2+E3, got {rules}"
+    # ... and both through a variable, which is how the tree actually had them.
+    via_set = ('set(_trig "$<TARGET_FILE:nros_c-static>")\n'
+               'add_custom_command(OUTPUT h COMMAND x DEPENDS ${_trig})\n')
+    assert any(w.startswith("E2") for _, w in edge_offenders(via_set)), \
+        "a proxy bound through set() must be E2"
+    via_loop = ('foreach(_lib nros_c-static nros_cpp-static)\n'
+                '  list(APPEND _deps "$<TARGET_FILE:${_lib}>")\nendforeach()\n'
+                'add_custom_command(OUTPUT h COMMAND x DEPENDS "$<TARGET_FILE:${_lib}>")\n')
+    assert any(w.startswith("E2") for _, w in edge_offenders(via_loop)), \
+        "a proxy bound through a foreach() must be E2"
+    two = ('function(nros_config_header_mirror _t _a)\n'
+           '  _nros_config_header_rerun_node(_rerun "${X}")\n'
+           '  add_custom_command(OUTPUT "${a}" "${b}" COMMAND bash mirror-generated-header.sh\n'
+           '      DEPENDS "${_rerun}")\nendfunction()\n')
+    assert any("OUTPUTs" in w for _, w in edge_offenders(two)), "two outputs must be E3"
+    # The pre-1783 C message library: ONE crate's property, stamped directly.
+    lib = ('function(nros_generate_interfaces t)\n'
+           '  get_property(_h GLOBAL PROPERTY NROS_C_CONFIG_HEADER_FILE)\n'
+           '  _nros_config_header_stamp(_s "${t}" "${_h}")\nendfunction()\n')
+    rules = [w.split()[0] for _, w in edge_offenders(lib)]
+    assert rules == ["E4", "E4"], f"a direct property read + stamp must be E4 twice, got {rules}"
+    # E6 -- a creator whose edge call is gone (commented out) counts zero.
+    gone = ('function(nros_generate_interfaces t)\n'
+            '  # nros_config_header_object_depends(${t} ${s})\nendfunction()\n')
+    assert consumer_calls(gone) == {"nros_generate_interfaces": 0}, consumer_calls(gone)
+    kept = gone.replace("  # nros", "  nros")
+    assert consumer_calls(kept) == {"nros_generate_interfaces": 1}, consumer_calls(kept)
+
+
 def self_test() -> None:
     """Runs on the NORMAL path — `check-gate-selftests`."""
     bad = 'file(COPY_FILE "${D}/nros_config_generated.h" "${E}/nros_config_generated.h")'
@@ -252,6 +461,7 @@ def self_test() -> None:
 
 def main() -> int:
     self_test()
+    self_test_edges()
 
     # The INDEX, not a filesystem glob. The rule is about AUTHORED cmake, which
     # is tracked by definition; `REPO.glob("packages/**/...")` walked every cargo
@@ -277,6 +487,9 @@ def main() -> int:
         )
         return 1
     hits = []
+    edge_hits = []
+    defined: set[str] = set()
+    calls: dict[str, int] = {}
     for f in files:
         try:
             text = f.read_text(encoding="utf-8")
@@ -284,6 +497,12 @@ def main() -> int:
             continue
         for line, snippet in offenders(text):
             hits.append((f.relative_to(REPO), line, snippet))
+        for line, why in edge_offenders(text):
+            edge_hits.append((f.relative_to(REPO), line, why))
+        defined |= {n for n in (MIRROR_FN, STAMP_FN, RERUN_FN, FILES_FN, DEPENDS_FN)
+                    if _defines(strip_comments(text), n)}
+        for fn, n in consumer_calls(text).items():
+            calls[fn] = calls.get(fn, 0) + n
         for line, snippet in immediate_heals(text):
             hits.append((f.relative_to(REPO), line,
                          "configure-time mirror run outside the deferred heal "
@@ -299,9 +518,39 @@ def main() -> int:
         for line, snippet in shell_offenders(text, "just" if "just" in kinds else "sh"):
             hits.append((rel, line, snippet))
 
+    # E5 -- the rules above hold vacuously if the helpers they name are gone.
+    for n in sorted({MIRROR_FN, STAMP_FN, RERUN_FN, FILES_FN, DEPENDS_FN} - defined):
+        edge_hits.append((Path("cmake"), 0, f"E5 no cmake file defines {n}() -- the "
+                          "1783 edge rules would hold vacuously"))
+    # E6 -- a creator with no edge is the defect E1..E4 cannot see.
+    for fn, (want, what) in sorted(CONSUMERS.items()):
+        if fn not in calls:
+            edge_hits.append((Path("cmake"), 0, f"E6 no cmake file defines {fn}() -- "
+                              "remove it from CONSUMERS if it is gone, or the rule "
+                              "holds vacuously"))
+        elif calls[fn] < want:
+            edge_hits.append((Path("cmake"), 0, f"E6 {fn}() calls {DEPENDS_FN}() "
+                              f"{calls[fn]}x, needs {want} ({what}): a TU it compiles "
+                              "would read a mirror nothing orders it after"))
+    if edge_hits:
+        print("check-config-header-single-writer: the per-build sizes-header MIRROR "
+              "has an edge that can go stale (issue 1783).", file=sys.stderr)
+        for path, line, why in edge_hits:
+            print(f"  {path}:{line}: {why}", file=sys.stderr)
+        print("", file=sys.stderr)
+        print("  The mirror's source is a file cargo writes as a side effect; no "
+              "CMake rule", file=sys.stderr)
+        print("  produces it, so no proxy (the staticlib) tracks it. Use "
+              "cmake/NanoRosConfigHeaderMirror.cmake:", file=sys.stderr)
+        print(f"  {MIRROR_FN}() to produce, {DEPENDS_FN}() to consume.",
+              file=sys.stderr)
+        if not hits:
+            return 1
+
     if not hits:
         print(f"check-config-header-single-writer: OK — {len(files)} cmake file(s) + "
-              f"{len(sh_files)} shell/just/make file(s), the mirror script is the only writer.")
+              f"{len(sh_files)} shell/just/make file(s), the mirror script is the only writer "
+              "and its build-time rule re-runs every build (issue 1783).")
         return 0
 
     print("check-config-header-single-writer: a SECOND writer of the per-build "
