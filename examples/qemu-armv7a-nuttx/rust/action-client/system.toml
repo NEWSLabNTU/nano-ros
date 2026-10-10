@@ -24,4 +24,3 @@ locator = "tcp/10.0.2.2:8220"
 # from `just/sdk-env.just`; this gate keeps the two in step. `{env:…}`
 # rather than a literal so the value survives a second checkout.
 [board_config."qemu-armv7a-nuttx"]
-sdk = { nuttx = "{env:NUTTX_DIR}", nuttx_apps = "{env:NUTTX_APPS_DIR}" }

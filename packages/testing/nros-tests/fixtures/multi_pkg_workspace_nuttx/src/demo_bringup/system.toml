@@ -22,4 +22,3 @@ name = "listener"
 board = "qemu-armv7a-nsh"
 launch = "system.launch.xml"
 [board_config."qemu-armv7a-nsh"]
-sdk = { nuttx = "{env:NUTTX_DIR}", nuttx_apps = "{env:NUTTX_APPS_DIR}" }
