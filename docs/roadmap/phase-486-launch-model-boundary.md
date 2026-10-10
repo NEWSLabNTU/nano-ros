@@ -91,6 +91,24 @@ model's `execution.features` and its lifecycle default equals what the model
 projected. A test asserts this agreement (it is W3's safety net). No image
 changes.
 
+### W1 result (2026-10-11)
+
+- `nros_orchestration_ir::overlay`: `Overlay` (features, lifecycle default),
+  `overlay_path_for_model` (beside the model, one per directory) and
+  `write_beside` (write-if-changed; empty ⇒ a stale file is deleted).
+- **Both model producers write it:** `nros sync` (`cmd/ws.rs`, on the resolve
+  path AND on the "model is current" path, so a tree synced before W1 gains
+  one without a re-resolve) and `model_location::ensure_model` (the
+  proc-macro, `nros-build` and the CLI's own resolves), on its resolve and
+  fresh paths.
+- **Agreement:** `overlay_agrees_with_model_projection` compares the overlay
+  with rlm's own `parse_system_config` + `apply_to_launch` +
+  `lifecycle_autostart` for every tracked `system.toml`. It passes, with 3 of
+  them stating something. Mutation: dropping the lifecycle read turns it red.
+- **Byte-identical by construction:** nothing reads the overlay yet, and no
+  build input changes (`system.toml` was already registered by every
+  producer).
+
 ## W2 — per-image switches
 
 - `[image.<id>] features` and `[image_defaults] features` in `SystemToml`.
