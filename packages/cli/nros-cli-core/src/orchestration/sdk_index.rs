@@ -1963,8 +1963,8 @@ impl SdkIndex {
         }
         // Phase 195.B — a `[source.*]` provisioning recipe must be coherent so
         // `nros setup` can act on it without guessing. `submodule` mode needs a
-        // `dest`; clone mode (a `git` with no `submodule`) needs both `ref` and
-        // `dest`. `git`/`ref` may accompany `submodule` (they record the pin).
+        // `dest` and its pin (`git`/`ref`); clone mode (a `git` with no
+        // `submodule`) needs both `ref` and `dest`.
         for (name, src) in &self.source {
             match src.provision() {
                 SourceProvision::Clone => {
@@ -1991,6 +1991,17 @@ impl SdkIndex {
                 SourceProvision::Submodule => {
                     if src.dest.is_none() {
                         bail!("source '{name}' has `submodule` but no `dest`");
+                    }
+                    // RFC-0103 D5 (phase-484 W3) — the row states its pin, so
+                    // it can be read where there is no gitlink: an installed
+                    // SDK root, and the store's `<version>+<sha8>` key.
+                    // `check-source-refs` holds both equal to git.
+                    if src.git.is_none() || src.git_ref.is_none() {
+                        bail!(
+                            "source '{name}' has `submodule` but no `git`/`ref` — the pin \
+                             must be readable without a checkout. Run \
+                             `python3 scripts/check/check-source-refs.py --write`"
+                        );
                     }
                 }
                 SourceProvision::None => {}
@@ -2244,14 +2255,29 @@ installer = "nvidia-sdk-manager"
         assert_eq!(lwip.git_ref.as_deref(), Some("STABLE-2_2_0")); // the `ref` key
         assert!(clone.validate().is_ok());
 
-        // Submodule mode: submodule + dest.
+        // Submodule mode: submodule + dest + the pin it states.
         let sm = SdkIndex::parse(
             "[source.threadx]\nversion=\"6.4.1\"\nsubmodule=\"third-party/threadx/kernel\"\n\
-             dest=\"third-party/threadx/kernel\"\n",
+             dest=\"third-party/threadx/kernel\"\ngit=\"https://e/t.git\"\nref=\"abc\"\n",
         )
         .unwrap();
         assert_eq!(sm.source["threadx"].provision(), SourceProvision::Submodule);
         assert!(sm.validate().is_ok());
+
+        // ...and without the pin it is refused: an installed root could not
+        // provision it (RFC-0103 D5).
+        let unpinned = SdkIndex::parse(
+            "[source.threadx]\nversion=\"6.4.1\"\nsubmodule=\"third-party/threadx/kernel\"\n\
+             dest=\"third-party/threadx/kernel\"\n",
+        )
+        .unwrap();
+        assert!(
+            unpinned
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("no `git`/`ref`")
+        );
 
         // No-fetch mode: version only.
         let none = SdkIndex::parse("[source.x]\nversion=\"1\"\n").unwrap();

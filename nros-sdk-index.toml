@@ -1256,45 +1256,52 @@ dist.macos-x86_64 = { url = "https://github.com/verus-lang/verus/releases/downlo
 #
 # Phase 195.B — data-driven provisioning. Each source is a committed submodule,
 # so `nros setup` runs `git submodule update --init <submodule>` into `dest`;
-# `git`/`ref` record the canonical pin (SSOT — kept in lockstep with
-# `.gitmodules` + the recorded gitlink, so the two can't drift). `dest` is
-# workspace-relative — never a path baked into the `nros` binary.
+# `dest` is workspace-relative — never a path baked into the `nros` binary.
+#
+# `git`/`ref` state the pin (RFC-0103 D5, phase-484 W3): the one place it can be
+# read WITHOUT a checkout — an installed SDK root clones `git` at `ref`, and the
+# store keys a tree by `<version>+<sha8>`. They are WRITTEN FROM git, never by
+# hand: `check-source-refs` holds `ref` == the staged gitlink and `git` == the
+# `.gitmodules` URL, and a submodule bump runs
+# `python3 scripts/check/check-source-refs.py --write`. (Issue 0602 removed these
+# keys once because nothing compared them with git; that gate is the difference.)
 
 [source.freertos-kernel]
 env = "FREERTOS_DIR"
 version = "10.6.2"
 dest = "third-party/freertos/kernel"
 submodule = "third-party/freertos/kernel"
+git = "https://github.com/FreeRTOS/FreeRTOS-Kernel.git"
+ref = "0adc196d4bd52a2d91102b525b0aafc1e14a2386"
 
 [source.lwip]
 env = "LWIP_DIR"
 version = "2.2.0"
 dest = "third-party/freertos/lwip"
 submodule = "third-party/freertos/lwip"
+git = "https://github.com/jerry73204/lwip.git"
+ref = "6233eb61c89b531fd5aaa16acdd6bc5c6368dfdd"
 
 [source.threadx]
 env = "THREADX_DIR"
 version = "6.4.1"
-# issue 0602 — this pointed at UPSTREAM (`eclipse-threadx/threadx`) at
-# `4b6e8100`, while `.gitmodules` declares this fork and the superproject
-# records `13d061a7`. Those two commits are parent and child, and the one
-# between them is our own `fix(linux port): key LONG/ULONG and ALIGN_TYPE on the
-# data model, not x86_64`.
-#
-# It is INERT to provisioning — `provision()` returns `Submodule` whenever
-# `submodule` is set, and that arm runs `git submodule update --init` against the
-# GITLINK; `git`/`ref` are read only in the Clone arm. The harm is that the entry
-# is the one place stating where ThreadX comes from, and it named a push target
-# we do not use: a clone whose `origin` matched it sends the vendored-fork
-# workflow to upstream, which is what was observed on one machine.
+# issue 0602 — this once pointed at UPSTREAM (`eclipse-threadx/threadx`) at
+# `4b6e8100` while `.gitmodules` declared this fork, and the stale URL sent the
+# vendored-fork workflow to upstream on one machine. `git`/`ref` below are
+# written from `.gitmodules` + the gitlink and gated (`check-source-refs`), so
+# that drift is now refused rather than possible.
 dest = "third-party/threadx/kernel"
 submodule = "third-party/threadx/kernel"
+git = "https://github.com/NEWSLabNTU/threadx.git"
+ref = "9a29f1bd3f07bd19d085b9e90f8fa7a77479dfa7"
 
 [source.zenoh-pico]
 env = "ZENOH_PICO_DIR"
 version = "1.7.2"
 dest = "packages/rmw/zenoh/zpico-sys/zenoh-pico"
 submodule = "packages/rmw/zenoh/zpico-sys/zenoh-pico"
+git = "https://github.com/jerry73204/zenoh-pico.git"
+ref = "eb16447fc5739862812d4b292d1a5a261dfb64d7"
 
 # NuttX Rust libc fork — the qemu-armv7a-nuttx examples path-dep it via their
 # .cargo/config (`libc = { path = third-party/nuttx/libc }`), so it must be
@@ -1303,6 +1310,8 @@ submodule = "packages/rmw/zenoh/zpico-sys/zenoh-pico"
 version = "0.2-nuttx"
 dest = "third-party/nuttx/libc"
 submodule = "third-party/nuttx/libc"
+git = "https://github.com/jerry73204/libc.git"
+ref = "826c4ca918d870723a750b5f8adc863e0467ea0a"
 
 # px4-rs Rust bindings fork. The px4 examples path-dep its crates, AND the root
 # workspace lists `packages/testing/nros-tests` which path-deps px4-sitl-tests
@@ -1313,6 +1322,8 @@ submodule = "third-party/nuttx/libc"
 version = "0.1.0"
 dest = "third-party/px4/px4-rs"
 submodule = "third-party/px4/px4-rs"
+git = "https://github.com/jerry73204/px4-rs.git"
+ref = "3817421398db47bdef164aa47fd7cbbd8d82ae3a"
 
 # CycloneDDS fork as an in-tree *source* (the submodule the Zephyr build patches
 # in place) — distinct from `[tool.cyclonedds]` (the prebuilt/host-built ddsc the
@@ -1324,6 +1335,8 @@ env = "CYCLONEDDS_SOURCE_DIR"
 version = "0.10.5-nros1"
 dest = "third-party/dds/cyclonedds"
 submodule = "third-party/dds/cyclonedds"
+git = "https://github.com/NEWSLabNTU/cyclonedds.git"
+ref = "2314625c5226f5c2b6853ecc493f9e24ce17b91d"
 
 # Phase 197.2/197.4 — build-time source submodules, folded into the relevant
 # board/rmw `packages` (approach A) so `nros setup <board>` provisions them and a
@@ -1335,6 +1348,8 @@ submodule = "third-party/dds/cyclonedds"
 version = "3.x"
 dest = "packages/rmw/zenoh/zpico-sys/mbedtls"
 submodule = "packages/rmw/zenoh/zpico-sys/mbedtls"
+git = "https://github.com/Mbed-TLS/mbedtls.git"
+ref = "5e146adef63b326b04282252639bebc2730939c6"
 
 # Micro-XRCE-DDS Client + Micro-CDR — the vendored C sources nros-rmw-xrce-cffi's
 # build.rs compiles (its presence gate prints `git submodule update --init …`).
@@ -1360,11 +1375,15 @@ submodule = "packages/rmw/zenoh/zpico-sys/mbedtls"
 version = "3.0.1"
 dest = "packages/rmw/xrce/xrce-sys/micro-xrce-dds-client"
 submodule = "packages/rmw/xrce/xrce-sys/micro-xrce-dds-client"
+git = "https://github.com/eProsima/Micro-XRCE-DDS-Client.git"
+ref = "bdfa28090efc8c0e89aa5c95cdf0878c8289a18b"
 
 [source.micro-cdr]
 version = "2.0.2"
 dest = "packages/rmw/xrce/xrce-sys/micro-cdr"
 submodule = "packages/rmw/xrce/xrce-sys/micro-cdr"
+git = "https://github.com/eProsima/Micro-CDR.git"
+ref = "99672492c5ef9fc378a8835b0bce9b2f7fa41306"
 
 # NetX Duo network stack (ThreadX boards link it; virtio-net-netx CMake + the
 # threadx board build.rs expect it checked out).
@@ -1373,6 +1392,8 @@ env = "NETX_DIR"
 version = "6.4.x"
 dest = "third-party/threadx/netxduo"
 submodule = "third-party/threadx/netxduo"
+git = "https://github.com/NEWSLabNTU/netxduo.git"
+ref = "d0c2e80e2da61e274f8f53505b1974fcad7d1071"
 
 # NuttX kernel + apps — the qemu-armv7a-nuttx board build.rs / build-nuttx.sh expect
 # them present (the export is built with the app, per Phase 194). The Rust libc
@@ -1382,12 +1403,16 @@ env = "NUTTX_DIR"
 version = "12.13.0"
 dest = "third-party/nuttx/nuttx"
 submodule = "third-party/nuttx/nuttx"
+git = "https://github.com/jerry73204/nuttx.git"
+ref = "aea00d736d698994a7c0a7339b56b04af30ec21e"
 
 [source.nuttx-apps]
 env = "NUTTX_APPS_DIR"
 version = "12.13.0"
 dest = "third-party/nuttx/nuttx-apps"
 submodule = "third-party/nuttx/nuttx-apps"
+git = "https://github.com/apache/nuttx-apps.git"
+ref = "e4b84b29d47b98a666df524d6f2d38904c972de5"
 
 # PX4-Autopilot — the heavy (>1 GB) reference tree (extended/opt-in). px4-rs (the
 # bindings) is the separate `[source.px4-rs]`.
@@ -1396,6 +1421,8 @@ env = "PX4_AUTOPILOT_DIR"
 version = "1.17.0"
 dest = "third-party/px4/PX4-Autopilot"
 submodule = "third-party/px4/PX4-Autopilot"
+git = "https://github.com/PX4/PX4-Autopilot.git"
+ref = "d6f12ad1c4f70ad3230afd7d86e971421e02fef4"
 # Phase 232.5 — pin the stable release tag `v1.17.0` (SHA `d6f12ad`) instead of
 # the previous dev commit (`ecfe44a`, mislabeled 1.15.x, post-1.17.0-alpha1),
 # which risked a silent uORB ABI drift. `v1.17.0` carries `msg/versioned/` (the
