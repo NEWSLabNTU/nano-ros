@@ -169,8 +169,8 @@ fixture-binary-names:
 # Issue 1349 — the SECOND occurrence of one mistake, twenty lines from the first.
 # `FixtureVariant::rmw`/`::features` select a row by cargo FEATURES; a crate with
 # no `[features]` table can never have such a row, so the selector matches nothing,
-# every case resolves `[SKIPPED] fixture not built`, and bare nextest renders a
-# `skip!` panic FAILED — the cell reads as live failures against a peer it never
+# every case resolved `[SKIPPED] fixture not built` (an `unmet!` red since
+# issue 1758), and bare nextest rendered that panic FAILED — the cell reads as live failures against a peer it never
 # reached. Two interop cells sat unverified that way. Buildless: two Rust call
 # sites and a TOML table.
 fixture-variant-features:
@@ -315,7 +315,7 @@ interop-cell-runners:
     @python3 scripts/check-interop-cell-runners.py
 
 # phase-433 W5 / issue 1127 — the half that outlives W4's runner gate. A cell can
-# be aimed at and still never have met a peer: `skip!` becomes `<skipped>`, every
+# be aimed at and still never have met a peer: a skip becomes `<skipped>`, every
 # consumer counts that as not-a-failure, and a cell that has skipped on every host
 # since the day it was written is indistinguishable from one that passes. So what
 # a live peer has ANSWERED is written down (`.config/interop-verdicts.toml`) and
@@ -387,10 +387,10 @@ required-features-reachable:
     @python3 scripts/check-required-features-reachable.py
 
 # A test that can SKIP must be run by a runner that understands skips.
-# `nros_tests::skip!` PANICS with a `[SKIPPED]` marker (Rust's harness has no
-# native skip), and only `_nextest-tolerant` rewrites it before tallying — so a
-# bare runner turns an unmet precondition into a red naming a test the change
-# never touched.
+# `nros_tests::lane_skip!` PANICS with a `[SKIPPED:lane]` marker (Rust's harness
+# has no native skip), and only `_nextest-tolerant` rewrites it before tallying —
+# so a bare runner turns an out-of-scope test into a red naming a test the
+# change never touched.
 [private]
 skippable-tests-tolerant:
     @python3 scripts/check-skippable-tests-tolerant.py

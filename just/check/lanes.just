@@ -3285,7 +3285,7 @@ source-gates:
     NROS_COMPILE_CHECK_LANES=cxx-syntax,cxx-syntax-verdict,cxx-compile-verdict bash scripts/build/compile-check-fixtures.sh
     # Issue 0673 — through `_nextest-tolerant`, not bare `cargo test`.
     #
-    # `cross_libc_precedence_gate` already does the right thing: it calls
+    # `cross_libc_precedence_gate` did the right thing for its time: it called
     # `nros_tests::skip!` when `arm-none-eabi-g++` has no usable libstdc++, with
     # a comment saying "Skip rather than false-fail". But `skip!` PANICS with a
     # `[SKIPPED]` marker, and a bare runner counts that as a FAILURE — only the

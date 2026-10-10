@@ -509,7 +509,7 @@ fn every_fixture_token_is_producible_by_the_module_that_owns_it() {
 /// `just` recipe and no workflow names, and all five gates here were green.
 /// (They are still swept by root `just test-all`, which filters only by lane
 /// coordinate — but a sweep cannot be aimed at one cell or bring up its peer,
-/// and a `skip!` inside one is rewritten to `<skipped>`.) That half is
+/// and a `lane_skip!` inside one is rewritten to `<skipped>`.) That half is
 /// `check-interop-cell-runners` (issue 1127), which has to live outside this
 /// file — the answer is in `just/**/*.just` and `.github/workflows/`, not in
 /// the table.

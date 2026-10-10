@@ -17,7 +17,7 @@ use std::process::Command;
 // because they asserted NOTHING — each read one `is_*_available()` boolean and
 // printed it, so all five reported PASS on a host with no toolchain, no QEMU
 // and no Zephyr. A probe that cannot fail is not coverage; the same probes are
-// load-bearing where they belong, as the `skip!` guards on the real tests
+// load-bearing where they belong, as the `unmet!` guards on the real tests
 // below. `check-no-vacuous-tests` now forbids the shape repo-wide.
 // (`test_arm_toolchain_detection` also existed verbatim in `emulator.rs` —
 // two copies of a test that could not fail.)

@@ -65,9 +65,9 @@
 //!
 //! ## Skip semantics
 //!
-//! Hard-fails via `nros_tests::skip!` on any missing prereq (CLAUDE.md
-//! "Tests must fail on unmet preconditions" — the macro panics with the
-//! `[SKIPPED]` prefix nextest treats as skipped, NOT a silent
+//! Hard-fails via `nros_tests::unmet!` on any missing prereq (CLAUDE.md
+//! "Tests must fail on unmet preconditions" — the macro panics with
+//! `[UNMET PRECONDITION]`, a red, NOT a silent
 //! `eprintln + return` that would report PASS).
 //!
 //! Run with: `cargo test -p nros-tests --test phase212_n_freertos_run_plan_runtime`
@@ -76,7 +76,7 @@ use std::{path::PathBuf, process::Command, time::Duration};
 
 use nros_tests::{
     fixtures::{
-        QemuProcess, ZenohRouter, freertos,
+        QemuProcess, RequireFixture, ZenohRouter, freertos,
         freertos::{is_arm_gcc_available, is_freertos_available, is_lwip_available},
         is_qemu_available, require_zenohd,
     },
@@ -129,7 +129,7 @@ fn thumbv7m_target_installed() -> bool {
 
 /// Single chokepoint for the FreeRTOS bring-up prerequisites. Returns
 /// the first missing-piece reason as a description; the caller emits
-/// it via `nros_tests::skip!`.
+/// it via `nros_tests::unmet!`.
 fn require_freertos_qemu_prereqs() -> Option<String> {
     if !thumbv7m_target_installed() {
         return Some("thumbv7m-none-eabi target not installed".to_string());
@@ -169,19 +169,23 @@ fn boot_and_connect(entry: &str, bin_name: &str) {
     }
     require_zenohd();
 
+    // The Entry pkg is tracked source, so its absence is a broken checkout,
+    // not an unbuilt fixture.
     let dir = entry_dir(entry);
-    if !dir.is_dir() {
-        nros_tests::unmet!("FreeRTOS Entry pkg fixture missing at {}", dir.display());
-    }
+    assert!(
+        dir.is_dir(),
+        "FreeRTOS Entry pkg missing at {}",
+        dir.display()
+    );
     // The Entry pkg's `[patch.crates-io]` points its msg deps at `generated/`,
-    // which `nros sync` (run by `just freertos build-examples`) produces. Skip
-    // — rather than fail the in-place build — when that build step hasn't run.
-    if !dir.join("generated").is_dir() {
-        nros_tests::unmet!(
-            "{} has no `generated/` msg crates — run `just freertos build-examples` first",
-            dir.display()
-        );
-    }
+    // which `nros sync` (run by `just freertos build-examples`) produces. It is
+    // build output, so its absence goes through the shared absence funnel
+    // (issue 1758) like any other unbuilt fixture.
+    nros_tests::fixtures::require_prebuilt_artifact(
+        &dir.join("generated"),
+        "just freertos build-examples",
+    )
+    .require("FreeRTOS Entry `generated/` msg crates");
 
     // phase-340 P2 — ONE spelling of the fixture path, shared with
     // `rtos_e2e`'s freertos rust lanes. This file used to carry its own

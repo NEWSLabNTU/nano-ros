@@ -381,9 +381,9 @@ path = "tests/zpico_drift_gate.rs"
 name = "zpico_build_matrix"
 path = "tests/zpico_build_matrix.rs"
 
-# Phase 139.6 — per-RTOS integration-shell smoke tests. Each skips
-# cleanly via `nros_tests::skip!` when the RTOS SDK / toolchain isn't
-# installed on the test box; full builds run in per-RTOS CI.
+# Phase 139.6 — per-RTOS integration-shell smoke tests. Each fails as an
+# unmet precondition (`nros_tests::unmet!`) when the RTOS SDK / toolchain
+# isn't installed on the test box; full builds run in per-RTOS CI.
 # (#186 — the zephyr / esp-idf / platformio smokes were deleted: they
 # probed layouts retired in Phase 208.D.7/D.8/D.10 and could never run
 # again; the canonical shapes are covered by the cli_bringup_* tests +

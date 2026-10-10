@@ -14,8 +14,8 @@
 //! **These tests HARD-FAIL.** This note used to say the opposite — that they
 //! were "diagnostic/informational" and reported interop status without failing
 //! the suite. That stopped being true: every case here ends in an `assert!` on
-//! what actually crossed the bus, and the only non-failing exits are explicit
-//! `nros_tests::skip!`s for an absent prerequisite (no XRCE Agent, no ROS 2 DDS,
+//! what actually crossed the bus, and an absent prerequisite is an explicit
+//! `nros_tests::unmet!`, never a silent pass (no XRCE Agent, no ROS 2 DDS,
 //! a peer that would not start). A stale "does not hard-fail" line invites the
 //! next reader to dismiss a red here as noise, which is precisely the
 //! false-PASS reading issue 1135 is about.
@@ -45,7 +45,7 @@ use std::{path::PathBuf, time::Duration};
 
 // `test_ros2_dds_detection` removed: it read two `is_*_available()` booleans
 // and printed them, asserting nothing, so it reported PASS on a host with no
-// ROS 2 and no rmw_fastrtps_cpp. Both probes stay load-bearing as the `skip!`
+// ROS 2 and no rmw_fastrtps_cpp. Both probes stay load-bearing as the `unmet!`
 // guards on the real interop tests, where a `false` stops the run. Forbidden
 // repo-wide by `check-no-vacuous-tests`.
 
@@ -266,7 +266,7 @@ fn test_xrce_service_ros2_client(xrce_service_server_binary: PathBuf) {
     // it found (Humble has no `ros2 service info`), so anything present now is
     // foreign by construction.
     //
-    // `skip!`, not `assert!`: a poisoned bus cannot answer the question this
+    // `unmet!`, not `assert!`: a poisoned bus cannot answer the question this
     // test asks, and calling that an interop regression is what produced four
     // retracted diagnoses. `None` (probe could not run) proceeds — a probe that
     // cannot see must not invent.

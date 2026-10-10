@@ -70,7 +70,7 @@ fn require_freertos() {
 // `test_freertos_detection` removed: it read five `is_*_available()` booleans
 // and printed them, asserting nothing, so it reported PASS on a host with no
 // FreeRTOS, no lwIP, no arm-none-eabi-gcc, no QEMU and no zenohd. All five
-// probes stay load-bearing as the `skip!` guards on the real tests, where a
+// probes stay load-bearing as the `unmet!` guards on the real tests, where a
 // `false` stops the run. Forbidden repo-wide by `check-no-vacuous-tests`.
 
 // =============================================================================
@@ -134,8 +134,8 @@ fn test_freertos_rust_talker_cyclonedds_boot() {
 /// (the loop tries `cmake -S examples/mps2-an385-freertos/rust/<case>`
 /// and fails for lack of `CMakeLists.txt`), so the
 /// `freertos_rust_talker_cyclonedds` binary is never produced. The
-/// test then panics via `nros_tests::skip!`, which nextest junit
-/// records as `<failure>` (Track R).
+/// test then panicked via `nros_tests::skip!`, which nextest junit
+/// recorded as `<failure>` (Track R); it is an `unmet!` red now.
 ///
 /// Empirically reproduced 2026-06-04: `cargo nextest run …
 /// test_freertos_rust_cyclonedds_local_pubsub_e2e` panics at

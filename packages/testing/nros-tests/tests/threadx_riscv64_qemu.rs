@@ -79,7 +79,7 @@ fn require_threadx_riscv64() {
 // `test_threadx_riscv64_detection` removed: it read five `is_*_available()`
 // booleans and printed them, asserting nothing, so it reported PASS on a host
 // with no ThreadX, no NetX Duo, no riscv64 gcc, no QEMU and no zenohd. All five
-// probes stay load-bearing as the `skip!` guards on the real tests, where a
+// probes stay load-bearing as the `unmet!` guards on the real tests, where a
 // `false` stops the run. Forbidden repo-wide by `check-no-vacuous-tests`.
 
 // =============================================================================

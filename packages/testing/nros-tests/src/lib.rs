@@ -1047,8 +1047,9 @@ pub fn build_dir(kind: &str, coords: &[&str]) -> std::path::PathBuf {
 /// Issue 0935 / 0914. "No Python on this host" and "the shipped pair is broken"
 /// produce the SAME parse error, and a test that cannot tell them apart is
 /// worse than none — it is the vacuous-test class `check-no-vacuous-tests`
-/// exists for. So a test that needs Python asks this first and
-/// `nros_tests::skip!`s, keeping a genuine break a FAILURE.
+/// exists for. So a test that needs Python asks this first and fails
+/// with `nros_tests::unmet!`, which names the missing interpreter, keeping a
+/// genuine break a different FAILURE.
 ///
 /// Deliberately probes the same way `pyload` does — a `python3` that answers —
 /// rather than looking for a file, because what matters is that an interpreter
@@ -1070,7 +1071,7 @@ pub fn host_python_available() -> bool {
 /// bare `.status().is_ok()` answers "present" for a binary that exists and
 /// cannot run: a missing shared library (the loader exits 127), an exec failure
 /// (126), a crash on start (a signal). Live-peer run 34497290149 had that shape:
-/// the XRCE Agent probe said "available", the tests went past their `skip!`, and
+/// the XRCE Agent probe said "available", the tests went past their guard, and
 /// seven live cells scored REAL failures 0.15 s in — an environment gap reported
 /// as a regression.
 ///
@@ -1248,9 +1249,9 @@ pub fn nros_cli_bin_path() -> Option<std::path::PathBuf> {
     cand.is_file().then_some(cand)
 }
 
-/// Skip-or-proceed guard for tests that need the `nros` CLI. Mirrors
-/// `require_xrce_agent` / `require_zenohd`: prints an install hint and returns
-/// `false` when missing (caller `nros_tests::skip!`), `true` otherwise.
+/// Precondition guard for tests that need the `nros` CLI. Mirrors
+/// `require_xrce_agent` / `require_zenohd`: fails with `nros_tests::unmet!`
+/// and an install hint when it is missing (issue 1758).
 pub fn require_nros_cli() {
     if nros_cli_bin_path().is_none() {
         crate::unmet!("nros CLI not found (run `just setup-cli` + `source ./activate.sh`)");

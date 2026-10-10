@@ -601,5 +601,5 @@ fn test_esp32_workspace_entry_e2e() {
 // three reported PASS on a host with no qemu-system-riscv32, no riscv32 target
 // and no espflash — the precise "always run" that CLAUDE.md forbids ("Tests
 // must fail on unmet preconditions"). The probes remain load-bearing as the
-// `skip!` guards on the real ESP32 tests above, where a `false` stops the run
+// `unmet!` guards on the real ESP32 tests above, where a `false` stops the run
 // instead of decorating it. Forbidden repo-wide by `check-no-vacuous-tests`.

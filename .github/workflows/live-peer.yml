@@ -211,7 +211,8 @@ jobs:
       # THE PEER — phase-441 W4. Neither CI image bakes
       # `ros-humble-rmw-zenoh-cpp` (ci-base's own header says the ROS package
       # set is provisioned per run, "the way a user does"), and without it
-      # `require_ros2()` answers with a `skip!` for every zenoh cell. Until this
+      # `require_ros2()` answered with a `skip!` for every zenoh cell (an
+      # `unmet!` red since issue 1758). Until this
       # branch that was invisible: the junit rewrite turned the skip into
       # `<skipped>`, `_test-focused` exited 0, and the lane reported that cells
       # with a recorded PASS still pass. The recipe now refuses to call a
@@ -323,8 +324,9 @@ jobs:
 
       # `host`, not everything — phase-441 W4. A board cell's image is built by
       # an SDK this container does not carry, so running one here resolves no
-      # fixture and `skip!`s; `_rewrite-skipped-junit` then turns that into a
-      # `<skipped>` and the lane reports a cell it never ran as still passing.
+      # fixture. Before issue 1758 that was a `skip!`, which
+      # `_rewrite-skipped-junit` turned into a `<skipped>`, so the lane reported
+      # a cell it never ran as still passing; now it is an `unmet!` red.
       # That is not hypothetical: `zephyr-qos-rust-zenoh` has been in this
       # lane's membership since the ledger's first entry.
       #

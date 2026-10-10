@@ -62,7 +62,7 @@ fn example_of(w: Workload, d: Dir) -> &'static str {
 
 /// A per-RMW lane: the docker ROS env, the nano example binary + domain, the
 /// nano-command wiring, and any bridge process (Agent / router) kept alive for
-/// the test's lifetime. The `e2e_setup*` calls `skip!` inside on a missing
+/// the test's lifetime. The `e2e_setup*` calls fail (`unmet!`) on a missing
 /// fixture / docker / image / Agent / rmw_zenoh_cpp.
 struct Lane {
     env: DockerRosEnv,

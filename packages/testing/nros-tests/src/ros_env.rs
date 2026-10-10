@@ -97,7 +97,7 @@ pub trait RosEnv {
 
     /// Is this environment usable right now? Host: the distro sources and
     /// `ros2 --help` works. Docker: the image is built and `docker` is on PATH.
-    /// Never panics — a test `skip!`s on `false`, never silently passes.
+    /// Never panics — a test fails (`unmet!`) on `false`, never silently passes.
     fn available(&self) -> bool;
 
     /// Build a [`Command`] that runs `inner` (an arbitrary shell command, e.g.
@@ -837,8 +837,8 @@ fn require_edition_example(
 }
 
 /// phase-310 E2E lane guard: resolve the target edition, its per-edition example
-/// binary, a fresh RTPS domain, and a docker env on it. `skip!`s (never a silent
-/// pass) when the fixture, docker, or image is absent.
+/// binary, a fresh RTPS domain, and a docker env on it. Fails (`unmet!`, never a
+/// silent pass) when the fixture, docker, or image is absent.
 pub fn e2e_setup(example: &str) -> (DockerRosEnv, std::path::PathBuf, u8) {
     let ed = test_edition();
     let bin = require_edition_example(
@@ -1025,7 +1025,7 @@ pub fn nano_node_cmd_rmw(
 /// XRCE lane's DDS↔XRCE bridge. Provisioned into the nros SDK store by
 /// `nros setup … --rmw xrce` at `~/.nros/sdk/xrce-agent/<pinned ver>/bin/MicroXRCEAgent`
 /// (a launcher that resolves its bundled Fast-DDS/fastcdr `.so`s next to itself,
-/// so it runs on the host with no system Fast-DDS). `None` → the lane `skip!`s.
+/// so it runs on the host with no system Fast-DDS). `None` → the caller fails (`unmet!`).
 pub fn host_xrce_agent_bin() -> Option<std::path::PathBuf> {
     let home = crate::store_root();
     // The PINNED version, constructed — never the newest in the store (issue
@@ -1052,7 +1052,7 @@ pub fn spawn_xrce_agent(agent: &std::path::Path, port: u16, domain: u8) -> TestR
 
 /// phase-311 XRCE lane guard: resolve the target edition, its per-(edition, xrce)
 /// example binary, a fresh RTPS/fastrtps domain, the host Agent launcher, and a
-/// `rmw_fastrtps_cpp` docker env. `skip!`s (never a silent pass) when the
+/// `rmw_fastrtps_cpp` docker env. Fails (`unmet!`, never a silent pass) when the
 /// fixture, the Agent, docker, or the image is absent. Returns
 /// `(fastrtps_env, xrce_bin, domain, agent_path, agent_port)`.
 pub fn e2e_setup_xrce(
@@ -1086,7 +1086,7 @@ pub fn e2e_setup_xrce(
 /// phase-311 zenoh lane guard: resolve the target edition, its per-(edition,
 /// zenoh) example binary, a fresh domain, the shared `tcp/127.0.0.1:7447`
 /// locator, and a `rmw_zenoh_cpp` docker env. Caller spawns the router with
-/// [`DockerRosEnv::spawn_zenoh_router`]. `skip!`s (never a silent pass) when the
+/// [`DockerRosEnv::spawn_zenoh_router`]. Fails (`unmet!`, never a silent pass) when the
 /// fixture, docker, or the image is absent. Returns
 /// `(zenoh_env, zenoh_bin, domain, locator)`.
 pub fn e2e_setup_zenoh(example: &str) -> (DockerRosEnv, std::path::PathBuf, u8, String) {
@@ -1130,7 +1130,7 @@ pub fn e2e_setup_zenoh(example: &str) -> (DockerRosEnv, std::path::PathBuf, u8, 
 
 /// Locate the host-built `nros` CLI binary, for bind-mounting into a codegen
 /// container ([`DockerRosEnv::generate`]). Prefers the in-tree release build,
-/// then `PATH`. `None` when neither is present (a codegen lane then `skip!`s).
+/// then `PATH`. `None` when neither is present (the caller then fails, `unmet!`).
 pub fn host_nros_bin() -> Option<std::path::PathBuf> {
     let in_tree = crate::project_root().join("packages/cli/target/release/nros");
     if in_tree.is_file() {

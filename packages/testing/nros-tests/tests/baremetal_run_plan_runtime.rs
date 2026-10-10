@@ -62,9 +62,9 @@ fn baremetal_board_run_executes_run_plan() {
     // is the difference between "tier 1 is broken" and "tier 1 does not run
     // this cell", which is exactly the distinction 0584 asked for.
     if !nros_tests::lane_scope::admits(nros_tests::matrix::PlatformId::QemuBaremetal) {
-        // `skip_class!`, not `skip!` with a hand-written marker: the plain macro
-        // prepends its own `[SKIPPED]`, so a class spelled into the message
-        // lands SECOND and the classifier reads the first one — which is how
+        // `lane_skip!`, never a hand-written marker: the old plain `skip!`
+        // prepended its own `[SKIPPED]`, so a class spelled into the message
+        // landed SECOND and the classifier read the first one — which is how
         // this still counted as `capability` on the first attempt.
         nros_tests::lane_skip!(
             "{}",

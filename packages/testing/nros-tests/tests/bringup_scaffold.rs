@@ -12,7 +12,8 @@
 //!    `Cargo.toml` next to `system.toml`, assert `nros check --bringup`
 //!    exits non-zero AND stderr mentions `Cargo.toml`.
 //!
-//! Skips cleanly via `nros_tests::skip!` when the `nros` CLI isn't found.
+//! Fails as an unmet precondition (`nros_tests::unmet!`) when the `nros`
+//! CLI isn't found.
 
 use std::{fs, path::PathBuf, process::Command};
 

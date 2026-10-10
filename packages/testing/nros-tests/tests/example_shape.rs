@@ -159,8 +159,7 @@ fn discover_bringup_dirs() -> Vec<PathBuf> {
 // ---------------------------------------------------------------------------
 
 /// Top-level example trees that have been migrated through the Phase
-/// 212.M sweep. Anything outside this list is skipped (with a
-/// `[SKIPPED]` reason printed via `nros_tests::skip!`).
+/// 212.M sweep. Anything outside this list is not checked.
 const MIGRATED_PREFIXES: &[&str] = &[
     // M.1 native/rust + M.2 native/cpp
     "examples/native/",

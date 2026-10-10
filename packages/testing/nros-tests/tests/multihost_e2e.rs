@@ -283,8 +283,8 @@ fn multihost() {
         );
     }
     if cells.is_empty() {
-        // The class is `lane`, not the `capability` a plain `skip!` defaults to
-        // (issue 0584). Every cell here is out of the RUN's lane — the fixtures
+        // The class is `lane`, not the `capability` the old plain `skip!`
+        // defaulted to (issue 0584). Every cell here is out of the RUN's lane — the fixtures
         // were deliberately not built — which is a different fact from "this
         // machine cannot do it", and the two are counted separately in the
         // sweep summary. `baremetal_run_plan_runtime` already carries the
@@ -340,7 +340,7 @@ fn multihost() {
 
 /// Boot robot2 (listener) then robot1 (talker) as two processes and prove
 /// `/chatter` crosses the host boundary per the cell's [`Proof`]. Panics with
-/// `[SKIPPED] …` (via `skip!`) on an unmet precondition; the caller classifies.
+/// `[UNMET PRECONDITION] …` (via `unmet!`) on an unmet precondition.
 fn run_cell(pcell: &MCell) {
     let platform = plat_str(pcell.platform);
     let lang = pcell.lang.as_str();

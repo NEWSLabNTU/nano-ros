@@ -16,7 +16,8 @@
 //!    `just native build-workspace-fixtures`; tests do not run Cargo or
 //!    CMake build steps.
 //!
-//! The metadata diagnostic skips cleanly via `nros_tests::skip!` if the
+//! The metadata diagnostic fails as an unmet precondition
+//! (`nros_tests::unmet!`) if the
 //! `nros` CLI or `cmake` aren't available — mirrors
 //! `cmake_add_subdirectory_smoke`'s pattern. The fixture checks fail loud
 //! with the standard prebuilt-fixture hint when the build-fixtures stage

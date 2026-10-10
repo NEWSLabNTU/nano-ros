@@ -47,13 +47,13 @@
 //! writes) must receive one. That is the nano-pub → ros2-sub direction, the same
 //! direction issue #141 found dead against a healthy publisher on Zephyr.
 //!
-//! ## Preconditions, all of which SKIP
+//! ## Preconditions, all of which FAIL when absent
 //!
 //! ROS 2 + `rmw_zenoh_cpp`, the FreeRTOS kernel + lwIP trees, `arm-none-eabi-gcc`,
 //! `qemu-system-arm`, and the `workspace-c-freertos` fixture
-//! (`just freertos build-fixtures`). A host with no ROS skips — that is the
-//! correct outcome, not a failure, and a bare `cargo nextest` renders the
-//! `skip!` panic as FAILED (only `just test-all`'s junit rewrite converts it).
+//! (`just freertos build-fixtures`). A missing one is an `unmet!` red
+//! (issue 1758); a lane that does not claim ROS 2 or this platform
+//! deselects the test by scope (`lane_skip!`) before any probe.
 //!
 //! Its baked router port is shared with `entry_e2e`'s freertos_c cell, so
 //! `.config/nextest.toml` puts this binary in `matrix-consumers-serial` —

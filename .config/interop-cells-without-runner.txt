@@ -12,9 +12,9 @@
 # sweep does reach these binaries -- the ROS-interop exclusion belongs to `just
 # native test` and `just test-integration`, not to it. A sweep still is not a
 # runner for a live-peer cell: it cannot be aimed at one cell, it brings up no
-# peer, and an unmet precondition inside it is a `skip!` that
-# `_rewrite-skipped-junit` renders `<skipped>`, which nobody can tell from a
-# pass. Issue 1127's Direction spells out the order -- one cell end to end by
+# peer, and an unmet precondition inside it was a `skip!` that
+# `_rewrite-skipped-junit` rendered `<skipped>`, which nobody could tell from a
+# pass (an `unmet!` red since issue 1758, but still not a verdict on the cell). Issue 1127's Direction spells out the order -- one cell end to end by
 # hand, verdict recorded, THEN a lane over the ones that passed.
 #
 # Each of these declares a live ROS 2 peer, a direction, a build channel and a

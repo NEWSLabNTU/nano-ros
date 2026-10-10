@@ -7,8 +7,8 @@
 //! gate (QEMU >= 7.2), and that `-netdev help` actually advertises
 //! `dgram` as a backend type.
 //!
-//! Skips cleanly via `nros_tests::skip!` when the patched binary is
-//! absent (e.g. a contributor that ran `just setup --tier=minimal`
+//! Fails as an unmet precondition (`nros_tests::unmet!`) when the patched
+//! binary is absent (e.g. a contributor that ran `just setup --tier=minimal`
 //! and skipped the qemu module). The fallback path through system
 //! `qemu-system-arm` keeps the rest of the test suite working and
 //! is covered by the existing `qemu_supports_dgram_unix` gate inside
@@ -16,8 +16,8 @@
 //!
 //! Phase 214.O.2 — skip-gate is hoisted into `require_patched_qemu()`
 //! so every test body starts with one statement that either returns
-//! the resolved path or panics with `[SKIPPED] …`. The previous
-//! skip-then-assert shape was correct (`nros_tests::skip!` is a
+//! the resolved path or panics with `[UNMET PRECONDITION] …`. The previous
+//! skip-then-assert shape was correct (`nros_tests::skip!` was a
 //! `panic!()`-shaped macro so the subsequent asserts never run on a
 //! missing SDK), but a reader could not tell at a glance whether the
 //! assert was reachable on the skip path. The hoisted gate makes the
@@ -28,7 +28,7 @@
 use std::path::PathBuf;
 
 /// Resolve `qemu_system_arm_path()` to an absolute, existing patched
-/// binary, or `nros_tests::skip!` with the canonical "run `just qemu
+/// binary, or `nros_tests::unmet!` with the canonical "run `just qemu
 /// setup-qemu`" hint. Callers can then proceed unconditionally — every
 /// test body below assumes the returned path is a real file.
 fn require_patched_qemu() -> PathBuf {

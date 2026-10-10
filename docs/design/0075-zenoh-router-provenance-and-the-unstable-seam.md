@@ -121,8 +121,9 @@ consumers need attention rather than deletion:
 
 * **nano↔nano lanes**, which need *a* router but not a ROS one. `zenoh-pico`
   supports `Z_CONFIG_MODE_PEER`, so some may need no router at all; the rest can
-  use the ROS router when present and `skip!` when not — honestly, since a lane
-  that cannot run should say so (issue 0599).
+  use the ROS router when present and fail (`unmet!`) when not — honestly, since
+  a lane that cannot run should say so (issue 0599). Since issue 1758 a lane
+  that does not mean to run them narrows its scope instead of skipping.
 * **`zenoh_archive_symbols` / header-parity fixtures**, which inspect a built
   archive rather than run a router. These consume `nros-rmw-zenoh-staticlib`, not
   `zenohd`, and are unaffected.
@@ -154,8 +155,9 @@ is what a future failure gets diffed against — not a version to enforce.
 **Accepted.**
 
 * **A ROS-less host cannot run the zenoh interop lanes.** Correct: those lanes
-  test interoperation with ROS 2. They should `skip!` with a reason rather than
-  run against a router no user deploys.
+  test interoperation with ROS 2. They fail with a reason (`unmet!`; issue 1758
+  replaced the original `skip!`) rather than run against a router no user
+  deploys, and a lane that does not claim ROS 2 deselects them by scope.
 
   *Amended 2026-08-18 (issue 0653): this consequence was written too narrowly.*
   zenoh-pico connects in CLIENT mode, so a router is needed by **any two-process

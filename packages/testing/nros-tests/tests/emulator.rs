@@ -274,7 +274,7 @@ fn test_qemu_lan9118_driver() {
 // on a host with neither installed ("this test just verifies the detection
 // works" — but a detection that returns `false` also "works"). The identical
 // `test_arm_toolchain_detection` lived in `platform.rs` too. Both probes stay
-// where they can actually fail: the `skip!` guards on the real QEMU tests
+// where they can actually fail: the `unmet!` guards on the real QEMU tests
 // above. Forbidden repo-wide by `check-no-vacuous-tests`.
 
 // =============================================================================

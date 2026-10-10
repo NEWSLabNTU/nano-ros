@@ -99,9 +99,9 @@ fn zenoh_event_matrix() {
     // issue 0388 — an absent zenohd is an unmet PRECONDITION, not a defect, and
     // `router_locator` already treats it that way ("tests will skip"). This
     // `expect` then panicked anyway, so the tier reported a missing prerequisite
-    // exactly like a broken assertion. `skip!` makes the two distinguishable:
-    // tier 1 rewrites [SKIPPED] panics to <skipped> and passes, while a real
-    // failure still fails.
+    // exactly like a broken assertion. `unmet!` makes the two distinguishable:
+    // it panics `[UNMET PRECONDITION]` naming the missing router, while a
+    // broken assertion panics with its own message (issue 1758).
     let Some(mut sess) = open_session() else {
         let why = nros_tests::process::zenohd_unavailable_reason()
             .unwrap_or_else(|| "the router resolved but the session did not open".to_string());

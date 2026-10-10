@@ -521,7 +521,7 @@ fn edf(resolver: Resolver) -> Exec {
 /// that mapping warns about exactly this, calling a duplicate "two spellings of
 /// one fact" (phase-401 W3).
 ///
-/// Display-only — these labels feed `format!` and `skip!` messages, never
+/// Display-only — these labels feed `format!` and `unmet!` messages, never
 /// fixture resolution — but a label that names a platform differently from
 /// every other lane is how a reader learns the wrong token. Delegating also
 /// makes a new `PlatformId` variant a compile error here rather than a silent

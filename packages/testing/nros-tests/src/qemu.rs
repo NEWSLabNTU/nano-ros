@@ -1211,10 +1211,8 @@ pub fn is_mcast_loopback_route_present(group: &str) -> bool {
     }
 }
 
-/// Phase 127.B.5 — print a clear hint when the host lacks a loopback
-/// route for the test's multicast group. Returns `true` if the route
-/// is present (test may proceed), `false` otherwise. Tests should
-/// `nros_tests::skip!` (or equivalent panic-skip) on `false`.
+/// Phase 127.B.5 — fail with a clear hint (`nros_tests::unmet!`) when the
+/// host lacks a loopback route for the test's multicast group.
 pub fn require_mcast_loopback_route(group: &str) {
     let group_only = group.split(':').next().unwrap_or(group);
     if is_mcast_loopback_route_present(group_only) {

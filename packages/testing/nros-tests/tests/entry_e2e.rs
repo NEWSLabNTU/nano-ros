@@ -33,7 +33,8 @@
 //!   chain republishes the CRC-valid count on `/safe_ok` to an external sink.
 //!
 //! Skip semantics are identical to the per-cell files: missing fixture /
-//! west image / QEMU / RTOS trees / zenohd → `nros_tests::skip!`. Note the
+//! west image / QEMU / RTOS trees / zenohd → `nros_tests::unmet!` (out of
+//! lane → `lane_skip!`). Note the
 //! historical gate asymmetry is preserved: the qos/safety cells never probed
 //! zenohd up front (their router-start skip covers it) and the lifecycle
 //! cell gates on ROS 2 instead.
@@ -668,8 +669,8 @@ fn entry_matrix() {
         );
     }
     if cells.is_empty() {
-        // The class is `lane`, not the `capability` a plain `skip!` defaults to
-        // (issue 0584). Every cell here is out of the RUN's lane — the fixtures
+        // The class is `lane`, not the `capability` the old plain `skip!`
+        // defaulted to (issue 0584). Every cell here is out of the RUN's lane — the fixtures
         // were deliberately not built — which is a different fact from "this
         // machine cannot do it", and the two are counted separately in the
         // sweep summary. `baremetal_run_plan_runtime` already carries the

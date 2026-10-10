@@ -90,10 +90,11 @@ test verbose="":
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    # `nros_tests::skip!` panics with `[SKIPPED]` for unmet preconditions
-    # (e.g. xrce agent not present). Nextest records those as failures.
-    # Phase 214.R.1 rewrites them to <skipped> + the real-failure tally
-    # promotes a SKIPPED-only run to a pass.
+    # `nros_tests::lane_skip!` panics with `[SKIPPED:lane]` for an
+    # out-of-scope test, and nextest records those as failures. Phase
+    # 214.R.1 rewrites them to <skipped> + the real-failure tally promotes a
+    # SKIPPED-only run to a pass. An unmet precondition (`unmet!`, e.g. no
+    # XRCE Agent) stays a red (issue 1758).
     set +e
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
     rc=$?

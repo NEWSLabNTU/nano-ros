@@ -133,9 +133,8 @@ const DECLARED_CASES: &[(ML, MR)] = &[
 ///     coordinate actually broke is work issue 0422's triage had to do by hand.
 ///
 /// Per-cell tests fix both, and the classification machinery simply goes away:
-/// `run_cell` panics `[SKIPPED] …` on an unmet precondition, which is exactly
-/// what `nros_tests::skip!` does everywhere else, and `just test-all`'s junit
-/// rewrite turns into a skip. The harness now does what the fold hand-rolled.
+/// `run_cell` panics `[UNMET PRECONDITION] …` on an unmet precondition, which
+/// is exactly what `nros_tests::unmet!` does everywhere else (issue 1758). The harness now does what the fold hand-rolled.
 #[rstest]
 #[case::rust_zenoh(ML::Rust, MR::Zenoh)]
 #[case::c_zenoh(ML::C, MR::Zenoh)]
