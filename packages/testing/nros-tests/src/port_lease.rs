@@ -41,16 +41,33 @@
 //!
 //! # The reservation
 //!
-//! A lock file per port under the build root, created `O_EXCL` and holding the
-//! owning pid. Held for the lifetime of the [`PortLease`], removed on drop. It
-//! does not stop an unrelated program from taking the port — nothing can — but
-//! every colliding party here is one of our own fixtures, and that is the
-//! population it makes exclusive.
+//! A lock file per port under the build root, held with an exclusive `flock`
+//! for the lifetime of the [`PortLease`] and removed on drop. It does not stop
+//! an unrelated program from taking the port — nothing can — but every
+//! colliding party here is one of our own fixtures, and that is the population
+//! it makes exclusive.
 //!
-//! A lease whose owner is gone is reclaimed: nextest SIGKILLs test processes, so
-//! `Drop` is not guaranteed to run and a leaked file must not poison a port
-//! forever. This is the same hazard `zenohd_router::kill_listeners_on_port`
-//! handles for the router, one layer earlier.
+//! The reservation is the LOCK, not the file. nextest SIGKILLs test processes,
+//! so `Drop` is not guaranteed to run; the kernel drops a dead process's
+//! `flock`, so a leaked file reserves nothing and the next claimer simply takes
+//! it. This is the same hazard `zenohd_router::kill_listeners_on_port` handles
+//! for the router, one layer earlier.
+//!
+//! # Why not a pid in an `O_EXCL` file (the first version)
+//!
+//! That design reclaimed a lease when the pid it recorded was dead, and it had
+//! two races, both of which hand ONE port to TWO fixtures:
+//!
+//! * the file was created and the pid written in two steps, so a concurrent
+//!   claimer could read it EMPTY, take "no pid" for "dead owner", delete the
+//!   live lease and claim it. Seen as `concurrent_leases_are_distinct` failing
+//!   once inside a loaded `test-lane-contracts` run, then passing solo (1 in
+//!   640 parallel runs when reproduced);
+//! * two reclaimers that both saw a dead owner could interleave
+//!   remove/create, and the slower one deleted the faster one's FRESH lease.
+//!
+//! An `flock` has neither: there is no window where the file exists without its
+//! owner holding it, and no liveness question to answer.
 
 use std::{
     io,
@@ -67,6 +84,9 @@ const MAX_ATTEMPTS: usize = 64;
 pub struct PortLease {
     port: u16,
     lock: PathBuf,
+    /// The open lock file; holding it IS the reservation (the `flock` lives as
+    /// long as this descriptor).
+    _held: std::fs::File,
 }
 
 impl PortLease {
@@ -78,8 +98,11 @@ impl PortLease {
 
 impl Drop for PortLease {
     fn drop(&mut self) {
-        // Best-effort: a lease we fail to remove is reclaimed by the
-        // liveness check in `claim`, so it costs a later retry, never a hang.
+        // Unlink WHILE still holding the lock, then the descriptor closes. A
+        // claimer that opened this path before the unlink and wins the lock
+        // after it finds the path no longer names its inode, and retries
+        // (`claim`'s identity check). A file we fail to remove holds no lock,
+        // so it costs nothing.
         let _ = std::fs::remove_file(&self.lock);
     }
 }
@@ -138,8 +161,12 @@ pub fn lease_port(transport: Transport) -> io::Result<PortLease> {
             }
         };
         let lock = dir.join(format!("{}-{port}.lock", transport.tag()));
-        if claim(&lock)? {
-            return Ok(PortLease { port, lock });
+        if let Some(held) = claim(&lock)? {
+            return Ok(PortLease {
+                port,
+                lock,
+                _held: held,
+            });
         }
     }
     Err(last_err.unwrap_or_else(|| {
@@ -151,97 +178,67 @@ pub fn lease_port(transport: Transport) -> io::Result<PortLease> {
     }))
 }
 
-/// Try to take `lock`, reclaiming it when its recorded owner is gone.
-///
-/// Returns whether the caller now owns it.
-fn claim(lock: &Path) -> io::Result<bool> {
-    use std::io::Write;
+/// Try to take `lock`. `Some(file)` means the caller now owns it for as long as
+/// it keeps `file` open; `None` means someone else holds it.
+#[cfg(unix)]
+fn claim(lock: &Path) -> io::Result<Option<std::fs::File>> {
+    let f = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(lock)?;
+    lock_if_current(f, lock)
+}
+
+/// Lock `f`, an open descriptor for `lock`, and keep it only if `lock` still
+/// names that inode. Split from [`claim`] so the race below can be tested with
+/// a descriptor opened BEFORE the previous owner's unlink.
+#[cfg(unix)]
+fn lock_if_current(mut f: std::fs::File, lock: &Path) -> io::Result<Option<std::fs::File>> {
+    use std::{
+        io::Write,
+        os::unix::{fs::MetadataExt, io::AsRawFd},
+    };
+    // SAFETY: `flock` on a descriptor we own; LOCK_NB makes it never block.
+    if unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+        let e = io::Error::last_os_error();
+        return match e.raw_os_error() {
+            Some(libc::EWOULDBLOCK) => Ok(None),
+            _ => Err(e),
+        };
+    }
+    // The path must still name the inode we locked: the previous owner unlinks
+    // before it closes, so a descriptor opened before that unlink can win the
+    // lock on a file nobody else will ever look at again — while a third
+    // claimer creates and locks a NEW file at the same path. Both would then
+    // "own" the port.
+    let ours = f.metadata()?;
+    match std::fs::metadata(lock) {
+        Ok(now) if now.dev() == ours.dev() && now.ino() == ours.ino() => {}
+        Ok(_) => return Ok(None),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e),
+    }
+    // Diagnostic only — the lock is the reservation, not this text.
+    let _ = f.set_len(0);
+    let _ = write!(f, "{}", std::process::id());
+    Ok(Some(f))
+}
+
+/// No `flock` here: exclusive creation, never reclaimed. A leaked file costs a
+/// retry on another port (MAX_ATTEMPTS), never a shared one.
+#[cfg(not(unix))]
+fn claim(lock: &Path) -> io::Result<Option<std::fs::File>> {
     match std::fs::OpenOptions::new()
         .create_new(true)
         .write(true)
         .open(lock)
     {
-        Ok(mut f) => {
-            // Content is diagnostic AND load-bearing: the pid is what lets a
-            // later run tell a live lease from a leaked one.
-            let _ = write!(f, "{}", std::process::id());
-            Ok(true)
-        }
-        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
-            if owner_is_gone(lock) {
-                // Reclaim. A racing reclaimer may remove it first, and the
-                // `create_new` below is what settles that — exactly one wins.
-                let _ = std::fs::remove_file(lock);
-                return match std::fs::OpenOptions::new()
-                    .create_new(true)
-                    .write(true)
-                    .open(lock)
-                {
-                    Ok(mut f) => {
-                        let _ = write!(f, "{}", std::process::id());
-                        Ok(true)
-                    }
-                    Err(e) if e.kind() == io::ErrorKind::AlreadyExists => Ok(false),
-                    Err(e) => Err(e),
-                };
-            }
-            Ok(false)
-        }
+        Ok(f) => Ok(Some(f)),
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => Ok(None),
         Err(e) => Err(e),
     }
-}
-
-/// True when the pid recorded in `lock` is not a live process.
-///
-/// An unreadable or malformed lease counts as gone: it cannot name an owner, so
-/// keeping it would reserve a port on behalf of nobody.
-fn owner_is_gone(lock: &Path) -> bool {
-    let Ok(raw) = std::fs::read_to_string(lock) else {
-        return true;
-    };
-    let Ok(pid) = raw.trim().parse::<i32>() else {
-        return true;
-    };
-    !pid_is_live(pid)
-}
-
-#[cfg(unix)]
-fn pid_is_live(pid: i32) -> bool {
-    // `kill(pid, 0)` rather than `/proc/<pid>`: procfs is a LINUX filesystem,
-    // not a unix one — FreeBSD does not mount it by default and the guard above
-    // is `cfg(unix)`, so a `/proc` probe answered "dead" for every LIVE owner on
-    // a non-Linux unix and handed its port to a second fixture. That is exactly
-    // the cross-talk this module exists to prevent, and the `#[cfg(not(unix))]`
-    // arm below could not catch it because BSD *is* unix. `kill` with signal 0
-    // performs the existence check only and is POSIX, so one arm covers the
-    // whole family.
-    //
-    // `EPERM` counts as LIVE: the process exists, we merely may not signal it.
-    // That is the case the previous comment worried about ("no dependency on the
-    // signalling permissions between two test processes") — it is answered by
-    // reading the errno rather than by avoiding the call.
-    //
-    // A non-positive pid is rejected up front, and not as defensive noise:
-    // `kill(0, …)` addresses the CALLER's process group and `kill(-n, …)` a
-    // whole group, so both would report "live" for a lease that names nobody.
-    // The reclaim test writes exactly `0`.
-    if pid <= 0 {
-        return false;
-    }
-    // SAFETY: signal 0 delivers nothing — it runs the permission and existence
-    // checks alone, so it cannot disturb the process it asks about.
-    if unsafe { libc::kill(pid, 0) } == 0 {
-        return true;
-    }
-    std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
-}
-
-#[cfg(not(unix))]
-fn pid_is_live(_pid: i32) -> bool {
-    // No cheap portable check; treat leases as live and let MAX_ATTEMPTS move
-    // on to another port. Over-reserving costs a retry, under-reserving costs
-    // the cross-talk this module exists to prevent.
-    true
 }
 
 #[cfg(test)]
@@ -276,42 +273,95 @@ mod tests {
         );
     }
 
+    fn probe(name: &str) -> PathBuf {
+        let dir = lease_dir();
+        std::fs::create_dir_all(&dir).expect("lease dir");
+        let lock = dir.join(format!("udp-{name}-{}.lock", std::process::id()));
+        let _ = std::fs::remove_file(&lock);
+        lock
+    }
+
+    /// The first design's race, deterministically: a lock file that exists but
+    /// is EMPTY is a claim in progress (created, pid not yet written). It must
+    /// not be taken from its holder. The pid design read "no pid" as "dead
+    /// owner" and stole it.
+    #[cfg(unix)]
+    #[test]
+    fn a_held_lease_with_no_pid_yet_is_not_stolen() {
+        let lock = probe("in-progress");
+        let holder = claim(&lock).expect("claim").expect("first claim wins");
+        holder
+            .set_len(0)
+            .expect("empty it, as a claim mid-write looks");
+        assert!(
+            claim(&lock).expect("claim").is_none(),
+            "an empty lock file held by a live claimer was handed out again"
+        );
+        drop(holder);
+        let _ = std::fs::remove_file(&lock);
+    }
+
     /// Dropping a lease frees the port for the next caller, or a long sweep
     /// would exhaust the ephemeral range.
     #[test]
     fn dropping_a_lease_releases_it() {
-        let (port, lock) = {
+        let lock = {
             let l = lease_port(Transport::Udp).expect("lease");
-            (l.port(), l.lock.clone())
+            l.lock.clone()
         };
         assert!(!lock.exists(), "lease file outlived its lease");
-        // The same port is claimable again.
         let again = claim(&lock).expect("claim");
-        assert!(again, "a released port could not be re-leased");
+        assert!(again.is_some(), "a released port could not be re-leased");
         let _ = std::fs::remove_file(&lock);
-        let _ = port;
     }
 
     /// A lease whose owner died must not reserve the port forever — nextest
     /// SIGKILLs test processes, so leaked files are expected, not exceptional.
+    /// A file left behind with no lock holder (any content) is free.
     #[test]
     fn a_dead_owners_lease_is_reclaimed() {
-        let dir = lease_dir();
-        std::fs::create_dir_all(&dir).expect("lease dir");
-        let lock = dir.join("udp-reclaim-probe.lock");
-        let _ = std::fs::remove_file(&lock);
-        // pid 0 never names a process — see `pid_is_live`.
-        std::fs::write(&lock, "0").expect("write stale lease");
+        let lock = probe("reclaim");
+        std::fs::write(&lock, "0").expect("write a leaked lease");
 
-        assert!(
-            claim(&lock).expect("claim"),
-            "stale lease was not reclaimed"
-        );
+        let held = claim(&lock).expect("claim");
+        assert!(held.is_some(), "a leaked, unheld lease was not reclaimed");
         // ...and now that WE hold it, a second claim fails.
         assert!(
-            !claim(&lock).expect("claim"),
+            claim(&lock).expect("claim").is_none(),
             "a live lease was handed out twice"
         );
+        drop(held);
+        let _ = std::fs::remove_file(&lock);
+    }
+
+    /// The drop-time unlink race: a descriptor opened before the owner's unlink
+    /// can win the lock afterwards on an orphaned inode. It must report "not
+    /// ours", since a fresh file at the path may already be held by someone else.
+    #[cfg(unix)]
+    #[test]
+    fn a_lock_won_on_an_unlinked_file_is_not_ownership() {
+        let lock = probe("unlinked");
+        let first = claim(&lock).expect("claim").expect("first claim wins");
+        // A racer opens the path while `first` still holds it...
+        let early = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&lock)
+            .expect("open before the unlink");
+        // ...then `first`'s Drop unlinks and closes, releasing the lock...
+        std::fs::remove_file(&lock).expect("unlink as Drop does");
+        drop(first);
+        // ...and a third claimer takes the NEW file at the path.
+        let fresh = claim(&lock)
+            .expect("claim")
+            .expect("a new file at the path is free");
+        // The racer's flock on the orphaned inode now SUCCEEDS — it must not
+        // count as owning the port the path names.
+        assert!(
+            lock_if_current(early, &lock).expect("lock").is_none(),
+            "a lock on an unlinked inode was taken as ownership — two owners"
+        );
+        drop(fresh);
         let _ = std::fs::remove_file(&lock);
     }
 }
