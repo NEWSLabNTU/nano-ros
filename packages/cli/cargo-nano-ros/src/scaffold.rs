@@ -18,7 +18,7 @@ use std::{
 
 // Issue 1659 — the CLI's one spelling of a `git` spawn (shared with
 // `nros-cli-core`, which this crate does not depend on, by `include!`).
-include!("../../build-support/git_env.rs");
+include!("../../../tooling/nros-build-paths/src/git_env.rs");
 
 /// Issue 0249 — maintainer line for generated `package.xml`. Sourced from
 /// `git config user.name`/`user.email` so scaffolded packages carry the real
