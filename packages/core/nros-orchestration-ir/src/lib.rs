@@ -58,6 +58,9 @@ pub mod mapper_input;
 // phase-330 W3.b — the ONE place that decides where a SystemModel is read
 // from, shared by the proc-macro, `nros-build` and (via its default) cmake.
 pub mod model_location;
+// phase-486 W1 (RFC-0060 amendment 2026-10-10) — the nano-ros facts that do
+// not belong in the SystemModel, written as `nros.toml` beside it.
+pub mod overlay;
 // phase-454 W7 (RFC-0100 D8) — the contract and `qos_overrides.*` are two
 // statements about ONE fact, so any divergence is a build error naming both
 // sites. Here rather than in the CLI because BOTH producers must ask: the
