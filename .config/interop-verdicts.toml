@@ -30,6 +30,16 @@ where = "ros2 distrobox, Humble, tree with #684 + #692"
 evidence = "1 case(s) produced a result in declarative_bridge_zenoh_to_xrce.xml"
 
 [[verdict]]
+cell = "freertos-mps2-pubsub-c-zenoh-n2r"
+date = "2026-10-11"
+verdict = "pass"
+tests = ["nros_freertos_mps2_publisher_reaches_ros2_topic_echo"]
+run = "just freertos test-ros2"
+where = "aeon's workstation, Ubuntu 22.04 host, ROS 2 Humble apt (rmw_zenoh_cpp), QEMU mps2-an385; fixtures rebuilt at main 6a36a9402d plus comment-only #1914"
+evidence = "First run of this cell: the workspace-c-freertos entry on QEMU mps2-an385 published, and a stock `ros2 topic echo` on rmw_zenoh_cpp received it (5.7 s)."
+issue = "1758"
+
+[[verdict]]
 cell = "native-action-rust-cyclone-n2r"
 date = "2026-09-07"
 verdict = "pass"
@@ -281,6 +291,16 @@ tests = ["interop::case_4_zenoh_service_nano_server", "interop::case_5_zenoh_ser
 run = "cargo nextest run -p nros-tests --test interop_e2e"
 where = "ros2 distrobox, Humble, tree with #684 + #692"
 evidence = "2 case(s) produced a result in interop_e2e.xml"
+
+[[verdict]]
+cell = "zephyr-cortex-m-pubsub-c-zenoh"
+date = "2026-10-11"
+verdict = "pass"
+tests = ["nros_zephyr_cortex_m_publisher_reaches_ros2_topic_echo"]
+run = "just zephyr test-ros2-cortex-m"
+where = "aeon's workstation, Ubuntu 22.04 host, ROS 2 Humble apt (rmw_zenoh_cpp), QEMU mps2-an385; fixtures rebuilt at main 6a36a9402d plus comment-only #1914"
+evidence = "First run of this cell: the Zephyr mps2/an385 C talker (west leaf build-cortex-m-c-talker-zenoh) published under QEMU, and a stock `ros2 topic echo` on rmw_zenoh_cpp received it (8.7 s)."
+issue = "1758"
 
 [[verdict]]
 cell = "zephyr-qos-rust-zenoh"

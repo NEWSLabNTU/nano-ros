@@ -262,6 +262,16 @@ BOARD_FIXTURE_NARROWING: "dict[str, tuple[str, str]]" = {
     "zephyr-qos-rust-zenoh": (
         "NROS_ZEPHYR_FIXTURE_FILTER", "build-ws-rs-qos-entry-zenoh",
     ),
+    "zephyr-cortex-m-pubsub-c-zenoh": (
+        "NROS_ZEPHYR_FIXTURE_FILTER", "build-cortex-m-c-talker-zenoh",
+    ),
+    # `NROS_FIXTURE_ID` narrows the workspace and compile-check stages of
+    # `just build freertos` to this row. The single-node Rust examples are
+    # built by `fixtures-build.sh`, which takes `--id` and says so, so those 8
+    # rows still build (about 2 min warm, measured 2026-10-11).
+    "freertos-mps2-pubsub-c-zenoh-n2r": (
+        "NROS_FIXTURE_ID", "workspace-c-freertos",
+    ),
 }
 
 FIXTURES_TOML = ROOT / "examples" / "fixtures.toml"
