@@ -1124,6 +1124,9 @@ mod tests {
         //   * phase-476 W0's `slot_tags`: the TABLE is carved (it scales with
         //     `MAX_CBS` and lives in the backing); what sits in this value is
         //     one slice reference, which scales with nothing.
+        //   * phase-483 W3's `component_frame`: one optional pointer to the
+        //     component-registration frame `nros::NodeContext` installs while a
+        //     component's `register` runs. Scales with nothing.
         #[allow(unused_mut)]
         let mut ceiling =
             1280 + size_of::<super::super::spin::SessionStore>()
@@ -1131,6 +1134,7 @@ mod tests {
                 + size_of::<super::super::monitor::ReportQueue>()
                 + size_of::<&mut [super::super::types::SlotTag]>()
                 + size_of::<usize>()
+                + size_of::<Option<core::ptr::NonNull<()>>>()
                 + size_of::<
                     [Option<super::super::spin::WakeSourceSlot>;
                         super::super::spin::MAX_WAKE_SOURCES],
