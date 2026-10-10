@@ -84,13 +84,21 @@ function(nros_resolve_board_facts)
     # an empty answer here, before any check ran, and said nothing. A cached
     # failure from an older configure is dropped; this run's failures live in a
     # GLOBAL property, so the several callers of one configure still ask once.
-    if(DEFINED ${_memo})
-        get_property(_memo_why CACHE ${_memo} PROPERTY HELPSTRING)
-        if(_memo_why MATCHES "^phase-351 W5: resolved")
-            set(NROS_BOARD_FACTS_ENV "${${_memo}}" PARENT_SCOPE)
-            return()
-        endif()
+    # phase-484 W2b — and a RESOLVED answer no longer outlives it either. The
+    # cached one had no freshness input: it survived a rebuilt `nros` and an
+    # edited `nros-board.toml` across every reconfigure, so a board fact added
+    # to the descriptor never reached the build (measured: FREERTOS_PORT absent
+    # from a workspace C image whose descriptor stated it). One CLI call per
+    # (board, deploy) per configure is what the memo is for; a cache entry an
+    # older checkout wrote is dropped on sight.
+    if(DEFINED CACHE{${_memo}})
         unset(${_memo} CACHE)
+    endif()
+    get_property(_memo_hit GLOBAL PROPERTY ${_memo}__VALUE SET)
+    if(_memo_hit)
+        get_property(_memo_val GLOBAL PROPERTY ${_memo}__VALUE)
+        set(NROS_BOARD_FACTS_ENV "${_memo_val}" PARENT_SCOPE)
+        return()
     endif()
     get_property(_tried GLOBAL PROPERTY ${_memo} SET)
     if(_tried)
@@ -181,8 +189,7 @@ function(nros_resolve_board_facts)
 
     string(REPLACE "\n" ";" _lines "${_out}")
     list(REMOVE_ITEM _lines "")
-    set(${_memo} "${_lines}" CACHE INTERNAL
-        "phase-351 W5: resolved board facts + site config from ${_ws}")
+    set_property(GLOBAL PROPERTY ${_memo}__VALUE "${_lines}")
     set(NROS_BOARD_FACTS_ENV "${_lines}" PARENT_SCOPE)
     list(LENGTH _lines _n)
     message(STATUS "nano-ros: board facts from ${_ws} — ${_n} value(s) delivered to cargo")
