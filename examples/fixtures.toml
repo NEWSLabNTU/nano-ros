@@ -648,7 +648,13 @@ dir = "examples/workspaces/c"
 bringup = "src/demo_bringup"
 image = "freertos_posix"
 build_subdir = "build/freertos-cyclonedds-freertos-posix/cmake"
-cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "freertos-posix" }
+# Issue 1769 -- the C row SELF-PROVISIONS Cyclone (what a host with no ROS 2
+# gets), the C++ row below takes the host's: the two provenances differ in
+# whether Cyclone's own threads reach this board's heap (issue 0832's funnel
+# is on only for a self-provisioned Cyclone), so one row of each keeps both
+# covered. Self-provisioned and unfixed, this image died 6 runs of 10 on a
+# FreeRTOS assert from a Cyclone thread.
+cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "freertos-posix", CMAKE_DISABLE_FIND_PACKAGE_CycloneDDS = "ON" }
 
 [[workspace_fixture]]
 id = "workspace-cpp-freertos-posix"
