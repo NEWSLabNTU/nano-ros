@@ -45,7 +45,7 @@ fn px4_sitl_2_component_module_builds() {
     // Phase 212.H.7 prereqs: nros CLI + a PX4-Autopilot checkout. The
     // codegen subcommand check below is a soft gate (the verb may not
     // yet exist while the nros-cli side of 212.H.7 lands), surfaced via
-    // `skip!` so the test doesn't fail the run.
+    // `unmet!`, a red that names the missing prerequisite (issue 1758).
     nros_tests::require_nros_cli();
     nros_tests::require_px4();
 

@@ -735,9 +735,9 @@ fn absent_fixture_verdict_in(
     }
     // Issue 0584 part 2 — an ABSENT in-lane fixture is not a skip.
     //
-    // The ~500 `skip!` call sites turn this `Err` into `[SKIPPED] … not
-    // prebuilt`, so a lane whose fixtures never got built reports skips and
-    // greens. That is the same silent-green shape as 0445 (an absorbing STALE
+    // The ~500 `skip!` call sites turned this `Err` into `[SKIPPED] … not
+    // prebuilt` (they are `unmet!` reds since issue 1758), so a lane whose
+    // fixtures never got built reported skips and greened. That is the same silent-green shape as 0445 (an absorbing STALE
     // verdict) and 0196 (a gate narrower than the rule it enforces): the run
     // says nothing failed because nothing ran.
     //
@@ -5338,7 +5338,7 @@ pub fn build_freertos_cmake_example_rmw(
 /// (cyclonedds-sys vendored build against the ARM cross toolchain +
 /// FreeRTOS POSIX shim). Until that lands the cyclonedds branch returns
 /// a `BuildFailed` error so callers (`freertos_qemu.rs`) emit the
-/// proper `nros_tests::skip!` rather than silently passing.
+/// proper `nros_tests::unmet!` rather than silently passing.
 ///
 /// phase-340 P2 — the ZENOH arm used to spell
 /// `target-zenoh/thumbv7m-none-eabi/<ambient profile>/<binary>`, an output the
@@ -6754,13 +6754,12 @@ mod fixture_absence_class_tests {
     }
 }
 
-/// Phase 150.F — "binary not prebuilt" is an environment/setup
-/// condition (user didn't run `just build-test-fixtures`), not a
-/// test-logic failure. Surface it via `nros_tests::skip!` so
-/// `_count-real-failures` filters it out and the ci summary
-/// doesn't flag it as a real failure. Any OTHER build error (e.g.
-/// the fixture crate genuinely failing to compile) panics
-/// normally and counts as a real failure.
+/// Phase 150.F — "binary not prebuilt" is an unmet precondition
+/// (nobody ran `just build-test-fixtures`), not a test-logic failure,
+/// so `RequireFixture::require` reports it as `[UNMET PRECONDITION]`
+/// — still a red (issue 1758), but one that names the missing build.
+/// Any OTHER build error (e.g. the fixture crate genuinely failing to
+/// compile) panics with the resolver's error.
 #[rstest::fixture]
 pub fn xrce_large_msg_test_binary() -> PathBuf {
     build_xrce_large_msg_test()

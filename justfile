@@ -943,7 +943,7 @@ fixture-staleness:
 # answers the same question one level up, over history rather than over one run:
 # a `Tier::Runtime` cell in `interop::CELLS` whose subject is a live ROS 2 peer
 # either has a dated result in `.config/interop-verdicts.toml` or has NEVER met
-# one — and a green sweep cannot tell you which, because `skip!` renders as
+# one — and a green sweep cannot tell you which, because a skip renders as
 # `<skipped>` and every consumer counts that as not-a-failure.
 #
 # Record one from a run (it refuses a junit in which the cell's binary only
@@ -1121,8 +1121,8 @@ test-unit verbose="":
         # NROS_TEST_FAILURE_OUTPUT (default `never`) — see `_test-focused`.
         args+=(--success-output never --failure-output "${NROS_TEST_FAILURE_OUTPUT:-never}")
     fi
-    # issue 0388 — `nros_tests::skip!` panics with `[SKIPPED]` for an unmet
-    # precondition, and nextest has no native skip, so those land as FAILURES and
+    # issue 0388 — `nros_tests::skip!` panicked with `[SKIPPED]` for an unmet
+    # precondition (since issue 1758 only `lane_skip!` skips), and nextest has no native skip, so those land as FAILURES and
     # the tier exits 100. `test-all` and `_nextest-platform` already rewrite them
     # to `<skipped>` and tally only REAL failures; tier 1 did not, so the tier
     # CLAUDE.md tells everyone to run reported red for "you are missing a
@@ -1156,9 +1156,9 @@ test-unit verbose="":
 
 # Run an ARBITRARY nextest filter with honest skip accounting (issue 1016).
 #
-# `nros_tests::skip!` panics with `[SKIPPED]`, and nextest has no native skip —
-# so a bare `cargo nextest run -E ...` reports every unmet precondition as a
-# FAILURE. The summary line for "six cells were never built" is then
+# `nros_tests::lane_skip!` panics with `[SKIPPED:lane]`, and nextest has no
+# native skip — so a bare `cargo nextest run -E ...` reports every scope
+# deselection as a FAILURE. The summary line for "six cells were never built" is then
 # character-for-character the summary line for "six cells ran and failed":
 #
 #     Summary [295.800s] 9 tests run: 0 passed, 9 failed, 45 skipped
@@ -1255,7 +1255,7 @@ _test-focused filter verbose="":
         # `--failure-output` honours NROS_TEST_FAILURE_OUTPUT, default `never` —
         # unchanged for every caller that does not set it. The live-peer lane
         # sets `final`: with `never`, run 34497290149 reported "7 real failures"
-        # without one line of WHY, and because `nros_tests::skip!` is a panic the
+        # without one line of WHY, and because a skip is a panic the
         # skip REASONS were suppressed too, so the lane's red could not be read
         # without a rerun. The five sibling recipes take the same hook, so the
         # knob means one thing wherever it is set.
@@ -1318,9 +1318,9 @@ test-integration verbose="":
         # NROS_TEST_FAILURE_OUTPUT (default `never`) — see `_test-focused`.
         args+=(--success-output never --failure-output "${NROS_TEST_FAILURE_OUTPUT:-never}")
     fi
-    # `nros_tests::skip!` panics with `[SKIPPED]` for unmet preconditions
-    # (missing fixture/binary/emulator/agent/SDK) — nextest has no native skip,
-    # so those count as failures and exit non-zero. Treat the run as passing iff
+    # `nros_tests::lane_skip!` panics with `[SKIPPED:lane]` for an out-of-scope
+    # test — nextest has no native skip, so those count as failures and exit
+    # non-zero. An unmet precondition (`unmet!`) is a real failure (issue 1758). Treat the run as passing iff
     # there are no *real* (non-[SKIPPED]) failures — same contract as
     # `_nextest-platform`. Real failures still fail the recipe.
     set +e
@@ -1359,12 +1359,12 @@ test-integration verbose="":
 # standard verbose-flag handling. Used by per-platform `test` / `test-all`
 # recipes in just/<platform>.just so the args/verbose boilerplate lives in
 # one place.
-# Issue 0673 — the ONE place `nros_tests::skip!` is interpreted, so the marker
+# Issue 0673 — the ONE place `nros_tests::lane_skip!` is interpreted, so the marker
 # means the same thing in every lane that runs tests.
 #
-# `skip!` panics carrying `[SKIPPED…]` because Rust's harness has no runtime
-# skip, so a BARE `cargo nextest run` counts every unmet precondition as a
-# failure. Only the junit rewrite turns them back into skips — and it used to
+# `lane_skip!` panics carrying `[SKIPPED:lane]` because Rust's harness has no
+# runtime skip, so a BARE `cargo nextest run` counts every scope deselection
+# as a failure. Only the junit rewrite turns them back into skips — and it used to
 # live inside `test-all` and `_nextest-platform`, so a lane that called nextest
 # directly (`check::required-features-tests`) reported thirteen capability skips
 # as a tier-1 red on any host without `ros-<distro>-rmw-zenoh-cpp`, hiding every
@@ -1402,9 +1402,9 @@ _nextest-tolerant +nextest_args:
     # the store does NOT follow CARGO_TARGET_DIR (see nextest-profile.sh), so
     # the path cannot be predicted before the run.
     nros_nextest_junit_reset
-    # `nros_tests::skip!` panics with `[SKIPPED]` for unmet preconditions
-    # (missing fixture/binary/emulator) — nextest has no native skip, so those
-    # count as failures and exit non-zero. Treat a run as passing iff there are
+    # `nros_tests::lane_skip!` panics with `[SKIPPED:lane]` for an out-of-scope
+    # test — nextest has no native skip, so those count as failures and exit
+    # non-zero. An unmet precondition (`unmet!`) is a real failure (issue 1758). Treat a run as passing iff there are
     # no *real* (non-[SKIPPED]) failures, per `_count-real-failures`. Real
     # failures still fail the recipe.
     set +e
@@ -1512,8 +1512,8 @@ _rewrite-skipped-junit junit="target/nextest/default/junit.xml":
     fi
 
 # Count real (non-[SKIPPED]) test failures from the latest junit.xml.
-# Tests that panic with `[SKIPPED] ...` (via the nros_tests::skip! macro)
-# are environment-conditional skips and excluded from the real failure count.
+# Tests that panic with `[SKIPPED:lane] ...` (via the nros_tests::lane_skip!
+# macro) are out of the lane's scope and excluded from the real failure count.
 # Counts only `<failure ` entries whose `message=` attribute contains [SKIPPED],
 # not raw `[SKIPPED]` strings (which also appear in `<system-err>`).
 #
@@ -1615,7 +1615,7 @@ test-zpico-multisession verbose="":
     export CARGO_TARGET_DIR="$(nros_scoped_target_dir zpico-multisession)"  # issue 0400: box-aware
     export ZPICO_MAX_SESSIONS=2
     # issue 0695 — through `_nextest-tolerant`, not a bare `cargo nextest run`
-    # (issue 0673's rule): `nros_tests::skip!` raised in ANOTHER package's own
+    # (issue 0673's rule): `nros_tests::lane_skip!` raised in ANOTHER package's own
     # test binary — this lane's `zenoh_integration` — is still a skip, and a
     # bare run turned its `[SKIPPED]` panic into a hard red no fix can clear.
     # The tolerant helper rewrites the junit (which lands under this lane's
@@ -3588,7 +3588,7 @@ sweep-family platform drop="0":
     set -euo pipefail
     source scripts/test/nextest-profile.sh
     echo "[sweep-family] testing {{platform}}"
-    # `skip!` is a panic, so a BARE nextest run reports skipped cells as
+    # `lane_skip!` is a panic, so a BARE nextest run reports skipped cells as
     # FAILURES — the documented pitfall (CLAUDE.md). `test-all` rewrites them via
     # the junit pass; mirror that here or every unavailable-toolchain family looks
     # red. `|| true` on the run, then the rewrite decides.

@@ -480,10 +480,10 @@ test-ros2-cortex-m verbose="":
 # `action-client-multigoal` probe, both on one ephemeral `rmw_zenohd`.
 #
 # A RUNNER, not a sweep, for the reason the phase states: an unmet precondition
-# inside a sweep is a `skip!` rendered `<skipped>`, which nobody can tell from a
-# pass. `_test-focused` carries the shared skip accounting.
+# inside a sweep was a `skip!` rendered `<skipped>`, which nobody could tell
+# from a pass (an `unmet!` red since issue 1758). `_test-focused` carries the shared skip accounting.
 #
-# Two build channels, so it skips on either: the west leaf
+# Two build channels, so it fails on either: the west leaf
 # (`just zephyr build-one rust/action-server zenoh`) and the native fixture
 # (`just native build-fixture-rust`). Deliberately NOT sequenced after either —
 # running a whole lane to reach one cell is not something anyone would type.

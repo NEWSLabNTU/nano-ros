@@ -32,7 +32,7 @@
 //!
 //! Skip semantics are identical to the per-cell tests: no zephyr workspace /
 //! missing or STALE west image (`just zephyr build-fixtures`) / missing XRCE
-//! agent → `nros_tests::skip!`. The `--seed` uniqueness (`ZephyrProcess`
+//! agent → `nros_tests::unmet!`. The `--seed` uniqueness (`ZephyrProcess`
 //! injects one per spawn — identical native_sim entropy otherwise yields
 //! identical GUIDs and discovery sees the peer as itself) and the
 //! `--nros-locator` runtime-dial mechanics are unchanged.
@@ -852,7 +852,7 @@ fn boot_smoke(#[case] smoke: Smoke) {
 // up" — which is a description of something that is not a test: it printed the
 // workspace path and one boolean and asserted nothing, so it reported PASS with
 // Zephyr entirely absent. `zephyr_workspace_path()` / `is_zephyr_available()`
-// stay load-bearing as the `skip!` guards on the real Zephyr tests, where a
+// stay load-bearing as the `unmet!` guards on the real Zephyr tests, where a
 // `false` stops the run. Forbidden repo-wide by `check-no-vacuous-tests`.
 
 // =============================================================================

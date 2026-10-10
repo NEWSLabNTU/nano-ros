@@ -121,8 +121,8 @@ provisioned-root-guard-reach:
 lane-skip-interpreters:
     @python3 scripts/check-lane-skip-interpreters.py
 
-# Issue 0584 — an out-of-lane skip must SAY `lane`; a plain `skip!` is read as
-# `capability`, so a fixture the lane deliberately did not build gets counted as
+# Issue 0584 — an out-of-lane skip must SAY `lane`; the old plain `skip!` was
+# read as `capability` (issue 1758 removed it; `lane_skip!` is the only skip), so a fixture the lane deliberately did not build gets counted as
 # a missing capability and the sweep summary lies about which gap a run has.
 [private]
 lane-skip-class:

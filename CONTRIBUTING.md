@@ -94,7 +94,8 @@ Read [`AGENTS.md`](AGENTS.md) first. The rules most likely to bounce a PR:
   (nightly rustfmt — `rustfmt.toml` uses nightly-only options, so stable
   produces different output), C/C++ and Python.
 - **Tests must fail on unmet preconditions.** `assert!`, `bail!`, or
-  `nros_tests::skip!`. A test that prints "environment not available" and
+  `nros_tests::unmet!`. The only skip is `nros_tests::lane_skip!`, reached
+  from the lane's declared scope before any probe (issue 1758). A test that prints "environment not available" and
   returns reports PASS, which means it passes on exactly the host it was written
   to warn about. Seventeen such tests existed here before the gate that now
   forbids them.

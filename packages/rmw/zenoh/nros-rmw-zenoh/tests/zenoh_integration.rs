@@ -30,8 +30,8 @@ use std::{thread, time::Duration};
 /// images compile a locator in. Its own docs say native host tests should take
 /// runtime-ephemeral ports instead, which are parallel-safe by construction.
 ///
-/// SKIPS (a `capability` skip, via `nros_tests::skip_class!`) when zenohd is
-/// absent, and FAILS when a router that is present will not start. It owns
+/// FAILS as an unmet precondition (`nros_tests::unmet!`, issue 1758) when
+/// zenohd is absent, and FAILS when a router that is present will not start. It owns
 /// that verdict rather than handing the caller an `Option`: it used to return
 /// `None` after an `eprintln!`, and all five callers spelled the `None` arm
 /// `else { return }` — which is a PASS, so each of them reported green having
@@ -693,9 +693,10 @@ fn client_session_with_absent_locator_dials_backend_default() {
     // never kills an unrelated router.
     match std::net::TcpListener::bind(("127.0.0.1", port)) {
         Ok(probe) => drop(probe),
-        // issue 1161 — `resource`, not the `capability` a bare `skip!` defaults
-        // to. A port already bound is a RUNTIME prerequisite that a rerun or a
-        // quieter host resolves; a capability is something this host cannot do
+        // issue 1161 — this was a `resource` skip, not the `capability` a bare
+        // `skip!` defaulted to; since issue 1758 both are `unmet!`. A port
+        // already bound is a RUNTIME prerequisite that a rerun or a quieter host
+        // resolves; a capability is something this host cannot do
         // at all, and the two have opposite remedies. The distinction became
         // load-bearing when an undeclared capability skip started failing the
         // budget: mislabelled, this would have demanded a baseline entry for a
@@ -820,7 +821,7 @@ const PROBE_QUERY_TIMEOUT_MS: u32 = 200;
 /// never makes the server reply at all.
 #[test]
 fn a_declined_query_hands_its_reply_slot_back() {
-    // `skip!`, not the `Option`-and-return `router()` this file once had: a bare
+    // `unmet!`, not the `Option`-and-return `router()` this file once had: a bare
     // return reports PASS, and a probe whose whole purpose is to be a negative
     // control must never be able to pass by not running (CLAUDE.md; issue 0584
     // for the class).

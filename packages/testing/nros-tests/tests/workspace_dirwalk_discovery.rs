@@ -13,7 +13,8 @@
 //! cargo prefix added no functional value over the bare `nros` verb —
 //! see phase doc §212.A); the dirwalk discovery surface IS `nros plan`.
 //!
-//! Skips cleanly via `nros_tests::skip!` when the `nros` CLI (built
+//! Fails as an unmet precondition (`nros_tests::unmet!`) when the `nros`
+//! CLI (built
 //! in-tree at `packages/cli/target/release/nros` by `just setup-cli`;
 //! Phase 218) cannot be resolved.
 

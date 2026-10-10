@@ -5,9 +5,10 @@
 //! `ZephyrBoard::run_tiers` — two tiers over one shared Cyclone DDS session).
 //!
 //! This is the maintainer pre-release gate (`just zephyr verify-fvp-runtime`
-//! builds + runs it): the ARM FVP is license-walled, so the test `skip!`s
-//! cleanly on hosts without the model and is run by a maintainer before an
-//! ASI pin bump or release. It replaces the retired false-green legacy talker
+//! builds + runs it): the ARM FVP is license-walled, so no scheduled lane
+//! selects it (`test-all` excludes it by scope), it fails (`unmet!`) on a
+//! host without the model, and a maintainer runs it before an ASI pin bump
+//! or release. It replaces the retired false-green legacy talker
 //! runtime tests (phase-298 W4) — those targeted build-only images with no
 //! ethernet device, so they could never publish and always skipped.
 //!
@@ -18,7 +19,8 @@
 //! descriptor registration + typed publish on BOTH tiers — the exact chain
 //! the phase-292 walls (#4/#5/#8/#9) broke invisibly.
 //!
-//! Skip preconditions (same ladder as the legacy fvp_runtime tests):
+//! Preconditions, each an `unmet!` red (same ladder as the legacy
+//! fvp_runtime tests):
 //!   1. ARM FVP not resolvable via `scripts/zephyr/resolve-fvp-bin.sh`.
 //!   2. `west` not on PATH.
 //!   3. Zephyr workspace not set up.
@@ -30,7 +32,7 @@ use std::{
     time::Duration,
 };
 
-use nros_tests::{process::ManagedProcess, project_root, unmet};
+use nros_tests::{fixtures::RequireFixture, process::ManagedProcess, project_root, unmet};
 
 /// Publish-success markers — printed by the tier components ONLY when
 /// `publish().ok()` (Ctrl.cpp:19 / Telem.cpp:18). NOT banner strings; do not
@@ -99,12 +101,8 @@ fn fvp_ws_entry_two_tier_publishes() {
         .join("build-fvp-ws-entry")
         .join("zephyr")
         .join("zephyr.elf");
-    if !elf.is_file() {
-        unmet!(
-            "FVP ws-entry ELF missing at {}; run `just zephyr build-fvp-ws-entry` first",
-            elf.display()
-        );
-    }
+    nros_tests::fixtures::require_prebuilt_artifact(&elf, "just zephyr build-fvp-ws-entry")
+        .require("FVP ws-entry ELF");
 
     // Drive the canonical recipe — it owns the env wiring (workspace cd,
     // pinned make/ninja, ZEPHYR_SDK_INSTALL_DIR, NROS_REPO_DIR for the

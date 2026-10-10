@@ -13,7 +13,7 @@
 //! * `codegen_cyclonedds_emits_std_msgs`
 //! * `nros_codegen_cyclonedds_descriptors_emits_register_tu`
 //!
-//! Both skip cleanly via `nros_tests::skip!` when the prerequisites
+//! Both fail as unmet preconditions (`nros_tests::unmet!`) when the prerequisites
 //! (`nros` CLI + a host `idlc`) aren't present.
 
 use std::{fs, path::PathBuf, process::Command};

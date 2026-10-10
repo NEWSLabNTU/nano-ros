@@ -420,7 +420,7 @@ fn test_param_integer_type(zenohd_unique: ZenohRouter) {
 /// read) is `tests/param_live_read_e2e.rs`; this test adds the `ros2 param set` reconfig
 /// path. It needs a wire-matched `rmw_zenoh_cpp` (the pinned overlay — `just rmw_zenoh
 /// setup`); where ROS 2 can't discover the node (distro rmw_zenoh mismatching the pinned
-/// zenoh wire version) it `skip!`s.
+/// zenoh wire version) it fails as an unmet precondition (`unmet!`).
 #[rstest]
 fn test_ros2_param_set_reconfigures_live_read(zenohd_unique: ZenohRouter) {
     require_zenohd();

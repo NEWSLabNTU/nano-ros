@@ -36,8 +36,8 @@ fn main() {
         Err(err) => {
             // Offline / network-blocked fallback. Stub keeps the bin
             // linkable so the test can still surface a meaningful
-            // skip!. The integration test detects this stub and skips
-            // the byte-identical assertion (one Entry can't prove
+            // `unmet!`. The integration test detects this stub and fails
+            // the byte-identical assertion as an unmet precondition (one Entry can't prove
             // codegen identity by itself).
             eprintln!("nros-build: codegen skipped: {err:?}");
             let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR");
