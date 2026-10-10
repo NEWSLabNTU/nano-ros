@@ -125,42 +125,30 @@ if(TARGET cargo-build_nros_cpp)
     # umbrella bundles nros-c, Phase 241.D3-rev) the C variant header into this dir.
     set(_nros_cpp_gen_cpp_header "${_nros_cpp_intree_include_dir}/nros/nros_cpp_config_generated.h")
     set(_nros_cpp_gen_c_header "${_nros_cpp_intree_include_dir}/nros/nros_config_generated.h")
-    # Issue 0268 — see the matching comment block in packages/api/nros-c/CMakeLists.txt.
-    # `DEPENDS cargo-build_nros_cpp` alone is ORDER-ONLY in Ninja, so a rebuilt crate
-    # never invalidates this copy and the mirror goes stale the moment a core struct
-    # grows. Depend on the staticlib file itself — a real Ninja output — so every cargo
-    # rebuild re-mirrors both headers.
-    if(TARGET nros_cpp-static)
-        set(_nros_cpp_mirror_trigger "$<TARGET_FILE:nros_cpp-static>")
-    else()
-        set(_nros_cpp_mirror_trigger "")
-    endif()
+    # Issues 0268 / 1783 — see the matching comment block in
+    # packages/api/nros-c/CMakeLists.txt. One spelling for both crates: the
+    # mirror re-runs every build (write-if-changed + restat), because the
+    # staticlib it used to key on does not change when only the header does.
+    # issue 0805 — see the matching comment in nros-c/CMakeLists.txt: the
+    # leaf's own copy is written only when the build script runs for THIS
+    # leaf, which a shared cargo target dir makes untrue after the first.
     set(_NROS_CPP_MIRROR_SH "${CMAKE_CURRENT_LIST_DIR}/../../../scripts/build/mirror-generated-header.sh")
-    add_custom_command(
-        OUTPUT "${_nros_cpp_gen_cpp_header}" "${_nros_cpp_gen_c_header}"
-        # issue 0805 — see the matching comment in nros-c/CMakeLists.txt: the
-        # leaf's own copy is written only when the build script runs for THIS
-        # leaf, which a shared cargo target dir makes untrue after the first.
-        COMMAND bash "${_NROS_CPP_MIRROR_SH}"
-            "${CMAKE_CURRENT_BINARY_DIR}/nros_cpp_config_generated.h"
-            "${CMAKE_BINARY_DIR}" "nros-cpp-generated" "nros_cpp_config_generated.h"
-            "${_nros_cpp_gen_cpp_header}"
-        COMMAND bash "${_NROS_CPP_MIRROR_SH}"
-            "${CMAKE_CURRENT_BINARY_DIR}/nros_config_generated.h"
-            "${CMAKE_BINARY_DIR}" "nros-c-generated" "nros_config_generated.h"
-            "${_nros_cpp_gen_c_header}"
-        DEPENDS cargo-build_nros_cpp ${_nros_cpp_mirror_trigger}
-        COMMENT "nros-cpp: mirroring nros_{,cpp_}config_generated.h for in-tree consumers"
-        VERBATIM
-    )
-    add_custom_target(nros_cpp_config_header
-        DEPENDS "${_nros_cpp_gen_cpp_header}" "${_nros_cpp_gen_c_header}")
+    include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosConfigHeaderMirror.cmake")
+    nros_config_header_mirror(nros_cpp_config_header cargo-build_nros_cpp
+        "${CMAKE_CURRENT_BINARY_DIR}/nros_cpp_config_generated.h"
+        "nros-cpp-generated" "nros_cpp_config_generated.h"
+        "${_nros_cpp_gen_cpp_header}"
+        "${CMAKE_CURRENT_BINARY_DIR}/nros_config_generated.h"
+        "nros-c-generated" "nros_config_generated.h"
+        "${_nros_cpp_gen_c_header}")
     # Issue 0268 — heal an ALREADY-drifted mirror at configure time. The Ninja edge
     # above only fires when the crate rebuilds, so a tree that went stale under the
     # old order-only rule keeps its museum copy until something happens to touch the
     # crate. `file(COPY_FILE)` deliberately, NOT `configure_file`: the latter adds a
     # CMAKE_CONFIGURE_DEPENDS edge on a file cargo rewrites mid-build, which would
     # re-trigger configure on every build.
+    # (Since issue 1783 the build-time mirror re-runs every build, so this heal
+    # is no longer the only repair; it stays as a configure-time one.)
     # Issue 0985 — the heal runs the SAME resolver the build-time mirror runs.
     #
     # It used to `file(COPY_FILE)` straight from `${CMAKE_CURRENT_BINARY_DIR}`,
