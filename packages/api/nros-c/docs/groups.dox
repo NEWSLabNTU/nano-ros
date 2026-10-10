@@ -39,9 +39,10 @@
  * @brief Topic publishers and subscriptions.
  *
  * `nros_publisher_t` sends typed (or raw-CDR) messages on a topic;
- * `nros_subscription_t` receives them. Subscriptions can run with a
- * callback registered on the executor, or be polled manually with
- * `nros_subscription_take`.
+ * `nros_subscription_t` receives them through a callback registered on the
+ * executor, which owns the subscriber. A subscription polled manually is
+ * the separate type `nros_polling_subscription_t`, drained with
+ * `nros_polling_subscription_take_serialized`.
  *
  * @code
  * nros_publisher_t pub = nros_publisher_get_zero_initialized();
@@ -90,7 +91,8 @@
  * @code
  * nros_executor_t exec = nros_executor_get_zero_initialized();
  * nros_executor_init(&exec, &support, 4);
- * nros_executor_add_subscription(&exec, &sub);
+ * nros_executor_add_subscription_raw(&exec, &sub, on_bytes, NULL,
+ *                                    NROS_EXECUTOR_ON_NEW_DATA);
  * nros_executor_spin_period(&exec, 10000000ULL);
  * @endcode
  *
@@ -141,7 +143,7 @@
  * need to call these directly — `nano_ros_generate_interfaces()` emits
  * fully serialised types.
  *
- * @see @ref grp_pubsub for `nros_publish_raw` / `nros_subscription_take`
+ * @see @ref grp_pubsub for `nros_publish_raw` / `nros_polling_subscription_take_serialized`
  *      (the consumers of CDR-encoded buffers)
  */
 

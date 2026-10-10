@@ -95,10 +95,11 @@ static const nros_message_deserialize_fn_t kErased = probe_msg_reading_deseriali
 
 /* The raw path STAYS — this is additive, and a byte-oriented subscriber is a
  * legitimate thing to want. Naming it here is the assertion that W5.a did not
- * replace it. */
-static nros_ret_t (*const kAddRaw)(struct nros_executor_t*, struct nros_subscription_t*,
-                                   nros_executor_handle_invocation_t) =
-    nros_executor_add_subscription;
+ * replace it. Since phase-487 W1 it takes its callback and context itself:
+ * the subscription struct no longer stores either. */
+static nros_ret_t (*const kAddRaw)(
+    struct nros_executor_t*, struct nros_subscription_t*, nros_subscription_callback_t, void*,
+    nros_executor_handle_invocation_t) = nros_executor_add_subscription_raw;
 
 /* ------------------------------------------------------------------ *
  * 2. A ported rclc node, as it now reads.

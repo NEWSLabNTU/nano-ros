@@ -24,14 +24,19 @@
 #include "nros/service.h"
 #include "nros/subscription.h"
 
-/* The live entry points, with the documented signatures. */
-static int32_t (*const k_new_sub_take_serialized)(struct nros_subscription_t*, uint8_t*,
-                                                  size_t) = nros_subscription_take_serialized;
-static int32_t (*const k_new_sub_take_sequence)(struct nros_subscription_t*, uint8_t*, size_t,
-                                                size_t, size_t*) = nros_subscription_take_sequence;
-static int32_t (*const k_new_sub_take_validated)(struct nros_subscription_t*, uint8_t*, size_t,
-                                                 struct nros_integrity_status_t*) =
-    nros_subscription_take_validated;
+/* The live entry points, with the documented signatures. The subscription
+ * drains take the POLLED type: since phase-487 a polled subscription is
+ * `nros_polling_subscription_t`, and the dispatched `nros_subscription_t` has
+ * no subscriber of its own to take from. */
+static int32_t (*const k_new_sub_take_serialized)(struct nros_polling_subscription_t*, uint8_t*,
+                                                  size_t) =
+    nros_polling_subscription_take_serialized;
+static int32_t (*const k_new_sub_take_sequence)(struct nros_polling_subscription_t*, uint8_t*,
+                                                size_t, size_t,
+                                                size_t*) = nros_polling_subscription_take_sequence;
+static int32_t (*const k_new_sub_take_validated)(struct nros_polling_subscription_t*, uint8_t*,
+                                                 size_t, struct nros_integrity_status_t*) =
+    nros_polling_subscription_take_validated;
 static int32_t (*const k_new_srv_take_request_raw)(struct nros_service_t*, uint8_t*, size_t,
                                                    int64_t*) = nros_service_take_request_raw;
 static int32_t (*const k_new_cli_take_response_raw)(struct nros_client_t*, uint8_t*,

@@ -78,14 +78,14 @@ rmw-cffi = ["nros/rmw-cffi"]
 # `IntegrityStatus`) AND the zenoh backend's own `safety-e2e` (the CRC attach on
 # publish + validate on receive — `nros/safety-e2e` does not reach the backend;
 # Cargo features don't propagate upward). Surfaces `nros_integrity_status_t` +
-# `nros_subscription_take_validated` across the C ABI. zenoh-only (the only
+# `nros_polling_subscription_take_validated` across the C ABI. zenoh-only (the only
 # backend with the CRC path); `?` keeps it inert when zenoh isn't selected.
 safety-e2e = ["nros/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]
 
 
 # Phase 124.A — opt in to the zero-copy publisher loan / subscriber
 # borrow surface (`nros_publisher_loan` / `_commit` / `_discard` /
-# `nros_subscription_borrow` / `_release`). Threads the
+# `nros_polling_subscription_borrow` / `_release`). Threads the
 # `nros-rmw-cffi/lending` cargo bound through.
 lending = ["rmw-cffi", "nros/lending"]
 

@@ -1449,5 +1449,9 @@
   "rust:Executor::set_monitor_arming": {
     "verdict": "extension",
     "why": "phase-474 I2 -- choose when this executor's monitors arm (wait for the application's call, and/or a grace deadline after the first spin), overriding the build default `NROS_MONITOR_ARM_ON_CALL` / `NROS_MONITOR_ARM_GRACE_MS`. See `rust:Executor::arm_monitors`."
+  },
+  "c:executor_add_subscription": {
+    "verdict": "divergence",
+    "why": "rclc's typed registration, `rclc_executor_add_subscription(exec, sub, void *msg, callback, invocation)`. Ours is `nros_executor_add_subscription_typed`, which takes ONE argument more, the deserialiser, because `nros_message_type_t` has no deserialiser slot (see `c:executor_add_subscription_typed`); the generated per-type macro `<Msg>_executor_add_subscription` collapses it back to rclc's arity. The bare `nros_executor_add_subscription(exec, sub, invocation)` that used this name until phase-487 W1 had a different contract — it dispatched the byte callback the init call had stored in the struct — and went when the struct stopped storing one; `nros_executor_add_subscription_raw` takes that callback directly."
   }
 }

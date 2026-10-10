@@ -3,14 +3,20 @@
  * @ingroup grp_pubsub
  * @brief Topic subscription API.
  *
- * Create subscriptions with nros_subscription_init() and receive
- * deserialised messages via a user-provided callback.
+ * Create a subscription with rclc_subscription_init_default() (or
+ * nros_subscription_init_with_qos()) and add it to an executor, which owns
+ * its subscriber and its callback: nros_executor_add_subscription_typed()
+ * delivers deserialised messages, nros_executor_add_subscription_raw() CDR
+ * bytes.
  *
- * For manual polling, create the subscription with
- * nros_subscription_init_polling() and drain it with
- * nros_subscription_take_serialized() — or
- * nros_subscription_take_sequence() for a batch and
- * nros_subscription_take_validated() for the E2E-safety variant.
+ * For manual polling with no executor, use the separate type
+ * ::nros_polling_subscription_t: create it with
+ * nros_polling_subscription_init() and drain it with
+ * nros_polling_subscription_take_serialized() — or
+ * nros_polling_subscription_take_sequence() for a batch and
+ * nros_polling_subscription_take_validated() for the E2E-safety variant.
+ * The two types are separate since phase-487: a dispatched subscription's
+ * storage is in the executor arena, a polled one's is in the struct.
  */
 
 #ifndef NROS_SUBSCRIPTION_H
@@ -71,7 +77,7 @@ _Static_assert(_NROS_DQ_C_NROS_DQ_TRANSIENT_LOCAL == NROS_QOS_DURABILITY_TRANSIE
 static inline nros_ret_t rclc_subscription_init_best_effort(
     struct nros_subscription_t* subscription, const struct nros_node_t* node,
     const struct nros_message_type_t* type_info, const char* topic_name) {
-    return nros_subscription_init_with_qos(subscription, node, type_info, topic_name, NULL, NULL,
+    return nros_subscription_init_with_qos(subscription, node, type_info, topic_name,
                                            &NROS_QOS_SENSOR_DATA);
 }
 

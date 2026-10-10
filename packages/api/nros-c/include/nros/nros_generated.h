@@ -706,21 +706,16 @@ typedef enum nros_subscription_state_t {
    */
   NROS_SUBSCRIPTION_STATE_UNINITIALIZED = 0,
   /**
-   * Initialized for callback dispatch (Layer 2). Subscriber entity
-   * creation is deferred to `nros_executor_add_subscription`.
+   * Initialized. For a `nros_subscription_t` the subscriber entity is
+   * created later, by `nros_executor_add_subscription_*`, inside the
+   * executor arena. For a `nros_polling_subscription_t` the subscriber is
+   * live in the struct's own storage.
    */
   NROS_SUBSCRIPTION_STATE_INITIALIZED = 1,
   /**
    * Shutdown
    */
   NROS_SUBSCRIPTION_STATE_SHUTDOWN = 2,
-  /**
-   * Phase 122.3.b — initialized for primitive-mode polling (Layer 1).
-   * Subscriber entity created at init time and stored inline in
-   * `_opaque`; caller drains via `nros_subscription_take_serialized`.
-   * No executor registration.
-   */
-  NROS_SUBSCRIPTION_STATE_POLLING = 3,
 } nros_subscription_state_t;
 
 /**
@@ -1909,17 +1904,21 @@ typedef struct nros_action_server_options_t {
 } nros_action_server_options_t;
 
 /**
- * Subscription callback function type.
+ * A subscription the executor dispatches (rclc's `rcl_subscription_t`).
  *
- * # Parameters
- * * `data` - Pointer to received CDR-serialized message data
- * * `len` - Length of data in bytes
- * * `context` - User-provided context pointer
- */
-typedef void (*nros_subscription_callback_t)(const uint8_t *data, size_t len, void *context);
-
-/**
- * Subscription structure.
+ * phase-487 W1 (RFC-0096 D9, the C amendment): an entity the executor
+ * dispatches is owned by the executor. The subscriber, its receive buffer,
+ * the callback and its context all live in the executor arena's entry, and
+ * this struct holds the arena handle `(handle_id, _executor)` plus the
+ * DESCRIPTION the registration needs. The description has to be here
+ * because rclc's order is init first, `rclc_executor_add_*` second: at init
+ * there is no executor to hold it yet.
+ *
+ * Before phase-487 this struct also carried the callback, the context and
+ * the polled form's subscriber storage (`_opaque`). On the dispatched road
+ * none of the three was read after registration, because the arena keeps its
+ * own copies. A subscription the caller drains itself is a
+ * [`nros_polling_subscription_t`].
  */
 typedef struct nros_subscription_t {
   /**
@@ -1951,14 +1950,6 @@ typedef struct nros_subscription_t {
    */
   size_t type_hash_len;
   /**
-   * User callback function
-   */
-  nros_subscription_callback_t callback;
-  /**
-   * User context pointer
-   */
-  void *context;
-  /**
    * Pointer to parent node
    */
   struct nros_node_ref_t node;
@@ -1975,29 +1966,16 @@ typedef struct nros_subscription_t {
    * [`nros_subscription_init_with_options`]. `0` = inherit the
    * executor / Node default (no explicit bind), matching the
    * `nros_node_options_t::sched_context_id` convention. When non-zero,
-   * `nros_executor_add_subscription` binds the freshly-created
-   * handle to this SC after registration. Has no effect on the L1
-   * polling path (no executor handle to bind).
+   * `nros_executor_add_subscription_*` binds the freshly-created
+   * handle to this SC after registration.
    */
   nros_sched_context_id_t sched_context_id;
   /**
-   * Phase 122.3.b — inline opaque storage for the L1 polling-mode
-   * `RawSubscription<MESSAGE_BUFFER_SIZE>`. Zeroed in callback (L2)
-   * mode; populated by `nros_subscription_init_polling`.
-   */
-  uint64_t _opaque[SUBSCRIPTION_OPAQUE_U64S];
-  /**
    * issue 1437 — the `nros_executor_t` holding this subscription's arena
-   * entry, or NULL. Set beside [`handle_id`](Self::handle_id) by
-   * `nros_executor_add_subscription*`; NULL on the L1 polling road, where
-   * the subscriber is inline in `_opaque` and there is no executor.
-   *
-   * The pair is the same `(executor_ptr, arena_entry_index)` that
-   * `ServiceServerInternal` and `ServiceClientInternal` already carry —
-   * this struct was the one L2 entity that recorded the INDEX and not the
-   * arena it indexes, so a reader holding a subscription could not reach
-   * the entity the executor owns. Appended AFTER `_opaque` so every
-   * existing field offset is unchanged.
+   * entry, or NULL before registration. Set beside
+   * [`handle_id`](Self::handle_id) by `nros_executor_add_subscription_*`:
+   * the pair is the same `(executor_ptr, arena_entry_index)` that
+   * `ServiceServerInternal` and `ServiceClientInternal` carry.
    *
    * Internal: treat as opaque.
    */
@@ -2235,6 +2213,16 @@ typedef int32_t (*nros_message_deserialize_fn_t)(void *msg,
  * no closures and every other callback in this API already carries one.
  */
 typedef void (*nros_typed_subscription_callback_t)(const void *msg, void *context);
+
+/**
+ * Subscription callback function type.
+ *
+ * # Parameters
+ * * `data` - Pointer to received CDR-serialized message data
+ * * `len` - Length of data in bytes
+ * * `context` - User-provided context pointer
+ */
+typedef void (*nros_subscription_callback_t)(const uint8_t *data, size_t len, void *context);
 
 /**
  * Subscription callback that also receives the sample's wire **attachment**
@@ -2788,6 +2776,36 @@ typedef struct nros_client_options_t {
 } nros_client_options_t;
 
 /**
+ * A subscription the CALLER drains, with no executor (phase-487 W1).
+ *
+ * The C counterpart of C++'s `nros::PollSubscription<M>` and Rust's
+ * `create_polling_subscription`. Nothing dispatches it, so it has no arena
+ * slot and keeps its subscriber in its own storage: `_opaque` holds a
+ * `RawSubscription<MESSAGE_BUFFER_SIZE>` (subscriber, receive buffer and
+ * event registrations) from `nros_polling_subscription_init*` until
+ * `nros_polling_subscription_fini`. Zero-initialised is UNINITIALIZED.
+ *
+ * It was the `NROS_SUBSCRIPTION_STATE_POLLING` state of
+ * `nros_subscription_t` until phase-487, which made every dispatched
+ * subscription carry this storage unused.
+ */
+typedef struct nros_polling_subscription_t {
+  /**
+   * Current state: UNINITIALIZED, INITIALIZED (subscriber live) or SHUTDOWN.
+   */
+  enum nros_subscription_state_t state;
+  /**
+   * The node the subscriber was created on, kept so `fini` can refuse a
+   * teardown after the node's (`NROS_RET_STALE_NODE`).
+   */
+  struct nros_node_ref_t node;
+  /**
+   * Inline storage for the `RawSubscription`. Internal: treat as opaque.
+   */
+  uint64_t _opaque[SUBSCRIPTION_OPAQUE_U64S];
+} nros_polling_subscription_t;
+
+/**
  * Phase 189.M3 — rclc-style named subscription options.
  *
  * Sits ALONGSIDE the QoS profile (rclc convention): QoS is passed
@@ -2804,7 +2822,7 @@ typedef struct nros_subscription_options_t {
    * bind), matching the `nros_node_options_t::sched_context_id`
    * convention. A non-zero value must be an id previously returned
    * from `nros_executor_create_sched_context`; the bind is applied by
-   * `nros_executor_add_subscription` once the handle exists. Has
+   * `nros_executor_add_subscription_*` once the handle exists. Has
    * no effect on the L1 polling path.
    */
   nros_sched_context_id_t sched_context;
@@ -2825,7 +2843,7 @@ typedef struct nros_subscription_options_t {
 
 /**
  * Phase 252 / issue 0073 — E2E message-integrity status surfaced to the C/C++
- * receive path ([`nros_subscription_take_validated`]). The C analog of the
+ * receive path ([`nros_polling_subscription_take_validated`]). The C analog of the
  * Rust `IntegrityStatus` / `CallbackCtx::integrity()`.
  */
 typedef struct nros_integrity_status_t {
@@ -5348,7 +5366,7 @@ nros_ret_t rclc_executor_set_semantics(struct nros_executor_t *executor,
  * namespace(...).sched(...).build()`. Materialises a Node inside the
  * executor's node table and stores the returned NodeId in
  * `node.node_id` so subsequent
- * [`nros_executor_add_subscription`] / `_service` / `_client` /
+ * [`nros_executor_add_subscription_raw`] / `_service` / `_client` /
  * `_action_*` calls route through `register_*_on(NodeId, ...)`
  * instead of the legacy single-Node path.
  *
@@ -5508,21 +5526,6 @@ bool nros_executor_trigger_index(const struct nros_executor_trigger_handle_t *ha
                                  void *obj);
 
 /**
- * Add a subscription to the executor.
- *
- * Extracts metadata from the subscription struct and registers a raw-bytes
- * callback with the internal nros-node executor. The RMW subscriber handle
- * is created here (moved from subscription init).
- *
- * # Safety
- * * All pointers must be valid and point to initialized objects
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_add_subscription(struct nros_executor_t *executor,
-                                          struct nros_subscription_t *subscription,
-                                          enum nros_executor_handle_invocation_t invocation);
-
-/**
  * phase-417 W5.a (RFC-0089 stage 5) — add a subscription that delivers a
  * **deserialised message** into storage the CALLER owns.
  *
@@ -5554,7 +5557,7 @@ nros_ret_t nros_executor_add_subscription(struct nros_executor_t *executor,
  * operates under the same constraint, so the stated reason was refuted by the
  * thing it was compared against (issue 1022, W-C3).
  *
- * The byte-oriented [`nros_executor_add_subscription`] is untouched and stays.
+ * The byte-oriented [`nros_executor_add_subscription_raw`] is untouched and stays.
  * This is additive; a raw subscriber is a legitimate thing to want.
  *
  * # What the callback sees when decoding fails
@@ -5571,25 +5574,14 @@ nros_ret_t nros_executor_add_subscription(struct nros_executor_t *executor,
  * (`str_len > max_len`), and a bounded sequence fails on
  * `len > capacity` — both return `-1` rather than writing a short value.
  *
- * # The subscription's own callback and context are not used on this path
- * `subscription->callback` and `subscription->context` (given to
- * `nros_subscription_init`) belong to the RAW registration and are **not read
- * here**: the typed callback and its `context` are supplied at registration,
- * exactly as rclc's `rclc_executor_add_subscription_with_context` does. Taking
- * the context from two places would be two sources for one value and therefore
- * a place for them to disagree.
- *
- * What IS read from the subscription is what describes the ENTITY — topic,
- * type name, type hash, QoS, node binding, and the scheduling context
- * requested via `nros_subscription_init_with_options`.
- *
- * CORRECTED 2026-09-13 — this paragraph used to say `nros_subscription_init`
- * rejects a NULL callback, so a typed-only user had to pass one that never
- * fires, and to leave the fix to `nros/subscription.h`'s owner. Both halves
- * are stale: the six-argument `nros_subscription_init` is GONE (stage 6 step
- * B) and `rclc_subscription_init_default` takes no callback at all, so a
- * typed-only caller passes nothing to leave NULL. `nros_subscription_init_with_qos`
- * still accepts one in the old position and accepts NULL there.
+ * # What is read from the subscription
+ * What describes the ENTITY — topic, type name, type hash, QoS, node binding,
+ * and the scheduling context requested via
+ * `nros_subscription_init_with_options`. The typed callback and its `context`
+ * are supplied here, exactly as rclc's
+ * `rclc_executor_add_subscription_with_context` does, and the arena entry
+ * owns them; the subscription struct has had no callback field since
+ * phase-487 W1.
  *
  * # Safety
  * * `executor` and `subscription` must be valid, initialised objects.
@@ -5646,9 +5638,15 @@ nros_ret_t nros_executor_add_subscription_typed_sized(struct nros_executor_t *ex
  * wear its name (RFC-0089's compile-or-conform rule — a plausible name over an
  * opposite data contract is the defect the RFC exists to prevent).
  *
- * `callback` may be NULL, which registers the subscription with nothing to
- * dispatch — the same state `nros_executor_add_subscription` sees for a
- * subscription initialised by `rclc_subscription_init_default` alone.
+ * The arena entry owns `callback` and `context` from here on; the
+ * subscription struct keeps neither (phase-487 W1). This replaced the
+ * three-argument `nros_executor_add_subscription`, which dispatched the
+ * callback an init call had stored in the struct.
+ *
+ * # Returns
+ * As [`nros_executor_add_subscription_typed`]; `NROS_RET_INVALID_ARGUMENT`
+ * for a NULL `callback`, since an entry with nothing to dispatch would hold a
+ * subscriber and a slot for no reader.
  *
  * # Safety
  * * `executor` and `subscription` must be valid, initialised objects.
@@ -5668,7 +5666,7 @@ nros_ret_t nros_executor_add_subscription_raw(struct nros_executor_t *executor,
  * generic-with-info subscription). Direct-arg form (no `nros_subscription_t`
  * struct): the callback signature differs from the plain
  * `nros_subscription_callback_t`, so this is its own entry point rather than
- * a flag on `nros_executor_add_subscription`.
+ * a flag on `nros_executor_add_subscription_raw`.
  *
  * **Not removable** (issue 1668): it takes no subscription object and hands
  * back nothing, so its entry — slot, arena bytes and subscriber — lives
@@ -5724,7 +5722,7 @@ nros_ret_t nros_executor_add_subscription_raw_with_info(struct nros_executor_t *
  * `callback` field is left untouched; `callback` here is the one dispatched.
  *
  * # Returns
- * As [`nros_executor_add_subscription`]; `NROS_RET_INVALID_ARGUMENT` for a
+ * As [`nros_executor_add_subscription_raw`]; `NROS_RET_INVALID_ARGUMENT` for a
  * NULL `callback`.
  *
  * # Safety
@@ -5754,10 +5752,14 @@ nros_ret_t rclc_executor_add_timer(struct nros_executor_t *executor,
 /**
  * Phase 273 (RFC-0047) — register a subscription in a named callback group.
  *
- * Identical to `nros_executor_add_subscription` but additionally passes
- * the group name to the executor so the seeded `group_sched_table` can bind
- * the callback to the group's `SchedContext`. `callback_group` may be NULL or
- * an empty string — both behave identically to `nros_executor_add_subscription`.
+ * Identical to [`nros_executor_add_subscription_raw`] but additionally
+ * passes the group name to the executor so the seeded `group_sched_table`
+ * can bind the callback to the group's `SchedContext`. `callback_group` may
+ * be NULL or an empty string — both behave identically to
+ * `nros_executor_add_subscription_raw`.
+ *
+ * phase-487 W1 — `callback` and `context` are arguments here, as on the
+ * `_raw` path; the subscription struct no longer stores them.
  *
  * # Safety
  * All non-NULL pointers must be valid and point to initialized objects.
@@ -5765,6 +5767,8 @@ nros_ret_t rclc_executor_add_timer(struct nros_executor_t *executor,
 NROS_PUBLIC
 nros_ret_t nros_executor_add_subscription_in_group(struct nros_executor_t *executor,
                                                    struct nros_subscription_t *subscription,
+                                                   nros_subscription_callback_t callback,
+                                                   void *context,
                                                    enum nros_executor_handle_invocation_t invocation,
                                                    const char *callback_group);
 
@@ -8368,6 +8372,11 @@ nros_ret_t nros_client_response_subscription_get_actual_qos(const struct nros_cl
                                                             struct nros_qos_t *out_qos);
 
 /**
+ * Get a zero-initialized polling subscription.
+ */
+NROS_PUBLIC struct nros_polling_subscription_t nros_get_zero_initialized_polling_subscription(void);
+
+/**
  * Get a zero-initialized subscription.
  */
 NROS_PUBLIC struct nros_subscription_t rcl_get_zero_initialized_subscription(void);
@@ -8412,9 +8421,9 @@ NROS_PUBLIC struct nros_subscription_options_t rcl_subscription_get_default_opti
  * our codegen either way.
  *
  * The six-argument `nros_subscription_init` is GONE (phase-417 stage 6 step
- * B retired it). Its behaviour is not: [`nros_subscription_init_with_qos`]
- * still carries the callback in the old positions, so a caller who needs the
- * old shape names that instead.
+ * B retired it), and since phase-487 no init entry point takes a callback:
+ * the subscription struct no longer has anywhere to keep one, because the
+ * executor arena owns it.
  *
  * # Parameters
  * * `subscription` - Pointer to a zero-initialized subscription
@@ -8441,16 +8450,23 @@ nros_ret_t rclc_subscription_init_default(struct nros_subscription_t *subscripti
 /**
  * Initialize a subscription with custom QoS.
  *
+ * rclc's `rclc_subscription_init` shape: `(subscription, node, type, topic,
+ * qos)`. phase-487 W1 removed the `callback` and `context` this took
+ * between the topic and the QoS. The struct stored them only for
+ * the (since removed) three-argument `nros_executor_add_subscription` to read back, and the arena kept its own
+ * copies; the callback is now supplied at registration, by
+ * `nros_executor_add_subscription_raw` / `_typed` / `_with_info`.
+ *
  * # Safety
- * See `nros_subscription_init` for safety requirements.
+ * * All required pointers must be valid
+ * * `topic_name` must be a valid null-terminated string
+ * * `qos` may be NULL (default) or point to a valid `nros_qos_t`
  */
 NROS_PUBLIC
 nros_ret_t nros_subscription_init_with_qos(struct nros_subscription_t *subscription,
                                            const struct nros_node_t *node,
                                            const struct nros_message_type_t *type_info,
                                            const char *topic_name,
-                                           nros_subscription_callback_t callback,
-                                           void *context,
                                            const struct nros_qos_t *qos);
 
 /**
@@ -8460,7 +8476,7 @@ nros_ret_t nros_subscription_init_with_qos(struct nros_subscription_t *subscript
  * default) and the non-QoS axes ride in `options` (NULL = defaults).
  * Behaves exactly like [`nros_subscription_init_with_qos`] except that
  * a non-zero `options->sched_context` is stashed on the subscription so
- * that `nros_executor_add_subscription` binds the resulting
+ * that `nros_executor_add_subscription_*` binds the resulting
  * executor handle to that scheduling context once the handle is known
  * (entity creation is deferred to registration, so the handle does not
  * exist at init time). `options->message_info` is RESERVED and ignored
@@ -8471,8 +8487,6 @@ nros_ret_t nros_subscription_init_with_qos(struct nros_subscription_t *subscript
  * * `node` - Pointer to an initialized node
  * * `type_info` - Pointer to message type information
  * * `topic_name` - Topic name (null-terminated string)
- * * `callback` - Callback function to invoke when messages arrive
- * * `context` - User context pointer passed to callback (can be NULL)
  * * `qos` - Pointer to QoS settings (NULL for default)
  * * `options` - Pointer to subscription options (NULL for defaults)
  *
@@ -8492,8 +8506,6 @@ nros_ret_t nros_subscription_init_with_options(struct nros_subscription_t *subsc
                                                const struct nros_node_t *node,
                                                const struct nros_message_type_t *type_info,
                                                const char *topic_name,
-                                               nros_subscription_callback_t callback,
-                                               void *context,
                                                const struct nros_qos_t *qos,
                                                const struct nros_subscription_options_t *options);
 
@@ -8502,10 +8514,10 @@ nros_ret_t nros_subscription_init_with_options(struct nros_subscription_t *subsc
  *
  * Creates the underlying RMW subscriber immediately and stores it
  * inline in the subscription's `_opaque` field. The caller drains
- * received messages via `nros_subscription_take_serialized`.
+ * received messages via `nros_polling_subscription_take_serialized`.
  *
  * Uses default QoS (RELIABLE, KEEP_LAST(10)). For custom QoS, use
- * `nros_subscription_init_polling_with_qos`.
+ * `nros_polling_subscription_init_with_qos`.
  *
  * # Parameters
  * * `subscription` - Pointer to a zero-initialized subscription
@@ -8524,7 +8536,7 @@ nros_ret_t nros_subscription_init_with_options(struct nros_subscription_t *subsc
  * * `topic_name` must be a valid null-terminated string
  */
 NROS_PUBLIC
-nros_ret_t nros_subscription_init_polling(struct nros_subscription_t *subscription,
+nros_ret_t nros_polling_subscription_init(struct nros_polling_subscription_t *subscription,
                                           const struct nros_node_t *node,
                                           const struct nros_message_type_t *type_info,
                                           const char *topic_name);
@@ -8532,14 +8544,14 @@ nros_ret_t nros_subscription_init_polling(struct nros_subscription_t *subscripti
 /**
  * Phase 122.3.b — initialize an L1 polling-mode subscription with custom QoS.
  *
- * See `nros_subscription_init_polling` for the threading + lifecycle
+ * See `nros_polling_subscription_init` for the threading + lifecycle
  * contract.
  *
  * # Safety
- * See `nros_subscription_init_polling`.
+ * See `nros_polling_subscription_init`.
  */
 NROS_PUBLIC
-nros_ret_t nros_subscription_init_polling_with_qos(struct nros_subscription_t *subscription,
+nros_ret_t nros_polling_subscription_init_with_qos(struct nros_polling_subscription_t *subscription,
                                                    const struct nros_node_t *node,
                                                    const struct nros_message_type_t *type_info,
                                                    const char *topic_name,
@@ -8558,10 +8570,10 @@ nros_ret_t nros_subscription_init_polling_with_qos(struct nros_subscription_t *s
  * subscription's lifetime.
  */
 NROS_PUBLIC
-nros_ret_t nros_subscription_set_wake_callback(struct nros_subscription_t *subscription,
-                                               struct nros_wake_state_t *state,
-                                               void (*cb)(void*),
-                                               void *ctx);
+nros_ret_t nros_polling_subscription_set_wake_callback(struct nros_polling_subscription_t *subscription,
+                                                       struct nros_wake_state_t *state,
+                                                       void (*cb)(void*),
+                                                       void *ctx);
 
 /**
  * Phase 122.3.b — non-blocking poll on an L1 polling-mode
@@ -8570,7 +8582,7 @@ nros_ret_t nros_subscription_set_wake_callback(struct nros_subscription_t *subsc
  * error.
  *
  * # Parameters
- * * `subscription` - Pointer to a POLLING-state subscription
+ * * `subscription` - Pointer to an initialized polling subscription
  * * `buf` - Caller-supplied buffer to receive the message bytes
  * * `buf_len` - Capacity of `buf`
  *
@@ -8580,18 +8592,18 @@ nros_ret_t nros_subscription_set_wake_callback(struct nros_subscription_t *subsc
  * * `NROS_RET_ERROR` on transport failure
  *
  * # Safety
- * * `subscription` must be in `POLLING` state
+ * * `subscription` must be an initialized polling subscription
  * * `buf` must point to writable memory of at least `buf_len` bytes
  */
 NROS_PUBLIC
-int32_t nros_subscription_take_serialized(struct nros_subscription_t *subscription,
-                                          uint8_t *buf,
-                                          size_t buf_len);
+int32_t nros_polling_subscription_take_serialized(struct nros_polling_subscription_t *subscription,
+                                                  uint8_t *buf,
+                                                  size_t buf_len);
 
 /**
  * Phase 252 / issue 0073 — non-blocking poll that ALSO returns the E2E
  * integrity status (CRC + sequence gap/dup) of the received sample. The
- * safety-e2e analog of [`nros_subscription_take_serialized`]: it requests
+ * safety-e2e analog of [`nros_polling_subscription_take_serialized`]: it requests
  * validation on the backend (the zenoh shim recomputes + compares the CRC
  * attachment and tracks the sequence) and writes the verdict to `*out_status`.
  *
@@ -8602,19 +8614,19 @@ int32_t nros_subscription_take_serialized(struct nros_subscription_t *subscripti
  * # Returns
  * * `>= 0` — number of bytes copied into `buf` (0 = no data available)
  * * `NROS_RET_INVALID_ARGUMENT` if `subscription`/`buf` is NULL
- * * `NROS_RET_BAD_SEQUENCE` if the subscription is not in POLLING state
+ * * `NROS_RET_BAD_SEQUENCE` if the polling subscription is not initialized
  * * `NROS_RET_ERROR` on transport failure
  *
  * # Safety
- * * `subscription` must be a valid POLLING subscription
+ * * `subscription` must be an initialized polling subscription
  * * `buf` must point to writable memory of at least `buf_len` bytes
  * * `out_status`, if non-NULL, must point to a writable `nros_integrity_status_t`
  */
 NROS_PUBLIC
-int32_t nros_subscription_take_validated(struct nros_subscription_t *subscription,
-                                         uint8_t *buf,
-                                         size_t buf_len,
-                                         struct nros_integrity_status_t *out_status);
+int32_t nros_polling_subscription_take_validated(struct nros_polling_subscription_t *subscription,
+                                                 uint8_t *buf,
+                                                 size_t buf_len,
+                                                 struct nros_integrity_status_t *out_status);
 
 /**
  * Phase 124.A.6 — borrow a read-only view of the next available message
@@ -8626,7 +8638,7 @@ int32_t nros_subscription_take_validated(struct nros_subscription_t *subscriptio
  *
  * Bypasses the subscription's staging buffer. On success, `*out_buf`
  * points at `*out_len` bytes the caller can read directly. Caller MUST
- * pass `*out_token` back to [`nros_subscription_release`] before
+ * pass `*out_token` back to [`nros_polling_subscription_release`] before
  * requesting another borrow on the same subscription — only one
  * outstanding view per subscription at a time.
  *
@@ -8654,10 +8666,10 @@ int32_t nros_subscription_take_validated(struct nros_subscription_t *subscriptio
  * * `out_buf` / `out_len` / `out_token` must be valid pointers.
  */
 NROS_PUBLIC
-int32_t nros_subscription_borrow(struct nros_subscription_t *subscription,
-                                 const uint8_t **out_buf,
-                                 size_t *out_len,
-                                 void **out_token);
+int32_t nros_polling_subscription_borrow(struct nros_polling_subscription_t *subscription,
+                                         const uint8_t **out_buf,
+                                         size_t *out_len,
+                                         void **out_token);
 
 /**
  * Phase 124.A.6 — release a previously borrowed view.
@@ -8665,20 +8677,20 @@ int32_t nros_subscription_borrow(struct nros_subscription_t *subscription,
  * **Availability:** requires `lending` AND `alloc`, and no shipped build
  * enables `lending` — see `nros_publisher_loan`. Issue 0814.
  *
- * `token` MUST come from a prior `nros_subscription_borrow` on the
+ * `token` MUST come from a prior `nros_polling_subscription_borrow` on the
  * SAME subscription; consuming it is mandatory before the
  * subscription's next borrow / destroy.
  *
  * **Requires `alloc` as well as `lending`** — it unboxes the `RecvView`
- * its paired `nros_subscription_borrow` boxed. See that function.
+ * its paired `nros_polling_subscription_borrow` boxed. See that function.
  *
  * # Safety
  * * `subscription` must be the subscription the token was borrowed from.
  * * `token` must not be NULL and must not be reused after this call.
  */
 NROS_PUBLIC
-nros_ret_t nros_subscription_release(struct nros_subscription_t *subscription,
-                                     void *token);
+nros_ret_t nros_polling_subscription_release(struct nros_polling_subscription_t *subscription,
+                                             void *token);
 
 /**
  * Phase 124.D.1 — burst-take. Drain up to `max_msgs` queued samples
@@ -8694,18 +8706,18 @@ nros_ret_t nros_subscription_release(struct nros_subscription_t *subscription,
  * as the count, never as an error.
  *
  * # Safety
- * * `subscription` must be in `POLLING` state.
+ * * `subscription` must be an initialized polling subscription.
  * * `buf` must point to writable memory of at least
  *   `max_msgs * per_msg_cap` bytes.
  * * `out_lens` must point to a writable array of at least
  *   `max_msgs` `size_t` slots.
  */
 NROS_PUBLIC
-int32_t nros_subscription_take_sequence(struct nros_subscription_t *subscription,
-                                        uint8_t *buf,
-                                        size_t per_msg_cap,
-                                        size_t max_msgs,
-                                        size_t *out_lens);
+int32_t nros_polling_subscription_take_sequence(struct nros_polling_subscription_t *subscription,
+                                                uint8_t *buf,
+                                                size_t per_msg_cap,
+                                                size_t max_msgs,
+                                                size_t *out_lens);
 
 /**
  * The QoS profile this subscription is ACTUALLY running — issue 1437.
@@ -8716,20 +8728,17 @@ int32_t nros_subscription_take_sequence(struct nros_subscription_t *subscription
  * `NROS_QOS_*_UNKNOWN` rather than as your request, and why this API returns
  * a status with an out-parameter where `rcl` returns an interior pointer.
  *
- * Answers on BOTH roads a C subscription can be on: the L1 polling road,
- * where the subscriber is inline in the handle, and the L2 callback road,
- * where the executor arena owns it and the handle carries only
- * `(executor, handle_id)`. The callback road is the one `rclc`-shaped code
- * takes, so an accessor that served only the first would be missing where it
- * is most used.
+ * The executor arena owns this subscription's subscriber and the handle
+ * carries only `(executor, handle_id)`, so the answer is read through the
+ * arena. A polled subscription answers through
+ * [`nros_polling_subscription_get_actual_qos`].
  *
  * # Returns
  * * `NROS_RET_OK` on success
  * * `NROS_RET_INVALID_ARGUMENT` if either pointer is NULL
- * * `NROS_RET_NOT_INIT` if the subscription is in neither state, or is in
- *   the callback state but has not been added to an executor yet — there is
- *   no entity to ask, which is a different answer from `UNKNOWN` ("there is
- *   an entity and it cannot say")
+ * * `NROS_RET_NOT_INIT` if the subscription is not initialised, or has not
+ *   been added to an executor yet — there is no entity to ask, which is a
+ *   different answer from `UNKNOWN` ("there is an entity and it cannot say")
  *
  * # Safety
  * * `subscription` must be a valid pointer to an initialized subscription.
@@ -8740,11 +8749,52 @@ nros_ret_t nros_subscription_get_actual_qos(const struct nros_subscription_t *su
                                             struct nros_qos_t *out_qos);
 
 /**
+ * The QoS profile a polled subscription is ACTUALLY running.
+ *
+ * The polled twin of [`nros_subscription_get_actual_qos`]: the subscriber is
+ * inline in the struct, so it answers directly.
+ *
+ * # Returns
+ * * `NROS_RET_OK` on success
+ * * `NROS_RET_INVALID_ARGUMENT` if either pointer is NULL
+ * * `NROS_RET_NOT_INIT` if the polling subscription is not initialised
+ *
+ * # Safety
+ * * `subscription` must be a valid pointer.
+ * * `out_qos` must be a valid, writable `nros_qos_t`.
+ */
+NROS_PUBLIC
+nros_ret_t nros_polling_subscription_get_actual_qos(struct nros_polling_subscription_t *subscription,
+                                                    struct nros_qos_t *out_qos);
+
+/**
+ * Finalize a polled subscription: drops the inline subscriber, which closes
+ * the RMW entity.
+ *
+ * # Returns
+ * * `NROS_RET_OK` on success
+ * * `NROS_RET_INVALID_ARGUMENT` if `subscription` is NULL
+ * * `NROS_RET_NOT_INIT` if it is not initialised
+ * * `NROS_RET_STALE_NODE` if its node has already been finalised — the
+ *   teardown order was wrong, and nothing is dropped (issue 1386).
+ *
+ * # Safety
+ * * `subscription` must be a valid pointer
+ */
+NROS_PUBLIC
+nros_ret_t nros_polling_subscription_fini(struct nros_polling_subscription_t *subscription);
+
+/**
+ * Finalize a subscription.
+ *
+ * The subscriber is the executor arena's: remove it with
+ * `nros_executor_remove_subscription` first if it was added. This resets
+ * the description and the handle.
+ *
  * # Returns
  * * `NROS_RET_OK` on success
  * * `NROS_RET_INVALID_ARGUMENT` if `subscription` is NULL
  * * `NROS_RET_NOT_INIT` if it is in no finalisable state
- * * `NROS_RET_STALE_NODE` if a POLLING subscription's node has already been
  *   finalised — the teardown order was wrong, and nothing is dropped. Stated
  *   here because of issue 1386: that issue is three sites documenting a
  *   stale-node verdict they could not produce, and the same sweep found this

@@ -68,12 +68,6 @@ _Static_assert(NROS_DECLARED_DEPTH_OR(NROS_DECLARED_DEPTH("std_msgs/msg/Bool", "
 
 /* -- The macro, in the shape a C node's setup writes ----------------------- */
 
-static void on_msg(const uint8_t* data, size_t len, void* ctx) {
-    (void)data;
-    (void)len;
-    (void)ctx;
-}
-
 /* The DEPTH a C call site states. A literal in a macro argument is the one
  * shape that survives to `_Static_assert`: `nros_qos_default()`'s `.depth` is a
  * struct field, and `NROS_QOS_DEFAULT` is an `extern const` object resolved at
@@ -93,8 +87,7 @@ nros_ret_t nros_c_declared_qos_compile_test(struct nros_subscription_t* sub,
     qos.depth = CHATTER_DEPTH;
     NROS_ASSERT_DECLARED_DEPTH("std_msgs::msg::dds_::Int32_", "/chatter", CHATTER_DEPTH,
                                "\"/chatter\"");
-    nros_ret_t rc =
-        nros_subscription_init_with_qos(sub, node, type_info, "/chatter", on_msg, NULL, &qos);
+    nros_ret_t rc = nros_subscription_init_with_qos(sub, node, type_info, "/chatter", &qos);
     if (rc != NROS_RET_OK) {
         return rc;
     }
@@ -104,7 +97,7 @@ nros_ret_t nros_c_declared_qos_compile_test(struct nros_subscription_t* sub,
     struct nros_qos_t other = NROS_QOS_DEFAULT;
     other.depth = 4;
     NROS_ASSERT_DECLARED_DEPTH("std_msgs::msg::dds_::Bool_", "/undeclared", 4, "\"/undeclared\"");
-    rc = nros_subscription_init_with_qos(sub, node, type_info, "/undeclared", on_msg, NULL, &other);
+    rc = nros_subscription_init_with_qos(sub, node, type_info, "/undeclared", &other);
     if (rc != NROS_RET_OK) {
         return rc;
     }

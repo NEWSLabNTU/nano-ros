@@ -1,5 +1,5 @@
 /// @file main.c
-/// @brief C E2E-safety listener — polls `nros_subscription_take_validated`
+/// @brief C E2E-safety listener — polls `nros_polling_subscription_take_validated`
 ///        and prints the per-message integrity status (CRC + sequence gap/dup).
 ///
 /// Issue 0073 — the C analog of the Rust declarative-safety-listener. Pairs with
@@ -25,7 +25,7 @@
 static struct {
     nros_support_t support;
     nros_node_t node;
-    nros_subscription_t subscription;
+    nros_polling_subscription_t subscription;
 } app;
 
 int nros_app_main(int argc, char** argv) {
@@ -48,7 +48,7 @@ int nros_app_main(int argc, char** argv) {
     NROS_CHECK_RET(rclc_node_init_default(&app.node, "c_safety_listener", "/", &app.support), 1);
 
     // Polling-mode subscription — the validated receive path is poll-only.
-    NROS_CHECK_RET(nros_subscription_init_polling(&app.subscription, &app.node,
+    NROS_CHECK_RET(nros_polling_subscription_init(&app.subscription, &app.node,
                                                   std_msgs_msg_int32_get_type_support(),
                                                   "/chatter"),
                    1);
@@ -58,7 +58,8 @@ int nros_app_main(int argc, char** argv) {
     int count = 0;
     for (;;) {
         nros_integrity_status_t status;
-        int32_t n = nros_subscription_take_validated(&app.subscription, buf, sizeof(buf), &status);
+        int32_t n =
+            nros_polling_subscription_take_validated(&app.subscription, buf, sizeof(buf), &status);
         if (n > 0) {
             std_msgs_msg_int32 msg;
             std_msgs_msg_int32_init(&msg);
@@ -78,7 +79,7 @@ int nros_app_main(int argc, char** argv) {
         }
     }
 
-    nros_subscription_fini(&app.subscription);
+    nros_polling_subscription_fini(&app.subscription);
     rcl_node_fini(&app.node);
     rclc_support_fini(&app.support);
     return 0;

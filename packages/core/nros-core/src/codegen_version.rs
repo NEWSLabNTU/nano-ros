@@ -35,7 +35,7 @@
 ///
 /// Gated by `check-codegen-version-surface`, which fails when the surface
 /// generated code names changes and this constant does not.
-pub const NROS_CODEGEN_VERSION: u32 = 10;
+pub const NROS_CODEGEN_VERSION: u32 = 11;
 
 /// The oldest codegen version this runtime still accepts.
 ///
@@ -169,6 +169,16 @@ pub const NROS_CODEGEN_VERSION: u32 = 10;
 /// replace the version mismatch this constant reports with a wall of
 /// unresolved-name errors. Rust and C trees are unaffected by the move, but the
 /// version is one number for all three, so they regenerate too.
+///
+/// Still 10 while [`NROS_CODEGEN_VERSION`] moved to 11 (phase-487 W1). The
+/// surface the gate saw move is `subscription.h`'s `static inline`
+/// `rclc_subscription_init_best_effort`, whose body forwards to
+/// `nros_subscription_init_with_qos` and lost the two `NULL`s that function no
+/// longer takes. Generated C does not call either: a message header's typed
+/// registration is `nros_executor_add_subscription_typed_sized`, whose
+/// signature is unchanged, and it passes `struct nros_subscription_t *`, whose
+/// layout shrank but which generated code never dereferences. A version-10
+/// tree therefore still compiles and runs.
 ///
 /// The range `[NROS_CODEGEN_VERSION_MIN, NROS_CODEGEN_VERSION]` is expressed to
 /// C and C++ as a SET OF DEFINED SYMBOLS rather than as a comparison — see

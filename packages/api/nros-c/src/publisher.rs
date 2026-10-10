@@ -1213,10 +1213,10 @@ mod name_resolution_tests {
         // The call `nros_publisher_init_with_qos` makes.
         let publisher_side = unsafe { resolve_entity_name_on_node(&node, "chatter") }
             .expect("a relative name on a named node must resolve");
-        // The call `nros_subscription_init_polling_with_qos` makes.
+        // The call `nros_polling_subscription_init_with_qos` makes.
         let subscription_side = unsafe { resolve_entity_name_on_node(&node, "chatter") }
             .expect("a relative name on a named node must resolve");
-        // What the executor-registration path (`nros_executor_add_subscription`
+        // What the executor-registration path (`nros_executor_add_subscription_*`
         // → `Executor::resolve_entity_name_for`) computes for the same input.
         let registration_side =
             nros_node::names::resolve_name("chatter", "talker", "/ns", core::iter::empty())
