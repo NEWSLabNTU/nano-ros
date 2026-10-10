@@ -540,6 +540,10 @@ pub fn ensure_model(
     // caching bug in cargo. (Observed exactly that: three consecutive
     // `cargo check`s each re-checked the entry with nothing edited.)
     if is_fresh(&out, &inputs) {
+        // phase-486 W1 — the overlay is a function of `system.toml` alone, and
+        // write-if-changed, so writing it on the fresh path too costs nothing
+        // and gives a model resolved before W1 its overlay without a re-resolve.
+        crate::overlay::write_beside(&out, &system_toml)?;
         return Ok((out, inputs));
     }
 
@@ -564,6 +568,8 @@ pub fn ensure_model(
             String::from_utf8_lossy(&output.stderr).trim(),
         ));
     }
+    // phase-486 W1 — every model this function writes gets its overlay.
+    crate::overlay::write_beside(&out, &system_toml)?;
     // The SELF-RESOLVED model is deliberately NOT added to `inputs`: the caller
     // registers those as build dependencies, and an artifact this function may
     // rewrite is exactly the wrong thing to depend on — that is the perpetual
