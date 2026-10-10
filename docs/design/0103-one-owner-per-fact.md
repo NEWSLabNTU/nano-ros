@@ -229,6 +229,11 @@ that to every row rather than adding a second spelling:
   must never be written). Measured on zenoh-pico (D5-M below): no `.git` in
   the tree, so issue 1336's layout trap cannot occur, and every mtime is the
   commit time and never moves, so the fixture treadmill stops for these trees.
+- **A source a cargo `path =` dependency reaches (`nuttx-libc`, `px4-rs`), or
+  one a build PATCHES in place (`cyclonedds-src`, by the Zephyr lane), also
+  stays a checkout source** (phase-484 W3c): cargo resolves a path dependency
+  at manifest parse, before any ladder runs, and a patched tree cannot be a
+  read-only shared one.
 - **A source whose build writes INTO its tree stays a checkout/workspace
   source**: measured, `nuttx-kernel` (674 build entries in-tree),
   `nuttx-apps` (273) and `px4-autopilot` (`$PX4_DIR/build/`). Every other row

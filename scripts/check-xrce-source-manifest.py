@@ -51,6 +51,7 @@ from pathlib import Path
 import sys as _w3_sys  # noqa: E402
 from pathlib import Path as _W3Path  # noqa: E402
 _w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
+from source_locate import located_or_dest  # noqa: E402  RFC-0103 D5: the tree is located
 import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 
 REPO = Path(__file__).resolve().parent.parent
@@ -68,8 +69,8 @@ CMAKE = XRCE / "nros-rmw-xrce/CMakeLists.txt"
 
 # tree name → root, relative to the repo. Both lanes spell the same three.
 TREES = {
-    "uxr": "packages/rmw/xrce/xrce-sys/micro-xrce-dds-client/src/c",
-    "ucdr": "packages/rmw/xrce/xrce-sys/micro-cdr/src/c",
+    "uxr": str(located_or_dest("micro-xrce-dds-client") / "src/c"),  # located, RFC-0103 D5
+    "ucdr": str(located_or_dest("micro-cdr") / "src/c"),
     "backend": "packages/rmw/xrce/nros-rmw-xrce/src",
 }
 # Trees that arrive as git submodules — absent in a clone that has not run
