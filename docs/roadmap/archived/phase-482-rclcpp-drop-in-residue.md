@@ -1,15 +1,15 @@
 # Phase 482 — a ported ROS 2 C++ node builds and runs on every platform, with no compat layer
 
-**Status (2026-10-07). Opened.** Consolidates the open residue of four phases
+**Status (2026-10-11). Done; archived.** W1–W7 are done; 209.G.4, the larger real-world port fixture, moved to [phase-488](../phase-488-larger-cpp-port-fixture.md) unattempted. Consolidates the open residue of four phases
 that each owned a slice of the same acceptance, and archives them:
-[phase-209](archived/phase-209-cpp-port-friction-reduction.md) (C++ port
-friction), [phase-379](archived/phase-379-api-parity-with-ros2-client-libraries.md)
+[phase-209](phase-209-cpp-port-friction-reduction.md) (C++ port
+friction), [phase-379](phase-379-api-parity-with-ros2-client-libraries.md)
 (API parity measurement),
-[phase-417](archived/phase-417-ros2-api-adoption.md) (ROS 2 API adoption) and
-[phase-442](archived/phase-442-one-freestanding-rclcpp-api.md) (one freestanding
+[phase-417](phase-417-ros2-api-adoption.md) (ROS 2 API adoption) and
+[phase-442](phase-442-one-freestanding-rclcpp-api.md) (one freestanding
 `rclcpp` API). Implements what is left of
-[RFC-0089](../design/0089-ros2-api-adoption-and-the-compile-or-conform-rule.md)
-and [RFC-0096](../design/0096-cpp-freestanding-core-and-porting-layer.md).
+[RFC-0089](../../design/0089-ros2-api-adoption-and-the-compile-or-conform-rule.md)
+and [RFC-0096](../../design/0096-cpp-freestanding-core-and-porting-layer.md).
 
 ## Why one phase
 
@@ -225,7 +225,9 @@ Measured: `cargo nextest run -p nros-tests --test port_templates_e2e`, 9/9 pass
 (the three minimal-publisher cells plus the six new ones), with the fixtures
 built through the FreeRTOS cmake lane and the west lane.
 
-Open: G.4, the larger real-world port fixture. It was not attempted here.
+G.4, the larger real-world port fixture, was not attempted here. It moved to
+[phase-488](../phase-488-larger-cpp-port-fixture.md) on 2026-10-11 when this
+phase was archived: W3's acceptance line holds without it.
 
 ### W4 — `rclcpp_lifecycle::LifecycleNode`
 
@@ -356,7 +358,7 @@ Rust `#[deprecated]` items, and the two unused C macros. One changelog entry
 | 1302 | Resolved. The refusal names the `clock` argument, and its five rows agree. |
 | 0783 | Resolved. `TransportError` got a `Display`, and the `NodeError` row is corrected. |
 | 0784 | Resolved by phase-483 W2–W4: `nros::Node` is the one node type, the component trait is `nros::Component`, the zero-consumer types are deleted and `StandaloneNode` left the facade. |
-| 1335 | Re-scoped. The C++ half is done. The nros-c half was decided on 2026-10-10 (C follows the C++ rule) and moved to [phase-487](phase-487-c-api-dispatch-entities-are-arena-handles.md). |
+| 1335 | Re-scoped. The C++ half is done. The nros-c half was decided on 2026-10-10 (C follows the C++ rule) and moved to [phase-487](../phase-487-c-api-dispatch-entities-are-arena-handles.md). |
 | 1303 | Resolved 2026-10-10. The route was already fixed by issue 1576; the messages were too long for `nros_log`'s buffer. Each refusal is now two bounded records, and the test program keeps its self-contained link through a stderr stand-in for `nros_log` that also enforces the length. |
 
 The RFC-0089 and RFC-0096 status lines were checked and both read "Stable".
@@ -372,7 +374,8 @@ The RFC-0089 and RFC-0096 status lines were checked and both read "Stable".
 ## Acceptance
 
 A ported rclcpp node, meaning the upstream tutorial publisher and subscriber
-plus the `topic-state-monitor` and the W3 fixture:
+plus the `topic-state-monitor` and the W3 port templates (the larger G.4
+fixture is [phase-488](../phase-488-larger-cpp-port-fixture.md)'s):
 
 - builds against nano-ros on posix, Zephyr and FreeRTOS;
 - needs no edit to its class body, and needs exactly the `main` and
@@ -380,3 +383,7 @@ plus the `topic-state-monitor` and the W3 fixture:
 - uses no file under `cmake/compat/`, because that directory no longer exists.
 
 The api-parity ledger has zero `gap` rows and zero deprecated aliases.
+
+**Met 2026-10-11** for the three port templates on posix, Zephyr and FreeRTOS
+(`port_templates_e2e`); the ledger's `gap` and deprecated-alias counts are both
+zero (W6, W7).

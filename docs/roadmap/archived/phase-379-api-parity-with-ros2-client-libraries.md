@@ -1,7 +1,7 @@
 # Phase 379 — the user API is rclc / rclcpp / rclrs, and something checks that
 
 **Status (2026-10-07). CLOSED — archived; open residue moved to
-[phase-482](../phase-482-rclcpp-drop-in-residue.md).** The measurement campaign
+[phase-482](phase-482-rclcpp-drop-in-residue.md).** The measurement campaign
 is complete:
 
 - **W1, W2, W3, W6 and W7 steps 1-3 are DONE.** The ledger holds about 3000

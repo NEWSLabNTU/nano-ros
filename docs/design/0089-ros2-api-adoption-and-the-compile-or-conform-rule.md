@@ -10,7 +10,7 @@ rclcpp / rclrs, and the intent to retire `rclcpp_compat.hpp` by making our own
 names ROS 2's.
 **Implements-tracked-by:** phase-417-ros2-api-adoption (archived 2026-10-07);
 the remainder is tracked by
-[phase-482](../roadmap/phase-482-rclcpp-drop-in-residue.md).
+[phase-482](../roadmap/archived/phase-482-rclcpp-drop-in-residue.md).
 **Governed by:** RFC-0019 / RFC-0020 (thin-wrapper discipline) — the Rust API
 is the implementation source of truth; C and C++ delegate. This RFC does not
 relax that, and §"Who implements an adopted name" states what it means for
@@ -723,7 +723,7 @@ an upstream type, the disposition is ADOPT and not a recorded divergence. It
 becomes a `Node`-derived `rclcpp_lifecycle::LifecycleNode` with upstream's
 constructor shape and transition callbacks, and `nros::LifecycleNode` is
 deprecated for one release.
-[phase-482](../roadmap/phase-482-rclcpp-drop-in-residue.md) W4.
+[phase-482](../roadmap/archived/phase-482-rclcpp-drop-in-residue.md) W4.
 
 ## Settled: `nros::` is phased out entirely; ours-only names take `rclcpp::` too (2026-09-05)
 
