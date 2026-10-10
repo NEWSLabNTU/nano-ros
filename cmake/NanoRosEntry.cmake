@@ -704,6 +704,12 @@ function(nano_ros_entry)
         endif()
         add_library(${_NRA_NAME} STATIC "${_nra_app_stub}")
         target_link_libraries(app PRIVATE ${_NRA_NAME})
+        # phase-482 W3 — say so on the placeholder, so a dependency the user
+        # names for `${_NRA_NAME}` (`ament_target_dependencies(<name> …)`) can
+        # be routed to `app`, where the sources it is for are compiled. Linked
+        # to the placeholder instead, a header-only dependency such as
+        # `diagnostic_updater` never reaches those sources' include path.
+        set_property(TARGET ${_NRA_NAME} PROPERTY NROS_SOURCES_IN_TARGET app)
     elseif(NOT TARGET ${_NRA_NAME})
         add_executable(${_NRA_NAME} ${_sources_for_exe})
         # Phase 257 (W0-A) — a TYPED C entry drives the `nros_cpp_*` runtime

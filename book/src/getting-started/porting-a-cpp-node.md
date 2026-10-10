@@ -173,6 +173,25 @@ no environment to read it from: the `NROS_ENTRY_LOCATOR` cache variable on
 FreeRTOS, `CONFIG_NROS_ZENOH_LOCATOR` on Zephyr. `rclcpp::init(argc, argv)`
 reads it in every source file that includes `<rclcpp/rclcpp.hpp>`.
 
+A node with a hand-written spin loop also works. The other two templates,
+`rclcpp-compat-smoke/` and `topic-state-monitor-port/`, have the same two
+directories, and their `main` is the common shape:
+
+```cpp
+while (rclcpp::ok()) {
+    node->tick();
+    rclcpp::spin_some(node);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+}
+```
+
+On FreeRTOS the board provides what the C++ library needs for this:
+`std::this_thread::sleep_for` sleeps the calling task, and
+`std::chrono::steady_clock` counts from boot, because the board has no real-time
+clock. A package that uses another library, such as `diagnostic_updater`, names
+it the usual way, `ament_target_dependencies(<name> diagnostic_updater)`. On
+Zephyr the dependency goes to `app`, where the sources are compiled.
+
 Zephyr's `native_sim` cannot run a ported node. There Zephyr links its own C
 library, and the host's libstdc++ cannot run on top of it. Use a Cortex-M
 board such as `mps2/an385` in QEMU, which is what the template targets.

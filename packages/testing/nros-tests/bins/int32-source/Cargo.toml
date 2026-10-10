@@ -1,0 +1,41 @@
+[workspace]
+
+[package]
+name = "int32-source"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Generic std_msgs/Int32 publisher fixture, the twin of int32-sink. Publishes the same counter on every topic in `NROS_PUB_TOPICS` (comma-separated, default `/chatter`) every `NROS_PUB_PERIOD_MS` ms (default 100) and prints `Published: N` per tick. phase-482 W3: the peer of the topic-state-monitor-port cells."
+
+[[bin]]
+name = "int32-source"
+path = "src/main.rs"
+
+[features]
+# Zenoh only: its one consumer (port_templates_e2e) runs every cell on zenoh.
+# The RMW is still a feature, in int32-sink's shape, so a second backend is a
+# row and a feature rather than a rewrite.
+default = ["rmw-zenoh"]
+rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-linux/rmw-zenoh"]
+
+[dependencies]
+nros = { path = "../../../../api/nros", default-features = false, features = [
+    "std", "alloc", "env",
+    "rmw-cffi",
+    "ros-humble",
+] }
+nros-platform-cffi = { path = "../../../../platform/nros-platform-cffi", features = ["posix-c-port"] }
+nros-board-linux = { path = "../../../../boards/nros-board-linux", default-features = false }
+nros-rmw-zenoh = { path = "../../../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = [
+    "std",
+    "platform-posix",
+    "ros-humble",
+], optional = true }
+std_msgs = { path = "generated/std_msgs", default-features = false }
+log = "0.4"
+env_logger = "0.11"
+
+[patch.crates-io]
+nros-core = { path = "../../../../core/nros-core" }
+nros-serdes = { path = "../../../../core/nros-serdes" }

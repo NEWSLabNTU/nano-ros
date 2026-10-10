@@ -411,6 +411,48 @@ pub const WS_RUST_LOGGING_MARKER: &str = "talker publishing chatter";
 /// node building and running against nano-ros unmodified).
 pub const CPP_PORT_PUBLISH_MARKER: &str = "Publishing: 'Hello, world!";
 
+// phase-482 W3 — the other two port templates. Like the marker above, every
+// string here is the PORTED SOURCE's (`examples/templates/*/src/*.cpp`), which
+// stays unmodified; a test that needs a different string changes the test.
+
+/// `rclcpp-compat-smoke`'s start-up log line (`RCLCPP_INFO` in its node's
+/// constructor), printed once its publisher exists.
+pub const CPP_PORT_SMOKE_UP_MARKER: &str = "rclcpp_compat_smoke up";
+
+/// The Int32 topic `rclcpp-compat-smoke` publishes. Relative in the source
+/// (`"smoke_topic"`), so it resolves to the root namespace.
+pub const CPP_PORT_SMOKE_TOPIC: &str = "/smoke_topic";
+
+/// The name of the smoke node's one `diagnostic_updater` task.
+pub const CPP_PORT_SMOKE_DIAG_TASK: &str = "publish_count";
+
+/// The smoke node's `Updater::setHardwareID`.
+pub const CPP_PORT_SMOKE_HARDWARE_ID: &str = "smoke";
+
+/// `topic-state-monitor-port`'s start-up log line, printed once both
+/// subscriptions and the updater exist.
+pub const CPP_PORT_MONITOR_UP_MARKER: &str = "topic_state_monitor up";
+
+/// The topics the monitor watches. Relative in the source (`"a"`, `"b"`);
+/// each one is also the name of its diagnostic task.
+pub const CPP_PORT_MONITOR_TOPICS: [&str; 2] = ["a", "b"];
+
+/// The monitor's `Updater::setHardwareID`.
+pub const CPP_PORT_MONITOR_HARDWARE_ID: &str = "topic_state_monitor";
+
+/// `diagnostic_msgs/DiagnosticStatus` levels (`OK`, `ERROR`), as the
+/// diagsink prints them. The monitor reports a topic `OK` while its last
+/// sample is under 500 ms old and `ERROR` past 2 s.
+pub const DIAG_LEVEL_OK: u8 = 0;
+/// See [`DIAG_LEVEL_OK`].
+pub const DIAG_LEVEL_ERROR: u8 = 2;
+
+/// The `contract-monitor-diagsink` line for one received status:
+/// `DIAG rule=<name> hw=<hardware_id> level=<level>`.
+pub fn diagsink_status_line(name: &str, hardware_id: &str, level: u8) -> String {
+    format!("{CONTRACT_MONITOR_DIAG_PREFIX}{name} hw={hardware_id} level={level}")
+}
+
 /// The C workspace talker's per-tick `NROS_LOG_INFO` line marker
 /// (`"c_talker logging seq=N"`); the MIXED workspace reuses the C talker,
 /// so its logging cell greps the same marker.

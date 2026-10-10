@@ -44,6 +44,28 @@ ros2 topic echo /smoke_topic
 ros2 topic echo /diagnostics
 ```
 
+## Running the same source on an RTOS
+
+The two directories beside `src/` build **the same `src/talker.cpp`** for a
+microcontroller (phase-482 W3), exactly as `cpp-port-minimal-publisher` does:
+`mps2-an385-freertos/` (FreeRTOS on MPS2-AN385, QEMU) and `zephyr/` (Zephyr on
+`mps2/an385`, QEMU). Each is a `CMakeLists.txt` around
+
+```cmake
+nano_ros_add_executable(rclcpp_compat_smoke ../src/talker.cpp ROS2_MAIN)
+ament_target_dependencies(rclcpp_compat_smoke diagnostic_updater)
+```
+
+plus `package.xml`, a `system.toml` naming the board, an `nros-codegen.toml`
+bounding `diagnostic_msgs` for a small stack, and on Zephyr the Kconfig
+fragments. The source's `rclcpp::spin_some` + `std::this_thread::sleep_for`
+loop runs unchanged: on FreeRTOS the board supplies the sleep and the clock
+the C++ library calls.
+
+`port_templates_e2e` runs all three builds (the `Workload::PortSmoke` cells of
+`matrix::CELLS`): a host `int32-sink` must receive `/smoke_topic` and a host
+diagnostics observer the `publish_count` task.
+
 ## What this proves
 
 - A ported source compiles **with the rclcpp call shape preserved**.

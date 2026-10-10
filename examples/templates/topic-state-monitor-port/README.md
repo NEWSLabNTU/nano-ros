@@ -31,7 +31,33 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicas
 - Full stock-ROS-2 `find_package(...)` + `ament_auto_add_executable` +
   `ament_target_dependencies` shape on top of nano-ros's ament surface.
 
-## Gap surfaced (filed against Phase 209.A)
+## Running the same source on an RTOS
+
+The two directories beside `src/` build **the same
+`src/topic_state_monitor.cpp`** for a microcontroller (phase-482 W3), exactly as
+`cpp-port-minimal-publisher` does: `mps2-an385-freertos/` (FreeRTOS on
+MPS2-AN385, QEMU) and `zephyr/` (Zephyr on `mps2/an385`, QEMU). Each is a
+`CMakeLists.txt` around
+
+```cmake
+nano_ros_add_executable(topic_state_monitor ../src/topic_state_monitor.cpp ROS2_MAIN)
+ament_target_dependencies(topic_state_monitor diagnostic_updater)
+```
+
+plus `package.xml`, a `system.toml` naming the board, an `nros-codegen.toml`
+bounding `diagnostic_msgs`, and on Zephyr the Kconfig fragments.
+
+`port_templates_e2e` runs all three builds (the `Workload::PortMonitor` cells
+of `matrix::CELLS`). With nothing publishing, both topics must be reported
+ERROR (stale); once a host `int32-source` publishes `/a` and `/b` every 100 ms,
+both must be reported OK. The order matters: a clock that never advanced would
+report every topic OK with no publisher at all.
+
+## Gap surfaced (filed against Phase 209.A; since closed)
+
+The 209.A follow-up closed this: capturing-lambda subscriptions compile
+unchanged, and `src/topic_state_monitor.cpp` uses them. The original finding
+is kept below for the record.
 
 `rclcpp::Node::create_subscription`'s **callback overload is SFINAE-restricted
 to plain `void(*)(const M&)` function pointers** (`std::enable_if<

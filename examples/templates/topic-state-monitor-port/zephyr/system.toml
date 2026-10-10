@@ -1,0 +1,13 @@
+# What this build deploys to (RFC-0098 D3/D5). The board is Zephyr's: the
+# concrete target (`mps2/an385`) is the `west build -b` argument. The RMW is
+# stated here rather than in a conf file: the nano-ros module renders this
+# image into a Kconfig fragment merged after every conf (RFC-0098 D10/D11).
+
+[system]
+name = "topic_state_monitor"
+rmw = "zenoh"
+domain_id = 0
+
+[image.zephyr]
+board = "zephyr"
+rmw = "zenoh"

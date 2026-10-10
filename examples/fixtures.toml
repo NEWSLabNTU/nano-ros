@@ -1627,6 +1627,18 @@ dir = "packages/testing/nros-tests/bins/int32-sink"
 no_default_features = true
 features = ["rmw-zenoh"]
 
+# phase-482 W3 — the publishing twin of int32-sink: Int32 on every topic in
+# `NROS_PUB_TOPICS`, every `NROS_PUB_PERIOD_MS`. The peer that feeds
+# `topic-state-monitor-port` its two watched topics (tests/port_templates_e2e.rs).
+[[fixture]]
+id = "int32-source-zenoh"
+platform = "linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/bins/int32-source"
+no_default_features = true
+features = ["rmw-zenoh"]
+
 # phase-425 W5 — the `/clock` pair, the phase's end-to-end evidence. Every other
 # simulated-time test installs a ROS time by calling the setter, which proves
 # the timer arithmetic and nothing about the wire; this pair puts a real
@@ -1789,7 +1801,12 @@ dir = "packages/testing/nros-tests/bins/safety-chatter-listener"
 # produces all three. Consumed by tests/contract_monitor_parity.rs (the
 # W3b.4/.5 cross-runtime "done-when": min_rate_hz + max_age violations report
 # on /diagnostics in the play_launch rule vocabulary; compliant twin silent).
+# phase-482 W3 gave it an `id`: the diagsink bin is also the `/diagnostics`
+# observer of the port-template cells (tests/port_templates_e2e.rs), and an id
+# lets it be built alone (`fixtures-build.sh linux rust --id contract-monitor`).
+# The id is not part of the artifact-dir key (issue 1025), so this moves nothing.
 [[fixture]]
+id = "contract-monitor"
 platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/contract-monitor"
@@ -3121,6 +3138,26 @@ lang = "cpp"
 rmw = "zenoh"
 dir = "examples/templates/cpp-port-minimal-publisher/mps2-an385-freertos"
 cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8098" }
+
+# phase-482 W3 — the other two port templates on FreeRTOS, each the template's
+# unmodified `src/` built by the sub-project beside it. Ports 8088 / 8089 =
+# `alloc::port_of(FreertosMps2, Cpp, PortSmoke / PortMonitor)`; consumed by
+# tests/port_templates_e2e.rs.
+[[fixture]]
+id = "freertos-cpp-port-rclcpp-compat-smoke"
+platform = "freertos"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/templates/rclcpp-compat-smoke/mps2-an385-freertos"
+cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8088" }
+
+[[fixture]]
+id = "freertos-cpp-port-topic-state-monitor"
+platform = "freertos"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/templates/topic-state-monitor-port/mps2-an385-freertos"
+cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8089" }
 
 [[fixture]]
 platform = "freertos"
@@ -5130,6 +5167,34 @@ board = "mps2_an385"
 west_role = "port-minimal-publisher"
 west_build_name = "build-cortex-m-cpp-port-minimal-publisher-zenoh"
 west_zenoh_locator = "tcp/10.0.2.2:10898"
+conf_files = ["prj.conf", "prj-zenoh.conf"]
+
+# phase-482 W3 — the other two port templates on Zephyr, the
+# (ZephyrQemuCortexM, Cpp, PortSmoke / PortMonitor) cells. Ports 10888 / 10889
+# = `alloc::port_of(ZephyrQemuCortexM, Cpp, PortSmoke / PortMonitor)`; consumed
+# by tests/port_templates_e2e.rs.
+[[fixture]]
+platform = "zephyr-cortex-m"
+lang = "cpp"
+rmw = "zenoh"
+builder = "west"
+dir = "examples/templates/rclcpp-compat-smoke/zephyr"
+board = "mps2_an385"
+west_role = "port-rclcpp-compat-smoke"
+west_build_name = "build-cortex-m-cpp-port-rclcpp-compat-smoke-zenoh"
+west_zenoh_locator = "tcp/10.0.2.2:10888"
+conf_files = ["prj.conf", "prj-zenoh.conf"]
+
+[[fixture]]
+platform = "zephyr-cortex-m"
+lang = "cpp"
+rmw = "zenoh"
+builder = "west"
+dir = "examples/templates/topic-state-monitor-port/zephyr"
+board = "mps2_an385"
+west_role = "port-topic-state-monitor"
+west_build_name = "build-cortex-m-cpp-port-topic-state-monitor-zenoh"
+west_zenoh_locator = "tcp/10.0.2.2:10889"
 conf_files = ["prj.conf", "prj-zenoh.conf"]
 
 [[fixture]]

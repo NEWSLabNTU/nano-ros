@@ -37,7 +37,7 @@
 //!
 //! | lane | selection | cells | coords | cost |
 //! | --- | --- | --- | --- | --- |
-//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k + pairwise l × r | 20 | 12 | 25 % |
+//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k + pairwise l × r | 22 | 12 | 25 % |
 //! | [`CiLane::Tier2`] | 1-wise p, l, r, k | 11 | 11 | 23 % |
 //! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k | 35 | 34 | 71 % |
 //! | tier 3 | everything | 205 | 48 | 100 % |
@@ -66,6 +66,11 @@
 //! `cell(Linux, Cpp, Zenoh, Port, Example, Runtime)`, the same mechanism as the
 //! 1384 note above: `Port` is a new `workload` value and tier 1 covers workload
 //! 1-wise. Its coordinate `linux,cpp,zenoh` was already held, so coords stay 12.
+//!
+//! Re-measured 2026-10-10 (phase-482 W3). Tier 1's cells went 20 -> 22 with
+//! the `PortSmoke` and `PortMonitor` cells on Linux, two more `workload`
+//! values by the same mechanism; their coordinate is again `linux,cpp,zenoh`,
+//! so coords stay 12.
 //!
 //! **This table and the array in `documented_lane_table_is_live` are two
 //! spellings of one fact, and the table is the one nothing checks.** Nightly's
@@ -951,7 +956,7 @@ _tier-build:
 
         // (lane, cells, coords) exactly as the module docs above state them.
         let documented = [
-            (CiLane::Tier1, 20, 12),
+            (CiLane::Tier1, 22, 12),
             (CiLane::Tier2, 11, 11),
             (CiLane::Tier2Nightly, 35, 34),
         ];

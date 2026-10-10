@@ -1,0 +1,16 @@
+# RFC-0033 capacities for the stock `diagnostic_msgs` this ported node
+# publishes through `diagnostic_updater` (phase-482 W3).
+#
+# Issue 0964: a type that states no bound may not size a buffer, and a consumer
+# of someone else's `.msg` states the bound here, beside `package.xml`. These
+# are the core interface set's numbers (`packages/interfaces/nros-codegen.toml`):
+# one status per diagnostic task and a handful of key/values each, so a
+# `DiagnosticArray` stays small enough for a microcontroller's stack.
+[fields]
+"diagnostic_msgs/DiagnosticArray.status" = 4
+"diagnostic_msgs/DiagnosticStatus.values" = 8
+"diagnostic_msgs/DiagnosticStatus.name" = 64
+"diagnostic_msgs/DiagnosticStatus.message" = 128
+"diagnostic_msgs/DiagnosticStatus.hardware_id" = 96
+"diagnostic_msgs/KeyValue.key" = 32
+"diagnostic_msgs/KeyValue.value" = 64
