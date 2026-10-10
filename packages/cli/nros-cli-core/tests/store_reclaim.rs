@@ -42,6 +42,8 @@ fn install(root: &Path, rel: &str, version: &str, payload: &[u8]) -> PathBuf {
         version: version.to_string(),
         sha256: None,
         post_install: None,
+        git_ref: None,
+        git: None,
     }
     .write(&dir)
     .unwrap();

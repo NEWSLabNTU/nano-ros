@@ -18,7 +18,7 @@
 //! as unverifiable rather than as a mismatch.
 
 include!("../build-support/submodule_watch.rs");
-include!("../build-support/git_env.rs");
+include!("../../tooling/nros-build-paths/src/git_env.rs");
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
