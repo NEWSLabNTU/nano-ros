@@ -231,3 +231,45 @@ Measured after the fixes:
 - `just build native`: rc 0 (62 min).
 - `just test native`: 2,622 ran, 153 deselected, 0 unmet, 0 real failures
   (13 min).
+
+### First scheduled red: live-peer host, the never-passing rosout C cell (2026-10-10)
+
+`live-peer regression` run **38023549063** (schedule 04:17Z, head
+`58d7ea22b`, which includes 976ab0e0d), job **114129481378** `rows whose board
+IS this runner`, step `Run the cells with a recorded PASS`. Of the 25
+recorded-PASS host cells, 25 produced a result. The red came from a cell
+OUTSIDE that set:
+
+```
+FAIL [0.289s] nros-tests::rosout_interop a_c_log_call_reaches_ros2_topic_echo_rosout
+[UNMET PRECONDITION] fixture not built: prebuilt rosout-talker-c: Test fixture binary not prebuilt:
+  .../packages/testing/nros-tests/bins/rosout-talker-c/build-zenoh/rosout_talker_c
+```
+
+The lane runs `rosout_interop` because `native-logging-rust-zenoh-n2r` has a
+recorded PASS (2026-09-29). Running that test file also runs its C and C++
+cases, whose cells, `native-logging-c-zenoh-n2r` and
+`native-logging-cpp-zenoh-n2r`, have NEVER passed. The fixture step built the
+`linux cpp zenoh` family, which contains `rosout-talker-cpp`, so the C++ case
+ran and passed. No `linux c zenoh` family was built, so `rosout-talker-c` was
+absent.
+
+**This falsifies a ruling in issue 1718.** Its resolution says
+"`rosout-talker-c` needs nothing: its case belongs to
+`native-logging-c-zenoh-n2r` … which has never passed, and the run already
+reports it as a skip". That was true when an unmet fixture was a skip. Under
+this issue's rule it is a failure, so the cell the lane does not claim now
+reds the lane that never meant to run it.
+
+Two sites can close it, and choosing between them is a scope decision:
+
+- **Build what the run reaches.** The host fixture step builds `rosout-talker-c`.
+  It already builds `linux cpp zenoh` for the C++ case, and the C case would
+  then produce a real verdict for a cell nobody has recorded.
+- **Run only what the lane claims.** The focused run filters to the test
+  NAMES of recorded-PASS cells, not the whole test FILE. Then the C and C++
+  cases do not run until someone records them.
+
+Either one makes the next scheduled host job green. The second is the one that
+matches "the lane's membership is exactly what a human has already measured",
+which this lane's own summary prints.
