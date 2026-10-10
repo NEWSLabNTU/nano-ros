@@ -54,6 +54,10 @@ if(DEFINED ZEPHYR_BASE AND TARGET zephyr_interface)
         list(PREPEND CMAKE_MODULE_PATH "${NANO_ROS_ROOT}/cmake/find")
     endif()
     include("${NANO_ROS_ROOT}/cmake/find/_NrosFindRosMsgPackage.cmake")
+    # phase-482 W3 — the one ament verb a ported package's glue needs here
+    # (`ament_target_dependencies(<name> diagnostic_updater)`); it routes to
+    # `app`, where `nano_ros_add_executable` compiles the sources.
+    include("${NANO_ROS_ROOT}/cmake/NanoRosAmentTargetDeps.cmake")
     include("${NANO_ROS_ROOT}/cmake/NanoRosNodeRegister.cmake")
     # NanoRosEntry too: a Zephyr workspace-entry app uses
     # `nano_ros_add_executable(... LAUNCH ...)`, whose body calls

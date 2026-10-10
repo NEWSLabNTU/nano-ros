@@ -24,6 +24,8 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <sys/time.h>
+#include <unistd.h>
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -51,19 +53,19 @@
 
 /* ---- Provided elsewhere ---- */
 /* freertos_hooks.c */
-extern void semihosting_write0(const char *s);
+extern void semihosting_write0(const char* s);
 extern void nros_board_freertos_run_init_array(void);
 /* network_glue.c */
 extern int nros_freertos_init_network(const uint8_t mac[6], const uint8_t ip[4],
                                       const uint8_t netmask[4], const uint8_t gw[4]);
 extern void nros_freertos_poll_network(void);
 extern void nros_freertos_start_scheduler(void);
-extern int nros_freertos_create_task(void (*entry)(void *), const char *name,
-                                     uint32_t stack_words, void *arg, uint32_t priority);
+extern int nros_freertos_create_task(void (*entry)(void*), const char* name, uint32_t stack_words,
+                                     void* arg, uint32_t priority);
 /* nros-platform-freertos */
 extern void nros_platform_freertos_seed_rng(uint32_t value);
-extern void nros_platform_register_log_writer(void (*writer)(uint8_t, const uint8_t *, uintptr_t,
-                                                             const uint8_t *, uintptr_t),
+extern void nros_platform_register_log_writer(void (*writer)(uint8_t, const uint8_t*, uintptr_t,
+                                                             const uint8_t*, uintptr_t),
                                               void (*flusher)(void));
 /* the user application (nros-c's NROS_APP_MAIN macro emits it) */
 extern void app_main(void);
@@ -75,13 +77,11 @@ extern void app_main(void);
  * semihosting handles. */
 static int sh_stdout_handle = -1;
 
-static int semihosting_open(const char *path, int mode) {
+static int semihosting_open(const char* path, int mode) {
     uint32_t args[3] = {(uint32_t)path, (uint32_t)mode, (uint32_t)__builtin_strlen(path)};
     int result;
     __asm__ volatile("mov r0, #0x01\n" /* SYS_OPEN */
-                     "mov r1, %1\n"
-                     NROS_SEMIHOST_TRAP
-                     "mov %0, r0\n"
+                     "mov r1, %1\n" NROS_SEMIHOST_TRAP "mov %0, r0\n"
                      : "=r"(result)
                      : "r"(args)
                      : "r0", "r1", "memory");
@@ -96,16 +96,17 @@ static void semihosting_stdio_init(void) {
 
 /* Provides printf() output on QEMU via ARM semihosting SYS_WRITE (0x05).
  * This overrides the stub in libnosys (which returns -1). */
-int _write(int fd, const char *buf, int count) {
+int _write(int fd, const char* buf, int count) {
     int sh_fd = sh_stdout_handle;
     if (sh_fd < 0) {
         /* Fallback before init: use SYS_WRITE0 (goes to stderr/debug) */
         char tmp[256];
         int rem = count;
-        const char *p = buf;
+        const char* p = buf;
         while (rem > 0) {
             int chunk = rem < (int)(sizeof(tmp) - 1) ? rem : (int)(sizeof(tmp) - 1);
-            for (int i = 0; i < chunk; i++) tmp[i] = p[i];
+            for (int i = 0; i < chunk; i++)
+                tmp[i] = p[i];
             tmp[chunk] = '\0';
             semihosting_write0(tmp);
             p += chunk;
@@ -117,36 +118,94 @@ int _write(int fd, const char *buf, int count) {
     uint32_t args[3] = {(uint32_t)sh_fd, (uint32_t)buf, (uint32_t)count};
     uint32_t result;
     __asm__ volatile("mov r0, #0x05\n"
-                     "mov r1, %1\n"
-                     NROS_SEMIHOST_TRAP
-                     "mov %0, r0\n"
+                     "mov r1, %1\n" NROS_SEMIHOST_TRAP "mov %0, r0\n"
                      : "=r"(result)
                      : "r"(args)
                      : "r0", "r1", "memory");
     return count - (int)result;
 }
 
+/* ---- Time and sleep for the hosted C++ library ----
+ * phase-482 W3. A ported ROS 2 program (`nano_ros_add_executable(... ROS2_MAIN)`)
+ * is compiled against the toolchain's full libstdc++, and the two calls every
+ * rclcpp-idiom spin loop makes reach newlib through it:
+ *
+ *   - `std::chrono::steady_clock::now()`. This libstdc++ has no monotonic
+ *     clock (`_GLIBCXX_USE_CLOCK_MONOTONIC` is unset), so steady_clock IS
+ *     system_clock, which calls `gettimeofday`. libnosys's `_gettimeofday`
+ *     fails without writing the struct, so every reading was whatever the
+ *     stack held: a liveness monitor computing `now - last_seen` got noise.
+ *   - `std::this_thread::sleep_for`, which libstdc++ implements with `sleep`
+ *     and `usleep`. Newlib declares both and defines neither, so the image
+ *     did not link.
+ *
+ * The board has no real-time clock, so "time of day" is time since the
+ * scheduler started: a valid steady clock, and what a monitor's age
+ * arithmetic needs. Weak, so a board with an RTC (or an SDK newlib that
+ * already provides these) wins without a duplicate-symbol error. */
+__attribute__((weak)) int _gettimeofday(struct timeval* tv, void* tz) {
+    (void)tz;
+    if (tv != NULL) {
+        const uint64_t ms = (uint64_t)xTaskGetTickCount() * (uint64_t)portTICK_PERIOD_MS;
+        tv->tv_sec = (time_t)(ms / 1000u);
+        tv->tv_usec = (suseconds_t)((ms % 1000u) * 1000u);
+    }
+    return 0;
+}
+
+__attribute__((weak)) int usleep(useconds_t usec) {
+    /* Round UP to whole ticks: a requested sleep must never be shorter than
+     * asked, and a non-zero request must yield at least one tick so a
+     * `sleep_for` loop cannot starve lower-priority tasks. */
+    const uint64_t us_per_tick = (uint64_t)portTICK_PERIOD_MS * 1000u;
+    TickType_t ticks = (TickType_t)(((uint64_t)usec + us_per_tick - 1u) / us_per_tick);
+    if (usec != 0 && ticks == 0) {
+        ticks = 1;
+    }
+    vTaskDelay(ticks);
+    return 0;
+}
+
+__attribute__((weak)) unsigned int sleep(unsigned int seconds) {
+    vTaskDelay(pdMS_TO_TICKS((uint64_t)seconds * 1000u));
+    return 0;
+}
+
 /* ---- nros-log writer ----
  * Phase 88.16.H — printf-backed writer registered with the platform fn-ptr
  * slot before app_main. Same shape as the Rust `run()` path's hstderr writer,
  * expressed in C so the C/C++ path that bypasses Rust's `run()` still logs. */
-static void board_log_writer(uint8_t severity, const uint8_t *name_ptr, uintptr_t name_len,
-                             const uint8_t *msg_ptr, uintptr_t msg_len) {
-    const char *label;
+static void board_log_writer(uint8_t severity, const uint8_t* name_ptr, uintptr_t name_len,
+                             const uint8_t* msg_ptr, uintptr_t msg_len) {
+    const char* label;
     switch (severity) {
-        case 0: label = "TRACE"; break;
-        case 1: label = "DEBUG"; break;
-        case 2: label = "INFO"; break;
-        case 3: label = "WARN"; break;
-        case 4: label = "ERROR"; break;
-        case 5: label = "FATAL"; break;
-        default: label = "?"; break;
+    case 0:
+        label = "TRACE";
+        break;
+    case 1:
+        label = "DEBUG";
+        break;
+    case 2:
+        label = "INFO";
+        break;
+    case 3:
+        label = "WARN";
+        break;
+    case 4:
+        label = "ERROR";
+        break;
+    case 5:
+        label = "FATAL";
+        break;
+    default:
+        label = "?";
+        break;
     }
     if (name_len == 0 || name_ptr == NULL) {
-        printf("[%s] %.*s\n", label, (int)msg_len, (const char *)msg_ptr);
+        printf("[%s] %.*s\n", label, (int)msg_len, (const char*)msg_ptr);
     } else {
-        printf("[%s] %.*s: %.*s\n", label, (int)name_len, (const char *)name_ptr, (int)msg_len,
-               (const char *)msg_ptr);
+        printf("[%s] %.*s: %.*s\n", label, (int)name_len, (const char*)name_ptr, (int)msg_len,
+               (const char*)msg_ptr);
     }
 }
 
@@ -185,7 +244,7 @@ static inline UBaseType_t clamp_prio(uint32_t p) {
     return (UBaseType_t)p;
 }
 
-static void poll_task_entry(void *arg) {
+static void poll_task_entry(void* arg) {
     (void)arg;
     const uint32_t poll_ms = NROS_APP_CONFIG.scheduling.poll_interval_ms;
     /* Register as the RX wake target, then treat poll_interval_ms as a CEILING
@@ -357,12 +416,11 @@ static void report_heap_peak(void) {
     snprintf(line, sizeof(line),
              "nros: heap peak %lu of %lu bytes (%lu free) "
              "- raise with NROS_FREERTOS_HEAP_KB\n",
-             (unsigned long)(total - min_free), (unsigned long)total,
-             (unsigned long)min_free);
+             (unsigned long)(total - min_free), (unsigned long)total, (unsigned long)min_free);
     printf("%s", line);
 }
 
-static void stack_peak_task_entry(void *arg) {
+static void stack_peak_task_entry(void* arg) {
     (void)arg;
 
     vTaskDelay(pdMS_TO_TICKS(NROS_STACK_PEAK_FIRST_MS));
@@ -387,7 +445,7 @@ static void stack_peak_task_entry(void *arg) {
     vTaskDelete(NULL);
 }
 
-static void app_task_entry(void *arg) {
+static void app_task_entry(void* arg) {
     (void)arg;
 
     /* Issue 1146 part 2 — record our own handle so the reporter above can ask
@@ -411,7 +469,8 @@ static void app_task_entry(void *arg) {
                                    NROS_APP_CONFIG.network.netmask,
                                    NROS_APP_CONFIG.network.gateway) != 0) {
         semihosting_write0("Network init failed\n");
-        for (;;) {}
+        for (;;) {
+        }
     }
 
     /* Wait for tcpip_thread to run and netif to come up */
@@ -473,7 +532,8 @@ static void app_task_entry(void *arg) {
                          : "r"(exit_args)
                          : "r0", "r1", "memory");
     }
-    for (;;) {}
+    for (;;) {
+    }
 }
 
 /* The board's `Reset_Handler` jumps here (the Rust lane's `main` is the Rust
@@ -485,5 +545,6 @@ int main(void) {
     nros_freertos_create_task(app_task_entry, "app", app_stack_words, 0,
                               clamp_prio(NROS_APP_CONFIG.scheduling.app_priority));
     nros_freertos_start_scheduler();
-    for (;;) {}
+    for (;;) {
+    }
 }

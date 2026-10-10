@@ -172,9 +172,60 @@ are `Workload::Port` × {Linux, FreertosMps2, ZephyrQemuCortexM}, run by
   SDK's libstdc++ (`CONFIG_GLIBCXX_LIBCPP`) builds and runs. ROS 2 humble's
   `ros2 topic echo` received `Hello, world! 0` from the guest.
 
-Open: `topic-state-monitor-port` and `rclcpp-compat-smoke` on the RTOSes. The
-first needs a peer publishing what it monitors, and neither has a posix runtime
-cell yet either. G.4 (the larger port) is also open.
+**Status 2026-10-10: all three templates done; G.4 open.**
+`rclcpp-compat-smoke` and `topic-state-monitor-port` now run unmodified on
+posix, FreeRTOS (mps2-an385) and Zephyr (mps2/an385). Their cells are
+`Workload::PortSmoke` and `Workload::PortMonitor` × {Linux, FreertosMps2,
+ZephyrQemuCortexM}, run by `port_templates_e2e`, so the acceptance line ("every
+port template has a runtime cell on posix, Zephyr and FreeRTOS") now holds for
+all three. Each is checked from outside, by host peers on the same router, so
+no cell needs ROS 2:
+
+- **The smoke node:** a host `int32-sink` must receive 3 samples of
+  `/smoke_topic`, and the contract-monitor diagsink must receive its
+  `publish_count` diagnostics task at level OK.
+- **The monitor:** with nothing publishing, the diagsink must see both topics
+  `a` and `b` reported ERROR (stale). Then a new host fixture, `bins/int32-source`,
+  publishes `/a` and `/b` every 100 ms, and both must turn OK. The order is the
+  assertion: a clock that never advanced would report every topic OK with no
+  publisher at all. Mutation: publishing `/mut_a,/mut_b` instead fails the posix
+  cell on the second assertion.
+
+What it took:
+
+- **FreeRTOS: the board provides `sleep`, `usleep` and `_gettimeofday`**
+  (`nros-board-freertos/c/freertos_c_entry.c`, weak). Both templates' `main`
+  loops on `std::this_thread::sleep_for`, which the pinned GCC 13.2's libstdc++
+  implements with `sleep`/`usleep`. newlib declares those and defines neither,
+  so the image did not link. `std::chrono::steady_clock` is `system_clock` in
+  that library (no monotonic clock is configured), which calls `gettimeofday`.
+  libnosys's stub fails without writing the result, so `diagnostic_updater`'s
+  rate limit and the monitor's age arithmetic read uninitialized time. The
+  board has no RTC, so the time is counted from boot. Every FreeRTOS C and C++
+  fixture row still builds with the change. The system GCC 10.3 fallback has no
+  `std::this_thread` at all without gthreads, so these two templates need the
+  pinned toolchain (`nros setup --tool arm-none-eabi-gcc`).
+- **`ament_target_dependencies` works on Zephyr and follows the sources to
+  `app`.** The verb is now `cmake/NanoRosAmentTargetDeps.cmake`, included by
+  the ament surface and by the Zephyr arm of `nano_rosConfig.cmake`, which had
+  skipped it. A `nano_ros_entry` placeholder records
+  `NROS_SOURCES_IN_TARGET app`, and the verb links there, so a header-only
+  dependency such as `diagnostic_updater` reaches the ported sources. The
+  FreeRTOS and Zephyr `CMakeLists.txt` are now the same four lines.
+- Each sub-project has an `nros-codegen.toml` that bounds `diagnostic_msgs`
+  with the core interface set's numbers. Without the bounds, the default 64 ×
+  256-byte sequences make a `DiagnosticArray` too large for a
+  microcontroller's stack.
+- Ports `alloc::port_of(…, PortSmoke)` = offset 88 and `PortMonitor` = 89
+  (8088/8089 FreeRTOS, 10888/10889 Zephyr). The `contract-monitor` fixture row
+  gained an `id`, so its diagsink can be built alone. Tier 1 now covers 22
+  cells. Its coordinates stay at 12.
+
+Measured: `cargo nextest run -p nros-tests --test port_templates_e2e`, 9/9 pass
+(the three minimal-publisher cells plus the six new ones), with the fixtures
+built through the FreeRTOS cmake lane and the west lane.
+
+Open: G.4, the larger real-world port fixture. It was not attempted here.
 
 ### W4 — `rclcpp_lifecycle::LifecycleNode`
 

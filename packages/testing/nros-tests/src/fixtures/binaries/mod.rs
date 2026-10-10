@@ -4317,6 +4317,27 @@ pub fn build_int32_sink() -> TestResult<&'static Path> {
     build_int32_sink_rmw(Rmw::Zenoh)
 }
 
+/// phase-482 W3 — resolve the prebuilt `int32-source` fixture (cached), the
+/// publishing twin of [`build_int32_sink`].
+///
+/// Publishes `std_msgs/Int32` on every topic in `NROS_PUB_TOPICS`
+/// (comma-separated) every `NROS_PUB_PERIOD_MS` and prints `Published: N`
+/// ([`crate::output::INT32_TALKER_LOG_PREFIX`]). Zenoh only: it is the peer of
+/// the `topic-state-monitor-port` cells, all of which run on zenoh.
+pub fn build_int32_source() -> TestResult<&'static Path> {
+    static BIN: OnceCell<PathBuf> = OnceCell::new();
+    BIN.get_or_try_init(|| {
+        let row = crate::fixtures::groups::select_row(
+            "packages/testing/nros-tests/bins/int32-source",
+            &crate::fixtures::groups::FixtureVariant::rmw(Rmw::Zenoh),
+        )?;
+        let profile = cargo_target_profile_dir();
+        let rel = PathBuf::from(format!("{profile}/int32-source"));
+        require_prebuilt_row_binary_fresh(row, &rel)
+    })
+    .map(|p| p.as_path())
+}
+
 /// Resolve the prebuilt concurrent Fibonacci action-server fixture for `rmw`
 /// (cached per RMW).
 ///

@@ -433,7 +433,37 @@ pub enum Workload {
     /// Zephyr guest dialling its own loopback), or a toolchain that compiles the
     /// ported file freestanding. A pubsub example is written FOR nano-ros and
     /// meets none of those. The sources are `examples/templates/*-port*`.
+    ///
+    /// This value is `cpp-port-minimal-publisher`. The other two port
+    /// templates are their own values, [`Workload::PortSmoke`] and
+    /// [`Workload::PortMonitor`], because a cell is one coordinate and the three
+    /// assert different behaviour.
     Port,
+    /// phase-482 W3 — `examples/templates/rclcpp-compat-smoke`, ported
+    /// unmodified: an `rclcpp::Node` subclass whose `main` drives a
+    /// `rclcpp::spin_some` + `std::this_thread::sleep_for` loop, publishing
+    /// `std_msgs/Int32` and, through `diagnostic_updater::Updater`, a
+    /// `DiagnosticArray`. A host `int32-sink` must RECEIVE the Int32 topic and
+    /// a host diagsink must receive the diagnostics task.
+    ///
+    /// A [`Workload::Port`] sibling rather than a case of it: it reaches the
+    /// two pieces of the hosted C++ library the tutorial publisher never
+    /// touches, `std::this_thread::sleep_for` and `std::chrono::steady_clock`,
+    /// which the updater's rate limit reads. On FreeRTOS both reach newlib
+    /// calls the board did not provide until this cell ran.
+    PortSmoke,
+    /// phase-482 W3 — `examples/templates/topic-state-monitor-port`, ported
+    /// unmodified: two capturing-lambda subscriptions feed a per-topic
+    /// liveness report on `/diagnostics`. The cell must see each watched topic
+    /// reported STALE while no peer publishes, and LIVE (with the peer's value)
+    /// once the host `int32-source` publishes both topics.
+    ///
+    /// Its own value because its subject is the SUBSCRIBE half of a ported
+    /// node (capturing lambdas, dispatch from `rclcpp::spin_some`) plus a
+    /// monotonic clock that really advances. The stale-then-live order is what
+    /// keeps that honest: a clock stuck at zero reports every topic live
+    /// whether or not anything arrived.
+    PortMonitor,
 }
 
 impl Workload {
@@ -468,6 +498,12 @@ impl Workload {
             // offset has to be.
             Workload::QosEvents => 97,
             Workload::Port => 98,
+            // The two other port templates (phase-482 W3). 81..=89 is free in
+            // every platform's band; these do not reach the domain window
+            // (`domain_of` clamps every offset past 60), and every port cell
+            // is zenoh.
+            Workload::PortSmoke => 88,
+            Workload::PortMonitor => 89,
         }
     }
 
@@ -617,6 +653,11 @@ pub const CELLS: &[Cell] = &[
     // `port_templates_e2e`. Same program on all three platforms; only the
     // build glue differs.
     cell(Linux, Cpp,  Zenoh,      Port,    Example, Runtime),
+    // phase-482 W3 — the other two port templates, the same way:
+    // `rclcpp-compat-smoke` and `topic-state-monitor-port`, each one source on
+    // all three platforms, run by `port_templates_e2e`.
+    cell(Linux, Cpp,  Zenoh,      PortSmoke,   Example, Runtime),
+    cell(Linux, Cpp,  Zenoh,      PortMonitor, Example, Runtime),
     cell(Linux, Rust, Cyclonedds, Pubsub,  Example, Runtime),
     cell(Linux, C,    Cyclonedds, Pubsub,  Example, Runtime),
     cell(Linux, Cpp,  Cyclonedds, Pubsub,  Example, Runtime),
@@ -664,6 +705,8 @@ pub const CELLS: &[Cell] = &[
     // not native_sim: a ported program needs the full libstdc++, which
     // native_sim's C library cannot carry (phase-209 G.2).
     cell(ZephyrQemuCortexM, Cpp, Zenoh, Port,    Example, Runtime),
+    cell(ZephyrQemuCortexM, Cpp, Zenoh, PortSmoke,   Example, Runtime),
+    cell(ZephyrQemuCortexM, Cpp, Zenoh, PortMonitor, Example, Runtime),
     // phase-346 W3 — Rust on a REAL Zephyr board, unblocked by patching issue
     // 0432's two upstream defects. Until then the `zephyr` crate could not
     // compile for any board whose devicetree has gpio nodes, which is every
@@ -717,6 +760,8 @@ pub const CELLS: &[Cell] = &[
     cell(FreertosMps2, Cpp,  Zenoh, Pubsub,  Example, Runtime),
     // phase-482 W3 — the ported tutorial publisher on FreeRTOS.
     cell(FreertosMps2, Cpp,  Zenoh, Port,    Example, Runtime),
+    cell(FreertosMps2, Cpp,  Zenoh, PortSmoke,   Example, Runtime),
+    cell(FreertosMps2, Cpp,  Zenoh, PortMonitor, Example, Runtime),
     cell(FreertosMps2, Rust, Zenoh, Service, Example, Runtime),
     cell(FreertosMps2, C,    Zenoh, Service, Example, Runtime),
     cell(FreertosMps2, Cpp,  Zenoh, Service, Example, Runtime),

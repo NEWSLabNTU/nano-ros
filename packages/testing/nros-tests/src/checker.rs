@@ -78,6 +78,11 @@ pub fn delivery_marker(workload: Workload) -> &'static str {
         // tutorial's text rather than ours (phase-482 W3). Nothing receives it
         // in-cell: the subject is that the unmodified program runs at all.
         Workload::Port => output::CPP_PORT_PUBLISH_MARKER,
+        // The smoke node's Int32 topic, received by the host `int32-sink`.
+        Workload::PortSmoke => output::INT32_LISTENER_LOG_PREFIX,
+        // The monitor's own diagnostics, received by the host diagsink. Its
+        // full contract (stale first, then live per topic) is the test's.
+        Workload::PortMonitor => output::CONTRACT_MONITOR_DIAG_PREFIX,
     }
 }
 

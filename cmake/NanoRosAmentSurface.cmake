@@ -141,18 +141,9 @@ endfunction()
 
 # --- ament_target_dependencies / ament_export_* shims -------------------------
 
-function(ament_target_dependencies target)
-    # Stock ROS 2 form: ament_target_dependencies(<target> rclcpp std_msgs …).
-    # Each dep is a *package* whose `find_package(<dep>)` defined a target.
-    # Wire only the deps the stubs actually create targets for (rclcpp +
-    # rclcpp_components today); the rest are no-ops because nano-ros pulls in
-    # the message + ROS surface through NanoRos::NanoRosCpp anyway.
-    foreach(_dep IN LISTS ARGN)
-        if(TARGET ${_dep}::${_dep})
-            target_link_libraries(${target} PRIVATE ${_dep}::${_dep})
-        endif()
-    endforeach()
-endfunction()
+# `ament_target_dependencies` lives in its own file because the Zephyr arm of
+# `nano_rosConfig.cmake` includes it without the rest of this surface.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosAmentTargetDeps.cmake")
 
 function(ament_export_dependencies)
     # No-op — nano-ros has no ament install layout; the embedded build does not
