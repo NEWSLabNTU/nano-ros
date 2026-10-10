@@ -535,6 +535,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
             &image,
             &platform,
             &board,
+            nano_ros_root.as_deref(),
         );
         let resolved_dir = resolved.as_ref().map(|r| r.dir.clone());
 
@@ -3131,6 +3132,44 @@ struct ResolvedImage {
     store_infra: Option<crate::entity_inventory::InfraServices>,
 }
 
+/// `resolved.toml`'s `[locations]` — phase-484 W6c (RFC-0103 D7).
+///
+/// Every `[source.*]` row of the nano-ros root's index that the ONE ladder
+/// answers for, with this workspace as the project (its `system.toml`
+/// `[sources]` is rung 3). A row the ladder cannot answer is left out rather
+/// than recorded as a refusal: the index names every platform's trees, most of
+/// which a given image never reads, and `nros locate --all --why` already
+/// explains a miss. Empty when there is no nano-ros root or its index will not
+/// load — the record is never a reason for a build to stop.
+fn image_locations(
+    nano_ros_root: Option<&std::path::Path>,
+    project: &std::path::Path,
+) -> Vec<crate::resolve::Location> {
+    let Some(nr) = nano_ros_root else {
+        return Vec::new();
+    };
+    let Ok(index) =
+        crate::orchestration::sdk_index::SdkIndex::load(&nr.join("nros-sdk-index.toml"))
+    else {
+        return Vec::new();
+    };
+    index
+        .source
+        .keys()
+        .filter_map(|name| {
+            crate::cmd::locate::locate_answer(&index, nr, name, Some(project))
+                .ok()
+                .map(|a| crate::resolve::Location {
+                    name: name.clone(),
+                    answer: Ok((nros_build_paths::canonical(&a.path), a.rung.label())),
+                })
+        })
+        .collect()
+}
+
+// Eight declarations of one image, each read where it already lives; a struct
+// built only to carry them across this one call would be a second home for them.
+#[allow(clippy::too_many_arguments)]
 fn resolve_image(
     root: &std::path::Path,
     bringup: &str,
@@ -3139,6 +3178,7 @@ fn resolve_image(
     image: &crate::orchestration::image::ImageBlock,
     platform: &str,
     board: &str,
+    nano_ros_root: Option<&std::path::Path>,
 ) -> Option<ResolvedImage> {
     use crate::{
         entity_inventory::EntityInventory,
@@ -3259,14 +3299,16 @@ fn resolve_image(
     // about one artifact over ("a second count in cmake is how two green tools
     // come to disagree").
     let composed = inventory.as_ref().ok().cloned();
+    let locations = image_locations(nano_ros_root, root);
     let written = match inventory {
-        Ok((inv, _)) => write_resolved(&dir, ident, &inv),
+        Ok((inv, _)) => write_resolved(&dir, ident, &inv, locations),
         Err(reason) => {
             let r = crate::resolve::Resolved::unresolvable(
                 ident,
                 bringup_dir.join("launch").display().to_string(),
                 reason,
-            );
+            )
+            .with_locations(locations);
             // Same two writes as the derived path, minus the projection — kept
             // inline rather than routed through `write` because there is no
             // inventory to render one from.

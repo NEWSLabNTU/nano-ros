@@ -101,6 +101,19 @@ pub(crate) fn locate_source(
     root: &std::path::Path,
     name: &str,
 ) -> std::result::Result<PathBuf, String> {
+    locate_answer(index, root, name, project_dir(None).as_deref())
+        .map(|a| nros_build_paths::canonical(&a.path))
+}
+
+/// [`locate_source`] with the project stated and the whole answer kept (the
+/// rung it came from), for a caller that RECORDS where a tree came from —
+/// `resolved.toml`'s `[locations]`.
+pub(crate) fn locate_answer(
+    index: &SdkIndex,
+    root: &std::path::Path,
+    name: &str,
+    project: Option<&std::path::Path>,
+) -> std::result::Result<locate::Answer, String> {
     let src = index
         .source
         .get(name)
@@ -118,14 +131,12 @@ pub(crate) fn locate_source(
             .and_then(std::env::var_os)
             .filter(|v| !v.is_empty())
             .map(PathBuf::from),
-        project: project_dir(None).and_then(|d| locate::project_source(&d, name)),
+        project: project.and_then(|d| locate::project_source(d, name)),
         checkout_edit: locate::checkout_edit(&row, checkout.as_deref()),
         checkout,
         store: crate::orchestration::store::root(),
     };
-    locate::resolve(&row, &ctx)
-        .map(|a| nros_build_paths::canonical(&a.path))
-        .map_err(|r| r.to_string())
+    locate::resolve(&row, &ctx).map_err(|r| r.to_string())
 }
 
 fn var_name(name: &str) -> String {
