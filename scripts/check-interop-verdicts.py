@@ -1961,6 +1961,14 @@ def main(argv: list[str]) -> int:
         "live in instead of the cell ids (several cells share one binary)",
     )
     ap.add_argument(
+        "--filters",
+        action="store_true",
+        help="with --list-passing, emit one `<binary>\\t<nextest filter>` line "
+        "per test binary, selecting ONLY the cases the passing cells recorded "
+        "(issue 1758): `binary(=x)` alone also runs the binary's unrecorded "
+        "cases, whose fixtures this lane's build never selected",
+    )
+    ap.add_argument(
         "--runner",
         choices=RUNNERS,
         default="all",
@@ -2114,6 +2122,22 @@ def main(argv: list[str]) -> int:
             except LedgerError as e:
                 print(f"check-interop-verdicts: {e}", file=sys.stderr)
                 return 1
+        elif args.filters:
+            # Issue 1758 — the lane's RUN scope is the cases it RECORDED. Its
+            # build is derived from the same passing cells (`--host-builds`),
+            # so a case the ledger never recorded may need a fixture nothing
+            # built. Before #1758 that case skipped and the lane read green;
+            # now it fails, which is right of the case and wrong of the lane.
+            cases: dict[str, set[str]] = {}
+            for e in entries:
+                if e.get("verdict") != "pass" or e["cell"] not in passing:
+                    continue
+                b = by_id[e["cell"]].get("test")
+                if b:
+                    cases.setdefault(b, set()).update(e["tests"])
+            for b in sorted(cases):
+                expr = " or ".join(f"test(={t})" for t in sorted(cases[b]))
+                print(f"{b}\tbinary(={b}) and ({expr})")
         elif args.by_binary:
             # A cell whose id is no longer in CELLS is the ledger gate's problem,
             # not this lane's — skip it here rather than crash the run that is
