@@ -399,6 +399,18 @@ compile definition is gone (nothing compiled read it); retiring the
 `CONFIG_NROS_CYCLONE_DOMAIN_ID` symbol itself is a Kconfig change and waits
 for W5's coordination with phase-481.
 
+**W4c — the inert threadx-linux `rmw-*` features.** The six role crates under
+`examples/threadx-linux/rust/` declared `rmw-zenoh`/`rmw-xrce`/`rmw-cyclonedds`
+as `[]` (no forwarding since #60 T5), kept only so six
+`--no-default-features --features rmw-zenoh` fixture rows still resolved. Those
+rows duplicated the bare rows beside them — the RMW is the bringup's — and
+built the same image into a second group dir that no test read (the one
+resolver that could, `build_threadx_linux_rust_example_rmw`, had no caller).
+Rows, features and resolver are gone. The Zephyr leaves carry the same inert
+set and wait for phase-481, which owns those leaves; the three PX4
+companions' `rmw-xrce = []` is likewise a no-op that `just/px4.just` still
+passes, left for the W8 retirement pass with the recipe.
+
 ### W5 -- one canonical name per knob
 
 - The Zephyr module defines nano-ros knob symbols with NO prompt and sources

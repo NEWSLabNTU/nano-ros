@@ -2514,60 +2514,14 @@ skip_probe = true
 env = { NROS_LOCATOR = "tcp/10.0.2.2:8220", NROS_DOMAIN_ID = "0" }
 
 # ===========================================================================
-# threadx-linux (host x86_64 ThreadX/NetX over NSOS) — Rust role examples,
-# zenoh RMW into target-zenoh/.
+# threadx-linux (host x86_64 ThreadX/NetX over NSOS) — Rust role examples.
+# phase-484 W4c: six `--no-default-features --features rmw-zenoh` duplicates of
+# the rows below are gone — the `rmw-*` features they named were inert (`[]`,
+# no forwarding since #60 T5), so they built the same image into a second group
+# dir no test read.
 # ===========================================================================
 
-[[fixture]]
-platform = "threadx-linux"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/threadx-linux/rust/talker"
-no_default_features = true
-features = ["rmw-zenoh"]
-
-[[fixture]]
-platform = "threadx-linux"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/threadx-linux/rust/listener"
-no_default_features = true
-features = ["rmw-zenoh"]
-
-[[fixture]]
-platform = "threadx-linux"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/threadx-linux/rust/service-server"
-no_default_features = true
-features = ["rmw-zenoh"]
-
-[[fixture]]
-platform = "threadx-linux"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/threadx-linux/rust/service-client"
-no_default_features = true
-features = ["rmw-zenoh"]
-
-[[fixture]]
-platform = "threadx-linux"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/threadx-linux/rust/action-server"
-no_default_features = true
-features = ["rmw-zenoh"]
-
-[[fixture]]
-platform = "threadx-linux"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/threadx-linux/rust/action-client"
-no_default_features = true
-features = ["rmw-zenoh"]
-
-# Phase 275 W1 (#102 H2) — the per-role Entry-pkg demos. Unlike the role
-# examples above (which select the RMW via cargo features), each Entry pkg
+# Phase 275 W1 (#102 H2) — the per-role Entry-pkg demos. Each Entry pkg
 # bakes board+rmw through `nros::main!` + the `nros-board-threadx-linux`
 # shim (package.xml `rmw="zenoh"`), so these are bare default-feature rows.
 # `fixtures-build.sh` runs `nros sync` (materialises generated/ + the

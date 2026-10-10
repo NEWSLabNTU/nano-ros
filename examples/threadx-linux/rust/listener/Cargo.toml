@@ -23,17 +23,6 @@ crate-type = ["rlib"]
 # qemu-armv7a-nuttx. threadx-linux was a hosted (`std`) sim then, which is why
 # the obligation was invisible: libstd supplied the items and no one had to notice.
 
-[features]
-# Phase 248 C6e — RMW is selected by config (`system.toml`'s `[system] rmw`)
-# and the concrete backend is linked by the board's C port (NetX-Duo BSD / zpico-sys
-# C TU), NOT a Rust `nros/rmw-*` dep. These rows are now inert build-target markers
-# (same pattern as `nros-board-mps2-an385`), kept so existing
-# `cargo build --no-default-features --features rmw-zenoh` invocations
-# (examples/fixtures.toml) still resolve; they no longer forward `nros/rmw-*`. (#60 T5)
-rmw-zenoh = []
-rmw-xrce = []
-rmw-cyclonedds = []
-
 [dependencies]
 # phase-338 W2 — carried over from the collapsed `-entry` package.
 # Phase 212.N.3 tier-1 per-board shim. `<ThreadxLinux as BoardEntry>::run`
