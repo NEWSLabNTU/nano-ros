@@ -195,7 +195,7 @@ pub fn run(args: Args) -> Result<()> {
                 if args.why {
                     for s in &trace {
                         eprintln!(
-                            "  {:<9} {}{}",
+                            "  {:<10} {}{}",
                             s.rung,
                             s.saw,
                             if s.chosen { "        <- chosen" } else { "" }
