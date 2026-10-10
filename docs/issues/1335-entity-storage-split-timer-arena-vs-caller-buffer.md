@@ -6,7 +6,7 @@ title: "The C++ API uses the POLL path where it means the DISPATCH path, and
 status: open
 type: question
 area: [api, api-c, core, docs]
-related: [phase-482, rfc-0022, rfc-0054, rfc-0096, phase-409, phase-412, phase-442, phase-456,
+related: [phase-482, phase-487, rfc-0022, rfc-0054, rfc-0096, phase-409, phase-412, phase-442, phase-456,
   issue-1496]
 ---
 
@@ -264,3 +264,12 @@ caller-declared structs, a third shape beside the arena and the C++ handle
 arena-handle model of RFC-0096 D9, or records why it does not, is a
 maintainer decision. That is this issue's question 3, and the issue stays open
 for it alone.
+
+## Decided (2026-10-10, maintainer)
+
+C follows the C++ rule. Every C entity the executor dispatches becomes an arena
+handle in a struct the caller still declares (the `rcl` idiom), and the C
+publisher keeps its own storage, as the C++ `Publisher` does. The rejected
+alternatives and the polling-type question are recorded in
+[phase-487](../roadmap/phase-487-c-api-dispatch-entities-are-arena-handles.md),
+which carries the work. This issue closes when phase-487 lands.
