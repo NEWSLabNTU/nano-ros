@@ -76,7 +76,7 @@ fn main() -> ! {
     // `nros_app_main` is the `int main` shim's shape (`<nros/app_main.h>`): no
     // weak/strong recorder pair, so nothing depends on which archive member
     // the linker happens to load. `run_bare` maps `Err` to `exit_failure`.
-    run_bare(Config::default(), |_cfg| {
+    run_bare(Config::from_image(), |_cfg| {
         // SAFETY: `nros_app_main` is the C entry every leaf defines; `argc = 0`
         // with a null `argv` is what the header's own VOID shim passes. The
         // board is up by the time `run_bare` calls this closure, which is the

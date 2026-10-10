@@ -203,6 +203,10 @@ fn main() {
     // `strict_decls` is C-only — both diagnostics are C-language options, and a
     // C++ compile rejects the constructs outright.
     nros_cc_flags::gcc_safe_frame_pointer(&mut build);
+    // Issue 1512 — the image's declared locator/domain, from the `[env]` rows
+    // `nros sync` renders into `build/<image>/nros-cargo.toml`. The app TU only:
+    // the generated bindings dial nothing.
+    nros_cc_flags::entry_config::bake(&mut build);
     nros_cc_flags::header_deps::track_header_deps(&mut build);
     build.compile("baremetal_cpp_listener_app");
     // issue 1580 — every header the compile opened, beyond the ones named above.

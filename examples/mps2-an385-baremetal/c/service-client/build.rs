@@ -174,6 +174,11 @@ fn main() {
 
     let mut bindings = build.clone();
 
+    // Issue 1512 — the image's declared locator/domain, from the `[env]` rows
+    // `nros sync` renders into `build/<image>/nros-cargo.toml`. The app TU only:
+    // the generated bindings dial nothing.
+    nros_cc_flags::entry_config::bake(&mut build);
+
     let app_sources = c_sources(Path::new("src"));
     assert!(
         !app_sources.is_empty(),

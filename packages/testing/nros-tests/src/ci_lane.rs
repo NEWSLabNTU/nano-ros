@@ -37,10 +37,10 @@
 //!
 //! | lane | selection | cells | coords | cost |
 //! | --- | --- | --- | --- | --- |
-//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k + pairwise l × r | 22 | 12 | 25 % |
-//! | [`CiLane::Tier2`] | 1-wise p, l, r, k | 11 | 11 | 23 % |
-//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k | 35 | 34 | 71 % |
-//! | tier 3 | everything | 205 | 48 | 100 % |
+//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k + pairwise l × r | 22 | 12 | 24 % |
+//! | [`CiLane::Tier2`] | 1-wise p, l, r, k | 11 | 11 | 22 % |
+//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k | 37 | 36 | 72 % |
+//! | tier 3 | everything | 205 | 50 | 100 % |
 //!
 //! Re-measured 2026-09-10 (phase-441 W1). FOUR of the six gated numbers had
 //! drifted before that commit touched anything — tier 1's cells (17→19), tier
@@ -71,6 +71,13 @@
 //! the `PortSmoke` and `PortMonitor` cells on Linux, two more `workload`
 //! values by the same mechanism; their coordinate is again `linux,cpp,zenoh`,
 //! so coords stay 12.
+//!
+//! Re-measured 2026-10-11 (issue 1512). Four bare-metal C/C++ cells became
+//! Runtime (`(QemuBaremetal, C|Cpp, Zenoh, Pubsub|Service)`), adding TWO
+//! coordinates nothing ran before (`baremetal,c,zenoh`, `baremetal,cpp,zenoh`):
+//! the tier-3 denominator went 48 -> 50 and the nightly pairwise cover took
+//! both, 35 -> 37 cells and 34 -> 36 coords. Tiers 1 and 2 kept their cells
+//! and coords; only their cost column moved, against the larger denominator.
 //!
 //! **This table and the array in `documented_lane_table_is_live` are two
 //! spellings of one fact, and the table is the one nothing checks.** Nightly's
@@ -958,7 +965,7 @@ _tier-build:
         let documented = [
             (CiLane::Tier1, 22, 12),
             (CiLane::Tier2, 11, 11),
-            (CiLane::Tier2Nightly, 35, 34),
+            (CiLane::Tier2Nightly, 37, 36),
         ];
         for (lane, want_cells, want_coords) in documented {
             assert_eq!(
@@ -977,8 +984,8 @@ _tier-build:
             );
         }
         assert_eq!(
-            total_coords, 48,
-            "the table's tier-3 denominator (48 coordinates) is stale; recomputed \
+            total_coords, 50,
+            "the table's tier-3 denominator (50 coordinates) is stale; recomputed \
              {total_coords}"
         );
     }

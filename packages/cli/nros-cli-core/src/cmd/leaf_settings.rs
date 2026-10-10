@@ -392,6 +392,32 @@ pub fn write(leaf: &Path, nano_ros_root: &Path, who: &str) -> Result<Option<Leaf
         descriptor.path,
     );
 
+    // Issue 1512 — the image's connect identity, for a C/C++ app compiled by
+    // `cc` inside a cargo-rooted image. `<nros/entry_config.h>` lets an entry
+    // bake its locator/domain by defining the macro first; the cmake road does
+    // that with `-DNROS_ENTRY_LOCATOR`, and these rows are the cargo road's
+    // carrier (`nros_cc_flags::entry_config::bake` reads them). A Rust leaf
+    // takes the same facts through `nros::main!`, so nothing reads these there.
+    // Absent ⇒ no row ⇒ the header's own ladder, unchanged.
+    if let Some(loc) = &img.decl.network.locator {
+        env.insert("NROS_ENTRY_LOCATOR".to_string(), loc.clone());
+    }
+    if let Some(id) = img.decl.network.domain_id {
+        env.insert("NROS_ENTRY_DOMAIN_ID".to_string(), id.to_string());
+    }
+    // ...and the board's boot `Config` for the same image
+    // (`nros_board_mps2_an385::Config::from_image`), which a Rust leaf gets
+    // from `nros::main!`'s deploy overlay instead.
+    for (key, v) in [
+        ("NROS_ENTRY_IP", &img.decl.network.ip),
+        ("NROS_ENTRY_GATEWAY", &img.decl.network.gateway),
+        ("NROS_ENTRY_NETMASK", &img.decl.network.netmask),
+    ] {
+        if let Some(v) = v {
+            env.insert(key.to_string(), v.clone());
+        }
+    }
+
     // Layer 4 — the APP rung: what this IMAGE states (`[image.<id>] env`).
     // Last, so it outranks the board and the implications above and is
     // outranked only by the calling environment.

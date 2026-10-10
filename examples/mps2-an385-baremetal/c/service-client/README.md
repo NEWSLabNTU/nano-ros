@@ -21,6 +21,8 @@ cd examples/mps2-an385-baremetal/c/service-client && cargo build --release
 
 ## Status
 
-Build-only (issue 1512): it boots in QEMU as far as the session open, and has no
-runtime lane until the entry locator reaches a cargo-rooted C image — see the
-talker's README.
+Runs end to end under QEMU (issue 1512): `tests/emulator.rs`'s
+`test_qemu_baremetal_capi_e2e` pairs it with its peer against a router on the
+port its `system.toml` locator names (this cell's `alloc::port`). The locator
+reaches the C TU as `NROS_ENTRY_LOCATOR` and the boot config as
+`Config::from_image()`.

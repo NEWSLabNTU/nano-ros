@@ -169,7 +169,7 @@ landing and red under a mutation.
 
 ### W5 — bare metal, the remaining roads
 
-Issue [1512](../issues/1512-c-api-does-not-reach-bare-metal.md) is open for the
+Issue [1512](../issues/archived/1512-c-api-does-not-reach-bare-metal.md) is open for the
 **C-rooted** cmake road only: the board has no linker script with `SECTIONS`/
 `ENTRY`, no C reset/vector startup, and no C-callable board init (which needs a
 new board-seam staticlib, since `nros-c` cannot depend on a board). The six C
@@ -177,6 +177,14 @@ roles and a C++ talker exist and boot on the cargo-rooted road (PR #1585); the
 other C++ roles are mechanical.
 
 **Acceptance:** 1512 closed, or its C-rooted half recorded as not pursued.
+
+**Status 2026-10-11:** done — issue 1512 resolved. The C-rooted half is not
+pursued (D4); on the cargo-rooted road all six C and six C++ roles now RUN:
+the image's declared locator/network reaches the C/C++ compile and the boot
+config, a quiet smoltcp spin is no longer reported as a connection failure, and
+the four bare-metal C/C++ pubsub/service cells are `Runtime`
+(`test_qemu_baremetal_capi_e2e`). The action pairs do not reliably round-trip
+yet: issue 1797.
 
 ### W6 — board identity residue
 
@@ -340,8 +348,8 @@ first-prefix), #1862 (arm-fvp libatomic), #1868 (runner name required).
 session, `fix/477-fvp-lane`); 1512's runtime lane (entry locator bake).
 Tier-1 CI acceptance (1684/1685): run 37945434581's tier 1 was running on
 runner `newslab-118-server` at stop; tier 2 failed in preflight — triage with
-`just matrix-triage`. Unfiled: the stage reporter labels a runner-lost job
-"DID NOT START" (issue-1754 class).
+`just matrix-triage`. The stage reporter labelling a runner-lost job "DID NOT
+START" (issue-1754 class) was filed and fixed meanwhile as issue 1790.
 
 **Infra state:** two self-hosted runners — `nano-ros-runner-newslab-118-server`
 and `nano-ros-runner-newslab-133` (this host, tmux `nros-runner`, store

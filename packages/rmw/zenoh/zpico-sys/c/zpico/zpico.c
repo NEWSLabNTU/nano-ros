@@ -3205,6 +3205,20 @@ int32_t zpico_spin_once(zpico_session_t* session, uint32_t timeout_ms) {
         // timeout_ms == 0 && ret == 0: data processed, loop to drain next message
         // timeout_ms != 0 && ret != 0: no data yet, keep waiting (while decides)
     } while (ret == 0 || smoltcp_clock_now_ms() - start < timeout_ms);
+    // issue 1512 / issue 0387's class — a QUIET tick is 0, not an error. With
+    // single_read=true over a stream link, "no complete frame buffered" is
+    // `_Z_ERR_TRANSPORT_NOT_ENOUGH_BYTES`, and both loop exits above leave
+    // exactly that in `ret` on a live-but-quiet session. Returned raw it
+    // reached Rust as `ZpicoError::Generic` -> ConnectionFailed on EVERY spin
+    // (1975 such log lines in 20 s from the Rust talker, which tolerates them),
+    // and `nros_executor_spin_period` counts it as an I/O failure and gives up
+    // after SPIN_ERROR_TOLERANCE quiet rounds — so every bare-metal C/C++
+    // image stopped ~1.6 s after boot. Every other backend returns 0 here
+    // (issue 0387 made the ThreadX arm do the same); a real failure still
+    // returns its own negative code.
+    if (ret == _Z_ERR_TRANSPORT_NOT_ENOUGH_BYTES) {
+        ret = 0;
+    }
     // Process query timeouts — in multi-threaded mode the lease task handles
     // this, but on single-threaded bare-metal (smoltcp) there is no lease task.
     // Without this call, timed-out queries are never cleaned up and their
