@@ -8,7 +8,7 @@
 # Usage:
 #   cmake -S . -B build \
 #         -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain/riscv32imac-nuttx-elf.cmake \
-#         -DNANO_ROS_RMW=zenoh -DNANO_ROS_BUILD_CODEGEN=OFF
+#         -DNANO_ROS_RMW=zenoh -DNROS_BUILD_CODEGEN=OFF
 #   cmake --build build
 
 set(CMAKE_SYSTEM_NAME       Generic)

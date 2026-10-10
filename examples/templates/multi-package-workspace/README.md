@@ -72,7 +72,7 @@ self-contained inside the nano-ros source repo.
 * **Three audiences, one entry.** C (rclc-shaped), C++ (rclcpp-shaped),
   Rust (rclrs-shaped) packages co-exist; their build files differ by
   ~10 lines of CMake / Cargo each.
-* **Workspace-shared codegen cache.** `NANO_ROS_GEN_CACHE_DIR` lets
+* **Workspace-shared codegen cache.** `NROS_GEN_CACHE_DIR` lets
   `std_msgs__nano_ros_c` and `std_msgs__nano_ros_cpp` build **once**
   across the C + C++ packages. Without the cache, each package would
   regenerate the bindings independently. See Phase 123.A.7.
@@ -106,10 +106,10 @@ cd examples/templates/multi-package-workspace
 # C and C++ — their own CMake. No `nros sync`: a C/C++ package's message
 # bindings are a CMake-time output.
 cmake -S src/pkg_c_talker -B src/pkg_c_talker/build \
-      -DNANO_ROS_GEN_CACHE_DIR="$PWD/build/nros-gen-cache"
+      -DNROS_GEN_CACHE_DIR="$PWD/build/nros-gen-cache"
 cmake --build src/pkg_c_talker/build
 cmake -S src/pkg_cpp_listener -B src/pkg_cpp_listener/build \
-      -DNANO_ROS_GEN_CACHE_DIR="$PWD/build/nros-gen-cache"
+      -DNROS_GEN_CACHE_DIR="$PWD/build/nros-gen-cache"
 cmake --build src/pkg_cpp_listener/build
 
 # Rust — its `system.toml` declares `[image.native]`.
@@ -117,7 +117,7 @@ cd src/pkg_rust_publisher && nros sync && nros build
 ```
 
 `build-all.sh` is the one-shot driver for the same three builds; it also sets
-`NANO_ROS_GEN_CACHE_DIR` to a shared scratch dir so the `std_msgs` C/C++
+`NROS_GEN_CACHE_DIR` to a shared scratch dir so the `std_msgs` C/C++
 bindings are generated once across both CMake packages.
 
 Per-package output:
@@ -168,6 +168,6 @@ ROS 2 distro on hand (or who don't want to install colcon).
   no root build file, and the cargo settings a package needs are
   generated per image under `build/`. The old `.cargo/config.toml`
   shim this template used to carry is gone for the same reason.
-* Rust codegen is still per-package — the `NANO_ROS_GEN_CACHE_DIR`
+* Rust codegen is still per-package — the `NROS_GEN_CACHE_DIR`
   sharing that the C and C++ packages get has no cargo-side
   equivalent yet (Phase 123.A.7 follow-up).

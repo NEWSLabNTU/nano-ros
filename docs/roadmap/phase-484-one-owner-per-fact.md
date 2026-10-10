@@ -633,6 +633,19 @@ verb's answer is used as given.
   - **W7b-2** — the three names that already have a twin with its own
     precedence (`NANO_ROS_RMW`/`NROS_RMW`, `NANO_ROS_BOARD`/`NROS_BOARD`,
     `NANO_ROS_ROOT`/`NROS_REPO_DIR`): reconcile which wins, then merge.
+- **W7b-1 landed (2026-10-11).** `cmake/NanoRosDeprecatedNames.cmake`
+  (`nros_adopt_deprecated_names()`, called from the root `CMakeLists.txt`,
+  `nano_rosConfig.cmake`, `zephyr/CMakeLists.txt` and
+  `NanoRosWorkspace.cmake`) aliases `NANO_ROS_{PLATFORM,FEATURES,SAFETY_E2E,
+  ROS_EDITION,GEN_CACHE_DIR,SKIP_BOOTSTRAP,BUILD_CODEGEN,CMAKE_DIR}`; every
+  tracked use moved to the `NROS_*` name (550 occurrences in 149 files; history
+  docs untouched), and the internal `NANO_ROS_{EXPORT,LEAF,PROVIDER,LOCATOR,
+  DEFAULT}_*` names were renamed outright — `NANO_ROS_LEAF_*` now shares the
+  `NROS_LEAF_*` spelling the CLI's leaf-system rows already used for the same
+  facts. Gate `check-deprecated-cmake-names` (only the shim reads an old
+  name); cmake test `cmake-deprecated-names` (cache and normal aliases adopted
+  with a deprecation, a disagreement refused, the new name alone silent); book
+  page `reference/deprecated-names.md`.
 - **Old-name retirement pass (W8, after the aliases have shipped in one
   release).** Remove the shim's table entries (each old name then becomes a
   configure ERROR naming its replacement, kept one more release before the

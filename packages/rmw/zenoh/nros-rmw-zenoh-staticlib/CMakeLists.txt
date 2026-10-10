@@ -6,28 +6,28 @@ project(NrosRmwZenoh VERSION 0.1.0 LANGUAGES C)
 # `CMakeLists.txt` zenoh branch, which links `nros_rmw_zenoh_staticlib-static`
 # (the Corrosion target below) into `NanoRos::NanoRos` directly.
 
-if(NANO_ROS_PLATFORM STREQUAL "posix")
+if(NROS_PLATFORM STREQUAL "posix")
     set(_platform_features std platform-posix)
     set(_lib_name "libnros_rmw_zenoh.a")
-elseif(NANO_ROS_PLATFORM STREQUAL "freertos_armcm3"
-       OR NANO_ROS_PLATFORM STREQUAL "freertos")
+elseif(NROS_PLATFORM STREQUAL "freertos_armcm3"
+       OR NROS_PLATFORM STREQUAL "freertos")
     # Phase 138 canonical "freertos" accepted alongside legacy
     # "freertos_armcm3"; Phase 138 collapsed board into NANO_ROS_BOARD.
     set(_platform_features platform-freertos)
-    set(_lib_name "libnros_rmw_zenoh_${NANO_ROS_PLATFORM}.a")
-elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a"
-       OR NANO_ROS_PLATFORM STREQUAL "nuttx")
+    set(_lib_name "libnros_rmw_zenoh_${NROS_PLATFORM}.a")
+elseif(NROS_PLATFORM STREQUAL "nuttx_armv7a"
+       OR NROS_PLATFORM STREQUAL "nuttx")
     # Phase 138 canonical "nuttx" accepted alongside legacy
     # "nuttx_armv7a"; Phase 138 collapsed board into NANO_ROS_BOARD.
     set(_platform_features platform-nuttx)
-    set(_lib_name "libnros_rmw_zenoh_${NANO_ROS_PLATFORM}.a")
-elseif(NANO_ROS_PLATFORM STREQUAL "threadx_linux")
+    set(_lib_name "libnros_rmw_zenoh_${NROS_PLATFORM}.a")
+elseif(NROS_PLATFORM STREQUAL "threadx_linux")
     set(_platform_features platform-threadx-std)
-    set(_lib_name "libnros_rmw_zenoh_${NANO_ROS_PLATFORM}.a")
-elseif(NANO_ROS_PLATFORM STREQUAL "threadx_riscv64")
+    set(_lib_name "libnros_rmw_zenoh_${NROS_PLATFORM}.a")
+elseif(NROS_PLATFORM STREQUAL "threadx_riscv64")
     set(_platform_features platform-threadx)
-    set(_lib_name "libnros_rmw_zenoh_${NANO_ROS_PLATFORM}.a")
-elseif(NANO_ROS_PLATFORM STREQUAL "threadx")
+    set(_lib_name "libnros_rmw_zenoh_${NROS_PLATFORM}.a")
+elseif(NROS_PLATFORM STREQUAL "threadx")
     # Phase 144.7-8 canonical "threadx" — board axis disambiguates
     # the std-vs-no_std crate-feature split.
     if(NANO_ROS_BOARD STREQUAL "threadx-linux")
@@ -36,18 +36,18 @@ elseif(NANO_ROS_PLATFORM STREQUAL "threadx")
         set(_platform_features platform-threadx)
     else()
         message(FATAL_ERROR
-            "NANO_ROS_PLATFORM=threadx requires NANO_ROS_BOARD to be one of: "
+            "NROS_PLATFORM=threadx requires NANO_ROS_BOARD to be one of: "
             "threadx-linux, rv-virt-threadx. Got '${NANO_ROS_BOARD}'.")
     endif()
-    set(_lib_name "libnros_rmw_zenoh_${NANO_ROS_PLATFORM}.a")
+    set(_lib_name "libnros_rmw_zenoh_${NROS_PLATFORM}.a")
 else()
-    message(FATAL_ERROR "Unknown NANO_ROS_PLATFORM: ${NANO_ROS_PLATFORM}")
+    message(FATAL_ERROR "Unknown NROS_PLATFORM: ${NROS_PLATFORM}")
 endif()
 
 # phase-336 — explicit profile + its definition; see NanoRosCargoProfile.cmake.
 include("${CMAKE_CURRENT_LIST_DIR}/../../../../cmake/NanoRosCargoProfile.cmake")
 # Issue 1547 — the edition feature from the one resolver, not a literal:
-# explicit > NANO_ROS_ROS_EDITION (the root CMakeLists' cache option) > the
+# explicit > NROS_ROS_EDITION (the root CMakeLists' cache option) > the
 # default. A literal here built this archive for the default edition whatever
 # the consumer selected.
 include("${CMAKE_CURRENT_LIST_DIR}/../../../../cmake/NanoRosRosEdition.cmake")

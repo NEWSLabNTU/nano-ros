@@ -14,7 +14,7 @@ find_package(std_msgs REQUIRED)
 # (via nros_cpp_subscription_register_validated), validates the E2E CRC on
 # each message, and republishes the running CRC-valid count on /safe_ok via
 # the generated std_msgs/Int32 serializer.
-# Requires NANO_ROS_SAFETY_E2E=ON (from [system].features = ["safety"]).
+# Requires NROS_SAFETY_E2E=ON (from [system].features = ["safety"]).
 nano_ros_auto_add_library(c_safe_listener_lib STATIC src/SafetyListener.c)
 
 nros_components_register_node(c_safe_listener_lib

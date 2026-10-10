@@ -9,7 +9,7 @@
 //! * issue 1742 — the carrier applied no panic policy;
 //! * issue 1753 — the static object needs the never-exits C++ static-object ABI
 //!   and the board's `.fini_array` bounds, which ThreadX RISC-V lacked;
-//! * issue 1795 itself — the arms compared the raw `NANO_ROS_PLATFORM` with the
+//! * issue 1795 itself — the arms compared the raw `NROS_PLATFORM` with the
 //!   family (`"threadx"`), and every lane passes the variant
 //!   (`threadx_riscv64`, `nuttx_armv7a`), so no lane-built carrier ever fired.
 //!

@@ -100,7 +100,7 @@ ALLOWED_LITERALS = {
 # the resolver's per-platform defaults. It carries no literal and invents no
 # default; it is the user's value arriving by another door.
 INPUT_WRITES = {
-    ("nano_rosConfig.cmake", "NANO_ROS_LEAF_LOCATOR"):
+    ("nano_rosConfig.cmake", "NROS_LEAF_LOCATOR"):
         "the leaf's system.toml declares it (RFC-0098 D5); an input like -D, not a default",
 }
 
@@ -210,7 +210,7 @@ def selftest():
               "nano_rosConfig.cmake / zephyr/", file=sys.stderr)
         sys.exit(1)
     expect("the leaf's declared locator is an input",
-           {"nano_rosConfig.cmake": 'set(NROS_ENTRY_LOCATOR "${NANO_ROS_LEAF_LOCATOR}")\n'}, False)
+           {"nano_rosConfig.cmake": 'set(NROS_ENTRY_LOCATOR "${NROS_LEAF_LOCATOR}")\n'}, False)
     expect("another variable in the same file is still a second producer",
            {"nano_rosConfig.cmake": 'set(NROS_ENTRY_LOCATOR "${MY_DEFAULT}")\n'}, True,
            "second producer")
@@ -220,7 +220,7 @@ def selftest():
 
     clean = (
         '    _nros_resolve_entry_locator(entry\n'
-        '        "${NANO_ROS_PLATFORM}" "${NANO_ROS_BOARD}" _loc)\n'
+        '        "${NROS_PLATFORM}" "${NANO_ROS_BOARD}" _loc)\n'
         '    target_compile_definitions(t PRIVATE "NROS_ENTRY_LOCATOR=\\"${_loc}\\"")\n'
         '    set(NROS_ENTRY_LOCATOR "${_loc}")\n'
     )
@@ -249,7 +249,7 @@ def selftest():
         {
             "cmake/Other.cmake": (
                 '    _nros_resolve_entry_locator(node-register\n'
-                '        "${NANO_ROS_PLATFORM}" "${NANO_ROS_BOARD}" _loc)\n'
+                '        "${NROS_PLATFORM}" "${NANO_ROS_BOARD}" _loc)\n'
                 '    set(NROS_ENTRY_LOCATOR "${NROS_NUTTX_LOCATOR}")\n'
             )
         },

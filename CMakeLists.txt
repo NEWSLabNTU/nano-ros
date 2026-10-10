@@ -1,12 +1,17 @@
 cmake_minimum_required(VERSION 3.22)
 project(NanoRos VERSION 0.1.0 LANGUAGES C CXX)
 
+# phase-484 W7b — `NANO_ROS_*` is a deprecated alias of `NROS_*`: adopt any old
+# name the consumer set, before the first option() below reads a new one.
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/NanoRosDeprecatedNames.cmake")
+nros_adopt_deprecated_names()
+
 # ---------------------------------------------------------------------------
 # Phase 137 — Top-level entry point for source-distribution consumption.
 #
 # Consumers can pull nano-ros into a project with:
 #
-#     set(NANO_ROS_PLATFORM posix)
+#     set(NROS_PLATFORM posix)
 #     set(NANO_ROS_RMW     zenoh)
 #     add_subdirectory(third_party/nano-ros nano_ros)
 #     target_link_libraries(my_app PRIVATE NanoRos::NanoRos)
@@ -18,7 +23,7 @@ project(NanoRos VERSION 0.1.0 LANGUAGES C CXX)
 # ---------------------------------------------------------------------------
 # Options / cache vars (set BEFORE add_subdirectory in the user project).
 # ---------------------------------------------------------------------------
-option(NANO_ROS_BUILD_CODEGEN "Build the nros-codegen tool" ON)
+option(NROS_BUILD_CODEGEN "Build the nros-codegen tool" ON)
 # phase-347 W3 — the FOURTH closed list of backends, and the one that had rotted
 # furthest: it offered `dds`, retired in Phase 169, and omitted `uorb`, which the
 # tree ships. Both the default and the cmake-gui choices come from the
@@ -37,30 +42,30 @@ nros_rmw_known(_nros_rmw_choices SOFT)
 set(NANO_ROS_RMW "zenoh" CACHE STRING
     "RMW backend — one of: ${_nros_rmw_choices}")
 set_property(CACHE NANO_ROS_RMW PROPERTY STRINGS ${_nros_rmw_choices})
-set(NANO_ROS_PLATFORM "posix" CACHE STRING
+set(NROS_PLATFORM "posix" CACHE STRING
     "Target platform (canonical: posix/freertos/nuttx/threadx; legacy: freertos_armcm3, nuttx_armv7a, threadx_linux, threadx_riscv64)")
-set_property(CACHE NANO_ROS_PLATFORM PROPERTY STRINGS
+set_property(CACHE NROS_PLATFORM PROPERTY STRINGS
     posix freertos nuttx threadx
     freertos_armcm3 nuttx_armv7a threadx_linux threadx_riscv64)
 # phase-405 W3 — the default and the valid list come from the one module that
 # is allowed to spell an edition, so adding an edition is one edit.
 include("${CMAKE_CURRENT_LIST_DIR}/cmake/NanoRosRosEdition.cmake")
-string(REPLACE ";" ", " _nros_known_editions "${NANO_ROS_KNOWN_ROS_EDITIONS}")
-set(NANO_ROS_ROS_EDITION "${NANO_ROS_DEFAULT_ROS_EDITION}" CACHE STRING
+string(REPLACE ";" ", " _nros_known_editions "${NROS_KNOWN_ROS_EDITIONS}")
+set(NROS_ROS_EDITION "${NROS_DEFAULT_ROS_EDITION}" CACHE STRING
     "ROS 2 edition: ${_nros_known_editions}")
-set_property(CACHE NANO_ROS_ROS_EDITION PROPERTY STRINGS ${NANO_ROS_KNOWN_ROS_EDITIONS})
+set_property(CACHE NROS_ROS_EDITION PROPERTY STRINGS ${NROS_KNOWN_ROS_EDITIONS})
 
 # phase-261 W5 — declared capability axes, the C/C++ projection of `system.toml`
 # `[system].features = [...]` (RFC-0004). A user sets this BEFORE pulling nano-ros
-# in (`set(NANO_ROS_FEATURES "safety")`), or the bake emits it into
+# in (`set(NROS_FEATURES "safety")`), or the bake emits it into
 # `system_config.cmake`. `nros_lower_system_features` lowers each axis to its build
-# knob (e.g. `safety` → `NANO_ROS_SAFETY_E2E ON`) HERE, before the core libs'
+# knob (e.g. `safety` → `NROS_SAFETY_E2E ON`) HERE, before the core libs'
 # `add_subdirectory` below evaluates the matching `option()` — so a declared axis
 # reaches the C/C++ build, not just the informational `system_config.h` `#define`.
-set(NANO_ROS_FEATURES "" CACHE STRING
+set(NROS_FEATURES "" CACHE STRING
     "Declared nano-ros capability axes (e.g. safety) — C/C++ projection of system.toml [system].features")
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosCapabilities.cmake")
-nros_lower_system_features("${NANO_ROS_FEATURES}")
+nros_lower_system_features("${NROS_FEATURES}")
 
 # phase-314 — the ONE cargo feature-set computation, shared by nros-c, nros-cpp
 # and the workspace umbrella. Included here so every consumer path sees it.
@@ -73,7 +78,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosFeatureSet.cmake")
 
 # ---------------------------------------------------------------------------
 # Phase 123.A.5 — auto-run tools/setup.sh if the user invoked cmake
-# without sourcing setup first. Opt out via -DNANO_ROS_SKIP_BOOTSTRAP=ON.
+# without sourcing setup first. Opt out via -DNROS_SKIP_BOOTSTRAP=ON.
 # ---------------------------------------------------------------------------
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/bootstrap.cmake")
 
@@ -117,7 +122,7 @@ nros_resolve_corrosion()
 # 192.3: the nano-ros root dir (this file's dir), so subdirs needn't walk up
 # `../../..` to reach it (e.g. nros-cpp's deferred NanoRos::NanoRos link).
 set(NANO_ROS_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
-if(NOT NANO_ROS_PLATFORM MATCHES "^nuttx")
+if(NOT NROS_PLATFORM MATCHES "^nuttx")
     # Phase 241.D3-rev — single-runtime model: the umbrella FFI staticlib
     # (`libnros_c.a` for C, `libnros_cpp.a` for C++) bundles the selected RMW backend
     # as an rlib dep, so each binary links exactly ONE Rust staticlib (one `std`).
@@ -144,40 +149,40 @@ endif()
 # (`cmake_module`), read by the same `nros ws leaf-system` the find_package
 # road uses. Skipped when the board was already given (`-D`, a generated
 # workspace root) or the find_package road already read the leaf.
-if(NOT NANO_ROS_BOARD AND NOT DEFINED NANO_ROS_LEAF_SYSTEM
+if(NOT NANO_ROS_BOARD AND NOT DEFINED NROS_LEAF_SYSTEM
    AND NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR
    AND EXISTS "${CMAKE_SOURCE_DIR}/system.toml")
     include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosPackageXml.cmake")
     include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosCodegenCore.cmake")
     nano_ros_read_leaf_system(DIR "${CMAKE_SOURCE_DIR}")
-    if(NANO_ROS_EXPORT_CMAKE_BOARD)
-        set(NANO_ROS_BOARD "${NANO_ROS_EXPORT_CMAKE_BOARD}")
+    if(NROS_EXPORT_CMAKE_BOARD)
+        set(NANO_ROS_BOARD "${NROS_EXPORT_CMAKE_BOARD}")
     endif()
     # This is a subdirectory scope, so the leaf's own scope cannot see what was
     # read; a board module that needs the leaf's locator takes it from here
     # rather than asking the CLI a second time.
     set_property(GLOBAL PROPERTY NROS_TOP_LEAF_READ "${CMAKE_SOURCE_DIR}")
-    set_property(GLOBAL PROPERTY NROS_TOP_LEAF_LOCATOR "${NANO_ROS_LEAF_LOCATOR}")
+    set_property(GLOBAL PROPERTY NROS_TOP_LEAF_LOCATOR "${NROS_LEAF_LOCATOR}")
 endif()
 
-# Map legacy / variant NANO_ROS_PLATFORM values to their canonical
+# Map legacy / variant NROS_PLATFORM values to their canonical
 # per-platform module names. The legacy cache strings (e.g.
 # `freertos_armcm3`, `threadx_riscv64`) name a specific platform+board
 # pairing — Phase 138 collapses them to the platform axis (board moves
 # to NANO_ROS_BOARD). Map here so existing recipes keep working.
-set(_nros_platform_module_name "${NANO_ROS_PLATFORM}")
-if(NANO_ROS_PLATFORM STREQUAL "freertos_armcm3")
+set(_nros_platform_module_name "${NROS_PLATFORM}")
+if(NROS_PLATFORM STREQUAL "freertos_armcm3")
     set(_nros_platform_module_name "freertos")
-elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a")
+elseif(NROS_PLATFORM STREQUAL "nuttx_armv7a")
     set(_nros_platform_module_name "nuttx")
-elseif(NANO_ROS_PLATFORM MATCHES "^threadx")
+elseif(NROS_PLATFORM MATCHES "^threadx")
     set(_nros_platform_module_name "threadx")
 endif()
 set(_nros_platform_module
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/platform/nano-ros-${_nros_platform_module_name}.cmake")
 if(NOT EXISTS "${_nros_platform_module}")
     message(FATAL_ERROR
-        "Unknown NANO_ROS_PLATFORM: '${NANO_ROS_PLATFORM}' "
+        "Unknown NROS_PLATFORM: '${NROS_PLATFORM}' "
         "(no module at cmake/platform/nano-ros-${_nros_platform_module_name}.cmake). "
         "Supported: posix, zephyr, freertos, nuttx, threadx, baremetal "
         "(plus legacy freertos_armcm3 / nuttx_armv7a / threadx_linux / threadx_riscv64).")
@@ -238,13 +243,13 @@ if(NOT TARGET NanoRos)
     endif()
     # Propagate the platform compile definition to mirror the install-time
     # NanoRos::NanoRos behaviour from NanoRosCTargets.cmake.
-    if(NANO_ROS_PLATFORM STREQUAL "posix")
+    if(NROS_PLATFORM STREQUAL "posix")
         target_compile_definitions(NanoRos INTERFACE NROS_PLATFORM_POSIX)
-    elseif(NANO_ROS_PLATFORM STREQUAL "freertos_armcm3"
-           OR NANO_ROS_PLATFORM STREQUAL "freertos")
+    elseif(NROS_PLATFORM STREQUAL "freertos_armcm3"
+           OR NROS_PLATFORM STREQUAL "freertos")
         target_compile_definitions(NanoRos INTERFACE NROS_PLATFORM_FREERTOS)
-    elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a"
-           OR NANO_ROS_PLATFORM STREQUAL "nuttx")
+    elseif(NROS_PLATFORM STREQUAL "nuttx_armv7a"
+           OR NROS_PLATFORM STREQUAL "nuttx")
         target_compile_definitions(NanoRos INTERFACE NROS_PLATFORM_NUTTX)
         # issue-0027 #1 — NuttX reuses nros-c's posix platform header, which
         # calls clock_gettime/nanosleep. NuttX declares those unconditionally in
@@ -279,7 +284,7 @@ if(NOT TARGET NanoRos)
             endif()
             target_include_directories(NanoRos SYSTEM INTERFACE "${_nros_nuttx_inc}")
         endif()
-    elseif(NANO_ROS_PLATFORM MATCHES "^threadx")
+    elseif(NROS_PLATFORM MATCHES "^threadx")
         target_compile_definitions(NanoRos INTERFACE NROS_PLATFORM_THREADX)
     endif()
     # Platform shim wiring deferred to after RMW dispatch below —
@@ -344,7 +349,7 @@ nros_rmw_dispatch("${NANO_ROS_RMW}")
 # BESIDE the flag is worse than useless: it reorders ld's single pass and
 # breaks the whole-archive group outright (`undefined reference to ddsrt_*`,
 # issue 0475). The archives ride ONE flag string; the rebuild edges come from
-# `NANO_ROS_LINK_DEPEND_FILES` and `NanoRosLink.cmake`'s `LINK_DEPENDS`, which
+# `NROS_LINK_DEPEND_FILES` and `NanoRosLink.cmake`'s `LINK_DEPENDS`, which
 # is the file edge a raw `-Wl,` flag cannot carry.
 #
 # `NROS_RMW_COMPANION_LIBRARIES` is what a backend APPENDS to that flag —
@@ -374,7 +379,7 @@ function(_nros_link_cmake_rmw _target)
             # Recorded as a LIST on `NanoRos` so the link seam consumes whatever
             # the flag names — a third archive is covered by existing.
             set_property(TARGET NanoRos APPEND PROPERTY
-                NANO_ROS_LINK_DEPEND_FILES "${_companion}")
+                NROS_LINK_DEPEND_FILES "${_companion}")
             # phase-368 W4 — a companion named by ABSOLUTE PATH still records
             # only its SONAME in the link, so without an RPATH the runtime
             # loader searches the default paths and finds nothing on a host that
@@ -400,10 +405,10 @@ function(_nros_link_cmake_rmw _target)
     # need it is DECLARED (`[rmw.link] needs_cxx_linker`), not a name test.
     # issue 0835 — the property, not the label: see
     # `nros_platform_hosted_cxx_runtime` for why this used to read
-    # `NANO_ROS_PLATFORM STREQUAL "threadx"` and why that was load-bearing on
+    # `NROS_PLATFORM STREQUAL "threadx"` and why that was load-bearing on
     # six example leaves misreporting their platform.
     if(NROS_RMW_NEEDS_CXX_LINKER)
-        nros_platform_hosted_cxx_runtime(_hosted_cxx "${NANO_ROS_PLATFORM}")
+        nros_platform_hosted_cxx_runtime(_hosted_cxx "${NROS_PLATFORM}")
         if(_hosted_cxx)
             target_link_libraries(${_target} INTERFACE stdc++)
         endif()
@@ -505,7 +510,7 @@ endif()
 set(_nros_codegen_module
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosGenerateInterfaces.cmake")
 if(EXISTS "${_nros_codegen_module}"
-   AND NANO_ROS_PLATFORM STREQUAL "posix")
+   AND NROS_PLATFORM STREQUAL "posix")
     set(_NANO_ROS_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}")
     include("${_nros_codegen_module}")
 endif()

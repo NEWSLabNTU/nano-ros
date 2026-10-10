@@ -6,7 +6,7 @@
 # path; the root `CMakeLists.txt` (pulled via `add_subdirectory(<repo>)`)
 # is the only supported entry. That root already builds + links
 # `NanoRos::NanoRos` against the platform shim + RMW staticlib chosen
-# by `NANO_ROS_PLATFORM` / `NANO_ROS_RMW`. These helpers exist purely
+# by `NROS_PLATFORM` / `NANO_ROS_RMW`. These helpers exist purely
 # to:
 #   * record per-target platform / RMW choice as CMake properties
 #     (useful for downstream introspection),
@@ -26,7 +26,7 @@
 #
 # ``nano_ros_link_rmw(<target> [RMW <rmw>])``
 #   Annotates + emits the register stub described above. RMW resolves
-#   as: explicit ``RMW`` arg → ``NANO_ROS_DEFAULT_RMW`` cache var →
+#   as: explicit ``RMW`` arg → ``NROS_DEFAULT_RMW`` cache var →
 #   ``NANO_ROS_RMW``. Multiple invocations accumulate (e.g. a bridge
 #   node registering zenoh + xrce).
 
@@ -60,8 +60,8 @@ function(nano_ros_link_platform TARGET)
             "${ARG_UNPARSED_ARGUMENTS}")
     endif()
     _nano_ros_resolve_choice(_chosen "platform" "${ARG_PLATFORM}"
-        "NANO_ROS_DEFAULT_PLATFORM;NANO_ROS_PLATFORM")
-    set_property(TARGET ${TARGET} PROPERTY NANO_ROS_PLATFORM "${_chosen}")
+        "NROS_DEFAULT_PLATFORM;NROS_PLATFORM")
+    set_property(TARGET ${TARGET} PROPERTY NROS_PLATFORM "${_chosen}")
 endfunction()
 
 function(nano_ros_link_rmw TARGET)
@@ -72,7 +72,7 @@ function(nano_ros_link_rmw TARGET)
             "${ARG_UNPARSED_ARGUMENTS}")
     endif()
     _nano_ros_resolve_choice(_chosen "rmw" "${ARG_RMW}"
-        "NANO_ROS_DEFAULT_RMW;NANO_ROS_RMW")
+        "NROS_DEFAULT_RMW;NANO_ROS_RMW")
     set_property(TARGET ${TARGET} PROPERTY NANO_ROS_RMW "${_chosen}")
 
     # Issue 0475 — make a backend REBUILD relink this target.
@@ -141,7 +141,7 @@ function(nano_ros_link_rmw TARGET)
     # CycloneDDS. The test-side staleness probe caught it (it walks the
     # submodule); the build side reported OK, which is how it survived.
     #
-    # The producers APPEND to `NANO_ROS_LINK_DEPEND_FILES` on `NanoRos` rather
+    # The producers APPEND to `NROS_LINK_DEPEND_FILES` on `NanoRos` rather
     # than each adding a line here, so an archive added to either flag in future
     # gets its edge by existing. That is the difference between fixing this site
     # and fixing the class — and this issue exists because the first fix did the
@@ -150,7 +150,7 @@ function(nano_ros_link_rmw TARGET)
     # Verify: the file must appear under `|` (implicit), not `||` (order-only),
     # in `ninja -C <build-dir> -t query <exe>`.
     if(TARGET NanoRos)
-        get_target_property(_nros_link_dep_files NanoRos NANO_ROS_LINK_DEPEND_FILES)
+        get_target_property(_nros_link_dep_files NanoRos NROS_LINK_DEPEND_FILES)
         if(_nros_link_dep_files)
             foreach(_f IN LISTS _nros_link_dep_files)
                 if(_f)

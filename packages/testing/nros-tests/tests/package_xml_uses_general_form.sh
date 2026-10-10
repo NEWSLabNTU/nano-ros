@@ -17,12 +17,12 @@
 # spelling of the board and RMW selections, and phase-445 W3b retired it: a
 # single-package leaf states its board and RMW in `system.toml` (RFC-0098
 # D3/D5), which `nano_ros_read_leaf_system()` reads into the same
-# `NANO_ROS_EXPORT_USES_{BOARD,RMW}` variables. A leftover tuple is REFUSED —
+# `NROS_EXPORT_USES_{BOARD,RMW}` variables. A leftover tuple is REFUSED —
 # silently ignoring it would configure a freertos leaf as a host build.
 #
 # Cases:
 #
-#   T1  the general form sets NANO_ROS_EXPORT_USES_<KIND> for a family this
+#   T1  the general form sets NROS_EXPORT_USES_<KIND> for a family this
 #       reader has never heard of;
 #   T2  the retired tuple is a hard error naming `system.toml`, not a silent
 #       skip (and not a selection);
@@ -91,7 +91,7 @@ cat >"$WORK/run.cmake" <<CMAKE
 include("$MODULE")
 foreach(_case general plain commented)
     nano_ros_read_package_export(PACKAGE_XML "$WORK/\${_case}.xml")
-    message(STATUS "RESULT \${_case} kinds=[\${NANO_ROS_EXPORT_USES_KINDS}] board=\${NANO_ROS_EXPORT_USES_BOARD} rmw=\${NANO_ROS_EXPORT_USES_RMW} serdes=\${NANO_ROS_EXPORT_USES_SERDES} deploy=\${NANO_ROS_EXPORT_DEPLOY} usesdeploy=[\${NANO_ROS_EXPORT_USES_DEPLOY}] found=\${NANO_ROS_EXPORT_FOUND}")
+    message(STATUS "RESULT \${_case} kinds=[\${NROS_EXPORT_USES_KINDS}] board=\${NROS_EXPORT_USES_BOARD} rmw=\${NROS_EXPORT_USES_RMW} serdes=\${NROS_EXPORT_USES_SERDES} deploy=\${NROS_EXPORT_DEPLOY} usesdeploy=[\${NROS_EXPORT_USES_DEPLOY}] found=\${NROS_EXPORT_FOUND}")
 endforeach()
 CMAKE
 

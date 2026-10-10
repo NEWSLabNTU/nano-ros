@@ -259,7 +259,7 @@ fi
 # date with the declaration BEFORE ninja reads it.
 #
 # The application (`build/<coord>/<image>_entry/CMakeLists.txt`) is the carrier
-# of the image's capability Kconfig and `NANO_ROS_FEATURES`, and only stage 4 of
+# of the image's capability Kconfig and `NROS_FEATURES`, and only stage 4 of
 # a `plan_builds` writes it. The west path below runs one; the ninja path did
 # not, and the signature above does not cover `system.toml`. So a declaration
 # change reached the image only when SOMETHING ELSE regenerated the file — and

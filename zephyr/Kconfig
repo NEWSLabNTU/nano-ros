@@ -2255,7 +2255,7 @@ config NROS_CODEGEN_TOOL
       nros-codegen runs on the build host. Build it once via a
       parallel POSIX configure:
 
-        cmake -S <nano-ros> -B build-host -DNANO_ROS_PLATFORM=posix
+        cmake -S <nano-ros> -B build-host -DNROS_PLATFORM=posix
         cmake --build build-host --target nros-codegen
 
       and point this Kconfig at the resulting binary

@@ -242,7 +242,7 @@ render_probe() {
         echo 'set(CMAKE_CXX_STANDARD 14)'
         echo 'set(CMAKE_CXX_STANDARD_REQUIRED ON)'
         echo 'set(NROS_EXTRA_CPP_FEATURES "metadata-mode")'
-        echo 'set(NANO_ROS_GEN_CACHE_DIR "${CMAKE_BINARY_DIR}/nros-codegen")'
+        echo 'set(NROS_GEN_CACHE_DIR "${CMAKE_BINARY_DIR}/nros-codegen")'
         echo "set(NROS_INTERFACE_SEARCH_PATH \"$WS/src\")"
         echo 'find_package(nano_ros REQUIRED)'
         echo 'nros_workspace_interfaces()'

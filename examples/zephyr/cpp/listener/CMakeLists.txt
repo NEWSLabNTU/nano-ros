@@ -26,7 +26,7 @@ find_package(std_msgs REQUIRED)
 # `--allow-multiple-definition` gone (issue 1636) that was a duplicate-symbol
 # link error, so it is gone too (issue 1673).
 
-# The Zephyr typed carrier branch keys on NANO_ROS_PLATFORM=zephyr + DEPLOY
+# The Zephyr typed carrier branch keys on NROS_PLATFORM=zephyr + DEPLOY
 # zephyr + TARGET app + TYPED, and target_sources/target_link_libraries the
 # generated entry + component lib into the global `app`. No second executable.
 

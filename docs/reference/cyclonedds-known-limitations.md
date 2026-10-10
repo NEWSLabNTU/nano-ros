@@ -452,6 +452,6 @@ The `safety-e2e` capability (CRC attach on publish + validate on receive, surfac
 `ctx.integrity()` / `nros_subscription_take_validated`) is **zenoh-only**. The CRC
 machinery lives in the zenoh shim's wire attachment (`nros-rmw-zenoh`); CycloneDDS (and
 XRCE) carry no `safety-e2e` feature, so a declared `[safety]` axis no-ops on them. The
-`NANO_ROS_SAFETY_E2E=ON` CMake option **warns and is ignored** when `NANO_ROS_RMW` is not
+`NROS_SAFETY_E2E=ON` CMake option **warns and is ignored** when `NANO_ROS_RMW` is not
 `zenoh`. Adding a CycloneDDS integrity path (a DDS-side CRC + a C surface) is unscoped —
 see [issue 0300](../issues/archived/0300-safety-e2e-c-cpp-cmake-path-missing.md).

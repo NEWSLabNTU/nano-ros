@@ -107,7 +107,7 @@ impl PlatformKind {
     }
 
     /// The C/C++ DEPLOY token this platform is built with — the
-    /// `NANO_ROS_PLATFORM` module axis (`cmake/platform/nano-ros-<x>.cmake`,
+    /// `NROS_PLATFORM` module axis (`cmake/platform/nano-ros-<x>.cmake`,
     /// with the host spelled `native`), which is a platform FAMILY, not a
     /// board: both ThreadX platforms are `threadx`, the board beside it picks
     /// which (RFC-0093 §3).
@@ -119,7 +119,7 @@ impl PlatformKind {
     /// This is also the boundary where `bare-metal` becomes `baremetal`, and the
     /// two are deliberately different NAMESPACES rather than a drift to converge
     /// (issue 1512): `baremetal` is the CMake platform-MODULE token
-    /// (`cmake/platform/nano-ros-baremetal.cmake`, `NANO_ROS_PLATFORM`, and the
+    /// (`cmake/platform/nano-ros-baremetal.cmake`, `NROS_PLATFORM`, and the
     /// `-baremetal` stack suffix RFC-0093 R2 puts in every board NAME), while
     /// `bare-metal` is the cargo-feature / descriptor spelling (`config/bare-metal/`,
     /// `platform = "bare-metal"`, [`kebab`](Self::kebab),
@@ -129,7 +129,7 @@ impl PlatformKind {
     /// `nros_feature_set()`'s bare-metal arm accepts both.
     ///
     /// `None` means "a leaf on this platform does not derive a
-    /// `NANO_ROS_PLATFORM` from its board". For `Esp32` that is an AUTHORED
+    /// `NROS_PLATFORM` from its board". For `Esp32` that is an AUTHORED
     /// decision and NOT the absence of a module: the module is `baremetal` and
     /// `cmake/board/nano-ros-board-esp32-c3-baremetal.cmake` exists. What does not
     /// exist is a C/C++ example road on that tree — `examples/esp32-c3-baremetal/`

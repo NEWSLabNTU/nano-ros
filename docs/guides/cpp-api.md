@@ -22,7 +22,7 @@ project(my_app LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(NANO_ROS_PLATFORM posix)
+set(NROS_PLATFORM posix)
 set(NANO_ROS_RMW     zenoh)
 add_subdirectory(<path-to-nano-ros> nano_ros)
 
@@ -74,7 +74,7 @@ board = "mps2-an385-freertos"
 ```
 
 `find_package(nano_ros)` reads that through `nros ws leaf-system` and derives
-the platform (`freertos`) from the board, so `-DNANO_ROS_PLATFORM`,
+the platform (`freertos`) from the board, so `-DNROS_PLATFORM`,
 `-DNANO_ROS_BOARD` and `-DNROS_RMW` are retired as the way a user chooses.
 Switching board is editing `[image.*] board`. Phase 138's
 `cmake/platform/nano-ros-freertos.cmake` +

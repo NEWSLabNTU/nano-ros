@@ -305,7 +305,7 @@ fn exec_for(platform: MP, lang: ML, workload: MW) -> Exec {
             port: port_of(MP::ZephyrNativeSim, ML::Cpp, MW::Params),
             boot: Boot::ZephyrNativeSim,
             proof: Proof::SinkValueLine { value: 250 },
-            note: "issue 1681: the generated west application sets NANO_ROS_FEATURES before \
+            note: "issue 1681: the generated west application sets NROS_FEATURES before \
                    find_package(Zephyr), so nros-cpp is built with param-services (and \
                    lifecycle-services); before it the entry's \
                    nros_cpp_register_parameter_services was an undefined reference. 250 is the \

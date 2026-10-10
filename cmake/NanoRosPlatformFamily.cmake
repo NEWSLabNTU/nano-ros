@@ -1,4 +1,4 @@
-# NanoRosPlatformFamily.cmake — the ONE map from a NANO_ROS_PLATFORM spelling to
+# NanoRosPlatformFamily.cmake — the ONE map from a NROS_PLATFORM spelling to
 # its RTOS family (issue 1795).
 #
 #   nros_platform_family(<out_var> <platform>)
@@ -9,7 +9,7 @@
 #   anything else                    -> itself
 #
 # The just recipes and toolchain files pass the VARIANT spelling
-# (`-DNANO_ROS_PLATFORM=threadx_riscv64`), while a build ROAD is chosen per
+# (`-DNROS_PLATFORM=threadx_riscv64`), while a build ROAD is chosen per
 # family. `nano_ros_entry()` normalised inline; the three RTOS typed-entry
 # carriers in NanoRosNodeRegister.cmake compared the raw value to the bare
 # family token, so on every lane-built rv-virt-threadx leaf the ThreadX carrier

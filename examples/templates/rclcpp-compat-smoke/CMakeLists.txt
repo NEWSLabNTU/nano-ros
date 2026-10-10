@@ -14,7 +14,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # 1) Pull nano-ros (provides NanoRos::NanoRos, NanoRos::NanoRosCpp + the codegen
 #    function). Five levels up: examples/templates/rclcpp-compat-smoke/.
-set(NANO_ROS_PLATFORM posix)
+set(NROS_PLATFORM posix)
 set(NROS_RMW "zenoh" CACHE STRING "Active RMW (zenoh|cyclonedds|xrce).")
 set(NANO_ROS_RMW "${NROS_RMW}")
 # Resolve the nano-ros SDK root once (phase-277 W6 standard guard; 4th rung

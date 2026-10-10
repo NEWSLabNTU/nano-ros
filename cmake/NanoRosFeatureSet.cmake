@@ -37,12 +37,12 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosBareMetalPlatform.cmake")
 # and the flag is fatal there.
 #
 # issue 0835 — this exists because the test was written inline, TWICE, as
-# `NANO_ROS_PLATFORM STREQUAL "threadx"`. That is a platform LABEL standing in
+# `NROS_PLATFORM STREQUAL "threadx"`. That is a platform LABEL standing in
 # for a property, which is the defect RFC-0064 records and phase-338 W5.a already
 # fixed one layer down (the ThreadX tier derives from `_cross`, not from the
 # board name). It also silently DEPENDED on six example leaves misreporting their
 # platform: `examples/rv-virt-threadx/rust/*/CMakeLists.txt` each carried
-# `set(NANO_ROS_PLATFORM threadx)`, shadowing the `-DNANO_ROS_PLATFORM=
+# `set(NROS_PLATFORM threadx)`, shadowing the `-DNROS_PLATFORM=
 # threadx_riscv64` their own build passes. Those leaves now report honestly, so a
 # test on the bare label would have stopped matching — silently, and the failure
 # would have been a link error on a platform nobody was editing.
@@ -84,7 +84,7 @@ endfunction()
 
 # nros_feature_set(<out>
 #     CRATE        <c|cpp>               which crate's feature vocabulary
-#     EDITION      <humble|iron|jazzy>   default: NANO_ROS_ROS_EDITION, else humble
+#     EDITION      <humble|iron|jazzy>   default: NROS_ROS_EDITION, else humble
 #     RMW          <zenoh|xrce|cyclonedds|uorb|none>
 #     PLATFORM     <posix|freertos|nuttx|threadx|baremetal|…>
 #                                        (the threadx tier now derives from
@@ -246,7 +246,7 @@ function(nros_feature_set out_var)
         # different NAMESPACES that meet at `PlatformKind::cmake_deploy()`, the same
         # boundary that already translates `Posix` -> `native` and both ThreadX
         # kinds -> `threadx`: `baremetal` is the CMake platform-MODULE token
-        # (`cmake/platform/nano-ros-baremetal.cmake`, `NANO_ROS_PLATFORM`, and the
+        # (`cmake/platform/nano-ros-baremetal.cmake`, `NROS_PLATFORM`, and the
         # `-baremetal` stack suffix in every board name RFC-0093 R2 governs), while
         # `bare-metal` is the cargo-feature / descriptor spelling
         # (`config/bare-metal/`, `platform = "bare-metal"`, `PlatformKind::kebab`,

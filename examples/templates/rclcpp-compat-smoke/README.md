@@ -11,7 +11,7 @@ against nano-ros with **only one nano-ros-specific glue line per layer**:
 |---|---|---|
 | Source `.cpp` | `#include <rclcpp/rclcpp.hpp>` etc. | none — it is an nros-cpp header |
 | Source `.cpp` | `#include "std_msgs/msg/int32.hpp"` | use `"std_msgs/std_msgs.hpp"` umbrella (closed by 209.E) |
-| `CMakeLists.txt` | n/a | `set(NANO_ROS_PLATFORM …) + add_subdirectory(<nano-ros>)` |
+| `CMakeLists.txt` | n/a | `set(NROS_PLATFORM …) + add_subdirectory(<nano-ros>)` |
 | `CMakeLists.txt` | n/a | `include(<nano-ros>/cmake/NanoRosAmentSurface.cmake)` |
 | `CMakeLists.txt` | `find_package(std_msgs)` resolves the msg | `nros_generate_interfaces(std_msgs LANGUAGE CPP)` (closed by 209.E) |
 | `CMakeLists.txt` | `ament_auto_add_executable` etc. | unchanged |

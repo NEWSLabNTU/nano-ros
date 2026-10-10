@@ -95,7 +95,7 @@ For each, the steps to compile against nano-ros are:
   `tier4_external_api_msgs`, `std_msgs`, `tier4_auto_msgs_converter` (the last is
   a header-only converter library, not a msg pkg — vendor its header).
 - **Build glue.** Replace the package's `CMakeLists.txt` `ament_*` calls with
-  `set(NANO_ROS_PLATFORM <plat>) + add_subdirectory(<nano-ros>) +
+  `set(NROS_PLATFORM <plat>) + add_subdirectory(<nano-ros>) +
   target_link_libraries(<app> PRIVATE NanoRos::NanoRos)` (the standard
   in-tree consumption shape from CLAUDE.md).
 - **Source.** `#include` paths shift `rclcpp/rclcpp.hpp` → `nros/nros.hpp`;

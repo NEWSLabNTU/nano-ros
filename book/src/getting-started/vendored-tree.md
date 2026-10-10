@@ -139,7 +139,7 @@ Two entry points, both source-backed:
 
 Either way, at configure time nano-ros's `bootstrap.cmake` runs
 `tools/setup.sh` to populate the source submodules your
-`(NANO_ROS_PLATFORM, NANO_ROS_RMW)` pair needs. That is correct on a
+`(NROS_PLATFORM, NANO_ROS_RMW)` pair needs. That is correct on a
 developer machine and wrong in hermetic CI — see the next section.
 Corrosion is never fetched at configure time: without it in the SDK store
 the configure stops and names `nros setup --tool corrosion`.
@@ -148,7 +148,7 @@ the configure stops and names `nros setup --tool corrosion`.
 
 The offline contract, all of it:
 
-1. **`-DNANO_ROS_SKIP_BOOTSTRAP=ON`.** Disables the configure-time
+1. **`-DNROS_SKIP_BOOTSTRAP=ON`.** Disables the configure-time
    submodule fetch. You now own pre-seeding.
 2. **Pre-seed the submodules** your platform/RMW pair needs in your
    mirror (e.g. `zpico-sys/zenoh-pico`, the FreeRTOS kernel + lwIP,
@@ -216,7 +216,7 @@ missing packages, not like staleness.
       and before any cargo line that passes `--config
       build/<image-id>/nros-cargo.toml`; no build setting hand-written
       into a package
-- [ ] Air-gapped: `NANO_ROS_SKIP_BOOTSTRAP=ON`, submodules pre-seeded,
+- [ ] Air-gapped: `NROS_SKIP_BOOTSTRAP=ON`, submodules pre-seeded,
       Corrosion staged, `NROS_HOME` cached
 - [ ] Local patch set (platform/board/index edits) lives on a fork
       branch, rebased per tag

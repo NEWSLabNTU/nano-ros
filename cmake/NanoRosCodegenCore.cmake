@@ -462,7 +462,7 @@ endfunction()
 # it ask the same question the board build asks.
 #
 # The WORKSPACE scope is also the only scope that is order-free for a SHARED
-# type: under `NANO_ROS_GEN_CACHE_DIR` a stock package like `std_msgs` is
+# type: under `NROS_GEN_CACHE_DIR` a stock package like `std_msgs` is
 # generated ONCE for the whole project, so caps attached to whichever consumer
 # reached it first would depend on configure order, while an ancestor of every
 # consumer cannot. That is the reason the decision in issue 1470 is "the
@@ -989,12 +989,12 @@ endfunction()
 #
 # ONE answer to "am I configuring inside a Zephyr build?" (issue 0326).
 #
-# The naive `if(NANO_ROS_PLATFORM STREQUAL "zephyr")` is a trap.
-# `nano_rosConfig.cmake` sets `NANO_ROS_PLATFORM` as a PLAIN, directory-scoped
+# The naive `if(NROS_PLATFORM STREQUAL "zephyr")` is a trap.
+# `nano_rosConfig.cmake` sets `NROS_PLATFORM` as a PLAIN, directory-scoped
 # variable in whatever scope called `find_package(nano_ros)`, so every
 # `add_subdirectory`'d node/component package that does not itself call
 # `find_package` evaluates it UNSET — cmake then compares the literal string
-# "NANO_ROS_PLATFORM" against "zephyr", the test is false, and the branch
+# "NROS_PLATFORM" against "zephyr", the test is false, and the branch
 # silently takes the non-Zephyr path. (`if(X)` truthiness is the safe idiom;
 # a bare STREQUAL against a possibly-unset var is not.)
 #
@@ -1002,10 +1002,10 @@ endfunction()
 # second spelling of the check — so the tree carried two idioms across six
 # sites. This helper is that second idiom, promoted to the single definition,
 # and the `ZEPHYR_BASE` arm is why it is preferred over merely promoting
-# `NANO_ROS_PLATFORM` to a cache var: it also covers a Zephyr build that never
+# `NROS_PLATFORM` to a cache var: it also covers a Zephyr build that never
 # routed through nano_rosConfig's platform arm.
 function(_nros_is_zephyr _out)
-    if(TARGET app AND (DEFINED ZEPHYR_BASE OR NANO_ROS_PLATFORM STREQUAL "zephyr"))
+    if(TARGET app AND (DEFINED ZEPHYR_BASE OR NROS_PLATFORM STREQUAL "zephyr"))
         set(${_out} TRUE PARENT_SCOPE)
     else()
         set(${_out} FALSE PARENT_SCOPE)
@@ -1274,7 +1274,7 @@ function(nros_find_interfaces)
         set(_ARG_LANGUAGE "CPP")
     endif()
     # phase-405 W3 — this used to default straight to the literal, skipping
-    # NANO_ROS_ROS_EDITION entirely, so `nros_find_interfaces` ignored a
+    # NROS_ROS_EDITION entirely, so `nros_find_interfaces` ignored a
     # workspace's declared edition while its sibling nros_generate_interfaces
     # honoured it. One workspace, two editions, one build.
     _nros_resolve_ros_edition("${_ARG_ROS_EDITION}" _ARG_ROS_EDITION)

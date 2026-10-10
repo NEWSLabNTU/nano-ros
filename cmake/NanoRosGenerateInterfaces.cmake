@@ -137,7 +137,7 @@ function(nros_generate_interfaces target)
 
   # phase-304 W2b (RFC-0056) — an explicit ROS_EDITION wins; otherwise inherit
   # the workspace edition baked by `nano_ros_workspace(EDITION …)`
-  # (`NANO_ROS_ROS_EDITION`) so the codegen type-hash matches the runtime
+  # (`NROS_ROS_EDITION`) so the codegen type-hash matches the runtime
   # `ros-<edition>` keyexpr feature. Neither set → humble (byte-identical).
   _nros_resolve_ros_edition("${_ARG_ROS_EDITION}" _ARG_ROS_EDITION)
 
@@ -182,7 +182,7 @@ function(nros_generate_interfaces target)
     # existing target in this directory's scope so the auto-link still finds it. The
     # Zephyr guard mirrors the generating path (the FFI is whole-archived into `app`
     # there, not a linkable `<pkg>__nano_ros_*` lib).
-    if(NOT NANO_ROS_PLATFORM STREQUAL "zephyr")
+    if(NOT NROS_PLATFORM STREQUAL "zephyr")
       set_property(DIRECTORY APPEND PROPERTY
         NROS_GENERATED_INTERFACE_LIBS "${_idempotency_check_target}")
     endif()
@@ -327,7 +327,7 @@ function(nros_generate_interfaces target)
   endif()
 
   # Phase 123.A.7 — workspace-shared codegen cache.
-  # When NANO_ROS_GEN_CACHE_DIR is set (cmake var or env var), all
+  # When NROS_GEN_CACHE_DIR is set (cmake var or env var), all
   # packages emit codegen into the same shared dir keyed by
   # (language, target). CMake's mtime-based add_custom_command
   # dependency tracking means the second package to configure sees
@@ -341,10 +341,10 @@ function(nros_generate_interfaces target)
   # explicit dependency between packages in package.xml so colcon
   # serializes them. Documented in installation.md (A.9).
   set(_gen_cache_root "")
-  if(DEFINED NANO_ROS_GEN_CACHE_DIR AND NOT NANO_ROS_GEN_CACHE_DIR STREQUAL "")
-    set(_gen_cache_root "${NANO_ROS_GEN_CACHE_DIR}")
-  elseif(DEFINED ENV{NANO_ROS_GEN_CACHE_DIR} AND NOT "$ENV{NANO_ROS_GEN_CACHE_DIR}" STREQUAL "")
-    set(_gen_cache_root "$ENV{NANO_ROS_GEN_CACHE_DIR}")
+  if(DEFINED NROS_GEN_CACHE_DIR AND NOT NROS_GEN_CACHE_DIR STREQUAL "")
+    set(_gen_cache_root "${NROS_GEN_CACHE_DIR}")
+  elseif(DEFINED ENV{NROS_GEN_CACHE_DIR} AND NOT "$ENV{NROS_GEN_CACHE_DIR}" STREQUAL "")
+    set(_gen_cache_root "$ENV{NROS_GEN_CACHE_DIR}")
   endif()
 
   if(_gen_cache_root)
@@ -417,7 +417,7 @@ function(nros_generate_interfaces target)
   # `check-codegen-tool-reconfigure`. It is still not enough, and the gap is the
   # same one 1360 measured on the Zephyr lane: the DEPENDS names the binary this
   # build dir resolved, so a build dir that outlives its checkout (a shared
-  # `NANO_ROS_GEN_CACHE_DIR`, a workspace under `$NROS_HOME`) can satisfy every
+  # `NROS_GEN_CACHE_DIR`, a workspace under `$NROS_HOME`) can satisfy every
   # mtime edge with a tool that emitted at a version this runtime now refuses,
   # and the failure lands as a `#error` in a museum header.
   #
@@ -538,7 +538,7 @@ function(nros_generate_interfaces target)
     # combination of interface archives links.
     if(_generated_rs_files)
       # Phase 123.A.7 — share the FFI crate build dir across packages
-      # when NANO_ROS_GEN_CACHE_DIR is set.
+      # when NROS_GEN_CACHE_DIR is set.
       if(_gen_cache_root)
         set(_ffi_crate_dir "${_gen_cache_root}/nano_ros_cpp_ffi_${target}")
       else()
@@ -959,7 +959,7 @@ function(nros_generate_interfaces target)
   # `<pkg>__nano_ros_cpp` lib; appending it here makes consumers try `-l<name>` → "cannot find
   # -lstd_msgs__nano_ros_cpp". Skip the registration on Zephyr (the headers reach component
   # libs via the `app` include mirror).
-  if(NOT NANO_ROS_PLATFORM STREQUAL "zephyr")
+  if(NOT NROS_PLATFORM STREQUAL "zephyr")
     set_property(DIRECTORY APPEND PROPERTY
       NROS_GENERATED_INTERFACE_LIBS "${_lib_target}")
   endif()

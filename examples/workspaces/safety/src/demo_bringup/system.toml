@@ -1,7 +1,7 @@
 # Phase 269 W3 — E2E-safety C workspace.
 #
 # `[system].features = ["safety"]` is the declarative axis (NanoRosCapabilities.cmake:64):
-# it lowers to `NANO_ROS_SAFETY_E2E=ON` in the CMake build and to the `safety-e2e`
+# it lowers to `NROS_SAFETY_E2E=ON` in the CMake build and to the `safety-e2e`
 # cargo feature for the Rust runtime. This line, not any node package, is what turns
 # message integrity on:
 # - Every talker component attaches a CRC-32 + sequence number on every /chatter

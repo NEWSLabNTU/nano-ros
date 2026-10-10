@@ -6,12 +6,12 @@
 # This file is included from the top-level CMakeLists.txt via add_subdirectory().
 # Two variables control the build:
 #   NANO_ROS_RMW      — RMW backend: zenoh, xrce, or dds (default: zenoh)
-#   NANO_ROS_PLATFORM — target platform: posix, freertos_armcm3, nuttx_armv7a
+#   NROS_PLATFORM — target platform: posix, freertos_armcm3, nuttx_armv7a
 #                       (default: posix)
 
 # ---- Platform (default: posix; may already be set by nros-c) ----
-if(NOT DEFINED NANO_ROS_PLATFORM)
-    set(NANO_ROS_PLATFORM "posix")
+if(NOT DEFINED NROS_PLATFORM)
+    set(NROS_PLATFORM "posix")
 endif()
 
 # ---- Cargo features: ONE computation, shared with nros-c + the umbrella ----
@@ -21,16 +21,16 @@ endif()
 # Relative to THIS file, not ${NANO_ROS_ROOT}: a raw `add_subdirectory(<repo>)`
 # consumer (the phase-138 smoke shape) never defines NANO_ROS_ROOT.
 include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosFeatureSet.cmake")
-option(NANO_ROS_SAFETY_E2E "Enable E2E message-integrity (CRC) — zenoh only" OFF)
-set(_caps ${NANO_ROS_FEATURES})
-if(NANO_ROS_SAFETY_E2E)
+option(NROS_SAFETY_E2E "Enable E2E message-integrity (CRC) — zenoh only" OFF)
+set(_caps ${NROS_FEATURES})
+if(NROS_SAFETY_E2E)
     list(APPEND _caps safety)
 endif()
 # phase-323 W2 — capabilities come from the DECLARATION on every platform.
 #
 # posix used to get `param_services` + `lifecycle` unconditionally. That was not
 # a convenience: until W1 it was the ONLY route those axes took on hosted, since
-# `NANO_ROS_FEATURES` was never populated on the workspace path (issue 0353). So
+# `NROS_FEATURES` was never populated on the workspace path (issue 0353). So
 # hosted could not fail when a declaration was missing, and the same
 # `system.toml` produced different runtimes depending on where it was built.
 #
@@ -39,7 +39,7 @@ endif()
 nros_feature_set(_cpp_features
     CRATE        cpp
     RMW          "${NANO_ROS_RMW}"
-    PLATFORM     "${NANO_ROS_PLATFORM}"
+    PLATFORM     "${NROS_PLATFORM}"
     BOARD        "${NANO_ROS_BOARD}"
     CAPABILITIES "${_caps}")
 
@@ -286,7 +286,7 @@ endif()
 # Issue 0073 — when the E2E-safety cargo feature is compiled into nros-cpp (above),
 # also surface the matching preprocessor define to HEADER CONSUMERS. `node.hpp` /
 # `subscription.hpp` gate the validated-subscription API
-# (`create_subscription_with_safety`) behind `#if defined(NANO_ROS_SAFETY_E2E)`, so a
+# (`create_subscription_with_safety`) behind `#if defined(NROS_SAFETY_E2E)`, so a
 # component TU that links `NanoRos::NanoRosCpp` needs the define to see it. Without
 # this, the cargo symbol exists but the C++ method is hidden at compile time.
 # phase-347 W4 — the backend condition is DECLARED, not named. This read
@@ -295,8 +295,8 @@ endif()
 # its `nros-rmw.toml` `[rmw.capabilities]`, and `nros_rmw_dispatch` reports the
 # set as `NROS_RMW_CAPABILITIES` — so a third-party backend offering `safety`
 # gets the define with no edit here.
-if(NANO_ROS_SAFETY_E2E AND "safety" IN_LIST NROS_RMW_CAPABILITIES)
-    target_compile_definitions(nros-cpp-headers INTERFACE NANO_ROS_SAFETY_E2E)
+if(NROS_SAFETY_E2E AND "safety" IN_LIST NROS_RMW_CAPABILITIES)
+    target_compile_definitions(nros-cpp-headers INTERFACE NROS_SAFETY_E2E)
 endif()
 
 # THE declared C++ floor for everything that consumes nros-cpp — issue 1118.

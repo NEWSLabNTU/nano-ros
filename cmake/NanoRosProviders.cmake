@@ -54,12 +54,12 @@ set(_NROS_PROVIDERS_DIR "${CMAKE_CURRENT_LIST_DIR}"
 # read rather than served, so the writer and the reader must agree.
 #
 # Sets, in the caller's scope:
-#   NANO_ROS_PROVIDER_ROWS   — list of "kind|name|package|root_index|dir" rows
-#   NANO_ROS_PROVIDER_KINDS  — distinct kinds present, deduplicated
+#   NROS_PROVIDER_ROWS   — list of "kind|name|package|root_index|dir" rows
+#   NROS_PROVIDER_KINDS  — distinct kinds present, deduplicated
 #
 # and per (kind, name):
-#   NANO_ROS_PROVIDER_<KIND>_<NAME>_DIR      — package dir
-#   NANO_ROS_PROVIDER_<KIND>_<NAME>_PACKAGE  — package.xml <name>
+#   NROS_PROVIDER_<KIND>_<NAME>_DIR      — package dir
+#   NROS_PROVIDER_<KIND>_<NAME>_PACKAGE  — package.xml <name>
 #
 # REUSE_INDEX reads an existing index without rescanning. Faster, and correct
 # only while no package.xml has been added or removed — so it is opt-in, and
@@ -157,8 +157,8 @@ function(nano_ros_load_providers)
         string(MAKE_C_IDENTIFIER "${_kind}" _kind_id)
         string(MAKE_C_IDENTIFIER "${_name}" _name_id)
         string(TOUPPER "${_kind_id}" _kind_id)
-        set(NANO_ROS_PROVIDER_${_kind_id}_${_name_id}_DIR "${_dir}" PARENT_SCOPE)
-        set(NANO_ROS_PROVIDER_${_kind_id}_${_name_id}_PACKAGE "${_pkg}" PARENT_SCOPE)
+        set(NROS_PROVIDER_${_kind_id}_${_name_id}_DIR "${_dir}" PARENT_SCOPE)
+        set(NROS_PROVIDER_${_kind_id}_${_name_id}_PACKAGE "${_pkg}" PARENT_SCOPE)
     endforeach()
 
     if(_kinds)
@@ -168,8 +168,8 @@ function(nano_ros_load_providers)
         # see the order change when an unrelated package is added.
         list(SORT _kinds)
     endif()
-    set(NANO_ROS_PROVIDER_ROWS "${_out_rows}" PARENT_SCOPE)
-    set(NANO_ROS_PROVIDER_KINDS "${_kinds}" PARENT_SCOPE)
+    set(NROS_PROVIDER_ROWS "${_out_rows}" PARENT_SCOPE)
+    set(NROS_PROVIDER_KINDS "${_kinds}" PARENT_SCOPE)
 
     _nano_ros_watch_provider_inputs("${_NP_INDEX}")
 endfunction()

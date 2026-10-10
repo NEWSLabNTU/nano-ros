@@ -7,7 +7,7 @@
 #
 # It was not. Phase-405 W3 measured SIX cmake sites each defaulting to the
 # literal `humble` independently, and they did NOT behave alike: two consulted
-# `NANO_ROS_ROS_EDITION` first, four went straight to the literal. That
+# `NROS_ROS_EDITION` first, four went straight to the literal. That
 # difference is a real defect, not a style inconsistency —
 # `nros_find_interfaces` ignored a workspace's declared edition entirely, so a
 # `ros_edition = "jazzy"` workspace could bake jazzy hashes for its own `.msg`
@@ -34,9 +34,9 @@
 # `set()` here made the list visible from some call sites and empty from
 # others, so validation degraded to "no edition is known" and rejected `jazzy`
 # with `expected: ` — an error message with a blank list is the tell.
-set(NANO_ROS_DEFAULT_ROS_EDITION "humble"
+set(NROS_DEFAULT_ROS_EDITION "humble"
     CACHE INTERNAL "nano-ros: the default ROS edition")
-set(NANO_ROS_KNOWN_ROS_EDITIONS humble iron jazzy
+set(NROS_KNOWN_ROS_EDITIONS humble iron jazzy
     CACHE INTERNAL "nano-ros: every ROS edition the codegen understands")
 
 # Resolve the edition for one call site.
@@ -44,30 +44,30 @@ set(NANO_ROS_KNOWN_ROS_EDITIONS humble iron jazzy
 #   _nros_resolve_ros_edition("<explicit-or-empty>" out_var)
 #
 # Precedence: an explicitly passed edition > the workspace-wide
-# `NANO_ROS_ROS_EDITION` > `NANO_ROS_DEFAULT_ROS_EDITION`.
+# `NROS_ROS_EDITION` > `NROS_DEFAULT_ROS_EDITION`.
 #
 # The middle rung is the one four sites were missing. It is not optional: a
-# workspace sets `NANO_ROS_ROS_EDITION` precisely so every downstream generator
+# workspace sets `NROS_ROS_EDITION` precisely so every downstream generator
 # agrees, and a site that skips it silently opts its own artifacts out of that
 # agreement.
 function(_nros_resolve_ros_edition explicit out_var)
     set(_e "${explicit}")
-    if(NOT _e AND DEFINED NANO_ROS_ROS_EDITION AND NOT NANO_ROS_ROS_EDITION STREQUAL "")
-        set(_e "${NANO_ROS_ROS_EDITION}")
+    if(NOT _e AND DEFINED NROS_ROS_EDITION AND NOT NROS_ROS_EDITION STREQUAL "")
+        set(_e "${NROS_ROS_EDITION}")
     endif()
     if(NOT _e)
-        set(_e "${NANO_ROS_DEFAULT_ROS_EDITION}")
+        set(_e "${NROS_DEFAULT_ROS_EDITION}")
     endif()
-    if(NOT NANO_ROS_KNOWN_ROS_EDITIONS)
+    if(NOT NROS_KNOWN_ROS_EDITIONS)
         message(FATAL_ERROR
-            "nano-ros: NANO_ROS_KNOWN_ROS_EDITIONS is empty at the point "
+            "nano-ros: NROS_KNOWN_ROS_EDITIONS is empty at the point "
             "_nros_resolve_ros_edition() was called. That is a scope bug in "
             "NanoRosRosEdition.cmake, not a bad edition value.")
     endif()
-    if(NOT _e IN_LIST NANO_ROS_KNOWN_ROS_EDITIONS)
+    if(NOT _e IN_LIST NROS_KNOWN_ROS_EDITIONS)
         # Loud, never a fallback: a typo that defaulted to humble would bake the
         # wrong type_hash and only surface as a silent non-delivery on the wire.
-        string(REPLACE ";" ", " _known "${NANO_ROS_KNOWN_ROS_EDITIONS}")
+        string(REPLACE ";" ", " _known "${NROS_KNOWN_ROS_EDITIONS}")
         message(FATAL_ERROR
             "nano-ros: unknown ROS edition '${_e}' (expected: ${_known}). "
             "The edition selects a cargo feature that must match the "

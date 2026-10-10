@@ -142,6 +142,7 @@
 # Reference
 
 - [`nros` CLI](./reference/cli.md)
+- [Deprecated names](./reference/deprecated-names.md)
 - [Rust API](./reference/rust-api.md)
 - [C API](./reference/c-api.md)
 - [C++ API](./reference/cpp-api.md)

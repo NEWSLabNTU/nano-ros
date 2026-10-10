@@ -247,3 +247,12 @@ board-net-one-home:
 [private]
 build-wiring-classified:
     @python3 scripts/nros-build-wiring.py --check-classified
+
+# phase-484 W7b — cmake's `NANO_ROS_*` names converge on `NROS_*`; the old
+# user-facing ones are DEPRECATED ALIASES adopted by
+# `cmake/NanoRosDeprecatedNames.cmake` at every entry point. This keeps that
+# file the only reader of an old name (and of the retired internal prefixes).
+# Buildless, ~0.3 s; self-tests its pattern on each run.
+[private]
+deprecated-cmake-names:
+    @python3 scripts/check/check-deprecated-cmake-names.py

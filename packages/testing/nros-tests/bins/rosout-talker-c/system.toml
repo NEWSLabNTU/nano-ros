@@ -1,5 +1,5 @@
 # issue 1589 — the C `/rosout` probe. `features = ["rosout"]` is stated here
-# for `nros config explain`; the CMake road reads `NANO_ROS_FEATURES` in
+# for `nros config explain`; the CMake road reads `NROS_FEATURES` in
 # CMakeLists.txt, as `examples/native/c/safety-listener` does.
 
 [system]

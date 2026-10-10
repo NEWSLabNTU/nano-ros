@@ -13,7 +13,7 @@ executor. Every other example here links through `nano_ros_add_executable()`.
 
 It is also the fixture for that build road (issue 1795). Until then the NuttX
 carrier never fired on a lane build: the recipes pass
-`NANO_ROS_PLATFORM=nuttx_armv7a`, and the arm compared the raw value with
+`NROS_PLATFORM=nuttx_armv7a`, and the arm compared the raw value with
 `nuttx`.
 
 ## Build

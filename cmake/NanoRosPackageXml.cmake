@@ -14,14 +14,14 @@
 # `find_package(nano_ros)` calls `nano_ros_read_package_export()` (build type,
 # `<nano_ros_uses>` selections) and then `nano_ros_read_leaf_system()` on the
 # consumer BEFORE it imports nano-ros, so the deploy/rmw values reach
-# `NANO_ROS_PLATFORM` / `NANO_ROS_RMW` in time for the `add_subdirectory` body;
+# `NROS_PLATFORM` / `NANO_ROS_RMW` in time for the `add_subdirectory` body;
 # the verbs read the same variables for their DEPLOY/BOARD defaults. A leftover
 # `<nano_ros deploy= …/>` element is REFUSED, naming the file to write — a
 # silently ignored tuple would configure a freertos leaf as a host build.
 
 include_guard(GLOBAL)
 
-# `deploy` attribute → the `NANO_ROS_PLATFORM` module axis. `native` is the host
+# `deploy` attribute → the `NROS_PLATFORM` module axis. `native` is the host
 # build (it maps to the `posix` platform axis value); the RTOS names map 1:1.
 function(_nros_deploy_to_platform deploy out_var)
     if(deploy STREQUAL "native" OR deploy STREQUAL "")
@@ -149,14 +149,14 @@ endfunction()
 #
 # Parse a package.xml's consumption exports (default
 # `${CMAKE_CURRENT_SOURCE_DIR}/package.xml`). Sets, in the caller's scope:
-#   NANO_ROS_EXPORT_DEPLOY   — "" (set by nano_ros_read_leaf_system())
-#   NANO_ROS_EXPORT_BOARD    — "" (set by nano_ros_read_leaf_system())
-#   NANO_ROS_EXPORT_RMW      — "" (set by nano_ros_read_leaf_system())
-#   NANO_ROS_EXPORT_FOUND    — FALSE (TRUE once a leaf system.toml was read)
-#   NANO_ROS_EXPORT_USES_KINDS      — every selected family, declaration order
-#   NANO_ROS_EXPORT_USES_<KIND>     — the name selected for that family
-#   NANO_ROS_EXPORT_BUILD_TYPE      — <build_type> in RFC-0087 D2 spelling, or ""
-#   NANO_ROS_EXPORT_BUILD_TYPE_RAW  — <build_type> exactly as authored, or ""
+#   NROS_EXPORT_DEPLOY   — "" (set by nano_ros_read_leaf_system())
+#   NROS_EXPORT_BOARD    — "" (set by nano_ros_read_leaf_system())
+#   NROS_EXPORT_RMW      — "" (set by nano_ros_read_leaf_system())
+#   NROS_EXPORT_FOUND    — FALSE (TRUE once a leaf system.toml was read)
+#   NROS_EXPORT_USES_KINDS      — every selected family, declaration order
+#   NROS_EXPORT_USES_<KIND>     — the name selected for that family
+#   NROS_EXPORT_BUILD_TYPE      — <build_type> in RFC-0087 D2 spelling, or ""
+#   NROS_EXPORT_BUILD_TYPE_RAW  — <build_type> exactly as authored, or ""
 #
 # Both build-type variables, because they answer different questions: the
 # canonical one is what a consumer branches on, the raw one is what a
@@ -186,14 +186,14 @@ function(nano_ros_read_package_export)
         set(_NRP_PACKAGE_XML "${CMAKE_CURRENT_SOURCE_DIR}/package.xml")
     endif()
 
-    set(NANO_ROS_EXPORT_DEPLOY "" PARENT_SCOPE)
-    set(NANO_ROS_EXPORT_IMAGE  "" PARENT_SCOPE)
-    set(NANO_ROS_EXPORT_BOARD  "" PARENT_SCOPE)
-    set(NANO_ROS_EXPORT_RMW    "" PARENT_SCOPE)
-    set(NANO_ROS_EXPORT_FOUND  FALSE PARENT_SCOPE)
-    set(NANO_ROS_EXPORT_USES_KINDS "" PARENT_SCOPE)
-    set(NANO_ROS_EXPORT_BUILD_TYPE "" PARENT_SCOPE)
-    set(NANO_ROS_EXPORT_BUILD_TYPE_RAW "" PARENT_SCOPE)
+    set(NROS_EXPORT_DEPLOY "" PARENT_SCOPE)
+    set(NROS_EXPORT_IMAGE  "" PARENT_SCOPE)
+    set(NROS_EXPORT_BOARD  "" PARENT_SCOPE)
+    set(NROS_EXPORT_RMW    "" PARENT_SCOPE)
+    set(NROS_EXPORT_FOUND  FALSE PARENT_SCOPE)
+    set(NROS_EXPORT_USES_KINDS "" PARENT_SCOPE)
+    set(NROS_EXPORT_BUILD_TYPE "" PARENT_SCOPE)
+    set(NROS_EXPORT_BUILD_TYPE_RAW "" PARENT_SCOPE)
 
     if(NOT EXISTS "${_NRP_PACKAGE_XML}")
         return()
@@ -215,9 +215,9 @@ function(nano_ros_read_package_export)
         list(GET _bts 0 _bt)
         string(REGEX REPLACE "^<build_type>(.*)</build_type>$" "\\1" _bt "${_bt}")
         string(STRIP "${_bt}" _bt)
-        set(NANO_ROS_EXPORT_BUILD_TYPE_RAW "${_bt}" PARENT_SCOPE)
+        set(NROS_EXPORT_BUILD_TYPE_RAW "${_bt}" PARENT_SCOPE)
         nros_canonical_build_type("${_bt}" "${_NRP_PACKAGE_XML}" _bt_canon)
-        set(NANO_ROS_EXPORT_BUILD_TYPE "${_bt_canon}" PARENT_SCOPE)
+        set(NROS_EXPORT_BUILD_TYPE "${_bt_canon}" PARENT_SCOPE)
     endif()
 
     set(_kinds "")
@@ -242,7 +242,7 @@ function(nano_ros_read_package_export)
                 "(got kind=\"${_kind}\", name=\"${_name}\")")
         endif()
         string(TOUPPER "${_kind}" _KIND)
-        set(NANO_ROS_EXPORT_USES_${_KIND} "${_name}" PARENT_SCOPE)
+        set(NROS_EXPORT_USES_${_KIND} "${_name}" PARENT_SCOPE)
         list(APPEND _kinds "${_kind}")
     endforeach()
 
@@ -260,7 +260,7 @@ function(nano_ros_read_package_export)
     endif()
 
     list(REMOVE_DUPLICATES _kinds)
-    set(NANO_ROS_EXPORT_USES_KINDS "${_kinds}" PARENT_SCOPE)
+    set(NROS_EXPORT_USES_KINDS "${_kinds}" PARENT_SCOPE)
 endfunction()
 
 # ---------------------------------------------------------------------------
@@ -277,7 +277,7 @@ endfunction()
 # `nros_orchestration_ir::leaf_system`, the ONE reader `nros::main!` and
 # `nros sync` also use — never by a regex here: a second parser of one file is
 # how a Rust and a C leaf would read it two ways. The DEPLOY token (the
-# NANO_ROS_PLATFORM axis) is derived from the board through the board catalog.
+# NROS_PLATFORM axis) is derived from the board through the board catalog.
 #
 # Call AFTER nano_ros_read_package_export(): on a leaf with a system.toml this
 # OVERRIDES the tuple variables that call set, so every consumer downstream
@@ -289,11 +289,11 @@ endfunction()
 # one source per fact.
 #
 # Sets in the caller's scope:
-#   NANO_ROS_LEAF_SYSTEM      — TRUE iff the leaf's system.toml was read
-#   NANO_ROS_LEAF_DOMAIN_ID   — `[image] domain_id` > `[system] domain_id`, or ""
-#   NANO_ROS_LEAF_LOCATOR     — `[image] locator` > `[system] locator`, or ""
-#   NANO_ROS_EXPORT_{DEPLOY,BOARD,RMW,FOUND,USES_*} — overridden, as above
-#   NANO_ROS_EXPORT_CMAKE_BOARD — the board's cmake module (`cmake_module`)
+#   NROS_LEAF_SYSTEM      — TRUE iff the leaf's system.toml was read
+#   NROS_LEAF_DOMAIN_ID   — `[image] domain_id` > `[system] domain_id`, or ""
+#   NROS_LEAF_LOCATOR     — `[image] locator` > `[system] locator`, or ""
+#   NROS_EXPORT_{DEPLOY,BOARD,RMW,FOUND,USES_*} — overridden, as above
+#   NROS_EXPORT_CMAKE_BOARD — the board's cmake module (`cmake_module`)
 # and the GLOBAL property NROS_IMAGE_ENV_CONFIG — the image's `[image.<id>] env`
 #   as a cargo config, for the top-level leaf of a non-Zephyr configure (issue
 #   1712, NanoRosImageEnv.cmake), or "". On Zephyr the module's
@@ -304,9 +304,9 @@ function(nano_ros_read_leaf_system)
     if(NOT _NRL_DIR)
         set(_NRL_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
     endif()
-    set(NANO_ROS_LEAF_SYSTEM FALSE PARENT_SCOPE)
-    set(NANO_ROS_LEAF_DOMAIN_ID "" PARENT_SCOPE)
-    set(NANO_ROS_LEAF_LOCATOR "" PARENT_SCOPE)
+    set(NROS_LEAF_SYSTEM FALSE PARENT_SCOPE)
+    set(NROS_LEAF_DOMAIN_ID "" PARENT_SCOPE)
+    set(NROS_LEAF_LOCATOR "" PARENT_SCOPE)
     # Issue 1712 — cleared by the top-level leaf's read, so a configure cannot
     # inherit an image env nobody stated this time.
     # On Zephyr the module's `module_ext_root` hook owns the property (phase-481
@@ -320,13 +320,13 @@ function(nano_ros_read_leaf_system)
     # (A leftover `<nano_ros …/>` tuple never reaches here:
     # nano_ros_read_package_export() refuses it — phase-445 W3b.)
     nros_resolve_cli(_nros CONTEXT "nano_ros_read_leaf_system (${_NRL_DIR}/system.toml)")
-    # Issue 1556 item 4 -- `-DNANO_ROS_LEAF_BOARD=<board>` answers for that
+    # Issue 1556 item 4 -- `-DNROS_LEAF_BOARD=<board>` answers for that
     # board instead of the image's: the host census configure of a standalone
     # leaf (`nros ws entity-census take --leaf`) builds the leaf's own `src/`
     # for `native`. Unset, nothing changes.
     set(_nrl_board_arg "")
-    if(DEFINED NANO_ROS_LEAF_BOARD AND NOT NANO_ROS_LEAF_BOARD STREQUAL "")
-        set(_nrl_board_arg --board "${NANO_ROS_LEAF_BOARD}")
+    if(DEFINED NROS_LEAF_BOARD AND NOT NROS_LEAF_BOARD STREQUAL "")
+        set(_nrl_board_arg --board "${NROS_LEAF_BOARD}")
     endif()
     # Issue 1712 — and the image's OWN layers (`transport` implications, then
     # `[image.<id>] env`, RFC-0049's APP rung), written as a cargo config that
@@ -403,41 +403,41 @@ function(nano_ros_read_leaf_system)
         set(_board "")
     endif()
 
-    set(_kinds "${NANO_ROS_EXPORT_USES_KINDS}")
-    set(NANO_ROS_EXPORT_FOUND TRUE PARENT_SCOPE)
-    set(NANO_ROS_EXPORT_DEPLOY "${_NROS_LEAF_DEPLOY}" PARENT_SCOPE)
+    set(_kinds "${NROS_EXPORT_USES_KINDS}")
+    set(NROS_EXPORT_FOUND TRUE PARENT_SCOPE)
+    set(NROS_EXPORT_DEPLOY "${_NROS_LEAF_DEPLOY}" PARENT_SCOPE)
     # The `[image.<id>]` this leaf resolved to. NOT the deploy token above,
     # which is the PLATFORM (`threadx`), while every lookup keyed by the
     # leaf's own tables needs the id (`threadx-linux`) — see
     # `nros_resolve_board_facts` (phase-484 W2b).
-    set(NANO_ROS_EXPORT_IMAGE "${_NROS_LEAF_IMAGE}" PARENT_SCOPE)
-    set(NANO_ROS_EXPORT_BOARD "${_board}" PARENT_SCOPE)
+    set(NROS_EXPORT_IMAGE "${_NROS_LEAF_IMAGE}" PARENT_SCOPE)
+    set(NROS_EXPORT_BOARD "${_board}" PARENT_SCOPE)
     # phase-484 W4f — the board's own cmake MODULE (its descriptor's
     # `cmake_module`), which is what `cmake/board/nano-ros-board-<x>.cmake`
     # is keyed on; the leaf may name its board by any alias. Empty for a board
-    # that IS its deploy token, like NANO_ROS_EXPORT_BOARD above.
+    # that IS its deploy token, like NROS_EXPORT_BOARD above.
     set(_cmake_board "${_NROS_LEAF_CMAKE_BOARD}")
     if(_board STREQUAL "" OR _cmake_board STREQUAL "")
         set(_cmake_board "${_board}")
     endif()
-    set(NANO_ROS_EXPORT_CMAKE_BOARD "${_cmake_board}" PARENT_SCOPE)
-    set(NANO_ROS_EXPORT_RMW "${_NROS_LEAF_RMW}" PARENT_SCOPE)
+    set(NROS_EXPORT_CMAKE_BOARD "${_cmake_board}" PARENT_SCOPE)
+    set(NROS_EXPORT_RMW "${_NROS_LEAF_RMW}" PARENT_SCOPE)
     # board= and rmw= are provider selections (RFC-0087 D3) — desugar them the
     # way the tuple reader does, so the two spellings stay indistinguishable.
     if(NOT _board STREQUAL "")
-        set(NANO_ROS_EXPORT_USES_BOARD "${_board}" PARENT_SCOPE)
+        set(NROS_EXPORT_USES_BOARD "${_board}" PARENT_SCOPE)
         list(APPEND _kinds board)
     endif()
     if(NOT "${_NROS_LEAF_RMW}" STREQUAL "")
-        set(NANO_ROS_EXPORT_USES_RMW "${_NROS_LEAF_RMW}" PARENT_SCOPE)
+        set(NROS_EXPORT_USES_RMW "${_NROS_LEAF_RMW}" PARENT_SCOPE)
         list(APPEND _kinds rmw)
     endif()
     list(REMOVE_DUPLICATES _kinds)
-    set(NANO_ROS_EXPORT_USES_KINDS "${_kinds}" PARENT_SCOPE)
+    set(NROS_EXPORT_USES_KINDS "${_kinds}" PARENT_SCOPE)
 
-    set(NANO_ROS_LEAF_SYSTEM TRUE PARENT_SCOPE)
-    set(NANO_ROS_LEAF_DOMAIN_ID "${_NROS_LEAF_DOMAIN_ID}" PARENT_SCOPE)
-    set(NANO_ROS_LEAF_LOCATOR "${_NROS_LEAF_LOCATOR}" PARENT_SCOPE)
+    set(NROS_LEAF_SYSTEM TRUE PARENT_SCOPE)
+    set(NROS_LEAF_DOMAIN_ID "${_NROS_LEAF_DOMAIN_ID}" PARENT_SCOPE)
+    set(NROS_LEAF_LOCATOR "${_NROS_LEAF_LOCATOR}" PARENT_SCOPE)
     message(STATUS
         "nano-ros: deployment from ${_NRL_DIR}/system.toml — board=${_NROS_LEAF_BOARD} "
         "deploy=${_NROS_LEAF_DEPLOY} rmw=${_NROS_LEAF_RMW} "

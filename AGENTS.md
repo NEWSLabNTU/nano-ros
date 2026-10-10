@@ -217,7 +217,7 @@ separate `NEWSLabNTU/nano-ros-sdk` repo's Releases (referenced by URL, not a sub
 C and C++ consumers use source-tree CMake integration, not an installed package. The expected pattern is:
 
 ```cmake
-set(NANO_ROS_PLATFORM <platform>)
+set(NROS_PLATFORM <platform>)
 set(NANO_ROS_RMW <zenoh|xrce|cyclonedds>)
 add_subdirectory(<repo-root> nano_ros)
 target_link_libraries(<app> PRIVATE NanoRos::NanoRos)
@@ -226,7 +226,7 @@ nros_platform_link_app(<app>)
 
 Use `NanoRos::NanoRosCpp` for the C++ API where needed. There is no supported `find_package(NanoRos)` path and no `just install-local` flow. Per-platform CMake glue lives under `cmake/platform/`; RTOS-native integration shells live under `integrations/<rtos>/`.
 
-Never hard-code project-relative paths in example CMake, package CMake, build scripts, or in-tree tooling. The outer build driver should pass SDK paths and selection via cache variables or environment variables such as `NANO_ROS_PLATFORM`, `NANO_ROS_RMW`, `CMAKE_TOOLCHAIN_FILE`, `<SDK>_DIR`, or board-specific config paths.
+Never hard-code project-relative paths in example CMake, package CMake, build scripts, or in-tree tooling. The outer build driver should pass SDK paths and selection via cache variables or environment variables such as `NROS_PLATFORM`, `NANO_ROS_RMW`, `CMAKE_TOOLCHAIN_FILE`, `<SDK>_DIR`, or board-specific config paths.
 
 ## Examples and Generated Content
 

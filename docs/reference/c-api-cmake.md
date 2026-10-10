@@ -6,12 +6,12 @@ Phase 140 — nano-ros is consumed exclusively via
 `add_subdirectory(<repo-root>)` from the user's CMakeLists. There is
 no install step, no install prefix, no `find_package(NanoRos)`.
 
-The nros C API is built via CMake + [Corrosion](https://github.com/corrosion-rs/corrosion) (v0.6.1), which integrates Cargo into CMake. Each `add_subdirectory(nano-ros)` invocation builds the staticlib(s) for the selected `(NANO_ROS_PLATFORM, NANO_ROS_RMW)` tuple in-tree.
+The nros C API is built via CMake + [Corrosion](https://github.com/corrosion-rs/corrosion) (v0.6.1), which integrates Cargo into CMake. Each `add_subdirectory(nano-ros)` invocation builds the staticlib(s) for the selected `(NROS_PLATFORM, NANO_ROS_RMW)` tuple in-tree.
 
 ## Usage
 
 ```cmake
-set(NANO_ROS_PLATFORM posix)
+set(NROS_PLATFORM posix)
 set(NANO_ROS_RMW     zenoh)
 add_subdirectory(third_party/nano-ros nano_ros)
 
@@ -160,7 +160,7 @@ them. **A user does not.** Since
 RMW, the domain and the network identity come from a `system.toml` beside the
 example's `CMakeLists.txt`, and `find_package(nano_ros)` reads it through
 `nros ws leaf-system`, deriving the platform from the board. So
-`-DNANO_ROS_PLATFORM`, `-DNANO_ROS_BOARD` and `-DNROS_RMW` are retired as a
+`-DNROS_PLATFORM`, `-DNANO_ROS_BOARD` and `-DNROS_RMW` are retired as a
 user-facing spelling: switching board is editing `[image.*] board`.
 
 **FreeRTOS (ARM Cortex-M3, MPS2-AN385).** The board is

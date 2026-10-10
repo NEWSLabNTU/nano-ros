@@ -118,7 +118,7 @@ domain="$(sed -n 's/^domain_id *= *\([0-9]*\).*/\1/p' "$bringup/system.toml" | h
     fi
     echo '#define NROS_SYSTEM_RMW "zenoh"'
 } > "$out/nros-system/system_config.h"
-echo 'set(NANO_ROS_FEATURES "" CACHE STRING "nano-ros capability axes" FORCE)' \
+echo 'set(NROS_FEATURES "" CACHE STRING "nano-ros capability axes" FORCE)' \
     > "$out/nros-system/system_config.cmake"
 exit 0
 STUB_EOF

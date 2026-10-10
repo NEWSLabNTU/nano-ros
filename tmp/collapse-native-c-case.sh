@@ -59,7 +59,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 
 # Phase 118.B.2 — collapsed-shape C ${case_name}. RMW selected at cmake
 # configure time via \`-DNROS_RMW=<rmw>\` (default zenoh).
-set(NANO_ROS_PLATFORM posix)
+set(NROS_PLATFORM posix)
 set(NROS_RMW "zenoh" CACHE STRING
     "Active RMW (zenoh|dds|xrce|cyclonedds) — selects the backend linked into this example.")
 set(NANO_ROS_RMW "\${NROS_RMW}")

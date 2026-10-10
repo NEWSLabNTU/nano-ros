@@ -2,7 +2,7 @@
 # Phase 140 — build all three packages in this workspace.
 #
 # Each CMake package add_subdirectory's the nano-ros source tree
-# directly; we set NANO_ROS_GEN_CACHE_DIR to a shared scratch dir so
+# directly; we set NROS_GEN_CACHE_DIR to a shared scratch dir so
 # the std_msgs codegen output is reused across the C + C++ packages.
 
 set -euo pipefail
@@ -23,7 +23,7 @@ build_cmake_pkg() {
     # in cmake and prints which Corrosion it resolved (issue 0493).
     cmake -S "${src}" -B "${bld}" \
         -DCMAKE_BUILD_TYPE=Release \
-        -DNANO_ROS_GEN_CACHE_DIR="${GEN_CACHE}" \
+        -DNROS_GEN_CACHE_DIR="${GEN_CACHE}" \
         > /dev/null
     cmake --build "${bld}" --parallel
 }

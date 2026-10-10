@@ -25,7 +25,7 @@ project(my_c_talker LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
 
-set(NANO_ROS_PLATFORM posix)
+set(NROS_PLATFORM posix)
 set(NANO_ROS_RMW     zenoh)
 add_subdirectory(/path/to/nano-ros nano_ros)
 

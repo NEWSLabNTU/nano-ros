@@ -297,9 +297,9 @@ deploy-board-resolves:
     @python3 scripts/check-deploy-board-resolves.py
 
 # issue 0835 — an example leaf must not overrule the platform its own build
-# passes. Six threadx rust leaves carried a plain `set(NANO_ROS_PLATFORM
+# passes. Six threadx rust leaves carried a plain `set(NROS_PLATFORM
 # threadx)`, a NORMAL variable that shadows the cache entry
-# `-DNANO_ROS_PLATFORM=threadx_riscv64` wrote — so each leaf and its own
+# `-DNROS_PLATFORM=threadx_riscv64` wrote — so each leaf and its own
 # CMakeCache disagreed, written in the same second. Visible cost: four shared
 # corrosion cargo groups where the configuration space has two, 2.8 GB of
 # duplicate output. Quieter cost: two `stdc++` link decisions had come to depend

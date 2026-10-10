@@ -52,7 +52,7 @@ text = in_path.read_text()
 # Drop the hardcoded `set(NANO_ROS_RMW   zenoh)` and replace with
 # the `NROS_RMW` cache-var pattern right after the platform set.
 text = re.sub(
-    r'^(set\(NANO_ROS_PLATFORM[^\n]*\)\s*\n)set\(NANO_ROS_RMW\s+[^\n)]*\)',
+    r'^(set\(NROS_PLATFORM[^\n]*\)\s*\n)set\(NANO_ROS_RMW\s+[^\n)]*\)',
     r'\1set(NROS_RMW "zenoh" CACHE STRING\n'
     r'    "Active RMW (zenoh|dds|xrce|cyclonedds) — selects the backend linked into this example.")\n'
     r'set(NANO_ROS_RMW "${NROS_RMW}")',

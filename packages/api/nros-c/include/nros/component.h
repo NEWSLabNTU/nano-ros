@@ -115,7 +115,7 @@ typedef struct nros_cpp_integrity_status_t {
 /** Phase 269 W3 — validated subscription callback: carries the CDR bytes AND the
  *  sample's E2E integrity status (CRC verdict + sequence gap/dup). The C/C++
  *  component-callback analog of Rust's `FnMut(&[u8], &IntegrityStatus)`.
- *  Requires `NANO_ROS_SAFETY_E2E=ON` (lowered from
+ *  Requires `NROS_SAFETY_E2E=ON` (lowered from
  *  `[system].features = ["safety"]` via `NanoRosCapabilities.cmake`). */
 typedef void (*nros_c_subscription_validated_callback_t)(const uint8_t* data, size_t len,
                                                          int64_t gap, bool duplicate,
@@ -271,7 +271,7 @@ int32_t nros_cpp_subscription_register(const nros_cpp_node_t* node, const char* 
  * (gap, duplicate, crc_valid). The C/C++ component-callback analog of Rust's
  * `register_subscription_buffered_raw_safety_on` / `CallbackCtx::integrity()`.
  *
- * Requires `NANO_ROS_SAFETY_E2E=ON` (lowered from
+ * Requires `NROS_SAFETY_E2E=ON` (lowered from
  * `[system].features = ["safety"]` via `NanoRosCapabilities.cmake`). The
  * runtime validates the CRC the publisher attaches (automatic when built with
  * `safety-e2e`); `crc_valid` is `-1` if the publisher sent no CRC.

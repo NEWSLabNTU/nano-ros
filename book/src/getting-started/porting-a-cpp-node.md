@@ -93,7 +93,7 @@ project(my_workspace LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 14)
 
 # 1) Pull nano-ros in.
-set(NANO_ROS_PLATFORM posix)
+set(NROS_PLATFORM posix)
 set(NROS_RMW "zenoh" CACHE STRING "Active RMW.")
 set(NANO_ROS_RMW "${NROS_RMW}")
 add_subdirectory("/path/to/nano-ros" nano_ros)

@@ -1392,9 +1392,9 @@ cpp: cpp-fmt
         # one default, not a literal here. Any other `${…}` left over is a
         # string this extraction cannot evaluate, and cargo would reject it as
         # an unknown feature — say so here instead.
-        _cyc_edition="$(sed -n 's/^set(NANO_ROS_DEFAULT_ROS_EDITION "\([a-z]*\)".*/\1/p' cmake/NanoRosRosEdition.cmake)"
+        _cyc_edition="$(sed -n 's/^set(NROS_DEFAULT_ROS_EDITION "\([a-z]*\)".*/\1/p' cmake/NanoRosRosEdition.cmake)"
         if [ -z "$_cyc_edition" ]; then
-            echo "check-cpp: could not read NANO_ROS_DEFAULT_ROS_EDITION from cmake/NanoRosRosEdition.cmake" >&2
+            echo "check-cpp: could not read NROS_DEFAULT_ROS_EDITION from cmake/NanoRosRosEdition.cmake" >&2
             exit 1
         fi
         _cyc_features="${_cyc_features//'${_nros_edition_feature}'/ros-$_cyc_edition}"

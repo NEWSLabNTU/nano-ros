@@ -6,12 +6,12 @@
 # This file is included from the top-level CMakeLists.txt via add_subdirectory().
 # Two variables control the build:
 #   NANO_ROS_RMW      — RMW backend: zenoh, xrce, or dds (default: zenoh)
-#   NANO_ROS_PLATFORM — target platform: posix, freertos_armcm3, nuttx_armv7a
+#   NROS_PLATFORM — target platform: posix, freertos_armcm3, nuttx_armv7a
 #                       (default: posix)
 
 # ---- Platform (default: posix) ----
-if(NOT DEFINED NANO_ROS_PLATFORM)
-    set(NANO_ROS_PLATFORM "posix")
+if(NOT DEFINED NROS_PLATFORM)
+    set(NROS_PLATFORM "posix")
 endif()
 
 # Phase 123.A.11 — nros-c is RMW-agnostic at the Cargo level. The
@@ -35,9 +35,9 @@ endif()
 # Relative to THIS file, not ${NANO_ROS_ROOT}: a raw `add_subdirectory(<repo>)`
 # consumer (the phase-138 smoke shape) never defines NANO_ROS_ROOT.
 include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosFeatureSet.cmake")
-option(NANO_ROS_SAFETY_E2E "Enable E2E message-integrity (CRC) — zenoh only" OFF)
-set(_caps ${NANO_ROS_FEATURES})
-if(NANO_ROS_SAFETY_E2E)
+option(NROS_SAFETY_E2E "Enable E2E message-integrity (CRC) — zenoh only" OFF)
+set(_caps ${NROS_FEATURES})
+if(NROS_SAFETY_E2E)
     list(APPEND _caps safety)
 endif()
 # issue 0805 — the append does not check, and a declaration that ALREADY names
@@ -51,7 +51,7 @@ list(REMOVE_DUPLICATES _caps)
 #
 # posix used to get `param_services` + `lifecycle` unconditionally. That was not
 # a convenience: until W1 it was the ONLY route those axes took on hosted, since
-# `NANO_ROS_FEATURES` was never populated on the workspace path (issue 0353). So
+# `NROS_FEATURES` was never populated on the workspace path (issue 0353). So
 # hosted could not fail when a declaration was missing, and the same
 # `system.toml` produced different runtimes depending on where it was built.
 #
@@ -60,7 +60,7 @@ list(REMOVE_DUPLICATES _caps)
 nros_feature_set(_features
     CRATE        c
     RMW          "${NANO_ROS_RMW}"
-    PLATFORM     "${NANO_ROS_PLATFORM}"
+    PLATFORM     "${NROS_PLATFORM}"
     BOARD        "${NANO_ROS_BOARD}"
     CAPABILITIES "${_caps}")
 
@@ -102,7 +102,7 @@ nros_resolve_cargo_profile()
 # being fixed. A label keeps every field non-empty and positional.
 #
 # issue 0835 — the first field is the resolved FEATURE SET, not
-# `platform=${NANO_ROS_PLATFORM}`. `NANO_ROS_PLATFORM` carries two meanings at
+# `platform=${NROS_PLATFORM}`. `NROS_PLATFORM` carries two meanings at
 # once: a platform FAMILY for cmake dispatch and a platform VARIANT for tier
 # selection, and this directory only ever cared about the second. Keying on the
 # label hashed a cmake-dispatch detail that merely CORRELATES with the artifacts.
@@ -121,7 +121,7 @@ nros_resolve_cargo_profile()
 # and threadx-linux's two differ by `rmw` or `caps`, which are real.
 #
 # The label is safe to drop because it is not load-bearing for CARGO, checked
-# rather than assumed: `NANO_ROS_PLATFORM` reaches no cargo environment and no
+# rather than assumed: `NROS_PLATFORM` reaches no cargo environment and no
 # build script reads it. It stays load-bearing for cmake dispatch, where five
 # sites key on the exact string — this changes what the DIRECTORY is keyed on,
 # not what the variable means.

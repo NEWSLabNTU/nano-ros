@@ -7,7 +7,7 @@ The node is a stateful **component** rather than a hand-written imperative
 carrier** generates the entry:
 
 - `nano_ros_add_node(TYPED … DEPLOY zephyr)` (with
-  `NANO_ROS_PLATFORM=zephyr`) `configure_file`s
+  `NROS_PLATFORM=zephyr`) `configure_file`s
   the shared entry pack (`nros codegen entry-node`) — a plain `int main(void)`
   that constructs the component, calls `configure(node)`, and runs
   `::rclcpp::board::ZephyrBoard::run_components(&setup)`.

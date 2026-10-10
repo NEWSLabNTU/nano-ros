@@ -1,7 +1,7 @@
 # cmake/platform/nano-ros-posix.cmake
 #
 # Phase 138.2 — POSIX platform module. Single source of truth for POSIX
-# platform-shim wiring. Replaces the inline `if(NANO_ROS_PLATFORM STREQUAL
+# platform-shim wiring. Replaces the inline `if(NROS_PLATFORM STREQUAL
 # "posix")` block previously in the root CMakeLists.txt.
 #
 # Contract (Phase 138 §A):

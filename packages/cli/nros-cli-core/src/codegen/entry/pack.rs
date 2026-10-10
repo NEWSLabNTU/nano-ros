@@ -8,7 +8,7 @@
 //! both itself, in `NanoRosEntry.cmake`:
 //!
 //! ```text
-//! if(_NRX_LANG STREQUAL "c" AND NOT NANO_ROS_PLATFORM STREQUAL "posix")
+//! if(_NRX_LANG STREQUAL "c" AND NOT NROS_PLATFORM STREQUAL "posix")
 //!     set(_ext "cpp")   # an embedded C entry is rendered as C++
 //! ```
 //!
@@ -19,14 +19,14 @@
 //! _                                          => emit_cpp,
 //! ```
 //!
-//! One keyed on `NANO_ROS_PLATFORM`, the other on the board key `plan.board`
+//! One keyed on `NROS_PLATFORM`, the other on the board key `plan.board`
 //! carries (from the bringup's `system.toml`). Those are related and not equal.
 //!
 //! **No live disagreement was found**, and that is worth saying plainly rather
 //! than dressing the change up: every (platform, board) pair the tree
 //! exercises gives the same answer both ways. `freertos-posix` looks like the
 //! counterexample — a HOST process whose board family is `Freertos` — and is
-//! not, because its fixture rows set `NANO_ROS_PLATFORM = "freertos"`, so both
+//! not, because its fixture rows set `NROS_PLATFORM = "freertos"`, so both
 //! sides say embedded.
 //!
 //! What was wrong is structural: nothing MADE them agree. They read different

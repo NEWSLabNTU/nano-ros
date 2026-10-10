@@ -127,7 +127,7 @@ STM32F4 board crates out of the tree for exactly that reason; keeping a row
 that says "Verified" for a board nothing verifies is the failure mode the tier
 registry exists to prevent. ⁵ The ESP-IDF component path is **gone**
 (phase-468 W2) — `integrations/nano-ros/` and `nros-platform-esp-idf` were
-deleted, and `esp_idf` is no longer an accepted `NANO_ROS_PLATFORM` value. This
+deleted, and `esp_idf` is no longer an accepted `NROS_PLATFORM` value. This
 row said "Ready" and "nightly lane" until 2026-09-25, when it was measured: no
 workflow under `.github/` ran its module, and `examples/fixtures.toml` had no
 row naming it. The claim sat two sentences after this table's own warning that

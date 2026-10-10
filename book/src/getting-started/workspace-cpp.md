@@ -84,7 +84,7 @@ nano_ros_workspace(
 
 `nano_ros_workspace()` does the heavy lifting in one call:
 
-1. Sets `NANO_ROS_PLATFORM=posix` + `NANO_ROS_RMW=zenoh`.
+1. Sets `NROS_PLATFORM=posix` + `NANO_ROS_RMW=zenoh`.
 2. `add_subdirectory(<nano-ros>)` **once** at root scope (so per-pkg
    subdirs don't collide on re-include).
 3. `include(NanoRosNodeRegister.cmake)` + `include(NanoRosEntry.cmake)`

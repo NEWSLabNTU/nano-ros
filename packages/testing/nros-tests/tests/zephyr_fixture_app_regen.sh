@@ -3,7 +3,7 @@
 # in ONE build, and an unchanged one does not reconfigure it.
 #
 # The generated west application (`build/<coord>/<image>_entry/CMakeLists.txt`)
-# carries the image's capability Kconfig and `NANO_ROS_FEATURES`, and only stage
+# carries the image's capability Kconfig and `NROS_FEATURES`, and only stage
 # 4 of a `plan_builds` writes it. Two edges were missing:
 #
 #   1. `zephyr-fixture-run-one.sh`'s NINJA path never regenerated it, so the

@@ -4084,7 +4084,7 @@ fn generated_output_collision_message(collisions: &[(PathBuf, Vec<String>)]) -> 
 /// because a token resolves to a BOARD and that is all this compares. Note
 /// what that means for a Zephyr entry, measured under issue 1517: `DEPLOY`
 /// names the PLATFORM (`zephyr`) — `NanoRosEntry.cmake`'s link gate compares
-/// it against `NANO_ROS_PLATFORM` — while the board the application really
+/// it against `NROS_PLATFORM` — while the board the application really
 /// targets is chosen by `nano_ros_use_board(<board>)` inside its own
 /// CMakeLists, which this does not read. So for a Zephyr image on any board
 /// but the `zephyr` descriptor's own, the derivation finds ZERO candidates

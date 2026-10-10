@@ -303,7 +303,7 @@ fn exec_for(lang: ML, workload: MW) -> Exec {
                 wait_secs: 25,
             },
             note: "phase-269 W3 C: nros_cpp_subscription_register_validated callback receives \
-                   crc_valid == 1 per integrity-passing frame (NANO_ROS_SAFETY_E2E=ON fixture)",
+                   crc_valid == 1 per integrity-passing frame (NROS_SAFETY_E2E=ON fixture)",
         },
         (ML::Cpp, MW::Safety) => Exec {
             entry: || build_native_workspace_cpp_safety_talker_entry().map(|p| p.to_path_buf()),

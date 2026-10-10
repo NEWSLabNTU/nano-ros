@@ -10,8 +10,8 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 # app_main().
 # issue 0835 — the caller decides, and this is only the copy-out default.
 #
-# This line used to read `set(NANO_ROS_PLATFORM threadx)`, an unconditional
-# normal variable that SHADOWED the `-DNANO_ROS_PLATFORM=threadx_riscv64` this
+# This line used to read `set(NROS_PLATFORM threadx)`, an unconditional
+# normal variable that SHADOWED the `-DNROS_PLATFORM=threadx_riscv64` this
 # leaf's own build passes (`just/threadx-riscv64.just`, both the Rust
 # `nros_cmake_fixture_build` path and the C/C++ `NROS_CMAKE_EXTRA_DEFS` one).
 # The leaf therefore reported one platform while its CMakeCache recorded
@@ -28,8 +28,8 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 # duplication is already gone; this makes the leaf stop lying, which is the
 # other half and the one that keeps the next label-keyed thing from repeating
 # it.
-if(NOT DEFINED NANO_ROS_PLATFORM)
-    set(NANO_ROS_PLATFORM threadx_riscv64)
+if(NOT DEFINED NROS_PLATFORM)
+    set(NROS_PLATFORM threadx_riscv64)
 endif()
 set(NROS_RMW "cyclonedds" CACHE STRING
     "Active RMW (zenoh|dds|xrce|cyclonedds) — selects the backend linked into this example.")

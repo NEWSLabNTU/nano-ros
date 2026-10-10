@@ -7,19 +7,19 @@ Phase 123.A.5 — auto-run ``tools/setup.sh`` when the user invokes
 Closes the gap between two valid entry flows:
 
 * `tools/setup.sh --target=posix-zenoh && cmake -B build` (explicit)
-* `cmake -B build -DNANO_ROS_RMW=zenoh -DNANO_ROS_PLATFORM=posix`
+* `cmake -B build -DNANO_ROS_RMW=zenoh -DNROS_PLATFORM=posix`
   (direct — bootstrap.cmake catches this and runs setup.sh)
 
-Idempotent: if the submodules required by ``(NANO_ROS_PLATFORM,
+Idempotent: if the submodules required by ``(NROS_PLATFORM,
 NANO_ROS_RMW)`` are already populated, no-op. Opt out with
-``-DNANO_ROS_SKIP_BOOTSTRAP=ON`` (CI / container builds that
+``-DNROS_SKIP_BOOTSTRAP=ON`` (CI / container builds that
 manage submodules separately).
 
 Included exactly once from the top-level ``CMakeLists.txt`` before
 any ``add_subdirectory`` call.
 #]=======================================================================]
 
-if(NANO_ROS_SKIP_BOOTSTRAP)
+if(NROS_SKIP_BOOTSTRAP)
     return()
 endif()
 
@@ -43,10 +43,10 @@ if(NOT EXISTS "${_setup_sh}" OR NOT EXISTS "${_manifest}")
     return()
 endif()
 
-# Map NANO_ROS_PLATFORM CMake value → setup.sh platform tag. The
+# Map NROS_PLATFORM CMake value → setup.sh platform tag. The
 # CMake values include a sub-arch suffix (`freertos_armcm3` vs
 # `freertos`); the setup.sh manifest keys on the family name.
-set(_plat_tag "${NANO_ROS_PLATFORM}")
+set(_plat_tag "${NROS_PLATFORM}")
 if(_plat_tag MATCHES "^freertos")
     set(_plat_tag "freertos")
 elseif(_plat_tag MATCHES "^threadx")
@@ -98,7 +98,7 @@ if(_need_bootstrap)
             "nano-ros bootstrap failed (exit ${_setup_rc}).\n"
             "Re-run manually:\n"
             "  ${_setup_sh} --target=${_plat_tag}-${NANO_ROS_RMW}\n"
-            "Or skip bootstrap with -DNANO_ROS_SKIP_BOOTSTRAP=ON if "
+            "Or skip bootstrap with -DNROS_SKIP_BOOTSTRAP=ON if "
             "you've already populated the submodules another way.")
     endif()
 else()

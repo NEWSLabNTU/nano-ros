@@ -57,7 +57,7 @@ mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 
 # Configure with CMake — the example's CMakeLists.txt drives add_subdirectory.
-cmake -DNANO_ROS_PLATFORM=posix -DNANO_ROS_RMW=zenoh -DCMAKE_BUILD_TYPE=Release ..
+cmake -DNROS_PLATFORM=posix -DNANO_ROS_RMW=zenoh -DCMAKE_BUILD_TYPE=Release ..
 
 log_info "CMake configuration successful"
 

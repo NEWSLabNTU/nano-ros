@@ -85,9 +85,9 @@ nros_edition_selftest
 #    `ros-humble`, the CARGO FEATURE spelling, while every defaulting site in
 #    cmake writes the bare word `humble`. Six sites existed; the gate matched
 #    zero of them and printed OK, for as long as the check had existed. Worse,
-#    the six did not behave alike — two consulted NANO_ROS_ROS_EDITION first and
+#    the six did not behave alike — two consulted NROS_ROS_EDITION first and
 #    four went straight to the literal, so `nros_find_interfaces` discarded a
-#    workspace's declared edition outright (measured: a `-DNANO_ROS_ROS_EDITION=
+#    workspace's declared edition outright (measured: a `-DNROS_ROS_EDITION=
 #    jazzy` configure of examples/templates/cpp-port-minimal-publisher emitted
 #    `"ros_edition": "humble"` for std_msgs and builtin_interfaces).
 #
@@ -109,7 +109,7 @@ nros_edition_selftest
 #    closed, and for the same reason: nine `ros-humble` feature strings in
 #    `zephyr/CMakeLists.txt`, a `"humble"` fallback in the Zephyr interface
 #    generator and one in the zenoh staticlib all bypassed the resolver, so a
-#    `-DNANO_ROS_ROS_EDITION=jazzy` Zephyr image compiled nros-c/nros-cpp as
+#    `-DNROS_ROS_EDITION=jazzy` Zephyr image compiled nros-c/nros-cpp as
 #    humble while its codegen baked jazzy (measured on native_sim configures).
 #    They were routed through `_nros_resolve_ros_edition()` in the same commit
 #    that widened this glob — the phase-472 W5 reach sweep.
@@ -189,7 +189,7 @@ fi
 #    exclusive, so a default edition means `--features ros-jazzy` yields BOTH
 #    and fails to compile: the user must discover `--no-default-features` and
 #    then re-name every other default they wanted. The C++ selector
-#    (-DNANO_ROS_ROS_EDITION) replaces; this keeps the cargo selector
+#    (-DNROS_ROS_EDITION) replaces; this keeps the cargo selector
 #    equivalent. Invisible until someone tries a second edition, which is
 #    exactly why it needs a gate rather than a convention.
 default_hits=$(git grep -n '^default = \[.*ros-\(humble\|iron\|jazzy\)' \
@@ -280,14 +280,14 @@ fi
 #
 #    posix carried `if(PLATFORM STREQUAL "posix") list(APPEND _caps
 #    param_services lifecycle)`, which until phase-323 W1 was the ONLY route
-#    those axes took on hosted (issue 0353): `NANO_ROS_FEATURES` was never
+#    those axes took on hosted (issue 0353): `NROS_FEATURES` was never
 #    populated on the workspace path. The effect was that hosted could not fail
 #    when a declaration was missing, so "forgot to declare" and "declared" were
 #    indistinguishable on the platform most people develop on.
 #
-#    `safety` is deliberately NOT matched here: `if(NANO_ROS_SAFETY_E2E)
+#    `safety` is deliberately NOT matched here: `if(NROS_SAFETY_E2E)
 #    list(APPEND _caps safety)` is the option round-trip, which is how a
-#    STANDALONE project selects the axis with `-DNANO_ROS_SAFETY_E2E=ON`. That
+#    STANDALONE project selects the axis with `-DNROS_SAFETY_E2E=ON`. That
 #    is a selector, not a platform default.
 cap_branch=$(git grep -nE 'list\(APPEND _caps [^)]*(param_services|lifecycle)' \
     -- 'cmake/*.cmake' 'packages/api/nros-c/CMakeLists.txt' \
@@ -296,13 +296,13 @@ cap_branch=$(git grep -nE 'list\(APPEND _caps [^)]*(param_services|lifecycle)' \
 if [ -n "$cap_branch" ]; then
     echo "FAIL: a branch appends a capability instead of reading the declaration:"
     printf '%s\n' "$cap_branch" | while IFS= read -r h; do note "$h"; done
-    note "Capabilities come from system.toml via NANO_ROS_FEATURES (phase-323 W1)."
+    note "Capabilities come from system.toml via NROS_FEATURES (phase-323 W1)."
     fail=1
 fi
 
 # 7. phase-323 W4 — no fixture row may force a capability's cmake knob.
 #
-#    Four safety rows carried `cmake_defs = { NANO_ROS_SAFETY_E2E = "ON" }`,
+#    Four safety rows carried `cmake_defs = { NROS_SAFETY_E2E = "ON" }`,
 #    citing issue #118 for the missing wiring. 0118 was RESOLVED (phase-269) and
 #    was about the integrity readback API, not cmake lowering — so a temporary
 #    `-D` ended up defended by a closed ticket and outlived the bug it hid. A

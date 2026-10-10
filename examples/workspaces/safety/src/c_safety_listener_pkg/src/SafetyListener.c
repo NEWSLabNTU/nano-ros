@@ -14,7 +14,7 @@
 /// (`cpp_c_safety_integrity_e2e.rs`) subscribes to /safe_ok and asserts the count
 /// climbs, proving the validated-callback path works end-to-end.
 ///
-/// Requires NANO_ROS_SAFETY_E2E=ON (lowered from `[system].features = ["safety"]`
+/// Requires NROS_SAFETY_E2E=ON (lowered from `[system].features = ["safety"]`
 /// via NanoRosCapabilities.cmake).
 
 #include <stddef.h>
@@ -81,7 +81,7 @@ static nros_ret_t listener_configure(const nros_cpp_node_t* node, void* executor
 
     /* Register the validated subscription on /chatter.
      * The callback receives CRC verdict + sequence info alongside the CDR bytes.
-     * Requires NANO_ROS_SAFETY_E2E=ON. */
+     * Requires NROS_SAFETY_E2E=ON. */
     size_t handle;
     return nros_cpp_subscription_register_validated(
         node, "/chatter", std_msgs_msg_int32_get_type_name(), std_msgs_msg_int32_get_type_hash(),

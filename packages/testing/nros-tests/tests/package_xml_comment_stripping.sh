@@ -100,7 +100,7 @@ cat >"$WORK/run.cmake" <<CMAKE
 include("$MODULE")
 foreach(_case commented real between)
     nano_ros_read_package_export(PACKAGE_XML "$WORK/\${_case}.xml")
-    message(STATUS "RESULT \${_case} kinds=[\${NANO_ROS_EXPORT_USES_KINDS}] rmw=\${NANO_ROS_EXPORT_USES_RMW} board=\${NANO_ROS_EXPORT_USES_BOARD}")
+    message(STATUS "RESULT \${_case} kinds=[\${NROS_EXPORT_USES_KINDS}] rmw=\${NROS_EXPORT_USES_RMW} board=\${NROS_EXPORT_USES_BOARD}")
 endforeach()
 CMAKE
 

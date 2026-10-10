@@ -64,25 +64,25 @@
 # `nano_ros_add_executable` example). Its board rung comes FIRST: threadx-linux
 # is a host simulation whose nsos `connect()` reaches the host loopback with no
 # veth bridge and no root.
-set(NANO_ROS_LOCATOR_ENTRY_THREADX_LINUX "tcp/127.0.0.1:7447"
+set(NROS_LOCATOR_ENTRY_THREADX_LINUX "tcp/127.0.0.1:7447"
     CACHE INTERNAL "nano-ros: entry-lane locator default, threadx-linux host sim")
 # Static lwIP net 192.0.3.0/24 — the gateway IS the slirp host (phase-263 C2b;
 # the default 10.0.2.0/24 slirp never answers the guest's gateway ARP for
 # 192.0.3.1).
-set(NANO_ROS_LOCATOR_ENTRY_FREERTOS "tcp/192.0.3.1:7447"
+set(NROS_LOCATOR_ENTRY_FREERTOS "tcp/192.0.3.1:7447"
     CACHE INTERNAL "nano-ros: entry-lane locator default, freertos static lwIP")
 # Every other embedded board: QEMU slirp routes the guest to the host at
 # 10.0.2.2.
-set(NANO_ROS_LOCATOR_ENTRY_DEFAULT "tcp/10.0.2.2:7447"
+set(NROS_LOCATOR_ENTRY_DEFAULT "tcp/10.0.2.2:7447"
     CACHE INTERNAL "nano-ros: entry-lane locator default, QEMU slirp host")
 
 # The `nano_ros_node_register()` RTOS typed-entry carriers. Port 7447 serves
 # manual `zenohd` runs; 7553 matches the rv-virt-threadx fixture port.
-set(NANO_ROS_LOCATOR_NODEREG_NUTTX "tcp/10.0.2.2:7447"
+set(NROS_LOCATOR_NODEREG_NUTTX "tcp/10.0.2.2:7447"
     CACHE INTERNAL "nano-ros: node-register carrier locator default, nuttx")
-set(NANO_ROS_LOCATOR_NODEREG_THREADX "tcp/10.0.2.2:7553"
+set(NROS_LOCATOR_NODEREG_THREADX "tcp/10.0.2.2:7553"
     CACHE INTERNAL "nano-ros: node-register carrier locator default, threadx")
-set(NANO_ROS_LOCATOR_NODEREG_FREERTOS "tcp/10.0.2.2:7447"
+set(NROS_LOCATOR_NODEREG_FREERTOS "tcp/10.0.2.2:7447"
     CACHE INTERNAL "nano-ros: node-register carrier locator default, freertos")
 
 # Resolve the connect locator for one call site.
@@ -108,22 +108,22 @@ set(NANO_ROS_LOCATOR_NODEREG_FREERTOS "tcp/10.0.2.2:7447"
 #   symptom being a test that times out with no delivery. The per-RTOS names
 #   stay as the fallback rung; nothing in the tree sets them any more.
 #
-# NOTE the platform comparison is against the RAW `NANO_ROS_PLATFORM`, NOT a
+# NOTE the platform comparison is against the RAW `NROS_PLATFORM`, NOT a
 # normalized one. `nano_ros_entry()` normalizes `freertos_armcm3` → `freertos`
 # for its DEPLOY membership test but NOT for this locator decision, so a build
-# passing `-DNANO_ROS_PLATFORM=freertos_armcm3` takes the DEFAULT rung rather
+# passing `-DNROS_PLATFORM=freertos_armcm3` takes the DEFAULT rung rather
 # than the FreeRTOS one. That is pre-existing behaviour, it is preserved
 # deliberately, and normalizing here would silently move such a build from
 # 10.0.2.2 to 192.0.3.1 — a different network. Left as-is rather than tidied;
 # see issue 0946.
 function(_nros_resolve_entry_locator lane platform board out_var)
-    if(NOT NANO_ROS_LOCATOR_ENTRY_DEFAULT)
+    if(NOT NROS_LOCATOR_ENTRY_DEFAULT)
         # The scope bug this file's CACHE INTERNAL exists to prevent, reported
         # as itself rather than as a mysteriously empty locator (an image that
         # dials "" falls to backend discovery, finds no router over slirp, and
         # fails at `nros::init` with no hint that cmake is at fault).
         message(FATAL_ERROR
-            "nano-ros: NANO_ROS_LOCATOR_ENTRY_DEFAULT is empty at the point "
+            "nano-ros: NROS_LOCATOR_ENTRY_DEFAULT is empty at the point "
             "_nros_resolve_entry_locator() was called. That is a scope bug in "
             "NanoRosEntryLocator.cmake, not a bad locator value.")
     endif()
@@ -132,11 +132,11 @@ function(_nros_resolve_entry_locator lane platform board out_var)
         if(DEFINED NROS_ENTRY_LOCATOR)
             set(_loc "${NROS_ENTRY_LOCATOR}")
         elseif(board STREQUAL "threadx-linux")
-            set(_loc "${NANO_ROS_LOCATOR_ENTRY_THREADX_LINUX}")
+            set(_loc "${NROS_LOCATOR_ENTRY_THREADX_LINUX}")
         elseif(platform STREQUAL "freertos")
-            set(_loc "${NANO_ROS_LOCATOR_ENTRY_FREERTOS}")
+            set(_loc "${NROS_LOCATOR_ENTRY_FREERTOS}")
         else()
-            set(_loc "${NANO_ROS_LOCATOR_ENTRY_DEFAULT}")
+            set(_loc "${NROS_LOCATOR_ENTRY_DEFAULT}")
         endif()
     elseif(lane STREQUAL "node-register")
         if(DEFINED NROS_ENTRY_LOCATOR)
@@ -144,17 +144,17 @@ function(_nros_resolve_entry_locator lane platform board out_var)
         elseif(platform STREQUAL "nuttx")
             set(_loc "${NROS_NUTTX_LOCATOR}")
             if(NOT DEFINED NROS_NUTTX_LOCATOR)
-                set(_loc "${NANO_ROS_LOCATOR_NODEREG_NUTTX}")
+                set(_loc "${NROS_LOCATOR_NODEREG_NUTTX}")
             endif()
         elseif(platform STREQUAL "threadx")
             set(_loc "${NROS_THREADX_LOCATOR}")
             if(NOT DEFINED NROS_THREADX_LOCATOR)
-                set(_loc "${NANO_ROS_LOCATOR_NODEREG_THREADX}")
+                set(_loc "${NROS_LOCATOR_NODEREG_THREADX}")
             endif()
         elseif(platform STREQUAL "freertos")
             set(_loc "${NROS_FREERTOS_LOCATOR}")
             if(NOT DEFINED NROS_FREERTOS_LOCATOR)
-                set(_loc "${NANO_ROS_LOCATOR_NODEREG_FREERTOS}")
+                set(_loc "${NROS_LOCATOR_NODEREG_FREERTOS}")
             endif()
         else()
             message(FATAL_ERROR

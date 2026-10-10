@@ -190,7 +190,7 @@ if [ "$platform" = "linux" ] && [ -z "${NROS_CMAKE_EXTRA_DEFS:-}" ]; then
     source scripts/build/cargo.sh
     nros_cargo_ensure_codegen_c
     codegen_tool="$(nros_cargo_codegen_c_bin)"
-    export NROS_CMAKE_EXTRA_DEFS="-DCMAKE_BUILD_TYPE=Release -DNANO_ROS_BUILD_CODEGEN=OFF -D_NANO_ROS_CODEGEN_TOOL=${codegen_tool} -DCMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL=${repo_root}/scripts/cyclonedds/msg_to_cyclone_idl.py"
+    export NROS_CMAKE_EXTRA_DEFS="-DCMAKE_BUILD_TYPE=Release -DNROS_BUILD_CODEGEN=OFF -D_NANO_ROS_CODEGEN_TOOL=${codegen_tool} -DCMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL=${repo_root}/scripts/cyclonedds/msg_to_cyclone_idl.py"
 fi
 
 export CARGO_TERM_COLOR="${CARGO_TERM_COLOR:-never}"
@@ -238,7 +238,7 @@ write_cmake_cache_snapshot() {
     fi
 
     grep -E \
-        '^(Rust_CARGO_TARGET|CARGO_TARGET_DIR|CARGO_BUILD_TARGET|CMAKE_TOOLCHAIN_FILE|CMAKE_BUILD_TYPE|CMAKE_C_COMPILER_LAUNCHER|CMAKE_CXX_COMPILER_LAUNCHER|NANO_ROS_PLATFORM|NANO_ROS_RMW|NROS_RMW|NANO_ROS_BUILD_CODEGEN)' \
+        '^(Rust_CARGO_TARGET|CARGO_TARGET_DIR|CARGO_BUILD_TARGET|CMAKE_TOOLCHAIN_FILE|CMAKE_BUILD_TYPE|CMAKE_C_COMPILER_LAUNCHER|CMAKE_CXX_COMPILER_LAUNCHER|NROS_PLATFORM|NANO_ROS_RMW|NROS_RMW|NROS_BUILD_CODEGEN)' \
         "$cache" > "$out" || printf 'No matching cache variables found in %s\n' "$cache" > "$out"
 }
 

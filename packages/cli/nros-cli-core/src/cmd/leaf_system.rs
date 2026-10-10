@@ -36,7 +36,7 @@ pub struct LeafSystemArgs {
     ///
     /// The host census of a standalone leaf builds the leaf's own `src/` for
     /// the host (`nros ws entity-census take --leaf`, which configures with
-    /// `-DNANO_ROS_LEAF_BOARD=native`). Every other row -- RMW, domain,
+    /// `-DNROS_LEAF_BOARD=native`). Every other row -- RMW, domain,
     /// locator -- stays the leaf's: only the board, and the deploy token it
     /// implies, change.
     #[arg(long, value_name = "BOARD")]
@@ -150,7 +150,7 @@ pub fn cmake_board_module(catalog: Option<&BoardCatalog>, board: &str) -> String
     }
 }
 
-/// The C/C++ deploy token (the `NANO_ROS_PLATFORM` axis) a board implies:
+/// The C/C++ deploy token (the `NROS_PLATFORM` axis) a board implies:
 /// its descriptor's platform FAMILY (`PlatformKind::cmake_deploy`). A board
 /// no single descriptor claims, or one whose platform has no C/C++ module, is
 /// passed through verbatim, so the platform module reports it the way it

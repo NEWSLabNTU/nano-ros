@@ -21,7 +21,7 @@ capability is declared once, in the bringup:
 features = ["safety"]
 ```
 
-and lowers to `NANO_ROS_SAFETY_E2E` for the C/C++ build and the `safety-e2e`
+and lowers to `NROS_SAFETY_E2E` for the C/C++ build and the `safety-e2e`
 cargo feature for the runtime. With it on, the runtime attaches a CRC-32 +
 sequence number to every publish and validates it on receive; the listener reads
 the per-sample verdict (CRC ok, sequence gap, duplicate) alongside the payload.
@@ -62,7 +62,7 @@ Each entry's model comes from its launch file; `nros sync` resolves one per
 entry, alongside the build settings each image's board implies. The Zephyr image
 keeps `west build` as its verb, with `nros sync` before it.
 
-Do NOT pass `-DNANO_ROS_SAFETY_E2E=ON` by hand. The declaration above is the
+Do NOT pass `-DNROS_SAFETY_E2E=ON` by hand. The declaration above is the
 source of truth and reaches the build on its own (phase-323); forcing the knob
 was the workaround that outlived its own issue, and the SSoT gate now rejects
 it.

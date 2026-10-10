@@ -119,12 +119,12 @@ pub fn render_probe_cmakelists(comps: &[CmakeProbeOptions]) -> String {
         "# package), so a type has exactly one path no matter which package\n",
         "# reaches it, and a stale cache entry names the same file a fresh one\n",
         "# does. Inside the probe's own build dir, so it is removed with it.\n",
-        "set(NANO_ROS_GEN_CACHE_DIR \"${CMAKE_BINARY_DIR}/nros-codegen\")\n\n",
+        "set(NROS_GEN_CACHE_DIR \"${CMAKE_BINARY_DIR}/nros-codegen\")\n\n",
         "# issue 0543 — the bringup's DECLARED capabilities, lowered by the same\n",
         "# `nros config show --format cmake` a real build includes (see\n",
         "# NanoRosWorkspace.cmake). The probe compiles the USER'S sources, so it\n",
         "# must compile them with the user's configuration: `safety` lowers to\n",
-        "# `NANO_ROS_SAFETY_E2E`, which gates\n",
+        "# `NROS_SAFETY_E2E`, which gates\n",
         "# `Node::create_subscription_with_safety` in nros-cpp's header — without\n",
         "# it the probe reported correct code as \"no member named …\".\n",
         "#\n",
@@ -840,14 +840,14 @@ mod tests {
     /// message type two node packages share has exactly one generation site and
     /// the aggregating FFI crate cannot `include!` two copies of it (E0428).
     ///
-    /// The ORDER is load-bearing: the generators read `NANO_ROS_GEN_CACHE_DIR`
+    /// The ORDER is load-bearing: the generators read `NROS_GEN_CACHE_DIR`
     /// while `find_package(nano_ros)` is being resolved, so a `set` after it
     /// would be inert.
     #[test]
     fn the_probe_generates_each_message_type_at_one_site() {
         let txt = render_probe_cmakelists(std::slice::from_ref(&opts()));
         let set = txt
-            .find("set(NANO_ROS_GEN_CACHE_DIR")
+            .find("set(NROS_GEN_CACHE_DIR")
             .unwrap_or_else(|| panic!("probe must pin one codegen dir:\n{txt}"));
         let find = txt
             .find("find_package(nano_ros REQUIRED)")
@@ -857,7 +857,7 @@ mod tests {
             "the codegen dir must be set BEFORE find_package(nano_ros):\n{txt}"
         );
         assert!(
-            txt.contains("set(NANO_ROS_GEN_CACHE_DIR \"${CMAKE_BINARY_DIR}/nros-codegen\")"),
+            txt.contains("set(NROS_GEN_CACHE_DIR \"${CMAKE_BINARY_DIR}/nros-codegen\")"),
             "inside the probe's own build dir, so it is removed with it:\n{txt}"
         );
     }
