@@ -106,6 +106,26 @@ where = "ros2 distrobox, Humble, tree with #684 + #692"
 evidence = "1 case(s) produced a result in interop_e2e.xml"
 
 [[verdict]]
+cell = "native-logging-c-zenoh-n2r"
+date = "2026-10-11"
+verdict = "pass"
+tests = ["a_c_log_call_reaches_ros2_topic_echo_rosout"]
+run = "just native test-rosout"
+where = "aeon's workstation, Ubuntu 22.04 host, ROS 2 Humble apt (rmw_zenoh_cpp, rmw_cyclonedds_cpp, rmw_fastrtps_cpp); fixtures rebuilt at main 6a36a9402d plus comment-only #1914"
+evidence = "First run of this cell: a stock `ros2 topic echo /rosout` received the log record from the C talker (rosout_interop 3/3 pass, ~22 s)."
+issue = "1758"
+
+[[verdict]]
+cell = "native-logging-cpp-zenoh-n2r"
+date = "2026-10-11"
+verdict = "pass"
+tests = ["a_cpp_log_call_reaches_ros2_topic_echo_rosout"]
+run = "just native test-rosout"
+where = "aeon's workstation, Ubuntu 22.04 host, ROS 2 Humble apt (rmw_zenoh_cpp, rmw_cyclonedds_cpp, rmw_fastrtps_cpp); fixtures rebuilt at main 6a36a9402d plus comment-only #1914"
+evidence = "First run of this cell: a stock `ros2 topic echo /rosout` received the log record from the C++ talker (rosout_interop 3/3 pass, ~22 s)."
+issue = "1758"
+
+[[verdict]]
 cell = "native-logging-rust-zenoh-n2r"
 date = "2026-09-29"
 verdict = "pass"
@@ -124,6 +144,26 @@ where = "ros2 distrobox, Humble, tree with #684 + #692"
 evidence = "3 case(s) produced a result in cpp_multi_node_entry.xml"
 
 [[verdict]]
+cell = "native-multinode-rust-cyclone"
+date = "2026-10-11"
+verdict = "pass"
+tests = ["rust_multi_node_entry_per_node_graph_nodes_cyclonedds"]
+run = "just native test-ros2-multinode-rust"
+where = "aeon's workstation, Ubuntu 22.04 host, ROS 2 Humble apt (rmw_zenoh_cpp, rmw_cyclonedds_cpp, rmw_fastrtps_cpp); fixtures rebuilt at main 6a36a9402d plus comment-only #1914"
+evidence = "First run of this cell: rust_multi_node_per_node_graph 5/5 pass, so each node of the Rust multi-node entry appears in the ROS 2 graph under its own name over Cyclone."
+issue = "1758"
+
+[[verdict]]
+cell = "native-multinode-rust-xrce"
+date = "2026-10-11"
+verdict = "pass"
+tests = ["rust_multi_node_entry_leaves_the_graph_when_it_ends_xrce", "rust_multi_node_entry_per_node_graph_nodes_xrce"]
+run = "just native test-ros2-multinode-rust"
+where = "aeon's workstation, Ubuntu 22.04 host, ROS 2 Humble apt (rmw_zenoh_cpp, rmw_cyclonedds_cpp, rmw_fastrtps_cpp); fixtures rebuilt at main 6a36a9402d plus comment-only #1914"
+evidence = "First run of this cell: rust_multi_node_per_node_graph 5/5 pass, so each node of the Rust multi-node entry appears in the ROS 2 graph under its own name over XRCE (and leaves it when the entry ends)."
+issue = "1758"
+
+[[verdict]]
 cell = "native-multinode-rust-zenoh"
 date = "2026-09-07"
 verdict = "pass"
@@ -131,6 +171,16 @@ tests = ["rust_multi_node_entry_per_node_graph_nodes"]
 run = "cargo nextest run -p nros-tests --test rust_multi_node_per_node_graph"
 where = "ros2 distrobox, Humble, tree with #684 + #692"
 evidence = "1 case(s) produced a result in rust_multi_node_per_node_graph.xml"
+
+[[verdict]]
+cell = "native-params-25-rust-xrce"
+date = "2026-10-11"
+verdict = "pass"
+tests = ["xrce_set_parameters_naming_25_declared_lands"]
+run = "just native test-ros2-params-per-node"
+where = "aeon's workstation, Ubuntu 22.04 host, ROS 2 Humble apt (rmw_zenoh_cpp, rmw_cyclonedds_cpp, rmw_fastrtps_cpp); fixtures rebuilt at main 6a36a9402d plus comment-only #1914"
+evidence = "First run of this cell. xrce_set_parameters_naming_25_declared_lands passed (2.7 s) against the XRCE Agent, together with the other three params_per_node_interop cases (5/5)."
+issue = "1758"
 
 [[verdict]]
 cell = "native-params-per-node-rust-cyclone"
