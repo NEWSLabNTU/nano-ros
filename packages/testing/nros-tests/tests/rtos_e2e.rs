@@ -161,6 +161,16 @@ impl RtosProcess {
         }
     }
 
+    /// Issue 1770 — QEMU's own exit status once the image ends, or `None` if it
+    /// is still running after `timeout`. A host-process image (`Managed`)
+    /// answers `None`: its status is issue 1752's, read elsewhere.
+    fn wait_exit(&mut self, timeout: Duration) -> Option<std::process::ExitStatus> {
+        match self {
+            RtosProcess::Qemu(p) => p.wait_exit(timeout),
+            RtosProcess::Managed(_) => None,
+        }
+    }
+
     /// How this node was actually started, for the failure message.
     ///
     /// Issue 0877 — the report that "the same two images DELIVER when run by
@@ -1322,10 +1332,31 @@ fn test_rtos_service_e2e(
     let server_cmd = server.command_line();
     let client_cmd = client.command_line();
 
+    // Issue 1770 — a FreeRTOS C/C++ client RETURNS once it has its result, and
+    // QEMU's exit status is then the app's: 0 iff `nros_app_main` returned 0.
+    // The entry used to exit 1 whatever the app did (the A64 `SYS_EXIT` block
+    // form on A32), so a status read here was always a failure.
+    let client_exit =
+        if matches!(platform, Platform::Freertos) && matches!(lang, Lang::C | Lang::Cpp) {
+            client.wait_exit(Duration::from_secs(30))
+        } else {
+            None
+        };
+
     server.kill();
     client.kill();
 
     eprintln!("Client output:\n{}", client_out);
+    if let Some(status) = client_exit {
+        assert!(
+            status.success(),
+            "{} {} service client ended QEMU with {status} after printing its \
+             result (issue 1770: the image's exit status must be the app's).\n{}",
+            platform,
+            lang,
+            client_out
+        );
+    }
 
     // W5: the client sends ONE request (2, 3) and logs one result line.
     let response_count = count_pattern(&client_out, nros_tests::output::SERVICE_RESULT_PREFIX);

@@ -775,6 +775,27 @@ impl QemuProcess {
         matches!(self.handle.try_wait(), Ok(None))
     }
 
+    /// Wait up to `timeout` for QEMU to exit on its own and return its status,
+    /// or `None` if it is still running then (the caller decides whether that
+    /// is a failure — most images spin forever).
+    ///
+    /// Issue 1770 — an image that ENDS does so through semihosting, and QEMU's
+    /// exit status is then the image's verdict. That is only worth reading if
+    /// it carries the app's status: the FreeRTOS C/C++ entry used the A64
+    /// `SYS_EXIT` block form on A32 and exited 1 whatever the app did.
+    pub fn wait_exit(&mut self, timeout: Duration) -> Option<std::process::ExitStatus> {
+        let deadline = std::time::Instant::now() + timeout;
+        loop {
+            match self.handle.try_wait() {
+                Ok(Some(status)) => return Some(status),
+                Ok(None) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+                _ => return None,
+            }
+        }
+    }
+
     /// Start QEMU with ARM virt machine (Cortex-A7 + virtio-net + slirp networking)
     ///
     /// Used for NuttX QEMU tests. The virt machine provides a virtio-net interface
