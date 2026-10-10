@@ -101,6 +101,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosEntityInventory.cmake")
 # locator. The three RTOS typed-entry carriers below used to each carry their
 # own per-platform default, independently of the ladder in NanoRosEntry.cmake.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosEntryLocator.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosPlatformFamily.cmake")
 
 if(DEFINED _NROS_NODE_REGISTER_INCLUDED)
     return()
@@ -538,6 +539,10 @@ endfunction()
 function(nano_ros_node_register)
     cmake_parse_arguments(_NRC "TYPED" "NAME;CLASS;LANGUAGE;HEADER;SHAPE;EXISTING_TARGET;PANIC" "SOURCES;DEPLOY;CALLBACK_GROUPS" ${ARGN})
     _nros_entities_retired("nano_ros_node_register(${_NRC_NAME})" ${ARGN})
+    # issue 1795 — the RTOS carrier arms below dispatch on the FAMILY. The
+    # recipes pass `threadx_riscv64` / `nuttx_armv7a` / `freertos_armcm3`, and
+    # a raw `STREQUAL "threadx"` never fired on any lane-built leaf.
+    nros_platform_family(_nrc_family "${NANO_ROS_PLATFORM}")
 
     # Issue 1017 — the entry's session name is DERIVED here, once, from the
     # node's own name, and every entry shape below reads it.
@@ -968,14 +973,14 @@ function(nano_ros_node_register)
     # (interpreter limit; deferred — see phase-238).
     if((_nrc_lang STREQUAL "CPP" OR _nrc_lang STREQUAL "C")
        AND "nuttx" IN_LIST _NRC_DEPLOY
-       AND NANO_ROS_PLATFORM STREQUAL "nuttx"
+       AND _nrc_family STREQUAL "nuttx"
        AND COMMAND nros_platform_link_app
        AND NOT TARGET ${PROJECT_NAME})
         string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _pkg_sym "${PROJECT_NAME}")
         set(NROS_ENTRY_PKG_SYM "${_pkg_sym}")
         # Baked connect locator. QEMU slirp routes the guest to the host
         # zenoh router at `10.0.2.2:<port>`. Override per-build with
-        # `-DNROS_NUTTX_LOCATOR=tcp/10.0.2.2:<port>` (the rtos_e2e harness
+        # `-DNROS_ENTRY_LOCATOR=tcp/10.0.2.2:<port>` (issue 1795; `NROS_NUTTX_LOCATOR` is the old fallback) (the rtos_e2e harness
         # passes the per-cell `zenohd_port_for` port); the default 7447
         # serves manual `zenohd` runs. Mirrors the Rust `*_entry`
         # `[…entry] locator = …` bake.
@@ -987,7 +992,7 @@ function(nano_ros_node_register)
         # `@NROS_ENTRY_LOCATOR@` template substitution the carrier TU reads, not
         # a second producer.
         _nros_resolve_entry_locator(node-register
-            "${NANO_ROS_PLATFORM}" "${NANO_ROS_BOARD}" NROS_ENTRY_LOCATOR)
+            "${_nrc_family}" "${NANO_ROS_BOARD}" NROS_ENTRY_LOCATOR)
         set(_entry_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-entry")
         set(_entry_src "${_entry_dir}/main.cpp")
         # Phase 240.3 (RFC-0043) — TYPED routes the carrier to the real
@@ -1049,7 +1054,7 @@ function(nano_ros_node_register)
     # TYPED-only: the legacy declarative-register + `NanoRosThreadxSystemCodegen`
     # NULL-context stub is retired on ThreadX (phase-246). Both C and C++.
     if((_nrc_lang STREQUAL "CPP" OR _nrc_lang STREQUAL "C")
-       AND NANO_ROS_PLATFORM STREQUAL "threadx"
+       AND _nrc_family STREQUAL "threadx"
        AND COMMAND nros_platform_link_app
        AND _NRC_DEPLOY
        AND NOT TARGET ${PROJECT_NAME})
@@ -1063,7 +1068,7 @@ function(nano_ros_node_register)
         string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _pkg_sym "${PROJECT_NAME}")
         set(NROS_ENTRY_PKG_SYM "${_pkg_sym}")
         # Baked connect locator. QEMU slirp routes the guest to the host zenoh
-        # router at `10.0.2.2:<port>`. Override with `-DNROS_THREADX_LOCATOR=…`;
+        # router at `10.0.2.2:<port>`. Override with `-DNROS_ENTRY_LOCATOR=…` (issue 1795; `-DNROS_THREADX_LOCATOR` is the old fallback name);
         # the default 7553 matches the rv-virt-threadx fixture port.
         # CycloneDDS ignores the locator (no router); domain id is compile-time.
         #
@@ -1071,7 +1076,7 @@ function(nano_ros_node_register)
         # threadx default (7553, slirp host) is NOT the entry lane's
         # (127.0.0.1:7447 on threadx-linux); both are preserved deliberately.
         _nros_resolve_entry_locator(node-register
-            "${NANO_ROS_PLATFORM}" "${NANO_ROS_BOARD}" NROS_ENTRY_LOCATOR)
+            "${_nrc_family}" "${NANO_ROS_BOARD}" NROS_ENTRY_LOCATOR)
         set(NROS_ENTRY_SHAPE_RCLCPP "${_nrc_shape_rclcpp}")
         _nros_rtos_entry_family(threadx)
         set(_entry_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-entry")
@@ -1124,7 +1129,7 @@ function(nano_ros_node_register)
     # TYPED-only: the legacy declarative-register / NULL-context baker entry is
     # retired on FreeRTOS (phase-240.6). Both C and C++.
     if((_nrc_lang STREQUAL "CPP" OR _nrc_lang STREQUAL "C")
-       AND NANO_ROS_PLATFORM STREQUAL "freertos"
+       AND _nrc_family STREQUAL "freertos"
        AND COMMAND nros_platform_link_app
        AND _NRC_DEPLOY
        AND NOT TARGET ${PROJECT_NAME})
@@ -1138,7 +1143,7 @@ function(nano_ros_node_register)
         string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _pkg_sym "${PROJECT_NAME}")
         set(NROS_ENTRY_PKG_SYM "${_pkg_sym}")
         # Baked connect locator. QEMU slirp routes the guest to the host zenoh
-        # router at `10.0.2.2:<port>`. Override with `-DNROS_FREERTOS_LOCATOR=…`;
+        # router at `10.0.2.2:<port>`. Override with `-DNROS_ENTRY_LOCATOR=…` (issue 1795; `-DNROS_FREERTOS_LOCATOR` is the old fallback name);
         # the default 7447 matches the mps2-an385-freertos example deploy + the
         # rtos_e2e harness's manual `zenohd` default.
         #
@@ -1149,7 +1154,7 @@ function(nano_ros_node_register)
         # carried forward rather than resolved by reading — deciding it needs a
         # QEMU run per lane.
         _nros_resolve_entry_locator(node-register
-            "${NANO_ROS_PLATFORM}" "${NANO_ROS_BOARD}" NROS_ENTRY_LOCATOR)
+            "${_nrc_family}" "${NANO_ROS_BOARD}" NROS_ENTRY_LOCATOR)
         set(NROS_ENTRY_SHAPE_RCLCPP "${_nrc_shape_rclcpp}")
         _nros_rtos_entry_family(freertos)
         set(_entry_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-entry")

@@ -180,6 +180,26 @@ function(nros_nuttx_build_example)
         endif()
     endforeach()
 
+    # issue 1801 — the NuttX tree is LOCATED in the board module, which runs
+    # inside `add_subdirectory(<nano-ros root>)`. `nros_locate_var` sets a normal
+    # variable there by design (NanoRosLocate.cmake), so a WORKSPACE entry —
+    # whose image is declared in the workspace's own directory — saw
+    # `NUTTX_DIR` empty and emitted `cmake -E chdir "" bash …`, failing as
+    # "Directory does not exist for chdir command: bash". The located answers
+    # live in GLOBAL properties, so ask again HERE; an example leaf's `-D`
+    # (a cache entry) still wins inside `nros_locate_var`.
+    foreach(_nnbe_tree NUTTX_DIR NUTTX_APPS_DIR)
+        if("${${_nnbe_tree}}" STREQUAL "" AND COMMAND nros_locate_var)
+            nros_locate_var(${_nnbe_tree})
+        endif()
+    endforeach()
+    if("${NUTTX_DIR}" STREQUAL "" OR NOT IS_DIRECTORY "${NUTTX_DIR}")
+        message(FATAL_ERROR
+            "nros_nuttx_build_example(${_NNBE_NAME}): NUTTX_DIR is empty or not a "
+            "directory ('${NUTTX_DIR}') — `nros locate` found no NuttX tree and no "
+            "-DNUTTX_DIR was given. Run `just nuttx setup` (issue 1801).")
+    endif()
+
     # NanoRos_DIR (set by find_package(NanoRos CONFIG)) points at
     # `<prefix>/lib/cmake/NanoRos/` — `${NanoRos_DIR}/../../../include`
     # resolves to `<prefix>/include`. Under the Phase 137

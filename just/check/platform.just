@@ -1009,3 +1009,10 @@ rtos-feature-set-excludes-analysis:
 # rv-virt-threadx TYPED carrier failed to link on both.
 crt-free-runtime-symbols:
     @python3 scripts/check-crt-free-runtime-symbols.py
+
+# Issue 1795 — a build road is chosen per RTOS FAMILY. The recipes pass the
+# variant spelling (`threadx_riscv64`); the three typed-entry carriers compared
+# the raw value with `"threadx"`, so no lane-built carrier ever fired. The
+# dispatchers compare `nros_platform_family()`, the one normaliser.
+road-dispatch-platform-family:
+    @python3 scripts/check-road-dispatch-platform-family.py

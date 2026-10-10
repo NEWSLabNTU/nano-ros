@@ -447,6 +447,7 @@ static NUTTX_C_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NUTTX_C_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NUTTX_C_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NUTTX_C_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NUTTX_C_TYPED_CARRIER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 fn build_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<PathBuf> {
     let root = project_root();
@@ -462,6 +463,14 @@ fn build_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<
     let build_dir = example_dir.join("build-zenoh");
     let binary_path = build_dir.join(binary_name);
     super::require_prebuilt_binary_fresh_cmake(&binary_path)
+}
+
+/// issue 1795 — the NuttX TYPED-carrier image: a C component registered with
+/// `DEPLOY nuttx`, linked through `nano_ros_node_register`'s carrier arm.
+pub fn build_nuttx_c_typed_carrier() -> TestResult<&'static Path> {
+    NUTTX_C_TYPED_CARRIER_BINARY
+        .get_or_try_init(|| build_cmake_example("c", "typed-carrier", "c_typed_carrier"))
+        .map(|p| p.as_path())
 }
 
 pub fn build_nuttx_cpp_talker() -> TestResult<&'static Path> {

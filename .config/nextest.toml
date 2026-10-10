@@ -598,6 +598,15 @@ filter = "binary(param_store_carve)"
 slow-timeout = { period = "120s", terminate-after = 2 }
 retries = 1
 
+# issue 1795 — the RTOS typed-carrier boots: one rv-virt-threadx and one NuttX
+# arm-virt guest, each on its own allocator port (`port_of(_, C, TypedCarrier)` =
+# 9581 / 8381), so no group serialization; the budget is a cold QEMU boot + a
+# zenoh session + 3 publishes (up to 90 s), past the default 60 s kill.
+[[profile.default.overrides]]
+filter = "binary(typed_carrier_e2e)"
+slow-timeout = { period = "120s", terminate-after = 2 }
+retries = 1
+
 # issue 0571 — five overrides stood here (phase-296 W5.5/W5.9/W5.10/W5.11,
 # phase-302 W5), each serializing ONE realtime_tiers_e2e CASE against the
 # partner e2e that shares its baked image and port. Every one of them selected a

@@ -1,0 +1,34 @@
+# What this example deploys to (RFC-0098 D3/D5, phase-445 W3) — the same
+# schema a workspace bringup uses, and the same file a Rust leaf writes.
+# Replaces the `package.xml` `<nano_ros deploy= board= rmw=/>` tuple:
+# `find_package(nano_ros)` reads this through `nros ws leaf-system`, which
+# derives the platform (`nuttx`) from the board. Switching board is editing
+# `[image.*] board`.
+
+
+[system]
+name = "nuttx_c_typed_carrier"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "nuttx_c_typed_carrier"
+class = "nuttx_c_typed_carrier::Talker"
+name = "talker"
+# What this component creates is what its program CREATES (issue 1556): the
+# leaf's own `src/`, built for the host and run once with `$NROS_CENSUS_OUT`
+# (`nros ws entity-census take --leaf .`; the fixture build does it before it
+# configures). The census sizes the pools a hand-written list used to
+# (issue 1142), and a configure with no fresh census REFUSES, naming that
+# command, rather than falling back to the RMW's guess.
+
+# NuttX on the QEMU ARM virt machine.
+[image.qemu-armv7a-nuttx]
+board = "qemu-armv7a-nuttx"
+
+# SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
+# SDK roots it builds against. Keyed by BOARD, not by a deploy or image
+# name, because that is what the fact is about (issue 0951). Generated
+# from `just/sdk-env.just`; this gate keeps the two in step. `{env:…}`
+# rather than a literal so the value survives a second checkout.
+[board_config."qemu-armv7a-nuttx"]

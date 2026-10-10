@@ -66,6 +66,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosSupportLibrary.cmake")
 # CACHE INTERNAL precisely so they survive being included from inside a function
 # frame, which is how the node-register side reaches it.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosEntryLocator.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosPlatformFamily.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRmwUserConfig.cmake")  # phase-206 W2
 # Issue 1550 -- the domain agreement on this road (Kconfig vs the entry's
 # system.toml vs the snippet). Functions only, include_guard'd.
@@ -913,10 +914,7 @@ function(nano_ros_entry)
     # `freertos_armcm3` → `freertos`, `nuttx_armv7a` → `nuttx`) — the just
     # recipes still pass `-DNANO_ROS_PLATFORM=threadx_linux`, which the root
     # maps to the threadx module but would never equal the tuple's `threadx`.
-    set(_nra_platform_norm "${NANO_ROS_PLATFORM}")
-    if(_nra_platform_norm MATCHES "^(threadx|freertos|nuttx)_")
-        string(REGEX REPLACE "_.*$" "" _nra_platform_norm "${_nra_platform_norm}")
-    endif()
+    nros_platform_family(_nra_platform_norm "${NANO_ROS_PLATFORM}")
     # issue 0735 — the board-name test is ONE of the three arms, not a gate over
     # all of them. It used to open `if(DEFINED NANO_ROS_BOARD)`, which makes a
     # board NAME the precondition for being a board. That is a proxy for "this
@@ -1056,7 +1054,7 @@ function(nano_ros_entry)
             # the TEMPLATE, `templates/freertos_app_config.c.in`, which is one
             # file both paths `configure_file()` — a shared file needs no sync
             # note.
-            if(NANO_ROS_PLATFORM STREQUAL "freertos")
+            if(_nra_platform_norm STREQUAL "freertos")
                 # The `@NROS_ENTRY_LOCATOR@` substitution the template reads —
                 # an assignment FROM the resolved value, not a second producer.
                 set(NROS_ENTRY_LOCATOR "${_nra_locator}")

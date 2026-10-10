@@ -1215,6 +1215,11 @@ pub const LINUX_CORE_PIN_FALLBACK_MARKER: &str = "nros: core pin FAILED tier=";
 pub const ERRNO_ISOLATION_VERDICT: &str = "errno-isolation: verdict";
 pub const ERRNO_ISOLATION_PASS: &str = "errno-isolation: verdict PASS per-thread errno";
 
+/// issue 1795 — the ThreadX typed-carrier fixture's publish line
+/// (`examples/rv-virt-threadx/c/typed-carrier/src/Talker.c` prints
+/// `[typed_carrier] sent: <n>`). Keep in sync with that `printf`.
+pub const TYPED_CARRIER_SENT_PREFIX: &str = "[typed_carrier] sent:";
+
 /// phase-381 — the graph probe's verdict line. Like `ERRNO_ISOLATION_PASS`,
 /// this is not delivery: it is the fixture saying it saw the peer it was told
 /// to expect, which is the only thing a discovery workload can assert.

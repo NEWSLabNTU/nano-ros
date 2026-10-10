@@ -391,6 +391,14 @@ pub enum Workload {
     /// caught it either: every pubsub example uses the LEGACY
     /// `rclc_node_init_default`, which was never affected.
     ExecutorBoundNode,
+    /// issue 1795 — the RTOS TYPED CARRIER build road
+    /// (`nros_components_register_node(... TYPED DEPLOY <rtos>)`) produces an
+    /// image that BOOTS and publishes. Its own workload because its subject is
+    /// the road, not delivery: the carrier synthesises a C++ entry holding the
+    /// component's node as a static object, and that link failed twice (issues
+    /// 1742, 1753) while every RTOS C/C++ cell took `nano_ros_entry()`. No peer;
+    /// the image's own publish line is the evidence.
+    TypedCarrier,
     /// phase-381 — READ the ROS graph. The node enumerates a live stock
     /// `rmw_zenoh_cpp` peer and is compared against `ros2 node list`.
     ///
@@ -491,6 +499,9 @@ impl Workload {
             Workload::Errno => 94,
             // Same reason as Errno: no peer dials this image.
             Workload::ExecutorBoundNode => 99,
+            // issue 1795. 81..=87 is free in every band (see PortSmoke below);
+            // zenoh only, so the domain window is irrelevant.
+            Workload::TypedCarrier => 81,
             Workload::Graph => 95,
             Workload::AdvertisedState => 96,
             // Needs no port of its own: the fixture's peer is reached over the
@@ -776,6 +787,9 @@ pub const CELLS: &[Cell] = &[
 
     cell(NuttxArm, Rust, Zenoh, Pubsub,  Example, Runtime),
     cell(NuttxArm, C,    Zenoh, Pubsub,  Example, Runtime),
+    // issue 1795 — the NuttX TYPED carrier road boots and publishes
+    // (`examples/qemu-armv7a-nuttx/c/typed-carrier`, tests/typed_carrier_e2e.rs).
+    cell(NuttxArm, C,    Zenoh, TypedCarrier, Example, Runtime),
     cell(NuttxArm, Cpp,  Zenoh, Pubsub,  Example, Runtime),
     cell(NuttxArm, Rust, Zenoh, Service, Example, Runtime),
     cell(NuttxArm, C,    Zenoh, Service, Example, Runtime),
@@ -830,6 +844,9 @@ pub const CELLS: &[Cell] = &[
     // cell so the fixture has an owner that RUNS it; before the fix it fails
     // with `FAIL shared errno`, which is what makes it worth a coordinate.
     cell(ThreadxRiscv64, C,    Zenoh, Errno, Example, Runtime),
+    // issue 1795 — the ThreadX TYPED carrier road boots and publishes
+    // (`examples/rv-virt-threadx/c/typed-carrier`, tests/typed_carrier_e2e.rs).
+    cell(ThreadxRiscv64, C,    Zenoh, TypedCarrier, Example, Runtime),
     cell(ThreadxRiscv64, C,    Cyclonedds, Pubsub, Example, Runtime),
     cell(ThreadxRiscv64, Rust, Cyclonedds, Pubsub, Example, Runtime),
     // issue #235 — the cpp cyclone riscv64 fixtures existed (distinct
