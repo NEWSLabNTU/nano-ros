@@ -87,8 +87,8 @@ fn main() {
     let workspace = nros_build_paths::repo_root();
     let xrce_sys = workspace.join("packages/rmw/xrce/xrce-sys");
     let xrce_c = workspace.join("packages/rmw/xrce/nros-rmw-xrce");
-    let microcdr = xrce_sys.join("micro-cdr");
-    let microxrce = xrce_sys.join("micro-xrce-dds-client");
+    let microcdr = vendored(&xrce_sys, "micro-cdr");
+    let microxrce = vendored(&xrce_sys, "micro-xrce-dds-client");
 
     // Phase 145.4 — source-list drift / submodule-presence gate (mirrors the
     // zpico-sys 136.6 gate). The vendored uxr / micro-cdr C sources come from
@@ -478,6 +478,16 @@ fn main() {
 /// Panics rather than defaulting: a wrong version compiles into a public macro
 /// and past upstream's own `#if UXR_CLIENT_VERSION_MAJOR >= 4` tripwire, so
 /// "close enough" is exactly the failure mode being retired.
+/// A vendored XRCE tree — RFC-0103 D5 / phase-484 W3c: `[source.<name>]`
+/// through the one ladder (a local edit in the checkout submodule, the store
+/// copy at the pin, the checkout), falling back to the checkout directory under
+/// `xrce_sys` so the presence check below names the remedy. The NAME is both
+/// the `[source.*]` row and the checkout directory, which is what
+/// `check-xrce-vendored-versions` holds every hop to.
+fn vendored(xrce_sys: &std::path::Path, name: &str) -> PathBuf {
+    nros_build_paths::locate::try_source(name).unwrap_or_else(|_| xrce_sys.join(name))
+}
+
 fn vendored_project_version(cmakelists: &std::path::Path, project: &str) -> [String; 3] {
     let text = fs::read_to_string(cmakelists).unwrap_or_else(|e| {
         panic!(

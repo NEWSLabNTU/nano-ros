@@ -99,6 +99,7 @@ from pathlib import Path as _W3Path  # noqa: E402
 _w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
 import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 import check_skip  # noqa: E402  issue 1043's middle outcome, NOT VERIFIED
+from source_locate import located_or_dest  # noqa: E402  RFC-0103 D5: the tree is located
 
 REPO = Path(__file__).resolve().parent.parent
 XRCE = REPO / "packages/rmw/xrce"
@@ -202,7 +203,12 @@ _CM_CONFIGURE = re.compile(r"configure_file\(\s*\"([^\"]*)\"", re.S)
 # --- cargo lane wiring ------------------------------------------------------
 
 # `let microcdr = xrce_sys.join("micro-cdr");`
-_RS_ROOT = re.compile(r"let\s+([A-Za-z0-9_]+)\s*=\s*xrce_sys\.join\(\"([^\"]+)\"\)")
+# `let microcdr = vendored(&xrce_sys, "micro-cdr")` (phase-484 W3c: located,
+# RFC-0103 D5) or the older `xrce_sys.join("micro-cdr")`. Either way the NAME is
+# the tree, which is what every hop is held to.
+_RS_ROOT = re.compile(
+    r"let\s+([A-Za-z0-9_]+)\s*=\s*(?:xrce_sys\.join\(|vendored\(\s*&xrce_sys\s*,\s*)\"([^\"]+)\"\)"
+)
 # `generate_config(` — the one generator, phase-420 W9. Its arguments are
 # extracted by balancing parens rather than by regex: the call spans lines and
 # nests `vendored_project_version(...)`, which no flat pattern can bound.
@@ -659,7 +665,7 @@ def main() -> int:
     versions: dict[str, str] = {}
     client_text = ""
     for name, w in WIRING.items():
-        cml = REPO / VENDOR_ROOT / w.dirname / "CMakeLists.txt"
+        cml = located_or_dest(name) / "CMakeLists.txt"
         if not cml.is_file():
             missing.append(name)
             notes.append(

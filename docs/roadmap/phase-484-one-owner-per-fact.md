@@ -278,9 +278,28 @@ rustdoc preconditions, the workspace-fixture probe, isotp-c) ask
 a worktree that never initialised the submodule runs them against the store
 copy. Measured: 6.0 M + 30 M.
 
-Remaining in W3: move the readers of, then flip, the cargo path-dep rows
-(`nuttx-libc`, `px4-rs`), xrce and cyclonedds (the
-census gate then holds each one as it flips); gc liveness
+**W3c-4 — micro-XRCE-DDS-Client and micro-CDR are store-first.** The
+`nros-rmw-xrce-cffi` build script binds both through `vendored(&xrce_sys,
+"<name>")` (located, falling back to the checkout directory), and the
+`nros-rmw-xrce` CMakeLists locates them with `nros_locate_source` before its
+checkout fallback (normal variables, no longer CACHE, so a pin move is not
+outlived by a cached path). `check-xrce-vendored-versions` accepts the located
+binding and reads each tree's version from the located copy; the source and
+config manifest gates read the located trees. Measured: the native Rust, C and
+C++ XRCE workspace fixtures compile both trees from the store only.
+
+**Which rows stay checkout sources, and why (decided in W3c):**
+`nuttx-kernel`, `nuttx-apps`, `px4-autopilot` — their builds write INTO the
+tree (D5). `cyclonedds-src` — the Zephyr lane PATCHES it in place
+(`scripts/zephyr/cyclonedds-zephyr-*-patch.sh`), which a read-only shared
+tree must never take; it can join the store once those patches are commits on
+the fork instead. `nuttx-libc`, `px4-rs` — they are cargo `path =`
+dependencies, resolved when cargo PARSES manifests, before any build script or
+ladder runs; `px4-rs` is even reached from the root workspace's member list.
+Moving either needs a generated `[patch]` row pointing at the store, which is
+the RFC-0098 generated-config road, not this one.
+
+Remaining in W3: gc liveness
 from installed toolchains' indexes (today gc consults the pin files above the
 cwd, as for tools); project `[sources]`.
 
