@@ -1316,7 +1316,16 @@ test-live-peer-regression runner="all" verbose="":
     fi
     echo "== live-peer regression lane ($runner runner) — cells with a recorded PASS =="
     echo "$cells" | sed 's/^/  /'
-    bins=$(python3 scripts/check-interop-verdicts.py --list-passing --runner "$runner" --by-binary)
+    # Issue 1758 — one line per binary, `<binary>\t<filter>`, selecting only
+    # the cases the passing cells RECORDED. `binary(=x)` alone also ran the
+    # binary's unrecorded cases (rosout_interop's C and C++ probes), whose
+    # fixtures this lane's build — derived from the same passing cells — never
+    # selected; once a missing fixture fails rather than skips, that made the
+    # lane red over cases it never claimed.
+    if ! filters="$(python3 scripts/check-interop-verdicts.py --list-passing --runner "$runner" --filters)"; then
+        echo "test-live-peer-regression: could not derive the recorded cases" >&2
+        exit 1
+    fi
     # Each binary's junit, kept: `_test-focused` resets the one nextest writes
     # on every call, so the skipped-membership check below needs its own copies.
     junit_dir="tmp/live-peer-junit/$runner"
@@ -1329,10 +1338,11 @@ test-live-peer-regression runner="all" verbose="":
     source scripts/test/nextest-profile.sh
     failed=0
     broken=0
-    for b in $bins; do
+    while IFS=$'\t' read -r b filter; do
+        [ -n "$b" ] || continue
         echo "== $b =="
         set +e
-        just _test-focused "binary(=$b)" {{verbose}}
+        just _test-focused "$filter" {{verbose}} < /dev/null
         rc=$?
         set -e
         junit="$(nros_nextest_junit_path)"
@@ -1356,7 +1366,7 @@ test-live-peer-regression runner="all" verbose="":
             echo "  (exit $rc with no real failure in the junit — the RUN did not"
             echo "   happen; not a verdict)"
         fi
-    done
+    done <<< "$filters"
     # A SKIP IS NOT A VERDICT, and this lane's own membership is the place that
     # costs the most: `_rewrite-skipped-junit` turns a missing peer or fixture
     # into `<skipped>`, `_test-focused` exits 0, and the lane reports that cells
