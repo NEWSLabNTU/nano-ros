@@ -1000,3 +1000,12 @@ foreign-env-path-inputs:
 # negative control, every run.
 rtos-feature-set-excludes-analysis:
     @cmake -P scripts/check/rtos-feature-set-excludes-analysis.cmake
+
+# Issue 1753 — a crt-free (`-nostartfiles`) board image must define what crt0 /
+# crtbegin would have: a linker script owning `.init_array` owns `.preinit_array`
+# and `.fini_array` with their bounds too (newlib names all three), and every
+# never-exiting board build compiles `nros-board-common/c/cxx_static_abi.c`
+# (`__dso_handle` / `__cxa_atexit` / `_fini`), hosted ones must not. The
+# rv-virt-threadx TYPED carrier failed to link on both.
+crt-free-runtime-symbols:
+    @python3 scripts/check-crt-free-runtime-symbols.py

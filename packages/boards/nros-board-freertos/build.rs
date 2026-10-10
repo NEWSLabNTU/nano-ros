@@ -362,6 +362,8 @@ fn main() {
     // (`nros_board_rtos_run_components`): the single-executor path differs only
     // in a per-tick yield, so three copies would be three chances to drift.
     glue.file(manifest_dir.join("../nros-board-common/c/nros_rtos_run_components.c"));
+    // issue 1753 — the never-exits C++ static-object ABI, shared with ThreadX.
+    glue.file(manifest_dir.join("../nros-board-common/c/cxx_static_abi.c"));
     // issue 0478 — cc-rs would hand arm-none-eabi-gcc the clang-only
     // `-mno-omit-leaf-frame-pointer`, which gcc REJECTS. These sites route
     // through neither shared helper, so the policy has to be named here.

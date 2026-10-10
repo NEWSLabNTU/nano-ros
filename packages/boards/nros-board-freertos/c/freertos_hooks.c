@@ -73,41 +73,10 @@ void nros_board_freertos_console_write(const char *s) {
 
 /* ---- C++ static-object ABI stubs (phase-370 W4) ----
  *
- * Keeping `.init_array` (below) retains C++ objects with static storage
- * duration, and a static object WITH A DESTRUCTOR registers that destructor
- * through `__cxa_atexit(dtor, obj, &__dso_handle)`. A `-nostartfiles` image
- * links no crt, so neither symbol exists and the link fails with
- * `undefined reference to __dso_handle` / `_fini` — a message about the C++ ABI
- * that says nothing about the linker-script change that caused it.
- *
- * `_fini` is reached the same way: newlib's `__libc_fini_array` is pulled in
- * alongside the atexit machinery and calls it.
- *
- * Defining them as no-ops is the standard bare-metal answer and is CORRECT
- * here rather than a papering-over: this image never exits. `main` does not
- * return, the FreeRTOS scheduler owns the CPU until power-off, so a static
- * destructor could only ever run at a point that does not exist. Registering
- * them would cost RAM for a list nothing walks.
- *
- * `__dso_handle`'s value is never dereferenced — it is an identity token for
- * "which shared object registered this", and there is exactly one here. */
-void *__dso_handle = 0;
-
-int __cxa_atexit(void (*destructor)(void *), void *arg, void *dso) {
-    (void) destructor;
-    (void) arg;
-    (void) dso;
-    /* 0 = "registered". Reporting failure would make a conforming C++ runtime
-     * call `std::terminate` at static-init time. */
-    return 0;
-}
-
-void __cxa_finalize(void *dso) {
-    (void) dso;
-}
-
-void _fini(void) {
-}
+ * `__dso_handle` / `__cxa_atexit` / `__cxa_finalize` / `_fini` live in
+ * `nros-board-common/c/cxx_static_abi.c` since issue 1753, shared with the
+ * ThreadX RISC-V board, which lacked them. Every build that compiles this file
+ * compiles that one too. */
 
 /* ---- Static constructors (phase-370 W4, the #195 pattern) ----
  *

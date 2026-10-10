@@ -94,6 +94,7 @@ set(_NROS_FREERTOS_SHARED_C
     # lane compiles this glue itself (the cargo lane gets it via `build.rs`),
     # so a runner listed in only one lane links in only one.
     "${_NROS_BOARDS_COMMON_C_DIR}/nros_rtos_run_components.c"
+    "${_NROS_BOARDS_COMMON_C_DIR}/cxx_static_abi.c"  # issue 1753
     "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_c_entry.c"
     "${_NROS_BOARD_DIR}/c/board_mps2.c")
 
