@@ -2016,7 +2016,7 @@ impl PlatformsTree {
         }
         self.files
             .iter()
-            .find(|(_, f)| f.names.iter().any(|n| n == name))
+            .find(|(_, f)| f.names.iter().any(|n| n.eq_ignore_ascii_case(name)))
             .map(|(dir, _)| dir.as_str())
             .unwrap_or(name)
     }
@@ -3152,8 +3152,88 @@ pub struct BoardEntryFacts {
     /// file may declare several boards.
     #[serde(default)]
     pub knobs: Option<toml::Value>,
+    /// phase-484 W4b (RFC-0103 D1) — `[board.net]`, the board's own network
+    /// identity defaults. Typed here, where every build script reads it, and
+    /// `deny_unknown_fields` on [`BoardNet`] so a misspelt key fails the build
+    /// that would have silently used the platform default instead.
+    #[serde(default)]
+    pub net: Option<BoardNet>,
     #[serde(flatten)]
     _rest: BTreeMap<String, toml::Value>,
+}
+
+/// `[board.net]` — a board's network identity defaults (phase-484 W4b).
+///
+/// The fallback an image uses when its `system.toml` states nothing for a
+/// field. Owner layering (RFC-0103 D1): the platform default
+/// (`nros_board_common::BaseConfig::default`) < this < the image. Values are
+/// written the way a person reads them (`"192.0.3.10"`, `"02:00:00:00:00:00"`)
+/// and parsed once, by [`BoardNet::ip`] and friends.
+///
+/// The LOCATOR is deliberately not here yet: on threadx-linux the Rust and C
+/// fallbacks name different routers (issue 1793), and a locator is a selection
+/// an image states, not a board fact.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BoardNet {
+    #[serde(default)]
+    pub ip: Option<String>,
+    #[serde(default)]
+    pub netmask: Option<String>,
+    #[serde(default)]
+    pub gateway: Option<String>,
+    #[serde(default)]
+    pub mac: Option<String>,
+}
+
+impl BoardNet {
+    fn octets<const N: usize>(
+        field: &str,
+        v: &str,
+        sep: char,
+        radix: u32,
+    ) -> Result<[u8; N], String> {
+        let parts: Vec<&str> = v.split(sep).collect();
+        if parts.len() != N {
+            return Err(format!(
+                "[board.net] {field} = {v:?}: expected {N} parts separated by '{sep}'"
+            ));
+        }
+        let mut out = [0u8; N];
+        for (i, p) in parts.iter().enumerate() {
+            out[i] = u8::from_str_radix(p, radix)
+                .map_err(|e| format!("[board.net] {field} = {v:?}: part {p:?}: {e}"))?;
+        }
+        Ok(out)
+    }
+    /// `ip` as octets, when stated.
+    pub fn ip(&self) -> Result<Option<[u8; 4]>, String> {
+        self.ip
+            .as_deref()
+            .map(|v| Self::octets("ip", v, '.', 10))
+            .transpose()
+    }
+    /// `netmask` as octets, when stated.
+    pub fn netmask(&self) -> Result<Option<[u8; 4]>, String> {
+        self.netmask
+            .as_deref()
+            .map(|v| Self::octets("netmask", v, '.', 10))
+            .transpose()
+    }
+    /// `gateway` as octets, when stated.
+    pub fn gateway(&self) -> Result<Option<[u8; 4]>, String> {
+        self.gateway
+            .as_deref()
+            .map(|v| Self::octets("gateway", v, '.', 10))
+            .transpose()
+    }
+    /// `mac` as bytes, when stated.
+    pub fn mac(&self) -> Result<Option<[u8; 6]>, String> {
+        self.mac
+            .as_deref()
+            .map(|v| Self::octets("mac", v, ':', 16))
+            .transpose()
+    }
 }
 
 impl BoardKnobsFile {
@@ -3170,7 +3250,7 @@ impl BoardKnobsFile {
             && let Some(entry) = self
                 .boards
                 .iter()
-                .find(|b| b.names.iter().any(|n| n == want))
+                .find(|b| b.names.iter().any(|n| n.eq_ignore_ascii_case(want)))
         {
             return Ok(entry.knobs.clone());
         }
@@ -3191,6 +3271,35 @@ impl BoardKnobsFile {
         })
     }
 
+    /// `[board.net]` of the entry this build is — the same selection rule as
+    /// the knobs: a named board wins; one entry needs no name; several must
+    /// agree. `Ok(None)` when the entry states none.
+    pub fn board_net(&self, board: Option<&str>) -> Result<Option<BoardNet>, String> {
+        if let Some(want) = board
+            && let Some(entry) = self
+                .boards
+                .iter()
+                .find(|b| b.names.iter().any(|n| n.eq_ignore_ascii_case(want)))
+        {
+            return Ok(entry.net.clone());
+        }
+        let Some(first) = self.boards.first() else {
+            return Ok(None);
+        };
+        if self.boards.iter().all(|b| b.net == first.net) {
+            return Ok(first.net.clone());
+        }
+        Err(format!(
+            "several [[board]] entries state different [board.net] and the build names none \
+             of them ({}); set NROS_BOARD",
+            self.boards
+                .iter()
+                .map(|b| b.names.join("/"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))
+    }
+
     /// `[board.capabilities]` for the named board — see
     /// [`PlatformsTree::capabilities_with_board`] for the selection rule.
     pub fn board_capabilities(
@@ -3204,7 +3313,7 @@ impl BoardKnobsFile {
             && let Some(entry) = self
                 .boards
                 .iter()
-                .find(|b| b.names.iter().any(|n| n == want))
+                .find(|b| b.names.iter().any(|n| n.eq_ignore_ascii_case(want)))
         {
             return Ok(entry.capabilities.clone());
         }

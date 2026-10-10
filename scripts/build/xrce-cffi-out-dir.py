@@ -17,14 +17,21 @@ Prints the directory on stdout. Everything else goes to stderr so the caller
 can use `$(...)` directly.
 """
 
-import json
+import os
 import subprocess
 import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+# phase-484 W6 (RFC-0103 D8) — the one reader of cargo's JSON stream (it
+# matches the package by NAME; the `<name>#` substring this used to test also
+# matched any package whose name ended in it).
+from cargo_out_dir import out_dirs, self_test  # noqa: E402
 
 PACKAGE = "nros-rmw-xrce-cffi"
 
 
 def main() -> int:
+    self_test()
     cmd = [
         "cargo",
         "build",
@@ -40,17 +47,8 @@ def main() -> int:
     # `build-script-executed` is emitted for a FRESH unit too -- cargo replays
     # the recorded output rather than re-running the script -- so this does not
     # depend on the crate having been rebuilt by this invocation.
-    out_dir = None
-    for line in proc.stdout.splitlines():
-        try:
-            msg = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if msg.get("reason") != "build-script-executed":
-            continue
-        if PACKAGE + "#" not in msg.get("package_id", ""):
-            continue
-        out_dir = msg.get("out_dir")
+    found = out_dirs(proc.stdout.splitlines(), PACKAGE)
+    out_dir = found[-1] if found else None
     if not out_dir:
         sys.stderr.write(
             "xrce-cffi-out-dir: cargo built %s and emitted no `build-script-executed`\n"

@@ -33,6 +33,39 @@ pub enum Args {
     /// `nano_ros_use_board()`; never committed. The descriptor is the single
     /// authored source, and this is the mechanical projection of it.
     CmakeVars(CmakeVarsArgs),
+    /// Print a board's resolved network identity defaults (phase-484 W4b).
+    ///
+    /// The board's `[board.net]` over the platform default — the one value the
+    /// board crate's `Config::default()`, its cargo-road C `NROS_APP_CONFIG`
+    /// and its cmake-road C `NROS_APP_CONFIG` all use.
+    Net(NetArgs),
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct NetArgs {
+    /// Board key.
+    pub name: String,
+    /// Path to the nano-ros workspace root (auto-detected if omitted).
+    #[arg(long)]
+    pub workspace: Option<PathBuf>,
+    /// `c-network`: the `.network = { … }` body of a C `nros_app_config_t`
+    /// initializer. `toml`: the four resolved fields.
+    #[arg(long, default_value = "toml")]
+    pub format: String,
+    /// Replace the IP's LAST octet — an IMAGE's identity on the board's subnet
+    /// (a talker/listener pair on one bridge), not a board fact.
+    #[arg(long)]
+    pub ip_last: Option<u8>,
+    /// Replace the MAC's LAST byte (decimal or `0x..`), for the same reason.
+    #[arg(long, value_parser = parse_byte)]
+    pub mac_last: Option<u8>,
+}
+
+fn parse_byte(s: &str) -> std::result::Result<u8, String> {
+    match s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
+        Some(h) => u8::from_str_radix(h, 16).map_err(|e| e.to_string()),
+        None => s.parse::<u8>().map_err(|e| e.to_string()),
+    }
 }
 
 #[derive(Debug, ClapArgs)]
@@ -77,6 +110,7 @@ pub fn run(args: Args) -> Result<()> {
         Args::List(args) => list(args),
         Args::Info(args) => info(args),
         Args::CmakeVars(args) => cmake_vars(args),
+        Args::Net(args) => net(args),
         Args::New(args) => crate::cmd::board_new::run(args),
     }
 }
@@ -199,7 +233,7 @@ fn resolve(root: &Path, name: &str) -> Result<(BoardDescriptor, PathBuf)> {
     let board = catalog
         .descriptors()
         .iter()
-        .find(|d| d.names.iter().any(|n| n == name))
+        .find(|d| d.answers_to(name))
         .ok_or_else(|| {
             let mut known: Vec<&str> = catalog
                 .descriptors()
@@ -233,6 +267,48 @@ fn resolve(root: &Path, name: &str) -> Result<(BoardDescriptor, PathBuf)> {
         .ok_or_else(|| eyre!("descriptor {} has no parent", descriptor.display()))?
         .to_path_buf();
     Ok((board, dir))
+}
+
+fn net(args: NetArgs) -> Result<()> {
+    use nros_board_common::board_net::{ResolvedNet, resolve as resolve_net};
+    let root = match args.workspace {
+        Some(p) => p,
+        None => find_workspace_root()?,
+    };
+    let (_board, dir) = resolve(&root, &args.name)?;
+    let n = resolve_net(
+        &dir.join("nros-board.toml"),
+        Some(&args.name),
+        ResolvedNet::platform_default(),
+    )
+    .map_err(|e| eyre!("{}: {e}", dir.join("nros-board.toml").display()))?;
+    let mut n = n;
+    if let Some(last) = args.ip_last {
+        n.ip[3] = last;
+    }
+    if let Some(last) = args.mac_last {
+        n.mac[5] = last;
+    }
+    match args.format.as_str() {
+        "c-network" => println!("{}", n.c_network_initializer()),
+        "toml" => {
+            let dotted = |o: &[u8]| o.iter().map(u8::to_string).collect::<Vec<_>>().join(".");
+            let mac = n
+                .mac
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<Vec<_>>()
+                .join(":");
+            println!(
+                "ip = \"{}\"\nnetmask = \"{}\"\ngateway = \"{}\"\nmac = \"{mac}\"",
+                dotted(&n.ip),
+                dotted(&n.netmask),
+                dotted(&n.gateway)
+            );
+        }
+        other => return Err(eyre!("--format {other}: expected `toml` or `c-network`")),
+    }
+    Ok(())
 }
 
 fn info(args: InfoArgs) -> Result<()> {

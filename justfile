@@ -791,6 +791,15 @@ setup-worktree:
         # leading `-`, one whose checkout is off its pin with `+`, and one in sync
         # with a space. Empty output means the path names no submodule here.
         line="$(git submodule status --cached -- "$p" 2>/dev/null || true)"
+        # phase-484 W3c (RFC-0103 D5) — a STORE-FIRST source is provisioned
+        # into the store, not the checkout, once a CLI can do it; with no CLI
+        # yet (a fresh clone) the submodule is still the way to get it.
+        row="$(python3 scripts/lib/source_locate.py --store-row-for "$p" 2>/dev/null || true)"
+        if [ -n "$row" ] && [ -x packages/cli/target/release/nros ]; then
+            echo "  [STORE]   $p -> nros setup --source $row"
+            packages/cli/target/release/nros setup --source "$row"
+            continue
+        fi
         case "$line" in
             -*)
                 want+=("$p")
@@ -851,8 +860,15 @@ _require-worktree-provisioning:
     while IFS= read -r p; do
         [ -n "$p" ] || continue
         line="$(git submodule status --cached -- "$p" 2>/dev/null || true)"
+        # phase-484 W3c (RFC-0103 D5) — a store-first source is provisioned
+        # when the ladder LOCATES it (store copy or checkout), not only when
+        # its submodule is initialised.
+        row="$(python3 scripts/lib/source_locate.py --store-row-for "$p" 2>/dev/null || true)"
+        if [ -n "$row" ] && python3 scripts/lib/source_locate.py "$row" >/dev/null 2>&1; then
+            continue
+        fi
         case "$line" in
-            -*) missing+=("submodule  $p") ;;
+            -*) missing+=("submodule  $p${row:+  (or: nros setup --source $row)}") ;;
             "") missing+=("NOT A SUBMODULE of this checkout: $p (renamed? fix .config/worktree-provisioning.txt)") ;;
         esac
     done < <(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' -e 's/[[:space:]]*$//' \

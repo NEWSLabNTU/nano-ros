@@ -88,6 +88,8 @@ pub mod nuttx_platform_build;
 /// phase-400 W6 — re-exported from `nros-platform-config`; see `manifest` above.
 #[cfg(feature = "build-helpers")]
 pub use nros_platform_config::platform_config;
+#[cfg(feature = "build-helpers")]
+pub mod board_net;
 /// Issue 1779 — one `nros_platform_*` provider per linked graph.
 #[cfg(feature = "build-helpers")]
 pub mod platform_port;

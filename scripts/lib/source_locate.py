@@ -13,6 +13,9 @@ twin is `nros_locate_source()` in `cmake/NanoRosLocate.cmake`.
 As a script: `python3 scripts/lib/source_locate.py <name> [<marker>]` prints
 the located tree and exits 0, or exits 1 when it is provisioned nowhere (or
 `<marker>` is absent inside it) — for a `just` recipe that skips.
+`--store-row-for <checkout-path>` prints the `[source.*]` row whose `dest` is
+that path when the row is STORE-FIRST (`location = "store"`), and exits 1
+otherwise — so a provisioning check can accept the store copy for it.
 """
 
 from __future__ import annotations
@@ -36,13 +39,25 @@ def _cli() -> str | None:
     return shutil.which("nros")
 
 
-def _checkout_dest(name: str) -> Path | None:
+def _index() -> dict:
     try:
         import tomllib
     except ImportError:  # Python < 3.11
         import tomli as tomllib
-    index = tomllib.loads((ROOT / "nros-sdk-index.toml").read_text())
-    dest = index.get("source", {}).get(name, {}).get("dest")
+    return tomllib.loads((ROOT / "nros-sdk-index.toml").read_text())
+
+
+def store_row_for(checkout_path: str) -> str | None:
+    """The store-first `[source.*]` row whose `dest` is `checkout_path`."""
+    want = checkout_path.strip().rstrip("/")
+    for name, row in _index().get("source", {}).items():
+        if row.get("location") == "store" and row.get("dest") == want:
+            return name
+    return None
+
+
+def _checkout_dest(name: str) -> Path | None:
+    dest = _index().get("source", {}).get(name, {}).get("dest")
     return ROOT / dest if dest else None
 
 
@@ -93,10 +108,17 @@ def self_test() -> None:
     else:
         raise AssertionError("an unknown row produced a path")
     assert _checkout_dest("zenoh-pico") is not None, "the index lost [source.zenoh-pico]"
+    assert store_row_for("nros/no/such/dest") is None
 
 
 def main(argv: list[str]) -> int:
     self_test()
+    if argv[:1] == ["--store-row-for"] and len(argv) == 2:
+        row = store_row_for(argv[1])
+        if row is None:
+            return 1
+        print(row)
+        return 0
     if not argv or len(argv) > 2:
         print("usage: source_locate.py <name> [<marker>]", file=sys.stderr)
         return 2
