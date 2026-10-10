@@ -256,7 +256,7 @@ D3 for every `NROS_DERIVED_*` pool knob, liveliness first.
   comments and in the cmake retirement error. Confirm on an out-of-tree
   consumer, then resolve and archive 1120. (The island document lists it as a
   cheap open fix; it was already done.)
-- [Issue 1303](../issues/1303-runtime-refusals-are-silent-on-freestanding.md)
+- [Issue 1303](../issues/archived/1303-runtime-refusals-are-silent-on-freestanding.md)
   (open): the two runtime refusals emit through a sink that is a no-op on
   freestanding targets.
 - [Issue 1036](../issues/1036-arena-exhaustion-is-half-silent-and-wholly-unreachable.md)

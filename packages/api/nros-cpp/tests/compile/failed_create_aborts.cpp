@@ -37,11 +37,14 @@
 
 #include <nros/nros.hpp>
 
+#include "nros_log_stderr_sink.hpp"
+
 // Links no nano-ros archive: `require_created` is a header-only inline over
-// `rclcpp::Result` and touches no FFI symbol. The recipe passes
-// `--unresolved-symbols=ignore-all` for the issue-0360 variant anchors the
-// config headers plant — see the rationale beside the compile line in
-// `just/check.just`.
+// `rclcpp::Result`. Its one runtime dependency is `nros_log`, which it says the
+// refusal through (issue 1303), and `nros_log_stderr_sink.hpp` defines the two
+// entry points it reaches. The recipe passes `--unresolved-symbols=ignore-all`
+// for the issue-0360 variant anchors the config headers plant — see the
+// rationale beside the compile line in `just/check/lanes.just`.
 
 namespace {
 
@@ -104,6 +107,11 @@ void expect_aborts_loudly(const Outcome& o, const char* verb, const char* what) 
            "the diagnostic must name the verb that failed");
     expect(::std::strstr(o.stderr_, "node.create_publisher(pub, topic, qos)") != nullptr,
            "the diagnostic must name the Result-returning API to use instead");
+    // Issue 1303: every record must fit `nros_log`'s buffer, or the body is
+    // dropped on a real sink. The sink stub writes this marker for one that
+    // would not.
+    expect(::std::strstr(o.stderr_, "NROS_LOG_STDERR_SINK_OVERSIZE") == nullptr,
+           "every record of the refusal must fit rclcpp::detail::RUNTIME_REFUSAL_MAX");
 }
 
 } // namespace
@@ -129,6 +137,21 @@ int main() {
         });
         expect_aborts_loudly(o, "create_publisher",
                              "a failed create must abort, never return a handle to a dead entity");
+    }
+
+    // A name far longer than the record can carry is bounded, not dropped:
+    // the record still fits, and still names the verb.
+    {
+        const Outcome o = run_forked([] {
+            static const char long_name[] =
+                "/a/very/long/topic/name/that/is/longer/than/any/record/the/log/buffer/can/hold/"
+                "and/keeps/going/well/past/one/hundred/and/sixty/bytes/so/that/an/unbounded/"
+                "format/would/overflow/it";
+            ::rclcpp::detail::require_created(::rclcpp::Result(::rclcpp::ErrorCode::NotInitialized),
+                                              "create_publisher", long_name);
+        });
+        expect_aborts_loudly(o, "create_publisher",
+                             "a failed create with a long name must still say why, in full");
     }
 
     // Same for a timer: the case a null return could never have covered,

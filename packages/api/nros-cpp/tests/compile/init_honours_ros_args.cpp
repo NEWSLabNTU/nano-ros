@@ -29,6 +29,10 @@
 
 #include <nros/nros.hpp>
 
+// The refusal is said through `nros_log` (issue 1303); this defines the two entry
+// points that reaches, for the same reason the FFI stubs below exist.
+#include "nros_log_stderr_sink.hpp"
+
 namespace {
 
 enum class Ev { Validate, Init, Install, Fini };

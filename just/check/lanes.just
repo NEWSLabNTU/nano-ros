@@ -1076,9 +1076,12 @@ cpp: cpp-fmt
     # "aborts" from "returns".
     #
     # Links NO nano-ros archive. What it exercises (`detail::require_created`)
-    # is a header-only inline function over `nros::Result`, so the only
-    # unresolved symbols are the issue-0360 VARIANT ANCHORS the config headers
-    # plant — `__attribute__((used))` data pointers nothing dereferences.
+    # is a header-only inline function over `nros::Result`; the two `nros_log`
+    # entry points it says the refusal through are defined by
+    # `nros_log_stderr_sink.hpp`, which also fails the probe if a record would
+    # not fit `nros_log`'s buffer (issue 1303). So the only unresolved symbols
+    # are the issue-0360 VARIANT ANCHORS the config headers plant —
+    # `__attribute__((used))` data pointers nothing dereferences.
     # `--unresolved-symbols=ignore-all` is deliberate and does not weaken 0360:
     # the stamp exists to stop a TU linking an archive built with OTHER
     # features, and there is no archive here to mismatch. Linking one instead
@@ -1803,6 +1806,49 @@ cpp: cpp-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-cpp/tests/compile/one_node_type_freestanding.cpp
+    # issue 1303 — on a FREESTANDING target both runtime refusals reach
+    # `nros_log`, the only sink an RTOS has. A guard for the route (a refusal
+    # moved to a hosted-only `fprintf` or to the discard sink would go silent on
+    # every RTOS, and every syntax-only sweep above would stay green); the
+    # message LENGTH is `failed_create_aborts`'s assertion, above. A COMPILE plus
+    # a symbol-table read, once per refusal: the object must call
+    # `nros_log_emit_at`. `test -f` first, so a missing TU cannot read as a pass
+    # (issue 0196).
+    test -f packages/api/nros-cpp/tests/compile/refusal_reaches_nros_log.cpp || { \
+        echo "ERROR: refusal_reaches_nros_log.cpp is MISSING -- this check" >&2; \
+        echo "       would pass on absence." >&2; \
+        exit 1; \
+    }
+    echo "  - runtime refusals reach nros_log: FREESTANDING object (-nostdinc++)"
+    source scripts/lib/grep-q.sh
+    for _refusal in "1:failed create (abort_failed_create)" "2:--ros-args (apply_ros_args)"; do
+        _obj="$gen/nros-cpp-tests/refusal_reaches_nros_log_${_refusal%%:*}.o"
+        mkdir -p "$gen/nros-cpp-tests"
+        c++ -c -std=c++14 -fno-exceptions -fno-rtti -ffreestanding \
+            -nostdinc++ -isystem "$_threadx_shim" \
+            -DREFUSAL="${_refusal%%:*}" \
+            -I"$gen/nros-cpp-generated" \
+            -I"$gen/nros-c-generated" \
+            -Ipackages/api/nros-cpp/include \
+            -Ipackages/api/nros-c/include \
+            -Ipackages/platform/nros-platform-api/include \
+            -o "$_obj" \
+            packages/api/nros-cpp/tests/compile/refusal_reaches_nros_log.cpp
+        # Captured first, then matched with a here-string through
+        # `nros_grep_q` (issues 0726 / 1077): a tool error is not a miss.
+        _undef="$(nm -u "$_obj")"
+        _rc=0
+        nros_grep_q '\bnros_log_emit_at$' <<<"$_undef" || _rc=$?
+        case "$_rc" in
+            0) ;;
+            1)
+                echo "check-cpp: the ${_refusal#*:} refusal does not reach nros_log on a" >&2
+                echo "  freestanding target: its object never calls nros_log_emit_at, so on an" >&2
+                echo "  RTOS it aborts without a diagnostic (issue 1303)." >&2
+                exit 1 ;;
+            *) echo "check-cpp: grep failed (rc=$_rc) reading $_obj's symbols" >&2; exit 1 ;;
+        esac
+    done
     # phase-482 W2 — a `Node::SharedPtr` initialised from a TEMPORARY
     # `shared_ptr` must be a compile error (it would dangle), and it must fail
     # for THAT reason: a `deleted` diagnostic, not some other breakage.

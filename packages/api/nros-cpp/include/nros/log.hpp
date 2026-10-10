@@ -48,7 +48,7 @@
 #else
 // Freestanding default: the `nros_log` C ABI, which every nros-cpp image
 // links (the staticlib bundles nros-c) and which `ensure_default_sinks()`
-// wires to the platform console since #1432. `level` is the literal the
+// wires to the platform console since issue 1576. `level` is the literal the
 // family passes ("ERROR", …); `sink_severity` maps it without string
 // compares beyond the first byte.
 #include <nros/log.h>
@@ -221,37 +221,28 @@ template <typename T> struct refuse {
     "the `::rclcpp::Node(name, options)` constructor shape a composable node needs keeps "         \
     "compiling."
 
+// The RUNTIME refusal for a `--ros-args` token nano-ros cannot honour. Issue
+// 1303: SHORT, because it is said through `rclcpp::detail::say_refused`, which
+// refuses at compile time to emit anything longer than
+// `rclcpp::detail::RUNTIME_REFUSAL_MAX` (a longer body is DROPPED by
+// `nros_log`, not truncated). The refused token itself is printed on the line
+// before it. The full honoured and refused sets live where a reader looks
+// them up: RFC-0089, the `cpp:init` ledger row, and the Rust twin
+// `REFUSE_INIT_ARGS` in `packages/api/nros/src/init.rs`.
 #define NROS_RCLCPP_REFUSE_INIT_ARGV                                                               \
-    "rclcpp::init(argc, argv) / rclcpp::init_with_launch*(argc, argv) was given a --ros-args "     \
-    "argument nano-ros cannot honour (RFC-0089). Proceeding would DISCARD it -- the 'compiles "    \
-    "and differs' the rule forbids. HONOURED inside --ros-args ... --: -r / --remap "              \
-    "[node:]from:=to, applied as the FALLBACK beneath any remap the launch file projected for "    \
-    "the same name (RFC-0046; rcl's local-before-global); and, in an image with a parameter "      \
-    "store, -p / --param [node:]name:=value and --params-file <path>, applied when a node "        \
-    "declares the parameter (RFC-0015 section 9). REFUSED: node-identity remaps (__node, "         \
-    "__name, __ns), -e / --enclave, the log flags, any token that is not a ROS flag, and -p / "    \
-    "--params-file in an image without a parameter store. A nros sync image does not need "        \
-    "argv: its launch remaps and parameters are projected into the GENERATED ENTRY at BUILD time."
+    "--ros-args carries an argument nano-ros cannot honour (RFC-0089). Honoured: -r/--remap; "     \
+    "-p/--params-file with a parameter store. A nros sync image bakes both."
 
 // phase-428 W5 finding 9. Runtime, like `NROS_RCLCPP_REFUSE_INIT_ARGV` above
 // and for the same reason: only the VALUE carries the defect, so the earliest
 // point loudness is available is the call. Prose tail only — the verb, the
-// name and the code are printed by `rclcpp::detail::abort_failed_create`.
+// name and the code are printed on the line before it by
+// `rclcpp::detail::abort_failed_create`. Short for the same reason as the
+// text above (issue 1303); why aborting is the loudest honest answer is
+// argued on `require_created` in `nros/nros.hpp`.
 #define NROS_RCLCPP_ABORT_FAILED_CREATE                                                            \
-    "Upstream rclcpp THROWS here, so control never continues past a failed create; nano-ros has "  \
-    "no exceptions (RFC-0018) and the verb returns a shared_ptr, which left two ways to differ. "  \
-    "It used to discard the Result and hand back a NON-NULL pointer to a dead entity: publish "    \
-    "went nowhere, and rclcpp::spin(node) returned at once because the node was never "            \
-    "initialized, so init -> create -> spin -> shutdown ran to completion and exited 0. "          \
-    "Returning "                                                                                   \
-    "null instead would be quieter still -- a nullptr dereference with no message, and entirely "  \
-    "inert for create_wall_timer, whose result a ported node stores and never dereferences. "      \
-    "RFC-0089's rule is that a difference the compiler cannot point at must be made loud by "      \
-    "other means, so this aborts. To HANDLE the failure rather than die on it, drop to the "       \
-    "underlying nros API, where every create verb RETURNS rclcpp::Result into caller-owned "       \
-    "storage: rclcpp::create_node(node, name), node.create_publisher(pub, topic, qos), "           \
-    "node.create_subscription(sub, topic, qos, cb), node.create_service<S>(srv, name, cb), "       \
-    "node.create_client<S>(cli, name), node.create_timer(t, period_ms, cb, ctx)."
+    "Upstream throws here; nano-ros has no exceptions (RFC-0018), so it aborts. To handle it, "    \
+    "use the Result form: node.create_publisher(pub, topic, qos)."
 
 #define NROS_RCLCPP_REFUSE_SYSTEM_DEFAULTS_QOS                                                     \
     "rclcpp::SystemDefaultsQoS is REFUSED by nano-ros (RFC-0089 W3.f, issue 0829). Upstream's "    \

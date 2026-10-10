@@ -2,10 +2,11 @@
 id: 1303
 title: "The two RUNTIME refusals emit through the legacy `NROS_ERROR` sink, which
   is a no-op on every freestanding target — so both abort anonymously on an RTOS"
-status: open
+status: resolved
 type: bug
 area: [api]
-related: [phase-482, 1019, 1302, phase-417, rfc-0089]
+related: [phase-482, 1019, 1302, 1576, phase-417, rfc-0089]
+resolved: 2026-10-10
 ---
 
 ## What
@@ -74,3 +75,43 @@ ellipsis.
   text, so the chosen sink has to reach stderr on the host.
 * A freestanding-target check that the message is reachable at all; today's
   header sweep is `-fsyntax-only` and is green either way.
+
+## Resolution (2026-10-10, phase-482 W7)
+
+**Half of the premise had already gone when this was fixed.** Issue 1576
+(`099ad2adb5`) made the freestanding default of `NROS_LOG_SINK`, and with it
+`NROS_ERROR`, emit through `nros_log`. Measured: an object compiled
+`-ffreestanding` from the pre-fix headers already calls `nros_log_emit_at`
+for both refusals. The route was fine. The LENGTH was not: as one record the
+`--ros-args` refusal was over 870 bytes and the failed-create one over 1180,
+`nros_log_emit_fmt_at` cut each to 255, and a real sink drops a body that long
+(the second half of this issue). So both still reached an RTOS console as a
+header and an ellipsis.
+
+The fix, in `nros-cpp`:
+
+- Each site emits TWO records through `nros_log`. The first carries the
+  variable part with an explicit bound: `rclcpp::Node::%s("%.64s") failed:
+  rclcpp::ErrorCode %d` and `rclcpp::init: refused: %.120s`. The second is the
+  fixed text, said through `NROS_RCLCPP_SAY_REFUSED`, whose `static_assert`
+  holds it to `RUNTIME_REFUSAL_MAX`.
+- `NROS_RCLCPP_REFUSE_INIT_ARGV` and `NROS_RCLCPP_ABORT_FAILED_CREATE` are now
+  those short texts (158 and 149 bytes). The long explanations they used to
+  carry are already where a reader looks them up: RFC-0089, the `cpp:init` and
+  `cpp:Node::create_publisher` ledger rows, and the doc comment on
+  `require_created`.
+
+The test program's link model (the maintainer decision this needed) stays
+self-contained. `tests/compile/nros_log_stderr_sink.hpp` defines the two
+`nros_log` entry points the header reaches, writing to stderr, and writes a
+marker in place of any record longer than `RUNTIME_REFUSAL_MAX`.
+`failed_create_aborts.cpp` asserts the marker is absent, with a 200-byte topic
+name among its cases. Mutation-checked: an unbounded `%s` for the name fails it
+with "every record of the refusal must fit rclcpp::detail::RUNTIME_REFUSAL_MAX".
+`init_honours_ros_args.cpp` uses the same sink.
+
+The freestanding check the acceptance asked for is
+`tests/compile/refusal_reaches_nros_log.cpp`, run by `just check cpp`: one
+`-c -ffreestanding -nostdinc++` object per refusal, which must call
+`nros_log_emit_at`. It guards the ROUTE, so it passes on the pre-fix headers
+too. That is stated in the file rather than presented as the fix.

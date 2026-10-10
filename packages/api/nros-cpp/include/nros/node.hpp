@@ -2890,8 +2890,14 @@ inline int32_t apply_ros_args(void* executor, int argc, char const* const* argv)
     char why[256] = {0};
     const int32_t rc = nros_cpp_install_argv_remaps(executor, argc, argv, why, sizeof(why));
     if (rc != 0) {
-        NROS_ERROR("%s\n  refused: %s", NROS_RCLCPP_REFUSE_INIT_ARGV,
-                   why[0] != '\0' ? why : "invalid executor handle or argv");
+        // issue 1303 — two records through `nros_log`, each short enough for
+        // its format buffer: the refused token (bounded here), then the fixed
+        // text, whose length `say_refused` checks at compile time. As one
+        // `NROS_ERROR` record it was over 870 bytes, which a real sink cannot
+        // carry: the body is dropped and only an ellipsis is printed.
+        NROS_LOG_ERROR(::rclcpp::detail::log_handle(nullptr), "rclcpp::init: refused: %.120s",
+                       why[0] != '\0' ? why : "invalid executor handle or argv");
+        NROS_RCLCPP_SAY_REFUSED(NROS_RCLCPP_REFUSE_INIT_ARGV);
     }
     return rc;
 }
