@@ -18,8 +18,24 @@ pub const MONOREPO_MARKER: &str = nros_build_paths::CHECKOUT_MARKER;
 /// Walk up from `start` to find the nano-ros source-tree root — the directory
 /// containing [`MONOREPO_MARKER`]. Returns `None` when `start` is not inside
 /// such a tree.
+///
+/// A RELATIVE `start` is made absolute against the current directory first
+/// (issue 1791). `Path::parent` climbs a path's TEXT, so `"."` has the parent
+/// `""` and then none: the walk never reached a real directory, every relative
+/// anchor (`nros build --workspace .`) found no checkout, and
+/// `abi_guard::runtime_root` fell through to the ambient `NROS_REPO_DIR` — in a
+/// linked worktree, a different checkout. `std::path::absolute` neither needs
+/// the path to exist nor resolves symlinks, so the answer is still the tree the
+/// caller named.
 #[must_use]
 pub fn find_monorepo_root(start: &Path) -> Option<PathBuf> {
+    let absolute;
+    let start = if start.is_absolute() {
+        start
+    } else {
+        absolute = std::path::absolute(start).ok()?;
+        absolute.as_path()
+    };
     let mut cur: Option<&Path> = if start.is_file() {
         start.parent()
     } else {
