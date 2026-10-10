@@ -38,7 +38,7 @@ use std::{collections::BTreeSet, path::Path};
 // local environment first. Included HERE rather than in `build.rs` so the
 // crate and the build script, which both compile this file, get it from one
 // place; the path resolves against this file in both.
-include!("../../build-support/git_env.rs");
+include!("../../../tooling/nros-build-paths/src/git_env.rs");
 
 /// The stamp's INPUTS, by label — issue 1018.
 ///
