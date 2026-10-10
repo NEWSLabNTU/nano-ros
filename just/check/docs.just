@@ -403,7 +403,7 @@ rustdoc-links:
             IFS='|' read -r _path _name _why <<< "$_row"
             _names+=("$_name")
             echo "rustdoc-links: NOT VERIFIED — vendored source '$_name' is not provisioned here." >&2
-            echo "    expected at: $_path" >&2
+            echo "    expected:    $_path inside [source.$_name] (nros locate --why $_name)" >&2
             echo "    needed by:   $_why" >&2
         done
         _list="$(IFS=','; printf '%s' "${_names[*]}")"

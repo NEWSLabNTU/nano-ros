@@ -334,24 +334,20 @@ build_workspace() {
             *NROS_RMW=zenoh*)      _wf_rmw=zenoh ;;
         esac
         case "$_wf_rmw" in
-            cyclonedds) _wf_probe=third-party/dds/cyclonedds/CMakeLists.txt
-                        _wf_dir=third-party/dds/cyclonedds
-                        _wf_src="nros setup --source cyclonedds-src" ;;
-            xrce)       _wf_probe=packages/rmw/xrce/xrce-sys/micro-xrce-dds-client/CMakeLists.txt
-                        _wf_dir=packages/rmw/xrce/xrce-sys/micro-xrce-dds-client
-                        _wf_src="" ;;
-            zenoh)      _wf_probe=packages/rmw/zenoh/zpico-sys/zenoh-pico/CMakeLists.txt
-                        _wf_dir=packages/rmw/zenoh/zpico-sys/zenoh-pico
-                        _wf_src="" ;;
-            *)          _wf_probe="" ;;
+            # phase-484 W3c (RFC-0103 D5) — the `[source.*]` row, LOCATED
+            # (store copy, local edit or checkout), never the checkout path.
+            cyclonedds) _wf_row=cyclonedds-src ;;
+            xrce)       _wf_row=micro-xrce-dds-client ;;
+            zenoh)      _wf_row=zenoh-pico ;;
+            *)          _wf_row="" ;;
         esac
-        if [ -n "$_wf_probe" ] && [ ! -e "$repo_root/$_wf_probe" ]; then
-            echo "ERROR: workspace fixture '$id' requires the $_wf_rmw submodule," >&2
-            echo "       which is not checked out ($_wf_dir is empty)." >&2
+        if [ -n "$_wf_row" ] \
+            && ! python3 "$repo_root/scripts/lib/source_locate.py" "$_wf_row" CMakeLists.txt >/dev/null; then
+            echo "ERROR: workspace fixture '$id' requires the $_wf_rmw source tree" >&2
+            echo "       ([source.$_wf_row]), which is provisioned nowhere this build looks." >&2
             echo "       This fixture vendors $_wf_rmw by design and cannot build" >&2
             echo "       without it. Run:" >&2
-            [ -n "$_wf_src" ] && echo "         $_wf_src" >&2
-            echo "         git submodule update --init --recursive $_wf_dir" >&2
+            echo "         nros setup --source $_wf_row" >&2
             return 2
         fi
     fi

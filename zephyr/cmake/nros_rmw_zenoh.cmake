@@ -1,10 +1,20 @@
+# FILE scope: an include() inside the function below would resolve
+# CMAKE_CURRENT_LIST_DIR against its caller.
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosLocate.cmake")
+
 function(nros_zephyr_configure_rmw_zenoh)
 # -------------------------------------------------------------------------
 # Zenoh-pico library (compiled from vendored submodule)
 # -------------------------------------------------------------------------
 
-# Vendored zenoh-pico submodule (single source of truth for all builds)
-set(ZENOH_PICO_DIR ${NROS_REPO_DIR}/packages/rmw/zenoh/zpico-sys/zenoh-pico)
+# The zenoh-pico tree through the one ladder (RFC-0103 D5: a local edit in the
+# checkout submodule, else the store copy at the pin, else the checkout), the
+# same answer the cargo lane's `nros-zpico-build` gets. With no CLI the module
+# answers nothing and this falls to the checkout's submodule.
+nros_locate_source(ZENOH_PICO_DIR zenoh-pico)
+if(NOT ZENOH_PICO_DIR)
+    set(ZENOH_PICO_DIR ${NROS_REPO_DIR}/packages/rmw/zenoh/zpico-sys/zenoh-pico)
+endif()
 
 # --- zenoh-pico sources ---
 #

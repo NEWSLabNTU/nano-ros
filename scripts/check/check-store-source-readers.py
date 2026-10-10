@@ -44,6 +44,7 @@ ALLOWED = {
     "cmake/board/nano-ros-board-threadx-linux.cmake": "no-CLI checkout fallback",
     "cmake/platform/nano-ros-freertos.cmake": "no-CLI checkout fallback",
     "cmake/platform/nano-ros-threadx.cmake": "no-CLI checkout fallback",
+    "zephyr/cmake/nros_rmw_zenoh.cmake": "no-CLI checkout fallback",
     "tests/freertos-c-smoke/CMakeLists.txt": "default when the recipe passes no -DFREERTOS_DIR",
     "tests/threadx-c-smoke/CMakeLists.txt": "default when the recipe passes no -DTHREADX_DIR",
     # The ladder's own checkout rung and its tests.
@@ -55,10 +56,30 @@ ALLOWED = {
     "packages/testing/nros-tests/tests/freertos_posix.rs": "skip text naming the submodule",
     "packages/drivers/net/lan9118-lwip/CMakeLists.txt": "error text naming the submodule",
     "packages/drivers/net/virtio-net-netx/CMakeLists.txt": "error text naming the submodule",
+    "packages/rmw/zenoh/nros-zpico-build/src/runner.rs": "error text naming the submodule",
+    "just/check/docs.just": "skip text naming the submodule",
+    "just/check/rmw.just": "skip text naming the submodule",
+    "scripts/check-c-array-guard-probe.py": "skip text naming the submodule",
+    "scripts/check-zenoh-feature-off-compile.py": "skip text naming the submodule",
+    "packages/testing/nros-tests/src/process.rs": "diagnostic version label, `unknown` when absent",
+    "scripts/check-zenoh-lane-ownership.py": "classifies RELATIVE paths, reads nothing",
+    # Provisioning lists: they INITIALISE the checkout copy (the ladder's
+    # last rung), they do not read a tree.
+    ".github/workflows/live-peer.yml": "submodule init list",
+    ".config/worktree-provisioning.txt": "submodule init list",
     # Developer tools that read the checkout on purpose (they audit the
     # vendored sources a contributor edits, not what a build consumes).
     "scripts/dev/sweep-vendored-c-decls.sh": "audits the checkout's vendored C",
     "scripts/cyclonedds/ddsrt-port-inventory.sh": "audits the checkout's vendored C",
+    # Developer tools that BUILD zenoh-pico in place (they write `build/` INTO
+    # the tree, which the read-only store copy must never take).
+    "justfile": "dev: builds zenoh-pico in the checkout",
+    "scripts/qemu/build-zenoh-pico.sh": "dev: builds zenoh-pico in the checkout",
+    "scripts/debug/capture-ros2-keyexpr.sh": "dev: runs the in-checkout zenoh-pico build",
+    "scripts/debug/compare-keyexprs.sh": "dev: runs the in-checkout zenoh-pico build",
+    "scripts/debug/debug-keyexpr.sh": "dev: runs the in-checkout zenoh-pico build",
+    "scripts/debug/debug-liveliness.sh": "dev: runs the in-checkout zenoh-pico build",
+    "docker/can-demo/run.sh": "dev: mounts the checkout into a container",
 }
 
 COMMENT = re.compile(r"^\s*(#|//|/\*|\*|--|;)")

@@ -35,7 +35,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SUB = ROOT / "packages/rmw/zenoh/zpico-sys/zenoh-pico"
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+from source_locate import located_or_dest  # noqa: E402 — RFC-0103 D5: the tree is located
+
+SUB = located_or_dest("zenoh-pico")
 HEADER = SUB / "include/zenoh-pico/config.h"
 TEMPLATE = SUB / "include/zenoh-pico/config.h.in"
 
