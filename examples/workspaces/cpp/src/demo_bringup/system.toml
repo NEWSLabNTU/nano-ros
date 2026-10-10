@@ -178,11 +178,9 @@ conf = ["prj-cyclonedds.conf"]
 # name, because that is what the fact is about (issue 0951).
 [board_config."mps2-an385-freertos"]
 netstack = "lwip"
-sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
 
 # SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
 # SDK roots it builds against. Keyed by BOARD, not by a deploy or image
 # name, because that is what the fact is about (issue 0951).
 [board_config."threadx-linux"]
 netstack = "netxduo"
-sdk = { threadx = "{env:THREADX_DIR}", netxduo = "{env:NETX_DIR}" }

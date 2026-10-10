@@ -65,4 +65,3 @@ board = "mps2-an385-freertos"
 # what the fact is about (issue 0951).
 [board_config."mps2-an385-freertos"]
 netstack = "lwip"
-sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
