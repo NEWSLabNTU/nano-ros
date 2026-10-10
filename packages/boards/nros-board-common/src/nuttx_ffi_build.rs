@@ -198,7 +198,7 @@ pub fn run_nuttx() {
             // `nuttx_dir()`. `None` when unset keeps the "host cargo check"
             // gate this read already had; what it adds is issue 1280's rule,
             // so this include and the kernel libs below name ONE tree.
-            if let Some(nuttx_dir) = nros_build_paths::env_path("NUTTX_DIR") {
+            if let Ok(nuttx_dir) = nros_build_paths::locate::try_source("nuttx-kernel") {
                 let cxx = crate::nuttx_export::include_root(&nuttx_dir).join("cxx");
                 if cxx.is_dir() {
                     build.include(&cxx);
@@ -392,7 +392,7 @@ pub fn run_nuttx() {
     // kernel libs and headers came from the one the parent shell had
     // activated. "Built in place" is an argument for naming ONE tree, not for
     // naming whichever tree happens to be built.
-    let Some(nuttx_dir) = nros_build_paths::env_path("NUTTX_DIR") else {
+    let Ok(nuttx_dir) = nros_build_paths::locate::try_source("nuttx-kernel") else {
         return;
     };
 

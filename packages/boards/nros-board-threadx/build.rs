@@ -40,13 +40,20 @@ use std::{env, path::PathBuf};
 use nros_board_common::nros_build_paths;
 
 fn main() {
-    let Some(threadx_dir) = nros_build_paths::env_path("THREADX_DIR") else {
-        println!(
-            "cargo:warning=nros-board-threadx: THREADX_DIR not set; \
-             skipping kernel + platform-threadx compile. Set it in \
-             your overlay/example's `.cargo/config.toml [env]` or via direnv."
-        );
-        return;
+    // phase-484 W2c (RFC-0103 D4) — LOCATED, not read from an export:
+    // `$THREADX_DIR` (re-rooted), else the store, else this checkout. Found
+    // nowhere → skip with the ladder's own report.
+    let threadx_dir = match nros_build_paths::locate::try_source("threadx") {
+        Ok(d) => d,
+        Err(why) => {
+            println!(
+                "cargo:warning=nros-board-threadx: skipping kernel + platform-threadx \
+                 compile — {}",
+                why.replace('\n', "; ")
+            );
+            println!("cargo:rerun-if-changed=build.rs");
+            return;
+        }
     };
 
     let port_subpath = env::var("THREADX_PORT").unwrap_or_else(|_| "linux/gnu".to_string());
@@ -239,8 +246,7 @@ fn main() {
     // Needs threadx + netx includes. NETX_DIR is required because
     // `net.c` includes `nxd_bsd.h`. Bare-metal overlays without
     // NetX-Duo per-port dir simply leave `NETX_EXTRA_INCLUDES` empty.
-    let netx_dir = nros_build_paths::env_path("NETX_DIR")
-        .expect("nros-board-threadx: NETX_DIR must be set (platform-threadx uses nx_bsd_*)");
+    let netx_dir = nros_build_paths::locate::source("threadx-netxduo");
     // Same rule, same reason — see `THREADX_EXTRA_INCLUDES` above.
     let extra_netx_includes: Vec<PathBuf> = nros_build_paths::env_path_list("NETX_EXTRA_INCLUDES");
 

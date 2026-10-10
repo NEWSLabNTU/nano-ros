@@ -186,7 +186,15 @@ pub fn run(args: Args) -> Result<()> {
                         var_name(name),
                         path.display().to_string().replace('\'', "'\\''")
                     ),
-                    Format::Cmake => println!("set({} \"{}\")", var_name(name), path.display()),
+                    Format::Cmake => {
+                        println!("set({} \"{}\")", var_name(name), path.display());
+                        // The row's override NAME as a second key, so a cmake
+                        // consumer that only knows `FREERTOS_DIR` asks the same
+                        // ladder rather than reading `$ENV{}` raw (phase-484 W2c).
+                        if let Some(env) = index.source.get(name).and_then(|s| s.env.as_deref()) {
+                            println!("set(NROS_LOCATE_ENV_{env} \"{}\")", path.display());
+                        }
+                    }
                 }
                 if args.why {
                     for s in &trace {

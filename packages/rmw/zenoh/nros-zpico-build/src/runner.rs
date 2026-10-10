@@ -2455,13 +2455,15 @@ fn probe_net_type_sizes(
     } else if use_freertos {
         build.define("ZENOH_FREERTOS_LWIP", None);
         // lwIP + FreeRTOS headers needed
-        // phase-471 W6 — every path here through `nros_build_paths::env_path`.
+        // phase-471 W6 — every path here through `nros_build_paths::env_path`;
+        // phase-484 W2c — the source TREES through `locate::try_source`, the
+        // one ladder (env override, store, checkout), so no export is needed.
         // This block decides which headers the ABI PROBE compiles against, and
         // the board crates that compile the real thing already re-root: a raw
         // read here means the probe measured one checkout's `FreeRTOSConfig.h`
         // while the build used another's, which is the 0135 split the probe
         // exists to prevent.
-        if let Some(dir) = nros_build_paths::env_path("FREERTOS_DIR") {
+        if let Ok(dir) = nros_build_paths::locate::try_source("freertos-kernel") {
             build.include(dir.join("include"));
             if let Ok(port) = env::var("FREERTOS_PORT") {
                 build.include(dir.join("portable").join(&port));
@@ -2470,7 +2472,7 @@ fn probe_net_type_sizes(
         if let Some(dir) = nros_build_paths::env_path("FREERTOS_CONFIG_DIR") {
             build.include(dir);
         }
-        if let Some(lwip) = nros_build_paths::env_path("LWIP_DIR") {
+        if let Ok(lwip) = nros_build_paths::locate::try_source("lwip") {
             build.include(lwip.join("src/include"));
         }
     } else if use_nuttx {
@@ -2512,7 +2514,7 @@ fn probe_net_type_sizes(
         //
         // That is issue 0525's rule, and this was its sixth site: the gate
         // greps for a receiver NAMED nuttx, and here the binding is `dir`.
-        if let Some(dir) = nros_build_paths::env_path("NUTTX_DIR") {
+        if let Ok(dir) = nros_build_paths::locate::try_source("nuttx-kernel") {
             build.include(nros_build_paths::nuttx_include_root(&dir));
         }
     } else if use_threadx {
@@ -2530,7 +2532,7 @@ fn probe_net_type_sizes(
         //
         // Mirror the include set the main build uses for ThreadX.
         let target = env::var("TARGET").unwrap_or_default();
-        if let Some(threadx_dir) = nros_build_paths::env_path("THREADX_DIR") {
+        if let Ok(threadx_dir) = nros_build_paths::locate::try_source("threadx") {
             build.include(threadx_dir.join("common/inc"));
             // Pick the port-specific header matching the target arch.
             if target.contains("riscv64") {
@@ -2542,7 +2544,7 @@ fn probe_net_type_sizes(
         if let Some(dir) = nros_build_paths::env_path("THREADX_CONFIG_DIR") {
             build.include(dir);
         }
-        if let Some(netx_dir) = nros_build_paths::env_path("NETX_DIR") {
+        if let Ok(netx_dir) = nros_build_paths::locate::try_source("threadx-netxduo") {
             build.include(netx_dir.join("common/inc"));
             build.include(netx_dir.join("addons/BSD"));
             if !is_embedded_target(&target) {
