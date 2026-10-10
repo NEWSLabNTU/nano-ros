@@ -1963,8 +1963,7 @@ impl<'e, 's> Node<'e, 's> {
         topic: &str,
     ) -> Result<EmbeddedPublisher<M>, NodeError> {
         // Publishers carry no executor callback slot; group is forward-compat.
-        self.executor
-            .create_publisher_on::<M>(self.node_id, topic, QoSProfile::default())
+        self.create_publisher::<M>(topic)
     }
 
     /// RFC-0041 / Phase 239.1 — callback-based service client (rclcpp
@@ -2474,13 +2473,21 @@ impl<'e, 's> Node<'e, 's> {
     // ------------------------------------------------------------------
 
     /// [`create_publisher`](Self::create_publisher) with an explicit profile (phase-483 W2).
+    ///
+    /// Through [`NodeHandle::create_publisher_with_qos`], so a publisher made
+    /// here gets what one made on the handle `Executor::create_node` used to
+    /// return: the node's remap rules (launch, then `--ros-args`), the plan's
+    /// QoS overrides and the declared-QoS check. `Executor::create_publisher_on`
+    /// takes a name its caller already resolved, which is right for the C and
+    /// component roads and wrong for a user's source name.
     pub fn create_publisher_with_qos<M: MessageForRmw>(
         &mut self,
         topic_name: &str,
         qos: QoSProfile,
     ) -> Result<EmbeddedPublisher<M>, NodeError> {
-        self.executor
-            .create_publisher_on::<M>(self.node_id, topic_name, qos)
+        self.executor.with_node_try(self.node_id, |h| {
+            h.create_publisher_with_qos::<M>(topic_name, qos)
+        })
     }
 
     /// [`NodeHandle::create_publisher_raw`] on this node (phase-483 W2).
