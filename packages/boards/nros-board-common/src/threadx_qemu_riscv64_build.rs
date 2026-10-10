@@ -12,6 +12,10 @@ use std::{
 /// so the path has exactly one spelling — the port crate's own manifest dir —
 /// and so the board's `build.rs` states the layering edge out loud.
 pub fn run(linker_script: &[u8], port_dir: &Path) {
+    // phase-484 W4b (RFC-0103 D1) — the board's `[board.net]`, generated for
+    // `src/config.rs` before ANY early return (the host-build skip below
+    // included): that file `include!`s it on every target.
+    let net = crate::board_net::emit_for_crate(crate::board_net::ResolvedNet::platform_default());
     // issue 0288 — do nothing unless we are building FOR riscv64.
     //
     // Everything below cross-compiles ThreadX / NetX / virtio sources with
@@ -275,7 +279,7 @@ pub fn run(linker_script: &[u8], port_dir: &Path) {
     // (zenoh locator, domain_id) — the C startup reads the network
     // stack bring-up values directly from `NROS_APP_CONFIG` and
     // happens before Rust user code runs.
-    emit_nros_app_config(&out_dir, &workspace_root);
+    emit_nros_app_config(&out_dir, &workspace_root, &net);
 
     // issue 1580 — the rebuild edge for all five archives above, after the
     // LAST compile: every file the compiler opened. The hand list it replaces
@@ -502,7 +506,11 @@ fn add_netx_includes(build: &mut cc::Build, netx_dir: &Path, config_dir: &Path) 
 /// the other board staticlibs; the board's `startup.c` resolves its
 /// `extern const nros_app_config_t NROS_APP_CONFIG;` (from
 /// `<nros/app_config.h>`) against this definition at link time.
-fn emit_nros_app_config(out_dir: &Path, workspace_root: &Path) {
+fn emit_nros_app_config(
+    out_dir: &Path,
+    workspace_root: &Path,
+    net: &crate::board_net::ResolvedNet,
+) {
     let src_path = out_dir.join("nros_app_config_def.c");
     let nros_c_include = workspace_root.join("packages/api/nros-c/include");
 
@@ -525,13 +533,7 @@ const nros_app_config_t NROS_APP_CONFIG = {
         .locator   = "tcp/10.0.2.2:7553",
         .domain_id = 0,
     },
-    .network = {
-        .ip      = { 10, 0, 2, 40 },
-        .mac     = { 0x52, 0x54, 0x00, 0x12, 0x34, 0x56 },
-        .gateway = { 10, 0, 2, 2 },
-        .netmask = { 255, 255, 255, 0 },
-        .prefix  = 24,
-    },
+    .network = @NROS_BOARD_NET@,
     .scheduling = {
         .app_priority            = 0,
         .zenoh_read_priority     = 0,
@@ -544,6 +546,8 @@ const nros_app_config_t NROS_APP_CONFIG = {
     },
 };
 "#;
+    // phase-484 W4b — the `.network` block is the resolved `[board.net]`.
+    let body = body.replace("@NROS_BOARD_NET@", &net.c_network_initializer());
     std::fs::write(&src_path, body).expect("write nros_app_config_def.c");
 
     let mut build = cc::Build::new();
