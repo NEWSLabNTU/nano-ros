@@ -227,6 +227,36 @@ root by the same absence. `check-release-manifest` R6 holds the three together
 and refuses the pins file's return. Cost: a submodule bump is now a two-line
 change, and the gate prints the one command that makes it.
 
+**W3c-1 — the store mechanism (no row flipped yet).** The ladder gains the
+local-edit rung (`locate::checkout_edit`: a store row's checkout copy whose
+HEAD is not `ref`, or with tracked edits, outranks the store, and the build
+prints a `cargo:warning` saying so) and keys a submodule row's store copy
+`<version>+<sha8>` (`locate::store_key`; a clone row's `ref` is the upstream
+release its version names, so it keeps `<version>`). `nros setup --source
+<name>` on a submodule row with `location = "store"` materialises it
+(`sdk_store::materialise_store_source`): `git archive <ref>` from the
+checkout's submodule when it has the commit, else a store-wide bare mirror
+`fetch/git/<name>.git` fetched by commit; files whose `(mode, blob, path)` a
+sibling pin shares are hardlinked to it; files read-only; `.nros-provenance`
+(`kind = "archive"`, `ref`, `git`) and `.nros-tree` written; built in a temp
+dir and renamed into place. `store.rs` gains `Category::Sources` and
+`PinRule::Source { name, key }` from the index's store rows. `sdk_store::
+locate_row` is the one `SourcePackage` → ladder conversion, so the path setup
+writes and the path builds read are one derivation. The git-environment
+helper moved to `nros-build-paths/src/git_env.rs` (it ships in an SDK root;
+`packages/cli` does not) so build-script git spawns clear it too. Nothing
+changes for any build until a row says `location = "store"`, and a store miss
+still falls to the checkout.
+
+Remaining in W3: flip the rows whose readers all go through `locate`
+(FreeRTOS, lwIP, ThreadX, NetX Duo first — their direct readers are listed
+by `git grep -F <dest>`; the `just/sdk-env.just` exports of those four trees
+go with them, since an env value outranks the store), then the cargo
+path-dep rows (`nuttx-libc`, `px4-rs`), zenoh-pico/mbedtls, xrce and
+cyclonedds; a census gate that a store row has no direct reader; gc liveness
+from installed toolchains' indexes (today gc consults the pin files above the
+cwd, as for tools); project `[sources]`.
+
 **Acceptance:** an agent worktree with NO submodule initialized builds tier 1
 from the store; editing a zenoh-pico submodule commit makes the next build use
 and announce the checkout; an installed (no-checkout) project builds a
