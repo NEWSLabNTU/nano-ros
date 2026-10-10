@@ -34,6 +34,7 @@ pub mod init;
 pub mod leaf_kconfig;
 pub mod leaf_settings;
 pub mod leaf_system;
+pub mod locate;
 pub mod materialize;
 pub mod metadata;
 pub mod model_path;
@@ -150,6 +151,11 @@ pub enum Cmd {
     /// never searched (issue 0625).
     #[command(name = "sdk-path")]
     SdkPath(sdk_path::Args),
+
+    /// phase-484 W1 (RFC-0103 D4) — where a resource is, and with `--why`,
+    /// which rung answered. The cmake/just/shell front door to
+    /// `nros_build_paths::locate`.
+    Locate(locate::Args),
 
     /// phase-431 W3 — point `$NROS_HOME/bin/<name>` at the NEWEST installed
     /// version of a tool. The bridge for `scripts/bootstrap.sh`, which unpacks

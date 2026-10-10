@@ -1486,7 +1486,7 @@ pub fn resolve_index(explicit: &Path) -> Result<PathBuf> {
 /// root a BUILD will read — the same four-rung ladder `nros build` and
 /// `nros sdk-root` walk (RFC-0099 D3), so a checkout still wins for a
 /// contributor and an installed toolchain gets its own `share/nano-ros`.
-fn index_workspace(index: &Path) -> PathBuf {
+pub(crate) fn index_workspace(index: &Path) -> PathBuf {
     let store_cache = index_cache_path(&crate::orchestration::store::root());
     source_workspace(index, &[Some(store_cache), shipped_index()], || {
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));

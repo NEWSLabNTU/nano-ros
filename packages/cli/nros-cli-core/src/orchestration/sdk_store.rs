@@ -2576,6 +2576,7 @@ mod tests {
         std::fs::write(dest_abs.join("CMakeLists.txt"), "x").unwrap();
         let clone = SourcePackage {
             version: "2.2.0".into(),
+            env: None,
             git: Some("https://example/lwip.git".into()),
             git_ref: Some("STABLE-2_2_0".into()),
             dest: Some(dest_rel.into()),
@@ -2706,6 +2707,7 @@ mod tests {
     fn submodule_source(path: &str, recursive: bool) -> SourcePackage {
         SourcePackage {
             version: "1".into(),
+            env: None,
             submodule: Some(path.into()),
             // Exhaustive on purpose, like the clone literal above: a new field
             // must state its answer rather than inherit one.

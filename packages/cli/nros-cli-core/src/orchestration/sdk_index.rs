@@ -1440,6 +1440,12 @@ pub enum SourceLocation {
 #[serde(deny_unknown_fields)]
 pub struct SourcePackage {
     pub version: String,
+    /// The ONE environment variable that overrides where this tree is
+    /// (RFC-0103 D3 rung 2, D6). Declared here so every resolver reads the same
+    /// name — `nros_build_paths::locate` applies it, re-rooted per issue 1280.
+    /// A row with no `env` takes no environment override.
+    #[serde(default)]
+    pub env: Option<String>,
     /// Git URL to clone (clone mode). Mutually exclusive with `submodule`.
     #[serde(default)]
     pub git: Option<String>,
@@ -1522,6 +1528,7 @@ impl Default for SourcePackage {
     fn default() -> Self {
         Self {
             version: String::new(),
+            env: None,
             git: None,
             git_ref: None,
             dest: None,

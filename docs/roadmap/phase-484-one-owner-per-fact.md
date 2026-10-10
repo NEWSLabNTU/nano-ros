@@ -97,6 +97,37 @@ new `src/`; and the index carries no sha for submodule rows, so every
 worktree and a store-only host prints the rung that answered; a unit test per
 rung; a retired variable set fails with its replacement named.
 
+**LANDED (2026-10-10), in three PRs.**
+
+- **Store root** (#1854). `NROS_HOME` only; `NROS_STORE` / `NROS_SDK_STORE`
+  refused with the replacement named, in the launcher, the CLI, every build
+  script (`nros_build_paths::store`), cmake (`nros_store_root()`,
+  `cmake/NanoRosStoreRoot.cmake`) and shell (`scripts/lib/store-root.sh`).
+  Five readers that ignored `NROS_HOME` fixed on the way. Gate
+  `check-retired-store-vars`.
+- **Repo root** (#1859). One marker, `nros_build_paths::CHECKOUT_MARKER`
+  (`packages/core/nros-core/Cargo.toml`) — corrected from the RFC's first
+  draft, which named `nros-sdk-index.toml`: ~25 sites already used the
+  Cargo marker and only two walks the index, and both files sit at every SDK
+  root, so the cheaper convergence was the right one. The launcher aliases the
+  constant; cmake, the CLI's two private walks and `cmake-incremental.sh`
+  use it. One environment name, `NROS_REPO_DIR`; `$ENV{NANO_ROS_ROOT}` is
+  refused (`-DNANO_ROS_ROOT` stays as the explicit argument), and cmake's
+  order now matches the CLI's (enclosing checkout before the environment).
+- **The resolver.** `[source.*]` rows gain `env`; `kind` is NOT a column —
+  the table (`[source.*]` / `[tool.*]`) already says it, and a second
+  statement of it would be a second home. `nros_build_paths::locate` is the
+  one ladder (rows read by a dependency-free reader in build scripts and by the
+  CLI's serde model); `nros locate <name>… [--all] [--why] [--format
+  path|sh|cmake]` wraps it, plus the `store` / `nano-ros` roots. A build
+  script's `locate::source(name)` watches the answer's content, never the
+  variable (issue 0491). `nros locate artifact` moves to W6 with the layout it
+  names.
+
+Deferred to the wave that owns them: the lowercase `nano_ros_ROOT` export
+(W2 — it is an export), `NROS_BIN` as a second name for the CLI in two cmake
+files (W7).
+
 ### W2 -- tooling stops exporting locations
 
 - The 21 path exports in `just/sdk-env.just` and the path exports in
