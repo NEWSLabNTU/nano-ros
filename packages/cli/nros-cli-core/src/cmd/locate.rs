@@ -14,7 +14,7 @@ use clap::{Parser, ValueEnum};
 use eyre::{Result, bail};
 use nros_build_paths::locate::{self, Ctx, Row};
 
-use crate::orchestration::sdk_index::{SdkIndex, SourceLocation, SourcePackage};
+use crate::orchestration::sdk_index::{SdkIndex, SourcePackage};
 
 #[derive(Clone, Copy, Debug, Default, ValueEnum)]
 pub enum Format {
@@ -51,13 +51,7 @@ pub struct Args {
 }
 
 fn row_of(name: &str, s: &SourcePackage) -> Row {
-    Row {
-        name: name.to_string(),
-        version: s.version.clone(),
-        env: s.env.clone(),
-        dest: s.dest.clone(),
-        in_store: s.location == SourceLocation::Store,
-    }
+    crate::orchestration::sdk_store::locate_row(name, s)
 }
 
 /// One `[source.<name>]` located through the ONE ladder, with `root` as the
@@ -85,6 +79,7 @@ pub(crate) fn locate_source(
             .and_then(std::env::var_os)
             .filter(|v| !v.is_empty())
             .map(PathBuf::from),
+        checkout_edit: locate::checkout_edit(&row, checkout.as_deref()),
         checkout,
         store: crate::orchestration::store::root(),
     };
@@ -167,6 +162,7 @@ pub fn run(args: Args) -> Result<()> {
                         .and_then(std::env::var_os)
                         .filter(|v| !v.is_empty())
                         .map(PathBuf::from),
+                    checkout_edit: locate::checkout_edit(&row, checkout.as_deref()),
                     checkout: checkout.clone(),
                     store: store.clone(),
                 };

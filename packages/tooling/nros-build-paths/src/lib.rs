@@ -857,6 +857,9 @@ pub mod store {
 /// Phase-484 W3 adds the project `[sources]` rung and the local-edit rung, and
 /// keys the store path by `+<sha8>`. A miss is an [`locate::Refusal`] naming
 /// `nros setup --source <name>`, never a guess.
+#[doc(hidden)]
+pub mod git_env;
+
 pub mod locate {
     use std::path::{Path, PathBuf};
 
@@ -870,6 +873,14 @@ pub mod locate {
         pub dest: Option<String>,
         /// `location = "store"`.
         pub in_store: bool,
+        /// The pinned commit (`ref`), when the row states one. A submodule
+        /// row always does (RFC-0103 D5, gated by `check-source-refs`).
+        pub git_ref: Option<String>,
+        /// The row is a committed submodule (`submodule = "<path>"`): its
+        /// store copy is keyed by `<version>+<sha8>` because a patched fork
+        /// keeps upstream's version, and its checkout `dest` is where a
+        /// contributor's EDIT lives (the local-edit rung).
+        pub submodule: bool,
     }
 
     /// Which rung answered.
@@ -877,6 +888,9 @@ pub mod locate {
     pub enum Rung {
         Arg,
         Env,
+        /// A checkout submodule moved off its pin, or dirty — a contributor's
+        /// edit in progress, which outranks the store (RFC-0103 D5).
+        LocalEdit,
         Store,
         Checkout,
     }
@@ -887,6 +901,7 @@ pub mod locate {
             match self {
                 Rung::Arg => "arg",
                 Rung::Env => "env",
+                Rung::LocalEdit => "local-edit",
                 Rung::Store => "store",
                 Rung::Checkout => "checkout",
             }
@@ -904,6 +919,10 @@ pub mod locate {
         pub checkout: Option<PathBuf>,
         /// The store root (`crate::store::root()`).
         pub store: PathBuf,
+        /// Why the checkout copy of a store row is a LOCAL EDIT (HEAD off the
+        /// pin, or uncommitted changes), if it is — from [`checkout_edit`].
+        /// `None` means "at the pin", "absent", or "not asked".
+        pub checkout_edit: Option<String>,
     }
 
     /// One line of `--why`: the rung, and what it saw.
@@ -943,9 +962,66 @@ pub mod locate {
 
     /// The store path of a `location = "store"` row — the derivation
     /// `nros setup` writes to (`sdk_store::source_dir`).
+    ///
+    /// A SUBMODULE row is keyed `<version>+<sha8>` (RFC-0103 D5): a patched
+    /// fork keeps upstream's version, so the version alone would let two
+    /// different trees share a directory. A clone row's `ref` is the upstream
+    /// release its version names, so it keeps `<version>`.
     #[must_use]
     pub fn store_path(row: &Row, store: &Path) -> PathBuf {
-        store.join("sources").join(&row.name).join(&row.version)
+        store.join("sources").join(&row.name).join(store_key(row))
+    }
+
+    /// The directory NAME under `sources/<name>/` — see [`store_path`].
+    #[must_use]
+    pub fn store_key(row: &Row) -> String {
+        match (&row.git_ref, row.submodule) {
+            (Some(r), true) => format!("{}+{}", row.version, &r[..r.len().min(8)]),
+            _ => row.version.clone(),
+        }
+    }
+
+    /// Is the checkout copy of `row` a contributor's edit in progress?
+    ///
+    /// Asked only of a store-first submodule row whose checkout `dest` is
+    /// populated. `Some(reason)` when its HEAD is not the row's `ref`, or it
+    /// has uncommitted changes to tracked files; `None` when it is at the
+    /// pin (then it is the same content as the store, which is preferred),
+    /// absent, or not a git checkout. Uses git itself — never a model of
+    /// git's on-disk layout (issue 1336).
+    #[must_use]
+    pub fn checkout_edit(row: &Row, checkout: Option<&Path>) -> Option<String> {
+        if !(row.in_store && row.submodule) {
+            return None;
+        }
+        let pin = row.git_ref.as_deref()?;
+        let dir = checkout?.join(row.dest.as_deref()?);
+        if !present(&dir) || !dir.join(".git").exists() {
+            return None;
+        }
+        let git = |args: &[&str]| {
+            crate::git_env::nros_git_command("git")
+                .arg("-C")
+                .arg(&dir)
+                .args(args)
+                .output()
+                .ok()
+                .filter(|o| o.status.success())
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        };
+        let head = git(&["rev-parse", "HEAD"])?;
+        if head != pin {
+            return Some(format!(
+                "{} is at {} (pin {})",
+                dir.display(),
+                &head[..head.len().min(8)],
+                &pin[..pin.len().min(8)]
+            ));
+        }
+        match git(&["status", "--porcelain", "--untracked-files=no"]) {
+            Some(s) if !s.is_empty() => Some(format!("{} has uncommitted edits", dir.display())),
+            _ => None,
+        }
     }
 
     fn present(p: &Path) -> bool {
@@ -1009,10 +1085,21 @@ pub mod locate {
             }),
         }
 
+        if let (Some(why), Some(d), Some(c)) = (&ctx.checkout_edit, &row.dest, &ctx.checkout) {
+            return Ok(take(Rung::LocalEdit, c.join(d), why.clone(), &mut trace));
+        }
+        if row.in_store && row.submodule {
+            trace.push(Step {
+                rung: "local-edit",
+                saw: "checkout copy absent or at the pin".into(),
+                chosen: false,
+            });
+        }
+
         if row.in_store {
             let p = store_path(row, &ctx.store);
             if present(&p) {
-                let saw = format!("{} (pin {})", p.display(), row.version);
+                let saw = format!("{} (pin {})", p.display(), store_key(row));
                 return Ok(take(Rung::Store, p, saw, &mut trace));
             }
             trace.push(Step {
@@ -1098,6 +1185,8 @@ pub mod locate {
                 "env" => row.env = Some(v.to_string()),
                 "dest" => row.dest = Some(v.to_string()),
                 "location" => row.in_store = v == "store",
+                "ref" => row.git_ref = Some(v.to_string()),
+                "submodule" => row.submodule = true,
                 _ => {}
             }
         }
@@ -1125,14 +1214,26 @@ pub mod locate {
         // and the build script watches the ANSWER's content, never the
         // variable as text — issue 0491: one directory has three spellings
         // here, and `rerun-if-env-changed` on a path fingerprints the spelling.
+        let checkout_edit = checkout_edit(&row, Some(&root));
         let ctx = Ctx {
             arg: None,
             env_value: row.env.as_deref().and_then(crate::env_path),
             checkout: Some(root),
             store: crate::store::root(),
+            checkout_edit,
         };
         match resolve(&row, &ctx) {
-            Ok(a) => Ok(crate::watch_path(&crate::canonical(&a.path))),
+            Ok(a) => {
+                // A contributor's edit outranks the store, and the build says
+                // so: building the edit is right, building it unannounced
+                // makes "why does my image differ" unanswerable.
+                if a.rung == Rung::LocalEdit {
+                    if let Some(s) = a.trace.last() {
+                        println!("cargo:warning={name}: {} — {}", s.rung, s.saw);
+                    }
+                }
+                Ok(crate::watch_path(&crate::canonical(&a.path)))
+            }
             Err(r) => {
                 // Watch what an absent copy would become, so provisioning it
                 // re-runs the script (issue 1586's shape).
@@ -1233,6 +1334,99 @@ location = \"store\"
             assert!(r.to_string().contains("nros setup --source rosidl"), "{r}");
             fill(&store_path(&row, &ctx.store));
             assert_eq!(resolve(&row, &ctx).unwrap().rung, Rung::Store);
+        }
+
+        const SUB: &str = "\
+[source.zp]
+version = \"1.7.2\"
+location = \"store\"
+dest = \"third-party/zp\"
+submodule = \"third-party/zp\"
+ref = \"0123456789abcdef0123456789abcdef01234567\"
+";
+
+        #[test]
+        fn a_submodule_store_row_is_keyed_by_version_and_sha8() {
+            let row = row_from_index(SUB, "zp").unwrap();
+            assert!(row.submodule && row.in_store);
+            assert_eq!(store_key(&row), "1.7.2+01234567");
+            // A clone row keeps the bare version.
+            assert_eq!(
+                store_key(&row_from_index(INDEX, "rosidl").unwrap()),
+                "humble-5621b26"
+            );
+        }
+
+        #[test]
+        fn the_store_beats_a_checkout_at_the_pin_and_a_local_edit_beats_the_store() {
+            let t = tmp("edit");
+            let checkout = t.join("co");
+            let d = checkout.join("third-party/zp");
+            fill(&d);
+            let row = row_from_index(SUB, "zp").unwrap();
+            let mut ctx = Ctx {
+                checkout: Some(checkout),
+                store: t.join("s"),
+                ..Ctx::default()
+            };
+            // No store copy yet: the checkout answers, as today.
+            assert_eq!(resolve(&row, &ctx).unwrap().rung, Rung::Checkout);
+            fill(&store_path(&row, &ctx.store));
+            assert_eq!(resolve(&row, &ctx).unwrap().rung, Rung::Store);
+            ctx.checkout_edit = Some("edited".into());
+            let a = resolve(&row, &ctx).unwrap();
+            assert_eq!((a.rung, a.path), (Rung::LocalEdit, d));
+        }
+
+        #[test]
+        fn checkout_edit_asks_git_for_head_and_dirt() {
+            let t = tmp("git");
+            let co = t.join("co");
+            let d = co.join("third-party/zp");
+            std::fs::create_dir_all(&d).unwrap();
+            let sh = |cmd: &str| {
+                let mut c = std::process::Command::new("sh");
+                crate::git_env::nros_clear_inherited_git_env(&mut c);
+                let ok = c
+                    .args(["-c", cmd])
+                    .current_dir(&d)
+                    .status()
+                    .unwrap()
+                    .success();
+                assert!(ok, "{cmd}");
+            };
+            sh("git init -q . && echo a > f && git add f && \
+                git -c user.name=t -c user.email=t@t commit -qm one");
+            let head = String::from_utf8(
+                crate::git_env::nros_git_command("git")
+                    .args(["-C", d.to_str().unwrap(), "rev-parse", "HEAD"])
+                    .output()
+                    .unwrap()
+                    .stdout,
+            )
+            .unwrap()
+            .trim()
+            .to_string();
+            let mut row = row_from_index(SUB, "zp").unwrap();
+            // Off the pin.
+            assert!(
+                checkout_edit(&row, Some(&co))
+                    .unwrap()
+                    .contains("pin 01234567")
+            );
+            // At the pin, clean: not an edit.
+            row.git_ref = Some(head);
+            assert_eq!(checkout_edit(&row, Some(&co)), None);
+            // At the pin, dirty: an edit.
+            sh("echo b > f");
+            assert!(
+                checkout_edit(&row, Some(&co))
+                    .unwrap()
+                    .contains("uncommitted")
+            );
+            // A workspace row is never asked.
+            row.in_store = false;
+            assert_eq!(checkout_edit(&row, Some(&co)), None);
         }
 
         #[test]

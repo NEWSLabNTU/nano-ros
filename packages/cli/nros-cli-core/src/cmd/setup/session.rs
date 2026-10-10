@@ -1814,6 +1814,8 @@ mod tests {
             version: v.into(),
             sha256: None,
             post_install: None,
+            git_ref: None,
+            git: None,
         };
         let lock = dir.join("lock");
         let mut run = SessionRun::new(&plan);
@@ -1915,6 +1917,8 @@ mod tests {
             version: v.into(),
             sha256: None,
             post_install: None,
+            git_ref: None,
+            git: None,
         }
     }
 

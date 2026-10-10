@@ -91,6 +91,10 @@ pub enum Category {
     Toolchains,
     /// `workspaces/<name>/<version>` — provisioned SOURCE (phase-440 W4).
     Workspaces,
+    /// `sources/<name>/<version>[+<sha8>]` — `[source.*]` trees (phase-440
+    /// for clone rows; RFC-0103 D5 for submodule rows, materialised by
+    /// `git archive` and hardlinked between pins).
+    Sources,
     /// `fetch/<file-or-dir>` — the download cache (today's `external/`, W3).
     Fetch,
     /// Anything else at the store root (`bin/`, `presets/`). Listed so the
@@ -104,6 +108,7 @@ impl Category {
             Category::Sdk => "sdk",
             Category::Toolchains => "toolchains",
             Category::Workspaces => "workspaces",
+            Category::Sources => "sources",
             Category::Fetch => "fetch",
             Category::Other => "",
         }
@@ -112,7 +117,7 @@ impl Category {
     /// How many path components below the category dir an entry sits.
     fn depth(self) -> usize {
         match self {
-            Category::Sdk | Category::Workspaces => 2,
+            Category::Sdk | Category::Workspaces | Category::Sources => 2,
             Category::Toolchains | Category::Fetch => 1,
             Category::Other => 0,
         }
@@ -126,10 +131,11 @@ impl Category {
     }
 
     /// The categories a scan visits, in listing order.
-    pub const ALL: [Category; 5] = [
+    pub const ALL: [Category; 6] = [
         Category::Toolchains,
         Category::Sdk,
         Category::Workspaces,
+        Category::Sources,
         Category::Fetch,
         Category::Other,
     ];
@@ -504,6 +510,10 @@ pub fn toolchain_entry(root: &Path, version: &str) -> Option<Entry> {
 pub enum PinRule {
     /// A structured source that names both halves: `[tool.qemu] version = …`.
     Tool { tool: String, version: String },
+    /// A `[source.<name>]` the index stores, by its store directory NAME
+    /// (`<version>` or `<version>+<sha8>`, `nros_build_paths::locate::store_key`)
+    /// — the exact entry, so a live `+sha8` pin is never mistaken for unnamed.
+    Source { name: String, key: String },
     /// A version string from a source whose schema we do not model. Matches any
     /// entry with that version, in any category — deliberately over-broad, see
     /// [`load_pin_file`].
@@ -548,14 +558,21 @@ pub fn load_pin_file(path: &Path) -> Result<PinSource> {
     let rules = match name.as_deref() {
         Some("nros-sdk-index.toml") => {
             let index = SdkIndex::load(path)?;
-            index
-                .tool
+            let tools = index.tool.iter().map(|(tool, t)| PinRule::Tool {
+                tool: tool.clone(),
+                version: t.version.clone(),
+            });
+            let sources = index
+                .source
                 .iter()
-                .map(|(tool, t)| PinRule::Tool {
-                    tool: tool.clone(),
-                    version: t.version.clone(),
-                })
-                .collect()
+                .filter(|(_, s)| s.location == super::sdk_index::SourceLocation::Store)
+                .map(|(name, s)| PinRule::Source {
+                    name: name.clone(),
+                    key: nros_build_paths::locate::store_key(&super::sdk_store::locate_row(
+                        name, s,
+                    )),
+                });
+            tools.chain(sources).collect()
         }
         Some(n) if n == LOCK_FILE => {
             let lock = SdkLock::load(path)?;
@@ -690,6 +707,11 @@ pub fn pins_naming<'a>(entry: &Entry, sources: &'a [PinSource]) -> Vec<&'a PinSo
                     entry.category == Category::Sdk
                         && entry.name.as_deref() == Some(tool.as_str())
                         && versions.contains(&version.as_str())
+                }
+                PinRule::Source { name, key } => {
+                    entry.category == Category::Sources
+                        && entry.name.as_deref() == Some(name.as_str())
+                        && entry.version == *key
                 }
                 PinRule::AnyVersion(v) => versions.contains(&v.as_str()),
             })

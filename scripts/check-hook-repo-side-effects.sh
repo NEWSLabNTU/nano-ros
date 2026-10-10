@@ -223,7 +223,7 @@ fi
 #   * an argv runner (`&["git", …]` / `vec!["git", …]`) — the file must route
 #     its runner through `nros_clear_inherited_git_env`, the identifier this
 #     gate credits in every language.
-CLI_GIT_HELPER="packages/cli/build-support/git_env.rs"
+CLI_GIT_HELPER="packages/tooling/nros-build-paths/src/git_env.rs"
 # cli_git_offences — Rust text in, offending lines out (empty = clean).
 cli_git_offences() {
     local text
