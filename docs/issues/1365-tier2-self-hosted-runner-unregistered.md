@@ -715,3 +715,30 @@ The merge queue is not blocked by this. `CI` from `gate.yml` is the only
 required context, and PRs kept merging through the night with `queue` runs
 waiting. What is blocked is every self-hosted verdict: L3, tier 2 and the
 nightly cells.
+
+### A second registration claims work at once, and the first still does not (2026-10-10, 04:20Z)
+
+By 04:20Z the repository listed two runners, with identical labels:
+
+```
+1442  nano-ros-runner-newslab-118  online  busy=false  self-hosted,Linux,X64,nros-qemu,nros-sdk-zephyr,nros-big
+1443  nano-ros-runner-newslab-133  online  busy=true   self-hosted,Linux,X64,nros-qemu,nros-sdk-zephyr,nros-big
+```
+
+The new registration, `newslab-133`, claimed the L3 job of queue run
+38016203647, which had waited since 02:15:06Z. The job started at
+**04:15:57Z** on `nano-ros-runner-newslab-133`. That is the first self-hosted
+job any registration has run since 2026-10-09T08:00Z.
+
+`newslab-118` stayed `busy=false` the whole time. Tier-2 job 114110273467
+(run-matrix 37945434581) stayed `queued` beside it, although its labels
+`self-hosted, linux, nros-qemu, nros-sdk-zephyr, nros-big` match 118 exactly.
+
+So the scheduling side and the job definitions are fine: a fresh registration
+with the same labels takes work within minutes. The fault belongs to the 118
+registration itself. It reports `online` and never accepts an assignment. That
+leaves the first of the two candidates above (the listener's session) and
+rules out a repository-wide runner-group restriction, unless 118 sits in a
+different group from 133. **What would close it:** remove or re-register 118,
+or read its `_diag/Runner_*.log`. Until then the tier-2 job waits for 133 to
+finish L3, and the two lanes share one working runner.
