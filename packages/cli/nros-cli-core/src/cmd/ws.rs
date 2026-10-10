@@ -2227,6 +2227,13 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
             // SUCCESSFUL resolve may clear it.
             let refused = crate::model_gate::marker_path(&model).is_file();
             if !stale(&model) && provenance.is_none() && !refused {
+                // phase-486 W1 — a current model still gets its overlay (a
+                // function of `system.toml` alone, written only if changed), so
+                // a tree synced before W1 gains one without a re-resolve.
+                if model.exists() && system_toml.is_file() {
+                    nros_orchestration_ir::overlay::write_beside(&model, &system_toml)
+                        .map_err(|e| eyre::eyre!("sync: overlay for `{}`: {e}", pkg.name))?;
+                }
                 continue;
             }
             let Some(pl) = &play_launch else {
@@ -2361,6 +2368,11 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
                 .wrap_err_with(|| format!("sync: stamp resolver pin for `{}`", pkg.name))?;
             std::fs::rename(&staged, &model)
                 .wrap_err_with(|| format!("sync: commit resolved model {}", model.display()))?;
+            // phase-486 W1 — the nano-ros facts the model no longer owns.
+            if system_toml.is_file() {
+                nros_orchestration_ir::overlay::write_beside(&model, &system_toml)
+                    .map_err(|e| eyre::eyre!("sync: overlay for `{}`: {e}", pkg.name))?;
+            }
             // phase-460 W1 -- only a SUCCESSFUL resolve clears the refusal marker.
             crate::model_gate::clear(&model)
                 .wrap_err_with(|| format!("sync: clear refusal marker for {}", model.display()))?;
