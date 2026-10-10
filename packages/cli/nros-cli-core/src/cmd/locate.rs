@@ -30,7 +30,9 @@ pub enum Format {
 #[derive(Debug, Parser)]
 pub struct Args {
     /// Resources to locate: a `[source.<name>]` of the index, or `store` /
-    /// `nano-ros` for the two roots.
+    /// `nano-ros` for the two roots. `artifact <name>…` instead locates a
+    /// cargo-built artifact (`c-archive`, `cpp-archive`, `c-include`,
+    /// `cpp-include`, `c-config-header`, `cpp-config-header`).
     pub names: Vec<String>,
 
     /// Every `[source.*]` row. A row that resolves nowhere is skipped in
@@ -48,6 +50,21 @@ pub struct Args {
     /// Path to the SDK index.
     #[arg(long, default_value = "nros-sdk-index.toml")]
     pub index: PathBuf,
+
+    /// `artifact` mode: the target triple the artifact was built for. Omit
+    /// for a host build cargo ran without `--target`.
+    #[arg(long)]
+    pub target: Option<String>,
+
+    /// `artifact` mode: the cargo PROFILE (`dev`, `release`, a custom one).
+    #[arg(long, default_value = "release")]
+    pub profile: String,
+
+    /// `artifact` mode: the cargo target dir. Default: cargo's own answer
+    /// for the nano-ros workspace (`CARGO_TARGET_DIR`, `[build] target-dir`,
+    /// else `<root>/target`).
+    #[arg(long)]
+    pub target_dir: Option<PathBuf>,
 
     /// The project whose `system.toml` `[sources]` is rung 3 (RFC-0103 D3).
     /// Default: `$NROS_WORKSPACE_ROOT`, else the nearest ancestor of the
@@ -132,6 +149,10 @@ pub fn run(args: Args) -> Result<()> {
         .then_some(checkout);
     let store = crate::orchestration::store::root();
     let project = project_dir(args.project.as_deref());
+
+    if args.names.first().map(String::as_str) == Some("artifact") {
+        return run_artifact(&args, checkout.as_deref());
+    }
 
     let mut names = args.names.clone();
     if args.all {
@@ -242,6 +263,85 @@ pub fn run(args: Args) -> Result<()> {
         bail!("{failed} resource(s) not located");
     }
     Ok(())
+}
+
+/// `nros locate artifact <name>…` — where a cargo-built nano-ros artifact
+/// lands (phase-484 W6b, RFC-0103 D7). The layout under the target dir is
+/// `nros_build_paths::artifact` (the function the build scripts that WRITE
+/// the headers call); WHERE the target dir is, is cargo's answer.
+fn run_artifact(args: &Args, checkout: Option<&std::path::Path>) -> Result<()> {
+    use nros_build_paths::artifact::Artifact;
+    let names = &args.names[1..];
+    if names.is_empty() {
+        let known: Vec<&str> = Artifact::ALL.iter().map(|a| a.name()).collect();
+        bail!("name an artifact: {}", known.join(", "));
+    }
+    let mut wanted = Vec::new();
+    for n in names {
+        let Some(a) = Artifact::parse(n) else {
+            let known: Vec<&str> = Artifact::ALL.iter().map(|a| a.name()).collect();
+            bail!("no artifact `{n}` — known: {}", known.join(", "));
+        };
+        wanted.push(a);
+    }
+    let target_dir = match &args.target_dir {
+        Some(d) => d.clone(),
+        None => cargo_target_dir(checkout)?,
+    };
+    let batch = wanted.len() > 1;
+    for a in wanted {
+        let path = a.path(&target_dir, args.target.as_deref(), &args.profile);
+        let key = format!("artifact-{}", a.name());
+        match args.format {
+            Format::Path if batch => println!("{}\t{}", a.name(), path.display()),
+            Format::Path => println!("{}", path.display()),
+            Format::Sh => println!(
+                "{}='{}'",
+                var_name(&key),
+                path.display().to_string().replace('\'', "'\\''")
+            ),
+            Format::Cmake => println!("set({} \"{}\")", var_name(&key), path.display()),
+        }
+        if args.why {
+            eprintln!(
+                "  {:<10} {} (cargo target dir) + {}",
+                "artifact",
+                target_dir.display(),
+                a.relative(args.target.as_deref(), &args.profile).display()
+            );
+        }
+    }
+    Ok(())
+}
+
+/// The nano-ros workspace's cargo target dir, as cargo resolves it — so
+/// `CARGO_TARGET_DIR` and a `[build] target-dir` are honoured exactly as the
+/// build that produced the artifact honoured them.
+fn cargo_target_dir(checkout: Option<&std::path::Path>) -> Result<PathBuf> {
+    let Some(root) = checkout else {
+        bail!(
+            "`nros locate artifact` needs the nano-ros cargo workspace, and this index \
+             belongs to no checkout — pass --target-dir"
+        );
+    };
+    let out =
+        std::process::Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
+            .args(["metadata", "--format-version=1", "--no-deps"])
+            .arg("--manifest-path")
+            .arg(root.join("Cargo.toml"))
+            .output()?;
+    if !out.status.success() {
+        bail!(
+            "`cargo metadata` failed in {}: {}",
+            root.display(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
+    }
+    let meta: serde_json::Value = serde_json::from_slice(&out.stdout)?;
+    meta.get("target_directory")
+        .and_then(|v| v.as_str())
+        .map(PathBuf::from)
+        .ok_or_else(|| eyre::eyre!("`cargo metadata` reported no target_directory"))
 }
 
 #[cfg(test)]

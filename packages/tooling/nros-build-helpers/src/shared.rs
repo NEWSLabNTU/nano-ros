@@ -545,7 +545,7 @@ fn pid_is_live(pid: u32) -> bool {
 /// So the header is emitted to BOTH, and this one is the half a consumer should
 /// migrate to. Writing it costs nothing and removes the need for the build
 /// script to have run in THIS build for the header to be findable.
-fn write_header_to_out_dir(relative: &[&str], contents: &str) {
+fn write_header_to_out_dir(relative: &Path, contents: &str) {
     let Ok(out_dir) = env::var("OUT_DIR") else {
         return;
     };
@@ -562,7 +562,7 @@ fn write_header_to_out_dir(relative: &[&str], contents: &str) {
     write_to(PathBuf::from(out_dir), relative, contents);
 }
 
-pub fn write_header_to_target_dir(relative: &[&str], contents: &str) {
+pub fn write_header_to_target_dir(relative: &Path, contents: &str) {
     write_header_to_out_dir(relative, contents);
 
     let root = if let Ok(target_dir) = env::var("CARGO_TARGET_DIR") {
@@ -619,11 +619,8 @@ fn variant_of(header: &str) -> Option<&str> {
 /// mismatch is not swallowed — it means two feature sets share this path, which
 /// is issue 1354's unfixed half, so it is SAID rather than silently smoothed
 /// over.
-fn write_shared_header(root: PathBuf, relative: &[&str], contents: &str) {
-    let mut dest = root;
-    for segment in relative {
-        dest.push(segment);
-    }
+fn write_shared_header(root: PathBuf, relative: &Path, contents: &str) {
+    let dest = root.join(relative);
     if let Ok(existing) = std::fs::read_to_string(&dest)
         && existing != contents
         && defines_of(&existing) == defines_of(contents)
@@ -643,11 +640,8 @@ fn write_shared_header(root: PathBuf, relative: &[&str], contents: &str) {
     write_to_path(&dest, contents);
 }
 
-fn write_to(root: PathBuf, relative: &[&str], contents: &str) {
-    let mut dest = root;
-    for segment in relative {
-        dest.push(segment);
-    }
+fn write_to(root: PathBuf, relative: &Path, contents: &str) {
+    let dest = root.join(relative);
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent).expect("create per-build header dir");
     }
@@ -691,7 +685,7 @@ fn write_to(root: PathBuf, relative: &[&str], contents: &str) {
 ///   resolved different layouts. That is the real divergent-features case, and
 ///   it must stop the build rather than produce an image whose C and C++ halves
 ///   disagree about a struct's size.
-pub fn write_header_if_absent_or_verify(relative: &[&str], contents: &str, label: &str) {
+pub fn write_header_if_absent_or_verify(relative: &Path, contents: &str, label: &str) {
     let Some(dest) = target_dir_path(relative) else {
         return;
     };
@@ -790,7 +784,7 @@ pub fn write_header_if_absent_or_verify(relative: &[&str], contents: &str, label
 /// neither file, not one of them. `write_header_if_absent_or_verify` already
 /// self-heals an absent header when it RUNS — this covers the paths where it
 /// does not.
-pub fn drop_stamp_without_header(relative: &[&str]) {
+pub fn drop_stamp_without_header(relative: &Path) {
     let Some(dest) = target_dir_path(relative) else {
         return;
     };
@@ -912,17 +906,13 @@ fn disagreeing_defines(a: &str, b: &str) -> String {
     lines.join("\n")
 }
 
-fn target_dir_path(relative: &[&str]) -> Option<PathBuf> {
+fn target_dir_path(relative: &Path) -> Option<PathBuf> {
     let root = if let Ok(d) = env::var("CARGO_TARGET_DIR") {
         PathBuf::from(d)
     } else {
         nros_sizes_build::cargo_target_dir().ok()?
     };
-    let mut dest = root;
-    for segment in relative {
-        dest.push(segment);
-    }
-    Some(dest)
+    Some(root.join(relative))
 }
 
 fn write_to_path(dest: &std::path::Path, contents: &str) {
@@ -1136,8 +1126,8 @@ mod tests {
     fn a_variant_only_difference_does_not_rewrite_the_shared_header() {
         let root = std::env::temp_dir().join(format!("nros-1461-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
-        let rel = ["nros-c-generated", "nros", "nros_config_generated.h"];
-        let dest = root.join(rel[0]).join(rel[1]).join(rel[2]);
+        let rel = nros_build_paths::artifact::Artifact::CConfigHeader.relative(None, "dev");
+        let dest = root.join(&rel);
 
         let a = "#define NROS_CONFIG_VARIANT \"alloc_rmw_zenoh\"\n#define NROS_EXECUTOR_SIZE 42\n";
         let b = "#define NROS_CONFIG_VARIANT \"alloc_cffi_zenoh_cffi_rmw_zenoh\"\n\

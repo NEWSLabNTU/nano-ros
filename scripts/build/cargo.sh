@@ -393,6 +393,19 @@ nros_locate_source() {
     "$bin" locate --format path "$name" 2>/dev/null
 }
 
+# nros_locate_artifact <name> [--target <triple>] [--profile <p>] — where a
+# cargo-built nano-ros artifact lands (phase-484 W6b, RFC-0103 D7): `c-archive`,
+# `cpp-archive`, `c-include`, `cpp-include`, `c-config-header`,
+# `cpp-config-header`. The layout is `nros_build_paths::artifact` and the target
+# dir is cargo's own answer, so no caller spells `<root>/target/...`. Fails
+# (non-zero, nothing printed) with no CLI — an artifact has no fallback path.
+nros_locate_artifact() {
+    local name="${1:?nros_locate_artifact: artifact name}" bin
+    shift
+    bin="$(nros_cli_bin)" || return 1
+    "$bin" locate artifact "$name" "$@"
+}
+
 nros_cli_bin() {
     # Phase 218.D.3 — resolution order:
     #   1. $NROS_CLI                                — explicit override

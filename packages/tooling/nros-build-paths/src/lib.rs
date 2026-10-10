@@ -718,6 +718,10 @@ version = \"not-this-one\"
     }
 }
 
+/// Where a cargo-built artifact (staticlib, per-build config header) lands —
+/// phase-484 W6b, RFC-0103 D7.
+pub mod artifact;
+
 /// Where the nano-ros store is — RFC-0103 D6, phase-484 W1.
 ///
 /// ONE variable names the store root: `$NROS_HOME`, else `$HOME/.nros`. Its

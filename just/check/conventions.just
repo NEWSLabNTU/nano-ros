@@ -191,3 +191,14 @@ source-refs:
 [private]
 store-source-readers:
     @python3 scripts/check/check-store-source-readers.py
+
+# phase-484 W6b (RFC-0103 D7) — where a cargo-built artifact lands
+# (`libnros_{c,cpp}.a`, the per-build `nros-{c,cpp}-generated/` headers) is ONE
+# function, `nros_build_paths::artifact`, joined with cargo's own target dir;
+# cmake / shell / make ask `nros locate artifact`. A `<root>/target/...`
+# spelling is right only until something sets CARGO_TARGET_DIR. This refuses a
+# new one in code (comments are prose) and reports a stale allowlist entry.
+# Buildless, ~0.2 s; self-tests its matcher on each run.
+[private]
+artifact-path-literals:
+    @python3 scripts/check/check-artifact-path-literals.py

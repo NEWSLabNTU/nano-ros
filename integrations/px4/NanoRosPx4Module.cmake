@@ -59,6 +59,22 @@ if(NOT DEFINED NANO_ROS_ROOT OR NANO_ROS_ROOT STREQUAL "")
     endif()
 endif()
 
+# --- Where the cargo-built artifacts land -----------------------------------
+#
+# Phase-484 W6b (RFC-0103 D7). The archive and the per-build headers are cargo
+# byproducts, so where they are is (cargo's target dir) + (one layout,
+# `nros_build_paths::artifact` — the function the build scripts that WRITE the
+# headers call). This module used to spell `${NANO_ROS_ROOT}/target/...`, which
+# is right only while nothing sets `CARGO_TARGET_DIR` or `[build] target-dir`;
+# under either, the archive cargo just built was "not found" and the headers
+# paired against were another build's.
+include("${NANO_ROS_ROOT}/cmake/NanoRosLocate.cmake")
+nros_locate_artifact(_NROS_PX4_CPP_A_DEFAULT cpp-archive PROFILE release CONTEXT "NanoRosPx4Module")
+nros_locate_artifact(_NROS_PX4_C_INCLUDE c-include CONTEXT "NanoRosPx4Module")
+nros_locate_artifact(_NROS_PX4_CPP_INCLUDE cpp-include CONTEXT "NanoRosPx4Module")
+nros_locate_artifact(_NROS_PX4_CPP_CONFIG_HEADER cpp-config-header CONTEXT "NanoRosPx4Module")
+nros_locate_artifact(_NROS_PX4_C_CONFIG_HEADER c-config-header CONTEXT "NanoRosPx4Module")
+
 # --- Resolve the two prebuilt archives --------------------------------------
 function(_nros_px4_resolve_archive OUT_VAR CACHE_VAR ENV_VAR DEFAULT_PATH BUILD_HINT)
     if(DEFINED ${CACHE_VAR} AND NOT "${${CACHE_VAR}}" STREQUAL "")
@@ -83,8 +99,7 @@ function(_nros_px4_resolve_archive OUT_VAR CACHE_VAR ENV_VAR DEFAULT_PATH BUILD_
 endfunction()
 
 _nros_px4_resolve_archive(_NROS_PX4_CPP_A NROS_CPP_ARCHIVE NROS_CPP_ARCHIVE
-    # profile-literal-ok: prebuilt archive — PX4 links it; the default path names the release one
-    "${NANO_ROS_ROOT}/target/release/libnros_cpp.a"
+    "${_NROS_PX4_CPP_A_DEFAULT}"
     # Issue 0436 — a MULTI-RMW module (a uORB->RMW bridge) additionally needs the
     # `bridge` feature, which is what puts `nros_init_multi` / `nros_pubsub_bridge_*`
     # (the ABI `<nros/bridge.hpp>`'s MultiExecutor calls) into this archive:
@@ -152,8 +167,8 @@ set(_NROS_PX4_INCLUDES
 # searched first, the stub wins and the real header is never seen. Include order
 # is the whole mechanism here.
 list(PREPEND _NROS_PX4_INCLUDES
-    "${NANO_ROS_ROOT}/target/nros-c-generated"
-    "${NANO_ROS_ROOT}/target/nros-cpp-generated")
+    "${_NROS_PX4_C_INCLUDE}"
+    "${_NROS_PX4_CPP_INCLUDE}")
 
 foreach(_inc IN LISTS _NROS_PX4_INCLUDES)
     if(NOT IS_DIRECTORY "${_inc}")
@@ -206,7 +221,7 @@ set(_NROS_PX4_REBUILD_HINT
 
 nros_assert_archive_pairs_with_header(
     ARCHIVE       "${_NROS_PX4_CPP_A}"
-    HEADER        "${NANO_ROS_ROOT}/target/nros-cpp-generated/nros/nros_cpp_config_generated.h"
+    HEADER        "${_NROS_PX4_CPP_CONFIG_HEADER}"
     SYMBOL_PREFIX "nros_cpp_config_variant_"
     LABEL         "nros_cpp_config_generated.h"
     BUILD_HINT    "${_NROS_PX4_REBUILD_HINT}")
@@ -221,7 +236,7 @@ nros_assert_archive_pairs_with_header(
 # moves for reasons the C++ slug does not see.
 nros_assert_archive_pairs_with_header(
     ARCHIVE       "${_NROS_PX4_CPP_A}"
-    HEADER        "${NANO_ROS_ROOT}/target/nros-c-generated/nros/nros_config_generated.h"
+    HEADER        "${_NROS_PX4_C_CONFIG_HEADER}"
     SYMBOL_PREFIX "nros_config_variant_"
     LABEL         "nros_config_generated.h"
     BUILD_HINT    "${_NROS_PX4_REBUILD_HINT}")

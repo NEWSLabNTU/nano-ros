@@ -389,6 +389,27 @@ after (a diff).
 **Acceptance:** no consumer outside the path function names an artifact path
 (gate); the PX4 `${NANO_ROS_ROOT}/target/...` literal is gone.
 
+**W6b — one answer for where a cargo-built artifact lands.**
+`nros_build_paths::artifact::Artifact` (`c-archive`, `cpp-archive`,
+`c-include`, `cpp-include`, `c-config-header`, `cpp-config-header`) is the
+layout under the cargo target dir; the `nros-c`/`nros-cpp` build scripts that
+WRITE the headers take their paths from it, and `nros locate artifact <name>
+[--target T] [--profile P]` joins it with cargo's own target dir (`cargo
+metadata`, so `CARGO_TARGET_DIR` and `[build] target-dir` count). Twins:
+cmake `nros_locate_artifact()` (`cmake/NanoRosLocate.cmake`, REQUIRED — an
+artifact has no fallback path), shell `nros_locate_artifact`
+(`scripts/build/cargo.sh`), make `$(call nros_artifact,…)`. The PX4 module's
+`${NANO_ROS_ROOT}/target/...` literals (archive, include dirs, both pairing
+headers) and NuttX `Make.defs`' are gone, with `compile-check-fixtures.sh` and
+the borrowed-e2e fixture; every default answer is byte-identical to the literal
+it replaced (measured: cmake, make and shell). Gate `check-artifact-path-literals`
+(a `target/` + artifact name in CODE, outside an allowlist with reasons; one
+entry is a `packages/cli` test with no edge to `nros-build-paths`).
+**D8 does not hold as written** — the header carries SIZES the build script
+extracts from the compiled `nros` rlib (`nros-sizes-build`, a nested cargo
+build), which no pre-compile step can know. So the header stays a build
+product; what W6b makes single is its LOCATION. Recorded in RFC-0103.
+
 ### W7 -- leftovers and close
 
 - The three test-bin `config.toml` files move to `system.toml`.

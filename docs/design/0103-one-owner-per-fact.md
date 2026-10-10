@@ -328,6 +328,16 @@ parsers and the PX4 `${NANO_ROS_ROOT}/target/...` literal. Cargo dependents
 keep `DEP_NROS_C_*` (RFC-0101 D2). Until resolve owns it, one parser in
 `nros_build_paths` serves every non-cargo consumer.
 
+**Measured (phase-484 W6b): the premise holds for half the header.** The knob
+values are decided before configure, but the header also carries the opaque
+STORAGE SIZES (`NROS_EXECUTOR_SIZE`, the `*_OPAQUE_U64S` family), which the
+build script reads out of the compiled `nros` rlib (`nros-sizes-build`'s nested
+cargo build). No step before that compile can know them, so resolve cannot
+write the header. What is single instead is where it LANDS:
+`nros_build_paths::artifact`, which the build scripts write through and
+`nros locate artifact` reads — the PX4 literal is gone that way. The `OUT_DIR`
+reader stays the interim for consumers that want the per-unit copy.
+
 ### D9 — Gates
 
 - **No unrouted location**: a path-valued env read, a literal path or a
@@ -440,6 +450,9 @@ Still open:
 
 ## Changelog
 
+- 2026-10 — D8 corrected by measurement (phase-484 W6b): the config header's
+  sizes come from the compiled rlib, so it stays a build product; its location
+  is one function (`nros_build_paths::artifact`, `nros locate artifact`).
 - 2026-10 — D2a (Zephyr enforcement), D5 (store layout, reclaim) and D6-M
   (index location) measured and folded in; `src/` corrected to the existing
   `sources/` category.

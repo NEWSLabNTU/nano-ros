@@ -9,6 +9,8 @@
 
 use std::{env, path::PathBuf};
 
+use nros_build_paths::artifact::Artifact;
+
 use crate::shared::{
     compile_c_stub, dep_usize, generate_cbindgen_header, non_zero_or, probe_nros_sizes,
     target_pointer_bytes, watch_param_store_shape, write_header_to_corrosion,
@@ -259,16 +261,8 @@ fn generate_config(
         // (see the `write_header_if_absent_or_verify` call below) and the C
         // side's symptom — `SESSION_OPAQUE_U64S undeclared` — is the quieter
         // of the two.
-        crate::shared::drop_stamp_without_header(&[
-            "nros-cpp-generated",
-            "nros",
-            "nros_cpp_config_generated.h",
-        ]);
-        crate::shared::drop_stamp_without_header(&[
-            "nros-c-generated",
-            "nros",
-            "nros_config_generated.h",
-        ]);
+        crate::shared::drop_stamp_without_header(&Artifact::CppConfigHeader.relative(None, "dev"));
+        crate::shared::drop_stamp_without_header(&Artifact::CConfigHeader.relative(None, "dev"));
         return;
     }
 
@@ -400,7 +394,7 @@ static const unsigned char *const nros__cpp_config_variant_anchor =
     // with 74 undefined references. The path is still flat; the VARIANT STAMP
     // in the header above is what makes the mismatch loud.
     write_header_to_target_dir(
-        &["nros-cpp-generated", "nros", "nros_cpp_config_generated.h"],
+        &Artifact::CppConfigHeader.relative(None, "dev"),
         &exact_header,
     );
     write_header_to_corrosion("nros_cpp_config_generated.h", &exact_header);
@@ -574,7 +568,7 @@ typedef struct ActionServerRawHandle {{
     // verify otherwise. See `write_header_if_absent_or_verify` for why a
     // mismatch is genuine divergence rather than staleness.
     crate::shared::write_header_if_absent_or_verify(
-        &["nros-c-generated", "nros", "nros_config_generated.h"],
+        &Artifact::CConfigHeader.relative(None, "dev"),
         &c_format_header,
         "nros-cpp",
     );
