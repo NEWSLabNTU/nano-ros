@@ -410,6 +410,21 @@ extracts from the compiled `nros` rlib (`nros-sizes-build`, a nested cargo
 build), which no pre-compile step can know. So the header stays a build
 product; what W6b makes single is its LOCATION. Recorded in RFC-0103.
 
+**W6c — `resolved.toml [locations]`.** The resolve phase records, per image,
+where every `[source.*]` tree the ladder answers for came from: `path`, `rung`
+(`env` / `project` / `local-edit` / `store` / `checkout`) and `transient` (true
+for an environment answer, which no file states). One ladder
+(`cmd::locate::locate_answer`, the function `nros locate` prints through), with
+the workspace as the project. A record, not a carrier — build scripts re-ask the
+ladder — so it is outside `digest`. Measured on `examples/workspaces/rust`
+(17 images): from a shell that had once activated the MAIN checkout,
+`freertos-kernel`, `lwip`, `threadx`, `threadx-netxduo` and the NuttX/PX4 rows
+read `rung = "env"` — the inherited `FREERTOS_DIR` & co., re-rooted onto this
+worktree's (uninitialised) checkout copy, outranking the store the rest of the
+rows came from. That is RFC-0103 D3's precedence doing what it says, and it is
+exactly the fact this record exists to make readable. Per-value provenance for
+KNOBS (an env override of a derived count) is not here yet.
+
 ### W7 -- leftovers and close
 
 - The three test-bin `config.toml` files move to `system.toml`.

@@ -189,6 +189,35 @@ pub struct Resolved {
     /// Per-component `(pkg, component, entities, slots)`, when derived — the
     /// provenance a reader needs to attribute a number to a declaration.
     pub per_component: Vec<(String, String, usize, usize)>,
+    /// Where each vendored source tree resolved for this build —
+    /// `[locations]`. Reporting, not a knob: NOT in [`Resolved::digest`].
+    pub locations: Vec<Location>,
+}
+
+/// Where one `[source.<name>]` tree came from (phase-484 W6c, RFC-0103 D7):
+/// the ladder's answer and the rung that gave it, or why it gave none.
+///
+/// A record of the SAME ladder every road asks (`nros locate`,
+/// `nros_build_paths::locate`), taken once per build so "which FreeRTOS did
+/// this image use?" is answered by reading a file. It is deliberately outside
+/// the digest: the digest keys shared artifacts by knob VALUES, and a build
+/// script re-asks the ladder itself, so a location recorded here is never the
+/// carrier — only the statement.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Location {
+    pub name: String,
+    /// `(path, rung label)` or the ladder's refusal.
+    pub answer: Result<(std::path::PathBuf, &'static str), String>,
+}
+
+impl Location {
+    /// The rungs whose value no FILE states — the environment (and an explicit
+    /// argument, which no build passes here). A rebuild from another shell can
+    /// answer differently, so the record says so.
+    #[must_use]
+    pub fn transient(&self) -> bool {
+        matches!(self.answer, Ok((_, "env" | "arg")))
+    }
 }
 
 impl Resolved {
@@ -213,6 +242,7 @@ impl Resolved {
             derivation,
             per_kind,
             per_component,
+            locations: Vec::new(),
         }
     }
 
@@ -229,7 +259,15 @@ impl Resolved {
             derivation: Derivation::Refused { reason },
             per_kind: BTreeMap::new(),
             per_component: Vec::new(),
+            locations: Vec::new(),
         }
+    }
+
+    /// Attach the build's `[locations]` record.
+    #[must_use]
+    pub fn with_locations(mut self, locations: Vec<Location>) -> Self {
+        self.locations = locations;
+        self
     }
 
     /// The knobs, when this image derived any.
@@ -502,7 +540,47 @@ impl Resolved {
                 }
             }
         }
+        self.write_locations(&mut s);
         s
+    }
+}
+
+impl Resolved {
+    fn write_locations(&self, s: &mut String) {
+        if self.locations.is_empty() {
+            return;
+        }
+        s.push_str(
+            "\n# Where each vendored source tree resolved for this build — the ONE ladder\n\
+             # (`nros locate`, RFC-0103 D4/D5; phase-484 W6c). A record, not a carrier:\n\
+             # every build script asks the ladder itself, and this is outside `digest`.\n\
+             # `transient = true` marks an ENVIRONMENT answer, which no file states.\n",
+        );
+        for loc in &self.locations {
+            let _ = writeln!(s, "\n[locations.{}]", toml_key(&loc.name));
+            match &loc.answer {
+                Ok((path, rung)) => {
+                    let _ = writeln!(s, "path = {}", toml_str(&path.display().to_string()));
+                    let _ = writeln!(s, "rung = {}", toml_str(rung));
+                    let _ = writeln!(s, "transient = {}", loc.transient());
+                }
+                Err(why) => {
+                    let _ = writeln!(s, "refused = {}", toml_str(why));
+                }
+            }
+        }
+    }
+}
+
+/// A TOML key: bare when it may be, quoted otherwise.
+fn toml_key(k: &str) -> String {
+    if !k.is_empty()
+        && k.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
+        k.to_string()
+    } else {
+        toml_str(k)
     }
 }
 
@@ -533,8 +611,9 @@ pub fn write(
     dir: &std::path::Path,
     image: ImageIdent,
     inventory: &EntityInventory,
+    locations: Vec<Location>,
 ) -> std::io::Result<Written> {
-    let resolved = Resolved::compose(image, inventory);
+    let resolved = Resolved::compose(image, inventory).with_locations(locations);
     std::fs::create_dir_all(dir)?;
     let toml_path = dir.join(RESOLVED_TOML_NAME);
     let map = |e: eyre::Report| std::io::Error::other(e.to_string());
@@ -679,6 +758,44 @@ mod tests {
             assert!(refused.contains(&key), "{knob} missing from a refusal");
             assert!(derived.contains("HAND-SET"), "the reason must say hand-set");
         }
+    }
+
+    /// phase-484 W6c — `[locations]` records where each tree came from, marks
+    /// an ENVIRONMENT answer transient, and stays out of the digest (a build
+    /// script re-asks the ladder; the record is never the carrier).
+    #[test]
+    fn locations_are_recorded_marked_and_kept_out_of_the_digest() {
+        let plain = Resolved::compose(ident(), &inventory(&["timer"]));
+        let with = plain.clone().with_locations(vec![
+            Location {
+                name: "freertos-kernel".into(),
+                answer: Ok(("/s/freertos-kernel/10.6.2+0adc196d".into(), "store")),
+            },
+            Location {
+                name: "lwip".into(),
+                answer: Ok(("/mine/lwip".into(), "env")),
+            },
+            Location {
+                name: "threadx".into(),
+                answer: Err("not in the store; run `nros setup --source threadx`".into()),
+            },
+        ]);
+        assert_eq!(
+            plain.digest(),
+            with.digest(),
+            "locations must not key artifacts"
+        );
+        let toml = with.to_toml();
+        let doc: toml::Value = toml::from_str(&toml).expect("resolved.toml parses");
+        let loc = &doc["locations"];
+        assert_eq!(loc["freertos-kernel"]["rung"].as_str(), Some("store"));
+        assert_eq!(loc["freertos-kernel"]["transient"].as_bool(), Some(false));
+        assert_eq!(loc["lwip"]["transient"].as_bool(), Some(true));
+        assert!(loc["threadx"]["refused"].as_str().is_some(), "{toml}");
+        assert!(
+            !plain.to_toml().contains("[locations"),
+            "no record, no table"
+        );
     }
 
     #[test]
