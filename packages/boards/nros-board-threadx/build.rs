@@ -153,8 +153,23 @@ fn main() {
             return;
         }
     }
-    let config_dir = nros_build_paths::env_path("THREADX_CONFIG_DIR")
-        .expect("nros-board-threadx: THREADX_CONFIG_DIR must be set when THREADX_DIR is");
+    // phase-484 W2b (RFC-0103 D1) — `tx_user.h`'s dir is a BOARD fact, stated
+    // by the overlay's `nros-board.toml` and carried here by the generated
+    // cargo config. With no board in the build there is no right answer: skip
+    // the C compile, as for an absent submodule, rather than compile against
+    // the one board `just/sdk-env.just` used to default it to.
+    let Some(config_dir) = nros_build_paths::env_path("THREADX_CONFIG_DIR") else {
+        println!(
+            "cargo:warning=nros-board-threadx: no board stated THREADX_CONFIG_DIR (a \
+             board's nros-board.toml supplies it); skipping the ThreadX C build. A link \
+             of this board will fail until a board is selected."
+        );
+        // A NAME, not the path (issue 0491): every ThreadX board states
+        // `THREADX_PORT` beside its config dir, so selecting one re-runs this.
+        println!("cargo:rerun-if-env-changed=THREADX_PORT");
+        println!("cargo:rerun-if-changed=build.rs");
+        return;
+    };
     // phase-471 W6 — a LIST is not exempt from issue 1280, and this file is
     // where that showed: `THREADX_DIR` two screens up goes through `env_path`,
     // while these elements were canonicalised and re-rooted nowhere. The

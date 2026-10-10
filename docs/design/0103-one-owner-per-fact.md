@@ -160,8 +160,19 @@ Locations, first match wins:
     7. fail, naming `nros setup <resource>`
 
 Every road gets this order by READING `resolved.toml` (image builds) or by
-calling the one resolver (D4) — never by implementing it. `force` is deleted:
-a value a board must own is a board fact under its own name, not an override.
+calling the one resolver (D4) — never by implementing it.
+
+**Board facts and `force`** (corrected by phase-484 W2b). A value a board must
+own — its RTOS port, its `FreeRTOSConfig.h` / `tx_user.h` dir — is stated ONCE,
+in its `nros-board.toml`, and reaches the compile through the generated cargo
+config with `force = true`: the ambient environment may not replace a board
+fact, and an image changes one through its own `[image.<id>] env` row (the
+project rung). What the first draft called "delete `force`" was the wrong
+target: `force` was never the defect, the SECOND home was — `just/sdk-env.just`
+exported one repo-wide `FREERTOS_PORT=GCC/ARM_CM3` and mps2 config dir, so the
+RISC-V board needed `force` to keep the linux config out and two cmake board
+modules carried code refusing the inherited port. With the export gone the
+descriptor is the only home, and `force` is what makes it so.
 
 ### D4 — One resolver, two front doors
 
@@ -257,7 +268,11 @@ rows a contributor edits, which rung 4 serves from the checkout anyway.
 
 - Store root: `NROS_HOME` only (`NROS_STORE`, `NROS_SDK_STORE` retire).
 - nano-ros root: `NROS_REPO_DIR` only (`NANO_ROS_ROOT`, `nano_ros_ROOT`
-  retire); one marker, `nros-sdk-index.toml`.
+  retire as root inputs; `nano_ros_ROOT` stays CMake's own `find_package`
+  hint, but is no longer exported); one marker,
+  `packages/core/nros-core/Cargo.toml` (`nros_build_paths::CHECKOUT_MARKER` —
+  corrected by phase-484 W1: ~25 sites already used it, only two walks used
+  the index, and both files sit at every SDK root).
 - **Which index answers**: the one beside the crates being compiled. Every
   SDK root — a checkout, or an install's `share/nano-ros/` staged by
   `stage-sdk-root.sh` — carries `nros-sdk-index.toml` at its top, and every
