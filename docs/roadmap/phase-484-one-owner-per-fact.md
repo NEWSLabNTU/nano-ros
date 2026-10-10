@@ -411,6 +411,19 @@ set and wait for phase-481, which owns those leaves; the three PX4
 companions' `rmw-xrce = []` is likewise a no-op that `just/px4.just` still
 passes, left for the W8 retirement pass with the recipe.
 
+**W4d — a board names its cmake module.** The cmake road's spelling of a
+board is a board-module FILE stem (`cmake/board/nano-ros-board-<x>.cmake`),
+and `nros build` used to hand cmake the alias the image authored — so
+`board = "freertos"` (an alias of the mps2-an385 FreeRTOS board, whose module
+is `mps2-an385-freertos`) configured against a module that does not exist.
+Each `[[board]]` now states `cmake_module = "<x>"` (10 boards, 10 modules);
+the generated cmake root emits the descriptor's module, falling back to the
+authored name only for a board that states none. Gate
+`check-board-cmake-module`: every module file claimed by exactly one board,
+every claim backed by a file. What it does not do yet: a hand-written leaf
+`CMakeLists.txt` still sets its own `NROS_BOARD`, which is the next retirement
+(it can now be derived from the leaf's `system.toml` board through this map).
+
 ### W5 -- one canonical name per knob
 
 - The Zephyr module defines nano-ros knob symbols with NO prompt and sources

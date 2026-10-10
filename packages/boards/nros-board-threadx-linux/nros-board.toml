@@ -5,6 +5,7 @@
 
 [[board]]
 names = ["threadx", "threadx-linux"]
+cmake_module = "threadx-linux"
 platform = "threadx-linux"
 toolchain = "stable"
 # issue 1759 — `board-run`, not `hosted-main`, though the image is a Linux

@@ -26,6 +26,7 @@
 
 [[board]]
 names = ["mps3-an536-freertos", "an536"]
+cmake_module = "mps3-an536-freertos"
 platform = "freertos"
 toolchain = "stable"
 entry_kind = "board-run"

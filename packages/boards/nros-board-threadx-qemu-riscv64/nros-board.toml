@@ -11,6 +11,7 @@
 # the C/C++ leaves' `system.toml` names it. Without it here no descriptor
 # answered, so `nros ws leaf-system` could not derive the `threadx` platform.
 names = ["threadx", "threadx-riscv64", "threadx-qemu-riscv64", "rv-virt-threadx"]
+cmake_module = "rv-virt-threadx"
 disambiguate_by_target = "riscv64"
 platform = "threadx-riscv64"
 toolchain = "stable"

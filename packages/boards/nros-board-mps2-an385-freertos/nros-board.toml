@@ -2,6 +2,7 @@
 
 [[board]]
 names = ["freertos"]
+cmake_module = "mps2-an385-freertos"
 platform = "freertos"
 toolchain = "stable"
 entry_kind = "board-run"

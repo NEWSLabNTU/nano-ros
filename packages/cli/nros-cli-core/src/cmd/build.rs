@@ -1027,7 +1027,15 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     workspace: root.clone(),
                     system: bringup.clone(),
                     platform: platform.clone(),
-                    board: image.board.clone(),
+                    // phase-484 W4d — the board's OWN cmake module, not the
+                    // alias the image happened to author: `board = "freertos"`
+                    // names the mps2-an385 FreeRTOS board, whose module is
+                    // `mps2-an385-freertos`. A descriptor that states none keeps
+                    // the authored name (and cmake refuses a missing module).
+                    board: descriptor
+                        .cmake_module
+                        .clone()
+                        .or_else(|| image.board.clone()),
                     rmw: image.rmw.clone().unwrap_or_else(|| "zenoh".to_string()),
                     toolchain_file: descriptor.cmake.as_ref().map(|c| c.toolchain_file.clone()),
                     nano_ros_root: nano_ros_root.clone().unwrap_or_default(),
