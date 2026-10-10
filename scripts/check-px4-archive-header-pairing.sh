@@ -228,9 +228,20 @@ if not calls:
     print(f"does not call {FN} — the generated headers are unpaired again (issues 1046/1050)")
 headers = [h for a in calls for h in per_item.cmake_keyword_items(a, "HEADER", KW)]
 archives = [x for a in calls for x in per_item.cmake_keyword_items(a, "ARCHIVE", KW)]
-if not any(h.endswith("/nros_cpp_config_generated.h") for h in headers):
+# phase-484 W6b — a HEADER may be the variable `nros_locate_artifact(<var>
+# <artifact>)` set, which is how the module now names it (the layout is one
+# function, `nros_build_paths::artifact`); the literal tail still counts.
+located = {}
+for c, a, _ln in per_item.cmake_calls(code):
+    if c == "nros_locate_artifact":
+        args = per_item.cmake_args(a)
+        if len(args) >= 2:
+            located["${%s}" % args[0]] = args[1]
+def names(h, file, artifact):
+    return h.endswith("/" + file) or located.get(h) == artifact
+if not any(names(h, "nros_cpp_config_generated.h", "cpp-config-header") for h in headers):
     print("does not pair nros_cpp_config_generated.h")
-if not any(h.endswith("/nros_config_generated.h") for h in headers):
+if not any(names(h, "nros_config_generated.h", "c-config-header") for h in headers):
     print("does not pair nros_config_generated.h")
 if len(archives) < 2:
     print(f"has {len(archives)} pairing ARCHIVE argument(s); both generated headers must be paired")
@@ -306,6 +317,23 @@ EOF
         note "[ok] pairing against an archive other than the linked one is caught"
     else
         bad "a consumer pairing a DIFFERENT archive than it links read as compliant — issue 1050 would be back"; rc=1
+    fi
+    # (g2) phase-484 W6b: a HEADER named through `nros_locate_artifact` counts
+    #      only when the variable holds the HEADER artifact. An include DIR in
+    #      its place is a directory question again — issue 1046's shape.
+    cat >"$d/located-wrong.cmake" <<'EOF'
+include(NanoRosArchivePairing.cmake)
+nros_locate_artifact(_HC cpp-include)
+nros_locate_artifact(_H c-config-header)
+nros_assert_archive_pairs_with_header(ARCHIVE "${_NROS_PX4_CPP_A}" HEADER "${_HC}")
+nros_assert_archive_pairs_with_header(ARCHIVE "${_NROS_PX4_CPP_A}" HEADER "${_H}")
+set(_nros_px4_link_archives "${_NROS_PX4_CPP_A}" "${_NROS_PX4_PLATFORM_A}")
+EOF
+    found="$(scan_consumer "$d/located-wrong.cmake")"
+    if nros_grep_q 'does not pair nros_cpp_config_generated.h' <<<"$found"; then
+        note "[ok] a located include DIR in place of the header is not a pairing"
+    else
+        bad "a located include dir passed as HEADER read as a pairing"; rc=1
     fi
 
     # (h) The REAL comment from the fix. Prose describing the rule must not trip

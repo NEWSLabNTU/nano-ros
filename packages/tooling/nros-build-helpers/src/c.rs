@@ -15,6 +15,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use nros_build_paths::artifact::Artifact;
+
 use crate::shared::{
     compile_c_stub, dep_usize, env_usize, generate_cbindgen_header, probe_nros_sizes,
     watch_param_store_shape, write_header_to_corrosion, write_header_to_target_dir,
@@ -487,7 +489,7 @@ fn generate_config(
     // Phase 119.3: two stable per-build locations (see nros-cpp/build.rs
     // for rationale).
     write_header_to_target_dir(
-        &["nros-c-generated", "nros", "nros_config_generated.h"],
+        &Artifact::CConfigHeader.relative(None, "dev"),
         &exact_header,
     );
     write_header_to_corrosion("nros_config_generated.h", &exact_header);

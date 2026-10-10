@@ -1033,11 +1033,14 @@ cxx_syntax_check() {
     # is a stub that `#error`s, so if it is searched first the real header
     # (`target/nros-cpp-generated/nros/...`, emitted by nros-cpp's build.rs) is
     # never reached. Prepend the generated dirs.
-    local inc=()
-    [ -f "$repo_root/target/nros-cpp-generated/nros/nros_cpp_config_generated.h" ] \
-        && inc+=(-I "$repo_root/target/nros-cpp-generated")
-    [ -f "$repo_root/target/nros-c-generated/nros/nros_config_generated.h" ] \
-        && inc+=(-I "$repo_root/target/nros-c-generated")
+    # Where they are is `nros locate artifact` (phase-484 W6b), never a spelled
+    # `<root>/target/...`.
+    local inc=() hdr
+    for hdr in cpp-config-header c-config-header; do
+        hdr="$(nros_locate_artifact "$hdr")" || hdr=""
+        # `<include>/nros/<file>.h` -> `<include>`
+        [ -n "$hdr" ] && [ -f "$hdr" ] && inc+=(-I "${hdr%/nros/*}")
+    done
     # phase-329 W5 — the platform-header snippets `#include <nros/platform.h>`,
     # which lives ONLY in nros-platform-api (the RFC-0042 D1 canonical header).
     # Prepend it so it resolves; unique location, so no shadowing risk.
@@ -1256,9 +1259,9 @@ elif command -v "${CXX:-c++}" >/dev/null 2>&1; then
     # cannot see. Say so — the snippets fail either way, but their error is
     # `#error "must be supplied per-build"` twenty frames into a header, which
     # names the stub rather than the step that was supposed to replace it.
-    for _h in target/nros-cpp-generated/nros/nros_cpp_config_generated.h \
-              target/nros-c-generated/nros/nros_config_generated.h; do
-        [ -f "$repo_root/$_h" ] || echo "cxx-syntax: config-header generation produced NO $_h \
+    for _h in cpp-config-header c-config-header; do
+        _h="$(nros_locate_artifact "$_h")" || _h="<nros locate artifact $_h failed>"
+        [ -f "$_h" ] || echo "cxx-syntax: config-header generation produced NO $_h \
 (the build succeeded) — snippets including it will fail against the committed stub" >&2
     done
     while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do

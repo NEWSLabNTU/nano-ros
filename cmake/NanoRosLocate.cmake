@@ -17,6 +17,9 @@
 #       caller whose variable means something else. Unset <out> when the CLI
 #       located nothing; the caller keeps its own fallback.
 #
+#   nros_locate_artifact(<out> <name> …) — where a cargo-built artifact lands
+#       (`nros locate artifact`, phase-484 W6b); see its definition below.
+#
 # Locations are normal variables, never CACHE, so unsetting an override takes
 # effect on the next configure. With no CLI (a bare checkout before
 # `just setup-cli`) the module answers nothing and callers keep their own
@@ -98,4 +101,45 @@ function(nros_locate_var _var)
         get_property(_path GLOBAL PROPERTY "NROS_LOCATE_ENV_${_var}")
         set(${_var} "${_path}" PARENT_SCOPE)
     endif()
+endfunction()
+
+# nros_locate_artifact(<out> <name> [TARGET <triple>] [PROFILE <profile>]
+#                      [CONTEXT <label>])
+#   — where a cargo-built nano-ros artifact lands (phase-484 W6b, RFC-0103 D7):
+#   `c-archive`, `cpp-archive`, `c-include`, `cpp-include`, `c-config-header`,
+#   `cpp-config-header`. The layout under the target dir is
+#   `nros_build_paths::artifact` (the function the build scripts that WRITE the
+#   headers call) and the target dir is cargo's own answer, so nothing here
+#   spells `<root>/target/…`. PROFILE defaults to `release`; TARGET is omitted
+#   for a host build cargo ran without `--target`.
+#
+#   REQUIRED, unlike `nros_locate_source`: a source row has a checkout copy a
+#   caller can fall back to, an artifact has no second answer — a guessed path
+#   is exactly what this replaces. A missing CLI is fatal, naming the remedy.
+function(nros_locate_artifact _out _name)
+    cmake_parse_arguments(_LA "" "TARGET;PROFILE;CONTEXT" "" ${ARGN})
+    if(NOT _LA_PROFILE)
+        set(_LA_PROFILE release)
+    endif()
+    if(NOT _LA_CONTEXT)
+        set(_LA_CONTEXT "nros_locate_artifact")
+    endif()
+    nros_resolve_cli(_nros CONTEXT "${_LA_CONTEXT}")
+    nros_codegen_tool_reconfigure("${_nros}")
+    set(_args locate artifact "${_name}" --profile "${_LA_PROFILE}"
+        --index "${_NROS_LOCATE_INDEX}")
+    if(_LA_TARGET)
+        list(APPEND _args --target "${_LA_TARGET}")
+    endif()
+    execute_process(
+        COMMAND "${_nros}" ${_args}
+        OUTPUT_VARIABLE _path
+        ERROR_VARIABLE _err
+        RESULT_VARIABLE _rc
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT _rc EQUAL 0 OR "${_path}" STREQUAL "")
+        message(FATAL_ERROR
+            "${_LA_CONTEXT}: `nros locate artifact ${_name}` failed (${_rc}):\n${_err}")
+    endif()
+    set(${_out} "${_path}" PARENT_SCOPE)
 endfunction()

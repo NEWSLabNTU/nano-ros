@@ -43,6 +43,8 @@ set -euo pipefail
 out_dir="${1:?usage: build.sh <out-dir>}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../../../../.." && pwd)"
+# shellcheck source=scripts/build/cargo.sh
+source "$repo_root/scripts/build/cargo.sh"
 
 echo "== borrowed-e2e fixture: C / C++ borrowed-view proof binaries =="
 mkdir -p "$out_dir"
@@ -62,13 +64,13 @@ echo "borrowed-e2e: building nros-c (platform-posix)…"
 # fixture fails on the header it is about to link against — which is what the
 # build script's own warning means by "do not link the resulting rlib".
 ( cd "$repo_root" && cargo build -p nros-c --features std,platform-posix,rmw-cffi >/dev/null )
-# profile-literal-ok: unprofiled: the dep-info cargo writes beside the archive.
-cp "$repo_root/target/debug/libnros_c.d" "$out_dir/nros_c.d" 2>/dev/null || true
-# profile-literal-ok: unprofiled: the line above is a plain `cargo build`, so
-# `target/debug/` IS the derived output dir for it.
-lib="$repo_root/target/debug/libnros_c.a"
-cfg_dir="$repo_root/target/nros-c-generated"
-cfg_hdr="$cfg_dir/nros/nros_config_generated.h"
+# The line above is a plain `cargo build`, so the archive is the `dev` profile's
+# for the host; where that lands is `nros locate artifact` (phase-484 W6b).
+lib="$(nros_locate_artifact c-archive --profile dev)"
+cfg_hdr="$(nros_locate_artifact c-config-header)"
+cfg_dir="${cfg_hdr%/nros/*}"
+# The dep-info cargo writes beside the archive.
+cp "${lib%.a}.d" "$out_dir/nros_c.d" 2>/dev/null || true
 [ -f "$cfg_hdr" ] || { echo "FAIL: nros-c config header missing at $cfg_hdr" >&2; exit 1; }
 
 # The weak variant anchor the config header imports (empty if a probe-less build

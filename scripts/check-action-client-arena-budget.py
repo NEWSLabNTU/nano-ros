@@ -73,7 +73,7 @@ WHY AN ACTION *SERVER* COUNTS TOO, THOUGH THE KNOB IS NAMED FOR CLIENTS
 
 The knob's real meaning is "how many slots are budgeted at the WORST-CASE entry
 size", and `build.rs` picked the action client as that worst case. It is not:
-measured from `target/nros-cpp-generated/nros/nros_cpp_config_generated.h`
+measured from the per-build `nros/nros_cpp_config_generated.h`
 (x86_64, default 1024-byte buffers),
 
     NROS_CPP_RAW_ACTION_CLIENT_OPAQUE_U64S = 654  ->  5,232 B
