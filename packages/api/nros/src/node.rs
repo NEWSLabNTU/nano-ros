@@ -2217,7 +2217,7 @@ impl<'a> CallbackCtx<'a> {
     }
 }
 
-/// The executable counterpart of [`Node`] (W.5.1).
+/// The executable counterpart of [`Component`] (W.5.1).
 ///
 /// `register` (declarative) stays the planning SSOT; this binds runnable
 /// bodies. The generated runtime builds [`State`](ExecutableNode::State) once via
