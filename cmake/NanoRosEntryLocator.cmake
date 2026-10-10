@@ -98,7 +98,15 @@ set(NANO_ROS_LOCATOR_NODEREG_FREERTOS "tcp/10.0.2.2:7447"
 #   > board threadx-linux > platform freertos > the QEMU-slirp default.
 #
 # Precedence, node-register lane:
-#   `NROS_{NUTTX,THREADX,FREERTOS}_LOCATOR` > that platform's default.
+#   `NROS_ENTRY_LOCATOR` > `NROS_{NUTTX,THREADX,FREERTOS}_LOCATOR` > that
+#   platform's default.
+#
+#   issue 1795 — `NROS_ENTRY_LOCATOR` is the ONE name a leaf, a fixture row and
+#   `system.toml` use for "the address this image dials". The carrier lane
+#   honoured only its per-RTOS spelling, so a `-DNROS_ENTRY_LOCATOR` on a
+#   carrier leaf was silently ignored and the image dialled the default — the
+#   symptom being a test that times out with no delivery. The per-RTOS names
+#   stay as the fallback rung; nothing in the tree sets them any more.
 #
 # NOTE the platform comparison is against the RAW `NANO_ROS_PLATFORM`, NOT a
 # normalized one. `nano_ros_entry()` normalizes `freertos_armcm3` → `freertos`
@@ -131,7 +139,9 @@ function(_nros_resolve_entry_locator lane platform board out_var)
             set(_loc "${NANO_ROS_LOCATOR_ENTRY_DEFAULT}")
         endif()
     elseif(lane STREQUAL "node-register")
-        if(platform STREQUAL "nuttx")
+        if(DEFINED NROS_ENTRY_LOCATOR)
+            set(_loc "${NROS_ENTRY_LOCATOR}")
+        elseif(platform STREQUAL "nuttx")
             set(_loc "${NROS_NUTTX_LOCATOR}")
             if(NOT DEFINED NROS_NUTTX_LOCATOR)
                 set(_loc "${NANO_ROS_LOCATOR_NODEREG_NUTTX}")

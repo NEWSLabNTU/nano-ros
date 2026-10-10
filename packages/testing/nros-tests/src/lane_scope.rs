@@ -78,6 +78,7 @@ pub fn coords_admit(
 /// candidate set from the sources and refuses anything in neither list.
 pub const CONSUMERS: &[&str] = &[
     "entry_e2e.rs",
+    "typed_carrier_e2e.rs",
     "multihost_e2e.rs",
     "realtime_tiers_e2e.rs",
     "roundtrip_xprocess_e2e.rs",

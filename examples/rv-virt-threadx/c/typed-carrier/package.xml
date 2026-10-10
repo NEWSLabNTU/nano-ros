@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>riscv64_threadx_c_typed_carrier</name>
+  <version>0.1.0</version>
+  <description>issue 1795 — a C typed component deployed through the ThreadX TYPED carrier (nros_components_register_node ... DEPLOY threadx) on rv-virt-threadx</description>
+  <maintainer email="example@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>cmake</buildtool_depend>
+  <depend>nros</depend>
+  <depend>std_msgs</depend>
+
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>

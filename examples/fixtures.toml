@@ -3204,6 +3204,16 @@ rmw = "zenoh"
 dir = "examples/qemu-armv7a-nuttx/c/talker"
 cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8300" }
 
+# issue 1795 — the NuttX TYPED CARRIER road (`DEPLOY nuttx`); see the
+# rv-virt-threadx typed-carrier row. Locator:
+# `alloc::port_of(NuttxArm, C, TypedCarrier)` = 8381.
+[[fixture]]
+platform = "nuttx"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/qemu-armv7a-nuttx/c/typed-carrier"
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8381" }
+
 [[fixture]]
 platform = "nuttx"
 lang = "c"
@@ -3398,6 +3408,19 @@ lang = "c"
 rmw = "zenoh"
 dir = "examples/rv-virt-threadx/c/talker"
 cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9500" }
+
+# issue 1795 — the ThreadX TYPED CARRIER road
+# (`nros_components_register_node(... TYPED DEPLOY threadx)`), which every other
+# threadx-riscv64 C/C++ row bypasses through `nano_ros_add_executable()`. Its
+# generated entry holds the component's node as a STATIC C++ object, so it is
+# the one image here that needs the never-exits C++ static-object ABI (issue
+# 1753). Locator: `alloc::port_of(ThreadxRiscv64, C, TypedCarrier)` = 9581.
+[[fixture]]
+platform = "threadx-riscv64"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/rv-virt-threadx/c/typed-carrier"
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9581" }
 
 # issue 0680 — the discriminator for per-thread newlib `errno`. No message
 # dependency and no RMW traffic on purpose: it asserts a property of the C
