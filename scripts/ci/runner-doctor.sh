@@ -1016,14 +1016,17 @@ _nros_runner_self_test() {
     # Issue 1755 — the every-runner cache check, both directions: a HOME whose
     # `.cache` cannot hold a new directory fails, and the probe leaves nothing
     # behind in one that can.
-    mkdir -p "$tmp/cache-ro/.cache" "$tmp/cache-rw/.cache"
-    chmod 555 "$tmp/cache-ro/.cache"
+    # The unwritable case must hold for root too: CI runs this self-test in a
+    # root container, where `chmod 555` grants nothing (root ignores the
+    # mode). A `.cache` that is a regular FILE cannot hold a new directory for
+    # any uid, which is the property the check probes.
+    mkdir -p "$tmp/cache-ro" "$tmp/cache-rw/.cache"
+    : > "$tmp/cache-ro/.cache"
     out="$(HOME="$tmp/cache-ro" XDG_CACHE_HOME= _nros_runner_check_cache_home 2>&1)" && st=0 || st=1
     case "$st$out" in
-        1*"not writable"*) _st_ok "a root-owned ~/.cache is REFUSED" ;;
-        *) _st_bad "a root-owned ~/.cache is REFUSED" "rc=$st, got '$out'" ;;
+        1*"not writable"*) _st_ok "a ~/.cache that cannot hold a directory is REFUSED" ;;
+        *) _st_bad "a ~/.cache that cannot hold a directory is REFUSED" "rc=$st, got '$out'" ;;
     esac
-    chmod 755 "$tmp/cache-ro/.cache"
     out="$(HOME="$tmp/cache-rw" XDG_CACHE_HOME= _nros_runner_check_cache_home 2>&1)" && st=0 || st=1
     if [ "$st" = 0 ] && [ -z "$(ls -A "$tmp/cache-rw/.cache")" ]; then
         _st_ok "a writable ~/.cache passes and is left empty"
