@@ -5447,7 +5447,8 @@ west_zenoh_locator = "tcp/127.0.0.1:7490"
 skip_probe = true
 
 # phase-276 W6 — the MULTIHOST robot1 (talker) Rust workspace Entry
-# (examples/workspaces/rust/src/zephyr_entry_robot1): the
+# (examples/workspaces/rust's [image.zephyr_robot1], generated since
+# phase-477 W1): the
 # multihost-on-embedded coverage cell. `nros::main!(model =
 # "demo_bringup:config/multihost_robot1_model.yaml")` bakes only the robot1
 # slice (the talker; per-host model resolved with `host:=robot1`,

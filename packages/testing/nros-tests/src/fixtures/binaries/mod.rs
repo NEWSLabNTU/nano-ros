@@ -5136,19 +5136,23 @@ pub fn build_zephyr_workspace_rust_safety_entry() -> TestResult<PathBuf> {
 }
 
 /// phase-276 W6 — the Zephyr (native_sim) MULTIHOST robot1 (talker) Rust workspace
-/// Entry (`workspaces/rust/src/zephyr_entry_robot1`): `nros::main!(model =
+/// Entry (`workspaces/rust`'s `[image.zephyr_robot1]`): `nros::main!(model =
 /// "demo_bringup:config/multihost_robot1_model.yaml")` bakes only the robot1
 /// slice of the multi-host launch — the talker (the per-host model is resolved
 /// with `host:=robot1`; phase-326 / issue 0364). Paired with the NATIVE robot2
 /// (listener) per-host entry so `/chatter` crosses hosts. Built by the west lane
 /// into `<zephyr-build-root>/build-ws-rs-mh-robot1-entry-zenoh/zephyr/zephyr.exe`;
 /// consumed by `tests/multihost_e2e.rs` (zephyr_rust cell).
+///
+/// phase-477 W1 (issue 1288) — the leaf source is the WORKSPACE: the west
+/// application is GENERATED under `build/<coord>/` and
+/// `src/zephyr_entry_robot1` no longer exists. Same move as the safety sibling.
 pub fn build_zephyr_workspace_rust_multihost_robot1_entry() -> TestResult<PathBuf> {
     let binary_path =
         zephyr_build_root().join("build-ws-rs-mh-robot1-entry-zenoh/zephyr/zephyr.exe");
     require_prebuilt_binary_fresh_zephyr(
         &binary_path,
-        ZephyrLeafSource::zenoh("examples/workspaces/rust/src/zephyr_entry_robot1", "rust"),
+        ZephyrLeafSource::zenoh("examples/workspaces/rust", "rust"),
     )
 }
 
