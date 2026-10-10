@@ -274,3 +274,38 @@ the tier-1 job of run 37945434581.
 declare `build.ninja`, gated by `validate-compile-checks`; `require_west_fixture`
 requires the build stamp; D2 needed no lane change, tier 2 already builds the
 five rows). The Cyclone provisioning red D1 exposes is issue 1777.
+
+## Checkpoint — 2026-10-10 (session stopped here)
+
+**Landed / queued since 2026-10-09:** #1847 (1627, D1+D2), #1877 (1652, D5),
+#1879 (1509 rules 1 and 3, `node-package-invariance`), #1882 (1650, D3,
+`example-build-coverage`), #1885 (robot1 entry generated + precedence test),
+#1890 (W5: the five remaining bare-metal C++ roles, all six rows build). Side
+fixes: #1849 (1773 watchdog, 1775 provisioning race), #1858 (1781 ament
+first-prefix), #1862 (arm-fvp libatomic), #1868 (runner name required).
+
+**Resume here (open draft PRs):**
+- **#1892 — realtime-c SMP image** (`[image.zephyr_smp] board =
+  "qemu-cortex-a53"`, `entry = "zephyr_entry"`; builds an SMP image). Rebase
+  after #1885 merges (both touch issue 1288 and this doc), mark ready, arm.
+  Then the last W1 step: migrate realtime-c's hand-written `zephyr_entry`.
+- **#1891 — issue 1535 (W7)**: root cause = issue 1566's under-sized C
+  publisher storage (560 vs 640 B) corrupting the adjacent Rust heartbeat's
+  vtable — already fixed on main; the PR adds a compile-time size guard and
+  fixes a second defect it files there (the C++ entry handed Rust the nros-cpp context instead of
+  its executor). Remaining: `just ci gate` steps 4–6 and a re-run of the
+  `entry_e2e zephyr/mixed/entry_pubsub` cell; if green, archive 1535, ready,
+  arm. Unfiled: the mixed Zephyr fixture's probe reports "DEGRADED … examined
+  0 input(s)".
+
+**Still open in this phase:** 1509 rules 2 and 4; W1 `fvp_entry` (another
+session, `fix/477-fvp-lane`); 1512's runtime lane (entry locator bake).
+Tier-1 CI acceptance (1684/1685): run 37945434581's tier 1 was running on
+runner `newslab-118-server` at stop; tier 2 failed in preflight — triage with
+`just matrix-triage`. Unfiled: the stage reporter labels a runner-lost job
+"DID NOT START" (issue-1754 class).
+
+**Infra state:** two self-hosted runners — `nano-ros-runner-newslab-118-server`
+and `nano-ros-runner-newslab-133` (this host, tmux `nros-runner`, store
+`/mnt/p5plus/aeon/nros-runner`, env `/mnt/p5plus/aeon/runner-env.sh`).
+Dependency-pinning work continues in phase 485 (M1–M3 measured; next W1).
