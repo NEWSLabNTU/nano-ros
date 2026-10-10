@@ -19,7 +19,9 @@
 #   * a Rust toolchain (the hosted image carries rustup + stable);
 #   * `actions/checkout@v4`, which is a depth-1 checkout of the commit.
 # The workflow's own `Install zstd` step is runner provisioning too, and is
-# replaced by the first bullet rather than extracted.
+# replaced by the first bullet rather than extracted — so this list carries
+# what that step installs (`zstd`, and `python3-tomli` for
+# `check-source-refs.py` on 22.04's Python 3.10).
 #
 # Inputs (env): PROBE_BRANCH, HOST_UID, HOST_GID.
 # Mounts: /nano-ros-git (the repo's git dir, RO), /probe/release-steps.sh,
@@ -34,7 +36,7 @@ echo '=== release builder: runner-image shim ==='
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq git curl ca-certificates build-essential pkg-config \
-    python3 python3-dev zstd >/dev/null
+    python3 python3-dev python3-tomli zstd >/dev/null
 if [ ! -x "$HOME/.cargo/bin/cargo" ]; then
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
         | sh -s -- -y --profile minimal --default-toolchain stable --no-modify-path

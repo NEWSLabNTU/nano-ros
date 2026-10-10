@@ -127,8 +127,15 @@ jobs:
             exit 1
           fi
           sudo apt-get update
+          # `python3-tomli`: this runner is pinned to 22.04 (Python 3.10, no
+          # stdlib `tomllib`), and `Stage the prefix` runs
+          # `scripts/stage-sdk-root.sh` -> `check-source-refs.py --rev HEAD`,
+          # which reads the index with `tomli` on 3.10. It is a `[python.tomli]`
+          # row, not a `[prereq.*]` one, so it is named here like
+          # `ci/docker/apt-packages.txt` names it. The probe's builder
+          # (`scripts/probe/build-release-asset.sh`) mirrors this step.
           # shellcheck disable=SC2086  # deliberate: $pkgs is a package LIST
-          sudo apt-get install -y $pkgs
+          sudo apt-get install -y $pkgs python3-tomli
 
       - name: Build the CLI from source
         run: |
