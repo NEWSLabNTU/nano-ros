@@ -1,7 +1,7 @@
 # Phase 209 — C++ port friction reduction
 
 **Status (2026-10-07). CLOSED — archived; open residue moved to
-[phase-482](../phase-482-rclcpp-drop-in-residue.md).** Re-measured against the tree
+[phase-482](phase-482-rclcpp-drop-in-residue.md).** Re-measured against the tree
 before closing:
 
 - **A and A.follow-up are SUPERSEDED.** The compat header was deleted
@@ -336,6 +336,8 @@ just a single fixture.
       next round of compat gaps (composition, multi-node, intra-process).
       Picked after **Phase 210** (codegen workspace) lands so the
       codegen glue is one line, not three.
+      **Moved to [phase-488](../phase-488-larger-cpp-port-fixture.md)**
+      (2026-10-11), via phase-482 W3, which did not attempt it.
 - [ ] **209.G.5 — Book-page refresh post-Phase 210.** Once 210 collapses
       the three codegen glue lines to `nros_workspace_interfaces()` /
       `find_package(<msg>)`, refresh `book/src/getting-started/porting-

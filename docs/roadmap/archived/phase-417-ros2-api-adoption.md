@@ -1,7 +1,7 @@
 # Phase 417 — ROS 2 user-API adoption
 
 **Status (2026-10-07). CLOSED — archived; open residue moved to
-[phase-482](../phase-482-rclcpp-drop-in-residue.md).**
+[phase-482](phase-482-rclcpp-drop-in-residue.md).**
 
 - **Stages 0, 1, 2b, 4, 5 (W5.a-e) and 6 A+B are DONE.**
 - **W3.d is DONE** (issue 1637 resolved).

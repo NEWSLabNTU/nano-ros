@@ -5,7 +5,7 @@
 - **W0-W7 landed here. W8-W10 landed** through
   [phase-456](phase-456-cpp-api-is-a-handle-over-the-rust-arena.md) and
   phase-476, both archived.
-- **Carried to [phase-482](../phase-482-rclcpp-drop-in-residue.md):**
+- **Carried to [phase-482](phase-482-rclcpp-drop-in-residue.md):**
   - RFC-0096 D4, the deletion of `cmake/compat/`, which neither 456 nor 476
     took, as W1;
   - D5 item 4's freestanding `Node::SharedPtr`, as W2;

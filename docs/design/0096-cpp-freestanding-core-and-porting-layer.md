@@ -11,7 +11,7 @@ aimed one layer too low. **Deletes the compat layer rather than formalising it.*
 
 Home phase: [phase-442](../roadmap/archived/phase-442-one-freestanding-rclcpp-api.md)
 (complete); the remainder is tracked by
-[phase-482](../roadmap/phase-482-rclcpp-drop-in-residue.md). Prior phases: 417 (ROS 2 API adoption), 427 (one node
+[phase-482](../roadmap/archived/phase-482-rclcpp-drop-in-residue.md). Prior phases: 417 (ROS 2 API adoption), 427 (one node
 type), 438 (the std surface as an opt-in), 426 (parameters, Rust SSoT).
 
 ## The decision
@@ -344,7 +344,7 @@ them to bridge once the one API is the ROS 2 API.
 Confirmed 2026-10-07, when phase-442 closed with this item still undone (neither
 phase-456 nor phase-476 took it). `cmake/compat/` is DELETED, not kept as
 permanent porting tooling, and that is
-[phase-482](../roadmap/phase-482-rclcpp-drop-in-residue.md) W1. Whatever a
+[phase-482](../roadmap/archived/phase-482-rclcpp-drop-in-residue.md) W1. Whatever a
 ported `CMakeLists.txt` needs from it either becomes part of nano-ros's own
 CMake package or is listed in D5 as an edit.
 
@@ -394,7 +394,7 @@ an edit, and every one is a compile error naming the exact site:
    `nros::Handle<Node>` and copyable — so this is on the list because it is a
    difference, not because it has cost anything measured.
 
-   Done 2026-10-07 ([phase-482](../roadmap/phase-482-rclcpp-drop-in-residue.md)
+   Done 2026-10-07 ([phase-482](../roadmap/archived/phase-482-rclcpp-drop-in-residue.md)
    W2): `Node::SharedPtr` is `nros::Handle<Node>` on every target.
 5. **`Node::SharedPtr x = std::make_shared<MyNode>(…)`** (phase-482 W2). The
    handle observes and does not own, so binding it to a temporary
