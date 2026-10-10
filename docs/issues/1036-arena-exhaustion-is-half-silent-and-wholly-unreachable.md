@@ -8,7 +8,7 @@ type: bug
 area: core, boards, testing
 severity: high
 found: 2026-09-04
-related: [issue-1640, issue-1370, issue-1425, issue-0900, issue-0589, phase-412, phase-403, phase-409]
+related: [issue-1799, issue-1640, issue-1370, issue-1425, issue-0900, issue-0589, phase-412, phase-403, phase-409]
 ---
 
 ## What happens
@@ -368,10 +368,13 @@ exercised on a real 32-bit image.
 
 ### STILL open — and this is all of it
 
-**The on-silicon run.** Nothing on this host has a board or a probe; the run
-the island needs is `pyocd commander -t s32k344 -c halt -c "savemem <addr>
-<len> report.bin"` on an image built as above, and the expected output is
-written above. Also not done: making the QEMU run a LANE (it was run by hand;
-the recipe is the conf above, a `-gdb` QEMU, a breakpoint on
-`k_sys_fatal_error_handler`, `dump binary memory`, and `read-boot-report.py`).
-The three bare-metal TLSF ports' silent heap refusals are issue 1640.
+The QEMU run is not a LANE: it was run by hand. The recipe is the conf above,
+a `-gdb` QEMU, a breakpoint on `k_sys_fatal_error_handler`,
+`dump binary memory`, and `read-boot-report.py`. The three bare-metal TLSF
+ports' silent heap refusals are issue 1640 (resolved).
+
+## 2026-10-11 — the on-silicon run moved to issue 1799
+
+The run on the MR-CANHUBK344 with a probe is a hardware task, done by hand on
+the board, so it has its own issue: 1799 carries the conf, the three commands
+and the expected decode. This issue now tracks only the QEMU lane above.
