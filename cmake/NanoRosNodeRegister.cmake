@@ -992,7 +992,7 @@ function(nano_ros_node_register)
         # `@NROS_ENTRY_LOCATOR@` template substitution the carrier TU reads, not
         # a second producer.
         _nros_resolve_entry_locator(node-register
-            "${_nrc_family}" "${NANO_ROS_BOARD}" NROS_ENTRY_LOCATOR)
+            "${_nrc_family}" "${NROS_BOARD}" NROS_ENTRY_LOCATOR)
         set(_entry_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-entry")
         set(_entry_src "${_entry_dir}/main.cpp")
         # Phase 240.3 (RFC-0043) — TYPED routes the carrier to the real
@@ -1076,7 +1076,7 @@ function(nano_ros_node_register)
         # threadx default (7553, slirp host) is NOT the entry lane's
         # (127.0.0.1:7447 on threadx-linux); both are preserved deliberately.
         _nros_resolve_entry_locator(node-register
-            "${_nrc_family}" "${NANO_ROS_BOARD}" NROS_ENTRY_LOCATOR)
+            "${_nrc_family}" "${NROS_BOARD}" NROS_ENTRY_LOCATOR)
         set(NROS_ENTRY_SHAPE_RCLCPP "${_nrc_shape_rclcpp}")
         _nros_rtos_entry_family(threadx)
         set(_entry_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-entry")
@@ -1154,7 +1154,7 @@ function(nano_ros_node_register)
         # carried forward rather than resolved by reading — deciding it needs a
         # QEMU run per lane.
         _nros_resolve_entry_locator(node-register
-            "${_nrc_family}" "${NANO_ROS_BOARD}" NROS_ENTRY_LOCATOR)
+            "${_nrc_family}" "${NROS_BOARD}" NROS_ENTRY_LOCATOR)
         set(NROS_ENTRY_SHAPE_RCLCPP "${_nrc_shape_rclcpp}")
         _nros_rtos_entry_family(freertos)
         set(_entry_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-entry")

@@ -12,7 +12,7 @@
 //! The compile proof lives in the **build stage**: the compile-check fixture
 //! `one_dep_component_pkg` (`scripts/build/compile-check-fixtures.sh`, run by
 //! `build-test-fixtures`) stages the one-dep template, rewrites its
-//! `@NANO_ROS_ROOT@` placeholders, runs `cargo check`, and writes a
+//! `@NROS_REPO_DIR@` placeholders, runs `cargo check`, and writes a
 //! `.compile-ok` stamp on success. This test asserts the stamp rather than
 //! running `cargo check` at run time (issue 0034 / AGENTS.md "No compilation
 //! inside tests"). The static pre-flight below keeps the signal meaningful.

@@ -11,7 +11,7 @@ nros setup native             # host toolchains (zenoh RMW default)
 ```
 
 No SDK env vars needed for Rust. C/C++ copy-outs resolve the nano-ros root via
-`-DNANO_ROS_ROOT=<path>` or the `NROS_REPO_DIR` env var.
+`-DNROS_REPO_DIR=<path>` or the `NROS_REPO_DIR` env var.
 
 ## RMW selection
 

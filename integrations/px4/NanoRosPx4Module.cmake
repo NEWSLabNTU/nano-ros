@@ -50,12 +50,12 @@
 include_guard(GLOBAL)
 
 # --- Resolve the nano-ros checkout ------------------------------------------
-if(NOT DEFINED NANO_ROS_ROOT OR NANO_ROS_ROOT STREQUAL "")
+if(NOT DEFINED NROS_REPO_DIR OR NROS_REPO_DIR STREQUAL "")
     if(DEFINED ENV{NROS_REPO_DIR} AND NOT "$ENV{NROS_REPO_DIR}" STREQUAL "")
-        set(NANO_ROS_ROOT "$ENV{NROS_REPO_DIR}")
+        set(NROS_REPO_DIR "$ENV{NROS_REPO_DIR}")
     else()
         # <root>/integrations/px4/ → up two.
-        get_filename_component(NANO_ROS_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
+        get_filename_component(NROS_REPO_DIR "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
     endif()
 endif()
 
@@ -64,11 +64,11 @@ endif()
 # Phase-484 W6b (RFC-0103 D7). The archive and the per-build headers are cargo
 # byproducts, so where they are is (cargo's target dir) + (one layout,
 # `nros_build_paths::artifact` — the function the build scripts that WRITE the
-# headers call). This module used to spell `${NANO_ROS_ROOT}/target/...`, which
+# headers call). This module used to spell `${NROS_REPO_DIR}/target/...`, which
 # is right only while nothing sets `CARGO_TARGET_DIR` or `[build] target-dir`;
 # under either, the archive cargo just built was "not found" and the headers
 # paired against were another build's.
-include("${NANO_ROS_ROOT}/cmake/NanoRosLocate.cmake")
+include("${NROS_REPO_DIR}/cmake/NanoRosLocate.cmake")
 nros_locate_artifact(_NROS_PX4_CPP_A_DEFAULT cpp-archive PROFILE release CONTEXT "NanoRosPx4Module")
 nros_locate_artifact(_NROS_PX4_C_INCLUDE c-include CONTEXT "NanoRosPx4Module")
 nros_locate_artifact(_NROS_PX4_CPP_INCLUDE cpp-include CONTEXT "NanoRosPx4Module")
@@ -109,8 +109,8 @@ _nros_px4_resolve_archive(_NROS_PX4_CPP_A NROS_CPP_ARCHIVE NROS_CPP_ARCHIVE
     "cargo build -p nros-cpp --no-default-features --features std,rmw-cffi --release")
 
 _nros_px4_resolve_archive(_NROS_PX4_PLATFORM_A NROS_PLATFORM_ARCHIVE NROS_PLATFORM_ARCHIVE
-    "${NANO_ROS_ROOT}/build/nros-platform-posix/libnros_platform_posix.a"
-    "cmake -S ${NANO_ROS_ROOT}/packages/platform/nros-platform-posix -B ${NANO_ROS_ROOT}/build/nros-platform-posix && cmake --build ${NANO_ROS_ROOT}/build/nros-platform-posix")
+    "${NROS_REPO_DIR}/build/nros-platform-posix/libnros_platform_posix.a"
+    "cmake -S ${NROS_REPO_DIR}/packages/platform/nros-platform-posix -B ${NROS_REPO_DIR}/build/nros-platform-posix && cmake --build ${NROS_REPO_DIR}/build/nros-platform-posix")
 
 # The NETWORKED backends this helper knows, in ONE place. Three sites read it —
 # the BACKENDS dispatch, the unknown-backend error, and the archive precheck
@@ -146,10 +146,10 @@ endfunction()
 # here would have linked green and only failed for the first caller that included
 # something. Which is exactly how this file was born with packages/core paths.
 set(_NROS_PX4_INCLUDES
-    "${NANO_ROS_ROOT}/packages/api/nros-cpp/include"
-    "${NANO_ROS_ROOT}/packages/api/nros-c/include"
-    "${NANO_ROS_ROOT}/packages/core/nros-rmw-abi/include"
-    "${NANO_ROS_ROOT}/packages/platform/nros-platform-api/include")
+    "${NROS_REPO_DIR}/packages/api/nros-cpp/include"
+    "${NROS_REPO_DIR}/packages/api/nros-c/include"
+    "${NROS_REPO_DIR}/packages/core/nros-rmw-abi/include"
+    "${NROS_REPO_DIR}/packages/platform/nros-platform-api/include")
 
 # The PER-BUILD generated headers (storage sizes, feature constants), emitted by
 # nros-c/nros-cpp build.rs into $CARGO_TARGET_DIR/nros-{c,cpp}-generated/nros/.
@@ -199,7 +199,7 @@ endforeach()
 # in. Below it is the same fact, at configure time, naming the command.
 #
 # The archive path is overridable (`NROS_CPP_ARCHIVE`) and the header path is
-# not — it is derived from NANO_ROS_ROOT — so an override silently un-pairs
+# not — it is derived from NROS_REPO_DIR — so an override silently un-pairs
 # them. That hole is permanent by construction and is the main thing this catches
 # that a recipe fix cannot: `just px4 build-sitl-example` now builds the archive
 # it links (issue 1050), but it can only speak for the DEFAULT path.
@@ -291,7 +291,7 @@ function(nros_px4_add_module)
     # gains a file. BACKENDS names WHAT; this decides HOW.
     foreach(_b IN LISTS NPX_BACKENDS)
         if(_b STREQUAL "uorb")
-            set(_uorb "${NANO_ROS_ROOT}/packages/rmw/uorb/nros-rmw-uorb")
+            set(_uorb "${NROS_REPO_DIR}/packages/rmw/uorb/nros-rmw-uorb")
             if(NOT EXISTS "${_uorb}/src/vtable.cpp")
                 message(FATAL_ERROR "nros_px4_add_module: uORB backend not found at ${_uorb}")
             endif()

@@ -909,7 +909,7 @@ const AMENT_SHAPE_TREES: &[&str] = &[
 
 /// Every `examples/<tree>/{c,cpp}/<leaf>/CMakeLists.txt` (for the migrated trees)
 /// must be the RFC-0048 ament shape: `find_package(nano_ros REQUIRED)`, no leftover
-/// interim/old-shape constructs (the `NANO_ROS_ROOT` resolve guard,
+/// interim/old-shape constructs (the `NROS_REPO_DIR` resolve guard,
 /// `nano_ros_bootstrap()`, the `nano_ros_entry()` verb, or a raw
 /// `NanoRosBootstrap.cmake` include). Guards the W6 native + embedded migrations
 /// against regression + a stray un-migrated leaf.
@@ -917,7 +917,7 @@ const AMENT_SHAPE_TREES: &[&str] = &[
 fn standalone_leaves_use_ament_shape() {
     const FORBIDDEN: &[&str] = &[
         "nano_ros_bootstrap(",
-        "if(NOT DEFINED NANO_ROS_ROOT",
+        "if(NOT DEFINED NROS_REPO_DIR",
         "NanoRosBootstrap.cmake",
         "nano_ros_entry(",
         "nano_ros_link(",

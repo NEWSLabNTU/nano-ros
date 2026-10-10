@@ -8,7 +8,7 @@
 #   src/demo_entry/    — Entry pkg whose `main.rs` is `nros::main!(launch =
 #                        "demo_bringup")`; deploy = "native".
 #
-# The companion test stages this into a tempdir, rewrites `@NANO_ROS_ROOT@`,
+# The companion test stages this into a tempdir, rewrites `@NROS_REPO_DIR@`,
 # and `cargo check`s the Entry pkg. Because system.toml declares `[tiers.*]`,
 # the macro emits `<LinuxBoard>::run_tiers(TIERS, ...)` (RFC-0032 §5) — the
 # check proves that emit compiles.

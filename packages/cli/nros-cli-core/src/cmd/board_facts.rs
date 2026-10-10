@@ -15,7 +15,7 @@
 //! thing that owns it is whoever spawns cargo: cmake, a `just` recipe, or west.
 //!
 //! **One board per emission.** Exactly one board is active per configure — the
-//! cmake side selects it with `if/elseif` on `NANO_ROS_BOARD` and the toolchain
+//! cmake side selects it with `if/elseif` on `NROS_BOARD` and the toolchain
 //! file must precede `project()` — so this prints ONE deploy's facts, never a
 //! table the caller has to index.
 
@@ -45,7 +45,7 @@ pub struct BoardFactsArgs {
     pub deploy: Option<String>,
 
     /// Board name, when the deploy is identified by its board rather than its
-    /// key (what the cmake lane knows — `NANO_ROS_BOARD`).
+    /// key (what the cmake lane knows — `NROS_BOARD`).
     #[arg(long)]
     pub board: Option<String>,
 

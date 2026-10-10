@@ -16,6 +16,10 @@ name to different values is a configure error.
 | `NANO_ROS_SKIP_BOOTSTRAP` | `NROS_SKIP_BOOTSTRAP` |
 | `NANO_ROS_BUILD_CODEGEN` | `NROS_BUILD_CODEGEN` |
 | `NANO_ROS_CMAKE_DIR` | `NROS_CMAKE_DIR` |
+| `NANO_ROS_RMW` | `NROS_RMW` |
+| `NANO_ROS_BOARD` | `NROS_BOARD` |
+| `NANO_ROS_ROOT` (cmake variable) | `NROS_REPO_DIR` |
+| `NANO_ROS_ROOT <path>` (keyword of `nano_ros_workspace()` and friends) | `NROS_REPO_DIR <path>` |
 
 The aliases will be removed in a later release: first each becomes a configure
 error naming its replacement, then the old name stops being recognised at all.
@@ -24,3 +28,6 @@ see the warning.
 
 `nano_ros_DIR` and `nano_ros_ROOT` are not on this list: they are CMake's own
 `find_package(nano_ros)` hints and keep their spelling.
+
+`NANO_ROS_ROOT` as an **environment** variable is not an alias: it is retired
+and a configure that finds it set stops, naming `NROS_REPO_DIR`.

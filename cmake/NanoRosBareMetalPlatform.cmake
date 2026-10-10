@@ -1,6 +1,6 @@
 # cmake/NanoRosBareMetalPlatform.cmake — issue 1512.
 #
-# `NANO_ROS_BOARD` -> the `nros-c` / `nros-cpp` cargo feature that selects this
+# `NROS_BOARD` -> the `nros-c` / `nros-cpp` cargo feature that selects this
 # board's platform implementation.
 #
 # ## Why this file exists at all
@@ -70,7 +70,7 @@ function(nros_baremetal_platform_feature out_var board context)
     string(REPLACE ";" ", " _known_flat "${_known}")
     if(board STREQUAL "")
         message(FATAL_ERROR
-            "${context}: a bare-metal build must set NANO_ROS_BOARD before the "
+            "${context}: a bare-metal build must set NROS_BOARD before the "
             "runtime is imported. Bare metal is the one platform with no single "
             "`nros-platform/platform-*` feature — the board IS the port — so "
             "the C/C++ staticlib cannot be configured without knowing which "
@@ -78,7 +78,7 @@ function(nros_baremetal_platform_feature out_var board context)
     endif()
     if(_hit STREQUAL "")
         message(FATAL_ERROR
-            "${context}: no bare-metal platform feature for NANO_ROS_BOARD "
+            "${context}: no bare-metal platform feature for NROS_BOARD "
             "'${board}' (known: ${_known_flat}). Add the row to "
             "cmake/NanoRosBareMetalPlatform.cmake together with the matching "
             "`platform-*` arm on nros-c and nros-cpp; "

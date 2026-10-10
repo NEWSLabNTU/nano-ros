@@ -145,7 +145,7 @@ _nros_hash_relpaths() {
 # gate stayed silent and the tests caught it on mtime.
 #
 # Rather than guess that closure (a `cargo metadata` walk cannot even run here:
-# a row's `Cargo.toml` carries `@NANO_ROS_ROOT@` placeholders until the builder
+# a row's `Cargo.toml` carries `@NROS_REPO_DIR@` placeholders until the builder
 # stages it), take the one the compiler already wrote. Cargo emits dep-info
 # `.d` per unit; the union of their in-repo entries IS the set the build read.
 # Same move ninja makes with `.ninja_deps` and ccache with its manifest.

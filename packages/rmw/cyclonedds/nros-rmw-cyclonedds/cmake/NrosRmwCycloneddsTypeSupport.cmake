@@ -956,7 +956,7 @@ endfunction()
 # `cmake/NanoRosGenerateInterfaces.cmake`.
 #
 # It used to sit in the shared codegen pipeline behind
-# `if(NANO_ROS_RMW STREQUAL "cyclonedds" AND COMMAND ...)` — 27 mentions of one
+# `if(NROS_RMW STREQUAL "cyclonedds" AND COMMAND ...)` — 27 mentions of one
 # backend in a file every backend goes through, and the single largest reason
 # cyclonedds looked "special". Nothing in it is generic: it knows that Cyclone
 # 0.10.5's idlc aborts on `wstring`, that descriptors are C so the consumer must

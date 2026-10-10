@@ -369,7 +369,7 @@ fn render_backend_register_fn(out: &mut String, plan: &NrosPlan) {
             // phase-263 B3 — a NATIVE Rust entry takes `nros-rmw-cyclonedds-sys`
             // as a cargo dep, so it registers the backend in-process here. A
             // CMake/corrosion build registers cyclone through the C ABI at the
-            // CMake layer (NANO_ROS_RMW=cyclonedds), so no Rust call is emitted
+            // CMake layer (NROS_RMW=cyclonedds), so no Rust call is emitted
             // there (byte-identical to before).
             "cyclonedds" if cyclone_cargo => {
                 out.push_str("    let _ = nros_rmw_cyclonedds_sys::register();\n")

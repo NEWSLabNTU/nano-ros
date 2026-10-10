@@ -9,7 +9,7 @@
 //! `CMakeLists.txt` carries ONLY `nano_ros_use_board(fvp-aemv8r-smp)`
 //! with `find_package(Zephyr)` and a trivial `printk` app. A green run
 //! proves the single-call import path (`board.cmake` → `BOARD` /
-//! `EXTRA_CONF_FILE` / `DTC_OVERLAY_FILE` / `NANO_ROS_RMW` /
+//! `EXTRA_CONF_FILE` / `DTC_OVERLAY_FILE` / `NROS_RMW` /
 //! `NROS_BOARD_RUNNER`) boots to the application on real FVP hardware.
 //!
 //! The test is a thin invoker + UART scraper over the

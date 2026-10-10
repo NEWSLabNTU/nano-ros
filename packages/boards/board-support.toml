@@ -83,7 +83,7 @@ notes = "CAVEAT: only ever built for native_sim/native/64. No real Zephyr hardwa
 # So `matrix_platform` is ABSENT rather than borrowed from a sibling. That is
 # what makes this row honest: scaffold promises nothing and owes no
 # maintainers, which is exactly the board's state. Its two `fixtures.toml` rows
-# build under `platform = "freertos"` with `NANO_ROS_BOARD`, so they are
+# build under `platform = "freertos"` with `NROS_BOARD`, so they are
 # attributed to the existing platform and are not a runtime witness for this
 # board. Give it a tier when W4 lands the cell, not before — a tier that is
 # merely asserted is the drift this gate exists to catch.

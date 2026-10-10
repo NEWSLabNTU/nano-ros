@@ -56,7 +56,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(NROS_PLATFORM posix)
 set(NROS_RMW "zenoh" CACHE STRING
     "Active RMW (zenoh|dds|xrce|cyclonedds) — selects the backend linked into this example.")
-set(NANO_ROS_RMW "\${NROS_RMW}")
+set(NROS_RMW "\${NROS_RMW}")
 add_subdirectory("\${CMAKE_CURRENT_SOURCE_DIR}/../../../.." nano_ros)
 
 nros_generate_interfaces(builtin_interfaces LANGUAGE CPP SKIP_INSTALL)

@@ -94,13 +94,13 @@ because `--whole-archive` pulls every section unconditionally.
 
 ### C binary
 
-`NANO_ROS_RMW=none` switches off the root CMake's
+`NROS_RMW=none` switches off the root CMake's
 RMW auto-pull. Pull each backend's staticlib through
 `corrosion_import_crate` and wrap with `--whole-archive` so
 the registry walker finds both names:
 
 ```cmake
-set(NANO_ROS_RMW none)
+set(NROS_RMW none)
 add_subdirectory(${nano_ros_root} nano_ros)
 
 corrosion_import_crate(
@@ -285,7 +285,7 @@ let pub_out = node_out.create_publisher_raw("/chatter", "std_msgs::msg::dds_::St
 ```
 
 XRCE registers lazily from name+hash; Cyclone needs the descriptor up
-front. The backend links the vendored CycloneDDS (no `-DNANO_ROS_RMW`
+front. The backend links the vendored CycloneDDS (no `-DNROS_RMW`
 needed for a Rust binary — the `nros-rmw-cyclonedds-sys` dep is the
 selection).
 

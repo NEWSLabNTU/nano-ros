@@ -292,10 +292,10 @@ self_test_wiring() {
     local good='include(NanoRosArchivePairing.cmake)
 nros_assert_archive_pairs_with_header(
     ARCHIVE "${_NROS_PX4_CPP_A}"
-    HEADER  "${NANO_ROS_ROOT}/target/nros-cpp-generated/nros/nros_cpp_config_generated.h")
+    HEADER  "${NROS_REPO_DIR}/target/nros-cpp-generated/nros/nros_cpp_config_generated.h")
 nros_assert_archive_pairs_with_header(
     ARCHIVE "${_NROS_PX4_CPP_A}"
-    HEADER  "${NANO_ROS_ROOT}/target/nros-c-generated/nros/nros_config_generated.h")
+    HEADER  "${NROS_REPO_DIR}/target/nros-c-generated/nros/nros_config_generated.h")
 set(_nros_px4_link_archives "${_NROS_PX4_CPP_A}" "${_NROS_PX4_PLATFORM_A}")'
 
     # (g) THE 1050 RESTORATION: pairs a real header against an archive that is
@@ -305,11 +305,11 @@ set(_nros_px4_link_archives "${_NROS_PX4_CPP_A}" "${_NROS_PX4_PLATFORM_A}")'
     cat >"$d/wrong-archive.cmake" <<'EOF'
 include(NanoRosArchivePairing.cmake)
 nros_assert_archive_pairs_with_header(
-    ARCHIVE "${NANO_ROS_ROOT}/target/debug/libnros_cpp.a"
-    HEADER  "${NANO_ROS_ROOT}/target/nros-cpp-generated/nros/nros_cpp_config_generated.h")
+    ARCHIVE "${NROS_REPO_DIR}/target/debug/libnros_cpp.a"
+    HEADER  "${NROS_REPO_DIR}/target/nros-cpp-generated/nros/nros_cpp_config_generated.h")
 nros_assert_archive_pairs_with_header(
-    ARCHIVE "${NANO_ROS_ROOT}/target/debug/libnros_cpp.a"
-    HEADER  "${NANO_ROS_ROOT}/target/nros-c-generated/nros/nros_config_generated.h")
+    ARCHIVE "${NROS_REPO_DIR}/target/debug/libnros_cpp.a"
+    HEADER  "${NROS_REPO_DIR}/target/nros-c-generated/nros/nros_config_generated.h")
 set(_nros_px4_link_archives "${_NROS_PX4_CPP_A}" "${_NROS_PX4_PLATFORM_A}")
 EOF
     found="$(scan_consumer "$d/wrong-archive.cmake")"
@@ -359,7 +359,7 @@ EOF
     cat >"$d/half.cmake" <<'EOF'
 nros_assert_archive_pairs_with_header(
     ARCHIVE "${_NROS_PX4_CPP_A}"
-    HEADER  "${NANO_ROS_ROOT}/target/nros-cpp-generated/nros/nros_cpp_config_generated.h")
+    HEADER  "${NROS_REPO_DIR}/target/nros-cpp-generated/nros/nros_cpp_config_generated.h")
 set(_nros_px4_link_archives "${_NROS_PX4_CPP_A}" "${_NROS_PX4_PLATFORM_A}")
 EOF
     found="$(scan_consumer "$d/half.cmake")"

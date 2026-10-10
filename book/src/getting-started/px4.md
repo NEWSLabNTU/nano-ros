@@ -90,7 +90,7 @@ cmake -B build -S PX4-Autopilot \
       -DCONFIG=px4_fmu-v5_default \
       -DEXTERNAL_MODULES_LOCATION=$PWD/px4-modules/nano-ros \
       -DNANO_ROS_DIR=$PWD/../nano-ros \
-      -DNANO_ROS_RMW=zenoh
+      -DNROS_RMW=zenoh
 ```
 
 (Adding a Kconfig overlay so the module appears under

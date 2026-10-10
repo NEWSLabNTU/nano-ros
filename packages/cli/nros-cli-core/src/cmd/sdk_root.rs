@@ -41,7 +41,7 @@ pub struct Args {
     pub workspace: Option<PathBuf>,
 
     /// An explicit root, taking precedence over everything. Present so a caller
-    /// forwarding a user's `-DNANO_ROS_ROOT` uses ONE ladder rather than
+    /// forwarding a user's `-DNROS_REPO_DIR` uses ONE ladder rather than
     /// branching around it.
     #[arg(long)]
     pub nano_ros_path: Option<PathBuf>,

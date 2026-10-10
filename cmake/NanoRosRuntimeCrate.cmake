@@ -129,7 +129,7 @@ path = \"src/lib.rs\"
 crate-type = [\"staticlib\"]
 
 [dependencies]
-nros-cpp = { path = \"${NANO_ROS_ROOT}/packages/api/nros-cpp\", default-features = false, features = [${_feat_toml}] }
+nros-cpp = { path = \"${NROS_REPO_DIR}/packages/api/nros-cpp\", default-features = false, features = [${_feat_toml}] }
 ${_dep_lines}
 [workspace]
 
@@ -207,8 +207,8 @@ function(nros_synth_runtime_umbrella)
             "nros_synth_runtime_umbrella: Corrosion required (build via "
             "nano_ros_workspace()/add_subdirectory(nano-ros)).")
     endif()
-    if(NOT NANO_ROS_ROOT)
-        message(FATAL_ERROR "nros_synth_runtime_umbrella: NANO_ROS_ROOT not set.")
+    if(NOT NROS_REPO_DIR)
+        message(FATAL_ERROR "nros_synth_runtime_umbrella: NROS_REPO_DIR not set.")
     endif()
 
     # phase-314 — ONE feature computation, shared with nros-c and nros-cpp.
@@ -223,7 +223,7 @@ function(nros_synth_runtime_umbrella)
     # `_NRR_BACKEND` itself, so the call was a no-op that read as the SSoT
     # (`grep NROS_RMW` over this file returned nothing). It is a process spawn
     # now, which is a good reason to notice, but it was dead before.
-    include("${NANO_ROS_ROOT}/cmake/NanoRosFeatureSet.cmake")
+    include("${NROS_REPO_DIR}/cmake/NanoRosFeatureSet.cmake")
     set(_caps ${NROS_FEATURES})
     if(NROS_SAFETY_E2E)
         list(APPEND _caps safety)
@@ -341,7 +341,7 @@ nros_armv8r_cflags_env(nros_ws_runtime-static)
     # to `CMAKE_SOURCE_DIR`, not to the current directory. Deferring to the
     # current one would fire at the end of whichever scope called first, which
     # is the bug rather than a smaller version of it.
-    include("${NANO_ROS_ROOT}/cmake/NanoRosEntityFacts.cmake")
+    include("${NROS_REPO_DIR}/cmake/NanoRosEntityFacts.cmake")
     nros_entity_facts_env_deferred(nros_ws_runtime-static)
     if(NOT TARGET nros_ws_runtime-static)
         message(FATAL_ERROR

@@ -3,7 +3,7 @@
 //! RMW is a declared, language-agnostic value (`system.toml [system].rmw` /
 //! `[deploy.<t>].rmw` / CLI flag). This module is the single place that
 //! validates a declared RMW string and **lowers** it to each language's build
-//! mechanism — a Rust cargo feature and a CMake `-DNANO_ROS_RMW` value — plus the
+//! mechanism — a Rust cargo feature and a CMake `-DNROS_RMW` value — plus the
 //! C `#define` token the bake emits. The cargo feature / CMake var are lowering
 //! targets, not the user-facing knob.
 //!
@@ -35,7 +35,7 @@ include!(concat!(env!("OUT_DIR"), "/rmw_table.rs"));
 ///
 /// phase-347 W3 — this was a hand-written `const &["zenoh", "xrce",
 /// "cyclonedds"]`, and it was already wrong: `uorb` is a first-class
-/// `NANO_ROS_RMW` value in `NanoRosFeatureSet.cmake` and in
+/// `NROS_RMW` value in `NanoRosFeatureSet.cmake` and in
 /// `nros-cpp/CMakeLists.txt`, but absent here, so `nros_rmw_dispatch`
 /// FATAL_ERROR'd on a backend the tree ships. A closed list stopped covering
 /// the tree it governed; that is why it is no longer a list.
@@ -52,7 +52,7 @@ pub struct ResolvedRmw {
     /// `"rmw-zenoh"` (Phase 248 C5b: lands on the entry's board dep, not
     /// `nros`). Board crate and `nros` share the `rmw-X` naming.
     pub cargo_feature: &'static str,
-    /// The `-DNANO_ROS_RMW` CMake value, e.g. `"zenoh"`.
+    /// The `-DNROS_RMW` CMake value, e.g. `"zenoh"`.
     pub cmake_value: &'static str,
     /// The C `#define NROS_SYSTEM_RMW_<TOKEN>` token, e.g. `"ZENOH"`.
     pub c_define_token: &'static str,

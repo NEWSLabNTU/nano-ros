@@ -31,7 +31,11 @@ EXEMPT_FILES = {
     "scripts/check/check-deprecated-cmake-names.py",
     "book/src/reference/deprecated-names.md",
     "tests/cmake-deprecated-names-tests.sh",
+    # RFC-0103 D6: `NANO_ROS_ROOT` as an ENVIRONMENT variable is retired and
+    # REFUSED, a different rule from the cmake alias; that gate names it.
+    "scripts/check/check-retired-store-vars.py",
 }
+HANDLES = re.compile(r"ENV\{NANO_ROS_ROOT\}|deprecat|retired|;NANO_ROS_ROOT\b|NANO_ROS_ROOT;|keyword|disagree", re.I)
 RETIRED_PREFIXES = ["NANO_ROS_EXPORT_", "NANO_ROS_LEAF_", "NANO_ROS_PROVIDER_",
                     "NANO_ROS_LOCATOR_", "NANO_ROS_DEFAULT_"]
 
@@ -56,7 +60,7 @@ def self_test(pat: re.Pattern[str]) -> None:
     assert not pat.search("_NANO_ROS_PLATFORM_PRIVATE")
     assert pat.search("${NANO_ROS_EXPORT_BOARD}")
     assert not pat.search("set(NROS_PLATFORM posix)")
-    assert not pat.search("NANO_ROS_ROOT")  # W7b-2's, not this table's (yet)
+    assert pat.search("set(NANO_ROS_ROOT /x)")  # W7b-2 joined it to the table
 
 
 def main() -> int:
@@ -70,6 +74,10 @@ def main() -> int:
         if pat.search(line.split(":", 2)[-1])
         and not line.startswith(EXEMPT_PREFIXES)
         and line.split(":", 1)[0] not in EXEMPT_FILES
+        # A line that names an old spelling in order to HANDLE it — the env
+        # refusal (`$ENV{NANO_ROS_ROOT}`), a deprecation or retirement message,
+        # a function's deprecated keyword alias — is not a read of it.
+        and not HANDLES.search(line.split(":", 2)[-1])
     ]
     if bad:
         print("check-deprecated-cmake-names: FAIL — a deprecated NANO_ROS_* name outside the shim:",

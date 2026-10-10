@@ -21,13 +21,16 @@
 # The consuming `CMakeLists.txt` is byte-identical across every platform; the
 # per-package platform/board/RMW delta lives in `package.xml` `<export>` (§4,
 # wired in W4). Until W4 lands, deploy defaults to `native` and platform/RMW come
-# from the `NROS_PLATFORM` / `NANO_ROS_RMW` cache vars as before.
+# from the `NROS_PLATFORM` / `NROS_RMW` cache vars as before.
 
 # This config file sits at the checkout root, so its own directory is the root.
-set(NANO_ROS_ROOT "${CMAKE_CURRENT_LIST_DIR}")
-# phase-484 W7b — adopt any deprecated `NANO_ROS_*` name the project set.
+# phase-484 W7b — adopt any deprecated `NANO_ROS_*` name the project set,
+# BEFORE the root is stated: this config file's own directory IS the root, so a
+# deprecated root alias the project passed (also CMake's find hint) is adopted and then
+# superseded here rather than compared with it.
 include("${CMAKE_CURRENT_LIST_DIR}/cmake/NanoRosDeprecatedNames.cmake")
 nros_adopt_deprecated_names()
+set(NROS_REPO_DIR "${CMAKE_CURRENT_LIST_DIR}")
 
 # --- Zephyr arm (287-W6) ------------------------------------------------------
 # On Zephyr, nano-ros is already IN the build as a west/Zephyr module (the
@@ -38,36 +41,38 @@ nros_adopt_deprecated_names()
 # verbs. The leaf keeps `find_package(Zephyr)` first — Zephyr owns the build,
 # so a Zephyr leaf is deliberately NOT byte-identical to native (RFC-0048 §3).
 if(DEFINED ZEPHYR_BASE AND TARGET zephyr_interface)
-    include("${NANO_ROS_ROOT}/cmake/NanoRosPackageXml.cmake")
+    include("${NROS_REPO_DIR}/cmake/NanoRosPackageXml.cmake")
     nano_ros_read_package_export()
     # phase-445 W3 (RFC-0098 D3) — the leaf's system.toml names its board.
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/system.toml")
-        include("${NANO_ROS_ROOT}/cmake/NanoRosCodegenCore.cmake")
+        include("${NROS_REPO_DIR}/cmake/NanoRosCodegenCore.cmake")
     endif()
     nano_ros_read_leaf_system()
     # deploy="zephyr" (board/RMW stay with Zephyr's own BOARD/Kconfig axes).
     set(NROS_PLATFORM zephyr)
     set(NROS_DEPLOY "${NROS_EXPORT_DEPLOY}")
     set(NROS_LEAF_IMAGE_ID "${NROS_EXPORT_IMAGE}")
-    set(NROS_BOARD  "${NROS_EXPORT_BOARD}")
+    if(NOT DEFINED NROS_BOARD)  # a project's own -DNROS_BOARD wins (W7b-2)
+        set(NROS_BOARD  "${NROS_EXPORT_BOARD}")
+    endif()
     set(NROS_FIND_PACKAGE_VALIDATE_ONLY TRUE)
     # find_package(<msg_pkg>) validate modules, WITHOUT the full ament surface
     # (NanoRosAmentSurface asserts NanoRos::NanoRosCpp, which a C-only Zephyr
     # image doesn't define).
-    if(NOT "${NANO_ROS_ROOT}/cmake/find" IN_LIST CMAKE_MODULE_PATH)
-        list(PREPEND CMAKE_MODULE_PATH "${NANO_ROS_ROOT}/cmake/find")
+    if(NOT "${NROS_REPO_DIR}/cmake/find" IN_LIST CMAKE_MODULE_PATH)
+        list(PREPEND CMAKE_MODULE_PATH "${NROS_REPO_DIR}/cmake/find")
     endif()
-    include("${NANO_ROS_ROOT}/cmake/find/_NrosFindRosMsgPackage.cmake")
+    include("${NROS_REPO_DIR}/cmake/find/_NrosFindRosMsgPackage.cmake")
     # phase-482 W3 — the one ament verb a ported package's glue needs here
     # (`ament_target_dependencies(<name> diagnostic_updater)`); it routes to
     # `app`, where `nano_ros_add_executable` compiles the sources.
-    include("${NANO_ROS_ROOT}/cmake/NanoRosAmentTargetDeps.cmake")
-    include("${NANO_ROS_ROOT}/cmake/NanoRosNodeRegister.cmake")
+    include("${NROS_REPO_DIR}/cmake/NanoRosAmentTargetDeps.cmake")
+    include("${NROS_REPO_DIR}/cmake/NanoRosNodeRegister.cmake")
     # NanoRosEntry too: a Zephyr workspace-entry app uses
     # `nano_ros_add_executable(... LAUNCH ...)`, whose body calls
     # `nano_ros_entry` (both modules are re-include guarded).
-    include("${NANO_ROS_ROOT}/cmake/NanoRosEntry.cmake")
-    include("${NANO_ROS_ROOT}/cmake/NanoRosVerbs.cmake")
+    include("${NROS_REPO_DIR}/cmake/NanoRosEntry.cmake")
+    include("${NROS_REPO_DIR}/cmake/NanoRosVerbs.cmake")
     set(nano_ros_FOUND TRUE)
     return()
 endif()
@@ -77,15 +82,15 @@ endif()
 #     find_package(nano_ros REQUIRED COMPONENTS workspace)
 #     nano_ros_workspace(BACKEND … PLATFORM … SYSTEM … SUBDIRS …)
 # The root must NOT import nano-ros here: `nano_ros_workspace()` owns the
-# import (it maps BACKEND→NANO_ROS_RMW *before* the add_subdirectory body
+# import (it maps BACKEND→NROS_RMW *before* the add_subdirectory body
 # runs — an eager import here would bake the cache-default RMW and an
 # xrce/cyclonedds workspace would silently configure as zenoh). The arm only
 # supplies the workspace orchestrator + the verbs; member/Entry pkgs each call
 # plain `find_package(nano_ros REQUIRED)`, which no-ops onto the already
 # imported targets (the bootstrap is target-guarded).
 if("workspace" IN_LIST nano_ros_FIND_COMPONENTS)
-    include("${NANO_ROS_ROOT}/cmake/NanoRosWorkspace.cmake")
-    include("${NANO_ROS_ROOT}/cmake/NanoRosPackageXml.cmake")
+    include("${NROS_REPO_DIR}/cmake/NanoRosWorkspace.cmake")
+    include("${NROS_REPO_DIR}/cmake/NanoRosPackageXml.cmake")
     set(nano_ros_workspace_FOUND TRUE)
     set(nano_ros_FOUND TRUE)
     return()
@@ -105,10 +110,10 @@ set(NROS_FIND_PACKAGE_VALIDATE_ONLY TRUE)
 
 # --- the leaf's system.toml is the SSoT (RFC-0098 D3/D5) ---------------------
 # Read the consumer's deployment NOW, before importing nano-ros, so the board's
-# deploy token → NROS_PLATFORM and rmw → NANO_ROS_RMW reach the
+# deploy token → NROS_PLATFORM and rmw → NROS_RMW reach the
 # `add_subdirectory` body. This is what lets the leaf's CMakeLists stay
 # byte-identical across platforms — the delta is the `system.toml` beside it.
-# Explicit `-DNROS_PLATFORM` / `-DNANO_ROS_RMW` still win (they are only set
+# Explicit `-DNROS_PLATFORM` / `-DNROS_RMW` still win (they are only set
 # below when the caller left them at the default).
 #
 # `nano_ros_read_package_export()` reads the package.xml's build type and
@@ -116,10 +121,10 @@ set(NROS_FIND_PACKAGE_VALIDATE_ONLY TRUE)
 # board= rmw=/>` tuple (RFC-0048 §4's spelling, retired by phase-445 W3b);
 # `nano_ros_read_leaf_system()` then fills the NROS_EXPORT_* variables from
 # `system.toml` through the `nros` CLI, the one reader.
-include("${NANO_ROS_ROOT}/cmake/NanoRosPackageXml.cmake")
+include("${NROS_REPO_DIR}/cmake/NanoRosPackageXml.cmake")
 nano_ros_read_package_export()
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/system.toml")
-    include("${NANO_ROS_ROOT}/cmake/NanoRosCodegenCore.cmake")
+    include("${NROS_REPO_DIR}/cmake/NanoRosCodegenCore.cmake")
 endif()
 nano_ros_read_leaf_system()
 if(NROS_LEAF_SYSTEM)
@@ -143,12 +148,12 @@ if(NROS_LEAF_SYSTEM)
     # `nros_cpp-static` / `nros_c-static`) and only needs the facts to exist by
     # then. The Zephyr arm above does NOT call this: it has the Kconfig derive
     # sentinel, which is its own front-end (RFC-0049).
-    include("${NANO_ROS_ROOT}/cmake/NanoRosLeafEntityFacts.cmake")
+    include("${NROS_REPO_DIR}/cmake/NanoRosLeafEntityFacts.cmake")
     nros_record_leaf_entity_facts("${CMAKE_CURRENT_SOURCE_DIR}")
 endif()
 if(NROS_EXPORT_FOUND)
     # The leaf's values go into the CACHE, not directory scope. The imported
-    # root CMakeLists declares `NROS_PLATFORM`/`NANO_ROS_RMW` with cached
+    # root CMakeLists declares `NROS_PLATFORM`/`NROS_RMW` with cached
     # posix/zenoh defaults; a directory-scope set here would shadow them only
     # on the FIRST configure — on any reconfigure the stale cached default is
     # visible to the `NOT NANO_ROS_*` guards, the leaf's value is skipped, and a
@@ -160,8 +165,8 @@ if(NROS_EXPORT_FOUND)
         set(NROS_PLATFORM "${_nros_leaf_platform}" CACHE STRING
             "nano-ros platform (derived from the leaf system.toml board)")
     endif()
-    if(NROS_EXPORT_RMW AND NOT NANO_ROS_RMW)
-        set(NANO_ROS_RMW "${NROS_EXPORT_RMW}" CACHE STRING
+    if(NROS_EXPORT_RMW AND NOT NROS_RMW)
+        set(NROS_RMW "${NROS_EXPORT_RMW}" CACHE STRING
             "RMW backend (from the leaf system.toml rmw)")
     endif()
     # phase-484 W4f — the board MODULE the leaf's board names, not the alias
@@ -171,27 +176,29 @@ if(NROS_EXPORT_FOUND)
     else()
         set(_nros_leaf_cmake_board "${NROS_EXPORT_BOARD}")
     endif()
-    if(_nros_leaf_cmake_board AND NOT NANO_ROS_BOARD)
-        set(NANO_ROS_BOARD "${_nros_leaf_cmake_board}" CACHE STRING
+    if(_nros_leaf_cmake_board AND NOT NROS_BOARD)
+        set(NROS_BOARD "${_nros_leaf_cmake_board}" CACHE STRING
             "nano-ros board module (from the leaf system.toml [image] board)")
     endif()
     # The verbs pick DEPLOY/BOARD up from these directory-scope vars.
     set(NROS_DEPLOY "${NROS_EXPORT_DEPLOY}")
     set(NROS_LEAF_IMAGE_ID "${NROS_EXPORT_IMAGE}")
-    set(NROS_BOARD  "${NROS_EXPORT_BOARD}")
+    if(NOT DEFINED NROS_BOARD)  # a project's own -DNROS_BOARD wins (W7b-2)
+        set(NROS_BOARD  "${NROS_EXPORT_BOARD}")
+    endif()
 endif()
 
 # --- 1. import nano-ros ------------------------------------------------------
-include("${NANO_ROS_ROOT}/cmake/NanoRosBootstrap.cmake")
-_nros_bootstrap(ROOT "${NANO_ROS_ROOT}")
+include("${NROS_REPO_DIR}/cmake/NanoRosBootstrap.cmake")
+_nros_bootstrap(ROOT "${NROS_REPO_DIR}")
 
 # --- 2. find modules + ament verbs -------------------------------------------
 # NanoRosAmentSurface prepends `cmake/find/` to CMAKE_MODULE_PATH so a stock
 # `find_package(std_msgs REQUIRED)` line routes into nano-ros codegen, and defines
 # the `ament_target_dependencies` / `ament_package` verbs the ament shape uses.
-include("${NANO_ROS_ROOT}/cmake/NanoRosAmentSurface.cmake")
+include("${NROS_REPO_DIR}/cmake/NanoRosAmentSurface.cmake")
 
 # --- 3. role verbs + interface generation ------------------------------------
-include("${NANO_ROS_ROOT}/cmake/NanoRosVerbs.cmake")
+include("${NROS_REPO_DIR}/cmake/NanoRosVerbs.cmake")
 
 set(nano_ros_FOUND TRUE)

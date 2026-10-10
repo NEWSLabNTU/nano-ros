@@ -22,13 +22,13 @@ path = "src/main.rs"
 
 [dependencies]
 # Board impl for the POSIX family.
-nros-board-linux = { path = "@NANO_ROS_ROOT@/packages/boards/nros-board-linux" }
+nros-board-linux = { path = "@NROS_REPO_DIR@/packages/boards/nros-board-linux" }
 # Trait surface — BoardEntry / RuntimeCtx / RuntimeError.
-nros-platform = { path = "@NANO_ROS_ROOT@/packages/platform/nros-platform", default-features = false, features = ["std", "platform-posix"] }
+nros-platform = { path = "@NROS_REPO_DIR@/packages/platform/nros-platform", default-features = false, features = ["std", "platform-posix"] }
 # Codegen-emitted `run_plan.rs` defines a `register_dispatch` shim
 # typed `&mut ::nros::Executor`, so the Entry pkg depends on `nros`
 # directly — same platform features the Component pkg forwards.
-nros = { path = "@NANO_ROS_ROOT@/packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "std"] }
+nros = { path = "@NROS_REPO_DIR@/packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "std"] }
 # Component pkg under test — enable the `posix` feature gate so its
 # `nros` dep links the POSIX platform backend.
 shared_node_pkg = { path = "../shared_node_pkg", features = ["posix"] }
@@ -39,4 +39,4 @@ shared_node_pkg = { path = "../shared_node_pkg", features = ["posix"] }
 # source — the byte-identical OUT_DIR/run_plan.rs assertion depends on
 # that. In-tree CLI (post-Phase-218 `packages/cli/`); the archived
 # `NEWSLabNTU/nros-cli` git dep + `@NROS_CLI_ROOT@` patch are retired.
-nros-build = { path = "@NANO_ROS_ROOT@/packages/cli/nros-build" }
+nros-build = { path = "@NROS_REPO_DIR@/packages/cli/nros-build" }

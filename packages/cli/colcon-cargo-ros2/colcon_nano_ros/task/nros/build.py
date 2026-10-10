@@ -58,7 +58,7 @@ PLATFORM_CMAKE = {
 # single source of truth for RMW (it reads `system.target.rmw` from the
 # plan; see orchestration/generate.rs). The standalone per-package colcon
 # task has no system config in scope, so it takes the RMW from the
-# `NANO_ROS_RMW` env var (default `zenoh`) — Phase 172.M, replacing the
+# `NROS_RMW` env var (default `zenoh`) — Phase 172.M, replacing the
 # former hardcoded `zenoh`.
 RMW_BACKENDS = ("zenoh", "xrce", "cyclonedds")
 
@@ -66,13 +66,13 @@ RMW_BACKENDS = ("zenoh", "xrce", "cyclonedds")
 def resolve_rmw():
     """Resolve the RMW backend for a standalone colcon package build.
 
-    Reads ``NANO_ROS_RMW`` (default ``zenoh``); validates against
+    Reads ``NROS_RMW`` (default ``zenoh``); validates against
     :data:`RMW_BACKENDS`. The orchestration ``nros build`` path does not
     use this — it threads ``system.target.rmw`` from the plan.
     """
-    rmw = os.environ.get("NANO_ROS_RMW", "zenoh")
+    rmw = os.environ.get("NROS_RMW", "zenoh")
     if rmw not in RMW_BACKENDS:
-        raise ValueError(f"NANO_ROS_RMW={rmw!r} not one of {RMW_BACKENDS}")
+        raise ValueError(f"NROS_RMW={rmw!r} not one of {RMW_BACKENDS}")
     return rmw
 
 
@@ -244,7 +244,7 @@ class NrosBuildTask(TaskExtensionPoint):
         if target:
             cmd.extend(["--target", target])
 
-        # Select the RMW from the single source (NANO_ROS_RMW env; Phase
+        # Select the RMW from the single source (NROS_RMW env; Phase
         # 172.M). nano-ros example/component crates expose mutually-exclusive
         # `rmw-{zenoh,xrce,cyclonedds}` features with `default = ["rmw-zenoh"]`,
         # so `--no-default-features --features rmw-<rmw>` selects exactly one.
@@ -345,7 +345,7 @@ class NrosBuildTask(TaskExtensionPoint):
             prefix_paths.append(env_prefix)
         west_defs = [f"-DCMAKE_PREFIX_PATH={';'.join(prefix_paths)}"]
 
-        # Select the RMW (Phase 172.M), from the single source (NANO_ROS_RMW
+        # Select the RMW (Phase 172.M), from the single source (NROS_RMW
         # env). phase-481 W3: a leaf whose `system.toml` states one image per
         # RMW (`[image.zephyr_<rmw>]`) is built by NAMING that image -- the
         # nano-ros Zephyr module renders its RMW, API and knobs and adds the
@@ -512,11 +512,11 @@ class NrosBuildTask(TaskExtensionPoint):
         cmd.append(f"-DCMAKE_PREFIX_PATH={';'.join(prefix_paths)}")
 
         # RMW + platform for the NanoRos CMake config. RMW comes from the
-        # single source (NANO_ROS_RMW env; Phase 172.M) instead of a hardcoded
+        # single source (NROS_RMW env; Phase 172.M) instead of a hardcoded
         # `zenoh`; platform from the board the package's own `system.toml`
         # names (phase-445 W3b; the `<nano_ros deploy=…/>` tuple of phase-420
         # W4 before that) instead of a build_type token nothing declared.
-        cmd.append(f"-DNANO_ROS_RMW={resolve_rmw()}")
+        cmd.append(f"-DNROS_RMW={resolve_rmw()}")
         cmd.append(f"-DNROS_PLATFORM={PLATFORM_CMAKE.get(platform, platform)}")
 
         # Cross-compilation: pass toolchain file for embedded platforms.

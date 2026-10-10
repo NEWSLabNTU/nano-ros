@@ -8,7 +8,7 @@
 #
 # (`nano_ros_deploy` was retired post-287 — the deploy/rmw tuple lives in
 # package.xml.) The included module (NanoRosNodeRegister) is pulled in by the
-# top-level CMakeLists so `@NANO_ROS_ROOT@` has already been substituted by
+# top-level CMakeLists so `@NROS_REPO_DIR@` has already been substituted by
 # the integration test's stage step.
 
 # §212.L.4: pkg dir name IS pkg name; CLASS must start with `${PROJECT_NAME}::`.

@@ -13,7 +13,7 @@ name = "node_c"
 default_namespace = "/"
 
 [dependencies]
-nros = { path = "@NANO_ROS_ROOT@/packages/api/nros", default-features = false, features = [
+nros = { path = "@NROS_REPO_DIR@/packages/api/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
     "ros-humble", "macros"] }

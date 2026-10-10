@@ -7,7 +7,7 @@
 # Duo TCP/IP stack, no /dev/net/tun, no veth driver.
 #
 # Loaded by `cmake/platform/nano-ros-threadx.cmake` when
-# NANO_ROS_BOARD=threadx-linux. The platform module is what
+# NROS_BOARD=threadx-linux. The platform module is what
 # `add_subdirectory(<nano-ros-root>)` reaches first; this overlay only
 # runs once we know we are targeting ThreadX-on-Linux.
 #

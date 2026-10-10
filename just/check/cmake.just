@@ -570,7 +570,7 @@ cmake-verb-reachable:
 #
 # `if(TARGET NanoRos::NanoRosCpp)` asks what the build tree DEFINES, not what
 # the consuming binary's other archives already contain — and every leaf does
-# `add_subdirectory("${NANO_ROS_ROOT}" nano_ros)`, so it is always true. The
+# `add_subdirectory("${NROS_REPO_DIR}" nano_ros)`, so it is always true. The
 # generated C message library therefore put `libnros_cpp.a` beside the Rust
 # staticlib of a pure-Rust leaf, and all twelve `threadx_riscv64` leaves died on
 # 228 `rust-lld: error: duplicate symbol` lines. Nine sites spelled the same

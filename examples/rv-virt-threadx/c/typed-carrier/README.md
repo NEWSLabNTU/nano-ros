@@ -18,12 +18,12 @@ link twice, in issues 1742 and 1753, while nothing built it.
 
 ```bash
 cp -r examples/rv-virt-threadx/c/typed-carrier ~/my-typed-carrier && cd ~/my-typed-carrier
-cmake -S . -B build -DNANO_ROS_ROOT=/path/to/nano-ros   # or: export NROS_REPO_DIR=…
+cmake -S . -B build -DNROS_REPO_DIR=/path/to/nano-ros   # or: export NROS_REPO_DIR=…
 cmake --build build
 ```
 
 No `nros sync` here: a C/C++ leaf's message bindings are a CMake-time
-output. `-DNANO_ROS_ROOT` only says where the checkout is — the board, the
+output. `-DNROS_REPO_DIR` only says where the checkout is — the board, the
 RMW and the domain come from `system.toml` (below), never from a `-D` flag.
 
 ## Run

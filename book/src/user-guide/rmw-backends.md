@@ -74,7 +74,7 @@ The Cyclone DDS backend uses [Eclipse Cyclone DDS](https://github.com/eclipse-cy
 
 **How it works:**
 
-1. The application (or platform) calls `nros_rmw_cyclonedds_register()` once before `nros::init()` — this is automatic when the consumer's CMake build sets `-DNANO_ROS_RMW=cyclonedds`.
+1. The application (or platform) calls `nros_rmw_cyclonedds_register()` once before `nros::init()` — this is automatic when the consumer's CMake build sets `-DNROS_RMW=cyclonedds`.
 2. The runtime stores the vtable pointer; subsequent `nros::init()` calls dispatch through it for session, publisher, subscriber, and service operations.
 3. `dds_create_domain` / `dds_create_participant` / `dds_create_topic` / `dds_create_writer` / `dds_create_reader` are invoked under the hood; Cyclone owns its own RX threads.
 4. ROS 2 nodes using stock `rmw_cyclonedds_cpp` interoperate directly — same wire protocol, same discovery, no key rewriting (unlike `rmw_zenoh`'s `<domain>/<topic>/<type>/...` scheme).
@@ -93,14 +93,14 @@ The Cyclone DDS backend uses [Eclipse Cyclone DDS](https://github.com/eclipse-cy
 > **Contributors:** the in-tree Cyclone DDS build/test lanes are in
 > [Per-Platform Contributor Lanes](../internals/platform-lanes.md#cyclone-dds).
 
-Each example picks its RMW via `-DNANO_ROS_RMW=cyclonedds` at
+Each example picks its RMW via `-DNROS_RMW=cyclonedds` at
 configure time; the root `CMakeLists.txt` add_subdirectory's
 `packages/rmw/cyclonedds/nros-rmw-cyclonedds/` and links the resulting target
 into `NanoRos::NanoRos`. No `build/install/` prefix, no
 `find_package(NrosRmwCyclonedds)` deleted both.
 
 **Availability follows from config — the build provisions Cyclone.**
-Selecting `cyclonedds` (`-DNANO_ROS_RMW=cyclonedds` / `--features rmw-cyclonedds`)
+Selecting `cyclonedds` (`-DNROS_RMW=cyclonedds` / `--features rmw-cyclonedds`)
 is your whole responsibility; `nros_provide_cyclonedds()` resolves the library:
 a prebuilt install you point at (`-DCMAKE_PREFIX_PATH=<install>` /
 `-DCycloneDDS_DIR=`), else **self-provision from source** — by default the pinned
@@ -176,7 +176,7 @@ RMW selection is a **declared, language-agnostic, per-deploy value** —
 you set it once in `system.toml` (`[system].rmw`, optionally overridden
 per image by `[image.<id>].rmw`) or via a CLI/build flag, and the
 toolchain **lowers** that declaration to each language's native build
-mechanism: a Rust cargo `rmw-<x>` feature, or a CMake `-DNANO_ROS_RMW`
+mechanism: a Rust cargo `rmw-<x>` feature, or a CMake `-DNROS_RMW`
 cache var. The cargo feature and the CMake var below are the *lowering
 targets* the build uses — not the user-facing knob. A binary links the
 common `rmw-cffi` runtime plus exactly one backend; the linked backend
@@ -214,7 +214,7 @@ is no bringup to declare it in.
 # Cyclone DDS backend — Rust runtime sees the generic rmw-cffi C-ABI
 # vtable; actual Cyclone wiring lives C++-side under
 # packages/rmw/cyclonedds/nros-rmw-cyclonedds/ and is selected at CMake
-# configure time via -DNANO_ROS_RMW=cyclonedds. The Rust
+# configure time via -DNROS_RMW=cyclonedds. The Rust
 # manifest only carries the `rmw-cffi` feature; no Rust shim dep.
 [dependencies]
 nros = { path = "<...>/packages/api/nros",
@@ -231,7 +231,7 @@ instead.
 For C++ consumers, the declared RMW lowers to the CMake cache var:
 
 ```bash
-cmake -S . -B build -DNANO_ROS_RMW=cyclonedds  # zenoh / xrce / cyclonedds
+cmake -S . -B build -DNROS_RMW=cyclonedds  # zenoh / xrce / cyclonedds
 ```
 
 ### Zephyr

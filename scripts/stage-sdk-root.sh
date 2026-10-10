@@ -287,7 +287,7 @@ need -f nros-sdk-index.toml "the Corrosion + cross-toolchain pins, read from the
 # every relative `path = "../../cli/<crate>"` in a tracked manifest OUTSIDE
 # `packages/cli` must resolve to something staged. Read from HEAD, which is what
 # `git archive` above staged. (Fixture templates spell it
-# `@NANO_ROS_ROOT@/packages/cli/...`; that is not a cargo path dep and belongs to
+# `@NROS_REPO_DIR@/packages/cli/...`; that is not a cargo path dep and belongs to
 # no workspace, so the relative form is the right pattern to key on.)
 missing=""
 for dep in $(git -C "$repo" grep -h -o -E 'path = "(\.\./)+cli/[A-Za-z0-9_.-]+"' HEAD \

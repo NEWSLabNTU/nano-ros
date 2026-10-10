@@ -182,7 +182,7 @@ cmake -B build -DCMAKE_TOOLCHAIN_FILE=<toolchain> -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ```
 
-No `nros sync`, and no `-DNANO_ROS_BOARD` / `-DNROS_RMW` either:
+No `nros sync`, and no `-DNROS_BOARD` / `-DNROS_RMW` either:
 `find_package(nano_ros)` reads the leaf's `system.toml` and derives the
 platform from the board it names. The toolchain file is still per
 platform — see the starter page. `-D_NANO_ROS_CODEGEN_TOOL=` is not

@@ -145,7 +145,7 @@ nros build          # or: cargo build --config build/<image>/nros-cargo.toml
 
 # C / C++ — the leaf's own CMake, with the cross-toolchain file (the `nros`
 # CLI on PATH auto-resolves the codegen tool — no `-D_NANO_ROS_CODEGEN_TOOL=`
-# needed, and no `-DNANO_ROS_BOARD=` / `-DNROS_RMW=`: both come from
+# needed, and no `-DNROS_BOARD=` / `-DNROS_RMW=`: both come from
 # system.toml). The toolchain file path is relative to the nano-ros checkout:
 toolchain="$NROS_REPO_DIR/cmake/toolchain/arm-freertos-armcm3.cmake"
 cd examples/mps2-an385-freertos/c/talker

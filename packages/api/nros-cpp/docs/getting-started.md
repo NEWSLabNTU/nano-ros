@@ -28,7 +28,7 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(NROS_PLATFORM posix)
-set(NANO_ROS_RMW     zenoh)
+set(NROS_RMW     zenoh)
 add_subdirectory(/path/to/nano-ros nano_ros)
 
 # Generate C++ message bindings from .msg files

@@ -9,8 +9,8 @@
 #     cmake_minimum_required(VERSION 3.22)
 #     project(my_ws LANGUAGES C CXX)
 #     nano_ros_workspace(
-#         NANO_ROS_ROOT /path/to/nano-ros     # or set
-#                                             # -DNANO_ROS_ROOT=… or
+#         NROS_REPO_DIR /path/to/nano-ros     # or set
+#                                             # -DNROS_REPO_DIR=… or
 #                                             # let the auto-walk find
 #                                             # `nros-sdk-index.toml`
 #         BACKEND       zenoh                 # zenoh | xrce | cyclonedds
@@ -91,8 +91,8 @@ endfunction()
 # ---------------------------------------------------------------------------
 # Resolve the nano-ros root from (in priority order — RFC-0103 D3/D6, the
 # order `nros`'s `nano_ros_root::resolve` uses):
-#   1. explicit `<NANO_ROS_ROOT>` arg (workspace-root call),
-#   2. `-DNANO_ROS_ROOT=…` cache var (an explicit argument too),
+#   1. explicit `<NROS_REPO_DIR>` arg (workspace-root call),
+#   2. `-DNROS_REPO_DIR=…` cache var (an explicit argument too),
 #   3. the checkout that ENCLOSES <start_dir> — before the environment,
 #      because an inherited value names whichever checkout last ran
 #      `activate.sh`, not the one being built (issue 1280),
@@ -105,14 +105,14 @@ function(_nros_resolve_root explicit start_dir out_var)
     if(DEFINED ENV{NANO_ROS_ROOT})
         message(FATAL_ERROR
             "nano-ros: the ENVIRONMENT variable NANO_ROS_ROOT is retired — set "
-            "NROS_REPO_DIR instead, or pass -DNANO_ROS_ROOT=<path> (RFC-0103 D6).")
+            "NROS_REPO_DIR instead, or pass -DNROS_REPO_DIR=<path> (RFC-0103 D6).")
     endif()
     if(explicit AND NOT explicit STREQUAL "")
         set(${out_var} "${explicit}" PARENT_SCOPE)
         return()
     endif()
-    if(DEFINED NANO_ROS_ROOT AND NOT NANO_ROS_ROOT STREQUAL "")
-        set(${out_var} "${NANO_ROS_ROOT}" PARENT_SCOPE)
+    if(DEFINED NROS_REPO_DIR AND NOT NROS_REPO_DIR STREQUAL "")
+        set(${out_var} "${NROS_REPO_DIR}" PARENT_SCOPE)
         return()
     endif()
     _nros_find_root("${start_dir}" _walked)
@@ -126,8 +126,8 @@ function(_nros_resolve_root explicit start_dir out_var)
     endif()
     message(FATAL_ERROR
         "nano-ros: cannot locate nano-ros root from '${start_dir}'.\n"
-        "  Pass NANO_ROS_ROOT to `nano_ros_workspace()`, set the\n"
-        "  -DNANO_ROS_ROOT=<path> cache var or $NROS_REPO_DIR, or run from\n"
+        "  Pass NROS_REPO_DIR to `nano_ros_workspace()`, set the\n"
+        "  -DNROS_REPO_DIR=<path> cache var or $NROS_REPO_DIR, or run from\n"
         "  inside a nano-ros checkout.")
 endfunction()
 
@@ -139,7 +139,7 @@ function(_nros_import_once nano_ros_root)
     if(TARGET NanoRos::NanoRosCpp OR TARGET NanoRos::NanoRos)
         return()
     endif()
-    # The cmake-fn modules need NROS_PLATFORM / NANO_ROS_RMW visible
+    # The cmake-fn modules need NROS_PLATFORM / NROS_RMW visible
     # to the `add_subdirectory()` body; callers must have set them on
     # PARENT_SCOPE before calling _nros_import_once (workspace-root does
     # this in nano_ros_workspace(); standalone does this in the guard).
@@ -225,9 +225,19 @@ endfunction()
 function(nano_ros_workspace)
     cmake_parse_arguments(_NRW
         "ORDER_FROM_DEPENDS"
-        "SYSTEM;BACKEND;PLATFORM;EDITION;NANO_ROS_ROOT;WORKSPACE_ROOT"
+        "SYSTEM;BACKEND;PLATFORM;EDITION;NROS_REPO_DIR;NANO_ROS_ROOT;WORKSPACE_ROOT"
         "SUBDIRS"
         ${ARGN})
+
+    # phase-484 W7b-2 — `NROS_REPO_DIR` is the keyword; `NANO_ROS_ROOT` is its
+    # deprecated alias (the variable shim's rule, for a function argument).
+    if(DEFINED _NRW_NANO_ROS_ROOT)
+        if(DEFINED _NRW_NROS_REPO_DIR AND NOT "${_NRW_NROS_REPO_DIR}" STREQUAL "${_NRW_NANO_ROS_ROOT}")
+            message(FATAL_ERROR "nano-ros: NANO_ROS_ROOT and NROS_REPO_DIR disagree; pass only NROS_REPO_DIR.")
+        endif()
+        message(DEPRECATION "nano-ros: the NANO_ROS_ROOT keyword is deprecated; use NROS_REPO_DIR.")
+        set(_NRW_NROS_REPO_DIR "${_NRW_NANO_ROS_ROOT}")
+    endif()
 
     # Where the WORKSPACE is, as opposed to where this root happens to sit.
     #
@@ -313,25 +323,23 @@ function(nano_ros_workspace)
     _nros_resolve_ros_edition("${_NRW_EDITION}" _NRW_EDITION)
 
     # Resolve the nano-ros root (priority chain in _nros_resolve_root).
-    _nros_resolve_root("${_NRW_NANO_ROS_ROOT}"
+    _nros_resolve_root("${_NRW_NROS_REPO_DIR}"
                        "${CMAKE_CURRENT_SOURCE_DIR}"
                        _nros_root)
 
     # Stamp the resolution so subdirs + the per-pkg guard reuse it
     # without re-walking. PARENT_SCOPE here = the workspace-root scope.
-    set(NANO_ROS_ROOT        "${_nros_root}"      PARENT_SCOPE)
+    set(NROS_REPO_DIR        "${_nros_root}"      PARENT_SCOPE)
     set(NROS_PLATFORM    "${_NRW_PLATFORM}"   PARENT_SCOPE)
-    set(NANO_ROS_RMW         "${_NRW_BACKEND}"    PARENT_SCOPE)
-    set(NROS_RMW             "${_NRW_BACKEND}"    PARENT_SCOPE)
+    set(NROS_RMW         "${_NRW_BACKEND}"    PARENT_SCOPE)
     set(NROS_ROS_EDITION "${_NRW_EDITION}"    PARENT_SCOPE)
 
     # Also set them in the local fn scope so _nros_import_once's
     # add_subdirectory body sees them directly (PARENT_SCOPE writes
     # don't reach the current fn frame).
-    set(NANO_ROS_ROOT        "${_nros_root}")
+    set(NROS_REPO_DIR        "${_nros_root}")
     set(NROS_PLATFORM    "${_NRW_PLATFORM}")
-    set(NANO_ROS_RMW         "${_NRW_BACKEND}")
-    set(NROS_RMW             "${_NRW_BACKEND}")
+    set(NROS_RMW         "${_NRW_BACKEND}")
     set(NROS_ROS_EDITION "${_NRW_EDITION}")
 
     # phase-323 W1 — the capability axes, BEFORE the import.
@@ -466,7 +474,7 @@ function(nano_ros_workspace)
     # SUBDIRS list happens to be written in.
     #
     # The SET stays authored and the ORDER becomes derived, deliberately. A
-    # workspace's SUBDIRS list is filtered by PLATFORM (`if(NANO_ROS_BOARD
+    # workspace's SUBDIRS list is filtered by PLATFORM (`if(NROS_BOARD
     # STREQUAL …) list(APPEND …)`), and which board is active is a SELECTION,
     # not a dependency — no `<depend>` can express it. So discovery replaces
     # the half it can prove and leaves the half it cannot.
@@ -484,7 +492,7 @@ function(nano_ros_workspace)
     # and nano_rosConfig.cmake was located through `nano_ros_ROOT`, which only
     # `activate.sh` exports. So a workspace configured anywhere else — an
     # installed toolchain's (whose root came from `nros sdk-root`), or the
-    # book's `-DNANO_ROS_ROOT=<checkout>` from an un-activated shell — resolved
+    # book's `-DNROS_REPO_DIR=<checkout>` from an un-activated shell — resolved
     # the root, imported it, and then failed in its first member with "Could not
     # find a package configuration file provided by nano_ros". It passed only in
     # a sourced shell, which is every shell anyone who could notice had.
@@ -530,7 +538,7 @@ function(nano_ros_workspace)
 endfunction()
 
 # ---------------------------------------------------------------------------
-# Public — `nano_ros_workspace_pkg_guard([NANO_ROS_ROOT <path>])`
+# Public — `nano_ros_workspace_pkg_guard([NROS_REPO_DIR <path>])`
 #
 # Top-of-CMakeLists call in every Node + Entry pkg subdir. Inside a
 # workspace it is a no-op; standalone it bootstraps the same way the
@@ -543,9 +551,19 @@ function(nano_ros_workspace_pkg_guard)
 
     cmake_parse_arguments(_NRG
         ""
-        "NANO_ROS_ROOT;BACKEND;PLATFORM"
+        "NROS_REPO_DIR;NANO_ROS_ROOT;BACKEND;PLATFORM"
         ""
         ${ARGN})
+
+    # phase-484 W7b-2 — `NROS_REPO_DIR` is the keyword; `NANO_ROS_ROOT` is its
+    # deprecated alias (the variable shim's rule, for a function argument).
+    if(DEFINED _NRG_NANO_ROS_ROOT)
+        if(DEFINED _NRG_NROS_REPO_DIR AND NOT "${_NRG_NROS_REPO_DIR}" STREQUAL "${_NRG_NANO_ROS_ROOT}")
+            message(FATAL_ERROR "nano-ros: NANO_ROS_ROOT and NROS_REPO_DIR disagree; pass only NROS_REPO_DIR.")
+        endif()
+        message(DEPRECATION "nano-ros: the NANO_ROS_ROOT keyword is deprecated; use NROS_REPO_DIR.")
+        set(_NRG_NROS_REPO_DIR "${_NRG_NANO_ROS_ROOT}")
+    endif()
 
     if(NOT _NRG_BACKEND)
         if(NROS_RMW)
@@ -562,21 +580,19 @@ function(nano_ros_workspace_pkg_guard)
         endif()
     endif()
 
-    _nros_resolve_root("${_NRG_NANO_ROS_ROOT}"
+    _nros_resolve_root("${_NRG_NROS_REPO_DIR}"
                        "${CMAKE_CURRENT_SOURCE_DIR}"
                        _nros_root)
 
     # Direct-scope sets so the cmake-fn helpers + add_subdirectory body
     # see them. PARENT_SCOPE keeps them visible to the rest of the
     # pkg's CMakeLists too.
-    set(NANO_ROS_ROOT     "${_nros_root}"     PARENT_SCOPE)
+    set(NROS_REPO_DIR     "${_nros_root}"     PARENT_SCOPE)
     set(NROS_PLATFORM "${_NRG_PLATFORM}"  PARENT_SCOPE)
-    set(NANO_ROS_RMW      "${_NRG_BACKEND}"   PARENT_SCOPE)
-    set(NROS_RMW          "${_NRG_BACKEND}"   PARENT_SCOPE)
-    set(NANO_ROS_ROOT     "${_nros_root}")
+    set(NROS_RMW      "${_NRG_BACKEND}"   PARENT_SCOPE)
+    set(NROS_REPO_DIR     "${_nros_root}")
     set(NROS_PLATFORM "${_NRG_PLATFORM}")
-    set(NANO_ROS_RMW      "${_NRG_BACKEND}")
-    set(NROS_RMW          "${_NRG_BACKEND}")
+    set(NROS_RMW      "${_NRG_BACKEND}")
 
     _nros_import_once("${_nros_root}")
 endfunction()

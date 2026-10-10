@@ -69,7 +69,7 @@ Classification: all **new** (no baseline).
   choice is defensible; flag only).
 - G2 · `examples/px4/cpp/uorb/nros-register-check/CMakeLists.txt:21` ·
   in-repo validation module uses fixed sibling offsets; could accept
-  `-DNANO_ROS_ROOT` for symmetry with the threadx examples.
+  `-DNROS_REPO_DIR` for symmetry with the threadx examples.
 
 ## Confirmed clean / false positives
 

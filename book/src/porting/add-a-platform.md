@@ -69,10 +69,10 @@ endif()
 
 function(nros_platform_link_app target)
     # Per-app fixups go here. Linker scripts, startup objects, ISR
-    # vectors. Delegate to cmake/board/nano-ros-board-${NANO_ROS_BOARD}.cmake
+    # vectors. Delegate to cmake/board/nano-ros-board-${NROS_BOARD}.cmake
     # when the platform supports multiple boards.
-    if(DEFINED NANO_ROS_BOARD)
-        include("${CMAKE_CURRENT_LIST_DIR}/../board/nano-ros-board-${NANO_ROS_BOARD}.cmake")
+    if(DEFINED NROS_BOARD)
+        include("${CMAKE_CURRENT_LIST_DIR}/../board/nano-ros-board-${NROS_BOARD}.cmake")
         if(COMMAND nros_board_link_app)
             nros_board_link_app(${target})
         endif()
@@ -94,7 +94,7 @@ nano-ros/cmake/board/nano-ros-board-<board>.cmake
 ```
 
 Board overlays provide `nros_board_link_app(target)` and run
-**inside** `nros_platform_link_app` when the user sets `NANO_ROS_BOARD`.
+**inside** `nros_platform_link_app` when the user sets `NROS_BOARD`.
 The board layer owns:
 
 - Linker script selection (`target_link_options(${target} PRIVATE -T<script>)`)

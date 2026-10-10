@@ -33,9 +33,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-NANO_ROS_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-IN_TREE_WORKSPACE="$NANO_ROS_ROOT/zephyr-workspace"
-LEGACY_WORKSPACE="$(cd "$NANO_ROS_ROOT/.." && pwd)/nano-ros-workspace"
+NROS_REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+IN_TREE_WORKSPACE="$NROS_REPO_DIR/zephyr-workspace"
+LEGACY_WORKSPACE="$(cd "$NROS_REPO_DIR/.." && pwd)/nano-ros-workspace"
 
 if [ -n "${1:-}" ]; then
     WORKSPACE="$1"

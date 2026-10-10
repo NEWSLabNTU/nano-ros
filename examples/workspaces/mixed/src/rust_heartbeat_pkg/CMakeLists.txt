@@ -2,12 +2,12 @@ cmake_minimum_required(VERSION 3.22)
 project(rust_heartbeat_pkg VERSION 0.1.0 LANGUAGES C CXX)
 
 if(NOT COMMAND nano_ros_workspace_pkg_guard)
-    if(NOT NANO_ROS_ROOT)
+    if(NOT NROS_REPO_DIR)
         message(FATAL_ERROR
-            "nano-ros: set -DNANO_ROS_ROOT=<path-to-nano-ros> for "
+            "nano-ros: set -DNROS_REPO_DIR=<path-to-nano-ros> for "
             "standalone builds, or build via the workspace root.")
     endif()
-    include("${NANO_ROS_ROOT}/cmake/NanoRosWorkspace.cmake")
+    include("${NROS_REPO_DIR}/cmake/NanoRosWorkspace.cmake")
 endif()
 nano_ros_workspace_pkg_guard()
 

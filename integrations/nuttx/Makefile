@@ -136,7 +136,7 @@ export RUSTUP_TOOLCHAIN ?= nightly-2026-04-11
 
 # issue 0488 follow-up — this definition sits ABOVE its first use on
 # purpose. It used to come 9 lines after the `CFLAGS +=` below, and NuttX's
-# CFLAGS is simply-expanded, so `+=` expanded `$(NANO_ROS_ROOT)` while it was
+# CFLAGS is simply-expanded, so `+=` expanded `$(NROS_REPO_DIR)` while it was
 # still EMPTY: the include became `-I/packages/platform/...` and every build
 # of this app failed with `nros/platform.h: No such file or directory`.
 # `CSRCS` is recursively expanded, which is why the SOURCE path resolved and
@@ -148,7 +148,7 @@ export RUSTUP_TOOLCHAIN ?= nightly-2026-04-11
 # is absolute + correct. Plain `$(APPDIR)/external/nano-ros/...`
 # would resolve through the symlink target literally + miss the
 # packages/api/ dir.
-NANO_ROS_ROOT := $(realpath $(APPDIR)/external/nano-ros/../..)
+NROS_REPO_DIR := $(realpath $(APPDIR)/external/nano-ros/../..)
 
 # Phase 157.C.17 + .C.18 — full `nros_platform_*` ABI from the
 # POSIX C-port. NuttX provides POSIX threading + clocks +
@@ -166,13 +166,13 @@ NANO_ROS_ROOT := $(realpath $(APPDIR)/external/nano-ros/../..)
 #     provided the real impl, since NuttX's `sem_t` honors
 #     `sem_timedwait` correctly.
 # Obviates a dedicated `nros-platform-nuttx` Rust crate.
-CSRCS = $(NANO_ROS_ROOT)/packages/platform/nros-platform-posix/src/platform.c
+CSRCS = $(NROS_REPO_DIR)/packages/platform/nros-platform-posix/src/platform.c
 ifeq ($(NROS_APPS_BUILD_OK),1)
 $(shell mkdir -p $(dir $(addprefix $(NROS_APPS_BUILD),$(CSRCS))))
 endif
 # Include the platform.h header in CFLAGS so the POSIX port's
 # `#include <nros/platform.h>` resolves.
-CFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT)/packages/platform/nros-platform-api/include
+CFLAGS += ${INCDIR_PREFIX}$(NROS_REPO_DIR)/packages/platform/nros-platform-api/include
 
 
 # Phase 157.C — Rust target triple resolution.
@@ -217,7 +217,7 @@ endif
 # Use literal `"` inside the dotted-key TOML values; cargo's
 # `--config` parser expects a TOML expression. The single-quoted
 # shell arg in the recipe below preserves the `"` chars verbatim.
-NROS_LIBC_PATCH := patch.crates-io.libc.path="$(NANO_ROS_ROOT)/third-party/nuttx/libc"
+NROS_LIBC_PATCH := patch.crates-io.libc.path="$(NROS_REPO_DIR)/third-party/nuttx/libc"
 NROS_RUSTFLAGS_ARMV7A := target.armv7a-nuttx-eabihf.rustflags=["-C","link-arg=-mcpu=cortex-a7","-C","link-arg=-mfloat-abi=hard","-C","link-arg=-mfpu=neon-vfpv4"]
 NROS_CFLAGS_ARMV7A := env.CFLAGS_armv7a_nuttx_eabihf.value="-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4"
 
@@ -253,25 +253,25 @@ ifneq ($(wildcard $(APPDIR)/tools/Rust.mk),)
 # through upstream's macro.
 context::
 ifeq ($(NROS_TARGET_TRIPLE),)
-	$(call RUST_CARGO_BUILD,nros-c,$(NANO_ROS_ROOT)/packages/api)
+	$(call RUST_CARGO_BUILD,nros-c,$(NROS_REPO_DIR)/packages/api)
 else
-	$(call NROS_CARGO_BUILD,nros-c,$(NANO_ROS_ROOT)/packages/api,$(NROS_C_FEATURES))
+	$(call NROS_CARGO_BUILD,nros-c,$(NROS_REPO_DIR)/packages/api,$(NROS_C_FEATURES))
 endif
 # Phase 157.C.11 — also build nros-cpp staticlib when CONFIG_NROS_CPP_API=y.
 # `libnros_cpp.a` rides on the same Cargo workspace target dir as
 # `libnros_c.a`; Make.defs adds it to EXTRA_LIBS conditionally.
 ifneq ($(CONFIG_NROS_CPP_API),)
 ifeq ($(NROS_TARGET_TRIPLE),)
-	$(call RUST_CARGO_BUILD,nros-cpp,$(NANO_ROS_ROOT)/packages/api)
+	$(call RUST_CARGO_BUILD,nros-cpp,$(NROS_REPO_DIR)/packages/api)
 else
-	$(call NROS_CARGO_BUILD,nros-cpp,$(NANO_ROS_ROOT)/packages/api,$(NROS_CPP_FEATURES))
+	$(call NROS_CARGO_BUILD,nros-cpp,$(NROS_REPO_DIR)/packages/api,$(NROS_CPP_FEATURES))
 endif
 endif
 
 clean::
-	$(call NROS_CARGO_CLEAN,nros-c,$(NANO_ROS_ROOT)/packages/api)
+	$(call NROS_CARGO_CLEAN,nros-c,$(NROS_REPO_DIR)/packages/api)
 ifneq ($(CONFIG_NROS_CPP_API),)
-	$(call NROS_CARGO_CLEAN,nros-cpp,$(NANO_ROS_ROOT)/packages/api)
+	$(call NROS_CARGO_CLEAN,nros-cpp,$(NROS_REPO_DIR)/packages/api)
 endif
 endif
 

@@ -6,7 +6,7 @@
 # `[tiers.high.freertos]` + `[tiers.low.freertos]`. Because the system declares
 # tiers, the macro emits `<Mps2An385>::run_tiers(TIERS, run_plan)` (228.G) which
 # routes to the FreeRTOS per-tier entry (228.E.2). The companion test stages +
-# rewrites `@NANO_ROS_ROOT@` and `cargo build`s for thumbv7m — proving the
+# rewrites `@NROS_REPO_DIR@` and `cargo build`s for thumbv7m — proving the
 # macro→run_tiers→kernel-link path for FreeRTOS.
 
 [workspace]
@@ -19,5 +19,5 @@ exclude = ["src/demo_bringup"]
 # generated message-crate patches are omitted — the timer-only nodes use no
 # messages).
 [patch.crates-io]
-nros-core = { path = "@NANO_ROS_ROOT@/packages/core/nros-core" }
-nros-serdes = { path = "@NANO_ROS_ROOT@/packages/core/nros-serdes" }
+nros-core = { path = "@NROS_REPO_DIR@/packages/core/nros-core" }
+nros-serdes = { path = "@NROS_REPO_DIR@/packages/core/nros-serdes" }

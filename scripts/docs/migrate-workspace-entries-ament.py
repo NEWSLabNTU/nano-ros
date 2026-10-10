@@ -14,8 +14,8 @@ Entry pkgs:
 Workspace roots:
   * `include(".../cmake/NanoRosWorkspace.cmake")` →
     `find_package(nano_ros REQUIRED COMPONENTS workspace)`
-  * `NANO_ROS_ROOT <path>` kv dropped from the `nano_ros_workspace(...)` call
-    (the config sets NANO_ROS_ROOT in the including scope)
+  * `NROS_REPO_DIR <path>` kv dropped from the `nano_ros_workspace(...)` call
+    (the config sets NROS_REPO_DIR in the including scope)
 
 Usage: pass CMakeLists.txt paths as argv (entries and roots may be mixed;
 the transform keys on which markers each file contains).
@@ -34,7 +34,7 @@ ENTRY_RE = re.compile(r"^nano_ros_entry\(([^)]*)\)", re.S | re.M)
 INCLUDE_WS_RE = re.compile(
     r'include\("[^"]*cmake/NanoRosWorkspace\.cmake"\)'
 )
-ROOT_KV_RE = re.compile(r"[ \t]*NANO_ROS_ROOT[ \t]+\"?[^\n\"]+\"?\n")
+ROOT_KV_RE = re.compile(r"[ \t]*NROS_REPO_DIR[ \t]+\"?[^\n\"]+\"?\n")
 
 
 def tokenize(body: str) -> list[str]:
@@ -126,7 +126,7 @@ def migrate_root(path: Path, s: str) -> str | None:
     s = INCLUDE_WS_RE.sub(
         "find_package(nano_ros REQUIRED COMPONENTS workspace)", s, count=1
     )
-    # Drop the NANO_ROS_ROOT kv INSIDE the nano_ros_workspace(...) call only.
+    # Drop the NROS_REPO_DIR kv INSIDE the nano_ros_workspace(...) call only.
     def strip_kv(m: re.Match) -> str:
         return "nano_ros_workspace(" + ROOT_KV_RE.sub("", m.group(1)) + ")"
     s = re.sub(

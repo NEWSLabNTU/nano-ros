@@ -136,7 +136,7 @@ run's.
 | P2 | `check-workflow-repo-env.py` · action | `.github/actions/setup-nros-cli/action.yml` += # source ./activate.sh | 0 | 1 | fails now |
 | P2 | `check-workflow-indexed-apt.py` | `.github/actions/setup-nros-cli/action.yml` += sudo apt-get install -y ninja-build | 0 | 1 | fails now |
 | P2 | `check-workflow-runner-isolation.py` | `.github/workflows/gate.yml`: runs-on: ${{ inputs.runner }} | 0 | 1 | fails now |
-| P2 | `check-third-party-is-submodules.sh` | `zephyr/CMakeLists.txt` += set(_rerun_tp "${NANO_ROS_ROOT}/third-party/ninja") | 0 | 1 | fails now |
+| P2 | `check-third-party-is-submodules.sh` | `zephyr/CMakeLists.txt` += set(_rerun_tp "${NROS_REPO_DIR}/third-party/ninja") | 0 | 1 | fails now |
 | P2 | `check-test-domain-assignment.sh` | `packages/testing/nros-tests/tests/qos.rs` += const RERUN_DOMAIN: &str = "export ROS_DOMAIN_ID=117 && ros2 topic ech | 0 | 0 | **HOLE** (W6, #1615); control rc 1 |
 | P2 | `check-zenohd-flag-invocations.py` | `book/src/introduction.md` += Run `a rmw_zenohd router started with a listen flag` first. | 0 | 0 | **HOLE** → fixed here (rc 1 after fix); control rc 1 |
 | P2 | `check-tier-priority-plan-image.py` | — | 0 | — | N/A — needs built Zephyr images (build-*/zephyr/.config) — none on this host |

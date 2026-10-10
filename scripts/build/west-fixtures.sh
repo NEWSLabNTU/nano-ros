@@ -169,7 +169,7 @@ fixture_filter="${NROS_ZEPHYR_FIXTURE_FILTER:-}"
 # issue 1777 — a Cyclone row's configure needs a host `idlc`, so ASK before
 # configuring one, the way the FreeRTOS/ThreadX lanes ask before their Cyclone
 # passes. Without this, `west_bringup_zephyr_cyclone_user_config` and
-# `west_board_import` (whose board crate defaults `NANO_ROS_RMW` to cyclonedds)
+# `west_board_import` (whose board crate defaults `NROS_RMW` to cyclonedds)
 # reached their configure on a runner with no idlc and died there, one
 # `host Cyclone idlc not found` per row, behind ~1 minute of sync + configure
 # each.

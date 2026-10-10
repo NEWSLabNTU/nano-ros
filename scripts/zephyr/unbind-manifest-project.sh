@@ -6,7 +6,7 @@
 # `setup.sh` used to finish workspace init with:
 #
 #     rm -rf  "$WORKSPACE_DIR/$NANO_ROS_NAME"
-#     ln -sf  "$NANO_ROS_ROOT" "$WORKSPACE_DIR/$NANO_ROS_NAME"
+#     ln -sf  "$NROS_REPO_DIR" "$WORKSPACE_DIR/$NANO_ROS_NAME"
 #
 # so the manifest project WAS the checkout that ran setup. West's project list
 # is what Zephyr's module discovery reads, so every build in that workspace got

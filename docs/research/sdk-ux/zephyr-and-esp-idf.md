@@ -122,7 +122,7 @@ A C example targeting QEMU FreeRTOS is comparable: `just setup`, `just freertos 
 | Rust workspace selection | Cargo `[features]` mutual-exclusion at compile time | `Cargo.toml` of the example | `cargo build` errors |
 | Zephyr-side wiring | Kconfig `CONFIG_NROS_*` (in `zephyr/Kconfig`) | `prj.conf` | `west build -t menuconfig` (Zephyr only) |
 | Per-board static config (IPs, MAC, priorities) | TOML parsed by `nano_ros_read_config()` (see `examples/mps2-an385-freertos/c/zenoh/talker/CMakeLists.txt:11`) | `config.toml` | none — silent if file missing |
-| Build glue | CMake `-D` flags (`NANO_ROS_RMW=…`, `NROS_PLATFORM=…`) | `justfile` (`install-local-posix:` loop) | `just --list` |
+| Build glue | CMake `-D` flags (`NROS_RMW=…`, `NROS_PLATFORM=…`) | `justfile` (`install-local-posix:` loop) | `just --list` |
 | Cargo patches | `[patch.crates-io]` in `.cargo/config.toml` | every example | invisible until `cargo` complains |
 
 ### Honest tradeoff analysis

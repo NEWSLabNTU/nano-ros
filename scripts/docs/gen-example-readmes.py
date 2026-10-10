@@ -189,12 +189,12 @@ def render(leaf: pathlib.Path) -> str:
         ]
     elif is_cmake:
         lines += [
-            "cmake -S . -B build -DNANO_ROS_ROOT=/path/to/nano-ros   # or: export NROS_REPO_DIR=…",
+            "cmake -S . -B build -DNROS_REPO_DIR=/path/to/nano-ros   # or: export NROS_REPO_DIR=…",
             "cmake --build build",
             "```",
             "",
             "No `nros sync` here: a C/C++ leaf's message bindings are a CMake-time",
-            "output. `-DNANO_ROS_ROOT` only says where the checkout is — the board, the",
+            "output. `-DNROS_REPO_DIR` only says where the checkout is — the board, the",
             "RMW and the domain come from `system.toml` (below), never from a `-D` flag.",
         ]
     else:  # pragma: no cover — every leaf is one or the other today

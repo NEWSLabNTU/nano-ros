@@ -32,7 +32,7 @@ Five namespaces exist for closely related concepts, overlapping partially:
   1. `cmake/board/nano-ros-board-*.cmake` — what `board=` names (canonical here)
   2. `[board.*]` in nros-sdk-index.toml   — what `nros setup <board>` accepts
   3. `packages/boards/nros-board-*`       — the board crate
-  4. `examples/fixtures.toml` NANO_ROS_BOARD — the test coordinate
+  4. `examples/fixtures.toml` NROS_BOARD — the test coordinate
   5. `_NROS_SCOPE_PLATFORMS`              — what `just setup <scope>` accepts
 
 This gate does NOT unify them. Which becomes canonical across all five is a
@@ -43,7 +43,7 @@ user pays for it.
 
 Three reader bugs were found by RUNNING this gate rather than reasoning about
 it, each one reporting well-defined boards as undefined: fixtures.toml spells
-the board `NANO_ROS_BOARD = ".."` inside `cmake_defs`, not `board = ".."`; and
+the board `NROS_BOARD = ".."` inside `cmake_defs`, not `board = ".."`; and
 the cmake board files were missing from the namespace list entirely. A gate
 that is wrong about where names live sends someone renaming working examples.
 
@@ -177,7 +177,7 @@ def fixture_boards(root):
     """Boards named by the fixture matrix.
 
     NOT a bare `board = "..."`: fixtures.toml carries the board inside a cmake
-    definition table, `cmake_defs = { NANO_ROS_BOARD = "qemu-armv7a-nuttx", .. }`.
+    definition table, `cmake_defs = { NROS_BOARD = "qemu-armv7a-nuttx", .. }`.
     Reading the wrong spelling made this gate report three real, well-defined
     boards as resolving nowhere — a false positive that would have sent someone
     renaming working examples.
@@ -189,7 +189,7 @@ def fixture_boards(root):
                 t = fh.read()
         except OSError:
             continue
-        boards |= set(re.findall(r'NANO_ROS_BOARD\s*=\s*"([^"]+)"', t))
+        boards |= set(re.findall(r'NROS_BOARD\s*=\s*"([^"]+)"', t))
         boards |= set(re.findall(r'^\s*board\s*=\s*"([^"]+)"', t, re.M))
     return boards
 
@@ -439,7 +439,7 @@ def main():
             sys.stderr.write(
                 "  - board=%r (%s) resolves in NONE of the six namespaces:\n"
                 "      cmake/board/nano-ros-board-*.cmake | [board.*] index key |\n"
-                "      packages/boards/nros-board-* | fixtures.toml NANO_ROS_BOARD |\n"
+                "      packages/boards/nros-board-* | fixtures.toml NROS_BOARD |\n"
                 "      a board descriptor's `names` (nros-board.toml)\n"
                 "      Name one that exists, or add the board where it belongs.\n\n" % (b, f)
             )

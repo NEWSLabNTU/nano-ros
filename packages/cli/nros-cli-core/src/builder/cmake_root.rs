@@ -269,7 +269,7 @@ pub fn render(
     ));
     if let Some(board) = &spec.board {
         out.push_str(&format!(
-            "set(NANO_ROS_BOARD {board} CACHE STRING \"\" FORCE)\n"
+            "set(NROS_BOARD {board} CACHE STRING \"\" FORCE)\n"
         ));
     }
     out.push('\n');

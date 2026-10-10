@@ -706,7 +706,7 @@ _build-c-example dir *CMAKE_ARGS:
     nros_cargo_ensure_codegen_c
     codegen_tool="$(nros_cargo_codegen_c_bin)"
     nros_cmake_configure_if_needed "{{dir}}" "{{dir}}/build" \
-        -DNROS_PLATFORM=posix -DNANO_ROS_RMW=zenoh -DNROS_RMW=zenoh \
+        -DNROS_PLATFORM=posix -DNROS_RMW=zenoh -DNROS_RMW=zenoh \
         -DNROS_BUILD_CODEGEN=OFF -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" {{CMAKE_ARGS}}
     cmake --build "{{dir}}/build"
 
@@ -725,8 +725,8 @@ build-c:
 build-c-xrce:
     #!/usr/bin/env bash
     set -e
-    just native _build-c-example examples/native/c/talker  "-DNANO_ROS_RMW=xrce -DNROS_RMW=xrce"
-    just native _build-c-example examples/native/c/listener "-DNANO_ROS_RMW=xrce -DNROS_RMW=xrce"
+    just native _build-c-example examples/native/c/talker  "-DNROS_RMW=xrce -DNROS_RMW=xrce"
+    just native _build-c-example examples/native/c/listener "-DNROS_RMW=xrce -DNROS_RMW=xrce"
     echo "C XRCE examples built!"
 
 # Clean C examples build
@@ -747,7 +747,7 @@ _build-cpp-example dir *CMAKE_ARGS:
     nros_cargo_ensure_codegen_c
     codegen_tool="$(nros_cargo_codegen_c_bin)"
     nros_cmake_configure_if_needed "{{dir}}" "{{dir}}/build" \
-        -DNROS_PLATFORM=posix -DNANO_ROS_RMW=zenoh -DNROS_RMW=zenoh \
+        -DNROS_PLATFORM=posix -DNROS_RMW=zenoh -DNROS_RMW=zenoh \
         -DNROS_BUILD_CODEGEN=OFF -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" {{CMAKE_ARGS}}
     cmake --build "{{dir}}/build"
 

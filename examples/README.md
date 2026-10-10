@@ -75,11 +75,11 @@ Each example is a standalone Cargo + CMake package — no walk-up in the manifes
 
   One caveat for a single-package **Rust** leaf: it is its own entry, so it still names its board crate in `[dependencies]`, and RFC-0098 D6's generated board dependency reaches only a workspace entry. Switching such a leaf to another board means editing `[image.*] board` **and** that dependency together — leave them disagreeing and `nros sync` reports success while the build fails inside your own crate ([issue 1305](../docs/issues/1305-single-package-board-crate-dep-not-generated.md)). A C/C++ leaf and a workspace really are one line.
 
-- **C / C++** — every CMakeLists resolves the nano-ros root through one guard: `-DNANO_ROS_ROOT=<path>` cache var, else the `NROS_REPO_DIR` env var (exported by `activate.sh`), else the in-repo relative walk-up. That flag says where the checkout is and nothing else — the board, the RMW, the domain and the network identity come from the leaf's `system.toml`, not from `-D` flags and not from the retired `package.xml` `<nano_ros deploy= board= rmw=/>` tuple. A single-package C/C++ leaf needs no `nros sync`: its message bindings are a CMake-time output. Copy the directory anywhere, then:
+- **C / C++** — every CMakeLists resolves the nano-ros root through one guard: `-DNROS_REPO_DIR=<path>` cache var, else the `NROS_REPO_DIR` env var (exported by `activate.sh`), else the in-repo relative walk-up. That flag says where the checkout is and nothing else — the board, the RMW, the domain and the network identity come from the leaf's `system.toml`, not from `-D` flags and not from the retired `package.xml` `<nano_ros deploy= board= rmw=/>` tuple. A single-package C/C++ leaf needs no `nros sync`: its message bindings are a CMake-time output. Copy the directory anywhere, then:
 
   ```bash
   cp -r examples/native/c/talker ~/my-c-talker && cd ~/my-c-talker
-  cmake -S . -B build -DNANO_ROS_ROOT=/path/to/nano-ros   # or: export NROS_REPO_DIR=…
+  cmake -S . -B build -DNROS_REPO_DIR=/path/to/nano-ros   # or: export NROS_REPO_DIR=…
   cmake --build build
   ```
 
@@ -478,7 +478,7 @@ project's build system.
 
 ## Quick start
 
-Each block assumes a zenoh router running on `tcp/127.0.0.1:7447` — `ros2 run rmw_zenoh_cpp rmw_zenohd` (contributor shortcut inside a checkout: `just native zenohd`). C/C++ examples resolve the nano-ros root through the `-DNANO_ROS_ROOT` / `NROS_REPO_DIR` guard described in the copy-out contract above; no install step required.
+Each block assumes a zenoh router running on `tcp/127.0.0.1:7447` — `ros2 run rmw_zenoh_cpp rmw_zenohd` (contributor shortcut inside a checkout: `just native zenohd`). C/C++ examples resolve the nano-ros root through the `-DNROS_REPO_DIR` / `NROS_REPO_DIR` guard described in the copy-out contract above; no install step required.
 
 ### Native Rust + zenoh
 

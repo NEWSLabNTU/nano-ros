@@ -70,7 +70,7 @@ Genuinely stale; fix:
 - `book/src/internals/creating-examples.md`
   - Lines 14, 18, 104, 153: `examples/<plat>/<lang>/<rmw>/<example>/` →
     `examples/<plat>/<lang>/<example>/`. State RMW is chosen at build time
-    (Cargo features / `-DNANO_ROS_RMW=` / Kconfig overlay), per CLAUDE.md.
+    (Cargo features / `-DNROS_RMW=` / Kconfig overlay), per CLAUDE.md.
   - Add one sentence: a single-package "app" example is the canonical
     *starter* shape; multi-package shape (Workstream B) kicks in at ≥2 nodes.
 - `book/src/reference/c-api.md:76`: `examples/native/c/<rmw>/action-client/`

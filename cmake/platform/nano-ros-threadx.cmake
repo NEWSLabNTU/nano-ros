@@ -3,8 +3,8 @@
 # Phase 138.2 / 144.7-8 — ThreadX platform module. Single source of
 # truth for ThreadX platform-shim wiring under the Phase 137
 # `add_subdirectory(<nano-ros-root>)` consumption shape. Used by both
-# `rv-virt-threadx` (NANO_ROS_BOARD=rv-virt-threadx) and
-# `threadx-linux` (NANO_ROS_BOARD=threadx-linux).
+# `rv-virt-threadx` (NROS_BOARD=rv-virt-threadx) and
+# `threadx-linux` (NROS_BOARD=threadx-linux).
 #
 # What this module composes:
 #
@@ -19,7 +19,7 @@
 #     single source of truth.
 #
 #   * Pulls in the per-board overlay
-#     (`cmake/board/nano-ros-board-${NANO_ROS_BOARD}.cmake`) EAGERLY —
+#     (`cmake/board/nano-ros-board-${NROS_BOARD}.cmake`) EAGERLY —
 #     overlays for ThreadX need to declare `threadx_kernel`,
 #     `netxduo`/`nsos_netx`, optional driver libs, and compose
 #     `threadx_platform` BEFORE this module wires it into the umbrella.
@@ -95,22 +95,22 @@ include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosGenerateInterfaces.cmake")
 # startup assembly. The overlay declares threadx_kernel + the netstack
 # static libs and composes threadx_platform.
 # ---------------------------------------------------------------------------
-if(NOT DEFINED NANO_ROS_BOARD)
+if(NOT DEFINED NROS_BOARD)
     message(FATAL_ERROR
-        "nano-ros-threadx: NANO_ROS_BOARD is required for the ThreadX "
-        "platform (e.g. -DNANO_ROS_BOARD=rv-virt-threadx or "
-        "-DNANO_ROS_BOARD=threadx-linux). Boards supply tx_user.h, "
+        "nano-ros-threadx: NROS_BOARD is required for the ThreadX "
+        "platform (e.g. -DNROS_BOARD=rv-virt-threadx or "
+        "-DNROS_BOARD=threadx-linux). Boards supply tx_user.h, "
         "nx_user.h, app_define.c, netstack glue, and (RV64) the linker "
         "script + startup asm.")
 endif()
 
 set(_nros_threadx_board_module
-    "${CMAKE_CURRENT_LIST_DIR}/../board/nano-ros-board-${NANO_ROS_BOARD}.cmake")
+    "${CMAKE_CURRENT_LIST_DIR}/../board/nano-ros-board-${NROS_BOARD}.cmake")
 if(NOT EXISTS "${_nros_threadx_board_module}")
     message(FATAL_ERROR
         "nano-ros-threadx: no board overlay at "
         "${_nros_threadx_board_module}. Add a "
-        "cmake/board/nano-ros-board-${NANO_ROS_BOARD}.cmake module or "
+        "cmake/board/nano-ros-board-${NROS_BOARD}.cmake module or "
         "pick a supported board (e.g. rv-virt-threadx, threadx-linux).")
 endif()
 include("${_nros_threadx_board_module}")
@@ -126,8 +126,8 @@ include("${_nros_threadx_board_module}")
 # Board-gated to rv-virt-threadx (cross rv64); the threadx-linux board is host-linked
 # and resolves Cyclone differently, so it's excluded here.
 # ---------------------------------------------------------------------------
-if(NANO_ROS_RMW STREQUAL "cyclonedds"
-   AND NANO_ROS_BOARD STREQUAL "rv-virt-threadx"
+if(NROS_RMW STREQUAL "cyclonedds"
+   AND NROS_BOARD STREQUAL "rv-virt-threadx"
    AND NOT DEFINED NROS_CYCLONE_THREADX_FLAGS_STAGED)
     set(NROS_CYCLONE_THREADX_FLAGS_STAGED TRUE)
     foreach(_off BUILD_SHARED_LIBS BUILD_IDLC BUILD_TESTING BUILD_IDLC_TESTING
@@ -209,8 +209,8 @@ endif()
 # port). So self-provision with the same host trims as native (nano-ros-posix.cmake):
 # ENABLE_*/SHM off + a static ddsc linked into the app — no build/install, no
 # runtime libddsc.so / system-substitution. No WITH_THREADX, no cross includes.
-if(NANO_ROS_RMW STREQUAL "cyclonedds"
-   AND NANO_ROS_BOARD STREQUAL "threadx-linux"
+if(NROS_RMW STREQUAL "cyclonedds"
+   AND NROS_BOARD STREQUAL "threadx-linux"
    AND NOT DEFINED NROS_CYCLONE_THREADX_FLAGS_STAGED)
     set(NROS_CYCLONE_THREADX_FLAGS_STAGED TRUE)
     set(ENABLE_SECURITY OFF CACHE BOOL "Cyclone: no DDS Security (Phase 186)" FORCE)
@@ -377,8 +377,8 @@ function(nros_platform_link_app target)
     # member — no archive duplication, no link-order surgery. Scoped to
     # the threadx-linux board + cyclonedds RMW; other boards/RMWs are
     # unaffected.
-    if(NANO_ROS_RMW STREQUAL "cyclonedds"
-       AND NANO_ROS_BOARD STREQUAL "threadx-linux")
+    if(NROS_RMW STREQUAL "cyclonedds"
+       AND NROS_BOARD STREQUAL "threadx-linux")
         target_link_options(${target} PRIVATE
             "LINKER:-u,nros_rmw_cffi_register_named")
     endif()

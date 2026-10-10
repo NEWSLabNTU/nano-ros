@@ -23,7 +23,7 @@
 #     codegen board key (`native`, `zephyr`, `fvp-aemv8r-smp`, …) the
 #     Entry pkg targets; flows to `nros codegen entry --board` and
 #     selects the C++ Board adapter (`LinuxBoard` / `ZephyrBoard`).
-#     Stored as the `NANO_ROS_BOARD` target property. Absent BOARD is
+#     Stored as the `NROS_BOARD` target property. Absent BOARD is
 #     valid for host-native pkgs; for embedded DEPLOY it is auto-derived
 #     from `NROS_BOARD_RUNNER` (Phase 235.B) when not passed explicitly.
 #
@@ -115,11 +115,11 @@ endfunction()
 # never FATALs, unlike `nano_ros_link_rmw`.
 #
 # Same resolution ORDER as `nano_ros_link_rmw`'s fallback list
-# ("NROS_DEFAULT_RMW;NANO_ROS_RMW"), then KCONFIG.
+# ("NROS_DEFAULT_RMW;NROS_RMW"), then KCONFIG.
 #
 # THE KCONFIG ARM IS NOT DECORATION. A west Zephyr image selects its backend
 # with `CONFIG_NROS_RMW_<X>=y` and sets NEITHER cmake variable: measured on
-# `build-ws-cpp-entry-cyclonedds`, whose CMakeCache has no `NANO_ROS_RMW` at all
+# `build-ws-cpp-entry-cyclonedds`, whose CMakeCache has no `NROS_RMW` at all
 # while its `.config` carries `CONFIG_NROS_RMW_CYCLONEDDS=y`. Without it the
 # user-config bake was skipped and the image linked Cyclone (`ddsi_` x14283)
 # carrying none of the user's bytes — configure clean, compile clean, silently
@@ -134,8 +134,8 @@ function(_nros_entry_resolve_rmw _out_var)
     set(_rmw "")
     if(DEFINED NROS_DEFAULT_RMW AND NOT "${NROS_DEFAULT_RMW}" STREQUAL "")
         set(_rmw "${NROS_DEFAULT_RMW}")
-    elseif(DEFINED NANO_ROS_RMW AND NOT "${NANO_ROS_RMW}" STREQUAL "")
-        set(_rmw "${NANO_ROS_RMW}")
+    elseif(DEFINED NROS_RMW AND NOT "${NROS_RMW}" STREQUAL "")
+        set(_rmw "${NROS_RMW}")
     elseif(CONFIG_NROS_RMW_CYCLONEDDS)
         set(_rmw "cyclonedds")
     elseif(CONFIG_NROS_RMW_XRCE)
@@ -897,7 +897,7 @@ function(nano_ros_entry)
     # (threadx-linux dials host loopback; QEMU boards dial the slirp host 10.0.2.2).
     # Whether THIS entry targets the active board. Two spellings (phase-287 W5):
     #   * workspace system.toml deploy targets are NAMED BY BOARD — the active
-    #     `NANO_ROS_BOARD` appears in the entry's DEPLOY list (phase-263 C2);
+    #     `NROS_BOARD` appears in the entry's DEPLOY list (phase-263 C2);
     #   * the RFC-0048 `package.xml <export><nano_ros deploy=…/>` tuple carries
     #     the deploy/PLATFORM token ("freertos", …) in DEPLOY while the board
     #     rides the `board=` attr — there the active platform matches instead.
@@ -908,11 +908,11 @@ function(nano_ros_entry)
     # maps to the threadx module but would never equal the tuple's `threadx`.
     nros_platform_family(_nra_platform_norm "${NROS_PLATFORM}")
     # issue 0735 — the board-name test is ONE of the three arms, not a gate over
-    # all of them. It used to open `if(DEFINED NANO_ROS_BOARD)`, which makes a
+    # all of them. It used to open `if(DEFINED NROS_BOARD)`, which makes a
     # board NAME the precondition for being a board. That is a proxy for "this
     # is an embedded build", and it is exactly inverted for RFC-0064: a board
     # arriving through an integration shell contributes NO files to this tree
-    # and therefore has no `NANO_ROS_BOARD` to define — that is the design (the
+    # and therefore has no `NROS_BOARD` to define — that is the design (the
     # FreeRTOS platform module's board-less mode exists for it; ESP-IDF's shell
     # is 146 lines with no board name at all).
     #
@@ -924,11 +924,11 @@ function(nano_ros_entry)
     # defaults). Configure succeeded, the build succeeded, the image was wrong.
     #
     # Dropping the outer guard cannot change any in-tree board's answer: every
-    # one of them defines `NANO_ROS_BOARD`, and with it unset the first clause
+    # one of them defines `NROS_BOARD`, and with it unset the first clause
     # is simply false. All three dependent blocks independently require a
     # non-posix platform, so the host lane is untouched either way.
     set(_nra_board_active FALSE)
-    if(("${NANO_ROS_BOARD}" IN_LIST _NRA_DEPLOY)
+    if(("${NROS_BOARD}" IN_LIST _NRA_DEPLOY)
        OR ("${NROS_PLATFORM}" IN_LIST _NRA_DEPLOY)
        OR ("${_nra_platform_norm}" IN_LIST _NRA_DEPLOY))
         set(_nra_board_active TRUE)
@@ -945,7 +945,7 @@ function(nano_ros_entry)
         # preserves each lane's own answers rather than merging them (they cite
         # different networks; see NanoRosEntryLocator.cmake).
         _nros_resolve_entry_locator(entry
-            "${NROS_PLATFORM}" "${NANO_ROS_BOARD}" _nra_locator)
+            "${NROS_PLATFORM}" "${NROS_BOARD}" _nra_locator)
         target_compile_definitions(${_NRA_NAME} PRIVATE
             "NROS_ENTRY_LOCATOR=\"${_nra_locator}\"")
         # phase-287 W6 — bake the domain the same way (fixture pairs pass
@@ -968,25 +968,25 @@ function(nano_ros_entry)
     # backend the image never declared, and — until this — the image had no way
     # to say which one it meant.
     #
-    # `NANO_ROS_RMW` is exactly the registry's vocabulary: each backend
+    # `NROS_RMW` is exactly the registry's vocabulary: each backend
     # registers under the same four names this variable takes
     # (`nros_rmw_cffi_register_named("zenoh"/"cyclonedds"/"xrce"/"uorb", …)`).
     # `check-entry-rmw-vocabulary` holds the two sides together, because a
     # selector that names no registered backend is a hard error rather than a
     # fallback — a drift here would turn a working image into one that cannot
     # open a session.
-    if(TARGET ${_NRA_NAME} AND NANO_ROS_RMW)
+    if(TARGET ${_NRA_NAME} AND NROS_RMW)
         target_compile_definitions(${_NRA_NAME} PRIVATE
-            "NROS_ENTRY_RMW=\"${NANO_ROS_RMW}\"")
+            "NROS_ENTRY_RMW=\"${NROS_RMW}\"")
     endif()
 
     # phase-263 C2 (issue 0097) — embedded LAUNCH Entry link pass. The standalone
     # `nano_ros_node_register` carrier calls `nros_platform_link_app` for the embedded
     # boards (startup source + app_define + linker script + kernel/netstack umbrella +
     # RMW stub), but the LAUNCH path builds the exe HERE. The active platform module
-    # (selected by the workspace-root `NROS_PLATFORM` + `NANO_ROS_BOARD`) loaded the
+    # (selected by the workspace-root `NROS_PLATFORM` + `NROS_BOARD`) loaded the
     # board overlay, so `nros_platform_link_app` does the correct per-board work. Gated on
-    # `NANO_ROS_BOARD IN_LIST DEPLOY` so only the entry matching the active board links.
+    # `NROS_BOARD IN_LIST DEPLOY` so only the entry matching the active board links.
     if(TARGET ${_NRA_NAME}
        AND NOT NROS_PLATFORM STREQUAL "posix"
        AND NOT _nra_is_zephyr
@@ -1105,7 +1105,7 @@ function(nano_ros_entry)
     # didn't pass BOARD.
     if(DEFINED _NRA_BOARD)
         set_target_properties(${_NRA_NAME} PROPERTIES
-            NANO_ROS_BOARD "${_NRA_BOARD}")
+            NROS_BOARD "${_NRA_BOARD}")
     endif()
 
     _nros_json_strlist(_sources_json ${_sources_for_exe})

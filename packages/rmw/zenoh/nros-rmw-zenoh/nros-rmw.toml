@@ -35,7 +35,7 @@ crate = "nros-rmw-zenoh"
 # Naming an rlib IS the statement that this backend arrives INSIDE the C/C++
 # umbrella staticlib and nothing separate reaches the link line — phase-439 W4
 # reads it as `strategy = "umbrella"` (RFC-0094 D5), which is what retired the
-# root `CMakeLists.txt`'s `if(NANO_ROS_RMW STREQUAL "zenoh" OR ... "xrce")` arm.
+# root `CMakeLists.txt`'s `if(NROS_RMW STREQUAL "zenoh" OR ... "xrce")` arm.
 rlib_dep = "nros-rmw-zenoh"
 # The `nros-c` feature that bundles it. AUTHORED, like `cpp_define`, because
 # `nros-c` names its backends `rmw-<name>` while the `nros-cpp` half is regular

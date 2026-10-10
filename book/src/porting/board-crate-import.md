@@ -9,7 +9,7 @@ Consume a nano-ros board crate from a downstream Zephyr application with a **sin
 - a hand-curated `EXTRA_CONF_FILE` listing the board crate's `prj.conf` and per-board Kconfig snippets
 - a hand-curated `DTC_OVERLAY_FILE`
 - a hardcoded `BOARD=<id>` string
-- a hardcoded `-DNANO_ROS_RMW=<rmw>` define
+- a hardcoded `-DNROS_RMW=<rmw>` define
 - a hand-rolled FVP / qemu launch shell
 
 All of those are owned by the board crate. The consumer's `CMakeLists.txt` declares which board it wants; nano-ros layers the rest in.
@@ -55,7 +55,7 @@ A consumer `CMakeLists.txt` should look like this and nothing more:
 cmake_minimum_required(VERSION 3.20)
 
 # Single import call. Layers in BOARD, EXTRA_CONF_FILE, DTC_OVERLAY_FILE,
-# NANO_ROS_RMW default, and the runner hint.
+# NROS_RMW default, and the runner hint.
 nano_ros_use_board(fvp-aemv8r-smp)
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
@@ -83,7 +83,7 @@ target_sources(app PRIVATE src/main.cpp)
 | `BOARD` | Set to `NROS_BOARD_ZEPHYR_ID` (from the board's descriptor) if the user did not pass `-DBOARD=...` on the command line. |
 | `EXTRA_CONF_FILE` | The board crate's `prj.conf` and any per-board Kconfig fragments (e.g. an HWv2 snippet) are appended. Any consumer-supplied `EXTRA_CONF_FILE` is preserved and layered AFTER the board's. |
 | `DTC_OVERLAY_FILE` | The board crate's per-board DTS overlay is appended. Consumer overlays are preserved and layered after. |
-| `NANO_ROS_RMW` | Defaulted to `NROS_BOARD_DEFAULT_RMW` (from the board's descriptor) when the consumer did not pass `-DNANO_ROS_RMW=...`. |
+| `NROS_RMW` | Defaulted to `NROS_BOARD_DEFAULT_RMW` (from the board's descriptor) when the consumer did not pass `-DNROS_RMW=...`. |
 | `NROS_BOARD_RUNNER` | Cached so a launcher can pick up the right simulator binary / target-launcher. |
 | `NROS_BOARD_RUST_SUPPORT_MODULE` | Appended to `ZEPHYR_EXTRA_MODULES` when the board carries a Rust support module. (Not yet in the `board.cmake` ↔ `Cargo.toml` drift-audit field list — drift here is unaudited.) |
 
@@ -96,7 +96,7 @@ This replaced a second AUTHORED file per board (`board.cmake`, 14 `NROS_BOARD_*`
 The one-call pattern still gives the consumer escape hatches:
 
 - **Pin a different Zephyr board id.** Pass `-DBOARD=<other>` on the CMake / `west build` command line; `nano_ros_use_board()` notices the user value and emits a warning rather than clobbering it.
-- **Pick a different RMW.** Pass `-DNANO_ROS_RMW=<rmw>` (`zenoh`, `xrce`, or `cyclonedds` -- see [Backend Reference](../user-guide/rmw-backends.md)). The board crate's default is used only when nothing is set.
+- **Pick a different RMW.** Pass `-DNROS_RMW=<rmw>` (`zenoh`, `xrce`, or `cyclonedds` -- see [Backend Reference](../user-guide/rmw-backends.md)). The board crate's default is used only when nothing is set.
 - **Layer extra Kconfig / DTS.** Set `EXTRA_CONF_FILE` and `DTC_OVERLAY_FILE` *after* the call to `nano_ros_use_board()`. They will be applied on top of the board crate's contributions, not in place of them.
 
 ```cmake
@@ -179,4 +179,4 @@ After migration, the consumer's CMake should be roughly twenty lines, with `nano
 - [Custom Board Package](custom-board.md) -- the full board-crate authoring guide.
 - [Vendor Overlay Board Crate](vendor-overlay.md) -- the lighter "I just want to override one field" path.
 - [Build commands reference](../reference/build-commands.md) -- `nros setup`, `nros doctor`, `nros board info`.
-- [RMW backends](../internals/rmw-backends.md) -- the menu of values for `-DNANO_ROS_RMW=...`.
+- [RMW backends](../internals/rmw-backends.md) -- the menu of values for `-DNROS_RMW=...`.

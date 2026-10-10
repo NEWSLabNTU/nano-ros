@@ -160,7 +160,7 @@ set(CMAKE_CXX_STANDARD 14)
 # Pull nano-ros.
 set(NROS_PLATFORM posix)
 set(NROS_RMW "zenoh" CACHE STRING "Active RMW.")
-set(NANO_ROS_RMW "${NROS_RMW}")
+set(NROS_RMW "${NROS_RMW}")
 add_subdirectory(/path/to/nano-ros nano_ros)
 
 # Point the message-package resolver at this workspace (must precede the

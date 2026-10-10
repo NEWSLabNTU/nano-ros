@@ -37,16 +37,16 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-NANO_ROS_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-NANO_ROS_PARENT="$(dirname "$NANO_ROS_ROOT")"
-NANO_ROS_NAME="$(basename "$NANO_ROS_ROOT")"
+NROS_REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+NANO_ROS_PARENT="$(dirname "$NROS_REPO_DIR")"
+NANO_ROS_NAME="$(basename "$NROS_REPO_DIR")"
 
 # Workspace location. Priority:
 #   1. $NROS_ZEPHYR_WORKSPACE explicit override
 #   2. Pre-existing sibling install at $parent/${name}-workspace (legacy layout)
 #   3. In-tree default at $repo/zephyr-workspace
 LEGACY_SIBLING="$NANO_ROS_PARENT/${NANO_ROS_NAME}-workspace"
-IN_TREE_DEFAULT="$NANO_ROS_ROOT/zephyr-workspace"
+IN_TREE_DEFAULT="$NROS_REPO_DIR/zephyr-workspace"
 if [ -n "${NROS_ZEPHYR_WORKSPACE:-}" ]; then
     WORKSPACE_DIR="$NROS_ZEPHYR_WORKSPACE"
 elif [ -d "$LEGACY_SIBLING/.west" ]; then
@@ -112,10 +112,10 @@ esac
 # `SDK_INSTALL_DIR` ("$SCRIPT_DIR/sdk") is no longer the install target; it
 # survives only as that legacy arm, inside `zephyr-sdk.sh`.
 # shellcheck source=../lib/zephyr-sdk.sh
-. "$NANO_ROS_ROOT/scripts/lib/zephyr-sdk.sh"
+. "$NROS_REPO_DIR/scripts/lib/zephyr-sdk.sh"
 
 # Where it IS, if anywhere: override, then store, then the legacy checkout copy.
-SDK_PATH="$(nros_zephyr_sdk_resolve "$ZEPHYR_SDK_VERSION" "$NANO_ROS_ROOT" || true)"
+SDK_PATH="$(nros_zephyr_sdk_resolve "$ZEPHYR_SDK_VERSION" "$NROS_REPO_DIR" || true)"
 # Where it GOES when nothing has it yet: the store (RFC-0095 D2).
 SDK_STORE_PATH="$(nros_zephyr_sdk_store_dir "$ZEPHYR_SDK_VERSION")"
 [ -n "$SDK_PATH" ] || SDK_PATH="$SDK_STORE_PATH"
@@ -201,7 +201,7 @@ echo "========================================"
 echo ""
 log_info "Workspace: $WORKSPACE_DIR"
 log_info "SDK directory: $SDK_PATH"
-log_info "nros: $NANO_ROS_ROOT"
+log_info "nros: $NROS_REPO_DIR"
 echo ""
 
 # =============================================================================
@@ -275,7 +275,7 @@ log_info "Checking Python tools (nano-ros does not install them)..."
 # Same resolver the lanes use, so this reports on the interpreter that will
 # actually run `west build` (scripts/build/zephyr-python.sh).
 # shellcheck source=scripts/build/zephyr-python.sh
-source "$NANO_ROS_ROOT/scripts/build/zephyr-python.sh"
+source "$NROS_REPO_DIR/scripts/build/zephyr-python.sh"
 NROS_PY="$(nros_zephyr_python)"
 [ -n "$NROS_PY" ] || NROS_PY="$(command -v python3 || true)"
 if [ -z "$NROS_PY" ]; then
@@ -283,7 +283,7 @@ if [ -z "$NROS_PY" ]; then
     exit 1
 fi
 
-if ! python3 "$NANO_ROS_ROOT/scripts/check-python-deps.py" --python "$NROS_PY" \
+if ! python3 "$NROS_REPO_DIR/scripts/check-python-deps.py" --python "$NROS_PY" \
         west zephyr-build; then
     log_error "Python prerequisites missing — see the report above."
     echo "" >&2
@@ -300,7 +300,7 @@ if ! python3 "$NANO_ROS_ROOT/scripts/check-python-deps.py" --python "$NROS_PY" \
 fi
 
 # issue 0698 follow-up — the Zephyr venv is this lane's, not the session's.
-source "$NANO_ROS_ROOT/scripts/build/zephyr-python.sh"
+source "$NROS_REPO_DIR/scripts/build/zephyr-python.sh"
 nros_zephyr_activate
 if command -v west &> /dev/null; then
     log_success "west present: $(west --version)"
@@ -349,7 +349,7 @@ provision_sdk_via_nros() {
     # spelling of "which SDK does this host need" is what the bug was.
     local nros_bin
     # shellcheck source=../build/cargo.sh
-    source "$NANO_ROS_ROOT/scripts/build/cargo.sh"
+    source "$NROS_REPO_DIR/scripts/build/cargo.sh"
     nros_bin="$(nros_cli_bin)"
     log_info "Provisioning Zephyr SDK $ZEPHYR_SDK_VERSION via nros (index entry: $ZEPHYR_SDK_TOOL, host-keyed dist)..."
     # NO `--prefix` — issue 1254. `--prefix` is the documented out-of-store
@@ -363,7 +363,7 @@ provision_sdk_via_nros() {
     # Without it the same command installs where RFC-0095 D2 says, and the store
     # is what `nros store list` / `gc` already understand.
     "$nros_bin" setup --tool "$ZEPHYR_SDK_TOOL" \
-        --index "$NANO_ROS_ROOT/nros-sdk-index.toml"
+        --index "$NROS_REPO_DIR/nros-sdk-index.toml"
 }
 
 install_sdk() {
@@ -427,7 +427,7 @@ fi
 # do. `--skip-sdk` still skips it, because that flag is the caller saying they
 # are managing the SDK themselves.
 if [ "$SKIP_SDK" != true ]; then
-    bash "$NANO_ROS_ROOT/scripts/zephyr/ensure-sdk-registered.sh" "$SDK_PATH"
+    bash "$NROS_REPO_DIR/scripts/zephyr/ensure-sdk-registered.sh" "$SDK_PATH"
 fi
 
 export ZEPHYR_SDK_INSTALL_DIR="$SDK_PATH"
@@ -457,17 +457,17 @@ export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
 #
 # This file is generated into a workspace that is SHARED by every project
 # wanting this Zephyr line, so it must not name one checkout. It used to export
-#     NANO_ROS_ROOT="\$WORKSPACE/$NANO_ROS_NAME"
+#     NROS_REPO_DIR="\$WORKSPACE/$NANO_ROS_NAME"
 # which was a symlink to whichever clone ran setup; that symlink is gone (the
 # manifest project carries no checkout now), so the path would name a directory
 # holding only a manifest file.
 #
 # The checkout is the CALLER's, and every caller already has one: activate.sh
-# exports NANO_ROS_ROOT, and just derives it from justfile_directory().
+# exports NROS_REPO_DIR, and just derives it from justfile_directory().
 # So this preserves what the caller set and says what to do when there is none,
 # rather than inventing an answer that is wrong for everybody but one tree.
-if [ -z "\${NANO_ROS_ROOT:-}" ]; then
-    echo "env.sh: NANO_ROS_ROOT is not set — source your checkout's activate.sh first." >&2
+if [ -z "\${NROS_REPO_DIR:-}" ]; then
+    echo "env.sh: NROS_REPO_DIR is not set — source your checkout's activate.sh first." >&2
     echo "        This workspace is shared, so it cannot name one for you." >&2
 fi
 
@@ -477,12 +477,12 @@ export PATH="\$HOME/.local/bin:\$PATH"
 echo "nros Zephyr environment ready"
 echo "  ZEPHYR_BASE: \$ZEPHYR_BASE"
 echo "  ZEPHYR_SDK: $SDK_PATH"
-echo "  NANO_ROS_ROOT: \${NANO_ROS_ROOT:-<unset — source activate.sh in your checkout>}"
+echo "  NROS_REPO_DIR: \${NROS_REPO_DIR:-<unset — source activate.sh in your checkout>}"
 echo ""
 echo "Build example (from YOUR checkout, which supplies the nros module):"
 echo "  cd \$WORKSPACE"
-echo "  west build -b native_sim/native/64 \$NANO_ROS_ROOT/examples/zephyr/rust/talker \\\\"
-echo "      -- -DZEPHYR_EXTRA_MODULES=\$NANO_ROS_ROOT -DCONF_FILE=\"prj.conf;prj-zenoh.conf\""
+echo "  west build -b native_sim/native/64 \$NROS_REPO_DIR/examples/zephyr/rust/talker \\\\"
+echo "      -- -DZEPHYR_EXTRA_MODULES=\$NROS_REPO_DIR -DCONF_FILE=\"prj.conf;prj-zenoh.conf\""
 ENVEOF
     chmod +x "$WORKSPACE_DIR/env.sh"
 }
@@ -506,8 +506,8 @@ if [ -d "$WORKSPACE_DIR/.west" ]; then
         # checkout, so `west build` took the application from one tree and the
         # nano-ros module from another for a month. Idempotent — a project that
         # is already a plain directory is left alone.
-        bash "$NANO_ROS_ROOT/scripts/zephyr/unbind-manifest-project.sh" \
-            "$WORKSPACE_DIR" "$NANO_ROS_NAME" "$MANIFEST" "$NANO_ROS_ROOT"
+        bash "$NROS_REPO_DIR/scripts/zephyr/unbind-manifest-project.sh" \
+            "$WORKSPACE_DIR" "$NANO_ROS_NAME" "$MANIFEST" "$NROS_REPO_DIR"
         cd "$WORKSPACE_DIR"
         west update
 
@@ -533,7 +533,7 @@ cd "$WORKSPACE_DIR"
 
 # The manifest project is a MANIFEST and nothing else — issue 1258 / phase-449 W1.
 #
-# This used to end with `ln -sf "$NANO_ROS_ROOT"`, which made the project BE the
+# This used to end with `ln -sf "$NROS_REPO_DIR"`, which made the project BE the
 # checkout that ran setup. West's project list is what Zephyr's module discovery
 # reads, so every build in the workspace took its `nros` module from that one
 # tree. Harmless beside a single checkout; since phase-440 W4 the default target
@@ -548,15 +548,15 @@ cd "$WORKSPACE_DIR"
 # holding `zephyr/module.yml`, and pointing at the subdirectory fails with
 # "is not a valid zephyr module", which names the variable and not the rule.
 mkdir -p "$WORKSPACE_DIR/$NANO_ROS_NAME"
-cp "$NANO_ROS_ROOT/$MANIFEST" "$WORKSPACE_DIR/$NANO_ROS_NAME/$MANIFEST"
+cp "$NROS_REPO_DIR/$MANIFEST" "$WORKSPACE_DIR/$NANO_ROS_NAME/$MANIFEST"
 
 # Initialize west (--mf selects the 3.7 vs 4.4 manifest)
 west init -l --mf "$MANIFEST" "$WORKSPACE_DIR/$NANO_ROS_NAME"
 
 # A workspace provisioned BEFORE 1258 still carries the symlink; unbind it in
 # place rather than making the operator re-provision 4.6 GB.
-bash "$NANO_ROS_ROOT/scripts/zephyr/unbind-manifest-project.sh" \
-    "$WORKSPACE_DIR" "$NANO_ROS_NAME" "$MANIFEST" "$NANO_ROS_ROOT"
+bash "$NROS_REPO_DIR/scripts/zephyr/unbind-manifest-project.sh" \
+    "$WORKSPACE_DIR" "$NANO_ROS_NAME" "$MANIFEST" "$NROS_REPO_DIR"
 
 log_info "Fetching Zephyr and modules (this may take a while)..."
 west update
@@ -569,7 +569,7 @@ west update
 # setup.sh standalone-correct on both lines.
 if [ "$MANIFEST" = "west.yml" ]; then
     log_info "Applying Cortex-A9 Rust patches..."
-    bash "$NANO_ROS_ROOT/scripts/zephyr/cortex-a9-rust-patch.sh" "$WORKSPACE_DIR"
+    bash "$NROS_REPO_DIR/scripts/zephyr/cortex-a9-rust-patch.sh" "$WORKSPACE_DIR"
 else
     log_info "Skipping Cortex-A9 Rust patch (manifest $MANIFEST is not the 3.7 line)"
 fi
@@ -578,7 +578,7 @@ fi
 # zephyr-lang-rust's cargo build — so non-default RMW examples compile only
 # their backend. Arch/version-blind; idempotent.
 log_info "Applying Rust cargo-features pass-through patch..."
-bash "$NANO_ROS_ROOT/scripts/zephyr/cargo-features-patch.sh" "$WORKSPACE_DIR"
+bash "$NROS_REPO_DIR/scripts/zephyr/cargo-features-patch.sh" "$WORKSPACE_DIR"
 
 # Re-check Zephyr's Python dependencies now that the workspace exists.
 #
@@ -593,7 +593,7 @@ bash "$NANO_ROS_ROOT/scripts/zephyr/cargo-features-patch.sh" "$WORKSPACE_DIR"
 # disk and can be named in the remediation.
 log_info "Re-checking Zephyr Python dependencies (build-only subset)..."
 REQ_BASE="$WORKSPACE_DIR/zephyr/scripts/requirements-base.txt"
-if ! python3 "$NANO_ROS_ROOT/scripts/check-python-deps.py" --python "$NROS_PY" \
+if ! python3 "$NROS_REPO_DIR/scripts/check-python-deps.py" --python "$NROS_PY" \
         zephyr-build; then
     log_error "Zephyr's Python build dependencies are missing — see above."
     if [ -f "$REQ_BASE" ]; then
@@ -621,7 +621,7 @@ echo "Workspace: $WORKSPACE_DIR"
 echo "SDK:       $SDK_PATH"
 echo ""
 echo "Structure:"
-echo "  $NANO_ROS_NAME/  -> $NANO_ROS_ROOT (symlink)"
+echo "  $NANO_ROS_NAME/  -> $NROS_REPO_DIR (symlink)"
 echo "  zephyr/          - Zephyr RTOS v3.7.0"
 echo "  modules/         - Zephyr modules (lang/rust, HALs)"
 echo ""

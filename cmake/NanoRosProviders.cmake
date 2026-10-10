@@ -44,9 +44,9 @@ set(_NROS_PROVIDERS_DIR "${CMAKE_CURRENT_LIST_DIR}"
 
 # ---------------------------------------------------------------------------
 # nano_ros_load_providers([INDEX <path>] [WORKSPACE <dir>]
-#                         [NANO_ROS_ROOT <dir>] [REUSE_INDEX])
+#                         [NROS_REPO_DIR <dir>] [REUSE_INDEX])
 #
-# NANO_ROS_ROOT names search-path root 0. Omitted, the CLI resolves it from the
+# NROS_REPO_DIR names search-path root 0. Omitted, the CLI resolves it from the
 # workspace and then from the `nros` binary's own location — correct for an
 # in-tree build, and for a copy-out project built against a checkout. Pass it
 # when a consumer needs a specific tree, and note that the roots are part of an
@@ -67,7 +67,17 @@ set(_NROS_PROVIDERS_DIR "${CMAKE_CURRENT_LIST_DIR}"
 # staleness has to be deliberate.
 # ---------------------------------------------------------------------------
 function(nano_ros_load_providers)
-    cmake_parse_arguments(_NP "REUSE_INDEX" "INDEX;WORKSPACE;NANO_ROS_ROOT" "" ${ARGN})
+    cmake_parse_arguments(_NP "REUSE_INDEX" "INDEX;WORKSPACE;NROS_REPO_DIR;NANO_ROS_ROOT" "" ${ARGN})
+
+    # phase-484 W7b-2 — `NROS_REPO_DIR` is the keyword; `NANO_ROS_ROOT` is its
+    # deprecated alias (the variable shim's rule, for a function argument).
+    if(DEFINED _NP_NANO_ROS_ROOT)
+        if(DEFINED _NP_NROS_REPO_DIR AND NOT "${_NP_NROS_REPO_DIR}" STREQUAL "${_NP_NANO_ROS_ROOT}")
+            message(FATAL_ERROR "nano-ros: NANO_ROS_ROOT and NROS_REPO_DIR disagree; pass only NROS_REPO_DIR.")
+        endif()
+        message(DEPRECATION "nano-ros: the NANO_ROS_ROOT keyword is deprecated; use NROS_REPO_DIR.")
+        set(_NP_NROS_REPO_DIR "${_NP_NANO_ROS_ROOT}")
+    endif()
 
     if(NOT _NP_WORKSPACE)
         set(_NP_WORKSPACE "${CMAKE_SOURCE_DIR}")
@@ -92,8 +102,8 @@ function(nano_ros_load_providers)
     endif()
 
     set(_root_args "")
-    if(_NP_NANO_ROS_ROOT)
-        set(_root_args --nano-ros-root "${_NP_NANO_ROS_ROOT}")
+    if(_NP_NROS_REPO_DIR)
+        set(_root_args --nano-ros-root "${_NP_NROS_REPO_DIR}")
     endif()
 
     if(_NP_REUSE_INDEX AND EXISTS "${_NP_INDEX}")

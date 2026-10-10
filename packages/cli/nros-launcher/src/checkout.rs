@@ -68,7 +68,7 @@ pub fn is_monorepo_root(dir: &Path) -> bool {
 /// directories: `share/nros/` is about the TOOLCHAIN (its manifest, its
 /// `VERSION`, the index it was released with, the installer), while
 /// `share/nano-ros/` is the project a build compiles against, and it uses the
-/// project's prose spelling because that is what `NANO_ROS_ROOT` has always
+/// project's prose spelling because that is what `NROS_REPO_DIR` has always
 /// named. `scripts/stage-sdk-root.sh` writes it; this constant is what reads it.
 pub const SHIPPED_SUBDIR: &str = "share/nano-ros";
 

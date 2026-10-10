@@ -18,7 +18,7 @@
 #
 # Standalone `[workspace]` table keeps the crate out of the outer nano-ros
 # workspace (the `one_dep_component_pkg` / `n9_workspace` shape). The
-# `@NANO_ROS_ROOT@` placeholders are rewritten to absolute paths when
+# `@NROS_REPO_DIR@` placeholders are rewritten to absolute paths when
 # `compile-check-fixtures.sh` stages the tree.
 [workspace]
 
@@ -47,5 +47,5 @@ default = ["serde"]
 serde = ["dep:serde"]
 
 [build-dependencies]
-rosidl-codegen = { path = "@NANO_ROS_ROOT@/packages/cli/rosidl-codegen" }
-rosidl-parser = { path = "@NANO_ROS_ROOT@/packages/cli/rosidl-parser" }
+rosidl-codegen = { path = "@NROS_REPO_DIR@/packages/cli/rosidl-codegen" }
+rosidl-parser = { path = "@NROS_REPO_DIR@/packages/cli/rosidl-parser" }

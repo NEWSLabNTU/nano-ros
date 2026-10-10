@@ -50,7 +50,7 @@ set(_NROS_BOARD_FACTS_REPO "${_nros_board_facts_repo}" CACHE INTERNAL
 # question rather than once per caller.
 #
 # Exactly one BOARD is active per configure — the board module is selected by
-# `if/elseif` on `NANO_ROS_BOARD` and the toolchain file must precede
+# `if/elseif` on `NROS_BOARD` and the toolchain file must precede
 # `project()`. DEPLOY is NOT bound that way: one configure can carry several
 # entry leaves, each naming its own deploy in its `package.xml` export tuple,
 # so the memo is keyed on both rather than assuming one answer (issue 0755).
@@ -59,7 +59,7 @@ function(nros_resolve_board_facts)
 
     set(_board "${_A_BOARD}")
     if(_board STREQUAL "")
-        set(_board "${NANO_ROS_BOARD}")
+        set(_board "${NROS_BOARD}")
     endif()
 
     # issue 0755 — the caller that knows the deploy is the entry verb, which
@@ -118,7 +118,7 @@ function(nros_resolve_board_facts)
     endif()
 
     # Where to resolve FROM, most specific first. `APPLICATION_SOURCE_DIR` is
-    # the Zephyr arm: that lane never sets `NANO_ROS_BOARD` (it names boards the
+    # the Zephyr arm: that lane never sets `NROS_BOARD` (it names boards the
     # Zephyr way), but its application dir IS an entry leaf, and `nros ws
     # board-facts` resolves an entry's board from the bringup image that claims
     # it (`leaf_system::for_entry`, phase-445 W5 — it was the entry's retired

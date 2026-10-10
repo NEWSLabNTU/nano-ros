@@ -45,7 +45,7 @@ endfunction()
 #                `add_subdirectory(<nano-ros>)`, or let the bake emit it.
 #
 # Lowers each axis to its CMake build knob (`cmake_token`) — the analog of
-# `NANO_ROS_RMW` — so a declared capability flips the option `nros-cpp` reads at
+# `NROS_RMW` — so a declared capability flips the option `nros-cpp` reads at
 # `add_subdirectory` time, not just the informational `system_config.h` `#define`.
 #
 # This map MIRRORS the Rust `Capability` registry (cargo-nano-ros

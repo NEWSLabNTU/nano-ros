@@ -99,7 +99,7 @@ Task T10: implemented (9 commits b80ef5aba..6c518db20, review pending). Filed #1
 Task T10: review PASS-with-followups (da0503682 cleared as legitimate — #131 stays red on positive paths). Fixer dispatched: 7 generic embedded cpp node names. Minor for T12: a29ff1556 swept examples/workspaces/ws-bridge-rust/Cargo.lock in (lock policy wave sweeps it); test_service_client_timeout pre-existing '|| !is_running()' soft-pass shape.
 Task T10: complete (commits b80ef5aba..6c518db20 + fixup d39476007; review PASS). W5 DONE.
 W5 gate: just check PASSED (exit 0) at d39476007.
-Task T11: implemented (6 commits 691bf81b1..84544b625; agent died post-report pre-final-message — report complete, just-check log PASS; review pending). Copy-out smokes PASSED live (rust /home/aeon copy + nros sync + run; C copy + -DNANO_ROS_ROOT + run). Notes: ws-* copy-out out of scope (follow-up); nuttx _entry build-std libc + stm32 talker-embassy link failures pre-existing (issue candidates).
+Task T11: implemented (6 commits 691bf81b1..84544b625; agent died post-report pre-final-message — report complete, just-check log PASS; review pending). Copy-out smokes PASSED live (rust /home/aeon copy + nros sync + run; C copy + -DNROS_REPO_DIR + run). Notes: ws-* copy-out out of scope (follow-up); nuttx _entry build-std libc + stm32 talker-embassy link failures pre-existing (issue candidates).
 Task T11: complete (6 commits 691bf81b1..84544b625, review PASS/PASS — copy-out smoke independently reproduced). W6 DONE. Minor: nros sync writes relative patch paths for out-of-repo copies (CLI UX nit, follow-up); collapsible_if warning in a W4 example callback (drive-by candidate).
 Task T12: implemented (14 commits 31e67f6c0..61b304b9e, review pending). Phase doc CLOSED (all boxes ticked). Concerns: baremetal moved fixtures' runtime tests hit pre-existing guest alloc panic (remote CI gates); fixtures-build.sh --id silently no-ops on id-less rows (fail-loud candidate); stale stm32f4 *_pkg root-excludes noted.
 Task T12: complete (14 commits 31e67f6c0..61b304b9e, review PASS/PASS-high, minors only: bins/ lock-tracking convention split; stale entry-poc path comment in o5_nav2 demo_entry; -portable README 'byte-identical' overstatement; native README case-table shorthand). W7 DONE. ALL TASKS DONE — final whole-branch review next.
@@ -146,9 +146,9 @@ PUSHED: #135 fix rebased onto 276-W2 main → 3228714f2; plus 9f000e35d fmt-fix 
   has audio); (6) riscv board cmake missed the Phase-238 COMPILE_DEFINITIONS→APP_COMPILE_DEFS ferry
   (NROS_PKG_NAME unexpanded → __nros_c_component_NROS_PKG_NAME_* undefined); (7) riscv ffi bin name
   pinned to nros-nuttx-ffi (cmake copy path expects ARM's name).
-W6 REGRESSION found+fixed en route: the phase-277 W6 guard script SPLICED the NANO_ROS_ROOT guard
+W6 REGRESSION found+fixed en route: the phase-277 W6 guard script SPLICED the NROS_REPO_DIR guard
   INTO the multi-line set(NROS_RMW_CYCLONEDDS_MSG_TO_IDL…) in the 6 threadx-riscv64 rust CMakeLists →
-  NANO_ROS_ROOT empty → add_subdirectory("") self-recursion (nano_ros/nano_ros/… dirs, cmake
+  NROS_REPO_DIR empty → add_subdirectory("") self-recursion (nano_ros/nano_ros/… dirs, cmake
   "Maximum recursion depth 1000"). Re-spliced above the set(); paren-balance sweep = 0 corrupted.
   threadx build-fixtures now green.
 #131 partial (commits 4aece54f3+81e21ba04): 3 of 5 defects fixed (W6 splice ff6720447; ports+slirp

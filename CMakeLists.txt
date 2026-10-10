@@ -12,7 +12,7 @@ nros_adopt_deprecated_names()
 # Consumers can pull nano-ros into a project with:
 #
 #     set(NROS_PLATFORM posix)
-#     set(NANO_ROS_RMW     zenoh)
+#     set(NROS_RMW     zenoh)
 #     add_subdirectory(third_party/nano-ros nano_ros)
 #     target_link_libraries(my_app PRIVATE NanoRos::NanoRos)
 #
@@ -39,9 +39,9 @@ option(NROS_BUILD_CODEGEN "Build the nros-codegen tool" ON)
 # such arm.
 include("${CMAKE_CURRENT_LIST_DIR}/cmake/NanoRosRmwDispatch.cmake")
 nros_rmw_known(_nros_rmw_choices SOFT)
-set(NANO_ROS_RMW "zenoh" CACHE STRING
+set(NROS_RMW "zenoh" CACHE STRING
     "RMW backend — one of: ${_nros_rmw_choices}")
-set_property(CACHE NANO_ROS_RMW PROPERTY STRINGS ${_nros_rmw_choices})
+set_property(CACHE NROS_RMW PROPERTY STRINGS ${_nros_rmw_choices})
 set(NROS_PLATFORM "posix" CACHE STRING
     "Target platform (canonical: posix/freertos/nuttx/threadx; legacy: freertos_armcm3, nuttx_armv7a, threadx_linux, threadx_riscv64)")
 set_property(CACHE NROS_PLATFORM PROPERTY STRINGS
@@ -121,7 +121,7 @@ nros_resolve_corrosion()
 # ---------------------------------------------------------------------------
 # 192.3: the nano-ros root dir (this file's dir), so subdirs needn't walk up
 # `../../..` to reach it (e.g. nros-cpp's deferred NanoRos::NanoRos link).
-set(NANO_ROS_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+set(NROS_REPO_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 if(NOT NROS_PLATFORM MATCHES "^nuttx")
     # Phase 241.D3-rev — single-runtime model: the umbrella FFI staticlib
     # (`libnros_c.a` for C, `libnros_cpp.a` for C++) bundles the selected RMW backend
@@ -149,14 +149,14 @@ endif()
 # (`cmake_module`), read by the same `nros ws leaf-system` the find_package
 # road uses. Skipped when the board was already given (`-D`, a generated
 # workspace root) or the find_package road already read the leaf.
-if(NOT NANO_ROS_BOARD AND NOT DEFINED NROS_LEAF_SYSTEM
+if(NOT NROS_BOARD AND NOT DEFINED NROS_LEAF_SYSTEM
    AND NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR
    AND EXISTS "${CMAKE_SOURCE_DIR}/system.toml")
     include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosPackageXml.cmake")
     include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosCodegenCore.cmake")
     nano_ros_read_leaf_system(DIR "${CMAKE_SOURCE_DIR}")
     if(NROS_EXPORT_CMAKE_BOARD)
-        set(NANO_ROS_BOARD "${NROS_EXPORT_CMAKE_BOARD}")
+        set(NROS_BOARD "${NROS_EXPORT_CMAKE_BOARD}")
     endif()
     # This is a subdirectory scope, so the leaf's own scope cannot see what was
     # read; a board module that needs the leaf's locator takes it from here
@@ -169,7 +169,7 @@ endif()
 # per-platform module names. The legacy cache strings (e.g.
 # `freertos_armcm3`, `threadx_riscv64`) name a specific platform+board
 # pairing — Phase 138 collapses them to the platform axis (board moves
-# to NANO_ROS_BOARD). Map here so existing recipes keep working.
+# to NROS_BOARD). Map here so existing recipes keep working.
 set(_nros_platform_module_name "${NROS_PLATFORM}")
 if(NROS_PLATFORM STREQUAL "freertos_armcm3")
     set(_nros_platform_module_name "freertos")
@@ -302,7 +302,7 @@ endif()
 # An `if/elseif/else` chain over backend NAMES, closing on
 #
 #     else()
-#         message(FATAL_ERROR "Unknown NANO_ROS_RMW: '${NANO_ROS_RMW}' "
+#         message(FATAL_ERROR "Unknown NROS_RMW: '${NROS_RMW}' "
 #             "(expected: zenoh, xrce, or cyclonedds)")
 #
 # — the SECOND closed list of backends in the tree and the one that decides
@@ -331,7 +331,7 @@ endif()
 # is NOT an edit here, which is RFC-0094's acceptance A2 and RFC-0071 D5's
 # original one: "a fifth backend added out-of-tree with zero core edits."
 # ---------------------------------------------------------------------------
-nros_rmw_dispatch("${NANO_ROS_RMW}")
+nros_rmw_dispatch("${NROS_RMW}")
 
 # ---------------------------------------------------------------------------
 # _nros_link_cmake_rmw(<target>) — wire a CMake-provided backend into <target>.
@@ -426,7 +426,7 @@ elseif(NROS_RMW_LINK_STRATEGY STREQUAL "cmake")
     # A backend that needs something resolved BEFORE its own configure ships a
     # fragment beside its descriptor. The root includes it blind: what a
     # backend needs provisioned is the backend's business, and the alternative
-    # is the `if(NANO_ROS_RMW STREQUAL "cyclonedds")` pre-step this wave
+    # is the `if(NROS_RMW STREQUAL "cyclonedds")` pre-step this wave
     # deleted. cyclonedds uses it to default `CYCLONEDDS_SOURCE_DIR` to the
     # pinned submodule so a bare cmake build needs no `just cyclonedds`.
     if(EXISTS "${NROS_RMW_CMAKE_DIR}/nros-rmw-provision.cmake")
@@ -461,7 +461,7 @@ elseif(NROS_RMW_LINK_STRATEGY STREQUAL "cmake")
         # umbrella and never sees it, so nothing is whole-archived twice.
         add_library(NanoRosRmwBackend INTERFACE)
         set_property(TARGET NanoRosRmwBackend PROPERTY
-            NANO_ROS_RMW "${NROS_RMW_NAME}")
+            NROS_RMW "${NROS_RMW_NAME}")
         _nros_link_cmake_rmw(NanoRosRmwBackend)
     else()
         message(FATAL_ERROR

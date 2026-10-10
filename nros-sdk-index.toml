@@ -1826,7 +1826,7 @@ lines = []
 #   * the INDEX key — `examples/<dir>` / the board-crate name, which is what
 #     `nros setup <board>` looks up (`resolve_packages`, an exact-key lookup
 #     with no guessing);
-#   * the CMAKE board id — `NANO_ROS_BOARD=<name>` → `cmake/board/
+#   * the CMAKE board id — `NROS_BOARD=<name>` → `cmake/board/
 #     nano-ros-board-<name>.cmake`, which is what a `package.xml` deploy export
 #     carries: `<nano_ros deploy="…" board="…" rmw="…"/>`.
 #

@@ -9,7 +9,7 @@
 #   * the header claimed this overlay is ALSO used under
 #     NROS_PLATFORM=freertos. It is not —
 #     `nano-ros-board-mps2-an385-freertos.cmake` is fully self-contained.
-#   * it has ZERO live consumers: `NANO_ROS_BOARD` is set to this value
+#   * it has ZERO live consumers: `NROS_BOARD` is set to this value
 #     nowhere in the tree. It survives as the C/C++ seam described below and
 #     as the example the baremetal dispatcher's FATAL_ERROR points at.
 #

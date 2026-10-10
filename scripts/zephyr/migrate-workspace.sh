@@ -22,11 +22,11 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-NANO_ROS_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-NANO_ROS_PARENT="$(dirname "$NANO_ROS_ROOT")"
-NANO_ROS_NAME="$(basename "$NANO_ROS_ROOT")"
+NROS_REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+NANO_ROS_PARENT="$(dirname "$NROS_REPO_DIR")"
+NANO_ROS_NAME="$(basename "$NROS_REPO_DIR")"
 LEGACY_SIBLING="$NANO_ROS_PARENT/${NANO_ROS_NAME}-workspace"
-IN_TREE="$NANO_ROS_ROOT/zephyr-workspace"
+IN_TREE="$NROS_REPO_DIR/zephyr-workspace"
 
 DRY_RUN=false
 [ "${1:-}" = "--dry-run" ] && DRY_RUN=true
@@ -66,7 +66,7 @@ run mv "$LEGACY_SIBLING" "$IN_TREE"
 INNER_LINK="$IN_TREE/$NANO_ROS_NAME"
 if [ -L "$INNER_LINK" ]; then
     run rm "$INNER_LINK"
-    run ln -s "$NANO_ROS_ROOT" "$INNER_LINK"
+    run ln -s "$NROS_REPO_DIR" "$INNER_LINK"
 fi
 
 echo ""

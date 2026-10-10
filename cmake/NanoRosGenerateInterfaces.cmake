@@ -897,7 +897,7 @@ function(nros_generate_interfaces target)
 
   # phase-347 W5 — per-message typesupport, DECLARED not named.
   #
-  # This was ~180 lines guarded by `if(NANO_ROS_RMW STREQUAL "cyclonedds" ...)`:
+  # This was ~180 lines guarded by `if(NROS_RMW STREQUAL "cyclonedds" ...)`:
   # one backend's idlc pipeline living in the pipeline every backend goes
   # through. It now lives in that backend's own package and is reached through
   # its descriptor (`[rmw.codegen].per_message`, RFC-0071 D4), surfaced by
@@ -907,8 +907,8 @@ function(nros_generate_interfaces target)
   # backend may declare a hook whose package has not been add_subdirectory'd in
   # this configure (cyclone's is defined only once its package is added), and
   # that is a legitimate no-op rather than an error.
-  if(NANO_ROS_RMW AND NOT NANO_ROS_RMW STREQUAL "none")
-    nros_rmw_dispatch("${NANO_ROS_RMW}")
+  if(NROS_RMW AND NOT NROS_RMW STREQUAL "none")
+    nros_rmw_dispatch("${NROS_RMW}")
     if(NROS_RMW_PER_MESSAGE_HOOK AND COMMAND ${NROS_RMW_PER_MESSAGE_HOOK})
       cmake_language(CALL ${NROS_RMW_PER_MESSAGE_HOOK}
         TARGET          "${target}"

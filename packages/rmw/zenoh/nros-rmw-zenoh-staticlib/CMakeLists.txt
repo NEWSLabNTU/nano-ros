@@ -12,13 +12,13 @@ if(NROS_PLATFORM STREQUAL "posix")
 elseif(NROS_PLATFORM STREQUAL "freertos_armcm3"
        OR NROS_PLATFORM STREQUAL "freertos")
     # Phase 138 canonical "freertos" accepted alongside legacy
-    # "freertos_armcm3"; Phase 138 collapsed board into NANO_ROS_BOARD.
+    # "freertos_armcm3"; Phase 138 collapsed board into NROS_BOARD.
     set(_platform_features platform-freertos)
     set(_lib_name "libnros_rmw_zenoh_${NROS_PLATFORM}.a")
 elseif(NROS_PLATFORM STREQUAL "nuttx_armv7a"
        OR NROS_PLATFORM STREQUAL "nuttx")
     # Phase 138 canonical "nuttx" accepted alongside legacy
-    # "nuttx_armv7a"; Phase 138 collapsed board into NANO_ROS_BOARD.
+    # "nuttx_armv7a"; Phase 138 collapsed board into NROS_BOARD.
     set(_platform_features platform-nuttx)
     set(_lib_name "libnros_rmw_zenoh_${NROS_PLATFORM}.a")
 elseif(NROS_PLATFORM STREQUAL "threadx_linux")
@@ -30,14 +30,14 @@ elseif(NROS_PLATFORM STREQUAL "threadx_riscv64")
 elseif(NROS_PLATFORM STREQUAL "threadx")
     # Phase 144.7-8 canonical "threadx" — board axis disambiguates
     # the std-vs-no_std crate-feature split.
-    if(NANO_ROS_BOARD STREQUAL "threadx-linux")
+    if(NROS_BOARD STREQUAL "threadx-linux")
         set(_platform_features platform-threadx-std)
-    elseif(NANO_ROS_BOARD STREQUAL "rv-virt-threadx")
+    elseif(NROS_BOARD STREQUAL "rv-virt-threadx")
         set(_platform_features platform-threadx)
     else()
         message(FATAL_ERROR
-            "NROS_PLATFORM=threadx requires NANO_ROS_BOARD to be one of: "
-            "threadx-linux, rv-virt-threadx. Got '${NANO_ROS_BOARD}'.")
+            "NROS_PLATFORM=threadx requires NROS_BOARD to be one of: "
+            "threadx-linux, rv-virt-threadx. Got '${NROS_BOARD}'.")
     endif()
     set(_lib_name "libnros_rmw_zenoh_${NROS_PLATFORM}.a")
 else()

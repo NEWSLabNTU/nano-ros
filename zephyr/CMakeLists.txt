@@ -79,7 +79,7 @@ nros_resolve_board_facts()
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_system_generate.cmake)
 # Phase 215.B.2 — nano_ros_use_board(<name>). Layers a board crate's
 # board.cmake sidecar manifest (EXTRA_CONF_FILE / DTC_OVERLAY_FILE /
-# BOARD / NANO_ROS_RMW / NROS_BOARD_RUNNER) into the downstream app
+# BOARD / NROS_RMW / NROS_BOARD_RUNNER) into the downstream app
 # build. The canonical call site is the consumer app's CMakeLists.txt
 # BEFORE find_package(Zephyr); this include just makes the fn
 # available wherever nano-ros is on ZEPHYR_EXTRA_MODULES (re-include
@@ -933,7 +933,7 @@ if(CONFIG_NROS_CPP_API)
 
     if(_nros_link_umbrella)
         include("${NROS_REPO_DIR}/cmake/NanoRosRuntimeCrate.cmake")
-        set(NANO_ROS_ROOT "${NROS_REPO_DIR}")
+        set(NROS_REPO_DIR "${NROS_REPO_DIR}")
         # Backend key for the umbrella's force-link anchor (zenoh/xrce bundle a Rust rlib).
         if(CONFIG_NROS_RMW_XRCE)
             set(_umb_backend "xrce")
