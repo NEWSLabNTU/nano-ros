@@ -55,5 +55,14 @@ if [[ "$out" == *"NROS_PLATFORM=[posix]"* && "$out" != *"deprecated"* ]]; then
     echo "  ok   the new name alone prints no deprecation"
 else echo "  FAIL new name:"; echo "$out" | sed 's/^/       /'; fail=1; fi
 
+mk root ""
+cat >> "$WORK/root/CMakeLists.txt" <<'CML'
+message(STATUS "NROS_REPO_DIR=[${NROS_REPO_DIR}] NROS_RMW=[${NROS_RMW}]")
+CML
+out="$(run root -DNANO_ROS_ROOT=/opt/nano-ros -DNANO_ROS_RMW=xrce)"
+if [[ "$out" == *"NROS_REPO_DIR=[/opt/nano-ros]"* && "$out" == *"NROS_RMW=[xrce]"* ]]; then
+    echo "  ok   W7b-2: -DNANO_ROS_ROOT / -DNANO_ROS_RMW are adopted as NROS_REPO_DIR / NROS_RMW"
+else echo "  FAIL W7b-2 twins:"; echo "$out" | sed 's/^/       /'; fail=1; fi
+
 if [ "$fail" -ne 0 ]; then echo "cmake-deprecated-names: FAILED"; exit 1; fi
-echo "cmake-deprecated-names: OK (4 cases)"
+echo "cmake-deprecated-names: OK (5 cases)"

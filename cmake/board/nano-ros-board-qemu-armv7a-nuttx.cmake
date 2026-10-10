@@ -7,7 +7,7 @@
 # location under `packages/boards/nros-board-nuttx-qemu/`.
 #
 # Loaded by `cmake/platform/nano-ros-nuttx.cmake` when
-# NANO_ROS_BOARD=qemu-armv7a-nuttx.
+# NROS_BOARD=qemu-armv7a-nuttx.
 #
 # Required cmake variables (env or -D):
 #   NUTTX_DIR        — pre-built NuttX kernel source/build tree

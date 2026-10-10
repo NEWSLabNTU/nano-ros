@@ -8,7 +8,7 @@ it; cmake asks `nros_locate_artifact()`, shell `nros_locate_artifact`, make
 `$(call nros_artifact,…)` — all three print `nros locate artifact`.
 
 The spelling this replaces was `<root>/target/...` — PX4's cmake module
-(`${NANO_ROS_ROOT}/target/release/libnros_cpp.a`), NuttX's `Make.defs`, two
+(`${NROS_REPO_DIR}/target/release/libnros_cpp.a`), NuttX's `Make.defs`, two
 fixture scripts. Each is right only while nothing sets `CARGO_TARGET_DIR` or
 `[build] target-dir`; under either the archive cargo just built reads "not
 found", and a header beside it is another build's (the 1046/1050 pairing
@@ -55,7 +55,7 @@ HASH_NAMES = {"Make.defs", "Makefile"}
 
 SELF_TESTS = [
     # (text, lang, should_match)
-    ('set(A "${NANO_ROS_ROOT}/target/release/libnros_cpp.a")', "cmake", True),
+    ('set(A "${NROS_REPO_DIR}/target/release/libnros_cpp.a")', "cmake", True),
     ('CFLAGS += -I$(ROOT)/target/nros-c-generated', "sh", True),
     ('lib="$repo_root/target/debug/libnros_c.a"', "sh", True),
     ('let d = root.join("target/nros-cpp-generated");', "rust", True),

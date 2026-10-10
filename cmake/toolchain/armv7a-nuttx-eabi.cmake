@@ -8,7 +8,7 @@
 # Usage:
 #   cmake -S . -B build \
 #         -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain/armv7a-nuttx-eabi.cmake \
-#         -DNANO_ROS_RMW=zenoh \
+#         -DNROS_RMW=zenoh \
 #         -DNROS_PLATFORM=nuttx_armv7a \
 #         -DNROS_BUILD_CODEGEN=OFF
 #   cmake --build build

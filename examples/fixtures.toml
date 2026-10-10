@@ -600,7 +600,7 @@ dir = "examples/workspaces/c"
 bringup = "src/demo_bringup"
 image = "threadx"
 build_subdir = "build/threadx-linux-zenoh/cmake"
-cmake_defs = { NROS_PLATFORM = "threadx", NANO_ROS_BOARD = "threadx-linux", NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9130" }
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux", NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9130" }
 
 # issue 1286 follow-up — the rv-virt (riscv64 QEMU virt, NetX Duo over
 # virtio-net) sibling of the row above: the same pure-C `demo_bringup` entry,
@@ -618,7 +618,7 @@ dir = "examples/workspaces/c"
 bringup = "src/demo_bringup"
 image = "riscv_threadx"
 build_subdir = "build/threadx-riscv64-zenoh-rv-virt-threadx/cmake"
-cmake_defs = { NROS_PLATFORM = "threadx", NANO_ROS_BOARD = "rv-virt-threadx", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9530" }
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "rv-virt-threadx", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9530" }
 
 # phase-263 C2b (issue 0097) — the FIRST QEMU-cross embedded C workspace entry:
 # `nano_ros_entry(BOARD mps2-an385-freertos LAUNCH …)`, the FreeRTOS sibling to the C2a
@@ -654,7 +654,7 @@ build_subdir = "build/freertos-cyclonedds-freertos-posix/cmake"
 # is on only for a self-provisioned Cyclone), so one row of each keeps both
 # covered. Self-provisioned and unfixed, this image died 6 runs of 10 on a
 # FreeRTOS assert from a Cyclone thread.
-cmake_defs = { NROS_PLATFORM = "freertos", NANO_ROS_BOARD = "freertos-posix", CMAKE_DISABLE_FIND_PACKAGE_CycloneDDS = "ON" }
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "freertos-posix", CMAKE_DISABLE_FIND_PACKAGE_CycloneDDS = "ON" }
 
 [[workspace_fixture]]
 id = "workspace-cpp-freertos-posix"
@@ -665,7 +665,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
 image = "freertos_posix"
 build_subdir = "build/freertos-cyclonedds-freertos-posix/cmake"
-cmake_defs = { NROS_PLATFORM = "freertos", NANO_ROS_BOARD = "freertos-posix" }
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "freertos-posix" }
 
 [[workspace_fixture]]
 id = "workspace-c-freertos"
@@ -676,7 +676,7 @@ dir = "examples/workspaces/c"
 bringup = "src/demo_bringup"
 image = "freertos"
 build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
-cmake_defs = { NROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7930" }
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7930" }
 
 # phase-372 W2 — the S32Z270 RTU (Cortex-R52) link-completeness witness: no
 # emulator models this SoC, so the cell's whole promise is "a C++ cyclonedds
@@ -693,7 +693,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
 image = "s32z270"
 build_subdir = "build/freertos-cyclonedds-s32z270-freertos/cmake"
-cmake_defs = { NROS_PLATFORM = "freertos", NANO_ROS_BOARD = "s32z270-freertos", FREERTOS_PORT = "GCC/ARM_CRx_No_GIC", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7940" }
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "s32z270-freertos", FREERTOS_PORT = "GCC/ARM_CRx_No_GIC", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7940" }
 
 # phase-385 W4 — the AN536 (Cortex-R52 on QEMU) cell. Same CPU, same kernel
 # port and the same C++ cyclonedds entry as the S32Z270 row above — but this
@@ -713,7 +713,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
 image = "mps3_an536"
 build_subdir = "build/freertos-cyclonedds-mps3-an536-freertos/cmake"
-cmake_defs = { NROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps3-an536-freertos", FREERTOS_PORT = "GCC/ARM_CRx_No_GIC", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7941" }
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps3-an536-freertos", FREERTOS_PORT = "GCC/ARM_CRx_No_GIC", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7941" }
 
 # phase-263 C2b — the NuttX (QEMU arm-virt) C workspace entry (talker + listener linked INTO
 # the kernel via cargo nros-nuttx-ffi). Dials the host zenoh router through the slirp gateway
@@ -728,7 +728,7 @@ dir = "examples/workspaces/c"
 bringup = "src/demo_bringup"
 image = "nuttx"
 build_subdir = "build/nuttx-zenoh-qemu-armv7a-nuttx/cmake"
-cmake_defs = { NROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "qemu-armv7a-nuttx", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8330" }
+cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "qemu-armv7a-nuttx", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8330" }
 
 # phase-281 W3-nuttx — the NuttX (QEMU arm-virt) C++ RT-TIERS workspace entry
 # (`realtime-cpp`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms) C++ nodes over ONE
@@ -747,7 +747,7 @@ dir = "examples/workspaces/realtime-cpp"
 bringup = "src/demo_bringup"
 image = "nuttx"
 build_subdir = "build/nuttx-zenoh-qemu-armv7a-nuttx/cmake"
-cmake_defs = { NROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "qemu-armv7a-nuttx", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8491" }
+cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "qemu-armv7a-nuttx", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8491" }
 
 # #199 follow-up — the rv-virt (riscv32) C++ RT-TIERS workspace entry: the
 # riscv sibling of workspace-cpp-nuttx-realtime (same demo_bringup 2-tier
@@ -762,7 +762,7 @@ dir = "examples/workspaces/realtime-cpp"
 bringup = "src/demo_bringup"
 image = "riscv_nuttx"
 build_subdir = "build/nuttx-zenoh-rv-virt-nuttx/cmake"
-cmake_defs = { NROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "rv-virt-nuttx", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8891" }
+cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "rv-virt-nuttx", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8891" }
 
 # phase-281 W3-nuttx — the NuttX (QEMU arm-virt) C RT-TIERS workspace entry
 # (`realtime-c`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms) C nodes over ONE
@@ -780,7 +780,7 @@ dir = "examples/workspaces/realtime-c"
 bringup = "src/demo_bringup"
 image = "nuttx"
 build_subdir = "build/nuttx-zenoh-qemu-armv7a-nuttx/cmake"
-cmake_defs = { NROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "qemu-armv7a-nuttx", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8391" }
+cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "qemu-armv7a-nuttx", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8391" }
 
 # #199 follow-up — the rv-virt (riscv32) C RT-TIERS workspace entry: the riscv
 # sibling of workspace-c-nuttx-realtime (same demo_bringup 2-tier plan; the
@@ -797,7 +797,7 @@ dir = "examples/workspaces/realtime-c"
 bringup = "src/demo_bringup"
 image = "riscv_nuttx"
 build_subdir = "build/nuttx-zenoh-rv-virt-nuttx/cmake"
-cmake_defs = { NROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "rv-virt-nuttx", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8791" }
+cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "rv-virt-nuttx", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8791" }
 
 [[workspace_fixture]]
 id = "workspace-cpp-native"
@@ -1032,7 +1032,7 @@ dir = "examples/workspaces/realtime-cpp"
 bringup = "src/demo_bringup"
 image = "freertos"
 build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
-cmake_defs = { NROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8091", CMAKE_BUILD_TYPE = "Release" }
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8091", CMAKE_BUILD_TYPE = "Release" }
 # CMAKE_BUILD_TYPE=Release (#126): a -O0 zenoh-pico on the emulated Cortex-M3 is
 # too slow to finish the session handshake in the e2e budget; the Rust tiers
 # fixture builds release for the same reason.
@@ -1074,7 +1074,7 @@ dir = "examples/workspaces/realtime-cpp-subnode-portable"
 bringup = "src/deploy_bringup"
 image = "freertos"
 build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
-cmake_defs = { NROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8092", CMAKE_BUILD_TYPE = "Release" }
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8092", CMAKE_BUILD_TYPE = "Release" }
 # CMAKE_BUILD_TYPE=Release, like every other mps2 row (#126). The locator is
 # baked but never dialled — nothing runs this image yet; 8092 is free beside the
 # 8091 `workspace-cpp-freertos-realtime` bakes, so adding a runtime cell later
@@ -1097,7 +1097,7 @@ dir = "examples/workspaces/realtime-c"
 bringup = "src/demo_bringup"
 image = "freertos"
 build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
-cmake_defs = { NROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7991", CMAKE_BUILD_TYPE = "Release" }
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7991", CMAKE_BUILD_TYPE = "Release" }
 # CMAKE_BUILD_TYPE=Release (#126): a -O0 zenoh-pico on the emulated Cortex-M3 is
 # too slow to finish the session handshake in the e2e budget; the C++ tiers
 # fixture builds release for the same reason.
@@ -1116,7 +1116,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
 image = "threadx"
 build_subdir = "build/threadx-linux-zenoh/cmake"
-cmake_defs = { NROS_PLATFORM = "threadx", NANO_ROS_BOARD = "threadx-linux", NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9230" }
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux", NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9230" }
 
 [[workspace_fixture]]
 id = "workspace-cpp-freertos"
@@ -1127,7 +1127,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
 image = "freertos"
 build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
-cmake_defs = { NROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8030" }
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8030" }
 
 [[workspace_fixture]]
 id = "workspace-mixed-native"
@@ -1275,7 +1275,7 @@ dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
 image = "threadx"
 build_subdir = "build/threadx-linux-zenoh/cmake"
-cmake_defs = { NROS_PLATFORM = "threadx", NANO_ROS_BOARD = "threadx-linux", NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9330" }
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux", NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9330" }
 
 # phase-263 C2c — the MIXED (C + C++ + no_std Rust) entry on FreeRTOS QEMU. Unlike the
 # threadx-linux host triple, FreeRTOS is a genuine thumbv7m-none-eabi no_std cross target, so
@@ -1298,7 +1298,7 @@ dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
 image = "freertos"
 build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
-cmake_defs = { NROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8130" }
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8130" }
 
 # ===========================================================================
 # native — Rust (host, the ambient profile — see phase-336 / `nros profile`)

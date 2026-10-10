@@ -646,6 +646,20 @@ verb's answer is used as given.
   name); cmake test `cmake-deprecated-names` (cache and normal aliases adopted
   with a deprecation, a disagreement refused, the new name alone silent); book
   page `reference/deprecated-names.md`.
+- **W7b-2 landed (2026-10-11).** The three twins merged: `NANO_ROS_RMW` →
+  `NROS_RMW` and `NANO_ROS_BOARD` → `NROS_BOARD` (always set to the same value
+  as their twin), `NANO_ROS_ROOT` / `NANO_ROS_ROOT_DIR` → `NROS_REPO_DIR`
+  (RFC-0103 D6's one root name) — all three in the shim table. Two precedence
+  fixes came with the merge: `nano_rosConfig.cmake` adopts deprecated names
+  BEFORE stating the root (its own directory is the root), and sets
+  `NROS_BOARD` from the leaf's export only when the project did not
+  (a `-DNANO_ROS_BOARD` used to win; `-DNROS_BOARD` still does). The
+  `NANO_ROS_ROOT <path>` KEYWORD of `nano_ros_workspace()`,
+  `nano_ros_generate()` and the providers function is kept as a deprecated
+  alias of the `NROS_REPO_DIR` keyword. The first rename pass missed every
+  `-DNANO_ROS_*` flag (`\b` cannot separate `-D` from `N`) and the gate shared
+  the blind spot — 315 flags; both passes and the gate now match after `-D`.
+  `NANO_ROS_ROOT` as an ENVIRONMENT variable stays retired and refused.
 - **Old-name retirement pass (W8, after the aliases have shipped in one
   release).** Remove the shim's table entries (each old name then becomes a
   configure ERROR naming its replacement, kept one more release before the

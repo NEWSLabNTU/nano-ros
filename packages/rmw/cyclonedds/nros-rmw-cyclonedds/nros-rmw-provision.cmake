@@ -3,7 +3,7 @@
 #
 # Included by the selecting build, in ITS scope, when this backend is chosen.
 # The hook exists so the root `CMakeLists.txt` does not need an
-# `if(NANO_ROS_RMW STREQUAL "cyclonedds")` pre-step — which is exactly the
+# `if(NROS_RMW STREQUAL "cyclonedds")` pre-step — which is exactly the
 # closed-list shape W4 deleted one block down. What a backend needs provisioned
 # is the backend's business.
 #
@@ -14,14 +14,14 @@
 # `just cyclonedds` pre-step. A user overrides with `-DCMAKE_PREFIX_PATH` (their
 # install) or `-DCYCLONEDDS_SOURCE_DIR` (their checkout).
 #
-# `NANO_ROS_ROOT_DIR` rather than `CMAKE_CURRENT_SOURCE_DIR`: an `include()`
+# `NROS_REPO_DIR` rather than `CMAKE_CURRENT_SOURCE_DIR`: an `include()`
 # evaluates in the INCLUDING file's directory scope, so the latter would name
 # the consumer's project, not this checkout. Falls back to walking up from this
 # file (packages/rmw/cyclonedds/nros-rmw-cyclonedds -> the tree root) for a
 # consumer that reaches the descriptor without the root having run.
 
-if(NANO_ROS_ROOT_DIR)
-    set(_nros_cyclone_tree "${NANO_ROS_ROOT_DIR}")
+if(NROS_REPO_DIR)
+    set(_nros_cyclone_tree "${NROS_REPO_DIR}")
 else()
     get_filename_component(_nros_cyclone_tree
         "${CMAKE_CURRENT_LIST_DIR}/../../../.." ABSOLUTE)

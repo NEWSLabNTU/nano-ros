@@ -34,9 +34,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-NANO_ROS_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+NROS_REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-TARGET="$NANO_ROS_ROOT/third-party/dds/cyclonedds/src/ddsrt/src/threads/posix/threads.c"
+TARGET="$NROS_REPO_DIR/third-party/dds/cyclonedds/src/ddsrt/src/threads/posix/threads.c"
 if [ ! -f "$TARGET" ]; then
     echo "ERROR: $TARGET missing — submodule not checked out?" >&2
     exit 1

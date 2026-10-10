@@ -84,7 +84,7 @@ nano_ros_workspace(
 
 `nano_ros_workspace()` does the heavy lifting in one call:
 
-1. Sets `NROS_PLATFORM=posix` + `NANO_ROS_RMW=zenoh`.
+1. Sets `NROS_PLATFORM=posix` + `NROS_RMW=zenoh`.
 2. `add_subdirectory(<nano-ros>)` **once** at root scope (so per-pkg
    subdirs don't collide on re-include).
 3. `include(NanoRosNodeRegister.cmake)` + `include(NanoRosEntry.cmake)`
@@ -98,7 +98,7 @@ nano_ros_workspace_pkg_guard()  # no-op inside a workspace; bootstraps standalon
 ```
 
 — the cmake equivalent of cargo `[workspace]` discipline. Every member
-compiles standalone (with `-DNANO_ROS_ROOT=<path>`) or as part of the
+compiles standalone (with `-DNROS_REPO_DIR=<path>`) or as part of the
 workspace; the per-pkg CMakeLists doesn't change between modes.
 
 ## Node pkg

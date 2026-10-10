@@ -73,7 +73,7 @@ clean-agent:
 # Phase 140 — the legacy `build-rmw` recipe (standalone CMake build
 # + install) is gone. The Rust-side `nros-rmw-xrce-cffi` shim is
 # what the root CMake xrce branch consumes; build it via cargo or
-# via the root cmake configure with NANO_ROS_RMW=xrce. The
+# via the root cmake configure with NROS_RMW=xrce. The
 # header-only `nros-rmw-xrce` C++ project under
 # packages/rmw/xrce/nros-rmw-xrce/ keeps its CTest harness for ad-hoc
 # in-tree validation.

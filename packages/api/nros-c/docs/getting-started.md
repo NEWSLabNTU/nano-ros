@@ -26,7 +26,7 @@ project(my_c_talker LANGUAGES C)
 set(CMAKE_C_STANDARD 11)
 
 set(NROS_PLATFORM posix)
-set(NANO_ROS_RMW     zenoh)
+set(NROS_RMW     zenoh)
 add_subdirectory(/path/to/nano-ros nano_ros)
 
 add_executable(my_c_talker src/main.c)
@@ -80,9 +80,9 @@ Generated type info structs (`nros_message_type_t`, `nros_service_type_t`,
 
 ## 3. RMW Backend Selection
 
-The `NANO_ROS_RMW` CMake variable selects which RMW staticlib to build
+The `NROS_RMW` CMake variable selects which RMW staticlib to build
 in-tree. Set it in `CMakeLists.txt` (BEFORE `add_subdirectory`) or
-override on the command line (`-DNANO_ROS_RMW=xrce`). Valid: `zenoh`
+override on the command line (`-DNROS_RMW=xrce`). Valid: `zenoh`
 (default), `dds`, `xrce`, `cyclonedds`.
 
 ## 4. Write a Publisher

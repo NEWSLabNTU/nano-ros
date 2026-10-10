@@ -9,7 +9,7 @@
 # install prefix.
 #
 # Loaded by `cmake/platform/nano-ros-threadx.cmake` when
-# NANO_ROS_BOARD=rv-virt-threadx. The platform module is what
+# NROS_BOARD=rv-virt-threadx. The platform module is what
 # `add_subdirectory(<nano-ros-root>)` reaches first; this overlay only
 # runs once we know we are targeting ThreadX-on-RV64-QEMU.
 #
@@ -602,7 +602,7 @@ function(_nros_rv64_image_locator out_var)
             return()
         endif()
     endif()
-    _nros_resolve_entry_locator(entry "${NROS_PLATFORM}" "${NANO_ROS_BOARD}" _loc)
+    _nros_resolve_entry_locator(entry "${NROS_PLATFORM}" "${NROS_BOARD}" _loc)
     set(${out_var} "${_loc}" PARENT_SCOPE)
 endfunction()
 
@@ -740,7 +740,7 @@ nros_riscv64_rustflags_env(${_crate_target}-static)
     # also arrives as a PROPAGATED requirement of `${_A_LINK}` — the generated
     # `<pkg>__nano_ros_c` library, which preferred `NanoRos::NanoRosCpp`
     # whenever the target merely EXISTED, and it always exists under
-    # `add_subdirectory("${NANO_ROS_ROOT}" nano_ros)`. That is what put
+    # `add_subdirectory("${NROS_REPO_DIR}" nano_ros)`. That is what put
     # `libnros_cpp.a` beside this leaf's own archive and killed all twelve
     # `threadx_riscv64` leaves on 228 `rust-lld: error: duplicate symbol` lines.
     # The property is read at generate time by the resolver in

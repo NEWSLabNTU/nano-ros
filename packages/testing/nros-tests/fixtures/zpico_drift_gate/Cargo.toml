@@ -6,7 +6,7 @@
 # under `cargo build`, and the drift gate lives in the build script.
 #
 # Standalone `[workspace]` keeps it out of the nano-ros workspace; the
-# `@NANO_ROS_ROOT@` placeholder is rewritten to an absolute path at staging.
+# `@NROS_REPO_DIR@` placeholder is rewritten to an absolute path at staging.
 [workspace]
 
 [package]
@@ -21,4 +21,4 @@ path = "src/lib.rs"
 [dependencies]
 # `posix,platform-aliases` with no defaults — the feature set the runtime test
 # built with (`zpico-sys` names platforms bare, unlike the umbrella crates).
-zpico-sys = { path = "@NANO_ROS_ROOT@/packages/rmw/zenoh/zpico-sys", default-features = false, features = ["posix", "platform-aliases"] }
+zpico-sys = { path = "@NROS_REPO_DIR@/packages/rmw/zenoh/zpico-sys", default-features = false, features = ["posix", "platform-aliases"] }

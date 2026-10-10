@@ -8,7 +8,7 @@
 # Usage:
 #   cmake -S . -B build \
 #         -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain/riscv64-threadx.cmake \
-#         -DNANO_ROS_RMW=zenoh \
+#         -DNROS_RMW=zenoh \
 #         -DNROS_PLATFORM=threadx_riscv64 \
 #         -DNROS_BUILD_CODEGEN=OFF
 #   cmake --build build

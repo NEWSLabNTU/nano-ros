@@ -139,11 +139,11 @@ cmake --build build
 ./build/c_talker
 
 # Copied out: pass the checkout explicitly (or export NROS_REPO_DIR).
-cmake -B build -S . -DNANO_ROS_ROOT=<path-to-nano-ros>
+cmake -B build -S . -DNROS_REPO_DIR=<path-to-nano-ros>
 ```
 
 No `nros sync` step here: a single-package C/C++ leaf generates its message
-bindings while CMake configures. `-DNANO_ROS_ROOT` says where the checkout is
+bindings while CMake configures. `-DNROS_REPO_DIR` says where the checkout is
 and nothing more — the board, the RMW, the domain and the network identity come
 from the example's `system.toml`, which `find_package(nano_ros)` reads
 (RFC-0098 D3/D5). The whole `CMakeLists.txt` is:

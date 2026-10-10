@@ -48,7 +48,7 @@ pub struct Capability {
     /// registry loop that replaced the hardcoded per-axis `#define`s.
     pub c_define: Option<&'static str>,
     /// Phase 261 — the CMake build-knob token for the axis, e.g.
-    /// `"NROS_SAFETY_E2E"` (the analog of `NANO_ROS_RMW`). `None` ⇒ no CMake
+    /// `"NROS_SAFETY_E2E"` (the analog of `NROS_RMW`). `None` ⇒ no CMake
     /// knob (the macro is informational only). Threaded into the C/C++ codegen by
     /// W5 when populated.
     pub cmake_token: Option<&'static str>,

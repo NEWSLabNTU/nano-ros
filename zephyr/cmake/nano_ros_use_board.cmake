@@ -139,9 +139,9 @@ function(nano_ros_use_board NAME)
     list(APPEND DTC_OVERLAY_FILE "${NROS_BOARD_BOARD_OVERLAY}")
     set(DTC_OVERLAY_FILE "${DTC_OVERLAY_FILE}" PARENT_SCOPE)
 
-    # 7. NANO_ROS_RMW — board's default if the consumer didn't pin one.
-    if(NOT DEFINED NANO_ROS_RMW)
-        set(NANO_ROS_RMW "${NROS_BOARD_DEFAULT_RMW}" CACHE STRING
+    # 7. NROS_RMW — board's default if the consumer didn't pin one.
+    if(NOT DEFINED NROS_RMW)
+        set(NROS_RMW "${NROS_BOARD_DEFAULT_RMW}" CACHE STRING
             "nano-ros RMW backend (default from board ${NAME})")
     endif()
 
@@ -155,7 +155,7 @@ function(nano_ros_use_board NAME)
     # for every Zephyr version; a consumer merging the snippet too is
     # harmless (identical values).
     file(GLOB _nros_rmw_common_conf
-        "${NROS_REPO_DIR}/zephyr/snippets/nros-${NANO_ROS_RMW}/*.conf")
+        "${NROS_REPO_DIR}/zephyr/snippets/nros-${NROS_RMW}/*.conf")
     if(_nros_rmw_common_conf)
         list(APPEND EXTRA_CONF_FILE ${_nros_rmw_common_conf})
         set(EXTRA_CONF_FILE "${EXTRA_CONF_FILE}" PARENT_SCOPE)
@@ -179,5 +179,5 @@ function(nano_ros_use_board NAME)
 
     message(STATUS
         "nano_ros_use_board(${NAME}): zephyr_board=${NROS_BOARD_ZEPHYR_ID}, "
-        "rmw=${NANO_ROS_RMW}, runner=${NROS_BOARD_RUNNER}")
+        "rmw=${NROS_RMW}, runner=${NROS_BOARD_RUNNER}")
 endfunction()

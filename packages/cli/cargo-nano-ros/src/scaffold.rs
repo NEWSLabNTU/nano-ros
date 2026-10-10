@@ -775,7 +775,7 @@ void {class_name}::on_tick() {{
     println!("  # Solo build:");
     println!("  cmake -S . -B build");
     println!("  #   (an installed toolchain needs nothing here; from an un-activated");
-    println!("  #    checkout shell add -DNANO_ROS_ROOT=<path-to-nano-ros>)");
+    println!("  #    checkout shell add -DNROS_REPO_DIR=<path-to-nano-ros>)");
     println!("  cmake --build build");
     println!();
     println!("  # Or add it as a SUBDIR in a workspace root that calls");
@@ -914,7 +914,7 @@ NROS_C_COMPONENT({state_ty}, {configure_fn})
     println!("  # Solo build:");
     println!("  cmake -S . -B build");
     println!("  #   (an installed toolchain needs nothing here; from an un-activated");
-    println!("  #    checkout shell add -DNANO_ROS_ROOT=<path-to-nano-ros>)");
+    println!("  #    checkout shell add -DNROS_REPO_DIR=<path-to-nano-ros>)");
     println!("  cmake --build build");
     println!();
     println!("  # Or add it as a SUBDIR in a C++ or Rust Entry workspace.");
@@ -1594,7 +1594,7 @@ mod tests {
             "stray old-shape verb:\n{cm}"
         );
         assert!(
-            !cm.contains("set(NANO_ROS_RMW"),
+            !cm.contains("set(NROS_RMW"),
             "RMW should be in package.xml:\n{cm}"
         );
 

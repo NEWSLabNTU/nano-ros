@@ -139,17 +139,17 @@ endfunction()
 # ---------------------------------------------------------------------------
 # The nano-ros tree — search-path root 0.
 #
-# Derived from THIS FILE's location rather than read from `NANO_ROS_ROOT_DIR`,
+# Derived from THIS FILE's location rather than read from `NROS_REPO_DIR`,
 # because that variable is set partway down the root `CMakeLists.txt` and this
-# module is included above it (to populate the `NANO_ROS_RMW` cache entry's
+# module is included above it (to populate the `NROS_RMW` cache entry's
 # choices). A module that answers differently depending on where in a configure
 # it is first called is the ordering trap `_NROS_ENTRY_DIR` documents; this file
 # always sits at `<nano-ros>/cmake/`, so its own directory is the one input that
 # is true at every point.
 # ---------------------------------------------------------------------------
 function(_nros_rmw_root out_var)
-    if(NANO_ROS_ROOT_DIR)
-        set(${out_var} "${NANO_ROS_ROOT_DIR}" PARENT_SCOPE)
+    if(NROS_REPO_DIR)
+        set(${out_var} "${NROS_REPO_DIR}" PARENT_SCOPE)
         return()
     endif()
     get_filename_component(_root "${_NROS_RMW_DISPATCH_DIR}" DIRECTORY)

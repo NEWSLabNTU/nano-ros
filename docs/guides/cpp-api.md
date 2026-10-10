@@ -23,7 +23,7 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(NROS_PLATFORM posix)
-set(NANO_ROS_RMW     zenoh)
+set(NROS_RMW     zenoh)
 add_subdirectory(<path-to-nano-ros> nano_ros)
 
 nano_ros_generate_interfaces(std_msgs
@@ -46,7 +46,7 @@ That is the out-of-tree spelling, where the consumer owns the whole
 ament shape instead — `find_package(nano_ros REQUIRED)` +
 `nano_ros_add_executable()` — and take the board, RMW, domain and network
 identity from a `system.toml` beside the `CMakeLists.txt` rather than from
-`set(NANO_ROS_RMW …)` or a `-D` flag. See the FreeRTOS section below for what
+`set(NROS_RMW …)` or a `-D` flag. See the FreeRTOS section below for what
 that file holds.
 
 The `nano_ros_generate_interfaces()` function:
@@ -75,7 +75,7 @@ board = "mps2-an385-freertos"
 
 `find_package(nano_ros)` reads that through `nros ws leaf-system` and derives
 the platform (`freertos`) from the board, so `-DNROS_PLATFORM`,
-`-DNANO_ROS_BOARD` and `-DNROS_RMW` are retired as the way a user chooses.
+`-DNROS_BOARD` and `-DNROS_RMW` are retired as the way a user chooses.
 Switching board is editing `[image.*] board`. Phase 138's
 `cmake/platform/nano-ros-freertos.cmake` +
 `cmake/board/nano-ros-board-mps2-an385-freertos.cmake` still compose the kernel

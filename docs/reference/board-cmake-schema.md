@@ -70,12 +70,12 @@ Semicolon-separated list of license-gated package names from
 
 The RMW backend the board's reference example was built against.
 Downstream consumer keeps the right to override via
-`-DNANO_ROS_RMW=<rmw>`, but if nothing is passed `nano_ros_use_board()`
+`-DNROS_RMW=<rmw>`, but if nothing is passed `nano_ros_use_board()`
 populates this default.
 
 - Valid values: `cyclonedds`, `zenoh`, `xrce` (the three RMWs nano-ros
   ships post-Phase 169 — `dust-dds` is retired).
-- Consumed by: `nano_ros_use_board()` step 7 — sets `NANO_ROS_RMW` in
+- Consumed by: `nano_ros_use_board()` step 7 — sets `NROS_RMW` in
   the cache if undefined.
 
 ### `NROS_BOARD_DEFAULT_TRANSPORT`
@@ -223,7 +223,7 @@ The schema is consumed at three sites:
   `BOARD_DIR = ${NROS_REPO_DIR}/packages/boards/nros-board-<name>`,
   `include()`s `${BOARD_DIR}/board.cmake`, then routes each variable as
   documented above (`EXTRA_CONF_FILE` / `DTC_OVERLAY_FILE` / `BOARD` /
-  `NANO_ROS_RMW` / cached `NROS_BOARD_RUNNER`). All overrides land
+  `NROS_RMW` / cached `NROS_BOARD_RUNNER`). All overrides land
   BEFORE Zephyr's board-resolution phase — the function either
   re-orders (sets variables in the parent scope) or `FATAL_ERROR`s on
   wrong-order invocation.

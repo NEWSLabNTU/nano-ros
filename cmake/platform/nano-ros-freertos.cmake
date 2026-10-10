@@ -13,7 +13,7 @@
 #     under `packages/api/nros-c/cmake/nros-freertos.cmake` and stays
 #     the single source of truth.
 #
-#   * Pulls in the per-board overlay (`cmake/board/nano-ros-board-${NANO_ROS_BOARD}.cmake`)
+#   * Pulls in the per-board overlay (`cmake/board/nano-ros-board-${NROS_BOARD}.cmake`)
 #     EAGERLY — board overlays for FreeRTOS need to declare
 #     `freertos_kernel`, `lwip`, and any netif targets BEFORE
 #     `add_subdirectory(packages/platform/nros-platform-freertos)` runs, and
@@ -97,7 +97,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosGenerateInterfaces.cmake")
 # RFC-0062 — but a HOST ECOSYSTEM that owns its own build (a vendor SDK build
 # such as S32DS/RTD, PlatformIO) has already produced every one of those
 # artefacts. Its integration shell binds them to the target names this module
-# expects, and consequently needs no NANO_ROS_BOARD at all. (`integrations/`
+# expects, and consequently needs no NROS_BOARD at all. (`integrations/`
 # holds those shells; the ESP-IDF one was retired in phase-468 W2.)
 # In that case there is no board to name and no overlay to include, and
 # demanding one would force a per-board file into this tree for a board
@@ -116,7 +116,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosGenerateInterfaces.cmake")
 # for FREERTOS_DIR / LWIP_DIR.
 # ---------------------------------------------------------------------------
 set(_nros_freertos_boardless FALSE)
-if(NOT DEFINED NANO_ROS_BOARD)
+if(NOT DEFINED NROS_BOARD)
     if(TARGET freertos_platform)
         set(_nros_freertos_boardless TRUE)
         message(STATUS
@@ -125,8 +125,8 @@ if(NOT DEFINED NANO_ROS_BOARD)
             "overlay.")
     else()
         message(FATAL_ERROR
-            "nano-ros-freertos: NANO_ROS_BOARD is required for the FreeRTOS "
-            "platform (e.g. -DNANO_ROS_BOARD=mps2-an385-freertos). Boards "
+            "nano-ros-freertos: NROS_BOARD is required for the FreeRTOS "
+            "platform (e.g. -DNROS_BOARD=mps2-an385-freertos). Boards "
             "supply the linker script, startup file, FreeRTOSConfig.h, "
             "lwIP config, and netif driver.\n"
             "If you are instead integrating nano-ros into a host build that "
@@ -140,12 +140,12 @@ endif()
 
 if(NOT _nros_freertos_boardless)
     set(_nros_freertos_board_module
-        "${CMAKE_CURRENT_LIST_DIR}/../board/nano-ros-board-${NANO_ROS_BOARD}.cmake")
+        "${CMAKE_CURRENT_LIST_DIR}/../board/nano-ros-board-${NROS_BOARD}.cmake")
     if(NOT EXISTS "${_nros_freertos_board_module}")
         message(FATAL_ERROR
             "nano-ros-freertos: no board overlay at "
             "${_nros_freertos_board_module}. Add a "
-            "cmake/board/nano-ros-board-${NANO_ROS_BOARD}.cmake module or "
+            "cmake/board/nano-ros-board-${NROS_BOARD}.cmake module or "
             "pick a supported board (e.g. mps2-an385-freertos).")
     endif()
     include("${_nros_freertos_board_module}")
@@ -175,7 +175,7 @@ if(NOT DEFINED NROS_FREERTOS_BOARD_HAS_LWIP)
     set(NROS_FREERTOS_BOARD_HAS_LWIP TRUE)
 endif()
 
-if(NANO_ROS_RMW STREQUAL "cyclonedds" AND NROS_FREERTOS_BOARD_HAS_LWIP
+if(NROS_RMW STREQUAL "cyclonedds" AND NROS_FREERTOS_BOARD_HAS_LWIP
         AND NOT DEFINED NROS_CYCLONE_FREERTOS_FLAGS_STAGED)
     set(NROS_CYCLONE_FREERTOS_FLAGS_STAGED TRUE)
     foreach(_off BUILD_SHARED_LIBS BUILD_IDLC BUILD_TESTING BUILD_IDLC_TESTING
@@ -241,7 +241,7 @@ endif()
 # PUBLIC, because every TU that reads `configTOTAL_HEAP_SIZE` must agree on it
 # (issue 1197). An explicit `NROS_FREERTOS_HEAP_KB` still wins over both.
 # ---------------------------------------------------------------------------
-string(TOLOWER "${NANO_ROS_RMW}" _nros_freertos_rmw)
+string(TOLOWER "${NROS_RMW}" _nros_freertos_rmw)
 if(TARGET freertos_kernel AND _nros_freertos_rmw MATCHES "^(cyclonedds|xrce)$")
     target_compile_definitions(freertos_kernel PUBLIC NROS_FREERTOS_HEAP_DEFAULT_DDS=1)
 endif()

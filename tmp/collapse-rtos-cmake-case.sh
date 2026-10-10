@@ -33,7 +33,7 @@ cp -r "$src/src" "$dst/"
 [ -f "$src/README.md" ] && cp "$src/README.md" "$dst/"
 
 # Read the source CMakeLists once; transform it minimally:
-#   - drop the hardcoded `set(NANO_ROS_RMW <rmw>)` line
+#   - drop the hardcoded `set(NROS_RMW <rmw>)` line
 #   - replace with the NROS_RMW cache var pattern
 #   - fix the add_subdirectory("../../../../..") path depth 5→4
 cmake_in="$src/CMakeLists.txt"
@@ -49,13 +49,13 @@ out_path = Path(sys.argv[2])
 case_name = sys.argv[3]
 text = in_path.read_text()
 
-# Drop the hardcoded `set(NANO_ROS_RMW   zenoh)` and replace with
+# Drop the hardcoded `set(NROS_RMW   zenoh)` and replace with
 # the `NROS_RMW` cache-var pattern right after the platform set.
 text = re.sub(
-    r'^(set\(NROS_PLATFORM[^\n]*\)\s*\n)set\(NANO_ROS_RMW\s+[^\n)]*\)',
+    r'^(set\(NROS_PLATFORM[^\n]*\)\s*\n)set\(NROS_RMW\s+[^\n)]*\)',
     r'\1set(NROS_RMW "zenoh" CACHE STRING\n'
     r'    "Active RMW (zenoh|dds|xrce|cyclonedds) — selects the backend linked into this example.")\n'
-    r'set(NANO_ROS_RMW "${NROS_RMW}")',
+    r'set(NROS_RMW "${NROS_RMW}")',
     text,
     count=1,
     flags=re.MULTILINE,

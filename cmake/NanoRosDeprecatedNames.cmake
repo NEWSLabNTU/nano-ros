@@ -16,9 +16,10 @@
 # replacement, then the entries go.
 #
 # Not here, on purpose: `NANO_ROS_DIR` / `nano_ros_ROOT` (CMake's own
-# `find_package(nano_ros)` conventions), and the three names whose `NROS_*`
-# twin already has its own precedence (`NANO_ROS_ROOT`, `NANO_ROS_RMW`,
-# `NANO_ROS_BOARD`) — W7b-2 reconciles those before they join the table.
+# `find_package(nano_ros)` conventions). `NANO_ROS_ROOT` IS here as a cmake
+# variable (→ `NROS_REPO_DIR`, RFC-0103 D6's one root name); as an
+# ENVIRONMENT variable it is retired outright and refused
+# (`check-retired-store-vars`), not aliased.
 include_guard(GLOBAL)
 
 set(_NROS_DEPRECATED_CMAKE_NAMES
@@ -30,6 +31,10 @@ set(_NROS_DEPRECATED_CMAKE_NAMES
     NANO_ROS_SKIP_BOOTSTRAP=NROS_SKIP_BOOTSTRAP
     NANO_ROS_BUILD_CODEGEN=NROS_BUILD_CODEGEN
     NANO_ROS_CMAKE_DIR=NROS_CMAKE_DIR
+    # W7b-2 — the three that had an NROS_* twin, now merged onto it.
+    NANO_ROS_RMW=NROS_RMW
+    NANO_ROS_BOARD=NROS_BOARD
+    NANO_ROS_ROOT=NROS_REPO_DIR
     CACHE INTERNAL "phase-484 W7b: deprecated cmake name aliases (OLD=NEW)")
 
 # A MACRO, so the adopted names land in the caller's scope (an entry point's

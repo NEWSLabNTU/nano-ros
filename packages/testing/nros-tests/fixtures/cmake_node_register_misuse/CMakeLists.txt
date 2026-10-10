@@ -19,6 +19,6 @@ endif()
 include("${CMAKE_CURRENT_LIST_DIR}/cases/${NROS_VERDICT_CASE}.cmake")
 
 project(${VERDICT_PROJECT} C CXX)
-include("@NANO_ROS_ROOT@/cmake/NanoRosNodeRegister.cmake")
+include("@NROS_REPO_DIR@/cmake/NanoRosNodeRegister.cmake")
 
 verdict_body()

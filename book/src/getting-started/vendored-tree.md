@@ -139,7 +139,7 @@ Two entry points, both source-backed:
 
 Either way, at configure time nano-ros's `bootstrap.cmake` runs
 `tools/setup.sh` to populate the source submodules your
-`(NROS_PLATFORM, NANO_ROS_RMW)` pair needs. That is correct on a
+`(NROS_PLATFORM, NROS_RMW)` pair needs. That is correct on a
 developer machine and wrong in hermetic CI — see the next section.
 Corrosion is never fetched at configure time: without it in the SDK store
 the configure stops and names `nros setup --tool corrosion`.

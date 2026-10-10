@@ -57,7 +57,7 @@ RETIRED="make ninja ros zenoh"
 # scan reporting "no references" over a tree full of them — measured while this
 # rule was being written.
 #
-# ...but a ROOTED spelling is the root: `${NANO_ROS_ROOT}/third-party/ninja`,
+# ...but a ROOTED spelling is the root: `${NROS_REPO_DIR}/third-party/ninja`,
 # `$repo/third-party/make`, `$(git rev-parse --show-toplevel)/third-party/ros`.
 # The `[^/…]` lookbehind excluded every one of them (phase-472 W5), so a `/`
 # directly after a variable expansion or a `)`/`}` counts as the repo root.
@@ -123,7 +123,7 @@ selftest() {
     _st "packages/cli/$tp is not repo-root"     1 "$(is_retired_ref "git -C packages/cli/$tp/make x"; echo $?)"
     _st "a longer name is not the root"         1 "$(is_retired_ref "see $tp/ros-launch-manifest"; echo $?)"
     _st "a submodule parent is not retired"     1 "$(is_retired_ref "cd $tp/dds/cyclonedds"; echo $?)"
-    _st "a \${ROOT}-rooted read is a read"      0 "$(is_retired_ref "if(EXISTS \"\${NANO_ROS_ROOT}/$tp/ninja/ninja\")"; echo $?)"
+    _st "a \${ROOT}-rooted read is a read"      0 "$(is_retired_ref "if(EXISTS \"\${NROS_REPO_DIR}/$tp/ninja/ninja\")"; echo $?)"
     _st "a \$repo-rooted read is a read"         0 "$(is_retired_ref "[ -x \"\$repo/$tp/make/make\" ]"; echo $?)"
     _st "a \$(…)-rooted read is a read"          0 "$(is_retired_ref "d=\"\$(git rev-parse --show-toplevel)/$tp/ros\""; echo $?)"
     _st "a listed file is a ref exception"      0 "$(is_ref_exception a/b.py "a/b.py c.sh"; echo $?)"

@@ -38,7 +38,7 @@
 #     CMake INTERFACE target exists for contract uniformity.
 #
 #   * Pulls in the per-board overlay
-#     (`cmake/board/nano-ros-board-${NANO_ROS_BOARD}.cmake`) — board
+#     (`cmake/board/nano-ros-board-${NROS_BOARD}.cmake`) — board
 #     overlays own the NuttX FFI-crate path (`NUTTX_FFI_CRATE_DIR`),
 #     the cargo target triple (e.g. `armv7a-nuttx-eabihf`), and
 #     define `nros_board_link_app(target)` which redirects the
@@ -179,22 +179,22 @@ include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosGenerateInterfaces.cmake")
 # implementation that drives `nuttx_build_example`. Today the only
 # board is `qemu-armv7a-nuttx` (QEMU ARM virt, Cortex-A7).
 # ---------------------------------------------------------------------------
-if(NOT DEFINED NANO_ROS_BOARD)
+if(NOT DEFINED NROS_BOARD)
     message(FATAL_ERROR
-        "nano-ros-nuttx: NANO_ROS_BOARD is required for the NuttX "
-        "platform (e.g. -DNANO_ROS_BOARD=qemu-armv7a-nuttx). Boards "
+        "nano-ros-nuttx: NROS_BOARD is required for the NuttX "
+        "platform (e.g. -DNROS_BOARD=qemu-armv7a-nuttx). Boards "
         "supply the FFI crate path, cargo target triple, and the "
         "`nros_board_link_app` implementation that drives "
         "`nuttx_build_example`.")
 endif()
 
 set(_nros_nuttx_board_module
-    "${CMAKE_CURRENT_LIST_DIR}/../board/nano-ros-board-${NANO_ROS_BOARD}.cmake")
+    "${CMAKE_CURRENT_LIST_DIR}/../board/nano-ros-board-${NROS_BOARD}.cmake")
 if(NOT EXISTS "${_nros_nuttx_board_module}")
     message(FATAL_ERROR
         "nano-ros-nuttx: no board overlay at "
         "${_nros_nuttx_board_module}. Add a "
-        "cmake/board/nano-ros-board-${NANO_ROS_BOARD}.cmake module or "
+        "cmake/board/nano-ros-board-${NROS_BOARD}.cmake module or "
         "pick a supported board (e.g. qemu-armv7a-nuttx).")
 endif()
 include("${_nros_nuttx_board_module}")
@@ -286,7 +286,7 @@ function(nros_platform_link_app target)
     else()
         message(FATAL_ERROR
             "nros_platform_link_app: board overlay for "
-            "NANO_ROS_BOARD=${NANO_ROS_BOARD} did not define "
+            "NROS_BOARD=${NROS_BOARD} did not define "
             "`nros_board_link_app(target)`.")
     endif()
 endfunction()

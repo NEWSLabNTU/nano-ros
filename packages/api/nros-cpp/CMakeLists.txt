@@ -5,7 +5,7 @@
 #
 # This file is included from the top-level CMakeLists.txt via add_subdirectory().
 # Two variables control the build:
-#   NANO_ROS_RMW      — RMW backend: zenoh, xrce, or dds (default: zenoh)
+#   NROS_RMW      — RMW backend: zenoh, xrce, or dds (default: zenoh)
 #   NROS_PLATFORM — target platform: posix, freertos_armcm3, nuttx_armv7a
 #                       (default: posix)
 
@@ -18,8 +18,8 @@ endif()
 # phase-314 — was ~90 lines of inline rmw/platform mapping that hardcoded
 # `ros-humble` and applied capabilities only on posix. See cmake/NanoRosFeatureSet.cmake
 # and issue 0311 for why the duplication was a defect rather than a tidy-up.
-# Relative to THIS file, not ${NANO_ROS_ROOT}: a raw `add_subdirectory(<repo>)`
-# consumer (the phase-138 smoke shape) never defines NANO_ROS_ROOT.
+# Relative to THIS file, not ${NROS_REPO_DIR}: a raw `add_subdirectory(<repo>)`
+# consumer (the phase-138 smoke shape) never defines NROS_REPO_DIR.
 include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosFeatureSet.cmake")
 option(NROS_SAFETY_E2E "Enable E2E message-integrity (CRC) — zenoh only" OFF)
 set(_caps ${NROS_FEATURES})
@@ -38,9 +38,9 @@ endif()
 # import, so the declaration now arrives on its own and this can go.
 nros_feature_set(_cpp_features
     CRATE        cpp
-    RMW          "${NANO_ROS_RMW}"
+    RMW          "${NROS_RMW}"
     PLATFORM     "${NROS_PLATFORM}"
-    BOARD        "${NANO_ROS_BOARD}"
+    BOARD        "${NROS_BOARD}"
     CAPABILITIES "${_caps}")
 
 # ---- Build nros-cpp via Corrosion ----
@@ -48,7 +48,7 @@ nros_feature_set(_cpp_features
 # its own CMAKE_BUILD_TYPE mapping (Debug→dev, EVERYTHING else→release), so a
 # Debug or MinSizeRel build of the C/C++ half still got a fat-LTO cargo build.
 # Relative to THIS file, like the FeatureSet include above — a raw
-# `add_subdirectory(<repo>)` consumer never defines NANO_ROS_ROOT.
+# `add_subdirectory(<repo>)` consumer never defines NROS_REPO_DIR.
 include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosCargoProfile.cmake")
 # phase-347 W3 — `nros_rmw_dispatch()` / `nros_rmw_is_known()` (RFC-0071).
 include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosRmwDispatch.cmake")
@@ -85,7 +85,7 @@ nros_armv8r_cflags_env(nros_cpp-static)
 # DEFERRED: the accumulator is filled by `nano_ros_add_entry()`, which runs long
 # after this file. Applying it inline reads an empty set, which is the W5.g
 # defect itself.
-# Relative to THIS file, not ${NANO_ROS_ROOT} — see the note above.
+# Relative to THIS file, not ${NROS_REPO_DIR} — see the note above.
 include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosEntityFacts.cmake")
 nros_entity_facts_env_deferred(nros_cpp-static)
 
@@ -219,9 +219,9 @@ target_link_libraries(nros-cpp-headers INTERFACE nros_cpp-static)
 # (already bundling nros-c). Linking the C archive too would put a SECOND Rust
 # staticlib (a second `std`) on the line — the exact duplicate this phase removes.
 # Deferred to the root dir where NanoRos + NanoRos::Platform are declared (after this
-# add_subdirectory). 192.3: root via NANO_ROS_ROOT_DIR; relative fallback standalone.
-if(NOT DEFINED NANO_ROS_ROOT_DIR)
-    set(NANO_ROS_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}/../../..")
+# add_subdirectory). 192.3: root via NROS_REPO_DIR; relative fallback standalone.
+if(NOT DEFINED NROS_REPO_DIR)
+    set(NROS_REPO_DIR "${CMAKE_CURRENT_LIST_DIR}/../../..")
 endif()
 # C-side headers: pull from `nros_c-static`'s INTERFACE — it carries the public C
 # headers AND the per-build variant header (`nros_config_generated.h`, the
@@ -232,18 +232,18 @@ endif()
 # `nros_config_generated.h` and fails (`*_OPAQUE_U64S not declared`). NuttX (no
 # nros_c-static) falls back to NanoRos's manually-added include tree.
 if(TARGET nros_c-static)
-    cmake_language(DEFER DIRECTORY "${NANO_ROS_ROOT_DIR}" CALL
+    cmake_language(DEFER DIRECTORY "${NROS_REPO_DIR}" CALL
         target_include_directories nros-cpp-headers INTERFACE
         "$<TARGET_PROPERTY:nros_c-static,INTERFACE_INCLUDE_DIRECTORIES>")
 else()
-    cmake_language(DEFER DIRECTORY "${NANO_ROS_ROOT_DIR}" CALL
+    cmake_language(DEFER DIRECTORY "${NROS_REPO_DIR}" CALL
         target_include_directories nros-cpp-headers INTERFACE
         "$<TARGET_PROPERTY:NanoRos,INTERFACE_INCLUDE_DIRECTORIES>")
 endif()
-cmake_language(DEFER DIRECTORY "${NANO_ROS_ROOT_DIR}" CALL
+cmake_language(DEFER DIRECTORY "${NROS_REPO_DIR}" CALL
     target_compile_definitions nros-cpp-headers INTERFACE
     "$<TARGET_PROPERTY:NanoRos,INTERFACE_COMPILE_DEFINITIONS>")
-cmake_language(DEFER DIRECTORY "${NANO_ROS_ROOT_DIR}" CALL
+cmake_language(DEFER DIRECTORY "${NROS_REPO_DIR}" CALL
     target_link_libraries nros-cpp-headers INTERFACE NanoRos::Platform)
 
 # Phase 117.8: when the consumer asks for the Cyclone DDS RMW backend,
@@ -251,7 +251,7 @@ cmake_language(DEFER DIRECTORY "${NANO_ROS_ROOT_DIR}" CALL
 # itself transitively, and flip on the auto-register call inside
 # `nros::init` via the `NROS_RMW_CYCLONEDDS` macro.
 # phase-347 W3 — one descriptor-driven block, replacing a four-arm
-# `if(NANO_ROS_RMW STREQUAL ...)` chain. That chain was the THIRD closed list of
+# `if(NROS_RMW STREQUAL ...)` chain. That chain was the THIRD closed list of
 # backends in the tree: it accepted uorb, `NanoRosFeatureSet` accepted uorb, and
 # the generated `nros_rmw_dispatch` FATAL_ERROR'd on it. Three lists, and they
 # disagreed.
@@ -263,16 +263,16 @@ cmake_language(DEFER DIRECTORY "${NANO_ROS_ROOT_DIR}" CALL
 # change; this wave moves the fact, it does not rename it.
 #
 # The per-backend comments that lived on each arm are now on the descriptors.
-if(NANO_ROS_RMW AND NOT NANO_ROS_RMW STREQUAL "none")
-    nros_rmw_is_known("${NANO_ROS_RMW}" _nros_cpp_rmw_known)
+if(NROS_RMW AND NOT NROS_RMW STREQUAL "none")
+    nros_rmw_is_known("${NROS_RMW}" _nros_cpp_rmw_known)
     if(NOT _nros_cpp_rmw_known)
         nros_rmw_known(_nros_cpp_rmw_names)
         message(FATAL_ERROR
-            "nros-cpp: RMW '${NANO_ROS_RMW}' does not resolve "
+            "nros-cpp: RMW '${NROS_RMW}' does not resolve "
             "(announced by a provider: ${_nros_cpp_rmw_names}). "
             "The provider scan says:\n${_nros_cpp_rmw_known_WHY}")
     endif()
-    nros_rmw_dispatch("${NANO_ROS_RMW}")
+    nros_rmw_dispatch("${NROS_RMW}")
     if(NROS_RMW_CPP_DEFINE)
         target_compile_definitions(nros-cpp-headers INTERFACE ${NROS_RMW_CPP_DEFINE}=1)
     endif()
@@ -290,7 +290,7 @@ endif()
 # component TU that links `NanoRos::NanoRosCpp` needs the define to see it. Without
 # this, the cargo symbol exists but the C++ method is hidden at compile time.
 # phase-347 W4 — the backend condition is DECLARED, not named. This read
-# `AND NANO_ROS_RMW STREQUAL "zenoh"`, which is a capability coupled to one
+# `AND NROS_RMW STREQUAL "zenoh"`, which is a capability coupled to one
 # backend by name in a user-facing library. The backend now declares `safety` in
 # its `nros-rmw.toml` `[rmw.capabilities]`, and `nros_rmw_dispatch` reports the
 # set as `NROS_RMW_CAPABILITIES` — so a third-party backend offering `safety`

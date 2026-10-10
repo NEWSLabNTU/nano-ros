@@ -273,7 +273,7 @@ platform-threadx = [
 # So the two roads differ because their LINK ROOTS differ, not because one of
 # them is wrong. What this costs is that the C staticlib root names a board —
 # which is exactly what `nros_feature_set()`'s new bare-metal arm resolves from
-# `NANO_ROS_BOARD`, so no caller spells one of these by hand.
+# `NROS_BOARD`, so no caller spells one of these by hand.
 #
 # BUILD-VERIFIED: `platform-mps2-an385` only (thumbv7m-none-eabi, staticlib).
 # The other two are the same four lines over the sibling `nros-platform`

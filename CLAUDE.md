@@ -1300,7 +1300,7 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   `touch` of a backend source must relink.
 - **A PROPAGATED usage requirement's condition must be a property of the CONSUMER, never of
   the build tree (issues 0425 + 1467).** `if(TARGET NanoRos::NanoRosCpp)` asks what the tree
-  DEFINES, and every leaf `add_subdirectory("${NANO_ROS_ROOT}" nano_ros)`, so it is ALWAYS
+  DEFINES, and every leaf `add_subdirectory("${NROS_REPO_DIR}" nano_ros)`, so it is ALWAYS
   true — right for a C/C++ binary (0425: prefer the umbrella that bundles the other) and
   wrong for a leaf whose app IS a Rust staticlib, where it puts a SECOND archive of the same
   C ABI on the line (228 duplicate symbols across all twelve `threadx_riscv64` leaves, from

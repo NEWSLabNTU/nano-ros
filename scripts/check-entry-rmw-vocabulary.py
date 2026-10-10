@@ -11,7 +11,7 @@ error, not a fallback to the registry default. So the two vocabularies have to
 agree exactly:
 
   * what cmake can bake — the canonical `<nano_ros_provides kind="rmw"/>`
-    announcement of each in-tree backend, which is also the set `NANO_ROS_RMW`
+    announcement of each in-tree backend, which is also the set `NROS_RMW`
     may take (phase-439 W4: `NROS_RMW_KNOWN` is no longer a generated literal
     in `cmake/NanoRosRmwDispatch.cmake`, it is a query);
   * what the registry answers to — the name each backend passes to
@@ -96,7 +96,7 @@ CONST_RE = re.compile(
     r"(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*\"(?P<val>[^\"]*)\""
 )
 
-# Names that are registry entries but never a `NANO_ROS_RMW` value: "default"
+# Names that are registry entries but never a `NROS_RMW` value: "default"
 # (the implicit name of the unnamed shim phase-482 W6 deleted, still used by
 # tests) and the host-probe backend. Listed so the check can be
 # an EQUALITY in both directions without pretending these are absent.
@@ -270,7 +270,7 @@ def self_test() -> None:
 
 
 def cmake_known() -> set[str]:
-    """Every rmw name `NANO_ROS_RMW` may take, from the ANNOUNCEMENTS.
+    """Every rmw name `NROS_RMW` may take, from the ANNOUNCEMENTS.
 
     phase-439 W4 — this used to regex `set(NROS_RMW_KNOWN "…")` out of
     `cmake/NanoRosRmwDispatch.cmake`, which was a GENERATED literal listing the
@@ -281,7 +281,7 @@ def cmake_known() -> set[str]:
     The same rule the CLI applies (`rmw_resolver::known_rmw_in`): one CANONICAL
     name per provider — its FIRST `<nano_ros_provides kind="rmw"/>` — not one
     per announcement, because `zenoh` / `rmw-zenoh` / `rmw-zenoh-cffi` are three
-    spellings of one backend and only the first is a `NANO_ROS_RMW` value.
+    spellings of one backend and only the first is a `NROS_RMW` value.
 
     Read from source rather than by asking the CLI on purpose: this gate is on
     the buildless, source-free `check-fast` line, where no `nros` binary exists.

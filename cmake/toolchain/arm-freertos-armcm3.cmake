@@ -8,7 +8,7 @@
 # Usage:
 #   cmake -S . -B build \
 #         -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain/arm-freertos-armcm3.cmake \
-#         -DNANO_ROS_RMW=zenoh \
+#         -DNROS_RMW=zenoh \
 #         -DNROS_PLATFORM=freertos_armcm3 \
 #         -DNROS_BUILD_CODEGEN=OFF
 #   cmake --build build

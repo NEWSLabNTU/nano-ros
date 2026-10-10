@@ -55,7 +55,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-NANO_ROS_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+NROS_REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # --- self-test -------------------------------------------------------------
 #
@@ -132,8 +132,8 @@ if [ "${1:-}" = "--self-test" ]; then
     exit 1
 fi
 
-IN_TREE_WORKSPACE="$NANO_ROS_ROOT/zephyr-workspace"
-LEGACY_WORKSPACE="$(cd "$NANO_ROS_ROOT/.." && pwd)/nano-ros-workspace"
+IN_TREE_WORKSPACE="$NROS_REPO_DIR/zephyr-workspace"
+LEGACY_WORKSPACE="$(cd "$NROS_REPO_DIR/.." && pwd)/nano-ros-workspace"
 
 if [ -n "${1:-}" ]; then
     WORKSPACE="$1"
@@ -319,7 +319,7 @@ fi
 # `nros_grep_q`, not a bare `grep -q`: a grep that fails to run must not read as
 # "not applied yet" (issue 0726).
 # shellcheck source=scripts/lib/grep-q.sh
-source "$NANO_ROS_ROOT/scripts/lib/grep-q.sh"
+source "$NROS_REPO_DIR/scripts/lib/grep-q.sh"
 _img_rc=0
 nros_grep_q "nano-ros: image env --config" "$CMAKE_FILE" || _img_rc=$?
 if [ "$_img_rc" -eq 1 ]; then

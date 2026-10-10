@@ -18,8 +18,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-NANO_ROS_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-TARGET="$NANO_ROS_ROOT/third-party/dds/cyclonedds/src/core/ddsi/src/q_sockwaitset.c"
+NROS_REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+TARGET="$NROS_REPO_DIR/third-party/dds/cyclonedds/src/core/ddsi/src/q_sockwaitset.c"
 
 if [ ! -f "$TARGET" ]; then
     echo "ERROR: $TARGET missing" >&2

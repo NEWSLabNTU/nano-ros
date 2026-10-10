@@ -14,4 +14,4 @@ default_namespace = "/"
 callback_groups = [{ id = "telem", tier = "low" }]
 
 [dependencies]
-nros = { path = "@NANO_ROS_ROOT@/packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "macros"] }
+nros = { path = "@NROS_REPO_DIR@/packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "macros"] }

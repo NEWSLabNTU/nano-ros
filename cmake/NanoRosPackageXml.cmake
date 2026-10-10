@@ -14,7 +14,7 @@
 # `find_package(nano_ros)` calls `nano_ros_read_package_export()` (build type,
 # `<nano_ros_uses>` selections) and then `nano_ros_read_leaf_system()` on the
 # consumer BEFORE it imports nano-ros, so the deploy/rmw values reach
-# `NROS_PLATFORM` / `NANO_ROS_RMW` in time for the `add_subdirectory` body;
+# `NROS_PLATFORM` / `NROS_RMW` in time for the `add_subdirectory` body;
 # the verbs read the same variables for their DEPLOY/BOARD defaults. A leftover
 # `<nano_ros deploy= …/>` element is REFUSED, naming the file to write — a
 # silently ignored tuple would configure a freertos leaf as a host build.
@@ -350,7 +350,7 @@ function(nano_ros_read_leaf_system)
         endif()
     endif()
     execute_process(
-        COMMAND "${_nros}" ws leaf-system "${_NRL_DIR}" --nano-ros-path "${NANO_ROS_ROOT}"
+        COMMAND "${_nros}" ws leaf-system "${_NRL_DIR}" --nano-ros-path "${NROS_REPO_DIR}"
                 ${_nrl_board_arg} ${_nrl_image_arg} ${_nrl_image_env_arg}
         OUTPUT_VARIABLE _out
         ERROR_VARIABLE _err

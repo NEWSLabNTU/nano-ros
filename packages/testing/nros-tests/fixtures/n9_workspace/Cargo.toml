@@ -8,7 +8,7 @@
 #                        one-liner `nros::main!(launch = "demo_bringup");`.
 #
 # The companion test (`phase212_n9_main_macro_forms.rs`) stages this
-# fixture into a tempdir + rewrites `@NANO_ROS_ROOT@` to absolute path
+# fixture into a tempdir + rewrites `@NROS_REPO_DIR@` to absolute path
 # `=` deps, then runs `cargo check` against four variants of the Entry
 # pkg's `main.rs` (one per `nros::main!()` form). All four must
 # compile.

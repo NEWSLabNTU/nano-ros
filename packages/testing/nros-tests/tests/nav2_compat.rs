@@ -10,7 +10,7 @@
 //!
 //! Per issue 0041 the compile runs in the **build stage**: the `nav2_compat_smoke`
 //! build-fixture (`compile-check-fixtures.sh`) stages the workspace (rewriting
-//! `@NANO_ROS_ROOT@` + `@NROS_CLI_ROOT@`) + `cargo build -p demo_entry` in the
+//! `@NROS_REPO_DIR@` + `@NROS_CLI_ROOT@`) + `cargo build -p demo_entry` in the
 //! `demo_entry/` subdir (excluded from the fixture root workspace). This test
 //! INSPECTS the prebuilt `out/run_plan.rs` + `out/nros-system/nros-plan.json`
 //! — no cargo at run time. If the build emitted the offline `Placeholder` stub,

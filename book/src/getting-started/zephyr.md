@@ -136,7 +136,7 @@ nros sync --no-metadata ../examples/zephyr/rust/talker
 #
 # `../examples/...` rather than `<name>/examples/...`: the workspace's link
 # back to the checkout is named after YOUR checkout directory
-# (`scripts/zephyr/setup.sh` uses `basename "$NANO_ROS_ROOT"`), so it reads
+# (`scripts/zephyr/setup.sh` uses `basename "$NROS_REPO_DIR"`), so it reads
 # `nano-ros/` for a plain `git clone` and `nros/` only if you renamed the
 # directory. For the in-tree workspace this page sets up, `..` IS the
 # checkout and needs no name at all.

@@ -554,7 +554,7 @@ pub struct BoardZephyr {
     /// board built with the SDK's default for its arch.
     #[serde(default)]
     pub sdk_abi: Option<String>,
-    /// Default RMW backend. A consumer overrides with `-DNANO_ROS_RMW=<rmw>`.
+    /// Default RMW backend. A consumer overrides with `-DNROS_RMW=<rmw>`.
     #[serde(default)]
     pub default_rmw: Option<String>,
     /// Default transport (`ethernet`, `serial`, …).

@@ -30,16 +30,16 @@ path = "src/main.rs"
 # `nros::main!()` macro lives here; we wire `BoardEntry` /
 # `RuntimeCtx` / `RuntimeError` directly via `nros-platform` instead
 # of the macro for parity with the H.3 firmware shape.
-nros = { path = "@NANO_ROS_ROOT@/packages/api/nros", default-features = false, features = [
+nros = { path = "@NROS_REPO_DIR@/packages/api/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi",
     "ros-humble",
 ] }
 # Phase 212.N.3 tier-1 per-board shim — `LinuxBoard::run` provides the
 # `BoardEntry` lifecycle the Entry pkg invokes.
-nros-board-linux = { path = "@NANO_ROS_ROOT@/packages/boards/nros-board-linux" }
+nros-board-linux = { path = "@NROS_REPO_DIR@/packages/boards/nros-board-linux" }
 # Phase 212.N.1 trait surface — `BoardEntry`, `RuntimeCtx`, `RuntimeError`.
-nros-platform = { path = "@NANO_ROS_ROOT@/packages/platform/nros-platform", default-features = false, features = [
+nros-platform = { path = "@NROS_REPO_DIR@/packages/platform/nros-platform", default-features = false, features = [
     "std",
     "platform-posix",
 ] }
@@ -54,4 +54,4 @@ secondary_node = { path = "../secondary_node" }
 # Phase 212.N.4 codegen library — in-tree CLI (post-Phase-218
 # `packages/cli/`); the archived `NEWSLabNTU/nros-cli` git dep +
 # `@NROS_CLI_ROOT@` patch are retired.
-nros-build = { path = "@NANO_ROS_ROOT@/packages/cli/nros-build" }
+nros-build = { path = "@NROS_REPO_DIR@/packages/cli/nros-build" }

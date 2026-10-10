@@ -7,11 +7,11 @@ Phase 123.A.5 — auto-run ``tools/setup.sh`` when the user invokes
 Closes the gap between two valid entry flows:
 
 * `tools/setup.sh --target=posix-zenoh && cmake -B build` (explicit)
-* `cmake -B build -DNANO_ROS_RMW=zenoh -DNROS_PLATFORM=posix`
+* `cmake -B build -DNROS_RMW=zenoh -DNROS_PLATFORM=posix`
   (direct — bootstrap.cmake catches this and runs setup.sh)
 
 Idempotent: if the submodules required by ``(NROS_PLATFORM,
-NANO_ROS_RMW)`` are already populated, no-op. Opt out with
+NROS_RMW)`` are already populated, no-op. Opt out with
 ``-DNROS_SKIP_BOOTSTRAP=ON`` (CI / container builds that
 manage submodules separately).
 
@@ -85,10 +85,10 @@ endif()
 
 if(_need_bootstrap)
     message(STATUS "nano-ros: bootstrapping submodules for "
-        "(platform=${_plat_tag}, rmw=${NANO_ROS_RMW}) via tools/setup.sh")
+        "(platform=${_plat_tag}, rmw=${NROS_RMW}) via tools/setup.sh")
     execute_process(
         COMMAND bash "${_setup_sh}"
-                --target=${_plat_tag}-${NANO_ROS_RMW}
+                --target=${_plat_tag}-${NROS_RMW}
                 --skip-rustup --skip-apt-check
         WORKING_DIRECTORY "${_repo_root}"
         RESULT_VARIABLE _setup_rc
@@ -97,7 +97,7 @@ if(_need_bootstrap)
         message(FATAL_ERROR
             "nano-ros bootstrap failed (exit ${_setup_rc}).\n"
             "Re-run manually:\n"
-            "  ${_setup_sh} --target=${_plat_tag}-${NANO_ROS_RMW}\n"
+            "  ${_setup_sh} --target=${_plat_tag}-${NROS_RMW}\n"
             "Or skip bootstrap with -DNROS_SKIP_BOOTSTRAP=ON if "
             "you've already populated the submodules another way.")
     endif()

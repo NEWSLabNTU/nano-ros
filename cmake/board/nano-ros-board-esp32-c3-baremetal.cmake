@@ -22,7 +22,7 @@ function(nros_board_link_app target)
     # ESP32-C3 linking goes through the IDF / ESP-Rust toolchain; both
     # supply their own linker script + startup. The in-tree overlay
     # has nothing extra to wire — kept as a no-op so the per-platform
-    # contract (every NANO_ROS_BOARD value resolves to a real module)
+    # contract (every NROS_BOARD value resolves to a real module)
     # holds. Phase 139's idf-component shell drives the real link.
     set(_unused "${target}")
 endfunction()

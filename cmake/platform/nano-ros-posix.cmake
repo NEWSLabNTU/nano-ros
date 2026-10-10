@@ -65,7 +65,7 @@ endif()
 # shape the embedded targets use. Gated on the cyclonedds RMW; inert for the
 # find_package path and other RMWs. Phase 186.
 # ---------------------------------------------------------------------------
-if(NANO_ROS_RMW STREQUAL "cyclonedds" AND NOT DEFINED NROS_CYCLONE_POSIX_FLAGS_STAGED)
+if(NROS_RMW STREQUAL "cyclonedds" AND NOT DEFINED NROS_CYCLONE_POSIX_FLAGS_STAGED)
     set(NROS_CYCLONE_POSIX_FLAGS_STAGED TRUE)
     set(ENABLE_SECURITY OFF CACHE BOOL "Cyclone: no DDS Security (Phase 186)" FORCE)
     set(ENABLE_SSL OFF CACHE BOOL "Cyclone: no TLS (Phase 186)" FORCE)

@@ -144,7 +144,7 @@ project(provider_index_gate NONE)
 # sourced -- and makes it exercise the variable real builds use.
 set(_NANO_ROS_CODEGEN_TOOL "$NROS" CACHE FILEPATH "in-tree nros")
 include("$MODULE")
-nano_ros_load_providers(WORKSPACE "$WS" NANO_ROS_ROOT "$WS" INDEX "$IDX" REUSE_INDEX)
+nano_ros_load_providers(WORKSPACE "$WS" NROS_REPO_DIR "$WS" INDEX "$IDX" REUSE_INDEX)
 list(LENGTH NROS_PROVIDER_ROWS _n)
 message(STATUS "GATE rows=\${_n}")
 message(STATUS "GATE kinds=\${NROS_PROVIDER_KINDS}")

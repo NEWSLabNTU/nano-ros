@@ -8,15 +8,15 @@
 # in the two weeks before 2026-08-13 it accumulated THREE independent breakages,
 # each of which failed the user's very first build:
 #
-#   1. `--manifest-path $(NANO_ROS_ROOT)/packages/core/nros-c` — nros-c and
+#   1. `--manifest-path $(NROS_REPO_DIR)/packages/core/nros-c` — nros-c and
 #      nros-cpp moved to `packages/api/` on 2026-07-31 (phase-321 W2.e).
-#   2. `CFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT)/…` placed NINE LINES ABOVE
-#      the `NANO_ROS_ROOT :=` that defines it. NuttX's CFLAGS is
+#   2. `CFLAGS += ${INCDIR_PREFIX}$(NROS_REPO_DIR)/…` placed NINE LINES ABOVE
+#      the `NROS_REPO_DIR :=` that defines it. NuttX's CFLAGS is
 #      simply-expanded, so `+=` expanded an empty variable.
 #   3. an absolute `CSRCS` under a `PREFIX` whose parent nothing creates.
 #
 # This gate covers (1) and (2), which are the two that a static reading can
-# settle: every `$(NANO_ROS_ROOT)/<path>` must exist, and every make variable
+# settle: every `$(NROS_REPO_DIR)/<path>` must exist, and every make variable
 # used in a `+=` must be defined before that line. (3) needs a real compile and
 # is covered by the build recipe below, not here.
 #
@@ -34,9 +34,9 @@ for mk in integrations/nuttx/Makefile integrations/nuttx/apps-external-template/
 
     # --- (1) every repo path the Makefile names must exist ------------------
     # Two shapes, and the SECOND is the one that actually broke. A bare
-    # `$(NANO_ROS_ROOT)/<literal>` is checkable directly; but the cargo call
+    # `$(NROS_REPO_DIR)/<literal>` is checkable directly; but the cargo call
     # sites compose the manifest path from a macro's TWO arguments —
-    #   $(call NROS_CARGO_BUILD,<crate>,$(NANO_ROS_ROOT)/<dir>,<features>)
+    #   $(call NROS_CARGO_BUILD,<crate>,$(NROS_REPO_DIR)/<dir>,<features>)
     #     -> --manifest-path <dir>/<crate>/Cargo.toml
     # so checking `<dir>` alone passes while `<dir>/<crate>` does not exist.
     # That is exactly how `packages/core` survived here after nros-c moved to
@@ -52,19 +52,19 @@ for mk in integrations/nuttx/Makefile integrations/nuttx/apps-external-template/
     # a grep that failed to START, and not forking is a better answer than
     # handling it. Exact-match is preserved — the charset matched above excludes
     # spaces, so a space-delimited test cannot straddle two entries.
-    exempt="$(grep -oE '\$\(wildcard \$\(NANO_ROS_ROOT\)/[A-Za-z0-9._/-]+' "$mk" \
-             | sed 's|^\$(wildcard \$(NANO_ROS_ROOT)/||' | sort -u | tr '\n' ' ')"
+    exempt="$(grep -oE '\$\(wildcard \$\(NROS_REPO_DIR\)/[A-Za-z0-9._/-]+' "$mk" \
+             | sed 's|^\$(wildcard \$(NROS_REPO_DIR)/||' | sort -u | tr '\n' ' ')"
     while IFS= read -r rel; do
         [ -n "$rel" ] || continue
         case " $exempt " in
             *" $rel "*) continue ;;
         esac
         if [ ! -e "$rel" ]; then
-            echo "  $mk names \$(NANO_ROS_ROOT)/$rel — which does not exist" >&2
+            echo "  $mk names \$(NROS_REPO_DIR)/$rel — which does not exist" >&2
             fail=1
         fi
-    done < <(grep -oE '\$\(NANO_ROS_ROOT\)/[A-Za-z0-9._/-]+' "$mk" \
-             | sed 's|^\$(NANO_ROS_ROOT)/||' | sort -u)
+    done < <(grep -oE '\$\(NROS_REPO_DIR\)/[A-Za-z0-9._/-]+' "$mk" \
+             | sed 's|^\$(NROS_REPO_DIR)/||' | sort -u)
 
     while IFS= read -r composed; do
         [ -n "$composed" ] || continue
@@ -72,8 +72,8 @@ for mk in integrations/nuttx/Makefile integrations/nuttx/apps-external-template/
             echo "  $mk builds \`$composed\` but $composed/Cargo.toml does not exist" >&2
             fail=1
         fi
-    done < <(grep -oE '\$\(call [A-Z_]*CARGO_BUILD,[a-z0-9_-]+,\$\(NANO_ROS_ROOT\)/[A-Za-z0-9._/-]+' "$mk" \
-             | sed -E 's|^\$\(call [A-Z_]*CARGO_BUILD,([a-z0-9_-]+),\$\(NANO_ROS_ROOT\)/(.*)$|\2/\1|' | sort -u)
+    done < <(grep -oE '\$\(call [A-Z_]*CARGO_BUILD,[a-z0-9_-]+,\$\(NROS_REPO_DIR\)/[A-Za-z0-9._/-]+' "$mk" \
+             | sed -E 's|^\$\(call [A-Z_]*CARGO_BUILD,([a-z0-9_-]+),\$\(NROS_REPO_DIR\)/(.*)$|\2/\1|' | sort -u)
 
     # --- (2) no `+=` may use a variable this file defines LATER -------------
     # Simply-expanded `+=` takes the value at that line, so a use-before-define

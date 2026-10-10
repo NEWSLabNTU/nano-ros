@@ -110,7 +110,7 @@ through C function pointers.
 nano-ros bakes the backend in at compile time. The consuming
 `Cargo.toml` adds the backend crate directly (`nros-rmw-zenoh` /
 `nros-rmw-cyclonedds` / `nros-rmw-xrce-cffi`) alongside `nros` with the
-`rmw-cffi` feature; CMake options (`-DNANO_ROS_RMW=zenoh`) decide it
+`rmw-cffi` feature; CMake options (`-DNROS_RMW=zenoh`) decide it
 for C/C++ builds. The backend's `#[ctor]` registers its vtable with
 the `nros-rmw-cffi` runtime registry before `main`.
 
@@ -137,7 +137,7 @@ parallel — one node on backend A, another on backend B,
 the executor draining both each tick. The
 [Cross-backend Bridges](../user-guide/cross-backend-bridges.md)
 chapter walks the build knobs (`NROS_RMW=...` primary
-selector, explicit per-backend `register()`, `NANO_ROS_RMW=
+selector, explicit per-backend `register()`, `NROS_RMW=
 none` cmake escape hatch) and the three shipped examples.
 
 ### 6. Message codegen lands inside your build, not a sibling library

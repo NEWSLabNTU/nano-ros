@@ -13,7 +13,7 @@
 # The per-pkg `[workspace]` tables keep this fixture from being folded
 # into the outer nano-ros workspace (mirrors the H.3 / H.4 shape).
 #
-# `@NANO_ROS_ROOT@` placeholders are rewritten by the integration test's
+# `@NROS_REPO_DIR@` placeholders are rewritten by the integration test's
 # `stage_fixture` helper to the absolute path of the nano-ros checkout.
 
 [workspace]

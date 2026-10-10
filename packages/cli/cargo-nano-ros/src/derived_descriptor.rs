@@ -43,7 +43,7 @@ pub fn cargo_feature(kind: &str, name: &str) -> String {
     format!("{kind}-{name}")
 }
 
-/// The `-DNANO_ROS_RMW` (and family equivalent) CMake value: the canonical
+/// The `-DNROS_RMW` (and family equivalent) CMake value: the canonical
 /// name, unchanged. A separate field only ever recorded the identity function.
 pub fn cmake_value(name: &str) -> String {
     name.to_string()

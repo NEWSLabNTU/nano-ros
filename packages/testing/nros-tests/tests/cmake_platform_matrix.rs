@@ -22,7 +22,7 @@
 //!   placeholder matrix cells (which only ever `skip!`ed, deferred to a
 //!   never-tracked "Phase 139") were removed. POSIX guards the dispatch path.
 //! - bare-metal exercises the FATAL_ERROR path in
-//!   `nros-baremetal.cmake` (missing `NANO_ROS_BOARD`) via a configure-
+//!   `nros-baremetal.cmake` (missing `NROS_BOARD`) via a configure-
 //!   only check; the rest of the link is board-specific and lives in
 //!   the per-board overlays under `cmake/board/`.
 //!
@@ -51,24 +51,24 @@ fn cmake_platform_threadx_requires_board() -> TestResult<()> {
     // collapsed "baremetal" into per-board platform values
     // (`freertos_armcm3`, `threadx_linux`, `threadx_riscv64`,
     // `threadx`+board, …). The only platform whose CMakeLists.txt
-    // still requires a separate `NANO_ROS_BOARD` value today is
+    // still requires a separate `NROS_BOARD` value today is
     // `threadx`, which disambiguates the std-vs-no_std split between
     // `threadx-linux` (host libc) and `rv-virt-threadx` (bare-metal).
     //
-    // Verifies: `NROS_PLATFORM=threadx` without `NANO_ROS_BOARD`
+    // Verifies: `NROS_PLATFORM=threadx` without `NROS_BOARD`
     // FATAL_ERRORs at configure time and the error message mentions
-    // NANO_ROS_BOARD.
+    // NROS_BOARD.
     let v = require_compile_verdict("cmake_platform_threadx_requires_board")?.outcome;
     assert!(
         !v.success(),
-        "expected NROS_PLATFORM=threadx without NANO_ROS_BOARD to FATAL_ERROR at \
+        "expected NROS_PLATFORM=threadx without NROS_BOARD to FATAL_ERROR at \
          configure time, but cmake exited 0.\nstdout:\n{}\nstderr:\n{}",
         v.stdout,
         v.stderr
     );
     assert!(
-        v.stderr.contains("NANO_ROS_BOARD"),
-        "expected the FATAL_ERROR message to mention NANO_ROS_BOARD; got:\n{}",
+        v.stderr.contains("NROS_BOARD"),
+        "expected the FATAL_ERROR message to mention NROS_BOARD; got:\n{}",
         v.stderr
     );
     Ok(())

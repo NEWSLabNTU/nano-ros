@@ -24,7 +24,7 @@ Every file that SPAWNS CARGO must deliver the facts:
 
 Both halves are needed because they are different mechanisms, and checking only
 the first is how the ZEPHYR arm shipped inert: that lane uses no Corrosion, so
-the original rule could not see it, and its `NANO_ROS_BOARD` is never set — the
+the original rule could not see it, and its `NROS_BOARD` is never set — the
 helper resolved nothing and (then) said nothing. Found only when the lane could
 finally run, which is the point of gating the mechanism rather than the value.
 
@@ -82,7 +82,7 @@ EXEMPT = {
     # The `nros` CLI: a HOST tool the superproject builds to run codegen. It is
     # never linked into an image, so there is no deploy and no board to state.
     "packages/cli/nros-cli/CMakeLists.txt": "builds the host `nros` CLI, never an image",
-    # A staged integration-test template (`@NANO_ROS_ROOT@` is rewritten at
+    # A staged integration-test template (`@NROS_REPO_DIR@` is rewritten at
     # stage time) exercising the Corrosion superbuild of a user-shaped HOST
     # workspace; it declares no deploy, so `nros ws board-facts` has nothing
     # to resolve for it.

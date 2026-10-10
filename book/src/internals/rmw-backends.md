@@ -88,7 +88,7 @@ XRCE) the cffi shim is a standalone CMake project that builds a
 static C/C++ library and registers a `nros_rmw_vtable_t` at startup
 via `nros_rmw_cffi_register_named`. No `RustBackendAdapter` is involved.
 The Rust runtime sees these via the same registry; the
-`NANO_ROS_RMW=<name>` CMake selector flips a build-time macro that
+`NROS_RMW=<name>` CMake selector flips a build-time macro that
 ensures the register call is wired into `nros::init`.
 
 ### Cyclone DDS: runtime type introspection (Phase 212.K.7)
@@ -185,7 +185,7 @@ not how a user picks a backend (see
   feature plus the matching `nros-rmw-<x>` shim dep in the consumer's
   `[dependencies]`. Linking the shim crate is what registers the
   backend.
-- **CMake**: `cmake -DNANO_ROS_RMW=zenoh ...` (C/C++ users). The
+- **CMake**: `cmake -DNROS_RMW=zenoh ...` (C/C++ users). The
   `nano_ros_link_rmw(... RMW zenoh)` helper auto-generates the
   per-target `nros_app_register_backends()` strong stub.
 

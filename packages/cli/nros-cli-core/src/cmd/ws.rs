@@ -2700,7 +2700,7 @@ fn resolver_from(
 ///
 /// A workspace with no `system.toml` has nothing to derive from and is left
 /// alone — that is the STANDALONE shape, where the build command is the
-/// selector (`cargo build --features …`, the twin of C++'s `-DNANO_ROS_RMW=…`)
+/// selector (`cargo build --features …`, the twin of C++'s `-DNROS_RMW=…`)
 /// and a facade would have no input. See phase-315 W3.
 fn generate_facade_crates(
     ws_root: &std::path::Path,

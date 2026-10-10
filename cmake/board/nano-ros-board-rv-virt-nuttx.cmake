@@ -4,7 +4,7 @@
 # nano-ros-board-qemu-armv7a-nuttx.cmake with the riscv FFI crate, riscv cargo
 # target, the rv-virt defconfig, and the rv-virt Make.defs path.
 #
-# Loaded by cmake/platform/nano-ros-nuttx.cmake when NANO_ROS_BOARD=rv-virt-nuttx.
+# Loaded by cmake/platform/nano-ros-nuttx.cmake when NROS_BOARD=rv-virt-nuttx.
 #
 # Required cmake variables (env or -D):
 #   NUTTX_DIR        — NuttX kernel source/build tree (third-party/nuttx/nuttx/)

@@ -5,7 +5,7 @@
 #
 # This file is included from the top-level CMakeLists.txt via add_subdirectory().
 # Two variables control the build:
-#   NANO_ROS_RMW      — RMW backend: zenoh, xrce, or dds (default: zenoh)
+#   NROS_RMW      — RMW backend: zenoh, xrce, or dds (default: zenoh)
 #   NROS_PLATFORM — target platform: posix, freertos_armcm3, nuttx_armv7a
 #                       (default: posix)
 
@@ -22,7 +22,7 @@ endif()
 # 104.A) registers it before `main()`; nros-c itself stays
 # unchanged across all RMW selections.
 #
-# The `NANO_ROS_RMW` value still drives downstream linkage
+# The `NROS_RMW` value still drives downstream linkage
 # (NanoRosCTargets.cmake pulls the right standalone archive) +
 # the install lib name suffix, but feeds NOTHING extra into
 # nros-c's Cargo build. Result: one `libnros_c.a` per target
@@ -32,8 +32,8 @@ endif()
 # `ros-humble` and applied capabilities only on posix. See
 # cmake/NanoRosFeatureSet.cmake and issue 0311 for why the duplication was a
 # defect, not a tidy-up.
-# Relative to THIS file, not ${NANO_ROS_ROOT}: a raw `add_subdirectory(<repo>)`
-# consumer (the phase-138 smoke shape) never defines NANO_ROS_ROOT.
+# Relative to THIS file, not ${NROS_REPO_DIR}: a raw `add_subdirectory(<repo>)`
+# consumer (the phase-138 smoke shape) never defines NROS_REPO_DIR.
 include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosFeatureSet.cmake")
 option(NROS_SAFETY_E2E "Enable E2E message-integrity (CRC) — zenoh only" OFF)
 set(_caps ${NROS_FEATURES})
@@ -59,9 +59,9 @@ list(REMOVE_DUPLICATES _caps)
 # import, so the declaration now arrives on its own and this can go.
 nros_feature_set(_features
     CRATE        c
-    RMW          "${NANO_ROS_RMW}"
+    RMW          "${NROS_RMW}"
     PLATFORM     "${NROS_PLATFORM}"
-    BOARD        "${NANO_ROS_BOARD}"
+    BOARD        "${NROS_BOARD}"
     CAPABILITIES "${_caps}")
 
 
@@ -70,7 +70,7 @@ nros_feature_set(_features
 # its own CMAKE_BUILD_TYPE mapping (Debug→dev, EVERYTHING else→release), so a
 # Debug or MinSizeRel build of the C/C++ half still got a fat-LTO cargo build.
 # Relative to THIS file, like the FeatureSet include above — a raw
-# `add_subdirectory(<repo>)` consumer never defines NANO_ROS_ROOT.
+# `add_subdirectory(<repo>)` consumer never defines NROS_REPO_DIR.
 include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosCargoProfile.cmake")
 
 nros_resolve_cargo_profile()
@@ -143,8 +143,8 @@ if(COMMAND nros_share_corrosion_cargo_dir)
     nros_knob_key_fields(_knob_fields)
     set(_nros_c_shared_key
         "features=${_features_flat}"
-        "rmw=${NANO_ROS_RMW}"
-        "board=${NANO_ROS_BOARD}"
+        "rmw=${NROS_RMW}"
+        "board=${NROS_BOARD}"
         "caps=${_caps_flat}"
         "profile=${NROS_CARGO_PROFILE}"
         "target=${Rust_CARGO_TARGET}"
@@ -212,7 +212,7 @@ nros_armv8r_cflags_env(nros_c-static)
 # DEFERRED: the accumulator is filled by `nano_ros_add_entry()`, which runs long
 # after this file. Applying it inline reads an empty set, which is the W5.g
 # defect itself.
-# Relative to THIS file, not ${NANO_ROS_ROOT} — see the note above.
+# Relative to THIS file, not ${NROS_REPO_DIR} — see the note above.
 include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosEntityFacts.cmake")
 nros_entity_facts_env_deferred(nros_c-static)
 

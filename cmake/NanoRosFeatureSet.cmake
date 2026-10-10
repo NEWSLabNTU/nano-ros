@@ -3,7 +3,7 @@
 # Before this, the list was assembled independently in three sites — nros-c,
 # nros-cpp and the workspace umbrella in NanoRosRuntimeCrate. They did not
 # agree: two hardcoded `ros-humble` while only the umbrella honoured the
-# configured edition, the umbrella had no `NANO_ROS_BOARD` input so it could not
+# configured edition, the umbrella had no `NROS_BOARD` input so it could not
 # split threadx-linux (std) from rv-virt-threadx (no_std), and the capabilities
 # existed on the direct paths only.
 #
@@ -23,7 +23,7 @@ include_guard(GLOBAL)
 # per-backend `nros-rmw.toml` descriptors (RFC-0071).
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRosEdition.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRmwDispatch.cmake")
-# issue 1512 — `NANO_ROS_BOARD` -> the bare-metal platform feature. Bare metal is
+# issue 1512 — `NROS_BOARD` -> the bare-metal platform feature. Bare metal is
 # the one platform whose `nros-platform/platform-*` name is board-specific, so
 # the ladder below resolves it rather than spelling it.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosBareMetalPlatform.cmake")
@@ -93,7 +93,7 @@ endfunction()
 #     [BOARD       <cmake board token>]  only the bare-metal arm reads it, because
 #                                        only there is the cargo feature
 #                                        board-specific (issue 1512); defaults to
-#                                        the ambient NANO_ROS_BOARD
+#                                        the ambient NROS_BOARD
 #     CAPABILITIES <param_services;lifecycle;safety;…>
 #     [NO_STD_CROSS]                     force the embedded tier regardless of
 #                                        CMAKE_CROSSCOMPILING (native_sim is a
@@ -111,14 +111,14 @@ function(nros_feature_set out_var)
     # (`platform-mps2-an385` vs `platform-esp32-qemu`; see
     # NanoRosBareMetalPlatform.cmake), so the board is load-bearing again for
     # exactly one arm of the ladder. It is OPTIONAL: the two direct callers
-    # (nros-c / nros-cpp) already pass `BOARD "${NANO_ROS_BOARD}"` and those lines
+    # (nros-c / nros-cpp) already pass `BOARD "${NROS_BOARD}"` and those lines
     # become live again, while the workspace umbrella
     # (`nros_synth_runtime_umbrella`) has no BOARD argument at all and falls back
     # to the ambient variable — the same one the direct callers forward.
     cmake_parse_arguments(_FS "NO_STD_CROSS" "CRATE;EDITION;RMW;PLATFORM;BOARD" "CAPABILITIES" ${ARGN})
     set(_fs_board "${_FS_BOARD}")
     if(_fs_board STREQUAL "")
-        set(_fs_board "${NANO_ROS_BOARD}")
+        set(_fs_board "${NROS_BOARD}")
     endif()
 
     # ---- edition -----------------------------------------------------------

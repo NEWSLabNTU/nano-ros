@@ -8,7 +8,7 @@
 //! ways, in three separately-written `or_else` chains:
 //!
 //! ```text
-//! --nano-ros-path / -DNANO_ROS_ROOT   ->  $NROS_REPO_DIR  ->  a walk-up
+//! --nano-ros-path / -DNROS_REPO_DIR   ->  $NROS_REPO_DIR  ->  a walk-up
 //! ```
 //!
 //! All three are a checkout, so the released `nros` could resolve none of them
@@ -70,7 +70,7 @@ pub use nros_launcher::checkout::{
 /// ORDER can be tested without touching the environment or `current_exe`.
 #[derive(Debug, Default)]
 pub struct Rungs<'a> {
-    /// `--nano-ros-path` / `-DNANO_ROS_ROOT`, whatever the caller was told.
+    /// `--nano-ros-path` / `-DNROS_REPO_DIR`, whatever the caller was told.
     pub explicit: Option<PathBuf>,
     /// `$NROS_REPO_DIR`, as `activate.sh` exports it.
     pub repo_dir: Option<PathBuf>,

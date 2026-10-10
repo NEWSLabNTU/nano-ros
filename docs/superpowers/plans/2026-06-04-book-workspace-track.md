@@ -43,7 +43,7 @@ nros::main!(board = LinuxBoard, launch = "demo_bringup:sim.launch.xml", args = [
 
 **Launch XML = ROS 2 schema verbatim** (§11.5). Tags v1: `<launch> <arg> <node> <param> <remap> <group> <include>`. Subs: `$(find <pkg>)`, `$(var <arg>)`, `$(env <name>)`. nav2/Autoware/turtlebot3 XML copy-pastes. Python `.launch.py` not v1.
 
-**Canonical example paths (collapsed, Phase 118):** `examples/<plat>/<lang>/<example>/` — RMW chosen at build time (Cargo features / `-DNANO_ROS_RMW=` / Kconfig overlay). NOT `examples/<plat>/<lang>/<rmw>/<example>/`.
+**Canonical example paths (collapsed, Phase 118):** `examples/<plat>/<lang>/<example>/` — RMW chosen at build time (Cargo features / `-DNROS_RMW=` / Kconfig overlay). NOT `examples/<plat>/<lang>/<rmw>/<example>/`.
 
 **Real on-disk references to cite:**
 - Node pkg: `examples/stm32f4/rust/talker_pkg/` — `src/lib.rs:84` `nros::node!(Talker);`; `Cargo.toml:27` `[package.metadata.nros.node]`.
@@ -77,7 +77,7 @@ Replace the row:
 ```
 with:
 ```
-| `examples/<plat>/<lang>/<example>/` | The standard cell. RMW is selected at **build time** (Cargo features / `-DNANO_ROS_RMW=` / Kconfig overlay), not encoded in the path. A single-package "app" example here is the canonical **starter** shape; the multi-package workspace shape (Node + Bringup + Entry pkgs) kicks in at ≥2 nodes — see [the workspace track](../../../book/src/getting-started/workspace-from-app-node.md). |
+| `examples/<plat>/<lang>/<example>/` | The standard cell. RMW is selected at **build time** (Cargo features / `-DNROS_RMW=` / Kconfig overlay), not encoded in the path. A single-package "app" example here is the canonical **starter** shape; the multi-package workspace shape (Node + Bringup + Entry pkgs) kicks in at ≥2 nodes — see [the workspace track](../../../book/src/getting-started/workspace-from-app-node.md). |
 ```
 
 - [ ] **Step 3: Fix `creating-examples.md` matrix sentence (line 18)**

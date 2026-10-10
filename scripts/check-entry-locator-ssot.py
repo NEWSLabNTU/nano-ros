@@ -220,7 +220,7 @@ def selftest():
 
     clean = (
         '    _nros_resolve_entry_locator(entry\n'
-        '        "${NROS_PLATFORM}" "${NANO_ROS_BOARD}" _loc)\n'
+        '        "${NROS_PLATFORM}" "${NROS_BOARD}" _loc)\n'
         '    target_compile_definitions(t PRIVATE "NROS_ENTRY_LOCATOR=\\"${_loc}\\"")\n'
         '    set(NROS_ENTRY_LOCATOR "${_loc}")\n'
     )
@@ -249,7 +249,7 @@ def selftest():
         {
             "cmake/Other.cmake": (
                 '    _nros_resolve_entry_locator(node-register\n'
-                '        "${NROS_PLATFORM}" "${NANO_ROS_BOARD}" _loc)\n'
+                '        "${NROS_PLATFORM}" "${NROS_BOARD}" _loc)\n'
                 '    set(NROS_ENTRY_LOCATOR "${NROS_NUTTX_LOCATOR}")\n'
             )
         },

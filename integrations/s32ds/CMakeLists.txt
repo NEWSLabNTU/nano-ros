@@ -183,19 +183,19 @@ add_library(freertos_platform INTERFACE)
 target_link_libraries(freertos_platform INTERFACE freertos_kernel lwip)
 
 set(NROS_PLATFORM "freertos" CACHE STRING "" FORCE)
-if(NOT NANO_ROS_RMW)
-    set(NANO_ROS_RMW "zenoh" CACHE STRING "" FORCE)
+if(NOT NROS_RMW)
+    set(NROS_RMW "zenoh" CACHE STRING "" FORCE)
 endif()
 
 # `packages/api/nros-{c,cpp}/CMakeLists.txt` do
-# `include("${NANO_ROS_ROOT}/cmake/NanoRosFeatureSet.cmake")`, and the root
-# CMakeLists sets `NANO_ROS_ROOT_DIR` — a DIFFERENT variable. Setting
-# NANO_ROS_ROOT is the consumer's job by convention: `nano_ros_workspace()`,
+# `include("${NROS_REPO_DIR}/cmake/NanoRosFeatureSet.cmake")`, and the root
+# CMakeLists sets `NROS_REPO_DIR` — a DIFFERENT variable. Setting
+# NROS_REPO_DIR is the consumer's job by convention: `nano_ros_workspace()`,
 # `NanoRosBootstrap.cmake`, `zephyr/CMakeLists.txt` and
 # `integrations/px4/NanoRosPx4Module.cmake` each do it. Without this the
 # configure fails with `include could not find requested file:
 # /cmake/NanoRosFeatureSet.cmake` (empty prefix).
-set(NANO_ROS_ROOT "${_nros_root}" CACHE PATH "nano-ros repo root" FORCE)
+set(NROS_REPO_DIR "${_nros_root}" CACHE PATH "nano-ros repo root" FORCE)
 
 add_subdirectory("${_nros_root}" nano_ros_root)
 

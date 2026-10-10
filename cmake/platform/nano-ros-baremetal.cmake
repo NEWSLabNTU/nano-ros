@@ -4,7 +4,7 @@
 # board running nano-ros without an RTOS. Defers ALL board-specific
 # work to `cmake/board/nano-ros-board-<board>.cmake`.
 #
-# A baremetal build MUST set NANO_ROS_BOARD before `nros_platform_link_app`
+# A baremetal build MUST set NROS_BOARD before `nros_platform_link_app`
 # is called. Configure-time set is enforced inside
 # `nros_platform_link_app` — not at module-include time — because some
 # call sites (e.g. cargo metadata, configure-only smoke tests) include
@@ -50,20 +50,20 @@ endif()
 target_compile_definitions(nros_platform_baremetal_iface INTERFACE NROS_PLATFORM_BAREMETAL)
 
 function(nros_platform_link_app target)
-    if(NOT DEFINED NANO_ROS_BOARD)
+    if(NOT DEFINED NROS_BOARD)
         message(FATAL_ERROR
             "nros_platform_link_app: bare-metal builds must set "
-            "NANO_ROS_BOARD before linking (e.g. "
-            "set(NANO_ROS_BOARD mps2-an385-baremetal) — supported boards live "
+            "NROS_BOARD before linking (e.g. "
+            "set(NROS_BOARD mps2-an385-baremetal) — supported boards live "
             "under cmake/board/nano-ros-board-*.cmake).")
     endif()
     set(_board_module
-        "${CMAKE_CURRENT_LIST_DIR}/../board/nano-ros-board-${NANO_ROS_BOARD}.cmake")
+        "${CMAKE_CURRENT_LIST_DIR}/../board/nano-ros-board-${NROS_BOARD}.cmake")
     if(NOT EXISTS "${_board_module}")
         message(FATAL_ERROR
             "nros_platform_link_app: no board module at ${_board_module}. "
-            "Add cmake/board/nano-ros-board-${NANO_ROS_BOARD}.cmake or "
-            "pick a supported NANO_ROS_BOARD value.")
+            "Add cmake/board/nano-ros-board-${NROS_BOARD}.cmake or "
+            "pick a supported NROS_BOARD value.")
     endif()
     include("${_board_module}")
     if(NOT COMMAND nros_board_link_app)

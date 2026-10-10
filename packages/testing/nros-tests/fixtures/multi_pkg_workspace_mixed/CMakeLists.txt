@@ -14,7 +14,7 @@
 #   the retired bringup pkg's `system.toml`).
 #
 # Top-level cmake just wires Corrosion (Rust → C++) and adds the C++
-# listener subdir. The integration test rewrites @NANO_ROS_ROOT@
+# listener subdir. The integration test rewrites @NROS_REPO_DIR@
 # before invoking cmake. Corrosion is expected on the test host; the
 # test marks itself `#[ignore]` if Corrosion isn't installed.
 cmake_minimum_required(VERSION 3.22)
@@ -23,8 +23,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Pull in the §212.L.9 cmake fn surface (nano_ros_node_register,
 # nano_ros_entry) from the workspace root. The
-# integration test rewrites @NANO_ROS_ROOT@ at stage time.
-include("@NANO_ROS_ROOT@/cmake/NanoRosNodeRegister.cmake")
+# integration test rewrites @NROS_REPO_DIR@ at stage time.
+include("@NROS_REPO_DIR@/cmake/NanoRosNodeRegister.cmake")
 
 # Corrosion bridges the Rust component into cmake's superbuild.
 find_package(Corrosion QUIET)

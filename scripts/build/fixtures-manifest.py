@@ -399,7 +399,7 @@ WEST_KCONFIG_DEFAULT_RMW = "zenoh"
 
 def _board_default_rmw(name):
     """`[board.zephyr] default_rmw` of the board descriptor named `name`, the
-    value `nano_ros_use_board()` caches as `NANO_ROS_RMW` (via the board
+    value `nano_ros_use_board()` caches as `NROS_RMW` (via the board
     projection's `NROS_BOARD_DEFAULT_RMW`). Read from the tracked descriptors."""
     listed = subprocess.run(
         ["git", "ls-files", "-z", "--", "packages/boards/*nros-board.toml"],
@@ -427,7 +427,7 @@ def west_compile_check_rmw(entry):
     already say, and would drift the first time one moved). Precedence is the
     configure's:
 
-      1. `-DNANO_ROS_RMW=<x>` in `west_extra`;
+      1. `-DNROS_RMW=<x>` in `west_extra`;
       2. the board crate's `default_rmw`, when the app calls
          `nano_ros_use_board(<board>)` — its RMW snippet is merged as an
          EXTRA_CONF_FILE, after the app's own conf;
@@ -447,8 +447,8 @@ def west_compile_check_rmw(entry):
         if tok.startswith("-D") and "=" in tok:
             key, _, val = tok[2:].partition("=")
             defs[key.split(":")[0]] = val
-    if defs.get("NANO_ROS_RMW"):
-        return defs["NANO_ROS_RMW"].lower()
+    if defs.get("NROS_RMW"):
+        return defs["NROS_RMW"].lower()
     cmakelists = app / "CMakeLists.txt"
     if cmakelists.is_file():
         for line in cmakelists.read_text(encoding="utf-8").splitlines():

@@ -95,7 +95,7 @@ set(CMAKE_CXX_STANDARD 14)
 # 1) Pull nano-ros in.
 set(NROS_PLATFORM posix)
 set(NROS_RMW "zenoh" CACHE STRING "Active RMW.")
-set(NANO_ROS_RMW "${NROS_RMW}")
+set(NROS_RMW "${NROS_RMW}")
 add_subdirectory("/path/to/nano-ros" nano_ros)
 
 # 2) Point the message-package resolver at this workspace's src/ (must

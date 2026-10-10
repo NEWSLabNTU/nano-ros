@@ -45,7 +45,7 @@ build:
 # (issue 0488 residue 4 follow-up). No shipped defconfig sets `CONFIG_NROS`, so
 # `just nuttx build` compiles the kernel and never this app — which is how the
 # documented flow accumulated three independent breakages in two weeks (a stale
-# `packages/core` cargo path, a `+=` reading `NANO_ROS_ROOT` before it was
+# `packages/core` cargo path, a `+=` reading `NROS_REPO_DIR` before it was
 # defined, and a missing object dir under `PREFIX`).
 #
 # NOT in `check::fast`: it needs the NuttX toolchain and it mutates the shared

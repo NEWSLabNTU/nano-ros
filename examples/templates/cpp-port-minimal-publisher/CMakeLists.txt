@@ -13,10 +13,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # 1) Pull nano-ros (NanoRos::NanoRos / NanoRos::NanoRosCpp / nros_find_interfaces).
 set(NROS_PLATFORM posix)
 set(NROS_RMW "zenoh" CACHE STRING "Active RMW (zenoh|cyclonedds|xrce).")
-set(NANO_ROS_RMW "${NROS_RMW}")
+set(NROS_RMW "${NROS_RMW}")
 # Resolve the nano-ros SDK root once (phase-277 W6 standard guard; 4th rung
 # phase-447 A2 / RFC-0099 D3):
-#   1. -DNANO_ROS_ROOT=<path> cache var (explicit, e.g. a copied-out example),
+#   1. -DNROS_REPO_DIR=<path> cache var (explicit, e.g. a copied-out example),
 #   2. NROS_REPO_DIR env var (exported by nano-ros's activate.sh),
 #   3. in-repo relative walk-up (this example inside the nano-ros tree),
 #   4. ask the installed toolchain: `nros sdk-root`. A release carries its own
@@ -28,46 +28,46 @@ set(NANO_ROS_RMW "${NROS_RMW}")
 # the ownership guard's own failure mode (phase-431 W1). And the answer is ASKED
 # for rather than baked in — a store moves, `nros pin` swaps a toolchain under a
 # project, and a project is committed and then built on another machine.
-if(NOT DEFINED NANO_ROS_ROOT)
+if(NOT DEFINED NROS_REPO_DIR)
     set(_nros_walk_up "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
     if(DEFINED ENV{NROS_REPO_DIR} AND NOT "$ENV{NROS_REPO_DIR}" STREQUAL "")
-        set(NANO_ROS_ROOT "$ENV{NROS_REPO_DIR}")
+        set(NROS_REPO_DIR "$ENV{NROS_REPO_DIR}")
     elseif(EXISTS "${_nros_walk_up}/packages/core/nros-core/Cargo.toml")
         # The marker `nros_launcher::checkout::MONOREPO_MARKER` names, so "is
         # this a nano-ros root" has one answer whichever language asks. The walk
         # used to be UNCONDITIONAL, which gave a copied-out project a confident
         # wrong path that failed one line later at the include — and left rung 4
         # unreachable, since rung 3 never declined.
-        get_filename_component(NANO_ROS_ROOT "${_nros_walk_up}" ABSOLUTE)
+        get_filename_component(NROS_REPO_DIR "${_nros_walk_up}" ABSOLUTE)
     else()
         find_program(NROS_TOOLCHAIN_EXECUTABLE nros)
         if(NROS_TOOLCHAIN_EXECUTABLE)
             execute_process(
                 COMMAND "${NROS_TOOLCHAIN_EXECUTABLE}" sdk-root
                 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-                OUTPUT_VARIABLE NANO_ROS_ROOT
+                OUTPUT_VARIABLE NROS_REPO_DIR
                 OUTPUT_STRIP_TRAILING_WHITESPACE
                 RESULT_VARIABLE _nros_sdk_root_rc)
             if(NOT _nros_sdk_root_rc EQUAL 0)
                 # An `nros` too old to know the verb exits non-zero. Treat that
                 # as "no answer" rather than letting clap's usage text become a
                 # path.
-                set(NANO_ROS_ROOT "")
+                set(NROS_REPO_DIR "")
             endif()
         endif()
     endif()
-    if(NOT NANO_ROS_ROOT)
+    if(NOT NROS_REPO_DIR)
         message(FATAL_ERROR
             "nano-ros: cannot locate the nano-ros SDK root.\n"
-            "  Pass -DNANO_ROS_ROOT=<path>, or export NROS_REPO_DIR, or put an\n"
+            "  Pass -DNROS_REPO_DIR=<path>, or export NROS_REPO_DIR, or put an\n"
             "  installed toolchain's `nros` on PATH — `nros sdk-root` answers\n"
             "  this, and a released toolchain answers it out of itself.")
     endif()
 endif()
-add_subdirectory("${NANO_ROS_ROOT}" nano_ros)
+add_subdirectory("${NROS_REPO_DIR}" nano_ros)
 
 # 2) The ament / rclcpp surface: rclcpp / ament_cmake_auto / rclcpp_components.
-include("${NANO_ROS_ROOT}/cmake/NanoRosAmentSurface.cmake")
+include("${NROS_REPO_DIR}/cmake/NanoRosAmentSurface.cmake")
 
 # 3) Generate the message bindings the ported source includes. package.xml is the
 #    single source of truth for the msg deps; nros_find_interfaces() resolves the
@@ -97,7 +97,7 @@ target_link_libraries(minimal_publisher PRIVATE std_msgs__nano_ros_cpp)
 # (`find_package(nano_ros)`, `add_subdirectory`, an ament overlay) and not all
 # of them have pulled `NanoRosEntry.cmake` first.
 if(NOT COMMAND nros_apply_panic_policy)
-    include("${NANO_ROS_ROOT}/cmake/NanoRosFeatureSet.cmake")
+    include("${NROS_REPO_DIR}/cmake/NanoRosFeatureSet.cmake")
 endif()
 nros_apply_panic_policy(platform "examples/templates/cpp-port-minimal-publisher")
 

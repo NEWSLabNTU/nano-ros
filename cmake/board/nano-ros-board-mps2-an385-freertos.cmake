@@ -6,7 +6,7 @@
 # pointed at the in-tree source layout rather than the install prefix.
 #
 # Loaded by `cmake/platform/nano-ros-freertos.cmake` when
-# NANO_ROS_BOARD=mps2-an385-freertos. The platform module is what
+# NROS_BOARD=mps2-an385-freertos. The platform module is what
 # `add_subdirectory(<nano-ros-root>)` reaches first; this overlay only
 # runs once we know we are targeting FreeRTOS-on-MPS2-AN385.
 #

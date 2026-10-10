@@ -58,7 +58,7 @@ REPO = Path(__file__).resolve().parents[2]
 # `nano_ros_bootstrap()` (+ trailing `# --- end nano-ros bootstrap ---`).
 _PRELUDE = re.compile(
     r"(?:^[ \t]*#[^\n]*\n)*"                       # leading comment block
-    r"^[ \t]*if\s*\(\s*NOT\s+DEFINED\s+NANO_ROS_ROOT.*?"
+    r"^[ \t]*if\s*\(\s*NOT\s+DEFINED\s+NROS_REPO_DIR.*?"
     r"nano_ros_bootstrap\s*\(\s*\)[ \t]*\n"
     r"(?:^[ \t]*#[ \t]*---[ \t]*end nano-ros bootstrap[^\n]*\n)?",
     re.M | re.S,

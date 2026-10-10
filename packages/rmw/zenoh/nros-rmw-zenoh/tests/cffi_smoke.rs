@@ -90,7 +90,7 @@ fn router_locator() -> Option<String> {
 /// **Cffi-path data flow IS verified end-to-end** by the
 /// two-process talker/listener tests in
 /// `packages/testing/nros-tests/tests/native_api.rs` +
-/// `tests/nano2nano.rs`. Once 115.L.3's `NANO_ROS_RMW=zenoh`
+/// `tests/nano2nano.rs`. Once 115.L.3's `NROS_RMW=zenoh`
 /// default-flip propagates through the example Cargo.toml files,
 /// those tests exercise the same `RustBackendAdapter<ZenohRmw>`
 /// vtable this crate registers.

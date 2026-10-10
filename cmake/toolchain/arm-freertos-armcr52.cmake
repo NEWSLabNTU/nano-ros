@@ -18,9 +18,9 @@
 # Usage:
 #   cmake -S . -B build \
 #         -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain/arm-freertos-armcr52.cmake \
-#         -DNANO_ROS_RMW=cyclonedds \
+#         -DNROS_RMW=cyclonedds \
 #         -DNROS_PLATFORM=freertos \
-#         -DNANO_ROS_BOARD=s32z270-freertos
+#         -DNROS_BOARD=s32z270-freertos
 #   cmake --build build
 
 set(CMAKE_SYSTEM_NAME       Generic)

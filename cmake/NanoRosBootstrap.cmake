@@ -23,12 +23,12 @@ macro(_nros_bootstrap)
     cmake_parse_arguments(_NRB "" "ROOT" "" ${ARGN})
 
     if(_NRB_ROOT AND NOT _NRB_ROOT STREQUAL "")
-        set(NANO_ROS_ROOT "${_NRB_ROOT}")
+        set(NROS_REPO_DIR "${_NRB_ROOT}")
     endif()
-    if(NOT DEFINED NANO_ROS_ROOT OR NANO_ROS_ROOT STREQUAL "")
+    if(NOT DEFINED NROS_REPO_DIR OR NROS_REPO_DIR STREQUAL "")
         message(FATAL_ERROR
-            "_nros_bootstrap: NANO_ROS_ROOT is not set. Pass "
-            "-DNANO_ROS_ROOT=<nano-ros checkout>, export NROS_REPO_DIR "
+            "_nros_bootstrap: NROS_REPO_DIR is not set. Pass "
+            "-DNROS_REPO_DIR=<nano-ros checkout>, export NROS_REPO_DIR "
             "(source activate.sh), or call _nros_bootstrap(ROOT <path>).")
     endif()
 
@@ -36,9 +36,9 @@ macro(_nros_bootstrap)
     # add_subdirectory import. Pull it in once and run the per-package guard —
     # a no-op if a parent workspace already imported nano-ros.
     if(NOT COMMAND nano_ros_workspace_pkg_guard)
-        include("${NANO_ROS_ROOT}/cmake/NanoRosWorkspace.cmake")
+        include("${NROS_REPO_DIR}/cmake/NanoRosWorkspace.cmake")
     endif()
-    nano_ros_workspace_pkg_guard(NANO_ROS_ROOT "${NANO_ROS_ROOT}")
+    nano_ros_workspace_pkg_guard(NROS_REPO_DIR "${NROS_REPO_DIR}")
 
     # RMW/CXX micro-option, hidden: the CycloneDDS backend is C++ (operator
     # new/delete, std::nothrow), so a C app linking it needs CXX enabled in this

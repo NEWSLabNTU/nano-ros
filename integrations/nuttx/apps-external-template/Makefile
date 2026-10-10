@@ -27,7 +27,7 @@ include $(APPDIR)/external/nano-ros/Make.defs
 
 # Default to demo if the pinning fragment is absent (template-as-is).
 NROS_BRINGUP_NAME      ?= demo_bringup
-NROS_BRINGUP_WORKSPACE ?= $(NANO_ROS_ROOT)/packages/testing/nros-tests/fixtures/multi_pkg_workspace_nuttx
+NROS_BRINGUP_WORKSPACE ?= $(NROS_REPO_DIR)/packages/testing/nros-tests/fixtures/multi_pkg_workspace_nuttx
 NROS_BRINGUP_BUILD     ?= $(CURDIR)/build
 NROS_BRINGUP_OUT       ?= $(NROS_BRINGUP_BUILD)/nros-system
 
@@ -50,7 +50,7 @@ NROS_CODEGEN_IMAGE_NOTE = $(if $(NROS_BRINGUP_IMAGE),image $(NROS_BRINGUP_IMAGE)
 # Post-Phase-218 canonical path is `packages/cli/target/release/nros` (built
 # by `just setup-cli`); fall back to `~/.nros/bin/nros` (transitional) then PATH.
 NROS_BIN ?= $(or \
-    $(wildcard $(NANO_ROS_ROOT)/packages/cli/target/release/nros), \
+    $(wildcard $(NROS_REPO_DIR)/packages/cli/target/release/nros), \
     $(wildcard $(HOME)/.nros/bin/nros), \
     nros)
 

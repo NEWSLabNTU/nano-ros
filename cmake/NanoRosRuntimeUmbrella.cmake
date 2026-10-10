@@ -16,7 +16,7 @@
 #      model, and it is issue 1467. `if(TARGET NanoRos::NanoRosCpp)` is a
 #      property of what the build tree DEFINES, not of what the consuming
 #      binary's other archives already contain — and every leaf does
-#      `add_subdirectory("${NANO_ROS_ROOT}" nano_ros)`, so that target always
+#      `add_subdirectory("${NROS_REPO_DIR}" nano_ros)`, so that target always
 #      exists. A leaf whose APP is a Rust staticlib (`nros_threadx_rv64_rust_app`)
 #      already carries the whole `nros` / `nros-platform` / `nros-rmw-cffi`
 #      surface inside its own archive, so the target that keeps a C/C++ binary

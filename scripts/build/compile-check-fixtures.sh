@@ -5,7 +5,7 @@
 # (e.g. a macro re-export path resolves). Running `cargo check` inside the test
 # makes the test wall-clock dominated by compile time → spurious nextest
 # timeouts. Instead, this script does the compile in the BUILD stage: it stages
-# each template into a gitignored build dir, rewrites `@NANO_ROS_ROOT@`
+# each template into a gitignored build dir, rewrites `@NROS_REPO_DIR@`
 # placeholders to absolute `path =` deps, runs `cargo check`, and on success
 # writes a `.compile-ok` stamp the test asserts (via
 # `nros_tests::fixtures::require_compile_check`).
@@ -249,8 +249,8 @@ stage_tree() {
     # propagates through find), which would abort the whole run for any fixture
     # that doesn't use that placeholder. The rewrite is best-effort — a missing
     # placeholder is a no-op, not an error.
-    find "$staged" -type f -exec grep -lZ '@NANO_ROS_ROOT@' {} + 2>/dev/null \
-        | xargs -0 -r sed -i "s#@NANO_ROS_ROOT@#$repo_root#g" || true
+    find "$staged" -type f -exec grep -lZ '@NROS_REPO_DIR@' {} + 2>/dev/null \
+        | xargs -0 -r sed -i "s#@NROS_REPO_DIR@#$repo_root#g" || true
     apply_case_overlay "$id" "$staged"
     # phase-330 W7.g — templates no longer carry committed SystemModels
     # (W4.a); resolve them into the staged workspace's build dir the same way

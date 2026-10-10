@@ -6,10 +6,10 @@ project(smoke C)
 # The repo root is 5 levels up from this fixture dir; out-of-tree
 # add_subdirectory needs the explicit binary dir (2nd arg).
 set(NROS_PLATFORM posix)
-set(NANO_ROS_RMW     zenoh)
+set(NROS_RMW     zenoh)
 
-get_filename_component(NANO_ROS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../../.." ABSOLUTE)
-add_subdirectory("${NANO_ROS_ROOT}" nano_ros)
+get_filename_component(NROS_REPO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../../.." ABSOLUTE)
+add_subdirectory("${NROS_REPO_DIR}" nano_ros)
 
 add_executable(smoke main.c)
 target_link_libraries(smoke PRIVATE NanoRos::NanoRos)
@@ -27,6 +27,6 @@ nros_platform_link_app(smoke)
 # (`find_package(nano_ros)`, `add_subdirectory`, an ament overlay) and not all
 # of them have pulled `NanoRosEntry.cmake` first.
 if(NOT COMMAND nros_apply_panic_policy)
-    include("${NANO_ROS_ROOT}/cmake/NanoRosFeatureSet.cmake")
+    include("${NROS_REPO_DIR}/cmake/NanoRosFeatureSet.cmake")
 endif()
 nros_apply_panic_policy(platform "cmake_add_subdirectory_smoke fixture")

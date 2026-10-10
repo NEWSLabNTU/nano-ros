@@ -289,7 +289,7 @@ build-fvp-ws-entry:
     if [ ! -x "$sdk/aarch64-zephyr-elf/bin/aarch64-zephyr-elf-gcc" ]; then
         nros_lane_skip "Zephyr/FVP-ws-entry skip: aarch64-zephyr-elf toolchain missing"
     fi
-    # issue 1777 — the FVP board crate defaults `NANO_ROS_RMW` to cyclonedds, so
+    # issue 1777 — the FVP board crate defaults `NROS_RMW` to cyclonedds, so
     # this image's configure needs a host idlc. Asked here, before configuring,
     # through the one probe (scripts/lib/host-idlc.sh); NAMED, a miss fails.
     source scripts/lib/host-idlc.sh
@@ -474,7 +474,7 @@ verify-fvp-runtime:
 # AEMv8-R target THROUGH the Phase 215.B import surface: the fixture's
 # CMakeLists carries ONLY `nano_ros_use_board(fvp-aemv8r-smp)` +
 # `find_package(Zephyr)` + a trivial `printk` app — no hand-rolled
-# BOARD / EXTRA_CONF_FILE / DTC_OVERLAY_FILE / -DNANO_ROS_RMW. This is
+# BOARD / EXTRA_CONF_FILE / DTC_OVERLAY_FILE / -DNROS_RMW. This is
 # the canonical "is the board crate import surface healthy?" build.
 # `nano_ros_use_board()` sets `BOARD` from `board.cmake`, so no `-b`.
 # Skips cleanly when west / Zephyr workspace / aarch64 SDK are absent.
@@ -505,7 +505,7 @@ build-fvp-board-import:
     if [ ! -x "$sdk/aarch64-zephyr-elf/bin/aarch64-zephyr-elf-gcc" ]; then
         nros_lane_skip "Zephyr/FVP board-import skip: aarch64-zephyr-elf toolchain missing"
     fi
-    # issue 1777 — the FVP board crate defaults `NANO_ROS_RMW` to cyclonedds, so
+    # issue 1777 — the FVP board crate defaults `NROS_RMW` to cyclonedds, so
     # this image's configure needs a host idlc. Asked here, before configuring,
     # through the one probe (scripts/lib/host-idlc.sh); NAMED, a miss fails.
     source scripts/lib/host-idlc.sh

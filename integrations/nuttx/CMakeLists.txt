@@ -23,7 +23,7 @@ if(CONFIG_NROS)
     _nros_resolve_ros_edition("${CONFIG_NROS_ROS_EDITION}" _nros_ros_edition)
 
     set(NROS_PLATFORM    "nuttx"                CACHE STRING "" FORCE)
-    set(NANO_ROS_RMW         "${_nros_rmw}"         CACHE STRING "" FORCE)
+    set(NROS_RMW         "${_nros_rmw}"         CACHE STRING "" FORCE)
     set(NROS_ROS_EDITION "${_nros_ros_edition}" CACHE STRING "" FORCE)
 
     add_subdirectory("${_nros_root}" nano_ros_root)

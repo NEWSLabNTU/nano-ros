@@ -7,13 +7,13 @@
 # via `nano_ros_entry(...)`. Both fns ship from `cmake/` and emit
 # `${CMAKE_BINARY_DIR}/nros-metadata.json` — no committed sidecar.
 #
-# `@NANO_ROS_ROOT@` is rewritten by the staging harness before configure
+# `@NROS_REPO_DIR@` is rewritten by the staging harness before configure
 # (see `tests/phase212_d_workspace_metadata.rs::stage_fixture`).
 cmake_minimum_required(VERSION 3.22)
 project(multi_pkg_workspace_cpp C CXX)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-include("@NANO_ROS_ROOT@/cmake/NanoRosNodeRegister.cmake")
+include("@NROS_REPO_DIR@/cmake/NanoRosNodeRegister.cmake")
 
 # Component pkgs — each its own `project()` so the L.4
 # `CLASS startswith ${PROJECT_NAME}::` rule resolves correctly.

@@ -41,7 +41,7 @@ cmake_minimum_required(VERSION 3.22)
 project(my_app C)
 
 set(NROS_PLATFORM posix)
-set(NANO_ROS_RMW     zenoh)
+set(NROS_RMW     zenoh)
 add_subdirectory(<path-to-nano-ros> nano_ros)
 
 nano_ros_generate_interfaces(std_msgs SKIP_INSTALL)
@@ -64,12 +64,12 @@ cmake --build build
 
 | Pre-140 | Post-140 |
 |---------|----------|
-| `find_package(NanoRos REQUIRED CONFIG)` | `add_subdirectory(<path-to-nano-ros>)` after `set(NROS_PLATFORM ...)` + `set(NANO_ROS_RMW ...)` |
+| `find_package(NanoRos REQUIRED CONFIG)` | `add_subdirectory(<path-to-nano-ros>)` after `set(NROS_PLATFORM ...)` + `set(NROS_RMW ...)` |
 | `just install-local` | (deleted) — nano-ros builds in-tree per-example via Corrosion |
 | `cmake -DCMAKE_PREFIX_PATH=<nano-ros>/build/install` | (not needed) |
 | `nano_ros_link_platform(target)` / `nano_ros_link_rmw(target)` | (folded into `NanoRos::NanoRos`'s INTERFACE link libraries) |
 | `nros_freertos_compose_platform(target)` / `nros_threadx_compose_platform(target)` | `nros_platform_link_app(target)` — single per-app fixup hook |
-| `find_package(NrosRmwCyclonedds CONFIG REQUIRED)` | (auto-wired when `NANO_ROS_RMW=cyclonedds`) |
+| `find_package(NrosRmwCyclonedds CONFIG REQUIRED)` | (auto-wired when `NROS_RMW=cyclonedds`) |
 | `cmake_minimum_required(VERSION 3.16)` | `cmake_minimum_required(VERSION 3.22)` (matches root nano-ros) |
 
 ## RTOS-specific notes

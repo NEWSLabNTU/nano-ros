@@ -6,13 +6,13 @@ Phase 140 — nano-ros is consumed exclusively via
 `add_subdirectory(<repo-root>)` from the user's CMakeLists. There is
 no install step, no install prefix, no `find_package(NanoRos)`.
 
-The nros C API is built via CMake + [Corrosion](https://github.com/corrosion-rs/corrosion) (v0.6.1), which integrates Cargo into CMake. Each `add_subdirectory(nano-ros)` invocation builds the staticlib(s) for the selected `(NROS_PLATFORM, NANO_ROS_RMW)` tuple in-tree.
+The nros C API is built via CMake + [Corrosion](https://github.com/corrosion-rs/corrosion) (v0.6.1), which integrates Cargo into CMake. Each `add_subdirectory(nano-ros)` invocation builds the staticlib(s) for the selected `(NROS_PLATFORM, NROS_RMW)` tuple in-tree.
 
 ## Usage
 
 ```cmake
 set(NROS_PLATFORM posix)
-set(NANO_ROS_RMW     zenoh)
+set(NROS_RMW     zenoh)
 add_subdirectory(third_party/nano-ros nano_ros)
 
 add_executable(my_app src/main.c)
@@ -25,13 +25,13 @@ config header automatically. See
 [build-as-subdirectory.md](../../book/src/getting-started/build-as-subdirectory.md)
 for the full walkthrough.
 
-**RMW backend selection:** Pass `-DNANO_ROS_RMW=<zenoh|dds|xrce|cyclonedds>` to cmake.
+**RMW backend selection:** Pass `-DNROS_RMW=<zenoh|dds|xrce|cyclonedds>` to cmake.
 
-### `NANO_ROS_RMW` vs `NROS_RMW`
+### `NROS_RMW` vs `NROS_RMW`
 
 Two cache variables select the RMW backend and they are **not** the same knob:
 
-- **`NANO_ROS_RMW`** — the root API knob, read directly by
+- **`NROS_RMW`** — the root API knob, read directly by
   `packages/api/nros-c/CMakeLists.txt` when you `add_subdirectory(nano-ros)`
   it yourself (as in the `Usage` example above). This is the variable the
   nano-ros build itself branches on.
@@ -39,12 +39,12 @@ Two cache variables select the RMW backend and they are **not** the same knob:
   workspace-helper CMake (`cmake/NanoRosWorkspace.cmake`, `nano_ros_workspace()`
   / `nano_ros_workspace_pkg_guard()`, ~lines 158-243). It is set from the
   `BACKEND` argument (or read back as a default when omitted) and then mapped
-  onto `NANO_ROS_RMW` before nano-ros is imported — so anything set via
+  onto `NROS_RMW` before nano-ros is imported — so anything set via
   `-DNROS_RMW=…` on one of the copy-out `examples/**/CMakeLists.txt` ultimately
   drives the same root knob.
 
 In short: writing your own top-level `CMakeLists.txt` against nano-ros directly
-→ set `NANO_ROS_RMW`. Using the `nano_ros_workspace()` / workspace-pkg-guard
+→ set `NROS_RMW`. Using the `nano_ros_workspace()` / workspace-pkg-guard
 helper (as the standalone examples and `templates/` workspaces do) → set
 `NROS_RMW` (or the `BACKEND` argument), and let the helper translate it.
 
@@ -160,7 +160,7 @@ them. **A user does not.** Since
 RMW, the domain and the network identity come from a `system.toml` beside the
 example's `CMakeLists.txt`, and `find_package(nano_ros)` reads it through
 `nros ws leaf-system`, deriving the platform from the board. So
-`-DNROS_PLATFORM`, `-DNANO_ROS_BOARD` and `-DNROS_RMW` are retired as a
+`-DNROS_PLATFORM`, `-DNROS_BOARD` and `-DNROS_RMW` are retired as a
 user-facing spelling: switching board is editing `[image.*] board`.
 
 **FreeRTOS (ARM Cortex-M3, MPS2-AN385).** The board is

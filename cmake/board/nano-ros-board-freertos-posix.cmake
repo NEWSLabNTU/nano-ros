@@ -3,7 +3,7 @@
 # phase-370 W2 — board overlay for the FreeRTOS POSIX simulator.
 #
 # Loaded by `cmake/platform/nano-ros-freertos.cmake` when
-# NANO_ROS_BOARD=freertos-posix. The FreeRTOS kernel's `ThirdParty/GCC/Posix`
+# NROS_BOARD=freertos-posix. The FreeRTOS kernel's `ThirdParty/GCC/Posix`
 # port runs tasks as host pthreads with signal-driven preemption; everything
 # below the kernel is the host, which is what makes this a BOARD variant rather
 # than a platform (phase-292 W4.a's "go, small" scoping decision).
@@ -216,7 +216,7 @@ set(NROS_FREERTOS_BOARD_HAS_LWIP FALSE)
 # (`ddsc` requires `security_core` that is not in any export set). Measured on
 # `workspace-c-freertos-posix` with `-DCMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON`.
 # A host Cyclone found by `find_package` (ROS's) is unaffected.
-if(NANO_ROS_RMW STREQUAL "cyclonedds")
+if(NROS_RMW STREQUAL "cyclonedds")
     set(ENABLE_SECURITY OFF CACHE BOOL "Cyclone: no DDS Security (issue 1769)" FORCE)
     set(ENABLE_SSL OFF CACHE BOOL "Cyclone: no TLS (issue 1769)" FORCE)
     set(ENABLE_SHM OFF CACHE BOOL "Cyclone: no Iceoryx SHM (issue 1769)" FORCE)
