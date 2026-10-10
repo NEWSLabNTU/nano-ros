@@ -1095,63 +1095,71 @@ fn submodule_is_present(workspace: &Path, path: &str, recursive: bool) -> bool {
     saw_a_line
 }
 
-/// Issue 1304 — the file an INSTALLED SDK root carries in place of gitlinks.
-///
-/// Every `[source.*]` with `submodule = "<path>"` is DEFINED as "the checkout's
-/// `.gitmodules` + gitlink" (issue 0602 removed the index's own copy of the
-/// pin, because git holds it authoritatively). A release has no checkout, and
-/// the SDK root it ships is a `git archive`, which drops gitlinks by design —
-/// so the installed `nros setup native` ran `git ls-tree` in a directory that
-/// is not a repository and stopped, for every RMW.
-///
-/// `scripts/stage-sdk-root.sh` writes this file at release time from the
-/// commit being released: the pins are version-locked to the toolchain
-/// (RFC-0097 D6) rather than re-derived from a history the user does not have.
-/// Its presence is also what separates an installed root from a checkout —
-/// a checkout never carries it, so the checkout arm below is unchanged.
-///
-/// Kept in step with the staging script and `nros-rmw-provision.cmake` by
-/// `check-release-manifest` R6.
-pub const SUBMODULE_PINS_FILE: &str = "nros-submodule-pins.toml";
+/// The index file an SDK root carries at its top — a checkout's committed one,
+/// or the copy `scripts/stage-sdk-root.sh` writes into a release.
+const ROOT_INDEX_FILE: &str = "nros-sdk-index.toml";
 
-/// One recorded gitlink: where the submodule's repository is, and the commit.
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+/// One recorded pin: where the submodule's repository is, and the commit.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RecordedPin {
     pub url: String,
     pub commit: String,
 }
 
-#[derive(Debug, Default, Deserialize)]
-struct PinsFile {
-    #[serde(default)]
-    submodule: BTreeMap<String, RecordedPin>,
-}
-
-/// The recorded pin for `path`, if `workspace` is an installed SDK root.
+/// Issue 1304 / RFC-0103 D5 — the pin of a submodule source in an INSTALLED SDK
+/// root, read from that root's own index.
 ///
-/// `Ok(None)` means "no pins file here" — a checkout, whose gitlinks answer.
-/// A pins file that does not name `path` is an ERROR, not a fall-through: the
-/// checkout arm cannot work in a directory that has no repository, and the
-/// cause is specific — the index (fetched, so possibly newer than this
-/// release) names a submodule source this release never recorded.
-pub fn recorded_pin(workspace: &Path, path: &str) -> Result<Option<RecordedPin>> {
-    let file = workspace.join(SUBMODULE_PINS_FILE);
+/// A release's SDK root is a `git archive`, which drops gitlinks by design, so
+/// the checkout arm (`git submodule update` against the superproject) has
+/// nothing to read there. Every `[source.*]` row that names a `submodule` also
+/// states `git` + `ref`, written from `.gitmodules` + the gitlink and held
+/// equal to them by `check-source-refs` (phase-484 W3) — so the index is the
+/// one owner of the pin in both shapes. (It used to be a second file,
+/// `nros-submodule-pins.toml`, written at staging time: two owners of one fact.)
+///
+/// The ROOT's own index copy is read, never the one this run loaded: `nros
+/// setup` may run against a FETCHED index newer than the release, and the pin
+/// must stay version-locked to the code beside it (RFC-0097 D6).
+///
+/// `Ok(None)` means "a checkout" — the root has a `.git` (a directory, or a
+/// worktree's file), so its gitlinks answer — or a directory that is no SDK
+/// root at all. A row that states no `git`/`ref` in an installed root is an
+/// ERROR, not a fall-through: the checkout arm cannot work in a directory that
+/// has no repository.
+pub fn recorded_pin(workspace: &Path, name: &str) -> Result<Option<RecordedPin>> {
+    if workspace.join(".git").exists() {
+        return Ok(None);
+    }
+    let file = workspace.join(ROOT_INDEX_FILE);
     if !file.is_file() {
         return Ok(None);
     }
     let raw =
         std::fs::read_to_string(&file).wrap_err_with(|| format!("read {}", file.display()))?;
-    let mut pins: PinsFile =
+    let index: toml::Table =
         toml::from_str(&raw).wrap_err_with(|| format!("parse {}", file.display()))?;
-    pins.submodule.remove(path).map(Some).ok_or_else(|| {
-        eyre!(
-            "{} records no pin for `{path}`: this toolchain was released before \
-             the index named that source, so it has nothing to fetch it at. \
+    let row = index
+        .get("source")
+        .and_then(|s| s.get(name))
+        .and_then(|r| r.as_table());
+    let field = |k: &str| {
+        row.and_then(|r| r.get(k))
+            .and_then(|v| v.as_str())
+            .map(str::to_owned)
+    };
+    match (field("git"), field("ref")) {
+        (Some(url), Some(commit)) => Ok(Some(RecordedPin { url, commit })),
+        _ => Err(eyre!(
+            "{} states no `git`/`ref` for [source.{name}]: this SDK root has no \
+             repository to read the pin from, so it has nothing to fetch it at. \
              Install a newer toolchain, or provision it by hand into {}",
             file.display(),
-            workspace.join(path).display()
-        )
-    })
+            row.and_then(|r| r.get("dest"))
+                .and_then(|v| v.as_str())
+                .map(|d| workspace.join(d).display().to_string())
+                .unwrap_or_else(|| workspace.display().to_string())
+        )),
+    }
 }
 
 /// Is every NESTED submodule of the clone at `dest` at its own recorded pin?
@@ -1335,7 +1343,7 @@ fn provision_lock(
     // repository; asking git there would find whatever repository happens to
     // ENCLOSE it. It locks beside the dest, like the store.
     let installed_root = match src.submodule.as_deref() {
-        Some(sub) => recorded_pin(workspace, sub)?.is_some(),
+        Some(_) => recorded_pin(workspace, name)?.is_some(),
         None => false,
     };
     let path = if src.location == SourceLocation::Store || installed_root {
@@ -1427,7 +1435,7 @@ fn provision_source_unlocked(
             // release staged it with `git archive`, which drops them, and
             // recorded each one as data instead. Everything below this branch
             // is a checkout's arm, and a checkout never carries the file.
-            if let Some(pin) = recorded_pin(workspace, path)? {
+            if let Some(pin) = recorded_pin(workspace, name)? {
                 return provision_at_recorded_pin(
                     name,
                     path,
@@ -2891,7 +2899,7 @@ mod tests {
     }
 
     /// Issue 1304 — an INSTALLED SDK root: a plain directory, NOT a repository,
-    /// carrying the release's recorded pins. The pin deliberately LAGS the
+    /// whose index copy states the release's pins. The pin deliberately LAGS the
     /// upstream tip, which is the normal state of a submodule pin and the case
     /// a fetch-by-branch would get wrong.
     ///
@@ -2917,10 +2925,13 @@ mod tests {
         let sdk = root.join("sdk-root");
         std::fs::create_dir_all(&sdk).unwrap();
         let path = "third-party/sub";
+        // The root's own index copy states the pin (RFC-0103 D5): a release
+        // carries no gitlinks, and no `.git` here makes this an installed root.
         std::fs::write(
-            sdk.join(SUBMODULE_PINS_FILE),
+            sdk.join(ROOT_INDEX_FILE),
             format!(
-                "[submodule.\"{path}\"]\nurl = \"file://{}\"\ncommit = \"{pinned}\"\n",
+                "[source.sub]\nversion = \"1\"\ndest = \"{path}\"\nsubmodule = \"{path}\"\n\
+                 git = \"file://{}\"\nref = \"{pinned}\"\n",
                 upstream.display()
             ),
         )
@@ -2992,9 +3003,9 @@ mod tests {
         }
     }
 
-    /// A pins file that does not name the source is a named failure — not a
-    /// fall-through into the checkout arm, which is issue 1304's `git ls-tree`
-    /// in a non-repository all over again.
+    /// An installed root whose index states no pin for the source is a named
+    /// failure — not a fall-through into the checkout arm, which is issue
+    /// 1304's `git ls-tree` in a non-repository all over again.
     #[test]
     fn an_installed_root_without_a_pin_for_the_source_says_so() {
         let (sdk, _, _) = installed_root_with_pin("pins-missing");
@@ -3008,18 +3019,18 @@ mod tests {
         .unwrap_err();
         let msg = format!("{err:#}");
         assert!(
-            msg.contains("records no pin for `third-party/other`"),
+            msg.contains("states no `git`/`ref` for [source.other]"),
             "the error must name the missing pin: {msg}"
         );
     }
 
-    /// The contributor's arm is untouched: a CHECKOUT carries no pins file, so
-    /// its sources still come from its own gitlinks — the property the
+    /// The contributor's arm is untouched: a CHECKOUT has a `.git`, so its
+    /// sources still come from its own gitlinks — the property the
     /// ownership guard (phase-431 W1) exists for, one layer down.
     #[test]
     fn a_checkout_never_reads_recorded_pins() {
         let (ws, path) = superproject_with_submodule("pins-checkout");
-        assert!(recorded_pin(&ws, path).unwrap().is_none());
+        assert!(recorded_pin(&ws, "sub").unwrap().is_none());
         let _ = take_command_log();
         provision_source("sub", &submodule_source(path, false), &ws, false, None).unwrap();
         assert!(
