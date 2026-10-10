@@ -133,3 +133,47 @@ fn a_project_sources_row_outranks_the_checkout() {
         "{err}"
     );
 }
+
+/// RFC-0103 D3 rung 3, the tool twin: a project's `[tools]` row answers
+/// `nros sdk-path <tool>` before the store's pinned prefix; a tool the index
+/// does not pin is still refused (a typo must not become a path).
+#[test]
+fn a_project_tools_row_answers_sdk_path() {
+    let tmp = tempfile::tempdir().unwrap();
+    let r = root(tmp.path());
+    let mut idx = std::fs::read_to_string(r.join("nros-sdk-index.toml")).unwrap();
+    idx.push_str("\n[tool.qemu]\nversion = \"9.0.0\"\n");
+    std::fs::write(r.join("nros-sdk-index.toml"), idx).unwrap();
+    let proj = tmp.path().join("proj");
+    std::fs::create_dir_all(proj.join("tc/qemu")).unwrap();
+    std::fs::write(
+        proj.join("system.toml"),
+        "[system]\nname = \"p\"\n\n[tools]\nqemu = \"tc/qemu\"\n",
+    )
+    .unwrap();
+    let run = |tool: &str| {
+        Command::new(env!("CARGO_BIN_EXE_nros"))
+            .args(["sdk-path", tool, "--require", "--index"])
+            .arg(r.join("nros-sdk-index.toml"))
+            .current_dir(&proj)
+            .env("NROS_HOME", tmp.path().join("store"))
+            .env_remove("NROS_WORKSPACE_ROOT")
+            .env_remove("NROS_STORE")
+            .env_remove("NROS_SDK_STORE")
+            .output()
+            .unwrap()
+    };
+    let o = run("qemu");
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    assert!(
+        String::from_utf8_lossy(&o.stdout)
+            .trim()
+            .ends_with("proj/tc/qemu"),
+        "{}",
+        String::from_utf8_lossy(&o.stdout)
+    );
+    assert!(
+        !run("qemuu").status.success(),
+        "an unpinned tool must be refused"
+    );
+}

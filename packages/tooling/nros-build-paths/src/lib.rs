@@ -1169,12 +1169,21 @@ pub mod locate {
     /// [`row_from_index`]; a quoted key (`"zenoh-pico" = …`) is accepted too.
     #[must_use]
     pub fn project_source(project_dir: &Path, name: &str) -> Option<PathBuf> {
+        project_entry(project_dir, "sources", name)
+    }
+
+    /// `[<table>] <name> = "<path>"` from the project's `system.toml`,
+    /// resolved against its directory — the reader behind [`project_source`]
+    /// and the `[tools]` rung `nros sdk-path` asks.
+    #[must_use]
+    pub fn project_entry(project_dir: &Path, table: &str, name: &str) -> Option<PathBuf> {
         let text = std::fs::read_to_string(project_dir.join("system.toml")).ok()?;
+        let header = format!("[{table}]");
         let mut inside = false;
         for line in text.lines() {
             let line = line.trim();
             if line.starts_with('[') {
-                inside = line == "[sources]";
+                inside = line == header;
                 continue;
             }
             if !inside {

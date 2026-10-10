@@ -59,7 +59,7 @@ pub struct Args {
 /// The project directory for rung 3: explicit, else the one the generated
 /// build config names (`NROS_WORKSPACE_ROOT`), else the nearest ancestor of
 /// the working directory holding a `system.toml`.
-fn project_dir(explicit: Option<&std::path::Path>) -> Option<PathBuf> {
+pub(crate) fn project_dir(explicit: Option<&std::path::Path>) -> Option<PathBuf> {
     if let Some(p) = explicit {
         return Some(p.to_path_buf());
     }
