@@ -33,7 +33,13 @@
 # "Present" is not "current" whenever a file can outlive the run that wrote it.
 #
 # Usage: mirror-generated-header.sh <corrosion-src> <build-dir> <gen-subdir> <name> <dest>
+#        mirror-generated-header.sh --resolve <corrosion-src> <build-dir> <gen-subdir> <name>
 #        mirror-generated-header.sh --self-test
+#
+# `--resolve` prints the source this script WOULD copy and exits 1 when there
+# is none. `check-sizes-header-mirrors` asks it rather than re-deriving the
+# choice: that gate compared every mirror against the leaf copy, which 0978
+# made the FALLBACK, so the rule lived twice and disagreed (issue 1792).
 set -euo pipefail
 
 if [ "${1:-}" = "--self-test" ]; then
@@ -120,12 +126,27 @@ if [ "${1:-}" = "--self-test" ]; then
         && ok "an unchanged header does not re-stamp the dest" \
         || bad "an unchanged header does not re-stamp the dest" "mtime moved"
 
+    d="$(stage NEW STALE)"
+    [ "$(bash "$self" --resolve "$d/leaf/h.h" "$d" gen h.h)" = "$d/cargo/ws_abc/gen/nros/h.h" ] \
+        && ok "--resolve names the source the copy uses" \
+        || bad "--resolve names the source the copy uses" "got $(bash "$self" --resolve "$d/leaf/h.h" "$d" gen h.h)"
+    d="$(stage - -)"
+    if bash "$self" --resolve "$d/leaf/h.h" "$d" gen h.h >/dev/null 2>&1; then
+        bad "--resolve with no header anywhere fails" "exited 0"
+    else
+        ok "--resolve with no header anywhere fails"
+    fi
     [ "$fails" -eq 0 ] || exit 1
     echo "mirror-generated-header self-test OK"
     exit 0
 fi
 
-leaf_src="$1"; build_dir="$2"; gen_subdir="$3"; name="$4"; dest="$5"
+resolve_only=0
+if [ "${1:-}" = "--resolve" ]; then
+    resolve_only=1
+    shift
+fi
+leaf_src="$1"; build_dir="$2"; gen_subdir="$3"; name="${4:-}"; dest="${5:-}"
 
 # `<build>/cargo/<workspace>_<hash>/...` — one entry in practice; the glob
 # avoids hardcoding Corrosion's hash, and this path is identical whether
@@ -181,6 +202,11 @@ if [ ! -f "$src" ]; then
     echo "nros: no generated $name to mirror (looked in $build_dir/cargo/*/$gen_subdir/nros/" >&2
     echo "      and the leaf's corrosion dir $leaf_src) — issues 0805, 0978" >&2
     exit 1
+fi
+
+if [ "$resolve_only" -eq 1 ]; then
+    printf '%s\n' "$src"
+    exit 0
 fi
 
 mkdir -p "$(dirname "$dest")"
