@@ -12,6 +12,11 @@
 #       environment override is INSIDE the ladder (re-rooted, issue 1280), so
 #       nothing here reads `$ENV{<VAR>}` while the CLI answers.
 #
+#   nros_locate_source(<out> <name>) — the located tree of `[source.<name>]`
+#       by ROW NAME, for a row with no override variable (zenoh-pico) or a
+#       caller whose variable means something else. Unset <out> when the CLI
+#       located nothing; the caller keeps its own fallback.
+#
 # Locations are normal variables, never CACHE, so unsetting an override takes
 # effect on the next configure. With no CLI (a bare checkout before
 # `just setup-cli`) the module answers nothing and callers keep their own
@@ -56,6 +61,20 @@ function(_nros_locate_load)
             set_property(GLOBAL PROPERTY "${CMAKE_MATCH_1}" "${CMAKE_MATCH_2}")
         endif()
     endforeach()
+endfunction()
+
+# nros_locate_source(<out> <name>) — see the header.
+function(nros_locate_source _out _name)
+    _nros_locate_load()
+    string(TOUPPER "${_name}" _key)
+    string(REGEX REPLACE "[-.]" "_" _key "${_key}")
+    get_property(_hit GLOBAL PROPERTY "NROS_LOCATE_${_key}" SET)
+    if(_hit)
+        get_property(_path GLOBAL PROPERTY "NROS_LOCATE_${_key}")
+        set(${_out} "${_path}" PARENT_SCOPE)
+    else()
+        unset(${_out} PARENT_SCOPE)
+    endif()
 endfunction()
 
 # nros_locate_var(<VAR>) — see the header.

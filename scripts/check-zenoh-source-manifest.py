@@ -83,6 +83,7 @@ from pathlib import Path as _W3Path  # noqa: E402
 _w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
 import comments  # noqa: E402  phase-472 W3 — the one comment stripper
 import per_item  # noqa: E402  phase-472 W6
+from source_locate import located_or_dest  # noqa: E402  RFC-0103 D5: the tree is located
 
 REPO = Path(__file__).resolve().parent.parent
 ZENOH = REPO / "packages/rmw/zenoh"
@@ -112,7 +113,9 @@ LANE_SPECS: dict[Path, tuple[str, str, "re.Pattern[str] | None"]] = {}
 
 # tree name → root, relative to the repo.
 TREES = {
-    "zenoh_pico": "packages/rmw/zenoh/zpico-sys/zenoh-pico/src",
+    # Located (RFC-0103 D5: possibly the store copy), so absolute — and
+    # `REPO / <absolute>` is that absolute path.
+    "zenoh_pico": str(located_or_dest("zenoh-pico") / "src"),
 }
 # Trees that arrive as git submodules — absent in a clone that has not run
 # `nros setup --source zenoh-pico`. Their existence checks skip loudly.

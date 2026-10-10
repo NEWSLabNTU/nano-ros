@@ -46,6 +46,8 @@ import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+from source_locate import located_or_dest  # noqa: E402 — RFC-0103 D5: the tree is located
 
 # A guard says "must be >= N", and N is not always 1: `STRESS_SIZE`'s floor is
 # 16 because `build_payload()` writes a 12-byte header with no bounds test
@@ -89,7 +91,7 @@ PROBE_CONTEXT = {
         "std": "c11",
         "includes": [
             "packages/rmw/zenoh/zpico-sys/c/include",
-            "packages/rmw/zenoh/zpico-sys/zenoh-pico/include",
+            str(located_or_dest("zenoh-pico") / "include"),
             "packages/platform/nros-platform-api/include",
         ],
         "defines": ["-DZENOH_LINUX=1", "-DZ_FEATURE_UNSTABLE_API=1"],
@@ -232,7 +234,7 @@ INCLUDE_LINE = re.compile(r"^\s*#\s*include\b")
 # The submodule whose absence means this gate cannot run. Named as a FILE, not a
 # directory: an initialised-but-empty submodule dir is the state that makes a
 # "does the directory exist" probe lie.
-SUBMODULE_PROBE = "packages/rmw/zenoh/zpico-sys/zenoh-pico/include/zenoh-pico/config.h"
+SUBMODULE_PROBE = str(located_or_dest("zenoh-pico") / "include/zenoh-pico/config.h")
 
 
 def guarded_knobs():

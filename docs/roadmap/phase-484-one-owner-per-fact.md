@@ -261,8 +261,25 @@ New gate `check-store-source-readers` refuses a store-first row's `dest` in
 code outside a reasoned allowlist (no-CLI cmake fallbacks, messages, dev
 audits) and reports stale entries.
 
+**W3c-3 — zenoh-pico and mbedtls are store-first.** `nros-zpico-build`
+locates both (`zenoh_pico_dir()`; its `rerun-if-changed` lines name the
+located tree), and the Zephyr module (`zephyr/cmake/nros_rmw_zenoh.cmake`)
+asks the same ladder through a new by-NAME cmake helper,
+`nros_locate_source(<out> <name>)`, so the cargo and west lanes compile one
+tree. The zenoh-pico row has NO `env` override any more: `ZENOH_PICO_DIR`
+already meant the install prefix of a user's own zenoh-pico
+(`system-zenohpico`), and one name with two meanings is D6's defect; a
+contributor overrides the tree by editing the submodule (the local-edit rung).
+The audit gates that read zenoh-pico's sources (capability-conditionals,
+zenoh-config-template, zenoh-source-manifest, c-array-guard-probe,
+zenoh-feature-off-compile, gen-zpico-config-keys, gen-support-status, the
+rustdoc preconditions, the workspace-fixture probe, isotp-c) ask
+`scripts/lib/source_locate.py` (the Python twin of `nros_locate_source`), so
+a worktree that never initialised the submodule runs them against the store
+copy. Measured: 6.0 M + 30 M.
+
 Remaining in W3: move the readers of, then flip, the cargo path-dep rows
-(`nuttx-libc`, `px4-rs`), zenoh-pico/mbedtls, xrce and cyclonedds (the
+(`nuttx-libc`, `px4-rs`), xrce and cyclonedds (the
 census gate then holds each one as it flips); gc liveness
 from installed toolchains' indexes (today gc consults the pin files above the
 cwd, as for tools); project `[sources]`.

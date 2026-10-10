@@ -12,7 +12,8 @@ upstream defines. A closed hand-written list drifts silently on every upstream
 bump — the same failure phase-347 W3 retired four other closed lists for — so
 the list is DERIVED here instead, from the one place the keys are defined:
 
-    packages/rmw/zenoh/zpico-sys/zenoh-pico/include/zenoh-pico/config.h
+    include/zenoh-pico/config.h in the `[source.zenoh-pico]` tree (LOCATED —
+    store copy, local edit or checkout; RFC-0103 D5)
 
 The output is committed (``c/zpico/zpico_config_keys.h``) rather than generated
 at build time on purpose: ``zpico.c`` is compiled by TWO build systems — cargo
@@ -44,7 +45,10 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-CONFIG_H = REPO / "packages/rmw/zenoh/zpico-sys/zenoh-pico/include/zenoh-pico/config.h"
+sys.path.insert(0, str(REPO / "scripts" / "lib"))
+from source_locate import located_or_dest  # noqa: E402 — RFC-0103 D5: the tree is located
+
+CONFIG_H = located_or_dest("zenoh-pico") / "include/zenoh-pico/config.h"
 OUT_H = REPO / "packages/rmw/zenoh/zpico-sys/c/zpico/zpico_config_keys.h"
 
 KEY_RE = re.compile(r"^#define\s+(Z_CONFIG_([A-Z0-9_]+)_KEY)\s+(0x[0-9A-Fa-f]+|\d+)\s*$")
@@ -206,9 +210,9 @@ def main() -> int:
 
     if not CONFIG_H.is_file():
         print(
-            f"ERROR: {CONFIG_H} is missing — the zenoh-pico submodule is not "
-            f"checked out. Run: git submodule update --init "
-            f"packages/rmw/zenoh/zpico-sys/zenoh-pico",
+            f"ERROR: {CONFIG_H} is missing — zenoh-pico is provisioned nowhere "
+            f"this script looks (`nros locate --why zenoh-pico`). Run: "
+            f"nros setup --source zenoh-pico",
             file=sys.stderr,
         )
         return 2
