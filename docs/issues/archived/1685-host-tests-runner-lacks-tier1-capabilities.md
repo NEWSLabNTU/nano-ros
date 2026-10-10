@@ -3,12 +3,13 @@ id: 1685
 title: "The tier-1 lane claims tests that need Zephyr, riscv QEMU, PX4 and build-stage
   fixtures the `host-tests` runner never has — 81 undeclared capability skips fail
   `check-skip-budget` on their own"
-status: open
+status: resolved
 type: bug
 area: [ci, testing]
 severity: medium
 found: 2026-10-05
 related: [1651, 1684, 1161, 0599]
+resolved_in: "the self-hosted run-matrix tier-1 job; accepted on run 37945434581"
 ---
 
 ## What was measured
@@ -120,3 +121,24 @@ its own build cannot produce.
 The run's other failures are filed separately: `~/.cache` not writable after the
 container restart (issue 1755), and the async action client's result stall
 (issue 1756).
+
+## 2026-10-11 — resolved: `check-skip-budget` passes on the CI tier-1 job
+
+`run-matrix` run **37945434581** on `main` (workflow_dispatch, 2026-10-09
+14:36Z, head `2b8153621`), job **114142673988** `tier 1 (cells)` on the
+self-hosted runner:
+
+```
+check-skip-budget: 2585 ran, 181 deselected (out of lane), 0 skipped for an unmet precondition — lane=181
+```
+
+Zero capability skips (61 on run 37685900447, all ROS 2 peers plus one
+`qemu-system-arm`), and no new `.config` skip-budget baseline line — the
+acceptance as written. The 181 are lane deselections: coordinates tier 1 does
+not select, which is the honest answer #1699 introduced.
+
+The job's one real red is issue 1756 (the async action client's result never
+resolves). Tier 2 in the same run never reached its cells; its three
+`check::build` reds are separate issues: 1784 (`workspace-features`), 1788
+(`cli-tests` on an empty ament index) and 1764 (`template-copy-out`, fixed
+after this run's head).

@@ -3,12 +3,13 @@ id: 1684
 title: "`host-tests` builds a hand-picked fixture SUBSET, then runs `test-all` over
   the whole tier-1 lane with the preflight bypassed — 199 of its 214 real failures
   are fixtures the job never builds"
-status: open
+status: resolved
 type: bug
 area: [ci, testing]
 severity: high
 found: 2026-10-05
 related: [1651, 1685, 0584, 0482, 0029]
+resolved_in: "the self-hosted run-matrix tier-1 job; accepted on run 37945434581"
 ---
 
 ## What was measured
@@ -151,3 +152,28 @@ minutes: the hosted image has no `west`/`pyelftools`/`pykwalify`, so Zephyr
 provisioning refused, and the disk fit was never reached. Option 3 stands by
 the maintainer's decision; the job that commit rewrote is deleted here, and
 the self-hosted runner, which already provisions Zephyr, owns the run.
+
+## 2026-10-11 — resolved: the CI tier-1 run reads ZERO in the MISSING class
+
+`run-matrix` run **37945434581** on `main` (workflow_dispatch, 2026-10-09
+14:36Z, head `2b8153621`), job **114142673988** `tier 1 (cells)` on the
+self-hosted runner. This is the run the acceptance names:
+
+```
+check-skip-budget: 2585 ran, 181 deselected (out of lane), 0 skipped for an unmet precondition — lane=181
+```
+
+- The fixture producer and the `test-all` scope are one set: `just build
+  tier1` builds `lane=tier1`, `just ci tier1 run` runs it, and
+  `run-matrix.yml` sets no `NROS_SKIP_FIXTURE_CHECK` (the name survives only in
+  two comments that explain why it is gone).
+- `Test fixture binary MISSING for an in-lane coordinate` appears **0** times in
+  the job log (was 199 on the hosted subset, 7 locally on 2026-10-06, 1 — the
+  PX4 compile-check — on run 37685900447).
+- 182 nextest failures, 181 of them `[SKIPPED:lane]` rewrites. The one real
+  failure is `native_async_action_client_awaits_goal_and_result`, issue 1756,
+  a runtime defect with its fixture present and fresh.
+
+The step still exits non-zero because of 1756. That is a verdict on the code,
+which is what this lane was moved to produce, not on the lane's build/run
+contract, which is what this issue was about.
