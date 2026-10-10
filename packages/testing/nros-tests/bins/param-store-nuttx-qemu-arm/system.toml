@@ -17,4 +17,3 @@ board = "nuttx"
 locator = "tcp/10.0.2.2:8270"
 
 [board_config."qemu-armv7a-nuttx"]
-sdk = { nuttx = "{env:NUTTX_DIR}", nuttx_apps = "{env:NUTTX_APPS_DIR}" }
