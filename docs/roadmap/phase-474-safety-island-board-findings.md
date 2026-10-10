@@ -645,6 +645,78 @@ The island's gate reads "one verdict per monitored publisher of the tick".
 24576)`. The figure above should read 106496 for the three-node board
 image with the takes traced.
 
+### I10 -- the serial reader held the CPU for a frame's wire time
+
+The island's encore `w4-gate-encore` (pin `319715968`) stored four
+`release-jitter-runtime` verdicts, 13.6-17.9 ms late on the 10 ms spin,
+during scenario setup, each beside a `kinematic_state` take. The rule
+judges `spin_once` entry to entry (`record_release_jitter`, spin.rs), so a
+verdict is an interval of 23.6-27.9 ms.
+
+**Measured** (island branch `phase9-spin-latency` on island `9727131`, real
+encores on the S32K344, 921,600 baud). A diagnostic build (not merged:
+`experiments/spin-latency/*.patch` in the island) marks five phases of
+each spin with a trace event, and the island's sink charges every
+segment of every spin-to-spin interval to the spin thread, the idle
+thread and the rest (Zephyr thread runtime stats), with the serial ISR's
+own time and every contended zenoh mutex wait beside it. Run
+`sl-diag-before` (pin `319715968`), the act alone: 3589 intervals, 74 of
+them 10 ms or more late (max 19 ms), 199 at 5 ms or more; 8 verdicts
+stored, 10.0-18.8 ms. Every interval 10 ms or more late in the record has
+one shape: the wait segment (park bound 10 ms) lasted 18-24 ms, the spin
+thread ran about 50 us of it, and `zpico_read` ran 11.5 ms (one 1 KB
+frame, about 816 ISRs) to 17.3 ms (back-to-back frames). The spin thread
+waited on no zenoh mutex in any of them. The read task's CPU equals the
+frame's wire time.
+
+**Mechanism.** zenoh-pico `eb16447f`, `src/system/zephyr/network.c`: the RX
+ISR gave the reader's semaphore on every FIFO drain (:1074), and
+`_z_read_serial_internal` moved the ring one byte per loop through
+`_z_serial_rx_get` (:1158, :1304) with a `k_uptime_get` (:1298) and a
+`uart_err_check` driver call (:1338) per byte. At 921,600 baud a drain
+carries one or two bytes (a byte is 10.9 us, the ISR runs 7.6 us), so each
+byte cost a wake, two context switches and that bookkeeping, about 6.6 us
+of reader CPU; with the ISR that is the whole CPU for as long as a frame is
+on the wire. The read task runs at k_thread 4 (read band 200) and the
+island's main at 5 below it, as T3 / issue 1534 ask, so a spin due during a
+frame is released when the frame ends. Ruled out: the park granularity
+(1 kHz tick, adds at most 1 ms: the 1-2 ms bin), the session or link lock
+(no wait by the spin thread in any late interval), the wake path (data
+breaks the park, timers bound it), and the clock (the k_cycle intervals
+agree with the executor's verdicts).
+
+**Fix** (zenoh-pico `199e611f`, fork branch `fix/serial-frame-wake`, one
+commit on `nano-ros`). The ISR gives the semaphore only for a drain that
+carried a frame delimiter (0x00) or left the ring half full; the reader
+moves whole runs with `ring_buf_get_claim` up to and including the
+delimiter and checks the UART error flags once per frame (they are
+sticky). The TX ISR wakes a waiting sender when half the TX ring is free,
+not after every FIFO fill. The polled path is unchanged. A new counter,
+`_z_zephyr_serial_stats.rx_wakes`, reads about one per frame.
+
+**Result.** Run `sl-diag-fix` (pin plus this commit), the act alone: 3997
+intervals, 1 at 10 ms or more (14.5 ms), 13 at 5 ms or more, 99th
+percentile in the 3-4 ms bin (before: 12-13 ms); `zpico_read` at most
+1.5 ms per interval; `rx_wakes` 1548 for 1542 frames; no bad frame, no
+partial, no ring overflow (high water 1106 of 4096). The one late interval
+is the handler's reaction tick: 13.2 ms of the spin thread's own CPU in
+one callback (two `std::printf` lines to the 115,200 baud console,
+4.9 ms each, plus a 2.9 ms wait for the link in the express service
+send), the island's to remove. The clean image at the backport
+(`fix/spin-release-latency-319715968`, run `sl-bp-encore`, encore PASS)
+stored one verdict, 10.3 ms, on the same kind of tick (the cancel, with
+its two printf lines). No host test: the defect is the CPU cost of a
+Zephyr ISR and reader pair and no host lane runs the Zephyr serial port;
+the counter makes it checkable over SWD.
+
+Still open, measured: the RX ISR still runs once per byte or two (about
+6.5 us each, half the CPU at line rate; the LPUART RX watermark is the
+driver's); a `spin_once(10)` loop parks 10 ms from its own end, so an
+interval is the previous spin's work plus up to one 1 ms tick late (the
+1-4 ms bins, 603 of 3997 intervals at 1 ms or more), which a declared
+cadence or a park anchored to the last release would remove; the
+tx-flush task still takes up to 5.3 ms of CPU in some intervals.
+
 ## Cross-repo
 
 - **play_launch** has a parallel phase on the same findings: F1 (charge
