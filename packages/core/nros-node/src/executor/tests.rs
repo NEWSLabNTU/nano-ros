@@ -2713,8 +2713,12 @@ fn a_paused_ros_clock_does_not_wake_the_image_once_per_timer_period() {
         4,
         "each spin must reach the park primitive, or this measures nothing"
     );
+    // phase-474 I11 -- the budget is the time left to the release grid point,
+    // and this park returns at once, so later spins park the REST of the
+    // 500 ms period. What must not happen is a park cut to the 100 ms ROS
+    // timer.
     assert!(
-        SHORTEST_US.load(Ordering::SeqCst) >= BUDGET_US,
+        SHORTEST_US.load(Ordering::SeqCst) > BUDGET_US / 2,
         "a paused /clock made the image park {} us instead of the {} us budget \
          — once per timer period, forever",
         SHORTEST_US.load(Ordering::SeqCst),
@@ -2726,8 +2730,8 @@ fn a_paused_ros_clock_does_not_wake_the_image_once_per_timer_period() {
         "and the timer itself must still not fire while /clock is paused"
     );
     assert_eq!(
-        executor.last_park(),
-        (BUDGET_US, super::spin::WakeSourceId::CallerBudget)
+        executor.last_park().1,
+        super::spin::WakeSourceId::CallerBudget
     );
 }
 
@@ -10393,14 +10397,22 @@ fn release_jitter_starts_empty_and_clears() {
 /// 0736's mistake one layer up.
 #[test]
 fn spin_once_counts_wakes_without_spin_period() {
-    let mut executor: Executor = executor_with_clock(MockSession::new());
+    // phase-474 I11 -- a wake is a grid RELEASE, so the spins must actually
+    // reach their grid points: the park advances this test's clock.
+    unsafe extern "C" fn park(_c: *mut core::ffi::c_void, us: u64) -> i8 {
+        spin_once_wakes_clock::set_us(spin_once_wakes_clock::now_us() + us);
+        1
+    }
+    spin_once_wakes_clock::claim_at_us(0);
+    let mut executor = executor_with_clock_fn(MockSession::new(), spin_once_wakes_clock::now_us);
+    executor.set_park_primitive(park, core::ptr::null_mut(), 1);
     for _ in 0..5 {
         executor.spin_once(core::time::Duration::from_millis(2));
     }
     let (_max, late, total) = executor.release_jitter();
-    assert!(
-        total >= 4,
-        "five spin_once calls must count at least four intervals, got {total}"
+    assert_eq!(
+        total, 5,
+        "five spin_once calls on the grid are five releases"
     );
     assert!(late <= total);
 }
@@ -10502,6 +10514,223 @@ fn spin_period_counts_its_wakes_and_keeps_late_within_total() {
         max_us == 0 || late > 0,
         "a non-zero maximum ({max_us} us) with zero late wakes is contradictory"
     );
+}
+
+// ===========================================================================
+// phase-474 I11 -- the release grid of a `spin_once(period)` loop.
+//
+// Each test owns a private clock and a park primitive that ADVANCES it: the
+// park is where a real port sleeps, so "sleeping" here means moving the clock
+// by what the executor asked for (granularity 1 us, no rounding). Work done
+// after a release is simulated by moving the clock between spins -- dispatch
+// is the tail of `spin_once`, so the executor sees the same thing.
+// ===========================================================================
+
+private_test_clock!(grid_idle_clock);
+private_test_clock!(spin_once_wakes_clock);
+private_test_clock!(grid_skip_clock);
+private_test_clock!(grid_early_clock);
+private_test_clock!(grid_judge_clock);
+
+/// An idle executor on a 10 ms period is released on `anchor + k * 10 ms`
+/// over 1000 spins, to the clock's resolution, although every pass of the
+/// caller's loop costs 300 us. Before I11 each park was a whole period from
+/// the spin's entry, so every release slid by the loop's own cost.
+#[test]
+fn an_idle_periodic_spin_releases_on_the_grid() {
+    unsafe extern "C" fn park(_c: *mut core::ffi::c_void, us: u64) -> i8 {
+        grid_idle_clock::set_us(grid_idle_clock::now_us() + us);
+        1
+    }
+    grid_idle_clock::claim_at_us(1_000_000);
+    let mut ex = executor_with_clock_fn(MockSession::new(), grid_idle_clock::now_us);
+    ex.set_park_primitive(park, core::ptr::null_mut(), 1);
+    let period = core::time::Duration::from_millis(10);
+    for k in 1..=1000u64 {
+        ex.spin_once(period);
+        assert_eq!(
+            grid_idle_clock::now_us(),
+            1_000_000 + k * 10_000,
+            "release {k} must land on the grid, not 10 ms after the previous end"
+        );
+        // The caller's loop between spins (yield, bookkeeping).
+        grid_idle_clock::set_us(grid_idle_clock::now_us() + 300);
+    }
+    assert_eq!(ex.release_jitter(), (0, 0, 1000), "on the grid: never late");
+    assert_eq!(ex.skipped_releases(), 0);
+}
+
+/// Work of 1.5 periods after a release: the 20 ms point is due when the loop
+/// comes back at 25 ms, so it is released at once, 5 ms late, and the next
+/// release is the 30 ms point -- once, no catch-up burst, nothing skipped.
+/// Work of 2.5 periods: the 20 ms point is a whole period overdue, so it is
+/// dropped and counted (and judged: 15 ms late when dropped, a verdict), the
+/// 30 ms point is served once at 35 ms, and the loop resumes at 40 ms.
+#[test]
+fn an_overrun_releases_once_and_skips_whole_missed_periods() {
+    unsafe extern "C" fn park(_c: *mut core::ffi::c_void, us: u64) -> i8 {
+        grid_skip_clock::set_us(grid_skip_clock::now_us() + us);
+        1
+    }
+    grid_skip_clock::claim_at_us(0);
+    let mut ex = executor_with_clock_fn(MockSession::new(), grid_skip_clock::now_us);
+    ex.set_park_primitive(park, core::ptr::null_mut(), 1);
+    let period = core::time::Duration::from_millis(10);
+
+    ex.spin_once(period);
+    assert_eq!(grid_skip_clock::now_us(), 10_000);
+    // 1.5 periods of work after the 10 ms release.
+    grid_skip_clock::set_us(25_000);
+    ex.spin_once(period);
+    assert_eq!(
+        grid_skip_clock::now_us(),
+        25_000,
+        "the due 20 ms point, at once"
+    );
+    assert_eq!(ex.release_jitter(), (5_000, 1, 2));
+    ex.spin_once(period);
+    assert_eq!(
+        grid_skip_clock::now_us(),
+        30_000,
+        "then the 30 ms point, not 35"
+    );
+    assert_eq!(ex.release_jitter(), (5_000, 1, 3));
+    assert_eq!(ex.skipped_releases(), 0);
+    let mut verdicts = 0;
+    ex.drain_violations(|v| {
+        if v.rule == "release-jitter-runtime" {
+            verdicts += 1;
+        }
+    });
+    assert_eq!(verdicts, 0, "5 ms late is under the one-period tolerance");
+
+    // 2.5 periods of work after the 30 ms release.
+    grid_skip_clock::set_us(55_000);
+    ex.spin_once(period);
+    assert_eq!(
+        grid_skip_clock::now_us(),
+        55_000,
+        "the latest due point (50 ms), once"
+    );
+    assert_eq!(ex.skipped_releases(), 1, "the 40 ms point was dropped");
+    let (max_us, late, total) = ex.release_jitter();
+    assert_eq!((late, total), (2, 4), "one release for the two due points");
+    assert_eq!(
+        max_us, 15_000,
+        "the dropped 40 ms point, 15 ms late when dropped"
+    );
+    let mut measured = None;
+    ex.drain_violations(|v| {
+        if v.rule == "release-jitter-runtime" {
+            measured = Some(v.measured);
+        }
+    });
+    assert_eq!(measured, Some(15_000));
+    ex.spin_once(period);
+    assert_eq!(grid_skip_clock::now_us(), 60_000, "back on the grid");
+    assert_eq!(ex.release_jitter().2, 5);
+}
+
+/// Data arriving mid-period breaks the park: that spin runs early, is not a
+/// release, and does not move the grid -- the next release is still on it.
+#[test]
+fn a_data_driven_early_spin_keeps_the_grid() {
+    use portable_atomic::{AtomicBool, Ordering};
+    static DATA_AT_4MS: AtomicBool = AtomicBool::new(false);
+    unsafe extern "C" fn park(_c: *mut core::ffi::c_void, us: u64) -> i8 {
+        if DATA_AT_4MS.swap(false, Ordering::SeqCst) {
+            grid_early_clock::set_us(grid_early_clock::now_us() + 4_000);
+            return 0;
+        }
+        grid_early_clock::set_us(grid_early_clock::now_us() + us);
+        1
+    }
+    grid_early_clock::claim_at_us(0);
+    let mut ex = executor_with_clock_fn(MockSession::new(), grid_early_clock::now_us);
+    ex.set_park_primitive(park, core::ptr::null_mut(), 1);
+    let period = core::time::Duration::from_millis(10);
+
+    ex.spin_once(period);
+    assert_eq!(grid_early_clock::now_us(), 10_000);
+
+    DATA_AT_4MS.store(true, Ordering::SeqCst);
+    ex.spin_once(period);
+    assert_eq!(
+        grid_early_clock::now_us(),
+        14_000,
+        "the sample broke the park"
+    );
+    assert_eq!(ex.release_jitter().2, 1, "an early spin is not a release");
+    // Its dispatch costs 700 us.
+    grid_early_clock::set_us(14_700);
+
+    ex.spin_once(period);
+    assert_eq!(
+        grid_early_clock::now_us(),
+        20_000,
+        "the next release is on the grid, not 10 ms after the early spin"
+    );
+    assert_eq!(ex.release_jitter(), (0, 0, 2));
+    assert_eq!(ex.skipped_releases(), 0);
+}
+
+/// `release-jitter-runtime` judges release minus scheduled release. 9 ms of
+/// work after a release and then a park that wakes 1.5 ms late is 1.5 ms of
+/// jitter (the old entry-to-entry rule read 9 ms); a park that oversleeps
+/// its grid point by a whole period is a verdict, measured against the grid.
+#[test]
+fn release_jitter_is_judged_against_the_grid() {
+    use portable_atomic::{AtomicU64, Ordering};
+    static OVERSLEEP_US: AtomicU64 = AtomicU64::new(0);
+    unsafe extern "C" fn park(_c: *mut core::ffi::c_void, us: u64) -> i8 {
+        let extra = OVERSLEEP_US.swap(0, Ordering::SeqCst);
+        grid_judge_clock::set_us(grid_judge_clock::now_us() + us + extra);
+        1
+    }
+    grid_judge_clock::claim_at_us(0);
+    let mut ex = executor_with_clock_fn(MockSession::new(), grid_judge_clock::now_us);
+    ex.set_park_primitive(park, core::ptr::null_mut(), 1);
+    let period = core::time::Duration::from_millis(10);
+
+    ex.spin_once(period);
+    grid_judge_clock::set_us(19_000);
+    OVERSLEEP_US.store(1_500, Ordering::SeqCst);
+    ex.spin_once(period);
+    assert_eq!(grid_judge_clock::now_us(), 21_500);
+    assert_eq!(
+        ex.release_jitter(),
+        (1_500, 1, 2),
+        "late by the wake, not by the 9 ms of work before it"
+    );
+    let mut verdicts = 0;
+    ex.drain_violations(|v| {
+        if v.rule == "release-jitter-runtime" {
+            verdicts += 1;
+        }
+    });
+    assert_eq!(verdicts, 0, "1.5 ms is under the one-period tolerance");
+
+    // The reader holds the CPU: the park for the 30 ms point ends at 42 ms.
+    OVERSLEEP_US.store(12_000, Ordering::SeqCst);
+    ex.spin_once(period);
+    assert_eq!(grid_judge_clock::now_us(), 42_000);
+    let mut measured = None;
+    ex.drain_violations(|v| {
+        if v.rule == "release-jitter-runtime" {
+            measured = Some((v.measured, v.declared));
+        }
+    });
+    assert_eq!(
+        measured,
+        Some((12_000, 10_000)),
+        "12 ms past the 30 ms grid point"
+    );
+
+    // The 40 ms point was overslept too: skipped at the next entry, and the
+    // loop resumes at 50 ms.
+    ex.spin_once(period);
+    assert_eq!(grid_judge_clock::now_us(), 50_000);
+    assert_eq!(ex.skipped_releases(), 1);
 }
 
 /// phase-430 W4 — the clock axis reaches the NODE-LEVEL surface, not just the
