@@ -38,6 +38,17 @@ THREADX_PORT = { value = "risc-v64/gnu", force = true }
 THREADX_EXTRA_INCLUDES = { value = "ports/risc-v64/gnu/example_build/qemu_virt", force = true }
 '''
 
+# phase-484 W4b (RFC-0103 D1) — the board's network identity defaults (QEMU
+# SLIRP), the ONE home: `Config::default()`, the cargo-road C
+# `NROS_APP_CONFIG` (nros-board-common's riscv64 build helper) and the
+# cmake-road one (`nros board net`) are all generated from it. The locator is
+# not here yet — the Rust and C fallbacks name different routers (issue 1793).
+[board.net]
+ip = "10.0.2.40"
+netmask = "255.255.255.0"
+gateway = "10.0.2.2"
+mac = "52:54:00:12:34:56"
+
 [board.entry]
 
 # RFC-0042 D2 / phase-241 wave C — declared capabilities (SSoT). Bare-metal

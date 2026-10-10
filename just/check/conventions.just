@@ -199,3 +199,13 @@ store-source-readers:
 [private]
 cargo-json-reader:
     @python3 scripts/check/check-cargo-json-reader.py
+
+# phase-484 W4b (RFC-0103 D1/D9) — a migrated board's network identity (IP,
+# netmask, gateway, MAC) has ONE home, its descriptor's `[board.net]`; the
+# crate's `Config::default()`, its cargo-road C `NROS_APP_CONFIG` and its
+# cmake-road one are generated from it. A ratchet over the migrated boards:
+# a literal identity array in their files is a second home returning.
+# Buildless, ~0.1 s; self-tests its pattern on each run.
+[private]
+board-net-one-home:
+    @python3 scripts/check/check-board-net-one-home.py
