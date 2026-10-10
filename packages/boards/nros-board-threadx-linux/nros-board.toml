@@ -18,6 +18,17 @@ entry_kind = "board-run"
 # phase-351 W4 — the stacks this board can be built with: the board boots NetX Duo over the NSOS BSD shim.
 supported_netstacks = ["netxduo"]
 board_crate = "nros-board-threadx-linux"
+# phase-484 W2b (RFC-0103 D1/D3) — the board's OWN `tx_user.h` / `nx_user.h`
+# dir, carried to the zenoh-pico/NetX compile. An `[env]`-only `cargo_config`:
+# the host triple still needs no `[build] target` (exempt by platform above).
+# This used to be `just/sdk-env.just`'s repo-wide default, which is also what
+# made the RISC-V board need `force` to keep it out.
+cargo_config = '''
+[env]
+THREADX_PORT = { value = "linux/gnu", force = true }
+THREADX_CONFIG_DIR = { value = "${workspace}/packages/boards/nros-board-threadx-linux/config", force = true }
+NETX_CONFIG_DIR = { value = "${workspace}/packages/boards/nros-board-threadx-linux/config", force = true }
+'''
 # issue 1759 — the `#[global_allocator]` (ThreadX byte pool) a `#![no_std]` entry
 # needs. A board feature rather than a default: see the crate's `image-runtime`.
 board_features = ["image-runtime"]

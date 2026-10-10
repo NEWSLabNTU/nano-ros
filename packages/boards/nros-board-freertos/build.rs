@@ -124,10 +124,30 @@ fn main() {
         return;
     }
 
+    // phase-484 W2b (RFC-0103 D1) — the port and `FreeRTOSConfig.h` dir are
+    // BOARD facts: the overlay's `nros-board.toml` states them and the
+    // generated cargo config carries them here. With no board in the build (a
+    // workspace-wide `cargo check`/clippy of this crate's Rust) there is no
+    // right answer, so skip the C compile exactly as for an absent submodule.
+    // This used to default to `GCC/ARM_CM3` + whatever `just/sdk-env.just`
+    // exported — one board's answer, compiled for every board.
+    let have_port = env::var("FREERTOS_PORT").is_ok_and(|v| !v.is_empty());
+    if !have_port || nros_build_paths::env_path("FREERTOS_CONFIG_DIR").is_none() {
+        println!(
+            "cargo:warning=nros-board-freertos: no board stated FREERTOS_PORT / \
+             FREERTOS_CONFIG_DIR (a board's nros-board.toml supplies both); skipping \
+             kernel / lwIP / glue compile. A link of this board will fail until a \
+             board is selected."
+        );
+        println!("cargo:rerun-if-env-changed=FREERTOS_PORT");
+        println!("cargo:rerun-if-changed=build.rs");
+        return;
+    }
+
     // Canonical, so the `rerun-if-changed` lines these feed at the bottom read
     // the same from every consumer (issue 0491).
     let freertos_dir = env_path("FREERTOS_DIR");
-    let freertos_port = env::var("FREERTOS_PORT").unwrap_or_else(|_| "GCC/ARM_CM3".to_string());
+    let freertos_port = env::var("FREERTOS_PORT").expect("checked above");
     let lwip_dir = env_path("LWIP_DIR");
     let freertos_config_dir = env_path("FREERTOS_CONFIG_DIR");
     let port_dir = freertos_dir.join("portable").join(&freertos_port);
