@@ -828,9 +828,6 @@ fn require_prebuilt_binary_checks_in(binary_path: &Path, env: AbsenceEnv) -> Tes
 /// through `_require-fixtures` / `check-fixtures-stale`, so their presence
 /// marks "a gate ran". This parenthetical said "tier 1 narrows by name", the
 /// third copy of the premise W19 retired — see issue 1314.
-///
-/// `NROS_FIXTURES_OPTIONAL` is the explicit opt-out and is handled by the
-/// caller above, before this is consulted.
 fn gate_promised_fixtures() -> bool {
     std::env::var_os("NROS_TEST_SCOPE").is_some() || std::env::var_os("NROS_TEST_COORDS").is_some()
 }
@@ -4510,9 +4507,8 @@ fn require_stamped_launch_resolver(stamp: &Path, id: &str) -> TestResult<()> {
 /// 0034). `scripts/build/compile-check-fixtures.sh` (run by
 /// `build-test-fixtures`) stages the template, rewrites placeholders, runs
 /// `cargo check`, and writes the stamp on success — so a test asserts the stamp
-/// instead of running `cargo check` at run time. Tier-aware via
-/// `require_prebuilt_binary` (hard-fail in full tier → run `build-test-fixtures`;
-/// `[SKIPPED]` under `NROS_FIXTURES_OPTIONAL=1`).
+/// instead of running `cargo check` at run time. Absent ⇒ a failure in every
+/// run (issue 1758) → run `build-test-fixtures`.
 pub fn require_compile_check(id: &str) -> TestResult<PathBuf> {
     let stamp = build_dir(crate::kind::COMPILE_CHECK, &[id]).join(".compile-ok");
     require_stamped_launch_resolver(&stamp, id)?;
@@ -4630,10 +4626,9 @@ pub fn require_compile_verdict(id: &str) -> TestResult<CompileVerdict> {
 /// (issue 0034). `compile-check-fixtures.sh` cmake-configures + builds a C/C++
 /// template into `build/cmake-fixtures/<id>/`, keeping generated TUs / link
 /// sidecars / depfiles + the produced executable so a test can inspect / run /
-/// `nm` them instead of running cmake at run time. Tier-aware (the cmake build
-/// is skipped when cmake or a `codegen entry`-capable `nros` is absent → the
-/// fixture file is missing → `[SKIPPED]` under `NROS_FIXTURES_OPTIONAL`, hard
-/// fail in the full tier).
+/// `nm` them instead of running cmake at run time. The builder FAILS when a
+/// selected row's cmake or C++ compiler is absent, and an absent fixture fails
+/// the test in every run (issue 1758).
 pub fn require_cmake_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
     let dir = build_dir(crate::kind::CMAKE_FIXTURES, &[id]);
     // issue 1454 — a WORKSPACE template's cmake fixture is built by `nros sync`
@@ -4648,13 +4643,17 @@ pub fn require_cmake_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
 /// Resolve a file inside a build-stage **zephyr west** fixture (issue 0041).
 /// `scripts/build/west-fixtures.sh` `west build`s a zephyr bringup fixture into
 /// `build/west-fixtures/<id>/`, keeping baked artifacts / CMakeCache / zephyr.exe
-/// the test inspects instead of running west at run time. Tier-aware: the west
-/// build is skipped (no stamp) when west / a provisioned Zephyr workspace is
-/// absent → `[SKIPPED]` under `NROS_FIXTURES_OPTIONAL`, hard fail in the full tier.
+/// the test inspects instead of running west at run time. Out of a lane that
+/// selects no Zephyr coordinate ⇒ deselected; in it, absent or stale ⇒ fails
+/// (issue 1758).
 pub fn require_west_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
-    // Toolchain-gated via the test-all env_exclude (deselect when west / Zephyr
-    // SDK absent); resolves the prebuilt artifact here. Built by `just zephyr
-    // build-fixtures`.
+    // Issue 1758 — every west fixture is a Zephyr build (`just zephyr
+    // build-fixtures`), and its directory attributes to no manifest row, so the
+    // row-level narrowing cannot see it. Ask the Zephyr SCOPE first: out of
+    // lane deselects; in lane, an absent or stale fixture fails below. (This
+    // was a host probe in `test-all` — no `west`, no Zephyr workspace ⇒ the
+    // suites vanished from the run.)
+    crate::fixtures::lane::require_setup_scope_in_lane("zephyr", &format!("west fixture {id}"));
     let fixture_dir = build_dir(crate::kind::WEST_FIXTURES, &[id]);
 
     // #185 (the #182 guard, west edition) — the bake is a function of the

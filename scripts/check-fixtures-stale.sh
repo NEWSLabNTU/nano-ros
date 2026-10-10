@@ -264,24 +264,14 @@ fi
 # `.nros-workspace-fixture.*.inputsig` stamp the stale check demands.
 # zephyr/nuttx remain `skip_probe = true` own-lane artifacts (west / nuttx
 # machinery, each with its own sig) and never appear here.
-source scripts/test/toolchain-gate.sh   # phase-300 W4 — shared predicate
-workspace_toolchain_present() {
-    case "$1" in
-        workspace-rust-qemu-freertos) nros_toolchain_present arm-none-eabi ;;
-        workspace-rust-threadx-linux) nros_toolchain_present threadx ;;
-        workspace-rust-esp32) nros_toolchain_present esp32 ;;
-        *) return 0 ;;
-    esac
-}
-
+# Issue 1758 — every workspace row in this run's scope is checked. A row used
+# to drop out of the preflight when its cross toolchain was absent (issue
+# 0030), which made "this host lacks the toolchain the lane claims" read as
+# "nothing to check". `scope_args` is the lane's narrowing; within it, a row is
+# required.
 workspace_records=()
 while IFS= read -r line; do
-    id="${line%%$'\x1f'*}"
-    if workspace_toolchain_present "$id"; then
-        workspace_records+=("$line")
-    else
-        echo "info: workspace fixture '$id' not required in preflight — cross toolchain absent (issue 0030)" >&2
-    fi
+    workspace_records+=("$line")
 done < <(python3 scripts/build/fixtures-manifest.py list-workspaces --for-probe "${scope_args[@]}")
 
 workspace_stale=()

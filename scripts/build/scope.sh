@@ -42,14 +42,14 @@
 #          coverage stamp `_require-fixtures` reads); a platform token goes to
 #          `just <plat> build-fixtures`, the same call that recipe's own
 #          fan-out makes.
-#   test   a coordinate-scoped lane (tier1/tier2/tier2-nightly) and `all` go to
-#          the lane run (`test-all` narrowed by `NROS_TEST_COORDS`); a platform
-#          token — `native` included — goes to `just <plat> test`, because the
-#          module IS that platform's run.
+#   test   a coordinate-scoped lane (tier1/tier2/tier2-nightly), `all` and
+#          `native` go to the lane run (`test-all` narrowed by
+#          `NROS_TEST_COORDS`); any other platform token goes to `just <plat>
+#          test`, narrowed to that platform's own rows (issue 1758).
 #
-# So `native` resolves through the lane for `build` and through the module for
-# `test`. Same scope, different machinery, which is the point of naming the
-# scope rather than the recipe.
+# `native` resolves through the lane for BOTH verbs (issue 1758): its module
+# `test` recipe ran nearly every nros-tests binary over a build of only the
+# example rows, so the build and the run disagreed about what the scope was.
 #
 # # The default scope is DERIVED, never recorded
 #

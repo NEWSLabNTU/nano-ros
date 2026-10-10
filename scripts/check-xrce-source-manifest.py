@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import re
 import sys
+import tempfile
 from pathlib import Path
 import sys as _w3_sys  # noqa: E402
 from pathlib import Path as _W3Path  # noqa: E402
@@ -269,9 +270,13 @@ def self_test() -> None:
         "xrce-config.txt must contribute its flag conditions, or a lane answering "
         "`never` reads as dead selection logic"
     )
-    assert (
-        config_conditions(Path("/nonexistent/xrce-config.txt")) == set()
-    ), "a missing config manifest must contribute nothing, not raise"
+    # A path made absent by construction. `/nonexistent` is not: it is the
+    # home directory of `nobody` on Debian/Ubuntu, created 0700 on some hosts,
+    # and there `exists()` raises PermissionError instead of answering False.
+    with tempfile.TemporaryDirectory() as td:
+        assert (
+            config_conditions(Path(td) / "xrce-config.txt") == set()
+        ), "a missing config manifest must contribute nothing, not raise"
 
     # THE OTHER REGRESSION: the two lanes answer different token sets.
     rs = f'{_BEGIN}\n "always" => true,\n "posix" => p,\n{_END}'
