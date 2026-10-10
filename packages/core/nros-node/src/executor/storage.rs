@@ -1127,6 +1127,8 @@ mod tests {
         //   * phase-483 W3's `component_frame`: one optional pointer to the
         //     component-registration frame `nros::NodeContext` installs while a
         //     component's `register` runs. Scales with nothing.
+        //   * phase-474 I11's `ReleaseGrid`: the spin loop's release grid (its
+        //     period, next release and skipped count). Scales with nothing.
         #[allow(unused_mut)]
         let mut ceiling =
             1280 + size_of::<super::super::spin::SessionStore>()
@@ -1135,6 +1137,7 @@ mod tests {
                 + size_of::<&mut [super::super::types::SlotTag]>()
                 + size_of::<usize>()
                 + size_of::<Option<core::ptr::NonNull<()>>>()
+                + size_of::<super::super::spin::ReleaseGrid>()
                 + size_of::<
                     [Option<super::super::spin::WakeSourceSlot>;
                         super::super::spin::MAX_WAKE_SOURCES],
