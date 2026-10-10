@@ -567,6 +567,17 @@ pub const SERVICE_SERVER_READY_MARKER: &str = "Waiting for service requests";
 /// names the function, so a test can tell a new foreign path from a slow peer.
 pub const THREADX_FOREIGN_THREAD_REFUSAL: &str = "called from a host thread ThreadX does not own";
 
+/// issue 1769 — what a freertos-posix image prints on stderr when a FreeRTOS
+/// `configASSERT` fires, just before it aborts.
+///
+/// Mirrors `freertos_assert_failed` in
+/// `packages/boards/nros-board-freertos-posix/c/freertos_posix_hooks.c`, which is
+/// the definition. Measured as the failure a host library's thread produced by
+/// entering heap_3's scheduler bracket (`queue.c:1678`, `tasks.c:4033`): 5 of
+/// 10 runs, intermittent, so a test asserts its ABSENCE rather than relying on
+/// a delivery check that the image could pass before dying.
+pub const FREERTOS_ASSERT_FAILED: &str = "FreeRTOS ASSERT FAILED";
+
 /// issue 0697 — the marker an exhausted zenoh session pool prints.
 ///
 /// Mirrors `nros_rmw_zenoh::zpico::SESSION_POOL_EXHAUSTED_MARKER`, which is the
