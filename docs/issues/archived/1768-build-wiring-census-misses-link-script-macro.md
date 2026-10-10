@@ -2,7 +2,8 @@
 id: 1768
 title: "The build-script census reports the 8 converged linker-script shims as
   UNCLASSIFIED"
-status: open
+status: resolved
+resolved: 2026-10-11
 type: bug
 area: build
 severity: low
@@ -38,3 +39,11 @@ No gate reads the UNCLASSIFIED count, so the regression was silent.
 
 Teach the `linker-script` predicate the macro, and make a non-empty
 UNCLASSIFIED bucket fail a check rather than print.
+
+## Resolution (2026-10-11, phase-484 W7)
+
+The `linker-script` predicate matches `nros_build_paths::link_script!(` as
+well as the hand-written shape, so all 8 shims classify. `nros-build-wiring.py
+--check-classified` fails on a non-empty UNCLASSIFIED list (with a negative
+control for the predicate), wired as the fast-line gate
+`build-wiring-classified`. Measured: 75 of 75 build scripts have a ROLE.
