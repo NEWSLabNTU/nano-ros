@@ -209,10 +209,18 @@ pub unsafe fn install_contract_monitors(
     ages: &'static [AgeMonitorSpec],
     reporter: &'static ContractReporter,
 ) -> Result<(), &'static str> {
-    if executor.is_null() {
-        return Err("the runtime hands out no executor to install the contract monitors on");
-    }
-    let executor = unsafe { &mut *(executor as *mut Executor<'static>) };
+    // Issue 1535 — the one handle check every seam in this crate makes.
+    let executor = match unsafe {
+        crate::executor_handle::executor_from_handle(executor, "install_contract_monitors")
+    } {
+        Ok(executor) => executor,
+        Err(crate::executor_handle::HandleRefusal::Null) => {
+            return Err("the runtime hands out no executor to install the contract monitors on");
+        }
+        Err(crate::executor_handle::HandleRefusal::CppContext) => {
+            return Err("the contract monitors were handed an nros-cpp context, not an executor");
+        }
+    };
     if let Err(full) = executor.try_set_monitor_tables(monitors, ages) {
         nros_log::log_error!(
             nros_log::get_logger("nros.contract"),

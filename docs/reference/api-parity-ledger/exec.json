@@ -3,6 +3,10 @@
     "Schema: see docs/reference/api-parity-ledger/SCHEMA.md — the one home for what",
     "a row means. Do NOT copy it back here; issue 1095 is what that cost."
   ],
+  "rust:CPP_CONTEXT_TAG": {
+    "verdict": "extension",
+    "why": "issue 1535/1787 -- the word nros-cpp stamps at offset 0 of its executor context. It is public only so nros-cpp and nros share one definition: the Rust component-install seam reads it to refuse a C/C++ handle that was not unwrapped with `nros_cpp_executor_inner`. ROS 2 has no equivalent because rclcpp never passes a C++ executor to a Rust callee."
+  },
   "c:deadline_policy_t": {
     "verdict": "extension",
     "why": "not a QoS policy at all, despite the name. `nros_deadline_policy_t` (RELEASED / ACTIVATED / INHERITED) is RFC-0047's real-time SCHEDULING deadline interpretation -- a field of `nros_sched_context_t`, mirroring `nros_node::executor::sched_context::DeadlinePolicy`. The RTOS scenario is a periodic task whose deadline is measured from release, from activation, or inherited from its caller; rcl has no scheduling context so ROS 2 has nothing to compare it with. It appears in this stage because `topics.py`'s KEY_OVERRIDES maps `deadline_policy_t` to qos while its three siblings `sched_class_t`, `sched_priority_t` and `sched_context_t` map to exec -- the verdict is right, the shard is not."
