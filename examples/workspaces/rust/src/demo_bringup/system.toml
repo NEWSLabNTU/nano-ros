@@ -195,13 +195,12 @@ board = "zephyr"
 conf = ["prj-zenoh.conf"]
 locator = "tcp/10.0.2.2:7430"
 
-# NOT migrated (W5.b). It keeps its hand-written application, and `entry =` is
-# what points west at it — deliberately still exercised beside the generated
-# one above, because `entry` names a package whose name is NOT `<id>_entry` and
-# that is the case the locate path has to keep answering.
+# Generated like its sibling (issue 1288). It was the last image whose
+# `entry =` named a package other than `<id>_entry`; that precedence is now held
+# by `cmd::build`'s `an_explicit_entry_outranks_the_id_entry_package`, not by a
+# hand-written package kept alive to exercise it.
 [image.zephyr_robot1]
 board = "zephyr"
-entry = "zephyr_entry_robot1"
 conf = ["prj-zenoh.conf"]
 launch = "multihost.launch.xml"
 args = { host = "robot1" }

@@ -803,3 +803,30 @@ each is blocked by something else, recorded in phase-470 §W5:
 Stays OPEN until those three are resolved or each is recorded as a deliberate
 exception.
 
+
+## 2026-10-10 — `zephyr_entry_robot1` migrated (phase-477 W1, D6)
+
+- **The precedence test first:** `cmd::build`'s
+  `an_explicit_entry_outranks_the_id_entry_package` puts a package named exactly
+  `<id>_entry` beside a differently named application the image names, and
+  asserts the named one is the west application AND that generation does not
+  run. It FAILS with the explicit-entry rung in `west_application_dir`
+  disabled. That rung no longer needs a hand-written package kept alive to
+  exercise it.
+- **Then the migration:** `src/zephyr_entry_robot1` deleted; `[image.zephyr_robot1]`
+  drops `entry =`, so `nros build` generates `build/zephyr-zenoh/zephyr_robot1_entry`
+  (`nros::main!(launch = "demo_bringup:multihost.launch.xml", args = [("host",
+  "robot1")])` — the same two lines the hand-written `lib.rs` carried).
+- **Acceptance, a BUILD:** both built with `nros build zephyr_robot1
+  --zephyr-workspace ~/.nros/workspaces/zephyr/3.7` (module root passed as
+  `ZEPHYR_EXTRA_MODULES=<checkout>`). The merged `.config` differs in ONE line:
+  `CONFIG_NROS_ZENOH_LOCATOR` is `tcp/10.0.2.2:7469` — the locator
+  `[image.zephyr_robot1]` DECLARES — where the hand-written application ignored
+  it and kept the default `tcp/127.0.0.1:7447`. The node set is unchanged:
+  `talker_pkg` only (7 talker symbols, 0 listener, before and after).
+- **Not run:** no lane runs `zephyr_robot1`, and its declared locator is the
+  fixture network's `10.0.2.2`.
+
+Hand-written entries: 3 → 2. Left: `realtime-c/src/zephyr_entry` (phase-477
+W1, an image id + board correction) and `realtime-cpp/src/fvp_entry` (with the
+session on `fix/477-fvp-lane`).

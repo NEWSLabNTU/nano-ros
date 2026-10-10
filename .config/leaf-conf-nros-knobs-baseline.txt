@@ -33,8 +33,6 @@
 3 examples/workspaces/rust/src/demo_bringup/boards/native_sim_native_64/prj-xrce.conf
 2 examples/workspaces/rust/src/demo_bringup/boards/native_sim_native_64/prj-zenoh.conf
 1 examples/workspaces/rust/src/demo_bringup/boards/native_sim_native_64/prj.conf
-2 examples/workspaces/rust/src/zephyr_entry_robot1/prj-zenoh.conf
-1 examples/workspaces/rust/src/zephyr_entry_robot1/prj.conf
 2 examples/workspaces/safety/src/demo_bringup/boards/native_sim_native_64/prj-zenoh.conf
 1 examples/workspaces/safety/src/demo_bringup/boards/native_sim_native_64/prj.conf
 1 examples/zephyr/c/action-client/prj-cyclonedds.conf
