@@ -95,16 +95,13 @@ export FREERTOS_DIR := shell(_NROS_REROOT, env("FREERTOS_DIR", _NROS_HERE / "thi
 export FREERTOS_PORT := env("FREERTOS_PORT", "GCC/ARM_CM3")
 export LWIP_DIR := shell(_NROS_REROOT, env("LWIP_DIR", _NROS_HERE / "third-party/freertos/lwip"), _NROS_HERE)
 export FREERTOS_CONFIG_DIR := shell(_NROS_REROOT, env("FREERTOS_CONFIG_DIR", _NROS_HERE / "packages/boards/nros-board-mps2-an385-freertos/config"), _NROS_HERE)
-# First-party C the board build.rs compiles (Phase 191/192.3 — was a build.rs
-# `../../../packages` walk-up; centralized here so build.rs reads an env var).
-export NROS_PLATFORM_CFFI_INCLUDE := shell(_NROS_REROOT, env("NROS_PLATFORM_CFFI_INCLUDE", _NROS_HERE / "packages/platform/nros-platform-api/include"), _NROS_HERE)
-export NROS_PLATFORM_FREERTOS_SRC := shell(_NROS_REROOT, env("NROS_PLATFORM_FREERTOS_SRC", _NROS_HERE / "packages/platform/nros-platform-freertos/src"), _NROS_HERE)
-export NROS_PLATFORM_POSIX_SRC := shell(_NROS_REROOT, env("NROS_PLATFORM_POSIX_SRC", _NROS_HERE / "packages/platform/nros-platform-posix/src"), _NROS_HERE)
-export NROS_PLATFORM_THREADX_SRC := shell(_NROS_REROOT, env("NROS_PLATFORM_THREADX_SRC", _NROS_HERE / "packages/platform/nros-platform-threadx/src"), _NROS_HERE)
-export NROS_LAN9118_LWIP_DIR := shell(_NROS_REROOT, env("NROS_LAN9118_LWIP_DIR", _NROS_HERE / "packages/drivers/net/lan9118-lwip"), _NROS_HERE)
-export NROS_VIRTIO_NET_NETX_DIR := shell(_NROS_REROOT, env("NROS_VIRTIO_NET_NETX_DIR", _NROS_HERE / "packages/drivers/net/virtio-net-netx"), _NROS_HERE)
-export NROS_C_INCLUDE := shell(_NROS_REROOT, env("NROS_C_INCLUDE", _NROS_HERE / "packages/api/nros-c/include"), _NROS_HERE)
-export NROS_CPP_INCLUDE := shell(_NROS_REROOT, env("NROS_CPP_INCLUDE", _NROS_HERE / "packages/api/nros-cpp/include"), _NROS_HERE)
+# phase-484 W2a (RFC-0103 D4) — the FIRST-PARTY dirs a build script compiles
+# (`NROS_PLATFORM_{CFFI_INCLUDE,FREERTOS_SRC,POSIX_SRC,THREADX_SRC}`,
+# `NROS_LAN9118_LWIP_DIR`, `NROS_VIRTIO_NET_NETX_DIR`, `NROS_{C,CPP}_INCLUDE`)
+# are no longer exported. They are this checkout's own files, not resources:
+# every reader already defaults to the in-repo path (`nros_build_paths`'s
+# `env_or_repo_path`, the platform CMakeLists' `if(NOT DEFINED …)`), and an
+# export is exactly what a linked worktree inherits (issue 1280).
 # Tonbandgeraet trace lib (third-party SDK; only used under NROS_TRACE=1).
 export TBAND_DIR := shell(_NROS_REROOT, env("TBAND_DIR", _NROS_HERE / "third-party/tracing/Tonbandgeraet/tband"), _NROS_HERE)
 export NUTTX_DIR := shell(_NROS_REROOT, env("NUTTX_DIR", _NROS_HERE / "third-party/nuttx/nuttx"), _NROS_HERE)

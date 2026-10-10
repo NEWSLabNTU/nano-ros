@@ -190,9 +190,11 @@ nros_fixture_require_known_platform "$platform"
 # script with required env — direct calls must fail LOUD, not deep-panic.
 case "$platform" in
     freertos|freertos-posix)
-        if [ -z "${NROS_PLATFORM_FREERTOS_SRC:-}" ] || [ -z "${NROS_PLATFORM_CFFI_INCLUDE:-}" ]; then
-            echo "[ERROR] the freertos lane needs the just/sdk-env.just exports" >&2
-            echo "        (NROS_PLATFORM_FREERTOS_SRC, NROS_PLATFORM_CFFI_INCLUDE, …)." >&2
+        # phase-484 W2a — the first-party platform dirs are no longer exported
+        # (their readers default to the in-repo path), so the guard asks for
+        # the one external tree this lane still reads from the environment.
+        if [ -z "${FREERTOS_DIR:-}" ]; then
+            echo "[ERROR] the freertos lane needs FREERTOS_DIR (just/sdk-env.just)." >&2
             echo "        Run via the just recipe (e.g. \`just freertos build-fixtures\`)" >&2
             echo "        instead of invoking this script directly." >&2
             exit 2
