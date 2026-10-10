@@ -482,3 +482,11 @@ dds-isolation-symmetry:
 [private]
 fixture-row-keep-going:
     @bash scripts/check-fixture-row-keep-going.sh
+
+# issue 1650 (phase-477 W2) — every example root is BUILT by some fixture row,
+# or records why not. Keyed on the census's SHAPE (examples/<plat>/<lang>/<name>,
+# examples/workspaces/<ws>, examples/templates/<t>), never on a path list; the
+# manifest is read through fixtures-manifest.py's own loaders. ~0.1 s, tracked
+# files only; ratcheted reasons in `.config/example-build-coverage-baseline.txt`.
+example-build-coverage:
+    @python3 scripts/check-example-build-coverage.py

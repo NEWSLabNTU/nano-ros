@@ -117,6 +117,21 @@ bringup = "src/demo_bringup"
 image = "native"
 target_dir = "target-fixtures"
 
+# issue 1650 (phase-477 D3) — the launch-v1 composition demo (`<group ns>`,
+# `<include>`, `$(var)`, remaps). Its node packages reach `nros` by an in-repo
+# path, like every `examples/workspaces/*` tree, so it builds IN PLACE (a staged
+# copy cannot resolve `../../../../packages/api/nros`). Until this row no lane
+# compiled it; `example_shape.rs` only read its shape.
+[[workspace_fixture]]
+id = "workspace-rust-native-launch"
+platform = "linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/launch"
+bringup = "src/demo_bringup"
+image = "native"
+target_dir = "target-fixtures"
+
 [[workspace_fixture]]
 id = "workspace-rust-native-bridge"
 platform = "linux"
@@ -3932,6 +3947,24 @@ id = "pure_c_workspace"
 builder = "cmake-configure"
 dir = "examples/templates/pure-c-workspace"
 output = "build/posix-zenoh-native/cmake/native_entry"
+
+# issue 1650 (phase-477 D3) — the two RUST workspace templates, which no lane
+# compiled (`native.just`'s example sweep excludes both by name). Same staged
+# `nros sync` + `nros build` road as the C/C++ templates above.
+# `multi-node-workspace` builds its one `[image.native]` through the generated
+# entry; `multi-package-workspace` is a Form-1 self-bringup (the image lives in
+# `pkg_rust_publisher`) whose build also compiles its C and C++ packages.
+[[compile_check_fixture]]
+id = "multi_node_workspace_rust"
+builder = "cmake-configure"
+dir = "examples/templates/multi-node-workspace"
+output = "build/posix-zenoh/native_entry/target/debug/native_entry"
+
+[[compile_check_fixture]]
+id = "multi_package_workspace"
+builder = "cmake-configure"
+dir = "examples/templates/multi-package-workspace"
+output = "build/pkg_rust_publisher/target/debug/pkg_rust_publisher"
 
 [[compile_check_fixture]]
 id = "shadowing"

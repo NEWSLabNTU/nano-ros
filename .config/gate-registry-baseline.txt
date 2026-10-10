@@ -108,6 +108,7 @@ entry-locator-ssot
 entry-pack-conformance
 entry-rmw-vocabulary
 entry-session-name
+example-build-coverage
 example-cargo-dirs
 example-fmt
 example-leaf-build-dirs
