@@ -5224,6 +5224,69 @@ mod generated_output_collision_tests {
         }
     }
 
+    /// Issue 1288 — the EXPLICIT-ENTRY rung outranks the `<id>_entry` rung.
+    ///
+    /// `[image.zephyr_robot1] entry = "zephyr_entry_robot1"` was the only
+    /// evidence for this precedence, and it was a whole hand-written package.
+    /// Here both candidates exist side by side — a package named exactly
+    /// `<id>_entry` AND a differently named application the image names — and
+    /// the named one must win on both halves of the rule: it is the west
+    /// application, and generation (which would otherwise produce or find
+    /// `<id>_entry`) does not run.
+    #[test]
+    fn an_explicit_entry_outranks_the_id_entry_package() {
+        let t = tempfile::tempdir().unwrap();
+        for name in ["zephyr_robot1_entry", "robot1_app"] {
+            let dir = t.path().join("src").join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(
+                dir.join("package.xml"),
+                format!(
+                    "<?xml version=\"1.0\"?>\n<package format=\"3\">\n  <name>{name}</name>\n  \
+                     <version>0.0.0</version>\n  <description>t</description>\n  \
+                     <maintainer email=\"a@b.c\">m</maintainer>\n  \
+                     <license>Apache-2.0</license>\n</package>\n"
+                ),
+            )
+            .unwrap();
+            std::fs::write(dir.join("CMakeLists.txt"), "").unwrap();
+        }
+        let found = crate::builder::discover::discover(t.path(), &[]).expect("discover");
+        let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .canonicalize()
+            .unwrap();
+        let catalog =
+            crate::orchestration::board_descriptor::BoardCatalog::load(&repo).expect("catalog");
+        let crate::orchestration::board_descriptor::DeployResolution::Board(descriptor) =
+            catalog.resolve_deploy("zephyr")
+        else {
+            panic!("the `zephyr` board resolves");
+        };
+
+        let mut image = img("zephyr");
+        image.entry = Some("robot1_app".to_string());
+        let app = west_application_dir("zephyr_robot1", &image, descriptor, &found, &catalog, &[])
+            .expect("resolves");
+        assert_eq!(
+            app.as_deref(),
+            Some(t.path().join("src/robot1_app").as_path()),
+            "the named entry is the application, not `zephyr_robot1_entry`"
+        );
+        assert!(
+            generated_outputs(t.path(), "zephyr", &image, "zephyr_robot1", Driver::West).is_empty(),
+            "a named entry suppresses generation, so `<id>_entry` cannot win that way either"
+        );
+
+        // And the rung is not vacuous: without `entry`, the image is a
+        // generation candidate again.
+        image.entry = None;
+        assert!(
+            !generated_outputs(t.path(), "zephyr", &image, "zephyr_robot1", Driver::Cargo)
+                .is_empty()
+        );
+    }
+
     /// On the west road `[image.<id>] entry` names the application and
     /// generation never runs; on the cargo road it is not consulted, so the
     /// entry is still generated and still claimed.

@@ -61,6 +61,11 @@ three hand-written entries remain, none a generator gap.
   Both fixed (see W3). Remaining: migrate it to a generated west application
   (it needs the `nano_ros_use_board` + `EXTRA_CONF_FILE` axis W5.b3 did not do).
 
+**Status 2026-10-10:** `zephyr_entry_robot1` migrated — the precedence test
+(`an_explicit_entry_outranks_the_id_entry_package`) landed first, then the
+generated entry, whose `.config` differs from the hand-written one only by the
+locator the image declares (which the hand-written app had ignored).
+
 Also in this theme: [1289](../issues/1289-workspace-node-tables-still-in-manifests.md)
 (45 node packages still declare their class in `[package.metadata.nros.node]`),
 [1520](../issues/1520-ambiguity-example-cited-everywhere-was-the-manufactured-one.md)
