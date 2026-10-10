@@ -5356,7 +5356,7 @@ pub fn build_zephyr_workspace_cpp_violation_entry() -> TestResult<PathBuf> {
 }
 
 /// phase-281 W3c — the Zephyr (native_sim) RT-TIERS C workspace Entry
-/// (`realtime-c/src/zephyr_entry`): the FIRST full west link + runtime proof of the
+/// (`realtime-c`'s `demo_bringup:zephyr`, generated since phase-477 W1): the FIRST full west link + runtime proof of the
 /// W3a `ZephyrBoard::run_tiers` seam for a C node (closes the c×zephyr cell).
 /// `demo_bringup/system.toml` declares two `[tiers.*]` with `[tiers.*.zephyr]` priorities,
 /// so the C codegen emits a plain `int main(void)` calling `ZephyrBoard::run_tiers`
@@ -5368,7 +5368,7 @@ pub fn build_zephyr_workspace_c_realtime_entry() -> TestResult<PathBuf> {
     let binary_path = zephyr_build_root().join("build-ws-c-realtime-entry-zenoh/zephyr/zephyr.exe");
     require_prebuilt_binary_fresh_zephyr(
         &binary_path,
-        ZephyrLeafSource::zenoh("examples/workspaces/realtime-c/src/zephyr_entry", "c"),
+        ZephyrLeafSource::zenoh("examples/workspaces/realtime-c", "c"),
     )
 }
 
@@ -5377,13 +5377,15 @@ pub fn build_zephyr_workspace_c_realtime_entry() -> TestResult<PathBuf> {
 /// `zephyr.elf`, not `zephyr.exe`: this is a real aarch64 image for
 /// `qemu_cortex_a53/.../smp`, the tree's only multi-core Zephyr target, where a
 /// `core` dim can be verified as PLACEMENT rather than only as acceptance.
-/// Same workspace and entry as the native_sim C row — the fixture axis is the
-/// board, which selects `smp_bringup` (`core = 1`) via `CONFIG_SMP`.
+/// Same workspace as the native_sim C row, a different bringup: `smp_bringup`
+/// (`core = 1`) declares `[image.zephyr_smp]`. Both applications are generated
+/// (phase-477 W1), so the leaf source is the WORKSPACE, as for every other
+/// generated entry.
 pub fn build_zephyr_workspace_c_realtime_entry_smp() -> TestResult<PathBuf> {
     let binary_path = zephyr_build_root().join("build-ws-c-realtime-entry-smp/zephyr/zephyr.elf");
     require_prebuilt_binary_fresh_zephyr(
         &binary_path,
-        ZephyrLeafSource::zenoh("examples/workspaces/realtime-c/src/zephyr_entry", "c"),
+        ZephyrLeafSource::zenoh("examples/workspaces/realtime-c", "c"),
     )
 }
 

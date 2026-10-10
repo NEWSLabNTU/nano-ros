@@ -151,9 +151,12 @@ fn rust_entry_sees_a_prj_conf_edit() {
 /// `Ok` — "missing `.d` → existence-only fallback".
 #[test]
 fn c_entry_sees_a_prj_conf_edit() {
+    // phase-477 W1 (issue 1288) — the bringup's board directory, for the Rust
+    // test's reason: `realtime-c/src/zephyr_entry` is deleted and the C
+    // image's west application is generated too.
     assert_conf_edit_is_seen(
         "build-ws-c-realtime-entry-zenoh",
-        "examples/workspaces/realtime-c/src/zephyr_entry",
+        "examples/workspaces/realtime-c/src/demo_bringup/boards/native_sim_native_64",
         build_zephyr_workspace_c_realtime_entry,
     );
 }

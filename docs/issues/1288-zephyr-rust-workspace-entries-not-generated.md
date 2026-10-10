@@ -851,3 +851,31 @@ That was the blocker this issue recorded for `realtime-c`: with distinct ids,
 the two images no longer share a generated-entry name. Migrating `zephyr_entry`
 itself — one application serving two bringups, selected by `CONFIG_SMP` — is
 the remaining step, and the last hand-written entry besides `fvp_entry`.
+
+## 2026-10-11 — `realtime-c/src/zephyr_entry` migrated (phase-477 W1)
+
+With the SMP image on its own id, each bringup's image gets its own generated
+application (`build/zephyr-zenoh/zephyr_entry`, `…/zephyr_smp_entry`), and the
+hand-written package — one `CMakeLists.txt` picking the bringup from
+`CONFIG_SMP` — is deleted. Its Kconfig moved to each bringup's board directory
+(`demo_bringup/boards/native_sim_native_64/`,
+`smp_bringup/boards/qemu_cortex_a53_qemu_cortex_a53_smp/`); both images declare
+`panic = "platform"`, the one fact the `CMakeLists.txt` carried that nothing
+else did. Both fixture rows drop `conf_files`; the SMP row names `image =
+"zephyr_smp"` instead of `entry`.
+
+- **Acceptance, a BUILD:** the merged `.config` of both images is identical to
+  the baseline built from the hand-written package on the same tree.
+- **One difference the build caught first.** The hand-written row listed the
+  SMP board fragment LAST in `-DCONF_FILE`. Through `APPLICATION_CONFIG_DIR`,
+  Zephyr merges `boards/<board>.conf` BEFORE `EXTRA_CONF_FILE`, so the copied
+  `prj-zenoh.conf`'s native_sim stacks (`MAIN_STACK_SIZE=16384`,
+  `SYSTEM_WORKQUEUE_STACK_SIZE=4096`) overrode the aarch64 sizes (32768/8192).
+  The SMP copy no longer states either, and says why.
+- **Runtime:** `realtime_tiers` `zephyr/c` passes; `sched_dims_applied`
+  `[zephyr c CorePinPlacement]` and `[zephyr c EdfDeadline]` ACCEPT on the SMP
+  image; `zephyr_leaf_staleness::c_entry_sees_a_prj_conf_edit` watches the
+  bringup's board directory now and passes.
+
+Hand-written entries: 2 → 1. Left: `realtime-cpp/src/fvp_entry` (with the
+session on `fix/477-fvp-lane`).
