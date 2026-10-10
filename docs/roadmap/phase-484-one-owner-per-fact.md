@@ -326,7 +326,16 @@ Not covered by that run: the zephyr west lane (checked only by a cmake probe of
 `nros_locate_source`), and the checkout-only rows above, which still need their
 submodules where a build uses them.
 
-Remaining in W3: project `[tools]` (the tool twin of `[sources]`).
+**W3e — project `[tools]`.** The `[tool.*]` twin of `[sources]`:
+`system.toml` `[tools] <tool> = "<prefix>"` (project-relative) answers `nros
+sdk-path <tool>` before the store's pinned prefix, so every bridge that asks —
+cmake, `just`, shell — gets the project's toolchain; a name the index does not
+pin is still refused, and `nros ws board-facts` refuses an unknown key. Build
+scripts that resolve a tool themselves (`nros_build_paths::riscv64`) keep their
+own `NROS_RISCV64_PREFIX` override; folding them onto the ladder is W7.
+
+W3 is complete as scoped: every store-eligible row is store-first, the rest are
+checkout sources for a recorded reason, and the acceptance run above passed.
 
 **Acceptance:** an agent worktree with NO submodule initialized builds tier 1
 from the store; editing a zenoh-pico submodule commit makes the next build use

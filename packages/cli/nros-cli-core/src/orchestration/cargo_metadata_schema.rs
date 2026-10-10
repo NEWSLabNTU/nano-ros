@@ -656,6 +656,12 @@ pub struct SystemToml {
     /// argument and the row's env override, above a local edit and the store.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub sources: BTreeMap<String, String>,
+    /// `[tools]` — `<tool> = "<prefix>"`, PROJECT-relative: the `[tool.*]`
+    /// twin of [`Self::sources`] (RFC-0103 D3 rung 3). `nros sdk-path <tool>`
+    /// answers it before the store's pinned prefix, so every bridge that asks
+    /// (cmake, `just`, shell) gets the project's toolchain.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub tools: BTreeMap<String, String>,
     #[serde(default, rename = "domain", skip_serializing_if = "Vec::is_empty")]
     pub domains: Vec<SystemDomainEntry>,
     #[serde(default, rename = "bridge", skip_serializing_if = "Vec::is_empty")]

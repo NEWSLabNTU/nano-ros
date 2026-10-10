@@ -64,6 +64,22 @@ pub fn run(args: Args) -> Result<()> {
         return run_source(&index, &args);
     }
 
+    // RFC-0103 D3 rung 3 — the project's own `[tools]` row, before the pin.
+    if index.tool.contains_key(&args.tool)
+        && let Some(p) = crate::cmd::locate::project_dir(None)
+            .and_then(|d| nros_build_paths::locate::project_entry(&d, "tools", &args.tool))
+    {
+        if args.require && !p.is_dir() {
+            bail!(
+                "[tools] {} = {} (the project's system.toml) is not a directory",
+                args.tool,
+                p.display()
+            );
+        }
+        println!("{}", p.display());
+        return Ok(());
+    }
+
     let Some(dir) = sdk_store::tool_dir(&index, &args.tool) else {
         // Name what IS pinned: a typo and an unprovisioned tool look identical
         // otherwise, and the caller is usually a cmake file that cannot explore.

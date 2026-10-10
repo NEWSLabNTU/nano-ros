@@ -365,6 +365,7 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
     let model = SystemToml {
         board_config: Default::default(),
         sources: Default::default(),
+        tools: Default::default(),
         image,
         image_defaults: None,
         system: SystemHeader {
