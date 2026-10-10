@@ -140,3 +140,41 @@ feature from the capability registry. A hand-written `launch =` entry without
 it would still register nothing. That is a sibling of this issue, and it was
 left as is because this change did not survey which in-tree launch entries
 would start refusing.
+
+## Follow-up: the launch arm asserts lifecycle too
+
+This closes the "Not changed" item above.
+
+**The change.** The lifecycle wiring is now one function,
+`lifecycle_call_tokens`, used by every arm. It carries a
+`LIFECYCLE_SERVICES_ENABLED` const-assert, the same way `param_services_call`
+carries `PARAM_SERVICES_ENABLED`. A launch-arm image whose model gives a node a
+`lifecycle_autostart` now fails to compile without `nros/lifecycle-services`,
+with an error naming the feature. The Form-1 arm's `leaf_axis_asserts` no
+longer asserts lifecycle, so the assert is not reported twice.
+
+**Sweep.** The launch arm also asserts every other axis the model's
+`execution.features` declares (`safety`, `rosout`, and `lifecycle` with no
+node to wire it). The reading is `model_capabilities`, and the asserts come
+from `model_axis_assert_tokens`. `param_services` stays with its own call.
+
+**Survey of who would start refusing.** Only `examples/workspaces/features`
+declares `[lifecycle]`. Its Rust launch entry (`native_rust_lifecycle`) is
+generated, and the capability registry gives it `lifecycle-services`, so it
+still builds. So does `native_rust_safety_talker` (`features = ["safety"]`).
+The hand-written `launch =` entries (`n9_workspace`,
+`o4_pkg_index_workspace`, `orchestration_tiers_native`,
+`zephyr_entry_robot1`) declare no lifecycle.
+
+**Measured:**
+
+- **Fail-before / pass-after,** on `native_rust_lifecycle` with
+  `lifecycle-services` removed from its generated nros selection. With main's
+  macro the entry compiles and registers nothing. With this change it is
+  `error[E0080]: … declares \`lifecycle\` … does not carry the
+  \`lifecycle-services\` feature`.
+- **Unit tests:** `launch_axis_tests` (3) cover the lifecycle node, the axis
+  sweep, and a negative control.
+- **Mutation:** replacing the assert's flag with `true` turns red both
+  `a_lifecycle_node_is_asserted_on_the_launch_arm` and the Form-1
+  `form1_wires_lifecycle_…` test.
