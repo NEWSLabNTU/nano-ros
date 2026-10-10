@@ -37,32 +37,14 @@ Run: cargo-out-dir-headers.py --package nros-c --dest <dir> -- cargo build …
 """
 
 import argparse
-import json
 import os
 import shutil
 import subprocess
 import sys
 
-
-def package_matches(package_id: str, name: str) -> bool:
-    """True when a cargo `package_id` names `name`.
-
-    Cargo spells these at least two ways and has changed the spelling before:
-
-        path+file:///…/packages/api/nros-c#0.5.0
-        registry+https://…#heapless@0.8.0
-
-    So match the NAME rather than parse a format: either the `#name@version`
-    tail, or the last path segment before `#`. Guessing one spelling is how this
-    silently stops finding the package after a cargo upgrade — and a miss here is
-    a missing header, which surfaces as a compile error far away.
-    """
-    if "#" not in package_id:
-        return package_id == name
-    head, tail = package_id.rsplit("#", 1)
-    if "@" in tail:
-        return tail.rsplit("@", 1)[0] == name
-    return head.rstrip("/").rsplit("/", 1)[-1] == name
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+# phase-484 W6 (RFC-0103 D8) — the one reader of cargo's JSON stream.
+from cargo_out_dir import out_dirs as _out_dirs, package_matches, self_test as _parser_self_test  # noqa: E402,F401
 
 
 def copy_headers(out_dir: str, dest: str) -> list:
@@ -111,22 +93,8 @@ def copy_headers(out_dir: str, dest: str) -> list:
 
 def run(package: str, dest: str, cargo_cmd: list) -> int:
     proc = subprocess.Popen(cargo_cmd, stdout=subprocess.PIPE, text=True)
-    out_dirs = []
     assert proc.stdout is not None
-    for line in proc.stdout:
-        line = line.strip()
-        if not line or not line.startswith("{"):
-            continue
-        try:
-            msg = json.loads(line)
-        except ValueError:
-            continue
-        if msg.get("reason") != "build-script-executed":
-            continue
-        if package_matches(msg.get("package_id", ""), package):
-            od = msg.get("out_dir")
-            if od:
-                out_dirs.append(od)
+    out_dirs = _out_dirs(proc.stdout, package)
     rc = proc.wait()
     if rc != 0:
         return rc
@@ -157,6 +125,7 @@ def run(package: str, dest: str, cargo_cmd: list) -> int:
 
 
 def self_test() -> int:
+    _parser_self_test()  # the shared parser's own negative controls
     import tempfile
 
     fails = 0

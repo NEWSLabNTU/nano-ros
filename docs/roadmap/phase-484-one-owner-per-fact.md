@@ -431,6 +431,15 @@ after (a diff).
 **Acceptance:** no consumer outside the path function names an artifact path
 (gate); the PX4 `${NANO_ROS_ROOT}/target/...` literal is gone.
 
+**W6a — one reader of cargo's JSON stream.** The three `OUT_DIR` parsers
+(`cargo-out-dir-headers.py`, `xrce-cffi-out-dir.py` — whose `<name>#` substring
+match also hit any package whose name ended in it — and the pipeline printed in
+nros-rmw-xrce's CMakeLists) are one module, `scripts/lib/cargo_out_dir.py`
+(`package_matches`, `out_dirs`), held by the new gate `check-cargo-json-reader`.
+The RFC placed this interim parser in `nros_build_paths`; its consumers are
+cmake and `just` recipes, which reach Python, not a Rust library, so the one
+spelling lives on the Python side until D8 retires it.
+
 ### W7 -- leftovers and close
 
 - The three test-bin `config.toml` files move to `system.toml`.
