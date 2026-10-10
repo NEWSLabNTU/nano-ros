@@ -4,11 +4,14 @@
 // identifier, `nros_clear_inherited_git_env`, which is what
 // `check-hook-repo-side-effects` credits in every language it reads.
 //
-// `include!`d — by `nros-cli-core/src/source_stamp.rs` (and through it by
+// A module of `nros-build-paths` (whose build-script callers spawn `git` too —
+// the local-edit probe, RFC-0103 D5), and `include!`d by
+// `nros-cli-core/src/source_stamp.rs` (and through it by
 // `nros-cli-core/build.rs`), by `nros-launch-resolve/build.rs`, and by
-// `cargo-nano-ros`. So: no inner doc comments (`//!` is only legal at the top
-// of a file) and no `use` (it would collide with the includer's imports);
-// types are spelled out.
+// `cargo-nano-ros`. It lives under `packages/tooling` because that ships in an
+// installed SDK root and `packages/cli` does not. So: no inner doc comments
+// (`//!` is only legal at the top of a file) and no `use` (it would collide
+// with the includer's imports); types are spelled out.
 //
 // ## What goes wrong without it (measured, issue 1659)
 //

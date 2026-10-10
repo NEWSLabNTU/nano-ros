@@ -62,7 +62,8 @@ pub fn tool_prefix(root: &Path, tool: &str, version: &str) -> PathBuf {
 /// Returns `None` when the index has no such tool; the caller reports it with
 /// the provisioning command, and must NEVER substitute another version.
 /// Where a `[source.*]` with `location = "store"` is provisioned —
-/// `$NROS_HOME/sources/<name>/<version>` (phase-440, RFC-0095 D1/D2).
+/// `$NROS_HOME/sources/<name>/<version>[+<sha8>]` (phase-440, RFC-0095 D1/D2;
+/// the sha for a submodule row, RFC-0103 D5).
 ///
 /// DERIVED, never authored: the same reason [`tool_dir`] derives rather than
 /// reading a path out of the index. An authored store path is a second spelling
@@ -79,14 +80,22 @@ pub fn source_dir(index: &super::sdk_index::SdkIndex, source: &str) -> Option<Pa
     if src.location != SourceLocation::Store {
         return None;
     }
-    // The STORE root, not the SDK root: `sources/` is a sibling of `sdk/`,
-    // `workspaces/` and `bin/` (RFC-0095 D2), and W6 gave that one spelling.
-    Some(
-        super::store::root()
-            .join("sources")
-            .join(source)
-            .join(&src.version),
-    )
+    source_dir_of(source, src, Path::new(""))
+}
+
+/// `[source.<name>]` as the location ladder reads it — the ONE conversion, so
+/// the store path `nros setup` writes and the one every build reads
+/// (`nros_build_paths::locate::store_path`) cannot be derived twice.
+pub fn locate_row(name: &str, s: &SourcePackage) -> nros_build_paths::locate::Row {
+    nros_build_paths::locate::Row {
+        name: name.to_string(),
+        version: s.version.clone(),
+        env: s.env.clone(),
+        dest: s.dest.clone(),
+        in_store: s.location == SourceLocation::Store,
+        git_ref: s.git_ref.clone(),
+        submodule: s.submodule.is_some(),
+    }
 }
 
 /// The directory a `[source.*]` is provisioned into — phase-440, RFC-0095
@@ -109,12 +118,13 @@ pub fn source_dir_of(
     workspace: &Path,
 ) -> Option<std::path::PathBuf> {
     match src.location {
-        SourceLocation::Store => Some(
-            super::store::root()
-                .join("sources")
-                .join(name)
-                .join(&src.version),
-        ),
+        // The STORE root, not the SDK root: `sources/` is a sibling of `sdk/`,
+        // `workspaces/` and `bin/` (RFC-0095 D2). The key is the ladder's
+        // (`<version>`, or `<version>+<sha8>` for a submodule row, RFC-0103 D5).
+        SourceLocation::Store => Some(nros_build_paths::locate::store_path(
+            &locate_row(name, src),
+            &super::store::root(),
+        )),
         SourceLocation::Workspace => src.dest.as_deref().map(|d| workspace.join(d)),
     }
 }
@@ -355,6 +365,8 @@ pub fn front_newest_into(
 pub enum ProvenanceKind {
     Prebuilt,
     Source,
+    /// A `[source.*]` tree materialised by `git archive` (RFC-0103 D5).
+    Archive,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -376,6 +388,12 @@ pub struct Provenance {
     /// the DECLARED command and not against presence.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub post_install: Option<String>,
+    /// `Archive` only: the commit the tree is a copy of, and where it came
+    /// from. `ref` on disk, like the index key it copies.
+    #[serde(rename = "ref", default, skip_serializing_if = "Option::is_none")]
+    pub git_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub git: Option<String>,
 }
 
 impl Provenance {
@@ -739,6 +757,8 @@ fn execute_install(
                 version: version.to_string(),
                 sha256: Some(sha256.clone()),
                 post_install: None,
+                git_ref: None,
+                git: None,
             };
             p.write(prefix)?;
             Ok(p)
@@ -860,6 +880,8 @@ fn execute_install(
                 version: version.to_string(),
                 sha256: None,
                 post_install: None,
+                git_ref: None,
+                git: None,
             };
             p.write(prefix)?;
             Ok(p)
@@ -1269,6 +1291,271 @@ fn provision_at_recorded_pin(
     Ok(SourceDisposition::Provisioned)
 }
 
+/// The tree listing (`git ls-tree -r <ref>`) a materialised store tree
+/// carries, so the NEXT pin of the same source can hardlink what is unchanged.
+const SOURCE_TREE_FILE: &str = ".nros-tree";
+
+/// RFC-0103 D5 — materialise a submodule source into the store:
+/// `$NROS_HOME/sources/<name>/<version>+<sha8>/`.
+///
+/// `git archive <ref>`, so the tree has no `.git` (issue 1336's layout trap
+/// cannot occur) and every mtime is the commit's and never moves (the fixture
+/// treadmill stops for these trees). Files unchanged from another pin of the
+/// same source already in the store are HARDLINKED to it rather than written
+/// again — measured 9× less disk over 38 zenoh-pico pins — and every file is
+/// then made read-only, because a shared inode must never be written.
+///
+/// The objects come from the checkout's own submodule when it has the commit
+/// (no network), else from a store-wide bare mirror under `fetch/git/` fetched
+/// by commit. Nested submodules are NOT materialised: `git archive` omits them,
+/// and no build reads the ones the store-eligible rows nest (FreeRTOS's
+/// third-party ports, NetX Duo's test trees — measured uninitialised in a tree
+/// that builds both).
+///
+/// Built in a sibling temp dir and renamed into place, so a reader sees either
+/// no tree or a complete one, and an interrupted run leaves nothing at `dest`.
+fn materialise_store_source(
+    name: &str,
+    src: &SourcePackage,
+    workspace: &Path,
+    pin: &RecordedPin,
+    shallow: bool,
+) -> Result<SourceDisposition> {
+    materialise_into(&super::store::root(), name, src, workspace, pin, shallow)
+}
+
+/// [`materialise_store_source`] against an explicit store root (tests).
+fn materialise_into(
+    store: &Path,
+    name: &str,
+    src: &SourcePackage,
+    workspace: &Path,
+    pin: &RecordedPin,
+    shallow: bool,
+) -> Result<SourceDisposition> {
+    let dest = nros_build_paths::locate::store_path(&locate_row(name, src), store);
+    if read_provenance_ref(&dest).as_deref() == Some(pin.commit.as_str()) {
+        return Ok(SourceDisposition::AlreadyPresent);
+    }
+    if dest.exists() {
+        bail!(
+            "{} exists but is not a materialised copy of {name}@{} (no matching \
+             .nros-provenance). Remove it and re-run `nros setup --source {name}`.",
+            dest.display(),
+            pin.commit
+        );
+    }
+    let parent = dest
+        .parent()
+        .ok_or_else(|| eyre!("store path {} has no parent", dest.display()))?;
+    std::fs::create_dir_all(parent).wrap_err_with(|| format!("create {}", parent.display()))?;
+
+    let repo = object_repo_for(store, name, src, workspace, pin, shallow)?;
+    let repo_s = repo.to_string_lossy().into_owned();
+
+    let key = dest
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| name.to_owned());
+    let staging = parent.join(format!(".{key}.staging-{}", std::process::id()));
+    if staging.exists() {
+        make_writable(&staging);
+        std::fs::remove_dir_all(&staging)
+            .wrap_err_with(|| format!("remove {}", staging.display()))?;
+    }
+    std::fs::create_dir_all(&staging).wrap_err_with(|| format!("create {}", staging.display()))?;
+    let tmp_s = staging.to_string_lossy().into_owned();
+    // One pipe, `pipefail` so a failed archive is not read as an empty tree.
+    sh(
+        &[
+            "bash",
+            "-c",
+            "set -o pipefail; git -C \"$1\" archive --format=tar \"$2\" | tar -x -C \"$3\"",
+            "nros-materialise",
+            &repo_s,
+            &pin.commit,
+            &tmp_s,
+        ],
+        None,
+    )
+    .wrap_err_with(|| format!("git archive {} (source {name})", pin.commit))?;
+
+    let tree = sh_capture_raw(&["git", "-C", &repo_s, "ls-tree", "-r", &pin.commit], None)
+        .wrap_err_with(|| format!("git ls-tree {} (source {name})", pin.commit))?;
+    hardlink_unchanged(parent, &staging, &tree);
+    std::fs::write(staging.join(SOURCE_TREE_FILE), &tree)
+        .wrap_err_with(|| format!("write {}", staging.join(SOURCE_TREE_FILE).display()))?;
+    Provenance {
+        kind: ProvenanceKind::Archive,
+        version: src.version.clone(),
+        sha256: None,
+        post_install: None,
+        git_ref: Some(pin.commit.clone()),
+        git: Some(pin.url.clone()),
+    }
+    .write(&staging)?;
+    make_read_only(&staging);
+    // A DIRECTORY published by rename(2): `atomic_file::atomic_write` is the
+    // one spelling for a FILE (check-atomic-sync-writes), and a tree has no
+    // per-file equivalent — a reader sees no tree or the whole tree.
+    std::fs::rename(&staging, &dest).wrap_err_with(|| {
+        format!(
+            "move {} into place at {}",
+            staging.display(),
+            dest.display()
+        )
+    })?;
+    Ok(SourceDisposition::Provisioned)
+}
+
+/// The `ref` a materialised store tree records, if `dir` is one.
+pub fn read_provenance_ref(dir: &Path) -> Option<String> {
+    Provenance::read(dir)
+        .filter(|p| p.kind == ProvenanceKind::Archive)
+        .and_then(|p| p.git_ref)
+}
+
+/// A repository holding `pin.commit`: the checkout's submodule when it already
+/// has the object (no network), else the store's bare mirror for `name`,
+/// fetched BY COMMIT (pins routinely lag their branch tip; GitHub serves any
+/// reachable commit).
+fn object_repo_for(
+    store: &Path,
+    name: &str,
+    src: &SourcePackage,
+    workspace: &Path,
+    pin: &RecordedPin,
+    shallow: bool,
+) -> Result<PathBuf> {
+    let has = |repo: &Path| {
+        let r = repo.to_string_lossy();
+        sh_capture_raw(
+            &[
+                "git",
+                "-C",
+                &r,
+                "cat-file",
+                "-e",
+                &format!("{}^{{commit}}", pin.commit),
+            ],
+            None,
+        )
+        .is_ok()
+    };
+    if let Some(d) = src.dest.as_deref() {
+        let co = workspace.join(d);
+        if co.join(".git").exists() && has(&co) {
+            return Ok(co);
+        }
+    }
+    let mirror = store.join("fetch").join("git").join(format!("{name}.git"));
+    let m = mirror.to_string_lossy().into_owned();
+    if !mirror.exists() {
+        std::fs::create_dir_all(&mirror).wrap_err_with(|| format!("create {m}"))?;
+        sh(&["git", "init", "-q", "--bare", &m], None)
+            .wrap_err_with(|| format!("git init --bare {m} (source {name})"))?;
+    }
+    if !has(&mirror) {
+        let mut fetch: Vec<&str> = vec!["git", "-C", &m, "fetch", "-q"];
+        if shallow {
+            fetch.extend(["--depth", "1"]);
+        }
+        fetch.extend([pin.url.as_str(), pin.commit.as_str()]);
+        sh(&fetch, None)
+            .wrap_err_with(|| format!("git fetch {} {} (source {name})", pin.url, pin.commit))?;
+    }
+    Ok(mirror)
+}
+
+/// Replace each file in `tmp` whose `(mode, blob, path)` also appears in a
+/// sibling pin's tree listing with a hardlink to that sibling's copy. Picks
+/// the sibling sharing the most entries. Returns how many were linked; a link
+/// that fails (another filesystem) keeps the extracted copy.
+fn hardlink_unchanged(parent: &Path, tmp: &Path, tree: &str) -> usize {
+    let entries = |listing: &str| -> std::collections::HashSet<String> {
+        listing
+            .lines()
+            .filter(|l| l.starts_with("100644 blob ") || l.starts_with("100755 blob "))
+            .map(str::to_owned)
+            .collect()
+    };
+    let mine = entries(tree);
+    let Ok(dirs) = std::fs::read_dir(parent) else {
+        return 0;
+    };
+    let best = dirs
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p != tmp
+                && !p
+                    .file_name()
+                    .is_some_and(|n| n.to_string_lossy().starts_with('.'))
+        })
+        .filter_map(|p| {
+            let listing = std::fs::read_to_string(p.join(SOURCE_TREE_FILE)).ok()?;
+            let shared: Vec<String> = entries(&listing).intersection(&mine).cloned().collect();
+            Some((shared.len(), p, shared))
+        })
+        .max_by_key(|(n, _, _)| *n);
+    let Some((_, sibling, shared)) = best else {
+        return 0;
+    };
+    let mut linked = 0;
+    for line in shared {
+        let Some((_, path)) = line.split_once('\t') else {
+            continue;
+        };
+        let (from, to) = (sibling.join(path), tmp.join(path));
+        if std::fs::remove_file(&to).is_ok() {
+            if std::fs::hard_link(&from, &to).is_ok() {
+                linked += 1;
+            } else if let Err(e) = std::fs::copy(&from, &to) {
+                // The extracted copy is gone and neither link nor copy worked;
+                // the caller's archive is incomplete, so say which file.
+                eprintln!("nros: could not restore {} ({e})", to.display());
+            }
+        }
+    }
+    linked
+}
+
+fn walk_files(dir: &Path, f: &mut dyn FnMut(&Path, &std::fs::Metadata)) {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for e in rd.flatten() {
+        let p = e.path();
+        let Ok(md) = std::fs::symlink_metadata(&p) else {
+            continue;
+        };
+        if md.is_dir() {
+            walk_files(&p, f);
+        } else if md.is_file() {
+            f(&p, &md);
+        }
+    }
+}
+
+/// Files read-only (a hardlinked inode is shared between pins); directories
+/// stay writable, so gc can still remove a tree.
+fn make_read_only(dir: &Path) {
+    walk_files(dir, &mut |p, md| {
+        let mut perm = md.permissions();
+        perm.set_readonly(true);
+        let _ = std::fs::set_permissions(p, perm);
+    });
+}
+
+#[allow(clippy::permissions_set_readonly_false)] // undoing our own make_read_only
+fn make_writable(dir: &Path) {
+    walk_files(dir, &mut |p, md| {
+        let mut perm = md.permissions();
+        perm.set_readonly(false);
+        let _ = std::fs::set_permissions(p, perm);
+    });
+}
+
 /// Outcome of [`provision_source`] — for the `nros setup` disposition line.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SourceDisposition {
@@ -1430,6 +1717,23 @@ fn provision_source_unlocked(
             let path = src.submodule.as_deref().expect("submodule mode has a path");
             if dry_run {
                 return Ok(SourceDisposition::Planned);
+            }
+            // RFC-0103 D5 — a store-first source is materialised into the
+            // store, in a checkout and an installed root alike; only WHERE the
+            // pin is read differs (the root's own index when it has no `.git`).
+            if src.location == SourceLocation::Store {
+                let pin = match recorded_pin(workspace, name)? {
+                    Some(p) => p,
+                    None => RecordedPin {
+                        url: src.git.clone().ok_or_else(|| {
+                            eyre!("source '{name}' is a store submodule with no `git`")
+                        })?,
+                        commit: src.git_ref.clone().ok_or_else(|| {
+                            eyre!("source '{name}' is a store submodule with no `ref`")
+                        })?,
+                    },
+                };
+                return materialise_store_source(name, src, workspace, &pin, shallow);
             }
             // Issue 1304 — an INSTALLED SDK root has no gitlinks to read: the
             // release staged it with `git archive`, which drops them, and
@@ -2008,6 +2312,8 @@ mod tests {
             version: version.to_string(),
             sha256: None,
             post_install: None,
+            git_ref: None,
+            git: None,
         }
         .write(&prefix)
         .unwrap();
@@ -2259,6 +2565,8 @@ mod tests {
             version: "1.0.1".into(),
             sha256: Some("aa".into()),
             post_install: None,
+            git_ref: None,
+            git: None,
         };
         prov.write(&prefix).unwrap();
         match plan_install(bundle, "linux-x86_64", &prefix) {
@@ -2284,6 +2592,8 @@ mod tests {
             version: "2".into(),
             sha256: None,
             post_install: None,
+            git_ref: None,
+            git: None,
         }
         .write(&plain_prefix)
         .unwrap();
@@ -2328,6 +2638,8 @@ mod tests {
             version: "9".into(),
             sha256: Some("aa".into()),
             post_install: None,
+            git_ref: None,
+            git: None,
         };
         prov.write(&prefix).unwrap();
 
@@ -2360,6 +2672,8 @@ mod tests {
             version: "11.0".into(),
             sha256: Some("abc".into()),
             post_install: None,
+            git_ref: None,
+            git: None,
         };
         p.write(&prefix).unwrap();
         assert_eq!(Provenance::read(&prefix).as_ref(), Some(&p));
@@ -2379,6 +2693,8 @@ mod tests {
                 version: "11.0".into(),
                 sha256: None,
                 post_install: None,
+                git_ref: None,
+                git: None,
             },
         );
         lock.save(&path).unwrap();
@@ -2423,6 +2739,8 @@ mod tests {
             version: "11.0".into(),
             sha256: None,
             post_install: None,
+            git_ref: None,
+            git: None,
         }
         .write(&present)
         .unwrap();
@@ -3021,6 +3339,97 @@ mod tests {
         assert!(
             msg.contains("states no `git`/`ref` for [source.other]"),
             "the error must name the missing pin: {msg}"
+        );
+    }
+
+    /// RFC-0103 D5 — a store-first submodule source is materialised as a
+    /// read-only `git archive` keyed `<version>+<sha8>`; a second pin hardlinks
+    /// every file it shares with the first, and re-provisioning a present pin
+    /// touches nothing.
+    #[test]
+    fn a_store_source_is_archived_read_only_and_a_second_pin_hardlinks_the_first() {
+        use std::os::unix::fs::MetadataExt;
+        let root = crate::test_support::scratch_dir("store-materialise");
+        let upstream = root.join("upstream");
+        std::fs::create_dir_all(&upstream).unwrap();
+        git_sh(
+            &upstream,
+            "git init -q . && git config uploadpack.allowAnySHA1InWant true \
+             && echo same > same.txt && echo one > moved.txt && git add . \
+             && git commit -qm one && git rev-parse HEAD > ../one \
+             && echo two > moved.txt && git commit -qam two && git rev-parse HEAD > ../two",
+        );
+        let read = |f: &str| {
+            std::fs::read_to_string(root.join(f))
+                .unwrap()
+                .trim()
+                .to_string()
+        };
+        let (one, two) = (read("one"), read("two"));
+        let store = root.join("store");
+        let ws = root.join("ws");
+        std::fs::create_dir_all(&ws).unwrap();
+        let src_at = |r: &str| SourcePackage {
+            location: SourceLocation::Store,
+            git: Some(format!("file://{}", upstream.display())),
+            git_ref: Some(r.to_string()),
+            ..submodule_source("third-party/sub", false)
+        };
+        let pin_at = |r: &str| RecordedPin {
+            url: format!("file://{}", upstream.display()),
+            commit: r.to_string(),
+        };
+
+        let d1 = nros_build_paths::locate::store_path(&locate_row("sub", &src_at(&one)), &store);
+        assert!(d1.ends_with(format!(
+            "sources/sub/{}+{}",
+            src_at(&one).version,
+            &one[..8]
+        )));
+        assert_eq!(
+            materialise_into(&store, "sub", &src_at(&one), &ws, &pin_at(&one), false).unwrap(),
+            SourceDisposition::Provisioned
+        );
+        assert_eq!(
+            std::fs::read_to_string(d1.join("moved.txt")).unwrap(),
+            "one\n"
+        );
+        assert!(
+            !d1.join(".git").exists(),
+            "an archive carries no repository"
+        );
+        assert!(
+            std::fs::metadata(d1.join("same.txt"))
+                .unwrap()
+                .permissions()
+                .readonly()
+        );
+        assert_eq!(read_provenance_ref(&d1).as_deref(), Some(one.as_str()));
+
+        // Present at its pin: nothing runs.
+        let _ = take_command_log();
+        assert_eq!(
+            materialise_into(&store, "sub", &src_at(&one), &ws, &pin_at(&one), false).unwrap(),
+            SourceDisposition::AlreadyPresent
+        );
+        assert!(take_command_log().is_empty());
+
+        let d2 = nros_build_paths::locate::store_path(&locate_row("sub", &src_at(&two)), &store);
+        materialise_into(&store, "sub", &src_at(&two), &ws, &pin_at(&two), false).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(d2.join("moved.txt")).unwrap(),
+            "two\n"
+        );
+        let ino = |d: &Path, f: &str| std::fs::metadata(d.join(f)).unwrap().ino();
+        assert_eq!(
+            ino(&d1, "same.txt"),
+            ino(&d2, "same.txt"),
+            "unchanged file not hardlinked"
+        );
+        assert_ne!(
+            ino(&d1, "moved.txt"),
+            ino(&d2, "moved.txt"),
+            "a changed file was shared"
         );
     }
 
