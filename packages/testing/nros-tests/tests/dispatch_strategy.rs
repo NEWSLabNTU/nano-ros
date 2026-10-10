@@ -7,7 +7,7 @@
 //!
 //! * `nros_platform::DispatchStrategy` (216.A.1) — enum + `to_u8` /
 //!   `from_u8` round-trip + `DEFAULT == Inline`.
-//! * `nros::Node::DISPATCH` (216.A.3) — defaults to `Inline`, explicit
+//! * `nros::Component::DISPATCH` (216.A.3) — defaults to `Inline`, explicit
 //!   `Deferred` override is observable on the trait associated const.
 //! * `nros_platform::NodeDispatchRuntime` (216.A.2) — default
 //!   `dispatch_strategy()` returns `Inline`, default `signal_callback`
@@ -56,7 +56,7 @@ fn dispatch_strategy_default_const_is_inline() {
 }
 
 // ---------------------------------------------------------------------------
-// 216.A.3 — Node::DISPATCH defaults to Inline; explicit override is
+// 216.A.3 — Component::DISPATCH defaults to Inline; explicit override is
 // observable.
 // ---------------------------------------------------------------------------
 
@@ -82,7 +82,7 @@ impl Component for DeferredDispatchNode {
 #[test]
 fn dispatch_strategy_default_is_inline() {
     assert_eq!(
-        <DefaultDispatchNode as Node>::DISPATCH,
+        <DefaultDispatchNode as Component>::DISPATCH,
         DispatchStrategy::Inline,
     );
 }
@@ -90,14 +90,14 @@ fn dispatch_strategy_default_is_inline() {
 #[test]
 fn dispatch_strategy_explicit_deferred_overrides_default() {
     assert_eq!(
-        <DeferredDispatchNode as Node>::DISPATCH,
+        <DeferredDispatchNode as Component>::DISPATCH,
         DispatchStrategy::Deferred,
     );
     // And the explicit override is distinct from the default — the
     // matrix downstream relies on observing the difference.
     assert_ne!(
-        <DefaultDispatchNode as Node>::DISPATCH,
-        <DeferredDispatchNode as Node>::DISPATCH,
+        <DefaultDispatchNode as Component>::DISPATCH,
+        <DeferredDispatchNode as Component>::DISPATCH,
     );
 }
 
