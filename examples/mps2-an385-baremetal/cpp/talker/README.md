@@ -6,7 +6,7 @@ the same program as `examples/mps2-an385-freertos/cpp/talker/`.
 
 Same shape as [`../../c/talker`](../../c/talker/README.md), whose README explains
 why: the link root is Rust (`src/main.rs` boots the board and calls
-`app_main()`), and `build.rs` compiles `src/talker.cpp` into it. Three things are
+`nros_app_main()`), and `build.rs` compiles `src/talker.cpp` into it. Three things are
 C++-specific:
 
 * **The message code is half Rust.** `nros generate cpp` emits header-only C++

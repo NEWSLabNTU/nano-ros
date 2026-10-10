@@ -34,8 +34,9 @@
 use nros_board_mps2_an385::{Config, entry, run_bare};
 
 unsafe extern "C" {
-    /// Emitted by `NROS_APP_MAIN_REGISTER()` in the leaf's `src/*.c`.
-    fn app_main();
+    /// The app's entry, defined in the leaf's `src/*.c` beside its
+    /// `NROS_APP_MAIN_REGISTER()`.
+    fn nros_app_main(argc: i32, argv: *mut *mut core::ffi::c_char) -> i32;
 }
 
 /// Keep `nros-c`'s `#[no_mangle]` C surface in the link.
@@ -68,12 +69,19 @@ fn main() -> ! {
     // would also be a second site for one fact.
 
     // Clock + LAN9118/smoltcp bring-up, the `nros_log` sink list, then us.
+    //
+    // Issue 1770 — the app's STATUS decides how QEMU exits. This used to call
+    // the macro's `void app_main(void)`, which has nowhere to return a status,
+    // and then return `Ok`, so a failed app exited QEMU with success. Calling
+    // `nros_app_main` is the `int main` shim's shape (`<nros/app_main.h>`): no
+    // weak/strong recorder pair, so nothing depends on which archive member
+    // the linker happens to load. `run_bare` maps `Err` to `exit_failure`.
     run_bare(Config::default(), |_cfg| {
-        // SAFETY: `app_main` is the C entry the header's own macro emits; it
-        // takes no arguments and returns nothing. The board is up by the time
-        // `run_bare` calls this closure, which is the ordering the C side
-        // assumes and cannot check.
-        unsafe { app_main() };
-        Ok::<(), core::convert::Infallible>(())
+        // SAFETY: `nros_app_main` is the C entry every leaf defines; `argc = 0`
+        // with a null `argv` is what the header's own VOID shim passes. The
+        // board is up by the time `run_bare` calls this closure, which is the
+        // ordering the C side assumes and cannot check.
+        let status = unsafe { nros_app_main(0, core::ptr::null_mut()) };
+        if status == 0 { Ok(()) } else { Err(status) }
     })
 }

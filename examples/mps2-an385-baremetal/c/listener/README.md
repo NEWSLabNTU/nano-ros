@@ -4,7 +4,7 @@ Subscribes to `std_msgs/String` on `/chatter` and logs `I heard: [...]`. An ordi
 all** — the same program as `examples/mps2-an385-freertos/c/listener/`.
 
 Same shape as [`../talker`](../talker/README.md), whose README explains it: the
-link root is Rust (`src/main.rs` boots the board and calls `app_main()`), and
+link root is Rust (`src/main.rs` boots the board and calls `nros_app_main()`), and
 `build.rs` compiles `src/listener.c` plus the message bindings into it. Both of those
 files are byte-identical to the talker's; this leaf differs in `package.xml` and
 `src/listener.c` only, plus `nros-codegen.toml`. No libc, and no

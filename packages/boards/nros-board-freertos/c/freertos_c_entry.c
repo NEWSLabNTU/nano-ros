@@ -70,6 +70,20 @@ extern void nros_platform_register_log_writer(void (*writer)(uint8_t, const uint
 /* the user application (nros-c's NROS_APP_MAIN macro emits it) */
 extern void app_main(void);
 
+/* Issue 1770 — the strong recorder for `<nros/app_main.h>`'s VOID shim, which
+ * hands it `nros_app_main`'s status (as an exit code, 0 iff success) just
+ * before its `app_main` returns. It must live in THIS object, beside the call
+ * to `app_main` below: the shim carries a weak no-op of its own, and a linker
+ * never pulls an archive member merely to replace a weak definition (issue
+ * 1752 — the same pair `threadx_hooks.c` defines). Declared here rather than by
+ * including the header, matching the `app_main` declaration above. */
+void nros_app_main_returned(int exit_code);
+static volatile int s_app_exit_code = 0;
+
+void nros_app_main_returned(int exit_code) {
+    s_app_exit_code = exit_code;
+}
+
 /* ---- Semihosting stdio ----
  * Newlib's printf calls _write(fd, buf, len). With -nostartfiles, the
  * semihosting file handles for stdin/stdout/stderr aren't opened by crt0.
@@ -524,10 +538,21 @@ static void app_task_entry(void* arg) {
     report_app_stack_peak();
     report_heap_peak();
 
-    /* Semihosting exit */
+    /* Semihosting exit, carrying the app's status (issue 1770).
+     *
+     * `SYS_EXIT_EXTENDED` (0x20), whose argument is a block
+     * `{ reason, subcode }` on every architecture. This was `SYS_EXIT` (0x18)
+     * with that same block — the A64 calling convention. On A32/T32 `SYS_EXIT`
+     * takes the REASON itself in `r1`, so QEMU read the block's ADDRESS as the
+     * reason, found it was not `ADP_Stopped_ApplicationExit`, and exited 1
+     * whatever the app did (QEMU `arm-compat-semi.c`; measured: a C
+     * service-client that completed and printed `Goodbye!` exited QEMU with 1).
+     * With the extended call QEMU exits with the subcode: 0 iff the app
+     * succeeded. */
     {
-        uint32_t exit_args[2] = {0x20026, 0}; /* ADP_Stopped_ApplicationExit */
-        __asm__ volatile("mov r0, #0x18\nmov r1, %0\n" NROS_SEMIHOST_TRAP
+        uint32_t exit_args[2] = {0x20026, /* ADP_Stopped_ApplicationExit */
+                                 (uint32_t) s_app_exit_code};
+        __asm__ volatile("mov r0, #0x20\nmov r1, %0\n" NROS_SEMIHOST_TRAP
                          :
                          : "r"(exit_args)
                          : "r0", "r1", "memory");
