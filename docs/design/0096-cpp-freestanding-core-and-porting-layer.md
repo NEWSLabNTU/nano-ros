@@ -702,6 +702,45 @@ Issue **1335** narrows accordingly: not "where should entity storage live", but
 "the C++ API uses the poll path where it means the dispatch path, and carries
 storage for both".
 
+#### The C half (amendment, 2026-10-11, phase-487)
+
+Issue 1335's last question was whether `nros-c` follows the same rule. It does
+(maintainer, 2026-10-10): **an entity the executor dispatches is owned by the
+executor, and its C struct holds the arena handle, not the entity.** The C
+user still DECLARES the struct (`nros_subscription_t sub;`), which is rclc's
+idiom, since `rcl_subscription_t` is also caller-declared; what changes is
+the struct's content. Implemented by
+[phase-487](../roadmap/phase-487-c-api-dispatch-entities-are-arena-handles.md).
+
+**What a dispatched C struct keeps.** The arena handle `(handle_id, _executor)`
+and, until registration, the entity's DESCRIPTION: topic or service name, type
+name, type hash, QoS, node and requested scheduling context. The description
+has to be in the struct because rclc's order is init first and
+`rclc_executor_add_*` second, so at init there is no executor yet to hold it.
+The callback and its context are NOT kept: they are arguments of the
+registration call, as in rclc, and the arena entry owns them.
+
+**Polled forms are separate types (shape 1 of phase-487 W1).** A polled entity
+has no arena slot, so it needs its storage, and one type holding both meant
+every dispatched entity carried the polled form's storage unused. So each
+polled form is its own type with its own `nros_polling_<kind>_*` functions,
+matching C++'s `PollSubscription` / `PollService` / `PollClient` and Rust's
+`create_polling_*`. "A polled entity cannot be added to an executor" becomes
+a type error instead of a state check. Shape 2 (one type, storage used only by
+the polled form) was rejected because it keeps exactly the dead storage this
+amendment removes.
+
+| entity | C struct after phase-487 | polled form |
+| --- | --- | --- |
+| subscription | handle + description (W1) | `nros_polling_subscription_t` |
+| publisher | caller storage, unchanged: nothing dispatches it | — |
+
+Measured (sizeof, the shipped host feature set and thumbv7m): a dispatched
+`nros_subscription_t` went from 2 536 to 744 bytes on x86_64 and from 2 368 to
+700 on Cortex-M3. The executor arena does NOT grow by the difference: on the
+dispatched road the arena already held the subscriber, so the struct's
+`_opaque` was a second, unused copy, not storage being moved.
+
 #### What the alternatives above are now for
 
 They are the record of two wrong framings, kept because the question that

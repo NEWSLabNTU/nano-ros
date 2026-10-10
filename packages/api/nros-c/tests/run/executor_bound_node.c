@@ -133,9 +133,9 @@ static void eager_creates(const nros_node_t* node, const char* label, const char
     snprintf(msg, sizeof(msg), "%s: publisher reached the backend under its RESOLVED name", label);
     CHECK_STR(nros_stub_rmw_last_entity_name(), expected_topic, msg);
 
-    nros_subscription_t subscription = rcl_get_zero_initialized_subscription();
+    nros_polling_subscription_t subscription = nros_get_zero_initialized_polling_subscription();
     nros_stub_rmw_clear_last_entity_name();
-    out->subscription = nros_subscription_init_polling(&subscription, node, &MSG_TYPE, "chatter");
+    out->subscription = nros_polling_subscription_init(&subscription, node, &MSG_TYPE, "chatter");
     snprintf(msg, sizeof(msg),
              "%s: polling subscription reached the backend under its RESOLVED name", label);
     CHECK_STR(nros_stub_rmw_last_entity_name(), expected_topic, msg);

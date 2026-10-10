@@ -1346,7 +1346,7 @@ pub unsafe extern "C" fn rclc_executor_set_semantics(
 /// namespace(...).sched(...).build()`. Materialises a Node inside the
 /// executor's node table and stores the returned NodeId in
 /// `node.node_id` so subsequent
-/// [`nros_executor_add_subscription`] / `_service` / `_client` /
+/// [`nros_executor_add_subscription_raw`] / `_service` / `_client` /
 /// `_action_*` calls route through `register_*_on(NodeId, ...)`
 /// instead of the legacy single-Node path.
 ///
@@ -1896,45 +1896,6 @@ unsafe fn register_subscription_entry(
     NROS_RET_OK
 }
 
-/// Add a subscription to the executor.
-///
-/// Extracts metadata from the subscription struct and registers a raw-bytes
-/// callback with the internal nros-node executor. The RMW subscriber handle
-/// is created here (moved from subscription init).
-///
-/// # Safety
-/// * All pointers must be valid and point to initialized objects
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_add_subscription(
-    executor: *mut nros_executor_t,
-    subscription: *mut nros_subscription_t,
-    invocation: nros_executor_handle_invocation_t,
-) -> nros_ret_t {
-    validate_not_null!(executor, subscription);
-    register_subscription_entry(
-        executor,
-        subscription,
-        invocation,
-        |rust_exec, node_id, topic, type_name, type_hash, qos| {
-            // Read here, after the state checks, so an uninitialised
-            // subscription still answers NOT_INIT rather than "no callback".
-            let Some(callback) = (*subscription).get_callback() else {
-                return Err(NROS_RET_INVALID_ARGUMENT);
-            };
-            let context = (*subscription).get_context();
-            // Phase 189.M2.b — the single kept C-FFI subscription core.
-            rust_exec
-                .add_arena_subscription_c_callback::<MESSAGE_BUFFER_SIZE>(
-                    node_id, topic, type_name, type_hash, qos, callback, context,
-                    None, // Phase 273 W3: group threading is via nros_executor_add_subscription_in_group
-                    // phase-402 W2 — this path states no hint; 0 = no opinion.
-                    0,
-                )
-                .map_err(|_| NROS_RET_ERROR)
-        },
-    )
-}
-
 /// phase-417 W5.a — the deserialiser handed to
 /// [`nros_executor_add_subscription_typed`].
 ///
@@ -1993,7 +1954,7 @@ pub type nros_typed_subscription_callback_t =
 /// operates under the same constraint, so the stated reason was refuted by the
 /// thing it was compared against (issue 1022, W-C3).
 ///
-/// The byte-oriented [`nros_executor_add_subscription`] is untouched and stays.
+/// The byte-oriented [`nros_executor_add_subscription_raw`] is untouched and stays.
 /// This is additive; a raw subscriber is a legitimate thing to want.
 ///
 /// # What the callback sees when decoding fails
@@ -2010,25 +1971,14 @@ pub type nros_typed_subscription_callback_t =
 /// (`str_len > max_len`), and a bounded sequence fails on
 /// `len > capacity` — both return `-1` rather than writing a short value.
 ///
-/// # The subscription's own callback and context are not used on this path
-/// `subscription->callback` and `subscription->context` (given to
-/// `nros_subscription_init`) belong to the RAW registration and are **not read
-/// here**: the typed callback and its `context` are supplied at registration,
-/// exactly as rclc's `rclc_executor_add_subscription_with_context` does. Taking
-/// the context from two places would be two sources for one value and therefore
-/// a place for them to disagree.
-///
-/// What IS read from the subscription is what describes the ENTITY — topic,
-/// type name, type hash, QoS, node binding, and the scheduling context
-/// requested via `nros_subscription_init_with_options`.
-///
-/// CORRECTED 2026-09-13 — this paragraph used to say `nros_subscription_init`
-/// rejects a NULL callback, so a typed-only user had to pass one that never
-/// fires, and to leave the fix to `nros/subscription.h`'s owner. Both halves
-/// are stale: the six-argument `nros_subscription_init` is GONE (stage 6 step
-/// B) and `rclc_subscription_init_default` takes no callback at all, so a
-/// typed-only caller passes nothing to leave NULL. `nros_subscription_init_with_qos`
-/// still accepts one in the old position and accepts NULL there.
+/// # What is read from the subscription
+/// What describes the ENTITY — topic, type name, type hash, QoS, node binding,
+/// and the scheduling context requested via
+/// `nros_subscription_init_with_options`. The typed callback and its `context`
+/// are supplied here, exactly as rclc's
+/// `rclc_executor_add_subscription_with_context` does, and the arena entry
+/// owns them; the subscription struct has had no callback field since
+/// phase-487 W1.
 ///
 /// # Safety
 /// * `executor` and `subscription` must be valid, initialised objects.
@@ -2131,9 +2081,15 @@ pub unsafe extern "C" fn nros_executor_add_subscription_typed_sized(
 /// wear its name (RFC-0089's compile-or-conform rule — a plausible name over an
 /// opposite data contract is the defect the RFC exists to prevent).
 ///
-/// `callback` may be NULL, which registers the subscription with nothing to
-/// dispatch — the same state `nros_executor_add_subscription` sees for a
-/// subscription initialised by `rclc_subscription_init_default` alone.
+/// The arena entry owns `callback` and `context` from here on; the
+/// subscription struct keeps neither (phase-487 W1). This replaced the
+/// three-argument `nros_executor_add_subscription`, which dispatched the
+/// callback an init call had stored in the struct.
+///
+/// # Returns
+/// As [`nros_executor_add_subscription_typed`]; `NROS_RET_INVALID_ARGUMENT`
+/// for a NULL `callback`, since an entry with nothing to dispatch would hold a
+/// subscriber and a slot for no reader.
 ///
 /// # Safety
 /// * `executor` and `subscription` must be valid, initialised objects.
@@ -2147,9 +2103,27 @@ pub unsafe extern "C" fn nros_executor_add_subscription_raw(
     invocation: nros_executor_handle_invocation_t,
 ) -> nros_ret_t {
     validate_not_null!(executor, subscription);
-    (*subscription).callback = callback;
-    (*subscription).context = context;
-    nros_executor_add_subscription(executor, subscription, invocation)
+    register_subscription_entry(
+        executor,
+        subscription,
+        invocation,
+        |rust_exec, node_id, topic, type_name, type_hash, qos| {
+            // Checked here, after the state checks, so an uninitialised
+            // subscription still answers NOT_INIT rather than "no callback".
+            let Some(callback) = callback else {
+                return Err(NROS_RET_INVALID_ARGUMENT);
+            };
+            // Phase 189.M2.b — the single kept C-FFI subscription core.
+            rust_exec
+                .add_arena_subscription_c_callback::<MESSAGE_BUFFER_SIZE>(
+                    node_id, topic, type_name, type_hash, qos, callback, context,
+                    None, // Phase 273 W3: group threading is via nros_executor_add_subscription_in_group
+                    // phase-402 W2 — this path states no hint; 0 = no opinion.
+                    0,
+                )
+                .map_err(|_| NROS_RET_ERROR)
+        },
+    )
 }
 
 /// Phase 189.M3.4 — register a raw subscription whose callback also receives
@@ -2158,7 +2132,7 @@ pub unsafe extern "C" fn nros_executor_add_subscription_raw(
 /// generic-with-info subscription). Direct-arg form (no `nros_subscription_t`
 /// struct): the callback signature differs from the plain
 /// `nros_subscription_callback_t`, so this is its own entry point rather than
-/// a flag on `nros_executor_add_subscription`.
+/// a flag on `nros_executor_add_subscription_raw`.
 ///
 /// **Not removable** (issue 1668): it takes no subscription object and hands
 /// back nothing, so its entry — slot, arena bytes and subscriber — lives
@@ -2280,7 +2254,7 @@ pub unsafe extern "C" fn nros_executor_add_subscription_raw_with_info(
 /// `callback` field is left untouched; `callback` here is the one dispatched.
 ///
 /// # Returns
-/// As [`nros_executor_add_subscription`]; `NROS_RET_INVALID_ARGUMENT` for a
+/// As [`nros_executor_add_subscription_raw`]; `NROS_RET_INVALID_ARGUMENT` for a
 /// NULL `callback`.
 ///
 /// # Safety
@@ -2437,10 +2411,14 @@ pub unsafe extern "C" fn rclc_executor_add_timer(
 
 /// Phase 273 (RFC-0047) — register a subscription in a named callback group.
 ///
-/// Identical to `nros_executor_add_subscription` but additionally passes
-/// the group name to the executor so the seeded `group_sched_table` can bind
-/// the callback to the group's `SchedContext`. `callback_group` may be NULL or
-/// an empty string — both behave identically to `nros_executor_add_subscription`.
+/// Identical to [`nros_executor_add_subscription_raw`] but additionally
+/// passes the group name to the executor so the seeded `group_sched_table`
+/// can bind the callback to the group's `SchedContext`. `callback_group` may
+/// be NULL or an empty string — both behave identically to
+/// `nros_executor_add_subscription_raw`.
+///
+/// phase-487 W1 — `callback` and `context` are arguments here, as on the
+/// `_raw` path; the subscription struct no longer stores them.
 ///
 /// # Safety
 /// All non-NULL pointers must be valid and point to initialized objects.
@@ -2448,6 +2426,8 @@ pub unsafe extern "C" fn rclc_executor_add_timer(
 pub unsafe extern "C" fn nros_executor_add_subscription_in_group(
     executor: *mut nros_executor_t,
     subscription: *mut nros_subscription_t,
+    callback: crate::subscription::nros_subscription_callback_t,
+    context: *mut core::ffi::c_void,
     invocation: nros_executor_handle_invocation_t,
     callback_group: *const c_char,
 ) -> nros_ret_t {
@@ -2487,11 +2467,10 @@ pub unsafe extern "C" fn nros_executor_add_subscription_in_group(
             &subscription_ref.type_hash[..subscription_ref.type_hash_len],
         );
         let qos = subscription_ref.get_qos_settings();
-        let callback = match subscription_ref.get_callback() {
+        let callback = match callback {
             Some(cb) => cb,
             None => return NROS_RET_INVALID_ARGUMENT,
         };
-        let context = subscription_ref.get_context();
 
         set_executor_node_identity(rust_exec, subscription_ref.node);
         // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps

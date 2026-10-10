@@ -1676,7 +1676,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
 
     /// Phase 252 / issue 0073 — raw receive that also returns the E2E
     /// [`IntegrityStatus`](nros_rmw::IntegrityStatus) (CRC + sequence gap/dup) for
-    /// the C/C++ `nros_subscription_take_validated` path. The validator lives
+    /// the C/C++ `nros_polling_subscription_take_validated` path. The validator lives
     /// in the backend handle (`take_validated`), so no typed message is needed;
     /// the payload lives in [`buffer`](Self::buffer). `crc_valid == None` when the
     /// wire sample carried no CRC (e.g. a publisher built without `safety-e2e`).

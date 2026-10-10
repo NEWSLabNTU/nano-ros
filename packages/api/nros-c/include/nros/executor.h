@@ -35,9 +35,15 @@
  * exported symbol, not a stage-6 rename. Note what the retirement costs this
  * one macro — it used to warn on the way through, and now resolves silently
  * until the 0338 aliases are themselves retired.
+ *
+ * phase-487 W1 — `nros_executor_register_subscription` is gone with its target:
+ * the three-argument `nros_executor_add_subscription` dispatched a callback the
+ * subscription struct stored, and that struct no longer stores one. Its
+ * replacement takes the callback, `nros_executor_add_subscription_raw`, so the
+ * alias could not forward without changing arity. `_in_group` kept its alias
+ * and gained the same two arguments.
  */
 #ifndef NROS_NO_DEPRECATED_EXECUTOR_REGISTER_ALIASES
-#define nros_executor_register_subscription nros_executor_add_subscription
 #define nros_executor_register_subscription_raw_with_info                                          \
     nros_executor_add_subscription_raw_with_info
 #define nros_executor_register_subscription_in_group nros_executor_add_subscription_in_group

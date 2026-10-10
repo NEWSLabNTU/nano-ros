@@ -1145,7 +1145,7 @@ pub unsafe extern "C" fn nros_node_resolve_name(
 ///
 /// **Why this exists.** Most C entities are created at REGISTRATION, not at
 /// init: `nros_subscription_init` only records the request and
-/// `nros_executor_add_subscription` builds the entity — and that path resolves
+/// `nros_executor_add_subscription_*` builds the entity — and that path resolves
 /// the name (`executor.rs`, eight sites, `Executor::resolve_entity_name`).
 /// Publishers and polling subscriptions have no registration step, so they
 /// create inside `*_init` and never reached that seam. The result was a

@@ -1,6 +1,6 @@
 # Phase 487 — the C API's dispatched entities are arena handles; its publisher keeps its storage
 
-**Status (2026-10-10). Opened.** Answers issue
+**Status (2026-10-11). In progress: W0 and W1 done.** Answers issue
 [1335](../issues/1335-entity-storage-split-timer-arena-vs-caller-buffer.md)'s
 last open question (its question 3: does the C API follow the C++ entity
 model?). Implements the C half of
@@ -81,6 +81,32 @@ trap for the executor backing.
   service and a timer (for example `examples/native/c/listener` plus a
   FreeRTOS twin), before and after. The acceptance number is the NET change.
 
+**Status: done 2026-10-11.** `sizeof`, read from the symbol size of a
+`char[sizeof(T)]` per type (`nm -S`), so one probe TU measures a cross target
+without running it. Host arm: `nros-c` with the shipped C features
+(`std,rmw-cffi,platform-posix,ros-humble`). Cortex-M3 arm: the same crate for
+`thumbv7m-none-eabi` with `rmw-cffi,ros-humble`, whose build script emits the
+per-target opaque sizes. Before:
+
+| type | x86_64 | thumbv7m |
+| --- | ---: | ---: |
+| `nros_subscription_t` | 2 536 | 2 368 |
+| `nros_service_t` | 2 368 | 2 312 |
+| `nros_client_t` | 2 376 | 2 312 |
+| `nros_timer_t` | 72 | 48 |
+| `nros_action_server_t` | 7 592 | 7 312 |
+| `nros_action_client_t` | 6 296 | 6 136 |
+| `nros_publisher_t` (unchanged by design) | 1 312 | 1 264 |
+| `nros_executor_t` | 90 928 | 89 240 |
+
+**The arena does not grow, which removes the trap W0 was written against.**
+`nros_executor_t`'s arena is a fixed array (`EXECUTOR_OPAQUE_U64S`), and on
+the dispatched road it ALREADY held each entity: `nros_executor_add_*`
+creates the subscriber inside it, so the struct's `_opaque` was a second,
+unused copy. The NET change for a dispatched entity is the struct shrinkage
+alone, and the per-W rows below state it. The `mem-report` half of W0 is
+taken in W5 on the listener images, where the entities are `.bss` statics.
+
 ### W1 — subscriptions
 
 - Decide the polling shape (above) and write it into RFC-0096 D9 as the C
@@ -91,6 +117,38 @@ trap for the executor backing.
   it can be).
 - `nros_executor_add_subscription*` takes the callback and the context and
   owns them. The struct no longer stores either.
+
+**Status: done 2026-10-11.** Shape 1. The dispatched `nros_subscription_t`
+keeps the arena handle plus the registration description (topic, type, hash,
+QoS, node, scheduling context): rclc's order is init first and
+`rclc_executor_add_*` second, so the description has nowhere else to wait.
+`callback`, `context` and `_opaque` are gone.
+
+- `nros_subscription_init_with_qos` / `_with_options` lost `callback` and
+  `context` (now rclc's `rclc_subscription_init` shape plus our name).
+- `nros_executor_add_subscription(exec, sub, invocation)` is deleted: it
+  dispatched the stored callback, and nothing in the tree called it.
+  `nros_executor_add_subscription_raw` registers through the shared
+  `register_subscription_entry` with its own callback; `_in_group` gained
+  `callback` and `context`.
+- New `nros_polling_subscription_t` (state, node, `_opaque`) with
+  `nros_polling_subscription_{init,init_with_qos,take_serialized,
+  take_sequence,take_validated,borrow,release,set_wake_callback,
+  get_actual_qos,fini}` and `nros_get_zero_initialized_polling_subscription`.
+  The polled init reads the names into locals: the polled struct keeps the
+  subscriber, not the description.
+- RFC-0096 D9 gained "The C half", which records the rule and shape 1.
+
+| type | x86_64 | thumbv7m |
+| --- | ---: | ---: |
+| `nros_subscription_t` | 2 536 → **744** | 2 368 → **700** |
+| `nros_polling_subscription_t` (new) | 1 792 | 1 672 |
+
+Consumers: `examples/native/c/safety-listener` (the one polled C example) and
+four C test TUs; the api-parity ledger renamed eight rows and recorded the
+removed name as rclc's theirs-only `executor_add_subscription`. Sweep:
+`git grep -nE "nros_subscription_(init_polling|take_|borrow|release|set_wake)|nros_executor_add_subscription\(" -- ':!docs'`
+returns nothing outside history.
 
 ### W2 — services and clients
 

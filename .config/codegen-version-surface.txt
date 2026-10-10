@@ -12,7 +12,7 @@
 #
 # Regenerate after a DELIBERATE surface move (bump the constant first):
 #     python3 scripts/check-codegen-version-surface.py --write-baseline
-version 10
+version 11
 9a40c1a1fadbae06 cpp|fn|component.hpp|bind_subscription_sized
 4e2616f1497bc854 cpp|struct|fixed_sequence.hpp|FixedSequence
 05b2ecfd67796b30 cpp|struct|fixed_string.hpp|FixedString
@@ -129,7 +129,7 @@ c84567578384362e c|type|rcl_compat.h|nros_publisher_t
 38d790f4151b248f c|type|serialization_format.h|NROS_ASSERT_MESSAGE_FORMAT
 cac997410f96c269 c|type|service.h|nros_node_t
 37acab7d545df003 c|type|service.h|nros_service_init_with_qos
-ef2d34463c53305d c|type|subscription.h|nros_message_type_t
+31765f402a7474e9 c|type|subscription.h|nros_message_type_t
 7871dc125ca7c4e0 c|type|timer.h|NROS_RET_INVALID_ARGUMENT
 5bb13590faea8e7f c|type|view.h|nros_le_slice_view_
 54616a685e37b195 c|type|view.h|nros_view_bytes_t
