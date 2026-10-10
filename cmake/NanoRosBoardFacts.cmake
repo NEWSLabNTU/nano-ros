@@ -70,6 +70,17 @@ function(nros_resolve_board_facts)
     # turn into a silent skip, dropping the tier/sizing facts out of the image
     # with a STATUS line at best.
     set(_deploy "${_A_DEPLOY}")
+    # phase-484 W2b — a standalone leaf's `NROS_DEPLOY` is its PLATFORM token
+    # (`threadx`, `freertos`), and `board-facts --deploy` matches the KEYS of
+    # the leaf's `[image.*]`/`[deploy.*]` tables (`threadx-linux`). Forwarding
+    # the platform made every C/C++ leaf an "no [image.threadx]" refusal,
+    # which this file soft-skips — latent until W2b moved FREERTOS_PORT and
+    # THREADX_CONFIG_DIR off the repo-wide export and onto exactly this
+    # delivery, at which point `zpico-sys` panicked on every such leaf. The
+    # leaf's resolved image id names the right row.
+    if(_deploy STREQUAL "" AND DEFINED NROS_LEAF_IMAGE_ID)
+        set(_deploy "${NROS_LEAF_IMAGE_ID}")
+    endif()
     if(_deploy STREQUAL "" AND DEFINED NROS_DEPLOY)
         set(_deploy "${NROS_DEPLOY}")
     endif()
