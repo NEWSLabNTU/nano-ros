@@ -217,6 +217,35 @@ The generated cmake root lists **every** image on that coordinate, not just the
 one being built: what a coordinate contains is a property of the workspace, and
 making it depend on which image you asked for would reconfigure on every switch.
 
+### An image with its own configuration gets its own configure
+
+One cmake configure builds the nano-ros runtime (`nros-c` / `nros-cpp` and the
+RMW) **once** for every image on it, so a knob only one image states — a
+`[image.<id>] env` row such as `NROS_LOG_MAX_LEVEL = "warn"` — would have no
+build to land in. So an image whose resolved configuration differs gets its own
+configure, keyed by a hash of that configuration (RFC-0098 D12, phase-481 W4):
+
+```toml
+[image.plain]            # states nothing -> build/posix-zenoh-native/
+board = "native"
+
+[image.warn]             # -> build/posix-zenoh-native-cfga50aa93c83/
+board = "native"
+env = { NROS_LOG_MAX_LEVEL = "warn", NROS_EXECUTOR_MAX_CBS = "13" }
+```
+
+(`packages/testing/nros-tests/fixtures/image_config_ws`; each binary prints
+what its runtime compiled in.) Images whose configuration is the SAME share one
+configure, `-cfg` suffix and all, and a workspace whose images state nothing
+keeps today's `build/<coordinate>/` paths exactly. The cost is one more
+configure and one more runtime build per distinct configuration — the reason to
+put a knob that every image on a board shares in the board's `[board.knobs]`
+instead, where it changes no image's hash. `nros image-facts` prints each
+image's `cmake_build_dir`; never derive it by hand.
+
+On Zephyr the same `env` rows are rendered into the image's Kconfig fragment
+instead (see [Configuring an image](zephyr.md#configuring-an-image-systemtoml-not-prjconf)).
+
 The generated entry is the same few lines you would have written. RFC-0065 D4
 measured them before deciding to derive them: every Rust entry in the tree was
 **≤ 6 non-comment lines**, every embedded C/C++ entry had **zero** source

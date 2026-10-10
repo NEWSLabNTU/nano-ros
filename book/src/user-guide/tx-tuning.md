@@ -87,6 +87,11 @@ latency-sensitive** topics (control setpoints, e-stop), never for streams.
 | split tx locking | `CONFIG_NROS_ZENOH_TX_SPLIT_LOCK=y` | `ZPICO_TX_SPLIT_LOCK=1` | `-DZ_FEATURE_TX_SPLIT_LOCK=1` (shared config) | off |
 | per-publisher express | `tx_express` in the QoS profile (all languages, below) | same | same | off |
 
+On Zephyr the Kconfig column names the symbol the build ends up with; you
+state it as an image `env` row in `system.toml`, without the `CONFIG_`
+prefix — `env = { NROS_ZENOH_TX_BATCH = "1", NROS_ZENOH_SOCKET_TIMEOUT_MS = "5" }` —
+never in `prj.conf` (phase-481).
+
 All of these are **compile-time** knobs (embedded images have no runtime
 config), and all default **off** — an untuned build is byte-identical to
 pre-279 behavior.

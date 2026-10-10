@@ -73,9 +73,10 @@ is lowered to cargo features and CMake cache variables — is specified in
 On embedded platforms the backend is fixed at **compile time** like
 everything else — there is nothing to switch on the device. Each
 platform surfaces the same choice through its own configuration
-mechanism; on Zephyr, for instance, it is a Kconfig choice
-(`CONFIG_NROS_RMW_ZENOH` / `CONFIG_NROS_RMW_XRCE` /
-`CONFIG_NROS_RMW_CYCLONEDDS`, exactly one selected).
+mechanism; on Zephyr, for instance, the image's `rmw` in `system.toml` is
+rendered into a Kconfig choice (`CONFIG_NROS_RMW_ZENOH` /
+`CONFIG_NROS_RMW_XRCE` / `CONFIG_NROS_RMW_CYCLONEDDS`, exactly one), never
+written in a conf file (phase-481).
 
 See the platform guides for the concrete per-platform workflow:
 

@@ -1,6 +1,6 @@
 # Phase 481 -- image configuration has one source: `system.toml` on every road
 
-**Status (2026-10-09). W0-W4 LANDED; W5 open.** D11's
+**Status (2026-10-11). W0-W4 LANDED; W5 docs done (issue 1721 archived); OPEN only for tier 2 (`just ci matrix`) on the Zephyr cells, which W3 could not run for disk.** D11's
 locator revision (the module's `module_ext_root` hook instead of a leaf helper)
 was DECIDED by the user on 2026-10-07 (option "A") and is what W1 built,
 measured on Zephyr 3.7 and 4.4, on the fixture road and on a plain `west build`
@@ -10,7 +10,7 @@ with nano-ros as a west project. W3 drained W2's ratchet to an EMPTY baseline
 except the listed deliberate changes) and closed issue 1757. Implements
 [RFC-0098](../design/0098-generated-leaf-build-config.md) D10-D12 (and the
 pointer it adds to [RFC-0049](../design/0049-hierarchical-platform-board-config.md)).
-Closes issue [1721](../issues/1721-image-env-west-and-workspace-cmake-roads.md).
+Closes issue [1721](../issues/archived/1721-image-env-west-and-workspace-cmake-roads.md).
 
 **Prior:** issue 1712 (archived -- a standalone C/C++ leaf's `[image.<id>] env`
 reaches its cargo builds through an unforced `--config` `[env]` file; that
@@ -651,6 +651,31 @@ exactly today's `build/<coord>/` paths (the book's paths are unchanged).
 
 **Acceptance:** `just ci gate` green; tier 2 (`just ci matrix`) green for the
 Zephyr cells; issue 1721 archived.
+
+**Done (2026-10-11).** Book: `getting-started/zephyr.md` replaces its
+`prj.conf` RMW/API sections with "Configuring an image" (what `system.toml`
+renders, one image per RMW, `-DNROS_IMAGE` and its cache stickiness,
+precedence); `integration-zephyr.md` (the BYO guide) puts the RMW, endpoint
+and knobs in `system.toml`; `workspace-entry-pkg.md` explains per-image
+configures and their cost; `rmw-backends`, `rmw-switching`, `tx-tuning`,
+`ros2-interop`, `porting-a-cpp-node` and the install-local migration note stop
+prescribing `CONFIG_NROS_*` in conf files. `docs/reference/canonical-build-path.md`
+states the west carrier. CLAUDE.md's conf-merge pitfall gains the rule. RFC-0098
+records D10-D12 as implemented (stays Draft while phase-445 is open). Issue 1721
+archived.
+
+The 4.x RMW snippets KEEP their `CONFIG_NROS_RMW_*` lines, revising the plan
+above: an application with no `system.toml` gets no rendering, so for it the
+snippet is the only RMW selector, and stripping it would silently put an XRCE
+or Cyclone app on zenoh. The defect was the SILENT loss, so the module hook now
+refuses a `-S nros-<rmw>` naming a different RMW than the image
+(`_nros_image_kconfig_check_snippets`; an agreeing snippet is redundant and
+accepted), and each snippet's header says when it applies. `-DNROS_IMAGE`
+sticking in the cache is documented as `-b` behaviour rather than changed: a
+stale value fails loudly, naming the declared images.
+
+Still open: tier 2 for the Zephyr cells; the follow-up that a derived pool
+value does not reach the Zephyr Rust lane (filed separately).
 
 ## Not in this phase
 

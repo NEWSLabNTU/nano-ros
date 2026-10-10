@@ -146,77 +146,117 @@ west build -b native_sim/native/64 ../examples/zephyr/rust/talker
 ./build/zephyr/zephyr.exe
 ```
 
-## RMW Backend Selection
+## Configuring an image: `system.toml`, not `prj.conf`
 
-nros supports three RMW backends on Zephyr, selected via `prj.conf`:
+An application's nano-ros configuration lives in ONE place, its
+`system.toml` (RFC-0098 D10, phase-481). The nano-ros Zephyr module renders
+the selected image into a Kconfig fragment and merges it **last**, after every
+conf file. So the `prj*.conf` files hold Zephyr's own settings only (networking,
+POSIX, stacks, heaps) and **never a `CONFIG_NROS_*` line**: one there is either
+dead (the image overrides it) or a second source that can disagree with the
+first. A gate (`check-leaf-conf-nros-knobs`) refuses one in the tree.
 
-### Zenoh (default)
+What the module renders, and from where:
 
-Connects to a zenoh router. Requires POSIX API for zenoh-pico threads.
+| You write in `system.toml` | The build gets |
+|---|---|
+| `[image.<id>] rmw = "xrce"` | `CONFIG_NROS_RMW_XRCE=y` |
+| (nothing — the package's language) | `CONFIG_NROS_{C,CPP,RUST}_API=y` |
+| `locator = "tcp/…"` (zenoh) | `CONFIG_NROS_ZENOH_LOCATOR` |
+| `locator = "udp/<host>:<port>"` (XRCE) | `CONFIG_NROS_XRCE_AGENT_ADDR` + `_PORT` |
+| `domain_id = 7` (image, `[defaults]` or `[system]`) | `CONFIG_NROS_DOMAIN_ID` |
+| `env = { NROS_MAX_QUERYABLES = "12" }` | `CONFIG_NROS_MAX_QUERYABLES=12` — any knob in the reference below, spelled without `CONFIG_` |
+| `conf = ["prj-xrce.conf"]` | that Zephyr-native fragment, added ahead of your own `EXTRA_CONF_FILE` |
 
-```ini
-CONFIG_NROS=y
-# CONFIG_NROS_RMW_ZENOH=y  # default, can be omitted
-CONFIG_NROS_ZENOH_LOCATOR="tcp/127.0.0.1:7447"
-CONFIG_POSIX_API=y
-CONFIG_MAX_PTHREAD_MUTEX_COUNT=32
-CONFIG_MAX_PTHREAD_COND_COUNT=16
+An `env` row with no Kconfig symbol is not lost: it reaches the image's cargo
+builds as an `[env]` row instead (issue 1712). A row whose type does not fit
+its symbol, or that only exists under another RMW, is refused at configure
+time, naming the `system.toml` line.
+
+### One image per RMW
+
+An application built for several backends states one image per RMW, and
+picks one at build time. From `examples/zephyr/c/talker/system.toml`:
+
+```toml
+[system]
+name = "nros_zephyr_talker_c"
+rmw = "zenoh"
+domain_id = 0
+default_images = ["zephyr_zenoh"]
+
+[image.zephyr_zenoh]
+board = "zephyr"
+rmw = "zenoh"
+conf = ["prj-zenoh.conf"]
+
+[image.zephyr_xrce]
+board = "zephyr"
+rmw = "xrce"
+conf = ["prj-xrce.conf"]
+locator = "udp/127.0.0.1:2018"
+env = { NROS_XRCE_MAX_SUBSCRIBERS = "0", NROS_XRCE_MAX_SERVICE_SERVERS = "0", NROS_XRCE_MAX_SERVICE_CLIENTS = "0" }
+
+[image.zephyr_cyclonedds]
+board = "zephyr"
+rmw = "cyclonedds"
+conf = ["prj-cyclonedds.conf"]
 ```
 
-### XRCE-DDS
-
-Connects to a Micro-XRCE-DDS Agent over UDP. Requires BSD sockets.
-
-```ini
-CONFIG_NROS=y
-CONFIG_NROS_RMW_XRCE=y
-CONFIG_NROS_XRCE_AGENT_ADDR="127.0.0.1"
-CONFIG_NROS_XRCE_AGENT_PORT=2018
-CONFIG_NET_SOCKETS=y
+```bash
+west build -b native_sim/native/64 ../examples/zephyr/c/talker                       # default_images: zenoh
+west build -b native_sim/native/64 ../examples/zephyr/c/talker -- -DNROS_IMAGE=zephyr_xrce
 ```
 
-### Cyclone DDS
+`-DNROS_IMAGE` is a CMake cache variable like any `-D`: re-running `west build`
+on the same build directory WITHOUT it keeps the image it last built, exactly
+as `-b` keeps the board. Pass it every time, or use `-p` when switching. A name
+the `system.toml` does not declare is refused, listing the ones it does.
 
-Brokerless RTPS, wire-compatible with stock ROS 2 (`rmw_cyclonedds_cpp`).
-Cyclone's source is C++, so `CONFIG_CPP=y` is required even for Rust
-callers. Cyclone is resource-heavy — it needs a large heap and pthread
-pools. Its `ddsrt_malloc` goes through the nano-ros platform heap
-(`CONFIG_NROS_ZEPHYR_HEAP_SIZE`, 1 MiB by default when Cyclone is selected),
-not picolibc's malloc arena, which keeps a 256 KiB Cyclone default. The bool prerequisites (thread-local storage,
-dynamic threads, `NET_TCP`, …) are `select`ed automatically by
-`CONFIG_NROS_RMW_CYCLONEDDS` in `zephyr/Kconfig`; the size knobs stay in
-`prj.conf`:
+Precedence, last wins: the conf files, then a 4.x `-S nros-<rmw>` snippet,
+then the image's rendering, then any `-DCONFIG_…` on the command line (how a
+test harness passes a per-run port). A snippet naming a DIFFERENT RMW than the
+image is refused rather than silently overridden; one that agrees is
+redundant. An application with no `system.toml` gets no rendering, so for it
+the snippets and Kconfig defaults still choose.
 
-```ini
-CONFIG_NROS=y
-CONFIG_NROS_RMW_CYCLONEDDS=y
-CONFIG_CPP=y
-CONFIG_POSIX_API=y
-CONFIG_NET_IPV4_IGMP=y                  # RTPS SPDP uses UDP multicast
-CONFIG_MAIN_STACK_SIZE=524288
-CONFIG_HEAP_MEM_POOL_SIZE=4194304
-CONFIG_NROS_ZEPHYR_HEAP_SIZE=1048576     # ddsrt's heap (the default; raise for big graphs)
-CONFIG_DYNAMIC_THREAD_STACK_SIZE=32768
-```
+### What each RMW's Zephyr-native fragment needs
+
+The image's `conf` file carries what the backend needs from Zephyr itself:
+
+- **Zenoh** (the Kconfig default): TCP and POSIX threads for zenoh-pico —
+  `CONFIG_NET_TCP=y`, `CONFIG_POSIX_API=y`, and pthread pools big enough for
+  it (`examples/zephyr/rust/talker/prj-zenoh.conf` uses
+  `CONFIG_MAX_PTHREAD_MUTEX_COUNT=64`, `CONFIG_MAX_PTHREAD_COND_COUNT=16`).
+- **XRCE-DDS**: `CONFIG_NET_TCP=y`, on top of the BSD sockets
+  (`CONFIG_NET_SOCKETS=y`) every image's shared `prj.conf` enables. The agent
+  endpoint is the image's `locator`.
+- **Cyclone DDS**: brokerless RTPS, wire-compatible with stock ROS 2
+  (`rmw_cyclonedds_cpp`). Its source is C++, so `CONFIG_CPP=y` even for Rust
+  callers; it needs a large stack (`CONFIG_MAIN_STACK_SIZE=524288`), pthread
+  pools, and `CONFIG_NET_IPV4_IGMP=y` for SPDP multicast. The bool
+  prerequisites (thread-local storage, dynamic threads, `NET_TCP`, …) are
+  `select`ed by `CONFIG_NROS_RMW_CYCLONEDDS`. Its `ddsrt_malloc` draws on the
+  nano-ros platform heap, 1 MiB by default under Cyclone — raise it with
+  `env = { NROS_ZEPHYR_HEAP_SIZE = "…" }` on the image, not in the conf.
 
 On `native_sim`, add the NSOS host-socket offload
-(`CONFIG_NET_SOCKETS_OFFLOAD=y` + `CONFIG_NET_NATIVE_OFFLOADED_SOCKETS=y`)
-so discovery uses host BSD sockets instead of zeth/TAP. See
-`examples/zephyr/rust/talker/prj-cyclonedds.conf` for the full overlay.
+(`CONFIG_NET_SOCKETS_OFFLOAD=y` + `CONFIG_NET_NATIVE_OFFLOADED_SOCKETS=y`) so
+discovery uses host BSD sockets instead of zeth/TAP. See
+`examples/zephyr/rust/talker/prj-cyclonedds.conf` for the full fragment.
 
 ## API Selection
 
-Choose between Rust and C APIs via `prj.conf`:
+The language API comes from the package itself — the module renders
+`CONFIG_NROS_RUST_API`, `CONFIG_NROS_C_API` or `CONFIG_NROS_CPP_API` from the
+package's entry language, so you never set it. What differs is the
+`CMakeLists.txt`.
 
-### Rust API (default)
+### Rust
 
-```ini
-CONFIG_NROS_RUST_API=y
-CONFIG_RUST=y
-CONFIG_RUST_ALLOC=y
-```
+`prj.conf` needs Zephyr's own Rust support (`CONFIG_RUST=y`,
+`CONFIG_RUST_ALLOC=y`), and `CMakeLists.txt` uses `rust_cargo_application()`:
 
-CMakeLists.txt uses `rust_cargo_application()`:
 ```cmake
 cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
@@ -224,13 +264,10 @@ project(my_example)
 rust_cargo_application()
 ```
 
-### C API
+### C
 
-```ini
-CONFIG_NROS_C_API=y
-```
+`CMakeLists.txt` uses `nros_generate_interfaces()`:
 
-CMakeLists.txt uses `nros_generate_interfaces()`:
 ```cmake
 cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
@@ -241,7 +278,11 @@ target_sources(app PRIVATE src/main.c)
 
 ## Kconfig Reference
 
-All options are under `menuconfig NROS` in `zephyr/Kconfig`.
+All options are under `menuconfig NROS` in `zephyr/Kconfig`. They are what the
+module RENDERS from `system.toml`: set one as an image `env` row with the
+`CONFIG_` dropped (`env = { NROS_MAX_PUBLISHERS = "4" }`), never in a conf
+file. The RMW, API, endpoint and domain rows have their own `system.toml`
+keys (table above).
 
 ### Common Options
 
@@ -292,7 +333,7 @@ build composes those, and the configure prints what it concluded:
 
 Three things to know before you rely on it:
 
-* **Anything you state wins.** A value in your `prj.conf`, a board `.conf`, or
+* **Anything you state wins.** A value in your image's `env`, a board `.conf`, or
   an environment override outranks the derivation, silently and in both
   directions. The derived number is a default, never an override.
 * **It is an UPPER BOUND.** The inventory covers every type in the interface

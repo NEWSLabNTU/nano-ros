@@ -685,6 +685,13 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   which is what actually applies. Read the build's own `Merged configuration`
   lines before editing a conf; a fix in the wrong file changes nothing and looks
   like it should.
+  **And a nano-ros knob is never authored in a conf file at all** (phase-481,
+  RFC-0098 D10/D11): the image's `system.toml` states the RMW, endpoint, domain
+  and every `env` knob, and the module renders it LAST, so a `CONFIG_NROS_*` line
+  in a leaf conf is overridden by construction — dead, or a second source that
+  disagrees. Gate: `check-leaf-conf-nros-knobs` (empty baseline). An image picks
+  its Zephyr-native fragment with `conf = ["prj-<rmw>.conf"]`; a leaf with several
+  images builds one with `-DNROS_IMAGE=<id>`, which STICKS in the cache like `-b`.
 - **A column-0 line inside a `just` recipe or a YAML `run:` block is parsed as
   SYNTAX, not as text** — so a heredoc is unusable there (its terminator must be
   at column 0), and `just`'s own body-dedent then fights any `sed` strip added to

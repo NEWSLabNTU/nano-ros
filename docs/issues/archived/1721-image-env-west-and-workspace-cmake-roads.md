@@ -1,18 +1,19 @@
 ---
 id: 1721
 title: "`[image.<id>] env` is still dropped on the Zephyr west road and the workspace cmake road"
-status: open
+status: resolved
 type: bug
 area: [build, config, zephyr, cmake]
 severity: medium
 found: 2026-10-06
+resolved: 2026-10-11
 related: [1712, rfc-0049, rfc-0098, phase-445, phase-481]
 ---
 
 ## Plan (2026-10-07)
 
-Owned by [phase-481](../roadmap/phase-481-image-config-one-source.md), from
-[RFC-0098](../design/0098-generated-leaf-build-config.md) D10-D12. The
+Owned by [phase-481](../../roadmap/phase-481-image-config-one-source.md), from
+[RFC-0098](../../design/0098-generated-leaf-build-config.md) D10-D12. The
 "precedence decision" below was the wrong question: on Zephyr the image's `env`
 and the leaf's `prj.conf` are two sources for one fact, so the fix removes one
 -- nano-ros knobs, the RMW choice and the deploy endpoint move to
@@ -24,6 +25,26 @@ Progress (2026-10-07): W4 (D12, the workspace cmake road) and W1/W2 (the Zephyr
 module hook renders `[image.<id>] env` into the build, and a ratchet gate keeps
 new nano-ros knobs out of example conf files) have landed. Open: W3 (migrate
 the Zephyr examples' conf files) and W5 (docs, close).
+
+## Resolution (2026-10-11)
+
+Both roads deliver the image's configuration now, from ONE source:
+
+- **Workspace cmake** — phase-481 W4 (#1778): an image whose resolved
+  configuration differs gets its own configure, `build/<coord>-cfg<hash>/`;
+  identical configurations share one, and a workspace whose images state
+  nothing keeps `build/<coord>/`. Measured by `image_config_workspace.rs`:
+  two images on one coordinate, each binary reporting its own
+  `NROS_EXECUTOR_MAX_CBS` / `NROS_LOG_MAX_LEVEL`.
+- **Zephyr west** — phase-481 W1/W2 (#1796): the module's `module_ext_root`
+  hook renders the image (RMW, API, endpoint, domain, every `env` row with a
+  Kconfig symbol) into `<build>/nros/<image>.conf`, last in
+  `EXTRA_CONF_FILE`; rows with no symbol ride issue 1712's `--config` file on
+  the Zephyr cargo commands. W3 (#1895) migrated every Zephyr example — 226
+  `CONFIG_NROS_*` conf lines moved or deleted, `.config` identical before and
+  after per leaf kind x RMW — and `check-leaf-conf-nros-knobs` now holds an
+  EMPTY baseline. The precedence question this issue asked is gone with the
+  second source.
 
 ## Summary
 

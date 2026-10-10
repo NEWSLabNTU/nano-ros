@@ -109,9 +109,16 @@ that states a value wins; a rung that is silent is not a zero.
 `nros-cargo.toml` `[env]`. CMake: `--config <build>/nros/nros-image-env.toml`
 on every cargo command the configure spawns (written by `nros ws leaf-system
 --image-env-out`), the same unforced `[env]`, so an exported variable still
-wins and a changed row re-runs the build scripts that read it. West: **not
-delivered** (issue 1721) — state the knob in the application's Kconfig; the
-configure warns rather than dropping the rows silently.
+wins and a changed row re-runs the build scripts that read it. West
+(phase-481 W1, RFC-0098 D11): the nano-ros module's `module_ext_root` hook
+renders the image into `<build>/nros/<image>.conf`, LAST in
+`EXTRA_CONF_FILE`, so a row with a Kconfig symbol reaches `$DOTCONFIG` and
+every build script reads it through its ladder; a row with none rides the same
+unforced `--config` `[env]` file on the Zephyr cargo commands. The image's
+RMW, endpoint and domain are rendered too, so a Zephyr leaf's conf files hold
+no nano-ros knob at all (gate `check-leaf-conf-nros-knobs`). A workspace
+image whose configuration differs gets its own cmake configure
+(`build/<coord>-cfg<hash>/`, D12).
 
 Beside the ladder sit two things that are **facts, not rungs**, and the
 distinction matters because a fact has no `$DOTCONFIG` counterpart:
