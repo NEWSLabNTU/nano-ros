@@ -8,6 +8,7 @@
 # `esp32dev` is PlatformIO's board id (`framework = "espidf"` deploys, issue
 # 0606): a framework id, so it lives in `[board.platformio]` below (issue 1652).
 names = ["esp32-qemu", "esp32", "esp32c3", "esp32-c3", "esp32-c3-baremetal"]
+cmake_module = "esp32-c3-baremetal"
 platform = "esp32"
 toolchain = "nightly"
 local_aliases = ["platform-esp32-qemu"]

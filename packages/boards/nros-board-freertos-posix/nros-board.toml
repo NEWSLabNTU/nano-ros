@@ -18,6 +18,7 @@
 #     without QEMU.
 [[board]]
 names = ["freertos-posix"]
+cmake_module = "freertos-posix"
 platform = "freertos"
 toolchain = "stable"
 # `hosted-main` and not the mps2 board's `board-run`: the image IS a host

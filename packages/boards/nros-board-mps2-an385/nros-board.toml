@@ -8,6 +8,7 @@
 # `nros-board-rtic-mps2-an385` crate was folded into it (see its Cargo.toml),
 # so RTIC is a feature of this board, not another one.
 names = ["baremetal", "bare-metal", "qemu-mps2-an385", "rtic-mps2-an385"]
+cmake_module = "mps2-an385-baremetal"
 platform = "bare-metal"
 toolchain = "stable"
 entry_kind = "board-run"

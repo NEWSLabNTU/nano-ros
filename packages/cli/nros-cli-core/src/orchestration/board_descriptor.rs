@@ -384,6 +384,19 @@ pub struct BoardDescriptor {
     /// through, which is what every existing descriptor relies on.
     #[serde(default)]
     pub west_board: Option<String>,
+    /// The cmake BOARD MODULE this board builds with —
+    /// `cmake/board/nano-ros-board-<cmake_module>.cmake` (phase-484 W4d).
+    ///
+    /// Same shape as `west_board`: the module stem is a third vocabulary, and
+    /// the authored `[image.*] board` used to reach cmake as the module name
+    /// verbatim, so an image naming the board by any OTHER of its aliases
+    /// (`freertos` for the mps2-an385 FreeRTOS board) configured against a
+    /// module file that does not exist. The descriptor now says which module
+    /// is its own; `check-board-cmake-module` holds every module file claimed
+    /// by exactly one board and every claim backed by a file. Absent for a
+    /// board no cmake road builds.
+    #[serde(default)]
+    pub cmake_module: Option<String>,
     pub platform: PlatformKind,
     /// rustc target triple this board pins, if any (`None` → take from plan).
     #[serde(default)]
@@ -2102,6 +2115,7 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
         let descriptor = BoardDescriptor {
             names: vec!["x".into()],
             west_board: None,
+            cmake_module: None,
             platform: PlatformKind::ThreadxRiscv64,
             target: None,
             toolchain: Toolchain::Stable,
@@ -2352,6 +2366,7 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
         boards.push(BoardDescriptor {
             names: vec!["native".into(), "posix".into()],
             west_board: None,
+            cmake_module: None,
             platform: PlatformKind::Posix,
             target: None,
             toolchain: Toolchain::Stable,

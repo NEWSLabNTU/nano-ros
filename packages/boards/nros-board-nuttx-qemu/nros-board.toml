@@ -18,6 +18,7 @@
 # renamed from `nuttx-qemu-arm` by phase-437 W4). NuttX's OWN board-plus-config string,
 # `qemu-armv7a-nsh`, is a framework id, so it lives in `[board.nuttx]` below, not here (issue 1652).
 names = ["nuttx", "qemu-armv7a-nuttx"]
+cmake_module = "qemu-armv7a-nuttx"
 platform = "nuttx"
 toolchain = "nightly"
 entry_kind = "board-run"
@@ -126,6 +127,7 @@ board_config = "qemu-armv7a-nsh"
 # phase-351 / issue 0606 — the riscv witness's downstream id, as used by the realtime workspaces
 # (renamed from `nuttx-qemu-riscv` by phase-437 W4).
 names = ["nuttx-riscv", "rv-virt-nuttx"]
+cmake_module = "rv-virt-nuttx"
 disambiguate_by_target = "riscv"
 platform = "nuttx"
 toolchain = "nightly"

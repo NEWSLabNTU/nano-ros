@@ -202,3 +202,12 @@ store-source-readers:
 [private]
 artifact-path-literals:
     @python3 scripts/check/check-artifact-path-literals.py
+
+# phase-484 W4d — a cmake board module (`cmake/board/nano-ros-board-<x>.cmake`)
+# is claimed by exactly one board descriptor's `cmake_module`, and every claim
+# names an existing file. `nros build` emits the descriptor's module rather
+# than the alias an image authored, so the map must be total and exact.
+# Buildless, ~0.1 s; self-tests its parser on each run.
+[private]
+board-cmake-module:
+    @python3 scripts/check/check-board-cmake-module.py

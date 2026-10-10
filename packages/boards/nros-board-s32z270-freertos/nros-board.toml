@@ -15,6 +15,7 @@
 
 [[board]]
 names = ["s32z270-freertos", "s32z270"]
+cmake_module = "s32z270-freertos"
 platform = "freertos"
 toolchain = "stable"
 entry_kind = "board-run"
