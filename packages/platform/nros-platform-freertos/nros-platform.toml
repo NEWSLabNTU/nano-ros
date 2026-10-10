@@ -114,16 +114,18 @@ extra_sources = [
 # records: a block nobody lists is a block nobody can reach.
 arch = ["cortex-m3", "cortex-m7", "cortex-r5", "cortex-r52"]
 compile = { opt_level = "s", warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
+# phase-484 W2c — the source TREES (kernel, lwIP, ThreadX, NetX Duo) are not
+# required env any more: `{source:<name>}` below locates each through the one
+# ladder and refuses with the remedy when none answers. Only board facts the
+# board descriptor carries remain here.
 required_env = [
-  { name = "FREERTOS_DIR", help = "FreeRTOS kernel source. just freertos setup; export FREERTOS_DIR=$PWD/third-party/freertos/kernel", validate_subdir = "include" },
   { name = "FREERTOS_PORT", help = "FreeRTOS portable layer. Examples: export FREERTOS_PORT=GCC/ARM_CM3 (Cortex-M3) | GCC/ARM_CM7/r0p1 (Cortex-M7)" },
-  { name = "LWIP_DIR", help = "lwIP source. just freertos setup; export LWIP_DIR=$PWD/third-party/freertos/lwip", validate_subdir = "src/include", when = { capability = { ip_stack = true } } },
   { name = "FREERTOS_CONFIG_DIR", help = "Directory containing FreeRTOSConfig.h + lwipopts.h. Example: packages/boards/nros-board-mps2-an385-freertos/config" },
 ]
 include_paths = [
   "{nros}/c/include",
-  "{envpath:FREERTOS_DIR}/include",
-  "{envpath:FREERTOS_DIR}/portable/{env:FREERTOS_PORT}",
+  "{source:freertos-kernel}/include",
+  "{source:freertos-kernel}/portable/{env:FREERTOS_PORT}",
   "{envpath:FREERTOS_CONFIG_DIR}",
   # Phase 154 — `nros-platform-api/include` carries
   # `<nros/platform_net.h>` (the canonical `nros_platform_*` ABI).
@@ -134,8 +136,8 @@ include_paths = [
 # has no `LWIP_DIR` to point at, and an unconditional entry here would make one
 # a hard requirement of every FreeRTOS zenoh build.
 include_paths_conditional = [
-  { path = "{envpath:LWIP_DIR}/src/include", when = { capability = { ip_stack = true } } },
-  { path = "{envpath:LWIP_DIR}/contrib/ports/freertos/include", when = { capability = { ip_stack = true } } },
+  { path = "{source:lwip}/src/include", when = { capability = { ip_stack = true } } },
+  { path = "{source:lwip}/contrib/ports/freertos/include", when = { capability = { ip_stack = true } } },
 ]
 # issue 0491 — VALUE knobs only. `FREERTOS_PORT` is a port NAME and stays; the
 # three PATH variables were dropped, because cargo compares an env value as
