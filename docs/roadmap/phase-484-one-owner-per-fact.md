@@ -423,7 +423,17 @@ read `rung = "env"` — the inherited `FREERTOS_DIR` & co., re-rooted onto this
 worktree's (uninitialised) checkout copy, outranking the store the rest of the
 rows came from. That is RFC-0103 D3's precedence doing what it says, and it is
 exactly the fact this record exists to make readable. Per-value provenance for
-KNOBS (an env override of a derived count) is not here yet.
+KNOBS (an env override of a derived count) waits for W5: it needs each row's
+env spelling, and until knob ids derive it mechanically, a row → env-name table
+written here would be one more hand-kept home for that fact.
+
+**W6d — the cmake model-ladder mirror is gone.** `nano_ros_entry()` took
+`nros model-path`'s answer and then re-routed it through a ladder of its own
+(`$NROS_MODEL_DIR/<name>`, then `${CMAKE_BINARY_DIR}/nros/<name>`).
+`model_location` already searches `$NROS_MODEL_DIR`, nothing writes a model to
+the second rung, and the re-route ran AFTER the verb's `model_gate`
+(phase-460 W1) — so a re-routed model was one the gate had never seen. The
+verb's answer is used as given.
 
 ### W7 -- leftovers and close
 

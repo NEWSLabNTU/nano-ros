@@ -601,21 +601,13 @@ function(nano_ros_entry)
         # Phase 257 (W0-A) — TYPED now supports LANG c too: the generated C TU
         # routes each node to the real executor via its `NROS_C_COMPONENT`
         # factory/configure seam + `nros_board_native_run_components`.
-        # phase-330 W3.b (RFC-0063) — prefer a BUILD-OUTPUT model over the
-        # committed one the caller pointed at. Same order the Rust consumers use
-        # via `nros_orchestration_ir::model_location`: an explicit shared dir
-        # (`NROS_MODEL_DIR`, set by RFC-0065's builder) beats the per-build
-        # `${CMAKE_BINARY_DIR}/nros/`, which beats the source copy. With nothing
-        # generating into either, `MODEL` is used exactly as passed.
-        if(_NRA_MODEL)
-            get_filename_component(_nra_model_name "${_NRA_MODEL}" NAME)
-            if(DEFINED ENV{NROS_MODEL_DIR} AND
-               EXISTS "$ENV{NROS_MODEL_DIR}/${_nra_model_name}")
-                set(_NRA_MODEL "$ENV{NROS_MODEL_DIR}/${_nra_model_name}")
-            elseif(EXISTS "${CMAKE_BINARY_DIR}/nros/${_nra_model_name}")
-                set(_NRA_MODEL "${CMAKE_BINARY_DIR}/nros/${_nra_model_name}")
-            endif()
-        endif()
+        # `_NRA_MODEL` is `nros model-path`'s answer and is used AS GIVEN.
+        # Phase-484 W6d: a second ladder used to re-route it here
+        # (`$NROS_MODEL_DIR/<name>`, then `${CMAKE_BINARY_DIR}/nros/<name>`) —
+        # a mirror of `nros_orchestration_ir::model_location`, which already
+        # searches `$NROS_MODEL_DIR` (this process's env reaches the verb), and
+        # a rung nothing writes. Worse, it ran AFTER the verb's `model_gate`
+        # check (phase-460 W1), so a re-routed model was one the gate never saw.
 
         # phase-392 W5.c — the entity figures this entry DECLARES, folded into
         # the configure's accumulated view. One runtime staticlib serves every
