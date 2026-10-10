@@ -209,6 +209,14 @@ locator = "tcp/127.0.0.1:9091"
 board = "zephyr"
 conf = ["prj-zenoh.conf"]
 locator = "tcp/10.0.2.2:7471"
+# issue 1324 / phase-481 W3 -- the nano-ros platform heap (zenoh-pico and the
+# Rust global allocator both allocate from it). 256 KiB on native_sim (host
+# RAM); every e2e run scores it against the image's MEASURED heap peak, so an
+# outgrown value fails a cell by name. Moved from the board's prj-zenoh.conf.
+# phase-276 W2 / phase-481 W3 -- the tiers need tx windows well inside their
+# period: Zephyr zsock serializes send behind the read task's recv window
+# (issues 0129/0139). Moved from the board's prj-zenoh.conf: a nano-ros knob
+env = { NROS_ZEPHYR_HEAP_SIZE = "262144", NROS_ZENOH_SOCKET_TIMEOUT_MS = "5" }
 
 # SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
 # SDK roots it builds against. Keyed by BOARD, not by a deploy or image

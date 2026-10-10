@@ -58,13 +58,22 @@ pub struct WestLeafSizingArgs {
     /// resolves.
     #[arg(long, value_name = "DIR")]
     pub nano_ros_path: Option<PathBuf>,
+
+    /// The image this configure builds (`-DNROS_IMAGE`, phase-481 W3). A leaf
+    /// states one image per RMW, and the descriptor's backend-dependent rows
+    /// (`registration_path`) are about the one that links. Absent, the leaf's
+    /// own rule picks (one image, or `[system] default_images`).
+    #[arg(long, value_name = "ID")]
+    pub image: Option<String>,
 }
 
 pub fn run(args: WestLeafSizingArgs) -> Result<()> {
     // phase-447 A2 — the shared nano-ros-root ladder, as `board-facts` asks it.
     let root = crate::orchestration::nano_ros_root::resolve(args.nano_ros_path.clone(), &args.leaf)
         .ok_or_else(|| eyre!("{}", crate::orchestration::nano_ros_root::not_found_help()))?;
-    let Some(mut img) = crate::cmd::leaf_settings::resolve_west(&args.leaf, &root)? else {
+    let Some(mut img) =
+        crate::cmd::leaf_settings::resolve_west_image(&args.leaf, &root, args.image.as_deref())?
+    else {
         return Ok(());
     };
     // The configure, not the board catalog, knows the triple of a Zephyr build

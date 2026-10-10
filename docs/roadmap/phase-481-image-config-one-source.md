@@ -1,11 +1,13 @@
 # Phase 481 -- image configuration has one source: `system.toml` on every road
 
-**Status (2026-10-07). W0, W1, W2 and W4 LANDED; W3 and W5 open.** D11's
+**Status (2026-10-09). W0-W4 LANDED; W5 open.** D11's
 locator revision (the module's `module_ext_root` hook instead of a leaf helper)
 was DECIDED by the user on 2026-10-07 (option "A") and is what W1 built,
 measured on Zephyr 3.7 and 4.4, on the fixture road and on a plain `west build`
-with nano-ros as a west project. W2's gate is a shrink-only ratchet holding the
-226 lines W3 migrates. Implements
+with nano-ros as a west project. W3 drained W2's ratchet to an EMPTY baseline
+(all 226 lines / 104 files moved into `system.toml`; every one of the 76 Zephyr
+3.7 west leaves builds, and their `.config` matches the pre-migration merge
+except the listed deliberate changes) and closed issue 1757. Implements
 [RFC-0098](../design/0098-generated-leaf-build-config.md) D10-D12 (and the
 pointer it adds to [RFC-0049](../design/0049-hierarchical-platform-board-config.md)).
 Closes issue [1721](../issues/1721-image-env-west-and-workspace-cmake-roads.md).
@@ -384,6 +386,208 @@ existing runtime test passes on native_sim (and the mps2 rows that run in the
 box); `build/**/.config` of one migrated leaf per kind shows the same nano-ros
 symbol values as before the migration (a diff, measured).
 
+#### W3 results (landed 2026-10-09, distrobox `ros2`, Zephyr 3.7)
+
+**The defect W3 closes was live on `main`, not latent** -- issue
+[1757](../issues/archived/1757-image-kconfig-rmw-overrides-leaf-rmw-overlay.md),
+which the tier-2 nightly hit on 2026-10-08. W1's hook made issue 1721's
+disagreement BITE: the 18 leaves' `system.toml` said `rmw = "zenoh"`, the
+rendered fragment merges after `prj-<rmw>.conf`, so every XRCE and Cyclone
+single-package leaf configured `CONFIG_NROS_RMW_ZENOH=y` and failed to compile
+(zenoh-pico's Zephyr port without the POSIX Kconfig only `prj-zenoh.conf`
+carries). W3's leaves build all three RMWs again; 1757 is archived with the
+measurement and the guard below.
+
+**How a per-RMW Zephyr-native conf is selected (the decision W3 owed).** By the
+IMAGE, through the key a workspace image already uses -- not by a file-name rule
+on `rmw`. Each leaf image names its fragment, `[image.zephyr_xrce] conf =
+["prj-xrce.conf"]` (`LeafSystem::conf`: `[image_defaults] conf` then the
+image's, concatenated like `ImageBlock::with_base`). An explicit list keeps one
+mechanism on both roads and lets an image take two fragments or none; a
+derived `prj-<rmw>.conf` lookup would have been a second, implicit spelling of
+what the workspace `conf` key already says. Two consumers, one statement:
+
+- the module hook adds a single-package leaf's image `conf` (absolute, from the
+  `NROS_LEAF_CONF` row `nros ws leaf-system` now prints; a bringup answers
+  nothing -- its `conf` is `nros build`'s, RFC-0085 D4) to `EXTRA_CONF_FILE`
+  AHEAD of the caller's own entries and the rendering, skips a fragment the
+  build already names in `CONF_FILE`/`EXTRA_CONF_FILE`, and drops what it
+  added on the next configure (`NROS_IMAGE_CONF_FILES`). So a plain `west
+  build -- -DNROS_IMAGE=zephyr_xrce` gets the fragment with no `CONF_FILE` to
+  assemble;
+- the fixture manifest (`west-leaves`) reads the selected image's `conf` and
+  appends it to the row's `conf_files`, so the fixture `CONF_FILE` keeps
+  exactly the old order `prj.conf;prj-<rmw>.conf;<board tail>`. That order is
+  load-bearing, measured: `cmake/zephyr/mps2-an385.conf` and the talkers'
+  `prj-zenoh.conf` disagree on six symbols, and the board tail must keep
+  winning. `just zephyr build-one` and `check-copy-out.sh` pass
+  `CONF_FILE=prj.conf`, the tail as `-DEXTRA_CONF_FILE` (still after the
+  image's fragment) and `-DNROS_IMAGE`.
+
+**Every caller that assembled a per-RMW `CONF_FILE` for an example** now
+selects an image: the fixture leaves script and run-one driver, `just zephyr
+build-one`, `scripts/zephyr/check-copy-out.sh`, `tests/zephyr/run-c.sh`, and
+the colcon plugin (`colcon_nano_ros/task/nros/build.py`: a package whose
+`system.toml` has `[image.zephyr_<rmw>]` is built with `-DNROS_IMAGE`; one
+without keeps the old overlay shape). The test-side staleness probe watches the
+leaf's `system.toml` (`nros_tests::zephyr::source_dir_is_stale`).
+
+**Rows.** The 57 single-package `[[fixture]]` west rows trade
+`conf_files = ["prj.conf", "prj-<rmw>.conf"]` for `conf_files = ["prj.conf"]` +
+`west_image = "zephyr_<rmw>"` (and main's newer `cpp-port-minimal-publisher`
+row names its one image the same way); the leaves script passes
+`-DNROS_IMAGE`, and the signature gains `west_image=` only on those rows. Coordinates and
+`matrix::CELLS` are unchanged; the record width is unchanged (the image rides
+the retired `west_bare` slot). **Guard (issue 1757):** the manifest refuses a
+named image that does not exist or does not link the row's `rmw`
+(`_require_image_rmw`, issue 0831), and -- new -- a row that names NO image
+when the leaf's DEFAULT image (its one image, else `default_images[0]`) does
+not link the row's `rmw`, which is the exact 1757 configuration. Negative
+control: dropping `west_image = "zephyr_xrce"` from the `rust/talker` xrce row
+fails the manifest naming 1757. It runs on the fast line through
+`check-generated-output-collisions`.
+
+**What moved, per kind** (W2's 226 lines / 104 files, re-counted on `origin/main`
+with the gate's `--list`; the baseline is now EMPTY, header only):
+
+| kind | lines | where it went |
+|---|---|---|
+| rmw | 71 | deleted; each leaf states `[image.zephyr_{zenoh,xrce,cyclonedds}] rmw` (+ `default_images = ["zephyr_zenoh"]`); workspace images already stated theirs; the BYO template gains a `system.toml` |
+| api | 50 | deleted (derived, W1); comment blocks that justified the API line keep their `CONFIG_STD_CPP17` explanation |
+| endpoint | 38 | `[image.zephyr_xrce] locator = "udp/127.0.0.1:2018"` (18 leaves); the workspace `rust` bringup's two `prj-xrce.conf` endpoint lines had no image to belong to and were deleted |
+| knob | 67 | `[image.<id>] env`: 54 XRCE session caps (18 leaves x 3) and 13 workspace lines (`NROS_ZEPHYR_HEAP_SIZE` x5, `NROS_ZENOH_SOCKET_TIMEOUT_MS` x5, `features`' `NROS_EXECUTOR_MAX_CBS` + `ZPICO_MAX_QUERYABLES`, `zephyr_derived`'s `ZPICO_READ_TASK_PRIORITY`); `prj-lowered-band.conf` deleted |
+
+**Pool rows: none deleted, each for a measured reason.** Per row, from the
+builds' `<build>/nros/entity_inventory.cmake`, and -- where a deletion was
+possible on paper -- by trying it:
+
+| pool rows | stated | derivation on this road | verdict |
+|---|---|---|---|
+| `NROS_XRCE_MAX_{SUBSCRIBERS,SERVICE_SERVERS,SERVICE_CLIENTS}`, 12 C/C++ leaves | 0..3 | inventory `refused` ("1 of 1 components declare no entities") | moved to `env` |
+| same, 5 Rust leaves (all but `talker`) | 0..3 | `refused` | moved to `env` |
+| `rust/talker` `XRCE_MAX_SUBSCRIBERS` | 0 | `derived` 0 -- equal, so DELETED in a first pass | **restored**: the derived 0 reaches only the cmake rung; the Rust lane's cargo build reads the Kconfig value the row renders, and the image booted `HEAP EXHAUSTED (TOO SMALL): request 283912 bytes, arena 131584` (the crate default), `case_19_xrce_rust_pubsub_e2e` red until the row came back |
+| `rust/talker` `XRCE_MAX_SERVICE_SERVERS` | 0 | `derived` 1 (>= 0) | kept: the 1 is the queryable a TRANSIENT_LOCAL publisher costs on ZENOH; XRCE creates none, and a session slot is heap |
+| `NROS_XRCE_MAX_SERVICE_CLIENTS`, all | 0..3 | none -- `_nros_resolve_knob`, no derivable rung | moved to `env` |
+| `features` `EXECUTOR_MAX_CBS=16`, `MAX_QUERYABLES=16` | 16 / 16 | `refused` for rust_params, rust_lifecycle, cpp_params; `rust_qos` derives 2 / 18 | moved to `env` on the four images. `rust_qos`'s queryable row was DELETED in a first pass (18 >= 16) and **restored**: the configure then refused on Zephyr's static pthread-cond pool (`CONFIG_MAX_PTHREAD_COND_COUNT=16` < the 27 that 1 sub + 18 queryables need), so the deletion is not a pure move. Its executor 16 > derived 2 stays: nothing proves the 11 infra services cost no slot |
+
+The `rust/talker` restore is worth naming as a class: on the Zephyr Rust lane a
+DERIVED pool value is not a substitute for a STATED one, because the derivation
+lands in the cmake knob ladder and the cargo build reads Kconfig. Making the
+leaf inventories compose and reach both lanes is what would let these rows go;
+it is not this phase.
+
+**The eight `"${NROS_CYCLONE_IDLC}"` component names** are `talker`,
+`listener`, `add_two_ints_client`, `add_two_ints_server` (the names every other
+platform's copy uses), and the reader now REFUSES a `${` in a `[[component]]`
+`pkg`/`class`/`name` (`leaf_system.rs`, with a test): TOML expands nothing.
+
+**Hand-written applications state their image** before `find_package(Zephyr)`,
+the three lines a generated one gets: `realtime-c/src/zephyr_entry` (its bringup
+-- demo or SMP -- now chosen from the PASSED board string, with a `CONFIG_SMP`
+cross-check that fails the configure on a mismatch) and
+`realtime-cpp/src/fvp_entry` (FVP, not built in the box). The third,
+`rust/src/zephyr_entry_robot1`, was deleted on main by issue 1288 while W3 was
+in review: that entry is now generated, so it states its image like every other
+generated one.
+
+**The standalone Rust sizing reader takes the image.** `nros ws
+west-leaf-sizing` read the leaf's DEFAULT image, so an XRCE or Cyclone Rust
+leaf's sizing descriptor spoke for zenoh. It now takes `--image` and the module
+passes `-DNROS_IMAGE` (`leaf_settings::resolve_west_image`). Measured on
+`rust/talker`: the descriptor is named for the built image
+(`nros/sizing/zephyr_<rmw>.toml`), and the cyclonedds one's
+`registration_path` changes from `in_place` (zenoh's) to `typed_bound`
+(cyclone's) -- before W3 every Rust Cyclone leaf's descriptor claimed zenoh's
+in-place dispatch.
+
+**A missing rebuild edge, found by the migration and fixed.** A retargeted
+(`nros build`) row's signature did not cover the image's `conf`, so after
+`[image.zephyr_derived]` dropped `prj-lowered-band.conf` the ninja path reused a
+CMakeCache whose `-DEXTRA_CONF_FILE` still named it and the reconfigure died on
+`File not found`. `zephyr-fixture-run-one.sh` now puts the dry run's planned
+`west build …` line in a retargeted row's signature, so a moved plan re-runs
+west. (The checkpoint first appended it while still comparing the BARE record
+signature earlier in the script, which can never equal a stored one carrying
+the plan, so every retargeted row silently took the west path on every run;
+the comparison now happens once, after the plan is known.) The issue-1707
+self-test pins it: R1 (unchanged plan -> dry run then ninja), R2b (moved
+signature -> dry run, then ONE full `nros build`) and the new R3 (same
+signature, moved plan -> west).
+
+**`.config` before vs after, measured.** BEFORE = `origin/main` `ea333ea179`,
+built through the fixture system (`NROS_ZEPHYR_PRISTINE=always`); for the
+XRCE/Cyclone leaves, whose `main` configure is issue 1757's broken one, BEFORE =
+the same tree with the hook bypassed by a temporary, uncommitted early return,
+i.e. exactly what `prj.conf;prj-<rmw>.conf;<tail>` merged to before W1.
+Compared: every `CONFIG_NROS_*` line, every `NROS_RESOLVED_*` knob cmake hands
+cargo and the C lane, and every other `CONFIG_*` line.
+
+| leaf x RMW | result |
+|---|---|
+| `c/talker` zenoh, xrce, cyclonedds | identical |
+| `cpp/talker` zenoh, xrce, cyclonedds | identical |
+| `rust/talker` zenoh, xrce, cyclonedds | identical `.config` and knobs; the one resolved value that moves is the sizing descriptor's path (`zephyr.toml` -> `zephyr_<rmw>.toml`, above) |
+| workspace `rust` `zephyr` (zenoh), `cpp` `zephyr_cyclonedds` | identical |
+| `c`/`cpp` `listener`, `action-server`, `action-client` xrce (built for issue 1761's attribution) | identical |
+
+Wider, against the 45 BEFORE snapshots an earlier pass took at `f1e9116393`
+(every zenoh leaf, the mps2 talkers, logging-smoke, all 17 Zephyr workspace
+images incl. SMP a53, robot1 and derived): 44 identical, 1 differing --
+`rust/talker` xrce while its subscriber row was deleted (above), since
+restored.
+
+**Deliberate `.config` changes** (all four in images the runtime suite refused
+before W3, issue [1761](../issues/archived/1761-zephyr-xrce-c-cpp-heap-headroom-refused.md)):
+`CONFIG_NROS_ZEPHYR_HEAP_SIZE` 65536 -> 98304 on the `c`/`cpp` `listener` and
+`action-client` `zephyr_xrce` images. Issue 1424's heap gate refused them with
+10-14 KiB of headroom, measured identically on `main` with the pre-W1 conf state
+-- so not caused by W3, and never seen because 1424 ran two zenoh cells and no
+XRCE image built from 2026-10-07 until now.
+
+**Builds and runtime, measured** (final pass on `origin/main` `5210fd0538`).
+`just zephyr build-fixtures` (3.7) builds all 76 west leaves -- the 58
+single-package rows on native_sim and mps2/an385, the workspace images
+including the SMP a53 one, logging-smoke and main's new
+`cpp-port-minimal-publisher` row -- and a second run takes the ninja path on
+the retargeted rows. `just zephyr build-one c/talker xrce` builds and differs
+from the fixture's `.config` only in the harness's agent port. The `.config`
+comparison above was repeated on this base for all 19 images: identical except
+the four issue-1761 heap rows (main's two new resolved knobs,
+`NROS_CAPABILITY_PARAM_SERVICES` / `NROS_PARAM_STORE` = 0, are filtered: they
+are main's phase-382 W3', not this change).
+
+Runtime, with `NROS_TEST_COORDS` narrowed to the 13 Zephyr coordinates over
+every test binary that runs a Zephyr image (`zephyr`, `entry_e2e`,
+`realtime_tiers_e2e`, `sched_dims_*`, `logging_smoke`, `cli_bringup_zephyr`,
+`zephyr_cortex_m_qemu`, the two ros2 interop binaries, the Zephyr
+`port_templates_e2e` cell, `zephyr_leaf_staleness`,
+`zephyr_prjconf_requirements`, `zephyr_self_pkg`, `matrix_fixture_coverage`,
+`example_shape`): **87 of 88 pass**, the mps2 rows included. The one red is
+`sched_dims_applied`'s `CorePinPlacement/zephyr/c`, the a53 SMP image: the box
+has no `qemu-system-aarch64` ("Process failed to start: No such file"), so it
+was built and not run. `case_19_xrce_rust_pubsub` is flaky under parallel load
+(passed on retry here; 3/3 solo earlier). The native-peer cells, run
+unnarrowed after `just native build-fixture-rust`: **9 of 10 pass**
+(`test_{native,zephyr}_*` interop, `test_zephyr_workspace_entry_native_sim_e2e`,
+`zephyr_rust_zenoh_action_goal_completion_rate`); `multihost` was NOT re-run on
+this base -- its native workspace peers are stale and rebuilding them did not
+fit the disk budget of this run -- and passed 10/10 with its peers at the
+earlier base `ea333ea179`, where its Zephyr image (`build-ws-rs-mh-robot1`)
+already had today's `.config`.
+
+**Known, not fixed here.** (1) The 4.x RMW snippets (`-S nros-<rmw>`) still
+set `CONFIG_NROS_RMW_*`; they merge BEFORE the rendering, so on a migrated leaf
+a snippet naming a different RMW than the selected image loses silently. The
+Twister `sample.yaml`s use `nros-zenoh` with the default zenoh image, so they
+agree; W5 should retire the snippets' nano-ros lines. (2) `-DNROS_IMAGE` is a
+cache variable like any `-D`: re-running `west build` on the same build dir
+WITHOUT it keeps the previous image (measured: a `main` checkout reusing a W3
+build dir died on `names no [image.zephyr_zenoh]`). Pass it every time, or
+`-p`. (3) The workspace `prj-zenoh.conf` rows (`workspace-zephyr-c-realtime*`,
+`-cpp-derived-tiers`, `-rs-mh-robot1`) still name their bringup's
+`prj-zenoh.conf` in `conf_files`: a single-RMW hand-written or retargeted
+application, whose fragment is Zephyr-native now; nothing per-RMW is assembled.
+
 ### W4 -- per-image workspace configures
 
 - `cmake_coordinate` (`packages/cli/nros-cli-core/src/cmd/build.rs`) gains a
@@ -441,6 +645,9 @@ exactly today's `build/<coord>/` paths (the book's paths are unchanged).
   never merged; LAST-WINS) gains the rule that nano-ros knobs are not authored
   in conf files at all.
 - RFC-0098 status; issue 1721 resolved and archived.
+- The 4.x RMW snippets (`zephyr/snippets/nros-<rmw>/`) lose their
+  `CONFIG_NROS_RMW_*` lines (W3 "Known, not fixed" (1)): on a migrated leaf the
+  image is the RMW, and a snippet naming another one loses silently.
 
 **Acceptance:** `just ci gate` green; tier 2 (`just ci matrix`) green for the
 Zephyr cells; issue 1721 archived.

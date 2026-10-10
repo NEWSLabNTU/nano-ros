@@ -153,16 +153,18 @@ def render(leaf: pathlib.Path) -> str:
             "nros sync                                # generated/ message crates",
             "```",
             "",
-            "Zephyr is the carve-out: the build verb is `west`, not `nros build`, and",
-            "the board plus the `CONF_FILE` RMW overlay are west arguments — see the",
+            "Zephyr is the carve-out: the build verb is `west`, not `nros build`. The",
+            "board is west's `-b`, and the RMW is one of this leaf's `system.toml`",
+            "images (`-DNROS_IMAGE=zephyr_<rmw>`) — see the",
             f"{zephyr_readme}.",
         ]
     elif zephyr:
         lines += [
             "```",
             "",
-            "Zephyr is the carve-out: the build verb is `west`, and the board plus the",
-            f"`CONF_FILE` RMW overlay are west arguments — see the {zephyr_readme}.",
+            "Zephyr is the carve-out: the build verb is `west`. The board is west's",
+            "`-b`, and the RMW is one of this leaf's `system.toml` images",
+            f"(`-DNROS_IMAGE=zephyr_<rmw>`) — see the {zephyr_readme}.",
             "No `nros sync` here: a C/C++ leaf's message bindings are a build-system",
             "output, generated while the project configures.",
         ]

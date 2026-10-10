@@ -201,6 +201,42 @@ pub fn rows(
     ]
 }
 
+/// phase-481 W3 -- the image's `conf` fragments as absolute paths, printed as
+/// `NROS_LEAF_CONF` (`;`-separated, empty when it names none).
+///
+/// Only a single-package LEAF answers: its fragments sit beside its
+/// `system.toml`, which is also the west application, so a name resolves
+/// against that one directory. A workspace BRINGUP answers nothing here — on
+/// that road `nros build` resolves an image's `conf` itself (the board config
+/// directory first, RFC-0085 D4) and passes it as `EXTRA_CONF_FILE`, so the
+/// Zephyr module must not add it a second time.
+///
+/// A named fragment that does not exist is an ERROR naming the row, never a
+/// silent skip: Zephyr would not complain about a fragment nobody passed it,
+/// and the image would build without the networking its RMW needs.
+pub fn leaf_conf_paths(leaf: &LeafSystem) -> Result<Vec<PathBuf>, String> {
+    let leaf_system::Origin::SystemToml(path) = &leaf.origin else {
+        return Ok(Vec::new());
+    };
+    let dir = path.parent().unwrap_or(std::path::Path::new("."));
+    leaf.conf
+        .iter()
+        .map(|name| {
+            let p = dir.join(name);
+            if p.is_file() {
+                Ok(p)
+            } else {
+                Err(format!(
+                    "{}: `[image.{}] conf` names `{name}`, which does not exist ({})",
+                    path.display(),
+                    leaf.image.as_deref().unwrap_or(""),
+                    p.display()
+                ))
+            }
+        })
+        .collect()
+}
+
 pub fn run(args: LeafSystemArgs) -> Result<()> {
     let dir = args
         .path
@@ -268,9 +304,17 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
         Some(out) => write_image_env(out, &env_rows)?,
         None => None,
     };
+    let conf = leaf_conf_paths(&leaf).map_err(|e| eyre!(e))?;
     for (k, v) in rows(&leaf, &deploy, settings.as_deref(), image_env.as_deref()) {
         println!("{k}={v}");
     }
+    println!(
+        "NROS_LEAF_CONF={}",
+        conf.iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+            .join(";")
+    );
     if let Some(written) = kconfig {
         println!(
             "NROS_LEAF_KCONFIG={}",
@@ -360,6 +404,42 @@ mod tests {
         assert_eq!(std::fs::metadata(&out).unwrap().modified().unwrap(), before);
         assert_eq!(write_image_env(&out, &Default::default()).unwrap(), None);
         assert!(!out.exists());
+    }
+
+    /// phase-481 W3 -- a leaf's `conf` resolves beside its `system.toml`; a
+    /// missing fragment is refused naming the row; a bringup answers nothing
+    /// (`nros build` owns that road's overlays).
+    #[test]
+    fn a_leaf_conf_resolves_beside_its_system_toml() {
+        let td = leaf_dir(
+            "[system]\nname = \"t\"\n\n[image.zephyr_xrce]\nboard = \"zephyr\"\n\
+             rmw = \"xrce\"\nconf = [\"prj-xrce.conf\"]\n",
+        );
+        let leaf = leaf_system::read(td.path()).unwrap().unwrap();
+        let e = leaf_conf_paths(&leaf).unwrap_err();
+        assert!(
+            e.contains("[image.zephyr_xrce] conf") && e.contains("prj-xrce.conf"),
+            "{e}"
+        );
+        std::fs::write(td.path().join("prj-xrce.conf"), "CONFIG_NET_TCP=y\n").unwrap();
+        let got = leaf_conf_paths(&leaf).unwrap();
+        assert_eq!(got.len(), 1);
+        assert!(got[0].is_absolute() || got[0].starts_with(td.path()));
+        assert!(got[0].ends_with("prj-xrce.conf"));
+
+        let bringup = tempfile::tempdir().unwrap();
+        std::fs::write(
+            bringup.path().join("system.toml"),
+            "[image.z]\nboard = \"zephyr\"\nconf = [\"prj-zenoh.conf\"]\n",
+        )
+        .unwrap();
+        let b = leaf_system::read_image(bringup.path(), "z")
+            .unwrap()
+            .unwrap();
+        assert!(
+            leaf_conf_paths(&b).unwrap().is_empty(),
+            "nros build owns a bringup's conf"
+        );
     }
 
     /// The deploy token comes from the board catalog, so the in-tree boards

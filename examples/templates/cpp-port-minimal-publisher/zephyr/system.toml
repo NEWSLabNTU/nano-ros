@@ -11,3 +11,6 @@ domain_id = 0
 [image.zephyr]
 board = "zephyr"
 rmw = "zenoh"
+# The Zephyr-native settings zenoh-pico needs (POSIX threads, sockets); the
+# module adds it ahead of the caller's EXTRA_CONF_FILE (phase-481 W3).
+conf = ["prj-zenoh.conf"]

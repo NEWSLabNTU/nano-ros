@@ -15,9 +15,25 @@ so `nros` can generate the interface crates before the west build.
 
 ## RMW selection
 
-Kconfig overlay, not a Cargo/CMake flag: `-DCONF_FILE="prj.conf;prj-<rmw>.conf"`
-with `prj-zenoh.conf`, `prj-xrce.conf`, `prj-cyclonedds.conf` shipped per
-example. The `build-one` recipe wires this for you.
+An IMAGE of the leaf's `system.toml`, not a conf overlay (phase-481, RFC-0098
+D10/D11). Every leaf declares one image per RMW — `[image.zephyr_zenoh]`,
+`[image.zephyr_xrce]`, `[image.zephyr_cyclonedds]` — and a build selects one with
+`-DNROS_IMAGE=<id>` (no selection builds `default_images`, zenoh). The nano-ros
+Zephyr module renders the selected image into a Kconfig fragment merged after
+every conf file: the RMW choice, the language API (from the package), the agent
+endpoint (`locator`) and the image's `env` knobs (e.g. the XRCE session caps).
+Each image's `conf` names the Zephyr-native fragment its RMW needs
+(`prj-<rmw>.conf`: TCP, POSIX threads, heap), which the module adds ahead of
+your own `EXTRA_CONF_FILE`. So no conf file in an example states a
+`CONFIG_NROS_*` knob (`just check leaf-conf-nros-knobs` refuses one).
+
+```sh
+west build -b native_sim/native/64 examples/zephyr/c/talker -- \
+    -DCONF_FILE=prj.conf -DNROS_IMAGE=zephyr_xrce \
+    -DEXTRA_CONF_FILE=$PWD/cmake/zephyr/native-sim-line-3.7.conf
+```
+
+The `build-one` recipe wires this for you.
 
 ## Build & run one example
 

@@ -20,8 +20,13 @@
 #
 #   R1  ninja path, retargeted row: the runner runs `nros build <image> ...
 #       --dry-run` BEFORE `ninja` (edge 1).
-#   R2  negative control: a row with no image runs ninja alone, and the west
-#       path never runs the extra regeneration (it runs `nros build` already).
+#   R2  negative control: a row with no image runs ninja alone; on the west
+#       path the dry run (which now also PLANS the build, phase-481 W3) runs
+#       once and the full `nros build` once.
+#   R3  phase-481 W3: a retargeted row whose signature is unchanged but whose
+#       PLANNED `west build` line moved (an image `conf` overlay was dropped)
+#       takes the west path -- ninja would reuse a CMakeCache naming the old
+#       overlay.
 #   C1  the configure-side check refuses when the digest the configure EXECUTED
 #       differs from the one on disk (edge 2) ...
 #   C2  ... and is silent when they agree — the unchanged-rebuild control, so
@@ -52,7 +57,11 @@ mkdir -p "$work/bin" "$work/zws" "$work/ws" "$work/build"
 calls="$work/calls.log"
 : > "$calls"
 # Stubs append their argv; order in the file is the order they ran.
-printf '#!/bin/sh\necho "nros $*" >> "%s"\n' "$calls" > "$work/bin/nros"
+# The nros stub prints a planned `west build` line for `--dry-run` (the runner
+# reads it from stdout, phase-481 W3); `$work/plan` lets a case move the plan.
+echo "west build -d X -- -DEXTRA_CONF_FILE=a.conf" > "$work/plan"
+printf '#!/bin/sh\necho "nros $*" >> "%s"\ncase "$*" in *--dry-run*) cat "%s" ;; esac\n' \
+    "$calls" "$work/plan" > "$work/bin/nros"
 printf '#!/bin/sh\necho "ninja $*" >> "%s"\n' "$calls" > "$work/bin/ninja"
 printf '#!/bin/sh\necho "west $*" >> "%s"\n' "$calls" > "$work/bin/west"
 chmod +x "$work/bin/nros" "$work/bin/ninja" "$work/bin/west"
@@ -72,10 +81,16 @@ record() {
 }
 
 # A build dir the runner reads as CURRENT: build.ninja present, signature equal.
+# $2 = "plan" for a retargeted row, whose stored signature also carries the
+# planned west line (phase-481 W3).
 current_dir() {
     mkdir -p "$1"
     : > "$1/build.ninja"
-    printf '%s\n' sig-1 > "$1/.sig"
+    if [ "${2:-}" = plan ]; then
+        printf '%s\n%s\n' sig-1 "west_plan=$(cat "$work/plan")" > "$1/.sig"
+    else
+        printf '%s\n' sig-1 > "$1/.sig"
+    fi
 }
 
 run_runner() {
@@ -86,7 +101,7 @@ run_runner() {
 }
 
 # R1
-current_dir "$work/build/retargeted"
+current_dir "$work/build/retargeted" plan
 record "$work/build/retargeted" sig-1 "$work/ws" demo_bringup:zephyr_x > "$work/r1.tsv"
 if ! run_runner "$work/r1.tsv"; then
     bad "R1 runner failed: $(tail -5 "$work/runner.out")"
@@ -115,20 +130,32 @@ else
     fi
 fi
 
-# R2b — the west path (signature moved) runs `nros build` ONCE, not twice.
-current_dir "$work/build/moved"
-record "$work/build/moved" sig-2 "$work/ws" demo_bringup:zephyr_x > "$work/r2b.tsv"
-if ! run_runner "$work/r2b.tsv"; then
-    bad "R2b runner failed: $(tail -5 "$work/runner.out")"
-else
-    mapfile -t got < "$calls"
-    if [ "${#got[@]}" -eq 1 ] && [ "${got[0]#nros build demo_bringup:zephyr_x}" != "${got[0]}" ] \
-        && [ "${got[0]#*--dry-run}" = "${got[0]}" ]; then
-        pass "R2b the west path runs nros build once, not a dry run"
-    else
-        bad "R2b expected one full nros build, got: $(printf '[%s] ' "${got[@]}")"
+# R2b — the west path (signature moved): the planning dry run once, then ONE
+# full `nros build` (not two full builds, and no ninja).
+# $1 = case label, $2 = tsv
+expect_west() {
+    if ! run_runner "$2"; then
+        bad "$1 runner failed: $(tail -5 "$work/runner.out")"
+        return
     fi
-fi
+    mapfile -t got < "$calls"
+    if [ "${#got[@]}" -eq 2 ] && [ "${got[0]#*--dry-run}" != "${got[0]}" ] \
+        && [ "${got[1]#nros build demo_bringup:zephyr_x}" != "${got[1]}" ] \
+        && [ "${got[1]#*--dry-run}" = "${got[1]}" ]; then
+        pass "$1"
+    else
+        bad "$1 expected [dry run] then one full nros build, got: $(printf '[%s] ' "${got[@]}")"
+    fi
+}
+current_dir "$work/build/moved" plan
+record "$work/build/moved" sig-2 "$work/ws" demo_bringup:zephyr_x > "$work/r2b.tsv"
+expect_west "R2b the west path plans once and runs nros build once" "$work/r2b.tsv"
+
+# R3 — same signature, MOVED plan: west, not ninja (phase-481 W3).
+current_dir "$work/build/replanned" plan
+echo "west build -d X -- -DEXTRA_CONF_FILE=" > "$work/plan"
+record "$work/build/replanned" sig-1 "$work/ws" demo_bringup:zephyr_x > "$work/r3.tsv"
+expect_west "R3 a moved west plan takes the west path, not ninja" "$work/r3.tsv"
 
 # ---- the configure-side check (edge 2) -------------------------------------
 app="$work/app"

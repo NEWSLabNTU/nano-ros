@@ -12,7 +12,8 @@
 #   - west invoked through the workspace Python 3.12 venv interpreter
 #   - host toolchain (ZEPHYR_TOOLCHAIN_VARIANT=host; native_sim = host gcc)
 #   - host nros-codegen passed via -D_NANO_ROS_CODEGEN_TOOL
-#   - the version-aware NSOS line overlay appended to CONF_FILE
+#   - the leaf image `zephyr_<rmw>` (-DNROS_IMAGE) + the version-aware NSOS
+#     line overlay on EXTRA_CONF_FILE
 #   - NROS_<PKG>_DIR env defaults for the ROS interface packages
 #
 # PASS iff the build reaches `<build>/zephyr/zephyr.elf`.
@@ -136,7 +137,10 @@ echo "[copy-out] copied to : $copied  (OUTSIDE repo tree)"
 echo "[copy-out] workspace : $workspace (4.4 line)"
 
 # --- Build the copied example via the nano-ros Zephyr module --------------
-conf="prj.conf;prj-$RMW.conf;$line_overlay"
+# phase-481 W3 — the copied leaf builds its `zephyr_<rmw>` image: the module
+# renders the RMW/API/knobs and adds the image's `prj-<rmw>.conf` ahead of the
+# line overlay, which rides EXTRA_CONF_FILE so it still merges last of the files.
+conf="prj.conf"
 bd="$tmp_root/build"
 
 make_bin="$(nros sdk-path make)/bin/make"
@@ -151,7 +155,8 @@ set +e
     cd "$workspace"
     "$(realpath "$venvbin")/python" -m west build \
         -b "$BOARD" -d "$bd" -p auto "$copied" -- \
-        -DCONF_FILE="$conf" \
+        -DCONF_FILE="$conf" -DEXTRA_CONF_FILE="$line_overlay" \
+        -DNROS_IMAGE="zephyr_$RMW" \
         -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" \
         "$nros_module_arg" \
         -DMAKE="$make_bin"

@@ -230,6 +230,11 @@ conf = ["prj-zenoh.conf"]
 # `LANG`, `BRINGUP` and the `add_subdirectory` list are derived from the
 # packages the launch names.
 panic = "platform"
+# phase-276 W2 / phase-481 W3 -- the tiers need tx windows well inside their
+# period: Zephyr zsock serializes send behind the read task's recv window
+# (issues 0129/0139). Moved from the board's prj-zenoh.conf: a nano-ros knob
+# is the image's (RFC-0098 D10), rendered into Kconfig by the module.
+env = { NROS_ZENOH_SOCKET_TIMEOUT_MS = "5" }
 
 # SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
 # SDK roots it builds against. Keyed by BOARD, not by a deploy or image

@@ -40,7 +40,8 @@ nros_components_register_node(listener_lib
     TYPED
     # phase-412 -- `ENTITIES` is retired. A standalone Zephyr application has
     # no launch file, so it has no contract sidecar to state itself in; what
-    # this image creates is stated as the XRCE session caps in prj-xrce.conf,
+    # this image creates is stated as the XRCE session caps in system.toml's
+    # `[image.zephyr_xrce] env` (phase-481 W3),
     # which is what phase-412's own guidance leaves such an image ("a system
     # with no contract yet keeps its configured" knobs). See issue 1033.
 )

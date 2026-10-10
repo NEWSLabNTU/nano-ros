@@ -360,18 +360,41 @@ board = "zephyr"
 conf = ["prj-zenoh.conf"]
 launch = "rust_lifecycle.launch.xml"
 locator = "tcp/10.0.2.2:7463"
+# issue 0460 / phase-481 W3 -- every image here registers six parameter + five
+# lifecycle services: 11 executor slots and 11 queryables on top of its own
+# (Kconfig defaults 4 and 8). STATED, not derived: this image's entity
+# inventory does not compose (measured, phase-481 W3), so -1 would fall to the
+# defaults and `register_lifecycle_services()` would fail at boot.
+env = { NROS_EXECUTOR_MAX_CBS = "16", ZPICO_MAX_QUERYABLES = "16" }
 
 [image.zephyr_rust_params]
 board = "zephyr"
 conf = ["prj-zenoh.conf"]
 launch = "rust_params.launch.xml"
 locator = "tcp/10.0.2.2:7461"
+# issue 0460 / phase-481 W3 -- every image here registers six parameter + five
+# lifecycle services: 11 executor slots and 11 queryables on top of its own
+# (Kconfig defaults 4 and 8). STATED, not derived: this image's entity
+# inventory does not compose (measured, phase-481 W3), so -1 would fall to the
+# defaults and `register_lifecycle_services()` would fail at boot.
+env = { NROS_EXECUTOR_MAX_CBS = "16", ZPICO_MAX_QUERYABLES = "16" }
 
 [image.zephyr_rust_qos]
 board = "zephyr"
 conf = ["prj-zenoh.conf"]
 launch = "rust_qos.launch.xml"
 locator = "tcp/10.0.2.2:7465"
+# issue 0460 / phase-481 W3 -- every image here registers six parameter + five
+# lifecycle services: 11 executor slots and 11 queryables on top of its own
+# (Kconfig defaults 4 and 8). This one's entity inventory DOES compose
+# (measured: `derived`, MAX_QUERYABLES 18, EXECUTOR_MAX_CBS 2), and both rows
+# stay STATED anyway: the derived 2 executor slots is smaller than the 16 and
+# nothing proves the infra services cost none, and deleting the queryable row
+# (derived 18 >= 16) is not a pure move -- measured, the configure then refuses
+# on Zephyr's static pthread-cond pool (`CONFIG_MAX_PTHREAD_COND_COUNT=16` < the
+# 27 that 1 subscriber + 18 queryables need), so it would also mean raising a
+# Zephyr pool in the shared `prj-zenoh.conf` the other three images merge.
+env = { NROS_EXECUTOR_MAX_CBS = "16", ZPICO_MAX_QUERYABLES = "16" }
 
 # Issue 1681 -- the only Zephyr C++ image that declares `param_services`, and
 # the reason it exists: before the fix, the generated west application never set
@@ -389,3 +412,9 @@ locator = "tcp/10.0.2.2:7465"
 board = "zephyr"
 conf = ["prj-zenoh.conf", "prj-cpp.conf"]
 launch = "cpp_params.launch.xml"
+# issue 0460 / phase-481 W3 -- every image here registers six parameter + five
+# lifecycle services: 11 executor slots and 11 queryables on top of its own
+# (Kconfig defaults 4 and 8). STATED, not derived: this image's entity
+# inventory does not compose (measured, phase-481 W3), so -1 would fall to the
+# defaults and `register_lifecycle_services()` would fail at boot.
+env = { NROS_EXECUTOR_MAX_CBS = "16", ZPICO_MAX_QUERYABLES = "16" }
