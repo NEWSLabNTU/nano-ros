@@ -48,8 +48,10 @@ name the owner: "nano-ros `[lifecycle]`", "nano-ros `[param_services]`",
 | `[system] rmw` / `domain_id` / `locator`, `[[transport]]`, `[[bridge]]` | `execution.deploy`, `transports`, `bridges` | **passes** — ROS environment and topology |
 
 So three things leave the model: `execution.features`, the system-wide
-lifecycle default, and the build half of `execution.deploy`
-(`target = mcu:<board>` and `extra`).
+lifecycle default, and the build half of `execution.deploy` (`extra`).
+*(Corrected 2026-10-11, phase-486 W0: `target = mcu:<board>` stays. The
+board-slice readers use it as placement, and play_launch reads it as "not
+mine", which is the same meaning.)*
 
 ### Where they go: a nano-ros OVERLAY beside the model
 
