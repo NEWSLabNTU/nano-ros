@@ -664,3 +664,54 @@ registration.
 Remedy: cancel 37898479826 (nightly) and 37902884776 (run-matrix) and
 re-dispatch. The runner-replacement procedure should cancel and re-run every
 self-hosted job that is queued at the moment of replacement.
+
+### Jobs created AFTER the replacement are not claimed either (2026-10-10, 03:00Z)
+
+This answers the question the two sections above left open, and the answer
+falsifies their explanation.
+
+Both stranded runs were cancelled at about 02:15Z (nightly 37898479826 and the
+old queue run 37906326063) and 02:31Z (run-matrix 37902884776). Two NEW
+self-hosted jobs were created after the cancellations, about 17 hours after
+the runner was replaced:
+
+| Job | Run | Created | Asks for |
+| --- | --- | --- | --- |
+| 114107108943, `L3 (cross build + link)` | queue 38016203647 (merge_group) | 02:15:06Z | `self-hosted, linux, nros-sdk-zephyr, nros-big` |
+| 114110273467, `tier 2 (1-wise matrix)` | run-matrix 37945434581 (released from `pending` by the cancel) | 02:31:36Z | `self-hosted, linux, nros-qemu, nros-sdk-zephyr, nros-big` |
+
+At 02:59:56Z, both were still `queued` with no `runner_name`. The runner
+endpoint read `1442  nano-ros-runner-newslab-118  online  busy=false`, and its
+labels cover both requests. The only runs in progress were GitHub-hosted
+`gate` runs.
+
+A search of every `queue`, `run-matrix`, `nightly` and `host-tests` job
+created since 2026-10-09T08:00Z found **none with a `nano-ros-runner*`
+`runner_name`**. In about 18 hours, the replacement registration has not run
+a single job.
+
+**What this retracts:** the explanation that jobs queued before a
+re-registration are the only ones left unclaimed, along with its remedy of
+cancelling and re-running them. The cancellations did help in one way: the
+`run-matrix` concurrency group is free again, so 37945434581 has a job to
+claim. That job is now waiting in exactly the same way.
+
+**What is left:** the runner reports `online` to GitHub but takes no work. Two
+candidates fit that, and both are operator-side:
+
+- The runner's listener connects and heartbeats but never receives a job
+  assignment. A broken session or token after the re-registration would look
+  like this; the runner's own `_diag/Runner_*.log` answers it.
+- The registration sits in a runner group that this repository or these
+  workflows are not allowed to use. A group's repository or workflow
+  restrictions leave the runner visible and online while no job is routed to
+  it.
+
+Neither can be told apart from the repository API. **What would close it:** an
+operator reads the runner's `_diag` log and its runner-group settings, and
+then one self-hosted job starts within minutes of being queued.
+
+The merge queue is not blocked by this. `CI` from `gate.yml` is the only
+required context, and PRs kept merging through the night with `queue` runs
+waiting. What is blocked is every self-hosted verdict: L3, tier 2 and the
+nightly cells.
