@@ -190,3 +190,44 @@ to narrow the invocation.
   and `check-skip-budget` passed.
 - `lane_build_covers_run::shell_unclaimed_matches_the_rust_declaration` and
   the other 428 lane-contract tests pass.
+
+### Round two: `just test native` against `just build native`
+
+Running the chain for real found what the probes above could not.
+
+6. **The native run and the native build disagreed about the scope.** `just
+   test native` went to the module recipe. That recipe selects every
+   nros-tests binary except a hand-kept group list, but its build (`just native
+   build-fixtures`) builds only the example rows. 53 tests in scope failed:
+   - compile-check, cmake and west fixtures that the module build never
+     builds, with no coordinate to deselect them by;
+   - the ros-editions docker harness.
+
+   `native` now runs through the lane like its build does: `test-all` with
+   `lane=native` plus the native coordinates. That brings the fixture
+   preflight, the junit rewrite and the skip budget with it.
+7. **`test-all` deselected suites by probing the host.** No `arm-none-eabi` or
+   `riscv64-elf` dropped the embedded Cyclone tests. No `west` or Zephyr
+   workspace dropped the west-fixture suites. No FVP binary, or no `espflash`,
+   dropped theirs. Each of these vanished from the run without even counting
+   as a skip. What the sweep does not claim is now declared, the same on every
+   host:
+   - `ros_editions` is opt-in.
+   - FVP has no lane and no row.
+   - ESP32 is dormant (issue 1525).
+
+   Coordinates decide the rest. `require_west_fixture` now asks the Zephyr
+   scope first. `check-fixtures-stale.sh` no longer drops a workspace row
+   whose toolchain is absent, and `scripts/test/toolchain-gate.sh` is gone.
+8. **`check-xrce-source-manifest` crashed on a host where `/nonexistent`
+   exists.** It is `nobody`'s 0700 home on Debian and Ubuntu, so `exists()`
+   raises `PermissionError`. The self-test now uses a temp dir.
+9. **`just doctor` missed a stale `nros-launch-resolve`.** A `play_launch`
+   move stales it too (issue 1487), and `nros sync` refuses it. `doctor` now
+   fails on it.
+
+Measured after the fixes:
+- `just doctor native`: rc 0.
+- `just build native`: rc 0 (62 min).
+- `just test native`: 2,622 ran, 153 deselected, 0 unmet, 0 real failures
+  (13 min).

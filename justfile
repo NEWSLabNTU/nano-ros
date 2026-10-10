@@ -1774,12 +1774,10 @@ test *scope:
 
 # One scope token's test run.
 #
-# PLATFORM first, unlike `_build-scope`: `native` is both a platform module and
-# a lane, and for a RUN the module is the right machinery — `just native test`
-# is that platform's suite, whereas the `native` LANE narrows nothing (it is
-# module-level) and would hand `test-all` the whole tree. Both readings are the
-# same SCOPE, which is what `check-scope-namespace` asserts; only the machinery
-# differs, and each verb picks the one that exists for it.
+# `native` is both a platform module and a lane. Its run goes through the LANE
+# (issue 1758), like its build does, narrowed to the native rows by coordinate
+# so `test-all` does not claim the whole tree. Any other platform goes to its
+# module's `test`, narrowed to that platform's rows.
 [private]
 _test-scope tok verbose="":
     #!/usr/bin/env bash
@@ -1789,6 +1787,22 @@ _test-scope tok verbose="":
     tok="$(nros_scope_normalize "{{tok}}")"
     # shellcheck source=scripts/build/fixture-lane.sh
     source scripts/build/fixture-lane.sh
+    # Issue 1758 — `native` is the one token that is a platform AND a lane, and
+    # its RUN goes through the lane: `test-all`, narrowed to the native rows,
+    # preflighted against the stamp `just build native` (lane=native) writes,
+    # with the junit rewrite and the skip budget. The module recipe `just native
+    # test` selected every nros-tests binary but a hand-kept group list over a
+    # build of only the example rows, so compile-check, cmake and west fixtures
+    # it never built failed in it. One build verb, one run verb, one scope.
+    if [ "$tok" = "native" ]; then
+        coords="$(nros_scope_coords_file native)" || exit 1
+        [ -n "$coords" ] || { echo "_test-scope: native owns no coordinate?" >&2; exit 1; }
+        unclaimed="$(nros_lane_unclaimed native)"
+        echo "scope: native run narrowed to its own coordinates ($coords)"
+        nros_scope_exec env NROS_FIXTURE_LANE=native "NROS_TEST_COORDS=$coords" \
+            "NROS_TEST_UNCLAIMED=$unclaimed" just test-all {{verbose}}
+        exit 0
+    fi
     if nros_scope_is_platform "$tok"; then
         nros_scope_require_module_verb "$tok" test
         # Issue 1758 — the platform's run is SCOPED to the rows the platform
@@ -2612,13 +2626,6 @@ test-all verbose="": _require-fixtures-ready test-zpico-multisession
         # NROS_TEST_FAILURE_OUTPUT (default `never`) — see `_test-focused`.
         args+=(--success-output never --failure-output "${NROS_TEST_FAILURE_OUTPUT:-never}")
     fi
-    # Phase 185.2 / 186.4 — toolchain-gated exclusion of embedded-RTOS Cyclone
-    # tests. Since Phase 186 the embedded Cyclone backend self-provisions from
-    # source via CMake (no `build/cyclonedds-<rtos>-install` artifact any more),
-    # so the gate is the CROSS TOOLCHAIN: if it's present the example build can
-    # self-provision + boot, so run the tests; if it's absent (lighter tier),
-    # filter them OUT so they report `skipped`, not `failed` (`skip!` is a panic
-    # ⇒ a nextest failure; only *filtering* yields a skip).
     env_exclude=()
     # RFC-0061 / phase-318 W4 — scope the RUN to the lane. `NROS_TEST_SCOPE=native`
     # (tier 1) drops every non-host binary; the exclusions are DERIVED from
@@ -2627,57 +2634,28 @@ test-all verbose="": _require-fixtures-ready test-zpico-multisession
     while IFS= read -r _lane_expr; do
         [ -n "$_lane_expr" ] && env_exclude+=("$_lane_expr")
     done < <(bash scripts/test/lane-filter.sh "${NROS_TEST_SCOPE:-all}")
-    source scripts/test/toolchain-gate.sh   # phase-300 W4 — shared predicate (issue-0030 lockstep)
-    nros_toolchain_present arm-none-eabi \
-        || env_exclude+=("not (binary(freertos_qemu) and test(~cyclonedds))")
-    nros_toolchain_present riscv64-elf \
-        || env_exclude+=("not (binary(threadx_riscv64_qemu) and test(~cyclonedds))")
-    # Issue 0030 — deselect OPTIONAL-toolchain suites when their toolchain is
-    # absent, the same way the embedded-Cyclone tests above are gated. These
-    # suites already `nros_tests::skip!` at runtime (→ `[SKIPPED]` panic →
-    # rewritten to `<skipped>` by `_rewrite-skipped-junit`, so they never count
-    # as real failures), but the *live nextest console* still shows the skip!
-    # panic as a red FAIL — the "non-bug failure" a user shouldn't have to fight.
-    # Filtering deselects them entirely: no scary console line, no wasted in-test
-    # build attempt. Each suite runs (and skip!s with an actionable reason) the
-    # moment its toolchain is present, so this only loosens lighter tiers.
-    # ros_editions (phase-309): the multi-edition harness lanes are OPT-IN — they
-    # need docker, a slow-to-build `nano-ros-ros:<edition>` image, AND a
-    # per-edition-regenerated publisher fixture (not part of build-test-fixtures).
-    # Always deselect from the default sweep so `just ci` never depends on docker;
-    # run them explicitly with `just ros_editions ci <distro>`.
+    # Issue 1758 — what this sweep does NOT claim is DECLARED here, never probed.
+    # These filters used to read the host (no `arm-none-eabi` ⇒ drop the
+    # FreeRTOS Cyclone tests; no `west` ⇒ drop the west-fixture suites; no FVP,
+    # no `espflash` ⇒ drop theirs), so a host missing a toolchain the lane
+    # claimed reported those tests as never having existed — skip-and-pass with
+    # no skip line. The coordinates (`NROS_TEST_COORDS`) now decide whether a
+    # platform's tests run, and an in-scope one whose toolchain is absent FAILS.
+    # What remains is scope, the same on every host:
+    #
+    # ros_editions (phase-309) — the multi-edition docker harness is OPT-IN: it
+    # needs docker, a `nano-ros-ros:<edition>` image and a per-edition fixture
+    # that `build-test-fixtures` does not build. Run `just ros_editions ci <distro>`.
     env_exclude+=("not binary(~ros_editions)")
-    if ! bash scripts/zephyr/resolve-fvp-bin.sh >/dev/null 2>&1; then
-        env_exclude+=("not binary(fvp_smoke)")
-        # phase-298 W4 — the legacy fvp_runtime/fvp_runtime_rust binaries are
-        # deleted; fvp_runtime_ws is the runtime gate over ws-entry.
-        env_exclude+=("not binary(fvp_runtime_ws)")
-        # board_import west-builds the FVP board (needs the FVP SDK gate).
-        env_exclude+=("not binary(board_import)")
-    fi
-    # zephyr west build-fixtures (issue 0041): deselect when west / a provisioned
-    # Zephyr workspace is absent — the west fixtures can't be built there. Mirror
-    # the workspace-discovery ladder scripts/build/west-fixtures.sh uses (explicit
-    # ZEPHYR_BASE/NROS_ZEPHYR_WORKSPACE, in-repo, or the sibling
-    # ../nano-ros-workspace[-4.4] a `just zephyr setup` lands) so a sibling-layout
-    # host still RUNS these instead of wrongly deselecting buildable fixtures.
-    if ! command -v west >/dev/null 2>&1 \
-        || { [ -z "${ZEPHYR_BASE:-}" ] \
-             && [ ! -d "${NROS_ZEPHYR_WORKSPACE:-/nonexistent}/zephyr" ] \
-             && [ ! -d zephyr-workspace/zephyr ] \
-             && [ ! -d ../nano-ros-workspace/zephyr ] \
-             && [ ! -d ../nano-ros-workspace-4.4/zephyr ]; }; then
-        env_exclude+=("not binary(cli_bringup_zephyr)")
-        env_exclude+=("not binary(zephyr_self_pkg)")
-        env_exclude+=("not binary(board_import)")
-    fi
-    if ! command -v qemu-system-riscv32 >/dev/null 2>&1 || ! command -v espflash >/dev/null 2>&1; then
-        env_exclude+=("not binary(esp32_emulator)")
-    fi
+    # FVP — no lane provisions the licensed Arm FVP and no manifest row targets
+    # it (FVP support is wanted LATER; `just zephyr build-fvp-all` is manual).
+    env_exclude+=("not binary(fvp_smoke) and not binary(fvp_runtime_ws) and not binary(board_import)")
+    # ESP32 is DORMANT (issue 1525) and its `just` module is unmounted.
+    env_exclude+=("not binary(esp32_emulator)")
     if [ "${#env_exclude[@]}" -gt 0 ]; then
         env_filter="${env_exclude[0]}"
         for _e in "${env_exclude[@]:1}"; do env_filter="$env_filter and $_e"; done
-        echo "test-all: toolchain-gated suites filtered OUT (reported deselected, not failed); install the toolchain to run them: $env_filter"
+        echo "test-all: suites outside this sweep's declared scope, filtered OUT: $env_filter"
         args+=(-E "$env_filter")
     fi
     nros_nextest_record_begin test-all
@@ -5121,6 +5099,16 @@ _doctor-host:
         fi
     else
         echo "  [MISSING] nros CLI — run: just setup-cli"
+        host_rc=1
+    fi
+    # Issue 1758 — its sibling (issue 1487): a `play_launch` move stales BOTH
+    # binaries, and `nros sync` refuses a resolver built from another checkout
+    # as the first step of `just build native`. SKIPs (rc 0) when none is built.
+    if lr_out="$(bash "{{justfile_directory()}}/scripts/check-launch-resolve-fresh.sh" 2>&1)"; then
+        echo "  [OK] nros-launch-resolve agrees with this checkout's play_launch"
+    else
+        echo "  [STALE] nros-launch-resolve — run: just setup-launch-resolve"
+        printf '%s\n' "$lr_out" | sed -n '2,3p' | sed 's/^\s*/          /'
         host_rc=1
     fi
     # Issue 1758 — a submodule BEHIND its recorded pin is the next thing the
