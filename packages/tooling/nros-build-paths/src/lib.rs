@@ -26,7 +26,7 @@ pub fn repo_root() -> PathBuf {
     );
     try_repo_root().unwrap_or_else(|| {
         panic!(
-            "nros-build-paths: could not locate nros-sdk-index.toml walking up from {start}. \
+            "nros-build-paths: could not locate a nano-ros root ({CHECKOUT_MARKER}) walking up from {start}. \
              Out-of-tree consumer? Set the relevant NROS_PLATFORM_* env vars explicitly."
         )
     })
@@ -44,7 +44,9 @@ pub fn try_repo_root() -> Option<PathBuf> {
     let start = std::env::var("CARGO_MANIFEST_DIR").ok()?;
     let mut dir = PathBuf::from(start);
     loop {
-        if dir.join("nros-sdk-index.toml").is_file() {
+        // The ONE marker (RFC-0103 D6) — the same predicate
+        // `checkout_root_of`, the launcher and the shell/cmake walks use.
+        if dir.join(CHECKOUT_MARKER).is_file() {
             return Some(dir);
         }
         if !dir.pop() {
@@ -55,12 +57,17 @@ pub fn try_repo_root() -> Option<PathBuf> {
 
 /// The file whose presence marks a nano-ros source tree.
 ///
-/// One string, three spellings, because the three build systems cannot call
-/// each other — the same reason [`riscv64`] carries a shell and a cmake twin.
-/// The others are `nros_launcher::checkout::MONOREPO_MARKER` (the `packages/cli`
-/// workspace, which this crate may not depend on: it sits BELOW it) and
-/// `NROS_CHECKOUT_MARKER` in `scripts/lib/checkout-paths.sh`.
-/// `check-inherited-checkout-paths.py` pins the three to each other.
+/// ONE marker for "a nano-ros root" (RFC-0103 D6, phase-484 W1): a checkout and
+/// an installed SDK root (`stage-sdk-root.sh` ships `packages/` whole) both
+/// carry it, and [`repo_root`], [`checkout_root_of`] and the launcher's
+/// `MONOREPO_MARKER` (a re-export of this constant) all walk for it. Until
+/// phase-484 `repo_root` walked for `nros-sdk-index.toml` instead — the same
+/// directory today, by coincidence rather than by rule.
+///
+/// The non-Rust twins are `NROS_CHECKOUT_MARKER` in
+/// `scripts/lib/checkout-paths.sh` and `_nros_find_root` in
+/// `cmake/NanoRosWorkspace.cmake`; `check-inherited-checkout-paths.py` pins
+/// them to this one.
 pub const CHECKOUT_MARKER: &str = "packages/core/nros-core/Cargo.toml";
 
 /// Which nano-ros checkout does `path` belong to? `None` when it belongs to

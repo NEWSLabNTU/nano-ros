@@ -491,15 +491,8 @@ fn resolve_max_cbs_through_ladder(platform: &str) -> Option<usize> {
     use nros_board_common::platform_config::PlatformsTree;
     use nros_orchestration_ir::executor_sizing as sz;
 
-    let mut dir = std::env::current_dir().ok()?;
-    let repo = loop {
-        if dir.join("nros-sdk-index.toml").exists() {
-            break dir;
-        }
-        if !dir.pop() {
-            return None;
-        }
-    };
+    // The one root walk (RFC-0103 D6).
+    let repo = nros_launcher::checkout::find_monorepo_root(&std::env::current_dir().ok()?)?;
     let path = PlatformsTree::default_search_path(
         &repo,
         std::env::var("NROS_PLATFORMS_DIR").ok().as_deref(),

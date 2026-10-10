@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""check-retired-store-vars — the store root has ONE variable (RFC-0103 D6).
+"""check-retired-store-vars — one variable per root (RFC-0103 D6).
+
+The store root is `NROS_HOME`; the nano-ros root's env name is `NROS_REPO_DIR`.
 
 `NROS_HOME` names the nano-ros store root. Two more names used to answer the
 same question in different orders: the CLI read `NROS_STORE` first, and cmake's
@@ -40,6 +42,23 @@ READ = re.compile(
     )
 )
 
+# `NANO_ROS_ROOT` is retired only as an ENVIRONMENT variable (RFC-0103 D6:
+# `NROS_REPO_DIR` is the one env name for the root). As a cmake variable and
+# `-D` argument it is the explicit-argument rung and stays, so only env-read
+# shapes count for it.
+ENV_ONLY = r"NANO_ROS_ROOT"
+ENV_READ = re.compile(
+    r"|".join(
+        [
+            rf"ENV\{{{ENV_ONLY}\}}",
+            rf"env::var(?:_os)?\(\s*\"{ENV_ONLY}\"",
+            rf"environ(?:\.get)?\s*[\[(]\s*[\"']{ENV_ONLY}[\"']",
+            rf"\bexport\s+{ENV_ONLY}=",
+            rf"\.env\(\s*\"{ENV_ONLY}\"",
+        ]
+    )
+)
+
 # The sites whose job is to REFUSE the retired names, plus this gate and the
 # store-enumeration gate whose fixtures replay historical shapes on purpose.
 ALLOWED = {
@@ -49,6 +68,7 @@ ALLOWED = {
     "activate.fish",
     "scripts/check/check-retired-store-vars.py",
     "scripts/check-sdk-store-not-enumerated.py",
+    "cmake/NanoRosWorkspace.cmake",  # refuses $ENV{NANO_ROS_ROOT}
 }
 
 SELF_TESTS = [
@@ -64,10 +84,19 @@ SELF_TESTS = [
     ('x="${NROS_HOME:-$HOME/.nros}"', False),
     ("`NROS_STORE` (which the CLI alone read)", False),
 ]
+ENV_SELF_TESTS = [
+    ('if(DEFINED ENV{NANO_ROS_ROOT})', True),
+    ('export NANO_ROS_ROOT="$PROJECT_ROOT"', True),
+    ('std::env::var_os("NANO_ROS_ROOT")', True),
+    ('add_subdirectory("${NANO_ROS_ROOT}" nano_ros)', False),
+    ('cmake -DNANO_ROS_ROOT="$root" ..', False),
+    ('NANO_ROS_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"', False),
+]
 
 
 def self_test() -> int:
     bad = [(t, want) for t, want in SELF_TESTS if bool(READ.search(t)) != want]
+    bad += [(t, want) for t, want in ENV_SELF_TESTS if bool(ENV_READ.search(t)) != want]
     for t, want in bad:
         print(f"  self-test: {'missed' if want else 'false hit on'}: {t}")
     return len(bad)
@@ -89,23 +118,24 @@ def main() -> int:
             text = p.read_text(encoding="utf-8")
         except (UnicodeDecodeError, IsADirectoryError, FileNotFoundError):
             continue
-        if "STORE" not in text:
+        if "STORE" not in text and "NANO_ROS_ROOT" not in text:
             continue
         for i, line in enumerate(text.splitlines(), 1):
-            if READ.search(line):
+            if READ.search(line) or ENV_READ.search(line):
                 findings.append(f"  {rel}:{i}: {line.strip()[:120]}")
     if findings:
-        print("check-retired-store-vars: a retired store-root variable is READ:\n")
+        print("check-retired-store-vars: a retired store/root variable is READ:\n")
         print("\n".join(findings))
         print(
-            "\nThe store root has one variable, NROS_HOME (RFC-0103 D6). Resolve it through"
-            "\nnros_build_paths::store (Rust), scripts/lib/store-root.sh (shell) or"
-            "\nnros_store_root() in cmake/NanoRosStoreRoot.cmake — never a raw read."
+            "\nThe store root has one variable, NROS_HOME; the nano-ros root's one env name is"
+            "\nNROS_REPO_DIR (RFC-0103 D6). Resolve the store through nros_build_paths::store,"
+            "\nscripts/lib/store-root.sh or nros_store_root(); the root through the one walk."
         )
         return 1
     print(
-        f"check-retired-store-vars: OK ({len(SELF_TESTS)} self-test cases; "
-        f"no read of NROS_STORE / NROS_SDK_STORE outside {len(ALLOWED)} refusal sites)"
+        f"check-retired-store-vars: OK ({len(SELF_TESTS) + len(ENV_SELF_TESTS)} self-test cases; "
+        f"no read of NROS_STORE / NROS_SDK_STORE / env NANO_ROS_ROOT outside "
+        f"{len(ALLOWED)} refusal sites)"
     )
     return 0
 

@@ -93,19 +93,22 @@ nros_cmake_configure_if_needed() {
         # RFC-0048 (phase-287): an ament-shape example resolves nano-ros through
         # `find_package(nano_ros)`, which locates the in-tree nano_rosConfig.cmake
         # via CMake's `nano_ros_ROOT` env var. A fixture / CI build that did not
-        # `source ./activate.sh` won't have it — derive it here (from NROS_REPO_DIR
-        # / NANO_ROS_ROOT, else a walk-up to the `nros-sdk-index.toml` sentinel)
-        # so every in-tree build path resolves it. Copy-out builds outside the
-        # tree pass `-Dnano_ros_ROOT=<checkout>` per the RFC-0026 contract.
+        # `source ./activate.sh` won't have it — derive it here: the checkout
+        # that encloses the source dir FIRST (the one marker, RFC-0103 D6), and
+        # `$NROS_REPO_DIR` only when the source is outside every checkout — an
+        # inherited value names whichever checkout last activated (issue 1280).
+        # Copy-out builds outside the tree pass `-Dnano_ros_ROOT=<checkout>` per
+        # the RFC-0026 contract.
         if [ -z "${nano_ros_ROOT:-}" ]; then
-            local _nrr="${NROS_REPO_DIR:-${NANO_ROS_ROOT:-}}"
-            if [ -z "$_nrr" ]; then
-                local _d
-                _d="$(cd "$src_dir" && pwd)"
-                while [ -n "$_d" ] && [ "$_d" != "/" ] && [ ! -f "$_d/nros-sdk-index.toml" ]; do
-                    _d="$(dirname "$_d")"
-                done
-                [ -f "$_d/nros-sdk-index.toml" ] && _nrr="$_d"
+            local _nrr="" _d
+            _d="$(cd "$src_dir" && pwd)"
+            while [ -n "$_d" ] && [ "$_d" != "/" ] && [ ! -f "$_d/packages/core/nros-core/Cargo.toml" ]; do
+                _d="$(dirname "$_d")"
+            done
+            if [ -f "$_d/packages/core/nros-core/Cargo.toml" ]; then
+                _nrr="$_d"
+            else
+                _nrr="${NROS_REPO_DIR:-}"
             fi
             [ -n "$_nrr" ] && export nano_ros_ROOT="$_nrr"
         fi

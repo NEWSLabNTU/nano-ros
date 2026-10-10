@@ -88,7 +88,6 @@ export PATH="$PROJECT_ROOT/packages/cli/target/release:$PATH"
 # Same reason for the cmake package search: `nano_ros_ROOT` in the environment
 # points `find_package(nano_ros)` at whichever checkout was last activated.
 export nano_ros_ROOT="$PROJECT_ROOT"
-export NANO_ROS_ROOT="$PROJECT_ROOT"
 export NROS_WORKSPACE="$PROJECT_ROOT"
 # ... and the checkout the CLI reports against, for the same reason: an
 # inherited `NROS_REPO_DIR` from another activation makes `abi_guard` compare
