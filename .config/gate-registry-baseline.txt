@@ -85,6 +85,7 @@ cpp-fmt
 cpp-freestanding-includes
 cpp-no-std-stdio
 cross-toolchain-provenance
+crt-free-runtime-symbols
 cxx-compat-shim-coverage
 cxx-standard-floor
 cyclone-backend-sources

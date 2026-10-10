@@ -472,6 +472,7 @@ set(THREADX_STARTUP_SOURCE
     "${_NROS_BOARD_STARTUP_C}"
     "${_NROS_APP_CONFIG_DEF_C}"
     "${_NROS_BOARD_ROOT}/packages/boards/nros-board-common/c/nros_rtos_run_components.c"
+    "${_NROS_BOARD_ROOT}/packages/boards/nros-board-common/c/cxx_static_abi.c"  # issue 1753
     CACHE INTERNAL "ThreadX / rv-virt-threadx startup TU + NROS_APP_CONFIG def + C runner")
 
 set(THREADX_APP_DEFINE_SOURCE ""

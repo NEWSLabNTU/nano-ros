@@ -61,6 +61,20 @@ SECTIONS
      * `link.lds` records for threadx-riscv64.
      *
      * FLASH, read-only: these are function pointers, not state. */
+    /* Issue 1753 — the other two arrays newlib's runtime names. A script that
+     * places only `.init_array` leaves `__preinit_array_*` / `__fini_array_*`
+     * to the linker; on RISC-V that failed the link, here it is latent until an
+     * image reaches the exit path. Empty unless something lands in them.
+     * `check-linker-array-bounds` keeps the three together. */
+    .preinit_array :
+    {
+        . = ALIGN(4);
+        PROVIDE(__preinit_array_start = .);
+        KEEP(*(.preinit_array))
+        PROVIDE(__preinit_array_end = .);
+        . = ALIGN(4);
+    } > FLASH
+
     .init_array :
     {
         . = ALIGN(4);
@@ -68,6 +82,16 @@ SECTIONS
         KEEP(*(SORT_BY_INIT_PRIORITY(.init_array.*)))
         KEEP(*(.init_array))
         PROVIDE(__init_array_end = .);
+        . = ALIGN(4);
+    } > FLASH
+
+    .fini_array :
+    {
+        . = ALIGN(4);
+        PROVIDE(__fini_array_start = .);
+        KEEP(*(SORT_BY_INIT_PRIORITY(.fini_array.*)))
+        KEEP(*(.fini_array))
+        PROVIDE(__fini_array_end = .);
         . = ALIGN(4);
     } > FLASH
 

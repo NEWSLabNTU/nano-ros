@@ -34,12 +34,35 @@ SECTIONS
    * these bounds. Previously the section landed as an ORPHAN (present in the
    * ELF, no symbols, never run) — descriptors stayed unregistered and
    * `nros_executor_add_subscription` failed -1 at reader creation. */
+  /* Issue 1753 — newlib's runtime names all THREE arrays' bounds, not only
+   * `.init_array`'s: `__libc_init_array` reads `__preinit_array_*`, and
+   * `__libc_fini_array` (pulled by the exit path) reads `__fini_array_*`. A
+   * script that places only `.init_array` leaves the other four symbols to the
+   * linker, which resolves them near address 0 — ~2 GiB from `.text` here, so a
+   * medany PC-relative reference fails to LINK (`R_RISCV_PCREL_HI20 out of
+   * range`). Empty on an image that never reaches them; the bounds still name a
+   * real address. `check-linker-array-bounds` keeps the three together. */
+  .preinit_array : {
+    . = ALIGN(8);
+    PROVIDE(__preinit_array_start = .);
+    KEEP(*(.preinit_array))
+    PROVIDE(__preinit_array_end = .);
+  }
+
   .init_array : {
     . = ALIGN(8);
     PROVIDE(__init_array_start = .);
     KEEP(*(SORT_BY_INIT_PRIORITY(.init_array.*)))
     KEEP(*(.init_array))
     PROVIDE(__init_array_end = .);
+  }
+
+  .fini_array : {
+    . = ALIGN(8);
+    PROVIDE(__fini_array_start = .);
+    KEEP(*(SORT_BY_INIT_PRIORITY(.fini_array.*)))
+    KEEP(*(.fini_array))
+    PROVIDE(__fini_array_end = .);
   }
 
   .data : {
