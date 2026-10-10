@@ -66,6 +66,12 @@ three hand-written entries remain, none a generator gap.
 generated entry, whose `.config` differs from the hand-written one only by the
 locator the image declares (which the hand-written app had ignored).
 
+**Status 2026-10-10 (realtime-c):** `smp_bringup`'s image is
+`[image.zephyr_smp] board = "qemu-cortex-a53"` with `entry = "zephyr_entry"` —
+its own id and the board its row really builds (`nros build` now runs `-b
+qemu_cortex_a53/qemu_cortex_a53/smp` and links an SMP image). Migrating the
+shared hand-written `zephyr_entry` is the remaining step.
+
 Also in this theme: [1289](../issues/1289-workspace-node-tables-still-in-manifests.md)
 (45 node packages still declare their class in `[package.metadata.nros.node]`),
 [1520](../issues/1520-ambiguity-example-cited-everywhere-was-the-manufactured-one.md)
