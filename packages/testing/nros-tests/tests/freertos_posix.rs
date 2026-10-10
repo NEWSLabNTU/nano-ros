@@ -74,8 +74,35 @@ fn run_entry(entry: &PathBuf, domain: u8, label: &str) -> String {
     cmd.env("NROS_ENTRY_SPIN_MS", SPIN_MS);
     let mut proc = ManagedProcess::spawn_command(cmd, label)
         .unwrap_or_else(|e| panic!("spawn the {label} image at {}: {e}", entry.display()));
-    proc.wait_for_output(WINDOW)
-        .unwrap_or_else(|e| panic!("{label} produced no output within {WINDOW:?}: {e}"))
+    // stdout AND stderr: the board's assert and abort reports go to stderr.
+    let out = proc
+        .wait_for_all_output(WINDOW)
+        .unwrap_or_else(|e| panic!("{label} produced no output within {WINDOW:?}: {e}"));
+    // Issue 1769 — a host library's thread entering heap_3's scheduler bracket
+    // killed this image on a FreeRTOS assert in 5 runs of 10, often AFTER the
+    // listener had already printed. Delivery alone cannot see that, so the
+    // image must also end cleanly.
+    assert!(
+        !out.contains(nros_tests::output::FREERTOS_ASSERT_FAILED),
+        "{label}: a FreeRTOS assert fired (issue 1769):\n{out}"
+    );
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    let status = loop {
+        match proc.handle_mut().try_wait() {
+            Ok(Some(status)) => break Some(status),
+            Ok(None) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            _ => break None,
+        }
+    };
+    if let Some(status) = status {
+        assert!(
+            status.success(),
+            "{label}: the image ended with {status} (issue 1769):\n{out}"
+        );
+    }
+    out
 }
 
 /// Assert the image delivered: the listener printed, and it printed after the
