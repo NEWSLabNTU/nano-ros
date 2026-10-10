@@ -14,10 +14,10 @@
 
 # ── arm: QEMU ARM virt (Cortex-A7 + virtio-net). Tier 1. ────────────────────
 [[board]]
-# phase-351 / issue 0606 — the arm witness's DOWNSTREAM ids: `qemu-armv7a-nuttx` (workspace deploys;
-# renamed from `nuttx-qemu-arm` by phase-437 W4) and `qemu-armv7a-nsh` (the NuttX board config the
-# copy-out examples name — board PLUS config, so it stays distinct from the board id).
-names = ["nuttx", "NuttX", "qemu-armv7a-nuttx", "qemu-armv7a-nsh"]
+# phase-351 / issue 0606 — the arm witness's DOWNSTREAM id: `qemu-armv7a-nuttx` (workspace deploys;
+# renamed from `nuttx-qemu-arm` by phase-437 W4). NuttX's OWN board-plus-config string,
+# `qemu-armv7a-nsh`, is a framework id, so it lives in `[board.nuttx]` below, not here (issue 1652).
+names = ["nuttx", "NuttX", "qemu-armv7a-nuttx"]
 platform = "nuttx"
 toolchain = "nightly"
 entry_kind = "board-run"
@@ -111,6 +111,12 @@ threads = true
 # RFC-0048 §6 / phase-287 W5 — CMake toolchain file for `nros setup`'s preset.
 [board.cmake]
 toolchain_file = "cmake/toolchain/armv7a-nuttx-eabi.cmake"
+
+# Issue 1652 — NuttX's own board-plus-config string for this board. A
+# `[deploy.*].board` may name it (it RESOLVES here, issue 0606); an
+# `[image.*] board` may not (it names the nano-ros board).
+[board.nuttx]
+board_config = "qemu-armv7a-nsh"
 
 # ── riscv: QEMU rv-virt (rv32imac + virtio-net). Tier 2. ────────────────────
 # `target_contains` is what separates the two witnesses when a caller asks for

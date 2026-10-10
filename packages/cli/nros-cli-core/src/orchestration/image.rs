@@ -763,8 +763,8 @@ pub fn refuse_framework_board(
     Err(format!(
         "`{origin} = \"{board}\"` is the FRAMEWORK's board id, not a nano-ros one. \
          Write `board = \"{id}\"`: an image names the nano-ros board, and the \
-         descriptor ({}) states `{board}` as the id `west build -b` receives, so \
-         the build is unchanged (issue 1519).",
+         descriptor ({}) states `{board}` as the framework's own id for it, so \
+         the build is unchanged (issues 1519, 1652).",
         descriptor
             .source
             .as_deref()

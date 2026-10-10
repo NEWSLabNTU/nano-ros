@@ -152,10 +152,13 @@ other C++ roles are mechanical.
 
 ### W6 — board identity residue
 
-Issue [1652](../issues/1652-framework-board-strings-in-names-nuttx-platformio.md)
+Issue [1652](../issues/archived/1652-framework-board-strings-in-names-nuttx-platformio.md)
 — NuttX's `qemu-armv7a-nsh` and PlatformIO's `esp32dev` still sit in `names`
 the way the Zephyr id did before issue 1519. Needs a typed per-ecosystem field
 first.
+
+**Status 2026-10-10:** done — issue 1652 resolved (typed `[board.nuttx]` /
+`[board.platformio]`, D5).
 
 ### W7 — a runtime bug the migration exposed
 

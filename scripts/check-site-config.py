@@ -59,7 +59,6 @@ BOARDS = {
     "mps2-an385-freertos": {"freertos": "FREERTOS_DIR", "lwip": "LWIP_DIR"},
     "qemu-armv7a-nuttx": {"nuttx": "NUTTX_DIR", "nuttx_apps": "NUTTX_APPS_DIR"},
     "rv-virt-nuttx": {"nuttx": "NUTTX_DIR", "nuttx_apps": "NUTTX_APPS_DIR"},
-    "qemu-armv7a-nsh": {"nuttx": "NUTTX_DIR", "nuttx_apps": "NUTTX_APPS_DIR"},
     "threadx-linux": {"threadx": "THREADX_DIR", "netxduo": "NETX_DIR"},
 }
 

@@ -19,7 +19,7 @@ name = "listener"
 # the rustc triple the board descriptor already states. `launch` loses its
 # `launch/` prefix: an image's value is resolved against that directory.
 [image.qemu-armv7a-nuttx]
-board = "qemu-armv7a-nsh"
+board = "qemu-armv7a-nuttx"
 launch = "system.launch.xml"
-[board_config."qemu-armv7a-nsh"]
+[board_config."qemu-armv7a-nuttx"]
 sdk = { nuttx = "{env:NUTTX_DIR}", nuttx_apps = "{env:NUTTX_APPS_DIR}" }

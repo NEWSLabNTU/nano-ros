@@ -508,7 +508,6 @@ mod tests {
                 ("s32z270-freertos", "freertos"),
                 ("mps3-an536-freertos", "freertos"),
                 ("qemu-armv7a-nuttx", "nuttx"),
-                ("qemu-armv7a-nsh", "nuttx"),
                 ("nuttx", "nuttx"),
                 ("rv-virt-nuttx", "nuttx"),
                 ("nuttx-riscv", "nuttx"),
@@ -532,6 +531,32 @@ mod tests {
             assert!(err.contains("board = \"zephyr\""), "names the fix: {err}");
             let s = sys("[deploy.fw]\nkind=\"flash\"\nboard=\"native_sim/native/64\"\n");
             assert_eq!(rtos(&s, Some("fw")), Ok("zephyr"));
+        }
+
+        /// Issue 1652 — the same rule for the two ecosystems that had no typed
+        /// field: NuttX's board-plus-config and PlatformIO's board id are
+        /// refused on an IMAGE and still resolve on a DEPLOY.
+        #[test]
+        fn nuttx_and_platformio_framework_ids_follow_the_image_deploy_rule() {
+            for (framework_id, nano_ros, want) in [
+                ("qemu-armv7a-nsh", "nuttx", "nuttx"),
+                ("esp32dev", "esp32-qemu", ""),
+            ] {
+                let s = sys(&format!("[image.fw]\nboard=\"{framework_id}\"\n"));
+                let err = rtos(&s, Some("fw")).expect_err(framework_id);
+                assert!(
+                    err.contains(&format!("board = \"{nano_ros}\"")),
+                    "names the fix: {err}"
+                );
+                let s = sys(&format!(
+                    "[deploy.fw]\nkind=\"flash\"\nboard=\"{framework_id}\"\n"
+                ));
+                assert_eq!(
+                    rtos(&s, Some("fw")),
+                    Ok(want),
+                    "`{framework_id}` on a deploy"
+                );
+            }
         }
 
         /// Ids the substring match answered wrongly. `native_sim/native/64`
