@@ -376,7 +376,7 @@
   "c:take": {
     "verdict": "divergence",
     "provides": [
-      "nros_subscription_take_serialized",
+      "nros_polling_subscription_take_serialized",
       "<pkg>_<msg>_deserialize"
     ],
     "why": "RE-VERDICTED 2026-09-03 (phase-379 W6 decision 1), rename -> divergence: the WORD moved and what is left has a constraint behind it.\nEXECUTED: `try_recv` -> `take` across C, C++ and Rust. Note the direction this went -- our own RMW vtable (`nros/rmw_vtable.h`) has spelled these slots `take` / `take_request` / `take_response` / `take_sequence` since phase-376 W3.b, so the USER API was the only layer still saying `try_recv`; the rename moves it onto the vocabulary the layer beneath it already used, which is also rcl's (`rcl_take`) and rclcpp's (`Subscription::take`). The contract collision that blocked this row is gone too: `PollingSubscription<M>::take(M&)` -- non-consuming, retained-latest, the opposite contract under the same word -- was DELETED, its `take_data()` / `take_new_data()` autoware mirrors (issue 0278) retained. Old C spellings survive as NROS_DEPRECATED_MSG `static inline` forwarders in `nros/subscription.h`, `nros/service.h` and `nros/client.h`; C++ as `[[deprecated]]` methods; Rust took a clean break with no shim, because a rename there breaks IMPLEMENTORS of the RMW traits rather than callers and a compile error is what a backend author wants.\nWHAT REMAINS, and the constraint. `rcl_take(subscription, void *ros_message, rmw_message_info_t *, rmw_subscription_allocation_t *)` is ONE type-erased function over typesupport plus an allocator. We have neither on target, so the type-erased take is byte-oriented -- `nros_subscription_take_serialized(subscription, buf, buf_len)` -- and the typed take is generated per message type. That is exactly `c:publish`'s divergence mirrored on the receive side. The `nros_subscription_` prefix is not a second difference: it is a module prefix of the construction rcl itself uses (`rcl_client_fini`), and the precedent chain (`c:get_zero_initialized_publisher`, verdict DECLINED) argues for keeping ours.",
@@ -775,7 +775,7 @@
       "nros::Publisher::publish_raw",
       "nros::Subscription::take_serialized",
       "nros_publish_raw",
-      "nros_subscription_take_serialized"
+      "nros_polling_subscription_take_serialized"
     ],
     "why": "RE-VERDICTED 2026-08-26 (phase-379 W5), rename -> divergence. The row deferred on 'settle the word first', but the word cannot settle it: a rename needs two names, and there is no ours-side type to rename. `rclcpp::SerializedMessage` is an OWNING, GROWABLE byte buffer -- constructor, `reserve`, `capacity`, `size`, `get_rcl_serialized_message`, `release_rcl_serialized_message`, wrapping `rcl_serialized_message_t` behind an allocator. Ours is a caller-owned `(uint8_t*, size_t)` pair at every call site (`Publisher::publish_raw(const uint8_t*, size_t)`, `Subscription::take_serialized(uint8_t*, size_t, size_t&)`, `nros_publish_raw`), with no wrapper type, because there is no allocator to own a growable buffer and no exceptions to report a failed grow. That is a shape change with a named platform constraint, which is what divergence means.\nThe SERIALIZED -> RAW question (`c:take_serialized_message`) is about METHOD names and does not reach this row either way: whichever word wins, we still have no type here. If nano-ros ever introduces one, that is a NEW-TYPE decision made under whatever naming is in force then -- not a rename of this row. Six member rows inherit this verdict. (CORRECTED 2026-09-04, phase-417: the call-site list named `Subscription::try_recv_raw`, retired by phase-379 W6 decision 1; the live spelling is `take_serialized`, which this row's own `provides` already carried.)",
     "rename": {
@@ -2042,5 +2042,21 @@
   "c:polling_subscription_get_actual_qos": {
     "verdict": "extension",
     "why": "the polled half of `c:subscription_get_actual_qos`, which carries the contract: the QoS the backend reports it is running, read straight from the inline subscriber. Split out by phase-487 W1 with the type."
+  },
+  "c:polling_client_request_publisher_get_actual_qos": {
+    "verdict": "extension",
+    "why": "the polled half of `c:client_request_publisher_get_actual_qos`, which carries the contract: the QoS the backend reports for that endpoint, read straight from the inline entity. Split out by phase-487 W2 with the type."
+  },
+  "c:polling_client_response_subscription_get_actual_qos": {
+    "verdict": "extension",
+    "why": "the polled half of `c:client_response_subscription_get_actual_qos`, which carries the contract: the QoS the backend reports for that endpoint, read straight from the inline entity. Split out by phase-487 W2 with the type."
+  },
+  "c:polling_service_request_subscription_get_actual_qos": {
+    "verdict": "extension",
+    "why": "the polled half of `c:service_request_subscription_get_actual_qos`, which carries the contract: the QoS the backend reports for that endpoint, read straight from the inline entity. Split out by phase-487 W2 with the type."
+  },
+  "c:polling_service_response_publisher_get_actual_qos": {
+    "verdict": "extension",
+    "why": "the polled half of `c:service_response_publisher_get_actual_qos`, which carries the contract: the QoS the backend reports for that endpoint, read straight from the inline entity. Split out by phase-487 W2 with the type."
   }
 }

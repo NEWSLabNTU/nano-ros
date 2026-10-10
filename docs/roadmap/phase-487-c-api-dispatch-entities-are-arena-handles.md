@@ -1,6 +1,6 @@
 # Phase 487 — the C API's dispatched entities are arena handles; its publisher keeps its storage
 
-**Status (2026-10-11). In progress: W0 and W1 done.** Answers issue
+**Status (2026-10-11). In progress: W0, W1 and W2 done.** Answers issue
 [1335](../issues/1335-entity-storage-split-timer-arena-vs-caller-buffer.md)'s
 last open question (its question 3: does the C API follow the C++ entity
 model?). Implements the C half of
@@ -153,6 +153,48 @@ returns nothing outside history.
 ### W2 — services and clients
 
 The same change for `nros_service_t` and `nros_client_t`.
+
+**Status: done 2026-10-11.** Shape 1 again, plus the one thing only the
+client had.
+
+- `nros_service_t` and `nros_client_t` lost `callback` / `response_callback`,
+  `context` and `_opaque`, and their `POLLING` states.
+- `nros_service_init_with_qos` / `_with_options` lost `callback` and
+  `context`. The two-argument `nros_executor_add_service` is deleted;
+  `nros_executor_add_service_raw` holds the registration body and takes the
+  callback.
+- **The client's arena entry held a trampoline whose context was the
+  `nros_client_t`**, reading `response_callback` back out of the struct at
+  dispatch, so `nros_client_call` could swap a one-shot capture in. That is
+  RFC-0096 D9's back-reference, and issue 1631's use-after-free when a reply
+  outlives the struct. The entry now holds the user's pair:
+  `nros_executor_add_client` registers it empty,
+  `nros_client_set_response_callback` writes it (the client must be added
+  first, else `NROS_RET_NOT_INIT`; every in-tree caller already was), and
+  `nros_client_call` swaps through the same slot.
+- New `nros_polling_service_t` / `nros_polling_client_t` with
+  `nros_polling_{service,client}_*`: init, the `_raw` take/send pair,
+  set_wake_callback, fini, the two granted-QoS getters each, and a
+  zero-initialiser.
+- **Codegen: the typed service binding moved to registration.**
+  `<Srv>_service_init(service, node, name)` no longer takes the handler; the
+  new `<Srv>_executor_add_service(executor, service, &handler)` binds the
+  trampoline through `nros_executor_add_service_raw`, which is where rclc
+  binds its handler. A version-10 or -11 C tree with a service no longer
+  compiles, so the codegen version and its minimum are 12.
+
+| type | x86_64 | thumbv7m |
+| --- | ---: | ---: |
+| `nros_service_t` | 2 368 → **736** | 2 312 → **700** |
+| `nros_client_t` | 2 376 → **744** | 2 312 → **704** |
+| `nros_polling_service_t` (new) | 1 632 | 1 616 |
+| `nros_polling_client_t` (new) | 1 632 | 1 616 |
+
+Consumers: the six `service-server` examples (native, FreeRTOS, bare-metal
+mps2, NuttX, ThreadX riscv64, ThreadX Linux), five C test TUs, the codegen
+heap compile-check stub, the golden corpus, `rcl_compat.h` and the book. The
+`typed_service_storage_mismatch_probe` still fails on both of its mistakes,
+the second one now at `_executor_add_service` (checked in its log).
 
 ### W3 — timers
 

@@ -127,21 +127,23 @@ int nros_app_main(int argc, char** argv) {
     NROS_CHECK_RET(rclc_node_init_default(&app.node, "add_two_ints_server", "/", &app.support), 1);
     printf("Node created: %s\n", rcl_node_get_name(&app.node));
 
-    // Install the typed handler, then create the service against it. The
-    // generated `_service_init` names the type support, the trampoline and the
-    // handler together, so the three cannot disagree — there is no
-    // hand-written `nros_service_type_t` here any more.
+    // Install the typed handler and create the service. The generated
+    // `_service_init` names the type support and `_executor_add_service` binds
+    // the trampoline to the handler, so neither can disagree with the type —
+    // there is no hand-written `nros_service_type_t` here any more.
     NROS_CHECK_RET(example_interfaces_srv_add_two_ints_service_handler_init(
                        &app.handler, service_callback, &app.ctx),
                    1);
-    NROS_CHECK_RET(example_interfaces_srv_add_two_ints_service_init(&app.service, &app.node,
-                                                                    "/add_two_ints", &app.handler),
-                   1);
+    NROS_CHECK_RET(
+        example_interfaces_srv_add_two_ints_service_init(&app.service, &app.node, "/add_two_ints"),
+        1);
     printf("Service created: %s\n", rcl_service_get_service_name(&app.service));
 
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
     g_executor = &app.executor;
-    NROS_CHECK_RET(nros_executor_add_service(&app.executor, &app.service), 1);
+    NROS_CHECK_RET(example_interfaces_srv_add_two_ints_executor_add_service(
+                       &app.executor, &app.service, &app.handler),
+                   1);
     printf("Executor created with %d handle(s)\n", nros_executor_get_handle_count(&app.executor));
 
     // Set up signal handler

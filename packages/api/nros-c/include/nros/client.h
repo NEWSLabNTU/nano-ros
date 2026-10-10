@@ -3,13 +3,16 @@
  * @ingroup grp_service
  * @brief Service client API.
  *
- * Create service clients with nros_client_init() and call services
- * with nros_client_call() (blocking).
+ * Create a service client with rclc_client_init_default(), add it to an
+ * executor with nros_executor_add_client(), and call services with
+ * nros_client_call() (blocking). The executor arena owns the client; a
+ * response callback is set on the ADDED client with
+ * nros_client_set_response_callback() (phase-487 W2).
  *
  * The non-blocking paths take the reply: nros_client_take_response()
  * after nros_client_send_request_async(), and
- * nros_client_take_response_raw() on an L1 polling client created with
- * nros_client_init_polling().
+ * nros_polling_client_take_response_raw() on a client of the separate polled
+ * type ::nros_polling_client_t, created with nros_polling_client_init().
  *
  * All four are BYTES. For a typed reply — a deserialised response struct
  * rather than a CDR buffer — the generated per-service header emits

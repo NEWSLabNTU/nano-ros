@@ -75,14 +75,20 @@ static void probe_service_handler(const fingerprint_corpus_srv_probe_request* re
 static fingerprint_corpus_srv_probe_service_handler_t g_probe_handler;
 static struct nros_service_t g_probe_service;
 
-static nros_ret_t bring_up_typed_service(const struct nros_node_t* node) {
+static nros_ret_t bring_up_typed_service(struct nros_executor_t* executor,
+                                         const struct nros_node_t* node) {
     nros_ret_t ret = fingerprint_corpus_srv_probe_service_handler_init(&g_probe_handler,
                                                                        probe_service_handler, NULL);
     if (ret != NROS_RET_OK) {
         return ret;
     }
-    return fingerprint_corpus_srv_probe_service_init(&g_probe_service, node, "/add",
-                                                     &g_probe_handler);
+    ret = fingerprint_corpus_srv_probe_service_init(&g_probe_service, node, "/add");
+    if (ret != NROS_RET_OK) {
+        return ret;
+    }
+    /* phase-487 W2: the handler is bound where rclc binds it, at registration. */
+    return fingerprint_corpus_srv_probe_executor_add_service(executor, &g_probe_service,
+                                                             &g_probe_handler);
 }
 
 /* A refused request is queryable without a logger — `last_error` is one of the

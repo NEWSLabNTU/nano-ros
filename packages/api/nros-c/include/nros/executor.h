@@ -41,7 +41,10 @@
  * subscription struct stored, and that struct no longer stores one. Its
  * replacement takes the callback, `nros_executor_add_subscription_raw`, so the
  * alias could not forward without changing arity. `_in_group` kept its alias
- * and gained the same two arguments.
+ * and gained the same two arguments. phase-487 W2 retired
+ * `nros_executor_register_service` the same way: its target, the two-argument
+ * `nros_executor_add_service`, is gone, and `nros_executor_add_service_raw`
+ * takes the callback.
  */
 #ifndef NROS_NO_DEPRECATED_EXECUTOR_REGISTER_ALIASES
 #define nros_executor_register_subscription_raw_with_info                                          \
@@ -49,7 +52,6 @@
 #define nros_executor_register_subscription_in_group nros_executor_add_subscription_in_group
 #define nros_executor_register_timer rclc_executor_add_timer
 #define nros_executor_register_timer_in_group nros_executor_add_timer_in_group
-#define nros_executor_register_service nros_executor_add_service
 #define nros_executor_register_action_server nros_executor_add_action_server
 #define nros_executor_register_action_client nros_executor_add_action_client
 #define nros_executor_register_time_triggered_dispatcher nros_executor_add_time_triggered_dispatcher

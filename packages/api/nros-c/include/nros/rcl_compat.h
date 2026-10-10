@@ -454,7 +454,7 @@ typedef struct nros_support_t rclc_support_t;
  * * `rcl_take_request` / `rcl_take_response` — upstream hands back a
  *   DESERIALIZED message plus an `rmw_request_id_t` out-struct
  *   (`rcl/service.h:279`, `rcl/client.h:301`); ours are the CDR-byte drains
- *   `nros_service_take_request_raw(service, buf, buf_len, int64_t *seq)` and
+ *   `nros_polling_service_take_request_raw(service, buf, buf_len, int64_t *seq)` and
  *   `nros_client_take_response(client, buf, buf_len, size_t *out_len)`.
  *   Different arity, different argument order, different data. This is
  *   `PollingSubscription::take()`'s class exactly — a plausible name over an
@@ -568,8 +568,8 @@ typedef nros_typed_subscription_callback_t rclc_subscription_callback_with_conte
  *             void *context);
  *
  *     <Srv>_service_handler_init(&handler, cb, &ctx);
- *     <Srv>_service_init(&service, &node, "/name", &handler);
- *     nros_executor_add_service(&executor, &service);
+ *     <Srv>_service_init(&service, &node, "/name");
+ *     <Srv>_executor_add_service(&executor, &service, &handler);
  *
  * — the CALLER owning both payload structs, which is exactly what rclc's
  * `request_msg` / `response_msg` arguments are for, and the callback carrying

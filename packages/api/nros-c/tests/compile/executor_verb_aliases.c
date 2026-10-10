@@ -24,8 +24,10 @@
 /* 1. The rclc-spelled verbs exist. */
 static nros_ret_t (*const kAddTimer)(struct nros_executor_t*,
                                      struct nros_timer_t*) = rclc_executor_add_timer;
-static nros_ret_t (*const kAddService)(struct nros_executor_t*,
-                                       struct nros_service_t*) = nros_executor_add_service;
+/* phase-487 W2: the service add takes its callback, as rclc's does. */
+static nros_ret_t (*const kAddService)(struct nros_executor_t*, struct nros_service_t*,
+                                       nros_service_callback_t,
+                                       void*) = nros_executor_add_service_raw;
 static nros_ret_t (*const kAddClient)(struct nros_executor_t*,
                                       struct nros_client_t*) = nros_executor_add_client;
 
@@ -41,8 +43,6 @@ static nros_ret_t (*const kOldTimer)(struct nros_executor_t*,
  * until it lands this spelling is silent. Every other target below is a live
  * exported symbol. The assertion here is that the name still RESOLVES with
  * this signature. */
-static nros_ret_t (*const kOldService)(struct nros_executor_t*,
-                                       struct nros_service_t*) = nros_executor_register_service;
 
 /* Silence "defined but not used" without needing a main(). */
 const void* nros_executor_verb_alias_probe(void);
@@ -51,8 +51,8 @@ const void* nros_executor_verb_alias_probe(void) {
     (void)kAddService;
     (void)kAddClient;
     (void)kOldTimer;
-    (void)kOldService;
-    /* The alias must name the same entity as the new spelling. */
-    return (kOldTimer == kAddTimer && kOldService == kAddService) ? (const void*)kAddTimer
-                                                                  : (const void*)0;
+    /* The alias must name the same entity as the new spelling.
+     * `nros_executor_register_service` went with its two-argument target in
+     * phase-487 W2, so the timer is the pair left to compare. */
+    return (kOldTimer == kAddTimer) ? (const void*)kAddTimer : (const void*)0;
 }

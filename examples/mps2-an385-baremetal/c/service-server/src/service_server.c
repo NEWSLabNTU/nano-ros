@@ -115,12 +115,14 @@ int nros_app_main(int argc, char** argv) {
     NROS_CHECK_RET(example_interfaces_srv_add_two_ints_service_handler_init(
                        &app.handler, service_callback, &app.ctx),
                    1);
-    NROS_CHECK_RET(example_interfaces_srv_add_two_ints_service_init(&app.service, &app.node,
-                                                                    "/add_two_ints", &app.handler),
-                   1);
+    NROS_CHECK_RET(
+        example_interfaces_srv_add_two_ints_service_init(&app.service, &app.node, "/add_two_ints"),
+        1);
 
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
-    NROS_CHECK_RET(nros_executor_add_service(&app.executor, &app.service), 1);
+    NROS_CHECK_RET(example_interfaces_srv_add_two_ints_executor_add_service(
+                       &app.executor, &app.service, &app.handler),
+                   1);
 
     // The readiness marker the harness waits on (`expect_ready`, phase-342 W7).
     emit(NROS_LOG_SEVERITY_INFO, "Waiting for service requests", __FILE__, __LINE__);
