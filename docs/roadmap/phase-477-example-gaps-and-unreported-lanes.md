@@ -140,7 +140,7 @@ it waits on the CI-budget decision; 1651 stays open.
 
 ### W4 — invariance gates
 
-- Issue [1509](../issues/1509-node-packages-name-no-platform-or-rmw.md) — the
+- Issue [1509](../issues/archived/1509-node-packages-name-no-platform-or-rmw.md) — the
   node-package gate (phase-470 W7, moved here). A node package names no platform
   or RMW. Now that entries are generated there is one place a platform may be
   named, which is what makes the rule statable.
@@ -154,6 +154,12 @@ it waits on the CI-budget decision; 1651 stays open.
 node-package-invariance` (fast line, ~0.1 s, 3 ratcheted exceptions incl. one
 DEBT line); rules 2 and 4 remain, so the issue stays open. Issue 1644 is
 resolved.
+
+**Status 2026-10-11:** done — issue 1509 resolved. Rule 2 runs the CLI's own
+`<depend>` ladder over the same 26 roots from `nros-cli-core`'s tests (no
+fast-line gate may exec the CLI); rule 4 (every path a `CMakeLists.txt` or
+`system.toml` names is tracked) joins `node-package-invariance`. Both green on
+landing and red under a mutation.
 
 ### W5 — bare metal, the remaining roads
 

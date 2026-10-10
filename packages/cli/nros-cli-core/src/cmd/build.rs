@@ -3888,11 +3888,52 @@ fn check_declared_depends(
     packages: &[cargo_nano_ros::provider_scan::WorkspacePackage],
     nano_ros_root: Option<&std::path::Path>,
 ) -> Result<()> {
+    let DependsReport {
+        unresolved,
+        wrong_role,
+        from_snapshot,
+        snapshot_ref,
+        ..
+    } = declared_depends_report(root, packages, nano_ros_root)?;
+    report_declared_depends(unresolved, wrong_role, from_snapshot, snapshot_ref)
+}
+
+/// What [`declared_depends_report`] found — the ladder's verdict on every
+/// `<depend>` a workspace declares, before anything decides what to do with it.
+#[derive(Debug, Default)]
+pub struct DependsReport {
+    /// Names no rung resolved.
+    pub unresolved: Vec<crate::orchestration::prereq_resolve::Unresolved>,
+    /// Names that resolved to a `[prereq.*]` key whose role is not `package`.
+    pub wrong_role: Vec<(
+        crate::orchestration::prereq_resolve::Unresolved,
+        &'static str,
+    )>,
+    /// Names only the pinned rosdep snapshot resolved.
+    pub from_snapshot: Vec<String>,
+    /// The snapshot's short ref, when it was consulted.
+    pub snapshot_ref: Option<String>,
+    /// Whether the `ros` rung had an ament index to read. Without one the
+    /// ladder cannot tell a real ROS package from an unknown name, so an
+    /// `unresolved` list from such a host is NOT VERIFIED rather than a verdict
+    /// (issue 1509 rule 2, issue 1043's third outcome).
+    pub ros_indexed: bool,
+}
+
+/// phase-398 W3's ladder over one workspace, as data — the half of
+/// [`check_declared_depends`] that decides nothing. Issue 1509 rule 2 asks the
+/// same question of every example workspace from the CLI's own tests, and a
+/// second spelling of this ladder is what that issue rules out.
+pub fn declared_depends_report(
+    root: &std::path::Path,
+    packages: &[cargo_nano_ros::provider_scan::WorkspacePackage],
+    nano_ros_root: Option<&std::path::Path>,
+) -> Result<DependsReport> {
     use crate::orchestration::prereq_resolve as pr;
 
     let declared = pr::declared_depends(root);
     if declared.is_empty() {
-        return Ok(());
+        return Ok(DependsReport::default());
     }
 
     let ws: std::collections::BTreeSet<String> = packages.iter().map(|p| p.name.clone()).collect();
@@ -4032,6 +4073,25 @@ fn check_declared_depends(
         }
     }
 
+    Ok(DependsReport {
+        unresolved,
+        wrong_role,
+        from_snapshot,
+        snapshot_ref: snapshot.as_ref().map(|s| s.short_ref()),
+        ros_indexed: !ros.is_empty(),
+    })
+}
+
+/// The deciding half of [`check_declared_depends`]: refuse, warn, or pass.
+fn report_declared_depends(
+    unresolved: Vec<crate::orchestration::prereq_resolve::Unresolved>,
+    wrong_role: Vec<(
+        crate::orchestration::prereq_resolve::Unresolved,
+        &'static str,
+    )>,
+    from_snapshot: Vec<String>,
+    snapshot_ref: Option<String>,
+) -> Result<()> {
     if !wrong_role.is_empty() {
         let mut m = format!(
             "{} <depend> name(s) declare INFRASTRUCTURE, not a dependency:\n",
@@ -4069,14 +4129,14 @@ fn check_declared_depends(
     // unanswered objection that leaves no trace in the output is
     // indistinguishable from one nobody had. Naming the pin makes the answer
     // reproducible: two hosts reading the same ref got the same list.
-    if let (false, Some(snap)) = (from_snapshot.is_empty(), snapshot.as_ref()) {
+    if let (false, Some(snap_ref)) = (from_snapshot.is_empty(), snapshot_ref.as_ref()) {
         eprintln!(
             "nros build: {} <depend> name(s) resolved from the pinned rosdep \
              snapshot (rosdistro {}), {}:\n  {}\n  \
              Declare a `[prereq.*]` key with a `check` probe to make presence \
              diagnosable instead.",
             from_snapshot.len(),
-            snap.short_ref(),
+            snap_ref,
             crate::orchestration::rosdep_snapshot::RosdepSnapshot::PROVENANCE_NOTE,
             from_snapshot.join("\n  "),
         );
