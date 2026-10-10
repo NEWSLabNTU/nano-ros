@@ -882,7 +882,7 @@ test-ros2-params verbose="":
 # Since issue 1268 / phase-444 W6 the binary carries a CYCLONE case too, and the
 # two halves have different preconditions: the zenoh pair wants the distro's
 # `rmw_zenoh_cpp` plus a `rmw_zenohd`, the Cyclone case wants
-# `rmw_cyclonedds_cpp` and no router. Each skips on its own; this runs all three.
+# `rmw_cyclonedds_cpp` and no router. Each fails on its own missing peer; this runs all three.
 # Runs `params_per_node_interop`; needs ROS 2 + `rmw_zenoh_cpp`/zenohd + `rmw_cyclonedds_cpp`.
 [group("debug")]
 test-ros2-params-per-node verbose="":
@@ -927,7 +927,7 @@ test-ros2-lifecycle verbose="":
 # tested our code against our own assumptions. Both backends are here because
 # they discover through entirely different mechanisms — zenoh through `@ros2_lv`
 # liveliness tokens, Cyclone through the `ros_discovery_info` topic — so a green
-# on one is no evidence about the other. Each half skips on its own.
+# on one is no evidence about the other. Each half fails on its own missing peer.
 # Runs `graph_interop`; needs ROS 2 + `rmw_zenoh_cpp` and `rmw_cyclonedds_cpp`.
 [group("debug")]
 test-ros2-graph verbose="":
@@ -959,7 +959,7 @@ test-rosout verbose="":
 # Since phase-455 W3 the binary carries FOUR cells, two per backend, and the
 # two backends have different preconditions — the zenoh pair wants
 # `rmw_zenoh_cpp` plus a `rmw_zenohd`, the cyclone pair wants
-# `rmw_cyclonedds_cpp`. This recipe still runs all four (each half skips on its
+# `rmw_cyclonedds_cpp`. This recipe still runs all four (each half fails on its
 # own); `test-ros2-action-zenoh` below aims at the zenoh half alone.
 # Runs `ros2_action_e2e`; needs ROS 2 + `rmw_cyclonedds_cpp`/`rmw_zenoh_cpp` + the native action fixtures.
 [group("debug")]

@@ -102,7 +102,7 @@ fn stock_ros2_publisher_raises_a_liveliness_event() {
     );
 
     require_ros2();
-    let router = fixtures::or_skip(fixtures::ZenohRouter::start_unique());
+    let router = fixtures::or_unmet(fixtures::ZenohRouter::start_unique());
     let locator = router.locator();
 
     // The talker starts FIRST and the probe's `alive_count` starts at zero, so

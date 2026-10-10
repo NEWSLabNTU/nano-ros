@@ -32,8 +32,8 @@
 //! assertion — a strong-symbol collision or a missing forced entry aborts the
 //! fixture build under `set -e`, failing the hard PR gate. This test now only runs
 //! `nm` on the PREBUILT `lkproof` (pure inspection, no compilation at test time).
-//! Skips when the fixture or `nm` is absent (CLAUDE.md: skip on unmet
-//! preconditions, never silent-pass).
+//! Fails as an unmet precondition when the fixture or `nm` is absent
+//! (CLAUDE.md, issue 1758: never a silent pass).
 
 use std::{path::PathBuf, process::Command};
 

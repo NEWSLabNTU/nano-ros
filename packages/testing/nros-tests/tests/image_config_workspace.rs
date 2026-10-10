@@ -93,7 +93,7 @@ fn each_workspace_image_builds_against_its_own_configuration() {
          configuration (RFC-0098 D12)"
     );
 
-    let router = fixtures::or_skip(fixtures::ZenohRouter::start_unique());
+    let router = fixtures::or_unmet(fixtures::ZenohRouter::start_unique());
     let locator = router.locator();
 
     let p = probe_line(&plain, &locator, "plain_entry");

@@ -152,7 +152,7 @@ fn multi_tier_freertos_firmware_connects_over_slirp_and_runs_tiers() -> nros_tes
     // `start_slirp` call sites, and it sat inside another platform's window.
     assert_fixture_port();
     let _router =
-        nros_tests::fixtures::or_skip(nros_tests::fixtures::ZenohRouter::start_slirp(ROUTER_PORT));
+        nros_tests::fixtures::or_unmet(nros_tests::fixtures::ZenohRouter::start_slirp(ROUTER_PORT));
 
     let mut qemu = nros_tests::qemu::QemuProcess::start_mps2_an385_networked(&bin)
         .expect("boot multi-tier freertos firmware on QEMU");

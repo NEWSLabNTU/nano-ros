@@ -25,7 +25,7 @@
 //! Not modelled: an RTOS IP stack and the embedded Cyclone build (phase-441 W2
 //! lists both). The guest here runs Linux's stack and the hosted backend.
 //!
-//! Preconditions SKIP by name: ROS 2 with `rmw_cyclonedds_cpp`, `unshare` and
+//! Preconditions, each an `unmet!` red naming what is missing: ROS 2 with `rmw_cyclonedds_cpp`, `unshare` and
 //! `slirp4netns` on PATH, unprivileged user namespaces, the Cyclone backend's
 //! test tree built (`just cyclonedds build-rmw`), and a default IPv4 route.
 

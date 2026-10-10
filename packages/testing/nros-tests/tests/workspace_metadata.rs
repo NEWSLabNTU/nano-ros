@@ -125,7 +125,7 @@ fn rust_workspace_entry_runs_prebuilt_pubsub_e2e() {
         .require("native Rust workspace Entry");
     let talker = nros_tests::fixtures::build_native_talker()
         .require("native Rust talker for workspace E2E publisher");
-    let router = nros_tests::fixtures::or_skip(nros_tests::fixtures::ZenohRouter::start_unique());
+    let router = nros_tests::fixtures::or_unmet(nros_tests::fixtures::ZenohRouter::start_unique());
 
     let mut cmd = Command::new(entry);
     cmd.env("NROS_LOCATOR", router.locator())

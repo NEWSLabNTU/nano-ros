@@ -442,7 +442,7 @@ fn a_stock_ros2_client_drives_the_nano_ros_action_server_over_zenoh() {
         nros_tests::unmet!("native rust zenoh action-server fixture: {e}");
     });
 
-    let router = fixtures::or_skip(fixtures::ZenohRouter::start_unique());
+    let router = fixtures::or_unmet(fixtures::ZenohRouter::start_unique());
     let locator = router.locator();
 
     let mut server = Command::new(&server_bin)
@@ -588,7 +588,7 @@ fn the_nano_ros_action_client_drives_a_stock_ros2_server_over_zenoh() {
         nros_tests::unmet!("native rust zenoh action-client fixture: {e}");
     });
 
-    let router = fixtures::or_skip(fixtures::ZenohRouter::start_unique());
+    let router = fixtures::or_unmet(fixtures::ZenohRouter::start_unique());
     let locator = router.locator();
     let env = zenoh_env(&locator);
 

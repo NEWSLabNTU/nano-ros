@@ -46,7 +46,7 @@ fn deployed_native_system_publishes_to_ros_graph(zenohd_unique: ZenohRouter) {
     require_zenohd();
 
     // Prebuilt fixtures (built by `just native build-fixtures` /
-    // `build-workspace-fixtures`); tier-aware skip when absent.
+    // `build-workspace-fixtures`); out of lane skips, absent fails.
     let entry = build_native_workspace_rust_entry()
         .require("native_entry")
         .to_path_buf();

@@ -15,8 +15,9 @@
 //! fixture row's `NROS_ENTRY_LOCATOR`); the observer dials it on loopback.
 //! No TAP/bridge/root.
 //!
-//! The fixture is built by `just nuttx build-riscv-c`; this test skips cleanly
-//! when the talker ELF / zenohd / qemu-system-riscv32 are absent.
+//! The fixture is built by `just nuttx build-riscv-c`; this test fails as an
+//! unmet precondition when the talker ELF / zenohd / qemu-system-riscv32 are
+//! absent.
 //!
 //! Run with: `cargo nextest run -p nros-tests --test c_riscv_nuttx_e2e`
 

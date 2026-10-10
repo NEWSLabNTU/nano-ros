@@ -16,8 +16,8 @@
 //! `zephyr-qos-port` nextest group serializes this with
 //! the `entry_e2e` zephyr_rust_qos cell so the routers never collide.
 //!
-//! Requires ROS 2 + `rmw_zenoh_cpp` (skips when absent) and the west-lane
-//! fixture (skips when `zephyr.exe` is absent).
+//! Requires ROS 2 + `rmw_zenoh_cpp` and the west-lane fixture
+//! (`zephyr.exe`); each is an `unmet!` red when absent.
 //!
 //! Run with: `cargo nextest run -p nros-tests --test qos_zephyr_ros2_interop_e2e`
 

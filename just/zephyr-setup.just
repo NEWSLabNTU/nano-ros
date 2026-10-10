@@ -422,13 +422,14 @@ run-fvp-ws-entry:
 # phase-298 W3.3 (issue 0232) — the maintainer pre-release gate: build the
 # ws-entry image, then run the `fvp_runtime_ws` assertion test. One command
 # a maintainer (with the FVP installed via `nros setup --tool arm-fvp`) runs before an ASI pin
-# bump or release. Skips cleanly (never false-fails) when the model is absent.
+# bump or release. FAILS when the model is absent: it is a pinned public
+# download (`nros setup --tool arm-fvp`), so a missing one has a remedy.
 [group("examples")]
 verify-fvp-runtime:
     #!/usr/bin/env bash
     set -e
-    # The comment above promises this "skips cleanly (never false-fails) when
-    # the model is absent", and under a bare `set -e` it did the opposite:
+    # The comment above once promised this "skips cleanly (never false-fails)
+    # when the model is absent", and under a bare `set -e` it did the opposite:
     # `build-fvp-ws-entry` reports an absent model through the LANE-SKIP
     # PROTOCOL (rc 78), which only `justfile`'s fixture-lane driver interprets.
     # Everywhere else 78 is a plain failure — the same defect that stalled the

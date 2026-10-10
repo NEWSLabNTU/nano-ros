@@ -485,7 +485,8 @@ fn test_ros2_param_set_reconfigures_live_read(zenohd_unique: ZenohRouter) {
         );
     }
 
-    // Discover the param node's FQN (skip if ROS 2 ↔ nros discovery is not wire-matched).
+    // Discover the param node's FQN (unmet if ROS 2 ↔ nros discovery is not
+    // wire-matched).
     //
     // The node IS named after the `system.toml` component: a single-node launch threads
     // the component `name` (`param_talker`) into the primary session, so the ROS graph

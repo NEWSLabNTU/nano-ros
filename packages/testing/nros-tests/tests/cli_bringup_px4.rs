@@ -19,8 +19,8 @@
 //! the unit under test here — wiring the modules into a board overlay
 //! lives in a follow-up.
 //!
-//! Skips cleanly when `nros` CLI or `$PX4_AUTOPILOT_DIR` (alias
-//! `$PX4_DIR`) is missing.  Sibling to `phase212_h5_esp_idf.rs`.
+//! Fails as an unmet precondition (`unmet!`) when the `nros` CLI or
+//! `$PX4_AUTOPILOT_DIR` (alias `$PX4_DIR`) is missing.  Sibling to `phase212_h5_esp_idf.rs`.
 
 use std::{path::PathBuf, process::Command};
 
@@ -120,7 +120,7 @@ fn px4_sitl_2_component_module_builds() {
         let stdout = String::from_utf8_lossy(&codegen.stdout).to_string();
         // The verb / flag combo is still landing on the nros-cli side.
         // Treat "unknown subcommand", "unrecognized arg", and the
-        // explicit `TODO(212.H.7)` marker the same way: skip cleanly.
+        // explicit `TODO(212.H.7)` marker the same way: an unmet precondition.
         let looks_unimpl = stderr.contains("unrecognized subcommand")
             || stderr.contains("unrecognised subcommand")
             || stderr.contains("unrecognized argument")

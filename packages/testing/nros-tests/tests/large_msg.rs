@@ -10,7 +10,7 @@
 use nros_tests::{
     count_pattern,
     fixtures::{
-        ManagedProcess, XrceAgent, ZenohRouter, or_skip, qemu_large_msg_test_binary,
+        ManagedProcess, XrceAgent, ZenohRouter, or_unmet, qemu_large_msg_test_binary,
         require_xrce_agent, require_zenohd, xrce_stress_test_binary,
         xrce_stress_test_large_buf_binary, zenoh_stress_test_binary,
         zenoh_stress_test_large_buf_binary, zenohd_unique,
@@ -808,7 +808,7 @@ fn test_xrce_throughput_burst(xrce_stress_test_binary: PathBuf) {
 fn test_qemu_zenoh_large_publish(qemu_large_msg_test_binary: PathBuf) {
     // This test uses QEMU slirp (user-mode) networking with port forwarding.
     // No TAP devices, bridge interfaces, or sudo required.
-    // Skip if QEMU is not available.
+    // An unmet precondition if QEMU is not available.
     let qemu_available = nros_tests::qemu::qemu_system_arm_cmd()
         .arg("--version")
         .output()
@@ -820,7 +820,7 @@ fn test_qemu_zenoh_large_publish(qemu_large_msg_test_binary: PathBuf) {
     // The bench firmware bakes its own allocator aux slot (phase-295 W4) —
     // nothing else shares this router, so the test runs parallel to the
     // other bare-metal QEMU lanes.
-    let _zenohd = or_skip(ZenohRouter::start_slirp(
+    let _zenohd = or_unmet(ZenohRouter::start_slirp(
         nros_tests::alloc::BAREMETAL_LARGE_MSG_PORT,
     ));
 

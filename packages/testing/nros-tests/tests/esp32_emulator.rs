@@ -200,7 +200,7 @@ fn test_esp32_talker_listener_e2e() {
 
     // Start zenohd on the baked pubsub port (kills any orphaned zenohd first)
     let _router =
-        nros_tests::fixtures::or_skip(ZenohRouter::start_slirp(platform::ESP32.zenohd_port));
+        nros_tests::fixtures::or_unmet(ZenohRouter::start_slirp(platform::ESP32.zenohd_port));
 
     // Verify zenohd is reachable on localhost
     assert!(
@@ -315,7 +315,7 @@ fn test_esp32_to_native() {
 
     // Start zenohd on the baked pubsub port (kills any orphaned zenohd first)
     let _router =
-        nros_tests::fixtures::or_skip(ZenohRouter::start_slirp(platform::ESP32.zenohd_port));
+        nros_tests::fixtures::or_unmet(ZenohRouter::start_slirp(platform::ESP32.zenohd_port));
 
     // Verify zenohd is reachable on localhost
     assert!(
@@ -396,7 +396,7 @@ fn test_native_to_esp32() {
 
     // Start zenohd on the baked pubsub port (kills any orphaned zenohd first)
     let _router =
-        nros_tests::fixtures::or_skip(ZenohRouter::start_slirp(platform::ESP32.zenohd_port));
+        nros_tests::fixtures::or_unmet(ZenohRouter::start_slirp(platform::ESP32.zenohd_port));
 
     // Verify zenohd is reachable on localhost
     assert!(
@@ -514,7 +514,7 @@ fn test_esp32_workspace_entry_e2e() {
         .expect("Failed to create workspace Entry flash image");
 
     // zenohd on the Entry's own allocator slot; its baked locator points here.
-    let _router = nros_tests::fixtures::or_skip(ZenohRouter::start_slirp(ESP32_WS_ENTRY_PORT));
+    let _router = nros_tests::fixtures::or_unmet(ZenohRouter::start_slirp(ESP32_WS_ENTRY_PORT));
     assert!(
         wait_for_port(ESP32_WS_ENTRY_PORT, Duration::from_secs(10)),
         "zenohd not reachable on localhost:{}",

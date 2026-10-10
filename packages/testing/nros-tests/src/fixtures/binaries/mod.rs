@@ -2481,7 +2481,7 @@ pub fn build_native_workspace_rust_sizing_entry() -> TestResult<&'static Path> {
 /// cached). Config-driven pure-cargo `nros::main!` + `run_from_config_str`; the
 /// entry links zenoh ingress + cyclonedds egress. Gated on the cyclonedds
 /// submodule (the build compiles vendored C++ Cyclone), so the fixture is absent
-/// when Cyclone isn't provisioned — callers skip cleanly.
+/// when Cyclone isn't provisioned — callers fail as an unmet precondition.
 pub fn build_native_workspace_rust_bridge_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_RUST_BRIDGE_ENTRY_BINARY
         .get_or_try_init(|| {
@@ -5518,7 +5518,7 @@ pub fn build_native_custom_transport_talker() -> TestResult<&'static Path> {
 /// gating. Its type constants are documented in the bin's own `main.rs`.
 ///
 /// The fixture sits in its own Cargo workspace (`[workspace]` table); the
-/// test skips cleanly when the binary is missing.
+/// test fails (`unmet!`) when the binary is missing.
 pub fn build_bridge_zenoh_to_xrce_fwd() -> TestResult<&'static Path> {
     NATIVE_BRIDGE_ZENOH_XRCE_BINARY
         .get_or_try_init(|| {
@@ -5538,7 +5538,7 @@ pub fn build_bridge_zenoh_to_xrce_fwd() -> TestResult<&'static Path> {
 /// a Cyclone DDS egress session. The stock-cyclonedds sibling of
 /// [`build_bridge_zenoh_to_xrce_fwd`]; links the vendored CycloneDDS and stages
 /// the `std_msgs/String` descriptor before raw publish. Its own Cargo workspace;
-/// the test skips cleanly when the binary is missing.
+/// the test fails (`unmet!`) when the binary is missing.
 pub fn build_bridge_zenoh_to_cyclonedds_fwd() -> TestResult<&'static Path> {
     NATIVE_BRIDGE_ZENOH_CYCLONEDDS_BINARY
         .get_or_try_init(|| {
@@ -5556,7 +5556,7 @@ pub fn build_bridge_zenoh_to_cyclonedds_fwd() -> TestResult<&'static Path> {
 /// (`packages/testing/nros-tests/bins/qos-override-pubsub`). Used by
 /// `tests/qos_overrides_runtime_delivery.rs` to prove a per-topic QoS override
 /// is honoured on a live entity + still delivers cross-process. Its own Cargo
-/// workspace; the test skips cleanly when the binary is missing.
+/// workspace; the test fails (`unmet!`) when the binary is missing.
 pub fn build_qos_override_pubsub() -> TestResult<&'static Path> {
     NATIVE_QOS_OVERRIDE_PUBSUB_BINARY
         .get_or_try_init(|| {
@@ -5574,7 +5574,7 @@ pub fn build_qos_override_pubsub() -> TestResult<&'static Path> {
 /// (`packages/testing/nros-tests/bins/declarative-safety-listener`). A
 /// declarative (`Node` + `.safety()`) subscriber that surfaces `ctx.integrity()`;
 /// paired with the safety talker in `tests/safety_e2e.rs`. Own Cargo workspace;
-/// the test skips cleanly when the binary is missing.
+/// the test fails (`unmet!`) when the binary is missing.
 pub fn build_native_declarative_safety_listener() -> TestResult<&'static Path> {
     NATIVE_DECLARATIVE_SAFETY_LISTENER_BINARY
         .get_or_try_init(|| {
@@ -5593,7 +5593,7 @@ pub fn build_native_declarative_safety_listener() -> TestResult<&'static Path> {
 /// `c:logging_rosout_enabled`. Logs through `nros_log` and pumps
 /// `nros_node::rosout` onto `/rosout`; paired with a stock
 /// `ros2 topic echo /rosout` in `tests/rosout_interop.rs`. Own Cargo
-/// workspace; the test skips cleanly when the binary is missing.
+/// workspace; the test fails (`unmet!`) when the binary is missing.
 pub fn build_rosout_talker() -> TestResult<&'static Path> {
     NATIVE_ROSOUT_TALKER_BINARY
         .get_or_try_init(|| {
@@ -5631,7 +5631,7 @@ pub fn build_log_arena_probe() -> TestResult<&'static Path> {
 /// binary (`packages/testing/nros-tests/bins/ros2-string-interop`). A nano-ros
 /// raw `std_msgs/String` subscriber on `/chatter`, paired with a stock
 /// `demo_nodes_cpp talker` in `tests/demo_nodes_cpp_interop.rs`. Own Cargo
-/// workspace; the test skips cleanly when the binary is missing.
+/// workspace; the test fails (`unmet!`) when the binary is missing.
 pub fn build_ros2_string_interop() -> TestResult<&'static Path> {
     NATIVE_ROS2_STRING_INTEROP_BINARY
         .get_or_try_init(|| {

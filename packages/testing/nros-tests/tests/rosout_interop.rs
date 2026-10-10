@@ -142,7 +142,7 @@ fn run_cell(probe_bin: &Path) {
     interop::assert_test_bound("rosout_interop", &ROSOUT_COORDS);
 
     require_ros2();
-    let router = fixtures::or_skip(fixtures::ZenohRouter::start_unique());
+    let router = fixtures::or_unmet(fixtures::ZenohRouter::start_unique());
     let locator = router.locator();
 
     let mut echo = match Ros2Process::topic_echo_for(

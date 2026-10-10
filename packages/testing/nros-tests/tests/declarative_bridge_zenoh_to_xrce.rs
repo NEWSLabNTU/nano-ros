@@ -24,8 +24,9 @@
 //! The agent's DDS participant joins the XRCE-client-requested domain, so the
 //! bridge egress and the listener share it.
 //!
-//! Skips cleanly when `zenohd` or the XRCE Agent is absent, or when this run's
-//! lane does not select the fixtures' coordinates.
+//! Fails (`unmet!`) when `zenohd` or the XRCE Agent is absent, and skips
+//! (`lane_skip!`) when this run's lane does not select the fixtures'
+//! coordinates.
 //!
 //! ## A failed fixture resolution is a FAILURE here, never a skip (issue 1124)
 //!

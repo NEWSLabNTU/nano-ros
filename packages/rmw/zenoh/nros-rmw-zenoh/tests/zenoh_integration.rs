@@ -14,7 +14,7 @@ use nros_rmw_zenoh::{
     keyexpr::{ServiceKeyExpr, TopicKeyExpr},
     normalize_locator,
 };
-use nros_tests::fixtures::{ZenohRouter, or_skip};
+use nros_tests::fixtures::{ZenohRouter, or_unmet};
 use std::{thread, time::Duration};
 
 /// Start a private zenohd on an EPHEMERAL port for one test (issue 0328).
@@ -40,7 +40,7 @@ fn router() -> ZenohRouter {
     if let Some(why) = nros_tests::process::zenohd_unavailable_reason() {
         nros_tests::unmet!("{why}");
     }
-    or_skip(ZenohRouter::start_unique())
+    or_unmet(ZenohRouter::start_unique())
 }
 
 /// Test that we can open and close a session in peer mode
@@ -717,7 +717,7 @@ fn client_session_with_absent_locator_dials_backend_default() {
         std::env::remove_var("ZENOH_LOCATOR");
     }
 
-    let _router = or_skip(ZenohRouter::start(port));
+    let _router = or_unmet(ZenohRouter::start(port));
 
     let config = TransportConfig {
         // Nothing supplied. The backend — and ONLY the backend — decides.
@@ -828,7 +828,7 @@ fn a_declined_query_hands_its_reply_slot_back() {
     if let Some(why) = nros_tests::process::zenohd_unavailable_reason() {
         nros_tests::unmet!("{why}");
     }
-    let _router = or_skip(ZenohRouter::start_unique());
+    let _router = or_unmet(ZenohRouter::start_unique());
     let router_locator = _router.locator();
 
     let config = TransportConfig {
@@ -1058,7 +1058,7 @@ fn a_parameter_named_queryable_and_its_look_alike_both_register_and_receive() {
     if let Some(why) = nros_tests::process::zenohd_unavailable_reason() {
         nros_tests::unmet!("{why}");
     }
-    let _router = or_skip(ZenohRouter::start_unique());
+    let _router = or_unmet(ZenohRouter::start_unique());
     let router_locator = _router.locator();
 
     let config = TransportConfig {
@@ -1140,7 +1140,7 @@ fn a_service_server_receives_through_the_ring_the_caller_supplied() {
     if let Some(why) = nros_tests::process::zenohd_unavailable_reason() {
         nros_tests::unmet!("{why}");
     }
-    let _router = or_skip(ZenohRouter::start_unique());
+    let _router = or_unmet(ZenohRouter::start_unique());
     let router_locator = _router.locator();
 
     let config = TransportConfig {
@@ -1303,7 +1303,7 @@ fn refused_service_takes_name_the_size_they_needed() {
     if let Some(why) = nros_tests::process::zenohd_unavailable_reason() {
         nros_tests::unmet!("{why}");
     }
-    let _router = or_skip(ZenohRouter::start_unique());
+    let _router = or_unmet(ZenohRouter::start_unique());
     let router_locator = _router.locator();
     let config = TransportConfig {
         locator: Some(router_locator.as_str()),
@@ -1543,7 +1543,7 @@ fn declares_keep_running_across_a_reconnect() {
         || failed.load(Ordering::Relaxed) > 0,
     );
     // The same port, so the session's configured locator reaches it again.
-    let restarted = or_skip(ZenohRouter::start(port));
+    let restarted = or_unmet(ZenohRouter::start(port));
     let before = ok.load(Ordering::Relaxed);
     let restarted_at = Instant::now();
     // Lease expiry plus `_z_reopen`'s 1 s retry, then the replay: measured

@@ -176,7 +176,7 @@ fn test_c_xrce_talker_listener_communication(
 // request/response + action goal/feedback/result roundtrips, mirroring the
 // Rust `tests/xrce.rs` service/action tests but driving the C `build-xrce/`
 // binaries against a unique XRCE Agent. Binaries are prebuilt by
-// `just native build-fixtures`; skip cleanly when absent.
+// `just native build-fixtures`; an unmet precondition when absent.
 // =============================================================================
 
 /// Resolve a native C XRCE example binary (prebuilt), or skip.

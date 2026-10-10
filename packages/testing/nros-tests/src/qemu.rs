@@ -1329,12 +1329,12 @@ pub fn is_arm_toolchain_available() -> bool {
 /// `scripts/qemu/build-zenoh-pico.sh`), or by `just qemu setup`, which calls it.
 ///
 /// Issue 0483 — this used to say `just build-zenoh-pico-arm`, a recipe that has
-/// never existed. All 16 `emulator.rs` tests skip when the library is absent, so
-/// the suite reported a green that meant "did not run" and the printed remedy
-/// could not be followed. `just qemu build-fixtures` does NOT build it, which is
-/// how a developer reaches that state without doing anything wrong. Measured
-/// after building it by hand: 0 passed/16 skipped in ~1 s became 16 passed/0
-/// skipped in 116 s.
+/// never existed. All 16 `emulator.rs` tests skipped when the library was
+/// absent (before issue 1758), so the suite reported a green that meant "did
+/// not run" and the printed remedy could not be followed. `just qemu
+/// build-fixtures` does NOT build it, which is how a developer reaches that
+/// state without doing anything wrong. Measured after building it by hand: 0
+/// passed/16 skipped in ~1 s became 16 passed/0 skipped in 116 s.
 pub fn is_zenoh_pico_arm_available() -> bool {
     // Check if the library exists at the expected location relative to project root
     let lib_path = crate::build_dir(crate::kind::QEMU_ZENOH_PICO, &[]).join("libzenohpico.a");
