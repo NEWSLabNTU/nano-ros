@@ -1,7 +1,7 @@
 ---
 id: 1650
 title: "Example trees that no lane builds — they can rot with every gate green"
-status: open
+status: resolved
 type: tech-debt
 area: examples, ci, testing
 severity: medium
@@ -61,3 +61,30 @@ Walk `git ls-files examples`; a root is `examples/<plat>/<lang>/<name>`,
 `fixtures-manifest.py`'s `load` / `load_workspace_fixtures` /
 `load_compile_check_fixtures`; a root is covered when any row's `dir` equals it
 or lies under it. The script used is recorded in phase-477 W2.
+
+## Resolved (2026-10-10, phase-477 D3)
+
+Each tree decided per D3, and the class closed with a gate:
+
+| tree | outcome |
+| --- | --- |
+| `examples/workspaces/launch` | row `workspace-rust-native-launch` (`[[workspace_fixture]]`, built IN PLACE — its node packages reach `nros` by an in-repo path, so a staged copy cannot resolve them); builds in 45 s. Same `(linux, rust, zenoh, workspace)` cell as `workspace-rust-native`, so `matrix_fixture_coverage` needs no new cell |
+| `examples/templates/multi-node-workspace` | row `multi_node_workspace_rust` (`compile_check_fixture`, staged `nros sync` + `nros build`) → `native_entry` |
+| `examples/templates/multi-package-workspace` | row `multi_package_workspace` → `pkg_rust_publisher` (the same build compiles its C and C++ packages). It was the ONE workspace template with no tracked `.colcon_workspace`, so the builder read it as a plain cmake project and failed on the missing root `CMakeLists.txt` — the marker is added |
+| `examples/templates/zephyr-byo` | recorded reason: documents the bring-your-own-west-manifest SHAPE, not a build target; `check-zephyr-module-allowlist` lints its `west.yml` |
+
+The census also found five roots the original table did not list, each now
+with a recorded reason: the two `esp32-c3-baremetal` Rust leaves (ESP32 is
+dormant by maintainer decision — issue 1525 deleted their rows on purpose) and
+the three `examples/px4` roots (built by their own `just px4 build-fixtures`
+recipe against an external PX4-Autopilot tree, not by a manifest row).
+
+**Gate:** `just check example-build-coverage`
+(`scripts/check-example-build-coverage.py`, fast line, ~0.1 s). Roots are found
+by SHAPE from `git ls-files examples`; the manifest is read through
+`fixtures-manifest.py`'s own loaders; a root is covered when a row's `dir`
+equals it or lies under it. Uncovered roots need a reasoned line in
+`.config/example-build-coverage-baseline.txt`, ratcheted both ways. Selftest
+on the normal path (root shape; a row under a root covers it; a sibling with a
+common prefix does not). Today: 188 of 194 roots built by a row, 6 with a
+reason.

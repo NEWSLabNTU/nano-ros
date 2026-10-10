@@ -1,0 +1,25 @@
+# check-example-build-coverage (issue 1650) — example roots no
+# examples/fixtures.toml row builds, each with the reason it has none.
+# RATCHETED BOTH WAYS: an unlisted uncovered root fails, and a listed root that
+# gains a row (or disappears) fails until its line is deleted. The list may
+# only shrink.
+#
+# <root>  # <reason>
+
+# ESP32 support is DORMANT by maintainer decision (issue 1525, commit
+# 719b6eda1): the code is kept, the `esp32` just module is unmounted and its
+# four rows were deleted on purpose. Restoring ESP32 restores the rows.
+examples/esp32-c3-baremetal/rust/listener  # ESP32 dormant (issue 1525)
+examples/esp32-c3-baremetal/rust/talker  # ESP32 dormant (issue 1525)
+
+# PX4 examples are built by their own recipe, `just px4 build-fixtures` (in the
+# `build-test-fixtures` platform loop), against an external PX4-Autopilot
+# tree — not by a manifest row.
+examples/px4/cpp/bridge  # built by `just px4 build-fixtures`, not a manifest row
+examples/px4/cpp/firmware  # built by `just px4 build-fixtures`, not a manifest row
+examples/px4/rust/companion  # built by `just px4 build-fixtures`, not a manifest row
+
+# Not a build target by design (phase-477 D3): it documents the
+# bring-your-own-west-manifest SHAPE; check-zephyr-module-allowlist lints its
+# west.yml, which is all a tree with no image of its own can be asked.
+examples/templates/zephyr-byo  # documents a shape (bring your own west manifest), not a build target

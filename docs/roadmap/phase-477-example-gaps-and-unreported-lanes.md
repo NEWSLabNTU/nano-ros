@@ -73,7 +73,7 @@ deliberate exception.
 
 ### W2 — examples no lane builds
 
-Issue [1650](../issues/1650-examples-no-lane-builds.md). `workspaces/launch`,
+Issue [1650](../issues/archived/1650-examples-no-lane-builds.md). `workspaces/launch`,
 `templates/multi-package-workspace`, `templates/zephyr-byo` and (partly)
 `templates/multi-node-workspace` are compiled by nothing. The two TT bridge
 examples that were also in this set were DELETED (maintainer decision): their
@@ -88,6 +88,12 @@ lies under it.
 
 **Acceptance:** each tree has a row or a recorded reason, and a gate keyed on
 the census (not a path list) keeps the class closed.
+
+**Status 2026-10-10:** done — issue 1650 resolved: rows for `launch`,
+`multi-node-workspace` and `multi-package-workspace` (which also gained its
+missing `.colcon_workspace`), a recorded reason for `zephyr-byo` and five more
+roots the census found, and `just check example-build-coverage` (188/194 built,
+6 reasoned).
 
 ### W3 — lanes that do not report
 
