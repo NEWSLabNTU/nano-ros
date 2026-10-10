@@ -2,7 +2,8 @@
 #
 # Keep an EPHEMERAL CONTAINED runner available: fresh container, one job, repeat.
 #
-#   scripts/ci/runner-loop-container.sh <labels> [--once] [--max N] [--check]
+#   NROS_RUNNER_NAME=<unique> scripts/ci/runner-loop-container.sh <labels> [--once] [--max N] [--check]
+#   (the name is REQUIRED — it is the GitHub registration; scripts/lib/runner-name.sh)
 #
 # This is `runner-loop.sh` for the contained path, and the two differ in exactly
 # one way that matters: the bare-host loop re-registers a runner that stays
@@ -41,7 +42,6 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ENGINE="${NROS_CONTAINER_ENGINE:-docker}"
-NAME="${NROS_RUNNER_NAME:-nano-ros-runner}"
 LABELS="" ONCE=0 MAX=0 CHECK=0 N=0 FAILS=0
 MAX_CONSECUTIVE_FAILURES=3
 
@@ -56,6 +56,8 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
+. "$REPO_ROOT/scripts/lib/runner-name.sh"
+NAME="$(nros_require_runner_name runner-loop-container)"
 [ -n "$LABELS" ] || { echo "runner-loop-container: need <labels>" >&2; exit 2; }
 LABELS="${LABELS// /,}"
 

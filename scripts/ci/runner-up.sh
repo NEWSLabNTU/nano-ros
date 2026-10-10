@@ -6,7 +6,8 @@
 # token — from `gh` when it can, and asks for them explicitly when it cannot,
 # rather than failing with whatever error the underlying API returned.
 #
-#   scripts/ci/runner-up.sh <labels> [--repo O/R] [--token TOK] [--check]
+#   NROS_RUNNER_NAME=<unique> scripts/ci/runner-up.sh <labels> [--repo O/R] [--token TOK] [--check]
+#   (the name is REQUIRED — it is the GitHub registration; scripts/lib/runner-name.sh)
 #
 # ON PASSING A TOKEN: prefer the environment (`RUNNER_TOKEN=… just runner-up …`)
 # or `--token -` to read one line from stdin. `--token <value>` works, but a
@@ -18,7 +19,6 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 LABELS="" REPO="${GH_REPO:-}" TOKEN="${RUNNER_TOKEN:-}" CHECK=0
-CONTAINER_NAME="${NROS_RUNNER_NAME:-nano-ros-runner}"
 ENGINE="${NROS_CONTAINER_ENGINE:-docker}"
 
 die() { printf 'runner-up: %s\n' "$1" >&2; exit "${2:-2}"; }
@@ -42,6 +42,8 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
+. "$REPO_ROOT/scripts/lib/runner-name.sh"
+CONTAINER_NAME="$(nros_require_runner_name runner-up)"
 
 [ -n "$LABELS" ] || die "need <labels>, e.g. nros-qemu,nros-sdk-zephyr,nros-big"
 LABELS="${LABELS// /,}"

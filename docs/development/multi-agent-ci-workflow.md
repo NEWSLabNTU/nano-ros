@@ -184,10 +184,10 @@ The loop, in full:
 # 1. Declare it in nros-sdk-index.toml — the layer it belongs to, with its
 #    apt position: `apt = [..]` xor `apt_refused = "<why>"` (issue 1481).
 # 2. Rebuild the image. This regenerates the Dockerfile from the index first.
-scripts/ci/runner-container.sh <labels> --build
+NROS_RUNNER_NAME=<this-runner> scripts/ci/runner-container.sh <labels> --build
 # 3. Restart. `--ephemeral` means the old container finishes its job and exits;
 #    the supervision loop (`just runner-loop-container`) starts the new image.
-scripts/ci/runner-container.sh <labels> --run
+NROS_RUNNER_NAME=<this-runner> scripts/ci/runner-container.sh <labels> --run
 # 4. Ask what the runner now claims and whether the claims hold.
 scripts/ci/runner-doctor.sh <labels>
 #    `--check` on either script prints the plan and touches nothing.
@@ -703,12 +703,27 @@ is not optional on a public repo.
 
 ### 3. Runner roles
 
-Register each machine for what it has, not what it is:
+Register each machine for what it has, not what it is — and under a name of
+its own:
 
 ```sh
-scripts/ci/runner-register.sh nros-qemu,nros-sdk-zephyr,nros-big   # builder
-scripts/ci/runner-register.sh nros-ros2                            # interop
+NROS_RUNNER_NAME=nano-ros-runner-$(hostname -s) \
+  scripts/ci/runner-register.sh nros-qemu,nros-sdk-zephyr,nros-big   # builder
+NROS_RUNNER_NAME=nano-ros-ros2-$(hostname -s) \
+  scripts/ci/runner-register.sh nros-ros2                            # interop
 ```
+
+**The runner name is REQUIRED, with no default** (`scripts/lib/runner-name.sh`;
+every `runner-*` script refuses with exit 2 when `NROS_RUNNER_NAME` / `--name`
+is unset). A runner's name IS its GitHub registration, and the scripts used to
+fall back to one literal, `nano-ros-runner`, for every machine. On 2026-10-09
+the hand-over from one workstation to newslab-118 opened with "A session for
+this runner already exists", and the new runner then sat online, idle and
+label-matched while three self-hosted jobs waited 17 hours. A default that is
+right on the first machine is wrong on the second, silently — so each runner is
+named once, on purpose. Several runners on several machines are a supported
+shape: GitHub hands a job to any idle runner whose labels match, which is also
+the only failover a single-runner setup does not have.
 
 ## The workflow files
 

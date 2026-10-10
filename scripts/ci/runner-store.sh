@@ -59,7 +59,9 @@ IMAGE="${NROS_RUNNER_IMAGE:-nano-ros-runner:local}"
 
 die() { echo "runner-store: $*" >&2; exit 1; }
 
-running() { docker ps --filter name=nano-ros-runner --format '{{.Names}}' 2>/dev/null | grep -q . ; }
+# ANY container of the runner image, whatever it was named — the name is the
+# operator's choice now (scripts/lib/runner-name.sh), never a literal.
+running() { docker ps --filter "ancestor=$IMAGE" --format '{{.Names}}' 2>/dev/null | grep -q . ; }
 
 report() {
     echo "runner-store: root=$ROOT"
@@ -80,7 +82,7 @@ reset_one() {
     [ -d "$p" ] || die "no such store directory: $p"
     # Refuse while a container holds it. A wipe under a running job is a
     # confusing failure two layers away, not a clean error here.
-    running && die "container 'nano-ros-runner' is running — stop it before resetting a store"
+    running && die "a runner container ($IMAGE) is running — stop it before resetting a store"
     local before; before="$(du -sh "$p" 2>/dev/null | cut -f1)"
     find "$p" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
     echo "runner-store: reset $s ($before -> $(du -sh "$p" 2>/dev/null | cut -f1)); dir, ACLs and volume kept"
@@ -128,7 +130,7 @@ case "${1:-}" in
     ""|--report) report ;;
     --ensure)    ensure ;;
     --reset)     reset_one "${2:?--reset needs a store name (${STORES[*]})}" ;;
-    --reset-all) running && die "container 'nano-ros-runner' is running — stop it first"
+    --reset-all) running && die "a runner container ($IMAGE) is running — stop it first"
                  for s in "${STORES[@]}"; do reset_one "$s"; done ;;
     *)           die "unknown argument '$1' (--report | --ensure | --reset <name> | --reset-all)" ;;
 esac

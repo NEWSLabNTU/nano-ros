@@ -55,7 +55,8 @@
 #                     register, 1 = something would stop it.
 #   --repo OWNER/REPO default NEWSLabNTU/nano-ros (or $NROS_RUNNER_REPO)
 #   --dir PATH        runner install dir; default $HOME/actions-runner
-#   --name NAME       runner name; default <host>-<labels-digest>
+#   --name NAME       runner name — REQUIRED (or NROS_RUNNER_NAME); no default,
+#                     because the name IS the registration (scripts/lib/runner-name.sh)
 #   --work PATH       runner work dir; default <dir>/_work
 #   --user USER       service account; default the invoking user
 #   --with-service    ALSO install + start the systemd service (needs sudo)
@@ -120,14 +121,10 @@ fi
 
 [ -n "$runner_work" ] || runner_work="$runner_dir/_work"
 
-# A default name that is stable per (host, label set) and says what the machine
-# is FOR. Not the bare hostname: two runners with different label sets on one
-# box are a normal shape, and GitHub keys runners by name.
-if [ -z "$runner_name" ]; then
-    _host="$(hostname -s 2>/dev/null || hostname 2>/dev/null || echo runner)"
-    _digest="$(printf '%s' "$labels" | tr ',' '-' | tr -cd 'a-z0-9-' | cut -c1-40)"
-    runner_name="${_host}-${_digest}"
-fi
+# No default name: a runner's name is its registration, and a default that is
+# right on one machine is wrong on the next (scripts/lib/runner-name.sh).
+. "$repo_root/scripts/lib/runner-name.sh"
+runner_name="$(nros_require_runner_name runner-register "$runner_name")"
 
 # GitHub applies these itself, but `config.sh --labels` replaces the set rather
 # than adding to it, so they are spelled here. This is the one place the full
