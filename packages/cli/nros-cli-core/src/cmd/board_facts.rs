@@ -268,6 +268,18 @@ fn resolve_one(
         let r = site.interpolate(raw, &site_section, origin, env)?;
         out.insert(format!("NROS_SDK_{}", env_key(name)), r.value);
     }
+    // phase-484 W3 (RFC-0103 D4) — every source tree the board needs, DERIVED:
+    // the index's `[board.<name>]` lists them, and each is located through the
+    // one ladder (`nros locate`). A project no longer restates
+    // `sdk = { freertos = "{env:FREERTOS_DIR}" }` to get this — 81 such rows
+    // said nothing the environment did not, and read it raw (no re-root). A
+    // source not provisioned anywhere is emitted EMPTY, which is how a
+    // consumer (`check-template-copy-out`) tells "absent" from "present".
+    // A project's own `sdk` entry (a vendor tree under its own name) is kept.
+    for (name, located) in board_sources(descriptor, nano_ros_root) {
+        out.entry(format!("NROS_SDK_{}", env_key(&name)))
+            .or_insert_with(|| located.unwrap_or_default());
+    }
     for (role, raw) in &site.config_files {
         let r = site.interpolate(raw, &site_section, origin, env)?;
         out.insert(format!("NROS_CONFIG_FILE_{}", env_key(role)), r.value);
@@ -295,6 +307,48 @@ fn env_key(name: &str) -> String {
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
         .collect::<String>()
         .to_ascii_uppercase()
+}
+
+/// The index's source trees for `descriptor`'s board, each located —
+/// `Err` when the ladder found it nowhere. Matched by the descriptor's names
+/// and its directory (`nros-board-<key>`), like every other board lookup.
+fn board_sources(
+    descriptor: &BoardDescriptor,
+    nano_ros_root: &Path,
+) -> Vec<(String, std::result::Result<String, String>)> {
+    let index_path = nano_ros_root.join("nros-sdk-index.toml");
+    let Ok(index) = crate::orchestration::sdk_index::SdkIndex::load(&index_path) else {
+        return Vec::new();
+    };
+    let dir_key = descriptor
+        .source
+        .as_deref()
+        .and_then(|s| Path::new(s).parent())
+        .and_then(|d| d.file_name())
+        .and_then(|n| n.to_str())
+        .and_then(|n| n.strip_prefix("nros-board-"))
+        .map(str::to_string);
+    let entry = descriptor
+        .names
+        .iter()
+        .cloned()
+        .chain(dir_key)
+        .find_map(|k| index.board.get(&k));
+    let Some(entry) = entry else {
+        return Vec::new();
+    };
+    let mut names: Vec<&String> = entry.packages.iter().chain(&entry.build_sources).collect();
+    names.sort();
+    names.dedup();
+    names
+        .into_iter()
+        .filter(|n| index.source.contains_key(n.as_str()))
+        .map(|n| {
+            let r = crate::cmd::locate::locate_source(&index, nano_ros_root, n)
+                .map(|p| p.display().to_string());
+            (n.clone(), r)
+        })
+        .collect()
 }
 
 /// The `[env]` rows of a board descriptor's `cargo_config`, `${workspace}`

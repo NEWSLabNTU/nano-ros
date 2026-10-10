@@ -60,6 +60,39 @@ fn row_of(name: &str, s: &SourcePackage) -> Row {
     }
 }
 
+/// One `[source.<name>]` located through the ONE ladder, with `root` as the
+/// checkout — the same answer `nros locate <name>` prints. For other verbs
+/// (`board-facts`) that need a source's location, so none re-derives it.
+pub(crate) fn locate_source(
+    index: &SdkIndex,
+    root: &std::path::Path,
+    name: &str,
+) -> std::result::Result<PathBuf, String> {
+    let src = index
+        .source
+        .get(name)
+        .ok_or_else(|| format!("no [source.{name}] in the index"))?;
+    let row = row_of(name, src);
+    let checkout = root
+        .join(nros_build_paths::CHECKOUT_MARKER)
+        .is_file()
+        .then(|| root.to_path_buf());
+    let ctx = Ctx {
+        arg: None,
+        env_value: row
+            .env
+            .as_deref()
+            .and_then(std::env::var_os)
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from),
+        checkout,
+        store: crate::orchestration::store::root(),
+    };
+    locate::resolve(&row, &ctx)
+        .map(|a| nros_build_paths::canonical(&a.path))
+        .map_err(|r| r.to_string())
+}
+
 fn var_name(name: &str) -> String {
     format!(
         "NROS_LOCATE_{}",

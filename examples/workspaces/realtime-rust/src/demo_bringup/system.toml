@@ -217,7 +217,6 @@ locator = "tcp/10.0.2.2:7471"
 # rather than a literal so the value survives a second checkout.
 [board_config."mps2-an385-freertos"]
 netstack = "lwip"
-sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
 
 # SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
 # SDK roots it builds against. Keyed by BOARD, not by a deploy or image
@@ -225,7 +224,6 @@ sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
 # from `just/sdk-env.just`; this gate keeps the two in step. `{env:…}`
 # rather than a literal so the value survives a second checkout.
 [board_config."qemu-armv7a-nuttx"]
-sdk = { nuttx = "{env:NUTTX_DIR}", nuttx_apps = "{env:NUTTX_APPS_DIR}" }
 
 # SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
 # SDK roots it builds against. Keyed by BOARD, not by a deploy or image
@@ -233,7 +231,6 @@ sdk = { nuttx = "{env:NUTTX_DIR}", nuttx_apps = "{env:NUTTX_APPS_DIR}" }
 # from `just/sdk-env.just`; this gate keeps the two in step. `{env:…}`
 # rather than a literal so the value survives a second checkout.
 [board_config."rv-virt-nuttx"]
-sdk = { nuttx = "{env:NUTTX_DIR}", nuttx_apps = "{env:NUTTX_APPS_DIR}" }
 
 # SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
 # SDK roots it builds against. Keyed by BOARD, not by a deploy or image
@@ -242,4 +239,3 @@ sdk = { nuttx = "{env:NUTTX_DIR}", nuttx_apps = "{env:NUTTX_APPS_DIR}" }
 # rather than a literal so the value survives a second checkout.
 [board_config."threadx-linux"]
 netstack = "netxduo"
-sdk = { threadx = "{env:THREADX_DIR}", netxduo = "{env:NETX_DIR}" }

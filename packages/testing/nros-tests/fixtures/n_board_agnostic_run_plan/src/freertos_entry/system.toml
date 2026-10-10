@@ -20,4 +20,3 @@ board = "freertos"
 # rather than a literal so the value survives a second checkout.
 [board_config."mps2-an385-freertos"]
 netstack = "lwip"
-sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
