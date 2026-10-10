@@ -1189,9 +1189,26 @@ int8_t nros_platform_wake_drop(void *w) {
     return 0;
 }
 
+/* phase-474 I11 -- the wait ends on the tick boundary `timeout_ms` after the
+ * CURRENT tick, not one tick later. A relative `K_MSEC(n)` adds a tick so the
+ * wait is never shorter than n ms from a point inside the current tick, which
+ * makes every wait n+1 ticks from that tick's start: the executor's release
+ * grid (anchored on the tick clock, `k_uptime_ticks`) was then released one
+ * whole tick late on every period. The absolute form expires on tick
+ * `now + n`, i.e. between n-1 and n ticks of wall time; a wait that ends
+ * early is harmless to the executor, which re-parks for the rest. */
 int8_t nros_platform_wake_wait_ms(void *w, uint32_t timeout_ms) {
     if (w == NULL) return -1;
-    k_timeout_t to = (timeout_ms == 0u) ? K_NO_WAIT : K_MSEC(timeout_ms);
+    k_timeout_t to;
+    if (timeout_ms == 0u) {
+        to = K_NO_WAIT;
+    } else {
+#ifdef CONFIG_TIMEOUT_64BIT
+        to = K_TIMEOUT_ABS_TICKS(k_uptime_ticks() + (int64_t) k_ms_to_ticks_ceil64(timeout_ms));
+#else
+        to = K_MSEC(timeout_ms);
+#endif
+    }
     int rc = k_sem_take((struct k_sem *) w, to);
     if (rc == 0)        return 0;
     if (rc == -EAGAIN)  return 1;
