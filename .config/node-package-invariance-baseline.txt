@@ -1,0 +1,16 @@
+# check-node-package-invariance (issue 1509) — node-package files allowed to
+# name a platform or RMW, each with its reason. RATCHETED BOTH WAYS: an
+# unlisted violation fails, and a listed path that no longer violates fails
+# until its line is deleted. The list may only shrink.
+#
+# <path>  # <reason>
+
+# Portability at the call site (the `::setvbuf` class): the busy-wait primitive
+# differs by platform and the reason must be readable where it is used.
+examples/workspaces/violation-cpp/src/violation_pkg/src/Handler.cpp  # __ZEPHYR__ selects k_busy_wait for the deadline-violation busy loop
+# The per-platform wrapper packages of the PORT template are its platform seam
+# by design (one package per target platform, named for it).
+examples/templates/cpp-port-minimal-publisher/zephyr/CMakeLists.txt  # the template's Zephyr wrapper package: find_package(Zephyr)
+# DEBT, not a ruling: the node package's own CMakeLists defaults the RMW. The
+# RMW belongs to the bringup (system.toml); move it there and delete this line.
+examples/templates/cpp-port-minimal-publisher/CMakeLists.txt  # DEBT: `set(NROS_RMW "zenoh" CACHE …)` in the node package

@@ -139,6 +139,11 @@ it waits on the CI-budget decision; 1651 stays open.
 
 **Acceptance:** both issues closed.
 
+**Status 2026-10-10:** issue 1509 rules 1 and 3 land as `just check
+node-package-invariance` (fast line, ~0.1 s, 3 ratcheted exceptions incl. one
+DEBT line); rules 2 and 4 remain, so the issue stays open. Issue 1644 is
+resolved.
+
 ### W5 — bare metal, the remaining roads
 
 Issue [1512](../issues/1512-c-api-does-not-reach-bare-metal.md) is open for the
