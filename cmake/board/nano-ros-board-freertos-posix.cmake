@@ -204,6 +204,26 @@ set(NROS_RMW_CYCLONEDDS_FOREIGN_WAKE OFF CACHE BOOL
 # the whole of W2's "zero new RMW work": host ddsrt, host sockets.
 set(NROS_FREERTOS_BOARD_HAS_LWIP FALSE)
 
+# Issue 1769 — when this board SELF-PROVISIONS Cyclone (no host Cyclone found,
+# e.g. a host without ROS 2), build it the way threadx-linux, the other
+# host-process board, does: a static `ddsc` linked into the image, with no DDS
+# Security. Without this the Phase 186 trims above never ran here (they are the
+# lwIP branch), so Cyclone defaulted to a SHARED `libddsc.so` — and since issue
+# 0832 that library links `NanoRos::Platform`, i.e. this board's non-PIC
+# FreeRTOS kernel archive: `relocation R_X86_64_PC32 against symbol
+# pxCurrentTCB can not be used when making a shared object`. With
+# `BUILD_SHARED_LIBS` alone the configure then refused on the security plugin
+# (`ddsc` requires `security_core` that is not in any export set). Measured on
+# `workspace-c-freertos-posix` with `-DCMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON`.
+# A host Cyclone found by `find_package` (ROS's) is unaffected.
+if(NANO_ROS_RMW STREQUAL "cyclonedds")
+    set(ENABLE_SECURITY OFF CACHE BOOL "Cyclone: no DDS Security (issue 1769)" FORCE)
+    set(ENABLE_SSL OFF CACHE BOOL "Cyclone: no TLS (issue 1769)" FORCE)
+    set(ENABLE_SHM OFF CACHE BOOL "Cyclone: no Iceoryx SHM (issue 1769)" FORCE)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL
+        "Cyclone: static ddsc for self-provision (issue 1769)" FORCE)
+endif()
+
 # ---------------------------------------------------------------------------
 # freertos_platform — the umbrella apps link. No linker script, no
 # `-nostartfiles`, no `--specs=nosys.specs`: this is a hosted link.

@@ -171,6 +171,43 @@ uint64_t nros_platform_epoch_us(void) {
 
 #if !defined(NROS_FREERTOS_HEAP_3)
 static void nros_freertos_report_exhaustion(size_t request, size_t free_bytes);
+#else
+/* Issue 1769 -- on heap_3 the platform heap calls the C library DIRECTLY, not
+ * through `pvPortMalloc` / `vPortFree`.
+ *
+ * heap_3 is the C library's `malloc` inside a `vTaskSuspendAll()` /
+ * `xTaskResumeAll()` bracket. The bracket is the part only a FreeRTOS task may
+ * call: on the POSIX port it updates the kernel's suspension count and the
+ * port's GLOBAL critical nesting with nothing excluding another thread, and
+ * `xTaskResumeAll` can reach `vPortYield`, which asserts that the caller is a
+ * FreeRTOS thread. This board's heap has callers that are not: a host library
+ * linked into the image runs threads of its own -- Cyclone's ddsrt heap is
+ * funnelled here (issue 0832) when Cyclone is self-provisioned, and measured
+ * under gdb its `gc`, `tev`, `dq.builtins`, `dq.user` and `recv` threads made
+ * ~400 `vTaskSuspendAll` calls in a 4 s run (issue 1750's class, one board
+ * over).
+ *
+ * And the bracket buys nothing here. heap_3 only exists on the host simulator
+ * board (`NROS_PLATFORM_FREERTOS_HEAP_3`), whose C library allocator is already
+ * thread-safe; the suspension serialises FreeRTOS tasks against one another
+ * for a libc that is not, which is an MCU concern. So every caller, task or
+ * not, gets the same allocator without it -- no "is this a kernel thread?"
+ * predicate is needed, which matters because the POSIX port keeps that answer
+ * static (`prvIsFreeRTOSThread`) in an unmodified upstream kernel.
+ *
+ * What heap_3 did besides the bracket is kept: `vApplicationMallocFailedHook`
+ * on NULL (this board's hook prints and aborts, both safe from any thread).
+ * `traceMALLOC`/`traceFREE` are not defined by this board's config. */
+#  include <stdlib.h>
+static void *nros_freertos_host_malloc(size_t size) {
+    void *p = malloc(size);
+#  if (configUSE_MALLOC_FAILED_HOOK == 1)
+    if (p == NULL) {
+        vApplicationMallocFailedHook();
+    }
+#  endif
+    return p;
+}
 #endif
 
 void *nros_platform_alloc(size_t size) {
@@ -213,12 +250,20 @@ void *nros_platform_alloc(size_t size) {
         return NULL;
     }
 #endif
+#if defined(NROS_FREERTOS_HEAP_3)
+    return nros_freertos_host_malloc(size);
+#else
     return pvPortMalloc(size);
+#endif
 }
 
 void nros_platform_dealloc(void *ptr) {
     if (ptr != NULL) {
+#if defined(NROS_FREERTOS_HEAP_3)
+        free(ptr);
+#else
         vPortFree(ptr);
+#endif
     }
 }
 
@@ -280,8 +325,8 @@ size_t nros_platform_heap_total_bytes(void) {
  *
  *   - heap_3 (`NROS_FREERTOS_HEAP_3`, the POSIX simulator board): a wrapper
  *     over the C library's `malloc`, so the C library's `realloc` IS the
- *     answer, under the same scheduler suspension heap_3 takes around its own
- *     `malloc`/`free`.
+ *     answer -- called directly, without heap_3's scheduler suspension, like
+ *     the alloc/free pair (issue 1769).
  *   - ESP-IDF (`ESP_PLATFORM`): `pvPortMalloc` is `heap_caps_malloc`, and the
  *     C library's `realloc` is `heap_caps_realloc` over the same heaps.
  *     UNMEASURED here -- no IDF build exists in-tree (RFC-0065 D3).
@@ -305,13 +350,9 @@ void *nros_platform_realloc(void *ptr, size_t size) {
         return nros_platform_alloc(size);
     }
     void *out;
-#if defined(NROS_FREERTOS_HEAP_3)
-    vTaskSuspendAll();
+    /* heap_3: the C library directly, no scheduler suspension -- issue 1769,
+     * see `nros_freertos_host_malloc`. ESP-IDF: `heap_caps_realloc`. */
     out = realloc(ptr, size);
-    (void) xTaskResumeAll();
-#else
-    out = realloc(ptr, size);
-#endif
     return out;
 }
 #else
