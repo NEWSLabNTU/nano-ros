@@ -3,7 +3,7 @@
 //!
 //! The C++ half of the shape the `c/talker` sibling established (issue 1512):
 //! `src/main.rs` owns the reset vector and the board bring-up, this script
-//! compiles `src/talker.cpp`, and `NROS_APP_MAIN_REGISTER()` in it emits the
+//! compiles `src/action_server.cpp`, and `NROS_APP_MAIN_REGISTER()` in it emits the
 //! `app_main()` that `main.rs` calls. See `README.md` for why the link root is
 //! Rust on this board.
 //!
@@ -34,7 +34,7 @@ use std::{
 fn env(name: &str) -> String {
     std::env::var(name).unwrap_or_else(|_| {
         panic!(
-            "baremetal-cpp-talker: {name} is not set — nros-c / nros-cpp must carry \
+            "baremetal-cpp-action-server: {name} is not set — nros-c / nros-cpp must carry \
              their `links` keys (issue 1512)"
         )
     })
@@ -83,7 +83,7 @@ fn generated_packages(generated: &Path) -> Vec<PathBuf> {
 }
 
 fn main() {
-    println!("cargo:rerun-if-changed=src/talker.cpp");
+    println!("cargo:rerun-if-changed=src/action_server.cpp");
     println!("cargo:rerun-if-changed=package.xml");
     // RFC-0033 per-field capacities, which the generator discovers beside
     // `package.xml` (a leaf that receives `std_msgs/String` needs one: an
@@ -116,14 +116,14 @@ fn main() {
         .status()
         .unwrap_or_else(|e| {
             panic!(
-                "baremetal-cpp-talker: could not run `{tool} generate cpp` ({e}). \
+                "baremetal-cpp-action-server: could not run `{tool} generate cpp` ({e}). \
                  Build the CLI and put it on PATH: `just setup-cli` then \
                  `source ./activate.sh`, or set NROS_CLI to the `nros` binary."
             )
         });
     assert!(
         status.success(),
-        "baremetal-cpp-talker: `{tool} generate cpp` failed ({status})."
+        "baremetal-cpp-action-server: `{tool} generate cpp` failed ({status})."
     );
 
     // ---- the Rust half of the message bindings ---------------------------
@@ -144,7 +144,7 @@ fn main() {
     }
     assert!(
         any,
-        "baremetal-cpp-talker: `nros generate cpp` produced no `*_types.rs` / \
+        "baremetal-cpp-action-server: `nros generate cpp` produced no `*_types.rs` / \
          `*_exports.rs` under {} — the bindings layout changed.",
         generated.display()
     );
@@ -193,7 +193,7 @@ fn main() {
         // No `__cxa_atexit` / `__dso_handle`: nothing here ever exits to a
         // runtime that would run the registered destructors.
         .flag("-fno-use-cxa-atexit")
-        .file("src/talker.cpp");
+        .file("src/action_server.cpp");
     // `#include "<pkg>.hpp"`, the umbrella, as every C++ example spells it —
     // one include dir per generated package.
     for pkg in &packages {
@@ -204,7 +204,7 @@ fn main() {
     // C++ compile rejects the constructs outright.
     nros_cc_flags::gcc_safe_frame_pointer(&mut build);
     nros_cc_flags::header_deps::track_header_deps(&mut build);
-    build.compile("baremetal_cpp_talker_app");
+    build.compile("baremetal_cpp_action_server_app");
     // issue 1580 — every header the compile opened, beyond the ones named above.
     nros_cc_flags::header_deps::emit_header_deps(&out_dir);
 }
