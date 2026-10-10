@@ -234,20 +234,26 @@ For C++ consumers, the declared RMW lowers to the CMake cache var:
 cmake -S . -B build -DNANO_ROS_RMW=cyclonedds  # zenoh / xrce / cyclonedds
 ```
 
-### Kconfig (Zephyr)
+### Zephyr
 
-```kconfig
-# Zenoh backend
-CONFIG_NROS_RMW_ZENOH=y
+The image's `rmw` in `system.toml`, like every other platform. The nano-ros
+module renders it into the Kconfig choice (`CONFIG_NROS_RMW_ZENOH` /
+`_XRCE` / `_CYCLONEDDS`, exactly one), so it is never written in `prj.conf`
+(phase-481). One image per backend, picked with `-DNROS_IMAGE`:
 
-# XRCE-DDS backend
-CONFIG_NROS_RMW_XRCE=y
+```toml
+[image.zephyr_zenoh]
+board = "zephyr"
+rmw = "zenoh"
+conf = ["prj-zenoh.conf"]       # Zephyr-native settings that backend needs
 
-# Cyclone DDS backend (Cortex-A/R Zephyr targets)
-CONFIG_NROS_RMW_CYCLONEDDS=y
+[image.zephyr_cyclonedds]       # Cyclone: Cortex-A/R and native_sim targets
+board = "zephyr"
+rmw = "cyclonedds"
+conf = ["prj-cyclonedds.conf"]
 ```
 
-Enabling more than one simultaneously produces a `compile_error!()`.
+See [Configuring an image](../getting-started/zephyr.md#configuring-an-image-systemtoml-not-prjconf).
 
 ## Cyclone DDS — per-platform configuration profile
 

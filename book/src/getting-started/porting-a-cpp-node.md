@@ -170,7 +170,8 @@ The board comes from the directory's `system.toml`, as for any nano-ros image.
 
 Where the node connects is decided when the image is built, because a board has
 no environment to read it from: the `NROS_ENTRY_LOCATOR` cache variable on
-FreeRTOS, `CONFIG_NROS_ZENOH_LOCATOR` on Zephyr. `rclcpp::init(argc, argv)`
+FreeRTOS, the image's `locator` in `system.toml` on Zephyr (rendered into
+`CONFIG_NROS_ZENOH_LOCATOR`). `rclcpp::init(argc, argv)`
 reads it in every source file that includes `<rclcpp/rclcpp.hpp>`.
 
 A node with a hand-written spin loop also works. The other two templates,

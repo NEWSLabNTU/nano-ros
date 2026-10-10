@@ -213,6 +213,27 @@ function(nros_image_kconfig_hook)
     # fragment the build already names (in `CONF_FILE`, or among the user's
     # extras) is left where the caller put it, so a harness that lists it
     # explicitly gets byte-for-byte the merge order it asked for.
+    # phase-481 W5 -- a 4.x RMW snippet (`-S nros-<rmw>`) also chooses the RMW,
+    # and merges BEFORE this rendering, so one naming a different RMW than the
+    # image used to lose without a word. Refused instead, naming both.
+    if(NOT _kconfig STREQUAL "" AND EXISTS "${_kconfig}")
+        file(STRINGS "${_kconfig}" _rmw_line REGEX "^CONFIG_NROS_RMW_[A-Z]+=y$")
+        if(_rmw_line MATCHES "^CONFIG_NROS_RMW_([A-Z]+)=y$")
+            set(_snippets "")
+            if(DEFINED CACHE{SNIPPET})
+                list(APPEND _snippets $CACHE{SNIPPET})
+            endif()
+            if(DEFINED SNIPPET)
+                list(APPEND _snippets ${SNIPPET})
+            endif()
+            if(DEFINED ENV{SNIPPET})
+                list(APPEND _snippets $ENV{SNIPPET})
+            endif()
+            _nros_image_kconfig_check_snippets(
+                "${CMAKE_MATCH_1}" "${_snippets}" "${_dir}/system.toml" "${_image}")
+        endif()
+    endif()
+
     _nros_image_kconfig_named_confs(_named)
     set(_inserted "")
     foreach(_c IN LISTS _image_conf)
@@ -246,6 +267,27 @@ function(nros_image_kconfig_hook)
             "nano-ros: image `${_image}` env rows with no Kconfig symbol (${_keys}) -> "
             "every cargo command gets --config ${_envcfg} (issue 1712)")
     endif()
+endfunction()
+
+# phase-481 W5 -- refuse an `nros-<rmw>` snippet that names a different RMW
+# than the image. `rmw` is the rendered symbol's suffix (`ZENOH`, `XRCE`,
+# `CYCLONEDDS`); `snippets` is every snippet the build was given. A snippet
+# that AGREES is redundant and allowed; an app with no system.toml never gets
+# here, so the snippets still choose the RMW for it.
+function(_nros_image_kconfig_check_snippets rmw snippets system image)
+    foreach(_s IN LISTS snippets)
+        if(_s MATCHES "^nros-(.+)$")
+            string(TOUPPER "${CMAKE_MATCH_1}" _snip_rmw)
+            if(NOT _snip_rmw STREQUAL rmw)
+                string(TOLOWER "${rmw}" _img_rmw)
+                message(FATAL_ERROR
+                    "nano-ros: `-S ${_s}` selects ${_snip_rmw}, but ${system} "
+                    "[image.${image}] has rmw = \"${_img_rmw}\", and the image wins "
+                    "(it merges after the snippet). Drop the snippet, or build the image "
+                    "for that RMW (`-DNROS_IMAGE=<id>`). (phase-481 W5)")
+            endif()
+        endif()
+    endforeach()
 endfunction()
 
 # The conf files the caller already names, as absolute paths: every

@@ -75,8 +75,9 @@ cmake --build build
 ## RTOS-specific notes
 
 - **Zephyr.** Consume nano-ros via the `zephyr/`
-  module — drop `nano-ros` into your `west.yml`, set
-  `CONFIG_NROS=y` + `CONFIG_NROS_RMW="zenoh"` in `prj.conf`.
+  module — drop `nano-ros` into your `west.yml`, set `CONFIG_NROS=y` in
+  `prj.conf`, and state the RMW as the image's `rmw` in a `system.toml`
+  beside it (phase-481).
 - **ESP-IDF.** `integrations/nano-ros/` is a component manifest —
   add it to your `idf_component.yml`.
 - **NuttX.** `integrations/nuttx/` is a `apps/external/` shim —

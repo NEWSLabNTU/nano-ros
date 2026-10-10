@@ -89,8 +89,9 @@ ros2 node list         # Shows nano-ros nodes
 Both sides must use the same ROS domain ID. On the **native** (host) build
 nano-ros reads `ROS_DOMAIN_ID` from the environment (default: `0`). On
 **embedded** targets the domain ID is fixed at compile time — `system.toml`
-`[system] domain_id` (or an image's own), a hand-written `config.toml` on a
-direct-mode app, or `CONFIG_NROS_DOMAIN_ID` on Zephyr (see
+`[system] domain_id` (or an image's own — on Zephyr the module renders it into
+`CONFIG_NROS_DOMAIN_ID`), or a hand-written `config.toml` on a
+direct-mode app (see
 [Workflow](../user-guide/workflow.md)):
 
 ```bash

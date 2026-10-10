@@ -40,7 +40,7 @@ apply nano-ros's Zephyr patches:
 | Capability | Zephyr 3.7 LTS | Zephyr 4.x |
 | --- | --- | --- |
 | Min Python | 3.10 | **3.12** (`find_package(Python3)`) |
-| RMW selection | `prj-<rmw>.conf` overlay (`-DCONF_FILE=...`) | **`-S nros-<rmw>` snippet** (or the overlay) |
+| RMW selection | the image's `rmw` in `system.toml` | the image's `rmw` in `system.toml` (an app with no `system.toml`: the `-S nros-<rmw>` snippet) |
 | nano-ros patches | applied during `nros setup zephyr` provisioning | applied during `nros setup zephyr` provisioning |
 | Examples as samples / Twister | — | **`samples:` + Twister** (`sample.nano-ros.*`) |
 | zenoh (native_sim) | ✅ build + e2e | ✅ build + e2e |
@@ -67,7 +67,8 @@ my_zephyr_ws/
 └── apps/
     └── my_app/                        # your application
         ├── CMakeLists.txt
-        ├── prj.conf                   # Kconfig — selects nros + RMW
+        ├── system.toml                # nano-ros config: RMW, endpoint, knobs
+        ├── prj.conf                   # Zephyr's own Kconfig (+ CONFIG_NROS=y)
         ├── west.yml                   # (optional) per-app manifest
         └── src/
             └── main.c                 # nros user code
@@ -167,11 +168,10 @@ functions from `nros-cpp` (the `cpp` is a namespace prefix, not C++
 linkage) — a C component links against them directly, and shares the same
 executor + node as a C++ component would.
 
-`prj.conf` is the one shown in [Configure](#configure) below — note it needs
-**both** `CONFIG_NROS_C_API=y` and `CONFIG_NROS_CPP_API=y`: the typed
-Zephyr carrier that drives this component's `configure` is C++, so the
-`nros-cpp` header surface must be on the app include path even though
-`Talker.c` itself is C.
+Its configuration is in [Configure](#configure) below. You do not choose the
+language API: the module renders it from the app, and the typed Zephyr carrier
+that drives this component's `configure` is C++, so the `nros-cpp` header
+surface is on the app include path even though `Talker.c` itself is C.
 
 ## Prerequisites
 
@@ -233,20 +233,42 @@ manifest:
         file: zephyr/west.yml    # pulls nano-ros's transport deps
 ```
 
-Then per-application `prj.conf`:
+Then, per application, nano-ros's half of the configuration goes in a
+`system.toml` beside the `CMakeLists.txt` (RFC-0098 D10, phase-481), and
+Zephyr's own half in `prj.conf`:
+
+```toml
+# system.toml
+[system]
+name = "my_app"
+rmw = "zenoh"
+domain_id = 0
+
+[image.zephyr]
+board = "zephyr"            # the concrete board is west's `-b`
+rmw = "zenoh"               # zenoh | xrce | cyclonedds
+# locator = "tcp/192.0.2.10:7447"
+# env = { NROS_MAX_PUBLISHERS = "4" }
+```
 
 ```
-CONFIG_NROS=y
-CONFIG_NROS_C_API=y
-CONFIG_NROS_RMW_ZENOH=y                 # bool per RMW: NROS_RMW_{ZENOH,XRCE,CYCLONEDDS}
-# (ROS edition is a build-time Cargo feature, NOT a Kconfig symbol — do not set
-#  CONFIG_NROS_ROS_EDITION; Zephyr aborts on the undefined symbol.)
-
-# Required for any networked RMW on QEMU / native_sim:
+# prj.conf — Zephyr settings only; never a CONFIG_NROS_* knob here
+CONFIG_NROS=y               # enables the module; everything else is the image's
 CONFIG_NETWORKING=y
 CONFIG_NET_IPV4=y
 CONFIG_NET_TCP=y
 ```
+
+The module renders the image into a Kconfig fragment merged after `prj.conf`:
+the RMW from `rmw`, the language API from your app, the endpoint from
+`locator`, the domain from `domain_id`, and every `env` knob (any symbol in the
+[Kconfig reference](zephyr.md#kconfig-reference), spelled without
+`CONFIG_`). A `CONFIG_NROS_*` line in `prj.conf` would be overridden by it, so
+it is at best dead. Several images in one file — one per RMW — are picked with
+`west build … -- -DNROS_IMAGE=<id>`; see
+[Configuring an image](zephyr.md#configuring-an-image-systemtoml-not-prjconf).
+An app with NO `system.toml` gets no rendering and is configured by Kconfig
+defaults and the RMW snippets alone.
 
 `CONFIG_NROS=y` activates the shell, which maps Kconfig values to
 `NANO_ROS_*` CMake cache vars and `add_subdirectory()`s the root
@@ -421,7 +443,7 @@ zenoh-pico is a client, so with no router the image gets
 
 which names no port. Both sides default to `tcp/127.0.0.1:7447` — the port
 `rmw_zenohd` listens on and a `rmw_zenoh_cpp` node connects to. Override with
-`CONFIG_NROS_ZENOH_LOCATOR` on the image side (via a `conf` fragment) and
+the image's `locator = "tcp/…"` in `system.toml` and
 `ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:<port>"]'` on the
 router, and change **both**.
 
@@ -705,9 +727,9 @@ Two things differ for a **Rust** app (C/C++ apps skip this section):
 
 ```bash
 # 1. Start the router (ROS's `rmw_zenohd` — nano-ros ships no router
-#    of its own) on port 7447, the port your app's Kconfig default
-#    picks up (CONFIG_NROS_ZENOH_LOCATOR defaults to
-#    "tcp/127.0.0.1:7447"; change either side to match):
+#    of its own) on port 7447, the port your app dials by default
+#    (an image with no `locator` gets "tcp/127.0.0.1:7447"; change
+#    either side to match):
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' \
     ros2 run rmw_zenoh_cpp rmw_zenohd &
 
@@ -777,7 +799,10 @@ west build -b native_sim/native/64 -S nros-cyclonedds apps/my_app
 ```
 
 The snippet (shipped via the module's `snippet_root`) carries the
-RMW-common Kconfig — equivalent to merging `prj-<rmw>.conf`. The
+RMW-common Kconfig — equivalent to merging `prj-<rmw>.conf`. It is for an
+app with NO `system.toml`: with one, the image's `rmw` decides and merges
+after the snippet, so a snippet that agrees is redundant and one that names a
+different RMW is refused at configure time (phase-481). The
 `prj-<rmw>.conf` / `-DCONF_FILE` path still works (and is the only option
 on 3.7).
 
