@@ -200,3 +200,34 @@ written above is "reaching its cells", and building fixtures is upstream of
 that, so closing this now would be claiming ground nobody took. Whoever picks
 this up next: the remaining question is why that `cmake --build` fails, and it
 should probably be its own issue rather than a third section here.
+
+## 2026-10-10 — a new call site: release staging, inside both installed-track probes
+
+Phase-484 W3a (`70fef7f41`) made `scripts/stage-sdk-root.sh:220` run
+`python3 scripts/check/check-source-refs.py --rev HEAD`. That script imports
+`tomllib` with the usual `tomli` fallback. The probe container is Python 3.10
+and carries neither, so both installed-track probes now die at their release
+step:
+
+| Run | Job | Step |
+| --- | --- | --- |
+| nightly **38033759059** (07:14Z, `6fd5a64b5`) | **114159842256** `installed-probe` | `Run installed-path probe` |
+| probe **38037268604** (08:15Z, `a373854fb`) | **114170207819** `book probe — installed track` | `just probe installed` (recipe `installed`, line 39) |
+
+```
+=== release step: Stage the prefix ===
+  File "/src/scripts/check/check-source-refs.py", line 44, in <module>
+    import tomli as tomllib
+ModuleNotFoundError: No module named 'tomli'
+```
+
+This is the class this issue describes, at a call site that did not exist
+when it was filed. It is NOT issue 1304 (the installed probe's cyclonedds
+gitlink) and NOT 1439 (the checkout track). Both installed-track probes stop
+before reaching either of those.
+
+Two fixes would each close this site. Either the probe image installs
+`python3-tomli` (an image fix, as this issue's own remedy prescribes), or
+`check-source-refs.py` reads the one table it needs with the same
+dependency-free reader `nros-build-paths::locate::row_from_index` uses, so
+staging needs no TOML library.
