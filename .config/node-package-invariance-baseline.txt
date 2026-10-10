@@ -11,6 +11,10 @@ examples/workspaces/violation-cpp/src/violation_pkg/src/Handler.cpp  # __ZEPHYR_
 # The per-platform wrapper packages of the PORT template are its platform seam
 # by design (one package per target platform, named for it).
 examples/templates/cpp-port-minimal-publisher/zephyr/CMakeLists.txt  # the template's Zephyr wrapper package: find_package(Zephyr)
+examples/templates/rclcpp-compat-smoke/zephyr/CMakeLists.txt  # the template's Zephyr wrapper package: find_package(Zephyr)
+examples/templates/topic-state-monitor-port/zephyr/CMakeLists.txt  # the template's Zephyr wrapper package: find_package(Zephyr)
 # DEBT, not a ruling: the node package's own CMakeLists defaults the RMW. The
 # RMW belongs to the bringup (system.toml); move it there and delete this line.
 examples/templates/cpp-port-minimal-publisher/CMakeLists.txt  # DEBT: `set(NROS_RMW "zenoh" CACHE …)` in the node package
+examples/templates/rclcpp-compat-smoke/CMakeLists.txt  # DEBT: `set(NROS_RMW "zenoh" CACHE …)` in the node package
+examples/templates/topic-state-monitor-port/CMakeLists.txt  # DEBT: `set(NROS_RMW "zenoh" CACHE …)` in the node package
