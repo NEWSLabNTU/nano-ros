@@ -484,7 +484,7 @@ function(nano_ros_auto_add_library name)
     # the app include mirror instead — non-target lib names there).
     # issue 0326 — a SEVENTH instance of the class, not listed in that issue:
     # same inverted guard as NanoRosNodeRegister.cmake:418. With
-    # NANO_ROS_PLATFORM unset this read TRUE on Zephyr and linked the
+    # NROS_PLATFORM unset this read TRUE on Zephyr and linked the
     # non-target `-l<pkg>__nano_ros_cpp` names the comment above says Zephyr
     # must NOT link. One helper call serves both sites in this function.
     _nros_is_zephyr(_nrv_is_zephyr)
@@ -495,7 +495,7 @@ function(nano_ros_auto_add_library name)
             target_link_libraries(${name} PUBLIC ${_nros_iface_libs})
         endif()
     endif()
-    # Zephyr detection: NANO_ROS_PLATFORM is NOT set in a `find_package(Zephyr)`
+    # Zephyr detection: NROS_PLATFORM is NOT set in a `find_package(Zephyr)`
     # app build (issue 0282) — the previous `STREQUAL "zephyr"` guard silently
     # never fired there, so the per-build config headers got no ordering edge
     # and a component TU could compile before the nros-cpp cargo build emitted
@@ -634,7 +634,7 @@ function(nano_ros_generate_interfaces name)
         set(_NRG_LANGUAGE CPP)
     endif()
     # phase-304 W2b (RFC-0056) — forward an explicit ROS_EDITION; when omitted,
-    # nros_generate_interfaces inherits the workspace `NANO_ROS_ROS_EDITION`.
+    # nros_generate_interfaces inherits the workspace `NROS_ROS_EDITION`.
     if(_NRG_ROS_EDITION)
         set(_nrg_edition ROS_EDITION ${_NRG_ROS_EDITION})
     endif()

@@ -33,7 +33,7 @@ path = "src/lib.rs"
 # edition makes `--features ros-jazzy` yield BOTH and fail to compile — the
 # user would have to know to pass `--no-default-features` and then re-name
 # every other default they still wanted. The C++ standalone selector
-# (`-DNANO_ROS_ROS_EDITION=jazzy`) simply REPLACES; this is how the cargo side
+# (`-DNROS_ROS_EDITION=jazzy`) simply REPLACES; this is how the cargo side
 # gets the same UX. Naming no edition is legal (only >1 trips the
 # `compile_error!`) and resolves to humble by construction: every edition
 # consumer gates on `cfg(not(any(ros-iron, ros-jazzy)))`. phase-315 W3.

@@ -2,7 +2,7 @@
 """Issue 1795 — a build ROAD is chosen per RTOS FAMILY, never per raw spelling.
 
 The just recipes and toolchain files pass the VARIANT spelling of
-NANO_ROS_PLATFORM (`threadx_riscv64`, `threadx_linux`, `nuttx_armv7a`,
+NROS_PLATFORM (`threadx_riscv64`, `threadx_linux`, `nuttx_armv7a`,
 `freertos_armcm3`). `nano_ros_entry()` normalised it inline before choosing; the
 three RTOS typed-entry carriers in `NanoRosNodeRegister.cmake` compared the raw
 value to the bare family token (`STREQUAL "threadx"`). So on every lane-built
@@ -12,7 +12,7 @@ policy for — failed with `#[panic_handler] function required`. Nothing had eve
 built a carrier through a lane, so nothing saw it.
 
 R1  In the road dispatchers (NanoRosEntry.cmake, NanoRosNodeRegister.cmake),
-    `NANO_ROS_PLATFORM` is never compared with a bare family token. Compare the
+    `NROS_PLATFORM` is never compared with a bare family token. Compare the
     family from `nros_platform_family()` instead.
 R2  The variant -> family regex lives once, in NanoRosPlatformFamily.cmake: no
     other cmake file under `cmake/` re-spells `^(threadx|freertos|nuttx)_`.
@@ -34,7 +34,7 @@ HOME = "cmake/NanoRosPlatformFamily.cmake"
 FAMILIES = ("threadx", "freertos", "nuttx")
 
 _RAW = re.compile(
-    r'\$?\{?NANO_ROS_PLATFORM\}?"?\s+STREQUAL\s+"(' + "|".join(FAMILIES) + r')"')
+    r'\$?\{?(?:NANO_ROS|NROS)_PLATFORM\}?"?\s+STREQUAL\s+"(' + "|".join(FAMILIES) + r')"')
 _REGEX = re.compile(r'\^\((?:threadx\|freertos\|nuttx|threadx\|nuttx\|freertos|'
                     r'freertos\|threadx\|nuttx|freertos\|nuttx\|threadx|'
                     r'nuttx\|threadx\|freertos|nuttx\|freertos\|threadx)\)_')
@@ -55,12 +55,12 @@ def r2(text: str) -> list[int]:
 
 
 def self_test() -> None:
-    bad = 'if(_x AND NANO_ROS_PLATFORM STREQUAL "threadx")\nendif()\n'
+    bad = 'if(_x AND NROS_PLATFORM STREQUAL "threadx")\nendif()\n'
     assert r1(bad), "a raw family compare must be caught"
-    assert r1('if("${NANO_ROS_PLATFORM}" STREQUAL "nuttx")\n'), "quoted form too"
+    assert r1('if("${NROS_PLATFORM}" STREQUAL "nuttx")\n'), "quoted form too"
     assert not r1('if(_nrc_family STREQUAL "threadx")\n'), "a family compare is the fix"
-    assert not r1('if(NANO_ROS_PLATFORM STREQUAL "posix")\n'), "posix has no variants"
-    assert not r1('# NANO_ROS_PLATFORM STREQUAL "threadx" in a comment\n')
+    assert not r1('if(NROS_PLATFORM STREQUAL "posix")\n'), "posix has no variants"
+    assert not r1('# NROS_PLATFORM STREQUAL "threadx" in a comment\n')
     assert r2('if(_p MATCHES "^(threadx|freertos|nuttx)_")\n'), "a second normaliser"
     assert not r2('# "^(threadx|freertos|nuttx)_" in a comment\n')
 

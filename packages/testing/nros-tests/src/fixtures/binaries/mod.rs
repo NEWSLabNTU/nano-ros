@@ -2824,7 +2824,7 @@ pub fn build_native_workspace_c_lifecycle_entry() -> TestResult<&'static Path> {
 }
 
 /// Phase 269 W3 — the talker half of the cross-process E2E-safety C demo (`safety`).
-/// Publishes CRC-annotated /chatter frames when built with NANO_ROS_SAFETY_E2E=ON.
+/// Publishes CRC-annotated /chatter frames when built with NROS_SAFETY_E2E=ON.
 /// Consumed by tests/workspace_features_e2e.rs.
 pub fn build_native_workspace_c_safety_talker_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_C_SAFETY_TALKER_ENTRY_BINARY
@@ -3809,7 +3809,7 @@ pub fn build_native_workspace_cpp_lifecycle_managed_entry() -> TestResult<&'stat
 }
 
 /// Phase 269 W3 — the talker half of the cross-process E2E-safety C++ demo (`safety`).
-/// Publishes CRC-annotated /chatter frames when built with NANO_ROS_SAFETY_E2E=ON.
+/// Publishes CRC-annotated /chatter frames when built with NROS_SAFETY_E2E=ON.
 /// Consumed by tests/workspace_features_e2e.rs.
 pub fn build_native_workspace_cpp_safety_talker_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_CPP_SAFETY_TALKER_ENTRY_BINARY
@@ -5264,7 +5264,7 @@ pub fn build_zephyr_workspace_rust_params_entry() -> TestResult<PathBuf> {
 /// Issue 1681 — the Zephyr (native_sim) C++ PARAMETERISED workspace Entry
 /// (`features`'s `[image.zephyr_cpp_params]`, a generated west application): the
 /// C++ param talker with the six ROS 2 parameter services, which did not LINK
-/// before the generated application set `NANO_ROS_FEATURES`. Built by the west
+/// before the generated application set `NROS_FEATURES`. Built by the west
 /// lane into `<zephyr-build-root>/build-ws-cpp-params-entry-zenoh/zephyr/zephyr.exe`;
 /// consumed by `tests/entry_e2e.rs` (zephyr cpp params cell).
 pub fn build_zephyr_workspace_cpp_params_entry() -> TestResult<PathBuf> {

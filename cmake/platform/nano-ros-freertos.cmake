@@ -68,7 +68,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosLink.cmake")
 # be built with the cross toolchain — consumers must point
 # `_NANO_ROS_CODEGEN_TOOL` at an already-built host binary. The
 # canonical way is to invoke a host-side configure first
-# (`cmake -B build-host -S <nano-ros> -DNANO_ROS_PLATFORM=posix`
+# (`cmake -B build-host -S <nano-ros> -DNROS_PLATFORM=posix`
 # + `cmake --build build-host --target nros-codegen`) and pass
 # `-D_NANO_ROS_CODEGEN_TOOL=<repo>/build-host/.../nros-codegen` to the
 # cross build. The module's own `find_program(nros-codegen)` walks

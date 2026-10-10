@@ -305,7 +305,7 @@ today" until 2026-09-29). Records can be republished as
 `rqt_console` and launch-side log aggregators see a nano-ros node.
 
 Declare the `rosout` capability — `[system].features = ["rosout"]` in
-`system.toml`, or `set(NANO_ROS_FEATURES "rosout")` before
+`system.toml`, or `set(NROS_FEATURES "rosout")` before
 `find_package(nano_ros)` in a bare CMake project (a Rust leaf can also name the
 `nros/rosout` feature) — and wire three lines. Rust:
 

@@ -11,7 +11,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # 1) Pull nano-ros (NanoRos::NanoRos / NanoRos::NanoRosCpp / nros_find_interfaces).
-set(NANO_ROS_PLATFORM posix)
+set(NROS_PLATFORM posix)
 set(NROS_RMW "zenoh" CACHE STRING "Active RMW (zenoh|cyclonedds|xrce).")
 set(NANO_ROS_RMW "${NROS_RMW}")
 # Resolve the nano-ros SDK root once (phase-277 W6 standard guard; 4th rung

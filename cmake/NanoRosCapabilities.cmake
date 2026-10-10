@@ -41,7 +41,7 @@ endfunction()
 #   <features> : a CMake list of declared capability axes by name, e.g.
 #                "safety" or "safety;param_services". The C/C++ projection of
 #                `system.toml` `[system].features = [...]` (RFC-0004). Set it
-#                via `set(NANO_ROS_FEATURES "safety")` BEFORE
+#                via `set(NROS_FEATURES "safety")` BEFORE
 #                `add_subdirectory(<nano-ros>)`, or let the bake emit it.
 #
 # Lowers each axis to its CMake build knob (`cmake_token`) — the analog of
@@ -53,7 +53,7 @@ endfunction()
 # test (`cmake_capability_map_matches_registry`) asserts the two never skew, so
 # adding a row there + an arm here is the only edit a future axis needs.
 #
-# Known axes mirror the registry: `safety` → `NANO_ROS_SAFETY_E2E`;
+# Known axes mirror the registry: `safety` → `NROS_SAFETY_E2E`;
 # `param_services` is known but carries NO `cmake_token` (informational `#define`
 # only), so it lowers to no option. An unknown name is a hard error (typo guard),
 # matching the Rust `validate_and_warn_capabilities`.
@@ -62,7 +62,7 @@ function(nros_lower_system_features features)
         if(_feat STREQUAL "")
             # empty list element — skip.
         elseif(_feat STREQUAL "safety")
-            set(NANO_ROS_SAFETY_E2E ON CACHE BOOL
+            set(NROS_SAFETY_E2E ON CACHE BOOL
                 "nano-ros: E2E message-integrity (CRC) — from [system].features" FORCE)
         elseif(_feat STREQUAL "param_services")
             # Known axis, no CMake OPTION. Issue 0745 — the define is a
@@ -105,7 +105,7 @@ function(nros_lower_system_features features)
         else()
             message(FATAL_ERROR
                 "nros_lower_system_features: unknown capability '${_feat}' in "
-                "NANO_ROS_FEATURES (known axes: safety, param_services, lifecycle, rosout)")
+                "NROS_FEATURES (known axes: safety, param_services, lifecycle, rosout)")
         endif()
     endforeach()
 endfunction()

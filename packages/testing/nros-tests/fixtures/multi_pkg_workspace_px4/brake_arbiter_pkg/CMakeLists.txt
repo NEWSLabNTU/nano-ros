@@ -13,15 +13,15 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Phase 213.D.1 — resolve cmake fn registry via env var, not walk-up.
 # See sibling talker_pkg/CMakeLists.txt for the same shape.
-if(NOT DEFINED NANO_ROS_CMAKE_DIR AND DEFINED ENV{NANO_ROS_CMAKE_DIR})
-    set(NANO_ROS_CMAKE_DIR "$ENV{NANO_ROS_CMAKE_DIR}")
+if(NOT DEFINED NROS_CMAKE_DIR AND DEFINED ENV{NROS_CMAKE_DIR})
+    set(NROS_CMAKE_DIR "$ENV{NROS_CMAKE_DIR}")
 endif()
-if(NOT NANO_ROS_CMAKE_DIR)
+if(NOT NROS_CMAKE_DIR)
     message(FATAL_ERROR
-        "NANO_ROS_CMAKE_DIR not set — pass -DNANO_ROS_CMAKE_DIR=<repo>/cmake "
+        "NROS_CMAKE_DIR not set — pass -DNROS_CMAKE_DIR=<repo>/cmake "
         "or export it as an env var (Phase 213.D.1 walk-up retirement).")
 endif()
-include("${NANO_ROS_CMAKE_DIR}/NanoRosNodeRegister.cmake")
+include("${NROS_CMAKE_DIR}/NanoRosNodeRegister.cmake")
 
 nano_ros_auto_add_library(brake_arbiter_lib STATIC src/brake_arbiter.cpp)
 

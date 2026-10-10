@@ -147,7 +147,7 @@ endfunction()
 #
 # `nros build` writes the application (`build/<coord>/<image>_entry/
 # CMakeLists.txt`) before it configures, and that file is the only carrier of
-# the image's capability Kconfig and `NANO_ROS_FEATURES` (issues 1681, 1702).
+# the image's capability Kconfig and `NROS_FEATURES` (issues 1681, 1702).
 # But the application is ALSO rewritten by every other `plan_builds` over the
 # workspace -- and until issue 1716 that included `nros image-facts` above,
 # which runs INSIDE this configure. So a configure that started from a stale
@@ -192,7 +192,7 @@ function(nros_check_generated_app_current)
     message(FATAL_ERROR
 "nano-ros: the generated west application was rewritten while this configure ran (issue 1707).
     ${_app}
-This configure read the PREVIOUS file, so its Kconfig and NANO_ROS_FEATURES describe a declaration that no longer holds. Nothing was generated from it.
+This configure read the PREVIOUS file, so its Kconfig and NROS_FEATURES describe a declaration that no longer holds. Nothing was generated from it.
 Re-run the build: it reconfigures from the current file. `nros build <image>` regenerates the application BEFORE configuring and never meets this.
 If it repeats on every build, two different nros CLIs render this file differently -- the one that ran `nros build` and the one this configure resolved.")
 endfunction()

@@ -1,7 +1,7 @@
 # cmake/board/nano-ros-board-esp32-c3-baremetal.cmake
 #
 # Phase 138.3 — board overlay for ESP32-C3 (real silicon) + ESP32-C3
-# QEMU. Used under NANO_ROS_PLATFORM=baremetal.
+# QEMU. Used under NROS_PLATFORM=baremetal.
 #
 # phase-437 W5 — renamed from `nano-ros-board-esp32-c3.cmake` to add the stack
 # suffix (RFC-0093 R2). The HEAD does not change and that is the point: this

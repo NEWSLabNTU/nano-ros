@@ -29,7 +29,7 @@
  * (`nros_log_get_logger()`) never.
  *
  * **Build.** Declare the `rosout` capability (`[system].features =
- * ["rosout"]`, or `NANO_ROS_FEATURES` for a bare CMake build). Without it every
+ * ["rosout"]`, or `NROS_FEATURES` for a bare CMake build). Without it every
  * symbol below still links: nros_logging_rosout_enabled() answers false and
  * the others ::NROS_RET_UNSUPPORTED, so a ported program compiles and says why.
  */

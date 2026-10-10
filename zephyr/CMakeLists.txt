@@ -32,6 +32,9 @@
 # Menuconfig edits in that build dir are reset, exactly as any conf-fragment
 # edit resets them.
 include(${CMAKE_CURRENT_LIST_DIR}/../cmake/NanoRosReconfigure.cmake)
+# phase-484 W7b — adopt any deprecated `NANO_ROS_*` name the application set.
+include(${CMAKE_CURRENT_LIST_DIR}/../cmake/NanoRosDeprecatedNames.cmake)
+nros_adopt_deprecated_names()
 set(_nros_kconfig_stamp "${APPLICATION_BINARY_DIR}/nros-module-kconfig.conf")
 nros_reconfigure_settle("${_nros_kconfig_stamp}")
 nros_reconfigure_snapshot("${_nros_kconfig_stamp}" _nros_kconfig_before)
@@ -398,7 +401,7 @@ endif()
 set(_nros_cpp_param_suffix "")
 set(_nros_c_param_suffix "")
 if(CONFIG_NROS_CPP_API)
-    if("param_services" IN_LIST NANO_ROS_FEATURES)
+    if("param_services" IN_LIST NROS_FEATURES)
         set(_nros_cpp_param_suffix ",alloc,param-services")
     else()
         set(_nros_cpp_param_suffix ",alloc,param-store")
@@ -424,14 +427,14 @@ endif()
 # meaningful when the backend carries the CRC path, which on this road is zenoh.
 set(_nros_cap_suffix "")
 if(CONFIG_NROS_CPP_API)
-    if("lifecycle" IN_LIST NANO_ROS_FEATURES)
+    if("lifecycle" IN_LIST NROS_FEATURES)
         string(APPEND _nros_cap_suffix ",lifecycle-services")
     endif()
     # issue 1589 — the `/rosout` bridge; nros-cpp forwards `nros-c/rosout`.
-    if("rosout" IN_LIST NANO_ROS_FEATURES)
+    if("rosout" IN_LIST NROS_FEATURES)
         string(APPEND _nros_cap_suffix ",rosout")
     endif()
-    if("safety" IN_LIST NANO_ROS_FEATURES)
+    if("safety" IN_LIST NROS_FEATURES)
         if(CONFIG_NROS_RMW_ZENOH)
             string(APPEND _nros_cap_suffix ",safety-e2e")
         else()
@@ -445,12 +448,12 @@ endif()
 # Issue 1547 — the ROS edition cargo feature, resolved ONCE through the one
 # edition resolver (`cmake/NanoRosRosEdition.cmake`, pulled in by
 # NanoRosFeatureSet above). Every feature string below spelled the default
-# edition literally, so a `-DNANO_ROS_ROS_EDITION=jazzy` Zephyr image built
+# edition literally, so a `-DNROS_ROS_EDITION=jazzy` Zephyr image built
 # nros-c and nros-cpp for the default while its interface codegen resolved
 # jazzy — the RFC-0056 keyexpr/type_hash disagreement that builds cleanly and
-# fails on the wire. Precedence is the resolver's: `NANO_ROS_ROS_EDITION` (a
+# fails on the wire. Precedence is the resolver's: `NROS_ROS_EDITION` (a
 # `-D` on the west command line, or set before `find_package(Zephyr)` like
-# `NROS_ENTRY_PANIC`), else `NANO_ROS_DEFAULT_ROS_EDITION` — so a default image
+# `NROS_ENTRY_PANIC`), else `NROS_DEFAULT_ROS_EDITION` — so a default image
 # is unchanged.
 #
 # ONE variable for all nine strings, for the same reason as
@@ -528,7 +531,7 @@ if(CONFIG_NROS_C_API)
     # `nros-cpp`'s manifest forwards `alloc -> nros-c/alloc` and
     # `param-services -> nros-c/param-services`, and `_nros_cpp_features` below
     # sets both (`,alloc` unconditionally, `,param-services` under
-    # `param_services IN_LIST NANO_ROS_FEATURES`). This string set neither. In a
+    # `param_services IN_LIST NROS_FEATURES`). This string set neither. In a
     # mixed C + C++ image cargo therefore built nros-c twice, with different
     # `EXECUTOR_SIZE`, and both build scripts write the SAME shared
     # `nros-c-generated/nros/nros_config_generated.h`. The first build wins; the
@@ -796,7 +799,7 @@ if(CONFIG_NROS_CPP_API)
 
     # Issue 0745 — the Zephyr lane has no workspace-style capability
     # resolution (`nros config show`) yet; the consumer passes
-    # -DNANO_ROS_FEATURES=<axes> (semicolon list) and this mirrors the
+    # -DNROS_FEATURES=<axes> (semicolon list) and this mirrors the
     # workspace lowering: the param-services cargo feature (so the entry's
     # launch-param seeds link) + the directory-wide define ComponentNode's
     # seed-adoption gates on. Follow-up: resolve from the entry's BRINGUP
@@ -817,7 +820,7 @@ if(CONFIG_NROS_CPP_API)
     string(APPEND _nros_cpp_features "${_nros_cpp_param_suffix}")
     # issue 1681 -- the lifecycle / safety axes (see `_nros_cap_suffix`).
     string(APPEND _nros_cpp_features "${_nros_cap_suffix}")
-    if("param_services" IN_LIST NANO_ROS_FEATURES)
+    if("param_services" IN_LIST NROS_FEATURES)
         add_compile_definitions(NROS_SYSTEM_PARAM_SERVICES)
     endif()
 

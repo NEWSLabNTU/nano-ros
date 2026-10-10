@@ -1758,7 +1758,7 @@ class Node {
                                          const ::rclcpp::QoS& qos, F callback,
                                          const ::rclcpp::SubscriptionOptions& options = {});
 
-#if defined(NANO_ROS_SAFETY_E2E)
+#if defined(NROS_SAFETY_E2E)
     /// Phase 269 W3 — Create a **callback-style** subscription that surfaces the
     /// sample's E2E integrity status (CRC + sequence gap/dup) alongside the typed
     /// message — the C++ component-callback analog of Rust's
@@ -1768,7 +1768,7 @@ class Node {
     /// (so `options.sched_context` is functional). The handler is invoked as
     /// `callback(const M&, const nros_cpp_integrity_status_t&)` on each new sample.
     ///
-    /// Requires `NANO_ROS_SAFETY_E2E=ON` (lowered from
+    /// Requires `NROS_SAFETY_E2E=ON` (lowered from
     /// `[system].features = ["safety"]` via `NanoRosCapabilities.cmake`).
     ///
     /// CONSTRAINT: do not move `out` after this returns — the executor arena
@@ -1783,7 +1783,7 @@ class Node {
     Result create_subscription_with_safety(::rclcpp::Subscription<M>& out, const char* topic,
                                            const ::rclcpp::QoS& qos, F callback,
                                            const ::rclcpp::SubscriptionOptions& options = {});
-#endif // NANO_ROS_SAFETY_E2E
+#endif // NROS_SAFETY_E2E
 
     /// Create a POLL-style service server.
     ///

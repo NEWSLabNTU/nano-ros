@@ -4,7 +4,7 @@
 # pack before codegen has run: what the generated TU is called and which
 # toolchain compiles it. That knowledge used to be re-derived in
 # `NanoRosEntry.cmake`, keyed on a DIFFERENT variable than the CLI's dispatch
-# (`NANO_ROS_PLATFORM != "posix"` there, `board_family()` here), so the two
+# (`NROS_PLATFORM != "posix"` there, `board_family()` here), so the two
 # could disagree about the same entry. Ask `nros codegen entry-pack` instead.
 
 # The `nros_lang::Language` this pack renders for.

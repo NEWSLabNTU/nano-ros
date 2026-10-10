@@ -517,7 +517,7 @@ endfunction()
 function(_nros_node_register_carrier_image _target _pkg_sym _panic)
     add_executable(${_target} ${ARGN})
     nros_apply_panic_policy("${_panic}"
-        "nano_ros_node_register(${_target}) carrier [${NANO_ROS_PLATFORM}]")
+        "nano_ros_node_register(${_target}) carrier [${NROS_PLATFORM}]")
     target_include_directories(${_target} PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -542,7 +542,7 @@ function(nano_ros_node_register)
     # issue 1795 — the RTOS carrier arms below dispatch on the FAMILY. The
     # recipes pass `threadx_riscv64` / `nuttx_armv7a` / `freertos_armcm3`, and
     # a raw `STREQUAL "threadx"` never fired on any lane-built leaf.
-    nros_platform_family(_nrc_family "${NANO_ROS_PLATFORM}")
+    nros_platform_family(_nrc_family "${NROS_PLATFORM}")
 
     # Issue 1017 — the entry's session name is DERIVED here, once, from the
     # node's own name, and every entry shape below reads it.
@@ -699,7 +699,7 @@ function(nano_ros_node_register)
     # nros-c, or on nros-cpp when nros-c isn't built separately), so listing it is
     # always safe; depending on it also transitively orders after the same cargo
     # target that writes the C++ variant, covering C / typed-C / C++ consumers.
-    # issue 0326 — NANO_ROS_PLATFORM is directory-scoped, so it is UNSET in an
+    # issue 0326 — NROS_PLATFORM is directory-scoped, so it is UNSET in an
     # add_subdirectory'd package and the bare STREQUAL silently took the
     # non-Zephyr path.
     _nros_is_zephyr(_nrc_is_zephyr)
@@ -910,7 +910,7 @@ function(nano_ros_node_register)
             # a NON-target name → the component link tries `-l<name>` and fails ("cannot find
             # -lstd_msgs__nano_ros_cpp"). Skip the interface-lib link on Zephyr; the component
             # gets the generated msg headers via the `app` include mirror below.
-            # issue 0326 — inverted guard: with NANO_ROS_PLATFORM unset this read TRUE
+            # issue 0326 — inverted guard: with NROS_PLATFORM unset this read TRUE
     # on Zephyr and linked non-target `-lstd_msgs__nano_ros_cpp` names.
     _nros_is_zephyr(_nrc_is_zephyr_link)
     if(NOT _nrc_is_zephyr_link)
@@ -1044,7 +1044,7 @@ function(nano_ros_node_register)
 
     # Phase 246 (RFC-0043) — ThreadX typed-entry carrier. Mirrors the NuttX
     # branch above (bare-metal riscv64 + threadx-linux host sim both set
-    # `NANO_ROS_PLATFORM threadx`): synthesise a single-node C++ entry TU that
+    # `NROS_PLATFORM threadx`): synthesise a single-node C++ entry TU that
     # routes the component to the real executor via `ThreadxBoard::run_components`
     # (construct `CLASS` + `configure(node)`), then delegate to
     # `nros_platform_link_app` for the kernel/netstack/startup link. The board's
@@ -1111,7 +1111,7 @@ function(nano_ros_node_register)
     endif()
 
     # Phase 240.6 (RFC-0043) — FreeRTOS typed-entry carrier. Mirrors the NuttX /
-    # ThreadX branches above (NANO_ROS_PLATFORM freertos, QEMU MPS2-AN385 + lwIP):
+    # ThreadX branches above (NROS_PLATFORM freertos, QEMU MPS2-AN385 + lwIP):
     # synthesise a single-node C++ entry TU that routes the component to the real
     # executor via `FreertosBoard::run_components` (construct `CLASS` +
     # `configure(node)`), then delegate to `nros_platform_link_app` for the
@@ -1220,7 +1220,7 @@ function(nano_ros_node_register)
     # break every non-TYPED posix `nano_ros_node_register` (the 244.C4-collision
     # the phase-247 template sweep hit).
     if((_nrc_lang STREQUAL "CPP" OR _nrc_lang STREQUAL "C")
-       AND NANO_ROS_PLATFORM STREQUAL "posix"
+       AND NROS_PLATFORM STREQUAL "posix"
        AND _NRC_TYPED
        AND COMMAND nros_platform_link_app
        AND NOT TARGET ${PROJECT_NAME})

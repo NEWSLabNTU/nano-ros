@@ -71,7 +71,7 @@ examples/<plat>/<lang>/<example>/
 Because each RMW (and its Corrosion cargo target dir) is physically separate,
 selecting a different RMW **cannot** collide with another RMW's cache — there is
 no shared target dir to invalidate. Platform is fixed per build dir
-(`-DNANO_ROS_PLATFORM=<plat>` at configure). This layout is why the old manual
+(`-DNROS_PLATFORM=<plat>` at configure). This layout is why the old manual
 cache-invalidation idea (archived Phase 145) was retired: the directory shape
 makes it unnecessary. (Rust-only examples build via plain `cargo` into
 `target-<rmw>/`; the per-RMW principle is the same.)

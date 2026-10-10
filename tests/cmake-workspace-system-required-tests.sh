@@ -3,7 +3,7 @@
 #
 # A WORKSPACE WHOSE BRINGUP DECLARES A CAPABILITY MUST NAME IT AS `SYSTEM`.
 #
-# `nano_ros_workspace()` resolves the capability axes (`NANO_ROS_FEATURES`)
+# `nano_ros_workspace()` resolves the capability axes (`NROS_FEATURES`)
 # only from its `SYSTEM` argument, while codegen reads the same declaration
 # through `nros sync`. A root that omitted SYSTEM therefore built nros-cpp
 # without `param-services` and generated code that calls

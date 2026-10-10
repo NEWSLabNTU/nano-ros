@@ -740,3 +740,18 @@ repr-memory-agreement:
 [private]
 sizes-header-mirrors:
     @python3 scripts/check-sizes-header-mirrors.py
+
+# phase-484 W7b — the deprecated `NANO_ROS_*` aliases work: a `-D` or `set()` of
+# an old name is adopted as its `NROS_*` name with a deprecation, and the two
+# disagreeing is a configure error (tests/cmake-deprecated-names-tests.sh).
+[private]
+cmake-deprecated-names:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cmake >/dev/null 2>&1; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip cmake-deprecated-names "missing host tool(s): cmake"
+        exit 0
+    fi
+    ./tests/cmake-deprecated-names-tests.sh

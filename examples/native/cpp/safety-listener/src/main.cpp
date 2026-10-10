@@ -5,7 +5,7 @@
 /// Issue 0073 / phase-259 W3 — the C++ analog of the C safety-listener. Pairs
 /// with the safety talker (the Rust example built `--features safety-e2e`):
 /// receives `std_msgs/Int32` on `/chatter` over zenohd and validates the CRC the
-/// publisher attached. Built with `NANO_ROS_SAFETY_E2E=ON` (set in CMakeLists) so
+/// publisher attached. Built with `NROS_SAFETY_E2E=ON` (set in CMakeLists) so
 /// the zenoh backend carries the CRC path. The C++ ABI calls the same
 /// `RmwSubscriber::take_validated` the C path does.
 

@@ -102,7 +102,7 @@ pub enum Sub {
     /// generated TU's extension, and whether a C-family compiler builds it.
     ///
     /// This exists so `NanoRosEntry.cmake` stops re-deriving them. It used to
-    /// key on `NANO_ROS_PLATFORM != "posix"` while the dispatch keyed on the
+    /// key on `NROS_PLATFORM != "posix"` while the dispatch keyed on the
     /// BOARD, and `board_family()` answered `native` for any key it did not
     /// know — so an unlearned board was embedded to one and native to the
     /// other, and the CLI wrote a C TU into a file CMake named `.cpp`. An

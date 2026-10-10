@@ -41,7 +41,7 @@ The only delta — three lines prepended:
 
 ```cmake
 # 1) Pull nano-ros (NanoRos::NanoRos / NanoRosCpp / nros_generate_interfaces).
-set(NANO_ROS_PLATFORM posix)
+set(NROS_PLATFORM posix)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../.." nano_ros)
 
 # 2) The ament / rclcpp surface: rclcpp / ament_cmake_auto / rclcpp_components.

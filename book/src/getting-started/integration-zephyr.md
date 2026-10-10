@@ -92,7 +92,7 @@ cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(my_app)
 
-set(NANO_ROS_PLATFORM zephyr)
+set(NROS_PLATFORM zephyr)
 include("${NROS_REPO_DIR}/cmake/NanoRosNodeRegister.cmake")
 include("${NROS_REPO_DIR}/cmake/NanoRosVerbs.cmake")
 

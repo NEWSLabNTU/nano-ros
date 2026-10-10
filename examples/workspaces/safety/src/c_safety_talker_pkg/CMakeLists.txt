@@ -11,7 +11,7 @@ find_package(std_msgs REQUIRED)
 # sidecar links the generated `std_msgs__nano_ros_c` interface lib.
 
 # Typed managed-node C component: publishes a counter on /chatter via the
-# generated std_msgs/Int32 serializer. With NANO_ROS_SAFETY_E2E=ON (from
+# generated std_msgs/Int32 serializer. With NROS_SAFETY_E2E=ON (from
 # [system].features = ["safety"]) the zenoh backend automatically attaches a
 # CRC-32 + sequence number on every publish — no component code change
 # required. The CRC is what the paired safe_listener validates.

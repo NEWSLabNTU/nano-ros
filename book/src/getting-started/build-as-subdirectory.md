@@ -43,7 +43,7 @@ cmake_minimum_required(VERSION 3.22)
 project(my_app C)
 
 # Pick platform + RMW BEFORE add_subdirectory.
-set(NANO_ROS_PLATFORM posix)   # posix | freertos | nuttx | threadx | zephyr | baremetal
+set(NROS_PLATFORM posix)   # posix | freertos | nuttx | threadx | zephyr | baremetal
 set(NANO_ROS_RMW     zenoh)    # zenoh | xrce | cyclonedds
 
 add_subdirectory(third_party/nano-ros nano_ros)
@@ -72,19 +72,19 @@ libraries (`pthread`, `dl`, `m`), and the per-build
 
 | Variable | Default | Values |
 |----------|---------|--------|
-| `NANO_ROS_PLATFORM` | `posix` | `posix`, `freertos`, `nuttx`, `threadx` (legacy spellings: `freertos_armcm3`, `nuttx_armv7a`, `threadx_linux`, `threadx_riscv64`). `esp_idf` was accepted until phase-468 W2 and is now REJECTED. Zephyr and bare-metal are not add_subdirectory platforms — they enter via the [Zephyr module](integration-zephyr.md) / cargo directly |
+| `NROS_PLATFORM` | `posix` | `posix`, `freertos`, `nuttx`, `threadx` (legacy spellings: `freertos_armcm3`, `nuttx_armv7a`, `threadx_linux`, `threadx_riscv64`). `esp_idf` was accepted until phase-468 W2 and is now REJECTED. Zephyr and bare-metal are not add_subdirectory platforms — they enter via the [Zephyr module](integration-zephyr.md) / cargo directly |
 | `NANO_ROS_BOARD` | (unset) | required for `threadx` (`threadx-linux` or `rv-virt-threadx`) |
-| `NANO_ROS_SKIP_BOOTSTRAP` | `OFF` | `ON` skips the configure-time bootstrap (git submodule updates). **Required for air-gapped/mirrored CI** — pre-seed submodules. Corrosion is never fetched: a configure without it in the SDK store stops and names `nros setup --tool corrosion` |
-| `NANO_ROS_FEATURES` | (empty) | extra cargo features forwarded to the Rust build |
+| `NROS_SKIP_BOOTSTRAP` | `OFF` | `ON` skips the configure-time bootstrap (git submodule updates). **Required for air-gapped/mirrored CI** — pre-seed submodules. Corrosion is never fetched: a configure without it in the SDK store stops and names `nros setup --tool corrosion` |
+| `NROS_FEATURES` | (empty) | extra cargo features forwarded to the Rust build |
 | `NANO_ROS_RMW` | `zenoh` | `zenoh`, `dds`, `xrce`, `cyclonedds` |
-| `NANO_ROS_ROS_EDITION` | `humble` | `humble`, `iron`, `jazzy` |
-| `NANO_ROS_BUILD_CODEGEN` | `ON` | `ON` / `OFF` |
+| `NROS_ROS_EDITION` | `humble` | `humble`, `iron`, `jazzy` |
+| `NROS_BUILD_CODEGEN` | `ON` | `ON` / `OFF` |
 
 Variables MUST be `set(...)` BEFORE `add_subdirectory(...)` — the
 sub-project consumes them at include time.
 
 In a nano-ros package or workspace none of these are yours to set. The
-CMake root `nros build` generates writes `NANO_ROS_PLATFORM` and
+CMake root `nros build` generates writes `NROS_PLATFORM` and
 `NANO_ROS_BOARD` itself, both derived from the one `[image.<id>] board`
 you named in `system.toml`, and passes the backend from `[system] rmw`
 through the workspace helper. Setting them by hand there means two

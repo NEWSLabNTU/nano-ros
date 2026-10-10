@@ -33,7 +33,7 @@
  * (`rclcpp::get_logger`) never.
  *
  * **Build.** Declare the `rosout` capability (`[system].features =
- * ["rosout"]`, or `NANO_ROS_FEATURES`). Without it this header still compiles
+ * ["rosout"]`, or `NROS_FEATURES`). Without it this header still compiles
  * and links: `enabled()` is false and every call answers
  * `ErrorCode::Unsupported`.
  */

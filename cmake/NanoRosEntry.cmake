@@ -115,7 +115,7 @@ endfunction()
 # never FATALs, unlike `nano_ros_link_rmw`.
 #
 # Same resolution ORDER as `nano_ros_link_rmw`'s fallback list
-# ("NANO_ROS_DEFAULT_RMW;NANO_ROS_RMW"), then KCONFIG.
+# ("NROS_DEFAULT_RMW;NANO_ROS_RMW"), then KCONFIG.
 #
 # THE KCONFIG ARM IS NOT DECORATION. A west Zephyr image selects its backend
 # with `CONFIG_NROS_RMW_<X>=y` and sets NEITHER cmake variable: measured on
@@ -132,8 +132,8 @@ endfunction()
 # "fix the CLASS, not the reported site" names.
 function(_nros_entry_resolve_rmw _out_var)
     set(_rmw "")
-    if(DEFINED NANO_ROS_DEFAULT_RMW AND NOT "${NANO_ROS_DEFAULT_RMW}" STREQUAL "")
-        set(_rmw "${NANO_ROS_DEFAULT_RMW}")
+    if(DEFINED NROS_DEFAULT_RMW AND NOT "${NROS_DEFAULT_RMW}" STREQUAL "")
+        set(_rmw "${NROS_DEFAULT_RMW}")
     elseif(DEFINED NANO_ROS_RMW AND NOT "${NANO_ROS_RMW}" STREQUAL "")
         set(_rmw "${NANO_ROS_RMW}")
     elseif(CONFIG_NROS_RMW_CYCLONEDDS)
@@ -669,11 +669,11 @@ function(nano_ros_entry)
         # prints its domain_id) and compared with nothing, and a transport
         # snippet that stated no domain left the image on Kconfig's 0.
         set(_nra_sys_file "")
-        if(NANO_ROS_LEAF_SYSTEM)
+        if(NROS_LEAF_SYSTEM)
             set(_nra_sys_file "${CMAKE_CURRENT_SOURCE_DIR}/system.toml")
         endif()
         nros_check_domain_agreement(
-            SYSTEM_DOMAIN "${NANO_ROS_LEAF_DOMAIN_ID}"
+            SYSTEM_DOMAIN "${NROS_LEAF_DOMAIN_ID}"
             SYSTEM_FILE "${_nra_sys_file}"
             CONTEXT "nano_ros_entry(${_NRA_NAME})")
         # The generated entry TU defines `int main(void)` (board_is_zephyr shape). It MUST
@@ -808,7 +808,7 @@ function(nano_ros_entry)
     # `nano_ros_link_rmw` is idempotent (single accumulated stub), so this is safe
     # even when a node-register call also wired the same target.
     if(TARGET ${_NRA_NAME}
-       AND NANO_ROS_PLATFORM STREQUAL "posix"
+       AND NROS_PLATFORM STREQUAL "posix"
        AND COMMAND nros_platform_link_app
        AND ("native" IN_LIST _NRA_DEPLOY))
         nros_platform_link_app_deferred(${_NRA_NAME})
@@ -904,9 +904,9 @@ function(nano_ros_entry)
     # Normalize legacy/variant platform spellings to the deploy token before
     # comparing (`threadx_linux` / `threadx_riscv64` → `threadx`,
     # `freertos_armcm3` → `freertos`, `nuttx_armv7a` → `nuttx`) — the just
-    # recipes still pass `-DNANO_ROS_PLATFORM=threadx_linux`, which the root
+    # recipes still pass `-DNROS_PLATFORM=threadx_linux`, which the root
     # maps to the threadx module but would never equal the tuple's `threadx`.
-    nros_platform_family(_nra_platform_norm "${NANO_ROS_PLATFORM}")
+    nros_platform_family(_nra_platform_norm "${NROS_PLATFORM}")
     # issue 0735 — the board-name test is ONE of the three arms, not a gate over
     # all of them. It used to open `if(DEFINED NANO_ROS_BOARD)`, which makes a
     # board NAME the precondition for being a board. That is a proxy for "this
@@ -929,14 +929,14 @@ function(nano_ros_entry)
     # non-posix platform, so the host lane is untouched either way.
     set(_nra_board_active FALSE)
     if(("${NANO_ROS_BOARD}" IN_LIST _NRA_DEPLOY)
-       OR ("${NANO_ROS_PLATFORM}" IN_LIST _NRA_DEPLOY)
+       OR ("${NROS_PLATFORM}" IN_LIST _NRA_DEPLOY)
        OR ("${_nra_platform_norm}" IN_LIST _NRA_DEPLOY))
         set(_nra_board_active TRUE)
     endif()
 
     set(_nra_locator "")
     if(TARGET ${_NRA_NAME}
-       AND NOT NANO_ROS_PLATFORM STREQUAL "posix"
+       AND NOT NROS_PLATFORM STREQUAL "posix"
        AND NOT _nra_is_zephyr
        AND _nra_board_active)
         # issue 0946 — ONE producer. This ladder used to be spelled out here AND
@@ -945,7 +945,7 @@ function(nano_ros_entry)
         # preserves each lane's own answers rather than merging them (they cite
         # different networks; see NanoRosEntryLocator.cmake).
         _nros_resolve_entry_locator(entry
-            "${NANO_ROS_PLATFORM}" "${NANO_ROS_BOARD}" _nra_locator)
+            "${NROS_PLATFORM}" "${NANO_ROS_BOARD}" _nra_locator)
         target_compile_definitions(${_NRA_NAME} PRIVATE
             "NROS_ENTRY_LOCATOR=\"${_nra_locator}\"")
         # phase-287 W6 — bake the domain the same way (fixture pairs pass
@@ -984,11 +984,11 @@ function(nano_ros_entry)
     # `nano_ros_node_register` carrier calls `nros_platform_link_app` for the embedded
     # boards (startup source + app_define + linker script + kernel/netstack umbrella +
     # RMW stub), but the LAUNCH path builds the exe HERE. The active platform module
-    # (selected by the workspace-root `NANO_ROS_PLATFORM` + `NANO_ROS_BOARD`) loaded the
+    # (selected by the workspace-root `NROS_PLATFORM` + `NANO_ROS_BOARD`) loaded the
     # board overlay, so `nros_platform_link_app` does the correct per-board work. Gated on
     # `NANO_ROS_BOARD IN_LIST DEPLOY` so only the entry matching the active board links.
     if(TARGET ${_NRA_NAME}
-       AND NOT NANO_ROS_PLATFORM STREQUAL "posix"
+       AND NOT NROS_PLATFORM STREQUAL "posix"
        AND NOT _nra_is_zephyr
        AND COMMAND nros_platform_link_app
        AND _nra_board_active)
@@ -1019,7 +1019,7 @@ function(nano_ros_entry)
     #      the same edges the carrier uses: `add_dependencies` on the mirror targets + a
     #      HARD file-level OBJECT_DEPENDS on the mirrored header(s).
     if(TARGET ${_NRA_NAME}
-       AND NOT NANO_ROS_PLATFORM STREQUAL "posix"
+       AND NOT NROS_PLATFORM STREQUAL "posix"
        AND _nra_board_active)
         # (1) locator — baked earlier (BEFORE the link pass, for the NuttX configure-time
         # COMPILE_DEFINITIONS ferry). `_nra_locator` is in scope here. Zephyr is EXEMPT (its
@@ -1087,7 +1087,7 @@ function(nano_ros_entry)
     # and the embedded block only guards the generated TU — so here set a HARD
     # file-level `OBJECT_DEPENDS` on EVERY source of the entry (incl. the user
     # `main.cpp`) pointing at the mirrored header(s).
-    if(TARGET ${_NRA_NAME} AND NANO_ROS_PLATFORM STREQUAL "posix")
+    if(TARGET ${_NRA_NAME} AND NROS_PLATFORM STREQUAL "posix")
         # issue 0740 — a LOCAL stamp, not the cross-directory mirror path:
         # `add_dependencies` orders the TARGET; it does not give this
         # directory's .o rule a prerequisite it can BUILD, so under Makefiles a
@@ -1191,7 +1191,7 @@ function(_nros_entry_invoke_codegen)
     # `extern "C"` seam. Native C stays `.c`.
     #
     # This block used to APPLY that rule itself, as
-    # `LANG c AND NANO_ROS_PLATFORM != "posix"`, while the CLI's dispatch
+    # `LANG c AND NROS_PLATFORM != "posix"`, while the CLI's dispatch
     # applied it as `board_family(plan.board).is_embedded()`. Two derivations of
     # one decision, on DIFFERENT inputs — a platform label here, the board key
     # there. They agree on every combination the tree exercises today; nothing

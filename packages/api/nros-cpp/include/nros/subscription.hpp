@@ -110,9 +110,9 @@ nros_cpp_ret_t nros_cpp_subscription_register_with_info(
 // gated on the `safety-e2e` feature). The 6-arg trampoline unpacks the three
 // integrity scalars; `subscription.hpp` repacks them into
 // `nros_cpp_integrity_status_t` for the typed user handler. Gated on the
-// `NANO_ROS_SAFETY_E2E` build feature (lowered from `[system].features =
+// `NROS_SAFETY_E2E` build feature (lowered from `[system].features =
 // ["safety"]` via `NanoRosCapabilities.cmake`).
-#if defined(NANO_ROS_SAFETY_E2E)
+#if defined(NROS_SAFETY_E2E)
 typedef void (*nros_cpp_subscription_validated_callback_t)(const uint8_t* data, size_t len,
                                                            int64_t gap, bool duplicate,
                                                            int8_t crc_valid, void* ctx);
@@ -121,7 +121,7 @@ nros_cpp_ret_t nros_cpp_subscription_register_validated(
     const nros_cpp_node_t* node, const char* topic, const char* type_name, const char* type_hash,
     nros_cpp_qos_t qos, nros_cpp_subscription_validated_callback_t callback, void* context,
     size_t* out_handle_id, const nros_cpp_subscription_options_t* options);
-#endif // NANO_ROS_SAFETY_E2E
+#endif // NROS_SAFETY_E2E
 } // extern "C"
 
 namespace rclcpp {
@@ -227,11 +227,11 @@ template <typename M> class Subscription {
                                              size_t attachment_len);
     // Phase 269 W3 — callback-with-integrity handler: receives the deserialized
     // message plus the sample's E2E CRC/sequence status. Requires
-    // `NANO_ROS_SAFETY_E2E` (lowered from `[system].features = ["safety"]`).
-#if defined(NANO_ROS_SAFETY_E2E)
+    // `NROS_SAFETY_E2E` (lowered from `[system].features = ["safety"]`).
+#if defined(NROS_SAFETY_E2E)
     using TypedSubscriptionSafetyFn = void (*)(const M& msg,
                                                const nros_cpp_integrity_status_t& integrity);
-#endif // NANO_ROS_SAFETY_E2E
+#endif // NROS_SAFETY_E2E
 
     /// Get the topic name.
     const char* get_topic_name() const { return initialized_ ? topic_name_ : ""; }
@@ -282,9 +282,9 @@ template <typename M> class Subscription {
         user_fn_ctx_ = other.user_fn_ctx_;
         user_ctx_ = other.user_ctx_;
         user_fn_info_ = other.user_fn_info_;
-#if defined(NANO_ROS_SAFETY_E2E)
+#if defined(NROS_SAFETY_E2E)
         user_fn_safety_ = other.user_fn_safety_;
-#endif // NANO_ROS_SAFETY_E2E
+#endif // NROS_SAFETY_E2E
         sched_handle_id_ = other.sched_handle_id_;
         executor_ = other.executor_;
         other.initialized_ = false;
@@ -298,9 +298,9 @@ template <typename M> class Subscription {
             user_fn_ctx_ = other.user_fn_ctx_;
             user_ctx_ = other.user_ctx_;
             user_fn_info_ = other.user_fn_info_;
-#if defined(NANO_ROS_SAFETY_E2E)
+#if defined(NROS_SAFETY_E2E)
             user_fn_safety_ = other.user_fn_safety_;
-#endif // NANO_ROS_SAFETY_E2E
+#endif // NROS_SAFETY_E2E
             sched_handle_id_ = other.sched_handle_id_;
             executor_ = other.executor_;
             other.initialized_ = false;
@@ -391,7 +391,7 @@ template <typename M> class Subscription {
         }
     }
 
-#if defined(NANO_ROS_SAFETY_E2E)
+#if defined(NROS_SAFETY_E2E)
     /// Phase 269 W3 — trampoline matching `RawSubscriptionSafetyCallback`
     /// (`void(data, len, gap, duplicate, crc_valid, ctx)`). Deserializes the CDR
     /// sample into `M`, packs the three integrity scalars into an
@@ -411,7 +411,7 @@ template <typename M> class Subscription {
             self->user_fn_safety_(msg, status);
         }
     }
-#endif // NANO_ROS_SAFETY_E2E
+#endif // NROS_SAFETY_E2E
 
     /// Copy the topic name into this object's own storage.
     ///
@@ -455,11 +455,11 @@ template <typename M> class Subscription {
     TypedSubscriptionFnWithCtx user_fn_ctx_ = nullptr;
     TypedSubscriptionInfoFn user_fn_info_ = nullptr;
     void* user_ctx_ = nullptr;
-#if defined(NANO_ROS_SAFETY_E2E)
+#if defined(NROS_SAFETY_E2E)
     // Phase 269 W3 — handler for the integrity-carrying callback path; nullptr
     // when not using `create_subscription_with_safety`.
     TypedSubscriptionSafetyFn user_fn_safety_ = nullptr;
-#endif // NANO_ROS_SAFETY_E2E
+#endif // NROS_SAFETY_E2E
 };
 
 } // namespace rclcpp
@@ -620,7 +620,7 @@ Result Node::create_subscription_with_info(Subscription<M>& out, const char* top
 
 namespace rclcpp {
 
-#if defined(NANO_ROS_SAFETY_E2E)
+#if defined(NROS_SAFETY_E2E)
 // Phase 269 W3 — out-of-line definition of Node::create_subscription_with_safety.
 // Mirrors `create_subscription_with_info` one overload over, but routes through
 // `nros_cpp_subscription_register_validated` so the arena dispatches the
@@ -670,7 +670,7 @@ Result Node::create_subscription_with_safety(Subscription<M>& out, const char* t
 } // namespace rclcpp
 
 namespace rclcpp {
-#endif // NANO_ROS_SAFETY_E2E
+#endif // NROS_SAFETY_E2E
 
 namespace detail {
 

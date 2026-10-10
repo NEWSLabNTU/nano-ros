@@ -653,7 +653,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_with_info(
 /// `nros_cpp_integrity_status_t` for the typed user handler.
 ///
 /// Requires `safety-e2e` on both the Rust runtime AND the CMake build
-/// (`NANO_ROS_SAFETY_E2E=ON`, lowered from `[system].features = ["safety"]` via
+/// (`NROS_SAFETY_E2E=ON`, lowered from `[system].features = ["safety"]` via
 /// `NanoRosCapabilities.cmake:64`).
 ///
 /// # Safety

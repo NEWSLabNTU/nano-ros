@@ -36,7 +36,7 @@ endif()
 # unconditionally, "mirroring the retired nros-c dispatch, where any non-bare-metal
 # platform fell through to posix.h's unconditional malloc". Nothing in this module
 # or either board overlay defined it, so every C/C++ TU built for
-# NANO_ROS_PLATFORM=baremetal was classified HOSTED — the one platform the macro
+# NROS_PLATFORM=baremetal was classified HOSTED — the one platform the macro
 # exists to name. It never showed because the family had no C/C++ leaf to classify.
 #
 # Its only effect in the header is that malloc gate, so this is behaviour-neutral

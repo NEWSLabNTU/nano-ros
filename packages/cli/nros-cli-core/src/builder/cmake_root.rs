@@ -265,7 +265,7 @@ pub fn render(
     // accepted list is the kebab form with `-` replaced, so this is a
     // translation between two vocabularies rather than a guess.
     out.push_str(&format!(
-        "set(NANO_ROS_PLATFORM {cmake_platform} CACHE STRING \"\" FORCE)\n"
+        "set(NROS_PLATFORM {cmake_platform} CACHE STRING \"\" FORCE)\n"
     ));
     if let Some(board) = &spec.board {
         out.push_str(&format!(

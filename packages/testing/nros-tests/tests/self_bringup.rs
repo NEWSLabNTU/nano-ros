@@ -189,8 +189,8 @@ fn nros_codegen_system_self_bringup_bakes_system_config() {
     let config_cmake =
         fs::read_to_string(bake.join("system_config.cmake")).expect("system_config.cmake");
     assert!(
-        config_cmake.contains("NANO_ROS_FEATURES"),
-        "system_config.cmake missing the NANO_ROS_FEATURES bake:\n{config_cmake}"
+        config_cmake.contains("NROS_FEATURES"),
+        "system_config.cmake missing the NROS_FEATURES bake:\n{config_cmake}"
     );
 
     let plan = fs::read_to_string(bake.join("nros-plan.json")).expect("nros-plan.json");

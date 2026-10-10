@@ -6,7 +6,7 @@
 // and republish it on /safe_ok — which the cross-process e2e
 // (tests/cpp_c_safety_integrity_e2e.rs) subscribes to and asserts climbs.
 //
-// Requires NANO_ROS_SAFETY_E2E=ON (lowered from [system].features = ["safety"]
+// Requires NROS_SAFETY_E2E=ON (lowered from [system].features = ["safety"]
 // via NanoRosCapabilities.cmake).
 
 #include "cpp_safety_listener_pkg/SafetyListener.hpp"
@@ -59,8 +59,8 @@ void SafetyListener::on_chatter(const std_msgs::msg::Int32& msg,
 
     // Register the integrity-carrying subscription on /chatter.
     // The callback receives (const Int32&, const nros_cpp_integrity_status_t&).
-    // Requires NANO_ROS_SAFETY_E2E=ON; the method is declared in node.hpp and
-    // defined in subscription.hpp, both gated on #if defined(NANO_ROS_SAFETY_E2E).
+    // Requires NROS_SAFETY_E2E=ON; the method is declared in node.hpp and
+    // defined in subscription.hpp, both gated on #if defined(NROS_SAFETY_E2E).
     // The `+` forces the non-capturing lambda to a function pointer (the API's
     // required signature); it forwards to the singleton's `on_chatter`.
     return node.create_subscription_with_safety<std_msgs::msg::Int32>(

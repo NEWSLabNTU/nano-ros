@@ -30,10 +30,10 @@ Every `cmake/platform/nano-ros-<plat>.cmake` must expose:
 The root `CMakeLists.txt` dispatches via:
 
 ```cmake
-include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/platform/nano-ros-${NANO_ROS_PLATFORM}.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/platform/nano-ros-${NROS_PLATFORM}.cmake")
 ```
 
-When the user's project sets `NANO_ROS_PLATFORM=foo` before
+When the user's project sets `NROS_PLATFORM=foo` before
 `add_subdirectory(nano-ros)`, your module at
 `cmake/platform/nano-ros-foo.cmake` runs and supplies the four contract
 elements above.

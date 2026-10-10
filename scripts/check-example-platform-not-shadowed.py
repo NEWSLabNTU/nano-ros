@@ -4,10 +4,10 @@
 WHY THIS EXISTS (issue 0835). Six leaves --
 `examples/rv-virt-threadx/rust/*/CMakeLists.txt` -- each carried
 
-    set(NANO_ROS_PLATFORM threadx)
+    set(NROS_PLATFORM threadx)
 
 on line 11. A plain `set()` creates a NORMAL variable, which SHADOWS the cache
-entry that `-DNANO_ROS_PLATFORM=threadx_riscv64` wrote -- and that `-D` is what
+entry that `-DNROS_PLATFORM=threadx_riscv64` wrote -- and that `-D` is what
 `just/threadx-riscv64.just` passes to these very leaves, on both its Rust and
 its C/C++ path. So each leaf reported one platform while its own
 `CMakeCache.txt` recorded another, both written in the same second.
@@ -19,7 +19,7 @@ held FOUR groups where the configuration space has two --
 six rust leaves in one and thirteen c/cpp leaves in the other.
 
 The quieter cost is the one this gate is for. Two `stdc++` link decisions in the
-root `CMakeLists.txt` were written as `NANO_ROS_PLATFORM STREQUAL "threadx"`,
+root `CMakeLists.txt` were written as `NROS_PLATFORM STREQUAL "threadx"`,
 which means they DEPENDED on the leaves misreporting. Making the leaves honest
 would have stopped those matching -- silently, surfacing as a link error on a
 platform nobody was editing. A label that is wrong is worse than a label that is
@@ -28,11 +28,11 @@ missing, because things start keying on it.
 WHAT IT CHECKS. For every example leaf with a `[[fixture]]` row that carries a
 `platform` coordinate:
 
-  1. an unconditional `set(NANO_ROS_PLATFORM ...)` is an ERROR -- it shadows
+  1. an unconditional `set(NROS_PLATFORM ...)` is an ERROR -- it shadows
      whatever the build passes, even when the two happen to agree today;
   2. the value it defaults to must MATCH the row's platform coordinate.
 
-Guarded (`if(NOT DEFINED NANO_ROS_PLATFORM)`) is the accepted form: a copied-out
+Guarded (`if(NOT DEFINED NROS_PLATFORM)`) is the accepted form: a copied-out
 project still configures with no `-D`, and the repo's own build still wins.
 
 Leaves with NO platform coordinate -- `examples/templates/*`, which are
@@ -50,8 +50,8 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MANIFEST = os.path.join(ROOT, "examples", "fixtures.toml")
 
-SET_RE = re.compile(r"^([ \t]*)set\(\s*NANO_ROS_PLATFORM\s+([^)\s]+)\s*\)", re.M)
-GUARD_RE = re.compile(r"if\s*\(\s*NOT\s+DEFINED\s+NANO_ROS_PLATFORM\s*\)", re.I)
+SET_RE = re.compile(r"^([ \t]*)set\(\s*NROS_PLATFORM\s+([^)\s]+)\s*\)", re.M)
+GUARD_RE = re.compile(r"if\s*\(\s*NOT\s+DEFINED\s+NROS_PLATFORM\s*\)", re.I)
 
 
 def norm(p):
@@ -102,7 +102,7 @@ def scan(root, manifest_text):
             line = text[:m.start()].count("\n") + 1
             if not guarded(text, m.start()):
                 problems.append(
-                    (leaf, line, f"unconditional `set(NANO_ROS_PLATFORM {m.group(2)})` "
+                    (leaf, line, f"unconditional `set(NROS_PLATFORM {m.group(2)})` "
                                  f"shadows the -D its own build passes")
                 )
             elif value != platform:
@@ -126,17 +126,17 @@ def self_test(quiet=False):
     )
     cases = [
         # (leaf CMakeLists body, expected number of problems, what it proves)
-        ("set(NANO_ROS_PLATFORM threadx)\n", 1,
+        ("set(NROS_PLATFORM threadx)\n", 1,
          "the exact 0835 shape: unconditional, and the wrong value"),
-        ("set(NANO_ROS_PLATFORM threadx_riscv64)\n", 1,
+        ("set(NROS_PLATFORM threadx_riscv64)\n", 1,
          "unconditional is a problem even when the value AGREES -- that is the "
          "state this gate exists to stop, because the next label-keyed thing "
          "silently depends on which one wins"),
-        ("if(NOT DEFINED NANO_ROS_PLATFORM)\n"
-         "    set(NANO_ROS_PLATFORM threadx)\nendif()\n", 1,
+        ("if(NOT DEFINED NROS_PLATFORM)\n"
+         "    set(NROS_PLATFORM threadx)\nendif()\n", 1,
          "guarded but disagreeing with the row's coordinate"),
-        ("if(NOT DEFINED NANO_ROS_PLATFORM)\n"
-         "    set(NANO_ROS_PLATFORM threadx_riscv64)\nendif()\n", 0,
+        ("if(NOT DEFINED NROS_PLATFORM)\n"
+         "    set(NROS_PLATFORM threadx_riscv64)\nendif()\n", 0,
          "the accepted form: guarded, and matching"),
         ("# threadx_riscv64 is the platform here\n", 0,
          "prose naming a platform is not a set()"),
@@ -177,11 +177,11 @@ def main(argv):
             print(f"      {why}")
         print(
             "\n  A plain `set()` is a NORMAL variable and shadows the cache entry a\n"
-            "  `-DNANO_ROS_PLATFORM=…` wrote, so the leaf and its own CMakeCache\n"
+            "  `-DNROS_PLATFORM=…` wrote, so the leaf and its own CMakeCache\n"
             "  disagree. Write it as the copy-out DEFAULT instead:\n"
             "\n"
-            "      if(NOT DEFINED NANO_ROS_PLATFORM)\n"
-            "          set(NANO_ROS_PLATFORM <the row's platform>)\n"
+            "      if(NOT DEFINED NROS_PLATFORM)\n"
+            "          set(NROS_PLATFORM <the row's platform>)\n"
             "      endif()\n"
             "\n  Issue 0835 — this cost 2.8 GB of duplicate corrosion cargo groups,\n"
             "  and two `stdc++` link decisions had come to depend on the wrong label."

@@ -57,8 +57,8 @@ fn nuttx_integration_shell_smoke() {
     let cmake_shell =
         std::fs::read_to_string(shell.join("CMakeLists.txt")).expect("read NuttX CMakeLists.txt");
     assert!(
-        cmake_shell.contains("NANO_ROS_PLATFORM"),
-        "NuttX shell CMake must set NANO_ROS_PLATFORM",
+        cmake_shell.contains("NROS_PLATFORM"),
+        "NuttX shell CMake must set NROS_PLATFORM",
     );
     assert!(
         cmake_shell.contains("add_subdirectory"),

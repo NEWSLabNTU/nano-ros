@@ -9,8 +9,8 @@
 #   cmake -S . -B build \
 #         -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain/armv7a-nuttx-eabi.cmake \
 #         -DNANO_ROS_RMW=zenoh \
-#         -DNANO_ROS_PLATFORM=nuttx_armv7a \
-#         -DNANO_ROS_BUILD_CODEGEN=OFF
+#         -DNROS_PLATFORM=nuttx_armv7a \
+#         -DNROS_BUILD_CODEGEN=OFF
 #   cmake --build build
 #   cmake --install build --prefix /path/to/prefix
 

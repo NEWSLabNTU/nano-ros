@@ -19,7 +19,7 @@
 #   cmake -S . -B build \
 #         -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain/arm-freertos-armcr52.cmake \
 #         -DNANO_ROS_RMW=cyclonedds \
-#         -DNANO_ROS_PLATFORM=freertos \
+#         -DNROS_PLATFORM=freertos \
 #         -DNANO_ROS_BOARD=s32z270-freertos
 #   cmake --build build
 

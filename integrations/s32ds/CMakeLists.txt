@@ -182,7 +182,7 @@ target_include_directories(lwip INTERFACE
 add_library(freertos_platform INTERFACE)
 target_link_libraries(freertos_platform INTERFACE freertos_kernel lwip)
 
-set(NANO_ROS_PLATFORM "freertos" CACHE STRING "" FORCE)
+set(NROS_PLATFORM "freertos" CACHE STRING "" FORCE)
 if(NOT NANO_ROS_RMW)
     set(NANO_ROS_RMW "zenoh" CACHE STRING "" FORCE)
 endif()

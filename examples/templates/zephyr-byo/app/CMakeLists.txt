@@ -12,7 +12,7 @@ project(nano_ros_byo_talker)
 
 # NROS_REPO_DIR is published as a CACHE var by the nano-ros Zephyr module
 # (auto-loaded via find_package(Zephyr) when CONFIG_NROS=y).
-set(NANO_ROS_PLATFORM zephyr)
+set(NROS_PLATFORM zephyr)
 include("${NROS_REPO_DIR}/cmake/NanoRosNodeRegister.cmake")
 
 nano_ros_auto_add_library(byo_talker_lib STATIC src/Talker.c)

@@ -398,7 +398,7 @@ env = { NROS_EXECUTOR_MAX_CBS = "16", ZPICO_MAX_QUERYABLES = "16" }
 
 # Issue 1681 -- the only Zephyr C++ image that declares `param_services`, and
 # the reason it exists: before the fix, the generated west application never set
-# `NANO_ROS_FEATURES` ahead of `find_package(Zephyr)`, so nros-cpp was built
+# `NROS_FEATURES` ahead of `find_package(Zephyr)`, so nros-cpp was built
 # without `param-services` while the generated entry called
 # `nros_cpp_register_parameter_services` -- an undefined reference at link.
 # Nothing caught it because no in-tree Zephyr C++ image declared the axis. The

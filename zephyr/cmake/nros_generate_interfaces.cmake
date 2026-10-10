@@ -131,7 +131,7 @@ function(nros_generate_interfaces target)
   # Zephyr emits directly to the `app` target — there's no install layout
   # — so the flag is recognised + silently ignored.
 
-  # Issue 1547 — explicit ROS_EDITION > NANO_ROS_ROS_EDITION > the default,
+  # Issue 1547 — explicit ROS_EDITION > NROS_ROS_EDITION > the default,
   # via the one resolver. The literal fallback here skipped the middle rung,
   # the phase-405 W3 defect the canonical generator had already shed, and it
   # also accepted an unknown edition silently where the resolver refuses it.

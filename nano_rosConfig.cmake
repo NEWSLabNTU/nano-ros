@@ -21,10 +21,13 @@
 # The consuming `CMakeLists.txt` is byte-identical across every platform; the
 # per-package platform/board/RMW delta lives in `package.xml` `<export>` (§4,
 # wired in W4). Until W4 lands, deploy defaults to `native` and platform/RMW come
-# from the `NANO_ROS_PLATFORM` / `NANO_ROS_RMW` cache vars as before.
+# from the `NROS_PLATFORM` / `NANO_ROS_RMW` cache vars as before.
 
 # This config file sits at the checkout root, so its own directory is the root.
 set(NANO_ROS_ROOT "${CMAKE_CURRENT_LIST_DIR}")
+# phase-484 W7b — adopt any deprecated `NANO_ROS_*` name the project set.
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/NanoRosDeprecatedNames.cmake")
+nros_adopt_deprecated_names()
 
 # --- Zephyr arm (287-W6) ------------------------------------------------------
 # On Zephyr, nano-ros is already IN the build as a west/Zephyr module (the
@@ -43,10 +46,10 @@ if(DEFINED ZEPHYR_BASE AND TARGET zephyr_interface)
     endif()
     nano_ros_read_leaf_system()
     # deploy="zephyr" (board/RMW stay with Zephyr's own BOARD/Kconfig axes).
-    set(NANO_ROS_PLATFORM zephyr)
-    set(NROS_DEPLOY "${NANO_ROS_EXPORT_DEPLOY}")
-    set(NROS_LEAF_IMAGE_ID "${NANO_ROS_EXPORT_IMAGE}")
-    set(NROS_BOARD  "${NANO_ROS_EXPORT_BOARD}")
+    set(NROS_PLATFORM zephyr)
+    set(NROS_DEPLOY "${NROS_EXPORT_DEPLOY}")
+    set(NROS_LEAF_IMAGE_ID "${NROS_EXPORT_IMAGE}")
+    set(NROS_BOARD  "${NROS_EXPORT_BOARD}")
     set(NROS_FIND_PACKAGE_VALIDATE_ONLY TRUE)
     # find_package(<msg_pkg>) validate modules, WITHOUT the full ament surface
     # (NanoRosAmentSurface asserts NanoRos::NanoRosCpp, which a C-only Zephyr
@@ -102,16 +105,16 @@ set(NROS_FIND_PACKAGE_VALIDATE_ONLY TRUE)
 
 # --- the leaf's system.toml is the SSoT (RFC-0098 D3/D5) ---------------------
 # Read the consumer's deployment NOW, before importing nano-ros, so the board's
-# deploy token → NANO_ROS_PLATFORM and rmw → NANO_ROS_RMW reach the
+# deploy token → NROS_PLATFORM and rmw → NANO_ROS_RMW reach the
 # `add_subdirectory` body. This is what lets the leaf's CMakeLists stay
 # byte-identical across platforms — the delta is the `system.toml` beside it.
-# Explicit `-DNANO_ROS_PLATFORM` / `-DNANO_ROS_RMW` still win (they are only set
+# Explicit `-DNROS_PLATFORM` / `-DNANO_ROS_RMW` still win (they are only set
 # below when the caller left them at the default).
 #
 # `nano_ros_read_package_export()` reads the package.xml's build type and
 # `<nano_ros_uses>` selections, and REFUSES the retired `<nano_ros deploy=
 # board= rmw=/>` tuple (RFC-0048 §4's spelling, retired by phase-445 W3b);
-# `nano_ros_read_leaf_system()` then fills the NANO_ROS_EXPORT_* variables from
+# `nano_ros_read_leaf_system()` then fills the NROS_EXPORT_* variables from
 # `system.toml` through the `nros` CLI, the one reader.
 include("${NANO_ROS_ROOT}/cmake/NanoRosPackageXml.cmake")
 nano_ros_read_package_export()
@@ -119,16 +122,16 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/system.toml")
     include("${NANO_ROS_ROOT}/cmake/NanoRosCodegenCore.cmake")
 endif()
 nano_ros_read_leaf_system()
-if(NANO_ROS_LEAF_SYSTEM)
+if(NROS_LEAF_SYSTEM)
     # Deployment identity (RFC-0098 D5). Directory scope, never the cache, and
     # only where no `-D` spoke: an explicit override (every RTOS fixture row
     # passes `-DNROS_ENTRY_LOCATOR`) still wins, exactly as it wins over the
     # per-platform defaults in NanoRosEntryLocator.cmake.
-    if(NOT NANO_ROS_LEAF_LOCATOR STREQUAL "" AND NOT DEFINED NROS_ENTRY_LOCATOR)
-        set(NROS_ENTRY_LOCATOR "${NANO_ROS_LEAF_LOCATOR}")
+    if(NOT NROS_LEAF_LOCATOR STREQUAL "" AND NOT DEFINED NROS_ENTRY_LOCATOR)
+        set(NROS_ENTRY_LOCATOR "${NROS_LEAF_LOCATOR}")
     endif()
-    if(NOT NANO_ROS_LEAF_DOMAIN_ID STREQUAL "" AND NOT DEFINED NROS_DOMAIN_ID)
-        set(NROS_DOMAIN_ID "${NANO_ROS_LEAF_DOMAIN_ID}")
+    if(NOT NROS_LEAF_DOMAIN_ID STREQUAL "" AND NOT DEFINED NROS_DOMAIN_ID)
+        set(NROS_DOMAIN_ID "${NROS_LEAF_DOMAIN_ID}")
     endif()
     # Issue 1142 — and what the leaf DECLARES it creates (RFC-0098 D8). This is
     # the third thing its `system.toml` answers, after the board and the
@@ -143,39 +146,39 @@ if(NANO_ROS_LEAF_SYSTEM)
     include("${NANO_ROS_ROOT}/cmake/NanoRosLeafEntityFacts.cmake")
     nros_record_leaf_entity_facts("${CMAKE_CURRENT_SOURCE_DIR}")
 endif()
-if(NANO_ROS_EXPORT_FOUND)
+if(NROS_EXPORT_FOUND)
     # The leaf's values go into the CACHE, not directory scope. The imported
-    # root CMakeLists declares `NANO_ROS_PLATFORM`/`NANO_ROS_RMW` with cached
+    # root CMakeLists declares `NROS_PLATFORM`/`NANO_ROS_RMW` with cached
     # posix/zenoh defaults; a directory-scope set here would shadow them only
     # on the FIRST configure — on any reconfigure the stale cached default is
     # visible to the `NOT NANO_ROS_*` guards, the leaf's value is skipped, and a
     # freertos leaf silently reconfigures as posix (Threads_FOUND death on a
     # cross toolchain). Writing them into the cache on first parse makes
     # reconfigures stable; an explicit `-D` still wins (the guard sees it).
-    if(NANO_ROS_EXPORT_DEPLOY AND NOT NANO_ROS_PLATFORM)
-        _nros_deploy_to_platform("${NANO_ROS_EXPORT_DEPLOY}" _nros_leaf_platform)
-        set(NANO_ROS_PLATFORM "${_nros_leaf_platform}" CACHE STRING
+    if(NROS_EXPORT_DEPLOY AND NOT NROS_PLATFORM)
+        _nros_deploy_to_platform("${NROS_EXPORT_DEPLOY}" _nros_leaf_platform)
+        set(NROS_PLATFORM "${_nros_leaf_platform}" CACHE STRING
             "nano-ros platform (derived from the leaf system.toml board)")
     endif()
-    if(NANO_ROS_EXPORT_RMW AND NOT NANO_ROS_RMW)
-        set(NANO_ROS_RMW "${NANO_ROS_EXPORT_RMW}" CACHE STRING
+    if(NROS_EXPORT_RMW AND NOT NANO_ROS_RMW)
+        set(NANO_ROS_RMW "${NROS_EXPORT_RMW}" CACHE STRING
             "RMW backend (from the leaf system.toml rmw)")
     endif()
     # phase-484 W4f — the board MODULE the leaf's board names, not the alias
     # it was authored as (a package.xml-only leaf has no CMAKE_BOARD).
-    if(NANO_ROS_EXPORT_CMAKE_BOARD)
-        set(_nros_leaf_cmake_board "${NANO_ROS_EXPORT_CMAKE_BOARD}")
+    if(NROS_EXPORT_CMAKE_BOARD)
+        set(_nros_leaf_cmake_board "${NROS_EXPORT_CMAKE_BOARD}")
     else()
-        set(_nros_leaf_cmake_board "${NANO_ROS_EXPORT_BOARD}")
+        set(_nros_leaf_cmake_board "${NROS_EXPORT_BOARD}")
     endif()
     if(_nros_leaf_cmake_board AND NOT NANO_ROS_BOARD)
         set(NANO_ROS_BOARD "${_nros_leaf_cmake_board}" CACHE STRING
             "nano-ros board module (from the leaf system.toml [image] board)")
     endif()
     # The verbs pick DEPLOY/BOARD up from these directory-scope vars.
-    set(NROS_DEPLOY "${NANO_ROS_EXPORT_DEPLOY}")
-    set(NROS_LEAF_IMAGE_ID "${NANO_ROS_EXPORT_IMAGE}")
-    set(NROS_BOARD  "${NANO_ROS_EXPORT_BOARD}")
+    set(NROS_DEPLOY "${NROS_EXPORT_DEPLOY}")
+    set(NROS_LEAF_IMAGE_ID "${NROS_EXPORT_IMAGE}")
+    set(NROS_BOARD  "${NROS_EXPORT_BOARD}")
 endif()
 
 # --- 1. import nano-ros ------------------------------------------------------

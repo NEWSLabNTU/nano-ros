@@ -574,7 +574,7 @@ endfunction()
 #      on the retired cargo path, and where the six rust leaves state their
 #      ports), read through the ONE reader, `nano_ros_read_leaf_system`;
 #   3. the entry lane's default for this board (`_nros_resolve_entry_locator`).
-# A FUNCTION, so the reader's NANO_ROS_EXPORT_* outputs do not leak into the
+# A FUNCTION, so the reader's NROS_EXPORT_* outputs do not leak into the
 # leaf's scope.
 # ---------------------------------------------------------------------------
 include("${_NROS_BOARD_ROOT}/cmake/NanoRosEntryLocator.cmake")
@@ -597,12 +597,12 @@ function(_nros_rv64_image_locator out_var)
                 "`nros_generate_interfaces()`, which loads it.")
         endif()
         nano_ros_read_leaf_system(DIR "${CMAKE_CURRENT_SOURCE_DIR}")
-        if(NOT "${NANO_ROS_LEAF_LOCATOR}" STREQUAL "")
-            set(${out_var} "${NANO_ROS_LEAF_LOCATOR}" PARENT_SCOPE)
+        if(NOT "${NROS_LEAF_LOCATOR}" STREQUAL "")
+            set(${out_var} "${NROS_LEAF_LOCATOR}" PARENT_SCOPE)
             return()
         endif()
     endif()
-    _nros_resolve_entry_locator(entry "${NANO_ROS_PLATFORM}" "${NANO_ROS_BOARD}" _loc)
+    _nros_resolve_entry_locator(entry "${NROS_PLATFORM}" "${NANO_ROS_BOARD}" _loc)
     set(${out_var} "${_loc}" PARENT_SCOPE)
 endfunction()
 

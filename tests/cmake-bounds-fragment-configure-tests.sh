@@ -77,7 +77,7 @@ fi
 export NROS_CLI="$NROS_BIN"
 export PATH="$PROJECT_ROOT/packages/cli/target/release:$PATH"
 export NROS_REPO_DIR="$PROJECT_ROOT"
-unset NANO_ROS_GEN_CACHE_DIR
+unset NROS_GEN_CACHE_DIR
 
 init_test_tmpdir "nros-bounds-fragment-configure"
 trap 'cleanup_test_tmpdir' EXIT

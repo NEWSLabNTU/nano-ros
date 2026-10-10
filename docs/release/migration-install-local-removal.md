@@ -40,7 +40,7 @@ cmake --build build
 cmake_minimum_required(VERSION 3.22)
 project(my_app C)
 
-set(NANO_ROS_PLATFORM posix)
+set(NROS_PLATFORM posix)
 set(NANO_ROS_RMW     zenoh)
 add_subdirectory(<path-to-nano-ros> nano_ros)
 
@@ -64,7 +64,7 @@ cmake --build build
 
 | Pre-140 | Post-140 |
 |---------|----------|
-| `find_package(NanoRos REQUIRED CONFIG)` | `add_subdirectory(<path-to-nano-ros>)` after `set(NANO_ROS_PLATFORM ...)` + `set(NANO_ROS_RMW ...)` |
+| `find_package(NanoRos REQUIRED CONFIG)` | `add_subdirectory(<path-to-nano-ros>)` after `set(NROS_PLATFORM ...)` + `set(NANO_ROS_RMW ...)` |
 | `just install-local` | (deleted) — nano-ros builds in-tree per-example via Corrosion |
 | `cmake -DCMAKE_PREFIX_PATH=<nano-ros>/build/install` | (not needed) |
 | `nano_ros_link_platform(target)` / `nano_ros_link_rmw(target)` | (folded into `NanoRos::NanoRos`'s INTERFACE link libraries) |
@@ -92,7 +92,7 @@ cmake --build build
 
 Each shell internally does
 `add_subdirectory(<nano-ros>)` with the right
-`NANO_ROS_PLATFORM` cache var set; user-side code is the same as
+`NROS_PLATFORM` cache var set; user-side code is the same as
 the C/C++ snippet above.
 
 ## What you lose

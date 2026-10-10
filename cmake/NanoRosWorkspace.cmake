@@ -65,6 +65,9 @@ set(_NROS_WORKSPACE_DIR "${CMAKE_CURRENT_LIST_DIR}"
 # when nothing matches.
 # ---------------------------------------------------------------------------
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRosEdition.cmake")
+# phase-484 W7b — adopt any deprecated `NANO_ROS_*` name the workspace set.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosDeprecatedNames.cmake")
+nros_adopt_deprecated_names()
 
 function(_nros_find_root start out_var)
     set(_dir "${start}")
@@ -136,7 +139,7 @@ function(_nros_import_once nano_ros_root)
     if(TARGET NanoRos::NanoRosCpp OR TARGET NanoRos::NanoRos)
         return()
     endif()
-    # The cmake-fn modules need NANO_ROS_PLATFORM / NANO_ROS_RMW visible
+    # The cmake-fn modules need NROS_PLATFORM / NANO_ROS_RMW visible
     # to the `add_subdirectory()` body; callers must have set them on
     # PARENT_SCOPE before calling _nros_import_once (workspace-root does
     # this in nano_ros_workspace(); standalone does this in the guard).
@@ -317,27 +320,27 @@ function(nano_ros_workspace)
     # Stamp the resolution so subdirs + the per-pkg guard reuse it
     # without re-walking. PARENT_SCOPE here = the workspace-root scope.
     set(NANO_ROS_ROOT        "${_nros_root}"      PARENT_SCOPE)
-    set(NANO_ROS_PLATFORM    "${_NRW_PLATFORM}"   PARENT_SCOPE)
+    set(NROS_PLATFORM    "${_NRW_PLATFORM}"   PARENT_SCOPE)
     set(NANO_ROS_RMW         "${_NRW_BACKEND}"    PARENT_SCOPE)
     set(NROS_RMW             "${_NRW_BACKEND}"    PARENT_SCOPE)
-    set(NANO_ROS_ROS_EDITION "${_NRW_EDITION}"    PARENT_SCOPE)
+    set(NROS_ROS_EDITION "${_NRW_EDITION}"    PARENT_SCOPE)
 
     # Also set them in the local fn scope so _nros_import_once's
     # add_subdirectory body sees them directly (PARENT_SCOPE writes
     # don't reach the current fn frame).
     set(NANO_ROS_ROOT        "${_nros_root}")
-    set(NANO_ROS_PLATFORM    "${_NRW_PLATFORM}")
+    set(NROS_PLATFORM    "${_NRW_PLATFORM}")
     set(NANO_ROS_RMW         "${_NRW_BACKEND}")
     set(NROS_RMW             "${_NRW_BACKEND}")
-    set(NANO_ROS_ROS_EDITION "${_NRW_EDITION}")
+    set(NROS_ROS_EDITION "${_NRW_EDITION}")
 
     # phase-323 W1 — the capability axes, BEFORE the import.
     #
     # `SYSTEM` already names the bringup; it was simply read too late. The
     # metadata call below runs AFTER `_nros_import_once`, but `nros-c` /
-    # `nros-cpp` read `NANO_ROS_FEATURES` during the `add_subdirectory` body
-    # (`set(_caps ${NANO_ROS_FEATURES})`), so a value set afterwards is a value
-    # nobody sees. The workspace cache read `NANO_ROS_FEATURES:STRING=` and NO
+    # `nros-cpp` read `NROS_FEATURES` during the `add_subdirectory` body
+    # (`set(_caps ${NROS_FEATURES})`), so a value set afterwards is a value
+    # nobody sees. The workspace cache read `NROS_FEATURES:STRING=` and NO
     # declared capability reached the C/C++ build — issue 0353.
     #
     # This is the same treatment `BACKEND` already gets a few lines up, and for
@@ -376,11 +379,11 @@ function(nano_ros_workspace)
         # lowering (e.g. NROS_SYSTEM_PARAM_SERVICES for ComponentNode's
         # launch-seed adoption) never reached component TUs.
         include("${_nros_root}/cmake/NanoRosCapabilities.cmake")
-        nros_lower_system_features("${NANO_ROS_FEATURES}")
+        nros_lower_system_features("${NROS_FEATURES}")
         # Re-configure when the declaration changes.
         set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
             "${_NRW_WORKSPACE_ROOT}/src/${_NRW_SYSTEM}/system.toml")
-        set(NANO_ROS_FEATURES "${NANO_ROS_FEATURES}" PARENT_SCOPE)
+        set(NROS_FEATURES "${NROS_FEATURES}" PARENT_SCOPE)
     else()
         # Issue 1261 — no SYSTEM, so no capability axes reach the library
         # build. That is correct for a workspace with no bringup ("workspaces
@@ -409,7 +412,7 @@ function(nano_ros_workspace)
                 RESULT_VARIABLE _caps_rc
                 ERROR_QUIET)
         endif()
-        if(_caps_rc EQUAL 0 AND _caps_out MATCHES "set\\(NANO_ROS_FEATURES \"([^\"]+)\"")
+        if(_caps_rc EQUAL 0 AND _caps_out MATCHES "set\\(NROS_FEATURES \"([^\"]+)\"")
             set(_declared "${CMAKE_MATCH_1}")
             set(_bringup "<bringup pkg>")
             if(_caps_out MATCHES "\\(([^()\n]*)/system\\.toml\\)")
@@ -552,8 +555,8 @@ function(nano_ros_workspace_pkg_guard)
         endif()
     endif()
     if(NOT _NRG_PLATFORM)
-        if(NANO_ROS_PLATFORM)
-            set(_NRG_PLATFORM "${NANO_ROS_PLATFORM}")
+        if(NROS_PLATFORM)
+            set(_NRG_PLATFORM "${NROS_PLATFORM}")
         else()
             set(_NRG_PLATFORM posix)
         endif()
@@ -567,11 +570,11 @@ function(nano_ros_workspace_pkg_guard)
     # see them. PARENT_SCOPE keeps them visible to the rest of the
     # pkg's CMakeLists too.
     set(NANO_ROS_ROOT     "${_nros_root}"     PARENT_SCOPE)
-    set(NANO_ROS_PLATFORM "${_NRG_PLATFORM}"  PARENT_SCOPE)
+    set(NROS_PLATFORM "${_NRG_PLATFORM}"  PARENT_SCOPE)
     set(NANO_ROS_RMW      "${_NRG_BACKEND}"   PARENT_SCOPE)
     set(NROS_RMW          "${_NRG_BACKEND}"   PARENT_SCOPE)
     set(NANO_ROS_ROOT     "${_nros_root}")
-    set(NANO_ROS_PLATFORM "${_NRG_PLATFORM}")
+    set(NROS_PLATFORM "${_NRG_PLATFORM}")
     set(NANO_ROS_RMW      "${_NRG_BACKEND}")
     set(NROS_RMW          "${_NRG_BACKEND}")
 

@@ -48,7 +48,7 @@ pub struct Capability {
     /// registry loop that replaced the hardcoded per-axis `#define`s.
     pub c_define: Option<&'static str>,
     /// Phase 261 — the CMake build-knob token for the axis, e.g.
-    /// `"NANO_ROS_SAFETY_E2E"` (the analog of `NANO_ROS_RMW`). `None` ⇒ no CMake
+    /// `"NROS_SAFETY_E2E"` (the analog of `NANO_ROS_RMW`). `None` ⇒ no CMake
     /// knob (the macro is informational only). Threaded into the C/C++ codegen by
     /// W5 when populated.
     pub cmake_token: Option<&'static str>,
@@ -76,7 +76,7 @@ pub const CAPABILITIES: &[Capability] = &[
         nros_feature: "safety-e2e",
         backend_feature: Some("safety-e2e"),
         c_define: Some("NROS_SYSTEM_SAFETY_E2E"),
-        cmake_token: Some("NANO_ROS_SAFETY_E2E"),
+        cmake_token: Some("NROS_SAFETY_E2E"),
     },
     // The external ROS 2 parameter SERVER. Entry-umbrella-only — the runtime
     // registers the services; there is no backend wire feature.
@@ -133,7 +133,7 @@ mod tests {
         assert!(!c.backend_supports("cyclonedds"));
         // Phase 261 W1 — C/C++ lowering slots.
         assert_eq!(c.c_define, Some("NROS_SYSTEM_SAFETY_E2E"));
-        assert_eq!(c.cmake_token, Some("NANO_ROS_SAFETY_E2E"));
+        assert_eq!(c.cmake_token, Some("NROS_SAFETY_E2E"));
     }
 
     #[test]

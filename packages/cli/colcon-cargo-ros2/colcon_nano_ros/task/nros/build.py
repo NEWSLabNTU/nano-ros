@@ -41,7 +41,7 @@ PLATFORM_TOOLCHAINS = {
     "zephyr": None,  # Zephyr uses west build
 }
 
-# Platform (`deploy=` value) → NANO_ROS_PLATFORM CMake cache value. `native`
+# Platform (`deploy=` value) → NROS_PLATFORM CMake cache value. `native`
 # → `posix` is the identical mapping `_nros_deploy_to_platform` makes in
 # cmake/NanoRosPackageXml.cmake. Falls back to the value itself when unmapped,
 # so CMake refuses an unknown platform module by name rather than here.
@@ -517,7 +517,7 @@ class NrosBuildTask(TaskExtensionPoint):
         # names (phase-445 W3b; the `<nano_ros deploy=…/>` tuple of phase-420
         # W4 before that) instead of a build_type token nothing declared.
         cmd.append(f"-DNANO_ROS_RMW={resolve_rmw()}")
-        cmd.append(f"-DNANO_ROS_PLATFORM={PLATFORM_CMAKE.get(platform, platform)}")
+        cmd.append(f"-DNROS_PLATFORM={PLATFORM_CMAKE.get(platform, platform)}")
 
         # Cross-compilation: pass toolchain file for embedded platforms.
         # The toolchain file is resolved from NROS_TOOLCHAIN_DIR env var

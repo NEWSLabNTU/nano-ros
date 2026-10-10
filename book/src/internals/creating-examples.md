@@ -177,7 +177,7 @@ ament_package()
 No platform, no board, no RMW on the command line or in the file:
 `find_package(nano_ros)` reads the example's `system.toml` through `nros ws
 leaf-system` and derives the platform from the board it names.
-`-DNANO_ROS_PLATFORM`, `-DNANO_ROS_BOARD` and `-DNROS_RMW` are retired as the
+`-DNROS_PLATFORM`, `-DNANO_ROS_BOARD` and `-DNROS_RMW` are retired as the
 way a user chooses. A bare cross configure still passes `-DCMAKE_TOOLCHAIN_FILE` by
 hand (or uses `nros init` + `cmake --preset <board>`); `nros build` in the leaf
 maps the board to its toolchain file and runs the same configure into
@@ -189,7 +189,7 @@ CMake-time output, so a clean copy outside the checkout configures and builds
 with no sync at all.
 
 The other shape — a standalone CMake project pulling nano-ros in by path with
-`add_subdirectory(<repo-root>)`, setting `NANO_ROS_PLATFORM` / `NANO_ROS_RMW` /
+`add_subdirectory(<repo-root>)`, setting `NROS_PLATFORM` / `NANO_ROS_RMW` /
 `NANO_ROS_BOARD` itself, linking `NanoRos::NanoRos` and calling
 `nros_platform_link_app()` + `nano_ros_link_rmw()` — is what the ThreadX Rust
 leaves and the `examples/templates/` recipes use, and is the right shape for an

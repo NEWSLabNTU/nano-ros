@@ -5,7 +5,7 @@
 /// Issue 0073 — the C analog of the Rust declarative-safety-listener. Pairs with
 /// the safety talker (the imperative Rust example built `--features safety-e2e`):
 /// receives `std_msgs/Int32` on `/chatter` over zenohd and validates the CRC
-/// attached by the publisher. Built with `NANO_ROS_SAFETY_E2E=ON` (set below) so
+/// attached by the publisher. Built with `NROS_SAFETY_E2E=ON` (set below) so
 /// the zenoh backend carries the CRC path.
 
 #include <stdint.h>

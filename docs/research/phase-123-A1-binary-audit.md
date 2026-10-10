@@ -21,7 +21,7 @@ Inspected the installed artefacts under `build/install/lib/`
 using `ar t`, `nm`, `objdump`, `strings`, and `strip`. Archives
 audited: `libnros_c_zenoh.a` (~28 MB) + `libnros_c_dds.a`
 (~26 MB) on `x86_64-unknown-linux-gnu`, built with
-`-DNANO_ROS_RMW={zenoh,dds} -DNANO_ROS_PLATFORM=posix`.
+`-DNANO_ROS_RMW={zenoh,dds} -DNROS_PLATFORM=posix`.
 
 ## What's inside `libnros_c_zenoh.a`
 

@@ -8,7 +8,7 @@ project(c_typed_carrier LANGUAGES C CXX)
 # registers a typed component with `DEPLOY nuttx`, so the image comes from
 # `nano_ros_node_register`'s NuttX carrier arm, which synthesises a C++ entry
 # holding the component's node as a STATIC object. On a lane build
-# (`NANO_ROS_PLATFORM=nuttx_armv7a`) that arm never fired until issue 1795; this
+# (`NROS_PLATFORM=nuttx_armv7a`) that arm never fired until issue 1795; this
 # leaf is its fixture.
 find_package(nano_ros REQUIRED)
 

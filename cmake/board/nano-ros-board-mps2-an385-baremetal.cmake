@@ -1,13 +1,13 @@
 # cmake/board/nano-ros-board-mps2-an385-baremetal.cmake
 #
 # Phase 138.3 — board overlay for QEMU Cortex-M3 MPS2-AN385. Used under
-# NANO_ROS_PLATFORM=baremetal (Rust-only ELF, no RTOS).
+# NROS_PLATFORM=baremetal (Rust-only ELF, no RTOS).
 #
 # phase-437 W5 — renamed from `nano-ros-board-mps2-an385.cmake` (RFC-0093:
 # `<where>-<stack>`, stack last). Two corrections rode with the rename, both
 # measured by W2:
 #   * the header claimed this overlay is ALSO used under
-#     NANO_ROS_PLATFORM=freertos. It is not —
+#     NROS_PLATFORM=freertos. It is not —
 #     `nano-ros-board-mps2-an385-freertos.cmake` is fully self-contained.
 #   * it has ZERO live consumers: `NANO_ROS_BOARD` is set to this value
 #     nowhere in the tree. It survives as the C/C++ seam described below and

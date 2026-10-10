@@ -245,7 +245,7 @@ fn test_declarative_safety_listener_receives_integrity(zenohd_unique: ZenohRoute
 // =============================================================================
 
 /// The C/C++ safety path end-to-end: a C listener polling
-/// `nros_polling_subscription_take_validated` (built with `NANO_ROS_SAFETY_E2E=ON`)
+/// `nros_polling_subscription_take_validated` (built with `NROS_SAFETY_E2E=ON`)
 /// receives from the safety talker over zenohd and validates the CRC the
 /// publisher attached — proving the new C ABI surfaces real integrity, not just
 /// the Rust path. The C listener logs `[SAFETY] INTEGRITY ... crc=ok`.

@@ -10,7 +10,7 @@
 # staticlib that ALSO bundles `nros-cpp`, and make THAT staticlib the umbrella archive.
 #
 # Granularity is per cmake-configure (== per-arch: one configure is single-toolchain /
-# single-`NANO_ROS_PLATFORM`; multi-arch workspaces bake one `build/<board>/` tree per
+# single-`NROS_PLATFORM`; multi-arch workspaces bake one `build/<board>/` tree per
 # board). So one runtime crate per configure serves every entry in that configure.
 #
 # `nros_synth_runtime_umbrella(BACKEND <b> PLATFORM <p>)` is called by
@@ -224,15 +224,15 @@ function(nros_synth_runtime_umbrella)
     # (`grep NROS_RMW` over this file returned nothing). It is a process spawn
     # now, which is a good reason to notice, but it was dead before.
     include("${NANO_ROS_ROOT}/cmake/NanoRosFeatureSet.cmake")
-    set(_caps ${NANO_ROS_FEATURES})
-    if(NANO_ROS_SAFETY_E2E)
+    set(_caps ${NROS_FEATURES})
+    if(NROS_SAFETY_E2E)
         list(APPEND _caps safety)
     endif()
     # phase-323 W2 — capabilities come from the DECLARATION on every platform.
     #
     # posix used to get `param_services` + `lifecycle` unconditionally. That was not
     # a convenience: until W1 it was the ONLY route those axes took on hosted, since
-    # `NANO_ROS_FEATURES` was never populated on the workspace path (issue 0353). So
+    # `NROS_FEATURES` was never populated on the workspace path (issue 0353). So
     # hosted could not fail when a declaration was missing, and the same
     # `system.toml` produced different runtimes depending on where it was built.
     #

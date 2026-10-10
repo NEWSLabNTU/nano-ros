@@ -94,7 +94,7 @@ pub struct WestApp {
     ///
     /// Plus [`PARAM_STORE_AXIS`] when the LAUNCH seeds a parameter (issue
     /// 1706): not an axis anyone declares, but a fact the heap default needs
-    /// beside them. Only Kconfig reads this list; `NANO_ROS_FEATURES` is
+    /// beside them. Only Kconfig reads this list; `NROS_FEATURES` is
     /// derived from the bringup separately, so the pseudo-axis never reaches a
     /// cargo feature.
     pub capabilities: Vec<String>,
@@ -265,7 +265,7 @@ pub struct CmakeApp {
     /// (nros-cpp + the node) in place of plain nros-cpp — the single-runtime
     /// invariant, one Rust staticlib and one `nros-rmw-cffi` registry.
     pub rust_node_dirs: Vec<String>,
-    /// `NANO_ROS_FEATURES` -- the bringup's capability axes (`[system]
+    /// `NROS_FEATURES` -- the bringup's capability axes (`[system]
     /// features` and the deprecated typed blocks), set BEFORE
     /// `find_package(Zephyr)` for the same reason as `rust_node_dirs`: the
     /// nano-ros Zephyr module reads it DURING find_package, to add
@@ -517,7 +517,7 @@ pub const APP_DIGEST_VAR: &str = "NROS_GENERATED_APP_DIGEST";
 /// `nros build`, the configure reads the old file, the query rewrites it, and
 /// the build system is written AFTER the rewrite -- newer than its input, so no
 /// later `ninja` reconfigures. The image keeps the previous declaration's
-/// Kconfig and `NANO_ROS_FEATURES` with nothing saying so.
+/// Kconfig and `NROS_FEATURES` with nothing saying so.
 ///
 /// The variable is what this configure EXECUTED; the line on disk is what the
 /// file holds now. They differ exactly when the file was rewritten after cmake
@@ -586,7 +586,7 @@ fn render_cmakelists_body(app: &WestApp) -> String {
 ///   `find_package(nano_ros)` and **before** the `add_subdirectory` calls — a
 ///   Rust node package opens with that guard and would otherwise bootstrap a
 ///   SECOND nano-ros import, which on Zephyr means `add_subdirectory`-ing the
-///   checkout with `NANO_ROS_PLATFORM=zephyr`, which `nros-c` rejects.
+///   checkout with `NROS_PLATFORM=zephyr`, which `nros-c` rejects.
 ///   (W5.b3's brief said this stub goes before `find_package`; measured against
 ///   `examples/workspaces/mixed/src/zephyr_entry`, it does not — only
 ///   `NROS_WS_RUST_NODE_DIRS` does, and the two are separate lines with
@@ -648,7 +648,7 @@ fn render_cmake_app(
              # (issue 1681).\n",
         );
         out.push_str(&format!(
-            "set(NANO_ROS_FEATURES \"{}\")\n\n",
+            "set(NROS_FEATURES \"{}\")\n\n",
             c.features.join(";")
         ));
     }
@@ -670,7 +670,7 @@ fn render_cmake_app(
              # is outside the C/C++ verb surface). Stub it so it does NOT\n\
              # bootstrap a second nano-ros import: on Zephyr the west module\n\
              # owns the runtime, and an import here would `add_subdirectory` the\n\
-             # checkout with `NANO_ROS_PLATFORM=zephyr`, which `nros-c` rejects.\n\
+             # checkout with `NROS_PLATFORM=zephyr`, which `nros-c` rejects.\n\
              if(NOT COMMAND nano_ros_workspace_pkg_guard)\n    \
              function(nano_ros_workspace_pkg_guard)\n    \
              endfunction()\nendif()\n\n",
@@ -1131,7 +1131,7 @@ mod tests {
     /// The generated entry calls `nros_cpp_register_parameter_services` for a
     /// bringup that declares `param_services`, and the symbol exists only in an
     /// nros-cpp built with that feature -- which `zephyr/CMakeLists.txt` adds
-    /// only when `param_services IN_LIST NANO_ROS_FEATURES`. This road never set
+    /// only when `param_services IN_LIST NROS_FEATURES`. This road never set
     /// the variable, so the image failed to link. Both spellings of the axis
     /// count; a bringup that declares none gets no line at all.
     #[test]
@@ -1151,7 +1151,7 @@ mod tests {
 
         std::fs::write(bringup.join("system.toml"), base).unwrap();
         let none = code(&cmake_app(td.path(), &nodes, None));
-        assert!(!none.contains("NANO_ROS_FEATURES"), "{none}");
+        assert!(!none.contains("NROS_FEATURES"), "{none}");
 
         std::fs::write(
             bringup.join("system.toml"),
@@ -1168,10 +1168,10 @@ mod tests {
                 .unwrap_or_else(|| panic!("missing {needle}:\n{with}"))
         };
         assert!(
-            with.contains("set(NANO_ROS_FEATURES \"param_services;lifecycle\")"),
+            with.contains("set(NROS_FEATURES \"param_services;lifecycle\")"),
             "a cmake LIST, which `IN_LIST` reads: {with}"
         );
-        assert!(at("set(NANO_ROS_FEATURES") < at("find_package(Zephyr"));
+        assert!(at("set(NROS_FEATURES") < at("find_package(Zephyr"));
 
         // The deprecated typed block is the same axis.
         std::fs::write(
@@ -1181,7 +1181,7 @@ mod tests {
         .unwrap();
         let typed = code(&cmake_app(td.path(), &nodes, None));
         assert!(
-            typed.contains("set(NANO_ROS_FEATURES \"param_services\")"),
+            typed.contains("set(NROS_FEATURES \"param_services\")"),
             "{typed}"
         );
     }

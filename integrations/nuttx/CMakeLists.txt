@@ -2,7 +2,7 @@
 #
 # Newer NuttX configurations drive their build through CMake rather
 # than kconfig+Make. For those builds, this file dispatches into the
-# Phase 137 root CMakeLists with NANO_ROS_PLATFORM=nuttx.
+# Phase 137 root CMakeLists with NROS_PLATFORM=nuttx.
 #
 # Kconfig+Make NuttX users go through Make.defs / Makefile siblings
 # instead — both surfaces coexist without conflict.
@@ -22,9 +22,9 @@ if(CONFIG_NROS)
     include("${_nros_root}/cmake/NanoRosRosEdition.cmake")
     _nros_resolve_ros_edition("${CONFIG_NROS_ROS_EDITION}" _nros_ros_edition)
 
-    set(NANO_ROS_PLATFORM    "nuttx"                CACHE STRING "" FORCE)
+    set(NROS_PLATFORM    "nuttx"                CACHE STRING "" FORCE)
     set(NANO_ROS_RMW         "${_nros_rmw}"         CACHE STRING "" FORCE)
-    set(NANO_ROS_ROS_EDITION "${_nros_ros_edition}" CACHE STRING "" FORCE)
+    set(NROS_ROS_EDITION "${_nros_ros_edition}" CACHE STRING "" FORCE)
 
     add_subdirectory("${_nros_root}" nano_ros_root)
 

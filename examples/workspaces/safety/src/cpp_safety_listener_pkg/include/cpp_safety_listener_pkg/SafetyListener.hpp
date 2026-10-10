@@ -18,7 +18,7 @@ namespace cpp_safety_listener_pkg {
 ///   - crc_valid: 1 = CRC ok, 0 = mismatch, -1 = no CRC on the wire
 ///
 /// CRC-valid messages increment the counter and republish the count on /safe_ok.
-/// Requires NANO_ROS_SAFETY_E2E=ON (lowered from [system].features = ["safety"]).
+/// Requires NROS_SAFETY_E2E=ON (lowered from [system].features = ["safety"]).
 class SafetyListener {
     ::rclcpp::Publisher<std_msgs::msg::Int32> pub_ok_;
     ::rclcpp::Subscription<std_msgs::msg::Int32> sub_;

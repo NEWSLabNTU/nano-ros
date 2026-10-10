@@ -9,8 +9,8 @@
 #   cmake -S . -B build \
 #         -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain/arm-freertos-armcm3.cmake \
 #         -DNANO_ROS_RMW=zenoh \
-#         -DNANO_ROS_PLATFORM=freertos_armcm3 \
-#         -DNANO_ROS_BUILD_CODEGEN=OFF
+#         -DNROS_PLATFORM=freertos_armcm3 \
+#         -DNROS_BUILD_CODEGEN=OFF
 #   cmake --build build
 #   cmake --install build --prefix /path/to/prefix
 

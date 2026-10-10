@@ -8,7 +8,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 # the `rosout` capability (the C/C++ projection of `system.toml`
 # `[system].features = ["rosout"]`) BEFORE find_package(nano_ros), so the
 # runtime is built with the bridge rather than its UNSUPPORTED stubs.
-set(NANO_ROS_FEATURES "rosout")
+set(NROS_FEATURES "rosout")
 
 find_package(nano_ros REQUIRED)
 
