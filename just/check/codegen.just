@@ -730,6 +730,9 @@ repr-memory-agreement:
 # placement-constructs the current object into them — silent corruption
 # (0268: freertos C, 336 bytes; 0245: zephyr C++, 32 bytes). Scans whatever
 # build trees exist locally; prints the tree count so a vacuous pass is visible.
+# Issue 1792: the pairs come from each build.ninja's own mirror commands and the
+# source from `mirror-generated-header.sh --resolve` — the old globs named
+# `packages/core/`, matched nothing after the crates moved, and compared 0.
 [private]
 sizes-header-mirrors:
-    @bash scripts/check-sizes-header-mirrors.sh
+    @python3 scripts/check-sizes-header-mirrors.py

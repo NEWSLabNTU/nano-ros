@@ -48,7 +48,6 @@ scripts/check-rust-targets-covered.py
 scripts/check-sched-dim-arms-compile.sh
 scripts/check-single-rust-staticlib.py
 scripts/check-site-config.py
-scripts/check-sizes-header-mirrors.sh
 scripts/check-source-manifest.sh
 scripts/check-staleness-probe-exemptions.sh
 scripts/check-std-census.py
