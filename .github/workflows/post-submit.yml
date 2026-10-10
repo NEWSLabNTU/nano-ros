@@ -162,6 +162,11 @@ jobs:
   # runs it.
 
   coverage:
+    # issue 1790 — `report-interlock-coverage.sh` reads the gated job's
+    # step record when the job left no stage label (a lost runner).
+    permissions:
+      contents: read
+      actions: read
     name: coverage report (did the post-submit lanes run?)
     needs: [dep-chain]
     if: always()
@@ -176,8 +181,10 @@ jobs:
       # shape stays with one lane in the list; it is what makes adding a second
       # safe.
       - name: Report whether each interlocked lane ran
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           rc=0
           ./scripts/ci/report-interlock-coverage.sh \
-            "dep-chain" "${{ needs.dep-chain.result }}" "true" || rc=1
+            "dep-chain (7 board×rmw cells)" "${{ needs.dep-chain.result }}" "true" || rc=1
           exit "$rc"

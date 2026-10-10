@@ -317,13 +317,20 @@ jobs:
         run: python3 scripts/ci/lane-stage.py --report --lane "tier 1 (cells)"
 
   coverage-tier1:
-    name: "tier 1 — ${{ needs.tier1.outputs.stage_label || 'DID NOT START' }}"
+    # issue 1790 — `report-interlock-coverage.sh` reads the gated job's
+    # step record when the job left no stage label (a lost runner).
+    permissions:
+      contents: read
+      actions: read
+    name: "tier 1 — ${{ needs.tier1.outputs.stage_label || (needs.tier1.result == 'skipped' && 'DID NOT START') || 'NO VERDICT: the job ended before it reported' }}"
     needs: [tier1]
     if: always()
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - name: Report whether the interlocked lane ran
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: ./scripts/ci/report-interlock-coverage.sh "tier 1 (cells)" "${{ needs.tier1.result }}" "${{ vars.NROS_SELF_HOSTED_READY }}" "${{ needs.tier1.outputs.stage_label }}"
 
   # phase-405 — make the interlocked job's SKIP visible in the run that skipped
@@ -344,15 +351,25 @@ jobs:
   #
   # `needs` IS an available context for `jobs.<job_id>.name` (unlike, say,
   # `steps`), which is why this reads a job OUTPUT rather than re-deriving
-  # anything. `|| 'DID NOT START'` covers the interlocked skip, where the matrix
-  # job produces no outputs at all — a third answer that is neither verdict nor
-  # lane failure, and the one `report-interlock-coverage.sh` already handled.
+  # anything. No outputs has TWO causes (issue 1790): the interlocked SKIP —
+  # `DID NOT START`, a third answer that is neither verdict nor lane failure —
+  # and a job that started and lost its runner before its `if: always()`
+  # reporter ran. Only `result == 'skipped'` tells them apart; the bare
+  # `|| 'DID NOT START'` this replaced named run 37893868358's lost tier-1
+  # runner, 68 minutes into the lane, as a lane that never started.
   coverage:
-    name: "tier 2 — ${{ needs.matrix.outputs.stage_label || 'DID NOT START' }}"
+    # issue 1790 — `report-interlock-coverage.sh` reads the gated job's
+    # step record when the job left no stage label (a lost runner).
+    permissions:
+      contents: read
+      actions: read
+    name: "tier 2 — ${{ needs.matrix.outputs.stage_label || (needs.matrix.result == 'skipped' && 'DID NOT START') || 'NO VERDICT: the job ended before it reported' }}"
     needs: [matrix]
     if: always()
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - name: Report whether the interlocked lane ran
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: ./scripts/ci/report-interlock-coverage.sh "tier 2 (1-wise matrix)" "${{ needs.matrix.result }}" "${{ vars.NROS_SELF_HOSTED_READY }}" "${{ needs.matrix.outputs.stage_label }}"

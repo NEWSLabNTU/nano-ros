@@ -144,6 +144,11 @@ LABELS = {
     # started, is the positive evidence this label needs.
     "no-verdict-preflight": "NO VERDICT: preflight failed before any cell",
     "no-verdict-none": "NO VERDICT: died before any stage",
+    # issue 1790. The job COMPLETED while one of its steps was still
+    # `in_progress`: the runner went away mid-step (stopped, crashed, lost its
+    # network). Nothing inside the job reported — its own `if: always()`
+    # reporter never ran — so the step is the only evidence of how far it got.
+    "no-verdict-runner-lost": "NO VERDICT: runner lost mid-job",
     "cancelled": "NO VERDICT: cancelled",
     "running": "still running",
     "did-not-start": "DID NOT START",
@@ -190,9 +195,20 @@ def classify(steps, job_conclusion=None, cells_ran=None, inner=None):
     means a non-cell inner step (the `check::default` preflight) reported
     FAILED before any cell started.
 
+    A step's `status` is the SIXTH (issue 1790), and only `gh run view --json
+    jobs` has it: a step still `in_progress` in a job that has a conclusion
+    means the runner was lost in that step. The workflow's `steps.<id>.outcome`
+    has no such state — when the runner is lost, the reporter never runs.
+
     Returns a Result whose `kind` is one of:
         verdict-pass  verdict-fail  no-verdict  cancelled  running
     """
+    if job_conclusion in ("failure", "cancelled"):
+        lost = next((s for s in steps if s.get("status") == "in_progress"), None)
+        if lost is not None:
+            return Result("no-verdict", stage_of(lost.get("name", "")),
+                          LABELS["no-verdict-runner-lost"],
+                          lost.get("name", ""), False)
     staged = [(s, stage_of(s.get("name", ""))) for s in steps]
     concl = {}
     for s, st in staged:
@@ -364,6 +380,40 @@ def gh_json(args):
         return None
 
 
+def classify_job(j):
+    """One job of `gh run view --json jobs`, classified — `--history` and
+    `--job-label` share it, so the run list and the coverage job's name can
+    never give two answers about one job."""
+    res = classify(j.get("steps", []), j.get("conclusion"))
+    # issue 1754 — a red cells step is only a verdict if a cell RAN;
+    # the runner's markers in the log say whether one did.
+    if res.kind == "verdict-fail":
+        res = classify(j.get("steps", []), j.get("conclusion"),
+                       inner=lane_step_markers.reached_cells(
+                           _job_log_failed(j)))
+    return res
+
+
+def job_label(job_name, run_id):
+    """`--job-label`: the label for one job of one run, from GitHub's own step
+    record, for a job whose in-job reporter never ran (issue 1790).
+
+    Prints the label, or nothing when the job cannot be read or says nothing
+    a stage model can add (an unstaged job that failed normally). The caller
+    keeps its own answer then. Always exit 0.
+    """
+    data = gh_json(["run", "view", str(run_id), "--repo", REPO, "--json", "jobs"])
+    jobs = [j for j in (data or {}).get("jobs", []) if j.get("name") == job_name]
+    if not jobs:
+        return 0
+    j = jobs[0]
+    staged = any(stage_of(s.get("name", "")) for s in j.get("steps", []))
+    res = classify_job(j)
+    if staged or res.label == LABELS["no-verdict-runner-lost"]:
+        print(res.label)
+    return 0
+
+
 def history(workflow, want, lane_job=None):
     runs = gh_json(["run", "list", "--repo", REPO, "--workflow", workflow,
                     "--limit", str(want), "--json",
@@ -389,14 +439,7 @@ def history(workflow, want, lane_job=None):
         if not lane_jobs:
             res = Result("no-verdict", None, LABELS["did-not-start"], "", False)
         else:
-            j = lane_jobs[0]
-            res = classify(j.get("steps", []), j.get("conclusion"))
-            # issue 1754 — a red cells step is only a verdict if a cell RAN;
-            # the runner's markers in the log say whether one did.
-            if res.kind == "verdict-fail":
-                res = classify(j.get("steps", []), j.get("conclusion"),
-                               inner=lane_step_markers.reached_cells(
-                                   _job_log_failed(j)))
+            res = classify_job(lane_jobs[0])
         if run.get("status") != "completed" and not res.failing_step:
             res = res._replace(kind="running", label=LABELS["running"])
         kinds[res.kind] += 1
@@ -583,6 +626,58 @@ LANES = (
 # Kept for `--history`'s default and for anything importing the old name.
 WORKFLOW = _workflow_path("run-matrix.yml")
 EXPECTED_MAP = LANES[0].expected_map
+
+
+
+def _lost_runner_reach(chk):
+    """issue 1790 — every place a lane's absence of a label is turned into
+    words must say which absence it is.
+
+    1. A `'DID NOT START'` in a workflow is guarded by `result == 'skipped'`:
+       a job that started and lost its runner leaves no label either.
+    2. Every `report-interlock-coverage.sh` caller names a job that EXISTS in
+       its workflow (the lookup is by name) and grants the token it needs.
+    """
+    try:
+        import yaml
+    except ModuleNotFoundError:
+        return ["[skip] lane-stage: PyYAML missing — the lost-runner reach "
+                "arm did NOT run"]
+    wf_dir = os.path.join(REPO_ROOT, ".github", "workflows")
+    if not os.path.isdir(wf_dir):
+        return [f"[skip] lane-stage: {wf_dir} absent — lost-runner reach arm "
+                "did NOT run"]
+    bare, callers = [], 0
+    for fn in sorted(os.listdir(wf_dir)):
+        if not fn.endswith((".yml", ".yaml")):
+            continue
+        path = os.path.join(wf_dir, fn)
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+        for n, line in enumerate(text.splitlines(), 1):
+            if line.lstrip().startswith("#"):
+                continue
+            for m in re.finditer(r"'DID NOT START'|:-DID NOT START", line):
+                if not re.search(r"result == 'skipped' && $", line[:m.start()]):
+                    bare.append(f"{fn}:{n}")
+        doc = yaml.safe_load(text)
+        jobs = doc.get("jobs", {}) or {}
+        names = {j.get("name", k) for k, j in jobs.items()}
+        for k, job in jobs.items():
+            for st in job.get("steps", []) or []:
+                run = str(st.get("run", ""))
+                for lane in re.findall(
+                        r'report-interlock-coverage\.sh\s*\\?\s*"([^"]+)"', run):
+                    callers += 1
+                    chk(f"{fn}: coverage lane `{lane}` names a job in its workflow",
+                        lane in names)
+                    chk(f"{fn}: job `{k}` can read the gated job's steps",
+                        (job.get("permissions") or {}).get("actions") == "read"
+                        and "GH_TOKEN" in (st.get("env") or {}))
+    chk("every `DID NOT START` fallback is guarded by `result == 'skipped'` "
+        f"(bare: {', '.join(bare) or 'none'})", not bare)
+    chk("the reach arm found the coverage callers it polices", callers >= 4)
+    return []
 
 
 def _workflow_consistency(chk):
@@ -928,6 +1023,37 @@ def selftest(verbose=False):
         classify(run_37685900447, "failure", inner=ran).kind == "verdict-fail")
     chk("no markers at all keeps the step-outcome answer (nobody said)",
         lane_step_markers.reached_cells("").cells_ran is None)
+    # 10. issue 1790 — THE RUNNER WAS LOST MID-JOB. Run 37893868358, job
+    #     `tier 1 (cells)` (113714712359), recorded from `gh run view --json
+    #     jobs` on 2026-10-11: `just build tier1` succeeded after 68 minutes,
+    #     `just ci tier1 run` was `in_progress` when the runner was stopped,
+    #     and the job completed `failure`. Its own reporter never ran, so the
+    #     coverage job's name read `DID NOT START`, its summary read `RAN and
+    #     FAILED`, and `--history` read `stopped in the build`.
+    lost = [{"name": n, "status": st, "conclusion": c} for n, st, c in (
+        ("Set up job", "completed", "success"),
+        ("Run actions/checkout@v4", "completed", "success"),
+        ("just setup tier1", "completed", "success"),
+        ("Verify this runner's labels are true", "completed", "success"),
+        ("The Zephyr workspace belongs to this checkout", "completed", "success"),
+        ("just build tier1", "completed", "success"),
+        ("just ci tier1 run", "in_progress", None),
+        ("Upload junit and logs", "pending", None),
+        ("Sweep orphans and disk", "pending", None),
+        ("Which stage did this lane reach?", "pending", None),
+        ("Post Run actions/checkout@v4", "pending", None))]
+    got = classify(lost, "failure")
+    chk("37893868358: a runner lost in the cells is NOT `stopped in the build`",
+        got.label == LABELS["no-verdict-runner-lost"] and got.stage == CELLS
+        and got.failing_step == "just ci tier1 run" and not got.reached_cells)
+    chk("...and the same steps with no `status` keep the old answer (nobody said)",
+        classify([{k: v for k, v in x.items() if k != "status"} for x in lost],
+                 "failure").label == LABELS["no-verdict-build"])
+    chk("a job still running is not a lost runner",
+        classify(lost, None).label != LABELS["no-verdict-runner-lost"])
+    for line in _lost_runner_reach(chk):
+        print(line, file=sys.stderr)
+
     for line in _runner_marker_contract(chk):
         print(line, file=sys.stderr)
     _ci_just_cell_steps(chk)
@@ -960,6 +1086,9 @@ def main():
     ap.add_argument("--job", default=None,
                     help="restrict --history to one job name")
     ap.add_argument("--runs", type=int, default=8)
+    ap.add_argument("--job-label", action="store_true",
+                    help="print the label of job --lane in run --run (issue 1790)")
+    ap.add_argument("--run", default=None)
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args()
 
@@ -973,6 +1102,10 @@ def main():
         return report(args.lane, os.environ.get("NROS_LANE_STEPS", "[]"))
     if args.history:
         return history(args.workflow, args.runs, args.job)
+    if args.job_label:
+        if not args.run:
+            ap.error("--job-label needs --run <id>")
+        return job_label(args.lane, args.run)
     ap.print_help()
     return 0
 
