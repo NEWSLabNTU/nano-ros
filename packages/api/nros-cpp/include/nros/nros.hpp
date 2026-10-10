@@ -335,8 +335,15 @@ constexpr bool argv_has_ros_args(int argc, char const* const* argv, int i = 0) {
 /// The failure is still HANDLEABLE: the underlying out-ref `rclcpp::Node` verbs
 /// return `rclcpp::Result` into caller-owned storage, and the message names them.
 [[noreturn]] inline void abort_failed_create(const char* verb, const char* name, int32_t code) {
-    NROS_ERROR("rclcpp::Node::%s(\"%s\") failed with rclcpp::ErrorCode %d. %s", verb, name,
-               static_cast<int>(code), NROS_RCLCPP_ABORT_FAILED_CREATE);
+    // issue 1303 — two records through `nros_log`, each short enough for its
+    // format buffer: the call (the name bounded here), then the fixed text,
+    // whose length `say_refused` checks at compile time. As one `NROS_ERROR`
+    // record it was over 1180 bytes, which a real sink cannot carry: the body
+    // is dropped and only an ellipsis is printed, so the process aborted
+    // without saying why.
+    NROS_LOG_ERROR(log_handle(nullptr), "rclcpp::Node::%s(\"%.64s\") failed: rclcpp::ErrorCode %d",
+                   verb, name != nullptr ? name : "", static_cast<int>(code));
+    NROS_RCLCPP_SAY_REFUSED(NROS_RCLCPP_ABORT_FAILED_CREATE);
     ::std::abort();
 }
 

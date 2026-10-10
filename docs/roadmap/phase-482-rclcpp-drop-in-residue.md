@@ -296,7 +296,7 @@ Rust `#[deprecated]` items, and the two unused C macros. One changelog entry
 - Correct the status lines that drifted: RFC-0089 and RFC-0096 were promoted to
   Stable when this phase opened; their D4/D5 text stands as decided above.
 
-**Status 2026-10-07: done, except for three maintainer decisions.**
+**Status 2026-10-10: done.** The three maintainer decisions were taken: 0784 by phase-483, 1303 and 1335 on 2026-10-10.
 
 | Issue | Outcome |
 | --- | --- |
@@ -305,8 +305,8 @@ Rust `#[deprecated]` items, and the two unused C macros. One changelog entry
 | 1302 | Resolved. The refusal names the `clock` argument, and its five rows agree. |
 | 0783 | Resolved. `TransportError` got a `Display`, and the `NodeError` row is corrected. |
 | 0784 | Progress. The six plumbing exports are `#[doc(hidden)]`. Deleting zero-consumer types, choosing the facade's lead `Node` name and exporting `StandaloneNodeError` are maintainer decisions. |
-| 1335 | Re-scoped. The C++ half is done; what remains is the nros-c entity storage shape, a maintainer decision. |
-| 1303 | Open. It needs a maintainer decision on the link model of `failed_create_aborts.cpp` before the runtime refusals can be routed through `nros_log` and proven to reach a freestanding sink. |
+| 1335 | Re-scoped. The C++ half is done. The nros-c half was decided on 2026-10-10 (C follows the C++ rule) and moved to [phase-487](phase-487-c-api-dispatch-entities-are-arena-handles.md). |
+| 1303 | Resolved 2026-10-10. The route was already fixed by issue 1576; the messages were too long for `nros_log`'s buffer. Each refusal is now two bounded records, and the test program keeps its self-contained link through a stderr stand-in for `nros_log` that also enforces the length. |
 
 The RFC-0089 and RFC-0096 status lines were checked and both read "Stable".
 
