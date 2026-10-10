@@ -1898,3 +1898,17 @@ Tracked by [phase-375](../roadmap/phase-375-board-tier-policy-and-onboarding-cos
 W6–W9; the FVP migration is [phase-215](../roadmap/archived/phase-215-board-crate-as-importable-unit.md)
 215.K. The package-shape half lands inside
 [phase-420](../roadmap/archived/phase-420-package-identity-and-provider-format.md) W3.
+
+### Amendment (2026-10-10) — every framework id is a typed field, never a `names` entry
+
+Issue 1519 moved Zephyr's board string out of `names` into `[board.zephyr]
+west_board`. Issue 1652 finishes the rule for the two ecosystems that had no
+typed home: NuttX's board-plus-config (`[board.nuttx] board_config =
+"qemu-armv7a-nsh"`) and PlatformIO's board id (`[board.platformio] board =
+"esp32dev"`). The rule is the same for all three: a framework id RESOLVES
+(`BoardDescriptor::answers_to`, so a `[deploy.*].board` may carry it, issue
+0606) and is REFUSED on an `[image.*] board` (`framework_board` /
+`refuse_framework_board`, mirrored by `check-deploy-board-resolves`). `names`
+holds nano-ros's names only, and `package.xml`'s board announcements follow it.
+`west build -b` reads `zephyr_board()` alone, so a non-Zephyr id can never
+reach it.

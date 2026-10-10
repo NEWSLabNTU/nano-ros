@@ -477,6 +477,12 @@ pub struct BoardDescriptor {
     /// that wanted it.
     #[serde(default)]
     pub zephyr: Option<BoardZephyr>,
+    /// `[board.nuttx]` — NuttX's own id for this board (issue 1652).
+    #[serde(default)]
+    pub nuttx: Option<BoardNuttx>,
+    /// `[board.platformio]` — PlatformIO's own id for this board (issue 1652).
+    #[serde(default)]
+    pub platformio: Option<BoardPlatformio>,
     /// `[board.provisioning]` — what `nros setup board` must fetch first.
     ///
     /// RFC-0064 R5 D3. Only meaningful for a board a downstream consumer
@@ -549,6 +555,32 @@ pub struct BoardZephyr {
     /// here would be a second spelling of a fact Zephyr owns.
     #[serde(default)]
     pub runner: Option<String>,
+}
+
+/// `[board.nuttx]` — the NuttX ecosystem's own name for this board.
+///
+/// Issue 1652, on issue 1519's precedent: a framework's board string sat in
+/// `names` beside nano-ros's names, where nothing could tell an alias from a
+/// framework id, so an `[image.*] board` could author it. Here it is a typed
+/// fact. It still RESOLVES (a `[deploy.*].board` carries the downstream id,
+/// issue 0606) and is still refused on an image
+/// ([`crate::orchestration::image::refuse_framework_board`]).
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct BoardNuttx {
+    /// The NuttX board-plus-config string a downstream deploy names
+    /// (`qemu-armv7a-nsh` — board PLUS config, so distinct from the board id).
+    pub board_config: String,
+}
+
+/// `[board.platformio]` — the PlatformIO ecosystem's own name for this board.
+///
+/// Issue 1652; same shape and rules as [`BoardNuttx`].
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct BoardPlatformio {
+    /// The PlatformIO `board = …` id (`esp32dev`).
+    pub board: String,
 }
 
 /// `[board.provisioning]` — what a downstream consumer's Zephyr tree needs.
@@ -709,6 +741,8 @@ impl BoardDescriptor {
     pub fn answers_to(&self, key: &str) -> bool {
         self.names.iter().any(|n| n == key)
             || self.zephyr.as_ref().is_some_and(|z| z.west_board == key)
+            || self.nuttx.as_ref().is_some_and(|n| n.board_config == key)
+            || self.platformio.as_ref().is_some_and(|p| p.board == key)
     }
 
     /// The framework's OWN id for this board, when the descriptor states one:
@@ -720,6 +754,17 @@ impl BoardDescriptor {
     /// legitimately carries the downstream ecosystem's id (issue 0606).
     #[must_use]
     pub fn framework_board(&self) -> Option<&str> {
+        self.zephyr_board()
+            .or_else(|| self.nuttx.as_ref().map(|n| n.board_config.as_str()))
+            .or_else(|| self.platformio.as_ref().map(|p| p.board.as_str()))
+    }
+
+    /// The ZEPHYR board string only — what `west build -b` may receive. Kept
+    /// apart from [`Self::framework_board`], which since issue 1652 also
+    /// answers NuttX's and PlatformIO's ids, so a non-Zephyr id can never
+    /// reach `-b`.
+    #[must_use]
+    pub fn zephyr_board(&self) -> Option<&str> {
         self.west_board
             .as_deref()
             .or_else(|| self.zephyr.as_ref().map(|z| z.west_board.as_str()))
@@ -743,7 +788,7 @@ impl BoardDescriptor {
     /// authored it to `board = "zephyr"` — measured, `-b` unchanged for each.
     #[must_use]
     pub fn west_build_board(&self, authored: &str) -> String {
-        self.framework_board()
+        self.zephyr_board()
             .map_or_else(|| authored.to_string(), str::to_string)
     }
 
@@ -2035,6 +2080,8 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             cmake: None,
             source: None,
             zephyr: None,
+            nuttx: None,
+            platformio: None,
             provisioning: None,
         };
         let rendered = descriptor.cargo_config_rendered(Path::new("/ws")).unwrap();
@@ -2283,6 +2330,8 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             cmake: None,
             source: None,
             zephyr: None,
+            nuttx: None,
+            platformio: None,
             provisioning: None,
         });
         let cat = BoardCatalog::from_descriptors(boards);

@@ -65,7 +65,8 @@ def framework_id(entry):
     """The framework's own id for a `[[board]]` entry, or None.
 
     Mirrors `BoardDescriptor::framework_board`: the board-agnostic
-    `west_board`, else `[board.zephyr] west_board`. (A `[[board]]` entry keeps
+    `west_board`, else `[board.zephyr] west_board`, else `[board.nuttx]
+    board_config`, else `[board.platformio] board` (issue 1652). (A `[[board]]` entry keeps
     its sub-tables under itself — `[board.zephyr]` parses as `entry["zephyr"]`.)
     """
     if entry.get("west_board"):
@@ -73,6 +74,13 @@ def framework_id(entry):
     zephyr = entry.get("zephyr")
     if isinstance(zephyr, dict) and zephyr.get("west_board"):
         return zephyr["west_board"]
+    # Issue 1652 — the two ecosystems that had no typed field.
+    nuttx = entry.get("nuttx")
+    if isinstance(nuttx, dict) and nuttx.get("board_config"):
+        return nuttx["board_config"]
+    platformio = entry.get("platformio")
+    if isinstance(platformio, dict) and platformio.get("board"):
+        return platformio["board"]
     return None
 
 
@@ -109,6 +117,11 @@ def descriptors():
             answers = names + [alias]
             if isinstance(zephyr, dict) and zephyr.get("west_board"):
                 answers.append(zephyr["west_board"])
+            # Issue 1652 — NuttX's and PlatformIO's ids answer too (`answers_to`).
+            for table, key in (("nuttx", "board_config"), ("platformio", "board")):
+                sub = entry.get(table)
+                if isinstance(sub, dict) and sub.get(key):
+                    answers.append(sub[key])
             for name in answers:
                 out.setdefault(name, set()).add(alias)
             if fw:

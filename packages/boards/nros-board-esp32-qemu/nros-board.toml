@@ -5,8 +5,9 @@
 # token `qemu-esp32-baremetal` -> `esp32-c3-baremetal` with the index key it
 # duplicated; `esp32-c3` stays beside it as the CHIP name, which is a
 # different claim and is not retiring).
-# phase-351 / issue 0606 — `esp32dev` is the PlatformIO board id (`framework = "espidf"` deploys).
-names = ["esp32-qemu", "esp32dev", "esp32", "esp32c3", "esp32-c3", "esp32-c3-baremetal"]
+# `esp32dev` is PlatformIO's board id (`framework = "espidf"` deploys, issue
+# 0606): a framework id, so it lives in `[board.platformio]` below (issue 1652).
+names = ["esp32-qemu", "esp32", "esp32c3", "esp32-c3", "esp32-c3-baremetal"]
 platform = "esp32"
 toolchain = "nightly"
 local_aliases = ["platform-esp32-qemu"]
@@ -51,6 +52,11 @@ crate_root_deps = [
 closure_extra = "\n                .clock_us(nros_board_esp32_qemu::nros_platform_esp32_qemu::clock::clock_us)"
 
 # RFC-0042 D2 / phase-241 wave C — declared capabilities (SSoT).
+# Issue 1652 — PlatformIO's own id for this board. A `[deploy.*].board` may
+# name it (it RESOLVES here, issue 0606); an `[image.*] board` may not.
+[board.platformio]
+board = "esp32dev"
+
 [board.capabilities]
 heap = true
 atomics = true
