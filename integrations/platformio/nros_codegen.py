@@ -23,15 +23,17 @@ def _bringup_name():
     return os.environ.get("NROS_BRINGUP_NAME", "")
 
 def _nros_bin():
-    # Phase 218: in-tree CLI at `packages/cli/target/release/nros` is the
-    # canonical path. `~/.nros/bin/nros` remains as a transitional fallback.
-    nano_ros_root = os.environ.get("NANO_ROS_ROOT")
+    # The `nros` CLI, in the order every other front door uses (RFC-0103 D6):
+    # `$NROS_CLI`, then PATH, then the checkout named by `$NROS_REPO_DIR` (the
+    # one env name for the root), then the store front `$NROS_HOME/bin/nros`.
+    nano_ros_root = os.environ.get("NROS_REPO_DIR")
     in_tree = (os.path.join(nano_ros_root, "packages", "cli", "target",
                             "release", "nros") if nano_ros_root else None)
-    return (os.environ.get("NROS_BIN")
+    store = os.environ.get("NROS_HOME") or os.path.expanduser("~/.nros")
+    return (os.environ.get("NROS_CLI")
             or shutil.which("nros")
             or (in_tree if in_tree and os.path.isfile(in_tree) else None)
-            or os.path.expanduser("~/.nros/bin/nros"))
+            or os.path.join(store, "bin", "nros"))
 
 def _run_codegen():
     bringup = _bringup_name()

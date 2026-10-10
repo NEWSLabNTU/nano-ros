@@ -89,7 +89,6 @@ fi
 # this tree with that checkout's codegen (issues 0363, 1280).
 export PATH="$PROJECT_ROOT/packages/cli/target/release:$PATH"
 export nano_ros_ROOT="$PROJECT_ROOT"
-export NANO_ROS_ROOT="$PROJECT_ROOT"
 export NROS_WORKSPACE="$PROJECT_ROOT"
 export NROS_REPO_DIR="$PROJECT_ROOT"
 

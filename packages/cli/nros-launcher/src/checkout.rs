@@ -10,8 +10,10 @@
 
 use std::path::{Path, PathBuf};
 
-/// The file whose presence marks a nano-ros source tree.
-pub const MONOREPO_MARKER: &str = "packages/core/nros-core/Cargo.toml";
+/// The file whose presence marks a nano-ros source tree — the ONE marker,
+/// `nros_build_paths::CHECKOUT_MARKER` (RFC-0103 D6), re-exported under the
+/// name this crate's callers use.
+pub const MONOREPO_MARKER: &str = nros_build_paths::CHECKOUT_MARKER;
 
 /// Walk up from `start` to find the nano-ros source-tree root — the directory
 /// containing [`MONOREPO_MARKER`]. Returns `None` when `start` is not inside

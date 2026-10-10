@@ -70,7 +70,8 @@ function(_nros_find_root start out_var)
     set(_dir "${start}")
     set(_max_walk 16)            # bounded — never walk past `/`
     while(_max_walk GREATER 0)
-        if(EXISTS "${_dir}/nros-sdk-index.toml")
+        # The ONE root marker (RFC-0103 D6) — `nros_build_paths::CHECKOUT_MARKER`.
+        if(EXISTS "${_dir}/packages/core/nros-core/Cargo.toml")
             set(${out_var} "${_dir}" PARENT_SCOPE)
             return()
         endif()
@@ -85,15 +86,24 @@ function(_nros_find_root start out_var)
 endfunction()
 
 # ---------------------------------------------------------------------------
-# Resolve the nano-ros root from (in priority order):
+# Resolve the nano-ros root from (in priority order — RFC-0103 D3/D6, the
+# order `nros`'s `nano_ros_root::resolve` uses):
 #   1. explicit `<NANO_ROS_ROOT>` arg (workspace-root call),
-#   2. `-DNANO_ROS_ROOT=…` cache var,
-#   3. `NANO_ROS_ROOT` env var,
-#   4. auto-walk from <start_dir> for `nros-sdk-index.toml`.
-# Writes resolved path to <out_var> (PARENT_SCOPE) or errors via
-# FATAL_ERROR with a hint when nothing resolves.
+#   2. `-DNANO_ROS_ROOT=…` cache var (an explicit argument too),
+#   3. the checkout that ENCLOSES <start_dir> — before the environment,
+#      because an inherited value names whichever checkout last ran
+#      `activate.sh`, not the one being built (issue 1280),
+#   4. `$NROS_REPO_DIR`, the one environment name for the root.
+# `$NANO_ROS_ROOT` in the ENVIRONMENT is retired (it was a second env name for
+# the same fact) and refused. Writes the resolved path to <out_var>
+# (PARENT_SCOPE) or errors via FATAL_ERROR with a hint when nothing resolves.
 # ---------------------------------------------------------------------------
 function(_nros_resolve_root explicit start_dir out_var)
+    if(DEFINED ENV{NANO_ROS_ROOT})
+        message(FATAL_ERROR
+            "nano-ros: the ENVIRONMENT variable NANO_ROS_ROOT is retired — set "
+            "NROS_REPO_DIR instead, or pass -DNANO_ROS_ROOT=<path> (RFC-0103 D6).")
+    endif()
     if(explicit AND NOT explicit STREQUAL "")
         set(${out_var} "${explicit}" PARENT_SCOPE)
         return()
@@ -102,20 +112,20 @@ function(_nros_resolve_root explicit start_dir out_var)
         set(${out_var} "${NANO_ROS_ROOT}" PARENT_SCOPE)
         return()
     endif()
-    if(DEFINED ENV{NANO_ROS_ROOT} AND NOT "$ENV{NANO_ROS_ROOT}" STREQUAL "")
-        set(${out_var} "$ENV{NANO_ROS_ROOT}" PARENT_SCOPE)
-        return()
-    endif()
     _nros_find_root("${start_dir}" _walked)
     if(NOT _walked STREQUAL "_NROS_ROOT-NOTFOUND")
         set(${out_var} "${_walked}" PARENT_SCOPE)
         return()
     endif()
+    if(DEFINED ENV{NROS_REPO_DIR} AND NOT "$ENV{NROS_REPO_DIR}" STREQUAL "")
+        set(${out_var} "$ENV{NROS_REPO_DIR}" PARENT_SCOPE)
+        return()
+    endif()
     message(FATAL_ERROR
         "nano-ros: cannot locate nano-ros root from '${start_dir}'.\n"
-        "  Pass NANO_ROS_ROOT to `nano_ros_workspace()` or set the\n"
-        "  -DNANO_ROS_ROOT=<path> cache var, or run from inside a tree\n"
-        "  that contains `nros-sdk-index.toml`.")
+        "  Pass NANO_ROS_ROOT to `nano_ros_workspace()`, set the\n"
+        "  -DNANO_ROS_ROOT=<path> cache var or $NROS_REPO_DIR, or run from\n"
+        "  inside a nano-ros checkout.")
 endfunction()
 
 # ---------------------------------------------------------------------------

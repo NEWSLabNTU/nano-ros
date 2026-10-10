@@ -468,18 +468,15 @@ fn explain(args: ExplainArgs) -> Result<()> {
 /// Returns the ROOT, not a platforms directory: the platform path now has more
 /// than one entry and the caller assembles it via `default_search_path`.
 fn find_repo_root() -> Result<PathBuf> {
-    let mut dir = std::env::current_dir().wrap_err("resolve cwd")?;
-    loop {
-        if dir.join("nros-sdk-index.toml").exists() {
-            return Ok(dir);
-        }
-        if !dir.pop() {
-            return Err(eyre!(
-                "not inside a nano-ros checkout (no nros-sdk-index.toml sentinel) — \
-                 pass --platforms-dir or set NROS_PLATFORMS_DIR"
-            ));
-        }
-    }
+    // The one root walk (RFC-0103 D6), not a private copy with its own marker.
+    let cwd = std::env::current_dir().wrap_err("resolve cwd")?;
+    nros_launcher::checkout::find_monorepo_root(&cwd).ok_or_else(|| {
+        eyre!(
+            "not inside a nano-ros checkout (no {} above the cwd) — \
+             pass --platforms-dir or set NROS_PLATFORMS_DIR",
+            nros_launcher::checkout::MONOREPO_MARKER
+        )
+    })
 }
 
 // Phase 256 W9 — the legacy `config.toml` reader (`--config <path>` on `show`/`check`)

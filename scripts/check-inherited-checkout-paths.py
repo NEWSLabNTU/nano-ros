@@ -181,16 +181,27 @@ def marker_of(path: Path, pattern: str) -> str | None:
     return m.group(1) if m else None
 
 
+CMAKE_WALK = ROOT / "cmake/NanoRosWorkspace.cmake"
+
+# Every site that SPELLS the one root marker (RFC-0103 D6). The launcher no
+# longer spells it — it aliases the Rust constant, which is checked below as an
+# alias, so it cannot drift by construction.
 MARKER_SITES = [
     (SHELL_LIB, r'NROS_CHECKOUT_MARKER="([^"]+)"'),
     (RUST_LIB, r'CHECKOUT_MARKER: &str = "([^"]+)"'),
-    (LAUNCHER, r'MONOREPO_MARKER: &str = "([^"]+)"'),
+    (CMAKE_WALK, r'if\(EXISTS "\$\{_dir\}/([^"]+)"\)'),
 ]
+LAUNCHER_ALIAS = r"MONOREPO_MARKER: &str = nros_build_paths::CHECKOUT_MARKER;"
 
 
 def marker_violations() -> list[str]:
     seen = {}
     problems = []
+    if LAUNCHER_ALIAS not in LAUNCHER.read_text():
+        problems.append(
+            f"{LAUNCHER.relative_to(ROOT)}: MONOREPO_MARKER must alias "
+            "nros_build_paths::CHECKOUT_MARKER, not spell its own"
+        )
     for path, pattern in MARKER_SITES:
         value = marker_of(path, pattern)
         if value is None:
