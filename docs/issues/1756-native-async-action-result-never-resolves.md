@@ -57,3 +57,10 @@ the depth grant is losing the `get_result` reply. If it still fails, the async
 
 The test passes on two consecutive self-hosted tier-1 runs, and the cause above
 is named.
+
+## 2026-10-11 — recurred on the next tier-1 run, and is now its only real red
+
+`run-matrix` run **37945434581** (job 114142673988, head `2b8153621`): the
+same test failed after 40.354 s, the lane's ONLY real failure of 2767 (181
+others were `[SKIPPED:lane]` rewrites). With issues 1684/1685 resolved on that
+run, this is what stands between the tier-1 job and a green verdict.
