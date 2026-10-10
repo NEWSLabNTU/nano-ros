@@ -1,11 +1,11 @@
 # Phase 487 — the C API's dispatched entities are arena handles; its publisher keeps its storage
 
-**Status (2026-10-11). In progress: W0 to W4 done.** Answers issue
-[1335](../issues/1335-entity-storage-split-timer-arena-vs-caller-buffer.md)'s
+**Status (2026-10-11). Done; archived.** W1 is #1920; W2 to W5 follow it in one pull request. Issue 1335 is resolved. Answers issue
+[1335](../../issues/archived/1335-entity-storage-split-timer-arena-vs-caller-buffer.md)'s
 last open question (its question 3: does the C API follow the C++ entity
 model?). Implements the C half of
-[RFC-0096](../design/0096-cpp-freestanding-core-and-porting-layer.md) D9 and
-follows [phase-456](archived/phase-456-cpp-api-is-a-handle-over-the-rust-arena.md), which did the C++ half.
+[RFC-0096](../../design/0096-cpp-freestanding-core-and-porting-layer.md) D9 and
+follows [phase-456](phase-456-cpp-api-is-a-handle-over-the-rust-arena.md), which did the C++ half.
 
 ## Decision taken when this phase was opened (2026-10-10, maintainer)
 
@@ -268,6 +268,47 @@ in the tree), `action.h`, the book's C API page, three comments.
   fragment. This is an ABI change for every C user.
 - Close issue 1335.
 
+**Status: done 2026-10-11.** Each work item swept its own consumers in the
+same commit, so W5 is the image measurement, the runtime cells and the
+closure.
+
+- **Consumers.** The item's sweep, `git grep -nE "\.(callback|context|_opaque|period_ns)\b" -- '*.c' '*.h'`,
+  widened with `response_callback` and `last_call_time_ns`, hits only the
+  zenoh-pico shim's own tables and a C++ header comment; no C entity consumer
+  is left. Every example, test program and C test TU that used a changed name
+  was ported in its W's commit.
+- **FFI mirrors, headers, ledger, book, changelog.** `check-ffi-struct-mirrors`
+  and the cbindgen staleness check pass (both on the fast line); the ledger,
+  book pages and four `changelog.d` fragments moved with each W.
+- **The image, measured.** `just mem-report --baseline` on
+  `examples/mps2-an385-freertos/c/listener`, the FreeRTOS C listener: the
+  BEFORE image is the one this checkout built on 2026-10-10 from an earlier
+  `main`, kept before the rebuild; the AFTER image is this phase's. Section
+  RAM −1 696 bytes, and the only symbol that moved is `app` (the `.bss` struct
+  holding the support, node, subscription and executor): 92 952 → 91 264,
+  −1 688. The subscription's `sizeof` fell 1 668 on Cortex-M3; the other
+  20 bytes are from commits between the two `main`s, not from this phase.
+  **No arena or heap symbol grew** (`ucHeap`, `g_sessions` and every zenoh
+  shim pool read `=`), which is W0's finding measured on a real image: the
+  executor arena already held the subscriber, so nothing moved INTO it. On the
+  native listener `app` is 92 920 bytes, the 744-byte subscription beside a
+  90 928-byte executor.
+- **Runtime cells**, on fixtures rebuilt from this tree:
+  `native_example_reqresp` C service and action cells on zenoh and Cyclone;
+  `test_c_action_communication`; the C Cyclone client-callback test (the W2
+  setter path); `action_raw_goal_e2e` (the one polled C action);
+  `test_c_safety_listener_validates_crc` (the one polled C subscription); and
+  the FreeRTOS QEMU `test_rtos_{pubsub,service,action}_e2e` C cells.
+  All pass.
+- Issue 1335 is resolved and archived.
+
+Two things found and left as they are, because neither is this phase's:
+`c_heap_compile_check`'s three `#[ignore]`d cases fail on a missing
+`nros/nros_config_generated.h` include path before reaching any code this
+phase touched, and the C workspace's FreeRTOS build trees were configured
+with an older pinned ARM toolchain (`13.2-nros1`) than the store now resolves
+(`13.2-nros5`), which `NanoRosCrossToolchain.cmake` refuses by design.
+
 ## Acceptance
 
 - Every C entity the executor dispatches is an arena handle in its struct, and
@@ -276,3 +317,9 @@ in the tree), `action.h`, the book's C API page, three comments.
   arena growth and the struct shrinkage both stated.
 - `just ci gate`, `just check c`, `just check cpp` and the C fixtures of tier 1
   are green, and the C cells of tier 2 run.
+
+**Met 2026-10-11.** Every dispatched C entity is an arena handle in its
+struct and the publisher keeps its storage (W1–W4). The image measurement
+above states the net change with the arena side included. `just ci gate`,
+`just check c` and `just check cpp` pass; the tier-1 C fixtures
+(native zenoh and Cyclone) and the FreeRTOS tier-2 C cells run green.

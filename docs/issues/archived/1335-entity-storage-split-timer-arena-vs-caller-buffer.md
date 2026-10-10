@@ -3,11 +3,13 @@ id: 1335
 title: "The C++ API uses the POLL path where it means the DISPATCH path, and
   carries entity storage for both — an 888-byte `Subscription<M>` beside an
   arena entry that already holds the subscriber"
-status: open
+status: resolved
 type: question
 area: [api, api-c, core, docs]
 related: [phase-482, phase-487, rfc-0022, rfc-0054, rfc-0096, phase-409, phase-412, phase-442, phase-456,
   issue-1496]
+resolved: 2026-10-11
+resolved_in: phase-487
 ---
 
 ## The question
@@ -271,5 +273,22 @@ C follows the C++ rule. Every C entity the executor dispatches becomes an arena
 handle in a struct the caller still declares (the `rcl` idiom), and the C
 publisher keeps its own storage, as the C++ `Publisher` does. The rejected
 alternatives and the polling-type question are recorded in
-[phase-487](../roadmap/phase-487-c-api-dispatch-entities-are-arena-handles.md),
+[phase-487](../../roadmap/archived/phase-487-c-api-dispatch-entities-are-arena-handles.md),
 which carries the work. This issue closes when phase-487 lands.
+
+## Resolved (2026-10-11, phase-487)
+
+The C half landed. Every C entity the executor dispatches is an arena handle
+in a struct the caller declares, the C publisher keeps its storage, and each
+polled form is a separate `nros_polling_<kind>_t` type, as C++'s poll classes
+are. Measured `sizeof` on x86_64 / Cortex-M3: subscription 2 536 / 2 368 →
+744 / 700, service 2 368 / 2 312 → 736 / 700, client 2 376 / 2 312 → 744 /
+704, timer 72 / 48 → 64 / 40, action server 7 592 / 7 312 → 824 / 752, action
+client 6 296 / 6 136 → 736 / 692; `nros_executor_t` unchanged, because the
+arena already held each dispatched entity. Two things the work found that the
+question did not ask: the C service client's arena entry dispatched through a
+trampoline that read the `nros_client_t` (this issue's back-reference, and
+issue 1631's use-after-free), now the entry holds the callback; and the C
+action server kept its callback record twice. Actions keep one record in the
+struct, as phase-456 W3b-ii decided for C++. Detail: RFC-0096 D9 "The C half"
+and [phase-487](../../roadmap/archived/phase-487-c-api-dispatch-entities-are-arena-handles.md).
