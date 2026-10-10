@@ -4,7 +4,7 @@
 [RFC-0089](../../design/0089-ros2-api-adoption-and-the-compile-or-conform-rule.md)
 §"Settled: `nros::` is phased out entirely" decided for C++ and stated as the
 end state for Rust ("`rclrs::` for Rust"). Follows
-[phase-482](../phase-482-rclcpp-drop-in-residue.md), which made a ported ROS 2
+[phase-482](phase-482-rclcpp-drop-in-residue.md), which made a ported ROS 2
 C++ node build and run with no compat layer but left the `nros::` vocabulary
 standing beside `rclcpp::`.
 
