@@ -2268,3 +2268,21 @@ Not established: which fixture family took the space. The log is cut before
 the end, and the job records no `du`. The next step for this lane is the
 `du` report that step 1 gave the `gate` arm, written before the step and
 after a failure (`if: always()`).
+
+## The scheduled `gate` arm, ninth and tenth nights — unchanged (2026-10-09, 2026-10-10)
+
+Both nights failed in the same step, in the same way. Both runs used
+GitHub-hosted runners. Each job log is `BlobNotFound`, and each annotation is
+the runner's own `No space left on device` on its diagnostic log.
+
+| Night | Run / job | Runner | `just check build` | Annotation names |
+| --- | --- | --- | --- | --- |
+| 10-09 | 37873540084 / 113636819215 | `GitHub Actions 1000092080` | 02:56:23 → 03:46:03 (50 min) | `_diag/Worker_20261009-021345-utc.log` |
+| 10-10 | 38016065885 / 114106509903 | `GitHub Actions 1000092978` | 02:58:18 → 03:42:43 (44 min) | `_diag/Worker_20261010-021203-utc.log` |
+
+On 10-10 the steps after it (`just check no-std`, `just test-unit`, `just
+test-lane-contracts`, `just check workspace-all`) never completed. So the
+scheduled arm still produces no verdict for the unit tests or the embedded
+clippy either. This is the eighth night's conclusion holding with no new
+information: one `just check build` writes more than a hosted runner's disk
+holds. Nothing has yet landed that bounds what the compile tier writes.
