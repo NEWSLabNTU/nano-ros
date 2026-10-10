@@ -59,51 +59,30 @@ fn main() {
 
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
 
-    // Skip the heavy lift unless the build is actually targeting a
-    // FreeRTOS overlay. A `cargo check` of just this crate (no
-    // downstream consumer + no env vars) panics today — gate the
-    // env-var reads on the presence of `FREERTOS_DIR` so the bare
-    // `cargo check -p nros-board-freertos` keeps working.
-    if env::var("FREERTOS_DIR").is_err() {
-        // Document via a build warning so an overlay author that
-        // forgot to set the env var sees a clear hint instead of a
-        // confusing missing-symbol error at link time.
-        println!(
-            "cargo:warning=nros-board-freertos: FREERTOS_DIR not set; \
-             skipping kernel / lwIP / glue compile. Set it in your \
-             overlay's `.cargo/config.toml [env]` block."
-        );
-        return;
-    }
+    // phase-484 W2c (RFC-0103 D4) — the kernel tree is LOCATED, not read from
+    // an export: `$FREERTOS_DIR` (re-rooted) when set, else the store, else
+    // this checkout's submodule. A tree found nowhere skips the C compile with
+    // the ladder's own report, so a bare `cargo check -p nros-board-freertos`
+    // keeps working; an image that links the archive still fails, with this
+    // warning three lines up.
+    let freertos_dir = match nros_build_paths::locate::try_source("freertos-kernel") {
+        Ok(d) => d,
+        Err(why) => {
+            println!(
+                "cargo:warning=nros-board-freertos: skipping kernel / lwIP / glue \
+                 compile — {}",
+                why.replace('\n', "; ")
+            );
+            println!("cargo:rerun-if-changed=build.rs");
+            return;
+        }
+    };
 
-    // issue 1309 — A VARIABLE THAT RESOLVES IS NOT A TREE THAT EXISTS.
-    // `activate.sh` exports `FREERTOS_DIR` unconditionally, so the guard above
-    // passes in every checkout — including one where `third-party/freertos/
-    // kernel` is an EMPTY DIRECTORY because the submodule was never
-    // initialised. That is the normal state of the CI gate job, which
-    // initialises exactly `packages/cli/third-party/play_launch`, and it only
-    // became reachable when phase-451 W4 promoted this crate out of `exclude`
-    // and into the workspace, where `check::workspace-embedded` compiles it.
-    //
-    // The failure it produced named neither the submodule nor the remedy:
-    //     sccache: error: while hashing the input file '.../kernel/tasks.c'
-    //
-    // Skipping is right rather than a hard error: a `cargo check` of this
-    // crate's RUST is exactly what 1309 promoted it for, and it needs no
-    // kernel. An image that actually links the archive still fails, in the same
-    // build log, with this warning three lines up.
-    //
-    // `tasks.c` rather than the directory: an uninitialised submodule IS a
-    // directory, so `freertos_dir.exists()` answers yes and measures nothing.
-    // `nros-board-threadx` carries the same shape untouched — a set-variable
-    // guard and an `assert!` that panics — and has not failed only because no
-    // lane compiles it. That is 1309 again, one crate over.
-    // issue 1527 — the SAME resolution the compile below uses. This probe read
-    // the variable raw while the compile went through the re-rooting resolver,
-    // so in a linked worktree the guard measured one checkout's `tasks.c` and
-    // the build compiled another's. A probe blind to an input the build has is
-    // issue 0196's shape, and here it is the probe's whole job.
-    let freertos_probe = env_path("FREERTOS_DIR").join("tasks.c");
+    // issue 1309 — A TREE THAT RESOLVES IS NOT A TREE THAT IS POPULATED: an
+    // uninitialised submodule is an empty dir (the ladder already rejects
+    // that), and a partial one has no `tasks.c`. `tasks.c` rather than the
+    // directory, so the probe measures the file the compile needs.
+    let freertos_probe = freertos_dir.join("tasks.c");
     if !freertos_probe.exists() {
         println!(
             "cargo:warning=nros-board-freertos: FREERTOS_DIR is set but its \
@@ -119,7 +98,7 @@ fn main() {
         // Fresh, the cached warning replayed, and the link failed until a
         // `touch build.rs`. Watch the kernel root (an uninitialised submodule
         // is an empty dir; populating it moves its mtime) and this script.
-        nros_build_paths::watch_skip_cause(&env_path("FREERTOS_DIR"));
+        nros_build_paths::watch_skip_cause(&freertos_dir);
         println!("cargo:rerun-if-changed=build.rs");
         return;
     }
@@ -146,9 +125,8 @@ fn main() {
 
     // Canonical, so the `rerun-if-changed` lines these feed at the bottom read
     // the same from every consumer (issue 0491).
-    let freertos_dir = env_path("FREERTOS_DIR");
     let freertos_port = env::var("FREERTOS_PORT").expect("checked above");
-    let lwip_dir = env_path("LWIP_DIR");
+    let lwip_dir = nros_build_paths::locate::source("lwip");
     let freertos_config_dir = env_path("FREERTOS_CONFIG_DIR");
     let port_dir = freertos_dir.join("portable").join(&freertos_port);
 

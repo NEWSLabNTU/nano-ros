@@ -185,7 +185,12 @@ descriptor is the only home, and `force` is what makes it so.
   `<build>/nros/locations.cmake`, adds the index and each answer's freshness
   input to `CMAKE_CONFIGURE_DEPENDS`. Locations are normal variables, never
   `CACHE`, so unsetting an override takes effect on the next configure.
-- **Our tooling never EXPORTS a location.** `just/sdk-env.just`'s 21 path
+- **Our tooling never EXPORTS a location into the user's shell.** (Scope
+  stated precisely by phase-484 W2c: the defect is a value in an environment
+  something ELSE inherits — a sourced shell, every child of it, every linked
+  worktree started from it. A `just` recipe that computes `FREERTOS_DIR` for its
+  own processes from its own checkout, per run, is inherited by nothing else
+  and is not that defect.) `just/sdk-env.just`'s 21 path
   exports and `activate.sh`'s path exports are deleted; `activate.sh` puts
   `nros` on PATH and nothing else. An export is inherited by every child
   process and every linked worktree, which is issue 1280's root cause —
