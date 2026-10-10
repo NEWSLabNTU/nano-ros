@@ -2459,13 +2459,24 @@ where
     Ok(cell)
 }
 
+/// Issue 1535 — the install seam's return code for a refused executor handle:
+/// `-1` for null (unchanged), `-4` for an nros-cpp context that was not
+/// unwrapped with `nros_cpp_executor_inner`.
+fn install_handle_refusal_code(refusal: crate::executor_handle::HandleRefusal) -> i32 {
+    match refusal {
+        crate::executor_handle::HandleRefusal::Null => -1,
+        crate::executor_handle::HandleRefusal::CppContext => -4,
+    }
+}
+
 /// Phase 257 (W0-B) — C-ABI typed component install. Recovers the shared `Executor`
-/// from the foreign typed entry's handle (`global_handle()` / `Node::executor_handle()`
-/// = the `_opaque` `*mut Executor<'static>`; cf. nros-c `get_executor_from_ptr`) and registers
+/// from the handle a typed entry passes — a bare `*mut Executor<'static>`. A C/C++
+/// entry's `rclcpp::global_handle()` is NOT one: it is an nros-cpp context, and
+/// the entry unwraps it with `nros_cpp_executor_inner` first (issue 1535). Registers
 /// `C` on it via `register_node_borrowed` (private helper). The component's `ComponentCell`
 /// is PLACED in caller/leaked storage (W5-endgame step 2b) and dropped in place by the
 /// executor on `Executor::drop`. Returns `0` on success, `-1` on a null handle or a
-/// registration error.
+/// registration error, `-4` on an nros-cpp context that was not unwrapped.
 ///
 /// This backs the `__nros_component_<pkg>_install(node, executor, self)` symbol
 /// `nros::node!()` emits — the uniform cross-language install seam (phase-257 D6).
@@ -2543,11 +2554,14 @@ pub unsafe fn install_node_typed_with_launch<C: ExecutableNode + 'static>(
 where
     C::State: 'static,
 {
-    if executor.is_null() {
-        return -1;
-    }
-    // SAFETY: per the fn contract, `executor` is the live `*mut Executor<'static>` handle.
-    let exec: &mut Executor<'static> = unsafe { &mut *(executor as *mut Executor<'static>) };
+    // Issue 1535 — the ONE handle check: null, or an nros-cpp context a C/C++
+    // entry forgot to unwrap, is refused before anything is written through it.
+    let exec: &mut Executor<'static> = match unsafe {
+        crate::executor_handle::executor_from_handle(executor, "install_node_typed")
+    } {
+        Ok(exec) => exec,
+        Err(refusal) => return install_handle_refusal_code(refusal),
+    };
     // phase-391 W5.3b — the alloc convenience: leak exactly-sized slot storage
     // per call, the same relationship `from_executor` has to `new_in`. The
     // macro-emitted entries call the `_in` twin with their per-class static
@@ -2584,11 +2598,12 @@ where
 ///
 /// Returns `-3` when the class's instance cap is exhausted — raise
 /// `NROS_RUNTIME_MAX_CLASS_INSTANCES`. (Distinct from `-2`, the executor
-/// callback-table Full.)
+/// callback-table Full.) Returns `-4` for an nros-cpp context handle that the
+/// C/C++ caller did not unwrap with `nros_cpp_executor_inner` (issue 1535).
 ///
 /// # Safety
-/// `executor` must be the live `*mut Executor<'static>` handle a typed entry
-/// passes, valid for the call.
+/// `executor` must be null, an nros-cpp context (refused), or the live
+/// `*mut Executor<'static>` handle a typed entry passes, valid for the call.
 pub unsafe fn install_node_typed_with_launch_in<
     C: ExecutableNode + 'static,
     const N: usize,
@@ -2608,14 +2623,17 @@ pub unsafe fn install_node_typed_with_launch_in<
 where
     C::State: 'static,
 {
-    if executor.is_null() {
-        return -1;
-    }
+    // Issue 1535 — checked BEFORE the class's storage is taken, so a refused
+    // handle leaves the slot for a corrected retry.
+    let exec: &mut Executor<'static> = match unsafe {
+        crate::executor_handle::executor_from_handle(executor, "install_node_typed_in")
+    } {
+        Ok(exec) => exec,
+        Err(refusal) => return install_handle_refusal_code(refusal),
+    };
     let Some((slot_mu, cell_mu)) = store.take() else {
         return -3;
     };
-    // SAFETY: per the fn contract, `executor` is the live handle.
-    let exec: &mut Executor<'static> = unsafe { &mut *(executor as *mut Executor<'static>) };
     match register_node_borrowed::<C, _, _, _, _, _>(
         exec,
         params,

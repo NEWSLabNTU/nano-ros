@@ -1857,3 +1857,60 @@ fn typed_emit_tiers_slice_monitor_rows_per_tier() {
             .contains("nros_cpp_install_monitors")
     );
 }
+
+/// Issue 1535 — a Rust node's install takes a BARE `Executor`, and the C++
+/// entry's handle is an nros-cpp CONTEXT whose executor sits behind a tag
+/// word. The entry must unwrap it with `nros_cpp_executor_inner` on BOTH
+/// setup paths; handing the context over directly SEGVed the mixed Zephyr
+/// image on its first publish.
+///
+/// Asserted on the call's ARGUMENT, not on the presence of the helper: the
+/// defect was the handle the install received.
+#[test]
+fn rust_node_install_receives_the_unwrapped_executor() {
+    let mut plan = fixture_plan_typed(&[(
+        "rust_pkg",
+        "rust_one",
+        "rust_one",
+        "rust_pkg::Rust",
+        "rust_pkg/Rust.hpp",
+    )]);
+    plan.nodes[0].lang = Some(Lang::Rust);
+    let src = emit_typed(&plan).expect("rust-node cpp emit ok");
+    assert!(
+        src.contains("void* __rexec = ::nros_cpp_executor_inner(::rclcpp::global_handle());"),
+        "the global handle must be unwrapped before a Rust install;\n{src}"
+    );
+    assert!(
+        src.contains("__nros_component_rust_pkg_install(nullptr, __rexec, nullptr);"),
+        "the Rust install must receive the unwrapped executor;\n{src}"
+    );
+    assert!(
+        !src.contains("_install(nullptr, __exec,")
+            && !src.contains("_install(nullptr, executor,")
+            && !src.contains("_install(nullptr, ::rclcpp::global_handle(),"),
+        "a Rust install handed the nros-cpp context itself (issue 1535);\n{src}"
+    );
+}
+
+/// Issue 1535 — the tiered path hands each tier's own `executor`, which is a
+/// context too.
+#[test]
+fn rust_node_install_on_a_tier_receives_the_unwrapped_executor() {
+    let mut plan = fixture_plan_with_tiers();
+    plan.nodes[1].lang = Some(Lang::Rust);
+    let src = emit_typed(&plan).expect("tiered rust-node cpp emit ok");
+    assert!(
+        src.contains("static int32_t __nros_entry_setup_tier_1(void* executor)"),
+        "expected the tiered path;\n{src}"
+    );
+    assert!(
+        src.contains("void* __rexec = ::nros_cpp_executor_inner(executor);"),
+        "a tier's handle must be unwrapped before a Rust install;\n{src}"
+    );
+    assert!(
+        src.contains("__nros_component_telem_pkg_install(nullptr, __rexec, nullptr);")
+            && !src.contains("_install(nullptr, executor,"),
+        "the Rust install must receive the unwrapped tier executor;\n{src}"
+    );
+}

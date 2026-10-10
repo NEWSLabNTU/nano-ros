@@ -183,6 +183,11 @@ pub mod node_metadata;
 pub mod node_runtime;
 pub mod runtime_storage;
 
+/// Issue 1535 — what a `void*` executor handle crossing the language seam is,
+/// and the one check every seam in this crate makes before treating it as an
+/// `Executor` (a C/C++ entry's handle is an nros-cpp context, not one).
+pub mod executor_handle;
+
 /// Phase 212.L.5 — top-level init API; phase-427 W9 — on every target.
 ///
 /// Re-exported flat at the crate root: `nros::Context` (`alloc`),

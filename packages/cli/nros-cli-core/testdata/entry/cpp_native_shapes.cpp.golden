@@ -72,15 +72,15 @@ static int32_t __nros_entry_setup() {
         if (crc != 0) return crc;
     }
     {
-        void* __exec = ::rclcpp::global_handle();
-        if (__exec == nullptr) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
-        int32_t crc = __nros_component_rust_pkg_install(nullptr, __exec, nullptr);
+        void* __rexec = ::nros_cpp_executor_inner(::rclcpp::global_handle());
+        if (__rexec == nullptr) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
+        int32_t crc = __nros_component_rust_pkg_install(nullptr, __rexec, nullptr);
         if (crc != 0) return crc;
     }
     {
-        void* __exec = ::rclcpp::global_handle();
-        if (__exec == nullptr) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
-        int32_t crc = __nros_component_rust_pkg_install(nullptr, __exec, nullptr);
+        void* __rexec = ::nros_cpp_executor_inner(::rclcpp::global_handle());
+        if (__rexec == nullptr) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
+        int32_t crc = __nros_component_rust_pkg_install(nullptr, __rexec, nullptr);
         if (crc != 0) return crc;
     }
     {

@@ -33,16 +33,19 @@
   every render, `nullptr` where nothing was declared, so the generated text
   SAYS which of the two cases a node is in.
 -#}
+{#-
+  Issue 1535 — a Rust install wants the bare `Executor`, and this entry's
+  handle (`executor` / `global_handle()`) is an nros-cpp CONTEXT with the
+  executor behind a tag word. `nros_cpp_executor_inner` is the one unwrap;
+  handing the context over directly cast it to an `Executor` eight bytes off,
+  which SEGVed the mixed Zephyr image on its first publish. The install now
+  refuses a context outright (`-4`), so a missed unwrap fails loudly.
+#}
 {%- if n.kind == "rust" %}
-{%- if tiered %}
-        int32_t crc = __nros_component_{{ n.pkg | pkg_ident }}_install(nullptr, executor, nullptr);
+        void* __rexec = ::nros_cpp_executor_inner({% if tiered %}executor{% else %}::rclcpp::global_handle(){% endif %});
+        if (__rexec == nullptr) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
+        int32_t crc = __nros_component_{{ n.pkg | pkg_ident }}_install(nullptr, __rexec, nullptr);
         if (crc != 0) return crc;
-{%- else %}
-        void* __exec = ::rclcpp::global_handle();
-        if (__exec == nullptr) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
-        int32_t crc = __nros_component_{{ n.pkg | pkg_ident }}_install(nullptr, __exec, nullptr);
-        if (crc != 0) return crc;
-{%- endif %}
 {%- elif n.kind == "rclcpp" %}
         ::rclcpp::NodeHandle __h({% if tiered %}executor{% else %}::rclcpp::global_handle(){% endif %}, {% if n.launch_name %}"{{ n.launch_name | c_str }}"{% else %}nullptr{% endif %}, {% if n.launch_namespace %}"{{ n.launch_namespace | c_str }}"{% else %}nullptr{% endif %});
         if (!__h.valid()) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);

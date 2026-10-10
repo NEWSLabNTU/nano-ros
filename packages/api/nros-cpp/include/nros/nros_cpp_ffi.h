@@ -962,6 +962,25 @@ extern "C" {
 extern const uint32_t NROS_CPP_TRANSPORT_OPS_ABI_VERSION_V1;
 
 /**
+ * Issue 1535 — the `Executor` inside an nros-cpp executor handle, for a seam
+ * that takes a BARE `*mut Executor<'static>`: a Rust component's
+ * `__nros_component_<pkg>_install(node, executor, self)`.
+ *
+ * `rclcpp::global_handle()` and every tier's `executor` are `CppContext`s, and
+ * the executor sits behind the tag word, so passing the handle itself hands
+ * the Rust side a pointer eight bytes short of the executor. The generated
+ * C++ entry calls this before every Rust install; the install refuses an
+ * unwrapped context (`-4`).
+ *
+ * Returns NULL for a null handle or a buffer that is not a live context.
+ *
+ * # Safety
+ * `handle` must be null or point to a readable 8-byte-aligned allocation (see
+ * [`cpp_ctx_checked`]).
+ */
+void *nros_cpp_executor_inner(void *handle);
+
+/**
  * Initialize an nros executor session.
  *
  * Opens a middleware connection and writes the executor context directly

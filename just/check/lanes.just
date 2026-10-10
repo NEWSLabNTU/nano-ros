@@ -737,6 +737,26 @@ c: c-fmt
         -include packages/api/nros-cpp/include/nros/nros_cpp_ffi.h \
         -include packages/api/nros-c/include/nros/component.h \
         -x c /dev/null
+    echo "  - a C component's publisher buffer cannot be short (issue 1535)"
+    # Issue 1535 — the mixed Zephyr image SEGVed on its first publish because
+    # NROS_C_PUBLISHER_STORAGE_SIZE was the literal 560 while
+    # nros_cpp_publisher_create writes NROS_PUBLISHER_SIZE + sizeof(void*).
+    # component.h now ASSERTS the size against the per-build header; this is
+    # the assert's negative control: the pre-fix literal, against THIS build's
+    # header, must fail to compile. 8 rather than 560 so the probe does not
+    # depend on how large this host's publisher happens to be.
+    if cc -fsyntax-only -DNROS_C_PUBLISHER_STORAGE_SIZE=8 \
+        -I"$gen/nros-c-generated" \
+        -I"$gen/nros-cpp-generated" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/api/nros-cpp/include \
+        -include packages/api/nros-cpp/include/nros/nros_cpp_ffi.h \
+        -include packages/api/nros-c/include/nros/component.h \
+        -x c /dev/null 2>/dev/null; then \
+        echo "ERROR: component.h accepted an 8-byte NROS_C_PUBLISHER_STORAGE_SIZE." >&2; \
+        echo "       Its size assert is gone, so a short C publisher buffer is again" >&2; \
+        echo "       overrun silently by nros_cpp_publisher_create (issue 1535)." >&2; exit 1; \
+    fi
     echo "  - rmw ABI layout static-asserts (issue #238/#239)"
     # The RMW C headers and their Rust `#[repr(C)]` mirrors are hand-kept
     # in lockstep. `abi_layout_check.c` is a `_Static_assert`-only TU that
