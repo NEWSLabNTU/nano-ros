@@ -299,9 +299,34 @@ ladder runs; `px4-rs` is even reached from the root workspace's member list.
 Moving either needs a generated `[patch]` row pointing at the store, which is
 the RFC-0098 generated-config road, not this one.
 
-Remaining in W3: gc liveness
-from installed toolchains' indexes (today gc consults the pin files above the
-cwd, as for tools); project `[sources]`.
+**W3d — gc liveness and project `[sources]`.** `nros store gc` adds the SDK
+index of every INSTALLED toolchain (`toolchains/<v>/` and `sdk/nros/<v>/`,
+`share/nano-ros/nros-sdk-index.toml`) to its pin set
+(`store::installed_toolchain_indexes`), so a materialised tree — whose
+`+sha8` key no project pin file names — is live while an installed toolchain
+needs it, wherever gc runs from; an index this CLI cannot parse (a newer
+toolchain) falls back to the every-string reader, over-protecting.
+`system.toml` gains `[sources] <row> = "<path>"` (project-relative), rung 3 of
+the ladder (`Rung::Project`, `locate::project_source`): build scripts reach
+it through the generated config's existing `NROS_WORKSPACE_ROOT` (the file is
+watched by content), `nros locate` through `--project`, `NROS_WORKSPACE_ROOT`
+or the nearest `system.toml` above the working directory, and `nros ws
+board-facts` refuses a key that names no `[source.*]` row. The image-build
+carrier the RFC names for it (`resolved.toml [locations]`) is W6.
+
+**Acceptance, measured 2026-10-10 (W3c-4 tip).** A fresh `git worktree` with
+NONE of the 20 submodules initialised: `just setup-cli` builds, `nros locate`
+answers the store for all eight store-first rows, and the root workspace
+loads (`cargo metadata`). The launch resolver needs
+`packages/cli/third-party/play_launch` — the CLI's own code, not a
+`[source.*]` row — so that one submodule was initialised (non-recursive); with
+it, `workspace-rust-native`, `workspace-c-native` and
+`workspace-rust-native-xrce` build with every vendored C tree from the store.
+Not covered by that run: the zephyr west lane (checked only by a cmake probe of
+`nros_locate_source`), and the checkout-only rows above, which still need their
+submodules where a build uses them.
+
+Remaining in W3: project `[tools]` (the tool twin of `[sources]`).
 
 **Acceptance:** an agent worktree with NO submodule initialized builds tier 1
 from the store; editing a zenoh-pico submodule commit makes the next build use

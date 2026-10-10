@@ -48,6 +48,28 @@ pub struct Args {
     /// Path to the SDK index.
     #[arg(long, default_value = "nros-sdk-index.toml")]
     pub index: PathBuf,
+
+    /// The project whose `system.toml` `[sources]` is rung 3 (RFC-0103 D3).
+    /// Default: `$NROS_WORKSPACE_ROOT`, else the nearest ancestor of the
+    /// working directory that holds a `system.toml`.
+    #[arg(long)]
+    pub project: Option<PathBuf>,
+}
+
+/// The project directory for rung 3: explicit, else the one the generated
+/// build config names (`NROS_WORKSPACE_ROOT`), else the nearest ancestor of
+/// the working directory holding a `system.toml`.
+fn project_dir(explicit: Option<&std::path::Path>) -> Option<PathBuf> {
+    if let Some(p) = explicit {
+        return Some(p.to_path_buf());
+    }
+    if let Some(p) = std::env::var_os("NROS_WORKSPACE_ROOT").filter(|v| !v.is_empty()) {
+        return Some(PathBuf::from(p));
+    }
+    let cwd = std::env::current_dir().ok()?;
+    cwd.ancestors()
+        .find(|d| d.join("system.toml").is_file())
+        .map(std::path::Path::to_path_buf)
 }
 
 fn row_of(name: &str, s: &SourcePackage) -> Row {
@@ -79,6 +101,7 @@ pub(crate) fn locate_source(
             .and_then(std::env::var_os)
             .filter(|v| !v.is_empty())
             .map(PathBuf::from),
+        project: project_dir(None).and_then(|d| locate::project_source(&d, name)),
         checkout_edit: locate::checkout_edit(&row, checkout.as_deref()),
         checkout,
         store: crate::orchestration::store::root(),
@@ -108,6 +131,7 @@ pub fn run(args: Args) -> Result<()> {
         .is_file()
         .then_some(checkout);
     let store = crate::orchestration::store::root();
+    let project = project_dir(args.project.as_deref());
 
     let mut names = args.names.clone();
     if args.all {
@@ -162,6 +186,9 @@ pub fn run(args: Args) -> Result<()> {
                         .and_then(std::env::var_os)
                         .filter(|v| !v.is_empty())
                         .map(PathBuf::from),
+                    project: project
+                        .as_deref()
+                        .and_then(|d| locate::project_source(d, name)),
                     checkout_edit: locate::checkout_edit(&row, checkout.as_deref()),
                     checkout: checkout.clone(),
                     store: store.clone(),

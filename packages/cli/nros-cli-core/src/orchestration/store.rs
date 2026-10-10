@@ -695,6 +695,48 @@ pub fn collect_pins(explicit: &[PathBuf], search_from: Option<&Path>) -> Result<
     paths.iter().map(|p| load_pin_file(p)).collect()
 }
 
+/// RFC-0103 D5 — the SDK indexes of every nano-ros INSTALLED in this store
+/// (`toolchains/<v>/` and the older `sdk/nros/<v>/`, each with its SDK root
+/// under `share/nano-ros/`). A store entry — a materialised source tree above
+/// all, which no project pin file names by its `+sha8` key — is LIVE while an
+/// installed toolchain's index names it, whatever directory gc runs from.
+///
+/// Enumerated on purpose: "what is installed" is a scan by nature, unlike
+/// resolving one pinned path (issue 0625's rule is about the latter).
+pub fn installed_toolchain_indexes(root: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    for parent in [toolchains_dir(root), root.join("sdk").join("nros")] {
+        for dir in children(&parent) {
+            let index = dir
+                .join(super::nano_ros_root::SHIPPED_SUBDIR)
+                .join("nros-sdk-index.toml");
+            if index.is_file() {
+                out.push(index);
+            }
+        }
+    }
+    out
+}
+
+/// [`load_pin_file`] for an index this binary did not ship with: an installed
+/// toolchain NEWER than this CLI may carry fields its schema refuses. That is
+/// not "no pins" — it falls back to the generic reader, whose every string
+/// value protects (over-protecting, which is the safe direction for a delete).
+pub fn load_installed_index(path: &Path) -> Result<PinSource> {
+    load_pin_file(path).or_else(|_| {
+        let raw = std::fs::read_to_string(path)
+            .wrap_err_with(|| format!("read pin file {}", path.display()))?;
+        let value: toml::Value =
+            toml::from_str(&raw).wrap_err_with(|| format!("parse pin file {}", path.display()))?;
+        let mut strings = Vec::new();
+        collect_strings(&value, &mut strings);
+        Ok(PinSource {
+            path: path.to_path_buf(),
+            rules: strings.into_iter().map(PinRule::AnyVersion).collect(),
+        })
+    })
+}
+
 /// Which of `sources` name this entry. Empty means no pin protects it —
 /// which is NOT the same as "safe to delete"; see [`plan_gc`].
 pub fn pins_naming<'a>(entry: &Entry, sources: &'a [PinSource]) -> Vec<&'a PinSource> {
@@ -909,6 +951,60 @@ mod tests {
         let src = load_pin_file(&path).unwrap();
         assert!(src.rules.contains(&PinRule::AnyVersion("0.6.2".into())));
         assert!(src.rules.contains(&PinRule::AnyVersion("stable".into())));
+    }
+
+    /// RFC-0103 D5 — a materialised source tree is named by no project pin
+    /// file (its `+sha8` key lives in an index), so an installed toolchain's
+    /// index is what keeps it; a tree no index names is collectable.
+    #[test]
+    fn a_source_tree_an_installed_toolchain_names_is_kept_and_an_orphan_is_not() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let prov = |p: &Path| {
+            super::super::sdk_store::Provenance {
+                kind: super::super::sdk_store::ProvenanceKind::Archive,
+                version: "1.0".into(),
+                sha256: None,
+                post_install: None,
+                git_ref: Some("0123456789abcdef0123456789abcdef01234567".into()),
+                git: Some("https://e/zp.git".into()),
+            }
+            .write(p)
+            .unwrap();
+        };
+        prov(&root.join("sources/zp/1.0+01234567"));
+        prov(&root.join("sources/zp/1.0+fedcba98"));
+        let shipped = root
+            .join("toolchains/0.9.0")
+            .join(super::super::nano_ros_root::SHIPPED_SUBDIR);
+        std::fs::create_dir_all(&shipped).unwrap();
+        std::fs::write(
+            shipped.join("nros-sdk-index.toml"),
+            "[source.zp]\nversion = \"1.0\"\nlocation = \"store\"\ndest = \"third-party/zp\"\n\
+             submodule = \"third-party/zp\"\ngit = \"https://e/zp.git\"\n\
+             ref = \"0123456789abcdef0123456789abcdef01234567\"\n",
+        )
+        .unwrap();
+
+        let indexes = installed_toolchain_indexes(root);
+        assert_eq!(indexes, vec![shipped.join("nros-sdk-index.toml")]);
+        let sources: Vec<PinSource> = indexes
+            .iter()
+            .map(|p| load_installed_index(p).unwrap())
+            .collect();
+        let plan = plan_gc(
+            scan(root)
+                .into_iter()
+                .filter(|e| e.category == Category::Sources)
+                .collect(),
+            Duration::ZERO,
+            &sources,
+            SystemTime::now() + Duration::from_secs(3600),
+        );
+        let ids = |v: &[Entry]| v.iter().map(Entry::display_id).collect::<Vec<_>>();
+        let kept: Vec<Entry> = plan.keep.iter().map(|(e, _)| e.clone()).collect();
+        assert_eq!(ids(&kept), vec!["sources/zp/1.0+01234567"]);
+        assert_eq!(ids(&plan.remove), vec!["sources/zp/1.0+fedcba98"]);
     }
 
     // ---- where a lock belongs (issue 1262) ---------------------------------

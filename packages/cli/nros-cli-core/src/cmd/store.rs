@@ -217,7 +217,13 @@ pub fn gc(args: GcArgs, pin_search_from: Option<&std::path::Path>) -> Result<()>
     let sources = if args.ignore_pins {
         Vec::new()
     } else {
-        store::collect_pins(&args.pin_file, pin_search_from)?
+        let mut s = store::collect_pins(&args.pin_file, pin_search_from)?;
+        // RFC-0103 D5 — what an INSTALLED toolchain needs is live wherever gc
+        // runs from (a source tree's `+sha8` key is named by no project file).
+        for index in store::installed_toolchain_indexes(&root) {
+            s.push(store::load_installed_index(&index)?);
+        }
+        s
     };
     if sources.is_empty() {
         if args.ignore_pins {

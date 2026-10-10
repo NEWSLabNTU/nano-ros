@@ -445,6 +445,25 @@ fn pick_deploys(
         None => load_system_toml(ws)?,
     };
     let origin = path.display().to_string();
+    // RFC-0103 D3 rung 3 — a `[sources]` key names a `[source.*]` row, and a
+    // misspelt one would be ignored by every reader (the ladder asks by NAME),
+    // so it is refused here, on every configure, naming the rows that exist.
+    if !system.sources.is_empty() {
+        let index_path = nano_ros_root.join("nros-sdk-index.toml");
+        if let Ok(index) = crate::orchestration::sdk_index::SdkIndex::load(&index_path) {
+            for key in system.sources.keys() {
+                if !index.source.contains_key(key) {
+                    let known: Vec<&str> = index.source.keys().map(String::as_str).collect();
+                    return Err(eyre!(
+                        "{origin}: [sources] names `{key}`, which is no [source.*] row in {} \
+                         — known: {}",
+                        index_path.display(),
+                        known.join(", ")
+                    ));
+                }
+            }
+        }
+    }
     let site = system.board_config.clone();
     // Candidates come from `[image.*]` AND `[deploy.*]`, because either can
     // name the board and a migrated workspace has only the first. Reading

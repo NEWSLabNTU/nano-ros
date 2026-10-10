@@ -641,6 +641,10 @@ READ_CALLEES = {
     # phase-446 F3 -- nros-node's reader for the same DECLARED road: the
     # parameter services' shape, a string the entity inventory writes.
     "declared_fact",
+    # phase-484 W3d -- `nros_build_paths::env_path` reads a PATH-valued
+    # variable (re-rooted, issue 1280); the ladder's project rung reads
+    # `NROS_WORKSPACE_ROOT` through it.
+    "env_path",
     "env", "env_get", "env_bool", "env_usize", "env_usize_min",
     "env_usize_compat", "env_or_repo_path", "env_path_or", "flag", "knob",
     "knob_usize", "knob_bool", "req", "list", "var", "var_os",
