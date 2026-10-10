@@ -3,7 +3,7 @@
 **Status (2026-10-10). W0 LANDED (measured); W1-W7 not started.** Implements
 [RFC-0103](../design/0103-one-owner-per-fact.md). Tracks issues
 [1767](../issues/1767-resource-location-resolved-many-ways.md) and
-[1768](../issues/1768-build-wiring-census-misses-link-script-macro.md).
+[1768](../issues/archived/1768-build-wiring-census-misses-link-script-macro.md).
 
 **Not this phase:** phase-481 (in progress elsewhere) owns the Zephyr leaf
 `.conf` migration, the image Kconfig fragment renderer, per-image workspace
@@ -609,9 +609,40 @@ verb's answer is used as given.
 
 ### W7 -- leftovers and close
 
-- The three test-bin `config.toml` files move to `system.toml`.
-- `NANO_ROS_*` cmake variables converge on `NROS_*`.
-- Issue 1768 (census classifier + fail on UNCLASSIFIED).
+- The three test-bin `config.toml` files move to `system.toml`. (Deferred,
+  2026-10-11: the three `logging-smoke-*` bins are BARE images —
+  `run_bare(Config::from_toml(include_str!(..)))`, the RFC-0004
+  `[node]`/`[[transport]]` schema — and nothing reads a `system.toml` network
+  block for an image without `nros::main!`. Moving them needs that reader
+  first; until then each file is the one home of its bin's identity, so it is
+  not a second home.)
+- `NANO_ROS_*` cmake variables converge on `NROS_*` — **decided 2026-10-11
+  (user): a compat shim, old names kept as DEPRECATED ALIASES**, no hard
+  break. 55 names / ~1,100 sites, of which 11 are user-facing (documented or
+  passed as `-D`): `ROOT`, `PLATFORM`, `BOARD`, `RMW`, `FEATURES`,
+  `SAFETY_E2E`, `ROS_EDITION`, `GEN_CACHE_DIR`, `SKIP_BOOTSTRAP`,
+  `BUILD_CODEGEN` (and `NANO_ROS_DIR` / `nano_ros_ROOT`, which are CMake's own
+  `find_package` conventions and stay). One module,
+  `cmake/NanoRosDeprecatedNames.cmake`, holds the OLD → NEW table: called at
+  every entry point, it adopts an old name a user set (DEPRECATION message
+  naming the new one), refuses the two disagreeing, and nothing else in the
+  tree reads an old name (gate). Internal-only `NANO_ROS_*` (export/leaf/
+  provider/locator plumbing) are renamed outright. Two passes:
+  - **W7b-1** — the shim, the user-facing names with no `NROS_*` twin, and
+    every internal name.
+  - **W7b-2** — the three names that already have a twin with its own
+    precedence (`NANO_ROS_RMW`/`NROS_RMW`, `NANO_ROS_BOARD`/`NROS_BOARD`,
+    `NANO_ROS_ROOT`/`NROS_REPO_DIR`): reconcile which wins, then merge.
+- **Old-name retirement pass (W8, after the aliases have shipped in one
+  release).** Remove the shim's table entries (each old name then becomes a
+  configure ERROR naming its replacement, kept one more release before the
+  rows go entirely), drop the "deprecated alias" notes from the book, and
+  turn the gate from "only the shim reads an old name" into "no tracked file
+  names one". Same pass for the other aliases this phase keeps:
+  `ZENOH_LOCATOR` (runtime alias of `NROS_LOCATOR`), the `ZPICO_SMOLTCP_*`
+  knob aliases, the env-spelled `[image.<id>] env` knob rows W5 keeps until
+  phase-481 closes.
+- ~~Issue 1768 (census classifier + fail on UNCLASSIFIED).~~ Done (W7a): the `linker-script` role knows `link_script!`; gate `build-wiring-classified`.
 - `canonical-build-path.md`, the book's configuration and getting-started
   pages, CLAUDE.md pointers.
 - RFC-0103 → Stable; issue 1767 archived.
