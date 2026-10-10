@@ -847,7 +847,7 @@ pub mod store {
 /// Where a resource is — RFC-0103 D3/D4, phase-484 W1.
 ///
 /// ONE implementation of the location ladder. Build scripts call it directly;
-/// `nros locate` (cmake, `just`, shell) wraps it; the CLI builds the [`Row`]
+/// `nros locate` (cmake, `just`, shell) wraps it; the CLI builds the [`locate::Row`]
 /// from its full index model and hands it here rather than walking the ladder
 /// itself. Parsing the index has two readers (this crate's dependency-free
 /// [`locate::row_from_index`] and the CLI's serde model); walking it has one.
