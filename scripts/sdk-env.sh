@@ -63,8 +63,24 @@ _nros_sdk_env_get() { eval "printf '%s' \"\${$1-}\""; }
 # A list that must be kept in step by hand is the mirror-drift class CLAUDE.md
 # names; the fix is to stop having a second list.
 _nros_sdk_env_names() {
+    # phase-484 W2c (RFC-0103 D4) — a SOURCE TREE's variable is never exported
+    # into the user's shell: every resolver locates the tree itself (`nros
+    # locate`, `nros_build_paths::locate`, `nros_locate_var()`), and a value in
+    # the shell is exactly what a linked worktree inherits (issue 1280). The
+    # set is the index's `[source.*] env` names — DERIVED, never listed here.
+    # `just` recipes still get them from `just/sdk-env.just` for their own
+    # processes; `--print <VAR>` still answers.
+    local skip
+    skip="|$(sed -n 's/^env = "\([A-Za-z_][A-Za-z0-9_]*\)"$/\1/p' \
+        "${_nros_sdk_env_root}/nros-sdk-index.toml" | tr '\n' '|')"
     sed -n 's/^export \([A-Za-z_][A-Za-z0-9_]*\)[[:space:]]*:=.*/\1/p' \
-        "${_nros_sdk_env_root}/just/sdk-env.just"
+        "${_nros_sdk_env_root}/just/sdk-env.just" |
+        while IFS= read -r n; do
+            case "$skip" in
+                *"|$n|"*) ;;
+                *) printf '%s\n' "$n" ;;
+            esac
+        done
 }
 
 # One `just --evaluate` for ALL variables instead of one per name. The old

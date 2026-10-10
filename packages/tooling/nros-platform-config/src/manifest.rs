@@ -597,14 +597,25 @@ pub fn interpolate(input: &str, ctx: &InterpContext<'_>) -> Result<String, Inter
             // 1280). A raw read here resolved against whichever nano-ros tree
             // the parent shell had activated, which is the one thing
             // `{nuttx_include}` exists to take out of the author's hands.
-            let dir = nros_build_paths::env_path("NUTTX_DIR")
-                .ok_or_else(|| InterpError::MissingEnv("NUTTX_DIR".to_string()))?;
+            // phase-484 W2c — located through the one ladder (`$NUTTX_DIR`,
+            // re-rooted; the store; this checkout), so no export is needed.
+            let dir = nros_build_paths::locate::try_source("nuttx-kernel")
+                .map_err(InterpError::SourceNotLocated)?;
             // `nros_build_paths` directly, not the board crate's re-export:
             // `nuttx_export::include_root` is a one-line delegator to exactly
             // this, and its own comment says the shared SPELLING is the point.
             // Calling the shared one is what lets this module live in a leaf
             // crate (phase-400 W6).
             nros_build_paths::nuttx_include_root(&dir)
+                .display()
+                .to_string()
+        } else if let Some(name) = token.strip_prefix("source:") {
+            // phase-484 W2c (RFC-0103 D4/D5) — a vendored tree BY NAME, located
+            // through the one ladder: the row's `env` override (re-rooted), the
+            // store, this checkout. The descriptor names WHICH tree; where it is
+            // is never the descriptor's to say, and never needs an export.
+            nros_build_paths::locate::try_source(name)
+                .map_err(InterpError::SourceNotLocated)?
                 .display()
                 .to_string()
         } else if let Some(var) = token.strip_prefix("envpath:") {
@@ -654,6 +665,8 @@ pub enum InterpError {
     UnknownToken(String),
     UnterminatedToken(String),
     MissingEnv(String),
+    /// `{source:<name>}` found the tree nowhere; carries the ladder's refusal.
+    SourceNotLocated(String),
 }
 
 impl std::fmt::Display for InterpError {
@@ -662,6 +675,7 @@ impl std::fmt::Display for InterpError {
             Self::UnknownToken(t) => write!(f, "unknown interpolation token `{{{t}}}`"),
             Self::UnterminatedToken(s) => write!(f, "unterminated `{{` in `{s}`"),
             Self::MissingEnv(v) => write!(f, "env var `{v}` not set"),
+            Self::SourceNotLocated(r) => write!(f, "{r}"),
         }
     }
 }
@@ -1007,6 +1021,20 @@ mod env_token_tests {
                 ),
                 "{tok} should report MissingEnv"
             );
+        }
+    }
+
+    /// phase-484 W2c — `{source:<name>}` locates a tree through the one
+    /// ladder; a name the index does not carry is a refusal naming the row,
+    /// never an empty path joined onto something.
+    #[test]
+    fn a_source_token_for_an_unknown_row_is_refused_by_name() {
+        let here = Path::new(".");
+        match interpolate("{source:no-such-row}/include", &ctx_for(here)) {
+            Err(InterpError::SourceNotLocated(why)) => {
+                assert!(why.contains("[source.no-such-row]"), "{why}")
+            }
+            other => panic!("expected SourceNotLocated, got {other:?}"),
         }
     }
 }

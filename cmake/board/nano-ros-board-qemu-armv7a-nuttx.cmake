@@ -105,9 +105,9 @@ set(NUTTX_BOARD_TOOLCHAIN_FILE
 # leaves the `nros setup` preset's -D set (the cmake/board glue legitimately
 # knows the repo layout — CLAUDE.md). env / -D still override for an
 # out-of-tree NuttX export. Mirrors the threadx module + NUTTX_FFI_CRATE_DIR above.
-if(NOT DEFINED NUTTX_DIR AND DEFINED ENV{NUTTX_DIR})
-    set(NUTTX_DIR "$ENV{NUTTX_DIR}")
-endif()
+# phase-484 W2c — source trees come from `nros locate` (RFC-0103 D4).
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosLocate.cmake")
+nros_locate_var(NUTTX_DIR)
 if(NOT DEFINED NUTTX_DIR)
     set(NUTTX_DIR "${_NROS_BOARD_ROOT}/third-party/nuttx/nuttx"
         CACHE PATH "NuttX kernel export tree (pre-built)")

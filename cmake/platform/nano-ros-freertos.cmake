@@ -186,25 +186,46 @@ if(NANO_ROS_RMW STREQUAL "cyclonedds" AND NROS_FREERTOS_BOARD_HAS_LWIP
     set(WITH_FREERTOS ON CACHE BOOL "Cyclone ddsrt FreeRTOS port (Phase 186)" FORCE)
     set(WITH_LWIP ON CACHE BOOL "Cyclone lwIP transport (Phase 186)" FORCE)
     set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
-    # cmake/platform/ glue legitimately knows the repo layout (CLAUDE.md); fall
-    # back to the pinned third-party trees if the board overlay left them unset.
+    # phase-484 W2c — the trees through `nros locate` (RFC-0103 D4), the
+    # checkout's copy only when no CLI answers.
+    include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosLocate.cmake")
+    nros_locate_var(FREERTOS_DIR)
+    nros_locate_var(LWIP_DIR)
     if(NOT FREERTOS_DIR)
         set(FREERTOS_DIR "${CMAKE_CURRENT_LIST_DIR}/../../third-party/freertos/kernel")
     endif()
     if(NOT LWIP_DIR)
         set(LWIP_DIR "${CMAKE_CURRENT_LIST_DIR}/../../third-party/freertos/lwip")
     endif()
+    # phase-484 W2b — the BOARD's port, never a literal. This read
+    # `portable/GCC/ARM_CM3` for every FreeRTOS board, so the Cortex-R52
+    # s32z270 Cyclone image compiled ddsrt against the Cortex-M3
+    # `portmacro.h` — one board's answer for all, the class W2b removes.
+    if(NOT FREERTOS_PORT)
+        message(FATAL_ERROR
+            "nano-ros: the FreeRTOS Cyclone build needs FREERTOS_PORT — the board "
+            "module sets it (cmake/board/nano-ros-board-<board>.cmake).")
+    endif()
     set(_cyc_freertos_inc
         "-I${FREERTOS_CONFIG_DIR}"
         "-I${FREERTOS_CONFIG_DIR}/arch"
         "-I${FREERTOS_DIR}/include"
-        "-I${FREERTOS_DIR}/portable/GCC/ARM_CM3"
+        "-I${FREERTOS_DIR}/portable/${FREERTOS_PORT}"
         "-I${LWIP_DIR}/src/include"
         "-I${LWIP_DIR}/contrib/ports/freertos/include")
     string(JOIN " " _cyc_freertos_inc_str ${_cyc_freertos_inc})
-    set(CMAKE_C_FLAGS
-        "${CMAKE_C_FLAGS} ${_cyc_freertos_inc_str} -D__int64_t_defined=1"
-        CACHE STRING "" FORCE)
+    # phase-484 W2c — REPLACE what an earlier configure staged rather than
+    # append again. `CACHE … FORCE` on `${CMAKE_C_FLAGS} …` grew the flags by one
+    # copy per reconfigure, and kept a stale port include alive after the board
+    # changed (measured: ARM_CM3 and ARM_CRx_No_GIC both on the s32z270 line).
+    set(_cyc_staged "${_cyc_freertos_inc_str} -D__int64_t_defined=1")
+    set(_cyc_base "${CMAKE_C_FLAGS}")
+    if(DEFINED CACHE{_NROS_CYC_FREERTOS_STAGED})
+        string(REPLACE " ${_NROS_CYC_FREERTOS_STAGED}" "" _cyc_base "${_cyc_base}")
+    endif()
+    set(CMAKE_C_FLAGS "${_cyc_base} ${_cyc_staged}" CACHE STRING "" FORCE)
+    set(_NROS_CYC_FREERTOS_STAGED "${_cyc_staged}" CACHE INTERNAL
+        "what nano-ros-freertos.cmake last appended to CMAKE_C_FLAGS")
 endif()
 
 # ---------------------------------------------------------------------------

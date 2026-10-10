@@ -136,6 +136,9 @@ function(nros_nuttx_validate)
     cmake_parse_arguments(_NNV "" "" "REQUIRE" ${ARGN})
     nros_validate_vars(NUTTX_DIR ${_NNV_REQUIRE})
 
+    if(NOT DEFINED NUTTX_APPS_DIR AND COMMAND nros_locate_var)
+        nros_locate_var(NUTTX_APPS_DIR)  # phase-484 W2c — the one ladder
+    endif()
     if(NOT DEFINED NUTTX_APPS_DIR)
         if(DEFINED ENV{NUTTX_APPS_DIR})
             set(NUTTX_APPS_DIR "$ENV{NUTTX_APPS_DIR}")

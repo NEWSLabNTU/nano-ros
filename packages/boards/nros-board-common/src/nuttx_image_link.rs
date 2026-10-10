@@ -92,7 +92,7 @@ pub fn run_image_link(builtins_stub: &Path) {
     // function already takes on a host check, and the image link then fails
     // LOUDLY instead of succeeding against a kernel configured by another
     // tree's `.config` (issue 0511's memory-map class).
-    let Some(nuttx_dir) = nros_build_paths::env_path("NUTTX_DIR") else {
+    let Ok(nuttx_dir) = nros_build_paths::locate::try_source("nuttx-kernel") else {
         return;
     };
 

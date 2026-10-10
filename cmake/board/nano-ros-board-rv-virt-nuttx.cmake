@@ -56,9 +56,9 @@ set(NUTTX_BOARD_TOOLCHAIN_FILE
 # RFC-0048 (phase-287 W5) — default NUTTX_DIR from the in-tree submodule so it
 # leaves the `nros setup` preset's -D set. env / -D still override. Mirrors the
 # arm board module + NUTTX_FFI_CRATE_DIR above.
-if(NOT DEFINED NUTTX_DIR AND DEFINED ENV{NUTTX_DIR})
-    set(NUTTX_DIR "$ENV{NUTTX_DIR}")
-endif()
+# phase-484 W2c — source trees come from `nros locate` (RFC-0103 D4).
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosLocate.cmake")
+nros_locate_var(NUTTX_DIR)
 if(NOT DEFINED NUTTX_DIR)
     set(NUTTX_DIR "${_NROS_BOARD_ROOT}/third-party/nuttx/nuttx"
         CACHE PATH "NuttX kernel export tree (pre-built)")

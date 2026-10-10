@@ -101,24 +101,16 @@ set(_NROS_PORT_RISCV64_DIR
 set(_NROS_VIRTIO_DRIVER_DIR
     "${_NROS_BOARD_ROOT}/packages/drivers/net/virtio-net-netx")
 
-# Default vendored locations — overridable via -D/env.
+# Vendored trees — `-D` wins, else `nros locate` (its `$THREADX_DIR` /
+# `$NETX_DIR` rung is re-rooted; the store; this checkout). phase-484 W2c.
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosLocate.cmake")
+nros_locate_var(THREADX_DIR)
 if(NOT DEFINED THREADX_DIR)
-    if(DEFINED ENV{THREADX_DIR})
-        set(THREADX_DIR "$ENV{THREADX_DIR}"
-            CACHE PATH "ThreadX kernel source root (from env)")
-    else()
-        set(THREADX_DIR "${_NROS_BOARD_ROOT}/third-party/threadx/kernel"
-            CACHE PATH "ThreadX kernel source root")
-    endif()
+    set(THREADX_DIR "${_NROS_BOARD_ROOT}/third-party/threadx/kernel")  # no CLI yet: the checkout's copy
 endif()
+nros_locate_var(NETX_DIR)
 if(NOT DEFINED NETX_DIR)
-    if(DEFINED ENV{NETX_DIR})
-        set(NETX_DIR "$ENV{NETX_DIR}"
-            CACHE PATH "NetX Duo source root (from env)")
-    else()
-        set(NETX_DIR "${_NROS_BOARD_ROOT}/third-party/threadx/netxduo"
-            CACHE PATH "NetX Duo source root")
-    endif()
+    set(NETX_DIR "${_NROS_BOARD_ROOT}/third-party/threadx/netxduo")  # no CLI yet: the checkout's copy
 endif()
 # THREADX_CONFIG_DIR is board-specific (each board ships its own
 # tx_user.h / nx_user.h / link.lds). The .env file ships a single
