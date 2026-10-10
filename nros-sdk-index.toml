@@ -1430,6 +1430,10 @@ dist.linux-x86_64 = { url = "https://developer.arm.com/-/cdn-downloads/permalink
 # phase-477 — `--version` RUNS the model and prints `Fast Models [11.31.28 …]`
 # (measured on the installed 11.31.28), so a broken unpack or a missing
 # runtime library fails here instead of at the first `west build -t run`.
+# `libatomic.so.1` is a DT_NEEDED of `bin/libarmctmodel.so`,
+# `bin/libscxframework.so`, `bin/newt.so` and the trace plugins (readelf on
+# the installed 11.31.28) — `check-dist-runtime-deps` caught it undeclared.
+system = ["libatomic1"]
 smoke = [
     { run = "bin/FVP_BaseR_AEMv8R --version", expect = "Fast Models" },
 ]
@@ -2729,6 +2733,14 @@ dnf = ["openocd"]
 pacman = ["openocd"]
 brew = ["openocd"]
 check = { cmd = "openocd", version = { min = "0.12" } }
+
+[prereq.libatomic1]
+role = "infra"
+why = "runtime dep of the arm-fvp dist (FVP model libraries; check-dist-runtime-deps)"
+apt = ["libatomic1"]
+dnf = ["libatomic"]
+pacman = ["gcc-libs"]
+check = { sharedlib = "libatomic.so.1" }
 
 [prereq.libcrypt1]
 role = "infra"
