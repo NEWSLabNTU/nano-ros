@@ -476,7 +476,7 @@ def probe_just_nested(tmp: Path) -> list[str]:
         name = line.split(None, 1)[0]
         values[name] = line.split(' := "', 1)[1].rstrip('"')
 
-    if len(values) < 20:
+    if len(values) < 10:  # sanity floor; phase-484 W2 shrinks the export set
         return [
             f"just (nested checkout): only {len(values)} variables parsed — "
             "the probe is not measuring what it claims"
@@ -514,11 +514,11 @@ def probe_just_nested(tmp: Path) -> list[str]:
 
     # 4. The 1391 row, explicitly: a DEFAULTED value is already correct and
     #    must be left alone.
-    want = f"{inner}/packages/platform/nros-platform-api/include"
-    if values.get("NROS_PLATFORM_CFFI_INCLUDE") != want:
+    want = f"{inner}/third-party/freertos/lwip"
+    if values.get("LWIP_DIR") != want:
         problems.append(
-            "just (nested checkout): a DEFAULTED NROS_PLATFORM_CFFI_INCLUDE was rewritten "
-            f"— got {values.get('NROS_PLATFORM_CFFI_INCLUDE')!r}, expected {want!r} "
+            "just (nested checkout): a DEFAULTED LWIP_DIR was rewritten "
+            f"— got {values.get('LWIP_DIR')!r}, expected {want!r} "
             "(issue 1391)"
         )
 
@@ -571,9 +571,12 @@ def self_test() -> bool:
     text = SDK_ENV.read_text()
     exports = sdk_env_exports(text)
     # Non-vacuous first: a parser that finds nothing reports nothing wrong.
+    # The floor is a parser sanity check, not a target: phase-484 W2 (RFC-0103
+    # D4) deletes these exports wave by wave, so it tracks what is left
+    # (14 after W2a) rather than the 21 the file once held.
     chk(
         f"only {len(exports)} exports parsed out of {SDK_ENV.name} — the parser is broken",
-        len(exports) >= 20,
+        len(exports) >= 10,
     )
 
     # Mutations are measured as a DELTA against whatever the live file says.
