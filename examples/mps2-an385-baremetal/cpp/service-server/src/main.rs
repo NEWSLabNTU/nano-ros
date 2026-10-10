@@ -5,7 +5,7 @@
 //! port — reset vector, CMSDK Timer0 clock, LAN9118 + smoltcp, semihosting
 //! console — is Rust with no C entry point. So the link root is this crate,
 //! `build.rs` compiles `src/service_server.cpp` into it, and `NROS_APP_MAIN_REGISTER()`
-//! there emits the `app_main()` called below once the board is up.
+//! there defines the `nros_app_main()` called below once the board is up.
 //!
 //! One thing is C++-specific: the generated message types serialize in RUST.
 //! `nros generate cpp` emits, per message, a `#[repr(C)]` mirror plus CDR field
@@ -20,8 +20,9 @@
 use nros_board_mps2_an385::{Config, entry, run_bare};
 
 unsafe extern "C" {
-    /// Emitted by `NROS_APP_MAIN_REGISTER()` in `src/service_server.cpp`.
-    fn app_main();
+    /// The app's `extern "C"` entry, defined in the leaf's `src/*.cpp` beside
+    /// its `NROS_APP_MAIN_REGISTER()`.
+    fn nros_app_main(argc: i32, argv: *mut *mut core::ffi::c_char) -> i32;
 }
 
 /// The generated C++ message glue, under the prelude it expects.
@@ -77,10 +78,13 @@ fn main() -> ! {
     // The backend is registered by the C++ side's `nros_app_register_backends()`
     // (in `src/service_server.cpp`), which `nros_cpp_init` calls — the same hook the
     // cmake road generates. Bare metal walks no `.init_array`.
+    // Issue 1770 — the app's STATUS decides how QEMU exits; see the C leaves'
+    // `main.rs` for why this calls `nros_app_main` rather than `app_main`.
     run_bare(Config::default(), |_cfg| {
-        // SAFETY: `app_main` is the entry the header's own macro emits; it takes
-        // no arguments and returns nothing, and the board is up by now.
-        unsafe { app_main() };
-        Ok::<(), core::convert::Infallible>(())
+        // SAFETY: `nros_app_main` is the `extern "C"` entry every leaf defines;
+        // `argc = 0` with a null `argv` is what the header's VOID shim passes,
+        // and the board is up by now.
+        let status = unsafe { nros_app_main(0, core::ptr::null_mut()) };
+        if status == 0 { Ok(()) } else { Err(status) }
     })
 }

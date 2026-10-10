@@ -1,8 +1,7 @@
 //! NuttX kernel + FFI entry point for C/C++ examples.
 //!
 //! This binary provides the NuttX kernel (via -Z build-std=core,alloc) and calls
-//! `app_main()` defined in C/C++ code (linked by CMake).
-
+//! `nros_app_main()` defined in C/C++ code (linked by CMake).
 
 // phase-359 W7 — `no_std` + `no_main`, like the other C-runtime families' bins.
 // The image no longer compiles the standard library, so libstd's `lang_start`
@@ -21,7 +20,8 @@ extern crate nros_cpp;
 extern crate nros_rmw_zenoh;
 
 unsafe extern "C" {
-    fn app_main();
+    /// The app's entry, defined in C/C++ beside its `NROS_APP_MAIN_REGISTER()`.
+    fn nros_app_main(argc: i32, argv: *mut *mut core::ffi::c_char) -> i32;
 }
 
 /// Issue #130 — parse a compile-time-baked dotted IPv4 (`"10.0.2.30"`) into the
@@ -54,10 +54,10 @@ pub extern "C" fn main(_argc: i32, _argv: *const *const core::ffi::c_char) -> i3
     // `.init_array`; this target doesn't walk that section.
     nros_rmw_zenoh::register().expect("Failed to register RMW backend");
 
-    // Issue #130 — the C `nano_ros_entry LAUNCH` path reaches `app_main()`
+    // Issue #130 — the C `nano_ros_entry LAUNCH` path reaches `nros_app_main()`
     // WITHOUT going through the Rust `BoardEntry::run` wrappers, so nothing has
     // configured eth0 yet: the guest still holds its defconfig IP and cannot
-    // reach slirp's `10.0.2.2`, and `app_main`'s `Executor::open` on the baked
+    // reach slirp's `10.0.2.2`, and the app's `Executor::open` on the baked
     // locator would fail `Transport(ConnectionFailed)`. Push the guest IP into
     // eth0 via the SAME shared helper the Rust path uses. IP/netmask/gateway are
     // baked per-entry via `option_env!` (channel mirrors `NROS_ENTRY_LOCATOR`);
@@ -73,6 +73,10 @@ pub extern "C" fn main(_argc: i32, _argv: *const *const core::ffi::c_char) -> i3
         .unwrap_or(SLIRP_DEFAULT_PREFIX);
     configure_entry_eth0(ip, prefix, gateway);
 
-    unsafe { app_main() };
-    0
+    // Issue 1770 — return the APP's status, the `int main` shim's contract
+    // (`<nros/app_main.h>`). This called the VOID shim's `app_main` and
+    // returned 0, so nsh saw success for an app that failed.
+    // SAFETY: `nros_app_main` is the C entry every app defines; `argc = 0` with
+    // a null `argv` is what the header's own VOID shim passes.
+    unsafe { nros_app_main(0, core::ptr::null_mut()) }
 }

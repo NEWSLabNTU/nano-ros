@@ -4,7 +4,7 @@
 //! The C++ half of the shape the `c/talker` sibling established (issue 1512):
 //! `src/main.rs` owns the reset vector and the board bring-up, this script
 //! compiles `src/service_server.cpp`, and `NROS_APP_MAIN_REGISTER()` in it emits the
-//! `app_main()` that `main.rs` calls. See `README.md` for why the link root is
+//! `nros_app_main()` that `main.rs` calls. See `README.md` for why the link root is
 //! Rust on this board.
 //!
 //! What differs from C is where the message code lives. `nros generate cpp`

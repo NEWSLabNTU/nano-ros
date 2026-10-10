@@ -55,7 +55,7 @@ example is a C program: the RTOS supplies `main`, a C startup and a C platform
 port, and `libnros_c.a` is linked *in*. This board has no RTOS, so the reset
 vector (`cortex-m-rt`), the clock (CMSDK Timer0) and the network (LAN9118 +
 smoltcp) are all Rust with no C entry point. The leaf is therefore rooted in
-cargo: `src/main.rs` boots the board and calls `app_main()`, and `build.rs`
+cargo: `src/main.rs` boots the board and calls `nros_app_main()`, and `build.rs`
 compiles the leaf's `src/*.c` (or `src/talker.cpp`) into the image.
 `nano_ros_add_executable` is not available on this platform. Each leaf is a
 `[[fixture]]` row with `builder = "cargo"`, built by `just qemu build-fixtures`
