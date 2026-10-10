@@ -23,8 +23,10 @@
 //! The rule, in one place: `nros-platform-cffi` STATES the provider it compiled
 //! (`links = "nros_platform_cffi"`, `cargo:abi_provider=<posix|stubs|none>`),
 //! and a board build script that is about to compile a second port ASKS first,
-//! through [`defer_to_graph_provider`]. When the graph already has one, the
-//! board skips its C port, the same skip it takes when its sources are absent.
+//! through
+//! [`defer_to_graph_provider`](crate::platform_port::defer_to_graph_provider).
+//! When the graph already has one, the board skips its C port, the same skip
+//! it takes when its sources are absent.
 //! The Rust surface still compiles, and a real image of that board still fails
 //! loudly at link (its kernel symbols are missing), with the warning in the
 //! same log.
