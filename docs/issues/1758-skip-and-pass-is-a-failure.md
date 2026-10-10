@@ -123,18 +123,27 @@ to narrow the invocation.
   skipping, so the coverage did not shrink; it is now visible.
 - **`params*` discovery waits.** These now fail instead of skipping. If they
   flake under sweep load, the fix is the wait, not a skip.
-- **Fixture-existence probes.** Three sites still probe a real fixture with
+- **Fixture-existence probes (done).** Three sites probed a real fixture with
   `is_file()` instead of `require_prebuilt_artifact(..).require(..)`:
   `freertos_run_plan_runtime` (`generated/`), `fvp_runtime_ws` and
-  `fvp_smoke`. They now fail rather than skip, and all three check their
-  platform's lane first. `check-fixture-require`'s existence ratchet still
-  holds them at their counts.
+  `fvp_smoke`. All three now go through the shared absence funnel, so they get
+  the `.build-failed` marker and the lane attribution like every other
+  resolver. `freertos_run_plan_runtime`'s other probe was for the Entry
+  package's own source directory, which is tracked, so it is an `assert!`
+  now. `check-fixture-require`'s existence ratchet dropped from 10 sites to 6;
+  the six left are tree and tool checks (`examples/`, a PX4 checkout, the
+  patched QEMU), not fixtures.
 - **Explicit operator opt-outs stay.** These are operator choices, not silent
   ones, and no workflow sets any of them:
   - `NROS_SKIP_FIXTURE_CHECK`
   - `NROS_SKIP_STALE_CHECK`
   - `NROS_THREADX_RV64_CYCLONEDDS_FIXTURES=0`
-- **Historical prose.** About 80 comments still say `skip!`.
+- **Historical prose (done).** About 90 comments, recipe notes, workflow
+  notes and two RFCs described the CURRENT behaviour as `skip!`. Each now says
+  `unmet!` (a red) or `lane_skip!` (the scope skip), whichever the code calls.
+  Comments that narrate what used to happen keep the old name, because that
+  is what happened. The gate scripts' regexes keep matching `skip!` on
+  purpose: they refuse the old spelling.
 
 ## Follow-up: the scope must reach every runner, and every link of the chain
 

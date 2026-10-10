@@ -31,7 +31,7 @@ pub const DEFAULT_PUB_WINDOW: Duration = Duration::from_secs(10);
 
 /// phase-304 W4 — is a specific ROS 2 distro installed under `/opt/ros/<distro>`?
 /// Distro-parametric so an edition lane (RFC-0056) can require iron/jazzy/rolling
-/// and `skip!` when absent, instead of everything assuming humble. Returns false
+/// and fail (`unmet!`) when absent, instead of everything assuming humble. Returns false
 /// (never panics) when the setup script is missing or `ros2 --help` fails.
 pub fn is_ros2_distro_available(distro: &str) -> bool {
     // Reject a distro name that isn't a bare identifier (defense against a

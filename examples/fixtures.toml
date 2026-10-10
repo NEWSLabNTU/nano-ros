@@ -363,7 +363,7 @@ west_zenoh_locator = "tcp/127.0.0.1:7430"
 # inputsig` stamp it then demands — so requiring it in the test-all preflight
 # is unsatisfiable (permanent false-stale) even with west installed. Like
 # `workspace-rust-esp32`/`-qemu-nuttx`, it is an own-lane artifact; the zephyr
-# e2e test skip!s at runtime on the absent binary.
+# e2e test fails (`unmet!`, issue 1758) at runtime on the absent binary.
 skip_probe = true
 
 # Phase 225.O follow-up (known-issue #18) — NuttX QEMU ARM virt

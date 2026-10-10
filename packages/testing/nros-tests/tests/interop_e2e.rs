@@ -23,8 +23,8 @@
 //! lifecycle cells gate on `require_ros2` (ROS 2 CLI + `rmw_zenoh_cpp`) and a
 //! startable `zenohd`; the cyclone cells gate on `require_ros2_cyclonedds`
 //! (ROS 2 + `rmw_cyclonedds_cpp`) + the native Cyclone fixtures. A missing
-//! ROS 2 / RMW / fixture / peer-launch is a clean `skip!`, never a failure —
-//! after the gate passes, ZERO delivery is a real failure (#133 fail-loud).
+//! ROS 2 / RMW / fixture / peer-launch is an `unmet!` red (issue 1758); lanes
+//! that do not claim ROS 2 deselect it by scope instead. After the gate passes, ZERO delivery is a real failure (#133 fail-loud).
 //!
 //! Isolation: zenoh cells take an EPHEMERAL router
 //! (`ZenohRouter::start_unique`, `NROS_LOCATOR`); cyclone cells take a

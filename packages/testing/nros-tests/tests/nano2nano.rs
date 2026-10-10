@@ -21,7 +21,7 @@ use std::{path::PathBuf, time::Duration};
 
 /// Phase 150.H — unwrap a fixture-builder result, but if the
 /// failure is `BuildFailed("...not prebuilt...")`, surface it as
-/// `nros_tests::skip!` instead of a hard panic. Mirrors the
+/// `nros_tests::unmet!` instead of an anonymous panic. Mirrors the
 /// 150.F treatment for the xrce/stress rstest fixtures
 /// (`packages/testing/nros-tests/src/fixtures/binaries/mod.rs`).
 ///
@@ -680,5 +680,5 @@ fn test_rtic_pattern_action(zenohd_unique: ZenohRouter) {
 
 // `test_zenohd_detection` removed: it read `is_zenohd_available()` and printed
 // it, asserting nothing, so it reported PASS on a host with no router at all.
-// The probe stays load-bearing as the `skip!` guard on the real tests, where a
+// The probe stays load-bearing as the `unmet!` guard on the real tests, where a
 // `false` stops the run. Forbidden repo-wide by `check-no-vacuous-tests`.

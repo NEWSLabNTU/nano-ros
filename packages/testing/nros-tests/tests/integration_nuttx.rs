@@ -3,8 +3,8 @@
 //! NuttX consumers symlink `integrations/nuttx/` into
 //! `apps/external/nano-ros/` under a configured NuttX checkout. The
 //! full `make` involves the NuttX cross-toolchain — when that
-//! toolchain is missing, this test skips cleanly via
-//! `nros_tests::skip!`.
+//! toolchain is missing, this test fails as an unmet precondition
+//! (`nros_tests::unmet!`).
 
 use std::process::Command;
 

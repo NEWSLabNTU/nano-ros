@@ -19,8 +19,7 @@
 //! `west fvp run` resolver). Re-implementing that surface here would
 //! drift.
 //!
-//! Skip preconditions (each `nros_tests::skip!` — keeps the
-//! `[SKIPPED]`-panic semantics nextest treats as expected; NEVER a
+//! Preconditions (each an `nros_tests::unmet!` red, issue 1758; NEVER a
 //! bare `eprintln!`+`return`, which would report a false PASS):
 //!   1. ARM FVP not resolvable via `scripts/zephyr/resolve-fvp-bin.sh`
 //!      (gated, license-walled — `[gated.arm-fvp]` in
@@ -38,7 +37,7 @@ use std::{
     time::Duration,
 };
 
-use nros_tests::{process::ManagedProcess, project_root, unmet};
+use nros_tests::{fixtures::RequireFixture, process::ManagedProcess, project_root, unmet};
 
 fn have(cmd: &str) -> bool {
     Command::new("which")
@@ -108,13 +107,8 @@ fn fvp_board_import_fixture_boots() {
         .join("build-fvp-board-import")
         .join("zephyr")
         .join("zephyr.elf");
-    if !elf.is_file() {
-        unmet!(
-            "FVP board-import fixture ELF missing at {}; \
-             run `just zephyr build-fvp-board-import` first",
-            elf.display()
-        );
-    }
+    nros_tests::fixtures::require_prebuilt_artifact(&elf, "just zephyr build-fvp-board-import")
+        .require("FVP board-import fixture ELF");
 
     // Drive the canonical recipe — it owns the env wiring + `west fvp
     // run` delegation (Phase 215.D / 215.G.1).

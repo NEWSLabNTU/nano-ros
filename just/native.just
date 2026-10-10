@@ -325,8 +325,10 @@ build-fixture-rust:
 # variants). The variant cells (TLS / safety / zero-copy / zenoh / xrce /
 # large-buf) each rebuild the full dep graph into their own target dir, and
 # that duplication overruns the host-integration runner disk. Those variants
-# are covered by other lanes; the host-integration lane uses this recipe and
-# lets the variant-spawning tests `skip!` (NROS_FIXTURES_OPTIONAL). The codegen
+# are covered by other lanes. No workflow runs this recipe any more (the
+# host-tests job builds the tier-1 lane, issue 1684), and a run over it must
+# narrow its scope: `NROS_FIXTURES_OPTIONAL`, which let the variant-spawning
+# tests skip, is gone (issue 1758). The codegen
 # prep below covers the default example dirs (the core set).
 [group("examples")]
 build-fixture-rust-core:
@@ -948,7 +950,7 @@ test-rosout verbose="":
 # issue 1127. Two `interop::CELLS` cells (`native-action-rust-cyclone-*`), and
 # the n2r direction additionally needs
 # `ros-<distro>-examples-rclcpp-minimal-action-server` for its peer; each is a
-# `skip!` when absent, never a red.
+# `[UNMET PRECONDITION]` red when absent (issue 1758).
 #
 # Written through `_test-focused` like its siblings above. The branch that
 # added this lane predates that helper and carried its own copy of the
@@ -1014,7 +1016,7 @@ test-action-completion verbose="":
 # Its own recipe, not `_test-focused`, for two reasons: the test lives in
 # `nros-rmw-zenoh`'s `zenoh_integration` (that helper is hardwired to
 # `-p nros-tests`), and it needs `--features platform-posix`. `_nextest-tolerant`
-# because the router precondition is a `skip_class!` panic, which a bare
+# because a scope deselection is a `lane_skip!` panic, which a bare
 # `cargo nextest` counts as a failure.
 #
 # `--success-output final` unconditionally: the run's product is the counter line
@@ -1332,7 +1334,7 @@ test-live-peer-regression runner="all" verbose="":
     rm -rf "$junit_dir"
     mkdir -p "$junit_dir"
     # Failure output ON for this lane: a real failure must print why, and a
-    # `skip!` (a panic) must print its reason, or a red here cannot be read
+    # `lane_skip!` or `unmet!` (both panics) must print its reason, or a red here cannot be read
     # without a rerun. `final` puts it at the end of each binary's run.
     export NROS_TEST_FAILURE_OUTPUT="${NROS_TEST_FAILURE_OUTPUT:-final}"
     source scripts/test/nextest-profile.sh

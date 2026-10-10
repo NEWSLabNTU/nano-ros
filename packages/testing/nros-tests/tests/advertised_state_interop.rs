@@ -136,7 +136,7 @@ const EDGE_BUDGET: Duration = Duration::from_secs(30);
 
 /// The precondition every live case shares. Returns the probe path.
 ///
-/// `skip!` rather than a bare `return`: a bare return reports PASS, which is
+/// `unmet!` rather than a bare `return`: a bare return reports PASS, which is
 /// issue 1135's whole subject and the reason `params` could not produce a
 /// verdict at all.
 fn require_probe() -> &'static Path {

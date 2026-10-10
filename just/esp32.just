@@ -327,9 +327,9 @@ test-basic: build-qemu
 test verbose="": build-fixtures
     @bash scripts/dev/deprecated-scope-alias.sh esp32 test "just test esp32"
     # Delegate to the shared skip-tolerant runner: the esp32_emulator tests
-    # `skip!` when the Espressif QEMU fork / espflash / riscv32 target are absent
-    # (best-effort emulator), and _nextest-platform treats an all-[SKIPPED] run
-    # as pass while still failing on real errors.
+    # fail (`unmet!`, issue 1758) when the Espressif QEMU fork / espflash /
+    # riscv32 target are absent, and _nextest-platform treats an
+    # all-[SKIPPED:lane] run as a pass while still failing on real errors.
     @just _nextest-platform esp32_emulator {{verbose}}
 
 # Run all ESP32 tests (same as test)

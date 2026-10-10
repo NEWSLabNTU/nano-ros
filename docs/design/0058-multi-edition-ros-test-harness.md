@@ -112,8 +112,9 @@ just ros-edition-image E                      # once, cached
 ### Contract
 
 - `available()` false (no image / no docker / host distro absent) ⇒
-  `nros_tests::skip!` — never a silent pass (CLAUDE.md fail-loud rule). Same
-  contract the QEMU lanes already use.
+  `nros_tests::unmet!` — a red, never a silent pass (CLAUDE.md fail-loud rule;
+  issue 1758 retired `skip!`). A lane that does not claim ROS 2 deselects the
+  test by scope (`lane_skip!`) before it asks. Same contract the QEMU lanes use.
 - Peer + bridge handles are **RAII** — dropped handles kill the child (reuse the
   `patter[n]` self-match guard; no orphan `ros2` daemons survive a test).
 - Per-edition build-tree isolation keeps the fixture-mtime treadmill off the
