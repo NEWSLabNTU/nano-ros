@@ -90,6 +90,8 @@ pub mod nuttx_platform_build;
 pub use nros_platform_config::platform_config;
 /// Issue 1779 — one `nros_platform_*` provider per linked graph.
 #[cfg(feature = "build-helpers")]
+pub mod board_net;
+#[cfg(feature = "build-helpers")]
 pub mod platform_port;
 #[cfg(feature = "build-helpers")]
 pub mod policy;

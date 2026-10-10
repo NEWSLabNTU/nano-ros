@@ -401,6 +401,28 @@ set(NROS_APP_NET_IP_LAST 40
 set(NROS_APP_NET_MAC_LAST "0x56"
     CACHE STRING "Trailing octet of NROS_APP_CONFIG.network.mac (default 0x56)")
 
+# phase-484 W4b (RFC-0103 D1) — the `.network` block is ASKED of the board's
+# descriptor (`nros board net`: `[board.net]` over the platform default), with
+# this image's last IP octet / MAC byte applied; this file carries no copy of
+# the subnet, gateway or MAC prefix. The CLI is required on this road anyway.
+nros_resolve_cli(_nros_net_cli CONTEXT "nano-ros-board-rv-virt-threadx")
+nros_codegen_tool_reconfigure("${_nros_net_cli}")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${_NROS_BOARD_ROOT}/packages/boards/nros-board-threadx-qemu-riscv64/nros-board.toml")
+execute_process(
+    COMMAND "${_nros_net_cli}" board net rv-virt-threadx
+            --workspace "${_NROS_BOARD_ROOT}" --format c-network
+            --ip-last "${NROS_APP_NET_IP_LAST}" --mac-last "${NROS_APP_NET_MAC_LAST}"
+    OUTPUT_VARIABLE _nros_board_net_c
+    ERROR_VARIABLE _nros_board_net_err
+    RESULT_VARIABLE _nros_board_net_rc
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+if(NOT _nros_board_net_rc EQUAL 0)
+    message(FATAL_ERROR
+        "nano-ros-board-rv-virt-threadx: `nros board net rv-virt-threadx` failed "
+        "(${_nros_board_net_rc}): ${_nros_board_net_err}")
+endif()
+
 set(_NROS_APP_CONFIG_DEF_C
     "${CMAKE_CURRENT_BINARY_DIR}/nros_app_config_def.c")
 file(WRITE "${_NROS_APP_CONFIG_DEF_C}"
@@ -423,13 +445,7 @@ file(WRITE "${_NROS_APP_CONFIG_DEF_C}"
 "        .locator   = \"tcp/10.0.2.2:7553\",\n"
 "        .domain_id = 0,\n"
 "    },\n"
-"    .network = {\n"
-"        .ip      = { 10, 0, 2, ${NROS_APP_NET_IP_LAST} },\n"
-"        .mac     = { 0x52, 0x54, 0x00, 0x12, 0x34, ${NROS_APP_NET_MAC_LAST} },\n"
-"        .gateway = { 10, 0, 2, 2 },\n"
-"        .netmask = { 255, 255, 255, 0 },\n"
-"        .prefix  = 24,\n"
-"    },\n"
+"    .network = ${_nros_board_net_c},\n"
 "    .scheduling = {\n"
 "        .app_priority            = 0,\n"
 "        .zenoh_read_priority     = 0,\n"

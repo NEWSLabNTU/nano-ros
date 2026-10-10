@@ -399,6 +399,27 @@ compile definition is gone (nothing compiled read it); retiring the
 `CONFIG_NROS_CYCLONE_DOMAIN_ID` symbol itself is a Kconfig change and waits
 for W5's coordination with phase-481.
 
+**W4b-1 — `[board.net]`, the two ThreadX boards.** A board descriptor may
+state `[board.net]` (`ip`, `netmask`, `gateway`, `mac`), typed in
+`nros_platform_config::BoardNet` (`deny_unknown_fields`, validated by the
+CLI's descriptor loader too). `nros_board_common::board_net` resolves it over
+the platform default (`BaseConfig::default`, RFC-0103 D1's platform < board)
+and is the one producer of every copy: the crate's `Config::default()` reads
+generated `BOARD_NET_*` constants, its build script's C `NROS_APP_CONFIG`
+takes `ResolvedNet::c_network_initializer()`, and the cmake board module asks
+`nros board net <board> --format c-network` (with `--ip-last` / `--mac-last`
+for an image's own identity on the board's subnet, which the riscv64 fixtures
+pass). Done for `threadx-linux` (states nothing: it IS the platform default)
+and `threadx-qemu-riscv64` (`10.0.2.40`, `52:54:00:12:34:56`, gateway
+`10.0.2.2`); the `listener()` presets derive from the default instead of
+restating it. Measured: the Rust + C threadx-linux and C riscv64 workspace
+fixtures build, and every generated `.network` block equals the literal it
+replaced. Gate `check-board-net-one-home` (ratchet over migrated boards).
+The LOCATOR stayed out: on both boards the Rust and C fallbacks name
+different routers (issue 1793). Remaining: esp32-qemu and mps2-an385 (no
+board-common build-dep yet — a lockfile update — and mps2's `docker` /
+`serial` profiles), the FreeRTOS C template, NuttX.
+
 ### W5 -- one canonical name per knob
 
 - The Zephyr module defines nano-ros knob symbols with NO prompt and sources

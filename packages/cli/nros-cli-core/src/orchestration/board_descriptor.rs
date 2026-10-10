@@ -927,6 +927,16 @@ impl BoardFile {
                     knobs.try_into::<nros_board_common::platform_config::Knobs>()?;
                     had_knobs = true;
                 }
+                // phase-484 W4b — `[board.net]`, the same rule: validated here
+                // against its owner's typed schema (`BoardNet`, read by the
+                // board crate's build script and `nros ws board-facts`), then
+                // removed before the typed parse.
+                if let toml::Value::Table(t) = entry
+                    && let Some(net) = t.remove("net")
+                {
+                    net.try_into::<nros_board_common::platform_config::BoardNet>()?;
+                    had_knobs = true;
+                }
             }
         }
         if !had_knobs {
