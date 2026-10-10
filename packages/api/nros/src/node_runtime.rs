@@ -1,7 +1,7 @@
 //! Phase 212.M.5.a.2 — Executor-backed `NodeRuntime` /
 //! `DeclaredNodeRuntime` for nano-ros.
 //!
-//! [`MetadataRecorder`] (the planner sink) binds the [`Node`] /
+//! [`MetadataRecorder`] (the planner sink) binds the [`Component`] /
 //! [`ExecutableNode`] traits to a pure metadata target. This module is the
 //! missing twin: it binds the same traits to a live [`Executor`] so
 //! a Node pkg can actually run — nodes, publishers,
@@ -710,7 +710,7 @@ impl PublisherResolver for CellResolver<'_> {
 /// 1. [`from_executor`](Self::from_executor) wraps an open
 ///    [`Executor`].
 /// 2. [`register_node`](Self::register_node) builds the
-///    component's `State`, runs [`Node::register`](crate::node::Node::register) over an
+///    component's `State`, runs [`Component::register`](crate::node::Component::register) over an
 ///    internal [`NodeRuntime`] adapter that materialises nodes /
 ///    pubs / subs / timers on the real executor, and wires each
 ///    subscription + timer callback to dispatch into
@@ -880,10 +880,10 @@ impl ExecutorNodeRuntime {
         self.components.len()
     }
 
-    /// Register a [`Node`](crate::node::Node) (which must also be
+    /// Register a [`Component`](crate::node::Component) (which must also be
     /// [`ExecutableNode`]) into this runtime. Builds the
     /// component's `State` (via [`ExecutableNode::init`]) and
-    /// walks [`Node::register`](crate::node::Node::register) over the live executor — every
+    /// walks [`Component::register`](crate::node::Component::register) over the live executor — every
     /// declared node / pub / sub / timer materialises as a real
     /// executor handle, and subscription + timer callbacks are wired
     /// to dispatch into [`ExecutableNode::on_callback`].
