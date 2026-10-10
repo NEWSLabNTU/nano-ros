@@ -168,11 +168,31 @@ catches a re-added literal.
   export unset: FreeRTOS + ThreadX-linux single-package Rust, workspace Rust,
   workspace C, and the s32z270 (Cortex-R) workspace C++ row build.
 
-Remaining in W2: the source-tree exports (`FREERTOS_DIR` … `PX4_AUTOPILOT_DIR`,
-`TBAND_DIR`) wait for W3's `[sources]` rung, since their `system.toml`
-`{env:}` readers have no default; `nano_ros_ROOT`/`NROS_REPO_DIR` exports;
-the RISC-V recipe exports in `just/threadx-riscv64.just` (now duplicates of
-its descriptor).
+- **W2c — source trees.** No source-tree path reaches the user's shell:
+  `scripts/sdk-env.sh` skips every index `[source.*] env` name (derived from
+  the index, not listed), and `check-activate-shells` asserts both halves —
+  the rest of the SSoT survives activation (issue 0451), these do NOT
+  (mutation-tested). Every reader locates the tree instead: Rust through
+  `nros_build_paths::locate::{source,try_source}` (generic boards, the
+  zenoh-pico runner, NuttX ffi/link, the named `*_dir()` resolvers,
+  cyclonedds-sys); platform descriptors through a new `{source:<name>}` token
+  (the tree variables leave `required_env`); cmake through
+  `nros_locate_var()` in `cmake/NanoRosLocate.cmake` — one
+  `nros locate --all --format cmake` per configure, normal variables, and a
+  stale module-written CACHE entry is dropped. `nros_validate_vars` asks it
+  before `$ENV{}`. `just` recipes keep their recipe-scoped values from
+  `just/sdk-env.just`: those are computed per run from the recipe's own
+  checkout and inherited by nothing else, which is the distinction RFC-0103
+  D4 draws. Found on the way: the FreeRTOS Cyclone include block hard-coded
+  `portable/GCC/ARM_CM3` for every board (the s32z270 Cortex-R52 image
+  compiled ddsrt against the Cortex-M3 `portmacro.h`); it reads the board's
+  `FREERTOS_PORT` now.
+
+Remaining in W2: `TBAND_DIR` (not yet an index source row);
+`nano_ros_ROOT`/`NROS_REPO_DIR` exports (roots, ranked below the enclosing
+checkout everywhere since W1); the RISC-V recipe exports in
+`just/threadx-riscv64.just` (duplicates of its descriptor); the fixture
+manifest's own `-DFREERTOS_PORT` `cmake_defs` (W7).
 
 ### W3 -- source trees into the store
 

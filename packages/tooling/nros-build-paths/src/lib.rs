@@ -516,35 +516,28 @@ pub fn nros_cpp_include() -> PathBuf {
     env_or_repo_path("NROS_CPP_INCLUDE", "packages/api/nros-cpp/include")
 }
 
+/// A vendored source tree through the one ladder (RFC-0103 D4, phase-484
+/// W2c), falling back to this checkout's copy so a caller that probes for the
+/// tree itself (an uninitialised submodule is a normal state) keeps doing so.
+fn located_or_checkout(name: &str, rel: &str) -> PathBuf {
+    locate::try_source(name).unwrap_or_else(|_| repo_root().join(rel))
+}
+
 pub fn freertos_dir() -> PathBuf {
-    env_or_repo_path("FREERTOS_DIR", "third-party/freertos/kernel")
+    located_or_checkout("freertos-kernel", "third-party/freertos/kernel")
 }
 
 pub fn lwip_dir() -> PathBuf {
-    env_or_repo_path("LWIP_DIR", "third-party/freertos/lwip")
+    located_or_checkout("lwip", "third-party/freertos/lwip")
 }
 
-pub fn freertos_config_dir() -> PathBuf {
-    env_or_repo_path(
-        "FREERTOS_CONFIG_DIR",
-        "packages/boards/nros-board-mps2-an385-freertos/config",
-    )
-}
+// phase-484 W2b — `freertos_config_dir()` is gone: it defaulted to the mps2
+// board's config for every caller (a board fact, now in each board's
+// descriptor), and nothing called it. `nuttx_apps_dir()`, `threadx_dir()` and
+// `netx_dir()` went with it — no callers; the trees are `locate::source`.
 
 pub fn nuttx_dir() -> PathBuf {
-    env_or_repo_path("NUTTX_DIR", "third-party/nuttx/nuttx")
-}
-
-pub fn nuttx_apps_dir() -> PathBuf {
-    env_or_repo_path("NUTTX_APPS_DIR", "third-party/nuttx/nuttx-apps")
-}
-
-pub fn threadx_dir() -> PathBuf {
-    env_or_repo_path("THREADX_DIR", "third-party/threadx/kernel")
-}
-
-pub fn netx_dir() -> PathBuf {
-    env_or_repo_path("NETX_DIR", "third-party/threadx/netxduo")
+    located_or_checkout("nuttx-kernel", "third-party/nuttx/nuttx")
 }
 
 pub fn tband_dir() -> PathBuf {
@@ -1113,20 +1106,21 @@ pub mod locate {
 
     /// Locate `name` from a build script: the index beside the crate being
     /// compiled (RFC-0103 D6-M), the environment, this checkout, the store.
-    /// Panics with the refusal — the right failure in a build script.
-    #[must_use]
-    pub fn source(name: &str) -> PathBuf {
-        let root = crate::repo_root();
+    /// `Err` carries the refusal text (every rung and what it saw) — for a
+    /// caller that skips or reports rather than panics.
+    pub fn try_source(name: &str) -> Result<PathBuf, String> {
+        let root = crate::try_repo_root()
+            .ok_or_else(|| format!("{name}: no nano-ros root above CARGO_MANIFEST_DIR"))?;
         let index = root.join("nros-sdk-index.toml");
         println!("cargo:rerun-if-changed={}", index.display());
         let text = std::fs::read_to_string(&index)
-            .unwrap_or_else(|e| panic!("nros-build-paths: read {}: {e}", index.display()));
-        let row = row_from_index(&text, name).unwrap_or_else(|| {
-            panic!(
+            .map_err(|e| format!("nros-build-paths: read {}: {e}", index.display()))?;
+        let row = row_from_index(&text, name).ok_or_else(|| {
+            format!(
                 "nros-build-paths: no [source.{name}] in {}",
                 index.display()
             )
-        });
+        })?;
         // The env value goes through `env_path` (re-root + canonical spelling),
         // and the build script watches the ANSWER's content, never the
         // variable as text — issue 0491: one directory has three spellings
@@ -1138,9 +1132,23 @@ pub mod locate {
             store: crate::store::root(),
         };
         match resolve(&row, &ctx) {
-            Ok(a) => crate::watch_path(&crate::canonical(&a.path)),
-            Err(r) => panic!("{r}"),
+            Ok(a) => Ok(crate::watch_path(&crate::canonical(&a.path))),
+            Err(r) => {
+                // Watch what an absent copy would become, so provisioning it
+                // re-runs the script (issue 1586's shape).
+                if let (Some(d), Some(c)) = (&row.dest, &ctx.checkout) {
+                    crate::watch_skip_cause(&c.join(d));
+                }
+                Err(r.to_string())
+            }
         }
+    }
+
+    /// [`try_source`], panicking with the refusal — the right failure in a
+    /// build script that cannot proceed without the tree.
+    #[must_use]
+    pub fn source(name: &str) -> PathBuf {
+        try_source(name).unwrap_or_else(|e| panic!("{e}"))
     }
 
     #[cfg(test)]
