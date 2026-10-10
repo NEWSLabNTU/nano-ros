@@ -334,6 +334,14 @@ pin is still refused, and `nros ws board-facts` refuses an unknown key. Build
 scripts that resolve a tool themselves (`nros_build_paths::riscv64`) keep their
 own `NROS_RISCV64_PREFIX` override; folding them onto the ladder is W7.
 
+W3 follow-up (found by a fresh worktree, shipped with W4a): `just
+setup-worktree` and the `ci gate` provisioning preflight
+(`_require-worktree-provisioning`, issue 1513) still demanded the zenoh-pico
+and XRCE SUBMODULES. Both now ask `scripts/lib/source_locate.py
+--store-row-for <path>`: a store-first row counts as provisioned when the
+ladder locates it, and `setup-worktree` materialises it with `nros setup
+--source` once a CLI exists (the submodule stays the route before one does).
+
 W3 is complete as scoped: every store-eligible row is store-first, the rest are
 checkout sources for a recorded reason, and the acceptance run above passed.
 
@@ -356,6 +364,40 @@ FreeRTOS image.
 **Acceptance:** the second-home gate (RFC-0103 D9) holds at zero for these
 facts; one image per road shows the same domain/locator in its
 `resolved.toml` and in what it boots with (Zephyr, closes issue 1550).
+
+#### W4 census (2026-10-11)
+
+- `NROS_BOARD` is already a CARRIER only: `nros ws board-facts` writes it
+  from the resolved `[image.<id>] board`; no user-facing producer remains.
+- `nros::main!(board = …)` — 0 production uses (2 test fixtures), but it is
+  the one route for an out-of-tree board type not in `BOARD_PATHS`; retiring
+  it needs the descriptor to name the board's Rust path first.
+- `NANO_ROS_BOARD` (79 non-comment) keys cmake BOARD-MODULE FILE names
+  (`cmake/board/nano-ros-board-<x>.cmake`), which are not always a descriptor
+  name — map module ↔ descriptor before it can be derived.
+- Domain id and locator: `system.toml` already states both (bridged to cmake
+  as `NANO_ROS_LEAF_*`), but 7 board crates bake them with
+  `option_env!("NROS_DOMAIN_ID"/"NROS_LOCATOR")` and the Zephyr lane through
+  Kconfig — one system.toml-fed carrier per road is the work.
+- No board descriptor has a `[net]` table: network defaults live in 7 board
+  `config.rs` files and 4 C-struct generators. `[net]` is NEW schema (with a
+  per-role IP story for talker/listener pairs), not a migration.
+- 29 `rmw-*` cargo features are inert (`[]`, ungated); the threadx-linux ones
+  are still passed by fixture rows that duplicate the bare rows, so removing
+  them means retiring those rows and their artifact locators together.
+
+**W4a — mechanical.** Board NAMES match
+case-insensitively everywhere a name is compared (`answers_to`,
+`resolve_deploy`'s directory and platform rungs, `nros board`, `nros setup`'s
+preset lookup, `nros-platform-config`'s `[[board]]` lookup, `board_path_for`,
+`template_projects.py`); the five case-duplicate alias sets are gone
+(`freeRTOS`/`FreeRTOS`, `AN536`, `NuttX`, `NuttX-riscv`, `S32Z270`), and a
+unit test over the real catalog refuses a new one. Framework ids
+(`west_board`, NuttX `board_config`, PlatformIO `board`) stay exact — they are
+the downstream ecosystem's spellings. The dead `NROS_CYCLONE_DOMAIN_ID=`
+compile definition is gone (nothing compiled read it); retiring the
+`CONFIG_NROS_CYCLONE_DOMAIN_ID` symbol itself is a Kconfig change and waits
+for W5's coordination with phase-481.
 
 ### W5 -- one canonical name per knob
 
@@ -388,6 +430,15 @@ after (a diff).
 
 **Acceptance:** no consumer outside the path function names an artifact path
 (gate); the PX4 `${NANO_ROS_ROOT}/target/...` literal is gone.
+
+**W6a — one reader of cargo's JSON stream.** The three `OUT_DIR` parsers
+(`cargo-out-dir-headers.py`, `xrce-cffi-out-dir.py` — whose `<name>#` substring
+match also hit any package whose name ended in it — and the pipeline printed in
+nros-rmw-xrce's CMakeLists) are one module, `scripts/lib/cargo_out_dir.py`
+(`package_matches`, `out_dirs`), held by the new gate `check-cargo-json-reader`.
+The RFC placed this interim parser in `nros_build_paths`; its consumers are
+cmake and `just` recipes, which reach Python, not a Rust library, so the one
+spelling lives on the Python side until D8 retires it.
 
 ### W7 -- leftovers and close
 

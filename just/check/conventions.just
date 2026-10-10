@@ -191,3 +191,11 @@ source-refs:
 [private]
 store-source-readers:
     @python3 scripts/check/check-store-source-readers.py
+
+# phase-484 W6 (RFC-0103 D8) — one reader of cargo's `build-script-executed`
+# JSON stream (`scripts/lib/cargo_out_dir.py`) for every non-cargo consumer of
+# a build script's OUT_DIR. Three existed; one matched the package with a bare
+# `<name>#` substring. Buildless, ~0.1 s; self-tests its pattern on each run.
+[private]
+cargo-json-reader:
+    @python3 scripts/check/check-cargo-json-reader.py
