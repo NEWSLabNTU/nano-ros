@@ -96,8 +96,10 @@ export nano_ros_ROOT := _NROS_HERE
 # `nros-board.toml` states its own (the generated cargo config carries them),
 # its cmake module defaults its own, and its crate's build script defaults its
 # own. One repo-wide export here was a wrong answer for every board but one.
-export FREERTOS_DIR := shell(_NROS_REROOT, env("FREERTOS_DIR", _NROS_HERE / "third-party/freertos/kernel"), _NROS_HERE)
-export LWIP_DIR := shell(_NROS_REROOT, env("LWIP_DIR", _NROS_HERE / "third-party/freertos/lwip"), _NROS_HERE)
+# phase-484 W3c (RFC-0103 D4/D5) — `FREERTOS_DIR`, `LWIP_DIR`, `THREADX_DIR`
+# and `NETX_DIR` are no longer exported: those four trees are store-first, and
+# an env value is rung 2 of the ladder — it would outrank the store copy every
+# reader now locates. A recipe that needs one asks `nros locate <name>`.
 # phase-484 W2a (RFC-0103 D4) — the FIRST-PARTY dirs a build script compiles
 # (`NROS_PLATFORM_{CFFI_INCLUDE,FREERTOS_SRC,POSIX_SRC,THREADX_SRC}`,
 # `NROS_LAN9118_LWIP_DIR`, `NROS_VIRTIO_NET_NETX_DIR`, `NROS_{C,CPP}_INCLUDE`)
@@ -109,8 +111,6 @@ export LWIP_DIR := shell(_NROS_REROOT, env("LWIP_DIR", _NROS_HERE / "third-party
 export TBAND_DIR := shell(_NROS_REROOT, env("TBAND_DIR", _NROS_HERE / "third-party/tracing/Tonbandgeraet/tband"), _NROS_HERE)
 export NUTTX_DIR := shell(_NROS_REROOT, env("NUTTX_DIR", _NROS_HERE / "third-party/nuttx/nuttx"), _NROS_HERE)
 export NUTTX_APPS_DIR := shell(_NROS_REROOT, env("NUTTX_APPS_DIR", _NROS_HERE / "third-party/nuttx/nuttx-apps"), _NROS_HERE)
-export THREADX_DIR := shell(_NROS_REROOT, env("THREADX_DIR", _NROS_HERE / "third-party/threadx/kernel"), _NROS_HERE)
-export NETX_DIR := shell(_NROS_REROOT, env("NETX_DIR", _NROS_HERE / "third-party/threadx/netxduo"), _NROS_HERE)
 export PX4_AUTOPILOT_DIR := shell(_NROS_REROOT, env("PX4_AUTOPILOT_DIR", _NROS_HERE / "third-party/px4/PX4-Autopilot"), _NROS_HERE)
 # phase-468 W2 — `NROS_ESP_IDF_WORKSPACE`, `NROS_ESP_IDF_ENV_SHIM` and the
 # `IDF_PATH` derived from them are GONE with the ESP-IDF port. They defaulted to

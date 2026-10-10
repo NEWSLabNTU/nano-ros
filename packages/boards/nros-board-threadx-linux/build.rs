@@ -19,10 +19,12 @@
 //!     IP/MAC/gateway/interface/domain_id; locator stays at the
 //!     retired toml's `tcp/127.0.0.1:7555`).
 //!
-//! Environment variables (auto-set by `.envrc` direnv defaults):
-//!   `THREADX_DIR`        — ThreadX kernel source root
-//!   `NETX_DIR`           — NetX-Duo source root (BSD shim headers)
-//!   `NSOS_NETX_DIR`      — nsos-netx shim source
+//! The ThreadX and NetX Duo trees are LOCATED (`nros_build_paths::locate`,
+//! RFC-0103 D4/D5: `THREADX_DIR` / `NETX_DIR` override, a local edit, the
+//! store, the checkout) — never read from an exported variable.
+//!
+//! Environment variables (board facts, from the generated cargo config):
+//!   `NSOS_NETX_DIR`      — nsos-netx shim source (first-party, defaulted)
 //!   `THREADX_CONFIG_DIR` — overlay's `config/` for `tx_user.h`
 //!   `NETX_CONFIG_DIR`    — overlay's `config/` for `nx_user.h`
 //!
@@ -59,20 +61,16 @@ fn main() {
     );
     let app_config_def_c = emit_app_config_def();
 
-    let threadx_dir = env_path_or(
-        "THREADX_DIR",
-        workspace_root.join("third-party/threadx/kernel"),
-    );
+    // phase-484 W3c (RFC-0103 D4/D5) — both trees through the one ladder
+    // (env override, local edit, store, checkout), never a raw variable.
+    let threadx_dir = nros_build_paths::locate::source("threadx");
     let threadx_port_dir = threadx_dir.join("ports/linux/gnu");
     assert!(
         threadx_port_dir.join("inc").exists(),
         "ThreadX Linux port not found at {}",
         threadx_port_dir.display()
     );
-    let netx_dir = env_path_or(
-        "NETX_DIR",
-        workspace_root.join("third-party/threadx/netxduo"),
-    );
+    let netx_dir = nros_build_paths::locate::source("threadx-netxduo");
     assert!(
         netx_dir.join("common/inc").exists(),
         "NetX Duo common/inc/ not found at {} — run `just threadx_linux setup`",

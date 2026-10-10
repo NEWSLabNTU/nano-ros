@@ -1258,6 +1258,16 @@ dist.macos-x86_64 = { url = "https://github.com/verus-lang/verus/releases/downlo
 # so `nros setup` runs `git submodule update --init <submodule>` into `dest`;
 # `dest` is workspace-relative — never a path baked into the `nros` binary.
 #
+# `location = "store"` on a submodule row makes it STORE-FIRST (RFC-0103 D5,
+# phase-484 W3c): `nros setup --source <name>` materialises `git archive <ref>`
+# into `$NROS_HOME/sources/<name>/<version>+<sha8>/` (read-only, hardlinked
+# between pins), and every reader LOCATES it — env override, then a local edit
+# in the checkout (HEAD off `ref`, or dirty), then the store, then the checkout
+# at the pin. `dest` stays: it is where that local edit lives. A row whose build
+# writes INTO its tree (nuttx-kernel, nuttx-apps, px4-autopilot) stays a
+# checkout source. `check-store-source-readers` refuses a reader that spells a
+# store-first row's `dest`.
+#
 # `git`/`ref` state the pin (RFC-0103 D5, phase-484 W3): the one place it can be
 # read WITHOUT a checkout — an installed SDK root clones `git` at `ref`, and the
 # store keys a tree by `<version>+<sha8>`. They are WRITTEN FROM git, never by
@@ -1269,6 +1279,7 @@ dist.macos-x86_64 = { url = "https://github.com/verus-lang/verus/releases/downlo
 [source.freertos-kernel]
 env = "FREERTOS_DIR"
 version = "10.6.2"
+location = "store"
 dest = "third-party/freertos/kernel"
 submodule = "third-party/freertos/kernel"
 git = "https://github.com/FreeRTOS/FreeRTOS-Kernel.git"
@@ -1277,6 +1288,7 @@ ref = "0adc196d4bd52a2d91102b525b0aafc1e14a2386"
 [source.lwip]
 env = "LWIP_DIR"
 version = "2.2.0"
+location = "store"
 dest = "third-party/freertos/lwip"
 submodule = "third-party/freertos/lwip"
 git = "https://github.com/jerry73204/lwip.git"
@@ -1285,6 +1297,7 @@ ref = "6233eb61c89b531fd5aaa16acdd6bc5c6368dfdd"
 [source.threadx]
 env = "THREADX_DIR"
 version = "6.4.1"
+location = "store"
 # issue 0602 — this once pointed at UPSTREAM (`eclipse-threadx/threadx`) at
 # `4b6e8100` while `.gitmodules` declared this fork, and the stale URL sent the
 # vendored-fork workflow to upstream on one machine. `git`/`ref` below are
@@ -1390,6 +1403,7 @@ ref = "99672492c5ef9fc378a8835b0bce9b2f7fa41306"
 [source.threadx-netxduo]
 env = "NETX_DIR"
 version = "6.4.x"
+location = "store"
 dest = "third-party/threadx/netxduo"
 submodule = "third-party/threadx/netxduo"
 git = "https://github.com/NEWSLabNTU/netxduo.git"

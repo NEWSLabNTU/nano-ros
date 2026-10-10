@@ -24,7 +24,7 @@
 //! | `THREADX_DIR`             | ThreadX kernel source root                       |
 //! | `THREADX_PORT`            | Portable layer (e.g. `linux/gnu`, `risc-v64/gnu`)|
 //! | `THREADX_CONFIG_DIR`      | Overlay dir with `tx_user.h`                     |
-//! | `THREADX_EXTRA_INCLUDES`  | Colon-sep extra kernel includes (optional)       |
+//! | `THREADX_EXTRA_INCLUDES`  | Colon-sep extra kernel includes; a relative one is inside the kernel tree |
 //! | `THREADX_CFLAGS`          | Extra cflags (via `apply_threadx_cflags`)        |
 //! | `NETX_DIR`                | NetX-Duo source root (required for platform-threadx)|
 //! | `NETX_CONFIG_DIR`         | Overlay dir with `nx_user.h`                     |
@@ -185,8 +185,22 @@ fn main() {
     // — so in a linked worktree the kernel SOURCES came from here and
     // `csr.h`/`plic.h`/`uart.h`/`hwtimer.h` came from the checkout the parent
     // shell had activated. Two trees in one `cc::Build`.
+    //
+    // phase-484 W3c (RFC-0103 D5) — a RELATIVE element is relative to the
+    // located ThreadX tree, so a board descriptor names a directory INSIDE the
+    // kernel (`ports/risc-v64/gnu/example_build/qemu_virt`) without spelling
+    // where the kernel is — which may be the store copy, not the checkout.
     let extra_kernel_includes: Vec<PathBuf> =
-        nros_build_paths::env_path_list("THREADX_EXTRA_INCLUDES");
+        nros_build_paths::env_path_list("THREADX_EXTRA_INCLUDES")
+            .into_iter()
+            .map(|p| {
+                if p.is_relative() {
+                    threadx_dir.join(p)
+                } else {
+                    p
+                }
+            })
+            .collect();
 
     let threadx_port_dir = threadx_dir.join("ports").join(&port_subpath);
     assert!(

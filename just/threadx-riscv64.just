@@ -254,8 +254,9 @@ build-fixture-extras:
     if [ "${NROS_JOBSERVER:-}" = "1" ] || [ "${NROS_INHERIT_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
     root="$(pwd)"
     toolchain="$root/cmake/toolchain/riscv64-threadx.cmake"
-    threadx_dir="${THREADX_DIR:-$root/third-party/threadx/kernel}"
-    netx_dir="${NETX_DIR:-$root/third-party/threadx/netxduo}"
+    source scripts/build/cargo.sh
+    threadx_dir="$(nros_locate_source threadx)" || { echo "ThreadX kernel not provisioned — nros setup --source threadx" >&2; exit 1; }
+    netx_dir="$(nros_locate_source threadx-netxduo)" || { echo "NetX Duo not provisioned — nros setup --source threadx-netxduo" >&2; exit 1; }
     config_dir="$root/packages/boards/nros-board-threadx-qemu-riscv64/config"
     board_dir="$root/packages/boards/nros-board-threadx-qemu-riscv64/c"
     virtio_dir="$root/packages/drivers/net/virtio-net-netx"

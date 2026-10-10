@@ -181,3 +181,13 @@ retired-store-vars:
 [private]
 source-refs:
     @python3 scripts/check/check-source-refs.py
+
+# phase-484 W3c (RFC-0103 D4/D5) — a `[source.*]` row with `location = "store"`
+# is store-first: readers LOCATE it (env > local edit > store > checkout). A
+# reader that spells its checkout path builds the checkout's copy even when the
+# store holds the pin, or nothing in a worktree with the submodule uninitialised.
+# This refuses the spelling outside a reasoned allowlist (no-CLI fallbacks,
+# messages, dev audits) and reports a stale allowlist entry. Buildless, ~0.2 s.
+[private]
+store-source-readers:
+    @python3 scripts/check/check-store-source-readers.py

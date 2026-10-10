@@ -214,7 +214,9 @@ has the category: `[source.rosidl]` is `location = "store"` and provisions to
 that to every row rather than adding a second spelling:
 
 - **Path** `$NROS_HOME/sources/<name>/<version>+<sha8>/` — the sha because a
-  patched fork keeps upstream's version.
+  patched fork keeps upstream's version. (As built, phase-484 W3c: the `+sha8`
+  applies to SUBMODULE rows; a clone row such as `rosidl` keeps `<version>`,
+  because its `ref` is the upstream release its version already names.)
 - **Every `[source.*]` row states `ref = "<full sha>"`.** Today only rosidl
   does; a submodule row's sha lives in the superproject gitlink (checkout) or
   in `nros-submodule-pins.toml` written by `stage-sdk-root.sh` (install) —
