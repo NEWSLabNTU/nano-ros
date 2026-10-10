@@ -973,6 +973,10 @@
     "verdict": "extension",
     "why": "How many hooks are registered for a phase. The tables are FIXED-capacity (`NROS_EXECUTOR_MAX_SHUTDOWN_CBS`, default 2), so \"did my registration land, and how much room is left\" is a question only a bounded table raises; rclcpp's nearest thing, `Context::get_pre_shutdown_callbacks`, hands back the heap-allocated callbacks themselves. Issue 0790."
   },
+  "rust:Executor::skipped_releases": {
+    "verdict": "extension",
+    "why": "Measured against the recorded upstream surfaces (`docs/reference/api-surface/{rclc,rclcpp,rclrs}.json`): none of them contains `release`, `jitter` or `skip` on an executor, so there is no upstream name to align to. Same basis as the `Executor::release_jitter` pair beside it.\n\nphase-474 I11. A periodic `spin_once(timeout)` with no declared cadence is released on an absolute grid (period = timeout). A loop that comes back a whole period or more after its next grid point is released once, for the latest due point; the older points are dropped, never released back to back, and this counts them. rclcpp has no counterpart because it does not own the release (see `Executor::release_jitter`). Paired with the jitter reading so a caller can tell a late release from a lost one."
+  },
   "rust:Executor::spin": {
     "verdict": "divergence",
     "disposition": "adopt-bounded",
