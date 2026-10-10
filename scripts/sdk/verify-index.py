@@ -110,6 +110,14 @@ def verify_structure(index, index_path):
         if submodule is not None:
             if dest is None:
                 failures.append(f"source '{name}' has `submodule` but no `dest`")
+            # RFC-0103 D5 (phase-484 W3) — mirrors `SdkIndex::validate`: the pin
+            # is readable without a checkout. `check-source-refs` holds the
+            # values equal to git; this only requires them.
+            if git is None or ref is None:
+                failures.append(
+                    f"source '{name}' has `submodule` but no `git`/`ref` "
+                    f"(run python3 scripts/check/check-source-refs.py --write)"
+                )
             if gitmodules and submodule not in gitmodules:
                 failures.append(
                     f"source '{name}' submodule path '{submodule}' is not a "

@@ -66,14 +66,17 @@ So the properties below are gated rather than remembered.
   Both NAMES are read out of the Rust that resolves them — `SHIPPED_SUBDIR` in
   `nros_launcher::checkout`, `LAUNCH_RESOLVER` in `cmd::ws` — for R1's reason: a
   gate that spells a path itself goes green while the reader looks elsewhere.
-* **R6 — the SDK root carries its submodule pins, under the name its readers
-  look for** (issue 1304). `git archive` drops gitlinks, so the release RECORDS
-  them in a file the staging script writes and verifies; `nros setup` reads it
-  to clone each submodule source, and `nros-rmw-provision.cmake` reads its
-  presence as "this is an installed root". Three spellings of one name, so the
-  name is read out of `sdk_store::SUBMODULE_PINS_FILE` and the other two must
-  match it — a rename on one side would leave `nros setup` looking for a file
-  nothing writes, which is issue 1304 again with a different error.
+* **R6 — an installed SDK root reads its submodule pins from the index it
+  ships, and every reader recognises an installed root the same way** (issue
+  1304, RFC-0103 D5). `git archive` drops gitlinks, so the release has no
+  repository to read a pin from; every `[source.*] submodule` row states `git`
+  + `ref` instead. Three sides must agree: the staging script VERIFIES the
+  shipped index against HEAD (`check-source-refs.py --rev HEAD`),
+  `sdk_store::recorded_pin` reads the root's own `nros-sdk-index.toml` only
+  when the root has no `.git`, and `nros-rmw-provision.cmake` keys its
+  installed-root branch on the same absence. The pins file these replaced
+  (`nros-submodule-pins.toml`) must not come back on any side — two owners of
+  one fact is what D5 retired.
 
 ## Buildless
 
@@ -102,15 +105,18 @@ WS = os.path.join(ROOT, "packages", "cli", "nros-cli-core", "src", "cmd", "ws.rs
 STAGE_SCRIPT = "scripts/stage-sdk-root.sh"
 STAGE_PATH = os.path.join(ROOT, "scripts", "stage-sdk-root.sh")
 
-# R6 — the pins file's reader, and the cmake hook that keys on its presence.
+# R6 — the pin reader, and the cmake hook that keys on an installed root.
 STORE = os.path.join(
     ROOT, "packages", "cli", "nros-cli-core", "src", "orchestration", "sdk_store.rs"
 )
 PROVISION = os.path.join(
     ROOT, "packages", "rmw", "cyclonedds", "nros-rmw-cyclonedds", "nros-rmw-provision.cmake"
 )
-PINS_CONST_RE = re.compile(r'pub const SUBMODULE_PINS_FILE: &str = "([^"]+)"')
-STAGE_PINS_RE = re.compile(r'^PINS_FILE="([^"]+)"', re.M)
+RETIRED_PINS_FILE = "nros-submodule-pins.toml"
+STAGE_VERIFY = 'check-source-refs.py" --rev HEAD'
+STORE_INSTALLED_TEST = 'workspace.join(".git").exists()'
+STORE_INDEX_CONST = 'const ROOT_INDEX_FILE: &str = "nros-sdk-index.toml";'
+CMAKE_INSTALLED_TEST = 'NOT EXISTS "${_nros_cyclone_tree}/.git"'
 
 # The Rust reader's own name for the file. Read, never spelled here.
 FILE_NAME_RE = re.compile(r'pub const FILE_NAME: &str = "([^"]+)"')
@@ -195,32 +201,32 @@ def sdk_root_violations(workflow_text, launcher_text, ws_text, stage_text):
 
 
 def pins_violations(store_text, stage_text, provision_text):
-    """R6 — one pins-file name, written, verified and read (issue 1304)."""
-    m = PINS_CONST_RE.search(store_text)
-    if not m:
-        return [("R6", f"{STORE} declares no `pub const SUBMODULE_PINS_FILE` — nothing "
-                       "says where an installed root's submodule pins are read from")]
-    name = m.group(1)
+    """R6 — the index is the installed root's one pin owner (issue 1304, RFC-0103 D5)."""
     bad = []
-    sm = STAGE_PINS_RE.search(stage_text)
-    if not sm or sm.group(1) != name:
+    if STAGE_VERIFY not in stage_text:
         bad.append(
-            ("R6", f"{STAGE_SCRIPT} writes {sm.group(1) if sm else 'no PINS_FILE'} but "
-                   f"`nros setup` reads {name} — every submodule source of an installed "
-                   "`nros setup` would dead-end as issue 1304 did")
+            ("R6", f"{STAGE_SCRIPT} does not run `{STAGE_VERIFY}` — a release whose "
+                   "index pins disagreed with its gitlinks would ship, and an installed "
+                   "`nros setup` would clone the wrong commit")
         )
-    # The script must also VERIFY it (its `need` lines are what fail a release
-    # whose staging broke), not merely declare the name.
-    if 'need -f "$PINS_FILE"' not in stage_text:
+    if STORE_INSTALLED_TEST not in store_text or STORE_INDEX_CONST not in store_text:
         bad.append(
-            ("R6", f"{STAGE_SCRIPT} does not `need -f \"$PINS_FILE\"` — a staging that "
-                   "wrote no pins would ship, and be found by a user at `nros setup`")
+            ("R6", f"{STORE} no longer reads an installed root's pins from its own "
+                   "index behind a `.git` absence test — `recorded_pin` and the cmake "
+                   "hook would disagree on what an installed root is")
         )
-    if f'/{name}"' not in provision_text:
+    if CMAKE_INSTALLED_TEST not in provision_text:
         bad.append(
-            ("R6", f"{PROVISION} does not key on {name} — an installed root would stop "
-                   "finding the Cyclone `nros setup` provisioned")
+            ("R6", f"{PROVISION} does not key on `{CMAKE_INSTALLED_TEST}` — an installed "
+                   "root would stop finding the Cyclone `nros setup` provisioned")
         )
+    for path, text in ((STAGE_SCRIPT, stage_text), (STORE, store_text), (PROVISION, provision_text)):
+        code = "\n".join(l for l in text.splitlines() if not l.lstrip().startswith(("#", "//")))
+        if RETIRED_PINS_FILE in code:
+            bad.append(
+                ("R6", f"{path} names {RETIRED_PINS_FILE} outside a comment — the pins "
+                       "live in the index now; a second file is a second owner")
+            )
     return bad
 
 
@@ -493,16 +499,17 @@ def self_test():
             print(f"  self-test FAIL [{label}]: expected {sorted(want) or 'no violations'}, got {sorted(got)}")
             failures += 1
 
-    # R6 — each side of the three-way name, broken on its own.
-    store = 'pub const SUBMODULE_PINS_FILE: &str = "pins.toml";'
-    stage = 'PINS_FILE="pins.toml"\nneed -f "$PINS_FILE" "why"\n'
-    cmake = 'if(EXISTS "${_root}/pins.toml")\n'
+    # R6 — each side broken on its own.
+    store = 'const ROOT_INDEX_FILE: &str = "nros-sdk-index.toml";\nif workspace.join(".git").exists() {'
+    stage = 'python3 "$repo/scripts/check/check-source-refs.py" --rev HEAD\n'
+    cmake = 'AND NOT EXISTS "${_nros_cyclone_tree}/.git"\n'
     pins_cases = [
         ("the three agree", store, stage, cmake, set()),
-        ("the reader declares nothing", "", stage, cmake, {"R6"}),
-        ("the stager writes another name", store, stage.replace("pins.toml", "p.toml"), cmake, {"R6"}),
-        ("the stager declares but never verifies", store, 'PINS_FILE="pins.toml"\n', cmake, {"R6"}),
-        ("the cmake hook keys on another name", store, stage, cmake.replace("pins.toml", "p.toml"), {"R6"}),
+        ("the stager does not verify", store, "true\n", cmake, {"R6"}),
+        ("the reader drops the .git test", store.replace(".exists()", ".is_dir()"), stage, cmake, {"R6"}),
+        ("the cmake hook keys on something else", store, stage, 'AND EXISTS "${t}/pins"\n', {"R6"}),
+        ("the pins file comes back", store, stage + 'PINS_FILE="nros-submodule-pins.toml"\n', cmake, {"R6"}),
+        ("a comment may still name it", store, stage + "# was nros-submodule-pins.toml\n", cmake, set()),
     ]
     for label, st, sg, cm, want in pins_cases:
         got = {rule for rule, _ in pins_violations(st, sg, cm)}
@@ -566,8 +573,8 @@ def main():
     print(
         f"check-release-manifest: OK — the asset records share/nros/{name}, "
         f"stamped by the binary; {fatal} release-blocking path(s), all about codegen; "
-        f"it carries {subdir} and bin/{resolver}, and {subdir}/"
-        f"{PINS_CONST_RE.search(store_text).group(1)} under the one name its readers use."
+        f"it carries {subdir} and bin/{resolver}, and its submodule pins are the "
+        f"index's, verified at staging."
     )
     return 0
 
