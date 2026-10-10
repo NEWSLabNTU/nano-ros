@@ -110,10 +110,7 @@ if(NOT NROS_XRCE_CFFI_OUT_DIR)
         "Build it and configure with it:\n"
         "  just check rmw-xrce\n"
         "or, by hand:\n"
-        "  OUT=$(cargo build -p nros-rmw-xrce-cffi --message-format=json \\\n"
-        "        | python3 -c 'import sys,json;print([json.loads(l)[\"out_dir\"] "
-        "for l in sys.stdin if \"build-script-executed\" in l "
-        "and \"nros-rmw-xrce-cffi#\" in l][0])')\n"
+        "  OUT=$(python3 scripts/build/xrce-cffi-out-dir.py)\n"
         "  cmake -S packages/rmw/xrce/nros-rmw-xrce -B <build> -DNROS_XRCE_CFFI_OUT_DIR=\"$OUT\"")
 endif()
 set(_xrce_vendor_pointer "${NROS_XRCE_CFFI_OUT_DIR}/nros-xrce-vendor-build.txt")
