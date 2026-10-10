@@ -817,20 +817,16 @@ function(nros_generate_interfaces target)
       # the freertos carrier generate the header through other paths and define no such
       # target/property, so the guards below skip them (freertos is handled in
       # NanoRosNodeRegister.cmake, issue 0090).
-      get_property(_nrgi_c_hdr GLOBAL PROPERTY NROS_C_CONFIG_HEADER_FILE)
-      if(_nrgi_c_hdr AND TARGET nros_c_config_header)
-        add_dependencies(${_lib_target} nros_c_config_header)
-        # issue 0740 — a LOCAL stamp, not the cross-directory mirror path (see
-        # `_nros_config_header_stamp`). Guarded: this module is reachable in
-        # configurations where NanoRosNodeRegister.cmake was not included.
-        if(COMMAND _nros_config_header_stamp)
-          _nros_config_header_stamp(_nrgi_cfg_stamp "${_lib_target}" "${_nrgi_c_hdr}")
-        else()
-          set(_nrgi_cfg_stamp "${_nrgi_c_hdr}")
-        endif()
-        set_source_files_properties(${_generated_sources} PROPERTIES
-          OBJECT_DEPENDS "${_nrgi_cfg_stamp}")
-      endif()
+      #
+      # Issue 1783 — BOTH crates' mirrors, not the nros-c one alone: this
+      # library links the runtime umbrella below, which is `NanoRosCpp` in any
+      # build that has it, and that prepends the nros-CPP mirror dir to the
+      # include path. So `<nros/nros_config_generated.h>` resolves THERE, and a
+      # stamp of the nros-c copy named a file this TU never read.
+      # `nros_config_header_object_depends` stamps every mirror the build
+      # defines (a no-op where it defines none).
+      include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NanoRosConfigHeaderMirror.cmake")
+      nros_config_header_object_depends(${_lib_target} ${_generated_sources})
     else()
       add_library(${_lib_target} INTERFACE)
       target_include_directories(${_lib_target}

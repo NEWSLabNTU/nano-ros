@@ -1081,24 +1081,7 @@ function(nano_ros_entry)
             if(COMMAND _nros_node_register_config_header_deps)
                 _nros_node_register_config_header_deps(${_NRA_NAME})
             endif()
-            get_property(_nra_c_hdr   GLOBAL PROPERTY NROS_C_CONFIG_HEADER_FILE)
-            get_property(_nra_cpp_hdr GLOBAL PROPERTY NROS_CPP_CONFIG_HEADER_FILE)
-            set(_nra_cfg_hdrs "")
-            if(_nra_c_hdr)
-                list(APPEND _nra_cfg_hdrs "${_nra_c_hdr}")
-            endif()
-            if(_nra_cpp_hdr)
-                list(APPEND _nra_cfg_hdrs "${_nra_cpp_hdr}")
-            endif()
-            if(_nra_cfg_hdrs)
-                if(COMMAND _nros_config_header_stamp)
-                    _nros_config_header_stamp(_nra_cfg_stamp "${_NRA_NAME}" ${_nra_cfg_hdrs})
-                else()
-                    set(_nra_cfg_stamp ${_nra_cfg_hdrs})
-                endif()
-                set_source_files_properties("${_gen_tu}" PROPERTIES
-                    OBJECT_DEPENDS "${_nra_cfg_stamp}")
-            endif()
+            nros_config_header_object_depends(${_NRA_NAME} "${_gen_tu}")
         endif()
     endif()
 
@@ -1115,37 +1098,16 @@ function(nano_ros_entry)
     # file-level `OBJECT_DEPENDS` on EVERY source of the entry (incl. the user
     # `main.cpp`) pointing at the mirrored header(s).
     if(TARGET ${_NRA_NAME} AND NANO_ROS_PLATFORM STREQUAL "posix")
-        get_property(_nra_c_hdr   GLOBAL PROPERTY NROS_C_CONFIG_HEADER_FILE)
-        get_property(_nra_cpp_hdr GLOBAL PROPERTY NROS_CPP_CONFIG_HEADER_FILE)
-        set(_nra_cfg_hdrs "")
-        if(_nra_c_hdr)
-            list(APPEND _nra_cfg_hdrs "${_nra_c_hdr}")
+        # issue 0740 — a LOCAL stamp, not the cross-directory mirror path:
+        # `add_dependencies` orders the TARGET; it does not give this
+        # directory's .o rule a prerequisite it can BUILD, so under Makefiles a
+        # clean consumer build dies with "No rule to make target". The stamp
+        # carries the same content edge.
+        get_target_property(_nra_srcs ${_NRA_NAME} SOURCES)
+        if(NOT _nra_srcs)
+            set(_nra_srcs "")
         endif()
-        if(_nra_cpp_hdr)
-            list(APPEND _nra_cfg_hdrs "${_nra_cpp_hdr}")
-        endif()
-        if(_nra_cfg_hdrs)
-            foreach(_dep nros_c_config_header nros_cpp_config_header)
-                if(TARGET ${_dep})
-                    add_dependencies(${_NRA_NAME} ${_dep})
-                endif()
-            endforeach()
-            get_target_property(_nra_srcs ${_NRA_NAME} SOURCES)
-            if(_nra_srcs)
-                # issue 0740 — a LOCAL stamp, not the cross-directory mirror
-                # path. `add_dependencies` above orders the TARGET; it does not
-                # give this directory's .o rule a prerequisite it can BUILD, so
-                # under Makefiles a clean consumer build dies with "No rule to
-                # make target". The stamp carries the same content edge.
-                if(COMMAND _nros_config_header_stamp)
-                    _nros_config_header_stamp(_nra_cfg_stamp "${_NRA_NAME}" ${_nra_cfg_hdrs})
-                else()
-                    set(_nra_cfg_stamp ${_nra_cfg_hdrs})
-                endif()
-                set_source_files_properties(${_nra_srcs} PROPERTIES
-                    OBJECT_DEPENDS "${_nra_cfg_stamp}")
-            endif()
-        endif()
+        nros_config_header_object_depends(${_NRA_NAME} ${_nra_srcs})
     endif()
 
     # Phase 212.N.6 — stash the BOARD selection on the target so the
