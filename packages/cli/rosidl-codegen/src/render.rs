@@ -89,6 +89,16 @@ static ENV: LazyLock<Environment<'static>> = LazyLock::new(|| {
     // Generated sources carry their own trailing newline in the template body;
     // do not let the engine append another.
     env.set_keep_trailing_newline(false);
+    // phase-390 W6 — an undefined context key is an ERROR, not an empty value.
+    // Every `{{ key }}` / `{% if key %}` in a pack names a field on a Rust
+    // context struct, and the two are spelled separately; under the default
+    // lenient behaviour a key renamed on one side and not the other rendered as
+    // empty / false, so a template kept emitting with a branch silently gone.
+    // Strict turns that into a render failure naming the template and line.
+    // Measured when enabled: the whole emit corpus, every rosidl-codegen test and
+    // a 15-package humble closure in all three languages rendered byte-identical
+    // output; the only casualty was a test rendering `lib.rs` with `()`.
+    env.set_undefined_behavior(minijinja::UndefinedBehavior::Strict);
     // RFC-0090 / phase-429 W1 — a GLOBAL, not a per-context field. Every
     // artifact this generator emits was emitted by this generator, so the
     // version is a property of the environment, not of any one message; adding
