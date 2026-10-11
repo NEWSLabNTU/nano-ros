@@ -224,7 +224,8 @@ pub fn refresh_stale_sidecars(
                 decl.config.package, decl.config.component
             );
         }
-        match build_metadata(&build_options(decl, nano_ros, &probe_root)) {
+        let opts = build_options(decl, nano_ros, &probe_root);
+        match build_metadata(&opts) {
             Ok(()) => {
                 clear_unprobeable(&sidecar);
                 stamp_provenance(&sidecar, key.as_deref().unwrap_or(UNKEYED))?;
@@ -235,7 +236,25 @@ pub fn refresh_stale_sidecars(
             // SystemModel bound, exactly as before the flip, instead of failing
             // the whole sync. A REGULAR workspace package that fails to probe is
             // a real bug and still hard-fails.
+            //
+            // Issue 1817 — so is a deploy-bound package whose OWN manifest does
+            // not resolve: that fails on every target, not just the host, so
+            // the degrade would only move the error from `nros sync` (which
+            // printed `done.` and exited 0) to the build. No marker either: a
+            // resolution failure costs no compile to re-check.
             Err(why) if decl.deploy_bound => {
+                if let Some(cause) =
+                    crate::orchestration::metadata_build::component_resolution_error(&opts)
+                {
+                    eyre::bail!(
+                        "{}::{}: cargo cannot resolve {}:\n{cause}\n\n\
+                         This fails the image's own build too, so sync stops here rather \
+                         than fall back to the SystemModel bound (issue 1817).",
+                        decl.config.package,
+                        decl.config.component,
+                        decl.package_root.join("Cargo.toml").display()
+                    );
+                }
                 if let Some(k) = key.as_deref() {
                     // A cargo probe path-depends on `nano_ros` itself, so that
                     // IS the compile root.

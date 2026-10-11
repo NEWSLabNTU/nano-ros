@@ -691,6 +691,62 @@ pub fn build_metadata(o: &MetadataBuildOptions) -> Result<()> {
     Ok(())
 }
 
+/// Issue 1817 — why the COMPONENT's own manifest does not resolve, or `None`
+/// when it does (or when cargo cannot say).
+///
+/// A deploy-bound probe failure degrades to the SystemModel bound (issue 0288),
+/// because the probe compiles target code for the HOST and a board the host
+/// cannot build is not the user's mistake. A manifest cargo cannot resolve is a
+/// different failure: it is true of every target, so the image's own build
+/// fails on it too, and degrading let `nros sync` print `sync: done.` and exit 0
+/// over a leaf that names a feature its board crate does not have. This asks
+/// the question in the probe's own resolution context (same cwd, same `[patch]`
+/// rows), so a failure only the harness hits never reads as the leaf's.
+///
+/// `--locked`, so the check never writes a lockfile; a lock it would have had to
+/// update is reported as `None` (undecided), never as the leaf's fault.
+/// `Some` carries cargo's whole stderr.
+pub fn component_resolution_error(o: &MetadataBuildOptions) -> Option<String> {
+    let cwd = probe_cwd(o);
+    let mut cmd = Command::new("cargo");
+    cmd.current_dir(&cwd);
+    if let Ok(Some(cfg)) = probe_patch_config(&o.harness_dir, &cwd) {
+        cmd.arg("--config").arg(cfg);
+    }
+    let out = cmd
+        .args([
+            "metadata",
+            "--format-version",
+            "1",
+            "--locked",
+            "--manifest-path",
+        ])
+        .arg(o.component_dir.join("Cargo.toml"))
+        .env_remove("RUSTUP_TOOLCHAIN")
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .output()
+        .ok()?;
+    if out.status.success() {
+        return None;
+    }
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    if stderr.contains("--locked") {
+        return None;
+    }
+    // All of it, not `first_diagnostic`: a resolver error's first line is
+    // `failed to select a version for `x``, and the CAUSE (`… does not have
+    // that feature`) comes several lines later. This becomes a hard error of
+    // its own, not a one-line degrade report.
+    // Cargo's progress lines (`Updating crates.io index`) are not the cause.
+    let progress = ["Updating ", "Downloading ", "Downloaded ", "Locking "];
+    let cause: Vec<&str> = stderr
+        .lines()
+        .filter(|l| !progress.iter().any(|p| l.trim_start().starts_with(p)))
+        .collect();
+    Some(cause.join("\n").trim().to_string())
+}
+
 /// Issue 1603 — where the probe's cargo runs: the nano-ros checkout the
 /// harness already points its `nros` path dep at, which is outside every leaf
 /// and workspace config (so cargo reads only that checkout's own config chain,
@@ -1117,6 +1173,46 @@ some later noise
             output_path: PathBuf::from("/out/talker.metadata.json"),
             harness_dir: PathBuf::from("/scratch/probe"),
         }
+    }
+
+    /// Issue 1817 — a manifest cargo cannot resolve is named, with cargo's own
+    /// error; one that resolves (here stopped only by `--locked`, since it has
+    /// no lockfile) is not the component's fault. Path deps only, so cargo
+    /// never reaches a registry, and `cargo metadata` compiles nothing.
+    #[test]
+    fn component_resolution_error_names_an_unresolvable_manifest_only() {
+        let root = tempfile::tempdir().unwrap();
+        let write = |rel: &str, body: &str| {
+            let p = root.path().join(rel);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, body).unwrap();
+        };
+        write(
+            "board/Cargo.toml",
+            "[package]\nname = \"board\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[features]\nrmw-zenoh = []\n",
+        );
+        write("board/src/lib.rs", "");
+        let leaf = |feature: &str| {
+            format!(
+                "[package]\nname = \"leaf\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n\
+                 [dependencies]\nboard = {{ path = \"../board\", features = [\"{feature}\"] }}\n"
+            )
+        };
+        write("leaf/src/lib.rs", "");
+        let o = MetadataBuildOptions {
+            component_dir: root.path().join("leaf"),
+            nano_ros_workspace: root.path().to_path_buf(),
+            harness_dir: root.path().join("leaf/build/probe"),
+            ..opts()
+        };
+
+        write("leaf/Cargo.toml", &leaf("board-entry"));
+        let why = component_resolution_error(&o).expect("an unknown feature must not resolve");
+        assert!(why.contains("board-entry"), "{why}");
+
+        write("leaf/Cargo.toml", &leaf("rmw-zenoh"));
+        assert_eq!(component_resolution_error(&o), None);
+        assert!(!root.path().join("leaf/Cargo.lock").exists());
     }
 
     #[test]
