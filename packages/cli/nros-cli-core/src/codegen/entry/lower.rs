@@ -1,7 +1,7 @@
 //! Stage 2 for every entry pack: the CLI's [`Plan`] becomes the
 //! [`LoweredEntry`] a pack renders from.
 //!
-//! phase-474 W2 / RFC-0091 §6b. Until this module the C and C++ emitters each
+//! phase-494 W2 / RFC-0091 §6b. Until this module the C and C++ emitters each
 //! projected the plan into their OWN view structs (`CEntryView` and four
 //! siblings, `CppEntryView` and six), and a seventh family of shared views
 //! lived in `mod.rs`. Read side by side they were one projection written

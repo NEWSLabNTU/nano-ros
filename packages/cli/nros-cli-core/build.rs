@@ -28,7 +28,7 @@ include!("../build-support/submodule_watch.rs");
 include!("build_entry_packs.rs");
 
 fn main() {
-    // phase-474 W1 — FIRST, before the out-of-tree early return below: an
+    // phase-494 W1 — FIRST, before the out-of-tree early return below: an
     // out-of-tree build still renders entries, so it still needs its packs.
     generate_entry_packs();
 

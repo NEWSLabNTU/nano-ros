@@ -1,4 +1,4 @@
-// Included by `build.rs`. phase-474 W1 — the ENTRY packs are DISCOVERED, not
+// Included by `build.rs`. phase-494 W1 — the ENTRY packs are DISCOVERED, not
 // authored, exactly as the message packs have been since phase-469 W1
 // (`rosidl-codegen/build.rs`).
 //

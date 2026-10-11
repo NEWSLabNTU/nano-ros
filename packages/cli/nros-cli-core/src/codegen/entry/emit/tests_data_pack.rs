@@ -1,4 +1,4 @@
-//! phase-474 W5 — the acceptance test for "a new entry language needs no Rust
+//! phase-494 W5 — the acceptance test for "a new entry language needs no Rust
 //! emitter": a pack that is ONLY data renders an entry.
 //!
 //! The pack is `testdata/entry-packs/zig/` — a `pack.toml` and one template,

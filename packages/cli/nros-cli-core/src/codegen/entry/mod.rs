@@ -18,7 +18,7 @@
 //!     board: Some("native".into()),
 //!     arg_overrides: vec![],
 //! })?;
-//! // phase-474 — one renderer for every C-ABI pack; the language picks the
+//! // phase-494 — one renderer for every C-ABI pack; the language picks the
 //! // pack (`pack::entry_pack_for`), and the pack is data.
 //! let src = emit::emit_typed(lang, &plan)?;
 //! ```
@@ -38,15 +38,15 @@ use nros_orchestration_ir::{
 
 use crate::orchestration::cargo_metadata_schema::{NodeOverride, TierDef};
 
-/// phase-474 — the ONE renderer for every `LoweredEntry` pack. `emit_c.rs`
+/// phase-494 — the ONE renderer for every `LoweredEntry` pack. `emit_c.rs`
 /// and `emit_cpp.rs` were the two per-language emitters it replaced.
 pub mod emit;
 pub mod emit_rust;
-/// phase-474 — the packs' spelling filters, the only per-language Rust left.
+/// phase-494 — the packs' spelling filters, the only per-language Rust left.
 mod filters;
 #[cfg(test)]
 mod golden;
-/// phase-474 — `Plan` → `LoweredEntry`, once, for every pack.
+/// phase-494 — `Plan` → `LoweredEntry`, once, for every pack.
 pub mod lower;
 pub mod metadata;
 /// phase-432 W2.4 — the shared Rust-entry parity corpus, this side.
@@ -286,7 +286,7 @@ fn board_has_run_tiers(board: &str) -> bool {
         .is_some_and(|r| r.run_tiers.is_some())
 }
 
-// phase-474 W2 — the view structs that lived here (`ServicesView`,
+// phase-494 W2 — the view structs that lived here (`ServicesView`,
 // `DeclsView`, `QosRowView`, `TierView`, `SchedView`, `BootConfigView`) and
 // their builders are `nros_entry_lower`'s `LoweredEntry` image types now, built
 // by `lower.rs`. They were the shared half of a projection each emitter also

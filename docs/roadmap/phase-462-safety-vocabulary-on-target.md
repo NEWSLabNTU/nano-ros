@@ -8,7 +8,7 @@ phase being designed in parallel, referred to here by that name and not by a
 number) and the tier-derivation fix (the `derive.rs:93-100` gate that lets a
 groupless node fall to the default tier with only a note).
 
-> **phase-474 (2026-10-01):** `codegen/entry/emit_cpp.rs` and `emit_c.rs` are
+> **phase-494 (2026-10-01):** `codegen/entry/emit_cpp.rs` and `emit_c.rs` are
 > DELETED — every C-family pack renders `nros_entry_lower::LoweredEntry`
 > through one renderer. Where a wave below names a region or a line in
 > `emit_cpp.rs`, read: the fact as a field built in `codegen/entry/lower.rs`,

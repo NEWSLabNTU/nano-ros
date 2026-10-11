@@ -1,8 +1,6 @@
-# Phase 474 — the entry emitters become data: `LoweredEntry` IS the context
+# Phase 494 — the entry emitters become data: `LoweredEntry` IS the context
 
-**Archived 2026-10-11.** Merged: `248385f5a3` is on main and `emit_c.rs` / `emit_cpp.rs` are gone. Of the W6 follow-ups, issue 1604 is resolved, the `golden.rs` enum is deferred until a third pack exists, and `emit_rust.rs` stays by decision (RFC-0091 §7). The status line below still says not yet merged.
-
-**Status (2026-10-01). W1–W5 LANDED on `feat/data-driven-entry-emitters` (not yet merged); W6 (follow-ups) open.**
+**Status (2026-10-12). COMPLETE -- archived. W1–W5 merged to main in 248385f5a3; of W6, issue 1604 is resolved (the C pack renders the monitor rows) and the other two items are recorded decisions, not open work.** Renumbered from phase-474 on 2026-10-12: two unrelated docs shared that number, and the safety-island findings doc kept it because ~300 references (`phase-474 I1`, `T4`, `D2`...) name its items. A `phase-494 W1`-`W5` reference in older commit messages means this phase.
 Implements RFC-0091 §6b's entry clause — "`LoweredEntry` must be the context,
 not the seed for a per-surface projection" — which phase-432 named, phase-469
 deferred ("Making an entry emitter data-driven … RFC-0091 §6b's blocker"), and
@@ -230,6 +228,7 @@ goldens were recorded.
 * **Issue 1604** — the C pack never rendered the contract monitor rows. The
   lowering now hands them to every pack, so the fix is a C template block (no
   Rust); it is an output change and wants its own golden and a C fixture.
+  **Resolved** (archived issue 1604): `c/entry.c.jinja` renders them.
 * The golden harness (`golden.rs`) still names its entry points in an
   `Emitter` enum. That is test code choosing WHICH entry point a row exercises,
   not a projection; it could become data (pack name + tail) when a third

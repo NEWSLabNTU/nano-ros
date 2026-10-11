@@ -1,5 +1,5 @@
 # A TOY entry pack: Zig, the language RFC-0091 §8b walked through the design
-# as its probe. phase-474 W5's acceptance test for "a new entry language needs
+# as its probe. phase-494 W5's acceptance test for "a new entry language needs
 # no Rust emitter".
 #
 # Everything this pack is lives in this directory: this manifest and one

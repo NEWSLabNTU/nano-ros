@@ -27,7 +27,7 @@ level up, and a gate whose reach is narrower than its rule is the 0196 shape the
 tree has paid for repeatedly.
 
 Both roots' manifests now name FILES (`templates = [{ key, file }]`) beside
-themselves — the entry packs since phase-474 W1, when their registry stopped
+themselves — the entry packs since phase-494 W1, when their registry stopped
 being an authored `include_str!` list in `render.rs` and became generated from
 these rows, as the message packs' had in phase-469 W1. So file existence and
 the reverse direction — a `.jinja` no manifest claims — are READ from the
@@ -187,7 +187,7 @@ class PackRoot:
     goldens: Path | None = None
     #: Extra suffixes whose files a manifest must claim (message packs).
     claimed_suffixes: tuple[str, ...] = field(default=())
-    #: A root of TEST-FIXTURE packs (phase-474 W5): each must declare
+    #: A root of TEST-FIXTURE packs (phase-494 W5): each must declare
     #: `fixture = true` and must NOT name a `language` — a real language is a
     #: `Language` variant, which a fixture must not add — so the
     #: variant<->pack checks do not apply, and its golden is keyed on its
@@ -218,7 +218,7 @@ MESSAGE = PackRoot(
     claimed_suffixes=(".jinja",),
 )
 
-#: phase-474 W5 — the data-only toy entry pack(s): the proof that an entry
+#: phase-494 W5 — the data-only toy entry pack(s): the proof that an entry
 #: language is a pack, not a Rust emitter. Held to the entry root's rules — a
 #: manifest, files claimed both ways, a golden — so the proof cannot rot into
 #: a directory nothing checks.
@@ -234,7 +234,7 @@ ENTRY_FIXTURE = PackRoot(
 
 ROOTS = (ENTRY, MESSAGE, ENTRY_FIXTURE)
 
-#: phase-474 — where an entry EMITTER would live, and the one that may.
+#: phase-494 — where an entry EMITTER would live, and the one that may.
 EMITTER_DIR = ROOT / "packages/cli/nros-cli-core/src/codegen/entry"
 #: `emit_rust.rs` is the Rust parity renderer RFC-0091 §7 keeps BY DECISION:
 #: the second rendering the parity corpus compares the `nros::main!`
@@ -485,7 +485,7 @@ def check() -> list[str]:
 
 
 def check_no_entry_emitters() -> list[str]:
-    """phase-474 — an entry language is a PACK, never a Rust emitter.
+    """phase-494 — an entry language is a PACK, never a Rust emitter.
 
     `emit_c.rs` and `emit_cpp.rs` were deleted when `LoweredEntry` became the
     template context (RFC-0091 §6b); a new `codegen/entry/emit_<x>.rs` would be
@@ -511,7 +511,7 @@ def check_no_entry_emitters() -> list[str]:
                 f"{p}: an entry EMITTER. An entry language is a pack — a `pack.toml`, "
                 "its templates, and a row in `filters.rs` if it needs a spelling no "
                 "filter provides — rendered from `LoweredEntry` by `emit/mod.rs` "
-                "(phase-474). A per-language projection here is what RFC-0091 §6b "
+                "(phase-494). A per-language projection here is what RFC-0091 §6b "
                 "retired."
             )
     return problems

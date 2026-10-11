@@ -94,7 +94,7 @@ pub struct LoweredNode {
     #[serde(default)]
     pub identity: Option<NodeIdentity>,
 
-    // ---- phase-474 W2 — what a C-ABI entry pack reads of a node. ----
+    // ---- phase-494 W2 — what a C-ABI entry pack reads of a node. ----
     //
     // `#[serde(default)]` throughout: the Rust parity corpus states none of
     // these, and the two Rust producers do not read them.
@@ -125,7 +125,7 @@ pub struct LoweredNode {
     pub class: Option<String>,
 }
 
-/// The facts a language pack renders an entry from — and, since phase-474 W2,
+/// The facts a language pack renders an entry from — and, since phase-494 W2,
 /// the template CONTEXT itself (RFC-0091 §6b).
 ///
 /// Two halves. The first five fields are the subset BOTH Rust producers cover
@@ -152,7 +152,7 @@ pub struct LoweredEntry {
     #[serde(default)]
     pub depfiles: Vec<String>,
 
-    // ---- phase-474 W2 — the IMAGE (see `crate::image`). ----
+    // ---- phase-494 W2 — the IMAGE (see `crate::image`). ----
     //
     // RFC-0091 §6b: "`LoweredEntry` must be the context, not the seed for a
     // per-surface projection". Every field below is what the C and C++

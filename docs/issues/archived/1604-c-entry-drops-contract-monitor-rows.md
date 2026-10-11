@@ -7,7 +7,7 @@ status: resolved
 type: bug
 area: codegen, cli
 severity: medium
-related: [phase-462, phase-474, rfc-0052, rfc-0091, issue-1635]
+related: [phase-462, phase-494, rfc-0052, rfc-0091, issue-1635]
 ---
 
 ## What happens
@@ -39,7 +39,7 @@ The install is C ABI already: `nros_cpp_monitor_row_t`, `nros_cpp_age_row_t`,
 `nros_cpp_monitor_tables_t` and `nros_cpp_install_monitors` are declared in
 `nros/nros_cpp_ffi.h`, which every C entry includes.
 
-Since phase-474 the C pack renders `nros_entry_lower::LoweredEntry` directly,
+Since phase-494 the C pack renders `nros_entry_lower::LoweredEntry` directly,
 and the lowering ALREADY carries the sliced tables for every pack
 (`LoweredEntry::monitors` for the single executor, `TierSetup::monitors` per
 tier, `monitor_tables` for the file-scope statics) — `run_entry` now passes the
@@ -47,7 +47,7 @@ rows to every pack. The fix is therefore a TEMPLATE change in
 `packs/entry/c/`: the statics block and an install block per setup, the C
 spelling of `packs/entry/cpp/monitor_install.jinja`. No Rust.
 
-It was deliberately not made in phase-474, whose acceptance is that every
+It was deliberately not made in phase-494, whose acceptance is that every
 existing entry renders byte-identically; this is an output change for every C
 image with contracts, and wants its own golden row (a C plan with monitor rows
 — none exists) and a built C fixture that declares a contract.

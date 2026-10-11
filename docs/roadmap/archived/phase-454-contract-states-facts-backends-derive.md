@@ -1237,7 +1237,7 @@ whether the build was told what it registers.
 ## After the build path moved (reviewed 2026-10-03)
 
 RFC-0065 (`nros build`, one configure per coordinate), phase-470 (generated
-entries) and phase-474 (one entry lowering) landed after this phase. Re-read
+entries) and phase-494 (one entry lowering) landed after this phase. Re-read
 against them, two premises this phase handed its successors are wrong, and
 [RFC-0100 Amendment 1](../../design/0100-rmw-agnostic-sizing-model.md#amendment-1-2026-10-03--the-unified-build-path-moved-under-this-model)
 carries the corrections:

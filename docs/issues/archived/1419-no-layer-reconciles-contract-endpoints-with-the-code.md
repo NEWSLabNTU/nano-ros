@@ -355,7 +355,7 @@ configured.
 ## Revised direction for the two Rust items (2026-10-03, RFC-0100 Amendment 1)
 
 Re-read against the unified build path (RFC-0065 `nros build`, phase-470's
-generated entries, phase-474's one entry lowering):
+generated entries, phase-494's one entry lowering):
 
 * **The Rust census producer — move the hooks, do not add a Rust copy.** The
   hook bodies sit in `nros-cpp`'s `metadata_hooks.rs`; a Rust node's API is the

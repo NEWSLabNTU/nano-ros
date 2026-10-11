@@ -303,7 +303,7 @@ Enumerated so the next reader does not re-triage them:
 
 * **Making an entry emitter data-driven.** Out of scope by the doc's own
   statement and RFC-0091 §6b's blocker; see the bullet above. **Done by
-  phase-474 (2026-10-01):** `LoweredEntry` is the template context, `emit_c.rs`
+  phase-494 (2026-10-01):** `LoweredEntry` is the template context, `emit_c.rs`
   and `emit_cpp.rs` are deleted, and an entry language is a `pack.toml`, its
   templates and — only for a new spelling — a filter (RFC-0091 Amendment 1).
 * **Typing `CmakeProbeOptions.language`.** Blocked on issue 1528's owner.

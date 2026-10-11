@@ -1,5 +1,5 @@
 //! The entry packs' spelling filters — the ONLY per-language Rust an entry
-//! pack may need (phase-474 W2 / RFC-0091 §6b).
+//! pack may need (phase-494 W2 / RFC-0091 §6b).
 //!
 //! A spelling is a correctness property: a wrong one compiles somewhere else,
 //! later, as an error with no path back to what produced it. That is the

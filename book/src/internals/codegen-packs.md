@@ -114,7 +114,7 @@ seam, and nothing else.
 
 ### Step 2 — the entry pack, if the language writes entries
 
-An entry pack is DATA. Since phase-474 there is no per-language entry emitter:
+An entry pack is DATA. Since phase-494 there is no per-language entry emitter:
 one renderer (`codegen/entry/emit/mod.rs`) lowers the plan once into
 `nros_entry_lower::LoweredEntry` and hands THAT to the pack's template.
 
@@ -153,7 +153,7 @@ entry and message; the name is historical (see the recipe comment). A directory
 with no manifest, a language pack missing the fields its consumer needs, a
 registry key or `registry_order` claimed twice, a template file that does not
 exist, a `.jinja` no manifest claims, a `Language` variant nothing renders, or a
-language whose bytes are recorded in no golden — and, since phase-474, a new
+language whose bytes are recorded in no golden — and, since phase-494, a new
 `codegen/entry/emit_<x>.rs`, because an entry language is a pack. Run it before
 you believe the pack works.
 
@@ -168,5 +168,5 @@ their filters own it, and since phase-469 W1 so do the artifact-naming suffixes
 (file and guard names). The builders still hold the per-language Rust that is a
 RULE rather than a parameter — which generator builds which context, and the ROS
 kind word, which is identical on every surface. An entry language brings no
-emitter (phase-474): its pack and, at most, a spelling filter. Implemented by
-phase-335 (RFC-0068), phase-432 (RFC-0091), phase-469 and phase-474.
+emitter (phase-494): its pack and, at most, a spelling filter. Implemented by
+phase-335 (RFC-0068), phase-432 (RFC-0091), phase-469 and phase-494.

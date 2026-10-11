@@ -105,7 +105,7 @@ pub fn emit(plan: &Plan) -> Result<String, String> {
 /// `cmd/`, `builder/` and `codegen/`). What IS shared is the OUTPUT type, so
 /// the two converge here rather than at the renderer.
 ///
-/// phase-474 W2 — DELEGATES to [`super::lower::lower_entry`], the one lowering
+/// phase-494 W2 — DELEGATES to [`super::lower::lower_entry`], the one lowering
 /// every pack renders from. It used to be this function's own body, and the
 /// C and C++ emitters each projected the same plan a second and third way.
 pub fn lower(plan: &Plan) -> LoweredEntry {

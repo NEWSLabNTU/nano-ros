@@ -29,7 +29,7 @@
     * ENCODINGS, decided in Rust — `core_plus1` is core-plus-one and `-1` is an
       unset preempt threshold. Those are C-ABI facts, and a pack must not have
       to know them.
-    * phase-474 — the CONTEXT is `nros_entry_lower::LoweredEntry` itself, not
+    * phase-494 — the CONTEXT is `nros_entry_lower::LoweredEntry` itself, not
       a view a Rust emitter built: there is no `emit_c.rs`. Node bodies index
       `nodes` (a tier setup lists `(node, on_executor)` pairs); package
       identifiers are spelled with the `pkg_ident` filter; what this pack

@@ -1,7 +1,7 @@
 //! The IMAGE half of [`LoweredEntry`](crate::LoweredEntry) — what a C-ABI
 //! entry pack renders beyond the per-node bake.
 //!
-//! phase-474 W2 / RFC-0091 §6b. The C and C++ emitters each projected the
+//! phase-494 W2 / RFC-0091 §6b. The C and C++ emitters each projected the
 //! same `Plan` into their own view structs — seven in one, four in the other,
 //! six more shared through string-free helpers — and reading them side by side
 //! showed the projection was the SAME one written twice: the same per-tier
