@@ -5134,6 +5134,32 @@ pub fn build_zephyr_cortex_m_leaf(
     )
 }
 
+/// The overlay the `build-cortex-m-c-boot-report-zenoh` row merges after the
+/// talker's `prj.conf` — relative to the talker, as the row states it, so the
+/// staleness probe watches the same file the build reads (issue 1036).
+pub const ZEPHYR_BOOT_REPORT_CONF: &str =
+    "../../../../packages/testing/nros-tests/fixtures/zephyr-boot-report/arena-exhausted.conf";
+
+/// Issue 1036 — the console-less `examples/zephyr/c/talker` image for
+/// `mps2_an385` whose executor arena is too small for its first entity: the
+/// (ZephyrQemuCortexM, C, BootReport) cell. Its only witness is the boot
+/// report in RAM, so the test dumps memory rather than reading a console.
+pub fn build_zephyr_cortex_m_c_boot_report() -> TestResult<PathBuf> {
+    let leaf = "examples/zephyr/c/talker";
+    let binary_path =
+        zephyr_build_root().join("build-cortex-m-c-boot-report-zenoh/zephyr/zephyr.elf");
+    let conf_files = format!("prj.conf;{ZEPHYR_BOOT_REPORT_CONF}");
+    require_prebuilt_binary_fresh_zephyr(
+        &binary_path,
+        ZephyrLeafSource {
+            dir: leaf,
+            lang: Some("c"),
+            rmw: Some(Rmw::Zenoh.cmake_value()),
+            conf_files: Some(&conf_files),
+        },
+    )
+}
+
 /// Phase 168.4 — collapsed-shape Zephyr C / C++ example resolver.
 /// `lang` is `"c"` or `"cpp"`. Mirrors the Rust resolver.
 pub fn build_zephyr_cmake_example_rmw(lang: &str, case: &str, rmw: Rmw) -> TestResult<PathBuf> {

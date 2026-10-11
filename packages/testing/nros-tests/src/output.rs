@@ -1220,6 +1220,12 @@ pub const ERRNO_ISOLATION_PASS: &str = "errno-isolation: verdict PASS per-thread
 /// `[typed_carrier] sent: <n>`). Keep in sync with that `printf`.
 pub const TYPED_CARRIER_SENT_PREFIX: &str = "[typed_carrier] sent:";
 
+/// issue 1036 — the line `scripts/read-boot-report.py` prints when the record
+/// names an arena exhaustion. Not output of the IMAGE: the image has no
+/// console. It is the decoder's verdict over a dump of the halted guest, and
+/// `zephyr_cortex_m_qemu` asserts on it the way an operator reads it.
+pub const BOOT_REPORT_ARENA_EXHAUSTED: &str = "ARENA EXHAUSTED:";
+
 /// phase-381 — the graph probe's verdict line. Like `ERRNO_ISOLATION_PASS`,
 /// this is not delivery: it is the fixture saying it saw the peer it was told
 /// to expect, which is the only thing a discovery workload can assert.

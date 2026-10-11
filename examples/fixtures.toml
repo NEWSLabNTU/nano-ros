@@ -5243,6 +5243,27 @@ west_zenoh_locator = "tcp/10.0.2.2:10700"
 conf_files = ["prj.conf"]
 west_image = "zephyr_zenoh"
 
+# Issue 1036 — the (ZephyrQemuCortexM, C, BootReport) cell. The same talker,
+# console-less, with an executor arena too small for its first entity: the
+# boot report is the only witness, and the test dumps it over the QEMU monitor
+# and decodes it with scripts/read-boot-report.py, the operator's own tool.
+# The overlay is the TEST's, so it lives beside the test rather than in the
+# copy-out example. Port 10787 = `alloc::port_of(ZephyrQemuCortexM, C,
+# BootReport)`: the image must open its session before it registers anything,
+# so the cell needs a router. Consumed by tests/zephyr_cortex_m_qemu.rs.
+[[fixture]]
+platform = "zephyr-cortex-m"
+lang = "c"
+rmw = "zenoh"
+builder = "west"
+dir = "examples/zephyr/c/talker"
+board = "mps2_an385"
+west_role = "boot-report-arena-exhausted"
+west_build_name = "build-cortex-m-c-boot-report-zenoh"
+west_zenoh_locator = "tcp/10.0.2.2:10787"
+conf_files = ["prj.conf", "../../../../packages/testing/nros-tests/fixtures/zephyr-boot-report/arena-exhausted.conf"]
+west_image = "zephyr_zenoh"
+
 [[fixture]]
 platform = "zephyr-cortex-m"
 lang = "cpp"

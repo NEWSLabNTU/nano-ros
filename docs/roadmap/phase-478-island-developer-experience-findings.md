@@ -259,7 +259,7 @@ D3 for every `NROS_DERIVED_*` pool knob, liveliness first.
 - [Issue 1303](../issues/archived/1303-runtime-refusals-are-silent-on-freestanding.md)
   (open): the two runtime refusals emit through a sink that is a no-op on
   freestanding targets.
-- [Issue 1036](../issues/1036-arena-exhaustion-is-half-silent-and-wholly-unreachable.md)
+- [Issue 1036](../issues/archived/1036-arena-exhaustion-is-half-silent-and-wholly-unreachable.md)
   (open, narrowed to silicon): since `823d8fb63` (2026-10-02, after the island's
   pin) every error-level `nros_log` record is counted in the boot record with the
   first one's file and line. That covers the Rust shim's liveliness-not-declared
