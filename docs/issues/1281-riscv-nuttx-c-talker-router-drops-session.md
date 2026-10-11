@@ -7,6 +7,8 @@ area: [testing, rmw, nuttx]
 related: [0820, 0801, 1280, phase-445, phase-414]
 ---
 
+**Home: none** — unhomed after phase-414 was archived 2026-10-12; no active phase fits.
+
 ## Symptom (as reported, not yet reproduced by the filer)
 
 `nros-tests::c_riscv_nuttx_e2e c_riscv_nuttx_talker_delivers_cross_process`

@@ -1,6 +1,6 @@
 # Phase 448 — the executor backing, sized exactly and paid for once, on every port
 
-**Archived 2026-10-11.** All eight waves landed (PRs listed below). The per-wave acceptance boxes were never ticked when the waves merged; the PR list is the record. The ESP32 pairing is moot, because ESP32 is dormant (issue 1525).
+**Archived 2026-10-11; status corrected 2026-10-12.** All eight waves MERGED (PRs listed below), but not every acceptance criterion was met, and the line above claimed more than the record shows. 21 acceptance boxes are unticked. Some are just bookkeeping. One is a real gap: W3's C++ half, the FreeRTOS C++ carrier's stack, was never measured (the C half measures 18,176 B), so the 512 KiB C/C++ mirror is still a number nobody has taken. The ESP32 pairing is moot, because ESP32 is dormant (issue 1525). Of the follow-ups below, 1145, 1348 and 1362 have been resolved since. 1301 (`57fdfc4d9b`) and 1318 (`46939c5429`) were found fixed and archived on 2026-10-12, so no open issue is homed here.
 
 **Status (2026-09-13). ALL EIGHT WAVES LANDED.** W1+W2 as PR #980, W3 in two
 parts (#990 the blocker and the instrument, #1021 the number), W4 as #1021, W5

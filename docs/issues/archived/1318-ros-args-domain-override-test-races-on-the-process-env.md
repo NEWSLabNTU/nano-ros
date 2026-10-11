@@ -1,13 +1,18 @@
 ---
 id: 1318
 title: "`from_env_honours_the_domain_override` fails about one run in three inside its own binary and passes alone — a process-env race in `nros`'s init tests"
-status: open
+status: resolved
 type: bug
 area: testing, api
 severity: low
 found: 2026-09-11
 related: [phase-448, issue-1183]
+resolved_in: "46939c5429"
 ---
+
+## Resolution (2026-10-12)
+
+Fixed on main by `46939c5429`. Every `ros_args_refusal_tests` test takes the shared `crate::env::test_env_lock()`; 0 failures in 300 runs against 11 before. Found during the re-homing sweep when phase-448 was archived. The original report follows.
 
 ## Measured
 
