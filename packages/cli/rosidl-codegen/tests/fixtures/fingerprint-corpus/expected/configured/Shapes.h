@@ -53,8 +53,8 @@ typedef struct fingerprint_corpus_msg_shapes {
     char str_bounded[8];
 } fingerprint_corpus_msg_shapes;
 
-/// Borrowed (zero-copy) view of Shapes — RFC-0033 `borrowed` mode.
-/// `mode = "borrowed"` fields point directly into the CDR receive buffer (set
+/// Borrowed (zero-copy) view of Shapes — RFC-0033 `view` mode.
+/// `mode = "view"` fields point directly into the CDR receive buffer (set
 /// by fingerprint_corpus_msg_shapes_deserialize_view); all other fields are copied as in
 /// the owned struct. The borrowed pointers are valid ONLY while the source
 /// buffer lives (e.g. the subscription callback) — copy out anything retained.
@@ -123,8 +123,8 @@ int32_t fingerprint_corpus_msg_shapes_serialize(const fingerprint_corpus_msg_sha
 /// Returns 0 on success, -1 on error
 int32_t fingerprint_corpus_msg_shapes_deserialize(fingerprint_corpus_msg_shapes* msg, const uint8_t* buffer, size_t buffer_size);
 
-/// Deserialize a Shapes into a borrowed view (RFC-0033 `borrowed`):
-/// `mode = "borrowed"` fields are set to point into `buffer` (zero-copy, no
+/// Deserialize a Shapes into a borrowed view (RFC-0033 `view`):
+/// `mode = "view"` fields are set to point into `buffer` (zero-copy, no
 /// allocation); other fields are copied. `out` is fully overwritten. The
 /// borrowed pointers alias `buffer` and are valid only while it lives.
 /// Returns 0 on success, -1 on error.

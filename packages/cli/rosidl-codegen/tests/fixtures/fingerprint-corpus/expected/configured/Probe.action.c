@@ -215,7 +215,7 @@ int32_t fingerprint_corpus_action_probe_feedback_deserialize(fingerprint_corpus_
 }
 
 // =============================================================================
-// Borrowed deserialize (RFC-0033 `borrowed`, issue 0346) — `mode = "borrowed"`
+// Borrowed deserialize (RFC-0033 `view`, issue 0346) — `mode = "view"`
 // fields are pointed into `buffer` (zero-copy); other fields are copied exactly
 // as the owned deserializer does. `out` is zeroed first so unset pointers are
 // NULL. The views alias `buffer`, which for a service/action payload is the raw

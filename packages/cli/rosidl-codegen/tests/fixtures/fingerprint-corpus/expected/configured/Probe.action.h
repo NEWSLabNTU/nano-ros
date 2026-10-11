@@ -133,7 +133,7 @@ const struct nros_action_type_t* fingerprint_corpus_action_probe_get_type_suppor
 }
 #endif
 
-/// Borrowed (zero-copy) view of fingerprint_corpus_action_probe_goal (RFC-0033 `borrowed`, issue 0346).
+/// Borrowed (zero-copy) view of fingerprint_corpus_action_probe_goal (RFC-0033 `view`, issue 0346).
 /// Borrowed fields point into the source buffer — the raw service/action callback
 /// bytes — and are valid ONLY while it lives. Copy out anything retained.
 typedef struct fingerprint_corpus_action_probe_goal_View {

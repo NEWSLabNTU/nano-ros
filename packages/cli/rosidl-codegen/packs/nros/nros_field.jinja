@@ -2,7 +2,7 @@
   Issue 0344 — the ONE deserialize arm shared by every Rust payload emitter.
 
   Why this file exists: message_nros.rs.jinja implemented RFC-0033 `heap` (and
-  the `borrowed` view), while service_nros.rs.jinja and action_nros.rs.jinja
+  the `view` mode), while service_nros.rs.jinja and action_nros.rs.jinja
   carried hand-copied owned-only clones of the same arm. The storage mode was
   resolved for all three (srv.rs/action.rs call field_to_nros_field_with_mode
   exactly like msg.rs), so a heap-configured .srv field got the heap TYPE with an

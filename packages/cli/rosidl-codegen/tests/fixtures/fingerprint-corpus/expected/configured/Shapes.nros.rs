@@ -135,8 +135,8 @@ impl RosMessage for Shapes {
     const TYPE_HASH: &'static str = "h";
 }
 
-// ── RFC-0033 `borrowed` storage mode (Phase 229.6, issue 0007) ──────────────
-// Zero-copy view: fields marked `mode = "borrowed"` slice directly into the
+// ── RFC-0033 `view` storage mode (Phase 229.6, issue 0007) ──────────────
+// Zero-copy view: fields marked `mode = "view"` slice directly into the
 // receive buffer (no `heapless::Vec`/`String` copy). Other fields are copied.
 // The view is valid only for the subscription-callback scope (lifetime `'a`).
 // Subscribe with `node.create_subscription_viewable::<ShapesViewable, _>()`.

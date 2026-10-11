@@ -580,8 +580,8 @@ impl RosAction for Probe {
     }
 }
 
-// ── RFC-0033 `borrowed` (issue 0346) ────────────────────────────────────────
-// Zero-copy view of the goal payload: fields marked `mode = "borrowed"`
+// ── RFC-0033 `view` (issue 0346) ────────────────────────────────────────
+// Zero-copy view of the goal payload: fields marked `mode = "view"`
 // slice directly into the raw buffer the service/action callback hands you
 // (`request_data`/`response`/feedback bytes), other fields are copied. Valid
 // only while that buffer lives — copy out anything you retain.

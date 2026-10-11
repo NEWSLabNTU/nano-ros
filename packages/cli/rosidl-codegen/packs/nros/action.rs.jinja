@@ -744,8 +744,8 @@ impl RosAction for {{ action_name }} {
 }
 {%- if has_borrowed_goal %}
 
-// ── RFC-0033 `borrowed` (issue 0346) ────────────────────────────────────────
-// Zero-copy view of the goal payload: fields marked `mode = "borrowed"`
+// ── RFC-0033 `view` (issue 0346) ────────────────────────────────────────
+// Zero-copy view of the goal payload: fields marked `mode = "view"`
 // slice directly into the raw buffer the service/action callback hands you
 // (`request_data`/`response`/feedback bytes), other fields are copied. Valid
 // only while that buffer lives — copy out anything you retain.
@@ -772,8 +772,8 @@ impl<'a> nros_core::DeserializeView<'a> for {{ action_name }}GoalView<'a> {
 
 {%- if has_borrowed_result %}
 
-// ── RFC-0033 `borrowed` (issue 0346) ────────────────────────────────────────
-// Zero-copy view of the result payload: fields marked `mode = "borrowed"`
+// ── RFC-0033 `view` (issue 0346) ────────────────────────────────────────
+// Zero-copy view of the result payload: fields marked `mode = "view"`
 // slice directly into the raw buffer the service/action callback hands you
 // (`request_data`/`response`/feedback bytes), other fields are copied. Valid
 // only while that buffer lives — copy out anything you retain.
@@ -800,8 +800,8 @@ impl<'a> nros_core::DeserializeView<'a> for {{ action_name }}ResultView<'a> {
 
 {%- if has_borrowed_feedback %}
 
-// ── RFC-0033 `borrowed` (issue 0346) ────────────────────────────────────────
-// Zero-copy view of the feedback payload: fields marked `mode = "borrowed"`
+// ── RFC-0033 `view` (issue 0346) ────────────────────────────────────────
+// Zero-copy view of the feedback payload: fields marked `mode = "view"`
 // slice directly into the raw buffer the service/action callback hands you
 // (`request_data`/`response`/feedback bytes), other fields are copied. Valid
 // only while that buffer lives — copy out anything you retain.

@@ -1,11 +1,11 @@
 /**
- * @file borrowed.h
+ * @file view.h
  * @ingroup grp_cdr
- * @brief Borrowed (zero-copy) message-field views — RFC-0033 `borrowed` mode.
+ * @brief Zero-copy message-field views — RFC-0033 `view` mode.
  *
- * A `mode = "borrowed"` field (Phase 235, issue 0021) is a read-only,
+ * A `mode = "view"` field (Phase 235, issue 0021) is a read-only,
  * callback-scoped view that points directly into the live CDR receive buffer
- * instead of copying into a fixed array (`owned`) or malloc'd container
+ * instead of copying into a fixed array (`inline`) or malloc'd container
  * (`heap`). The generated `{Msg}_deserialize_view` walks the CDR stream and
  * sets these views' pointers into the buffer — no allocation, no `_fini`.
  *
