@@ -509,22 +509,20 @@ jobs:
             packages/cli/nros-launch-resolve/target/release/libplay_launch_parser_pyexec.so
           key: nros-cli-bin-${{ runner.os }}-${{ steps.cli-key.outputs.key }}
 
-      # phase-429 W5 — ASSERT the binary matches the checkout, do not hope.
-      # A restored binary is used only if its own `source-stamp` accepts this
-      # tree; otherwise cargo builds it (cold `target/` — sccache carries that).
-      # The unconditional `source-stamp` after the branch is the assertion: a
-      # binary that fails it fails the step, whichever path produced it.
-      # `play_launch` is initialised FIRST because its pin is a stamp input.
+      # The user's verb, not a CI-only build: `just setup-cli` runs on every
+      # event, and ITS freshness check (`nros source-stamp`) decides whether
+      # the restored binary is this tree's — skip if so, `cargo build --locked`
+      # if not. The cache only pre-populates what setup-cli would build; it
+      # never replaces the step.
+      # phase-429 W5 — then ASSERT the binary matches the checkout, whichever
+      # path produced it. `play_launch` is initialised FIRST: its pin is a
+      # stamp input.
       - name: Build the in-tree nros CLI (every event)
         run: |
           git submodule update --init --depth 1 packages/cli/third-party/play_launch
-          bin="$GITHUB_WORKSPACE/packages/cli/target/release/nros"
-          if [ -x "$bin" ] && "$bin" source-stamp >/dev/null 2>&1; then
-            echo "restored nros matches this checkout's source stamp; not rebuilt"
-          else
-            cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
-          fi
-          "$bin" source-stamp >/dev/null
+          source ./activate.sh
+          just setup-cli
+          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
 
       # ----- shared setup -----
@@ -826,13 +824,9 @@ jobs:
       - name: Build the in-tree nros CLI (every event)
         run: |
           git submodule update --init --depth 1 packages/cli/third-party/play_launch
-          bin="$GITHUB_WORKSPACE/packages/cli/target/release/nros"
-          if [ -x "$bin" ] && "$bin" source-stamp >/dev/null 2>&1; then
-            echo "restored nros matches this checkout's source stamp; not rebuilt"
-          else
-            cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
-          fi
-          "$bin" source-stamp >/dev/null
+          source ./activate.sh
+          just setup-cli
+          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
 
       - name: Provision clang-format (pinned by [tool.clang-format])
@@ -1104,13 +1098,9 @@ jobs:
       - name: Build the in-tree nros CLI (every event)
         run: |
           git submodule update --init --depth 1 packages/cli/third-party/play_launch
-          bin="$GITHUB_WORKSPACE/packages/cli/target/release/nros"
-          if [ -x "$bin" ] && "$bin" source-stamp >/dev/null 2>&1; then
-            echo "restored nros matches this checkout's source stamp; not rebuilt"
-          else
-            cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
-          fi
-          "$bin" source-stamp >/dev/null
+          source ./activate.sh
+          just setup-cli
+          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
 
       - name: Provision clang-format (pinned by [tool.clang-format])
@@ -1403,13 +1393,9 @@ jobs:
       - name: Build the in-tree nros CLI (every event)
         run: |
           git submodule update --init --depth 1 packages/cli/third-party/play_launch
-          bin="$GITHUB_WORKSPACE/packages/cli/target/release/nros"
-          if [ -x "$bin" ] && "$bin" source-stamp >/dev/null 2>&1; then
-            echo "restored nros matches this checkout's source stamp; not rebuilt"
-          else
-            cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
-          fi
-          "$bin" source-stamp >/dev/null
+          source ./activate.sh
+          just setup-cli
+          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
 
       - name: Provision clang-format (pinned by [tool.clang-format])
@@ -1637,13 +1623,9 @@ jobs:
       - name: Build the in-tree nros CLI (every event)
         run: |
           git submodule update --init --depth 1 packages/cli/third-party/play_launch
-          bin="$GITHUB_WORKSPACE/packages/cli/target/release/nros"
-          if [ -x "$bin" ] && "$bin" source-stamp >/dev/null 2>&1; then
-            echo "restored nros matches this checkout's source stamp; not rebuilt"
-          else
-            cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
-          fi
-          "$bin" source-stamp >/dev/null
+          source ./activate.sh
+          just setup-cli
+          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
 
       - name: Provision clang-format (pinned by [tool.clang-format])
@@ -1836,13 +1818,9 @@ jobs:
       - name: Build the in-tree nros CLI (every event)
         run: |
           git submodule update --init --depth 1 packages/cli/third-party/play_launch
-          bin="$GITHUB_WORKSPACE/packages/cli/target/release/nros"
-          if [ -x "$bin" ] && "$bin" source-stamp >/dev/null 2>&1; then
-            echo "restored nros matches this checkout's source stamp; not rebuilt"
-          else
-            cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
-          fi
-          "$bin" source-stamp >/dev/null
+          source ./activate.sh
+          just setup-cli
+          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
 
       - name: Provision clang-format (pinned by [tool.clang-format])
@@ -2032,13 +2010,9 @@ jobs:
       - name: Build the in-tree nros CLI (every event)
         run: |
           git submodule update --init --depth 1 packages/cli/third-party/play_launch
-          bin="$GITHUB_WORKSPACE/packages/cli/target/release/nros"
-          if [ -x "$bin" ] && "$bin" source-stamp >/dev/null 2>&1; then
-            echo "restored nros matches this checkout's source stamp; not rebuilt"
-          else
-            cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
-          fi
-          "$bin" source-stamp >/dev/null
+          source ./activate.sh
+          just setup-cli
+          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
 
       - name: Provision clang-format (pinned by [tool.clang-format])
@@ -2531,7 +2505,8 @@ jobs:
       - name: Build nros CLI + the launch resolver
         run: |
           git submodule update --init --depth 1 packages/cli/third-party/play_launch
-          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+          source ./activate.sh
+          just setup-cli
           # phase-429 W5 — ASSERT the binary matches the checkout, do not hope.
           # The other four acquisition sites carried this and this one did not,
           # which is worse than a missing check: four green steps taught that
@@ -2539,11 +2514,10 @@ jobs:
           # than `source_stamp.rs`'s watch set hands `check cli-tests` a binary
           # from a different tree (phase-431 W2, `check-ci-cli-from-source`).
           "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
-          # phase-489 W3 — the RECIPE, not a bare `cargo build`: the binary
-          # cache carries the content stamp and the Python half the recipe
-          # writes beside the resolver, and a consumer's `just
-          # setup-launch-resolve` skips only when both are there.
-          source ./activate.sh
+          # phase-489 W3 — the user's verbs, not bare `cargo build`s: the
+          # binary cache carries the content stamp and the Python half
+          # `setup-launch-resolve` writes beside the resolver, and a consumer's
+          # `just setup-launch-resolve` skips only when both are there.
           just setup-launch-resolve
           # `check cli-tests` is 338 s of the 20 min job and it is COMPILE-bound
           # (measured: 350 CPU-s to build, tests run in under a second). Warming

@@ -150,8 +150,10 @@ still refuses a stale binary.
 `scripts/ci/cli-bin-cache-key.sh`: the git index entries of `packages/cli`
 plus every `cli-source-dirs.txt` dir (gitlinks, so the `play_launch` pin, are
 in it) plus `rust-toolchain.toml`, a superset of the stamp. Main's old entry
-was 2967 MB. A restored `nros` is used only if its own `source-stamp` accepts
-the tree; otherwise the step builds and asserts again. Measured locally: a
+was 2967 MB. The cache only pre-populates: every sibling still runs
+`just setup-cli` (and `just setup-launch-resolve` where its tests need the
+resolver), whose own freshness check skips or builds, then asserts
+`source-stamp`. Measured locally: a
 restored binary skips the build and `setup-launch-resolve` skips; a `.rs` or
 `.jinja` edit makes `source-stamp` exit 1 and moves the key. `check-cli-tests`
 alone still restores the full target tree for its test targets. The 30-s
