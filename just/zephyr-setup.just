@@ -289,6 +289,13 @@ build-fvp-ws-entry:
     if [ ! -x "$sdk/aarch64-zephyr-elf/bin/aarch64-zephyr-elf-gcc" ]; then
         nros_lane_skip "Zephyr/FVP-ws-entry skip: aarch64-zephyr-elf toolchain missing"
     fi
+    # issue 1777 — the FVP board crate defaults `NANO_ROS_RMW` to cyclonedds, so
+    # this image's configure needs a host idlc. Asked here, before configuring,
+    # through the one probe (scripts/lib/host-idlc.sh); NAMED, a miss fails.
+    source scripts/lib/host-idlc.sh
+    if ! nros_host_idlc "$(pwd)" >/dev/null; then
+        nros_lane_skip "$(nros_host_idlc_missing_reason native "FVP Cyclone images")"
+    fi
     nros_root="$(pwd)"
     # issue 1379 — resolved BEFORE the `cd "$workspace"` below, like the SDK
     # prefixes: the root handed to the helper is this checkout.
@@ -490,6 +497,13 @@ build-fvp-board-import:
     sdk="$(bash scripts/lib/zephyr-sdk.sh resolve)"
     if [ ! -x "$sdk/aarch64-zephyr-elf/bin/aarch64-zephyr-elf-gcc" ]; then
         nros_lane_skip "Zephyr/FVP board-import skip: aarch64-zephyr-elf toolchain missing"
+    fi
+    # issue 1777 — the FVP board crate defaults `NANO_ROS_RMW` to cyclonedds, so
+    # this image's configure needs a host idlc. Asked here, before configuring,
+    # through the one probe (scripts/lib/host-idlc.sh); NAMED, a miss fails.
+    source scripts/lib/host-idlc.sh
+    if ! nros_host_idlc "$(pwd)" >/dev/null; then
+        nros_lane_skip "$(nros_host_idlc_missing_reason native "FVP Cyclone images")"
     fi
     bash ./scripts/zephyr/cortex-a9-rust-patch.sh "$workspace"
     bash ./scripts/zephyr/aarch64-rust-patch.sh "$workspace"

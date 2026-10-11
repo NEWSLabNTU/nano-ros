@@ -431,6 +431,15 @@ build-fixtures:
         sed 's/^/      /' "$probe_err" | head -30 >&2
         exit 1
     fi
+    # issue 1777 — Cyclone leaves this run SELECTED but the emitter could not
+    # emit, because no host idlc exists for their configure. They used to be
+    # dropped silently. A missing prerequisite of a selected row: a FAILURE when
+    # zephyr was named or coordinate-scoped (issue 1758), a reported skip in the
+    # unscoped sweep — `nros_lane_skip_note` decides, as on every other lane.
+    if _idlc_line="$(grep -m1 '^NROS_ZEPHYR_IDLC_MISSING:' "$probe_err")"; then
+        source scripts/lib/host-idlc.sh
+        nros_lane_skip_note zephyr "${_idlc_line#NROS_ZEPHYR_IDLC_MISSING: } — $(nros_host_idlc_missing_reason native "they")"
+    fi
     if [ -s "$probe_records" ]; then
         normal_records=1
     fi

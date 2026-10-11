@@ -2,12 +2,13 @@
 id: 1777
 title: "The Zephyr west lane configures its two Cyclone compile-check rows without
   asking for a host `idlc`, so a runner without one fails them at configure"
-status: open
+status: resolved
 type: bug
 area: ci, zephyr, cyclonedds
 severity: medium
 found: 2026-10-10
-related: [issue-1627, issue-1536, issue-1758]
+resolved: 2026-10-11
+related: [issue-1627, issue-1536, issue-1758, issue-1546, phase-477]
 ---
 
 ## Measured
@@ -73,3 +74,53 @@ One of the two options phase-477 D1 named:
 Acceptance: a tier-2 run builds `west_board_import` and
 `west_bringup_zephyr_cyclone_user_config` to `ok`, or fails before configuring
 them with a message that names `idlc` and the provisioning command.
+
+## Resolved (2026-10-11) — option 2, plus the class
+
+Option 2: the Zephyr lane now ASKS for a host `idlc` before configuring a
+Cyclone row, and a selected row without one is a FAILURE that names the tool
+and the provisioning command.
+
+- **One probe** — `scripts/lib/host-idlc.sh`: `nros_host_idlc` resolves in the
+  Cyclone configure's own order (`IDLC_EXECUTABLE` → the store's PINNED
+  `<store>/sdk/cyclonedds/<pin>/bin/idlc` → `PATH` →
+  `build/{cyclonedds,install}/bin`), with no CLI needed;
+  `nros_host_idlc_missing_reason` is the one remedy sentence
+  (`nros setup native --rmw cyclonedds`, ROS 2, or `IDLC_EXECUTABLE`).
+- **Which rows are Cyclone is DERIVED, not listed** —
+  `west_compile_check_rmw()` in `scripts/build/fixtures-manifest.py` reads what
+  the configure reads (`-DNANO_ROS_RMW`, the board crate's `default_rmw` behind
+  `nano_ros_use_board()`, the CONF_FILE list's `CONFIG_NROS_RMW_*`, the Kconfig
+  default). `list-compile-checks --rmw cyclonedds` exposes it; today it selects
+  exactly `west_bringup_zephyr_cyclone_user_config` and `west_board_import`.
+- **`west-fixtures.sh`** — a selected Cyclone row with no idlc is counted
+  FAILED before `rm -rf` / sync / configure; the other rows still build.
+- **The class, swept** (`git grep -n 'west build\|idlc' -- just scripts`):
+  - `zephyr-fixture-leaves.sh` had its own probe, which ENUMERATED
+    `<store>/cyclonedds/*/bin` (the issue-1546 class) and ignored
+    `IDLC_EXECUTABLE`; it now calls `nros_host_idlc`. It also DROPPED a
+    selected Cyclone leaf silently; it now reports each one on stderr
+    (`NROS_ZEPHYR_IDLC_MISSING:`), and `just/zephyr-ci.just` turns that into
+    `nros_lane_skip_note zephyr …` — a failure when the lane is named or
+    coordinate-scoped (issue 1758), a reported skip in the unscoped sweep. The
+    emitter stays exit 0, because gates run it read-only on idlc-less hosts.
+  - `just zephyr build-fvp-ws-entry` / `build-fvp-board-import` configure the
+    FVP board (`default_rmw = "cyclonedds"`) and now ask first, through
+    `nros_lane_skip` (named → failure).
+
+Measured: with every rung hidden (`IDLC_EXECUTABLE=`, `/opt/ros` and every
+`idlc` dir off `PATH`, `NROS_HOME` at an empty dir),
+`NROS_ZEPHYR_FIXTURE_FILTER='west_board_import|west_bringup_zephyr_cyclone_user_config'
+bash scripts/build/west-fixtures.sh` printed `FAILED <id> — not configured`
+for both rows with the remedy, `2 of 2 fixture(s) FAILED`, rc=1, and ran no
+west. With idlc present, `west_board_import` printed `host idlc: …`,
+configured and generated: `ok (build.ninja)`, rc=0.
+
+Not covered: the FreeRTOS / ThreadX recipes keep their own `command -v idlc`
+spellings (they are not west lanes and were out of this issue's scope); moving
+them onto `nros_host_idlc` is the obvious follow-up. Option 1 (the tier-2
+image carrying `idlc`) is unchanged — `just zephyr setup` already runs
+`nros setup native --rmw cyclonedds` via `nros_setup_board_rmws`; whether the
+tier-2 runner image has one is now answered by the lane itself instead of by
+a configure log.
+
