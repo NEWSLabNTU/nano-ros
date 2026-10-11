@@ -155,25 +155,27 @@ OWNERS: dict[str, str] = {
     # are deliberately absent: `ZPICO_READ_TASK_PRIORITY` mirrors a C `#define`
     # and `FreertosScheduling` already carries a per-board `zenoh_read_priority`
     # in raw FreeRTOS units, so a rung would be a THIRD path to one number.
-    "ZPICO_BATCH_UNICAST_SIZE": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
-    "ZPICO_BATCH_MULTICAST_SIZE": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
-    "ZPICO_FRAG_MAX_SIZE": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
-    "ZPICO_GET_REPLY_BUF_SIZE": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
-    "ZPICO_GET_POLL_INTERVAL_MS": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
+    # Keyed by CANONICAL spelling (phase-484 W5a): a row stands for every
+    # spelling the knob registry gives it, and `readers` searches all of them.
+    "NROS_ZENOH_BATCH_UNICAST_SIZE": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
+    "NROS_ZENOH_BATCH_MULTICAST_SIZE": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
+    "NROS_ZENOH_FRAG_MAX_SIZE": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
+    "NROS_ZENOH_GET_REPLY_BUF_SIZE": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
+    "NROS_ZENOH_GET_POLL_INTERVAL_MS": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
     # The zenoh limits + xrce tenants, and the LET buffer (phase-400 W6).
     # `NROS_SERVICE_TIMEOUT_MS` is NOT here: it has two readers by design (a
     # Rust const and a C define), and this gate's one-reader rule is what keeps
     # them equal. Migrating it needs a single emission point first.
     "NROS_KEYEXPR_STRING_SIZE": "packages/rmw/zenoh/nros-rmw-zenoh/build.rs",
-    "ZPICO_SUBSCRIBER_RING_DEPTH": "packages/rmw/zenoh/nros-rmw-zenoh/build.rs",
+    "NROS_ZENOH_SUBSCRIBER_RING_DEPTH": "packages/rmw/zenoh/nros-rmw-zenoh/build.rs",
     "NROS_XRCE_CUSTOM_TRANSPORT_MTU": "packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs",
     "NROS_XRCE_STREAM_HISTORY": "packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs",
     "NROS_LET_BUFFER_SIZE": "packages/tooling/nros-build-helpers/src/c.rs",
     "NROS_TRANSPORT_KIND": "packages/boards/nros-board-common/src/platform_config.rs",
     "NROS_TRANSPORT_ENDPOINT": "packages/boards/nros-board-common/src/platform_config.rs",
-    "ZPICO_TX_BATCH": "packages/boards/nros-board-common/src/platform_config.rs",
-    "ZPICO_TX_SPLIT_LOCK": "packages/boards/nros-board-common/src/platform_config.rs",
-    "ZPICO_TX_BATCH_FLUSH_MS": "packages/boards/nros-board-common/src/platform_config.rs",
+    "NROS_ZENOH_TX_BATCH": "packages/boards/nros-board-common/src/platform_config.rs",
+    "NROS_ZENOH_TX_SPLIT_LOCK": "packages/boards/nros-board-common/src/platform_config.rs",
+    "NROS_ZENOH_TX_BATCH_FLUSH_MS": "packages/boards/nros-board-common/src/platform_config.rs",
 }
 
 
@@ -215,6 +217,29 @@ def ladder_knobs_from_census() -> set[str]:
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     return mod.ladder_env_keys() - mod.LADDER_MAPPED_NOT_MIGRATED
+
+
+def registry_spellings() -> dict[str, list[str]]:
+    """canonical env name -> every spelling, from the knob registry.
+
+    phase-484 W5a. A knob read under a deprecated spelling is still the same
+    knob: `ZPICO_FRAG_MAX_SIZE` and `NROS_ZENOH_FRAG_MAX_SIZE` are one row, so a
+    second reader using the OLD literal is still a second reader.
+    """
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # Python < 3.11 — the repo's interpreter is 3.10
+        import tomli as tomllib
+    with open(REPO / "packages/tooling/nros-zephyr-build/knobs.toml", "rb") as fh:
+        rows = tomllib.load(fh).get("knob", [])
+    return {"NROS_" + r["id"]: ["NROS_" + r["id"], *r.get("legacy", [])] for r in rows}
+
+
+def canonical(name: str, spellings: dict[str, list[str]]) -> str:
+    for canon, names in spellings.items():
+        if name in names:
+            return canon
+    return name
 
 
 # =============================================================================
@@ -934,22 +959,20 @@ def self_test() -> None:
 def main() -> int:
     # The ladder's membership comes from the census; the owner comes from here.
     # A knob in one and not the other is the drift this pairing removes.
-    ladder = ladder_knobs_from_census()
+    spellings = registry_spellings()
+    ladder = {canonical(k, spellings) for k in ladder_knobs_from_census()}
     unowned = sorted(ladder - OWNERS.keys())
     # A `derived` knob may legitimately keep an owner: it is on the ladder as a
     # fallback while another campaign takes over its value. What must not
     # happen is an owner for a knob the census does not know at all.
-    derived = census_class(("derived",))
+    derived = {canonical(k, spellings) for k in census_class(("derived",))}
     stale = sorted(OWNERS.keys() - ladder - derived)
     MIGRATED = {k: v for k, v in OWNERS.items() if k in ladder}
 
     # Single pass over the sources: read each file once and test every knob
     # against it. The naive shape (a pass per knob) re-reads several thousand
     # files eight times and takes minutes, which is a gate nobody will run.
-    pats = {
-        knob: [re.compile(i.format(k=re.escape(knob))) for i in READ_IDIOMS]
-        for knob in MIGRATED
-    }
+    names = {knob: spellings.get(knob, [knob]) for knob in MIGRATED}
     readers: dict[str, set[str]] = {k: set() for k in MIGRATED}
 
     # `git ls-files`, not a filesystem walk: an index lookup skips the vendored
@@ -974,8 +997,8 @@ def main() -> int:
         if "NROS_" not in text:
             continue
 
-        for knob in pats:
-            if readers_in(text, knob):
+        for knob, spelled in names.items():
+            if any(readers_in(text, n) for n in spelled):
                 readers[knob].add(rel)
 
     # Drift between the two halves, reported before the reader check so the

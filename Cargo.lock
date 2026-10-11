@@ -2014,6 +2014,7 @@ name = "nros-platform-config"
 version = "0.5.0"
 dependencies = [
  "nros-build-paths",
+ "nros-zephyr-build",
  "serde",
  "tempfile",
  "toml 0.8.23",
