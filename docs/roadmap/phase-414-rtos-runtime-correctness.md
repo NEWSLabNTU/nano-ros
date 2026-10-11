@@ -24,7 +24,7 @@ then does the wrong thing. That is a different activity from either neighbour:
 * **[phase-349](phase-349-rtos-integration-shells.md)** is BUILD integration —
   "make FreeRTOS an imported library like the rest". It is about how the RTOS
   enters the build, not about what the image does afterwards.
-* **[phase-358](phase-358-embedded-runtime-under-load.md)** is footprint,
+* **[phase-358](archived/phase-358-embedded-runtime-under-load.md)** is footprint,
   overrun and overload — failures that appear when you PUSH the runtime. These
   five fail at rest.
 

@@ -1,5 +1,7 @@
 # Phase 409 — finish phase-271: every knob-scaled member leaves the `Executor` value
 
+**Archived 2026-10-11.** Landed 2026-08-31; acceptance was met on silicon on 2026-09-01, and issue 0961 is resolved.
+
 **Status (2026-08-31). Opened from issue 0961.** phase-271 externalised SIX
 sized arrays and said so deliberately: "`Executor` keeps every field except the
 six sized arrays". Nine knob-scaled members were left inline. On a 320 KiB part

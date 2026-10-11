@@ -71,7 +71,7 @@ NIGHTLY := `awk '/^channel/ {gsub(/"/, "", $3); print $3; exit}' tools/rust-tool
 import "just/sdk-env.just"
 # phase-399 W1 — the 200 gate recipes. `import`, not `mod`: names stay flat
 # (`just check fast`, not `just check fast`), so no call site anywhere in the
-# tree changes. See docs/roadmap/phase-399-justfile-surface-and-event-design.md.
+# tree changes. See docs/roadmap/archived/phase-399-justfile-surface-and-event-design.md.
 mod check 'just/check.just'
 
 # =============================================================================
@@ -186,7 +186,7 @@ default:
         "    just setup-worktree        a NEW worktree: the submodules the gates read" \
         "" \
         "  everything else   just --list" \
-        "  what CI runs      docs/roadmap/phase-399-justfile-surface-and-event-design.md"
+        "  what CI runs      docs/roadmap/archived/phase-399-justfile-surface-and-event-design.md"
 # Show every recipe including private/internal ones.
 # Maintainer/CI flow. End users want `just --list`.
 [group("debug")]

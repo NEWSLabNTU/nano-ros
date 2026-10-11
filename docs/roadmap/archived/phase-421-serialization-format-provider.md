@@ -1,8 +1,10 @@
 # Phase 421 — serialization format as a compile-time provider
 
+**Archived 2026-10-11.** W1–W6 landed; the W6 box is ticked (landed 2026-09-04). The status line below still says W6 is open.
+
 **Status (2026-09-04). W1–W5 landed; W6 open.**
-Implements [RFC-0088](../design/0088-serialization-format-is-a-compile-time-provider.md).
-Depends on **[phase-420](archived/phase-420-package-identity-and-provider-format.md) W1
+Implements [RFC-0088](../../design/0088-serialization-format-is-a-compile-time-provider.md).
+Depends on **[phase-420](phase-420-package-identity-and-provider-format.md) W1
 only** (the `<nano_ros_uses>` general consumption tag) — and only from W4 onward;
 W1–W3 here are pure Rust and need nothing from that phase.
 

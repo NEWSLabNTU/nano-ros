@@ -1,10 +1,12 @@
 # phase-457 — payload-class sizing on every road, and the registration fact both halves need
 
+**Archived 2026-10-11.** Every work item landed or was answered; the remainder went to issues 1649 and 1595, both resolved.
+
 **Status (2026-10-03). W0, W0.b, W1, W2, W3, W5 LANDED; W4 answered and then
 superseded by issue 1393's closure; W0.c's "keep the refusal" decision is
 WITHDRAWN** — its premise ("no configure in this tree declares more than one
 entry") is false of generated entries, and
-[RFC-0100 Amendment 1](../design/0100-rmw-agnostic-sizing-model.md#amendment-1-2026-10-03--the-unified-build-path-moved-under-this-model)
+[RFC-0100 Amendment 1](../../design/0100-rmw-agnostic-sizing-model.md#amendment-1-2026-10-03--the-unified-build-path-moved-under-this-model)
 replaces it with D12 (one descriptor per RUNTIME build). What is left of this
 phase's acceptance — the carriers retiring — is now issue 1649's (the N:1 cmake
 configure) and issue 1595's (`RX_BUF`'s closure field); see "W0.c revisited"
@@ -13,9 +15,9 @@ which is the stale-header defect phase-454's own header records.
 
 **Original status (2026-09-21). Queued, not started.** Successor to
 [phase-454](phase-454-contract-states-facts-backends-derive.md), which
-implemented [RFC-0100](../design/0100-rmw-agnostic-sizing-model.md) and named its
-own ceiling. Closes [issue 1393](../issues/archived/1393-cmake-road-has-no-bound-inventory.md)
-and [issue 1340](../issues/archived/1340-arena-budgets-a-receive-region-an-in-place-backend-never-claims.md),
+implemented [RFC-0100](../../design/0100-rmw-agnostic-sizing-model.md) and named its
+own ceiling. Closes [issue 1393](../../issues/archived/1393-cmake-road-has-no-bound-inventory.md)
+and [issue 1340](../../issues/archived/1340-arena-budgets-a-receive-region-an-in-place-backend-never-claims.md),
 and issue 1407 (not linked — its file is on PR #1123 until that merges).
 
 **Do not start before phase-454 W9 lands** — W9 retires the
@@ -335,7 +337,7 @@ static RAM **188,890 → 156,890 B (−32,000 B, −16.9 %)**, all of it
 `nros_rmw_zenoh::shim::service::USER_SERVICE_INBOX` at 33,536 → 1,536 B. So the
 stated acceptance was already met.
 
-**What W1 actually fixed is [issue 1506](../issues/archived/1506-action-inbox-sized-from-send-goal-only.md):
+**What W1 actually fixed is [issue 1506](../../issues/archived/1506-action-inbox-sized-from-send-goal-only.md):
 two UNDER-sizes, both from pricing a shared pool over one member of its
 population.**
 
@@ -573,7 +575,7 @@ subscription nothing registered. And `nros sync` over
 C++ listener's registration.
 
 **What stays refused, and it is the honest half:**
-[issue 1522](../issues/archived/1522-registration-path-unobserved-on-roads-whose-probe-does-not-register.md).
+[issue 1522](../../issues/archived/1522-registration-path-unobserved-on-roads-whose-probe-does-not-register.md).
 A **Rust** component's rows are unobserved, because `record_node_metadata::<C>`
 runs `register()` against a recording `NodeContext` and opens no executor at all;
 so are rows from the `ENTITIES` grammar, rows from a launch declaration, and
@@ -595,7 +597,7 @@ would be the second opinion this wave removed.
 ### W5 — the Rust probe states what it never registers — LANDED 2026-09-28
 
 W3 left four populations unobserved and
-[issue 1522](../issues/archived/1522-registration-path-unobserved-on-roads-whose-probe-does-not-register.md)
+[issue 1522](../../issues/archived/1522-registration-path-unobserved-on-roads-whose-probe-does-not-register.md)
 recorded them. This closes the first: a **Rust** component's subscription rows.
 
 The route is the issue's second one — **one classifier**, not "teach the probe

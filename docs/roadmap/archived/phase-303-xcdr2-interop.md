@@ -1,5 +1,7 @@
 # Phase 303 — XCDR2 + extensibility: modern ROS 2 wire interop
 
+**Archived 2026-10-11.** Parked: the machinery is built and tested, its premise was refuted, and nothing is driving it.
+
 **Status (2026-07-26). PARKED — machinery built and tested, no active
 driver.** The premise was refuted and the issue this phase named as its root
 (#0267) was resolved under the phase-309 line instead. Kept out of `archived/`
@@ -74,9 +76,9 @@ So the DEFAULT interop already works; the XCDR2 path covers the non-default
 negotiated case (`domain_bridge` re-stamp — the #0267 trigger).
 
 **Verification infra (2026-07-26):** replaced the heavy Autoware demo with a
-lightweight harness — [`scripts/ros/domain-bridge-repro.sh`](../../scripts/ros/domain-bridge-repro.sh)
+lightweight harness — [`scripts/ros/domain-bridge-repro.sh`](../../../scripts/ros/domain-bridge-repro.sh)
 (simple Jazzy publisher → `domain_bridge` → downstream echo; see
-[`docs/development/domain-bridge-0267-verification.md`](../development/domain-bridge-0267-verification.md)).
+[`docs/development/domain-bridge-0267-verification.md`](../../development/domain-bridge-0267-verification.md)).
 Stock baseline PASSES (pure-Jazzy XCDR1-clean). The last open item is running it
 `--publisher external` against a built `ros-jazzy`+cyclone nano-ros talker on the
 demo host.

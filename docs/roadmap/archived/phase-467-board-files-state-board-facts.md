@@ -1,5 +1,7 @@
 # phase-467 - board files state board facts: two executor knobs that must derive
 
+**Archived 2026-10-11.** Both work items landed: W1 as d5e9ebbae8 (#1471), and W2, which resolved issue 1485. The status line below still reads PROPOSED.
+
 **Status (2026-09-25). PROPOSED; W1 and W2 claimed the same day.**
 
 Found by the Autoware Safety Island's phase 6 (`docs/roadmap/phase-6-l4-design-demo.md`

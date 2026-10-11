@@ -639,7 +639,7 @@ that is a census defect and a bug against this phase.
 * `docs/roadmap/archived/phase-308-cpp-metadata-producer.md` and
   `archived/phase-313-*`: a pointer that the recorder's schema is v2 and the
   entry, not the probe, is the producer for bringup workspaces.
-* `docs/roadmap/phase-454-contract-states-facts-backends-derive.md`: the
+* `docs/roadmap/archived/phase-454-contract-states-facts-backends-derive.md`: the
   descriptor (RFC-0100 D4) carries what the contract STATES; the census is the
   evidence it is true, and W12's "the descriptor carries the CONTRACT's
   facts" gains the sentence that the census check is what makes those facts

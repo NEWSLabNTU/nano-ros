@@ -1,5 +1,7 @@
 # Phase 358 — Embedded runtime under load: footprint, overrun, overload
 
+**Archived 2026-10-11.** Four of five work items done; W1 was restated after its premise was refuted, and issue 0271 is resolved.
+
 **Status (2026-08-21). FOUR of five DONE; W1 RESTATED (its premise refuted, #271 closed); W3 DONE — its acceptance met by a read-task budget, and one of its own conclusions refuted in the process.** This header
 said "PLANNING — nothing implemented" while ELEVEN commits named the phase — my
 error, corrected here.
@@ -23,17 +25,17 @@ error, corrected here.
 * **W5 (#557, Zephyr Cyclone boot)** — DONE. "Three layers of hiding, each one
   covering the next" (`b838fc19d`, `a45c36abe`). #557 resolved.
 
-**Owns:** [issue 0271](../issues/archived/0271-orin-spe-btcm-footprint-regression.md),
-[issue 0505](../issues/archived/0505-timer-backlog-replay-no-overrun-policy.md)
+**Owns:** [issue 0271](../../issues/archived/0271-orin-spe-btcm-footprint-regression.md),
+[issue 0505](../../issues/archived/0505-timer-backlog-replay-no-overrun-policy.md)
 (**RESOLVED** — W1's own body already says so),
-[issue 0506](../issues/0506-transport-band-unbounded-preemption.md),
-[issue 0557](../issues/archived/0557-zephyr-cyclone-action-ddsrt-thread-reuse.md),
-[issue 0579](../issues/archived/0579-nuttx-boot-tier-priority-never-applied.md)
+[issue 0506](../../issues/0506-transport-band-unbounded-preemption.md),
+[issue 0557](../../issues/archived/0557-zephyr-cyclone-action-ddsrt-thread-reuse.md),
+[issue 0579](../../issues/archived/0579-nuttx-boot-tier-priority-never-applied.md)
 (**RESOLVED** — the body's W-tail already records 0579 and 0583 resolved).
 
-**Related:** [issue 0567](../issues/archived/0567-zpico-rx-cannot-resume-partial-buffer.md)
-(RESOLVED 2026-08-14 — this UNBLOCKS #506's device half; see W3), [phase-352](archived/phase-352-platform-clock-ns.md)
-(COMPLETE), [phase-349](phase-349-rtos-integration-shells.md),
+**Related:** [issue 0567](../../issues/archived/0567-zpico-rx-cannot-resume-partial-buffer.md)
+(RESOLVED 2026-08-14 — this UNBLOCKS #506's device half; see W3), [phase-352](phase-352-platform-clock-ns.md)
+(COMPLETE), [phase-349](../phase-349-rtos-integration-shells.md),
 `docs/reference/platform-implementation-notes.md`.
 
 ## The common shape — no policy, so the default is "whatever happens"
@@ -457,7 +459,7 @@ holds the evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0902](../issues/0902-action-goal-completion-is-variable.md) | action goals complete between 20 % and 90 % of the time on the same build — a load-dependent success rate, which is this phase's subject |
-| [#0913](../issues/0913-the-debugger-is-not-a-passive-instrument.md) | attaching pyocd RTT kills the zenoh session: the debugger perturbs the thing being measured |
-| [#0917](../issues/0917-an536-fragmented-sample-never-syncs.md) | the emulated LAN9118 RX FIFO cannot hold an 8-fragment RTPS burst — an overrun with a known cause |
+| [#0902](../../issues/0902-action-goal-completion-is-variable.md) | action goals complete between 20 % and 90 % of the time on the same build — a load-dependent success rate, which is this phase's subject |
+| [#0913](../../issues/0913-the-debugger-is-not-a-passive-instrument.md) | attaching pyocd RTT kills the zenoh session: the debugger perturbs the thing being measured |
+| [#0917](../../issues/0917-an536-fragmented-sample-never-syncs.md) | the emulated LAN9118 RX FIFO cannot hold an 8-fragment RTPS burst — an overrun with a known cause |
 

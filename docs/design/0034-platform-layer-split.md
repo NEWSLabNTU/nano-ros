@@ -329,7 +329,7 @@ scope (the lint excludes the vendored submodule).
   symbol contract + port-authoring guide + drift gate.
 - [issue 0006](../issues/archived/0006-rtos-dual-heap.md) — the dual-heap / unified
   stats item this RFC's alloc unification resolves.
-- [phase-230](../roadmap/phase-230-platform-layer-split.md) — work breakdown.
+- [phase-230](../roadmap/archived/phase-230-platform-layer-split.md) — work breakdown.
 
 [platform-c-abi.md]: ../../book/src/internals/platform-c-abi.md
 [issue 0006]: ../issues/archived/0006-rtos-dual-heap.md

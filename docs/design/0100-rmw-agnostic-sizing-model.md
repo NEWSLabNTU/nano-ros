@@ -13,7 +13,7 @@ bounds the wire) and RFC-0065 D2 (refuse and name the remedy). Amends the
 implicit model phase-403 and phase-412 built incrementally, by naming it and
 closing three gaps it left. Absorbs issue 1256 (the contract carries depth only).
 
-Home phase: [phase-454](../roadmap/phase-454-contract-states-facts-backends-derive.md).
+Home phase: [phase-454](../roadmap/archived/phase-454-contract-states-facts-backends-derive.md).
 Prior phases: 403 (type bound sizes every receive buffer), 412 (derived counts
 and sizes), 408 (C++ message-derived buffers).
 

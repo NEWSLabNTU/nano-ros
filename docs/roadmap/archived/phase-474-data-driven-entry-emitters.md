@@ -1,5 +1,7 @@
 # Phase 474 — the entry emitters become data: `LoweredEntry` IS the context
 
+**Archived 2026-10-11.** Merged: `248385f5a3` is on main and `emit_c.rs` / `emit_cpp.rs` are gone. Of the W6 follow-ups, issue 1604 is resolved, the `golden.rs` enum is deferred until a third pack exists, and `emit_rust.rs` stays by decision (RFC-0091 §7). The status line below still says not yet merged.
+
 **Status (2026-10-01). W1–W5 LANDED on `feat/data-driven-entry-emitters` (not yet merged); W6 (follow-ups) open.**
 Implements RFC-0091 §6b's entry clause — "`LoweredEntry` must be the context,
 not the seed for a per-surface projection" — which phase-432 named, phase-469

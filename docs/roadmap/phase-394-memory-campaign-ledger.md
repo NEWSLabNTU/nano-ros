@@ -3,7 +3,7 @@
 **Status (2026-09-11). Ledger open. 390 is done through W5 (W6, the emitter's
 own vocabulary, is not started); 391 is done through W5; 392 has W1-W6 landed
 with amendment B's wave open. The per-port exact-size work that followed 392 W6
-has its own phase now, [448](phase-448-exact-executor-backing-on-every-port.md).
+has its own phase now, [448](archived/phase-448-exact-executor-backing-on-every-port.md).
 As of this date every open issue on the ledger names a HOME phase — see the
 2026-09-11 amendment.** This doc
 coordinates work that already had three phase docs and eight issues but no single
@@ -55,7 +55,7 @@ one effort in two halves:
 | --- | --- | --- |
 | [390](phase-390-storage-mode-rename-inline-heap-view.md) | vocabulary | rename RFC-0033 storage modes `owned`/`borrowed` to `inline`/`heap`/`view` |
 | [391](archived/phase-391-allocation-unification-and-tier-model.md) | dynamic | one `#[global_allocator]`, one funnel, a tier model, rlsf |
-| [392](phase-392-static-memory-space-campaign.md) | static | 27% of a safety-island image is message buffers nobody can price |
+| [392](archived/phase-392-static-memory-space-campaign.md) | static | 27% of a safety-island image is message buffers nobody can price |
 | [380](archived/phase-380-serialized-size-bound.md) | static | serialized size bound (W0–W3, W5 landed) |
 
 The dependency order the docs state: 392 depends on 390 for vocabulary and on
@@ -124,7 +124,7 @@ decision, never this doc.
 | 392 W3g | — | **landed, under another phase** | 0896 layers 5-6, delivered as phase-403 W0/W6. The split is `_TX_/_RX_MAX_SERIALIZED_SIZE` (TX is XCDR1, RX is `max(XCDR1, XCDR2)`), and the unbounded diagnostic is a POISON TOKEN — `NROS_UNBOUNDED__<type>__field_<name>`, an undefined identifier that names the offending field at the compile error |
 | 392 W4 net stack | — | **landed and MEASURED** | 38,334 B of `.bss`+`.data` and 78,696 B of flash on mps2/an385, two images from one tree differing only in networking. Larger than this row's original 27,760 B estimate, because that counted `net_*` symbols and missed four stacks |
 | 392 W5.a-W5.g | — | **landed; NO SHIPPED SAVING** | the mechanism, the diagnostic, the checked override and the measurement all exist. The figure reaches one of six compiled cargo units and carries the infra half only. Do not quote 143,456 B as shipped |
-| 392 W6 arena static | — | **landed 2026-09-06** | the executor arena is a named `.bss` static (`EXECUTOR_BACKING`). Its per-port follow-through — pairing it with each RTOS allocator arena — is [phase 448](phase-448-exact-executor-backing-on-every-port.md) |
+| 392 W6 arena static | — | **landed 2026-09-06** | the executor arena is a named `.bss` static (`EXECUTOR_BACKING`). Its per-port follow-through — pairing it with each RTOS allocator arena — is [phase 448](archived/phase-448-exact-executor-backing-on-every-port.md) |
 | 390 W1-W5 | — | **landed** | the `inline`/`heap`/`view` rename shipped; this row said "open" for nine days |
 | 390 W6 | unclaimed | open | the emitter's OWN vocabulary; found while rebasing W5, never started |
 | 391 W1-W5 | — | **landed** | one funnel, the tier model, rlsf, and the tier is gated |
@@ -238,7 +238,7 @@ rate work lands.
 across the RTOS ports — the backing reserved twice, the heap that cannot learn
 its size, undeclared table counts, per-type arena pricing, and two Zephyr XRCE
 failures — and no phase carried any of them as a work item. They are
-[phase 448](phase-448-exact-executor-backing-on-every-port.md) now. Four more went
+[phase 448](archived/phase-448-exact-executor-backing-on-every-port.md) now. Four more went
 into phase-412's homed table and five into phase-392's. The rule applied is
 phase-412's own: *a mention is not an owner.* An issue cited in a wave's
 hand-off list ("→ issue 1146") is a hand-off, not a work item. 1145, 1146 and

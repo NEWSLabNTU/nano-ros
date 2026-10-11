@@ -53,7 +53,7 @@ built here are unreachable:
 215.A, 215.C, 215.D and 215.F are therefore **superseded** and their artifacts
 are deleted by **215.K**; 215.B, 215.E, 215.G and 215.J survive unchanged, which
 is why the goal does not move. The general half is
-[phase-375](../phase-375-board-tier-policy-and-onboarding-cost.md) W6–W9.
+[phase-375](phase-375-board-tier-policy-and-onboarding-cost.md) W6–W9.
 
 **Priority note.** The `P1` below rested on "unblocks ASI's actuation
 consumption story", and that justification was spent long before the phase

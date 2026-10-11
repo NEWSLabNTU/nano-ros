@@ -1,5 +1,7 @@
 # Phase 296 — SystemModel consumption: bake the model into embedded images
 
+**Archived 2026-10-11.** W1–W4 landed and W5 is design-only. The R2/R4 migration was superseded by phase-330 W7, not left unfinished.
+
 **Status (2026-09-04). W1-W4 + W3b.1-.5 LANDED; W5 design-only; the R2/R4
 migration is SUPERSEDED, not unfinished — phase-330 W7 reversed its direction.**
 
@@ -7,7 +9,7 @@ The 2026-07-23 line below reported "**17 CMake + 7 Rust** holdouts" and read as
 migration debt for six weeks. It is not debt, and re-counting it is the wrong
 repair. Its classifier counts entries whose non-comment lines still carry
 `LAUNCH "…"` / `launch = "…"`, because R4's target was to move every entry ONTO
-`MODEL`/`model =`. [phase-330](phase-330-system-model-as-build-artifact.md) W7
+`MODEL`/`model =`. [phase-330](../phase-330-system-model-as-build-artifact.md) W7
 — *"Input-addressed entries: `launch =` replaces `model =`"* (2026-08-03) —
 reversed exactly that: entries name their INPUT, SystemModels are build
 artifacts, and `model =`/`MODEL` are now DEPRECATED expert overrides (CLAUDE.md
@@ -1144,5 +1146,5 @@ holds the evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0760](../issues/0760-ingress-declaration-schema-belongs-to-ros-launch-manifest.md) | RFC-0074's `ingress` declaration is a ros-launch-manifest schema change, not a nano-ros one — it gates what the model can carry |
+| [#0760](../../issues/0760-ingress-declaration-schema-belongs-to-ros-launch-manifest.md) | RFC-0074's `ingress` declaration is a ros-launch-manifest schema change, not a nano-ros one — it gates what the model can carry |
 

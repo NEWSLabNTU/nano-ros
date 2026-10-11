@@ -1,5 +1,7 @@
 # Phase 451 — a dead build declaration that reads as authoritative
 
+**Archived 2026-10-11.** W4's remainder is done: the three stm32f4 `detect_phy_type` tests run in `just check excluded-crate-tests` (issue 1472, resolved), `HOST_UNCHECKABLE` is derived (issue 1315, resolved), and `check-cmake-verb-reachable` gates the acceptance (issue 1451, resolved).
+
 **Status (2026-09-11). W1–W3 landed the day the phase was opened; W4's
 structural work is done and what remains is measured rather than blocked.** The
 `embedded-only` mirror exists (issue 1315), the threadx and nuttx package cycles
@@ -19,18 +21,18 @@ that a reader cannot tell is dead. They are small, and the reason to give them
 one owner rather than three is that their cost is measured in reader time, which
 is invisible per-site and adds up:
 
-* [#1218](../issues/archived/1218-dead-nanoroslink-duplicate.md) —
+* [#1218](../../issues/archived/1218-dead-nanoroslink-duplicate.md) —
   `packages/api/nros-c/cmake/NanoRosLink.cmake` defines the public verb
   `nano_ros_link_rmw` and nothing includes it. It **misled two of four
   independent readers in one session**, because it holds a fourth closed RMW
   list and a force-link that does not happen. It was already finding A1 of a
   codebase audit and had no tracked owner.
-* [#1213](../issues/archived/1213-zpico-net-size-probe-publishes-to-a-retired-crate.md) —
+* [#1213](../../issues/archived/1213-zpico-net-size-probe-publishes-to-a-retired-crate.md) —
   `probe_net_type_sizes` publishes `sizeof(_z_sys_net_socket_t)` /
   `sizeof(_z_sys_net_endpoint_t)` through three carriers, two of them aimed at
   `zpico-platform-shim`, a crate phase-129.D deleted. Its doc comment states the
   opposite of what the code does.
-* [#1217](../issues/archived/1217-workspace-exclude-list-is-unaudited.md) — the root
+* [#1217](../../issues/archived/1217-workspace-exclude-list-is-unaudited.md) — the root
   `Cargo.toml` carries **165 `exclude` entries, 36 of which name directories
   that do not exist**, and one host-buildable crate
   (`packages/rmw/transport-callbacks`) is excluded for no discoverable reason.
@@ -59,7 +61,7 @@ maintains grows the fourth closed RMW list in #1218 all over again.
 
 ### W1 — the dead `NanoRosLink.cmake` duplicate goes
 
-[Issue 1218](../issues/archived/1218-dead-nanoroslink-duplicate.md). The live copy is
+[Issue 1218](../../issues/archived/1218-dead-nanoroslink-duplicate.md). The live copy is
 `cmake/NanoRosLink.cmake`, included by five platform modules as
 `../NanoRosLink.cmake`. The `packages/api/nros-c/cmake/` copy is included by
 nothing and is not installed.
@@ -95,7 +97,7 @@ namer of `NrosRmwXrce`, is corrected in the same change.
 
 ### W2 — the zpico size probe publishes only to a reader
 
-[Issue 1213](../issues/archived/1213-zpico-net-size-probe-publishes-to-a-retired-crate.md).
+[Issue 1213](../../issues/archived/1213-zpico-net-size-probe-publishes-to-a-retired-crate.md).
 Two of three carriers target a deleted crate; the doc comment describes the dead
 path as the live one.
 
@@ -116,7 +118,7 @@ naming the two variables it used to print.
 
 ### W3 — the root `exclude` list is audited and kept honest
 
-[Issue 1217](../issues/archived/1217-workspace-exclude-list-is-unaudited.md). Every
+[Issue 1217](../../issues/archived/1217-workspace-exclude-list-is-unaudited.md). Every
 legitimate exclusion in this tree satisfies one of five structural reasons — own
 `[workspace]` table, own tracked `Cargo.lock`, a `.cargo/config.toml` pinning a
 non-host `[build] target`, a cross-only dependency set, or "metadata only, no
@@ -153,7 +155,7 @@ states: no cross-only dependency, no pinned target, because the kernel build
 glue is not a cargo fact. They are DECLARED in
 `.config/workspace-exclude-reasons.txt`, a shrink-only ratchet, rather than
 given an invented derivation. A gate that asserts a reason it did not measure is
-the defect [phase-450](archived/phase-450-gate-reach-narrower-than-its-rule.md) exists
+the defect [phase-450](phase-450-gate-reach-narrower-than-its-rule.md) exists
 for, and this phase is not the place to add a sixteenth instance of it.
 
 ### W4 — an excluded crate is a crate no lane builds (issue 1309)
@@ -164,7 +166,7 @@ Opened by W3's own fallout, and it is the same defect one level up. Promoting
 the other lane" but **checked by no lane at all**: not host clippy, not embedded
 clippy, not `cargo test`.
 
-[Issue 1309](../issues/1309-excluded-crate-is-built-by-no-lane.md) has the
+[Issue 1309](../../issues/1309-excluded-crate-is-built-by-no-lane.md) has the
 measurement. Of 55 `packages/` exclusions, 20 have neither their own workspace
 nor their own lock; 11 of those are fixture leaves and eight are real crates
 reached only as somebody else's path dependency.
@@ -291,8 +293,8 @@ restore-state width.
 ## Non-goals
 
 * A tree-wide dead-code sweep. These three were filed; the periodic audit
-  ([docs/development/codebase-audit-checklist.md](../development/codebase-audit-checklist.md))
+  ([docs/development/codebase-audit-checklist.md](../../development/codebase-audit-checklist.md))
   owns finding more.
 * Anything about what the RMW lists should CONTAIN — that is
-  [phase-444](archived/phase-444-rmw-fix-up.md). W1 only checks the dead copy against the
+  [phase-444](phase-444-rmw-fix-up.md). W1 only checks the dead copy against the
   live one before deleting it.

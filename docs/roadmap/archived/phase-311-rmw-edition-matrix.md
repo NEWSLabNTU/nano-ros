@@ -1,5 +1,7 @@
 # Phase 311 — RMW × ROS-edition interop matrix
 
+**Archived 2026-10-11.** W2's premise is gone: the vendored zenoh overlay was deleted (`332b736a51`), and RFC-0075 uses ROS's own `rmw_zenohd`. Issue 0291 is resolved. A future protocol move past 0x09 is RFC-0075's concern, not this phase's.
+
 **Status (2026-07-27): W1/W3/W3.5/W4/W5/W6/W7 landed — XRCE full (jazzy+iron) +
 Zenoh (jazzy) both green.** Delivered matrix: **{jazzy, iron} × {cyclone, xrce}**
 (4 cells, pub/sub+service+action both ways) **+ {jazzy} × zenoh** (6/6; #0292 fixed). All via `just ros_editions ci <distro>`.
@@ -38,7 +40,7 @@ matrix this phase delivers is therefore **{jazzy, iron} × {cyclone, xrce}**, wi
 zenoh added once #0291 lands.
 
 Extends the multi-edition harness
-([RFC-0058](../design/0058-multi-edition-ros-test-harness.md), phase-309/310)
+([RFC-0058](../../design/0058-multi-edition-ros-test-harness.md), phase-309/310)
 from **cyclone-only** to the full **RMW axis** — so nano-ros's Zenoh (zpico) and
 XRCE paths are verified against live ROS 2 peers across ROS editions, not just
 CycloneDDS. Also closes the phase-41 residual (the zenoh keyexpr type-hash tail

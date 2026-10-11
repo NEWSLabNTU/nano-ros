@@ -1,5 +1,7 @@
 # Phase 392 — 27% of a safety-island image is message buffers nobody can price
 
+**Archived 2026-10-11.** Every wave landed or was superseded; amendment B was declined.
+
 **Status (2026-09-11). W1, W2, W3, W4, W5.a-W5.g and W6 landed. W3a/W3b/W3c
 landed here, W3d landed as phase-408 W1, W3g as phase-403 W0/W6, W3e is
 superseded by phase 408 and W3f was delivered as a recorded refusal. W2 IS issue
@@ -26,7 +28,7 @@ Landed since: **W1** (pool inventory to full coverage, plus `just mem-report`
 and the `static_memory_declared_pools` test that makes a published pool figure
 answer to the linker), **W3a/W3b** (a subscription buffer sized from the
 message's own `MAX_SERIALIZED_SIZE_*` rather than by hand — Rust only; the
-C/C++ half is [issue 0896](../issues/archived/0896-c-cpp-subscriptions-never-state-a-buffer-hint.md)),
+C/C++ half is [issue 0896](../../issues/archived/0896-c-cpp-subscriptions-never-state-a-buffer-hint.md)),
 and **W5.b1/c/d/e/f** (the queryable table sized by declaration — 143,456 B off
 a talker — with an exhausted table that names the declaration and a knob that is
 checked at build time).
@@ -35,7 +37,7 @@ checked at build time).
 after the measurement landed, which is the drift this header now exists to
 prevent. Read the two dated amendments below (`W5.g measured 2026-08-30` and
 `W5.g DIAGNOSED AND FIXED 2026-09-02`) plus
-[issue 0965](../issues/archived/0965-no-entity-inventory-so-three-consumers-cannot-be-derived.md),
+[issue 0965](../../issues/archived/0965-no-entity-inventory-so-three-consumers-cannot-be-derived.md),
 which measured it on six configured Zephyr images. What remains open from W5 is
 not the measurement but the SAVING: the figure reaches one of six compiled cargo
 units, carries the infrastructure half only, and W5.d's 143,456 B is still a
@@ -43,8 +45,8 @@ measurement of what the mechanism WOULD save on a leaf where it does not run.
 Nothing in W5 may be quoted as a shipped saving. Sizes
 below are `nm` output from `build-board/zephyr/zephyr.elf` on
 mr_canhubk3/s32k344 (zenoh over serial), not estimates. Depends on
-[phase 390](phase-390-storage-mode-rename-inline-heap-view.md) for vocabulary
-and [phase 391](archived/phase-391-allocation-unification-and-tier-model.md) for the
+[phase 390](../phase-390-storage-mode-rename-inline-heap-view.md) for vocabulary
+and [phase 391](phase-391-allocation-unification-and-tier-model.md) for the
 gate that verifies the claims.
 
 ## Where the RAM goes
@@ -131,7 +133,7 @@ reserved for the same lifetime — and buys two things this campaign is otherwis
 paying for: a symbol `mem-report` can price, and a map-file bound. It also takes
 the term out of the image's allocator arena, which on an RTOS is itself a fixed
 static (see W6 and issue 1145). Decision recorded in
-[RFC-0002 § 4.4b](../design/0002-rt-execution-model.md); wave W6 below.
+[RFC-0002 § 4.4b](../../design/0002-rt-execution-model.md); wave W6 below.
 
 The third thing this section used to claim — a task stack that no longer carries
 a term proportional to the subscription graph — is **not** what W6 bought,
@@ -160,7 +162,7 @@ save 49 KiB and saves none of it.
 
 ### 3. Executor arena — a 4.9x hand-tuned guess
 
-[Issue 0810](../issues/archived/0810-executor-arena-sized-by-worst-case-shape.md): the
+[Issue 0810](../../issues/archived/0810-executor-arena-sized-by-worst-case-shape.md): the
 derivation budgets every slot at `sizeof(ActionClient)`, giving 254,720 B for a
 board that registers no action clients; the image ships a hand-picked 52,224 B.
 Unchecked in both directions, and undersizing fails at runtime.
@@ -187,7 +189,7 @@ already declared — the devicetree gives them `zephyr,memory-region` and Zephyr
 linker script emits matching `NOLOAD` sections — and nothing in the tree had
 ever placed a symbol in either.
 
-[Issue 0880](../issues/0880-tcm-unused-while-sram-exhausted.md) and
+[Issue 0880](../../issues/0880-tcm-unused-while-sram-exhausted.md) and
 `CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM` land the first tenant: the 48 KiB task stack
 array. SRAM 98.73 % → 85.60 %, DTCM 0 % → 37.5 %, board boots and reaches its
 ready state with zero faults.
@@ -199,7 +201,7 @@ The constraint that decides what may move: on Cortex-M7 the TCMs hang off the
 CPU's private bus and are typically **not reachable by other bus masters**. A
 buffer a DMA engine touches must not go there. Stacks are safe by construction;
 `LARGE_PAYLOADS` is only safe while the link stays polled/ISR, and
-[issue 0852](../issues/0852-zephyr-serial-rx-is-polled-and-overruns.md)'s fix
+[issue 0852](../../issues/0852-zephyr-serial-rx-is-polled-and-overruns.md)'s fix
 direction includes eDMA. **Verify reachability before moving any buffer.**
 
 ### B. Pools into the tiered arena — the sharing this campaign does not model
@@ -246,7 +248,7 @@ is confined to tiers that already admit an allocator.
 It does not answer the other, which is the stronger one. Sharing widens the
 arena's block-size range from infrastructure-only (~2^6) to payload-inclusive
 (~2^16), and that range is precisely what makes [phase
-391](archived/phase-391-allocation-unification-and-tier-model.md)'s constant-time
+391](phase-391-allocation-unification-and-tier-model.md)'s constant-time
 allocator sizeable. The refusal was not about whether pooling wastes RAM — it
 plainly does — but about the cost landing on the allocator that phase 391 is
 built around.
@@ -508,7 +510,7 @@ What the spare flash IS good for, in order of value to this campaign:
 ## Waves
 
 **W1 — pool inventory to full coverage.**
-[Issue 0815](../issues/archived/0815-pool-inventory-prices-3-of-46-knobs.md): 46 knobs
+[Issue 0815](../../issues/archived/0815-pool-inventory-prices-3-of-46-knobs.md): 46 knobs
 found, 3 priced, **66,304 bytes of unpriced pools** — more than the 57,344 that
 is priced. Annotate the rest; add a gate rejecting new unannotated pools.
 `__nros_comp_buf_N` cannot carry a static annotation (it is generated from
@@ -521,7 +523,7 @@ and `__nros_comp_buf_N` is not the exception this wave assumed, it is the rule:
 `SERVICE_BUFFERS` is a product including `ZPICO_MAX_QUERYABLES`, whose default is
 *computed*, so there is no integer to write down; `MESSAGE_INFO_TABLE`'s element
 gains three fields under `alloc` + `safety-e2e`, which is why [issue
-0739](../issues/archived/0739-static-pool-inventory-not-enumerable.md) declined to
+0739](../../issues/archived/0739-static-pool-inventory-not-enumerable.md) declined to
 annotate it and was right to; `SUBSCRIBER_BUFFERS` is an array of structs. The
 size is known to the COMPILER, not to a comment, and a hand-written figure in a
 comment is the drift class this tree already gates against
@@ -538,7 +540,7 @@ which turns the inventory's published figures from a claim into a checked fact
 a measured delta between two `--json` runs.
 
 The first thing it measured is [issue
-0827](../issues/archived/0827-unused-rmw-pools-dominate-static-ram.md) — static RAM is a
+0827](../../issues/archived/0827-unused-rmw-pools-dominate-static-ram.md) — static RAM is a
 property of the RMW, not of the node, identical to the byte across four roles,
 and a talker reserves 80% of its static RAM in pools it cannot reach.
 
@@ -555,7 +557,7 @@ plus a CI lane that fails when it exceeds the configured arena — the generated
 path proves its number statically, the hand-written path measures it, and both
 report through one figure.
 
-**W2 IS [issue 0900](../issues/archived/0900-arena-slots-budgeted-at-action-client-worst-case.md),
+**W2 IS [issue 0900](../../issues/archived/0900-arena-slots-budgeted-at-action-client-worst-case.md),
 and its runtime half has landed.** The issue was filed from the other end —
 measuring that `ARENA_SIZE` is 74,240 bytes on every generated config in the
 tree, a talker included, while a timer-only executor claims **32 bytes** — and
@@ -616,7 +618,7 @@ A C or C++ subscription to the same type still hints 0. The field is declared,
 `packages/api/nros-c`, `packages/api/nros-cpp`, `packages/cli/rosidl-*` or
 `examples/` writes it. The producer is the Rust executor and nothing else, so
 W3a's saving applies to half the tree.
-[Issue 0896](../issues/archived/0896-c-cpp-subscriptions-never-state-a-buffer-hint.md)
+[Issue 0896](../../issues/archived/0896-c-cpp-subscriptions-never-state-a-buffer-hint.md)
 carries the survey and the constraint that decides the design: the bound is a
 PROVIDED const computed from `FIELDS`, a C message has no such trait, and
 whatever carries the number to the C call site must not become a SECOND
@@ -822,14 +824,14 @@ learn the per-type bounds, which is `nros-node/build.rs`'s `rx_recv_size` term
 and `nros_derive_message_bound_knobs` — phase-403 step 3's lane, not this one,
 and deliberately deferred there ("a DESIGN choice with two bad options").
 
-*Filed:* [issue 1179](../issues/1179-derived-rx-default-unreachable-without-schema.md)
+*Filed:* [issue 1179](../../issues/1179-derived-rx-default-unreachable-without-schema.md)
 — the default derives only on a backend declaring `type-descriptors` (today:
 Cyclone alone, verified across all four `nros-rmw.toml`), because
 `MessageForRmw` carries no schema on the other arm and phase-380 W4 refused to
 tighten it. The same constraint makes W3a inert on zenoh, which is worth
 knowing before quoting W3a's "a Rust subscription to a 4 KiB type now routes
 large" — true on Cyclone, false on the backend that has the size classes.
-[issue 1180](../issues/archived/1180-mem-report-baseline-cannot-match-llvm-suffixed-symbols.md)
+[issue 1180](../../issues/archived/1180-mem-report-baseline-cannot-match-llvm-suffixed-symbols.md)
 — `mem-report --baseline` matches symbols by name including the per-build
 `.llvm.<hash>` suffix, so it silently prints "no delta" for `EXECUTOR_BACKING`
 whatever happened to it. That one nearly turned this wave's measurement into a
@@ -854,7 +856,7 @@ Deleting it there leaves an unbounded type with no publish helper. The knob
 stopped being the DEFAULT — that was the wave's point; the criterion confused it
 with removing the symbol.
 
-**W3e — SUPERSEDED by [phase 408](phase-408-cpp-message-derived-buffers.md);
+**W3e — SUPERSEDED by [phase 408](../phase-408-cpp-message-derived-buffers.md);
 the fork it described does not exist.** W3e asked for a decision between
 monomorphising the const generic per type and making the arena entry
 runtime-sized. Surveying the code for phase 408 found the second is **already
@@ -882,7 +884,7 @@ in this backend to size. The sample arrives in a serdata sized by the sample, an
 the destination is the caller's buffer, whose capacity arrives on every `take`.
 The one candidate consumer — the `dds_ostream` that re-serialised the typed
 sample and grew by `realloc` — went with the CDR round trip in
-[issue 0969](../issues/archived/0969-cyclone-take-cdr-round-trip.md). So the hint is
+[issue 0969](../../issues/archived/0969-cyclone-take-cdr-round-trip.md). So the hint is
 INAPPLICABLE here rather than unimplemented, and the ordering note below is
 correspondingly wrong: W3f does not make W3c/W3d/W3e observable on a Cyclone
 image, because nothing in this backend was ever going to route on the hint. What
@@ -890,7 +892,7 @@ IS observable there is the executor arena, which nano-ros sizes itself from the
 same bound. Measure the arena, not the backend.
 
 Original text follows. Filed as
-[issue 0958](../issues/archived/0958-cyclonedds-ignores-rx-buffer-hint.md), which carries
+[issue 0958](../../issues/archived/0958-cyclonedds-ignores-rx-buffer-hint.md), which carries
 the evidence: `subscription_create` takes the options struct and names none of
 it, so the parameter is discarded at a comment. `grep
 rx_buffer_hint packages/rmw/cyclonedds/` returns nothing today, so a consumer on
@@ -1075,7 +1077,7 @@ never own the second number.
 ### Why not const generics
 
 Checked, because the W5 endgame in [phase
-391](archived/phase-391-allocation-unification-and-tier-model.md) sized component cells
+391](phase-391-allocation-unification-and-tier-model.md) sized component cells
 exactly that way and the parallel is tempting. `SERVICE_BUFFERS` is a private
 `static mut`: no header, no `#[no_mangle]`, no `repr(C)`. C round-trips one
 opaque `*mut c_void` token (`session_index * ZPICO_MAX_QUERYABLES + local`) that
@@ -1646,7 +1648,7 @@ always-reserved RAM into peak-of-concurrent, which is a real saving, and it is
 declined deliberately. A statically provable buffer would become an allocation
 that can fail mid-callback, and it would widen the heap's block-size range from
 infrastructure-only (~2^6) to payload-inclusive (~2^16) — which is precisely
-what makes [phase 391](archived/phase-391-allocation-unification-and-tier-model.md)'s
+what makes [phase 391](phase-391-allocation-unification-and-tier-model.md)'s
 constant-time allocator sizeable. The two decisions are coupled; this is the
 side of the coupling that keeps both defensible.
 
@@ -1810,19 +1812,19 @@ holds the evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0852](../issues/0852-zephyr-serial-rx-is-polled-and-overruns.md) | the zenoh read task inherits the executor's priority on Zephyr |
-| [#0880](../issues/0880-tcm-unused-while-sram-exhausted.md) | 192 KiB of tightly-coupled memory sits at 0 % while SRAM is exhausted |
-| [#0969](../issues/archived/0969-cyclone-take-cdr-round-trip.md) | the Cyclone RMW deserializes every received sample and re-serializes it, so `try_recv_raw` costs a full round trip. **Round trip removed; cost measured** — ~46 ns/message floor (176 ns at 16 KB). The allocation saving this row assumed did NOT appear: count unchanged, bytes a crossover at ~6 KB. Remaining: the third site, per 0976 |
-| [#0810](../issues/archived/0810-executor-arena-sized-by-worst-case-shape.md) | the executor arena was sized at `MAX_CBS x sizeof(ActionClient)` whatever the entity mix. Lever 3 cites it. It predates phase-412 W3, which now derives the arena per KIND — so re-measure against that before working it; what is left may be only the worst-case SHAPE, or nothing — **resolved 2026-10-02** (each declared kind priced at what its entry holds) |
-| [#0815](../issues/archived/0815-pool-inventory-prices-3-of-46-knobs.md) | the inventory prices 3 of 46 sizing knobs. The W1 amendment answered the ANNOTATION half (measure, do not declare); pricing the remaining knobs is the work — **resolved 2026-10-01** |
-| [#1147](../issues/archived/1147-mem-report-cannot-attribute-cpp-executor-storage.md) | `mem-report` counts the C and C++ executor storage but files it under the wrong crate — the third of W6's hand-offs, and the only one without another home — **resolved 2026-10-01** |
-| [#1179](../issues/1179-derived-rx-default-unreachable-without-schema.md) | W3c's residue: on zenoh and XRCE the derived RX default is unreachable, because a type-erased registration site sees only `MessageForRmw`. The issue records two designs — the bound carried on `RosMessage`, or a split typed entry point — and asks for a deliberate choice between them |
-| [#1180](../issues/archived/1180-mem-report-baseline-cannot-match-llvm-suffixed-symbols.md) | `mem-report --baseline` reports no delta for LLVM-internalised symbols, so a real saving can read as zero — the instrument this phase measures everything with — **resolved 2026-10-01** |
+| [#0852](../../issues/0852-zephyr-serial-rx-is-polled-and-overruns.md) | the zenoh read task inherits the executor's priority on Zephyr |
+| [#0880](../../issues/0880-tcm-unused-while-sram-exhausted.md) | 192 KiB of tightly-coupled memory sits at 0 % while SRAM is exhausted |
+| [#0969](../../issues/archived/0969-cyclone-take-cdr-round-trip.md) | the Cyclone RMW deserializes every received sample and re-serializes it, so `try_recv_raw` costs a full round trip. **Round trip removed; cost measured** — ~46 ns/message floor (176 ns at 16 KB). The allocation saving this row assumed did NOT appear: count unchanged, bytes a crossover at ~6 KB. Remaining: the third site, per 0976 |
+| [#0810](../../issues/archived/0810-executor-arena-sized-by-worst-case-shape.md) | the executor arena was sized at `MAX_CBS x sizeof(ActionClient)` whatever the entity mix. Lever 3 cites it. It predates phase-412 W3, which now derives the arena per KIND — so re-measure against that before working it; what is left may be only the worst-case SHAPE, or nothing — **resolved 2026-10-02** (each declared kind priced at what its entry holds) |
+| [#0815](../../issues/archived/0815-pool-inventory-prices-3-of-46-knobs.md) | the inventory prices 3 of 46 sizing knobs. The W1 amendment answered the ANNOTATION half (measure, do not declare); pricing the remaining knobs is the work — **resolved 2026-10-01** |
+| [#1147](../../issues/archived/1147-mem-report-cannot-attribute-cpp-executor-storage.md) | `mem-report` counts the C and C++ executor storage but files it under the wrong crate — the third of W6's hand-offs, and the only one without another home — **resolved 2026-10-01** |
+| [#1179](../../issues/1179-derived-rx-default-unreachable-without-schema.md) | W3c's residue: on zenoh and XRCE the derived RX default is unreachable, because a type-erased registration site sees only `MessageForRmw`. The issue records two designs — the bound carried on `RosMessage`, or a split typed entry point — and asks for a deliberate choice between them |
+| [#1180](../../issues/archived/1180-mem-report-baseline-cannot-match-llvm-suffixed-symbols.md) | `mem-report --baseline` reports no delta for LLVM-internalised symbols, so a real saving can read as zero — the instrument this phase measures everything with — **resolved 2026-10-01** |
 
 
 ## Adopted issue (2026-09-04)
 
-* **[#1028](../issues/archived/1028-nuttx-classified-hosted-takes-linux-queryable-budget.md)**
+* **[#1028](../../issues/archived/1028-nuttx-classified-hosted-takes-linux-queryable-budget.md)**
   — RESOLVED 2026-09-06. NuttX was classified `hosted` because its `target_os`
   is not `"none"`, so `runner.rs` picked the 32-slot queryable budget meant for
   a host. MEASURED on an image with ZERO queryables: `SERVICE_BUFFERS` was
@@ -1845,7 +1847,7 @@ holds the evidence, the item is *close it*.
   example reaches none of the three declaration channels — no SystemModel, not
   Zephyr, not a cargo leaf — so the guess is the only budget it can get. That
   gap is
-  [#1142](../issues/archived/1142-nuttx-standalone-example-has-no-entity-declaration.md)
+  [#1142](../../issues/archived/1142-nuttx-standalone-example-has-no-entity-declaration.md)
   — CLOSED 2026-09-11 (phase-412 W5): a standalone CMake leaf declares its
   entities in its `system.toml`, and the NuttX C++ action-client's
   `SERVICE_BUFFERS` went 35,584 B to 4,448 B.

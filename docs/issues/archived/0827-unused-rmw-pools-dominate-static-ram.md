@@ -50,7 +50,7 @@ The pools are unconditional `static mut` arrays in the backend crate. Linking
 the backend reserves all of them; nothing about the node's entity set reaches
 the decision. This is deliberate and correct as a starting point — a static pool
 is what makes the allocation statically provable, which is the property
-[phase 392](../../roadmap/phase-392-static-memory-space-campaign.md) explicitly
+[phase 392](../../roadmap/archived/phase-392-static-memory-space-campaign.md) explicitly
 protects when it declines to move payload buffers to the heap.
 
 The defect is not that the pools are static. It is that their SIZE is fixed at

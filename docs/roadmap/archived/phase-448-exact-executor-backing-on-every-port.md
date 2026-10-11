@@ -1,5 +1,7 @@
 # Phase 448 — the executor backing, sized exactly and paid for once, on every port
 
+**Archived 2026-10-11.** All eight waves landed (PRs listed below). The per-wave acceptance boxes were never ticked when the waves merged; the PR list is the record. The ESP32 pairing is moot, because ESP32 is dormant (issue 1525).
+
 **Status (2026-09-13). ALL EIGHT WAVES LANDED.** W1+W2 as PR #980, W3 in two
 parts (#990 the blocker and the instrument, #1021 the number), W4 as #1021, W5
 as #1012, W6 as #957, W7+W8 as #951. Eight issues resolved: 1010, 1146, 1189,
@@ -50,7 +52,7 @@ reserves the bytes TWICE.
 Zephyr was fixed within a day — twelve confs paired, the knob
 `CONFIG_NROS_EXECUTOR_BACKING_U64S`, the gate
 `check-executor-backing-arena-pairing`, and the subtrahend DERIVED rather than
-copied from `nm` ([issue 1171](../issues/archived/1171-arena-backing-pairing-is-hand-maintained.md)).
+copied from `nm` ([issue 1171](../../issues/archived/1171-arena-backing-pairing-is-hand-maintained.md)).
 Every other port is untouched, and sizing the backing exposed three more costs
 along the way.
 
@@ -73,7 +75,7 @@ knob move.
 
 ### W1 — answer which allocator a Zephyr XRCE image has
 
-[Issue 1189](../issues/archived/1189-xrce-leaf-sets-an-arena-knob-its-image-lacks.md).
+[Issue 1189](../../issues/archived/1189-xrce-leaf-sets-an-arena-knob-its-image-lacks.md).
 The six Zephyr XRCE Rust leaves set `CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE`, and
 their images do not select picolibc, so the knob never reaches the resolved
 `.config` and the comment above it describes another image. The issue refuses
@@ -90,7 +92,7 @@ It comes first because it decides which heap W2 has to size.
 
 ### W2 — every Zephyr XRCE image boots
 
-[Issue 1010](../issues/archived/1010-zephyr-xrce-executor-arena-exceeds-heap.md). The
+[Issue 1010](../../issues/archived/1010-zephyr-xrce-executor-arena-exceeds-heap.md). The
 only item in this phase where an image does not run: every Zephyr XRCE example
 dies at boot. The 2026-09-04 correction located the allocation — it is not the
 executor arena but `xrce_session_state`, dominated by
@@ -102,11 +104,11 @@ executor arena but `xrce_session_state`, dominated by
 
 ### W3 — the FreeRTOS C/C++ carrier's stack is measured
 
-[Issue 1146](../issues/archived/1146-freertos-app-task-stack-never-derived.md), part 2.
+[Issue 1146](../../issues/archived/1146-freertos-app-task-stack-never-derived.md), part 2.
 `cmake/templates/freertos_app_config.c.in` keeps `.app_stack_bytes = 524288u`
 for both typed carriers. Its C half measures 18,176 B at worst. Its C++ half was
 unmeasurable because no embedded C++ FreeRTOS image built; that blocker
-([issue 1187](../issues/archived/1187-freertos-embedded-cpp-freestanding-string.md))
+([issue 1187](../../issues/archived/1187-freertos-embedded-cpp-freestanding-string.md))
 is resolved, so the number can now be taken and has not been.
 
 Part 1 (the Rust app task, 384 KiB → 128 KiB, measured on 14 running images) is
@@ -120,8 +122,8 @@ done.
 
 ### W4 — FreeRTOS reserves the backing once
 
-[Issue 1197](../issues/archived/1197-freertos-heap-cannot-learn-the-backing-size.md), and
-the FreeRTOS half of [issue 1145](../issues/archived/1145-executor-backing-static-unpaired-with-rtos-heap.md).
+[Issue 1197](../../issues/archived/1197-freertos-heap-cannot-learn-the-backing-size.md), and
+the FreeRTOS half of [issue 1145](../../issues/archived/1145-executor-backing-static-unpaired-with-rtos-heap.md).
 Measured: every FreeRTOS Rust image reserves its 20,608–32,512 B backing twice,
 because `configTOTAL_HEAP_SIZE` is still budgeted for an arena that moved to
 `.bss`. Neither Zephyr mechanism transfers. The 2026-09-07 attempt established
@@ -145,10 +147,10 @@ PRs is how it ends up wrong.
 
 ### W5 — NuttX, ThreadX, ESP32
 
-The rest of [issue 1145](../issues/archived/1145-executor-backing-static-unpaired-with-rtos-heap.md),
+The rest of [issue 1145](../../issues/archived/1145-executor-backing-static-unpaired-with-rtos-heap.md),
 resolved 2026-09-29 for NuttX, ESP32 and `threadx-linux`; `threadx-riscv64`'s
 own statement and the undeclared allocator bases moved to
-[issue 1557](../issues/archived/1557-threadx-riscv64-backing-and-allocator-bases-unmeasured.md).
+[issue 1557](../../issues/archived/1557-threadx-riscv64-backing-and-allocator-bases-unmeasured.md).
 **One platform per commit**, as the issue specifies: the failure mode
 is a runtime allocation failure, and a three-platform diff makes it
 unattributable. The knob is Zephyr-only so far; on the other ports it is spelled
@@ -162,7 +164,7 @@ through the `NROS_*` build environment.
 
 ### W6 — the fixed tables shrink to what the image declares
 
-[Issue 1198](../issues/archived/1198-executor-node-and-sc-slots-are-undeclared-defaults.md).
+[Issue 1198](../../issues/archived/1198-executor-node-and-sc-slots-are-undeclared-defaults.md).
 `MAX_NODES` and `MAX_SC` are undeclared defaults. Every FreeRTOS backing carries
 a constant **12,416 B** of tables, identical to the byte across leaves with
 different declarations. `MAX_NODES` is the heavier of the two: it multiplies
@@ -181,7 +183,7 @@ This is a design question before it is code, and the issue lists it:
 
 ### W7 — each subscription priced at its own type
 
-[Issue 1255](../issues/archived/1255-arena-prices-every-subscription-slot-at-one-global-type-bound.md).
+[Issue 1255](../../issues/archived/1255-arena-prices-every-subscription-slot-at-one-global-type-bound.md).
 `subs_arena()` bills every declared subscription at one image-wide bound — 880 B
 on the reference island — although the per-type bound is generated and reaches
 the build script: the declared-depth triples are `type|topic=depth`, and the
@@ -197,7 +199,7 @@ DTCM.
 
 ### W8 — the per-entry arena scales by a ratio that stopped being the model
 
-[Issue 1290](../issues/archived/1290-arena-size-for-halves-a-declared-model.md), found by
+[Issue 1290](../../issues/archived/1290-arena-size-for-halves-a-declared-model.md), found by
 phase-412 item 4's oracle on the day it landed — which is the argument for
 having built the oracle at all.
 
@@ -245,7 +247,7 @@ number having stopped matching the model.
 ## Not owned here
 
 - **Arena exhaustion diagnostics** — issue 1036, homed in
-  [phase 412](phase-412-derived-counts-and-sizes.md), whose second rule is that a
+  [phase 412](../phase-412-derived-counts-and-sizes.md), whose second rule is that a
   derived count is safe only where exhaustion names the knob.
 - **The runtime stack-headroom rule** — phase 436.
 - **Main-stack and Zephyr-heap derivation** — phase 412 W2's table, which records

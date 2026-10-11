@@ -1,8 +1,10 @@
 # Phase 443 — release composition
 
+**Archived 2026-10-11.** All six work items landed; #854 and #860, which the status line below lists as in review, are both merged.
+
 **Status (2026-09-10). All six work items implemented; W1/W5 and W3/W4 are in
 review.** Implements
-[RFC-0097](../design/0097-release-composition-and-version-axes.md). Makes the
+[RFC-0097](../../design/0097-release-composition-and-version-axes.md). Makes the
 `nano-ros` release say what it contains, so the axis that carries compatibility
 can be read without reading the ones that do not.
 

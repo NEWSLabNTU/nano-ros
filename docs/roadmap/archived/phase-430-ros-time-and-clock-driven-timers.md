@@ -38,7 +38,7 @@ because it is an executor change and this phase is the reach delta. See
 written.
 
 This document was first written as if ROS time were unstarted work. It was not:
-phase-425 ([`phase-425-ros-time-clock-semantics.md`](../phase-425-ros-time-clock-semantics.md))
+phase-425 ([`phase-425-ros-time-clock-semantics.md`](phase-425-ros-time-clock-semantics.md))
 landed `rosgraph_msgs/msg/Clock`, the `/clock` time source, `use_sim_time`,
 clock-driven timers and an end-to-end fixture while this was being drafted, and
 the collision was found in a rebase conflict rather than by looking. The

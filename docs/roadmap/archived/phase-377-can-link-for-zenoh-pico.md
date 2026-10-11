@@ -1,5 +1,7 @@
 # Phase 377 — A CAN link for zenoh-pico
 
+**Archived 2026-10-11.** W0–W5 done; the link works and the workload fits.
+
 **Status (2026-08-23). W0-W5 DONE. The link works, and the workload fits.**
 
 Two zenoh-pico peers exchange pub/sub over `vcan0` with a 189-byte payload
@@ -15,7 +17,7 @@ directions, over-MTU refusal. A zenoh *session* does not come up: the RFC's
 `Z_LINK_CAP_TRANSPORT_UNICAST` obliges the listen side through
 `_zp_unicast_accept_task`, which needs a socket and an `accept()` that a
 datagram medium does not have. See [RFC-0080 §"UNICAST cannot complete a
-two-peer handshake"](../design/0080-can-link-for-zenoh-pico.md). The fix is
+two-peer handshake"](../../design/0080-can-link-for-zenoh-pico.md). The fix is
 `MULTICAST`, which is what a CAN bus actually is.
 
 **Original status.** PROPOSED — nothing started. Opened from the Autoware
@@ -23,7 +25,7 @@ safety island bring-up: the MR-CANHUBK344's Ethernet is one 100BASE-T1 port on a
 GMAC with no RGMII, so it is capped at 100 Mbit and needs a media converter to
 reach any normal host — while the same board carries six CAN FD ports unused.
 
-**Implements:** [RFC-0080](../design/0080-can-link-for-zenoh-pico.md).
+**Implements:** [RFC-0080](../../design/0080-can-link-for-zenoh-pico.md).
 **Related:** `_Z_LINK_TYPE_IVC` (phase-100.4, the datagram-link template),
 `_Z_LINK_TYPE_CUSTOM` (phase-115.B, rejected for this — see RFC §3).
 

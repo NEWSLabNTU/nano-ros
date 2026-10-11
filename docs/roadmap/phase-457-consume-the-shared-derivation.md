@@ -8,7 +8,7 @@ Consumer side of ros-launch-manifest design issue #52
 (`docs/roadmap/phase-78-one-derivation-two-consumers.md`). Successor to
 [phase-434](archived/phase-434-contract-seams-closed.md), which closed the `miss`,
 `max_jitter_ms` and `node_concurrency` seams and left this one, and to
-[phase-296](phase-296-system-model-consumption.md) W5, which wrote
+[phase-296](archived/phase-296-system-model-consumption.md) W5, which wrote
 `mapper_input.rs` in the first place.
 
 ## Parallel plan
