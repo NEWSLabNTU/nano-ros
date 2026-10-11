@@ -23,5 +23,5 @@ cd examples/mps2-an385-baremetal/c/action-client && cargo build --release
 
 Builds and boots, and reaches a router on the port its `system.toml` locator
 names (issue 1512 — the locator reaches the C TU as `NROS_ENTRY_LOCATOR` and
-the boot config as `Config::from_image()`). The action round trip is not yet
-reliable on bare metal, so its cell is `BuildOnly`: issue 1797.
+the boot config as `Config::from_image()`), and the action round trip runs
+end to end under QEMU in `test_qemu_baremetal_capi_e2e` (issue 1797).

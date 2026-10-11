@@ -1137,10 +1137,9 @@ static void query_handler(z_loaned_query_t* query, void* arg) {
     // and so the state machine is reachable from a host test.
     int64_t reply_seq = -1;
     bool announce = false;
-    int32_t slot =
-        zpico_reply_slot_pick(s->stored_query_valid[idx], (uint32_t)ZPICO_MAX_PENDING_REPLIES,
-                              &s->reply_slot_refusals[idx], &s->reply_slot_saturated[idx],
-                              &announce);
+    int32_t slot = zpico_reply_slot_pick(
+        s->stored_query_valid[idx], (uint32_t)ZPICO_MAX_PENDING_REPLIES,
+        &s->reply_slot_refusals[idx], &s->reply_slot_saturated[idx], &announce);
     if (slot >= 0) {
         /* The clone is a refcount increment, not an allocation — issue 0902
          * ruled it out as a failure mode against `refcount.h:70-72` — so a -1
@@ -1306,8 +1305,7 @@ static void _zpico_ring_push(struct zpico_session* s, subscriber_entry_t* entry,
     // KEEP_LAST overwrite-from-the-front intent loosely; a
     // dropped burst tail is reported via msg-lost accounting on
     // the Rust side from the sequence gap).
-    uintptr_t head =
-        atomic_load_explicit((const _Atomic uintptr_t*)r->head, memory_order_acquire);
+    uintptr_t head = atomic_load_explicit((const _Atomic uintptr_t*)r->head, memory_order_acquire);
     uintptr_t tail = atomic_load_explicit((_Atomic uintptr_t*)r->tail, memory_order_relaxed);
     if (tail - head >= r->slot_count) {
         // Ring full — drop. Still fire notify(len) so the Rust
@@ -2101,8 +2099,7 @@ int32_t zpico_open(zpico_session_t* session) {
     s->lease_task_attr = g_default_lease_task_attr;
     s->read_task_opts = g_default_read_task_opts;
     s->lease_task_opts = g_default_lease_task_opts;
-#if defined(ZENOH_NUTTX) || defined(ZENOH_LINUX) || defined(ZENOH_MACOS) ||                        \
-    defined(ZENOH_ZEPHYR)
+#if defined(ZENOH_NUTTX) || defined(ZENOH_LINUX) || defined(ZENOH_MACOS) || defined(ZENOH_ZEPHYR)
     /* issue 0852 — ZENOH_ZEPHYR joins this list. It was the platform the cast
      * below was guaranteed to break on, and it was the one left out. */
     /* issue 0803 — point at the per-session `nros_platform_task_attr_t`, which
@@ -2205,14 +2202,12 @@ int32_t zpico_open(zpico_session_t* session) {
     s->tx_flush_run = true;
 #if defined(ZENOH_ZEPHYR)
     /* issue 0852 — hand the port the struct it reads, as read and lease do. */
-    z_task_attr_t* flush_attr = s->flush_task_configured
-                                    ? (z_task_attr_t*)&s->flush_nros_attr
-                                    : NULL;
+    z_task_attr_t* flush_attr =
+        s->flush_task_configured ? (z_task_attr_t*)&s->flush_nros_attr : NULL;
 #else
     z_task_attr_t* flush_attr = s->flush_task_configured ? &s->flush_task_attr : NULL;
 #endif
-    if (_z_task_init(&s->tx_flush_task, flush_attr,
-                     _zpico_tx_flush_task_fn, s) != 0) {
+    if (_z_task_init(&s->tx_flush_task, flush_attr, _zpico_tx_flush_task_fn, s) != 0) {
         /* No thread → flushes ride only on implicit sends (keepalives bound
          * sit-time to the lease interval). Loud, not fatal. */
         s->tx_flush_run = false;
@@ -2906,7 +2901,7 @@ int32_t zpico_declare_subscriber_ring(zpico_session_t* session, const char* keye
 
     /* Claimed by zpico_claim_slot (issue 1711); set again for the reader. */
     s->subscribers[idx].active = true;
-        zpico_last_sub_declare_exit = 6;
+    zpico_last_sub_declare_exit = 6;
     return idx;
 }
 
@@ -3178,45 +3173,44 @@ int32_t zpico_spin_once(zpico_session_t* session, uint32_t timeout_ms) {
 #endif
 
 #ifdef ZPICO_SMOLTCP
-    // smoltcp: poll network and read available data. Uses single_read=true
-    // to preserve partial TCP data across calls (non-blocking _z_read_tcp
-    // may return fragments). single_read=false resets the zbuf on each call
-    // which discards partial messages.
+    // smoltcp: poll network and read available data.
     //
-    // Drain behaviour (timeout_ms == 0):
-    //   Loop until no data remains. This prevents a race where a keep-alive
-    //   is read first, the loop exits, _z_pending_query_process_timeout fires
-    //   and removes the pending query, and then the reply — still in the
-    //   staging buffer — is read in the next spin but cannot find its matching
-    //   pending query (already removed), causing get_check to return TIMEOUT
-    //   even though the reply arrived in time.
+    // Issue 1797 — single_read=FALSE. The single_read=true path
+    // (`_z_unicast_recv_t_msg`) reads a batch's length prefix and then decodes
+    // ONE transport message from the WHOLE rx zbuf, not from a view bounded to
+    // that batch. A FRAME's payload runs to the end of the buffer it is given,
+    // so when one TCP read delivers two batches — what a router does with a
+    // burst, e.g. an action server's feedback + status + result + goal reply —
+    // the frame decode runs into the next batch's length prefix and the stream
+    // is desynchronised for good: the reply was never decoded, and every later
+    // read waited on a garbage size. Bare-metal C/C++ action pairs lost their
+    // goal reply (C++) or result reply (C) about one run in two.
     //
-    // Polling behaviour (timeout_ms > 0):
-    //   Stop after the first processed message (original behaviour), and
-    //   retry until data arrives or the timeout elapses.
-    zp_read_options_t opts;
-    opts.single_read = true;
-    uint64_t start = smoltcp_clock_now_ms();
+    // single_read=false is the bounded path (`_z_unicast_process_messages`
+    // decodes over `_z_zbuf_view(…, to_read)`), drains EVERY complete batch
+    // already buffered, and since nano-ros #567 compacts rather than resets,
+    // so a partial trailing batch survives to the next call — the property
+    // single_read=true was originally chosen for.
+    //
+    // Drain behaviour (timeout_ms == 0): loop until no data remains, so a
+    // reply still in staging is read before `_z_pending_query_process_timeout`
+    // below can retire its pending query.
+    // Polling behaviour (timeout_ms > 0): stop after the first read that
+    // processed data, and retry until data arrives or the timeout elapses.
     int ret;
+    uint64_t start = smoltcp_clock_now_ms();
     do {
-        ret = zp_read(z_session_loan_mut(&s->session), &opts);
-        if (ret == 0 && timeout_ms != 0) break; // Processed one message (timeout mode)
+        ret = zp_read(z_session_loan_mut(&s->session), NULL);
+        if (ret == 0 && timeout_ms != 0) break; // Processed data (timeout mode)
         if (ret != 0 && timeout_ms == 0) break; // No data (drain mode)
-        // timeout_ms == 0 && ret == 0: data processed, loop to drain next message
-        // timeout_ms != 0 && ret != 0: no data yet, keep waiting (while decides)
     } while (ret == 0 || smoltcp_clock_now_ms() - start < timeout_ms);
-    // issue 1512 / issue 0387's class — a QUIET tick is 0, not an error. With
-    // single_read=true over a stream link, "no complete frame buffered" is
-    // `_Z_ERR_TRANSPORT_NOT_ENOUGH_BYTES`, and both loop exits above leave
-    // exactly that in `ret` on a live-but-quiet session. Returned raw it
-    // reached Rust as `ZpicoError::Generic` -> ConnectionFailed on EVERY spin
-    // (1975 such log lines in 20 s from the Rust talker, which tolerates them),
-    // and `nros_executor_spin_period` counts it as an I/O failure and gives up
-    // after SPIN_ERROR_TOLERANCE quiet rounds — so every bare-metal C/C++
-    // image stopped ~1.6 s after boot. Every other backend returns 0 here
-    // (issue 0387 made the ThreadX arm do the same); a real failure still
-    // returns its own negative code.
-    if (ret == _Z_ERR_TRANSPORT_NOT_ENOUGH_BYTES) {
+    // issue 1512 / issue 0387's class — a QUIET tick is 0, not an error.
+    // "Nothing complete buffered" is `_Z_NO_DATA_PROCESSED` on this path
+    // (`_Z_ERR_TRANSPORT_NOT_ENOUGH_BYTES` on the single-read one). Returned
+    // raw it reaches Rust as an error, and `nros_executor_spin_period` gives
+    // up after SPIN_ERROR_TOLERANCE quiet rounds — every bare-metal C/C++
+    // image stopped ~1.6 s after boot. A real failure keeps its own code.
+    if (ret == _Z_NO_DATA_PROCESSED || ret == _Z_ERR_TRANSPORT_NOT_ENOUGH_BYTES) {
         ret = 0;
     }
     // Process query timeouts — in multi-threaded mode the lease task handles
@@ -3755,7 +3749,9 @@ int32_t zpico_reply_slot_declines(zpico_session_t* session, int32_t queryable_ha
  * NEVER reset. A counter a caller can zero is one a caller can zero by
  * accident, and the only consumer wants a monotone "has it happened yet".
  */
-uint32_t zpico_reply_slot_refusals_total(void) { return g_reply_slot_refusals_total; }
+uint32_t zpico_reply_slot_refusals_total(void) {
+    return g_reply_slot_refusals_total;
+}
 
 int32_t zpico_reply_slot_take_announcement(zpico_session_t* session, int32_t queryable_handle) {
     struct zpico_session* s = (struct zpico_session*)session;
@@ -4561,7 +4557,7 @@ int32_t zpico_graph_cache_stop(zpico_session_t* session) {
     return 0;
 }
 
-#else /* !ZPICO_GRAPH_DISCOVERY */
+#else  /* !ZPICO_GRAPH_DISCOVERY */
 
 /* Graph discovery is compiled out: there is no cache to start, so say so with
  * the one code that means "this image was configured without it" rather than
@@ -4636,7 +4632,7 @@ int32_t zpico_graph_entry_at(zpico_session_t* session, uint32_t index, char* out
     return ret;
 }
 
-#else /* !ZPICO_GRAPH_DISCOVERY */
+#else  /* !ZPICO_GRAPH_DISCOVERY */
 
 /* No cache: "cannot say", never "empty". A zero count here would tell
  * `service_is_ready` that no server exists, which is a wrong answer; an error
