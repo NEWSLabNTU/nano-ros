@@ -152,8 +152,9 @@ function(nros_feature_set out_var)
         if(NOT _fs_rmw_known)
             nros_rmw_known(_fs_known_names)
             message(FATAL_ERROR
-                "nros_feature_set: unknown RMW '${_FS_RMW}' "
-                "(announced by a provider: ${_fs_known_names}; or 'none')")
+                "nros_feature_set: RMW '${_FS_RMW}' does not resolve "
+                "(announced by a provider: ${_fs_known_names}; or 'none'). "
+                "The provider scan says:\n${_fs_rmw_known_WHY}")
         endif()
         nros_rmw_dispatch("${_FS_RMW}")
         # phase-439 W4 — the two crates spell the same selection differently
