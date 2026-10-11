@@ -8,25 +8,14 @@
 # while the contents belonged to whoever last regenerated.
 /*/generated/
 
-# A leaf's `Cargo.lock` may be tracked ONLY when it resolves from a bare clone
-# — `check-leaf-lockfiles` enforces `tracked lock <=> (no message deps) OR
-# (committed generated/)`. With `generated/` no longer committed, every leaf
-# below that has message deps falls out of both arms: its lock would name
-# crates that do not exist until codegen runs.
-#
-# The bins NOT listed here have no message deps and keep their tracked locks,
-# so this is a list rather than a blanket `*/Cargo.lock` — a blanket rule would
-# silently make a legitimate one unaddable.
-/action-client-multigoal/Cargo.lock
-/action-server-concurrent/Cargo.lock
-/declarative-safety-listener/Cargo.lock
-/header-chatter-talker/Cargo.lock
-/int32-sink/Cargo.lock
-/message-info-observer/Cargo.lock
-/param-chatter-talker/Cargo.lock
-/param-two-node-talker/Cargo.lock
-/safety-chatter-listener/Cargo.lock
-/safety-chatter-talker/Cargo.lock
+# Every bin's `Cargo.lock` is SEEDED, never committed (phase-485 W2, RFC-0104
+# D3). A lock is tracked only where its directory is in the index's
+# `[rust] locked_roots`, and no bin is one; the fixture builder seeds each from
+# the registry pin set (`nros ws seed-lock`) on its first build, and
+# `check-cargo-registry-pins` refuses a tracked leaf lock. So the rule is now a
+# blanket one. It used to be a list, because some bins kept tracked locks and a
+# blanket rule would have made those unaddable; none do any more.
+/*/Cargo.lock
 
 # `nros sync` / `nros codegen-system` write per-leaf build output here:
 # `build/nros/providers.json` and `build/nros/models/<bringup>/…`. SystemModels

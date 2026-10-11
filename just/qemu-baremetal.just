@@ -143,6 +143,7 @@ build:
             NROS_REPO_DIR="$PWD" nros_codegen_stamp_write "$dir"
         fi
         echo "  build $dir"
+        nros_seed_leaf_lock "$dir"
         (cd "$dir" && cargo build $cargo_profile_args $qemu_tdir_flag)
     done
     # Phase 131.B — bench/test-fixture binaries that used to live under
@@ -163,6 +164,7 @@ build:
             NROS_REPO_DIR="$PWD" "$nros_cli" sync "$dir" >/dev/null
             NROS_REPO_DIR="$PWD" nros_codegen_stamp_write "$dir"
         fi
+        nros_seed_leaf_lock "$dir"
         (cd "$dir" && cargo build $cargo_profile_args $qemu_tdir_flag)
     done
     # issue 0488 residue 1 — qemu-smoltcp-bridge is a `[[fixture]]` row now, so

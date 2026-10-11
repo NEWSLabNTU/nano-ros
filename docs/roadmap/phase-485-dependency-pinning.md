@@ -1,7 +1,7 @@
 # Phase 485 — dependency pinning: one pin set, one project lock
 
 **Status (2026-10-11). M1–M3 measured, and the issue-1781 fix landed. W1 has
-landed (the registry pin set); W2–W10 are open.** Implements
+landed (the registry pin set), and so has W2 (seeded leaf locks); W3–W10 are open.** Implements
 [RFC-0104](../design/0104-dependency-pinning-and-project-lock.md). The RFC's
 D3 and D5 rested on facts that were not yet measured, so M1–M3 ran before any
 implementation and amended the RFC.
@@ -158,6 +158,75 @@ seed replaces; retire the `check-leaf-lockfiles` tracked-lock invariant.
 
 **Acceptance:** every example leaf builds from a seeded lock on a fresh clone;
 two hosts with different ament installs produce identical registry sets.
+
+**Result (2026-10-11) — landed.**
+
+- **One seeding function, `orchestration::registry_pins::seed`.** It copies
+  the pin set in as `<root>/Cargo.lock` when the root has none, and never
+  touches an existing lock: that is either a previous seed or a deliberate
+  move, and judging it is the drift check's job (W4). Cargo then prunes the
+  copy to the root's graph.
+- **`nros build` seeds at all three places it can create a lock:** a
+  generated entry or lock-less workspace root, a native cargo-member package,
+  and the single-package leaf road. The leaf road now resolves once before
+  building, as the other two already did, because `--frozen` cannot prune a
+  seed.
+- **`nros ws seed-lock <dir>`** is the same function for an invoker that runs
+  cargo itself. It asks `cargo locate-project --workspace` first and leaves a
+  workspace MEMBER alone, since a lock beside a member is never read. Its one
+  shell spelling is `nros_seed_leaf_lock` in `scripts/build/cargo.sh`. That
+  helper is called by:
+  - the fixture builder, once per row directory, in the parent before make
+    fans out;
+  - the staleness probe (`rust-fixture-stale.sh`), which may be the first
+    cargo to touch a row;
+  - every staged root in `compile-check-fixtures.sh`;
+  - the five just recipes that run `cargo build` inside a leaf (`native`,
+    `freertos`, `qemu-baremetal` ×2, `ros-editions` ×2).
+
+  The helper is never fatal: with no CLI, or a manifest cargo cannot load,
+  the next cargo command resolves or reports as before.
+- **The tracked-lock invariant is now "tracked ⟺ the directory is in
+  `[rust] locked_roots`"**, held by `check-cargo-registry-pins`. The old
+  invariant in `check-leaf-lockfiles` ("no message deps, or a committed
+  `generated/`") is retired. That gate keeps its other half: each tracked
+  lock still satisfies its own manifest.
+- **15 tracked locks deleted:**
+  - the 13 fixture-row roots (12 `nros-tests/bins/*` and
+    `qemu-smoltcp-bridge`), which the seed now reaches;
+  - `colcon-cargo-ros2/Cargo.lock`, which was dead: the crate is a member of
+    the CLI workspace, so cargo never read it.
+
+  The bins' `.gitignore` is a blanket `/*/Cargo.lock` now. It had been a
+  list only because some bins kept tracked locks.
+- **22 roots stay tracked, as locked roots, each normalised to the pins:**
+  - `nros-launch-resolve` (a shipped tool);
+  - the 10 board crates, 4 drivers, 2 `stm32f4-porting` references,
+    `zpico-serial`, 2 smoke crates, `nros-verification`, and the colcon
+    sample package.
+
+  These are built standalone by a dozen scripts and workflows that call
+  cargo by hand (nightly, nuttx, the arm-compile checks). The seed does not
+  reach them, so W2's "delete what the seed replaces" does not cover them.
+  Tracked and subset-gated, they can no longer disagree with the pins, which
+  was the defect.
+  - Normalising them dropped `syn` 1 from 15 locks and swapped
+    `proc-macro-error` for `proc-macro-error2` in four, both following the
+    root's versions.
+  - `cargo check` passes on the stm32f4 references, the smoke echo, two
+    boards and `nros-launch-resolve`.
+  - `nros-verification` needs Verus (`spec fn`) and fails plain `cargo
+    check` before and after, so that is not a regression.
+- **Measured.** `examples/native/rust/talker` with its lock removed builds
+  through `nros build` with 90 of 90 registry crates at their pins. The
+  fixture bin `rosout-talker`, seeded by the shell helper and resolved by
+  `cargo metadata`, has 105 of 105 at their pins. The same bin resolved
+  UNSEEDED has 29 crates off pin (`cc` 1.7.0 against 1.2.63, `libc`
+  0.2.190 against 0.2.186, `zerocopy` 0.8.62 against 0.8.50, …). That gap
+  is the one RFC-0104 exists to close.
+- **Not measured: two hosts with different ament installs.** There is one
+  host here, as in M1. Generated crates are `0.0.0` path dependencies, so the
+  registry set is host-independent by construction.
 
 ### W3 — the project lock across kinds (D4)
 

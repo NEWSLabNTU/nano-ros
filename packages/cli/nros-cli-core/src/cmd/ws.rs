@@ -114,6 +114,15 @@ pub enum Sub {
     #[command(name = "board-facts")]
     BoardFacts(crate::cmd::board_facts::BoardFactsArgs),
 
+    /// phase-485 W2 (RFC-0104 D3) — seed `<dir>/Cargo.lock` from the registry
+    /// pin set the index names, when the directory has no lock yet.
+    ///
+    /// For an invoker that runs cargo in a leaf itself (the fixture builder),
+    /// so its first resolve starts from the pins exactly as `nros build`'s
+    /// does. An existing lock is never touched. Prints what it did.
+    #[command(name = "seed-lock")]
+    SeedLock(SeedLockArgs),
+
     /// phase-392 W5.b/W5.c — print the ENTITY figures a backend sizes its
     /// tables from (`NROS_DECLARED_INFRA_QUERYABLES`,
     /// `NROS_DECLARED_NODES`), as `KEY=VALUE` lines, for whoever is
@@ -503,6 +512,59 @@ pub struct CleanArgs {
 }
 
 #[derive(Debug, ClapArgs)]
+pub struct SeedLockArgs {
+    /// The cargo root (the directory holding its `Cargo.toml`).
+    pub dir: PathBuf,
+    /// The nano-ros root whose index names the pin set; resolved the usual
+    /// way (walk-up, `NROS_REPO_DIR`, this toolchain's own) when absent.
+    #[arg(long)]
+    pub nano_ros_path: Option<PathBuf>,
+}
+
+fn run_seed_lock(a: SeedLockArgs) -> Result<()> {
+    use crate::orchestration::registry_pins::{Seed, seed};
+    // Only a cargo ROOT reads its own `Cargo.lock`: a lock written beside a
+    // workspace member is never read, and would sit there reading as if it
+    // were. Ask cargo which root the manifest belongs to.
+    let manifest = a.dir.join("Cargo.toml");
+    let out = std::process::Command::new("cargo")
+        .args(["locate-project", "--workspace", "--message-format", "plain"])
+        .arg("--manifest-path")
+        .arg(&manifest)
+        .env("NROS_CARGO_FLAGS", "")
+        .output()
+        .wrap_err("run `cargo locate-project`")?;
+    if !out.status.success() {
+        eyre::bail!(
+            "cargo cannot load {}: {}",
+            manifest.display(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
+    }
+    let ws_manifest = PathBuf::from(String::from_utf8_lossy(&out.stdout).trim());
+    let same = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+    if same(&ws_manifest) != same(&manifest) {
+        println!(
+            "member {} (its root is {})",
+            a.dir.display(),
+            ws_manifest.display()
+        );
+        return Ok(());
+    }
+    let root = crate::orchestration::nano_ros_root::resolve(a.nano_ros_path, &a.dir);
+    match seed(&a.dir, root.as_deref())? {
+        Seed::Present => println!("present {}", a.dir.join("Cargo.lock").display()),
+        Seed::Seeded { pins } => println!(
+            "seeded {} from {}",
+            a.dir.join("Cargo.lock").display(),
+            pins.display()
+        ),
+        Seed::NoPinSet => println!("no-pin-set {}", a.dir.display()),
+    }
+    Ok(())
+}
+
+#[derive(Debug, ClapArgs)]
 pub struct DoctorArgs {
     pub workspace: Option<PathBuf>,
     #[arg(long, default_value = "generated")]
@@ -519,6 +581,7 @@ pub fn run(args: Args) -> Result<()> {
         Sub::ModelDims(a) => run_model_dims(a),
         Sub::CentralPatch(a) => run_central_patch(a),
         Sub::BoardFacts(a) => crate::cmd::board_facts::run(a),
+        Sub::SeedLock(a) => run_seed_lock(a),
         Sub::EntityFacts(a) => crate::cmd::entity_facts::run(a),
         Sub::LeafSystem(a) => crate::cmd::leaf_system::run(a),
         Sub::EntityInventory(a) => crate::cmd::entity_inventory::run(a),

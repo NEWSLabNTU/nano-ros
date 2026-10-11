@@ -895,7 +895,14 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // entry is its own cargo root now (RFC-0098 D9) and the lock
                 // that used to cover it was the deleted workspace root's —
                 // `--frozen` cannot build a root that has none.
-                if lock_is_ours || !manifest_dir.join("Cargo.lock").is_file() {
+                //
+                // RFC-0104 D3 (phase-485 W2): a lock created here starts from
+                // the registry pin set, so `update --workspace` keeps every
+                // pinned version the manifests accept instead of resolving the
+                // registry fresh.
+                let had_lock = manifest_dir.join("Cargo.lock").is_file();
+                crate::orchestration::registry_pins::seed(&manifest_dir, Some(nros_root))?;
+                if lock_is_ours || !had_lock {
                     let mut u = vec![
                         "update".to_string(),
                         "--workspace".to_string(),
@@ -1511,6 +1518,27 @@ fn plan_single_package(
     eprintln!("nros build:   settings → {}", img.config_path.display());
 
     let (cwd, mut a) = crate::cmd::leaf_settings::build_command(&img);
+    // RFC-0104 D3 (phase-485 W2): a leaf with no lock starts from the registry
+    // pin set, and is resolved ONCE before the build — the same prepare step a
+    // generated entry takes above, because `--frozen` (and the PATH shim's
+    // `--locked`) cannot prune a seed down to the leaf's graph.
+    let had_lock = img.leaf.join("Cargo.lock").is_file();
+    let seeded = matches!(
+        crate::orchestration::registry_pins::seed(&img.leaf, Some(&nros_root))?,
+        crate::orchestration::registry_pins::Seed::Seeded { .. }
+    );
+    let prepare = (!had_lock && seeded).then(|| {
+        // `a` is `build --manifest-path <m> --config <c>`: the same root and
+        // the same settings, resolved instead of built.
+        let mut u = vec!["update".to_string(), "--workspace".to_string()];
+        u.extend(a[1..].iter().cloned());
+        if args.offline {
+            u.push("--offline".to_string());
+        }
+        Handoff::new("cargo", u)
+            .in_dir(&cwd)
+            .with_env("NROS_CARGO_FLAGS", "")
+    });
     if args.offline {
         a.push("--frozen".to_string());
     }
@@ -1526,7 +1554,7 @@ fn plan_single_package(
         target: img.target.clone(),
         profile: None,
         cmake_build_dir: None,
-        configure: None,
+        configure: prepare,
     }]))
 }
 
@@ -2102,7 +2130,11 @@ fn plan_packages(
             // cannot create one, and a lock-less leaf is legitimate (its
             // `generated/` message crates are per host, so its lock is not
             // committed — CLAUDE.md, `check-leaf-lockfiles`).
-            let configure = (!pkg.dir.join("Cargo.lock").is_file()).then(|| {
+            // RFC-0104 D3 (phase-485 W2): seeded from the pin set first, so the
+            // resolve below keeps every pinned version the manifests accept.
+            let had_lock = pkg.dir.join("Cargo.lock").is_file();
+            crate::orchestration::registry_pins::seed(&pkg.dir, nano_ros_root)?;
+            let configure = (!had_lock).then(|| {
                 let mut u = vec!["update".to_string(), "--workspace".to_string()];
                 if args.offline {
                     u.push("--offline".to_string());

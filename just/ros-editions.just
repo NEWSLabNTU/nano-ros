@@ -66,6 +66,9 @@ build-fixture distro="jazzy":
     source "{{justfile_directory()}}/scripts/build/build-root.sh"
     FIX_TARGET_DIR="$(nros_build_dir "$NROS_KIND_ROS_EDITIONS" "pose-pub-{{distro}}")"
     mkdir -p "$FIX_TARGET_DIR"
+    # shellcheck source=scripts/build/cargo.sh
+    source "{{justfile_directory()}}/scripts/build/cargo.sh"
+    nros_seed_leaf_lock "$FIX"
     ( cd "$FIX" && cargo build --target-dir "$FIX_TARGET_DIR" )
     # profile-literal-ok: unprofiled: the docker edition fixtures build with a plain `cargo build`
     echo "build-fixture {{distro}}: $FIX_TARGET_DIR/debug/ros-edition-pose-pub"
@@ -108,6 +111,8 @@ build-e2e-fixtures distro="jazzy" rmw="cyclone":
     source "{{justfile_directory()}}/scripts/build/build-root.sh"
     ED_TARGET_DIR="$(nros_build_dir "$NROS_KIND_ROS_EDITIONS" "{{distro}}-{{rmw}}")"
     mkdir -p "$ED_TARGET_DIR"
+    # shellcheck source=scripts/build/cargo.sh
+    source "{{justfile_directory()}}/scripts/build/cargo.sh"
     for ex in talker listener service-server service-client action-server action-client; do
         DIR="{{justfile_directory()}}/examples/native/rust/$ex"
         # Regenerate this example's messages for the edition so the baked
@@ -118,6 +123,7 @@ build-e2e-fixtures distro="jazzy" rmw="cyclone":
         echo "== $ex ({{rmw}}, ros-$ED) regen msgs =="
         ( cd "$DIR" && "$NROS" generate-rust --ros-edition "$ED" --force >/dev/null )
         echo "== $ex ({{rmw}}, ros-$ED) → $ED_TARGET_DIR =="
+        nros_seed_leaf_lock "$DIR"
         ( cd "$DIR" && cargo build --no-default-features --features "$FEATURE ros-$ED" \
             --target-dir "$ED_TARGET_DIR" )
     done

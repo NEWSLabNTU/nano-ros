@@ -148,6 +148,11 @@ _row_artifacts() {
 # flags; $envstr ("KEY=VAL ...") is exported into the build subshell when present.
 art_before="$(_row_artifacts)"
 
+# phase-485 W2 (RFC-0104 D3) — the probe is a `cargo build` too, and may be the
+# FIRST cargo to touch a fresh row, so its lock starts from the pin set exactly
+# as the fixture build's does.
+nros_seed_leaf_lock "$dir" 2>/dev/null
+
 if [ -n "$settings" ]; then
     # shellcheck disable=SC2086
     build_out="$( cd "$(nros_leaf_settings_cwd "$dir")"; [ -n "$envstr" ] && export $envstr; \

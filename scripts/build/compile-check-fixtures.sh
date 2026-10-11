@@ -287,6 +287,7 @@ stage_and_check() {
     rm -f "$staged/.compile-ok"
     _cc_stamp_member_versions "$id" "$staged"
     local shared; shared="$(_cc_target_dir "$src" "$staged")"
+    NROS_REPO_ROOT="$repo_root" nros_seed_leaf_lock "$staged"
     ( cd "$staged" && CARGO_TARGET_DIR="$shared" cargo check --manifest-path Cargo.toml )
     _cc_copy_shared_depinfo "$shared" "$staged"
     nros_write_compile_ok "$staged" "$_cc_resolver_arg"
@@ -320,6 +321,7 @@ stage_and_clippy() {
     rm -f "$staged/.compile-ok"
     _cc_stamp_member_versions "$id" "$staged"
     local shared; shared="$(_cc_target_dir "$src" "$staged")"
+    NROS_REPO_ROOT="$repo_root" nros_seed_leaf_lock "$staged"
     ( cd "$staged" && CARGO_TARGET_DIR="$shared" cargo clippy --manifest-path Cargo.toml )
     _cc_copy_shared_depinfo "$shared" "$staged"
     nros_write_compile_ok "$staged" "$_cc_resolver_arg"
@@ -336,6 +338,7 @@ stage_and_build() {
     # subdir excluded from the root workspace (e.g. O.5's `demo_entry/`, O.3's
     # `posix_entry/`). `pkg` (4th field) names the package when it isn't the
     # default `demo_entry` (O.3 builds `posix_entry`).
+    NROS_REPO_ROOT="$repo_root" nros_seed_leaf_lock "$staged/$manifest_dir"
     ( cd "$staged" && cargo build -p "$pkg" --manifest-path "$manifest_dir/Cargo.toml" )
     nros_write_compile_ok "$staged" "$_cc_resolver_arg"
     # profile-literal-ok: dir vocabulary: echoes the manifest's target-directory name
@@ -425,6 +428,7 @@ stage_and_check_verdict() {
     # Hermetic: an inherited NROS_MODEL_DIR would answer the model question for
     # the macro, which is the very question `main_macro_resolves_from_inputs`
     # asks (issue 0414) — and would point the others at someone else's model.
+    NROS_REPO_ROOT="$repo_root" nros_seed_leaf_lock "$staged"
     local cmd=(env -u NROS_MODEL_DIR CARGO_TARGET_DIR="$shared"
         cargo check --color never --manifest-path Cargo.toml)
     _cc_verdict_prelude "$id" "$staged" "${cmd[@]}"
@@ -652,6 +656,7 @@ stage_and_cross_build() {
     # DIRECTORY names (`debug`, `release`), not cargo profile names — `debug` is
     # the directory `dev` writes to. That is why this maps by hand instead of
     # calling `nros profile args`, which speaks profile names.
+    NROS_REPO_ROOT="$repo_root" nros_seed_leaf_lock "$staged/$subdir"
     local profile
     for profile in ${profiles//,/ }; do
         local profile_flag=()
@@ -1298,6 +1303,7 @@ while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
     echo "== cargo-check: $id ($target) =="
     mkdir -p "$out_root/$id"
     rm -f "$out_root/$id/.compile-ok"
+    NROS_REPO_ROOT="$repo_root" nros_seed_leaf_lock "$repo_root/$dir"
     if ( cd "$repo_root/$dir" && cargo check --target "$target" ); then
         nros_write_compile_ok "$out_root/$id"
         echo "   stamped $out_root/$id/.compile-ok"

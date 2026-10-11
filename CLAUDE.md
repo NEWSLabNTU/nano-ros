@@ -399,9 +399,11 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   bare clone, so their LOCKS are tracked — but their crate version is still the constant `0.0.0`
   like every generated crate, and consumers must path-dep them with NO version (pinning either
   spelling broke root-workspace resolution twice, #394).
-  Invariant, enforced by `check-leaf-lockfiles`: **tracked lock ⟺ (no message deps) ∨ (committed
-  `generated/`)** — boards/drivers/smoke qualify via the first arm. (The old "track all of them"
-  rule predates the shim keying on TRACKED rather than ignored, #386.)
+  Invariant since phase-485 W2 (RFC-0104 D3), enforced by `check-cargo-registry-pins`: **a lock is
+  tracked ⟺ its directory is in the index's `[rust] locked_roots`**, and every locked root is a
+  subset of the ONE registry pin set `locks/cargo-registry.lock`. Every other cargo root is a leaf
+  whose lock is SEEDED from the pins on its first build (`nros build`, or `nros_seed_leaf_lock` /
+  `nros ws seed-lock` for a script that runs cargo itself), never committed.
 - **`std` is being DELETED; write `core::`/`alloc::`, never `std::`** (ARCHITECTURE §2, phase-359).
   Terminal state of the core crates is `core` and `core+alloc` — `std` there is a second
   implementation of the platform layer, not a convenience over it. Whose requirement it is decides
