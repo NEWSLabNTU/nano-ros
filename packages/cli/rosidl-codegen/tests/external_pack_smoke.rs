@@ -32,7 +32,13 @@ fn external_pack_dir_overrides_a_bundled_template() {
     );
 
     // A name NOT present in the override dir still falls back to bundled.
-    let bundled = rosidl_codegen::render::render("lib.rs", ()).expect("render lib.rs (bundled)");
+    // A real context, not `()`: the environment is strict about undefined keys
+    // (phase-390 W6), and `lib.rs` branches on these three.
+    let bundled = rosidl_codegen::render::render(
+        "lib.rs",
+        minijinja::context! { has_messages => false, has_services => false, has_actions => false },
+    )
+    .expect("render lib.rs (bundled)");
     assert!(
         !bundled.contains("EXTERNAL PACK OVERRIDE MARKER"),
         "un-overridden templates must fall back to bundled"
