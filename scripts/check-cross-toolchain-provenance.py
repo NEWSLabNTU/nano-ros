@@ -74,20 +74,9 @@ INDEX = os.path.join(ROOT, "nros-sdk-index.toml")
 # Files outside cmake/toolchain/ that select a cross compiler. Every entry
 # names issue 1117: an unreported gap is indistinguishable from coverage.
 EXEMPT = {
-    "packages/boards/nros-board-nuttx-qemu/armv7a-nuttx-toolchain.cmake":
-        "issue 1117 — same defect, board-owned file; reached via "
-        "cmake/board/nano-ros-board-qemu-armv7a-nuttx.cmake",
-    "packages/boards/nros-board-nuttx-qemu/riscv-nuttx-toolchain.cmake":
-        "issue 1117 — same defect, board-owned file; reached via "
-        "cmake/board/nano-ros-board-rv-virt-nuttx.cmake",
-    "scripts/qemu/arm-none-eabi-cortex-m3.cmake":
-        "issue 1117 — find_program on ${TOOLCHAIN_PREFIX}, so it resolves but "
-        "still reports neither version nor origin",
-    "integrations/s32ds/CMakeLists.txt":
-        "issue 1117 — WRITES a toolchain file at configure time (deliberately "
-        "derived from the S32DS project, not checked in); the emitted file "
-        "hardcodes arm-none-eabi-gcc",
 }
+# A stand-in entry for the ratchet's own self-test.
+SELFTEST_EXEMPT = {"x/tc.cmake": "issue 1117 — self-test stand-in"}
 
 # `CMAKE_C_COMPILER_LAUNCHER` and friends are not compiler selection.
 SET_COMPILER = re.compile(
@@ -199,10 +188,15 @@ def offenders(files, read, tools):
     return bad
 
 
-def exempt_still_needed(read, exists):
-    """An exempt path that no longer needs the exemption must leave the list."""
+def exempt_still_needed(read, exists, exempt=None):
+    """An exempt path that no longer needs the exemption must leave the list.
+
+    `exempt` defaults to EXEMPT. The self-test passes its own table, so the
+    ratchet stays tested once the real list is empty (it is, since issue 1117's
+    four siblings were fixed or deleted).
+    """
     bad = []
-    for rel, why in sorted(EXEMPT.items()):
+    for rel, why in sorted((EXEMPT if exempt is None else exempt).items()):
         if not exists(rel):
             bad.append((rel, "exempt path no longer exists — delete the EXEMPT entry"))
             continue
@@ -377,10 +371,14 @@ def selftest(verbose=False):
     # The EXEMPT ratchet: an entry that stops being needed must be removed.
     chk("exempt path that vanished is reported",
         any("no longer exists" in m for _, m in exempt_still_needed(
-            lambda _r: "", lambda _r: False)))
+            lambda _r: "", lambda _r: False, SELFTEST_EXEMPT)))
     chk("exempt path that stopped selecting a compiler is reported",
         any("no longer selects" in m for _, m in exempt_still_needed(
-            lambda _r: "# nothing here\n", lambda _r: True)))
+            lambda _r: "# nothing here\n", lambda _r: True, SELFTEST_EXEMPT)))
+    chk("exempt reason naming no issue is reported",
+        any("names no tracked issue" in m for _, m in exempt_still_needed(
+            lambda _r: "set(CMAKE_C_COMPILER gcc)\n", lambda _r: True,
+            {"x/tc.cmake": "board-owned"})))
 
     if verbose:
         print(f"check-cross-toolchain-provenance --selftest: {ok} ok, {fail} failed")

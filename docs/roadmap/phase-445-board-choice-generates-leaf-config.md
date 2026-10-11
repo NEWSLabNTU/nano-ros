@@ -7,7 +7,8 @@ reproduced; a switch now fails at `nros sync`, naming both crates, until D6
 reaches leaves). Bullet 3 was not measured. Bullet 4 holds for TRACKED files, and since
 issue 1404 (resolved) `nros sync` also removes a stale GENERATED workspace root
 left on disk. Bullet 5 is NOT MET with 35 hits, down from 45 (issue 1289).
-Fixed in code and still open on 2026-10-11: 1117, 1277, 1310.
+1117 resolved 2026-10-11 (its four exempt siblings fixed or deleted). Fixed in code and
+still open: 1277, 1310.
 
 *(2026-09-11: Every wave is WRITTEN; the phase is NOT complete, and
 two of its five acceptance bullets are measured NOT MET.)* W1, W2, W3b, W4b, W5
@@ -447,7 +448,7 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1117](../issues/1117-cross-build-accepts-unpinned-host-toolchain.md) | a cross build silently accepted an unpinned host toolchain — the pin said one thing and the build fell through to the distribution's `arm-none-eabi-gcc`. The board descriptor is what should carry it, and preflight is what should print it |
+| [#1117](../issues/archived/1117-cross-build-accepts-unpinned-host-toolchain.md) (resolved 2026-10-11) | a cross build silently accepted an unpinned host toolchain — the pin said one thing and the build fell through to the distribution's `arm-none-eabi-gcc`. The board descriptor is what should carry it, and preflight is what should print it |
 | [#1261](../issues/1261-capabilities-decided-by-two-sources-disagree-at-link.md) | an image's capabilities are decided in two places and a disagreement is silent. Generated from the entry's BRINGUP is this phase's shape; restated per consumer as `-DNANO_ROS_FEATURES` is the state it replaces |
 | [#1265](../issues/archived/1265-cross-only-leaves-cannot-be-probed.md) | the metadata probe cannot run for a cross-only leaf, so esp32 and mps2 examples must DECLARE their entities. W3 cites this as the reason leaves declare; owning the probe is the fix the citation stands in for |
 | [#1277](../issues/1277-preflight-build-std-board-demands-rust-std.md) | `nros build` preflight demands a prebuilt `rust-std` for a board that builds its own core. The preflight must require `rust-src` instead, against W4's rendered `nros-cargo.toml` |

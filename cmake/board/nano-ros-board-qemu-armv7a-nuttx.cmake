@@ -95,8 +95,8 @@ endif()
 # want CMake itself to cross to ARM, but most of the time cargo
 # drives the cross via build.rs and CMake is host-mode.
 set(NUTTX_BOARD_TOOLCHAIN_FILE
-    "${_NROS_NUTTX_BOARD_DIR}/armv7a-nuttx-toolchain.cmake"
-    CACHE FILEPATH "Optional CMake toolchain file for arm-none-eabi cross.")
+    "${CMAKE_CURRENT_LIST_DIR}/../toolchain/armv7a-nuttx-eabi.cmake"
+    CACHE FILEPATH "Optional CMake toolchain file for arm-none-eabi cross." FORCE)
 
 # ---------------------------------------------------------------------------
 # Validate NUTTX_DIR + pin the cargo target triple.

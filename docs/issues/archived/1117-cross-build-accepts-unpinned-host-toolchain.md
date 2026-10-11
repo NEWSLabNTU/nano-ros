@@ -2,13 +2,37 @@
 id: 1117
 title: "A cross build silently accepted an unpinned host toolchain — the pin said
   13.2.rel1, the compiler was Ubuntu's 10.3.1, and nothing printed either number"
-status: open
+status: resolved
 type: bug
 area: cmake, build, cli
 severity: medium
 found: 2026-09-06
 related: [0500, 0774, 1113, phase-445]
+resolved_in: "787d084a2d + phase-445 (the four siblings)"
 ---
+
+## Resolved (2026-10-11)
+
+The fix in `787d084a2d` (2026-09-06) covered `cmake/toolchain/`. The issue
+stayed open for the four siblings in the gate's `EXEMPT` table:
+
+| file | now |
+| --- | --- |
+| `packages/boards/nros-board-nuttx-qemu/armv7a-nuttx-toolchain.cmake` | **deleted.** Nothing read it. `NUTTX_BOARD_TOOLCHAIN_FILE` (an optional hint, read by nobody) now names the canonical `cmake/toolchain/armv7a-nuttx-eabi.cmake`. The deleted copy was also stale: soft-float `armv7a-nuttx-eabi`, while the board targets hard-float `eabihf`. |
+| `packages/boards/nros-board-nuttx-qemu/riscv-nuttx-toolchain.cmake` | **deleted**, the same way: the hint names `cmake/toolchain/riscv32imac-nuttx-elf.cmake`. |
+| `scripts/qemu/arm-none-eabi-cortex-m3.cmake` | **deleted.** Nothing referenced it, and `cmake/toolchain/arm-freertos-armcm3.cmake` is the resolving CM3 file. |
+| `integrations/s32ds/CMakeLists.txt` | **converted.** It runs `nros_cross_toolchain_resolve` and `nros_cross_toolchain_report` before `project()`, and the toolchain file it generates names the resolved compiler. |
+
+`EXEMPT` is empty. Its ratchet self-test now uses its own stand-in table, so
+the mechanism stays tested with no live gaps, and it gained a case for an
+exemption reason that names no issue.
+
+Measured on 2026-10-11: the FreeRTOS configure prints
+`arm-none-eabi-gcc 13.2.1 via SDK store — … (pin 13.2.rel1, store package 13.2-nros5)`.
+`check-cross-toolchain-provenance` reports `6 toolchain file(s), 0 listed gap(s)`.
+Putting the literal `arm-none-eabi-gcc` back into s32ds fails the gate (rc=1),
+naming the file.
+
 
 ## Symptom
 

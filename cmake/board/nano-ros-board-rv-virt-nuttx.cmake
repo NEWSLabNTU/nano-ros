@@ -50,8 +50,8 @@ if(NOT EXISTS "${NUTTX_FFI_CRATE_DIR}/Cargo.toml")
 endif()
 
 set(NUTTX_BOARD_TOOLCHAIN_FILE
-    "${_NROS_NUTTX_BOARD_DIR}/riscv-nuttx-toolchain.cmake"
-    CACHE FILEPATH "Optional CMake toolchain file for riscv-none-elf cross.")
+    "${CMAKE_CURRENT_LIST_DIR}/../toolchain/riscv32imac-nuttx-elf.cmake"
+    CACHE FILEPATH "Optional CMake toolchain file for riscv-none-elf cross." FORCE)
 
 # RFC-0048 (phase-287 W5) — default NUTTX_DIR from the in-tree submodule so it
 # leaves the `nros setup` preset's -D set. env / -D still override. Mirrors the
