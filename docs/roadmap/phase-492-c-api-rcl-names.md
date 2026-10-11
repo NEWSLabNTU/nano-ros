@@ -1,6 +1,6 @@
 # Phase 492 — The C API drops `nros_`: upstream names, `rclc_` for the rest
 
-**Status (2026-10-12). Opened.** Nothing landed yet. Implements the
+**Status (2026-10-12). In progress — W1, W2, W3, W5 (callers of the renamed names) and W6 landed; W4, W7, W8 open.** Implements the
 [RFC-0089](../design/0089-ros2-api-adoption-and-the-compile-or-conform-rule.md)
 amendment "`nros_` is phased out of the C API; ours-only names take `rclc_`"
 (2026-10-12). The C counterpart of the C++ `nros::` → `rclcpp::` flip
@@ -108,3 +108,43 @@ sees zero allocations across publish and take.
 * The port seams (RMW, platform, board C ABIs), CMake function and target
   names, and build knobs (RFC-0089 amendment, "What does NOT move").
 * The C++ API, already on `rclcpp::`.
+
+## Progress
+
+### 2026-10-12 — W1, W3, W5, W6: the rename
+
+- **W1.** `scripts/gen-c-rename-map.py` -> `docs/reference/c-api-rename-map.tsv`.
+  It has one row per public `nros_`/`NROS_` name, classified as:
+  - adopt (43), alias (10), ours (599), ret (18);
+  - kept: seam (60), hook/entry (46), build (107).
+
+  `check-c-api-nros-names` (fast line) holds every public name to the map. The
+  count left to rename is a ratchet, now at **0**. The map is a RECORD of the
+  rename: regenerating it on the renamed tree yields only the kept names.
+- **W3/W5/W6.** 670 names renamed across Rust, headers, examples, codegen,
+  tests, scripts, book, `docs/reference` and the ledger, with no forwarders.
+  Decision records keep their wording. `NROS_CODEGEN_VERSION`/`_MIN` -> 13.
+  Seven gates whose patterns named the old spellings now read the new ones.
+- Measured deviations from the plan:
+  - the five lifecycle `differs` verbs became
+    `rclc_lifecycle_state_machine_*` (their rclc spelling is upstream's with a
+    different contract);
+  - the entry and boot conventions (`nros_app_main`, `NROS_APP_*`,
+    `nros_app_config_t`, boot config, tier task memory) KEEP `nros_`, as link
+    contracts with board startup code, like the port seams;
+  - the C component API's names (`nros_c_*`) became `rclc_c_*` mechanically
+    and are reworked by W4.
+
+### 2026-10-12 — W2: upstream include paths
+
+- 51 headers at upstream's paths (`<rcl/*.h>`, `<rclc/*.h>`,
+  `<rcl_action/*.h>`, `<rcl_lifecycle/*.h>`, `<rclc_lifecycle/rclc_lifecycle.h>`),
+  taken from the recorded rclc+rcl surface. Each brings in the whole C API
+  and `<nros/rcl_compat.h>`. They use their own include guards, so the refusal
+  beside real rcl headers still fires. Probe:
+  `packages/api/nros-c/tests/compile/upstream_include_paths.c` in `just check c`.
+- Deviation: `<nros/*.h>` is NOT retired. Those files are where the
+  declarations, the entry hooks and the build facts live; the upstream paths
+  are the public entry points over them, and one umbrella keeps any
+  declaration from having two spellings. Moving the examples' own includes to
+  the upstream paths is cosmetic and is left for W5's tail.

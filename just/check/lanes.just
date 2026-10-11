@@ -567,7 +567,7 @@ c: c-fmt
     # when the caller remembers a flag is one copy-paste away from decorative.
     echo "  - phase-417 stage 5: typed delivery, node/timer accessors, rcl spellings, rclc presets"
     for probe in typed_subscription_delivery node_timer_accessors rcl_compat_aliases \
-                 preset_constructors; do \
+                 preset_constructors upstream_include_paths; do \
         test -f "packages/api/nros-c/tests/compile/$probe.c" || { \
             echo "ERROR: $probe.c is MISSING -- this check passes on absence." >&2; exit 1; }; \
         cc -fsyntax-only -std=c11 -Wall -Wextra \
