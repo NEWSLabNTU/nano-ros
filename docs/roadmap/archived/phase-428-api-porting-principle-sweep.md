@@ -14,7 +14,7 @@ the sweep that found it. Every issue this phase filed is resolved and archived
 (1087, 1088, 1092, 1099, 1148–1152, 1162, 1327, 1328, 1329); the one open id it
 names, **1066** (`check-api-parity` runs in no workflow), is a standing CI
 limitation it recorded rather than a work item it owns. The FIXES for the
-findings were never this phase's and are [phase-444](../phase-444-rmw-fix-up.md)'s.
+findings were never this phase's and are [phase-444](phase-444-rmw-fix-up.md)'s.
 
 **Status (2026-09-11). Both sweeps DONE. The findings are ledgered and the checkable
 ones are gated; the fixes live elsewhere.** The user-API sweep was not "planned"; it
@@ -29,7 +29,7 @@ ran:
 
 What is left is FIXING the findings. That work is not this phase's. The 22 behaviour
 defects still live under shared names (re-read in code on 2026-09-11) are listed in
-[phase-444](../phase-444-rmw-fix-up.md) § "The ROS 2 gap list", group 1, and belong to
+[phase-444](phase-444-rmw-fix-up.md) § "The ROS 2 gap list", group 1, and belong to
 phase-417 stage 3. Audits all three user APIs against RFC-0089's
 governing principle. Not a rename pass — a conformance review that produces
 findings, each of which becomes a work item somewhere else.

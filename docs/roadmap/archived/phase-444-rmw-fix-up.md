@@ -1,10 +1,19 @@
 # Phase 444 — RMW fix-up: what the contract report shows, and what the issue records hid
 
-**Status (2026-09-12). SIX of seven items are done — W1, W4, W5, W6 and W7 are
+**Status (2026-10-11). COMPLETE -- archived. Six of seven items landed (W1, W3-W7);
+W2 is a hardware run and leaves with its issue.** W2's acceptance -- the goal
+completion rate re-measured on a fresh image over a router and a live peer -- is
+a run on the MR-CANHUBK344 (`mr_canhubk3/s32k344`) over its direct serial
+link -- the board issue 0879 measured that link on; 0902's own table names no
+board -- done by hand. Issue 0902 stays open and carries it,
+beside issue 1799 on the same board. "The ROS 2 gap list" below hands every
+group to a home phase; read it as a 2026-09-21 snapshot, not a queue.
+
+**Status (2026-09-12), kept as written.** SIX of seven items are done — W1, W4, W5, W6 and W7 are
 complete and their issues archived (#1088, #1092, #1219, #1021, #1269, #1268),
 and W3 landed on `main` in `43b6ec047`. Only W2 remains, and it is the one that
 needs a live peer over ENOUGH RUNS to separate a rate from a verdict, which is
-a different cost from the rest.**
+a different cost from the rest.
 
 Re-read against the issue files rather than against this line, which had said
 "Not started" while five of its items landed:
@@ -233,11 +242,11 @@ quote this line.
 | --- | --- | --- |
 | RFC-0036 | the catalogue of deliberate divergences from rclc / rclcpp / rclrs | living; gated through the ledger |
 | RFC-0089 | the compile-or-conform rule and the four dispositions | settled |
-| [phase-379](archived/phase-379-api-parity-with-ros2-client-libraries.md) | `scripts/api-parity.py`: every public item in all three languages, correlated against rclc+rcl (Humble), rclcpp and rclrs v0.7.0; one ledger row per difference in `docs/reference/api-parity-ledger/` | measurement done; its gap rows are the queue |
-| [phase-417](archived/phase-417-ros2-api-adoption.md) | taking ROS 2's names | **in flight, and it is the only one still open.** Stages 0–3 and 6 are landed as of 2026-09-13; **stages 4 and 5 are the remaining body of user-API work in the whole campaign** |
-| [phase-426](phase-426-parameters-rust-ssot.md) | one parameter store, keyed by node, six services per node | W1–W6 MET and re-audited; active only until issue 1203 closes |
-| [phase-427](archived/phase-427-one-node-type.md) | one C++ node type | **ARCHIVED 2026-09-11** |
-| [phase-428](archived/phase-428-api-porting-principle-sweep.md) | the class the correlator cannot see: a name we share with upstream whose behaviour differs | **ARCHIVED 2026-09-12** — both sweeps ran, findings ledgered and the checkable ones gated. (This row previously said its status line "still says the user-API sweep is planned"; that was false when written — see the preamble above.) |
+| [phase-379](phase-379-api-parity-with-ros2-client-libraries.md) | `scripts/api-parity.py`: every public item in all three languages, correlated against rclc+rcl (Humble), rclcpp and rclrs v0.7.0; one ledger row per difference in `docs/reference/api-parity-ledger/` | measurement done; its gap rows are the queue |
+| [phase-417](phase-417-ros2-api-adoption.md) | taking ROS 2's names | **in flight, and it is the only one still open.** Stages 0–3 and 6 are landed as of 2026-09-13; **stages 4 and 5 are the remaining body of user-API work in the whole campaign** |
+| [phase-426](../phase-426-parameters-rust-ssot.md) | one parameter store, keyed by node, six services per node | W1–W6 MET and re-audited; active only until issue 1203 closes |
+| [phase-427](phase-427-one-node-type.md) | one C++ node type | **ARCHIVED 2026-09-11** |
+| [phase-428](phase-428-api-porting-principle-sweep.md) | the class the correlator cannot see: a name we share with upstream whose behaviour differs | **ARCHIVED 2026-09-12** — both sweeps ran, findings ledgered and the checkable ones gated. (This row previously said its status line "still says the user-API sweep is planned"; that was false when written — see the preamble above.) |
 | `rmw-api-parity` / `rmw-abi-shape` | our RMW layer against upstream `rmw` | 0 gaps; the remainder is W1–W7 above |
 
 ### The truth pass
@@ -287,7 +296,7 @@ witness — a literal the fix would delete — and the disposition decides nothi
 
 ### What is left, measured
 
-**The live count lives in [phase-417](archived/phase-417-ros2-api-adoption.md) §"The
+**The live count lives in [phase-417](phase-417-ros2-api-adoption.md) §"The
 `gap` rows are the queue", which derives it from the ledger.** Do not plan from
 the number below; re-derive.
 
@@ -333,7 +342,7 @@ one-line script is in the truth-pass section above.
 ### Fix-up work, grouped by home
 
 1. **Behaviour: compiles and differs** — phase-428's findings, home
-   **[phase-417](archived/phase-417-ros2-api-adoption.md) stage 3**, which is where the
+   **[phase-417](phase-417-ros2-api-adoption.md) stage 3**, which is where the
    list now lives. Twelve of the fifteen bullets this section carried were FIXED
    on 2026-09-11, hours after it was written, by the three commits named in the
    preamble; each is recorded with its evidence under phase-417's W3.a, W3.g and
@@ -354,13 +363,13 @@ one-line script is in the truth-pass section above.
      today, so it is no longer a silent difference. phase-417 **W3.b**'s
      honouring half; ledger row `rust:init_with_args`.
 2. **Parameters, 27 rows — home
-   [phase-417](archived/phase-417-ros2-api-adoption.md) stage 4 W4.a**, which enumerates
+   [phase-417](phase-417-ros2-api-adoption.md) stage 4 W4.a**, which enumerates
    them by group and is the only place that should.
 
    The list previously sat here under a claim that phase-426's status line "still
    reads Planned". That claim was false when written (see the preamble) and the
    ownership it implied was wrong too:
-   [phase-426](phase-426-parameters-rust-ssot.md) delivered ONE store, keyed by
+   [phase-426](../phase-426-parameters-rust-ssot.md) delivered ONE store, keyed by
    node, with six services per node — all six work items MET and re-audited — and
    its "Not in scope" excluded parameter callbacks by construction. These 27 rows
    are missing cross-language SURFACE on top of that store, which is W4.a.
@@ -382,7 +391,7 @@ one-line script is in the truth-pass section above.
    - Client `prune_*`.
    - Most of these need the backend to answer, and THAT half is here: Cyclone's
      graph slots are W3 above. Lending is issue 0814, homed in
-     [phase-433](phase-433-rmw-live-verification.md)'s **loans** row, and has
+     [phase-433](../phase-433-rmw-live-verification.md)'s **loans** row, and has
      never run on hardware.
 4. **Lifecycle, 15 rows** — home **phase-417 stage 4 W4.f**, the work item added
    2026-09-13 because this shard previously had no owner named anywhere.
@@ -393,7 +402,7 @@ one-line script is in the truth-pass section above.
    - `get_clock` and `now` on the lifecycle node.
 5. **Our three languages disagree** — home **phase-417 stage 4**; the catalogue
    is issue 0788, homed in
-   [phase-381](archived/phase-381-graph-queries-read-the-ros-graph.md).
+   [phase-381](phase-381-graph-queries-read-the-ros-graph.md).
    - Logging: named loggers and per-logger levels in C and C++, and `rosout`
      (W4.d, part-landed — the Rust façade re-exports `nros_log`, closing 0589).
    - Actions: a goal-id type in C++ (W4.b).
@@ -405,13 +414,13 @@ one-line script is in the truth-pass section above.
    - rclc-shaped presets (W5.d).
    - A typed service path (W5.e).
 7. **C++ as one freestanding API** — home
-   [phase-442](archived/phase-442-one-freestanding-rclcpp-api.md) W0–W10, opened. Issue
+   [phase-442](phase-442-one-freestanding-rclcpp-api.md) W0–W10, opened. Issue
    **1245** belongs here and is open. Two corrections: **1020 and 1225 are both
    RESOLVED and archived**, so neither phase owes anything for them; and
    **phase-427 W4 is DONE, not "not started"** — `ComponentNode` is deleted, and
    phase-427 archived 2026-09-11.
 8. **Rust facade** — home
-   [phase-379](archived/phase-379-api-parity-with-ros2-client-libraries.md), whose issue
+   [phase-379](phase-379-api-parity-with-ros2-client-libraries.md), whose issue
    table owns both issues:
    - Issue 0783: `RclReturnCode` is not exported.
    - Issue 0784: `nros::` serves three audiences.
@@ -419,7 +428,7 @@ one-line script is in the truth-pass section above.
      rows, closed by phase-417 stage 4.
 9. **Semantics the correlator cannot see and that phase-428 has not ledgered:**
    issue **1041**, a repeating timer catching up after a stall where rcl skips —
-   home [phase-436](phase-436-poll-wake-revision-deadline-driven-executor.md),
+   home [phase-436](../phase-436-poll-wake-revision-deadline-driven-executor.md),
    whose issue table records that the executor arena already defaults to `Skip`
    and names the unswept sibling.
 
@@ -455,4 +464,4 @@ a phase's header against its own ticked boxes, not against a table's claim about
 another phase's headings; `check-markdown-links` only wanted the #1269 link
 repointed to `archived/`, which it got. A cross-document claim of absence has no
 gate, and on this evidence wants one — that is the shape
-[phase-450](archived/phase-450-gate-reach-narrower-than-its-rule.md) collects.
+[phase-450](phase-450-gate-reach-narrower-than-its-rule.md) collects.

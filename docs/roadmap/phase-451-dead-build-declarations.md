@@ -294,5 +294,5 @@ restore-state width.
   ([docs/development/codebase-audit-checklist.md](../development/codebase-audit-checklist.md))
   owns finding more.
 * Anything about what the RMW lists should CONTAIN — that is
-  [phase-444](phase-444-rmw-fix-up.md). W1 only checks the dead copy against the
+  [phase-444](archived/phase-444-rmw-fix-up.md). W1 only checks the dead copy against the
   live one before deleting it.
