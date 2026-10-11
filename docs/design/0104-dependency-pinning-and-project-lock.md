@@ -1,8 +1,8 @@
 # RFC-0104 — Dependency pinning: one pin set, one project lock, every ecosystem
 
-**Status:** Draft (2026-10-10)
+**Status:** Stable (2026-10-11; Draft 2026-10-10)
 
-Implemented by [phase-485](../roadmap/phase-485-dependency-pinning.md). Builds on
+Implemented by [phase-485](../roadmap/archived/phase-485-dependency-pinning.md). Builds on
 the dependency SSoT of [RFC-0062](0062-unified-dependency-ssot.md) and
 [RFC-0095](0095-nros-store-is-the-root.md) D9 ("pin on first build"); amends the
 `--locked` shim of issues 0359/0378 and the tracked-lock invariant
@@ -366,3 +366,4 @@ lock does not move until THEY run `nros update`.
   update` writes the project lock instead of the read-only pins. "Checkout"
   means a `.git` beside the root, never the root marker, which the SDK ships
   too.
+- 2026-10-11 — Stable: phase-485 implemented D1–D10 and answered every open question except 5 (west revisions stay in the manifests, recorded per image — D4a).
