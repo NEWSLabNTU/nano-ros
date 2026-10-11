@@ -14,7 +14,7 @@ c_family = true
 
 entry_template = "entry_cpp.cpp"
 
-# phase-474 W2 — see `../c/pack.toml`. This pack constructs every component
+# phase-494 W2 — see `../c/pack.toml`. This pack constructs every component
 # kind, drives the board through its C++ class (`cpp_board_class` spells it),
 # and also renders the phase-308 metadata-probe tail.
 context = "lowered-entry"

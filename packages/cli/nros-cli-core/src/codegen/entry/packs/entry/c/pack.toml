@@ -20,7 +20,7 @@ c_family = true
 # The template that renders the whole TU — a key from `templates` below.
 entry_template = "entry_c.c"
 
-# phase-474 W2 — what the generic renderer needs to know, and the whole of
+# phase-494 W2 — what the generic renderer needs to know, and the whole of
 # what this pack asks of Rust. There is no `emit_c.rs`: the template renders
 # `nros_entry_lower::LoweredEntry` itself (`context`), spells what it reads
 # through the filters it names (`filters.rs` registers them), constructs the
@@ -31,7 +31,7 @@ filters = ["c_str", "pkg_ident"]
 components = ["c"]
 c_abi_runners = true
 
-# The templates this pack contributes, DISCOVERED at build time (phase-474
+# The templates this pack contributes, DISCOVERED at build time (phase-494
 # W1): `key` is the stable registry name a `render` call or an `{% include %}`
 # uses, `file` the template beside this manifest. An OUTPUT key is
 # `<artifact>_<surface>.<ext>`, a partial keeps its `.jinja` suffix.

@@ -458,7 +458,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
             family.tier_rtos_key(),
             image_plan.as_ref(),
         )?;
-        // phase-474 — ONE renderer, whatever the language: the pack that
+        // phase-494 — ONE renderer, whatever the language: the pack that
         // renders `lang` on this board is found by its manifest
         // (`pack::entry_pack_for`), and everything a language contributes is
         // that pack's data. There was a `match` here over two emitters.
@@ -544,7 +544,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
 /// Refuse a language whose entry pack the generic renderer cannot drive —
 /// BEFORE the metadata is read, the point this verb has always refused it.
 ///
-/// phase-474 — this was `typed_entry_emitter`, an exhaustive `match` from a
+/// phase-494 — this was `typed_entry_emitter`, an exhaustive `match` from a
 /// language to one of two Rust emitters. There are no emitters now: a language
 /// is typed-renderable exactly when the pack that declares it renders a
 /// `LoweredEntry` (`context = "lowered-entry"`), so the answer is READ from the

@@ -200,7 +200,7 @@ fn c_default_tier_plan(board: &str) -> Plan {
 ///
 /// It still carries a class name and header from `typed_node`, which a C
 /// component does not have; the lowering ignores both for a C kind
-/// (phase-432 W2.6 dropped the requirement, phase-474 drops the field), so
+/// (phase-432 W2.6 dropped the requirement, phase-494 drops the field), so
 /// the row also pins that nothing renders them.
 fn cpp_c_node(pkg: &str, exec: &str) -> PlanNode {
     let mut n = typed_node(pkg, exec);

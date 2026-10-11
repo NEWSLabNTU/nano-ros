@@ -4,7 +4,7 @@ title: "One codegen producer, many language packs — target-agnostic output, pi
 status: Stable
 since: 2026-09
 last-reviewed: 2026-10
-implements-tracked-by: [phase-432, phase-474]
+implements-tracked-by: [phase-432, phase-494]
 supersedes: []
 superseded-by: null
 ---
@@ -565,7 +565,7 @@ context, not the seed for a per-surface projection. The entry pipeline has not
 paid this cost yet because it has two surfaces; W2.3 (converting `emit_cpp`) is
 where it would first bite.
 
-> **Done, 2026-10-01 (phase-474, Amendment 1 below).** `LoweredEntry` IS the
+> **Done, 2026-10-01 (phase-494, Amendment 1 below).** `LoweredEntry` IS the
 > context now: `emit_c.rs` and `emit_cpp.rs` are deleted and both packs render
 > it directly.
 
@@ -871,7 +871,7 @@ sched-context path a tiered ThreadX C plan takes.
 
 ---
 
-## Amendment 1 (2026-10-01, phase-474) — the entry emitters are data
+## Amendment 1 (2026-10-01, phase-494) — the entry emitters are data
 
 §6b's entry clause — "`LoweredEntry` must be the context, not the seed for a
 per-surface projection" — was the blocker phase-469 deferred. Phase-474 paid it.

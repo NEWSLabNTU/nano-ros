@@ -42,7 +42,7 @@ deserve the same evidence.
 
 Two things changed the answer above.
 
-* **The language is no longer the probe's alone.** phase-474 put each node's
+* **The language is no longer the probe's alone.** phase-494 put each node's
   component KIND on `LoweredNode` (`c` / `rust` / `rclcpp` / `configure`, read
   from `nros-metadata.json`'s `lang` — `codegen::entry::lower::component_kind`),
   so the model road has a per-COMPONENT language from the same plan the entry is

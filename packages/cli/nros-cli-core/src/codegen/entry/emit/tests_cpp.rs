@@ -1,5 +1,5 @@
 //! The C++ pack's behavioural tests — `emit_cpp.rs`'s, moved here when
-//! phase-474 W4 deleted that emitter. Every body is unchanged: each renders a
+//! phase-494 W4 deleted that emitter. Every body is unchanged: each renders a
 //! plan through the C++ pack, now via the generic renderer, and asserts on
 //! the TU. The shims below are the old entry points' names.
 

@@ -3,7 +3,7 @@
 
   ONE partial, included by both entry packs, because the statements are
   byte-identical C in both — only the executor expression differs, and the
-  caller passes it in as `dexec` (phase-474: it is template text, so the
+  caller passes it in as `dexec` (phase-494: it is template text, so the
   template that writes it chooses it; it used to ride on a Rust view).
 
   What the caller puts in scope: `n`, the `LoweredNode`; `dexec`, its

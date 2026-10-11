@@ -867,7 +867,7 @@ change. Only whether the build was told what it registers.
 D4 was written when "a road" meant a hand-written entry and the build tool it
 happened to use. Since then RFC-0065 made `nros build` the one front door
 (five stages, the driver chosen by the board), phase-470 generated every
-workspace entry but three, and phase-474 made one lowering (`LoweredEntry`) the
+workspace entry but three, and phase-494 made one lowering (`LoweredEntry`) the
 context every entry pack renders. None of that changed what a descriptor
 STATES. It changed what D4 assumed about where one is CONSUMED, and the model
 has to say so rather than carry the old premise in its phases.
@@ -1047,7 +1047,7 @@ stands. What the build path does change is where an input COULD come from:
   [Issue 1653](../issues/archived/1653-cmake-road-descriptor-never-states-the-board-heap.md)
   (resolved: `-DNROS_BOARD_HEAP_BUDGET_BYTES` on the cmake configure line and in
   west's cmake zone, always emitted so a removed heap clears the cache).
-* **The component's language is on the plan.** phase-474 put each node's
+* **The component's language is on the plan.** phase-494 put each node's
   component KIND (`c` / `rust` / `rclcpp` / `configure`, read from
   `nros-metadata.json`'s `lang`) on `LoweredNode`. So the model road has a
   per-COMPONENT language without the probe — but a language is still a proxy for

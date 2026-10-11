@@ -1,5 +1,5 @@
 //! The ONE entry renderer for every pack whose context is `LoweredEntry`
-//! (phase-474 W3/W4, RFC-0091 §6b).
+//! (phase-494 W3/W4, RFC-0091 §6b).
 //!
 //! There used to be one Rust emitter per entry language — `emit_c.rs` (340
 //! non-test lines, 4 view structs) and `emit_cpp.rs` (797, 7) — each building
@@ -149,7 +149,7 @@ fn render_pack_lowered(
 }
 
 /// Steps 2 and 3, split out so a pack loaded from outside the bundle (the
-/// phase-474 W5 data-only pack) is admitted and lowered by the SAME code.
+/// phase-494 W5 data-only pack) is admitted and lowered by the SAME code.
 pub(crate) fn admit_and_lower(
     pack: &str,
     manifest: &PackManifest,

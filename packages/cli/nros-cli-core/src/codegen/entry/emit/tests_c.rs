@@ -1,4 +1,4 @@
-//! The C pack's behavioural tests — `emit_c.rs`'s, moved here when phase-474
+//! The C pack's behavioural tests — `emit_c.rs`'s, moved here when phase-494
 //! W3 deleted that emitter. Every body is unchanged: each renders a plan
 //! through the C pack, now via the generic renderer, and asserts on the TU.
 //! The one shim below is the old entry point's name.
@@ -645,7 +645,7 @@ fn typed_emit_no_tiers_uses_plain_node_create() {
 // issue 1604 -- the contract monitor region, on the C road.
 //
 // phase-462 W1 baked the model's monitor rows into the C++ entry only; the C
-// pack received the same rows from the lowering (phase-474) and rendered none,
+// pack received the same rows from the lowering (phase-494) and rendered none,
 // so a pure-C image with declared contracts ran unmonitored and said nothing.
 // These are `tests_cpp.rs`'s monitor tests, asked of the C pack.
 // -----------------------------------------------------------------------
