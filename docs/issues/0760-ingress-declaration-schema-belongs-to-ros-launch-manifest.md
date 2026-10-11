@@ -4,8 +4,10 @@ title: "RFC-0074's `ingress` declaration is a ros-launch-manifest schema change,
 status: open
 type: enhancement
 area: orchestration, rmw
-related: [issue-0506, rfc-0074, rfc-0060]
+related: [issue-0506, rfc-0074, rfc-0060, phase-462]
 ---
+
+**Home: [phase-462](../roadmap/phase-462-safety-vocabulary-on-target.md)** — re-homed 2026-10-12 from phase-296, which is archived.
 
 ## Why this is its own topic
 

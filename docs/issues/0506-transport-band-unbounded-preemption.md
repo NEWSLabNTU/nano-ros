@@ -4,8 +4,10 @@ title: "Transport tasks above application tiers is the right default but has no 
 status: open
 type: enhancement
 area: embedded
-related: [issue-0505]
+related: [issue-0505, phase-462]
 ---
+
+**Home: [phase-462](../roadmap/phase-462-safety-vocabulary-on-target.md)** — re-homed 2026-10-12 from phase-358, which is archived.
 
 ## Problem
 

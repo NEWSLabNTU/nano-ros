@@ -1,5 +1,11 @@
 # Phase 386 — a weak body is either CORRECT or merely LINKABLE, and nothing records which
 
+**Status (2026-10-12). COMPLETE — archived 2026-10-12.** W1 (the
+correct-vs-linkable axis as a gated allowlist column), W2, W3a, W3b (unrunnable
+coverage rows reported, then fixed: `weak-image: checked=30 fail=0 warn=0`,
+`a46f861750`) and W4 (issue 0769's tie dissolved, `5ec3e114f7`) all landed. The
+status line below predates the 2026-08-27 entries.
+
 **Status (2026-08-26). W1 + W2 LANDED, W3 measured and split, W4 open.** Two
 real defects fixed; the phase's own opening claim ("17 symbols can fail
 silently") was too broad and is corrected below — two could. W3's investigation

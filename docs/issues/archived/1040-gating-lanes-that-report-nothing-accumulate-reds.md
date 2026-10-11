@@ -3,11 +3,16 @@ id: 1040
 title: "`check-api-parity` runs in NO workflow and `check-build` only on
   schedule/dispatch, so reds there accumulate until someone happens to run the
   full tier locally — five landed on main in one day"
-status: open
+status: resolved
 type: task
 area: [ci, process]
 related: [1035, 1021, 0952, 1030, 1071, 1072, phase-413]
+resolved_in: "2019640f7c"
 ---
+
+## Resolution (2026-10-12)
+
+Fixed on main by `2019640f7c`, `55037621c4`. `check-api-parity` runs, and since #1066 it is on the fast line inside the required gate. Found during the re-homing sweep when phase-413 was archived. The original report follows.
 
 ## The measurement
 
@@ -20,7 +25,7 @@ same mechanism: a person ran `just ci gate` locally.**
 | `check-api-parity`: `cpp:declared_depth` unclassified | phase-403 step 2 (`3d852da49`) | `check::api-parity` |
 | `error: items after a test module` (`board_facts.rs`) | `e453399de` (phase-400 W1) | `check::build` |
 | `check-api-parity`: 3 release-jitter items unclassified | `55324cc33`, landed 02:37 the same day | `check::api-parity` |
-| zenoh-pico 1.8.0 does not build on NuttX ([#1035](archived/1035-zenoh-pico-1-8-0-true-in-preprocessor-breaks-nuttx.md)) | PR #299 | **no lane at all** |
+| zenoh-pico 1.8.0 does not build on NuttX ([#1035](1035-zenoh-pico-1-8-0-true-in-preprocessor-breaks-nuttx.md)) | PR #299 | **no lane at all** |
 
 Plus a sixth of a different kind, in the same window: `other.json` carried
 `cpp:declared_depth` **twice** — two sessions classified one symbol

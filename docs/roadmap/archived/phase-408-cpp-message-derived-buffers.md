@@ -1,5 +1,13 @@
 # Phase 408 — a C/C++ subscription sizes its buffer from its own message type
 
+**Status (2026-10-12). COMPLETE — archived 2026-10-12.** Closed as delivered
+on 2026-08-31 (`043b168822`). W1–W5 are done on both packs: the C pack under
+phase-403, and the C++ pack on 2026-09-01 (`rx_size_bound<M>`, one
+`derive_message_bound` for both languages). phase-456 W7 (`19ee1bc581`) then
+made every C++ subscription registration state its bound. Acceptance item 4, a
+`mem-report --baseline` number for the saving, was never taken. It belongs with
+[phase-403](../phase-403-type-bound-rx-sizing.md)'s "Measurement, first not last".
+
 **Status (2026-09-01). W1, W2 and W4 are LANDED on the C pack — by other work,
 not by this phase.** Re-measured against the tree rather than read off this
 file, which said "no code yet" and sent the next reader looking in the wrong
@@ -36,12 +44,12 @@ carries a runtime hint to the BACKEND for payload-class routing (phase-402,
 const that sizes the EXECUTOR ARENA's trailing region. W3 is about the second;
 the first is done for one of the three variants.
 Scope is the C and C++ path only. The other obstacles to
-[phase 392](archived/phase-392-static-memory-space-campaign.md)'s "W3 remainder" — Rust
+[phase 392](phase-392-static-memory-space-campaign.md)'s "W3 remainder" — Rust
 being opt-in (W3c), Cyclone not consuming the hint (W3f), unbounded diagnostics
 and the TX/RX split (W3g) — are deliberately out of scope here and stay where
 they are.
 
-Carries [issue 0896](../issues/archived/0896-c-cpp-subscriptions-never-state-a-buffer-hint.md).
+Carries [issue 0896](../../issues/archived/0896-c-cpp-subscriptions-never-state-a-buffer-hint.md).
 
 ## The finding that changes the plan
 

@@ -1,13 +1,18 @@
 ---
 id: 1163
 title: "`compile-smoke` checks `nros-c` under its DEFAULT features, so a duplicate `#[no_mangle]` in the shipped feature set reached main green — and `api-parity`, which refuses the header, reports only post-submit"
-status: open
+status: resolved
 type: bug
 area: ci, c
 severity: high
 related: [1040, 1059, 1102, 1162, RFC-0061, phase-413]
 found: 2026-09-06
+resolved_in: "299d39334a"
 ---
+
+## Resolution (2026-10-12)
+
+Fixed on main by `299d39334a`, `e7e59f4d90`. Items 1 and 3 landed; item 2 is met because api-parity runs on the fast line in the required gate (#1066). Found during the re-homing sweep when phase-413 was archived. The original report follows.
 
 # The PR gate compiled the C crate in a shape nothing ships, and the shape that ships was red on main for a morning
 

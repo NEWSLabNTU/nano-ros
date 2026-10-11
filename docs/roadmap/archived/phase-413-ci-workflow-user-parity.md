@@ -1,5 +1,13 @@
 # Phase 413 — make CI run the process a user runs
 
+**Status (2026-10-12). COMPLETE — archived 2026-10-12.** W1, W3, W4, W5, W6
+(answered as RFC-0062 amendment 4, built by phase-435) and W7 (the arena-budget
+walk moved, issue 1001) are done. W2, getting each red lane green, carries on as
+[phase-466](../phase-466-scheduled-lanes-produce-verdicts.md), which owns
+"every scheduled lane produces a verdict". Homed issues: 1038, 1040, 1163 and
+1182 were found fixed and archived. 0930 moved to phase-484, 0996 and 1155 to
+phase-395, and 1177 to phase-489.
+
 **Status (2026-09-06). W1, W4, W5 and W6 done and verified; W2 substantially
 advanced; W3 done; W7 open.** Every claim here was re-derived from the tree on
 2026-09-06 — three items were already complete and said otherwise, which is the
@@ -418,7 +426,7 @@ Questions the RFC has to answer, none of which have obvious answers:
 Deliverable for W6 is **an RFC in `docs/design/`**, not code. Only once it is
 `Draft` and reviewed does an implementation work item get opened.
 
-### ANSWERED (2026-09-06) — [RFC-0062 amendment 4](../design/0062-unified-dependency-ssot.md), implemented by phase-435
+### ANSWERED (2026-09-06) — [RFC-0062 amendment 4](../../design/0062-unified-dependency-ssot.md), implemented by phase-435
 
 The RFC this item required exists, and the five questions above have answers.
 Recorded here because a work item that reads DESIGN REQUIRED after its design
@@ -668,24 +676,24 @@ Recorded because a cleanup pass is exactly where these get deleted by accident:
   with `||` — the shell spelling of skip-and-report-success.
 
 
-## Adopted issues (2026-09-04) — gates that exist and cannot run
+## Formerly adopted issues (2026-09-04; re-homed or resolved 2026-10-12) — gates that exist and cannot run
 
 Three open issues had no phase and belong to this one's premise from the other
 direction: this phase asks whether CI runs the process a user runs, and these
 are three places where a check CANNOT run at all, so its verdict is neither
 true nor false.
 
-* **[#1040](../issues/1040-gating-lanes-that-report-nothing-accumulate-reds.md)**
+* **[#1040](../../issues/archived/1040-gating-lanes-that-report-nothing-accumulate-reds.md)** — **RESOLVED 2026-10-12** (`2019640f7c`)
   — `check-api-parity` runs in NO workflow and `check-build` only on dispatch.
   A lane that reports nothing accumulates reds nobody sees.
-* **[#1043](../issues/archived/1043-pin-gate-cannot-verify-uninitialised-submodule.md)**
+* **[#1043](../../issues/archived/1043-pin-gate-cannot-verify-uninitialised-submodule.md)**
   (RESOLVED 2026-09-06) — `check-submodule-pins` failed CLOSED on any submodule
   CI does not initialise, so a whole class of pin bump could never pass the
   required lane. Both halves are fixed now: the workflow initialises the pins
   that moved, and the gate distinguishes NOT VERIFIED (a skip, reported through
   the `nros_check_skip` ledger) from a measured non-fast-forward, with both
   directions mutation-tested on its normal path.
-* **[#0930](../issues/0930-built-qemu-can-be-stale-against-its-pin.md)** — the
+* **[#0930](../../issues/0930-built-qemu-can-be-stale-against-its-pin.md)** — the — **re-homed to [phase-484](../phase-484-one-owner-per-fact.md) 2026-10-12**
   built QEMU can be older than the commit `third-party/qemu/qemu` pins, and
   nothing says so. Provisioning that silently disagrees with the pin is the same
   failure one layer down.
@@ -694,7 +702,7 @@ They are one class: **a gate whose result is unavailable is not a gate**, and
 this repo has now hit it four separate times (the `declared-qos-header` recipe
 lost in a rebase, `check-test-scripts-have-callers`'s own subject, and these).
 
-## Issues homed here (survey 2026-09-11)
+## Issues formerly homed here (survey 2026-09-11; re-homed or resolved 2026-10-12)
 
 Every open issue was checked for a home phase; these had none, or were mentioned
 here only in passing. A mention is not an owner — an issue with no work item is
@@ -703,12 +711,12 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0930](../issues/0930-built-qemu-can-be-stale-against-its-pin.md) | the built QEMU can be older than the commit `third-party/qemu/qemu` pins. It is already an adopted bullet above; this row is the work item that bullet never became — a probe that fails on a stale build, not a note that one is possible |
-| [#0996](../issues/0996-ci-workflow-audit-tier-promises.md) | the workflow audit that OPENED this phase. Its measured findings — the same lane passing in the queue and failing after merge — still carry no numbered item, so the phase's own premise is the part of it nobody owns |
-| [#1038](../issues/1038-nightly-job-does-not-provision-its-lane.md) | filed explicitly under W2 item 3: three of six nightly cell failures are ONE class, the platform job building a different package set. A prose pointer inside a work item is not the item |
-| [#1040](../issues/1040-gating-lanes-that-report-nothing-accumulate-reds.md) | `check-api-parity` runs in no workflow and `check-build` only on dispatch. Adopted above as a bullet; the residue needing an item is the PLACEMENT — api-parity is post-submit where it has to be pre-merge |
-| [#1066](../issues/archived/1066-api-parity-runs-in-no-workflow.md) | RESOLVED. The same residue as #1040 filed a second time. It did not close with a `gate.yml` step: the gate reached `pull_request` + `merge_group` by leaving `.config/gate-lane-exempt.txt`, and what was left after that was the `code` probe classifying the gate's own ledger as documentation |
-| [#1155](../issues/1155-arch-flags-tests-in-no-lane.md) | `nros-board-common`'s `arch_flags` tests activate no feature under `test-unit`, so they run in no lane at all. Exactly W4's question — what a green required check promises — one crate down |
-| [#1163](../issues/1163-compile-smoke-checks-nros-c-under-default-features-only.md) | `compile-smoke` checks `nros-c` under its DEFAULT features, so a duplicate `#[no_mangle]` is invisible. Items 1 and 3 landed; item 2 is the same pre-merge placement as #1040/#1066 |
-| [#1177](../issues/1177-no-alloc-nros-c-lane-runs-only-on-schedule.md) | `check::workspace-features` gates no merge, so its reds are found by hand four at a time. The break half is fixed; the coverage half is W4's tier choice |
-| [#1182](../issues/1182-leaf-lockfiles-skips-for-a-submodule-not-a-sync.md) | `check-leaf-lockfiles` skips two leaves for a SUBMODULE rather than for a sync. The issue names itself a lane question — what a merge-gating job would have to sync |
+| [#0930](../../issues/0930-built-qemu-can-be-stale-against-its-pin.md) | the built QEMU can be older than the commit `third-party/qemu/qemu` pins. It is already an adopted bullet above; this row is the work item that bullet never became — a probe that fails on a stale build, not a note that one is possible — **re-homed to [phase-484](../phase-484-one-owner-per-fact.md) 2026-10-12** |
+| [#0996](../../issues/0996-ci-workflow-audit-tier-promises.md) | the workflow audit that OPENED this phase. Its measured findings — the same lane passing in the queue and failing after merge — still carry no numbered item, so the phase's own premise is the part of it nobody owns — **re-homed to [phase-395](../phase-395-dev-workflow-migration.md) 2026-10-12** |
+| [#1038](../../issues/archived/1038-nightly-job-does-not-provision-its-lane.md) | filed explicitly under W2 item 3: three of six nightly cell failures are ONE class, the platform job building a different package set. A prose pointer inside a work item is not the item — **RESOLVED 2026-10-12** (`9de62f253a`) |
+| [#1040](../../issues/archived/1040-gating-lanes-that-report-nothing-accumulate-reds.md) | `check-api-parity` runs in no workflow and `check-build` only on dispatch. Adopted above as a bullet; the residue needing an item is the PLACEMENT — api-parity is post-submit where it has to be pre-merge — **RESOLVED 2026-10-12** (`2019640f7c`) |
+| [#1066](../../issues/archived/1066-api-parity-runs-in-no-workflow.md) | RESOLVED. The same residue as #1040 filed a second time. It did not close with a `gate.yml` step: the gate reached `pull_request` + `merge_group` by leaving `.config/gate-lane-exempt.txt`, and what was left after that was the `code` probe classifying the gate's own ledger as documentation |
+| [#1155](../../issues/1155-arch-flags-tests-in-no-lane.md) | `nros-board-common`'s `arch_flags` tests activate no feature under `test-unit`, so they run in no lane at all. Exactly W4's question — what a green required check promises — one crate down — **re-homed to [phase-395](../phase-395-dev-workflow-migration.md) 2026-10-12** |
+| [#1163](../../issues/archived/1163-compile-smoke-checks-nros-c-under-default-features-only.md) | `compile-smoke` checks `nros-c` under its DEFAULT features, so a duplicate `#[no_mangle]` is invisible. Items 1 and 3 landed; item 2 is the same pre-merge placement as #1040/#1066 — **RESOLVED 2026-10-12** (`299d39334a`) |
+| [#1177](../../issues/1177-no-alloc-nros-c-lane-runs-only-on-schedule.md) | `check::workspace-features` gates no merge, so its reds are found by hand four at a time. The break half is fixed; the coverage half is W4's tier choice — **re-homed to [phase-489](../phase-489-ci-build-speedup.md) 2026-10-12** |
+| [#1182](../../issues/archived/1182-leaf-lockfiles-skips-for-a-submodule-not-a-sync.md) | `check-leaf-lockfiles` skips two leaves for a SUBMODULE rather than for a sync. The issue names itself a lane question — what a merge-gating job would have to sync — **RESOLVED 2026-10-12** (`0407df42f9`) |

@@ -7,7 +7,7 @@ RFC-0062 (the unified dependency SSoT) and RFC-0065 D2 (a missing prerequisite
 fails at preflight, naming its remedy) — neither is revised, both become
 load-bearing for a second consumer. Supersedes nothing.
 
-Home phase: [phase-440](../roadmap/phase-440-nros-store-is-the-root.md).
+Home phase: [phase-440](../roadmap/archived/phase-440-nros-store-is-the-root.md).
 Prior phases: 435 (provisioning resolves by axis), 422 (provisioning has one
 path), 413 (CI workflow user parity).
 

@@ -1,5 +1,12 @@
 # Phase 355 — Dependency and fork debt: what we carry that upstream does not
 
+**Status (2026-10-12). COMPLETE — archived 2026-10-12.** W1 landed and the W2
+and W3 decisions are recorded in archived issues 0507 and 0524. The dead `anyhow`
+line in `play_launch_parser` has since gone. Offering the cyclonedds patches
+upstream is the maintainer's outward step and is not phase work. Homed issue 0910
+(zenoh-pico 1.10) is unhomed: the pin stays at 1.8.0 to match ROS, and no active
+phase owns a zenoh-pico bump.
+
 **Status (2026-08-15). W1 LANDED, W2 + W3 DECIDED.** W1 corrected six book
 pages (the cited one was already fixed). W2 and W3 owed decisions rather than
 code, and both are recorded in their issues; the two residual EDITS — offering
@@ -12,18 +19,18 @@ tech-debt items about dependencies the tree owns rather than consumes. None is
 urgent; all three get worse silently, which is why they want a phase rather than
 a backlog line.
 
-**Owns:** [issue 0374](../issues/archived/0374-zenohd-has-no-prebuilt-so-nros-setup-native-source-builds-it.md)
+**Owns:** [issue 0374](../../issues/archived/0374-zenohd-has-no-prebuilt-so-nros-setup-native-source-builds-it.md)
 (**RESOLVED 2026-08-17** — its last item was "seed the `1.7.2-nros2` asset", which
-[phase-362](archived/phase-362-zenoh-router-from-ros-not-vendored.md) made moot by
+[phase-362](phase-362-zenoh-router-from-ros-not-vendored.md) made moot by
 retiring the vendored router; the fork-debt framing below no longer applies to it),
-[issue 0507](../issues/archived/0507-cyclonedds-fork-carries-two-unupstreamed-changes.md),
-[issue 0524](../issues/archived/0524-anyhow-unmaintained-transitive-deps-remain.md)
+[issue 0507](../../issues/archived/0507-cyclonedds-fork-carries-two-unupstreamed-changes.md),
+[issue 0524](../../issues/archived/0524-anyhow-unmaintained-transitive-deps-remain.md)
 (**RESOLVED** — see the issue for what closed it).
 
-**Related:** [RFC-0014](../design/0014-nros-setup-toolchain-management.md) (`nros
+**Related:** [RFC-0014](../../design/0014-nros-setup-toolchain-management.md) (`nros
 setup` / SDK index — #374 is a promise made there),
-[phase-345](archived/phase-345-one-door-build-parity.md) (COMPLETE; named #374),
-[issue 0496](../issues/archived/) (the work that created #507's two changes).
+[phase-345](phase-345-one-door-build-parity.md) (COMPLETE; named #374),
+[issue 0496](../../issues/archived/) (the work that created #507's two changes).
 
 ## The common shape
 
@@ -85,7 +92,7 @@ issue), or documented as permanently-ours with the reason it cannot go upstream.
 **DONE 2026-08-15 — decision recorded; PRs are the maintainer's step.** The
 census found **15** fork-only commits against `origin/releases/0.10.x`, not two:
 this item was scoped to the newest pair. Each is now classified in
-[issue 0507](../issues/archived/0507-cyclonedds-fork-carries-two-unupstreamed-changes.md)
+[issue 0507](../../issues/archived/0507-cyclonedds-fork-carries-two-unupstreamed-changes.md)
 with its reason —
 
 * **offer upstream (10):** the striped addrset locks (`942dda3c`, the strongest
@@ -147,7 +154,7 @@ the lockfiles:
   mechanical rebase is separate work under the vendored-fork branch workflow in
   CLAUDE.md (fork branch pushed FIRST, then the superproject pointer).
 
-## Issues homed here (survey 2026-09-03)
+## Issues formerly homed here (survey 2026-09-03; re-homed or resolved 2026-10-12)
 Every open issue was checked for a home phase; these had none, or were
 mentioned here only in passing. A mention is not an owner — an issue with
 no work item is an issue nobody is accountable for, which is the same shape
@@ -156,9 +163,9 @@ holds the evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0910](../issues/0910-zenoh-pico-1-10-migration.md) | migrating to zenoh-pico 1.10: the serial layer moved and `config.h` is no longer generated the same way — carried-fork debt coming due |
+| [#0910](../../issues/0910-zenoh-pico-1-10-migration.md) | migrating to zenoh-pico 1.10: the serial layer moved and `config.h` is no longer generated the same way — carried-fork debt coming due — **unhomed 2026-10-12** (no active phase fits) |
 
-## Issues homed here (survey 2026-09-11)
+## Issues formerly homed here (survey 2026-09-11; re-homed or resolved 2026-10-12)
 
 Every open issue was checked for a home phase; these had none, or were mentioned
 here only in passing. A mention is not an owner — an issue with no work item is
@@ -167,4 +174,4 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1039](../issues/archived/1039-nuttx-stdbool-nonconforming-breaks-zenoh-pico.md) — **RESOLVED 2026-09-18** | NuttX's `stdbool.h` defines `true` as `(bool)1`, which is not an integer constant expression, and zenoh-pico will not build against it. phase-444 excludes platform build issues by name, so it lands here as vendored-toolchain debt — the fix is a patch line, not a nano-ros change. Closed on the patch line (`a1c741db`, ancestor of the pin): the header compares against `1` and the call site defines the macro `1`/`0`, both halves load-bearing. The header is still non-conforming and the root fix is still upstream NuttX's; carrying the fork-side patch is the recorded decision |
+| [#1039](../../issues/archived/1039-nuttx-stdbool-nonconforming-breaks-zenoh-pico.md) — **RESOLVED 2026-09-18** | NuttX's `stdbool.h` defines `true` as `(bool)1`, which is not an integer constant expression, and zenoh-pico will not build against it. phase-444 excludes platform build issues by name, so it lands here as vendored-toolchain debt — the fix is a patch line, not a nano-ros change. Closed on the patch line (`a1c741db`, ancestor of the pin): the header compares against `1` and the call site defines the macro `1`/`0`, both halves load-bearing. The header is still non-conforming and the root fix is still upstream NuttX's; carrying the fork-side patch is the recorded decision |

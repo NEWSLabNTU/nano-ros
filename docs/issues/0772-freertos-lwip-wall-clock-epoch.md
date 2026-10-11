@@ -4,8 +4,10 @@ title: "FreeRTOS/lwIP has no wall-clock epoch — the same consumer that drove t
 status: open
 type: enhancement
 area: platform, boards
-related: [issue-0758, phase-372, phase-292]
+related: [issue-0758, phase-372, phase-292, phase-478]
 ---
+
+**Home: [phase-478](../roadmap/phase-478-island-developer-experience-findings.md)** — re-homed 2026-10-12 from phase-385, which is archived.
 
 ## What is missing
 

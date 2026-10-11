@@ -5,8 +5,10 @@ title: "CI audit: the same lane passes in the queue and fails after merge, four 
 status: open
 type: bug
 area: ci, tooling
-related: [0992, 0876, 0883, phase-413]
+related: [0992, 0876, 0883, phase-413, phase-395]
 ---
+
+**Home: [phase-395](../roadmap/phase-395-dev-workflow-migration.md)** — re-homed 2026-10-12 from phase-413, which is archived.
 
 Audit of all 11 workflows against the four properties they are supposed to have:
 a workflow reads as a user session; provisioning goes through `nros setup`; each
@@ -181,7 +183,7 @@ Worth recording, because it is the part that works and should not be undone:
 
 ## Where the work is tracked
 
-phase-413 (`docs/roadmap/phase-413-ci-workflow-user-parity.md`) carries the work
+phase-413 (`docs/roadmap/archived/phase-413-ci-workflow-user-parity.md`) carries the work
 items. W6 — `package.xml` as the dependency SSoT — is DESIGN, not
 implementation: it changes what a `package.xml` means here, so its deliverable
 is an RFC, and no code should be written against it first.

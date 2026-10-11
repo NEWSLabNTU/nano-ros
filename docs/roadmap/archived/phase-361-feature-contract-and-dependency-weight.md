@@ -1,5 +1,13 @@
 # Phase 360 — The `std`/`alloc` contract, and what a firmware build actually compiles
 
+**Status (2026-10-12). COMPLETE — archived 2026-10-12.** The status line below
+still says IN PROGRESS, but every work item has a recorded outcome in the body:
+W1, W2 (both halves), W3, W3.b, W4 (`scripts/check-feature-contract.py`), W7
+(`nros-macros` optional, `macros` named at the dep-site) and W8.a–e landed; W5
+and W6 were closed as not viable with the measurements recorded. The allocator
+work landed under its old number (`8d68359200`, "phase-341 W8.c"). The rest of
+the `std` question belongs to [phase-359](../phase-359-drop-std-campaign.md).
+
 **Status (2026-08-15).** IN PROGRESS. `phase-359` (drop `std` from the core
 crates) landed on `main` the same day and contradicted W1/W2.a; **that is
 settled — `std` is being dropped, so this phase keeps the `std ⇒ alloc` manifest
@@ -55,7 +63,7 @@ are genuinely different feature sets.
 
 ## Overlap with phase-359 (drop-`std` campaign) — RESOLVED 2026-08-15
 
-[phase-359](phase-359-drop-std-campaign.md) landed on `main` 2026-08-15, while
+[phase-359](../phase-359-drop-std-campaign.md) landed on `main` 2026-08-15, while
 this branch was rebasing onto it. It is not adjacent work — it reaches the same
 manifests, and on one design point the two phases pull in opposite directions.
 
@@ -94,7 +102,7 @@ through `any(...)` does not count. The gate reports 183 sites for both trees.
 The one thing it does catch is a symptom of the same edge: `nros-node: path
 346 -> 347`, because `read_rmw_selector_env` must return `std::vec::Vec<u8>`
 here where `main` returns `alloc::vec::Vec<u8>` — under `std` alone there is no
-`alloc` to name. **Filed as [issue 0597](../issues/archived/0597-std-census-counts-only-anchored-cfg-sites.md)**,
+`alloc` to name. **Filed as [issue 0597](../../issues/archived/0597-std-census-counts-only-anchored-cfg-sites.md)**,
 which measured the blind spot at 69 of 252 sites (27 %) in the census's own
 scope and mutation-verified it: two planted `std`-conditional items using no
 `std::` path leave the gate green.
@@ -142,7 +150,7 @@ lanes green; seven host feature combos and seven bare-metal target/feature pairs
 (thumbv7em, aarch64-unknown-none, armv7r) check clean.
 
 **Still open, and independent of this:** the census blind spot, now
-[issue 0597](../issues/archived/0597-std-census-counts-only-anchored-cfg-sites.md).
+[issue 0597](../../issues/archived/0597-std-census-counts-only-anchored-cfg-sites.md).
 `CFG_RE` anchors `feature = "std"` immediately after `cfg(` or `cfg(not(`, so
 every `all(...)` / `any(...)` spelling is invisible — 69 of 252 sites in its own
 scope, and it reported 183 for both trees here while the real difference was 88.

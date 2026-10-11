@@ -271,7 +271,7 @@ now has a working implementation of both to copy.
   NETC, PBcfg, the licensed `GCC/ARM_CR52_GIC` port and flash/boot stay
   hardware-gated there.
 
-## Issues homed here (survey 2026-09-03)
+## Issues formerly homed here (survey 2026-09-03; re-homed or resolved 2026-10-12)
 Every open issue was checked for a home phase; these had none, or were
 mentioned here only in passing. A mention is not an owner — an issue with
 no work item is an issue nobody is accountable for, which is the same shape
@@ -280,6 +280,6 @@ holds the evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0772](../../issues/0772-freertos-lwip-wall-clock-epoch.md) | FreeRTOS/lwIP has no wall-clock epoch — the same gap issue 0758 states for the platform ABI, on this board |
-| [#0830](../../issues/0830-qemu-hub-two-port-tap-rx.md) | a QEMU net hub with only a NIC and a tap never delivers host->guest frames |
+| [#0772](../../issues/0772-freertos-lwip-wall-clock-epoch.md) | FreeRTOS/lwIP has no wall-clock epoch — the same gap issue 0758 states for the platform ABI, on this board — **re-homed to [phase-478](../phase-478-island-developer-experience-findings.md) 2026-10-12** |
+| [#0830](../../issues/archived/0830-qemu-hub-two-port-tap-rx.md) | a QEMU net hub with only a NIC and a tap never delivers host->guest frames — **RESOLVED 2026-10-12** (`f6a479fddf`) |
 

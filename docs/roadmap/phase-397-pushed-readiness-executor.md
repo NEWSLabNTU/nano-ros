@@ -11,7 +11,7 @@ have described this seam since they were written and never been wired to
 anything.
 
 **Depends on** nothing. Independent of
-[issue 0852](../issues/0852-zephyr-serial-rx-is-polled-and-overruns.md) — that
+[issue 0852](../issues/archived/0852-zephyr-serial-rx-is-polled-and-overruns.md) — that
 is about how bytes reach the transport, this is about what the executor does
 once they have.
 

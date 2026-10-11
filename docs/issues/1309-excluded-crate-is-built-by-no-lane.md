@@ -150,7 +150,7 @@ separately; it is not obviously wrong, and it is not obviously intended.
 
 ## Adjacent, and probably one gate eventually
 
-[Issue 0957](0957-format-blocked-by-unexcluded-workspace-leaf.md) is the
+[Issue 0957](archived/0957-format-blocked-by-unexcluded-workspace-leaf.md) is the
 complementary hole: a leaf in NEITHER `members` nor `exclude`. Both are
 questions about the same two lists being complete and meaningful, and both are
 currently answered by different code. Worth folding together when either is

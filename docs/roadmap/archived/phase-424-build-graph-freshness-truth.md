@@ -1,6 +1,6 @@
 # Phase 424 — does the build graph tell the truth about what needs rebuilding?
 
-**Archived 2026-10-11.** All eight issues are closed: the two the status line below names as open, 1018 and 1050, have since been resolved and archived.
+**Archived 2026-10-11.** All eight issues are closed: the two the status line below names as open, 1018 and 1050, have since been resolved and archived. Of the three carried-forward items, 2 was superseded by phase-429 / RFC-0090 and 3 was closed on 2026-09-06; item 1 (the generated headers' consumer migration) moved to [issue 1824](../../issues/1824-generated-header-side-channel-consumers-unmigrated.md) on 2026-10-12.
 
 **Status (2026-09-05).** **Six of eight closed and archived** — #0820 (a cargo
 custom command with no `DEPFILE`), #0835 (the probe families' oscillation, plus
@@ -455,7 +455,7 @@ removed.
 As this item originally warned, the call was deliberately not slipped into an
 unrelated branch; it landed as its own change with the cost stated in the commit.
 
-## Issues homed here (survey 2026-09-11)
+## Issues formerly homed here (survey 2026-09-11; re-homed or resolved 2026-10-12)
 
 Every open issue was checked for a home phase; these had none, or were mentioned
 here only in passing. A mention is not an owner — an issue with no work item is
@@ -464,6 +464,6 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1034](../../issues/1034-qemu11-elf-bss-zero-fill-stalls-nuttx-boot.md) | the provisioned QEMU 11 spends ~19.6 s materialising a NuttX image's `.bss`. phase-414 cites it only as a withdrawn lead inside another issue's work item, so it is homeless; the emulator-side freshness and cost question is this phase's |
-| [#1121](../../issues/1121-contract-sidecar-has-no-model-freshness-edge.md) | adding a `<stem>.contract.yaml` does not invalidate the SystemModel it feeds. A sidecar that is an input to a model and not an edge in the graph is precisely this phase's subject |
-| [#1235](../../issues/1235-cli-resolver-pairing-blocks-building-older-commits.md) | `nros sync` refuses a correctly paired resolver on older commits, and every sanctioned rebuild remedy no-ops. The source stamp reporting STALE when it is not is this phase's thesis, beside #1018's open half |
+| [#1034](../../issues/archived/1034-qemu11-elf-bss-zero-fill-stalls-nuttx-boot.md) | the provisioned QEMU 11 spends ~19.6 s materialising a NuttX image's `.bss`. phase-414 cites it only as a withdrawn lead inside another issue's work item, so it is homeless; the emulator-side freshness and cost question is this phase's — **RESOLVED 2026-10-12** (`fd2f17bcab`) |
+| [#1121](../../issues/1121-contract-sidecar-has-no-model-freshness-edge.md) | adding a `<stem>.contract.yaml` does not invalidate the SystemModel it feeds. A sidecar that is an input to a model and not an edge in the graph is precisely this phase's subject — **re-homed to [phase-330](../phase-330-system-model-as-build-artifact.md) 2026-10-12** |
+| [#1235](../../issues/1235-cli-resolver-pairing-blocks-building-older-commits.md) | `nros sync` refuses a correctly paired resolver on older commits, and every sanctioned rebuild remedy no-ops. The source stamp reporting STALE when it is not is this phase's thesis, beside #1018's open half — **unhomed 2026-10-12** (no active phase fits) |

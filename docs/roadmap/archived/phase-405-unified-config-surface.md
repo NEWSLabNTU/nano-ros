@@ -4,7 +4,7 @@
 
 **Status (2026-08-31). W1–W6 landed. Two findings split out as issues 0946/0947.**
 Opened from [issue 0934](../../issues/0934-config-redundancy-map.md)'s survey and
-[issue 0931](../../issues/0931-retire-model-and-default-launch.md)'s argument-surface
+[issue 0931](../../issues/archived/0931-retire-model-and-default-launch.md)'s argument-surface
 count. `book/src/reference/configuration-surface.md` and its gate are in; every
 wave below is unstarted.
 
@@ -296,14 +296,14 @@ decide.
 
 ## Adopted issue (2026-09-04)
 
-* **[#0941](../../issues/0941-board-facts-soft-failure-hides-unreachable-site-config.md)**
+* **[#0941](../../issues/0941-board-facts-soft-failure-hides-unreachable-site-config.md)** — **re-homed to [phase-484](../phase-484-one-owner-per-fact.md) 2026-10-12**
   — `nros_resolve_board_facts` fails SOFT, so an unreachable site-config block is
   never reported. The issue names W6 of this phase as the CLASS fix for the
   twelve instances and then says what W6 does not change: a consumer that asks
   for facts about a board it cannot resolve still gets silence rather than an
   error. Filed with no phase; it belongs to the surface W6 is cleaning.
 
-## Issues homed here (survey 2026-09-11)
+## Issues formerly homed here (survey 2026-09-11; re-homed or resolved 2026-10-12)
 
 Every open issue was checked for a home phase; these had none, or were mentioned
 here only in passing. A mention is not an owner — an issue with no work item is
@@ -312,6 +312,6 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0931](../../issues/0931-retire-model-and-default-launch.md) | `nano_ros_entry` has eleven arguments; W4 landed eleven → six keywords and the DEPLOY/BOARD derivation is still open. This phase cites the issue three times and owns none of it |
-| [#0934](../../issues/0934-config-redundancy-map.md) | the config-redundancy survey this phase was OPENED from: one fact authored in up to five surfaces, no SSoT declared for rmw, board or deploy. Opening a phase from a survey is not homing the survey |
-| [#0941](../../issues/0941-board-facts-soft-failure-hides-unreachable-site-config.md) | `nros_resolve_board_facts` fails SOFT, so an unreachable site-config block is silent. Already an 'Adopted issue' prose section here; this row promotes it to a work item |
+| [#0931](../../issues/archived/0931-retire-model-and-default-launch.md) | `nano_ros_entry` has eleven arguments; W4 landed eleven → six keywords and the DEPLOY/BOARD derivation is still open. This phase cites the issue three times and owns none of it — **RESOLVED 2026-10-12** (`c41ead42de`) |
+| [#0934](../../issues/0934-config-redundancy-map.md) | the config-redundancy survey this phase was OPENED from: one fact authored in up to five surfaces, no SSoT declared for rmw, board or deploy. Opening a phase from a survey is not homing the survey — **re-homed to [phase-484](../phase-484-one-owner-per-fact.md) 2026-10-12** |
+| [#0941](../../issues/0941-board-facts-soft-failure-hides-unreachable-site-config.md) | `nros_resolve_board_facts` fails SOFT, so an unreachable site-config block is silent. Already an 'Adopted issue' prose section here; this row promotes it to a work item — **re-homed to [phase-484](../phase-484-one-owner-per-fact.md) 2026-10-12** |

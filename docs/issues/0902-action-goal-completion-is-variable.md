@@ -5,8 +5,10 @@ title: "action goals complete between 20 % and 90 % of the time on the same buil
 status: open
 type: bug
 area: rmw
-related: [issue-0912, issue-0882, issue-0879, issue-0852, issue-1332, issue-1341, phase-444, phase-455]
+related: [issue-0912, issue-0882, issue-0879, issue-0852, issue-1332, issue-1341, phase-444, phase-455, phase-433]
 ---
+
+**Home: [phase-433](../roadmap/phase-433-rmw-live-verification.md)** — re-homed 2026-10-12 from phase-358, which is archived.
 
 ## Measurement
 

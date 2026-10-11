@@ -1,5 +1,11 @@
 # Phase 372 — S32Z270 FreeRTOS board bundle (Cortex-R52, NETC/lwIP, Cyclone)
 
+**Status (2026-10-12). COMPLETE — archived 2026-10-12.** W1–W4 landed in-tree
+(Cortex-R52 toolchain, the `nros-board-s32z270-freertos` bundle, link-completeness
+acceptance met). W5 is the consumer switch on the ASI side (ASI phase-4 W5.b):
+hardware-gated, and tracked in that repository, not here. This is the same split
+[phase-370](phase-370-freertos-posix-board-cyclone.md) was archived with.
+
 **Status (2026-08-22).** W1-W4 LANDED (link-completeness acceptance met);
 W5 open (hardware-gated, ASI phase-4 W5.b). Filed from the ASI
 reference-consumer side. Successor to phase-370.

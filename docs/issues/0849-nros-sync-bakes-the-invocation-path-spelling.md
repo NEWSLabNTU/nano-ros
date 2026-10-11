@@ -6,8 +6,10 @@ title: "`nros sync` bakes the invocation's path SPELLING into every leaf patch
 status: open
 type: bug
 area: cli
-related: [issue-0616, issue-0457, issue-0463]
+related: [issue-0616, issue-0457, issue-0463, phase-484]
 ---
+
+**Home: [phase-484](../roadmap/phase-484-one-owner-per-fact.md)** — re-homed 2026-10-12 from phase-383, which is archived.
 
 ## Problem
 

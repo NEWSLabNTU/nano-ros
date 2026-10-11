@@ -2,11 +2,16 @@
 id: 830
 title: "A QEMU net hub with only a NIC and a tap never delivers host->guest
   frames — OUR lan9118 can_receive patch deadlocks before the guest enables RX"
-status: open
+status: resolved
 type: bug
 area: boards
 related: [phase-385, issue-0836]
+resolved_in: "f6a479fddf"
 ---
+
+## Resolution (2026-10-12)
+
+Fixed on main by `f6a479fddf`. The QEMU pin flushes queued RX on RXEN enable; the SDK qemu dist carries it. Found during the re-homing sweep when phase-385 was archived. The original report follows.
 
 ## Symptom
 

@@ -3,7 +3,7 @@
 **Status (2026-08-13). COMPLETE — W1–W5 landed. The platform half of W2 landed
 as [phase-349](../phase-349-rtos-integration-shells.md) W1, once RFC-0072 settled
 what a platform's name is.** Unblocked by
-[phase-347](../phase-347-rmw-as-a-declared-provider.md) W2 — descriptors exist, so
+[phase-347](phase-347-rmw-as-a-declared-provider.md) W2 — descriptors exist, so
 providers can describe themselves.
 
 W1 shipped the announce mechanism, the scan, and `nros ws providers`. W2

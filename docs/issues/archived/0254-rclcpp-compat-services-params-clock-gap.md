@@ -32,6 +32,6 @@ The gap is compat-surface aliasing + a clock story over runtime that
 the C++ NodeContext runtime actually provides, which is phase-236's
 236.D deliverable. The full missing-surface list (from the ASI porting
 notes 01/03/05/06) now lives in
-`docs/roadmap/phase-236-cpp-entry-embedded-runtime.md` under "Folded in:
+`docs/roadmap/archived/phase-236-cpp-entry-embedded-runtime.md` under "Folded in:
 issue 0254" and becomes a work item there once 236.D lands. Tracking
 moves to that phase; this issue closes to avoid two trackers.

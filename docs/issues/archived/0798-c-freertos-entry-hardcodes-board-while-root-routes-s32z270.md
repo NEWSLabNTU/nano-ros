@@ -3,11 +3,16 @@ id: 798
 title: "`examples/workspaces/c`'s root routes `s32z270-freertos` to an entry
   that hardcodes `mps2-an385-freertos` — the pairing fails all three arms of
   `_nra_board_active`, so the image links without its platform glue"
-status: open
+status: resolved
 type: bug
 area: examples
 related: [issue-0735, issue-0196, rfc-0065]
+resolved_in: "cc2c1321a3"
 ---
+
+## Resolution (2026-10-12)
+
+Fixed on main by `cc2c1321a3`, `b581473344`. The hand-written C `freertos_entry` and the root CMakeLists that routed s32z270 to it are deleted; entries are generated from `[image.*]`, so the (entry x board) pairing is derived. Found during the re-homing sweep when phase-383 was archived. The original report follows.
 
 ## Problem
 
@@ -88,7 +93,7 @@ Short term: give the C entry the same shape the C++ entry already has, and add a
 `workspace-c-s32z270-freertos` fixture row so the route is exercised.
 
 Structurally: this is the (entry × board) pairing being implicit.
-[RFC-0065](../design/0065-colcon-like-workspace-builder.md) makes the pair
+[RFC-0065](../../design/0065-colcon-like-workspace-builder.md) makes the pair
 explicit and derived — an entry synthesised for a declared image cannot disagree
 with the board it is built for, because it is generated from it. This issue is a
 good acceptance case for that work.

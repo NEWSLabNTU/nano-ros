@@ -210,7 +210,8 @@ tree's entries and judged images no run of this tree made.
       provisioning (all on or before 2026-09-16) and 5 in the build (every run
       since). Provisioning is fixed; the build cause is identified and fixed
       above. This item stays open until a nightly says otherwise, and issue
-      1158 at [phase-416](phase-416-tier2-lane-and-single-spelling.md) still
+      1158, re-homed here from the archived
+      [phase-416](archived/phase-416-tier2-lane-and-single-spelling.md) on 2026-10-12,
       owns whatever is behind it — a lane that has never reached its cells has
       no way to show what the next failure is.
 
@@ -465,6 +466,8 @@ unpacked, unusable SDK that the verb cannot repair.
   [phase-447](archived/phase-447-provisioning-revision.md). W3 states where the SDK must
   land and lets 447 own how it gets there.
 * Fixing the tier-2 lane's other stages. Issue 1158's "no runtime verdict in six
-  scheduled runs" is homed at
-  [phase-416](phase-416-tier2-lane-and-single-spelling.md); W2 here removes one
-  of its causes and does not claim the rest.
+  scheduled runs" was homed at
+  [phase-416](archived/phase-416-tier2-lane-and-single-spelling.md) and moved here
+  when that phase was archived (2026-10-12). W2 removes one of its causes; the
+  issue stays open until a scheduled tier-2 run reaches its cells. Homing it here
+  gives it an owner. It does not make the other stages this phase's work.

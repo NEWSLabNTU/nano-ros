@@ -2,11 +2,16 @@
 id: 953
 title: "A panic in the Python half crosses `extern \"C\"` and ABORTS the resolver —
   0897 removed the loader abort and left this one"
-status: open
+status: resolved
 type: bug
 area: tooling
 related: [0897, 0915, 0914]
+resolved_in: "cb46e0f940"
 ---
+
+## Resolution (2026-10-12)
+
+Fixed on main by `cb46e0f940`. The play_launch pin wraps the pyexec C ABI in `catch_unwind`, so a Python-half panic no longer aborts the resolver. Found during the re-homing sweep when phase-383 was archived. The original report follows.
 
 ## CORRECTION — the reproduction below was against a STALE checkout
 
@@ -75,7 +80,7 @@ Panics are the one path out that it does not cover.
 
 ## Why this matters beyond one fixture
 
-This is the failure mode [issue 0897](archived/0897-resolver-libpython-runtime-discovery.md)
+This is the failure mode [issue 0897](0897-resolver-libpython-runtime-discovery.md)
 was filed to remove. Its `pyload` header states the contract:
 
 > **What the caller gets** — A `Result`, never an abort.

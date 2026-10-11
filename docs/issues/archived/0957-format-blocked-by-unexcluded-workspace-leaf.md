@@ -1,12 +1,17 @@
 ---
 id: 957
 title: "`just format` fails whole-tree — a workspace leaf is in neither the root members nor the exclude list"
-status: open
+status: resolved
 area: build
 severity: low
 found: 2026-08-31
 related: [phase-383, phase-411]
+resolved_in: "f24e9c519f"
 ---
+
+## Resolution (2026-10-12)
+
+Fixed on main by `f24e9c519f`. The root `Cargo.toml` excludes the whole `examples/workspaces` prefix, which closes the class. Found during the re-homing sweep when phase-448 was archived. The original report follows.
 
 # The documented pre-change practice does not run
 

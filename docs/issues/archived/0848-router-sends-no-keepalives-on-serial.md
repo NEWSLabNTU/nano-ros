@@ -9,7 +9,7 @@ resolved_in: not-a-router-defect
 related: [issue-0852, issue-0839, issue-0821]
 ---
 
-## OUTCOME: the router is exonerated — see [issue 0852](../0852-zephyr-serial-rx-is-polled-and-overruns.md)
+## OUTCOME: the router is exonerated — see [issue 0852](0852-zephyr-serial-rx-is-polled-and-overruns.md)
 
 This issue accused the router across several successive framings. All of them
 were wrong. The defect is in **nano-ros' own Zephyr serial receive path**.

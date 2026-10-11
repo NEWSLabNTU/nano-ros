@@ -7,6 +7,8 @@ area: core
 related: [phase-392, phase-403, issue-0896]
 ---
 
+**Home: [phase-403](../roadmap/phase-403-type-bound-rx-sizing.md)** — re-homed 2026-10-12 from phase-392, which is archived.
+
 ## Problem
 
 phase-392 W3c made the arena receive buffer derive from the message type by

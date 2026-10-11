@@ -6,8 +6,10 @@ status: open
 type: bug
 area: testing, build, c-api
 severity: high
-related: [issue-0196, issue-0952, issue-0993, issue-1175, phase-395, phase-417, phase-413]
+related: [issue-0196, issue-0952, issue-0993, issue-1175, phase-395, phase-417, phase-413, phase-489]
 ---
+
+**Home: [phase-489](../roadmap/phase-489-ci-build-speedup.md)** — re-homed 2026-10-12 from phase-413, which is archived.
 
 ## Status 2026-09-11
 

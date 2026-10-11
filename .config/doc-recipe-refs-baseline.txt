@@ -36,7 +36,7 @@ book/src/start-here/setup-compared-to-ros2.md	install-local
 docs/design/0058-multi-edition-ros-test-harness.md	ros-edition-image
 docs/development/test-harness.md	orin-spe
 docs/guides/esp32-setup.md	esp32
-docs/issues/1038-nightly-job-does-not-provision-its-lane.md	esp32
+docs/issues/archived/1038-nightly-job-does-not-provision-its-lane.md	esp32
 docs/issues/README.md	build-zenoh-pico-arm
 docs/issues/README.md	esp32
 docs/issues/README.md	native
@@ -61,10 +61,10 @@ docs/roadmap/book-audit/acc5/SUMMARY.md	esp32
 docs/roadmap/book-audit/acc5/esp32.md	esp32
 docs/roadmap/phase-162-rt-scheduling-harness.md	rt-test
 docs/roadmap/phase-217-arm-fvp-local-runtime.md	zephyr
-docs/roadmap/phase-236-cpp-entry-embedded-runtime.md	zephyr
+docs/roadmap/archived/phase-236-cpp-entry-embedded-runtime.md	zephyr
 docs/roadmap/phase-395-dev-workflow-migration.md	ci-l2
 docs/roadmap/phase-395-dev-workflow-migration.md	ci-l4-tier1
-docs/roadmap/phase-413-ci-workflow-user-parity.md	esp32
+docs/roadmap/archived/phase-413-ci-workflow-user-parity.md	esp32
 examples/esp32-c3-baremetal/README.md	esp32
 packages/cli/CONTRIBUTING.md	build-build-tools
 packages/cli/CONTRIBUTING.md	build-user-libs

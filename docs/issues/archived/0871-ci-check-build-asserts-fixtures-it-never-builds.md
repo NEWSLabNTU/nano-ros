@@ -2,11 +2,16 @@
 id: 871
 title: "Every PR is red on a fixture CI never builds — and `main` cannot see it,
   because the required gate does not run on push"
-status: open
+status: resolved
 type: bug
 area: ci, testing
 related: [issue-0196, issue-0034, issue-0837, phase-395]
+resolved_in: "e44ba14cd6"
 ---
+
+## Resolution (2026-10-12)
+
+Fixed on main by `e44ba14cd6`, `20ad8f88a3`. The CI fixture build is narrowed to the rows the gate asserts, `check-build` is schedule-only, and `check-lane-contracts` enforces the class. Found during the re-homing sweep when phase-396 was archived. The original report follows.
 
 ## Symptom
 

@@ -207,7 +207,7 @@ then green again with W1 restored. 17 self-test assertions, on the normal path.
 - [GitHub Merge Queue in 2026 — Tenki](https://tenki.cloud/blog/github-merge-queue-setup)
 - [Pre and post-merge tests using a merge queue — Aviator](https://www.aviator.co/blog/pre-and-post-merge-tests-using-a-merge-queue/)
 
-## Issues homed here (survey 2026-09-03)
+## Issues formerly homed here (survey 2026-09-03; re-homed or resolved 2026-10-12)
 Every open issue was checked for a home phase; these had none, or were
 mentioned here only in passing. A mention is not an owner — an issue with
 no work item is an issue nobody is accountable for, which is the same shape
@@ -216,11 +216,11 @@ holds the evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0871](../../issues/0871-ci-check-build-asserts-fixtures-it-never-builds.md) | every PR red on a fixture CI never builds, and `main` cannot see it because the required gate does not run on push |
-| [#0872](../../issues/0872-pr-arm-example-check-needs-nros-sync.md) | the PR/nightly check arm has never run to completion — each fix exposes the next environment gap. The pattern this phase keeps meeting |
-| [#0874](../../issues/0874-sccache-ghac-v1-sunset-breaks-every-rustc.md) | sccache 0.8.2 speaks a GitHub cache API that no longer exists, so the compile tier pays full cost on every run |
+| [#0871](../../issues/archived/0871-ci-check-build-asserts-fixtures-it-never-builds.md) | every PR red on a fixture CI never builds, and `main` cannot see it because the required gate does not run on push — **RESOLVED 2026-10-12** (`e44ba14cd6`) |
+| [#0872](../../issues/0872-pr-arm-example-check-needs-nros-sync.md) | the PR/nightly check arm has never run to completion — each fix exposes the next environment gap. The pattern this phase keeps meeting — **re-homed to [phase-395](../phase-395-dev-workflow-migration.md) 2026-10-12** |
+| [#0874](../../issues/archived/0874-sccache-ghac-v1-sunset-breaks-every-rustc.md) | sccache 0.8.2 speaks a GitHub cache API that no longer exists, so the compile tier pays full cost on every run — **RESOLVED 2026-10-12** (`38a219578d`) |
 
-## Issues homed here (survey 2026-09-11)
+## Issues formerly homed here (survey 2026-09-11; re-homed or resolved 2026-10-12)
 
 Every open issue was checked for a home phase; these had none, or were mentioned
 here only in passing. A mention is not an owner — an issue with no work item is
@@ -229,5 +229,5 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1072](../../issues/1072-every-pr-conflicts-on-five-shared-append-targets.md) | 22 of 51 open pull requests conflicted and none of them on code. A shared append target that every PR touches IS queue throughput; the `check.just` half is fixed and four surfaces remain |
-| [#1091](../../issues/1091-ledger-shards-conflict-on-sorted-key-insert.md) | the api-parity ledger is the largest remaining cluster of #1072's measurement — 17 sorted shards. Same fix family, and it is the one still serialising merges |
+| [#1072](../../issues/archived/1072-every-pr-conflicts-on-five-shared-append-targets.md) | 22 of 51 open pull requests conflicted and none of them on code. A shared append target that every PR touches IS queue throughput; the `check.just` half is fixed and four surfaces remain — **RESOLVED 2026-10-12** (`6c52892cc0`) |
+| [#1091](../../issues/1091-ledger-shards-conflict-on-sorted-key-insert.md) | the api-parity ledger is the largest remaining cluster of #1072's measurement — 17 sorted shards. Same fix family, and it is the one still serialising merges — **re-homed to [phase-395](../phase-395-dev-workflow-migration.md) 2026-10-12** |
