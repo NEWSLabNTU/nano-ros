@@ -224,7 +224,7 @@ fn render_ffi_rs(spec: FfiRenderSpec<'_>) -> Result<GeneratedFfiRs, GeneratorErr
     let serialized_size_max = compute_serialized_size_max(spec.ffi_fields);
     let has_heap = spec.ffi_fields.iter().any(|f| f.is_heap);
     let has_heap_string = spec.ffi_fields.iter().any(|f| f.is_heap && f.is_string);
-    let has_borrowed = spec.ffi_fields.iter().any(|f| f.is_borrowed);
+    let has_borrowed = spec.ffi_fields.iter().any(|f| f.is_view);
     let view_repr_struct_name = format!("{}_view", spec.struct_name);
     let deserialize_view_fn = format!("{}_borrowed", spec.deserialize_fn);
 
@@ -366,7 +366,7 @@ pub fn generate_cpp_message_package_with_lookup(
     let dependencies = extract_deps(&message.fields);
     let intra_package_includes = extract_intra_package_includes(&message.fields, package_name);
     let has_fields = !cpp_fields.is_empty();
-    let has_borrowed = cpp_fields.iter().any(|f| f.is_borrowed);
+    let has_borrowed = cpp_fields.iter().any(|f| f.is_view);
     let serialized_size_max = compute_serialized_size_max(&ffi_fields);
 
     // phase-408 W1 — the DERIVED bound, from the same

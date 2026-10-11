@@ -101,7 +101,7 @@
     view type, everything else keeps the owned type (RFC-0033: the owned struct
     stays for the publish path; the view aliases the receive buffer). -#}
 {%- macro view_field_decl(field) -%}
-{%- if field.is_borrowed %}
+{%- if field.is_view %}
     pub {{ field.name }}: {{ field.borrowed_rust_type }},
 {%- else %}
     pub {{ field.name }}: {{ field | nros_type }},
@@ -111,7 +111,7 @@
 {#- Issue 0346 — the borrowed deserialize arm: borrowed fields read a slice out
     of the buffer, everything else falls back to the owned arm above. -#}
 {%- macro borrowed_deser_field(field, inline_mode) -%}
-{%- if field.is_borrowed %}
+{%- if field.is_view %}
             {{ field.name }}: {{ field.borrowed_read_expr }},
 {%- else %}
 {{- deser_field(field, inline_mode) }}

@@ -200,10 +200,10 @@ pub struct NrosField {
     /// borrowing the receive buffer rather than an owned container. The owned
     /// `{Msg}` struct still renders this field with [`rust_type`](Self::rust_type)
     /// (default-capacity owned) for the publish path.
-    pub is_borrowed: bool,
+    pub is_view: bool,
     /// Borrowed view type for this field (e.g. `&'a [u8]`, `&'a str`,
     /// `nros_core::LeSliceView<'a, f32>`). Empty unless
-    /// [`is_borrowed`](Self::is_borrowed).
+    /// [`is_view`](Self::is_view).
     pub borrowed_rust_type: String,
     /// Full `CdrReader` borrowed-read expression for the view's
     /// `deserialize_view` (e.g. `reader.read_slice_u8()?`,
@@ -462,14 +462,14 @@ pub struct CField {
     /// the additionally-emitted `{Msg}_View` borrows this field zero-copy via
     /// [`borrowed_c_type`](Self::borrowed_c_type) /
     /// [`borrowed_read_fn`](Self::borrowed_read_fn).
-    pub is_borrowed: bool,
+    pub is_view: bool,
     /// Borrowed-view C type from `nros/view.h` (e.g. `nros_view_str_t`,
     /// `nros_view_bytes_t`, `nros_le_slice_view_f32_t`). Empty unless
-    /// [`is_borrowed`](Self::is_borrowed).
+    /// [`is_view`](Self::is_view).
     pub borrowed_c_type: String,
     /// `nros/view.h` reader for the borrowed view (e.g.
     /// `nros_cdr_borrow_string`); all share one signature. Empty unless
-    /// [`is_borrowed`](Self::is_borrowed).
+    /// [`is_view`](Self::is_view).
     pub borrowed_read_fn: String,
 }
 
@@ -705,7 +705,7 @@ pub struct CppFfiField {
     /// RFC-0033 `mode = "view"` (Phase 235). The `{Msg}ViewRepr` FFI struct
     /// stores this field as `nros_cpp_borrow_t`; `{Msg}_ffi_deserialize_view`
     /// fills it via [`borrowed_reader_call`](Self::borrowed_reader_call).
-    pub is_borrowed: bool,
+    pub is_view: bool,
     /// `CdrReader` borrow call (no `?`), e.g. `read_string()`,
     /// `read_slice_u8()`, `read_le_slice::<f32>()`. Empty unless borrowed.
     pub borrowed_reader_call: String,
@@ -727,9 +727,9 @@ pub struct CppField {
     pub cap: Option<usize>,
     pub current_package: String,
     /// RFC-0033 `mode = "view"` (Phase 235): emitted in `{Msg}View`.
-    pub is_borrowed: bool,
+    pub is_view: bool,
     /// Borrowed view type for `{Msg}View` (`rclcpp::StringView` / `Span<T>` /
-    /// `LeSpan<T>`). Empty unless [`is_borrowed`](Self::is_borrowed).
+    /// `LeSpan<T>`). Empty unless [`is_view`](Self::is_view).
     pub borrowed_cpp_type: String,
 }
 

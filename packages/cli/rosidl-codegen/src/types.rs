@@ -1443,7 +1443,7 @@ pub fn cpp_repr_c_type_spelling(
 #[allow(clippy::too_many_arguments)]
 pub fn cpp_view_repr_type_spelling(
     field_type: &FieldType,
-    is_borrowed: bool,
+    is_view: bool,
     is_sequence: bool,
     is_heap: bool,
     is_string: bool,
@@ -1452,7 +1452,7 @@ pub fn cpp_view_repr_type_spelling(
     field_name: &str,
     current_package: Option<&str>,
 ) -> String {
-    if is_borrowed {
+    if is_view {
         "nros_cpp_borrow_t".to_string()
     } else {
         cpp_repr_c_type_spelling(
@@ -1635,7 +1635,7 @@ pub fn repr_c_type_for_field_with_capacity(
 /// owned-with-capacity string/sequence; `None` is the plain/non-configurable case.
 pub fn cpp_type_spelling(
     field_type: &FieldType,
-    is_borrowed: bool,
+    is_view: bool,
     is_heap: bool,
     cap: Option<usize>,
     current_package: Option<&str>,
@@ -1644,7 +1644,7 @@ pub fn cpp_type_spelling(
         Some(c) => cpp_type_for_field_with_capacity(field_type, current_package, c),
         None => cpp_type_for_field(field_type, current_package),
     };
-    if is_borrowed {
+    if is_view {
         // Owned struct keeps its resolved-capacity container (publish path).
         return owned_or_plain(cap);
     }
@@ -1670,8 +1670,8 @@ pub fn cpp_type_spelling(
 
 /// RFC-0068 Stage 3 — the C++ header `array_suffix` (companion to
 /// [`cpp_type_spelling`]); empty for a borrowed field.
-pub fn cpp_array_suffix_spelling(field_type: &FieldType, is_borrowed: bool) -> String {
-    if is_borrowed {
+pub fn cpp_array_suffix_spelling(field_type: &FieldType, is_view: bool) -> String {
+    if is_view {
         String::new()
     } else {
         cpp_array_suffix_for_field(field_type)
