@@ -5,15 +5,15 @@
   ],
   "rust:MAX_AGE_MONITORS": {
     "verdict": "extension",
-    "why": "phase-467 W1 -- how many age contract rows one executor watches (`NROS_EXECUTOR_MAX_AGE_MONITORS`). See `rust:MAX_MONITORS`."
+    "why": "phase-496 W1 -- how many age contract rows one executor watches (`NROS_EXECUTOR_MAX_AGE_MONITORS`). See `rust:MAX_MONITORS`."
   },
   "rust:MAX_MONITORS": {
     "verdict": "extension",
-    "why": "phase-467 W1 -- how many rate/latency contract rows one executor watches; the generated `NROS_EXECUTOR_MAX_MONITORS`, derived from the contract. See `rust:MonitorSpec`."
+    "why": "phase-496 W1 -- how many rate/latency contract rows one executor watches; the generated `NROS_EXECUTOR_MAX_MONITORS`, derived from the contract. See `rust:MonitorSpec`."
   },
   "rust:MonitorTableFull": {
     "verdict": "extension",
-    "why": "phase-467 W1 -- the refusal of a monitor table past `MAX_MONITORS` / `MAX_AGE_MONITORS`; its Display names the knob to raise. See `rust:MAX_MONITORS`."
+    "why": "phase-496 W1 -- the refusal of a monitor table past `MAX_MONITORS` / `MAX_AGE_MONITORS`; its Display names the knob to raise. See `rust:MAX_MONITORS`."
   },
   "rust:SOURCE_METADATA_SCHEMA_VERSION": {
     "verdict": "extension",
@@ -1315,7 +1315,7 @@
   },
   "rust:check_table_capacity": {
     "verdict": "extension",
-    "why": "phase-467 W1 -- the one capacity check every monitor installer makes (the Rust `try_set_monitor_tables` and the C ABI's `nros_cpp_install_monitors`). See `rust:MonitorTableFull`."
+    "why": "phase-496 W1 -- the one capacity check every monitor installer makes (the Rust `try_set_monitor_tables` and the C ABI's `nros_cpp_install_monitors`). See `rust:MonitorTableFull`."
   },
   "rust:install_contract_monitors": {
     "verdict": "extension",

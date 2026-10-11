@@ -942,7 +942,7 @@ function(nros_resolve_knobs)
     _nros_resolve_derivable_knob(NROS_EXECUTOR_MAX_SC
         "${CONFIG_NROS_EXECUTOR_MAX_SC}" NROS_DERIVED_EXECUTOR_MAX_SC
         "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
-    # phase-467 W1 (issue 1471) -- the executor's contract-monitor tables, on
+    # phase-496 W1 (issue 1471) -- the executor's contract-monitor tables, on
     # the same ladder and from the same inventory, which counts the rows from
     # the contract the entry bakes. Both Kconfig defaults are the `-1` DERIVE
     # sentinel, so these are the ONLY resolves of them in this file.

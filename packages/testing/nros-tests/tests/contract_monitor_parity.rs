@@ -333,7 +333,7 @@ fn run_monitor_capacity(locator: &str, rows: &str) -> String {
         .unwrap_or_else(|e| panic!("monitor-capacity (MC_ROWS={rows}) did not finish: {e}"))
 }
 
-/// phase-467 W1 (issue 1471) -- the Autoware Safety Island's shape: 14
+/// phase-496 W1 (issue 1471) -- the Autoware Safety Island's shape: 14
 /// contracted rate rows on ONE executor install, where `MAX_MONITORS = 8`
 /// refused them (the C++ setup returned -6 before any node existed).
 #[rstest]

@@ -1,9 +1,9 @@
-//! phase-467 W1 (issue 1471) -- how many contract-monitor rows one executor
+//! phase-496 W1 (issue 1471) -- how many contract-monitor rows one executor
 //! accepts.
 //!
 //! The Autoware Safety Island bakes 14 rate rows (one per contracted publisher
 //! carrying `min_rate_hz`) and no age rows, all on ONE executor. Before
-//! phase-467 `MAX_MONITORS` was a literal 8, so the C++ install refused the
+//! phase-496 `MAX_MONITORS` was a literal 8, so the C++ install refused the
 //! table and the generated setup returned -6 before creating a node. It is
 //! now `NROS_EXECUTOR_MAX_MONITORS`, derived from the contract, and this
 //! fixture is built with it STATED at 14 (its `examples/fixtures.toml` row):

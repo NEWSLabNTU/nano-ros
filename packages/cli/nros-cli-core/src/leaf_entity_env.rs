@@ -619,7 +619,7 @@ pub const DERIVED_ENV_KEYS: &[&str] = &[
     "ZPICO_MAX_SUBSCRIBERS",
 ];
 
-/// phase-467 W1 (issue 1471) -- the contract-monitor table sizes.
+/// phase-496 W1 (issue 1471) -- the contract-monitor table sizes.
 ///
 /// Kept apart from [`DERIVED_ENV_KEYS`] because they need a MODEL and those
 /// keys need only the probe: the counts are `monitor_rows(model).len()` and
@@ -801,7 +801,7 @@ pub fn render_env_sidecar_with_facts(
     for (k, v) in &vals {
         s.push_str(&format!("{k} = \"{v}\"\n"));
     }
-    // phase-467 W1 -- the monitor tables, only when a model was counted.
+    // phase-496 W1 -- the monitor tables, only when a model was counted.
     // Unfloored: zero rows is an empty inline array, not a `#error`.
     if let (Some(rows), Some(ages)) = (knobs.max_monitors, knobs.max_age_monitors) {
         s.push_str(&format!("NROS_EXECUTOR_MAX_AGE_MONITORS = \"{ages}\"\n"));
@@ -1182,7 +1182,7 @@ pub fn with_fact_infra(inv: &mut EntityInventory, facts: &BTreeMap<String, Strin
     });
 }
 
-/// phase-467 W1 -- the probe sees no contract, so the monitor-table counts
+/// phase-496 W1 -- the probe sees no contract, so the monitor-table counts
 /// come from the leaf's resolved model, and only when that model describes
 /// wiring (the same predicate the cmake road's `from_model` applies): a model
 /// with no contract says nothing about monitors, and a hand-built table in

@@ -1102,7 +1102,7 @@ mod tests {
         //     predates the allowance idiom and its first 8 rows stay folded
         //     into the base; naming it whole would mean re-tuning the base
         //     literal against a size that is target-dependent.
-        //   * phase-467 W1 made both tables KNOBS (`NROS_EXECUTOR_MAX_MONITORS`
+        //   * phase-496 W1 made both tables KNOBS (`NROS_EXECUTOR_MAX_MONITORS`
         //     / `..._AGE_MONITORS`, derived from the contract's row counts).
         //     They stay inline on purpose -- the spin loop indexes them in
         //     parallel with a `&'static` spec table -- so they are exempt the

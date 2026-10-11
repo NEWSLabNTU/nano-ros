@@ -359,7 +359,7 @@ impl Resolved {
                     ("max_liveliness", k.max_liveliness),
                     ("max_cell_entities", k.max_cell_entities),
                 ];
-                // phase-467 W1 -- the monitor tables, only when a model was
+                // phase-496 W1 -- the monitor tables, only when a model was
                 // counted; absent is "no count", never zero.
                 if let (Some(r), Some(a)) = (k.max_monitors, k.max_age_monitors) {
                     rows.push(("max_monitors", r));
@@ -440,7 +440,7 @@ impl Resolved {
                 let _ = writeln!(s, "action_clients = {}", k.heavy_slots);
                 let _ = writeln!(s, "max_nodes = {}", k.max_nodes);
                 let _ = writeln!(s, "max_sc = {}", k.max_sc);
-                // phase-467 W1 -- the two contract-monitor tables, when counted.
+                // phase-496 W1 -- the two contract-monitor tables, when counted.
                 if let (Some(r), Some(a)) = (k.max_monitors, k.max_age_monitors) {
                     let _ = writeln!(s, "max_monitors = {r}");
                     let _ = writeln!(s, "max_age_monitors = {a}");
@@ -840,7 +840,7 @@ mod tests {
     /// hand-listed pairing, so a knob added to one transport and not the other
     /// reds this instead of drifting quietly (the `NROS_DERIVED_NROS_MAX_*`
     /// class, which cmake resolves to EMPTY rather than to an error).
-    /// phase-467 W1 -- the monitor rows, which only a model states, travel
+    /// phase-496 W1 -- the monitor rows, which only a model states, travel
     /// on BOTH transports with the same numbers: the island's 14 rate rows and
     /// 0 age rows.
     #[test]
@@ -895,7 +895,7 @@ mod tests {
         ];
         let rows: BTreeMap<&str, usize> = r.value_rows().into_iter().collect();
         for (toml_key, cmake_var) in pairs {
-            // phase-467 W1 -- the monitor rows are stated only with a model;
+            // phase-496 W1 -- the monitor rows are stated only with a model;
             // `resolved_toml_and_cmake_agree_on_monitor_rows` covers them.
             let Some(&v) = rows.get(toml_key) else {
                 assert!(

@@ -49,7 +49,7 @@ ros-launch-manifest-sched = { git = "https://github.com/NEWSLabNTU/ros-launch-ma
 # W5.13 follow-up — `mapper_input` adapts a resolved `SystemModel` into the
 # `MapperInput` the realizer ranks; the model types live in the sibling crate.
 ros-launch-manifest-model = { git = "https://github.com/NEWSLabNTU/ros-launch-manifest.git", tag = "v0.1.40" }
-# phase-457 W2 (rlm design issue #52) - the ONE derivation of the mapper's
+# phase-495 W2 (rlm design issue #52) - the ONE derivation of the mapper's
 # input from a SystemModel, shared with play_launch. `mapper_input` used to
 # reimplement it and the two copies disagreed on the trigger, the criticality
 # and the concurrency rule; it is a call now. SAME tag as the three rlm deps

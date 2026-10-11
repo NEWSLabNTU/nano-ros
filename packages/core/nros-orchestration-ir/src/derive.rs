@@ -453,9 +453,9 @@ mod tests {
     /// A contract-only model: control is a tight 5 ms / 100 Hz loop, telem a
     /// slack 100 ms / 10 Hz loop, NO `execution.tiers`.
     ///
-    /// phase-457 W1 - each timer path carries its `trigger` (rlm v0.1.37,
+    /// phase-495 W1 - each timer path carries its `trigger` (rlm v0.1.37,
     /// design issue #52): the timer's rate lives on the path, and an empty
-    /// `input` says nothing about what fires it. phase-457 W2 - the
+    /// `input` says nothing about what fires it. phase-495 W2 - the
     /// publishers' rate PROMISES that W1 kept beside the timers are gone,
     /// because nothing derives a period from them any more: the schedule
     /// below is read off the triggers alone.

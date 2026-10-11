@@ -29,7 +29,7 @@
 //! read it. Issue 1339.
 //!
 //! Two of the tests below were TRIPWIRES for that gap, written to go RED the
-//! day the model carries the field. phase-457 W1 moved the pins to rlm
+//! day the model carries the field. phase-495 W1 moved the pins to rlm
 //! v0.1.37 and play_launch 0.12.0 (design issue #52), and both went red as
 //! designed: `SubContract.buffer` and `PathContract.trigger` now reach the
 //! model. They assert the ARRIVAL now, so the model side of issue 1339 stays
@@ -160,7 +160,7 @@ fn the_model_carries_the_buffer_discipline() {
 /// `sched` crate's adjacent `kind`/`value` shape. `from_model` still recovers
 /// the rate from what the timer PUBLISHES (the convention
 /// `mapper_input::pub_rate_hz` used); reading it from here is issue 1339's
-/// consumer half, and phase-457 W2 retires the convention on the mapper side.
+/// consumer half, and phase-495 W2 retires the convention on the mapper side.
 #[test]
 fn the_model_carries_a_paths_trigger_rate() {
     use ros_launch_manifest_sched::EffectiveTrigger;

@@ -2986,7 +2986,7 @@ impl<'s> Executor<'s> {
     /// contracted endpoint's counter cell. Mirrors `set_qos_overrides`:
     /// `&'static`, codegen-baked, empty by default.
     ///
-    /// phase-467 W1 -- the executor watches at most
+    /// phase-496 W1 -- the executor watches at most
     /// [`MAX_MONITORS`](super::monitor::MAX_MONITORS) rows
     /// (`NROS_EXECUTOR_MAX_MONITORS`). A generated entry cannot reach this with
     /// more: its table carries a compile-time assertion that names the knob,
@@ -3003,7 +3003,7 @@ impl<'s> Executor<'s> {
         self.monitor_table = table;
     }
 
-    /// phase-467 W1 -- install BOTH baked monitor tables, or neither.
+    /// phase-496 W1 -- install BOTH baked monitor tables, or neither.
     ///
     /// The refusing installer: a table longer than this executor watches
     /// (`MAX_MONITORS` / `MAX_AGE_MONITORS`) is `Err`, and its `Display` names
@@ -3046,7 +3046,7 @@ impl<'s> Executor<'s> {
     /// `ExecutorConfig::epoch_us`; without one the take path records
     /// nothing and age monitors stay silent).
     ///
-    /// phase-467 W1 -- at most
+    /// phase-496 W1 -- at most
     /// [`MAX_AGE_MONITORS`](super::monitor::MAX_AGE_MONITORS) rows
     /// (`NROS_EXECUTOR_MAX_AGE_MONITORS`), on the same terms as
     /// [`Self::set_monitor_table`].

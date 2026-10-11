@@ -291,7 +291,7 @@ fn node_facts(input: &MapperInput) -> BTreeMap<&str, NodeFacts> {
         execs.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
         let blocking_ms = execs.get(1).copied();
 
-        // phase-457 W4 -- the SHARED fold first. `MapperNode.deadline_us` is
+        // phase-495 W4 -- the SHARED fold first. `MapperNode.deadline_us` is
         // `ros-launch-manifest-derive`'s min over the node's paths'
         // `max_latency_ms` AND its served `srv_endpoints.*.max_response_ms`
         // ("a path's latency budget and a service's response bound are the same
@@ -299,7 +299,7 @@ fn node_facts(input: &MapperInput) -> BTreeMap<&str, NodeFacts> {
         // alone is what this used to do, and it dropped every service bound:
         // phase-434 listed `max_response_ms` as "carried and read by nothing
         // here". It is also the value play_launch ranks from, which is the
-        // point of phase-457 -- the tier Zephyr gives a node and the priority
+        // point of phase-495 -- the tier Zephyr gives a node and the priority
         // Linux gives it are computed from ONE answer.
         //
         // The path fold stays as the fallback because a `MapperInput` built by
@@ -321,7 +321,7 @@ fn node_facts(input: &MapperInput) -> BTreeMap<&str, NodeFacts> {
         // trigger over the node's paths: the AUTHORED
         // `paths.<p>.trigger.timer.rate_hz`, carried into the model as
         // `PathContract::trigger` (rlm v0.1.37) and nothing else. Before
-        // phase-457 W2 this crate rebuilt the rate from the first output's
+        // phase-495 W2 this crate rebuilt the rate from the first output's
         // `pub.<ep>.min_rate_hz` -- a publication PROMISE -- so editing the
         // trigger changed no schedule. Reading the shared value is what keeps
         // the Zephyr period and play_launch's rate-monotonic rank ONE answer;
@@ -1794,7 +1794,7 @@ mod tests {
         }
     }
 
-    /// phase-457 W4 -- a service's response bound is a DEADLINE, and it reaches
+    /// phase-495 W4 -- a service's response bound is a DEADLINE, and it reaches
     /// the tier the Zephyr shim hands to `k_thread_deadline_set`.
     ///
     /// The shared derivation (`ros-launch-manifest-derive`) folds every served
@@ -1909,7 +1909,7 @@ mod tests {
     ///
     /// The model is the shape the issue measured, made to DISAGREE: a 25 Hz
     /// timer path publishing two endpoints, the first-listed promising
-    /// `min_rate_hz: 10` and the second `40`. The pre-phase-457 reader took the
+    /// `min_rate_hz: 10` and the second `40`. The pre-phase-495 reader took the
     /// first output that carried a promise (`find_map`), so this would have
     /// been 100 ms; listed the other way round, 25 ms. The trigger says 40 ms.
     /// Neither promise is a schedule input: a floor below the fire rate is
@@ -2003,7 +2003,7 @@ mod tests {
     }
 
     /// Issue 1372 -- ONE derivation of the period. `node_facts` reads the
-    /// shared `MapperNode.rate_hz` first, as it reads `deadline_us` (phase-457
+    /// shared `MapperNode.rate_hz` first, as it reads `deadline_us` (phase-495
     /// W4), so the Zephyr period and play_launch's rate-monotonic rank cannot
     /// come from two folds that drift apart. The path fold survives only for a
     /// hand-built input that leaves `rate_hz` unset -- every older test in this

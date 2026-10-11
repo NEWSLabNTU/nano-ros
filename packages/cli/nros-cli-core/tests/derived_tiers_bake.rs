@@ -343,7 +343,7 @@ fn periods(derived: &DerivedSchedule) -> BTreeMap<String, Option<u64>> {
 ///
 /// The fixture's two numbers DIFFER, chosen so that ranking by the promises
 /// inverts the schedule (30 Hz pair promises 5 Hz, 10 Hz pair 8 Hz). Before
-/// phase-457 W2 the mapper rebuilt a node's rate from its first output's
+/// phase-495 W2 the mapper rebuilt a node's rate from its first output's
 /// `min_rate_hz`, which would put the 10 Hz pair first with 125 ms / 200 ms
 /// periods; the issue measured exactly that substitution on the island, where
 /// it was invisible because every contract stated the two numbers equal.

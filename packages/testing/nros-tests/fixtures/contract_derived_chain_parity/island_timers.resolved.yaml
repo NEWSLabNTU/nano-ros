@@ -1,4 +1,4 @@
-# phase-457 W3 - the island, resolved, with every rate PROMISE deleted.
+# phase-495 W3 - the island, resolved, with every rate PROMISE deleted.
 #
 # Four nodes, one `on_timer` path each, at the rates their own
 # `update_rate`/`rate` parameters carry: 30 Hz for
@@ -12,7 +12,7 @@
 # `contracts.pub_endpoints.*.min_rate_hz`, not one
 # `contracts.sub_endpoints.*.min_rate_hz`, and no `contracts.topics.*.rate_hz`.
 # The island's real contract declares all three, equal to the timers, and the
-# resolver flags 14 of them as `derivable-min-rate`. Until phase-457 W2 this
+# resolver flags 14 of them as `derivable-min-rate`. Until phase-495 W2 this
 # side reconstructed a timer's period from the FIRST output's promise, so the
 # island's schedule was right by that redundant declaration and a model
 # without it ranked nothing at all. Delete the promises and the schedule must

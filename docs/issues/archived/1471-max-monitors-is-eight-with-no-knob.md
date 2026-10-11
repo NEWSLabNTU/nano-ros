@@ -8,11 +8,11 @@ type: bug
 area: [core, api, cli]
 severity: high
 found: 2026-09-24
-related: [0810, 1198, phase-462, phase-467]
-resolved_in: phase-467 W1
+related: [0810, 1198, phase-462, phase-496]
+resolved_in: phase-496 W1
 ---
 
-## Resolution (phase-467 W1)
+## Resolution (phase-496 W1)
 
 `MAX_MONITORS` is now two generated consts on the same ladder as `MAX_CBS`
 / `MAX_SC` / `MAX_NODES`, one per table:
@@ -34,7 +34,7 @@ returns `MonitorTableFull`, whose Display says which knob to raise; the C++
 install logs it before `NROS_CPP_RET_FULL`, the generated Rust table carries
 a compile-time assertion with the same words, and `Executor::set_monitor_table`
 panics in a debug build rather than truncating. See
-`docs/roadmap/phase-467-board-files-state-board-facts.md`.
+`docs/roadmap/archived/phase-496-board-files-state-board-facts.md`.
 
 The original report follows unchanged.
 

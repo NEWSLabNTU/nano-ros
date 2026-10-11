@@ -803,7 +803,7 @@ pub struct EntityInventory {
     /// See [`DerivedEntityKnobs::max_sc`] for what it is a term in and why the
     /// node count is the other term.
     tiers: usize,
-    /// phase-467 W1 -- the contract-monitor row counts,
+    /// phase-496 W1 -- the contract-monitor row counts,
     /// `(monitor_rows(model).len(), age_rows(model).len())`: the SAME two
     /// functions the entry emitters bake the tables from, so the executor is
     /// sized for exactly the table it will be handed. `None` for an inventory
@@ -863,7 +863,7 @@ impl ImageFrame {
             // while this is what the integrator authored about how it runs
             // (RFC-0016 tiers, `[tiers.*]` in `system.toml`).
             tiers: model.execution.tiers.len(),
-            // phase-467 W1 -- the contract-monitor tables, counted by the
+            // phase-496 W1 -- the contract-monitor tables, counted by the
             // functions the entry emitters bake them with. An inconsistent
             // model is the emitters' refusal to make, loudly, at codegen; here
             // it only means "no count".
@@ -1388,7 +1388,7 @@ pub struct DerivedEntityKnobs {
     /// scheduling contexts states this knob.
     pub max_sc: usize,
     /// `NROS_EXECUTOR_MAX_MONITORS` -- contract-monitor RATE/LATENCY rows
-    /// (phase-467 W1, issue 1471): `monitor_rows(model).len()`, one row per
+    /// (phase-496 W1, issue 1471): `monitor_rows(model).len()`, one row per
     /// contracted publisher with `min_rate_hz` plus latency-only rows from node
     /// paths. The WHOLE image's count, so an image whose tiers split the table
     /// over several executors over-counts each one, which is the safe
@@ -2617,14 +2617,14 @@ impl EntityInventory {
         self.tiers
     }
 
-    /// phase-467 W1 -- state the contract-monitor row counts
+    /// phase-496 W1 -- state the contract-monitor row counts
     /// `(rate/latency rows, age rows)` for an inventory whose model arrives by
     /// some road other than [`Self::from_model`].
     pub fn set_monitor_rows(&mut self, rows: usize, ages: usize) {
         self.monitor_rows = Some((rows, ages));
     }
 
-    /// phase-467 W1 -- the contract-monitor row counts this inventory was
+    /// phase-496 W1 -- the contract-monitor row counts this inventory was
     /// given, `None` when it saw no model.
     pub fn monitor_rows(&self) -> Option<(usize, usize)> {
         self.monitor_rows
@@ -3397,7 +3397,7 @@ impl EntityInventory {
         // `system.toml`), so this is a max for the same reason `infra` is a
         // union: whichever side saw the declaration is the one that knows.
         out.tiers = self.tiers.max(model.tiers);
-        // phase-467 W1 -- the monitor rows are the model's alone too; a probe
+        // phase-496 W1 -- the monitor rows are the model's alone too; a probe
         // sees no contract. Per table, the larger of whichever side counted.
         out.monitor_rows = match (self.monitor_rows, model.monitor_rows) {
             (Some((r0, a0)), Some((r1, a1))) => Some((r0.max(r1), a0.max(a1))),
@@ -3799,7 +3799,7 @@ impl EntityInventory {
         // for why the second term is the larger of the authored tier count and
         // the node count rather than the tier count alone.
         let max_sc = 1 + self.executor_bound().max(max_nodes);
-        // phase-467 W1 -- the two monitor tables, straight from the counts.
+        // phase-496 W1 -- the two monitor tables, straight from the counts.
         let max_monitors = self.monitor_rows.map(|(rows, _)| rows);
         let max_age_monitors = self.monitor_rows.map(|(_, ages)| ages);
 
@@ -5050,7 +5050,7 @@ impl EntityInventory {
                     "# Scheduling-context slots: slot 0 is the reserved default Fifo\n                     # context, plus one per tier the schedule can create. A bringup\n                     # that authors no tiers can still resolve one per node\n                     # (derive_tiers_from_contracts), so the second term is the LARGER\n                     # of the authored tier count and the node count.\n",
                 );
                 s.push_str(&format!("set(NROS_DERIVED_EXECUTOR_MAX_SC {})\n", k.max_sc));
-                // phase-467 W1 -- the contract-monitor tables, only when a model
+                // phase-496 W1 -- the contract-monitor tables, only when a model
                 // was seen: absent is "no count", and the crate default stands.
                 if let (Some(rows), Some(ages)) = (k.max_monitors, k.max_age_monitors) {
                     s.push_str(
@@ -5879,7 +5879,7 @@ mod tests {
         assert_eq!(inv.to_env(), "");
     }
 
-    /// phase-467 W1 (issue 1471) -- the contract-monitor tables follow the
+    /// phase-496 W1 (issue 1471) -- the contract-monitor tables follow the
     /// CONTRACT, per table, and only a model can say anything about them.
     ///
     /// The Autoware Safety Island's shape: 14 contracted publishers carrying

@@ -1,5 +1,9 @@
 # Phase 467 — the last thirteen `gap` rows: a design study, not an implementation
 
+**Number shared until 2026-10-12** with the board-files phase, now
+[phase-496](archived/phase-496-board-files-state-board-facts.md). An older `phase-467 W1` or
+`W2` reference means that doc; this study's references are by `Row` and `Q`.
+
 **Status (AMENDED 2026-09-28). THE STUDY WAS EXECUTED. Eight of the thirteen
 rows have SHIPPED and the ledger is at 5 repo-wide, down from 13 when this was
 written. The text below is kept as the reasoning that produced those decisions,

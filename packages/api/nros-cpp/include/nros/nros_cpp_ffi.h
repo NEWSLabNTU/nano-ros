@@ -1886,7 +1886,7 @@ nros_cpp_ret_t nros_cpp_executor_set_min_stack_headroom(void *handle, size_t byt
  * unwatched is the class of failure this table exists to remove. The refusal
  * logs the knob to raise, `NROS_EXECUTOR_MAX_MONITORS` or
  * `NROS_EXECUTOR_MAX_AGE_MONITORS`; both derive from the contract's row
- * counts when nothing states them (phase-467 W1). A short or misaligned
+ * counts when nothing states them (phase-496 W1). A short or misaligned
  * storage buffer is refused the same way.
  *
  * # Safety

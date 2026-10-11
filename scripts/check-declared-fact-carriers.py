@@ -345,7 +345,7 @@ FACT_DISPOSITION = {
         "sidecar": ("NROS_EXECUTOR_MAX_SC",),
         "declared": _RETIRED_ONTO_DESCRIPTOR,
     },
-    # phase-467 W1 (issue 1471) -- the contract-monitor tables. Counted from
+    # phase-496 W1 (issue 1471) -- the contract-monitor tables. Counted from
     # the MODEL (`monitor_rows` / `age_rows`, the functions the entry emitters
     # bake the tables with), so every road carries them only when a model was
     # seen, and absent leaves the crate default of 8.
