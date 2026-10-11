@@ -216,22 +216,8 @@ fn resolve(root: &Path, name: &str) -> Result<(BoardDescriptor, PathBuf)> {
             )
         })?
         .clone();
-    let descriptor = board
-        .source
-        .as_deref()
-        .map(|rel| {
-            let p = Path::new(rel);
-            if p.is_absolute() {
-                p.to_path_buf()
-            } else {
-                root.join(rel)
-            }
-        })
+    let dir = board_projection::descriptor_dir(&board, root)
         .ok_or_else(|| eyre!("board `{name}` has no recorded descriptor path"))?;
-    let dir = descriptor
-        .parent()
-        .ok_or_else(|| eyre!("descriptor {} has no parent", descriptor.display()))?
-        .to_path_buf();
     Ok((board, dir))
 }
 

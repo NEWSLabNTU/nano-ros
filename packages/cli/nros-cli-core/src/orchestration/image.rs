@@ -154,8 +154,8 @@ pub struct ImageBlock {
     /// `nano_ros_add_executable(... DEPLOY <token>)` in CMakeLists.txt), and
     /// exactly one package in the workspace claims a given board.
     ///
-    /// Set it when that derivation cannot answer. Two cases, both real in
-    /// `examples/workspaces/realtime-cpp` (issue 1517):
+    /// Set it when that derivation cannot answer. Two cases, both once real
+    /// in `examples/workspaces/realtime-cpp` (issue 1517):
     ///
     /// * AMBIGUOUS — two packages claim the board, so deriving is a coin flip
     ///   between right-looking answers and the resolver names the candidates
@@ -164,11 +164,10 @@ pub struct ImageBlock {
     ///   names its PLATFORM, and the board it really targets comes from
     ///   `nano_ros_use_board(<board>)` in its `CMakeLists.txt`, which the
     ///   token scan does not read. `[image.fvp]` (board `fvp-aemv8r-smp`,
-    ///   entry `fvp_entry`) is this one.
+    ///   entry `fvp_entry`) was this one until issue 1288 generated it.
     ///
-    /// Until issue 1288 generates the entry FROM the row — after which the two
-    /// cannot disagree — a Zephyr image on any board but the `zephyr`
-    /// descriptor's own has to name its application.
+    /// Leaving it unset on Zephyr GENERATES the application from the row, so
+    /// the two cannot disagree; only a hand-written application needs it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entry: Option<String>,
 

@@ -78,13 +78,14 @@ west build -t run            # native_sim; `west flash` for hardware
 See the book's [Images → Running on Zephyr](../../book/src/getting-started/workspace-entry-pkg.md)
 for the full flow.
 
-## FVP board-crate Entry (ws-realtime-cpp-fvp)
+## FVP image (realtime-cpp `[image.fvp]`)
 
-`ws-realtime-cpp-fvp/src/fvp_entry/` (phase-292 W1.a) is the board-crate
-variant of the Zephyr Entry: instead of `west build -b <board>` the entry's
-CMakeLists calls `nano_ros_use_board(fvp-aemv8r-smp)` BEFORE
-`find_package(Zephyr)`, and the board id / base config / DTS overlay /
-default RMW (cyclonedds) / runner all flow from
-`packages/boards/nros-board-fvp-aemv8r-smp/`. This is the Autoware Safety
-Island reference-consumer Entry shape. Build via
-`just zephyr build-fvp-ws-entry` (part of `just zephyr build-fvp-all`).
+`realtime-cpp`'s `demo_bringup` declares `[image.fvp] board =
+"fvp-aemv8r-smp"` (phase-292 W1.a, the Autoware Safety Island
+reference-consumer shape). Its west application is GENERATED (issue 1288):
+`nros build` passes the Zephyr board id from the descriptor and hands the
+application the board package's base config and DTS overlay
+(`packages/boards/nros-board-zephyr/boards/fvp-aemv8r-smp/`) — what the
+retired hand-written `src/fvp_entry` got from `nano_ros_use_board()`. The
+image's own Kconfig is in `demo_bringup/boards/fvp_baser_aemv8r_fvp_aemv8r_aarch64_smp/`.
+Build via `just zephyr build-fvp-ws-entry` (part of `just zephyr build-fvp-all`).

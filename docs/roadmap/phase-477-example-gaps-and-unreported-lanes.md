@@ -39,7 +39,7 @@ own "class 2 does not exist" rule forbids.
 
 ### W1 — entry migration residue
 
-Issue [1288](../issues/1288-zephyr-rust-workspace-entries-not-generated.md):
+Issue [1288](../issues/archived/1288-zephyr-rust-workspace-entries-not-generated.md):
 three hand-written entries remain, none a generator gap.
 
 - **`rust/src/zephyr_entry_robot1`** — add a `cmd::build` unit test that an
@@ -77,6 +77,21 @@ are generated and `src/zephyr_entry` is deleted; merged `.config` identical to
 the hand-written baseline for both, and the `zephyr/c` realtime and SMP
 core-pin cells run green. W1's only remaining entry is `fvp_entry` (another
 session).
+
+**Status 2026-10-11 (realtime-cpp) — W1 DONE.** `fvp_entry` migrated:
+`nros build` now hands a GENERATED west application the board package's own
+Kconfig + devicetree overlay (`board_projection::board_files`, the rule
+`nano_ros_use_board` applies — the "`nano_ros_use_board` + `EXTRA_CONF_FILE`
+axis" above), the package is deleted, its Kconfig is in
+`demo_bringup/boards/fvp_baser_aemv8r_fvp_aemv8r_aarch64_smp/`, and
+`just zephyr build-fvp-ws-entry` runs `nros build demo_bringup:fvp`. Merged
+`.config`, `zephyr.dts` and ELF section sizes identical to the hand-written
+baseline built on the same tree (after stating three lines of the
+`nros-cyclonedds` snippet, which never reaches an application with a
+`system.toml`). Issue 1288 resolved and archived. The runtime check
+(`verify-fvp-runtime`) is red on BOTH images — Cyclone's 1 MiB receive buffer
+exhausts the 1 MiB nros heap at participant create — filed as
+[1814](../issues/1814-fvp-cyclone-heap-exhausted-at-participant-create.md).
 
 Also in this theme: [1289](../issues/1289-workspace-node-tables-still-in-manifests.md)
 (45 node packages still declare their class in `[package.metadata.nros.node]`),
@@ -360,8 +375,9 @@ first-prefix), #1862 (arm-fvp libatomic), #1868 (runner name required).
   arm. The mixed Zephyr fixture's probe reports "DEGRADED … examined
   0 input(s)" — filed 2026-10-11 as issue 1794.
 
-**Still open in this phase:** 1509 rules 2 and 4; W1 `fvp_entry` (another
-session, `fix/477-fvp-lane`); 1512's runtime lane (entry locator bake).
+**Still open in this phase:** 1509 rules 2 and 4; 1512's runtime lane (entry
+locator bake); 1814 (the FVP Cyclone image's heap, found closing W1 — W1 itself
+is done, 2026-10-11).
 Tier-1 CI acceptance (1684/1685): run 37945434581's tier 1 was running on
 runner `newslab-118-server` at stop; tier 2 failed in preflight — triage with
 `just matrix-triage`. The stage reporter labelling a runner-lost job "DID NOT

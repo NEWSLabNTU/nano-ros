@@ -180,7 +180,7 @@ by phase-445 W5).
 | class | shape | how to recognise it | members |
 | --- | --- | --- | --- |
 | **1** | workspace, generated entry | `.colcon_workspace` + `src/*_bringup/system.toml`; no `*_entry` package claims the image | every workspace under `workspaces/`, for every non-Zephyr `[image.*]` row |
-| **1z** | workspace, Zephyr image | the image row builds through `west`; its application is GENERATED (phase-470 W5) unless a hand-written `src/*_entry` package still claims it | every Zephyr `[image.*]` row. The few still hand-written are each blocked for a recorded reason — [issue 1288](../docs/issues/1288-zephyr-rust-workspace-entries-not-generated.md); count them with the command below, not from this table |
+| **1z** | workspace, Zephyr image | the image row builds through `west`; its application is GENERATED (phase-470 W5) unless a hand-written `src/*_entry` package still claims it | every Zephyr `[image.*]` row. None in-tree is hand-written since phase-477 W1 — [issue 1288](../docs/issues/archived/1288-zephyr-rust-workspace-entries-not-generated.md); count them with the command below, not from this table |
 | **1b** | workspace with **no bringup** | `.colcon_workspace`, no `*_bringup` — builds every package in dependency order, colcon's default | `templates/local-msg-package` (a `system.toml` beside a *package*) and `templates/workspace-shadowing` (none at all) |
 | **3** | leaf, cargo owns the link, node-class | leaf has `Cargo.toml`, no `CMakeLists.txt`, and a `system.toml` | most Rust leaves (question 1, first row) **and** the cargo-rooted bare-metal C/C++ leaves |
 | **3a** | leaf, cargo owns the link, **application-shaped** | `[package.metadata.nros.application]` in `Cargo.toml`; the leaf owns `main` and its executor; **no `system.toml`**, never built through `nros build` | 16 `native/rust/*` leaves — the RTIC, async, custom-transport, serial, lifecycle and logging demos. They show what the node-class shape cannot express (the imperative executor API, a user-supplied transport, an RTIC app), so they are a class, not a backlog |
@@ -206,9 +206,9 @@ rather than left unnamed for the next survey to invent:
 
 - **"class 2", hand-written entries.** Not a class — it is class 1z before
   issue 1288. The generator reaches west for Rust and C/C++ since phase-470 W5,
-  and the entry packages still hand-written are each blocked by something OTHER
-  than the generator (two bringups sharing one generated directory, a board this
-  host cannot build, a precedence rule with no test) — recorded in issue 1288.
+  and phase-477 W1 migrated the last three hand-written entry packages (two
+  bringups sharing one generated directory, a board-package preamble, a
+  precedence rule with no test) — recorded in issue 1288, now resolved.
   A shape that exists because something is unfinished must not get a number
   that makes it look like a design.
 - **"class 3r", Rust-only leaf families.** Not a class either. It looks like a

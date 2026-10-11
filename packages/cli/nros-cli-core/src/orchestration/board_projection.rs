@@ -62,6 +62,64 @@ pub fn board_kconfig_symbol(id: &str) -> String {
     format!("BOARD_{}", board.to_uppercase())
 }
 
+/// The Zephyr files a board package carries beside its descriptor.
+///
+/// DERIVED by one rule (RFC-0064 R5 D3/D6), with two readers: the cmake
+/// projection [`project`] (what `nano_ros_use_board()` applies to a
+/// hand-written application) and `nros build`'s west road, which hands the
+/// same files to a GENERATED application (issue 1288 — the FVP image was the
+/// last hand-written entry, and it was hand-written only to call
+/// `nano_ros_use_board`). Each is `Some` only when the file exists.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BoardFiles {
+    /// `prj.conf` beside the descriptor — the board's base Kconfig.
+    pub prj_conf: Option<PathBuf>,
+    /// `boards/<flat>.conf` — the per-board-id Kconfig.
+    pub board_conf: Option<PathBuf>,
+    /// `boards/<flat>.overlay` — the per-board-id devicetree overlay.
+    pub board_overlay: Option<PathBuf>,
+}
+
+impl BoardFiles {
+    /// The Kconfig fragments, in the order `nano_ros_use_board()` merges them.
+    pub fn conf_files(&self) -> Vec<PathBuf> {
+        [&self.prj_conf, &self.board_conf]
+            .into_iter()
+            .flatten()
+            .cloned()
+            .collect()
+    }
+}
+
+/// [`BoardFiles`] for a board whose Zephyr id is `west_board` and whose
+/// descriptor lives in `board_dir`.
+pub fn board_files(west_board: &str, board_dir: &Path) -> BoardFiles {
+    let flat = flatten_board_id(west_board);
+    let existing = |rel: PathBuf| {
+        let abs = board_dir.join(rel);
+        abs.is_file().then_some(abs)
+    };
+    BoardFiles {
+        prj_conf: existing(PathBuf::from("prj.conf")),
+        board_conf: existing(PathBuf::from("boards").join(format!("{flat}.conf"))),
+        board_overlay: existing(PathBuf::from("boards").join(format!("{flat}.overlay"))),
+    }
+}
+
+/// The directory holding `board`'s descriptor, or `None` for an in-memory one.
+///
+/// [`BoardDescriptor::source`] is recorded absolute for a workspace package's
+/// descriptor and relative to the catalog root (`root`) for an in-tree one.
+pub fn descriptor_dir(board: &BoardDescriptor, root: &Path) -> Option<PathBuf> {
+    let src = Path::new(board.source.as_deref()?);
+    let abs = if src.is_absolute() {
+        src.to_path_buf()
+    } else {
+        root.join(src)
+    };
+    abs.parent().map(Path::to_path_buf)
+}
+
 /// One `set(<var> "<value>")` line, with cmake's escaping.
 fn set_line(out: &mut String, var: &str, value: &str) {
     // A cmake string needs `\` and `"` escaped. Paths on this project never
@@ -121,20 +179,13 @@ pub fn project(board: &BoardDescriptor, board_dir: &Path, module_dir: &Path) -> 
     }
 
     // --- derived paths -----------------------------------------------------
-    let flat = flatten_board_id(&zephyr.west_board);
-    for (var, rel) in [
-        ("NROS_BOARD_PRJ_CONF", PathBuf::from("prj.conf")),
-        (
-            "NROS_BOARD_BOARD_CONF",
-            PathBuf::from("boards").join(format!("{flat}.conf")),
-        ),
-        (
-            "NROS_BOARD_BOARD_OVERLAY",
-            PathBuf::from("boards").join(format!("{flat}.overlay")),
-        ),
+    let files = board_files(&zephyr.west_board, board_dir);
+    for (var, path) in [
+        ("NROS_BOARD_PRJ_CONF", &files.prj_conf),
+        ("NROS_BOARD_BOARD_CONF", &files.board_conf),
+        ("NROS_BOARD_BOARD_OVERLAY", &files.board_overlay),
     ] {
-        let abs = board_dir.join(&rel);
-        if abs.is_file() {
+        if let Some(abs) = path {
             set_line(&mut out, var, &abs.display().to_string());
         }
     }

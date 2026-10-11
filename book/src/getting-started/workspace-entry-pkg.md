@@ -298,6 +298,17 @@ declares `[image.zephyr]` (native_sim) and `smp_bringup` declares
 and gets its own generated application and its own `boards/<board>/`
 directory.
 
+A board PACKAGE can carry Zephyr files of its own beside its descriptor — a
+base `prj.conf`, `boards/<board>.conf` and `boards/<board>.overlay`.
+`nros build` hands those to the generated application as the first
+`EXTRA_CONF_FILE` / `EXTRA_DTC_OVERLAY_FILE` entries, by the same rule
+`nano_ros_use_board()` applies to a hand-written one. They merge AFTER the
+bringup's `prj.conf` (Zephyr's `CONF_FILE`) and BEFORE the image's `conf`
+fragments, so a value that must beat the board goes in a `conf` fragment.
+`realtime-cpp`'s `[image.fvp]` (`fvp-aemv8r-smp`) is the in-tree case: it lists
+its own `prj.conf` in `conf` again so that its `CONFIG_RUST=n` lands after the
+board's `CONFIG_RUST=y`.
+
 For a Rust workspace whose image needs a hand-written application after all —
 Kconfig `nros build` cannot express, a `nano_ros_use_board()` preamble — the
 scaffold is still there:
@@ -381,11 +392,10 @@ own `system.toml`, so it is never a candidate for a sibling image.
 
 The other reason to set `entry` is that NO package claims the board — then
 `nros build` falls back to the Bringup directory and you see a conf fragment
-"not found" in a path that is not your application's.
-`examples/workspaces/realtime-cpp`'s `[image.fvp]` is that case: `fvp_entry`
-takes its board from `nano_ros_use_board(...)` in its own `CMakeLists.txt`,
-which the `DEPLOY` scan does not read (issue 1517). Everywhere else, leave
-`entry` out and let the name match.
+"not found" in a path that is not your application's. A hand-written
+application that takes its board from `nano_ros_use_board(...)` in its own
+`CMakeLists.txt` is that case, because the `DEPLOY` scan does not read the call
+(issue 1517). Everywhere else, leave `entry` out and let the name match.
 
 The full Zephyr path — west workspaces, freestanding applications, `west nros`,
 sysbuild — is [Zephyr (west module)](./integration-zephyr.md).

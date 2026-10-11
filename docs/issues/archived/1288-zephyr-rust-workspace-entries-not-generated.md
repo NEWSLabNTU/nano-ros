@@ -1,12 +1,13 @@
 ---
 id: 1288
-title: "The last hand-written Zephyr workspace entries — the generator exists; three remain, each for a recorded reason"
-status: open
+title: "The last hand-written Zephyr workspace entries — the generator exists; three remained, each for a recorded reason (all migrated)"
+status: resolved
+resolved: 2026-10-11
 type: tech-debt
 area: tooling, examples, zephyr
 severity: medium
 found: 2026-09-11
-related: [1108, 1253, 1509, 1511, rfc-0065, rfc-0098, phase-445]
+related: [1108, 1253, 1509, 1511, 1814, rfc-0065, rfc-0098, phase-445, phase-477]
 ---
 
 # What is left of RFC-0065 D4 on Zephyr
@@ -879,3 +880,52 @@ else did. Both fixture rows drop `conf_files`; the SMP row names `image =
 
 Hand-written entries: 2 → 1. Left: `realtime-cpp/src/fvp_entry` (with the
 session on `fix/477-fvp-lane`).
+
+## 2026-10-11 — `realtime-cpp/src/fvp_entry` migrated; nothing hand-written remains (phase-477 W1)
+
+`fvp_entry` was hand-written for one reason: its `CMakeLists.txt` called
+`nano_ros_use_board(fvp-aemv8r-smp)`, which — besides the board id the image
+now states (issue 1517) — layered the board PACKAGE's own Zephyr files onto
+the application: its base `prj.conf`, `boards/<board>.conf` and devicetree
+`boards/<board>.overlay`, plus the `nros-cyclonedds` snippet. A generated
+application got none of them.
+
+- **`nros build` now hands those files to a GENERATED west application**
+  (`cmd::build`, West driver), derived by the same rule the cmake projection
+  uses — `board_projection::board_files`, now the one derivation for both
+  roads. They are the first `EXTRA_CONF_FILE` / `EXTRA_DTC_OVERLAY_FILE`
+  entries, the position `nano_ros_use_board` gave them; a hand-written
+  application gets nothing added. Only `fvp-aemv8r-smp` carries non-empty
+  files today (the `qemu-cortex-a53` and `mps2-an385-zephyr` `prj.conf`s are
+  comment-only), so no other image's `.config` moves. Unit test:
+  `a_generated_west_application_gets_the_board_packages_files` (fails with the
+  new block disabled).
+- **The package is deleted.** Its `prj.conf` / `prj-cyclonedds.conf` moved to
+  `demo_bringup/boards/fvp_baser_aemv8r_fvp_aemv8r_aarch64_smp/`;
+  `[image.fvp]` drops `entry =` and lists `conf = ["prj.conf",
+  "prj-cyclonedds.conf"]` — `prj.conf` AGAIN, because Zephyr merges the
+  bringup's `prj.conf` as CONF_FILE before every extra and its `CONFIG_RUST=n`
+  must beat the board's `CONFIG_RUST=y`. The hand-written application
+  re-appended it for the same reason. There was no `panic`, and no
+  `fixtures.toml` row: the image is built by `just zephyr build-fvp-ws-entry`,
+  which now runs `nros build demo_bringup:fvp -- -d <build-fvp-ws-entry> …`.
+- **Acceptance, a BUILD.** Baseline: the hand-written image built on this tree
+  with `nros build demo_bringup:fvp --zephyr-workspace
+  ~/.nros/workspaces/zephyr/3.7` (`ZEPHYR_EXTRA_MODULES=<checkout>`). The first
+  generated build differed in exactly the `nros-cyclonedds` snippet's lines
+  (`CONFIG_ASSERT`, `CONFIG_LOG_MODE_IMMEDIATE`, `CONFIG_NET_IPV4_IGMP` and
+  what each pulls in): that snippet is for an application with no
+  `system.toml`, so it does not reach a generated one. Those three are now
+  stated in the image's `prj-cyclonedds.conf` (the snippet's other lines
+  already arrive from the board, `prj.conf` or Kconfig defaults). After that
+  the merged `.config` (1645 lines), `zephyr.dts` and `size` of `zephyr.elf`
+  are **identical** to the baseline, and the node set is unchanged (`ctrl_pkg`
+  + `telem_pkg`, the same 8 symbols).
+- **Runtime: NOT green, and not because of this.** `just zephyr
+  verify-fvp-runtime` builds the generated image and the model boots it, but it
+  aborts in `dds_create_participant` with the nros heap exhausted by a 1 MiB
+  Cyclone receive buffer. The baseline (hand-written) ELF fails identically on
+  the same FVP, so it predates the migration: filed as issue 1814.
+
+Hand-written Zephyr entries: 1 → 0. Every one this issue listed is generated,
+so it closes.

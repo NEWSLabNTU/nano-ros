@@ -120,7 +120,7 @@ Zephyr is the one target that still names its board on the command line.
 Everywhere else the board comes from `system.toml` and `nros build` hands
 it to the tool; here the west *application* around the entry is not yet
 generated
-([issue 1288](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1288-zephyr-rust-workspace-entries-not-generated.md)),
+([issue 1288](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1288-zephyr-rust-workspace-entries-not-generated.md)),
 so west's own `-b` is what selects the board. `nros sync` still runs
 first, for the message crates and the resolved model.
 

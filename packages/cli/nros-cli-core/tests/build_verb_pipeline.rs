@@ -391,6 +391,77 @@ fn zephyr_overlays_go_through_extra_conf_file_never_conf_file() {
     );
 }
 
+/// Issue 1288 — a board PACKAGE's own Zephyr files (`fvp-aemv8r-smp` carries a
+/// base `prj.conf` plus `boards/<board>.{conf,overlay}`) reach a GENERATED
+/// application on the `west build` line, ahead of the image's `conf`, which is
+/// the position `nano_ros_use_board()` gives them in a hand-written one. That
+/// call was the only reason `realtime-cpp/src/fvp_entry` was hand-written.
+#[test]
+fn a_generated_west_application_gets_the_board_packages_files() {
+    assert!(
+        nros_cli_core::orchestration::model_location::launch_resolver_bin().is_some(),
+        "nros-launch-resolve not found — run `just setup-launch-resolve`, or point \
+         $NROS_LAUNCH_RESOLVE at one. Generating the application needs a \
+         SystemModel, and this test is about the generated road."
+    );
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    write(
+        &tmp.path().join("src/demo_bringup/launch/system.launch.xml"),
+        "<launch>\n  <node pkg=\"talker_pkg\" exec=\"talker\" name=\"talker\"/>\n</launch>\n",
+    );
+    let bd = tmp
+        .path()
+        .join("src/demo_bringup/boards/fvp_baser_aemv8r_fvp_aemv8r_aarch64_smp");
+    write(&bd.join("prj.conf"), "CONFIG_X=y\n");
+    write(&bd.join("prj-image.conf"), "CONFIG_Y=y\n");
+    let sys = tmp.path().join("src/demo_bringup/system.toml");
+    let text = std::fs::read_to_string(&sys).unwrap();
+    write(
+        &sys,
+        &format!("{text}\n[image.fvp]\nboard = \"fvp-aemv8r-smp\"\nconf = [\"prj-image.conf\"]\n"),
+    );
+
+    let plans = plan_builds(&args(tmp.path(), &["fvp"])).expect("resolves");
+    let line = plans[0].handoff.as_ref().expect("handoff").display();
+    assert!(
+        line.contains(
+            &tmp.path()
+                .join("build/zephyr-zenoh/fvp_entry")
+                .display()
+                .to_string()
+        ),
+        "the application is the generated one: {line}"
+    );
+    let board_dir = repo_root().join("packages/boards/nros-board-zephyr/boards/fvp-aemv8r-smp");
+    let pos = |needle: &Path| {
+        line.find(&needle.display().to_string())
+            .unwrap_or_else(|| panic!("{} missing from: {line}", needle.display()))
+    };
+    let base = pos(&board_dir.join("prj.conf"));
+    let per_board = pos(&board_dir.join("boards/fvp_baser_aemv8r_fvp_aemv8r_aarch64_smp.conf"));
+    let image_conf = pos(&bd.join("prj-image.conf"));
+    assert!(
+        line.contains("-DEXTRA_CONF_FILE=") && base < per_board && per_board < image_conf,
+        "board base, then per-board, then the image's own fragment: {line}"
+    );
+    assert!(
+        line.contains(&format!(
+            "-DEXTRA_DTC_OVERLAY_FILE={}",
+            board_dir
+                .join("boards/fvp_baser_aemv8r_fvp_aemv8r_aarch64_smp.overlay")
+                .display()
+        )),
+        "{line}"
+    );
+
+    // The negative half: the `zephyr` descriptor carries no such files, so its
+    // image's line names none — the rule adds what EXISTS, never a guess.
+    let plans = plan_builds(&args(tmp.path(), &["zephyr"])).expect("resolves");
+    let line = plans[0].handoff.as_ref().expect("handoff").display();
+    assert!(!line.contains("packages/boards"), "{line}");
+}
+
 #[test]
 fn a_cmake_workspace_gets_a_root_under_build_unlike_cargo() {
     // The asymmetry RFC-0065 D3 now records: cmake has no root/member hierarchy

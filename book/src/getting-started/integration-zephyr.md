@@ -475,10 +475,12 @@ conf  = ["prj-zenoh.conf"]      # the RMW overlay this app requires
     C/C++ entries, which are matched by their `DEPLOY` token;
   * **none does** — `nros build` falls back to the Bringup directory, and you
     see a conf fragment "not found" in a path that is not your application's.
-    `examples/workspaces/realtime-cpp`'s `[image.fvp]` is this one: its
-    `fvp_entry` takes its board from `nano_ros_use_board(fvp-aemv8r-smp)`
-    inside its own `CMakeLists.txt`, which the `DEPLOY` scan does not read
-    (issue 1517).
+    A hand-written application that picks its board with
+    `nano_ros_use_board(...)` inside its own `CMakeLists.txt` is this case: the
+    `DEPLOY` scan does not read that call (issue 1517). Usually the better fix
+    is to delete the application — `nros build` generates one and hands it the
+    board package's own Kconfig and devicetree overlay, which is all
+    `nano_ros_use_board` added (issue 1288).
 
 #### If you live in west: `west nros`
 
