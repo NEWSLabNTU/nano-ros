@@ -619,6 +619,29 @@ function(nros_message_bounds_files _output_dir _json_var _cmake_var)
     set(${_cmake_var} "${_output_dir}/nros_message_bounds.cmake" PARENT_SCOPE)
 endfunction()
 
+# nros_codegen_env_prefix(<out_var>)
+#
+# The command prefix every `nros codegen` invocation runs under, so a workspace
+# interface search path set as a cmake VARIABLE reaches the CLI, which reads
+# only the ENV (`load_index_with_fallback`). Empty when the env already carries
+# one (an exported value wins, the smart-stub's layering) or there is none.
+#
+# It was injected into `resolve-deps` alone (phase 293 / issue #212), so the
+# generation and the ament witness/record (RFC-0104 D5) ran without it: a
+# dependency reachable only through the variable was missing from a
+# dependent's ament fingerprint (issue 1780's search-path gap) and from the
+# nested-type lookup its bounds are derived with. One prefix, every call site.
+function(nros_codegen_env_prefix _out)
+    set(_prefix "")
+    if(NOT DEFINED ENV{NROS_INTERFACE_SEARCH_PATH}
+       AND DEFINED NROS_INTERFACE_SEARCH_PATH
+       AND NOT NROS_INTERFACE_SEARCH_PATH STREQUAL "")
+        string(REPLACE ";" ":" _search "${NROS_INTERFACE_SEARCH_PATH}")
+        set(_prefix "${CMAKE_COMMAND}" -E env "NROS_INTERFACE_SEARCH_PATH=${_search}")
+    endif()
+    set(${_out} ${_prefix} PARENT_SCOPE)
+endfunction()
+
 # nros_codegen_ament_stale(<stale_var> TOOL <nros> LANGUAGE <c|cpp>
 #                          ARGS_FILE <json> OUTPUT_DIR <dir>)
 #
@@ -659,8 +682,28 @@ function(nros_codegen_ament_stale _stale)
     set(_witness "${_w_base}.ament.toml")
     # Issue 1018 -- a configure-time call of the tool re-runs when the tool moves.
     nros_codegen_tool_reconfigure("${_W_TOOL}")
+    nros_codegen_env_prefix(_w_env)
+    # The search path this witness was computed under, for a consumer that
+    # recomputes it outside cmake (the Zephyr fixture runner's ninja path):
+    # without it a workspace that sets the path as a cmake VARIABLE would hash
+    # a different closure there and read as moved on every run.
+    if(DEFINED ENV{NROS_INTERFACE_SEARCH_PATH})
+        set(_w_search "$ENV{NROS_INTERFACE_SEARCH_PATH}")
+    elseif(DEFINED NROS_INTERFACE_SEARCH_PATH)
+        string(REPLACE ";" ":" _w_search "${NROS_INTERFACE_SEARCH_PATH}")
+    else()
+        set(_w_search "")
+    endif()
+    set(_w_env_file "${_w_base}.ament.search-path")
+    set(_w_env_was "")
+    if(EXISTS "${_w_env_file}")
+        file(READ "${_w_env_file}" _w_env_was)
+    endif()
+    if(NOT _w_env_was STREQUAL _w_search)
+        file(WRITE "${_w_env_file}" "${_w_search}")
+    endif()
     execute_process(
-        COMMAND "${_W_TOOL}" codegen --args-file "${_W_ARGS_FILE}"
+        COMMAND ${_w_env} "${_W_TOOL}" codegen --args-file "${_W_ARGS_FILE}"
                 --language "${_W_LANGUAGE}" --ament-witness "${_witness}"
         RESULT_VARIABLE _w_rc
         OUTPUT_VARIABLE _w_out
@@ -694,10 +737,40 @@ function(nros_codegen_ament_stale _stale)
     set(${_stale} ${_is_stale} PARENT_SCOPE)
 endfunction()
 
-# nros_codegen_outputs_stale(<out_var> OUTPUTS <files…> INPUTS <files…>)
+# nros_codegen_run_stamp(<out_var> <args_file>)
+#
+# Issue 1803 — the file `nros_codegen_outputs_stale()` compares INPUT mtimes
+# against: `<args>.ran.stamp`, beside the args file, TOUCHED after every
+# successful codegen run (configure-time and build-time alike, via
+# `nros_codegen_touch_run_stamp()` / the custom command's trailing `touch`).
+#
+# The outputs cannot play that role. Codegen is write-if-changed per file, so
+# that an identical regeneration cascades no rebuild — which means that after
+# any input move, every output whose bytes did not change keeps its OLD mtime
+# and stays older than the moved input forever. "Any input newer than any
+# output" then holds on every later configure: measured, the Zephyr lane
+# re-ran codegen for `std_msgs` on every configure, and a predicate that is
+# always true cannot be told apart from a correct one by watching it fire (it
+# made both lanes look as if they caught issue 1780's in-place change). The
+# stamp records WHEN codegen last ran, which is the question being asked.
+function(nros_codegen_run_stamp _out _args_file)
+    string(REGEX REPLACE "\\.json$" "" _rs_base "${_args_file}")
+    set(${_out} "${_rs_base}.ran.stamp" PARENT_SCOPE)
+endfunction()
+
+# nros_codegen_touch_run_stamp(<args_file>) — record a successful codegen run.
+function(nros_codegen_touch_run_stamp _args_file)
+    nros_codegen_run_stamp(_rs_stamp "${_args_file}")
+    file(TOUCH "${_rs_stamp}")
+endfunction()
+
+# nros_codegen_outputs_stale(<out_var> STAMP <run stamp>
+#                            OUTPUTS <files…> INPUTS <files…>)
 #
 # THE configure-time "must codegen run now?" predicate: TRUE when any OUTPUT is
-# missing, or any INPUT is newer than any OUTPUT that exists. It is the mtime
+# missing, the run STAMP is missing, or any INPUT is newer than the STAMP —
+# never than an output (issue 1803, see nros_codegen_run_stamp). A build dir
+# from before the stamp regenerates once and then settles. It is the mtime
 # half only; the emitted-codegen-VERSION half (issue 1360) is
 # `nros_codegen_version_stale()`, which each caller ORs in.
 #
@@ -710,8 +783,14 @@ endfunction()
 # `nros build` linked an image sized at the placeholder knobs and only the
 # second was the fixed point.
 function(nros_codegen_outputs_stale _out)
-    cmake_parse_arguments(_S "" "" "OUTPUTS;INPUTS" ${ARGN})
+    cmake_parse_arguments(_S "" "STAMP" "OUTPUTS;INPUTS" ${ARGN})
+    if(NOT _S_STAMP)
+        message(FATAL_ERROR "nros_codegen_outputs_stale: STAMP is required (issue 1803)")
+    endif()
     set(_stale FALSE)
+    if(NOT EXISTS "${_S_STAMP}")
+        set(_stale TRUE)
+    endif()
     foreach(_o IN LISTS _S_OUTPUTS)
         if(NOT EXISTS "${_o}")
             set(_stale TRUE)
@@ -720,13 +799,8 @@ function(nros_codegen_outputs_stale _out)
     endforeach()
     if(NOT _stale)
         foreach(_i IN LISTS _S_INPUTS)
-            foreach(_o IN LISTS _S_OUTPUTS)
-                if("${_i}" IS_NEWER_THAN "${_o}")
-                    set(_stale TRUE)
-                    break()
-                endif()
-            endforeach()
-            if(_stale)
+            if("${_i}" IS_NEWER_THAN "${_S_STAMP}")
+                set(_stale TRUE)
                 break()
             endif()
         endforeach()
@@ -1301,14 +1375,7 @@ function(nros_find_interfaces)
     #    child so `resolve-deps` sees workspace-local msg packages exactly like
     #    the cmake smart-stub does. A caller-exported ENV wins (matches the
     #    stub's env-beats-nothing layering): only inject when no env is set.
-    set(_resolve_env_prefix "")
-    if(NOT DEFINED ENV{NROS_INTERFACE_SEARCH_PATH}
-       AND DEFINED NROS_INTERFACE_SEARCH_PATH
-       AND NOT NROS_INTERFACE_SEARCH_PATH STREQUAL "")
-        string(REPLACE ";" ":" _resolve_search_path "${NROS_INTERFACE_SEARCH_PATH}")
-        set(_resolve_env_prefix ${CMAKE_COMMAND} -E env
-            "NROS_INTERFACE_SEARCH_PATH=${_resolve_search_path}")
-    endif()
+    nros_codegen_env_prefix(_resolve_env_prefix)
     set(_resolve_output "${CMAKE_CURRENT_BINARY_DIR}/_nros_resolved_deps.cmake")
     execute_process(
         COMMAND ${_resolve_env_prefix} "${_codegen_tool}" codegen resolve-deps

@@ -167,3 +167,55 @@ missing record are reported; an unresolvable crate is listed apart; facade
 crates are skipped; `--dry-run` writes nothing); `cargo-nano-ros`
 `ament_witness_tests` (witness and record byte-identical until the inputs move,
 then a named "moved" line, then equal again after regeneration).
+
+## 2026-10-11 — the two "Not covered" gaps above, closed
+
+**The Zephyr fixture runner's `ninja -C` shortcut.** `zephyr-fixture-run-one.sh`
+now asks two questions before taking the ninja path, either of which sends the
+leaf down the west path (a configure, which regenerates):
+
+- *in place* — each `<args>.ament.toml` witness in the build dir is recomputed
+  into a temp file with the tool the build dir CACHED
+  (`_NROS_ZEPHYR_CODEGEN_TOOL`) and compared by content. It re-hashes the files
+  the last configure RESOLVED, so it sees an apt upgrade (a `.deb`-mtime edit)
+  but cannot see a new overlay, which only a configure re-resolves;
+- *overlay* — the `AMENT_PREFIX_PATH` the build dir was configured under is
+  recorded beside it (`nros-ament-prefix.txt`), and a different one reconfigures.
+  A build dir with no record is a first sight: recorded, not forced, so landing
+  this does not reconfigure every leaf at once.
+
+Measured on `build-c-talker-zenoh` through `just zephyr build-fixtures`, an
+overlay prefix whose `std_msgs/String.msg` gains `int32 m2_extra` (2020 mtime):
+
+| step | `build.ninja` | field in `std_msgs_msg_string.h` |
+| --- | --- | --- |
+| unchanged | kept | no |
+| overlay sourced | **regenerated** | **yes** |
+| overlay, again | kept | yes |
+| overlay removed | **regenerated** | no |
+| control — main's runner, overlay sourced | kept | **no** (the defect) |
+
+The in-place half was measured on a copied build dir whose args point into a
+scratch prefix: unchanged CURRENT, the `.msg` edited with a 2020 mtime MOVED.
+
+**A dependency reachable only through a cmake-side `NROS_INTERFACE_SEARCH_PATH`.**
+The CLI reads that path from the ENVIRONMENT; cmake injected a workspace's
+VARIABLE into `resolve-deps` alone, so the generation, the witness and the
+record all ran without it. One helper, `nros_codegen_env_prefix()`, now
+prefixes every `nros codegen` call (both lanes' generation, the canonical
+lane's build-time command, the witness, `resolve-deps`), and the witness
+records the path it used (`<args>.ament.search-path`) so the fixture runner
+recomputes it under the same one. Measured on a copy of
+`examples/templates/local-msg-package` (`extra_msgs` depends on the
+search-path-only `local_msgs`), editing `local_msgs`'s `.msg` in place with a
+2020 mtime and running `nros build` twice:
+
+| tree | `extra_msgs` record, build 1 → build 2 |
+| --- | --- |
+| this change | `b5df7b28…` → `44bb706c…` (moved; regenerated) |
+| origin/main | `24803a85…` → `24803a85…` (unchanged; `local_msgs` not in the closure) |
+
+Both trees' `nros build` then fails at the template's `rust_consumer` (`generated/extra_msgs/Cargo.toml` missing — it needs an `nros sync` first); the C/C++ consumer built in every run.
+
+Still not covered: a hand-run `cmake --build` / `ninja` with no reconfigure.
+That is ninja's domain, the same limit every configure-time input has.

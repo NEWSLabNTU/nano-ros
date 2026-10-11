@@ -286,11 +286,12 @@ function(nros_generate_interfaces target)
   # ---- Run codegen at configure time ----
   # Phase 196.1 — the codegen CLI is the `nros codegen` subcommand (Phase 195
   # folded the standalone nros-codegen binary into it); invoke it as such.
+  nros_codegen_env_prefix(_codegen_env)
   if(_ARG_LANGUAGE STREQUAL "CPP")
-    set(_codegen_cmd "${_NROS_ZEPHYR_CODEGEN_TOOL}" codegen --language cpp --args-file "${_args_file}")
+    set(_codegen_cmd ${_codegen_env} "${_NROS_ZEPHYR_CODEGEN_TOOL}" codegen --language cpp --args-file "${_args_file}")
     message(STATUS "Generating nros C++ interfaces for ${target}")
   else()
-    set(_codegen_cmd "${_NROS_ZEPHYR_CODEGEN_TOOL}" codegen --args-file "${_args_file}")
+    set(_codegen_cmd ${_codegen_env} "${_NROS_ZEPHYR_CODEGEN_TOOL}" codegen --args-file "${_args_file}")
     message(STATUS "Generating nros C interfaces for ${target}")
   endif()
 
@@ -308,7 +309,9 @@ function(nros_generate_interfaces target)
   # `add_custom_command`'s DEPENDS; `_nros_write_codegen_args_json` composes it.
   # The predicate is shared with the canonical lane's fragment pre-emit (issue
   # 1647), so the two lanes cannot disagree on what "stale" means.
+  nros_codegen_run_stamp(_run_stamp "${_args_file}")
   nros_codegen_outputs_stale(_codegen_needed
+    STAMP "${_run_stamp}"
     OUTPUTS ${_expected_outputs}
     INPUTS ${_interface_files} "${_args_file}" "${_NROS_ZEPHYR_CODEGEN_TOOL}"
            ${_NROS_CODEGEN_CONFIG_CHAIN})
@@ -367,6 +370,10 @@ function(nros_generate_interfaces target)
       "  command: ${_codegen_cmd}\n"
       "  stdout: ${_codegen_output}\n"
       "  stderr: ${_codegen_error}")
+  endif()
+  if(_codegen_needed)
+    # issue 1803 — the predicate above compares against this, not the outputs.
+    nros_codegen_touch_run_stamp("${_args_file}")
   endif()
 
   # issue 1360 — close the loop. A tree still stating a refused version after a
