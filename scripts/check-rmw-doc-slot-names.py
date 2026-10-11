@@ -75,7 +75,6 @@ import io
 import argparse
 import os
 import re
-import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -92,6 +91,7 @@ BASELINE = os.path.join(ROOT, ".config", "rmw-doc-external-names.txt")
 # already refuses. Fourteen cited names resolved that way when this landed.
 sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
 import comments  # noqa: E402
+import git_grep  # noqa: E402  issue 1816 — a failed search is not "no match"
 
 TICK = re.compile(r"`([A-Za-z_][A-Za-z0-9_]*)`")
 IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
@@ -186,15 +186,15 @@ def prefetch(names):
     names = [n for n in dict.fromkeys(names) if n not in _GREP]
     if not names:
         return
-    args = ["git", "-C", ROOT, "grep", "-o", "-w", "-F"]
+    args = ["-o", "-w", "-F"]
     for n in names:
         args += ["-e", n]
     args += ["--", "packages", "examples", "cmake", "scripts", "zephyr", "third-party"]
-    r = subprocess.run(args, capture_output=True, text=True, check=False)
+    out = git_grep.run(args, ROOT)
     for n in names:
         _GREP[n] = []
     seen = set()
-    for line in r.stdout.splitlines():
+    for line in out.splitlines():
         path, _, word = line.rpartition(":")
         if word in _GREP and (word, path) not in seen:
             seen.add((word, path))

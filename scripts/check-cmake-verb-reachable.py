@@ -46,6 +46,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 import comments  # noqa: E402
+import git_grep  # noqa: E402  issue 1816 — a failed search is not "no match"
 # A PUBLIC verb: `nano_ros_*`, no leading underscore. `_nros_*` / `_nano_ros_*`
 # are internal by this tree's convention and carry no promise to a reader.
 VERB_RE = re.compile(r"^\s*(?:function|macro)\(\s*(nano_ros_[a-z0-9_]+)", re.M)
@@ -77,13 +78,7 @@ def referenced_from_elsewhere(rel: str, verbs: set[str]) -> list[str]:
     needles = [base] + sorted(verbs)
     hits: set[str] = set()
     for needle in needles:
-        r = subprocess.run(
-            ["git", "grep", "-l", "-F", needle, "--", ".", ":(exclude)third-party"],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-        )
-        for line in r.stdout.splitlines():
+        for line in git_grep.lines(["-l", "-F", needle, "--", ".", ":(exclude)third-party"], ROOT):
             if line and line != rel and names_in_code(ROOT / line, needle):
                 hits.add(line)
     return sorted(hits)

@@ -15,11 +15,12 @@ Buildless, ~0.1 s; self-tests its pattern on each run.
 from __future__ import annotations
 
 import re
-import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+import git_grep  # noqa: E402  issue 1816 — a failed search is not "no match"
 HOME = "scripts/lib/cargo_out_dir.py"
 TEST = re.compile(r"""(?:==|!=)\s*['"]build-script-executed['"]|['"]build-script-executed['"]\s+in\s""")
 
@@ -34,10 +35,7 @@ def self_test() -> None:
 
 def main() -> int:
     self_test()
-    out = subprocess.run(
-        ["git", "-C", str(ROOT), "grep", "-n", "build-script-executed", "--", ":!docs", ":!*.md"],
-        capture_output=True, text=True,
-    ).stdout
+    out = git_grep.run(["-n", "build-script-executed", "--", ":!docs", ":!*.md"], ROOT)
     bad = [
         line for line in out.splitlines()
         if not line.startswith(HOME + ":") and not line.startswith("scripts/check/check-cargo-json-reader.py:")

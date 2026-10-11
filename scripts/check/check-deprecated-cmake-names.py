@@ -18,11 +18,12 @@ Buildless, ~0.3 s; self-tests its pattern on each run.
 from __future__ import annotations
 
 import re
-import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+import git_grep  # noqa: E402  issue 1816 — a failed search is not "no match"
 SHIM = ROOT / "cmake/NanoRosDeprecatedNames.cmake"
 EXEMPT_PREFIXES = ("docs/design/", "docs/roadmap/", "docs/issues/")
 EXEMPT_FILES = {
@@ -63,8 +64,7 @@ def main() -> int:
     assert olds, "the shim's table parsed empty — the gate would pass on nothing"
     pat = pattern(olds)
     self_test(pat)
-    out = subprocess.run(["git", "-C", str(ROOT), "grep", "-n", "NANO_ROS_"],
-                         capture_output=True, text=True).stdout
+    out = git_grep.run(["-n", "NANO_ROS_"], ROOT)
     bad = [
         line for line in out.splitlines()
         if pat.search(line.split(":", 2)[-1])

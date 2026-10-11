@@ -51,6 +51,7 @@ import sys as _w3_sys  # noqa: E402
 from pathlib import Path as _W3Path  # noqa: E402
 _w3_sys.path.insert(0, str(_W3Path(__file__).resolve().parent / "lib"))
 import comments  # noqa: E402  phase-472 W3 — the one comment stripper
+import git_grep  # noqa: E402  issue 1816 — a failed search is not "no match"
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -523,11 +524,7 @@ def readers() -> dict[str, int]:
     ]
     out = {}
     for s in surfaces:
-        r = subprocess.run(
-            ["git", "grep", "-l", s, "--", "*.rs"],
-            cwd=ROOT, capture_output=True, text=True,
-        )
-        out[s] = len(r.stdout.split()) if r.returncode == 0 else 0
+        out[s] = len(git_grep.run(["-l", s, "--", "*.rs"], ROOT).split())
     return out
 
 

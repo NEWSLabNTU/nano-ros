@@ -91,6 +91,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 import per_item  # noqa: E402  phase-472 W6 — every definition, not the first
+import git_grep  # noqa: E402  issue 1816 — a failed search is not "no match"
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -450,12 +451,7 @@ def main() -> int:
     problems += stub_dispatch_problems(stubs, {str(p).rsplit("/", 1)[-1] for p in fallbacks})
     # issue 1569 -- every tracked text file that names the define. `grep -l`
     # over the index is one process, not a walk.
-    named = subprocess.run(
-        ["git", "-C", str(REPO), "grep", "-l", "-I", "--", BUILDLESS],
-        capture_output=True,
-        text=True,
-        check=False,
-    ).stdout.split()
+    named = git_grep.run(["-l", "-I", "--", BUILDLESS], REPO).split()
     if not any(n.startswith("scripts/") for n in named):
         problems.append(
             f"  no buildless check under scripts/ names {BUILDLESS}. Those checks "

@@ -36,12 +36,12 @@ future arm added without a peer to point at.
 """
 
 import re
-import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 import comments  # noqa: E402
+import git_grep  # noqa: E402  issue 1816 — a failed search is not "no match"
 
 # issue 1617 (W4): EVERY `extern "C" fn` is in the population — `pub`,
 # `pub(crate)`, `unsafe` or not. Matching only `pub unsafe extern "C" fn`
@@ -80,10 +80,7 @@ def self_test():
 
 def main() -> int:
     self_test()
-    files = subprocess.run(
-        ["git", "grep", "-l", "goal_cdr", "--", "packages/api"],
-        capture_output=True, text=True,
-    ).stdout.split()
+    files = git_grep.run(["-l", "goal_cdr", "--", "packages/api"], ".").split()
 
     bad = []
     checked = 0
