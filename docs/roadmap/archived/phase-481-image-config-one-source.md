@@ -1,6 +1,6 @@
 # Phase 481 -- image configuration has one source: `system.toml` on every road
 
-**Status (2026-10-11). W0-W4 LANDED; W5 docs done (issue 1721 archived); OPEN only for tier 2 (`just ci matrix`) on the Zephyr cells, which W3 could not run for disk.** D11's
+**Status (2026-10-11). COMPLETE -- archived. W0-W5 landed; tier 2 on the Zephyr cells ran green after #1973 (see "Tier 2" at the end).** D11's
 locator revision (the module's `module_ext_root` hook instead of a leaf helper)
 was DECIDED by the user on 2026-10-07 (option "A") and is what W1 built,
 measured on Zephyr 3.7 and 4.4, on the fixture road and on a plain `west build`
@@ -8,9 +8,9 @@ with nano-ros as a west project. W3 drained W2's ratchet to an EMPTY baseline
 (all 226 lines / 104 files moved into `system.toml`; every one of the 76 Zephyr
 3.7 west leaves builds, and their `.config` matches the pre-migration merge
 except the listed deliberate changes) and closed issue 1757. Implements
-[RFC-0098](../design/0098-generated-leaf-build-config.md) D10-D12 (and the
-pointer it adds to [RFC-0049](../design/0049-hierarchical-platform-board-config.md)).
-Closes issue [1721](../issues/archived/1721-image-env-west-and-workspace-cmake-roads.md).
+[RFC-0098](../../design/0098-generated-leaf-build-config.md) D10-D12 (and the
+pointer it adds to [RFC-0049](../../design/0049-hierarchical-platform-board-config.md)).
+Closes issue [1721](../../issues/archived/1721-image-env-west-and-workspace-cmake-roads.md).
 
 **Prior:** issue 1712 (archived -- a standalone C/C++ leaf's `[image.<id>] env`
 reaches its cargo builds through an unforced `--config` `[env]` file; that
@@ -389,7 +389,7 @@ symbol values as before the migration (a diff, measured).
 #### W3 results (landed 2026-10-09, distrobox `ros2`, Zephyr 3.7)
 
 **The defect W3 closes was live on `main`, not latent** -- issue
-[1757](../issues/archived/1757-image-kconfig-rmw-overrides-leaf-rmw-overlay.md),
+[1757](../../issues/archived/1757-image-kconfig-rmw-overrides-leaf-rmw-overlay.md),
 which the tier-2 nightly hit on 2026-10-08. W1's hook made issue 1721's
 disagreement BITE: the 18 leaves' `system.toml` said `rmw = "zenoh"`, the
 rendered fragment merges after `prj-<rmw>.conf`, so every XRCE and Cyclone
@@ -542,7 +542,7 @@ images incl. SMP a53, robot1 and derived): 44 identical, 1 differing --
 restored.
 
 **Deliberate `.config` changes** (all four in images the runtime suite refused
-before W3, issue [1761](../issues/archived/1761-zephyr-xrce-c-cpp-heap-headroom-refused.md)):
+before W3, issue [1761](../../issues/archived/1761-zephyr-xrce-c-cpp-heap-headroom-refused.md)):
 `CONFIG_NROS_ZEPHYR_HEAP_SIZE` 65536 -> 98304 on the `c`/`cpp` `listener` and
 `action-client` `zephyr_xrce` images. Issue 1424's heap gate refused them with
 10-14 KiB of headroom, measured identically on `main` with the pre-W1 conf state
@@ -679,11 +679,40 @@ accepted), and each snippet's header says when it applies. `-DNROS_IMAGE`
 sticking in the cache is documented as `-b` behaviour rather than changed: a
 stale value fails loudly, naming the declared images.
 
-Still open: tier 2 for the Zephyr cells. The follow-up that a derived pool
-value did not reach the Zephyr Rust lane is
-[issue 1796](../issues/archived/1796-zephyr-rust-lane-ignores-derived-pool.md),
+The follow-up that a derived pool value did not reach the Zephyr Rust lane is
+[issue 1796](../../issues/archived/1796-zephyr-rust-lane-ignores-derived-pool.md),
 resolved by #1949; `rust/talker`'s `zephyr_xrce` image no longer states
 `NROS_XRCE_MAX_SUBSCRIBERS`.
+
+## Tier 2 (2026-10-11)
+
+Zephyr-only, locally (the box2 checkout, ros2 distrobox): a full
+`just zephyr build-fixtures`, then every Zephyr test binary narrowed to tier 2
+(`NROS_FIXTURE_LANE=tier2`, `NROS_TEST_COORDS` from
+`nros_lane_coords_file tier2`).
+
+- **It found one regression, from #1921.** The rendered fragment carried
+  `system.toml`'s `domain_id`, while the west fixtures re-domain every Cyclone
+  image with `-DCONFIG_NROS_DOMAIN_ID`. Issue 1550's agreement check refused
+  the overridden row, and `build-ws-cpp-entry-cyclonedds` stopped configuring.
+  #1973 leaves any symbol the command line sets to the `-D`: a rendered row
+  there is dead.
+- **After it: build rc=0, 22 passed.** Those 22 cover both in-lane Zephyr
+  coordinates, `zephyr,c,cyclonedds` (four boot cells plus the
+  pubsub/service/action pairs) and `zephyr-cortex-m,c,zenoh`. The cortex-m
+  build dirs cached the main checkout's Zephyr SDK path (issue 1387's gate)
+  and were retired before the push. So those two cells used that SDK's
+  compiler, not this checkout's copy.
+- **The other 55 are `[SKIPPED:lane]`.** Their coordinates are out of lane, and
+  a bare nextest counts them as failures; none was a runtime failure. The
+  seven native-to-Zephyr interop tests needed native peers first, and
+  building those found a separate defect on main, filed separately (#1975):
+  `log-arena-probe` names no board crate, and #1305's sync check refuses it.
+- **Wider than tier 2, for #1949:** every `build-rust-*` Zephyr fixture rebuilt
+  and all Zephyr Rust tests run, 17/18. The one red is an unmet precondition
+  (`action-client-multigoal` not built in that tree).
+- **Not run:** the a53 cell (no `qemu-system-aarch64` in the box), and the
+  remote `run-matrix.yml`.
 
 ## Not in this phase
 
