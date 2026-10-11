@@ -213,16 +213,25 @@ catches a re-added literal.
   since W2b; a stale SHELL still carries that export, and the board now
   ignores it.
 
-**Still open: `nano_ros_ROOT` / `NROS_REPO_DIR` in `activate.sh`.** Checked
-before deleting, and this is not a pure deletion. A project OUTSIDE the
-checkout, built with the in-tree `nros`, finds the SDK root only through
-`$NROS_REPO_DIR`: `nano_ros_root::resolve` tries `--nano-ros-path`, the env,
-a walk-up from the workspace, then a RELEASED toolchain's own
-`share/nano-ros`, and an in-tree CLI has no `share/`. Likewise
-`find_package(nano_ros)` there relies on the `nano_ros_ROOT` hint, and
-`first-node-c.md`, `first-node-cpp.md` and `vendored-tree.md` document it.
-Retiring them needs a replacement first: a "the checkout this `nros` was built
-in" rung, the in-tree twin of `shipped_beside`. Waiting on a decision.
+**W2d -- the binary knows its own root (RFC-0103 D6, amended 2026-10-12).**
+`activate.sh` exported `NROS_REPO_DIR` and `nano_ros_ROOT`, and checked
+before deleting them they were not dead: a project OUTSIDE the checkout, built
+with the in-tree `nros`, found the SDK root only through `$NROS_REPO_DIR`
+(the ladder's last rung, a release's `share/nano-ros`, does not exist beside
+an in-tree binary), and `find_package(nano_ros)` there relied on the exported
+hint. Decided with the user: a contributor's process should match a user's,
+and a user never exports a root. So:
+
+- the ladder's last rung asks the BINARY where its root is: a release's
+  `share/nano-ros` beside it, an in-tree build's checkout above it;
+  `$NROS_REPO_DIR` leaves the ladder;
+- cmake modules locate the root from their own path, never `$ENV{}`;
+- `activate.sh` / `activate.fish` export neither name;
+- the book's raw-`cmake` instructions use `nros build` or the preset
+  `nros init` writes, which already passes `-Dnano_ros_ROOT`.
+
+No chicken-and-egg: building the CLI is a `cargo build` whose scripts find the
+checkout from `CARGO_MANIFEST_DIR`.
 
 ### W3 -- source trees into the store
 
@@ -446,9 +455,47 @@ restating it. Measured: the Rust + C threadx-linux and C riscv64 workspace
 fixtures build, and every generated `.network` block equals the literal it
 replaced. Gate `check-board-net-one-home` (ratchet over migrated boards).
 The LOCATOR stayed out: on both boards the Rust and C fallbacks name
-different routers (issue 1793). Remaining: esp32-qemu and mps2-an385 (no
-board-common build-dep yet — a lockfile update — and mps2's `docker` /
-`serial` profiles), the FreeRTOS C template, NuttX.
+different routers (issue 1793).
+
+**W4b-2 — one default network for every QEMU board (re-scoped 2026-10-12,
+RFC-0103 D10).** Checking the remaining boards before migrating them found
+that `[board.net]` as "the board's identity" was the wrong model. The QEMU
+boards each ran a DIFFERENT address plan, and two of them ran two:
+
+- esp32-qemu's and NuttX's `Config` presets said `192.0.3.10`, while their
+  entry paths said `10.0.2.50` and `10.0.2.30` (QEMU's default SLIRP subnet);
+- threadx-riscv64 said `10.0.2.40`;
+- FreeRTOS said `192.0.3.10`, with SLIRP configured to match;
+- `mps2-an385` added a third network behind a `docker` feature.
+
+A bridge, a board on several networks and a multi-NIC board cannot be one
+identity per board. So D10 gives each fact its owner:
+
+- the board states **interfaces**;
+- the project states **networks**;
+- the image states its **address**.
+
+This wave does the part every board needs now:
+
+- every QEMU board joins one default network, `qemu` (SLIRP on
+  `192.0.3.0/24`, gateway/host `192.0.3.1`), which is `BaseConfig::default()`;
+- every QEMU launcher configures SLIRP to match;
+- the per-image last-octet override stays.
+
+The `[network.*]` table, bridge/TAP launch, multi-NIC and the collision
+refusal are [phase-497](phase-497-networks-have-owners.md).
+
+Landed for FreeRTOS:
+
+- `nros_board_net_c` (`cmake/NanoRosBoardNet.cmake`) is the one cmake spelling.
+  It replaces the two ThreadX modules' inline blocks, and `nros board net`
+  gained `--format cmake` so the configure depends on the descriptor the CLI
+  names.
+- `templates/freertos_app_config.c.in` takes its `.network` from that helper.
+- The cargo-road C emitter resolves the overlay's own `[board.net]`.
+- The generic crate's `listener()` derives from the default.
+- Measured equal to the literals they replaced (`.11`, MAC `0x0b`, gateway
+  `.1`).
 
 **W4c — the inert threadx-linux `rmw-*` features.** The six role crates under
 `examples/threadx-linux/rust/` declared `rmw-zenoh`/`rmw-xrce`/`rmw-cyclonedds`

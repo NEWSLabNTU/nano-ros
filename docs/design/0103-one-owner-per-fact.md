@@ -5,7 +5,7 @@ title: "One owner per fact: every configuration fact and every resource location
 status: Draft
 since: 2026-10
 last-reviewed: 2026-10-12
-implements-tracked-by: [phase-484]
+implements-tracked-by: [phase-484, phase-497]
 supersedes: []
 superseded-by: null
 ---
@@ -81,7 +81,7 @@ descriptor's `force = true`; cmake cache before ENV).
 | --- | --- | --- | --- | --- |
 | 0 infra | this repo | `nros-sdk-index.toml` | resource pins, kinds, the one env name per resource | knob values |
 | 1 platform | RTOS port | `nros-platform.toml` | RTOS capabilities, knob defaults, priority plan | paths, board facts |
-| 2 board | board author | `nros-board.toml` + board-owned files (`memory.x`, `FreeRTOSConfig.h`, config dirs) | identity, triple, link, toolchain file, `west_board`, capabilities, knob defaults, **network defaults** | user choices; no `force` |
+| 2 board | board author | `nros-board.toml` + board-owned files (`memory.x`, `FreeRTOSConfig.h`, config dirs) | identity, triple, link, toolchain file, `west_board`, capabilities, knob defaults, **network interfaces** (D10) | user choices; no `force`; a network's subnet or an image's address |
 | 3 backend | RMW / serdes | `nros-rmw.toml`, `nros-serdes.toml` | link, capabilities | knob values |
 | 4 package | node author | `package.xml`, `Cargo.toml`/`CMakeLists.txt`, `nros-codegen.toml`, `nros::node!` | build type, entities, message bounds | board, RMW, network |
 | 5 project | integrator | **`system.toml`** + launch + `*.contract.yaml`; per developer, `.envrc` | every SELECTION (board, RMW, domain, locator, IP, transport), knob overrides, `[sources]` | — |
@@ -394,9 +394,21 @@ rows a contributor edits, which rung 4 serves from the checkout anyway.
 ### D6 — One name per root, one name per resource
 
 - Store root: `NROS_HOME` only (`NROS_STORE`, `NROS_SDK_STORE` retire).
-- nano-ros root: `NROS_REPO_DIR` only (`NANO_ROS_ROOT`, `nano_ros_ROOT`
-  retire as root inputs; `nano_ros_ROOT` stays CMake's own `find_package`
-  hint, but is no longer exported); one marker,
+- nano-ros root: **the `nros` binary knows its own** (amended 2026-10-12).
+  A released `nros` reads the SDK root staged beside it
+  (`<prefix>/share/nano-ros`); an in-tree `nros` reads the checkout it was
+  built in (a walk up from `current_exe` to the marker). That makes a
+  contributor's process the same as a user's: neither exports a root, and
+  `activate.sh` puts `nros` on PATH and nothing else. The ladder is: the
+  explicit `--nano-ros-path` / `-Dnano_ros_ROOT`, then the walk-up from the
+  workspace (a workspace inside a checkout builds that checkout), then the
+  binary's own root. `$NROS_REPO_DIR` and an exported `nano_ros_ROOT` retire
+  as inputs; `nano_ros_ROOT` stays CMake's `find_package` hint, which
+  `nros build` and `nros init`'s preset pass explicitly. A cmake module
+  locates the root from its own path (`CMAKE_CURRENT_LIST_DIR`), never from
+  the environment. There is no chicken-and-egg: building the CLI
+  (`just setup-cli`) is a `cargo build` whose scripts find the checkout from
+  `CARGO_MANIFEST_DIR`. `NANO_ROS_ROOT` retires as before. One marker,
   `packages/core/nros-core/Cargo.toml` (`nros_build_paths::CHECKOUT_MARKER` —
   corrected by phase-484 W1: ~25 sites already used it, only two walks used
   the index, and both files sit at every SDK root).
@@ -466,6 +478,43 @@ reader stays the interim for consumers that want the per-unit copy.
 - **Census completeness**: `nros-build-wiring.py` fails on any UNCLASSIFIED row
   (issue 1768).
 
+### D10 — Networks: the board has interfaces, the project has networks, the image has addresses
+
+Added 2026-10-12. D1 first gave the board "network defaults", one identity
+per board. A bridge breaks that: many boards, or many instances of one board,
+share ONE network, and a board can sit on several networks (a QEMU run, a lab
+bridge, a docker network) or have several NICs. Measured on the tree, the
+QEMU boards had already split one fact three ways: their `Config` presets
+said `192.0.3.10`, their entry paths said `10.0.2.30` / `.40` / `.50`, and
+`mps2-an385` carried a third network behind a `docker` feature. The fact has
+three owners:
+
+| fact | example | owner | authored in |
+| --- | --- | --- | --- |
+| **interfaces** — the network hardware | one LAN9118, two NICs, a MAC prefix | board | `nros-board.toml` `[board.net]` |
+| **network** — subnet, gateway, how it is realised | `192.0.3.0/24` via SLIRP; bridge `br0` | project | `system.toml` `[network.<name>]` |
+| **address** — this image's IP / MAC on a network | talker `.10`, listener `.11` | image | `[image.<id>.net.<ifname>]` |
+
+- **One default network for every QEMU board**: `qemu`, SLIRP on
+  `192.0.3.0/24` with gateway (and host) `192.0.3.1`, which is the platform
+  default `BaseConfig::default()` already states. A QEMU launcher (the test
+  harness, the `just` run recipes) configures SLIRP to match
+  (`-nic user,net=192.0.3.0/24,host=192.0.3.1`), as the FreeRTOS boards
+  already did. So every QEMU board has the same identity, and the router is
+  `tcp/192.0.3.1:<port>` on every board and every road.
+- **A bridge** is a network many images name; each states its own address,
+  and the resolver refuses a duplicate address or MAC. That turns the
+  "identical IP+MAC, identical zenoh ZID, silent no-delivery" trap into a
+  build error.
+- **A multi-NIC board** gets one `[image.<id>.net.<ifname>]` per interface.
+- **A deployment network** (mps2's `docker`) is a `[network.*]` row, not a
+  board feature.
+
+Staged: phase-484 W4b-2 moves every QEMU board onto the one default network
+and keeps the existing per-image last-octet override. The `[network.*]` table,
+bridge/TAP launch, multi-NIC and the collision refusal are
+[phase-497](../roadmap/phase-497-networks-have-owners.md).
+
 ## 3. Where each fact lives
 
 | fact | home | rendered into | retired |
@@ -473,7 +522,8 @@ reader stays the interim for consumers that want the per-unit copy.
 | board | `[image.<id>] board` | west `-b` (via `west_board`), cmake, cargo | `NROS_BOARD`, `main!(board=)`, `-DNANO_ROS_BOARD`; alias casing (match case-insensitively) |
 | RMW | `[image.<id>] rmw` | Kconfig choice, snippet, cargo features | inert `rmw-*` features, `CMakeLists --features` (the conf lines are phase-481's) |
 | domain id | `[system] domain_id`, `[image]` override | Kconfig (closes 1550), baked default | `NROS_DOMAIN_ID`, `CYCLONE_DOMAIN_ID` as inputs; `ROS_DOMAIN_ID` stays the runtime override |
-| locator, IP, transport | `[image]` → board `[net]` default | Kconfig, baked default, cmake config | board `config.rs` literals, cmake `NROS_APP_CONFIG` defaults, `ZENOH_LOCATOR`; `NROS_LOCATOR` stays the runtime override |
+| locator, transport | `[image]` → platform default | Kconfig, baked default, cmake config | board `config.rs` literals, `ZENOH_LOCATOR`; `NROS_LOCATOR` stays the runtime override |
+| network, address | `[network.<name>]` + `[image.<id>.net.<if>]` (D10); interfaces in `[board.net]` | baked default, cmake `NROS_APP_CONFIG`, the QEMU launcher's NIC | per-board subnets (`10.0.2.x` entry defaults), cmake `NROS_APP_CONFIG` literals, the mps2 `docker` feature |
 | knobs | `[knobs]` (platform, board), `[image.<id>.knobs]` (project) | env / Kconfig / cmake by D6 | `ZPICO_*` as user names, the pairs table, leaf `.cargo [env]` |
 | triple, link | `nros-board.toml` | `cargo.toml`, cmake toolchain | 23 leaf `.cargo/config.toml` |
 | board config dirs | `nros-board.toml`, board-relative | — | `THREADX_CONFIG_DIR` `force`, `sdk-env.just` defaults |
@@ -564,6 +614,12 @@ Still open:
    hook does not read (board fragments, snippets).
 
 ## Changelog
+
+- 2026-10-12 — D6 amended: the `nros` binary knows its own SDK root (a
+  release's `share/nano-ros`, an in-tree build's checkout), so `activate.sh`
+  exports no root and a contributor's process matches a user's. D10 added:
+  network interfaces (board), networks (project) and addresses (image) are
+  three facts with three owners; every QEMU board shares one default network.
 
 - 2026-10-12 — D2b measured (phase-484 W5b), and built. M1 red on 3.7 and
   4.4 — a prompt-less `choice` aborts configure before any assignment is
