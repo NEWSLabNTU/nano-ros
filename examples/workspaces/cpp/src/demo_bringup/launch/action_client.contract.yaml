@@ -13,4 +13,5 @@ nodes:
 actions:
   /fibonacci:
     type: example_interfaces/action/Fibonacci
+    external: server
     client: [fib_client/fibonacci]
