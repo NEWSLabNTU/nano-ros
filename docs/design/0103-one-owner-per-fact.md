@@ -186,14 +186,30 @@ which order, so the two phases do not build the same carrier twice.
    phase-481's fragment, which is measured on both lines; they move only if the
    open measurements below are green. This keeps the fixture drivers'
    endpoint `-DCONFIG_*` and the 4.x RMW snippets working unchanged.
-2. **One knob registry, anchored on today's Kconfig names.** A committed
-   registry row per knob: id, group, type, RMW condition, unit, builtin, range,
-   prompt and help. The id IS today's `CONFIG_NROS_<ID>` stem, so no Kconfig
-   symbol is renamed and no guest's `prj.conf` breaks on a rename. The env
-   spelling is `NROS_<ID>`; today's other spellings (`ZPICO_*`, the
-   `NROS_SMOLTCP_*`/`ZPICO_SMOLTCP_*` net group, params as `NROS_MAX_*`, the
-   per-platform memory names) are legacy rows in the registry, accepted with a
-   deprecation until W8. The TOML spelling is `[knobs.<group>] <name>`.
+2. **One knob registry; Kconfig symbols are not renamed.** A committed
+   registry row per knob: id, group, type, RMW condition, unit, builtin,
+   range, prompt, help, and the Kconfig symbol it reads. The env spelling is
+   `NROS_<ID>`. A knob that belongs to one RMW is spelled `NROS_<RMW>_<X>`
+   (`NROS_ZENOH_MAX_PUBLISHERS`), the shape `NROS_XRCE_*`, `NROS_CYCLONEDDS_*`
+   and `NROS_ZENOH_TX_BATCH` already have. Today's other spellings
+   (`ZPICO_*`, `ZPICO_SMOLTCP_*`, ThreadX's `NROS_ZENOH_READ_PRIORITY` beside
+   `ZPICO_READ_TASK_PRIORITY`) are legacy rows, accepted with a deprecation
+   until W8. The TOML spelling is `[knobs.<group>] <name>`.
+
+   The Kconfig symbol is a COLUMN, not the id. Its default is
+   `CONFIG_NROS_<ID>`; a row names another symbol where today's Kconfig
+   differs, so no guest's `prj.conf` breaks on a rename. The id cannot be
+   the Kconfig stem, and this was measured, not assumed: the Zephyr lane
+   resolves `NROS_MAX_PUBLISHERS` (the image's DEMAND, RMW-agnostic) and
+   `ZPICO_MAX_PUBLISHERS` (the zenoh pool, the demand after its floor — issues
+   1015/1033) as two env names holding different values, and forwards both
+   to cargo (`zephyr/cmake/nros_cargo_build.cmake`, the
+   `_nros_c_array_pool_floor` calls). Both read `CONFIG_NROS_MAX_PUBLISHERS`.
+   Naming the pool after that symbol would hand it the unfloored demand,
+   which is 1015's defect. 14 of `KCONFIG_PAIRS`' 20 rows differ from their
+   symbol by the `ZPICO_` prefix alone, so a stem rule would rename all 14
+   onto the `NROS_*` namespace where that collision lives.
+
    `KCONFIG_PAIRS` and the 11 `*_env_key` functions are DERIVED from the
    registry, then deleted. The registry also generates the module `Kconfig`'s
    knob section (prompt-less) and the prompt text a guest needs; a gate holds
@@ -541,7 +557,9 @@ Still open:
 
 - 2026-10-11 — D2b: the Zephyr split with phase-481. Knobs move to D2a
   through one registry anchored on today's `CONFIG_NROS_*` names; choices,
-  endpoint and domain stay in 481's fragment until M1–M4 are measured; a
+  endpoint and domain stay in 481's fragment until M1–M4 are measured;
+  RMW-specific knobs are spelled `NROS_<RMW>_<X>` and the Kconfig symbol is a
+  per-row column (the zenoh pools and the demand they floor share one); a
   `-DNROS_OVERRIDE_<ID>` channel replaces the knob `-DCONFIG_*`.
 - 2026-10 — D8 corrected by measurement (phase-484 W6b): the config header's
   sizes come from the compiled rlib, so it stays a build product; its location

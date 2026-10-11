@@ -427,15 +427,18 @@ env ↔ Kconfig rows whose names differ. Four readers bypass the ladder entirely
 `nros-rmw-cyclonedds-sys`'s `KNOBS`, the FreeRTOS heap/stack reads). `config-knob-census.py` misses ~19
 spellings because it only matches a literal first argument.
 
-- **W5a (this phase)** — the knob registry: one committed row per knob (id =
-  today's `CONFIG_NROS_<ID>` stem, so no Kconfig symbol is renamed; group,
-  type, RMW condition, unit, builtin, range, prompt, help). Env spelling
-  `NROS_<ID>`; today's other spellings become legacy rows accepted with a
-  deprecation until W8. `KCONFIG_PAIRS` and the `*_env_key` functions are
-  derived from it, then deleted; the four bypass readers go through the
-  ladder; the census reads the registry instead of regexes; a gate holds the
-  module `zephyr/Kconfig` knob section equal to what the registry generates
-  (prompts still present — 481 removes them).
+- **W5a (this phase)** — the knob registry: one committed row per knob
+  (id, group, type, RMW condition, unit, builtin, range, prompt, help, and
+  the Kconfig symbol it reads). Env spelling `NROS_<ID>`; a knob of one RMW is
+  `NROS_<RMW>_<X>` (`ZPICO_MAX_PUBLISHERS` → `NROS_ZENOH_MAX_PUBLISHERS`); the
+  old spellings become legacy rows accepted with a deprecation until W8. The
+  Kconfig symbol defaults to `CONFIG_NROS_<ID>` and is named where it differs,
+  so none is renamed (RFC-0103 D2b says why the id cannot be the Kconfig
+  stem). `KCONFIG_PAIRS` and the `*_env_key` functions are derived from it,
+  then deleted; the four bypass readers go through the ladder; the census
+  reads the registry instead of regexes; a gate holds the module
+  `zephyr/Kconfig` knob section equal to what the registry generates (prompts
+  still present — 481 removes them).
 - **W5b (phase-481)** — measure RFC-0103 D2b's M1–M4; the hook writes
   `Kconfig.from-system-toml`, the module's knob section goes prompt-less, the
   fragment drops its knob rows, `-DNROS_OVERRIDE_<ID>` replaces the fixture
