@@ -6,7 +6,7 @@ title: "parameter services are implemented and tested but undiscoverable: no
 status: open
 type: bug
 area: examples, docs
-related: [issue-0864]
+related: [issue-0864, phase-426]
 ---
 
 ## What is actually true
@@ -116,3 +116,20 @@ Measured against the three fix directions on `main`:
 What would close it: the header note at the declaration (and the banner
 corrected to the real capability name), one doc line for the CMake
 `param_services` capability, and a decision on the startup line.
+
+## Status 2026-10-11
+
+Re-checked when phase-382, this issue's home, archived. **Still open, and the
+three fix directions above are unchanged.**
+
+- `parameter.h:371` still names the non-existent `NROS_PARAM_SERVICES`.
+- `nros_generated.h` still declares `nros_executor_register_parameter_services`
+  with no capability note.
+- No CMake-consumer doc names the `param_services` capability.
+
+One premise moved. `examples/native/c/parameters` now calls
+`nros_executor_register_parameter_services` (phase-426 W4 migrated it), so
+"no example calls them" is no longer literally true. The defect this issue
+narrowed to is the header and the docs, and that does not depend on it. With
+phase-382 archived this issue has no home phase. It is a docs-and-header fix
+small enough to land on its own.
