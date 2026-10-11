@@ -212,7 +212,7 @@ int32_t {{ request_struct_name }}_deserialize_view({{ request_struct_name }}_Vie
 
     memset(out, 0, sizeof(*out));
 {%- for field in request_fields %}
-{{- c.borrowed_deser_field(field, "out", request_struct_name) }}
+{{- c.view_deser_field(field, "out", request_struct_name) }}
 {%- endfor %}
     return 0;
 }
@@ -242,7 +242,7 @@ int32_t {{ response_struct_name }}_deserialize_view({{ response_struct_name }}_V
 
     memset(out, 0, sizeof(*out));
 {%- for field in response_fields %}
-{{- c.borrowed_deser_field(field, "out", response_struct_name) }}
+{{- c.view_deser_field(field, "out", response_struct_name) }}
 {%- endfor %}
     return 0;
 }

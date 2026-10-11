@@ -168,7 +168,7 @@ impl<'a> nros_core::DeserializeView<'a> for {{ message_name }}View<'a> {
         let __dh = reader.begin_dheader()?;
         let __value = Self {
 {%- for field in fields %}
-{{- f.borrowed_deser_field(field, inline_mode) }}
+{{- f.view_deser_field(field, inline_mode) }}
 {%- endfor %}
         };
         reader.end_dheader(__dh)?;

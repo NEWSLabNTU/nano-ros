@@ -155,7 +155,7 @@ int32_t {{ struct_name }}_deserialize_view({{ struct_name }}_View* out, const ui
     memset(out, 0, sizeof(*out));
 {%- if has_fields %}
 {%- for field in fields %}
-{{- c.borrowed_deser_field(field, "out", struct_name) }}
+{{- c.view_deser_field(field, "out", struct_name) }}
 {%- endfor %}
 {%- endif %}
     return 0;

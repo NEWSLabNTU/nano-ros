@@ -289,7 +289,7 @@ impl<'a> nros_core::DeserializeView<'a> for {{ service_name }}RequestView<'a> {
         let __dh = reader.begin_dheader()?;
         let __value = Self {
 {%- for field in request_fields %}
-{{- f.borrowed_deser_field(field, inline_mode) }}
+{{- f.view_deser_field(field, inline_mode) }}
 {%- endfor %}
         };
         reader.end_dheader(__dh)?;
@@ -317,7 +317,7 @@ impl<'a> nros_core::DeserializeView<'a> for {{ service_name }}ResponseView<'a> {
         let __dh = reader.begin_dheader()?;
         let __value = Self {
 {%- for field in response_fields %}
-{{- f.borrowed_deser_field(field, inline_mode) }}
+{{- f.view_deser_field(field, inline_mode) }}
 {%- endfor %}
         };
         reader.end_dheader(__dh)?;
