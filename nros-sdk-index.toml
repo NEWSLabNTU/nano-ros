@@ -2333,7 +2333,32 @@ check = { cmd = "kconfig-conf" }
 # `python3 scripts/gen-cargo-registry-pins.py` after moving a root's lock.
 [rust]
 registry_pins = "locks/cargo-registry.lock"
-locked_roots = [".", "packages/cli"]
+locked_roots = [
+    ".",
+    "packages/cli",
+    "packages/boards/mps2-an385-pac",
+    "packages/boards/nros-board-mps2-an385",
+    "packages/boards/nros-board-mps2-an385-freertos",
+    "packages/boards/nros-board-mps3-an536-freertos",
+    "packages/boards/nros-board-nuttx-qemu",
+    "packages/boards/nros-board-nuttx-qemu/nros-nuttx-ffi",
+    "packages/boards/nros-board-nuttx-qemu/nros-nuttx-riscv-ffi",
+    "packages/boards/nros-board-s32z270-freertos",
+    "packages/boards/nros-board-threadx-linux",
+    "packages/boards/nros-board-threadx-qemu-riscv64",
+    "packages/cli/colcon-cargo-ros2/test/rust-sample-package",
+    "packages/cli/nros-launch-resolve",
+    "packages/drivers/net/nros-smoltcp",
+    "packages/drivers/net/openeth-smoltcp",
+    "packages/drivers/serial/cmsdk-uart",
+    "packages/drivers/serial/stm32f4-usart",
+    "packages/reference/stm32f4-porting/polling",
+    "packages/reference/stm32f4-porting/rtic",
+    "packages/rmw/zenoh/zpico-serial",
+    "packages/testing/nros-smoke/esp32-hello-world",
+    "packages/testing/nros-smoke/stm32f4-smoltcp-echo",
+    "packages/verification/nros-verification",
+]
 
 # Issue 1304 — how a host with NO Rust toolchain gets one. Every board needs
 # it: the runtime a project links is compiled from the SDK root by Corrosion at

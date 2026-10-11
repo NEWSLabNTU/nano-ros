@@ -16,6 +16,28 @@
 # compiler work inside each frontend still uses Cargo/rustc's native
 # jobserver when MAKEFLAGS carries one.
 
+# nros_seed_leaf_lock <dir>
+# phase-485 W2 (RFC-0104 D3) — THE one spelling for "this cargo root is about
+# to be built by plain `cargo`, so start its lock from the registry pin set".
+# `nros ws seed-lock` copies the pins in when `<dir>` has no `Cargo.lock` and IS
+# its own cargo root (an existing lock and a workspace member are left alone);
+# the cargo command after it prunes the copy to the leaf's graph. `nros build`
+# does the same for its own roots. Never fatal: with no `nros` to ask, or a
+# manifest cargo cannot load, the next cargo command resolves (or reports) as it
+# did before RFC-0104, and this says so once.
+nros_seed_leaf_lock() {
+    local dir="$1"
+    local cli="${NROS_CLI:-${NROS_CLI_BIN:-${nros_cli:-$(command -v nros || true)}}}"
+    if [ -z "$cli" ]; then
+        echo "   (no nros CLI: $dir resolves without the registry pin set)" >&2
+        return 0
+    fi
+    local root_arg=()
+    if [ -n "${NROS_REPO_ROOT:-}" ]; then root_arg=(--nano-ros-path "$NROS_REPO_ROOT"); fi
+    "$cli" ws seed-lock "${root_arg[@]}" "$dir" >/dev/null \
+        || echo "   (seed-lock refused $dir; cargo resolves it unseeded)" >&2
+}
+
 # nros_scoped_target_dir <suffix>
 # A dedicated Cargo target dir that STAYS inside whatever base is active —
 # `$CARGO_TARGET_DIR` when set, else `$PWD/target`. issue 0400: recipes that

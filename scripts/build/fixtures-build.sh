@@ -604,5 +604,21 @@ if [ "${#cargo_records[@]}" -gt 0 ]; then
     # package.xml staged inside build-*/ -> spurious nros sync).
     done < <(git ls-files "examples/$platform/**/package.xml" "examples/$platform/package.xml")
     nros_presync_row_dirs
+    # phase-485 W2 (RFC-0104 D3) — a row whose cargo root has no lock yet starts
+    # from the registry pin set, as `nros build` does: `ws seed-lock` copies the
+    # pins in (it leaves an existing lock, and a workspace MEMBER, alone), and
+    # the row's own `cargo build` then prunes the copy to its graph. Once per
+    # distinct dir, in the parent, so make's workers never race on a seed.
+    nros_seed_row_locks() {
+        local line dir seen=""
+        for line in "${fixture_records[@]}"; do
+            IFS=$'\x1f' read -r dir _ _ <<< "$line"
+            [ -n "$dir" ] && [ -f "$dir/Cargo.toml" ] || continue
+            case " $seen " in *" $dir "*) continue ;; esac
+            seen="$seen $dir"
+            nros_seed_leaf_lock "$dir"
+        done
+    }
+    nros_seed_row_locks
     run nros_fixture_build_one
 fi

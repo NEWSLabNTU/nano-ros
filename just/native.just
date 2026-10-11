@@ -107,9 +107,10 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
         local toml="$1"
         local dir="$(dirname "$toml")"
         echo "  build $dir"
+        nros_seed_leaf_lock "$dir"
         ( cd "$dir" && cargo build $cargo_profile_args $nros_example_tdir_flag )
     }
-    export -f build_one
+    export -f build_one nros_seed_leaf_lock
 
     if [ "${NROS_JOBSERVER:-}" = "1" ] || [ "${NROS_INHERIT_JOBSERVER:-}" = "1" ]; then
         echo "NROS_JOBSERVER=1 — serial launcher; cargo inherits fifo tokens."

@@ -1,1 +1,4 @@
 /target/
+# Seeded from the registry pin set on the first build, never committed
+# (phase-485 W2, RFC-0104 D3).
+/Cargo.lock

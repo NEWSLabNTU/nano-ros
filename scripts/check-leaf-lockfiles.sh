@@ -53,57 +53,15 @@ source scripts/lib/grep-q.sh
 
 BASELINE="scripts/leaf-lockfile-drift-baseline.txt"
 
-# --- INVARIANT: a lock is tracked only where it can resolve from a fresh clone
+# --- The tracked-lock INVARIANT moved (phase-485 W2, RFC-0104 D3).
 #
-# RFC-0067 / RFC-0026. A committed lock names every package in the graph, so it
-# is only meaningful if a `git clone` can produce that graph. Two classes can:
-#
-#   * leaves with NO message deps (boards, drivers, smoke, verification), and
-#   * leaves whose message deps resolve to a COMMITTED `generated/` tree —
-#     including the core `packages/interfaces/*` crates, which are pre-generated
-#     under `nros-` prefixed names precisely so they exist before any user
-#     codegen and cannot collide with a user's own msg packages.
-#
-# A leaf whose `generated/` tree is produced by the USER (`nros sync`, from THEIR
-# ament packages) cannot: at clone time those crates do not exist, so the lock
-# names phantoms and every cargo command in that leaf fails. Ten such locks were
-# tracked until 2026-08-03; `stress-zenoh` and friends were the leaves that made
-# `just build-test-fixtures` unrunnable on a fresh host.
-#
-# So: tracked lock  <=>  (no message deps) OR (generated/ committed).
-# This check is the enforcement; deleting the lock is the fix, never adding a
-# committed `generated/` tree to satisfy it — that tree belongs to the user.
-check_lock_tracking_invariant() {
-    local status=0 leaf gen msgdeps
-    while IFS= read -r lock; do
-        leaf="$(dirname "$lock")"
-        # committed generated/ anywhere under the leaf (incl. workspace members)
-        gen="$(git ls-files "$leaf/generated" "$leaf/src/*/generated" | head -1)"
-        [ -n "$gen" ] && continue
-        # message deps declared by the leaf or any of its workspace members
-        # -h, NOT -rh: every argument here is an explicit file path, so `-r`
-        # never recursed — it only tripped `check-no-tracked-file-find`, which
-        # reads the flag and not the arguments (correctly: the flag is the part
-        # that turns into a walk the day someone passes a directory).
-        msgdeps="$(grep -hE "^($MSG_CRATES) = " \
-            "$leaf/Cargo.toml" "$leaf"/src/*/Cargo.toml 2>/dev/null | wc -l)"
-        [ "$msgdeps" -eq 0 ] && continue
-        echo "FAIL: $lock is tracked, but this leaf's message deps come from a" >&2
-        echo "      USER-side generated/ tree ($msgdeps dep(s), nothing committed)." >&2
-        echo "      A fresh clone cannot resolve that lock. Fix: git rm --cached" >&2
-        echo "      $lock  and add /Cargo.lock to the leaf .gitignore (RFC-0067)." >&2
-        status=1
-    done < <(git ls-files '*/Cargo.lock')
-    return $status
-}
+# It read "tracked lock <=> (no message deps) OR (generated/ committed)" and
+# lived here. A `Cargo.lock` is now tracked IFF its directory is in the index's
+# `[rust] locked_roots`; every other cargo root is a leaf whose lock is SEEDED
+# from the registry pin set on its first build. `check-cargo-registry-pins`
+# holds that, and holds every locked root to the pin set. What stays here is the
+# other question: does each tracked lock still satisfy its own manifest.
 
-MSG_CRATES='std_msgs|builtin_interfaces|example_interfaces|geometry_msgs|sensor_msgs|lifecycle_msgs|action_msgs|rosgraph_msgs|nav_msgs|diagnostic_msgs|trajectory_msgs|shape_msgs|stereo_msgs|visualization_msgs|unique_identifier_msgs|test_msgs'
-
-if ! check_lock_tracking_invariant; then
-    echo "" >&2
-    echo "check-leaf-lockfiles: lock-tracking invariant violated (see above)." >&2
-    exit 1
-fi
 
 # NOT `--offline`, deliberately — the first version of this gate used it and was
 # wrong. Offline conflates two different things: "this lock cannot satisfy its

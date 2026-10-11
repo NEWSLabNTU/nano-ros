@@ -12,7 +12,10 @@ RFC-0104 D2 / phase-485 W1. `nros-sdk-index.toml` names the pin set
     so `heapless` cannot be 0.8.1 in the repo root and 0.8.0 in the examples;
   * the pin set is what `scripts/gen-cargo-registry-pins.py` writes from the
     tracked locks today, so a moved root lock is a stale pin set, not a
-    silent divergence.
+    silent divergence;
+  * a `Cargo.lock` is tracked IFF its directory is a locked root (phase-485
+    W2) -- every other cargo root is a leaf, seeded from the pins on its first
+    build by `nros build` / `nros ws seed-lock`, never committed.
 
 Remedy for every failure: move the root's lock with `just lock-update`, then
 `python3 scripts/gen-cargo-registry-pins.py`, and review both diffs together.
@@ -67,8 +70,27 @@ def main():
               f"{', '.join(versions)}", file=sys.stderr)
         failed = True
 
+    # The tracked-lock invariant (RFC-0104 D3, phase-485 W2): a `Cargo.lock` is
+    # tracked IFF its directory is a locked root. Every other cargo root is a
+    # LEAF, whose lock is seeded from the pins on its first build and never
+    # committed — so a leaf lock in git is a second, unreviewed pin source.
+    tracked = set(cp.tracked_locks(ROOT))
+    declared = {cp.lock_path(r) for r in roots}
+    for rel in sorted(tracked - declared):
+        print(f"check-cargo-registry-pins: {rel} is tracked, but its directory is not in "
+              "`[rust] locked_roots`. A leaf lock is seeded, not committed: `git rm --cached "
+              f"{rel}` (or, for a closed-graph tool root, add the directory to locked_roots).",
+              file=sys.stderr)
+        failed = True
+    for rel in sorted(declared - tracked):
+        print(f"check-cargo-registry-pins: `[rust] locked_roots` names {os.path.dirname(rel) or '.'}, "
+              f"but {rel} is not tracked.", file=sys.stderr)
+        failed = True
+
     for r in roots:
         rel = cp.lock_path(r)
+        if rel not in tracked:
+            continue
         for name, have, want in cp.subset_violations(pins, cp.load_lock(os.path.join(ROOT, rel))):
             where = f"pinned at {want}" if want else "not pinned in that range"
             print(f"check-cargo-registry-pins: {rel} locks {name} {have}, {where} in {pins_rel}",

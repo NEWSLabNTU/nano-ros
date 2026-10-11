@@ -520,6 +520,7 @@ trace example="talker":
     source scripts/build/fixtures-target-dir.sh
     fr_tdir_flag="$(nros_fixture_target_dir_flag freertos "" "")"
     fr_artifacts="$(nros_fixture_row_artifact_dir "$EXAMPLE_DIR" freertos "" "")"
+    nros_seed_leaf_lock "$EXAMPLE_DIR"
     (cd "$EXAMPLE_DIR" && NROS_TRACE=1 cargo build $FR_ARGS $fr_tdir_flag)
 
     # Find the binary name from Cargo.toml
