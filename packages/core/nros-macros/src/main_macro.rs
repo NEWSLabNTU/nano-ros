@@ -2977,12 +2977,11 @@ fn leaf_selection_crate(manifest_dir: &Path, board_path: &SynPath) -> Option<Ide
             keys.extend(deps.keys().map(|k| k.replace('-', "_")));
         }
     }
-    if keys.iter().any(|k| *k == board_crate) {
+    if keys.contains(&board_crate) {
         return None;
     }
     let sel = nros_orchestration_ir::leaf_system::selection_crate_name(&pkg);
-    keys.iter()
-        .any(|k| *k == sel)
+    keys.contains(&sel)
         .then(|| Ident::new(&sel, Span::call_site()))
 }
 
