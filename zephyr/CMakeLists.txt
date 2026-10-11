@@ -246,8 +246,12 @@ set(_nros_rust_lane_env ${NROS_BOARD_FACTS_ENV})
 if(NOT NROS_WEST_LEAF_DESCRIPTOR STREQUAL "" AND EXISTS "${NROS_WEST_LEAF_DESCRIPTOR}")
     list(APPEND _nros_rust_lane_env "NROS_SIZING_DESCRIPTOR=${NROS_WEST_LEAF_DESCRIPTOR}")
 endif()
+# Issue 1796 -- and every DERIVED knob, which had no road to this lane at all:
+# its crates read `$DOTCONFIG`, where a derived knob is still the `-1` sentinel.
+nros_derived_knob_env(_nros_derived_env)
+list(APPEND _nros_rust_lane_env ${_nros_derived_env})
 set(NROS_BOARD_FACTS_ENV "${_nros_rust_lane_env}" CACHE INTERNAL
-    "issue 1662: the Zephyr Rust lane's cargo env (board facts + a leaf's descriptor)")
+    "issue 1662: the Zephyr Rust lane's cargo env (board facts, a leaf's descriptor, derived knobs -- issue 1796)")
 
 # phase-400 W5.a — and resolve the cargo target dir on the same terms, for the
 # same reason: `nros_cargo_build()` writes the per-build config headers under it

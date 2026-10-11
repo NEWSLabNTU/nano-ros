@@ -41,17 +41,16 @@ locator = "udp/127.0.0.1:2018"
 # so: no subscription, no service of either direction.
 # Issue 1033 -- `xrce_session_state_t` is one platform-heap allocation sized
 # by these three caps at BUILD time; at the crate defaults it is 6.4x the
-# 64 KiB arena and the image cannot boot. STATED, all three, though this is
-# the one standalone Zephyr leaf whose entity inventory composes (`derived`,
-# MAX_SUBSCRIBERS 0, MAX_QUERYABLES 1 -- measured, phase-481 W3):
-#   * SUBSCRIBERS: the derived 0 equals the stated 0, but it reaches only the
-#     CMAKE rung. The Rust lane's cargo build reads the Kconfig value this row
-#     renders, so deleting the row was measured to boot `HEAP EXHAUSTED
-#     (TOO SMALL): request 283912 bytes, arena 131584` -- the crate default;
+# 64 KiB arena and the image cannot boot. This is the one standalone Zephyr
+# leaf whose entity inventory composes (`derived`, MAX_SUBSCRIBERS 0,
+# MAX_QUERYABLES 1 -- measured, phase-481 W3):
+#   * SUBSCRIBERS: not stated -- the derived 0 reaches BOTH lanes (issue 1796:
+#     until then it reached only the cmake one, and deleting this row booted
+#     `HEAP EXHAUSTED (TOO SMALL): request 283912 bytes, arena 131584`);
 #   * SERVICE_SERVERS: the derived 1 is the queryable a TRANSIENT_LOCAL
-#     publisher costs on ZENOH, which XRCE does not create;
+#     publisher costs on ZENOH, which XRCE does not create, so 0 is stated;
 #   * SERVICE_CLIENTS has no derivation at all.
-env = { NROS_XRCE_MAX_SUBSCRIBERS = "0", NROS_XRCE_MAX_SERVICE_SERVERS = "0", NROS_XRCE_MAX_SERVICE_CLIENTS = "0" }
+env = { NROS_XRCE_MAX_SERVICE_SERVERS = "0", NROS_XRCE_MAX_SERVICE_CLIENTS = "0" }
 
 [image.zephyr_cyclonedds]
 board = "zephyr"
