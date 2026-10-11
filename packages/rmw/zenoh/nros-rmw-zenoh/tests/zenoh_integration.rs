@@ -1507,6 +1507,33 @@ fn declares_keep_running_across_a_reconnect() {
         .expect("keep token");
     let shared = &ctx as *const nros_rmw_zenoh::zpico::Context as usize;
 
+    // Issue 1802 — the workers reach `ctx` through a raw pointer, so they must
+    // be stopped and joined before `ctx` drops on EVERY path. A `wait_for`
+    // timeout panics, and the unwind used to drop the session under four
+    // threads still declaring on it: a use-after-free that nextest reported as
+    // SIGSEGV instead of the timeout. Declared after `ctx`, so it drops first.
+    struct StopAndJoin {
+        stop: Arc<AtomicBool>,
+        workers: Vec<thread::JoinHandle<()>>,
+    }
+    impl StopAndJoin {
+        fn finish(mut self) {
+            self.stop.store(true, Ordering::Relaxed);
+            for w in self.workers.drain(..) {
+                w.join().expect("a declaring thread panicked");
+            }
+        }
+    }
+    impl Drop for StopAndJoin {
+        fn drop(&mut self) {
+            self.stop.store(true, Ordering::Relaxed);
+            for w in self.workers.drain(..) {
+                // Already unwinding: the original panic is the report.
+                let _ = w.join();
+            }
+        }
+    }
+
     let stop = Arc::new(AtomicBool::new(false));
     let ok = Arc::new(AtomicU64::new(0));
     let failed = Arc::new(AtomicU64::new(0));
@@ -1532,6 +1559,10 @@ fn declares_keep_running_across_a_reconnect() {
             })
         })
         .collect();
+    let workers = StopAndJoin {
+        stop: stop.clone(),
+        workers,
+    };
 
     wait_for("declares on a live link", Duration::from_secs(10), || {
         ok.load(Ordering::Relaxed) >= 50
@@ -1548,16 +1579,14 @@ fn declares_keep_running_across_a_reconnect() {
     let restarted_at = Instant::now();
     // Lease expiry plus `_z_reopen`'s 1 s retry, then the replay: measured
     // 39.8 s, 6 runs of 6, at the default 10 s lease (see the nextest
-    // override for this test).
+    // override for this test). Issue 1802: under load it took over 50 s in 1
+    // run of 96 (8 copies beside 32 CPU hogs), so the limit leaves 35 s.
     wait_for(
         "declares to resume after the restart",
-        Duration::from_secs(50),
+        Duration::from_secs(75),
         || ok.load(Ordering::Relaxed) >= before + 50,
     );
-    stop.store(true, Ordering::Relaxed);
-    for w in workers {
-        w.join().expect("a declaring thread panicked");
-    }
+    workers.finish();
     println!(
         "issue 1749: {} declare rounds ok, {} failed across the outage, resumed {:?} after the restart",
         ok.load(Ordering::Relaxed),
