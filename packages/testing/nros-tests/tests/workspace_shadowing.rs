@@ -15,7 +15,9 @@
 //! AGENTS.md "No compilation inside tests").
 //!
 //! Fails as an unmet precondition when no AMENT layer ships `std_msgs`
-//! (nothing to shadow → the contract degenerates) or `nm` is absent.
+//! (nothing to shadow → the contract degenerates) or `nm` is absent. A lane
+//! that does not claim ROS 2 deselects it; live-peer's host job runs it
+//! (issue 1800, `HOST_ROS2_TESTS` in `scripts/check-interop-verdicts.py`).
 
 use std::{
     path::{Path, PathBuf},
@@ -68,7 +70,7 @@ fn workspace_std_msgs_shadows_ament_in_consumer_binary() -> nros_tests::TestResu
         ament_prefix.display()
     );
 
-    // The prebuilt consumer (build stage). Absent → tier-aware skip/fail.
+    // The prebuilt consumer (build stage). Absent → fail (issue 1758).
     // phase-445 W5 — the template has no root build file (RFC-0098 D9); `nros
     // build` builds each package into its own `build/<pkg>/` (package mode).
     let consumer = nros_tests::fixtures::require_cmake_fixture(

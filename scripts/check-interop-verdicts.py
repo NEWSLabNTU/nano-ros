@@ -497,6 +497,60 @@ def host_workspace_fixtures_for(cells, ids, known=None, read=None, helpers=None)
     return host_rows_for(cells, ids, known, read, helpers)
 
 
+# Issue 1800 — ROS 2 tests that are not interop cells. Tiers 1, 2 and the
+# nightly declare `NROS_TEST_UNCLAIMED=ros2`, so a test that calls
+# `lane_scope::require_ros2_claimed()` runs only in a lane that claims ROS 2.
+# Live-peer is that lane, but its membership is the ledger, and a test with no
+# peer and no direction is not an `interop::CELLS` row. Each entry here is
+# `(binary, case)`: the host job builds what the case resolves
+# (`--host-compile-checks`), runs it (`--filters`) and asserts it produced a
+# result (`--assert-ran`), beside the cells. No ledger verdict: the case was
+# never an interop measurement, so a red is a red, not a regression.
+#
+# `cyclone_slirp_pair` is NOT here and cannot be: it needs unprivileged user
+# namespaces, which the runner container refuses (see issue 1800).
+HOST_ROS2_TESTS: "list[tuple[str, str]]" = [
+    ("workspace_shadowing", "workspace_std_msgs_shadows_ament_in_consumer_binary"),
+]
+
+
+def host_ros2_tests(runner: str) -> "list[tuple[str, str]]":
+    """The declared non-cell ROS 2 cases this runner owns (host and all)."""
+    return list(HOST_ROS2_TESTS) if runner in ("host", "all") else []
+
+
+def _host_ros2_pseudo_cells() -> list[dict]:
+    """The declared tests, shaped like host cells so the fixture derivation
+    (`host_rows_for`) reads their sources the same way it reads a cell's."""
+    return [
+        {"id": f"ros2-test:{b}", "platform": HOST_PLATFORM, "test": b}
+        for b in sorted({b for b, _ in HOST_ROS2_TESTS})
+    ]
+
+
+def assert_ros2_tests_ran(junit_dir: Path, runner: str) -> int:
+    """Did every declared ROS 2 test produce a pass or a fail? 0 yes, 3 no.
+
+    Same rule as `assert_ran`: a skip is not a result. A failure is reported
+    by the recipe's junit count, not here.
+    """
+    missing: list[str] = []
+    for b, case in host_ros2_tests(runner):
+        got = [o for _, n, o in junit_cases(junit_dir / f"{b}.xml", {b})
+               if n.split("::")[-1] == case]
+        if not got or got == ["skip"] * len(got):
+            missing.append(f"{b}::{case} — " + ("skipped" if got else "no result in the junit"))
+    if not missing:
+        n = len(host_ros2_tests(runner))
+        if n:
+            print(f"Every declared ROS 2 test produced a result ({n} of {n}).")
+        return 0
+    print("Declared ROS 2 test(s) produced NO result in this run:")
+    for m in missing:
+        print(f"  {m}")
+    return 3
+
+
 def in_runner(cells: list[dict], ids, runner: str) -> list[str]:
     """The subset of `ids` whose cell runs on `runner` (`all` keeps every id).
 
@@ -1718,6 +1772,27 @@ def _self_test_runner_split(
         f"selftest: an absent junit dir passed the guard: {buf.getvalue()}"
     )
 
+    # Issue 1800 — a declared ROS 2 test must produce a result on the host
+    # runner; a skip or an absent case is not one, and the board runner owns
+    # none of them.
+    for b, case in HOST_ROS2_TESTS:
+        assert (TESTS_DIR / f"{b}.rs").is_file(), f"selftest: {b}.rs is gone"
+        assert re.search(rf"\bfn\s+{re.escape(case)}\b", (TESTS_DIR / f"{b}.rs").read_text()), (
+            f"selftest: HOST_ROS2_TESTS names {b}::{case}, which the source no longer defines"
+        )
+    b, case = HOST_ROS2_TESTS[0]
+    d = tmp / "ros2-tests"
+    d.mkdir(exist_ok=True)
+    for outcome, want in (("pass", 0), ("fail", 0), ("skip", 3)):
+        (d / f"{b}.xml").write_text(_junit([(b, case, outcome)]))
+        with contextlib.redirect_stdout(io.StringIO()):
+            rc = assert_ros2_tests_ran(d, "host")
+        assert rc == want, f"selftest: a declared ROS 2 test that {outcome}ed gave {rc}"
+    (d / f"{b}.xml").unlink()
+    with contextlib.redirect_stdout(io.StringIO()):
+        assert assert_ros2_tests_ran(d, "host") == 3, "selftest: an absent junit passed"
+        assert assert_ros2_tests_ran(d, "board") == 0, "selftest: the board runner owns a ROS 2 test"
+
 
 def _self_test_case_map(
     cells: list[dict], owners: list[dict], src: dict[str, str | None]
@@ -2082,9 +2157,10 @@ def main(argv: list[str]) -> int:
             return 1
 
     if args.assert_ran:
-        return assert_ran(
+        rc = assert_ran(
             Path(args.assert_ran), passing, cells, sources, owners, args.runner
         )
+        return max(rc, assert_ros2_tests_ran(Path(args.assert_ran), args.runner))
 
     if args.list_passing:
         by_id = {c["id"]: c for c in cells}
@@ -2097,7 +2173,10 @@ def main(argv: list[str]) -> int:
             return 0
         if args.host_compile_checks:
             try:
-                print("\n".join(host_compile_checks_for(cells, passing)))
+                extra = [] if args.runner == "board" else _host_ros2_pseudo_cells()
+                print("\n".join(host_compile_checks_for(
+                    cells + extra, passing + [c["id"] for c in extra]
+                )))
             except (LedgerError, OSError, tomllib.TOMLDecodeError) as e:
                 print(f"check-interop-verdicts: {e}", file=sys.stderr)
                 return 1
@@ -2135,6 +2214,8 @@ def main(argv: list[str]) -> int:
                 b = by_id[e["cell"]].get("test")
                 if b:
                     cases.setdefault(b, set()).update(e["tests"])
+            for b, t in host_ros2_tests(args.runner):
+                cases.setdefault(b, set()).add(t)
             for b in sorted(cases):
                 expr = " or ".join(f"test(={t})" for t in sorted(cases[b]))
                 print(f"{b}\tbinary(={b}) and ({expr})")
