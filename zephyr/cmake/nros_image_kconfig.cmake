@@ -203,6 +203,9 @@ function(nros_image_kconfig_hook)
     endforeach()
     set(NROS_IMAGE_ENV_ROWS "${_keys}" CACHE INTERNAL
         "phase-481 W1: [image.<id>] env rows with no Kconfig symbol")
+    if(NOT _kconfig STREQUAL "" AND EXISTS "${_kconfig}")
+        _nros_image_kconfig_drop_cli_overridden("${_kconfig}")
+    endif()
 
     # phase-481 W3 -- the image's Zephyr-native fragments (`[image.<id>] conf`
     # of a single-package leaf; the CLI answers nothing for a bringup, whose
@@ -288,6 +291,46 @@ function(_nros_image_kconfig_check_snippets rmw snippets system image)
             endif()
         endif()
     endforeach()
+endfunction()
+
+# A rendered row whose symbol the cmake/west command line also sets
+# (`-DCONFIG_<SYM>=…`) is DEAD: Zephyr merges the command-line values after
+# every conf file, this rendering included, so the row can never be what the
+# image bakes. Left in, it is an image stating one thing and running another,
+# which issue 1550's domain check refuses by name -- measured: the tier-2 west
+# fixtures re-domain every Cyclone image (`-DCONFIG_NROS_DOMAIN_ID=33`) while
+# the bringup's `system.toml` says `domain_id = 0`, and once issue 1721 rendered
+# that row `build-ws-cpp-entry-cyclonedds` stopped configuring. So the row is
+# commented out with the reason, and the command line stays the one statement.
+#
+# Zephyr's own spelling of "set on the command line" (`kconfig.cmake`): the
+# cache entry `CONFIG_<SYM>` on the configure that passes it, `CLI_CONFIG_<SYM>`
+# on every re-configure after.
+function(_nros_image_kconfig_drop_cli_overridden frag)
+    file(STRINGS "${frag}" _lines)
+    set(_out "")
+    set(_dropped "")
+    foreach(_l IN LISTS _lines)
+        if(_l MATCHES "^(CONFIG_[A-Za-z0-9_]+)=")
+            set(_sym "${CMAKE_MATCH_1}")
+            if(DEFINED CACHE{${_sym}} OR DEFINED CACHE{CLI_${_sym}})
+                string(APPEND _out
+                    "# ${_l}\n"
+                    "#   ^ not rendered: -D${_sym} on the command line states it, "
+                    "and a command-line value merges after every conf file\n")
+                list(APPEND _dropped "${_sym}")
+                continue()
+            endif()
+        endif()
+        string(APPEND _out "${_l}\n")
+    endforeach()
+    if(_dropped)
+        file(WRITE "${frag}" "${_out}")
+        string(REPLACE ";" ", " _dropped "${_dropped}")
+        message(STATUS
+            "nano-ros: ${frag}: ${_dropped} left to the command line's -D "
+            "(a rendered row there would be overridden, i.e. dead)")
+    endif()
 endfunction()
 
 # The conf files the caller already names, as absolute paths: every
