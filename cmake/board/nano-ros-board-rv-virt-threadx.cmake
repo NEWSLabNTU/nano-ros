@@ -405,23 +405,8 @@ set(NROS_APP_NET_MAC_LAST "0x56"
 # descriptor (`nros board net`: `[board.net]` over the platform default), with
 # this image's last IP octet / MAC byte applied; this file carries no copy of
 # the subnet, gateway or MAC prefix. The CLI is required on this road anyway.
-nros_resolve_cli(_nros_net_cli CONTEXT "nano-ros-board-rv-virt-threadx")
-nros_codegen_tool_reconfigure("${_nros_net_cli}")
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-    "${_NROS_BOARD_ROOT}/packages/boards/nros-board-threadx-qemu-riscv64/nros-board.toml")
-execute_process(
-    COMMAND "${_nros_net_cli}" board net rv-virt-threadx
-            --workspace "${_NROS_BOARD_ROOT}" --format c-network
-            --ip-last "${NROS_APP_NET_IP_LAST}" --mac-last "${NROS_APP_NET_MAC_LAST}"
-    OUTPUT_VARIABLE _nros_board_net_c
-    ERROR_VARIABLE _nros_board_net_err
-    RESULT_VARIABLE _nros_board_net_rc
-    OUTPUT_STRIP_TRAILING_WHITESPACE)
-if(NOT _nros_board_net_rc EQUAL 0)
-    message(FATAL_ERROR
-        "nano-ros-board-rv-virt-threadx: `nros board net rv-virt-threadx` failed "
-        "(${_nros_board_net_rc}): ${_nros_board_net_err}")
-endif()
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosBoardNet.cmake")
+nros_board_net_c(rv-virt-threadx _nros_board_net_c ROOT "${_NROS_BOARD_ROOT}" IP_LAST "${NROS_APP_NET_IP_LAST}" MAC_LAST "${NROS_APP_NET_MAC_LAST}")
 
 set(_NROS_APP_CONFIG_DEF_C
     "${CMAKE_CURRENT_BINARY_DIR}/nros_app_config_def.c")

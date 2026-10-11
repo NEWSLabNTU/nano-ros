@@ -35,7 +35,9 @@ D10 gives each fact its owner:
 
 - `system.toml` `[network.<name>]`: `mode` (`slirp` | `bridge` | `tap` |
   `none`), `subnet` (CIDR), `gateway`, and for `bridge`/`tap` the host device.
-  A built-in `qemu` network (SLIRP, `192.0.3.0/24`, gateway `192.0.3.1`)
+  A built-in `qemu` network (QEMU's own SLIRP plan: `10.0.2.0/24`, gateway
+  `10.0.2.2`, guest `10.0.2.15` — phase-484 W4b-2 already names it with
+  `[board.net] network = "qemu"`)
   exists without being written.
 - `[image.<id>.net.<ifname>]`: `network` (default `qemu` for a QEMU board),
   `address` or `host` (the last octet), optional `mac`.
@@ -84,5 +86,5 @@ test. A runtime test only where a two-NIC board exists.
 ## Not in this phase
 
 - The router/locator default. RFC-0103 §3 keeps it an `[image]` fact over the
-  platform default. One network makes it `tcp/192.0.3.1:<port>` everywhere,
+  platform default. One network makes it `tcp/10.0.2.2:<port>` on every QEMU board,
   which is most of issue 1793.

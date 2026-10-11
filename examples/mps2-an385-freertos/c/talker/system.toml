@@ -11,7 +11,7 @@ rmw = "zenoh"
 domain_id = 0
 # The FreeRTOS entry default; a `-DNROS_ENTRY_LOCATOR=…` (every fixture row
 # passes one) still wins.
-locator = "tcp/192.0.3.1:7447"
+locator = "tcp/10.0.2.2:7447"
 
 [[component]]
 pkg = "freertos_c_talker"

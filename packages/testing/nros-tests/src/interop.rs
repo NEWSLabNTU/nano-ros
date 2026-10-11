@@ -45,8 +45,8 @@ pub enum BuildChannel {
     /// `just freertos build-fixtures` — `scripts/build/workspace-fixtures-build.sh
     /// freertos <lang>`, driven off the `platform = "freertos"` rows of
     /// `examples/fixtures.toml`. The artifact is an ELF QEMU boots; the guest's
-    /// lwIP stack dials the baked `tcp/192.0.3.1:<port>` locator through the
-    /// slirp gateway (phase-441 W3).
+    /// lwIP stack dials the baked `tcp/10.0.2.2:<port>` locator through the
+    /// slirp gateway (phase-441 W3; QEMU's own network, RFC-0103 D10).
     FreertosMps2Fixtures,
 }
 
@@ -459,7 +459,7 @@ pub const CELLS: &[InteropCell] = &[
     // (newlib-nano) and a real emulator — and it reaches the host over QEMU
     // SLIRP, unicast only, which is what makes it affordable: CLAUDE.md forbids
     // `sudo`, TAP needs `ip tuntap add`, and zenoh-pico's baked
-    // `tcp/192.0.3.1:<port>` locator needs no multicast at all. (Cyclone's SPDP
+    // `tcp/10.0.2.2:<port>` locator needs no multicast at all. (Cyclone's SPDP
     // does; that is issue 1251 and phase-441 W2's measurement, deliberately not
     // this cell's problem.)
     //

@@ -3303,7 +3303,7 @@ pub fn build_freertos_posix_workspace_cpp_entry() -> TestResult<&'static Path> {
 /// phase-263 C2b — the FreeRTOS (QEMU MPS2-AN385) C workspace embedded entry (cached).
 /// Built into its own `build-workspace-fixtures-freertos` dir (one board per configure,
 /// cross-compiled thumbv7m via the workspace-root toolchain map) with a baked
-/// `tcp/192.0.3.1:<port>` locator the QEMU slirp guest dials.
+/// `tcp/10.0.2.2:<port>` locator the QEMU slirp guest dials (RFC-0103 D10).
 pub fn build_freertos_workspace_c_entry() -> TestResult<&'static Path> {
     FREERTOS_WORKSPACE_C_ENTRY_BINARY
         .get_or_try_init(|| {

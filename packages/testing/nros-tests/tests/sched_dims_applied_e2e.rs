@@ -764,7 +764,7 @@ fn run_cell(cell: &SchedCell) {
             l.unwrap_or_else(|_| panic!("{}", fail_loud()))
         }
         Boot::FreertosQemu => {
-            let mut q = QemuProcess::start_mps2_an385_freertos_slirp(&entry)
+            let mut q = QemuProcess::start_mps2_an385_networked(&entry)
                 .unwrap_or_else(|e| panic!("[{platform} {lang}] boot FreeRTOS QEMU: {e}"));
             let l = q.wait_for_output_each(&wait_groups, timeout);
             q.kill();

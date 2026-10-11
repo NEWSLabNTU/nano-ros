@@ -182,22 +182,8 @@ endif()
 # emitter use; this file no longer carries a copy. The CLI is required on this
 # road anyway (codegen), so a missing one is a configure error, not a fallback
 # literal that would be a fourth copy.
-nros_resolve_cli(_nros_net_cli CONTEXT "nano-ros-board-threadx-linux")
-nros_codegen_tool_reconfigure("${_nros_net_cli}")
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-    "${_NROS_BOARD_DIR}/nros-board.toml")
-execute_process(
-    COMMAND "${_nros_net_cli}" board net threadx-linux
-            --workspace "${_NROS_BOARD_ROOT}" --format c-network
-    OUTPUT_VARIABLE _nros_board_net_c
-    ERROR_VARIABLE _nros_board_net_err
-    RESULT_VARIABLE _nros_board_net_rc
-    OUTPUT_STRIP_TRAILING_WHITESPACE)
-if(NOT _nros_board_net_rc EQUAL 0)
-    message(FATAL_ERROR
-        "nano-ros-board-threadx-linux: `nros board net threadx-linux` failed "
-        "(${_nros_board_net_rc}): ${_nros_board_net_err}")
-endif()
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosBoardNet.cmake")
+nros_board_net_c(threadx-linux _nros_board_net_c ROOT "${_NROS_BOARD_ROOT}")
 set(_NROS_APP_CONFIG_DEF_C
     "${CMAKE_CURRENT_BINARY_DIR}/nros_app_config_def.c")
 file(WRITE "${_NROS_APP_CONFIG_DEF_C}"

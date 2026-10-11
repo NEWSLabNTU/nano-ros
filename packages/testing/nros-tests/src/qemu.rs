@@ -303,47 +303,11 @@ impl QemuProcess {
         Self::spawn(cmd)
     }
 
-    /// phase-263 C2b — MPS2-AN385 + LAN9118 slirp, with the user-net configured to the
-    /// FreeRTOS board's COMPILE-TIME static address plan (`192.0.3.0/24`, gateway
-    /// `192.0.3.1`) instead of slirp's default `10.0.2.0/24`.
-    ///
-    /// The `nros-board-mps2-an385-freertos` firmware brings up lwIP with a STATIC IP
-    /// `192.0.3.10` / gateway `192.0.3.1` (no DHCP — see `startup.c`), so the default
-    /// slirp net is unroutable for it. Pointing slirp's `host=` at the board's gateway
-    /// (`192.0.3.1`) makes the guest reach the host machine, which forwards to a zenohd
-    /// bound on `0.0.0.0:<port>`. The entry's baked locator is therefore
-    /// `tcp/192.0.3.1:<port>`. No TAP / bridge / sudo.
-    pub fn start_mps2_an385_freertos_slirp(binary: &Path) -> TestResult<Self> {
-        if !binary.exists() {
-            return Err(TestError::BuildFailed(format!(
-                "Binary not found: {}",
-                binary.display()
-            )));
-        }
-
-        let mut cmd = qemu_system_arm_cmd();
-        cmd.args([
-            "-cpu",
-            "cortex-m3",
-            "-machine",
-            "mps2-an385",
-            "-nographic",
-            "-icount",
-            "shift=auto",
-            "-semihosting-config",
-            "enable=on,target=native",
-            "-kernel",
-        ])
-        .arg(binary)
-        // net/host match the board's static lwIP config so the guest's gateway
-        // (192.0.3.1) IS the slirp host → forwards to the host machine's zenohd.
-        .args(["-nic", "user,model=lan9118,net=192.0.3.0/24,host=192.0.3.1"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-        #[cfg(unix)]
-        set_new_process_group(&mut cmd);
-        Self::spawn(cmd)
-    }
+    // phase-484 W4b-2 (RFC-0103 D10) — `start_mps2_an385_networked` is
+    // gone. It configured SLIRP to `192.0.3.0/24` (host `192.0.3.1`) because
+    // the FreeRTOS firmware's lwIP was static on that plan; the FreeRTOS QEMU
+    // boards now sit on QEMU's own SLIRP network like every other QEMU board,
+    // so they boot with `start_mps2_an385_networked`, the one MPS2 launcher.
 
     /// Start QEMU with MPS2-AN385 machine + LAN9118 mcast-socket
     /// networking (Phase 97.4.freertos).
@@ -1555,7 +1519,7 @@ mod tests {
         let mut cmd = Command::new("/usr/bin/qemu-system-arm");
         cmd.args([
             "-nic",
-            "user,model=lan9118,net=192.0.3.0/24,host=192.0.3.1",
+            "user,model=lan9118,net=10.0.2.0/24,host=10.0.2.2",
             "-semihosting-config",
             "enable=on,target=native",
             "-append",
@@ -1565,7 +1529,7 @@ mod tests {
         // Commas, slashes and `=` are safe — quoting them would make the line
         // harder to read for no gain.
         assert!(
-            rendered.contains("-nic user,model=lan9118,net=192.0.3.0/24,host=192.0.3.1"),
+            rendered.contains("-nic user,model=lan9118,net=10.0.2.0/24,host=10.0.2.2"),
             "{rendered}"
         );
         assert!(rendered.contains("'two words'"), "{rendered}");

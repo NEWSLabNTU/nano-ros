@@ -24,6 +24,13 @@
 use std::path::Path;
 
 fn main() {
+    // phase-484 W4b-2 (RFC-0103 D10) — the network defaults, ONCE and before
+    // any early return, because `src/config.rs` `include!`s what it writes:
+    // this crate's `[board.net]` (`network = "qemu"`, QEMU's own SLIRP network)
+    // over the platform default. Both arches share it.
+    nros_board_common::board_net::emit_for_crate(
+        nros_board_common::board_net::ResolvedNet::platform_default(),
+    );
     // issue 0288 — skip the NuttX cross-compile when host tooling builds this
     // crate (the source-metadata probe of a deploy-bound standalone example).
     // The cross gcc is invoked regardless of target and rejects the host's

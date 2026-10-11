@@ -165,11 +165,11 @@ board = "freertos"
 panic = "own"
 # issue 1581 — the ONLY carrier of this image's locator: the FreeRTOS board reads
 # no `NROS_LOCATOR`, so an image that states none dials the board default
-# `tcp/192.0.3.1:7447` and every tier cell fails `Executor::open` before a tier
+# `tcp/10.0.2.2:7447` and every tier cell fails `Executor::open` before a tier
 # runs. Lost when phase-383 W10.a deleted `freertos_realtime_entry`. Port 7891 =
 # `port_of(FreertosMps2, Rust, RealtimeTiers)`, which the test's router binds and
 # the resolver asserts against this line. Gate: `check-image-locator-bake`.
-locator = "tcp/192.0.3.1:7891"
+locator = "tcp/10.0.2.2:7891"
 
 [image.native]
 board = "native"

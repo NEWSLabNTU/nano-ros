@@ -83,11 +83,12 @@ and re-declared its `Config` — the two copies had drifted to different
 default IPs, which nothing catches until a node fails to reach the
 router.
 
-Which network the defaults describe is now explicit rather than
-implied. `Config::default()` is the bridge plan (`192.0.3.10/24`,
-gateway `192.0.3.1`); `Config::qemu_slirp()` is QEMU's user-mode NAT
-(`10.0.2.10/24`, gateway `10.0.2.2`) and is what the RTIC entry boots
-from. Either way, an image that sets `ip`/`gateway`/`locator` in its
+Which network the defaults describe is stated by the board: its
+`nros-board.toml` says `[board.net] network = "qemu"`, so `Config::default()`
+sits on QEMU's own user-mode network (`10.0.2.15/24`, gateway and router
+`10.0.2.2`) — the network every QEMU board shares. `Config::qemu_slirp()` is
+the same network at the RTIC entry's own address (`10.0.2.10`, router port
+`7450`). Either way, an image that sets `ip`/`gateway`/`locator` in its
 `[image.<id>]` table overrides the default — which every in-tree example
 does, and which you should too.
 

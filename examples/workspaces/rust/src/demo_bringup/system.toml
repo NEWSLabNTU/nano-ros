@@ -105,11 +105,12 @@ board = "mps2-an385-freertos"
 panic = "own"
 # issue 1581 — a Rust image on this board bakes its locator ONLY from here (the
 # board reads no `NROS_LOCATOR`), so an image that states none dials the board
-# default `tcp/192.0.3.1:7447`. Lost when phase-383 W9 deleted `freertos_entry`
+# default `tcp/10.0.2.2:7447`. Lost when phase-383 W9 deleted `freertos_entry`
 # and its `[package.metadata.nros.deploy.freertos]` table. Port 7830 =
-# `port_of(FreertosMps2, Rust, EntryPubsub)`; host 192.0.3.1 is the board's own
-# gateway, as on the C/C++ siblings' rows. Gate: `check-image-locator-bake`.
-locator = "tcp/192.0.3.1:7830"
+# `port_of(FreertosMps2, Rust, EntryPubsub)`; host 10.0.2.2 is the board's own
+# gateway (QEMU's SLIRP host, RFC-0103 D10), as on the C/C++ siblings' rows.
+# Gate: `check-image-locator-bake`.
+locator = "tcp/10.0.2.2:7830"
 
 [image.native]
 board = "native"

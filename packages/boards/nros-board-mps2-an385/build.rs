@@ -7,5 +7,11 @@
 //! `nros_build_paths::link_script`.
 
 fn main() {
+    // phase-484 W4b-2 (RFC-0103 D10) — the network defaults: this crate's
+    // `[board.net]` (`network = "qemu"`) over the platform default, written to
+    // `$OUT_DIR/nros_board_net.rs` for `src/config.rs`.
+    nros_board_common::board_net::emit_for_crate(
+        nros_board_common::board_net::ResolvedNet::platform_default(),
+    );
     nros_build_paths::link_script!("mps2-an385.x" => "memory.x");
 }

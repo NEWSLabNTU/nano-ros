@@ -22,13 +22,13 @@
 //! `scripts/qemu/launch-mps2-an385.sh` offers slirp and TAP. TAP needs
 //! `ip tuntap add` — root — and CLAUDE.md forbids `sudo` outright, so slirp is
 //! the only path an agent or a CI runner can take. Slirp is **unicast only**:
-//! the guest sits on 192.0.3.x and the gateway 192.0.3.1 forwards to the host
-//! machine (`QemuProcess::start_mps2_an385_freertos_slirp` passes
-//! `net=192.0.3.0/24,host=192.0.3.1` precisely so the board's static lwIP
-//! config and QEMU's virtual net agree).
+//! the guest sits on QEMU's own network (10.0.2.0/24) and the gateway 10.0.2.2
+//! forwards to the host machine (`QemuProcess::start_mps2_an385_networked`;
+//! the board's `[board.net] network = "qemu"` puts its static lwIP config on
+//! the same plan — RFC-0103 D10).
 //!
 //! Unicast-only is exactly what zenoh-pico client mode already does: the image
-//! carries a COMPILE-TIME `NROS_ENTRY_LOCATOR` of `tcp/192.0.3.1:<port>` (baked
+//! carries a COMPILE-TIME `NROS_ENTRY_LOCATOR` of `tcp/10.0.2.2:<port>` (baked
 //! by the `workspace-c-freertos` row of `examples/fixtures.toml`) and dials it.
 //! Nothing about this cell needs a multicast crossing — which is what makes it
 //! the RMW to do first. Cyclone's SPDP would need a configured unicast peer
@@ -117,13 +117,13 @@ fn nros_freertos_mps2_publisher_reaches_ros2_topic_echo() {
     let entry = build_freertos_workspace_c_entry().require("freertos C workspace entry");
 
     // 0.0.0.0, not 127.0.0.1: the guest reaches this router through the slirp
-    // gateway 192.0.3.1, which is a DIFFERENT host address than loopback. The
+    // gateway 10.0.2.2, which is a DIFFERENT host address than loopback. The
     // ROS 2 peer below dials loopback for the same one router.
     let _router = ZenohRouter::start_on("0.0.0.0", FREERTOS_C_ENTRY_PORT)
         .unwrap_or_else(|e| unmet!("zenohd failed to start on {FREERTOS_C_ENTRY_PORT}: {e}"));
     let peer_locator = format!("tcp/127.0.0.1:{FREERTOS_C_ENTRY_PORT}");
 
-    let mut guest = QemuProcess::start_mps2_an385_freertos_slirp(entry)
+    let mut guest = QemuProcess::start_mps2_an385_networked(entry)
         .unwrap_or_else(|e| panic!("boot freertos QEMU (mps2-an385): {e}"));
 
     // Poll `ros2 topic echo --once` until a sample lands. Each attempt pays
@@ -181,7 +181,7 @@ fn nros_freertos_mps2_publisher_reaches_ros2_topic_echo() {
          entry's 1 Hz `/chatter` publish within {}s — the nano-pub → ros2-sub \
          direction does not cross a second kernel (phase-441 W3).\n\
          router: tcp/0.0.0.0:{FREERTOS_C_ENTRY_PORT} (guest dials \
-         tcp/192.0.3.1:{FREERTOS_C_ENTRY_PORT} through slirp; peer dials \
+         tcp/10.0.2.2:{FREERTOS_C_ENTRY_PORT} through slirp; peer dials \
          {peer_locator})\n\
          last ros2 output:\n{last}\n\
          guest console:\n{guest_console}",

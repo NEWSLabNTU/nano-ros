@@ -38,6 +38,15 @@
 # The two lanes agree on nuttx and disagree on threadx and freertos. That
 # disagreement is CARRIED FORWARD DELIBERATELY and is not tidied here.
 #
+# UPDATE (phase-484 W4b-2, RFC-0103 D10): the FreeRTOS half is gone, by the
+# route this header asked for. The disagreement was two networks, not two
+# readings: the C/C++ FreeRTOS images ran a static 192.0.3.0/24 plan behind a
+# launcher that reconfigured SLIRP, while everything else ran QEMU's own
+# 10.0.2.0/24. Both FreeRTOS QEMU boards now state `network = "qemu"`, and a
+# named board's default router is DERIVED from its gateway. So both lanes dial
+# 10.0.2.2 there. The table above is the measurement as it stood; the
+# threadx node-register port (7553) still differs from the entry lane's 7447.
+#
 # REACHABILITY, so the next reader does not re-derive it: nothing in this tree
 # reaches the node-register RTOS carriers. Every in-tree
 # `nano_ros_node_register` / `nros_components_register_node` call site leaves
@@ -66,11 +75,17 @@
 # veth bridge and no root.
 set(NROS_LOCATOR_ENTRY_THREADX_LINUX "tcp/127.0.0.1:7447"
     CACHE INTERNAL "nano-ros: entry-lane locator default, threadx-linux host sim")
-# Static lwIP net 192.0.3.0/24 — the gateway IS the slirp host (phase-263 C2b;
-# the default 10.0.2.0/24 slirp never answers the guest's gateway ARP for
-# 192.0.3.1).
-set(NROS_LOCATOR_ENTRY_FREERTOS "tcp/192.0.3.1:7447"
-    CACHE INTERNAL "nano-ros: entry-lane locator default, freertos static lwIP")
+# phase-484 W4b-2 (RFC-0103 D10) — a board that names its network has a
+# router default DERIVED from it: `tcp/<the board's resolved gateway>:<port>`.
+# This replaced the FreeRTOS literal `tcp/192.0.3.1:7447`, which was this
+# table's half of issue 0946's disagreement. The entry lane dialled the
+# static-lwIP gateway, the node-register lane dialled the SLIRP host, and both
+# FreeRTOS QEMU boards now sit on QEMU's own network, whose gateway IS
+# 10.0.2.2. So the two lanes agree because the board says one thing, not
+# because a literal was picked. A board on the platform default (s32z270,
+# real hardware) still answers 192.0.3.1, now from its descriptor.
+set(NROS_LOCATOR_DEFAULT_PORT "7447"
+    CACHE INTERNAL "nano-ros: the router port a board-derived default dials")
 # Every other embedded board: QEMU slirp routes the guest to the host at
 # 10.0.2.2.
 set(NROS_LOCATOR_ENTRY_DEFAULT "tcp/10.0.2.2:7447"
@@ -95,7 +110,8 @@ set(NROS_LOCATOR_NODEREG_FREERTOS "tcp/10.0.2.2:7447"
 #
 # Precedence, entry lane:
 #   `NROS_ENTRY_LOCATOR` (the `-D` cache override every RTOS fixture row passes)
-#   > board threadx-linux > platform freertos > the QEMU-slirp default.
+#   > board threadx-linux > the board's own gateway (RFC-0103 D10)
+#   > the QEMU-slirp default.
 #
 # Precedence, node-register lane:
 #   `NROS_ENTRY_LOCATOR` > `NROS_{NUTTX,THREADX,FREERTOS}_LOCATOR` > that
@@ -128,19 +144,32 @@ function(_nros_resolve_entry_locator lane platform board out_var)
             "NanoRosEntryLocator.cmake, not a bad locator value.")
     endif()
 
+    # The board's own gateway, when the board is named and has a descriptor.
+    set(_board_loc "")
+    if(NOT "${board}" STREQUAL "" AND NOT board STREQUAL "threadx-linux"
+       AND COMMAND nros_board_net_c)
+        nros_board_net_c("${board}" _unused_net GATEWAY_VAR _gw OPTIONAL)
+        if(_gw)
+            set(_board_loc "tcp/${_gw}:${NROS_LOCATOR_DEFAULT_PORT}")
+        endif()
+    endif()
+
     if(lane STREQUAL "entry")
         if(DEFINED NROS_ENTRY_LOCATOR)
             set(_loc "${NROS_ENTRY_LOCATOR}")
         elseif(board STREQUAL "threadx-linux")
             set(_loc "${NROS_LOCATOR_ENTRY_THREADX_LINUX}")
-        elseif(platform STREQUAL "freertos")
-            set(_loc "${NROS_LOCATOR_ENTRY_FREERTOS}")
+        elseif(_board_loc)
+            set(_loc "${_board_loc}")
         else()
             set(_loc "${NROS_LOCATOR_ENTRY_DEFAULT}")
         endif()
     elseif(lane STREQUAL "node-register")
         if(DEFINED NROS_ENTRY_LOCATOR)
             set(_loc "${NROS_ENTRY_LOCATOR}")
+        elseif(platform STREQUAL "freertos" AND NOT DEFINED NROS_FREERTOS_LOCATOR
+               AND _board_loc)
+            set(_loc "${_board_loc}")
         elseif(platform STREQUAL "nuttx")
             set(_loc "${NROS_NUTTX_LOCATOR}")
             if(NOT DEFINED NROS_NUTTX_LOCATOR)

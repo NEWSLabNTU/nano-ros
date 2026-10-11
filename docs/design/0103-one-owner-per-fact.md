@@ -492,16 +492,22 @@ three owners:
 | fact | example | owner | authored in |
 | --- | --- | --- | --- |
 | **interfaces** — the network hardware | one LAN9118, two NICs, a MAC prefix | board | `nros-board.toml` `[board.net]` |
-| **network** — subnet, gateway, how it is realised | `192.0.3.0/24` via SLIRP; bridge `br0` | project | `system.toml` `[network.<name>]` |
+| **network** — subnet, gateway, how it is realised | `10.0.2.0/24` via SLIRP; `192.0.3.0/24` on bridge `qemu-br` | project | `system.toml` `[network.<name>]` |
 | **address** — this image's IP / MAC on a network | talker `.10`, listener `.11` | image | `[image.<id>.net.<ifname>]` |
 
-- **One default network for every QEMU board**: `qemu`, SLIRP on
-  `192.0.3.0/24` with gateway (and host) `192.0.3.1`, which is the platform
-  default `BaseConfig::default()` already states. A QEMU launcher (the test
-  harness, the `just` run recipes) configures SLIRP to match
-  (`-nic user,net=192.0.3.0/24,host=192.0.3.1`), as the FreeRTOS boards
-  already did. So every QEMU board has the same identity, and the router is
-  `tcp/192.0.3.1:<port>` on every board and every road.
+- **One default network for every QEMU board**: `qemu`, QEMU's own user-mode
+  (SLIRP) network exactly as QEMU configures it for a plain `-nic user` —
+  `10.0.2.0/24`, gateway (and host) `10.0.2.2`, first guest `10.0.2.15`. No
+  launcher passes `net=`/`host=` for it, and an image someone runs by hand
+  with a plain `-nic user` reaches its router. It is the network every QEMU
+  board but one family already ran on; the FreeRTOS C/C++ images alone ran
+  `192.0.3.0/24` behind a launcher that reconfigured SLIRP to match, so they
+  moved. A board's router default is derived from its gateway, so it is
+  `tcp/10.0.2.2:<port>` on every QEMU board and every road. `192.0.3.0/24`
+  stays what the TAP/bridge setup scripts (`scripts/qemu/setup-network.sh`)
+  already make it: a bridge network, and the platform default
+  (`BaseConfig::default()`) for a board that names no network (real
+  hardware, the threadx-linux host simulation).
 - **A bridge** is a network many images name; each states its own address,
   and the resolver refuses a duplicate address or MAC. That turns the
   "identical IP+MAC, identical zenoh ZID, silent no-delivery" trap into a

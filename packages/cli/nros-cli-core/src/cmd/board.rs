@@ -49,7 +49,10 @@ pub struct NetArgs {
     #[arg(long)]
     pub workspace: Option<PathBuf>,
     /// `c-network`: the `.network = { … }` body of a C `nros_app_config_t`
-    /// initializer. `toml`: the four resolved fields.
+    /// initializer. `toml`: the four resolved fields. `cmake`: `set()` lines
+    /// for `nros_board_net_c()` — the initializer AND the descriptor it came
+    /// from, so the configure can depend on that file without modelling where a
+    /// board key's directory is.
     #[arg(long, default_value = "toml")]
     pub format: String,
     /// Replace the IP's LAST octet — an IMAGE's identity on the board's subnet
@@ -277,6 +280,23 @@ fn net(args: NetArgs) -> Result<()> {
     }
     match args.format.as_str() {
         "c-network" => println!("{}", n.c_network_initializer()),
+        "cmake" => {
+            println!("set(NROS_BOARD_NET_C \"{}\")", n.c_network_initializer());
+            println!(
+                "set(NROS_BOARD_NET_DESCRIPTOR \"{}\")",
+                dir.join("nros-board.toml").display()
+            );
+            // RFC-0103 D10 — the board's router default is its gateway; the
+            // entry-locator resolver builds `tcp/<gateway>:<port>` from it.
+            println!(
+                "set(NROS_BOARD_NET_GATEWAY \"{}\")",
+                n.gateway
+                    .iter()
+                    .map(u8::to_string)
+                    .collect::<Vec<_>>()
+                    .join(".")
+            );
+        }
         "toml" => {
             let dotted = |o: &[u8]| o.iter().map(u8::to_string).collect::<Vec<_>>().join(".");
             let mac = n
@@ -292,7 +312,11 @@ fn net(args: NetArgs) -> Result<()> {
                 dotted(&n.gateway)
             );
         }
-        other => return Err(eyre!("--format {other}: expected `toml` or `c-network`")),
+        other => {
+            return Err(eyre!(
+                "--format {other}: expected `toml`, `c-network` or `cmake`"
+            ));
+        }
     }
     Ok(())
 }

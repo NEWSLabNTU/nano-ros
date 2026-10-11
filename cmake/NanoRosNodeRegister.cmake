@@ -69,6 +69,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
 # issue 1467 — `nros_link_runtime_umbrella()`: the ONE decision about which
 # runtime umbrella a target links, and whether the consumer wants one.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRuntimeUmbrella.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosBoardNet.cmake")  # phase-484 W4b
 
 # issue 1523 — `_nros_set_component_lang()`: the ONE place that writes
 # `NROS_COMPONENT_LANG`, and the one that refuses a non-canonical spelling.
@@ -1149,7 +1150,9 @@ function(nano_ros_node_register)
         #
         # issue 0946 — resolved through the ONE producer. This is the rung that
         # DISAGREES most visibly with the entry lane: 10.0.2.2 (slirp host) here
-        # against 192.0.3.1 (static-lwIP gateway) there. Both justifications are
+        # against 192.0.3.1 (static-lwIP gateway) there — until phase-484 W4b-2
+        # put both FreeRTOS QEMU boards on QEMU's own network (RFC-0103 D10),
+        # so a named board now resolves 10.0.2.2 on both lanes. Both justifications are
         # on the record and they name different networks, so the disagreement is
         # carried forward rather than resolved by reading — deciding it needs a
         # QEMU run per lane.
@@ -1177,6 +1180,8 @@ function(nano_ros_node_register)
         if(NOT DEFINED NROS_ENTRY_IP_LAST)
             set(NROS_ENTRY_IP_LAST 10)
         endif()
+        # phase-484 W4b — the board's `[board.net]`, not a copy.
+        _nros_freertos_entry_network(NROS_ENTRY_NETWORK_C "")
         set(_appcfg_src "${_entry_dir}/nros_app_config_def.c")
         configure_file(
             "${_NROS_NODE_REGISTER_DIR}/templates/freertos_app_config.c.in"

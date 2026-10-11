@@ -104,6 +104,13 @@ libc = { path = "${workspace}/third-party/nuttx/libc" }
 # it (preserves the pre-195.C behaviour byte-for-byte).
 
 # RFC-0042 D2 / phase-241 wave C — declared capabilities (SSoT).
+# phase-484 W4b-2 (RFC-0103 D10) — this board runs under QEMU, so its network
+# defaults are QEMU's own SLIRP network (10.0.2.0/24, gateway 10.0.2.2, guest
+# 10.0.2.15) and its router default is that gateway. An image states its own
+# address on top; a project-defined network is phase-497.
+[board.net]
+network = "qemu"
+
 [board.capabilities]
 heap = true
 atomics = true
@@ -244,6 +251,13 @@ libc = { path = "${workspace}/third-party/nuttx/libc" }
 # nsh_main override in src/entry.rs), identical to the arm witness.
 
 # RFC-0042 D2 / phase-241 wave C — declared capabilities (SSoT).
+# phase-484 W4b-2 (RFC-0103 D10) — this board runs under QEMU, so its network
+# defaults are QEMU's own SLIRP network (10.0.2.0/24, gateway 10.0.2.2, guest
+# 10.0.2.15) and its router default is that gateway. An image states its own
+# address on top; a project-defined network is phase-497.
+[board.net]
+network = "qemu"
+
 [board.capabilities]
 heap = true
 atomics = true

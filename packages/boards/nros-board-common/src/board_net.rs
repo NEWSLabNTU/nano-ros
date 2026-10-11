@@ -37,6 +37,18 @@ impl ResolvedNet {
         }
     }
 
+    /// The built-in QEMU network's defaults (RFC-0103 D10): QEMU's own SLIRP
+    /// plan — `10.0.2.15/24`, gateway `10.0.2.2` — with the platform's MAC.
+    #[must_use]
+    pub fn qemu_network() -> Self {
+        Self {
+            ip: [10, 0, 2, 15],
+            netmask: [255, 255, 255, 0],
+            gateway: [10, 0, 2, 2],
+            mac: Self::platform_default().mac,
+        }
+    }
+
     /// The prefix length of [`Self::netmask`].
     #[must_use]
     pub fn prefix(&self) -> u8 {
@@ -81,6 +93,12 @@ pub fn resolve(
     let Some(net) = file.board_net(board)? else {
         return Ok(fallback);
     };
+    // RFC-0103 D10 — a board on the QEMU network starts from that network's
+    // plan, not the platform default; its own keys still override.
+    let fallback = match net.network()? {
+        Some(_) => ResolvedNet::qemu_network(),
+        None => fallback,
+    };
     Ok(ResolvedNet {
         ip: net.ip()?.unwrap_or(fallback.ip),
         netmask: net.netmask()?.unwrap_or(fallback.netmask),
@@ -96,24 +114,61 @@ pub fn resolve(
 /// the right failure in a build script.
 pub fn emit_for_crate(fallback: ResolvedNet) -> ResolvedNet {
     let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
-    let descriptor = manifest.join("nros-board.toml");
-    println!("cargo:rerun-if-changed={}", descriptor.display());
+    emit_from(&manifest.join("nros-board.toml"), fallback)
+}
+
+/// For a FAMILY crate that serves several boards (`nros-board-freertos`): the
+/// descriptor of the board THIS build is for, which the build names through
+/// `NROS_BOARD_TOML` (`nros ws board-facts` / the generated cargo config).
+/// Absent, the build named no board and `fallback` stands — a workspace-wide
+/// `cargo check`, which is what the crate's `Config::default()` always was.
+/// The path is watched by CONTENT, never as env text (issue 0491).
+pub fn emit_for_named_board(fallback: ResolvedNet) -> ResolvedNet {
+    let descriptor = crate::nros_build_paths::env_path("NROS_BOARD_TOML")
+        .map(|p| crate::nros_build_paths::watch_path(&p))
+        .unwrap_or_default();
+    emit_from(&descriptor, fallback)
+}
+
+fn emit_from(descriptor: &Path, fallback: ResolvedNet) -> ResolvedNet {
+    if !descriptor.as_os_str().is_empty() {
+        println!("cargo:rerun-if-changed={}", descriptor.display());
+    }
     println!("cargo:rerun-if-env-changed=NROS_BOARD");
     let board = std::env::var("NROS_BOARD").ok().filter(|b| !b.is_empty());
-    let net = resolve(&descriptor, board.as_deref(), fallback)
+    let net = resolve(descriptor, board.as_deref(), fallback)
         .unwrap_or_else(|e| panic!("{}: {e}", descriptor.display()));
     let out = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR")).join("nros_board_net.rs");
     let body = format!(
         "// Generated from {} [board.net] (phase-484 W4b). Do not edit.\n\
+         #[allow(dead_code)]\n\
          pub(crate) const BOARD_NET_IP: [u8; 4] = {:?};\n\
+         #[allow(dead_code)]\n\
          pub(crate) const BOARD_NET_NETMASK: [u8; 4] = {:?};\n\
+         #[allow(dead_code)]\n\
          pub(crate) const BOARD_NET_GATEWAY: [u8; 4] = {:?};\n\
-         pub(crate) const BOARD_NET_MAC: [u8; 6] = {:?};\n",
+         #[allow(dead_code)]\n\
+         pub(crate) const BOARD_NET_MAC: [u8; 6] = {:?};\n\
+         /// The board's router default: its gateway (RFC-0103 D10).\n\
+         #[allow(dead_code)]\n\
+         pub(crate) const BOARD_NET_LOCATOR: &str = \"tcp/{}.{}.{}.{}:7447\";\n\
+         /// `tcp/<the board's gateway>:<port>` for a board whose router\n\
+         /// listens elsewhere (`board_net_locator!(\"7448\")`).\n\
+         #[allow(unused_macros)]\n\
+         macro_rules! board_net_locator {{ ($port:literal) => {{ concat!(\"tcp/{}.{}.{}.{}:\", $port) }}; }}\n",
         descriptor.display(),
         net.ip,
         net.netmask,
         net.gateway,
-        net.mac
+        net.mac,
+        net.gateway[0],
+        net.gateway[1],
+        net.gateway[2],
+        net.gateway[3],
+        net.gateway[0],
+        net.gateway[1],
+        net.gateway[2],
+        net.gateway[3]
     );
     std::fs::write(&out, body).unwrap_or_else(|e| panic!("write {}: {e}", out.display()));
     net
@@ -154,6 +209,32 @@ mod tests {
         )
         .unwrap();
         assert!(resolve(&f, None, base).unwrap_err().contains("expected 4"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// RFC-0103 D10 — `network = "qemu"` starts from QEMU's SLIRP plan; the
+    /// board's own keys still override it, and an unknown network is refused.
+    #[test]
+    fn a_board_on_the_qemu_network_starts_from_its_plan() {
+        let d = std::env::temp_dir().join(format!("nros-board-net-q-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let f = d.join("nros-board.toml");
+        std::fs::write(
+            &f,
+            "[[board]]\nnames = [\"b\"]\n\n[board.net]\nnetwork = \"qemu\"\nmac = \"52:54:00:12:34:56\"\n",
+        )
+        .unwrap();
+        let got = resolve(&f, None, ResolvedNet::platform_default()).unwrap();
+        assert_eq!(got.ip, [10, 0, 2, 15]);
+        assert_eq!(got.gateway, [10, 0, 2, 2]);
+        assert_eq!(got.mac, [0x52, 0x54, 0x00, 0x12, 0x34, 0x56]);
+        std::fs::write(
+            &f,
+            "[[board]]\nnames = [\"b\"]\n\n[board.net]\nnetwork = \"lab\"\n",
+        )
+        .unwrap();
+        let e = resolve(&f, None, ResolvedNet::platform_default()).unwrap_err();
+        assert!(e.contains("phase-497"), "{e}");
         let _ = std::fs::remove_dir_all(&d);
     }
 

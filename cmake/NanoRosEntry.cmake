@@ -1058,6 +1058,8 @@ function(nano_ros_entry)
                 if(NOT DEFINED NROS_ENTRY_IP_LAST)
                     set(NROS_ENTRY_IP_LAST 10)
                 endif()
+                # phase-484 W4b — the board's `[board.net]`, not a copy.
+                _nros_freertos_entry_network(NROS_ENTRY_NETWORK_C "${_NRA_BOARD}")
                 set(_nra_appcfg "${CMAKE_CURRENT_BINARY_DIR}/${_NRA_NAME}_nros_app_config_def.c")
                 configure_file(
                     "${_NROS_ENTRY_DIR}/templates/freertos_app_config.c.in"

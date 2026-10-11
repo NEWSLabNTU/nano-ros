@@ -624,9 +624,9 @@ cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "rv-virt-threadx", NROS_E
 # `nano_ros_entry(BOARD mps2-an385-freertos LAUNCH …)`, the FreeRTOS sibling to the C2a
 # threadx-linux host sim. The workspace root maps the board to its arm-none-eabi
 # toolchain (set before project()), so this row needs only platform/board + the baked
-# locator. The firmware uses a static 192.0.3.x lwIP config (no DHCP), so the test runs
-# QEMU slirp with a matching net (host=192.0.3.1) and the entry dials
-# `tcp/192.0.3.1:<port>`. Own build_subdir (one board per CMake configure). Consumed by
+# locator. The firmware uses a static lwIP config (no DHCP) on QEMU's own SLIRP
+# network — the board states `[board.net] network = "qemu"` (RFC-0103 D10) — so
+# the entry dials the SLIRP host, `tcp/10.0.2.2:<port>`. Own build_subdir (one board per CMake configure). Consumed by
 # tests/entry_e2e.rs (freertos_c cell) (cross-process /chatter from the QEMU guest).
 # phase-370 W3 — the freertos family's first NON-QEMU, CI-runnable e2e cells.
 #
@@ -676,7 +676,7 @@ dir = "examples/workspaces/c"
 bringup = "src/demo_bringup"
 image = "freertos"
 build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
-cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7930" }
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7930" }
 
 # phase-372 W2 — the S32Z270 RTU (Cortex-R52) link-completeness witness: no
 # emulator models this SoC, so the cell's whole promise is "a C++ cyclonedds
@@ -713,7 +713,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
 image = "mps3_an536"
 build_subdir = "build/freertos-cyclonedds-mps3-an536-freertos/cmake"
-cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps3-an536-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7941" }
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps3-an536-freertos", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7941" }
 
 # phase-263 C2b — the NuttX (QEMU arm-virt) C workspace entry (talker + listener linked INTO
 # the kernel via cargo nros-nuttx-ffi). Dials the host zenoh router through the slirp gateway
@@ -1003,9 +1003,9 @@ build_subdir = "build/posix-zenoh-native/cmake"
 # Cortex-M3 cannot finish the session handshake inside the e2e budget.
 #
 # The locator — stated as the bringup's `[image.freertos_realtime] locator`,
-# the only carrier this board reads (issue 1581) — is the SLIRP GATEWAY 192.0.3.1 (the lane boots QEMU with
-# `net=192.0.3.0/24,host=192.0.3.1`), not the 10.0.2.2 the pubsub Rust FreeRTOS
-# entry uses — copying that one gives an address nothing answers on. Port 7891
+# the only carrier this board reads (issue 1581) — is the SLIRP host 10.0.2.2:
+# every FreeRTOS QEMU image now sits on QEMU's own network (RFC-0103 D10), where
+# before this one ran a 192.0.3.0/24 plan the pubsub Rust entry did not. Port 7891
 # is `port_of(FreertosMps2, Rust, RealtimeTiers)`, never hand-picked.
 #
 # Consumed by tests/realtime_tiers_e2e.rs (`Proof::SerialDispatch`).
@@ -1032,7 +1032,7 @@ dir = "examples/workspaces/realtime-cpp"
 bringup = "src/demo_bringup"
 image = "freertos"
 build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
-cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8091", CMAKE_BUILD_TYPE = "Release" }
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8091", CMAKE_BUILD_TYPE = "Release" }
 # CMAKE_BUILD_TYPE=Release (#126): a -O0 zenoh-pico on the emulated Cortex-M3 is
 # too slow to finish the session handshake in the e2e budget; the Rust tiers
 # fixture builds release for the same reason.
@@ -1074,7 +1074,7 @@ dir = "examples/workspaces/realtime-cpp-subnode-portable"
 bringup = "src/deploy_bringup"
 image = "freertos"
 build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
-cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8092", CMAKE_BUILD_TYPE = "Release" }
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8092", CMAKE_BUILD_TYPE = "Release" }
 # CMAKE_BUILD_TYPE=Release, like every other mps2 row (#126). The locator is
 # baked but never dialled — nothing runs this image yet; 8092 is free beside the
 # 8091 `workspace-cpp-freertos-realtime` bakes, so adding a runtime cell later
@@ -1097,7 +1097,7 @@ dir = "examples/workspaces/realtime-c"
 bringup = "src/demo_bringup"
 image = "freertos"
 build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
-cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7991", CMAKE_BUILD_TYPE = "Release" }
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7991", CMAKE_BUILD_TYPE = "Release" }
 # CMAKE_BUILD_TYPE=Release (#126): a -O0 zenoh-pico on the emulated Cortex-M3 is
 # too slow to finish the session handshake in the e2e budget; the C++ tiers
 # fixture builds release for the same reason.
@@ -1127,7 +1127,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
 image = "freertos"
 build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
-cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8030" }
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8030" }
 
 [[workspace_fixture]]
 id = "workspace-mixed-native"
@@ -1281,7 +1281,7 @@ cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux", NROS_ENT
 # threadx-linux host triple, FreeRTOS is a genuine thumbv7m-none-eabi no_std cross target, so
 # the Rust heartbeat node compiles no_std (`#![no_std]`, alloc-only) and the nros_ws_runtime
 # umbrella cross-compiles + re-points NanoRosCpp for the embedded board. Own build_subdir;
-# board-matching slirp net + baked tcp/192.0.3.1:8130. Consumed by
+# QEMU's own SLIRP network + baked tcp/10.0.2.2:8130. Consumed by
 # tests/entry_e2e.rs (freertos_mixed cell).
 [[workspace_fixture]]
 id = "workspace-mixed-freertos"
@@ -1298,7 +1298,7 @@ dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
 image = "freertos"
 build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
-cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8130" }
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8130" }
 
 # ===========================================================================
 # native — Rust (host, the ambient profile — see phase-336 / `nros profile`)
@@ -3077,56 +3077,56 @@ platform = "freertos"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/mps2-an385-freertos/c/talker"
-cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7900" }
+cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7900" }
 
 [[fixture]]
 platform = "freertos"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/mps2-an385-freertos/c/listener"
-cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7900" }
+cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7900" }
 
 [[fixture]]
 platform = "freertos"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/mps2-an385-freertos/c/service-server"
-cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7910" }
+cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7910" }
 
 [[fixture]]
 platform = "freertos"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/mps2-an385-freertos/c/service-client"
-cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7910" }
+cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7910" }
 
 [[fixture]]
 platform = "freertos"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/mps2-an385-freertos/c/action-server"
-cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7920" }
+cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7920" }
 
 [[fixture]]
 platform = "freertos"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/mps2-an385-freertos/c/action-client"
-cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7920" }
+cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7920" }
 
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/mps2-an385-freertos/cpp/talker"
-cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8000" }
+cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8000" }
 
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/mps2-an385-freertos/cpp/listener"
-cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8000" }
+cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8000" }
 
 # phase-482 W3 — the ported ROS 2 tutorial publisher (the template's unmodified
 # `src/minimal_publisher.cpp`) on FreeRTOS, the (FreertosMps2, Cpp, Port) cell.
@@ -3137,7 +3137,7 @@ platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/templates/cpp-port-minimal-publisher/mps2-an385-freertos"
-cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8098" }
+cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8098" }
 
 # phase-482 W3 — the other two port templates on FreeRTOS, each the template's
 # unmodified `src/` built by the sub-project beside it. Ports 8088 / 8089 =
@@ -3149,7 +3149,7 @@ platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/templates/rclcpp-compat-smoke/mps2-an385-freertos"
-cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8088" }
+cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8088" }
 
 [[fixture]]
 id = "freertos-cpp-port-topic-state-monitor"
@@ -3157,35 +3157,35 @@ platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/templates/topic-state-monitor-port/mps2-an385-freertos"
-cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8089" }
+cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8089" }
 
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/mps2-an385-freertos/cpp/service-server"
-cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8010" }
+cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8010" }
 
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/mps2-an385-freertos/cpp/service-client"
-cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8010" }
+cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8010" }
 
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/mps2-an385-freertos/cpp/action-server"
-cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8020" }
+cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8020" }
 
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/mps2-an385-freertos/cpp/action-client"
-cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8020" }
+cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8020" }
 
 # ===========================================================================
 # nuttx — C / C++ (cmake). Zenoh only (Cyclone gated on a hosted NuttX port).

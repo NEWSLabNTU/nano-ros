@@ -157,6 +157,34 @@ pub fn app_stack_bytes_from_build_env() -> u32 {
     }
 }
 
+/// The overlay board's `BaseConfig`: its own `[board.net]` (phase-484 W4b) over
+/// the platform default, so the cargo road's `NROS_APP_CONFIG` takes the same
+/// network identity the cmake road asks `nros board net` for.
+///
+/// # Panics
+/// On a malformed `[board.net]`, naming the descriptor — the right failure in a
+/// build script.
+pub fn board_base_config(manifest_dir: &Path) -> BaseConfig {
+    use crate::board_net::{ResolvedNet, resolve};
+    let descriptor = manifest_dir.join("nros-board.toml");
+    println!("cargo:rerun-if-changed={}", descriptor.display());
+    println!("cargo:rerun-if-env-changed=NROS_BOARD");
+    let board = env::var("NROS_BOARD").ok().filter(|b| !b.is_empty());
+    let net = resolve(
+        &descriptor,
+        board.as_deref(),
+        ResolvedNet::platform_default(),
+    )
+    .unwrap_or_else(|e| panic!("{}: {e}", descriptor.display()));
+    BaseConfig {
+        ip: net.ip,
+        netmask: net.netmask,
+        gateway: net.gateway,
+        mac: net.mac,
+        ..BaseConfig::default()
+    }
+}
+
 /// Write the board's `NROS_APP_CONFIG` definition into `out_dir` and return the
 /// path, for `cc::Build::file`.
 ///
@@ -463,7 +491,7 @@ pub fn run_overlay(overlay: &Overlay<'_>) {
     };
     glue.file(emit_app_config_tu(
         &env.out_dir,
-        &BaseConfig::default(),
+        &board_base_config(&env.manifest_dir),
         &sched,
     ));
 

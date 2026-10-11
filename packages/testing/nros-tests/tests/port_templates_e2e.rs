@@ -139,8 +139,7 @@ fn cpp_port_minimal_publisher_publishes_on_freertos() {
     let port = port_of(PlatformId::FreertosMps2, Lang::Cpp, Workload::Port);
     let _router = ZenohRouter::start_slirp(port)
         .unwrap_or_else(|e| panic!("failed to start zenohd on {port}: {e:?}"));
-    let mut qemu =
-        QemuProcess::start_mps2_an385_freertos_slirp(&bin).expect("spawn the FreeRTOS port");
+    let mut qemu = QemuProcess::start_mps2_an385_networked(&bin).expect("spawn the FreeRTOS port");
     let out = qemu.collect_until(CPP_PORT_PUBLISH_MARKER, RTOS_PUBLISH_BUDGET);
     qemu.kill();
     assert_ported_publish("FreeRTOS mps2-an385", &out);
@@ -303,7 +302,7 @@ impl PortPlatform {
                 )
             }
             PortPlatform::Freertos => Guest::Qemu(
-                QemuProcess::start_mps2_an385_freertos_slirp(bin).expect("spawn the FreeRTOS port"),
+                QemuProcess::start_mps2_an385_networked(bin).expect("spawn the FreeRTOS port"),
             ),
             PortPlatform::Zephyr => Guest::Qemu(
                 QemuProcess::start_mps2_an385_networked(bin).expect("spawn the Zephyr port"),

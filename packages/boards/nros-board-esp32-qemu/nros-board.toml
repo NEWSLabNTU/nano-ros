@@ -37,6 +37,17 @@ ESP_LOG = "info"
 build-std = ["core", "alloc"]
 '''
 
+# phase-484 W4b-2 (RFC-0103 D10) — this board runs under QEMU, so its network
+# defaults are QEMU's own SLIRP network (10.0.2.0/24, gateway 10.0.2.2, guest
+# 10.0.2.15) and its router default is that gateway. An image states its own
+# address on top; a project-defined network is phase-497.
+[board.net]
+network = "qemu"
+# The board's established defaults on that network: talker `.50` (its
+# examples' listener states `.51`) and the open_eth MAC its images use.
+ip = "10.0.2.50"
+mac = "02:00:00:00:00:01"
+
 [board.entry]
 signature = "#[esp_hal::main]\nfn main() -> !"
 crate_root_extra = "use esp_backtrace as _;\nnros_board_esp32_qemu::esp_bootloader_esp_idf::esp_app_desc!();"

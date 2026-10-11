@@ -85,8 +85,8 @@ enum Boot {
     NuttxArm,
     /// NuttX QEMU rv-virt riscv32 guest (slirp, `-icount`).
     NuttxRiscv,
-    /// FreeRTOS QEMU mps2-an385 guest (static 192.0.3.x lwIP + board-net
-    /// slirp; observed via serial ticks, no host subscribers).
+    /// FreeRTOS QEMU mps2-an385 guest (static lwIP on QEMU's own SLIRP
+    /// network; observed via serial ticks, no host subscribers).
     FreertosMps2,
     /// ThreadX-Linux hosted simulation (phase-297 W5): a host process like
     /// [`Boot::Native`] (pthread-backed ThreadX, NSOS host sockets), but the
@@ -717,7 +717,7 @@ fn run_one(pcell: &MCell, cell: &Exec) {
 
     // FreeRTOS: serial-tick proof, no host observers.
     if let Proof::SerialDispatch(tiers) = cell.proof {
-        let mut qemu = QemuProcess::start_mps2_an385_freertos_slirp(&entry)
+        let mut qemu = QemuProcess::start_mps2_an385_networked(&entry)
             .unwrap_or_else(|e| panic!("boot {} {} QEMU: {e}", platform, lang));
         // ORDER-INDEPENDENT, unlike `SerialTicks` above, and that is not
         // fussiness: `wait_for_output_pattern` CONSUMES the stream, so a
@@ -755,7 +755,7 @@ fn run_one(pcell: &MCell, cell: &Exec) {
         return;
     }
     if let Proof::SerialTicks(tiers) = cell.proof {
-        let mut qemu = QemuProcess::start_mps2_an385_freertos_slirp(&entry)
+        let mut qemu = QemuProcess::start_mps2_an385_networked(&entry)
             .unwrap_or_else(|e| panic!("boot {} {} QEMU: {e}", platform, lang));
         // The boot tier connects + publishes first (its tick proves the
         // run_tiers boot session reached the host zenohd), so it gets the
