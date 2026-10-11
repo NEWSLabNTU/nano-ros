@@ -273,6 +273,11 @@ endif()
 if(CONFIG_NROS_ZENOH_SERIAL_FIFO_WATERMARK)
     zephyr_compile_definitions(_Z_ZEPHYR_SERIAL_FIFO_WATERMARK=1)
 endif()
+# phase-474 I15+I16 -- the link on the async UART API (DMA both directions).
+if(CONFIG_NROS_ZENOH_SERIAL_UART_ASYNC)
+    zephyr_compile_definitions(_Z_ZEPHYR_SERIAL_UART_ASYNC=1
+        _Z_ZEPHYR_SERIAL_ASYNC_RX_TIMEOUT_US=${CONFIG_NROS_ZENOH_SERIAL_UART_ASYNC_RX_TIMEOUT_US})
+endif()
 if(CONFIG_NROS_ZENOH_SERIAL_TCM)
     set(_nros_serial_network_c "")
     foreach(_src ${_zenoh_pico_sources})

@@ -803,6 +803,42 @@ config NROS_ZENOH_SERIAL_FIFO_WATERMARK
       node (any okay nxp,lpuart); another UART keeps the generic ISR.
       Maps to _Z_ZEPHYR_SERIAL_FIFO_WATERMARK.
 
+config NROS_ZENOH_SERIAL_UART_ASYNC
+    bool "Serial link: RX and TX by DMA (Zephyr async UART API)"
+    depends on NROS_ZENOH_LINK_SERIAL && UART_INTERRUPT_DRIVEN && UART_ASYNC_API
+    depends on NROS_ZENOH_SERIAL_TCM || !DCACHE
+    help
+      nano-ros phase-474 I15 and I16, one option: the link's UART runs on
+      the async API, uart_tx from the TX ring and uart_rx_enable into two
+      DMA buffers feeding the RX ring, with one or two DMA interrupts per
+      frame instead of one ISR per byte or FIFO. Both directions or
+      neither: with both UART APIs built, a UART has one callback API at a
+      time (UART_EXCLUSIVE_API_CALLBACKS; the mcux LPUART driver refuses
+      uart_callback_set once the interrupt callback is set). The link falls
+      back to the interrupt path when the device has no async support or
+      RX DMA does not start; `_z_zephyr_serial_async_stats.active` says
+      which ran. Needs `dmas` on the link's UART in the devicetree, and on
+      a part with a D-cache NROS_ZENOH_SERIAL_TCM, which places the DMA
+      buffers (network.c's bss) in DTCM.
+
+      Latency: a frame's last bytes reach the reader through the driver's
+      idle flush on the system workqueue, one to two system ticks after the
+      line goes idle (1-2 ms at 1000 ticks/s) on Zephyr 4.4's mcux LPUART.
+      Maps to _Z_ZEPHYR_SERIAL_UART_ASYNC.
+
+config NROS_ZENOH_SERIAL_UART_ASYNC_RX_TIMEOUT_US
+    int "Serial link: async RX idle timeout (us)"
+    depends on NROS_ZENOH_SERIAL_UART_ASYNC
+    default 25
+    range 1 100000
+    help
+      The timeout passed to uart_rx_enable: how long the line stays idle
+      before the driver hands over a partly filled DMA buffer. 0 is not
+      allowed: on the mcux LPUART it disables that flush, and a frame would
+      wait for 256 more bytes. Drivers round it up to a system tick. 25 us
+      is about two characters at 921600 baud. Maps to
+      _Z_ZEPHYR_SERIAL_ASYNC_RX_TIMEOUT_US.
+
 config NROS_ZENOH_SERIAL_ISR_STATS
     bool "Serial link: count the serial ISR's cycles and calls"
     depends on NROS_ZENOH_LINK_SERIAL && UART_INTERRUPT_DRIVEN
