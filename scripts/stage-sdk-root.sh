@@ -87,6 +87,12 @@
 #                       SDK resolves the registry fresh — the gap RFC-0104
 #                       exists to close — and the drift check (D9) has nothing to
 #                       compare against. phase-485 W10.
+#   .nros-ignore       the marker that prunes this tree from any provider or
+#                       package walk that starts ABOVE it (issue 0621). An
+#                       installed SDK is a vendored nano-ros: a prefix inside a
+#                       workspace or a checkout put a second copy of every
+#                       provider on the search path, and the duplicate read as
+#                       `unknown RMW 'zenoh'` (issue 1810).
 #   zephyr/            NOT just the Zephyr lane. `NanoRosSharedCargoDir.cmake`
 #                       reads `zephyr/cmake/nros_cargo_build.cmake` as the
 #                       AUTHORED knob-name inventory on every C/C++ configure
@@ -173,7 +179,8 @@ root="$prefix/$SHIPPED_SUBDIR"
 
 # One list, read by the archive below and by `--list`. Every entry is documented
 # in the header; a new one belongs there too.
-PATHS="cmake
+PATHS=".nros-ignore
+cmake
 config
 locks
 packages
@@ -257,6 +264,7 @@ refuse() {  # refuse <flag> <rel-path> <why it must not be here>
 need -f packages/core/nros-core/Cargo.toml \
     "the root MARKER — without it nothing recognises this directory as a nano-ros root"
 need -f cmake/NanoRosWorkspace.cmake "the workspace modules every user CMakeLists includes"
+need -f .nros-ignore "the marker that keeps a walk from above out of this tree (issue 1810)"
 need -f nano_rosConfig.cmake "the find_package(nano_ros) entry point"
 need -f CMakeLists.txt "the listfile _nros_import_once add_subdirectory()s"
 need -f Cargo.toml "the workspace manifest every member inherits from"

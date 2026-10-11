@@ -343,6 +343,14 @@ endfunction()
 # reject a name the dispatch handles. `nros_rmw_known` lists one CANONICAL name
 # per provider (a drop-down offering three spellings of one choice is worse than
 # useless), so membership is asked of the dispatch, not of that list.
+#
+# On FALSE, `<out_var>_WHY` holds the CLI's own diagnostic. A name can fail to
+# resolve for more than one reason: it is announced by nobody, or it is
+# announced TWICE in one search root, which has no precedence (issue 1810). The
+# caller's message must say which. When this swallowed the CLI's stderr, a
+# duplicate read as "unknown RMW 'zenoh' (announced by a provider: ...;zenoh)",
+# a message that contradicts itself and sends the reader to check a list that
+# does contain the name.
 # ---------------------------------------------------------------------------
 function(nros_rmw_is_known name out_var)
     if(name STREQUAL "")
@@ -359,11 +367,15 @@ function(nros_rmw_is_known name out_var)
     _nros_rmw_scan_args(_scan_args)
     execute_process(
         COMMAND "${_tool}" ws rmw-dispatch "${name}" ${_scan_args} --lines
-        OUTPUT_QUIET ERROR_QUIET
+        OUTPUT_QUIET
+        ERROR_VARIABLE _err
+        ERROR_STRIP_TRAILING_WHITESPACE
         RESULT_VARIABLE _rc)
     if(_rc EQUAL 0)
         set(${out_var} TRUE PARENT_SCOPE)
+        set(${out_var}_WHY "" PARENT_SCOPE)
     else()
         set(${out_var} FALSE PARENT_SCOPE)
+        set(${out_var}_WHY "${_err}" PARENT_SCOPE)
     endif()
 endfunction()

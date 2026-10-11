@@ -268,8 +268,9 @@ if(NANO_ROS_RMW AND NOT NANO_ROS_RMW STREQUAL "none")
     if(NOT _nros_cpp_rmw_known)
         nros_rmw_known(_nros_cpp_rmw_names)
         message(FATAL_ERROR
-            "nros-cpp: unknown RMW '${NANO_ROS_RMW}' "
-            "(announced by a provider: ${_nros_cpp_rmw_names})")
+            "nros-cpp: RMW '${NANO_ROS_RMW}' does not resolve "
+            "(announced by a provider: ${_nros_cpp_rmw_names}). "
+            "The provider scan says:\n${_nros_cpp_rmw_known_WHY}")
     endif()
     nros_rmw_dispatch("${NANO_ROS_RMW}")
     if(NROS_RMW_CPP_DEFINE)
