@@ -1,5 +1,7 @@
 # Phase 425 — ROS time is a type, not a behaviour: give the timer API the official semantics
 
+**Archived 2026-10-11.** Every work item landed, including the end-to-end test; the status line below says COMPLETE.
+
 **Status (2026-09-05).** COMPLETE. W1, W2, W3, W3b, W4 and W5 landed, including
 the end-to-end demonstration the phase owed: `bins/sim-clock-{publisher,listener}`
 plus `tests/sim_time_clock_e2e.rs`, two processes over a real RMW. Opened by an owner

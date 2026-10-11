@@ -83,7 +83,7 @@ image really registers.
 Hand-written `main`s create entities at runtime and have no generated entry, so
 they cannot be sized statically at all. They need a different mechanism (a
 high-water mark, checked in CI). Deliberately left to
-[phase 392](../../roadmap/phase-392-static-memory-space-campaign.md) rather than
+[phase 392](../../roadmap/archived/phase-392-static-memory-space-campaign.md) rather than
 guessed at here.
 
 ## Resolution, 2026-10-01 — each declared kind priced at its own entry

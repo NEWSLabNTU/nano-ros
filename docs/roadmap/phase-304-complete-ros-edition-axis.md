@@ -5,13 +5,13 @@ started; **W1 not started** — the biggest functional gap, and it needs the
 capture run. Two knobs still address one axis: codegen selection (`--ros-edition`)
 and runtime selection (the cargo feature) are disconnected and can silently
 disagree. Only `humble` is exercised. Note this phase coordinates
-[phase-303](phase-303-xcdr2-interop.md), whose premise was REFUTED after this
+[phase-303](archived/phase-303-xcdr2-interop.md), whose premise was REFUTED after this
 status was written — re-read 303's correction before planning further work here.
 
 Implements **[RFC-0056](../design/0056-ros-edition-axis.md)** (the ROS-edition
 axis / per-distro interop profile). Coordinates the two field-phases —
 **[phase-41](archived/phase-41-iron-type-hash-support.md)** (RIHS01 type hash) and
-**[phase-303](phase-303-xcdr2-interop.md)** / **[RFC-0055](../design/0055-wire-encoding-xcdr2-extensibility.md)**
+**[phase-303](archived/phase-303-xcdr2-interop.md)** / **[RFC-0055](../design/0055-wire-encoding-xcdr2-extensibility.md)**
 (wire encoding) — into a finished axis, adds the **unified selection** and the
 **multi-distro test method**, and extends the enum beyond `humble`/`iron`. Roots:
 issue **#0267** (the encoding half) and the discovery-rejection risk phase-41

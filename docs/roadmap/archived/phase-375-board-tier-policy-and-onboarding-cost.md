@@ -1,5 +1,7 @@
 # Phase 375 — The board tier is a promise with an owner, and onboarding is the cost
 
+**Archived 2026-10-11.** W0–W9 landed: every box is ticked and `just board-new` exists. The status line below still says W2–W9 are open.
+
 **Status (2026-09-06). W0 and W1 LANDED; W2–W9 open.** Opened from the
 question "more and more boards appear; it bloats — balance the platforms per
 tier". The measurement says the tiers are NOT what bloats, so the waves below
@@ -11,13 +13,13 @@ CONTAIN found that the tree has four different board-addition processes and no
 single descriptor shape to scaffold. W6–W9 make one process exist, so W2 has
 something to emit.
 
-**Implements:** [RFC-0064](../design/0064-board-support-organization.md)
+**Implements:** [RFC-0064](../../design/0064-board-support-organization.md)
 revision 4 (2026-08-22) and revision 5 (2026-09-06).
-**Related:** [phase-320](archived/phase-320-board-support-tiers.md) (W3.b opened
+**Related:** [phase-320](phase-320-board-support-tiers.md) (W3.b opened
 the maintainer field and left it unenforced — this closes it),
-[phase-346](archived/phase-346-out-of-tree-board-seam.md) (the seam W5 needs,
-COMPLETE), [phase-370](phase-370-freertos-posix-board-cyclone.md) and
-[phase-372](phase-372-s32z270-freertos-board-bundle.md) (the two boards whose
+[phase-346](phase-346-out-of-tree-board-seam.md) (the seam W5 needs,
+COMPLETE), [phase-370](../phase-370-freertos-posix-board-cyclone.md) and
+[phase-372](../phase-372-s32z270-freertos-board-bundle.md) (the two boards whose
 onboarding cost is the evidence).
 
 ## The measurement

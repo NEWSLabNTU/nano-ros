@@ -1,5 +1,7 @@
 # Phase 424 — does the build graph tell the truth about what needs rebuilding?
 
+**Archived 2026-10-11.** All eight issues are closed: the two the status line below names as open, 1018 and 1050, have since been resolved and archived.
+
 **Status (2026-09-05).** **Six of eight closed and archived** — #0820 (a cargo
 custom command with no `DEPFILE`), #0835 (the probe families' oscillation, plus
 the six leaves that misreported their own platform), #0945 (the assumption
@@ -60,14 +62,14 @@ they all rest on is built on build-system internals nobody supports.
 
 | issue | layer | shape |
 | --- | --- | --- |
-| ~~[#0820](../issues/archived/0820-riscv-nuttx-c-talker-no-runtime-delivery.md)~~ | cmake seam | RESOLVED — a cargo custom command with no `DEPFILE` had no edge on the Rust it compiles. Three such commands exist; two were still missing one. Gated by `check-cargo-custom-command-depfile`, which WIDENS no watch set: the depfile is the graph cargo already computes, so 0835 is untouched |
-| ~~[#0835](../issues/archived/0835-fixture-staleness-probe-families-restale-each-other.md)~~ | fixtures | **RESOLVED** — the re-staling was fixed and gated 2026-09-04 (`just check fixture-staleness-probes`); the residual duplicated ThreadX corrosion groups closed 2026-09-05 by keying the shared cargo dir on the resolved FEATURE SET rather than the platform label, which correlates with the artifacts instead of deciding them |
-| [#0945](../issues/archived/0945-shared-cargo-dir-rests-on-unsupported-build-internals.md) | cargo | ~~the shared-cargo-dir campaign rests on five unsupported build-system assumptions~~ **RESOLVED** — six, classified, one gap named |
-| [#1002](../issues/archived/1002-a-derived-knob-needs-three-configures-not-two.md) | cmake | RESOLVED — three is the chain's depth, not a defect; the defect was a bound counting the build dir's lifetime |
-| [#1018](../issues/archived/1018-a-codegen-change-invalidates-generated-interfaces-and-only-a-manual-step-connects-them.md) | codegen | ~~a codegen change invalidates every consumer~~ the configure-time half is closed (binary-keyed) and the `generated/` regeneration stamp is closed (fingerprint-keyed, no `.inputsig` moved); ~~open for the stale-CLI refusal~~ CLOSED 2026-09-21 — the refusal stays and now NAMES the input that moved (the stamp is folded per input and baked per input); gate `check-stale-cli-attribution` |
-| [#1046](../issues/archived/1046-px4-stale-tree-guard-checks-a-surviving-directory.md) | px4 | RESOLVED 2026-09-05 — the guard asserted a DIRECTORY that outlives the build that linked it; it asserts `bin/px4`'s CONTENT now, and the three "not covered" sweeps came back empty |
-| [#1050](../issues/archived/1050-px4-demo-links-whatever-archive-was-built-last.md) | px4 | links whatever `libnros_cpp.a` was built last — the recipe (1) and the configure-time guard (2) are fixed; open for (3), `nros::init()` taking slot 0 |
-| [#1056](../issues/archived/1056-session-churn-window-too-short-for-start-skew.md) | test window | ~~a check that can pass on the build it exists to reject~~ **RESOLVED** — it can, and no affordable window fixes it |
+| ~~[#0820](../../issues/archived/0820-riscv-nuttx-c-talker-no-runtime-delivery.md)~~ | cmake seam | RESOLVED — a cargo custom command with no `DEPFILE` had no edge on the Rust it compiles. Three such commands exist; two were still missing one. Gated by `check-cargo-custom-command-depfile`, which WIDENS no watch set: the depfile is the graph cargo already computes, so 0835 is untouched |
+| ~~[#0835](../../issues/archived/0835-fixture-staleness-probe-families-restale-each-other.md)~~ | fixtures | **RESOLVED** — the re-staling was fixed and gated 2026-09-04 (`just check fixture-staleness-probes`); the residual duplicated ThreadX corrosion groups closed 2026-09-05 by keying the shared cargo dir on the resolved FEATURE SET rather than the platform label, which correlates with the artifacts instead of deciding them |
+| [#0945](../../issues/archived/0945-shared-cargo-dir-rests-on-unsupported-build-internals.md) | cargo | ~~the shared-cargo-dir campaign rests on five unsupported build-system assumptions~~ **RESOLVED** — six, classified, one gap named |
+| [#1002](../../issues/archived/1002-a-derived-knob-needs-three-configures-not-two.md) | cmake | RESOLVED — three is the chain's depth, not a defect; the defect was a bound counting the build dir's lifetime |
+| [#1018](../../issues/archived/1018-a-codegen-change-invalidates-generated-interfaces-and-only-a-manual-step-connects-them.md) | codegen | ~~a codegen change invalidates every consumer~~ the configure-time half is closed (binary-keyed) and the `generated/` regeneration stamp is closed (fingerprint-keyed, no `.inputsig` moved); ~~open for the stale-CLI refusal~~ CLOSED 2026-09-21 — the refusal stays and now NAMES the input that moved (the stamp is folded per input and baked per input); gate `check-stale-cli-attribution` |
+| [#1046](../../issues/archived/1046-px4-stale-tree-guard-checks-a-surviving-directory.md) | px4 | RESOLVED 2026-09-05 — the guard asserted a DIRECTORY that outlives the build that linked it; it asserts `bin/px4`'s CONTENT now, and the three "not covered" sweeps came back empty |
+| [#1050](../../issues/archived/1050-px4-demo-links-whatever-archive-was-built-last.md) | px4 | links whatever `libnros_cpp.a` was built last — the recipe (1) and the configure-time guard (2) are fixed; open for (3), `nros::init()` taking slot 0 |
+| [#1056](../../issues/archived/1056-session-churn-window-too-short-for-start-skew.md) | test window | ~~a check that can pass on the build it exists to reject~~ **RESOLVED** — it can, and no affordable window fixes it |
 
 #1056 is here rather than with the RTOS work because its defect is the same
 shape: a verdict whose window is too small to observe the thing it claims to
@@ -462,6 +464,6 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1034](../issues/1034-qemu11-elf-bss-zero-fill-stalls-nuttx-boot.md) | the provisioned QEMU 11 spends ~19.6 s materialising a NuttX image's `.bss`. phase-414 cites it only as a withdrawn lead inside another issue's work item, so it is homeless; the emulator-side freshness and cost question is this phase's |
-| [#1121](../issues/1121-contract-sidecar-has-no-model-freshness-edge.md) | adding a `<stem>.contract.yaml` does not invalidate the SystemModel it feeds. A sidecar that is an input to a model and not an edge in the graph is precisely this phase's subject |
-| [#1235](../issues/1235-cli-resolver-pairing-blocks-building-older-commits.md) | `nros sync` refuses a correctly paired resolver on older commits, and every sanctioned rebuild remedy no-ops. The source stamp reporting STALE when it is not is this phase's thesis, beside #1018's open half |
+| [#1034](../../issues/1034-qemu11-elf-bss-zero-fill-stalls-nuttx-boot.md) | the provisioned QEMU 11 spends ~19.6 s materialising a NuttX image's `.bss`. phase-414 cites it only as a withdrawn lead inside another issue's work item, so it is homeless; the emulator-side freshness and cost question is this phase's |
+| [#1121](../../issues/1121-contract-sidecar-has-no-model-freshness-edge.md) | adding a `<stem>.contract.yaml` does not invalidate the SystemModel it feeds. A sidecar that is an input to a model and not an edge in the graph is precisely this phase's subject |
+| [#1235](../../issues/1235-cli-resolver-pairing-blocks-building-older-commits.md) | `nros sync` refuses a correctly paired resolver on older commits, and every sanctioned rebuild remedy no-ops. The source stamp reporting STALE when it is not is this phase's thesis, beside #1018's open half |

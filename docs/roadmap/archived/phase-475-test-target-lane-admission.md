@@ -1,5 +1,7 @@
 # Phase 475 — which test targets a lane can run: a census, not an inference
 
+**Archived 2026-10-11.** W0–W5 and W7 landed; W6 was decided.
+
 **Status (2026-10-03). W0–W5 and W7 LANDED; W6 DECIDED (the package is in).** A design study with its measurement done first. The question is
 issue 0922's, asked for every `nros-tests` target at once: *which of them reach
 a verdict in which lane?* The answer it reaches is that **only the lane's own

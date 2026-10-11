@@ -1,5 +1,7 @@
 # Phase 419 — a roadmap phase that contradicts itself should not need a reader to notice
 
+**Archived 2026-10-11.** R2, dead cited paths, was made a report rather than a gate, as recorded below: the `dead-path` column of `scripts/roadmap-audit.py`, run monthly by `roadmap-audit.yml`.
+
 **Status (2026-09-04). W1, W2 (three of four rules) and W3 LANDED in one change;
 R2 remains, with its cost measured.**
 
@@ -39,7 +41,7 @@ that down is what surfaced issue 1029 (`1029-zephyr-nightly-never-produces-a-ver
 nobody was looking for.
 
 The corrected phases: 403, 296, 209, 356, 357, 196, 230, plus 275 misfiled as a
-phase at all, and 41's stale paths. [phase-162](phase-162-rt-scheduling-harness.md)
+phase at all, and 41's stale paths. [phase-162](../phase-162-rt-scheduling-harness.md)
 was checked and is CORRECT — recorded here because after eight in a row the next
 error is assuming every old status line is wrong.
 
@@ -183,10 +185,10 @@ or an agent writes what actually happened.
 
 ## Related
 
-* [phase-411](archived/phase-411-scope-is-the-spec-verb-first-workflow.md) — a skip is
+* [phase-411](phase-411-scope-is-the-spec-verb-first-workflow.md) — a skip is
   indistinguishable from a pass; this is the same shape one series over, where a
   stale status is indistinguishable from a current one.
-* [phase-413](phase-413-ci-workflow-user-parity.md) — "a uniformly-red lane has
+* [phase-413](../phase-413-ci-workflow-user-parity.md) — "a uniformly-red lane has
   no signal capacity". A roadmap where most status lines are wrong has none
   either.
 * issue 1029 (`1029-zephyr-nightly-never-produces-a-verdict`, filed in PR #320 and not yet on `main` — link it once that lands) —
@@ -202,4 +204,4 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1205](../issues/1205-doc-commit-citations-local-fetch-state.md) | `check-doc-commit-citations` resolves hashes against whatever the local tree can see, so the ratchet answers 'in my object store' rather than 'in this history'. The doc-gate family is W1's |
+| [#1205](../../issues/1205-doc-commit-citations-local-fetch-state.md) | `check-doc-commit-citations` resolves hashes against whatever the local tree can see, so the ratchet answers 'in my object store' rather than 'in this history'. The doc-gate family is W1's |

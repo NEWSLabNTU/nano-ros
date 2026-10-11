@@ -1,5 +1,7 @@
 # Phase 399 — the justfile has 332 verbs and about eight of them are an interface
 
+**Archived 2026-10-11.** W1–W3 landed, and the phase has no other work items.
+
 **Status (2026-08-29). W1, W2 and W3 landed.** W1 extracted 200 gates into an
 imported `just/check.just` (7,066 -> 4,141 lines, identical recipe set); W2
 replaced `default` with a 28-line answer to "what do I type"; W3 corrected

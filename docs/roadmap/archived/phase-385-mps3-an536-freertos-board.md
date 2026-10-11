@@ -1,5 +1,7 @@
 # Phase 385 — MPS3-AN536 FreeRTOS board bundle (Cortex-R52 on QEMU, lwIP, Cyclone)
 
+**Archived 2026-10-11.** W4's runtime cell exists: `freertos_qemu.rs::an536_cyclonedds_cpp_entry_delivers_within_the_dds_heap_default` boots the image and asserts delivery (issue 1624, resolved). There is no `MP::` matrix variant for it, but the goal, that a tier runs it, is met.
+
 **Status (2026-08-27).** W0–W3, W5 and **W6** LANDED — the board boots,
 schedules, and delivers CycloneDDS pub/sub on Cortex-R52 **between two QEMU
 guests over the emulated LAN9118**, which no board in this tree could do
@@ -278,6 +280,6 @@ holds the evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0772](../issues/0772-freertos-lwip-wall-clock-epoch.md) | FreeRTOS/lwIP has no wall-clock epoch — the same gap issue 0758 states for the platform ABI, on this board |
-| [#0830](../issues/0830-qemu-hub-two-port-tap-rx.md) | a QEMU net hub with only a NIC and a tap never delivers host->guest frames |
+| [#0772](../../issues/0772-freertos-lwip-wall-clock-epoch.md) | FreeRTOS/lwIP has no wall-clock epoch — the same gap issue 0758 states for the platform ABI, on this board |
+| [#0830](../../issues/0830-qemu-hub-two-port-tap-rx.md) | a QEMU net hub with only a NIC and a tap never delivers host->guest frames |
 

@@ -1,5 +1,7 @@
 # Phase 230 — Platform layer split: enforce the system-ABI boundary (alloc first)
 
+**Archived 2026-10-11.** Z5 and 1b.3 are done: `nros_platform_heap_{used,total}_bytes` are in `platform.h` with per-port implementations, and `nros-c` forwards `nros_heap_platform_used_bytes` / `nros_heap_total_bytes` to them. One gap remains: the bare-metal `FreeListHeap::used` still returns 0.
+
 **Goal:** Make the platform/RMW/core split (RFC-0034) a real, enforced
 invariant. Today the `nros_platform_*` ABI is bypassed on every RTOS:
 zenoh-pico and the Rust `#[global_allocator]` call `pvPortMalloc` /
@@ -8,7 +10,7 @@ providers are dead code. Route the **allocator** through the ABI on all
 platforms first (the starter), then the other scalar services, dedupe the
 per-RMW bridge, and add a lint that keeps the boundary from re-rotting.
 The unified allocation funnel also yields the true heap stats that
-[issue 0006](../issues/archived/0006-rtos-dual-heap.md) needs.
+[issue 0006](../../issues/archived/0006-rtos-dual-heap.md) needs.
 
 **Status (2026-09-04). NOT "Planned" — Wave 0 and Wave 3 are marked DONE in
 this doc, the lint is on the fast line, and every scalar service Wave 2 names is
@@ -29,10 +31,10 @@ Measured against the tree today, not inferred:
 * The stated defect is gone. `grep` for `pvPortMalloc` / `k_malloc` /
   `tx_byte_allocate` across the zpico C shim returns NOTHING; the goal text
   below still describes them as bypassing the ABI "on every RTOS".
-* [issue 0006](../issues/archived/0006-rtos-dual-heap.md) — the accurate heap
+* [issue 0006](../../issues/archived/0006-rtos-dual-heap.md) — the accurate heap
   accounting this phase said it would unblock — is `status: resolved` and
   archived.
-* [phase-391](archived/phase-391-allocation-unification-and-tier-model.md) reports
+* [phase-391](phase-391-allocation-unification-and-tier-model.md) reports
   "W1-W5 landed; the tier is real and gated", covering the same allocation
   ground from the tier side.
 
@@ -51,7 +53,7 @@ no new public API. Unblocks accurate embedded heap accounting and a
 genuinely single system-access layer.
 
 **Depends on:** RFC-0034 (this phase implements it), RFC-0006 (C-ABI
-canonical + platform free-symbol model), [platform-c-abi.md](../../book/src/internals/platform-c-abi.md)
+canonical + platform free-symbol model), [platform-c-abi.md](../../../book/src/internals/platform-c-abi.md)
 (symbol contract + drift gate). Touches the vendored zenoh-pico fork
 (`packages/rmw/zenoh/zpico-sys/zenoh-pico`) and `nros-zpico-build`.
 
@@ -449,7 +451,7 @@ link line.
 
 #### 230.1.5 — Init-order contract
 Ensure each port initializes its pool before first alloc; document the
-contract in [platform-c-abi.md](../../book/src/internals/platform-c-abi.md)
+contract in [platform-c-abi.md](../../../book/src/internals/platform-c-abi.md)
 (board/runtime platform-init → transport/alloc). Verify on
 ThreadX/FreeRTOS QEMU + Zephyr native_sim.
 
@@ -461,7 +463,7 @@ exact C+Rust total; `nros_heap_used_bytes()` reads it. **Mode B**
 the C side; expose the platform-native heap total (Zephyr `sys_heap`,
 FreeRTOS `xPortGetFreeHeapSize`) as the unified figure. Document which mode
 each platform is in. Update + close
-[issue 0006](../issues/archived/0006-rtos-dual-heap.md).
+[issue 0006](../../issues/archived/0006-rtos-dual-heap.md).
 
 #### 230.1.7 — Flip the lint to hard-fail  ✅ DONE
 `check-no-direct-kernel-alloc.sh` defaults to `HARD_FAIL=1`. The

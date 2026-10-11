@@ -1,5 +1,7 @@
 # phase-454 — the contract states the facts, every backend derives its own buffers
 
+**Archived 2026-10-11.** W1–W14 landed. The kept carriers are tracked by a gate-enforced ledger (`check-knob-single-reader`), not as open work here.
+
 **Status (2026-09-21). W1–W14 are LANDED.** W9 landed as a **partial
 retirement with a stated reason**, which is the correct outcome rather than a
 shortfall: 2 mechanisms retired, **26 `NROS_DECLARED_*` carriers KEPT**, each
@@ -14,16 +16,16 @@ count), and the remaining retirement work is RFC-0100 D12's.
 **The last sentence of the old header was wrong, and W9 measured it.** It read
 *"The carriers that deliver only COUNTS and QoS are a different matter, and W9
 can take them first"*, on the reasoning that
-[1393](../issues/archived/1393-cmake-road-has-no-bound-inventory.md)'s refusals are
+[1393](../../issues/archived/1393-cmake-road-has-no-bound-inventory.md)'s refusals are
 per-FIELD and the counts are not among them. The field is not the question.
 **Which inventory the descriptor's producer read, and whether it ran at all,
 is** — `nros ws sizing-descriptor --from-model` builds
 `EntityInventory::from_model` alone, where the carrier's verb composes that with
 `nros-metadata.json`, and only the carrier's can refuse on a component that
 declared nothing. That, plus a standalone leaf having no model at all, is
-[issue 1407](../issues/archived/1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md);
+[issue 1407](../../issues/archived/1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md);
 the parameter family's separate blocker is
-[issue 1408](../issues/archived/1408-sizing-descriptor-has-no-parameter-store-section.md).
+[issue 1408](../../issues/archived/1408-sizing-descriptor-has-no-parameter-store-section.md).
 
 The header's earlier history, kept because the defect recurs: the 2026-09-11
 line said "Opened" and outlived that by a week, so the phase read as unstarted
@@ -45,9 +47,9 @@ writing descriptors reads no contract.
 So the order was: join the contract to the descriptor (W12), then decide a
 second producer (W14), then W9 — which ran the retirement test per fact and
 answered it with a ledger rather than a deletion. Home phase for
-[RFC-0100](../design/0100-rmw-agnostic-sizing-model.md). Successor to
-[phase-403](phase-403-type-bound-rx-sizing.md) (the bound inventory and the
-entity inventory, both landed) and [phase-412](phase-412-derived-counts-and-sizes.md)
+[RFC-0100](../../design/0100-rmw-agnostic-sizing-model.md). Successor to
+[phase-403](../phase-403-type-bound-rx-sizing.md) (the bound inventory and the
+entity inventory, both landed) and [phase-412](../phase-412-derived-counts-and-sizes.md)
 (derived counts). **Answers phase-412 W5**, which is still open and states the
 question this phase exists to settle:
 
@@ -57,7 +59,7 @@ question this phase exists to settle:
 
 The answer is RFC-0100 D3: the contract file, always.
 
-Closes [issue 1256](../issues/archived/1256-contract-qos-carries-depth-only.md) and issue
+Closes [issue 1256](../../issues/archived/1256-contract-qos-carries-depth-only.md) and issue
 1319 (not linked: its file is on PR #951, so a link would dangle until that
 merges — see the `.config/prose-issue-ref-baseline.txt` row).
 
@@ -246,7 +248,7 @@ answer an unconditional `true`, and the registration returns through
 * `RegistrationPath::RustTypedInPlace` is a fifth row, and the producer needs a
   second backend fact (`BackendDispatch`) to pick it;
 * its PRICE is deliberately left where it was. Lowering it is worth ~9.7 KiB a
-  subscription and is [issue 1340](../issues/archived/1340-arena-budgets-a-receive-region-an-in-place-backend-never-claims.md),
+  subscription and is [issue 1340](../../issues/archived/1340-arena-budgets-a-receive-region-an-in-place-backend-never-claims.md),
   because the Rust GENERIC registration on the same backend does not reach the
   capability test and an endpoint row cannot say which spelling an image writes.
 
@@ -633,10 +635,10 @@ fails.
 
 | class | n | blocker | why |
 | --- | --- | --- | --- |
-| payload | 4 | [1393](../issues/archived/1393-cmake-road-has-no-bound-inventory.md) | the model-only producer REFUSES `wire_bound_bytes` / `storage_bytes`, so on 2 roads of 3 this carrier is the only thing stating a size |
-| entity counts | 9 | [1407](../issues/archived/1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md) | the descriptor's producer reads a POORER inventory than the carrier's |
-| queryable raw inputs | 4 | [1407](../issues/archived/1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md) | their live road is the STANDALONE LEAF, which has no model and so can never have a model-written descriptor |
-| parameter store | 9 | [1408](../issues/archived/1408-sizing-descriptor-has-no-parameter-store-section.md) | the D4 schema has no parameter section at all, on ANY road — not a refusal, an absent vocabulary |
+| payload | 4 | [1393](../../issues/archived/1393-cmake-road-has-no-bound-inventory.md) | the model-only producer REFUSES `wire_bound_bytes` / `storage_bytes`, so on 2 roads of 3 this carrier is the only thing stating a size |
+| entity counts | 9 | [1407](../../issues/archived/1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md) | the descriptor's producer reads a POORER inventory than the carrier's |
+| queryable raw inputs | 4 | [1407](../../issues/archived/1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md) | their live road is the STANDALONE LEAF, which has no model and so can never have a model-written descriptor |
+| parameter store | 9 | [1408](../../issues/archived/1408-sizing-descriptor-has-no-parameter-store-section.md) | the D4 schema has no parameter section at all, on ANY road — not a refusal, an absent vocabulary |
 
 **The count class is the one the plan misjudged, and the reason is not 1393.**
 Issue 1407 records three independent mechanisms. The sharpest: `nros ws
@@ -1186,12 +1188,12 @@ against a mapping its own comment already said was mirrored by
 is how two wirings come to disagree about which backend an image is.
 
 **What it does NOT close**, stated rather than implied: the five refused fields,
-which are [issue 1393](../issues/archived/1393-cmake-road-has-no-bound-inventory.md), and
+which are [issue 1393](../../issues/archived/1393-cmake-road-has-no-bound-inventory.md), and
 the retirement of the `NROS_DECLARED_*` carriers. W9 then measured that
 retirement per fact and retired NONE of them — and found the block is NOT only
 the refusals. It is also the producer, still: `--from-model` reads a poorer
 inventory than the carrier's verb does, and a standalone leaf has no model to
-read at all ([issue 1407](../issues/archived/1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md)).
+read at all ([issue 1407](../../issues/archived/1407-cmake-road-descriptor-coverage-narrower-than-its-carriers.md)).
 The sentence above — *"all three now write a descriptor, so the block is the
 REFUSALS rather than the producer"* — is the claim W9 disproved; it is left
 here rather than edited away, because it is the exact step where "a descriptor
@@ -1237,7 +1239,7 @@ whether the build was told what it registers.
 RFC-0065 (`nros build`, one configure per coordinate), phase-470 (generated
 entries) and phase-474 (one entry lowering) landed after this phase. Re-read
 against them, two premises this phase handed its successors are wrong, and
-[RFC-0100 Amendment 1](../design/0100-rmw-agnostic-sizing-model.md#amendment-1-2026-10-03--the-unified-build-path-moved-under-this-model)
+[RFC-0100 Amendment 1](../../design/0100-rmw-agnostic-sizing-model.md#amendment-1-2026-10-03--the-unified-build-path-moved-under-this-model)
 carries the corrections:
 
 * **"A multi-entry configure names no descriptor to cargo" is not a permanent

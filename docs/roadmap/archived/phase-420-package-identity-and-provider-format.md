@@ -10,7 +10,7 @@ disjoint. Three issues were filed on the way and are NOT part of this phase:
 recipe that cannot work) and 1078 (five XRCE pool knobs missing from the
 inventory). Implements
 [RFC-0087](../../design/0087-package-identity-and-provider-format.md). Sequenced
-with [phase-421](../phase-421-serialization-format-provider.md), which implements
+with [phase-421](phase-421-serialization-format-provider.md), which implements
 RFC-0088 and needs **W1 of this phase only** — the rest of this phase can land
 around it.
 

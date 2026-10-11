@@ -1,6 +1,8 @@
 # phase-364 — the platform ABI states its own sizes, tasks and refusals
 
-**Status (2026-08-16). W1, W2, W3, W5 LANDED; W4 WITHDRAWN — its gate already existed (`check-platform-abi-mirror`, Phase 121.4.b) and catches the rule. Implements [RFC-0076](../design/0076-platform-abi-ask-do-not-assume.md).**
+**Archived 2026-10-11.** W1–W3 and W5 landed; W4 was withdrawn because its gate already existed.
+
+**Status (2026-08-16). W1, W2, W3, W5 LANDED; W4 WITHDRAWN — its gate already existed (`check-platform-abi-mirror`, Phase 121.4.b) and catches the rule. Implements [RFC-0076](../../design/0076-platform-abi-ask-do-not-assume.md).**
 The ABI cannot say how big its own objects are, what a task should look like, or
 that a platform simply does not do something — so callers guess, and nothing
 checks the guesses. This phase makes each of those things sayable.
@@ -254,6 +256,6 @@ holds the evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0758](../issues/0758-platform-sntp-epoch-source.md) | no platform wall-clock epoch source, so embedded consumers hand-roll one — the ABI does not state a fact it owns |
-| [#0954](../issues/archived/0954-nuttx-fallback-sizes-header-has-no-gate.md) | the committed NuttX fallback sizes header is a hand-maintained twin with no gate, and went stale. A size the platform should state, restated by hand |
+| [#0758](../../issues/0758-platform-sntp-epoch-source.md) | no platform wall-clock epoch source, so embedded consumers hand-roll one — the ABI does not state a fact it owns |
+| [#0954](../../issues/archived/0954-nuttx-fallback-sizes-header-has-no-gate.md) | the committed NuttX fallback sizes header is a hand-maintained twin with no gate, and went stale. A size the platform should state, restated by hand |
 

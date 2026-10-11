@@ -72,7 +72,7 @@ Three orchestration issues that are one dependency chain, not three tasks.
 [issue 0519](../issues/archived/0519-plan-timer-period-truncates-sub-millisecond.md)
 (**RESOLVED** — see the issue for what closed it).
 
-**Related:** [phase-296](phase-296-system-model-consumption.md) (IN PROGRESS,
+**Related:** [phase-296](archived/phase-296-system-model-consumption.md) (IN PROGRESS,
 names #259 and #260), [phase-162](phase-162-rt-scheduling-harness.md) (the
 harness that can measure), [phase-356](archived/phase-356-test-evidence-and-measurement-trust.md)
 W2 (the bench that produces the numbers), RFC-0031 / the `system.toml` schema.

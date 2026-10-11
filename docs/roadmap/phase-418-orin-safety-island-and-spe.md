@@ -15,7 +15,7 @@ Implements/informs: RFC-0012 (board/BSP integration), RFC-0064 (board tiers),
 RFC-0005/0006 (feature axes). Related: [phase-100 —
 Orin SPE infrastructure](archived/phase-100-orin-spe-infra.md),
 [phase-100.04 — IVC link design](archived/phase-100-04-link-ivc-design.md),
-[phase-377 — CAN link for zenoh-pico](phase-377-can-link-for-zenoh-pico.md).
+[phase-377 — CAN link for zenoh-pico](archived/phase-377-can-link-for-zenoh-pico.md).
 
 ---
 

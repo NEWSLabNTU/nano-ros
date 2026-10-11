@@ -36,7 +36,7 @@ carries a runtime hint to the BACKEND for payload-class routing (phase-402,
 const that sizes the EXECUTOR ARENA's trailing region. W3 is about the second;
 the first is done for one of the three variants.
 Scope is the C and C++ path only. The other obstacles to
-[phase 392](phase-392-static-memory-space-campaign.md)'s "W3 remainder" — Rust
+[phase 392](archived/phase-392-static-memory-space-campaign.md)'s "W3 remainder" — Rust
 being opt-in (W3c), Cyclone not consuming the hint (W3f), unbounded diagnostics
 and the TX/RX split (W3g) — are deliberately out of scope here and stay where
 they are.

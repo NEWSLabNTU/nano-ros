@@ -2,7 +2,7 @@
 
 **Status:** Draft (2026-09-10)
 
-Home phase: [phase-443](../roadmap/phase-443-release-composition.md).
+Home phase: [phase-443](../roadmap/archived/phase-443-release-composition.md).
 
 Amends RFC-0090 (which anticipated this: *"a future refactor may split the 'CLI
 version' from the 'runtime ABI version' […]; the call sites here would not

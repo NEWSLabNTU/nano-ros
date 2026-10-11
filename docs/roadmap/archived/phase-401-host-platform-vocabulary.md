@@ -1,5 +1,7 @@
 # phase-401 — `native` / `posix` / `linux`: three words, two questions
 
+**Archived 2026-10-11.** W1–W3 landed and every box is ticked; the status line below already called the phase complete.
+
 **Status (2026-08-30). W1, W2 and W3 are landed — the rule, the host board, the
 gate, a 71-fix tree-wide audit across six scopes, and the renames it identified.
 W4 was measured and REJECTED as scoped — its premise was false — and shipped a
@@ -266,4 +268,4 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1109](../issues/1109-board-native-vs-linux-naming-sweep.md) | 77 `board = "native"` selectors predate the native/linux split and some are true of neither. They are the remainder of this phase's own vocabulary audit, which fixed the crates and not the selectors |
+| [#1109](../../issues/1109-board-native-vs-linux-naming-sweep.md) | 77 `board = "native"` selectors predate the native/linux split and some are true of neither. They are the remainder of this phase's own vocabulary audit, which fixed the crates and not the selectors |

@@ -39,7 +39,7 @@ reason to touch phase-417.
 
 ## Why phase-419 does not cover this
 
-[phase-419](../roadmap/phase-419-roadmap-claim-verification.md) built exactly
+[phase-419](../roadmap/archived/phase-419-roadmap-claim-verification.md) built exactly
 the right gate for a different defect. Its rules (R1/R3/R4, in
 `scripts/check-roadmap-claims.py`, fast line, baseline ratcheted to **0**) catch
 a document contradicting **itself** — a header saying "not started" over a body

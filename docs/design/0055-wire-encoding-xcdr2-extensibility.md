@@ -272,4 +272,4 @@ still owns the RIHS01 type-hash tail (phase-304), but NOT the encoding/extensibi
 - 2026-07 — created. Extends the wire encoding beyond XCDR1 to XCDR2 +
   explicit extensibility; roots the #0267 root-cause finding (nano-ros CDR
   proven canonical; the gap is DHEADER + implicit extensibility). Work
-  breakdown in [phase-303](../roadmap/phase-303-xcdr2-interop.md).
+  breakdown in [phase-303](../roadmap/archived/phase-303-xcdr2-interop.md).

@@ -71,7 +71,7 @@ under the invoking checkout. The second is closer to what "build where you run"
 means; the first is the smaller change.
 
 Found while making the phase-392 amendment B measurement
-([`docs/roadmap/phase-392-static-memory-space-campaign.md`](../../roadmap/phase-392-static-memory-space-campaign.md)),
+([`docs/roadmap/phase-392-static-memory-space-campaign.md`](../../roadmap/archived/phase-392-static-memory-space-campaign.md)),
 which had to abandon a Zephyr measurement image because of it.
 
 
