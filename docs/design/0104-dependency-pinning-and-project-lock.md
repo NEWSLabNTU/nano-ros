@@ -347,3 +347,7 @@ lock does not move until THEY run `nros update`.
   user's deliberate choice (RFC-0103 D5), and those trees are recorded as
   such. The shim is retired, and `--locked` lives in `setup-cli`,
   `setup-launch-resolve` and `nros_cargo_nextest_args`.
+- 2026-10-11 — D10 implemented (phase-485 W8). Corrosion's FetchContent
+  fallback and its issue-1060 pin and cache are deleted, and a configure
+  without the store copy refuses. The gate covers nano-ros's own build files
+  only: a user's vendor package may fetch with a digest (RFC-0087 D5).
