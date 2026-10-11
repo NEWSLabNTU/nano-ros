@@ -59,13 +59,15 @@ defect: file it, and it becomes W5's acceptance.
 `native/rust/talker` (cargo road): after an ament change, `nros build` alone
 did not regenerate and produced a byte-identical binary; only an explicit
 `nros sync` regenerated. Filed as
-[issue 1780](../issues/1780-nros-build-keeps-generated-code-after-ament-change.md)
+[issue 1780](../issues/archived/1780-nros-build-keeps-generated-code-after-ament-change.md)
 — W5's acceptance. Getting there found
 [issue 1781](../issues/archived/1781-ament-index-last-prefix-wins.md): the CLI's ament
 index lets the LAST `AMENT_PREFIX_PATH` entry win, so an overlay's interface
 package is silently replaced by the underlay's — the overlay had to be put
-LAST for the experiment to see it at all. The cmake and west roads are not
-yet measured.
+LAST for the experiment to see it at all. The cmake and west roads were
+measured with W5 (2026-10-11): their row B was already green whenever a
+configure ran (the resolved interface PATHS are configure inputs), and their
+live defect was the in-place `.deb`-mtime shape — see issue 1780's Resolution.
 
 ### M3 — which C/C++ source reaches which image, by which road
 
@@ -252,6 +254,17 @@ fail; `NROS_CARGO_FLAGS` no longer exists.
 `[generated.<pkg>] ament` = hash of the ament inputs + codegen version; a
 mismatch re-runs generation for that package before the build. Acceptance is
 M2's scenario turning green.
+
+**Done (2026-10-11, issue 1780 resolved).** The record is
+`<generated pkg>/nros-generated.toml`, written by every generator
+(`rosidl_codegen::ament_stamp`, one hash: `package.xml` + interface files over
+the `<depend>` closure, path-independent). `nros build` regenerates a moved
+cargo-road crate before planning; both cmake generators ask
+`nros codegen --ament-witness` at configure and compare by content
+(`nros_codegen_ament_stale`). Measured on all three roads, including the
+in-place `.deb`-mtime shape that the cmake (Unix Makefiles) and west lanes
+missed even though their row B was already green — table in the issue. W3 still
+owes copying the per-package records into the project lock.
 
 ### W6 — record and warn for system libraries (D6)
 

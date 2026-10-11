@@ -619,6 +619,81 @@ function(nros_message_bounds_files _output_dir _json_var _cmake_var)
     set(${_cmake_var} "${_output_dir}/nros_message_bounds.cmake" PARENT_SCOPE)
 endfunction()
 
+# nros_codegen_ament_stale(<stale_var> TOOL <nros> LANGUAGE <c|cpp>
+#                          ARGS_FILE <json> OUTPUT_DIR <dir>)
+#
+# RFC-0104 D5 / issue 1780 — "did the ament inputs this package was generated
+# FROM move?", asked at configure by both cmake generators. Runs `nros codegen
+# --ament-witness`: the CLI hashes the package's ament inputs (package.xml +
+# interface files, over its dependency closure) and rewrites `<args>.ament.toml`
+# ONLY when that hash moved, naming the moved package on stdout when the
+# generated output's record (`<OUTPUT_DIR>/nros-generated.toml`) disagrees.
+# <stale_var> is TRUE when the witness and that record differ (or there is a
+# witness and no record yet); each caller ORs it into its configure-time
+# "run codegen now" predicate.
+#
+# Why a content hash turned into a file, not the interface files' mtimes (which
+# both lanes already list): `dpkg` installs a file with the mtime it carries in
+# the `.deb` — the package's BUILD time, routinely older than a generated tree —
+# and an overlay that starts to shadow a package changes which file is read
+# without making any file newer. Measured (issue 1780's Resolution): an in-place
+# change with a `.deb`-style mtime left both lanes' every edge reading current
+# and the image byte-identical. The hash is computed by the CLI, never here, so
+# the cargo road (`nros build`) and these two lanes share ONE spelling of "what
+# was it generated from".
+#
+# Compared against the RECORD, never by mtime against the outputs: codegen
+# writes only the files whose bytes changed, so a witness listed among a lane's
+# generic INPUTS would stay newer than every untouched output forever and re-run
+# codegen on every configure after the first move. The record is rewritten by
+# every generation, so one regeneration settles it. For the same reason the
+# witness is NOT a build-time DEPENDS: it only ever moves during a configure,
+# which is where this acts on it.
+#
+# Runs on every configure (`nros build` always configures; so does a fixture's
+# `cmake -S -B`). A bare `cmake --build` that triggers no reconfigure does not
+# reach it — the same limit every other configure-time input here has.
+function(nros_codegen_ament_stale _stale)
+    cmake_parse_arguments(_W "" "TOOL;LANGUAGE;ARGS_FILE;OUTPUT_DIR" "" ${ARGN})
+    string(REGEX REPLACE "\\.json$" "" _w_base "${_W_ARGS_FILE}")
+    set(_witness "${_w_base}.ament.toml")
+    # Issue 1018 -- a configure-time call of the tool re-runs when the tool moves.
+    nros_codegen_tool_reconfigure("${_W_TOOL}")
+    execute_process(
+        COMMAND "${_W_TOOL}" codegen --args-file "${_W_ARGS_FILE}"
+                --language "${_W_LANGUAGE}" --ament-witness "${_witness}"
+        RESULT_VARIABLE _w_rc
+        OUTPUT_VARIABLE _w_out
+        ERROR_VARIABLE _w_err
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT _w_rc EQUAL 0)
+        message(FATAL_ERROR
+            "nros codegen --ament-witness failed (exit ${_w_rc}) for ${_W_ARGS_FILE}:\n"
+            "  ${_w_out}\n  ${_w_err}")
+    endif()
+    if(_w_out)
+        message(STATUS "nros: ${_w_out}")
+    endif()
+    # The witness and the record are the same `[generated.<pkg>]` document
+    # (`Stamp::to_toml`), so the comparison is of CONTENT — no timestamp is
+    # trusted at all. No witness: a package with no interface files, which has
+    # nothing to hash. No record: generated before RFC-0104 D5 (or never).
+    set(_record "${_W_OUTPUT_DIR}/nros-generated.toml")
+    set(_is_stale FALSE)
+    if(EXISTS "${_witness}")
+        if(NOT EXISTS "${_record}")
+            set(_is_stale TRUE)
+        else()
+            file(READ "${_witness}" _w_now)
+            file(READ "${_record}" _w_was)
+            if(NOT _w_now STREQUAL _w_was)
+                set(_is_stale TRUE)
+            endif()
+        endif()
+    endif()
+    set(${_stale} ${_is_stale} PARENT_SCOPE)
+endfunction()
+
 # nros_codegen_outputs_stale(<out_var> OUTPUTS <files…> INPUTS <files…>)
 #
 # THE configure-time "must codegen run now?" predicate: TRUE when any OUTPUT is

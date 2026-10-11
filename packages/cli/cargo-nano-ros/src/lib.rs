@@ -1055,6 +1055,103 @@ pub fn generate_bindings(config: BindgenConfig) -> Result<()> {
     Ok(())
 }
 
+/// RFC-0104 D5 / issue 1780 — the [`Stamp`](rosidl_codegen::ament_stamp::Stamp)
+/// an args-file generation is generated from NOW.
+///
+/// The package root is the directory holding the interface files' `msg/` /
+/// `srv/` / `action/` — the share dir for an ament package, the source dir for a
+/// workspace one. Its dependencies resolve through the same interface index
+/// codegen resolves nested types through, so the closure fingerprinted is the
+/// closure generated from. `None` for a package with no interface files.
+fn args_ament_stamp(args: &GenerateCArgs) -> Result<Option<rosidl_codegen::ament_stamp::Stamp>> {
+    let Some(root) = args
+        .interface_files
+        .iter()
+        .find_map(|f| f.parent()?.parent().map(std::path::Path::to_path_buf))
+    else {
+        return Ok(None);
+    };
+    package_ament_stamp(&args.package_name, &root).map(Some)
+}
+
+/// The stamp for package `name` rooted at `root`, its dependency closure
+/// resolved through the shared interface index. Every C/C++ front door comes
+/// through here, so the args-file road and the `package.xml` road record the
+/// same thing for the same package.
+fn package_ament_stamp(
+    name: &str,
+    root: &std::path::Path,
+) -> Result<rosidl_codegen::ament_stamp::Stamp> {
+    let index = shared_interface_index();
+    let (own, own_root) = (name.to_string(), root.to_path_buf());
+    let lookup = move |n: &str| {
+        if n == own {
+            Some(own_root.clone())
+        } else {
+            index
+                .and_then(|i| i.find_package(n))
+                .map(|p| p.share_dir.clone())
+        }
+    };
+    rosidl_codegen::ament_stamp::Stamp::current(name, root, &lookup)
+        .wrap_err_with(|| format!("fingerprint the ament inputs of {name}"))
+}
+
+/// Write `stamp` beside a generated package's output (RFC-0104 D5).
+fn write_ament_record(
+    stamp: &rosidl_codegen::ament_stamp::Stamp,
+    output_dir: &std::path::Path,
+) -> Result<()> {
+    let path = rosidl_codegen::ament_stamp::Stamp::path_in(output_dir);
+    stamp
+        .write(&path)
+        .wrap_err_with(|| format!("write {}", path.display()))?;
+    Ok(())
+}
+
+/// Record what this generation came from, beside its output (RFC-0104 D5).
+fn record_ament_stamp(args: &GenerateCArgs) -> Result<()> {
+    if let Some(stamp) = args_ament_stamp(args)? {
+        write_ament_record(&stamp, &args.output_dir)?;
+    }
+    Ok(())
+}
+
+/// `nros codegen --args-file <f> --ament-witness <w>` — RFC-0104 D5, issue 1780.
+///
+/// Writes the CURRENT ament stamp of the args file's package to `witness`, only
+/// when it changed. That turns a content comparison into the one thing a cmake
+/// freshness predicate can read — an mtime — without trusting the inputs' own
+/// mtimes, which `dpkg` sets to the `.deb`'s build time and an overlay that
+/// starts to shadow a package does not move at all. Both cmake generators list
+/// the witness as a codegen input, so a moved fingerprint is a newer input and
+/// the package regenerates.
+///
+/// Returns a line naming what moved when the output's RECORD disagrees with the
+/// inputs, for the configure log; `None` when it agrees, or when nothing was
+/// generated yet.
+pub fn write_ament_witness(
+    args_file: &std::path::Path,
+    witness: &std::path::Path,
+) -> Result<Option<String>> {
+    let args_content = std::fs::read_to_string(args_file)
+        .wrap_err_with(|| format!("Failed to read args file: {}", args_file.display()))?;
+    let args: GenerateCArgs = serde_json::from_str(&args_content)
+        .wrap_err_with(|| format!("Failed to parse args file: {}", args_file.display()))?;
+    let Some(stamp) = args_ament_stamp(&args)? else {
+        return Ok(None);
+    };
+    stamp
+        .write(witness)
+        .wrap_err_with(|| format!("write {}", witness.display()))?;
+    let record = rosidl_codegen::ament_stamp::Stamp::path_in(&args.output_dir);
+    let f = stamp.freshness_against(&record);
+    Ok(
+        matches!(f, rosidl_codegen::ament_stamp::Freshness::Moved { .. })
+            .then(|| format!("regenerating: {}", stamp.moved_reason(&f))),
+    )
+}
+
 /// Arguments structure for C code generation (parsed from JSON)
 #[derive(Debug, serde::Deserialize)]
 struct GenerateCArgs {
@@ -1313,6 +1410,8 @@ pub fn generate_c_from_args_file(config: GenerateCConfig) -> Result<()> {
 
     // phase-403 W6 — the derived bounds leave codegen here.
     write_bound_inventory(&args.output_dir, &inventory)?;
+    // RFC-0104 D5 — and what they were generated FROM.
+    record_ament_stamp(&args)?;
     if config.verbose {
         println!(
             "  Generated bound inventory: {} ({} types)",
@@ -1515,6 +1614,11 @@ pub fn generate_c_from_package_xml(config: GenerateCStandaloneConfig) -> Result<
 
         // phase-403 W6 — the derived bounds leave codegen here.
         write_bound_inventory(&pkg_output, &inventory)?;
+        // RFC-0104 D5 — and what they came from, as the args-file road records.
+        write_ament_record(
+            &package_ament_stamp(pkg_name, &package.share_dir)?,
+            &pkg_output,
+        )?;
 
         println!(
             "  ✓ {} ({} messages, {} services, {} actions)",
@@ -2159,6 +2263,9 @@ fn generate_cpp_with(
 
     // phase-403 W6 — the derived bounds leave codegen here.
     write_bound_inventory(&args.output_dir, &inventory)?;
+    // RFC-0104 D5 — and what they were generated FROM. Here, in the emitter
+    // both C++ front doors share, so the two roads write the same file set.
+    record_ament_stamp(args)?;
 
     if verbose {
         println!("  Generated umbrella header: {}.hpp", args.package_name);
@@ -2632,5 +2739,83 @@ mod bundled_interface_packages_tests {
             !got.iter().any(|n| n.starts_with("nros-")),
             "bundled names are ROS names, not crate names; got {got:?}"
         );
+    }
+}
+
+/// RFC-0104 D5 / issue 1780 — the cmake and west roads' half: the witness the
+/// configure compares against the generated output's record.
+#[cfg(test)]
+mod ament_witness_tests {
+    use super::*;
+    use rosidl_codegen::ament_stamp::Stamp;
+    use std::fs;
+
+    /// An args file for a package whose interface files live in `share/` and
+    /// whose generated output (and record) goes to `out/`.
+    fn args_for(root: &std::path::Path) -> std::path::PathBuf {
+        let share = root.join("share/zz_issue1780_msgs");
+        fs::create_dir_all(share.join("msg")).unwrap();
+        fs::write(
+            share.join("package.xml"),
+            "<package><name>zz_issue1780_msgs</name><version>1.0.0</version></package>\n",
+        )
+        .unwrap();
+        fs::write(share.join("msg/Foo.msg"), "int32 a\n").unwrap();
+        let args = root.join("args.json");
+        fs::write(
+            &args,
+            serde_json::json!({
+                "package_name": "zz_issue1780_msgs",
+                "output_dir": root.join("out"),
+                "interface_files": [share.join("msg/Foo.msg")],
+            })
+            .to_string(),
+        )
+        .unwrap();
+        args
+    }
+
+    fn parse(args: &std::path::Path) -> GenerateCArgs {
+        serde_json::from_str(&fs::read_to_string(args).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn witness_matches_the_record_until_the_inputs_move() {
+        let t = tempfile::tempdir().unwrap();
+        let args = args_for(t.path());
+        let witness = t.path().join("args.ament.toml");
+
+        // Nothing generated yet: the witness is written, nothing is "moved".
+        assert_eq!(write_ament_witness(&args, &witness).unwrap(), None);
+        // What generation records is byte-identical to the witness — the cmake
+        // predicate compares the two files' CONTENT.
+        record_ament_stamp(&parse(&args)).unwrap();
+        let record = Stamp::path_in(&t.path().join("out"));
+        assert_eq!(fs::read(&witness).unwrap(), fs::read(&record).unwrap());
+
+        // Negative control: unchanged inputs, no line, no rewrite.
+        let before = fs::metadata(&witness).unwrap().modified().unwrap();
+        assert_eq!(write_ament_witness(&args, &witness).unwrap(), None);
+        assert_eq!(fs::metadata(&witness).unwrap().modified().unwrap(), before);
+
+        // The issue-1780 move: a field added. The witness now disagrees with
+        // the record and the configure log names the package.
+        fs::write(
+            t.path().join("share/zz_issue1780_msgs/msg/Foo.msg"),
+            "int32 a\nint32 m2_extra\n",
+        )
+        .unwrap();
+        let line = write_ament_witness(&args, &witness)
+            .unwrap()
+            .expect("a moved line");
+        assert!(
+            line.contains("zz_issue1780_msgs") && line.contains("moved"),
+            "{line}"
+        );
+        assert_ne!(fs::read(&witness).unwrap(), fs::read(&record).unwrap());
+
+        // Regenerating writes the new record, and the two agree again.
+        record_ament_stamp(&parse(&args)).unwrap();
+        assert_eq!(fs::read(&witness).unwrap(), fs::read(&record).unwrap());
     }
 }

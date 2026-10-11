@@ -3138,7 +3138,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
         )?;
         // Now generate the workspace pkg itself directly from its dir.
         if !emitted.contains(name) {
-            codegen_workspace_pkg(pkg, &build_root, edition, args.verbose)?;
+            codegen_workspace_pkg(pkg, &scan, &build_root, edition, args.verbose)?;
             emitted.insert(name.clone());
         }
     }
@@ -3586,6 +3586,7 @@ fn ament_msg_resolver() -> impl Fn(&str) -> Option<rosidl_parser::Message> {
 // — `Package::from_share_dir` reads `package.xml` + scans msg/srv/action).
 fn codegen_workspace_pkg(
     pkg: &WsPkg,
+    scan: &[WsPkg],
     build_root: &Path,
     edition: RosEdition,
     verbose: bool,
@@ -3616,6 +3617,7 @@ fn codegen_workspace_pkg(
         &msg_resolve,
     )
     .wrap_err_with(|| format!("sync: generate_package failed for {}", pkg.name))?;
+    record_generated_stamp(&package, out_dir, scan)?;
     // Codegen emits <out_dir>/<pkg>/{Cargo.toml,src/} with sibling `path =
     // "../<dep>"` deps. We keep that flat layout (no extra `rust/`
     // nesting) so the relative paths between generated crates resolve
@@ -3624,6 +3626,223 @@ fn codegen_workspace_pkg(
     // there to coexist with `<pkg>/c/`, `<pkg>/cpp/`, etc. inside the
     // same generator's output, which we don't have.
     Ok(())
+}
+
+// Codegen ONE ament-resolved package into `build_root/<pkg>/` and record what
+// it was generated from. Sync's dependency walk and `nros build`'s regeneration
+// (RFC-0104 D5) both come through here, so they cannot generate differently.
+fn codegen_ament_pkg(
+    amented: &Package,
+    scan: &[WsPkg],
+    build_root: &Path,
+    edition: RosEdition,
+    verbose: bool,
+) -> Result<()> {
+    let out_dir = build_root;
+    std::fs::create_dir_all(out_dir)?;
+    if verbose {
+        println!(
+            "sync: codegen AMENT pkg {} → {}",
+            amented.name,
+            out_dir.display()
+        );
+    } else {
+        println!("sync: codegen {}", amented.name);
+    }
+    let resolver = rosidl_codegen::CapacityResolver::discover(&amented.share_dir, None)?;
+    resolver.report_deprecations();
+    let msg_resolve = ament_msg_resolver();
+    rosidl_bindgen::generator::generate_package(amented, out_dir, edition, &resolver, &msg_resolve)
+        .wrap_err_with(|| format!("sync: generate_package failed for {}", amented.name))?;
+    record_generated_stamp(amented, out_dir, scan)
+}
+
+// RFC-0104 D5 — where an interface package's inputs live, by name, resolved the
+// way sync's generation resolves them: a workspace msg package first (it is
+// generated from its own directory), then the interface index (ament env +
+// bundled). The fingerprint's dependency closure walks through this, so it
+// covers exactly what generation reads.
+fn ament_lookup(scan: &[WsPkg]) -> impl Fn(&str) -> Option<PathBuf> + '_ {
+    move |name: &str| {
+        if let Some(p) = scan.iter().find(|p| p.is_msg_pkg && p.name == name) {
+            return Some(p.dir.clone());
+        }
+        interface_index()?
+            .find_package(name)
+            .map(|p| p.share_dir.clone())
+    }
+}
+
+// RFC-0104 D5 — write `<build_root>/<pkg>/nros-generated.toml`, the record of
+// the ament inputs this generated crate came from.
+fn record_generated_stamp(package: &Package, build_root: &Path, scan: &[WsPkg]) -> Result<()> {
+    let lookup = ament_lookup(scan);
+    let stamp =
+        rosidl_codegen::ament_stamp::Stamp::current(&package.name, &package.share_dir, &lookup)
+            .wrap_err_with(|| format!("sync: fingerprint the ament inputs of {}", package.name))?;
+    let path = rosidl_codegen::ament_stamp::Stamp::path_in(&build_root.join(&package.name));
+    stamp
+        .write(&path)
+        .wrap_err_with(|| format!("sync: write {}", path.display()))?;
+    Ok(())
+}
+
+/// Is `dir` a generated MESSAGE crate (as opposed to a facade or selection
+/// crate sync also writes under `generated/`)? The message generator, and
+/// nothing else, states `[package.metadata.nros] ament_version`.
+fn is_generated_msg_crate(dir: &Path) -> bool {
+    std::fs::read_to_string(dir.join("Cargo.toml"))
+        .ok()
+        .and_then(|t| t.parse::<toml::Table>().ok())
+        .is_some_and(|doc| {
+            doc.get("package")
+                .and_then(|p| p.get("metadata"))
+                .and_then(|m| m.get("nros"))
+                .and_then(|n| n.get("ament_version"))
+                .is_some()
+        })
+}
+
+/// One generated message crate whose record no longer matches its inputs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct MovedGenerated {
+    pub package: String,
+    pub reason: String,
+}
+
+/// RFC-0104 D5 / issue 1780 — which of `<ws_root>/generated/*`'s message crates
+/// were generated from ament inputs that have since moved.
+///
+/// The question only: [`refresh_generated`] acts on it. A crate whose package
+/// this host no longer resolves cannot be checked or regenerated (sync does not
+/// generate it either, and does not delete it), so it is reported in the second
+/// list rather than refused — refusing would name `nros sync` as the fix for a
+/// state sync cannot change.
+fn moved_generated(
+    ws_root: &Path,
+    build_root: &Path,
+    scan: &[WsPkg],
+) -> Result<(Vec<MovedGenerated>, Vec<String>)> {
+    let lookup = ament_lookup(scan);
+    let mut moved = Vec::new();
+    let mut unresolved = Vec::new();
+    let Ok(entries) = std::fs::read_dir(build_root) else {
+        return Ok((moved, unresolved));
+    };
+    let mut dirs: Vec<PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_dir())
+        .collect();
+    dirs.sort();
+    for dir in dirs {
+        let Some(name) = dir.file_name().map(|n| n.to_string_lossy().into_owned()) else {
+            continue;
+        };
+        if !is_generated_msg_crate(&dir) {
+            continue;
+        }
+        let Some(share) = lookup(&name) else {
+            unresolved.push(name);
+            continue;
+        };
+        let current = rosidl_codegen::ament_stamp::Stamp::current(&name, &share, &lookup)
+            .wrap_err_with(|| {
+                format!(
+                    "fingerprint the ament inputs of {} (for {})",
+                    name,
+                    ws_root.display()
+                )
+            })?;
+        let f = current.freshness_against(&rosidl_codegen::ament_stamp::Stamp::path_in(&dir));
+        if !f.is_fresh() {
+            moved.push(MovedGenerated {
+                reason: current.moved_reason(&f),
+                package: name,
+            });
+        }
+    }
+    Ok((moved, unresolved))
+}
+
+/// RFC-0104 D5 / issue 1780 — `nros build`'s half of the record `nros sync`
+/// writes: regenerate every generated message crate under `<ws_root>/generated`
+/// whose ament inputs moved since it was generated, BEFORE anything compiles.
+///
+/// Before this, `nros build` after `apt install --only-upgrade 'ros-humble-*'`
+/// compiled the old generated code into a byte-identical binary — an image
+/// talking a wire layout its ROS peers no longer have — and only an explicit
+/// `nros sync` noticed. Regeneration goes through the same per-package codegen
+/// sync uses, then the same dependency walk, so a dependency the upgraded
+/// `package.xml` newly names is generated too. A root with no `generated/` (or
+/// that sync cannot scan) has nothing sync generated, and is left alone.
+pub(crate) fn refresh_generated(ws_root: &Path, dry_run: bool) -> Result<Vec<String>> {
+    let build_root = ws_root.join("generated");
+    if !build_root.is_dir() {
+        return Ok(Vec::new());
+    }
+    let Ok((ws_root, scan, build_root)) = scan_for_query(Some(ws_root), Path::new("generated"))
+    else {
+        return Ok(Vec::new());
+    };
+    let (moved, unresolved) = moved_generated(&ws_root, &build_root, &scan)?;
+    for name in &unresolved {
+        eprintln!(
+            "nros build: warning: generated/{name} was generated from an interface package \
+             this host no longer resolves (workspace, AMENT_PREFIX_PATH, bundled) — it cannot \
+             be checked against its inputs (RFC-0104 D5). Delete it if nothing uses it."
+        );
+    }
+    if moved.is_empty() {
+        return Ok(Vec::new());
+    }
+    for m in &moved {
+        eprintln!("nros build: {}", m.reason);
+    }
+    let names: Vec<String> = moved.iter().map(|m| m.package.clone()).collect();
+    if dry_run {
+        eprintln!(
+            "nros build: --dry-run: would regenerate {} before building",
+            names.join(", ")
+        );
+        return Ok(names);
+    }
+    let edition = resolve_sync_edition(None, &ws_root)?;
+    // Everything already on disk counts as emitted, so the dependency walk
+    // below generates only what is MISSING (a dependency an upgraded
+    // `package.xml` newly names), never a second copy of a fresh crate.
+    let mut emitted: HashSet<String> = std::fs::read_dir(&build_root)
+        .map(|it| {
+            it.flatten()
+                .filter(|e| is_generated_msg_crate(&e.path()))
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .collect()
+        })
+        .unwrap_or_default();
+    for name in &names {
+        let deps = if let Some(pkg) = scan.iter().find(|p| p.is_msg_pkg && &p.name == name) {
+            codegen_workspace_pkg(pkg, &scan, &build_root, edition, false)?;
+            pkg.deps.clone()
+        } else {
+            let Some(amented) = interface_index().and_then(|i| i.find_package(name)) else {
+                eyre::bail!(
+                    "nros build: {name} moved and then could not be resolved to regenerate it; \
+                     run `nros sync` in {} (RFC-0104 D5).",
+                    ws_root.display()
+                );
+            };
+            codegen_ament_pkg(amented, &scan, &build_root, edition, false)?;
+            std::fs::read_to_string(amented.share_dir.join("package.xml"))
+                .map(|b| extract_pkg_deps(&b))
+                .unwrap_or_default()
+        };
+        codegen_ament_deps_for(&deps, &scan, &build_root, edition, &mut emitted, false)?;
+    }
+    eprintln!(
+        "nros build: regenerated {} (RFC-0104 D5) — `nros sync` is not needed for this",
+        names.join(", ")
+    );
+    Ok(names)
 }
 
 // Resolve AMENT-side deps (the per-pkg.xml `<depend>` tags not in workspace)
@@ -3660,29 +3879,7 @@ fn codegen_ament_deps_for(
             // AMENT doesn't know — silently skip (smart-stub semantics).
             continue;
         };
-        // Codegen the AMENT pkg.
-        let out_dir = build_root;
-        std::fs::create_dir_all(out_dir)?;
-        if verbose {
-            println!(
-                "sync: codegen AMENT pkg {} → {}",
-                amented.name,
-                out_dir.display()
-            );
-        } else {
-            println!("sync: codegen {}", amented.name);
-        }
-        let resolver = rosidl_codegen::CapacityResolver::discover(&amented.share_dir, None)?;
-        resolver.report_deprecations();
-        let msg_resolve = ament_msg_resolver();
-        rosidl_bindgen::generator::generate_package(
-            &amented,
-            out_dir,
-            edition,
-            &resolver,
-            &msg_resolve,
-        )
-        .wrap_err_with(|| format!("sync: generate_package failed for {}", amented.name))?;
+        codegen_ament_pkg(&amented, scan, build_root, edition, verbose)?;
         emitted.insert(amented.name.clone());
         // Queue this pkg's own deps (parse its package.xml).
         let pxml = amented.share_dir.join("package.xml");
@@ -7571,5 +7768,167 @@ mod retire_generated_root_tests {
             std::fs::read_to_string(tmp.path().join("Cargo.toml")).unwrap(),
             authored
         );
+    }
+}
+
+// =============================================================================
+// RFC-0104 D5 / issue 1780 — the generated-crate record and `nros build`'s check
+// =============================================================================
+
+#[cfg(test)]
+mod generated_freshness_tests {
+    use super::*;
+    use rosidl_codegen::ament_stamp::Stamp;
+    use std::fs;
+
+    /// A colcon workspace with ONE workspace msg package, `my_msgs`, and a
+    /// generated crate for it whose record is written from the CURRENT inputs —
+    /// i.e. exactly what `nros sync` leaves behind. A workspace package resolves
+    /// through the scan, so none of this depends on the host's ament install.
+    fn synced_workspace(root: &Path) -> Vec<WsPkg> {
+        let pkg = root.join("src/my_msgs");
+        fs::create_dir_all(pkg.join("msg")).unwrap();
+        fs::write(
+            pkg.join("package.xml"),
+            "<package format=\"3\"><name>my_msgs</name><version>1.0.0</version>\
+             <member_of_group>rosidl_interface_packages</member_of_group></package>\n",
+        )
+        .unwrap();
+        fs::write(pkg.join("msg/Foo.msg"), "int32 a\n").unwrap();
+
+        let out = root.join("generated/my_msgs");
+        fs::create_dir_all(&out).unwrap();
+        fs::write(
+            out.join("Cargo.toml"),
+            "[package]\nname = \"my_msgs\"\nversion = \"0.0.0\"\n\
+             [package.metadata.nros]\nament_version = \"1.0.0\"\n",
+        )
+        .unwrap();
+        // A sibling sync also writes that is NOT a message crate: never checked.
+        let facade = root.join("generated/nros-selection");
+        fs::create_dir_all(&facade).unwrap();
+        fs::write(facade.join("Cargo.toml"), "[package]\nname = \"sel\"\n").unwrap();
+
+        let (_, scan, _) = scan_for_query(Some(root), Path::new("generated")).unwrap();
+        {
+            let lookup = ament_lookup(&scan);
+            Stamp::current("my_msgs", &pkg, &lookup)
+                .unwrap()
+                .write(&Stamp::path_in(&out))
+                .unwrap();
+        }
+        scan
+    }
+
+    fn moved_in(root: &Path, scan: &[WsPkg]) -> (Vec<MovedGenerated>, Vec<String>) {
+        moved_generated(root, &root.join("generated"), scan).unwrap()
+    }
+
+    #[test]
+    fn a_fresh_record_reports_nothing() {
+        // Negative control: the same tree, untouched since "sync", is current.
+        let t = tempfile::tempdir().unwrap();
+        let scan = synced_workspace(t.path());
+        let (moved, unresolved) = moved_in(t.path(), &scan);
+        assert!(moved.is_empty(), "{moved:?}");
+        assert!(unresolved.is_empty(), "{unresolved:?}");
+    }
+
+    #[test]
+    fn an_interface_change_with_an_old_mtime_is_reported_as_moved() {
+        let t = tempfile::tempdir().unwrap();
+        let scan = synced_workspace(t.path());
+        let msg = t.path().join("src/my_msgs/msg/Foo.msg");
+        fs::write(&msg, "int32 a\nint32 m2_extra\n").unwrap();
+        // The `.deb` shape: NEW content under an OLD mtime. A content record
+        // still sees it; an mtime edge would not.
+        let old = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_577_836_800);
+        fs::File::options()
+            .write(true)
+            .open(&msg)
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
+        let (moved, _) = moved_in(t.path(), &scan);
+        assert_eq!(moved.len(), 1, "{moved:?}");
+        assert_eq!(moved[0].package, "my_msgs");
+        assert!(
+            moved[0].reason.contains("ament inputs moved"),
+            "{}",
+            moved[0].reason
+        );
+    }
+
+    #[test]
+    fn a_package_xml_bump_is_reported_as_moved() {
+        let t = tempfile::tempdir().unwrap();
+        let scan = synced_workspace(t.path());
+        let pxml = t.path().join("src/my_msgs/package.xml");
+        let body = fs::read_to_string(&pxml).unwrap().replace("1.0.0", "1.0.1");
+        fs::write(&pxml, body).unwrap();
+        let (moved, _) = moved_in(t.path(), &scan);
+        let names: Vec<&str> = moved.iter().map(|m| m.package.as_str()).collect();
+        assert_eq!(names, ["my_msgs"]);
+    }
+
+    #[test]
+    fn a_crate_with_no_record_is_reported() {
+        // Generated before RFC-0104 D5: nothing says it is current.
+        let t = tempfile::tempdir().unwrap();
+        let scan = synced_workspace(t.path());
+        fs::remove_file(Stamp::path_in(&t.path().join("generated/my_msgs"))).unwrap();
+        let (moved, _) = moved_in(t.path(), &scan);
+        assert_eq!(moved.len(), 1);
+        assert!(moved[0].reason.contains("no record"), "{}", moved[0].reason);
+    }
+
+    #[test]
+    fn an_unresolvable_crate_is_listed_apart_never_counted_fresh() {
+        // A crate whose package this host no longer resolves cannot be checked:
+        // it is reported, not silently treated as current, and not refused
+        // (sync neither regenerates nor deletes it, so `nros sync` is no fix).
+        let t = tempfile::tempdir().unwrap();
+        let scan = synced_workspace(t.path());
+        let ghost = t.path().join("generated/zz_nros_issue1780_ghost_msgs");
+        fs::create_dir_all(&ghost).unwrap();
+        fs::write(
+            ghost.join("Cargo.toml"),
+            "[package]\nname = \"g\"\n[package.metadata.nros]\nament_version = \"0.1.0\"\n",
+        )
+        .unwrap();
+        let (moved, unresolved) = moved_in(t.path(), &scan);
+        assert!(moved.is_empty(), "{moved:?}");
+        assert_eq!(unresolved, ["zz_nros_issue1780_ghost_msgs"]);
+    }
+
+    #[test]
+    fn only_message_crates_are_checked() {
+        let t = tempfile::tempdir().unwrap();
+        synced_workspace(t.path());
+        assert!(is_generated_msg_crate(&t.path().join("generated/my_msgs")));
+        assert!(!is_generated_msg_crate(
+            &t.path().join("generated/nros-selection")
+        ));
+    }
+
+    #[test]
+    fn refresh_is_a_no_op_without_a_generated_tree() {
+        let t = tempfile::tempdir().unwrap();
+        assert!(refresh_generated(t.path(), false).unwrap().is_empty());
+    }
+
+    #[test]
+    fn dry_run_names_the_moved_package_and_writes_nothing() {
+        let t = tempfile::tempdir().unwrap();
+        synced_workspace(t.path());
+        let record = Stamp::path_in(&t.path().join("generated/my_msgs"));
+        let before = fs::read_to_string(&record).unwrap();
+        fs::write(
+            t.path().join("src/my_msgs/msg/Foo.msg"),
+            "int32 a\nint32 b\n",
+        )
+        .unwrap();
+        assert_eq!(refresh_generated(t.path(), true).unwrap(), ["my_msgs"]);
+        assert_eq!(fs::read_to_string(&record).unwrap(), before);
     }
 }

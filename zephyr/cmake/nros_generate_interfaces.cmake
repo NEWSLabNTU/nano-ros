@@ -313,6 +313,22 @@ function(nros_generate_interfaces target)
     INPUTS ${_interface_files} "${_args_file}" "${_NROS_ZEPHYR_CODEGEN_TOOL}"
            ${_NROS_CODEGEN_CONFIG_CHAIN})
 
+  # RFC-0104 D5 / issue 1780 — and the ament inputs by CONTENT. The interface
+  # files above are inputs by mtime only, which an apt upgrade (the `.deb`'s
+  # build time) and a newly shadowing overlay both defeat. Same helper, same
+  # CLI hash as the canonical lane and the cargo road.
+  if(_ARG_LANGUAGE STREQUAL "CPP")
+    set(_ament_lang cpp)
+  else()
+    set(_ament_lang c)
+  endif()
+  nros_codegen_ament_stale(_ament_stale
+    TOOL "${_NROS_ZEPHYR_CODEGEN_TOOL}" LANGUAGE "${_ament_lang}" ARGS_FILE "${_args_file}"
+    OUTPUT_DIR "${_output_dir}")
+  if(_ament_stale)
+    set(_codegen_needed TRUE)
+  endif()
+
   # issue 1360 — and the EMITTED CODEGEN VERSION, which no mtime can express.
   #
   # This lane's build dirs live in the provisioned Zephyr workspace

@@ -154,8 +154,18 @@ package came from change (`apt install --only-upgrade 'ros-humble-*'`), the
 build must regenerate it before compiling, or the image carries generated code
 that no longer matches its ROS peers — 1018's freshness class with the ROS
 install as the moved input. `[generated.<pkg>] ament` is the key: a mismatch
-re-runs generation for that package. **Today's behaviour is unmeasured**
-(phase-485 M2) and is the most likely live defect here.
+re-runs generation for that package.
+
+The record lives BESIDE the tree it describes — `<generated pkg>/nros-generated.toml`,
+the same `[generated.<pkg>]` section — because generated trees are per leaf and
+per build dir while the project lock is per project: one lock entry cannot say
+which of several trees is current. The lock (D4) copies the records; the build
+reads them. The hash is content over the `<depend>` closure, never an mtime:
+`dpkg` installs a file with the mtime it has inside the `.deb`, and an overlay
+that starts to shadow a package moves no file at all. One spelling
+(`rosidl_codegen::ament_stamp`) serves all three roads — `nros build` checks a
+cargo-road crate before planning, and both cmake generators ask
+`nros codegen --ament-witness` at configure (issue 1780, phase-485 W5).
 
 ### D6 — System libraries: RECORD and WARN, never enforce
 

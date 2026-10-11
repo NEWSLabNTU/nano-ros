@@ -1,6 +1,7 @@
 // Capacity/storage config relocated to the Lower stage (RFC-0068 / phase-335
 // W1.b); re-exported so `rosidl_codegen::config::…` paths are unchanged.
 pub use rosidl_lower::config;
+pub mod ament_stamp;
 /// phase-403 W6 — the derived per-type size bound leaves codegen as build
 /// metadata, instead of stopping at a `#define` in a generated header.
 pub mod bounds;
