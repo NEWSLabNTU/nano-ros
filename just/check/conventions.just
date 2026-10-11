@@ -182,11 +182,11 @@ retired-store-vars:
 source-refs:
     @python3 scripts/check/check-source-refs.py
 
-# phase-485 W1 (RFC-0104 D2) — ONE Rust registry pin set: `[rust]
+# phase-485 W1/W2 (RFC-0104 D2/D3) — ONE Rust registry pin set: `[rust]
 # registry_pins` holds one version per semver-compatible range, each
-# `[rust] locked_roots` lock is a subset of it, and it is what
-# `scripts/gen-cargo-registry-pins.py` writes today. Buildless, ~0.2 s;
-# self-tests both set checks on each run.
+# `[rust] locked_roots` lock is a subset of it, and a `Cargo.lock` is tracked
+# iff its directory is a locked root. `nros update` writes the pin set; this
+# reads it. Buildless, ~0.2 s; self-tests both set checks on each run.
 [private]
 cargo-registry-pins:
     @python3 scripts/check/check-cargo-registry-pins.py

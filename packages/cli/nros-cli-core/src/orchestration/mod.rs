@@ -50,8 +50,8 @@ pub mod params;
 // above.
 pub use nros_launcher::pin;
 pub mod plan;
-pub mod project_lock;
 pub mod planner;
+pub mod project_lock;
 
 pub mod prereq_resolve;
 /// Issue 1481 — whether a `[python.*]` remedy names apt or pip on THIS host,

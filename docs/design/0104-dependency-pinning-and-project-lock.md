@@ -189,7 +189,8 @@ warns loudly, naming the range (issue 0609's drift, caught at build time).
 ```
 nros update --crate <name> [--precise <v>]
 nros update --source <name> --ref <sha>
-nros update --tool <name> --version <v>
+nros update --tool <name> --to-version <v>
+nros update --pins
 nros update --west <module> --revision <rev>
 ```
 
@@ -318,3 +319,15 @@ lock does not move until THEY run `nros update`.
   diffable set. RFC-0065 D1 is amended so that `nros build` waits on the
   native command instead of `exec`ing it, since a process that has become
   the build cannot record anything after it.
+- 2026-10-11 — D7 implemented (phase-485 W7). Two spellings differ from the
+  draft:
+  - `--tool` takes `--to-version`, because `--version` is clap's own flag on
+    every subcommand;
+  - `--pins` is added: it regenerates the pin set from the locked roots
+    after a manual `cargo update` or a manifest edit in one root, settling
+    any disagreement upward first. `just lock-update` now ends in it.
+
+  `nros update` is the only writer of the pin file; the repo gate only reads
+  it. A breaking bump is tried in EVERY root. A root whose manifests refuse
+  the new major is reported as a straggler, and the verb refuses only when no
+  root can move.

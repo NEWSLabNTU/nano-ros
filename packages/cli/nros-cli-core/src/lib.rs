@@ -252,6 +252,7 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
         cmd::Cmd::Store(args) => cmd::store::run(args),
         cmd::Cmd::Toolchain(args) => cmd::toolchain::run(args),
         cmd::Cmd::Pin(args) => cmd::pin::run(args),
+        cmd::Cmd::Update(args) => cmd::update::run(args),
         cmd::Cmd::Profile(args) => cmd::profile::run(args),
         cmd::Cmd::Metadata(args) => cmd::metadata::run(args),
         cmd::Cmd::Plan(args) => cmd::plan::run(args),

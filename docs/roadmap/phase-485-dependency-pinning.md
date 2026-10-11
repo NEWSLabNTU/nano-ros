@@ -1,7 +1,7 @@
 # Phase 485 — dependency pinning: one pin set, one project lock
 
 **Status (2026-10-11). M1–M3 measured, and the issue-1781 fix landed. W1 has
-landed (the registry pin set), and so have W2 (seeded leaf locks) and W3 (the project lock across kinds); W4–W10 are open.** Implements
+landed (the registry pin set), and so have W2 (seeded leaf locks), W3 (the project lock across kinds) and W7 (`nros update`); W4–W6 and W8–W10 are open.** Implements
 [RFC-0104](../design/0104-dependency-pinning-and-project-lock.md). The RFC's
 D3 and D5 rested on facts that were not yet measured, so M1–M3 ran before any
 implementation and amended the RFC.
@@ -336,6 +336,65 @@ present. Duplicate majors reported via `cargo tree -d`.
 
 **Acceptance:** the RFC's heapless walkthrough, both variants, as a test over a
 scratch tree.
+
+**Result (2026-10-11) — landed, taken before W4.** W4's drift error has to
+name a verb that exists, so W7 went first.
+
+- **The verbs.** `nros update --crate <name> [--precise <v>]`, `--source
+  <name> --ref <sha>`, `--tool <name> --to-version <v>`, `--west <project>
+  --revision <rev>` and `--pins`.
+  - `--to-version` rather than RFC-0104's `--version`: clap gives every
+    subcommand `-V/--version`.
+  - `--pins` is new. It regenerates the pin set from the locked roots as they
+    stand, settling root disagreements upward first.
+  - `just lock-update <crate> <version> <dir>` keeps its signature for the
+    dozen places that name it. It runs the cargo step in that root and then
+    `nros update --pins`.
+- **One writer.** The pin set is now written only by Rust
+  (`orchestration::registry_pins::{regenerate, render}`).
+  `scripts/gen-cargo-registry-pins.py` is deleted. Its output was measured
+  byte-identical to Rust's except the header, so the move changed no pin.
+  `check-cargo-registry-pins` only READS: one pin per range, roots ⊆ pins,
+  tracked ⟺ locked root. Its old "the pin file is current" check was
+  redundant with roots ⊆ pins once every tracked lock is a locked root.
+- **`--crate`** runs `cargo update -p <name>@<v> [--precise]` in every locked
+  root that holds the crate. It then repeats until the roots agree within
+  every range (a moved crate can move its own dependencies, in the roots that
+  ran it), regenerates, prints each moved pin, and realigns the caller's own
+  seeded leaf lock.
+  - A crate no locked root holds moves through the caller's leaf.
+  - A breaking bump is tried in every root. A root whose manifests refuse the
+    new major is a REPORTED straggler. The verb refuses only when no root can
+    move, and it names each root's current major and the manifest-edit remedy
+    (`cargo upgrade --incompatible`).
+  - Two majors pinned at once are reported, not refused (RFC-0104 D7).
+- **`--source`** fetches the commit if needed and refuses a REWIND unless
+  `--allow-rewind`, the same forward-only rule as `check-submodule-pins`. It
+  then checks the submodule out and rewrites the index `ref`; a clone-mode
+  source gets only the `ref`. Staging is left to the user, and the verb names
+  the paths.
+- **`--tool`** rewrites the row's version strings, downloads every dist URL
+  in the row, writes each sha256, and says that `floor` must be re-measured
+  (RFC-0099 D5).
+- **`--west`** edits the `revision:` of the named project in every manifest
+  the new index key `[west] manifests` lists. A module the zephyr manifest
+  IMPORTS has no revision of its own, so the verb refuses and says to move
+  `zephyr`.
+- **Measured: the walkthrough on a scratch checkout** with two locked roots.
+  - Compatible: `--crate libc --precise 0.2.190` moved both roots and the pin
+    in one step.
+  - Breaking, before any manifest edit: `--crate heapless --precise 0.9.3`
+    refused, naming `a 0.8.0, b 0.8.0` and the remedy.
+  - Breaking, after editing only `a`'s manifest to `0.9`, the same command:
+    `a` moved, `heapless 0.9.3 (new pin)` was added beside 0.8.0, the two
+    majors were reported, and `b` was reported as a straggler still on 0.8.0.
+  - The walkthrough is not a committed test. `cargo update` depends on the
+    registry index and cache, so a red would be about the host, not the
+    verb. The pure parts are unit-tested: ranges, regenerate,
+    render-and-parse round trip, row-key rewrite, west revision, sha-line
+    rewrite.
+- **Not run live:** `--source` (it would move a real submodule) and `--tool`
+  (network). Their text edits are unit-tested.
 
 ### W8 — no fetch at build time (D10)
 
