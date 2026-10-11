@@ -908,7 +908,7 @@ margin falls to about 2 characters (22 us), so it is off by default and the
 UART overrun counter is the check. A board with DMA should prefer I15/I16;
 this is the path for one without.
 
-**Implemented** (zenoh-pico `eb3eb60c`, nano-ros `ef3ae60df`):
+**Implemented** (zenoh-pico `eb3eb60c`, nano-ros `b7f20867d7`):
 `CONFIG_NROS_ZENOH_SERIAL_FIFO_WATERMARK` (depends on
 `NROS_ZENOH_LINK_SERIAL && UART_INTERRUPT_DRIVEN && UART_MCUX_LPUART &&
 DT_HAS_NXP_LPUART_ENABLED`) -> `_Z_ZEPHYR_SERIAL_FIFO_WATERMARK`. The bind
@@ -930,7 +930,7 @@ us/call against 6.2; gate PASS. But 4 overruns and 4 bad frames a run
 (`_z_zephyr_serial_stats`), and the TX ring touched its 4096 high water
 once at boot (frames_waited 1).
 
-**Watermark knob** (zenoh-pico `17b14961`, nano-ros `6ad29e721`):
+**Watermark knob** (zenoh-pico `17b14961`, nano-ros `bc84b08878`):
 `CONFIG_NROS_ZENOH_SERIAL_FIFO_RXWATER` (int 0..3, default 1) ->
 `_Z_ZEPHYR_SERIAL_LPUART_RXWATER`, clamped at arm time to `PARAM.RXFIFO`
 depth - 1. RDRF asserts at RXCOUNT > water, so the margin from RDRF to OR
@@ -987,7 +987,7 @@ never applied (:1243-1244), so idle may fire early (extra flushes, no lost
 data); any RX error stops reception (:1023-1057). Upstream's only S32K3 use
 is a 115,200 loopback test with all RAM in DTCM.
 
-**Implemented** (with I15; zenoh-pico `e3080885`, nano-ros `6bb0c6305`):
+**Implemented** (with I15; zenoh-pico `e3080885`, nano-ros `79b1af0aeb`):
 `CONFIG_NROS_ZENOH_SERIAL_UART_ASYNC` (depends on `NROS_ZENOH_LINK_SERIAL &&
 UART_INTERRUPT_DRIVEN && UART_ASYNC_API` and `NROS_ZENOH_SERIAL_TCM ||
 !DCACHE`) -> `_Z_ZEPHYR_SERIAL_UART_ASYNC`, and
@@ -1024,7 +1024,7 @@ declare the ITCM/DTCM output sections `SUBALIGN(4)`, which FORCES every
 input section to 4-byte alignment; it had worked only while the DTCM
 content before it ended 32-aligned, and I13's relocated network.c bss moved
 that end. Upstream fixed it after 4.4.0 (de3deb75d44d DTCM, issue #107058;
-c456d2b1279b ITCM: `ALIGN(4)`). Backported in nano-ros `2f001fe0e` as
+c456d2b1279b ITCM: `ALIGN(4)`). Backported in nano-ros `54e9e518c6` as
 `scripts/zephyr/tcm-section-align-patch-4.4.sh` (run by
 `scripts/zephyr/patches/4.4.sh`, i.e. `just setup zephyr`) and
 `zephyr/patches/tcm-section-align-4.4.patch` (`west patch`); drop both once
