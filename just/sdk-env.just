@@ -114,8 +114,8 @@ export nano_ros_ROOT := _NROS_HERE
 # every reader already defaults to the in-repo path (`nros_build_paths`'s
 # `env_or_repo_path`, the platform CMakeLists' `if(NOT DEFINED …)`), and an
 # export is exactly what a linked worktree inherits (issue 1280).
-# Tonbandgeraet trace lib (third-party SDK; only used under NROS_TRACE=1).
-export TBAND_DIR := shell(_NROS_REROOT, env("TBAND_DIR", _NROS_HERE / "third-party/tracing/Tonbandgeraet/tband"), _NROS_HERE)
+# phase-484 W2 — `TBAND_DIR` is gone: Tonbandgeraet is `[source.tonbandgeraet]`
+# in the index, and its one reader (`nros_build_paths::tband_dir`) locates it.
 export NUTTX_DIR := shell(_NROS_REROOT, env("NUTTX_DIR", _NROS_HERE / "third-party/nuttx/nuttx"), _NROS_HERE)
 export NUTTX_APPS_DIR := shell(_NROS_REROOT, env("NUTTX_APPS_DIR", _NROS_HERE / "third-party/nuttx/nuttx-apps"), _NROS_HERE)
 export PX4_AUTOPILOT_DIR := shell(_NROS_REROOT, env("PX4_AUTOPILOT_DIR", _NROS_HERE / "third-party/px4/PX4-Autopilot"), _NROS_HERE)

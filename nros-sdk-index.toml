@@ -1442,8 +1442,23 @@ ref = "d6f12ad1c4f70ad3230afd7d86e971421e02fef4"
 shallow = true
 recursive = false
 
+# Tonbandgeraet — the trace library `nros-board-mps2-an385-freertos` compiles
+# under its `trace` feature (`NROS_TRACE=1`), and `just freertos trace` builds
+# its `tband-cli` from the same tree. A checkout source like the NuttX trees:
+# it is compiled from where it sits. Upstream publishes no release, so the pin
+# IS the version; `0.0.0` says "no upstream version" rather than inventing one.
+# phase-484 W2 — before this row the tree was a `just` export (`TBAND_DIR`,
+# naming its `tband/` subdirectory) and a build-script env default.
+[source.tonbandgeraet]
+env = "TONBANDGERAET_DIR"
+version = "0.0.0"
+dest = "third-party/tracing/Tonbandgeraet"
+submodule = "third-party/tracing/Tonbandgeraet"
+git = "https://github.com/schilkp/Tonbandgeraet.git"
+ref = "0844b63c99736a98e7573ab9052575a52cc7416e"
+
 # NOTE (197.4): opt-in dev/interop source repos (zenoh / rmw_zenoh / XRCE-agent
-# upstreams, Tonbandgeraet tracing) are intentionally NOT modeled here yet — the
+# upstreams) are intentionally NOT modeled here yet — the
 # released `nros` rejects unknown index fields/sections, so wiring opt-in
 # `dev_sources` / `[reference.*]` needs an nros-cli schema change first (tracked
 # in the Phase 197 workflow review). They remain plain `.gitmodules` submodules.

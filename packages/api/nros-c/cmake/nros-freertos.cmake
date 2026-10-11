@@ -87,6 +87,47 @@ function(nros_freertos_validate)
 endfunction()
 
 # ----------------------------------------------------------------------
+# nros_freertos_board_port(<board> <port> [OVERRIDABLE])
+#
+# phase-484 W2 — a board's FreeRTOS port is a BOARD FACT, so the board SETS
+# `FREERTOS_PORT` instead of deferring to whatever the shell exported. The
+# overlays used to write `if(NOT DEFINED FREERTOS_PORT AND NOT DEFINED
+# ENV{FREERTOS_PORT})`, and before W2b `activate.sh` exported `GCC/ARM_CM3`
+# repo-wide; a shell sourced before W2b still carries it, and on a Cortex-R52
+# board that M-profile port fails hundreds of lines into the kernel build. So:
+#
+#   * `ENV{FREERTOS_PORT}` is never read. If it is set to something else, the
+#     configure says it was ignored, so a stale shell is visible, not silent.
+#   * A `-DFREERTOS_PORT` that disagrees is REFUSED on a board with exactly one
+#     port, and taken as given with `OVERRIDABLE` — a board whose real hardware
+#     uses a vendor port the in-tree default stands in for (S32Z270's NXP
+#     `GCC/ARM_CR52_GIC`).
+# ----------------------------------------------------------------------
+function(nros_freertos_board_port board port)
+    cmake_parse_arguments(_NFBP "OVERRIDABLE" "" "" ${ARGN})
+    if(DEFINED ENV{FREERTOS_PORT} AND NOT "$ENV{FREERTOS_PORT}" STREQUAL "${port}")
+        message(WARNING
+            "${board}: ignoring the environment's FREERTOS_PORT='$ENV{FREERTOS_PORT}'. "
+            "The port is a board fact ('${port}'); a value inherited from the shell "
+            "is not a source (RFC-0103 D2). Pass -DFREERTOS_PORT to override where "
+            "the board allows it, or unset the variable.")
+    endif()
+    set(_port "${port}")
+    if(DEFINED FREERTOS_PORT AND NOT FREERTOS_PORT STREQUAL "" AND NOT FREERTOS_PORT STREQUAL "${port}")
+        if(_NFBP_OVERRIDABLE)
+            set(_port "${FREERTOS_PORT}")
+        else()
+            message(FATAL_ERROR
+                "${board}: FREERTOS_PORT is '${FREERTOS_PORT}', but this board has exactly "
+                "one port: '${port}'. Drop the -DFREERTOS_PORT, or pick a board whose "
+                "port you meant.")
+        endif()
+    endif()
+    set(FREERTOS_PORT "${_port}" CACHE STRING "FreeRTOS portable-layer subdir for ${board}" FORCE)
+    set(FREERTOS_PORT "${_port}" PARENT_SCOPE)
+endfunction()
+
+# ----------------------------------------------------------------------
 # nros_freertos_build_kernel
 # ----------------------------------------------------------------------
 function(nros_freertos_build_kernel)

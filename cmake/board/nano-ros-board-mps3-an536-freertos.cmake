@@ -71,25 +71,13 @@ endforeach()
 
 set(FREERTOS_CONFIG_DIR "${_NROS_BOARD_CONFIG_DIR}" CACHE PATH
     "Directory containing FreeRTOSConfig.h for mps3-an536-freertos" FORCE)
-if(NOT DEFINED FREERTOS_PORT AND NOT DEFINED ENV{FREERTOS_PORT})
-    set(FREERTOS_PORT "GCC/ARM_CRx_No_GIC")
-elseif(NOT DEFINED FREERTOS_PORT)
-    set(FREERTOS_PORT "$ENV{FREERTOS_PORT}")
-endif()
-# An M-profile port cannot build for a Cortex-R52, and `activate.sh` exports
-# `FREERTOS_PORT=GCC/ARM_CM3` REPO-WIDE — so a developer who sources it and
-# configures this board inherits a port whose context switch is written in
-# `msr basepri` / `msr psp`. The assembler rejects those for ARMv8-R, but only
-# hundreds of lines into the kernel build, where the cause is unrecognisable.
-# Say it here instead. (Same trap as the ASI consumer's phase-4 note; the
-# S32Z270 overlay still walks into it.)
-if(FREERTOS_PORT MATCHES "ARM_CM")
-    message(FATAL_ERROR
-        "nano-ros-board-mps3-an536-freertos: FREERTOS_PORT='${FREERTOS_PORT}' is an "
-        "M-profile port; this board is Cortex-R52 (ARMv8-R AArch32). This is usually "
-        "`activate.sh` exporting GCC/ARM_CM3 repo-wide — pass "
-        "-DFREERTOS_PORT=GCC/ARM_CRx_No_GIC, or unset the environment variable.")
-endif()
+# phase-484 W2 — a board fact, set by the board; one port. An M-profile port
+# cannot build for a Cortex-R52 (its context switch is `msr basepri` /
+# `msr psp`, which the assembler rejects for ARMv8-R hundreds of lines into the
+# kernel build), and `activate.sh` used to export `GCC/ARM_CM3` repo-wide, which
+# is why this used to be a dedicated refusal. The helper ignores the inherited
+# value and refuses a disagreeing `-D`, which covers it.
+nros_freertos_board_port(nano-ros-board-mps3-an536-freertos "GCC/ARM_CRx_No_GIC")
 # The platform module's third-party fallback runs AFTER board overlays; the
 # kernel build below needs the path NOW (portASM.S existence probe).
 # phase-484 W2c — source trees come from `nros locate` (RFC-0103 D4).

@@ -7,7 +7,7 @@ C, C++ and Rust examples on FreeRTOS + lwIP, run under
 ## Prerequisites
 
 ```sh
-source ./activate.sh          # exports FREERTOS_DIR + FREERTOS_PORT (GCC/ARM_CM3)
+source ./activate.sh          # puts `nros` on PATH; the board states its port (GCC/ARM_CM3)
 just setup freertos           # = nros setup mps2-an385-freertos + host deps
 ```
 

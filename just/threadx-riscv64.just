@@ -166,11 +166,11 @@ build-examples:
         exit 0
     fi
     echo "Building ThreadX QEMU RISC-V 64 examples..."
-    # Board config dirs are platform env (same for every fixture) — export them
-    # for the shared builder; per-fixture options come from the SSOT manifest
-    # (examples/fixtures.toml). Phase 181.4.g.
-    rv_config="$(pwd)/packages/boards/nros-board-threadx-qemu-riscv64/config"
-    export THREADX_CONFIG_DIR="$rv_config" NETX_CONFIG_DIR="$rv_config"
+    # phase-484 W2 — the board's config dirs are NOT exported here: they are
+    # `[env]` facts of `nros-board-threadx-qemu-riscv64/nros-board.toml`
+    # (`force = true`), carried by the generated cargo config and by `nros ws
+    # board-facts`, and the cmake board module sets its own. Per-fixture
+    # options come from the SSOT manifest (examples/fixtures.toml).
     # phase-369 W2 — the six rust example leaves are no longer cargo rows.
     #
     # They are cmake rows now (`builder = "cmake"`, `build-zenoh/`), built by
@@ -257,23 +257,20 @@ build-fixture-extras:
     source scripts/build/cargo.sh
     threadx_dir="$(nros_locate_source threadx)" || { echo "ThreadX kernel not provisioned — nros setup --source threadx" >&2; exit 1; }
     netx_dir="$(nros_locate_source threadx-netxduo)" || { echo "NetX Duo not provisioned — nros setup --source threadx-netxduo" >&2; exit 1; }
-    config_dir="$root/packages/boards/nros-board-threadx-qemu-riscv64/config"
     board_dir="$root/packages/boards/nros-board-threadx-qemu-riscv64/c"
     virtio_dir="$root/packages/drivers/net/virtio-net-netx"
     # Phase 88.15.d — nros-log severity-coverage smoke fixture. It needs THIS
     # board's NetX port headers rather than the threadx-linux defaults the
     # top-level justfile exports (the global-default-shadows-a-per-board-value
-    # class). The env vars stay: the C/C++ lane below consumes them too.
+    # class). phase-484 W2: the config dirs come from the board descriptor.
     # (This comment named `threadx-netx-sys` until phase-400 deleted that crate —
     # nothing here ever depended on it; the fixture is a plain Rust build.)
-    THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
-        bash scripts/build/fixtures-build.sh threadx-riscv64 rust --id threadx-riscv64-logging-smoke
+    bash scripts/build/fixtures-build.sh threadx-riscv64 rust --id threadx-riscv64-logging-smoke
     # Issue 1706 — the parameter-store image (a cargo `[[bin]]` on the
     # cargo-leaf road, so its contract reaches the sizing descriptor). Its
     # `system.toml` names the board, so the board descriptor's cargo config
-    # carries the triple and the ThreadX/NetX dirs; the env above is harmless.
-    THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
-        bash scripts/build/fixtures-build.sh threadx-riscv64 rust --id threadx-riscv64-param-store
+    # carries the triple and the ThreadX/NetX dirs.
+    bash scripts/build/fixtures-build.sh threadx-riscv64 rust --id threadx-riscv64-param-store
     # Phase 160.J — ThreadX RV64 C/C++ examples now build via cmake.
     # Corrosion handles the riscv64gc-unknown-none-elf cross under
     # the bundled toolchain file; the ThreadX + NetX Duo include
@@ -310,7 +307,6 @@ build-fixture-extras:
           "toolchain=$toolchain" \
           "threadx_dir=$threadx_dir" \
           "netx_dir=$netx_dir" \
-          "config_dir=$config_dir" \
           "codegen=$codegen" \
           "cyclonedds_prefix=${cyclonedds_prefix:-}")"
         # Export the domain (not an inline VAR=val prefix — a prefix produced by
@@ -330,7 +326,6 @@ build-fixture-extras:
         # no `FAILED:` line in it at all. Success stays silent; failure prints
         # the tail of what was captured.
         THREADX_DIR="$threadx_dir" NETX_DIR="$netx_dir" \
-        THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
           nros_run_quiet "$dir (-DNROS_RMW=$rmw, $build_dir/)" \
           nros_cmake_fixture_build "$dir" "$dir/$build_dir" "$sig" \
             -DNROS_SHARED_CARGO_ROOT="$shared_cargo_root" \
@@ -340,8 +335,6 @@ build-fixture-extras:
             -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
             -DTHREADX_DIR="$threadx_dir" \
             -DNETX_DIR="$netx_dir" \
-            -DTHREADX_CONFIG_DIR="$config_dir" \
-            -DNETX_CONFIG_DIR="$config_dir" \
             -DCMAKE_BUILD_TYPE=Release \
             -D_NANO_ROS_CODEGEN_TOOL="$codegen" \
             -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL="$root/scripts/cyclonedds/msg_to_cyclone_idl.py"
@@ -353,8 +346,7 @@ build-fixture-extras:
     # configure time (matching the Rust path's .cargo/config.toml), so export
     # them; the rest of the -D set goes through NROS_CMAKE_EXTRA_DEFS. The
     # IDLC / msg_to_idl defs are harmless for the zenoh pass.
-    export THREADX_DIR="$threadx_dir" NETX_DIR="$netx_dir" \
-           THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir"
+    export THREADX_DIR="$threadx_dir" NETX_DIR="$netx_dir"
     # 287-W6 dropped the leaves' `set(NROS_PLATFORM threadx)` (ament shape);
     # the platform must now come from the invocation (mirrors threadx-linux's
     # recipe). Without it the root default "posix" configures
@@ -365,7 +357,7 @@ build-fixture-extras:
     # leaves collapse — measured: wiring only the Rust path left 17 of 29
     # per-leaf cargo dirs in place.
     shared_cargo_root="$(nros_build_dir "$NROS_KIND_CORROSION_CARGO" threadx-riscv64)"
-    base_defs="-DNROS_SHARED_CARGO_ROOT=$shared_cargo_root -DNROS_PLATFORM=threadx_riscv64 -DCMAKE_TOOLCHAIN_FILE=$toolchain -DTHREADX_DIR=$threadx_dir -DNETX_DIR=$netx_dir -DTHREADX_CONFIG_DIR=$config_dir -DNETX_CONFIG_DIR=$config_dir -DCMAKE_BUILD_TYPE=Release -D_NANO_ROS_CODEGEN_TOOL=$codegen -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL=$root/scripts/cyclonedds/msg_to_cyclone_idl.py"
+    base_defs="-DNROS_SHARED_CARGO_ROOT=$shared_cargo_root -DNROS_PLATFORM=threadx_riscv64 -DCMAKE_TOOLCHAIN_FILE=$toolchain -DTHREADX_DIR=$threadx_dir -DNETX_DIR=$netx_dir -DCMAKE_BUILD_TYPE=Release -D_NANO_ROS_CODEGEN_TOOL=$codegen -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL=$root/scripts/cyclonedds/msg_to_cyclone_idl.py"
     export NROS_CMAKE_EXTRA_DEFS="$base_defs"
     bash scripts/build/fixtures-build.sh threadx-riscv64 c zenoh
     bash scripts/build/fixtures-build.sh threadx-riscv64 cpp zenoh
@@ -495,9 +487,6 @@ test verbose="": build-fixtures
         echo "ERROR: NetX Duo not found at $NETX_DIR. Run: just threadx-linux setup"
         exit 1
     fi
-    rv_config="$(pwd)/packages/boards/nros-board-threadx-qemu-riscv64/config"
-    export THREADX_CONFIG_DIR="$rv_config"
-    export NETX_CONFIG_DIR="$rv_config"
     just _nextest-platform threadx_riscv64_qemu '{{verbose}}'
 
 # Run all ThreadX RISC-V tests including networked E2E

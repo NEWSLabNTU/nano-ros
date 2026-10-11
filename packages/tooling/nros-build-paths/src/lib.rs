@@ -540,8 +540,12 @@ pub fn nuttx_dir() -> PathBuf {
     located_or_checkout("nuttx-kernel", "third-party/nuttx/nuttx")
 }
 
+/// The Tonbandgeraet trace library's `tband/` directory.
+///
+/// phase-484 W2 — located as `[source.tonbandgeraet]` like every other source
+/// tree; this used to read a `TBAND_DIR` that `just/sdk-env.just` exported.
 pub fn tband_dir() -> PathBuf {
-    env_or_repo_path("TBAND_DIR", "third-party/tracing/Tonbandgeraet/tband")
+    located_or_checkout("tonbandgeraet", "third-party/tracing/Tonbandgeraet").join("tband")
 }
 
 /// The NuttX include root whose `nuttx/config.h` describes THIS build's arch.

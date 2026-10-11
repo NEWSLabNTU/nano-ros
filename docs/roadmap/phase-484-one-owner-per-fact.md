@@ -191,11 +191,38 @@ catches a re-added literal.
   compiled ddsrt against the Cortex-M3 `portmacro.h`); it reads the board's
   `FREERTOS_PORT` now.
 
-Remaining in W2: `TBAND_DIR` (not yet an index source row);
-`nano_ros_ROOT`/`NROS_REPO_DIR` exports (roots, ranked below the enclosing
-checkout everywhere since W1); the RISC-V recipe exports in
-`just/threadx-riscv64.just` (duplicates of its descriptor); the fixture
-manifest's own `-DFREERTOS_PORT` `cmake_defs` (W7).
+**W2 leftovers (2026-10-12).** Three of the four are gone:
+
+- **Tonbandgeraet** is `[source.tonbandgeraet]` (a checkout source; upstream
+  has no release, so the pin is the version). `nros_build_paths::tband_dir`
+  locates it, and the `TBAND_DIR` export is deleted.
+- **The RISC-V recipe** no longer exports or `-D`s `THREADX_CONFIG_DIR` /
+  `NETX_CONFIG_DIR`; the board descriptor states them `force = true`. Removing
+  them exposed issue 1820: the generated cargo config DROPPED that `force`
+  whenever the cargo-leaf road restated a board fact, so a shell still carrying
+  a pre-W2b export built the riscv64 image against threadx-linux's
+  `tx_user.h`. Those recipe exports had been hiding it. Fixed in the renderer.
+  `_run-qemu` keeps its env: it runs a plain `cargo build` the descriptor does
+  not reach.
+- **`FREERTOS_PORT`** leaves the two fixture rows. The FreeRTOS overlays now
+  SET their port through one helper, `nros_freertos_board_port`, used by all
+  four boards. It never reads `ENV{FREERTOS_PORT}` and says so when the
+  environment disagrees. It refuses a disagreeing `-D` on a one-port board,
+  and takes it on S32Z270 (`OVERRIDABLE`: hardware uses NXP's port). The rows'
+  comment ("`activate.sh` exports `GCC/ARM_CM3` repo-wide") had been stale
+  since W2b; a stale SHELL still carries that export, and the board now
+  ignores it.
+
+**Still open: `nano_ros_ROOT` / `NROS_REPO_DIR` in `activate.sh`.** Checked
+before deleting, and this is not a pure deletion. A project OUTSIDE the
+checkout, built with the in-tree `nros`, finds the SDK root only through
+`$NROS_REPO_DIR`: `nano_ros_root::resolve` tries `--nano-ros-path`, the env,
+a walk-up from the workspace, then a RELEASED toolchain's own
+`share/nano-ros`, and an in-tree CLI has no `share/`. Likewise
+`find_package(nano_ros)` there relies on the `nano_ros_ROOT` hint, and
+`first-node-c.md`, `first-node-cpp.md` and `vendored-tree.md` document it.
+Retiring them needs a replacement first: a "the checkout this `nros` was built
+in" rung, the in-tree twin of `shipped_beside`. Waiting on a decision.
 
 ### W3 -- source trees into the store
 

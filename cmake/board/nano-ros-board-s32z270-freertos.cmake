@@ -8,10 +8,10 @@
 #     Confidential). The board's C carries WEAK fail-loud
 #     `nros_board_register_netif`/`nros_board_poll_netif` defaults; the
 #     consumer links its RTD glue as strong overrides (ASI: ethif_shim.c).
-#   * Kernel + port are ENV-PROVISIONED: `FREERTOS_DIR` + `FREERTOS_PORT`
-#     default to the in-tree kernel's GCC/ARM_CRx_No_GIC so a clean
-#     checkout LINK-COMPLETES; hardware uses the NXP GCC/ARM_CR52_GIC
-#     port (with the consumer's Thumb-resume CPSR patch — see phase-372).
+#   * The port defaults to the in-tree kernel's GCC/ARM_CRx_No_GIC so a clean
+#     checkout LINK-COMPLETES; hardware uses the NXP GCC/ARM_CR52_GIC port
+#     (with the consumer's Thumb-resume CPSR patch — see phase-372), passed
+#     as -DFREERTOS_PORT. The environment is not read (phase-484 W2).
 #   * The linker script is a first-cut public-map original; align its
 #     non-cacheable window with the consumer MPU tables at W5 bring-up.
 
@@ -69,9 +69,10 @@ endforeach()
 
 set(FREERTOS_CONFIG_DIR "${_NROS_BOARD_CONFIG_DIR}" CACHE PATH
     "Directory containing FreeRTOSConfig.h for s32z270-freertos" FORCE)
-if(NOT DEFINED FREERTOS_PORT AND NOT DEFINED ENV{FREERTOS_PORT})
-    set(FREERTOS_PORT "GCC/ARM_CRx_No_GIC")
-endif()
+# phase-484 W2 — a board fact, set by the board. OVERRIDABLE: real hardware
+# uses NXP's `GCC/ARM_CR52_GIC`, which a consumer passes as -DFREERTOS_PORT;
+# the in-tree default only makes a clean checkout link-complete.
+nros_freertos_board_port(nano-ros-board-s32z270-freertos "GCC/ARM_CRx_No_GIC" OVERRIDABLE)
 # The platform module's third-party fallback runs AFTER board overlays; the
 # kernel build below needs the path NOW (portASM.S existence probe).
 # phase-484 W2c — source trees come from `nros locate` (RFC-0103 D4).

@@ -13,7 +13,7 @@
 # Required cmake variables (env or -D):
 #   FREERTOS_DIR   — FreeRTOS-Kernel source root
 #   LWIP_DIR       — lwIP source root
-#   FREERTOS_PORT  — portable-layer subdir (default: GCC/ARM_CM3)
+#   FREERTOS_PORT  — set by this board (GCC/ARM_CM3); a different -D is refused
 #
 # What this overlay declares:
 #
@@ -137,9 +137,8 @@ endif()
 set(FREERTOS_CONFIG_DIR "${_NROS_BOARD_CONFIG_DIR}" CACHE PATH
     "Directory containing FreeRTOSConfig.h for mps2-an385-freertos" FORCE)
 
-if(NOT DEFINED FREERTOS_PORT AND NOT DEFINED ENV{FREERTOS_PORT})
-    set(FREERTOS_PORT "GCC/ARM_CM3")
-endif()
+# phase-484 W2 — a board fact, set by the board; one port (Cortex-M3).
+nros_freertos_board_port(nano-ros-board-mps2-an385-freertos "GCC/ARM_CM3")
 
 # ---------------------------------------------------------------------------
 # Build kernel + lwIP + netif via the layer-2 helpers.

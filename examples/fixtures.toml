@@ -693,15 +693,15 @@ dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
 image = "s32z270"
 build_subdir = "build/freertos-cyclonedds-s32z270-freertos/cmake"
-cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "s32z270-freertos", FREERTOS_PORT = "GCC/ARM_CRx_No_GIC", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7940" }
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "s32z270-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7940" }
 
 # phase-385 W4 — the AN536 (Cortex-R52 on QEMU) cell. Same CPU, same kernel
 # port and the same C++ cyclonedds entry as the S32Z270 row above — but this
 # one RUNS, which is the whole point of the board: it boots, schedules on a
 # GICv3 + generic-timer tick, brings up lwIP over the emulated LAN9118 and
-# delivers pub/sub through CycloneDDS. `FREERTOS_PORT` is named explicitly
-# because `activate.sh` exports `GCC/ARM_CM3` repo-wide and an M-profile port
-# cannot build for an R52 (the overlay fails loudly on it).
+# delivers pub/sub through CycloneDDS. No `FREERTOS_PORT` here: the board sets
+# its own port and ignores an inherited one (phase-484 W2,
+# `nros_freertos_board_port`).
 # Consumed by `tests/freertos_qemu.rs` (issue 1624): it must DELIVER in-image and
 # its `nros: heap peak` must fit the non-zenoh heap default derived from it.
 [[workspace_fixture]]
@@ -713,7 +713,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
 image = "mps3_an536"
 build_subdir = "build/freertos-cyclonedds-mps3-an536-freertos/cmake"
-cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps3-an536-freertos", FREERTOS_PORT = "GCC/ARM_CRx_No_GIC", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7941" }
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps3-an536-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7941" }
 
 # phase-263 C2b — the NuttX (QEMU arm-virt) C workspace entry (talker + listener linked INTO
 # the kernel via cargo nros-nuttx-ffi). Dials the host zenoh router through the slirp gateway
