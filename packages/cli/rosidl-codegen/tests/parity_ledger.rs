@@ -33,7 +33,7 @@
 #![allow(dead_code)]
 
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
 };
 
@@ -74,7 +74,7 @@ pub fn walk_message_dir(package: &str, dir: &Path) -> Vec<ParityOutcome> {
             Ok(content) => match rosidl_parser::parse_message(&content) {
                 Err(e) => Some(format!("parse failed: {e:?}")),
                 Ok(msg) => {
-                    rosidl_codegen::generate_message_package(package, &name, &msg, &HashSet::new())
+                    rosidl_codegen::generate_message_package(package, &name, &msg, &BTreeSet::new())
                         .err()
                         .map(|e| format!("generate failed: {e:?}"))
                 }

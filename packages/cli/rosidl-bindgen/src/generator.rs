@@ -17,7 +17,7 @@ use rosidl_codegen::{
 };
 use rosidl_parser::Message;
 use std::{
-    collections::HashSet,
+    collections::BTreeSet,
     path::{Path, PathBuf},
 };
 
@@ -231,7 +231,7 @@ pub fn generate_package(
 
     let mut message_count = 0;
     let mut service_count = 0;
-    let mut all_dependencies = HashSet::new();
+    let mut all_dependencies = BTreeSet::new();
 
     // Create src/msg directory
     let src_dir = package_output.join("src");
@@ -775,7 +775,7 @@ fn generate_cargo_toml(
     output_dir: &Path,
     package_name: &str,
     ament_version: &str,
-    dependencies: &HashSet<String>,
+    dependencies: &BTreeSet<String>,
     has_actions: bool,
 ) -> Result<()> {
     // phase-359 W10 — no `std` feature is emitted any more.
@@ -1114,7 +1114,7 @@ fn emit_px4_cpp_headers(
     // so emitting only the named list would leave dangling includes. Walk the
     // nested types breadth-first and emit those too.
     let mut queue: Vec<String> = package.interfaces.messages.clone();
-    let mut seen: HashSet<String> = queue.iter().cloned().collect();
+    let mut seen: BTreeSet<String> = queue.iter().cloned().collect();
     let mut message_count = 0;
 
     while let Some(msg_name) = queue.pop() {

@@ -3,7 +3,7 @@ use rosidl_codegen::{
     GeneratorError, generate_action_package, generate_message_package, generate_service_package,
 };
 use rosidl_parser::{parse_action, parse_message, parse_service};
-use std::{collections::HashSet, fs, path::Path};
+use std::{collections::BTreeSet, fs, path::Path};
 
 mod parity_helpers;
 use parity_helpers::{ros_input, ros_input_absent, ros_input_dir};
@@ -71,7 +71,7 @@ fn test_std_msgs_primitives() -> Result<(), GeneratorError> {
             let msg = read_and_parse_message(&path).map_err(GeneratorError::InvalidMessage)?;
 
             let msg_name = msg_file.trim_end_matches(".msg");
-            let result = generate_message_package("std_msgs", msg_name, &msg, &HashSet::new())?;
+            let result = generate_message_package("std_msgs", msg_name, &msg, &BTreeSet::new())?;
 
             // Verify basic structure
             assert!(result.cargo_toml.contains("std_msgs"));
@@ -92,7 +92,7 @@ fn test_std_msgs_header() -> Result<(), GeneratorError> {
 
     let msg = read_and_parse_message(&header_path).map_err(GeneratorError::InvalidMessage)?;
 
-    let result = generate_message_package("std_msgs", "Header", &msg, &HashSet::new())?;
+    let result = generate_message_package("std_msgs", "Header", &msg, &BTreeSet::new())?;
 
     // Header should have timestamp and frame_id
     assert!(result.message_rmw.contains("Header"));
@@ -110,7 +110,7 @@ fn test_geometry_msgs_point() -> Result<(), GeneratorError> {
 
     let msg = read_and_parse_message(&point_path).map_err(GeneratorError::InvalidMessage)?;
 
-    let result = generate_message_package("geometry_msgs", "Point", &msg, &HashSet::new())?;
+    let result = generate_message_package("geometry_msgs", "Point", &msg, &BTreeSet::new())?;
 
     // Point should have x, y, z fields
     assert!(result.message_rmw.contains("Point"));
@@ -130,7 +130,7 @@ fn test_geometry_msgs_pose() -> Result<(), GeneratorError> {
 
     let msg = read_and_parse_message(&pose_path).map_err(GeneratorError::InvalidMessage)?;
 
-    let result = generate_message_package("geometry_msgs", "Pose", &msg, &HashSet::new())?;
+    let result = generate_message_package("geometry_msgs", "Pose", &msg, &BTreeSet::new())?;
 
     // Pose should have Point and Quaternion dependencies
     assert!(result.message_rmw.contains("Pose"));
@@ -153,7 +153,7 @@ fn test_example_interfaces_service() -> Result<(), GeneratorError> {
     let srv = read_and_parse_service(&srv_path).map_err(GeneratorError::InvalidMessage)?;
 
     let result =
-        generate_service_package("example_interfaces", "AddTwoInts", &srv, &HashSet::new())?;
+        generate_service_package("example_interfaces", "AddTwoInts", &srv, &BTreeSet::new())?;
 
     // Service should have Request and Response
     assert!(result.service_rmw.contains("AddTwoIntsRequest"));
@@ -178,7 +178,7 @@ fn test_example_interfaces_action() -> Result<(), GeneratorError> {
     let action = read_and_parse_action(&action_path).map_err(GeneratorError::InvalidMessage)?;
 
     let result =
-        generate_action_package("example_interfaces", "Fibonacci", &action, &HashSet::new())?;
+        generate_action_package("example_interfaces", "Fibonacci", &action, &BTreeSet::new())?;
 
     // Action should have Goal, Result, Feedback
     assert!(result.action_rmw.contains("FibonacciGoal"));

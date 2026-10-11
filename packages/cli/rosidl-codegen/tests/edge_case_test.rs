@@ -1,14 +1,14 @@
 // Edge case tests - verify generator handles unusual but valid inputs
 use rosidl_codegen::{GeneratorError, generate_message_package};
 use rosidl_parser::{Field, FieldType, Message, PrimitiveType, parse_message};
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 
 #[test]
 fn test_empty_message() -> Result<(), GeneratorError> {
     let msg_def = "";
     let msg = parse_message(msg_def).unwrap();
 
-    let result = generate_message_package("test_msgs", "Empty", &msg, &HashSet::new())?;
+    let result = generate_message_package("test_msgs", "Empty", &msg, &BTreeSet::new())?;
 
     assert!(result.message_rmw.contains("Empty"));
     assert!(result.message_idiomatic.contains("Empty"));
@@ -24,7 +24,7 @@ string DEFAULT_NAME="test"
 "#;
     let msg = parse_message(msg_def).unwrap();
 
-    let result = generate_message_package("test_msgs", "Constants", &msg, &HashSet::new())?;
+    let result = generate_message_package("test_msgs", "Constants", &msg, &BTreeSet::new())?;
 
     assert!(result.message_rmw.contains("MAX_VALUE"));
     assert!(result.message_rmw.contains("MIN_VALUE"));
@@ -45,7 +45,7 @@ fn test_very_large_array() -> Result<(), GeneratorError> {
         default_value: None,
     });
 
-    let result = generate_message_package("test_msgs", "HugeArray", &msg, &HashSet::new())?;
+    let result = generate_message_package("test_msgs", "HugeArray", &msg, &BTreeSet::new())?;
 
     assert!(result.message_rmw.contains("[i32; 1000]"));
     assert!(result.cargo_toml.contains("big-array"));
@@ -73,7 +73,7 @@ int32[40] large_array
 "#;
     let msg = parse_message(msg_def).unwrap();
 
-    let result = generate_message_package("test_msgs", "CopyArrays", &msg, &HashSet::new())?;
+    let result = generate_message_package("test_msgs", "CopyArrays", &msg, &BTreeSet::new())?;
 
     for field in ["small_array", "large_array"] {
         for owner in ["idiomatic", "rmw"] {
@@ -122,7 +122,7 @@ string string_field
 "#;
     let msg = parse_message(msg_def).unwrap();
 
-    let result = generate_message_package("test_msgs", "AllPrimitives", &msg, &HashSet::new())?;
+    let result = generate_message_package("test_msgs", "AllPrimitives", &msg, &BTreeSet::new())?;
 
     // Verify all Rust primitive types are present
     assert!(result.message_rmw.contains("bool"));
@@ -149,7 +149,7 @@ int32[<=10] bounded_sequence
 "#;
     let msg = parse_message(msg_def).unwrap();
 
-    let result = generate_message_package("test_msgs", "ArrayVariants", &msg, &HashSet::new())?;
+    let result = generate_message_package("test_msgs", "ArrayVariants", &msg, &BTreeSet::new())?;
 
     // Verify different array types in RMW layer
     assert!(result.message_rmw.contains("[i32; 5]"));
@@ -171,7 +171,7 @@ wstring<=128 bounded_wstring
 "#;
     let msg = parse_message(msg_def).unwrap();
 
-    let result = generate_message_package("test_msgs", "StringVariants", &msg, &HashSet::new())?;
+    let result = generate_message_package("test_msgs", "StringVariants", &msg, &BTreeSet::new())?;
 
     // RMW layer should have rosidl types
     assert!(
@@ -192,7 +192,7 @@ geometry_msgs/TwistStamped twist
 "#;
     let msg = parse_message(msg_def).unwrap();
 
-    let result = generate_message_package("nav_msgs", "Odometry", &msg, &HashSet::new())?;
+    let result = generate_message_package("nav_msgs", "Odometry", &msg, &BTreeSet::new())?;
 
     // Should handle namespaced types
     assert!(result.message_rmw.contains("geometry_msgs"));
@@ -211,7 +211,7 @@ float64 y  # Position données en mètres
 "#;
     let msg = parse_message(msg_def).unwrap();
 
-    let result = generate_message_package("test_msgs", "Unicode", &msg, &HashSet::new())?;
+    let result = generate_message_package("test_msgs", "Unicode", &msg, &BTreeSet::new())?;
 
     // Should generate successfully even with Unicode in comments
     assert!(result.message_rmw.contains("Unicode"));
@@ -231,7 +231,7 @@ int32 normal_field
 "#;
     let msg = parse_message(msg_def).unwrap();
 
-    let result = generate_message_package("test_msgs", "Keywords", &msg, &HashSet::new())?;
+    let result = generate_message_package("test_msgs", "Keywords", &msg, &BTreeSet::new())?;
 
     // Keywords should be escaped with underscore
     assert!(result.message_rmw.contains("type_"));
@@ -251,7 +251,7 @@ int32 field100
 "#;
     let msg = parse_message(msg_def).unwrap();
 
-    let result = generate_message_package("test_msgs", "Numbered", &msg, &HashSet::new())?;
+    let result = generate_message_package("test_msgs", "Numbered", &msg, &BTreeSet::new())?;
 
     assert!(result.message_rmw.contains("field1"));
     assert!(result.message_rmw.contains("field2"));
@@ -271,7 +271,7 @@ int32 UPPER_CASE_FIELD
 "#;
     let msg = parse_message(msg_def).unwrap();
 
-    let result = generate_message_package("test_msgs", "MixedCase", &msg, &HashSet::new())?;
+    let result = generate_message_package("test_msgs", "MixedCase", &msg, &BTreeSet::new())?;
 
     // All field names should be preserved as-is (not converted)
     assert!(result.message_rmw.contains("snake_case_field"));
@@ -318,7 +318,7 @@ fn test_maximum_field_count() -> Result<(), GeneratorError> {
 
     let msg = parse_message(&msg_def).unwrap();
 
-    let result = generate_message_package("test_msgs", "ManyFields", &msg, &HashSet::new())?;
+    let result = generate_message_package("test_msgs", "ManyFields", &msg, &BTreeSet::new())?;
 
     // Should handle 100+ fields without issue
     assert!(result.message_rmw.contains("field0"));
@@ -334,7 +334,7 @@ fn test_long_field_name() -> Result<(), GeneratorError> {
 
     let msg = parse_message(&msg_def).unwrap();
 
-    let result = generate_message_package("test_msgs", "LongName", &msg, &HashSet::new())?;
+    let result = generate_message_package("test_msgs", "LongName", &msg, &BTreeSet::new())?;
 
     // Should handle very long field names
     assert!(result.message_rmw.contains(&long_name));
@@ -354,7 +354,7 @@ bool DISABLED=false
 "#;
     let msg = parse_message(msg_def).unwrap();
 
-    let result = generate_message_package("test_msgs", "SpecialConstants", &msg, &HashSet::new())?;
+    let result = generate_message_package("test_msgs", "SpecialConstants", &msg, &BTreeSet::new())?;
 
     assert!(result.message_rmw.contains("ZERO"));
     assert!(result.message_rmw.contains("HUNDRED"));

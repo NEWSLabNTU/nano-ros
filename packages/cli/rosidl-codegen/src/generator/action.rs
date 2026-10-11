@@ -20,7 +20,7 @@ use crate::{
     utils::{extract_dependencies, needs_big_array},
 };
 use rosidl_parser::{Action, FieldType, Message};
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 
 pub struct GeneratedActionPackage {
     pub cargo_toml: String,
@@ -35,7 +35,7 @@ pub fn generate_action_package(
     package_name: &str,
     action_name: &str,
     action: &Action,
-    all_dependencies: &HashSet<String>,
+    all_dependencies: &BTreeSet<String>,
 ) -> Result<GeneratedActionPackage, GeneratorError> {
     // Extract dependencies from goal, result, and feedback
     let mut goal_deps = extract_dependencies(&action.spec.goal);
@@ -151,7 +151,7 @@ pub fn generate_nros_action_package(
     package_name: &str,
     action_name: &str,
     action: &Action,
-    all_dependencies: &HashSet<String>,
+    all_dependencies: &BTreeSet<String>,
     package_version: &str,
     hashes: &crate::rihs::ActionTypeHashes,
     resolver: &CapacityResolver,

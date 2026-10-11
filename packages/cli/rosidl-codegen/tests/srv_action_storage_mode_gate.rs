@@ -28,7 +28,7 @@ use rosidl_codegen::{
     generate_c_service_package, generate_nros_inline_service, generate_nros_service_package,
 };
 use rosidl_parser::{parse_action, parse_message, parse_service};
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 
 const SRV: &str = "int64[] values\n---\nstring summary\n";
 const ACT: &str = "int64[] waypoints\n---\nint64 total\n---\nint64 done\n";
@@ -42,7 +42,7 @@ fn gen_srv(r: &CapacityResolver) -> Result<String, String> {
         "test_msgs",
         "Adder",
         &parse_service(SRV).unwrap(),
-        &HashSet::new(),
+        &BTreeSet::new(),
         "0.1.0",
         "hash",
         "hash",

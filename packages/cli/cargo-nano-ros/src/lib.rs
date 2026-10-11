@@ -2314,6 +2314,14 @@ fn write_b8_alias_header(alias_path: &Path, canonical_filename: &str) -> Result<
     Ok(())
 }
 
+/// Issue 1821 — a list in emission order: sorted, duplicates dropped.
+fn sorted_unique(items: &[String]) -> Vec<String> {
+    let mut v = items.to_vec();
+    v.sort();
+    v.dedup();
+    v
+}
+
 /// Generate C++ umbrella header
 fn generate_cpp_umbrella_header(
     package_name: &str,
@@ -2322,6 +2330,16 @@ fn generate_cpp_umbrella_header(
     action_headers: &[String],
     dependencies: &[String],
 ) -> String {
+    // Issue 1821 — the emitted order is a function of the input SET, never of
+    // the order a caller happened to collect it in (a hash set, a directory
+    // walk). A reordered header is a changed file to `write_if_changed`, which
+    // re-runs every build edge downstream of it.
+    let (msg_headers, srv_headers, action_headers, dependencies) = (
+        &sorted_unique(msg_headers),
+        &sorted_unique(srv_headers),
+        &sorted_unique(action_headers),
+        &sorted_unique(dependencies),
+    );
     let guard_name = format!("{}_HPP", package_name.to_uppercase().replace('-', "_"));
 
     let mut content = String::new();
@@ -2396,6 +2414,16 @@ fn generate_umbrella_header(
     action_headers: &[String],
     dependencies: &[String],
 ) -> String {
+    // Issue 1821 — the emitted order is a function of the input SET, never of
+    // the order a caller happened to collect it in (a hash set, a directory
+    // walk). A reordered header is a changed file to `write_if_changed`, which
+    // re-runs every build edge downstream of it.
+    let (msg_headers, srv_headers, action_headers, dependencies) = (
+        &sorted_unique(msg_headers),
+        &sorted_unique(srv_headers),
+        &sorted_unique(action_headers),
+        &sorted_unique(dependencies),
+    );
     let guard_name = format!("{}_H", package_name.to_uppercase().replace('-', "_"));
 
     let mut content = String::new();
@@ -2555,8 +2583,40 @@ pub fn install_to_ament(config: InstallConfig) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{collect_interface_files, replace_outside_strings, rewrite_package_links};
+    use super::{
+        collect_interface_files, generate_cpp_umbrella_header, generate_umbrella_header,
+        replace_outside_strings, rewrite_package_links,
+    };
     use std::fs;
+
+    /// Issue 1821 — an umbrella header is a function of its input SETS. Callers
+    /// collected the dependency list from a hash set, so two runs of one binary
+    /// emitted `#include`s in different orders and `write_if_changed` saw a
+    /// changed file every time.
+    #[test]
+    fn umbrella_headers_do_not_depend_on_input_order() {
+        let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        let none: Vec<String> = Vec::new();
+        let (m1, m2) = (s(&["b.h", "a.h"]), s(&["a.h", "b.h", "a.h"]));
+        let (v1, v2) = (s(&["y.h", "x.h"]), s(&["x.h", "y.h"]));
+        let (d1, d2) = (
+            s(&["geometry_msgs", "builtin_interfaces"]),
+            s(&["builtin_interfaces", "geometry_msgs"]),
+        );
+        assert_eq!(
+            generate_umbrella_header("p", &m1, &v1, &none, &d1),
+            generate_umbrella_header("p", &m2, &v2, &none, &d2)
+        );
+        assert_eq!(
+            generate_cpp_umbrella_header("p", &m1, &v1, &none, &d1),
+            generate_cpp_umbrella_header("p", &m2, &v2, &none, &d2)
+        );
+        let c = generate_umbrella_header("p", &m1, &none, &none, &d1);
+        assert!(
+            c.find("builtin_interfaces/").unwrap() < c.find("geometry_msgs/").unwrap(),
+            "{c}"
+        );
+    }
 
     /// Issue 1455 — `links` is the third identity axis, and a rename must move
     /// it. The shipped `nros-builtin-interfaces-clock` carried the ament value,

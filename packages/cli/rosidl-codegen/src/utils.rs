@@ -1,5 +1,5 @@
 use rosidl_parser::{FieldType, Message};
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 
 /// Convert a PascalCase or camelCase string to snake_case
 pub fn to_snake_case(s: &str) -> String {
@@ -26,8 +26,8 @@ pub fn to_snake_case(s: &str) -> String {
 }
 
 /// Extract all package dependencies from a message
-pub fn extract_dependencies(message: &Message) -> HashSet<String> {
-    let mut deps = HashSet::new();
+pub fn extract_dependencies(message: &Message) -> BTreeSet<String> {
+    let mut deps = BTreeSet::new();
 
     for field in &message.fields {
         extract_deps_from_type(&field.field_type, &mut deps);
@@ -40,7 +40,7 @@ pub fn extract_dependencies(message: &Message) -> HashSet<String> {
     deps
 }
 
-fn extract_deps_from_type(field_type: &FieldType, deps: &mut HashSet<String>) {
+fn extract_deps_from_type(field_type: &FieldType, deps: &mut BTreeSet<String>) {
     match field_type {
         FieldType::NamespacedType {
             package: Some(pkg), ..

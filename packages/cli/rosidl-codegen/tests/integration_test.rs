@@ -2,7 +2,7 @@ use rosidl_codegen::{
     GeneratorError, generate_action_package, generate_message_package, generate_service_package,
 };
 use rosidl_parser::{parse_action, parse_message, parse_service};
-use std::{collections::HashSet, fs};
+use std::{collections::BTreeSet, fs};
 use tempfile::TempDir;
 
 #[test]
@@ -10,7 +10,7 @@ fn test_generate_simple_message() -> Result<(), GeneratorError> {
     let msg_def = "int32 x\nfloat64 y\nstring name\n";
     let msg = parse_message(msg_def).unwrap();
 
-    let deps = HashSet::new();
+    let deps = BTreeSet::new();
     let result = generate_message_package("test_msgs", "Point2D", &msg, &deps)?;
 
     // Verify Cargo.toml contains package name
@@ -41,7 +41,7 @@ fn test_generate_message_with_constants() -> Result<(), GeneratorError> {
     let msg_def = "int32 x\nint32 MAX_VALUE=100\nstring DEFAULT_NAME=\"test\"\n";
     let msg = parse_message(msg_def).unwrap();
 
-    let deps = HashSet::new();
+    let deps = BTreeSet::new();
     let result = generate_message_package("test_msgs", "ConfigMsg", &msg, &deps)?;
 
     // Verify constants are generated
@@ -56,7 +56,7 @@ fn test_generate_message_with_arrays() -> Result<(), GeneratorError> {
     let msg_def = "int32[5] small_array\nfloat64[100] large_array\n";
     let msg = parse_message(msg_def).unwrap();
 
-    let deps = HashSet::new();
+    let deps = BTreeSet::new();
     let result = generate_message_package("test_msgs", "ArrayMsg", &msg, &deps)?;
 
     // Verify arrays are generated correctly
@@ -74,7 +74,7 @@ fn test_generate_message_with_sequences() -> Result<(), GeneratorError> {
     let msg_def = "int32[] unbounded_seq\nfloat64[<=10] bounded_seq\n";
     let msg = parse_message(msg_def).unwrap();
 
-    let deps = HashSet::new();
+    let deps = BTreeSet::new();
     let result = generate_message_package("test_msgs", "SeqMsg", &msg, &deps)?;
 
     // Verify RMW layer uses rosidl types
@@ -96,7 +96,7 @@ fn test_generate_message_with_dependencies() -> Result<(), GeneratorError> {
     let msg_def = "geometry_msgs/Point position\nstd_msgs/Header header\n";
     let msg = parse_message(msg_def).unwrap();
 
-    let deps = HashSet::new();
+    let deps = BTreeSet::new();
     let result = generate_message_package("nav_msgs", "Pose", &msg, &deps)?;
 
     // Verify dependencies are added to Cargo.toml
@@ -127,7 +127,7 @@ fn test_generate_message_with_rust_keywords() -> Result<(), GeneratorError> {
     let msg_def = "int32 type\nfloat64 match\nstring async\n";
     let msg = parse_message(msg_def).unwrap();
 
-    let deps = HashSet::new();
+    let deps = BTreeSet::new();
     let result = generate_message_package("test_msgs", "Keywords", &msg, &deps)?;
 
     // Verify keywords are escaped with underscore
@@ -143,7 +143,7 @@ fn test_write_generated_package_to_disk() -> Result<(), GeneratorError> {
     let msg_def = "int32 x\nfloat64 y\n";
     let msg = parse_message(msg_def).unwrap();
 
-    let deps = HashSet::new();
+    let deps = BTreeSet::new();
     let result = generate_message_package("test_msgs", "Point", &msg, &deps)?;
 
     // Create temporary directory
@@ -182,7 +182,7 @@ fn test_generate_simple_service() -> Result<(), GeneratorError> {
     let srv_def = "int32 a\nint32 b\n---\nint32 sum\n";
     let srv = parse_service(srv_def).unwrap();
 
-    let deps = HashSet::new();
+    let deps = BTreeSet::new();
     let result = generate_service_package("example_interfaces", "AddTwoInts", &srv, &deps)?;
 
     // Verify Cargo.toml contains package name
@@ -211,7 +211,7 @@ fn test_generate_service_with_dependencies() -> Result<(), GeneratorError> {
     let srv_def = "geometry_msgs/Point position\n---\nbool success\nstring message\n";
     let srv = parse_service(srv_def).unwrap();
 
-    let deps = HashSet::new();
+    let deps = BTreeSet::new();
     let result = generate_service_package("test_srvs", "CheckPosition", &srv, &deps)?;
 
     // Verify dependencies are added to Cargo.toml
@@ -239,7 +239,7 @@ fn test_generate_service_with_constants() -> Result<(), GeneratorError> {
     let srv_def = "int32 input\nint32 MAX_INPUT=100\n---\nint32 output\nint32 MIN_OUTPUT=0\n";
     let srv = parse_service(srv_def).unwrap();
 
-    let deps = HashSet::new();
+    let deps = BTreeSet::new();
     let result = generate_service_package("test_srvs", "Process", &srv, &deps)?;
 
     // Verify constants are generated in both request and response
@@ -258,7 +258,7 @@ fn test_generate_simple_action() -> Result<(), GeneratorError> {
     let action_def = "int32 order\n---\nint32[] sequence\n---\nint32[] partial_sequence\n";
     let action = parse_action(action_def).unwrap();
 
-    let deps = HashSet::new();
+    let deps = BTreeSet::new();
     let result = generate_action_package("example_interfaces", "Fibonacci", &action, &deps)?;
 
     // Verify Cargo.toml contains package name
@@ -294,7 +294,7 @@ fn test_generate_action_with_dependencies() -> Result<(), GeneratorError> {
         "geometry_msgs/Point target\n---\nfloat64 distance\n---\nfloat64 current_distance\n";
     let action = parse_action(action_def).unwrap();
 
-    let deps = HashSet::new();
+    let deps = BTreeSet::new();
     let result = generate_action_package("nav_actions", "Navigate", &action, &deps)?;
 
     // Verify dependencies are added to Cargo.toml
@@ -318,7 +318,7 @@ fn test_generate_action_with_constants() -> Result<(), GeneratorError> {
     let action_def = "int32 target\nint32 MAX_TARGET=100\n---\nbool success\n---\nint32 progress\nint32 MAX_PROGRESS=100\n";
     let action = parse_action(action_def).unwrap();
 
-    let deps = HashSet::new();
+    let deps = BTreeSet::new();
     let result = generate_action_package("test_actions", "CountTo", &action, &deps)?;
 
     // Verify constants are generated in goal and feedback
@@ -335,7 +335,7 @@ fn test_write_generated_service_to_disk() -> Result<(), GeneratorError> {
     let srv_def = "int32 a\n---\nint32 result\n";
     let srv = parse_service(srv_def).unwrap();
 
-    let deps = HashSet::new();
+    let deps = BTreeSet::new();
     let result = generate_service_package("test_srvs", "Compute", &srv, &deps)?;
 
     // Create temporary directory
@@ -372,7 +372,7 @@ fn test_write_generated_action_to_disk() -> Result<(), GeneratorError> {
     let action_def = "int32 goal\n---\nint32 result\n---\nint32 feedback\n";
     let action = parse_action(action_def).unwrap();
 
-    let deps = HashSet::new();
+    let deps = BTreeSet::new();
     let result = generate_action_package("test_actions", "Simple", &action, &deps)?;
 
     // Create temporary directory

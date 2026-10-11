@@ -96,7 +96,7 @@ mod tests {
             "test_msgs",
             "TestMessage",
             &msg,
-            &std::collections::HashSet::new(),
+            &std::collections::BTreeSet::new(),
         );
         assert!(result.is_ok());
     }
