@@ -40,6 +40,7 @@ from pathlib import Path as _Path
 _sys.path.insert(0, str(_Path(__file__).resolve().parent / "lib"))
 from tracked import tracked  # issue 0721: index lookup, not a walk
 from leaf_target import leaf_target  # phase-445 W6: board -> triple, one spelling
+from leaf_target import leaf_board, board_crate_root_extra  # issue 1305
 
 # Crates whose purpose is to define `#[panic_handler]`, plus `zephyr`, which
 # supplies the RTOS's own (see `zephyr_entry/src/lib.rs`: "Zephyr's allocator +
@@ -100,6 +101,34 @@ def has_provider(src_dir: Path) -> bool:
     return False
 
 
+def selection_supplies(leaf_dir: Path) -> "bool | None":
+    """Issue 1305 — the provider a MIGRATED leaf gets from its selection package.
+
+    `None` when the leaf does not depend on its generated `<pkg>_nros_selection`
+    package (its own sources are the whole answer). Otherwise whether that
+    package links a provider, by the rule `facade::write_leaf_selection` writes
+    it with: the board descriptor's `crate_root_extra` goes into the package's
+    `lib.rs` unless the image states a `panic` policy other than `own`.
+    """
+    cargo = leaf_dir / "Cargo.toml"
+    if not cargo.is_file():
+        return None
+    text = cargo.read_text(encoding="utf-8", errors="replace")
+    pkg = re.search(r'^\[package\][^\[]*?^name\s*=\s*"([^"]+)"', text, re.M | re.S)
+    if not pkg:
+        return None
+    sel = pkg.group(1).replace("-", "_") + "_nros_selection"
+    if not re.search(rf"^{sel}\s*=", text, re.M):
+        return None
+    system = (leaf_dir / "system.toml").read_text(encoding="utf-8", errors="replace")
+    stated = re.search(r'^panic\s*=\s*"([a-z]+)"', system, re.M)
+    if stated and stated.group(1) != "own":
+        return False
+    board = leaf_board(leaf_dir)
+    extra = board_crate_root_extra(board) if board else ""
+    return any(re.search(rf"\b(use|extern\s+crate)\s+{c}\b", extra) for c in PROVIDER_CRATES)
+
+
 def main() -> int:
     root = Path(__file__).resolve().parents[1]
     bad = []
@@ -154,6 +183,9 @@ def main() -> int:
         # one, or vice versa.
         policy = arg.group(1) if arg else "platform"
         supplies = has_provider(main_rs.parent)
+        # issue 1305 — plus what a migrated leaf's selection package links.
+        if selection_supplies(main_rs.parent.parent):
+            supplies = True
         rel = main_rs.relative_to(root)
         if policy == "own" and not supplies:
             bad.append(
