@@ -151,7 +151,7 @@ fn nros_borrowed_view_for_field(
 /// Resolve the borrowed-view **C** field type + the `nros/view.h` reader
 /// function for a `borrowed`-mode field (RFC-0033, Phase 235, issue 0021).
 ///
-/// Returns `(borrowed_c_type, borrow_fn)` — both `nros/view.h` symbols. All
+/// Returns `(view_c_type, borrow_fn)` — both `nros/view.h` symbols. All
 /// three readers share the signature
 /// `int32_t fn(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin, T* out)`,
 /// so the C template calls them uniformly:
@@ -686,7 +686,7 @@ pub(super) fn build_c_field(
         mode,
     };
 
-    let mut borrowed_c_type = String::new();
+    let mut view_c_type = String::new();
     let mut borrowed_read_fn = String::new();
     if field.is_heap() {
         // Heap is only bridgeable for shapes `c_type_for_field_heap` supports —
@@ -705,7 +705,7 @@ pub(super) fn build_c_field(
             message_name,
             name,
         )?;
-        borrowed_c_type = bt;
+        view_c_type = bt;
         borrowed_read_fn = bfn;
     }
 
@@ -782,7 +782,7 @@ pub(super) fn build_c_field(
         is_string_element: field.element_is_string(),
         is_heap: field.is_heap(),
         is_view: field.is_view(),
-        borrowed_c_type,
+        view_c_type,
         borrowed_read_fn,
     })
 }
