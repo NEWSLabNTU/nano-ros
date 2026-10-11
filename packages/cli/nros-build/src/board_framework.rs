@@ -43,10 +43,19 @@ pub fn emit_board_framework() -> Option<String> {
     // The edge cargo CAN see: re-run when the board's descriptor changes.
     println!("cargo::rerun-if-changed={}", board_manifest.display());
 
+    // phase-484 W4g — the board's own Rust TYPE, for a board not in the
+    // in-tree `BOARD_PATHS` table. Same channel as the framework, for the same
+    // reason: expansion cannot resolve an out-of-tree board, a build script can.
+    // This is what lets an out-of-tree board use Form 1 (`[image.<id>] board`
+    // in `system.toml`) instead of `nros::main!(board = X)`.
+    if let Some(ty) = read_board_meta(&board_manifest, "type") {
+        println!("cargo::rustc-env=NROS_BOARD_TYPE={ty}");
+    }
+    println!("cargo::rerun-if-env-changed=NROS_BOARD_TYPE");
+    let _ = board_name;
     let framework = read_board_framework(&board_manifest)?;
     println!("cargo::rustc-env=NROS_BOARD_FRAMEWORK={framework}");
     println!("cargo::rerun-if-env-changed=NROS_BOARD_FRAMEWORK");
-    let _ = board_name;
     Some(framework)
 }
 
@@ -120,6 +129,11 @@ fn resolve_board_crate(manifest_dir: &Path) -> Option<(String, PathBuf)> {
 }
 
 fn read_board_framework(board_manifest: &Path) -> Option<String> {
+    read_board_meta(board_manifest, "framework")
+}
+
+/// One string key of the board crate's `[package.metadata.nros.board]`.
+fn read_board_meta(board_manifest: &Path, key: &str) -> Option<String> {
     let raw = std::fs::read_to_string(board_manifest).ok()?;
     let value: toml::Value = toml::from_str(&raw).ok()?;
     value
@@ -127,7 +141,7 @@ fn read_board_framework(board_manifest: &Path) -> Option<String> {
         .get("metadata")?
         .get("nros")?
         .get("board")?
-        .get("framework")?
+        .get(key)?
         .as_str()
         .map(str::to_string)
 }

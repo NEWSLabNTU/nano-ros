@@ -424,6 +424,17 @@ every claim backed by a file. What it does not do yet: a hand-written leaf
 `CMakeLists.txt` still sets its own `NROS_BOARD`, which is the next retirement
 (it can now be derived from the leaf's `system.toml` board through this map).
 
+**W4g — an out-of-tree board reaches Form 1.** `nros::main!` maps a board
+name to its Rust type through the static `BOARD_PATHS` table alone (it cannot
+read descriptors at expansion), so a board not in that table had exactly one
+route, `nros::main!(board = X)` — which also dropped the board's framework
+(Form 2 hard-wires `OwnedSpin`). A board crate now states its own type in
+`[package.metadata.nros.board] type = "::my_board::MyBoard"`, beside the
+`framework` it already stated; `nros_build::emit_board_framework()` hands it to
+expansion as `NROS_BOARD_TYPE` over the same build-script channel (issue
+0415's — a proc macro's own env/file reads are invisible to cargo), and Form 1
+takes it when the table has no key. Form 2 stays, deprecated, for W8.
+
 ### W5 -- one canonical name per knob
 
 Split with phase-481 by RFC-0103 D2b (decided 2026-10-11: this phase builds the
