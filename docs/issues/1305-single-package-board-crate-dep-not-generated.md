@@ -23,8 +23,9 @@ and it is false:
    `Only one platform backend can be selected at a time`. The leaf's
    `nros-rmw-zenoh = { features = ["platform-bare-metal", ...] }` belongs to the
    OLD board; the FreeRTOS board brings zenoh itself. Deleting it builds (rc=0),
-   and the image boots in QEMU to "Network ready" (delivery not checked: no
-   router on the measuring host).
+   and the image boots in QEMU to "Network ready" (delivery not checked: the
+   router was started as `just zenohd locator=…`, which passes the literal
+   `locator=…` as the locator; issue 1818).
 3. Possibly a third: `examples/mps2-an385-freertos/rust/talker` also names
    `nros-platform = { features = ["platform-freertos"] }`, with a comment that
    without it the app never reaches "Application setup complete". Not checked
@@ -63,7 +64,8 @@ stays target-scoped so the host probe still builds the lib (issue 1265).
 
 Side finding, not this issue: `nros sync` printed `deploy-bound probe failed:
 ... failed to select a version for nros-board-mps2-an385-freertos` and still
-exited 0.
+exited 0. Issue 1817: sync now stops on a leaf whose own manifest does not
+resolve, with cargo's whole error.
 
 ## 2026-10-11 — re-measured, and now refused up front (still OPEN)
 
