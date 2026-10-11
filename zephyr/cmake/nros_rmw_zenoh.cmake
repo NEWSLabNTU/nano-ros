@@ -263,6 +263,25 @@ if(CONFIG_NROS_ZENOH_SERIAL_TX_RING_BYTES)
     zephyr_compile_definitions(
         _Z_ZEPHYR_SERIAL_TX_RING_BYTES=${CONFIG_NROS_ZENOH_SERIAL_TX_RING_BYTES})
 endif()
+# phase-474 I13 -- the serial ISR's cost per call. ISR_STATS compiles the
+# cycle/call counters into network.c; TCM moves network.c's code to ITCM and
+# its zero-initialised data (the RX and TX rings, the framing buffers) to DTCM.
+if(CONFIG_NROS_ZENOH_SERIAL_ISR_STATS)
+    zephyr_compile_definitions(_Z_ZEPHYR_SERIAL_ISR_STATS=1)
+endif()
+if(CONFIG_NROS_ZENOH_SERIAL_TCM)
+    set(_nros_serial_network_c "")
+    foreach(_src ${_zenoh_pico_sources})
+        if(_src MATCHES "/system/zephyr/network\\.c$")
+            set(_nros_serial_network_c "${_src}")
+        endif()
+    endforeach()
+    if(NOT _nros_serial_network_c)
+        message(FATAL_ERROR "CONFIG_NROS_ZENOH_SERIAL_TCM: zenoh-pico's system/zephyr/network.c is not in this build's sources")
+    endif()
+    zephyr_code_relocate(FILES ${_nros_serial_network_c} LOCATION ITCM_TEXT)
+    zephyr_code_relocate(FILES ${_nros_serial_network_c} LOCATION DTCM_BSS)
+endif()
 # RFC-0080 — CONFIG_NROS_ZENOH_LINK_CAN -> Z_FEATURE_LINK_CAN.
 _nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_LINK_CAN)
 # RFC-0083 — CONFIG_NROS_ZENOH_LINK_ISOTP -> Z_FEATURE_LINK_ISOTP.
