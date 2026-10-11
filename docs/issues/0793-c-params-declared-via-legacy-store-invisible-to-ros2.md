@@ -6,7 +6,7 @@ title: "C ships two disjoint parameter stores — parameters declared on the
 status: open
 type: bug
 area: api, params
-related: [rfc-0036, phase-379, phase-382, phase-426, issue-0788, issue-1812]
+related: [rfc-0036, phase-379, phase-382, phase-426, issue-0788, issue-1812, rfc-0105, phase-491]
 ---
 
 ## Status 2026-10-11 — the store half is answered; one decision is left
