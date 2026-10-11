@@ -3,10 +3,14 @@
 **Status (2026-10-11). Done; archived. M1–M3 measured, then W1–W10
 landed** (W7 ahead of W4, so that the drift check names a verb that exists).
 W5 landed on its own as the issue-1780 fix (`2b6c3aedc2`), on all three
-roads. Two pieces of residue are tracked rather than open here:
+roads. The residue is tracked rather than left open here:
 - issue 1805 owns what the first `just check deny` found and a breaking bump
   must fix;
-- W2's "two hosts" and W9's optional `cargo vendor` are recorded as not done.
+- W2's "two hosts" and W9's optional `cargo vendor` are recorded as not done;
+- `[generated.*]` is NOT in `nros-sdk.lock`. The 1780 fix keeps each
+  package's record beside it (`generated/<pkg>/nros-generated.toml`), and
+  nothing copies those records into the project lock. W6 reads them in
+  place.
 
 Implements
 [RFC-0104](../../design/0104-dependency-pinning-and-project-lock.md). The RFC's
