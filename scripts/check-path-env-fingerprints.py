@@ -245,8 +245,8 @@ UNRESOLVED_EXEMPTIONS = Exemptions(
         ("packages/tooling/nros-platform-config/src/platform_config.rs", "executor_rung_opt",
          "key"):
             "`executor_env_key(knob)` — the `NROS_EXECUTOR_*` sizing knobs",
-        ("packages/tooling/nros-zephyr-build/src/lib.rs", "stated", "self.env_name"):
-            "`Knob::env_name` — a Kconfig-paired integer knob (`KCONFIG_PAIRS`)",
+        ("packages/tooling/nros-zephyr-build/src/lib.rs", "env_spelled", "s"):
+            "every env spelling of a registry knob (`knobs.toml`) — an integer or a flag",
     },
     what="unresolvable watch",
 )

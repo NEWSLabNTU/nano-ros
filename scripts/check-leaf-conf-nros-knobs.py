@@ -58,7 +58,8 @@ from ratchet import fell_instructions, judge  # noqa: E402  phase-472 W9
 
 BASELINE = os.path.join(ROOT, ".config", "leaf-conf-nros-knobs-baseline.txt")
 KCONFIG = os.path.join("zephyr", "Kconfig")
-PAIRS_SRC = os.path.join("packages", "tooling", "nros-zephyr-build", "src", "lib.rs")
+# Generated from the knob registry (`knobs.toml`, phase-484 W5a).
+PAIRS_SRC = os.path.join("packages", "tooling", "nros-zephyr-build", "src", "knob_registry.rs")
 # The renderer's endpoint symbols (`leaf_kconfig::render`, from `locator`).
 ENDPOINT = ("CONFIG_NROS_ZENOH_LOCATOR", "CONFIG_NROS_XRCE_AGENT_ADDR",
             "CONFIG_NROS_XRCE_AGENT_PORT")
@@ -114,7 +115,13 @@ def kconfig_pairs(text: str) -> dict:
     rows = re.findall(r'"([A-Z0-9_]+)"\s*,\s*"(CONFIG_[A-Z0-9_]+)"', body)
     if not rows:
         raise SystemExit("check-leaf-conf-nros-knobs: KCONFIG_PAIRS harvested empty")
-    return {sym: env for env, sym in rows}
+    # A symbol can now have several spellings (the registry's canonical
+    # `NROS_*` and its deprecated `ZPICO_*`); name the canonical one.
+    out = {}
+    for env, sym in rows:
+        if sym not in out or env.startswith("NROS_"):
+            out[sym] = env
+    return out
 
 
 def classify(sym: str, value: str, model, pairs):

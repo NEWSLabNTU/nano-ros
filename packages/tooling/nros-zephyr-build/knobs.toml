@@ -1,0 +1,364 @@
+# The knob registry: ONE row per build-time knob (RFC-0103 D2b, phase-484 W5a).
+#
+# Every other spelling of a knob is DERIVED from its row:
+#   env      NROS_<id>; `legacy` names are accepted until phase-484 W8
+#   Kconfig  CONFIG_<kconfig>, default CONFIG_NROS_<id>. A row names `kconfig`
+#            only where today's symbol differs; no Kconfig symbol is renamed
+#            (phase-481 owns them). The zenoh pools read the RMW-agnostic
+#            DEMAND symbol, which is why the id is not the Kconfig stem.
+#   TOML     `[knobs.<toml>]` — the `[board.knobs]` / platform key, where one exists
+#
+# Edit here, then run `python3 scripts/gen-knob-registry.py`; the generated
+# Rust beside it is checked by `just check knob-registry`.
+
+[[knob]]
+id = "ACTION_INBOX_BYTES"
+
+[[knob]]
+id = "ACTION_INBOX_DEPTH"
+
+[[knob]]
+id = "CYCLONEDDS_MAX_DESCRIPTOR_TYPES"
+
+[[knob]]
+id = "CYCLONEDDS_MAX_TYPES"
+
+[[knob]]
+id = "ENTRY_SPIN_MS"
+
+[[knob]]
+id = "EXECUTOR_ACTION_CLIENTS"
+toml = "executor.action_clients"
+
+[[knob]]
+id = "EXECUTOR_ARENA_SIZE"
+toml = "executor.arena_size"
+
+[[knob]]
+id = "EXECUTOR_BACKING_U64S"
+toml = "executor.backing_u64s"
+
+[[knob]]
+id = "EXECUTOR_MAX_AGE_MONITORS"
+
+[[knob]]
+id = "EXECUTOR_MAX_CBS"
+toml = "executor.max_cbs"
+
+[[knob]]
+id = "EXECUTOR_MAX_MONITORS"
+
+[[knob]]
+id = "EXECUTOR_MAX_NODES"
+toml = "executor.max_nodes"
+
+[[knob]]
+id = "EXECUTOR_MAX_SC"
+toml = "executor.max_sc"
+
+[[knob]]
+id = "EXECUTOR_MAX_SHUTDOWN_CBS"
+toml = "executor.max_shutdown_cbs"
+
+[[knob]]
+id = "EXECUTOR_MAX_VIOLATIONS"
+
+[[knob]]
+id = "FREERTOS_APP_STACK_KB"
+
+[[knob]]
+id = "FREERTOS_HEAP_KB"
+
+[[knob]]
+id = "GRAPH_MAX_ENTITIES"
+
+[[knob]]
+id = "KEYEXPR_STRING_SIZE"
+toml = "zenoh.limits.keyexpr_string_size"
+
+[[knob]]
+id = "LET_BUFFER_SIZE"
+toml = "runtime.let_buffer_size"
+
+[[knob]]
+id = "LOG_BUFFER_SIZE"
+toml = "log.buffer_size"
+
+[[knob]]
+id = "LOG_DYNAMIC_LOGGERS"
+toml = "log.dynamic_loggers"
+
+[[knob]]
+id = "LOG_EARLY_RECORDS"
+toml = "log.early_records"
+
+[[knob]]
+id = "LOG_MAX_LEVEL"
+toml = "log.max_level"
+
+[[knob]]
+id = "LOG_ROSOUT_RECORDS"
+toml = "log.rosout_records"
+
+[[knob]]
+id = "MAX_ARRAY_LEN"
+toml = "params.max_array_len"
+
+[[knob]]
+id = "MAX_BYTE_ARRAY_LEN"
+toml = "params.max_byte_array_len"
+
+[[knob]]
+id = "MAX_PARAMETERS"
+toml = "params.max_parameters"
+
+[[knob]]
+id = "MAX_PARAM_CONSTRAINTS_LEN"
+toml = "params.max_param_constraints_len"
+
+[[knob]]
+id = "MAX_PARAM_DESCRIPTION_LEN"
+toml = "params.max_param_description_len"
+
+[[knob]]
+id = "MAX_PARAM_NAME_LEN"
+toml = "params.max_param_name_len"
+
+[[knob]]
+id = "MAX_STRING_VALUE_LEN"
+toml = "params.max_string_value_len"
+
+[[knob]]
+id = "PARAM_SERVICE_BUFFER_SIZE"
+toml = "executor.param_service_buffer_size"
+
+[[knob]]
+id = "PARAM_SERVICE_INBOX_BYTES"
+
+[[knob]]
+id = "PARAM_SERVICE_INBOX_DEPTH"
+
+[[knob]]
+id = "PUBSUB_QOS_DEPTH"
+
+[[knob]]
+id = "RMW_LOCAL_QUERYABLE"
+
+[[knob]]
+id = "RMW_MAX_BACKENDS"
+toml = "rmw.max_backends"
+
+[[knob]]
+id = "RMW_MAX_NODES"
+toml = "rmw.max_nodes"
+
+[[knob]]
+id = "RMW_MESSAGE_INFO_SLOTS"
+toml = "rmw.message_info_slots"
+
+[[knob]]
+id = "RMW_SUBSCRIBER_SLOTS"
+
+[[knob]]
+id = "RMW_SUBSCRIBER_SLOT_BYTES"
+toml = "rmw.subscriber_slot_bytes"
+
+[[knob]]
+id = "RUNTIME_COMPONENT_SLOT_BYTES"
+toml = "runtime.component_slot_bytes"
+
+[[knob]]
+id = "RUNTIME_MAX_CELL_ENTITIES"
+toml = "runtime.max_cell_entities"
+
+[[knob]]
+id = "RUNTIME_MAX_CLASS_INSTANCES"
+toml = "runtime.max_class_instances"
+
+[[knob]]
+id = "RUNTIME_MAX_COMPONENTS"
+toml = "runtime.max_components"
+
+[[knob]]
+id = "SERVICE_INBOX_BYTES"
+
+[[knob]]
+id = "SERVICE_INBOX_DEPTH"
+
+[[knob]]
+id = "SERVICE_TIMEOUT_MS"
+toml = "zenoh.limits.service_timeout_ms"
+
+[[knob]]
+id = "SMOLTCP_BUFFER_SIZE"
+legacy = ["ZPICO_SMOLTCP_BUFFER_SIZE"]
+toml = "net.buffer_size"
+
+[[knob]]
+id = "SMOLTCP_CONNECT_TIMEOUT_MS"
+legacy = ["ZPICO_SMOLTCP_CONNECT_TIMEOUT_MS"]
+toml = "net.connect_timeout_ms"
+
+[[knob]]
+id = "SMOLTCP_MAX_SOCKETS"
+legacy = ["ZPICO_SMOLTCP_MAX_SOCKETS"]
+toml = "net.max_sockets"
+
+[[knob]]
+id = "SMOLTCP_MAX_UDP_SOCKETS"
+legacy = ["ZPICO_SMOLTCP_MAX_UDP_SOCKETS"]
+toml = "net.max_udp_sockets"
+
+[[knob]]
+id = "SMOLTCP_SOCKET_TIMEOUT_MS"
+legacy = ["ZPICO_SMOLTCP_SOCKET_TIMEOUT_MS"]
+toml = "net.socket_timeout_ms"
+
+[[knob]]
+id = "SUBSCRIBER_BUFFER_SIZE"
+
+[[knob]]
+id = "SUBSCRIPTION_BUFFER_SIZE"
+toml = "executor.subscription_buffer_size"
+
+[[knob]]
+id = "XRCE_CUSTOM_TRANSPORT_MTU"
+toml = "xrce.custom_transport_mtu"
+
+[[knob]]
+id = "XRCE_STREAM_HISTORY"
+toml = "xrce.stream_history"
+
+[[knob]]
+id = "ZENOH_BATCH_MULTICAST_SIZE"
+legacy = ["ZPICO_BATCH_MULTICAST_SIZE"]
+toml = "zenoh.wire.batch_multicast_size"
+
+[[knob]]
+id = "ZENOH_BATCH_UNICAST_SIZE"
+legacy = ["ZPICO_BATCH_UNICAST_SIZE"]
+kconfig = "NROS_BATCH_UNICAST_SIZE"
+toml = "zenoh.wire.batch_unicast_size"
+
+[[knob]]
+id = "ZENOH_FRAG_MAX_SIZE"
+legacy = ["ZPICO_FRAG_MAX_SIZE"]
+kconfig = "NROS_FRAG_MAX_SIZE"
+toml = "zenoh.wire.frag_max_size"
+
+[[knob]]
+id = "ZENOH_GET_POLL_INTERVAL_MS"
+legacy = ["ZPICO_GET_POLL_INTERVAL_MS"]
+kconfig = "NROS_GET_POLL_INTERVAL_MS"
+toml = "zenoh.wire.get_poll_interval_ms"
+
+[[knob]]
+id = "ZENOH_GET_REPLY_BUF_SIZE"
+legacy = ["ZPICO_GET_REPLY_BUF_SIZE"]
+kconfig = "NROS_GET_REPLY_BUF_SIZE"
+toml = "zenoh.wire.get_reply_buf_size"
+
+[[knob]]
+id = "ZENOH_GRAPH_CACHE_SIZE"
+legacy = ["ZPICO_GRAPH_CACHE_SIZE"]
+kconfig = "NROS_GRAPH_CACHE_SIZE"
+
+[[knob]]
+id = "ZENOH_GRAPH_DISCOVERY"
+legacy = ["ZPICO_GRAPH_DISCOVERY"]
+
+[[knob]]
+id = "ZENOH_LEASE_PRIORITY"
+legacy = ["ZPICO_LEASE_TASK_PRIORITY"]
+
+[[knob]]
+id = "ZENOH_MAX_LARGE_SUBSCRIBERS"
+legacy = ["ZPICO_MAX_LARGE_SUBSCRIBERS"]
+kconfig = "NROS_MAX_LARGE_SUBSCRIBERS"
+
+[[knob]]
+id = "ZENOH_MAX_LIVELINESS"
+legacy = ["ZPICO_MAX_LIVELINESS"]
+kconfig = "NROS_MAX_LIVELINESS"
+
+[[knob]]
+id = "ZENOH_MAX_PENDING_GETS"
+legacy = ["ZPICO_MAX_PENDING_GETS"]
+kconfig = "NROS_MAX_PENDING_GETS"
+
+[[knob]]
+id = "ZENOH_MAX_PUBLISHERS"
+legacy = ["ZPICO_MAX_PUBLISHERS"]
+kconfig = "NROS_MAX_PUBLISHERS"
+
+[[knob]]
+id = "ZENOH_MAX_QUERYABLES"
+legacy = ["ZPICO_MAX_QUERYABLES"]
+kconfig = "NROS_MAX_QUERYABLES"
+
+[[knob]]
+id = "ZENOH_MAX_SESSIONS"
+legacy = ["ZPICO_MAX_SESSIONS"]
+
+[[knob]]
+id = "ZENOH_MAX_SUBSCRIBERS"
+legacy = ["ZPICO_MAX_SUBSCRIBERS"]
+kconfig = "NROS_MAX_SUBSCRIBERS"
+
+[[knob]]
+id = "ZENOH_MAX_TL_PUBLISHERS"
+legacy = ["ZPICO_MAX_TL_PUBLISHERS"]
+
+[[knob]]
+id = "ZENOH_PUBLISHER_TX_BUFFER_SIZE"
+legacy = ["ZPICO_PUBLISHER_TX_BUFFER_SIZE"]
+
+[[knob]]
+id = "ZENOH_READ_PRIORITY"
+legacy = ["ZPICO_READ_TASK_PRIORITY"]
+
+[[knob]]
+id = "ZENOH_SERVICE_BUFFER_SIZE"
+legacy = ["ZPICO_SERVICE_BUFFER_SIZE"]
+kconfig = "NROS_SERVICE_BUFFER_SIZE"
+
+[[knob]]
+id = "ZENOH_SUBSCRIBER_LARGE_SIZE"
+legacy = ["ZPICO_SUBSCRIBER_LARGE_SIZE"]
+kconfig = "NROS_SUBSCRIBER_LARGE_SIZE"
+
+[[knob]]
+id = "ZENOH_SUBSCRIBER_RING_DEPTH"
+legacy = ["ZPICO_SUBSCRIBER_RING_DEPTH"]
+kconfig = "NROS_SUBSCRIBER_RING_DEPTH"
+toml = "zenoh.limits.subscriber_ring_depth"
+
+[[knob]]
+id = "ZENOH_SUBSCRIBER_SIZE_THRESHOLD"
+legacy = ["ZPICO_SUBSCRIBER_SIZE_THRESHOLD"]
+
+[[knob]]
+id = "ZENOH_TL_RETAIN_BYTES"
+legacy = ["ZPICO_TL_RETAIN_BYTES"]
+
+[[knob]]
+id = "ZENOH_TL_RETAIN_DEPTH"
+legacy = ["ZPICO_TL_RETAIN_DEPTH"]
+
+[[knob]]
+id = "ZENOH_TX_BATCH"
+legacy = ["ZPICO_TX_BATCH"]
+toml = "zenoh.tx.batch"
+
+[[knob]]
+id = "ZENOH_TX_BATCH_FLUSH_MS"
+legacy = ["ZPICO_TX_BATCH_FLUSH_MS"]
+toml = "zenoh.tx.flush_ms"
+
+[[knob]]
+id = "ZENOH_TX_SPLIT_LOCK"
+legacy = ["ZPICO_TX_SPLIT_LOCK"]
+toml = "zenoh.tx.split_lock"
+
+[[knob]]
+id = "ZEPHYR_HEAP_SIZE"

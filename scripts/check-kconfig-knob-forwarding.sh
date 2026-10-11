@@ -99,9 +99,9 @@ cd "$(dirname "$0")/.."
 source scripts/lib/grep-q.sh
 
 CMAKE=zephyr/cmake/nros_cargo_build.cmake
-# The crate that owns the ladder AND the pairing table. One file, because there
-# is one of each.
-RESOLVER=packages/tooling/nros-zephyr-build/src/lib.rs
+# The pairing table the ladder reads: GENERATED from the knob registry
+# (`knobs.toml`, phase-484 W5a) beside the crate that owns the ladder.
+RESOLVER=packages/tooling/nros-zephyr-build/src/knob_registry.rs
 # Every build script that resolves a forwarded knob. ONE list since phase-468
 # W4: the DERIVED/TABULATING split was a property of the two per-crate tables,
 # and both are gone.
@@ -286,7 +286,8 @@ check_pairings() {
             echo "       resolves it from $want." >&2
             echo "       On a Zephyr Rust image that reads the crate default" >&2
             echo "       whatever Kconfig says (issues 0460, 1490)." >&2
-            echo "       Fix the row in $RESOLVER's KCONFIG_PAIRS:" >&2
+            echo "       Fix the knob's \`kconfig\` in knobs.toml and re-run" >&2
+            echo "       scripts/gen-knob-registry.py; the pair it must yield:" >&2
             echo "         (\"$knob\", \"$sym\")," >&2
             bad=1
         fi

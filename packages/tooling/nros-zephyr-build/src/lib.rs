@@ -83,115 +83,97 @@ fn bake_directives(dotconfig: &str) -> Vec<String> {
     out
 }
 
-/// The AUTHORED env↔Kconfig pairings: every knob whose Kconfig symbol is NOT
-/// `CONFIG_<env name>`.
+/// One knob of the registry: every spelling of it derives from this row.
 ///
-/// phase-468 W4. There used to be two of these, one per TABULATING reader
-/// (`nros-rmw-zenoh/build.rs` and `nros-zpico-build`'s runner), and a knob
-/// resolved through the pairing its own crate happened to hold. That is what
-/// made issue 1233 possible in the first place: `NROS_EXECUTOR_MAX_NODES` is
-/// read by `nros-node` through the DERIVED spelling and by `nros-rmw-zenoh`
-/// through a table with no row for it, so ONE Kconfig symbol sized one crate
-/// and not the other, and the comment beside it said "keep them in sync".
-/// A pairing is a property of the KNOB, not of whoever reads it, so it lives
-/// here — beside the one function that consumes it.
+/// RFC-0103 D2b, phase-484 W5a. The rows are `knobs.toml` beside this crate,
+/// rendered into `knob_registry.rs` by `scripts/gen-knob-registry.py` because
+/// this crate is dependency-free and cannot parse TOML in a build script;
+/// `just check knob-registry` holds the two equal.
 ///
-/// **Only the knobs whose two names are different WORDS belong here.** A row
-/// for a derived-identical pair (`NROS_SERVICE_INBOX_BYTES` ↔
-/// `CONFIG_NROS_SERVICE_INBOX_BYTES`) states nothing [`kconfig_key_for`] does
-/// not already compute, and its absence is then indistinguishable from the
-/// 1490 defect it is meant to prevent. EIGHT of the twenty-five rows the two
-/// old tables carried were exactly that; two of the three LIVE splits issue
-/// 1490 measured — the `NROS_PARAM_SERVICE_INBOX_{BYTES,DEPTH}` pair — were
-/// derived-identical and are now unwritable rather than merely written.
-/// 25 rows became 19: 8 dropped, and 2 added for knobs that had a row in
-/// NEITHER old table (see `ZPICO_MAX_LARGE_SUBSCRIBERS` below).
-///
-/// The pairings are declared on the producing side by `_nros_resolve_knob()` /
-/// `_nros_resolve_derivable_knob()` in `zephyr/cmake/nros_cargo_build.cmake`,
-/// most of them as a literal `"${CONFIG_<SYM>}"` value.
-/// `check-kconfig-knob-forwarding` harvests those and holds this table to them.
-pub const KCONFIG_PAIRS: &[(&str, &str)] = &[
-    // The zenoh-pico C shim's own vocabulary. `ZPICO_*` is what the shim's
-    // `-D` flags and its Rust build script call a knob; Kconfig names the same
-    // number `CONFIG_NROS_*`, because a Kconfig symbol is RMW-agnostic
-    // (phase-403's rule).
-    ("ZPICO_MAX_PUBLISHERS", "CONFIG_NROS_MAX_PUBLISHERS"),
-    ("ZPICO_MAX_SUBSCRIBERS", "CONFIG_NROS_MAX_SUBSCRIBERS"),
-    ("ZPICO_MAX_QUERYABLES", "CONFIG_NROS_MAX_QUERYABLES"),
-    ("ZPICO_MAX_LIVELINESS", "CONFIG_NROS_MAX_LIVELINESS"),
-    ("ZPICO_MAX_PENDING_GETS", "CONFIG_NROS_MAX_PENDING_GETS"),
-    ("ZPICO_GET_REPLY_BUF_SIZE", "CONFIG_NROS_GET_REPLY_BUF_SIZE"),
-    (
-        "ZPICO_GET_POLL_INTERVAL_MS",
-        "CONFIG_NROS_GET_POLL_INTERVAL_MS",
-    ),
-    ("ZPICO_FRAG_MAX_SIZE", "CONFIG_NROS_FRAG_MAX_SIZE"),
-    ("ZPICO_BATCH_UNICAST_SIZE", "CONFIG_NROS_BATCH_UNICAST_SIZE"),
-    ("ZPICO_GRAPH_CACHE_SIZE", "CONFIG_NROS_GRAPH_CACHE_SIZE"),
-    // D9 (safety-island demo) -- the C shim's define against the Kconfig bool,
-    // which carries the `ZENOH_` segment like the tx trio below. cmake resolves
-    // it to "1"/"0" from the bool, so arm 2 of `check-kconfig-knob-forwarding`
-    // cannot harvest this row and it is authored.
-    ("ZPICO_GRAPH_DISCOVERY", "CONFIG_NROS_ZENOH_GRAPH_DISCOVERY"),
-    (
-        "ZPICO_SERVICE_BUFFER_SIZE",
-        "CONFIG_NROS_SERVICE_BUFFER_SIZE",
-    ),
-    (
-        "ZPICO_SUBSCRIBER_RING_DEPTH",
-        "CONFIG_NROS_SUBSCRIBER_RING_DEPTH",
-    ),
-    // phase-468 W4 — these two had NO row in either old table while the cmake
-    // side forwards both from a `CONFIG_NROS_*` symbol, so on a Zephyr Rust
-    // image they were read env-only: issue 0460, in the pair that multiplies
-    // into the largest pool the tree has
-    // (`ZPICO_MAX_LARGE_SUBSCRIBERS × ZPICO_SUBSCRIBER_RING_DEPTH ×
-    // ZPICO_SUBSCRIBER_LARGE_SIZE`). They were invisible to
-    // `check-kconfig-knob-forwarding` because it harvested `_nros_resolve_knob(`
-    // only, and both are forwarded by `_nros_resolve_derivable_knob(` — issue
-    // 1505.
-    (
-        "ZPICO_MAX_LARGE_SUBSCRIBERS",
-        "CONFIG_NROS_MAX_LARGE_SUBSCRIBERS",
-    ),
-    (
-        "ZPICO_SUBSCRIBER_LARGE_SIZE",
-        "CONFIG_NROS_SUBSCRIBER_LARGE_SIZE",
-    ),
-    // The tx trio, where Kconfig carries an extra `ZENOH_` segment the env
-    // front-end does not. A bool option reads `y`/`n` in the `.config` and the
-    // C shim takes `-DZPICO_TX_BATCH=1`, which [`kconfig_usize`] maps.
-    ("ZPICO_TX_BATCH", "CONFIG_NROS_ZENOH_TX_BATCH"),
-    ("ZPICO_TX_SPLIT_LOCK", "CONFIG_NROS_ZENOH_TX_SPLIT_LOCK"),
-    (
-        "ZPICO_TX_BATCH_FLUSH_MS",
-        "CONFIG_NROS_ZENOH_TX_BATCH_FLUSH_MS",
-    ),
-    // issue 0626's transport priorities: `ZPICO_<role>_TASK_PRIORITY` against
-    // `CONFIG_NROS_ZENOH_<role>_PRIORITY`.
-    (
-        "ZPICO_READ_TASK_PRIORITY",
-        "CONFIG_NROS_ZENOH_READ_PRIORITY",
-    ),
-    (
-        "ZPICO_LEASE_TASK_PRIORITY",
-        "CONFIG_NROS_ZENOH_LEASE_PRIORITY",
-    ),
-];
+/// That replaced a hand table of env↔Kconfig pairs, which phase-468 W4 had
+/// already reduced from two tables to one (issue 1233: one Kconfig symbol
+/// sized two crates differently because each read its own pairing). What it
+/// could not say is that `ZPICO_MAX_PUBLISHERS`, `CONFIG_NROS_MAX_PUBLISHERS`
+/// and the platform-config key are ONE knob — so each reader spelled the name
+/// it knew, and a knob had as many names as it had readers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KnobRow {
+    /// `NROS_<id>` is the env spelling.
+    pub id: &'static str,
+    /// The canonical env spelling, `NROS_<id>`.
+    pub env: &'static str,
+    /// Older env spellings, still read until phase-484 W8 retires them.
+    pub legacy: &'static [&'static str],
+    /// The Kconfig symbol the `$DOTCONFIG` rung reads. Defaults to
+    /// `CONFIG_NROS_<id>`; the zenoh pools read the RMW-agnostic demand symbol
+    /// (`ZENOH_MAX_PUBLISHERS` reads `CONFIG_NROS_MAX_PUBLISHERS`), which is
+    /// why the id is not the Kconfig stem (RFC-0103 D2b).
+    pub kconfig: &'static str,
+    /// `<group>.<name>` under `[knobs]`, where the platform/board ladder has one.
+    pub toml: Option<&'static str>,
+}
 
-/// The Kconfig symbol a knob resolves from: the authored pairing if one exists,
-/// else `CONFIG_<env name>`.
+// Generated, so rustfmt leaves it as the generator wrote it and `--check` stays exact.
+#[rustfmt::skip]
+mod knob_registry;
+pub use knob_registry::{KCONFIG_PAIRS, KNOBS};
+
+/// The registry row a spelling names, canonical or legacy.
+#[must_use]
+pub fn knob_row(name: &str) -> Option<&'static KnobRow> {
+    KNOBS
+        .iter()
+        .find(|r| r.env == name || r.legacy.contains(&name))
+}
+
+/// Every env spelling of the knob `name` names, canonical first. A name the
+/// registry does not hold is its own only spelling.
+fn spellings(name: &str) -> Vec<&str> {
+    match knob_row(name) {
+        Some(r) => std::iter::once(r.env)
+            .chain(r.legacy.iter().copied())
+            .collect(),
+        None => vec![name],
+    }
+}
+
+/// Rung 1 over every spelling: the value a person set, under whichever name.
 ///
-/// The derivation is the DEFAULT because it is right for 33 of the 47 knobs the
-/// cmake module forwards, and because a reader that has to name a key can name
-/// the wrong one. A symbol that does not exist simply never appears in a
-/// `.config`, so a derived lookup for a knob with no Kconfig side is a miss and
-/// not an error.
+/// Two spellings set to DIFFERENT values is a build error naming both, the
+/// rule the cmake twin applies to a deprecated variable and its new name
+/// (`cmake/NanoRosDeprecatedNames.cmake`): picking one silently would answer a
+/// question nobody asked.
+fn env_spelled(name: &str, watch: bool) -> Option<(String, String)> {
+    let mut found: Option<(String, String)> = None;
+    for s in spellings(name) {
+        if watch {
+            println!("cargo:rerun-if-env-changed={s}");
+        }
+        let Some(v) = env::var(s).ok().filter(|v| !v.trim().is_empty()) else {
+            continue;
+        };
+        match &found {
+            None => found = Some((s.to_string(), v)),
+            Some((first, fv)) if fv.trim() != v.trim() => panic!(
+                "nros-zephyr-build: {first}={fv} and {s}={v} name ONE knob with \
+                 two values. {s} is a deprecated spelling (phase-484 W5a); set \
+                 only {first}."
+            ),
+            Some(_) => {}
+        }
+    }
+    found
+}
+
+/// The Kconfig symbol a knob resolves from: its registry row's, for any of its
+/// spellings, else `CONFIG_<env name>`.
+///
+/// A symbol that does not exist simply never appears in a `.config`, so a
+/// lookup for a knob with no Kconfig side is a miss and not an error.
 #[must_use]
 pub fn kconfig_key_for(env_name: &str) -> String {
-    match KCONFIG_PAIRS.iter().find(|(env, _)| *env == env_name) {
-        Some((_, kconfig)) => (*kconfig).to_string(),
+    match knob_row(env_name) {
+        Some(row) => row.kconfig.to_string(),
         None => format!("CONFIG_{env_name}"),
     }
 }
@@ -297,17 +279,14 @@ impl<'a> Knob<'a> {
     /// opt-out that must stay distinguishable from absence.
     #[must_use]
     pub fn stated(&self) -> Option<usize> {
-        println!("cargo:rerun-if-env-changed={}", self.env_name);
-        match env::var(self.env_name) {
-            Ok(raw) if !raw.trim().is_empty() => match raw.trim().parse::<usize>() {
+        if let Some((name, raw)) = env_spelled(self.env_name, true) {
+            match raw.trim().parse::<usize>() {
                 Ok(v) => return Some(v),
-                Err(_) if self.strict_env => panic!(
-                    "nros-zephyr-build: {}='{raw}' is not a number",
-                    self.env_name
-                ),
+                Err(_) if self.strict_env => {
+                    panic!("nros-zephyr-build: {name}='{raw}' is not a number")
+                }
                 Err(_) => {}
-            },
-            _ => {}
+            }
         }
         self.kconfig_rung().or(self.rung)
     }
@@ -371,7 +350,7 @@ impl<'a> Knob<'a> {
     /// broken build whatever key was being asked for.
     #[must_use]
     pub fn stated_str(&self) -> Option<String> {
-        if let Some(v) = env::var(self.env_name).ok().filter(|v| !v.is_empty()) {
+        if let Some((_, v)) = env_spelled(self.env_name, false) {
             return Some(v);
         }
         self.kconfig_rung().map(|v| v.to_string())
@@ -576,6 +555,21 @@ mod tests {
             13,
             "an explicit env value must outrank every other rung"
         );
+        // phase-484 W5a — rung 1 reads EVERY spelling of the knob, whichever
+        // one the caller names. Agreeing spellings are one value; disagreeing
+        // ones are a build error rather than a silent pick.
+        unsafe { env::set_var("NROS_ZENOH_SUBSCRIBER_RING_DEPTH", "13") };
+        assert_eq!(knob("ZPICO_SUBSCRIBER_RING_DEPTH").resolve(4), 13);
+        unsafe { env::set_var("NROS_ZENOH_SUBSCRIBER_RING_DEPTH", "14") };
+        let split = std::panic::catch_unwind(|| knob("ZPICO_SUBSCRIBER_RING_DEPTH").resolve(4));
+        assert!(split.is_err(), "two spellings, two values, must refuse");
+        unsafe { env::remove_var("ZPICO_SUBSCRIBER_RING_DEPTH") };
+        assert_eq!(
+            knob("ZPICO_SUBSCRIBER_RING_DEPTH").resolve(4),
+            14,
+            "a reader naming the legacy spelling must see the canonical one"
+        );
+        unsafe { env::remove_var("NROS_ZENOH_SUBSCRIBER_RING_DEPTH") };
         // A non-numeric env value is ABSENT by default and a build error under
         // `strict_env` — the one policy difference between the readers, and an
         // INPUT rather than a second function.
@@ -640,10 +634,33 @@ mod tests {
         }
     }
 
+    /// `KCONFIG_PAIRS` is a VIEW of the registry, never a second list: every
+    /// row is a spelling of a registry knob and names that knob's symbol.
+    #[test]
+    fn the_pairs_are_the_registry_s() {
+        for (env_name, kconfig) in KCONFIG_PAIRS {
+            let row = knob_row(env_name)
+                .unwrap_or_else(|| panic!("{env_name}: a pair with no registry row"));
+            assert_eq!(row.kconfig, *kconfig, "{env_name}");
+        }
+        for row in KNOBS {
+            assert_eq!(row.env, format!("NROS_{}", row.id), "{}", row.id);
+            for s in std::iter::once(row.env).chain(row.legacy.iter().copied()) {
+                assert_eq!(kconfig_key_for(s), row.kconfig, "{s}");
+            }
+        }
+    }
+
     #[test]
     fn a_key_is_paired_or_derived() {
         assert_eq!(
             kconfig_key_for("ZPICO_MAX_QUERYABLES"),
+            "CONFIG_NROS_MAX_QUERYABLES"
+        );
+        // The canonical spelling of the same knob reads the same symbol: the
+        // zenoh pool is floored from the RMW-agnostic demand (RFC-0103 D2b).
+        assert_eq!(
+            kconfig_key_for("NROS_ZENOH_MAX_QUERYABLES"),
             "CONFIG_NROS_MAX_QUERYABLES"
         );
         assert_eq!(
