@@ -1,0 +1,90 @@
+# Phase 492 — The C API drops `nros_`: upstream names, `rclc_` for the rest
+
+**Status (2026-10-12). Opened.** Nothing landed yet. Implements the
+[RFC-0089](../design/0089-ros2-api-adoption-and-the-compile-or-conform-rule.md)
+amendment "`nros_` is phased out of the C API; ours-only names take `rclc_`"
+(2026-10-12). The C counterpart of the C++ `nros::` → `rclcpp::` flip
+(phase-427/428). Runs beside [phase-491](phase-491-c-parameter-server.md),
+whose parameter surface already follows the rule.
+
+## Why
+
+A ported rclc file should compile unchanged, and a nano-ros C user should
+learn one vocabulary. Today the C user API is mostly `nros_`: 468 ours-only
+items, 151 with an upstream counterpart, of which 77 already carry upstream's
+name natively and at least six also keep an `nros_` twin
+(`scripts/api-parity.py --lang c`, rclc + rcl humble, at `d457eed61e`).
+
+## Work items
+
+**W1 — The rename map and its gates.**
+Generate the map from the parity report and the ledger, one row per public C
+name in the `nros-c` headers: upstream spelling (ADOPT / ADOPT-BOUNDED), a
+distinct `rclc_` spelling (a `differs` row that does not conform), or
+`rclc_<name>` (ours-only). Commit it as a reviewed table. Add a gate that
+counts `nros_` names in the public C headers, as a ratchet that ends at zero,
+and extend the parity tripwire to ours-only header names under
+`include/rclc/`.
+*Acceptance:* every one of the 619 items has exactly one target name; no target
+collides with a name in `docs/reference/api-surface/rclc.json` unless the row is
+an adoption; the 18 `differs` rows each carry a conform-or-rename decision.
+
+**W2 — Upstream header layout.**
+Declare the surface under `include/{rcl,rcl_action,rcl_lifecycle,rclc,rclc_lifecycle,rclc_parameter}/`,
+using upstream's file names where upstream has the file. Ours-only families get
+`include/rclc/<family>.h`. Move the return-code mapping and the documented
+refusals out of `rcl_compat.h` into `<rcl/types.h>` and the family headers.
+Every umbrella keeps the `#error` against upstream's real `rcl` headers.
+*Acceptance:* `packages/api/nros-c/tests/compile` builds a TU that includes only
+upstream paths; a TU that includes both ours and a stub of upstream's
+`<rcl/types.h>` fails to compile with the named message.
+
+**W3 — Rename the symbols, types and constants.**
+In `nros-c`: `#[no_mangle]` names, the cbindgen configuration, opaque-size
+constants, `nros_ret_t`/`NROS_RET_*` → `rcl_ret_t`/`RCL_RET_*` (our values),
+`NROS_PARAMETER_*` and other user-visible constants. The `nros_` twins of
+already-adopted names are deleted. Build knobs (`NROS_MAX_*`, `CONFIG_NROS_*`)
+do not change.
+*Acceptance:* the W1 ratchet reads zero for `packages/api/nros-c/include`;
+`check-ffi-struct-mirrors`, `check-abi-bindings` and the opaque-size asserts are
+green.
+
+**W4 — C components stop calling `nros_cpp_*`.**
+A C component gets an `rcl_node_t *` and an `rclc_executor_t *` from its
+context and uses the C API, so `nros_cpp_*` becomes C++-private. The codegen
+that emits C entries (`tests_c.rs`, `builder/west_app.rs`, the entry emitters
+calling `nros_app_main` and `nros_boot_config_*`) emits the new names.
+*Acceptance:* `git grep 'nros_cpp_' -- '*.c'` is empty outside `nros-cpp`'s own
+tests; `c_param_talker_pkg` and the other C component packages build and pass
+their cells.
+
+**W5 — Migrate every caller.**
+Examples (about 160 files), `packages/testing` (about 70), `packages/cli` (about
+80), the book, `docs/reference/c-api-cmake.md`, the C getting-started page
+(which states that the drop-in is one-directional), and CLAUDE.md's Naming
+line ("nros — code shorthand (crates, Rust/C idents)" no longer covers C API
+identifiers). No forwarders.
+*Acceptance:* `just ci gate` green; `just ci matrix` green (the change touches
+codegen); `git grep -E '\bnros_[a-z_0-9]+\(' -- '*.c'` finds only seam
+implementations.
+
+**W6 — Ledger.**
+Re-key the C rows of `docs/reference/api-parity-ledger/*.json` to the new
+names. Every ours-only row keeps `verdict: extension` and says the name is ours
+inside upstream's prefix.
+*Acceptance:* `just check api-parity` green with `--require-disposition`.
+
+## Open question
+
+* **Message names.** Generated C messages are `std_msgs_msg_string` in
+  `"std_msgs.h"`; rosidl's C is `std_msgs__msg__String` in
+  `<std_msgs/msg/string.h>`. A ported rclc file uses rosidl's. Taking them is a
+  codegen change (struct, header and field-type names; `rosidl_runtime_c__String`
+  member paths) and does not touch the typesupport refusal. Decide before W5,
+  because it moves every example a second time if done after.
+
+## Out of scope
+
+* The port seams (RMW, platform, board C ABIs), CMake function and target
+  names, and build knobs (RFC-0089 amendment, "What does NOT move").
+* The C++ API, already on `rclcpp::`.
