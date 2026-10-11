@@ -58,7 +58,7 @@ calling `nros_app_main` and `nros_boot_config_*`) emits the new names.
 tests; `c_param_talker_pkg` and the other C component packages build and pass
 their cells.
 
-**W5 — Migrate every caller.**
+**W5 — Migrate every caller** (after W7 and W8).
 Examples (about 160 files), `packages/testing` (about 70), `packages/cli` (about
 80), the book, `docs/reference/c-api-cmake.md`, the C getting-started page
 (which states that the drop-in is one-directional), and CLAUDE.md's Naming
@@ -74,14 +74,34 @@ names. Every ours-only row keeps `verdict: extension` and says the name is ours
 inside upstream's prefix.
 *Acceptance:* `just check api-parity` green with `--require-disposition`.
 
-## Open question
+**W7 — Messages in rosidl's names and shape.**
+The C pack of `rosidl-codegen` emits RFC-0089's "Messages take rosidl's C names
+AND its member shape": rosidl struct, header and constant names;
+`rosidl_runtime_c__String` and `__Sequence` members; `__Storage` +
+`__init_in`; no allocating rosidl functions; the RFC-0033 `heap` arm removed
+from the C emitter. The runtime types (`rosidl_runtime_c__String`, the primitive
+sequences) ship once in `nros-c` under `include/rosidl_runtime_c/`. Lands
+before W5 so every example moves once.
+*Acceptance:* a TU written against micro-ROS's manual-buffer idiom for
+`std_msgs/String` and `sensor_msgs/LaserScan` compiles unchanged; a TU calling
+`std_msgs__msg__String__init` fails to compile with the message naming
+`__init_in`; deserialising a string longer than its `capacity` returns an error
+and writes nothing past it; a counting allocator sees zero allocations across
+`__init_in`, serialise and deserialise; the RFC-0033 cross-language capacity
+tests still pass for Rust and C++.
 
-* **Message names.** Generated C messages are `std_msgs_msg_string` in
-  `"std_msgs.h"`; rosidl's C is `std_msgs__msg__String` in
-  `<std_msgs/msg/string.h>`. A ported rclc file uses rosidl's. Taking them is a
-  codegen change (struct, header and field-type names; `rosidl_runtime_c__String`
-  member paths) and does not touch the typesupport refusal. Decide before W5,
-  because it moves every example a second time if done after.
+**W8 — Type support through the descriptor.**
+RFC-0089 "`ROSIDL_GET_*_TYPE_SUPPORT` adopted as a pass-through": the
+descriptor gains `serialize` / `deserialize`; the C pack emits
+`<pkg>__<sub>__<Name>__nros_type`; `<rosidl_runtime_c/*_type_support_struct.h>`
+define the three macros; publishers and subscriptions keep the descriptor;
+`rcl_publish` / `rcl_take` exist and serialise through it into the carved
+transmit buffer; `rclc_executor_add_subscription_with_context` loses its extra
+argument; the typed helpers retire. Lands with W7.
+*Acceptance:* the micro-ROS-style talker and listener in the RFC compile and
+exchange messages with a ROS 2 peer unchanged; each refused line in the RFC is a
+must-not-compile verdict row (`*-verdict`, issue 1620); a counting allocator
+sees zero allocations across publish and take.
 
 ## Out of scope
 
