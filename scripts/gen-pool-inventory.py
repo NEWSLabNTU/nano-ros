@@ -39,8 +39,10 @@ Run:  python3 scripts/gen-pool-inventory.py [--check] [--self-test]
 import importlib.util
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "book", "src", "reference", "static-pool-inventory.md")
@@ -753,9 +755,15 @@ def self_test():
         '    "stream_history" => "NROS_XRCE_STREAM_HISTORY",\n'
         '    _ => "",\n} }\n'
     )
-    tmp = os.path.join(ROOT, "tmp")
-    os.makedirs(tmp, exist_ok=True)
-    p = os.path.join(tmp, "_pool_probe.rs")
+    # A PRIVATE directory per run, never a fixed name: two gates (`book-links`
+    # and `pool-inventory`) run this self-test in PARALLEL under `check-fast`,
+    # and with one shared `tmp/_pool_probe.rs` the first to finish unlinked
+    # the other's probe (FileNotFoundError, a red that names neither gate's
+    # subject). The siblings already use this idiom.
+    tmp_root = os.path.join(ROOT, "tmp")
+    os.makedirs(tmp_root, exist_ok=True)
+    probe_dir = tempfile.mkdtemp(prefix="pool-probe-", dir=tmp_root)
+    p = os.path.join(probe_dir, "probe.rs")
     with open(p, "w") as fh:
         fh.write(probe)
     k, pl = scan([os.path.relpath(p, ROOT)], xrce=False)
@@ -767,7 +775,7 @@ def self_test():
     # `NROS_XRCE_STREAM_HISTORY` with no figure, so seeding the manifest second
     # would put a line number back in the default column.
     ki, _ = scan([os.path.relpath(p, ROOT)], xrce=True)
-    os.unlink(p)
+    shutil.rmtree(probe_dir)
     # A RELATION, not a list of numbers. Naming the five defaults here would
     # put `internal.h`'s figures in a THIRD file — the generator would then
     # disagree with the tree by construction the moment someone legitimately
