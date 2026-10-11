@@ -886,6 +886,15 @@ every chunk (`ring_high_water`, a volatile counter per call).
 **Verify.** Board, the island's spin diag: `isr_us / isr_n` per late
 interval drops (was 7-10 us); RX `ring_overflows` and UART overruns stay 0.
 
+**On the board** (island `sl-i13`, `sl-i13-b`, `sl-i13-notcm`; spin-diag
+encores, the act segment only, about 5,500-6,000 spins each): 6.2 us per
+ISR call with TCM, 6.0 without, about 505k calls per act either way. The
+ISR is not memory-bound; TCM is for the SRAM (98.7% -> 94.8% on the
+island) and for I16's buffers, not for speed. The late-spin count did not
+move (60.6 and 76.8 per 10k spins >= 2 ms late with TCM, 10.9 and 62.4
+without: run to run, the same image varies that much), so the count of
+ISRs, not their cost, is the lever: I14 and I16.
+
 ### I14 -- one interrupt per FIFO, not per byte
 
 **Fix.** `CONFIG_NROS_ZENOH_SERIAL_FIFO_WATERMARK` (Zephyr, default n; NXP
@@ -933,7 +942,12 @@ stores nothing while OR is set, so clearing early resumes sooner), only OR
 is written as 1 (IDLE and the other W1C flags written 0), and RXIDEN needs
 no clear (it asserts RDRF only while idle with RXCOUNT > 0, which the drain
 takes to 0). Board image (TCM on): FLASH 572492 B, RAM 300624 B, ITCM 14548
-B, DTCM 75400 B. Not run on the board.
+B, DTCM 75400 B.
+
+**On the board** (RXWATER 1, island `sl-i14w1`): 0 spins >= 1 ms late in
+the whole run (11,179 spins), worst 0.94 ms; 0 overruns, 0 bad frames, 0
+ring overflows; 289k ISR calls at 2.94 us (0.85 s of CPU against 4.46 s
+for I13); gate PASS (total 3492.69 of 4934.67 ms).
 
 ### I15 -- TX by DMA
 
@@ -1021,6 +1035,21 @@ DTCM 78016 B. The assert's message then faulted: the board conf has
 backend, and the assert fired under `irq_lock` (dma_mcux_edma.c:664), so
 the print's shell-lock `k_sem_take` could not pend. A board-conf matter
 (deferred log mode, or no shell log backend), not fixed here.
+
+**On the board, with the linker fix** (island `sl-i16b`): the island joins
+and runs on DMA (`_z_zephyr_serial_async_stats`: active 1, 1037 TX
+transfers, 3300 RX_RDY, no RX stop, no re-arm, no error). 0 spins >= 1 ms
+late in the whole run (10,914 spins), worst 0.57 ms; 0 overruns, 0 bad
+frames; the serial ISR ran 7.6k times in all (boot, before the async bind),
+42 ms of CPU. Gate PASS (total 3497.70 of 4934.67 ms, detect 548.55). The
+1-2 tick idle flush is not visible in one run: detect varies with the
+handler's 100 ms tick phase (528.62 in the I14 run).
+
+**Which to use.** Both remove the late spins on the S32K344. I14 is the
+smaller change (no DMA, no driver async path, no idle-flush latency) at
+0.85 s of ISR CPU per act; I16 takes the ISR load to almost nothing but
+adds the eDMA and async lpuart drivers (+11 KiB flash, +3.5 KiB SRAM) and
+needs the linker backport. The island takes I14 (RXWATER 1) with TCM.
 
 **Verify (I15, I16).** Board: the spin diag's ISR count per late interval
 and the late-spin rates; `_z_zephyr_serial_stats` overruns, bad frames and
