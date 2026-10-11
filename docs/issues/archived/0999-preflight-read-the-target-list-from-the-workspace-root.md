@@ -13,7 +13,7 @@ resolved_in: "c003ae608 (2026-09-03)"
 
 The id `0999` is reserved (`refs/issue-ids/0999`) and the fix is on `main`, but
 no `docs/issues/0999-*.md` was ever committed. Four references in
-[phase-416](../../roadmap/phase-416-tier2-lane-and-single-spelling.md) point at
+[phase-416](../../roadmap/archived/phase-416-tier2-lane-and-single-spelling.md) point at
 it, so a reader following them arrives nowhere. This is that file, written from
 the fix commit and from the phase doc rather than from memory.
 

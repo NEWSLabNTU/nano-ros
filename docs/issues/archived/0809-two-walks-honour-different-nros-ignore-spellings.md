@@ -3,11 +3,16 @@ id: 809
 title: "`provider_scan` honours `NROS_IGNORE` while `nros-pkg-index` honours
   `.nros-ignore` — the only spelling that exists on disk is the one the
   order-walk ignores"
-status: open
+status: resolved
 type: bug
 area: build
 related: [issue-0621, phase-383, rfc-0065]
+resolved_in: "4ab6073862"
 ---
+
+## Resolution (2026-10-12)
+
+Fixed on main by `4ab6073862`. `provider_scan` accepts `.nros-ignore` too, so both discovery walks honour the same spellings. Found during the re-homing sweep when phase-383 was archived. The original report follows.
 
 ## Problem
 

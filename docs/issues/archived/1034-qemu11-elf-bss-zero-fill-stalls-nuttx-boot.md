@@ -3,13 +3,18 @@ id: 1034
 title: "The provisioned QEMU 11 spends ~19.6 s materialising a NuttX image's
   `.bss` before the guest runs, and that stall is the whole C-vs-C++ asymmetry
   in issue 0870"
-status: open
+status: resolved
 type: bug
 area: testing, tooling
 severity: high
 found: 2026-09-04
 related: [issue-0870, issue-0930, phase-414, phase-424]
+resolved_in: "fd2f17bcab"
 ---
+
+## Resolution (2026-10-12)
+
+Fixed on main by `fd2f17bcab`. The NuttX pin splits `.bss`; NuttX arm e2e went from 294.8 s to 134.1 s. Found during the re-homing sweep when phase-424 was archived. The original report follows.
 
 ## Symptom
 

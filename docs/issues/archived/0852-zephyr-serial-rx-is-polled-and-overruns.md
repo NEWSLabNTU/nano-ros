@@ -3,11 +3,16 @@ id: 852
 title: "the zenoh read task inherits the executor's priority on Zephyr — the
   declared priority is discarded by the port, so a 20 ms timeslice starves the
   polled serial RX and it overruns"
-status: open
+status: resolved
 type: bug
 area: rmw, platform
 related: [issue-0848, issue-0839, issue-0736, issue-0626, rfc-0079]
+resolved_in: "a67d8668f1"
 ---
+
+## Resolution (2026-10-12)
+
+Fixed on main by `a67d8668f1`, `ed51d4ac51`. The Zephyr transport priority now reaches the read, lease and tx-flush tasks. The tx-flush-vs-read ordering residue is issue 1534. Found during the re-homing sweep when phase-392 was archived. The original report follows.
 
 ## Problem
 
@@ -83,7 +88,7 @@ says:
 
 It was reintroduced one layer down, in nano-ros's own port. Issue 0736 records
 the same shape on NuttX ("zenoh read/lease threads inherit whichever thread
-opened the session"), and [RFC-0079](../design/0079-priority-is-allocated-not-authored.md)
+opened the session"), and [RFC-0079](../../design/0079-priority-is-allocated-not-authored.md)
 is the general statement of it.
 
 ## Why equal priority loses bytes — arithmetic, not a race
@@ -137,7 +142,7 @@ fine". No amount of stack or lease tuning could move it.
 
 ## The red herring worth recording
 
-[Issue 0848](archived/0848-router-sends-no-keepalives-on-serial.md) chased this
+[Issue 0848](0848-router-sends-no-keepalives-on-serial.md) chased this
 as a router defect for a long time, ending on "the keepalive is a 1-byte write
 that never frames". The 1-byte figure was the payload handed to the link;
 z-serial frames it as `header(1) + len(2) + payload + crc32(4)` and
@@ -238,7 +243,7 @@ It ships **disabled**, but not for the reason a previous revision gave.
 
 That revision claimed the ISR path broke the board's declarations from reaching
 the router, on the strength of an A/B with a host talker as a control. With
-[issue 0864](archived/0864-board-zid-is-identical-on-every-boot.md) fixed — the
+[issue 0864](0864-board-zid-is-identical-on-every-boot.md) fixed — the
 board now draws a distinct zid per boot — **that claim is withdrawn**: the ISR
 build's node appears in `ros2 node list` normally. The apparent difference was
 the shared-zid confound, exactly as the first analysis said before it was
@@ -253,7 +258,7 @@ Zephyr shape — `uart_irq_update()` once, then drain while `uart_irq_rx_ready()
 It stays disabled because it is not yet shown to be BETTER, not because it is
 shown to be broken. Both paths currently complete zero goals.
 
-## The zid confound is fixed — [issue 0864](archived/0864-board-zid-is-identical-on-every-boot.md)
+## The zid confound is fixed — [issue 0864](0864-board-zid-is-identical-on-every-boot.md)
 
 The board drew the same zenoh id on every boot, so a router could not tell a
 rebooted board from the peer it already had, and every reconnect-shaped
@@ -281,7 +286,7 @@ campaign, not to this fix.
 
 Any zenoh-over-serial image whose executor is busy enough to hold a timeslice
 loses frames silently. Observed as session expiry at `2 x Z_TRANSPORT_LEASE`
-([issue 0839](archived/0839-action-image-session-expires-every-20s.md)), because the
+([issue 0839](0839-action-image-session-expires-every-20s.md)), because the
 dropped frames are the router's keepalives.
 
 ## Step 3 measured on the shipping pin: the ISR does not earn its place

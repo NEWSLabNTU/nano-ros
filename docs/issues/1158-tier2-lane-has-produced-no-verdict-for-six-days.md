@@ -5,9 +5,11 @@ status: open
 type: bug
 area: ci, testing
 severity: high
-related: [0968, 1016, 1029, 1043, 1075, 1098, 1104, 1114, 1127, 1353, 1457, 1458, 1476, 1477, 1492, 1497, 1501, RFC-0061, phase-416]
+related: [0968, 1016, 1029, 1043, 1075, 1098, 1104, 1114, 1127, 1353, 1457, 1458, 1476, 1477, 1492, 1497, 1501, RFC-0061, phase-416, phase-449]
 found: 2026-09-06
 ---
+
+**Home: [phase-449](../roadmap/phase-449-state-keyed-by-name-not-by-tree.md)** — re-homed 2026-10-12 from phase-416, which is archived.
 
 # The lane whose job is the runtime verdict has not delivered one since 2026-09-01
 

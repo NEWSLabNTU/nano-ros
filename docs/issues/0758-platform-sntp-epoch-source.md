@@ -5,8 +5,10 @@ title: "No platform wall-clock epoch source — embedded consumers hand-roll
 status: open
 type: enhancement
 area: core, boards
-related: [rfc-0052]
+related: [rfc-0052, phase-478]
 ---
+
+**Home: [phase-478](../roadmap/phase-478-island-developer-experience-findings.md)** — re-homed 2026-10-12 from phase-364, which is archived.
 
 ## Problem
 

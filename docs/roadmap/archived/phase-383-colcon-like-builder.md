@@ -875,7 +875,7 @@ migration.
   be cut, W1–W3 plus W8.a is a coherent shippable subset (Rust workspaces only,
   proven against a hostile tree); W4–W7 then follow per language.
 
-## Issues homed here (survey 2026-09-03)
+## Issues formerly homed here (survey 2026-09-03; re-homed or resolved 2026-10-12)
 Every open issue was checked for a home phase; these had none, or were
 mentioned here only in passing. A mention is not an owner — an issue with
 no work item is an issue nobody is accountable for, which is the same shape
@@ -884,11 +884,11 @@ holds the evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0798](../../issues/0798-c-freertos-entry-hardcodes-board-while-root-routes-s32z270.md) | `examples/workspaces/c`'s root routes `s32z270-freertos` to an entry that cannot serve it |
-| [#0809](../../issues/0809-two-walks-honour-different-nros-ignore-spellings.md) | `provider_scan` honours `NROS_IGNORE` while `nros-pkg-index` does not — two discovery paths, one vocabulary |
+| [#0798](../../issues/archived/0798-c-freertos-entry-hardcodes-board-while-root-routes-s32z270.md) | `examples/workspaces/c`'s root routes `s32z270-freertos` to an entry that cannot serve it — **RESOLVED 2026-10-12** (`cc2c1321a3`) |
+| [#0809](../../issues/archived/0809-two-walks-honour-different-nros-ignore-spellings.md) | `provider_scan` honours `NROS_IGNORE` while `nros-pkg-index` does not — two discovery paths, one vocabulary — **RESOLVED 2026-10-12** (`4ab6073862`) |
 | [#0831](../../issues/archived/0831-per-image-rmw-is-inert-on-the-cargo-driver.md) | RESOLVED — `[image.<id>].rmw` selects the backend on the cargo driver, and a missing facade is healed or refused rather than warned past |
-| [#0849](../../issues/0849-nros-sync-bakes-the-invocation-path-spelling.md) | `nros sync` bakes the invocation's path SPELLING into every leaf patch, so a moved checkout resolves wrong |
-| [#0914](../../issues/0914-resolver-shipped-pair-untested.md) | nothing exercises the SHIPPED resolver + `pyexec` pair, so a resolver that cannot load is indistinguishable from one that works |
-| [#0939](../../issues/0939-probe-links-node-name-not-component-lib.md) | the metadata probe links the node NAME, which is not a target |
-| [#0953](../../issues/0953-pyexec-panic-crosses-c-abi.md) | a panic in the Python half crosses `extern "C"` and ABORTS the resolver — the builder's own subprocess boundary |
+| [#0849](../../issues/0849-nros-sync-bakes-the-invocation-path-spelling.md) | `nros sync` bakes the invocation's path SPELLING into every leaf patch, so a moved checkout resolves wrong — **re-homed to [phase-484](../phase-484-one-owner-per-fact.md) 2026-10-12** |
+| [#0914](../../issues/archived/0914-resolver-shipped-pair-untested.md) | nothing exercises the SHIPPED resolver + `pyexec` pair, so a resolver that cannot load is indistinguishable from one that works — **RESOLVED 2026-10-12** (`313a27609b`) |
+| [#0939](../../issues/archived/0939-probe-links-node-name-not-component-lib.md) | the metadata probe links the node NAME, which is not a target — **RESOLVED 2026-10-12** (`1ffa20d07c`) |
+| [#0953](../../issues/archived/0953-pyexec-panic-crosses-c-abi.md) | a panic in the Python half crosses `extern "C"` and ABORTS the resolver — the builder's own subprocess boundary — **RESOLVED 2026-10-12** (`cb46e0f940`) |
 

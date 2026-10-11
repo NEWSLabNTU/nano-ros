@@ -8,6 +8,8 @@ found: 2026-08-28
 related: [phase-395, 0816]
 ---
 
+**Home: [phase-395](../roadmap/phase-395-dev-workflow-migration.md)** — re-homed 2026-10-12 from phase-396, which is archived.
+
 # The PR/nightly check arm has never run to completion
 
 ## What was measured

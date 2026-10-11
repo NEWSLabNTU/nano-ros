@@ -5,8 +5,10 @@ title: "attaching pyocd RTT kills the zenoh session — the debugger perturbs th
 status: open
 type: bug
 area: testing, embedded
-related: [issue-0852, issue-0879, issue-0839]
+related: [issue-0852, issue-0879, issue-0839, phase-478]
 ---
+
+**Home: [phase-478](../roadmap/phase-478-island-developer-experience-findings.md)** — re-homed 2026-10-12 from phase-358, which is archived.
 
 ## Measurement
 
@@ -35,7 +37,7 @@ transient stall into a permanent one.
 
 **Every observation of this board made through RTT was made under the instrument
 that breaks it.** That includes the crash filed as the root cause of
-[issue 0852](0852-zephyr-serial-rx-is-polled-and-overruns.md) —
+[issue 0852](archived/0852-zephyr-serial-rx-is-polled-and-overruns.md) —
 `_z_network_message_elem_copy`, "Illegal load of EXC_RETURN into PC". That fault
 was captured with RTT attached, on an image also running at 98.7 % SRAM.
 

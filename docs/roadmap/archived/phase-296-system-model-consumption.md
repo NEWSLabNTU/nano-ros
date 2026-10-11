@@ -1137,7 +1137,7 @@ green. When the R3 deprecation warning fires in zero fixture builds, R4's
 code removal (require `--model`, delete the `launch` arm + `launch_synth`)
 becomes a mergeable, test-green change.
 
-## Issues homed here (survey 2026-09-03)
+## Issues formerly homed here (survey 2026-09-03; re-homed or resolved 2026-10-12)
 Every open issue was checked for a home phase; these had none, or were
 mentioned here only in passing. A mention is not an owner — an issue with
 no work item is an issue nobody is accountable for, which is the same shape
@@ -1146,5 +1146,5 @@ holds the evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0760](../../issues/0760-ingress-declaration-schema-belongs-to-ros-launch-manifest.md) | RFC-0074's `ingress` declaration is a ros-launch-manifest schema change, not a nano-ros one — it gates what the model can carry |
+| [#0760](../../issues/0760-ingress-declaration-schema-belongs-to-ros-launch-manifest.md) | RFC-0074's `ingress` declaration is a ros-launch-manifest schema change, not a nano-ros one — it gates what the model can carry — **re-homed to [phase-462](../phase-462-safety-vocabulary-on-target.md) 2026-10-12** |
 

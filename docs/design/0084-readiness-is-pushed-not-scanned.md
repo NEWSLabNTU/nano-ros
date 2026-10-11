@@ -215,7 +215,7 @@ already wrong in principle on an image whose whole purpose is bounded latency.
 - **Embassy** — `Waker` per task, intrusive lists, no allocation.
   `WakerRegistration` inside each peripheral driver is this design applied one
   layer lower, and is the pattern to copy for a UART RX ring
-  ([issue 0852](../issues/0852-zephyr-serial-rx-is-polled-and-overruns.md)).
+  ([issue 0852](../issues/archived/0852-zephyr-serial-rx-is-polled-and-overruns.md)).
 - **RTIC** — tasks *are* NVIC priorities; readiness is dispatched by hardware.
   Not adoptable wholesale under ROS semantics, but it is the existence proof
   that the scan is not necessary.

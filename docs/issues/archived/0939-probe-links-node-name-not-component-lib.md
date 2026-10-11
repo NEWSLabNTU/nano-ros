@@ -2,11 +2,16 @@
 id: 939
 title: "The metadata probe links the node NAME, which is not a target — so
   every C/C++ component reports `no producer`, once, and then silently"
-status: open
+status: resolved
 type: bug
 area: tooling
 related: [issue-0409, rfc-0057]
+resolved_in: "1ffa20d07c"
 ---
+
+## Resolution (2026-10-12)
+
+Fixed on main by `1ffa20d07c`. The metadata probe links the component library (`<pkg>_<name>_component`), not the node name. Found during the re-homing sweep when phase-383 was archived. The original report follows.
 
 ## Symptom
 

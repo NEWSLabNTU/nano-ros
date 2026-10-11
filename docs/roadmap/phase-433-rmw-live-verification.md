@@ -289,8 +289,8 @@ must be re-checked against artifact timestamps before it is believed
 *Acceptance:* every Runtime cell has a dated verdict; every failure has an
 issue.
 
-**The pre-flight is done** (PR #592, which adds the W2 pre-flight doc to this
-series) and it changes the order. All 11 binaries compile. Ten of eleven are expected
+**The pre-flight is done** (PR #592, which added the
+[W2 pre-flight doc](archived/phase-433-w2-preflight.md), now archived as an input) and it changes the order. All 11 binaries compile. Ten of eleven are expected
 to produce a real verdict given a Humble box; `graph_interop` has the strongest
 assertions in the set and should go first. Two exceptions:
 

@@ -1,12 +1,17 @@
 ---
 id: 1038
 title: "nightly triage (phase-413 W2.3): three of six cell failures are one class — the platform job builds a lane whose prerequisites its own setup never installs; none is a product regression"
-status: open
+status: resolved
 area: ci, build, testing
 severity: medium
 found: 2026-09-04
 related: [1030, 0463, 0937, 1006, 1007, 0996, phase-413, RFC-0062]
+resolved_in: "9de62f253a"
 ---
+
+## Resolution (2026-10-12)
+
+Fixed on main by `9de62f253a`, `947a301b0d`. Each nightly platform lane now provisions what it builds (nuttx, threadx_riscv64, esp32). Found during the re-homing sweep when phase-413 was archived. The original report follows.
 
 # The job does not provide what its own lane consumes
 
@@ -39,7 +44,7 @@ read as three unrelated bugs.
 > this issue is left as captured. `qemu-riscv-nuttx`, `qemu-riscv64-threadx`
 > and `qemu-esp32-baremetal` are now `rv-virt-nuttx`, `rv-virt-threadx` and
 > `esp32-c3-baremetal` — see the
-> [retired-name ledger](../reference/retired-board-names.md).
+> [retired-name ledger](../../reference/retired-board-names.md).
 
 
 ```

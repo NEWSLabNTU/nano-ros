@@ -549,7 +549,7 @@ a runtime argument is mechanical.
 
 What remains is the number itself — layers 1-2 emit it, layer 4 delivers it —
 and that has not changed. Scoped as
-[phase 408](../roadmap/phase-408-cpp-message-derived-buffers.md).
+[phase 408](../../roadmap/archived/phase-408-cpp-message-derived-buffers.md).
 
 The typed Rust entries (`SubInfoEntry`, `SubSafetyEntry`) DO hold
 `buffer: [u8; RX_BUF]`, which is why `rx_buffer_for!` exists for them and why
@@ -594,7 +594,7 @@ Two notes for whoever reads the layers above as a plan:
   type is never erased on the C++ side and no macro is needed. That is the
   asymmetry with C recorded in phase-403's "one correction to carry across".
 
-Full record: `docs/roadmap/phase-408-cpp-message-derived-buffers.md`.
+Full record: `docs/roadmap/archived/phase-408-cpp-message-derived-buffers.md`.
 
 ## Resolution, 2026-09-01 — both languages now state a hint, and it is the REAL bound
 

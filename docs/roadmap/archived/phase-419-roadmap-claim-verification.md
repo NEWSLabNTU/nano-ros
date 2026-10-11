@@ -188,14 +188,14 @@ or an agent writes what actually happened.
 * [phase-411](phase-411-scope-is-the-spec-verb-first-workflow.md) — a skip is
   indistinguishable from a pass; this is the same shape one series over, where a
   stale status is indistinguishable from a current one.
-* [phase-413](../phase-413-ci-workflow-user-parity.md) — "a uniformly-red lane has
+* [phase-413](phase-413-ci-workflow-user-parity.md) — "a uniformly-red lane has
   no signal capacity". A roadmap where most status lines are wrong has none
   either.
 * issue 1029 (`1029-zephyr-nightly-never-produces-a-verdict`, filed in PR #320 and not yet on `main` — link it once that lands) —
   found by chasing phase-196's stranded acceptance criterion, and the reason
   this phase is worth its cost.
 
-## Issues homed here (survey 2026-09-11)
+## Issues formerly homed here (survey 2026-09-11; re-homed or resolved 2026-10-12)
 
 Every open issue was checked for a home phase; these had none, or were mentioned
 here only in passing. A mention is not an owner — an issue with no work item is
@@ -204,4 +204,4 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1205](../../issues/1205-doc-commit-citations-local-fetch-state.md) | `check-doc-commit-citations` resolves hashes against whatever the local tree can see, so the ratchet answers 'in my object store' rather than 'in this history'. The doc-gate family is W1's |
+| [#1205](../../issues/1205-doc-commit-citations-local-fetch-state.md) | `check-doc-commit-citations` resolves hashes against whatever the local tree can see, so the ratchet answers 'in my object store' rather than 'in this history'. The doc-gate family is W1's — **re-homed to [phase-395](../phase-395-dev-workflow-migration.md) 2026-10-12** |

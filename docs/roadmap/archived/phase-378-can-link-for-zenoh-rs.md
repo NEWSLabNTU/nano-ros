@@ -1,5 +1,13 @@
 # Phase 378 — A CAN link for zenoh-rs
 
+**Status (2026-10-12). COMPLETE — archived 2026-10-12.** W0–W6 landed: a
+zenoh-rs CAN link that interoperates with zenoh-pico and with stock
+`rmw_zenoh_cpp` over `vcan0`, with the fork's delivery-hygiene gaps closed
+(`82c3600c7c`, `87ce3251b7`). W7 (per-message priority) is built but cannot be
+switched on: a QoS `Join` is 99 bytes against a 63-byte CAN FD MTU, and that is
+a protocol limit upstream of this repo. It moved to
+[issue 1822](../../issues/1822-can-link-priority-mapping-blocked-by-join-size.md).
+
 **Status (2026-08-25). W0-W6 DONE. W7 IMPLEMENTED AND BLOCKED — the mechanism
 works and cannot be switched on.**
 
@@ -60,8 +68,8 @@ The port cost almost nothing, which is itself a result: `LinkMulticastTrait`,
 two minors. Two conflicts, both version-pin noise in `Cargo.toml` files. All 42
 unit tests, W4 and W5 pass unchanged on 1.8.0.
 
-Implements [RFC-0081](../design/0081-can-link-for-zenoh-rs.md), which is the
-host half of [RFC-0080](../design/0080-can-link-for-zenoh-pico.md). Phase-377
+Implements [RFC-0081](../../design/0081-can-link-for-zenoh-rs.md), which is the
+host half of [RFC-0080](../../design/0080-can-link-for-zenoh-pico.md). Phase-377
 delivered the MCU end: two zenoh-pico peers exchange pub/sub over `vcan0` with a
 189-byte payload across a 63-byte MTU. RFC-0080 §8 left the Linux end unscoped
 and this phase closes it.

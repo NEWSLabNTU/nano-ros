@@ -6,8 +6,10 @@ type: tech-debt
 area: docs, tooling
 severity: low
 found: 2026-09-06
-related: [1107, 1108, phase-401]
+related: [1107, 1108, phase-401, phase-445]
 ---
+
+**Home: [phase-445](../roadmap/phase-445-board-choice-generates-leaf-config.md)** — re-homed 2026-10-12 from phase-401, which is archived.
 
 # Two words, one selector, and nobody has said which is meant where
 

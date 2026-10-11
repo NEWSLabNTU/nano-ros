@@ -5,8 +5,10 @@ status: open
 area: build, api
 severity: medium
 found: 2026-08-30
-related: [0931, RFC-0065, RFC-0048, RFC-0046, RFC-0014, RFC-0033, phase-405]
+related: [0931, RFC-0065, RFC-0048, RFC-0046, RFC-0014, RFC-0033, phase-405, phase-484]
 ---
+
+**Home: [phase-484](../roadmap/phase-484-one-owner-per-fact.md)** — re-homed 2026-10-12 from phase-405, which is archived.
 
 # Config redundancy map
 
@@ -232,5 +234,5 @@ site a PROJECTION with a gate, or delete it:
 2. **R9/R10** — one parser per table; delete `[wcet]` or wire it.
 3. **R12/R11/R4** — execute the deprecations already declared.
 
-Related: [issue 0931](0931-retire-model-and-default-launch.md) is the same
+Related: [issue 0931](archived/0931-retire-model-and-default-launch.md) is the same
 question one layer up, for `nano_ros_entry`'s arguments.

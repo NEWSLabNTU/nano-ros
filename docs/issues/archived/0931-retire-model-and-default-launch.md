@@ -1,12 +1,17 @@
 ---
 id: 931
 title: "`nano_ros_entry` has eleven arguments; four have no users and three restate the bringup"
-status: open
+status: resolved
 area: build, api
 severity: low
 found: 2026-08-30
 related: [phase-330, phase-392, RFC-0063, RFC-0065, phase-405]
+resolved_in: "c41ead42de"
 ---
+
+## Resolution (2026-10-12)
+
+Fixed on main by `c41ead42de`. `MODEL` is retired and `LAUNCH` is optional (phase-405 W4, eleven keywords to six). Found during the re-homing sweep when phase-405 was archived. The original report follows.
 
 # `nano_ros_entry`'s MODEL parameter is dead, and LAUNCH is half-ceremony
 

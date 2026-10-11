@@ -201,7 +201,7 @@ The constraint that decides what may move: on Cortex-M7 the TCMs hang off the
 CPU's private bus and are typically **not reachable by other bus masters**. A
 buffer a DMA engine touches must not go there. Stacks are safe by construction;
 `LARGE_PAYLOADS` is only safe while the link stays polled/ISR, and
-[issue 0852](../../issues/0852-zephyr-serial-rx-is-polled-and-overruns.md)'s fix
+[issue 0852](../../issues/archived/0852-zephyr-serial-rx-is-polled-and-overruns.md)'s fix
 direction includes eDMA. **Verify reachability before moving any buffer.**
 
 ### B. Pools into the tiered arena — the sharing this campaign does not model
@@ -856,7 +856,7 @@ Deleting it there leaves an unbounded type with no publish helper. The knob
 stopped being the DEFAULT — that was the wave's point; the criterion confused it
 with removing the symbol.
 
-**W3e — SUPERSEDED by [phase 408](../phase-408-cpp-message-derived-buffers.md);
+**W3e — SUPERSEDED by [phase 408](phase-408-cpp-message-derived-buffers.md);
 the fork it described does not exist.** W3e asked for a decision between
 monomorphising the const generic per type and making the arena entry
 runtime-sized. Surveying the code for phase 408 found the second is **already
@@ -1803,7 +1803,7 @@ of what the mechanism WOULD save, on a leaf where the mechanism does not run.
 Nothing in this wave should be quoted as a shipped saving until the `mixed` case
 is explained and a before/after `mem-report` exists.
 
-## Issues homed here (survey 2026-09-03)
+## Issues formerly homed here (survey 2026-09-03; re-homed or resolved 2026-10-12)
 Every open issue was checked for a home phase; these had none, or were
 mentioned here only in passing. A mention is not an owner — an issue with
 no work item is an issue nobody is accountable for, which is the same shape
@@ -1812,13 +1812,13 @@ holds the evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0852](../../issues/0852-zephyr-serial-rx-is-polled-and-overruns.md) | the zenoh read task inherits the executor's priority on Zephyr |
-| [#0880](../../issues/0880-tcm-unused-while-sram-exhausted.md) | 192 KiB of tightly-coupled memory sits at 0 % while SRAM is exhausted |
+| [#0852](../../issues/archived/0852-zephyr-serial-rx-is-polled-and-overruns.md) | the zenoh read task inherits the executor's priority on Zephyr — **RESOLVED 2026-10-12** (`a67d8668f1`) |
+| [#0880](../../issues/0880-tcm-unused-while-sram-exhausted.md) | 192 KiB of tightly-coupled memory sits at 0 % while SRAM is exhausted — **re-homed to [phase-474](../phase-474-safety-island-board-findings.md) 2026-10-12** |
 | [#0969](../../issues/archived/0969-cyclone-take-cdr-round-trip.md) | the Cyclone RMW deserializes every received sample and re-serializes it, so `try_recv_raw` costs a full round trip. **Round trip removed; cost measured** — ~46 ns/message floor (176 ns at 16 KB). The allocation saving this row assumed did NOT appear: count unchanged, bytes a crossover at ~6 KB. Remaining: the third site, per 0976 |
 | [#0810](../../issues/archived/0810-executor-arena-sized-by-worst-case-shape.md) | the executor arena was sized at `MAX_CBS x sizeof(ActionClient)` whatever the entity mix. Lever 3 cites it. It predates phase-412 W3, which now derives the arena per KIND — so re-measure against that before working it; what is left may be only the worst-case SHAPE, or nothing — **resolved 2026-10-02** (each declared kind priced at what its entry holds) |
 | [#0815](../../issues/archived/0815-pool-inventory-prices-3-of-46-knobs.md) | the inventory prices 3 of 46 sizing knobs. The W1 amendment answered the ANNOTATION half (measure, do not declare); pricing the remaining knobs is the work — **resolved 2026-10-01** |
 | [#1147](../../issues/archived/1147-mem-report-cannot-attribute-cpp-executor-storage.md) | `mem-report` counts the C and C++ executor storage but files it under the wrong crate — the third of W6's hand-offs, and the only one without another home — **resolved 2026-10-01** |
-| [#1179](../../issues/1179-derived-rx-default-unreachable-without-schema.md) | W3c's residue: on zenoh and XRCE the derived RX default is unreachable, because a type-erased registration site sees only `MessageForRmw`. The issue records two designs — the bound carried on `RosMessage`, or a split typed entry point — and asks for a deliberate choice between them |
+| [#1179](../../issues/1179-derived-rx-default-unreachable-without-schema.md) | W3c's residue: on zenoh and XRCE the derived RX default is unreachable, because a type-erased registration site sees only `MessageForRmw`. The issue records two designs — the bound carried on `RosMessage`, or a split typed entry point — and asks for a deliberate choice between them — **re-homed to [phase-403](../phase-403-type-bound-rx-sizing.md) 2026-10-12** |
 | [#1180](../../issues/archived/1180-mem-report-baseline-cannot-match-llvm-suffixed-symbols.md) | `mem-report --baseline` reports no delta for LLVM-internalised symbols, so a real saving can read as zero — the instrument this phase measures everything with — **resolved 2026-10-01** |
 
 

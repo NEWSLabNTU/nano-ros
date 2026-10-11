@@ -28,7 +28,7 @@ error, corrected here.
 **Owns:** [issue 0271](../../issues/archived/0271-orin-spe-btcm-footprint-regression.md),
 [issue 0505](../../issues/archived/0505-timer-backlog-replay-no-overrun-policy.md)
 (**RESOLVED** — W1's own body already says so),
-[issue 0506](../../issues/0506-transport-band-unbounded-preemption.md),
+[issue 0506](../../issues/0506-transport-band-unbounded-preemption.md) (**re-homed to [phase-462](../phase-462-safety-vocabulary-on-target.md) 2026-10-12**),
 [issue 0557](../../issues/archived/0557-zephyr-cyclone-action-ddsrt-thread-reuse.md),
 [issue 0579](../../issues/archived/0579-nuttx-boot-tier-priority-never-applied.md)
 (**RESOLVED** — the body's W-tail already records 0579 and 0583 resolved).
@@ -450,7 +450,7 @@ debt this uncovered.
   its title claims exactly that scope; #532 should be checked for staleness
   against it rather than re-planned here.
 
-## Issues homed here (survey 2026-09-03)
+## Issues formerly homed here (survey 2026-09-03; re-homed or resolved 2026-10-12)
 Every open issue was checked for a home phase; these had none, or were
 mentioned here only in passing. A mention is not an owner — an issue with
 no work item is an issue nobody is accountable for, which is the same shape
@@ -459,7 +459,7 @@ holds the evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0902](../../issues/0902-action-goal-completion-is-variable.md) | action goals complete between 20 % and 90 % of the time on the same build — a load-dependent success rate, which is this phase's subject |
-| [#0913](../../issues/0913-the-debugger-is-not-a-passive-instrument.md) | attaching pyocd RTT kills the zenoh session: the debugger perturbs the thing being measured |
-| [#0917](../../issues/0917-an536-fragmented-sample-never-syncs.md) | the emulated LAN9118 RX FIFO cannot hold an 8-fragment RTPS burst — an overrun with a known cause |
+| [#0902](../../issues/0902-action-goal-completion-is-variable.md) | action goals complete between 20 % and 90 % of the time on the same build — a load-dependent success rate, which is this phase's subject — **re-homed to [phase-433](../phase-433-rmw-live-verification.md) 2026-10-12** |
+| [#0913](../../issues/0913-the-debugger-is-not-a-passive-instrument.md) | attaching pyocd RTT kills the zenoh session: the debugger perturbs the thing being measured — **re-homed to [phase-478](../phase-478-island-developer-experience-findings.md) 2026-10-12** |
+| [#0917](../../issues/0917-an536-fragmented-sample-never-syncs.md) | the emulated LAN9118 RX FIFO cannot hold an 8-fragment RTPS burst — an overrun with a known cause — **re-homed to [phase-441](../phase-441-rmw-on-target-verification.md) 2026-10-12** |
 

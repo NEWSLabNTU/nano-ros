@@ -5,8 +5,10 @@ title: "192 KiB of tightly-coupled memory sits at 0 % while SRAM is exhausted â€
 status: open
 type: bug
 area: platform, embedded
-related: [issue-0852, issue-0810]
+related: [issue-0852, issue-0810, phase-474]
 ---
+
+**Home: [phase-474](../roadmap/phase-474-safety-island-board-findings.md)** â€” re-homed 2026-10-12 from phase-392, which is archived.
 
 ## Measurement
 

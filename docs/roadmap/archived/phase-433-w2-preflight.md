@@ -1,5 +1,10 @@
 # Phase 433 W2 — preflight: which live-peer interop cells can produce a verdict
 
+**Status (2026-10-12). Archived 2026-10-12 as an input document.** This was
+[phase-433](../phase-433-rmw-live-verification.md)'s W2 preflight: what each
+live-peer interop cell could verify before any peer existed. phase-433 itself
+stays active and links here.
+
 **Status (2026-09-06).** **Preflight only — nothing was run against a peer.** All
 11 `interop::CELLS` test binaries COMPILE (measured, 11/11 `--no-run` green). The
 open question W2 answers is which of the 17 `Tier::Runtime` cells can produce a
@@ -11,7 +16,7 @@ recorded, not applied.
 
 Related: issue 1127 (eight of these binaries are named by no recipe),
 `interop::CELLS` (`packages/testing/nros-tests/src/interop.rs`),
-[docs/development/ros2-on-non-ubuntu.md](../development/ros2-on-non-ubuntu.md).
+[docs/development/ros2-on-non-ubuntu.md](../../development/ros2-on-non-ubuntu.md).
 
 ## What was MEASURED versus what was READ
 

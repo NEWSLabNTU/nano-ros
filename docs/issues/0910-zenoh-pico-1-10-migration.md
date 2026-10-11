@@ -8,6 +8,8 @@ area: rmw, build
 related: [phase-415, issue-0852, issue-0882]
 ---
 
+**Home: none** — unhomed after phase-355 was archived 2026-10-12; no active phase fits.
+
 ## Why
 
 Our pin is 1863 upstream commits behind. The gap matters for serial specifically:
@@ -36,7 +38,7 @@ Two branches on the fork (`jerry73204/zenoh-pico`), both off `upstream/main`:
   `_z_zephyr_uart_read`, which busy-spins on `uart_poll_in` with no timeout, no
   yield and no `uart_err_check`, and returns `len` regardless. All three are
   defects we hit and fixed on our own port; the third is
-  [issue 0852](0852-zephyr-serial-rx-is-polled-and-overruns.md), where a silent overrun cost a long investigation that
+  [issue 0852](archived/0852-zephyr-serial-rx-is-polled-and-overruns.md), where a silent overrun cost a long investigation that
   ended in a bug report against an innocent peer.
 - **`nros-integration`** — `serial-fixes` plus a passthrough
   `include/zenoh-pico/config.h`, which upstream no longer ships. Not for

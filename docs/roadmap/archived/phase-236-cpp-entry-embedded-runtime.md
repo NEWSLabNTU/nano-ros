@@ -1,5 +1,13 @@
 # Phase 236 — C++ Entry-pkg embedded board adapter + real NodeContext runtime
 
+**Status (2026-10-12). COMPLETE — archived 2026-10-12.** 236.A (the real native
+`NodeContext` runtime), 236.B (the embedded `ZephyrBoard` adapter) and 236.D (via
+phase-240/242) landed. The in-tree FVP boot that 236.B could not verify in 2026-06
+now runs: `fvp_ws_entry_two_tier_publishes` passes under the model
+(`72dc307344`, phase-477), and the FVP west application is generated
+(`2dd267cd08`). 236.C, migrating ASI's `actuation_module`, is external
+consumer validation and is tracked on the ASI side.
+
 **Goal.** Make a C++ Entry pkg (`nano_ros_entry(LAUNCH …)` + `NROS_MAIN`)
 boot a real multi-node topology on an **embedded Zephyr board** with
 **live** publishers/subscriptions — closing the two gaps that today
@@ -248,7 +256,7 @@ generated register sequence boots a node that creates entities but runs
 no control logic. This is RFC-0032 §8a's "callback bodies" open item,
 now a hard blocker.
 
-**Design decided — [RFC-0043](../design/0043-entry-real-callback-binding.md).**
+**Design decided — [RFC-0043](../../design/0043-entry-real-callback-binding.md).**
 Under the no-callback-naming + thin-Rust-wrapper (RFC-0019) principles: route the
 Entry path to the **Rust executor** (the same one the native examples use), not
 the type-erased string-descriptor register. The component becomes a **stateful
@@ -267,14 +275,14 @@ C++ glue, direct `nros-nuttx-ffi` cargo build) booted in QEMU vs the talker:
 sub callback, correct `Int32`). Executor real-callback dispatch works on NuttX;
 the C++ side is a thin wrapper.
 
-**Breakdown → [phase-240](archived/phase-240-entry-real-callback-binding.md)**
+**Breakdown → [phase-240](phase-240-entry-real-callback-binding.md)**
 (RFC-0043 implementation — **CLOSED Complete/Superseded 2026-07-16**; 240.1–240.6
 all landed + runtime-proven, interpreter retired via phase-257, typed carriers on
 every platform via phase-281). The ONE item phase-240 hands back is the 236.C
 acceptance itself: the ASI `Controller` on FVP run — the mechanism half is fully
 de-risked (native transform relay + all-platform typed carriers), what remains
 needs the external ASI sources + an FVP run (`just zephyr run-fvp-aemv8r`).
-**[Phase-242](archived/phase-242-rclcpp-faithful-component-model.md) (RFC-0044
+**[Phase-242](phase-242-rclcpp-faithful-component-model.md) (RFC-0044
 rclcpp-faithful `ComponentNode`) is likewise CLOSED in-tree-complete
 (2026-07-16)** — its 242.5 ASI-migration + FVP-smoke consumer proof also folds
 into the same 236.C acceptance below. The waves, for the record:

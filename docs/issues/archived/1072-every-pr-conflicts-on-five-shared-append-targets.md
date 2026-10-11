@@ -2,11 +2,16 @@
 id: 1072
 title: "22 of 51 open pull requests conflicted, none of them on code — five
   shared append targets account for every one"
-status: open
+status: resolved
 type: tech-debt
 area: tooling, ci
 related: [0883, 0884, 1071, phase-396]
+resolved_in: "6c52892cc0"
 ---
+
+## Resolution (2026-10-12)
+
+Fixed on main by `6c52892cc0`, `5f505f0004`. The shared gate registry is deleted. The ledger-shard remainder is issue 1091. Found during the re-homing sweep when phase-396 was archived. The original report follows.
 
 ## The measurement
 

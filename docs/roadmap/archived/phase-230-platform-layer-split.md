@@ -1,6 +1,6 @@
 # Phase 230 — Platform layer split: enforce the system-ABI boundary (alloc first)
 
-**Archived 2026-10-11.** Z5 and 1b.3 are done: `nros_platform_heap_{used,total}_bytes` are in `platform.h` with per-port implementations, and `nros-c` forwards `nros_heap_platform_used_bytes` / `nros_heap_total_bytes` to them. One gap remains: the bare-metal `FreeListHeap::used` still returns 0.
+**Archived 2026-10-11.** Z5 and 1b.3 are done: `nros_platform_heap_{used,total}_bytes` are in `platform.h` with per-port implementations, and `nros-c` forwards `nros_heap_platform_used_bytes` / `nros_heap_total_bytes` to them. Re-checked 2026-10-12: mps2-an385 and stm32f4 report the real `FreeListHeap::used` (`zpico-alloc` with `stats`). The gap that remains is esp32-qemu, which falls to the trait default of 0. It moved to [issue 1823](../../issues/1823-esp32-qemu-heap-used-bytes-reports-zero.md).
 
 **Goal:** Make the platform/RMW/core split (RFC-0034) a real, enforced
 invariant. Today the `nros_platform_*` ABI is bypassed on every RTOS:

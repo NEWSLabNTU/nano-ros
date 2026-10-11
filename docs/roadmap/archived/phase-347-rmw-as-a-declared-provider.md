@@ -1,5 +1,11 @@
 # Phase 347 — RMW as a declared provider: capabilities, search, and no special cases
 
+**Status (2026-10-12). COMPLETE — archived 2026-10-12.** All six waves landed,
+as the table below records: W1 subtractions, W2 descriptors and their gate, W3
+resolution by name, W4 capabilities (the `packages/api/**` remainder is
+recorded), W5 the codegen hook, and W6 the platform leak for `[build.*]`. The
+original 2026-08-11 line saying W5/W6 were not started is stale.
+
 **Status (2026-08-11). W1–W4 LANDED. W5 and W6 NOT STARTED, each blocked on a
 condition recorded before the work began, not on time.**
 
@@ -13,7 +19,7 @@ condition recorded before the work began, not on time.**
 | W6 platform leak | **landed** for `[build.*]`; `[knobs.*]` deliberately left, with the reason |
 
 **Original status (2026-08-10). PROPOSED — no code landed.** Implements
-[RFC-0071](../design/0071-rmw-backend-descriptor.md). The design is settled and
+[RFC-0071](../../design/0071-rmw-backend-descriptor.md). The design is settled and
 its open questions are answered; this phase is the ordering.
 
 **Scope.** Three things, in the order they unblock each other: remove the
@@ -22,7 +28,7 @@ selection resolve through it. **The colcon convention is explicitly NOT in this
 phase** — see "Deliberately out of scope".
 
 **UNBLOCKED 2026-08-10.** This phase was blocked on
-[issue 0493](../issues/archived/0493-two-workspace-roots-share-one-corrosion-target-dir-duplicate-no-mangle-symbols.md)
+[issue 0493](../../issues/archived/0493-two-workspace-roots-share-one-corrosion-target-dir-duplicate-no-mangle-symbols.md)
 while its cause was unknown. It is known and fixed: corrosion **v0.5.1** sets the
 cargo target dir to a CONSTANT `${CMAKE_BINARY_DIR}/${build_dir}/cargo/build`, so
 two workspace roots configured into one binary dir shared one `deps/` and their
@@ -42,7 +48,7 @@ Note for anyone rebuilding: provisioning alone is not enough on a tree that has
 already configured — the stale build dirs carry the old topology in their
 `CMakeCache.txt` and must be removed.
 
-**Sibling, not overlap:** [phase-346](archived/phase-346-out-of-tree-board-seam.md) is
+**Sibling, not overlap:** [phase-346](phase-346-out-of-tree-board-seam.md) is
 this problem on the BOARD axis (RFC-0064, a board arrives through an integration
 shell nano-ros never sees). RFC-0071 D8 is where the two converge — one
 descriptor family across rmw / platform / board. Do not duplicate 346's work
@@ -281,7 +287,7 @@ becomes scheduling.
 
 **It is blocked on W2 regardless**: you cannot discover providers that do not
 describe themselves. Filed as
-[phase-348](archived/phase-348-source-time-provider-discovery.md), with these starting
+[phase-348](phase-348-source-time-provider-discovery.md), with these starting
 points already established — the two accepted roots (nano-ros tree,
 user workspace; no `~/.nros`, no env var), first-match-wins shadowing with a
 warning, and `package.xml`'s existing `<depend>` as the ordering source rather

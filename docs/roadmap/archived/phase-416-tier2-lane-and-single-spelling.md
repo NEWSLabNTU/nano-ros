@@ -1,5 +1,12 @@
 # Phase 416 — The tier-2 lane runs end to end, and one fact has one spelling
 
+**Status (2026-10-12). COMPLETE — archived 2026-10-12.** W1–W3 closed through
+archived issues 1011, 1016 and 1017. W4, the NuttX tier-2 module, became part of
+the tier-2 lane work that
+[phase-449](../phase-449-state-keyed-by-name-not-by-tree.md) W2 and
+[phase-466](../phase-466-scheduled-lanes-produce-verdicts.md) carry. Homed issue
+1158 (no tier-2 runtime verdict) moved to phase-449, whose W2 already names it.
+
 **Status (2026-09-04). Opened from a campaign that was already half-landed.**
 Seven issues resolved and merged, four open, two of those filed on the last day
 of the work. The phase exists because the campaign had no home: every issue in
@@ -25,12 +32,12 @@ turned into one recurring defect with two faces:
 The two faces are the same thing: a second copy survives precisely because
 nothing is in a position to notice it.
 
-**Distinct from the neighbours.** [phase-410](archived/phase-410-ci-breadth-depth-restructure.md)
+**Distinct from the neighbours.** [phase-410](phase-410-ci-breadth-depth-restructure.md)
 (complete) restructured which CI lane runs what; it did not make tier 2's
-fixtures build. [phase-356](archived/phase-356-test-evidence-and-measurement-trust.md)
+fixtures build. [phase-356](phase-356-test-evidence-and-measurement-trust.md)
 owns "a number you cannot distinguish from a non-measurement" and already owns
 #0968; this phase owns the lane and the duplication that breaks it.
-[phase-391](archived/phase-391-allocation-unification-and-tier-model.md) takes #1010,
+[phase-391](phase-391-allocation-unification-and-tier-model.md) takes #1010,
 which surfaced here but is an arena-sizing defect and belongs with the funnel.
 
 ## Landed before this doc existed
@@ -57,19 +64,19 @@ tier-2 from three broken modules to six of seven green.
 
 ## Work items
 
-* **W1 — [issue 1011](../issues/archived/1011-cyclonedds-zephyr-publisher-cxx11-aggregate.md),
+* **W1 — [issue 1011](../../issues/archived/1011-cyclonedds-zephyr-publisher-cxx11-aggregate.md),
   six `rust-*-cyclonedds` zephyr leaves do not compile.** `-std=c++11` on the
   Zephyr lane against a struct with default member initializers, which is not an
   aggregate before C++14. Unmasked by #0998's fix, not caused by it. This is the
   last module standing between the lane and green, so it is first.
-* **W2 — [issue 1016](../issues/archived/1016-tier2-lane-omits-zephyr-west-leaves.md),
+* **W2 — [issue 1016](../../issues/archived/1016-tier2-lane-omits-zephyr-west-leaves.md),
   `lane=tier2` does not build the zephyr rust/c west leaves.** Their cells then
   report as failures that are really skips, with a summary line identical to a
   real result. This is the tier-2 half of #0828's class and it already caused one
   wrong reading in #0968. Two fixes are wanted, not one: make the lane build what
   it runs, AND make an unbuilt cell distinguishable from a failed one at the
   summary level — the second is what survives a regression of the first.
-* **W3 — [issue 1017](../issues/archived/1017-entry-template-session-name-ungated.md), the
+* **W3 — [issue 1017](../../issues/archived/1017-entry-template-session-name-ungated.md), the
   #1003 class has no gate.** The defect lived two months with a correct sibling
   producer beside it. Note the trap recorded in the issue: the arity carrying the
   session name differs per board, so the obvious textual check would become a
@@ -88,12 +95,12 @@ tier-2 from three broken modules to six of seven green.
 ## What this phase deliberately does NOT do
 
 It does not chase the runtime failures the lane then reveals. Those go to
-[phase-414](archived/phase-414-rtos-runtime-correctness.md) (RTOS runtime correctness) and
-[phase-391](archived/phase-391-allocation-unification-and-tier-model.md) (#1010). The
+[phase-414](phase-414-rtos-runtime-correctness.md) (RTOS runtime correctness) and
+[phase-391](phase-391-allocation-unification-and-tier-model.md) (#1010). The
 distinction is worth keeping: this phase is about whether the lane can produce a
 verdict at all, not about whether the verdict is green.
 
-## Issues homed here (survey 2026-09-11)
+## Issues formerly homed here (survey 2026-09-11; re-homed or resolved 2026-10-12)
 
 Every open issue was checked for a home phase; these had none, or were mentioned
 here only in passing. A mention is not an owner — an issue with no work item is
@@ -102,4 +109,4 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1158](../issues/1158-tier2-lane-has-produced-no-verdict-for-six-days.md) | the tier-2 lane has produced no runtime verdict in six consecutive scheduled runs. 'The tier-2 lane runs end to end' is this phase's thesis; phase-441 cites the issue only in passing |
+| [#1158](../../issues/1158-tier2-lane-has-produced-no-verdict-for-six-days.md) | the tier-2 lane has produced no runtime verdict in six consecutive scheduled runs. 'The tier-2 lane runs end to end' is this phase's thesis; phase-441 cites the issue only in passing — **re-homed to [phase-449](../phase-449-state-keyed-by-name-not-by-tree.md) 2026-10-12** |

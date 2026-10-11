@@ -9,6 +9,8 @@ severity: high
 related: [issue-0409, issue-0419, issue-0561, issue-1177, issue-1227, phase-424]
 ---
 
+**Home: none** — unhomed after phase-424 was archived 2026-10-12; no active phase fits.
+
 ## Symptom
 
 Checking out an older nano-ros commit and building the safety-island image

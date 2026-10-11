@@ -6,8 +6,10 @@ title: "`check-doc-commit-citations` resolves hashes against whatever the local
 status: open
 type: bug
 area: [ci, docs]
-related: [1178, 0359, phase-419]
+related: [1178, 0359, phase-419, phase-395]
 ---
+
+**Home: [phase-395](../roadmap/phase-395-dev-workflow-migration.md)** — re-homed 2026-10-12 from phase-419, which is archived.
 
 ## What
 

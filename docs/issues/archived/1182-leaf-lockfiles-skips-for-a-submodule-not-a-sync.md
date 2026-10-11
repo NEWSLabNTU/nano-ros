@@ -2,11 +2,16 @@
 id: 1182
 title: "`check-leaf-lockfiles` skips two leaves for a SUBMODULE, not for a sync —
   and on a synced tree it says so by blaming the patch tables"
-status: open
+status: resolved
 type: bug
 area: build
 related: [1178, 0359, 0466, 1171, phase-413]
+resolved_in: "0407df42f9"
 ---
+
+## Resolution (2026-10-12)
+
+Fixed on main by `0407df42f9`. `check-leaf-lockfiles` reports a missing declared submodule as such, not as a missing sync (#1398). Found during the re-homing sweep when phase-413 was archived. The original report follows.
 
 ## What this adds to 1178
 

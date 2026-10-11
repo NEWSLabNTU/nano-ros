@@ -2,11 +2,16 @@
 id: 914
 title: "Nothing exercises the SHIPPED resolver + `pyexec` pair, so a resolver that
   cannot evaluate anything passes every check"
-status: open
+status: resolved
 type: tech-debt
 area: testing
 related: [issue-0897, issue-0400, phase-332]
+resolved_in: "313a27609b"
 ---
+
+## Resolution (2026-10-12)
+
+Fixed on main by `313a27609b`. `launch_py_resolves_as_shipped.rs` exercises the shipped resolver + pyexec pair. Found during the re-homing sweep when phase-383 was archived. The original report follows.
 
 > **CORRECTION (2026-08-30).** The headline claim below — "no test runs that
 > pair as installed" — is FALSE, and was already false when this was filed.

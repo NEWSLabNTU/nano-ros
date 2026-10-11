@@ -2,11 +2,16 @@
 id: 874
 title: "sccache 0.8.2 speaks a GitHub cache API that no longer exists — and
   because it is the `RUSTC_WRAPPER`, that fails every `rustc`"
-status: open
+status: resolved
 type: bug
 area: ci, tooling
 related: [issue-0871, phase-395]
+resolved_in: "38a219578d"
 ---
+
+## Resolution (2026-10-12)
+
+Fixed on main by `38a219578d`. sccache 0.8.2 is gone; the compile tier caches its directory instead, and a failed cache backend no longer breaks rustc. Found during the re-homing sweep when phase-396 was archived. The original report follows.
 
 ## Symptom
 

@@ -119,7 +119,7 @@ decision, never this doc.
 | 392 W3a / W3b | — | **landed** | subscription buffer sized from the type's own bound — Rust only |
 | 392 W3c | unclaimed | **open** | derived-by-default on the Rust path; the global becomes the opt-out |
 | 392 W3d | — | **landed, under another phase** | 0896 layers 1-3, delivered as phase-408 W1. The C publish helper sizes `buf[<PREFIX>_TX_MAX_SERIALIZED_SIZE]` for a bounded type (`packs/c/message.h.jinja:178`), and `message_size_bound_parity.rs` asserts the C constant, the C++ constant and the Rust const are one number, both encodings |
-| 392 W3e | — | **superseded** | by [phase 408](phase-408-cpp-message-derived-buffers.md) — the fork it described does not exist |
+| 392 W3e | — | **superseded** | by [phase 408](archived/phase-408-cpp-message-derived-buffers.md) — the fork it described does not exist |
 | 392 W3f | — | **delivered as a refusal** | Cyclone records that the hint is inapplicable; see the phase's 2026-09-02 amendment, which corrects this row's original claim |
 | 392 W3g | — | **landed, under another phase** | 0896 layers 5-6, delivered as phase-403 W0/W6. The split is `_TX_/_RX_MAX_SERIALIZED_SIZE` (TX is XCDR1, RX is `max(XCDR1, XCDR2)`), and the unbounded diagnostic is a POISON TOKEN — `NROS_UNBOUNDED__<type>__field_<name>`, an undefined identifier that names the offending field at the compile error |
 | 392 W4 net stack | — | **landed and MEASURED** | 38,334 B of `.bss`+`.data` and 78,696 B of flash on mps2/an385, two images from one tree differing only in networking. Larger than this row's original 27,760 B estimate, because that counted `net_*` symbols and missed four stacks |
