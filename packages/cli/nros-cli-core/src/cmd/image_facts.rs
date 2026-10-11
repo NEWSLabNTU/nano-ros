@@ -237,6 +237,10 @@ fn as_cmake(plan: &crate::cmd::build::ResolvedBuild, root: &std::path::Path) -> 
     if let Some(v) = &plan.cmake_build_dir {
         put("CMAKE_BUILD_DIR", v);
     }
+    // Issue 1261 — the capability axes, as a cmake list, ALWAYS emitted: an
+    // empty value is the answer "this image declares none", which the Zephyr
+    // module must be able to tell from "no image answered".
+    put("FEATURES", &plan.capabilities.join(";"));
     out
 }
 
@@ -260,12 +264,46 @@ fn as_plain(plan: &crate::cmd::build::ResolvedBuild, root: &std::path::Path) -> 
             out.push_str(&format!("{k}={v}\n"));
         }
     }
+    out.push_str(&format!("features={}\n", plan.capabilities.join(",")));
     out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn plan_with(capabilities: &[&str]) -> crate::cmd::build::ResolvedBuild {
+        crate::cmd::build::ResolvedBuild {
+            qualified: "demo_bringup:zephyr".to_string(),
+            board: "zephyr".to_string(),
+            platform: "zephyr".to_string(),
+            driver: crate::builder::plan::Driver::West,
+            handoff: None,
+            rmw: Some("zenoh".to_string()),
+            entry_package: Some("zephyr_entry".to_string()),
+            target: None,
+            profile: None,
+            cmake_build_dir: None,
+            capabilities: capabilities.iter().map(|c| c.to_string()).collect(),
+            configure: None,
+            record: Default::default(),
+        }
+    }
+
+    /// Issue 1261 — the Zephyr module defaults `NROS_FEATURES` from this
+    /// line, so it is a cmake LIST, and it is present even when empty: "this
+    /// image declares none" must read differently from "no image answered".
+    #[test]
+    fn the_cmake_facts_carry_the_declared_capability_axes() {
+        let root = std::path::Path::new("/ws");
+        let two = as_cmake(&plan_with(&["param_services", "lifecycle"]), root);
+        assert!(
+            two.contains("set(NROS_IMAGE_FEATURES \"param_services;lifecycle\")\n"),
+            "{two}"
+        );
+        let none = as_cmake(&plan_with(&[]), root);
+        assert!(none.contains("set(NROS_IMAGE_FEATURES \"\")\n"), "{none}");
+    }
 
     /// The walk finds the workspace from a package inside it — which is the
     /// only thing cmake can pass, since a west application knows its own

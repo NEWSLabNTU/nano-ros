@@ -140,6 +140,14 @@ pub struct ResolvedBuild {
     /// handed to readers (`nros image-facts`, the fixture-row check) so none
     /// restates it. `None` for every other driver.
     pub cmake_build_dir: Option<String>,
+    /// The capability axes the image's `system.toml` declares
+    /// ([`declared_capabilities`]) — what codegen generates calls for.
+    ///
+    /// Issue 1261: a west build picks nros-c/nros-cpp's cargo features from
+    /// `NROS_FEATURES` during `find_package(Zephyr)`, and a hand-written
+    /// application had no way to learn them but restating them. Exposed so
+    /// `nros image-facts` hands the module the image's answer.
+    pub capabilities: Vec<String>,
 
     /// A configure that must run BEFORE the handoff, for drivers that need one.
     ///
@@ -515,6 +523,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 target: descriptor.target.clone(),
                 profile: image.profile.clone(),
                 record: Default::default(),
+                capabilities: owned_caps(&bringup_dir),
             });
             continue;
         }
@@ -1443,6 +1452,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 cargo_roots,
                 build_dirs: record_dirs,
             },
+            capabilities: owned_caps(&bringup_dir),
         });
     }
     Ok(out)
@@ -1548,6 +1558,7 @@ fn plan_single_package(
             target: img.target.clone(),
             profile: None,
             cmake_build_dir: None,
+            capabilities: owned_caps(root),
             configure: None,
             record: Default::default(),
         }]));
@@ -1607,6 +1618,7 @@ fn plan_single_package(
                 .map(|d| vec![d.to_path_buf()])
                 .unwrap_or_default(),
         },
+        capabilities: owned_caps(root),
     }]))
 }
 
@@ -1745,6 +1757,7 @@ fn plan_single_package_cmake(
         target: descriptor.target.clone(),
         profile: None,
         cmake_build_dir: Some(build_dir),
+        capabilities: owned_caps(root),
         configure: Some(Handoff::new("cmake", a).in_dir(root)),
         record: crate::orchestration::project_lock::BuildRecord {
             project: root.to_path_buf(),
@@ -2260,6 +2273,14 @@ fn run_configure(cfg: &Handoff) -> Result<()> {
 /// to ESCALATE a warning into a hard error, and a system that cannot be read is
 /// not evidence that a capability is declared. Whatever is wrong with it will be
 /// reported by the code whose job that is, with better words than this has.
+/// [`declared_capabilities`], owned, for a plan to carry.
+fn owned_caps(bringup_dir: &std::path::Path) -> Vec<String> {
+    declared_capabilities(bringup_dir)
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+}
+
 pub(crate) fn declared_capabilities(bringup_dir: &std::path::Path) -> Vec<&'static str> {
     let Ok(raw) = std::fs::read_to_string(bringup_dir.join("system.toml")) else {
         return Vec::new();
@@ -2412,6 +2433,7 @@ fn plan_packages(
             target: None,
             profile: None,
             cmake_build_dir: None,
+            capabilities: Vec::new(),
             configure,
             record: crate::orchestration::project_lock::BuildRecord {
                 project: root.to_path_buf(),
@@ -5350,6 +5372,7 @@ mod multi_image_drive_tests {
             target: None,
             profile: None,
             cmake_build_dir: None,
+            capabilities: Vec::new(),
             configure: None,
             record: Default::default(),
         }

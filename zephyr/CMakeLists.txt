@@ -398,6 +398,14 @@ endif()
 #
 # `alloc` rides with it: the store allocates (nros-node `compile_error!`,
 # issue 1260: a capability names its requirement where it is added).
+# Issue 1261 -- the capability axes come from the IMAGE when the application
+# did not state them, and a statement that omits a declared axis is refused
+# here, before the first reader below. `NanoRosCodegenCore.cmake` supplies the
+# CLI resolver the query uses.
+include("${NROS_REPO_DIR}/cmake/NanoRosCodegenCore.cmake")
+include("${NROS_REPO_DIR}/cmake/NanoRosImageAgreement.cmake")
+nros_resolve_image_features()
+
 set(_nros_cpp_param_suffix "")
 set(_nros_c_param_suffix "")
 if(CONFIG_NROS_CPP_API)
@@ -797,13 +805,12 @@ if(CONFIG_NROS_CPP_API)
         string(APPEND _nros_cpp_features ",std")
     endif()
 
-    # Issue 0745 — the Zephyr lane has no workspace-style capability
-    # resolution (`nros config show`) yet; the consumer passes
-    # -DNROS_FEATURES=<axes> (semicolon list) and this mirrors the
-    # workspace lowering: the param-services cargo feature (so the entry's
-    # launch-param seeds link) + the directory-wide define ComponentNode's
-    # seed-adoption gates on. Follow-up: resolve from the entry's BRINGUP
-    # like nano_ros_workspace(SYSTEM ...) does.
+    # Issue 0745 — this mirrors the workspace lowering: the param-services
+    # cargo feature (so the entry's launch-param seeds link) + the
+    # directory-wide define ComponentNode's seed-adoption gates on.
+    # `NROS_FEATURES` is the image's declared axes unless the application
+    # stated them (`nros_resolve_image_features` above, issue 1261); a plain
+    # application in no workspace still passes -DNROS_FEATURES=<axes>.
     #
     # Issue 1260 -- and `alloc` WITH it. `param-services` REQUIRES alloc
     # (nros-node/src/lib.rs `compile_error!`, phase-361 W8.e: a capability names

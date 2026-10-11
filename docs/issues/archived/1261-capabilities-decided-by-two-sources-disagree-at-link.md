@@ -3,12 +3,44 @@ id: 1261
 title: "An image's capabilities are decided in two places, and a disagreement
   surfaces as an undefined symbol at LINK -- native when SYSTEM is omitted,
   Zephyr always"
-status: open
+status: resolved
 type: bug
 area: build, zephyr
 severity: medium
 related: [issue-1260, issue-0745, issue-0353, phase-445]
+resolved: 2026-10-11
 ---
+
+## 2026-10-11 — RESOLVED: the west road reads the image too
+
+**Acceptance 2: MET.** The Zephyr module now asks the image before its first
+read of `NANO_ROS_FEATURES` (`nros_resolve_image_features`,
+`cmake/NanoRosImageAgreement.cmake`). It runs the query the module already ran
+for the RMW cross-check, `nros image-facts --for-entry <app> --cmake`, which
+now also emits `NROS_IMAGE_FEATURES`: the declared axes, through the same
+`declared_capabilities` accessor the generated west application uses. The
+query runs once per configure and both readers share its answer.
+
+- `NANO_ROS_FEATURES` unset → it becomes the image's axes.
+- Set, but missing a declared axis → configure stops, naming the missing axes.
+- Set to a superset → left alone.
+- An application in no workspace → unchanged, so `-DNANO_ROS_FEATURES` is
+  still its only source.
+
+Measured on `examples/workspaces/features` `[image.zephyr_cpp_params]`
+(native_sim/native/64, store Zephyr 3.7). The generated application was copied
+out with its `set(NANO_ROS_FEATURES …)` and digest lines deleted, which is a
+hand-written app that states nothing:
+
+- old module: `west rc=2`, `undefined reference to
+  nros_cpp_register_parameter_services` and `… nros_cpp_lifecycle_autostart`;
+- new module: `capability axes of image demo_bringup:zephyr_cpp_params:
+  param_services, lifecycle (from its system.toml)`, `west rc=0`;
+- the generated application, unchanged: `west rc=0`.
+
+Gate: `just check workspace-system-required` gained cases D–G, which drive the
+macro in script mode against a synced synthetic workspace. With the default
+removed, D fails; with the refusal turned into a STATUS, E fails.
 
 ## 2026-10-11 — the workspace half refuses at configure (still OPEN for Zephyr)
 
