@@ -760,6 +760,40 @@ config NROS_ZENOH_SERIAL_TX_RING_BYTES
       _Z_ZEPHYR_SERIAL_TX_RING_BYTES (zenoh-pico
       src/system/zephyr/network.c), whose default is the same 2048.
 
+# Kconfig preprocessor: a literal comma would split the macro's argument.
+# The same values arch/arm/Kconfig defines; redefining them is harmless and
+# does not depend on which file Kconfig reads first.
+DT_CHOSEN_Z_ITCM := zephyr,itcm
+DT_CHOSEN_Z_DTCM := zephyr,dtcm
+
+config NROS_ZENOH_SERIAL_TCM
+    bool "Serial link: zenoh-pico's Zephyr network.c in ITCM, its buffers in DTCM"
+    depends on NROS_ZENOH_LINK_SERIAL && CODE_DATA_RELOCATION
+    depends on $(dt_chosen_enabled,$(DT_CHOSEN_Z_ITCM)) && $(dt_chosen_enabled,$(DT_CHOSEN_Z_DTCM))
+    help
+      nano-ros phase-474 I13. Relocates zenoh-pico src/system/zephyr/network.c
+      with zephyr_code_relocate: its code (the serial ISR among it) to ITCM and
+      its zero-initialised data -- the RX and TX rings
+      (NROS_ZENOH_SERIAL_RX_RING_BYTES, NROS_ZENOH_SERIAL_TX_RING_BYTES) and
+      the static framing buffers, about 4.5 KiB -- to DTCM. On a part whose
+      SRAM is behind a D-cache (Cortex-M7) DTCM is not, so the ISR's ring
+      accesses and any DMA into those buffers need no cache maintenance, and
+      the SRAM they used is freed.
+
+      At 921600 baud an LPUART's serial ISR runs about once a byte, and on an
+      S32K344 with the ISR in flash each call cost 7-10 us. Off by default:
+      it needs both TCMs, room in them, and CODE_DATA_RELOCATION.
+
+config NROS_ZENOH_SERIAL_ISR_STATS
+    bool "Serial link: count the serial ISR's cycles and calls"
+    depends on NROS_ZENOH_LINK_SERIAL && UART_INTERRUPT_DRIVEN
+    help
+      nano-ros phase-474 I13. Adds `_z_zephyr_serial_isr_cycles` and
+      `_z_zephyr_serial_isr_calls` (zenoh-pico src/system/zephyr/network.c),
+      updated on every serial ISR, so a profiler can charge ISR time to the
+      code it interrupted by reading them before and after. Two
+      k_cycle_get_32 per call; off by default.
+
 config NROS_ZENOH_LINK_CAN
     bool "CAN / CAN FD link"
     default n
