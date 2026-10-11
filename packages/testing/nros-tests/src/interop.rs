@@ -525,6 +525,13 @@ pub const CELLS: &[InteropCell] = &[
     ic("native-params-per-node-rust-zenoh",
        c(Linux, Rust, Zenoh, Params, Interop, Runtime),
        NativeFixtures, RosEdition(Zenoh), BiDir, "params_per_node_interop"),
+    // tests/c_param_server_interop.rs — phase-491 W6 (RFC-0105 §Interop
+    // proof): a C node built only on rclc's parameter-server API, driven by
+    // stock `ros2 param` — the callback's veto, the remotely enforced range,
+    // read-only, and a set that reads back.
+    ic("native-params-c-zenoh",
+       c(Linux, C, Zenoh, Params, Interop, Runtime),
+       NativeFixtures, RosEdition(Zenoh), BiDir, "c_param_server_interop"),
     // Issue 1268 — the SAME test against the SAME image on Cyclone (row
     // `param-two-node-talker-cyclone`). Cyclone creates a service only if its
     // request and reply types have a registered descriptor, and nothing

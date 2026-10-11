@@ -144,8 +144,22 @@ Carried, with where each goes:
   `struct nros_executor_t`**, which are the same types as `rcl_ret_t` /
   `rcl_node_t` / `rclc_executor_t` from `<nros/rcl_compat.h>`. It does not
   include `rcl_compat.h` itself. phase-492 makes the rcl spellings primary.
-- **String-array get/set** are not exposed yet. String arrays declared
-  elsewhere (launch, `ros2 param set`) still reach the callback.
 - **The remote set still stages its value on the stack**, about 8.5 KiB at
   default bounds (RFC-0105 D10.2). That is the W2 staging-slot item, not done.
 - **`notify_changed_over_dds` is recorded and not acted on** until W3.
+
+### 2026-10-12 — string arrays and the live cell (W6)
+
+- `rclc_parameter_{declare,set,get}_string_array`: in from `const char* const*`,
+  out into a caller rectangle. Elements that are too long, or too many, are
+  refused; nothing is truncated. Covered in `rclc_parameter_server.c`.
+- **W6.** `packages/testing/nros-tests/tests/c_param_server_interop.rs`, cell
+  `native-params-c-zenoh` in `interop::CELLS`. It runs the prebuilt
+  `c-parameters` image and drives it with stock `ros2 param`:
+  - list and get;
+  - the rclc callback's veto of `publish_rate_hz = 0`;
+  - the advertised range enforced on the remote path;
+  - a set on `topic_name`, which the example now marks read-only;
+  - an accepted set that reads back.
+
+  The `/parameter_events` check joins it with W3.

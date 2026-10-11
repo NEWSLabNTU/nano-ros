@@ -897,6 +897,24 @@ test-ros2-params-per-node verbose="":
     fi
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
+# Run the C parameter-server interop cell (phase-491 W6, RFC-0105): the
+# `c-parameters` image, built only on rclc's `rclc_parameter_server_t` API,
+# driven by stock `ros2 param` -- the callback's veto, the remotely enforced
+# range, read-only, and a set that reads back.
+# Runs `c_param_server_interop`; needs ROS 2 + the distro's `rmw_zenoh_cpp` +
+# `rmw_zenohd`, and the `c-parameters` fixture.
+[group("debug")]
+test-ros2-c-param-server verbose="":
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    cargo_nextest_args=($(nros_cargo_nextest_args))
+    args=(-p nros-tests --test c_param_server_interop --no-fail-fast)
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output never)
+    fi
+    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
+
 # Run the `ros2 lifecycle …` interop test against an nros lifecycle-node.
 # Needs the distro's `rmw_zenoh_cpp` (`ros-<distro>-rmw-zenoh-cpp` from apt).
 # There is no source overlay to build: issue 0291 refuted the "wire-match our
