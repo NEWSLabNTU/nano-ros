@@ -34,6 +34,8 @@ doctor:
     #!/usr/bin/env bash
     bash scripts/dev/deprecated-scope-alias.sh threadx_linux doctor "just doctor threadx_linux"
     set +e
+    source scripts/build/cargo.sh
+    nros_locate_sdk_trees  # phase-484 W2 — the trees W3c stopped exporting
     fail=0
     if [ -d "$THREADX_DIR/common/inc" ]; then
         echo "  [OK] ThreadX kernel: $THREADX_DIR"
@@ -63,6 +65,8 @@ build: build-examples
 build-examples:
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    nros_locate_sdk_trees  # phase-484 W2 — the trees W3c stopped exporting
     # issue 0650 — first step of the lane: clear last run's skip notes, so a
     # lane that is complete this time is not reported SKIPPED from history.
     # shellcheck source=scripts/build/lane-skip.sh
@@ -202,6 +206,8 @@ test verbose="": build-fixtures
     #!/usr/bin/env bash
     bash scripts/dev/deprecated-scope-alias.sh threadx_linux test "just test threadx_linux"
     set -e
+    source scripts/build/cargo.sh
+    nros_locate_sdk_trees  # phase-484 W2 — the trees W3c stopped exporting
     if [ ! -d "$THREADX_DIR/common/inc" ]; then
         echo "ERROR: ThreadX not found at $THREADX_DIR. Run: just threadx-linux setup"
         exit 1

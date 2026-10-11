@@ -422,6 +422,22 @@ nros_locate_source() {
     "$bin" locate --format path "$name" 2>/dev/null
 }
 
+# nros_locate_sdk_trees — set FREERTOS_DIR, LWIP_DIR, THREADX_DIR and NETX_DIR
+# for a recipe that names them, each through `nros_locate_source` (phase-484 W2,
+# RFC-0103 D4). phase-484 W3c stopped exporting these four store-first trees,
+# but ~30 recipe lines kept reading the variables, so they worked only in a
+# shell that still carried a pre-W3c `activate.sh` export, and died on an unbound
+# variable everywhere else (CI, a fresh contributor, a worktree whose parent
+# shell never activated). An unprovisioned tree is left EMPTY, so a recipe's
+# own "not found" message still fires and names the setup command.
+nros_locate_sdk_trees() {
+    FREERTOS_DIR="$(nros_locate_source freertos-kernel)" || FREERTOS_DIR=""
+    LWIP_DIR="$(nros_locate_source lwip)" || LWIP_DIR=""
+    THREADX_DIR="$(nros_locate_source threadx)" || THREADX_DIR=""
+    NETX_DIR="$(nros_locate_source threadx-netxduo)" || NETX_DIR=""
+    export FREERTOS_DIR LWIP_DIR THREADX_DIR NETX_DIR
+}
+
 # nros_locate_artifact <name> [--target <triple>] [--profile <p>] — where a
 # cargo-built nano-ros artifact lands (phase-484 W6b, RFC-0103 D7): `c-archive`,
 # `cpp-archive`, `c-include`, `cpp-include`, `c-config-header`,
