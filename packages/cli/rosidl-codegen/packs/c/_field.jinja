@@ -166,7 +166,7 @@
 {#- Issue 0346 — C borrowed VIEW field declaration (mirrors the Rust macro). -#}
 {%- macro view_field_decl(field) -%}
 {%- if field.is_view %}
-    {{ field.borrowed_c_type }} {{ field.name }};
+    {{ field.view_c_type }} {{ field.name }};
 {%- else %}
     {{ field | c_type }} {{ field.name }}{{ field | c_array_suffix }};
 {%- endif %}

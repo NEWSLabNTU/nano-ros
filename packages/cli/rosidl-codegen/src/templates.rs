@@ -460,13 +460,13 @@ pub struct CField {
     /// RFC-0033: `mode = "view"` (Phase 235, issue 0021). The owned
     /// `{Msg}` struct keeps a fixed-capacity container for the publish path;
     /// the additionally-emitted `{Msg}_View` borrows this field zero-copy via
-    /// [`borrowed_c_type`](Self::borrowed_c_type) /
+    /// [`view_c_type`](Self::view_c_type) /
     /// [`borrowed_read_fn`](Self::borrowed_read_fn).
     pub is_view: bool,
     /// Borrowed-view C type from `nros/view.h` (e.g. `nros_view_str_t`,
     /// `nros_view_bytes_t`, `nros_le_slice_view_f32_t`). Empty unless
     /// [`is_view`](Self::is_view).
-    pub borrowed_c_type: String,
+    pub view_c_type: String,
     /// `nros/view.h` reader for the borrowed view (e.g.
     /// `nros_cdr_borrow_string`); all share one signature. Empty unless
     /// [`is_view`](Self::is_view).
