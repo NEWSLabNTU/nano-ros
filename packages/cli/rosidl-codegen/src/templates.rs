@@ -292,8 +292,8 @@ pub struct ServiceNrosTemplate<'a> {
     /// Issue 0346 — RFC-0033 `borrowed`: this payload has at least one field
     /// that slices into the receive buffer, so a `_View` + `deserialize_view`
     /// is emitted beside the owned struct.
-    pub has_borrowed_request: bool,
-    pub has_borrowed_response: bool,
+    pub has_view_request: bool,
+    pub has_view_response: bool,
 }
 
 #[derive(serde::Serialize)]
@@ -404,9 +404,9 @@ pub struct ActionNrosTemplate<'a> {
     /// Issue 0346 — RFC-0033 `borrowed`: this payload has at least one field
     /// that slices into the receive buffer, so a `_View` + `deserialize_view`
     /// is emitted beside the owned struct.
-    pub has_borrowed_goal: bool,
-    pub has_borrowed_result: bool,
-    pub has_borrowed_feedback: bool,
+    pub has_view_goal: bool,
+    pub has_view_result: bool,
+    pub has_view_feedback: bool,
 }
 
 // ============================================================================
@@ -568,8 +568,8 @@ pub struct ServiceCHeaderTemplate<'a> {
     /// Issue 0346 — RFC-0033 `borrowed`: this payload has at least one field
     /// that slices into the receive buffer, so a `_View` + `deserialize_view`
     /// is emitted beside the owned struct.
-    pub has_borrowed_request: bool,
-    pub has_borrowed_response: bool,
+    pub has_view_request: bool,
+    pub has_view_response: bool,
 }
 
 #[derive(serde::Serialize)]
@@ -588,8 +588,8 @@ pub struct ServiceCSourceTemplate<'a> {
     /// Issue 0346 — RFC-0033 `borrowed`: this payload has at least one field
     /// that slices into the receive buffer, so a `_View` + `deserialize_view`
     /// is emitted beside the owned struct.
-    pub has_borrowed_request: bool,
-    pub has_borrowed_response: bool,
+    pub has_view_request: bool,
+    pub has_view_response: bool,
 }
 
 #[derive(serde::Serialize)]
@@ -617,9 +617,9 @@ pub struct ActionCHeaderTemplate<'a> {
     /// Issue 0346 — RFC-0033 `borrowed`: this payload has at least one field
     /// that slices into the receive buffer, so a `_View` + `deserialize_view`
     /// is emitted beside the owned struct.
-    pub has_borrowed_goal: bool,
-    pub has_borrowed_result: bool,
-    pub has_borrowed_feedback: bool,
+    pub has_view_goal: bool,
+    pub has_view_result: bool,
+    pub has_view_feedback: bool,
 }
 
 #[derive(serde::Serialize)]
@@ -641,9 +641,9 @@ pub struct ActionCSourceTemplate<'a> {
     /// Issue 0346 — RFC-0033 `borrowed`: this payload has at least one field
     /// that slices into the receive buffer, so a `_View` + `deserialize_view`
     /// is emitted beside the owned struct.
-    pub has_borrowed_goal: bool,
-    pub has_borrowed_result: bool,
-    pub has_borrowed_feedback: bool,
+    pub has_view_goal: bool,
+    pub has_view_result: bool,
+    pub has_view_feedback: bool,
 }
 
 // ============================================================================

@@ -12,7 +12,7 @@
 #include <stddef.h>
 
 #include <nros/types.h>
-{%- if has_borrowed_request or has_borrowed_response %}
+{%- if has_view_request or has_view_response %}
 // Issue 0346 — borrowed views use nros_view_str_t / the LE slice views.
 #include <nros/view.h>
 {%- endif %}
@@ -480,7 +480,7 @@ static inline nros_ret_t {{ service_struct_name }}_client_call(
 }
 #endif
 
-{%- if has_borrowed_request %}
+{%- if has_view_request %}
 
 /// Borrowed (zero-copy) view of {{ request_struct_name }} (RFC-0033 `view`, issue 0346).
 /// Borrowed fields point into the source buffer — the raw service/action callback
@@ -495,7 +495,7 @@ typedef struct {{ request_struct_name }}_View {
 int32_t {{ request_struct_name }}_deserialize_view({{ request_struct_name }}_View* out, const uint8_t* buffer, size_t buffer_size);
 {%- endif %}
 
-{%- if has_borrowed_response %}
+{%- if has_view_response %}
 
 /// Borrowed (zero-copy) view of {{ response_struct_name }} (RFC-0033 `view`, issue 0346).
 /// Borrowed fields point into the source buffer — the raw service/action callback
