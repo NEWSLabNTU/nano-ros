@@ -4602,7 +4602,7 @@ clean-bindings:
 # `HashSet` and `filter_interface_packages` iterates it — so no codegen change
 # is needed and every dep stays a flat sibling.
 #
-# The run is IN PLACE and IDEMPOTENT, which the four-tree layout never was: its
+# The run is IDEMPOTENT, which the four-tree layout never was: its
 # manifests were three hand-adapted vintages, so the documented update procedure
 # was "generate out of tree and copy only src/lib.rs back" (4b80db633). That is
 # retired — nothing under `generated/` is hand-maintained any more. Run it
@@ -4619,23 +4619,47 @@ generate-interfaces:
     source scripts/build/cargo.sh
     NROS="$(nros_cli_bin)"
     echo "Regenerating packages/interfaces bindings..."
-    cd packages/interfaces
     # Full re-emit, so a message deleted upstream cannot leave a stale file
-    # behind. Nothing here is hand-maintained, so there is nothing to lose.
-    rm -rf generated/humble
-    $NROS generate-rust --force -o generated/humble --codegen-config nros-codegen.toml \
-        --rename builtin_interfaces=nros-builtin-interfaces \
-        --rename std_msgs=nros-std-msgs \
-        --rename rcl_interfaces=nros-rcl-interfaces \
-        --rename diagnostic_msgs=nros-diagnostic-msgs \
-        --rename rosgraph_msgs=nros-rosgraph-msgs \
-        --rename lifecycle_msgs=nros-lifecycle-msgs
+    # behind. Nothing here is hand-maintained, so there is nothing to lose ONCE
+    # the new tree exists -- which is why it is emitted into a staging dir and
+    # swapped in only after the generator succeeded (issue 1826). Deleting first
+    # meant any failure (a stale CLI refusing to run, a codegen error) left the
+    # TRACKED tree gone, and with it every `just` invocation: the root
+    # Cargo.toml names these crates as members.
+    #
+    # The staging dir is a SIBLING of the real one, at the same depth: the
+    # generator writes path dependencies relative to its output dir (to
+    # `packages/core/...`), so a stage anywhere else emits paths that do not
+    # resolve once moved.
+    stage="$PWD/packages/interfaces/generated/.humble.staging"
+    rm -rf "$stage"
+    trap 'rm -rf "$stage"' EXIT
+    (
+        cd packages/interfaces
+        $NROS generate-rust --force -o "$stage" --codegen-config nros-codegen.toml \
+            --rename builtin_interfaces=nros-builtin-interfaces \
+            --rename std_msgs=nros-std-msgs \
+            --rename rcl_interfaces=nros-rcl-interfaces \
+            --rename diagnostic_msgs=nros-diagnostic-msgs \
+            --rename rosgraph_msgs=nros-rosgraph-msgs \
+            --rename lifecycle_msgs=nros-lifecycle-msgs
+    )
     # `geometry_msgs` arrives in the closure via diagnostic_msgs' ament deps and
     # no message in the set references it. It is also the one emitted crate that
     # would ship an UNPREFIXED ament name, which is the collision RFC-0067 §D4
     # is about — so it goes, exactly as the old diagnostic-msgs recipe dropped it.
-    rm -rf generated/humble/geometry_msgs
-    cd ../..
+    rm -rf "$stage/geometry_msgs"
+    # The generator returned success; refuse a tree that is missing a crate the
+    # root workspace names, rather than swap in something cargo cannot load.
+    for crate in nros-builtin-interfaces nros-std-msgs nros-rcl-interfaces \
+                 nros-diagnostic-msgs nros-rosgraph-msgs nros-lifecycle-msgs; do
+        if [ ! -f "$stage/$crate/Cargo.toml" ]; then
+            echo "error: the generator produced no $crate; packages/interfaces/generated/humble is untouched" >&2
+            exit 1
+        fi
+    done
+    rm -rf packages/interfaces/generated/humble
+    mv "$stage" packages/interfaces/generated/humble
     # Per crate, never `--all`: formatting the whole tree re-stales every
     # prebuilt fixture (CLAUDE.md, the mtime treadmill).
     cargo +{{NIGHTLY}} fmt \
