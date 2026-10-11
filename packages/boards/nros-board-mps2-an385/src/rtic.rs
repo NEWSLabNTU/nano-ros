@@ -4,7 +4,7 @@
 //! never independent: it depended on this one and called its `init_hardware` /
 //! `exit_success` / `exit_failure` / `enable_wfi_idle`, so all it added was the
 //! framework-owned entry surface — the deferred-callback SPSC queue, the
-//! [`RticBoardEntry`] impl, and the CMSDK TIMER0 tick. What it *also* carried
+//! [`RticBoardEntry`] impl, and the CMSDK dual-timer tick. What it *also* carried
 //! was a second board `Config` builder and a second `mask_to_prefix`, which
 //! drifted from this crate's (see [`crate::Config::qemu_slirp`]).
 //!
@@ -220,9 +220,9 @@ fn init_with_config(config: Config, deploy: Option<&DeployOverlay>) -> (RticBoot
     // the facade must not depend on which of the board's two boot paths ran.
     crate::log_bridge::install_semihosting_log_bridge();
 
-    // Phase 289 (#178 layer 3) — arm CMSDK TIMER0 as the periodic tick that
+    // Phase 289 (#178 layer 3) — arm the CMSDK dual timer as the periodic tick that
     // wakes the `wfi` idle-yield installed by `on_interrupts_live`. The
-    // proc-macro emits a `#[task(binds = TIMER0, priority = 2)]` handler
+    // proc-macro emits a `#[task(binds = DUALTIMER, priority = 2)]` handler
     // (RTIC wires the real vector; NVIC unmask is RTIC's job), which calls
     // `on_tick` to acknowledge. Arming here is pure register config — no
     // interrupt is DELIVERED until `#[init]` returns and RTIC unmasks.
@@ -272,39 +272,66 @@ fn init_with_config(config: Config, deploy: Option<&DeployOverlay>) -> (RticBoot
     (boot, runtime)
 }
 
-// ---- Phase 289 — CMSDK TIMER0 tick (raw MMIO; the PAC is IRQ-names-only) ----
+// ---- Phase 289 — CMSDK DUAL TIMER tick (raw MMIO; the PAC is IRQ-names-only) ----
 //
-// CMSDK APB timer 0 on MPS2-AN385 (QEMU `hw/timer/cmsdk-apb-timer.c`,
-// base per `hw/arm/mps2.c`): CTRL 0x0 (bit0 EN, bit3 IRQEN), VALUE 0x4,
-// RELOAD 0x8, INTSTATUS/INTCLEAR 0xC (write 1 to clear). Clocked at the
-// 25 MHz system clock → RELOAD 25 000 = 1 ms tick. 1 ms bounds every
-// `wfi` wait in the connect/poll busy-waits without measurable IRQ load.
-const CMSDK_TIMER0_BASE: usize = 0x4000_0000;
-const TIMER_CTRL: usize = 0x0;
-const TIMER_RELOAD: usize = 0x8;
-const TIMER_INTCLEAR: usize = 0xC;
-const TIMER_CTRL_EN: u32 = 1 << 0;
-const TIMER_CTRL_IRQEN: u32 = 1 << 3;
+// CMSDK APB dual timer on MPS2-AN385 (QEMU `hw/timer/cmsdk-apb-dualtimer.c`,
+// mapped at 0x4000_2000 on IRQ 10 by `hw/arm/mps2.c`). Its first counter:
+// LOAD 0x00, VALUE 0x04, CONTROL 0x08 (bit1 32-bit, bit5 INTEN, bit6
+// periodic, bit7 EN), INTCLR 0x0C (any write clears). Clocked at the 25 MHz
+// system clock → LOAD 25 000 = 1 ms tick. 1 ms bounds every `wfi` wait in the
+// connect/poll busy-waits without measurable IRQ load.
+//
+// Issue 1804 — NOT TIMER0, and not TIMER1 either. TIMER0 is the platform's
+// free-running monotonic clock (`nros_platform_mps2_an385::clock`), and
+// phase-289 armed this tick on it: RELOAD 25 000 made every 1 ms reload look
+// like a 2^32-tick wrap, so the clock jumped ~171.8 s per tick and every
+// timeout measured against it (TCP connect, `read_exact`, the zenoh
+// handshake) fired on the next tick. The session then opened only when the
+// router answered inside one tick — the intermittent `ConnectionFailed` of
+// issue 0968. TIMER1 is `sporadic_timer`'s (and defines the `TIMER1` vector),
+// so the dual timer is the one free counter. The macro's `binds = DUALTIMER`
+// (`rtic_board_spec_for` in nros-macros) must name this same peripheral.
+const CMSDK_DUALTIMER_BASE: usize = 0x4000_2000;
+const DUALTIMER1_LOAD: usize = 0x00;
+const DUALTIMER1_CONTROL: usize = 0x08;
+const DUALTIMER1_INTCLR: usize = 0x0C;
+const DUALTIMER_CTRL_SIZE_32: u32 = 1 << 1;
+const DUALTIMER_CTRL_INTEN: u32 = 1 << 5;
+const DUALTIMER_CTRL_PERIODIC: u32 = 1 << 6;
+const DUALTIMER_CTRL_EN: u32 = 1 << 7;
 /// 25 MHz sysclk / 1 kHz tick.
 const TICK_RELOAD: u32 = 25_000;
 
+// Issue 1804 — the tick must never reprogram a timer another owner relies on.
+const _: () = assert!(
+    CMSDK_DUALTIMER_BASE != nros_platform_mps2_an385::clock::CLOCK_TIMER_BASE
+        && CMSDK_DUALTIMER_BASE != nros_platform_mps2_an385::sporadic_timer::SPORADIC_TIMER_BASE,
+    "the RTIC tick must not share a timer with the monotonic clock or the sporadic timer (issue 1804)"
+);
+
 fn arm_tick_timer() {
-    // SAFETY: CMSDK TIMER0 MMIO, single-core, called once during `#[init]`
+    // SAFETY: CMSDK dual-timer MMIO, single-core, called once during `#[init]`
     // before any task runs; same raw-MMIO discipline as the UART/LAN9118
     // bring-up in `crate::node`.
     unsafe {
-        core::ptr::write_volatile((CMSDK_TIMER0_BASE + TIMER_RELOAD) as *mut u32, TICK_RELOAD);
         core::ptr::write_volatile(
-            (CMSDK_TIMER0_BASE + TIMER_CTRL) as *mut u32,
-            TIMER_CTRL_EN | TIMER_CTRL_IRQEN,
+            (CMSDK_DUALTIMER_BASE + DUALTIMER1_LOAD) as *mut u32,
+            TICK_RELOAD,
+        );
+        core::ptr::write_volatile(
+            (CMSDK_DUALTIMER_BASE + DUALTIMER1_CONTROL) as *mut u32,
+            DUALTIMER_CTRL_EN
+                | DUALTIMER_CTRL_PERIODIC
+                | DUALTIMER_CTRL_INTEN
+                | DUALTIMER_CTRL_SIZE_32,
         );
     }
 }
 
 fn clear_tick_irq() {
-    // SAFETY: write-1-to-clear INTCLEAR; safe from the tick handler.
+    // SAFETY: any write to INTCLR clears; safe from the tick handler.
     unsafe {
-        core::ptr::write_volatile((CMSDK_TIMER0_BASE + TIMER_INTCLEAR) as *mut u32, 1);
+        core::ptr::write_volatile((CMSDK_DUALTIMER_BASE + DUALTIMER1_INTCLR) as *mut u32, 1);
     }
 }
 
@@ -340,14 +367,14 @@ impl RticBoardEntry for RticMps2An385 {
         }
     }
 
-    /// Phase 289 — acknowledge TIMER0. Un-cleared = IRQ storm that starves
+    /// Phase 289 — acknowledge the dual-timer tick. Un-cleared = IRQ storm that starves
     /// the priority-1 `__nros_run` task.
     fn on_tick() {
         clear_tick_irq();
     }
 
     /// Phase 289 (#178 layer 2) — install `wfi` on both busy-wait sites
-    /// (`sleep_ms` + `nros_smoltcp::do_poll`) now that TIMER0 is armed and
+    /// (`sleep_ms` + `nros_smoltcp::do_poll`) now that the dual-timer tick is armed and
     /// interrupts are unmasked. Without this, the zenoh connect spin races
     /// QEMU `-icount` virtual time ahead of wall-clock and host-timed slirp
     /// never delivers the handshake packets (#178 layer 2).

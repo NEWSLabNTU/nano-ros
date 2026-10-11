@@ -35,6 +35,10 @@ use nros_platform_api::TimerError;
 
 /// CMSDK Timer1 base address.
 const TIMER1_BASE: usize = 0x4000_1000;
+
+/// The CMSDK timer this module OWNS (issue 1804) — exported so another
+/// periodic-interrupt user (the RTIC tick) can assert it is not this one.
+pub const SPORADIC_TIMER_BASE: usize = TIMER1_BASE;
 const TIMER_CTRL: usize = 0x00;
 /// Interrupt status / clear register offset (write 1 to clear).
 const TIMER_INTSTATUS: usize = 0x0C;

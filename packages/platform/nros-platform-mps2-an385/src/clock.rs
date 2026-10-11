@@ -12,6 +12,18 @@ use core::sync::atomic::{AtomicU32, Ordering};
 
 /// CMSDK Timer0 base address
 const TIMER0_BASE: usize = 0x4000_0000;
+
+/// The CMSDK timer this clock OWNS — free-running, RELOAD `0xFFFF_FFFF`.
+///
+/// Issue 1804 — nothing else may reprogram it. The wrap accounting below
+/// reads every reload as a full 2^32-tick period (~171.8 s), so a second
+/// user that sets a short RELOAD turns each of its periods into a 171.8 s
+/// jump of this clock, and every timeout measured against it (TCP connect,
+/// `read_exact`, the session handshake) fires on the next reload. The RTIC
+/// tick did exactly that from phase-289 to issue 1804. A periodic interrupt
+/// belongs on another timer (TIMER1 is `sporadic_timer`'s, the dual timer is
+/// the RTIC tick's); exported so its owner can assert it is not this one.
+pub const CLOCK_TIMER_BASE: usize = TIMER0_BASE;
 /// Control register offset
 const TIMER_CTRL: usize = 0x00;
 /// Current value register offset

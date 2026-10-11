@@ -4616,7 +4616,12 @@ fn rtic_board_spec_for(deploy: &str) -> Option<RticBoardSpec> {
             // phase-337 W6.a — folded into `nros-board-mps2-an385`'s `rtic`
             // feature, which re-exports the queue accessors at the crate root.
             "::nros_board_mps2_an385::take_dispatch_consumer",
-            Some("TIMER0"),
+            // Issue 1804 — the dual timer, which the board arms as its tick.
+            // TIMER0 is the platform's free-running monotonic clock (a tick
+            // on it reprograms the clock's RELOAD and makes it jump ~171.8 s
+            // per tick) and TIMER1 is the sporadic-server timer, whose
+            // `TIMER1` vector the platform crate already defines.
+            Some("DUALTIMER"),
         ),
         _ => return None,
     };
