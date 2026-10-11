@@ -440,6 +440,22 @@ pub struct SdkLock {
     /// recorded and warned about, never enforced.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub system: BTreeMap<String, crate::orchestration::system_obs::SystemRecord>,
+    /// RFC-0104 open question 4 (phase-485 W10) — a USER project's own pins
+    /// over an INSTALLED SDK's read-only pin set: `nros update --crate` writes
+    /// one, and seeding and the drift check read the SDK pins with these laid
+    /// over them. Keyed by crate name; the override replaces the pin in its
+    /// semver range.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub cargo_override: BTreeMap<String, CargoOverride>,
+}
+
+/// `[cargo_override.<name>]` — one crate a project pins differently from its SDK.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CargoOverride {
+    pub version: String,
+    pub source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checksum: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

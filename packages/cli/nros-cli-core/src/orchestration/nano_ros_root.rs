@@ -146,6 +146,20 @@ pub fn not_found_help() -> String {
         .to_string()
 }
 
+/// Is this nano-ros root a CHECKOUT (writable pin set, gitignored lock) rather
+/// than an INSTALLED SDK (the release's read-only pins, a project-owned lock)?
+///
+/// NOT `CHECKOUT_MARKER`: that file marks any nano-ros ROOT, and an installed
+/// SDK root ships it too (`stage-sdk-root.sh`: "the root MARKER"). What marks a
+/// root INSTALLED is the absence of a `.git` (a directory, or a linked
+/// worktree's file) — the rule `stage-sdk-root.sh` and
+/// `sdk_store::recorded_pin` already state. phase-485 W10 found the marker
+/// answering "checkout" for a staged SDK.
+#[must_use]
+pub fn is_checkout(root: &Path) -> bool {
+    root.join(".git").exists()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

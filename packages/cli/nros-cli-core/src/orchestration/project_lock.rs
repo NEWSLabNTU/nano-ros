@@ -382,6 +382,21 @@ pub fn record(rec: &BuildRecord, nano_ros_root: Option<&Path>) -> eyre::Result<R
                 &commit,
                 pinned.as_deref(),
             ));
+            // Outside a checkout the lock is the PROJECT's record, committed
+            // by its owner: an entry it pinned is never rewritten without
+            // `nros update` (phase-485 W10). A moved one is drift instead.
+            if !crate::orchestration::nano_ros_root::is_checkout(nr)
+                && let Some(prev) = lock.source.get(name)
+                && prev.commit != commit
+            {
+                drifts.push(crate::orchestration::drift::Drift::Pinned {
+                    kind: "source",
+                    name: name.clone(),
+                    pinned: prev.commit.clone(),
+                    now: commit.clone(),
+                });
+                continue;
+            }
             lock.source.insert(
                 name.clone(),
                 SourceRecord {

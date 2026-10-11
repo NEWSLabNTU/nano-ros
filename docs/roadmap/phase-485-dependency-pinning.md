@@ -1,7 +1,14 @@
 # Phase 485 — dependency pinning: one pin set, one project lock
 
-**Status (2026-10-11). M1–M3 measured, and the issue-1781 fix landed. W1 has
-landed (the registry pin set), and so have W2 (seeded leaf locks), W3 (the project lock across kinds), W7 (`nros update`), W4 (the drift check; the shim is retired), W5 (issue 1780, landed on its own), W6 (system libraries recorded and warned about) and W8 (no fetch at build time); W6, W9 and W10 are open.** Implements
+**Status (2026-10-11). Done; archived. M1–M3 measured, then W1–W10
+landed** (W7 ahead of W4, so that the drift check names a verb that exists).
+W5 landed on its own as the issue-1780 fix (`2b6c3aedc2`), on all three
+roads. Two pieces of residue are tracked rather than open here:
+- issue 1805 owns what the first `just check deny` found and a breaking bump
+  must fix;
+- W2's "two hosts" and W9's optional `cargo vendor` are recorded as not done.
+
+Implements
 [RFC-0104](../design/0104-dependency-pinning-and-project-lock.md). The RFC's
 D3 and D5 rested on facts that were not yet measured, so M1–M3 ran before any
 implementation and amended the RFC.
@@ -524,11 +531,74 @@ and `cargo-edit` as `[tool.*]` store entries or `just dev-tools`; a `just
 check deny` lane. Optionally `cargo vendor` for the offline nightly
 (issues 0873/1356).
 
+**Result (2026-10-11) — landed; `cargo vendor` not done.**
+
+- **Pinned tools.** `cargo-deny` 0.20.2 and `cargo-edit` 0.13.6 are pinned as
+  `[rust.cargo-tool.deny]` and `[rust.cargo-tool.edit]`. Neither is reached
+  from a user build.
+- **`just check deny`** runs `cargo deny check` over the two closed-graph
+  roots (482 of the 512 pins). It is exempt from the fast line, because it
+  needs the tool and the network, and is a developer lane.
+- **`deny.toml`'s lists were MEASURED from those roots, not copied.**
+  - The license allow-list is the 12 identifiers the graph actually carries.
+    LGPL is not allowed: its one carrier, `r-efi`, is MIT-or-Apache too.
+  - The one allowed git source is ros-launch-manifest.
+  - Duplicate majors are reported, not refused (RFC-0104 D7).
+  - The six generated message crates, which have no `license` field, are
+    clarified to the workspace's license.
+- **The first run found three vulnerabilities.**
+  - `crossbeam-epoch` (RUSTSEC-2026-0204) had a compatible fix. It was moved
+    with `nros update --crate crossbeam-epoch` (0.9.18 → 0.9.21), the verb's
+    first use on the real tree: both roots and the pin moved in one step.
+  - `quick-xml` (RUSTSEC-2026-0194/0195) needs 0.37 → 0.41, a breaking bump.
+    It is filed as issue 1805, together with five unmaintained crates.
+  - Those seven ids are listed in `deny.toml`'s `ignore`, each naming issue
+    1805, so the lane is green and goes red only for something NEW.
+- **`cargo vendor` for an offline nightly is not done.** It was optional in
+  this item, and issues 0873/1356 still own the cold-cache class.
+
 ### W10 — released SDK (open question 4)
 
 The pin set ships beside the index in the SDK root (RFC-0099 D2); a user
 project's first `nros build` writes `nros-sdk.lock` (RFC-0095 D9) and never
 rewrites a pinned entry without `nros update`.
+
+**Result (2026-10-11) — landed.**
+
+- **The pin set ships.** `stage-sdk-root.sh` stages `locks/` (documented in
+  its header), and `need -f locks/cargo-registry.lock` refuses a release
+  without it. A staged root was measured to contain it.
+- **Open question 4 answered: project overrides.** A project's own
+  `nros-sdk.lock` gains `[cargo_override.<name>]` (version, source,
+  checksum). Seeding and the drift check use the SDK's pins with those laid
+  over them, each override replacing the pin in its semver range.
+  - Against an INSTALLED SDK, `nros update` writes into the project lock
+    rather than refusing:
+    - `--crate` resolves in the caller's leaf and records the override;
+    - `--source` and `--tool` accept what this SDK has;
+    - `--pins` and `--west` refuse, because the release's pin set and
+      manifests are not the project's.
+- **The project lock is not rewritten.** Outside a checkout, a `[source]`
+  entry the project pinned is never overwritten by a build. A tree read at
+  another commit is `Pinned` drift, naming `nros update --source`. W4's tool
+  drift applies there too.
+- **"Checkout" is decided by `nano_ros_root::is_checkout` (a `.git`),** never
+  by `CHECKOUT_MARKER`. The scratch run below found the marker answering
+  "checkout" for a staged SDK: that file marks any nano-ros ROOT, and the SDK
+  ships it. The rule was already stated by `stage-sdk-root.sh` and
+  `sdk_store::recorded_pin`; now it has one spelling.
+- **Measured on a scratch project OUTSIDE the checkout,** against a staged SDK
+  root (`stage-sdk-root.sh`):
+  1. `ws seed-lock` seeded `libc` 0.2.186 from the shipped pin set.
+  2. `nros update --crate libc --precise 0.2.190` wrote
+     `[cargo_override.libc] version = "0.2.190"` (with source and checksum)
+     to the project's `nros-sdk.lock`.
+  3. Deleting the leaf lock and seeding again gave 0.2.190.
+
+  The drift check honouring an override is unit-tested
+  (`the_drift_check_reads_the_projects_overrides`).
+- **Not measured:** a full `nros build` of a scaffolded project against an
+  installed SDK. That is the release lane's job (`just probe installed`).
 
 ## Order
 

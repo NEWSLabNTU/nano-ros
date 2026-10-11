@@ -51,7 +51,47 @@ pub fn pin_file(nano_ros_root: &Path) -> Result<Option<PathBuf>> {
         .filter(|p| p.is_file()))
 }
 
-/// Seed `<manifest_dir>/Cargo.lock` from the pin set when the leaf has none.
+/// The pin set a project resolves against: the SDK's `pins` with the project's
+/// own `[cargo_override.*]` (phase-485 W10) replacing the pin in each
+/// override's semver range.
+#[must_use]
+pub fn effective(
+    pins: &[RegistryPkg],
+    overrides: &std::collections::BTreeMap<String, crate::orchestration::sdk_store::CargoOverride>,
+) -> Vec<RegistryPkg> {
+    let mut out: Vec<RegistryPkg> = pins
+        .iter()
+        .filter(|p| {
+            overrides
+                .get(&p.name)
+                .is_none_or(|o| compat_range(&o.version) != compat_range(&p.version))
+        })
+        .cloned()
+        .collect();
+    for (name, o) in overrides {
+        out.push(RegistryPkg {
+            name: name.clone(),
+            version: o.version.clone(),
+            source: o.source.clone(),
+            checksum: o.checksum.clone(),
+            dependencies: Vec::new(),
+        });
+    }
+    out
+}
+
+/// The `[cargo_override.*]` of the project lock `dir` belongs to.
+pub fn project_overrides(
+    dir: &Path,
+) -> Result<std::collections::BTreeMap<String, crate::orchestration::sdk_store::CargoOverride>> {
+    let lock = crate::orchestration::sdk_store::SdkLock::load(
+        &crate::orchestration::store::lock_path_for(dir),
+    )?;
+    Ok(lock.cargo_override)
+}
+
+/// Seed `<manifest_dir>/Cargo.lock` from the pin set when the leaf has none —
+/// with the project's own overrides laid over it (phase-485 W10).
 pub fn seed(manifest_dir: &Path, nano_ros_root: Option<&Path>) -> Result<Seed> {
     let lock = manifest_dir.join("Cargo.lock");
     if lock.exists() {
@@ -63,8 +103,15 @@ pub fn seed(manifest_dir: &Path, nano_ros_root: Option<&Path>) -> Result<Seed> {
     let Some(pins) = pin_file(root)? else {
         return Ok(Seed::NoPinSet);
     };
-    std::fs::copy(&pins, &lock)
-        .wrap_err_with(|| format!("seed {} from {}", lock.display(), pins.display()))?;
+    let overrides = project_overrides(manifest_dir)?;
+    if overrides.is_empty() {
+        std::fs::copy(&pins, &lock)
+            .wrap_err_with(|| format!("seed {} from {}", lock.display(), pins.display()))?;
+    } else {
+        let base = parse_registry(&std::fs::read_to_string(&pins)?)?;
+        std::fs::write(&lock, render(&effective(&base, &overrides)))
+            .wrap_err_with(|| format!("seed {}", lock.display()))?;
+    }
     Ok(Seed::Seeded { pins })
 }
 
@@ -249,6 +296,37 @@ mod tests {
             checksum: Some("ab".into()),
             dependencies: vec!["dep".into()],
         }
+    }
+
+    #[test]
+    fn a_project_override_replaces_the_pin_in_its_range_only() {
+        use crate::orchestration::sdk_store::CargoOverride;
+        let pins = vec![
+            pkg("libc", "0.2.186"),
+            pkg("heapless", "0.8.0"),
+            pkg("heapless", "0.9.3"),
+        ];
+        let ov = std::collections::BTreeMap::from([(
+            "heapless".to_string(),
+            CargoOverride {
+                version: "0.8.1".into(),
+                source: "registry+https://github.com/rust-lang/crates.io-index".into(),
+                checksum: None,
+            },
+        )]);
+        let mut v: Vec<(String, String)> = effective(&pins, &ov)
+            .into_iter()
+            .map(|p| (p.name, p.version))
+            .collect();
+        v.sort();
+        assert_eq!(
+            v,
+            vec![
+                ("heapless".into(), "0.8.1".into()),
+                ("heapless".into(), "0.9.3".into()),
+                ("libc".into(), "0.2.186".into()),
+            ]
+        );
     }
 
     #[test]
