@@ -122,6 +122,27 @@ pub struct SdkIndex {
     /// without the CLI knowing their names.
     #[serde(default, skip_serializing_if = "WestSection::is_empty")]
     pub west: WestSection,
+    /// phase-485 W6 (RFC-0104 D6, open question 2) — the COMPATIBILITY RANGE
+    /// of each system piece a pinned piece must interoperate with. Observed and
+    /// warned about, never enforced (`orchestration::system_obs`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub compat: BTreeMap<String, CompatEntry>,
+}
+
+/// `[compat.<name>]` — what to observe and the range it must fall in.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CompatEntry {
+    /// An ament package whose `package.xml` version is observed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ament: Option<String>,
+    /// Or a CMake package whose `<Pkg>ConfigVersion.cmake` is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cmake: Option<String>,
+    /// Comma-separated bounds: `>=0.1.1, <0.3`.
+    pub range: String,
+    /// Why the range exists, printed when an observation leaves it.
+    pub why: String,
 }
 
 /// `[west]` — the west manifests this tree commits (phase-485 W7).

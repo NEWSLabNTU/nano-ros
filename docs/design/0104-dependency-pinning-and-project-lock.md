@@ -282,7 +282,7 @@ lock does not move until THEY run `nros update`.
 1. **Answered (phase-485 W1).** Where the registry pin file lives and its format — a plain registry-only
    `Cargo.lock` (cargo can read it as a seed directly) vs a TOML subset keyed
    by name; M1 decides.
-2. The compatibility-range vocabulary in the index (D6): per `[source.*]`, per
+2. **Answered (phase-485 W6): a separate `[compat.*]` table.** The compatibility-range vocabulary in the index (D6): per `[source.*]`, per
    `[rmw.*]`, or a separate `[compat.*]` table.
 3. **Answered (phase-485 W3): a hash.** Whether `[cargo]` in the project lock stores a hash or the registry set
    itself — a hash is small, the set is diffable.
@@ -351,3 +351,8 @@ lock does not move until THEY run `nros update`.
   fallback and its issue-1060 pin and cache are deleted, and a configure
   without the store copy refuses. The gate covers nano-ros's own build files
   only: a user's vendor package may fetch with a digest (RFC-0087 D5).
+- 2026-10-11 — D6 implemented (phase-485 W6). Open question 2 is answered:
+  a separate `[compat.<name>]` table with `ament` or `cmake` (what to
+  observe), `range` and `why`. The ranges written are for `rmw_zenoh_cpp`
+  and the host Cyclone. A move is reported once, an out-of-range
+  observation on every build. Nothing refuses.

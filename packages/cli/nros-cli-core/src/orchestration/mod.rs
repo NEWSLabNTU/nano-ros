@@ -79,6 +79,7 @@ pub mod step_log;
 /// phase-440 W6 — the store's inventory, pin predicate and gc plan (RFC-0095
 /// D2 + D11). `sdk_store` is where a version GOES; this is what is there.
 pub mod store;
+pub mod system_obs;
 pub mod tier_resolver;
 pub mod workspace;
 

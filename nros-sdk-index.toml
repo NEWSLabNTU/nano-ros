@@ -2310,6 +2310,22 @@ check = { cmd = "kconfig-conf" }
 # setup/doctor derive from one file. cargo-nextest was required by `just
 # test-all` and declared nowhere (issue 0368 F7).
 
+# phase-485 W6 (RFC-0104 D6, open question 2) — COMPATIBILITY RANGES for the
+# host's system pieces a pinned piece must interoperate with. `nros build`
+# observes each (an ament `package.xml`, or a CMake `<Pkg>ConfigVersion.cmake`),
+# records it in `nros-sdk.lock` `[system.*]`, says once when it moved, and warns
+# LOUDLY on every build while it is outside its range. Never enforced: the host's
+# ROS is the user's (issue 1248).
+[compat.rmw_zenoh_cpp]
+ament = "rmw_zenoh_cpp"
+range = ">=0.1.1, <0.3"
+why = "the router an image talks to is ROS's rmw_zenohd (RFC-0075), and its zenoh moves with rmw_zenoh_cpp (0.1.1 -> 0.1.9 took zenoh 1.2.0 -> 1.8.0, issue 0609); zenoh-pico 1.8 interoperates across zenoh 1.x (issue 0291), and a line past 0.2 is unmeasured"
+
+[compat.cyclonedds]
+cmake = "CycloneDDS"
+range = ">=0.10, <0.11"
+why = "the cyclonedds fork is pinned to the line ROS ships, 0.10.5 (issue 0507); an image must speak the same Cyclone as the host's rmw_cyclonedds_cpp"
+
 # phase-485 W7 (RFC-0104 D4a) — the committed west manifests. `nros update
 # --west <project> --revision <rev>` edits every one listing that project; a
 # module the zephyr manifest IMPORTS follows `zephyr`'s revision instead.
