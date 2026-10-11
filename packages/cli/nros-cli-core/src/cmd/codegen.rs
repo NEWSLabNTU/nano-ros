@@ -36,6 +36,13 @@ pub struct Args {
     /// Verbose output
     #[arg(long)]
     pub verbose: bool,
+
+    /// RFC-0104 D5: generate nothing; write the args file's CURRENT ament
+    /// fingerprint to this file when it changed, and print a line when the
+    /// generated output's record (`nros-generated.toml`) disagrees with it.
+    /// The cmake generators list the file as a codegen input.
+    #[arg(long, requires = "args_file")]
+    pub ament_witness: Option<PathBuf>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -313,6 +320,18 @@ pub fn run(args: Args) -> Result<()> {
             // consumer's CMake build dir; walking up finds the workspace
             // Cargo.lock.
             abi_guard::check_workspace(&args_file, Verb::Codegen)?;
+            // RFC-0104 D5 / issue 1780 — the freshness question, not a
+            // generation: write the current ament fingerprint (if it moved) and
+            // say so when the generated output's record disagrees. Language-
+            // independent, since the inputs are the same for both lanes.
+            if let Some(witness) = args.ament_witness {
+                if let Some(line) = cargo_nano_ros::write_ament_witness(&args_file, &witness)
+                    .map_err(|e| eyre!("{e:#}"))?
+                {
+                    println!("{line}");
+                }
+                return Ok(());
+            }
             // phase-469 — parse at the edge, then an EXHAUSTIVE match: this was
             // `match args.language.as_str()` with an `other =>` arm, so a fourth
             // language reached the refusal only if its spelling happened not

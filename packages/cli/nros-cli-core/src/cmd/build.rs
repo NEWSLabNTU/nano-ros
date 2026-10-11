@@ -1719,6 +1719,22 @@ pub fn run(args: Args) -> Result<()> {
     };
     crate::abi_guard::check_workspace(&guard_anchor, crate::abi_guard::Verb::Build)?;
 
+    // RFC-0104 D5 / issue 1780 — the generated message crates are the LOCAL
+    // half, a function of the host's ament install. Before planning, because
+    // planning reads them (the single-package leaf's manifest path-depends on
+    // `generated/<pkg>`, and every cargo image compiles them): a crate whose
+    // recorded ament inputs moved is regenerated HERE, never compiled stale.
+    // The cmake and west roads ask the same question of their own generated
+    // trees at configure (`nros codegen --ament-witness`).
+    {
+        let root = match &args.workspace {
+            Some(w) => w.clone(),
+            None => std::env::current_dir().wrap_err("resolving cwd as the workspace root")?,
+        };
+        let root = std::fs::canonicalize(&root).unwrap_or(root);
+        crate::cmd::ws::refresh_generated(&root, args.dry_run)?;
+    }
+
     let plans = plan_builds(&args)?;
     pin_this_project(&args)?;
     drive(&plans, args.dry_run, &mut perform)

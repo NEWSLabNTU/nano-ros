@@ -1278,6 +1278,13 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   1360). So the EMITTED VERSION is a freshness input too, read from
   `codegen_version.rs` and never from a stale `nros --codegen-version`; both
   rules are `check-codegen-tool-reconfigure`.
+- **The AMENT install is a codegen input, and it is compared by CONTENT, never
+  mtime** (issue 1780, RFC-0104 D5) — `dpkg` installs a file with the `.deb`'s
+  mtime and an overlay moves no file, so a ROS upgrade left cmake and west
+  images byte-identical. Every generated package carries
+  `nros-generated.toml` (`rosidl_codegen::ament_stamp`); `nros build`
+  regenerates a moved cargo-road crate, both cmake generators ask
+  `nros_codegen_ament_stale()` at configure.
 - **A lib reached through a raw `-Wl,...` link FLAG gets no rebuild edge (issue 0475)** — CMake cannot
   see a file inside a flag string, and `add_dependencies()` only adds build ORDER, which ninja renders
   `||` (order-only): "must exist before linking", never "relink when it changes". The RMW backends are

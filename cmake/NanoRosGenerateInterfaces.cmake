@@ -460,12 +460,21 @@ function(nros_generate_interfaces target)
   # re-emits here instead of rewriting the fragment mid-build, which is the
   # same lag one build later. Codegen keeps mtimes still on unchanged bytes
   # (write-if-changed), so this costs a configure, not a rebuild.
+  # ---- The ament inputs, by CONTENT (RFC-0104 D5, issue 1780) ----
+  #
+  # The interface files are inputs by MTIME, which an apt upgrade and an
+  # overlay both defeat (see nros_codegen_ament_stale). Asked by content here,
+  # and a moved package re-emits at configure — every output, not just the
+  # fragment, so the build-time command below then finds them current.
+  nros_codegen_ament_stale(_nros_gi_ament_stale
+    TOOL "${_NANO_ROS_CODEGEN_TOOL}" LANGUAGE "${_lang_flag}" ARGS_FILE "${_args_file}"
+    OUTPUT_DIR "${_output_dir}")
   set(_nros_gi_fragment_inputs ${_interface_files} "${_NANO_ROS_CODEGEN_TOOL}"
       ${_NROS_CODEGEN_CONFIG_CHAIN})
   nros_codegen_outputs_stale(_nros_gi_fragment_stale
     OUTPUTS "${_bounds_json}" "${_bounds_cmake}"
     INPUTS ${_nros_gi_fragment_inputs} "${_args_file}")
-  if(_nros_gi_fragment_stale OR _nros_gi_version_stale)
+  if(_nros_gi_fragment_stale OR _nros_gi_version_stale OR _nros_gi_ament_stale)
     execute_process(
       COMMAND "${_NANO_ROS_CODEGEN_TOOL}" codegen --language "${_lang_flag}" --args-file "${_args_file}"
       WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
