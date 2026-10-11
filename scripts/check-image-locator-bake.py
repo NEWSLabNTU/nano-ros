@@ -29,7 +29,16 @@ policed by `check-entry-locator-ssot`):
   1. at least one carrier the board reads states a locator;
   2. a row `NROS_LOCATOR` on a board that does not read it is REFUSED — dead
      config that reads as a bake is how 1581 hid;
-  3. when both carriers state one they must agree.
+  3. when both carriers state one they must agree;
+  4. and they must not state the SAME one (phase-484 W4e): `nros::main!` bakes
+     the image's locator OVER the board default the env feeds
+     (`BootConfig::over_board_defaults`), so an equal row value is a second
+     home that can only drift. State it once, in `system.toml`.
+
+Scope (phase-484 W4e): a single-package cargo LEAF row — no `image`, a
+`system.toml` beside its `Cargo.toml` declaring its one image — is an image row
+too; `nros::main!` reads its `system.toml` exactly as a bringup's. Rows that
+dial no router on purpose are listed in `NO_ROUTER` with why.
 
 "Which boards read the env" is a CLAIM in `READS_ENV`, and the gate VERIFIES it
 against the board crates' sources in both directions, so the table cannot drift
@@ -77,6 +86,12 @@ READS_ENV = {
     "nuttx": (True, ["packages/boards/nros-board-nuttx"]),
     "nuttx-riscv": (True, ["packages/boards/nros-board-nuttx"]),
     "esp32": (True, ["packages/boards/nros-board-esp32-qemu"]),
+    # phase-484 W4e — reached once leaf rows came into scope.
+    "baremetal": (True, ["packages/boards/nros-board-mps2-an385"]),
+    "threadx-riscv64": (
+        False,
+        ["packages/boards/nros-board-threadx-qemu-riscv64", "packages/boards/nros-board-threadx"],
+    ),
     # Zephyr's Rust lane bakes the Kconfig locator through `nros`'s own
     # `option_env!` (`Context::baked`, fed by `nros_zephyr_build`), and a test
     # may override it at run time (`-testargs --nros-locator`).
@@ -84,20 +99,57 @@ READS_ENV = {
 }
 
 
+# Rows that dial NO router on purpose, by `dir`, with why. Rule 1 does not
+# apply to them; nothing else is relaxed.
+NO_ROUTER = {
+    "packages/testing/nros-tests/bins/rtic-run-plan-e2e": (
+        "baremetal_run_plan_runtime.rs runs it with no zenohd and asserts the board "
+        "reaches Executor::open and reports ConnectionFailed"
+    ),
+    "packages/testing/nros-tests/bins/qemu-baremetal-main-e2e": (
+        "same test, the non-RTIC board — no router by design"
+    ),
+}
+
+
 def in_scope(row):
-    if "image" not in row or row.get("platform") == "linux":
+    if ("image" not in row and not row.get("_leaf")) or row.get("platform") == "linux":
         return False
     if row.get("builder") in ("west", "cmake"):
         return False
     return not any(k in row for k in ("cmake_defs", "build_subdir", "west_build_name"))
 
 
+def leaf_system_toml(row, root):
+    """phase-484 W4e — a single-package cargo LEAF row (no `image`, no
+    `bringup`): its own `system.toml` beside its `Cargo.toml`, or None."""
+    if "image" in row or "bringup" in row or "dir" not in row:
+        return None
+    d = os.path.join(root, row["dir"])
+    path = os.path.join(d, "system.toml")
+    if os.path.isfile(path) and os.path.isfile(os.path.join(d, "Cargo.toml")):
+        return path
+    return None
+
+
 def image_locator(row, root):
     """The locator the bringup states for this row's image, or None."""
-    path = os.path.join(root, row["dir"], row.get("bringup", "src/demo_bringup"), "system.toml")
-    with open(path, "rb") as f:
-        doc = tomllib.load(f)
-    image_id = row["image"].split(":")[-1]
+    if row.get("_leaf"):
+        # A leaf's `system.toml` declares its ONE image, which `nros::main!`
+        # bakes exactly as it does a bringup's (`leaf_system`'s overlay).
+        path = leaf_system_toml(row, root)
+        with open(path, "rb") as f:
+            doc = tomllib.load(f)
+        images = sorted(doc.get("image", {}))
+        if len(images) != 1:
+            return None, path, f"a leaf declares {len(images)} images; name one with `image`"
+        image_id = images[0]
+        row["image"] = image_id
+    else:
+        path = os.path.join(root, row["dir"], row.get("bringup", "src/demo_bringup"), "system.toml")
+        with open(path, "rb") as f:
+            doc = tomllib.load(f)
+        image_id = row["image"].split(":")[-1]
     image = doc.get("image", {}).get(image_id)
     if image is None:
         return None, path, f"`[image.{image_id}]` is not declared"
@@ -165,7 +217,18 @@ def check_rows(rows, table, locate):
             problems.append(f"{rid}: {os.path.relpath(path, ROOT)}: {err}")
             continue
         env = (row.get("env") or {}).get("NROS_LOCATOR")
+        rid = rid if rid != "?" else row.get("dir", "?")
         audit.append(f"{rid:48} {platform:14} image={stated} env={env}")
+        if env is not None and env == stated:
+            # Rule 4 (phase-484 W4e) — one fact, one home. `nros::main!` bakes
+            # the image's locator over the board default the env feeds
+            # (`BootConfig::over_board_defaults`), so an equal row value is a
+            # second home that can only drift.
+            problems.append(
+                f"{rid}: `env.NROS_LOCATOR = {env!r}` restates `[image.{row['image']}] locator` "
+                f"in {os.path.relpath(path, ROOT)} — drop it from the row"
+            )
+            continue
         if env is not None and not reads_env:
             problems.append(
                 f"{rid}: `env.NROS_LOCATOR = {env!r}` reaches nothing — the `{platform}` board "
@@ -174,6 +237,8 @@ def check_rows(rows, table, locate):
             )
             continue
         if stated is None and env is None:
+            if row.get("dir") in NO_ROUTER:
+                continue
             problems.append(
                 f"{rid}: the image states no locator and the row carries none, so it bakes the "
                 f"`{platform}` board DEFAULT and dials a router no test starts (issue 1581). "
@@ -203,6 +268,8 @@ def self_test():
         ("dead env even beside a stated image", dict(base, env={"NROS_LOCATOR": "tcp/a:1"}), "tcp/a:1", 1),
         ("env on a board that reads it", dict(base, platform="envbrd", env={"NROS_LOCATOR": "tcp/a:1"}), None, 0),
         ("carriers disagree", dict(base, platform="envbrd", env={"NROS_LOCATOR": "tcp/a:1"}), "tcp/a:2", 1),
+        ("carriers restate one fact", dict(base, platform="envbrd", env={"NROS_LOCATOR": "tcp/a:1"}), "tcp/a:1", 1),
+        ("no router, on purpose", dict(base, dir=next(iter(NO_ROUTER))), None, 0),
         ("unclassified platform", dict(base, platform="newos"), "tcp/a:1", 1),
         ("cmake row out of scope", dict(base, cmake_defs={}), None, 0),
         ("linux out of scope", dict(base, platform="linux"), None, 0),
@@ -230,6 +297,9 @@ def main(argv):
     with open(os.path.join(ROOT, MANIFEST), "rb") as f:
         manifest = tomllib.load(f)
     rows = [r for v in manifest.values() if isinstance(v, list) for r in v if isinstance(r, dict)]
+    for r in rows:
+        if leaf_system_toml(r, ROOT) and r.get("lang", "rust") == "rust":
+            r["_leaf"] = True
 
     problems = verify_table(READS_ENV, ROOT)
     row_problems, audit = check_rows(rows, READS_ENV, lambda r: image_locator(r, ROOT))

@@ -2445,7 +2445,7 @@ lang = "rust"
 rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/param-store-nuttx-qemu-arm"
 skip_probe = true
-env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", NROS_LOCATOR = "tcp/10.0.2.2:8270", NROS_DOMAIN_ID = "0" }
+env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11" }
 
 # #127 (Phase 275 W1 tail) — the per-role Entry-pkg demos. Each Entry pkg
 # bakes board + zenoh RMW through `nros::main!` + the
@@ -2457,10 +2457,11 @@ env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", NROS_LOCATOR = "tcp/10.0.2.2:82
 # by the `just nuttx` recipes), the static args live in each entry's
 # `.cargo/config.toml`. ZERO entry build.rs. `fixtures-build.sh` runs
 # `nros sync` (materialises generated/ + the managed [patch.crates-io]
-# rows) before cargo. `NROS_LOCATOR`/`NROS_DOMAIN_ID` are baked at BUILD
-# time (`option_env!` in the board's `run_entry`) — without them the image
-# falls back to the loopback default and can never reach the slirp router
-# at 10.0.2.2 (same values as the `workspace-rust-qemu-nuttx` control).
+# rows) before cargo. The locator and domain each image dials are its own
+# `system.toml` `[image.*]` / `[system]` values, which `nros::main!` bakes
+# over the board's env-fed default (phase-484 W4e: the rows used to restate
+# them as `env = { NROS_LOCATOR, NROS_DOMAIN_ID }`, a second home that could
+# only drift; `check-image-locator-bake` rule 4 now refuses it).
 # skip_probe (issue 0030 shape): the test-all staleness probe runs the
 # default stable toolchain and cannot replicate the pinned nightly +
 # build-std + NUTTX_DIR recipe env. Build-asserted by
@@ -2471,7 +2472,6 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-armv7a-nuttx/rust/talker"
 skip_probe = true
-env = { NROS_LOCATOR = "tcp/10.0.2.2:8200", NROS_DOMAIN_ID = "0" }
 
 [[fixture]]
 platform = "nuttx"
@@ -2479,7 +2479,6 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-armv7a-nuttx/rust/listener"
 skip_probe = true
-env = { NROS_LOCATOR = "tcp/10.0.2.2:8200", NROS_DOMAIN_ID = "0" }
 
 [[fixture]]
 platform = "nuttx"
@@ -2487,7 +2486,6 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-armv7a-nuttx/rust/service-server"
 skip_probe = true
-env = { NROS_LOCATOR = "tcp/10.0.2.2:8210", NROS_DOMAIN_ID = "0" }
 
 [[fixture]]
 platform = "nuttx"
@@ -2495,7 +2493,6 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-armv7a-nuttx/rust/service-client"
 skip_probe = true
-env = { NROS_LOCATOR = "tcp/10.0.2.2:8210", NROS_DOMAIN_ID = "0" }
 
 [[fixture]]
 platform = "nuttx"
@@ -2503,7 +2500,6 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-armv7a-nuttx/rust/action-server"
 skip_probe = true
-env = { NROS_LOCATOR = "tcp/10.0.2.2:8220", NROS_DOMAIN_ID = "0" }
 
 [[fixture]]
 platform = "nuttx"
@@ -2511,7 +2507,6 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-armv7a-nuttx/rust/action-client"
 skip_probe = true
-env = { NROS_LOCATOR = "tcp/10.0.2.2:8220", NROS_DOMAIN_ID = "0" }
 
 # ===========================================================================
 # threadx-linux (host x86_64 ThreadX/NetX over NSOS) — Rust role examples.
