@@ -547,8 +547,19 @@ name, readers searched under every spelling — a second reader using the OLD
 literal is still a second reader), `check-kconfig-knob-forwarding` (credits a
 registry ladder row only while `platform_config.rs` still calls
 `registry_env(`), and the pool inventory (ladder rows listed under their
-canonical name, a legacy literal folded in). Next: the four bypass readers,
-callers onto canonical names, the `zephyr/Kconfig` drift gate.
+canonical name, a legacy literal folded in). Slice 3: the four bypass readers
+are on the ladder. `nros-smoltcp`'s `env_usize_compat` and
+`nros-build-helpers::shared::env_usize` are gone (`knob(..).rung(..).resolve(..)`;
+`NROS_SERVICE_TIMEOUT_MS` reads through `knob()` like its `nros-rmw-zenoh` twin,
+still with no rung); `nros-rmw-cyclonedds-sys` forwards its five descriptor
+knobs through `knob(..).strict_env().stated()`, keeping "absent leaves the
+header default" and "non-numeric stops the build"; the FreeRTOS heap and
+app-stack reads take rung 1 through `knob_env` on the no-platform arm too,
+where only the ladder arm did. The registry gained the four cyclonedds rows it
+lacked (90 rows). One behaviour change, the intended one: `NROS_SMOLTCP_X` and
+`ZPICO_SMOLTCP_X` set to different values now stop the build where the old
+fallback silently took the first. Next: callers onto canonical names, the
+`zephyr/Kconfig` drift gate.
 
 **Acceptance:** W5a — the registry is the only list (gate); every knob's
 env/TOML/Kconfig spelling derives from its id; one build per road shows

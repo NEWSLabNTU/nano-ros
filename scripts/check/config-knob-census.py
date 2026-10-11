@@ -691,6 +691,9 @@ NON_READ_CALLEES = {
     # phase-468 W4 -- maps an env NAME to its Kconfig symbol. It touches no
     # environment; `knob()` (already a read above) is what resolves through it.
     "kconfig_key_for",
+    # phase-484 W5a -- `cargo:rerun-if-env-changed` for every registry spelling
+    # of the name. A watch, not a read; `knob_env` beside it is the read.
+    "watch_knob_env",
     "define",          # emits a C preprocessor macro
     "set_var", "remove_var", "with_env",  # WRITES an environment
     "push", "insert",  # builds a list / a fact map

@@ -20,10 +20,38 @@ pub const KNOBS: &[KnobRow] = &[
         toml: None,
     },
     KnobRow {
+        id: "CYCLONEDDS_HEAP_BUDGET_BYTES",
+        env: "NROS_CYCLONEDDS_HEAP_BUDGET_BYTES",
+        legacy: &[],
+        kconfig: "CONFIG_NROS_CYCLONEDDS_HEAP_BUDGET_BYTES",
+        toml: None,
+    },
+    KnobRow {
         id: "CYCLONEDDS_MAX_DESCRIPTOR_TYPES",
         env: "NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES",
         legacy: &[],
         kconfig: "CONFIG_NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES",
+        toml: None,
+    },
+    KnobRow {
+        id: "CYCLONEDDS_MAX_FIELDS",
+        env: "NROS_CYCLONEDDS_MAX_FIELDS",
+        legacy: &[],
+        kconfig: "CONFIG_NROS_CYCLONEDDS_MAX_FIELDS",
+        toml: None,
+    },
+    KnobRow {
+        id: "CYCLONEDDS_MAX_KINDS",
+        env: "NROS_CYCLONEDDS_MAX_KINDS",
+        legacy: &[],
+        kconfig: "CONFIG_NROS_CYCLONEDDS_MAX_KINDS",
+        toml: None,
+    },
+    KnobRow {
+        id: "CYCLONEDDS_MAX_NESTED_DEPTH",
+        env: "NROS_CYCLONEDDS_MAX_NESTED_DEPTH",
+        legacy: &[],
+        kconfig: "CONFIG_NROS_CYCLONEDDS_MAX_NESTED_DEPTH",
         toml: None,
     },
     KnobRow {

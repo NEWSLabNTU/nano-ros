@@ -201,10 +201,14 @@ fn main() {
             // when something below it has an opinion.
             zenoh_default_kb.map(|kb| rungs.memory_value("heap_bytes", kb * 1024) / 1024)
         }
-        None => env::var("NROS_FREERTOS_HEAP_KB")
-            .ok()
-            .and_then(|v| v.trim().parse::<usize>().ok())
-            .or(zenoh_default_kb),
+        // phase-484 W5a — rung 1 through the registry, as the ladder arm above
+        // reads it: every spelling, and two that disagree refused.
+        None => nros_board_common::platform_config::knob_env(
+            &|k| env::var(k).ok(),
+            "NROS_FREERTOS_HEAP_KB",
+        )
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .or(zenoh_default_kb),
     };
     // issue 1197 — the define reaches EVERY TU that includes FreeRTOSConfig.h,
     // not just heap_4's. It used to reach only this one, on the reasoning that
@@ -230,7 +234,7 @@ fn main() {
         }
     };
     apply_heap_kb(&mut freertos);
-    println!("cargo:rerun-if-env-changed=NROS_FREERTOS_HEAP_KB");
+    nros_board_common::platform_config::watch_knob_env("NROS_FREERTOS_HEAP_KB");
     for src in &[
         "tasks.c",
         "queue.c",

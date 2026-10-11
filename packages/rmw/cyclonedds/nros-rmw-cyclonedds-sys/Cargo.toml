@@ -108,6 +108,8 @@ cc = { version = "1.0", optional = true }
 # int-conversion) as ERRORS at every `cc::Build` below. One shared spelling.
 nros-cc-flags = { path = "../../../tooling/nros-cc-flags", optional = true }
 nros-build-paths = { path = "../../../tooling/nros-build-paths" }
+# phase-484 W5a — the one knob ladder (`forward_derived_knobs`).
+nros-zephyr-build = { path = "../../../tooling/nros-zephyr-build" }
 
 [lints]
 workspace = true

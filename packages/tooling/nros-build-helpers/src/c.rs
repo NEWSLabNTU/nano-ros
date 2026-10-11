@@ -18,8 +18,8 @@ use std::{
 use nros_build_paths::artifact::Artifact;
 
 use crate::shared::{
-    compile_c_stub, dep_usize, env_usize, generate_cbindgen_header, probe_nros_sizes,
-    watch_param_store_shape, write_header_to_corrosion, write_header_to_target_dir,
+    compile_c_stub, dep_usize, generate_cbindgen_header, probe_nros_sizes, watch_param_store_shape,
+    write_header_to_corrosion, write_header_to_target_dir,
 };
 
 pub fn run() {
@@ -121,13 +121,13 @@ fn generate_config(
     // (`check-knob-single-reader`). Migrating it means giving the pair one
     // emission point first.
     let rungs = nros_platform_config::platform_config::BuildRungs::from_build_env();
-    let let_buffer_size = env_usize(
-        "NROS_LET_BUFFER_SIZE",
-        rungs
-            .as_ref()
-            .and_then(|r| r.runtime_rungs().let_buffer_size)
-            .unwrap_or(512),
-    );
+    let let_buffer_size = nros_zephyr_build::knob("NROS_LET_BUFFER_SIZE")
+        .rung(
+            rungs
+                .as_ref()
+                .and_then(|r| r.runtime_rungs().let_buffer_size),
+        )
+        .resolve(512);
     // Phase 192.4 — default service-client RPC timeout. Read the same env var
     // and use the same default (30000) as the zenoh backend
     // (`nros-rmw-zenoh/build.rs`) so the two paths agree.
@@ -142,7 +142,11 @@ fn generate_config(
     // for the 30_000 ms choice (Phase 160.C.2 — bumped from 10 s
     // because zenoh handshake under qemu slirp can drop early
     // packets).
-    let service_timeout_ms = env_usize("NROS_SERVICE_TIMEOUT_MS", 30_000);
+    //
+    // phase-484 W5a — read through `knob()` like its twin in
+    // `nros-rmw-zenoh/build.rs`, so both artifacts take the same answer from the
+    // same spellings. Still no `.rung()`: the reason above stands.
+    let service_timeout_ms = nros_zephyr_build::knob("NROS_SERVICE_TIMEOUT_MS").resolve(30_000);
 
     // --- Opaque storage from probe (Phase 118.B closure of Phase 87.6) ---
     // `EXECUTOR_SIZE` comes from `nros::sizes::EXECUTOR_SIZE` exported via

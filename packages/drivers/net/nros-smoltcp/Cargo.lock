@@ -114,6 +114,7 @@ dependencies = [
  "nb",
  "nros-platform-api",
  "nros-platform-config",
+ "nros-zephyr-build",
  "portable-atomic",
  "smoltcp",
 ]

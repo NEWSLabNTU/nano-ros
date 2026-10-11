@@ -1,7 +1,8 @@
 //! Build script for nros-smoltcp
 //!
-//! Reads NROS_SMOLTCP_* environment variables (with ZPICO_SMOLTCP_* fallback)
-//! and generates `nros_smoltcp_config.rs` with compile-time configurable constants.
+//! Resolves the `NROS_SMOLTCP_*` knobs through the one ladder
+//! (`nros_zephyr_build::knob`, which also reads each knob's legacy
+//! `ZPICO_SMOLTCP_*` spelling) and generates `nros_smoltcp_config.rs`.
 
 use std::{env, path::Path};
 
@@ -27,10 +28,12 @@ fn main() {
     // `None` when no lane named a platform (every out-of-tree consumer and every
     // plain `cargo build`), and the builtins below then stand.
     //
-    // Each rung is passed as `env_usize_compat`'s DEFAULT, which is what puts it
-    // in the right place on the ladder: `NROS_SMOLTCP_*` and its deprecated
-    // `ZPICO_SMOLTCP_*` alias still win above it, and a builtin applies only
-    // where no descriptor said anything.
+    // Each rung goes in through `.rung()`, below the environment and above the
+    // builtin: `NROS_SMOLTCP_*` and its deprecated `ZPICO_SMOLTCP_*` spelling
+    // (a legacy row in the knob registry, phase-484 W5a) still win above it,
+    // and a builtin applies only where no descriptor said anything. Two
+    // spellings stating DIFFERENT values is a build error now, where the
+    // hand-written fallback this replaced silently preferred the new one.
     //
     // This crate reads the ladder from `nros-platform-config` rather than
     // `nros-board-common`: the board crate reaches back here through
@@ -41,34 +44,24 @@ fn main() {
         .map(|r| r.net_rungs())
         .unwrap_or_default();
 
-    let max_sockets = env_usize_compat(
-        "NROS_SMOLTCP_MAX_SOCKETS",
-        "ZPICO_SMOLTCP_MAX_SOCKETS",
-        rungs.max_sockets.unwrap_or(1),
-    );
+    let max_sockets = nros_zephyr_build::knob("NROS_SMOLTCP_MAX_SOCKETS")
+        .rung(rungs.max_sockets)
+        .resolve(1);
     // The builtin here is FEATURE-derived, and a rung outranks it: a board that
     // names the knob has said something specific, while `rtps` is a default good
     // enough for a board that has not.
-    let max_udp_sockets = env_usize_compat(
-        "NROS_SMOLTCP_MAX_UDP_SOCKETS",
-        "ZPICO_SMOLTCP_MAX_UDP_SOCKETS",
-        rungs.max_udp_sockets.unwrap_or(if rtps { 4 } else { 1 }),
-    );
-    let buffer_size = env_usize_compat(
-        "NROS_SMOLTCP_BUFFER_SIZE",
-        "ZPICO_SMOLTCP_BUFFER_SIZE",
-        rungs.buffer_size.unwrap_or(2048),
-    );
-    let connect_timeout_ms = env_usize_compat(
-        "NROS_SMOLTCP_CONNECT_TIMEOUT_MS",
-        "ZPICO_SMOLTCP_CONNECT_TIMEOUT_MS",
-        rungs.connect_timeout_ms.unwrap_or(30_000),
-    );
-    let socket_timeout_ms = env_usize_compat(
-        "NROS_SMOLTCP_SOCKET_TIMEOUT_MS",
-        "ZPICO_SMOLTCP_SOCKET_TIMEOUT_MS",
-        rungs.socket_timeout_ms.unwrap_or(10_000),
-    );
+    let max_udp_sockets = nros_zephyr_build::knob("NROS_SMOLTCP_MAX_UDP_SOCKETS")
+        .rung(rungs.max_udp_sockets)
+        .resolve(if rtps { 4 } else { 1 });
+    let buffer_size = nros_zephyr_build::knob("NROS_SMOLTCP_BUFFER_SIZE")
+        .rung(rungs.buffer_size)
+        .resolve(2048);
+    let connect_timeout_ms = nros_zephyr_build::knob("NROS_SMOLTCP_CONNECT_TIMEOUT_MS")
+        .rung(rungs.connect_timeout_ms)
+        .resolve(30_000);
+    let socket_timeout_ms = nros_zephyr_build::knob("NROS_SMOLTCP_SOCKET_TIMEOUT_MS")
+        .rung(rungs.socket_timeout_ms)
+        .resolve(10_000);
 
     if max_sockets > 4 {
         panic!(
@@ -109,16 +102,4 @@ fn main() {
     );
 
     std::fs::write(Path::new(&out_dir).join("nros_smoltcp_config.rs"), contents).unwrap();
-}
-
-/// Read a usize from an environment variable, with fallback name for backward
-/// compatibility (ZPICO_SMOLTCP_* → NROS_SMOLTCP_*).
-fn env_usize_compat(name: &str, fallback_name: &str, default: usize) -> usize {
-    println!("cargo:rerun-if-env-changed={name}");
-    println!("cargo:rerun-if-env-changed={fallback_name}");
-    env::var(name)
-        .or_else(|_| env::var(fallback_name))
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(default)
 }
