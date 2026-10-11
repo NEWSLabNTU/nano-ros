@@ -333,7 +333,6 @@ pub fn generate_from_package_xml(config: GenerateConfig) -> Result<()> {
         manifest_dir,
         None,
     )?;
-    resolver.report_deprecations();
 
     if config.verbose {
         println!("Package: {} v{}", pkg_xml.name, pkg_xml.version);
@@ -1034,9 +1033,10 @@ pub fn generate_bindings(config: BindgenConfig) -> Result<()> {
     // Single-package path (colcon convenience): discover nros-codegen.toml from
     // the output directory upward (RFC-0033). The workspace path
     // (`generate_from_package_xml`) discovers from the manifest directory.
-    let resolver =
-        rosidl_codegen::CapacityResolver::discover(&config.output_dir, None).unwrap_or_default();
-    resolver.report_deprecations();
+    // `?`, not `unwrap_or_default()`: a config the resolver REFUSES (a retired
+    // or unknown `mode`, a misplaced key) must stop generation, not be replaced
+    // by built-in defaults that silently ignore every capacity the user wrote.
+    let resolver = rosidl_codegen::CapacityResolver::discover(&config.output_dir, None)?;
     let result = generator::generate_package(
         &package,
         &config.output_dir,
@@ -1193,7 +1193,6 @@ fn resolve_caps_for_args(args: &GenerateCArgs) -> Result<rosidl_codegen::Capacit
     if let Some(path) = &args.codegen_config {
         resolver = resolver.merged_with(rosidl_codegen::CapacityResolver::from_file(path)?);
     }
-    resolver.report_deprecations();
     Ok(resolver)
 }
 
@@ -1649,7 +1648,6 @@ fn standalone_capacity_resolver(
         manifest_dir,
         None,
     )?;
-    resolver.report_deprecations();
     Ok(resolver)
 }
 
