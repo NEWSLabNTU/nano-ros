@@ -9,7 +9,7 @@ roads. Two pieces of residue are tracked rather than open here:
 - W2's "two hosts" and W9's optional `cargo vendor` are recorded as not done.
 
 Implements
-[RFC-0104](../design/0104-dependency-pinning-and-project-lock.md). The RFC's
+[RFC-0104](../../design/0104-dependency-pinning-and-project-lock.md). The RFC's
 D3 and D5 rested on facts that were not yet measured, so M1–M3 ran before any
 implementation and amended the RFC.
 
@@ -66,9 +66,9 @@ defect: file it, and it becomes W5's acceptance.
 `native/rust/talker` (cargo road): after an ament change, `nros build` alone
 did not regenerate and produced a byte-identical binary; only an explicit
 `nros sync` regenerated. Filed as
-[issue 1780](../issues/archived/1780-nros-build-keeps-generated-code-after-ament-change.md)
+[issue 1780](../../issues/archived/1780-nros-build-keeps-generated-code-after-ament-change.md)
 — W5's acceptance. Getting there found
-[issue 1781](../issues/archived/1781-ament-index-last-prefix-wins.md): the CLI's ament
+[issue 1781](../../issues/archived/1781-ament-index-last-prefix-wins.md): the CLI's ament
 index lets the LAST `AMENT_PREFIX_PATH` entry win, so an overlay's interface
 package is silently replaced by the underlay's — the overlay had to be put
 LAST for the experiment to see it at all. The cmake and west roads were
