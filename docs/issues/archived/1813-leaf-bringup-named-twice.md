@@ -1,7 +1,7 @@
 ---
 id: 1813
 title: "A single-package leaf's bringup is still named twice: by directory in `nros sync`, by `[system] name` in the cmake metadata step"
-status: open
+status: resolved
 type: tech-debt
 area: [cli, cmake, orchestration]
 severity: low
@@ -9,9 +9,38 @@ found: 2026-10-11
 related: [1296, 1308, 1305]
 ---
 
+## Resolved 2026-10-12 — measured: one rule, and nothing left on the other
+
+The "second derivation" this issue names is not one. Measured on a copy of
+`examples/native/c/talker` (directory `talker`, `[system] name =
+"native_c_talker"`):
+
+- `nros sync` writes `build/nros/models/talker/system_model.yaml`.
+- `nros plan --workspace . native_c_talker <leaf dir>` and
+  `nros plan --workspace . talker <leaf dir>` behave IDENTICALLY. Both find the
+  model and both stop at the same later step (`missing-source-metadata`, the
+  second layer issue 1296 recorded, which is why a single-package C leaf takes
+  `plan_single_package_cmake` instead).
+- `nros build` exits 0.
+
+`nros plan`'s SYSTEM_PKG argument only names its output directory. The model is
+located from the bringup DIRECTORY through
+`model_location::model_search_paths`, which keys on `bringup_dir.file_name()`.
+That is the same rule `nros sync`'s `synthesise_leaf_launch`, the cmake road
+(`nano_ros_workspace(SYSTEM <bringup dir>)`, `discover_bringups`) and
+`nros::main!` follow. `[system] name` is a display name. The plan JSON carries
+it beside `bringup`, never instead of it.
+
+The only code that ever turned `[system] name` into a path was the
+workspace-of-one root that 754021a407 retired for single-package leaves
+(`src/<[system] name>`, a directory no leaf has). A sweep for `system.name` used
+in a path, launch or models context finds nothing else:
+`git grep -n -E "system\.name" -- packages/cli/nros-cli-core/src packages/core/nros-orchestration-ir/src cmake`.
+`synthesise_leaf_launch` now carries a comment naming the rule.
+
 ## Measured
 
-[Issue 1296](archived/1296-nros-build-c-leaf-bringup-name-mismatch.md) found
+[Issue 1296](1296-nros-build-c-leaf-bringup-name-mismatch.md) found
 that a single-package C/C++ leaf's synthetic bringup is derived from two
 different facts:
 
