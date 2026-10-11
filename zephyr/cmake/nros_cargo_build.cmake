@@ -1756,6 +1756,47 @@ function(nros_resolve_knobs)
 endfunction()
 
 # =============================================================================
+# nros_derived_knob_env(<out_var>)
+#
+# Issue 1796 -- every knob `nros_resolve_knobs()` resolved on the DERIVED rung,
+# as a `KEY=VALUE` list for the Rust lane's `cmake -E env` (the
+# `NROS_BOARD_FACTS_ENV` carrier `zephyr/CMakeLists.txt` publishes).
+#
+# The C lane bakes every resolved knob into its own cargo command. The Rust
+# lane's command is zephyr-lang-rust's, and its crates resolve a knob through
+# `nros_zephyr_build`'s ladder: the environment, then `$DOTCONFIG`. A STATED
+# value is in `$DOTCONFIG` and an `[image.<id>] env` row rides the image's
+# `--config` file, but a DERIVED one exists only in this configure's cache --
+# `$DOTCONFIG` still holds the `-1` sentinel, so the crate fell to its builtin
+# while the C lane compiled the derivation. Measured: `rust/talker`'s
+# `zephyr_xrce` image derived `NROS_XRCE_MAX_SUBSCRIBERS=0` and booted
+# `HEAP EXHAUSTED` with the session sized at the crate default.
+#
+# Only the derived rung: it is the one with no other road to that lane, and a
+# derived value is only ever resolved when no person stated one, so forwarding
+# it cannot outrank a statement.
+# =============================================================================
+function(nros_derived_knob_env out_var)
+    set(_env "")
+    foreach(_knob IN LISTS NROS_RESOLVED_KNOBS)
+        if(NOT "${NROS_KNOB_SOURCE_${_knob}}" STREQUAL "derived")
+            continue()
+        endif()
+        set(_value "${NROS_RESOLVED_${_knob}}")
+        if(_value MATCHES ";")
+            # A list here would split into two `cmake -E env` arguments and
+            # hand cargo a truncated value; the producer joins with `,`
+            # (NROS_SUBSCRIBED_TYPE_BOUNDS), so this is a new producer's bug.
+            message(FATAL_ERROR
+                "nros: derived knob ${_knob}='${_value}' holds a ';' and cannot "
+                "ride the Rust lane's env (issue 1796) -- join it with ','")
+        endif()
+        list(APPEND _env "${_knob}=${_value}")
+    endforeach()
+    set(${out_var} "${_env}" PARENT_SCOPE)
+endfunction()
+
+# =============================================================================
 # nros_set_cargo_env_from_kconfig()
 #
 # Export the resolved knobs so Cargo build.rs scripts pick them up. Works for
