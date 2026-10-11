@@ -1,6 +1,6 @@
 # RFC-0089 — ROS 2 API adoption, and the compile-or-conform rule
 
-**Status:** Stable (2026-10-07). Drafted 2026-09-04.
+**Status:** Stable (2026-10-07). Drafted 2026-09-04. Amended 2026-10-12 (the C API drops `nros_`).
 **Amends / refines:** RFC-0036 (divergence catalog) — adds the DISPOSITION half:
 a divergence must say what a porting user gets, not only why we differ.
 RFC-0018 (C++ surface mirroring rclcpp) — states the condition under which the
@@ -1091,6 +1091,101 @@ Consequences, in the order they bite:
   would silently flip the meaning of every stored return code across three FFI
   seams. This is the one place where taking rcl's spelling must not mean taking
   rcl's values.
+
+## Settled: `nros_` is phased out of the C API; ours-only names take `rclc_` (2026-10-12)
+
+The C analog of "`nros::` is phased out entirely" (2026-09-05), decided by the
+maintainer on 2026-10-12. The section above settled that C takes rcl's
+spellings and left the rest of the surface as `nros_` with the rename to come
+"alias-then-replace". This is the replace step, for the whole C user API.
+
+**Measured at `d457eed61e`** (`scripts/api-parity.py --lang c`, against rclc +
+rcl humble): 116 items `same`, 17 `systematic`, 18 `differs`, **468
+ours-only**, 333 theirs-only. 77 functions already carry an `rcl_`/`rclc_` name
+natively (phase-417 stage 6); at least six of those still have an `nros_` twin
+(`rclc_executor_add_timer` / `nros_executor_add_timer`, `rcl_publisher_fini` /
+`nros_publisher_fini`, …), which is two names for one function.
+
+The rule, in the order it is applied to each public C name:
+
+1. **Upstream has the name and the contract conforms** (ADOPT, ADOPT-BOUNDED):
+   it takes upstream's exact spelling — `rcl_`, `rcl_action_`,
+   `rcl_lifecycle_` or `rclc_`, whichever upstream uses. The `nros_` twin is
+   deleted, not aliased.
+2. **Upstream has the name and the contract does not conform** (the `differs`
+   rows): compile-or-conform still governs. Either the signature conforms and
+   the row becomes case 1, or it keeps a DIFFERENT name under `rclc_` (the
+   `_in`-rule shape) so a ported call fails to compile. It never takes the
+   upstream name with a different contract.
+3. **Ours-only** (no upstream counterpart): it takes `rclc_`. The polling
+   entities, CDR helpers, slice views, boot config, heap and platform helpers,
+   declared-QoS queries and the executor's RTOS extensions all move —
+   `nros_polling_subscription_t` → `rclc_polling_subscription_t`,
+   `nros_cdr_*` → `rclc_cdr_*`, and so on. `rclc_` and not `rcl_`: rcl is
+   upstream's lower layer and has a fixed scope; rclc is the convenience layer
+   that already adds functions over rcl types, which is what these are.
+4. **Types and user-visible constants follow their functions.** `nros_node_t`
+   → `rcl_node_t`, `nros_executor_t` → `rclc_executor_t`; an ours-only type
+   takes `rclc_*_t`. `NROS_PARAMETER_*` → `RCLC_PARAMETER_*`. Return codes keep
+   the 2026-09-04 ruling: rcl's NAMES (`rcl_ret_t`, `RCL_RET_*`), OUR values.
+   `nros_ret_t` and `NROS_RET_*` go.
+
+**What does NOT move:**
+
+* **Build knobs** — `NROS_MAX_*`, `CONFIG_NROS_*`, `NROS_DECLARED_*`. They are
+  configuration facts with one home each (RFC-0103), not API, and no upstream
+  spelling exists for them.
+* **The port seams** — the C ABIs a porter IMPLEMENTS (RFC-0054): the RMW
+  vtable headers in `packages/core/nros-rmw-abi/include/`, and the platform and
+  board headers of `nros-platform-cffi` and `nros-board-cffi`. Those are
+  written against nano-ros, not ported from ROS 2, and the RMW seam's `rmw_`
+  parity is its own gate (`check-rmw-api-parity`). The line is the HEADER, not
+  the word in the name: a function an APPLICATION calls that is declared in the
+  `nros-c` headers moves even when its name says platform or rmw
+  (`nros_platform_sleep_us` → `rclc_platform_sleep_us`), and a backend's
+  registration hook an application calls (`nros_rmw_zenoh_register`) moves
+  with it.
+* **`nros_cpp_*`** — the C++ API's internal FFI. C code stops calling it
+  (phase-492 W4), after which it is C++-private.
+* **CMake functions and targets** (`nros_generate_interfaces()`,
+  `NanoRos::NanoRos`) — a build-system surface; a separate question.
+* **Message struct and header names** (`std_msgs_msg_string`, `"std_msgs.h"`
+  against rosidl's `std_msgs__msg__String`, `<std_msgs/msg/string.h>`) — a
+  codegen surface, recorded as an open question in phase-492. The
+  typesupport stays refused, as ruled above.
+
+**Headers take upstream's paths.** The surface is declared under
+`include/rcl/`, `include/rcl_action/`, `include/rcl_lifecycle/`,
+`include/rclc/`, `include/rclc_lifecycle/` and `include/rclc_parameter/`, with
+upstream's file names where upstream has the file (`<rclc/executor.h>`,
+`<rcl/publisher.h>`, …). An ours-only family gets a header in `include/rclc/`
+named for the family. `<nros/*.h>` is retired with no forwarding header. This
+is what the C++ side already does (`include/rclcpp/`, `include/rclcpp_lifecycle/`).
+Every umbrella refuses to compile beside upstream's real `rcl` headers, as
+`rcl_compat.h` already does (`RCL__TYPES_H_`): one image never mixes the two.
+
+**The hazard is the C++ one, and so is the answer.** Taking `rclc_` means rclc
+may later add a name we already use, with a different contract. The tripwire
+already exists: every ours-only C name keeps a ledger row with verdict
+`extension`, and `api-parity.py --check` fails when an `extension` row's key
+starts correlating `same` after a `--refresh` of the recorded surface (issue
+1042). That turns a future silent collision into a red naming the symbol, at
+the moment the recorded surface moves. Ours-only HEADER names in
+`include/rclc/` get the same check against upstream's header list.
+
+**The cost.** As in C++, the drop-in is one-directional: an rclc file compiles
+here; a nano-ros file using `rclc_polling_subscription_*` does not compile
+against real rclc. The book says so on the C getting-started page.
+
+**No deprecated forwarders.** The rename lands with every in-tree caller in one
+phase, as the C++ flip did. A forwarding `nros_` macro would keep the second
+vocabulary alive, which is the thing being removed. `rcl_compat.h` retires:
+what it maps today (return codes, the documented refusals) moves into
+`<rcl/types.h>` and the family headers.
+
+Work items: [phase-492](../roadmap/phase-492-c-api-rcl-names.md). The
+parameter surface is designed in [RFC-0105](0105-c-parameter-server.md) and
+already follows this rule.
 
 ## Settled: each language follows ITS OWN upstream (2026-09-04)
 

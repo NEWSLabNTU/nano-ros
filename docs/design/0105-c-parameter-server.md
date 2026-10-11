@@ -330,5 +330,7 @@ checks, against a real ROS 2 peer:
 
 ## Open questions
 
-* Whether the whole C API moves to `rcl_*`/`rclc_*` primary names is out of
-  scope here. This RFC decides the parameter surface only.
+* ~~Whether the whole C API moves to `rcl_*`/`rclc_*` primary names.~~
+  Settled 2026-10-12: it does (RFC-0089, "`nros_` is phased out of the C API";
+  phase-492). This RFC's surface already follows that rule, including
+  `rclc_` for its extensions.
