@@ -11,7 +11,6 @@ path = "src/lib.rs"
 [package.metadata.nros.node]
 class = "talker_pkg::Talker"
 name = "talker"
-default_namespace = "/"
 
 # phase-267 W1c — declare the published topic+type so the planner resolves the
 # `[[bridge]]`'s topic NAME to its ROS type pre-build (no sidecar, no build).

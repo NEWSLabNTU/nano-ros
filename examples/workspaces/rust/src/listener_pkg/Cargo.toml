@@ -19,7 +19,6 @@ path = "src/lib.rs"
 [package.metadata.nros.node]
 class = "listener_pkg::Listener"
 name = "listener"
-default_namespace = "/"
 
 [dependencies]
 # Single platform/RMW-agnostic `nros` dep — `alloc` baseline + the rmw-cffi

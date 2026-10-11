@@ -10,7 +10,6 @@ path = "src/lib.rs"
 [package.metadata.nros.node]
 class = "ctrl_pkg::Control"
 name = "control_node"
-default_namespace = "/"
 callback_groups = [{ id = "ctrl", tier = "high" }]
 
 [dependencies]

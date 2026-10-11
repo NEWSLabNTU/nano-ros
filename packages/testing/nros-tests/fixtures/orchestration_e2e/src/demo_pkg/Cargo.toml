@@ -8,6 +8,5 @@ edition = "2021"
 [package.metadata.nros]
 
 [package.metadata.nros.node]
-default_namespace = "/"
 
 [package.metadata.ament]

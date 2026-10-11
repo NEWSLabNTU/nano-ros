@@ -10,7 +10,6 @@ path = "src/lib.rs"
 [package.metadata.nros.node]
 class = "telem_pkg::Telem"
 name = "telem_node"
-default_namespace = "/"
 callback_groups = [{ id = "telem", tier = "low" }]
 
 [dependencies]

@@ -18,7 +18,6 @@ crate-type = ["rlib"]
 [package.metadata.nros.node]
 class = "rust_heartbeat_pkg::Heartbeat"
 name = "heartbeat"
-default_namespace = "/"
 
 # Agnostic Node pkg dep — no `platform-*` / concrete `rmw-*`. The RMW +
 # platform selection flows from the Entry pkg's board + `system.toml`

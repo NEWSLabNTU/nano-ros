@@ -15,7 +15,6 @@ path = "src/lib.rs"
 [package.metadata.nros.node]
 class = "talker_pkg::Talker"
 name = "talker"
-default_namespace = "/"
 
 [dependencies]
 # Single `nros` dep — matches the `nros::main!()` design. The RMW is

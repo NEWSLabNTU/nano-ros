@@ -25,7 +25,6 @@ path = "src/lib.rs"
 [package.metadata.nros.node]
 class = "talker_pkg::Talker"
 name = "talker"
-default_namespace = "/"
 
 [dependencies]
 # Phase 212.M-F.13 path (b) — `nros::component!()` now emits references

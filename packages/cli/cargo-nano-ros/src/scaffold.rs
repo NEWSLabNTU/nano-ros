@@ -463,7 +463,6 @@ path = "src/lib.rs"
 [package.metadata.nros.node]
 class = "{crate_name}::{class_name}"
 name = "{module}"
-default_namespace = "/"
 
 # A reusable component is a library (rlib); the deployed system links it.
 # nano-ros crates are not published to crates.io (RFC-0040) — `version = "*"` is

@@ -23,7 +23,6 @@ path = "src/lib.rs"
 [package.metadata.nros.node]
 class = "talker_pkg::Talker"
 name = "talker"
-default_namespace = "/"
 
 [dependencies]
 # Single platform/RMW-agnostic `nros` dep. `alloc` is the universal baseline
