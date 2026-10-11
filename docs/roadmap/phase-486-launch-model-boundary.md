@@ -1,6 +1,6 @@
 # Phase 486 — the launch model carries what every realizer reads; nano-ros's own facts move to an overlay
 
-**Status (2026-10-11). W0 LANDED (census below, two design corrections); W1–W9 not started.** Implements RFC-0060's
+**Status (2026-10-12). W0, W1 and W2 LANDED; W3–W9 not started. Design revised 2026-10-12 (below) after re-reading rlm and play_launch `main`.** Implements RFC-0060's
 [2026-10-10 amendment](../design/0060-launch-toolchain-three-layers.md#amendment-2026-10-10--what-the-systemmodel-may-carry-and-where-nano-ross-own-facts-go)
 and RFC-0100's
 [2026-10-10 ruling](../design/0100-rmw-agnostic-sizing-model.md#ruling-2026-10-10--a-stated-fact-earns-a-file-whatever-it-came-from).
@@ -23,7 +23,7 @@ projects three nano-ros build facts into it:
 | --- | --- | --- |
 | `execution.features` | `[system] features`, `[param_services]` | none. rclcpp nodes have parameter services unless their code opts out |
 | each lifecycle node's `lifecycle_autostart`, set system-wide | `[lifecycle] autostart` | the per-node field is ROS (Jazzy `LifecycleNode(autostart=)`); the system-wide default is not |
-| `execution.deploy.<n>.extra` (W0: `target = mcu:<board>` stays, it is placement) | `[deploy.<n>]` framework/profile/optimize/features/kind, `[deploy.<n>.nros]` | none. These describe a build; nano-ros itself moved them to `[image.*]` and `[board_config.*]` |
+| `execution.deploy.<n>.extra` and `.target` (revised 2026-10-12: `target` leaves too) | `[deploy.<n>]` board/framework/profile/optimize/features/kind, `[deploy.<n>.nros]`; `extra.host_name` from `[host.<n>]` | none. These describe a build; nano-ros itself moved them to `[image.*]` and `[board_config.*]`. No realizer reads `target` (see the 2026-10-12 revision) |
 
 Measured consequences:
 
@@ -38,6 +38,50 @@ Measured consequences:
 - play_launch's parser does not handle `<lifecycle_node>` at all, so a launch
   file cannot be the source of the per-node lifecycle fact that IS portable.
 
+## Revision 2026-10-12 — what re-reading rlm and play_launch `main` changed
+
+rlm moved `v0.1.40` → `v0.1.54` and play_launch gained 7 commits past our pin
+(`d23720c7`) since this phase was written. Both repositories adopted the
+design as docs (rlm `docs/model-boundary.md`, play_launch phase 86) and
+implemented none of it. Re-checking the plan's claims against their code
+found five things wrong or missing; the waves below are corrected in place.
+
+1. **The lifecycle default is projected by play_launch, not rlm.** The loop
+   that copies `[lifecycle] autostart` onto every lifecycle node is in
+   play_launch's resolver (`src/ros-launch-resolve/resolve/src/model.rs`),
+   through rlm's `lifecycle_autostart()` accessor; `apply_to_launch` writes
+   the execution layer only. The deletion moves from W6 (rlm) to W5
+   (play_launch phase 86, new W0 there). rlm deletes the accessor at W8.
+2. **Correction 1 below rested on a false premise.** play_launch reads
+   nothing from `execution.deploy` — not `target`, not `Mcu`, not `extra`
+   (`git grep` on its `main`). `Mcu`'s only writer is `[deploy.<n>] board`,
+   used by 0 of 218 tracked `system.toml`. So `Deploy.target` leaves with the
+   rest of `[deploy.*]`, and nano-ros's two board-slice readers (issue 0358's
+   duplicate) are DELETED at W3, not moved: they act on a table nobody writes.
+3. **`Deploy.extra` also carries placement keys.** `[host.*]` (23 tracked
+   files) writes `extra.host_name`, `[deploy.*]` writes `deploy_name`. Nothing
+   reads either. They leave with `extra`; the typed placement facts `domain`,
+   `locator` and `rmw` stay.
+4. **The model is schema 2 now.** rlm `v0.1.51` made a list parameter a list
+   (`ParamValue::StrList`) and bumped `SCHEMA_VERSION` to 2, upgrading a v1
+   model on read. Today nano-ros reads with `v0.1.40` (schema 1) and our
+   play_launch pin's resolver writes with `v0.1.49` (schema 1). **Moving the
+   play_launch pin past `476f8a86` without bumping nano-ros's rlm tag to
+   `v0.1.51`+ in the SAME commit makes every resolved model unreadable**
+   (`unsupported SystemModel schema version 2`). nano-ros reads parameter
+   values only through rlm's `resolved_params`, which renders lists itself,
+   so the bump should be mechanical. Folded into W7.
+5. **rlm names its realizers.** `model/src/system_config.rs` mentions
+   nano-ros 49 times and `model/src/lib.rs` 20, and the crate holds a lax
+   second parser of nano-ros's file (issue 0293). Ruled the same day (rlm
+   `model-boundary.md`, RFC-0060's amendment): `SystemConfigToml` becomes
+   rlm's own format for the shared layers only, every other table is ignored
+   by design, and rlm's doc comments name no realizer. nano-ros parses each
+   key once — shared keys through rlm's struct, its own through `SystemToml`
+   — and stays strict on the union by refusing what both ignored
+   (`serde_ignored`; `#[serde(flatten)]` cannot combine with
+   `deny_unknown_fields`). New W8 rows.
+
 ## Ordering — why the waves run in this order
 
 nano-ros pins rlm by tag, so nothing breaks until nano-ros bumps the tag. The
@@ -48,8 +92,10 @@ Everything before W7 is additive and must leave every image byte-identical.
 ```
 W0 census ─► W1 overlay (additive) ─► W2 per-image switches ─► W3 readers move ─► W4 descriptor rule
                                                                         │
-             play_launch phase 86 (W5: lifecycle_node autostart) ───────┤
-             rlm (W6: stop projecting; tag) ────────────────────────────┤
+             play_launch phase 86 (W5: lifecycle_node autostart;
+                                   drop the [lifecycle] projection) ────┤
+             rlm (W6: stop writing features/extra/target; neutral
+                  system config; tag) ──────────────────────────────────┤
                                                                         ▼
                                                      W7 pin bumps ─► W8 retirement ─► W9 carriers
 ```
@@ -101,7 +147,9 @@ moving field in `packages/` (tests excluded), by `git grep`:
 - one bringup with no switches, as the negative control:
   `examples/workspaces/cpp`.
 
-**Correction 1: `Target::Mcu{board}` stays in the model.** The board-slice
+**Correction 1 (SUPERSEDED 2026-10-12, see the revision above — play_launch
+does not read `Deploy.target`, and `Mcu` has no tracked producer; `target`
+leaves and both slice readers are deleted): `Target::Mcu{board}` stays in the model.** The board-slice
 readers use it as PLACEMENT ("this node runs on that board"), and placement
 passes the RFC-0060 test: play_launch reads `Mcu` as "not a node this machine
 runs", which is the same meaning. What retires is `Deploy.extra`, including
@@ -199,10 +247,16 @@ existing bringup is byte-identical, since none states per-image switches yet.
   per-node value from the launch file or contract wins.
 - `nros::main!` Form 1 (PR #1843's `leaf_capabilities`) reads the leaf's
   overlay through the same reader as every other road.
+- **The two board-slice readers are deleted** (`codegen/entry/mod.rs`'s
+  `board_mentioned`/`keep`, and its copy in `main_macro.rs`), with the
+  `Deploy.extra["kind"]` fallback. Revision 2026-10-12: they read only
+  `[deploy.*]`, which no tracked `system.toml` writes. An entry keeps every
+  node its own launch selection names. The `deploy_facts` session rung
+  (issue 0794: `domain`/`locator`/`rmw`) stays — it reads typed placement.
 - **Gate:** `check-launch-model-boundary` — no nano-ros source outside a
   named allowlist reads `execution.features`, `Execution::features`, a
-  `Deploy` `extra` key, or projects a system-wide lifecycle default from the
-  model. The allowlist is empty at W8.
+  `Deploy` `extra` key, `Deploy.target` / `Target::Mcu`, or projects a
+  system-wide lifecycle default from the model. The allowlist is empty at W8.
 
 **Acceptance:** every W0 image is byte-identical: knobs diffed per consumer,
 plus the sizes headers and `OUT_DIR` outputs (the PR #1830 method). Mutation:
@@ -225,6 +279,9 @@ removed switch stops the carving on an incremental build.
 
 ## W5 — play_launch: the per-node lifecycle fact from the launch file (play_launch phase 86)
 
+- **Drop the system-wide projection** (phase 86 W0, added 2026-10-12): delete
+  the `[lifecycle] autostart` loop in `resolve/src/model.rs`. It lands with
+  the pin bump, after nano-ros W3 applies the default from its overlay.
 - The XML and YAML frontends dispatch `<lifecycle_node>`, including Jazzy's
   `autostart` (bool → `Active`).
 - The Python `LifecycleNode` mock captures `autostart`.
@@ -239,16 +296,18 @@ unchanged.
 
 ## W6 — rlm stops projecting nano-ros facts (rlm `docs/model-boundary.md`)
 
-- `apply_to_launch` no longer writes `execution.features`, no longer projects
-  `[lifecycle]` onto nodes, and no longer writes `Deploy.target = mcu:<board>`
-  or `Deploy.extra`.
+- `apply_to_launch` no longer writes `execution.features`, `Deploy.extra`
+  or `Deploy.target`. (It never projected `[lifecycle]`; that is W5.)
+- `SystemConfigToml` is documented as rlm's own neutral format for the shared
+  layers; its doc comments stop naming realizers (rlm `model-boundary.md`,
+  2026-10-12).
 - `SystemConfigToml` stays LAX: the keys still parse (into nothing), so a
   valid nano-ros `system.toml` still resolves. They are deleted from the
   struct only after W8, together with nano-ros's re-exports of them.
-- The model types keep deserialising old models: `Execution.features` and
-  `Deploy.extra` become read-tolerant. They load and are ignored, the
+- The model types keep deserialising old models: `Execution.features`,
+  `Deploy.extra` and `Deploy.target` become read-tolerant. They load and are ignored, the
   `jitter_ms` precedent (rlm phase 68), and the golden fixture keeps them on
-  disk. `SCHEMA_VERSION` stays 1.
+  disk. No schema bump for this (rlm is at schema 2 for an unrelated reason).
 - A new tag. Field census (`scripts/field_census.py` in play_launch) updated:
   the fields leave the model's consumer list.
 
@@ -263,7 +322,12 @@ fixture is byte-identical except for the removed fields; a nano-ros
 2. nano-ros: bump the rlm tag in every manifest that names it (one tag across
    the tree: `git grep 'ros-launch-manifest.*tag' -- '*/Cargo.toml'`), move the
    `play_launch` submodule pin forward, `just setup-launch-resolve`, then
-   `nros sync` every bringup.
+   `nros sync` every bringup. **Both moves in ONE commit**: the resolver past
+   play_launch `476f8a86` writes SystemModel schema 2, which an rlm below
+   `v0.1.51` refuses (revision item 4). The jump crosses `v0.1.40` →
+   `v0.1.51`+ in one step, so W7 also absorbs that range's API changes
+   (`ParamValue::StrList`, `ScopeInfo.ns`, `NodeInstance.on_exit`, the
+   contract additions of `v0.1.46`–`v0.1.49`).
 
 **Acceptance:** every W0 image is byte-identical to W4's. The models no longer
 carry `features`, and nothing in nano-ros noticed. Tier 2 run
@@ -277,9 +341,11 @@ Deleted, each with a named refusal where a user could still write it:
 | What | Where | Replaced by | Refusal |
 | --- | --- | --- | --- |
 | `[param_services]` typed block | nano-ros `SystemToml`, rlm `SystemConfigToml` | `features = ["param_services"]` | nano-ros: parse error naming the replacement (already deprecated via `deprecated_typed_capability_blocks`) |
-| `[deploy.<n>]` build fields: `board`, `framework`, `profile`, `optimize`, `features`, `[deploy.<n>.nros]` | rlm `DeployBlock`, nano-ros's re-export | `[image.<id>]`, `[board_config.<board>]` | nano-ros: parse error naming `[image.*]` |
-| `Execution.features`, `Deploy.extra`, `Target::Mcu` in NEW models | rlm model | the nano-ros overlay | none needed (writers gone; readers tolerant) |
-| `SystemConfigToml.lifecycle`, `.param_services`, `SystemDefaults.features` | rlm | nano-ros `SystemToml` | none: rlm ignores keys it does not own |
+| `[deploy.<n>]`, the whole table (revised 2026-10-12: its placement half too) | rlm `DeployBlock`, nano-ros's re-export | build fields → `[image.<id>]`, `[board_config.<board>]`; placement → `[host.<n>]` | nano-ros: parse error naming `[image.*]` and `[host.*]` |
+| `Execution.features`, `Deploy.extra`, `Deploy.target` / `Target` in NEW models | rlm model | the nano-ros overlay; nothing for `target` (no reader) | none needed (writers gone; readers tolerant) |
+| `SystemConfigToml.lifecycle`, `.param_services`, `SystemDefaults.features`, `lifecycle_autostart()` | rlm | nano-ros `SystemToml` | none: rlm ignores tables it does not declare |
+| nano-ros's second parse of rlm's keys (issue 0293) | nano-ros `SystemToml` | shared keys through rlm's struct; strict on the union via `serde_ignored` | unknown key refused by name, as today |
+| realizer names in rlm doc comments | rlm | the CHANGELOG and the realizers' docs | — |
 | the PR #1830 store-only special case | nano-ros sizing descriptor | the general rule (W4) | — |
 | the W3 gate's allowlist | nano-ros | empty | the gate itself |
 
