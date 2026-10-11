@@ -532,6 +532,26 @@ LADDER_MAPPED_NOT_MIGRATED = {
 }
 
 
+# The ladder reads these, and they are SELECTIONS (RFC-0103 D2b: they stay in
+# phase-481's fragment), not knobs — so the knob registry has no row for them.
+SELECTIONS = {"NROS_TRANSPORT_KIND", "NROS_TRANSPORT_ENDPOINT"}
+
+
+def registry_spellings():
+    """Every env spelling the knob registry holds, canonical and legacy."""
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # Python < 3.11 — the repo's interpreter is 3.10
+        import tomli as tomllib
+    with open(os.path.join(ROOT, "packages/tooling/nros-zephyr-build/knobs.toml"), "rb") as fh:
+        rows = tomllib.load(fh).get("knob", [])
+    out = set()
+    for r in rows:
+        out.add("NROS_" + r["id"])
+        out.update(r.get("legacy", []))
+    return out
+
+
 def ladder_env_keys():
     """Env names the ladder READS, from `platform_config.rs` itself.
 
@@ -899,7 +919,8 @@ def main() -> int:
         for cls in ("sizing", "derived", "ladder", "infra"):
             print(f"  {cls}:")
             for n in by_class.get(cls, []):
-                print(f"    {n:<36} {KNOB_CLASS[n][1]}")
+                why = KNOB_CLASS[n][1] if n in KNOB_CLASS else "mapped by the ladder"
+                print(f"    {n:<36} {why}")
 
     unknown = unknown_idioms(build_env_sources(), ("NROS", "ZPICO"))
     if unknown:
@@ -933,6 +954,28 @@ def main() -> int:
             "  the ladder, a size the message type should derive (phase-403),\n"
             "  or infrastructure? A heuristic would guess, and guessing is how\n"
             "  the backlog number stops meaning anything.\n"
+        )
+        return 1
+
+    # phase-484 W5a — a name classified as a KNOB must be a spelling in the
+    # knob registry, which is what every reader resolves it through. A knob
+    # this census sees and the registry does not is a reader the registry
+    # cannot rename, alias or derive a Kconfig symbol for.
+    spelled = registry_spellings()
+    unregistered = sorted(
+        n for cls in ("ladder", "sizing", "derived") for n in by_class.get(cls, [])
+        if n not in spelled and n not in SELECTIONS
+    )
+    if unregistered:
+        sys.stderr.write(
+            "config-knob-census: FAILED — knob(s) with no row in "
+            "packages/tooling/nros-zephyr-build/knobs.toml:\n"
+        )
+        for n in unregistered:
+            sys.stderr.write(f"    {n}\n")
+        sys.stderr.write(
+            "  Add a row (or the name as a `legacy` spelling of an existing one)\n"
+            "  and run `python3 scripts/gen-knob-registry.py`.\n"
         )
         return 1
 

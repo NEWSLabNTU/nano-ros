@@ -1089,9 +1089,10 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   whatever Kconfig said — and when the two halves disagree it is also an 0135 ABI split
   (`MAX_QUERYABLES` 16 in the cmake TU, 8 in the cargo one). **ONE ladder, and the sources are
   INPUTS to it** (phase-468 W4): `nros_zephyr_build::knob("<ENV>")` + `.rung()` / `.strict_env()`
-  / `.resolve(builtin)`; the env↔Kconfig pairing is `KCONFIG_PAIRS` beside it, with a row ONLY
-  where the two names are different words — a derived-identical row states nothing and its
-  absence then reads like the 1490 defect. Per-crate `KCONFIG_KNOBS` tables are gone, and with
+  / `.resolve(builtin)`; every spelling of a knob (canonical `NROS_<id>`, deprecated `ZPICO_*`,
+  its Kconfig symbol, its TOML key) is ONE row of the knob registry,
+  `packages/tooling/nros-zephyr-build/knobs.toml` (RFC-0103 D2b, phase-484 W5a) — edit it and run
+  `scripts/gen-knob-registry.py`; `KCONFIG_PAIRS` is now its generated view. Per-crate `KCONFIG_KNOBS` tables are gone, and with
   them 1233's "keep them in sync". The gate NARROWED to what a reader cannot express: coverage of
   the cmake list, and the pairing HARVESTED from `_nros_resolve_knob(<ENV> "${CONFIG_<SYM>}")`
   (51 of them, both directions — a wrong row was as invisible as a missing one). Its coverage

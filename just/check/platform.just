@@ -362,6 +362,14 @@ image-panic-policy:
 kconfig-knob-forwarding:
     @bash scripts/check-kconfig-knob-forwarding.sh
 
+# phase-484 W5a (RFC-0103 D2b) — the knob registry is the ONE list of knob
+# spellings: `knobs.toml` is authored, the Rust table every build-script reader
+# resolves through is generated from it, and the two must agree. A hand edit to
+# the generated side is a second list, which is what the registry replaced.
+[private]
+knob-registry:
+    @python3 scripts/gen-knob-registry.py --check
+
 [group("checks")]
 kconfig-overridden-values:
     @python3 scripts/check-kconfig-overridden-values.py
