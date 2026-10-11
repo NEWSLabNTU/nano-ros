@@ -1,7 +1,16 @@
 # Phase 403 — the type's bound sizes every receive buffer, and third parties can say what they need
 
-**Status (2026-09-11). W0, W1, W4 (one half), W6, W7, W7b, W8, W9 and steps 1-3
-are LANDED; W2, W3 (the caller-supplied-buffer half) and W5 remain.** The
+**Status (2026-10-12). W0, W1, W4 (one half), W6, W7, W7b, W8, W9 and steps 1-3
+are LANDED. W5 (arena slots) was delivered by step 3, the derived arena
+(2026-09-03, corrected under issue 1190). What remains is W2 (buffer 1 on the
+Rust path) and the caller-supplied-buffer half of W3 (the hand-written C API).**
+phase-408, the C/C++ twin
+of this work, is archived as delivered. Its one unmet criterion, a
+`mem-report --baseline` number for the saving, is owed here under "Measurement,
+first not last".
+
+**Previous status (2026-09-11).** W2, W3 (the caller-supplied-buffer half) and W5
+were listed as remaining. The
 2026-08-30 line said "design, nothing landed" and outlived that by five days and
 eleven commits -- the body below had been recording `LANDED` per wave the whole
 time, so the phase read as unstarted to anyone who stopped at the header. The
@@ -1169,7 +1178,7 @@ STUBBED CLI so it needs cmake and no cargo build) plus 19 unit tests in
 `nros_cli_core::entity_inventory` and `cmd::entity_inventory`, including the
 island case above.
 
-## Relationship to phase-408 (PR #130)
+## Relationship to phase-408 (PR #130; archived 2026-10-12 as delivered)
 
 phase-408, "a C/C++ subscription sizes its buffer from its own message type",
 was opened independently and reaches the same conclusion this phase's W3/W5

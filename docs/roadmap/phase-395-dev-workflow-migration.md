@@ -1,5 +1,18 @@
 # Phase 395 — migrating to the multi-agent dev workflow
 
+**Status (2026-10-12). Most of it LANDED, nearly all on 2026-08-28** (about
+68 commits cite this phase). The line this replaces said "nothing landed".
+Landed: W0 and W0.5 (measured, then all six red CI jobs root-caused), W1 (the
+generated issue index), W2–W4 (lane recipes, L3, the PR gate), W5 (flake
+quarantine, `.config/flake-quarantine.toml`), W6 (runner scripts; the
+self-hosted runners are now registered), W7 (the merge queue is live and
+required), W8 (`just claim`), W9, W11 (`check fast` fans out by default
+through `run-gates-parallel.sh`), W12–W15, W17 (`just tier-health`), W19 and W20
+(one aggregator is the required check). Partial: W10 runs in shadow mode only, so
+no cache hit skips a build. Not landed: W16, which was designed and measured
+and deliberately not shipped. W18 has no commit of its own. The original
+opening line follows.
+
 **Status (2026-08-28). Plan, nothing landed.** The design and its measurements
 live in [multi-agent-ci-workflow.md](../development/multi-agent-ci-workflow.md);
 this is the ordered work to get there. Each wave is independently landable and

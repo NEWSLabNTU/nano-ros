@@ -1,22 +1,32 @@
 # Phase 304 — Complete the ROS edition axis
 
+**Status (2026-10-12). COMPLETE — archived 2026-10-12.** The status line below
+says PARTIAL and dates from 2026-07-25. Every item but one has since landed:
+W1/W1b/W1c (real RIHS01 type hashes, checked against live Jazzy, and the
+`_Event` synthesis), W2/W2b (`[system].ros_edition` lowered to codegen plus the
+`ros-<edition>` feature), W3 (jazzy/rolling), and W4 (the full nano↔Jazzy lane,
+via phase-311 W5, `df70dab0b5`). NuttX joined the axis under issue 0947
+(`ad79b83f2a`). W5, the per-edition encoding field, is the same item as
+phase-303's W1b. It is kept only in [phase-303](phase-303-xcdr2-interop.md),
+which is parked.
+
 **Status (2026-07-25).** PARTIAL. W3 landed (enum extended); W2 core + W4
 started; **W1 not started** — the biggest functional gap, and it needs the
 capture run. Two knobs still address one axis: codegen selection (`--ros-edition`)
 and runtime selection (the cargo feature) are disconnected and can silently
 disagree. Only `humble` is exercised. Note this phase coordinates
-[phase-303](archived/phase-303-xcdr2-interop.md), whose premise was REFUTED after this
+[phase-303](phase-303-xcdr2-interop.md), whose premise was REFUTED after this
 status was written — re-read 303's correction before planning further work here.
 
-Implements **[RFC-0056](../design/0056-ros-edition-axis.md)** (the ROS-edition
+Implements **[RFC-0056](../../design/0056-ros-edition-axis.md)** (the ROS-edition
 axis / per-distro interop profile). Coordinates the two field-phases —
-**[phase-41](archived/phase-41-iron-type-hash-support.md)** (RIHS01 type hash) and
-**[phase-303](archived/phase-303-xcdr2-interop.md)** / **[RFC-0055](../design/0055-wire-encoding-xcdr2-extensibility.md)**
+**[phase-41](phase-41-iron-type-hash-support.md)** (RIHS01 type hash) and
+**[phase-303](phase-303-xcdr2-interop.md)** / **[RFC-0055](../../design/0055-wire-encoding-xcdr2-extensibility.md)**
 (wire encoding) — into a finished axis, adds the **unified selection** and the
 **multi-distro test method**, and extends the enum beyond `humble`/`iron`. Roots:
 issue **#0267** (the encoding half) and the discovery-rejection risk phase-41
 flagged (the type-hash half). Test lanes plug into
-**[RFC-0051](../design/0051-test-matrix-architecture.md)** (the edition becomes a
+**[RFC-0051](../../design/0051-test-matrix-architecture.md)** (the edition becomes a
 matrix axis).
 
 ## Status (2026-07-25)
@@ -178,7 +188,7 @@ unresolvable nested user type → HARD error).
 `ServiceEventInfo`; all 9 `tf2_msgs/action/LookupTransform` hashes (rihs unit
 tests) + the empty-`_Feedback` placeholder; plus codegen-level tests
 (`jazzy_service_emits_real_rihs01_hashes`, `jazzy_action_emits_nine_real_rihs01_hashes`).
-Recipe + golden values: [`docs/research/rep-2011-type-hash.md`](../research/rep-2011-type-hash.md)
+Recipe + golden values: [`docs/research/rep-2011-type-hash.md`](../../research/rep-2011-type-hash.md)
 §3a/§3b + `fixtures/ros-editions/jazzy/srv-hashes.txt`.
 
 Original design notes (retained):
@@ -353,6 +363,10 @@ RIHS01 keyexpr tail this phase bakes, exactly as W1/W2 intended. Edition interop
 lanes remain hand-picked cells (RFC-0051 §), NOT a 7th combinatorial matrix axis.
 
 ### W5 — encoding field per edition (coordinates phase-303 W1b)
+
+> **Moved 2026-10-12.** This item is the same work as phase-303's W1b, and it is
+> kept only there: see [phase-303](phase-303-xcdr2-interop.md) W1b (parked
+> with that phase). The text below is the record of why it was blocked.
 
 Make the wire-encoding default a profile field the edition selects: `humble` →
 XCDR1 (byte-identical to today, parity intact); `jazzy` → the phase-303 XCDR2

@@ -1,5 +1,11 @@
 # Phase 449 — build state keyed by a NAME, not by the tree that asked for it
 
+**Status (2026-10-12). W1, W3, W4, W5, W6 and W8 are DONE; W2 and W7 each
+have one box open.** W2's open box is one scheduled tier-2 run reaching its
+cells, which needs a nightly, not a checkout. W7's open box is the runner's
+workspace being its own (issue 1166). The 2026-09-18 line below is kept as the
+measurement it records.
+
 **Status (2026-09-18). W4 and W5 are DONE; W1–W3 and W6–W8 are open. Every
 premise below was RE-MEASURED against the tree on 2026-09-18 rather than
 re-read, because a phase doc is prose and prose does not re-derive on a

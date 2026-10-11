@@ -5,7 +5,13 @@
 **Touches:** phase-296 (model as sole plan input), issue 0320 (content-addressed
 staleness), RFC-0047 / RFC-0052 (scheduling dims + fail-loud contract)
 
-**Status.** IN PROGRESS — W1 landed 2026-08-02 (wave 1).
+**Status (2026-10-12).** W1–W7 LANDED. W1–W3 landed on 2026-08-02, and W4
+(the committed models deleted) landed with W5 and W7 on 2026-08-03.
+`check-no-tracked-models` holds the result. Three acceptance boxes below are
+still open, and all three wait on one tier-2 validation round: a clean checkout
+reproducing all 86 dims, rebuild-vs-rebuild semantic identity, and the realtime
+e2e family passing against generated models. The line this replaces said only
+"W1 landed".
 
 ## Goal
 

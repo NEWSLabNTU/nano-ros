@@ -66,5 +66,5 @@ lowering.
    path to generate the declared edition's bindings on demand. Matches standard
    ROS (single-edition per workspace).
 
-Cross-ref: phase-304 (`docs/roadmap/phase-304-complete-ros-edition-axis.md`,
+Cross-ref: phase-304 (`docs/roadmap/archived/phase-304-complete-ros-edition-axis.md`,
 W2b note), RFC-0056 (`docs/design/0056-ros-edition-axis.md`).

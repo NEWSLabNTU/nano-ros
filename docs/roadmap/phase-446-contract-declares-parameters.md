@@ -1,8 +1,11 @@
 # Phase 446 -- the contract declares each node's parameters
 
-**Status (2026-09-11). Open. W1 and W2 landed upstream (ros-launch-manifest
-v0.1.34, play_launch 155ed78b) and are pinned; W4 and W6 landed; W3, W5 and W7
-open.** The launch contract gains a
+**Status (2026-10-12). W1–W6 and F1–F3 LANDED; W7 open.** W1 and W2 landed
+upstream and are pinned. W3 is issue 1272 (`f316429529`) and W5 is issue 1270
+(`8604a25ac7`), and both issues are archived. W4 and W6 landed on 2026-09-10/11,
+and so did the follow-ups F1–F3. Left: W7, the downstream Autoware Safety Island
+end to end, which is consumer-side; and issue 1271's remaining half (homed
+below). The 2026-09-11 line said W3 and W5 were open. The launch contract gains a
 per-node `params:` section that states each parameter's NAME and TYPE. Sizing
 the parameter store and the parameter services moves from built-in worst cases
 to what the contract declares, with board configuration supplying the one

@@ -8,7 +8,24 @@ smokes shipped, runtime tracked as the never-landed 117.13.) and stays
 strictly local — Corellium AVH staging is a separate path (different
 firmware format + remote provisioning + auth, out of scope here).
 
-**Status.** OPEN. Track A landed 2026-06-03.
+**Status (2026-10-12). PARKED.** Track A (run recipes, the FVP resolver and
+installer) landed 2026-06-03. The rest is superseded rather than pending. The
+FVP is now a pinned public download (`nros setup --tool arm-fvp`, no licence),
+and the in-tree FVP runtime gate is `fvp_runtime_ws.rs`
+(`just zephyr verify-fvp-runtime`; phase-298 W3, phase-477), which passes under
+the model. The examples and tests this doc names were retired (see "Path
+corrections" below), so 217.C.3 and 217.D.3 have no subject left. Nothing drives
+this phase.
+
+**Path corrections (2026-10-12).** `examples/zephyr/{cpp,rust}/cyclonedds/talker-aemv8r/`
+moved to `examples/zephyr/{cpp,rust}/talker-aemv8r/` (`bfe5f8f3e9`), and both
+were retired as FVP code nothing ran (`b169a0edbb`, phase-350 W3). The FVP image
+is now the `fvp` image of `examples/workspaces/realtime-cpp/` (board
+`fvp-aemv8r-smp`). `phase217_c_fvp_runtime.rs` / `phase217_d_fvp_runtime_rust.rs`
+were renamed `fvp_runtime{,_rust}.rs` (`e1a33d029e`) and then retired in favour of
+`packages/testing/nros-tests/tests/fvp_runtime_ws.rs` (`68a0a0b6fa`).
+`zephyr/cmake/emu/armfvp.cmake` is Zephyr's own file, not this repo's. Paths
+below are rewritten to their current form where one exists.
 
 **Priority.** P2 — unblocks every other FVP slice (rust example, smoke
 test, book chapter) and is the natural reference for boards that follow
@@ -98,12 +115,12 @@ accepts the Arm EULA, installs the FVP locally, and exports
       over `build-aemv8r-cyclonedds-talker` (Phase 117.14 cpp/cyclonedds
       example).
 - [x] **217.A.4** Example README pointer —
-      `examples/zephyr/cpp/cyclonedds/talker-aemv8r/README.md`
+      `book/src/getting-started/arm-fvp.md`
       cross-references `just zephyr run-fvp-aemv8r-cyclonedds` under
       the Runtime section.
 
 **Files:** `scripts/zephyr/resolve-fvp-bin.sh`, `just/zephyr.just`,
-`examples/zephyr/cpp/cyclonedds/talker-aemv8r/README.md`.
+`book/src/getting-started/arm-fvp.md`.
 
 ### 217.B — `arm-fvp-installer` skeleton (OPEN)
 
@@ -157,7 +174,7 @@ accepts the Arm EULA, installs the FVP locally, and exports
 
 ### 217.C — FVP runtime smoke test (PARTIAL)
 
-- [x] **217.C.1** `packages/testing/nros-tests/tests/phase217_c_fvp_runtime.rs`
+- [x] **217.C.1** `packages/testing/nros-tests/tests/fvp_runtime_ws.rs` (originally `phase217_c_fvp_runtime.rs`)
       — discover FVP via the resolver; if missing, `nros_tests::skip!`.
       Asserts the cpp/cyclonedds talker prebuilt at
       `build-aemv8r-cyclonedds-talker/zephyr/zephyr.elf` (hint at `just
@@ -169,9 +186,11 @@ accepts the Arm EULA, installs the FVP locally, and exports
       killing the FVP process group on timeout/panic. Landed 2026-06-04.
 - [x] **217.C.2** Per-platform nextest group `zephyr-fvp` with
       `max-threads = 1` (FVP licence may be node-locked + UART telnet
-      ports collide on parallel runs). Routed via `binary(phase217_c_fvp_runtime)`
+      ports collide on parallel runs). Routed via `binary(fvp_runtime_ws)`
       override; added to `justfile`'s fast-path exclusion. Landed 2026-06-04.
-- [ ] **217.C.3** Parity check vs Phase 175.A native cyclonedds Rust
+- [~] **217.C.3** (SUPERSEDED 2026-10-12: its subject, the cpp/cyclonedds
+      talker-aemv8r example, was retired in `b169a0edbb`; the FVP gate is now
+      `fvp_runtime_ws.rs`.) Parity check vs Phase 175.A native cyclonedds Rust
       talker/listener: same `std_msgs/Int32` payload, byte-equal wire
       format (Phase 117 stock-RMW interop contract). **Blocks on:** a
       real FVP run actually emitting `Published:` (i.e. D.3 closing
@@ -183,24 +202,24 @@ accepts the Arm EULA, installs the FVP locally, and exports
       that the emitted `system_main.c` links + boots on Cortex-A SMP
       is unverified.
 
-**Files:** `packages/testing/nros-tests/tests/phase217_c_fvp_runtime.rs`
-(new), `packages/testing/nros-tests/tests/phase217_d_fvp_runtime_rust.rs`
+**Files:** `packages/testing/nros-tests/tests/fvp_runtime_ws.rs` (originally `phase217_c_fvp_runtime.rs`)
+(new), `phase217_d_fvp_runtime_rust.rs` (retired in `68a0a0b6fa`)
 (new — D.3 sibling), `.config/nextest.toml` group entry +
-`binary(phase217_c_fvp_runtime)` and `binary(phase217_d_fvp_runtime_rust)`
+`binary(fvp_runtime_ws)` and `binary(phase217_d_fvp_runtime_rust)` (retired)
 overrides, `justfile` fast-path exclusion.
 
 ### 217.D — Rust example on FVP (OPEN)
 
-The existing `examples/zephyr/cpp/cyclonedds/talker-aemv8r/` is the
+The existing `examples/workspaces/realtime-cpp/` (`fvp` image; the original example was retired in `b169a0edbb`) is the
 carve-out preserved under CLAUDE.md "Examples = Standalone Projects."
 Mirror it on the Rust side once Phase 212.N Entry pkg shape settles:
 
-- [x] **217.D.1** `examples/zephyr/rust/cyclonedds/talker-aemv8r/` —
+- [x] **217.D.1** `examples/zephyr/rust/talker-aemv8r/` (retired in `b169a0edbb`; no Rust FVP example remains) —
       LANDED 2026-06-04. Component-pkg shape (`src/lib.rs` only, no
       `rust_main`) mirroring `examples/zephyr/rust/talker/` — `nros::node!(Talker)`
       exports `register(runtime)`; the generated runtime drives init /
       executor / spin. Same `std_msgs/Int32` payload as the cpp
-      sibling (`examples/zephyr/cpp/cyclonedds/talker-aemv8r/`) +
+      sibling (`examples/workspaces/realtime-cpp/` (`fvp` image; the original example was retired in `b169a0edbb`)) +
       Phase 175.A native parity. Board glue flows from
       `nano_ros_use_board(fvp-aemv8r-smp)` (Phase 215.B contract) in
       `CMakeLists.txt`. Cargo features pinned to the single-RMW
@@ -218,13 +237,13 @@ Mirror it on the Rust side once Phase 212.N Entry pkg shape settles:
       `nano_ros_use_board()` include resolves; run recipe shells
       `west fvp run` over `build-fvp-aemv8r-cyclonedds-rust-talker/`.
 - [~] **217.D.3** Smoke alongside 217.C.1 — sibling test
-      `packages/testing/nros-tests/tests/phase217_d_fvp_runtime_rust.rs`
+      `phase217_d_fvp_runtime_rust.rs` (retired in `68a0a0b6fa`)
       LANDED 2026-06-04. Same skip-precondition pattern as C.1
       (FVP resolver / west / workspace / Rust ELF prebuilt). Asserts
       the Zephyr 3.7 boot banner reaches UART after the Rust ELF is
       loaded by the FVP — proves Rust artifact links + executes on
       Cortex-A SMP. Routed into the `zephyr-fvp` nextest group via
-      `binary(phase217_d_fvp_runtime_rust)` override.
+      `binary(phase217_d_fvp_runtime_rust)` (retired) override.
       **Remaining:** `Published:` assertion is gated on the H.1
       Zephyr adapter shim being invoked from the example
       `CMakeLists.txt`. Both upstream prereqs (Phase 212.L.7
@@ -240,7 +259,7 @@ Mirror it on the Rust side once Phase 212.N Entry pkg shape settles:
       `nros codegen-system` step succeeding under the
       `aarch64-zephyr-elf` toolchain.
 
-**Files:** `examples/zephyr/rust/cyclonedds/talker-aemv8r/` (new tree),
+**Files:** `examples/zephyr/rust/talker-aemv8r/` (retired in `b169a0edbb`; no Rust FVP example remains) (new tree),
 `just/zephyr.just`.
 
 ### 217.E — Book chapter (LANDED 2026-06-04)

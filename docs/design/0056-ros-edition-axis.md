@@ -133,7 +133,7 @@ Implementation notes:
 1. **`system.toml` lowering** — should the ROS edition become a declared
    `[system].ros_edition` (like `rmw`) that codegen lowers to the `ros-<edition>`
    feature + the interface-generation dir, instead of a hand-set cargo feature?
-   (Proposed answer: yes — [phase-304](../roadmap/phase-304-complete-ros-edition-axis.md)
+   (Proposed answer: yes — [phase-304](../roadmap/archived/phase-304-complete-ros-edition-axis.md)
    W2. The axis-completion + multi-distro test method lives there.)
 2. **RIHS01 source** — compute in `rosidl-codegen` (add `sha2`, REP-2011
    canonical form) vs extract from an installed ament index vs hybrid
