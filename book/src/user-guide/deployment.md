@@ -58,8 +58,9 @@ makes them cross-compile:
 nros sync
 nros build                     # or: nros build <image-id>
 
-# C / C++ single package — its own CMake, no sync needed:
-cmake -B build && cmake --build build
+# C / C++ single package — no sync needed; `nros build` drives its CMake:
+nros build
+# (or raw CMake, naming the SDK root: cmake -B build -Dnano_ros_ROOT="$(nros sdk-root)")
 ```
 
 > **Contributors:** the in-tree fixture build/test lanes are in

@@ -167,7 +167,7 @@ message bindings are a CMake-time output:
 
 ```bash
 cd examples/native/c/talker
-cmake -B build
+cmake -B build -Dnano_ros_ROOT="$(nros sdk-root)"   # raw cmake names the SDK root
 cmake --build build
 ```
 

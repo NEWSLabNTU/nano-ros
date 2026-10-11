@@ -62,10 +62,12 @@ shape here; this directory is the location root. The module follows PX4
 convention throughout — `ModuleBase<T>` + `ScheduledWorkItem`, a `Kconfig`,
 `PRINT_MODULE_*` usage strings, tab indent, CamelCase file named after the class.
 
-One nano-ros-specific line in its CMakeLists:
+One nano-ros-specific call in its CMakeLists, after the shared block that
+resolves `NROS_REPO_DIR` (explicit `-DNROS_REPO_DIR`, else `nros sdk-root`;
+never the environment — RFC-0103 D6):
 
 ```cmake
-include("$ENV{NROS_REPO_DIR}/integrations/px4/NanoRosPx4Module.cmake")
+include("${NROS_REPO_DIR}/integrations/px4/NanoRosPx4Module.cmake")
 nros_px4_add_module(MODULE modules__nros_uorb_demo MAIN nros_uorb_demo
                     BACKENDS uorb SRCS ${CMAKE_CURRENT_LIST_DIR}/NrosUorbDemo.cpp)
 ```

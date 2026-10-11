@@ -283,7 +283,8 @@ full reference + `package.xml` schema.
    this; everything else cannot, and `nros build` refuses with one line naming
    it.
 6. **Build standalone.** `nros build` from the example directory (C/C++
-   single-package leaves: `cmake -B build && cmake --build build`). No
+   single-package leaves can also run raw CMake:
+   `cmake -B build -Dnano_ros_ROOT="$(nros sdk-root)" && cmake --build build`). No
    walking-up workspace allowed.
 7. **Wire the test fixture (optional).** If the example needs an E2E
    gate, add a row to `examples/fixtures.toml` and the matching cell in

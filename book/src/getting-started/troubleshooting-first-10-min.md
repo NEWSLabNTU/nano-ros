@@ -141,7 +141,7 @@ rmw = "cyclonedds"
 
 ```bash
 cd examples/native/c/talker        # (or cpp)
-cmake -B build-cyclone
+cmake -B build-cyclone -Dnano_ros_ROOT="$(nros sdk-root)"
 cmake --build build-cyclone
 ```
 

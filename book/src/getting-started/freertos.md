@@ -151,6 +151,7 @@ nros build          # or: cargo build --config build/<image>/nros-cargo.toml
 toolchain="$(nros sdk-root)/cmake/toolchain/arm-freertos-armcm3.cmake"
 cd examples/mps2-an385-freertos/c/talker
 cmake -B build -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
+              -Dnano_ros_ROOT="$(nros sdk-root)" \
               -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ```

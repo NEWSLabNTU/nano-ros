@@ -555,15 +555,16 @@ build-fvp-board-import:
     export PATH="$_sdk_make/bin:$_sdk_ninja/bin:$PATH"
     export ZEPHYR_SDK_INSTALL_DIR="$sdk"
     # Phase 215.B — the fixture's CMakeLists includes
-    # `$ENV{NROS_REPO_DIR}/zephyr/cmake/nano_ros_use_board.cmake` BEFORE
-    # `find_package(Zephyr)`; export the repo root so the include resolves.
-    export NROS_REPO_DIR="$nros_root"
+    # `${NROS_REPO_DIR}/zephyr/cmake/nano_ros_use_board.cmake` BEFORE
+    # `find_package(Zephyr)`. It reads no environment (RFC-0103 D6, amended
+    # 2026-10-12), so the root is passed explicitly below.
     echo "Building board-import fixture via nano_ros_use_board(fvp-aemv8r-smp)..."
     # issue 1379 — name our OWN nros module (see the sibling recipe above).
     west build \
         -d "$fvp_build" -p auto \
         "$src" \
         -- -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" -DMAKE="$make_bin" \
+        -DNROS_REPO_DIR="$nros_root" \
         "$nros_module_arg"
     echo "Phase 215.G.1 FVP board-import fixture build OK"
 

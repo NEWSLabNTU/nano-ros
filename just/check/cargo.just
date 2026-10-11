@@ -589,7 +589,9 @@ git-dir-layout-assumptions:
 # 1641 allowed a read only with a `repo-dir-env-ok: <reason>` beside it. RFC-0103
 # D6 (amended 2026-10-12) finished the job: the `nros` binary knows its own SDK
 # root and every other reader walks up from its own location, so NO Rust code
-# reads the variable any more, and a read — reason or not — now fails.
+# reads the variable any more, and a read — reason or not — now fails. CMake
+# too: no CMakeLists / *.cmake reads `$ENV{NROS_REPO_DIR}` / `$ENV{nano_ros_ROOT}`,
+# and every copy of the shared leaf root block is byte-identical.
 [private]
 repo-dir-readers:
     @python3 scripts/check-repo-dir-readers.py
