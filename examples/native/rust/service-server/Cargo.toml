@@ -17,7 +17,10 @@ crate-type = ["rlib"]
 path = "src/lib.rs"
 
 # The board, network identity and node declaration live in `system.toml` beside
-# this manifest (RFC-0098 D3/D5) — nothing here names a board.
+# this manifest (RFC-0098 D3/D5).
+# Its image-only dependencies below still name the board crate, so a board
+# switch edits this file too until RFC-0098 D6 reaches single-package leaves
+# (issue 1305).
 
 [features]
 # Phase 118 — RMW selected at build time via mutually exclusive features.

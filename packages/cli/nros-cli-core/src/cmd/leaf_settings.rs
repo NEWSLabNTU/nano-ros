@@ -405,14 +405,19 @@ fn check_board_crate_dependency(img: &LeafImage) -> Result<()> {
     };
     bail!(
         "{}: image `{}` builds for board `{}`, whose entry needs the crate `{want}`, \
-         but {} depends on {has}.\n  Replace the board dependency in {} with `{want}` \
-         (issue 1305: a single-package leaf still names its board crate by hand; \
-         RFC-0098 D6 generates it only for a workspace entry).",
+         but {} depends on {has}.\n  Replace the board dependency in {} with `{want}`, \
+         using the features that board crate has. Then compare the rest of the leaf's \
+         image-only dependencies with an in-tree example for board `{}`: a crate the old \
+         board needed can clash with the new one (an RMW backend carrying a `platform-*` \
+         feature stops the build with \"Only one platform backend can be selected\").\n  \
+         (issue 1305: a single-package leaf still names its image dependencies by hand; \
+         RFC-0098 D6 generates them only for a workspace entry).",
         img.leaf.display(),
         img.image_id,
         img.board,
         manifest.display(),
-        manifest.display()
+        manifest.display(),
+        img.board
     )
 }
 
