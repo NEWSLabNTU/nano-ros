@@ -704,11 +704,11 @@ pub struct CppFfiField {
     pub element_repr_type: String,
     /// RFC-0033 `mode = "view"` (Phase 235). The `{Msg}ViewRepr` FFI struct
     /// stores this field as `nros_cpp_borrow_t`; `{Msg}_ffi_deserialize_view`
-    /// fills it via [`borrowed_reader_call`](Self::borrowed_reader_call).
+    /// fills it via [`view_reader_call`](Self::view_reader_call).
     pub is_view: bool,
     /// `CdrReader` borrow call (no `?`), e.g. `read_string()`,
     /// `read_slice_u8()`, `read_le_slice::<f32>()`. Empty unless borrowed.
-    pub borrowed_reader_call: String,
+    pub view_reader_call: String,
     /// `true` for the `LeSpan` case — the FFI takes `.as_bytes().as_ptr()`
     /// (element count) instead of `.as_ptr()` / `.len()` (byte slice / string).
     pub borrowed_le: bool,
