@@ -451,6 +451,17 @@ network.
 Rejected: making every single-package leaf a generated entry. It meets D6 but
 removes the documented plain-cargo flow for the most common example shape.
 
+**Spelling, as implemented (2026-10-12, phase-445 W4c).** The package is
+`<pkg>_nros_selection` with the package name's hyphens folded
+(`qemu-bsp-talker` → `qemu_bsp_talker_nros_selection`), so the manifest key,
+the package name and the path the macro emits are one spelling
+(`leaf_system::selection_crate_name`). It lives at `<leaf>/build/nros/selection/`
+(`leaf_system::LEAF_SELECTION_DIR`), one directory per leaf, independent of the
+image and its board, because the leaf manifest names it as a fixed path. A leaf
+with several images gets the selection of the image being synced or built. The
+macro uses the package only when the leaf does not also name the board crate, so
+a generated workspace entry, which names both, is unchanged.
+
 ## What is NOT decided here
 
 - The C/C++ leaves' CMake side. They take their board from `system.toml` under

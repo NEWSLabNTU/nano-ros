@@ -9,6 +9,82 @@ found: 2026-09-11
 related: [rfc-0098, rfc-0065, phase-445]
 ---
 
+## 2026-10-12 (later) — the selection package lands; two leaves migrated (still OPEN)
+
+The re-scoped fix is implemented, and proven on two leaves. The example sweep
+(about 60 manifests) is NOT done yet, so the issue stays open.
+
+**What landed.**
+
+- `nros sync` and `nros build` write a single-package leaf's
+  `<pkg>_nros_selection` package at `<leaf>/build/nros/selection/`
+  (`leaf_settings::write_selection` → `facade::write_leaf_selection`). Sync
+  writes it before its first cargo call, because cargo will not load a
+  manifest whose path dependency is missing. The directory does not depend on
+  the image or the board, so the leaf's dependency line survives a board
+  switch. A leaf with several images gets the selection of the image being
+  synced or built (in-tree, no leaf has two images on different boards).
+- The package holds every image-only dependency, from the same code a
+  generated workspace entry uses: `builder::entry::image_dependency_lines`
+  (board crate with `default-features = false` and its features, the
+  `nros-platform` platform feature, the descriptor's `crate_root_deps`) and
+  `facade::derive` (edition, capability and RMW features, shared with
+  `write_facade`). The `board-entry` / `rtic` entry feature is derived from
+  the board key's framework (`entry::entry_surface_features`), so a generated
+  workspace entry on `qemu-mps2-an385` now gets it too. Its `src/lib.rs`
+  re-exports the board crate and carries the board's `crate_root_extra`
+  (`use panic_semihosting as _;`), unless the image states a `panic` policy
+  other than `own`.
+- `nros::main!` reaches the board through the package when the leaf depends on
+  `<pkg>_nros_selection` and does not name the board crate
+  (`leaf_selection_crate`, `reroot_through`). The bare-metal reset vector now
+  names `entry` and `cortex_m` through the board crate's re-exports, so a
+  migrated leaf needs no `cortex-m` or `cortex-m-rt` of its own.
+- The sync refusal (`check_board_crate_dependency`) skips a migrated leaf and
+  still guards every leaf that names its board crate by hand.
+- The mps2 descriptors' `crate_root_deps` now name `panic-semihosting` with
+  `exit`, the feature every hand-written mps2 leaf named.
+
+**Migrated:** `examples/mps2-an385-baremetal/rust/talker` (its manifest now
+names `nros`, `log`, `std_msgs` and the selection package, and `main.rs` no
+longer has `use panic_semihosting as _;`) and
+`packages/testing/nros-tests/bins/entry-poc` (native).
+
+**Acceptance, measured.** On a copy of the migrated talker outside the
+checkout, the one-line edit `board = "qemu-mps2-an385"` → `"freertos"` gave
+`nros sync` rc=0 and `nros build` rc=0, and `git diff` showed only that line.
+In QEMU (slirp, `lan9118`, router `rmw_zenohd` on `tcp/127.0.0.1:10500`) the
+image printed "nros FreeRTOS Platform", "Network ready." and "Application
+setup complete", then published 27 messages in 30 s. The in-tree bare-metal
+image published 29 in the same run shape. Mutation: with the selection writer
+disabled, the same switch on a copy synced and built for the old board first
+failed at `nros build` (rc=101,
+`cannot find nros_board_mps2_an385_freertos in qemu_bsp_talker_nros_selection`).
+With the writer restored, the same copy built (rc=0).
+
+**Still owed (phase C, the sweep).** Most leaves are mechanical: drop the
+board crate, the RMW backend, `cortex-m`, `cortex-m-rt`, the panic crate and a
+platform-featured `nros-platform`, then add the selection dependency. These
+need more than that:
+
+- FreeRTOS, NuttX and ThreadX leaves that say `panic = "platform"` in
+  `main.rs` have to state the same policy in their `[image.*]`. Otherwise the
+  selection links the board's crate-root panic provider, and the image gets a
+  second handler.
+- The serial and XRCE mps2 leaves: the writer does not yet derive the board
+  features `serial` (from `transport = "serial"`) or `xrce-transport` (from
+  `rmw = "xrce"`).
+- Native leaves with an `rmw-*` / edition feature axis: fixture rows select
+  the RMW with cargo features. That has to become one image per RMW before the
+  board can leave the manifest.
+- RTIC leaves: `rtic` and the PAC stay in the leaf, because RTIC's expansion
+  names `rtic::` and `device = mps2_an385_pac`. The board and RMW can move.
+- C/C++ apps on a cargo link root: their own `main.rs` names `cortex_m_rt`.
+
+Zephyr Rust leaves (west road) and the rv-virt-threadx staticlib leaves (cmake
+road) are not on this road. When the sweep is done, the refusal can become
+"no leaf names a board crate".
+
 ## 2026-10-12 — the switched image delivers; two edits, not three
 
 The switch measured below was finished end to end. On a copy of
