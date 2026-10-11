@@ -48,14 +48,32 @@
 
 #include <cstddef>
 
-// The baseline is compiled only where `session.cpp` actually creates the domain
-// (the platforms with no Cyclone config loader of their own); hosted POSIX and
-// plain Zephyr let Cyclone read `CYCLONEDDS_URI` itself, so compiling ~1.7 KiB
-// of rodata into those images would buy nothing. `cyclone_config_test.cpp`
-// defines the fourth macro so the host test can compose against the REAL string
+// THE EMBEDDED TARGETS — the one spelling of "Cyclone runs on an RTOS here",
+// asked by this header (compile the baseline) and by `session.cpp` (create the
+// domain from it). Only hosted POSIX is outside it: there Cyclone's own loader
+// reads `CYCLONEDDS_URI`, which is the ROS 2 experience.
+//
+// Issue 1814 — this said `CONFIG_BOARD_NATIVE_SIM` where it meant Zephyr, so
+// every OTHER Zephyr board (the FVP AEMv8-R image, any real board) ran Cyclone
+// on its desktop defaults: a 1 MiB `Sizing/ReceiveBufferSize`, per-socket
+// receive threads, and — because no domain was composed — a
+// `CONFIG_NROS_CYCLONE_CONFIG_XML` that reached nothing. Since issue 1633 ddsrt
+// allocates from the nros heap (`CONFIG_NROS_ZEPHYR_HEAP_SIZE`, 1 MiB with
+// Cyclone), so the receive buffer alone (1,048,576 + the 48-byte `nn_rbuf`
+// header = the measured 1,048,624-byte request) no longer fit, and the FVP
+// image aborted in `dds_create_participant`. Being a simulator is not what
+// makes the baseline right; being an RTOS image with a sized heap is. The
+// genuinely native_sim-only parts (NSOS multicast, the localhost peer) stay
+// gated on the board below.
+#if defined(NROS_PLATFORM_FREERTOS) || defined(NROS_PLATFORM_THREADX) || defined(__ZEPHYR__)
+#define NROS_RMW_CYCLONEDDS_EMBEDDED_TARGET 1
+#endif
+
+// The baseline is compiled only where `session.cpp` actually creates the domain;
+// on hosted POSIX ~1.7 KiB of rodata would buy nothing. `cyclone_config_test.cpp`
+// defines the test macro so the host test can compose against the REAL string
 // rather than a copy of it that could drift.
-#if defined(NROS_PLATFORM_FREERTOS) || defined(NROS_PLATFORM_THREADX) ||                           \
-    defined(CONFIG_BOARD_NATIVE_SIM) || defined(NROS_RMW_CYCLONEDDS_TEST_BASELINE)
+#if defined(NROS_RMW_CYCLONEDDS_EMBEDDED_TARGET) || defined(NROS_RMW_CYCLONEDDS_TEST_BASELINE)
 #define NROS_RMW_CYCLONEDDS_HAVE_BASELINE 1
 #endif
 
@@ -174,9 +192,9 @@ constexpr const char* kEmbeddedCycloneConfig =
     "</Domain>"
     "</CycloneDDS>";
 #else
-// phase-206 W2 — hosted POSIX and plain Zephyr bake no baseline, and that is
-// the correct answer for them: Cyclone's own loader reads `CYCLONEDDS_URI`
-// there, which is the ROS 2 experience.
+// phase-206 W2 — hosted POSIX bakes no baseline, and that is the correct answer
+// for it: Cyclone's own loader reads `CYCLONEDDS_URI` there, which is the ROS 2
+// experience. (Every Zephyr board is an embedded target since issue 1814.)
 //
 // The symbol still has to EXIST, because a bringup shipping `rmw/cyclonedds.xml`
 // now makes the hosted path compose too (see `session.cpp`). An empty string is
