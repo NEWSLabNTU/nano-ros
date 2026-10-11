@@ -378,7 +378,7 @@ branch in the "after" version — same code, hoisted to a method.
 - [Scheduling Models](./scheduling-models.md) — the real-time
   scheduling backdrop against which dispatch strategy choices are
   made.
-- `docs/roadmap/phase-216-baremetal-framework-integration.md` — the
+- `docs/roadmap/archived/phase-216-baremetal-framework-integration.md` — the
   locked spec.
 - `packages/platform/nros-platform/src/board/dispatch.rs` — the
   `DispatchStrategy` enum.

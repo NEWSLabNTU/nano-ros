@@ -1,5 +1,15 @@
 # Phase 211 — Proof-Carrying Code in nano-ros (Creusot + Frama-C)
 
+**Status (2026-10-12). CLOSED (superseded) — archived 2026-10-12.** Never
+started, and the tree went the other way. The verification posture is Kani
+(bounded harnesses) plus Verus (unbounded proofs): `just verify` depends on
+`verify-kani` and `verify-verus`, and CLAUDE.md documents that stack. Creusot
+was never adopted (`git ls-files '*creusot*'` is empty), so the premise "retire
+Verus in favour of Creusot" no longer holds. The Frama-C/WP half for C was never
+started either. Anyone reviving C proofs should open a new phase against the
+Kani + Verus posture. The tree paths this doc names are from 2026-06 and many no
+longer exist; they are left as written, as a record.
+
 **Goal:** Stand up proof-carrying-code infrastructure in nano-ros for both C
 and Rust packages. Each verified package ships per-function pre/post
 annotations that compile to Why3 proof obligations; consumers compose against

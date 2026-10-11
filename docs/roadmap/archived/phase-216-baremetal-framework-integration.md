@@ -1,5 +1,15 @@
 # Phase 216 — Bare-metal Framework Integration (RTIC + Embassy)
 
+**Status (2026-10-12). CLOSED (superseded) — archived 2026-10-12.** Track A
+(substrate) and Track B (RTIC) landed, and
+[phase-289](phase-289-rtic-runtime-delivery.md) delivered B's runtime: all four
+`test_qemu_rtic_*_e2e` lanes are green, which closed the B.3 dispatch-body
+follow-up. Track C (Embassy) is gone. The `nros-board-embassy-stm32f4` crate left
+with the STM32F4 family in phase-337 W7.a (`ffb27fa55c`), and issue 0248 (the
+stubbed Embassy board entry) is resolved. The `EmbassyBoardEntry` trait in
+`nros-platform/src/board/embassy_entry.rs` and the book page
+`user-guide/embassy-integration.md` remain, with no board implementing them.
+
 **Goal.** `nros::main!()` works cleanly on RTIC + Embassy bare-metal targets
 with the same one-line UX as POSIX + RTOS. Node pkgs declare a
 `DispatchStrategy` and stay framework-portable; callbacks fire from the
@@ -41,7 +51,7 @@ naming (see "Trait surface after 212.N.12 + 214.K.1" below).
 three-layer RTIC ↔ blocking-connect mismatch (open-in-`#[init]` [fixed] →
 missing `wfi` idle-yield → no armed periodic IRQ through RTIC's vector
 table). The fix landed as
-[phase-289](archived/phase-289-rtic-runtime-delivery.md) (COMPLETE
+[phase-289](phase-289-rtic-runtime-delivery.md) (COMPLETE
 2026-07-15): tick + wfi-yield per design, PLUS the B.3 "per-Node register
 wiring" follow-up this doc had deferred — `__nros_run` now runs each
 node_pkg's full `register()` through the owned-spin

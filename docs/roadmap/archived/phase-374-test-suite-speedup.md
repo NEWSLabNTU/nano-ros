@@ -1,11 +1,21 @@
 # Phase 374 — test-suite speed-up
 
+**Status (2026-10-12). CLOSED (obsolete) — archived 2026-10-12.** A survey,
+and nothing landed under it. Its main candidate was runtime-locatable router
+ports for the two port-serialised groups. One of them, `zephyr-qos-port`, was
+retired by [phase-373](phase-373-test-suite-cleanup-campaign.md) W1, since
+phase-329 had folded its sharers into one test. The other,
+`qemu-esp32-pubsub-port`, serves a platform that is dormant (issue 1525). The
+survey's own finding stands: test execution was a small part of the slow run,
+and the build-side work it pointed to lives in
+[phase-489](../phase-489-ci-build-speedup.md).
+
 **Status (2026-08-21). Survey only, nothing landed.** Opened after a tier-2 run
 took ~2.5 h and looked test-bound. It is not: on that lane the slowest test was
 15.9 s and the wall was dominated by fixture building and the gate/check lane.
 The opportunities below are real but should be sized against that before anyone
 spends a day on them. Build-side work lives in
-[phase-371](archived/phase-371-build-cpu-utilization.md).
+[phase-371](phase-371-build-cpu-utilization.md).
 
 ## What the tier-2 run actually showed
 
