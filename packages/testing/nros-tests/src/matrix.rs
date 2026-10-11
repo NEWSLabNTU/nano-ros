@@ -472,6 +472,15 @@ pub enum Workload {
     /// keeps that honest: a clock stuck at zero reports every topic live
     /// whether or not anything arrived.
     PortMonitor,
+    /// issue 1036 — a console-less image exhausts its executor arena on
+    /// purpose, and the boot report it leaves in RAM names the shortfall and
+    /// the knob. The record is dumped from the halted guest and decoded with
+    /// `scripts/read-boot-report.py`, the tool an operator runs on a board.
+    ///
+    /// Its own value because nothing is delivered and nothing prints: the
+    /// image has no console, which is the condition the record exists for.
+    /// The verdict is read out of memory, not out of a stream.
+    BootReport,
 }
 
 impl Workload {
@@ -515,6 +524,9 @@ impl Workload {
             // is zenoh.
             Workload::PortSmoke => 88,
             Workload::PortMonitor => 89,
+            // A router port of its own: the image opens its session before
+            // it registers the entity that exhausts the arena (issue 1036).
+            Workload::BootReport => 87,
         }
     }
 
@@ -723,6 +735,10 @@ pub const CELLS: &[Cell] = &[
     // compile for any board whose devicetree has gpio nodes, which is every
     // real one; native_sim has none, which is the only reason it went unseen.
     cell(ZephyrQemuCortexM, Rust, Zenoh, Pubsub,  Example, Runtime),
+    // issue 1036 — the boot report read out of a console-less, halted 32-bit
+    // image. On this board because it is Zephyr's own IP stack on a Cortex-M,
+    // the closest QEMU has to the MR-CANHUBK344 the record was written for.
+    cell(ZephyrQemuCortexM, C,   Zenoh, BootReport, Example, Runtime),
     cell(ZephyrQemuCortexM, C,   Zenoh, Service, Example,
          BuildOnly("phase-337 W2.f — the runner reproduces W2.b's manual setup \
                     (SLIRP + a host zenoh router on 7456) for pubsub only; \

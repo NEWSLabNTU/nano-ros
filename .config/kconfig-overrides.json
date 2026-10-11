@@ -7,6 +7,7 @@
       "dead_value": "65536",
       "live_value": "131072",
       "rows": [
+        "build-cortex-m-c-boot-report-zenoh",
         "build-cortex-m-c-talker-zenoh"
       ],
       "symbol": "CONFIG_HEAP_MEM_POOL_SIZE"
@@ -17,6 +18,7 @@
       "dead_value": "16384",
       "live_value": "131072",
       "rows": [
+        "build-cortex-m-c-boot-report-zenoh",
         "build-cortex-m-c-talker-zenoh"
       ],
       "symbol": "CONFIG_MAIN_STACK_SIZE"
@@ -27,6 +29,7 @@
       "dead_value": "64",
       "live_value": "32",
       "rows": [
+        "build-cortex-m-c-boot-report-zenoh",
         "build-cortex-m-c-talker-zenoh"
       ],
       "symbol": "CONFIG_NET_BUF_RX_COUNT"
@@ -37,6 +40,7 @@
       "dead_value": "64",
       "live_value": "32",
       "rows": [
+        "build-cortex-m-c-boot-report-zenoh",
         "build-cortex-m-c-talker-zenoh"
       ],
       "symbol": "CONFIG_NET_BUF_TX_COUNT"
@@ -47,6 +51,7 @@
       "dead_value": "32",
       "live_value": "16",
       "rows": [
+        "build-cortex-m-c-boot-report-zenoh",
         "build-cortex-m-c-talker-zenoh"
       ],
       "symbol": "CONFIG_NET_PKT_RX_COUNT"
@@ -57,9 +62,40 @@
       "dead_value": "32",
       "live_value": "16",
       "rows": [
+        "build-cortex-m-c-boot-report-zenoh",
         "build-cortex-m-c-talker-zenoh"
       ],
       "symbol": "CONFIG_NET_PKT_TX_COUNT"
+    },
+    {
+      "beaten_by": "packages/testing/nros-tests/fixtures/zephyr-boot-report/arena-exhausted.conf",
+      "dead_in": "examples/zephyr/c/talker/prj.conf",
+      "dead_value": "y",
+      "live_value": "n",
+      "rows": [
+        "build-cortex-m-c-boot-report-zenoh"
+      ],
+      "symbol": "CONFIG_EARLY_CONSOLE"
+    },
+    {
+      "beaten_by": "packages/testing/nros-tests/fixtures/zephyr-boot-report/arena-exhausted.conf",
+      "dead_in": "examples/zephyr/c/talker/prj.conf",
+      "dead_value": "y",
+      "live_value": "n",
+      "rows": [
+        "build-cortex-m-c-boot-report-zenoh"
+      ],
+      "symbol": "CONFIG_LOG"
+    },
+    {
+      "beaten_by": "packages/testing/nros-tests/fixtures/zephyr-boot-report/arena-exhausted.conf",
+      "dead_in": "examples/zephyr/c/talker/prj.conf",
+      "dead_value": "y",
+      "live_value": "n",
+      "rows": [
+        "build-cortex-m-c-boot-report-zenoh"
+      ],
+      "symbol": "CONFIG_NET_LOG"
     },
     {
       "beaten_by": "cmake/zephyr/mps2-an385.conf",

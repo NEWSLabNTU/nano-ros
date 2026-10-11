@@ -3,7 +3,7 @@ id: 1036
 title: "Arena exhaustion was half silent, and on the island it was wholly
   unreachable -- the two diagnostics written to explain it go to a sink that
   does not exist"
-status: open
+status: resolved
 type: bug
 area: core, boards, testing
 severity: high
@@ -378,3 +378,34 @@ ports' silent heap refusals are issue 1640 (resolved).
 The run on the MR-CANHUBK344 with a probe is a hardware task, done by hand on
 the board, so it has its own issue: 1799 carries the conf, the three commands
 and the expected decode. This issue now tracks only the QEMU lane above.
+
+## Resolution (2026-10-11) — the QEMU run is a lane
+
+The hand-run recipe is now the `(ZephyrQemuCortexM, C, BootReport)` matrix
+cell, `zephyr_cortex_m_qemu::zephyr_cortex_m_c_boot_report_names_arena_exhaustion`,
+over the fixture row `build-cortex-m-c-boot-report-zenoh`: the same
+`examples/zephyr/c/talker` with the test's own overlay
+`packages/testing/nros-tests/fixtures/zephyr-boot-report/arena-exhausted.conf`
+(no console, no log, the boot report on, exhaustion fatal, a 32-byte arena).
+The overlay is the TEST's, so it sits beside the test, not in the copy-out
+example; the resolver names it, so an edit to it reads STALE (measured: a
+content edit fails the resolve, a `touch` with identical bytes does not).
+
+The cell replaces gdb with the QEMU monitor: `-monitor unix:…` and `pmemsave`
+are the emulator's `savemem`, at the address and length
+`read-boot-report.py --addr-only` resolves from the ELF, and the same script
+decodes the dump. It asserts what the hand run recorded — `RegisteringEntities`,
+`short by 16 bytes`, `set NROS_EXECUTOR_ARENA_SIZE >= 48` — and that the guest
+HALTED: the program counter, read twice 500 ms apart over the monitor, sits in
+`arch_system_halt` (`0x32382`, inside `0x32374..0x32384`). 3.7 s solo.
+
+Negative controls, each a rebuild of the leaf with one knob changed:
+
+| overlay change | verdict |
+| --- | --- |
+| none | PASS, 3.7 s |
+| `CONFIG_NROS_EXECUTOR_ARENA_SIZE=0` (derived, 74,240 B — nothing exhausted) | FAIL at 41 s: "never named the arena exhaustion", last decode `stage 6 FirstSpin` |
+| `CONFIG_NROS_ARENA_EXHAUSTION_IS_FATAL=n` | FAIL at 3.7 s: "guest is at PC 0x204ac, outside the fatal path" — it ran on |
+
+The on-silicon run moved to issue 1799 (2026-10-11), which is all that is left
+of this issue's original ask, and it is a hand run on the MR-CANHUBK344.

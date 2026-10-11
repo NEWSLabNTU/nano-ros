@@ -21,9 +21,12 @@ been exercised except the one that runs on the board:
 - host: `executor::tests::an_exhausted_arena_decodes_to_the_knob_an_operator_must_set`
   (symbol resolution, dump length, decode, verdict) and
   `arena_exhaustion_reaches_the_fatal_hook`, both in `just check node-std-tests`;
-- QEMU, by hand: a console-less `mps2/an385` Zephyr image exhausted on purpose,
-  halted at `k_sys_fatal_error_handler`, dumped with gdb, decoded (issue 1036,
-  2026-10-02 section).
+- QEMU, as a lane since 2026-10-11:
+  `zephyr_cortex_m_qemu::zephyr_cortex_m_c_boot_report_names_arena_exhaustion`
+  builds the same console-less `mps2/an385` image (fixture row
+  `build-cortex-m-c-boot-report-zenoh`), dumps the record with the QEMU
+  monitor's `pmemsave`, decodes it with `read-boot-report.py`, and asserts the
+  guest halted in `arch_system_halt` (issue 1036, resolution).
 
 Not done: the same image built for the S32K344, halted, and dumped with a
 probe. This is a hardware run; no lane here has a board or a probe.

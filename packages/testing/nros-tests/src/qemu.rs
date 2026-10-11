@@ -283,37 +283,23 @@ impl QemuProcess {
     /// during WFI, causing zenoh-pico timeouts to expire before network I/O
     /// completes. See `docs/reference/qemu-icount.md`.
     pub fn start_mps2_an385_networked(binary: &Path) -> TestResult<Self> {
-        if !binary.exists() {
-            return Err(TestError::BuildFailed(format!(
-                "Binary not found: {}",
-                binary.display()
-            )));
-        }
+        Self::spawn(mps2_an385_networked_cmd(binary)?)
+    }
 
-        let mut cmd = qemu_system_arm_cmd();
-        cmd.args([
-            "-cpu",
-            "cortex-m3",
-            "-machine",
-            "mps2-an385",
-            "-nographic",
-            // Synchronize virtual clock with wall-clock time. With sleep=on
-            // (default), WFI advances virtual time at wall-clock speed via
-            // QEMU_CLOCK_VIRTUAL_RT instead of jumping instantly. This keeps
-            // hardware timer-backed clocks (CMSDK Timer0) aligned with slirp
-            // network I/O timing.
-            "-icount",
-            "shift=auto",
-            "-semihosting-config",
-            "enable=on,target=native",
-            "-kernel",
-        ])
-        .arg(binary)
-        .args(["-nic", "user,model=lan9118"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-        #[cfg(unix)]
-        set_new_process_group(&mut cmd);
+    /// [`Self::start_mps2_an385_networked`] plus a QEMU human monitor on a
+    /// unix socket, for a guest whose verdict is in its MEMORY rather than on
+    /// its console (issue 1036: the boot report of an image with no console).
+    /// Talk to it with [`qemu_monitor_command`]; `pmemsave` there is the
+    /// QEMU spelling of the `savemem` a probe performs on a board.
+    pub fn start_mps2_an385_networked_with_monitor(
+        binary: &Path,
+        monitor_socket: &Path,
+    ) -> TestResult<Self> {
+        let mut cmd = mps2_an385_networked_cmd(binary)?;
+        cmd.arg("-monitor").arg(format!(
+            "unix:{},server=on,wait=off",
+            monitor_socket.display()
+        ));
         Self::spawn(cmd)
     }
 
@@ -1424,6 +1410,106 @@ impl Drop for SocatPtyPair {
         let _ = std::fs::remove_file(&self.qemu_path);
         let _ = std::fs::remove_file(&self.zenohd_path);
     }
+}
+
+/// The command [`QemuProcess::start_mps2_an385_networked`] runs: MPS2-AN385,
+/// LAN9118 on slirp, `-icount shift=auto`.
+fn mps2_an385_networked_cmd(binary: &Path) -> TestResult<Command> {
+    if !binary.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "Binary not found: {}",
+            binary.display()
+        )));
+    }
+
+    let mut cmd = qemu_system_arm_cmd();
+    cmd.args([
+        "-cpu",
+        "cortex-m3",
+        "-machine",
+        "mps2-an385",
+        "-nographic",
+        // Synchronize virtual clock with wall-clock time. With sleep=on
+        // (default), WFI advances virtual time at wall-clock speed via
+        // QEMU_CLOCK_VIRTUAL_RT instead of jumping instantly. This keeps
+        // hardware timer-backed clocks (CMSDK Timer0) aligned with slirp
+        // network I/O timing.
+        "-icount",
+        "shift=auto",
+        "-semihosting-config",
+        "enable=on,target=native",
+        "-kernel",
+    ])
+    .arg(binary)
+    .args(["-nic", "user,model=lan9118"])
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped());
+    #[cfg(unix)]
+    set_new_process_group(&mut cmd);
+    Ok(cmd)
+}
+
+/// Run one command on a QEMU human monitor (`-monitor unix:<socket>,…`) and
+/// return what it printed, without the echo and the trailing `(qemu)` prompt.
+///
+/// Connects per call, so a caller can poll without holding a session open
+/// while the guest runs. Fails when the socket does not answer within
+/// `timeout` — a QEMU that died, or one not yet listening.
+#[cfg(unix)]
+pub fn qemu_monitor_command(
+    socket: &Path,
+    command: &str,
+    timeout: Duration,
+) -> std::io::Result<String> {
+    use std::{io::Write, os::unix::net::UnixStream};
+
+    const PROMPT: &str = "(qemu) ";
+    let deadline = Instant::now() + timeout;
+    let mut stream = UnixStream::connect(socket)?;
+    stream.set_read_timeout(Some(Duration::from_millis(200)))?;
+
+    // Read until the n-th prompt: the banner ends in one, the reply in the next.
+    let read_to_prompt = |stream: &mut UnixStream, n: usize| -> std::io::Result<String> {
+        let mut text = String::new();
+        let mut buf = [0u8; 4096];
+        while text.matches(PROMPT).count() < n {
+            if Instant::now() > deadline {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    format!("QEMU monitor gave no prompt; read so far: {text:?}"),
+                ));
+            }
+            match stream.read(&mut buf) {
+                Ok(0) => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::UnexpectedEof,
+                        format!("QEMU monitor closed; read so far: {text:?}"),
+                    ));
+                }
+                Ok(k) => crate::capture::append(&mut text, &buf[..k]),
+                Err(e)
+                    if matches!(
+                        e.kind(),
+                        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                    ) => {}
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(text)
+    };
+
+    read_to_prompt(&mut stream, 1)?;
+    stream.write_all(command.as_bytes())?;
+    stream.write_all(b"\n")?;
+    let reply = read_to_prompt(&mut stream, 1)?;
+    // The monitor echoes the command line (with terminal escapes) before the
+    // reply; keep what follows the last line that carries the command.
+    let body = reply.trim_end_matches(PROMPT);
+    let body = match body.rfind(command) {
+        Some(at) => &body[at + command.len()..],
+        None => body,
+    };
+    Ok(body.trim().to_string())
 }
 
 #[cfg(test)]
