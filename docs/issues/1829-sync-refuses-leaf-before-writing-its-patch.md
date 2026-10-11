@@ -11,7 +11,7 @@ found: 2026-10-11
 
 ## Measured
 
-L3 queue job 114583597973 (merge_group run for #2001, head `4b4cf383f`,
+L3 queue job 114583597973 (merge_group run for #2001, on the queue's temporary merge commit,
 runner `nano-ros-runner-newslab-server-241`, 2026-10-11 21:46Z) ran on the
 rebuilt runner image. That image's doctor printed `[OK] user cache dir is writable`,
 so issue 1755 is behind this lane now. The job then failed in `just ci matrix build`, at
