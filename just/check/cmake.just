@@ -586,3 +586,11 @@ cmake-verb-reachable:
 [private]
 runtime-umbrella-link-sites:
     @python3 scripts/check-runtime-umbrella-link-sites.py
+
+# phase-485 W8 (RFC-0104 D10) — nano-ros's own build never fetches: no
+# FetchContent / ExternalProject in `cmake/`, `zephyr/` or `packages/` build
+# files. A user's vendor package is RFC-0087 D5's (`check-vendor-fetch-pinned`).
+# Buildless, ~0.1 s; self-tests its matcher.
+[private]
+no-build-time-fetch:
+    @python3 scripts/check/check-no-build-time-fetch.py

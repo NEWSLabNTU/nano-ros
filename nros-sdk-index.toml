@@ -849,27 +849,13 @@ install = "cargo install --path src/ros-launch-resolve/parser/crates/play_launch
 # bump makes the SUPPORTED path match the one already proven green, rather than
 # introducing an untested version.
 version = "0.6.1-nros1"
-# issue 1060 — a TAG is not a pin. It is a ref on a server we do not control, so
-# an upstream retag moves what we build with no local diff, no review and no
-# gate. The cmake FetchContent fallback therefore fetches the COMMIT this tag
-# resolved to on 2026-09-05:
+# issue 1060 pinned the cmake FetchContent fallback to the COMMIT this tag
+# resolved to (1499b14e4906a2890f5cee1547c8848db261753d). That fallback is GONE
+# (phase-485 W8, RFC-0104 D10): a configure with no Corrosion in the store
+# refuses and names `nros setup --tool corrosion`, so no build fetches it.
 #
-#     1499b14e4906a2890f5cee1547c8848db261753d   ("Prepare v0.6.1 release", #656)
-#
-# resolved with `git ls-remote https://github.com/corrosion-rs/corrosion
-# refs/tags/v0.6.1`. There is no peeled `^{}` line, so v0.6.1 is a LIGHTWEIGHT
-# tag and that ref IS the commit (confirmed: `git cat-file -t` says `commit`).
-#
-# The digest lives in `_nros_corrosion_pin()` in `cmake/NanoRosCorrosion.cmake`,
-# not in a key here, because this table deserialises into `ToolPackage` with
-# serde `deny_unknown_fields` — an unknown key fails EVERY `SdkIndex::load`
-# (`nros setup`, `nros doctor`, the metadata build), and adding one is a schema
-# change in `packages/cli`. The two halves still cannot drift: moving the tag
-# above without moving that commit is a configure FATAL_ERROR. If the schema
-# later grows a commit key, the module already prefers it over its own literal.
-#
-# `source.ref` below is a SEPARATE fetch — the SDK-store recipe `nros setup
-# --tool corrosion` clones — and is still a tag. Same defect class, different
+# `source.ref` below is the one remaining fetch — the SDK-store recipe `nros
+# setup --tool corrosion` clones — and is still a tag. Same defect class, different
 # code path (`sdk_store.rs`), not fixed here.
 upstream = "v0.6.1" # = source.ref (corrosion-rs/corrosion release tag)
 [tool.corrosion.source]

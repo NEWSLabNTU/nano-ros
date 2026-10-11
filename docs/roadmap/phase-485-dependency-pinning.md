@@ -1,7 +1,7 @@
 # Phase 485 — dependency pinning: one pin set, one project lock
 
 **Status (2026-10-11). M1–M3 measured, and the issue-1781 fix landed. W1 has
-landed (the registry pin set), and so have W2 (seeded leaf locks), W3 (the project lock across kinds), W7 (`nros update`) and W4 (the drift check; the shim is retired); W5, W6 and W8–W10 are open.** Implements
+landed (the registry pin set), and so have W2 (seeded leaf locks), W3 (the project lock across kinds), W7 (`nros update`), W4 (the drift check; the shim is retired), W5 (issue 1780, landed on its own) and W8 (no fetch at build time); W6, W9 and W10 are open.** Implements
 [RFC-0104](../design/0104-dependency-pinning-and-project-lock.md). The RFC's
 D3 and D5 rested on facts that were not yet measured, so M1–M3 ran before any
 implementation and amended the RFC.
@@ -452,6 +452,36 @@ name a verb that exists, so W7 went first.
 Remove Corrosion's `FetchContent` fallback from `cmake/NanoRosCorrosion.cmake`;
 a configure without the pinned Corrosion refuses and names `nros setup`. Gate:
 no `FetchContent_Declare` / `ExternalProject_Add` outside `third-party/`.
+
+**Result (2026-10-11) — landed.**
+
+- **The fallback is gone.** Removed from `cmake/NanoRosCorrosion.cmake`: the
+  FetchContent branch and the three functions only it used. Those were
+  `_nros_corrosion_pin` (issue 1060's commit pin), the host fetch cache, and
+  its digest check. A configure that finds no Corrosion at the constructed
+  store prefix now stops with `the pinned Corrosion is not in the SDK store,
+  and a configure does not fetch it` and names `nros setup --tool
+  corrosion`.
+- **Measured.** `NROS_HOME` pointed at an empty directory, then
+  `examples/native/c/talker` configured: exit 1 at that message, and no
+  `_deps/` was created. Against the real store, every configure in this
+  phase reports `Corrosion 0.6.1 via SDK store`. The `_deps/corrosion-src`
+  seen in one workspace build dir was residue of an older configure, not a
+  live fetch.
+- **The gate is scoped narrower than written.** `check-no-build-time-fetch`
+  (fast line) refuses a fetch call in nano-ros's OWN build files: `cmake/`,
+  `zephyr/`, and the `.cmake`/`CMakeLists.txt` files under `packages/`.
+  "Outside `third-party/`" would have reached a user's packages too, and
+  RFC-0087 D5 lets a user's vendor package fetch with a digest
+  (`check-vendor-fetch-pinned`). That gate's ratchet entry for Corrosion is
+  deleted, since its subject no longer exists; it now reports no fetch
+  anywhere in the tree.
+- **The book's offline sections** (`build-as-subdirectory.md`,
+  `vendored-tree.md`) no longer promise a network Corrosion fetch.
+- **One fetch remains: the store's own source recipe.** `nros setup --tool
+  corrosion` still clones by TAG (`[tool.corrosion] ref = "v0.6.1"`). That is
+  `nros setup`, not a build, and the index comment already records it as
+  the same defect class.
 
 ### W9 — developer tools (D8)
 

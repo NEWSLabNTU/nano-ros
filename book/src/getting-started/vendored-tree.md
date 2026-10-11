@@ -139,17 +139,17 @@ Two entry points, both source-backed:
 
 Either way, at configure time nano-ros's `bootstrap.cmake` runs
 `tools/setup.sh` to populate the source submodules your
-`(NANO_ROS_PLATFORM, NANO_ROS_RMW)` pair needs, and may FetchContent
-Corrosion from the network if none is installed. That is correct on a
+`(NANO_ROS_PLATFORM, NANO_ROS_RMW)` pair needs. That is correct on a
 developer machine and wrong in hermetic CI — see the next section.
+Corrosion is never fetched at configure time: without it in the SDK store
+the configure stops and names `nros setup --tool corrosion`.
 
 ## Air-gapped / mirrored CI
 
 The offline contract, all of it:
 
 1. **`-DNANO_ROS_SKIP_BOOTSTRAP=ON`.** Disables the configure-time
-   submodule fetch and any network FetchContent. You now own
-   pre-seeding.
+   submodule fetch. You now own pre-seeding.
 2. **Pre-seed the submodules** your platform/RMW pair needs in your
    mirror (e.g. `zpico-sys/zenoh-pico`, the FreeRTOS kernel + lwIP,
    the Cyclone fork — `tools/setup.sh` derives the per-target list

@@ -164,24 +164,6 @@ DIGEST_EVIDENCE = re.compile(
 # its file does not churn this list, while moving it to another file does.
 # ---------------------------------------------------------------------------
 BASELINE = {
-    "cmake/NanoRosCorrosion.cmake::Corrosion": (
-        "NOT an unpinned fetch — a gate LIMIT. `GIT_TAG` is "
-        "`${_nros_corrosion_commit}`, and a variable is something this gate "
-        "cannot follow, so it cannot ESTABLISH the digest even though "
-        "`_nros_corrosion_pin()` returns the literal commit "
-        "`1499b14e4906a2890f5cee1547c8848db261753d`. Reporting a property it "
-        "never established would be worse than not reporting one, so the entry "
-        "stays. Issue 1060 — which this entry was filed against, when the tag "
-        "`v0.6.1` really was the ref — is RESOLVED. What retires the entry is "
-        "the commit id appearing literally in the declaration, which today "
-        "would cost the FATAL_ERROR cross-check between the index and this "
-        "file. Note this fetch is the FALLBACK — the supported path is the SDK "
-        "store (`nros setup --tool corrosion`), whose `dist` assets are "
-        "sha256-verified — so it is reached only when the store misses. Issue "
-        "0500 explains why reading the configure's printed "
-        "`Corrosion <ver> via <origin>` line is the only way to know which "
-        "ran."
-    ),
 }
 
 
