@@ -27,17 +27,24 @@ header, not in `ld`'s output.
 In `nros-params`: `OnSetParameterFn` carries `old: Option<&ParameterValue>` and
 `new: Option<&ParameterValue>`; one entry point for an rclc local set (type
 check, callbacks, write; no read-only or range check, RFC-0105 D7); a per-node
-quota; range enforcement confirmed on the service path. C++ and Rust callers
-keep their semantics.
+quota; range enforcement confirmed on the service path; one carved staging
+slot per executor for a remote set's incoming value, replacing today's stack
+local in `parameter_services.rs` (RFC-0105 D10.2). C++ and Rust callers keep
+their semantics.
 *Acceptance:* unit tests for each row of RFC-0105's callback table, the
-re-entrancy refusal, the quota, and read-only/range on both paths.
+re-entrancy refusal, the quota, and read-only/range on both paths; a stack
+measurement of a remote set with a full string array stays under the documented
+bound.
 
 **W3 — `/parameter_events` emitter.**
 In `nros-node` behind `param-services`: one publisher per node with the
 `parameter_events` QoS, serialising one-parameter events straight from the store
-on add, set and delete. No `ParameterEvent` struct is built.
-*Acceptance:* a host test decodes the CDR of each event kind; `mem-report`
-shows no new heap use.
+on add, set and delete, into a carved buffer sized from the store's bounds. No
+`ParameterEvent` struct is built. Stamp from the executor clock. Depth from
+`NROS_PARAM_EVENTS_DEPTH` on an RTOS (RFC-0105 D8).
+*Acceptance:* a host test decodes the CDR of each event kind, including one at
+the largest configured bounds; `mem-report` shows the buffer as `.bss` and no
+new heap use.
 
 **W4 — The `rclc_*` C surface.**
 `include/rclc_parameter/rclc_parameter.h` with the full rclc function set, the
@@ -49,7 +56,10 @@ ADOPT / ADOPT-BOUNDED.
 *Acceptance:* `packages/api/nros-c/tests/compile` builds an unmodified excerpt of the upstream
 rclc parameter example; a REFUSE-LOUD fixture (rosidl `Parameter__init`) fails
 to compile; `packages/api/nros-c/tests/run` covers RFC-0105 D3 (unbound node returns
-`RCL_RET_NOT_INIT`).
+`RCL_RET_NOT_INIT`); a run test under a counting allocator asserts **zero**
+allocations across init, declare, every get/set, a callback veto, delete and
+fini (RFC-0105 D10.1); a `nm` check finds no `getenv`/`fopen`/`printf`-family
+reference from the parameter objects (D10.3/D10.4).
 
 **W5 — Migrate and retire (closes 0793).**
 Move `examples/native/c/parameters`, `c_param_talker_pkg`, codegen
@@ -66,9 +76,11 @@ The `interop::CELLS` row in RFC-0105 §Interop proof: a C node on this API
 against `ros2 param` and an rclcpp `ParameterEventHandler`.
 *Acceptance:* the cell runs in its lane and passes all four checks.
 
-**W7 — Issue 1812: heap-free services.**
-Carve the remaining boxed service state, as issue 1812 lists. Tracked there;
-named here because RFC-0105 D5 holds end to end only after it lands.
+**W7 — Issue 1812: heap-free services, and an RTOS image proves it.**
+Carve the remaining boxed service state, as issue 1812 lists. Then build the
+W4 C example for an RTOS with no heap (a FreeRTOS or Zephyr image whose
+`alloc` is absent) and run it in its QEMU lane. RFC-0105 D10 is not met, and
+the phase does not close, until that image builds and answers `ros2 param`.
 
 ## Out of scope
 
