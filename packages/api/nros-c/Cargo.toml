@@ -412,7 +412,9 @@ nros-rmw-xrce-cffi = { workspace = true, optional = true, default-features = fal
 # phase-361 W8.c — the `zpico-alloc` dep is gone with the `HeapStats` static it
 # provided; `alloc-stats` now forwards to `nros-platform/alloc-stats`, whose
 # counter lives beside the one global allocator.
-paste = "1"
+# issue 1805 — `pastey`, the maintained drop-in fork of `paste` (RUSTSEC-2024-0436:
+# `paste` is unmaintained). Same `paste!` macro, same expansion.
+pastey = "0.2"
 panic-halt = { version = "1", optional = true }
 # critical-section impl provided by the Zephyr alloc module on
 # platform-zephyr. DDS + portable-atomic depend on it being set.

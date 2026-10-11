@@ -38,6 +38,8 @@ use std::{
 use eyre::{Result, WrapErr, bail, eyre};
 use quick_xml::{events::Event, reader::Reader};
 use serde::{Deserialize, Serialize};
+
+pub mod xml;
 use walkdir::WalkDir;
 
 /// Workspace-root markers consulted by [`detect_workspace_root`]. The
@@ -387,35 +389,23 @@ fn is_cargo_workspace_root(dir: &Path) -> bool {
 fn read_package_xml_name(path: &Path) -> Result<String> {
     let file = fs::File::open(path).wrap_err_with(|| format!("open `{}`", path.display()))?;
     let mut reader = Reader::from_reader(BufReader::new(file));
-    reader.config_mut().trim_text(true);
 
     let mut buf = Vec::new();
-    let mut in_name = false;
-    let mut depth = 0_i32;
+    // No `trim_text`: it trims each text PIECE, and since quick-xml 0.38 an
+    // entity splits the text into pieces (see `xml::ElementText`).
+    let mut text = xml::ElementText::default();
     let mut name: Option<String> = None;
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) => {
-                depth += 1;
-                // `<name>` lives at depth 2: `<package> <name>...</name> </package>`
-                // but be lenient — accept the first `<name>` text node.
-                if depth >= 1 && e.local_name().as_ref() == b"name" {
-                    in_name = true;
-                }
-            }
+            // `<name>` lives at depth 2: `<package> <name>...</name> </package>`
+            // but be lenient — accept the first `<name>` text node at any depth.
+            Ok(Event::Start(_)) => text.clear(),
+            Ok(Event::Text(e)) => text.text(&e).wrap_err("<name> text")?,
+            Ok(Event::GeneralRef(r)) => text.reference(&r).wrap_err("<name> text")?,
             Ok(Event::End(e)) => {
-                depth -= 1;
-                if e.local_name().as_ref() == b"name" {
-                    in_name = false;
-                }
-            }
-            Ok(Event::Text(e)) => {
-                if in_name && name.is_none() {
-                    let raw = e.unescape().wrap_err("unescape <name> text")?;
-                    let trimmed = raw.trim().to_string();
-                    if !trimmed.is_empty() {
-                        name = Some(trimmed);
-                    }
+                let t = text.take();
+                if name.is_none() && e.local_name().as_ref() == b"name" {
+                    name = t;
                 }
             }
             Ok(Event::Empty(_)) => {}

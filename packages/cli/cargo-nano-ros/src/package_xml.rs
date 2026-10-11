@@ -103,10 +103,7 @@ fn read_announcement(
     let mut name = None;
     for attr in e.attributes() {
         let attr = attr.map_err(|e| eyre!("bad attribute: {e}"))?;
-        let value = attr
-            .unescape_value()
-            .map_err(|e| eyre!("bad attribute value: {e}"))?
-            .to_string();
+        let value = nros_pkg_index::xml::attr_value(&attr)?;
         match attr.key.as_ref() {
             b"kind" => kind = Some(value),
             b"name" => name = Some(value),
@@ -143,7 +140,10 @@ impl PackageXml {
     /// Parse package.xml from string content
     pub fn parse_str(content: &str) -> Result<Self> {
         let mut reader = Reader::from_str(content);
-        reader.config_mut().trim_text(true);
+        // No `trim_text`: it trims each text PIECE, and since quick-xml 0.38 an
+        // entity splits the text into pieces. `ElementText::take` trims the
+        // whole (issue 1805).
+        let mut text = nros_pkg_index::xml::ElementText::default();
 
         let mut name = None;
         let mut version = None;
@@ -202,43 +202,24 @@ impl PackageXml {
                 }
                 Ok(Event::Start(e)) => {
                     current_tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    text.clear();
                     if e.name().as_ref() == b"export" {
                         in_export = true;
                     }
                 }
-                Ok(Event::Text(e)) => {
-                    let text = e.unescape().unwrap_or_default().to_string();
-                    match current_tag.as_str() {
-                        "name" if name.is_none() => {
-                            name = Some(text);
-                        }
-                        "version" if version.is_none() => {
-                            version = Some(text);
-                        }
-                        "depend" | "build_depend" | "exec_depend" | "build_export_depend" => {
-                            dependencies.insert(text);
-                        }
-                        // FIRST declaration wins, matching every other reader
-                        // of this element: `check-build-type-spelling.py` and
-                        // `NanoRosPackageXml.cmake` both take `[0]` of what
-                        // they find. A second `<build_type>` is a malformed
-                        // package.xml, and disagreeing about WHICH one is
-                        // authoritative is worse than either answer.
-                        //
-                        // NOT gated on `in_export`, deliberately: colcon reads
-                        // it from `<export>` and every tracked file writes it
-                        // there, but the two regex readers this must agree with
-                        // scan the whole file. A reader that were stricter here
-                        // would resolve a package differently from the cmake
-                        // reader that acts on it — the exact drift RFC-0087 D2
-                        // built the shared table to prevent.
-                        "build_type" if build_type.is_none() => {
-                            build_type = Some(text);
-                        }
-                        _ => {}
-                    }
-                }
+                Ok(Event::Text(e)) => text.text(&e)?,
+                Ok(Event::GeneralRef(r)) => text.reference(&r)?,
                 Ok(Event::End(e)) => {
+                    if let Some(text) = text.take() {
+                        Self::take_element_text(
+                            &current_tag,
+                            text,
+                            &mut name,
+                            &mut version,
+                            &mut dependencies,
+                            &mut build_type,
+                        );
+                    }
                     if e.name().as_ref() == b"export" {
                         in_export = false;
                     }
@@ -258,6 +239,46 @@ impl PackageXml {
             uses,
             build_type,
         })
+    }
+
+    /// One leaf element's text, filed by its tag.
+    fn take_element_text(
+        current_tag: &str,
+        text: String,
+        name: &mut Option<String>,
+        version: &mut Option<String>,
+        dependencies: &mut HashSet<String>,
+        build_type: &mut Option<String>,
+    ) {
+        match current_tag {
+            "name" if name.is_none() => {
+                *name = Some(text);
+            }
+            "version" if version.is_none() => {
+                *version = Some(text);
+            }
+            "depend" | "build_depend" | "exec_depend" | "build_export_depend" => {
+                dependencies.insert(text);
+            }
+            // FIRST declaration wins, matching every other reader
+            // of this element: `check-build-type-spelling.py` and
+            // `NanoRosPackageXml.cmake` both take `[0]` of what
+            // they find. A second `<build_type>` is a malformed
+            // package.xml, and disagreeing about WHICH one is
+            // authoritative is worse than either answer.
+            //
+            // NOT gated on `in_export`, deliberately: colcon reads
+            // it from `<export>` and every tracked file writes it
+            // there, but the two regex readers this must agree with
+            // scan the whole file. A reader that were stricter here
+            // would resolve a package differently from the cmake
+            // reader that acts on it — the exact drift RFC-0087 D2
+            // built the shared table to prevent.
+            "build_type" if build_type.is_none() => {
+                *build_type = Some(text);
+            }
+            _ => {}
+        }
     }
 
     /// Get all dependencies
