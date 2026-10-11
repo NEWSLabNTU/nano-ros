@@ -10,22 +10,21 @@ RFC-0104 D2 / phase-485 W1. `nros-sdk-index.toml` names the pin set
     or a disagreement);
   * every locked root's registry entries are IN the pin set at that version,
     so `heapless` cannot be 0.8.1 in the repo root and 0.8.0 in the examples;
-  * the pin set is what `scripts/gen-cargo-registry-pins.py` writes from the
-    tracked locks today, so a moved root lock is a stale pin set, not a
-    silent divergence;
   * a `Cargo.lock` is tracked IFF its directory is a locked root (phase-485
     W2) -- every other cargo root is a leaf, seeded from the pins on its first
     build by `nros build` / `nros ws seed-lock`, never committed.
 
-Remedy for every failure: move the root's lock with `just lock-update`, then
-`python3 scripts/gen-cargo-registry-pins.py`, and review both diffs together.
+Remedy for every failure: `nros update --crate <name> [--precise <v>]`, which
+moves every locked root and the pin set together; or, after a manual `cargo
+update` / manifest edit in one root, `nros update --pins`. Review both diffs.
+(A moved root lock with a stale pin set is caught by the subset check: the
+root then holds a version the pins do not.)
 
 Buildless, ~0.2 s. Self-tests its two set checks against planted locks on
 every run, so a check that can no longer fail fails here.
 """
 
 import os
-import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -60,7 +59,7 @@ def main():
     pins_path = os.path.join(ROOT, pins_rel)
     if not os.path.exists(pins_path):
         print(f"check-cargo-registry-pins: {pins_rel} is missing -- run "
-              "`python3 scripts/gen-cargo-registry-pins.py`", file=sys.stderr)
+              "`nros update --pins`", file=sys.stderr)
         return 1
     pins = cp.load_lock(pins_path)
     failed = False
@@ -97,15 +96,10 @@ def main():
                   file=sys.stderr)
             failed = True
 
-    gen = subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "gen-cargo-registry-pins.py"),
-                          "--check"], capture_output=True, text=True)
-    if gen.returncode != 0:
-        sys.stderr.write(gen.stderr)
-        failed = True
-
     if failed:
-        print("Remedy: `just lock-update <crate> <version> <root>`, then "
-              "`python3 scripts/gen-cargo-registry-pins.py`; commit both.", file=sys.stderr)
+        print("Remedy: `nros update --crate <name> [--precise <v>]` (moves the roots and the "
+              "pins together), or `nros update --pins` after a cargo update in one root.",
+              file=sys.stderr)
         return 1
     print(f"check-cargo-registry-pins: {len(cp.registry_packages(pins))} pins, one per range; "
           f"{len(roots)} locked root(s) are subsets")

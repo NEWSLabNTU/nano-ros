@@ -1347,8 +1347,10 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
 - **Case-normalize enum-ish cmake args** (`string(TOUPPER)`) — the ament verbs pass lowercase
   `cpp`; a case-sensitive `STREQUAL "CPP"` silently takes the C branch. → AGENTS.md CMake Pitfalls.
 - **Lockfiles change ONLY when a dev means it** (issues 0359/0378). `Cargo.lock` is a promise
-  that someone else's build resolves what yours did, so `just lock-update [crate] [version] [dir]`
-  is the only sanctioned way to move one — never bare `cargo generate-lockfile`, which re-resolves
+  that someone else's build resolves what yours did, so `nros update --crate <name> [--precise <v>]`
+  (phase-485 W7: every locked root and the pin set move together; `just lock-update` is the
+  per-root form and ends in `nros update --pins`) is the only sanctioned way to move one — never
+  bare `cargo generate-lockfile`, which re-resolves
   EVERY package (26 leaf locks once moved 5388 lines as a "cleanup"). `--locked` is injected
   PROJECT-WIDE by the `scripts/bin/cargo` PATH shim (`NROS_CARGO_FLAGS`, wired in `activate.sh`),
   so a mismatch FAILS instead of silently rewriting the file. Cargo has no config/env knob for it

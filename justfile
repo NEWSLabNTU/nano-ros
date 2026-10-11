@@ -1020,9 +1020,13 @@ lock-update crate="" version="" dir=".":
         # failed, which is the one thing the caller needs in order to decide.
         cargo update --workspace
     fi
-    # RFC-0104 D2 (phase-485 W1): a locked root's lock and the registry pin set
-    # move together, or `check-cargo-registry-pins` refuses the pair.
-    python3 "{{justfile_directory()}}/scripts/gen-cargo-registry-pins.py"
+    # RFC-0104 D2/D7 (phase-485 W1, W7): a locked root's lock and the registry
+    # pin set move together, or `check-cargo-registry-pins` refuses the pair.
+    # `nros update --pins` settles any disagreement between roots upward and
+    # regenerates the pin set; `nros update --crate <name>` is the one-step
+    # form of this whole recipe for a crate.
+    "${NROS_CLI:-{{justfile_directory()}}/packages/cli/target/release/nros}" update --pins \
+        --nano-ros-path "{{justfile_directory()}}"
     echo ""
     echo "[lock-update] REVIEW THE DIFF before committing:"
     echo "    git diff -- '*Cargo.lock' locks/"

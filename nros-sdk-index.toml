@@ -2324,13 +2324,20 @@ check = { cmd = "kconfig-conf" }
 # setup/doctor derive from one file. cargo-nextest was required by `just
 # test-all` and declared nowhere (issue 0368 F7).
 
+# phase-485 W7 (RFC-0104 D4a) — the committed west manifests. `nros update
+# --west <project> --revision <rev>` edits every one listing that project; a
+# module the zephyr manifest IMPORTS follows `zephyr`'s revision instead.
+[west]
+manifests = ["west.yml", "west-4.4.yml"]
+
 # RFC-0104 D2 (phase-485 W1) — the Rust registry PIN SET. One tracked,
 # registry-only `Cargo.lock`: one version per semver-compatible range of every
 # registry crate any root here resolves. It is the only reviewed lockfile diff
 # for the leaves, which carry no tracked lock of their own. `locked_roots` are
 # the closed-graph workspaces that KEEP a tracked `Cargo.lock`; each must be a
-# subset of the pin set (`check-cargo-registry-pins`). Regenerate with
-# `python3 scripts/gen-cargo-registry-pins.py` after moving a root's lock.
+# subset of the pin set (`check-cargo-registry-pins`). Move a pin with
+# `nros update --crate <name>`; after a cargo update in one root, `nros update
+# --pins` (phase-485 W7).
 [rust]
 registry_pins = "locks/cargo-registry.lock"
 locked_roots = [

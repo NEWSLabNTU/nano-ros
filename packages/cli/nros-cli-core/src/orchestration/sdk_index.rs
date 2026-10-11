@@ -117,6 +117,26 @@ pub struct SdkIndex {
     /// first.
     #[serde(default)]
     pub zephyr_module: BTreeMap<String, ZephyrModule>,
+    /// phase-485 W7 (RFC-0104 D4a) — the committed west manifests, relative to
+    /// the index, so `nros update --west` edits every one that lists a project
+    /// without the CLI knowing their names.
+    #[serde(default, skip_serializing_if = "WestSection::is_empty")]
+    pub west: WestSection,
+}
+
+/// `[west]` — the west manifests this tree commits (phase-485 W7).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WestSection {
+    #[serde(default)]
+    pub manifests: Vec<String>,
+}
+
+impl WestSection {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.manifests.is_empty()
+    }
 }
 
 /// One Zephyr west module (phase-447 F1).

@@ -913,6 +913,29 @@ fn execute_install(
     }
 }
 
+/// `path`'s sha256, lowercase hex — the same tools [`verify_sha256`] uses, so
+/// the value written into the index is the value it is later checked with.
+pub(crate) fn sha256_file(path: &Path) -> Result<String> {
+    let out = Command::new("sha256sum")
+        .arg(path)
+        .output()
+        .or_else(|_| {
+            Command::new("shasum")
+                .args(["-a", "256"])
+                .arg(path)
+                .output()
+        })
+        .wrap_err("run sha256sum / shasum")?;
+    if !out.status.success() {
+        bail!("sha256sum failed for {}", path.display());
+    }
+    Ok(String::from_utf8_lossy(&out.stdout)
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase())
+}
+
 /// Verify `path`'s sha256 equals `expected` (shells out to `sha256sum`, falling
 /// back to `shasum -a 256` on macOS).
 pub(crate) fn verify_sha256(path: &Path, expected: &str) -> Result<()> {
@@ -2057,7 +2080,7 @@ fn sh_with_toolchain(args: &[&str], cwd: Option<&Path>, toolchain: Option<&str>)
 /// [`super::step_log::watch_download`] prints a byte-count line once the fetch
 /// has run long enough to need one. `cmd/setup.rs::fetch_index` is not this: it
 /// fetches a small TOML with fail-fast timeouts, and stays silent on purpose.
-fn download(url: &str, dest: &Path) -> Result<()> {
+pub(crate) fn download(url: &str, dest: &Path) -> Result<()> {
     let what = url
         .rsplit('/')
         .next()

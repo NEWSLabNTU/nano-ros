@@ -56,6 +56,7 @@ pub mod sizing_descriptor;
 pub mod store;
 /// phase-440 W6 — `nros toolchain uninstall` (RFC-0095 D11).
 pub mod toolchain;
+pub mod update;
 pub mod version;
 /// Issue 1662 — `nros ws west-leaf-sizing`.
 pub mod west_leaf_sizing;
@@ -186,6 +187,11 @@ pub enum Cmd {
     /// `share/nros/manifest.toml` first, so an upgrade that would invalidate
     /// already-generated code warns before anything is written (RFC-0097 D7).
     Pin(pin::Args),
+
+    /// phase-485 W7 (RFC-0104 D7) — move ONE pin: a registry crate
+    /// (`--crate`), a vendored source (`--source`), a host tool (`--tool`) or a
+    /// west project (`--west`). Edits the pin set and leaves one diff.
+    Update(update::Args),
 
     /// phase-336 — the cargo build-profile table (CMAKE_BUILD_TYPE mapping,
     /// flags, artifact dir, env-injected definitions). The bridge cmake/bash
