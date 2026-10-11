@@ -152,6 +152,11 @@ pub struct ResolvedBuild {
     /// Kept on the plan rather than performed during planning so planning
     /// never RUNS a native tool and `--dry-run` can PRINT it. [`run`] performs it.
     pub configure: Option<Handoff>,
+
+    /// phase-485 W3 (RFC-0104 D4) — what the finished build leaves to read
+    /// for the project lock: the cargo roots it resolved and the build
+    /// directories whose records say which sources it read.
+    pub record: crate::orchestration::project_lock::BuildRecord,
 }
 
 /// What a plan is FOR — issue 1716.
@@ -509,6 +514,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 entry_package: Some(want_entry.clone()),
                 target: descriptor.target.clone(),
                 profile: image.profile.clone(),
+                record: Default::default(),
             });
             continue;
         }
@@ -545,6 +551,13 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
 
         // ---- stage 4 ----------------------------------------------------
         let mut cmake_configure: Option<Handoff> = None;
+        // phase-485 W3 — the cargo roots this image resolves, for the project
+        // lock's `[cargo.*]` record.
+        let mut cargo_roots: Vec<std::path::PathBuf> = Vec::new();
+        // ...and the directories THIS image builds into. Never the whole
+        // `<ws>/build/`: that holds every other image's build too, and a
+        // native image would be recorded as reading FreeRTOS.
+        let mut record_dirs: Vec<std::path::PathBuf> = Vec::new();
         let mut cargo_prepare: Option<Handoff> = None;
         let handoff = match driver {
             Driver::Cargo => {
@@ -655,6 +668,9 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                          nothing else for cargo to build."
                     ),
                 };
+
+                cargo_roots.push(manifest_dir.clone());
+                record_dirs.push(image_dir.join("target"));
 
                 // ---- the one settings file (RFC-0098 D1/D7) --------------
                 //
@@ -933,6 +949,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // Unlike cargo, cmake imposes no root/member hierarchy rule, so
                 // this root DOES live under build/<coord> (RFC-0065 D8).
                 let manifest_dir = root.join("build").join(cmake_coordinate(&platform, &image));
+                record_dirs.push(manifest_dir.clone());
                 // W4.b — every image that lands on THIS coordinate.
                 //
                 // They share `build/<coord>/`, so emitting only the image being
@@ -1291,6 +1308,9 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // In the FIRST zone and before the positional: `-d` takes one
                 // value, so it cannot swallow the application path.
                 if !names_west_build_dir(&west_extra) {
+                    record_dirs.push(west_build_dir(
+                        &root, &platform, &image, &bringup, &image_id,
+                    ));
                     a.push("-d".to_string());
                     a.push(
                         west_build_dir(&root, &platform, &image, &bringup, &image_id)
@@ -1399,6 +1419,11 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
             entry_package: Some(want_entry.clone()),
             target: descriptor.target.clone(),
             profile: image.profile.clone(),
+            record: crate::orchestration::project_lock::BuildRecord {
+                project: root.clone(),
+                cargo_roots,
+                build_dirs: record_dirs,
+            },
         });
     }
     Ok(out)
@@ -1505,6 +1530,7 @@ fn plan_single_package(
             profile: None,
             cmake_build_dir: None,
             configure: None,
+            record: Default::default(),
         }]));
     }
 
@@ -1555,6 +1581,15 @@ fn plan_single_package(
         profile: None,
         cmake_build_dir: None,
         configure: prepare,
+        record: crate::orchestration::project_lock::BuildRecord {
+            project: root.to_path_buf(),
+            cargo_roots: vec![img.leaf.clone()],
+            build_dirs: img
+                .config_path
+                .parent()
+                .map(|d| vec![d.to_path_buf()])
+                .unwrap_or_default(),
+        },
     }]))
 }
 
@@ -1765,7 +1800,45 @@ pub fn run(args: Args) -> Result<()> {
 
     let plans = plan_builds(&args)?;
     pin_this_project(&args)?;
-    drive(&plans, args.dry_run, &mut perform)
+    match drive(&plans, args.dry_run, &mut perform) {
+        Ok(()) => {
+            if !args.dry_run {
+                record_project_lock(&plans, args.nano_ros_path.clone());
+            }
+            Ok(())
+        }
+        // The native build already said why on its own stderr; exit with ITS
+        // status, as `exec` did (RFC-0065 D1, amended by phase-485 W3).
+        Err(e) => match e.downcast_ref::<ChildExit>() {
+            Some(c) => {
+                eprintln!("nros build: {e:#}");
+                std::process::exit(c.code)
+            }
+            None => Err(e),
+        },
+    }
+}
+
+/// RFC-0104 D4 (phase-485 W3) — fold every finished plan into its project's
+/// `nros-sdk.lock`: the sources it read, the West modules it used and each
+/// cargo root's registry set.
+///
+/// After the build, never before: what a build READ is only on disk once it has
+/// run. A failure here is a WARNING — the build succeeded, and the lock is a
+/// record of it, not a condition on it.
+fn record_project_lock(plans: &[ResolvedBuild], nano_ros_path: Option<std::path::PathBuf>) {
+    for p in plans {
+        if p.record.project.as_os_str().is_empty() {
+            continue;
+        }
+        let nr =
+            crate::orchestration::nano_ros_root::resolve(nano_ros_path.clone(), &p.record.project);
+        match crate::orchestration::project_lock::record(&p.record, nr.as_deref()) {
+            Ok(Some(path)) => eprintln!("nros build:   recorded → {}", path.display()),
+            Ok(None) => {}
+            Err(e) => eprintln!("nros build: warning: project lock not recorded: {e:#}"),
+        }
+    }
 }
 
 /// RFC-0095 D9 — the first `nros build` writes the pin it used and says so.
@@ -1836,54 +1909,50 @@ pub(crate) fn report_pin_outcome(
     Ok(line)
 }
 
-/// How one plan's native command reaches the operating system.
+/// The native build's own failing exit status, carried out of [`drive`] so
+/// `nros build` exits with it.
 ///
-/// `exec` is RFC-0065 D1's guarantee and it can be spent exactly once per
-/// invocation, because after it this process no longer exists. That is the
-/// whole of issue 1206: [`run`]'s loop execed inside itself, so a plan set of
-/// N produced one build and an exit code that was image 1's verdict.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Handover {
-    /// Run it as a child and wait. Stdio is INHERITED, never piped.
-    Wait,
-    /// Replace this process. Never returns on success — so this is the LAST
-    /// thing the invocation does, and only the last plan may get it.
-    Exec,
+/// RFC-0065 D1 ended the pipeline in `exec`, which gave the caller the build's
+/// status for free. Since phase-485 W3 every plan is WAITED on, because the
+/// project lock is recorded after the build (RFC-0104 D4), and a process that
+/// has become the build can record nothing. So the status is carried
+/// explicitly: a CI step that keyed on `cargo`'s or `cmake`'s exit code still
+/// sees it.
+#[derive(Debug)]
+pub(crate) struct ChildExit {
+    pub code: i32,
+    pub shown: String,
 }
 
-/// The handover the plan at `index` of `total` gets.
-///
-/// Stated as a function of position rather than inlined, so "only the last
-/// plan execs" is a thing a test can ask about directly.
-#[must_use]
-fn handover_for(index: usize, total: usize) -> Handover {
-    if index + 1 == total {
-        Handover::Exec
-    } else {
-        Handover::Wait
+impl std::fmt::Display for ChildExit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "`{}` exited {}", self.shown, self.code)
     }
 }
 
-/// Perform one handover for real.
+impl std::error::Error for ChildExit {}
+
+/// Perform one handover for real: run the native command as a child, stdio
+/// INHERITED (never piped, so its stderr reaches the user untouched, which is
+/// what D1's `exec` was for), and wait.
 ///
 /// The seam [`drive`] is tested through: a test substitutes a recorder here so
-/// it can observe every plan's handover without a compiler, an exec, or a
-/// process that stops existing halfway through the assertions.
-fn perform(hand: &Handoff, mode: Handover) -> Result<()> {
-    match mode {
-        Handover::Wait => {
-            let st = crate::builder::handoff::wait(hand).map_err(|e| eyre::eyre!("{e}"))?;
-            if !st.success() {
-                eyre::bail!("`{}` exited {}", hand.display(), st);
-            }
-            Ok(())
-        }
-        // Never returns on success: this process BECOMES the build.
-        Handover::Exec => {
-            let err = crate::builder::handoff::exec(hand).unwrap_err();
-            eyre::bail!("{err}")
-        }
+/// it can observe every plan's handover without a compiler.
+fn perform(hand: &Handoff) -> Result<()> {
+    let st = crate::builder::handoff::wait(hand).map_err(|e| eyre::eyre!("{e}"))?;
+    if st.success() {
+        return Ok(());
     }
+    #[cfg(unix)]
+    let signal = std::os::unix::process::ExitStatusExt::signal(&st);
+    #[cfg(not(unix))]
+    let signal: Option<i32> = None;
+    let code = st.code().or(signal.map(|s| 128 + s)).unwrap_or(1);
+    Err(ChildExit {
+        code,
+        shown: hand.display(),
+    }
+    .into())
 }
 
 /// Stage 5 for every plan: announce it, then hand it over.
@@ -1897,15 +1966,14 @@ fn perform(hand: &Handoff, mode: Handover) -> Result<()> {
 fn drive(
     plans: &[ResolvedBuild],
     dry_run: bool,
-    handover: &mut dyn FnMut(&Handoff, Handover) -> Result<()>,
+    handover: &mut dyn FnMut(&Handoff) -> Result<()>,
 ) -> Result<()> {
     let total = plans.len();
     for (i, p) in plans.iter().enumerate() {
-        // The counter is the ONLY progress a multi-image build can report.
-        // The last plan execs, so no epilogue of any kind can run after it —
-        // a user who sees `[3/7]` as the last line knows where it stopped, and
-        // before this there was nothing that distinguished "built 7" from
-        // "built 1 and said nothing about the other 6".
+        // The counter is the ONLY progress a multi-image build reports while
+        // it runs — a user who sees `[3/7]` as the last line knows where it
+        // stopped, and before this there was nothing that distinguished
+        // "built 7" from "built 1 and said nothing about the other 6".
         let where_ = if total > 1 {
             format!("[{}/{total}] ", i + 1)
         } else {
@@ -1940,12 +2008,11 @@ fn drive(
         // The configure, for drivers that need one (cmake). Runs HERE rather
         // than during planning so planning never spawns a native tool — the
         // property that makes `--dry-run` trivially correct instead of a second
-        // code path. (Planning does WRITE generated files; issue 1716.) It is a subprocess, not an exec: the exec below has to
-        // survive it.
+        // code path. (Planning does WRITE generated files; issue 1716.)
         if let Some(cfg) = &p.configure {
             run_configure(cfg)?;
         }
-        let outcome = handover(hand, handover_for(i, total));
+        let outcome = handover(hand);
         if total > 1 {
             // Which image failed, and that the rest are NOT built — the two
             // facts a single-image invocation never had to say and a
@@ -2179,6 +2246,15 @@ fn plan_packages(
             profile: None,
             cmake_build_dir: None,
             configure,
+            record: crate::orchestration::project_lock::BuildRecord {
+                project: root.to_path_buf(),
+                cargo_roots: if driver == Driver::Cargo {
+                    vec![pkg.dir.clone()]
+                } else {
+                    Vec::new()
+                },
+                build_dirs: vec![build_dir.clone(), pkg.dir.join("target")],
+            },
         });
     }
     if out.is_empty() {
@@ -5107,6 +5183,7 @@ mod multi_image_drive_tests {
             profile: None,
             cmake_build_dir: None,
             configure: None,
+            record: Default::default(),
         }
     }
 
@@ -5115,49 +5192,31 @@ mod multi_image_drive_tests {
     }
 
     /// The bug, stated as the invariant it violated: EVERY plan reaches a
-    /// handover, and only the last one is allowed to be the `exec`.
+    /// handover.
     ///
-    /// Before the fix this recorded ONE entry — the loop called
+    /// Before issue 1206's fix this recorded ONE entry — the loop called
     /// `handoff::exec` on every iteration, and the first one never returned,
-    /// so plans 2..N were unreachable by construction.
+    /// so plans 2..N were unreachable by construction. Since phase-485 W3 no
+    /// plan execs (the project lock is recorded after the build), so this
+    /// holds for the last plan too.
     #[test]
-    fn every_plan_reaches_a_handover_and_only_the_last_execs() {
+    fn every_plan_reaches_a_handover() {
         let plans = vec![
             plan("one", nullary("true")),
             plan("two", nullary("true")),
             plan("three", nullary("true")),
         ];
-        let mut seen: Vec<(String, Handover)> = Vec::new();
-        drive(&plans, false, &mut |h, mode| {
-            seen.push((h.display(), mode));
+        let mut seen: Vec<String> = Vec::new();
+        drive(&plans, false, &mut |h| {
+            seen.push(h.display());
             Ok(())
         })
         .expect("three plans, three handovers");
-
         assert_eq!(
             seen.len(),
             3,
             "one handover per plan, not one per invocation: {seen:?}"
         );
-        assert_eq!(
-            seen.iter().map(|(_, m)| *m).collect::<Vec<_>>(),
-            vec![Handover::Wait, Handover::Wait, Handover::Exec],
-            "exec is spent once, on the LAST plan: {seen:?}"
-        );
-    }
-
-    /// A single image is unchanged: it execs, which is RFC-0065 D1's
-    /// guarantee and the invocation the RFC's prose describes.
-    #[test]
-    fn a_lone_plan_still_execs() {
-        let plans = vec![plan("only", nullary("true"))];
-        let mut seen = Vec::new();
-        drive(&plans, false, &mut |_, mode| {
-            seen.push(mode);
-            Ok(())
-        })
-        .expect("one plan");
-        assert_eq!(seen, vec![Handover::Exec]);
     }
 
     /// `--dry-run` prints and hands over to nothing — the property that keeps
@@ -5166,7 +5225,7 @@ mod multi_image_drive_tests {
     fn a_dry_run_performs_no_handover() {
         let plans = vec![plan("one", nullary("true")), plan("two", nullary("true"))];
         let mut count = 0usize;
-        drive(&plans, true, &mut |_, _| {
+        drive(&plans, true, &mut |_| {
             count += 1;
             Ok(())
         })
@@ -5182,7 +5241,7 @@ mod multi_image_drive_tests {
     fn a_failing_earlier_image_stops_the_run_and_is_named() {
         let plans = vec![plan("one", nullary("true")), plan("two", nullary("true"))];
         let mut seen = 0usize;
-        let e = drive(&plans, false, &mut |_, _| {
+        let e = drive(&plans, false, &mut |_| {
             seen += 1;
             eyre::bail!("boom")
         })
@@ -5205,20 +5264,19 @@ mod multi_image_drive_tests {
     fn a_waited_handover_actually_runs_the_command() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let marker = tmp.path().join("built");
-        perform(
-            &Handoff::new("touch", [marker.clone().into_os_string()]),
-            Handover::Wait,
-        )
-        .expect("touch runs");
+        perform(&Handoff::new("touch", [marker.clone().into_os_string()])).expect("touch runs");
         assert!(marker.is_file(), "the command ran and had its effect");
     }
 
-    /// And a non-zero exit is a failure, not a silent success — the other half
-    /// of "the exit code carries the first image's verdict".
+    /// And a non-zero exit is a failure, not a silent success — and it carries
+    /// the CHILD's status, which `nros build` exits with (what `exec` used to
+    /// give for free).
     #[test]
-    fn a_waited_handover_fails_on_a_non_zero_exit() {
-        let e = perform(&nullary("false"), Handover::Wait).expect_err("`false` exits 1");
-        assert!(format!("{e:#}").contains("exited"), "{e:#}");
+    fn a_waited_handover_fails_with_the_childs_exit_code() {
+        let e = perform(&Handoff::new("sh", ["-c", "exit 7"])).expect_err("exits 7");
+        let c = e.downcast_ref::<ChildExit>().expect("carries a ChildExit");
+        assert_eq!(c.code, 7, "{e:#}");
+        assert!(format!("{e:#}").contains("exited 7"), "{e:#}");
     }
 }
 

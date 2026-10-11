@@ -50,6 +50,7 @@ pub mod params;
 // above.
 pub use nros_launcher::pin;
 pub mod plan;
+pub mod project_lock;
 pub mod planner;
 
 pub mod prereq_resolve;

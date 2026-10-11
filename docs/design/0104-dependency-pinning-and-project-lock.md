@@ -283,7 +283,7 @@ lock does not move until THEY run `nros update`.
    by name; M1 decides.
 2. The compatibility-range vocabulary in the index (D6): per `[source.*]`, per
    `[rmw.*]`, or a separate `[compat.*]` table.
-3. Whether `[cargo]` in the project lock stores a hash or the registry set
+3. **Answered (phase-485 W3): a hash.** Whether `[cargo]` in the project lock stores a hash or the registry set
    itself — a hash is small, the set is diffable.
 4. How a released SDK ships the pin set beside the index (RFC-0099 D2's SDK
    root) and how `nros update` behaves when the index is an installed one
@@ -308,3 +308,13 @@ lock does not move until THEY run `nros update`.
   question 1 answered: the pin set is `locks/cargo-registry.lock`, cargo's
   own lock format, one version per semver-compatible range, named by
   `[rust] registry_pins` beside `[rust] locked_roots`.
+- 2026-10-11 — D4 implemented (phase-485 W3). The project lock gains
+  `[source.<name>]` (commit, origin rung, `dirty`), `[west.<module>]`
+  (revision) and `[cargo."<root>"]` (a `sha256:` over the registry set, plus a
+  count), each recorded after the build from the build's OWN directories.
+  `[cargo]` is keyed by the root's path relative to the lock, because a
+  checkout's leaves all record into the one lock at its root. Open question
+  3 is answered: a hash, since the leaf `Cargo.lock` beside the root is the
+  diffable set. RFC-0065 D1 is amended so that `nros build` waits on the
+  native command instead of `exec`ing it, since a process that has become
+  the build cannot record anything after it.
