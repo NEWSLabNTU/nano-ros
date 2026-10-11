@@ -98,7 +98,7 @@ pub enum GeneratorError {
 ///
 /// Sequences of strings or nested messages are rejected — their elements are
 /// not fixed-width byte spans, so they cannot borrow zero-copy.
-fn nros_borrowed_view_for_field(
+fn nros_view_for_field(
     field_type: &FieldType,
     package_name: &str,
     message_name: &str,
@@ -163,7 +163,7 @@ fn nros_borrowed_view_for_field(
 ///
 /// Sequences of strings or nested messages are rejected (no fixed-width byte
 /// span) — same policy as the Rust generator.
-fn c_borrowed_view_for_field(
+fn c_view_for_field(
     field_type: &FieldType,
     package_name: &str,
     message_name: &str,
@@ -520,8 +520,7 @@ pub(super) fn field_to_nros_field_with_mode(
     // keeps a default-capacity owned container for the publish path; the
     // additionally-emitted `{Msg}View<'a>` borrows this field zero-copy.
     if field.is_view() {
-        let (bt, expr) =
-            nros_borrowed_view_for_field(field_type, package_name, message_name, &field.name)?;
+        let (bt, expr) = nros_view_for_field(field_type, package_name, message_name, &field.name)?;
         view_rust_type = bt;
         view_read_expr = expr;
     }
@@ -699,7 +698,7 @@ pub(super) fn build_c_field(
     // keeps its resolved-capacity container for the publish path; the emitted
     // `{Msg}_View` borrows this field zero-copy.
     if field.is_view() {
-        let (bt, bfn) = c_borrowed_view_for_field(
+        let (bt, bfn) = c_view_for_field(
             field_type,
             current_package.unwrap_or(""),
             message_name,
