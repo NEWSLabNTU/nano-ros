@@ -1,6 +1,6 @@
 # Phase 393 — what is left of the RMW contract, and what deliberately is not
 
-**Status (2026-09-10). COMPLETE — superseded by [phase-444](../phase-444-rmw-fix-up.md),
+**Status (2026-09-10). COMPLETE — superseded by [phase-444](phase-444-rmw-fix-up.md),
 which carries #1021 and the per-backend remainder. The counts below are the 2026-08-30
 reading, kept as history.**
 

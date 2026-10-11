@@ -57,7 +57,7 @@ answers "what do I do Monday".
 Implements RFC-0089 (the compile-or-conform rule and the four dispositions) and
 RFC-0036 (a divergence must name a platform constraint, never a preference).
 Continues [phase-417](archived/phase-417-ros2-api-adoption.md) §"Disposition before
-implementation" and [phase-444](phase-444-rmw-fix-up.md) §"The ROS 2 gap list".
+implementation" and [phase-444](archived/phase-444-rmw-fix-up.md) §"The ROS 2 gap list".
 Neither is superseded; this phase owns the thirteen rows and nothing else.
 
 ## What this measures, and where the tree disagreed with the brief
@@ -1514,7 +1514,7 @@ currently false.
   so. Ten of the thirteen cannot be closed without a compile, and three of the
   four decisions change a signature whose only real cost is that compile.
 * **No live peer.** Q1 option (b) and Row 7's zenoh half both need the
-  router-and-peer lane [phase-444](phase-444-rmw-fix-up.md) W2 still owes, and
+  router-and-peer lane [phase-444](archived/phase-444-rmw-fix-up.md) W2 still owes, and
   neither should be attempted from reading.
 * **`rcutils/src/logging.c` was not read**, because it is not on this machine
   and getting it needs either apt sources (`sudo`) or a fetch from upstream.

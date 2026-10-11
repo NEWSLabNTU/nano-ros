@@ -138,7 +138,7 @@ line that says nobody checked.
 Run `git log --grep='phase-426 W'` for the full list. The one hole this phase's
 promise used to have is CLOSED: on Cyclone the parameter services never started,
 so `ros2 param list` saw the parameters on zenoh only — issue 1268, owned by
-[phase-444](phase-444-rmw-fix-up.md) W6, resolved and archived 2026-09-12 with a
+[phase-444](archived/phase-444-rmw-fix-up.md) W6, resolved and archived 2026-09-12 with a
 live two-node `list`/`get`/`set` against a ROS 2 Humble peer.
 
 ### The 27 parameter rows are not ours
@@ -157,7 +157,7 @@ cross-language capability the wrappers never exposed. Their owner is
 [phase-417](archived/phase-417-ros2-api-adoption.md) **stage 4 W4.a**, which names them
 explicitly.
 
-[phase-444](phase-444-rmw-fix-up.md) § "The ROS 2 gap list" INDEXES them. It is
+[phase-444](archived/phase-444-rmw-fix-up.md) § "The ROS 2 gap list" INDEXES them. It is
 an index and not an owner — its own words — so read it to find them and read
 phase-417 W4.a to find out who is doing them.
 
@@ -478,5 +478,5 @@ work item: no acceptance here depends on it, and no other phase is waiting on
 it. Re-measured live 2026-09-13 (see the status block). When it resolves, move
 this document to `archived/` and repoint the inbound references — at the time of
 writing those are [phase-417](archived/phase-417-ros2-api-adoption.md) § "Where the
-remaining work lives" and [phase-444](phase-444-rmw-fix-up.md) § "The ROS 2 gap
+remaining work lives" and [phase-444](archived/phase-444-rmw-fix-up.md) § "The ROS 2 gap
 list".

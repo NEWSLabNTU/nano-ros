@@ -271,7 +271,7 @@ helper, `_zpico_release_reply_slot` (`zpico.c:4083`):
    completion rate, so nobody knows whether the leak was the whole cause or
    only part of it. The 09-04 section's "second candidate" (a per-reply
    transport failure) does not explain the idle soak, but nothing has ruled it
-   out either. `phase-444-rmw-fix-up.md` W2 carries this as its acceptance: the
+   out either. `archived/phase-444-rmw-fix-up.md` W2 carried this as its acceptance: the
    completion rate on a freshly built image, over enough runs to separate it
    from 20–90 %. That run needs a router and a live peer.
 2. **The two free checks were never recorded.** One: did any goal ever succeed
@@ -530,3 +530,18 @@ serial link measured above), which the earlier measurements could not say.
 Not to be confused with the C and C++ action cells in that same job: those fail
 before any goal, on `readiness pattern 'Waiting for action goals' not observed`,
 which is a server that never becomes ready and not this issue.
+
+## 2026-10-11 — phase-444 archived; the board run is this issue's alone
+
+Phase-444 is archived with W2 as its only unlanded item, so this issue now
+carries W2's acceptance directly: the goal completion rate, measured on a
+freshly built image over a router and a live peer, over enough runs to
+separate it from the 20–90 % recorded above. The run is done by hand on the
+MR-CANHUBK344 (`mr_canhubk3/s32k344`) over its direct serial link — the board
+issue 0879 measured that link on; the table above does not name its board, so
+confirm it is the same one. Issue 1799 is another hand run on the same board.
+
+Read `zpico_reply_slot_declines` (phase-455) during the run: a non-zero count
+puts the failure back on the reply-slot path the 2026-09-11 fixes closed; zero
+with goals still failing rules that path out on the population that showed the
+symptom.

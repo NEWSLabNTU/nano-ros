@@ -234,7 +234,7 @@ of them is `cpp:Node::*`. Eight are `c:` (the four `*_names_and_types_by_node`
 forms, the two `*_info_by_topic`, and `wait_for_{publishers,subscribers}`) and
 ten are `rust:Node::*`. Those belong to stage 5 and stage 4 respectively. Most
 also need the BACKEND to answer — Cyclone fills 1 of 12 graph slots, which is
-[phase-444](../phase-444-rmw-fix-up.md) W3.
+[phase-444](phase-444-rmw-fix-up.md) W3.
 
 ## Stage 3 — the loudness pass (the safety gate)
 
@@ -423,7 +423,7 @@ What is left under this stage is not an item but a row count: 56 `cpp:` and
   It is not [phase-426](../phase-426-parameters-rust-ssot.md)'s — that phase made
   the store SINGLE and per-node, which is done, and its "Not in scope" excludes
   callbacks explicitly. It is not
-  [phase-444](../phase-444-rmw-fix-up.md)'s — that section is an index and says so.
+  [phase-444](phase-444-rmw-fix-up.md)'s — that section is an index and says so.
   The rows are missing cross-language SURFACE on top of one store, which is
   exactly what this item is. Measured 2026-09-13 before the work, they grouped
   as follows; the OUTCOME column is what landed the same day.
