@@ -35,7 +35,6 @@ set(NROS_RMW "cyclonedds" CACHE STRING
     "Active RMW (zenoh|dds|xrce|cyclonedds) — selects the backend linked into this example.")
 set(NANO_ROS_RMW "${NROS_RMW}" CACHE STRING
     "nano-ros root RMW backend" FORCE)
-set(NANO_ROS_BOARD rv-virt-threadx)
 # Resolve the nano-ros SDK root once (phase-277 W6 standard guard; 4th rung
 # phase-447 A2 / RFC-0099 D3):
 #   1. -DNANO_ROS_ROOT=<path> cache var (explicit, e.g. a copied-out example),

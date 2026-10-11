@@ -293,6 +293,7 @@ endfunction()
 #   NANO_ROS_LEAF_DOMAIN_ID   — `[image] domain_id` > `[system] domain_id`, or ""
 #   NANO_ROS_LEAF_LOCATOR     — `[image] locator` > `[system] locator`, or ""
 #   NANO_ROS_EXPORT_{DEPLOY,BOARD,RMW,FOUND,USES_*} — overridden, as above
+#   NANO_ROS_EXPORT_CMAKE_BOARD — the board's cmake module (`cmake_module`)
 # and the GLOBAL property NROS_IMAGE_ENV_CONFIG — the image's `[image.<id>] env`
 #   as a cargo config, for the top-level leaf of a non-Zephyr configure (issue
 #   1712, NanoRosImageEnv.cmake), or "". On Zephyr the module's
@@ -411,6 +412,15 @@ function(nano_ros_read_leaf_system)
     # `nros_resolve_board_facts` (phase-484 W2b).
     set(NANO_ROS_EXPORT_IMAGE "${_NROS_LEAF_IMAGE}" PARENT_SCOPE)
     set(NANO_ROS_EXPORT_BOARD "${_board}" PARENT_SCOPE)
+    # phase-484 W4f — the board's own cmake MODULE (its descriptor's
+    # `cmake_module`), which is what `cmake/board/nano-ros-board-<x>.cmake`
+    # is keyed on; the leaf may name its board by any alias. Empty for a board
+    # that IS its deploy token, like NANO_ROS_EXPORT_BOARD above.
+    set(_cmake_board "${_NROS_LEAF_CMAKE_BOARD}")
+    if(_board STREQUAL "" OR _cmake_board STREQUAL "")
+        set(_cmake_board "${_board}")
+    endif()
+    set(NANO_ROS_EXPORT_CMAKE_BOARD "${_cmake_board}" PARENT_SCOPE)
     set(NANO_ROS_EXPORT_RMW "${_NROS_LEAF_RMW}" PARENT_SCOPE)
     # board= and rmw= are provider selections (RFC-0087 D3) — desugar them the
     # way the tuple reader does, so the two spellings stay indistinguishable.
