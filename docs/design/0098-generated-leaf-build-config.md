@@ -1,6 +1,6 @@
 # RFC-0098 — A leaf's build configuration is generated from one board choice
 
-**Status:** Draft (2026-09-10; revised 2026-09-10 — generated settings live under `build/`, and a workspace has no root build file; 2026-09-11 — three facts measured by phase-445 W4; 2026-09-11 — the app rung gets its spelling and the leaf `.cargo/` is deleted, phase-445 W6; 2026-10-07 — image configuration has ONE source on every road: D10–D12, phase-481; 2026-10-07 — D11's locator revision from phase-481 W0 DECIDED: the module's `module_ext_root` hook appends the fragment; 2026-10-11 — D10–D12 IMPLEMENTED by phase-481 W1–W5: every Zephyr example states its nano-ros config in `system.toml` and no leaf conf file holds a nano-ros knob. Stays Draft while phase-445, D1–D9, is open)
+**Status:** Draft (2026-09-10; revised 2026-09-10 — generated settings live under `build/`, and a workspace has no root build file; 2026-09-11 — three facts measured by phase-445 W4; 2026-09-11 — the app rung gets its spelling and the leaf `.cargo/` is deleted, phase-445 W6; 2026-10-07 — image configuration has ONE source on every road: D10–D12, phase-481; 2026-10-07 — D11's locator revision from phase-481 W0 DECIDED: the module's `module_ext_root` hook appends the fragment; 2026-10-11 — D10–D12 IMPLEMENTED by phase-481 W1–W5: every Zephyr example states its nano-ros config in `system.toml` and no leaf conf file holds a nano-ros knob. 2026-10-11 — D1's path defers to RFC-0103 D7, and D6 covers every image-only dependency of a single-package leaf through a generated selection package. Stays Draft while phase-445, D1–D9, is open)
 
 Home phase: [phase-445](../roadmap/phase-445-board-choice-generates-leaf-config.md).
 
@@ -394,6 +394,54 @@ Per-image configuration is supported because it is real: images on different
 platforms routinely want different logging and feature sets. Where a value
 must be the same for every image, it belongs on the board (`[board.knobs]`) or
 the platform — one file, not one statement per image.
+
+## Amendment — D1 follows RFC-0103, D6 reaches single-package leaves (2026-10-11)
+
+A review of phase-445 against main found two decisions that later design and a
+measurement have moved.
+
+**D1: the file's path is RFC-0103's to set.** RFC-0103 D7 places every
+generated artifact under `<build>/nros/`, the cargo config at
+`<build>/nros/cargo.toml` (phase-484 W6, not started). What D1 decides stays:
+one generated file per image, read through `--config`, nothing generated beside
+a package. Where the file sits follows RFC-0103 D7. When it moves, the measured
+grandparent-relative rule above must be re-measured for the new depth, and the
+book pages that name `build/<image>/nros-cargo.toml` move with it.
+
+**D6: the generated dependency is every image-only dependency, and a
+single-package leaf gets it through a selection package.** D6 said "the board
+crate dependency is generated" and reached only the generated workspace entry.
+A single-package Rust leaf is its own entry, so it still names its board crate
+(issue 1305). Switching `examples/mps2-an385-baremetal/rust/talker` to the
+FreeRTOS board, measured 2026-10-11, needed more than that crate:
+
+- the board crate, with that board's features (`board-entry` exists on one
+  board and not the other);
+- the RMW backend: the leaf's `nros-rmw-zenoh` with `platform-bare-metal`
+  clashes with the FreeRTOS board's own zenoh ("Only one platform backend can
+  be selected at a time");
+- likely the `nros-platform` platform feature, which the in-tree FreeRTOS
+  example names for the app to reach setup;
+- the runtime crates (rt, panic), which go stale rather than fail.
+
+So the decision is widened. **No user manifest names an image-only dependency.**
+A single-package leaf keeps its own `Cargo.toml` and stays its own cargo root,
+so `cargo build --manifest-path <leaf>/Cargo.toml --config …` keeps working.
+Its target-scoped dependency table names one board-agnostic path dependency,
+the generated `<pkg>_nros_selection` package that a workspace entry already
+uses. `nros sync` writes it per image under `build/`, from the same inputs the
+workspace entry generator uses (`board_crate` and its features, the platform
+feature, the RMW backend, `[board.entry] crate_root_deps`). `crate_root_deps`
+alone is not enough; it holds only the crate-root `use` items. `nros::main!`
+reaches the board through the selection package instead of naming
+`::nros_board_<x>`. The dependency stays target-scoped, so the host metadata
+probe still builds the node (issue 1265).
+
+This is also what RFC-0103's layer table asks: a package names no board, RMW or
+network.
+
+Rejected: making every single-package leaf a generated entry. It meets D6 but
+removes the documented plain-cargo flow for the most common example shape.
 
 ## What is NOT decided here
 

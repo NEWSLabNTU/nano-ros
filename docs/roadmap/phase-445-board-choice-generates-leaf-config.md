@@ -13,6 +13,18 @@ test has not been RUN here. 1261: a workspace that omits `SYSTEM` over a bringup
 declaring a capability now refuses at configure (gate `workspace-system-required`);
 its Zephyr hand-written road stays open.
 
+**Review 2026-10-11 (later).** The design still holds and later work builds on
+it (RFC-0100's descriptor rides this file's `[env]`; phase-486's `nros.toml`
+sits beside the model and does not move it). Two decisions moved, recorded as
+the RFC-0098 amendment of 2026-10-11: D1's path follows RFC-0103 D7, and D6
+covers EVERY image-only dependency of a single-package leaf, through a generated
+selection package. The FreeRTOS switch of the mps2 Rust talker needed two
+`Cargo.toml` edits, not the one the refusal promised (issue 1305, re-scoped; the
+message is corrected). W1 and W5 are ticked; W4 is open for 1305 alone. The
+1296 fix routed around a bringup named two ways rather than unifying it (issue
+1813). RFC-0098 stays Draft until 1305, 1288 (blocked by 1253) and 1289 close
+and bullet 3 is measured.
+
 *(2026-09-11: Every wave is WRITTEN; the phase is NOT complete, and
 two of its five acceptance bullets are measured NOT MET.)* W1, W2, W3b, W4b, W5
 and W6 landed. W7 is PR #926. W3's single-package half landed as W3b; its
@@ -61,8 +73,11 @@ Ordered so no step deletes a value before its new home exists: gitignoring
 `.cargo/` today would drop the only copy of 19 leaves' board triple and the
 esp32 stack budgets.
 
-- [ ] **W1 — `ZPICO_MAX_QUERYABLES` on the cargo road (RFC-0098 D7).
-  ANSWERED; implemented by W3 + W4.** No open issue or PR wires it (checked
+- [x] **W1 — `ZPICO_MAX_QUERYABLES` on the cargo road (RFC-0098 D7).
+  ANSWERED; implemented by W3 + W4.** *(Ticked 2026-10-11: no fixture row
+  hand-sets it any more — the `workspace-rust-esp32` row left with ESP32 going
+  dormant, `719b6eda1d`, issue 1525. The one hand-set value left is
+  `logging-smoke-esp32-qemu`'s, which is dormant ESP32 and has no `system.toml`.)* No open issue or PR wires it (checked
   2026-09-10; #779 covers `MAX_NODES` and the take buffer only). The consumer
   already computes the count from `NROS_DECLARED_SERVICE_SERVERS` +
   `NROS_DECLARED_INFRA_QUERYABLES` + `NROS_DECLARED_NODES`
@@ -208,7 +223,11 @@ esp32 stack budgets.
   another checkout, so a west build from here would compile that checkout,
   not this one. Its leaves resolve (`nros sync`, `nros ws leaf-system`).
 - [ ] **W4 — one generated settings file per image, under `build/` (D1, D6,
-  D7).** `nros sync` / `nros build` write `build/<image>/nros-cargo.toml` (board
+  D7).** *(Re-measured 2026-10-11: everything here has landed except D6 for a
+  SINGLE-PACKAGE leaf, which still names its board crate — issue 1305. The box
+  stays open for that alone. One writer, `builder/cargo_config.rs`; the
+  per-invocation `NROS_DECLARED_*` exports are gone, and
+  `workspace-fixtures-build.sh` refuses a cargo workspace row with no image.)* `nros sync` / `nros build` write `build/<image>/nros-cargo.toml` (board
   `cargo_config` + per-image `target-dir` + resolved `[env]` incl. the entity
   facts + in-repo patch rows) and the generated entry
   `build/<coord>/<entry>/Cargo.toml` as its own cargo root. Stage 5 runs
@@ -265,7 +284,11 @@ esp32 stack budgets.
     - FreeRTOS: `NROS_PLATFORM_{FREERTOS_SRC,CFFI_INCLUDE}` (provisioning,
       already exported by `sdk-env.just`).
 
-- [ ] **W5 — no workspace root build file (D9).** Stop generating
+- [x] **W5 — no workspace root build file (D9).** *(Ticked 2026-10-11: no
+  workspace root build file is tracked or generated, gated by
+  `check-workspace-root-build-files`. The one unmoved part, the hand-written
+  Zephyr west entries, is issue 1288's — they need a `--config` seam the west
+  road does not have, which is D6 on Zephyr rather than D9.)* Stop generating
   `<ws>/Cargo.toml` (`rust`, `realtime-rust`, `features`, `launch`, `safety`,
   `sizing`) and retire `builder/cargo_root.rs`'s workspace emitter; delete the
   tracked root `.cargo/` in `rust` and `realtime-rust`; remove the root build

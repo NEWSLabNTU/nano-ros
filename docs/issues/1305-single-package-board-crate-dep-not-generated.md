@@ -1,6 +1,6 @@
 ---
 id: 1305
-title: "Switching a single-package Rust leaf's board is TWO places, not one — the board crate dependency is still hand-written (RFC-0098 D6 unmet)"
+title: "Switching a single-package Rust leaf's board edits its Cargo.toml too — every image-only dependency is still hand-written (RFC-0098 D6 unmet)"
 status: open
 type: bug
 area: tooling, cli, examples
@@ -8,6 +8,62 @@ severity: medium
 found: 2026-09-11
 related: [rfc-0098, rfc-0065, phase-445]
 ---
+
+## 2026-10-11 (later) — the switch is not one edit, and the fix is wider than the board crate
+
+The refusal above said "the one edit". That was measured the same day on a copy
+of `examples/mps2-an385-baremetal/rust/talker` switched to `board = "freertos"`,
+and it is false:
+
+1. The literal edit (rename `nros-board-mps2-an385` to
+   `nros-board-mps2-an385-freertos`, keeping its spec) still fails `nros build`
+   (rc=101): `nros-board-mps2-an385-freertos does not have that feature`
+   (`board-entry`; it has `default, rmw-zenoh, safety-e2e`).
+2. With the feature dropped, the build stops in `zpico-sys`'s build script:
+   `Only one platform backend can be selected at a time`. The leaf's
+   `nros-rmw-zenoh = { features = ["platform-bare-metal", ...] }` belongs to the
+   OLD board; the FreeRTOS board brings zenoh itself. Deleting it builds (rc=0),
+   and the image boots in QEMU to "Network ready" (delivery not checked: no
+   router on the measuring host).
+3. Possibly a third: `examples/mps2-an385-freertos/rust/talker` also names
+   `nros-platform = { features = ["platform-freertos"] }`, with a comment that
+   without it the app never reaches "Application setup complete". Not checked
+   at runtime.
+
+Left harmless but stale: `cortex-m`, `cortex-m-rt` (the board's own linker
+script is used, not `link.x`).
+
+So the gap is not "the board crate dependency" but **every image-only
+dependency**: the board crate with that board's features, the RMW backend and
+its platform feature, the `nros-platform` platform feature, and the runtime
+crates (rt, panic). The refusal message now says so (it names the board crate
+and points at the rest), instead of promising one edit.
+
+**What the board descriptor does NOT carry.** `[board.entry] crate_root_deps`
+is only the crate-root `use` items (`panic-semihosting` for both mps2 boards).
+The workspace-entry generator (`builder/entry.rs`) builds the rest from
+`board_crate` + `default-features = false` + the board's features, an explicit
+`nros-platform` platform feature for every non-bare-metal board, and the RMW
+from the selection facade. The bare-metal `nros-rmw-zenoh ... platform-bare-metal`
+line comes from a scaffold template (`cargo-nano-ros/src/scaffold.rs`), not a
+descriptor. So generating a leaf's dependencies needs the same inputs as
+`entry.rs`, not `crate_root_deps` alone.
+
+**Re-scoped fix (RFC-0098 amendment of 2026-10-11).** Neither original
+candidate. The leaf keeps its own `Cargo.toml` and stays its own cargo root
+(the documented `cargo build --manifest-path … --config …` flow), and its
+target-scoped table names ONE board-agnostic path dependency: a generated
+`<pkg>_nros_selection` package under `build/`, which the workspace entry
+already uses (`facade.rs`). `nros sync` writes it per image with exactly what
+`entry.rs` puts in a generated entry; `nros::main!` reaches the board through
+it instead of naming `::nros_board_<x>`. Then a board switch is one line, and
+the selection package is the only place image-only dependencies live (RFC-0103
+layer 4: a package names no board, RMW or network). Size M-L. The dependency
+stays target-scoped so the host probe still builds the lib (issue 1265).
+
+Side finding, not this issue: `nros sync` printed `deploy-bound probe failed:
+... failed to select a version for nros-board-mps2-an385-freertos` and still
+exited 0.
 
 ## 2026-10-11 — re-measured, and now refused up front (still OPEN)
 
