@@ -3606,7 +3606,6 @@ fn codegen_workspace_pkg(
         .wrap_err_with(|| format!("sync: read pkg {}", pkg.dir.display()))?;
     // Per-field capacity config (RFC-0033), discovered from the pkg source dir.
     let resolver = rosidl_codegen::CapacityResolver::discover(&pkg.dir, None)?;
-    resolver.report_deprecations();
     let msg_resolve = ament_msg_resolver();
     rosidl_bindgen::generator::generate_package(
         &package,
@@ -3649,7 +3648,6 @@ fn codegen_ament_pkg(
         println!("sync: codegen {}", amented.name);
     }
     let resolver = rosidl_codegen::CapacityResolver::discover(&amented.share_dir, None)?;
-    resolver.report_deprecations();
     let msg_resolve = ament_msg_resolver();
     rosidl_bindgen::generator::generate_package(amented, out_dir, edition, &resolver, &msg_resolve)
         .wrap_err_with(|| format!("sync: generate_package failed for {}", amented.name))?;

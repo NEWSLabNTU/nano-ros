@@ -70,9 +70,11 @@ pub const NROS_DEFAULT_SEQUENCE_CAPACITY: usize = 64;
 /// `inline` and `inplace` differ by two letters mid-word, in a config file,
 /// where the failure mode is silent.
 ///
-/// The old tokens still PARSE — see the [`Deserialize`] impl — so no existing
-/// `nros-codegen.toml` breaks; they are reported through
-/// [`CapacityResolver::deprecations`].
+/// The old tokens parsed with a deprecation diagnostic for one cycle and are now
+/// REFUSED (phase-390 / phase-482 W6): a config naming one fails with
+/// [`ConfigError::RetiredStorageMode`], which names the file, the field and the
+/// replacement. [`RETIRED_STORAGE_MODES`] is the one table both the refusal and
+/// the accepted set read, so neither can drift from the other.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum StorageMode {
     /// `heapless::Vec<T, N>` / fixed `[N]` array — `N` elems always inline.
@@ -84,19 +86,18 @@ pub enum StorageMode {
     View,
 }
 
-/// One superseded storage-mode token found in a config file.
+/// phase-390 — the storage-mode tokens the rename retired, each with the mode it
+/// became.
 ///
-/// Carried rather than printed because this crate is a library: the CLI decides
-/// where a diagnostic goes. Empty for a config that uses only current tokens.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DeprecatedModeToken {
-    /// The token as written (`"owned"` / `"borrowed"`).
-    pub found: String,
-    /// What it should say now.
-    pub replacement: &'static str,
-    /// Config file it came from, when parsed via [`CapacityResolver::from_file`].
-    pub path: Option<std::path::PathBuf>,
-}
+/// The ONE table of old spellings. [`StorageMode::from_token`] never matches an
+/// entry here (an old token is not a mode any more), and the pre-parse scan
+/// turns a match into [`ConfigError::RetiredStorageMode`] naming the
+/// replacement. A second list of old names is exactly how one spelling survives
+/// a rename, or how a refusal ends up naming the wrong replacement.
+pub const RETIRED_STORAGE_MODES: &[(&str, StorageMode)] = &[
+    ("owned", StorageMode::Inline),
+    ("borrowed", StorageMode::View),
+];
 
 impl<'de> Deserialize<'de> for StorageMode {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
@@ -106,12 +107,23 @@ impl<'de> Deserialize<'de> for StorageMode {
         // to match ANY variant — which surfaces as "data did not match any
         // variant of untagged enum CapEntry", naming the enum rather than the
         // field that could not deserialize.
+        // Backstop only: `CapacityResolver::from_toml_str` scans every `mode`
+        // key first and reports a bad one by name, so this message is reached
+        // only by a caller deserializing a `StorageMode` on its own.
         let token = String::deserialize(d)?;
         StorageMode::from_token(&token).ok_or_else(|| {
-            serde::de::Error::custom(format!(
-                "unknown storage mode `{token}`; expected one of `inline`, \
-                 `heap`, `view` (or the superseded `owned` / `borrowed`)"
-            ))
+            serde::de::Error::custom(match StorageMode::retired_replacement(&token) {
+                Some(new) => format!(
+                    "storage mode `{token}` was renamed to `{}` (phase-390); \
+                     write mode = \"{}\"",
+                    new.as_str(),
+                    new.as_str()
+                ),
+                None => format!(
+                    "unknown storage mode `{token}`; expected one of `inline`, \
+                     `heap`, `view`"
+                ),
+            })
         })
     }
 }
@@ -138,9 +150,7 @@ impl StorageMode {
     // `UnsupportedStorageModeForPayload`). Covered by
     // `tests/srv_action_storage_mode_gate.rs`.
 
-    /// Token used in config + diagnostics. Always the CURRENT spelling — a
-    /// config written with a superseded token round-trips to the new one, which
-    /// is what makes the deprecation actionable rather than sticky.
+    /// Token used in config + diagnostics.
     pub fn as_str(self) -> &'static str {
         match self {
             StorageMode::Inline => "inline",
@@ -149,31 +159,21 @@ impl StorageMode {
         }
     }
 
-    /// Parse a config token, accepting the superseded spellings.
-    ///
-    /// Kept beside [`Self::superseded_replacement`] so the accepted set and the
-    /// deprecation table cannot drift — a second list of old names is exactly
-    /// how one spelling survives a rename.
+    /// Parse a CURRENT config token. A retired spelling is `None` here — see
+    /// [`Self::retired_replacement`] for what it became.
     pub fn from_token(token: &str) -> Option<Self> {
-        match token {
-            "inline" => Some(StorageMode::Inline),
-            "heap" => Some(StorageMode::Heap),
-            "view" => Some(StorageMode::View),
-            // phase-390 — superseded, still accepted.
-            "owned" => Some(StorageMode::Inline),
-            "borrowed" => Some(StorageMode::View),
-            _ => None,
-        }
+        [StorageMode::Inline, StorageMode::Heap, StorageMode::View]
+            .into_iter()
+            .find(|m| m.as_str() == token)
     }
 
-    /// The current spelling for a superseded token, or `None` if the token is
-    /// already current (or not a mode at all).
-    pub fn superseded_replacement(token: &str) -> Option<&'static str> {
-        match token {
-            "owned" => Some("inline"),
-            "borrowed" => Some("view"),
-            _ => None,
-        }
+    /// The mode a retired token became, or `None` if the token was never one
+    /// (a current token, or not a mode at all). Reads [`RETIRED_STORAGE_MODES`].
+    pub fn retired_replacement(token: &str) -> Option<Self> {
+        RETIRED_STORAGE_MODES
+            .iter()
+            .find(|(old, _)| *old == token)
+            .map(|&(_, new)| new)
     }
 
     /// phase-403 W0 — whether a `cap` in this mode is an upper bound on what
@@ -235,7 +235,7 @@ pub struct FieldStorage {
     pub mode: StorageMode,
 }
 
-/// A config entry value: either an integer (owned shorthand) or
+/// A config entry value: either an integer (inline shorthand) or
 /// `{ cap, element_cap, mode }`.
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(untagged)]
@@ -401,10 +401,30 @@ pub enum ConfigError {
     /// which names an internal type and not the token the user mistyped.
     #[error(
         "unknown storage mode `{token}` in codegen config; expected `inline`, \
-         `heap` or `view` (the superseded `owned` / `borrowed` are still \
-         accepted)"
+         `heap` or `view`"
     )]
     UnknownStorageMode { token: String },
+    /// phase-390 / phase-482 W6 — a `mode` token the rename RETIRED.
+    ///
+    /// Refused rather than accepted, and refused by name rather than as an
+    /// unknown mode: the user wrote a word that WAS valid, so the useful answer
+    /// is where it is and what it is called now. The replacement comes from
+    /// [`RETIRED_STORAGE_MODES`], the same table that keeps it out of the
+    /// accepted set.
+    #[error(
+        "{file}: `{field}` = \"{token}\": storage mode `{token}` was renamed to \
+         `{replacement}` (phase-390) and is no longer accepted; write \
+         mode = \"{replacement}\""
+    )]
+    RetiredStorageMode {
+        /// The config file, or `<config>` for a body parsed without a path.
+        file: String,
+        /// Dotted key path of the offending `mode` key, e.g.
+        /// `fields."a/B.x".mode`.
+        field: String,
+        token: String,
+        replacement: &'static str,
+    },
     /// phase-403 W7 — `element_cap` on a `string` / `wstring` LEVEL entry.
     ///
     /// A level key (`[defaults] string = ...`) sets the default for a field
@@ -462,8 +482,6 @@ pub struct ElementCapShapeError {
 #[derive(Debug, Clone, Default)]
 pub struct CapacityResolver {
     raw: RawConfig,
-    /// phase-390 — superseded `mode` tokens seen while parsing, in file order.
-    deprecations: Vec<DeprecatedModeToken>,
 }
 
 impl CapacityResolver {
@@ -475,14 +493,16 @@ impl CapacityResolver {
 
     /// Parse a single `nros-codegen.toml` body.
     pub fn from_toml_str(s: &str) -> Result<Self, ConfigError> {
+        Self::parse(s, None)
+    }
+
+    fn parse(s: &str, path: Option<&Path>) -> Result<Self, ConfigError> {
         // Scan BEFORE the typed parse: `CapEntry` is untagged, so a bad `mode`
         // makes the whole entry fail to match any variant and serde reports the
         // enum instead of the token. Checking first means the user sees the
-        // token they mistyped.
-        let scan = scan_mode_tokens(s, None);
-        if let Some(token) = scan.unknown.into_iter().next() {
-            return Err(ConfigError::UnknownStorageMode { token });
-        }
+        // token they wrote, and — for a retired one — where it is and what it
+        // is called now.
+        check_mode_tokens(s, path)?;
         let raw: RawConfig = toml::from_str(s)?;
         // phase-403 W7 — an `element_cap` under a `string` LEVEL key can never
         // apply: the level entry sets the default for fields that ARE strings,
@@ -508,10 +528,7 @@ impl CapacityResolver {
                 level: format!("packages.{pkg}"),
             });
         }
-        Ok(Self {
-            raw,
-            deprecations: scan.superseded,
-        })
+        Ok(Self { raw })
     }
 
     /// Load a single `nros-codegen.toml` from `path`.
@@ -520,21 +537,7 @@ impl CapacityResolver {
             path: path.to_path_buf(),
             source,
         })?;
-        let mut resolver = Self::from_toml_str(&body)?;
-        // Re-scan WITH the path so a diagnostic can name the file. Cheaper than
-        // threading an Option<&Path> through `from_toml_str`, whose signature is
-        // public and used on bodies that have no path at all.
-        resolver.deprecations = scan_mode_tokens(&body, Some(path)).superseded;
-        Ok(resolver)
-    }
-
-    /// Superseded storage-mode tokens found while parsing, in file order.
-    ///
-    /// The library COLLECTS rather than prints: where a diagnostic goes is the
-    /// CLI's decision, and a `eprintln!` here would fire inside every build
-    /// script that resolves a capacity.
-    pub fn deprecations(&self) -> &[DeprecatedModeToken] {
-        &self.deprecations
+        Self::parse(&body, Some(path))
     }
 
     /// Discover and merge `nros-codegen.toml` files by walking up from
@@ -584,55 +587,7 @@ impl CapacityResolver {
     /// over `self` (e.g. the workspace file).
     pub fn merged_with(mut self, over: CapacityResolver) -> Self {
         self.raw.merge_over(over.raw);
-        // phase-390 — accumulate here rather than at each call site. Every path
-        // that builds a resolver from more than one file (`discover`,
-        // `resolve_for`) funnels through this method, so collecting here means
-        // a superseded token in a WORKSPACE-level config is reported even when
-        // the app-level file that overrides it is clean.
-        self.deprecations.extend(over.deprecations);
         self
-    }
-
-    /// A ready-to-print report of superseded storage-mode tokens, or `None`
-    /// when the config is clean.
-    ///
-    /// Deduplicated by (file, token): a config that sets `mode = "owned"` on
-    /// forty fields is one mistake to fix, not forty lines of output.
-    pub fn deprecation_report(&self) -> Option<String> {
-        if self.deprecations.is_empty() {
-            return None;
-        }
-        let mut seen = std::collections::BTreeSet::new();
-        for d in &self.deprecations {
-            let where_ = d
-                .path
-                .as_deref()
-                .map(|p| p.display().to_string())
-                .unwrap_or_else(|| "<config>".to_string());
-            seen.insert((where_, d.found.clone(), d.replacement));
-        }
-        let mut out = String::from(
-            "nros-codegen.toml: storage mode renamed (phase-390); the old \
-             spelling still works:\n",
-        );
-        for (where_, found, replacement) in seen {
-            out.push_str(&format!(
-                "  {where_}: mode = \"{found}\"  ->  mode = \"{replacement}\"\n"
-            ));
-        }
-        Some(out)
-    }
-
-    /// Print [`Self::deprecation_report`] to stderr, if there is one.
-    ///
-    /// ONE spelling of "warn about this", called by every construction site in
-    /// the CLI, rather than a `eprintln!` written out at each — a second
-    /// formatting of the same warning is how one of them ends up naming the
-    /// wrong replacement. Stderr, not stdout: `nros generate-*` output is piped.
-    pub fn report_deprecations(&self) {
-        if let Some(report) = self.deprecation_report() {
-            eprint!("{report}");
-        }
     }
 
     /// Resolve storage for an **unbounded** field. Bounded fields are resolved
@@ -1017,55 +972,74 @@ pub fn with_element_bound(
     })
 }
 
-/// What one walk of a config body found in its `mode` keys.
-struct ModeScan {
-    superseded: Vec<DeprecatedModeToken>,
-    unknown: Vec<String>,
-}
-
-/// Find every `mode = "..."` in a parsed config body, split into superseded
-/// tokens and unrecognised ones.
+/// Check every `mode = "..."` in a parsed config body, refusing the first one
+/// that is retired ([`ConfigError::RetiredStorageMode`]) or unknown
+/// ([`ConfigError::UnknownStorageMode`]).
 ///
 /// Walks the parsed TOML rather than grepping the text. A substring search for
 /// `"owned"` would also hit a comment, a field NAMED owned, or a capacity table
-/// key — and this diagnostic tells a user to edit their file, so a false
-/// positive sends them looking for something that is not there.
-fn scan_mode_tokens(body: &str, path: Option<&Path>) -> ModeScan {
-    fn walk(value: &toml::Value, path: Option<&Path>, out: &mut ModeScan) {
+/// key — and this refusal tells a user to edit their file, so a false positive
+/// sends them looking for something that is not there.
+fn check_mode_tokens(body: &str, path: Option<&Path>) -> Result<(), ConfigError> {
+    fn key_segment(k: &str) -> String {
+        if !k.is_empty()
+            && k.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        {
+            k.to_string()
+        } else {
+            format!("{k:?}")
+        }
+    }
+    fn walk(
+        value: &toml::Value,
+        keys: &mut Vec<String>,
+        path: Option<&Path>,
+    ) -> Result<(), ConfigError> {
         match value {
             toml::Value::Table(t) => {
                 for (k, v) in t {
+                    keys.push(key_segment(k));
                     if k == "mode"
                         && let Some(token) = v.as_str()
                     {
-                        if let Some(replacement) = StorageMode::superseded_replacement(token) {
-                            out.superseded.push(DeprecatedModeToken {
-                                found: token.to_string(),
-                                replacement,
-                                path: path.map(Path::to_path_buf),
+                        if let Some(new) = StorageMode::retired_replacement(token) {
+                            return Err(ConfigError::RetiredStorageMode {
+                                file: path.map_or_else(
+                                    || "<config>".to_string(),
+                                    |p| p.display().to_string(),
+                                ),
+                                field: keys.join("."),
+                                token: token.to_string(),
+                                replacement: new.as_str(),
                             });
-                        } else if StorageMode::from_token(token).is_none() {
-                            out.unknown.push(token.to_string());
+                        }
+                        if StorageMode::from_token(token).is_none() {
+                            return Err(ConfigError::UnknownStorageMode {
+                                token: token.to_string(),
+                            });
                         }
                     }
-                    walk(v, path, out);
+                    walk(v, keys, path)?;
+                    keys.pop();
                 }
             }
-            toml::Value::Array(a) => a.iter().for_each(|v| walk(v, path, out)),
+            toml::Value::Array(a) => {
+                for v in a {
+                    walk(v, keys, path)?;
+                }
+            }
             _ => {}
         }
+        Ok(())
     }
 
-    let mut out = ModeScan {
-        superseded: Vec::new(),
-        unknown: Vec::new(),
-    };
     // A body that does not parse at all is reported by the caller's
     // `toml::from_str`; there is nothing useful to say about its modes.
-    if let Ok(value) = body.parse::<toml::Value>() {
-        walk(&value, path, &mut out);
+    match body.parse::<toml::Value>() {
+        Ok(value) => walk(&value, &mut Vec::new(), path),
+        Err(_) => Ok(()),
     }
-    out
 }
 
 #[cfg(test)]
@@ -1074,15 +1048,84 @@ mod tests {
     // phase-390 — the rename, and what it must not break
     // ========================================================================
 
-    /// A config written before the rename must keep working. This is the whole
-    /// reason `from_token` accepts five spellings for three modes.
+    /// phase-482 W6 — a retired token is REFUSED, by name. Not accepted (that
+    /// was the deprecation cycle, now over) and not "unknown mode" (the user
+    /// wrote a word that WAS valid; the useful answer is what it became).
     #[test]
-    fn superseded_tokens_still_parse_to_the_same_modes() {
+    fn a_retired_token_is_refused_naming_field_and_replacement() {
+        for (old, new) in [("owned", "inline"), ("borrowed", "view")] {
+            let body = format!(
+                r#"
+                [fields]
+                "a/B.x" = {{ cap = 8, mode = "{old}" }}
+                "#
+            );
+            let err = CapacityResolver::from_toml_str(&body).unwrap_err();
+            assert!(
+                matches!(&err, ConfigError::RetiredStorageMode { token, replacement, .. }
+                    if token == old && *replacement == new),
+                "{err:?}"
+            );
+            let msg = err.to_string();
+            assert!(
+                msg.contains(r#"fields."a/B.x".mode"#),
+                "names the field: {msg}"
+            );
+            assert!(
+                msg.contains(&format!("mode = \"{new}\"")),
+                "names the replacement: {msg}"
+            );
+            assert!(!msg.contains("unknown"), "not an unknown mode: {msg}");
+        }
+    }
+
+    /// The refusal names the FILE when there is one — the user has to find it,
+    /// and in a `discover` chain it may not be the closest config.
+    #[test]
+    fn a_retired_token_in_a_file_names_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join(CODEGEN_CONFIG_FILENAME);
+        std::fs::write(
+            &file,
+            "[defaults]\nsequence = { cap = 8, mode = \"borrowed\" }\n",
+        )
+        .unwrap();
+        let msg = CapacityResolver::from_file(&file).unwrap_err().to_string();
+        assert!(
+            msg.contains(&file.display().to_string()),
+            "names the file: {msg}"
+        );
+        assert!(
+            msg.contains("defaults.sequence.mode"),
+            "names the field: {msg}"
+        );
+        assert!(
+            msg.contains("mode = \"view\""),
+            "names the replacement: {msg}"
+        );
+    }
+
+    /// One table feeds both directions: no retired token parses as a current
+    /// mode, and each one's replacement IS a current token.
+    #[test]
+    fn the_retired_table_and_the_accepted_set_are_disjoint() {
+        for &(old, new) in RETIRED_STORAGE_MODES {
+            assert_eq!(StorageMode::from_token(old), None, "{old} must not parse");
+            assert_eq!(StorageMode::from_token(new.as_str()), Some(new));
+            assert_eq!(StorageMode::retired_replacement(old), Some(new));
+        }
+        for m in [StorageMode::Inline, StorageMode::Heap, StorageMode::View] {
+            assert_eq!(StorageMode::retired_replacement(m.as_str()), None);
+        }
+    }
+
+    #[test]
+    fn current_tokens_parse() {
         let r = CapacityResolver::from_toml_str(
             r#"
             [fields]
-            "a/B.x" = { cap = 8, mode = "owned" }
-            "a/B.y" = { cap = 8, mode = "borrowed" }
+            "a/B.x" = { cap = 8, mode = "inline" }
+            "a/B.y" = { cap = 8, mode = "view" }
             "a/B.z" = { cap = 8, mode = "heap" }
             "#,
         )
@@ -1101,136 +1144,12 @@ mod tests {
         );
     }
 
+    /// The walker reads PARSED toml, so a retired word in a comment or in a
+    /// non-`mode` position must not be refused. A refusal that tells a user to
+    /// edit a line that is already correct sends them hunting for nothing.
     #[test]
-    fn current_tokens_parse() {
-        let r = CapacityResolver::from_toml_str(
-            r#"
-            [fields]
-            "a/B.x" = { cap = 8, mode = "inline" }
-            "a/B.y" = { cap = 8, mode = "view" }
-            "#,
-        )
-        .unwrap();
-        assert_eq!(
-            r.resolve("a", "B", "x", FieldKind::Sequence).mode,
-            StorageMode::Inline
-        );
-        assert_eq!(
-            r.resolve("a", "B", "y", FieldKind::Sequence).mode,
-            StorageMode::View
-        );
-    }
-
-    /// A superseded token round-trips to the CURRENT spelling. Without this the
-    /// deprecation is sticky: every diagnostic downstream would keep echoing
-    /// the old word back at the user who was told to stop using it.
-    #[test]
-    fn a_superseded_token_round_trips_to_the_new_spelling() {
-        let r = CapacityResolver::from_toml_str(
-            r#"
-            [fields]
-            "a/B.x" = { cap = 8, mode = "owned" }
-            "#,
-        )
-        .unwrap();
-        assert_eq!(
-            r.resolve("a", "B", "x", FieldKind::Sequence).mode.as_str(),
-            "inline"
-        );
-    }
-
-    #[test]
-    fn superseded_tokens_are_reported_with_their_replacement() {
-        let r = CapacityResolver::from_toml_str(
-            r#"
-            [fields]
-            "a/B.x" = { cap = 8, mode = "owned" }
-            "a/B.y" = { cap = 8, mode = "borrowed" }
-            "#,
-        )
-        .unwrap();
-        let found: Vec<_> = r
-            .deprecations()
-            .iter()
-            .map(|d| (d.found.as_str(), d.replacement))
-            .collect();
-        assert_eq!(found, vec![("owned", "inline"), ("borrowed", "view")]);
-    }
-
-    /// A superseded token in a WORKSPACE-level file must survive being merged
-    /// under a clean app-level one. Collecting at each parse instead of at the
-    /// merge is how the outer file's mistake goes unreported.
-    #[test]
-    fn merging_keeps_deprecations_from_both_files() {
-        let workspace = CapacityResolver::from_toml_str(
-            r#"
-            [fields]
-            "a/B.x" = { cap = 8, mode = "owned" }
-            "#,
-        )
-        .unwrap();
-        let app = CapacityResolver::from_toml_str(
-            r#"
-            [fields]
-            "a/B.y" = { cap = 8, mode = "view" }
-            "#,
-        )
-        .unwrap();
-        let merged = workspace.merged_with(app);
-        assert_eq!(merged.deprecations().len(), 1);
-        assert_eq!(merged.deprecations()[0].replacement, "inline");
-    }
-
-    /// One mistake, one line — a config that sets the old token on forty fields
-    /// is still one edit, and forty lines of output would bury it.
-    #[test]
-    fn the_report_deduplicates_repeated_tokens() {
-        let r = CapacityResolver::from_toml_str(
-            r#"
-            [fields]
-            "a/B.x" = { cap = 8, mode = "owned" }
-            "a/B.y" = { cap = 8, mode = "owned" }
-            "a/B.z" = { cap = 8, mode = "owned" }
-            "#,
-        )
-        .unwrap();
-        let report = r.deprecation_report().expect("should report");
-        assert_eq!(report.matches("mode = \"owned\"").count(), 1, "{report}");
-        assert!(report.contains("mode = \"inline\""), "{report}");
-    }
-
-    #[test]
-    fn a_clean_config_has_no_report() {
-        let r = CapacityResolver::from_toml_str(
-            r#"
-            [fields]
-            "a/B.x" = { cap = 8, mode = "inline" }
-            "#,
-        )
-        .unwrap();
-        assert!(r.deprecation_report().is_none());
-    }
-
-    #[test]
-    fn current_tokens_produce_no_deprecations() {
-        let r = CapacityResolver::from_toml_str(
-            r#"
-            [fields]
-            "a/B.x" = { cap = 8, mode = "inline" }
-            "a/B.y" = { cap = 8, mode = "view" }
-            "a/B.z" = { cap = 8, mode = "heap" }
-            "#,
-        )
-        .unwrap();
-        assert!(r.deprecations().is_empty(), "{:?}", r.deprecations());
-    }
-
-    /// The walker reads PARSED toml, so a superseded word in a comment or in a
-    /// non-`mode` position must not be reported. A diagnostic that tells a user
-    /// to edit a line that is already correct sends them hunting for nothing.
-    #[test]
-    fn a_superseded_word_outside_a_mode_key_is_not_reported() {
-        let r = CapacityResolver::from_toml_str(
+    fn a_retired_word_outside_a_mode_key_is_not_refused() {
+        CapacityResolver::from_toml_str(
             r#"
             # these pixels are owned by the driver, not borrowed
             [fields]
@@ -1238,7 +1157,6 @@ mod tests {
             "#,
         )
         .unwrap();
-        assert!(r.deprecations().is_empty(), "{:?}", r.deprecations());
     }
 
     #[test]
@@ -1273,7 +1191,7 @@ mod tests {
     }
 
     #[test]
-    fn int_shorthand_is_owned() {
+    fn int_shorthand_is_inline() {
         let r = CapacityResolver::from_toml_str(
             r#"
             [fields]
@@ -1296,7 +1214,7 @@ mod tests {
         let r = CapacityResolver::from_toml_str(
             r#"
             [fields]
-            "sensor_msgs/Image.data" = { cap = 2000000, mode = "borrowed" }
+            "sensor_msgs/Image.data" = { cap = 2000000, mode = "view" }
             "sensor_msgs/LaserScan.ranges" = { cap = 1080, mode = "heap" }
             "#,
         )

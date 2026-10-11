@@ -464,3 +464,8 @@ reason issue 1470 chose the workspace root over "any package that declares caps"
   sequences become `data`/`size`/`capacity` over caller-owned bytes; `inline`
   sizes a generated `__Storage` wired by `__init_in`; `view` is unchanged;
   `heap` leaves the C emitter (Rust and C++ unchanged). Work: phase-492 W7.
+- 2026-10-12 — **phase-482 W6 (follow-up)**: the phase-390 deprecation cycle is
+  over. `mode = "owned"` / `mode = "borrowed"` are REFUSED, with an error that
+  names the file, the field and the replacement (`inline` / `view`); one table
+  of old → new (`RETIRED_STORAGE_MODES`) feeds both the refusal and the
+  accepted set.
