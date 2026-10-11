@@ -56,7 +56,7 @@ different shape from the `workspace-{c,cpp}-freertos-realtime` entries.
 
 Fixture id `workspace-cpp-freertos-realtime-subnode-portable`. **Build-only** —
 there is no `matrix::CELLS` row and nothing boots the image under QEMU yet; the
-baked locator `tcp/192.0.3.1:8092` is reserved for whoever adds one.
+baked locator `tcp/10.0.2.2:8092` is reserved for whoever adds one.
 
 ## Expected output
 

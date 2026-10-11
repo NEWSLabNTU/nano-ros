@@ -1,7 +1,7 @@
 # Phase 195.C — board profile descriptor. FreeRTOS on MPS2-AN385.
 
 [[board]]
-names = ["freertos"]
+names = ["freertos", "mps2-an385-freertos"]
 cmake_module = "mps2-an385-freertos"
 platform = "freertos"
 toolchain = "stable"
@@ -50,6 +50,13 @@ FREERTOS_CONFIG_DIR = { value = "${workspace}/packages/boards/nros-board-mps2-an
 # startup + the working fixtures (logging-smoke-freertos-mps2, threadx-qemu-riscv64):
 # a `#[no_mangle] extern "C" fn main() -> !` (diverging main links against the C
 # `int main(void)` decl; it never returns — the FreeRTOS scheduler owns the image).
+# phase-484 W4b-2 (RFC-0103 D10) — this board runs under QEMU, so its network
+# defaults are QEMU's own SLIRP network (10.0.2.0/24, gateway 10.0.2.2, guest
+# 10.0.2.15) and its router default is that gateway. An image states its own
+# address on top; a project-defined network is phase-497.
+[board.net]
+network = "qemu"
+
 [board.entry]
 crate_root_extra = "use panic_semihosting as _;"
 # The dependency the line above needs. A generated entry has no author to

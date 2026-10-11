@@ -13,7 +13,8 @@ its connect locator from one of two carriers:
     `option_env!("NROS_LOCATOR")`. On any other board the value reaches nothing.
 
 When neither reaches the board, the image dials the board's compiled-in default
-(`tcp/192.0.3.1:7447` on FreeRTOS and threadx-linux) while the test's router
+(`tcp/192.0.3.1:7447` on threadx-linux; the board's own gateway, `10.0.2.2`, on
+the FreeRTOS QEMU boards since phase-484 W4b-2) while the test's router
 listens on `alloc::port_of(...)`, and every cell fails `Executor::open:
 ConnectionFailed` before any code under test runs. That is issue 1581: phase-383
 W9 / W10.a deleted the hand-written entry packages whose

@@ -47,6 +47,13 @@ rustflags = [
 CC_thumbv7m_none_eabi = "arm-none-eabi-gcc"
 '''
 
+# phase-484 W4b-2 (RFC-0103 D10) — this board runs under QEMU, so its network
+# defaults are QEMU's own SLIRP network (10.0.2.0/24, gateway 10.0.2.2, guest
+# 10.0.2.15) and its router default is that gateway. An image states its own
+# address on top; a project-defined network is phase-497.
+[board.net]
+network = "qemu"
+
 [board.entry]
 signature = "#[nros_board_mps2_an385::entry]\nfn main() -> !"
 crate_root_extra = "use panic_semihosting as _;"

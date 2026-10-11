@@ -33,6 +33,29 @@ MIGRATED = {
         "packages/boards/nros-board-common/src/threadx_qemu_riscv64_build.rs",
         "cmake/board/nano-ros-board-rv-virt-threadx.cmake",
     ],
+    # The FreeRTOS family (mps2-an385, mps3-an536, s32z270, freertos-posix
+    # state no `[board.net]`: they ARE the platform default). The generic
+    # crate's presets derive from `BaseConfig::default()`, the cargo road's C
+    # emitter resolves the overlay's descriptor, and the cmake template asks
+    # `nros_board_net_c`. `freertos_build.rs` is not listed: its tests assert
+    # the emitted text, which is a literal on purpose.
+    # phase-484 W4b-2 (RFC-0103 D10) — the QEMU boards on QEMU's own network.
+    # `mps2-an385` (bare-metal) is NOT listed: its `docker` profile still
+    # carries a second network as literals until phase-497 makes it a
+    # `[network.docker]` row.
+    "esp32-qemu": [
+        "packages/boards/nros-board-esp32-qemu/src/config.rs",
+        "packages/boards/nros-board-esp32-qemu/src/board_entry.rs",
+    ],
+    "nuttx-qemu": [
+        "packages/boards/nros-board-nuttx-qemu/src/config.rs",
+        "packages/boards/nros-board-nuttx-qemu/src/entry_212n.rs",
+    ],
+    "freertos": [
+        "packages/boards/nros-board-freertos/src/config.rs",
+        "cmake/templates/freertos_app_config.c.in",
+        "cmake/NanoRosBoardNet.cmake",
+    ],
 }
 
 # A literal 4-octet IP or 6-byte MAC array assigned to an identity field.

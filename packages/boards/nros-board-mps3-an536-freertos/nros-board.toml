@@ -56,6 +56,13 @@ FREERTOS_PORT = { value = "GCC/ARM_CRx_No_GIC", force = true }
 FREERTOS_CONFIG_DIR = { value = "${workspace}/packages/boards/nros-board-mps3-an536-freertos/config", force = true }
 '''
 
+# phase-484 W4b-2 (RFC-0103 D10) — this board runs under QEMU, so its network
+# defaults are QEMU's own SLIRP network (10.0.2.0/24, gateway 10.0.2.2, guest
+# 10.0.2.15) and its router default is that gateway. An image states its own
+# address on top; a project-defined network is phase-497.
+[board.net]
+network = "qemu"
+
 [board.entry]
 
 [board.capabilities]

@@ -184,8 +184,8 @@ impl NuttxQemu {
 /// fixtures always performed this step; the 212.N.3 parameterless
 /// `BoardInit::init_hardware` couldn't.
 ///
-/// Defaults are the slirp e2e values (`10.0.2.30/24` via `10.0.2.2`, the same
-/// address the known-good role fixtures push); the leaf `system.toml`'s
+/// Defaults are the board's SLIRP values ([`SLIRP_DEFAULT_IP`], via
+/// `10.0.2.2`); the leaf `system.toml`'s
 /// `[image.*]` `ip` / `netmask` / `gateway` keys override per entry so sibling
 /// guests can differ.
 #[cfg(target_os = "nuttx")]
@@ -201,29 +201,21 @@ fn entry_net_init(deploy: Option<&nros_platform::DeployOverlay>) {
     configure_entry_eth0(ip, prefix, gateway);
 }
 
-/// Slirp e2e default guest address — **the one per-arch semantic value in this
-/// crate** (phase-322 W1.a measured the whole rest of the two former board
-/// crates as byte-identical; phase-337 W3 merged them on that finding).
+/// The SLIRP defaults an un-overridden entry pushes into `eth0`: this board's
+/// `[board.net]` (`network = "qemu"`, RFC-0103 D10), generated into
+/// `crate::config` by the build script — never restated here.
 ///
-/// It is per-arch because it mirrors each board's own kernel defconfig
-/// `NETINIT` address, so an un-overridden entry keeps whatever the kernel
-/// already brought `eth0` up with and the push below is an idempotent re-push:
-///
-/// | board | defconfig | address |
-/// | --- | --- | --- |
-/// | arm virt | `nuttx-config/arm/defconfig` | `10.0.2.30/24` |
-/// | rv-virt | `nuttx-config/riscv/defconfig` | `10.0.2.15/24` |
-///
-/// A `DeployOverlay` (`system.toml` `[image.*]` `ip`/`netmask`/
-/// `gateway`) overrides it, which is how sibling guests get distinct IPs.
-/// Every guest runs behind its own QEMU slirp, so the two values never meet.
-#[cfg(target_arch = "riscv32")]
-pub const SLIRP_DEFAULT_IP: [u8; 4] = [10, 0, 2, 15];
-/// See the riscv arm of this constant for why it is per-arch.
-#[cfg(not(target_arch = "riscv32"))]
-pub const SLIRP_DEFAULT_IP: [u8; 4] = [10, 0, 2, 30];
-pub const SLIRP_DEFAULT_GATEWAY: [u8; 4] = [10, 0, 2, 2];
-pub const SLIRP_DEFAULT_PREFIX: u8 = 24;
+/// phase-484 W4b-2 — these were per-arch literals mirroring each kernel
+/// defconfig's `NETINIT` address (arm `10.0.2.30`, rv-virt `10.0.2.15`). The
+/// push overwrites whatever the defconfig brought `eth0` up with, so both
+/// arches now take the board's one default; a `DeployOverlay` (`system.toml`
+/// `[image.*]` `ip`/`netmask`/`gateway`) still overrides it, which is how
+/// sibling guests get distinct IPs. Every guest runs behind its own QEMU
+/// SLIRP, so two of them never meet.
+pub const SLIRP_DEFAULT_IP: [u8; 4] = crate::config::BOARD_NET_IP;
+pub const SLIRP_DEFAULT_GATEWAY: [u8; 4] = crate::config::BOARD_NET_GATEWAY;
+pub const SLIRP_DEFAULT_PREFIX: u8 =
+    nros_board_common::prefix_from_netmask(crate::config::BOARD_NET_NETMASK);
 
 /// Issue #130 — the single public eth0-config entry point for BOTH NuttX Entry
 /// paths: the Rust `nros::main!` path (via [`entry_net_init`] → the `BoardEntry`

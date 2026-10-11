@@ -138,18 +138,16 @@ impl BoardEntry for Esp32QemuEntry {
 }
 
 impl Esp32QemuEntry {
-    /// Board default `Config`: MAC / IP / gateway are board-internal smoltcp
-    /// knobs (slirp 10.0.2.0/24, talker IP 10.0.2.50) baked verbatim from the
-    /// single-node esp32 example; locator + domain are the compile-time-
-    /// overridable consts above.
+    /// Board default `Config`: MAC / IP / gateway are the board's
+    /// `[board.net]` (`Config::default()`, phase-484 W4b-2 — this function
+    /// used to restate them, as `10.0.2.50` while `Config::default()` said
+    /// `192.0.3.10`); locator + domain are the compile-time-overridable consts
+    /// above.
     fn default_config() -> Config {
         Config {
-            mac_addr: [0x02, 0x00, 0x00, 0x00, 0x00, 0x01],
-            ip: [10, 0, 2, 50],
-            prefix: 24,
-            gateway: [10, 0, 2, 2],
             zenoh_locator: LOCATOR,
             domain_id: DOMAIN_ID,
+            ..Config::default()
         }
     }
 

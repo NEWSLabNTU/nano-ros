@@ -3159,9 +3159,17 @@ pub struct BoardEntryFacts {
 /// The LOCATOR is deliberately not here yet: on threadx-linux the Rust and C
 /// fallbacks name different routers (issue 1793), and a locator is a selection
 /// an image states, not a board fact.
+///
+/// `network` (RFC-0103 D10, phase-484 W4b-2) names the network the board's
+/// defaults sit on. The one value today is [`QEMU_NETWORK`]: every QEMU board
+/// shares QEMU's own SLIRP network, so it says so instead of restating
+/// the numbers. A `[network.<name>]` table a project defines is phase-497;
+/// until then any other name is refused.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BoardNet {
+    #[serde(default)]
+    pub network: Option<String>,
     #[serde(default)]
     pub ip: Option<String>,
     #[serde(default)]
@@ -3172,7 +3180,27 @@ pub struct BoardNet {
     pub mac: Option<String>,
 }
 
+/// The built-in network every QEMU board defaults onto (RFC-0103 D10): QEMU's
+/// user-mode (SLIRP) network as QEMU itself configures it with a plain
+/// `-nic user` — subnet `10.0.2.0/24`, host and gateway `10.0.2.2`, first
+/// guest address `10.0.2.15`. No launcher has to pass `net=`/`host=` for it,
+/// which is also what someone running an image by hand gets.
+pub const QEMU_NETWORK: &str = "qemu";
+
 impl BoardNet {
+    /// The network this board's defaults sit on, checked: `None` for the
+    /// platform default, `Some(QEMU_NETWORK)` for the QEMU network.
+    pub fn network(&self) -> Result<Option<&str>, String> {
+        match self.network.as_deref() {
+            None => Ok(None),
+            Some(QEMU_NETWORK) => Ok(Some(QEMU_NETWORK)),
+            Some(other) => Err(format!(
+                "[board.net] network = {other:?}: the only built-in network is \"{QEMU_NETWORK}\"; \
+                 project-defined networks are phase-497 (RFC-0103 D10)"
+            )),
+        }
+    }
+
     fn octets<const N: usize>(
         field: &str,
         v: &str,

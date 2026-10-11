@@ -133,8 +133,9 @@ fact about the board, and it lives in the board descriptor. Run `nros sync` in
 the application directory after editing this file; it writes the generated
 message bindings and the build settings the board choice implies.
 
-The guest network shape (eth0 `10.0.2.30`, Slirp gateway `10.0.2.2`)
-comes from the board crate; add a `locator = "tcp/10.0.2.2:<port>"`
+The guest network shape (eth0 `10.0.2.15`, Slirp gateway `10.0.2.2` — QEMU's
+own network, which the board's `[board.net] network = "qemu"` names)
+comes from the board; add a `locator = "tcp/10.0.2.2:<port>"`
 field to `[image.<id>]` to dial a non-default router port. The prebuilt *test fixtures*
 bake distinct per-language allocator ports so parallel suites don't
 collide on one router. Start the router (ROS's `rmw_zenohd`) on the
@@ -226,7 +227,7 @@ count at 1, matching the official ROS 2 demo talker. If no
 1. Confirm the app actually ran — `ps` should show your task.
 2. Confirm networking — `ifconfig` shows a configured interface.
    With the virtio-net + Slirp wiring above, `eth0` comes up at
-   `10.0.2.30` (the board crate's default for the qemu-armv7a-nuttx examples).
+   `10.0.2.15` (the board's default on QEMU's network; an image's `ip` overrides it).
 3. Confirm `zenohd` reachable; the image's `locator` (or the
    `nros_support_init` arguments) must match the router's listen port.
 4. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).

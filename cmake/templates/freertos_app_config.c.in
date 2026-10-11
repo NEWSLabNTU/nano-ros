@@ -12,11 +12,11 @@
  * here.
  *
  * phase-337 W5.d folded the board `build.rs`'s hand-written mirror onto
- * `BaseConfig` + `FreertosScheduling`; this template is the ONE remaining
- * hand-maintained copy, and it is deliberately not identical — the carrier
- * varies `.locator` / `.domain_id` / the IP last octet per image. Retiring it
- * means teaching the carrier to read the board's emitted TU; until then, keep
- * it in sync when the board defaults change.
+ * `BaseConfig` + `FreertosScheduling`. phase-484 W4b: the `.network` block is
+ * no longer a copy either — it is the board's `[board.net]` over the platform
+ * default, asked of `nros board net` (`nros_board_net_c`) with this image's
+ * last IP octet / MAC byte. The carrier still varies `.locator` / `.domain_id`
+ * per image; the scheduling block below is the remaining hand-kept copy.
  *
  * `.app_stack_bytes` is 64 KiB, and it is MEASURED ON BOTH HALVES (issue 1146
  * part 2). It sat at 512 KiB while the Rust default moved to 128 KiB, because
@@ -67,18 +67,13 @@ const nros_app_config_t NROS_APP_CONFIG = {
         .locator   = "@NROS_ENTRY_LOCATOR@",
         .domain_id = @NROS_ENTRY_APP_DOMAIN_ID@,
     },
-    .network = {
-        /* Last octet is per-image (@NROS_ENTRY_IP_LAST@, default 10): two QEMU
-         * nodes of a test pair MUST differ — the board seeds its PRNG from
-         * IP+MAC, and identical seeds give identical zenoh ZIDs, which the
-         * router treats as ONE peer (max_links=1) → silent no-delivery
-         * (phase-287 W6; same lesson as the threadx-riscv64 .40/.41 split). */
-        .ip      = { 192, 0, 3, @NROS_ENTRY_IP_LAST@ },
-        .mac     = { 0x02, 0x00, 0x00, 0x00, 0x00, @NROS_ENTRY_IP_LAST@ },
-        .gateway = { 192, 0, 3, 1 },
-        .netmask = { 255, 255, 255, 0 },
-        .prefix  = 24,
-    },
+    /* The last IP octet and MAC byte are per-image (@NROS_ENTRY_IP_LAST@,
+     * default 10): two QEMU nodes of a test pair MUST differ — the board
+     * seeds its PRNG from IP+MAC, and identical seeds give identical zenoh
+     * ZIDs, which the router treats as ONE peer (max_links=1) → silent
+     * no-delivery (phase-287 W6; same lesson as the threadx-riscv64 .40/.41
+     * split). */
+    .network = @NROS_ENTRY_NETWORK_C@,
     .scheduling = {
         /* RAW FreeRTOS priorities (issue 0623). These were the normalized 0-31
          * values (12 / 16 / 16 / 16), which every consumer converted for

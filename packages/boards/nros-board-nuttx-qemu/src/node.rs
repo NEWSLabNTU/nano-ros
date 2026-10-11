@@ -31,13 +31,12 @@ pub fn init_hardware(config: &Config) {
     // already reaches them this way (see `apply_ip_config`'s socket/ioctl block).
     {
         unsafe extern "C" {
-            fn open(path: *const core::ffi::c_char, flags: core::ffi::c_int, ...)
-            -> core::ffi::c_int;
-            fn write(
-                fd: core::ffi::c_int,
-                buf: *const core::ffi::c_void,
-                count: usize,
-            ) -> isize;
+            fn open(
+                path: *const core::ffi::c_char,
+                flags: core::ffi::c_int,
+                ...
+            ) -> core::ffi::c_int;
+            fn write(fd: core::ffi::c_int, buf: *const core::ffi::c_void, count: usize) -> isize;
             fn close(fd: core::ffi::c_int) -> core::ffi::c_int;
         }
         const O_WRONLY: core::ffi::c_int = 1;

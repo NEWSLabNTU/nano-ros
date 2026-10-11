@@ -239,7 +239,7 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_pubsub() {
 /// fixture bake. `Config::default()` now applies the build-env identity
 /// (`NROS_APP_NET_{IP,MAC}_LAST`, `NROS_DOMAIN_ID` — set per-example by
 /// `nros_threadx_rv64_rust_cyclone_app`), so the pair boots as
-/// 192.0.3.10/:56 (talker) + 192.0.3.11/:57 (listener) on the fixture domain.
+/// 10.0.2.40/:56 (talker) + 10.0.2.41/:57 (listener) on the fixture domain.
 ///
 /// The QEMU device MACs mirror the firmware bake (same convention as the C
 /// test). Descriptors register via the board `.init_array` walk (#195/#205).

@@ -123,3 +123,7 @@ serial = []
 # Phase 97.3.esp32-qemu — DDS / DDS heap budget (256 KB). Off
 # by default; DDS example crates pull in via `features = ["dds-heap"]`.
 dds-heap = ["nros-platform-esp32-qemu/dds-heap"]
+
+[build-dependencies]
+# phase-484 W4b-2 — the board's network defaults from its `[board.net]`.
+nros-board-common = { path = "../nros-board-common", default-features = false, features = ["build-helpers"] }

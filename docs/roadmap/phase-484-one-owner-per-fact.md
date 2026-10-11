@@ -477,15 +477,43 @@ identity per board. So D10 gives each fact its owner:
 
 This wave does the part every board needs now:
 
-- every QEMU board joins one default network, `qemu` (SLIRP on
-  `192.0.3.0/24`, gateway/host `192.0.3.1`), which is `BaseConfig::default()`;
-- every QEMU launcher configures SLIRP to match;
+- every QEMU board joins one default network, `qemu`: QEMU's own SLIRP plan
+  (`10.0.2.0/24`, gateway/host `10.0.2.2`, guest `10.0.2.15`), named by
+  `[board.net] network = "qemu"` rather than restated, so no launcher passes
+  `net=`/`host=` (the first draft of D10 said `192.0.3.0/24`; measured, that
+  would have moved 139 files to spare 47, and every QEMU board except the
+  FreeRTOS C/C++ images already ran 10.0.2.0/24);
+- a board's router default is derived from its gateway
+  (`tcp/<gateway>:7447`, `board_net_locator!(port)` for another port);
 - the per-image last-octet override stays.
 
 The `[network.*]` table, bridge/TAP launch, multi-NIC and the collision
 refusal are [phase-497](phase-497-networks-have-owners.md).
 
-Landed for FreeRTOS:
+Landed:
+
+- **All QEMU boards** (esp32-qemu, mps2-an385 bare-metal, mps2-an385-freertos,
+  mps3-an536-freertos, both NuttX entries, threadx-riscv64) state
+  `network = "qemu"`. Their `Config::default()` and entry defaults read
+  generated `BOARD_NET_*` (`board_net::emit_for_crate`, or
+  `emit_for_named_board` for the generic FreeRTOS crate, which serves several
+  boards and finds its descriptor through `NROS_BOARD_TOML`). Two boards had
+  disagreed with themselves: esp32's `Config` said `192.0.3.10` while its
+  entry said `10.0.2.50`, and NuttX's presets said `192.0.3.10` while its
+  entry pushed `10.0.2.30`. esp32 keeps `.50` as its stated default, and NuttX
+  takes the network's `.15`.
+- The FreeRTOS QEMU launcher that reconfigured SLIRP
+  (`start_mps2_an385_freertos_slirp`) is gone; one MPS2 launcher remains. 22
+  fixture locators moved to `10.0.2.2`. The entry-locator resolver dropped
+  its FreeRTOS literal for the board-derived rung, so issue 0946's FreeRTOS
+  disagreement is gone.
+- The descriptors of s32z270 (hardware) and threadx-linux (host bridge) are
+  untouched: they keep the platform default, `192.0.3.0/24`.
+- `mps2-an385`'s `docker` profile keeps its literals until phase-497 makes it
+  a `[network.docker]` row; that board is therefore not on
+  `check-board-net-one-home`'s list (esp32-qemu and nuttx-qemu are).
+
+For FreeRTOS in particular:
 
 - `nros_board_net_c` (`cmake/NanoRosBoardNet.cmake`) is the one cmake spelling.
   It replaces the two ThreadX modules' inline blocks, and `nros board net`

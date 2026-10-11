@@ -214,9 +214,9 @@ impl nros_platform::BoardEntry for Mps2An385 {
     /// (`[image.*]` in the leaf's `system.toml`: locator / ip / gateway /
     /// netmask / domain_id) onto `Config::default()` before boot, so the
     /// firmware dials the deploy-named endpoint (e.g. the slirp host alias
-    /// `tcp/10.0.2.2:7451` on guest `10.0.2.15`) instead of the inert
-    /// compiled-in `192.0.3.x` default. Fields the deploy block omits keep the
-    /// board default.
+    /// `tcp/10.0.2.2:7451` on guest `10.0.2.15`). Fields the deploy block
+    /// omits keep the board default, which since phase-484 W4b-2 is the same
+    /// QEMU network (RFC-0103 D10).
     ///
     /// Issue #98 / RFC-0045 — also threads `deploy.boot_config` to the family
     /// driver so the node name comes from the baked `.nros_boot_config`.

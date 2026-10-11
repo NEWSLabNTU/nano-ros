@@ -574,7 +574,7 @@ static int freertos_spawn_next_tier(void* session_handle, uint8_t domain_id,
  * caller casts NativeTierSpec* → nros_native_tier_spec_t* → nros_tier_spec_t*;
  * all three structs have the same ABI on 32-bit ARM).
  *
- * `locator`      — zenoh connect endpoint (baked by cmake, e.g. tcp/192.0.3.1:PORT)
+ * `locator`      — zenoh connect endpoint (baked by cmake, e.g. tcp/10.0.2.2:PORT)
  * `domain_id`    — ROS domain ID (compile-time NROS_ENTRY_DOMAIN_ID)
  * `session_name` — primary session / node name; NULL or empty → "node"
  * `tiers`        — tier-spec array, highest-priority-first (codegen order)

@@ -91,8 +91,8 @@ enum Boot {
     /// ELF *is* the ThreadX kernel; nsos-netx forwards to host sockets), so
     /// it takes a bounded `NROS_ENTRY_SPIN_MS` and exits.
     ThreadxLinux,
-    /// FreeRTOS QEMU mps2-an385 (static 192.0.3.x lwIP + board-matching
-    /// slirp net whose host 192.0.3.1 forwards to the host machine).
+    /// FreeRTOS QEMU mps2-an385 (static lwIP on QEMU's own SLIRP network,
+    /// whose host 10.0.2.2 forwards to the host machine — RFC-0103 D10).
     FreertosMps2,
     /// Zephyr native_sim image (west-lane fixture; NSOS host sockets reach
     /// a `tcp/127.0.0.1` locator with no bridge / root).
@@ -555,7 +555,7 @@ fn boot_guest(cell: &Exec, entry: &PathBuf) -> Guest {
             )
         }
         Boot::FreertosMps2 => Guest::Qemu(
-            QemuProcess::start_mps2_an385_freertos_slirp(entry)
+            QemuProcess::start_mps2_an385_networked(entry)
                 .unwrap_or_else(|e| panic!("boot freertos QEMU: {e}")),
         ),
         Boot::ZephyrNativeSim => Guest::Zephyr(

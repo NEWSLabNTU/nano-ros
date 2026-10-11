@@ -395,7 +395,7 @@ test-all verbose="":
 # phase-441 W3 — an nros publisher on a SECOND KERNEL reaches a stock
 # `ros2 topic echo` subscriber. The FreeRTOS/MPS2-AN385 C workspace entry boots
 # under QEMU, brings up lwIP over the emulated LAN9118, dials the host router
-# through the slirp gateway 192.0.3.1 and publishes `/chatter`; a stock
+# through the slirp gateway 10.0.2.2 and publishes `/chatter`; a stock
 # `rmw_zenoh_cpp` peer on the same router must see it.
 #
 # This is the only `interop::CELLS` cell that is not Zephyr or Linux, and that

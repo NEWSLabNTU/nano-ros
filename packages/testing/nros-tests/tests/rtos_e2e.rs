@@ -369,20 +369,15 @@ impl Platform {
     ) -> TestResult<RtosProcess> {
         match self {
             Platform::Freertos => {
-                // phase-287 W6 — the C/C++ images run the board's STATIC lwIP
-                // plan (192.0.3.10 / gw 192.0.3.1, no DHCP): default slirp
-                // (10.0.2.0/24) never answers their gateway ARP, so they get
-                // the board-net slirp launcher and bake `tcp/192.0.3.1:<port>`
-                // locators (examples/fixtures.toml). The RUST *-entry images
-                // keep the historical DEFAULT-slirp plan (guest 10.0.2.15,
-                // host 10.0.2.2 — their Cargo `[package.metadata.nros.deploy]`
-                // bakes `tcp/10.0.2.2:<port>`), so they need the plain
-                // launcher (issue #181; unifying the plans is follow-up work).
-                if matches!(lang, Lang::Rust) {
-                    QemuProcess::start_mps2_an385_networked(binary).map(RtosProcess::Qemu)
-                } else {
-                    QemuProcess::start_mps2_an385_freertos_slirp(binary).map(RtosProcess::Qemu)
-                }
+                // phase-484 W4b-2 (RFC-0103 D10) — one plan for both languages.
+                // The C/C++ images used to run a static `192.0.3.10` lwIP plan
+                // behind a launcher that reconfigured SLIRP to match, while the
+                // Rust ones ran QEMU's default network (issue #181's "unifying
+                // the plans is follow-up work"). The board now states
+                // `network = "qemu"`, so every image is on QEMU's own network
+                // and one launcher serves both.
+                let _ = lang;
+                QemuProcess::start_mps2_an385_networked(binary).map(RtosProcess::Qemu)
             }
             Platform::Nuttx => QemuProcess::start_nuttx_virt(binary, true).map(RtosProcess::Qemu),
             Platform::ThreadxLinux => {

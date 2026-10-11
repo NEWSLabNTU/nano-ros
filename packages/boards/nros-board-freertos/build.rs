@@ -48,6 +48,13 @@ use nros_board_common::freertos_build::{
 use nros_board_common::nros_build_paths;
 
 fn main() {
+    // phase-484 W4b-2 (RFC-0103 D10) — the network defaults of the board THIS
+    // build is for (`NROS_BOARD_TOML`), ONCE and before any early return,
+    // because `src/config.rs` `include!`s what it writes. A QEMU board lands on
+    // QEMU's SLIRP network; no named board leaves the platform default.
+    nros_board_common::board_net::emit_for_named_board(
+        nros_board_common::board_net::ResolvedNet::platform_default(),
+    );
     // issue 0288 — the FREERTOS_DIR guard below does NOT cover host tooling:
     // an example's `.cargo/config.toml [env]` sets that var for a host probe
     // just as for a firmware build, so the guard passes and the ARM flags reach
