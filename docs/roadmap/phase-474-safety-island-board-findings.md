@@ -838,6 +838,99 @@ no publish waited for the wire), `max_frame` and `timeouts` (0); the
 late-spin decode should lose the lock waits at link.c:253 and tx.c:660.
 Not yet measured on the board.
 
+### I12, on the board -- the waits are gone; the serial ISRs are what is left
+
+Island run `sl-rclcpp-diag` (nano-ros `4f91dfd7b`, which carries I12 as
+#1946, island TX ring 4096; encore with the spin diag): `_z_zephyr_serial_tx_stats`
+reads `waits` 0, `timeouts` 0, `frames_waited` 0, `max_frame` 778, and the
+lock waits at link.c:253 and tx.c:660 are 2-10 us (were 1.4-2.8 ms). The
+late spins did NOT go away: 34 at 2 ms or more in 10121 (the I11 run had 29
+in 10968), the worst 5.1 ms. What fills each late interval now is (a) the
+transport tasks, all three at k_thread 4, running ahead of the executor at 5
+when its release is due (1.7 ms median), and (b) the per-byte serial ISRs,
+2.5-5.7 ms over 250-800 calls in every late interval.
+
+(a) is the application's priority plan, not this phase's: the island raises
+its executor to 3 on its first spin, after registration (island
+`e93e258`), and `sl-rclcpp-prio` reads 6.4 late spins at 2 ms or more per
+10k (was 33.6), 22 at 1 ms or more (was 51), worst 4.0 ms, RX ring high
+water 1006 of 4096, no overflow. What remains is one callback's dispatch
+(about 1.8 ms) with the serial ISRs inside it: I13-I16.
+
+### I13 -- the serial ISR path costs 7-10 us a call
+
+**Mechanism.** At 921,600 baud a byte arrives every 10.9 us; the RX ISR
+(`_z_serial_isr`, network.c) costs about 7 us, so it runs about once a byte
+(the LPUART FIFO is 4 deep and the mcux driver leaves both watermarks at 0).
+TX moves 1-2 bytes a call (`uart_fifo_fill` stops when TDRE drops). That is
+about 2,000 ISRs per 1 KiB frame each way, 1,100-1,600 cycles each: code in
+flash, the ring and stats in cacheable SRAM, and stats the ISR updates on
+every chunk (`ring_high_water`, a volatile counter per call).
+
+**Fix**, the per-call cost (I14-I16 cut the count):
+
+1. `CONFIG_NROS_ZENOH_SERIAL_TCM` (Zephyr, default n, depends on
+   `CODE_DATA_RELOCATION` and a `zephyr,dtcm` / `zephyr,itcm` chosen node):
+   zephyr/cmake/nros_rmw_zenoh.cmake relocates zenoh-pico's
+   `system/zephyr/network.c` text to ITCM and its bss (the RX and TX rings,
+   the framing buffers) to DTCM with `zephyr_code_relocate`. On the S32K344
+   that moves about 12.5 KiB off the 320 KiB SRAM (95.7% used) into DTCM
+   (66 KiB free), and DTCM is not behind the D-cache, which I15/I16's DMA
+   buffers need anyway.
+2. The ISR body keeps only what the reader needs: the high-water updates
+   move out of the per-chunk loop (once per ISR, not per 32-byte read).
+3. A diag hook: `_z_zephyr_serial_isr_cycles` / `_isr_calls`, built only
+   under `CONFIG_NROS_ZENOH_SERIAL_ISR_STATS` (default n), so a reader of
+   the island's spin diag can charge ISR time to the callback it fell in.
+
+**Verify.** Board, the island's spin diag: `isr_us / isr_n` per late
+interval drops (was 7-10 us); RX `ring_overflows` and UART overruns stay 0.
+
+### I14 -- one interrupt per FIFO, not per byte
+
+**Fix.** `CONFIG_NROS_ZENOH_SERIAL_FIFO_WATERMARK` (Zephyr, default n; NXP
+LPUART only, `DT_HAS_COMPAT_STATUS_OKAY(nxp_lpuart)`): after the device is
+configured, set RXWATER to 2 with the receiver-idle interrupt (`FIFO.RXIDEN`)
+so a frame's tail is not stranded below the watermark, and fill TX to the
+FIFO depth on each TDRE. The ISR reads and fills the FIFO registers itself
+on this path, since the stock `fifo_read` loops on RDRF (bytes below the
+watermark) and `fifo_fill` stops at TDRE. About 3x fewer calls; overrun
+margin falls to about 2 characters (22 us), so it is off by default and the
+UART overrun counter is the check. A board with DMA should prefer I15/I16;
+this is the path for one without.
+
+### I15 -- TX by DMA
+
+**Fix.** `CONFIG_NROS_ZENOH_SERIAL_UART_ASYNC_TX` (Zephyr, default n, needs
+`UART_ASYNC_API` and `dmas` on the link's UART): `_z_serial_tx_put` still
+copies into the ring; when no transfer is in flight it claims the ring's
+longest contiguous run and starts `uart_tx`. `UART_TX_DONE` finishes the
+claim, starts the next run or clears the in-flight flag, and gives the TX
+semaphore. RX stays interrupt-driven, which needs
+`UART_EXCLUSIVE_API_CALLBACKS` (default y). With I13's DTCM ring the eDMA
+driver translates the DTCM address itself (dma_mcux_edma.c), and no cache
+maintenance is needed. One or two DMA interrupts per frame instead of
+about 700.
+
+### I16 -- RX by DMA
+
+**Fix.** `CONFIG_NROS_ZENOH_SERIAL_UART_ASYNC_RX` (default n, implies I15's
+callback): `uart_rx_enable` on one of two 256-byte DTCM buffers, answering
+`UART_RX_BUF_REQUEST` with the other; `UART_RX_RDY` puts the bytes into the
+existing RX ring and gives the reader's semaphore by the same rule as the
+ISR (a frame delimiter, or the ring half full); the COBS reader is unchanged.
+`UART_RX_DISABLED` re-arms. Known costs of Zephyr 4.4's lpuart async RX:
+the idle-line flush runs on the system workqueue after a `k_work_delayable`
+(uart_mcux_lpuart.c:1060-1064, :968-981), so a frame's last bytes reach the
+ring 1-2 ticks late; the configured idle type is set on a local struct and
+never applied (:1243-1244), so idle may fire early (extra flushes, no lost
+data); any RX error stops reception (:1023-1057). Upstream's only S32K3 use
+is a 115,200 loopback test with all RAM in DTCM.
+
+**Verify (I15, I16).** Board: the spin diag's ISR count per late interval
+and the late-spin rates; `_z_zephyr_serial_stats` overruns, bad frames and
+ring overflows 0; the island's gate act still PASS.
+
 ## Cross-repo
 
 - **play_launch** has a parallel phase on the same findings: F1 (charge
@@ -854,7 +947,8 @@ Not yet measured on the board.
 
 D1 before I1 and D2 before I2; I1 and I2 before T4. D3 waits on the
 play_launch phase's F1 decision. D4, I3, I4, I5, T1, T2 and T3 are
-independent of each other.
+independent of each other. I13 before I15 and I16 (their DMA buffers are
+I13's DTCM rings); I14 is the no-DMA alternative and is independent.
 
 ## What this phase does not do
 
