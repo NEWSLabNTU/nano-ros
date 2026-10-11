@@ -332,6 +332,86 @@ pub fn image_block_layers(
     env
 }
 
+/// Issue 1305 / RFC-0098 D6 — does the leaf manifest depend on its generated
+/// selection package (`<pkg>_nros_selection`, in any dependency table)?
+///
+/// That dependency is what makes a leaf MIGRATED: its image-only dependencies
+/// live in the generated package, not in its own `Cargo.toml`.
+#[must_use]
+pub fn depends_on_selection(leaf: &Path, package: &str) -> bool {
+    let want = leaf_system::selection_crate_name(package);
+    let Some(doc) = std::fs::read_to_string(leaf.join("Cargo.toml"))
+        .ok()
+        .and_then(|t| t.parse::<toml::Table>().ok())
+    else {
+        return false;
+    };
+    std::iter::once(&doc)
+        .chain(
+            doc.get("target")
+                .and_then(|t| t.as_table())
+                .into_iter()
+                .flat_map(|t| t.values().filter_map(|v| v.as_table())),
+        )
+        .filter_map(|scope| scope.get("dependencies").and_then(|d| d.as_table()))
+        .any(|deps| deps.contains_key(&want))
+}
+
+/// Issue 1305 / RFC-0098 D6 — write the leaf's generated selection package
+/// (`<leaf>/build/nros/selection`) for its image, when the leaf depends on it.
+///
+/// Returns `Ok(None)` for a leaf that is not on this road ([`resolve`]) or not
+/// migrated (it still names its board crate by hand, and
+/// [`check_board_crate_dependency`] guards it instead). Both `nros sync`, BEFORE
+/// its first cargo invocation (the metadata probe loads the leaf manifest, and
+/// cargo refuses a manifest whose path dependency is missing), and `nros build`
+/// ([`write`]) call it, so a board switch followed by either one regenerates it.
+pub fn write_selection(
+    leaf: &Path,
+    nano_ros_root: &Path,
+) -> Result<Option<crate::orchestration::facade::Facade>> {
+    let Some(img) = resolve(leaf, nano_ros_root)? else {
+        return Ok(None);
+    };
+    if !depends_on_selection(&img.leaf, &img.package) {
+        return Ok(None);
+    }
+    let catalog = BoardCatalog::load(nano_ros_root)
+        .map_err(|e| eyre!("board catalog under {}: {e}", nano_ros_root.display()))?;
+    let Some(d) = crate::cmd::board_facts::resolve_board(&catalog, &img.board) else {
+        bail!("board `{}` is claimed by no board descriptor", img.board);
+    };
+    let candidates = [
+        img.image_id.as_str(),
+        img.board.as_str(),
+        img.platform.as_str(),
+    ];
+    let facts = crate::builder::entry::BoardFacts::from_descriptor_for(d, &candidates);
+    let origin = img.decl.origin_path();
+    let mut table: toml::Table = std::fs::read_to_string(origin)
+        .wrap_err_with(|| format!("reading {}", origin.display()))?
+        .parse()
+        .wrap_err_with(|| format!("parsing {}", origin.display()))?;
+    // The bringup schema requires `[system] domain_id`; a leaf may leave it to
+    // the runtime (`leaf_system` does), and nothing selected here reads it.
+    if let Some(system) = table.get_mut("system").and_then(|s| s.as_table_mut()) {
+        system.entry("domain_id").or_insert(toml::Value::Integer(0));
+    }
+    let sys: crate::orchestration::cargo_metadata_schema::SystemToml = table
+        .try_into()
+        .wrap_err_with(|| format!("parsing {}", origin.display()))?;
+    let spec = crate::orchestration::facade::LeafSelectionSpec {
+        package: &img.package,
+        leaf: &img.leaf,
+        image_id: &img.image_id,
+        rmw: img.decl.rmw.as_deref(),
+        board: &facts,
+        candidates: &candidates,
+        nano_ros_root,
+    };
+    crate::orchestration::facade::write_leaf_selection(&spec, &sys).map(Some)
+}
+
 /// Write `<leaf>/build/<image>/nros-cargo.toml`, or return `None` when `leaf`
 /// is not a leaf this road builds ([`resolve`]).
 ///
@@ -393,6 +473,13 @@ fn check_board_crate_dependency(img: &LeafImage) -> Result<()> {
     if named.iter().any(|n| n == &want) {
         return Ok(());
     }
+    // Issue 1305 — a MIGRATED leaf names no board crate: it depends on its
+    // generated `<pkg>_nros_selection` package, which [`write_selection`]
+    // writes for the image's board, so there is nothing here to disagree.
+    let selection = leaf_system::selection_crate_name(&img.package).replace('_', "-");
+    if named.iter().any(|n| n == &selection) {
+        return Ok(());
+    }
     let boards: Vec<&str> = named
         .iter()
         .map(String::as_str)
@@ -431,6 +518,10 @@ pub fn write(leaf: &Path, nano_ros_root: &Path, who: &str) -> Result<Option<Leaf
     };
     let leaf = img.leaf.as_path();
     check_board_crate_dependency(&img)?;
+    // Issue 1305 — a migrated leaf's selection package, for THIS image's
+    // board. Sync wrote it already (before its probe); `nros build` writes it
+    // here, so a board switch followed by a build alone also lands.
+    write_selection(leaf, nano_ros_root)?;
 
     // Layer 2 — derived pools + facts.
     let mut env = crate::leaf_entity_env::leaf_env(leaf, who).env;
@@ -968,6 +1059,145 @@ mod board_crate_tests {
             "{e}"
         );
         assert!(e.contains("issue 1305"), "{e}");
+    }
+
+    /// A migrated leaf: names no board crate, depends on its selection package.
+    fn migrated_leaf(dir: &Path, board: &str, image_extra: &str) -> PathBuf {
+        let leaf = dir.join("talker");
+        std::fs::create_dir_all(leaf.join("src")).unwrap();
+        std::fs::write(
+            leaf.join("Cargo.toml"),
+            "[package]\nname = \"my-talker\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n\
+             [target.'cfg(target_os = \"none\")'.dependencies]\n\
+             my_talker_nros_selection = { path = \"build/nros/selection\" }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            leaf.join("system.toml"),
+            format!(
+                "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n[image.img]\nboard = \"{board}\"\n{image_extra}"
+            ),
+        )
+        .unwrap();
+        leaf
+    }
+
+    fn read(p: &Path) -> String {
+        std::fs::read_to_string(p).unwrap_or_else(|e| panic!("{}: {e}", p.display()))
+    }
+
+    /// Issue 1305 / RFC-0098 D6 — the selection package carries every
+    /// image-only dependency, from the board descriptor and the system: the
+    /// board crate with its entry surface, its non-RMW defaults and the RMW,
+    /// and the crate-root panic provider; and re-exports the board crate for
+    /// `nros::main!`.
+    #[test]
+    fn a_migrated_leaf_gets_the_image_dependencies_generated() {
+        let tmp = tempfile::tempdir().unwrap();
+        let leaf = migrated_leaf(tmp.path(), "qemu-mps2-an385", "");
+        let sel = write_selection(&leaf, &repo())
+            .unwrap()
+            .expect("a migrated leaf gets a selection");
+        assert_eq!(sel.crate_name, "my_talker_nros_selection");
+        assert_eq!(
+            sel.dir,
+            leaf.canonicalize().unwrap().join("build/nros/selection")
+        );
+        let m = read(&sel.dir.join("Cargo.toml"));
+        assert!(m.contains("name = \"my_talker_nros_selection\""), "{m}");
+        let board = m
+            .lines()
+            .find(|l| l.starts_with("nros-board-mps2-an385 "))
+            .unwrap_or_else(|| panic!("no board crate:\n{m}"));
+        for f in [
+            "\"board-entry\"",
+            "\"ethernet\"",
+            "\"rmw-zenoh\"",
+            "default-features = false",
+        ] {
+            assert!(board.contains(f), "`{f}` missing: {board}");
+        }
+        assert!(m.contains("panic-semihosting"), "{m}");
+        // Bare metal: the umbrella's marker is never named on nros-platform.
+        assert!(!m.contains("nros-platform ="), "{m}");
+        let lib = read(&sel.dir.join("src/lib.rs"));
+        assert!(lib.contains("pub use nros_board_mps2_an385;"), "{lib}");
+        assert!(lib.contains("use panic_semihosting as _;"), "{lib}");
+        // The leaf is migrated, so the 1305 refusal has nothing to refuse.
+        let img = resolve(&leaf, &repo()).unwrap().unwrap();
+        check_board_crate_dependency(&img).expect("a migrated leaf is accepted");
+    }
+
+    /// The point of the package: a board switch in `system.toml` is the ONE
+    /// edit. The same manifest gets the other board's crate, without the
+    /// first board's entry feature (which the other crate does not declare).
+    #[test]
+    fn switching_board_rewrites_the_selection_and_nothing_else() {
+        let tmp = tempfile::tempdir().unwrap();
+        let leaf = migrated_leaf(tmp.path(), "qemu-mps2-an385", "");
+        let manifest = read(&leaf.join("Cargo.toml"));
+        write_selection(&leaf, &repo()).unwrap().unwrap();
+        let again = write_selection(&leaf, &repo()).unwrap().unwrap();
+        assert!(!again.changed, "an unchanged image rewrote its selection");
+
+        let sys = read(&leaf.join("system.toml")).replace("qemu-mps2-an385", "freertos");
+        std::fs::write(leaf.join("system.toml"), sys).unwrap();
+        let sel = write_selection(&leaf, &repo()).unwrap().unwrap();
+        assert!(sel.changed);
+        let m = read(&sel.dir.join("Cargo.toml"));
+        assert!(
+            !m.contains("nros-board-mps2-an385 "),
+            "old board left:\n{m}"
+        );
+        let board = m
+            .lines()
+            .find(|l| l.starts_with("nros-board-mps2-an385-freertos "))
+            .unwrap_or_else(|| panic!("no FreeRTOS board crate:\n{m}"));
+        assert!(board.contains("\"rmw-zenoh\""), "{board}");
+        assert!(!board.contains("board-entry"), "{board}");
+        assert!(m.contains("features = [\"platform-freertos\"]"), "{m}");
+        assert!(
+            read(&sel.dir.join("src/lib.rs")).contains("pub use nros_board_mps2_an385_freertos;")
+        );
+        assert_eq!(
+            read(&leaf.join("Cargo.toml")),
+            manifest,
+            "the leaf manifest moved"
+        );
+    }
+
+    /// An image that names a `panic` policy other than `own` gets its handler
+    /// from `nros::main!`, so the board's crate-root provider would be a
+    /// second `#[panic_handler]`.
+    #[test]
+    fn a_platform_panic_image_carries_no_crate_root_provider() {
+        let tmp = tempfile::tempdir().unwrap();
+        let leaf = migrated_leaf(tmp.path(), "freertos", "panic = \"platform\"\n");
+        let sel = write_selection(&leaf, &repo()).unwrap().unwrap();
+        assert!(!read(&sel.dir.join("Cargo.toml")).contains("panic-semihosting"));
+        assert!(!read(&sel.dir.join("src/lib.rs")).contains("panic_semihosting"));
+    }
+
+    /// A leaf that still names its board crate is not migrated: no selection,
+    /// and the refusal still guards it.
+    #[test]
+    fn an_unmigrated_leaf_gets_no_selection() {
+        let tmp = tempfile::tempdir().unwrap();
+        let leaf = tmp.path().join("talker");
+        std::fs::create_dir_all(&leaf).unwrap();
+        std::fs::write(
+            leaf.join("Cargo.toml"),
+            "[package]\nname = \"t\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n\
+             [dependencies]\nnros-board-linux = { version = \"*\" }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            leaf.join("system.toml"),
+            "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n[image.native]\nboard = \"native\"\n",
+        )
+        .unwrap();
+        assert!(write_selection(&leaf, &repo()).unwrap().is_none());
+        assert!(!leaf.join("build").exists());
     }
 
     /// Issue 1815 — no board crate is not a stale board crate.

@@ -315,6 +315,146 @@ pub fn schedule_board_features(
     out
 }
 
+/// The board-crate feature that turns on the ENTRY surface `nros::main!`
+/// drives, for the framework the image's board key selects.
+///
+/// Issue 1305. `nros-board-mps2-an385` gates its `BoardEntry` impl behind
+/// `board-entry` and its RTIC surface behind `rtic` — one crate, two entry
+/// shapes, and which one an image needs is the board KEY's framework
+/// (`nros_orchestration_ir::framework_for_board_key`), not a property of the
+/// crate. The descriptor's `board_features` cannot say it (it is one list for
+/// every name the board answers to), and every leaf said it by hand
+/// (`features = ["board-entry"]` / `["rtic"]`), which is what the selection
+/// package now derives instead.
+///
+/// Only a feature the crate DECLARES is named (`declares`), so the other
+/// boards — whose entry is unconditional — get nothing.
+#[must_use]
+pub fn entry_surface_features(candidates: &[&str], declares: impl Fn(&str) -> bool) -> Vec<String> {
+    let framework = candidates
+        .iter()
+        .find(|k| nros_orchestration_ir::board_path_for(k).is_some())
+        .and_then(|k| nros_orchestration_ir::framework_for_board_key(k));
+    let want = if framework == Some("rtic") {
+        "rtic"
+    } else {
+        "board-entry"
+    };
+    if declares(want) {
+        vec![want.to_string()]
+    } else {
+        Vec::new()
+    }
+}
+
+/// The IMAGE-ONLY dependency lines a board implies: the board crate (with its
+/// features), the explicit `nros-platform` platform feature, and the crates
+/// the board's crate-root items need.
+///
+/// Issue 1305 — ONE writer for these lines. A generated workspace entry
+/// ([`render_manifest`]) and a single-package leaf's selection package
+/// (`orchestration::facade::write_leaf_selection`) both emit them through
+/// here; before, the leaf hand-wrote its own copy and a board switch had to
+/// edit it. `extra_board_features` is what the caller derives on top of the
+/// descriptor (the leaf's selection adds the RMW and entry-surface features,
+/// which a workspace entry gets from its separate facade crate instead).
+/// Paths are relative to `from_dir`, the directory of the manifest the lines
+/// go into.
+pub fn image_dependency_lines(
+    board: &BoardFacts,
+    nano_ros_root: &Path,
+    from_dir: &Path,
+    extra_board_features: &[String],
+) -> Result<Vec<String>, String> {
+    let mut out: Vec<String> = Vec::new();
+    if let Some(krate) = &board.board_crate {
+        let rel_path = board
+            .crate_path
+            .clone()
+            .unwrap_or_else(|| format!("packages/boards/{krate}"));
+        let rel = relative_or_err(from_dir, &nano_ros_root.join(&rel_path))?;
+        // Issue 1419 — the HOST board's generated entry is a census producer,
+        // exactly as the native C/C++ umbrella is (`NanoRosFeatureSet.cmake`
+        // turns `metadata-mode` on for cpp + posix + native). Keyed on the
+        // CRATE, which is host-only by construction, so no RTOS entry can reach
+        // it; the recorder is registered only when `$NROS_CENSUS_OUT` asks.
+        let mut features = board.board_features.clone();
+        features.extend(extra_board_features.iter().cloned());
+        if krate == HOST_BOARD_CRATE {
+            features.push("census".to_string());
+            // phase-463 W7 — and the PROFILE producer (`$NROS_PROFILE_OUT`),
+            // for the same reason and on the same key: host-only by
+            // construction.
+            features.push("profile".to_string());
+        }
+        // No repeats, first occurrence kept, so a workspace entry's line is
+        // byte-identical to what it was before this was shared.
+        let mut seen = std::collections::BTreeSet::new();
+        features.retain(|f| seen.insert(f.clone()));
+        let feats = if features.is_empty() {
+            String::new()
+        } else {
+            format!(
+                ", features = [{}]",
+                features
+                    .iter()
+                    .map(|f| format!("\"{f}\""))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        };
+        // `default-features = false`, because the SELECTION FACADE is the one
+        // place that names the board's RMW (issue 0831). A bare dep here
+        // re-enables `default = ["rmw-zenoh"]` and cargo unions it with the
+        // facade's `rmw-cyclonedds`: the image gets two backends and the
+        // runtime refuses to pick one. Cargo cannot subtract a default (issue
+        // 0270), so BOTH declarations have to be silent about it.
+        //
+        // Nothing is lost. The facade re-supplies the board's non-RMW defaults
+        // (`ethernet` on the mps2/esp32 boards, `image-runtime` — two lang
+        // items — on the NuttX ones), and `board_features` above still names
+        // whatever this entry needs in its own right.
+        out.push(format!(
+            "{krate} = {{ path = \"{rel}\", default-features = false{feats} }}"
+        ));
+    }
+    // The platform feature is named EXPLICITLY even when a board crate carries
+    // it. The hand-written freertos and zephyr entries both do this, and the
+    // reason is feature unification: a board crate's own default may not select
+    // the platform when the entry's graph differs, and an unselected platform
+    // is a link error a long way from its cause.
+    //
+    // EXCEPT the bare-metal family. `platform_feature` is the `nros/` UMBRELLA's
+    // feature, and there it is the no-op marker `platform-bare-metal` for
+    // esp32, mps2 bare-metal and every other no-RTOS kind — a name
+    // `nros-platform` does not have, because its concrete platform
+    // (`platform-esp32-qemu`, `platform-mps2-an385`) is BOARD-specific and the
+    // board crate selects it unconditionally. The two crates share every other
+    // platform's name, which is how naming the marker on `nros-platform` went
+    // unnoticed until the first generated esp32 entry (phase-445 W5) failed
+    // resolution with "`nros-platform` does not have that feature". The
+    // hand-written esp32 entry it replaced never named `nros-platform` at all.
+    let marker = crate::orchestration::board_descriptor::PlatformKind::BareMetal.platform_feature();
+    if board.platform_feature != marker {
+        let plat_rel = relative_or_err(
+            from_dir,
+            &nano_ros_root.join("packages/platform/nros-platform"),
+        )?;
+        out.push(format!(
+            "nros-platform = {{ path = \"{plat_rel}\", default-features = false, \
+             features = [\"{}\"] }}",
+            board.platform_feature
+        ));
+    }
+
+    // Whatever the board's crate-root items need — emitted at all because the
+    // descriptor is the only place that knows: the items are verbatim board
+    // text (`use panic_semihosting as _;`), so this file cannot infer the
+    // crate from them without parsing Rust.
+    out.extend(board.crate_root_deps.iter().cloned());
+    Ok(out)
+}
+
 /// Render `Cargo.toml`.
 pub fn render_manifest(
     spec: &EntrySpec,
@@ -418,89 +558,8 @@ pub fn render_manifest(
          features = [\"alloc\", \"rmw-cffi\", \"macros\"] }}\n"
     ));
 
-    if let Some(krate) = &board.board_crate {
-        let rel_path = board
-            .crate_path
-            .clone()
-            .unwrap_or_else(|| format!("packages/boards/{krate}"));
-        let rel = relative_or_err(entry_dir, &spec.nano_ros_root.join(&rel_path))?;
-        // Issue 1419 — the HOST board's generated entry is a census producer,
-        // exactly as the native C/C++ umbrella is (`NanoRosFeatureSet.cmake`
-        // turns `metadata-mode` on for cpp + posix + native). Keyed on the
-        // CRATE, which is host-only by construction, so no RTOS entry can reach
-        // it; the recorder is registered only when `$NROS_CENSUS_OUT` asks.
-        let mut features = board.board_features.clone();
-        if krate == HOST_BOARD_CRATE && !features.iter().any(|f| f == "census") {
-            features.push("census".to_string());
-        }
-        // phase-463 W7 — and the PROFILE producer (`$NROS_PROFILE_OUT`), for
-        // the same reason and on the same key: host-only by construction.
-        if krate == HOST_BOARD_CRATE && !features.iter().any(|f| f == "profile") {
-            features.push("profile".to_string());
-        }
-        let feats = if features.is_empty() {
-            String::new()
-        } else {
-            format!(
-                ", features = [{}]",
-                features
-                    .iter()
-                    .map(|f| format!("\"{f}\""))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )
-        };
-        // `default-features = false`, because the SELECTION FACADE is the one
-        // place that names the board's RMW (issue 0831). A bare dep here
-        // re-enables `default = ["rmw-zenoh"]` and cargo unions it with the
-        // facade's `rmw-cyclonedds`: the image gets two backends and the
-        // runtime refuses to pick one. Cargo cannot subtract a default (issue
-        // 0270), so BOTH declarations have to be silent about it.
-        //
-        // Nothing is lost. The facade re-supplies the board's non-RMW defaults
-        // (`ethernet` on the mps2/esp32 boards, `image-runtime` — two lang
-        // items — on the NuttX ones), and `board_features` above still names
-        // whatever this entry needs in its own right.
-        out.push_str(&format!(
-            "{krate} = {{ path = \"{rel}\", default-features = false{feats} }}\n"
-        ));
-    }
-    // The platform feature is named EXPLICITLY even when a board crate carries
-    // it. The hand-written freertos and zephyr entries both do this, and the
-    // reason is feature unification: a board crate's own default may not select
-    // the platform when the entry's graph differs, and an unselected platform
-    // is a link error a long way from its cause.
-    //
-    // EXCEPT the bare-metal family. `platform_feature` is the `nros/` UMBRELLA's
-    // feature, and there it is the no-op marker `platform-bare-metal` for
-    // esp32, mps2 bare-metal and every other no-RTOS kind — a name
-    // `nros-platform` does not have, because its concrete platform
-    // (`platform-esp32-qemu`, `platform-mps2-an385`) is BOARD-specific and the
-    // board crate selects it unconditionally. The two crates share every other
-    // platform's name, which is how naming the marker on `nros-platform` went
-    // unnoticed until the first generated esp32 entry (phase-445 W5) failed
-    // resolution with "`nros-platform` does not have that feature". The
-    // hand-written esp32 entry it replaced never named `nros-platform` at all.
-    let marker = crate::orchestration::board_descriptor::PlatformKind::BareMetal.platform_feature();
-    if board.platform_feature != marker {
-        let plat_rel = relative_or_err(
-            entry_dir,
-            &spec.nano_ros_root.join("packages/platform/nros-platform"),
-        )?;
-        out.push_str(&format!(
-            "nros-platform = {{ path = \"{plat_rel}\", default-features = false, \
-             features = [\"{}\"] }}\n",
-            board.platform_feature
-        ));
-    }
-
-    // Whatever the board's crate-root items need. Emitted right before the node
-    // packages so a reader sees it beside the `use` it serves — and emitted at
-    // all because the descriptor is the only place that knows: the items are
-    // verbatim board text (`use panic_semihosting as _;`), so this file cannot
-    // infer the crate from them without parsing Rust.
-    for dep in &board.crate_root_deps {
-        out.push_str(dep);
+    for line in image_dependency_lines(board, &spec.nano_ros_root, entry_dir, &[])? {
+        out.push_str(&line);
         out.push('\n');
     }
 

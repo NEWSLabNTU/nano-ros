@@ -3056,6 +3056,15 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
         if let Err(e) = nros_orchestration_ir::leaf_system::read(&ws_root) {
             bail!("sync: {e}");
         }
+        // Issue 1305 / RFC-0098 D6 — the leaf's generated selection package,
+        // for the image's board. FIRST, before anything below runs cargo on
+        // this manifest: the leaf path-depends on it, and cargo refuses to
+        // load a manifest whose path dependency does not exist yet.
+        if let Some(nrp) = nano_ros_for_probes.as_deref()
+            && let Some(sel) = crate::cmd::leaf_settings::write_selection(&ws_root, nrp)?
+        {
+            println!("sync: selection → {}", sel.dir.display());
+        }
     } else {
         scan_workspace(&src_root, &mut scan)?;
     }

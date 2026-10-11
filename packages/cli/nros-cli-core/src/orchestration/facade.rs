@@ -199,142 +199,19 @@ pub fn write_facade(
     };
 
     // ---- the three declared axes ------------------------------------------
-    let edition = sys.system.ros_edition()?;
     let declared_rmw = image_rmw(entry_name, sys).unwrap_or_else(|| sys.system.rmw.clone());
-    let rmw = crate::orchestration::rmw_resolver::resolve_rmw(&declared_rmw)
-        .map_err(|e| eyre::eyre!("facade: {entry_name}: {e}"))?;
-
-    // `nros` carries the edition and the capabilities; the BOARD crate SELECTS
-    // the RMW (phase-248 C5b — its `rmw-X` feature self-links and registers the
-    // backend, and brings the concrete platform impl). Splitting them is not a
-    // style choice: putting `rmw-zenoh` on `nros` selects nothing.
-    //
-    // Issue 1295 — but "selects nothing" is not "is never needed". The `nros`
-    // umbrella declares `rmw-cyclonedds = ["nros-node/needs-type-descriptors"]`,
-    // a MARKER rather than a selector: without it the generic path never
-    // registers a type descriptor, and every generated Rust entry on Cyclone
-    // opened its session and then died at the first node with
-    // `NodeError::Transport(PublisherCreationFailed)`. The board's own
-    // `rmw-cyclonedds` is `dep:nros-rmw-cyclonedds-sys` — the backend — so it
-    // cannot stand in for this.
-    //
-    // Asked of the crate, never listed here, exactly like the board rule below:
-    // an RMW whose umbrella feature exists gets it, one whose does not stays
-    // silent, and a future backend that grows a marker needs no edit here.
-    let mut nros_features = vec![edition.cargo_feature().to_string()];
-    for cap in cargo_nano_ros::capability_resolver::CAPABILITIES {
-        if !sys.capability_enabled(cap.declared) {
-            continue;
-        }
-        // `safety` is zenoh-only — the CRC path lives in that backend. Mirrors
-        // the same guard in `nros_feature_set` (cmake), which warns rather than
-        // silently dropping it.
-        // phase-347 W4 — "does this axis have a backend half at all" is now
-        // `backend_feature.is_some()`; which backends carry it comes from their
-        // descriptors, not a list in the registry.
-        if cap.backend_feature.is_some() && !cap.backend_supports(rmw.declared) {
-            eprintln!(
-                "sync: facade `{entry_name}`: capability `{}` declared but the \
-                 `{}` RMW does not carry it — omitted.",
-                cap.declared, rmw.declared,
-            );
-            continue;
-        }
-        nros_features.push(cap.nros_feature.to_string());
-    }
-    // Issue 1295 — the umbrella MARKER for every backend this image links (a
-    // bridge links two), for the crate that declares one.
-    let mut wanted_markers = vec![rmw.cargo_feature.to_string()];
-    for extra in image_backends(entry_name, sys) {
-        match crate::orchestration::rmw_resolver::resolve_rmw(&extra) {
-            Ok(r) => wanted_markers.push(r.cargo_feature.to_string()),
-            Err(e) => return Err(eyre::eyre!("facade: {entry_name}: {e}")),
-        }
-    }
-    for cf in wanted_markers {
-        if crate_declares_feature(&nros_path, &cf) {
-            nros_features.push(cf);
-        }
-    }
-
-    nros_features.sort();
-    nros_features.dedup();
-
-    // Only emit a feature the board crate actually DECLARES.
-    //
-    // W1 assumed "the board crate carries the RMW". That holds for 18 of the 23
-    // board crates and is false for five — `nros-board-zephyr` declares only
-    // `tiers` and `zephyr-edf`, because on Zephyr the RMW rides on the entry's
-    // own `[features] rmw-zenoh` plus a direct `nros-rmw-zenoh` dep instead.
-    // Emitting it unconditionally is not a silent mistake, it is a hard cargo
-    // error that killed the whole zephyr fixture lane:
-    //
-    //     package `zephyr_entry_nros_selection` depends on `nros-board-zephyr`
-    //     with feature `rmw-zenoh` but `nros-board-zephyr` does not have that
-    //     feature. available features: tiers, zephyr-edf
-    //
-    // When the board has no such feature the facade stays silent about the RMW
-    // for that dep — the entry's own selector is then the only one, which is
-    // correct rather than a fallback.
-    //
-    // Issue 0831 — and the reason the dep is rendered `default-features = false`
-    // below. Naming `rmw-cyclonedds` while the board's `default = ["rmw-zenoh"]`
-    // still applies gets BOTH: cargo unions features, it cannot subtract a
-    // default (issue 0270). The image then carries two backends and the runtime
-    // refuses to pick — `more than one RMW backend is registered and no
-    // $NROS_RMW selector was set` — which is honest but is not a working image.
-    //
-    // So the defaults are carved out and re-supplied MINUS any `rmw-*`: the
-    // board keeps its `ethernet` / `image-runtime`, and the RMW is named once,
-    // by the facade.
-    let board_features: Vec<String> = match deps.board.as_ref() {
-        Some((_, path)) => {
-            let mut f: Vec<String> = crate_default_features(path)
-                .into_iter()
-                .filter(|d| !d.starts_with("rmw-"))
-                .collect();
-            // One `rmw-*` per backend this image must LINK, not only its
-            // default — see `image_backends`. A bridge needs two; every other
-            // image resolves to exactly the one it already had.
-            let mut wanted = vec![rmw.cargo_feature.to_string()];
-            for extra in image_backends(entry_name, sys) {
-                match crate::orchestration::rmw_resolver::resolve_rmw(&extra) {
-                    Ok(r) => wanted.push(r.cargo_feature.to_string()),
-                    // A domain naming an unknown RMW is the SYSTEM's error and
-                    // is reported where the system is resolved; silently
-                    // dropping it here would emit a facade missing a backend
-                    // and fail at link with no mention of the declaration.
-                    Err(e) => {
-                        return Err(eyre::eyre!("facade: {entry_name}: {e}"));
-                    }
-                }
-            }
-            for cf in wanted {
-                if crate_declares_feature(path, &cf) {
-                    f.push(cf);
-                }
-            }
-            f.sort();
-            f.dedup();
-            f
-        }
-        None => Vec::new(),
-    };
-
-    // A direct backend dep gets the edition (and any capability the backend
-    // itself implements, e.g. safety-e2e's CRC path), NOT the `rmw-*` selector
-    // — naming the backend crate already selects it.
-    let mut backend_features = vec![edition.cargo_feature().to_string()];
-    for cap in cargo_nano_ros::capability_resolver::CAPABILITIES {
-        if !sys.capability_enabled(cap.declared) || !cap.backend_supports(rmw.declared) {
-            continue;
-        }
-        if let Some(bf) = cap.backend_feature {
-            backend_features.push(bf.to_string());
-        }
-    }
-    backend_features.sort();
-    backend_features.dedup();
+    let Derived {
+        nros_features,
+        board_features,
+        backend_features,
+    } = derive(
+        entry_name,
+        sys,
+        &declared_rmw,
+        &image_backends(entry_name, sys),
+        &nros_path,
+        deps.board.as_ref().map(|(_, p)| p.as_path()),
+    )?;
 
     // ---- render ------------------------------------------------------------
     let crate_name = format!("{entry_name}_nros_selection");
@@ -380,6 +257,356 @@ pub fn write_facade(
         },
         changed,
     }))
+}
+
+/// What [`write_leaf_selection`] needs about one single-package leaf image.
+#[derive(Debug, Clone)]
+pub struct LeafSelectionSpec<'a> {
+    /// The leaf's `[package] name`.
+    pub package: &'a str,
+    /// The leaf directory.
+    pub leaf: &'a Path,
+    /// `[image.<id>]`.
+    pub image_id: &'a str,
+    /// The image's resolved RMW (`[image] rmw` > `[image_defaults]` >
+    /// `[system]`), as `leaf_system` reads it.
+    pub rmw: Option<&'a str>,
+    /// The board's facts, crate taken from the macro's mapping
+    /// ([`crate::builder::entry::BoardFacts::from_descriptor_for`]).
+    pub board: &'a crate::builder::entry::BoardFacts,
+    /// Board-key spellings, most specific first — what the macro resolves.
+    pub candidates: &'a [&'a str],
+    /// The nano-ros checkout the crates are path-depended from.
+    pub nano_ros_root: &'a Path,
+}
+
+/// Issue 1305 / RFC-0098 D6 (amendment 2026-10-11) — write a single-package
+/// leaf's `<pkg>_nros_selection` package at
+/// [`nros_orchestration_ir::leaf_system::LEAF_SELECTION_DIR`].
+///
+/// A workspace entry is GENERATED, so its image-only dependencies are written
+/// into it ([`crate::builder::entry::render_manifest`]) and its features come
+/// from [`write_facade`]. A single-package leaf is its OWN entry and keeps its
+/// own `Cargo.toml` (the documented plain-cargo flow), so before this it named
+/// the board crate, its features, the RMW backend and the runtime crates by
+/// hand, and a board switch in `system.toml` also had to edit the manifest.
+///
+/// Now the leaf names ONE board-agnostic path dependency on this package, and
+/// this package carries what the image implies, from the SAME writers a
+/// workspace entry uses:
+///
+/// * the board crate, `nros-platform`'s platform feature and the crate-root
+///   deps — [`crate::builder::entry::image_dependency_lines`];
+/// * the edition / capability / RMW features — [`derive`], shared with
+///   [`write_facade`];
+/// * the entry surface (`board-entry` / `rtic`) —
+///   [`crate::builder::entry::entry_surface_features`].
+///
+/// Its `src/lib.rs` re-exports the board crate, which is how `nros::main!`
+/// reaches the board for a leaf that does not depend on it directly, and
+/// carries the board's crate-root items (`use panic_semihosting as _;`) —
+/// unless the image declares a `panic` policy other than `own`, in which case
+/// the macro emits the handler and a second provider would be a duplicate
+/// lang item.
+pub fn write_leaf_selection(spec: &LeafSelectionSpec<'_>, sys: &SystemToml) -> Result<Facade> {
+    let dir = spec
+        .leaf
+        .join(nros_orchestration_ir::leaf_system::LEAF_SELECTION_DIR);
+    let crate_name = nros_orchestration_ir::leaf_system::selection_crate_name(spec.package);
+    let nros_path = spec.nano_ros_root.join("packages/api/nros");
+    let board_dir = spec.board.board_crate.as_ref().map(|k| {
+        spec.nano_ros_root.join(
+            spec.board
+                .crate_path
+                .clone()
+                .unwrap_or_else(|| format!("packages/boards/{k}")),
+        )
+    });
+
+    let declared_rmw = spec
+        .rmw
+        .map_or_else(|| sys.system.rmw.clone(), str::to_string);
+    let mut backends: Vec<String> = std::iter::once(declared_rmw.clone())
+        .chain(sys.domains.iter().map(|d| d.rmw.clone()))
+        .collect();
+    backends.sort();
+    backends.dedup();
+    let Derived {
+        nros_features,
+        mut board_features,
+        backend_features: _,
+    } = derive(
+        &crate_name,
+        sys,
+        &declared_rmw,
+        &backends,
+        &nros_path,
+        board_dir.as_deref(),
+    )?;
+    if let Some(bd) = &board_dir {
+        board_features.extend(crate::builder::entry::entry_surface_features(
+            spec.candidates,
+            |f| crate_declares_feature(bd, f),
+        ));
+    }
+    board_features.sort();
+    board_features.dedup();
+
+    // The image's panic policy, when it states one (RFC-0077). `own` (or
+    // unstated) means the board's crate-root provider is the image's handler.
+    let base = sys.image_defaults.clone().unwrap_or_default();
+    let panic = sys
+        .image
+        .get(spec.image_id)
+        .and_then(|i| i.with_base(&base).panic);
+    let carries_root_items = panic.as_deref().is_none_or(|p| p == "own");
+    let mut board = spec.board.clone();
+    if !carries_root_items {
+        board.crate_root_deps.clear();
+        board.crate_root_extra.clear();
+    }
+
+    let lines = crate::builder::entry::image_dependency_lines(
+        &board,
+        spec.nano_ros_root,
+        &dir,
+        &board_features,
+    )
+    .map_err(|e| eyre::eyre!("selection for {}: {e}", spec.leaf.display()))?;
+
+    let feat_list = |f: &[String]| {
+        f.iter()
+            .map(|s| format!("\"{s}\""))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let nros_rel = crate::builder::paths::relative_or_err(&dir, &nros_path)
+        .map_err(|e| eyre::eyre!("selection for {}: {e}", spec.leaf.display()))?;
+    let mut body = format!(
+        "# GENERATED by `nros sync` / `nros build` — do not edit, do not commit.\n\
+         #\n\
+         # The image-only dependencies of `{pkg}` for image `{image}` (board\n\
+         # crate `{board}`, rmw `{declared_rmw}`), from its `system.toml` and the\n\
+         # board descriptor (issue 1305, RFC-0098 D6). `{pkg}` depends on this\n\
+         # package and names no board crate itself, so switching\n\
+         # `[image.{image}] board` is the only edit a board switch needs. Edit\n\
+         # `system.toml`, not this file: the next sync or build rewrites it.\n\n\
+         [package]\n\
+         name = \"{crate_name}\"\n\
+         version = \"0.0.0\"\n\
+         edition = \"2024\"\n\
+         publish = false\n\n\
+         [lib]\n\
+         path = \"src/lib.rs\"\n\n\
+         [dependencies]\n\
+         nros = {{ path = \"{nros_rel}\", default-features = false, features = [{nros_feats}] }}\n",
+        pkg = spec.package,
+        image = spec.image_id,
+        board = spec.board.board_crate.as_deref().unwrap_or("-"),
+        nros_feats = feat_list(&nros_features),
+    );
+    for line in &lines {
+        body.push_str(line);
+        body.push('\n');
+    }
+
+    let mut lib = String::from(
+        "//! GENERATED by `nros sync` / `nros build` (issue 1305). Do not edit.\n\
+         //!\n\
+         //! The image's board crate, re-exported so `nros::main!` reaches it\n\
+         //! through this package, plus the board's crate-root items.\n\
+         #![no_std]\n\n",
+    );
+    if !board.crate_root_extra.trim().is_empty() {
+        lib.push_str(board.crate_root_extra.trim_end());
+        lib.push_str("\n\n");
+    }
+    if let Some(k) = &board.board_crate {
+        lib.push_str(&format!(
+            "#[doc(hidden)]\npub use {};\n",
+            k.replace('-', "_")
+        ));
+    }
+
+    std::fs::create_dir_all(dir.join("src"))
+        .wrap_err_with(|| format!("selection: create {}", dir.display()))?;
+    let changed = write_if_changed(&dir.join("Cargo.toml"), &body)?;
+    let lib_changed = write_if_changed(&dir.join("src/lib.rs"), &lib)?;
+    Ok(Facade {
+        entry: spec.package.to_string(),
+        dir,
+        crate_name,
+        nros_features,
+        board_features,
+        backend_features: Vec::new(),
+        changed: changed || lib_changed,
+    })
+}
+
+/// The features one image's selection names, derived from its `system.toml`.
+struct Derived {
+    /// On the `nros` umbrella: edition, capabilities, RMW markers.
+    nros_features: Vec<String>,
+    /// On the board crate: its non-RMW defaults plus one `rmw-*` per backend.
+    board_features: Vec<String>,
+    /// On a direct `nros-rmw-*` backend dep: edition and backend capabilities.
+    backend_features: Vec<String>,
+}
+
+/// Derive the three feature lists for one image (`entry_name` names it in
+/// diagnostics). Issue 1305 — shared by the workspace facade
+/// ([`write_facade`]) and a single-package leaf's selection package
+/// ([`write_leaf_selection`]), so both select the same features from the same
+/// declaration.
+fn derive(
+    entry_name: &str,
+    sys: &SystemToml,
+    declared_rmw: &str,
+    backends: &[String],
+    nros_path: &Path,
+    board_dir: Option<&Path>,
+) -> Result<Derived> {
+    let edition = sys.system.ros_edition()?;
+    let rmw = crate::orchestration::rmw_resolver::resolve_rmw(declared_rmw)
+        .map_err(|e| eyre::eyre!("facade: {entry_name}: {e}"))?;
+
+    // `nros` carries the edition and the capabilities; the BOARD crate SELECTS
+    // the RMW (phase-248 C5b — its `rmw-X` feature self-links and registers the
+    // backend, and brings the concrete platform impl). Splitting them is not a
+    // style choice: putting `rmw-zenoh` on `nros` selects nothing.
+    //
+    // Issue 1295 — but "selects nothing" is not "is never needed". The `nros`
+    // umbrella declares `rmw-cyclonedds = ["nros-node/needs-type-descriptors"]`,
+    // a MARKER rather than a selector: without it the generic path never
+    // registers a type descriptor, and every generated Rust entry on Cyclone
+    // opened its session and then died at the first node with
+    // `NodeError::Transport(PublisherCreationFailed)`. The board's own
+    // `rmw-cyclonedds` is `dep:nros-rmw-cyclonedds-sys` — the backend — so it
+    // cannot stand in for this.
+    //
+    // Asked of the crate, never listed here, exactly like the board rule below:
+    // an RMW whose umbrella feature exists gets it, one whose does not stays
+    // silent, and a future backend that grows a marker needs no edit here.
+    let mut nros_features = vec![edition.cargo_feature().to_string()];
+    for cap in cargo_nano_ros::capability_resolver::CAPABILITIES {
+        if !sys.capability_enabled(cap.declared) {
+            continue;
+        }
+        // `safety` is zenoh-only — the CRC path lives in that backend. Mirrors
+        // the same guard in `nros_feature_set` (cmake), which warns rather than
+        // silently dropping it.
+        // phase-347 W4 — "does this axis have a backend half at all" is now
+        // `backend_feature.is_some()`; which backends carry it comes from their
+        // descriptors, not a list in the registry.
+        if cap.backend_feature.is_some() && !cap.backend_supports(rmw.declared) {
+            eprintln!(
+                "sync: facade `{entry_name}`: capability `{}` declared but the \
+                 `{}` RMW does not carry it — omitted.",
+                cap.declared, rmw.declared,
+            );
+            continue;
+        }
+        nros_features.push(cap.nros_feature.to_string());
+    }
+    // Issue 1295 — the umbrella MARKER for every backend this image links (a
+    // bridge links two), for the crate that declares one.
+    let mut wanted_markers = vec![rmw.cargo_feature.to_string()];
+    for extra in backends {
+        match crate::orchestration::rmw_resolver::resolve_rmw(extra) {
+            Ok(r) => wanted_markers.push(r.cargo_feature.to_string()),
+            Err(e) => return Err(eyre::eyre!("facade: {entry_name}: {e}")),
+        }
+    }
+    for cf in wanted_markers {
+        if crate_declares_feature(nros_path, &cf) {
+            nros_features.push(cf);
+        }
+    }
+
+    nros_features.sort();
+    nros_features.dedup();
+
+    // Only emit a feature the board crate actually DECLARES.
+    //
+    // W1 assumed "the board crate carries the RMW". That holds for 18 of the 23
+    // board crates and is false for five — `nros-board-zephyr` declares only
+    // `tiers` and `zephyr-edf`, because on Zephyr the RMW rides on the entry's
+    // own `[features] rmw-zenoh` plus a direct `nros-rmw-zenoh` dep instead.
+    // Emitting it unconditionally is not a silent mistake, it is a hard cargo
+    // error that killed the whole zephyr fixture lane:
+    //
+    //     package `zephyr_entry_nros_selection` depends on `nros-board-zephyr`
+    //     with feature `rmw-zenoh` but `nros-board-zephyr` does not have that
+    //     feature. available features: tiers, zephyr-edf
+    //
+    // When the board has no such feature the facade stays silent about the RMW
+    // for that dep — the entry's own selector is then the only one, which is
+    // correct rather than a fallback.
+    //
+    // Issue 0831 — and the reason the dep is rendered `default-features = false`
+    // below. Naming `rmw-cyclonedds` while the board's `default = ["rmw-zenoh"]`
+    // still applies gets BOTH: cargo unions features, it cannot subtract a
+    // default (issue 0270). The image then carries two backends and the runtime
+    // refuses to pick — `more than one RMW backend is registered and no
+    // $NROS_RMW selector was set` — which is honest but is not a working image.
+    //
+    // So the defaults are carved out and re-supplied MINUS any `rmw-*`: the
+    // board keeps its `ethernet` / `image-runtime`, and the RMW is named once,
+    // by the facade.
+    let board_features: Vec<String> = match board_dir {
+        Some(path) => {
+            let mut f: Vec<String> = crate_default_features(path)
+                .into_iter()
+                .filter(|d| !d.starts_with("rmw-"))
+                .collect();
+            // One `rmw-*` per backend this image must LINK, not only its
+            // default — see `image_backends`. A bridge needs two; every other
+            // image resolves to exactly the one it already had.
+            let mut wanted = vec![rmw.cargo_feature.to_string()];
+            for extra in backends {
+                match crate::orchestration::rmw_resolver::resolve_rmw(extra) {
+                    Ok(r) => wanted.push(r.cargo_feature.to_string()),
+                    // A domain naming an unknown RMW is the SYSTEM's error and
+                    // is reported where the system is resolved; silently
+                    // dropping it here would emit a facade missing a backend
+                    // and fail at link with no mention of the declaration.
+                    Err(e) => {
+                        return Err(eyre::eyre!("facade: {entry_name}: {e}"));
+                    }
+                }
+            }
+            for cf in wanted {
+                if crate_declares_feature(path, &cf) {
+                    f.push(cf);
+                }
+            }
+            f.sort();
+            f.dedup();
+            f
+        }
+        None => Vec::new(),
+    };
+
+    // A direct backend dep gets the edition (and any capability the backend
+    // itself implements, e.g. safety-e2e's CRC path), NOT the `rmw-*` selector
+    // — naming the backend crate already selects it.
+    let mut backend_features = vec![edition.cargo_feature().to_string()];
+    for cap in cargo_nano_ros::capability_resolver::CAPABILITIES {
+        if !sys.capability_enabled(cap.declared) || !cap.backend_supports(rmw.declared) {
+            continue;
+        }
+        if let Some(bf) = cap.backend_feature {
+            backend_features.push(bf.to_string());
+        }
+    }
+    backend_features.sort();
+    backend_features.dedup();
+
+    Ok(Derived {
+        nros_features,
+        board_features,
+        backend_features,
+    })
 }
 
 /// The crate's own `[features] default` list.

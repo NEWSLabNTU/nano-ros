@@ -79,6 +79,32 @@ pub fn entry_package_name(image_id: &str) -> String {
     format!("{}_entry", image_id.replace(['-', '.', '/'], "_"))
 }
 
+/// The generated selection package a package `pkg` depends on —
+/// `qemu-bsp-talker` → `qemu_bsp_talker_nros_selection`.
+///
+/// Issue 1305 / RFC-0098 D6 (amendment 2026-10-11). A workspace entry has had
+/// one since phase-315 (`<entry>_nros_selection`); a single-package leaf gets
+/// the same crate, so a board switch touches no `Cargo.toml`. The name is the
+/// crate IDENT form (hyphens folded), so the manifest key, the package name and
+/// the path `nros::main!` emits are one spelling. Lives here for the same
+/// reason as [`entry_package_name`]: the macro must compute it by the SAME
+/// rule the CLI writes it by.
+#[must_use]
+pub fn selection_crate_name(pkg: &str) -> String {
+    format!("{}_nros_selection", pkg.replace('-', "_"))
+}
+
+/// Where a single-package leaf's generated selection package lives, relative
+/// to the leaf: `build/nros/selection` (RFC-0103 D7 puts generated artifacts
+/// under `<build>/nros/`).
+///
+/// ONE directory per leaf, independent of the image and its board, because
+/// the leaf manifest names it as a path dependency and that line must survive
+/// a board switch. A leaf with several images gets the selection of the image
+/// being synced or built: each `nros sync` / `nros build` rewrites it for its
+/// image (write-if-changed, so a rebuild of the same image touches nothing).
+pub const LEAF_SELECTION_DIR: &str = "build/nros/selection";
+
 /// The link kinds `[image.<id>] transport` may name — the same three
 /// `nros_platform_config::platform_config::TRANSPORT_KINDS` defines
 /// (RFC-0086 D2).
@@ -779,6 +805,20 @@ fn refuse_retired_manifest_keys(dir: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 1305 — the manifest key, the package name and the path the macro
+    /// emits are one spelling: the crate ident form.
+    #[test]
+    fn the_selection_crate_name_is_the_ident_form_of_the_package() {
+        assert_eq!(
+            selection_crate_name("qemu-bsp-talker"),
+            "qemu_bsp_talker_nros_selection"
+        );
+        assert_eq!(
+            selection_crate_name("native_entry"),
+            "native_entry_nros_selection"
+        );
+    }
 
     fn leaf(files: &[(&str, &str)]) -> tempdir::Dir {
         let d = tempdir::Dir::new();
