@@ -240,7 +240,7 @@ pub struct MessageNrosTemplate<'a> {
     /// RFC-0033 `borrowed` mode (Phase 229.6): true if any field resolves to
     /// `mode = "view"`, which additionally emits a `{Msg}View<'a>` zero-copy
     /// view + a `{Msg}Borrow` marker alongside the owned `{Msg}`.
-    pub has_borrowed: bool,
+    pub has_view: bool,
     /// When true, uses nros_core:: prefixed imports instead of direct use statements
     pub inline_mode: bool,
     /// Pre-rendered `::nros_serdes::NestedType` / `FieldType` helper `pub const`
@@ -497,7 +497,7 @@ pub struct MessageCHeaderTemplate<'a> {
     /// RFC-0033 borrowed (Phase 235): any field is `mode = "view"`, so the
     /// `{Msg}_View` + `{Msg}_deserialize_view` + `<nros/view.h>` include
     /// are emitted.
-    pub has_borrowed: bool,
+    pub has_view: bool,
     /// issue 0896 — the largest payload this image can TRANSMIT for the type.
     ///
     /// XCDR1, because that is the only encoding this stack writes AND what ROS
@@ -543,8 +543,8 @@ pub struct MessageCSourceTemplate<'a> {
     pub struct_name: String,
     pub fields: Vec<CField>,
     pub has_fields: bool,
-    /// See [`MessageCHeaderTemplate::has_borrowed`].
-    pub has_borrowed: bool,
+    /// See [`MessageCHeaderTemplate::has_view`].
+    pub has_view: bool,
 }
 
 #[derive(serde::Serialize)]
@@ -767,7 +767,7 @@ pub struct MessageCppHeaderTemplate<'a> {
     pub serialized_size_max: usize,
     /// RFC-0033 borrowed (Phase 235): emit `{Msg}View` + `deserialize_view`
     /// + `<nros/span.hpp>` when any field is `mode = "view"`.
-    pub has_borrowed: bool,
+    pub has_view: bool,
     /// FFI symbol for the borrowed deserializer (`{Msg}_ffi_deserialize_view`).
     pub ffi_deserialize_view_fn: String,
     /// phase-408 W1 — the DERIVED transmit bound, XCDR1. Same field, same
@@ -821,7 +821,7 @@ pub struct MessageCppTypesTemplate<'a> {
     pub has_heap_string: bool,
     /// RFC-0033 borrowed (Phase 235): emit `nros_cpp_borrow_t`, `{Msg}ViewRepr`
     /// and the plain borrowed deserializer.
-    pub has_borrowed: bool,
+    pub has_view: bool,
     /// `{Msg}ViewRepr` — the repr(C) struct the borrowed FFI fills.
     pub view_repr_struct_name: String,
     /// Internal borrowed deserialize fn name.
@@ -850,7 +850,7 @@ pub struct MessageCppExportsTemplate<'a> {
     pub has_heap: bool,
     /// RFC-0033 borrowed (Phase 235): emit the `{Msg}_ffi_deserialize_view`
     /// export.
-    pub has_borrowed: bool,
+    pub has_view: bool,
     /// `{Msg}ViewRepr` — the repr(C) struct the borrowed FFI fills.
     pub view_repr_struct_name: String,
     /// Internal borrowed deserialize fn name.

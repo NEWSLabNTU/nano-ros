@@ -12,7 +12,7 @@
 #include <stddef.h>
 
 #include <nros/types.h>
-{%- if has_borrowed %}
+{%- if has_view %}
 #include <nros/view.h>
 {%- endif %}
 
@@ -40,7 +40,7 @@ typedef struct {{ struct_name }} {
     uint8_t _dummy; // Empty struct placeholder
 {%- endif %}
 } {{ struct_name }};
-{%- if has_borrowed %}
+{%- if has_view %}
 
 /// Borrowed (zero-copy) view of {{ message_name }} — RFC-0033 `view` mode.
 /// `mode = "view"` fields point directly into the CDR receive buffer (set
@@ -98,7 +98,7 @@ int32_t {{ struct_name }}_serialize(const {{ struct_name }}* msg, uint8_t* buffe
 /// 4-byte CDR encapsulation header followed by the fields).
 /// Returns 0 on success, -1 on error
 int32_t {{ struct_name }}_deserialize({{ struct_name }}* msg, const uint8_t* buffer, size_t buffer_size);
-{%- if has_borrowed %}
+{%- if has_view %}
 
 /// Deserialize a {{ message_name }} into a borrowed view (RFC-0033 `view`):
 /// `mode = "view"` fields are set to point into `buffer` (zero-copy, no

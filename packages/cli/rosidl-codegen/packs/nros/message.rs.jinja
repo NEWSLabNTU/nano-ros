@@ -148,7 +148,7 @@ impl RosMessage for {{ message_name }} {
     const STAMP_OFFSET: Option<usize> = Some({{ stamp_offset }});
 {%- endif %}
 }
-{%- if has_borrowed %}
+{%- if has_view %}
 
 // ── RFC-0033 `view` storage mode (Phase 229.6, issue 0007) ──────────────
 // Zero-copy view: fields marked `mode = "view"` slice directly into the

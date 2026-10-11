@@ -15,7 +15,7 @@
 #include "nros/heap_string.hpp"
 #include "nros/size_bound.hpp"
 #include "nros/serialization_format.hpp"
-{%- if has_borrowed %}
+{%- if has_view %}
 #include "nros/span.hpp"
 {%- endif %}
 
@@ -33,7 +33,7 @@ extern "C" {
 int {{ ffi_publish_fn }}(void* handle, const void* msg);
 int {{ ffi_serialize_fn }}(const void* msg, uint8_t* buf, size_t buf_len, size_t* out_len);
 int {{ ffi_deserialize_fn }}(const uint8_t* data, size_t len, void* out);
-{%- if has_borrowed %}
+{%- if has_view %}
 int {{ ffi_deserialize_view_fn }}(const uint8_t* data, size_t len, void* out);
 {%- endif %}
 } // extern "C"
@@ -153,7 +153,7 @@ struct {{ message_name }} {
     }
 };
 
-{%- if has_borrowed %}
+{%- if has_view %}
 
 /// Borrowed (zero-copy) view of {{ message_name }} — RFC-0033 `view` mode.
 /// `mode = "view"` fields are `rclcpp::Span`/`StringView`/`LeSpan` pointing
