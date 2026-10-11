@@ -1397,7 +1397,7 @@ def main():
     # four days:
     #
     #  * It is EVENT-LEVEL. The tier rules ask "does the job run the producer",
-    #    and gate.yml's `check` job does — on `pull_request`/`merge_group`. On
+    #    and gate.yml's old `check` job did — on `pull_request`/`merge_group`. On
     #    `schedule` that step is skipped while two steps needing it still run,
     #    so a presence test answers yes and the lane dies anyway.
     #  * It is not restricted to `GATING_EVENTS`. That restriction is a stated
@@ -1426,6 +1426,11 @@ def main():
                     )
 
     for wf, job, recipes, producers in workflow_jobs():
+        # phase-489 W1 — this exemption is per JOB, and it used to cover the
+        # whole required gate: the single `check` job ran `generate-bindings`
+        # on the nightly, so every merge-gating lane in it went unexamined.
+        # Split into `check-*` siblings, only `check-build` builds artifacts;
+        # the rest are now each held to "resolves only what THIS job builds".
         if producers:
             continue  # the job builds artifacts; it may resolve them
         for recipe, events in sorted(lane_invocations(recipes, recipes_map)):

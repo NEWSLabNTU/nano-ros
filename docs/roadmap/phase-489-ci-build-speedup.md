@@ -1,6 +1,8 @@
 # Phase 489 — CI build speed-up: the required gate first, then the build-bound lanes
 
-**Status (2026-10-11). Opened.** Nothing landed yet. The numbers below were
+**Status (2026-10-12). W1 + W3 landed, acceptance pending.** W1 and W3
+shipped together; their measured acceptance waits for post-merge runs (see
+each item). W2, W4–W7 not started. The numbers below were
 measured from the GitHub Actions API over 2026-10-09 to 2026-10-10. They are
 the baseline every work item is judged against. Implements no new RFC
 decision. It continues the cost work of
@@ -99,6 +101,19 @@ W3 makes cheap.
 batches, with the same gates run. `check-lane-contracts` and
 `check-default-gates-run-somewhere` must still prove every gate runs.
 
+**Landed (2026-10-12).** `check` is now seven siblings — `check-fast`,
+`check-compile-smoke` (PR), `check-cli-tests`, `check-workspace-all`,
+`check-test-unit` and `check-lane-contracts` (merge group + nightly), and
+`check-build` (the nightly-only tier, which needed a home too). Each runs the
+gate steps it ran before under the same step `if:`, after the same setup, on
+the same hosted runner. `CI` `needs:` all of them and excuses a skip only on an
+event the sibling's own `if:` excludes. `check-default-gates-run-somewhere`
+gained R3 (every gate job is in `CI`'s `needs:`, inspected, with an excuse list
+equal to its `if:`), and `check-lane-contracts` now examines 32 merge-gating
+lane invocations where it examined 3 — the single job's nightly
+`generate-bindings` had exempted all of it. The 25-min median waits for 20
+post-merge batches.
+
 ### W2 — run the gate's heavy siblings on the self-hosted runners
 
 Three self-hosted runners are idle most of the time, and they keep warm
@@ -128,6 +143,19 @@ own comment names.
 
 **Acceptance:** restore under 30 s, and the phase-429 W5 freshness assert
 still refuses a stale binary.
+
+**Landed (2026-10-12).** The `check-*` siblings restore four files —
+`nros`, `nros-launch-resolve`, its content stamp and its Python half (41 MB,
+12.6 MB zstd) — under `nros-cli-bin-<os>-<sha256>` from
+`scripts/ci/cli-bin-cache-key.sh`: the git index entries of `packages/cli`
+plus every `cli-source-dirs.txt` dir (gitlinks, so the `play_launch` pin, are
+in it) plus `rust-toolchain.toml`, a superset of the stamp. Main's old entry
+was 2967 MB. A restored `nros` is used only if its own `source-stamp` accepts
+the tree; otherwise the step builds and asserts again. Measured locally: a
+restored binary skips the build and `setup-launch-resolve` skips; a `.rs` or
+`.jinja` edit makes `source-stamp` exit 1 and moves the key. `check-cli-tests`
+alone still restores the full target tree for its test targets. The 30-s
+restore figure waits for post-merge runs.
 
 ### W4 — stop regenerating message bindings from cold (19–22 min)
 
