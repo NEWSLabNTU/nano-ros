@@ -35,9 +35,10 @@ crate-type = ["rlib"]
 # brings `nros-platform/platform-freertos`. The sibling node pkg + this Entry's
 # `nros` dep name neither `rmw-*` nor `platform-*`.
 nros-board-mps2-an385-freertos = { version = "*", features = ["rmw-zenoh"] }
-# phase-338 W2 — carried from the collapsed `-entry` package. The board
-# brings the FreeRTOS port; without this the image boots but the app never
-# reaches "Application setup complete".
+# phase-338 W2 — carried from the collapsed `-entry` package. Redundant: the
+# board crate already enables `nros-platform/platform-freertos`, and a leaf
+# without this line reaches "Application setup complete" and delivers
+# (measured 2026-10-12, issue 1305).
 nros-platform = { version = "*", default-features = false, features = ["platform-freertos"] }
 nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
 std_msgs = { path = "generated/std_msgs", default-features = false }
