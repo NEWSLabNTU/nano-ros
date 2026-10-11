@@ -784,6 +784,25 @@ config NROS_ZENOH_SERIAL_TCM
       S32K344 with the ISR in flash each call cost 7-10 us. Off by default:
       it needs both TCMs, room in them, and CODE_DATA_RELOCATION.
 
+config NROS_ZENOH_SERIAL_FIFO_WATERMARK
+    bool "Serial link: NXP LPUART FIFO watermarks, one interrupt per FIFO"
+    depends on NROS_ZENOH_LINK_SERIAL && UART_INTERRUPT_DRIVEN
+    depends on UART_MCUX_LPUART && DT_HAS_NXP_LPUART_ENABLED
+    help
+      nano-ros phase-474 I14. On the interrupt-driven path, when the link's
+      UART is an NXP LPUART: set the RX watermark to 2 (RDRF at 3 bytes)
+      with the idle-empty request (FIFO.RXIDEN = 1 character), and have the
+      serial ISR drain WATER.RXCOUNT bytes and fill the TX FIFO to its depth
+      by register, since the mcux driver's fifo_read/fifo_fill work a byte
+      at a time against RDRF/TDRE. About 3x fewer RX and 4x fewer TX
+      interrupts at 921600 baud. The cost is overrun margin: about two
+      characters (22 us at 921600) instead of four, so it is off by default
+      and `_z_zephyr_serial_stats.overruns` (counted in the ISR on this
+      path) is the check. A board with DMA on the link's UART should prefer
+      NROS_ZENOH_SERIAL_UART_ASYNC. The UART is found by its devicetree
+      node (any okay nxp,lpuart); another UART keeps the generic ISR.
+      Maps to _Z_ZEPHYR_SERIAL_FIFO_WATERMARK.
+
 config NROS_ZENOH_SERIAL_ISR_STATS
     bool "Serial link: count the serial ISR's cycles and calls"
     depends on NROS_ZENOH_LINK_SERIAL && UART_INTERRUPT_DRIVEN
