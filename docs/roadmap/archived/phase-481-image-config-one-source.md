@@ -707,7 +707,7 @@ Zephyr-only, locally (the box2 checkout, ros2 distrobox): a full
   a bare nextest counts them as failures; none was a runtime failure. The
   seven native-to-Zephyr interop tests needed native peers first, and
   building those found a separate defect on main, filed as
-  [issue 1815](../../issues/1815-log-arena-probe-refused-at-sync.md):
+  [issue 1815](../../issues/archived/1815-log-arena-probe-refused-at-sync.md):
   `log-arena-probe` names no board crate, and #1305's sync check refuses it.
 - **Wider than tier 2, for #1949:** every `build-rust-*` Zephyr fixture rebuilt
   and all Zephyr Rust tests run, 17/18. The one red is an unmet precondition
