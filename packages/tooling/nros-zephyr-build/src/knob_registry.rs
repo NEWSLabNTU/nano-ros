@@ -694,3 +694,11 @@ pub const KCONFIG_PAIRS: &[(&str, &str)] = &[
     ("ZPICO_TX_BATCH_FLUSH_MS", "CONFIG_NROS_ZENOH_TX_BATCH_FLUSH_MS"),
     ("ZPICO_TX_SPLIT_LOCK", "CONFIG_NROS_ZENOH_TX_SPLIT_LOCK"),
 ];
+
+/// What a build prints when a knob arrives under a legacy spelling.
+/// Substitute `{legacy}` and `{env}`; the cmake twin prints the same text.
+pub const DEPRECATION_TEMPLATE: &str = "{legacy} is a deprecated spelling of {env} (RFC-0103 D2b); set {env} instead -- {legacy} is read until phase-484 W8 and then refused";
+
+/// The refusal when two spellings of one knob hold different values.
+/// Substitute `{first}`, `{first_value}`, `{other}`, `{other_value}`, `{env}`.
+pub const CONFLICT_TEMPLATE: &str = "{first}={first_value} and {other}={other_value} name ONE knob with two values; {other} is a deprecated spelling of {env} (RFC-0103 D2b) -- set only {env}";

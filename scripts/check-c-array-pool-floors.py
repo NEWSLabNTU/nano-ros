@@ -191,6 +191,24 @@ _UORB_POOLS = (
     "NROS_RMW_UORB_PX4_MAX_CALLBACKS",
     "NROS_RMW_UORB_REGISTRY_CAPACITY",
 )
+# phase-484 W5a — a knob above is the C MACRO an array is sized by; a producer
+# writing an ENV row writes the knob's canonical env spelling from the registry
+# (`NROS_ZENOH_MAX_PUBLISHERS` for `ZPICO_MAX_PUBLISHERS`). `{env}` in a
+# producer pattern is that spelling, read from `knobs.toml` rather than
+# restated, and a macro the registry does not hold is its own env name.
+def _env_spellings() -> dict[str, str]:
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # the repo's interpreter is 3.10
+        import tomli as tomllib
+    reg = REPO / "packages/tooling/nros-zephyr-build/knobs.toml"
+    with open(reg, "rb") as fh:
+        rows = tomllib.load(fh).get("knob", [])
+    return {legacy: "NROS_" + r["id"] for r in rows for legacy in r.get("legacy", [])}
+
+
+ENV_OF = _env_spellings()
+
 FLOOR_PRODUCERS = [
     (
         "zephyr/cmake/nros_cargo_build.cmake",
@@ -201,7 +219,7 @@ FLOOR_PRODUCERS = [
     ),
     (
         "packages/cli/nros-cli-core/src/leaf_entity_env.rs",
-        r'\("{knob}",\s*floor\(',
+        r'\("{env}",\s*floor\(',
         # The producer's written ABSTENTION from stating this knob as a count.
         # Two spellings: `NOT_DERIVED_*` (the knob is withheld) and
         # `*_DERIVED_BY_CONSUMER` (phase-445 W1 — the producer carries the
@@ -403,9 +421,10 @@ def check_producers(texts: dict[str, str]) -> list[str]:
                 "renamed or deleted one is a failure rather than a silent pass."
             )
         for knob in knobs:
-            if abstain and re.search(abstain.format(knob=knob), text):
+            env = ENV_OF.get(knob, knob)
+            if abstain and re.search(abstain.format(knob=knob, env=env), text):
                 continue
-            if not re.search(pattern.format(knob=knob), text):
+            if not re.search(pattern.format(knob=knob, env=env), text):
                 problems.append(
                     f"{path}: {what} produces {knob} without the C-array floor.\n"
                     f"    That knob's array carries `#if {knob} < 1 / #error`, so an\n"
@@ -597,8 +616,8 @@ _nros_c_array_pool_floor(_d "${X}" ZPICO_MAX_LIVELINESS)
 GOOD_RUST = """
 const QUERYABLES_DERIVED_BY_CONSUMER: &str = "ZPICO_MAX_QUERYABLES";
 const LIVELINESS_DERIVED_BY_CONSUMER: &str = "ZPICO_MAX_LIVELINESS";
-        ("ZPICO_MAX_PUBLISHERS", floor(knobs.max_publishers)),
-        ("ZPICO_MAX_SUBSCRIBERS", floor(knobs.max_subscribers)),
+        ("NROS_ZENOH_MAX_PUBLISHERS", floor(knobs.max_publishers)),
+        ("NROS_ZENOH_MAX_SUBSCRIBERS", floor(knobs.max_subscribers)),
 """
 
 # phase-454 W6.d — the third producer, and the one that made the knob set
@@ -724,8 +743,8 @@ def selftest() -> int:
     )
     # The sidecar emitting a raw value.
     raw = GOOD_RUST.replace(
-        '("ZPICO_MAX_SUBSCRIBERS", floor(knobs.max_subscribers))',
-        '("ZPICO_MAX_SUBSCRIBERS", knobs.max_subscribers)',
+        '("NROS_ZENOH_MAX_SUBSCRIBERS", floor(knobs.max_subscribers))',
+        '("NROS_ZENOH_MAX_SUBSCRIBERS", knobs.max_subscribers)',
     )
     assert any(
         "ZPICO_MAX_SUBSCRIBERS" in p for p in check_producers(producer_texts(rust=raw))

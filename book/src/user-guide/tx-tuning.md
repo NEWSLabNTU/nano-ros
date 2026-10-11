@@ -28,7 +28,7 @@ With batching on, **non-express topics pay up to `flush_ms` of publish
 latency** — declare low-rate latency-critical publishers `tx_express`
 (below) to bypass the batch. Timer-paced low-rate systems that want the
 old behavior image-wide: set `CONFIG_NROS_ZENOH_TX_BATCH=n` (Zephyr) /
-`ZPICO_TX_BATCH=0` (cargo/cmake lanes).
+`NROS_ZENOH_TX_BATCH=0` (cargo/cmake lanes).
 
 ## The decision tree
 
@@ -37,9 +37,9 @@ Is total publish rate comfortably under ~1 msg per socket window?
 ├── yes → no tuning needed (the defaults are fine)
 └── no
     ├── Lots of small/medium messages, latency budget ≥ one flush period?
-    │   └── TX batching: CONFIG_NROS_ZENOH_TX_BATCH=y  (or ZPICO_TX_BATCH=1)
+    │   └── TX batching: CONFIG_NROS_ZENOH_TX_BATCH=y  (or NROS_ZENOH_TX_BATCH=1)
     │       └── still tx-bound under a tight-loop / bursty publisher?
-    │           └── add CONFIG_NROS_ZENOH_TX_SPLIT_LOCK=y (ZPICO_TX_SPLIT_LOCK=1)
+    │           └── add CONFIG_NROS_ZENOH_TX_SPLIT_LOCK=y (NROS_ZENOH_TX_SPLIT_LOCK=1)
     ├── A specific topic needs per-sample latency < the flush period?
     │   └── declare THAT publisher express (tx_express QoS) — it bypasses
     │       the batch; keep the rest batched
@@ -82,9 +82,9 @@ latency-sensitive** topics (control setpoints, e-stop), never for streams.
 | knob | Zephyr (Kconfig) | cargo lanes (env at build) | C/C++ cmake lanes | default |
 | --- | --- | --- | --- | --- |
 | socket recv window | `CONFIG_NROS_ZENOH_SOCKET_TIMEOUT_MS` | — (posix doesn't serialize per-fd) | — | 100 ms |
-| tx batching | `CONFIG_NROS_ZENOH_TX_BATCH=y` | `ZPICO_TX_BATCH=1` | `-DZPICO_TX_BATCH=1` via `NROS_CMAKE_EXTRA_DEFS` | off |
-| flush cadence | `CONFIG_NROS_ZENOH_TX_BATCH_FLUSH_MS` | `ZPICO_TX_BATCH_FLUSH_MS` | `-DZPICO_TX_BATCH_FLUSH_MS=<ms>` | 50 ms |
-| split tx locking | `CONFIG_NROS_ZENOH_TX_SPLIT_LOCK=y` | `ZPICO_TX_SPLIT_LOCK=1` | `-DZ_FEATURE_TX_SPLIT_LOCK=1` (shared config) | off |
+| tx batching | `CONFIG_NROS_ZENOH_TX_BATCH=y` | `NROS_ZENOH_TX_BATCH=1` | `-DZPICO_TX_BATCH=1` via `NROS_CMAKE_EXTRA_DEFS` | off |
+| flush cadence | `CONFIG_NROS_ZENOH_TX_BATCH_FLUSH_MS` | `NROS_ZENOH_TX_BATCH_FLUSH_MS` | `-DZPICO_TX_BATCH_FLUSH_MS=<ms>` | 50 ms |
+| split tx locking | `CONFIG_NROS_ZENOH_TX_SPLIT_LOCK=y` | `NROS_ZENOH_TX_SPLIT_LOCK=1` | `-DZ_FEATURE_TX_SPLIT_LOCK=1` (shared config) | off |
 | per-publisher express | `tx_express` in the QoS profile (all languages, below) | same | same | off |
 
 On Zephyr the Kconfig column names the symbol the build ends up with; you
@@ -163,8 +163,8 @@ auto pub = node.create_publisher<Twist>("/cmd_vel", rclcpp::QoS().tx_express(tru
 
 - **Benchmark listeners need a deep rx ring.** A batched publisher delivers a
   whole wire batch as one callback burst; the per-subscriber SPSC ring depth
-  is compile-time (`ZPICO_SUBSCRIBER_RING_DEPTH`, default 4, drop-newest) —
-  build measurement sinks with e.g. `ZPICO_SUBSCRIBER_RING_DEPTH=1024` or the
+  is compile-time (`NROS_ZENOH_SUBSCRIBER_RING_DEPTH`, default 4, drop-newest) —
+  build measurement sinks with e.g. `NROS_ZENOH_SUBSCRIBER_RING_DEPTH=1024` or the
   numbers undercount by >10×.
 - **Express ≠ fast on Zephyr.** Express bypasses the batch, so each sample
   pays the socket-window wait itself. Reserve it for topics whose *rate* is

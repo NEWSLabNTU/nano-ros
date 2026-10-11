@@ -116,7 +116,7 @@ pub struct KnobRow {
 // Generated, so rustfmt leaves it as the generator wrote it and `--check` stays exact.
 #[rustfmt::skip]
 mod knob_registry;
-pub use knob_registry::{KCONFIG_PAIRS, KNOBS};
+pub use knob_registry::{CONFLICT_TEMPLATE, DEPRECATION_TEMPLATE, KCONFIG_PAIRS, KNOBS};
 
 /// The registry row a spelling names, canonical or legacy.
 #[must_use]
@@ -190,9 +190,13 @@ pub fn read_spelled_from(
         match &found {
             None => found = Some((s.to_string(), v)),
             Some((first, fv)) if fv.trim() != v.trim() => panic!(
-                "nros-zephyr-build: {first}={fv} and {s}={v} name ONE knob with \
-                 two values. {s} is a deprecated spelling (phase-484 W5a); set \
-                 only {first}."
+                "nros-zephyr-build: {}",
+                CONFLICT_TEMPLATE
+                    .replace("{first_value}", fv)
+                    .replace("{other_value}", &v)
+                    .replace("{first}", first)
+                    .replace("{other}", s)
+                    .replace("{env}", spellings(name)[0])
             ),
             Some(_) => {}
         }

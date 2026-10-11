@@ -49,17 +49,17 @@ RESOLVER_CMAKE = os.path.join(ROOT, "zephyr", "cmake", "nros_cargo_build.cmake")
 # it must reach. Extend this when a knob gains a C consumer -- the pairing is
 # the thing under test, so it is stated rather than discovered.
 C_DEFINE_KNOBS = {
-    "ZPICO_MAX_PUBLISHERS": "ZPICO_MAX_PUBLISHERS",
-    "ZPICO_MAX_SUBSCRIBERS": "ZPICO_MAX_SUBSCRIBERS",
-    "ZPICO_MAX_QUERYABLES": "ZPICO_MAX_QUERYABLES",
-    "ZPICO_MAX_LIVELINESS": "ZPICO_MAX_LIVELINESS",
+    "NROS_ZENOH_MAX_PUBLISHERS": "ZPICO_MAX_PUBLISHERS",
+    "NROS_ZENOH_MAX_SUBSCRIBERS": "ZPICO_MAX_SUBSCRIBERS",
+    "NROS_ZENOH_MAX_QUERYABLES": "ZPICO_MAX_QUERYABLES",
+    "NROS_ZENOH_MAX_LIVELINESS": "ZPICO_MAX_LIVELINESS",
     # Issue 1549 -- not a size: a FEATURE flag that gates struct fields, so a
     # second spelling of it in build.ninja is the issue-0135 ABI break, and
     # "one knob, two values" below is exactly the check it needs.
     "NROS_RMW_LOCAL_QUERYABLE": "Z_FEATURE_LOCAL_QUERYABLE",
     # D9 (safety-island demo) -- a BOOL whose C fallback is 1, so an undelivered
     # 0 does not fail to compile: it silently keeps the graph cache.
-    "ZPICO_GRAPH_DISCOVERY": "ZPICO_GRAPH_DISCOVERY",
+    "NROS_ZENOH_GRAPH_DISCOVERY": "ZPICO_GRAPH_DISCOVERY",
 }
 
 # Knobs that are DERIVED and must not silently lose their derivation on the way
@@ -123,7 +123,7 @@ DERIVED_PAIRS = {
     # above) is floored from this resolved value.
     "NROS_DERIVED_MAX_LIVELINESS": ("NROS_RESOLVED_NROS_MAX_LIVELINESS",),
     # This pair is why the gate exists in the form it does. It used to land in
-    # NROS_RESOLVED_ZPICO_SUBSCRIBER_BUFFER_SIZE, which no pairing here names,
+    # NROS_RESOLVED_NROS_ZENOH_SUBSCRIBER_BUFFER_SIZE, which no pairing here names,
     # so a derived 880 delivered as 1496 for four consecutive island builds and
     # nothing said so -- over-sized, therefore silent.
     "NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE": ("NROS_RESOLVED_NROS_SUBSCRIBER_BUFFER_SIZE",),
@@ -157,8 +157,8 @@ DERIVED_PAIRS = {
     # commonly ZERO, and a zero that fails to arrive is 131,072 bytes of
     # `LARGE_PAYLOADS` in an image that subscribes to nothing (issue 1125,
     # measured).
-    "NROS_DERIVED_MAX_LARGE_SUBSCRIBERS": ("NROS_RESOLVED_ZPICO_MAX_LARGE_SUBSCRIBERS",),
-    "NROS_DERIVED_SUBSCRIBER_LARGE_SIZE": ("NROS_RESOLVED_ZPICO_SUBSCRIBER_LARGE_SIZE",),
+    "NROS_DERIVED_MAX_LARGE_SUBSCRIBERS": ("NROS_RESOLVED_NROS_ZENOH_MAX_LARGE_SUBSCRIBERS",),
+    "NROS_DERIVED_SUBSCRIBER_LARGE_SIZE": ("NROS_RESOLVED_NROS_ZENOH_SUBSCRIBER_LARGE_SIZE",),
     # phase-446 W4 -- the parameter store, from the contract's `params:`. The
     # three capacities are commonly derived as ZERO, and a zero that fails to
     # arrive is the 8.9 KiB-per-slot store the phase exists to remove.
@@ -173,7 +173,7 @@ DERIVED_PAIRS = {
     # `NROS_DECLARED_TL_PUBLISHERS` carrier name; issue 1649 retired that
     # forward -- the west entry names its sizing descriptor, whose durability
     # rows `nros-rmw-zenoh` reads first, and the drop was zero-diff.
-    "NROS_DERIVED_TL_RETAIN_BYTES": ("NROS_RESOLVED_ZPICO_TL_RETAIN_BYTES",),
+    "NROS_DERIVED_TL_RETAIN_BYTES": ("NROS_RESOLVED_NROS_ZENOH_TL_RETAIN_BYTES",),
     # Issue 1549 -- zenoh-pico's same-session query path, a 0/1 derived from
     # whether the image holds a service client AND a service server. Dropped,
     # it falls to zenoh-pico's 0, and a client and a server in one image never
@@ -438,7 +438,7 @@ def self_test(quiet=False):
             fh.write(ninja)
 
     CLEAN_CACHE = ("NROS_RESOLVED_NROS_MAX_SUBSCRIBERS:INTERNAL=10\n"
-                   "NROS_RESOLVED_ZPICO_MAX_SUBSCRIBERS:INTERNAL=10\n")
+                   "NROS_RESOLVED_NROS_ZENOH_MAX_SUBSCRIBERS:INTERNAL=10\n")
     CLEAN_FRAG = "set(NROS_DERIVED_MAX_SUBSCRIBERS 10)\n"
     CLEAN_NINJA = "cc -DZPICO_MAX_SUBSCRIBERS=10 -c x.c\n"
 
@@ -455,7 +455,7 @@ def self_test(quiet=False):
     cases = [
         ((CLEAN_CACHE, CLEAN_FRAG, CLEAN_NINJA), 0, "a delivered value agrees end to end"),
         # failure 4: derived, but the loader whitelist dropped it
-        (("NROS_RESOLVED_ZPICO_MAX_SUBSCRIBERS:INTERNAL=8\n",
+        (("NROS_RESOLVED_NROS_ZENOH_MAX_SUBSCRIBERS:INTERNAL=8\n",
           CLEAN_FRAG, "cc -DZPICO_MAX_SUBSCRIBERS=8 -c x.c\n"), 1,
          "derived but never reached the resolver"),
         # failure 3: unresolved knob reaches the compiler empty
@@ -470,7 +470,7 @@ def self_test(quiet=False):
          "one knob, two values"),
         # the derivation carried through wrongly
         (("NROS_RESOLVED_NROS_MAX_SUBSCRIBERS:INTERNAL=4\n"
-          "NROS_RESOLVED_ZPICO_MAX_SUBSCRIBERS:INTERNAL=4\n",
+          "NROS_RESOLVED_NROS_ZENOH_MAX_SUBSCRIBERS:INTERNAL=4\n",
           CLEAN_FRAG, "cc -DZPICO_MAX_SUBSCRIBERS=4 -c x.c\n"), 1,
          "resolver did not carry the derived value"),
         # phase-412 #7, THE 1:many case: the fact arrives at one of its two
@@ -499,7 +499,7 @@ def self_test(quiet=False):
         # ...and overridden from the environment: rung 1 beats rung 3, the
         # triage lever, not a dropped derivation.
         (("NROS_RESOLVED_NROS_MAX_SUBSCRIBERS:INTERNAL=10\n"
-          "NROS_RESOLVED_ZPICO_MAX_SUBSCRIBERS:INTERNAL=10\n"
+          "NROS_RESOLVED_NROS_ZENOH_MAX_SUBSCRIBERS:INTERNAL=10\n"
           "NROS_RESOLVED_NROS_RMW_LOCAL_QUERYABLE:INTERNAL=0\n"
           "NROS_KNOB_SOURCE_NROS_RMW_LOCAL_QUERYABLE:INTERNAL=environment\n",
           CLEAN_FRAG + "set(NROS_DERIVED_RMW_LOCAL_QUERYABLE 1)\n",
@@ -507,7 +507,7 @@ def self_test(quiet=False):
          "an environment override of a derived knob is clean"),
         # but the same mismatch recorded as `kconfig` is still a finding.
         (("NROS_RESOLVED_NROS_MAX_SUBSCRIBERS:INTERNAL=10\n"
-          "NROS_RESOLVED_ZPICO_MAX_SUBSCRIBERS:INTERNAL=10\n"
+          "NROS_RESOLVED_NROS_ZENOH_MAX_SUBSCRIBERS:INTERNAL=10\n"
           "NROS_RESOLVED_NROS_RMW_LOCAL_QUERYABLE:INTERNAL=0\n"
           "NROS_KNOB_SOURCE_NROS_RMW_LOCAL_QUERYABLE:INTERNAL=kconfig\n",
           CLEAN_FRAG + "set(NROS_DERIVED_RMW_LOCAL_QUERYABLE 1)\n",

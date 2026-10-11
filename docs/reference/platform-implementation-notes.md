@@ -224,14 +224,14 @@ Consequences and rules:
   converge to ~4.3 msg/s each (~8.6 total — a 100 Hz and a 10 Hz publisher get
   the SAME throughput under contention); at 5 ms, ~39 total (ctrl 33 / telem 5.5).
   `Z_CONFIG_SOCKET_TIMEOUT` trades read-wake rate for tx budget but stays
-  window-bound. Mitigation (phase-279, opt-in): `ZPICO_TX_BATCH=1` env /
+  window-bound. Mitigation (phase-279, opt-in): `NROS_ZENOH_TX_BATCH=1` env /
   Kconfig `CONFIG_NROS_ZENOH_TX_BATCH=y` enables tx batching PLUS a dedicated
   flush thread (multi-threaded platforms except ThreadX; flush cadence
-  `ZPICO_TX_BATCH_FLUSH_MS`, default 50 ms) — measured **4× total throughput at
+  `NROS_ZENOH_TX_BATCH_FLUSH_MS`, default 50 ms) — measured **4× total throughput at
   the 100 ms default (34.1 vs 8.6 msg/s) and 1.35× at 5 ms (52.5 vs 39)**, with
   the 10 Hz tier reaching ≈ ideal. Flushing from the tier threads themselves
   measured WORSE-or-equal (4.7-9.2) — the flush must live on its own thread.
-  Phase-282 closed the residual: `ZPICO_TX_SPLIT_LOCK=1` /
+  Phase-282 closed the residual: `NROS_ZENOH_TX_SPLIT_LOCK=1` /
   `CONFIG_NROS_ZENOH_TX_SPLIT_LOCK=y` (requires TX_BATCH) makes the flush
   STEAL the batch (buffer swap) and write the socket under a separate link
   mutex, and a batch overflow PARKS the buffer instead of blocking the
@@ -249,7 +249,7 @@ Consequences and rules:
   issue-0135 every-TU rule); rebuild fixtures after changing them. Harnesses:
   `tests/w1_zephyr_tx_throughput_measure.rs` (`--ignored`, tiers) +
   `packages/testing/nros-bench/stress-zenoh-zephyr` (streaming; bench
-  listeners MUST build with `ZPICO_SUBSCRIBER_RING_DEPTH=1024` — the default
+  listeners MUST build with `NROS_ZENOH_SUBSCRIBER_RING_DEPTH=1024` — the default
   4-slot ring drop-newests batched callback bursts). User-facing decision
   tree: book "TX Throughput & Latency Tuning" page.
 - **`Z_CONFIG_SOCKET_TIMEOUT` must stay short on Zephyr (100 ms, like the unix

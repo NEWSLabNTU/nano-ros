@@ -87,7 +87,7 @@ knows a knob for, with its exact measured size:
 
 ```
         87,072  g_sessions
-                pool sized by ZPICO_MAX_SESSIONS, ZPICO_MAX_PUBLISHERS, ...
+                pool sized by NROS_ZENOH_MAX_SESSIONS, NROS_ZENOH_MAX_PUBLISHERS, ...
 ```
 
 Be aware that today these pools are sized by which backend you link, **not** by

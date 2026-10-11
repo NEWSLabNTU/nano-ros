@@ -313,8 +313,30 @@ pub(crate) fn transport_implications_of(
 pub fn image_layers(decl: &LeafSystem) -> BTreeMap<String, String> {
     let mut env = BTreeMap::new();
     transport_implications(decl, &mut env);
-    env.extend(decl.env.iter().map(|(k, v)| (k.clone(), v.clone())));
+    env.extend(
+        decl.env
+            .iter()
+            .map(|(k, v)| (canonical_env_key(k), v.clone())),
+    );
     env
+}
+
+/// phase-484 W5a (RFC-0103 D2b) — an `[image.<id>] env` row is carried under
+/// its knob's CANONICAL env spelling, whichever spelling the image wrote.
+///
+/// Every writer this tree owns writes the canonical name; a row a person
+/// wrote under a legacy one (`ZPICO_MAX_QUERYABLES`) must still reach the same
+/// place. Carrying it verbatim would put the legacy name beside a canonical
+/// row another layer derives (`NROS_ZENOH_MAX_QUERYABLES` in the sidecar), and
+/// the build script refuses two spellings of one knob that disagree — so the
+/// image's statement, which outranks a derivation, would stop the build
+/// instead. A key the registry does not hold is carried as written.
+#[must_use]
+pub fn canonical_env_key(key: &str) -> String {
+    match nros_zephyr_build::knob_row(key) {
+        Some(row) => row.env.to_string(),
+        None => key.to_string(),
+    }
 }
 
 /// phase-481 W4 (RFC-0098 D12) — [`image_layers`] for a WORKSPACE image: what
@@ -328,7 +350,12 @@ pub fn image_block_layers(
 ) -> BTreeMap<String, String> {
     let mut env = BTreeMap::new();
     transport_implications_of(image.transport.as_deref(), &mut env);
-    env.extend(image.env.iter().map(|(k, v)| (k.clone(), v.clone())));
+    env.extend(
+        image
+            .env
+            .iter()
+            .map(|(k, v)| (canonical_env_key(k), v.clone())),
+    );
     env
 }
 
@@ -603,8 +630,9 @@ pub fn write(leaf: &Path, nano_ros_root: &Path, who: &str) -> Result<Option<Leaf
     // Last, so it outranks the board and the implications above and is
     // outranked only by the calling environment.
     for (k, v) in &img.decl.env {
-        path_env.remove(k);
-        env.insert(k.clone(), v.clone());
+        let k = canonical_env_key(k);
+        path_env.remove(&k);
+        env.insert(k, v.clone());
     }
 
     // No absolute path in the hint: the file is otherwise checkout-independent,

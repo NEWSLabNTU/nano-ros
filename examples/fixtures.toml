@@ -5561,7 +5561,7 @@ skip_probe = true
 # whose tier table `nros::main!` derives instead of reading authored
 # `[tiers.*]`. Same workspace and node packages as the row above; the axis is
 # the BRINGUP (`derived_bringup`: a contract, no tiers) and its image's Kconfig
-# (`[image.zephyr_derived] env ZPICO_READ_TASK_PRIORITY = "100"` -> `CONFIG_NROS_ZENOH_READ_PRIORITY=100`, transport
+# (`[image.zephyr_derived] env NROS_ZENOH_READ_PRIORITY = "100"` -> `CONFIG_NROS_ZENOH_READ_PRIORITY=100`, transport
 # band [4, 9], tier pool [10, 14]). The `workspace-zephyr-c-realtime-smp` row is
 # the precedent for a second bringup of one workspace carrying a second image.
 #

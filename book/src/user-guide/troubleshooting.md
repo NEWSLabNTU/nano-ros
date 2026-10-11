@@ -204,8 +204,8 @@ A message must fit through every layer in the path to be delivered intact.
 
 | Layer                               | Posix Default | Embedded Default | Env Var                    |
 |-------------------------------------|---------------|------------------|----------------------------|
-| Defragmentation (`Z_FRAG_MAX_SIZE`) | 65536         | 2048             | `ZPICO_FRAG_MAX_SIZE`      |
-| Batch size (`Z_BATCH_UNICAST_SIZE`) | 65536         | 1024             | `ZPICO_BATCH_UNICAST_SIZE` |
+| Defragmentation (`Z_FRAG_MAX_SIZE`) | 65536         | 2048             | `NROS_ZENOH_FRAG_MAX_SIZE`      |
+| Batch size (`Z_BATCH_UNICAST_SIZE`) | 65536         | 1024             | `NROS_ZENOH_BATCH_UNICAST_SIZE` |
 | Per-entity shim buffer              | 1024          | 1024             | -- (named constant in code) |
 | User receive buffer (`RX_BUF`)      | 1024          | 1024             | -- (const generic)          |
 
@@ -222,7 +222,7 @@ A message must fit through every layer in the path to be delivered intact.
 
 ```bash
 # Zenoh: allow 128 KB reassembled messages
-ZPICO_FRAG_MAX_SIZE=131072 cargo build
+NROS_ZENOH_FRAG_MAX_SIZE=131072 cargo build
 
 # XRCE: increase MTU to 8 KB
 XRCE_TRANSPORT_MTU=8192 cargo build

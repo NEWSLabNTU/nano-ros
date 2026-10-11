@@ -121,10 +121,10 @@ expect_eq() {
 self_test() {
     local base collide
     base="$(probe base-only DIR)"
-    collide="$(probe base-only DIR ZPICO_MAX_QUERYABLES=2)"
+    collide="$(probe base-only DIR NROS_ZENOH_MAX_QUERYABLES=2)"
     if [ "$base" != "$collide" ]; then
         echo "[FAIL] negative control: with the knob fields removed from the" >&2
-        echo "       key, two images differing in ZPICO_MAX_QUERYABLES were" >&2
+        echo "       key, two images differing in NROS_ZENOH_MAX_QUERYABLES were" >&2
         echo "       expected to COLLIDE and did not. Something other than the" >&2
         echo "       knob half is moving this hash, so a green verdict from the" >&2
         echo "       assertions below would not be about phase-439 W1." >&2
@@ -143,16 +143,23 @@ expect_eq "an image stating no knob must keep the key it already had (a warm car
     "$base_key" "$plain_key"
 
 plain="$(probe with-knobs DIR)"
-knob2="$(probe with-knobs DIR ZPICO_MAX_QUERYABLES=2)"
-expect_ne "two images differing ONLY in ZPICO_MAX_QUERYABLES share a cargo directory (RFC-0094 D4)" \
+knob2="$(probe with-knobs DIR NROS_ZENOH_MAX_QUERYABLES=2)"
+expect_ne "two images differing ONLY in NROS_ZENOH_MAX_QUERYABLES share a cargo directory (RFC-0094 D4)" \
     "$plain" "$knob2"
 
-knob2_again="$(probe with-knobs DIR ZPICO_MAX_QUERYABLES=2)"
+knob2_again="$(probe with-knobs DIR NROS_ZENOH_MAX_QUERYABLES=2)"
 expect_eq "the same configuration computed twice must give the same directory" \
     "$knob2" "$knob2_again"
 
-knob4="$(probe with-knobs DIR ZPICO_MAX_QUERYABLES=4)"
-expect_ne "two images differing only in the VALUE of ZPICO_MAX_QUERYABLES share a cargo directory" \
+# phase-484 W5a — a LEGACY spelling reaches the build script, so it must reach
+# the key, and under the canonical name: the same image stated either way is
+# one cargo directory.
+legacy2="$(probe with-knobs DIR ZPICO_MAX_QUERYABLES=2)"
+expect_eq "a value exported under the legacy ZPICO_MAX_QUERYABLES must key like NROS_ZENOH_MAX_QUERYABLES" \
+    "$knob2" "$legacy2"
+
+knob4="$(probe with-knobs DIR NROS_ZENOH_MAX_QUERYABLES=4)"
+expect_ne "two images differing only in the VALUE of NROS_ZENOH_MAX_QUERYABLES share a cargo directory" \
     "$knob2" "$knob4"
 
 cbs="$(probe with-knobs DIR NROS_EXECUTOR_MAX_CBS=8)"
@@ -167,23 +174,23 @@ expect_ne "two images differing only in NROS_EXECUTOR_MAX_CBS share a cargo dire
 # the ENV road; `nros_knob_key_fields` reads `NROS_RESOLVED_*` FIRST and a
 # break there (names appended without values) passed while this gate printed
 # "negative control collided as required". Same three questions, road 1.
-r2="$(PROBE_RESOLVED=ZPICO_MAX_QUERYABLES=2 probe with-knobs DIR)"
-r4="$(PROBE_RESOLVED=ZPICO_MAX_QUERYABLES=4 probe with-knobs DIR)"
-expect_ne "road 1 (NROS_RESOLVED_*): two images differing only in a RESOLVED ZPICO_MAX_QUERYABLES value share a cargo directory" \
+r2="$(PROBE_RESOLVED=NROS_ZENOH_MAX_QUERYABLES=2 probe with-knobs DIR)"
+r4="$(PROBE_RESOLVED=NROS_ZENOH_MAX_QUERYABLES=4 probe with-knobs DIR)"
+expect_ne "road 1 (NROS_RESOLVED_*): two images differing only in a RESOLVED NROS_ZENOH_MAX_QUERYABLES value share a cargo directory" \
     "$r2" "$r4"
 expect_ne "road 1 (NROS_RESOLVED_*): a resolved knob does not move the key off the knob-less one" \
     "$plain" "$r2"
-r2_key="$(PROBE_RESOLVED=ZPICO_MAX_QUERYABLES=2 probe with-knobs KEY)"
+r2_key="$(PROBE_RESOLVED=NROS_ZENOH_MAX_QUERYABLES=2 probe with-knobs KEY)"
 case "$r2_key" in
-    *ZPICO_MAX_QUERYABLES=2*) ;;
-    *) echo "[FAIL] road 1: the key text does not carry ZPICO_MAX_QUERYABLES=2: $r2_key" >&2; fail=1 ;;
+    *NROS_ZENOH_MAX_QUERYABLES=2*) ;;
+    *) echo "[FAIL] road 1: the key text does not carry NROS_ZENOH_MAX_QUERYABLES=2: $r2_key" >&2; fail=1 ;;
 esac
 # Road 1 outranks the env road: a resolved value wins over an exported one.
-r_env="$(PROBE_RESOLVED=ZPICO_MAX_QUERYABLES=2 probe with-knobs DIR ZPICO_MAX_QUERYABLES=4)"
+r_env="$(PROBE_RESOLVED=NROS_ZENOH_MAX_QUERYABLES=2 probe with-knobs DIR NROS_ZENOH_MAX_QUERYABLES=4)"
 expect_eq "road 1 must outrank the env road (resolved 2, exported 4)" "$r2" "$r_env"
 
 inventory="$(env cmake -DNROS_PROBE_MODE=inventory -P "$PROBE" 2>&1 | sed -n 's/^KNOB=//p')"
-for want in ZPICO_MAX_QUERYABLES NROS_EXECUTOR_MAX_CBS NROS_XRCE_MAX_SUBSCRIBERS; do
+for want in NROS_ZENOH_MAX_QUERYABLES NROS_EXECUTOR_MAX_CBS NROS_XRCE_MAX_SUBSCRIBERS; do
     nros_grep_q -x "$want" <<<"$inventory" && continue
     echo "[FAIL] $want is not in the harvested knob inventory — the key" >&2
     echo "       cannot separate two images that differ only in it." >&2

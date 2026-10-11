@@ -265,12 +265,12 @@ FACT_DISPOSITION = {
         # XRCE one. See `DERIVED_PAIRS` in check-knob-delivery.py.
         "resolver": ("NROS_RESOLVED_NROS_MAX_SUBSCRIBERS",
                      "NROS_RESOLVED_NROS_XRCE_MAX_SUBSCRIBERS"),
-        "sidecar": ("ZPICO_MAX_SUBSCRIBERS",),
+        "sidecar": ("NROS_ZENOH_MAX_SUBSCRIBERS",),
         "declared": _RETIRED_ONTO_DESCRIPTOR,
     },
     "NROS_DERIVED_MAX_PUBLISHERS": {
         "resolver": ("NROS_RESOLVED_NROS_MAX_PUBLISHERS",),
-        "sidecar": ("ZPICO_MAX_PUBLISHERS",),
+        "sidecar": ("NROS_ZENOH_MAX_PUBLISHERS",),
         "declared": _RETIRED_ONTO_DESCRIPTOR,
     },
     "NROS_DERIVED_RMW_SUBSCRIBER_SLOTS": {
@@ -366,13 +366,13 @@ FACT_DISPOSITION = {
         "declared": _RETIRED_PAYLOAD,
     },
     "NROS_DERIVED_SUBSCRIBER_LARGE_SIZE": {
-        "resolver": ("NROS_RESOLVED_ZPICO_SUBSCRIBER_LARGE_SIZE",),
-        "sidecar": ("ZPICO_SUBSCRIBER_LARGE_SIZE",),
+        "resolver": ("NROS_RESOLVED_NROS_ZENOH_SUBSCRIBER_LARGE_SIZE",),
+        "sidecar": ("NROS_ZENOH_SUBSCRIBER_LARGE_SIZE",),
         "declared": _RETIRED_PAYLOAD,
     },
     "NROS_DERIVED_MAX_LARGE_SUBSCRIBERS": {
-        "resolver": ("NROS_RESOLVED_ZPICO_MAX_LARGE_SUBSCRIBERS",),
-        "sidecar": ("ZPICO_MAX_LARGE_SUBSCRIBERS",),
+        "resolver": ("NROS_RESOLVED_NROS_ZENOH_MAX_LARGE_SUBSCRIBERS",),
+        "sidecar": ("NROS_ZENOH_MAX_LARGE_SUBSCRIBERS",),
         "declared": _RETIRED_PAYLOAD,
     },
     "NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE": {
@@ -462,7 +462,7 @@ FACT_DISPOSITION = {
             "(issue 1649), which every cmake configure names"),
     },
     "NROS_DERIVED_TL_RETAIN_BYTES": {
-        "resolver": ("NROS_RESOLVED_ZPICO_TL_RETAIN_BYTES",),
+        "resolver": ("NROS_RESOLVED_NROS_ZENOH_TL_RETAIN_BYTES",),
         "sidecar": NotCarried(
             _LEAF, _INBOX_DESCRIPTOR_ANSWERS,
             "a cargo leaf names its sizing descriptor to cargo, and "

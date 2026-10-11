@@ -158,6 +158,32 @@ PY
 )" || { echo "[FAIL] cannot read $REGISTRY" >&2; exit 1; }
 [ -n "$LADDER_SPELLINGS" ] || { echo "[FAIL] $REGISTRY names no ladder knob" >&2; exit 1; }
 
+# phase-484 W5a — every spelling of every registry row, one row per line,
+# canonical first. The forwarder writes the CANONICAL name (`NROS_ZENOH_*`) and
+# a build script may still name a legacy one (`"ZPICO_MAX_PUBLISHERS"`): both
+# are ONE knob, because `nros_zephyr_build::knob()` reads every spelling of the
+# row it is handed. So a reader of any spelling is a reader of the knob — the
+# same rule `check-knob-single-reader` applies in the other direction.
+ROW_SPELLINGS="$(python3 - "$REGISTRY" <<'PY'
+import sys
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib
+with open(sys.argv[1], "rb") as fh:
+    for r in tomllib.load(fh).get("knob", []):
+        print(" ".join(["NROS_" + r["id"]] + list(r.get("legacy", []))))
+PY
+)" || { echo "[FAIL] cannot read $REGISTRY" >&2; exit 1; }
+
+# The spellings of $1's registry row (itself alone when it has none).
+spellings_of() {
+    local hit
+    hit="$(awk -v k="$1" '{ for (i = 1; i <= NF; i++) if ($i == k) { print; exit } }' \
+        <<<"$ROW_SPELLINGS")"
+    if [ -n "$hit" ]; then printf '%s\n' $hit; else printf '%s\n' "$1"; fi
+}
+
 # phase-420 W9 — a reader may name its knobs in a shared MANIFEST rather than in
 # its own source. `packages/rmw/xrce/xrce-config.txt` is the one statement of
 # every XRCE build value, read by BOTH the cargo lane (`build.rs`) and the cmake
@@ -186,7 +212,8 @@ NO_RUST_READER=(
     # issue 1505 — these four are a RESOLUTION name, never a delivery name, and
     # the distinction is the whole reason they read as unread. cmake resolves
     # each into `NROS_RESOLVED_NROS_MAX_<X>` and then re-exports that value
-    # under the `ZPICO_` spelling, which IS what the Rust lane reads and IS
+    # under the `NROS_ZENOH_` spelling (`ZPICO_` until phase-484 W5a), which IS
+    # what the Rust lane reads and IS
     # checked by this gate under that name. Re-export lines measured
     # 2026-09-28 in `zephyr/cmake/nros_cargo_build.cmake`:
     #
@@ -446,7 +473,11 @@ for knob in $knobs; do
     for row in "${INJECTED_READERS[@]}"; do injected_paths+=("${row%%|*}"); done
     for f in "${READERS[@]}" "${injected_paths[@]}"; do
         [ -f "$f" ] || continue
-        if nros_grep_q -F "\"$knob\"" "$f"; then
+        spelled=""
+        for sp in $(spellings_of "$knob"); do
+            if nros_grep_q -F "\"$sp\"" "$f"; then spelled="$sp"; break; fi
+        done
+        if [ -n "$spelled" ]; then
             found=1
             # issue 0751 — the name APPEARING is not the name being resolved
             # through `$DOTCONFIG`. A forwarded knob read with a bare
@@ -457,8 +488,8 @@ for knob in $knobs; do
             # Not hypothetical. That is what `nros-params/build.rs` did before
             # #0749's follow-up, and it was caught only because the file was not
             # yet listed as a reader — once listed, this arm passed over it.
-            if nros_grep_q -F "env::var(\"$knob\")" "$f"; then
-                echo "[FAIL] $f reads forwarded knob $knob with a bare env::var" >&2
+            if nros_grep_q -F "env::var(\"$spelled\")" "$f"; then
+                echo "[FAIL] $f reads forwarded knob $knob ($spelled) with a bare env::var" >&2
                 echo "       On a Zephyr Rust image that yields the crate default" >&2
                 echo "       whatever Kconfig says (issue 0460). Resolve it with" >&2
                 echo "       nros_zephyr_build::knob() instead." >&2
