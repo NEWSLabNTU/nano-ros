@@ -286,6 +286,21 @@ NROS__RCLC_ARRAY(double, double)
 NROS__RCLC_ARRAY(byte, uint8_t)
 #undef NROS__RCLC_ARRAY
 
+/* String arrays: `data` is `len` C strings, each at most NROS_MAX_STRING_VALUE_LEN
+ * bytes. A get copies into `capacity` rows of `stride` bytes, each
+ * NUL-terminated, writes the stored length to `*out_len`, and returns
+ * `NROS_RET_FULL` without copying when the rows or a row are too small. */
+NROS_PUBLIC nros_ret_t rclc_parameter_declare_string_array(
+    rclc_parameter_server_t* parameter_server, const char* parameter_name, const char* const* data,
+    size_t len);
+NROS_PUBLIC nros_ret_t rclc_parameter_set_string_array(rclc_parameter_server_t* parameter_server,
+                                                       const char* parameter_name,
+                                                       const char* const* data, size_t len);
+NROS_PUBLIC nros_ret_t rclc_parameter_get_string_array(rclc_parameter_server_t* parameter_server,
+                                                       const char* parameter_name, char* output,
+                                                       size_t stride, size_t capacity,
+                                                       size_t* out_len);
+
 /** `RCLC_PARAMETER_NOT_SET` when undeclared. */
 NROS_PUBLIC rclc_parameter_type_t rclc_parameter_get_type(rclc_parameter_server_t* parameter_server,
                                                           const char* parameter_name);

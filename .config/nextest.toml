@@ -969,6 +969,13 @@ filter = "binary(=params_per_node_interop)"
 test-group = "ros2-interop"
 slow-timeout = { period = "90s", terminate-after = 2 }
 
+# phase-491 W6 — the C parameter-server cell: one image, seven `ros2 param`
+# calls plus the discovery wait (measured 75 s on a loaded host).
+[[profile.default.overrides]]
+filter = "binary(=c_param_server_interop)"
+test-group = "ros2-interop"
+slow-timeout = { period = "120s", terminate-after = 2 }
+
 [[profile.default.overrides]]
 filter = "binary(params)"
 test-group = "ros2-interop"

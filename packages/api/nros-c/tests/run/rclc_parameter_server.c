@@ -206,6 +206,16 @@ int main(void) {
               out[2] == 3.0,
           "gains read back n=%zu", n);
 
+    const char* frames[2] = {"map", "odom"};
+    char rows[3][8];
+    CHECK(rclc_parameter_declare_string_array(&ps, "frames", frames, 2) == RCL_RET_OK,
+          "declare frames");
+    CHECK(rclc_parameter_get_string_array(&ps, "frames", &rows[0][0], 8, 3, &n) == RCL_RET_OK &&
+              n == 2 && strcmp(rows[1], "odom") == 0,
+          "frames read back n=%zu `%s`", n, rows[1]);
+    CHECK(rclc_parameter_get_string_array(&ps, "frames", &rows[0][0], 3, 3, &n) == NROS_RET_FULL,
+          "a row too short for `odom` was not NROS_RET_FULL");
+
     /* declare_* keeps a value already declared with the same type (how a baked
      * launch value survives), and refuses a different type. */
     CHECK(rclc_parameter_declare_int(&ps, "rate", 99) == RCL_RET_OK,
@@ -232,7 +242,7 @@ int main(void) {
     size_t count = 0;
     CHECK(rclc_parameter_list(&ps, NULL, NULL, 0, 0, &count) == NROS_RET_FULL || count == 0,
           "list count call");
-    CHECK(count == 3, "talker lists %zu parameters, expected rate/frame/gains", count);
+    CHECK(count == 4, "talker lists %zu parameters, expected rate/frame/gains/frames", count);
 
     /* add_parameter_server checks the executor is the node's. */
     struct nros_executor_t other = rclc_executor_get_zero_initialized_executor();

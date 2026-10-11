@@ -911,6 +911,87 @@ mod imp {
         as_byte_array
     );
 
+    /// A string array from `len` C strings. Over-long elements or too many
+    /// elements are refused, never truncated.
+    unsafe fn string_array_value(data: *const *const c_char, len: usize) -> Option<ParameterValue> {
+        let mut out = ParameterValue::StringArray(Default::default());
+        if let ParameterValue::StringArray(a) = &mut out {
+            for p in array_slice(data, len)? {
+                // `from_string` is the one bounded-string constructor; take its
+                // payload rather than naming `heapless` from this crate.
+                let ParameterValue::String(s) =
+                    ParameterValue::from_string(cstr(*p, nros_node::MAX_STRING_VALUE_LEN)?)?
+                else {
+                    return None;
+                };
+                a.push(s).ok()?;
+            }
+        }
+        Some(out)
+    }
+
+    /// Extension: declare a string-array parameter.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn rclc_parameter_declare_string_array(
+        server: *mut rclc_parameter_server_t,
+        parameter_name: *const c_char,
+        data: *const *const c_char,
+        len: usize,
+    ) -> nros_ret_t {
+        match string_array_value(data, len) {
+            Some(v) => declare(server, parameter_name, v),
+            None => NROS_RET_INVALID_ARGUMENT,
+        }
+    }
+
+    /// Extension: rclc-style local set of a string-array parameter.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn rclc_parameter_set_string_array(
+        server: *mut rclc_parameter_server_t,
+        parameter_name: *const c_char,
+        data: *const *const c_char,
+        len: usize,
+    ) -> nros_ret_t {
+        match string_array_value(data, len) {
+            Some(v) => set_local(server, parameter_name, v),
+            None => NROS_RET_INVALID_ARGUMENT,
+        }
+    }
+
+    /// Extension: copy a string-array parameter into a caller rectangle of
+    /// `capacity` rows × `stride` bytes, each NUL-terminated. `*out_len`
+    /// always receives the stored length; `NROS_RET_FULL` when there are more
+    /// elements than rows or an element does not fit its row, and nothing is
+    /// written then.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn rclc_parameter_get_string_array(
+        server: *mut rclc_parameter_server_t,
+        parameter_name: *const c_char,
+        output: *mut c_char,
+        stride: usize,
+        capacity: usize,
+        out_len: *mut usize,
+    ) -> nros_ret_t {
+        let ParameterValue::StringArray(a) = tri!(get_value(server, parameter_name)) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        if !out_len.is_null() {
+            *out_len = a.len();
+        }
+        if a.len() > capacity || a.iter().any(|s| s.len() + 1 > stride) {
+            return NROS_RET_FULL;
+        }
+        if !a.is_empty() && output.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        for (i, s) in a.iter().enumerate() {
+            let row = output.add(i * stride);
+            core::ptr::copy_nonoverlapping(s.as_ptr(), row.cast::<u8>(), s.len());
+            *row.add(s.len()) = 0;
+        }
+        NROS_RET_OK
+    }
+
     // ------------------------------------------------------------------------
     // rclc's descriptor verbs
     // ------------------------------------------------------------------------

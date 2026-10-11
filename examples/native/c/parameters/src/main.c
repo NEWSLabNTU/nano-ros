@@ -159,6 +159,9 @@ static int run(void) {
     if (rclc_parameter_get_string(&app.params, "topic_name", topic, sizeof(topic)) != NROS_RET_OK)
         return 4;
     if (strcmp(topic, "/rosout") != 0) return 4;
+    /* Read-only to the OUTSIDE, as rclc means it: a `ros2 param set` on it is
+     * refused from now on, while this node's own sets still go through. */
+    if (rclc_set_parameter_read_only(&app.params, "topic_name", true) != NROS_RET_OK) return 4;
 
     /* The callback's veto, and a typed set of the wrong type. */
     if (rclc_parameter_set_int(&app.params, "publish_rate_hz", 0) !=
