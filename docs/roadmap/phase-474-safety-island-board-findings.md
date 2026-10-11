@@ -915,6 +915,26 @@ through `LPUART_Type` (`fsl_device_registers.h`, S32K344_LPUART.h). Board
 image builds (TCM on): FLASH +432 B, RAM 0, ITCM +404 B, DTCM +8 B against
 the I13 image. Not run on the board.
 
+**On the board** (RXWATER 2): 0 spins >= 1 ms late in the whole run (61 in
+the act before), worst 0.76 ms; serial ISR calls 221k against 719k, 2.99
+us/call against 6.2; gate PASS. But 4 overruns and 4 bad frames a run
+(`_z_zephyr_serial_stats`), and the TX ring touched its 4096 high water
+once at boot (frames_waited 1).
+
+**Watermark knob** (zenoh-pico `17b14961`, nano-ros `6ad29e721`):
+`CONFIG_NROS_ZENOH_SERIAL_FIFO_RXWATER` (int 0..3, default 1) ->
+`_Z_ZEPHYR_SERIAL_LPUART_RXWATER`, clamped at arm time to `PARAM.RXFIFO`
+depth - 1. RDRF asserts at RXCOUNT > water, so the margin from RDRF to OR
+is depth - water characters: 44/33/22/11 us for 0/1/2/3 on the 4-deep
+S32K344 FIFO at 921600. 1 halves RX interrupts against 0 and keeps 33 us.
+Checked: clearing OR before the drain drops nothing (the lost character is
+the one that found the FIFO full; FIFO contents survive; the receiver
+stores nothing while OR is set, so clearing early resumes sooner), only OR
+is written as 1 (IDLE and the other W1C flags written 0), and RXIDEN needs
+no clear (it asserts RDRF only while idle with RXCOUNT > 0, which the drain
+takes to 0). Board image (TCM on): FLASH 572492 B, RAM 300624 B, ITCM 14548
+B, DTCM 75400 B. Not run on the board.
+
 ### I15 -- TX by DMA
 
 **Fix.** `CONFIG_NROS_ZENOH_SERIAL_UART_ASYNC_TX` (Zephyr, default n, needs
@@ -980,6 +1000,27 @@ interrupt path does not have, to be weighed on the board against the ISR
 time saved. Board image builds (TCM on, `CONFIG_UART_ASYNC_API=y`): FLASH
 +11312 B, RAM +3464 B (driver async state, eDMA driver), ITCM +1176 B, DTCM
 +2608 B against the I13 image. Not run on the board.
+
+**On the board: the island never joined.** Boot asserted in
+`EDMA_TcdSetTransferConfig` (fsl_edma.c:517, `((uint32_t)tcd & 0x1FU) ==
+0U`) from `dma_mcux_edma_configure` <- `configure_and_start_rx_dma` <-
+`mcux_lpuart_rx_enable`: `dma_tcdpool0` (`__aligned(32)`, `.dtcm_noinit`)
+sat at 0x200128b8. Zephyr v4.4.0's cortex_m `linker.ld` and `linker.cmake`
+declare the ITCM/DTCM output sections `SUBALIGN(4)`, which FORCES every
+input section to 4-byte alignment; it had worked only while the DTCM
+content before it ended 32-aligned, and I13's relocated network.c bss moved
+that end. Upstream fixed it after 4.4.0 (de3deb75d44d DTCM, issue #107058;
+c456d2b1279b ITCM: `ALIGN(4)`). Backported in nano-ros `2f001fe0e` as
+`scripts/zephyr/tcm-section-align-patch-4.4.sh` (run by
+`scripts/zephyr/patches/4.4.sh`, i.e. `just setup zephyr`) and
+`zephyr/patches/tcm-section-align-4.4.patch` (`west patch`); drop both once
+the pinned Zephyr has the commits. Rebuilt: `dma_tcdpool0` at 0x200128c0,
+`.dtcm_noinit` section align 32; FLASH 583372 B, RAM 304088 B, ITCM 15308 B,
+DTCM 78016 B. The assert's message then faulted: the board conf has
+`CONFIG_ASSERT=y`, `LOG_MODE_IMMEDIATE`, `LOG_PRINTK` and the shell as log
+backend, and the assert fired under `irq_lock` (dma_mcux_edma.c:664), so
+the print's shell-lock `k_sem_take` could not pend. A board-conf matter
+(deferred log mode, or no shell log backend), not fixed here.
 
 **Verify (I15, I16).** Board: the spin diag's ISR count per late interval
 and the late-spin rates; `_z_zephyr_serial_stats` overruns, bad frames and
