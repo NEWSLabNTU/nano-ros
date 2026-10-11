@@ -272,6 +272,7 @@ endif()
 # phase-474 I14 -- LPUART FIFO watermarks, the ISR reads/fills the FIFO itself.
 if(CONFIG_NROS_ZENOH_SERIAL_FIFO_WATERMARK)
     zephyr_compile_definitions(_Z_ZEPHYR_SERIAL_FIFO_WATERMARK=1)
+    zephyr_compile_definitions(_Z_ZEPHYR_SERIAL_LPUART_RXWATER=${CONFIG_NROS_ZENOH_SERIAL_FIFO_RXWATER})
 endif()
 # phase-474 I15+I16 -- the link on the async UART API (DMA both directions).
 if(CONFIG_NROS_ZENOH_SERIAL_UART_ASYNC)

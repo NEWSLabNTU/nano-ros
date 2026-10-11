@@ -790,18 +790,33 @@ config NROS_ZENOH_SERIAL_FIFO_WATERMARK
     depends on UART_MCUX_LPUART && DT_HAS_NXP_LPUART_ENABLED
     help
       nano-ros phase-474 I14. On the interrupt-driven path, when the link's
-      UART is an NXP LPUART: set the RX watermark to 2 (RDRF at 3 bytes)
+      UART is an NXP LPUART: set the RX watermark (NROS_ZENOH_SERIAL_FIFO_RXWATER)
       with the idle-empty request (FIFO.RXIDEN = 1 character), and have the
       serial ISR drain WATER.RXCOUNT bytes and fill the TX FIFO to its depth
       by register, since the mcux driver's fifo_read/fifo_fill work a byte
-      at a time against RDRF/TDRE. About 3x fewer RX and 4x fewer TX
-      interrupts at 921600 baud. The cost is overrun margin: about two
-      characters (22 us at 921600) instead of four, so it is off by default
-      and `_z_zephyr_serial_stats.overruns` (counted in the ISR on this
-      path) is the check. A board with DMA on the link's UART should prefer
+      at a time against RDRF/TDRE. Up to 4x fewer TX interrupts and (water
+      + 1)x fewer RX interrupts at 921600 baud. The cost is overrun margin,
+      so it is off by default and `_z_zephyr_serial_stats.overruns`
+      (counted in the ISR on this path) is the check. A board with DMA on the link's UART should prefer
       NROS_ZENOH_SERIAL_UART_ASYNC. The UART is found by its devicetree
       node (any okay nxp,lpuart); another UART keeps the generic ISR.
       Maps to _Z_ZEPHYR_SERIAL_FIFO_WATERMARK.
+
+config NROS_ZENOH_SERIAL_FIFO_RXWATER
+    int "Serial link: LPUART RX FIFO watermark"
+    depends on NROS_ZENOH_SERIAL_FIFO_WATERMARK
+    range 0 3
+    default 1
+    help
+      nano-ros phase-474 I14. WATER.RXWATER: RDRF (the RX interrupt) asserts
+      when the RX FIFO holds MORE than this many bytes. The margin from RDRF
+      to an overrun is the free FIFO slots plus the shift register, depth +
+      1 - (water + 1) = depth - water characters; on the 4-deep S32K344 FIFO
+      at 921600 baud (10.85 us a character) that is 44/33/22/11 us for
+      0/1/2/3. 2 measured about 3x fewer RX interrupts on the safety island
+      but 4 overruns a run; 1 halves them against 0 and keeps 3/4 of the
+      margin. The field is 2 bits, and the value is clamped to depth - 1 at
+      run time. Maps to _Z_ZEPHYR_SERIAL_LPUART_RXWATER.
 
 config NROS_ZENOH_SERIAL_UART_ASYNC
     bool "Serial link: RX and TX by DMA (Zephyr async UART API)"
