@@ -9,6 +9,32 @@ found: 2026-09-11
 related: [rfc-0098, rfc-0065, phase-445]
 ---
 
+## 2026-10-12 — the switched image delivers; two edits, not three
+
+The switch measured below was finished end to end. On a copy of
+`examples/mps2-an385-baremetal/rust/talker`:
+
+- `system.toml`: `[image.mps2-an385-baremetal] board = "freertos"`. The network
+  identity (ip 10.0.2.10, locator `tcp/10.0.2.2:10500`) was left as it was, and
+  the image boots with it, so the per-image overlay reaches the FreeRTOS board.
+- Edit 1, the board crate: `nros-board-mps2-an385-freertos = { version = "*" }`.
+- Edit 2: delete the leaf's `nros-rmw-zenoh` line.
+
+`nros sync` and `nros build` both exit 0. In QEMU (default slirp,
+`lan9118`) the image reaches "Application setup complete" and publishes 27
+messages in 30 s. `ros2 topic echo --no-daemon /chatter` (Humble,
+`rmw_zenoh_cpp`, router `just zenohd tcp/127.0.0.1:10500`) receives all 27. The
+unmodified `examples/mps2-an385-freertos/rust/talker`, run the same way as a
+control, also gets 27/27.
+
+The possible third edit below is not needed. The FreeRTOS board crate enables
+`nros-platform/platform-freertos` itself
+(`packages/boards/nros-board-mps2-an385-freertos/Cargo.toml`), and adding the
+leaf-side line leaves the image's section sizes identical (text 490064, data
+4520, bss 933036). The reference example's comment claiming the line is
+required was stale and now says so. So the fix this issue asks for has to
+generate two dependencies plus the runtime crates, not three.
+
 ## 2026-10-11 (later) — the switch is not one edit, and the fix is wider than the board crate
 
 The refusal above said "the one edit". That was measured the same day on a copy

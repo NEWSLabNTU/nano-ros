@@ -420,9 +420,15 @@ FreeRTOS board, measured 2026-10-11, needed more than that crate:
 - the RMW backend: the leaf's `nros-rmw-zenoh` with `platform-bare-metal`
   clashes with the FreeRTOS board's own zenoh ("Only one platform backend can
   be selected at a time");
-- likely the `nros-platform` platform feature, which the in-tree FreeRTOS
-  example names for the app to reach setup;
 - the runtime crates (rt, panic), which go stale rather than fail.
+
+The `nros-platform` platform feature is NOT one of them: the FreeRTOS board
+crate enables it itself, and an image built with and without a leaf-side
+`nros-platform = { features = ["platform-freertos"] }` has identical section
+sizes. Measured end to end on 2026-10-12: with the two edits above and the
+`system.toml` board line, the switched image boots on QEMU, publishes 27
+messages in 30 s, and a ROS 2 `ros2 topic echo` over `rmw_zenoh_cpp` receives
+all 27, the same as the unmodified FreeRTOS example.
 
 So the decision is widened. **No user manifest names an image-only dependency.**
 A single-package leaf keeps its own `Cargo.toml` and stays its own cargo root,
