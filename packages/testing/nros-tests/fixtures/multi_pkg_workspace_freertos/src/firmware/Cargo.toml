@@ -26,8 +26,6 @@ publish = false
 name = "firmware"
 path = "src/main.rs"
 
-[package.metadata.nros.entry]
-
 [dependencies]
 # Phase 212.N.3 tier-1 per-board shim — `Mps2An385::run` provides the
 # `BoardEntry` lifecycle the Entry pkg invokes.

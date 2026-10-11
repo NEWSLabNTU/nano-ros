@@ -8,8 +8,6 @@ publish = false
 name = "demo_entry"
 path = "src/main.rs"
 
-[package.metadata.nros.entry]
-
 [dependencies]
 nros = { path = "@NROS_REPO_DIR@/packages/api/nros", default-features = false, features = [
     "alloc",

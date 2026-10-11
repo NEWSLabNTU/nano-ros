@@ -427,11 +427,11 @@ publish = false
 name = "rustapp"
 crate-type = ["staticlib", "rlib"]
 
-# Marks this package as an ENTRY. Its board ({board}) and RMW ({rmw}) are NOT
-# stated here: the bringup's `[image.*]` that names this package (`entry =`)
-# states them (RFC-0098 D5), and `nros::main!` reads them from there — which
-# also routes it onto its Zephyr emit branch.
-[package.metadata.nros.entry]
+# This package is an ENTRY because the bringup's `[image.*]` names it
+# (`entry =`); nothing in this manifest marks it (issue 1289). Its board
+# ({board}) and RMW ({rmw}) are stated there too (RFC-0098 D5), and
+# `nros::main!` reads them from there — which also routes it onto its Zephyr
+# emit branch.
 
 [features]
 default = ["rmw-{rmw}"]

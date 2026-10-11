@@ -4,8 +4,9 @@
 //! The lint used to REQUIRE `[package.metadata.nros.entry] deploy`
 //! (`entry-deploy-missing`). RFC-0098 D5 moved an entry's board into a
 //! `system.toml` image and W5 deleted the reader that understood the key, so
-//! the fixture that was the offending shape — an entry table with no `deploy` —
-//! is now the CORRECT one, and the key's presence is the defect. Both halves are
+//! the fixture that was the offending shape — an entry with no `deploy` — is
+//! now the CORRECT one (since issue 1289 with no entry table at all), and the
+//! key's presence is the defect. Both halves are
 //! asserted against `nros check --workspace`, the surface downstream tooling
 //! reads the diagnostic id from.
 
@@ -53,7 +54,7 @@ fn check_workspace(root: &Path) -> eyre::Result<()> {
     })
 }
 
-fn entry_table(manifest: &Path) -> toml::Value {
+fn entry_table(manifest: &Path) -> Option<toml::Value> {
     let body = fs::read_to_string(manifest).unwrap();
     // Parsed, not substring-scanned: comments in the fixture mention the key.
     let parsed: toml::Value = toml::from_str(&body).unwrap();
@@ -63,19 +64,19 @@ fn entry_table(manifest: &Path) -> toml::Value {
         .and_then(|m| m.get("nros"))
         .and_then(|n| n.get("entry"))
         .cloned()
-        .expect("fixture must declare [package.metadata.nros.entry]")
 }
 
 #[test]
-fn an_entry_table_without_deploy_is_accepted() {
+fn an_entry_without_deploy_is_accepted() {
     let root = temp_root("entry_no_deploy");
     copy_dir(&fixture_root(), &root);
     let manifest = root.join("freertos_entry_pkg/Cargo.toml");
+    // Issue 1289 — not even the empty table: an image's claim makes an entry.
     assert!(
-        entry_table(&manifest).get("deploy").is_none(),
-        "fixture must NOT declare a `deploy = …` field"
+        entry_table(&manifest).is_none(),
+        "fixture must carry no [package.metadata.nros.entry] at all"
     );
-    check_workspace(&root).expect("an entry table with no deploy is the RFC-0098 shape");
+    check_workspace(&root).expect("an entry with no deploy is the RFC-0098 shape");
 }
 
 #[test]
@@ -86,15 +87,12 @@ fn a_retired_entry_deploy_key_is_rejected() {
     let body = fs::read_to_string(&manifest).unwrap();
     fs::write(
         &manifest,
-        body.replace(
-            "[package.metadata.nros.entry]\n",
-            "[package.metadata.nros.entry]\ndeploy = \"freertos\"\n",
-        ),
+        format!("{body}\n[package.metadata.nros.entry]\ndeploy = \"freertos\"\n"),
     )
     .unwrap();
     // The negative control is the staging itself: the key must be there.
     assert!(
-        entry_table(&manifest).get("deploy").is_some(),
+        entry_table(&manifest).is_some_and(|e| e.get("deploy").is_some()),
         "staging failed to add the key"
     );
     let msg = check_workspace(&root)

@@ -3023,6 +3023,7 @@ fn generate_entry(
                     &entry_name,
                     &dir,
                     &dir.join("Cargo.toml"),
+                    bringup_dir,
                     &sys,
                     &facade_root,
                 )
@@ -3389,14 +3390,17 @@ fn rust_entry_system(
     dir: &std::path::Path,
     bringup_dirs: &[PathBuf],
 ) -> Option<nros_orchestration_ir::leaf_system::LeafSystem> {
-    use nros_orchestration_ir::leaf_system;
-    let pkg = crate::cmd::ws::entry_package_name_of(&dir.join("Cargo.toml"))?;
-    if let Ok(Some(own)) = leaf_system::read(dir) {
-        return Some(own);
-    }
-    bringup_dirs
-        .iter()
-        .find_map(|b| leaf_system::for_entry(dir, &pkg, b).ok().flatten())
+    let pkg = crate::cmd::ws::cargo_package_name_of(&dir.join("Cargo.toml"))?;
+    // Issue 1289 — an entry is the package an image CLAIMS, never one a
+    // manifest table marks. Conservative like before: an unreadable or
+    // ambiguous claim answers `None` here (the build reports it elsewhere).
+    nros_orchestration_ir::leaf_system::claiming_image(
+        dir,
+        &pkg,
+        bringup_dirs.iter().map(PathBuf::as_path),
+    )
+    .ok()
+    .flatten()
 }
 
 /// Deploy tokens a package's entry declaration names, if it is an entry.

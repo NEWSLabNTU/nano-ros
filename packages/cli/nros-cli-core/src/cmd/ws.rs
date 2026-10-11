@@ -2687,8 +2687,8 @@ fn resolver_from(
 ///
 /// The bringup owns the declaration, the entry consumes it, and the two are
 /// different packages, so this needs both: it finds the workspace's
-/// `system.toml` (the bringup) and then every package carrying
-/// `[package.metadata.nros.entry]`.
+/// `system.toml` (the bringup) and then every package one of its images claims
+/// (issue 1289 — the claim, not a manifest table, is what makes an entry).
 ///
 /// A workspace with no `system.toml` has nothing to derive from and is left
 /// alone — that is the STANDALONE shape, where the build command is the
@@ -2772,6 +2772,7 @@ fn generate_facade_crates(
             pkg_name,
             pkg_dir,
             &cargo_toml,
+            &bringup.dir,
             &sys,
             &facade_root,
         )
@@ -5408,27 +5409,34 @@ fn leaf_projection_board(leaf_dir: &Path) -> Result<Option<String>> {
     if let Some(l) = read(leaf_dir).map_err(|e| eyre::eyre!(e))? {
         return Ok(l.board);
     }
-    let Some(pkg) = entry_package_name_of(&manifest) else {
-        return Ok(None); // a node / library crate: its board is its entry's
+    let Some(pkg) = cargo_package_name_of(&manifest) else {
+        return Ok(None);
     };
+    // A node / library crate is claimed by no image: its board is its entry's.
     Ok(workspace_entry_system(leaf_dir, &pkg)?.and_then(|l| l.board))
 }
 
-/// The package name of the ENTRY manifest at `manifest`, or `None` when it is
-/// not an entry (no `[package.metadata.nros.entry]` table) or unreadable.
-pub(crate) fn entry_package_name_of(manifest: &Path) -> Option<String> {
+/// The cargo package name of the manifest at `manifest`, or `None` when it is
+/// unreadable or has no `[package]`.
+///
+/// Issue 1289 — this used to answer only for a manifest carrying an (empty)
+/// `[package.metadata.nros.entry]` table, which made the TABLE the "is an
+/// entry" test. That test is now the image claim ([`workspace_entry_system`]),
+/// so any package's name is the question to ask.
+pub(crate) fn cargo_package_name_of(manifest: &Path) -> Option<String> {
     let doc = std::fs::read_to_string(manifest)
         .ok()?
         .parse::<toml::Table>()
         .ok()?;
-    let package = doc.get("package")?;
-    package.get("metadata")?.get("nros")?.get("entry")?;
-    package.get("name")?.as_str().map(str::to_string)
+    doc.get("package")?
+        .get("name")?
+        .as_str()
+        .map(str::to_string)
 }
 
-/// The bringup image that claims the workspace ENTRY at `entry_dir`
-/// (`leaf_system::for_entry`, phase-445 W5), searched over every bringup of
-/// the workspace the entry sits in.
+/// The image that claims the workspace ENTRY at `entry_dir`
+/// (`leaf_system::claiming_image`, issue 1289), searched over every bringup of
+/// the workspace the entry sits in. `None` is "not an entry".
 ///
 /// The bringups are found the way `nros::main!` finds its own — the pkg-index
 /// of the enclosing workspace root — so the macro and sync cannot disagree
@@ -5440,33 +5448,19 @@ pub(crate) fn workspace_entry_system(
     entry_dir: &Path,
     entry_pkg: &str,
 ) -> Result<Option<nros_orchestration_ir::leaf_system::LeafSystem>> {
-    use nros_orchestration_ir::leaf_system;
     let Ok(ws) = nros_pkg_index::detect_workspace_root(entry_dir) else {
         return Ok(None);
     };
     let Ok(index) = nros_pkg_index::build_pkg_index(&ws) else {
         return Ok(None);
     };
-    let mut hit: Option<(PathBuf, leaf_system::LeafSystem)> = None;
-    for (_, dir) in index.pkgs() {
-        if !dir.join(leaf_system::SYSTEM_TOML).is_file() || leaf_system::is_package_dir(dir) {
-            continue; // not a bringup
-        }
-        let Some(l) = leaf_system::for_entry(entry_dir, entry_pkg, dir).map_err(|e| eyre!(e))?
-        else {
-            continue;
-        };
-        if let Some((prev, _)) = &hit {
-            bail!(
-                "entry `{entry_pkg}` is claimed by images in two bringups ({} and {}) — an \
-                 entry is ONE image's program",
-                prev.display(),
-                dir.display()
-            );
-        }
-        hit = Some((dir.to_path_buf(), l));
-    }
-    Ok(hit.map(|(_, l)| l))
+    let bringups: Vec<PathBuf> = index.pkgs().map(|(_, dir)| dir.to_path_buf()).collect();
+    nros_orchestration_ir::leaf_system::claiming_image(
+        entry_dir,
+        entry_pkg,
+        bringups.iter().map(PathBuf::as_path),
+    )
+    .map_err(|e| eyre!(e))
 }
 
 /// The leaf-relative prefix that reaches the nano-ros root — `"../"` per path

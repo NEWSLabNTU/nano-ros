@@ -8,9 +8,7 @@ that preceded it are REFUSED:
 
   R1  a leaf `Cargo.toml` carrying `[package.metadata.nros.deploy.<board>]`,
       `[package.metadata.nros.node]`, `[package.metadata.nros.component]`, or a
-      `[package.metadata.nros.entry]` that holds anything but the build facts
-      that are not deployment (`node_pkgs`, `max_callbacks`,
-      `max_sched_contexts` — the RTIC leaves keep those);
+      `[package.metadata.nros.entry]` table (R3);
   R2  a `<nano_ros deploy= board= rmw=/>` element in ANY tracked `package.xml`
       (comments stripped, as every package.xml reader must — issue 0516). The
       cmake reader refuses it at configure time; this refuses it at push time,
@@ -28,12 +26,26 @@ WORKSPACE MANIFESTS (phase-445 W5). Workspace members and entries —
 skipped. Their DEPLOYMENT keys (`[package.metadata.nros.entry] deploy`, any
 `[package.metadata.nros.deploy.*]`) are refused like a leaf's: a workspace
 entry's board is the bringup image that claims it (`leaf_system::for_entry`).
-What stays allowed there is `[package.metadata.nros.node]` / `component` on a
-workspace NODE package: that is the metadata pipeline's declaration of a class
-(`nros sync`), not a deployment, and the bringup's `[[component]]` rows do not
-yet carry everything it states. Those are COUNTED and reported, never silently.
-R2 has no carve-out: no package.xml anywhere may carry the tuple, because the
-reader that understood it is gone.
+`[package.metadata.nros.node]` / `component` on a workspace NODE package is NOT
+a deployment and NOT debt (issue 1289): it is the Rust spelling of node
+REGISTRATION — class, name, callback groups, endpoints — the counterpart of a
+C/C++ package's `nros_components_register_node(<target> PLUGIN pkg::Class …)`
+in its CMakeLists.txt (itself ROS's `rclcpp_components_register_node`). Those
+are counted and reported as registrations, never refused. R2 has no carve-out:
+no package.xml anywhere may carry the tuple, because the reader that
+understood it is gone.
+
+  R3  (issue 1289) `[package.metadata.nros.entry]` is no longer what makes a
+      package an entry — the image that claims it is
+      (`leaf_system::claiming_image`). A table that states no build fact
+      (empty, or a `node_pkgs` naming only the package itself, which is
+      `nros::main!`'s own default) is a stale marker and is refused anywhere.
+      And phase-445's acceptance line
+
+          rg '^\[package\.metadata\.nros\.(deploy|entry)' examples
+
+      must return nothing: no example carries either table at all. (The `node`
+      / `component` half of the original line is registration, above.)
 
 Discovery is the git index (`scripts/lib/tracked.py`, issue 0721), with the
 inherited repository environment cleared first (issue 0986) — this runs in the
@@ -60,7 +72,7 @@ from tracked import tracked  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 
 # Workspace-shaped trees: members and entries. Their deployment keys are
-# refused (phase-445 W5); their node / component declarations are counted.
+# refused (phase-445 W5); their node / component REGISTRATIONS are counted.
 WORKSPACE_ROOTS = (
     "examples/workspaces/",
     "examples/templates/",
@@ -69,7 +81,11 @@ WORKSPACE_ROOTS = (
 )
 
 # `[package.metadata.nros.entry]` keys that are build facts, not deployment.
-ENTRY_KEEP = {"node_pkgs", "max_callbacks", "max_sched_contexts"}
+ENTRY_KEEP = {"node_pkgs", "max_callbacks", "max_sched_contexts", "board_crate"}
+
+# R3 — phase-445's acceptance `rg`, verbatim in effect: a header line opening a
+# deployment or entry table in a tracked example manifest.
+ACCEPTANCE = re.compile(r"^\[package\.metadata\.nros\.(deploy|entry)", re.M)
 
 # `<nano_ros` followed by whitespace: NOT `<nano_ros_uses` / `<nano_ros_provides`.
 TUPLE = re.compile(r"<nano_ros[ \t\r\n][^>]*>")
@@ -99,10 +115,50 @@ def deployment_problems(text):
     return out
 
 
+def _default_node_pkg(name):
+    """What `nros::main!` registers when `node_pkgs` is absent: the package's
+    own name, a conventional `_entry` / `-entry` suffix stripped."""
+    for suffix in ("_entry", "-entry"):
+        if name.endswith(suffix):
+            return name[: -len(suffix)]
+    return name
+
+
+def stale_entry_marker(text):
+    """R3 — an `[package.metadata.nros.entry]` table stating no build fact.
+
+    Since issue 1289 the image claim makes an entry, so an empty table marks
+    nothing, and `node_pkgs = [<this package>]` is `nros::main!`'s default."""
+    try:
+        doc = tomllib.loads(text)
+    except tomllib.TOMLDecodeError:
+        return []
+    pkg = doc.get("package", {})
+    entry = pkg.get("metadata", {}).get("nros", {}).get("entry")
+    if entry is None or "deploy" in entry:
+        return []  # absent, or already refused by name as a deployment key
+    facts = {k: v for k, v in entry.items() if k in ENTRY_KEEP}
+    pkgs = facts.get("node_pkgs")
+    if pkgs is not None and pkgs == [_default_node_pkg(pkg.get("name", ""))]:
+        facts.pop("node_pkgs")
+    if facts:
+        return []
+    return [
+        "[package.metadata.nros.entry] states no build fact (empty, or a `node_pkgs` "
+        "naming only this package, `nros::main!`'s default) — an entry is the package "
+        "an image claims (issue 1289); delete the table"
+    ]
+
+
+def acceptance_hits(text):
+    """R3 — lines phase-445's acceptance `rg` would print."""
+    return [m.group(0) for m in ACCEPTANCE.finditer(text)]
+
+
 def declaration_problems(text):
     """`[package.metadata.nros.{node,component}]` — retired on a single-package
-    leaf (its `system.toml` `[[component]]` states the node), the metadata
-    pipeline's declaration on a workspace node package."""
+    leaf (its `system.toml` `[[component]]` states the node); on a workspace
+    node package it is REGISTRATION (issue 1289), counted, never refused."""
     nros, _ = _nros(text)
     if nros is None:
         return []
@@ -111,7 +167,7 @@ def declaration_problems(text):
 
 def manifest_problems(text):
     """Every retired table a single-package LEAF must not carry, by name."""
-    return deployment_problems(text) + declaration_problems(text)
+    return deployment_problems(text) + declaration_problems(text) + stale_entry_marker(text)
 
 
 def package_xml_problems(text):
@@ -124,9 +180,15 @@ def scan(root, repo=None):
     problems, declared, leaves, xmls = [], 0, 0, 0
     for p in tracked(root / "examples", root / "packages", name="Cargo.toml", repo=repo):
         rel = p.relative_to(root).as_posix()
+        text = p.read_text(encoding="utf8")
+        if rel.startswith("examples/"):
+            for hit in acceptance_hits(text):
+                problems.append(
+                    f"{rel}: `{hit}` — phase-445 acceptance: no example carries a "
+                    f"deployment or entry table (an entry is the package an image claims)"
+                )
         if any(rel.startswith(w) for w in WORKSPACE_ROOTS):
-            text = p.read_text(encoding="utf8")
-            for why in deployment_problems(text):
+            for why in deployment_problems(text) + stale_entry_marker(text):
                 problems.append(
                     f"{rel}: {why} — a workspace entry's board is the bringup image "
                     f"that claims it (`[image.<id>] entry = \"<pkg>\"`)"
@@ -140,7 +202,7 @@ def scan(root, repo=None):
         if not (p.parent / "package.xml").is_file():
             continue
         leaves += 1
-        for why in manifest_problems(p.read_text(encoding="utf8")):
+        for why in manifest_problems(text):
             problems.append(f"{rel}: {why} — state it in {Path(rel).parent}/system.toml")
     for p in tracked(root, name="package.xml", repo=repo):
         rel = p.relative_to(root).as_posix()
@@ -154,8 +216,24 @@ def scan(root, repo=None):
 
 
 def self_test():
-    ok_manifest = '[package]\nname = "x"\n[package.metadata.nros.entry]\nnode_pkgs = ["x"]\n'
+    ok_manifest = '[package]\nname = "x"\n'
     assert manifest_problems(ok_manifest) == [], manifest_problems(ok_manifest)
+    # R3 — a stale entry marker: empty, or `node_pkgs` restating the default.
+    for stale in (
+        '[package]\nname = "x"\n[package.metadata.nros.entry]\n',
+        '[package]\nname = "x"\n[package.metadata.nros.entry]\nnode_pkgs = ["x"]\n',
+        '[package]\nname = "x_entry"\n[package.metadata.nros.entry]\nnode_pkgs = ["x"]\n',
+    ):
+        assert stale_entry_marker(stale), stale
+    # A table that states a fact is not stale (out-of-tree entries may use it).
+    for fact in (
+        '[package]\nname = "x"\n[package.metadata.nros.entry]\nnode_pkgs = ["y"]\n',
+        '[package]\nname = "x"\n[package.metadata.nros.entry]\nmax_callbacks = 8\n',
+    ):
+        assert stale_entry_marker(fact) == [], fact
+    assert acceptance_hits("[package.metadata.nros.entry]\n") == ["[package.metadata.nros.entry"]
+    assert acceptance_hits("[package.metadata.nros.deploy.zephyr]\n")
+    assert acceptance_hits("# [package.metadata.nros.entry]\n[package.metadata.nros.node]\n") == []
     bad = (
         '[package]\nname = "x"\n[package.metadata.nros.entry]\ndeploy = "freertos"\n'
         "[package.metadata.nros.node]\nclass = \"x::X\"\n"
@@ -190,19 +268,31 @@ def self_test():
         (node / "Cargo.toml").write_text(
             '[package]\nname = "t"\n[package.metadata.nros.node]\nclass = "t::T"\n'
         )
+        rtic = t / "examples" / "mps2" / "rust" / "talker-rtic"
+        rtic.mkdir(parents=True)
+        (rtic / "package.xml").write_text("<package/>\n")
+        (rtic / "Cargo.toml").write_text(
+            '[package]\nname = "talker-rtic"\n'
+            '[package.metadata.nros.entry]\nnode_pkgs = ["talker-rtic"]\n'
+        )
         problems, declared, leaves, xmls = scan(t)
-        assert leaves == 1 and declared == 2 and xmls == 4, (leaves, declared, xmls)
-        assert sum("rust/talker/Cargo.toml" in p for p in problems) == 3, problems
+        assert leaves == 2 and declared == 2 and xmls == 5, (leaves, declared, xmls)
+        # deploy + node + deploy table (R1) + the acceptance rg's two headers (R3).
+        assert sum("rust/talker/Cargo.toml" in p for p in problems) == 5, problems
         assert sum("c/talker/package.xml" in p for p in problems) == 1, problems
+        # R3 — a self-referencing `node_pkgs` is the macro's default: stale,
+        # and an example entry table at all is the acceptance line's.
+        assert sum("talker-rtic/Cargo.toml" in p for p in problems) == 2, problems
         # phase-445 W5 — a WORKSPACE entry's deployment keys are refused too
-        # (two: the entry `deploy` and the deploy table); its node table and the
-        # node package's are counted, not refused.
-        assert sum("w/src/entry/Cargo.toml" in p for p in problems) == 2, problems
+        # (two: the entry `deploy` and the deploy table) plus R3's two headers;
+        # its node table and the node package's are REGISTRATION, counted.
+        assert sum("w/src/entry/Cargo.toml" in p for p in problems) == 4, problems
         assert not any("talker_pkg" in p for p in problems), problems
         # The negative control: fixed, the same tree is clean.
         (leaf / "Cargo.toml").write_text(ok_manifest)
         (cxx / "package.xml").write_text("<package><export/></package>\n")
         (ws / "Cargo.toml").write_text(ok_manifest)
+        (rtic / "Cargo.toml").write_text('[package]\nname = "talker-rtic"\n')
         problems, _, _, _ = scan(t)
         assert problems == [], problems
     sys.stdout.write("check-leaf-deployment-spelling self-test: OK\n")
@@ -230,9 +320,11 @@ def main():
         return 1
     sys.stdout.write(
         "check-leaf-deployment-spelling: OK — %d single-package leaf manifest(s), every "
-        "workspace manifest and %d package.xml carry no retired deployment spelling; "
-        "%d workspace node package(s) declare their class in the manifest (the metadata "
-        "pipeline's `[package.metadata.nros.{node,component}]`, counted, not refused).\n"
+        "workspace manifest and %d package.xml carry no retired deployment spelling and "
+        "no stale entry marker; no example carries a deploy/entry table (phase-445 "
+        "acceptance); %d workspace node package(s) REGISTER their class in the manifest "
+        "(`[package.metadata.nros.{node,component}]`, the Rust "
+        "`nros_components_register_node` — issue 1289; registration, not deployment).\n"
         % (leaves, xmls, declared)
     )
     return 0

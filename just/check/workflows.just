@@ -250,12 +250,14 @@ board-alias-unique:
 
 # phase-445 W3b (RFC-0098 D3/D5) — a single-package leaf states its deployment
 # in the `system.toml` beside its manifest. Refuses the two retired spellings:
-# `[package.metadata.nros.{deploy.*,node,component}]` (and an `entry` table
-# holding more than `node_pkgs`/`max_callbacks`/`max_sched_contexts`) in a leaf
-# `Cargo.toml`, and a `<nano_ros deploy= …/>` element in ANY package.xml. A leaf
-# that re-grew a deploy table would still build — the deprecated reader answers
-# for it with a warning — so without this the drift back is silent. Workspace
-# members/entries are skipped and COUNTED until phase-445 W4/W5 moves them.
+# `[package.metadata.nros.{deploy.*,node,component}]` in a leaf `Cargo.toml`
+# (and `entry … deploy` / `deploy.*` in a workspace one), and a
+# `<nano_ros deploy= …/>` element in ANY package.xml. Issue 1289 added R3: an
+# `[package.metadata.nros.entry]` table stating no build fact is refused
+# anywhere (an image's claim makes an entry), and phase-445's acceptance `rg`
+# for `deploy|entry` tables under `examples/` must find nothing. A workspace
+# node package's `node`/`component` table is REGISTRATION (the Rust
+# `nros_components_register_node`) and is counted, never refused.
 [group("checks")]
 leaf-deployment-spelling:
     @python3 scripts/check-leaf-deployment-spelling.py

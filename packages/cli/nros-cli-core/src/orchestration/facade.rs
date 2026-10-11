@@ -158,6 +158,9 @@ fn image_backends(entry_name: &str, sys: &SystemToml) -> Vec<String> {
 
 /// Derive the selection for one entry and write its facade crate.
 ///
+/// `bringup_dir` is the bringup `sys` was read from: an entry is the package
+/// one of its images CLAIMS (`leaf_system::claiming_image`, issue 1289).
+///
 /// Returns `Ok(None)` when the package is not an entry, or when the entry
 /// declares no path deps to attach features to (a registry-style manifest —
 /// `nros sync`'s patch table handles those, and the facade would have nothing
@@ -166,25 +169,29 @@ pub fn write_facade(
     entry_name: &str,
     entry_dir: &Path,
     entry_manifest: &Path,
+    bringup_dir: &Path,
     sys: &SystemToml,
     facade_root: &Path,
 ) -> Result<Option<Facade>> {
-    let raw = std::fs::read_to_string(entry_manifest)
-        .wrap_err_with(|| format!("facade: read {}", entry_manifest.display()))?;
-    let manifest: toml::Value = toml::from_str(&raw)
-        .wrap_err_with(|| format!("facade: parse {}", entry_manifest.display()))?;
-
     // Not an entry ⇒ nothing to select for. Node packages stay silent about all
     // three axes (phase-314 W3) and get their selection through unification.
-    if manifest
-        .get("package")
-        .and_then(|p| p.get("metadata"))
-        .and_then(|m| m.get("nros"))
-        .and_then(|n| n.get("entry"))
+    //
+    // Issue 1289 — "an entry" is the package an image CLAIMS (`entry = "<pkg>"`,
+    // or the `<id>_entry` name the builder generates), never the presence of
+    // an empty `[package.metadata.nros.entry]` table: that marker restated what
+    // the bringup already said, and a package it marked that no image claimed
+    // got a facade for an image that does not exist.
+    if nros_orchestration_ir::leaf_system::claiming_image(entry_dir, entry_name, [bringup_dir])
+        .map_err(|e| eyre::eyre!("facade: {entry_name}: {e}"))?
         .is_none()
     {
         return Ok(None);
     }
+
+    let raw = std::fs::read_to_string(entry_manifest)
+        .wrap_err_with(|| format!("facade: read {}", entry_manifest.display()))?;
+    let manifest: toml::Value = toml::from_str(&raw)
+        .wrap_err_with(|| format!("facade: parse {}", entry_manifest.display()))?;
 
     let deps = runtime_deps(&manifest, entry_dir);
     let Some(nros_path) = deps.nros.clone() else {
@@ -628,6 +635,56 @@ mod tests {
         assert!(crate_declares_feature(dir.path(), "rmw-cyclonedds"));
         assert!(!crate_declares_feature(dir.path(), "rmw-zenoh"));
         assert!(!crate_declares_feature(dir.path(), "rmw-xrce"));
+    }
+
+    /// Issue 1289 — a facade is written for the package an image CLAIMS, and
+    /// only that one. The empty `[package.metadata.nros.entry]` marker that
+    /// used to decide it neither makes an unclaimed package an entry nor is
+    /// needed by a claimed one.
+    #[test]
+    fn a_facade_follows_the_image_claim_not_an_entry_table() {
+        let ws = tempfile::tempdir().unwrap();
+        let root = ws.path();
+        let nros = root.join("nros");
+        std::fs::create_dir_all(&nros).unwrap();
+        std::fs::write(
+            nros.join("Cargo.toml"),
+            "[package]\nname = \"nros\"\n\n[features]\nros-humble = []\n",
+        )
+        .unwrap();
+        let bringup = root.join("src/demo_bringup");
+        std::fs::create_dir_all(&bringup).unwrap();
+        let system = "[system]\nname = \"demo\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
+                      [image.native]\nboard = \"native\"\n";
+        std::fs::write(bringup.join("system.toml"), system).unwrap();
+        let sys: SystemToml = toml::from_str(system).unwrap();
+        let pkg = |name: &str, extra: &str| {
+            let d = root.join("src").join(name);
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(
+                d.join("Cargo.toml"),
+                format!(
+                    "[package]\nname = \"{name}\"\nversion = \"0.1.0\"\n{extra}\n\
+                     [dependencies]\nnros = {{ path = \"../../nros\" }}\n"
+                ),
+            )
+            .unwrap();
+            d
+        };
+        let facades = root.join("build/nros-selection");
+        let write = |name: &str, dir: &Path| {
+            write_facade(name, dir, &dir.join("Cargo.toml"), &bringup, &sys, &facades).unwrap()
+        };
+        // Marked, but no image claims it: not an entry.
+        let marked = pkg("talker_pkg", "[package.metadata.nros.entry]\n");
+        assert!(
+            write("talker_pkg", &marked).is_none(),
+            "a marker no image backs is not an entry"
+        );
+        // Unmarked, claimed by name (`[image.native]` -> `native_entry`).
+        let claimed = pkg("native_entry", "");
+        let f = write("native_entry", &claimed).expect("an image claims it: a facade");
+        assert_eq!(f.entry, "native_entry");
     }
 
     #[test]

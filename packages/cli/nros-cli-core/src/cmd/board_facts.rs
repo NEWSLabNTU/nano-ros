@@ -427,7 +427,7 @@ fn pick_deploys(
     {
         None
     } else {
-        match crate::cmd::ws::entry_package_name_of(&ws.join("Cargo.toml")) {
+        match crate::cmd::ws::cargo_package_name_of(&ws.join("Cargo.toml")) {
             Some(pkg) => crate::cmd::ws::workspace_entry_system(ws, &pkg)?,
             None => None,
         }

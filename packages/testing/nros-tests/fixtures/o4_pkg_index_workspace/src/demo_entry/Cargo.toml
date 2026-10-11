@@ -9,9 +9,8 @@ name = "demo_entry"
 path = "src/main.rs"
 
 # Phase 212.N.9 form-3+ Entry pkg. `nros::main!(launch = "demo_bringup:...")`
-# reads the board from the `system.toml` beside this manifest (phase-445 W5
-# retired the `deploy` key this table used to carry).
-[package.metadata.nros.entry]
+# reads the board from the `system.toml` beside this manifest (phase-445 W5),
+# whose image is also what makes this package an entry (issue 1289).
 
 [dependencies]
 # DELIBERATELY single-dep on `nros` (matches `nros::main!` design lock).

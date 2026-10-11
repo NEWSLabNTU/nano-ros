@@ -17,10 +17,10 @@
 //!   `.cargo/config.toml`; when both exist the config-file shadows the
 //!   manifest. Patches must live in the workspace-root `Cargo.toml` only.
 //!
-//! * **O.2 `entry-deploy-missing` (hard error).** A component pkg whose
-//!   `Cargo.toml` declares `[package.metadata.nros.entry]` MUST also set
-//!   `deploy = "<board>"` (per Phase 212.L.2 / N.7). A missing or empty
-//!   `deploy` field rejects with the `entry-deploy-missing` diagnostic.
+//! * **O.2 `entry-deploy-retired` (hard error).** A manifest must NOT carry
+//!   `[package.metadata.nros.entry] deploy` or `[package.metadata.nros.deploy.*]`
+//!   (RFC-0098 D5, phase-445 W5) — it used to REQUIRE the key
+//!   (`entry-deploy-missing`). An entry's board is the image that claims it.
 //!
 //! * **O.6 `application-rtos-deploy-forbidden` (hard error).** A component
 //!   pkg whose `Cargo.toml` declares `[package.metadata.nros.application]`
@@ -30,7 +30,8 @@
 //!
 //! * **Phase 216.D.1 `dispatch-mismatch-<framework>-<strategy>` (hard
 //!   error).** Cross-validates the `(framework, DispatchStrategy)` matrix
-//!   per the locked 216.D.1 spec. For every Entry pkg in the workspace, the
+//!   per the locked 216.D.1 spec. For every Entry pkg in the workspace (a
+//!   package a bringup image claims — issue 1289), the
 //!   walk resolves its board (path-dep carrying
 //!   `[package.metadata.nros.board] framework = …`) and every Node pkg in
 //!   its path-dep closure (carrying `[package.metadata.nros.node]
@@ -102,6 +103,14 @@ pub fn check_workspace(workspace_root: &Path) -> Result<WorkspaceLintReport> {
     }
     // Deterministic order so diagnostics + warnings are reproducible.
     dirs.sort_by(|a, b| a.0.cmp(&b.0));
+    // Issue 1289 — the bringups, gathered BEFORE the walk: whether a component
+    // is an Entry pkg is whether one of their images claims it
+    // (`leaf_system::claiming_image`), which no single directory can answer.
+    let bringup_dirs: Vec<std::path::PathBuf> = dirs
+        .iter()
+        .map(|(_, d)| d.clone())
+        .filter(|d| d.join("system.toml").is_file() && d.join("package.xml").is_file())
+        .collect();
 
     for (name, pkg_dir) in dirs {
         // Skip dotted dirs (.git, .cargo, .claude, …) and build output dirs.
@@ -170,11 +179,10 @@ pub fn check_workspace(workspace_root: &Path) -> Result<WorkspaceLintReport> {
             if has_cargo {
                 lint_cargo_metadata_nros(&pkg_dir.join("Cargo.toml"), &name)?;
                 // Phase 216.D.1 — framework × DispatchStrategy matrix.
-                // Runs only on Entry pkgs (presence of
-                // `[package.metadata.nros.entry]`); resolves the board's
-                // framework via path-dep walk and every Node pkg's
-                // dispatch.
-                lint_dispatch_matrix(&pkg_dir, &name)?;
+                // Runs only on Entry pkgs (a package an image claims, issue
+                // 1289); resolves the board's framework via path-dep walk and
+                // every Node pkg's dispatch.
+                lint_dispatch_matrix(&pkg_dir, &name, &bringup_dirs)?;
             }
         }
 
@@ -579,8 +587,9 @@ fn collect_path_deps(entry_cargo_toml: &Path, entry_dir: &Path) -> Vec<std::path
 
 /// Phase 216.D.1 — framework × DispatchStrategy matrix entry point.
 ///
-/// Triggered for every component pkg whose `Cargo.toml` carries
-/// `[package.metadata.nros.entry]` (= an Entry pkg). Walks the Entry pkg's
+/// Triggered for every component pkg an image of one of `bringup_dirs`
+/// CLAIMS (= an Entry pkg, `leaf_system::claiming_image` — issue 1289; it was
+/// the presence of an empty `[package.metadata.nros.entry]`). Walks the Entry pkg's
 /// path-deps, classifies each as `board` (carries `[package.metadata.
 /// nros.board]`) or `node` (carries `[package.metadata.nros.node]`), then
 /// runs the cross-validation matrix.
@@ -595,22 +604,23 @@ fn collect_path_deps(entry_cargo_toml: &Path, entry_dir: &Path) -> Vec<std::path
 /// Silent on non-Entry pkgs and on Entry pkgs with no Node-pkg path-deps
 /// (e.g. a board-bringup Entry that defers all callbacks to the framework
 /// runtime without a user Node pkg).
-fn lint_dispatch_matrix(entry_dir: &Path, entry_pkg_name: &str) -> Result<()> {
+fn lint_dispatch_matrix(
+    entry_dir: &Path,
+    entry_pkg_name: &str,
+    bringup_dirs: &[std::path::PathBuf],
+) -> Result<()> {
     let cargo_toml = entry_dir.join("Cargo.toml");
-    let Ok(raw) = fs::read_to_string(&cargo_toml) else {
+    if !cargo_toml.is_file() {
         return Ok(());
-    };
-    let Ok(value) = toml::from_str::<toml::Value>(&raw) else {
-        return Ok(());
-    };
-    // Only run on Entry pkgs.
-    let is_entry = value
-        .get("package")
-        .and_then(|p| p.get("metadata"))
-        .and_then(|m| m.get("nros"))
-        .and_then(|n| n.get("entry"))
-        .is_some();
-    if !is_entry {
+    }
+    // Only run on Entry pkgs — the packages an image claims.
+    let claimed = nros_orchestration_ir::leaf_system::claiming_image(
+        entry_dir,
+        entry_pkg_name,
+        bringup_dirs.iter().map(std::path::PathBuf::as_path),
+    )
+    .map_err(|e| eyre::eyre!("{entry_pkg_name}: {e}"))?;
+    if claimed.is_none() {
         return Ok(());
     }
 
@@ -895,16 +905,16 @@ mod tests {
     // ------------------------------------------------------------------
 
     #[test]
-    fn nros_check_workspace_accepts_an_entry_table_with_no_deploy() {
-        // The board lives in a `system.toml` image now; an entry table with no
-        // `deploy` is the correct shape, not a defect.
+    fn nros_check_workspace_accepts_an_entry_with_no_deploy() {
+        // The board lives in a `system.toml` image now; an entry manifest with
+        // no `deploy` (and, since issue 1289, no entry table at all) is the
+        // correct shape, not a defect.
         let root = temp_root("o2_entry_no_deploy");
         let pkg = root.join("native_entry_pkg");
         fs::create_dir_all(pkg.join("src")).unwrap();
         fs::write(
             pkg.join("Cargo.toml"),
-            "[package]\nname=\"native_entry_pkg\"\nversion=\"0.1.0\"\n\
-             [package.metadata.nros.entry]\n",
+            "[package]\nname=\"native_entry_pkg\"\nversion=\"0.1.0\"\n",
         )
         .unwrap();
         fs::write(pkg.join("src/main.rs"), "fn main() {}").unwrap();
@@ -1066,7 +1076,7 @@ mod tests {
             format!(
                 "[package]\nname=\"{dir}\"\nversion=\"0.1.0\"\n\
                  [package.metadata.nros.node]\nclass = \"{dir}::Stub\"\n\
-                 name = \"stub\"\ndefault_namespace = \"/\"\n{dispatch_line}"
+                 name = \"stub\"\n{dispatch_line}"
             ),
         )
         .unwrap();
@@ -1080,7 +1090,16 @@ mod tests {
     /// (RFC-0098 D5, phase-445 W5), a workspace entry's board is its bringup
     /// image's, and the dispatch lint takes the framework from the board
     /// CRATE's `[package.metadata.nros.board]`, never from a board name.
+    ///
+    /// Issue 1289 — what makes it an Entry pkg is that an image CLAIMS it, so
+    /// this also stamps a bringup `<entry_dir>_bringup/` whose one image names
+    /// it (`entry = "<entry_dir>"`). The manifest carries no entry table.
     fn write_entry_pkg(root: &Path, entry_dir: &str, _board: &str, path_deps: &[(&str, &str)]) {
+        write_unclaimed_entry_pkg(root, entry_dir, path_deps);
+        write_claiming_bringup(root, entry_dir);
+    }
+
+    fn write_unclaimed_entry_pkg(root: &Path, entry_dir: &str, path_deps: &[(&str, &str)]) {
         let p = root.join(entry_dir);
         fs::create_dir_all(p.join("src")).unwrap();
         fs::write(p.join("src/main.rs"), "fn main() {}").unwrap();
@@ -1092,8 +1111,28 @@ mod tests {
             p.join("Cargo.toml"),
             format!(
                 "[package]\nname=\"{entry_dir}\"\nversion=\"0.1.0\"\n\
-                 [package.metadata.nros.entry]\n\
                  {deps}"
+            ),
+        )
+        .unwrap();
+    }
+
+    fn write_claiming_bringup(root: &Path, entry_dir: &str) {
+        let b = root.join(format!("{entry_dir}_bringup"));
+        fs::create_dir_all(&b).unwrap();
+        fs::write(
+            b.join("package.xml"),
+            format!(
+                "<?xml version=\"1.0\"?><package format=\"3\">\
+                 <name>{entry_dir}_bringup</name><version>0.1.0</version></package>"
+            ),
+        )
+        .unwrap();
+        fs::write(
+            b.join("system.toml"),
+            format!(
+                "[system]\nname = \"demo\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
+                 [image.demo]\nboard = \"native\"\nentry = \"{entry_dir}\"\n"
             ),
         )
         .unwrap();
@@ -1123,6 +1162,40 @@ mod tests {
         );
     }
 
+    /// Issue 1289 — the matrix runs on the package an image CLAIMS, and only
+    /// that. The same rejected cell is silent when no image claims the
+    /// package (it is a library crate, not an Entry pkg), and an empty
+    /// `[package.metadata.nros.entry]` table no longer turns it into one.
+    #[test]
+    fn the_matrix_keys_on_the_image_claim_not_a_manifest_table() {
+        let root = temp_root("d1_claim_not_marker");
+        write_board_crate(&root, "board-rtic-stub", "rtic");
+        write_node_pkg(&root, "talker-node", Some("inline"));
+        write_unclaimed_entry_pkg(
+            &root,
+            "talker-rtic-entry",
+            &[
+                ("board_rtic_stub", "../board-rtic-stub"),
+                ("talker_node", "../talker-node"),
+            ],
+        );
+        let manifest = root.join("talker-rtic-entry/Cargo.toml");
+        let body = fs::read_to_string(&manifest).unwrap();
+        fs::write(
+            &manifest,
+            body.replace(
+                "[dependencies]",
+                "[package.metadata.nros.entry]\n\n[dependencies]",
+            ),
+        )
+        .unwrap();
+        check_workspace(&root).expect("unclaimed: not an Entry pkg, so no matrix");
+        // Negative control: the claim, and nothing else, makes it one.
+        write_claiming_bringup(&root, "talker-rtic-entry");
+        let msg = check_workspace(&root).unwrap_err().to_string();
+        assert!(msg.contains("dispatch-mismatch-rtic-inline"), "diag: {msg}");
+    }
+
     #[test]
     fn deferred_node_on_rtic_framework_accepts() {
         let root = temp_root("d1_deferred_on_rtic");
@@ -1138,8 +1211,9 @@ mod tests {
             ],
         );
         let report = check_workspace(&root).expect("(rtic, deferred) is an allowed matrix cell");
-        // 3 pkg dirs visited: board, node, entry — none are bringup.
-        assert_eq!(report.pkgs_visited, 3);
+        // 4 pkg dirs visited: board, node, entry, and the bringup whose image
+        // claims the entry (issue 1289 — the claim is what makes it one).
+        assert_eq!(report.pkgs_visited, 4);
     }
 
     /// Issue 1278 — a Node pkg that states its node in a `system.toml`
@@ -1293,7 +1367,8 @@ mod tests {
             &[("deferred_node", "../deferred-node")],
         );
         let report = check_workspace(&root).expect("(owned-spin, deferred) ok");
-        assert_eq!(report.pkgs_visited, 2);
+        // node, entry, and the bringup claiming the entry (issue 1289).
+        assert_eq!(report.pkgs_visited, 3);
     }
 
     #[test]

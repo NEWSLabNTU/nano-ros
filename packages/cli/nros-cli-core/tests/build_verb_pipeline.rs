@@ -816,11 +816,11 @@ fn a_framework_entrys_cmakelists_does_not_make_a_workspace_mixed() {
     // No `deploy` — retired (RFC-0098 D5). The fixture bringup's
     // `[image.zephyr]` claims this entry by the name `nros build` gives it
     // (`zephyr_entry`), and that image's board is what makes it a WEST entry
-    // (`leaf_system::for_entry`, phase-445 W5).
+    // (`leaf_system::for_entry`, phase-445 W5). No entry table either: the
+    // claim is what makes it an entry (issue 1289).
     write(
         &z.join("Cargo.toml"),
-        "[package]\nname = \"zephyr_entry\"\nversion = \"0.0.0\"\n\n\
-         [package.metadata.nros.entry]\n",
+        "[package]\nname = \"zephyr_entry\"\nversion = \"0.0.0\"\n",
     );
 
     let plans = plan_builds(&args(tmp.path(), &["native"])).expect("resolves");

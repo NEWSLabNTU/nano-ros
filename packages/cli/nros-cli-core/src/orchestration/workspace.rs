@@ -196,9 +196,10 @@ pub struct CargoComponentSummary {
     /// Recorded so synthetic JSON artifacts can name a real on-disk path
     /// for diagnostics (matches the file-artifact `path` field shape).
     pub manifest_path: PathBuf,
-    /// phase-308 — the package ALSO declares `[package.metadata.nros.entry]`,
-    /// i.e. it is a self-contained standalone example (issue 0100) rather than
-    /// the canonical platform-agnostic Node pkg.
+    /// phase-308 — the package is ALSO an entry (an image claims it — issue
+    /// 1289, `leaf_system::claiming_image`), i.e. it is a self-contained
+    /// standalone example (issue 0100) rather than the canonical
+    /// platform-agnostic Node pkg.
     ///
     /// Such a package deps its board crate directly, so it cannot be compiled
     /// for the host and cannot be metadata-probed. Recorded here rather than
@@ -248,6 +249,7 @@ impl Workspace {
             }
         }
         packages.sort_by(|a, b| a.name.cmp(&b.name));
+        mark_claimed_packages_deploy_bound(&mut packages)?;
         Ok(Self { root, packages })
     }
 
@@ -1297,22 +1299,16 @@ fn discover_cargo_component_metadata(
     // canonical spelling, `component` is the deprecated alias. We accept
     // both at discovery time without warning (warnings live in
     // `parse_package_metadata_nros`).
-    // phase-308: a package that declares an ENTRY as well as a node is the
+    // phase-308: a package that is an ENTRY as well as a node is the
     // self-contained standalone shape (issue 0100) — deploy-bound by
-    // definition, so not host-probeable.
-    //
-    // issue 0318 — `[deploy.<target>]` says the same thing, and 27 standalone
-    // examples (freertos / nuttx / threadx-linux / zephyr) spell it that way
-    // instead of with an `[entry]` table. Keying on `entry` alone let them
-    // through to the host probe, which cannot compile them: they dep a board
-    // crate directly (`nros-board-mps2-an385-freertos`) or, on zephyr, the
-    // `zephyr` crate whose build script needs `DOTCONFIG` from a cmake
-    // configure that has not run yet. Both spellings mean deploy-bound.
-    //
-    // Safe against over-triggering: no colcon-workspace Node pkg (`src/<pkg>`,
-    // the probeable shape) carries a `[deploy.*]` table — deploy lives on the
-    // Entry pkg there. Verified across the tree when this landed.
-    let deploy_bound = nros.deploy_bound();
+    // definition, so not host-probeable. Issue 1289: "is an entry" is "an
+    // image claims it", which this one manifest cannot answer — the workspace's
+    // bringups can. So the node-table rows start NOT deploy-bound and
+    // `Workspace::discover` settles it for every row
+    // ([`mark_claimed_packages_deploy_bound`]). It used to be the presence of
+    // `[package.metadata.nros.entry]` or `[package.metadata.nros.deploy.*]`
+    // (issues 0318, 0358), both retired spellings now.
+    let deploy_bound = false;
     let single = nros.node.as_ref().or(nros.component.as_ref());
     if single.is_none() && nros.nodes.is_empty() && nros.components.is_empty() {
         // Tables, but none declaring a node (an `[entry]` table carrying only
@@ -1352,6 +1348,38 @@ fn discover_cargo_component_metadata(
         ));
     }
     Ok(out)
+}
+
+/// Issue 1289 — a package is deploy-bound (not host-probeable) when an image
+/// CLAIMS it: its own `system.toml` (a single-package leaf), or a workspace
+/// bringup's `[image.<id>]` naming it (`entry = "<pkg>"`, or the `<id>_entry`
+/// name a generated entry gets). One predicate, `leaf_system::claiming_image`,
+/// the same the selection facade and `nros check` ask.
+///
+/// Settled here, over the discovered packages, rather than per manifest: the
+/// bringups are the other packages, so no single `Cargo.toml` can answer it.
+fn mark_claimed_packages_deploy_bound(packages: &mut [Package]) -> Result<()> {
+    let bringups: Vec<PathBuf> = packages
+        .iter()
+        .filter(|p| p.system_toml.is_some())
+        .map(|p| p.root.clone())
+        .collect();
+    for pkg in packages.iter_mut() {
+        if pkg.cargo_component_metadata.is_empty() {
+            continue;
+        }
+        let claimed = nros_orchestration_ir::leaf_system::claiming_image(
+            &pkg.root,
+            &pkg.name,
+            bringups.iter().map(PathBuf::as_path),
+        )
+        .map_err(|e| eyre::eyre!(e))?
+        .is_some();
+        for summary in &mut pkg.cargo_component_metadata {
+            summary.deploy_bound = claimed;
+        }
+    }
+    Ok(())
 }
 
 /// phase-445 W3 (RFC-0098 D3/D8) — a single-package leaf declares its node in
@@ -1924,20 +1952,6 @@ name = "demo"
         );
     }
 
-    #[test]
-    fn deploy_table_alone_marks_the_package_deploy_bound() {
-        let manifest = format!(
-            "{NODE_TABLE}\n[package.metadata.nros.deploy.zephyr]\nboard = \"native_sim/native/64\"\n"
-        );
-        let got = summary_for(&manifest);
-        assert_eq!(got.len(), 1, "expected one component summary");
-        assert!(
-            got[0].deploy_bound,
-            "a package carrying [deploy.<target>] is bound to that target and is \
-             NOT host-probeable, exactly like one carrying [entry]"
-        );
-    }
-
     /// The over-trigger guard. A colcon-workspace Node pkg declares a node and
     /// NO deploy target (deploy lives on the Entry pkg), so it stays probeable
     /// — losing that would silently drop exact executor sizing, which is the
@@ -1952,16 +1966,48 @@ name = "demo"
         );
     }
 
+    /// Issue 1289 — deploy-bound is "an image claims this package", settled by
+    /// `Workspace::discover` over the bringups. An empty
+    /// `[package.metadata.nros.entry]` marker no image backs is NOT a claim
+    /// (it was the predicate before), and the claim alone, with no table, is.
     #[test]
-    fn entry_table_still_marks_the_package_deploy_bound() {
-        let manifest =
-            format!("{NODE_TABLE}\n[package.metadata.nros.entry]\ndeploy = \"zephyr\"\n");
-        let got = summary_for(&manifest);
-        assert_eq!(got.len(), 1, "expected one component summary");
-        assert!(
-            got[0].deploy_bound,
-            "the pre-0318 [entry] behaviour must be preserved"
-        );
+    fn deploy_bound_is_the_image_claim_not_an_entry_table() {
+        let ws = crate::test_support::scratch_dir("ws-1289-claim");
+        let pkg = ws.join("src/talker_pkg");
+        let bringup = ws.join("src/demo_bringup");
+        std::fs::create_dir_all(&pkg).unwrap();
+        std::fs::create_dir_all(&bringup).unwrap();
+        let xml = |n: &str| {
+            format!(
+                "<?xml version=\"1.0\"?><package format=\"3\"><name>{n}</name>\
+                 <version>0.1.0</version></package>"
+            )
+        };
+        std::fs::write(pkg.join("package.xml"), xml("talker_pkg")).unwrap();
+        std::fs::write(bringup.join("package.xml"), xml("demo_bringup")).unwrap();
+        std::fs::write(
+            pkg.join("Cargo.toml"),
+            format!("{NODE_TABLE}\n[package.metadata.nros.entry]\n"),
+        )
+        .unwrap();
+        let system = "[system]\nname = \"demo\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
+                      [image.native]\nboard = \"native\"\n";
+        std::fs::write(bringup.join("system.toml"), system).unwrap();
+        let bound = |ws: &Path| -> bool {
+            let w = Workspace::discover(ws).unwrap();
+            let p = w.packages.iter().find(|p| p.name == "talker_pkg").unwrap();
+            assert_eq!(p.cargo_component_metadata.len(), 1);
+            p.cargo_component_metadata[0].deploy_bound
+        };
+        assert!(!bound(&ws), "a marker no image backs is not an entry");
+        // The claim, and only the claim: drop the marker, name the package.
+        std::fs::write(pkg.join("Cargo.toml"), NODE_TABLE).unwrap();
+        std::fs::write(
+            bringup.join("system.toml"),
+            format!("{system}entry = \"talker_pkg\"\n"),
+        )
+        .unwrap();
+        assert!(bound(&ws), "an image claims it: deploy-bound");
     }
 
     /// phase-267 W1c/C3 — a node's declared `publishes` lower into the SYNTHETIC
