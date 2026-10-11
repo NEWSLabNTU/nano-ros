@@ -226,7 +226,7 @@ fn render_ffi_rs(spec: FfiRenderSpec<'_>) -> Result<GeneratedFfiRs, GeneratorErr
     let has_heap_string = spec.ffi_fields.iter().any(|f| f.is_heap && f.is_string);
     let has_view = spec.ffi_fields.iter().any(|f| f.is_view);
     let view_repr_struct_name = format!("{}_view", spec.struct_name);
-    let deserialize_view_fn = format!("{}_borrowed", spec.deserialize_fn);
+    let deserialize_view_fn = format!("{}_view", spec.deserialize_fn);
 
     let types_template = MessageCppTypesTemplate {
         package_name: spec.package_name,
@@ -264,7 +264,7 @@ fn render_ffi_rs(spec: FfiRenderSpec<'_>) -> Result<GeneratedFfiRs, GeneratorErr
         has_view,
         view_repr_struct_name,
         deserialize_view_fn,
-        ffi_deserialize_view_fn: format!("{}_borrowed", spec.ffi_deserialize_fn),
+        ffi_deserialize_view_fn: format!("{}_view", spec.ffi_deserialize_fn),
     };
 
     Ok(GeneratedFfiRs {
@@ -404,7 +404,7 @@ pub fn generate_cpp_message_package_with_lookup(
         has_fields,
         serialized_size_max,
         has_view,
-        ffi_deserialize_view_fn: format!("{}_borrowed", ffi_deserialize_fn),
+        ffi_deserialize_view_fn: format!("{}_view", ffi_deserialize_fn),
         tx_max_serialized_size: bound.tx,
         rx_max_serialized_size: bound.rx,
         unbounded_reason: bound.reason,
