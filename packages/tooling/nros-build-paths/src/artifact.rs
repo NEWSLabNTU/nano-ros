@@ -10,7 +10,9 @@
 //! `${NROS_REPO_DIR}/target/release/libnros_cpp.a`, a literal that ignores
 //! `CARGO_TARGET_DIR` and `[build] target-dir` alike.
 //!
-//! The build scripts call [`Artifact::relative`]; every other road asks
+//! The build scripts call
+//! [`Artifact::relative`](crate::artifact::Artifact::relative); every other
+//! road asks
 //! `nros locate artifact <name>`, which reads the target dir from cargo itself
 //! and joins this. Where the target dir IS is cargo's answer, never ours.
 
