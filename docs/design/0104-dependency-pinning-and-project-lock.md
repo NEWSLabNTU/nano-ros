@@ -367,3 +367,8 @@ lock does not move until THEY run `nros update`.
   means a `.git` beside the root, never the root marker, which the SDK ships
   too.
 - 2026-10-11 — Stable: phase-485 implemented D1–D10 and answered every open question except 5 (west revisions stay in the manifests, recorded per image — D4a).
+- 2026-10-11 — D4/D5 as built: the generated half's record is per package,
+  `generated/<pkg>/nros-generated.toml` (issue 1780's fix, `2b6c3aedc2`), and
+  is not copied into `nros-sdk.lock`. D4's `[generated.<pkg>]` example is
+  therefore illustrative; the lock records `[tool]`, `[source]`, `[west]`,
+  `[cargo]`, `[system]` and `[cargo_override]`.
