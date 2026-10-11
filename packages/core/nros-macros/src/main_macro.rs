@@ -594,13 +594,27 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // authors one (issue 1519: `nros build` refuses it, naming the
             // nano-ros id, `zephyr`).
             let deploy = declared;
-            let resolved = board_path_for(&deploy).ok_or_else(|| {
+            // phase-484 W4g — the in-tree table first; then the board crate's
+            // own `[package.metadata.nros.board] type`, which the Entry
+            // package's build script hands over as `NROS_BOARD_TYPE`
+            // (`nros_build::emit_board_framework`). That is the Form-1 route
+            // for an out-of-tree board, which used to need `board = X`.
+            let resolved = board_path_for(&deploy).or_else(|| {
+                entry_env("NROS_BOARD_TYPE")
+                    .and_then(|v| v.into_string().ok())
+                    .filter(|v| !v.trim().is_empty())
+                    .and_then(|v| syn::parse_str::<SynPath>(v.trim()).ok())
+            });
+            let resolved = resolved.ok_or_else(|| {
                 syn::Error::new(
                     Span::call_site(),
                     format!(
                         "nros::main!: unknown board `{deploy}` (from `{}`). \
-                         Known boards: {}.\n  Pass `board = <YourBoardZst>` explicitly \
-                         if your board crate is not in the default table.",
+                         Known boards: {}.\n  For a board crate not in the default table, \
+                         state its type in the board crate's \
+                         `[package.metadata.nros.board] type = \"::my_board::MyBoard\"` and \
+                         call `nros_build::emit_board_framework()` from this package's \
+                         build.rs (or pass `board = <YourBoardZst>`).",
                         leaf.as_ref()
                             .map(|l| l.origin_path().display().to_string())
                             .unwrap_or_default(),
@@ -5614,6 +5628,23 @@ mod leaf_axis_tests {
             .map_err(|e| e.to_string());
         ENTRY_ENV_OVERRIDE.with(|m| m.borrow_mut().clear());
         out
+    }
+
+    /// phase-484 W4g — an out-of-tree board reaches Form 1 through the board
+    /// crate's own `type`, handed over as `NROS_BOARD_TYPE`; without it the
+    /// unknown key is still refused, naming the route.
+    #[test]
+    fn form1_takes_an_out_of_tree_board_type_from_the_build_script() {
+        ENTRY_ENV_OVERRIDE.with(|m| {
+            m.borrow_mut()
+                .insert("NROS_BOARD_TYPE".into(), "::my_board::MyBoard".into());
+        });
+        let out = expand("", "my-board", "").unwrap();
+        assert!(out.contains("my_board :: MyBoard"), "type not used:\n{out}");
+
+        let err = expand("", "my-board", "").unwrap_err();
+        assert!(err.contains("unknown board `my-board`"), "{err}");
+        assert!(err.contains("[package.metadata.nros.board] type"), "{err}");
     }
 
     /// The case issue 1766 measured: `param_services` declared, nothing
