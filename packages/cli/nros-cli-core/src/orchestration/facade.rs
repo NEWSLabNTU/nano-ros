@@ -467,7 +467,7 @@ fn derive_selection(
         }
     }
     for cf in wanted_markers {
-        if crate_declares_feature(&nros_path, &cf) {
+        if crate_declares_feature(nros_path, &cf) {
             nros_features.push(cf);
         }
     }
