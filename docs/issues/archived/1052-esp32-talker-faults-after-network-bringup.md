@@ -73,7 +73,7 @@ creates one subscription.
 ## What this blocks
 
 `test_esp32_talker_listener_e2e` and `test_esp32_to_native` in
-[issue 0968](../0968-tier2-runtime-failures-unreproduced.md). Both wait on the
+[issue 0968](0968-tier2-runtime-failures-unreproduced.md). Both wait on the
 talker's `Publishing:` marker, which the image cannot reach.
 
 ## BISECTED 2026-09-04 — it is NOT in `register()`

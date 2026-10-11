@@ -301,7 +301,7 @@ image builds, links and boots, and then does the wrong thing.
   rather than closed because the retraction is the finding: it is the third time
   a load artefact was filed as a defect here, and the phase's own W1 and W5 are
   two of the others.
-* **[#0968](../issues/0968-tier2-runtime-failures-unreproduced.md)** — tier 2
+* **[#0968](../issues/archived/0968-tier2-runtime-failures-unreproduced.md)** — tier 2
   has ~12 runtime e2e failures on main, unreproduced. This one is the phase's
   admission test applied at scale: *reproduces solo* is what makes a failure
   worth an owner, and nobody has run the tier to find out which of the twelve do.

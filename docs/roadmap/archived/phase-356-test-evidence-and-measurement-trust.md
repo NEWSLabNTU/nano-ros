@@ -430,5 +430,5 @@ holds the evidence, the item is *close it*.
 | [#0820](../issues/0820-riscv-nuttx-c-talker-no-runtime-delivery.md) | a NuttX e2e that failed on a MUSEUM BINARY — the seam had no freshness probe, so the run reported on a tree that no longer existed |
 | [#0835](../issues/0835-fixture-staleness-probe-families-restale-each-other.md) | the cmake and rust fixture families re-stale each other, so a sweep can never be simultaneously fresh |
 | [#0930](../issues/0930-built-qemu-can-be-stale-against-its-pin.md) | the built QEMU can be older than the commit `third-party/qemu/qemu` pins, and nothing says so — every timing number is then about an unknown binary |
-| [#0968](../issues/0968-tier2-runtime-failures-unreproduced.md) | tier 2 has ~12 runtime e2e failures on main, UNREPRODUCED: nobody has run the tier in a long time, which is this phase's subject one tier up |
+| [#0968](../../issues/archived/0968-tier2-runtime-failures-unreproduced.md) | tier 2 has ~12 runtime e2e failures on main, UNREPRODUCED: nobody has run the tier in a long time, which is this phase's subject one tier up |
 

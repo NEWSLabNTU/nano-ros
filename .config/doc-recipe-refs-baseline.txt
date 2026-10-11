@@ -36,7 +36,6 @@ book/src/start-here/setup-compared-to-ros2.md	install-local
 docs/design/0058-multi-edition-ros-test-harness.md	ros-edition-image
 docs/development/test-harness.md	orin-spe
 docs/guides/esp32-setup.md	esp32
-docs/issues/0968-tier2-runtime-failures-unreproduced.md	esp32
 docs/issues/1038-nightly-job-does-not-provision-its-lane.md	esp32
 docs/issues/README.md	build-zenoh-pico-arm
 docs/issues/README.md	esp32
