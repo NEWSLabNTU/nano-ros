@@ -9,7 +9,9 @@ use crate::{
 };
 // phase-353 W2 — the content-aware staleness helpers moved to `fixtures::staleness`
 // so the dep-info arm shares them; this module keeps using the same one.
-use crate::fixtures::staleness::candidates_changed_content;
+use crate::fixtures::staleness::{
+    candidates_changed_content_policy, collect_source_files, note_candidate,
+};
 use std::{
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
@@ -1339,8 +1341,14 @@ pub(crate) fn source_dir_is_stale(
     conf_files: Option<&str>,
     // phase-363 W5 — extra candidates the BUILD recorded (ninja's RERUN_CMAKE
     // edge), which no hand list can reach: the shared `cmake/NanoRos*.cmake`
-    // modules and the entry template the generated TU comes from.
+    // modules and the entry template the generated TU comes from. Issue 1794
+    // added the measured Rust closure (every linked staticlib's `.d`).
     extra: &[std::path::PathBuf],
+    // Issue 1794 — the no-baseline answer, named per call (see
+    // `candidates_changed_content_policy`). `false` when a MEASURED input is
+    // already newer than the image, so an unrecognised artifact is not
+    // forgiven for being unrecognised.
+    first_sight_is_fresh: bool,
 ) -> bool {
     let Ok(binary_mtime) = binary_path.metadata().and_then(|m| m.modified()) else {
         // Can't stat the binary — assume stale so we rebuild and get a
@@ -1417,15 +1425,29 @@ pub(crate) fn source_dir_is_stale(
     // (`path_newer_than`) cannot tell a real edit from an mtime bump that left
     // the bytes identical (a rebase/checkout/pull "mtime treadmill", or an edit
     // reverted to the same content), and false-reports EVERY fixture stale after
-    // such a bump even though the image is current. `candidates_changed_content`
+    // such a bump even though the image is current. `candidates_changed_content_policy`
     // uses the LINKED binary's own content hash as the "was rebuilt" signal and
     // only content-hashes sources whose (mtime,size) actually moved, so an
     // identical-content bump is not stale while a genuine edit still is. Falls
     // back to the mtime compare if the binary can't be hashed.
-    let _ = binary_mtime;
-    match candidates_changed_content(binary_path, &candidates) {
+    //
+    // Issue 1794 — flatten to files HERE and put each through `note_candidate`,
+    // the one accounting (and exemption) rule every probe arm shares. Before,
+    // this half compared thousands of files and counted none, so the `probe:`
+    // line read `examined 0 input(s)` for every Zephyr image whatever was
+    // compared — "compared nothing" and "compared things without counting
+    // them" were indistinguishable, which is the shape issue 0445 says to
+    // distrust. Counted once each: the caller passes `extra` unaccounted.
+    let mut files = Vec::new();
+    for c in &candidates {
+        collect_source_files(c, &mut files);
+    }
+    files.sort();
+    files.dedup();
+    files.retain(|f| !note_candidate(f));
+    match candidates_changed_content_policy(binary_path, &files, first_sight_is_fresh) {
         Some(stale) => stale,
-        None => candidates.iter().any(|p| path_newer_than(p, binary_mtime)),
+        None => files.iter().any(|p| path_newer_than(p, binary_mtime)),
     }
 }
 
@@ -1513,7 +1535,7 @@ mod tests {
 
         // First sight: no baseline yet → records it, reports not-stale.
         assert_eq!(
-            candidates_changed_content(&bin, &candidates),
+            candidates_changed_content_policy(&bin, &candidates, true),
             Some(false),
             "first sight must record a baseline and report fresh"
         );
@@ -1522,7 +1544,7 @@ mod tests {
         sleep(Duration::from_millis(10));
         std::fs::write(&src, b"fn main() {}").unwrap();
         assert_eq!(
-            candidates_changed_content(&bin, &candidates),
+            candidates_changed_content_policy(&bin, &candidates, true),
             Some(false),
             "an mtime bump with identical content must not be stale"
         );
@@ -1530,7 +1552,7 @@ mod tests {
         // Real content edit (binary unchanged) → STALE.
         std::fs::write(&src, b"fn main() { /* edited */ }").unwrap();
         assert_eq!(
-            candidates_changed_content(&bin, &candidates),
+            candidates_changed_content_policy(&bin, &candidates, true),
             Some(true),
             "a genuine content change must report stale"
         );
@@ -1538,7 +1560,7 @@ mod tests {
         // Rebuild (binary bytes change) → the image is the fresh truth again.
         std::fs::write(&bin, b"BINARY-V2").unwrap();
         assert_eq!(
-            candidates_changed_content(&bin, &candidates),
+            candidates_changed_content_policy(&bin, &candidates, true),
             Some(false),
             "a rebuilt binary re-baselines and reports fresh"
         );
