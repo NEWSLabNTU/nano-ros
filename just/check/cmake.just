@@ -400,6 +400,35 @@ probe-workspace-caps:
     nros_gate_require_store_corrosion probe-workspace-caps packages/cli/target/release/nros || exit 0
     ./tests/cmake-probe-workspace-caps-tests.sh
 
+# issue 1261 -- a workspace whose bringup declares a capability must pass it as
+# SYSTEM. Without it `nano_ros_workspace()` resolves no capability axes, so the
+# C/C++ libraries build without them while codegen (which reads the bringup
+# through `nros sync`) calls them, and the build fails at LINK on an undefined
+# symbol. The refusal now fires at configure. This configures three synthetic
+# workspaces: a refusal, plus two shapes it must leave alone, so it can never
+# harden into "SYSTEM is always required". Same skip ledger and Corrosion rule
+# as `probe-workspace-caps` above, for the same reasons.
+workspace-system-required:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cmake >/dev/null 2>&1 || ! command -v c++ >/dev/null 2>&1; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip workspace-system-required "missing host tool(s): cmake / c++"
+        exit 0
+    fi
+    if [ ! -x packages/cli/target/release/nros ]; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip workspace-system-required "no in-tree CLI -- run \`just setup-cli\`"
+        exit 0
+    fi
+    # shellcheck source=scripts/build/check-store-corrosion.sh
+    source scripts/build/check-store-corrosion.sh
+    nros_gate_require_store_corrosion_self_test || exit 1  # issue 1739
+    nros_gate_require_store_corrosion workspace-system-required packages/cli/target/release/nros || exit 0
+    ./tests/cmake-workspace-system-required-tests.sh
+
 reconfigure-on-change:
     #!/usr/bin/env bash
     set -euo pipefail

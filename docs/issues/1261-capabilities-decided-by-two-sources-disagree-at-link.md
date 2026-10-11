@@ -10,6 +10,35 @@ severity: medium
 related: [issue-1260, issue-0745, issue-0353, phase-445]
 ---
 
+## 2026-10-11 — the workspace half refuses at configure (still OPEN for Zephyr)
+
+**Acceptance 1: MET.** `nano_ros_workspace()` with no `SYSTEM` now asks the
+same SSoT accessor (`nros config show --format cmake`, with no `--system`, so
+it answers for the default or only bringup). If that bringup declares any
+capability, configure stops naming the bringup and the argument:
+`Pass SYSTEM demo_bringup to nano_ros_workspace() (issue 1261)`. A
+bringup-less workspace, which is valid and is what `nros build` generates in
+package mode, is untouched. So is a host with no CLI: the lookup is OPTIONAL
+there, and with no CLI there is no codegen to disagree with.
+Gate: `just check workspace-system-required`
+(`tests/cmake-workspace-system-required-tests.sh`) configures three synthetic
+workspaces:
+- A: capability declared, SYSTEM omitted → refused;
+- B: SYSTEM given → not refused;
+- C: no bringup → configures.
+
+With the refusal disabled, A fails both of its assertions. Re-measured before
+the change, the phase-445 re-measure got
+`undefined reference to nros_cpp_register_parameter_services` at link.
+
+**Acceptance 2: partly.** A Zephyr image built by `nros build` gets
+`NANO_ROS_FEATURES` from the generated west application (e0b8504beb, #1681).
+A HAND-WRITTEN west application under a bare `west build` still needs
+`-DNANO_ROS_FEATURES`, and `zephyr/CMakeLists.txt`'s comment about resolving
+from the entry's BRINGUP still stands. Issue 1288 is retiring the in-tree
+hand-written applications. The road itself stays open here.
+
+
 ## Symptom
 
 A downstream (Autoware Safety Island) declared `param_services` in its

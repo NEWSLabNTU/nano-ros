@@ -9,7 +9,9 @@ issue 1404 (resolved) `nros sync` also removes a stale GENERATED workspace root
 left on disk. Bullet 5 is NOT MET with 35 hits, down from 45 (issue 1289).
 1117 resolved 2026-10-11 (its four exempt siblings fixed or deleted). 1277 resolved the same day (fixed by
 `1f3b0d4ad5`, never closed). 1310 is fixed in code and still open: its runtime
-test has not been RUN here.
+test has not been RUN here. 1261: a workspace that omits `SYSTEM` over a bringup
+declaring a capability now refuses at configure (gate `workspace-system-required`);
+its Zephyr hand-written road stays open.
 
 *(2026-09-11: Every wave is WRITTEN; the phase is NOT complete, and
 two of its five acceptance bullets are measured NOT MET.)* W1, W2, W3b, W4b, W5
