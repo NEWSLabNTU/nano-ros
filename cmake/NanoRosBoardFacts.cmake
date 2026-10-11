@@ -124,8 +124,12 @@ function(nros_resolve_board_facts)
     # it (`leaf_system::for_entry`, phase-445 W5 — it was the entry's retired
     # `[package.metadata.nros.entry] deploy`). Without this the Zephyr lane
     # resolved nothing at all.
+    #
+    # Issue 1827 — `NROS_BRINGUP_DIR` (set by `nros build`) comes before the
+    # workspace: the workspace answers only while it has ONE bringup, and the
+    # verb refuses a second as ambiguous, which this file soft-skips.
     set(_ws "${_A_WORKSPACE}")
-    foreach(_cand "${NROS_WORKSPACE_DIR}" "${APPLICATION_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}")
+    foreach(_cand "${NROS_BRINGUP_DIR}" "${NROS_WORKSPACE_DIR}" "${APPLICATION_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}")
         if(_ws STREQUAL "" AND NOT _cand STREQUAL "")
             set(_ws "${_cand}")
         endif()
