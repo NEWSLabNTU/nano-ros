@@ -84,8 +84,19 @@ def build_step_events(text: str) -> set[str] | None:
 
 
 def check_job_name(text: str) -> str | None:
-    m = re.search(r"^  check:\n(?:\s+#[^\n]*\n)*\s+name:\s*(?P<n>[^\n]*)", text, re.M)
-    return m.group("n").strip() if m else None
+    """`name:` of the job that holds the `just check build` step.
+
+    Found from the step, not by a job id: phase-489 W1 split the one `check`
+    job into `check-*` siblings, and a lookup of `  check:` then returned None
+    — an empty name claims nothing, so the gate passed blind (its self-test
+    caught it). The job the tier runs in is the label a contributor reads.
+    """
+    step = re.search(r"^\s*-\s*name:[^\n]*just check build", text, re.M)
+    if not step:
+        return None
+    jobs = list(re.finditer(r"^  ([A-Za-z0-9_-]+):\n(?:\s+#[^\n]*\n)*\s+name:\s*(?P<n>[^\n]*)",
+                            text[: step.start()], re.M))
+    return jobs[-1].group("n").strip() if jobs else None
 
 
 def header(text: str) -> str:
@@ -105,7 +116,7 @@ def scan(text: str) -> list[str]:
 
     out: list[str] = []
     name = check_job_name(text)
-    for where, blob in (("the `check` job's `name:`", name or ""), ("the workflow header", header(text))):
+    for where, blob in (("the `just check build` job's `name:`", name or ""), ("the workflow header", header(text))):
         for claim in pr_tier_claims(blob):
             if claim:
                 out.append(

@@ -334,6 +334,7 @@ superseded by stacking.
 One aggregator job (`ci-ok`, context **`CI`**) gates everything. It `needs:`
 every job, runs `if: always()`, and inspects `needs.*.result`. Individual jobs
 may be skipped, path-filtered or renamed freely — only `CI` is required.
+The gate's own work runs as parallel `check-*` sibling jobs (phase-489 W1); `CI` excuses a sibling's skip only on an event its `if:` excludes, and `check-default-gates-run-somewhere` R3 holds both lists equal.
 
 **So do not add a job name to the required set, ever.** The reason is a defect
 that froze this repo four ways in one day: a required check that produces no

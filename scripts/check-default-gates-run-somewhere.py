@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A gate CI never runs, and a gate CI runs but cannot hear — issue 1040.
 
-Two rules over one scan of `.github/workflows/`. They are the two halves of one
+Rules over one scan of `.github/workflows/`. R1 and R2 are the two halves of one
 question, "does this gate report", and both halves have now failed in
 production:
 
@@ -20,6 +20,12 @@ production:
                  `just check` in the same block does not execute when the
                  earlier one is red -- and a gate that did not execute is
                  indistinguishable from one that passed.
+
+  R3 HEARD BY CI (phase-489 W1) In the workflow holding the required `CI`
+                 job, every job that runs a gate is in its `needs:` and is
+                 inspected by a `sibling` line whose excused events equal the
+                 job's own `if:`. Once the gate became parallel `check-*`
+                 siblings, a sibling `CI` does not wait for blocks nothing.
 
 R2 is not hypothetical and it is why R1 alone is not enough. Measured
 2026-09-05: gate.yml ran `check build`, `check no-std` and `check api-parity`
@@ -468,6 +474,105 @@ def port_smoke_errors(smokes, place):
     return errs
 
 
+# ---------------------------------------------------------------------------
+# R3 — phase-489 W1. A gate job the required aggregator does not inspect.
+#
+# R1 asks whether SOME event runs a gate. That stopped being enough when the
+# one `check` job became parallel `check-*` siblings: a sibling missing from
+# `CI`'s `needs:` still runs, still goes red, and blocks nothing — R1 green, the
+# gate decorative. And a sibling skipped on an event it has work on reads as
+# `skipped`, which an aggregator that accepts skips turns into a pass.
+#
+# So, in the workflow that holds the required `CI` job: every job that runs a
+# gate (`just check …`, or a non-`check` step of `just ci gate`) must be in
+# `CI`'s `needs:` AND have a `sibling <job> "${{ needs.<job>.result }}"
+# "<events>"` line in its step, whose <events> equal the events the job's OWN
+# `if:` admits. That list is what the aggregator excuses a skip on; one wider
+# than the job's `if:` excuses a skip on an event the job should have run on.
+# Read from YAML, not text: the shape is jobs, needs and a job-level `if:`.
+# ---------------------------------------------------------------------------
+AGGREGATOR_NAME = "CI"
+_SIBLING = re.compile(
+    r'^\s*sibling\s+(\S+)\s+"\$\{\{\s*needs\.([A-Za-z0-9_-]+)\.result\s*\}\}"\s+"([^"]*)"',
+    re.M)
+
+
+def aggregator_errors(text, wf_name, recipes):
+    """[error] for one workflow's text; [] when it has no `CI` job.
+
+    Returns (errors, examined) — `examined` counts the gate jobs checked, so a
+    caller can refuse a pass over nothing.
+    """
+    import yaml
+
+    doc = yaml.safe_load(text) or {}
+    jobs = doc.get("jobs") or {}
+    agg = [j for j, b in jobs.items() if isinstance(b, dict) and b.get("name") == AGGREGATOR_NAME]
+    if not agg:
+        return [], 0
+    aid = agg[0]
+    abody = jobs[aid]
+    needs = abody.get("needs") or []
+    needs = [needs] if isinstance(needs, str) else list(needs)
+    run = "\n".join(str(st.get("run", "")) for st in abody.get("steps") or [] if isinstance(st, dict))
+    listed = {}
+    errs = []
+    for m in _SIBLING.finditer(run):
+        if m.group(1) != m.group(2):
+            errs.append(f"{wf_name}: `{aid}` checks `sibling {m.group(1)}` against "
+                        f"`needs.{m.group(2)}.result` — a verdict read for the wrong job.")
+        listed[m.group(1)] = set(m.group(3).split())
+    wf_events = set(re.findall(r"^\s{2}(" + "|".join(EVENTS) + r")\s*:", text, re.M))
+    for n in needs:
+        if n not in jobs:
+            errs.append(f"{wf_name}: `{aid}` needs `{n}`, which is not a job here.")
+    for name in sorted(set(listed) - set(jobs)):
+        errs.append(f"{wf_name}: `{aid}` inspects `sibling {name}`, which is not a job here.")
+    gate_re = re.compile(r"\bjust\s+(?:check\b|(?:%s)(?![\w-]))"
+                         % "|".join(re.escape(r) for r in recipes) if recipes else r"\bjust\s+check\b")
+    examined = 0
+    for jid, body in jobs.items():
+        if jid == aid or not isinstance(body, dict):
+            continue
+        runs = [str(st.get("run", "")) for st in body.get("steps") or [] if isinstance(st, dict)]
+        cmds = [ln for r in runs for ln in r.split("\n") if not ln.lstrip().startswith("#")]
+        if not any(gate_re.search(ln) for ln in cmds):
+            continue
+        examined += 1
+        if jid not in needs:
+            errs.append(
+                f"{wf_name}: job `{jid}` runs a gate and is not in `{aid}`'s `needs:`.\n"
+                f"      It still runs and still goes red — and blocks nothing, because the\n"
+                f"      required `{AGGREGATOR_NAME}` context never waits for it (phase-489 W1).")
+            continue
+        if jid not in listed:
+            errs.append(
+                f"{wf_name}: job `{jid}` runs a gate and `{aid}` never inspects its result.\n"
+                f"      Give it a `sibling {jid} \"${{{{ needs.{jid}.result }}}}\" \"<events>\"` line —\n"
+                f"      `needs:` alone passes on a skip (GitHub reports skipped as success).")
+            continue
+        guard = body.get("if")
+        own = _events_of(f"if: {guard}" if guard else "", wf_events)
+        if listed[jid] != own:
+            errs.append(
+                f"{wf_name}: `{aid}` excuses a skip of `{jid}` on {sorted(listed[jid])}, but\n"
+                f"      its own `if:` runs it on {sorted(own)}. The two lists are one fact:\n"
+                f"      an excuse wider than the `if:` turns a skip on a working event into a\n"
+                f"      pass, a narrower one fails `{AGGREGATOR_NAME}` on an event it has no work on.")
+    return errs, examined
+
+
+def aggregator_scan(recipes):
+    errs, examined = [], 0
+    if not WORKFLOWS.is_dir():
+        return errs, examined
+    for path in sorted(WORKFLOWS.glob("*.yml")) + sorted(WORKFLOWS.glob("*.yaml")):
+        e, n = aggregator_errors(path.read_text(), path.name, recipes)
+        errs += e
+        examined += n
+    return errs, examined
+
+
 def self_test():
     """Prove both rules can fail. Runs on the NORMAL path, every invocation —
     a negative control nobody runs decays into a comment."""
@@ -591,6 +696,29 @@ def self_test():
     chk("a placed smoke is reported",
         port_smoke_errors(["threadx_linux::test-c-port"], sp) == [])
 
+    # R3 — phase-489 W1. Synthetic workflows: the planted defects must each be
+    # reported, and the well-formed one must not.
+    def wf(needs, sib_events, job_if="${{ always() && contains(fromJSON('[\"merge_group\"]'), github.event_name) }}"):
+        sib = (f'          sibling t "${{{{ needs.t.result }}}}" "{sib_events}"\n'
+               if sib_events is not None else "")
+        return ("on:\n  pull_request:\n  merge_group:\njobs:\n"
+                "  t:\n"
+                f"    if: {job_if}\n"
+                "    steps:\n      - run: just test-unit\n"
+                "  w:\n    steps:\n      - run: just setup-launch-resolve\n"
+                f"  ci-ok:\n    name: CI\n    needs: [{needs}]\n    steps:\n      - run: |\n"
+                + sib + "          true\n")
+    good, n_good = aggregator_errors(wf("t", "merge_group"), "probe.yml", ["test-unit"])
+    chk(f"R3 reports a well-formed aggregator: {good}", good == [] and n_good == 1)
+    e, _ = aggregator_errors(wf("w", "merge_group"), "probe.yml", ["test-unit"])
+    chk("R3 misses a gate job absent from `needs:`", any("not in `ci-ok`'s `needs:`" in x for x in e))
+    e, _ = aggregator_errors(wf("t", None), "probe.yml", ["test-unit"])
+    chk("R3 misses a gate job whose result is never inspected", any("never inspects" in x for x in e))
+    e, _ = aggregator_errors(wf("t", "merge_group pull_request"), "probe.yml", ["test-unit"])
+    chk("R3 misses an excuse list wider than the job's `if:`", any("excuses a skip" in x for x in e))
+    e, _ = aggregator_errors(wf("t, gone", "merge_group"), "probe.yml", ["test-unit"])
+    chk("R3 misses a `needs:` naming no job", any("not a job here" in x for x in e))
+
     if ok:
         print(
             f"check-default-gates-run-somewhere self-test: OK "
@@ -712,6 +840,14 @@ def main() -> int:
     smokes = port_smoke_recipes()
     errs += port_smoke_errors(smokes, port_smoke_placements(run_blocks(), smokes))
 
+    # R3 — phase-489 W1: every gate job is one the required aggregator inspects.
+    agg_errs, agg_jobs = aggregator_scan(recipes)
+    errs += agg_errs
+    if not agg_errs and agg_jobs == 0:
+        errs.append(
+            f"no workflow job named `{AGGREGATOR_NAME}` inspects any gate job — R3 "
+            f"examined nothing, so it would pass over a deleted aggregator.")
+
     if errs:
         print(f"check-default-gates-run-somewhere: {len(errs)} gate(s) CI cannot hear\n",
               file=sys.stderr)
@@ -729,7 +865,8 @@ def main() -> int:
         f"`just ci gate` and {len(smokes)} platform C-port smoke(s), all reached by "
         f"some workflow event ({gating} gate(s) on "
         f"a merge-gating one, {heard - gating} report-only); no placement anywhere "
-        f"is sequenced behind another gate in its `run:` block. "
+        f"is sequenced behind another gate in its `run:` block; {agg_jobs} gate job(s) "
+        f"each inspected by `{AGGREGATOR_NAME}` on exactly the events its `if:` admits. "
         f"`--survey` prints gate -> events."
     )
     return 0

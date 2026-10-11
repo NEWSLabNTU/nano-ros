@@ -4,9 +4,11 @@
 `gate.yml` has two cache-writing jobs and they only cooperate if they agree
 exactly:
 
-  * `check`      — reads the cache on pull_request / merge_group.
-  * `warm-cache` — writes it on push to `main`, which is the ONLY scope the
-                   other two can read from.
+  * `check-*`    — the gate's sibling jobs (phase-489 W1 split the one
+                   `check` job into them); they read on pull_request /
+                   merge_group.
+  * `warm-cache` — writes on push to `main`, which is the ONLY scope those
+                   runs can read from.
 
 GitHub scopes a cache to the ref that created it; a run may restore from its own
 ref or from the default branch, and nothing else. A merge_group run executes on
@@ -29,8 +31,11 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GATE = os.path.join(ROOT, ".github", "workflows", "gate.yml")
 
-# (consumer job, warmer job, what the pair caches)
-PAIRS = [("check", "warm-cache", "the compile-tier CLI + resolver build")]
+# (consumer job-name PREFIX, warmer job, what the pair caches). A prefix, not a
+# name: phase-489 W1 split the one `check` consumer into `check-*` siblings,
+# and a hand list of them would be one more table to forget a sibling in. Every
+# job matching the prefix is a consumer; at least one must exist.
+PAIRS = [("check-", "warm-cache", "the compile-tier CLI + resolver build")]
 
 
 def jobs(text):
@@ -209,51 +214,58 @@ def main():
 
     problems = []
     checked = 0
-    for consumer, warmer, what in PAIRS:
-        if consumer not in js or warmer not in js:
+    for prefix, warmer, what in PAIRS:
+        consumers = sorted(j for j in js if j.startswith(prefix) and j != warmer)
+        if not consumers or warmer not in js:
             problems.append(
-                "gate.yml has no job %r or %r — this gate names a pair that does "
-                "not exist, so it was asserting nothing."
-                % (consumer, warmer)
+                "gate.yml has no job matching %r*, or no %r — this gate names a pair "
+                "that does not exist, so it was asserting nothing." % (prefix, warmer)
             )
             continue
-        ce = {k: p for p, k in cache_entries(js[consumer])}
         we = {k: p for p, k in cache_entries(js[warmer])}
-        if not ce or not we:
+        read = {}  # key -> {consumer: paths}
+        for c in consumers:
+            for p, k in cache_entries(js[c]):
+                read.setdefault(k, {})[c] = p
+        if not read or not we:
             problems.append(
-                "no actions/cache step found in %r or %r (found %d / %d) — the "
+                "no actions/cache step found in %s or %r (found %d / %d) — the "
                 "shape changed and this gate would pass vacuously."
-                % (consumer, warmer, len(ce), len(we))
+                % ("/".join(consumers), warmer, len(read), len(we))
             )
             continue
         # issue 1616 (W7): the CONSUMER direction too. A restore-only step whose
         # key neither the warmer nor the consumer itself ever writes restores
         # nothing, forever — and a one-way check (warmer -> consumer) let one
         # be added with the gate green.
-        written = produced_keys(js[warmer]) | produced_keys(js[consumer])
-        for key in restore_only_keys(js[consumer]):
-            checked += 1
-            if key not in written:
-                problems.append(
-                    "`%s` restores key\n      %s\n    which neither `%s` nor `%s` ever "
-                    "saves (%s). A restore of a key nobody writes is a cache miss on "
-                    "every run that reads as a cold cache." % (consumer, key, warmer, consumer, what)
-                )
+        for c in consumers:
+            written = produced_keys(js[warmer]) | produced_keys(js[c])
+            for key in restore_only_keys(js[c]):
+                checked += 1
+                if key not in written:
+                    problems.append(
+                        "`%s` restores key\n      %s\n    which neither `%s` nor `%s` "
+                        "ever saves (%s). A restore of a key nobody writes is a cache "
+                        "miss on every run that reads as a cold cache."
+                        % (c, key, warmer, c, what)
+                    )
         for key, paths in we.items():
             checked += 1
-            if key not in ce:
+            if key not in read:
                 problems.append(
-                    "`%s` warms key\n      %s\n    which `%s` never reads (%s).\n"
+                    "`%s` warms key\n      %s\n    which no `%s*` job reads (%s).\n"
                     "    A warm job whose key does not match its consumer still "
                     "succeeds and still uploads — and warms NOTHING."
-                    % (warmer, key, consumer, what)
+                    % (warmer, key, prefix, what)
                 )
-            elif ce[key] != paths:
-                problems.append(
-                    "`%s` and `%s` share key\n      %s\n    but cache different "
-                    "paths:\n      consumer: %s\n      warmer:   %s"
-                    % (consumer, warmer, key, list(ce[key]), list(paths))
-                )
+                continue
+            for c, cpaths in sorted(read[key].items()):
+                if cpaths != paths:
+                    problems.append(
+                        "`%s` and `%s` share key\n      %s\n    but cache different "
+                        "paths:\n      consumer: %s\n      warmer:   %s"
+                        % (c, warmer, key, list(cpaths), list(paths))
+                    )
 
     if problems:
         sys.stderr.write("check-gate-cache-keys-agree: %d problem(s)\n\n" % len(problems))
@@ -262,7 +274,8 @@ def main():
         return 1
 
     sys.stdout.write(
-        "check-gate-cache-keys-agree: OK — %d warmed key(s) match their consumer.\n" % checked
+        "check-gate-cache-keys-agree: OK — %d key pairing(s) checked; every warmed key is "
+        "read by a consumer with the same paths, and every restored key is written.\n" % checked
     )
     return 0
 

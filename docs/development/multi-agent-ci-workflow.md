@@ -729,7 +729,7 @@ the only failover a single-runner setup does not have.
 
 Four files, replacing the current five. Each job is a thin `just` caller.
 
-**`gate.yml`** — hosted, every PR. This is the whole pre-merge gate.
+**`gate.yml`** — hosted, every PR. This is the whole pre-merge gate. (As built, its gates run as parallel `check-*` sibling jobs behind the one `CI` aggregator — phase-489 W1; the sketch below predates that.)
 (Earlier drafts of this page called it pr.yml — no such file. It was then
 pr-checks.yml for most of this page's life — unbackticked for the same
 reason, it is a name no file carries now — and this paragraph argued for

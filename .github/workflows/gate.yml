@@ -6,8 +6,9 @@
 # path-filter job gates the narrow lanes so they only run when their paths move
 # (on a PR); on push/schedule/dispatch every job runs.
 #
-#   - check          : `just check fast` on every event, plus the PR-only source
-#                      gates (compile-smoke, rustdoc-links, rustdoc-workspace).
+#   - check-*        : `just check fast` on every event, plus the PR-only source
+#                      gates (compile-smoke, rustdoc-links, rustdoc-workspace),
+#                      as parallel sibling jobs `CI` aggregates (phase-489 W1).
 #                      The buildless gate survives the rapid push cadence.
 #                      `just check build` -- the FULL compile tier -- runs on
 #                      `schedule`/`workflow_dispatch` ONLY, never on a pull
@@ -246,18 +247,40 @@ jobs:
           fi
 
   # ----- fast gate (always) -----
-  check:
-    name: check (fast + PR source gates; full compile tier on nightly/manual)
-    # `always()` is load-bearing: `changes` is skipped on a merge group, and a
-    # skipped dependency skips its dependents — without it, `check` would not
-    # run in the queue, which is the one place it matters most.
+  check-fast:
+    name: check / fast (every event)
+    # phase-489 W1 — the old single `check` job, split into parallel siblings.
     #
-    # So: run unless this is a pull request that touches ONLY documentation.
-    # Every other event runs it unconditionally.
+    # `check` ran every gate one after another: ~33 min of steps per merge-group
+    # batch, while its critical path is really its longest gate. Each sibling
+    # below runs exactly the gate steps it ran inside `check`, under the same
+    # step `if:`s, after the same setup (checkout, sccache, CLI, clang-format,
+    # Corrosion, compile-tier sources, pin baseline). Nothing carries a build dir
+    # between jobs, so each sibling provisions its own artifacts —
+    # `check-lane-contracts` checks every job separately for exactly that.
+    #
+    #   check-fast           every event      check fast, submodule-commits-reachable
+    #   check-compile-smoke  PR              compile-smoke, rustdoc-links, rustdoc-workspace
+    #   check-cli-tests      PR/MG/nightly   launch-resolve-fresh, cli-tests + node-std-tests (PR/MG),
+    #                                        cpp-ffi-tests (MG)
+    #   check-workspace-all  PR/MG/nightly   workspace-all
+    #   check-test-unit      MG/nightly      test-unit
+    #   check-lane-contracts MG/nightly      test-lane-contracts
+    #   check-build          nightly/manual  compile-check fixtures, generate-bindings, check build, no-std
+    #
+    # A sibling's job-level `if:` names the events it has work on. `CI` treats a
+    # skip on any OTHER event as deliberate and a skip on one of its own events as
+    # a failure; `check-default-gates-run-somewhere` holds the two lists equal and
+    # requires every gate-running job here to be one `CI` inspects. Same hosted
+    # runner as before: moving the heavy siblings to self-hosted is phase-489 W2.
+    #
+    # `always()` is load-bearing on every sibling: `changes` is skipped on a merge
+    # group, and a skipped dependency skips its dependents — without it no sibling
+    # would run in the queue, which is the one place it matters most. The
+    # `pull_request` arm narrows to a code-touching diff (docs-only PRs skip).
     needs: changes
     if: >-
-      ${{ always() && (github.event_name != 'pull_request'
-          || needs.changes.outputs.code == 'true') }}
+      ${{ always() && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true') }}
     runs-on: ubuntu-22.04
     permissions:
       contents: read
@@ -418,7 +441,6 @@ jobs:
             sed 's/^/  /' /tmp/sccache-start.log || true
           fi
 
-
       # ----- the in-tree nros CLI: EVERY event -----
       #
       # phase-422 W2 moved clang-format's provisioning into the index, so
@@ -443,36 +465,66 @@ jobs:
       # It sits AFTER the sccache steps deliberately: `RUSTC_WRAPPER` has to be
       # exported before the first cargo invocation or this build is the one
       # compile in the job that misses the cache.
-      - name: Cache CLI build (every event)
-        # RESTORE-ONLY. A save here writes a cache the run can never read again:
-        # merge_group executes on an ephemeral `gh-readonly-queue/...` ref and a
-        # pull_request on `refs/pull/N/merge`, and GitHub scopes a cache to its
-        # creating ref. Measured 2026-09-05: 16 such entries held 13.34 GB of a
-        # 10 GB pool — 97.6% — so the pool ran 37% over its limit and evicted
-        # continuously, and `main`'s shared entry (the only one anything can
-        # restore from) was the small, least-recently-used thing it discarded.
-        # `warm-cache` on push to main is the ONE writer.
+      # phase-489 W3 — cache the BINARIES, not the build tree.
+      #
+      # This step used to restore all of `packages/cli/target` and
+      # `nros-launch-resolve/target`: main's entry was 2967 MB and took a
+      # constant 3.8 min on every event, to hand this job one 28 MB `nros`.
+      # What the job actually consumes is `nros` (asked for its own freshness
+      # by `source-stamp` below), and `nros-launch-resolve` with the two files
+      # `just setup-launch-resolve` keeps beside it: the content stamp its skip
+      # path compares, and the Python half it `dlopen`s. Four files, ~42 MB
+      # uncompressed.
+      #
+      # THE KEY IS A SUPERSET OF THE STAMP. The old key hashed
+      # `packages/cli/**/{Cargo.lock,Cargo.toml,*.rs}` and was narrower than
+      # `source_stamp.rs`'s watch set — no `.jinja`, `askama.toml`,
+      # `cli-source-dirs.txt`, out-of-tree crate dirs or `play_launch` pin — so
+      # an exact hit existed for a tree whose stamp had moved, and only cargo's
+      # mtime luck stood between it and a stale binary. The script hashes the
+      # git index entries of EVERY file in the stamp's closure (packages/cli plus
+      # each dir `cli-source-dirs.txt` lists) — the submodule gitlinks
+      # included, so the pin is in it — plus the toolchain pin. No restore-keys:
+      # a partial hit is by definition a binary for another tree.
+      #
+      # The key is still not the authority. `nros source-stamp` in the next step
+      # is: it refuses a binary whose baked stamp is not this checkout's, and the
+      # step then builds rather than trusting the cache.
+      #
+      # RESTORE-ONLY, for the scoping reason the sccache step gives;
+      # `warm-cache` on push to main is the one writer.
+      - name: Key the CLI binary cache on source_stamp.rs's whole watch set
+        id: cli-key
+        run: |
+          key="$(scripts/ci/cli-bin-cache-key.sh)"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the nros + nros-launch-resolve binaries (every event)
         uses: actions/cache/restore@v4
         with:
           path: |
-            packages/cli/target
-            packages/cli/nros-launch-resolve/target
-          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
-          restore-keys: |
-            nros-cli-${{ runner.os }}-
+            packages/cli/target/release/nros
+            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve
+            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve.nros-source-stamp
+            packages/cli/nros-launch-resolve/target/release/libplay_launch_parser_pyexec.so
+          key: nros-cli-bin-${{ runner.os }}-${{ steps.cli-key.outputs.key }}
 
+      # phase-429 W5 — ASSERT the binary matches the checkout, do not hope.
+      # A restored binary is used only if its own `source-stamp` accepts this
+      # tree; otherwise cargo builds it (cold `target/` — sccache carries that).
+      # The unconditional `source-stamp` after the branch is the assertion: a
+      # binary that fails it fails the step, whichever path produced it.
+      # `play_launch` is initialised FIRST because its pin is a stamp input.
       - name: Build the in-tree nros CLI (every event)
         run: |
           git submodule update --init --depth 1 packages/cli/third-party/play_launch
-          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
-          # phase-429 W5 — ASSERT the binary matches the checkout, do not hope.
-          # The CLI cache key is narrower than `source_stamp.rs`'s watch set
-          # (it misses `.jinja`, `cli-source-dirs.txt`, the out-of-tree crate
-          # dirs and the `play_launch` pin), so an exact-key hit exists for a
-          # tree whose stamp has moved. Fresh-checkout mtimes usually make
-          # cargo rebuild; usually is not a guarantee, and a binary emitting
-          # code the runtime did not expect is what RFC-0090 exists to stop.
-          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
+          bin="$GITHUB_WORKSPACE/packages/cli/target/release/nros"
+          if [ -x "$bin" ] && "$bin" source-stamp >/dev/null 2>&1; then
+            echo "restored nros matches this checkout's source stamp; not rebuilt"
+          else
+            cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+          fi
+          "$bin" source-stamp >/dev/null
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
 
       # ----- shared setup -----
@@ -675,13 +727,179 @@ jobs:
           source ./activate.sh
           just check submodule-commits-reachable
 
-      # ----- build tier (PR + nightly + dispatch, NOT per-push) -----
-      # THE ARRANGEMENT, phase-395. This job is ONE required status context and
-      # it deliberately does DIFFERENT WORK per event:
+      - name: sccache stats (compile tier)
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) && always() }}
+        run: |
+          # MEASURED, not assumed. A cache that silently misses every request
+          # looks exactly like one that is working; the only difference is in
+          # this output. `|| true` — a stats failure must never fail a gate.
+          #
+          # `pull_request` was NOT in that list, which made the sentence above
+          # false exactly where it mattered: the PR is the event that compiles
+          # on every push an agent makes, and it was the one event with no
+          # stats. A backend that had been unavailable since the sccache bump
+          # therefore cost ~178 s per run — 45% of this job — behind a
+          # `::warning::` and no measurement at all. Same shape as the export
+          # bug above: the diagnostic excluded the case it existed for.
+          command -v sccache >/dev/null 2>&1 && sccache --show-stats || true
+          # A non-zero `Cache write errors` above is a count with no cause. The
+          # server log carries the actual transport/HTTP error; dedupe it, since
+          # one root cause repeats once per compilation unit.
+          if [ -s /tmp/sccache-server.log ]; then
+            echo "--- sccache server log (deduped) ---"
+            { sort /tmp/sccache-server.log | uniq -c | sort -rn | head -25; } || true
+          fi
+
+  check-compile-smoke:
+    name: check / compile-smoke + rustdoc (pull request only)
+    needs: changes
+    if: >-
+      ${{ always() && github.event_name == 'pull_request'
+          && needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      # Setup below is the same as `check-fast`'s, whose comments explain each
+      # step (phase-489 W1 split one job into these siblings).
+      - name: Cache sccache directory (compiling events)
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/sccache
+          key: sccache-${{ runner.os }}-check-${{ github.sha }}
+          restore-keys: |
+            sccache-${{ runner.os }}-check-
+
+      - name: Configure sccache (compiling events)
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
+        run: |
+          if ! command -v sccache >/dev/null 2>&1; then
+            echo "::warning::sccache absent from the image — the compile tier runs UNCACHED."
+            exit 0
+          fi
+          sccache --version
+          export SCCACHE_DIR=/tmp/sccache
+          export SCCACHE_CACHE_SIZE=1G
+          export SCCACHE_ERROR_LOG=/tmp/sccache-server.log
+          export SCCACHE_LOG=warn
+          if sccache --start-server >/tmp/sccache-start.log 2>&1; then
+            {
+              echo "SCCACHE_DIR=/tmp/sccache"
+              echo "SCCACHE_ERROR_LOG=/tmp/sccache-server.log"
+              echo "SCCACHE_LOG=warn"
+              echo "SCCACHE_CACHE_SIZE=1G"
+            } >> "$GITHUB_ENV"
+          else
+            echo "::warning::sccache unavailable — the compile tier runs UNCACHED (issue 0874)."
+            sed 's/^/  /' /tmp/sccache-start.log || true
+          fi
+
+      - name: Key the CLI binary cache on source_stamp.rs's whole watch set
+        id: cli-key
+        run: |
+          key="$(scripts/ci/cli-bin-cache-key.sh)"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the nros + nros-launch-resolve binaries (every event)
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            packages/cli/target/release/nros
+            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve
+            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve.nros-source-stamp
+            packages/cli/nros-launch-resolve/target/release/libplay_launch_parser_pyexec.so
+          key: nros-cli-bin-${{ runner.os }}-${{ steps.cli-key.outputs.key }}
+
+      - name: Build the in-tree nros CLI (every event)
+        run: |
+          git submodule update --init --depth 1 packages/cli/third-party/play_launch
+          bin="$GITHUB_WORKSPACE/packages/cli/target/release/nros"
+          if [ -x "$bin" ] && "$bin" source-stamp >/dev/null 2>&1; then
+            echo "restored nros matches this checkout's source stamp; not rebuilt"
+          else
+            cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+          fi
+          "$bin" source-stamp >/dev/null
+          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+
+      - name: Provision clang-format (pinned by [tool.clang-format])
+        run: |
+          source ./activate.sh
+          just setup-clang-format
+
+      - name: Provision Corrosion (pinned by [tool.corrosion])
+        run: |
+          source ./activate.sh
+          just workspace install-corrosion
+
+      - name: Provision compile-tier sources
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
+        run: |
+          source ./activate.sh
+          nros setup \
+            --source px4-rs --source zenoh-pico --source mbedtls --source micro-cdr \
+            --source micro-xrce-dds-client --source cyclonedds-src
+
+      - name: Fetch the pin baseline for check-submodule-pins
+        run: |
+          base="${GITHUB_BASE_REF:-main}"
+          git fetch --no-tags --quiet --depth=1 origin \
+            "+refs/heads/$base:refs/remotes/origin/$base"
+          echo "NROS_SUBMODULE_PIN_BASELINE=origin/$base" >> "$GITHUB_ENV"
+
+      - name: Init submodules whose pin moved (commits only)
+        run: |
+          base="${GITHUB_BASE_REF:-main}"
+          git ls-tree -r "origin/$base" \
+            | awk '$2 == "commit" { print $4 "\t" $3 }' \
+            | while IFS=$'\t' read -r path base_sha; do
+                [ -n "$path" ] || continue
+                head_sha="$(git ls-tree -r HEAD -- "$path" \
+                            | awk '$2 == "commit" { print $3 }')"
+                [ -n "$head_sha" ] || continue
+                [ "$head_sha" != "$base_sha" ] || continue
+                [ ! -e "$path/.git" ] || continue
+                echo "  pin moved in $path (${base_sha:0:12} -> ${head_sha:0:12}); initialising"
+                git submodule update --init --filter=tree:0 "$path" \
+                  || git submodule update --init "$path" \
+                  || true
+              done
+
+      - name: Fetch submodule history for check-submodule-pins
+        run: |
+          base="${GITHUB_BASE_REF:-main}"
+          git ls-tree -r "origin/$base" \
+            | awk '$2 == "commit" { print $4 "\t" $3 }' \
+            | while IFS=$'\t' read -r path sha; do
+                [ -n "$path" ] || continue
+                [ -e "$path/.git" ] || continue
+                git -C "$path" cat-file -e "${sha}^{commit}" 2>/dev/null && continue
+                echo "  deepening $path for $sha"
+                git -C "$path" fetch --no-tags --quiet --unshallow 2>/dev/null \
+                  || git -C "$path" fetch --no-tags --quiet origin "$sha" 2>/dev/null \
+                  || true
+              done
+
+      # THE ARRANGEMENT, phase-395 — now spread across the `check-*` siblings
+      # (phase-489 W1) and still ONE required status context, `CI`, which does
+      # DIFFERENT WORK per event:
       #
       #   pull_request  ->  check-fast + compile-smoke + cli-tests
-      #                     + workspace-all                         ~5 min
-      #   merge_group   ->  + test-unit                             per BATCH
+      #                     + workspace-all
+      #   merge_group   ->  + test-unit, test-lane-contracts       per BATCH
       #   schedule      ->  + check-build, no-std — the full tier, daily
       #
       # NOTE `check-build` is schedule/dispatch ONLY. It was on the merge group
@@ -692,15 +910,15 @@ jobs:
       # may only resolve artifacts the job itself builds.
       #
       # That is the whole economic argument for a merge queue: the expensive
-      # verification runs once per batch of up to four, not once per pull
-      # request AND again per batch. Measured on this runner, L1 is 587 s of a
-      # 878 s gate, so moving it off the per-PR path is most of the latency.
+      # verification runs once per batch, not once per pull request AND again
+      # per batch.
       #
-      # What keeps the queue from eating bad batches is NOT this job — it is the
-      # agent running `just ci-l1` locally before pushing, which is the same
-      # tier. A compile error that reaches the queue ejects its batch-mates;
+      # What keeps the queue from eating bad batches is NOT this gate — it is
+      # the agent running `just ci gate` locally before pushing, which is the
+      # same tier. A compile error that reaches the queue ejects its batch-mates;
       # GitHub then re-tests them in smaller groups, so the cost is bounded and
-      # paid rarely, against a 10 min saving on every PR.
+      # paid rarely.
+      #
       # phase-395 — a COMPILE SMOKE TEST, pull requests only.
       #
       # The compile tier lives in the merge group, which means a plainly broken
@@ -785,6 +1003,173 @@ jobs:
         run: |
           source ./activate.sh
           just check rustdoc-workspace
+      - name: sccache stats (compile tier)
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) && always() }}
+        run: |
+          command -v sccache >/dev/null 2>&1 && sccache --show-stats || true
+          if [ -s /tmp/sccache-server.log ]; then
+            echo "--- sccache server log (deduped) ---"
+            { sort /tmp/sccache-server.log | uniq -c | sort -rn | head -25; } || true
+          fi
+
+  check-cli-tests:
+    name: check / cli-tests + node-std-tests + launch-resolve-fresh
+    needs: changes
+    if: >-
+      ${{ always() && contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name)
+          && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true') }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      # Setup below is the same as `check-fast`'s, whose comments explain each
+      # step (phase-489 W1 split one job into these siblings).
+      - name: Cache sccache directory (compiling events)
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/sccache
+          key: sccache-${{ runner.os }}-check-${{ github.sha }}
+          restore-keys: |
+            sccache-${{ runner.os }}-check-
+
+      - name: Configure sccache (compiling events)
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
+        run: |
+          if ! command -v sccache >/dev/null 2>&1; then
+            echo "::warning::sccache absent from the image — the compile tier runs UNCACHED."
+            exit 0
+          fi
+          sccache --version
+          export SCCACHE_DIR=/tmp/sccache
+          export SCCACHE_CACHE_SIZE=1G
+          export SCCACHE_ERROR_LOG=/tmp/sccache-server.log
+          export SCCACHE_LOG=warn
+          if sccache --start-server >/tmp/sccache-start.log 2>&1; then
+            {
+              echo "SCCACHE_DIR=/tmp/sccache"
+              echo "SCCACHE_ERROR_LOG=/tmp/sccache-server.log"
+              echo "SCCACHE_LOG=warn"
+              echo "SCCACHE_CACHE_SIZE=1G"
+            } >> "$GITHUB_ENV"
+          else
+            echo "::warning::sccache unavailable — the compile tier runs UNCACHED (issue 0874)."
+            sed 's/^/  /' /tmp/sccache-start.log || true
+          fi
+
+      # `cli-tests` compiles the CLI sub-workspace's TEST targets, which the
+      # binary cache does not hold, so this sibling alone also restores the full
+      # target tree `warm-cache` saves (`cargo test --no-run` there). That is the
+      # 3.8 min restore phase-489 measured; it now sits on this one sibling's
+      # path instead of on the required gate's. BEFORE the binary restore, so an
+      # exact binary hit overwrites whatever `nros` this older tree carries.
+      - name: Cache CLI build (cli-tests' test targets)
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            packages/cli/target
+            packages/cli/nros-launch-resolve/target
+          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
+          restore-keys: |
+            nros-cli-${{ runner.os }}-
+
+      - name: Key the CLI binary cache on source_stamp.rs's whole watch set
+        id: cli-key
+        run: |
+          key="$(scripts/ci/cli-bin-cache-key.sh)"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the nros + nros-launch-resolve binaries (every event)
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            packages/cli/target/release/nros
+            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve
+            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve.nros-source-stamp
+            packages/cli/nros-launch-resolve/target/release/libplay_launch_parser_pyexec.so
+          key: nros-cli-bin-${{ runner.os }}-${{ steps.cli-key.outputs.key }}
+
+      - name: Build the in-tree nros CLI (every event)
+        run: |
+          git submodule update --init --depth 1 packages/cli/third-party/play_launch
+          bin="$GITHUB_WORKSPACE/packages/cli/target/release/nros"
+          if [ -x "$bin" ] && "$bin" source-stamp >/dev/null 2>&1; then
+            echo "restored nros matches this checkout's source stamp; not rebuilt"
+          else
+            cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+          fi
+          "$bin" source-stamp >/dev/null
+          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+
+      - name: Provision clang-format (pinned by [tool.clang-format])
+        run: |
+          source ./activate.sh
+          just setup-clang-format
+
+      - name: Provision Corrosion (pinned by [tool.corrosion])
+        run: |
+          source ./activate.sh
+          just workspace install-corrosion
+
+      - name: Provision compile-tier sources
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
+        run: |
+          source ./activate.sh
+          nros setup \
+            --source px4-rs --source zenoh-pico --source mbedtls --source micro-cdr \
+            --source micro-xrce-dds-client --source cyclonedds-src
+
+      - name: Fetch the pin baseline for check-submodule-pins
+        run: |
+          base="${GITHUB_BASE_REF:-main}"
+          git fetch --no-tags --quiet --depth=1 origin \
+            "+refs/heads/$base:refs/remotes/origin/$base"
+          echo "NROS_SUBMODULE_PIN_BASELINE=origin/$base" >> "$GITHUB_ENV"
+
+      - name: Init submodules whose pin moved (commits only)
+        run: |
+          base="${GITHUB_BASE_REF:-main}"
+          git ls-tree -r "origin/$base" \
+            | awk '$2 == "commit" { print $4 "\t" $3 }' \
+            | while IFS=$'\t' read -r path base_sha; do
+                [ -n "$path" ] || continue
+                head_sha="$(git ls-tree -r HEAD -- "$path" \
+                            | awk '$2 == "commit" { print $3 }')"
+                [ -n "$head_sha" ] || continue
+                [ "$head_sha" != "$base_sha" ] || continue
+                [ ! -e "$path/.git" ] || continue
+                echo "  pin moved in $path (${base_sha:0:12} -> ${head_sha:0:12}); initialising"
+                git submodule update --init --filter=tree:0 "$path" \
+                  || git submodule update --init "$path" \
+                  || true
+              done
+
+      - name: Fetch submodule history for check-submodule-pins
+        run: |
+          base="${GITHUB_BASE_REF:-main}"
+          git ls-tree -r "origin/$base" \
+            | awk '$2 == "commit" { print $4 "\t" $3 }' \
+            | while IFS=$'\t' read -r path sha; do
+                [ -n "$path" ] || continue
+                [ -e "$path/.git" ] || continue
+                git -C "$path" cat-file -e "${sha}^{commit}" 2>/dev/null && continue
+                echo "  deepening $path for $sha"
+                git -C "$path" fetch --no-tags --quiet --unshallow 2>/dev/null \
+                  || git -C "$path" fetch --no-tags --quiet origin "$sha" 2>/dev/null \
+                  || true
+              done
 
       # The CLI sub-workspace's own tests, on BOTH merge-gating events.
       #
@@ -914,8 +1299,8 @@ jobs:
       #   cold (no target dir):  20.6 s
       #   warm:                   2.4 s
       #
-      # The warm figure is what the queue mostly pays, since `check fast` two
-      # steps up has already compiled the workspace.
+      # Since phase-489 W1 this sibling no longer follows `check fast` in one
+      # job, so read its warm figure as sccache-warm, not target-dir-warm.
       - name: just check node-std-tests
         if: >-
           ${{ contains(fromJSON('["pull_request","merge_group"]'), github.event_name)
@@ -933,13 +1318,801 @@ jobs:
         run: |
           source ./activate.sh
           just check cpp-ffi-tests
+      - name: sccache stats (compile tier)
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) && always() }}
+        run: |
+          command -v sccache >/dev/null 2>&1 && sccache --show-stats || true
+          if [ -s /tmp/sccache-server.log ]; then
+            echo "--- sccache server log (deduped) ---"
+            { sort /tmp/sccache-server.log | uniq -c | sort -rn | head -25; } || true
+          fi
+
+  check-workspace-all:
+    name: check / workspace-all (host + embedded clippy)
+    needs: changes
+    if: >-
+      ${{ always() && contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name)
+          && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true') }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      # Setup below is the same as `check-fast`'s, whose comments explain each
+      # step (phase-489 W1 split one job into these siblings).
+      - name: Cache sccache directory (compiling events)
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/sccache
+          key: sccache-${{ runner.os }}-check-${{ github.sha }}
+          restore-keys: |
+            sccache-${{ runner.os }}-check-
+
+      - name: Configure sccache (compiling events)
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
+        run: |
+          if ! command -v sccache >/dev/null 2>&1; then
+            echo "::warning::sccache absent from the image — the compile tier runs UNCACHED."
+            exit 0
+          fi
+          sccache --version
+          export SCCACHE_DIR=/tmp/sccache
+          export SCCACHE_CACHE_SIZE=1G
+          export SCCACHE_ERROR_LOG=/tmp/sccache-server.log
+          export SCCACHE_LOG=warn
+          if sccache --start-server >/tmp/sccache-start.log 2>&1; then
+            {
+              echo "SCCACHE_DIR=/tmp/sccache"
+              echo "SCCACHE_ERROR_LOG=/tmp/sccache-server.log"
+              echo "SCCACHE_LOG=warn"
+              echo "SCCACHE_CACHE_SIZE=1G"
+            } >> "$GITHUB_ENV"
+          else
+            echo "::warning::sccache unavailable — the compile tier runs UNCACHED (issue 0874)."
+            sed 's/^/  /' /tmp/sccache-start.log || true
+          fi
+
+      - name: Key the CLI binary cache on source_stamp.rs's whole watch set
+        id: cli-key
+        run: |
+          key="$(scripts/ci/cli-bin-cache-key.sh)"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the nros + nros-launch-resolve binaries (every event)
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            packages/cli/target/release/nros
+            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve
+            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve.nros-source-stamp
+            packages/cli/nros-launch-resolve/target/release/libplay_launch_parser_pyexec.so
+          key: nros-cli-bin-${{ runner.os }}-${{ steps.cli-key.outputs.key }}
+
+      - name: Build the in-tree nros CLI (every event)
+        run: |
+          git submodule update --init --depth 1 packages/cli/third-party/play_launch
+          bin="$GITHUB_WORKSPACE/packages/cli/target/release/nros"
+          if [ -x "$bin" ] && "$bin" source-stamp >/dev/null 2>&1; then
+            echo "restored nros matches this checkout's source stamp; not rebuilt"
+          else
+            cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+          fi
+          "$bin" source-stamp >/dev/null
+          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+
+      - name: Provision clang-format (pinned by [tool.clang-format])
+        run: |
+          source ./activate.sh
+          just setup-clang-format
+
+      - name: Provision Corrosion (pinned by [tool.corrosion])
+        run: |
+          source ./activate.sh
+          just workspace install-corrosion
+
+      - name: Provision compile-tier sources
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
+        run: |
+          source ./activate.sh
+          nros setup \
+            --source px4-rs --source zenoh-pico --source mbedtls --source micro-cdr \
+            --source micro-xrce-dds-client --source cyclonedds-src
+
+      - name: Fetch the pin baseline for check-submodule-pins
+        run: |
+          base="${GITHUB_BASE_REF:-main}"
+          git fetch --no-tags --quiet --depth=1 origin \
+            "+refs/heads/$base:refs/remotes/origin/$base"
+          echo "NROS_SUBMODULE_PIN_BASELINE=origin/$base" >> "$GITHUB_ENV"
+
+      - name: Init submodules whose pin moved (commits only)
+        run: |
+          base="${GITHUB_BASE_REF:-main}"
+          git ls-tree -r "origin/$base" \
+            | awk '$2 == "commit" { print $4 "\t" $3 }' \
+            | while IFS=$'\t' read -r path base_sha; do
+                [ -n "$path" ] || continue
+                head_sha="$(git ls-tree -r HEAD -- "$path" \
+                            | awk '$2 == "commit" { print $3 }')"
+                [ -n "$head_sha" ] || continue
+                [ "$head_sha" != "$base_sha" ] || continue
+                [ ! -e "$path/.git" ] || continue
+                echo "  pin moved in $path (${base_sha:0:12} -> ${head_sha:0:12}); initialising"
+                git submodule update --init --filter=tree:0 "$path" \
+                  || git submodule update --init "$path" \
+                  || true
+              done
+
+      - name: Fetch submodule history for check-submodule-pins
+        run: |
+          base="${GITHUB_BASE_REF:-main}"
+          git ls-tree -r "origin/$base" \
+            | awk '$2 == "commit" { print $4 "\t" $3 }' \
+            | while IFS=$'\t' read -r path sha; do
+                [ -n "$path" ] || continue
+                [ -e "$path/.git" ] || continue
+                git -C "$path" cat-file -e "${sha}^{commit}" 2>/dev/null && continue
+                echo "  deepening $path for $sha"
+                git -C "$path" fetch --no-tags --quiet --unshallow 2>/dev/null \
+                  || git -C "$path" fetch --no-tags --quiet origin "$sha" 2>/dev/null \
+                  || true
+              done
+
+      - name: Build nros-launch-resolve (cli-tests and generate-bindings both shell out to it)
+        if: >-
+          ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name)
+              && !cancelled() }}
+        run: |
+          source ./activate.sh
+          just setup-launch-resolve
+
+      # The 2026-09-05 no-alloc break (b9450327dd, 92849933d9) / #1102 follow-up —
+      # the FEATURE-COMBINATION gap, closed on the batch lane.
+      #
+      # `compile-smoke` says so itself twenty lines up: "no feature
+      # combinations, so a break that only appears under
+      # `--no-default-features` still reaches the queue". On 2026-09-05 that is
+      # exactly what happened. `nros-node`'s new stack-headroom rule called
+      # `nros_platform_api::task::stack_unused_bytes()`, and `task` was gated
+      # behind the `alloc` feature, so `main` could not build for an embedded
+      # target. Both halves were green on the required `CI` context, because
+      # the only lane that compiles a no-alloc configuration —
+      # `check-workspace-embedded`, inside `check-build` — runs on
+      # `schedule`/`workflow_dispatch` and NO merge-gating event.
+      #
+      # The cost of that gap was not one red: THREE independent fixes were
+      # written for the same defect (PRs #489 and #497, plus main's own
+      # `b9450327d` + `92849933d`), because nothing told anyone it was already
+      # being handled.
+      #
+      # `workspace-all` is the narrow answer, not `check-build`. It is the gate
+      # that actually caught this (host check + embedded check in parallel,
+      # measured 62 s), and unlike `check-build` it resolves no prebuilt
+      # fixture or generated binding — `check-build` was tried on a
+      # merge-gating event before and could never pass there, which is what
+      # `check-lane-contracts` now enforces.
+      #
+      # ON THE PULL-REQUEST LANE SINCE 2026-09-10, reversing this step's own
+      # earlier reasoning. That reasoning was: "same `PR cheap, batch thorough`
+      # split as `test-unit` above. A surprise here ejects a batch, which is
+      # visible and recoverable; on the PR lane it would block every pull
+      # request at once." Both halves were re-measured and neither survived.
+      #
+      # NOT CHEAP-VERSUS-EXPENSIVE. This step is **28 s** on the runner
+      # (07:39:56 -> 07:40:24 on run 34449411245) inside a `check` job that
+      # takes ~9 minutes. `test-unit` in the same job is 3 m 37 s and
+      # `test-lane-contracts` 1 m 15 s. Grouping it with `test-unit` under one
+      # cost argument was the error: it is ~5 % of the lane, not a tier.
+      #
+      # "VISIBLE AND RECOVERABLE" UNDERCOUNTS BY THE BATCH. An ejection is not
+      # one PR's problem: `grouping_strategy` is ALLGREEN and
+      # `max_entries_to_build` is 5, so a failing entry takes its batch-mates
+      # down and they rebuild. Measured over 2026-09-09/10, when exactly two
+      # entries were at fault: #741 was ejected 8 times, #768 and #779 7 times
+      # each, with no defect of their own. One of the two culprits was a single
+      # `clippy::derivable_impls` error THIS STEP catches — it cost a batch of
+      # five, where on the PR lane it costs one 28 s run.
+      #
+      # "WOULD BLOCK EVERY PULL REQUEST AT ONCE" is a claim about a break that
+      # is already on `main` — a toolchain bump surfacing new `-D warnings`
+      # lints is the real case (CLAUDE.md says so). But that blocks everything
+      # either way: on `merge_group` nothing merges, it just fails later and
+      # louder. Running here does not create that failure mode, it relocates
+      # the report to the PR that caused it.
+      #
+      # `test-unit` deliberately STAYS on the batch lane: 3 m 37 s per push is
+      # the cost "PR cheap, batch thorough" was actually written for.
+      #
+      # CORRECTION, 2026-09-11. The 28 s above measured the EMBEDDED half only.
+      # The host half was `just check workspace`, which had become an `echo`
+      # claiming host clippy ran "in the fast tier" — it did not: issue 0466
+      # moved `check-test-targets` to `build-serial`, schedule only. So no
+      # merge-gating lane ran a host clippy, and 20 errors in nros-node's own
+      # test target plus a `needless_borrow` in nros-tests reached main. The
+      # host half is now `check-test-targets` — `--workspace --all-targets`
+      # and then every crate ALONE, because `--workspace` unifies features and
+      # hid the nros-node errors behind a sibling's `std`. It costs real time
+      # now; read this step's duration off the run, not off the 28 s. For
+      # scale only: `check-test-targets` alone (workspace + per crate + CLI)
+      # took 113 s locally on a WARM target dir — a cold runner pays more.
+      - name: just check workspace-all (host + embedded clippy)
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        run: |
+          source ./activate.sh
+          just check workspace-all
+      - name: sccache stats (compile tier)
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) && always() }}
+        run: |
+          command -v sccache >/dev/null 2>&1 && sccache --show-stats || true
+          if [ -s /tmp/sccache-server.log ]; then
+            echo "--- sccache server log (deduped) ---"
+            { sort /tmp/sccache-server.log | uniq -c | sort -rn | head -25; } || true
+          fi
+
+  check-test-unit:
+    name: check / test-unit (merge group + nightly/manual)
+    needs: changes
+    if: >-
+      ${{ always() && contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name)
+          && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true') }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      # Setup below is the same as `check-fast`'s, whose comments explain each
+      # step (phase-489 W1 split one job into these siblings).
+      - name: Cache sccache directory (compiling events)
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/sccache
+          key: sccache-${{ runner.os }}-check-${{ github.sha }}
+          restore-keys: |
+            sccache-${{ runner.os }}-check-
+
+      - name: Configure sccache (compiling events)
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
+        run: |
+          if ! command -v sccache >/dev/null 2>&1; then
+            echo "::warning::sccache absent from the image — the compile tier runs UNCACHED."
+            exit 0
+          fi
+          sccache --version
+          export SCCACHE_DIR=/tmp/sccache
+          export SCCACHE_CACHE_SIZE=1G
+          export SCCACHE_ERROR_LOG=/tmp/sccache-server.log
+          export SCCACHE_LOG=warn
+          if sccache --start-server >/tmp/sccache-start.log 2>&1; then
+            {
+              echo "SCCACHE_DIR=/tmp/sccache"
+              echo "SCCACHE_ERROR_LOG=/tmp/sccache-server.log"
+              echo "SCCACHE_LOG=warn"
+              echo "SCCACHE_CACHE_SIZE=1G"
+            } >> "$GITHUB_ENV"
+          else
+            echo "::warning::sccache unavailable — the compile tier runs UNCACHED (issue 0874)."
+            sed 's/^/  /' /tmp/sccache-start.log || true
+          fi
+
+      - name: Key the CLI binary cache on source_stamp.rs's whole watch set
+        id: cli-key
+        run: |
+          key="$(scripts/ci/cli-bin-cache-key.sh)"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the nros + nros-launch-resolve binaries (every event)
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            packages/cli/target/release/nros
+            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve
+            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve.nros-source-stamp
+            packages/cli/nros-launch-resolve/target/release/libplay_launch_parser_pyexec.so
+          key: nros-cli-bin-${{ runner.os }}-${{ steps.cli-key.outputs.key }}
+
+      - name: Build the in-tree nros CLI (every event)
+        run: |
+          git submodule update --init --depth 1 packages/cli/third-party/play_launch
+          bin="$GITHUB_WORKSPACE/packages/cli/target/release/nros"
+          if [ -x "$bin" ] && "$bin" source-stamp >/dev/null 2>&1; then
+            echo "restored nros matches this checkout's source stamp; not rebuilt"
+          else
+            cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+          fi
+          "$bin" source-stamp >/dev/null
+          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+
+      - name: Provision clang-format (pinned by [tool.clang-format])
+        run: |
+          source ./activate.sh
+          just setup-clang-format
+
+      - name: Provision Corrosion (pinned by [tool.corrosion])
+        run: |
+          source ./activate.sh
+          just workspace install-corrosion
+
+      - name: Provision compile-tier sources
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
+        run: |
+          source ./activate.sh
+          nros setup \
+            --source px4-rs --source zenoh-pico --source mbedtls --source micro-cdr \
+            --source micro-xrce-dds-client --source cyclonedds-src
+
+      - name: Fetch the pin baseline for check-submodule-pins
+        run: |
+          base="${GITHUB_BASE_REF:-main}"
+          git fetch --no-tags --quiet --depth=1 origin \
+            "+refs/heads/$base:refs/remotes/origin/$base"
+          echo "NROS_SUBMODULE_PIN_BASELINE=origin/$base" >> "$GITHUB_ENV"
+
+      - name: Init submodules whose pin moved (commits only)
+        run: |
+          base="${GITHUB_BASE_REF:-main}"
+          git ls-tree -r "origin/$base" \
+            | awk '$2 == "commit" { print $4 "\t" $3 }' \
+            | while IFS=$'\t' read -r path base_sha; do
+                [ -n "$path" ] || continue
+                head_sha="$(git ls-tree -r HEAD -- "$path" \
+                            | awk '$2 == "commit" { print $3 }')"
+                [ -n "$head_sha" ] || continue
+                [ "$head_sha" != "$base_sha" ] || continue
+                [ ! -e "$path/.git" ] || continue
+                echo "  pin moved in $path (${base_sha:0:12} -> ${head_sha:0:12}); initialising"
+                git submodule update --init --filter=tree:0 "$path" \
+                  || git submodule update --init "$path" \
+                  || true
+              done
+
+      - name: Fetch submodule history for check-submodule-pins
+        run: |
+          base="${GITHUB_BASE_REF:-main}"
+          git ls-tree -r "origin/$base" \
+            | awk '$2 == "commit" { print $4 "\t" $3 }' \
+            | while IFS=$'\t' read -r path sha; do
+                [ -n "$path" ] || continue
+                [ -e "$path/.git" ] || continue
+                git -C "$path" cat-file -e "${sha}^{commit}" 2>/dev/null && continue
+                echo "  deepening $path for $sha"
+                git -C "$path" fetch --no-tags --quiet --unshallow 2>/dev/null \
+                  || git -C "$path" fetch --no-tags --quiet origin "$sha" 2>/dev/null \
+                  || true
+              done
+
+      - name: Build nros-launch-resolve (cli-tests and generate-bindings both shell out to it)
+        if: >-
+          ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name)
+              && !cancelled() }}
+        run: |
+          source ./activate.sh
+          just setup-launch-resolve
+
+      # Aspirational umbrella-decoupling guard — EXPECTED TO FAIL until the
+      # Phase 104.A migration completes. Advisory only. (Build tier, non-push.)
+      # NOT ON `pull_request`, deliberately — "PR cheap, batch thorough".
+      #
+      # phase-395 (197eef4fa) narrowed this from `github.event_name != 'push'`,
+      # which DID include pull requests, to the list below. The paragraph that
+      # follows predates that change and described the wider set; it is kept for
+      # the fixture reasoning, which still holds, but read the CONDITION for
+      # what runs. A comment that outlived its code is what sent phase-413 W4
+      # looking for a regression that was never there — and it is the same shape
+      # as `build-wide.yml`'s "WHY push(main) AND NOT the merge queue", which was
+      # false the day it was written (issue 0996).
+      #
+      # Cost, measured 2026-09-03 across three merge-group runs: 3:30, 3:17,
+      # 3:22. Per batch that is cheap; per PR push, on a queue that batches, it
+      # is the difference the phase-395 split exists to make.
+      #
+      # CONSEQUENCE, and it is worth stating where someone will read it: a green
+      # required `CI` on a pull request does NOT mean the unit tests passed. It
+      # means the source gates and the compile smoke held. Nothing broken lands
+      # — the queue runs them before merging — but the feedback arrives as a
+      # queue ejection (`queue-notify.yml` comments on the PR) rather than on the
+      # PR itself. `just ci gate` locally is the same lane, sooner.
+      #
+      # Phase-395 W4 — with `check-fast` beside it, `test-unit` makes the gate
+      # exactly L1, the lane an agent is told to run before pushing (CLAUDE.md,
+      # AGENTS.md).
+      #
+      # It needs NO fixtures: only `test`/`test-all` depend on
+      # `_require-fixtures-ready`, and 74 of 163 test files call no fixture
+      # resolver at all. So this costs a unit-test run, not a fixture build, and
+      # it closes the compile-tier gap that issue 0840's `pre-push` hook
+      # deliberately leaves open — the gap that let three clippy `-D warnings`
+      # errors and an unregenerated pool inventory reach main on 2026-08-27.
+      - name: just test-unit (completes L1)
+        if: ${{ contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        run: |
+          source ./activate.sh
+          just test-unit
+      - name: sccache stats (compile tier)
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) && always() }}
+        run: |
+          command -v sccache >/dev/null 2>&1 && sccache --show-stats || true
+          if [ -s /tmp/sccache-server.log ]; then
+            echo "--- sccache server log (deduped) ---"
+            { sort /tmp/sccache-server.log | uniq -c | sort -rn | head -25; } || true
+          fi
+
+  check-lane-contracts:
+    name: check / test-lane-contracts (merge group + nightly/manual)
+    needs: changes
+    if: >-
+      ${{ always() && contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name)
+          && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true') }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      # Setup below is the same as `check-fast`'s, whose comments explain each
+      # step (phase-489 W1 split one job into these siblings).
+      - name: Cache sccache directory (compiling events)
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/sccache
+          key: sccache-${{ runner.os }}-check-${{ github.sha }}
+          restore-keys: |
+            sccache-${{ runner.os }}-check-
+
+      - name: Configure sccache (compiling events)
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
+        run: |
+          if ! command -v sccache >/dev/null 2>&1; then
+            echo "::warning::sccache absent from the image — the compile tier runs UNCACHED."
+            exit 0
+          fi
+          sccache --version
+          export SCCACHE_DIR=/tmp/sccache
+          export SCCACHE_CACHE_SIZE=1G
+          export SCCACHE_ERROR_LOG=/tmp/sccache-server.log
+          export SCCACHE_LOG=warn
+          if sccache --start-server >/tmp/sccache-start.log 2>&1; then
+            {
+              echo "SCCACHE_DIR=/tmp/sccache"
+              echo "SCCACHE_ERROR_LOG=/tmp/sccache-server.log"
+              echo "SCCACHE_LOG=warn"
+              echo "SCCACHE_CACHE_SIZE=1G"
+            } >> "$GITHUB_ENV"
+          else
+            echo "::warning::sccache unavailable — the compile tier runs UNCACHED (issue 0874)."
+            sed 's/^/  /' /tmp/sccache-start.log || true
+          fi
+
+      - name: Key the CLI binary cache on source_stamp.rs's whole watch set
+        id: cli-key
+        run: |
+          key="$(scripts/ci/cli-bin-cache-key.sh)"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the nros + nros-launch-resolve binaries (every event)
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            packages/cli/target/release/nros
+            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve
+            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve.nros-source-stamp
+            packages/cli/nros-launch-resolve/target/release/libplay_launch_parser_pyexec.so
+          key: nros-cli-bin-${{ runner.os }}-${{ steps.cli-key.outputs.key }}
+
+      - name: Build the in-tree nros CLI (every event)
+        run: |
+          git submodule update --init --depth 1 packages/cli/third-party/play_launch
+          bin="$GITHUB_WORKSPACE/packages/cli/target/release/nros"
+          if [ -x "$bin" ] && "$bin" source-stamp >/dev/null 2>&1; then
+            echo "restored nros matches this checkout's source stamp; not rebuilt"
+          else
+            cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+          fi
+          "$bin" source-stamp >/dev/null
+          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+
+      - name: Provision clang-format (pinned by [tool.clang-format])
+        run: |
+          source ./activate.sh
+          just setup-clang-format
+
+      - name: Provision Corrosion (pinned by [tool.corrosion])
+        run: |
+          source ./activate.sh
+          just workspace install-corrosion
+
+      - name: Provision compile-tier sources
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
+        run: |
+          source ./activate.sh
+          nros setup \
+            --source px4-rs --source zenoh-pico --source mbedtls --source micro-cdr \
+            --source micro-xrce-dds-client --source cyclonedds-src
+
+      - name: Fetch the pin baseline for check-submodule-pins
+        run: |
+          base="${GITHUB_BASE_REF:-main}"
+          git fetch --no-tags --quiet --depth=1 origin \
+            "+refs/heads/$base:refs/remotes/origin/$base"
+          echo "NROS_SUBMODULE_PIN_BASELINE=origin/$base" >> "$GITHUB_ENV"
+
+      - name: Init submodules whose pin moved (commits only)
+        run: |
+          base="${GITHUB_BASE_REF:-main}"
+          git ls-tree -r "origin/$base" \
+            | awk '$2 == "commit" { print $4 "\t" $3 }' \
+            | while IFS=$'\t' read -r path base_sha; do
+                [ -n "$path" ] || continue
+                head_sha="$(git ls-tree -r HEAD -- "$path" \
+                            | awk '$2 == "commit" { print $3 }')"
+                [ -n "$head_sha" ] || continue
+                [ "$head_sha" != "$base_sha" ] || continue
+                [ ! -e "$path/.git" ] || continue
+                echo "  pin moved in $path (${base_sha:0:12} -> ${head_sha:0:12}); initialising"
+                git submodule update --init --filter=tree:0 "$path" \
+                  || git submodule update --init "$path" \
+                  || true
+              done
+
+      - name: Fetch submodule history for check-submodule-pins
+        run: |
+          base="${GITHUB_BASE_REF:-main}"
+          git ls-tree -r "origin/$base" \
+            | awk '$2 == "commit" { print $4 "\t" $3 }' \
+            | while IFS=$'\t' read -r path sha; do
+                [ -n "$path" ] || continue
+                [ -e "$path/.git" ] || continue
+                git -C "$path" cat-file -e "${sha}^{commit}" 2>/dev/null && continue
+                echo "  deepening $path for $sha"
+                git -C "$path" fetch --no-tags --quiet --unshallow 2>/dev/null \
+                  || git -C "$path" fetch --no-tags --quiet origin "$sha" 2>/dev/null \
+                  || true
+              done
+
+      - name: Build nros-launch-resolve (cli-tests and generate-bindings both shell out to it)
+        if: >-
+          ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name)
+              && !cancelled() }}
+        run: |
+          source ./activate.sh
+          just setup-launch-resolve
+
+      # Issue 1226 — the last step of `just ci gate`, and until now the one step
+      # of that lane NO workflow ran, on any event.
+      #
+      # `test-unit` above excludes `nros-tests` by CRATE, because that crate's
+      # tests generally need `just build-test-fixtures` staged first. These two
+      # targets do not: they read `examples/fixtures.toml`, shell out to
+      # `fixtures-manifest.py`, and finish in 0.25 s (measured). So the property
+      # is per-TARGET while the exclusion is per-CRATE, and the gap is exactly
+      # the bookkeeping that says a fixture row and the matrix agree.
+      #
+      # WHAT THE GAP COST. `fixture_rows_all_modeled_by_matrix` asserts every
+      # fixtures.toml coordinate is modeled by a `matrix::CELLS` cell. On
+      # 2026-09-06 `9ae271174` added a `(zephyr-native-sim, cpp, cyclonedds,
+      # workspace)` row and no cell. Nothing between that commit and its merge
+      # asked the question, so it landed, and every contributor running the
+      # documented push lane then met a red that was not theirs — the signal
+      # cost issue 0952 describes, arriving on the lane everyone runs.
+      #
+      # Admissible here under the `check-lane-contracts` rule, and that is a
+      # property of these targets rather than a hope: they resolve no fixture
+      # stamp and build no fixture. (`loc_budgets` joined on that rule in issue
+      # 1610 — it was red on `main` for three days because no lane ran it.) Keep it that way — a target added to
+      # `test-lane-contracts` that needs a staged artifact breaks this step and
+      # the tier's promise with it. The one kind of artifact it may read is a
+      # compile-check STAMP or VERDICT, which the recipe builds itself — exactly
+      # the rows its admitted tests read (issue 1656); that needs the launch
+      # resolver built above, for the rows that run `nros sync`.
+      #
+      # merge_group, not pull_request: same "PR cheap, batch thorough" split as
+      # `test-unit` directly above, and the same consequence — an orphan row is
+      # caught by the queue, and `queue-notify.yml` comments on the PR.
+      - name: just test-lane-contracts (completes the gate lane)
+        if: ${{ contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        run: |
+          source ./activate.sh
+          just test-lane-contracts
+      - name: sccache stats (compile tier)
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) && always() }}
+        run: |
+          command -v sccache >/dev/null 2>&1 && sccache --show-stats || true
+          if [ -s /tmp/sccache-server.log ]; then
+            echo "--- sccache server log (deduped) ---"
+            { sort /tmp/sccache-server.log | uniq -c | sort -rn | head -25; } || true
+          fi
+
+  check-build:
+    name: check / build tier + no-std (nightly/manual only)
+    needs: changes
+    if: >-
+      ${{ always() && contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name)
+          && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true') }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      # Setup below is the same as `check-fast`'s, whose comments explain each
+      # step (phase-489 W1 split one job into these siblings).
+      - name: Cache sccache directory (compiling events)
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/sccache
+          key: sccache-${{ runner.os }}-check-${{ github.sha }}
+          restore-keys: |
+            sccache-${{ runner.os }}-check-
+
+      - name: Configure sccache (compiling events)
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
+        run: |
+          if ! command -v sccache >/dev/null 2>&1; then
+            echo "::warning::sccache absent from the image — the compile tier runs UNCACHED."
+            exit 0
+          fi
+          sccache --version
+          export SCCACHE_DIR=/tmp/sccache
+          export SCCACHE_CACHE_SIZE=1G
+          export SCCACHE_ERROR_LOG=/tmp/sccache-server.log
+          export SCCACHE_LOG=warn
+          if sccache --start-server >/tmp/sccache-start.log 2>&1; then
+            {
+              echo "SCCACHE_DIR=/tmp/sccache"
+              echo "SCCACHE_ERROR_LOG=/tmp/sccache-server.log"
+              echo "SCCACHE_LOG=warn"
+              echo "SCCACHE_CACHE_SIZE=1G"
+            } >> "$GITHUB_ENV"
+          else
+            echo "::warning::sccache unavailable — the compile tier runs UNCACHED (issue 0874)."
+            sed 's/^/  /' /tmp/sccache-start.log || true
+          fi
+
+      - name: Key the CLI binary cache on source_stamp.rs's whole watch set
+        id: cli-key
+        run: |
+          key="$(scripts/ci/cli-bin-cache-key.sh)"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the nros + nros-launch-resolve binaries (every event)
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            packages/cli/target/release/nros
+            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve
+            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve.nros-source-stamp
+            packages/cli/nros-launch-resolve/target/release/libplay_launch_parser_pyexec.so
+          key: nros-cli-bin-${{ runner.os }}-${{ steps.cli-key.outputs.key }}
+
+      - name: Build the in-tree nros CLI (every event)
+        run: |
+          git submodule update --init --depth 1 packages/cli/third-party/play_launch
+          bin="$GITHUB_WORKSPACE/packages/cli/target/release/nros"
+          if [ -x "$bin" ] && "$bin" source-stamp >/dev/null 2>&1; then
+            echo "restored nros matches this checkout's source stamp; not rebuilt"
+          else
+            cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+          fi
+          "$bin" source-stamp >/dev/null
+          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+
+      - name: Provision clang-format (pinned by [tool.clang-format])
+        run: |
+          source ./activate.sh
+          just setup-clang-format
+
+      - name: Provision Corrosion (pinned by [tool.corrosion])
+        run: |
+          source ./activate.sh
+          just workspace install-corrosion
+
+      - name: Provision compile-tier sources
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
+        run: |
+          source ./activate.sh
+          nros setup \
+            --source px4-rs --source zenoh-pico --source mbedtls --source micro-cdr \
+            --source micro-xrce-dds-client --source cyclonedds-src
+
+      - name: Fetch the pin baseline for check-submodule-pins
+        run: |
+          base="${GITHUB_BASE_REF:-main}"
+          git fetch --no-tags --quiet --depth=1 origin \
+            "+refs/heads/$base:refs/remotes/origin/$base"
+          echo "NROS_SUBMODULE_PIN_BASELINE=origin/$base" >> "$GITHUB_ENV"
+
+      - name: Init submodules whose pin moved (commits only)
+        run: |
+          base="${GITHUB_BASE_REF:-main}"
+          git ls-tree -r "origin/$base" \
+            | awk '$2 == "commit" { print $4 "\t" $3 }' \
+            | while IFS=$'\t' read -r path base_sha; do
+                [ -n "$path" ] || continue
+                head_sha="$(git ls-tree -r HEAD -- "$path" \
+                            | awk '$2 == "commit" { print $3 }')"
+                [ -n "$head_sha" ] || continue
+                [ "$head_sha" != "$base_sha" ] || continue
+                [ ! -e "$path/.git" ] || continue
+                echo "  pin moved in $path (${base_sha:0:12} -> ${head_sha:0:12}); initialising"
+                git submodule update --init --filter=tree:0 "$path" \
+                  || git submodule update --init "$path" \
+                  || true
+              done
+
+      - name: Fetch submodule history for check-submodule-pins
+        run: |
+          base="${GITHUB_BASE_REF:-main}"
+          git ls-tree -r "origin/$base" \
+            | awk '$2 == "commit" { print $4 "\t" $3 }' \
+            | while IFS=$'\t' read -r path sha; do
+                [ -n "$path" ] || continue
+                [ -e "$path/.git" ] || continue
+                git -C "$path" cat-file -e "${sha}^{commit}" 2>/dev/null && continue
+                echo "  deepening $path for $sha"
+                git -C "$path" fetch --no-tags --quiet --unshallow 2>/dev/null \
+                  || git -C "$path" fetch --no-tags --quiet origin "$sha" 2>/dev/null \
+                  || true
+              done
+
+      - name: Build nros-launch-resolve (cli-tests and generate-bindings both shell out to it)
+        if: >-
+          ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name)
+              && !cancelled() }}
+        run: |
+          source ./activate.sh
+          just setup-launch-resolve
 
       # `check-api-parity` has NO step of its own here, and that is now the
       # finished answer rather than a deferral — issue 1066, closed.
       #
       # IT RUNS. `api-parity` came off `.config/gate-lane-exempt.txt` in
       # `565f8c74f`, so it is an ordinary fast-lane gate and `just check fast`
-      # two steps up runs it on `pull_request`, `merge_group`, `push` and the
+      # (the `check-fast` sibling) runs it on `pull_request`, `merge_group`, `push` and the
       # nightly alike. Measured in this container, run 34687504281 on
       # 2026-09-12:
       #
@@ -1187,177 +2360,10 @@ jobs:
         run: |
           source ./activate.sh
           just check no-std
-
-      # Aspirational umbrella-decoupling guard — EXPECTED TO FAIL until the
-      # Phase 104.A migration completes. Advisory only. (Build tier, non-push.)
-      # NOT ON `pull_request`, deliberately — "PR cheap, batch thorough".
-      #
-      # phase-395 (197eef4fa) narrowed this from `github.event_name != 'push'`,
-      # which DID include pull requests, to the list below. The paragraph that
-      # follows predates that change and described the wider set; it is kept for
-      # the fixture reasoning, which still holds, but read the CONDITION for
-      # what runs. A comment that outlived its code is what sent phase-413 W4
-      # looking for a regression that was never there — and it is the same shape
-      # as `build-wide.yml`'s "WHY push(main) AND NOT the merge queue", which was
-      # false the day it was written (issue 0996).
-      #
-      # Cost, measured 2026-09-03 across three merge-group runs: 3:30, 3:17,
-      # 3:22. Per batch that is cheap; per PR push, on a queue that batches, it
-      # is the difference the phase-395 split exists to make.
-      #
-      # CONSEQUENCE, and it is worth stating where someone will read it: a green
-      # required `CI` on a pull request does NOT mean the unit tests passed. It
-      # means the source gates and the compile smoke held. Nothing broken lands
-      # — the queue runs them before merging — but the feedback arrives as a
-      # queue ejection (`queue-notify.yml` comments on the PR) rather than on the
-      # PR itself. `just ci gate` locally is the same lane, sooner.
-      #
-      # Phase-395 W4 — this job already runs `check-fast` (push) and `check`
-      # (PR). Adding `test-unit` makes the PR gate exactly L1, the lane an agent
-      # is told to run before pushing (CLAUDE.md, AGENTS.md).
-      #
-      # It needs NO fixtures: only `test`/`test-all` depend on
-      # `_require-fixtures-ready`, and 74 of 163 test files call no fixture
-      # resolver at all. So this costs a unit-test run, not a fixture build, and
-      # it closes the compile-tier gap that issue 0840's `pre-push` hook
-      # deliberately leaves open — the gap that let three clippy `-D warnings`
-      # errors and an unregenerated pool inventory reach main on 2026-08-27.
-      - name: just test-unit (completes L1)
-        if: ${{ contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
-        run: |
-          source ./activate.sh
-          just test-unit
-
-      # Issue 1226 — the last step of `just ci gate`, and until now the one step
-      # of that lane NO workflow ran, on any event.
-      #
-      # `test-unit` above excludes `nros-tests` by CRATE, because that crate's
-      # tests generally need `just build-test-fixtures` staged first. These two
-      # targets do not: they read `examples/fixtures.toml`, shell out to
-      # `fixtures-manifest.py`, and finish in 0.25 s (measured). So the property
-      # is per-TARGET while the exclusion is per-CRATE, and the gap is exactly
-      # the bookkeeping that says a fixture row and the matrix agree.
-      #
-      # WHAT THE GAP COST. `fixture_rows_all_modeled_by_matrix` asserts every
-      # fixtures.toml coordinate is modeled by a `matrix::CELLS` cell. On
-      # 2026-09-06 `9ae271174` added a `(zephyr-native-sim, cpp, cyclonedds,
-      # workspace)` row and no cell. Nothing between that commit and its merge
-      # asked the question, so it landed, and every contributor running the
-      # documented push lane then met a red that was not theirs — the signal
-      # cost issue 0952 describes, arriving on the lane everyone runs.
-      #
-      # Admissible here under the `check-lane-contracts` rule, and that is a
-      # property of these targets rather than a hope: they resolve no fixture
-      # stamp and build no fixture. (`loc_budgets` joined on that rule in issue
-      # 1610 — it was red on `main` for three days because no lane ran it.) Keep it that way — a target added to
-      # `test-lane-contracts` that needs a staged artifact breaks this step and
-      # the tier's promise with it. The one kind of artifact it may read is a
-      # compile-check STAMP or VERDICT, which the recipe builds itself — exactly
-      # the rows its admitted tests read (issue 1656); that needs the launch
-      # resolver built above, for the rows that run `nros sync`.
-      #
-      # merge_group, not pull_request: same "PR cheap, batch thorough" split as
-      # `test-unit` directly above, and the same consequence — an orphan row is
-      # caught by the queue, and `queue-notify.yml` comments on the PR.
-      - name: just test-lane-contracts (completes the gate lane)
-        if: ${{ contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
-        run: |
-          source ./activate.sh
-          just test-lane-contracts
-
-      # The 2026-09-05 no-alloc break (b9450327dd, 92849933d9) / #1102 follow-up —
-      # the FEATURE-COMBINATION gap, closed on the batch lane.
-      #
-      # `compile-smoke` says so itself twenty lines up: "no feature
-      # combinations, so a break that only appears under
-      # `--no-default-features` still reaches the queue". On 2026-09-05 that is
-      # exactly what happened. `nros-node`'s new stack-headroom rule called
-      # `nros_platform_api::task::stack_unused_bytes()`, and `task` was gated
-      # behind the `alloc` feature, so `main` could not build for an embedded
-      # target. Both halves were green on the required `CI` context, because
-      # the only lane that compiles a no-alloc configuration —
-      # `check-workspace-embedded`, inside `check-build` — runs on
-      # `schedule`/`workflow_dispatch` and NO merge-gating event.
-      #
-      # The cost of that gap was not one red: THREE independent fixes were
-      # written for the same defect (PRs #489 and #497, plus main's own
-      # `b9450327d` + `92849933d`), because nothing told anyone it was already
-      # being handled.
-      #
-      # `workspace-all` is the narrow answer, not `check-build`. It is the gate
-      # that actually caught this (host check + embedded check in parallel,
-      # measured 62 s), and unlike `check-build` it resolves no prebuilt
-      # fixture or generated binding — `check-build` was tried on a
-      # merge-gating event before and could never pass there, which is what
-      # `check-lane-contracts` now enforces.
-      #
-      # ON THE PULL-REQUEST LANE SINCE 2026-09-10, reversing this step's own
-      # earlier reasoning. That reasoning was: "same `PR cheap, batch thorough`
-      # split as `test-unit` above. A surprise here ejects a batch, which is
-      # visible and recoverable; on the PR lane it would block every pull
-      # request at once." Both halves were re-measured and neither survived.
-      #
-      # NOT CHEAP-VERSUS-EXPENSIVE. This step is **28 s** on the runner
-      # (07:39:56 -> 07:40:24 on run 34449411245) inside a `check` job that
-      # takes ~9 minutes. `test-unit` in the same job is 3 m 37 s and
-      # `test-lane-contracts` 1 m 15 s. Grouping it with `test-unit` under one
-      # cost argument was the error: it is ~5 % of the lane, not a tier.
-      #
-      # "VISIBLE AND RECOVERABLE" UNDERCOUNTS BY THE BATCH. An ejection is not
-      # one PR's problem: `grouping_strategy` is ALLGREEN and
-      # `max_entries_to_build` is 5, so a failing entry takes its batch-mates
-      # down and they rebuild. Measured over 2026-09-09/10, when exactly two
-      # entries were at fault: #741 was ejected 8 times, #768 and #779 7 times
-      # each, with no defect of their own. One of the two culprits was a single
-      # `clippy::derivable_impls` error THIS STEP catches — it cost a batch of
-      # five, where on the PR lane it costs one 28 s run.
-      #
-      # "WOULD BLOCK EVERY PULL REQUEST AT ONCE" is a claim about a break that
-      # is already on `main` — a toolchain bump surfacing new `-D warnings`
-      # lints is the real case (CLAUDE.md says so). But that blocks everything
-      # either way: on `merge_group` nothing merges, it just fails later and
-      # louder. Running here does not create that failure mode, it relocates
-      # the report to the PR that caused it.
-      #
-      # `test-unit` deliberately STAYS on the batch lane: 3 m 37 s per push is
-      # the cost "PR cheap, batch thorough" was actually written for.
-      #
-      # CORRECTION, 2026-09-11. The 28 s above measured the EMBEDDED half only.
-      # The host half was `just check workspace`, which had become an `echo`
-      # claiming host clippy ran "in the fast tier" — it did not: issue 0466
-      # moved `check-test-targets` to `build-serial`, schedule only. So no
-      # merge-gating lane ran a host clippy, and 20 errors in nros-node's own
-      # test target plus a `needless_borrow` in nros-tests reached main. The
-      # host half is now `check-test-targets` — `--workspace --all-targets`
-      # and then every crate ALONE, because `--workspace` unifies features and
-      # hid the nros-node errors behind a sibling's `std`. It costs real time
-      # now; read this step's duration off the run, not off the 28 s. For
-      # scale only: `check-test-targets` alone (workspace + per crate + CLI)
-      # took 113 s locally on a WARM target dir — a cold runner pays more.
-      - name: just check workspace-all (host + embedded clippy)
-        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
-        run: |
-          source ./activate.sh
-          just check workspace-all
-
       - name: sccache stats (compile tier)
         if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) && always() }}
         run: |
-          # MEASURED, not assumed. A cache that silently misses every request
-          # looks exactly like one that is working; the only difference is in
-          # this output. `|| true` — a stats failure must never fail a gate.
-          #
-          # `pull_request` was NOT in that list, which made the sentence above
-          # false exactly where it mattered: the PR is the event that compiles
-          # on every push an agent makes, and it was the one event with no
-          # stats. A backend that had been unavailable since the sccache bump
-          # therefore cost ~178 s per run — 45% of this job — behind a
-          # `::warning::` and no measurement at all. Same shape as the export
-          # bug above: the diagnostic excluded the case it existed for.
           command -v sccache >/dev/null 2>&1 && sccache --show-stats || true
-          # A non-zero `Cache write errors` above is a count with no cause. The
-          # server log carries the actual transport/HTTP error; dedupe it, since
-          # one root cause repeats once per compilation unit.
           if [ -s /tmp/sccache-server.log ]; then
             echo "--- sccache server log (deduped) ---"
             { sort /tmp/sccache-server.log | uniq -c | sort -rn | head -25; } || true
@@ -1405,7 +2411,7 @@ jobs:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
 
-      # Same path + key as the `check` job's cache, or this warms nothing.
+      # Same path + key as `check-cli-tests`' full-tree cache, or this warms nothing.
       # `check-gate-cache-keys-agree` asserts they stay identical.
       #
       # RESTORE here, SAVE right after "Build nros CLI + the launch resolver"
@@ -1501,6 +2507,27 @@ jobs:
             sed 's/^/  /' /tmp/sccache-start.log || true
           fi
 
+      # phase-489 W3 — the binary cache the `check-*` siblings restore. Same key
+      # step and paths as theirs (`check-gate-cache-keys-agree`). `lookup-only`:
+      # this job only needs to know whether main already holds the entry.
+      - name: Key the CLI binary cache on source_stamp.rs's whole watch set
+        id: cli-key
+        run: |
+          key="$(scripts/ci/cli-bin-cache-key.sh)"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+
+      - name: Look up the CLI binary cache
+        id: cli-bin-cache
+        uses: actions/cache/restore@v4
+        with:
+          lookup-only: true
+          path: |
+            packages/cli/target/release/nros
+            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve
+            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve.nros-source-stamp
+            packages/cli/nros-launch-resolve/target/release/libplay_launch_parser_pyexec.so
+          key: nros-cli-bin-${{ runner.os }}-${{ steps.cli-key.outputs.key }}
+
       - name: Build nros CLI + the launch resolver
         run: |
           git submodule update --init --depth 1 packages/cli/third-party/play_launch
@@ -1512,7 +2539,12 @@ jobs:
           # than `source_stamp.rs`'s watch set hands `check cli-tests` a binary
           # from a different tree (phase-431 W2, `check-ci-cli-from-source`).
           "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
-          cargo build --release --manifest-path packages/cli/nros-launch-resolve/Cargo.toml
+          # phase-489 W3 — the RECIPE, not a bare `cargo build`: the binary
+          # cache carries the content stamp and the Python half the recipe
+          # writes beside the resolver, and a consumer's `just
+          # setup-launch-resolve` skips only when both are there.
+          source ./activate.sh
+          just setup-launch-resolve
           # `check cli-tests` is 338 s of the 20 min job and it is COMPILE-bound
           # (measured: 350 CPU-s to build, tests run in under a second). Warming
           # only the binary left the biggest step cold — main's warm entry was
@@ -1533,6 +2565,17 @@ jobs:
             packages/cli/target
             packages/cli/nros-launch-resolve/target
           key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
+
+      - name: Save the CLI binary cache (phase-489 W3)
+        if: steps.cli-bin-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            packages/cli/target/release/nros
+            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve
+            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve.nros-source-stamp
+            packages/cli/nros-launch-resolve/target/release/libplay_launch_parser_pyexec.so
+          key: nros-cli-bin-${{ runner.os }}-${{ steps.cli-key.outputs.key }}
 
       - name: Save sccache directory
         if: steps.sccache-cache.outputs.cache-hit != 'true'
@@ -1750,32 +2793,73 @@ jobs:
     # the aggregator is itself skipped, and a skipped required check reports
     # success, which is the vacuous green this exists to prevent.
     if: always()
-    needs: [changes, check, scaffold-journey, colcon-parity, sdk-index]
+    needs:
+      - changes
+      - check-fast
+      - check-compile-smoke
+      - check-cli-tests
+      - check-workspace-all
+      - check-test-unit
+      - check-lane-contracts
+      - check-build
+      - scaffold-journey
+      - colcon-parity
+      - sdk-index
     runs-on: ubuntu-latest
     steps:
       - name: Require every gate to have actually passed
         run: |
           set -euo pipefail
           fail=0
+          event="${{ github.event_name }}"
 
-          # `check` is the gate, so a skip has to be JUSTIFIED rather than
-          # accepted. Exactly one justification exists: a pull request that
-          # touched no code, where `changes` said so. Any other skip means the
-          # gate did not run, and that must never read as green — which is the
-          # vacuous pass this whole aggregator exists to prevent.
-          code_touched="${{ needs.changes.outputs.code }}"
-          case "${{ needs.check.result }}" in
-            success) echo "  ok       check" ;;
-            skipped)
-              if [ "${{ github.event_name }}" = "pull_request" ] && [ "$code_touched" != "true" ]; then
-                echo "  skipped  check (docs-only pull request — no code to verify)"
-              else
-                echo "  FAIL     check was SKIPPED but this is not a docs-only PR"
-                echo "           event=${{ github.event_name }} code_touched=${code_touched:-<unset>}"
-                fail=1
-              fi ;;
-            *)       echo "  FAIL     check: ${{ needs.check.result }}"; fail=1 ;;
-          esac
+          # The `check-*` siblings are the gate, so a skip has to be JUSTIFIED
+          # rather than accepted. Two justifications exist:
+          #
+          #   1. a pull request that touched no code, where `changes` RAN and
+          #      said so. `changes` failing is not "docs only": every sibling
+          #      skips then, and that must read as no verdict, never as green.
+          #   2. an event the sibling has no work on — its own job-level `if:`
+          #      names its events, and the list after each `sibling` call below
+          #      must equal that set (`check-default-gates-run-somewhere`
+          #      asserts it, and asserts every gate-running job is listed here).
+          #
+          # Any other skip — including a sibling skipped on one of its OWN
+          # events — means the gate did not run, and that must never read as
+          # green, which is the vacuous pass this aggregator exists to prevent.
+          # `cancelled` and `failure` fail like any other non-success.
+          docs_only=0
+          if [ "$event" = "pull_request" ] \
+             && [ "${{ needs.changes.result }}" = "success" ] \
+             && [ "${{ needs.changes.outputs.code }}" = "false" ]; then
+            docs_only=1
+          fi
+
+          sibling() {
+            local name="$1" res="$2" events=" $3 "
+            case "$res" in
+              success) echo "  ok       $name" ;;
+              skipped)
+                if [ "$docs_only" = 1 ]; then
+                  echo "  skipped  $name (docs-only pull request — no code to verify)"
+                elif [[ "$events" != *" $event "* ]]; then
+                  echo "  skipped  $name (has no work on $event)"
+                else
+                  echo "  FAIL     $name was SKIPPED on $event, an event it runs on"
+                  echo "           changes=${{ needs.changes.result }} code=${{ needs.changes.outputs.code }}"
+                  fail=1
+                fi ;;
+              *) echo "  FAIL     $name: $res"; fail=1 ;;
+            esac
+          }
+
+          sibling check-fast           "${{ needs.check-fast.result }}"           "push pull_request merge_group schedule workflow_dispatch"
+          sibling check-compile-smoke  "${{ needs.check-compile-smoke.result }}"  "pull_request"
+          sibling check-cli-tests      "${{ needs.check-cli-tests.result }}"      "pull_request merge_group schedule workflow_dispatch"
+          sibling check-workspace-all  "${{ needs.check-workspace-all.result }}"  "pull_request merge_group schedule workflow_dispatch"
+          sibling check-test-unit      "${{ needs.check-test-unit.result }}"      "merge_group schedule workflow_dispatch"
+          sibling check-lane-contracts "${{ needs.check-lane-contracts.result }}" "merge_group schedule workflow_dispatch"
+          sibling check-build          "${{ needs.check-build.result }}"          "schedule workflow_dispatch"
 
           # The narrow lanes are path-gated BY DESIGN, so `skipped` is a real
           # answer for them: their paths did not move. Only a failure counts.
