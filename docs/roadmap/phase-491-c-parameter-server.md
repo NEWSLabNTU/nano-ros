@@ -1,10 +1,12 @@
 # Phase 491 — The C parameter server: one rclc-shaped family over the executor store
 
-**Status (2026-10-11). Opened.** Nothing landed yet. Implements
-[RFC-0105](../design/0105-c-parameter-server.md). Closes issues
-[0793](../issues/0793-c-params-declared-via-legacy-store-invisible-to-ros2.md) and
-[0865](../issues/0865-no-example-registers-parameter-services.md), and lands the C
-half of [1812](../issues/1812-param-services-require-alloc.md).
+**Status (2026-10-12). In progress — W1, W2, W4 and W5 (standalone C) landed.**
+Implements [RFC-0105](../design/0105-c-parameter-server.md). Closes issues
+[0793](../issues/archived/0793-c-params-declared-via-legacy-store-invisible-to-ros2.md) and
+[0865](../issues/archived/0865-no-example-registers-parameter-services.md), and lands the C
+half of [1812](../issues/1812-param-services-require-alloc.md). Open: W3
+(`/parameter_events`), W6 (live interop cell), W7 (1812), and the carried items in
+§Progress.
 
 ## Why
 
@@ -88,3 +90,62 @@ the phase does not close, until that image builds and answers `ros2 param`.
   (RFC-0105 §Open questions).
 * `/parameter_events` for the C++ and Rust surfaces. W3 puts the emitter where
   they can reach it; turning it on there is a separate item.
+
+## Progress
+
+### 2026-10-12 — one C family (W1, W2, W4, W5)
+
+What landed:
+
+- **W2 (store).** `OnSetParameterFn` carries `(old, new)`, both `Option`
+  (`nros-params` `server.rs`). `ParameterServer::set_local` is rclc's local
+  typed set: type check, then hooks, then write, with no read-only or range
+  check. `set_delete_on_not_set` makes a remote `NOT_SET` delete through the
+  hook with `new = None`, per node. The rclcpp path is unchanged.
+  `Executor::set_parameter_local_on` and `delete_parameters_on_not_set_on`
+  expose these. Unit-tested:
+  `the_on_set_hook_sees_old_and_new`,
+  `a_local_set_skips_read_only_and_range_but_not_type`,
+  `not_set_deletes_only_on_a_node_that_asked`.
+- **W4 (surface).** `<rclc_parameter/rclc_parameter.h>` declares rclc's
+  function set, options, callback and return codes, plus
+  `RCLC_EXECUTOR_PARAMETER_SERVER_HANDLES` = 6. It adds the extensions:
+  `declare_*`, string, bool/int/double/byte arrays, `get_type`, `describe`,
+  the ranges, and `list`. `Parameter`/`ParameterValue` keep rosidl's member
+  layout under rosidl's include guards. The Rust module is
+  `cbindgen:ignore`, so nothing reaches `nros_generated.h` unconditionally.
+  Run test: `packages/api/nros-c/tests/run/rclc_parameter_server.c` in
+  `just check c`.
+- **W1 (0865).** `NROS_HAS_PARAM_SERVICES` (0/1) is in all three producers of
+  `nros_config_generated.h`. nros-cpp reads nros-c's value from the `links`
+  channel. The header `#error`s at 0, naming the capability, and
+  `just check c` asserts the refusal and its text.
+  `docs/reference/c-api-cmake.md` says how to declare the capability.
+- **W5 (retire, standalone C).** Deleted:
+  - the caller-storage `nros_parameter_server_t` family;
+  - the `nros_param_*` aliases;
+  - every `nros_executor_*param*` / `_on` function and
+    `nros_executor_register_parameter_services`;
+  - `<nros/parameter.h>`, its probes, and the `example-parameter-stores` gate,
+    whose class is now a compile error.
+
+  `examples/native/c/parameters` runs on the rclc API. The census hook moved to
+  the one `declare` path. `check-census-hooks-complete` and
+  `check-c-executor-remove-coverage` follow it. The ledger's C rows were
+  rewritten: C `same` went from 116 to 130.
+
+Carried, with where each goes:
+
+- **C components still use `nros_cpp_*`**, for parameters and for everything
+  else: publishers, timers, publish. Moving their parameters alone would mix
+  two families inside one component, so it moves with the rest in
+  phase-492 W4.
+- **The header spells `nros_ret_t` / `struct nros_node_t` /
+  `struct nros_executor_t`**, which are the same types as `rcl_ret_t` /
+  `rcl_node_t` / `rclc_executor_t` from `<nros/rcl_compat.h>`. It does not
+  include `rcl_compat.h` itself. phase-492 makes the rcl spellings primary.
+- **String-array get/set** are not exposed yet. String arrays declared
+  elsewhere (launch, `ros2 param set`) still reach the callback.
+- **The remote set still stages its value on the stack**, about 8.5 KiB at
+  default bounds (RFC-0105 D10.2). That is the W2 staging-slot item, not done.
+- **`notify_changed_over_dds` is recorded and not acted on** until W3.

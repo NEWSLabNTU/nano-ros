@@ -11983,7 +11983,7 @@ impl<'s> Executor<'s> {
         // value is not a value the app reads, it is the switch that attaches the
         // time source. This is the one seam every language funnels through
         // (`nros::main!`'s launch bakes via `apply_param_services`, nros-c's
-        // `nros_parameter_declare_*`, nros-cpp's `params_shim`), so hooking it
+        // the rclc parameter server's `declare`, nros-cpp's `params_shim`), so hooking it
         // here covers all of them instead of once per entry path.
         //
         // phase-430 W3 / issue 1202 — the hook runs AFTER the store's verdict
@@ -12214,6 +12214,37 @@ impl<'s> Executor<'s> {
             self.note_reserved_parameter(name);
         }
         result
+    }
+
+    /// phase-491 W2 (RFC-0105 D7) — rclc's LOCAL typed set on `node`:
+    /// type, the on-set hooks with `(old, new)`, the write. Read-only and
+    /// range are NOT checked, because rclc's owner of a parameter is not bound
+    /// by them; remote writes keep [`set_parameter_on`](Self::set_parameter_on)'s
+    /// rules. The reserved-parameter hook runs on success, as on every writer.
+    pub fn set_parameter_local_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        value: nros_params::ParameterValue,
+    ) -> nros_params::SetParameterResult {
+        let result = match &mut self.params {
+            Some(params) => params.server.set_local(node.into(), name, value),
+            None => nros_params::SetParameterResult::NotFound,
+        };
+        if result == nros_params::SetParameterResult::Success {
+            self.note_reserved_parameter(name);
+        }
+        result
+    }
+
+    /// phase-491 W2 — a remote `NOT_SET` on `node` deletes the parameter
+    /// (rclc) instead of being refused (rclcpp). See
+    /// [`ParameterServer::set_delete_on_not_set`](nros_params::ParameterServer::set_delete_on_not_set).
+    pub fn delete_parameters_on_not_set_on(&mut self, node: super::node_record::NodeId, on: bool) {
+        self.ensure_parameter_store();
+        if let Some(params) = &mut self.params {
+            params.server.set_delete_on_not_set(node.into(), on);
+        }
     }
 
     /// May a remote set DECLARE a name this node never declared? Upstream's

@@ -668,8 +668,12 @@ mod census_hooks_reach_every_api {
         };
         assert_eq!(rc, NROS_RET_OK);
 
-        let rc =
-            unsafe { nros_executor_declare_param_double(&mut *executor, c"gain".as_ptr(), 1.5) };
+        // phase-491 — the C parameter surface is rclc's server handle now.
+        let mut params: alloc::boxed::Box<rclc_parameter_server_t> =
+            alloc::boxed::Box::new(unsafe { core::mem::zeroed() });
+        let rc = unsafe { rclc_parameter_server_init_default(&mut *params, &mut *node) };
+        assert_eq!(rc, NROS_RET_OK);
+        let rc = unsafe { rclc_parameter_declare_double(&mut *params, c"gain".as_ptr(), 1.5) };
         assert_eq!(rc, NROS_RET_OK);
 
         let export =

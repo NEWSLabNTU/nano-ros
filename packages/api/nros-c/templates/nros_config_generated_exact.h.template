@@ -137,4 +137,10 @@ static const unsigned char *const nros__config_variant_anchor =
 #define NROS_CODEGEN_VERSION @CODEGEN_VERSION@
 #define NROS_CODEGEN_VERSION_MIN @CODEGEN_VERSION_MIN@
 
+/* phase-491 / issue 0865 — 1 when this archive carries the C parameter server
+ * (`param-services`). `<rclc_parameter/rclc_parameter.h>` refuses to compile
+ * at 0, so a missing capability is a named compile error, not `ld`'s
+ * `undefined reference`. */
+#define NROS_HAS_PARAM_SERVICES @HAS_PARAM_SERVICES@
+
 #endif /* NROS_CONFIG_GENERATED_H */

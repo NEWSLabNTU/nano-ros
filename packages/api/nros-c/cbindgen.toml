@@ -42,8 +42,6 @@ struct nros_action_client_t;
 struct nros_lifecycle_state_machine_t;
 struct nros_support_t;
 struct nros_clock_t;
-struct nros_parameter_t;
-struct nros_parameter_server_t;
 struct nros_goal_handle_t;
 struct nros_goal_uuid_t;
 #ifdef __cplusplus
@@ -168,8 +166,9 @@ parse_deps = false
 clean = true
 
 # NOTE: `[parse.expand]` would let cbindgen expand `paste!` macros so the
-# `unsafe extern "C" fn` declarations they generate (e.g.
-# nros_parameter_set_{bool,integer,double}) appear in the C header. It
+# `unsafe extern "C" fn` declarations they generate appear in the C header.
+# (The C parameter server is hand-declared in `<rclc_parameter/rclc_parameter.h>`
+# on purpose, phase-491 / issue 0865: its module is `cbindgen:ignore`.) It
 # requires nightly Rust (`-Zunpretty=expanded`), so we leave it disabled
 # and keep those specific function declarations hand-written in
 # parameter.h. Re-enable here if the project ever moves to nightly.

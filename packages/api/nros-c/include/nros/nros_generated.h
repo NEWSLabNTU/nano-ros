@@ -39,8 +39,6 @@ struct nros_action_client_t;
 struct nros_lifecycle_state_machine_t;
 struct nros_support_t;
 struct nros_clock_t;
-struct nros_parameter_t;
-struct nros_parameter_server_t;
 struct nros_goal_handle_t;
 struct nros_goal_uuid_t;
 #ifdef __cplusplus
@@ -117,16 +115,6 @@ struct nros_goal_uuid_t;
  * never persist it, never compare it across images.
  */
 #define NROS_SERIALIZATION_FORMAT_ID 1
-
-/**
- * Maximum length of a parameter name
- */
-#define NROS_MAX_PARAM_NAME_LEN 64
-
-/**
- * Maximum length of a string parameter value
- */
-#define NROS_MAX_PARAM_STRING_LEN 128
 
 /**
  * Lifecycle state: Unconfigured
@@ -313,149 +301,6 @@ typedef enum nros_clock_state_t {
 } nros_clock_state_t;
 
 /**
- * Parameter server state.
- */
-typedef enum nros_parameter_server_state_t {
-  /**
-   * Not initialized
-   */
-  NROS_PARAM_SERVER_STATE_UNINITIALIZED = 0,
-  /**
-   * Initialized and ready
-   */
-  NROS_PARAM_SERVER_STATE_READY = 1,
-  /**
-   * Shutdown
-   */
-  NROS_PARAM_SERVER_STATE_SHUTDOWN = 2,
-} nros_parameter_server_state_t;
-
-/**
- * Parameter type enumeration.
- */
-typedef enum nros_parameter_type_t {
-  /**
-   * Parameter not set
-   */
-  NROS_PARAMETER_NOT_SET = 0,
-  /**
-   * Boolean parameter
-   */
-  NROS_PARAMETER_BOOL = 1,
-  /**
-   * 64-bit signed integer parameter
-   */
-  NROS_PARAMETER_INTEGER = 2,
-  /**
-   * 64-bit floating point parameter
-   */
-  NROS_PARAMETER_DOUBLE = 3,
-  /**
-   * String parameter
-   */
-  NROS_PARAMETER_STRING = 4,
-  /**
-   * Byte array parameter
-   */
-  NROS_PARAMETER_BYTE_ARRAY = 5,
-  /**
-   * Boolean array parameter
-   */
-  NROS_PARAMETER_BOOL_ARRAY = 6,
-  /**
-   * Integer array parameter
-   */
-  NROS_PARAMETER_INTEGER_ARRAY = 7,
-  /**
-   * Double array parameter
-   */
-  NROS_PARAMETER_DOUBLE_ARRAY = 8,
-  /**
-   * String array parameter
-   */
-  NROS_PARAMETER_STRING_ARRAY = 9,
-} nros_parameter_type_t;
-
-/**
- * Executor state
- */
-typedef enum nros_executor_state_t {
-  /**
-   * Not initialized
-   */
-  NROS_EXECUTOR_STATE_UNINITIALIZED = 0,
-  /**
-   * Initialized and ready
-   */
-  NROS_EXECUTOR_STATE_INITIALIZED = 1,
-  /**
-   * Currently spinning
-   */
-  NROS_EXECUTOR_STATE_SPINNING = 2,
-  /**
-   * Shutdown
-   */
-  NROS_EXECUTOR_STATE_SHUTDOWN = 3,
-} nros_executor_state_t;
-
-/**
- * Executor data communication semantics
- *
- * Defines when data is taken from DDS during spin operations.
- */
-typedef enum nros_executor_semantics_t {
-  /**
-   * RCLCPP executor semantics: Data is taken from DDS just before
-   * the corresponding callback is called.
-   */
-  NROS_SEMANTICS_RCLCPP_EXECUTOR = 0,
-  /**
-   * Logical Execution Time (LET) semantics: At one sampling point,
-   * new data of all ready subscriptions are taken from DDS.
-   * During sequential processing, the data from that sampling point
-   * is used. New data arriving after the sampling point is not
-   * considered until the next spin iteration.
-   */
-  NROS_SEMANTICS_LOGICAL_EXECUTION_TIME = 1,
-} nros_executor_semantics_t;
-
-/**
- * Support context state
- */
-typedef enum nros_support_state_t {
-  /**
-   * Not initialized
-   */
-  NROS_SUPPORT_STATE_UNINITIALIZED = 0,
-  /**
-   * Initialized and ready
-   */
-  NROS_SUPPORT_STATE_INITIALIZED = 1,
-  /**
-   * Shutdown
-   */
-  NROS_SUPPORT_STATE_SHUTDOWN = 2,
-} nros_support_state_t;
-
-/**
- * Node state
- */
-typedef enum nros_node_state_t {
-  /**
-   * Not initialized
-   */
-  NROS_NODE_STATE_UNINITIALIZED = 0,
-  /**
-   * Initialized and ready
-   */
-  NROS_NODE_STATE_INITIALIZED = 1,
-  /**
-   * Shutdown
-   */
-  NROS_NODE_STATE_SHUTDOWN = 2,
-} nros_node_state_t;
-
-/**
  * Action client state.
  */
 typedef enum nros_action_client_state_t {
@@ -511,6 +356,85 @@ typedef enum nros_goal_status_t {
    */
   NROS_GOAL_STATUS_ABORTED = 6,
 } nros_goal_status_t;
+
+/**
+ * Node state
+ */
+typedef enum nros_node_state_t {
+  /**
+   * Not initialized
+   */
+  NROS_NODE_STATE_UNINITIALIZED = 0,
+  /**
+   * Initialized and ready
+   */
+  NROS_NODE_STATE_INITIALIZED = 1,
+  /**
+   * Shutdown
+   */
+  NROS_NODE_STATE_SHUTDOWN = 2,
+} nros_node_state_t;
+
+/**
+ * Support context state
+ */
+typedef enum nros_support_state_t {
+  /**
+   * Not initialized
+   */
+  NROS_SUPPORT_STATE_UNINITIALIZED = 0,
+  /**
+   * Initialized and ready
+   */
+  NROS_SUPPORT_STATE_INITIALIZED = 1,
+  /**
+   * Shutdown
+   */
+  NROS_SUPPORT_STATE_SHUTDOWN = 2,
+} nros_support_state_t;
+
+/**
+ * Executor state
+ */
+typedef enum nros_executor_state_t {
+  /**
+   * Not initialized
+   */
+  NROS_EXECUTOR_STATE_UNINITIALIZED = 0,
+  /**
+   * Initialized and ready
+   */
+  NROS_EXECUTOR_STATE_INITIALIZED = 1,
+  /**
+   * Currently spinning
+   */
+  NROS_EXECUTOR_STATE_SPINNING = 2,
+  /**
+   * Shutdown
+   */
+  NROS_EXECUTOR_STATE_SHUTDOWN = 3,
+} nros_executor_state_t;
+
+/**
+ * Executor data communication semantics
+ *
+ * Defines when data is taken from DDS during spin operations.
+ */
+typedef enum nros_executor_semantics_t {
+  /**
+   * RCLCPP executor semantics: Data is taken from DDS just before
+   * the corresponding callback is called.
+   */
+  NROS_SEMANTICS_RCLCPP_EXECUTOR = 0,
+  /**
+   * Logical Execution Time (LET) semantics: At one sampling point,
+   * new data of all ready subscriptions are taken from DDS.
+   * During sequential processing, the data from that sampling point
+   * is used. New data arriving after the sampling point is not
+   * considered until the next spin iteration.
+   */
+  NROS_SEMANTICS_LOGICAL_EXECUTION_TIME = 1,
+} nros_executor_semantics_t;
 
 /**
  * Action server state.
@@ -962,102 +886,231 @@ typedef struct nros_duration_t {
 } nros_duration_t;
 
 /**
- * Array parameter value (pointer + length to caller-owned data).
+ * Phase 115.C — C-side mirror of
+ * `nros_rmw::custom_transport::NrosTransportOps`. Same `#[repr(C)]`
+ * layout — single ABI, no parallel definitions.
  *
- * The caller must keep the array data valid for the lifetime of the parameter.
- * For string arrays, `data` points to an array of `*const c_char` pointers.
+ * Field semantics:
+ *
+ * - `abi_version`: must be [`NROS_TRANSPORT_OPS_ABI_VERSION_V1`]
+ *   (Phase 115.A.2).
+ * - `_reserved`: padding for future minor-version detection. Set to 0.
+ * - `user_data`: opaque caller context, threaded back into every
+ *   callback as the first argument. Lifetime: must outlive the
+ *   transport's active period (i.e. until `close` returns).
+ * - `open`: open the underlying medium. `params` is opaque
+ *   per-transport metadata supplied by the caller (e.g. UART baud
+ *   rate). May be `NULL`. Returns 0 on success, negative
+ *   `nros_ret_t` on failure.
+ * - `close`: tear the transport down. Complement of `open`.
+ * - `write`: send `len` bytes from `buf`. Returns 0 on success,
+ *   negative `nros_ret_t` on failure.
+ * - `read`: receive up to `len` bytes within `timeout_ms`. Returns
+ *   the non-negative byte count on success, negative `nros_ret_t`
+ *   on error / timeout.
  */
-typedef struct nros_parameter_array_t {
-  /**
-   * Pointer to caller-owned array data
-   */
-  const void *data;
-  /**
-   * Number of elements
-   */
-  size_t len;
-} nros_parameter_array_t;
+typedef struct nros_transport_ops_t {
+  uint32_t abi_version;
+  uint32_t _reserved;
+  void *user_data;
+  nros_ret_t (*open)(void *user_data, const void *params);
+  void (*close)(void *user_data);
+  nros_ret_t (*write)(void *user_data, const uint8_t *buf, size_t len);
+  int32_t (*read)(void *user_data, uint8_t *buf, size_t len, uint32_t timeout_ms);
+} nros_transport_ops_t;
 
 /**
- * Parameter value union.
+ * phase-379 W4 — a checkable reference to the node an entity was created on.
+ *
+ * Replaces the `*const nros_node_t` each entity used to store. That pointer
+ * was never dereferenced anywhere in the C API — it was assigned, nulled, and
+ * asserted on — so it bought provenance nobody could use while leaving a raw
+ * pointer that invites a dereference the platform cannot support:
+ *
+ * * bare metal is safe (no MMU, no relocation, handles in `.bss`), but
+ * * an RTOS node declared on a task stack dies with `vTaskDelete`, and
+ * * `nros_node_t a = b;` is legal and silent — C has no move semantics, and we
+ *   have no allocator to hide an indirection behind.
+ *
+ * rcl's alternative (`rcl_publisher_fini(&pub, &node)`) does not remove that
+ * assumption; it relocates it to a caller who cannot check it either.
+ *
+ * So the entity stores an IDENTITY instead: the executor slot the node is
+ * bound to, plus the generation that slot carried when the entity was created.
+ * `rcl_node_fini` bumps the generation, which makes "finalise an entity after
+ * its node" a return code rather than a silent success.
+ *
+ * `generation == 0` is reserved and never issued, so a zeroed struct — the
+ * common C mistake — can never resolve.
  */
-typedef union nros_parameter_value_t {
+typedef struct nros_node_ref_t {
   /**
-   * Boolean value
+   * Executor node slot (`nros_node_t::node_id`). 0 = the primary node.
    */
-  bool bool_value;
+  uint8_t node_id;
   /**
-   * Integer value (64-bit)
+   * Slot generation when the entity was created. 0 = no node bound.
    */
-  int64_t integer_value;
-  /**
-   * Double value
-   */
-  double double_value;
-  /**
-   * String value (fixed-size buffer)
-   */
-  uint8_t string_value[NROS_MAX_PARAM_STRING_LEN];
-  /**
-   * Array value (pointer + length)
-   */
-  struct nros_parameter_array_t array_value;
-} nros_parameter_value_t;
+  uint32_t generation;
+} nros_node_ref_t;
 
 /**
- * Parameter structure.
+ * An action client the CALLER drives, with no executor (phase-487 W4).
+ *
+ * The C counterpart of C++'s `nros::PollingActionClient<A>`. `_opaque` holds
+ * an `ActionClientCore` from `nros_polling_action_client_init` until
+ * `nros_polling_action_client_fini`. Zero-initialised is UNINITIALIZED.
+ * Until phase-487 it was the `NROS_ACTION_CLIENT_STATE_POLLING` state of
+ * `nros_action_client_t`.
  */
-typedef struct nros_parameter_t {
+typedef struct nros_polling_action_client_t {
   /**
-   * Parameter name (null-terminated)
+   * Current state: UNINITIALIZED, INITIALIZED (core live) or SHUTDOWN.
    */
-  uint8_t name[NROS_MAX_PARAM_NAME_LEN];
+  enum nros_action_client_state_t state;
   /**
-   * Parameter type
+   * The node the channels were created on.
    */
-  enum nros_parameter_type_t type;
+  struct nros_node_ref_t node;
   /**
-   * Parameter value
+   * Inline storage for the `ActionClientCore`. Internal: treat as opaque.
    */
-  union nros_parameter_value_t value;
-} nros_parameter_t;
+  uint64_t _opaque[ACTION_CLIENT_OPAQUE_U64S];
+} nros_polling_action_client_t;
 
 /**
- * Parameter change callback type.
+ * Goal UUID structure (16 bytes).
  */
-typedef bool (*nros_parameter_callback_t)(const char *name,
-                                          const struct nros_parameter_t *param,
-                                          void *context);
+typedef struct nros_goal_uuid_t {
+  /**
+   * UUID bytes
+   */
+  uint8_t uuid[16];
+} nros_goal_uuid_t;
 
 /**
- * Parameter server structure.
+ * Goal response callback type (for async client).
+ * Called when the action server accepts or rejects a goal.
  */
-typedef struct nros_parameter_server_t {
+typedef void (*nros_goal_response_callback_t)(const struct nros_goal_uuid_t *goal_uuid,
+                                              bool accepted,
+                                              void *context);
+
+/**
+ * Feedback callback type (for client).
+ */
+typedef void (*nros_feedback_callback_t)(const struct nros_goal_uuid_t *goal_uuid,
+                                         const uint8_t *feedback,
+                                         size_t feedback_len,
+                                         void *context);
+
+/**
+ * Result callback type (for client).
+ */
+typedef void (*nros_result_callback_t)(const struct nros_goal_uuid_t *goal_uuid,
+                                       enum nros_goal_status_t status,
+                                       const uint8_t *result,
+                                       size_t result_len,
+                                       void *context);
+
+/**
+ * Identifier of a registered scheduling context. `0` is the
+ * auto-created default `Fifo` SC. Mirrors
+ * `nros_node::executor::sched_context::SchedContextId`.
+ */
+typedef uint8_t nros_sched_context_id_t;
+
+/**
+ * Internal state for the action client.
+ *
+ * Lightweight — stores only the arena entry index and executor pointer.
+ * The `ActionClientCore` (transport handles) lives in the executor's arena,
+ * created by `nros_executor_add_action_client`.
+ */
+typedef struct ActionClientInternal {
+  /**
+   * Arena entry index (set by nros_executor_add_action_client).
+   * -1 means not registered with executor.
+   */
+  int32_t arena_entry_index;
+  /**
+   * Pointer to the executor (set by nros_executor_add_action_client).
+   */
+  void *executor_ptr;
+} ActionClientInternal;
+
+/**
+ * An action client the executor dispatches.
+ *
+ * phase-487 W4 (RFC-0096 D9, the C half): the executor arena owns the
+ * channels and buffers; this struct holds the arena handle (`_internal`),
+ * the registration description and the callback record the arena's
+ * trampolines read, as the C++ action client does. A client the caller
+ * drives itself is a [`nros_polling_action_client_t`].
+ */
+typedef struct nros_action_client_t {
   /**
    * Current state
    */
-  enum nros_parameter_server_state_t state;
+  enum nros_action_client_state_t state;
   /**
-   * Maximum number of parameters
+   * Action name storage
    */
-  size_t capacity;
+  uint8_t action_name[NROS_MAX_ACTION_NAME_LEN];
   /**
-   * Current number of parameters
+   * Action name length
    */
-  size_t count;
+  size_t action_name_len;
   /**
-   * Parameter storage (pointer to user-provided array)
+   * Type name storage
    */
-  struct nros_parameter_t *parameters;
+  uint8_t type_name[NROS_MAX_TYPE_NAME_LEN];
   /**
-   * Parameter change callback
+   * Type name length
    */
-  nros_parameter_callback_t callback;
+  size_t type_name_len;
   /**
-   * Callback context
+   * Type hash storage
    */
-  void *callback_context;
-} nros_parameter_server_t;
+  uint8_t type_hash[NROS_MAX_TYPE_HASH_LEN];
+  /**
+   * Type hash length
+   */
+  size_t type_hash_len;
+  /**
+   * Goal response callback (for async send_goal)
+   */
+  nros_goal_response_callback_t goal_response_callback;
+  /**
+   * Feedback callback
+   */
+  nros_feedback_callback_t feedback_callback;
+  /**
+   * Result callback
+   */
+  nros_result_callback_t result_callback;
+  /**
+   * User context pointer
+   */
+  void *context;
+  /**
+   * Pointer to parent node
+   */
+  struct nros_node_ref_t node;
+  /**
+   * Phase 189.M3.3.b — scheduling-context slot to bind the action client's
+   * executor handle to. `0` = inherit the executor / Node default; set via
+   * `nros_action_client_init_with_options`. When non-zero,
+   * `nros_executor_add_action_client` binds the handle after
+   * registration. No effect on the L1 polling path.
+   */
+  nros_sched_context_id_t sched_context_id;
+  /**
+   * Internal state (arena entry index + executor pointer). Phase 87.5:
+   * Typed C-ABI handle field.
+   */
+  struct ActionClientInternal _internal;
+} nros_action_client_t;
 
 /**
  * Support context structure.
@@ -1364,233 +1417,6 @@ typedef struct nros_node_t {
    */
   size_t qos_overrides_len;
 } nros_node_t;
-
-/**
- * Phase 115.C — C-side mirror of
- * `nros_rmw::custom_transport::NrosTransportOps`. Same `#[repr(C)]`
- * layout — single ABI, no parallel definitions.
- *
- * Field semantics:
- *
- * - `abi_version`: must be [`NROS_TRANSPORT_OPS_ABI_VERSION_V1`]
- *   (Phase 115.A.2).
- * - `_reserved`: padding for future minor-version detection. Set to 0.
- * - `user_data`: opaque caller context, threaded back into every
- *   callback as the first argument. Lifetime: must outlive the
- *   transport's active period (i.e. until `close` returns).
- * - `open`: open the underlying medium. `params` is opaque
- *   per-transport metadata supplied by the caller (e.g. UART baud
- *   rate). May be `NULL`. Returns 0 on success, negative
- *   `nros_ret_t` on failure.
- * - `close`: tear the transport down. Complement of `open`.
- * - `write`: send `len` bytes from `buf`. Returns 0 on success,
- *   negative `nros_ret_t` on failure.
- * - `read`: receive up to `len` bytes within `timeout_ms`. Returns
- *   the non-negative byte count on success, negative `nros_ret_t`
- *   on error / timeout.
- */
-typedef struct nros_transport_ops_t {
-  uint32_t abi_version;
-  uint32_t _reserved;
-  void *user_data;
-  nros_ret_t (*open)(void *user_data, const void *params);
-  void (*close)(void *user_data);
-  nros_ret_t (*write)(void *user_data, const uint8_t *buf, size_t len);
-  int32_t (*read)(void *user_data, uint8_t *buf, size_t len, uint32_t timeout_ms);
-} nros_transport_ops_t;
-
-/**
- * phase-379 W4 — a checkable reference to the node an entity was created on.
- *
- * Replaces the `*const nros_node_t` each entity used to store. That pointer
- * was never dereferenced anywhere in the C API — it was assigned, nulled, and
- * asserted on — so it bought provenance nobody could use while leaving a raw
- * pointer that invites a dereference the platform cannot support:
- *
- * * bare metal is safe (no MMU, no relocation, handles in `.bss`), but
- * * an RTOS node declared on a task stack dies with `vTaskDelete`, and
- * * `nros_node_t a = b;` is legal and silent — C has no move semantics, and we
- *   have no allocator to hide an indirection behind.
- *
- * rcl's alternative (`rcl_publisher_fini(&pub, &node)`) does not remove that
- * assumption; it relocates it to a caller who cannot check it either.
- *
- * So the entity stores an IDENTITY instead: the executor slot the node is
- * bound to, plus the generation that slot carried when the entity was created.
- * `rcl_node_fini` bumps the generation, which makes "finalise an entity after
- * its node" a return code rather than a silent success.
- *
- * `generation == 0` is reserved and never issued, so a zeroed struct — the
- * common C mistake — can never resolve.
- */
-typedef struct nros_node_ref_t {
-  /**
-   * Executor node slot (`nros_node_t::node_id`). 0 = the primary node.
-   */
-  uint8_t node_id;
-  /**
-   * Slot generation when the entity was created. 0 = no node bound.
-   */
-  uint32_t generation;
-} nros_node_ref_t;
-
-/**
- * An action client the CALLER drives, with no executor (phase-487 W4).
- *
- * The C counterpart of C++'s `nros::PollingActionClient<A>`. `_opaque` holds
- * an `ActionClientCore` from `nros_polling_action_client_init` until
- * `nros_polling_action_client_fini`. Zero-initialised is UNINITIALIZED.
- * Until phase-487 it was the `NROS_ACTION_CLIENT_STATE_POLLING` state of
- * `nros_action_client_t`.
- */
-typedef struct nros_polling_action_client_t {
-  /**
-   * Current state: UNINITIALIZED, INITIALIZED (core live) or SHUTDOWN.
-   */
-  enum nros_action_client_state_t state;
-  /**
-   * The node the channels were created on.
-   */
-  struct nros_node_ref_t node;
-  /**
-   * Inline storage for the `ActionClientCore`. Internal: treat as opaque.
-   */
-  uint64_t _opaque[ACTION_CLIENT_OPAQUE_U64S];
-} nros_polling_action_client_t;
-
-/**
- * Goal UUID structure (16 bytes).
- */
-typedef struct nros_goal_uuid_t {
-  /**
-   * UUID bytes
-   */
-  uint8_t uuid[16];
-} nros_goal_uuid_t;
-
-/**
- * Goal response callback type (for async client).
- * Called when the action server accepts or rejects a goal.
- */
-typedef void (*nros_goal_response_callback_t)(const struct nros_goal_uuid_t *goal_uuid,
-                                              bool accepted,
-                                              void *context);
-
-/**
- * Feedback callback type (for client).
- */
-typedef void (*nros_feedback_callback_t)(const struct nros_goal_uuid_t *goal_uuid,
-                                         const uint8_t *feedback,
-                                         size_t feedback_len,
-                                         void *context);
-
-/**
- * Result callback type (for client).
- */
-typedef void (*nros_result_callback_t)(const struct nros_goal_uuid_t *goal_uuid,
-                                       enum nros_goal_status_t status,
-                                       const uint8_t *result,
-                                       size_t result_len,
-                                       void *context);
-
-/**
- * Identifier of a registered scheduling context. `0` is the
- * auto-created default `Fifo` SC. Mirrors
- * `nros_node::executor::sched_context::SchedContextId`.
- */
-typedef uint8_t nros_sched_context_id_t;
-
-/**
- * Internal state for the action client.
- *
- * Lightweight — stores only the arena entry index and executor pointer.
- * The `ActionClientCore` (transport handles) lives in the executor's arena,
- * created by `nros_executor_add_action_client`.
- */
-typedef struct ActionClientInternal {
-  /**
-   * Arena entry index (set by nros_executor_add_action_client).
-   * -1 means not registered with executor.
-   */
-  int32_t arena_entry_index;
-  /**
-   * Pointer to the executor (set by nros_executor_add_action_client).
-   */
-  void *executor_ptr;
-} ActionClientInternal;
-
-/**
- * An action client the executor dispatches.
- *
- * phase-487 W4 (RFC-0096 D9, the C half): the executor arena owns the
- * channels and buffers; this struct holds the arena handle (`_internal`),
- * the registration description and the callback record the arena's
- * trampolines read, as the C++ action client does. A client the caller
- * drives itself is a [`nros_polling_action_client_t`].
- */
-typedef struct nros_action_client_t {
-  /**
-   * Current state
-   */
-  enum nros_action_client_state_t state;
-  /**
-   * Action name storage
-   */
-  uint8_t action_name[NROS_MAX_ACTION_NAME_LEN];
-  /**
-   * Action name length
-   */
-  size_t action_name_len;
-  /**
-   * Type name storage
-   */
-  uint8_t type_name[NROS_MAX_TYPE_NAME_LEN];
-  /**
-   * Type name length
-   */
-  size_t type_name_len;
-  /**
-   * Type hash storage
-   */
-  uint8_t type_hash[NROS_MAX_TYPE_HASH_LEN];
-  /**
-   * Type hash length
-   */
-  size_t type_hash_len;
-  /**
-   * Goal response callback (for async send_goal)
-   */
-  nros_goal_response_callback_t goal_response_callback;
-  /**
-   * Feedback callback
-   */
-  nros_feedback_callback_t feedback_callback;
-  /**
-   * Result callback
-   */
-  nros_result_callback_t result_callback;
-  /**
-   * User context pointer
-   */
-  void *context;
-  /**
-   * Pointer to parent node
-   */
-  struct nros_node_ref_t node;
-  /**
-   * Phase 189.M3.3.b — scheduling-context slot to bind the action client's
-   * executor handle to. `0` = inherit the executor / Node default; set via
-   * `nros_action_client_init_with_options`. When non-zero,
-   * `nros_executor_add_action_client` binds the handle after
-   * registration. No effect on the L1 polling path.
-   */
-  nros_sched_context_id_t sched_context_id;
-  /**
-   * Internal state (arena entry index + executor pointer). Phase 87.5:
-   * Typed C-ABI handle field.
-   */
-  struct ActionClientInternal _internal;
-} nros_action_client_t;
 
 /**
  * Action type information.
@@ -3561,427 +3387,6 @@ struct nros_time_t nros_time_sub(struct nros_time_t time,
  * Compare two times.
  */
 NROS_PUBLIC int nros_time_compare(struct nros_time_t a, struct nros_time_t b);
-
-/**
- * Get a zero-initialized parameter server.
- */
-NROS_PUBLIC struct nros_parameter_server_t nros_parameter_server_get_zero_initialized(void);
-
-/**
- * Initialize a parameter server with user-provided storage.
- */
-NROS_PUBLIC
-nros_ret_t nros_parameter_server_init(struct nros_parameter_server_t *server,
-                                      struct nros_parameter_t *storage,
-                                      size_t capacity);
-
-/**
- * Set a parameter change callback.
- */
-NROS_PUBLIC
-nros_ret_t nros_parameter_server_set_callback(struct nros_parameter_server_t *server,
-                                              nros_parameter_callback_t callback,
-                                              void *context);
-
-/**
- * Declare a string parameter.
- */
-NROS_PUBLIC
-nros_ret_t nros_parameter_declare_string(struct nros_parameter_server_t *server,
-                                         const char *name,
-                                         const char *default_value);
-
-/**
- * Get a string parameter value.
- */
-NROS_PUBLIC
-nros_ret_t nros_parameter_get_string(const struct nros_parameter_server_t *server,
-                                     const char *name,
-                                     char *value,
-                                     size_t max_len);
-
-/**
- * Set a string parameter value.
- */
-NROS_PUBLIC
-nros_ret_t nros_parameter_set_string(struct nros_parameter_server_t *server,
-                                     const char *name,
-                                     const char *value);
-
-/**
- * Check if a parameter exists.
- */
-NROS_PUBLIC bool nros_parameter_has(const struct nros_parameter_server_t *server, const char *name);
-
-/**
- * Get the type of a parameter.
- */
-NROS_PUBLIC
-enum nros_parameter_type_t nros_parameter_get_type(const struct nros_parameter_server_t *server,
-                                                   const char *name);
-
-/**
- * Get the number of declared parameters.
- */
-NROS_PUBLIC size_t nros_parameter_server_get_count(const struct nros_parameter_server_t *server);
-
-/**
- * Finalize a parameter server.
- */
-NROS_PUBLIC nros_ret_t nros_parameter_server_fini(struct nros_parameter_server_t *server);
-
-/**
- * Register the 6 ROS 2 parameter services on the executor's node.
- *
- * After this call, parameters declared via
- * `nros_executor_declare_param_*` are visible to `ros2 param list`,
- * `ros2 param get`, `ros2 param set`, etc.
- */
-NROS_PUBLIC nros_ret_t nros_executor_register_parameter_services(struct nros_executor_t *executor);
-
-/**
- * Declare a string parameter on the executor's PRIMARY node.
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_declare_param_string(struct nros_executor_t *executor,
-                                              const char *name,
-                                              const char *value);
-
-/**
- * Declare a string parameter on `node`.
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_declare_param_string_on(struct nros_executor_t *executor,
-                                                 const struct nros_node_t *node,
-                                                 const char *name,
-                                                 const char *value);
-
-/**
- * Get a string parameter from the executor's PRIMARY node into a fixed
- * buffer.
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_get_param_string(struct nros_executor_t *executor,
-                                          const char *name,
-                                          char *out_value,
-                                          size_t max_len);
-
-/**
- * Get a string parameter from `node` into a fixed buffer.
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_get_param_string_on(struct nros_executor_t *executor,
-                                             const struct nros_node_t *node,
-                                             const char *name,
-                                             char *out_value,
-                                             size_t max_len);
-
-/**
- * Set a string parameter on the executor's PRIMARY node.
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_set_param_string(struct nros_executor_t *executor,
-                                          const char *name,
-                                          const char *value);
-
-/**
- * Set a string parameter on `node`.
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_set_param_string_on(struct nros_executor_t *executor,
-                                             const struct nros_node_t *node,
-                                             const char *name,
-                                             const char *value);
-
-/**
- * Check if a parameter exists on the executor's PRIMARY node.
- */
-NROS_PUBLIC bool nros_executor_has_param(struct nros_executor_t *executor, const char *name);
-
-/**
- * Check if a parameter exists on `node`.
- *
- * A node this executor does not own answers `false`, never the primary
- * node's answer: "which node" is the question, and defaulting it is how a
- * sibling's parameter comes back as this one's.
- */
-NROS_PUBLIC
-bool nros_executor_has_param_on(struct nros_executor_t *executor,
-                                const struct nros_node_t *node,
-                                const char *name);
-
-/**
- * May a `set` DECLARE a name the executor's PRIMARY node never declared?
- *
- * Upstream's `allow_undeclared_parameters` node option (issue 1151), off
- * by default. Without it a C image could not reach the policy at all: a
- * `nros_executor_set_param_*` on an undeclared name was a permanent
- * `NROS_RET_NOT_FOUND` with no opt-in, so the rule was reachable from Rust
- * and from the wire and not from here. Set it before
- * `nros_executor_register_parameter_services` starts answering.
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_allow_undeclared_parameters(struct nros_executor_t *executor,
-                                                     bool allow);
-
-/**
- * [`nros_executor_allow_undeclared_parameters`] for `node`. Per node, as
- * upstream: switching it on for one node leaves its siblings refusing.
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_allow_undeclared_parameters_on(struct nros_executor_t *executor,
-                                                        const struct nros_node_t *node,
-                                                        bool allow);
-
-/**
- * rclc's `rclc_add_parameter_description`, on the executor's PRIMARY node.
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_add_param_description(struct nros_executor_t *executor,
-                                               const char *name,
-                                               const char *description,
-                                               const char *additional_constraints);
-
-/**
- * [`nros_executor_add_param_description`] for `node`.
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_add_param_description_on(struct nros_executor_t *executor,
-                                                  const struct nros_node_t *node,
-                                                  const char *name,
-                                                  const char *description,
-                                                  const char *additional_constraints);
-
-/**
- * rclc's `rclc_set_parameter_read_only`, on the PRIMARY node. Every later
- * write — local or over `~/set_parameters` — is refused.
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_set_param_read_only(struct nros_executor_t *executor,
-                                             const char *name,
-                                             bool read_only);
-
-/**
- * [`nros_executor_set_param_read_only`] for `node`.
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_set_param_read_only_on(struct nros_executor_t *executor,
-                                                const struct nros_node_t *node,
-                                                const char *name,
-                                                bool read_only);
-
-/**
- * rclc's `rclc_add_parameter_constraint_integer`, on the PRIMARY node.
- *
- * `NROS_RET_INVALID_ARGUMENT` for an ill-formed range, or one the
- * parameter's CURRENT value does not satisfy — attaching either would
- * advertise a bound no `set` could have produced.
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_add_param_constraint_integer(struct nros_executor_t *executor,
-                                                      const char *name,
-                                                      int64_t from_value,
-                                                      int64_t to_value,
-                                                      int64_t step);
-
-/**
- * [`nros_executor_add_param_constraint_integer`] for `node`.
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_add_param_constraint_integer_on(struct nros_executor_t *executor,
-                                                         const struct nros_node_t *node,
-                                                         const char *name,
-                                                         int64_t from_value,
-                                                         int64_t to_value,
-                                                         int64_t step);
-
-/**
- * rclc's `rclc_add_parameter_constraint_double`, on the PRIMARY node.
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_add_param_constraint_double(struct nros_executor_t *executor,
-                                                     const char *name,
-                                                     double from_value,
-                                                     double to_value,
-                                                     double step);
-
-/**
- * [`nros_executor_add_param_constraint_double`] for `node`.
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_add_param_constraint_double_on(struct nros_executor_t *executor,
-                                                        const struct nros_node_t *node,
-                                                        const char *name,
-                                                        double from_value,
-                                                        double to_value,
-                                                        double step);
-
-/**
- * rclc's `rclc_delete_parameter` — undeclare, freeing the slot for a
- * later declaration. `NROS_RET_NOT_FOUND` if the PRIMARY node never
- * declared it.
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_delete_param(struct nros_executor_t *executor,
-                                      const char *name);
-
-/**
- * [`nros_executor_delete_param`] for `node`.
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_delete_param_on(struct nros_executor_t *executor,
-                                         const struct nros_node_t *node,
-                                         const char *name);
-
-/**
- * The declared TYPE of a parameter on the PRIMARY node, or
- * `NROS_PARAMETER_NOT_SET` when it is not declared.
- *
- * `nros_parameter_get_type` answers the same question about the LEGACY
- * store, which is not the one `ros2 param get` reads (issue 0793). This
- * is the executor-store answer, and the local form of what
- * `~/get_parameter_types` serves.
- */
-NROS_PUBLIC
-enum nros_parameter_type_t nros_executor_get_param_type(struct nros_executor_t *executor,
-                                                        const char *name);
-
-/**
- * [`nros_executor_get_param_type`] for `node`.
- */
-NROS_PUBLIC
-enum nros_parameter_type_t nros_executor_get_param_type_on(struct nros_executor_t *executor,
-                                                           const struct nros_node_t *node,
-                                                           const char *name);
-
-/**
- * rclcpp's `describe_parameter`, on the PRIMARY node. See
- * [`describe_param_impl`] for what each out-param means and why there is
- * no descriptor struct.
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_describe_param(struct nros_executor_t *executor,
-                                        const char *name,
-                                        char *out_description,
-                                        size_t description_len,
-                                        char *out_constraints,
-                                        size_t constraints_len,
-                                        bool *out_read_only,
-                                        enum nros_parameter_type_t *out_type);
-
-/**
- * [`nros_executor_describe_param`] for `node`.
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_describe_param_on(struct nros_executor_t *executor,
-                                           const struct nros_node_t *node,
-                                           const char *name,
-                                           char *out_description,
-                                           size_t description_len,
-                                           char *out_constraints,
-                                           size_t constraints_len,
-                                           bool *out_read_only,
-                                           enum nros_parameter_type_t *out_type);
-
-/**
- * The integer range of a parameter on the PRIMARY node.
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_get_param_integer_range(struct nros_executor_t *executor,
-                                                 const char *name,
-                                                 int64_t *out_from,
-                                                 int64_t *out_to,
-                                                 int64_t *out_step);
-
-/**
- * [`nros_executor_get_param_integer_range`] for `node`.
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_get_param_integer_range_on(struct nros_executor_t *executor,
-                                                    const struct nros_node_t *node,
-                                                    const char *name,
-                                                    int64_t *out_from,
-                                                    int64_t *out_to,
-                                                    int64_t *out_step);
-
-/**
- * The floating-point range of a parameter on the PRIMARY node.
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_get_param_double_range(struct nros_executor_t *executor,
-                                                const char *name,
-                                                double *out_from,
-                                                double *out_to,
-                                                double *out_step);
-
-/**
- * [`nros_executor_get_param_double_range`] for `node`.
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_get_param_double_range_on(struct nros_executor_t *executor,
-                                                   const struct nros_node_t *node,
-                                                   const char *name,
-                                                   double *out_from,
-                                                   double *out_to,
-                                                   double *out_step);
-
-/**
- * rclcpp's `list_parameters` / rcl's `~/list_parameters`, on the PRIMARY
- * node. See [`list_params_impl`] for the buffer shape.
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_list_params(struct nros_executor_t *executor,
-                                     const char *prefix,
-                                     char *out_names,
-                                     size_t name_stride,
-                                     size_t max_names,
-                                     size_t *out_count);
-
-/**
- * [`nros_executor_list_params`] for `node`.
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_list_params_on(struct nros_executor_t *executor,
-                                        const struct nros_node_t *node,
-                                        const char *prefix,
-                                        char *out_names,
-                                        size_t name_stride,
-                                        size_t max_names,
-                                        size_t *out_count);
-
-/**
- * Register an accept/reject hook for writes to the PRIMARY node —
- * rclcpp's `add_on_set_parameters_callback`, on the store the six
- * `rcl_interfaces` service servers read.
- *
- * `NROS_RET_FULL` when the store's `MAX_ON_SET_CALLBACKS` slots are all
- * taken — a refusal, never a silent eviction. `out_handle` receives the
- * token [`nros_executor_remove_param_callback`] takes; NULL if the caller
- * never intends to unregister.
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_set_param_callback(struct nros_executor_t *executor,
-                                            nros_parameter_callback_t callback,
-                                            void *context,
-                                            uint16_t *out_handle);
-
-/**
- * [`nros_executor_set_param_callback`] for `node`.
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_set_param_callback_on(struct nros_executor_t *executor,
-                                               const struct nros_node_t *node,
-                                               nros_parameter_callback_t callback,
-                                               void *context,
-                                               uint16_t *out_handle);
-
-/**
- * Unregister a hook — rclcpp's `remove_on_set_parameters_callback`.
- * `NROS_RET_NOT_FOUND` when the handle names no registration.
- */
-NROS_PUBLIC
-nros_ret_t nros_executor_remove_param_callback(struct nros_executor_t *executor,
-                                               uint16_t handle);
 
 /**
  * Monotonic nanoseconds since a platform-defined epoch (RFC-0073).

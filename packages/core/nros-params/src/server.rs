@@ -64,12 +64,25 @@ pub enum DeclarationError {
 /// `false` REFUSES the write, which is rclcpp's
 /// `add_on_set_parameters_callback` contract (a `SetParametersResult` whose
 /// `successful` is false) and the contract C's legacy
-/// `nros_parameter_server_set_callback` already had on the wrong store.
+/// C's rclc parameter server carries too (phase-491, with the old value).
 ///
 /// A `fn` pointer plus an [`OnSetContext`], not a closure: this crate is
 /// `no_std` with no allocator, so there is nothing to box a `FnMut` into.
-pub type OnSetParameterFn =
-    fn(node: NodeKey, name: &str, value: &ParameterValue, ctx: OnSetContext) -> bool;
+///
+/// phase-491 W2 (RFC-0105 D6) — the hook sees BOTH sides of the change,
+/// rclc's `rclc_parameter_callback_t` contract: `old` is `None` when the write
+/// would CREATE the parameter (an undeclared remote set), `new` is `None` when
+/// it would DELETE it (a remote `NOT_SET` on a node that asked for
+/// [`set_delete_on_not_set`](ParameterServer::set_delete_on_not_set)).
+/// rclcpp's `add_on_set_parameters_callback` reads only `new`, so the C++ and
+/// Rust facades ignore `old`.
+pub type OnSetParameterFn = fn(
+    node: NodeKey,
+    name: &str,
+    old: Option<&ParameterValue>,
+    new: Option<&ParameterValue>,
+    ctx: OnSetContext,
+) -> bool;
 
 /// Two machine words of caller context, carried verbatim to an
 /// [`OnSetParameterFn`].
@@ -402,6 +415,12 @@ pub struct ParameterServer<'s> {
     /// phase-426 W1 — PER NODE, because upstream's is a node option. One node
     /// opting in must not decide what a remote set may do to its sibling.
     allow_undeclared: NodeFlags,
+    /// phase-491 W2 — nodes whose remote `NOT_SET` DELETES the parameter
+    /// (rclc's set-service behaviour) instead of being refused as a type
+    /// change (rclcpp's, for a statically typed parameter). Set by the C
+    /// `rclc_parameter_server_t`; per node because the two client libraries
+    /// disagree and both live in one store.
+    delete_on_not_set: NodeFlags,
     /// phase-446 F2 -- a declared descriptor holds a truncated description
     /// nobody has reported yet. Lets [`Self::take_truncated_descriptions`]
     /// answer "nothing" without walking the table, which is what lets the
@@ -464,6 +483,7 @@ impl<'s> ParameterServer<'s> {
             table,
             count,
             allow_undeclared: NodeFlags::new(),
+            delete_on_not_set: NodeFlags::new(),
             on_set: [None; MAX_ON_SET_CALLBACKS],
             // An adopted table may already hold a truncated description, so
             // the first drain looks rather than assuming none.
@@ -486,6 +506,14 @@ impl<'s> ParameterServer<'s> {
     /// Whether [`apply`](Self::apply) may declare an unknown name on `node`.
     pub fn allows_undeclared(&self, node: NodeKey) -> bool {
         self.allow_undeclared.get(node)
+    }
+
+    /// phase-491 W2 — make a wire-facing `NOT_SET` on `node` DELETE the
+    /// parameter, after the on-set hooks accept `(old, None)`. This is rclc's
+    /// parameter server (`rclc_parameter_server_set_service_callback`); the
+    /// default, off, keeps rclcpp's refusal.
+    pub fn set_delete_on_not_set(&mut self, node: NodeKey, on: bool) {
+        self.delete_on_not_set.set(node, on);
     }
 
     /// Get the number of parameters `node` has stored.
@@ -719,6 +747,9 @@ impl<'s> ParameterServer<'s> {
         name: &str,
         value: ParameterValue,
     ) -> SetParameterResult {
+        if matches!(value, ParameterValue::NotSet) && self.delete_on_not_set.get(node) {
+            return self.apply_delete(node, name);
+        }
         let verdict = self.check_apply(node, name, &value);
         if !verdict.is_success() {
             return verdict;
@@ -730,7 +761,7 @@ impl<'s> ParameterServer<'s> {
         // one seam every writer funnels through (the six services, the C and
         // C++ facades, `Executor::set_parameter`), so hooking it here is what
         // makes one registration reach all of them.
-        if !self.run_on_set_callbacks(node, name, &value) {
+        if !self.run_on_set_callbacks(node, name, self.get(node, name), Some(&value)) {
             return SetParameterResult::Rejected;
         }
         if self.find_index(node, name).is_some() {
@@ -742,12 +773,76 @@ impl<'s> ParameterServer<'s> {
         }
     }
 
+    /// The delete half of [`apply`](Self::apply) for a node that asked for
+    /// [`set_delete_on_not_set`](Self::set_delete_on_not_set): read-only
+    /// refuses, the hooks see `(old, None)`, then the parameter is removed.
+    fn apply_delete(&mut self, node: NodeKey, name: &str) -> SetParameterResult {
+        let Some(entry) = self
+            .find_index(node, name)
+            .and_then(|idx| self.table.entries[idx].as_ref())
+        else {
+            return SetParameterResult::NotFound;
+        };
+        if entry.descriptor.as_ref().is_some_and(|d| d.read_only) {
+            return SetParameterResult::ReadOnly;
+        }
+        if !self.run_on_set_callbacks(node, name, self.get(node, name), None) {
+            return SetParameterResult::Rejected;
+        }
+        self.remove(node, name);
+        SetParameterResult::Success
+    }
+
+    /// phase-491 W2 (RFC-0105 D6/D7) — rclc's LOCAL typed set,
+    /// `rclc_parameter_set_{bool,int,double}`.
+    ///
+    /// rclc's owner of a parameter is not bound by its own read-only flag or
+    /// range: read-only is "read-only to the OUTSIDE", and rclc never checks a
+    /// range at all. So this is type, then the hooks with `(old, new)`, then
+    /// the write — and nothing else. Remote writes keep going through
+    /// [`apply`](Self::apply), which enforces both.
+    ///
+    /// The type check compares against the STORED value's type unless the
+    /// descriptor allows dynamic typing, because rclc refuses a typed set of
+    /// the wrong type (`RCLC_PARAMETER_TYPE_MISMATCH`) whether or not a
+    /// descriptor was ever attached.
+    pub fn set_local(
+        &mut self,
+        node: NodeKey,
+        name: &str,
+        value: ParameterValue,
+    ) -> SetParameterResult {
+        let Some(idx) = self.find_index(node, name) else {
+            return SetParameterResult::NotFound;
+        };
+        let Some(entry) = self.table.entries[idx].as_ref() else {
+            return SetParameterResult::NotFound;
+        };
+        let dynamic = entry.descriptor.as_ref().is_some_and(|d| d.dynamic_typing);
+        if !dynamic && entry.param.value.param_type() != value.param_type() {
+            return SetParameterResult::TypeMismatch;
+        }
+        if !self.run_on_set_callbacks(node, name, Some(&entry.param.value), Some(&value)) {
+            return SetParameterResult::Rejected;
+        }
+        if let Some(entry) = self.table.entries[idx].as_mut() {
+            entry.param.value = value;
+        }
+        SetParameterResult::Success
+    }
+
     /// Run every registered hook for `node`. `false` from any one of them
     /// refuses the write; the rest are not consulted, as rclcpp stops at the
     /// first unsuccessful result.
-    fn run_on_set_callbacks(&self, node: NodeKey, name: &str, value: &ParameterValue) -> bool {
+    fn run_on_set_callbacks(
+        &self,
+        node: NodeKey,
+        name: &str,
+        old: Option<&ParameterValue>,
+        new: Option<&ParameterValue>,
+    ) -> bool {
         for slot in self.on_set.iter().flatten() {
-            if slot.node == node && !(slot.callback)(node, name, value, slot.ctx) {
+            if slot.node == node && !(slot.callback)(node, name, old, new, slot.ctx) {
                 return false;
             }
         }
@@ -758,7 +853,7 @@ impl<'s> ParameterServer<'s> {
     /// `add_on_set_parameters_callback` (phase-417 W4.a).
     ///
     /// The callback runs on every [`apply`](Self::apply): a remote
-    /// `ros2 param set`, a C `nros_executor_set_param_*`, a C++
+    /// `ros2 param set`, a C++
     /// `Node::set_parameter`, a Rust `Executor::set_parameter`. Returning
     /// `false` refuses the write with [`SetParameterResult::Rejected`] and
     /// leaves the stored value alone.
@@ -973,7 +1068,7 @@ impl<'s> ParameterServer<'s> {
             // written. `apply` will consult it again on the write pass; a hook
             // that answers differently to the same value twice is the caller's
             // own inconsistency, and the second answer is the one that stands.
-            if !self.run_on_set_callbacks(node, name, &value) {
+            if !self.run_on_set_callbacks(node, name, self.get(node, name), Some(&value)) {
                 return SetParameterResult::Rejected;
             }
         }
@@ -2029,7 +2124,8 @@ mod tests {
     fn refuse_everything(
         _n: NodeKey,
         _name: &str,
-        _v: &ParameterValue,
+        _old: Option<&ParameterValue>,
+        _new: Option<&ParameterValue>,
         _ctx: OnSetContext,
     ) -> bool {
         false
@@ -2038,10 +2134,11 @@ mod tests {
     fn refuse_if_ctx_matches(
         _n: NodeKey,
         _name: &str,
-        v: &ParameterValue,
+        _old: Option<&ParameterValue>,
+        new: Option<&ParameterValue>,
         ctx: OnSetContext,
     ) -> bool {
-        v.as_integer() != Some(ctx.a as i64)
+        new.and_then(ParameterValue::as_integer) != Some(ctx.a as i64)
     }
 
     /// The hook runs on `apply` — the seam every facade and the six services
@@ -2076,6 +2173,148 @@ mod tests {
             server.apply(NODE, "rate", ParameterValue::Integer(9)),
             SetParameterResult::Success
         );
+    }
+
+    /// What the recording hook saw, reached through `OnSetContext::a`.
+    #[derive(Default)]
+    struct Seen {
+        calls: u32,
+        old: Option<i64>,
+        new: Option<i64>,
+        old_present: bool,
+        new_present: bool,
+    }
+
+    fn record(
+        _n: NodeKey,
+        _name: &str,
+        old: Option<&ParameterValue>,
+        new: Option<&ParameterValue>,
+        ctx: OnSetContext,
+    ) -> bool {
+        // SAFETY: every test passes a `&mut Seen` that outlives the server.
+        let seen = unsafe { &mut *(ctx.a as *mut Seen) };
+        seen.calls += 1;
+        seen.old_present = old.is_some();
+        seen.new_present = new.is_some();
+        seen.old = old.and_then(ParameterValue::as_integer);
+        seen.new = new.and_then(ParameterValue::as_integer);
+        true
+    }
+
+    /// phase-491 W2 — the hook sees BOTH sides: `(old, new)` on a write to an
+    /// existing parameter, `(None, new)` on a remote create.
+    #[test]
+    fn the_on_set_hook_sees_old_and_new() {
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
+        let mut seen = Seen::default();
+        assert!(server.declare(NODE, "rate", ParameterValue::Integer(1)));
+        server
+            .add_on_set_parameters_callback(NODE, record, OnSetContext::new(&raw mut seen as usize))
+            .expect("a free slot");
+
+        assert_eq!(
+            server.apply(NODE, "rate", ParameterValue::Integer(2)),
+            SetParameterResult::Success
+        );
+        assert_eq!((seen.old, seen.new), (Some(1), Some(2)));
+
+        server.set_allow_undeclared(NODE, true);
+        assert_eq!(
+            server.apply(NODE, "fresh", ParameterValue::Integer(7)),
+            SetParameterResult::Success
+        );
+        assert!(!seen.old_present, "a create has no old value");
+        assert_eq!(seen.new, Some(7));
+    }
+
+    /// phase-491 W2 — rclc's LOCAL set: type, hook, write. Read-only and range
+    /// do not bind the owner; a different type does.
+    #[test]
+    fn a_local_set_skips_read_only_and_range_but_not_type() {
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
+        let mut seen = Seen::default();
+        assert!(server.declare(NODE, "rate", ParameterValue::Integer(1)));
+        assert!(server.set_parameter_integer_range(NODE, "rate", 0, 10, 1));
+        assert!(server.set_parameter_read_only(NODE, "rate", true));
+        server
+            .add_on_set_parameters_callback(NODE, record, OnSetContext::new(&raw mut seen as usize))
+            .expect("a free slot");
+
+        // The remote path refuses both.
+        assert_eq!(
+            server.apply(NODE, "rate", ParameterValue::Integer(50)),
+            SetParameterResult::ReadOnly
+        );
+        assert_eq!(seen.calls, 0, "a refused remote write reached the hook");
+
+        // The local path does not, and the hook sees (old, new).
+        assert_eq!(
+            server.set_local(NODE, "rate", ParameterValue::Integer(50)),
+            SetParameterResult::Success
+        );
+        assert_eq!((seen.old, seen.new), (Some(1), Some(50)));
+        assert_eq!(server.get_integer(NODE, "rate"), Some(50));
+
+        assert_eq!(
+            server.set_local(NODE, "rate", ParameterValue::Double(1.0)),
+            SetParameterResult::TypeMismatch
+        );
+        assert_eq!(
+            server.set_local(NODE, "nope", ParameterValue::Integer(1)),
+            SetParameterResult::NotFound
+        );
+        assert!(
+            server
+                .add_on_set_parameters_callback(NODE, refuse_everything, OnSetContext::default())
+                .is_some()
+        );
+        assert_eq!(
+            server.set_local(NODE, "rate", ParameterValue::Integer(3)),
+            SetParameterResult::Rejected
+        );
+        assert_eq!(server.get_integer(NODE, "rate"), Some(50));
+    }
+
+    /// phase-491 W2 — rclc's set service DELETES on `NOT_SET`, after the hook
+    /// accepts `(old, None)`; rclcpp's refuses. Per node.
+    #[test]
+    fn not_set_deletes_only_on_a_node_that_asked() {
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
+        let other = NodeKey::new(1);
+        let mut seen = Seen::default();
+        assert!(server.declare(NODE, "rate", ParameterValue::Integer(4)));
+        assert!(server.declare(other, "rate", ParameterValue::Integer(4)));
+        server.set_delete_on_not_set(NODE, true);
+        server
+            .add_on_set_parameters_callback(NODE, record, OnSetContext::new(&raw mut seen as usize))
+            .expect("a free slot");
+
+        assert_eq!(
+            server.apply(NODE, "rate", ParameterValue::NotSet),
+            SetParameterResult::Success
+        );
+        assert!(!server.has(NODE, "rate"));
+        assert_eq!((seen.old, seen.new_present), (Some(4), false));
+
+        // The other node keeps rclcpp's semantics: no delete (with no descriptor
+        // the store just records NOT_SET, as it always has).
+        let _ = server.apply(other, "rate", ParameterValue::NotSet);
+        assert!(
+            server.has(other, "rate"),
+            "the rclcpp node's parameter was deleted"
+        );
+
+        assert!(server.declare(NODE, "ro", ParameterValue::Integer(1)));
+        assert!(server.set_parameter_read_only(NODE, "ro", true));
+        assert_eq!(
+            server.apply(NODE, "ro", ParameterValue::NotSet),
+            SetParameterResult::ReadOnly
+        );
+        assert!(server.has(NODE, "ro"));
     }
 
     /// The registry is BOUNDED and says so: the (N+1)th registration is `None`,

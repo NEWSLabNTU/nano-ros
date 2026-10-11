@@ -3,7 +3,7 @@ id: 865
 title: "parameter services are implemented and tested but undiscoverable: no
   example calls them, and the C header declares the entry point unconditionally
   so a caller without the feature gets a bare `undefined reference`"
-status: open
+status: resolved
 type: bug
 area: examples, docs
 related: [issue-0864, phase-426, rfc-0105, phase-491]
@@ -133,3 +133,20 @@ One premise moved. `examples/native/c/parameters` now calls
 narrowed to is the header and the docs, and that does not depend on it. With
 phase-382 archived this issue has no home phase. It is a docs-and-header fix
 small enough to land on its own.
+
+## Resolved 2026-10-12 (phase-491 W1)
+
+- **Header.** The entry point this issue named
+  (`nros_executor_register_parameter_services`) is gone. Its replacement,
+  `rclc_executor_add_parameter_server`, is declared only in
+  `<rclc_parameter/rclc_parameter.h>`. That header `#error`s when the archive
+  lacks the capability, and the message names how to declare it.
+  `NROS_HAS_PARAM_SERVICES` (0/1) is emitted by all three producers of
+  `nros_config_generated.h`. The banner naming the non-existent
+  `NROS_PARAM_SERVICES` went with `<nros/parameter.h>`. `just check c` asserts
+  the refusal and its text.
+- **Docs.** `docs/reference/c-api-cmake.md` § "Parameters need the
+  `param_services` capability".
+- **Startup line.** Not added. A C image without the capability can no longer
+  include the parameter API at all, so the silent-node case this would explain
+  cannot be reached from C.

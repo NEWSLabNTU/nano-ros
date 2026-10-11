@@ -262,23 +262,23 @@ nano-ros keeps the **vocabulary** (`declare_parameter<T>`,
 surface for embedded use. There is ONE store, and it is in Rust: the
 `nros_params::ParameterServer` the executor owns, which is also what the six
 `rcl_interfaces/srv/*` servers read. C++ reaches it through methods on
-`rclcpp::Node`; C through `nros_executor_*_param_*` (the `_on` spellings name a
-node when an image composes several); Rust through `Executor::declare_parameter`
-and `Node::parameter`.
+`rclcpp::Node`; C through rclc's own parameter-server API,
+`<rclc_parameter/rclc_parameter.h>` (`rclc_parameter_server_t`, one per node);
+Rust through `Executor::declare_parameter` and `Node::parameter`.
 
 > **If you have older nano-ros code:** `rclcpp::ParameterServer<Cap>` is gone
 > (phase-426 W4), and so is the caller-storage store it wrapped as a thing to
 > reach for. Both were node-LOCAL: the parameter services read a different
 > object, so `ros2 param list` never saw what you declared. The C
-> `nros_parameter_server_t` family still exists for a caller who genuinely wants
-> a private store, but no example uses it and its contents do not reach the ROS
-> graph.
+> caller-storage family and the `nros_executor_*_param*` functions are gone too
+> (phase-491): C uses rclc's `rclc_parameter_server_t`, which declares into the
+> same executor-owned store.
 
 **What we keep**
 
 - Same five scalar types: `bool`, `int64_t`, `double`, string, plus the
   `bool` / `int64_t` / `double` / `byte` / `string` array variants on the
-  C side (`nros_parameter_*_array`).
+  C side (`rclc_parameter_{declare,get,set}_*_array`; string arrays not yet).
 - Same lifecycle: declare → get → set, with declare-once-then-typed-get
   semantics.
 - Optional service-backed exposure (`~/get_parameters` /
@@ -292,7 +292,7 @@ and `Node::parameter`.
 | Upstream feature | nano-ros status | Why dropped |
 |---|---|---|
 | `ParameterDescriptor` (description, ranges, read-only, dynamic_typing) | not exposed | descriptor metadata is host-side concern; embedded server enforces type at declare-time, range checks belong in `set` callbacks (deferred — see below) |
-| `add_pre_set_parameters_callback` / `add_on_set_parameters_callback` / `add_post_set_parameters_callback` | one combined `nros_parameter_callback_t` (server-wide, fires after set) | three callbacks → three indirection slots × N subscribers; one callback covers the safety-island validation use case (`reject if out of range`) |
+| `add_pre_set_parameters_callback` / `add_on_set_parameters_callback` / `add_post_set_parameters_callback` | one `rclc_parameter_callback_t` per C server — rclc's `(old, new, context)`, fired before the write, `false` refuses | three callbacks → three indirection slots × N subscribers; one callback covers the safety-island validation use case (`reject if out of range`) |
 | `set_parameter` returning `SetParametersResult` (`successful: bool`, `reason: string`) | returns `nros_ret_t` | string `reason` would force heap or fixed-buffer; ret code captures the binary outcome |
 | `set_parameters_atomically` | not exposed | atomic multi-set requires transaction log; not justified by current embedded use |
 | `declare_parameters` (multi-declare with namespace) | C++ only, hosted only: `rclcpp::Node::declare_parameters<T>(prefix, map)` | upstream's argument is a `std::map`, so it needs an allocator; returns `Result`, not the `std::vector<T>` of values in effect (read back with `get_parameter<T>`). Rust and C declare one at a time |

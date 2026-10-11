@@ -312,6 +312,7 @@ pub use constants::*;
 pub use error::*;
 #[doc(hidden)]
 pub use log::ensure_default_sinks as __ensure_default_log_sinks;
+#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
 pub use parameter::*;
 pub use qos::*;
 pub use transport::*;

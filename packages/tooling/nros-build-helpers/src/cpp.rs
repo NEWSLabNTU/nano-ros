@@ -401,7 +401,7 @@ static const unsigned char *const nros__cpp_config_variant_anchor =
 
     // Phase 119.3: also emit a nros-c-format header to
     // `$CARGO_TARGET_DIR/nros-c-generated/nros/...`. nros-cpp's user code
-    // transitively includes the C-side `<nros/parameter.h>` →
+    // transitively includes the C-side
     // `<nros/types.h>` → `<nros/nros_config_generated.h>`, and without this
     // the C header would resolve to the source-tree `#error` stub.
     //
@@ -559,10 +559,18 @@ typedef struct ActionServerRawHandle {{
 #define NROS_CODEGEN_VERSION {codegen_version}
 #define NROS_CODEGEN_VERSION_MIN {codegen_version_min}
 
+/* phase-491 / issue 0865 — nros-c's answer, read from its `links` channel
+ * rather than re-derived from this crate's features. */
+#define NROS_HAS_PARAM_SERVICES {has_param_services}
+
 #endif /* NROS_CONFIG_GENERATED_H */
 ",
         codegen_version = crate::codegen_version::NROS_CODEGEN_VERSION,
         codegen_version_min = crate::codegen_version::NROS_CODEGEN_VERSION_MIN,
+        has_param_services = std::env::var("DEP_NROS_C_PARAM_SERVICES")
+            .ok()
+            .filter(|v| v == "1")
+            .map_or("0", |_| "1"),
     );
     // phase-308 follow-up — nros-c OWNS this file; we only fill a gap, and
     // verify otherwise. See `write_header_if_absent_or_verify` for why a

@@ -280,6 +280,17 @@ Rationale and the full measurement:
 [RFC-0089](../design/0089-ros2-api-adoption-and-the-compile-or-conform-rule.md),
 and `docs/roadmap/archived/phase-438-cpp-std-is-an-opt-in-porting-surface.md`.
 
+## Parameters need the `param_services` capability
+
+The C parameter server, `<rclc_parameter/rclc_parameter.h>` (RFC-0105), is
+compiled into `nros-c` only when the image declares the `param_services`
+capability: `features = ["param_services"]` under `[system]` in `system.toml`,
+or `set(NROS_FEATURES "param_services")` before `add_subdirectory(<nano-ros>)`
+(see `examples/native/c/parameters/CMakeLists.txt`). Without it the header
+stops the build with a message naming the capability. The generated config
+header states the answer as `NROS_HAS_PARAM_SERVICES` (0 or 1), so you do not
+find out from a linker error (issue 0865).
+
 ## Board capabilities & deterministic build (RFC-0042)
 
 The C/C++ build contract is **structural**, not convention-enforced — see

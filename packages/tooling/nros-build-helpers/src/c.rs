@@ -34,6 +34,7 @@ pub fn run() {
     // — it just carries no anchor, matching its absent header.
     let variant_suffix = generate_config(&out_dir, &manifest_dir, &probed);
     emit_variant_symbol(&out_dir, variant_suffix.as_deref());
+    println!("cargo:param_services={}", has_param_services());
     // RFC-0090 / phase-429 W1 — the codegen-version anchors. Unconditional: the
     // accepted range is a property of this checkout's runtime, not of the
     // feature set and not of whether a size probe ran.
@@ -355,7 +356,8 @@ fn generate_config(
         .replace(
             "@CODEGEN_VERSION_MIN@",
             &crate::codegen_version::NROS_CODEGEN_VERSION_MIN.to_string(),
-        );
+        )
+        .replace("@HAS_PARAM_SERVICES@", has_param_services());
     // Phase 119.3: source-tree header is now a committed STUB that
     // `#error`s. Real header gets written PER-BUILD to
     // `$CARGO_TARGET_DIR/nros-c-generated/nros/` (FLAT; issue 0360).
@@ -446,7 +448,8 @@ fn generate_config(
         .replace(
             "@CODEGEN_VERSION_MIN@",
             &crate::codegen_version::NROS_CODEGEN_VERSION_MIN.to_string(),
-        );
+        )
+        .replace("@HAS_PARAM_SERVICES@", has_param_services());
 
     // Issue 0360 — stamp the variant into the header, and emit the matching
     // symbol into the archive, so a mismatch is a link error. issue 0369 —
@@ -619,4 +622,15 @@ fn emit_variant_symbol(out_dir: &str, suffix: Option<&str>) {
     nros_cc_flags::header_deps::emit_header_deps(&std::path::PathBuf::from(
         std::env::var("OUT_DIR").expect("OUT_DIR"),
     ));
+}
+
+/// phase-491 / issue 0865 — does this nros-c archive carry the C parameter
+/// server? Its module needs both features. Also published on the `links`
+/// channel (`DEP_NROS_C_PARAM_SERVICES`) so nros-cpp's companion copy of the
+/// header states the SAME value rather than re-deriving it from its own
+/// features, which feature unification could make disagree.
+fn has_param_services() -> &'static str {
+    let on = std::env::var_os("CARGO_FEATURE_PARAM_SERVICES").is_some()
+        && std::env::var_os("CARGO_FEATURE_RMW_CFFI").is_some();
+    if on { "1" } else { "0" }
 }

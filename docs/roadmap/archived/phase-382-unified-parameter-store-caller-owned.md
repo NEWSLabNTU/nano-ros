@@ -27,7 +27,7 @@ remained. Each open item, re-measured on main:
   `check-example-parameter-stores` keeps the caller-storage family out of
   `examples/`. That family still ships in `nros-c`, node-local and
   invisible to `ros2 param`. Whether to delete it is the open half of issue
-  [#0793](../../issues/0793-c-params-declared-via-legacy-store-invisible-to-ros2.md).
+  [#0793](../../issues/archived/0793-c-params-declared-via-legacy-store-invisible-to-ros2.md).
 * **W7' — the ledger: DONE.** `param.json`'s gap rows went 27 → 0 (phase-444's
   tally).
 * **Deferred caller-chosen CAPACITY:** remains deferred. Nothing planned.
@@ -575,7 +575,7 @@ holds the evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0793](../../issues/0793-c-params-declared-via-legacy-store-invisible-to-ros2.md) | C ships two disjoint parameter stores; this phase must say which one survives |
+| [#0793](../../issues/archived/0793-c-params-declared-via-legacy-store-invisible-to-ros2.md) | C ships two disjoint parameter stores; this phase must say which one survives |
 | [#0794](../../issues/archived/0794-baked-boot-config-is-one-field-deep-in-c.md) | the baked boot config carries four fields and the C/C++ emitter sets one |
-| [#0865](../../issues/0865-no-example-registers-parameter-services.md) | parameter services are implemented and tested but undiscoverable: no docs, no example. A store nobody can find is not a store |
+| [#0865](../../issues/archived/0865-no-example-registers-parameter-services.md) | parameter services are implemented and tested but undiscoverable: no docs, no example. A store nobody can find is not a store |
 

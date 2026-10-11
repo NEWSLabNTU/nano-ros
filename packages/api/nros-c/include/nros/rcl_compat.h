@@ -448,8 +448,8 @@ typedef struct nros_support_t rclc_support_t;
  *   writes a `struct nros_time_t`.
  * * `rcl_clock_init`, `rcl_guard_condition_init`, `rcl_node_resolve_name`,
  *   `rcl_node_get_fully_qualified_name`, `rclc_support_init`,
- *   `rclc_executor_init`, the `rcl_action_*` constructors, the
- *   `rclc_lifecycle_*` family and `rclc_parameter_server_fini` — every one
+ *   `rclc_executor_init`, the `rcl_action_*` constructors and the
+ *   `rclc_lifecycle_*` family — every one
  *   differs in ARITY, and several take an `rcl_allocator_t` we do not have.
  * * `rcl_take_request` / `rcl_take_response` — upstream hands back a
  *   DESERIALIZED message plus an `rmw_request_id_t` out-struct

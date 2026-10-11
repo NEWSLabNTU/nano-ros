@@ -510,7 +510,23 @@ c: c-fmt
         echo "       message would publish through a CDR backend with no diagnostic." >&2; \
         exit 1; \
     fi
-    echo "  - parameter / service-reply / receive-verb / action-count entry points"
+    echo "  - <rclc_parameter/rclc_parameter.h> refuses an image without param_services (issue 0865)"
+    # The shipped feature set above carries no `param-services`, so this
+    # archive's config header says `NROS_HAS_PARAM_SERVICES 0` and the header
+    # must stop the build NAMING the capability -- not compile, and leave the
+    # caller to meet `undefined reference` in `ld`. Both halves asserted: a
+    # failure for some other reason (a missing include) would also be a
+    # non-zero exit, and would prove nothing.
+    if _p_out="$(printf '#include <rclc_parameter/rclc_parameter.h>\n' | cc -fsyntax-only -std=c11 \
+        -I"$gen/nros-c-generated" -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include -x c - 2>&1)"; then \
+        echo "ERROR: <rclc_parameter/rclc_parameter.h> compiled in an image without param_services." >&2; \
+        exit 1; \
+    fi
+    nros_grep_q "needs the param_services capability" <<<"$_p_out" || { \
+        echo "ERROR: the param_services refusal did not name the capability:" >&2; \
+        printf '%s\n' "$_p_out" >&2; exit 1; }
+    echo "  - service-reply / receive-verb / action-count entry points"
     # phase-417 stage 6 step B RETIRED every NROS_DEPRECATED_MSG forwarder in
     # <nros/*.h>, so the four TUs below no longer have an old half to pin and
     # the five expected-failure deprecation probes that asserted the attribute
@@ -527,7 +543,7 @@ c: c-fmt
     # `test -f` first on every one: a syntax-only compile of a MISSING file is
     # a pass, and phase-379 W5 shipped two gates whose probes were never
     # committed (issue 0196's class).
-    for probe in param_entry_points service_reply_entry_point \
+    for probe in service_reply_entry_point \
                  receive_verb_entry_points action_goal_count_entry_point; do \
         test -f "packages/api/nros-c/tests/compile/$probe.c" || { \
             echo "ERROR: $probe.c is MISSING -- this check passes on absence." >&2; exit 1; }; \
@@ -768,12 +784,12 @@ c: c-fmt
     cc -fsyntax-only \
         -Ipackages/core/nros-rmw-abi/include \
         packages/rmw/cffi/tests/c_stubs/abi_layout_check.c
-    echo "  - parameters are keyed by NODE from C (phase-426 W5)"
-    # COMPILE+LINK+RUN, and it has to be: the defect is not in the
-    # declarations. A `_on` family that resolved every node to slot 0 would
-    # compile, link, and pass `param_entry_points.c` above, while a two-node C
-    # image silently shared one parameter table -- which is what the C surface
-    # did before W5, because it had no way to name a node at all.
+    echo "  - rclc's parameter server over the executor's store (phase-491 / RFC-0105)"
+    # COMPILE+LINK+RUN, and it has to be: the contract is a BEHAVIOUR. A callback
+    # that fired on `rclc_add_parameter`, a local set that obeyed read-only, a
+    # second node sharing the first node's table, a server accepting a node bound
+    # to no executor -- each compiles and links, and only a run says it differs
+    # from rclc.
     #
     # It needs a SECOND feature shape: `C_API_SHIPPED_FEATURES` does not carry
     # `param-services`, so the archive every step above links has none of these
@@ -797,55 +813,35 @@ c: c-fmt
     # header landed back in the shared `target/`, clobbering the shipped one --
     # measured, not reasoned.
     #
-    # No router and no network: the TU registers a STUB RMW backend, because
-    # nothing on the parameter path touches the wire. `test -f` first -- a
-    # missing TU must not read as a pass (issue 0196's class).
-    test -f packages/api/nros-c/tests/run/executor_param_node_keying.c || { \
-        echo "ERROR: executor_param_node_keying.c is MISSING -- this check passes on absence." >&2; \
-        exit 1; }
+    # `NROS_MAX_PARAM_CONSTRAINTS_LEN=256` because the descriptor's
+    # `additional_constraints` capacity DEFAULTS TO 0, and stating it here is
+    # the only in-tree exercise of the knob's own ladder.
+    #
+    # No router and no network: the TU links the shared STUB backend, switched
+    # to accept entities so the six parameter services can be created. `test -f`
+    # first -- a missing TU must not read as a pass (issue 0196's class).
+    for _tu in rclc_parameter_server stub_rmw_backend; do \
+        test -f "packages/api/nros-c/tests/run/$_tu.c" || { \
+            echo "ERROR: $_tu.c is MISSING -- this check passes on absence." >&2; exit 1; }; \
+    done
     # profile-literal-ok: unprofiled: a plain `cargo build`, so `<dir>/debug/` IS
     # its derived output dir, and the mirrored header beside it is from this
     # same build.
     param_dir="$PWD/target/nros-c-param-services"
-    # phase-417 W4.a -- `NROS_MAX_PARAM_CONSTRAINTS_LEN=256` because the
-    # descriptor's `additional_constraints` capacity DEFAULTS TO 0 (an image
-    # pays for that text only if it asks for it), and a probe built at 0 would
-    # read every constraints round-trip as an empty string and pass. Stating it
-    # here is also the only in-tree exercise of the knob's own ladder.
     NROS_MAX_PARAM_CONSTRAINTS_LEN=256 CARGO_TARGET_DIR="$param_dir" \
         cargo build -p nros-c --no-default-features \
         --features "{{C_API_SHIPPED_FEATURES}},param-services" --quiet
     mkdir -p tmp
-    cc -std=c11 -Wall -Wextra \
-        -I"$param_dir/nros-c-generated" \
-        -Ipackages/api/nros-c/include \
-        -Ipackages/core/nros-rmw-abi/include \
-        -Ipackages/platform/nros-platform-api/include \
-        packages/api/nros-c/tests/run/executor_param_node_keying.c \
-        "$param_dir/debug/libnros_c.a" -lpthread -ldl -lm \
-        -o tmp/executor_param_node_keying
-    ./tmp/executor_param_node_keying
-    echo "  - descriptors, listing, undeclare and the on-set hook (phase-417 W4.a)"
-    # The sibling probe, and a COMPILE+LINK+RUN for the same reason: a
-    # descriptor verb that kept the range in a table of its own -- or forwarded
-    # to the LEGACY `nros_parameter_server_t`, which no service reads -- would
-    # compile, link and pass every declaration check while the write it was
-    # supposed to refuse went through. `test -f` first on both: a missing TU
-    # must not read as a pass (issue 0196's class).
-    for _tu in executor_param_descriptors stub_rmw_backend; do \
-        test -f "packages/api/nros-c/tests/run/$_tu.c" || { \
-            echo "ERROR: $_tu.c is MISSING -- this check passes on absence." >&2; exit 1; }; \
-    done
     cc -std=c11 -Wall -Wextra -D_GNU_SOURCE \
         -I"$param_dir/nros-c-generated" \
         -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
-        packages/api/nros-c/tests/run/executor_param_descriptors.c \
+        packages/api/nros-c/tests/run/rclc_parameter_server.c \
         packages/api/nros-c/tests/run/stub_rmw_backend.c \
         "$param_dir/debug/libnros_c.a" -lpthread -ldl -lm \
-        -o tmp/executor_param_descriptors
-    ./tmp/executor_param_descriptors
+        -o tmp/rclc_parameter_server
+    ./tmp/rclc_parameter_server
     echo "All C checks passed!"
 
 # issue 0379 — clippy gate for the CLI sub-workspace. No lane ran clippy on
@@ -1072,8 +1068,8 @@ cpp: cpp-fmt
     export CARGO_TARGET_DIR="$gen"
     echo "Checking C++ headers (build + syntax + clippy)..."
     echo "  - freestanding syntax (c++14)"
-    # parameter.hpp re-exposes the C-side `nros_parameter_*` API from
-    # nros-c, so the syntax probe needs nros-c on the include path too.
+    # The C++ headers include nros-c's `<nros/types.h>`, so the syntax probe
+    # needs nros-c on the include path too.
     # The per-variant `<nros/nros_cpp_config_generated.h>` (defining
     # `NROS_CPP_EXECUTOR_STORAGE_SIZE` and friends, referenced by
     # `executor.hpp`'s `uint8_t storage_[NROS_CPP_EXECUTOR_STORAGE_SIZE]`)

@@ -130,10 +130,6 @@
     "verdict": "extension",
     "why": "the same for the five lifecycle services; see `c:executor_register_parameter_services`."
   },
-  "c:executor_register_parameter_services": {
-    "verdict": "extension",
-    "why": "registers the six `rcl_interfaces/srv/*` servers on the executor as one call. rclcpp starts them from `NodeOptions::start_parameter_services` at node construction; ours is explicit because the six queryables are a measurable cost against `ZPICO_MAX_QUERYABLES` (issue 0460) and an image that does not need them should not pay."
-  },
   "c:get_zero_initialized_client": {
     "verdict": "declined",
     "disposition": "adopt",

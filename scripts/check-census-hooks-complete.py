@@ -35,12 +35,11 @@ WHAT THIS REFUSES
    C -- `nros_executor_node_init` / `nros_node_init_ex` -> `on_node_create`,
    `rclc_executor_add_timer` / `nros_executor_add_timer_in_group` ->
    `on_timer_create`, `nros_node_create_guard_condition` ->
-   `on_guard_condition_create`, `nros_executor_declare_param_*` (the
-   paste-generated scalar pairs included) -> `on_param_declare`;
+   `on_guard_condition_create`, the rclc parameter server's `declare`
+   (every `rclc_add_parameter` / `rclc_parameter_declare_*` funnels through it,
+   phase-491) -> `on_param_declare`;
    Rust -- `ExecutorSink::create_node` -> `on_node_create`,
    `ExecutorSink::create_entity` -> `on_timer_create` and `on_param_declare`.
-   (`nros_parameter_declare_*` is the node-LESS legacy parameter server: it
-   sizes no node's store, so it is not a census entry point.)
 2. An RMW seam in `nros-rmw-metadata` that does not record, or records without
    the QoS it was handed (a `_qos` parameter is the 2026-09 defect verbatim).
 3. A hook whose `metadata-mode` body no longer reaches the recorder.
@@ -123,7 +122,7 @@ ENTRY_HOOKS: tuple[tuple[str, str, str], ...] = (
     (C_EXEC, "rclc_executor_add_timer", "census_hooks::on_timer_create("),
     (C_EXEC, "nros_executor_add_timer_in_group", "census_hooks::on_timer_create("),
     (C_GUARD, "nros_node_create_guard_condition", "census_hooks::on_guard_condition_create("),
-    (C_PARAMS, "nros_executor_declare_param_", "census_hooks::on_param_declare("),
+    (C_PARAMS, "declare", "census_hooks::on_param_declare("),
     # Rust (`nros::node_runtime`, the install path `nros::main!` takes) --
     # issue 1419's Rust item.
     (RUST_SINK, "create_node", "census_hooks::on_node_create("),
@@ -511,14 +510,14 @@ def self_test(files: dict[str, str]) -> None:
     m[C_EXEC] = m[C_EXEC][:call] + m[C_EXEC][call_end:]
     red("C group timer unhooked", m, "nros_executor_add_timer_in_group")
 
-    # 8. One of the paste-generated C declare pairs loses its hook -- the
-    #    entry point a plain `fn name(` reader could not see at all.
+    # 8. The C parameter server's one declare path loses its hook -- phase-491
+    #    funnels every rclc declaration through it.
     m = dict(files)
-    body_start = m[C_PARAMS].find("fn [<nros_executor_declare_param_ $name _on>](")
+    body_start = m[C_PARAMS].find("fn declare(")
     call = m[C_PARAMS].find("nros::census_hooks::on_param_declare(", body_start)
     call_end = m[C_PARAMS].find(";", call) + 1
     m[C_PARAMS] = m[C_PARAMS][:call] + m[C_PARAMS][call_end:]
-    red("generated C declare_on unhooked", m, "nros_executor_declare_param_ $name _on")
+    red("C parameter declare unhooked", m, "`declare`")
 
     # 9. The Rust install path stops opening the census cursor -- issue 1419.
     m = dict(files)
