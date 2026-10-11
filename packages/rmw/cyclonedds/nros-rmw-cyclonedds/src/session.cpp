@@ -420,10 +420,13 @@ rmw_ret_t session_create(const char* /*locator*/, uint8_t /*mode*/, uint32_t dom
 
 // phase-206 W2 — the guard gained `has_user_cyclone_config()`.
 //
-// The three platforms below create the domain because they have no other way in.
-// HOSTED POSIX and plain Zephyr deliberately do not: Cyclone's own loader reads
+// The embedded targets create the domain because they have no other way in.
+// HOSTED POSIX deliberately does not: Cyclone's own loader reads
 // `CYCLONEDDS_URI`, which is exactly the ROS 2 experience, and intercepting it
-// would take that away.
+// would take that away. Issue 1814 — "embedded" is ONE predicate,
+// `NROS_RMW_CYCLONEDDS_EMBEDDED_TARGET` in `cyclone_config.hpp`; this guard
+// used to spell its own list naming `CONFIG_BOARD_NATIVE_SIM`, so every other
+// Zephyr board skipped the baseline AND the Kconfig blob.
 //
 // But a bringup that SHIPS `rmw/cyclonedds.xml` has stated a config for every
 // target it builds, and a file that silently applies on the RTOS and not on the
@@ -431,7 +434,7 @@ rmw_ret_t session_create(const char* /*locator*/, uint8_t /*mode*/, uint32_t dom
 // same bytes take effect on both. So a baked config — and only a baked config —
 // makes the hosted path create the domain too. An image with no bringup config
 // keeps the old hosted behaviour byte for byte.
-#if defined(NROS_PLATFORM_FREERTOS) || defined(NROS_PLATFORM_THREADX) || defined(CONFIG_BOARD_NATIVE_SIM)
+#if defined(NROS_RMW_CYCLONEDDS_EMBEDDED_TARGET)
 #  define NROS_CYC_COMPOSE_DOMAIN 1
 #else
 #  define NROS_CYC_COMPOSE_DOMAIN 0

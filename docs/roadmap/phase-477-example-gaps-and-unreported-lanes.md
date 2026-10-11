@@ -91,7 +91,11 @@ baseline built on the same tree (after stating three lines of the
 `system.toml`). Issue 1288 resolved and archived. The runtime check
 (`verify-fvp-runtime`) is red on BOTH images — Cyclone's 1 MiB receive buffer
 exhausts the 1 MiB nros heap at participant create — filed as
-[1814](../issues/1814-fvp-cyclone-heap-exhausted-at-participant-create.md).
+[1814](../issues/archived/1814-fvp-cyclone-heap-exhausted-at-participant-create.md)
+and resolved the same day: the 64 KiB Cyclone `Sizing` baseline was gated on
+`CONFIG_BOARD_NATIVE_SIM` where it meant every Zephyr board, so the FVP image
+ran Cyclone's desktop defaults. One predicate now
+(`NROS_RMW_CYCLONEDDS_EMBEDDED_TARGET`); `verify-fvp-runtime` passes in 3.6 s.
 
 Also in this theme: [1289](../issues/1289-workspace-node-tables-still-in-manifests.md)
 (45 node packages still declare their class in `[package.metadata.nros.node]`),
@@ -377,7 +381,7 @@ first-prefix), #1862 (arm-fvp libatomic), #1868 (runner name required).
 
 **Still open in this phase:** 1509 rules 2 and 4; 1512's runtime lane (entry
 locator bake); 1814 (the FVP Cyclone image's heap, found closing W1 — W1 itself
-is done, 2026-10-11).
+is done, 2026-10-11; 1814 resolved 2026-10-12).
 Tier-1 CI acceptance (1684/1685): run 37945434581's tier 1 was running on
 runner `newslab-118-server` at stop; tier 2 failed in preflight — triage with
 `just matrix-triage`. The stage reporter labelling a runner-lost job "DID NOT
