@@ -184,13 +184,31 @@ pub fn render(spec: &CargoConfigSpec, config_path: &Path) -> Result<String, Stri
     ws.insert("value", rel(&spec.workspace)?.into());
     ws.insert("relative", true.into());
     env.insert("NROS_WORKSPACE_ROOT", Item::Value(Value::InlineTable(ws)));
+    // Issue 1820 — a caller row may restate a key the descriptor's own `[env]`
+    // already holds (the cargo-leaf road hands the board facts back in as
+    // `env`/`path_env`). Replacing the row used to drop the descriptor's
+    // `force = true`, so a stale inherited `THREADX_CONFIG_DIR` beat the board
+    // that declared it forced — and the image compiled another board's config.
+    // The caller's value is written; an authored `force` survives it.
     for (k, v) in &spec.env {
-        env.insert(k, toml_edit::value(v.as_str()));
+        let forced = is_forced(env, k);
+        if forced {
+            let mut row = InlineTable::new();
+            row.insert("value", v.as_str().into());
+            row.insert("force", true.into());
+            env.insert(k, Item::Value(Value::InlineTable(row)));
+        } else {
+            env.insert(k, toml_edit::value(v.as_str()));
+        }
     }
     for (k, p) in &spec.path_env {
+        let forced = is_forced(env, k);
         let mut row = InlineTable::new();
         row.insert("value", rel(p)?.into());
         row.insert("relative", true.into());
+        if forced {
+            row.insert("force", true.into());
+        }
         env.insert(k, Item::Value(Value::InlineTable(row)));
     }
 
@@ -335,6 +353,15 @@ fn resolve_placeholders(
         Item::None => {}
     }
     Ok(())
+}
+
+/// Does the `[env]` row `key` (as the descriptor authored it) say `force = true`?
+fn is_forced(env: &Table, key: &str) -> bool {
+    env.get(key)
+        .and_then(Item::as_inline_table)
+        .and_then(|t| t.get("force"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
 }
 
 fn resolve_value(
@@ -622,6 +649,32 @@ build-std = ["core", "alloc"]
             Some(true),
             "authored force survives"
         );
+    }
+
+    /// Issue 1820 — the cargo-leaf road restates the board facts as caller
+    /// rows; the descriptor's `force` must survive both kinds of rewrite.
+    #[test]
+    fn a_caller_row_restating_a_forced_descriptor_row_keeps_force() {
+        let mut s = spec();
+        s.cargo_config = Some(
+            "[env]\nCFG = { value = \"${workspace}/packages/boards/b/config\", force = true }\n\
+             PORT = { value = \"risc-v64/gnu\", force = true }\nLOOSE = \"x\"\n"
+                .into(),
+        );
+        s.target = None;
+        s.path_env.insert(
+            "CFG".into(),
+            PathBuf::from("/nros/packages/boards/b/config"),
+        );
+        s.env.insert("PORT".into(), "risc-v64/gnu".into());
+        s.env.insert("LOOSE".into(), "y".into());
+        let v = parsed(&render(&s, &cfg_path()).unwrap());
+        assert_eq!(v["env"]["CFG"]["force"].as_bool(), Some(true), "path row");
+        assert_eq!(v["env"]["CFG"]["relative"].as_bool(), Some(true));
+        assert_eq!(v["env"]["PORT"]["force"].as_bool(), Some(true), "plain row");
+        assert_eq!(v["env"]["PORT"]["value"].as_str(), Some("risc-v64/gnu"));
+        // Not forced by the descriptor: the caller's value, still never forced.
+        assert_eq!(v["env"]["LOOSE"].as_str(), Some("y"));
     }
 
     #[test]
