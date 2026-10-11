@@ -167,3 +167,27 @@ patches:
       UPSTREAMABLE: yes — human follow-up per docs/development/zephyr-upstreaming.md.
       VERIFIED by building `examples/zephyr/rust/talker` for `mps2_an385`
       (Zephyr 3.7): 4 x E0061 before, a 449876-byte .text ELF after.
+
+  # 6. Cortex-M ITCM/DTCM output sections: SUBALIGN(4) -> ALIGN(4). Backport
+  #    of upstream de3deb75d44d (DTCM, #107114 / issue #107058) and
+  #    c456d2b1279b (ITCM); neither is in v4.4.0. In-tree builds get the same
+  #    change from `scripts/zephyr/tcm-section-align-patch-4.4.sh`.
+  - path: tcm-section-align-4.4.patch
+    sha256sum: 58a0642c7f3e615b968b09769a30fa95f2e130685efc2d1d0daa7b3159fcc768
+    module: zephyr
+    author: nano-ros contributors
+    email: nano-ros@newslab.csie.ntu.edu.tw
+    date: 2026-10-12
+    upstreamable: true
+    apply-command: git apply
+    comments: |
+      phase-474 I16. SUBALIGN(4) on an output section FORCES every input
+      section in it to 4-byte alignment, so eDMA's __aligned(32)
+      dma_tcdpool0 in .dtcm_noinit lands wherever the preceding DTCM content
+      ends. Repro: S32K344 (mr_canhubk3) with zephyr,dtcm chosen, enough
+      DTCM .bss before .dtcm_noinit to end off a 32-byte boundary, and an
+      LPUART async rx_enable -> assert in EDMA_TcdSetTransferConfig
+      (fsl_edma.c:517, `((uint32_t)tcd & 0x1FU) == 0U`); dma_tcdpool0 was at
+      0x200128b8. ALIGN(4) keeps the section start and the input alignment.
+      UPSTREAM: already merged on main (both commits); drop this entry when
+      the pinned Zephyr line contains them.

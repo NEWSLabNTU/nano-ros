@@ -1,0 +1,66 @@
+diff --git a/cmake/linker_script/arm/linker.cmake b/cmake/linker_script/arm/linker.cmake
+index b6d2254911b..216518e7922 100644
+--- a/cmake/linker_script/arm/linker.cmake
++++ b/cmake/linker_script/arm/linker.cmake
+@@ -255,7 +255,7 @@ if(DEFINED chosen_itcm)
+   if(${status_result})
+     zephyr_linker_group(NAME ITCM_REGION VMA ITCM LMA ROM_REGION)
+ 
+-    zephyr_linker_section(NAME .itcm GROUP ITCM_REGION SUBALIGN 4)
++    zephyr_linker_section(NAME .itcm GROUP ITCM_REGION ALIGN 4)
+   endif()
+ endif()
+ 
+@@ -265,9 +265,9 @@ if(DEFINED chosen_dtcm)
+   if(${status_result})
+     zephyr_linker_group(NAME DTCM_REGION VMA DTCM LMA ROM_REGION)
+ 
+-    zephyr_linker_section(NAME .dtcm_bss GROUP DTCM_REGION SUBALIGN 4 TYPE BSS)
+-    zephyr_linker_section(NAME .dtcm_noinit GROUP DTCM_REGION SUBALIGN 4 TYPE NOLOAD NOINIT)
+-    zephyr_linker_section(NAME .dtcm_data GROUP DTCM_REGION SUBALIGN 4)
++    zephyr_linker_section(NAME .dtcm_bss GROUP DTCM_REGION ALIGN 4 TYPE BSS)
++    zephyr_linker_section(NAME .dtcm_noinit GROUP DTCM_REGION ALIGN 4 TYPE NOLOAD NOINIT)
++    zephyr_linker_section(NAME .dtcm_data GROUP DTCM_REGION ALIGN 4)
+   endif()
+ endif()
+ 
+diff --git a/include/zephyr/arch/arm/cortex_m/scripts/linker.ld b/include/zephyr/arch/arm/cortex_m/scripts/linker.ld
+index 2f3d55412f0..3163f4b6255 100644
+--- a/include/zephyr/arch/arm/cortex_m/scripts/linker.ld
++++ b/include/zephyr/arch/arm/cortex_m/scripts/linker.ld
+@@ -146,7 +146,7 @@ SECTIONS
+ #if DT_NODE_HAS_STATUS(DT_CHOSEN(zephyr_itcm), okay)
+ GROUP_START(ITCM)
+ 
+-	SECTION_PROLOGUE(_ITCM_SECTION_NAME,,SUBALIGN(4))
++	SECTION_PROLOGUE(_ITCM_SECTION_NAME,,ALIGN(4))
+ 	{
+ 		__itcm_start = .;
+ 		*(.itcm)
+@@ -347,7 +347,7 @@ GROUP_END(ITCM)
+ #if DT_NODE_HAS_STATUS(DT_CHOSEN(zephyr_dtcm), okay)
+ GROUP_START(DTCM)
+ 
+-	SECTION_PROLOGUE(_DTCM_BSS_SECTION_NAME, (NOLOAD),SUBALIGN(4))
++	SECTION_PROLOGUE(_DTCM_BSS_SECTION_NAME, (NOLOAD),ALIGN(4))
+ 	{
+ 		__dtcm_start = .;
+ 		__dtcm_bss_start = .;
+@@ -356,7 +356,7 @@ GROUP_START(DTCM)
+ 		__dtcm_bss_end = .;
+ 	} GROUP_LINK_IN(DTCM)
+ 
+-	SECTION_PROLOGUE(_DTCM_NOINIT_SECTION_NAME, (NOLOAD),SUBALIGN(4))
++	SECTION_PROLOGUE(_DTCM_NOINIT_SECTION_NAME, (NOLOAD),ALIGN(4))
+ 	{
+ 		__dtcm_noinit_start = .;
+ 		*(.dtcm_noinit)
+@@ -364,7 +364,7 @@ GROUP_START(DTCM)
+ 		__dtcm_noinit_end = .;
+ 	} GROUP_LINK_IN(DTCM)
+ 
+-	SECTION_PROLOGUE(_DTCM_DATA_SECTION_NAME,,SUBALIGN(4))
++	SECTION_PROLOGUE(_DTCM_DATA_SECTION_NAME,,ALIGN(4))
+ 	{
+ 		__dtcm_data_start = .;
+ 		*(.dtcm_data)
