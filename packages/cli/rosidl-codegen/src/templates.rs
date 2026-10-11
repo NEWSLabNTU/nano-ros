@@ -204,7 +204,7 @@ pub struct NrosField {
     /// Borrowed view type for this field (e.g. `&'a [u8]`, `&'a str`,
     /// `nros_core::LeSliceView<'a, f32>`). Empty unless
     /// [`is_view`](Self::is_view).
-    pub borrowed_rust_type: String,
+    pub view_rust_type: String,
     /// Full `CdrReader` borrowed-read expression for the view's
     /// `deserialize_view` (e.g. `reader.read_slice_u8()?`,
     /// `reader.read_string()?`, `reader.read_le_slice::<f32>()?`). Empty for

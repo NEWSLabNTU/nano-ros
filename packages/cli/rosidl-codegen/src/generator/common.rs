@@ -87,7 +87,7 @@ pub enum GeneratorError {
 /// Resolve the borrowed-view field type + full `CdrReader` read expression for
 /// a `borrowed`-mode field (RFC-0033, Phase 229.6, issue 0007).
 ///
-/// Returns `(borrowed_rust_type, read_expr)`:
+/// Returns `(view_rust_type, read_expr)`:
 /// - **strings** → `&'a str` via `reader.read_string()?`,
 /// - **single-byte sequences** (`uint8[]`/`byte[]`/`int8[]`/`bool[]`) → true
 ///   `&'a [u8]` slices (no alignment concern),
@@ -514,7 +514,7 @@ pub(super) fn field_to_nros_field_with_mode(
     let capped = field.storage_type();
     let field_type: &FieldType = capped.as_ref();
 
-    let mut borrowed_rust_type = String::new();
+    let mut view_rust_type = String::new();
     let mut borrowed_read_expr = String::new();
     // RFC-0033 `borrowed` (Phase 229.6, issue 0007): the owned `{Msg}` struct
     // keeps a default-capacity owned container for the publish path; the
@@ -522,7 +522,7 @@ pub(super) fn field_to_nros_field_with_mode(
     if field.is_view() {
         let (bt, expr) =
             nros_borrowed_view_for_field(field_type, package_name, message_name, &field.name)?;
-        borrowed_rust_type = bt;
+        view_rust_type = bt;
         borrowed_read_expr = expr;
     }
 
@@ -555,7 +555,7 @@ pub(super) fn field_to_nros_field_with_mode(
         is_large_array: array_size > 32,
         is_heap: field.is_heap(),
         is_view: field.is_view(),
-        borrowed_rust_type,
+        view_rust_type,
         borrowed_read_expr,
     })
 }
