@@ -75,6 +75,12 @@ pub struct RegionUnits {
     /// an image that carves no store (`params == 0`) keeps every offset and
     /// the total it had before the region existed.
     pub parameter_slot: RegionUnit,
+    /// Issue 1812 — the parameter SERVICES' home (`nros_node`'s `ParamHome`:
+    /// their state, the shared request/reply buffer pair and the staging slot
+    /// a remote set decodes its value into), one per [`Counts::param_home`].
+    /// Placed after the store's slots for the same reason they are last: an
+    /// image with no store keeps every offset and its total.
+    pub param_home: RegionUnit,
 }
 
 /// How many of each region the image needs.
@@ -98,6 +104,10 @@ pub struct Counts {
     /// 1702's rejected `.bss` static was unconditional). Policy is
     /// `nros-params`'; this crate only places the region.
     pub params: usize,
+    /// Issue 1812 — parameter-service homes carved from the backing: one when
+    /// the image carves a store, zero otherwise. `nros-node` decides; this
+    /// crate only places the region.
+    pub param_home: usize,
 }
 
 /// Byte offset of each region, plus the total size and alignment.
@@ -122,6 +132,7 @@ pub struct Offsets {
     pub alive_slots: usize,
     pub slot_tags: usize,
     pub params: usize,
+    pub param_home: usize,
     pub size: usize,
     pub align: usize,
 }
@@ -145,6 +156,7 @@ pub const fn offsets(counts: Counts, units: RegionUnits) -> Offsets {
         violations: violation_slots,
         alloc,
         params: param_slots,
+        param_home: home_slots,
     } = counts;
 
     let mut off = 0usize;
@@ -204,6 +216,12 @@ pub const fn offsets(counts: Counts, units: RegionUnits) -> Offsets {
     } else {
         off
     };
+    // Issue 1812 — same rule as the store: no home, no padding.
+    let param_home = if home_slots > 0 {
+        place!(home_slots, units.param_home)
+    } else {
+        off
+    };
 
     Offsets {
         arena: arena_off,
@@ -225,6 +243,7 @@ pub const fn offsets(counts: Counts, units: RegionUnits) -> Offsets {
         alive_slots,
         slot_tags,
         params,
+        param_home,
         size: align_up(off, max_align),
         align: max_align,
     }

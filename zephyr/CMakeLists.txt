@@ -813,7 +813,8 @@ if(CONFIG_NROS_CPP_API)
     # application in no workspace still passes -DNROS_FEATURES=<axes>.
     #
     # Issue 1260 -- and `alloc` WITH it. `param-services` REQUIRES alloc
-    # (nros-node/src/lib.rs `compile_error!`, phase-361 W8.e: a capability names
+    # (nros-c/src/lib.rs `compile_error!`; nros-node's own guard went with
+    # issue 1812, which carves the services), phase-361 W8.e: a capability names
     # its requirement, it never switches it on), and the zenoh string above
     # carries alloc only TRANSITIVELY, through nros-rmw-zenoh -- the shape the
     # xrce/cyclonedds notes above warn about. It broke here: the C-for-C++

@@ -28,7 +28,9 @@
 
 // Note: Module is already gated by #[cfg(feature = "param-services")] in lib.rs
 
+#[cfg(any(test, feature = "alloc"))]
 extern crate alloc;
+#[cfg(any(test, feature = "alloc"))]
 use alloc::boxed::Box;
 
 use nros_params::{
@@ -337,6 +339,7 @@ pub fn to_rcl_set_result(result: SetParameterResult) -> SetParametersResult {
 // impls in `packages/interfaces/generated/` beside any edit
 // here.
 
+use core::mem::MaybeUninit;
 use nros_core::{CdrReader, CdrWriter, DeserError, EncodingVersion, SerError};
 use nros_params::{MAX_STRING_VALUE_LEN, ParameterRange};
 use nros_rmw::TransportError;
@@ -508,19 +511,37 @@ fn write_parameter_value(
     Ok(())
 }
 
-/// Read one wire `ParameterValue` straight into the internal form.
+/// Read one wire `ParameterValue` straight into the internal form, IN PLACE.
 ///
 /// The wire message always carries all ten members, so all ten are CONSUMED
 /// whatever `type_` says — a conversion failure must not desynchronise the
 /// reader mid-sequence. Only the selected member is kept, which is what holds
 /// the peak at one `InternalValue` instead of the 1.19 MB request.
 ///
+/// RFC-0105 D10.2 / issue 1812 — and that one value is the caller's
+/// `staged` slot, carved from the executor backing, not a return value. This
+/// used to RETURN the `InternalValue` (~8.5 KiB at the default bounds, sized by
+/// its `StringArray` variant), so the decode and the apply each held one on
+/// the stack of whatever task spins the executor. Every write below is an
+/// assignment of a variant to the slot or a push into it: no value-sized
+/// temporary. The empty `StringArray` comes from a `const` for the same
+/// reason — `heapless::Vec::new()` as an operand is itself an ~8 KiB
+/// temporary, a constant is not.
+///
 /// The outer `Result` is a wire/framing failure (the whole request dies, as it
 /// would have during `Deserialize`); the inner one is issue 0323's per-value
-/// rejection, which becomes an unsuccessful `SetParametersResult`.
-fn read_parameter_value(
+/// rejection, which becomes an unsuccessful `SetParametersResult`. On an inner
+/// `Err` the slot's content is unspecified scratch.
+fn read_parameter_value_into(
     reader: &mut CdrReader<'_>,
-) -> Result<Result<InternalValue, ValueConversionError>, DeserError> {
+    staged: &mut InternalValue,
+) -> Result<Result<(), ValueConversionError>, DeserError> {
+    /// The empty string array, as a constant operand (see above).
+    const EMPTY_STRING_ARRAY: heapless::Vec<
+        heapless::String<MAX_STRING_VALUE_LEN>,
+        { nros_params::MAX_ARRAY_LEN },
+    > = heapless::Vec::new();
+
     let type_ = reader.read_u8()?;
     let bool_value = reader.read_bool()?;
     let integer_value = reader.read_i64()?;
@@ -528,32 +549,33 @@ fn read_parameter_value(
     let string_value = read_wire_string(reader)?;
 
     let mut err: Option<ValueConversionError> = None;
-    let mut value = match type_ {
-        0 => InternalValue::NotSet,
-        1 => InternalValue::Bool(bool_value),
-        2 => InternalValue::Integer(integer_value),
-        3 => InternalValue::Double(double_value),
-        4 => match InternalValue::from_string(string_value) {
-            Some(v) => v,
-            None => {
+    match type_ {
+        0 => *staged = InternalValue::NotSet,
+        1 => *staged = InternalValue::Bool(bool_value),
+        2 => *staged = InternalValue::Integer(integer_value),
+        3 => *staged = InternalValue::Double(double_value),
+        4 => {
+            *staged = InternalValue::String(heapless::String::new());
+            if let InternalValue::String(s) = staged
+                && s.push_str(string_value).is_err()
+            {
                 err = Some(ValueConversionError::CapacityExceeded);
-                InternalValue::NotSet
             }
-        },
-        5 => InternalValue::ByteArray(heapless::Vec::new()),
-        6 => InternalValue::BoolArray(heapless::Vec::new()),
-        7 => InternalValue::IntegerArray(heapless::Vec::new()),
-        8 => InternalValue::DoubleArray(heapless::Vec::new()),
-        9 => InternalValue::StringArray(heapless::Vec::new()),
+        }
+        5 => *staged = InternalValue::ByteArray(heapless::Vec::new()),
+        6 => *staged = InternalValue::BoolArray(heapless::Vec::new()),
+        7 => *staged = InternalValue::IntegerArray(heapless::Vec::new()),
+        8 => *staged = InternalValue::DoubleArray(heapless::Vec::new()),
+        9 => *staged = InternalValue::StringArray(EMPTY_STRING_ARRAY),
         other => {
             err = Some(ValueConversionError::UnknownType(other));
-            InternalValue::NotSet
+            *staged = InternalValue::NotSet;
         }
-    };
+    }
 
     for _ in 0..read_wire_seq_len(reader)? {
         let b = reader.read_u8()?;
-        if let InternalValue::ByteArray(v) = &mut value
+        if let InternalValue::ByteArray(v) = &mut *staged
             && v.push(b).is_err()
         {
             err = err.or(Some(ValueConversionError::CapacityExceeded));
@@ -561,7 +583,7 @@ fn read_parameter_value(
     }
     for _ in 0..read_wire_seq_len(reader)? {
         let b = reader.read_bool()?;
-        if let InternalValue::BoolArray(v) = &mut value
+        if let InternalValue::BoolArray(v) = &mut *staged
             && v.push(b).is_err()
         {
             err = err.or(Some(ValueConversionError::CapacityExceeded));
@@ -569,7 +591,7 @@ fn read_parameter_value(
     }
     for _ in 0..read_wire_seq_len(reader)? {
         let i = reader.read_i64()?;
-        if let InternalValue::IntegerArray(v) = &mut value
+        if let InternalValue::IntegerArray(v) = &mut *staged
             && v.push(i).is_err()
         {
             err = err.or(Some(ValueConversionError::CapacityExceeded));
@@ -577,7 +599,7 @@ fn read_parameter_value(
     }
     for _ in 0..read_wire_seq_len(reader)? {
         let d = reader.read_f64()?;
-        if let InternalValue::DoubleArray(v) = &mut value
+        if let InternalValue::DoubleArray(v) = &mut *staged
             && v.push(d).is_err()
         {
             err = err.or(Some(ValueConversionError::CapacityExceeded));
@@ -585,9 +607,15 @@ fn read_parameter_value(
     }
     for _ in 0..read_wire_seq_len(reader)? {
         let s = read_wire_string(reader)?;
-        if let InternalValue::StringArray(v) = &mut value {
-            let mut hs = heapless::String::<MAX_STRING_VALUE_LEN>::new();
-            if hs.push_str(s).is_err() || v.push(hs).is_err() {
+        if let InternalValue::StringArray(v) = &mut *staged {
+            // Push an empty string, then fill it where it lives: a
+            // `String<MAX_STRING_VALUE_LEN>` built first and pushed after is
+            // a second copy of every element.
+            if v.push(heapless::String::new()).is_err() {
+                err = err.or(Some(ValueConversionError::CapacityExceeded));
+            } else if let Some(hs) = v.last_mut()
+                && hs.push_str(s).is_err()
+            {
                 err = err.or(Some(ValueConversionError::CapacityExceeded));
             }
         }
@@ -595,7 +623,7 @@ fn read_parameter_value(
 
     match err {
         Some(e) => Ok(Err(e)),
-        None => Ok(Ok(value)),
+        None => Ok(Ok(())),
     }
 }
 
@@ -615,6 +643,10 @@ fn write_set_result(
 /// Issue 1151 — the "declare it if missing" branch that used to live here is
 /// gone; `ParameterServer::apply` is the single place that decides, and it
 /// refuses an undeclared name unless the server was told to allow it.
+///
+/// Issue 1812 — the by-value oracle's spelling only. The streaming handlers
+/// apply from the staging slot (`ParameterServer::apply_staged`).
+#[cfg(test)]
 #[inline]
 fn apply_one(
     server: &mut ParameterServer,
@@ -660,6 +692,7 @@ pub(crate) fn stream_get_parameters(
 /// length is known from the request before any element is written.
 pub(crate) fn stream_set_parameters(
     server: &mut ParameterServer,
+    staged: &mut InternalValue,
     node: NodeKey,
     reader: &mut CdrReader<'_>,
     writer: &mut CdrWriter<'_>,
@@ -671,10 +704,11 @@ pub(crate) fn stream_set_parameters(
         let name = read_wire_string(reader).map_err(deser_failed)?;
         // issue 0323 — an over-capacity or unknown-type value is REJECTED, not
         // truncated and then reported as success.
-        match read_parameter_value(reader).map_err(deser_failed)? {
+        // RFC-0105 D10.2 — decoded into, and applied from, the staging slot.
+        match read_parameter_value_into(reader, staged).map_err(deser_failed)? {
             Err(e) => write_set_result(writer, false, e.reason()),
-            Ok(value) => {
-                let result = apply_one(server, node, name, value);
+            Ok(()) => {
+                let result = server.apply_staged(node, name, staged);
                 write_set_result(writer, result.is_success(), set_result_reason(result))
             }
         }
@@ -691,6 +725,7 @@ pub(crate) fn stream_set_parameters(
 /// scratch — peak stays at the one `InternalValue` the pass in flight holds.
 pub(crate) fn stream_set_parameters_atomically(
     server: &mut ParameterServer,
+    staged: &mut InternalValue,
     node: NodeKey,
     reader: &mut CdrReader<'_>,
     writer: &mut CdrWriter<'_>,
@@ -716,7 +751,7 @@ pub(crate) fn stream_set_parameters_atomically(
     let mut can_set_all = true;
     for _ in 0..count {
         let name = read_wire_string(&mut pass).map_err(deser_failed)?;
-        let Ok(value) = read_parameter_value(&mut pass).map_err(deser_failed)? else {
+        let Ok(()) = read_parameter_value_into(&mut pass, staged).map_err(deser_failed)? else {
             // issue 0323 — the truncation used to happen inside this
             // pre-check, so an over-capacity value passed validation and
             // applied as a shortened value with `successful = true`.
@@ -727,7 +762,7 @@ pub(crate) fn stream_set_parameters_atomically(
         // min/max/step, and issue 1151's undeclared refusal — without
         // applying it. One predicate, so the pre-check cannot pass a value the
         // apply would then refuse.
-        if !server.check_apply(node, name, &value).is_success() {
+        if !server.check_apply(node, name, staged).is_success() {
             can_set_all = false;
         }
     }
@@ -739,10 +774,10 @@ pub(crate) fn stream_set_parameters_atomically(
         let count = read_wire_seq_len(&mut pass).map_err(deser_failed)?;
         for _ in 0..count {
             let name = read_wire_string(&mut pass).map_err(deser_failed)?;
-            let Ok(value) = read_parameter_value(&mut pass).map_err(deser_failed)? else {
+            let Ok(()) = read_parameter_value_into(&mut pass, staged).map_err(deser_failed)? else {
                 continue;
             };
-            let _ = apply_one(server, node, name, value);
+            let _ = server.apply_staged(node, name, staged);
         }
         write_set_result(writer, true, "").map_err(ser_failed)
     } else {
@@ -1262,15 +1297,34 @@ pub const PARAM_INBOX_BYTES_PER_QUERYABLE: usize =
 /// -- more than that board's whole heap. It is 8,192 bytes per executor now,
 /// however many nodes it serves.
 ///
-/// Heap slices rather than arrays: allocated zeroed and straight on the heap,
-/// so no frame ever holds them by value (issue 0756), and sized by an argument
-/// so a test can reach the overflow path with a small one.
-pub(crate) struct ParamServiceBuffers {
-    request: Box<[u8]>,
-    reply: Box<[u8]>,
+/// Slices rather than arrays, so no frame ever holds them by value (issue
+/// 0756), and sized by an argument so a test can reach the overflow path with
+/// a small one.
+///
+/// Issue 1812 — CARVED from the executor backing (a [`ParamHome`]) whenever
+/// the backing carves a parameter store; the heap pair below is the `alloc`
+/// fallback for an executor opened with a sizing that carves none.
+pub(crate) struct ParamServiceBuffers<'s> {
+    request: Placed<'s, [u8]>,
+    reply: Placed<'s, [u8]>,
 }
 
-impl ParamServiceBuffers {
+impl<'s> ParamServiceBuffers<'s> {
+    /// Where the request buffer lives — for the tests that prove a carved
+    /// pair is the backing's.
+    #[cfg(test)]
+    pub(crate) fn request_addr(&self) -> usize {
+        self.request.as_ptr() as usize
+    }
+
+    /// A pair over memory the caller already owns (issue 1812).
+    pub(crate) fn carved(request: &'s mut [u8], reply: &'s mut [u8]) -> Self {
+        Self {
+            request: Placed::Carved(request),
+            reply: Placed::Carved(reply),
+        }
+    }
+
     /// A pair of `bytes` each, or `None` if the heap cannot hold them.
     ///
     /// Issue 1551 — fallible. This runs from `reconcile_parameter_services`,
@@ -1278,11 +1332,65 @@ impl ParamServiceBuffers {
     /// Rust allocation on the entity-creation path; `vec![0; n]` would instead
     /// abort through libstd's OOM hook (issue 0589's recursion on Zephyr
     /// `native_sim`).
+    #[cfg(feature = "alloc")]
     pub(crate) fn try_with_capacity(bytes: usize) -> Option<Self> {
         Some(Self {
-            request: nros_rmw::fallible::try_zeroed_bytes(bytes)?,
-            reply: nros_rmw::fallible::try_zeroed_bytes(bytes)?,
+            request: Placed::Heap(nros_rmw::fallible::try_zeroed_bytes(bytes)?),
+            reply: Placed::Heap(nros_rmw::fallible::try_zeroed_bytes(bytes)?),
         })
+    }
+}
+
+/// Issue 1812 — where a piece of the parameter services' state lives.
+///
+/// `Carved` is memory the executor's backing set aside for it (the same
+/// mechanism phase-382 W3' uses for the store's slots); `Heap` is the `alloc`
+/// fallback for an executor whose sizing carves none. Without `alloc` there is
+/// no `Heap`, and an executor with no carved home refuses parameters instead
+/// (see `Executor::ensure_parameter_store`).
+///
+/// A carved value is DROPPED IN PLACE when this goes, exactly as a `Box`
+/// would drop it, and never freed: the backing is the caller's. That matters
+/// for [`ParamState`], whose service sets own backend handles.
+pub(crate) enum Placed<'s, T: ?Sized> {
+    /// Borrowed from the executor backing for the executor's lifetime.
+    Carved(&'s mut T),
+    /// One heap allocation (the `alloc` fallback).
+    #[cfg(feature = "alloc")]
+    Heap(Box<T>),
+}
+
+impl<T: ?Sized> core::ops::Deref for Placed<'_, T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        match self {
+            Placed::Carved(r) => r,
+            #[cfg(feature = "alloc")]
+            Placed::Heap(b) => b,
+        }
+    }
+}
+
+impl<T: ?Sized> core::ops::DerefMut for Placed<'_, T> {
+    fn deref_mut(&mut self) -> &mut T {
+        match self {
+            Placed::Carved(r) => r,
+            #[cfg(feature = "alloc")]
+            Placed::Heap(b) => b,
+        }
+    }
+}
+
+impl<T: ?Sized> Drop for Placed<'_, T> {
+    fn drop(&mut self) {
+        #[allow(irrefutable_let_patterns)] // only one arm without `alloc`
+        if let Placed::Carved(r) = self {
+            // SAFETY: a `Carved` value was initialised in place by its maker
+            // (`ParamHome::init_in`) and is reachable only through this
+            // borrow, which ends here; nothing reads it after. The memory
+            // itself stays the backing's.
+            unsafe { core::ptr::drop_in_place::<T>(&mut **r) }
+        }
     }
 }
 
@@ -1448,12 +1556,14 @@ impl ParameterServiceServers {
     pub(crate) fn process(
         &mut self,
         server: &mut ParameterServer,
-        buffers: &mut ParamServiceBuffers,
+        staged: &mut InternalValue,
+        buffers: &mut ParamServiceBuffers<'_>,
     ) -> usize {
         // phase-426 W1 — every handler below is scoped to THIS set's node, so
         // a sibling node's identically-named parameter is invisible to it.
         let node = self.node;
-        let ParamServiceBuffers { request, reply } = buffers;
+        let request: &mut [u8] = &mut buffers.request;
+        let reply: &mut [u8] = &mut buffers.reply;
         let cap = reply.len();
         let mut count = 0;
 
@@ -1470,14 +1580,14 @@ impl ParameterServiceServers {
         let r = self.set_parameters.handle.handle_request_raw(
             &mut request[..],
             &mut reply[..],
-            |reader, writer| stream_set_parameters(server, node, reader, writer),
+            |reader, writer| stream_set_parameters(server, staged, node, reader, writer),
         );
         count += self.settle(ParamService::Set, r, cap);
 
         let r = self.set_parameters_atomically.handle.handle_request_raw(
             &mut request[..],
             &mut reply[..],
-            |reader, writer| stream_set_parameters_atomically(server, node, reader, writer),
+            |reader, writer| stream_set_parameters_atomically(server, staged, node, reader, writer),
         );
         count += self.settle(ParamService::SetAtomically, r, cap);
 
@@ -1595,46 +1705,15 @@ impl ParameterServiceServers {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// TYPE-ERASED PARAMETER PROCESSING (for Executor integration)
-// ═══════════════════════════════════════════════════════════════════════════
-
-/// Type-erased trait for processing parameter services inside `spin_once()`.
-///
-/// The concrete `ParameterServiceServers` is stored behind a
-/// `Box<dyn ParamServiceProcessor>` so the executor can call `process()`
-/// without coupling to the parameter service implementation.
-pub(crate) trait ParamServiceProcessor {
-    /// Answer at most one pending request per service through the executor's
-    /// shared `buffers`, and return how many were answered. A request that
-    /// could not be answered is logged inside, once (issue 1271), so there is
-    /// no error left for a caller to drop.
-    fn process_services(
-        &mut self,
-        server: &mut ParameterServer,
-        buffers: &mut ParamServiceBuffers,
-    ) -> usize;
-
+impl ParameterServiceServers {
     /// phase-426 W3 — which node this set of six serves.
     ///
-    /// The executor holds one set PER NODE now, so "have I already registered
+    /// The executor holds one set PER NODE, so "have I already registered
     /// for this node?" is a question the reconcile pass asks every spin. The
     /// key lives on the set that owns it rather than in a parallel list beside
     /// it: two containers agreeing about the same identity is the shape that
     /// drifts.
-    fn param_node(&self) -> NodeKey;
-}
-
-impl ParamServiceProcessor for ParameterServiceServers {
-    fn process_services(
-        &mut self,
-        server: &mut ParameterServer,
-        buffers: &mut ParamServiceBuffers,
-    ) -> usize {
-        self.process(server, buffers)
-    }
-
-    fn param_node(&self) -> NodeKey {
+    pub(crate) fn param_node(&self) -> NodeKey {
         self.node
     }
 }
@@ -1664,6 +1743,7 @@ pub(crate) struct ParamServiceReconcileFailure {
 /// Held in [`ParamState`] (boxed, allocated with the store) rather than in the
 /// executor's inline table, so an image without parameter overrides pays
 /// nothing for them.
+#[cfg(feature = "alloc")]
 #[derive(Debug, Clone)]
 pub(crate) struct ArgvParamOverride {
     /// `Some(name)`: only the node of that NAME. `None`: every node.
@@ -1680,7 +1760,9 @@ pub(crate) struct ParamState<'s> {
     pub(crate) server: ParameterServer<'s>,
     /// phase-482 W5 — `-p` / `--params-file` overrides, in argv order; the
     /// LAST one matching a declaration wins. See
-    /// `Executor::install_argv_params`.
+    /// `Executor::install_argv_params`. Argv is a hosted-edge input, so this
+    /// rides `alloc` (issue 1812: a heap-free image has no argv to read).
+    #[cfg(feature = "alloc")]
     pub(crate) argv_overrides: alloc::vec::Vec<ArgvParamOverride>,
     /// phase-426 W3 — ONE SET OF SIX PER NODE, because upstream's parameter
     /// services are per node and `ros2 param list` enumerates nodes.
@@ -1694,7 +1776,12 @@ pub(crate) struct ParamState<'s> {
     /// Bounded by [`MAX_SERVICE_SETS`] rather than heap-grown: the
     /// executor's node table is a fixed arena, so the number of sets is
     /// already bounded and a `Vec` would only hide where.
-    pub(crate) services: heapless::Vec<Box<dyn ParamServiceProcessor>, MAX_SERVICE_SETS>,
+    ///
+    /// Issue 1812 — held INLINE, no longer one `Box<dyn …>` per set. There
+    /// was only ever one implementation, and `ParamState` itself is carved
+    /// from the executor backing (or, with `alloc`, one allocation), so the
+    /// sets cost the backing exactly what the boxes cost the heap.
+    pub(crate) services: heapless::Vec<ParameterServiceServers, MAX_SERVICE_SETS>,
     /// phase-426 W3 — whether a caller asked for parameter services at all.
     ///
     /// Registration cannot happen where the request is made. `nros::main!`
@@ -1706,10 +1793,19 @@ pub(crate) struct ParamState<'s> {
     /// same shape `reconcile_ros_time_source` uses for the same reason.
     pub(crate) requested: bool,
     /// Issue 1270 -- the ONE request/reply buffer pair every set in
-    /// [`ParamState::services`] is answered through. `None` until the first
-    /// set is built, so an image that declares parameters and serves none
-    /// pays nothing for it.
-    pub(crate) buffers: Option<ParamServiceBuffers>,
+    /// [`ParamState::services`] is answered through. On the heap fallback it
+    /// is `None` until the first set is built, so an image that declares
+    /// parameters and serves none pays nothing for it; a carved home
+    /// (issue 1812) hands it over with the state.
+    pub(crate) buffers: Option<ParamServiceBuffers<'s>>,
+    /// RFC-0105 D10.2 / issue 1812 — the ONE slot a remote set decodes its
+    /// incoming value into and applies it from
+    /// (`ParameterServer::apply_staged`). A `ParameterValue` is ~8.5 KiB at
+    /// the default bounds, and it used to be a stack temporary of every
+    /// `set_parameters` request, twice over. One per executor: the six
+    /// services of every node are answered serially, so no two requests are
+    /// ever in flight at once. Its content between requests is scratch.
+    pub(crate) staged: InternalValue,
     /// Issue 1271 -- whether a failed reconcile has already been logged.
     ///
     /// The spin retries the reconcile every pass while a node lacks its six,
@@ -1752,6 +1848,125 @@ pub(crate) struct ParamState<'s> {
     /// [`ParamState::services`] already uses: one entry per node key.
     #[cfg(feature = "sim-time")]
     pub(crate) sim_time_seeded: [bool; MAX_SERVICE_SETS],
+}
+
+impl<'s> ParamState<'s> {
+    /// Initialise a `ParamState` IN PLACE at `dst`, one field at a time.
+    ///
+    /// Issue 1812 — the ONE constructor, for both homes. `ParamState` now
+    /// holds its service sets inline and the ~8.5 KiB staging slot, so it is
+    /// no longer "tens of bytes" and must never be built by value: Rust has no
+    /// placement-new, so `Box::new(ParamState { … })` would materialise it on
+    /// the caller's stack first (issue 0756's shape, one type over).
+    ///
+    /// # Safety
+    /// `dst` must be non-null, aligned and valid for writes of one
+    /// `ParamState`; its prior content is ignored (not dropped). On return it
+    /// is fully initialised.
+    pub(crate) unsafe fn init_at(
+        dst: *mut Self,
+        server: ParameterServer<'s>,
+        buffers: Option<ParamServiceBuffers<'s>>,
+    ) {
+        use core::ptr::addr_of_mut;
+        // SAFETY: the caller's contract on `dst`; each field is written exactly
+        // once through its own place, so nothing reads uninitialised memory.
+        unsafe {
+            addr_of_mut!((*dst).server).write(server);
+            #[cfg(feature = "alloc")]
+            addr_of_mut!((*dst).argv_overrides).write(alloc::vec::Vec::new());
+            // phase-426 W3 — the sets attach in `reconcile_parameter_services`,
+            // one per node, once the node table is populated.
+            addr_of_mut!((*dst).services).write(heapless::Vec::new());
+            addr_of_mut!((*dst).requested).write(false);
+            addr_of_mut!((*dst).buffers).write(buffers);
+            addr_of_mut!((*dst).staged).write(InternalValue::NotSet);
+            addr_of_mut!((*dst).reconcile_failure_reported).write(false);
+            addr_of_mut!((*dst).reconcile_failure).write(None);
+            // phase-430 W2 — no node has been auto-declared yet; the caller
+            // (`ensure_parameter_store`) seeds PRIMARY immediately after.
+            #[cfg(feature = "sim-time")]
+            addr_of_mut!((*dst).sim_time_seeded).write([false; MAX_SERVICE_SETS]);
+        }
+    }
+
+    /// `ParamState` on the heap — the `alloc` fallback for an executor whose
+    /// backing carves no [`ParamHome`]. One fallible allocation, initialised
+    /// through the allocation ([`Self::init_at`]); `None` when the heap
+    /// refuses it (issue 1551's rule: an exhausted heap is an error the caller
+    /// returns, not an abort).
+    #[cfg(feature = "alloc")]
+    pub(crate) fn try_boxed(server: ParameterServer<'s>) -> Option<Placed<'s, Self>> {
+        let mut uninit = nros_rmw::fallible::try_box_uninit::<Self>()?;
+        // SAFETY: `try_box_uninit` gives a correctly sized and aligned
+        // allocation for exactly this type, and `init_at` writes every field
+        // before `assume_init` observes it.
+        unsafe {
+            Self::init_at(uninit.as_mut_ptr(), server, None);
+            Some(Placed::Heap(uninit.assume_init()))
+        }
+    }
+}
+
+/// Bytes of each carved request/reply buffer: the build's resolved
+/// `param_service_buffer_bytes()` (a stated `NROS_PARAM_SERVICE_BUFFER_SIZE`,
+/// or the bound the contract's declared parameters derive).
+pub(crate) const HOME_BUFFER_BYTES: usize = param_service_buffer_bytes();
+
+/// Issue 1812 — everything the parameter SERVICES own, as one region of the
+/// executor backing.
+///
+/// Carved next to the store's slots and on the same condition (the sizing
+/// carves a store), so an image with no store pays nothing and an image with
+/// one asks the heap for nothing: the state with its inline service sets and
+/// staging slot (items 1 and 3 of the issue, and RFC-0105 D10.2), and the
+/// shared buffer pair (item 4). Handed over UNINITIALISED, like the slots;
+/// [`ParamHome::init_in`] is the one way to turn it into a state.
+///
+/// What the region costs is `size_of::<ParamHome>()`, which the backing's
+/// layout reads directly (`NATIVE_UNITS.param_home`), so no number here can
+/// drift from the carve. The buffer pair is in it even for an image that
+/// declares parameters and serves none: the build cannot tell the two apart,
+/// and 2 x [`HOME_BUFFER_BYTES`] is small beside the store it rides with.
+#[repr(C)]
+pub(crate) struct ParamHome {
+    state: MaybeUninit<ParamState<'static>>,
+    request: [MaybeUninit<u8>; HOME_BUFFER_BYTES],
+    reply: [MaybeUninit<u8>; HOME_BUFFER_BYTES],
+}
+
+impl ParamHome {
+    /// Initialise the home IN PLACE around `server` and borrow its state.
+    ///
+    /// The buffers are zeroed (a `&mut [u8]` must be initialised) and handed
+    /// to the state, which owns them for the executor's lifetime; the state
+    /// is built through [`ParamState::init_at`]. Nothing here is a by-value
+    /// temporary of the region.
+    pub(crate) fn init_in<'s>(
+        home: &'s mut MaybeUninit<ParamHome>,
+        server: ParameterServer<'s>,
+    ) -> Placed<'s, ParamState<'s>> {
+        use core::ptr::addr_of_mut;
+        let base = home.as_mut_ptr();
+        // SAFETY: `base` is the home's own, aligned, exclusive pointer for
+        // `'s`. The three places below are disjoint fields of it, so the three
+        // borrows built from them never alias; each is initialised before it
+        // is borrowed. `ParamState<'static>` and `ParamState<'s>` differ only
+        // in a lifetime, so the cast is layout-identical.
+        unsafe {
+            let request = addr_of_mut!((*base).request).cast::<u8>();
+            let reply = addr_of_mut!((*base).reply).cast::<u8>();
+            core::ptr::write_bytes(request, 0, HOME_BUFFER_BYTES);
+            core::ptr::write_bytes(reply, 0, HOME_BUFFER_BYTES);
+            let buffers = ParamServiceBuffers::carved(
+                core::slice::from_raw_parts_mut(request, HOME_BUFFER_BYTES),
+                core::slice::from_raw_parts_mut(reply, HOME_BUFFER_BYTES),
+            );
+            let state = addr_of_mut!((*base).state).cast::<ParamState<'s>>();
+            ParamState::init_at(state, server, Some(buffers));
+            Placed::Carved(&mut *state)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1851,7 +2066,7 @@ mod tests {
         set.get_parameters
             .handle
             .load_error(TransportError::BufferTooSmall);
-        assert_eq!(set.process(&mut server, &mut buffers), 0);
+        assert_eq!(set.process(&mut server, &mut staged(), &mut buffers), 0);
 
         let inbox = 1u32
             << (ParamService::Set as u32 * FAILURE_KINDS
@@ -1882,7 +2097,7 @@ mod tests {
         for _ in 0..2 {
             queue_get(&set, "label");
             assert_eq!(
-                set.process(&mut server, &mut small),
+                set.process(&mut server, &mut staged(), &mut small),
                 0,
                 "a reply that does not fit is not an answered request"
             );
@@ -1903,7 +2118,7 @@ mod tests {
         let mut fits = ParamServiceBuffers::try_with_capacity(param_service_buffer_bytes())
             .expect("host heap");
         queue_get(&set, "label");
-        assert_eq!(set.process(&mut server, &mut fits), 1);
+        assert_eq!(set.process(&mut server, &mut staged(), &mut fits), 1);
         assert_eq!(set.get_parameters.handle.sent.borrow().len(), 1);
     }
 
@@ -1924,8 +2139,8 @@ mod tests {
             .expect("host heap");
         queue_get(&a, "speed");
         queue_get(&b, "speed");
-        assert_eq!(a.process(&mut server, &mut shared), 1);
-        assert_eq!(b.process(&mut server, &mut shared), 1);
+        assert_eq!(a.process(&mut server, &mut staged(), &mut shared), 1);
+        assert_eq!(b.process(&mut server, &mut staged(), &mut shared), 1);
         let (ra, rb) = (
             a.get_parameters.handle.sent.borrow()[0],
             b.get_parameters.handle.sent.borrow()[0],
@@ -2146,6 +2361,12 @@ mod tests {
     use nros_core::{CdrReader, CdrWriter, Deserialize, Serialize};
     use nros_params::{MAX_PARAM_NAME_LEN, MAX_STRING_VALUE_LEN};
     use nros_rmw::TransportError;
+
+    /// Issue 1812 — the staging slot the streaming set handlers decode into.
+    /// The executor's is carved from its backing; a test's is on the heap.
+    fn staged() -> Box<InternalValue> {
+        Box::new(InternalValue::NotSet)
+    }
 
     /// Heap scratch for one encoded message. Sized for the largest wire form
     /// these tests build (a 64-slot sequence of fully populated values).
@@ -2657,7 +2878,13 @@ mod tests {
                 let mut oracle_server = build();
 
                 let streamed = run_streaming(&encode(&*request), |reader, writer| {
-                    stream_set_parameters(&mut streaming_server, NODE, reader, writer)
+                    stream_set_parameters(
+                        &mut streaming_server,
+                        &mut staged(),
+                        NODE,
+                        reader,
+                        writer,
+                    )
                 });
                 let oracle = handle_set_parameters(&mut oracle_server, NODE, &request);
 
@@ -2718,7 +2945,13 @@ mod tests {
             let mut oracle_server = described_server();
 
             let streamed = run_streaming(&encode(&*request), |reader, writer| {
-                stream_set_parameters_atomically(&mut streaming_server, NODE, reader, writer)
+                stream_set_parameters_atomically(
+                    &mut streaming_server,
+                    &mut staged(),
+                    NODE,
+                    reader,
+                    writer,
+                )
             });
             let oracle = handle_set_parameters_atomically(&mut oracle_server, NODE, &request);
 
@@ -2753,7 +2986,7 @@ mod tests {
         push_param!(request, "max_speeed", typo);
 
         let streamed = run_streaming(&encode(&*request), |reader, writer| {
-            stream_set_parameters(&mut server, NODE, reader, writer)
+            stream_set_parameters(&mut server, &mut staged(), NODE, reader, writer)
         });
         let reply: Box<SetParametersResponse> = decode_boxed(&streamed);
         assert_eq!(reply.results.len(), 1);
@@ -2780,7 +3013,7 @@ mod tests {
         push_param!(request, "fresh", v);
 
         let streamed = run_streaming(&encode(&*request), |reader, writer| {
-            stream_set_parameters(&mut server, NODE, reader, writer)
+            stream_set_parameters(&mut server, &mut staged(), NODE, reader, writer)
         });
         let reply: Box<SetParametersResponse> = decode_boxed(&streamed);
         assert!(reply.results[0].successful, "{}", reply.results[0].reason);
@@ -2799,7 +3032,7 @@ mod tests {
         push_param!(request, "speed", off_step);
 
         let streamed = run_streaming(&encode(&*request), |reader, writer| {
-            stream_set_parameters(&mut server, NODE, reader, writer)
+            stream_set_parameters(&mut server, &mut staged(), NODE, reader, writer)
         });
         let reply: Box<SetParametersResponse> = decode_boxed(&streamed);
         assert!(!reply.results[0].successful);
@@ -2823,7 +3056,7 @@ mod tests {
         push_param!(request, "max_speeed", typo);
 
         let streamed = run_streaming(&encode(&*request), |reader, writer| {
-            stream_set_parameters_atomically(&mut server, NODE, reader, writer)
+            stream_set_parameters_atomically(&mut server, &mut staged(), NODE, reader, writer)
         });
         let reply: Box<SetParametersAtomicallyResponse> = decode_boxed(&streamed);
         assert!(!reply.result.successful);
@@ -2841,7 +3074,7 @@ mod tests {
         let mut server = permissive_server();
         assert!(server.declare(NODE, "max_speed", InternalValue::Double(1.0)));
         let streamed = run_streaming(&encode(&*request), |reader, writer| {
-            stream_set_parameters_atomically(&mut server, NODE, reader, writer)
+            stream_set_parameters_atomically(&mut server, &mut staged(), NODE, reader, writer)
         });
         let reply: Box<SetParametersAtomicallyResponse> = decode_boxed(&streamed);
         assert!(reply.result.successful, "{}", reply.result.reason);
@@ -2895,7 +3128,7 @@ mod tests {
         push_param!(request, "rate", v);
 
         let streamed = run_streaming(&encode(&*request), |reader, writer| {
-            stream_set_parameters(&mut server, TALKER, reader, writer)
+            stream_set_parameters(&mut server, &mut staged(), TALKER, reader, writer)
         });
         let reply: Box<SetParametersResponse> = decode_boxed(&streamed);
         assert!(reply.results[0].successful, "{}", reply.results[0].reason);
@@ -2944,13 +3177,13 @@ mod tests {
         push_param!(request, "fresh", v);
 
         let streamed = run_streaming(&encode(&*request), |reader, writer| {
-            stream_set_parameters(&mut server, TALKER, reader, writer)
+            stream_set_parameters(&mut server, &mut staged(), TALKER, reader, writer)
         });
         let reply: Box<SetParametersResponse> = decode_boxed(&streamed);
         assert!(reply.results[0].successful, "{}", reply.results[0].reason);
 
         let streamed = run_streaming(&encode(&*request), |reader, writer| {
-            stream_set_parameters(&mut server, LISTENER, reader, writer)
+            stream_set_parameters(&mut server, &mut staged(), LISTENER, reader, writer)
         });
         let reply: Box<SetParametersResponse> = decode_boxed(&streamed);
         assert!(!reply.results[0].successful);
@@ -2992,14 +3225,14 @@ mod tests {
 
             // SetParameters
             let streamed = run_streaming(&encode(&*undeclared), |reader, writer| {
-                stream_set_parameters(&mut server, node, reader, writer)
+                stream_set_parameters(&mut server, &mut staged(), node, reader, writer)
             });
             let reply: Box<SetParametersResponse> = decode_boxed(&streamed);
             assert!(!reply.results[0].successful);
             assert_eq!(reply.results[0].reason.as_str(), UNDECLARED_REASON);
 
             let streamed = run_streaming(&encode(&*off_step), |reader, writer| {
-                stream_set_parameters(&mut server, node, reader, writer)
+                stream_set_parameters(&mut server, &mut staged(), node, reader, writer)
             });
             let reply: Box<SetParametersResponse> = decode_boxed(&streamed);
             assert!(!reply.results[0].successful);
@@ -3012,7 +3245,7 @@ mod tests {
             v.double_value = 5.0;
             push_param!(undeclared_atomic, "speeed", v);
             let streamed = run_streaming(&encode(&*undeclared_atomic), |reader, writer| {
-                stream_set_parameters_atomically(&mut server, node, reader, writer)
+                stream_set_parameters_atomically(&mut server, &mut staged(), node, reader, writer)
             });
             let reply: Box<SetParametersAtomicallyResponse> = decode_boxed(&streamed);
             assert!(!reply.result.successful);
@@ -3022,7 +3255,7 @@ mod tests {
             v.double_value = 4.2;
             push_param!(off_step_atomic, "speed", v);
             let streamed = run_streaming(&encode(&*off_step_atomic), |reader, writer| {
-                stream_set_parameters_atomically(&mut server, node, reader, writer)
+                stream_set_parameters_atomically(&mut server, &mut staged(), node, reader, writer)
             });
             let reply: Box<SetParametersAtomicallyResponse> = decode_boxed(&streamed);
             assert!(!reply.result.successful);
@@ -3408,13 +3641,13 @@ mod tests {
         // results each carrying `UNDECLARED_REASON`.
         assert_eq!(LONGEST_SET_REASON, UNDECLARED_REASON.len());
         let set_reply = run_streaming(&set_req, |r, w| {
-            stream_set_parameters(&mut server, NodeKey::new(1), r, w)
+            stream_set_parameters(&mut server, &mut staged(), NodeKey::new(1), r, w)
         });
         check("set_parameters reply", set_reply.len(), bound.set_reply);
 
         // The atomic reply is a single result, so it never decides the size.
         let atomic_reply = run_streaming(&set_req, |r, w| {
-            stream_set_parameters_atomically(&mut server, NodeKey::new(1), r, w)
+            stream_set_parameters_atomically(&mut server, &mut staged(), NodeKey::new(1), r, w)
         });
         assert!(atomic_reply.len() <= bound.set_reply);
 
@@ -3562,6 +3795,210 @@ mod tests {
             PARAM_INBOX_BYTES_PER_QUERYABLE,
             PARAM_INBOX_DEPTH
                 * (PARAM_INBOX_SLOT_BYTES + core::mem::size_of::<nros_rmw::InboxEntry>())
+        );
+    }
+
+    // ── RFC-0105 D10.2 / issue 1812: the staging slot ──────────────────────
+
+    /// Bytes painted below the measuring frame. Far more than any handler
+    /// frame, far less than the measuring thread's stack.
+    const PAINT: usize = 256 * 1024;
+    const PATTERN: u8 = 0xA5;
+
+    /// Paint `PAINT` bytes of the stack below the caller with [`PATTERN`].
+    #[inline(never)]
+    #[allow(clippy::large_stack_arrays)] // the stack IS what is measured
+    fn paint_stack() {
+        let mut buf = [MaybeUninit::<u8>::uninit(); PAINT];
+        let p = buf.as_mut_ptr().cast::<u8>();
+        for i in 0..PAINT {
+            // SAFETY: `i < PAINT`, inside `buf`.
+            unsafe { p.add(i).write_volatile(PATTERN) };
+        }
+        core::hint::black_box(&mut buf);
+    }
+
+    /// How many bytes at the DEEP end of the painted region still hold the
+    /// pattern: everything a call between [`paint_stack`] and this did not
+    /// reach.
+    #[inline(never)]
+    #[allow(clippy::large_stack_arrays)] // the stack IS what is measured
+    fn untouched_stack() -> usize {
+        let mut buf = [MaybeUninit::<u8>::uninit(); PAINT];
+        let p = buf.as_mut_ptr().cast::<u8>();
+        // SAFETY (both closures): `i < PAINT`, inside `buf`; the bytes are
+        // whatever an earlier frame left there, read as plain `u8`s.
+        let at = |i: usize| unsafe { p.add(i).read_volatile() };
+        // The stack grows DOWN, so the deepest bytes are the lowest addresses.
+        // A run of at most 8 ZERO bytes is not a frame: it is this function's
+        // own stack probe (LLVM's inline probing stores a zero word once per
+        // page as it moves the stack pointer down over `buf`), so it is
+        // stepped over. Anything else ends the untouched region — a return
+        // address alone is a non-zero word.
+        let mut n = 0;
+        while n < PAINT {
+            if at(n) == PATTERN {
+                n += 1;
+                continue;
+            }
+            let mut end = n;
+            while end < PAINT && end - n < 9 && at(end) != PATTERN {
+                end += 1;
+            }
+            let probe = end - n <= 8 && (n..end).all(|i| at(i) == 0);
+            if !probe {
+                break;
+            }
+            n = end;
+        }
+        core::hint::black_box(&mut buf);
+        n
+    }
+
+    /// The stack `f` uses, by painting: the three calls share one caller
+    /// frame, so `f`'s frames overwrite the region the painter filled, and
+    /// the pattern that survives at the deep end is what it never reached.
+    /// Approximate to within the painter's own few bytes of frame, and run
+    /// on a fresh thread so no earlier frame of this test is in the way.
+    fn stack_used_by<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> (usize, R) {
+        std::thread::Builder::new()
+            .stack_size(4 * PAINT)
+            .spawn(move || {
+                paint_stack();
+                let r = f();
+                (PAINT - untouched_stack(), r)
+            })
+            .expect("measuring thread")
+            .join()
+            .expect("measured call")
+    }
+
+    /// One encoded `set_parameters` (or `_atomically`) request: an integer
+    /// and a full string array, the variant that SIZES `ParameterValue`.
+    #[inline(never)]
+    fn staged_set_request(atomic: bool) -> AllocVec<u8> {
+        let mut int = wire_value_of(2);
+        int.integer_value = 7;
+        let mut strings = wire_value_of(9);
+        for _ in 0..nros_params::MAX_ARRAY_LEN.min(64) {
+            strings
+                .string_array_value
+                .push(wire_string("abc"))
+                .expect("fits the wire");
+        }
+        if atomic {
+            let mut request = Box::new(SetParametersAtomicallyRequest::default());
+            push_param!(request, "rate", int);
+            push_param!(request, "names", strings);
+            encode(&*request)
+        } else {
+            let mut request = Box::new(SetParametersRequest::default());
+            push_param!(request, "rate", int);
+            push_param!(request, "names", strings);
+            encode(&*request)
+        }
+    }
+
+    fn staged_server() -> ParameterServer<'static> {
+        let mut server = leaked_server();
+        assert!(server.declare(NODE, "rate", InternalValue::Integer(1)));
+        assert!(server.declare(
+            NODE,
+            "names",
+            InternalValue::StringArray(heapless::Vec::new())
+        ));
+        server
+    }
+
+    /// The stack one streamed set uses, the staging slot on the heap (the
+    /// executor's is carved from its backing; either way, not the stack).
+    /// Everything the handler is given is built OUTSIDE the measurement, so
+    /// the number is the handler's alone.
+    fn measure_staged_set(atomic: bool) -> usize {
+        let request = staged_set_request(atomic);
+        let server = staged_server();
+        let slot = staged();
+        let reply = vec![0u8; WIRE_BUF];
+        let (used, server) = stack_used_by(move || {
+            let (mut server, mut slot, mut reply) = (server, slot, reply);
+            let mut reader = CdrReader::new_with_header(&request).expect("request header");
+            let mut writer = CdrWriter::new_with_header(&mut reply).expect("reply header");
+            let r = if atomic {
+                stream_set_parameters_atomically(
+                    &mut server,
+                    &mut slot,
+                    NODE,
+                    &mut reader,
+                    &mut writer,
+                )
+            } else {
+                stream_set_parameters(&mut server, &mut slot, NODE, &mut reader, &mut writer)
+            };
+            r.expect("streaming handler");
+            server
+        });
+        assert_eq!(server.get_integer(NODE, "rate"), Some(7), "the set landed");
+        assert_eq!(
+            server.get(NODE, "names").and_then(|v| match v {
+                InternalValue::StringArray(a) => Some(a.len()),
+                _ => None,
+            }),
+            Some(nros_params::MAX_ARRAY_LEN.min(64)),
+            "the string array landed"
+        );
+        used
+    }
+
+    /// RFC-0105 D10.2 / issue 1812 — a remote set holds NO `ParameterValue`
+    /// on the stack.
+    ///
+    /// The value is ~8.5 KiB at the default bounds. Before the staging slot
+    /// the decode RETURNED one and the apply took one by value, so a single
+    /// `ros2 param set` put at least that much, twice over, on whatever task
+    /// spins the executor. Measured with this harness on x86_64, one integer
+    /// plus one 32-element string array per request:
+    ///
+    /// | profile | handler | before | after |
+    /// | --- | --- | --- | --- |
+    /// | dev (opt-level 1) | `set_parameters` | 43,160 B | 872 B |
+    /// | dev (opt-level 1) | `set_parameters_atomically` | 51,688 B | 984 B |
+    /// | release | `set_parameters` | 26,472 B | 352 B |
+    /// | release | `set_parameters_atomically` | 35,016 B | 464 B |
+    ///
+    /// Now the value is decoded into, and
+    /// swapped out of, a slot the executor carves, so the whole handler —
+    /// decode, checks, hooks, write — fits under ONE value's size. A single
+    /// value-sized temporary anywhere on the path fails this, which is the
+    /// regression it exists for.
+    #[test]
+    fn a_remote_set_holds_no_parameter_value_on_the_stack() {
+        let value = core::mem::size_of::<InternalValue>();
+        assert!(value > 8 * 1024, "the premise: a value is big ({value} B)");
+        for atomic in [false, true] {
+            let used = measure_staged_set(atomic);
+            assert!(
+                used < value,
+                "set_parameters{} used {used} B of stack, at least one {value}-byte \
+                 ParameterValue: a temporary is back on the remote-set path",
+                if atomic { "_atomically" } else { "" }
+            );
+        }
+    }
+
+    /// The control for the harness itself: a call that DOES hold a value on
+    /// the stack must measure at least that much, or the test above could
+    /// pass by measuring nothing.
+    #[test]
+    fn the_stack_painter_sees_a_value_on_the_stack() {
+        #[inline(never)]
+        fn hold_one() {
+            let v = core::hint::black_box(InternalValue::NotSet);
+            core::hint::black_box(&v);
+        }
+        let (used, ()) = stack_used_by(hold_one);
+        assert!(
+            used >= core::mem::size_of::<InternalValue>(),
+            "a frame holding one ParameterValue measured only {used} B"
         );
     }
 }

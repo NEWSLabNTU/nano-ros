@@ -1,12 +1,12 @@
 # Phase 491 — The C parameter server: one rclc-shaped family over the executor store
 
-**Status (2026-10-12). In progress — W1, W2, W4 and W5 (standalone C) landed.**
+**Status (2026-10-12). In progress — W1, W2, W4, W5 (standalone C) and W7 landed.**
 Implements [RFC-0105](../design/0105-c-parameter-server.md). Closes issues
 [0793](../issues/archived/0793-c-params-declared-via-legacy-store-invisible-to-ros2.md) and
 [0865](../issues/archived/0865-no-example-registers-parameter-services.md), and lands the C
-half of [1812](../issues/1812-param-services-require-alloc.md). Open: W3
-(`/parameter_events`), W6 (live interop cell), W7 (1812), and the carried items in
-§Progress.
+half of [1812](../issues/archived/1812-param-services-require-alloc.md). W7 closed 1812
+whole. Open: W3 (`/parameter_events`), W6 (live interop cell), and the carried items
+in §Progress.
 
 ## Why
 
@@ -144,8 +144,8 @@ Carried, with where each goes:
   `struct nros_executor_t`**, which are the same types as `rcl_ret_t` /
   `rcl_node_t` / `rclc_executor_t` from `<nros/rcl_compat.h>`. It does not
   include `rcl_compat.h` itself. phase-492 makes the rcl spellings primary.
-- **The remote set still stages its value on the stack**, about 8.5 KiB at
-  default bounds (RFC-0105 D10.2). That is the W2 staging-slot item, not done.
+- ~~**The remote set still stages its value on the stack**, about 8.5 KiB at
+  default bounds (RFC-0105 D10.2).~~ Done in W7, below.
 - **`notify_changed_over_dds` is recorded and not acted on** until W3.
 
 ### 2026-10-12 — string arrays and the live cell (W6)
@@ -163,3 +163,20 @@ Carried, with where each goes:
   - an accepted set that reads back.
 
   The `/parameter_events` check joins it with W3.
+
+### 2026-10-12 — heap-free services (W7, closes 1812; RFC-0105 D10.2)
+
+- The parameter services' state, their inline sets of six, the shared
+  request/reply pair and a `ParameterValue` staging slot are one region of the
+  executor backing (`ParamHome`), carved after the store's slots whenever the
+  sizing carves a store. `param-services` builds without `alloc`; its
+  `compile_error!` is gone, and a heap-free build with no carved store is
+  refused at compile time, naming `NROS_PARAM_STORE`. Lane:
+  `scripts/check-param-services-heap-free.sh` in `just check compile-smoke`.
+- D10.2: a remote set decodes into the staging slot and applies with
+  `ParameterServer::apply_staged` (swap, no temporary). Stack per streamed set,
+  release x86_64: 26,472 -> 352 B (`set_parameters`), 35,016 -> 464 B
+  (`_atomically`); held by `a_remote_set_holds_no_parameter_value_on_the_stack`.
+  The `ParamHome` region is 32,000 B at default knobs (heap-free `rmw-cffi`
+  build). Detail and numbers:
+  [issue 1812](../issues/archived/1812-param-services-require-alloc.md).

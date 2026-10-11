@@ -52,7 +52,7 @@
 //! # Features
 //!
 //! - `std` - Enable standard library support (`Executor::spin`)
-//! - `alloc` - Enable heap allocation (parameter service boxed replies)
+//! - `alloc` - Enable heap allocation (the parameter store's heap fallback, argv parameter overrides)
 
 #![no_std]
 
@@ -315,8 +315,22 @@ pub use executor::SpinPeriodResult;
 // silently changes what their firmware image is; naming the feature they must
 // add does not.
 // ---------------------------------------------------------------------------
-#[cfg(all(feature = "param-services", not(feature = "alloc")))]
-compile_error!("`param-services` allocates: add \"alloc\" to this crate's features");
+// Issue 1812 — `param-services` no longer requires `alloc`. The store, the
+// service state, the shared buffer pair and the staging slot a remote set
+// decodes into are all CARVED from the executor backing when the build knows
+// the image builds a store (`nros_params::IMPLIED_STORE_SLOTS`). Without a
+// heap there is no fallback for a build that does not know, so that build is
+// refused HERE, naming the knob, rather than at the first declaration.
+// (`lifecycle-services` keeps its own guard below: its processor is still
+// boxed, which is a separate item.)
+#[cfg(all(feature = "param-services", not(feature = "alloc"), any(has_rmw, test)))]
+const _: () = assert!(
+    nros_params::IMPLIED_STORE_SLOTS > 0,
+    "`param-services` without `alloc` needs the parameter store carved from the executor \
+     backing, and this build carves none: set NROS_PARAM_STORE=1 (sized by \
+     NROS_MAX_PARAMETERS), or declare `params:` in the contract / `param_services` in the \
+     bringup, or add \"alloc\" to this crate's features (issue 1812)"
+);
 #[cfg(all(feature = "profile-mode", not(feature = "alloc")))]
 compile_error!("`profile-mode` records into a heap-allocated table: add \"alloc\"");
 #[cfg(all(feature = "lifecycle-services", not(feature = "alloc")))]

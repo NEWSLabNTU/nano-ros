@@ -1,7 +1,7 @@
 # Phase 382 — one parameter store, caller-owned and alloc-free
 
 **Status (2026-10-11). ARCHIVED — the store design is settled; the one live
-item is now issue [#1812](../../issues/1812-param-services-require-alloc.md).**
+item is now issue [#1812](../../issues/archived/1812-param-services-require-alloc.md).**
 This phase was planned around TWO stores to conciliate. Phase-426
 ([parameters get a Rust SSoT](../phase-426-parameters-rust-ssot.md)) delivered
 one store per node from the other direction, which overtook most of what
