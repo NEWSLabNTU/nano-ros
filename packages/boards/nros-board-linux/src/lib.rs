@@ -1166,12 +1166,31 @@ fn run_boot_tier<B, F, E>(
     spin_forever::<B>(crt, tier);
 }
 
+/// The deadline a numeric `NROS_ENTRY_SPIN_MS` puts on a tiered run, or `None`
+/// for an unbounded one (unset, `0`, `forever`, or not a number).
+///
+/// The single-executor road (`nros::main!`'s hosted spin) and the C/C++ tiered
+/// runner (`nros-cpp`'s boot loop) both honour the knob; this road ignored it,
+/// so a tiered Rust entry run by a bounded observer never exited and the
+/// runtime registration test could only report it as HUNG (issue 1310). Each
+/// tier reads the same deadline and ends at it, and `thread::scope` then joins
+/// them, so the image closes its session and exits as it does on a signal.
+fn entry_spin_deadline() -> Option<std::time::Instant> {
+    let ms: u64 = std::env::var("NROS_ENTRY_SPIN_MS")
+        .ok()?
+        .trim()
+        .parse()
+        .ok()?;
+    (ms > 0).then(|| std::time::Instant::now() + std::time::Duration::from_millis(ms))
+}
+
 /// Drive a tier executor's `spin_once` at its declared period until a
-/// termination signal arrives (issue 1732).
+/// termination signal arrives (issue 1732), or a bounded run's deadline passes.
 fn spin_forever<B: BoardPrint>(
     crt: &mut ::nros::node_runtime::ExecutorNodeRuntime,
     tier: &TierSpec<'_>,
 ) {
+    let deadline = entry_spin_deadline();
     let period = std::time::Duration::from_micros(tier.spin_period_us.max(1));
     // issue 0636 option 3 — every iteration reaches a scheduling point. The
     // executor's own wait is SKIPPED whenever a wake already fired, so under
@@ -1180,7 +1199,9 @@ fn spin_forever<B: BoardPrint>(
     // asks for when it can get it, a thread that never blocks never lets a
     // lower-priority tier run. Costs nothing while the spins do block.
     let mut gap = ::nros_platform::TierSpinGap::new(tier.spin_period_us);
-    while !::nros_platform::termination::requested() {
+    while !::nros_platform::termination::requested()
+        && deadline.is_none_or(|d| std::time::Instant::now() < d)
+    {
         let iter = gap.mark();
         if let Err(e) = crt.spin_once(period) {
             B::println(format_args!("nros: tier `{}` spin error: {e:?}", tier.name));

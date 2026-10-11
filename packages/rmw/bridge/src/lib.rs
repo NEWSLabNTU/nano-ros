@@ -79,7 +79,7 @@ pub use convert::{BridgeError, ConvertError, SerializationFormatConverter};
 #[cfg(feature = "config")]
 mod config;
 #[cfg(feature = "config")]
-pub use config::{ConfigError, run_from_config, run_from_config_str};
+pub use config::{ConfigError, run_from_config, run_from_config_str, run_from_config_str_until};
 
 #[cfg(feature = "cffi")]
 mod cffi;
