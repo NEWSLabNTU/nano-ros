@@ -1,14 +1,16 @@
 # Phase 484 -- one owner per fact: resource locations and configuration
 
-**Status (2026-10-10). W0 LANDED (measured); W1-W7 not started.** Implements
+**Status (2026-10-12).** W0, W1, W3, W4 (but W4b-2), W6 and W7a/W7b landed; W2
+has four leftovers; W5a in progress (slices 1-2); W5b folded in from
+phase-481, not started; W8 waits on a release. Implements
 [RFC-0103](../design/0103-one-owner-per-fact.md). Tracks issues
 [1767](../issues/1767-resource-location-resolved-many-ways.md) and
 [1768](../issues/archived/1768-build-wiring-census-misses-link-script-macro.md).
 
-**Not this phase:** phase-481 (in progress elsewhere) owns the Zephyr leaf
-`.conf` migration, the image Kconfig fragment renderer, per-image workspace
-configures, and issues 1721/1757. W5 here consumes that renderer and must be
-coordinated with it; nothing here edits an example `.conf` file.
+**Not this phase:** the Zephyr leaf `.conf` migration, the image Kconfig
+fragment renderer, per-image workspace configures and issues 1721/1757 —
+phase-481 built and archived them (2026-10-11). W5b, which RFC-0103 D2b first
+gave 481, came back here when 481 closed without it (see W5).
 
 ## Why
 
@@ -484,8 +486,9 @@ configure, not two). Measured: the talker leaf configures, bakes
 
 ### W5 -- one canonical name per knob
 
-Split with phase-481 by RFC-0103 D2b (decided 2026-10-11: this phase builds the
-non-Zephyr half; the Zephyr hook stays phase-481's).
+Split by RFC-0103 D2b into a non-Zephyr half (W5a) and the Zephyr hook (W5b).
+W5b was first given to phase-481; 481 archived on 2026-10-11 without it, and
+it was folded back here the next day (user decision).
 
 **Census (2026-10-11).** 95 knob env names — 49 on the board/platform ladder
 (`[board.knobs]` settable), 46 env-only — plus 5 alias spellings; 37 are
@@ -510,11 +513,24 @@ spellings because it only matches a literal first argument.
   reads the registry instead of regexes; a gate holds the module
   `zephyr/Kconfig` knob section equal to what the registry generates (prompts
   still present — 481 removes them).
-- **W5b (phase-481)** — measure RFC-0103 D2b's M1–M4; the hook writes
-  `Kconfig.from-system-toml`, the module's knob section goes prompt-less, the
-  fragment drops its knob rows, `-DNROS_OVERRIDE_<ID>` replaces the fixture
-  drivers' knob `-DCONFIG_*`. Choices, endpoint and domain stay in the
-  fragment unless M1/M2 are green.
+- **W5b (this phase, after W5a)** — measure RFC-0103 D2b's M1–M4; the hook
+  writes `Kconfig.from-system-toml`, the module's knob section goes
+  prompt-less, the fragment drops its knob rows, `-DNROS_OVERRIDE_<ID>`
+  replaces the fixture drivers' knob `-DCONFIG_*`. Choices, endpoint and domain
+  stay in the fragment unless M1/M2 are green.
+
+  **Checked against the tree on 2026-10-12, before folding in.** 481 built
+  the conf-FRAGMENT renderer (`nros ws leaf-system --kconfig-out`, the
+  `module_ext_root` hook) and the snippet agreement check; nothing names
+  `Kconfig.from-system-toml` or `NROS_OVERRIDE_`, and `zephyr/Kconfig` still
+  defines all 124 `NROS_*` symbols with prompts — so none of W5b exists and
+  D2b's premises still hold. One thing moved under it: #1973 makes the
+  fragment leave out any symbol the command line sets with `-DCONFIG_*`, so a
+  fixture's `-DCONFIG_NROS_DOMAIN_ID` beats `system.toml` today instead of
+  failing 1550's agreement check. That is the override channel's job done by
+  omission, for the fragment's rows only; once knobs become prompt-less
+  defaults the `-D` is a Kconfig error again, and the channel is what replaces
+  it.
 - `[board.knobs]` → `[knobs]` rides W5a (the descriptor parser already refuses
   both at once).
 
@@ -536,8 +552,11 @@ callers onto canonical names, the `zephyr/Kconfig` drift gate.
 
 **Acceptance:** W5a — the registry is the only list (gate); every knob's
 env/TOML/Kconfig spelling derives from its id; one build per road shows
-identical resolved values before and after (a diff). W5b — 481's own
-acceptance, recorded in its phase doc.
+identical resolved values before and after (a diff). W5b — M1–M4 recorded
+here, on Zephyr 3.7 and 4.4; a `system.toml` project's `prj.conf` knob line
+and its `-DCONFIG_<knob>` each refused by Kconfig; a guest (no `system.toml`)
+configures and reconfigures with menuconfig showing the prompts; the Zephyr
+tier-2 cells green.
 
 ### W6 -- generated output under `<build>/nros/`
 
@@ -668,7 +687,7 @@ verb's answer is used as given.
   names one". Same pass for the other aliases this phase keeps:
   `ZENOH_LOCATOR` (runtime alias of `NROS_LOCATOR`), the `ZPICO_SMOLTCP_*`
   knob aliases, the env-spelled `[image.<id>] env` knob rows W5 keeps until
-  phase-481 closes.
+  W5b lands.
 - ~~Issue 1768 (census classifier + fail on UNCLASSIFIED).~~ Done (W7a): the `linker-script` role knows `link_script!`; gate `build-wiring-classified`.
 - `canonical-build-path.md`, the book's configuration and getting-started
   pages, CLAUDE.md pointers.

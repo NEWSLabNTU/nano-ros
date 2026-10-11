@@ -33,10 +33,11 @@ being implemented by phase-481) and RFC-0095 D4 ("store first, checkout
 last", Zephyr workspace only). It closes the cmake/west exclusion of
 RFC-0101 §6.
 
-**Boundary with phase-481.** Phase-481 owns the Zephyr leaf conf migration,
-the Kconfig fragment renderer, per-image workspace configures and issues
-1721/1757. This RFC depends on that renderer and does not touch the example
-`.conf` files it migrates.
+**Boundary with phase-481.** Phase-481 (archived 2026-10-11) built the Zephyr
+leaf conf migration, the Kconfig fragment renderer, per-image workspace
+configures and issues 1721/1757. This RFC depends on that renderer and does
+not touch the example `.conf` files it migrated. The D2b hook it was also
+assigned is phase-484 W5b now.
 
 ## 1. What was measured
 
@@ -228,13 +229,16 @@ which order, so the two phases do not build the same carrier twice.
 | piece | phase |
 | --- | --- |
 | the registry, its generator, mechanical env names + legacy rows, `KCONFIG_PAIRS` / `*_env_key` derived then deleted, the bypass readers routed through the ladder, the drift gate | 484 W5a (no Zephyr behaviour change) |
-| measure M1–M4 below, on 3.7 and 4.4 | 481 |
-| `Kconfig.from-system-toml` in the hook, the prompt-less knob section, the override channel, the fragment dropping knob rows | 481 |
-| the fixture drivers' KNOB `-DCONFIG_*` move to the override channel (endpoint ones stay) | 481 |
-| choices / endpoint / domain to D2a, if M1/M2 are green | joint, later |
+| measure M1–M4 below, on 3.7 and 4.4 | 484 W5b |
+| `Kconfig.from-system-toml` in the hook, the prompt-less knob section, the override channel, the fragment dropping knob rows | 484 W5b |
+| the fixture drivers' KNOB `-DCONFIG_*` move to the override channel (endpoint ones stay) | 484 W5b |
+| choices / endpoint / domain to D2a, if M1/M2 are green | 484, later |
 
-**Order.** 484 W5a lands first — it is what the hook's generator reads. 481
-then measures and builds the hook. Phase-484's W5 acceptance waits on that.
+These rows read "481" until 2026-10-12: phase-481 archived without them and
+they were folded back into phase-484 W5b.
+
+**Order.** W5a lands first — it is what the hook's generator reads. W5b then
+measures and builds the hook.
 
 **Open measurements (M1–M4), each a configure on 3.7 and 4.4:**
 
@@ -554,6 +558,11 @@ Still open:
    line owns the knob. Wording, not mechanism.
 
 ## Changelog
+
+- 2026-10-12 — D2b ownership: the Zephyr hook (M1–M4, `Kconfig.from-system-
+  toml`, the prompt-less knob section, the override channel) moves from
+  phase-481, which archived without it, to phase-484 W5b. Design unchanged;
+  premises re-checked against the tree.
 
 - 2026-10-11 — D2b: the Zephyr split with phase-481. Knobs move to D2a
   through one registry anchored on today's `CONFIG_NROS_*` names; choices,
