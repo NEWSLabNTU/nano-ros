@@ -398,11 +398,15 @@ fn check_board_crate_dependency(img: &LeafImage) -> Result<()> {
         .map(String::as_str)
         .filter(|n| n.starts_with("nros-board-"))
         .collect();
-    let has = if boards.is_empty() {
-        "no board crate".to_string()
-    } else {
-        format!("`{}`", boards.join("`, `"))
-    };
+    // Issue 1815 — a leaf that names NO board crate was not written for some
+    // other board, so it is not the stale state this refuses. Such a leaf
+    // takes its platform another way (`log-arena-probe` links the POSIX
+    // `nros_platform_*` symbols through `nros-platform-cffi` and has its own
+    // `main`); refusing it stopped every native fixture build at sync.
+    if boards.is_empty() {
+        return Ok(());
+    }
+    let has = format!("`{}`", boards.join("`, `"));
     bail!(
         "{}: image `{}` builds for board `{}`, whose entry needs the crate `{want}`, \
          but {} depends on {has}.\n  Replace the board dependency in {} with `{want}`, \
@@ -903,13 +907,18 @@ mod board_crate_tests {
             .unwrap()
     }
 
-    /// Every in-tree single-package Rust leaf on a cargo road already names
-    /// the crate its image needs, so the refusal fires on no example. A leaf
+    /// Every in-tree single-package Rust leaf on a cargo road is accepted:
+    /// it names the crate its image needs, or no board crate at all. A leaf
     /// that fails here was never buildable for its own image.
+    ///
+    /// Issue 1815 — the walk covers EVERY tracked `system.toml`, not only
+    /// `examples/`: the refusal runs in the fixture build's row-codegen pass
+    /// too, and the leaf it broke (`log-arena-probe`) lives under
+    /// `packages/testing/`, where the first version of this sweep never looked.
     #[test]
     fn every_in_tree_rust_leaf_names_the_board_crate_its_image_needs() {
         let out = crate::source_stamp::nros_git_command("git")
-            .args(["ls-files", "-z", "--", "examples/*/system.toml"])
+            .args(["ls-files", "-z", "--", "*system.toml"])
             .current_dir(repo())
             .output()
             .expect("git ls-files");
@@ -959,5 +968,26 @@ mod board_crate_tests {
             "{e}"
         );
         assert!(e.contains("issue 1305"), "{e}");
+    }
+
+    /// Issue 1815 — no board crate is not a stale board crate.
+    #[test]
+    fn a_leaf_naming_no_board_crate_is_accepted() {
+        let tmp = tempfile::tempdir().unwrap();
+        let leaf = tmp.path().join("probe");
+        std::fs::create_dir_all(leaf.join("src")).unwrap();
+        std::fs::write(
+            leaf.join("Cargo.toml"),
+            "[package]\nname = \"p\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n\
+             [dependencies]\nnros-platform-cffi = { version = \"*\" }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            leaf.join("system.toml"),
+            "[system]\nname = \"p\"\nrmw = \"zenoh\"\n\n[image.native]\nboard = \"native\"\n",
+        )
+        .unwrap();
+        let img = resolve(&leaf, &repo()).unwrap().expect("a cargo leaf");
+        check_board_crate_dependency(&img).expect("no board crate is not a stale one");
     }
 }
