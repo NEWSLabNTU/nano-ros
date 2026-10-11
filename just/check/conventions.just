@@ -144,19 +144,6 @@ ancestry-truncation:
 git-grep-status:
     @python3 scripts/check/check-git-grep-status.py
 
-# phase-426 W4 — no shipped example may demonstrate the CALLER-STORAGE parameter
-# store. `nros_parameter_server_t` (and the `nros::ParameterServer<Cap>` wrapper
-# this wave deletes) is node-local and nothing joins it to the executor's
-# `nros_params` table, which is what the six `rcl_interfaces/srv/*` servers read
-# — so its parameters are invisible to `ros2 param get`. W4's acceptance was
-# about the node API and stayed true while `examples/native/{c,cpp}/parameters`
-# went on showing the other one; an example is COPIED OUT, so that is the
-# starting point of every program written from it. Source-only, ~0.1 s;
-# self-tests the pattern against the three files that carried it.
-[private]
-example-parameter-stores:
-    @python3 scripts/check/check-example-parameter-stores.py
-
 # issue 1386 — `node_ref_is_live(node_ref_of(node))` mints a reference from the
 # node and compares it against the counter it was just read from, so it is
 # CONSTANT TRUE. Four sites wrote that independently, and behind three of them

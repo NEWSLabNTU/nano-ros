@@ -28,7 +28,7 @@ INPUT                  = include/nros/nros.h \
                          include/nros/guard_condition.h \
                          include/nros/lifecycle.h \
                          include/nros/action.h \
-                         include/nros/parameter.h \
+                         include/rclc_parameter/rclc_parameter.h \
                          include/nros/cdr.h \
                          include/nros/clock.h \
                          include/nros/visibility.h \

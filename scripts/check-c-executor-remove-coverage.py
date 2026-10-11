@@ -76,12 +76,11 @@ UNREMOVABLE: dict[str, str] = {}
 # Add verb -> what it configures INSTEAD of registering an executor entry. The
 # gate checks the body never touches `handle_count`.
 NOT_AN_ENTRY: dict[str, str] = {
-    "nros_executor_add_param_description": "parameter metadata in the node's param store",
-    "nros_executor_add_param_description_on": "parameter metadata in the node's param store",
-    "nros_executor_add_param_constraint_integer": "a range on a declared parameter",
-    "nros_executor_add_param_constraint_integer_on": "a range on a declared parameter",
-    "nros_executor_add_param_constraint_double": "a range on a declared parameter",
-    "nros_executor_add_param_constraint_double_on": "a range on a declared parameter",
+    # phase-491 — rclc's parameter server: the six parameter services (not
+    # executor handles) and the on-set hook; `rclc_parameter_server_fini` undoes
+    # the hook and the node's parameters.
+    "rclc_executor_add_parameter_server": "the parameter services + the server's on-set hook",
+    "rclc_executor_add_parameter_server_with_context": "the parameter services + the server's on-set hook",
     "nros_executor_add_time_triggered_dispatcher": "the major-frame length of TT dispatch",
 }
 

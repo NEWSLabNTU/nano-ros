@@ -1,16 +1,10 @@
 /// @file main.c
-/// @brief C parameters example — declare / get / set on THE parameter store.
+/// @brief C parameters example — rclc's parameter server, served to `ros2 param`.
 ///
-/// phase-426 W4. This example used to build an `nros_parameter_server_t` over a
-/// static `nros_parameter_t[8]` and exercise that. It is a real API and it
-/// still exists, but it is a SECOND store: the six `rcl_interfaces/srv/*`
-/// servers read the `nros_params` table the executor owns, so every parameter
-/// this file declared was invisible to `ros2 param get` — the defect phase-426
-/// exists to remove, shipped in the example a user copies out. Same demo,
-/// against the one store, through `nros_executor_*_param_*_on`.
-///
-/// Parameters belong to a NODE, so the example opens a session, an executor
-/// and a node. Run it and, while it spins, ask ROS 2:
+/// phase-491 (RFC-0105). The C parameter API is rclc's
+/// `rclc_parameter_server_t`, under rclc's names and at rclc's include path,
+/// over the executor's one parameter store — the store the six
+/// `rcl_interfaces/srv/*` servers read. Run it and, while it spins, ask ROS 2:
 ///
 /// ```console
 /// $ NROS_SPIN_MS=60000 ./c_parameters &
@@ -23,12 +17,11 @@
 /// holding a stale graph — it caches across domains and answers "Node not
 /// found" for a node that is right there.)
 ///
-/// The `_on` spellings name the node explicitly (phase-426 W1 keys the store by
-/// node, so two nodes on one executor may declare the same name); the
-/// un-suffixed ones mean the primary node and are what a single-node image
-/// writes. The example exits 0 only when every roundtrip passes; a non-zero
-/// exit code encodes which assertion failed. Consumed by the
-/// `parameters_roundtrip` test.
+/// Two nano-ros rules, both stated in the header: the node is bound to the
+/// executor (`nros_executor_node_init`) BEFORE the server is initialised, and
+/// nothing here allocates. The example exits 0 only when every roundtrip
+/// passes; a non-zero exit code encodes which assertion failed. Consumed by
+/// the `parameters_roundtrip` test.
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -42,14 +35,30 @@
 #include <nros/executor.h>
 #include <nros/init.h>
 #include <nros/node.h>
-#include <nros/parameter.h>
+#include <rclc_parameter/rclc_parameter.h>
 
 /* Static allocation — all nros structs live in .bss, not on the stack. */
 static struct {
     nros_support_t support;
     nros_executor_t executor;
     nros_node_t node;
+    rclc_parameter_server_t params;
 } app;
+
+/* rclc's callback: `old` and `new` are the two sides of every change, local or
+ * remote. Refuse a non-positive rate, as a real node would. */
+static unsigned g_changes;
+static bool on_parameter_change(const Parameter* old_param, const Parameter* new_param,
+                                void* context) {
+    (void)old_param;
+    (void)context;
+    g_changes++;
+    if (new_param != NULL && new_param->value.type == RCLC_PARAMETER_INT &&
+        strcmp(new_param->name.data, "publish_rate_hz") == 0) {
+        return new_param->value.integer_value > 0;
+    }
+    return true;
+}
 
 /* How long to keep spinning after the roundtrip, so the six parameter services
  * this node published have something to answer with. 0 exits immediately. */
@@ -85,7 +94,7 @@ static int run(void) {
 
     memset(&app, 0, sizeof(app));
     NROS_CHECK_RET(nros_support_init(&app.support, locator, domain_id), 1);
-    /* 16 handles: the six `rcl_interfaces/srv/*` servers plus headroom. */
+    /* 16 handles: the six rcl_interfaces parameter services plus headroom. */
     NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 16), 1);
     /* The namespace is explicit: NULL options leave it EMPTY, and an empty
      * namespace is not the root one. */
@@ -95,43 +104,37 @@ static int run(void) {
     NROS_CHECK_RET(nros_executor_node_init(&app.executor, &app.node, "c_parameters", &node_opts),
                    1);
 
-    /* The six `rcl_interfaces/srv/*` servers. Without this the parameters are
-     * still in the right store — they are simply not reachable from outside
-     * the image. */
-    NROS_CHECK_RET(nros_executor_register_parameter_services(&app.executor), 1);
+    /* The server handle. The node is already bound to the executor, which is
+     * what the server needs: the store it declares into is the executor's. */
+    rclc_parameter_options_t opts = {.notify_changed_over_dds = true,
+                                     .max_params = 8,
+                                     .allow_undeclared_parameters = false,
+                                     .low_mem_mode = false};
+    NROS_CHECK_RET(rclc_parameter_server_init_with_option(&app.params, &app.node, &opts), 1);
+    /* The six rcl_interfaces parameter services, plus the callback. */
+    NROS_CHECK_RET(
+        rclc_executor_add_parameter_server(&app.executor, &app.params, on_parameter_change), 1);
 
-    /* Declare with code defaults. A launch `<param>` would have seeded the
-     * store first and the declare would adopt it; nothing seeds a standalone
-     * image, so the defaults win here. */
-    if (nros_executor_declare_param_bool_on(&app.executor, &app.node, "verbose", false) !=
-        NROS_RET_OK)
+    /* Declare with code defaults. `rclc_parameter_declare_*` keeps a launch
+     * value baked under the same name; nothing seeds a standalone image, so the
+     * defaults win here. (rclc's `rclc_add_parameter` + `rclc_parameter_set_*`
+     * works too, and overwrites a launch value, as upstream.) */
+    if (rclc_parameter_declare_bool(&app.params, "verbose", false) != NROS_RET_OK) return 1;
+    if (rclc_parameter_declare_int(&app.params, "publish_rate_hz", 1) != NROS_RET_OK) return 1;
+    if (rclc_parameter_declare_double(&app.params, "scale_factor", 1.0) != NROS_RET_OK) return 1;
+    if (rclc_parameter_declare_string(&app.params, "topic_name", "/chatter") != NROS_RET_OK)
         return 1;
-    if (nros_executor_declare_param_integer_on(&app.executor, &app.node, "publish_rate_hz", 1) !=
-        NROS_RET_OK)
-        return 1;
-    if (nros_executor_declare_param_double_on(&app.executor, &app.node, "scale_factor", 1.0) !=
-        NROS_RET_OK)
-        return 1;
-    if (nros_executor_declare_param_string_on(&app.executor, &app.node, "topic_name", "/chatter") !=
-        NROS_RET_OK)
-        return 1;
+    (void)rclc_add_parameter_constraint_integer(&app.params, "publish_rate_hz", 1, 100, 1);
 
     bool verbose = true;
     int64_t rate_hz = 0;
     double scale = 0.0;
     char topic[64] = {0};
 
-    if (nros_executor_get_param_bool_on(&app.executor, &app.node, "verbose", &verbose) !=
-        NROS_RET_OK)
-        return 2;
-    if (nros_executor_get_param_integer_on(&app.executor, &app.node, "publish_rate_hz", &rate_hz) !=
-        NROS_RET_OK)
-        return 2;
-    if (nros_executor_get_param_double_on(&app.executor, &app.node, "scale_factor", &scale) !=
-        NROS_RET_OK)
-        return 2;
-    if (nros_executor_get_param_string_on(&app.executor, &app.node, "topic_name", topic,
-                                          sizeof(topic)) != NROS_RET_OK)
+    if (rclc_parameter_get_bool(&app.params, "verbose", &verbose) != NROS_RET_OK) return 2;
+    if (rclc_parameter_get_int(&app.params, "publish_rate_hz", &rate_hz) != NROS_RET_OK) return 2;
+    if (rclc_parameter_get_double(&app.params, "scale_factor", &scale) != NROS_RET_OK) return 2;
+    if (rclc_parameter_get_string(&app.params, "topic_name", topic, sizeof(topic)) != NROS_RET_OK)
         return 2;
 
     printf("Parameters: verbose=%s, rate=%lld Hz, scale=%.2f, topic=%s\n",
@@ -142,49 +145,34 @@ static int run(void) {
     if (scale < 0.99 || scale > 1.01) return 3;
     if (strcmp(topic, "/chatter") != 0) return 3;
 
-    /* A set is `ParameterServer::apply` on the Rust side — the same entry point
-     * a remote `ros2 param set` reaches, so the read-only / type / range rules
-     * are one implementation, not two. */
-    if (nros_executor_set_param_bool_on(&app.executor, &app.node, "verbose", true) != NROS_RET_OK)
-        return 4;
-    if (nros_executor_get_param_bool_on(&app.executor, &app.node, "verbose", &verbose) !=
-        NROS_RET_OK)
-        return 4;
+    /* Local sets fire the callback, as rclc's do. */
+    if (rclc_parameter_set_bool(&app.params, "verbose", true) != NROS_RET_OK) return 4;
+    if (rclc_parameter_get_bool(&app.params, "verbose", &verbose) != NROS_RET_OK) return 4;
     if (verbose != true) return 4;
     printf("After set: verbose=%s\n", verbose ? "true" : "false");
 
-    if (nros_executor_set_param_integer_on(&app.executor, &app.node, "publish_rate_hz", 10) !=
-        NROS_RET_OK)
-        return 4;
-    if (nros_executor_get_param_integer_on(&app.executor, &app.node, "publish_rate_hz", &rate_hz) !=
-        NROS_RET_OK)
-        return 4;
+    if (rclc_parameter_set_int(&app.params, "publish_rate_hz", 10) != NROS_RET_OK) return 4;
+    if (rclc_parameter_get_int(&app.params, "publish_rate_hz", &rate_hz) != NROS_RET_OK) return 4;
     if (rate_hz != 10) return 4;
 
-    if (nros_executor_set_param_string_on(&app.executor, &app.node, "topic_name", "/rosout") !=
-        NROS_RET_OK)
-        return 4;
-    if (nros_executor_get_param_string_on(&app.executor, &app.node, "topic_name", topic,
-                                          sizeof(topic)) != NROS_RET_OK)
+    if (rclc_parameter_set_string(&app.params, "topic_name", "/rosout") != NROS_RET_OK) return 4;
+    if (rclc_parameter_get_string(&app.params, "topic_name", topic, sizeof(topic)) != NROS_RET_OK)
         return 4;
     if (strcmp(topic, "/rosout") != 0) return 4;
 
-    /* Unknown parameters must be rejected, not invented — on read AND on write
-     * (issue 1151: a set does not create a slot). */
-    if (nros_executor_get_param_bool_on(&app.executor, &app.node, "missing", &verbose) ==
-        NROS_RET_OK)
+    /* The callback's veto, and a typed set of the wrong type. */
+    if (rclc_parameter_set_int(&app.params, "publish_rate_hz", 0) !=
+        RCLC_PARAMETER_MODIFICATION_REJECTED)
         return 5;
-    if (nros_executor_has_param_on(&app.executor, &app.node, "missing")) return 5;
-    if (nros_executor_set_param_bool_on(&app.executor, &app.node, "missing", true) == NROS_RET_OK)
+    if (rclc_parameter_set_double(&app.params, "publish_rate_hz", 2.0) !=
+        RCLC_PARAMETER_TYPE_MISMATCH)
         return 5;
+    if (g_changes < 4) return 5;
 
-    /* This node IS the primary one (the first built on this executor), so the
-     * un-suffixed spellings name it. Asserting it is what keeps "the two
-     * families are one table" from being a claim nobody checks. */
-    int64_t primary = 0;
-    if (nros_executor_get_param_integer(&app.executor, "publish_rate_hz", &primary) != NROS_RET_OK)
-        return 6;
-    if (primary != rate_hz) return 6;
+    /* Unknown parameters are refused, not invented — on read AND on write. */
+    if (rclc_parameter_get_bool(&app.params, "missing", &verbose) == NROS_RET_OK) return 6;
+    if (rclc_parameter_get_type(&app.params, "missing") != RCLC_PARAMETER_NOT_SET) return 6;
+    if (rclc_parameter_set_bool(&app.params, "missing", true) == NROS_RET_OK) return 6;
 
     printf("OK verbose=%s rate=%lld topic=%s\n", verbose ? "true" : "false", (long long)rate_hz,
            topic);
@@ -195,6 +183,7 @@ static int run(void) {
         (void)rclc_executor_spin_some(&app.executor, 100ULL * 1000ULL * 1000ULL);
     }
 
+    (void)rclc_parameter_server_fini(&app.params, &app.node);
     rclc_executor_fini(&app.executor);
     rclc_support_fini(&app.support);
     return 0;

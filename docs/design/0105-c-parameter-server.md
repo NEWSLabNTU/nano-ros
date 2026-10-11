@@ -1,14 +1,14 @@
 # RFC-0105 — The C parameter server: one family, rclc's shape, bounded for an RTOS
 
-**Status:** Draft (2026-10-11)
+**Status:** Draft (2026-10-11; first implementation landed 2026-10-12)
 
 **Implemented by:** [phase-491](../roadmap/phase-491-c-parameter-server.md).
 **Applies:** [RFC-0089](0089-ros2-api-adoption-and-the-compile-or-conform-rule.md)
 (compile-or-conform) to the C parameter surface. **Governed by:** RFC-0019 /
 RFC-0020 — the Rust store (`nros-params`) is the implementation and C delegates.
 **Closes, when implemented:** issues
-[0793](../issues/0793-c-params-declared-via-legacy-store-invisible-to-ros2.md) and
-[0865](../issues/0865-no-example-registers-parameter-services.md), and the C half
+[0793](../issues/archived/0793-c-params-declared-via-legacy-store-invisible-to-ros2.md) and
+[0865](../issues/archived/0865-no-example-registers-parameter-services.md), and the C half
 of [1812](../issues/1812-param-services-require-alloc.md).
 **Builds on:** the executor-owned store of
 [phase-382](../roadmap/archived/phase-382-unified-parameter-store-caller-owned.md)
@@ -334,3 +334,25 @@ checks, against a real ROS 2 peer:
   Settled 2026-10-12: it does (RFC-0089, "`nros_` is phased out of the C API";
   phase-492). This RFC's surface already follows that rule, including
   `rclc_` for its extensions.
+
+## Implementation notes (2026-10-12)
+
+Recorded as built, where it is narrower than the decisions above. The open
+items are tracked in phase-491 § Progress.
+
+- **Spellings.** The header declares with `nros_ret_t`, `struct nros_node_t *`
+  and `struct nros_executor_t *`. These are the same types as `rcl_ret_t`,
+  `rcl_node_t` and `rclc_executor_t` from `<nros/rcl_compat.h>`, which a ported
+  file includes. The header does not pull `rcl_compat.h` in itself. D1's
+  primary spelling of the TYPES arrives with phase-492.
+- **Server handle.** `rclc_parameter_server_t` is a plain struct whose members
+  are underscored and ours. Ported code that reaches into rclc's members fails
+  to compile.
+- **`rclc_add_parameter` on a name already declared with the same type**
+  answers OK and keeps the value (ledger `c:add_parameter`, adopt-bounded).
+  That is how a baked launch value survives.
+- **Remote `NOT_SET` deletes** only on nodes served by this API
+  (`ParameterServer::set_delete_on_not_set`). rclcpp-shaped nodes in the same
+  store keep their semantics.
+- **Not yet:** `/parameter_events` (D8, phase-491 W3), the carved staging slot
+  (D10.2), string-array get/set, and C components (phase-492 W4).

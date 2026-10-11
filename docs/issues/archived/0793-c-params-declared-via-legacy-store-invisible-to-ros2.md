@@ -3,7 +3,7 @@ id: 793
 title: "C ships two disjoint parameter stores — parameters declared on the
   node-local one are invisible to `ros2 param`, and its accept/reject callback
   fires for nobody"
-status: open
+status: resolved
 type: bug
 area: api, params
 related: [rfc-0036, phase-379, phase-382, phase-426, issue-0788, issue-1812, rfc-0105, phase-491]
@@ -42,7 +42,7 @@ invisible to `ros2 param`. Its only in-tree callers are its own pins: `nros-c`'s
 
 The "conciliate" direction below is superseded. Nothing is left to
 conciliate. The `alloc` half of phase-382 moved to issue
-[#1812](1812-param-services-require-alloc.md).
+[#1812](../1812-param-services-require-alloc.md).
 
 ## Problem
 
@@ -194,3 +194,21 @@ out-of-band word in front of the returned pointer. `nros_params` copies into
 `heapless::Vec<T, 32>`. So unification either keeps a borrowed array variant or
 is a breaking C ABI change; that decision is phase-382 W0 and blocks everything
 after it.
+
+## Resolved 2026-10-12 (phase-491)
+
+The decision this issue was left waiting on was made by RFC-0105: C has ONE
+parameter family, rclc's `rclc_parameter_server_t` over the executor's store.
+The caller-storage `nros_parameter_server_t` family is DELETED, together with
+the `nros_param_*` aliases and `<nros/parameter.h>`. There is no second store to
+declare into, and its callback cannot fire for nobody, because neither exists.
+The callback that replaces it (`rclc_parameter_callback_t`) is registered on the
+store the six services read. It fires on local typed sets and on remote writes.
+
+Evidence: `packages/api/nros-c/tests/run/rclc_parameter_server.c` (in
+`just check c`), and the `nros-params` unit tests
+`the_on_set_hook_sees_old_and_new`,
+`a_local_set_skips_read_only_and_range_but_not_type` and
+`not_set_deletes_only_on_a_node_that_asked`. C components still declare
+parameters through `nros_cpp_*`, which reaches the same store. Moving them onto
+the C API is phase-492 W4.

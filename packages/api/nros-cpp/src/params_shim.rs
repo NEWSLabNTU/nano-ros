@@ -1837,9 +1837,15 @@ pub unsafe extern "C" fn nros_cpp_node_list_params(
 fn cpp_on_set_trampoline(
     _node: nros_node::ParameterNodeKey,
     name: &str,
-    value: &nros_node::ParameterValue,
+    _old: Option<&nros_node::ParameterValue>,
+    new: Option<&nros_node::ParameterValue>,
     ctx: nros_node::OnSetContext,
 ) -> bool {
+    // rclcpp's hook sees only the proposed value. `new` is `None` only for an
+    // rclc-style delete (phase-491 W2), which a C++ node never enables.
+    let Some(value) = new else {
+        return true;
+    };
     if ctx.b == 0 {
         return true;
     }

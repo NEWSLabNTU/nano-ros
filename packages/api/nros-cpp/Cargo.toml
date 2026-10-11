@@ -129,7 +129,7 @@ trace-callbacks = ["nros/trace-callbacks", "nros-c/trace-callbacks"]
 
 # Phase 241.D3-rev (W8) — expose the param / lifecycle service surfaces through the
 # umbrella. The C++ executor headers call the gated nros-c C entry points
-# (nros_executor_register_parameter_services, nros_executor_lifecycle_*, …); a C++
+# (rclc_executor_add_parameter_server, nros_executor_lifecycle_*, …); a C++
 # binary that uses them needs the umbrella built with these features so those symbols
 # are compiled into libnros_cpp.a. Forward to nros-c (which pulls nros/nros-node).
 #

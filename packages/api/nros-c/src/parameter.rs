@@ -1,1989 +1,1181 @@
-//! Parameter API for nros C API.
+//! The C parameter server — rclc's `rclc_parameter_server_t` API over the
+//! executor's parameter store (RFC-0105, phase-491).
 //!
-//! Provides node parameters for configuration and runtime tuning.
-
-use core::{
-    ffi::{c_char, c_void},
-    ptr,
-};
-
-use crate::error::*;
-
-// ============================================================================
-// Constants
-// ============================================================================
-
-/// Maximum length of a parameter name
-pub const NROS_MAX_PARAM_NAME_LEN: usize = 64;
-
-/// Maximum length of a string parameter value
-pub const NROS_MAX_PARAM_STRING_LEN: usize = 128;
-
-// ============================================================================
-// Parameter Types
-// ============================================================================
-
-/// Parameter type enumeration.
-#[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nros_parameter_type_t {
-    /// Parameter not set
-    NROS_PARAMETER_NOT_SET = 0,
-    /// Boolean parameter
-    NROS_PARAMETER_BOOL = 1,
-    /// 64-bit signed integer parameter
-    NROS_PARAMETER_INTEGER = 2,
-    /// 64-bit floating point parameter
-    NROS_PARAMETER_DOUBLE = 3,
-    /// String parameter
-    NROS_PARAMETER_STRING = 4,
-    /// Byte array parameter
-    NROS_PARAMETER_BYTE_ARRAY = 5,
-    /// Boolean array parameter
-    NROS_PARAMETER_BOOL_ARRAY = 6,
-    /// Integer array parameter
-    NROS_PARAMETER_INTEGER_ARRAY = 7,
-    /// Double array parameter
-    NROS_PARAMETER_DOUBLE_ARRAY = 8,
-    /// String array parameter
-    NROS_PARAMETER_STRING_ARRAY = 9,
-}
-
-/// Array parameter value (pointer + length to caller-owned data).
-///
-/// The caller must keep the array data valid for the lifetime of the parameter.
-/// For string arrays, `data` points to an array of `*const c_char` pointers.
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-pub struct nros_parameter_array_t {
-    /// Pointer to caller-owned array data
-    pub data: *const c_void,
-    /// Number of elements
-    pub len: usize,
-}
-
-/// Parameter value union.
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub union nros_parameter_value_t {
-    /// Boolean value
-    pub bool_value: bool,
-    /// Integer value (64-bit)
-    pub integer_value: i64,
-    /// Double value
-    pub double_value: f64,
-    /// String value (fixed-size buffer)
-    pub string_value: [u8; NROS_MAX_PARAM_STRING_LEN],
-    /// Array value (pointer + length)
-    pub array_value: nros_parameter_array_t,
-}
-
-impl Default for nros_parameter_value_t {
-    fn default() -> Self {
-        Self { integer_value: 0 }
-    }
-}
-
-/// Parameter structure.
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct nros_parameter_t {
-    /// Parameter name (null-terminated)
-    pub name: [u8; NROS_MAX_PARAM_NAME_LEN],
-    /// Parameter type
-    pub r#type: nros_parameter_type_t,
-    /// Parameter value
-    pub value: nros_parameter_value_t,
-}
-
-impl Default for nros_parameter_t {
-    fn default() -> Self {
-        Self {
-            name: [0u8; NROS_MAX_PARAM_NAME_LEN],
-            r#type: nros_parameter_type_t::NROS_PARAMETER_NOT_SET,
-            value: nros_parameter_value_t::default(),
-        }
-    }
-}
-
-// ============================================================================
-// Parameter Server
-// ============================================================================
-
-/// Parameter server state.
-#[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nros_parameter_server_state_t {
-    /// Not initialized
-    NROS_PARAM_SERVER_STATE_UNINITIALIZED = 0,
-    /// Initialized and ready
-    NROS_PARAM_SERVER_STATE_READY = 1,
-    /// Shutdown
-    NROS_PARAM_SERVER_STATE_SHUTDOWN = 2,
-}
-
-/// Parameter change callback type.
-pub type nros_parameter_callback_t = Option<
-    unsafe extern "C" fn(
-        name: *const c_char,
-        param: *const nros_parameter_t,
-        context: *mut c_void,
-    ) -> bool,
->;
-
-/// Parameter server structure.
-#[repr(C)]
-pub struct nros_parameter_server_t {
-    /// Current state
-    pub state: nros_parameter_server_state_t,
-    /// Maximum number of parameters
-    pub capacity: usize,
-    /// Current number of parameters
-    pub count: usize,
-    /// Parameter storage (pointer to user-provided array)
-    parameters: *mut nros_parameter_t,
-    /// Parameter change callback
-    callback: nros_parameter_callback_t,
-    /// Callback context
-    callback_context: *mut c_void,
-}
-
-impl Default for nros_parameter_server_t {
-    fn default() -> Self {
-        Self {
-            state: nros_parameter_server_state_t::NROS_PARAM_SERVER_STATE_UNINITIALIZED,
-            capacity: 0,
-            count: 0,
-            parameters: ptr::null_mut(),
-            callback: None,
-            callback_context: ptr::null_mut(),
-        }
-    }
-}
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/// Copy a C string to a fixed-size buffer.
-/// Returns the number of bytes copied (excluding null terminator).
-unsafe fn copy_cstr_to_buffer(src: *const c_char, dst: &mut [u8]) -> usize {
-    if src.is_null() || dst.is_empty() {
-        return 0;
-    }
-
-    let src = src.cast::<u8>();
-    let max_len = dst.len() - 1; // Reserve space for null terminator
-    let mut len = 0usize;
-
-    while len < max_len {
-        let c = *src.add(len);
-        if c == 0 {
-            break;
-        }
-        dst[len] = c;
-        len += 1;
-    }
-    dst[len] = 0; // Null terminate
-
-    len
-}
-
-/// Compare a C string with a buffer.
-unsafe fn cstr_eq_buffer(cstr: *const c_char, buffer: &[u8]) -> bool {
-    if cstr.is_null() {
-        return false;
-    }
-
-    let cstr = cstr.cast::<u8>();
-    let mut i = 0usize;
-
-    loop {
-        let c1 = *cstr.add(i);
-        let c2 = if i < buffer.len() { buffer[i] } else { 0 };
-
-        if c1 == 0 && c2 == 0 {
-            return true;
-        }
-        if c1 != c2 {
-            return false;
-        }
-        i += 1;
-    }
-}
-
-// ============================================================================
-// Parameter Server Functions
-// ============================================================================
-
-/// Get a zero-initialized parameter server.
-#[unsafe(no_mangle)]
-pub extern "C" fn nros_parameter_server_get_zero_initialized() -> nros_parameter_server_t {
-    nros_parameter_server_t::default()
-}
-
-/// Initialize a parameter server with user-provided storage.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_parameter_server_init(
-    server: *mut nros_parameter_server_t,
-    storage: *mut nros_parameter_t,
-    capacity: usize,
-) -> nros_ret_t {
-    if server.is_null() || storage.is_null() || capacity == 0 {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
-
-    let server = &mut *server;
-
-    if server.state != nros_parameter_server_state_t::NROS_PARAM_SERVER_STATE_UNINITIALIZED {
-        return NROS_RET_ALREADY_EXISTS;
-    }
-
-    // Initialize storage to default values
-    for i in 0..capacity {
-        *storage.add(i) = nros_parameter_t::default();
-    }
-
-    server.parameters = storage;
-    server.capacity = capacity;
-    server.count = 0;
-    server.callback = None;
-    server.callback_context = ptr::null_mut();
-    server.state = nros_parameter_server_state_t::NROS_PARAM_SERVER_STATE_READY;
-
-    NROS_RET_OK
-}
-
-/// Set a parameter change callback.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_parameter_server_set_callback(
-    server: *mut nros_parameter_server_t,
-    callback: nros_parameter_callback_t,
-    context: *mut c_void,
-) -> nros_ret_t {
-    if server.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
-
-    let server = &mut *server;
-
-    if server.state != nros_parameter_server_state_t::NROS_PARAM_SERVER_STATE_READY {
-        return NROS_RET_NOT_INIT;
-    }
-
-    server.callback = callback;
-    server.callback_context = context;
-
-    NROS_RET_OK
-}
-
-/// Find a parameter by name. Returns the index or None if not found.
-unsafe fn find_parameter(server: &nros_parameter_server_t, name: *const c_char) -> Option<usize> {
-    if name.is_null() || server.parameters.is_null() {
-        return None;
-    }
-
-    for i in 0..server.count {
-        let param = &*server.parameters.add(i);
-        if cstr_eq_buffer(name, &param.name) {
-            return Some(i);
-        }
-    }
-
-    None
-}
-
-/// Internal function to declare a parameter.
-unsafe fn declare_parameter_internal(
-    server: *mut nros_parameter_server_t,
-    name: *const c_char,
-    param_type: nros_parameter_type_t,
-    value: nros_parameter_value_t,
-) -> nros_ret_t {
-    if server.is_null() || name.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
-
-    let server = &mut *server;
-
-    if server.state != nros_parameter_server_state_t::NROS_PARAM_SERVER_STATE_READY {
-        return NROS_RET_NOT_INIT;
-    }
-
-    // Check if parameter already exists
-    if find_parameter(server, name).is_some() {
-        return NROS_RET_ALREADY_EXISTS;
-    }
-
-    // Check capacity
-    if server.count >= server.capacity {
-        return NROS_RET_FULL;
-    }
-
-    // Add the parameter
-    let param = &mut *server.parameters.add(server.count);
-    copy_cstr_to_buffer(name, &mut param.name);
-    param.r#type = param_type;
-    param.value = value;
-    server.count += 1;
-
-    NROS_RET_OK
-}
-
-/// Generate `declare`/`get`/`set` FFI functions for a scalar parameter type.
-macro_rules! impl_param_scalar {
-    (
-        name: $name:ident,
-        ty: $T:ty,
-        variant: $variant:ident,
-        union_field: $field:ident,
-        doc: $doc:literal
-    ) => {
-        pastey::paste! {
-            #[doc = "Declare " $doc " parameter."]
-            #[unsafe(no_mangle)]
-            pub unsafe extern "C" fn [<nros_parameter_declare_ $name>](
-                server: *mut nros_parameter_server_t,
-                name: *const c_char,
-                default_value: $T,
-            ) -> nros_ret_t {
-                let value = nros_parameter_value_t { $field: default_value };
-                declare_parameter_internal(
-                    server,
-                    name,
-                    nros_parameter_type_t::[<NROS_PARAMETER_ $variant>],
-                    value,
-                )
-            }
-
-            #[doc = "Get " $doc " parameter value."]
-            #[unsafe(no_mangle)]
-            pub unsafe extern "C" fn [<nros_parameter_get_ $name>](
-                server: *const nros_parameter_server_t,
-                name: *const c_char,
-                value: *mut $T,
-            ) -> nros_ret_t {
-                if server.is_null() || name.is_null() || value.is_null() {
-                    return NROS_RET_INVALID_ARGUMENT;
-                }
-                let server = &*server;
-                if server.state != nros_parameter_server_state_t::NROS_PARAM_SERVER_STATE_READY {
-                    return NROS_RET_NOT_INIT;
-                }
-                match find_parameter(server, name) {
-                    Some(idx) => {
-                        let param = &*server.parameters.add(idx);
-                        if param.r#type != nros_parameter_type_t::[<NROS_PARAMETER_ $variant>] {
-                            return NROS_RET_INVALID_ARGUMENT;
-                        }
-                        *value = param.value.$field;
-                        NROS_RET_OK
-                    }
-                    None => NROS_RET_NOT_FOUND,
-                }
-            }
-
-            #[doc = "Set " $doc " parameter value."]
-            #[unsafe(no_mangle)]
-            pub unsafe extern "C" fn [<nros_parameter_set_ $name>](
-                server: *mut nros_parameter_server_t,
-                name: *const c_char,
-                value: $T,
-            ) -> nros_ret_t {
-                let new_value = nros_parameter_value_t { $field: value };
-                set_parameter_internal(
-                    server,
-                    name,
-                    nros_parameter_type_t::[<NROS_PARAMETER_ $variant>],
-                    new_value,
-                )
-            }
-        }
-    };
-}
-
-impl_param_scalar!(name: bool, ty: bool, variant: BOOL, union_field: bool_value, doc: "a boolean");
-impl_param_scalar!(name: integer, ty: i64, variant: INTEGER, union_field: integer_value, doc: "an integer");
-impl_param_scalar!(name: double, ty: f64, variant: DOUBLE, union_field: double_value, doc: "a double");
-
-/// Declare a string parameter.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_parameter_declare_string(
-    server: *mut nros_parameter_server_t,
-    name: *const c_char,
-    default_value: *const c_char,
-) -> nros_ret_t {
-    if default_value.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
-
-    let mut value = nros_parameter_value_t {
-        string_value: [0u8; NROS_MAX_PARAM_STRING_LEN],
-    };
-    copy_cstr_to_buffer(default_value, &mut value.string_value);
-
-    declare_parameter_internal(
-        server,
-        name,
-        nros_parameter_type_t::NROS_PARAMETER_STRING,
-        value,
-    )
-}
-
-/// Get a string parameter value.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_parameter_get_string(
-    server: *const nros_parameter_server_t,
-    name: *const c_char,
-    value: *mut c_char,
-    max_len: usize,
-) -> nros_ret_t {
-    if server.is_null() || name.is_null() || value.is_null() || max_len == 0 {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
-
-    let server = &*server;
-
-    if server.state != nros_parameter_server_state_t::NROS_PARAM_SERVER_STATE_READY {
-        return NROS_RET_NOT_INIT;
-    }
-
-    match find_parameter(server, name) {
-        Some(idx) => {
-            let param = &*server.parameters.add(idx);
-            if param.r#type != nros_parameter_type_t::NROS_PARAMETER_STRING {
-                return NROS_RET_INVALID_ARGUMENT;
-            }
-
-            // Copy string to output buffer
-            let dst = core::slice::from_raw_parts_mut(value.cast::<u8>(), max_len);
-            let src = &param.value.string_value;
-            let copy_len = max_len.min(NROS_MAX_PARAM_STRING_LEN) - 1;
-
-            for i in 0..copy_len {
-                if src[i] == 0 {
-                    dst[i] = 0;
-                    return NROS_RET_OK;
-                }
-                dst[i] = src[i];
-            }
-            dst[copy_len] = 0;
-
-            NROS_RET_OK
-        }
-        None => NROS_RET_NOT_FOUND,
-    }
-}
-
-/// Internal function to set a parameter value.
-unsafe fn set_parameter_internal(
-    server: *mut nros_parameter_server_t,
-    name: *const c_char,
-    param_type: nros_parameter_type_t,
-    new_value: nros_parameter_value_t,
-) -> nros_ret_t {
-    if server.is_null() || name.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
-
-    let server = &mut *server;
-
-    if server.state != nros_parameter_server_state_t::NROS_PARAM_SERVER_STATE_READY {
-        return NROS_RET_NOT_INIT;
-    }
-
-    match find_parameter(server, name) {
-        Some(idx) => {
-            let param = &mut *server.parameters.add(idx);
-
-            // Check type matches
-            if param.r#type != param_type {
-                return NROS_RET_INVALID_ARGUMENT;
-            }
-
-            // Create a temporary parameter for the callback
-            let mut new_param = *param;
-            new_param.value = new_value;
-
-            // Call the callback if set
-            if let Some(callback) = server.callback {
-                let accepted = callback(
-                    param.name.as_ptr() as *const c_char,
-                    &new_param,
-                    server.callback_context,
-                );
-                if !accepted {
-                    return NROS_RET_ERROR;
-                }
-            }
-
-            // Apply the change
-            param.value = new_value;
-
-            NROS_RET_OK
-        }
-        None => NROS_RET_NOT_FOUND,
-    }
-}
-
-/// Set a string parameter value.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_parameter_set_string(
-    server: *mut nros_parameter_server_t,
-    name: *const c_char,
-    value: *const c_char,
-) -> nros_ret_t {
-    if value.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
-
-    let mut new_value = nros_parameter_value_t {
-        string_value: [0u8; NROS_MAX_PARAM_STRING_LEN],
-    };
-    copy_cstr_to_buffer(value, &mut new_value.string_value);
-
-    set_parameter_internal(
-        server,
-        name,
-        nros_parameter_type_t::NROS_PARAMETER_STRING,
-        new_value,
-    )
-}
-
-// ============================================================================
-// Array Parameter Functions
-// ============================================================================
-
-/// Macro to generate declare/get/set functions for array parameter types.
-///
-/// For each array type, generates three `#[unsafe(no_mangle)]` extern "C" functions:
-/// - `nros_parameter_declare_{name}_array`: Declare with initial data
-/// - `nros_parameter_get_{name}_array`: Get stored pointer + length
-/// - `nros_parameter_set_{name}_array`: Update stored pointer + length
-macro_rules! impl_param_array {
-    (
-        name: $name:ident,
-        elem: $T:ty,
-        variant: $variant:ident,
-        doc: $doc:literal
-    ) => {
-        pastey::paste! {
-            #[doc = "Declare " $doc " parameter.\n\n"]
-            #[doc = "The caller must keep the array data valid for the lifetime of the parameter.\n"]
-            #[doc = "`data` may be NULL only if `len` is 0."]
-            #[unsafe(no_mangle)]
-            pub unsafe extern "C" fn [<nros_parameter_declare_ $name _array>](
-                server: *mut nros_parameter_server_t,
-                name: *const c_char,
-                data: *const $T,
-                len: usize,
-            ) -> nros_ret_t {
-                if data.is_null() && len != 0 {
-                    return NROS_RET_INVALID_ARGUMENT;
-                }
-                let value = nros_parameter_value_t {
-                    array_value: nros_parameter_array_t {
-                        data: data as *const c_void,
-                        len,
-                    },
-                };
-                declare_parameter_internal(
-                    server,
-                    name,
-                    nros_parameter_type_t::[<NROS_PARAMETER_ $variant>],
-                    value,
-                )
-            }
-
-            #[doc = "Get " $doc " parameter value.\n\n"]
-            #[doc = "Returns the stored pointer and element count via out-parameters."]
-            #[unsafe(no_mangle)]
-            pub unsafe extern "C" fn [<nros_parameter_get_ $name _array>](
-                server: *const nros_parameter_server_t,
-                name: *const c_char,
-                data: *mut *const $T,
-                len: *mut usize,
-            ) -> nros_ret_t {
-                if server.is_null() || name.is_null() || data.is_null() || len.is_null() {
-                    return NROS_RET_INVALID_ARGUMENT;
-                }
-
-                let server = &*server;
-
-                if server.state != nros_parameter_server_state_t::NROS_PARAM_SERVER_STATE_READY {
-                    return NROS_RET_NOT_INIT;
-                }
-
-                match find_parameter(server, name) {
-                    Some(idx) => {
-                        let param = &*server.parameters.add(idx);
-                        if param.r#type
-                            != nros_parameter_type_t::[<NROS_PARAMETER_ $variant>]
-                        {
-                            return NROS_RET_INVALID_ARGUMENT;
-                        }
-                        *data = param.value.array_value.data as *const $T;
-                        *len = param.value.array_value.len;
-                        NROS_RET_OK
-                    }
-                    None => NROS_RET_NOT_FOUND,
-                }
-            }
-
-            #[doc = "Set " $doc " parameter value.\n\n"]
-            #[doc = "The caller must keep the array data valid for the lifetime of the parameter.\n"]
-            #[doc = "`data` may be NULL only if `len` is 0."]
-            #[unsafe(no_mangle)]
-            pub unsafe extern "C" fn [<nros_parameter_set_ $name _array>](
-                server: *mut nros_parameter_server_t,
-                name: *const c_char,
-                data: *const $T,
-                len: usize,
-            ) -> nros_ret_t {
-                if data.is_null() && len != 0 {
-                    return NROS_RET_INVALID_ARGUMENT;
-                }
-                let new_value = nros_parameter_value_t {
-                    array_value: nros_parameter_array_t {
-                        data: data as *const c_void,
-                        len,
-                    },
-                };
-                set_parameter_internal(
-                    server,
-                    name,
-                    nros_parameter_type_t::[<NROS_PARAMETER_ $variant>],
-                    new_value,
-                )
-            }
-        }
-    };
-}
-
-impl_param_array!(name: byte, elem: u8, variant: BYTE_ARRAY, doc: "a byte array");
-impl_param_array!(name: bool, elem: bool, variant: BOOL_ARRAY, doc: "a boolean array");
-impl_param_array!(name: integer, elem: i64, variant: INTEGER_ARRAY, doc: "an integer array");
-impl_param_array!(name: double, elem: f64, variant: DOUBLE_ARRAY, doc: "a double array");
-impl_param_array!(name: string, elem: *const c_char, variant: STRING_ARRAY, doc: "a string array");
-
-// ============================================================================
-// Query Functions
-// ============================================================================
-
-/// Check if a parameter exists.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_parameter_has(
-    server: *const nros_parameter_server_t,
-    name: *const c_char,
-) -> bool {
-    if server.is_null() || name.is_null() {
-        return false;
-    }
-
-    let server = &*server;
-
-    if server.state != nros_parameter_server_state_t::NROS_PARAM_SERVER_STATE_READY {
-        return false;
-    }
-
-    find_parameter(server, name).is_some()
-}
-
-/// Get the type of a parameter.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_parameter_get_type(
-    server: *const nros_parameter_server_t,
-    name: *const c_char,
-) -> nros_parameter_type_t {
-    if server.is_null() || name.is_null() {
-        return nros_parameter_type_t::NROS_PARAMETER_NOT_SET;
-    }
-
-    let server = &*server;
-
-    if server.state != nros_parameter_server_state_t::NROS_PARAM_SERVER_STATE_READY {
-        return nros_parameter_type_t::NROS_PARAMETER_NOT_SET;
-    }
-
-    match find_parameter(server, name) {
-        Some(idx) => (*server.parameters.add(idx)).r#type,
-        None => nros_parameter_type_t::NROS_PARAMETER_NOT_SET,
-    }
-}
-
-/// Get the number of declared parameters.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_parameter_server_get_count(
-    server: *const nros_parameter_server_t,
-) -> usize {
-    if server.is_null() {
-        return 0;
-    }
-
-    let server = &*server;
-
-    if server.state != nros_parameter_server_state_t::NROS_PARAM_SERVER_STATE_READY {
-        return 0;
-    }
-
-    server.count
-}
-
-/// Finalize a parameter server.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_parameter_server_fini(
-    server: *mut nros_parameter_server_t,
-) -> nros_ret_t {
-    if server.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
-
-    let server = &mut *server;
-
-    if server.state == nros_parameter_server_state_t::NROS_PARAM_SERVER_STATE_UNINITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
-
-    server.state = nros_parameter_server_state_t::NROS_PARAM_SERVER_STATE_SHUTDOWN;
-    server.parameters = ptr::null_mut();
-    server.capacity = 0;
-    server.count = 0;
-    server.callback = None;
-    server.callback_context = ptr::null_mut();
-
-    NROS_RET_OK
-}
-
-// ============================================================================
-// Service-Backed Parameter API (Phase 84.B3)
-// ============================================================================
-//
-// These functions operate on the `nros-params::ParameterServer` owned by
-// the Executor. Unlike the legacy `nros_parameter_server_t` API above, a
-// parameter declared here is visible to `ros2 param list /<node>` once
-// `nros_executor_register_parameter_services` is called.
-//
-// The RMW backend must be compiled in (`rmw-zenoh` or `rmw-xrce`) because
-// the Executor type is only defined under those features.
+//! ONE family. It replaces three: the caller-storage `nros_parameter_server_t`
+//! (a second store no `ros2 param` service read — issue 0793), the
+//! `nros_executor_*_param*` family (served, but with none of rclc's names), and
+//! C's use of the C++ `nros_cpp_*_param*` shim.
+//!
+//! The server is a HANDLE, not storage: every parameter lives in the executor's
+//! store keyed by the node, which is the store the six `rcl_interfaces`
+//! services read. Nothing here allocates (RFC-0105 D10): text and arrays cross
+//! the boundary through caller buffers, and the callback's `Parameter` views
+//! are built on this frame and point into the store for the duration of the
+//! call.
+//!
+//! The declarations are hand-written in `<rclc_parameter/rclc_parameter.h>`,
+//! not emitted by cbindgen, because the whole surface exists only with
+//! `param-services`: a header that declared it unconditionally is issue 0865.
 
 #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
-mod service_backed {
-    use super::*;
+pub use imp::*;
+
+/// cbindgen:ignore
+#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+mod imp {
+    use core::ffi::{c_char, c_void};
+
+    use nros_node::{ParameterValue, SetParameterResult, executor::NodeId};
+
     use crate::{
+        error::*,
         executor::{CExecutor, get_executor, nros_executor_t},
         node::{nros_node_state_t, nros_node_t},
     };
-    use nros_node::{ParameterValue, SetParameterResult, executor::NodeId};
 
-    /// Read a C string up to `max_len` bytes into a `&str` slice.
-    /// Returns `None` if `name` is NULL or non-UTF-8.
-    unsafe fn cstr_to_str<'a>(name: *const c_char) -> Option<&'a str> {
-        if name.is_null() {
+    // ------------------------------------------------------------------------
+    // Return codes rclc adds on top of rcl's. Upstream's values, including the
+    // fifth digit of DISABLED_ON_CALLBACK (sic, `40004` in rclc).
+    // ------------------------------------------------------------------------
+
+    /// The on-set callback returned `false`.
+    pub const RCLC_PARAMETER_MODIFICATION_REJECTED: nros_ret_t = 4001;
+    /// A typed set of a parameter declared with another type.
+    pub const RCLC_PARAMETER_TYPE_MISMATCH: nros_ret_t = 4002;
+    /// A mutating call made from inside the on-set callback.
+    pub const RCLC_PARAMETER_DISABLED_ON_CALLBACK: nros_ret_t = 40004;
+
+    // ------------------------------------------------------------------------
+    // Types
+    // ------------------------------------------------------------------------
+
+    /// rclc's `rclc_parameter_type_t`, carried as its integer so a value C
+    /// passes that names no variant cannot be undefined behaviour here.
+    /// 0..3 are rclc's; 4..9 are `rcl_interfaces/msg/ParameterType`'s, which
+    /// rclc does not serve and this server does.
+    pub type rclc_parameter_type_t = u32;
+    const T_NOT_SET: u32 = 0;
+    const T_BOOL: u32 = 1;
+    const T_INT: u32 = 2;
+    const T_DOUBLE: u32 = 3;
+    const T_STRING: u32 = 4;
+    const T_BYTE_ARRAY: u32 = 5;
+    const T_BOOL_ARRAY: u32 = 6;
+    const T_INT_ARRAY: u32 = 7;
+    const T_DOUBLE_ARRAY: u32 = 8;
+    const T_STRING_ARRAY: u32 = 9;
+
+    /// rclc's `rclc_parameter_options_t`, field for field.
+    #[repr(C)]
+    pub struct rclc_parameter_options_t {
+        /// Publish `/parameter_events` (phase-491 W3; accepted, not yet
+        /// emitted).
+        pub notify_changed_over_dds: bool,
+        /// A per-node QUOTA inside the build-time store, not an allocation.
+        pub max_params: usize,
+        /// Let a remote set declare a name this node never declared.
+        pub allow_undeclared_parameters: bool,
+        /// Accepted; the services always stream, so it changes nothing.
+        pub low_mem_mode: bool,
+    }
+
+    /// rclc's callback: `old` NULL when the write creates the parameter, `new`
+    /// NULL when it deletes it; `false` refuses.
+    pub type rclc_parameter_callback_t = Option<
+        unsafe extern "C" fn(
+            old_param: *const rcl_interfaces__msg__Parameter,
+            new_param: *const rcl_interfaces__msg__Parameter,
+            context: *mut c_void,
+        ) -> bool,
+    >;
+
+    /// The server HANDLE. Its members are ours, not rclc's (rclc's hold the
+    /// parameter list itself), so code reaching into them fails to compile
+    /// rather than reading a different layout.
+    #[repr(C)]
+    pub struct rclc_parameter_server_t {
+        executor: *mut nros_executor_t,
+        max_params: usize,
+        on_modification: rclc_parameter_callback_t,
+        context: *mut c_void,
+        node_id: u8,
+        initialized: bool,
+        on_callback: bool,
+        has_hook: bool,
+        hook: u16,
+        // Recorded for phase-491 W3 (`/parameter_events`); nothing reads them
+        // until the emitter lands.
+        #[allow(dead_code)]
+        notify_changed_over_dds: bool,
+        #[allow(dead_code)]
+        low_mem_mode: bool,
+    }
+
+    // rosidl's C runtime shapes, so a callback reads `p->name.data`,
+    // `p->value.type`, `p->value.integer_value` as a ported rclc file does.
+    // They are layout-compatible with rosidl_runtime_c's and point INTO the
+    // store; nothing here owns or frees them.
+
+    /// `rosidl_runtime_c__String`.
+    #[repr(C)]
+    pub struct rosidl_runtime_c__String {
+        pub data: *mut c_char,
+        pub size: usize,
+        pub capacity: usize,
+    }
+
+    macro_rules! sequence {
+        ($name:ident, $t:ty) => {
+            #[repr(C)]
+            pub struct $name {
+                pub data: *mut $t,
+                pub size: usize,
+                pub capacity: usize,
+            }
+        };
+    }
+    sequence!(rosidl_runtime_c__octet__Sequence, u8);
+    sequence!(rosidl_runtime_c__boolean__Sequence, bool);
+    sequence!(rosidl_runtime_c__int64__Sequence, i64);
+    sequence!(rosidl_runtime_c__double__Sequence, f64);
+    sequence!(rosidl_runtime_c__String__Sequence, rosidl_runtime_c__String);
+
+    /// `rcl_interfaces__msg__ParameterValue`.
+    #[repr(C)]
+    pub struct rcl_interfaces__msg__ParameterValue {
+        pub r#type: u8,
+        pub bool_value: bool,
+        pub integer_value: i64,
+        pub double_value: f64,
+        pub string_value: rosidl_runtime_c__String,
+        pub byte_array_value: rosidl_runtime_c__octet__Sequence,
+        pub bool_array_value: rosidl_runtime_c__boolean__Sequence,
+        pub integer_array_value: rosidl_runtime_c__int64__Sequence,
+        pub double_array_value: rosidl_runtime_c__double__Sequence,
+        pub string_array_value: rosidl_runtime_c__String__Sequence,
+    }
+
+    /// `rcl_interfaces__msg__Parameter`.
+    #[repr(C)]
+    pub struct rcl_interfaces__msg__Parameter {
+        pub name: rosidl_runtime_c__String,
+        pub value: rcl_interfaces__msg__ParameterValue,
+    }
+
+    // ------------------------------------------------------------------------
+    // Helpers
+    // ------------------------------------------------------------------------
+
+    /// Read a NUL-terminated C string of at most `max` bytes as `&str`.
+    unsafe fn cstr<'a>(p: *const c_char, max: usize) -> Option<&'a str> {
+        if p.is_null() {
             return None;
         }
         let mut len = 0usize;
-        while *name.add(len) != 0 {
+        while *p.add(len) != 0 {
             len += 1;
-            if len > NROS_MAX_PARAM_NAME_LEN {
+            if len > max {
                 return None;
             }
         }
-        core::str::from_utf8(core::slice::from_raw_parts(name.cast::<u8>(), len)).ok()
+        core::str::from_utf8(core::slice::from_raw_parts(p.cast::<u8>(), len)).ok()
     }
 
-    /// Copy a `&str` to a null-terminated C buffer of size `max_len`.
-    /// Returns `NROS_RET_INVALID_ARGUMENT` if the buffer is too small.
-    unsafe fn str_to_cbuf(src: &str, dst: *mut c_char, max_len: usize) -> nros_ret_t {
-        if max_len == 0 {
-            return NROS_RET_INVALID_ARGUMENT;
-        }
-        let bytes = src.as_bytes();
-        if bytes.len() + 1 > max_len {
-            return NROS_RET_INVALID_ARGUMENT;
-        }
-        for (i, &b) in bytes.iter().enumerate() {
-            *dst.add(i) = b as c_char;
-        }
-        *dst.add(bytes.len()) = 0;
-        NROS_RET_OK
+    unsafe fn name_str<'a>(p: *const c_char) -> Option<&'a str> {
+        cstr(p, nros_node::MAX_PARAM_NAME_LEN)
     }
 
-    /// phase-426 W5 — resolve the `nros_node_t` an `_on` call names into the
-    /// store's node key. ONE spelling, for all fourteen `_on` entry points.
-    ///
-    /// The store is keyed by node (W1), so a C caller has to be able to say
-    /// WHICH node — and the thing a C caller holds is the `nros_node_t` it
-    /// passed to `nros_executor_node_init`, not the `u8` slot index inside it.
-    /// Taking the node rather than the index is what makes these checks
-    /// possible at all; an index argument would make every one of them a
-    /// silent out-of-range write into a sibling node's parameters.
-    ///
-    /// Refuses, in order:
-    ///
-    /// * a NULL node — the caller means the primary node, and says so by
-    ///   calling the un-suffixed spelling;
-    /// * a node that is not INITIALISED — a zeroed `nros_node_t` reads as slot
-    ///   0, so accepting it would silently mean "the primary node";
-    /// * a node bound to a DIFFERENT executor — two executors have two stores,
-    ///   and slot 3 of one names nothing in the other. `rclc_node_init_default`
-    ///   leaves `executor` NULL and `node_id` 0 (the legacy single-node path),
-    ///   which IS the primary node and is accepted;
-    /// * a slot the executor never built. Slot 0 is always legal — an executor
-    ///   with no `nros_executor_node_init` call still HAS a primary node, and
-    ///   `Executor::nodes()` is empty until one is built, so a membership test
-    ///   alone would refuse the commonest image in the tree.
-    unsafe fn node_key(
-        exec: &CExecutor,
-        executor: *mut nros_executor_t,
-        node: *const nros_node_t,
-    ) -> Option<NodeId> {
-        let node = node.as_ref()?;
-        if node.state != nros_node_state_t::NROS_NODE_STATE_INITIALIZED {
-            return None;
+    /// The executor and node key a READY server names.
+    unsafe fn target<'a>(
+        server: *const rclc_parameter_server_t,
+    ) -> Result<(&'a mut CExecutor, NodeId), nros_ret_t> {
+        let Some(s) = server.as_ref() else {
+            return Err(NROS_RET_INVALID_ARGUMENT);
+        };
+        if !s.initialized || s.executor.is_null() {
+            return Err(NROS_RET_NOT_INIT);
         }
-        // `is_executor_bound` rather than a fourth hand-written
-        // `executor.is_null()` (issue 1384): this helper was one of the three
-        // spellings of the same question, and the one that got it right.
-        if node.is_executor_bound() && node.executor != executor.cast_const() {
-            return None;
-        }
-        let id = NodeId::from_raw(node.node_id);
-        if node.node_id != 0 && exec.node(id).is_none() {
-            return None;
-        }
-        Some(id)
+        Ok((
+            get_executor(&mut (*s.executor)._opaque),
+            NodeId::from_raw(s.node_id),
+        ))
     }
 
-    /// Register the 6 ROS 2 parameter services on the executor's node.
-    ///
-    /// After this call, parameters declared via
-    /// `nros_executor_declare_param_*` are visible to `ros2 param list`,
-    /// `ros2 param get`, `ros2 param set`, etc.
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_register_parameter_services(
-        executor: *mut nros_executor_t,
-    ) -> nros_ret_t {
-        if executor.is_null() {
-            return NROS_RET_INVALID_ARGUMENT;
+    /// [`target`] for a call that MUTATES: refused while the callback runs, as
+    /// rclc refuses it.
+    unsafe fn target_mut<'a>(
+        server: *mut rclc_parameter_server_t,
+    ) -> Result<(&'a mut CExecutor, NodeId), nros_ret_t> {
+        if let Some(s) = server.as_ref()
+            && s.on_callback
+        {
+            return Err(RCLC_PARAMETER_DISABLED_ON_CALLBACK);
         }
-        let exec = get_executor(&mut (*executor)._opaque);
-        match exec.register_parameter_services() {
-            Ok(()) => NROS_RET_OK,
-            Err(_) => NROS_RET_ERROR,
-        }
+        target(server)
     }
 
-    /// phase-426 W2/W5 — the ONE translation of a write's verdict into the C
-    /// return code, for all eight setters.
-    ///
-    /// The mapping used to be written out twice (the scalar macro and
-    /// `nros_executor_set_param_string`); W5 doubles the number of setters, and
-    /// four copies of a `match` over an enum that grows is how one of them ends
-    /// up reporting an `OutOfRange` as `NROS_RET_OK`.
-    fn set_result_to_ret(result: SetParameterResult) -> nros_ret_t {
-        match result {
+    macro_rules! tri {
+        ($e:expr) => {
+            match $e {
+                Ok(v) => v,
+                Err(r) => return r,
+            }
+        };
+    }
+
+    fn set_result(r: SetParameterResult) -> nros_ret_t {
+        match r {
             SetParameterResult::Success => NROS_RET_OK,
-            SetParameterResult::NotFound | SetParameterResult::Undeclared => NROS_RET_NOT_FOUND,
+            SetParameterResult::TypeMismatch => RCLC_PARAMETER_TYPE_MISMATCH,
+            SetParameterResult::Rejected => RCLC_PARAMETER_MODIFICATION_REJECTED,
+            SetParameterResult::NotFound | SetParameterResult::Undeclared => NROS_RET_ERROR,
             _ => NROS_RET_INVALID_ARGUMENT,
         }
     }
 
-    macro_rules! impl_executor_param_scalar {
-        (
-            name: $name:ident,
-            ty: $T:ty,
-            from_variant: $from:path,
-            as_variant: $as:ident,
-            doc: $doc:literal
-        ) => {
-            pastey::paste! {
-                #[doc = "Declare " $doc " parameter on the executor's PRIMARY node."]
-                #[unsafe(no_mangle)]
-                pub unsafe extern "C" fn [<nros_executor_declare_param_ $name>](
-                    executor: *mut nros_executor_t,
-                    name: *const c_char,
-                    value: $T,
-                ) -> nros_ret_t {
-                    if executor.is_null() {
-                        return NROS_RET_INVALID_ARGUMENT;
-                    }
-                    let Some(n) = cstr_to_str(name) else {
-                        return NROS_RET_INVALID_ARGUMENT;
-                    };
-                    let exec = get_executor(&mut (*executor)._opaque);
-                    let pv = $from(value);
-                    // Issue 1556 item 1 — the declaration as the code made it, BEFORE
-                    // the store answers (an adopted seed is still a declaration).
-                    nros::census_hooks::on_param_declare(n, &pv);
-                    if exec.declare_parameter(n, pv) {
-                        NROS_RET_OK
-                    } else {
-                        NROS_RET_ALREADY_EXISTS
-                    }
-                }
+    fn type_code(t: Option<nros_node::ParameterType>) -> rclc_parameter_type_t {
+        use nros_node::ParameterType as P;
+        match t {
+            None | Some(P::NotSet) => T_NOT_SET,
+            Some(P::Bool) => T_BOOL,
+            Some(P::Integer) => T_INT,
+            Some(P::Double) => T_DOUBLE,
+            Some(P::String) => T_STRING,
+            Some(P::ByteArray) => T_BYTE_ARRAY,
+            Some(P::BoolArray) => T_BOOL_ARRAY,
+            Some(P::IntegerArray) => T_INT_ARRAY,
+            Some(P::DoubleArray) => T_DOUBLE_ARRAY,
+            Some(P::StringArray) => T_STRING_ARRAY,
+        }
+    }
 
-                #[doc = "Declare " $doc " parameter on `node`."]
-                #[unsafe(no_mangle)]
-                pub unsafe extern "C" fn [<nros_executor_declare_param_ $name _on>](
-                    executor: *mut nros_executor_t,
-                    node: *const nros_node_t,
-                    name: *const c_char,
-                    value: $T,
-                ) -> nros_ret_t {
-                    if executor.is_null() {
-                        return NROS_RET_INVALID_ARGUMENT;
-                    }
-                    let Some(n) = cstr_to_str(name) else {
-                        return NROS_RET_INVALID_ARGUMENT;
-                    };
-                    let exec = get_executor(&mut (*executor)._opaque);
-                    let Some(id) = node_key(exec, executor, node) else {
-                        return NROS_RET_INVALID_ARGUMENT;
-                    };
-                    let pv = $from(value);
-                    nros::census_hooks::on_param_declare(n, &pv);
-                    if exec.declare_parameter_on(id, n, pv) {
-                        NROS_RET_OK
-                    } else {
-                        NROS_RET_ALREADY_EXISTS
-                    }
-                }
+    /// The zero value rclc's `rclc_add_parameter` declares.
+    fn zero_of(t: rclc_parameter_type_t) -> Option<ParameterValue> {
+        Some(match t {
+            T_BOOL => ParameterValue::Bool(false),
+            T_INT => ParameterValue::Integer(0),
+            T_DOUBLE => ParameterValue::Double(0.0),
+            T_STRING => ParameterValue::String(Default::default()),
+            T_BYTE_ARRAY => ParameterValue::ByteArray(Default::default()),
+            T_BOOL_ARRAY => ParameterValue::BoolArray(Default::default()),
+            T_INT_ARRAY => ParameterValue::IntegerArray(Default::default()),
+            T_DOUBLE_ARRAY => ParameterValue::DoubleArray(Default::default()),
+            T_STRING_ARRAY => ParameterValue::StringArray(Default::default()),
+            _ => return None,
+        })
+    }
 
-                #[doc = "Get " $doc " parameter from the executor's PRIMARY node."]
-                #[unsafe(no_mangle)]
-                pub unsafe extern "C" fn [<nros_executor_get_param_ $name>](
-                    executor: *mut nros_executor_t,
-                    name: *const c_char,
-                    out_value: *mut $T,
-                ) -> nros_ret_t {
-                    if executor.is_null() || out_value.is_null() {
-                        return NROS_RET_INVALID_ARGUMENT;
-                    }
-                    let Some(n) = cstr_to_str(name) else {
-                        return NROS_RET_INVALID_ARGUMENT;
-                    };
-                    let inner = get_executor(&mut (*executor)._opaque);
-                    match inner.get_parameter(n).and_then(|v| v.$as()) {
-                        Some(v) => {
-                            *out_value = v.into();
-                            NROS_RET_OK
-                        }
-                        None => NROS_RET_NOT_FOUND,
-                    }
-                }
+    /// Declare `value` on the server's node. A name already declared WITH THE
+    /// SAME TYPE is accepted and keeps its value: that is how a launch value
+    /// baked into the image survives the application's own declaration.
+    unsafe fn declare(
+        server: *mut rclc_parameter_server_t,
+        name: *const c_char,
+        value: ParameterValue,
+    ) -> nros_ret_t {
+        let (exec, id) = tri!(target_mut(server));
+        let Some(n) = name_str(name) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        nros::census_hooks::on_param_declare(n, &value);
+        if let Some(t) = exec.get_parameter_type_on(id, n) {
+            return if t == value.param_type() {
+                NROS_RET_OK
+            } else {
+                NROS_RET_ERROR
+            };
+        }
+        if exec.list_parameters_on(id, "").count() >= (*server).max_params {
+            return NROS_RET_ERROR;
+        }
+        if exec.declare_parameter_on(id, n, value) {
+            NROS_RET_OK
+        } else {
+            NROS_RET_ERROR
+        }
+    }
 
-                #[doc = "Get " $doc " parameter from `node`."]
-                #[unsafe(no_mangle)]
-                pub unsafe extern "C" fn [<nros_executor_get_param_ $name _on>](
-                    executor: *mut nros_executor_t,
-                    node: *const nros_node_t,
-                    name: *const c_char,
-                    out_value: *mut $T,
-                ) -> nros_ret_t {
-                    if executor.is_null() || out_value.is_null() {
-                        return NROS_RET_INVALID_ARGUMENT;
-                    }
-                    let Some(n) = cstr_to_str(name) else {
-                        return NROS_RET_INVALID_ARGUMENT;
-                    };
-                    let inner = get_executor(&mut (*executor)._opaque);
-                    let Some(id) = node_key(inner, executor, node) else {
-                        return NROS_RET_INVALID_ARGUMENT;
-                    };
-                    match inner.get_parameter_on(id, n).and_then(|v| v.$as()) {
-                        Some(v) => {
-                            *out_value = v.into();
-                            NROS_RET_OK
-                        }
-                        None => NROS_RET_NOT_FOUND,
-                    }
-                }
+    unsafe fn set_local(
+        server: *mut rclc_parameter_server_t,
+        name: *const c_char,
+        value: ParameterValue,
+    ) -> nros_ret_t {
+        let (exec, id) = tri!(target_mut(server));
+        let Some(n) = name_str(name) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        set_result(exec.set_parameter_local_on(id, n, value))
+    }
 
-                #[doc = "Set " $doc " parameter on the executor's PRIMARY node."]
-                #[unsafe(no_mangle)]
-                pub unsafe extern "C" fn [<nros_executor_set_param_ $name>](
-                    executor: *mut nros_executor_t,
-                    name: *const c_char,
-                    value: $T,
-                ) -> nros_ret_t {
-                    if executor.is_null() {
-                        return NROS_RET_INVALID_ARGUMENT;
-                    }
-                    let Some(n) = cstr_to_str(name) else {
-                        return NROS_RET_INVALID_ARGUMENT;
-                    };
-                    let exec = get_executor(&mut (*executor)._opaque);
-                    // phase-426 W2 — through `Executor::set_parameter`, which
-                    // is `ParameterServer::apply`: the same read-only / type /
-                    // range / undeclared rules a `ros2 param set` gets. The
-                    // old spelling reached `ParameterServer::set` directly,
-                    // which is a SECOND answer to "may this set happen" — the
-                    // duplication RFC-0019/0020 forbids, and the seam through
-                    // which issue 1151's rules could be bypassed from C.
-                    set_result_to_ret(exec.set_parameter(n, $from(value)))
-                }
+    unsafe fn get_value<'a>(
+        server: *mut rclc_parameter_server_t,
+        name: *const c_char,
+    ) -> Result<&'a ParameterValue, nros_ret_t> {
+        let (exec, id) = target(server)?;
+        let n = name_str(name).ok_or(NROS_RET_INVALID_ARGUMENT)?;
+        exec.get_parameter_on(id, n).ok_or(NROS_RET_ERROR)
+    }
 
-                #[doc = "Set " $doc " parameter on `node`."]
-                #[unsafe(no_mangle)]
-                pub unsafe extern "C" fn [<nros_executor_set_param_ $name _on>](
-                    executor: *mut nros_executor_t,
-                    node: *const nros_node_t,
-                    name: *const c_char,
-                    value: $T,
-                ) -> nros_ret_t {
-                    if executor.is_null() {
-                        return NROS_RET_INVALID_ARGUMENT;
-                    }
-                    let Some(n) = cstr_to_str(name) else {
-                        return NROS_RET_INVALID_ARGUMENT;
-                    };
-                    let exec = get_executor(&mut (*executor)._opaque);
-                    let Some(id) = node_key(exec, executor, node) else {
-                        return NROS_RET_INVALID_ARGUMENT;
-                    };
-                    // Same `apply` routing as the primary spelling above.
-                    set_result_to_ret(exec.set_parameter_on(id, n, $from(value)))
+    // ------------------------------------------------------------------------
+    // The callback: the store's hook, unpacked into rclc's `(old, new, ctx)`
+    // ------------------------------------------------------------------------
+
+    /// Upper bound of this frame: two values' string buffers plus two
+    /// string-array view tables plus the name. Stated so RFC-0105 D10.2's
+    /// "fixed, documented stack bound" has a number to hold.
+    const NAME_BUF: usize = nros_node::MAX_PARAM_NAME_LEN + 1;
+    const STR_BUF: usize = nros_node::MAX_STRING_VALUE_LEN + 1;
+
+    struct ParamView {
+        msg: rcl_interfaces__msg__Parameter,
+        text: [u8; STR_BUF],
+        strings: [rosidl_runtime_c__String; nros_node::MAX_ARRAY_LEN],
+    }
+
+    const NULL_STR: rosidl_runtime_c__String = rosidl_runtime_c__String {
+        data: core::ptr::null_mut(),
+        size: 0,
+        capacity: 0,
+    };
+
+    fn empty_value() -> rcl_interfaces__msg__ParameterValue {
+        macro_rules! z {
+            ($t:ident) => {
+                $t {
+                    data: core::ptr::null_mut(),
+                    size: 0,
+                    capacity: 0,
                 }
+            };
+        }
+        rcl_interfaces__msg__ParameterValue {
+            r#type: 0,
+            bool_value: false,
+            integer_value: 0,
+            double_value: 0.0,
+            string_value: NULL_STR,
+            byte_array_value: z!(rosidl_runtime_c__octet__Sequence),
+            bool_array_value: z!(rosidl_runtime_c__boolean__Sequence),
+            integer_array_value: z!(rosidl_runtime_c__int64__Sequence),
+            double_array_value: z!(rosidl_runtime_c__double__Sequence),
+            string_array_value: z!(rosidl_runtime_c__String__Sequence),
+        }
+    }
+
+    /// Fill `view` from `value`. A scalar string is copied so it can carry a
+    /// NUL terminator; array elements, including a string array's, point into
+    /// the store and are NOT NUL-terminated — read `size`.
+    fn fill(view: &mut ParamView, name: &rosidl_runtime_c__String, value: &ParameterValue) {
+        let v = &mut view.msg.value;
+        view.msg.name = rosidl_runtime_c__String {
+            data: name.data,
+            size: name.size,
+            capacity: name.capacity,
+        };
+        v.r#type = type_code(Some(value.param_type())) as u8;
+        macro_rules! seq {
+            ($field:ident, $slice:expr) => {{
+                let s = $slice;
+                v.$field.data = s.as_ptr() as *mut _;
+                v.$field.size = s.len();
+                v.$field.capacity = s.len();
+            }};
+        }
+        match value {
+            ParameterValue::NotSet => {}
+            ParameterValue::Bool(b) => v.bool_value = *b,
+            ParameterValue::Integer(i) => v.integer_value = *i,
+            ParameterValue::Double(d) => v.double_value = *d,
+            ParameterValue::String(s) => {
+                let n = s.len().min(STR_BUF - 1);
+                view.text[..n].copy_from_slice(&s.as_bytes()[..n]);
+                view.text[n] = 0;
+                v.string_value = rosidl_runtime_c__String {
+                    data: view.text.as_mut_ptr().cast(),
+                    size: n,
+                    capacity: n + 1,
+                };
             }
-        };
-    }
-
-    impl_executor_param_scalar!(
-        name: bool, ty: bool,
-        from_variant: ParameterValue::from_bool,
-        as_variant: as_bool,
-        doc: "a boolean"
-    );
-    impl_executor_param_scalar!(
-        name: integer, ty: i64,
-        from_variant: ParameterValue::from_integer,
-        as_variant: as_integer,
-        doc: "an integer"
-    );
-    impl_executor_param_scalar!(
-        name: double, ty: f64,
-        from_variant: ParameterValue::from_double,
-        as_variant: as_double,
-        doc: "a double"
-    );
-
-    /// Declare a string parameter on the executor's PRIMARY node.
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_declare_param_string(
-        executor: *mut nros_executor_t,
-        name: *const c_char,
-        value: *const c_char,
-    ) -> nros_ret_t {
-        if executor.is_null() {
-            return NROS_RET_INVALID_ARGUMENT;
-        }
-        let (Some(n), Some(v)) = (cstr_to_str(name), cstr_to_str(value)) else {
-            return NROS_RET_INVALID_ARGUMENT;
-        };
-        let Some(pv) = ParameterValue::from_string(v) else {
-            return NROS_RET_INVALID_ARGUMENT;
-        };
-        let exec = get_executor(&mut (*executor)._opaque);
-        nros::census_hooks::on_param_declare(n, &pv);
-        if exec.declare_parameter(n, pv) {
-            NROS_RET_OK
-        } else {
-            NROS_RET_ALREADY_EXISTS
+            ParameterValue::ByteArray(a) => seq!(byte_array_value, a.as_slice()),
+            ParameterValue::BoolArray(a) => seq!(bool_array_value, a.as_slice()),
+            ParameterValue::IntegerArray(a) => seq!(integer_array_value, a.as_slice()),
+            ParameterValue::DoubleArray(a) => seq!(double_array_value, a.as_slice()),
+            ParameterValue::StringArray(a) => {
+                for (slot, s) in view.strings.iter_mut().zip(a.iter()) {
+                    *slot = rosidl_runtime_c__String {
+                        data: s.as_ptr() as *mut c_char,
+                        size: s.len(),
+                        capacity: s.len(),
+                    };
+                }
+                v.string_array_value.data = view.strings.as_mut_ptr();
+                v.string_array_value.size = a.len();
+                v.string_array_value.capacity = a.len();
+            }
         }
     }
 
-    /// Declare a string parameter on `node`.
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_declare_param_string_on(
-        executor: *mut nros_executor_t,
-        node: *const nros_node_t,
-        name: *const c_char,
-        value: *const c_char,
-    ) -> nros_ret_t {
-        if executor.is_null() {
-            return NROS_RET_INVALID_ARGUMENT;
-        }
-        let (Some(n), Some(v)) = (cstr_to_str(name), cstr_to_str(value)) else {
-            return NROS_RET_INVALID_ARGUMENT;
-        };
-        let Some(pv) = ParameterValue::from_string(v) else {
-            return NROS_RET_INVALID_ARGUMENT;
-        };
-        let exec = get_executor(&mut (*executor)._opaque);
-        let Some(id) = node_key(exec, executor, node) else {
-            return NROS_RET_INVALID_ARGUMENT;
-        };
-        nros::census_hooks::on_param_declare(n, &pv);
-        if exec.declare_parameter_on(id, n, pv) {
-            NROS_RET_OK
-        } else {
-            NROS_RET_ALREADY_EXISTS
+    fn new_view() -> ParamView {
+        ParamView {
+            msg: rcl_interfaces__msg__Parameter {
+                name: NULL_STR,
+                value: empty_value(),
+            },
+            text: [0; STR_BUF],
+            strings: [NULL_STR; nros_node::MAX_ARRAY_LEN],
         }
     }
 
-    /// Get a string parameter from the executor's PRIMARY node into a fixed
-    /// buffer.
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_get_param_string(
-        executor: *mut nros_executor_t,
-        name: *const c_char,
-        out_value: *mut c_char,
-        max_len: usize,
-    ) -> nros_ret_t {
-        if executor.is_null() || out_value.is_null() || max_len == 0 {
-            return NROS_RET_INVALID_ARGUMENT;
-        }
-        let Some(n) = cstr_to_str(name) else {
-            return NROS_RET_INVALID_ARGUMENT;
-        };
-        let inner = get_executor(&mut (*executor)._opaque);
-        match inner.get_parameter(n).and_then(|v| v.as_string()) {
-            Some(s) => str_to_cbuf(s, out_value, max_len),
-            None => NROS_RET_NOT_FOUND,
-        }
-    }
-
-    /// Get a string parameter from `node` into a fixed buffer.
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_get_param_string_on(
-        executor: *mut nros_executor_t,
-        node: *const nros_node_t,
-        name: *const c_char,
-        out_value: *mut c_char,
-        max_len: usize,
-    ) -> nros_ret_t {
-        if executor.is_null() || out_value.is_null() || max_len == 0 {
-            return NROS_RET_INVALID_ARGUMENT;
-        }
-        let Some(n) = cstr_to_str(name) else {
-            return NROS_RET_INVALID_ARGUMENT;
-        };
-        let inner = get_executor(&mut (*executor)._opaque);
-        let Some(id) = node_key(inner, executor, node) else {
-            return NROS_RET_INVALID_ARGUMENT;
-        };
-        match inner.get_parameter_on(id, n).and_then(|v| v.as_string()) {
-            Some(s) => str_to_cbuf(s, out_value, max_len),
-            None => NROS_RET_NOT_FOUND,
-        }
-    }
-
-    /// Set a string parameter on the executor's PRIMARY node.
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_set_param_string(
-        executor: *mut nros_executor_t,
-        name: *const c_char,
-        value: *const c_char,
-    ) -> nros_ret_t {
-        if executor.is_null() {
-            return NROS_RET_INVALID_ARGUMENT;
-        }
-        let (Some(n), Some(v)) = (cstr_to_str(name), cstr_to_str(value)) else {
-            return NROS_RET_INVALID_ARGUMENT;
-        };
-        let Some(pv) = ParameterValue::from_string(v) else {
-            return NROS_RET_INVALID_ARGUMENT;
-        };
-        let exec = get_executor(&mut (*executor)._opaque);
-        // phase-426 W2 — same routing as the scalar setters above.
-        set_result_to_ret(exec.set_parameter(n, pv))
-    }
-
-    /// Set a string parameter on `node`.
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_set_param_string_on(
-        executor: *mut nros_executor_t,
-        node: *const nros_node_t,
-        name: *const c_char,
-        value: *const c_char,
-    ) -> nros_ret_t {
-        if executor.is_null() {
-            return NROS_RET_INVALID_ARGUMENT;
-        }
-        let (Some(n), Some(v)) = (cstr_to_str(name), cstr_to_str(value)) else {
-            return NROS_RET_INVALID_ARGUMENT;
-        };
-        let Some(pv) = ParameterValue::from_string(v) else {
-            return NROS_RET_INVALID_ARGUMENT;
-        };
-        let exec = get_executor(&mut (*executor)._opaque);
-        let Some(id) = node_key(exec, executor, node) else {
-            return NROS_RET_INVALID_ARGUMENT;
-        };
-        set_result_to_ret(exec.set_parameter_on(id, n, pv))
-    }
-
-    /// Check if a parameter exists on the executor's PRIMARY node.
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_has_param(
-        executor: *mut nros_executor_t,
-        name: *const c_char,
+    /// The store's hook. `ctx.a` is the server handle, whose address is stable
+    /// from `rclc_executor_add_parameter_server` to `fini` (rclc's rule too).
+    fn trampoline(
+        _node: nros_node::ParameterNodeKey,
+        name: &str,
+        old: Option<&ParameterValue>,
+        new: Option<&ParameterValue>,
+        ctx: nros_node::OnSetContext,
     ) -> bool {
-        if executor.is_null() {
-            return false;
-        }
-        let Some(n) = cstr_to_str(name) else {
-            return false;
+        // SAFETY: `a` is the `rclc_parameter_server_t*` registered with this
+        // hook, and `fini` unregisters it before the handle can go away.
+        let server = unsafe { &mut *(ctx.a as *mut rclc_parameter_server_t) };
+        let Some(cb) = server.on_modification else {
+            return true;
         };
-        let inner = get_executor(&mut (*executor)._opaque);
-        inner.get_parameter(n).is_some()
+        let mut name_buf = [0u8; NAME_BUF];
+        let n = name.len().min(NAME_BUF - 1);
+        name_buf[..n].copy_from_slice(&name.as_bytes()[..n]);
+        let name_s = rosidl_runtime_c__String {
+            data: name_buf.as_mut_ptr().cast(),
+            size: n,
+            capacity: n + 1,
+        };
+        let mut old_view = new_view();
+        let mut new_view_ = new_view();
+        let old_ptr = match old {
+            Some(v) => {
+                fill(&mut old_view, &name_s, v);
+                &raw const old_view.msg
+            }
+            None => core::ptr::null(),
+        };
+        let new_ptr = match new {
+            Some(v) => {
+                fill(&mut new_view_, &name_s, v);
+                &raw const new_view_.msg
+            }
+            None => core::ptr::null(),
+        };
+        server.on_callback = true;
+        // SAFETY: the caller handed us a valid callback and a context that
+        // outlives the registration.
+        let accepted = unsafe { cb(old_ptr, new_ptr, server.context) };
+        server.on_callback = false;
+        accepted
     }
 
-    /// Check if a parameter exists on `node`.
+    // ------------------------------------------------------------------------
+    // Lifecycle
+    // ------------------------------------------------------------------------
+
+    /// rclc's defaults: events on, 4 parameters, no undeclared sets.
+    const DEFAULT_OPTIONS: rclc_parameter_options_t = rclc_parameter_options_t {
+        notify_changed_over_dds: true,
+        max_params: 4,
+        allow_undeclared_parameters: false,
+        low_mem_mode: false,
+    };
+
+    /// rclc's `rclc_parameter_server_init_default`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn rclc_parameter_server_init_default(
+        server: *mut rclc_parameter_server_t,
+        node: *mut nros_node_t,
+    ) -> nros_ret_t {
+        rclc_parameter_server_init_with_option(server, node, &DEFAULT_OPTIONS)
+    }
+
+    /// rclc's `rclc_parameter_server_init_with_option`.
     ///
-    /// A node this executor does not own answers `false`, never the primary
-    /// node's answer: "which node" is the question, and defaulting it is how a
-    /// sibling's parameter comes back as this one's.
+    /// RFC-0105 D3: `NROS_RET_NOT_INIT` (rcl's `RCL_RET_NOT_INIT`) when the
+    /// node is not bound to an executor — the store is the executor's, so
+    /// there is nothing to serve from yet. Bind it with
+    /// `nros_executor_node_init` first. `NROS_RET_FULL` when `max_params`
+    /// exceeds the store's build-time capacity (`NROS_MAX_PARAMETERS`).
     #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_has_param_on(
-        executor: *mut nros_executor_t,
-        node: *const nros_node_t,
-        name: *const c_char,
-    ) -> bool {
-        if executor.is_null() {
-            return false;
-        }
-        let Some(n) = cstr_to_str(name) else {
-            return false;
-        };
-        let inner = get_executor(&mut (*executor)._opaque);
-        let Some(id) = node_key(inner, executor, node) else {
-            return false;
-        };
-        inner.get_parameter_on(id, n).is_some()
-    }
-
-    /// May a `set` DECLARE a name the executor's PRIMARY node never declared?
-    ///
-    /// Upstream's `allow_undeclared_parameters` node option (issue 1151), off
-    /// by default. Without it a C image could not reach the policy at all: a
-    /// `nros_executor_set_param_*` on an undeclared name was a permanent
-    /// `NROS_RET_NOT_FOUND` with no opt-in, so the rule was reachable from Rust
-    /// and from the wire and not from here. Set it before
-    /// `nros_executor_register_parameter_services` starts answering.
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_allow_undeclared_parameters(
-        executor: *mut nros_executor_t,
-        allow: bool,
+    pub unsafe extern "C" fn rclc_parameter_server_init_with_option(
+        server: *mut rclc_parameter_server_t,
+        node: *mut nros_node_t,
+        options: *const rclc_parameter_options_t,
     ) -> nros_ret_t {
-        if executor.is_null() {
+        let (Some(s), Some(node), Some(opts)) = (server.as_mut(), node.as_ref(), options.as_ref())
+        else {
             return NROS_RET_INVALID_ARGUMENT;
+        };
+        if s.initialized {
+            return NROS_RET_ALREADY_EXISTS;
         }
+        if node.state != nros_node_state_t::NROS_NODE_STATE_INITIALIZED || !node.is_executor_bound()
+        {
+            return NROS_RET_NOT_INIT;
+        }
+        let executor = node.executor.cast_mut();
         let exec = get_executor(&mut (*executor)._opaque);
-        exec.allow_undeclared_parameters(allow);
-        NROS_RET_OK
-    }
-
-    /// [`nros_executor_allow_undeclared_parameters`] for `node`. Per node, as
-    /// upstream: switching it on for one node leaves its siblings refusing.
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_allow_undeclared_parameters_on(
-        executor: *mut nros_executor_t,
-        node: *const nros_node_t,
-        allow: bool,
-    ) -> nros_ret_t {
-        if executor.is_null() {
-            return NROS_RET_INVALID_ARGUMENT;
+        let id = NodeId::from_raw(node.node_id);
+        // Creates the store if this is its first use, and sets the node's
+        // undeclared-set policy.
+        exec.allow_undeclared_parameters_on(id, opts.allow_undeclared_parameters);
+        let Some(capacity) = exec.params().map(|p| p.capacity()) else {
+            return NROS_RET_FULL;
+        };
+        if opts.max_params > capacity {
+            return NROS_RET_FULL;
         }
-        let exec = get_executor(&mut (*executor)._opaque);
-        let Some(id) = node_key(exec, executor, node) else {
-            return NROS_RET_INVALID_ARGUMENT;
-        };
-        exec.allow_undeclared_parameters_on(id, allow);
-        NROS_RET_OK
-    }
-
-    // ========================================================================
-    // phase-417 W4.a — descriptors, undeclare, type query, listing and the
-    // accept/reject hook, ON THE STORE THE SERVICES READ
-    //
-    // rclc attaches metadata AFTER the declaration
-    // (`rclc_add_parameter_description`, `rclc_add_parameter_constraint_*`,
-    // `rclc_set_parameter_read_only`) and undeclares with
-    // `rclc_delete_parameter`. Ours are the same verbs against the executor's
-    // `nros_node::ParameterServer` — the object the six
-    // `rcl_interfaces/srv/*` servers read, so `ros2 param describe` answers
-    // with what a C caller attached instead of an empty descriptor.
-    //
-    // NOT on the legacy `nros_parameter_server_t`: that is the disjoint store
-    // issue 0793's C half is about, and adding a descriptor surface there
-    // would be a second answer to "what is this parameter's range". Whether
-    // that store is retired or re-pointed is W2.a's decision, and nothing here
-    // depends on it.
-    //
-    // ## How a descriptor crosses the FFI without allocating
-    //
-    // TEXT GOES IN as a borrowed `const char*` and COMES BACK in a
-    // caller-owned `char*` of stated capacity — the shape
-    // `nros_executor_get_param_string` already has. There is no descriptor
-    // STRUCT: a struct would either carry pointers into the store (a borrow
-    // with no lifetime a C caller can honour) or an inline buffer, which puts
-    // `NROS_MAX_PARAM_DESCRIPTION_LEN` into a public ABI and makes the knob a
-    // layout. Scalars are read through ordinary out-params. Nothing here
-    // allocates on either side of the boundary.
-
-    /// Attach a description and free-text constraints to a declared parameter
-    /// on `node`.
-    unsafe fn add_param_description_impl(
-        executor: *mut nros_executor_t,
-        id: NodeId,
-        name: *const c_char,
-        description: *const c_char,
-        additional_constraints: *const c_char,
-    ) -> nros_ret_t {
-        let Some(n) = cstr_to_str(name) else {
-            return NROS_RET_INVALID_ARGUMENT;
-        };
-        // Either text may be NULL, meaning "clear it": rclc's caller passes a
-        // string for both, and a C caller with only one has no other spelling.
-        let d = if description.is_null() {
-            Some("")
-        } else {
-            cstr_to_str(description)
-        };
-        let c = if additional_constraints.is_null() {
-            Some("")
-        } else {
-            cstr_to_str(additional_constraints)
-        };
-        let (Some(d), Some(c)) = (d, c) else {
-            return NROS_RET_INVALID_ARGUMENT;
-        };
-        let exec = get_executor(&mut (*executor)._opaque);
-        if exec.set_parameter_description_on(id, n, d, c) {
-            NROS_RET_OK
-        } else {
-            NROS_RET_NOT_FOUND
-        }
-    }
-
-    /// rclc's `rclc_add_parameter_description`, on the executor's PRIMARY node.
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_add_param_description(
-        executor: *mut nros_executor_t,
-        name: *const c_char,
-        description: *const c_char,
-        additional_constraints: *const c_char,
-    ) -> nros_ret_t {
-        if executor.is_null() {
-            return NROS_RET_INVALID_ARGUMENT;
-        }
-        add_param_description_impl(
+        // rclc's set service deletes on NOT_SET; rclcpp's refuses.
+        exec.delete_parameters_on_not_set_on(id, true);
+        *s = rclc_parameter_server_t {
             executor,
-            NodeId::PRIMARY,
-            name,
-            description,
-            additional_constraints,
+            max_params: opts.max_params,
+            on_modification: None,
+            context: core::ptr::null_mut(),
+            node_id: node.node_id,
+            initialized: true,
+            on_callback: false,
+            has_hook: false,
+            hook: 0,
+            notify_changed_over_dds: opts.notify_changed_over_dds,
+            low_mem_mode: opts.low_mem_mode,
+        };
+        NROS_RET_OK
+    }
+
+    /// rclc's `rclc_parameter_server_fini`: unregisters the callback and
+    /// deletes every parameter of the node, as rclc's server takes its list
+    /// with it.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn rclc_parameter_server_fini(
+        server: *mut rclc_parameter_server_t,
+        _node: *mut nros_node_t,
+    ) -> nros_ret_t {
+        let (exec, id) = tri!(target_mut(server));
+        let s = &mut *server;
+        if s.has_hook {
+            exec.remove_on_set_parameters_callback(nros_node::OnSetParameterHandle::from_raw(
+                s.hook,
+            ));
+        }
+        let mut name = [0u8; NAME_BUF];
+        loop {
+            let Some(first) = exec.list_parameters_on(id, "").next() else {
+                break;
+            };
+            let n = first.len().min(NAME_BUF - 1);
+            name[..n].copy_from_slice(&first.as_bytes()[..n]);
+            let Ok(owned) = core::str::from_utf8(&name[..n]) else {
+                break;
+            };
+            if !exec.undeclare_parameter_on(id, owned) {
+                break;
+            }
+        }
+        exec.delete_parameters_on_not_set_on(id, false);
+        s.initialized = false;
+        s.has_hook = false;
+        s.on_modification = None;
+        NROS_RET_OK
+    }
+
+    /// rclc's `rclc_executor_add_parameter_server`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn rclc_executor_add_parameter_server(
+        executor: *mut nros_executor_t,
+        server: *mut rclc_parameter_server_t,
+        on_modification: rclc_parameter_callback_t,
+    ) -> nros_ret_t {
+        rclc_executor_add_parameter_server_with_context(
+            executor,
+            server,
+            on_modification,
+            core::ptr::null_mut(),
         )
     }
 
-    /// [`nros_executor_add_param_description`] for `node`.
+    /// rclc's `rclc_executor_add_parameter_server_with_context`: registers the
+    /// six `rcl_interfaces` services and installs the callback.
+    /// `NROS_RET_INVALID_ARGUMENT` when `executor` is not the one the server's
+    /// node is bound to.
     #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_add_param_description_on(
+    pub unsafe extern "C" fn rclc_executor_add_parameter_server_with_context(
         executor: *mut nros_executor_t,
-        node: *const nros_node_t,
-        name: *const c_char,
-        description: *const c_char,
-        additional_constraints: *const c_char,
+        server: *mut rclc_parameter_server_t,
+        on_modification: rclc_parameter_callback_t,
+        context: *mut c_void,
     ) -> nros_ret_t {
-        if executor.is_null() {
+        let (exec, id) = tri!(target_mut(server));
+        let s = &mut *server;
+        if executor.is_null() || executor != s.executor {
             return NROS_RET_INVALID_ARGUMENT;
         }
-        let exec = get_executor(&mut (*executor)._opaque);
-        let Some(id) = node_key(exec, executor, node) else {
-            return NROS_RET_INVALID_ARGUMENT;
-        };
-        add_param_description_impl(executor, id, name, description, additional_constraints)
+        if exec.register_parameter_services().is_err() {
+            return NROS_RET_ERROR;
+        }
+        s.on_modification = on_modification;
+        s.context = context;
+        if on_modification.is_some() && !s.has_hook {
+            let ctx = nros_node::OnSetContext::new(server as usize);
+            match exec.add_on_set_parameters_callback_on(id, trampoline, ctx) {
+                Some(h) => {
+                    s.hook = h.raw();
+                    s.has_hook = true;
+                }
+                None => return NROS_RET_FULL,
+            }
+        }
+        NROS_RET_OK
     }
 
-    unsafe fn set_param_read_only_impl(
-        executor: *mut nros_executor_t,
-        id: NodeId,
-        name: *const c_char,
-        read_only: bool,
+    // ------------------------------------------------------------------------
+    // rclc's declare / delete / typed get and set
+    // ------------------------------------------------------------------------
+
+    /// rclc's `rclc_add_parameter`: declares `type`'s zero value. A launch
+    /// value already baked under this name with this type is kept.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn rclc_add_parameter(
+        server: *mut rclc_parameter_server_t,
+        parameter_name: *const c_char,
+        r#type: rclc_parameter_type_t,
     ) -> nros_ret_t {
-        let Some(n) = cstr_to_str(name) else {
+        let Some(v) = zero_of(r#type) else {
             return NROS_RET_INVALID_ARGUMENT;
         };
-        let exec = get_executor(&mut (*executor)._opaque);
-        if exec.set_parameter_read_only_on(id, n, read_only) {
-            NROS_RET_OK
-        } else {
-            NROS_RET_NOT_FOUND
-        }
+        declare(server, parameter_name, v)
     }
 
-    /// rclc's `rclc_set_parameter_read_only`, on the PRIMARY node. Every later
-    /// write — local or over `~/set_parameters` — is refused.
+    /// rclc's `rclc_delete_parameter`. Fires no callback, as rclc's local
+    /// delete does not.
     #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_set_param_read_only(
-        executor: *mut nros_executor_t,
-        name: *const c_char,
-        read_only: bool,
+    pub unsafe extern "C" fn rclc_delete_parameter(
+        server: *mut rclc_parameter_server_t,
+        parameter_name: *const c_char,
     ) -> nros_ret_t {
-        if executor.is_null() {
-            return NROS_RET_INVALID_ARGUMENT;
-        }
-        set_param_read_only_impl(executor, NodeId::PRIMARY, name, read_only)
-    }
-
-    /// [`nros_executor_set_param_read_only`] for `node`.
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_set_param_read_only_on(
-        executor: *mut nros_executor_t,
-        node: *const nros_node_t,
-        name: *const c_char,
-        read_only: bool,
-    ) -> nros_ret_t {
-        if executor.is_null() {
-            return NROS_RET_INVALID_ARGUMENT;
-        }
-        let exec = get_executor(&mut (*executor)._opaque);
-        let Some(id) = node_key(exec, executor, node) else {
-            return NROS_RET_INVALID_ARGUMENT;
-        };
-        set_param_read_only_impl(executor, id, name, read_only)
-    }
-
-    /// rclc's `rclc_add_parameter_constraint_integer`, on the PRIMARY node.
-    ///
-    /// `NROS_RET_INVALID_ARGUMENT` for an ill-formed range, or one the
-    /// parameter's CURRENT value does not satisfy — attaching either would
-    /// advertise a bound no `set` could have produced.
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_add_param_constraint_integer(
-        executor: *mut nros_executor_t,
-        name: *const c_char,
-        from_value: i64,
-        to_value: i64,
-        step: i64,
-    ) -> nros_ret_t {
-        if executor.is_null() {
-            return NROS_RET_INVALID_ARGUMENT;
-        }
-        let Some(n) = cstr_to_str(name) else {
-            return NROS_RET_INVALID_ARGUMENT;
-        };
-        let exec = get_executor(&mut (*executor)._opaque);
-        if exec.set_parameter_integer_range(n, from_value, to_value, step) {
-            NROS_RET_OK
-        } else {
-            NROS_RET_INVALID_ARGUMENT
-        }
-    }
-
-    /// [`nros_executor_add_param_constraint_integer`] for `node`.
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_add_param_constraint_integer_on(
-        executor: *mut nros_executor_t,
-        node: *const nros_node_t,
-        name: *const c_char,
-        from_value: i64,
-        to_value: i64,
-        step: i64,
-    ) -> nros_ret_t {
-        if executor.is_null() {
-            return NROS_RET_INVALID_ARGUMENT;
-        }
-        let Some(n) = cstr_to_str(name) else {
-            return NROS_RET_INVALID_ARGUMENT;
-        };
-        let exec = get_executor(&mut (*executor)._opaque);
-        let Some(id) = node_key(exec, executor, node) else {
-            return NROS_RET_INVALID_ARGUMENT;
-        };
-        if exec.set_parameter_integer_range_on(id, n, from_value, to_value, step) {
-            NROS_RET_OK
-        } else {
-            NROS_RET_INVALID_ARGUMENT
-        }
-    }
-
-    /// rclc's `rclc_add_parameter_constraint_double`, on the PRIMARY node.
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_add_param_constraint_double(
-        executor: *mut nros_executor_t,
-        name: *const c_char,
-        from_value: f64,
-        to_value: f64,
-        step: f64,
-    ) -> nros_ret_t {
-        if executor.is_null() {
-            return NROS_RET_INVALID_ARGUMENT;
-        }
-        let Some(n) = cstr_to_str(name) else {
-            return NROS_RET_INVALID_ARGUMENT;
-        };
-        let exec = get_executor(&mut (*executor)._opaque);
-        if exec.set_parameter_float_range(n, from_value, to_value, step) {
-            NROS_RET_OK
-        } else {
-            NROS_RET_INVALID_ARGUMENT
-        }
-    }
-
-    /// [`nros_executor_add_param_constraint_double`] for `node`.
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_add_param_constraint_double_on(
-        executor: *mut nros_executor_t,
-        node: *const nros_node_t,
-        name: *const c_char,
-        from_value: f64,
-        to_value: f64,
-        step: f64,
-    ) -> nros_ret_t {
-        if executor.is_null() {
-            return NROS_RET_INVALID_ARGUMENT;
-        }
-        let Some(n) = cstr_to_str(name) else {
-            return NROS_RET_INVALID_ARGUMENT;
-        };
-        let exec = get_executor(&mut (*executor)._opaque);
-        let Some(id) = node_key(exec, executor, node) else {
-            return NROS_RET_INVALID_ARGUMENT;
-        };
-        if exec.set_parameter_float_range_on(id, n, from_value, to_value, step) {
-            NROS_RET_OK
-        } else {
-            NROS_RET_INVALID_ARGUMENT
-        }
-    }
-
-    /// rclc's `rclc_delete_parameter` — undeclare, freeing the slot for a
-    /// later declaration. `NROS_RET_NOT_FOUND` if the PRIMARY node never
-    /// declared it.
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_delete_param(
-        executor: *mut nros_executor_t,
-        name: *const c_char,
-    ) -> nros_ret_t {
-        if executor.is_null() {
-            return NROS_RET_INVALID_ARGUMENT;
-        }
-        let Some(n) = cstr_to_str(name) else {
-            return NROS_RET_INVALID_ARGUMENT;
-        };
-        let exec = get_executor(&mut (*executor)._opaque);
-        if exec.undeclare_parameter(n) {
-            NROS_RET_OK
-        } else {
-            NROS_RET_NOT_FOUND
-        }
-    }
-
-    /// [`nros_executor_delete_param`] for `node`.
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_delete_param_on(
-        executor: *mut nros_executor_t,
-        node: *const nros_node_t,
-        name: *const c_char,
-    ) -> nros_ret_t {
-        if executor.is_null() {
-            return NROS_RET_INVALID_ARGUMENT;
-        }
-        let Some(n) = cstr_to_str(name) else {
-            return NROS_RET_INVALID_ARGUMENT;
-        };
-        let exec = get_executor(&mut (*executor)._opaque);
-        let Some(id) = node_key(exec, executor, node) else {
+        let (exec, id) = tri!(target_mut(server));
+        let Some(n) = name_str(parameter_name) else {
             return NROS_RET_INVALID_ARGUMENT;
         };
         if exec.undeclare_parameter_on(id, n) {
             NROS_RET_OK
         } else {
-            NROS_RET_NOT_FOUND
+            NROS_RET_ERROR
         }
     }
 
-    /// The declared TYPE of a parameter on the PRIMARY node, or
-    /// `NROS_PARAMETER_NOT_SET` when it is not declared.
-    ///
-    /// `nros_parameter_get_type` answers the same question about the LEGACY
-    /// store, which is not the one `ros2 param get` reads (issue 0793). This
-    /// is the executor-store answer, and the local form of what
-    /// `~/get_parameter_types` serves.
+    macro_rules! scalar {
+        ($set:ident, $get:ident, $declare:ident, $t:ty, $from:path, $as:ident) => {
+            /// rclc's typed local set: type, then the callback with
+            /// `(old, new)`, then the write. Read-only and range are not
+            /// checked, as rclc does not check them locally (RFC-0105 D7).
+            #[unsafe(no_mangle)]
+            pub unsafe extern "C" fn $set(
+                server: *mut rclc_parameter_server_t,
+                parameter_name: *const c_char,
+                value: $t,
+            ) -> nros_ret_t {
+                set_local(server, parameter_name, $from(value))
+            }
+
+            /// rclc's typed get: `RCL_RET_ERROR` when undeclared,
+            /// `RCL_RET_INVALID_ARGUMENT` when declared with another type.
+            #[unsafe(no_mangle)]
+            pub unsafe extern "C" fn $get(
+                server: *mut rclc_parameter_server_t,
+                parameter_name: *const c_char,
+                output: *mut $t,
+            ) -> nros_ret_t {
+                if output.is_null() {
+                    return NROS_RET_INVALID_ARGUMENT;
+                }
+                match tri!(get_value(server, parameter_name)).$as() {
+                    Some(v) => {
+                        *output = v;
+                        NROS_RET_OK
+                    }
+                    None => NROS_RET_INVALID_ARGUMENT,
+                }
+            }
+
+            /// Extension: declare with a default, keeping a launch value of
+            /// the same type (rclcpp's `declare_parameter`).
+            #[unsafe(no_mangle)]
+            pub unsafe extern "C" fn $declare(
+                server: *mut rclc_parameter_server_t,
+                parameter_name: *const c_char,
+                default_value: $t,
+            ) -> nros_ret_t {
+                declare(server, parameter_name, $from(default_value))
+            }
+        };
+    }
+    scalar!(
+        rclc_parameter_set_bool,
+        rclc_parameter_get_bool,
+        rclc_parameter_declare_bool,
+        bool,
+        ParameterValue::from_bool,
+        as_bool
+    );
+    scalar!(
+        rclc_parameter_set_int,
+        rclc_parameter_get_int,
+        rclc_parameter_declare_int,
+        i64,
+        ParameterValue::from_integer,
+        as_integer
+    );
+    scalar!(
+        rclc_parameter_set_double,
+        rclc_parameter_get_double,
+        rclc_parameter_declare_double,
+        f64,
+        ParameterValue::from_double,
+        as_double
+    );
+
+    // ------------------------------------------------------------------------
+    // Extensions: strings and arrays (rclc serves bool/int/double only)
+    // ------------------------------------------------------------------------
+
+    unsafe fn string_value(p: *const c_char) -> Option<ParameterValue> {
+        ParameterValue::from_string(cstr(p, nros_node::MAX_STRING_VALUE_LEN)?)
+    }
+
+    /// Extension: declare a string parameter. Over-length text is refused.
     #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_get_param_type(
-        executor: *mut nros_executor_t,
-        name: *const c_char,
-    ) -> nros_parameter_type_t {
-        if executor.is_null() {
-            return nros_parameter_type_t::NROS_PARAMETER_NOT_SET;
-        }
-        let Some(n) = cstr_to_str(name) else {
-            return nros_parameter_type_t::NROS_PARAMETER_NOT_SET;
-        };
-        let exec = get_executor(&mut (*executor)._opaque);
-        param_type_to_c(exec.get_parameter_type(n))
-    }
-
-    /// [`nros_executor_get_param_type`] for `node`.
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_get_param_type_on(
-        executor: *mut nros_executor_t,
-        node: *const nros_node_t,
-        name: *const c_char,
-    ) -> nros_parameter_type_t {
-        if executor.is_null() {
-            return nros_parameter_type_t::NROS_PARAMETER_NOT_SET;
-        }
-        let Some(n) = cstr_to_str(name) else {
-            return nros_parameter_type_t::NROS_PARAMETER_NOT_SET;
-        };
-        let exec = get_executor(&mut (*executor)._opaque);
-        let Some(id) = node_key(exec, executor, node) else {
-            return nros_parameter_type_t::NROS_PARAMETER_NOT_SET;
-        };
-        param_type_to_c(exec.get_parameter_type_on(id, n))
-    }
-
-    /// The store's type enum as the C one. ONE spelling — the legacy half of
-    /// this file has its own `From` between the same two vocabularies, and a
-    /// second hand-written `match` is how the two come to disagree about
-    /// `BYTE_ARRAY`.
-    fn param_type_to_c(t: Option<nros_node::ParameterType>) -> nros_parameter_type_t {
-        use nros_node::ParameterType as P;
-        match t {
-            None | Some(P::NotSet) => nros_parameter_type_t::NROS_PARAMETER_NOT_SET,
-            Some(P::Bool) => nros_parameter_type_t::NROS_PARAMETER_BOOL,
-            Some(P::Integer) => nros_parameter_type_t::NROS_PARAMETER_INTEGER,
-            Some(P::Double) => nros_parameter_type_t::NROS_PARAMETER_DOUBLE,
-            Some(P::String) => nros_parameter_type_t::NROS_PARAMETER_STRING,
-            Some(P::ByteArray) => nros_parameter_type_t::NROS_PARAMETER_BYTE_ARRAY,
-            Some(P::BoolArray) => nros_parameter_type_t::NROS_PARAMETER_BOOL_ARRAY,
-            Some(P::IntegerArray) => nros_parameter_type_t::NROS_PARAMETER_INTEGER_ARRAY,
-            Some(P::DoubleArray) => nros_parameter_type_t::NROS_PARAMETER_DOUBLE_ARRAY,
-            Some(P::StringArray) => nros_parameter_type_t::NROS_PARAMETER_STRING_ARRAY,
-        }
-    }
-
-    /// Read a declared parameter's descriptor into caller-owned storage.
-    ///
-    /// This is `describe_parameter` without a descriptor TYPE: every field is
-    /// an out-param, text lands in a buffer the caller placed, and a pointer
-    /// the caller does not want is NULL. A parameter declared with no
-    /// descriptor answers `NROS_RET_OK` with the defaults (empty text, not
-    /// read-only, no range), because that IS its description — the same answer
-    /// `~/describe_parameters` gives.
-    ///
-    /// `NROS_RET_FULL` when a text buffer was too small; the text is still
-    /// written, TRUNCATED and null-terminated, so a caller that wanted a
-    /// prefix gets one and a caller that did not can see it happened.
-    #[allow(clippy::too_many_arguments)]
-    unsafe fn describe_param_impl(
-        executor: *mut nros_executor_t,
-        id: NodeId,
-        name: *const c_char,
-        out_description: *mut c_char,
-        description_len: usize,
-        out_constraints: *mut c_char,
-        constraints_len: usize,
-        out_read_only: *mut bool,
-        out_type: *mut nros_parameter_type_t,
+    pub unsafe extern "C" fn rclc_parameter_declare_string(
+        server: *mut rclc_parameter_server_t,
+        parameter_name: *const c_char,
+        default_value: *const c_char,
     ) -> nros_ret_t {
-        let Some(n) = cstr_to_str(name) else {
+        match string_value(default_value) {
+            Some(v) => declare(server, parameter_name, v),
+            None => NROS_RET_INVALID_ARGUMENT,
+        }
+    }
+
+    /// Extension: rclc-style local set of a string parameter.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn rclc_parameter_set_string(
+        server: *mut rclc_parameter_server_t,
+        parameter_name: *const c_char,
+        value: *const c_char,
+    ) -> nros_ret_t {
+        match string_value(value) {
+            Some(v) => set_local(server, parameter_name, v),
+            None => NROS_RET_INVALID_ARGUMENT,
+        }
+    }
+
+    /// Extension: copy a string parameter into `output` (`capacity` bytes,
+    /// NUL included). `NROS_RET_FULL` when it does not fit; nothing is
+    /// written then.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn rclc_parameter_get_string(
+        server: *mut rclc_parameter_server_t,
+        parameter_name: *const c_char,
+        output: *mut c_char,
+        capacity: usize,
+    ) -> nros_ret_t {
+        if output.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        let Some(s) = tri!(get_value(server, parameter_name)).as_string() else {
             return NROS_RET_INVALID_ARGUMENT;
         };
-        let exec = get_executor(&mut (*executor)._opaque);
-        let Some(stored_type) = exec.get_parameter_type_on(id, n) else {
-            return NROS_RET_NOT_FOUND;
-        };
-        let desc = exec.describe_parameter_on(id, n);
-        let mut ret = NROS_RET_OK;
-        if !out_type.is_null() {
-            *out_type = param_type_to_c(Some(match desc {
-                Some(d) => d.param_type,
-                None => stored_type,
-            }));
-        }
-        if !out_read_only.is_null() {
-            *out_read_only = desc.map(|d| d.read_only).unwrap_or(false);
-        }
-        if !out_description.is_null()
-            && str_to_cbuf_truncating(
-                desc.map(|d| d.description.as_str()).unwrap_or(""),
-                out_description,
-                description_len,
-            ) == NROS_RET_FULL
-        {
-            ret = NROS_RET_FULL;
-        }
-        if !out_constraints.is_null()
-            && str_to_cbuf_truncating(
-                desc.map(|d| d.additional_constraints.as_str())
-                    .unwrap_or(""),
-                out_constraints,
-                constraints_len,
-            ) == NROS_RET_FULL
-        {
-            ret = NROS_RET_FULL;
-        }
-        ret
-    }
-
-    /// Copy `src` into a caller buffer, truncating at a UTF-8 boundary rather
-    /// than refusing.
-    ///
-    /// `str_to_cbuf` above refuses a short buffer, which is right for a VALUE
-    /// (a truncated string parameter is a plausible wrong answer). Descriptor
-    /// prose is the other case: a prefix of a description is still usable, and
-    /// `NROS_RET_FULL` says it is a prefix.
-    unsafe fn str_to_cbuf_truncating(src: &str, dst: *mut c_char, max_len: usize) -> nros_ret_t {
-        if max_len == 0 {
+        if s.len() + 1 > capacity {
             return NROS_RET_FULL;
         }
-        let bytes = src.as_bytes();
-        let mut cut = bytes.len().min(max_len - 1);
+        core::ptr::copy_nonoverlapping(s.as_ptr(), output.cast::<u8>(), s.len());
+        *output.add(s.len()) = 0;
+        NROS_RET_OK
+    }
+
+    macro_rules! array {
+        ($declare:ident, $set:ident, $get:ident, $t:ty, $from:path, $as:ident) => {
+            /// Extension: declare an array parameter (bounded by
+            /// `NROS_MAX_ARRAY_LEN`; longer is refused).
+            #[unsafe(no_mangle)]
+            pub unsafe extern "C" fn $declare(
+                server: *mut rclc_parameter_server_t,
+                parameter_name: *const c_char,
+                data: *const $t,
+                len: usize,
+            ) -> nros_ret_t {
+                match array_slice(data, len).and_then($from) {
+                    Some(v) => declare(server, parameter_name, v),
+                    None => NROS_RET_INVALID_ARGUMENT,
+                }
+            }
+
+            /// Extension: rclc-style local set of an array parameter.
+            #[unsafe(no_mangle)]
+            pub unsafe extern "C" fn $set(
+                server: *mut rclc_parameter_server_t,
+                parameter_name: *const c_char,
+                data: *const $t,
+                len: usize,
+            ) -> nros_ret_t {
+                match array_slice(data, len).and_then($from) {
+                    Some(v) => set_local(server, parameter_name, v),
+                    None => NROS_RET_INVALID_ARGUMENT,
+                }
+            }
+
+            /// Extension: copy an array parameter into `output` (`capacity`
+            /// elements). `*out_len` always receives the stored length;
+            /// `NROS_RET_FULL` when it does not fit, and nothing is copied.
+            #[unsafe(no_mangle)]
+            pub unsafe extern "C" fn $get(
+                server: *mut rclc_parameter_server_t,
+                parameter_name: *const c_char,
+                output: *mut $t,
+                capacity: usize,
+                out_len: *mut usize,
+            ) -> nros_ret_t {
+                let Some(a) = tri!(get_value(server, parameter_name)).$as() else {
+                    return NROS_RET_INVALID_ARGUMENT;
+                };
+                if !out_len.is_null() {
+                    *out_len = a.len();
+                }
+                if a.len() > capacity {
+                    return NROS_RET_FULL;
+                }
+                if !a.is_empty() {
+                    if output.is_null() {
+                        return NROS_RET_INVALID_ARGUMENT;
+                    }
+                    core::ptr::copy_nonoverlapping(a.as_ptr(), output, a.len());
+                }
+                NROS_RET_OK
+            }
+        };
+    }
+
+    unsafe fn array_slice<'a, T>(data: *const T, len: usize) -> Option<&'a [T]> {
+        if len == 0 {
+            return Some(&[]);
+        }
+        if data.is_null() {
+            return None;
+        }
+        Some(core::slice::from_raw_parts(data, len))
+    }
+
+    fn from_bytes(v: &[u8]) -> Option<ParameterValue> {
+        let mut out = ParameterValue::ByteArray(Default::default());
+        if let ParameterValue::ByteArray(a) = &mut out {
+            a.extend_from_slice(v).ok()?;
+        }
+        Some(out)
+    }
+
+    array!(
+        rclc_parameter_declare_bool_array,
+        rclc_parameter_set_bool_array,
+        rclc_parameter_get_bool_array,
+        bool,
+        ParameterValue::from_bool_array,
+        as_bool_array
+    );
+    array!(
+        rclc_parameter_declare_int_array,
+        rclc_parameter_set_int_array,
+        rclc_parameter_get_int_array,
+        i64,
+        ParameterValue::from_integer_array,
+        as_integer_array
+    );
+    array!(
+        rclc_parameter_declare_double_array,
+        rclc_parameter_set_double_array,
+        rclc_parameter_get_double_array,
+        f64,
+        ParameterValue::from_double_array,
+        as_double_array
+    );
+    array!(
+        rclc_parameter_declare_byte_array,
+        rclc_parameter_set_byte_array,
+        rclc_parameter_get_byte_array,
+        u8,
+        from_bytes,
+        as_byte_array
+    );
+
+    // ------------------------------------------------------------------------
+    // rclc's descriptor verbs
+    // ------------------------------------------------------------------------
+
+    /// rclc's `rclc_add_parameter_description`. NULL text clears it.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn rclc_add_parameter_description(
+        server: *mut rclc_parameter_server_t,
+        parameter_name: *const c_char,
+        parameter_description: *const c_char,
+        additional_constraints: *const c_char,
+    ) -> nros_ret_t {
+        let (exec, id) = tri!(target_mut(server));
+        let text = |p: *const c_char| {
+            if p.is_null() {
+                Some("")
+            } else {
+                cstr(p, usize::MAX >> 1)
+            }
+        };
+        let (Some(n), Some(d), Some(c)) = (
+            name_str(parameter_name),
+            text(parameter_description),
+            text(additional_constraints),
+        ) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        if exec.set_parameter_description_on(id, n, d, c) {
+            NROS_RET_OK
+        } else {
+            NROS_RET_ERROR
+        }
+    }
+
+    /// rclc's `rclc_set_parameter_read_only`. Refuses REMOTE writes only; the
+    /// owner's local sets still go through (RFC-0105 D7).
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn rclc_set_parameter_read_only(
+        server: *mut rclc_parameter_server_t,
+        parameter_name: *const c_char,
+        read_only: bool,
+    ) -> nros_ret_t {
+        let (exec, id) = tri!(target_mut(server));
+        let Some(n) = name_str(parameter_name) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        if exec.set_parameter_read_only_on(id, n, read_only) {
+            NROS_RET_OK
+        } else {
+            NROS_RET_ERROR
+        }
+    }
+
+    /// rclc's `rclc_add_parameter_constraint_integer`. Enforced on REMOTE
+    /// writes (rclc never enforces it; rclcpp does).
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn rclc_add_parameter_constraint_integer(
+        server: *mut rclc_parameter_server_t,
+        parameter_name: *const c_char,
+        from_value: i64,
+        to_value: i64,
+        step: u64,
+    ) -> nros_ret_t {
+        let (exec, id) = tri!(target_mut(server));
+        let Some(n) = name_str(parameter_name) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        let Ok(step) = i64::try_from(step) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        if exec.set_parameter_integer_range_on(id, n, from_value, to_value, step) {
+            NROS_RET_OK
+        } else {
+            NROS_RET_ERROR
+        }
+    }
+
+    /// rclc's `rclc_add_parameter_constraint_double`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn rclc_add_parameter_constraint_double(
+        server: *mut rclc_parameter_server_t,
+        parameter_name: *const c_char,
+        from_value: f64,
+        to_value: f64,
+        step: f64,
+    ) -> nros_ret_t {
+        let (exec, id) = tri!(target_mut(server));
+        let Some(n) = name_str(parameter_name) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        if exec.set_parameter_float_range_on(id, n, from_value, to_value, step) {
+            NROS_RET_OK
+        } else {
+            NROS_RET_ERROR
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // Extensions: read side
+    // ------------------------------------------------------------------------
+
+    /// Extension: the declared type, `RCLC_PARAMETER_NOT_SET` when undeclared.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn rclc_parameter_get_type(
+        server: *mut rclc_parameter_server_t,
+        parameter_name: *const c_char,
+    ) -> rclc_parameter_type_t {
+        let Ok((exec, id)) = target(server) else {
+            return T_NOT_SET;
+        };
+        match name_str(parameter_name) {
+            Some(n) => type_code(exec.get_parameter_type_on(id, n)),
+            None => T_NOT_SET,
+        }
+    }
+
+    /// Copy text into a caller buffer, truncating at a character boundary.
+    /// `NROS_RET_FULL` when it was truncated.
+    unsafe fn put_text(src: &str, dst: *mut c_char, cap: usize) -> nros_ret_t {
+        if dst.is_null() {
+            return NROS_RET_OK;
+        }
+        if cap == 0 {
+            return NROS_RET_FULL;
+        }
+        let mut cut = src.len().min(cap - 1);
         while !src.is_char_boundary(cut) {
             cut -= 1;
         }
-        for (i, &b) in bytes[..cut].iter().enumerate() {
-            *dst.add(i) = b as c_char;
-        }
+        core::ptr::copy_nonoverlapping(src.as_ptr(), dst.cast::<u8>(), cut);
         *dst.add(cut) = 0;
-        if cut < bytes.len() {
+        if cut < src.len() {
             NROS_RET_FULL
         } else {
             NROS_RET_OK
         }
     }
 
-    /// rclcpp's `describe_parameter`, on the PRIMARY node. See
-    /// [`describe_param_impl`] for what each out-param means and why there is
-    /// no descriptor struct.
+    /// Extension: read a parameter's descriptor into caller storage. Any out
+    /// pointer may be NULL. `NROS_RET_FULL` when a text was truncated (it is
+    /// still written).
     #[allow(clippy::too_many_arguments)]
     #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_describe_param(
-        executor: *mut nros_executor_t,
-        name: *const c_char,
+    pub unsafe extern "C" fn rclc_parameter_describe(
+        server: *mut rclc_parameter_server_t,
+        parameter_name: *const c_char,
         out_description: *mut c_char,
-        description_len: usize,
+        description_capacity: usize,
         out_constraints: *mut c_char,
-        constraints_len: usize,
+        constraints_capacity: usize,
         out_read_only: *mut bool,
-        out_type: *mut nros_parameter_type_t,
     ) -> nros_ret_t {
-        if executor.is_null() {
-            return NROS_RET_INVALID_ARGUMENT;
-        }
-        describe_param_impl(
-            executor,
-            NodeId::PRIMARY,
-            name,
-            out_description,
-            description_len,
-            out_constraints,
-            constraints_len,
-            out_read_only,
-            out_type,
-        )
-    }
-
-    /// [`nros_executor_describe_param`] for `node`.
-    #[allow(clippy::too_many_arguments)]
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_describe_param_on(
-        executor: *mut nros_executor_t,
-        node: *const nros_node_t,
-        name: *const c_char,
-        out_description: *mut c_char,
-        description_len: usize,
-        out_constraints: *mut c_char,
-        constraints_len: usize,
-        out_read_only: *mut bool,
-        out_type: *mut nros_parameter_type_t,
-    ) -> nros_ret_t {
-        if executor.is_null() {
-            return NROS_RET_INVALID_ARGUMENT;
-        }
-        let exec = get_executor(&mut (*executor)._opaque);
-        let Some(id) = node_key(exec, executor, node) else {
+        let (exec, id) = tri!(target(server));
+        let Some(n) = name_str(parameter_name) else {
             return NROS_RET_INVALID_ARGUMENT;
         };
-        describe_param_impl(
-            executor,
-            id,
-            name,
+        if exec.get_parameter_type_on(id, n).is_none() {
+            return NROS_RET_ERROR;
+        }
+        let desc = exec.describe_parameter_on(id, n);
+        if !out_read_only.is_null() {
+            *out_read_only = desc.is_some_and(|d| d.read_only);
+        }
+        let a = put_text(
+            desc.map_or("", |d| d.description.as_str()),
             out_description,
-            description_len,
+            description_capacity,
+        );
+        let b = put_text(
+            desc.map_or("", |d| d.additional_constraints.as_str()),
             out_constraints,
-            constraints_len,
-            out_read_only,
-            out_type,
-        )
+            constraints_capacity,
+        );
+        if a == NROS_RET_FULL || b == NROS_RET_FULL {
+            NROS_RET_FULL
+        } else {
+            NROS_RET_OK
+        }
     }
 
-    /// The range attached to a declared INTEGER parameter.
-    ///
-    /// `NROS_RET_NOT_FOUND` when the parameter is undeclared OR carries no
-    /// integer range — the two are the same answer to "what may I write", and
-    /// distinguishing them would need a second out-param nobody would read.
-    unsafe fn get_param_integer_range_impl(
-        executor: *mut nros_executor_t,
-        id: NodeId,
-        name: *const c_char,
+    /// Extension: the integer range attached to a parameter.
+    /// `RCL_RET_ERROR` when it has none.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn rclc_parameter_get_integer_range(
+        server: *mut rclc_parameter_server_t,
+        parameter_name: *const c_char,
         out_from: *mut i64,
         out_to: *mut i64,
         out_step: *mut i64,
     ) -> nros_ret_t {
-        let Some(n) = cstr_to_str(name) else {
+        let (exec, id) = tri!(target(server));
+        let Some(n) = name_str(parameter_name) else {
             return NROS_RET_INVALID_ARGUMENT;
         };
-        let exec = get_executor(&mut (*executor)._opaque);
         let Some(nros_node::ParameterRange::Integer(r)) =
             exec.describe_parameter_on(id, n).map(|d| d.range)
         else {
-            return NROS_RET_NOT_FOUND;
+            return NROS_RET_ERROR;
         };
-        if !out_from.is_null() {
-            *out_from = r.min;
-        }
-        if !out_to.is_null() {
-            *out_to = r.max;
-        }
-        if !out_step.is_null() {
-            *out_step = r.step;
+        for (p, v) in [(out_from, r.min), (out_to, r.max), (out_step, r.step)] {
+            if !p.is_null() {
+                *p = v;
+            }
         }
         NROS_RET_OK
     }
 
-    /// The integer range of a parameter on the PRIMARY node.
+    /// Extension: the floating-point range attached to a parameter.
     #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_get_param_integer_range(
-        executor: *mut nros_executor_t,
-        name: *const c_char,
-        out_from: *mut i64,
-        out_to: *mut i64,
-        out_step: *mut i64,
-    ) -> nros_ret_t {
-        if executor.is_null() {
-            return NROS_RET_INVALID_ARGUMENT;
-        }
-        get_param_integer_range_impl(executor, NodeId::PRIMARY, name, out_from, out_to, out_step)
-    }
-
-    /// [`nros_executor_get_param_integer_range`] for `node`.
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_get_param_integer_range_on(
-        executor: *mut nros_executor_t,
-        node: *const nros_node_t,
-        name: *const c_char,
-        out_from: *mut i64,
-        out_to: *mut i64,
-        out_step: *mut i64,
-    ) -> nros_ret_t {
-        if executor.is_null() {
-            return NROS_RET_INVALID_ARGUMENT;
-        }
-        let exec = get_executor(&mut (*executor)._opaque);
-        let Some(id) = node_key(exec, executor, node) else {
-            return NROS_RET_INVALID_ARGUMENT;
-        };
-        get_param_integer_range_impl(executor, id, name, out_from, out_to, out_step)
-    }
-
-    unsafe fn get_param_double_range_impl(
-        executor: *mut nros_executor_t,
-        id: NodeId,
-        name: *const c_char,
+    pub unsafe extern "C" fn rclc_parameter_get_double_range(
+        server: *mut rclc_parameter_server_t,
+        parameter_name: *const c_char,
         out_from: *mut f64,
         out_to: *mut f64,
         out_step: *mut f64,
     ) -> nros_ret_t {
-        let Some(n) = cstr_to_str(name) else {
+        let (exec, id) = tri!(target(server));
+        let Some(n) = name_str(parameter_name) else {
             return NROS_RET_INVALID_ARGUMENT;
         };
-        let exec = get_executor(&mut (*executor)._opaque);
         let Some(nros_node::ParameterRange::FloatingPoint(r)) =
             exec.describe_parameter_on(id, n).map(|d| d.range)
         else {
-            return NROS_RET_NOT_FOUND;
+            return NROS_RET_ERROR;
         };
-        if !out_from.is_null() {
-            *out_from = r.min;
-        }
-        if !out_to.is_null() {
-            *out_to = r.max;
-        }
-        if !out_step.is_null() {
-            *out_step = r.step;
+        for (p, v) in [(out_from, r.min), (out_to, r.max), (out_step, r.step)] {
+            if !p.is_null() {
+                *p = v;
+            }
         }
         NROS_RET_OK
     }
 
-    /// The floating-point range of a parameter on the PRIMARY node.
+    /// Extension: the node's parameter names starting with `prefix` (NULL =
+    /// all), into a caller rectangle of `max_names` rows × `name_stride`
+    /// bytes. `*out_count` always gets the TOTAL; `NROS_RET_FULL` when more
+    /// matched than fit or a name was truncated.
     #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_get_param_double_range(
-        executor: *mut nros_executor_t,
-        name: *const c_char,
-        out_from: *mut f64,
-        out_to: *mut f64,
-        out_step: *mut f64,
-    ) -> nros_ret_t {
-        if executor.is_null() {
-            return NROS_RET_INVALID_ARGUMENT;
-        }
-        get_param_double_range_impl(executor, NodeId::PRIMARY, name, out_from, out_to, out_step)
-    }
-
-    /// [`nros_executor_get_param_double_range`] for `node`.
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_get_param_double_range_on(
-        executor: *mut nros_executor_t,
-        node: *const nros_node_t,
-        name: *const c_char,
-        out_from: *mut f64,
-        out_to: *mut f64,
-        out_step: *mut f64,
-    ) -> nros_ret_t {
-        if executor.is_null() {
-            return NROS_RET_INVALID_ARGUMENT;
-        }
-        let exec = get_executor(&mut (*executor)._opaque);
-        let Some(id) = node_key(exec, executor, node) else {
-            return NROS_RET_INVALID_ARGUMENT;
-        };
-        get_param_double_range_impl(executor, id, name, out_from, out_to, out_step)
-    }
-
-    /// Enumerate a node's declared parameter names, prefix-filtered.
-    ///
-    /// Names land in a caller-owned rectangle — `max_names` rows of
-    /// `name_stride` bytes — because a list of strings cannot cross this
-    /// boundary any other way without an allocator. `*out_count` always
-    /// receives the TOTAL number that matched, whether or not they fit, so the
-    /// two-call "ask for the size, then read" shape works: pass `max_names`
-    /// 0 to count. `NROS_RET_FULL` when more matched than fit; the rows that
-    /// did fit are still written.
-    unsafe fn list_params_impl(
-        executor: *mut nros_executor_t,
-        id: NodeId,
+    pub unsafe extern "C" fn rclc_parameter_list(
+        server: *mut rclc_parameter_server_t,
         prefix: *const c_char,
         out_names: *mut c_char,
         name_stride: usize,
         max_names: usize,
         out_count: *mut usize,
     ) -> nros_ret_t {
+        let (exec, id) = tri!(target(server));
         let p = if prefix.is_null() {
-            Some("")
+            ""
         } else {
-            cstr_to_str(prefix)
-        };
-        let Some(p) = p else {
-            return NROS_RET_INVALID_ARGUMENT;
+            match name_str(prefix) {
+                Some(p) => p,
+                None => return NROS_RET_INVALID_ARGUMENT,
+            }
         };
         if max_names > 0 && (out_names.is_null() || name_stride == 0) {
             return NROS_RET_INVALID_ARGUMENT;
         }
-        let exec = get_executor(&mut (*executor)._opaque);
         let mut total = 0usize;
         let mut ret = NROS_RET_OK;
         for name in exec.list_parameters_on(id, p) {
-            if total < max_names {
-                let row = out_names.add(total * name_stride);
-                if str_to_cbuf_truncating(name, row, name_stride) == NROS_RET_FULL {
-                    ret = NROS_RET_FULL;
-                }
+            if total < max_names
+                && put_text(name, out_names.add(total * name_stride), name_stride) == NROS_RET_FULL
+            {
+                ret = NROS_RET_FULL;
             }
             total += 1;
         }
@@ -1994,568 +1186,5 @@ mod service_backed {
             *out_count = total;
         }
         ret
-    }
-
-    /// rclcpp's `list_parameters` / rcl's `~/list_parameters`, on the PRIMARY
-    /// node. See [`list_params_impl`] for the buffer shape.
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_list_params(
-        executor: *mut nros_executor_t,
-        prefix: *const c_char,
-        out_names: *mut c_char,
-        name_stride: usize,
-        max_names: usize,
-        out_count: *mut usize,
-    ) -> nros_ret_t {
-        if executor.is_null() {
-            return NROS_RET_INVALID_ARGUMENT;
-        }
-        list_params_impl(
-            executor,
-            NodeId::PRIMARY,
-            prefix,
-            out_names,
-            name_stride,
-            max_names,
-            out_count,
-        )
-    }
-
-    /// [`nros_executor_list_params`] for `node`.
-    #[allow(clippy::too_many_arguments)]
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_list_params_on(
-        executor: *mut nros_executor_t,
-        node: *const nros_node_t,
-        prefix: *const c_char,
-        out_names: *mut c_char,
-        name_stride: usize,
-        max_names: usize,
-        out_count: *mut usize,
-    ) -> nros_ret_t {
-        if executor.is_null() {
-            return NROS_RET_INVALID_ARGUMENT;
-        }
-        let exec = get_executor(&mut (*executor)._opaque);
-        let Some(id) = node_key(exec, executor, node) else {
-            return NROS_RET_INVALID_ARGUMENT;
-        };
-        list_params_impl(
-            executor,
-            id,
-            prefix,
-            out_names,
-            name_stride,
-            max_names,
-            out_count,
-        )
-    }
-
-    // ---- the accept/reject hook (phase-417 W4.a) ---------------------------
-    //
-    // `nros_parameter_server_set_callback` has had this contract since phase
-    // 84 — a `bool` return where `false` refuses — on the LEGACY store, which
-    // no service reads, so it fired for nobody (issue 0793). This is the same
-    // callback TYPE on the store `ros2 param set` reaches, so a C image gets
-    // rclcpp's `add_on_set_parameters_callback` under the vocabulary C
-    // already has. One typedef, two stores, no third spelling.
-
-    /// The Rust-side hook the store calls. It unpacks `OnSetContext` back into
-    /// the C function pointer and the user's `void*`, builds the
-    /// `nros_parameter_t` the C callback expects on the STACK, and calls it.
-    ///
-    /// Building the value here rather than keeping one in a side table is what
-    /// makes this allocation-free: the proposed value lives in `apply`'s frame
-    /// for exactly as long as the synchronous callback runs.
-    fn c_on_set_trampoline(
-        _node: nros_node::ParameterNodeKey,
-        name: &str,
-        value: &nros_node::ParameterValue,
-        ctx: nros_node::OnSetContext,
-    ) -> bool {
-        if ctx.b == 0 {
-            return true;
-        }
-        // SAFETY: `b` is the non-null function pointer the caller handed to
-        // `nros_executor_set_param_callback`, cast to `usize` on the way in
-        // (the NULL case never reaches here — `ctx.b == 0` returned above).
-        // Nothing else ever writes this slot.
-        type RawCb =
-            unsafe extern "C" fn(*const c_char, *const nros_parameter_t, *mut c_void) -> bool;
-        let cb: RawCb = unsafe { core::mem::transmute::<usize, RawCb>(ctx.b) };
-        let mut param = nros_parameter_t::default();
-        let bytes = name.as_bytes();
-        let n = bytes.len().min(NROS_MAX_PARAM_NAME_LEN - 1);
-        param.name[..n].copy_from_slice(&bytes[..n]);
-        param.r#type = param_type_to_c(Some(value.param_type()));
-        match value {
-            nros_node::ParameterValue::Bool(b) => param.value.bool_value = *b,
-            nros_node::ParameterValue::Integer(i) => param.value.integer_value = *i,
-            nros_node::ParameterValue::Double(d) => param.value.double_value = *d,
-            nros_node::ParameterValue::String(s) => {
-                let sb = s.as_bytes();
-                let n = sb.len().min(NROS_MAX_PARAM_STRING_LEN - 1);
-                // SAFETY: writing the union's largest inline member, which is
-                // the one `type_` now names.
-                unsafe {
-                    param.value.string_value[..n].copy_from_slice(&sb[..n]);
-                }
-            }
-            // Array values reach the callback as their TYPE with an empty
-            // `array_value`: the legacy struct borrows caller memory
-            // (`{data, len}`) and the proposed value's elements live in a
-            // `heapless::Vec` the store has not accepted yet, so handing out a
-            // pointer to it would publish a borrow whose lifetime this ABI
-            // cannot state. A hook that needs the elements reads them back
-            // after the set.
-            _ => {}
-        }
-        // SAFETY: the caller promised a valid function pointer and a context
-        // that outlives the registration.
-        unsafe {
-            cb(
-                param.name.as_ptr().cast::<c_char>(),
-                &raw const param,
-                ctx.a as *mut c_void,
-            )
-        }
-    }
-
-    /// Register an accept/reject hook for writes to the PRIMARY node —
-    /// rclcpp's `add_on_set_parameters_callback`, on the store the six
-    /// `rcl_interfaces` service servers read.
-    ///
-    /// `NROS_RET_FULL` when the store's `MAX_ON_SET_CALLBACKS` slots are all
-    /// taken — a refusal, never a silent eviction. `out_handle` receives the
-    /// token [`nros_executor_remove_param_callback`] takes; NULL if the caller
-    /// never intends to unregister.
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_set_param_callback(
-        executor: *mut nros_executor_t,
-        callback: nros_parameter_callback_t,
-        context: *mut c_void,
-        out_handle: *mut u16,
-    ) -> nros_ret_t {
-        set_param_callback_impl(
-            executor,
-            NodeId::PRIMARY,
-            callback,
-            context,
-            out_handle,
-            false,
-        )
-    }
-
-    /// [`nros_executor_set_param_callback`] for `node`.
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_set_param_callback_on(
-        executor: *mut nros_executor_t,
-        node: *const nros_node_t,
-        callback: nros_parameter_callback_t,
-        context: *mut c_void,
-        out_handle: *mut u16,
-    ) -> nros_ret_t {
-        if executor.is_null() {
-            return NROS_RET_INVALID_ARGUMENT;
-        }
-        let exec = get_executor(&mut (*executor)._opaque);
-        let Some(id) = node_key(exec, executor, node) else {
-            return NROS_RET_INVALID_ARGUMENT;
-        };
-        set_param_callback_impl(executor, id, callback, context, out_handle, true)
-    }
-
-    unsafe fn set_param_callback_impl(
-        executor: *mut nros_executor_t,
-        id: NodeId,
-        callback: nros_parameter_callback_t,
-        context: *mut c_void,
-        out_handle: *mut u16,
-        _explicit_node: bool,
-    ) -> nros_ret_t {
-        if executor.is_null() {
-            return NROS_RET_INVALID_ARGUMENT;
-        }
-        let cb_word = callback.map(|f| f as usize).unwrap_or(0);
-        if cb_word == 0 {
-            return NROS_RET_INVALID_ARGUMENT;
-        }
-        let exec = get_executor(&mut (*executor)._opaque);
-        let ctx = nros_node::OnSetContext::pair(context as usize, cb_word);
-        match exec.add_on_set_parameters_callback_on(id, c_on_set_trampoline, ctx) {
-            Some(handle) => {
-                if !out_handle.is_null() {
-                    *out_handle = handle.raw();
-                }
-                NROS_RET_OK
-            }
-            None => NROS_RET_FULL,
-        }
-    }
-
-    /// Unregister a hook — rclcpp's `remove_on_set_parameters_callback`.
-    /// `NROS_RET_NOT_FOUND` when the handle names no registration.
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn nros_executor_remove_param_callback(
-        executor: *mut nros_executor_t,
-        handle: u16,
-    ) -> nros_ret_t {
-        if executor.is_null() {
-            return NROS_RET_INVALID_ARGUMENT;
-        }
-        let exec = get_executor(&mut (*executor)._opaque);
-        if exec.remove_on_set_parameters_callback(nros_node::OnSetParameterHandle::from_raw(handle))
-        {
-            NROS_RET_OK
-        } else {
-            NROS_RET_NOT_FOUND
-        }
-    }
-}
-
-#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
-pub use service_backed::*;
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use core::ffi::c_char;
-
-    /// Helper to create an initialized parameter server with storage.
-    unsafe fn setup_server(server: &mut nros_parameter_server_t, storage: &mut [nros_parameter_t]) {
-        *server = nros_parameter_server_get_zero_initialized();
-        let ret = nros_parameter_server_init(server, storage.as_mut_ptr(), storage.len());
-        assert_eq!(ret, NROS_RET_OK);
-    }
-
-    #[test]
-    fn test_declare_and_get_integer_array() {
-        let mut server = nros_parameter_server_t::default();
-        let mut storage = [nros_parameter_t::default(); 4];
-        unsafe {
-            setup_server(&mut server, &mut storage);
-
-            let values: [i64; 3] = [10, 20, 30];
-            let name = c"int_arr".as_ptr();
-            let ret = nros_parameter_declare_integer_array(
-                &mut server,
-                name,
-                values.as_ptr(),
-                values.len(),
-            );
-            assert_eq!(ret, NROS_RET_OK);
-
-            let mut data: *const i64 = ptr::null();
-            let mut len: usize = 0;
-            let ret = nros_parameter_get_integer_array(&server, name, &mut data, &mut len);
-            assert_eq!(ret, NROS_RET_OK);
-            assert_eq!(len, 3);
-            assert_eq!(*data, 10);
-            assert_eq!(*data.add(1), 20);
-            assert_eq!(*data.add(2), 30);
-        }
-    }
-
-    #[test]
-    fn test_declare_and_get_double_array() {
-        let mut server = nros_parameter_server_t::default();
-        let mut storage = [nros_parameter_t::default(); 4];
-        unsafe {
-            setup_server(&mut server, &mut storage);
-
-            let values: [f64; 2] = [1.5, 2.5];
-            let name = c"dbl_arr".as_ptr();
-            let ret = nros_parameter_declare_double_array(
-                &mut server,
-                name,
-                values.as_ptr(),
-                values.len(),
-            );
-            assert_eq!(ret, NROS_RET_OK);
-
-            let mut data: *const f64 = ptr::null();
-            let mut len: usize = 0;
-            let ret = nros_parameter_get_double_array(&server, name, &mut data, &mut len);
-            assert_eq!(ret, NROS_RET_OK);
-            assert_eq!(len, 2);
-            assert_eq!(*data, 1.5);
-            assert_eq!(*data.add(1), 2.5);
-        }
-    }
-
-    #[test]
-    fn test_declare_and_get_bool_array() {
-        let mut server = nros_parameter_server_t::default();
-        let mut storage = [nros_parameter_t::default(); 4];
-        unsafe {
-            setup_server(&mut server, &mut storage);
-
-            let values: [bool; 3] = [true, false, true];
-            let name = c"bool_arr".as_ptr();
-            let ret =
-                nros_parameter_declare_bool_array(&mut server, name, values.as_ptr(), values.len());
-            assert_eq!(ret, NROS_RET_OK);
-
-            let mut data: *const bool = ptr::null();
-            let mut len: usize = 0;
-            let ret = nros_parameter_get_bool_array(&server, name, &mut data, &mut len);
-            assert_eq!(ret, NROS_RET_OK);
-            assert_eq!(len, 3);
-            assert!(*data);
-            assert!(!*data.add(1));
-            assert!(*data.add(2));
-        }
-    }
-
-    #[test]
-    fn test_declare_and_get_byte_array() {
-        let mut server = nros_parameter_server_t::default();
-        let mut storage = [nros_parameter_t::default(); 4];
-        unsafe {
-            setup_server(&mut server, &mut storage);
-
-            let values: [u8; 4] = [0xDE, 0xAD, 0xBE, 0xEF];
-            let name = c"byte_arr".as_ptr();
-            let ret =
-                nros_parameter_declare_byte_array(&mut server, name, values.as_ptr(), values.len());
-            assert_eq!(ret, NROS_RET_OK);
-
-            let mut data: *const u8 = ptr::null();
-            let mut len: usize = 0;
-            let ret = nros_parameter_get_byte_array(&server, name, &mut data, &mut len);
-            assert_eq!(ret, NROS_RET_OK);
-            assert_eq!(len, 4);
-            assert_eq!(
-                core::slice::from_raw_parts(data, len),
-                &[0xDE, 0xAD, 0xBE, 0xEF]
-            );
-        }
-    }
-
-    #[test]
-    fn test_declare_and_get_string_array() {
-        let mut server = nros_parameter_server_t::default();
-        let mut storage = [nros_parameter_t::default(); 4];
-        unsafe {
-            setup_server(&mut server, &mut storage);
-
-            let s1 = c"hello".as_ptr();
-            let s2 = c"world".as_ptr();
-            let strings: [*const c_char; 2] = [s1, s2];
-            let name = c"str_arr".as_ptr();
-            let ret = nros_parameter_declare_string_array(
-                &mut server,
-                name,
-                strings.as_ptr(),
-                strings.len(),
-            );
-            assert_eq!(ret, NROS_RET_OK);
-
-            let mut data: *const *const c_char = ptr::null();
-            let mut len: usize = 0;
-            let ret = nros_parameter_get_string_array(&server, name, &mut data, &mut len);
-            assert_eq!(ret, NROS_RET_OK);
-            assert_eq!(len, 2);
-            assert_eq!(*data, s1);
-            assert_eq!(*data.add(1), s2);
-        }
-    }
-
-    #[test]
-    fn test_set_integer_array() {
-        let mut server = nros_parameter_server_t::default();
-        let mut storage = [nros_parameter_t::default(); 4];
-        unsafe {
-            setup_server(&mut server, &mut storage);
-
-            let initial: [i64; 2] = [1, 2];
-            let name = c"int_arr".as_ptr();
-            let ret = nros_parameter_declare_integer_array(
-                &mut server,
-                name,
-                initial.as_ptr(),
-                initial.len(),
-            );
-            assert_eq!(ret, NROS_RET_OK);
-
-            let updated: [i64; 3] = [10, 20, 30];
-            let ret = nros_parameter_set_integer_array(
-                &mut server,
-                name,
-                updated.as_ptr(),
-                updated.len(),
-            );
-            assert_eq!(ret, NROS_RET_OK);
-
-            let mut data: *const i64 = ptr::null();
-            let mut len: usize = 0;
-            let ret = nros_parameter_get_integer_array(&server, name, &mut data, &mut len);
-            assert_eq!(ret, NROS_RET_OK);
-            assert_eq!(len, 3);
-            assert_eq!(*data, 10);
-        }
-    }
-
-    #[test]
-    fn test_empty_array() {
-        let mut server = nros_parameter_server_t::default();
-        let mut storage = [nros_parameter_t::default(); 4];
-        unsafe {
-            setup_server(&mut server, &mut storage);
-
-            let name = c"empty".as_ptr();
-            let ret = nros_parameter_declare_integer_array(&mut server, name, ptr::null(), 0);
-            assert_eq!(ret, NROS_RET_OK);
-
-            let mut data: *const i64 = ptr::null();
-            let mut len: usize = 99;
-            let ret = nros_parameter_get_integer_array(&server, name, &mut data, &mut len);
-            assert_eq!(ret, NROS_RET_OK);
-            assert_eq!(len, 0);
-        }
-    }
-
-    #[test]
-    fn test_null_data_nonzero_len_rejected() {
-        let mut server = nros_parameter_server_t::default();
-        let mut storage = [nros_parameter_t::default(); 4];
-        unsafe {
-            setup_server(&mut server, &mut storage);
-
-            let name = c"bad".as_ptr();
-            let ret = nros_parameter_declare_integer_array(&mut server, name, ptr::null(), 5);
-            assert_eq!(ret, NROS_RET_INVALID_ARGUMENT);
-
-            // Also test set path
-            let initial: [i64; 1] = [1];
-            let ret = nros_parameter_declare_integer_array(
-                &mut server,
-                name,
-                initial.as_ptr(),
-                initial.len(),
-            );
-            assert_eq!(ret, NROS_RET_OK);
-
-            let ret = nros_parameter_set_integer_array(&mut server, name, ptr::null(), 3);
-            assert_eq!(ret, NROS_RET_INVALID_ARGUMENT);
-        }
-    }
-
-    #[test]
-    fn test_type_mismatch_array_get() {
-        let mut server = nros_parameter_server_t::default();
-        let mut storage = [nros_parameter_t::default(); 4];
-        unsafe {
-            setup_server(&mut server, &mut storage);
-
-            let values: [i64; 2] = [1, 2];
-            let name = c"int_arr".as_ptr();
-            let ret = nros_parameter_declare_integer_array(
-                &mut server,
-                name,
-                values.as_ptr(),
-                values.len(),
-            );
-            assert_eq!(ret, NROS_RET_OK);
-
-            // Try to get as double array
-            let mut data: *const f64 = ptr::null();
-            let mut len: usize = 0;
-            let ret = nros_parameter_get_double_array(&server, name, &mut data, &mut len);
-            assert_eq!(ret, NROS_RET_INVALID_ARGUMENT);
-        }
-    }
-
-    #[test]
-    fn test_type_mismatch_set_scalar_on_array() {
-        let mut server = nros_parameter_server_t::default();
-        let mut storage = [nros_parameter_t::default(); 4];
-        unsafe {
-            setup_server(&mut server, &mut storage);
-
-            let values: [i64; 2] = [1, 2];
-            let name = c"int_arr".as_ptr();
-            let ret = nros_parameter_declare_integer_array(
-                &mut server,
-                name,
-                values.as_ptr(),
-                values.len(),
-            );
-            assert_eq!(ret, NROS_RET_OK);
-
-            // Try to set as scalar integer
-            let ret = nros_parameter_set_integer(&mut server, name, 42);
-            assert_eq!(ret, NROS_RET_INVALID_ARGUMENT);
-        }
-    }
-
-    #[test]
-    #[allow(clippy::approx_constant)]
-    fn test_get_type_returns_array_type() {
-        let mut server = nros_parameter_server_t::default();
-        let mut storage = [nros_parameter_t::default(); 4];
-        unsafe {
-            setup_server(&mut server, &mut storage);
-
-            let values: [f64; 1] = [3.14];
-            let name = c"dbl_arr".as_ptr();
-            let ret = nros_parameter_declare_double_array(
-                &mut server,
-                name,
-                values.as_ptr(),
-                values.len(),
-            );
-            assert_eq!(ret, NROS_RET_OK);
-
-            let ptype = nros_parameter_get_type(&server, name);
-            assert_eq!(ptype, nros_parameter_type_t::NROS_PARAMETER_DOUBLE_ARRAY);
-        }
-    }
-
-    #[test]
-    fn test_callback_with_array_param() {
-        static mut CALLBACK_CALLED: bool = false;
-
-        unsafe extern "C" fn on_change(
-            _name: *const c_char,
-            _param: *const nros_parameter_t,
-            _context: *mut c_void,
-        ) -> bool {
-            unsafe {
-                CALLBACK_CALLED = true;
-            }
-            true
-        }
-
-        let mut server = nros_parameter_server_t::default();
-        let mut storage = [nros_parameter_t::default(); 4];
-        unsafe {
-            setup_server(&mut server, &mut storage);
-
-            let ret =
-                nros_parameter_server_set_callback(&mut server, Some(on_change), ptr::null_mut());
-            assert_eq!(ret, NROS_RET_OK);
-
-            let values: [i64; 2] = [1, 2];
-            let name = c"int_arr".as_ptr();
-            let ret = nros_parameter_declare_integer_array(
-                &mut server,
-                name,
-                values.as_ptr(),
-                values.len(),
-            );
-            assert_eq!(ret, NROS_RET_OK);
-
-            CALLBACK_CALLED = false;
-            let updated: [i64; 1] = [99];
-            let ret = nros_parameter_set_integer_array(
-                &mut server,
-                name,
-                updated.as_ptr(),
-                updated.len(),
-            );
-            assert_eq!(ret, NROS_RET_OK);
-            assert!(CALLBACK_CALLED);
-        }
     }
 }

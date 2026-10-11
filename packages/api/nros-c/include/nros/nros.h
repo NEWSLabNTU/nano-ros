@@ -24,7 +24,6 @@
 #include "nros/guard_condition.h"
 #include "nros/lifecycle.h"
 #include "nros/action.h"
-#include "nros/parameter.h"
 #include "nros/node_pkg.h"
 #include "nros/cdr.h"
 /* issue 0795 — the RFC-0033 zero-copy reader (`nros_cdr_borrow_*`,
