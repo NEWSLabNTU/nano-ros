@@ -332,6 +332,7 @@ zenohd-flag-invocations
 zenohd-resolution-parity
 zenohd-router-skips
 zenohd-spawn-sites
+zephyr-kconfig-knobs
 zephyr-knob-agreement
 zephyr-module-allowlist
 zephyr-workspace-resolvers

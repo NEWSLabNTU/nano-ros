@@ -370,6 +370,16 @@ kconfig-knob-forwarding:
 knob-registry:
     @python3 scripts/gen-knob-registry.py --check
 
+# phase-484 W5a (RFC-0103 D2b) — the module `zephyr/Kconfig`'s knob section is
+# RENDERED from the same registry (`type`/`prompt`/`kconfig_if`/`kconfig_attrs`/
+# `help` on each row), so a knob's Kconfig definition has one home. This holds
+# the committed section equal to the render and refuses a registry knob's symbol
+# defined anywhere else in the file. Its negative controls (an edited section, a
+# second definition, a stray one, a missing marker) run on every call.
+[private]
+zephyr-kconfig-knobs:
+    @python3 scripts/gen-knob-registry.py --check-kconfig
+
 [group("checks")]
 kconfig-overridden-values:
     @python3 scripts/check-kconfig-overridden-values.py
