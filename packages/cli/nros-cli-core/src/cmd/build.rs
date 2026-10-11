@@ -2948,6 +2948,15 @@ fn generate_entry(
                 plan.resolved_tiers.as_ref(),
                 |f| crate::orchestration::facade::crate_declares_feature(&crate_dir, f),
             ));
+        // Issue 1305 — the entry surface this board key's framework drives
+        // (`board-entry` / `rtic` on the mps2 bare-metal crate), by the same
+        // derivation a single-package leaf's selection package uses.
+        facts
+            .board_features
+            .extend(crate::builder::entry::entry_surface_features(
+                &candidates,
+                |f| crate::orchestration::facade::crate_declares_feature(&crate_dir, f),
+            ));
         facts.board_features.sort();
         facts.board_features.dedup();
     }

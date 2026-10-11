@@ -625,6 +625,29 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             (resolved, Some(deploy), leaf)
         }
     };
+    // Issue 1305 / RFC-0098 D6 — a single-package leaf that names no board
+    // crate but depends on its generated `<pkg>_nros_selection` package
+    // reaches the board THROUGH that package (which re-exports it). Only when
+    // the board was resolved from the image (`board = X` is the user's own
+    // path) and only when the board crate is not a direct dependency, so a
+    // generated workspace entry — which names both — is unchanged.
+    let selection: Option<Ident> = if args.board.is_none() {
+        leaf_selection_crate(&manifest_dir, &board_path)
+    } else {
+        None
+    };
+    let board_path = match &selection {
+        Some(sel) => reroot_through(&board_path, sel),
+        None => board_path,
+    };
+    // The board crate's root path (`::nros_board_x` or `::<sel>::nros_board_x`),
+    // for items the entry reaches through the board's own re-exports.
+    let board_crate_root: proc_macro2::TokenStream = {
+        let mut p = board_path.clone();
+        p.segments.pop();
+        p.segments.pop_punct();
+        quote! { #p }
+    };
     let framework = match deploy_for_framework.as_deref() {
         Some(d) => framework_for(d),
         None => Framework::OwnedSpin,
@@ -1608,16 +1631,21 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
 
     let none_entry_ts: proc_macro2::TokenStream =
         if is_baremetal_cortexm_deploy(deploy_for_framework.as_deref()) {
+            // Issue 1305 — `entry` and `cortex_m` through the BOARD crate's
+            // re-exports, not as crates of the entry's own: a leaf that reaches
+            // its board through its selection package names neither
+            // `cortex-m-rt` nor `cortex-m`, and an entry that does name them
+            // gets the same crates either way (the board depends on both).
             quote! {
                 #[cfg(target_os = "none")]
-                #[::cortex_m_rt::entry]
+                #[#board_crate_root::entry]
                 fn __nros_cortex_m_reset() -> ! {
                     // `run_with_deploy` loops forever on success (firmware
                     // lifetime) and exits via the board on spin error; reaching
                     // here means `setup()` returned `Err` before the spin loop.
                     let _ = __nros_entry_run();
                     loop {
-                        ::cortex_m::asm::wfi();
+                        #board_crate_root::cortex_m::asm::wfi();
                     }
                 }
             }
@@ -2325,7 +2353,11 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             })?;
             let rtic_device = rtic_spec.device_path;
             let rtic_dispatchers = rtic_spec.dispatchers;
-            let rtic_consumer = rtic_spec.dispatch_consumer_path;
+            // Issue 1305 — through the selection package when the board is.
+            let rtic_consumer = match &selection {
+                Some(sel) => reroot_through(&rtic_spec.dispatch_consumer_path, sel),
+                None => rtic_spec.dispatch_consumer_path,
+            };
             // Phase 289 (#178) — optional periodic-tick hardware task. The
             // `binds` route wires the handler through RTIC's real vector
             // table (the same mechanism the dispatchers use) — a board-crate
@@ -2917,6 +2949,50 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     };
 
     Ok(expanded)
+}
+
+/// Issue 1305 / RFC-0098 D6 — the selection package a single-package leaf
+/// reaches its board through, if it does.
+///
+/// `Some(<pkg>_nros_selection)` when the leaf manifest (any dependency table,
+/// target-scoped ones included) names that package and does NOT name the
+/// board crate `board_path` starts with. A generated workspace entry names
+/// both — its facade only carries features — so it stays on the direct path;
+/// so does every leaf that still names its board crate by hand.
+fn leaf_selection_crate(manifest_dir: &Path, board_path: &SynPath) -> Option<Ident> {
+    board_path.leading_colon?;
+    let board_crate = board_path.segments.first()?.ident.to_string();
+    let pkg = entry_env("CARGO_PKG_NAME")?.into_string().ok()?;
+    let raw = std::fs::read_to_string(manifest_dir.join("Cargo.toml")).ok()?;
+    let doc: toml::Table = toml::from_str(&raw).ok()?;
+    let mut keys: Vec<String> = Vec::new();
+    let scopes = std::iter::once(&doc).chain(
+        doc.get("target")
+            .and_then(|t| t.as_table())
+            .into_iter()
+            .flat_map(|t| t.values().filter_map(|v| v.as_table())),
+    );
+    for scope in scopes {
+        if let Some(deps) = scope.get("dependencies").and_then(|d| d.as_table()) {
+            keys.extend(deps.keys().map(|k| k.replace('-', "_")));
+        }
+    }
+    if keys.iter().any(|k| *k == board_crate) {
+        return None;
+    }
+    let sel = nros_orchestration_ir::leaf_system::selection_crate_name(&pkg);
+    keys.iter()
+        .any(|k| *k == sel)
+        .then(|| Ident::new(&sel, Span::call_site()))
+}
+
+/// `::a::b::C` → `::<sel>::a::b::C` — a crate-rooted path re-rooted through
+/// the selection package, which re-exports the crate under its own name.
+fn reroot_through(path: &SynPath, sel: &Ident) -> SynPath {
+    let mut p = path.clone();
+    p.leading_colon = Some(Default::default());
+    p.segments.insert(0, syn::PathSegment::from(sel.clone()));
+    p
 }
 
 /// Issue 0106 — map an `system.toml` rmw name to the backend crate ident the
@@ -5605,6 +5681,11 @@ mod leaf_axis_tests {
     /// Expand `nros::main!(<args>)` in a leaf whose `system.toml` carries
     /// `extra` in `[system]`, with one image on `board`.
     fn expand(args: &str, board: &str, extra: &str) -> Result<String, String> {
+        expand_in(args, board, extra, "")
+    }
+
+    /// [`expand`] with `deps` appended to the leaf's `Cargo.toml`.
+    fn expand_in(args: &str, board: &str, extra: &str, deps: &str) -> Result<String, String> {
         static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let dir = std::env::temp_dir().join(format!(
             "nros-macros-leaf-axes-{}-{}",
@@ -5615,7 +5696,9 @@ mod leaf_axis_tests {
         let leaf = Leaf(dir.clone());
         std::fs::write(
             dir.join("Cargo.toml"),
-            "[package]\nname = \"axis_leaf\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+            format!(
+                "[package]\nname = \"axis_leaf\"\nversion = \"0.1.0\"\nedition = \"2024\"\n{deps}"
+            ),
         )
         .unwrap();
         std::fs::write(
@@ -5660,6 +5743,51 @@ mod leaf_axis_tests {
         let err = expand("", "my-board", "").unwrap_err();
         assert!(err.contains("unknown board `my-board`"), "{err}");
         assert!(err.contains("[package.metadata.nros.board] type"), "{err}");
+    }
+
+    /// Issue 1305 / RFC-0098 D6 — a leaf that depends on its selection package
+    /// and names no board crate reaches the board, and the bare-metal reset
+    /// vector's `entry` / `cortex_m`, THROUGH the selection package.
+    #[test]
+    fn a_migrated_leaf_reaches_its_board_through_its_selection_package() {
+        let deps = "\n[target.'cfg(target_os = \"none\")'.dependencies]\n\
+                    axis_leaf_nros_selection = { path = \"build/nros/selection\" }\n";
+        let out = expand_in("panic = \"own\"", "qemu-mps2-an385", "", deps).unwrap();
+        assert!(
+            out.contains("axis_leaf_nros_selection :: nros_board_mps2_an385 :: Mps2An385"),
+            "board not re-rooted:\n{out}"
+        );
+        assert!(
+            out.contains("axis_leaf_nros_selection :: nros_board_mps2_an385 :: entry"),
+            "reset vector not re-rooted:\n{out}"
+        );
+        assert!(
+            !out.contains(":: cortex_m_rt ::") && !out.contains("# [:: cortex_m ::"),
+            "the entry still names a runtime crate of its own:\n{out}"
+        );
+        // Switch the board: same manifest, the other crate, same route.
+        let out = expand_in("panic = \"own\"", "freertos", "", deps).unwrap();
+        assert!(
+            out.contains("axis_leaf_nros_selection :: nros_board_mps2_an385_freertos :: Mps2An385"),
+            "{out}"
+        );
+    }
+
+    /// Negative control: a leaf that names its board crate directly (every
+    /// unmigrated leaf, and every generated workspace entry, which also names
+    /// a facade) keeps the direct path, even beside a selection dependency.
+    #[test]
+    fn a_leaf_naming_its_board_crate_keeps_the_direct_path() {
+        let deps = "\n[dependencies]\nnros-board-mps2-an385 = \"*\"\n\
+                    axis_leaf_nros_selection = { path = \"x\" }\n";
+        let out = expand_in("panic = \"own\"", "qemu-mps2-an385", "", deps).unwrap();
+        assert!(
+            out.contains(":: nros_board_mps2_an385 :: Mps2An385"),
+            "{out}"
+        );
+        assert!(!out.contains("axis_leaf_nros_selection"), "{out}");
+        let out = expand_in("panic = \"own\"", "qemu-mps2-an385", "", "").unwrap();
+        assert!(!out.contains("axis_leaf_nros_selection"), "{out}");
     }
 
     /// The case issue 1766 measured: `param_services` declared, nothing

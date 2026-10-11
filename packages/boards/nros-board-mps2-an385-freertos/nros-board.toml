@@ -54,7 +54,10 @@ FREERTOS_CONFIG_DIR = { value = "${workspace}/packages/boards/nros-board-mps2-an
 crate_root_extra = "use panic_semihosting as _;"
 # The dependency the line above needs. A generated entry has no author to
 # supply it, so it travels with the item (phase-383 W9.b).
-crate_root_deps = ["panic-semihosting = \"0.6\""]
+# `exit`: a panic ends the QEMU run (semihosting exit) instead of hanging it
+# until the caller's timeout — what every hand-written mps2 Rust leaf named,
+# and what its generated selection package (issue 1305) keeps.
+crate_root_deps = ["panic-semihosting = { version = \"0.6\", features = [\"exit\"] }"]
 
 # RFC-0042 D2 / phase-241 wave C — declared capabilities (SSoT). FreeRTOS heap is
 # gated by `configSUPPORT_DYNAMIC_ALLOCATION` (FreeRTOSConfig.h); declared true.

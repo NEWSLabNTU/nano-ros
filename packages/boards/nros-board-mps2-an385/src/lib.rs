@@ -68,6 +68,12 @@ pub static __FORCE_LINK_XRCE: fn() -> Result<(), nros_rmw_xrce_cffi::RegisterErr
 // Re-export entry macro
 pub use cortex_m_rt::entry;
 
+// Issue 1305 — `nros::main!`'s bare-metal reset vector parks the core with
+// `cortex_m::asm::wfi()` through THIS path, so an entry that reaches the board
+// through its generated selection package needs no `cortex-m` of its own.
+#[doc(hidden)]
+pub use cortex_m;
+
 // Re-export semihosting for println! macro
 pub use cortex_m_semihosting;
 
