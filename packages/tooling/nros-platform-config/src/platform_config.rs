@@ -637,6 +637,7 @@ impl BuildRungs {
             max_param_constraints_len: b
                 .max_param_constraints_len
                 .or(plat.max_param_constraints_len),
+            param_events_depth: b.param_events_depth.or(plat.param_events_depth),
         }
     }
 
@@ -959,6 +960,12 @@ pub struct ParamKnobs {
     /// never sets it must not pay for it.
     #[serde(default)]
     pub max_param_constraints_len: Option<usize>,
+    /// phase-491 W3 -- the history depth of each node's `/parameter_events`
+    /// publisher. A board fact: a reliable DDS writer reserves that history,
+    /// and nothing in the contract says how many events a node emits. The
+    /// default is upstream's 1000 on a hosted build and 1 otherwise.
+    #[serde(default)]
+    pub param_events_depth: Option<usize>,
 }
 
 /// phase-400 W6 — the RMW static-pool tenant.
@@ -1239,6 +1246,7 @@ pub const PARAM_KNOBS: &[&str] = &[
     "max_byte_array_len",
     "max_param_description_len",
     "max_param_constraints_len",
+    "param_events_depth",
 ];
 
 /// The canonical env spelling of a parameter knob, from the knob registry.
@@ -2239,6 +2247,7 @@ impl PlatformsTree {
                     &mut out.max_param_constraints_len,
                     p.max_param_constraints_len,
                 ),
+                (&mut out.param_events_depth, p.param_events_depth),
             ] {
                 if src.is_some() {
                     *dst = src;
@@ -2657,6 +2666,7 @@ impl PlatformsTree {
             "max_byte_array_len" => k.max_byte_array_len,
             "max_param_description_len" => k.max_param_description_len,
             "max_param_constraints_len" => k.max_param_constraints_len,
+            "param_events_depth" => k.param_events_depth,
             _ => None,
         };
         let mut out = Vec::new();

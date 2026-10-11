@@ -441,7 +441,7 @@ fn value_fits_wire(value: &InternalValue) -> bool {
 /// `type_` carries data. The caller must have checked [`value_fits_wire`]
 /// first — that is `to_rcl_value`'s error channel, which has no equivalent
 /// once the bytes are going out.
-fn write_parameter_value(
+pub(crate) fn write_parameter_value(
     writer: &mut CdrWriter<'_>,
     value: &InternalValue,
 ) -> Result<(), SerError> {
@@ -1317,6 +1317,13 @@ impl<'s> ParamServiceBuffers<'s> {
         self.request.as_ptr() as usize
     }
 
+    /// The reply buffer, which `/parameter_events` encodes into between
+    /// service requests (phase-491 W3): the services are answered serially and
+    /// the flush runs outside them, so the two never overlap.
+    pub(crate) fn reply_mut(&mut self) -> &mut [u8] {
+        &mut self.reply
+    }
+
     /// A pair over memory the caller already owns (issue 1812).
     pub(crate) fn carved(request: &'s mut [u8], reply: &'s mut [u8]) -> Self {
         Self {
@@ -1806,6 +1813,17 @@ pub(crate) struct ParamState<'s> {
     /// services of every node are answered serially, so no two requests are
     /// ever in flight at once. Its content between requests is scratch.
     pub(crate) staged: InternalValue,
+    /// phase-491 W3 (RFC-0105 D8) — the ONE `/parameter_events` publisher,
+    /// created when the first node asks for events
+    /// (`Executor::enable_parameter_events_on`).
+    ///
+    /// One per executor, not one per node: the topic is global and every
+    /// event names its node in its own `node` field, so a subscriber reads
+    /// the same messages either way, and one handle is what an RTOS image can
+    /// afford beside the store (a handle per node slot is an array of them in
+    /// every image that carves a store). What differs is the graph: the
+    /// publisher is announced under the node that enabled it first.
+    pub(crate) event_publisher: Option<crate::session::RmwPublisher>,
     /// Issue 1271 -- whether a failed reconcile has already been logged.
     ///
     /// The spin retries the reconcile every pass while a node lacks its six,
@@ -1881,6 +1899,7 @@ impl<'s> ParamState<'s> {
             addr_of_mut!((*dst).requested).write(false);
             addr_of_mut!((*dst).buffers).write(buffers);
             addr_of_mut!((*dst).staged).write(InternalValue::NotSet);
+            addr_of_mut!((*dst).event_publisher).write(None);
             addr_of_mut!((*dst).reconcile_failure_reported).write(false);
             addr_of_mut!((*dst).reconcile_failure).write(None);
             // phase-430 W2 — no node has been auto-declared yet; the caller
@@ -1967,6 +1986,44 @@ impl ParamHome {
             Placed::Carved(&mut *state)
         }
     }
+}
+
+/// phase-491 W3 (RFC-0105 D8) — encode ONE `rcl_interfaces/msg/ParameterEvent`
+/// carrying one parameter, straight from the store into `buf`. The message
+/// struct is never built: its three sequences of `Parameter` would be the
+/// largest value in the image. Returns the encoded length, or `None` when the
+/// event does not fit `buf`.
+///
+/// `value` is the parameter's CURRENT value (`None` for a deletion, which
+/// carries the name with a `NOT_SET` value, as rclcpp's handler reads it).
+pub(crate) fn encode_parameter_event(
+    buf: &mut [u8],
+    stamp_ns: u64,
+    node_fqn: &str,
+    kind: nros_params::ParameterEventKind,
+    name: &str,
+    value: Option<&InternalValue>,
+) -> Option<usize> {
+    use nros_params::ParameterEventKind as K;
+    let mut w = CdrWriter::new_with_header(buf).ok()?;
+    // builtin_interfaces/Time
+    w.write_i32((stamp_ns / 1_000_000_000) as i32).ok()?;
+    w.write_u32((stamp_ns % 1_000_000_000) as u32).ok()?;
+    w.write_string(node_fqn).ok()?;
+    for slot in [K::New, K::Changed, K::Deleted] {
+        if slot != kind {
+            w.write_sequence_len(0).ok()?;
+            continue;
+        }
+        w.write_sequence_len(1).ok()?;
+        w.write_string(name).ok()?;
+        let value = value.unwrap_or(&InternalValue::NotSet);
+        if !value_fits_wire(value) {
+            return None;
+        }
+        write_parameter_value(&mut w, value).ok()?;
+    }
+    Some(w.position())
 }
 
 #[cfg(test)]

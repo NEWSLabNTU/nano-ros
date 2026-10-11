@@ -258,6 +258,13 @@ pub const KNOBS: &[KnobRow] = &[
         toml: Some("params.max_string_value_len"),
     },
     KnobRow {
+        id: "PARAM_EVENTS_DEPTH",
+        env: "NROS_PARAM_EVENTS_DEPTH",
+        legacy: &[],
+        kconfig: "CONFIG_NROS_PARAM_EVENTS_DEPTH",
+        toml: Some("params.param_events_depth"),
+    },
+    KnobRow {
         id: "PARAM_SERVICE_BUFFER_SIZE",
         env: "NROS_PARAM_SERVICE_BUFFER_SIZE",
         legacy: &[],

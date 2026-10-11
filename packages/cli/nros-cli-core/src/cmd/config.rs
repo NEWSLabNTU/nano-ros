@@ -408,6 +408,9 @@ fn explain(args: ExplainArgs) -> Result<()> {
         // effective value to keep, and the describe reply's derived bound
         // prices capacity rather than use.
         ("max_param_constraints_len", 0),
+        // phase-491 W3 -- `/parameter_events` history depth. 1 is the RTOS
+        // default; a hosted build defaults to upstream's 1000 instead.
+        ("param_events_depth", 1),
     ];
     for (name, r) in tree
         .resolve_params(

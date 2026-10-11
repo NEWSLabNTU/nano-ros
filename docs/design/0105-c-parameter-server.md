@@ -359,5 +359,15 @@ items are tracked in phase-491 § Progress.
   store, so the whole path runs with no heap. A remote set decodes into the
   slot and applies by swapping it with the stored value
   (`ParameterServer::apply_staged`).
-- **Not yet:** `/parameter_events` (D8, phase-491 W3), string-array get/set,
-  and C components (phase-492 W4).
+- **D8 (2026-10-12, phase-491 W3).** One `/parameter_events` publisher per
+  EXECUTOR rather than per node: the topic is global and every event names its
+  node, so a subscriber receives the same messages, and one handle is what an
+  RTOS image can afford beside the store. The graph shows the publisher under
+  the node that enabled events first. Changes are logged in the store
+  (`PARAMETER_EVENT_LOG_LEN` entries, one per name, merged) and published by
+  `Executor::flush_parameter_events` after every C parameter call and every
+  spin's services; an overflow is counted and logged, never blocked on. The
+  stamp is the executor's wall clock where one is installed, else its
+  monotonic clock. Depth: `NROS_PARAM_EVENTS_DEPTH`, 1000 hosted / 1 otherwise.
+- **String arrays** landed with W6 (`rclc_parameter_*_string_array`).
+- **Not yet:** C components (phase-492 W4).

@@ -12121,6 +12121,7 @@ impl<'s> Executor<'s> {
         }
         let _ = handled;
         self.report_truncated_descriptions();
+        self.flush_parameter_events();
     }
 
     /// phase-446 F2 -- log each parameter whose description did not fit
@@ -12309,6 +12310,161 @@ impl<'s> Executor<'s> {
             self.note_reserved_parameter(name);
         }
         result
+    }
+
+    /// phase-491 W3 (RFC-0105 D8) — publish `node`'s parameter changes on
+    /// `/parameter_events` (rclc's `notify_changed_over_dds`).
+    ///
+    /// Creates the executor's one `/parameter_events` publisher on the first
+    /// call (see `ParamState::event_publisher`), typed
+    /// `rcl_interfaces/msg/ParameterEvent`, RELIABLE + VOLATILE as upstream's
+    /// `parameter_events` profile. Its depth is upstream's 1000 on a hosted
+    /// build and `NROS_PARAM_EVENTS_DEPTH` (default 1) otherwise, because a
+    /// reliable DDS writer's history is memory the RMW reserves; depth is not
+    /// a matching criterion, so an upstream subscriber still matches.
+    /// Idempotent.
+    pub fn enable_parameter_events_on(
+        &mut self,
+        node: super::node_record::NodeId,
+    ) -> Result<(), NodeError> {
+        use nros_core::RosMessage;
+        type Event = nros_rcl_interfaces::msg::ParameterEvent;
+        if !self.ensure_parameter_store() {
+            return Err(NodeError::Transport(TransportError::BadAlloc));
+        }
+        let idx = node.index();
+        if idx >= crate::param_sizing::MAX_SERVICE_SETS {
+            return Err(NodeError::NodeTableFull);
+        }
+        if self
+            .params
+            .as_ref()
+            .is_some_and(|p| p.event_publisher.is_some())
+        {
+            if let Some(params) = self.params.as_mut() {
+                params.server.set_parameter_events(node.into(), true);
+            }
+            return Ok(());
+        }
+        // The event is encoded into the services' reply buffer; on the heap
+        // road that pair is allocated with the first service set, which may
+        // not exist yet.
+        #[cfg(feature = "alloc")]
+        if let Some(params) = self.params.as_mut()
+            && params.buffers.is_none()
+        {
+            params.buffers = Some(
+                crate::parameter_services::ParamServiceBuffers::try_with_capacity(
+                    crate::parameter_services::param_service_buffer_bytes(),
+                )
+                .ok_or(NodeError::Transport(TransportError::BadAlloc))?,
+            );
+        }
+        crate::rmw_type_registry::register_type::<Event>()?;
+        let qos = QoSProfile::parameter_events_default().depth(nros_params::PARAM_EVENTS_DEPTH);
+        let handle = self.create_raw_publisher_handle_on(
+            node,
+            "/parameter_events",
+            <Event as RosMessage>::TYPE_NAME,
+            <Event as RosMessage>::TYPE_HASH,
+            qos,
+        )?;
+        if let Some(params) = self.params.as_mut() {
+            params.event_publisher = Some(handle);
+            params.server.set_parameter_events(node.into(), true);
+        }
+        Ok(())
+    }
+
+    /// phase-491 W3 — publish every pending parameter change, one
+    /// `ParameterEvent` each, oldest first. Runs after each spin's parameter
+    /// services and after every C parameter call; nothing allocates.
+    pub fn flush_parameter_events(&mut self) {
+        let stamp_ns = self
+            .epoch_us_fn
+            .or(self.clock_us_fn)
+            .map_or(0, |clock| clock().saturating_mul(1000));
+        let mut lost: u32 = 0;
+        loop {
+            let Some(params) = self.params.as_mut() else {
+                return;
+            };
+            let Some(event) = params.server.pop_parameter_event() else {
+                break;
+            };
+            let idx = event.node.index();
+            let mut fqn = heapless::String::<256>::new();
+            match self.nodes.get(idx) {
+                Some(r) => {
+                    if let Ok(f) = crate::names::fully_qualified_name(&r.name, &r.namespace) {
+                        let _ = fqn.push_str(f.as_str());
+                    }
+                }
+                None => {
+                    if let Ok(f) =
+                        crate::names::fully_qualified_name(&self.node_name, &self.namespace)
+                    {
+                        let _ = fqn.push_str(f.as_str());
+                    }
+                }
+            }
+            let Some(params) = self.params.as_mut() else {
+                return;
+            };
+            let crate::parameter_services::ParamState {
+                server,
+                buffers,
+                event_publisher,
+                ..
+            } = &mut **params;
+            let (Some(publisher), Some(buffers)) = (event_publisher.as_ref(), buffers.as_mut())
+            else {
+                continue;
+            };
+            let value = match event.kind {
+                nros_params::ParameterEventKind::Deleted => None,
+                _ => server.get(event.node, event.name.as_str()),
+            };
+            let encoded = crate::parameter_services::encode_parameter_event(
+                buffers.reply_mut(),
+                stamp_ns,
+                fqn.as_str(),
+                event.kind,
+                event.name.as_str(),
+                value,
+            );
+            match encoded {
+                Some(n) => {
+                    use nros_rmw::Publisher as _;
+                    if publisher.publish_raw(&buffers.reply_mut()[..n]).is_err() {
+                        lost = lost.saturating_add(1);
+                    }
+                }
+                None => {
+                    lost = lost.saturating_add(1);
+                }
+            }
+        }
+        let dropped = self
+            .params
+            .as_mut()
+            .map_or(0, |p| p.server.take_parameter_events_dropped());
+        let lost = lost.saturating_add(dropped);
+        if lost > 0 {
+            Self::report_parameter_events_lost(lost);
+        }
+    }
+
+    #[cold]
+    fn report_parameter_events_lost(lost: u32) {
+        nros_log::log_warn!(
+            nros_log::get_logger("nros"),
+            "{} /parameter_events message(s) were not published: the change log \
+             (PARAMETER_EVENT_LOG_LEN) filled between two flushes, a value did not fit the \
+             parameter-service reply buffer (NROS_PARAM_SERVICE_BUFFER_SIZE), or the \
+             publish failed. The parameters themselves changed (phase-491 W3).",
+            lost
+        );
     }
 
     /// phase-491 W2 — a remote `NOT_SET` on `node` deletes the parameter

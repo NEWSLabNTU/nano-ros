@@ -14097,3 +14097,113 @@ fn i3_a_thinned_timer_traces_one_tick_in_n() {
     reset_trace_settings();
     set_trace_sink(None);
 }
+
+/// phase-491 W3 (RFC-0105 D8) — every change on a node that asked for events
+/// is published as ONE `rcl_interfaces/msg/ParameterEvent` carrying one
+/// parameter, in the slot its kind names, with the value the store holds.
+/// Decoded with the GENERATED `Time` / `Parameter` decoders, so this is about
+/// the bytes a subscriber receives.
+#[cfg(feature = "param-services")]
+#[test]
+fn parameter_events_publish_each_change_in_its_slot() {
+    use nros_core::{CdrReader, Deserialize};
+    use nros_params::ParameterValue;
+    use nros_rcl_interfaces::msg::Parameter;
+
+    /// `(name, type, integer)` of the one parameter a slot carries.
+    type Slot = Option<(alloc::string::String, u8, i64)>;
+    /// `(stamp_sec, node, [new, changed, deleted])`.
+    type Decoded = (i32, alloc::string::String, [Slot; 3]);
+
+    fn decode(bytes: &[u8]) -> Decoded {
+        let mut r = CdrReader::new(&bytes[4..]);
+        let sec = r.read_i32().unwrap();
+        let _nanosec = r.read_u32().unwrap();
+        let node = alloc::string::String::from(r.read_string().unwrap());
+        let mut slots: [Slot; 3] = [None, None, None];
+        for slot in &mut slots {
+            let n = r.read_sequence_len().unwrap();
+            assert!(n <= 1, "one parameter per event");
+            if n == 1 {
+                let p = Box::new(Parameter::deserialize(&mut r).unwrap());
+                *slot = Some((
+                    alloc::string::String::from(p.name.as_str()),
+                    p.value.type_,
+                    p.value.integer_value,
+                ));
+            }
+        }
+        (sec, node, slots)
+    }
+
+    let mut executor = executor_with_clock(MockSession::new());
+    let _talker = executor.node_builder("talker").build().unwrap();
+    // A declaration made BEFORE events are on is not reported.
+    assert!(executor.declare_parameter("early", ParameterValue::Integer(1)));
+    executor
+        .enable_parameter_events_on(NodeId::PRIMARY)
+        .expect("one /parameter_events publisher over the mock session");
+    executor.flush_parameter_events();
+    fn publisher<'a>(executor: &'a Executor<'_>) -> &'a crate::mock::MockPublisher {
+        executor
+            .params
+            .as_ref()
+            .and_then(|p| p.event_publisher.as_ref())
+            .expect("the publisher exists")
+    }
+    assert_eq!(publisher(&executor).topic_name(), "/parameter_events");
+    assert_eq!(
+        publisher(&executor).publish_count(),
+        0,
+        "nothing changed since events went on"
+    );
+
+    assert!(executor.declare_parameter("rate", ParameterValue::Integer(5)));
+    executor.flush_parameter_events();
+    let (bytes, len) = publisher(&executor).last_published().unwrap();
+    let (_, node, slots) = decode(&bytes[..len]);
+    assert_eq!(node, "/talker");
+    assert_eq!(
+        slots[0],
+        Some(("rate".into(), 2, 5)),
+        "a declaration is NEW"
+    );
+    assert!(slots[1].is_none() && slots[2].is_none());
+
+    assert_eq!(
+        executor.set_parameter_local_on(NodeId::PRIMARY, "rate", ParameterValue::Integer(6)),
+        nros_params::SetParameterResult::Success
+    );
+    executor.flush_parameter_events();
+    let (bytes, len) = publisher(&executor).last_published().unwrap();
+    let (_, _, slots) = decode(&bytes[..len]);
+    assert_eq!(
+        slots[1],
+        Some(("rate".into(), 2, 6)),
+        "a set is CHANGED, with the new value"
+    );
+
+    assert!(executor.undeclare_parameter("rate"));
+    executor.flush_parameter_events();
+    let (bytes, len) = publisher(&executor).last_published().unwrap();
+    let (_, _, slots) = decode(&bytes[..len]);
+    assert_eq!(
+        slots[2],
+        Some(("rate".into(), 0, 0)),
+        "a deletion names the parameter"
+    );
+    assert_eq!(publisher(&executor).publish_count(), 3);
+
+    // Two changes to one name between flushes merge into one event.
+    assert!(executor.declare_parameter("gain", ParameterValue::Integer(1)));
+    let _ = executor.set_parameter_local_on(NodeId::PRIMARY, "gain", ParameterValue::Integer(2));
+    executor.flush_parameter_events();
+    assert_eq!(publisher(&executor).publish_count(), 4);
+    let (bytes, len) = publisher(&executor).last_published().unwrap();
+    let (_, _, slots) = decode(&bytes[..len]);
+    assert_eq!(
+        slots[0],
+        Some(("gain".into(), 2, 2)),
+        "new-then-set is still NEW, at the latest value"
+    );
+}

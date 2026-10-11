@@ -141,6 +141,10 @@ id = "MAX_STRING_VALUE_LEN"
 toml = "params.max_string_value_len"
 
 [[knob]]
+id = "PARAM_EVENTS_DEPTH"
+toml = "params.param_events_depth"
+
+[[knob]]
 id = "PARAM_SERVICE_BUFFER_SIZE"
 toml = "executor.param_service_buffer_size"
 

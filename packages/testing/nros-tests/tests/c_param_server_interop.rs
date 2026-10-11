@@ -14,7 +14,8 @@
 //!    is refused on the REMOTE path (rclc only advertises it; RFC-0105 D7).
 //! 4. A set on a parameter `rclc_set_parameter_read_only` marked is refused.
 //! 5. An accepted set reads back.
-//! 6. `/parameter_events` carries a change (rclc's `notify_changed_over_dds`,
+//! 6. `/parameter_events` carries the accepted change, as a stock
+//!    `ros2 topic echo` sees it (rclc's `notify_changed_over_dds`,
 //!    RFC-0105 D8).
 //!
 //! Build ahead of time with `just native build-fixtures`; nothing compiles at
@@ -108,11 +109,39 @@ fn rclc_parameter_server_answers_ros2_param(zenohd_unique: ZenohRouter) {
         "topic_name is read-only:\n{ro}"
     );
 
+    // 6 (set up first). `/parameter_events` — an rclcpp-style subscriber on
+    // the topic, alive across the accepted set below.
+    let mut events = nros_tests::ros2::Ros2Process::topic_echo_for(
+        "/parameter_events",
+        "rcl_interfaces/msg/ParameterEvent",
+        &locator,
+        d,
+        Duration::from_secs(60),
+    )
+    .expect("start ros2 topic echo /parameter_events");
+    // Discovery of the echo subscriber through the router.
+    std::thread::sleep(Duration::from_secs(5));
+
     // 5. an accepted set reads back, and the refused ones left the value.
     let ok = nros_tests::ros2::ros2_param_set(NODE, "publish_rate_hz", "20", &locator, d).unwrap();
     assert!(ok.contains("Set parameter successful"), "set 20:\n{ok}");
     let get = nros_tests::ros2::ros2_param_get(NODE, "publish_rate_hz", &locator, d).unwrap();
     assert!(get.contains("Integer value is: 20"), "read back 20:\n{get}");
+
+    // 6. the accepted remote set was published as a ParameterEvent naming the
+    //    node, carrying the parameter and its new value.
+    let echoed = events
+        .wait_for_output_count("integer_value: 20", 1, Duration::from_secs(30))
+        .expect("a ParameterEvent for the accepted set");
+    assert!(
+        echoed.contains("node: /c_parameters"),
+        "event names the node:\n{echoed}"
+    );
+    assert!(
+        echoed.contains("name: publish_rate_hz"),
+        "event names the parameter:\n{echoed}"
+    );
+    events.kill();
 }
 
 // phase-329 W3 pattern — bound to `interop::CELLS`; drift turns this red.

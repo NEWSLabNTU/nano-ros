@@ -1,12 +1,12 @@
 # Phase 491 — The C parameter server: one rclc-shaped family over the executor store
 
-**Status (2026-10-12). In progress — W1, W2, W4, W5 (standalone C) and W7 landed.**
+**Status (2026-10-12). Every work item landed (W1–W7); C components move with phase-492 W4.**
 Implements [RFC-0105](../design/0105-c-parameter-server.md). Closes issues
 [0793](../issues/archived/0793-c-params-declared-via-legacy-store-invisible-to-ros2.md) and
 [0865](../issues/archived/0865-no-example-registers-parameter-services.md), and lands the C
 half of [1812](../issues/archived/1812-param-services-require-alloc.md). W7 closed 1812
-whole. Open: W3 (`/parameter_events`), W6 (live interop cell), and the carried items
-in §Progress.
+whole. Carried out of this phase: C components, which still use the C++ shim for
+everything and move with phase-492 W4.
 
 ## Why
 
@@ -180,3 +180,29 @@ Carried, with where each goes:
   The `ParamHome` region is 32,000 B at default knobs (heap-free `rmw-cffi`
   build). Detail and numbers:
   [issue 1812](../issues/archived/1812-param-services-require-alloc.md).
+
+### 2026-10-12 — `/parameter_events` (W3)
+
+- Store: a bounded change log, switched on per node
+  (`ParameterServer::set_parameter_events`). It holds
+  `PARAMETER_EVENT_LOG_LEN` = 8 entries, one per name, merged
+  (new-then-set stays new). Every write site records: declare, set, local set,
+  staged apply, remove and unset. An overflow is counted, never blocked on.
+- Executor: `enable_parameter_events_on` creates ONE `/parameter_events`
+  publisher per executor (RFC-0105 implementation notes say why it is not one
+  per node). `flush_parameter_events` encodes each change as one
+  `ParameterEvent` with one parameter, straight from the store into the
+  carved reply buffer, and publishes it. The flush runs after every C
+  parameter call and every spin's services.
+- Knob `NROS_PARAM_EVENTS_DEPTH` (registry, Kconfig, cmake, platform config):
+  1000 hosted, 1 otherwise.
+- The C server enables events when `notify_changed_over_dds` is set
+  (rclc's default).
+- `nros-c` no longer refuses `param-services` without `alloc`.
+- Tests:
+  - `parameter_events_publish_each_change_in_its_slot` (nros-node): decodes
+    the published bytes with the generated decoders;
+  - `the_event_log_merges_by_name_and_counts_overflow` (nros-params);
+  - the W6 cell now runs a stock `ros2 topic echo /parameter_events` across an
+    accepted remote set, and asserts the node, the name and the new value.
+
