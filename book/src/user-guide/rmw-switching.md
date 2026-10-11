@@ -51,7 +51,8 @@ example a copied-out leaf like `examples/native/c/talker/` — picks its
 backend on the configure line:
 
 ```bash
-cmake -S . -B build -DNROS_RMW=cyclonedds   # zenoh | xrce | cyclonedds
+cmake -S . -B build -Dnano_ros_ROOT="$(nros sdk-root)" \
+    -DNROS_RMW=cyclonedds   # zenoh | xrce | cyclonedds
 cmake --build build
 ```
 

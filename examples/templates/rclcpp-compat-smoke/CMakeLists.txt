@@ -17,31 +17,20 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(NROS_PLATFORM posix)
 set(NROS_RMW "zenoh" CACHE STRING "Active RMW (zenoh|cyclonedds|xrce).")
 set(NROS_RMW "${NROS_RMW}")
-# Resolve the nano-ros SDK root once (phase-277 W6 standard guard; 4th rung
-# phase-447 A2 / RFC-0099 D3):
-#   1. -DNROS_REPO_DIR=<path> cache var (explicit, e.g. a copied-out example),
-#   2. NROS_REPO_DIR env var (exported by nano-ros's activate.sh),
-#   3. in-repo relative walk-up (this example inside the nano-ros tree),
-#   4. ask the installed toolchain: `nros sdk-root`. A release carries its own
-#      SDK root at <prefix>/share/nano-ros, which is the only rung a copied-out
-#      project on a machine with no checkout can reach — before it this guard
-#      resolved three ways and all three were a checkout.
-# LAST is a decision, not an ordering detail: a store rung placed earlier would
-# answer a contributor with a store copy of the tree they are editing, which is
-# the ownership guard's own failure mode (phase-431 W1). And the answer is ASKED
-# for rather than baked in — a store moves, `nros pin` swaps a toolchain under a
-# project, and a project is committed and then built on another machine.
-if(NOT DEFINED NROS_REPO_DIR)
-    set(_nros_walk_up "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
-    if(DEFINED ENV{NROS_REPO_DIR} AND NOT "$ENV{NROS_REPO_DIR}" STREQUAL "")
-        set(NROS_REPO_DIR "$ENV{NROS_REPO_DIR}")
-    elseif(EXISTS "${_nros_walk_up}/packages/core/nros-core/Cargo.toml")
-        # The marker `nros_launcher::checkout::MONOREPO_MARKER` names, so "is
-        # this a nano-ros root" has one answer whichever language asks. The walk
-        # used to be UNCONDITIONAL, which gave a copied-out project a confident
-        # wrong path that failed one line later at the include — and left rung 4
-        # unreachable, since rung 3 never declined.
-        get_filename_component(NROS_REPO_DIR "${_nros_walk_up}" ABSOLUTE)
+# Resolve the nano-ros SDK root — RFC-0103 D6 (amended 2026-10-12). This
+# block is the ONE leaf spelling, byte-identical in every leaf that must know
+# the root before it can include anything (a copy-out leaf has no repo file to
+# include yet); `check-repo-dir-readers` refuses any `$ENV{NROS_REPO_DIR}`.
+#   1. explicit: -DNROS_REPO_DIR=<path> or -Dnano_ros_ROOT=<path>;
+#   2. ask `nros sdk-root`. It walks up from THIS leaf first, so an in-tree
+#      leaf answers its own checkout; anywhere else the binary answers with
+#      its own SDK root (a release's share/nano-ros, or the checkout an in-tree
+#      `nros` was built in).
+# Never the environment: an exported path is what a linked worktree inherits
+# from its parent (issue 1280).
+if(NOT NROS_REPO_DIR)
+    if(nano_ros_ROOT)
+        set(NROS_REPO_DIR "${nano_ros_ROOT}")
     else()
         find_program(NROS_TOOLCHAIN_EXECUTABLE nros)
         if(NROS_TOOLCHAIN_EXECUTABLE)
@@ -52,9 +41,8 @@ if(NOT DEFINED NROS_REPO_DIR)
                 OUTPUT_STRIP_TRAILING_WHITESPACE
                 RESULT_VARIABLE _nros_sdk_root_rc)
             if(NOT _nros_sdk_root_rc EQUAL 0)
-                # An `nros` too old to know the verb exits non-zero. Treat that
-                # as "no answer" rather than letting clap's usage text become a
-                # path.
+                # An `nros` too old to know the verb exits non-zero: no answer,
+                # rather than clap's usage text as a path.
                 set(NROS_REPO_DIR "")
             endif()
         endif()
@@ -62,9 +50,8 @@ if(NOT DEFINED NROS_REPO_DIR)
     if(NOT NROS_REPO_DIR)
         message(FATAL_ERROR
             "nano-ros: cannot locate the nano-ros SDK root.\n"
-            "  Pass -DNROS_REPO_DIR=<path>, or export NROS_REPO_DIR, or put an\n"
-            "  installed toolchain's `nros` on PATH — `nros sdk-root` answers\n"
-            "  this, and a released toolchain answers it out of itself.")
+            "  Pass -DNROS_REPO_DIR=<path> (or -Dnano_ros_ROOT=<path>), or put\n"
+            "  `nros` on PATH — `nros sdk-root` answers this.")
     endif()
 endif()
 add_subdirectory("${NROS_REPO_DIR}" nano_ros)

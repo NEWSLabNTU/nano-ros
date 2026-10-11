@@ -50,21 +50,16 @@ modules.
 provisioning gap on a fresh clone.
 
 Vendor the template into your firmware repo, then point PX4 at its
-parent directory + tell the template where nano-ros lives via
-`NANO_ROS_DIR`. The template accepts either form — a CMake cache
-variable (`-DNANO_ROS_DIR=<path>`) takes precedence over an
-environment variable (`NANO_ROS_DIR=…`), then the in-tree default:
+parent directory. The template finds nano-ros itself: an explicit
+`-DNROS_REPO_DIR=<path>` cache variable wins, otherwise it asks the
+`nros` on PATH (`nros sdk-root`), which answers with the SDK that binary
+belongs to. No environment variable is read (RFC-0103 D6):
 
 ```bash
 cmake -B build -S PX4-Autopilot \
       -DCONFIG=px4_fmu-v5_default \
       -DEXTERNAL_MODULES_LOCATION=$PWD/px4-modules/nano-ros \
-      -DNANO_ROS_DIR=$PWD/../nano-ros            # point at your nano-ros clone
-
-# Or via environment, if you prefer:
-NANO_ROS_DIR=$PWD/../nano-ros cmake -B build -S PX4-Autopilot \
-      -DCONFIG=px4_fmu-v5_default \
-      -DEXTERNAL_MODULES_LOCATION=$PWD/px4-modules/nano-ros
+      -DNROS_REPO_DIR=$PWD/../nano-ros           # optional: name your clone
 ```
 
 (`EXTERNAL_MODULES_LOCATION` must point at the dir containing
@@ -89,7 +84,6 @@ via CMake cache vars rather than menuconfig:
 cmake -B build -S PX4-Autopilot \
       -DCONFIG=px4_fmu-v5_default \
       -DEXTERNAL_MODULES_LOCATION=$PWD/px4-modules/nano-ros \
-      -DNANO_ROS_DIR=$PWD/../nano-ros \
       -DNROS_RMW=zenoh
 ```
 

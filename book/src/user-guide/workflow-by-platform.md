@@ -178,7 +178,8 @@ source ./activate.sh
 nros setup <board> --rmw zenoh
 
 cd <leaf>
-cmake -B build -DCMAKE_TOOLCHAIN_FILE=<toolchain> -DCMAKE_BUILD_TYPE=Release
+cmake -B build -Dnano_ros_ROOT="$(nros sdk-root)" \
+    -DCMAKE_TOOLCHAIN_FILE=<toolchain> -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ```
 

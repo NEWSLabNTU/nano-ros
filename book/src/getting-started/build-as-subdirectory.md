@@ -127,10 +127,11 @@ The board, the RMW, the domain and the network identity are not in
 that file — they are in the `system.toml` beside it, and the build
 reads them from there. A single-package C/C++ leaf like this one
 configures and builds with plain CMake, no sync step required, because
-its message bindings are a CMake-time output:
+its message bindings are a CMake-time output. A raw `cmake` names the
+SDK root (`nros sdk-root` prints it; nothing exports it):
 
 ```bash
-cmake -B build
+cmake -B build -Dnano_ros_ROOT="$(nros sdk-root)"
 cmake --build build
 ```
 

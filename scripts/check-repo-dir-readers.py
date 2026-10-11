@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""RFC-0103 D6 (amended 2026-10-12) — no Rust code reads `$NROS_REPO_DIR`.
+"""RFC-0103 D6 (amended 2026-10-12) — no Rust or CMake code reads `$NROS_REPO_DIR`.
 
 The `nros` binary knows its own SDK root (`nros_launcher::checkout::own_sdk_root`:
 a released binary's `share/nano-ros`, an in-tree binary's checkout), every other
@@ -22,7 +22,15 @@ excused.
 (`just/sdk-env.just`); that is shell plumbing inside one checkout, not an input
 any Rust code may take.
 
-Scope: tracked `*.rs` outside test code (a `tests/` directory, or a `*_tests.rs`
+CMake is held to the same rule: no tracked CMakeLists / `*.cmake` reads
+`$ENV{NROS_REPO_DIR}` or `$ENV{nano_ros_ROOT}`. A module locates the root from
+its own path; a leaf that must know the root before it can include anything
+carries the ONE leaf block (explicit `-DNROS_REPO_DIR`/`-Dnano_ros_ROOT`, else
+`nros sdk-root`), and every copy of that block must be byte-identical — the
+copies are compared with each other, so the spelling lives in the leaves, not
+restated here.
+
+Scope (Rust): tracked `*.rs` outside test code (a `tests/` directory, or a `*_tests.rs`
 file). A test that reads the variable to decide whether to skip is not acting on
 a checkout. `#[cfg(test)]` modules inside a source file are NOT exempt — a
 reader cannot tell a test module from a cfg'd production path by grep.
@@ -38,6 +46,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 READ_RE = re.compile(r'\benv::var(?:_os)?\s*\(\s*"NROS_REPO_DIR"\s*\)|\benv!\s*\(\s*"NROS_REPO_DIR"')
+CMAKE_READ_RE = re.compile(r"ENV\{(?:NROS_REPO_DIR|nano_ros_ROOT)\}")
+CMAKE_GLOBS = ["*CMakeLists.txt", "*.cmake", "*.cmake.in"]
+# The first line of the shared leaf block; the block ends at its first
+# column-0 `endif()`.
+BLOCK_HEAD = "# Resolve the nano-ros SDK root — RFC-0103 D6 (amended 2026-10-12). This"
 
 
 def is_test_path(rel: str) -> bool:
@@ -66,6 +79,34 @@ def findings(rel: str, text: str) -> list[str]:
     return out
 
 
+def cmake_findings(rel: str, text: str) -> list[str]:
+    """One message per non-comment `$ENV{NROS_REPO_DIR}` / `$ENV{nano_ros_ROOT}` read."""
+    out = []
+    for i, line in enumerate(text.splitlines()):
+        code = line.split("#", 1)[0]
+        if CMAKE_READ_RE.search(code):
+            out.append(
+                f"{rel}:{i + 1}: reads the root from the environment.\n"
+                f"      {line.strip()}\n"
+                f"      RFC-0103 D6 (amended 2026-10-12): a module locates the root from "
+                f"its own path (CMAKE_CURRENT_LIST_DIR); a leaf carries the shared "
+                f"block (explicit -DNROS_REPO_DIR / -Dnano_ros_ROOT, else `nros sdk-root`)."
+            )
+    return out
+
+
+def leaf_block(text: str) -> str | None:
+    """The shared leaf block in `text`, or None when the file carries none."""
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if line == BLOCK_HEAD:
+            for j in range(i, len(lines)):
+                if lines[j] == "endif()":
+                    return "\n".join(lines[i : j + 1])
+            return "\n".join(lines[i:])  # unterminated: reported as a distinct copy
+    return None
+
+
 def self_test() -> None:
     """Negative controls on the normal path — a rule that never fires proves nothing."""
     bad = 'fn f() {\n    let r = std::env::var_os("NROS_REPO_DIR");\n}\n'
@@ -81,6 +122,14 @@ def self_test() -> None:
     # Prose that names the variable is not a read.
     assert findings("a.rs", '/// `std::env::var_os("NROS_REPO_DIR")` used to win.') == []
     assert is_test_path("packages/x/tests/foo.rs") and not is_test_path("packages/x/src/foo.rs")
+    # CMake: a read fires, a comment naming it does not.
+    assert len(cmake_findings("CMakeLists.txt", 'include("$ENV{NROS_REPO_DIR}/x.cmake")')) == 1
+    assert len(cmake_findings("a.cmake", "if(DEFINED ENV{NROS_REPO_DIR})")) == 1
+    assert len(cmake_findings("a.cmake", 'set(R "$ENV{nano_ros_ROOT}")')) == 1
+    assert cmake_findings("a.cmake", "# `$ENV{NROS_REPO_DIR}` used to win.") == []
+    block = BLOCK_HEAD + "\nif(NOT NROS_REPO_DIR)\nendif()"
+    assert leaf_block("x\n" + block + "\nafter") == block
+    assert leaf_block("no block here") is None
 
 
 def main() -> int:
@@ -108,12 +157,42 @@ def main() -> int:
         errors += findings(rel, text)
     if scanned == 0:
         sys.exit("check-repo-dir-readers: scanned NO Rust files — an empty scan passes vacuously.")
+    r = subprocess.run(
+        ["git", "-C", str(ROOT), "ls-files", "--", *CMAKE_GLOBS],
+        capture_output=True, text=True, check=False,
+    )
+    if r.returncode != 0:
+        sys.exit(f"check-repo-dir-readers: `git ls-files` failed:\n  {r.stderr.strip()}")
+    cmake_scanned, blocks = 0, {}
+    for rel in (x.strip() for x in r.stdout.splitlines()):
+        path = ROOT / rel
+        if not rel or not path.is_file():
+            continue
+        cmake_scanned += 1
+        text = path.read_text(errors="replace")
+        errors += cmake_findings(rel, text)
+        b = leaf_block(text)
+        if b is not None:
+            blocks.setdefault(b, []).append(rel)
+    if cmake_scanned == 0:
+        sys.exit("check-repo-dir-readers: scanned NO CMake files — an empty scan passes vacuously.")
+    if len(blocks) > 1:
+        variants = sorted(blocks.values(), key=len, reverse=True)
+        errors.append(
+            "the shared leaf SDK-root block has diverged into "
+            f"{len(blocks)} spellings; every copy must be byte-identical:\n"
+            + "\n".join(f"      {len(v)} file(s): {', '.join(v)}" for v in variants)
+        )
     if errors:
         print("check-repo-dir-readers: FAIL", file=sys.stderr)
         for e in errors:
             print(f"  - {e}", file=sys.stderr)
         return 1
-    print(f"check-repo-dir-readers: OK — {scanned} Rust file(s), none reads $NROS_REPO_DIR.")
+    copies = sum(len(v) for v in blocks.values())
+    print(
+        f"check-repo-dir-readers: OK — {scanned} Rust and {cmake_scanned} CMake file(s), "
+        f"none reads the root from the environment; {copies} identical leaf block(s)."
+    )
     return 0
 
 
