@@ -8,7 +8,7 @@
 // to duplicate) into consumers' crates, but their exports stay in their OWN
 // crate — so each per-package archive defines each `nros_cpp_*` symbol exactly
 // once and any combination of interface archives links.
-{%- if has_borrowed %}
+{%- if has_view %}
 
 /// Deserialize a {{ message_name }} into a borrowed view from CDR.
 ///

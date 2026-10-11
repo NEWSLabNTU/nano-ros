@@ -263,7 +263,7 @@ pub fn {{ deserialize_fn }}(reader: &mut CdrReader, out: &mut {{ repr_c_struct_n
     Ok(())
 }
 {%- endif %}
-{%- if has_borrowed %}
+{%- if has_view %}
 
 // ---------------------------------------------------------------------------
 // RFC-0033 borrowed (Phase 235): zero-copy view FFI. `{{ view_repr_struct_name }}`

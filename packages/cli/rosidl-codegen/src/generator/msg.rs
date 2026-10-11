@@ -203,7 +203,7 @@ pub fn generate_nros_message_package(
 
     let has_fields = !fields.is_empty();
     let has_large_array = fields.iter().any(|f| f.is_large_array);
-    let has_borrowed = fields.iter().any(|f| f.is_view);
+    let has_view = fields.iter().any(|f| f.is_view);
     let schema = build_nros_message_schema(
         package_name,
         message_name,
@@ -220,7 +220,7 @@ pub fn generate_nros_message_package(
         constants,
         has_fields,
         has_large_array,
-        has_borrowed,
+        has_view,
         inline_mode: false,
         schema_helper_consts: schema.helper_consts,
         schema_fields_block: schema.fields_block,
@@ -268,7 +268,7 @@ pub fn generate_nros_inline_message(
 
     let has_fields = !fields.is_empty();
     let has_large_array = fields.iter().any(|f| f.is_large_array);
-    let has_borrowed = fields.iter().any(|f| f.is_view);
+    let has_view = fields.iter().any(|f| f.is_view);
     let schema = build_nros_message_schema(
         package_name,
         message_name,
@@ -286,7 +286,7 @@ pub fn generate_nros_inline_message(
         constants,
         has_fields,
         has_large_array,
-        has_borrowed,
+        has_view,
         inline_mode: true,
         schema_helper_consts: schema.helper_consts,
         schema_fields_block: schema.fields_block,
@@ -413,7 +413,7 @@ pub fn generate_c_message_package_with_lookup(
         .collect();
 
     let has_fields = !fields.is_empty();
-    let has_borrowed = fields.iter().any(|f| f.is_view);
+    let has_view = fields.iter().any(|f| f.is_view);
 
     // issue 0896 layer 2 — the type's own size bound, computed with THE size
     // rule (`nros_serdes::size::max_serialized_size`) over a schema built by
@@ -446,7 +446,7 @@ pub fn generate_c_message_package_with_lookup(
         dependencies,
         type_includes,
         has_fields,
-        has_borrowed,
+        has_view,
         tx_max_serialized_size: bound.tx,
         rx_max_serialized_size: bound.rx,
         unbounded_reason: bound.reason,
@@ -466,7 +466,7 @@ pub fn generate_c_message_package_with_lookup(
         struct_name,
         fields,
         has_fields,
-        has_borrowed,
+        has_view,
     };
     let source = crate::render::render_c("message.c", &source_template)
         .map_err(|e| GeneratorError::RenderError(e.to_string()))?;
