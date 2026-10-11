@@ -739,8 +739,8 @@ dependencies = [
 
 [[package]]
 name = "ros-launch-manifest-check"
-version = "0.1.7"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.47#313f174e6cc1703519a4f52654eec472761c74a6"
+version = "0.1.8"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.49#25c069b1bbc7a632800828cdc244528210a5d29c"
 dependencies = [
  "codespan-reporting",
  "petgraph",
@@ -750,8 +750,8 @@ dependencies = [
 
 [[package]]
 name = "ros-launch-manifest-derive"
-version = "0.1.7"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.47#313f174e6cc1703519a4f52654eec472761c74a6"
+version = "0.1.8"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.49#25c069b1bbc7a632800828cdc244528210a5d29c"
 dependencies = [
  "ros-launch-manifest-model",
  "ros-launch-manifest-sched",
@@ -759,8 +759,8 @@ dependencies = [
 
 [[package]]
 name = "ros-launch-manifest-model"
-version = "0.1.7"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.47#313f174e6cc1703519a4f52654eec472761c74a6"
+version = "0.1.8"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.49#25c069b1bbc7a632800828cdc244528210a5d29c"
 dependencies = [
  "indexmap",
  "ros-launch-manifest-sched",
@@ -772,8 +772,8 @@ dependencies = [
 
 [[package]]
 name = "ros-launch-manifest-sched"
-version = "0.1.7"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.47#313f174e6cc1703519a4f52654eec472761c74a6"
+version = "0.1.8"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.49#25c069b1bbc7a632800828cdc244528210a5d29c"
 dependencies = [
  "ros-launch-manifest-types",
  "serde",
@@ -784,8 +784,8 @@ dependencies = [
 
 [[package]]
 name = "ros-launch-manifest-types"
-version = "0.1.7"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.47#313f174e6cc1703519a4f52654eec472761c74a6"
+version = "0.1.8"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.49#25c069b1bbc7a632800828cdc244528210a5d29c"
 dependencies = [
  "serde",
  "serde_json",
@@ -815,6 +815,7 @@ dependencies = [
  "serde_json",
  "serde_yaml_ng",
  "sha2",
+ "termcolor",
  "tokio",
  "toml",
  "tracing",
