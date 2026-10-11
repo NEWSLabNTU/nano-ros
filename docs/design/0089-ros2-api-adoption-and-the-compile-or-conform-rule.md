@@ -1149,10 +1149,97 @@ The rule, in the order it is applied to each public C name:
   (phase-492 W4), after which it is C++-private.
 * **CMake functions and targets** (`nros_generate_interfaces()`,
   `NanoRos::NanoRos`) — a build-system surface; a separate question.
-* **Message struct and header names** (`std_msgs_msg_string`, `"std_msgs.h"`
-  against rosidl's `std_msgs__msg__String`, `<std_msgs/msg/string.h>`) — a
-  codegen surface, recorded as an open question in phase-492. The
-  typesupport stays refused, as ruled above.
+
+### Messages take rosidl's C names AND its member shape (2026-10-12)
+
+Decided by the maintainer on 2026-10-12, the same day: generated C messages
+move to rosidl's naming. A name alone would not port anything, because the line
+a ported file writes is `msg.data.data` / `msg.data.size`, and today a C string
+field is an inline `char data[N]` (RFC-0033 `inline`), so `msg.data.data` does
+not compile. The decision is therefore names **and** member shape, under the
+RTOS rule that the callee never allocates (RFC-0105 D10).
+
+* **Names.** `std_msgs__msg__String` in `<std_msgs/msg/string.h>`;
+  `<pkg>__srv__<Name>_Request` / `_Response`; `<pkg>__action__<Name>_Goal`,
+  `_SendGoal_Request` and the rest of rosidl's action decomposition; constants
+  `<pkg>__msg__<Name>__<CONST>`. Header file names are rosidl's snake_case.
+* **Member shape.** A string field is `rosidl_runtime_c__String { char * data;
+  size_t size; size_t capacity; }`; a sequence field (bounded or not) is
+  `rosidl_runtime_c__<elem>__Sequence` / `<pkg>__msg__<Name>__Sequence` with the
+  same three members. Fixed arrays, nested messages and primitives are inline,
+  as in rosidl already.
+* **Who owns the bytes: always the caller.** `data` points at memory the
+  application supplies — the micro-ROS idiom (`msg.data.data = buf;
+  msg.data.capacity = sizeof buf;`) compiles and works unchanged — or, in RFC-0033
+  `view` mode, into the receive buffer for the duration of the callback.
+  Deserialisation writes into `capacity` and fails with a return code when a
+  field does not fit; it never grows a buffer.
+* **One generated helper does the wiring** (ours-only, the `_in` rule):
+  `<pkg>__msg__<Name>__Storage` holds the inline arrays RFC-0033's capacities
+  size (`nros-codegen.toml` still decides them), and
+  `<pkg>__msg__<Name>__init_in(&msg, &storage)` points every string and
+  sequence of `msg` at it. That is the default a nano-ros example uses; it is
+  micro-ROS's `create_static_message_memory` without the runtime introspection.
+* **What upstream allocates is REFUSE-LOUD.** `<Name>__init` / `__fini` /
+  `__create` / `__destroy`, `__Sequence__init` / `__fini`, and
+  `rosidl_runtime_c__String__assign` / `__init` / `__fini` allocate in rosidl,
+  so they are not declared: a ported call fails to compile and the header
+  comment names `__init_in`. A hosted build gains nothing by allocating here
+  either, so this is not platform-conditional.
+* **RFC-0033 `heap` mode leaves the C emitter.** It allocated in
+  `_deserialize` and needed a generated `_fini`; under this shape the caller
+  can point `data` at a heap buffer of its own, which is the same capability
+  with the allocation on the caller's side. `inline` becomes the `__Storage`
+  sizing and `view` keeps its meaning.
+* **Serialisation stays ours-only**: `<pkg>__msg__<Name>__serialize` /
+  `__deserialize` / `__deserialize_view`, now reading and writing through
+  `data`/`size`/`capacity`.
+
+### `ROSIDL_GET_*_TYPE_SUPPORT` adopted as a pass-through; the struct stays refused (2026-10-12)
+
+Decided by the maintainer on 2026-10-12. This narrows the 2026-09-04 typesupport
+refusal (above) to the struct type it was actually about. The macro is
+adopted; `rosidl_message_type_support_t` is still not declared.
+
+That refusal argued that a typesupport's MEMBERS are its contract
+(`typesupport_identifier`, `data`, the `func` dispatcher), and that claiming the
+type would compile code that reads them and behaves differently. That still
+holds, so the type is not claimed. The MACRO is a different thing: an
+expression whose only use in ported code is to be passed to an init call, and
+that use behaves identically here.
+
+* **The descriptor carries its codec.** `rclc_message_type_t` (today
+  `nros_message_type_t`) gains `serialize(const void *msg, uint8_t *buf,
+  size_t cap, size_t *out_len)` and `deserialize(const uint8_t *buf, size_t len,
+  void *msg)`. It is a generated `static const` per type in read-only memory.
+  Services and actions get the same treatment for their request/response/goal
+  parts.
+* **The macros yield its address:**
+  `#define ROSIDL_GET_MSG_TYPE_SUPPORT(P, S, N) (&P##__##S##__##N##__nros_type)`,
+  and `ROSIDL_GET_SRV_TYPE_SUPPORT` / `ROSIDL_GET_ACTION_TYPE_SUPPORT` the same
+  way. They are declared in `<rosidl_runtime_c/message_type_support_struct.h>`
+  and its siblings, upstream's paths.
+* **Entities keep the descriptor**, so `rcl_publish(&pub, &msg, NULL)` and
+  `rcl_take` serialise through it. `rclc_executor_add_subscription_with_context`
+  takes rclc's arguments with no extra deserialiser. The serialiser writes into
+  the publisher's carved transmit buffer, never a heap block or an unbounded
+  stack temporary (RFC-0105 D10). `rmw_publisher_allocation_t` /
+  `rmw_subscription_allocation_t` are declared INCOMPLETE: `NULL` compiles,
+  creating one does not.
+* **What still fails to compile, by construction:** declaring a
+  `const rosidl_message_type_support_t *` (unknown type), reading
+  `->typesupport_identifier` / `->data` / `->func` (no such member), an
+  introspection lookup through `func`, and a stack `rmw_publisher_allocation_t`
+  (incomplete type).
+* **The typed helpers retire** (`<Name>__publish`,
+  `<Name>__executor_add_subscription`): with `rcl_publish` and rclc's arity
+  working, they would be a second way to do one thing.
+* **Unchanged:** the context-less `rclc_executor_add_subscription` stays
+  refused, for its own reason (a trampoline holding the user's function pointer).
+
+Upstream's macro is a function call; ours is an address constant, so it also
+works in a static initialiser. That is a superset no upstream file can depend
+on.
 
 **Headers take upstream's paths.** The surface is declared under
 `include/rcl/`, `include/rcl_action/`, `include/rcl_lifecycle/`,

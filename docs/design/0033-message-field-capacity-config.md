@@ -459,3 +459,8 @@ reason issue 1470 chose the workspace root over "any package that declares caps"
   on all three transports, so a total with five factors in it is legible whether
   or not a budget is stated. A config that states no budget is unaffected in
   every respect.
+- 2026-10-12 — the C emitter adopts rosidl's names and member shape
+  (RFC-0089, "Messages take rosidl's C names AND its member shape"): strings and
+  sequences become `data`/`size`/`capacity` over caller-owned bytes; `inline`
+  sizes a generated `__Storage` wired by `__init_in`; `view` is unchanged;
+  `heap` leaves the C emitter (Rust and C++ unchanged). Work: phase-492 W7.
