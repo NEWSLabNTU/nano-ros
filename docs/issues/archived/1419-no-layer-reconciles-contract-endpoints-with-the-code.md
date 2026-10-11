@@ -335,7 +335,7 @@ not measured.
 
 ## Fix / direction
 
-[phase-463](../../roadmap/phase-463-host-census-reconciles-contract-with-code.md):
+[phase-463](../../roadmap/archived/phase-463-host-census-reconciles-contract-with-code.md):
 complete the recorder (QoS as passed, a parameter hook, timer kinds), make the
 generated native ENTRY the census producer (same binary as boot, switched by
 `NROS_CENSUS_OUT` in the hosted funnel, where the `env` capability already

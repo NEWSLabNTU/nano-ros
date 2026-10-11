@@ -1,5 +1,7 @@
 # phase-463 - the host census: the code's entities, compared with the contract before any image is built
 
+**Archived 2026-10-11.** W0-W4 and W7 landed, W6's nano-ros half landed with issue 1419, and W5's I3(c) was measured on Zephyr `cpp/talker` with W7 (byte-identical `objcopy -O binary`; see W7's status), so the "I3c open" and "W6 open" in the status line below are stale. What remains is `island-W2`, which belongs to the island's own phase doc.
+
 **Status (2026-10-03). W0-W4 landed, and W4's `[census]` default is now
 `refuse` (issue 1419: `nros ws entity-census take`, the fixture pre-pass);
 W5 half landed (I2 + I3a gated; I1 holds by construction and I3b measured by
@@ -9,12 +11,12 @@ the current one; this line used to read "PROPOSED - nothing landed" after four
 waves had merged.
 Opened from the safety-island experiments of 2026-09-20 (E3a/E3b/E3c in the
 island's experiment brief) and from the layer map they produced. Home phase for
-[issue 1419](../issues/archived/1419-no-layer-reconciles-contract-endpoints-with-the-code.md).
-Successor to [phase-308](archived/phase-308-cpp-metadata-producer.md) and
-[phase-313](archived/phase-313-workspace-scoped-metadata-probe.md) (the C/C++
+[issue 1419](../../issues/archived/1419-no-layer-reconciles-contract-endpoints-with-the-code.md).
+Successor to [phase-308](phase-308-cpp-metadata-producer.md) and
+[phase-313](phase-313-workspace-scoped-metadata-probe.md) (the C/C++
 recorder and its probe, both landed and both, it turns out, not wired to
 anything that compares), and the verifying half that
-[phase-403](phase-403-type-bound-rx-sizing.md) W9 promised: "the declaration
+[phase-403](../phase-403-type-bound-rx-sizing.md) W9 promised: "the declaration
 supplies and the running image verifies". On the island the running image is
 the S32K344, and its verification is `ExecutorFull` at boot with no console.
 This phase moves the verifying half to the host, where it can refuse a build.
@@ -66,11 +68,11 @@ phase-460 W3, phase-461 W3 and phase-461 W6 in that order; W3 and W6 here
 read the inventory JSON and own no line of it, and if W3 needs a field added
 to the JSON it goes after 461 W3. Phase 457 shares no file with this phase.
 
-Relates to [RFC-0100](../design/0100-rmw-agnostic-sizing-model.md) (the
-contract states the facts), [RFC-0078](../design/0078-wcet-is-declared-per-profile.md)
-(a WCET belongs to a profile, not to code), [RFC-0063](../design/0063-system-model-is-a-build-artifact.md)
+Relates to [RFC-0100](../../design/0100-rmw-agnostic-sizing-model.md) (the
+contract states the facts), [RFC-0078](../../design/0078-wcet-is-declared-per-profile.md)
+(a WCET belongs to a profile, not to code), [RFC-0063](../../design/0063-system-model-is-a-build-artifact.md)
 (a derived artifact carries its inputs' digests) and
-[RFC-0046](../design/0046-launch-authoritative-node-identity.md) (node identity
+[RFC-0046](../../design/0046-launch-authoritative-node-identity.md) (node identity
 is resolved once, in `Executor::node_builder`).
 
 ## Why this phase exists

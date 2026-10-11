@@ -16,7 +16,7 @@ finish signal this phase was written to reach.
 Read the per-wave "LANDED — measured" blocks below rather than this summary
 before quoting a number; each carries its own A/B.
 
-Depends on [phase 390](../phase-390-storage-mode-rename-inline-heap-view.md) for
+Depends on [phase 390](phase-390-storage-mode-rename-inline-heap-view.md) for
 vocabulary only, not for code.
 
 ## Where this starts from

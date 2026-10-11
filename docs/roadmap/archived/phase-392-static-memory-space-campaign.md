@@ -45,7 +45,7 @@ measurement of what the mechanism WOULD save on a leaf where it does not run.
 Nothing in W5 may be quoted as a shipped saving. Sizes
 below are `nm` output from `build-board/zephyr/zephyr.elf` on
 mr_canhubk3/s32k344 (zenoh over serial), not estimates. Depends on
-[phase 390](../phase-390-storage-mode-rename-inline-heap-view.md) for vocabulary
+[phase 390](phase-390-storage-mode-rename-inline-heap-view.md) for vocabulary
 and [phase 391](phase-391-allocation-unification-and-tier-model.md) for the
 gate that verifies the claims.
 

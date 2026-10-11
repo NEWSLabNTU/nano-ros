@@ -244,7 +244,7 @@ quote this line.
 | RFC-0089 | the compile-or-conform rule and the four dispositions | settled |
 | [phase-379](phase-379-api-parity-with-ros2-client-libraries.md) | `scripts/api-parity.py`: every public item in all three languages, correlated against rclc+rcl (Humble), rclcpp and rclrs v0.7.0; one ledger row per difference in `docs/reference/api-parity-ledger/` | measurement done; its gap rows are the queue |
 | [phase-417](phase-417-ros2-api-adoption.md) | taking ROS 2's names | **in flight, and it is the only one still open.** Stages 0–3 and 6 are landed as of 2026-09-13; **stages 4 and 5 are the remaining body of user-API work in the whole campaign** |
-| [phase-426](../phase-426-parameters-rust-ssot.md) | one parameter store, keyed by node, six services per node | W1–W6 MET and re-audited; active only until issue 1203 closes |
+| [phase-426](phase-426-parameters-rust-ssot.md) | one parameter store, keyed by node, six services per node | W1–W6 MET and re-audited; active only until issue 1203 closes |
 | [phase-427](phase-427-one-node-type.md) | one C++ node type | **ARCHIVED 2026-09-11** |
 | [phase-428](phase-428-api-porting-principle-sweep.md) | the class the correlator cannot see: a name we share with upstream whose behaviour differs | **ARCHIVED 2026-09-12** — both sweeps ran, findings ledgered and the checkable ones gated. (This row previously said its status line "still says the user-API sweep is planned"; that was false when written — see the preamble above.) |
 | `rmw-api-parity` / `rmw-abi-shape` | our RMW layer against upstream `rmw` | 0 gaps; the remainder is W1–W7 above |
@@ -369,7 +369,7 @@ one-line script is in the truth-pass section above.
    The list previously sat here under a claim that phase-426's status line "still
    reads Planned". That claim was false when written (see the preamble) and the
    ownership it implied was wrong too:
-   [phase-426](../phase-426-parameters-rust-ssot.md) delivered ONE store, keyed by
+   [phase-426](phase-426-parameters-rust-ssot.md) delivered ONE store, keyed by
    node, with six services per node — all six work items MET and re-audited — and
    its "Not in scope" excluded parameter callbacks by construction. These 27 rows
    are missing cross-language SURFACE on top of that store, which is W4.a.

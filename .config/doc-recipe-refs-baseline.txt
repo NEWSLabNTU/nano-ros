@@ -63,7 +63,6 @@ docs/roadmap/phase-162-rt-scheduling-harness.md	rt-test
 docs/roadmap/phase-211-proof-carrying-code.md	verify-proofs
 docs/roadmap/phase-217-arm-fvp-local-runtime.md	zephyr
 docs/roadmap/phase-236-cpp-entry-embedded-runtime.md	zephyr
-docs/roadmap/phase-292-asi-reference-consumer-revisit.md	zephyr
 docs/roadmap/phase-395-dev-workflow-migration.md	ci-l2
 docs/roadmap/phase-395-dev-workflow-migration.md	ci-l4-tier1
 docs/roadmap/phase-413-ci-workflow-user-parity.md	esp32
