@@ -2,12 +2,35 @@
 id: 1277
 title: "`nros build` preflight demands a prebuilt `rust-std` for a board whose
   `cargo_config` builds `core` from source (`[unstable] build-std`)"
-status: open
+status: resolved
 type: bug
 area: cli, build
 severity: low
 related: [phase-445]
+resolved_in: "1f3b0d4ad5"
 ---
+
+## Resolved (2026-10-11)
+
+Fixed by `1f3b0d4ad5` (2026-10-05) along the fix direction below. Preflight
+treats a board whose `cargo_config` states a non-empty `[unstable] build-std`
+as a build-std target and checks `rust-src` instead of the target's
+`rust-std`. An unparseable config falls back to `config/rust-targets.txt`, as
+before. The issue was never closed.
+
+Re-measured on main 2026-10-11 (phase-445 re-measure):
+`RUSTUP_TOOLCHAIN=nightly-2026-04-11 nros build demo_bringup:esp32 --workspace . --offline`
+in `examples/workspaces/rust`, on a nightly with no `riscv32imc` target
+installed. Preflight passed and the build went straight to compiling `core`
+from `rust-src`. That is the refusal this issue quotes, gone.
+
+Not measured, recorded as a hypothesis rather than a finding:
+`rust_component_installed` asks `rustup component list` in the PREFLIGHT
+process. If a build's toolchain ever came from somewhere that process cannot
+see (a `rust-toolchain.toml` under the generated entry rather than the
+caller's env), the check would read the wrong toolchain. The measured case
+passes the toolchain through `RUSTUP_TOOLCHAIN`, which both share.
+
 
 ## What happens
 
