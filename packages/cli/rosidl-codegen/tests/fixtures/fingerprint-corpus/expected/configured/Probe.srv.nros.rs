@@ -10,7 +10,7 @@ use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ProbeRequest {
     pub items: nros_core::heap::Vec<i64>,
-    pub note: heapless::String<256>,
+    pub note: heapless::String<32>,
 }
 
 impl Serialize for ProbeRequest {
@@ -81,6 +81,7 @@ impl ::nros_serdes::Message for ProbeRequest {
 pub struct ProbeResponse {
     pub sum: i64,
     pub lines: heapless::Vec<heapless::String<256>, 64>,
+    pub summary: heapless::String<32>,
 }
 
 impl Serialize for ProbeResponse {
@@ -92,6 +93,7 @@ impl Serialize for ProbeResponse {
         for item in &self.lines {
             writer.write_string(item.as_str())?;
         }
+        writer.write_string(self.summary.as_str())?;
         writer.end_dheader(__dh)?;
         Ok(())
     }
@@ -111,6 +113,10 @@ impl Deserialize for ProbeResponse {
                     vec.push(elem).map_err(|_| DeserError::CapacityExceeded)?;
                 }
                 vec
+            },
+            summary: {
+                let s = reader.read_string()?;
+                heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?
             },
         };
         reader.end_dheader(__dh)?;
@@ -140,6 +146,11 @@ impl ::nros_serdes::Message for ProbeResponse {
             ty: ::nros_serdes::FieldType::Sequence(&RESP_FT_LINES_ELEM),
             offset: ::core::mem::offset_of!(ProbeResponse, lines),
         },
+        ::nros_serdes::Field {
+            name: "summary",
+            ty: ::nros_serdes::FieldType::String,
+            offset: ::core::mem::offset_of!(ProbeResponse, summary),
+        },
 ];
 }
 
@@ -152,4 +163,68 @@ impl RosService for Probe {
 
     const SERVICE_NAME: &'static str = "fingerprint-corpus::srv::dds_::Probe_";
     const SERVICE_HASH: &'static str = "h";
+}
+
+// ── RFC-0033 `view` (issue 0346) ────────────────────────────────────────
+// Zero-copy view of the request payload: fields marked `mode = "view"`
+// slice directly into the raw buffer the service/action callback hands you
+// (`request_data`/`response`/feedback bytes), other fields are copied. Valid
+// only while that buffer lives — copy out anything you retain.
+/// Borrowed (zero-copy) view of [`ProbeRequest`].
+pub struct ProbeRequestView<'a> {
+    pub items: nros_core::heap::Vec<i64>,
+    pub note: &'a str,
+}
+
+impl<'a> nros_core::DeserializeView<'a> for ProbeRequestView<'a> {
+    fn deserialize_view(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
+            items: {
+                let len = reader.read_u32()? as usize;
+                let mut vec = nros_core::heap::Vec::new();
+                for _ in 0..len {
+                    vec.push(reader.read_i64()?);
+                }
+                vec
+            },
+            note: reader.read_string()?,
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
+    }
+}
+
+// ── RFC-0033 `view` (issue 0346) ────────────────────────────────────────
+// Zero-copy view of the response payload: fields marked `mode = "view"`
+// slice directly into the raw buffer the service/action callback hands you
+// (`request_data`/`response`/feedback bytes), other fields are copied. Valid
+// only while that buffer lives — copy out anything you retain.
+/// Borrowed (zero-copy) view of [`ProbeResponse`].
+pub struct ProbeResponseView<'a> {
+    pub sum: i64,
+    pub lines: heapless::Vec<heapless::String<256>, 64>,
+    pub summary: &'a str,
+}
+
+impl<'a> nros_core::DeserializeView<'a> for ProbeResponseView<'a> {
+    fn deserialize_view(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
+            sum: reader.read_i64()?,
+            lines: {
+                let len = reader.read_u32()? as usize;
+                let mut vec = heapless::Vec::new();
+                for _ in 0..len {
+                    let s = reader.read_string()?;
+                    let elem = heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?;
+                    vec.push(elem).map_err(|_| DeserError::CapacityExceeded)?;
+                }
+                vec
+            },
+            summary: reader.read_string()?,
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
+    }
 }

@@ -106,6 +106,8 @@ pub mod response {
         
         pub lines: std::vec::Vec<std::string::String>,
         
+        pub summary: std::string::String,
+        
     }
 
     impl Probe_Response {
@@ -138,6 +140,11 @@ pub mod response {
                 lines: rmw.lines.as_slice().iter().map(|item| item.to_string()).collect(),
                 
                 
+                
+                // rosidl_runtime_rs::String → String (use rosidl_runtime_rs 0.5 API)
+                summary: rmw.summary.to_string(),
+                
+                
             }
         }
     }
@@ -158,6 +165,11 @@ pub mod response {
                 lines: crate::rosidl_runtime_rs::Sequence::from(
                     idiomatic.lines.iter().map(|item| crate::rosidl_runtime_rs::String::from(item.as_str())).collect::<Vec<_>>()
                 ),
+                
+                
+                
+                // String → rosidl_runtime_rs::String (use rosidl_runtime_rs 0.5 API)
+                summary: crate::rosidl_runtime_rs::String::from(idiomatic.summary.as_str()),
                 
                 
             }

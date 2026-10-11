@@ -12,6 +12,8 @@
 #include <stddef.h>
 
 #include <nros/types.h>
+// Issue 0346 — borrowed views use nros_view_str_t / the LE slice views.
+#include <nros/view.h>
 
 #include <nros/nros_config_generated.h>
 
@@ -38,7 +40,7 @@ extern "C" {
 /// Probe request structure
 typedef struct fingerprint_corpus_srv_probe_request {
     struct { int64_t* data; size_t size; size_t capacity; } items;
-    char note[256];
+    char note[32];
 } fingerprint_corpus_srv_probe_request;
 
 /// Initialize a Probe request to default values
@@ -66,6 +68,7 @@ int32_t fingerprint_corpus_srv_probe_request_deserialize(fingerprint_corpus_srv_
 typedef struct fingerprint_corpus_srv_probe_response {
     int64_t sum;
     struct { uint32_t size; char data[64][256]; } lines;
+    char summary[32];
 } fingerprint_corpus_srv_probe_response;
 
 /// Initialize a Probe response to default values
@@ -467,5 +470,28 @@ static inline nros_ret_t fingerprint_corpus_srv_probe_client_call(
 #ifdef __cplusplus
 }
 #endif
+
+/// Borrowed (zero-copy) view of fingerprint_corpus_srv_probe_request (RFC-0033 `view`, issue 0346).
+/// Borrowed fields point into the source buffer — the raw service/action callback
+/// bytes — and are valid ONLY while it lives. Copy out anything retained.
+typedef struct fingerprint_corpus_srv_probe_request_View {
+    struct { int64_t* data; size_t size; size_t capacity; } items;
+    nros_view_str_t note;
+} fingerprint_corpus_srv_probe_request_View;
+
+/// Deserialize into a borrowed view (no allocation, so no `_fini` is required).
+int32_t fingerprint_corpus_srv_probe_request_deserialize_view(fingerprint_corpus_srv_probe_request_View* out, const uint8_t* buffer, size_t buffer_size);
+
+/// Borrowed (zero-copy) view of fingerprint_corpus_srv_probe_response (RFC-0033 `view`, issue 0346).
+/// Borrowed fields point into the source buffer — the raw service/action callback
+/// bytes — and are valid ONLY while it lives. Copy out anything retained.
+typedef struct fingerprint_corpus_srv_probe_response_View {
+    int64_t sum;
+    struct { uint32_t size; char data[64][256]; } lines;
+    nros_view_str_t summary;
+} fingerprint_corpus_srv_probe_response_View;
+
+/// Deserialize into a borrowed view (no allocation, so no `_fini` is required).
+int32_t fingerprint_corpus_srv_probe_response_deserialize_view(fingerprint_corpus_srv_probe_response_View* out, const uint8_t* buffer, size_t buffer_size);
 
 #endif // FINGERPRINT_CORPUS_SRV_PROBE_H

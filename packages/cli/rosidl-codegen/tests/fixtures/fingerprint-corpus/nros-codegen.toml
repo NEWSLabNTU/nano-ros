@@ -13,6 +13,19 @@
 "fingerprint-corpus/Probe_Request.items" = { cap = 8, mode = "heap" }
 "fingerprint-corpus/Probe_Goal.waypoints" = { cap = 8, mode = "view" }
 
+# phase-390 W6 -- one `view` field in EVERY srv/action payload, not only the
+# goal. Each payload has its own `has_view_<payload>` branch in the C and Rust
+# packs; with only the goal configured, the request/response/result/feedback
+# view emitters were never rendered, so a template edit inside one of them --
+# or a context key renamed on one side only -- could not move any golden.
+# Measured before this: the `borrowed_deser_field` calls in service.c and
+# service_nros.rs survived a mutation that renamed them. `summary` exists in
+# Probe.srv for this entry: `lines` is a `string[]`, which C refuses as a view.
+"fingerprint-corpus/Probe_Request.note"    = { cap = 32, mode = "view" }
+"fingerprint-corpus/Probe_Response.summary" = { cap = 32, mode = "view" }
+"fingerprint-corpus/Probe_Result.report"   = { cap = 32, mode = "view" }
+"fingerprint-corpus/Probe_Feedback.stage"  = { cap = 32, mode = "view" }
+
 # phase-403 W0 -- the arm where a cap BECOMES the bound. Both entries are
 # `inline`, which is the only mode whose cap is enforced at deserialize
 # (`heapless::*::try_from(..) -> CapacityExceeded`), so a sample above it cannot

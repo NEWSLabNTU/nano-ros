@@ -131,6 +131,7 @@ int32_t fingerprint_corpus_srv_probe_response_serialize(const fingerprint_corpus
     for (size_t i = 0; i < msg->lines.size; ++i) {
         if (nros_cdr_write_string(&ptr, end, origin, msg->lines.data[i]) < 0) return -1;
     }
+    if (nros_cdr_write_string(&ptr, end, origin, msg->summary) < 0) return -1;
 
     if (nros_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
     if (serialized_size != NULL) {
@@ -164,6 +165,7 @@ int32_t fingerprint_corpus_srv_probe_response_deserialize(fingerprint_corpus_srv
             if (nros_cdr_read_string(&ptr, end, origin, msg->lines.data[i], sizeof(msg->lines.data[i])) < 0) return -1;
         }
     }
+    if (nros_cdr_read_string(&ptr, end, origin, msg->summary, sizeof(msg->summary)) < 0) return -1;
 
     if (nros_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;
     return 0;

@@ -88,7 +88,7 @@ impl ::nros_serdes::Message for ProbeGoal {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ProbeResult {
     pub total: i64,
-    pub report: heapless::String<256>,
+    pub report: heapless::String<32>,
 }
 
 impl Serialize for ProbeResult {
@@ -148,7 +148,7 @@ impl ::nros_serdes::Message for ProbeResult {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ProbeFeedback {
     pub done: i64,
-    pub stage: heapless::String<256>,
+    pub stage: heapless::String<32>,
 }
 
 impl Serialize for ProbeFeedback {
@@ -600,6 +600,52 @@ impl<'a> nros_core::DeserializeView<'a> for ProbeGoalView<'a> {
                 let s = reader.read_string()?;
                 heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?
             },
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
+    }
+}
+
+// ── RFC-0033 `view` (issue 0346) ────────────────────────────────────────
+// Zero-copy view of the result payload: fields marked `mode = "view"`
+// slice directly into the raw buffer the service/action callback hands you
+// (`request_data`/`response`/feedback bytes), other fields are copied. Valid
+// only while that buffer lives — copy out anything you retain.
+/// Borrowed (zero-copy) view of [`ProbeResult`].
+pub struct ProbeResultView<'a> {
+    pub total: i64,
+    pub report: &'a str,
+}
+
+impl<'a> nros_core::DeserializeView<'a> for ProbeResultView<'a> {
+    fn deserialize_view(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
+            total: reader.read_i64()?,
+            report: reader.read_string()?,
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
+    }
+}
+
+// ── RFC-0033 `view` (issue 0346) ────────────────────────────────────────
+// Zero-copy view of the feedback payload: fields marked `mode = "view"`
+// slice directly into the raw buffer the service/action callback hands you
+// (`request_data`/`response`/feedback bytes), other fields are copied. Valid
+// only while that buffer lives — copy out anything you retain.
+/// Borrowed (zero-copy) view of [`ProbeFeedback`].
+pub struct ProbeFeedbackView<'a> {
+    pub done: i64,
+    pub stage: &'a str,
+}
+
+impl<'a> nros_core::DeserializeView<'a> for ProbeFeedbackView<'a> {
+    fn deserialize_view(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
+            done: reader.read_i64()?,
+            stage: reader.read_string()?,
         };
         reader.end_dheader(__dh)?;
         Ok(__value)

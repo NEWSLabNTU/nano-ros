@@ -3,3 +3,4 @@ string note
 ---
 int64 sum
 string[] lines
+string summary
