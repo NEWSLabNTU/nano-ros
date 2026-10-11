@@ -135,9 +135,79 @@ if [ "$RC" -ne 0 ] || nros_grep_q 'issue 1261' "$TEST_TMPDIR/c.log"; then
     tail -15 "$TEST_TMPDIR/c.log" >&2
 fi
 
+# ---- D-G: the WEST road (zephyr module's `nros_resolve_image_features`) -----
+#
+# The module runs inside `find_package(Zephyr)`, so the macro is driven here in
+# script mode with the two inputs it reads from that configure:
+# APPLICATION_SOURCE_DIR and the resolved CLI.
+#
+#   D. NROS_FEATURES unset -> it becomes the image's declared axes.
+#   E. set, missing a declared axis -> refused, naming the axis and 1261.
+#   F. set to a superset -> left alone.
+#   G. an application in no workspace -> left undefined (the standalone app).
+W="$TEST_TMPDIR/w"
+write_ws "$W" 1
+printf '%s\n' '[system]' 'name = "t1261"' 'rmw = "zenoh"' 'domain_id = 0' \
+    'features = ["param_services", "lifecycle"]' '' \
+    '[image.zephyr]' 'board = "zephyr"' > "$W/src/demo_bringup/system.toml"
+mkdir -p "$W/src/zephyr_entry" "$TEST_TMPDIR/standalone/app"
+if ! (cd "$W" && "$NROS_BIN" sync) >"$TEST_TMPDIR/w-sync.log" 2>&1; then
+    fail "D-G: \`nros sync\` of the synthetic west workspace failed:"
+    tail -15 "$TEST_TMPDIR/w-sync.log" >&2
+fi
+printf '%s\n' \
+    'cmake_minimum_required(VERSION 3.22)' \
+    'include("${NROS_REPO_DIR}/cmake/NanoRosImageAgreement.cmake")' \
+    'nros_resolve_image_features()' \
+    'if(DEFINED NROS_FEATURES)' \
+    '  message(STATUS "RESULT=[${NROS_FEATURES}]")' \
+    'else()' \
+    '  message(STATUS "RESULT=<undefined>")' \
+    'endif()' > "$TEST_TMPDIR/probe.cmake"
+
+# probe <app-dir> <log> [-DNROS_FEATURES=...] -> sets RC
+probe() {
+    local app="$1" log="$2"
+    shift 2
+    RC=0
+    (cd "$TEST_TMPDIR" && cmake -DNROS_REPO_DIR="$PROJECT_ROOT" \
+        -DAPPLICATION_SOURCE_DIR="$app" -D_NANO_ROS_CODEGEN_TOOL="$NROS_BIN" \
+        "$@" -P "$TEST_TMPDIR/probe.cmake") >"$log" 2>&1 || RC=$?
+}
+
+probe "$W/src/zephyr_entry" "$TEST_TMPDIR/d.log"
+if [ "$RC" -ne 0 ] || ! nros_grep_q 'RESULT=\[param_services;lifecycle\]' "$TEST_TMPDIR/d.log"; then
+    fail "D: an unset NROS_FEATURES did not become the image's axes (rc=$RC)"
+    tail -15 "$TEST_TMPDIR/d.log" >&2
+fi
+
+probe "$W/src/zephyr_entry" "$TEST_TMPDIR/e.log" -DNROS_FEATURES=param_services
+if [ "$RC" -eq 0 ]; then
+    fail "E: NROS_FEATURES omitting the declared \`lifecycle\` was accepted"
+fi
+if ! nros_grep_q 'missing: *lifecycle' "$TEST_TMPDIR/e.log" \
+    || ! nros_grep_q 'issue 1261' "$TEST_TMPDIR/e.log"; then
+    fail "E: the refusal does not name the missing axis and issue 1261:"
+    tail -15 "$TEST_TMPDIR/e.log" >&2
+fi
+
+probe "$W/src/zephyr_entry" "$TEST_TMPDIR/f.log" \
+    "-DNROS_FEATURES=param_services;lifecycle;rosout"
+if [ "$RC" -ne 0 ] \
+    || ! nros_grep_q 'RESULT=\[param_services;lifecycle;rosout\]' "$TEST_TMPDIR/f.log"; then
+    fail "F: a superset of the declared axes was not left alone (rc=$RC)"
+    tail -15 "$TEST_TMPDIR/f.log" >&2
+fi
+
+probe "$TEST_TMPDIR/standalone/app" "$TEST_TMPDIR/g.log"
+if [ "$RC" -ne 0 ] || ! nros_grep_q 'RESULT=<undefined>' "$TEST_TMPDIR/g.log"; then
+    fail "G: an application in no workspace was given capability axes (rc=$RC)"
+    tail -15 "$TEST_TMPDIR/g.log" >&2
+fi
+
 if [ "$FAILURES" -ne 0 ]; then
     log_error "cmake-workspace-system-required: $FAILURES failure(s)"
     exit 1
 fi
-log_success "cmake-workspace-system-required: A refused, B and C not (issue 1261)"
+log_success "cmake-workspace-system-required: A refused, B and C not; west road D-G (issue 1261)"
 exit 0

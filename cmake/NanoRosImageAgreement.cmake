@@ -31,13 +31,22 @@
 # that was not asking it anything.
 include_guard(GLOBAL)
 
-# nros_check_image_agreement(KCONFIG_RMW <rmw>)
+# _nros_image_facts_file(<out-var>)
 #
-# `<rmw>` is what Kconfig selected, lowercase (`zenoh` / `xrce` / `cyclonedds`),
-# or empty when no backend is configured — which is legal for a build that only
-# compiles the library.
-function(nros_check_image_agreement)
-    cmake_parse_arguments(_A "" "KCONFIG_RMW" "" ${ARGN})
+# Run `nros image-facts --for-entry <app> --cmake --if-present` ONCE per
+# configure and set <out-var> to the file holding its `set(NROS_IMAGE_* …)`
+# lines, or to "" when there is no answer (no CLI, no application, not in a
+# workspace, or the query failed). Two readers ask (the capability axes early,
+# the RMW cross-check late), and a query plans the whole workspace, so the
+# second asks the first's answer rather than planning again.
+function(_nros_image_facts_file out_var)
+    get_property(_asked GLOBAL PROPERTY NROS_IMAGE_FACTS_ASKED)
+    if(_asked)
+        get_property(_f GLOBAL PROPERTY NROS_IMAGE_FACTS_FILE)
+        set(${out_var} "${_f}" PARENT_SCOPE)
+        return()
+    endif()
+    set(${out_var} "" PARENT_SCOPE)
 
     # The CLI, under whichever name this lane resolved it. The Zephyr lane uses
     # `_NROS_ZEPHYR_CODEGEN_TOOL` (`nros_generate_interfaces.cmake`), the rest
@@ -72,6 +81,11 @@ function(nros_check_image_agreement)
         return()
     endif()
 
+    # Remembered only from here on: an early caller that found no CLI must not
+    # stop a later one, after a lane has resolved it, from asking.
+    set_property(GLOBAL PROPERTY NROS_IMAGE_FACTS_ASKED TRUE)
+    set_property(GLOBAL PROPERTY NROS_IMAGE_FACTS_FILE "")
+
     get_filename_component(_entry_pkg "${APPLICATION_SOURCE_DIR}" NAME)
 
     # `--if-present` makes "this app is not in a workspace" an empty answer
@@ -91,7 +105,7 @@ function(nros_check_image_agreement)
         # malformed `system.toml`, say. Report it and carry on: a build that
         # was succeeding before this file existed must not start failing
         # because a CHECK could not run.
-        message(STATUS "nano-ros: image agreement NOT checked — ${_err}")
+        message(STATUS "nano-ros: image facts NOT read (agreement and capability axes unchecked) — ${_err}")
         return()
     endif()
     if(_facts STREQUAL "")
@@ -105,6 +119,87 @@ function(nros_check_image_agreement)
     # points at a line someone can read.
     set(_facts_file "${CMAKE_CURRENT_BINARY_DIR}/nros-image-facts.cmake")
     file(WRITE "${_facts_file}" "${_facts}\n")
+    set_property(GLOBAL PROPERTY NROS_IMAGE_FACTS_FILE "${_facts_file}")
+    set(${out_var} "${_facts_file}" PARENT_SCOPE)
+endfunction()
+
+# nros_resolve_image_features()
+#
+# Issue 1261 -- one source for an image's capability axes on the WEST road.
+#
+# The module picks nros-c / nros-cpp's cargo features from `NROS_FEATURES`
+# during `find_package(Zephyr)`, while codegen reads the bringup's
+# `system.toml`. The generated west application sets the variable before
+# `find_package` (issue 1681); a HAND-WRITTEN one had to restate the list on
+# its `west build` line, and one that did not built nros-cpp without
+# `param-services` and failed at LINK on
+# `nros_cpp_register_parameter_services`.
+#
+# So ask the image (same query, same SSoT accessor as `nros config show`):
+#
+#   * not in a workspace, or no image names this app -> nothing changes
+#     (the standalone app keeps `-DNROS_FEATURES` as its only source);
+#   * NROS_FEATURES unset -> it becomes the image's declared axes;
+#   * NROS_FEATURES set and missing a declared axis -> refused HERE,
+#     naming the axes, rather than at link as an undefined symbol.
+#
+# A superset is allowed: building a capability nobody calls costs size, not
+# correctness, and an explicit choice to carry one is not a disagreement.
+#
+# A MACRO so the default lands in the module's scope, where the readers are.
+macro(nros_resolve_image_features)
+    _nros_image_facts_file(_nrif_file)
+    if(NOT _nrif_file STREQUAL "")
+        unset(NROS_IMAGE_FEATURES)
+        include("${_nrif_file}")
+    endif()
+    if(NOT _nrif_file STREQUAL "" AND DEFINED NROS_IMAGE_FEATURES)
+        if(NOT DEFINED NROS_FEATURES)
+            set(NROS_FEATURES "${NROS_IMAGE_FEATURES}")
+            if(NROS_IMAGE_FEATURES STREQUAL "")
+                set(_nrif_shown "none")
+            else()
+                string(REPLACE ";" ", " _nrif_shown "${NROS_IMAGE_FEATURES}")
+            endif()
+            message(STATUS
+                "nano-ros: capability axes of image ${NROS_IMAGE_QUALIFIED}: "
+                "${_nrif_shown} (from its system.toml)")
+        else()
+            set(_nrif_missing "")
+            foreach(_nrif_axis IN LISTS NROS_IMAGE_FEATURES)
+                if(NOT _nrif_axis IN_LIST NROS_FEATURES)
+                    list(APPEND _nrif_missing "${_nrif_axis}")
+                endif()
+            endforeach()
+            if(_nrif_missing)
+                string(REPLACE ";" ", " _nrif_missing "${_nrif_missing}")
+                message(FATAL_ERROR
+"nano-ros: NROS_FEATURES omits capability axes the image declares.
+    image ${NROS_IMAGE_QUALIFIED} declares: ${NROS_IMAGE_FEATURES}
+    NROS_FEATURES:                     ${NROS_FEATURES}
+    missing:                               ${_nrif_missing}
+The generated entry calls these capabilities and the library would be built
+without them, which fails at link with an undefined symbol. Drop
+-DNROS_FEATURES (the image's system.toml is the source) or add the missing
+axes to it (issue 1261).
+Declared in ${NROS_IMAGE_WORKSPACE}.")
+            endif()
+        endif()
+    endif()
+endmacro()
+
+# nros_check_image_agreement(KCONFIG_RMW <rmw>)
+#
+# `<rmw>` is what Kconfig selected, lowercase (`zenoh` / `xrce` / `cyclonedds`),
+# or empty when no backend is configured — which is legal for a build that only
+# compiles the library.
+function(nros_check_image_agreement)
+    cmake_parse_arguments(_A "" "KCONFIG_RMW" "" ${ARGN})
+
+    _nros_image_facts_file(_facts_file)
+    if(_facts_file STREQUAL "")
+        return()
+    endif()
     include("${_facts_file}")
 
     if(NOT DEFINED NROS_IMAGE_RMW OR NROS_IMAGE_RMW STREQUAL "")
