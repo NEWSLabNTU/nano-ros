@@ -461,7 +461,7 @@ pub struct CField {
     /// `{Msg}` struct keeps a fixed-capacity container for the publish path;
     /// the additionally-emitted `{Msg}_View` borrows this field zero-copy via
     /// [`view_c_type`](Self::view_c_type) /
-    /// [`borrowed_read_fn`](Self::borrowed_read_fn).
+    /// [`view_read_fn`](Self::view_read_fn).
     pub is_view: bool,
     /// Borrowed-view C type from `nros/view.h` (e.g. `nros_view_str_t`,
     /// `nros_view_bytes_t`, `nros_le_slice_view_f32_t`). Empty unless
@@ -470,7 +470,7 @@ pub struct CField {
     /// `nros/view.h` reader for the borrowed view (e.g.
     /// `nros_cdr_borrow_string`); all share one signature. Empty unless
     /// [`is_view`](Self::is_view).
-    pub borrowed_read_fn: String,
+    pub view_read_fn: String,
 }
 
 /// Constant for C code generation

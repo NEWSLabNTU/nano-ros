@@ -687,7 +687,7 @@ pub(super) fn build_c_field(
     };
 
     let mut view_c_type = String::new();
-    let mut borrowed_read_fn = String::new();
+    let mut view_read_fn = String::new();
     if field.is_heap() {
         // Heap is only bridgeable for shapes `c_type_for_field_heap` supports —
         // validate here (the filter assumes it holds), reject otherwise.
@@ -706,7 +706,7 @@ pub(super) fn build_c_field(
             name,
         )?;
         view_c_type = bt;
-        borrowed_read_fn = bfn;
+        view_read_fn = bfn;
     }
 
     let element_type = element_type_of(field_type);
@@ -783,7 +783,7 @@ pub(super) fn build_c_field(
         is_heap: field.is_heap(),
         is_view: field.is_view(),
         view_c_type,
-        borrowed_read_fn,
+        view_read_fn,
     })
 }
 

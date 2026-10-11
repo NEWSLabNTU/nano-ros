@@ -172,11 +172,11 @@
 {%- endif %}
 {%- endmacro -%}
 
-{#- Issue 0346 — C borrowed deserialize arm: `borrowed_read_fn` sets pointers
+{#- Issue 0346 — C borrowed deserialize arm: `view_read_fn` sets pointers
     into `buffer` (no malloc, no fini); other fields copy exactly as owned. -#}
 {%- macro borrowed_deser_field(field, var, sname) -%}
 {%- if field.is_view %}
-    if ({{ field.borrowed_read_fn }}(&ptr, end, origin, &{{ var }}->{{ field.name }}) < 0) return -1;
+    if ({{ field.view_read_fn }}(&ptr, end, origin, &{{ var }}->{{ field.name }}) < 0) return -1;
 {%- else %}
 {{- deser_field(field, var, sname) }}
 {%- endif %}
