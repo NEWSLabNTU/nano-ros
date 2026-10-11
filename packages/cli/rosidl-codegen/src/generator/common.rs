@@ -515,7 +515,7 @@ pub(super) fn field_to_nros_field_with_mode(
     let field_type: &FieldType = capped.as_ref();
 
     let mut view_rust_type = String::new();
-    let mut borrowed_read_expr = String::new();
+    let mut view_read_expr = String::new();
     // RFC-0033 `borrowed` (Phase 229.6, issue 0007): the owned `{Msg}` struct
     // keeps a default-capacity owned container for the publish path; the
     // additionally-emitted `{Msg}View<'a>` borrows this field zero-copy.
@@ -523,7 +523,7 @@ pub(super) fn field_to_nros_field_with_mode(
         let (bt, expr) =
             nros_borrowed_view_for_field(field_type, package_name, message_name, &field.name)?;
         view_rust_type = bt;
-        borrowed_read_expr = expr;
+        view_read_expr = expr;
     }
 
     let array_size = field.array_len();
@@ -556,7 +556,7 @@ pub(super) fn field_to_nros_field_with_mode(
         is_heap: field.is_heap(),
         is_view: field.is_view(),
         view_rust_type,
-        borrowed_read_expr,
+        view_read_expr,
     })
 }
 

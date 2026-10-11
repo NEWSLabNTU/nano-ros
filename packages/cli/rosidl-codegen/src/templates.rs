@@ -209,7 +209,7 @@ pub struct NrosField {
     /// `deserialize_view` (e.g. `reader.read_slice_u8()?`,
     /// `reader.read_string()?`, `reader.read_le_slice::<f32>()?`). Empty for
     /// non-borrowed fields.
-    pub borrowed_read_expr: String,
+    pub view_read_expr: String,
 }
 
 #[derive(serde::Serialize)]

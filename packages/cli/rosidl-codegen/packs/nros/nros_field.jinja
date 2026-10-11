@@ -112,7 +112,7 @@
     of the buffer, everything else falls back to the owned arm above. -#}
 {%- macro borrowed_deser_field(field, inline_mode) -%}
 {%- if field.is_view %}
-            {{ field.name }}: {{ field.borrowed_read_expr }},
+            {{ field.name }}: {{ field.view_read_expr }},
 {%- else %}
 {{- deser_field(field, inline_mode) }}
 {%- endif %}
