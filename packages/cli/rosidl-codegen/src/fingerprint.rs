@@ -34,7 +34,7 @@ use crate::{
 };
 use rosidl_parser::{parse_action, parse_message, parse_service};
 use sha2::{Digest, Sha256};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 
 const CORPUS: &str = "fingerprint-corpus";
 
@@ -88,7 +88,7 @@ fn hashes() -> ActionTypeHashes {
 /// consumers must notice that.
 pub fn emit_corpus() -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
-    let deps: HashSet<String> = HashSet::new();
+    let deps: BTreeSet<String> = BTreeSet::new();
     let msgs = [
         ("Shapes", SHAPES_MSG),
         ("Nested", NESTED_MSG),

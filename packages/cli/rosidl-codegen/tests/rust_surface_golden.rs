@@ -50,7 +50,7 @@
 use rosidl_codegen::{generate_action_package, generate_message_package, generate_service_package};
 use rosidl_parser::{parse_action, parse_message, parse_service};
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
 };
@@ -72,7 +72,7 @@ const PROBE_ACTION: &str = include_str!("fixtures/fingerprint-corpus/action/Prob
 /// nobody has to remember to add it twice.
 fn emit() -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
-    let deps: HashSet<String> = HashSet::new();
+    let deps: BTreeSet<String> = BTreeSet::new();
 
     let mut put = |name: &str, res: Result<String, String>| {
         // A build whose emitters REJECT a shape is a different tool than one

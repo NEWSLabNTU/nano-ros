@@ -1,7 +1,7 @@
 // Comparison tests - verify our codegen matches rosidl_generator_rs output
 use rosidl_codegen::{GeneratorError, generate_message_package};
 use rosidl_parser::parse_message;
-use std::{collections::HashSet, fs, path::PathBuf};
+use std::{collections::BTreeSet, fs, path::PathBuf};
 
 mod parity_helpers;
 use parity_helpers::{normalize_code, print_diff, ros_input, ros_input_absent};
@@ -69,7 +69,7 @@ fn test_compare_std_msgs_bool() -> Result<(), GeneratorError> {
     };
 
     // Generate with our codegen
-    let result = generate_message_package("std_msgs", "Bool", &msg, &HashSet::new())?;
+    let result = generate_message_package("std_msgs", "Bool", &msg, &BTreeSet::new())?;
 
     // Load reference outputs
     let ref_rmw = load_reference_output("std_msgs", "Bool", "rmw")
@@ -123,7 +123,7 @@ fn test_compare_std_msgs_string() -> Result<(), GeneratorError> {
     };
 
     // Generate with our codegen
-    let result = generate_message_package("std_msgs", "String", &msg, &HashSet::new())?;
+    let result = generate_message_package("std_msgs", "String", &msg, &BTreeSet::new())?;
 
     // Load reference outputs
     let ref_rmw = load_reference_output("std_msgs", "String", "rmw")
@@ -172,7 +172,7 @@ fn test_compare_geometry_msgs_point() -> Result<(), GeneratorError> {
     };
 
     // Generate with our codegen
-    let result = generate_message_package("geometry_msgs", "Point", &msg, &HashSet::new())?;
+    let result = generate_message_package("geometry_msgs", "Point", &msg, &BTreeSet::new())?;
 
     // Load reference outputs
     let ref_rmw = load_reference_output("geometry_msgs", "Point", "rmw")

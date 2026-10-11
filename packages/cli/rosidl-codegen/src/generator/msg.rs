@@ -20,7 +20,7 @@ use crate::{
     utils::{extract_dependencies, needs_big_array, to_snake_case},
 };
 use rosidl_parser::{FieldType, Message};
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 
 pub struct GeneratedPackage {
     pub cargo_toml: String,
@@ -35,7 +35,7 @@ pub fn generate_message_package(
     package_name: &str,
     message_name: &str,
     message: &Message,
-    all_dependencies: &HashSet<String>,
+    all_dependencies: &BTreeSet<String>,
 ) -> Result<GeneratedPackage, GeneratorError> {
     // Extract dependencies from this specific message
     let msg_deps = extract_dependencies(message);
@@ -146,7 +146,7 @@ pub fn generate_nros_message_package(
     package_name: &str,
     message_name: &str,
     message: &Message,
-    all_dependencies: &HashSet<String>,
+    all_dependencies: &BTreeSet<String>,
     package_version: &str,
     type_hash: &str,
     resolver: &CapacityResolver,

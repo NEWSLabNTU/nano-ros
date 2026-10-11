@@ -19,13 +19,13 @@ use rosidl_parser::{
         types::IdlType,
     },
 };
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 
 /// Generate Rust code for an IDL file.
 pub fn generate_idl_file(
     package_name: &str,
     idl_file: &IdlFile,
-    dependencies: &HashSet<String>,
+    dependencies: &BTreeSet<String>,
 ) -> Result<GeneratedIdlCode, String> {
     let mut code = GeneratedIdlCode::new();
 
@@ -60,7 +60,7 @@ impl GeneratedIdlCode {
 fn generate_module_code(
     module: &IdlModule,
     package_name: &str,
-    dependencies: &HashSet<String>,
+    dependencies: &BTreeSet<String>,
     code: &mut GeneratedIdlCode,
 ) -> Result<(), String> {
     // Generate constant modules
@@ -144,7 +144,7 @@ fn generate_enum(enum_def: &EnumDef) -> Result<String, String> {
 fn generate_struct(
     struct_def: &IdlStruct,
     package_name: &str,
-    _dependencies: &HashSet<String>,
+    _dependencies: &BTreeSet<String>,
 ) -> Result<String, String> {
     let mut code = String::new();
 
@@ -453,7 +453,7 @@ mod tests {
             IdlType::Primitive(IdlPrimitiveType::Long),
         ));
 
-        let code = generate_struct(&struct_def, "test_pkg", &HashSet::new()).unwrap();
+        let code = generate_struct(&struct_def, "test_pkg", &BTreeSet::new()).unwrap();
         assert!(code.contains("pub struct TestMessage"));
         assert!(code.contains("pub value: i32"));
     }
@@ -473,7 +473,7 @@ mod tests {
 
         struct_def.add_member(member);
 
-        let code = generate_struct(&struct_def, "test_pkg", &HashSet::new()).unwrap();
+        let code = generate_struct(&struct_def, "test_pkg", &BTreeSet::new()).unwrap();
         assert!(code.contains("impl Default for TestMessage"));
         assert!(code.contains("count: 123"));
     }

@@ -1,12 +1,12 @@
 use rosidl_codegen::{GeneratorError, generate_message_package};
 use rosidl_parser::parse_message;
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 
 #[test]
 fn test_lib_rs_has_clone_trait_bounds() -> Result<(), GeneratorError> {
     let msg_def = "int32 x\n";
     let msg = parse_message(msg_def).unwrap();
-    let deps = HashSet::new();
+    let deps = BTreeSet::new();
     let result = generate_message_package("test_msgs", "Simple", &msg, &deps)?;
 
     // Verify Clone trait bounds are present in Message trait
@@ -26,7 +26,7 @@ fn test_lib_rs_has_clone_trait_bounds() -> Result<(), GeneratorError> {
 fn test_idiomatic_uses_snake_case_modules() -> Result<(), GeneratorError> {
     let msg_def = "int32 x\n";
     let msg = parse_message(msg_def).unwrap();
-    let deps = HashSet::new();
+    let deps = BTreeSet::new();
     let result = generate_message_package("test_msgs", "Duration", &msg, &deps)?;
 
     // Verify RMW layer uses msg::rmw module path

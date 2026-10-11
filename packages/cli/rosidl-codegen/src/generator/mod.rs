@@ -34,12 +34,12 @@ mod tests {
     use rosidl_parser::{
         Field, FieldType, PrimitiveType, parse_action, parse_message, parse_service,
     };
-    use std::collections::HashSet;
+    use std::collections::BTreeSet;
 
     #[test]
     fn test_simple_message_generation() {
         let msg = parse_message("int32 x\nfloat64 y\n").unwrap();
-        let deps = HashSet::new();
+        let deps = BTreeSet::new();
 
         let result = generate_message_package("test_msgs", "Point", &msg, &deps);
         assert!(result.is_ok());
@@ -53,7 +53,7 @@ mod tests {
     #[test]
     fn test_message_with_dependencies() {
         let msg = parse_message("geometry_msgs/Point position\n").unwrap();
-        let deps = HashSet::new();
+        let deps = BTreeSet::new();
 
         let result = generate_message_package("nav_msgs", "Odometry", &msg, &deps);
         assert!(result.is_ok());
@@ -74,7 +74,7 @@ mod tests {
             default_value: None,
         });
 
-        let deps = HashSet::new();
+        let deps = BTreeSet::new();
         let result = generate_message_package("test_msgs", "LargeArray", &msg, &deps);
         assert!(result.is_ok());
 
@@ -85,7 +85,7 @@ mod tests {
     #[test]
     fn test_message_with_keyword_field() {
         let msg = parse_message("int32 type\nfloat64 match\n").unwrap();
-        let deps = HashSet::new();
+        let deps = BTreeSet::new();
 
         let result = generate_message_package("test_msgs", "Keywords", &msg, &deps);
         assert!(result.is_ok());
@@ -98,7 +98,7 @@ mod tests {
     #[test]
     fn test_simple_service_generation() {
         let srv = parse_service("int32 a\nint32 b\n---\nint32 sum\n").unwrap();
-        let deps = HashSet::new();
+        let deps = BTreeSet::new();
 
         let result = generate_service_package("example_interfaces", "AddTwoInts", &srv, &deps);
         assert!(result.is_ok());
@@ -115,7 +115,7 @@ mod tests {
     #[test]
     fn test_service_with_dependencies() {
         let srv = parse_service("geometry_msgs/Point position\n---\nbool success\n").unwrap();
-        let deps = HashSet::new();
+        let deps = BTreeSet::new();
 
         let result = generate_service_package("test_srvs", "CheckPoint", &srv, &deps);
         assert!(result.is_ok());
@@ -129,7 +129,7 @@ mod tests {
         let action =
             parse_action("int32 order\n---\nint32[] sequence\n---\nint32[] partial_sequence\n")
                 .unwrap();
-        let deps = HashSet::new();
+        let deps = BTreeSet::new();
 
         let result = generate_action_package("example_interfaces", "Fibonacci", &action, &deps);
         assert!(result.is_ok());
@@ -151,7 +151,7 @@ mod tests {
             "geometry_msgs/Point target\n---\nfloat64 distance\n---\nfloat64 current_distance\n",
         )
         .unwrap();
-        let deps = HashSet::new();
+        let deps = BTreeSet::new();
 
         let result = generate_action_package("test_actions", "Navigate", &action, &deps);
         assert!(result.is_ok());
@@ -167,7 +167,7 @@ mod tests {
     #[test]
     fn test_nros_simple_message_generation() {
         let msg = parse_message("int32 x\nfloat64 y\nstring name\n").unwrap();
-        let deps = HashSet::new();
+        let deps = BTreeSet::new();
 
         let result = generate_nros_message_package(
             "test_msgs",
@@ -205,7 +205,7 @@ mod tests {
     #[test]
     fn test_nros_message_with_sequence() {
         let msg = parse_message("int32[] data\n").unwrap();
-        let deps = HashSet::new();
+        let deps = BTreeSet::new();
 
         let result = generate_nros_message_package(
             "test_msgs",
@@ -226,7 +226,7 @@ mod tests {
     #[test]
     fn test_nros_service_generation() {
         let srv = parse_service("int64 a\nint64 b\n---\nint64 sum\n").unwrap();
-        let deps = HashSet::new();
+        let deps = BTreeSet::new();
 
         let ph = RosEdition::Humble.type_hash();
         let result = generate_nros_service_package(
@@ -285,7 +285,7 @@ mod tests {
         let action =
             parse_action("int32 order\n---\nint32[] sequence\n---\nint32[] partial_sequence\n")
                 .unwrap();
-        let deps = HashSet::new();
+        let deps = BTreeSet::new();
 
         let ph = RosEdition::Humble.type_hash().to_string();
         let hashes = crate::rihs::ActionTypeHashes {
@@ -956,7 +956,7 @@ mod tests {
         // marked `view` additionally emits `{Msg}View<'a>` (zero-copy slice)
         // + a `{Msg}Borrow` marker, alongside the unchanged owned `{Msg}`.
         let msg = parse_message("uint32 width\nstring encoding\nuint8[] data\n").unwrap();
-        let deps = HashSet::new();
+        let deps = BTreeSet::new();
         let resolver = crate::config::CapacityResolver::from_toml_str(
             r#"
             [fields]
@@ -1022,7 +1022,7 @@ mod tests {
         // alignment-agnostic `LeSliceView<'a, f32>` (borrows raw LE bytes,
         // decodes per element) rather than an unaligned `&'a [f32]` cast.
         let msg = parse_message("float32[] ranges\n").unwrap();
-        let deps = HashSet::new();
+        let deps = BTreeSet::new();
         let resolver = crate::config::CapacityResolver::from_toml_str(
             r#"
             [fields]
@@ -1056,7 +1056,7 @@ mod tests {
         // Sequences of nested messages / strings have no fixed-width byte span
         // and cannot borrow zero-copy — must reject with a clear error.
         let msg = parse_message("string[] tags\n").unwrap();
-        let deps = HashSet::new();
+        let deps = BTreeSet::new();
         let resolver = crate::config::CapacityResolver::from_toml_str(
             r#"
             [fields]
@@ -1781,7 +1781,7 @@ mod tests {
             "[fields]\n\"p/M.label\" = { cap = 8, element_cap = 4 }\n",
         )
         .unwrap();
-        let deps = HashSet::new();
+        let deps = BTreeSet::new();
 
         let rust = generate_nros_message_package("p", "M", &msg, &deps, "0.0.0", "hash", &resolver);
         let c = generate_c_message_package("p", "M", &msg, "hash", &resolver);

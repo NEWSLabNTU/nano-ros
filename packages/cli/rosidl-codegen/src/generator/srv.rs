@@ -20,7 +20,7 @@ use crate::{
     utils::{extract_dependencies, needs_big_array},
 };
 use rosidl_parser::{FieldType, Message, Service};
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 
 pub struct GeneratedServicePackage {
     pub cargo_toml: String,
@@ -35,7 +35,7 @@ pub fn generate_service_package(
     package_name: &str,
     service_name: &str,
     service: &Service,
-    all_dependencies: &HashSet<String>,
+    all_dependencies: &BTreeSet<String>,
 ) -> Result<GeneratedServicePackage, GeneratorError> {
     // Extract dependencies from request and response
     let mut req_deps = extract_dependencies(&service.request);
@@ -145,7 +145,7 @@ pub fn generate_nros_service_package(
     package_name: &str,
     service_name: &str,
     service: &Service,
-    all_dependencies: &HashSet<String>,
+    all_dependencies: &BTreeSet<String>,
     package_version: &str,
     request_type_hash: &str,
     response_type_hash: &str,

@@ -8,7 +8,7 @@ use rosidl_codegen::{
     CapacityResolver, RosEdition, generate_nros_message_package, generate_nros_service_package,
 };
 use rosidl_parser::{parse_message, parse_service};
-use std::{collections::HashSet, fs, path::PathBuf, process::Command};
+use std::{collections::BTreeSet, fs, path::PathBuf, process::Command};
 
 mod common;
 
@@ -45,7 +45,7 @@ fn generated_heap_message_compiles() {
         "my_msgs",
         "Frame",
         &msg,
-        &HashSet::new(),
+        &BTreeSet::new(),
         "0.1.0",
         RosEdition::Humble.type_hash(),
         &resolver,
@@ -123,7 +123,7 @@ fn generated_service_with_dheader_wrap_compiles() {
         "my_srvs",
         "AddTwoInts",
         &srv,
-        &HashSet::new(),
+        &BTreeSet::new(),
         "0.1.0",
         ph,
         ph,
