@@ -1,5 +1,41 @@
 # Phase 382 — one parameter store, caller-owned and alloc-free
 
+**Status (2026-10-11). ARCHIVED — the store design is settled; the one live
+item is now issue [#1812](../../issues/1812-param-services-require-alloc.md).**
+This phase was planned around TWO stores to conciliate. Phase-426
+([parameters get a Rust SSoT](../phase-426-parameters-rust-ssot.md)) delivered
+one store per node from the other direction, which overtook most of what
+remained. Each open item, re-measured on main:
+
+* **W4' — alloc-free `param-services`: STILL LIVE → #1812.** The
+  `compile_error!` in `nros-node/src/lib.rs` still stands. Four placement
+  reasons remain: `Box<ParamState>`, the store's heap fallback when the
+  backing carves no slots, `Box<dyn ParamServiceProcessor>` per node, and the
+  8 KiB shared `ParamServiceBuffers`. The boxed reply handlers this doc
+  describes below are `#[cfg(test)]` oracles now, and are not a reason.
+* **W5' — one C surface, veto on the remote path: DONE elsewhere.**
+  `ParameterServer::add_on_set_parameters_callback` /
+  `remove_on_set_parameters_callback` exist (`nros-params/src/server.rs`),
+  with a C spelling in `parameter.h`. `SetParameterResult::Rejected` maps to
+  an error, so a remote rejection no longer panics.
+  `apply_atomically` runs the callbacks in its CHECK pass, so a veto
+  preserves atomicity. That is what `would_accept` was going to do.
+* **W6' — the consumers: DONE by phase-426 W4.** `nros::ParameterServer<Cap>`,
+  `ComponentNode` and `adopt_launch_seed_` are deleted.
+  `examples/native/c/parameters` and `custom-transport-loopback` declare
+  through `nros_executor_*_param_*`.
+  `check-example-parameter-stores` keeps the caller-storage family out of
+  `examples/`. That family still ships in `nros-c`, node-local and
+  invisible to `ros2 param`. Whether to delete it is the open half of issue
+  [#0793](../../issues/0793-c-params-declared-via-legacy-store-invisible-to-ros2.md).
+* **W7' — the ledger: DONE.** `param.json`'s gap rows went 27 → 0 (phase-444's
+  tally).
+* **Deferred caller-chosen CAPACITY:** remains deferred. Nothing planned.
+* **Issues homed here:** #0793 → re-homed to phase-426's outcome (above).
+  #0865 → still open on its own terms: the C header and docs do not name the
+  `param_services` capability. It is not the "no example" premise, which the
+  migrated C example settles. #0794 was already archived.
+
 **Status (2026-10-09). W0, W1', W2' and W3' LANDED; W4'–W7' open.** W3' carves
 the store from the executor backing as a CONDITIONAL region (see W3' for the
 measured decision that overturned the plan's "fixed region").
@@ -539,7 +575,7 @@ holds the evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0793](../issues/0793-c-params-declared-via-legacy-store-invisible-to-ros2.md) | C ships two disjoint parameter stores; this phase must say which one survives |
-| [#0794](../issues/archived/0794-baked-boot-config-is-one-field-deep-in-c.md) | the baked boot config carries four fields and the C/C++ emitter sets one |
-| [#0865](../issues/0865-no-example-registers-parameter-services.md) | parameter services are implemented and tested but undiscoverable: no docs, no example. A store nobody can find is not a store |
+| [#0793](../../issues/0793-c-params-declared-via-legacy-store-invisible-to-ros2.md) | C ships two disjoint parameter stores; this phase must say which one survives |
+| [#0794](../../issues/archived/0794-baked-boot-config-is-one-field-deep-in-c.md) | the baked boot config carries four fields and the C/C++ emitter sets one |
+| [#0865](../../issues/0865-no-example-registers-parameter-services.md) | parameter services are implemented and tested but undiscoverable: no docs, no example. A store nobody can find is not a store |
 

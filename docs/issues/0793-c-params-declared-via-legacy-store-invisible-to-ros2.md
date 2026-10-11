@@ -6,8 +6,43 @@ title: "C ships two disjoint parameter stores — parameters declared on the
 status: open
 type: bug
 area: api, params
-related: [rfc-0036, phase-379, phase-382, issue-0788]
+related: [rfc-0036, phase-379, phase-382, phase-426, issue-0788, issue-1812]
 ---
+
+## Status 2026-10-11 — the store half is answered; one decision is left
+
+Phase-382 archived on 2026-10-11. Most of what this issue asked for was
+delivered by phase-426, from the other direction. It did not conciliate the
+two stores. It made the executor store the one store every language reaches:
+
+- **C++**: `nros::ParameterServer<Cap>`, `ComponentNode` and
+  `adopt_launch_seed_` are deleted (phase-426 W4).
+- **Examples**: `examples/native/c/parameters` and
+  `custom-transport-loopback` declare through `nros_executor_*_param_*`.
+  `check-example-parameter-stores` refuses the caller-storage family anywhere
+  under `examples/`.
+- **The veto**: the accept/reject callback that "fires for nobody" has a twin
+  on the visible store, `nros_executor_set_param_callback{,_on}` and
+  `nros_executor_remove_param_callback` in `parameter.h`. It runs for a remote set, and for the atomic one in its check
+  pass.
+
+**What is still true.** The caller-storage family still ships in `nros-c`:
+`nros_parameter_server_t`, `nros_parameter_server_*`, `nros_parameter_*` and
+`nros_parameter_server_set_callback`. It is still node-local and still
+invisible to `ros2 param`. Its only in-tree callers are its own pins: `nros-c`'s
+`tests/compile/param_entry_points.c` and the unit tests in
+`nros-c/src/parameter.rs`.
+
+**What closes this issue.** Decide that family's fate:
+
+- **delete it**: a C ABI removal, together with its cbindgen surface and
+  gate allowlists; or
+- **keep it** as an explicitly node-local utility, with the header banner
+  saying `ros2 param` cannot see it.
+
+The "conciliate" direction below is superseded. Nothing is left to
+conciliate. The `alloc` half of phase-382 moved to issue
+[#1812](1812-param-services-require-alloc.md).
 
 ## Problem
 
