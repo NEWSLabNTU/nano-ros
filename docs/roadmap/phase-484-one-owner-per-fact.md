@@ -435,6 +435,21 @@ expansion as `NROS_BOARD_TYPE` over the same build-script channel (issue
 0415's — a proc macro's own env/file reads are invisible to cargo), and Form 1
 takes it when the table has no key. Form 2 stays, deprecated, for W8.
 
+**W4e — the locator has one home on the cargo road.** Measured first, which
+reversed the plan: the census line above ("one system.toml-fed carrier per road
+is the work") was already true for cargo images — `nros::main!` bakes the
+image's `system.toml` locator/domain into its boot config, and every board
+applies it OVER the env-fed default (`BootConfig::over_board_defaults`). A new
+`nros-cargo.toml [env]` row would have been a SECOND carrier, so it was not
+written. What was a second home instead: seven NuttX fixture rows restating
+their leaf's own locator as `env = { NROS_LOCATOR, NROS_DOMAIN_ID }`. They are
+gone, and `check-image-locator-bake` now (a) reads single-package leaf rows,
+not only bringup images, (b) refuses a row value equal to the image's (rule 4),
+(c) classifies `baremetal` and `threadx-riscv64`, and (d) names the two
+no-router e2e bins that dial nothing on purpose. Not measured here: a NuttX
+QEMU run of the seven images (the env and the bake held the same value, so the
+binaries' locator strings cannot tell the carriers apart either way).
+
 ### W5 -- one canonical name per knob
 
 Split with phase-481 by RFC-0103 D2b (decided 2026-10-11: this phase builds the
