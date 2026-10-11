@@ -102,7 +102,7 @@
     stays for the publish path; the view aliases the receive buffer). -#}
 {%- macro view_field_decl(field) -%}
 {%- if field.is_view %}
-    pub {{ field.name }}: {{ field.borrowed_rust_type }},
+    pub {{ field.name }}: {{ field.view_rust_type }},
 {%- else %}
     pub {{ field.name }}: {{ field | nros_type }},
 {%- endif %}
