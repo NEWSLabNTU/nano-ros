@@ -228,6 +228,10 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
     if let Some(plans) = plan_single_package(args, &root, planning)? {
         return Ok(plans);
     }
+    // Issues 1296/1308 — and its C/C++ twin: the leaf's OWN `CMakeLists.txt`.
+    if let Some(plans) = plan_single_package_cmake(args, &root)? {
+        return Ok(plans);
+    }
 
     // ---- stage 1 --------------------------------------------------------
     let members = discover::cargo_members_or_walk(&root);
@@ -1514,6 +1518,145 @@ fn plan_single_package(
         profile: None,
         cmake_build_dir: None,
         configure: None,
+    }]))
+}
+
+/// A single-package C/C++ example (issues 1296, 1308): a `CMakeLists.txt` and a
+/// `system.toml` side by side, no `Cargo.toml`, on a board whose road is cmake.
+///
+/// The build is the leaf's OWN `CMakeLists.txt` — the `cmake -B … && cmake
+/// --build …` pair the book documents and the lanes run — configured into
+/// `build/<image>/cmake` with `-DNROS_IMAGE=<id>`, which
+/// `nano_ros_read_leaf_system` honours. RFC-0098 leaves a C/C++ leaf's CMake
+/// side as it is ("What is NOT decided here"): the leaf reads its own
+/// `system.toml` through `nros ws leaf-system`, so this road adds nothing to it
+/// but the inputs a bare configure cannot know — the board's toolchain file,
+/// its heap, and the nano-ros root.
+///
+/// It used to fall through to the WORKSPACE road, which generated a root for a
+/// workspace of one: a synthesised typed `<id>_entry` whose BRINGUP named
+/// `src/<[system] name>` (a directory no leaf has) and a metadata step asking
+/// `nros plan` for `<[system] name>/launch/system.launch.xml`, which nothing
+/// writes. Both are workspace facts; the leaf already declares its own
+/// executable. `None` for anything else, so a west or idf leaf keeps the road
+/// that handles (or refuses) it.
+fn plan_single_package_cmake(
+    args: &Args,
+    root: &std::path::Path,
+) -> Result<Option<Vec<ResolvedBuild>>> {
+    use nros_orchestration_ir::leaf_system;
+    if !root.join("CMakeLists.txt").is_file()
+        || root.join("Cargo.toml").is_file()
+        || !root.join(leaf_system::SYSTEM_TOML).is_file()
+    {
+        return Ok(None);
+    }
+    let Some(nros_root) =
+        crate::orchestration::nano_ros_root::resolve(args.nano_ros_path.clone(), root)
+    else {
+        return Ok(None);
+    };
+    let package = std::fs::read_to_string(root.join("package.xml"))
+        .ok()
+        .and_then(|x| crate::orchestration::prereq_resolve::package_name(&x))
+        .or_else(|| root.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| "leaf".to_string());
+    // `--image <id>` or `<pkg>:<id>`; none ⇒ the leaf's own rule (one image,
+    // or `[system] default_images`).
+    let want = match args.images.as_slice() {
+        [] => None,
+        [one] => Some(
+            one.strip_prefix(&format!("{package}:"))
+                .unwrap_or(one)
+                .to_string(),
+        ),
+        many => eyre::bail!(
+            "{} is a single-package example: name one image, not {}",
+            root.display(),
+            many.len()
+        ),
+    };
+    let decl = match &want {
+        Some(id) => leaf_system::read_image(root, id),
+        None => leaf_system::read(root),
+    }
+    .map_err(|e| eyre::eyre!(e))?;
+    let Some(decl) = decl else {
+        if let Some(id) = want {
+            eyre::bail!("`{id}` is not an image of {} (RFC-0098 D3)", root.display());
+        }
+        return Ok(None);
+    };
+    let Some(board) = decl.board.clone() else {
+        eyre::bail!(
+            "{}: names no board (RFC-0098 D3: `[image.<id>] board = \"<board>\"`)",
+            decl.origin_path().display()
+        );
+    };
+    let catalog = crate::orchestration::board_descriptor::BoardCatalog::load(&nros_root)
+        .map_err(|e| eyre::eyre!("board catalog under {}: {e}", nros_root.display()))?;
+    let Some(descriptor) = crate::cmd::board_facts::resolve_board(&catalog, &board) else {
+        eyre::bail!("board `{board}` is claimed by no board descriptor");
+    };
+    let platform = descriptor.platform.kebab().to_string();
+    if plan::driver_for_board(&platform, descriptor.entry_kind, true) != Ok(Driver::CMake) {
+        return Ok(None);
+    }
+    for p in args.packages_select.iter().chain(&args.packages_up_to) {
+        if p != &package {
+            eyre::bail!(
+                "`{p}` is not a package here: {} is a single-package example (`{package}`).",
+                root.display()
+            );
+        }
+    }
+    let image_id = decl.image.clone().unwrap_or_else(|| board.clone());
+    let qual = plan::qualified(&package, &image_id);
+
+    // The toolchain half of preflight, as on the cargo leaf road; its sync
+    // probe is a workspace heuristic, and this configure generates its own
+    // message bindings.
+    let mut missing = crate::builder::preflight::check(descriptor, root, Some(&nros_root));
+    missing.retain(|m| m.remedy != "nros sync");
+    if !missing.is_empty() {
+        eyre::bail!("{}", crate::builder::preflight::report(&missing));
+    }
+
+    let build_dir = format!("build/{image_id}/cmake");
+    let mut a = vec![
+        "-S".to_string(),
+        ".".to_string(),
+        "-B".to_string(),
+        build_dir.clone(),
+        format!("-DNROS_IMAGE={image_id}"),
+    ];
+    if let Some(c) = &descriptor.cmake {
+        a.push(format!(
+            "-DCMAKE_TOOLCHAIN_FILE={}",
+            nros_root.join(&c.toolchain_file).display()
+        ));
+    }
+    a.push(board_heap_configure_arg(
+        descriptor,
+        &board,
+        Some(&nros_root),
+    ));
+    a.push(format!("-Dnano_ros_ROOT={}", nros_root.display()));
+    a.extend(args.native_args.iter().cloned());
+    Ok(Some(vec![ResolvedBuild {
+        qualified: qual,
+        board,
+        platform,
+        driver: Driver::CMake,
+        handoff: Some(
+            Handoff::new("cmake", vec!["--build".to_string(), build_dir.clone()]).in_dir(root),
+        ),
+        rmw: decl.rmw.clone(),
+        entry_package: Some(package),
+        target: descriptor.target.clone(),
+        profile: None,
+        cmake_build_dir: Some(build_dir),
+        configure: Some(Handoff::new("cmake", a).in_dir(root)),
     }]))
 }
 
@@ -5169,6 +5312,72 @@ mod single_package_tests {
             .expect_err("no model yet")
             .to_string();
         assert!(e.contains("nros sync"), "{e}");
+    }
+
+    /// Issues 1296/1308 — the C/C++ shape of a single-package leaf, with the
+    /// `[[component]]` row the converted examples carry. It used to take the
+    /// workspace road, which generated a root for a workspace of one and asked
+    /// `nros plan` for `<[system] name>/launch/system.launch.xml`, a path
+    /// nothing writes ("no SystemModel for `native_c_talker/launch/…`").
+    fn c_leaf(parent: &std::path::Path) -> PathBuf {
+        let leaf = parent.join("c_talker");
+        std::fs::create_dir_all(leaf.join("src")).unwrap();
+        std::fs::write(
+            leaf.join("CMakeLists.txt"),
+            "cmake_minimum_required(VERSION 3.22)\nproject(native_c_talker C)\n",
+        )
+        .unwrap();
+        std::fs::write(
+            leaf.join("package.xml"),
+            "<package format=\"3\"><name>native_c_talker</name></package>\n",
+        )
+        .unwrap();
+        std::fs::write(
+            leaf.join("system.toml"),
+            "[system]\nname = \"native_c_talker\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
+             [[component]]\npkg = \"native_c_talker\"\nname = \"talker\"\n\n\
+             [image.native]\nboard = \"native\"\n",
+        )
+        .unwrap();
+        leaf
+    }
+
+    #[test]
+    fn a_cmake_leaf_configures_its_own_cmakelists_for_its_image() {
+        let tmp = tempfile::tempdir().unwrap();
+        let leaf = c_leaf(tmp.path());
+        let plans = plan_builds(&args(&leaf, &[])).expect("a single-package C leaf plans");
+        assert_eq!(plans.len(), 1);
+        let p = &plans[0];
+        assert_eq!(p.driver, Driver::CMake);
+        assert_eq!(p.qualified, "native_c_talker:native");
+        assert_eq!(p.cmake_build_dir.as_deref(), Some("build/native/cmake"));
+        let cfg = p.configure.as_ref().expect("a configure").display();
+        assert!(
+            cfg.contains("cmake -S . -B build/native/cmake -DNROS_IMAGE=native"),
+            "the leaf's OWN CMakeLists, for the image it declares: {cfg}"
+        );
+        assert!(
+            !cfg.contains("CMAKE_TOOLCHAIN_FILE"),
+            "a host board needs none: {cfg}"
+        );
+        let build = p.handoff.as_ref().unwrap().display();
+        assert!(
+            build.contains("cmake --build build/native/cmake"),
+            "{build}"
+        );
+        // Nothing generated a workspace root beside the leaf.
+        assert!(!leaf.join("build/posix-zenoh-native").exists());
+    }
+
+    #[test]
+    fn a_cmake_leaf_refuses_an_image_it_does_not_declare() {
+        let tmp = tempfile::tempdir().unwrap();
+        let leaf = c_leaf(tmp.path());
+        let e = plan_builds(&args(&leaf, &["esp32"]))
+            .expect_err("wrong image")
+            .to_string();
+        assert!(e.contains("[image.esp32]") && e.contains("native"), "{e}");
     }
 }
 

@@ -188,10 +188,9 @@ platform from the board it names. The toolchain file is still per
 platform — see the starter page. `-D_NANO_ROS_CODEGEN_TOOL=` is not
 needed when `nros` is on PATH; CMake resolves it.
 
-`nros build` does not yet work in a *single-package* C or C++ leaf
-([issue 1296](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1296-nros-build-c-leaf-bringup-name-mismatch.md));
-it is the verb for a C/C++ **workspace**, where it drives exactly this
-cmake pair for you.
+`nros build` drives exactly this cmake pair for you, in a
+*single-package* leaf (into `build/<image>/cmake`, with the board's toolchain
+file — [issue 1296](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1296-nros-build-c-leaf-bringup-name-mismatch.md)) as in a C/C++ **workspace**.
 
 ### west — Zephyr single-node examples
 

@@ -178,11 +178,11 @@ No platform, no board, no RMW on the command line or in the file:
 `find_package(nano_ros)` reads the example's `system.toml` through `nros ws
 leaf-system` and derives the platform from the board it names.
 `-DNANO_ROS_PLATFORM`, `-DNANO_ROS_BOARD` and `-DNROS_RMW` are retired as the
-way a user chooses. A cross build still passes `-DCMAKE_TOOLCHAIN_FILE` by hand
-(or uses `nros init` + `cmake --preset <board>`), because `nros build` — the
-verb that maps a board to its toolchain file — does not yet work in a
-single-package C/C++ leaf
-([issue 1296](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1296-nros-build-c-leaf-bringup-name-mismatch.md)).
+way a user chooses. A bare cross configure still passes `-DCMAKE_TOOLCHAIN_FILE` by
+hand (or uses `nros init` + `cmake --preset <board>`); `nros build` in the leaf
+maps the board to its toolchain file and runs the same configure into
+`build/<image>/cmake`
+([issue 1296](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1296-nros-build-c-leaf-bringup-name-mismatch.md), resolved).
 
 A single-package C/C++ leaf needs **no `nros sync`**: its message bindings are a
 CMake-time output, so a clean copy outside the checkout configures and builds

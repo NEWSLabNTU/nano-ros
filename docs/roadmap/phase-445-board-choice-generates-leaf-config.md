@@ -1,7 +1,15 @@
 # Phase 445 — one board choice generates the leaf's build configuration
 
-**Status (2026-09-11). Every wave is WRITTEN; the phase is NOT complete, and
-two of its five acceptance bullets are measured NOT MET.** W1, W2, W3b, W4b, W5
+**Status (2026-10-11). Re-measured on main 2026-10-11; the phase is NOT
+complete.** Acceptance: bullet 1 is MET for Rust and now for C/C++ (issue 1296,
+resolved). Bullet 2 is NOT MET for a single-package Rust leaf (issue 1305,
+reproduced). Bullet 3 was not measured. Bullet 4 holds for TRACKED files, but
+stale gitignored workspace roots survive on disk (issue 1404: `nros sync` still
+leaves them). Bullet 5 is NOT MET with 35 hits, down from 45 (issue 1289).
+Fixed in code and still open on 2026-10-11: 1117, 1277, 1310.
+
+*(2026-09-11: Every wave is WRITTEN; the phase is NOT complete, and
+two of its five acceptance bullets are measured NOT MET.)* W1, W2, W3b, W4b, W5
 and W6 landed. W7 is PR #926. W3's single-package half landed as W3b; its
 workspace members moved under W5, so the box stays open rather than claiming
 work that changed hands. The tree now has no `examples/**/.cargo/` at all and no
@@ -16,10 +24,11 @@ get an image — holds for Rust and not for the other two roads:
   `[dependencies]`; RFC-0098 D6's generation reaches the generated WORKSPACE
   entry only. Everything else (triple, link group, runner, cross compiler) does
   follow the one line.
-* **issue 1296** — `nros build` does not resolve a single-package C/C++ leaf
-  (the synthesised bringup is named for the directory, the cmake driver asks for
-  `[system] name`). Those leaves keep their `cmake` pair, which is green.
-  Issue 1308 is the same seam from the other side.
+* ~~**issue 1296** — `nros build` does not resolve a single-package C/C++
+  leaf.~~ RESOLVED 2026-10-11, together with 1308: `nros build` now configures
+  the leaf's OWN `CMakeLists.txt` into `build/<image>/cmake`
+  (`plan_single_package_cmake`). Measured on native C, native C++ and the
+  mps2-an385-freertos C talker.
 
 Both were found by RUNNING the documented commands (W7), not by reading, and
 both are recorded against the acceptance bullets they falsify rather than
@@ -374,8 +383,9 @@ esp32 stack budgets.
   - **the one-line board switch is not true yet for a single-package Rust
     leaf** — issue 1305. It IS true for a C/C++ leaf and for a workspace, and
     the pages say why that differs.
-  - **`nros build` does not resolve a single-package C/C++ leaf** — issue 1296.
-    Those pages keep the leaf's own `cmake` pair.
+  - ~~**`nros build` does not resolve a single-package C/C++ leaf** — issue
+    1296.~~ Resolved 2026-10-11; the pages now say `nros build` runs the
+    leaf's own cmake pair.
 
   NOT done: `just probe bootstrap` was not run (/home at 99 %, and a container
   that clones + bootstraps rustup + builds the runtime would risk filling it).
@@ -397,8 +407,10 @@ esp32 stack budgets.
   a BUILD, not a gate (#393). `nros sync` + plain `cargo build --config
   build/<image>/nros-cargo.toml` builds the same image.
   **MET for Rust (native, mps2 bare-metal, mps2 FreeRTOS, both roads, W7).
-  NOT MET for C/C++: `nros build` does not resolve a single-package C/C++
-  leaf — issue 1296. Their leaf `cmake` pair is green.**
+  MET for C/C++ since 2026-10-11 (issue 1296): `nros sync` + `nros build`
+  rc=0 in `examples/native/{c,cpp}/talker` and `nros build` rc=0 in
+  `examples/mps2-an385-freertos/c/talker`. Other cross families not
+  re-measured.**
 - Switching a single-package example to another board is ONE line in
   `system.toml`; `git diff` afterwards shows that line only.
   **NOT MET for a Rust leaf — issue 1305.** Measured: one line changed,

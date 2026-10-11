@@ -167,12 +167,10 @@ directory outside the checkout configures and builds with no `nros sync`
 at all. See
 [Workflow by Platform and Language](../user-guide/workflow-by-platform.md).
 
-`nros build`, the workspace verb, does not yet work in a single-package
-C or C++ leaf — the synthesised bringup and the CMake driver derive its
-name from two different facts and disagree
-([issue 1296](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1296-nros-build-c-leaf-bringup-name-mismatch.md)).
-The two `cmake` lines above are the supported path here; `nros build` is
-the path for a [multi-node workspace](workspace-cpp.md).
+`nros build` works here too: in a single-package C or C++ leaf it runs
+the same two `cmake` lines, into `build/<image>/cmake`, with the toolchain
+file the board names ([issue 1296](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1296-nros-build-c-leaf-bringup-name-mismatch.md)). In a
+[multi-node workspace](workspace-cpp.md) it is the only build verb.
 
 Outside a sourced checkout, tell cmake where nano-ros is —
 `cmake -B build -Dnano_ros_ROOT=/path/to/nano-ros`, or export

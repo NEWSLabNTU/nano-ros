@@ -171,10 +171,9 @@ cmake -B build
 cmake --build build
 ```
 
-(`nros build` does not yet work in a single-package C/C++ leaf — the
-synthesised bringup is named after the directory and the CMake driver asks
-for `[system] name`. That is
-[issue 1296](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1296-nros-build-c-leaf-bringup-name-mismatch.md).)
+(`nros build` in the leaf runs the same pair into `build/<image>/cmake`,
+with the board's toolchain file —
+[issue 1296](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1296-nros-build-c-leaf-bringup-name-mismatch.md), resolved.)
 
 Zephyr is the carve-out: `west build` is still its build verb, with
 `nros sync` run first — see

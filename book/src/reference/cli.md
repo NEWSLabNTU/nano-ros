@@ -299,12 +299,12 @@ A build without a sync fails at the first preflight with one line naming
 `nros sync`, rather than four frames down in cargo's manifest parser. `--dry-run`
 prints the stages and the command that would run, and performs no I/O.
 
-Two gaps worth knowing: `nros build` does **not** work in a single-package C/C++
-leaf today (the synthesised bringup is named after the leaf directory and the
-cmake driver asks for `[system] name` —
-[issue 1296](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1296-nros-build-c-leaf-bringup-name-mismatch.md));
-use that leaf's own `cmake -B build && cmake --build build`. And Zephyr keeps
-`west build` as its build verb, with `nros sync` still run first.
+In a single-package C/C++ leaf, `nros build` configures the leaf's own
+`CMakeLists.txt` into `build/<image>/cmake` with `-DNROS_IMAGE=<id>` and the
+board's toolchain file, then runs `cmake --build`: the leaf's own cmake pair,
+with the inputs a bare configure cannot know
+([issue 1296](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1296-nros-build-c-leaf-bringup-name-mismatch.md)). Zephyr keeps `west build` as its build verb, with
+`nros sync` still run first.
 
 Driving cargo yourself is supported — point it at the generated file, from the
 directory above the package:

@@ -194,11 +194,10 @@ cmake --build build
 No `nros sync` here: a C++ leaf's message bindings are generated inside
 CMake, at configure time. (A Rust leaf needs sync, because its message
 crates and its build settings have to exist before cargo parses
-anything.) `nros build`, the workspace verb, does not yet work in a
-single-package C or C++ leaf —
-[issue 1296](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1296-nros-build-c-leaf-bringup-name-mismatch.md);
-these two `cmake` lines are the supported path here, and `nros build` is
-the path for a [multi-node workspace](workspace-cpp.md).
+anything.) `nros build` in the leaf
+runs these same two `cmake` lines, into `build/<image>/cmake`, with the
+board's toolchain file ([issue 1296](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1296-nros-build-c-leaf-bringup-name-mismatch.md)); in a
+[multi-node workspace](workspace-cpp.md) it is the only build verb.
 
 First configure builds nano-ros's Rust staticlibs (~3 minutes).
 Re-builds finish in seconds.
