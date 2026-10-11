@@ -127,10 +127,11 @@ pub struct PackageMetadataNros {
     /// the no-RTOS rule; the schema only accepts the field.)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub application: Option<ApplicationMetadata>,
-    /// Phase 212.N.7 — `[package.metadata.nros.entry]`. Entry pkgs declare
-    /// which `[deploy.<target>]` block they run on (the firmware bin pulls
-    /// in the per-board shim + emits `run_plan(runtime)`). Strict schema —
-    /// `deploy = "<board>"` is the only field today.
+    /// Phase 212.N.7 — `[package.metadata.nros.entry]`. Optional build facts
+    /// an entry's `nros::main!` reads (`node_pkgs`, `max_callbacks`,
+    /// `max_sched_contexts`). NOT what makes a package an entry: since issue
+    /// 1289 that is the image that claims it (`leaf_system::claiming_image`),
+    /// and no in-tree manifest carries the table. Strict schema.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entry: Option<EntryMetadata>,
     /// Phase 212.L.7 / L.8 — per-target deploy tables, keyed by target name
@@ -168,33 +169,6 @@ pub struct PackageMetadataNros {
 }
 
 impl PackageMetadataNros {
-    /// Is this package bound to a deploy target, i.e. NOT host-compilable?
-    ///
-    /// issue 0358 — two manifest spellings say this, and every consumer had to
-    /// remember both:
-    ///
-    /// ```toml
-    /// [package.metadata.nros.entry]           # 24 standalone examples
-    /// deploy = "native"
-    ///
-    /// [package.metadata.nros.deploy.zephyr]   # 27 standalone examples
-    /// board = "native_sim/native/64"
-    /// ```
-    ///
-    /// The source-metadata probe remembered only the first, so 27 packages fell
-    /// through to a host build they cannot survive — they dep a board crate
-    /// directly, or on zephyr the `zephyr` crate whose build script wants
-    /// `DOTCONFIG` from a cmake configure that has not run. That surfaced as
-    /// `DOTCONFIG must be set by wrapper` on a Zephyr leaf (issue 0318), which
-    /// is several layers from a predicate that forgot half its input.
-    ///
-    /// Being one function is the point: the next consumer asks the question
-    /// instead of re-deriving the answer, and a third spelling is one edit here
-    /// rather than a hunt through call sites.
-    pub fn deploy_bound(&self) -> bool {
-        self.entry.is_some() || !self.deploy.is_empty()
-    }
-
     /// Reject manifests that combine more than one of `component` /
     /// `node` / `components` / `nodes` / `application` — the shapes are
     /// mutually exclusive per the Phase 212.L design doc plus the Phase
@@ -263,15 +237,19 @@ impl PackageMetadataNros {
 
 /// `[package.metadata.nros.entry]` — Phase 212.N.7.
 ///
-/// Marks an Entry pkg (the firmware bin) so the planner can route it to the
-/// right `[deploy.<target>]` block. The reader keeps this strict
+/// Once the marker that made a package an Entry pkg; issue 1289 retired that
+/// role — an entry is the package an image CLAIMS (`leaf_system::
+/// claiming_image`), and an empty table states nothing. What survives is a
+/// home for build facts that are not deployment and that `nros::main!` reads
+/// from the entry's own manifest: `node_pkgs` (an RTIC/Embassy entry that
+/// registers a node package OTHER than itself — absent, it registers itself),
+/// `max_callbacks`, `max_sched_contexts`. No in-tree manifest needs any of
+/// them, so none carries the table (`check-leaf-deployment-spelling`); the
+/// schema keeps accepting it for out-of-tree entries. Strict
 /// (`deny_unknown_fields`) so a typo surfaces immediately.
 ///
-/// phase-445 W3b (RFC-0098 D5) — `deploy` is OPTIONAL now. A single-package
-/// leaf names its board in `system.toml` (`[image.<id>] board`), and keeps this
-/// table only for the build facts that are not deployment: `node_pkgs`,
-/// `max_callbacks`, `max_sched_contexts` (the RTIC leaves). Workspace entries
-/// still on the retiring spelling carry `deploy`; an empty string = absent.
+/// `deploy` retired with RFC-0098 D5 (phase-445 W5): accepted by the schema
+/// only so the reader can REFUSE it by name (`retired_deployment_keys`).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EntryMetadata {
@@ -317,6 +295,14 @@ pub struct ComponentMetadata {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     /// Default namespace the component is mounted at. Absent → `/`.
+    ///
+    /// Issue 1289 — still ACCEPTED (an out-of-tree manifest may carry it, and
+    /// `deny_unknown_fields` would otherwise refuse the whole table), but
+    /// nothing in-tree writes it: a namespace is the launch file's to give, as
+    /// it is for a C/C++ node, whose `nros_components_register_node` has no such
+    /// argument. No reader consumes the value either — it reaches only the
+    /// synthetic metadata JSON's `default_namespace` key, which no planner or
+    /// codegen path reads — so absent and `"/"` produce the same plan.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_namespace: Option<String>,
     /// Phase 216.A.5 — `"inline" | "deferred" | "from_isr"`.
@@ -1797,41 +1783,6 @@ mod tests {
         );
         toml::from_str::<SystemToml>(&doc("\"timer\""))
             .expect_err("a bare string other than `census` is neither shape");
-    }
-
-    /// issue 0358 — the two spellings must answer identically.
-    ///
-    /// They mean the same thing, so a consumer that reaches for either one in
-    /// isolation is already wrong. Asserting the EQUIVALENCE rather than each
-    /// arm separately is what would have failed when the probe checked only
-    /// `entry`, instead of quietly passing because the `entry` arm was fine.
-    #[test]
-    fn both_deploy_bound_spellings_agree() {
-        use super::PackageMetadataNros;
-
-        let via_entry: PackageMetadataNros =
-            toml::from_str("[entry]\ndeploy = \"native\"\n").expect("entry form parses");
-        let via_deploy: PackageMetadataNros =
-            toml::from_str("[deploy.zephyr]\nboard = \"native_sim/native/64\"\n")
-                .expect("deploy form parses");
-        let neither: PackageMetadataNros =
-            toml::from_str("[node]\nclass = \"demo::Talker\"\n").expect("node form parses");
-
-        assert!(via_entry.deploy_bound(), "[entry] means deploy-bound");
-        assert!(
-            via_deploy.deploy_bound(),
-            "[deploy.<target>] means deploy-bound too — this is the half the \
-             metadata probe forgot (issue 0318), and 27 packages hard-failed"
-        );
-        assert_eq!(
-            via_entry.deploy_bound(),
-            via_deploy.deploy_bound(),
-            "the two spellings must not disagree"
-        );
-        assert!(
-            !neither.deploy_bound(),
-            "a plain node pkg is host-probeable and must stay so"
-        );
     }
 
     use super::*;

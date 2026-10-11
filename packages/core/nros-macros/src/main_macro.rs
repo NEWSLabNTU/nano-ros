@@ -1861,11 +1861,12 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // Source of truth: `[package.metadata.nros.entry] node_pkgs =
     // ["pkg_a", "pkg_b"]` in the Entry pkg's `Cargo.toml`. When the
     // key is absent we fall back to the Entry pkg's own name with a
-    // conventional `_entry` suffix stripped — covers the common
-    // self-bringup shape where a single Node pkg `foo_pkg` has a
-    // sibling Entry pkg `foo_pkg_entry` (though the framework
-    // examples today don't follow this — they always declare
-    // `node_pkgs = [...]` explicitly).
+    // conventional `_entry` suffix stripped — the self-contained shape
+    // (issue 0100), where the entry's own `lib.rs` holds the node, and
+    // the shape where a Node pkg `foo_pkg` has a sibling `foo_pkg_entry`.
+    // Issue 1289: every in-tree RTIC entry is the self-contained shape, so
+    // none declares `node_pkgs` — each spelled exactly this fallback's
+    // answer. The key stays for an entry registering OTHER packages.
     let framework_node_pkg_idents: Vec<Ident> = match framework {
         // OwnedSpin (incl. NuttX) + Zephyr + Esp32 all register via the
         // launch-resolved `register_calls` (the `RuntimeCtx`-based

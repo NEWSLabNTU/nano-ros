@@ -7,8 +7,9 @@
 //!   SSoT for codegen / bringup verb).
 //! * **Node XOR Application classification** — every example
 //!   Rust crate carries exactly one of `[package.metadata.nros.
-//!   component]`, `[package.metadata.nros.application]`, or
-//!   `[package.metadata.nros.entry]` (Phase 212.N.6 rename).
+//!   component]`, `[package.metadata.nros.application]`, or an
+//!   image that claims it as its entry (a leaf `system.toml`
+//!   `[image.*] board` — issue 1289 retired the `[…nros.entry]` marker).
 //! * **`<pkg>::<Class>` class string** — Node pkgs' `class` field
 //!   starts with the Cargo `[package].name`-mangled identifier so
 //!   codegen + humans land in the same crate (L.4 lint).
@@ -308,7 +309,6 @@ fn parse_cargo_toml(path: &Path) -> Result<ProofKindClassification, String> {
     let component = nros.and_then(|n| n.get("component"));
     let node = nros.and_then(|n| n.get("node"));
     let application = nros.and_then(|n| n.get("application"));
-    let entry = nros.and_then(|n| n.get("entry"));
 
     let component_class = component
         .or(node)
@@ -328,7 +328,9 @@ fn parse_cargo_toml(path: &Path) -> Result<ProofKindClassification, String> {
     let mut cls = ProofKindClassification {
         is_component: component.is_some() || node.is_some(),
         is_application: application.is_some(),
-        is_entry: entry.is_some(),
+        // Issue 1289 — an entry is what an image claims (the leaf
+        // `system.toml` read below), never an `[entry]` manifest table.
+        is_entry: false,
         component_class,
         deploy_targets,
         package_name,

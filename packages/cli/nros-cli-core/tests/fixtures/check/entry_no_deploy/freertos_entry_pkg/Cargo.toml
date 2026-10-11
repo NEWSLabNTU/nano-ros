@@ -1,12 +1,11 @@
-# Phase 212.O.2 fixture, inverted by phase-445 W5 — an Entry pkg declaring
-# [package.metadata.nros.entry] with NO `deploy` key. That used to be the
-# offending shape (`entry-deploy-missing`); since RFC-0098 D5 retired the key it
-# is the correct one, and `nros check --workspace` accepts it. The test adds the
-# key back to prove the lint now refuses it (`entry-deploy-retired`).
+# Phase 212.O.2 fixture, inverted by phase-445 W5 — an Entry pkg with NO
+# `deploy` key. That used to be the offending shape (`entry-deploy-missing`);
+# since RFC-0098 D5 retired the key it is the correct one, and
+# `nros check --workspace` accepts it. Issue 1289 retired the (then empty)
+# entry table too: an image's claim is what makes an entry. The test adds the
+# table with the key back to prove the lint refuses it (`entry-deploy-retired`).
 
 [package]
 name = "freertos_entry_pkg"
 version = "0.1.0"
 edition = "2021"
-
-[package.metadata.nros.entry]

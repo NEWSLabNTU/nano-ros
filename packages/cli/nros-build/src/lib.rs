@@ -88,8 +88,7 @@ pub struct Options {
     /// `examples/<plat>/rust/<example>/` lives at. Override when an
     /// Entry pkg sits elsewhere.
     pub workspace_root: PathBuf,
-    /// System pkg name (typically the Entry pkg name itself; the
-    /// planner reads its `[package.metadata.nros.entry]` section).
+    /// System pkg name (typically the Entry pkg name itself).
     pub system_pkg: String,
     /// Output directory for the emitted `run_plan.rs` +
     /// `nros-plan.json`. Defaults to `$OUT_DIR`.

@@ -377,11 +377,11 @@ pub fn render_manifest(
         }
     }
 
-    // The table marks this package as an ENTRY (the selection facade keys on
-    // it). It carries no `deploy`: that key retired with RFC-0098 D5, and the
-    // image this entry is generated for is found by NAME — `<id>_entry` —
-    // through `leaf_system::for_entry`, the one reader `nros::main!` asks.
-    out.push_str("[package.metadata.nros.entry]\n\n");
+    // No `[package.metadata.nros.entry]` table (issue 1289): what makes this
+    // package an ENTRY is that its image claims it — by NAME, `<id>_entry`,
+    // through `leaf_system::claiming_image`, the one predicate the selection
+    // facade, `nros check` and `nros::main!` ask. The board is the image's too
+    // (RFC-0098 D5).
 
     // The Zephyr RMW feature (phase-470 W5.a). ONE row and it is the DEFAULT,
     // because a generated application serves one image and the image declares
@@ -672,15 +672,15 @@ mod tests {
     #[test]
     fn a_generated_manifest_states_no_deploy() {
         // RFC-0098 D5 retired `[package.metadata.nros.entry] deploy`; the
-        // image is found by the entry's NAME (`leaf_system::for_entry`). The
-        // table itself stays — the selection facade keys on it.
+        // image is found by the entry's NAME (`leaf_system::claiming_image`).
+        // Issue 1289 retired the table too: the claim is what makes an entry.
         let m = render_manifest(
             &spec(),
             &hosted(),
             Path::new("/ws/build/posix/native_entry"),
         )
         .unwrap();
-        assert!(m.contains("[package.metadata.nros.entry]"), "{m}");
+        assert!(!m.contains("[package.metadata.nros"), "{m}");
         assert!(!m.contains("deploy"), "{m}");
     }
 

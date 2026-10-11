@@ -24,8 +24,6 @@ publish = false
 name = "demo_entry"
 path = "src/main.rs"
 
-[package.metadata.nros.entry]
-
 [dependencies]
 # `nros::main!()` macro lives here; we wire `BoardEntry` /
 # `RuntimeCtx` / `RuntimeError` directly via `nros-platform` instead

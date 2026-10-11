@@ -85,9 +85,10 @@ build-one example rmw="zenoh" board="native_sim/native/64":
         # Phase 214.J.2 — wipe `generated/` on trait-surface drift before sync.
         source "$(pwd)/scripts/build/codegen-stamp.sh"
         NROS_REPO_DIR="$(pwd)" nros_codegen_stamp_check_or_wipe "$src"
-        # issue 0318 — no `--no-metadata` needed. A zephyr entry carries
-        # `[package.metadata.nros.entry]` (the `deploy.zephyr` table that also
-        # did is retired, phase-445 W5), which `nros` reads as deploy-bound, so
+        # issue 0318 — no `--no-metadata` needed. A zephyr entry is claimed by
+        # an image (its own `system.toml`, or the bringup's — issue 1289; the
+        # `[package.metadata.nros.entry]` marker and `deploy.zephyr` table it
+        # replaced are retired), which `nros` reads as deploy-bound, so
         # it skips the host probe for that component by itself
         # (the probe cannot compile it: the `zephyr` crate's build script wants
         # `DOTCONFIG` from a cmake configure this sync is the prerequisite for).

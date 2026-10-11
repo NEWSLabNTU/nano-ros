@@ -19,8 +19,6 @@ publish = false
 name = "freertos_entry"
 path = "src/main.rs"
 
-[package.metadata.nros.entry]
-
 [dependencies]
 # Board impl for the FreeRTOS / MPS2-AN385 family.
 nros-board-mps2-an385-freertos = { path = "@NROS_REPO_DIR@/packages/boards/nros-board-mps2-an385-freertos", default-features = false, features = ["rmw-zenoh"] }

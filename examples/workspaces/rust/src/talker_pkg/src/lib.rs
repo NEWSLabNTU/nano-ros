@@ -1,7 +1,7 @@
 //! Talker Node pkg — publishes `std_msgs/Int32` on `/chatter`.
 //!
 //! Board-agnostic Node pkg. The sibling Entry pkg (`native_entry`)
-//! wires it onto a board via `[package.metadata.nros.entry]` + the
+//! wires it onto a board — the bringup image that claims it + the
 //! `nros::main!(launch = "demo_bringup:...")` macro, which emits one
 //! `talker_pkg::register(runtime)?;` call per `<node>` entry in the
 //! launch file.

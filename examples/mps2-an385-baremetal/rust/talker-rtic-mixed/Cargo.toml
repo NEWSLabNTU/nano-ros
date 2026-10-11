@@ -12,8 +12,8 @@ test = false
 bench = false
 
 # Self-contained standalone example (issue 0100): node logic in this crate's
-# lib.rs (`nros::node!` -> `register_dispatch`); `node_pkgs` self-references
-# this crate; `main.rs` is the `nros::main!()` RTIC Entry.
+# lib.rs (`nros::node!` -> `register_dispatch`); `nros::main!()` registers this crate itself
+# (issue 1289: no `node_pkgs` needed); `main.rs` is the `nros::main!()` RTIC Entry.
 [lib]
 crate-type = ["rlib"]
 
@@ -22,9 +22,6 @@ crate-type = ["rlib"]
 # Its image-only dependencies below still name the board crate, so a board
 # switch edits this file too until RFC-0098 D6 reaches single-package leaves
 # (issue 1305).
-
-[package.metadata.nros.entry]
-node_pkgs = ["qemu-rtic-mixed-talker"]
 
 [dependencies]
 # Node deps folded in from the former talker_rtic_mixed_pkg (issue 0100).

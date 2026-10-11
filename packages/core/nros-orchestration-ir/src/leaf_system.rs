@@ -43,8 +43,11 @@
 //! deployment keys are now an ERROR wherever they appear ([`read`]) — naming
 //! the file to write — because a key nothing reads is a fact that silently
 //! stopped being true. `[package.metadata.nros.node]` / `component` on a
-//! workspace NODE package are the metadata pipeline's (`nros sync`), not a
-//! deployment, and are not this reader's business.
+//! workspace NODE package are node REGISTRATION — the Rust spelling of a C/C++
+//! package's `nros_components_register_node` (issue 1289) — not a deployment,
+//! and are not this reader's business. Nor is an `[package.metadata.nros.entry]`
+//! table what makes a package an entry: an image's claim is
+//! ([`claiming_image`]).
 
 use std::{
     collections::BTreeMap,
@@ -350,6 +353,54 @@ pub fn for_entry(
             many.join(", ")
         )),
     }
+}
+
+/// Issue 1289 — the image that claims the package at `entry_dir` (package name
+/// `entry_pkg`), searched over a WORKSPACE's bringups: what makes a package an
+/// ENTRY.
+///
+/// This is the one predicate for "is this package an entry". It used to be the
+/// presence of an (empty) `[package.metadata.nros.entry]` table in the
+/// manifest, which stated nothing an image did not already state — every
+/// in-tree entry the table marked was also claimed by an image, and a marker
+/// nobody keeps in step with the bringup is a second spelling of one fact.
+///
+/// * A `system.toml` beside the package answers first ([`read`]): a
+///   single-package leaf is its own image.
+/// * Otherwise each of `bringup_dirs` is asked through [`for_entry`]. A
+///   directory that is itself a package (a leaf's `system.toml`) is not a
+///   bringup and is skipped, so a caller may pass every directory holding a
+///   `system.toml`.
+///
+/// `Ok(None)` when nothing claims it — a node or library package. Images in two
+/// bringups claiming one entry is an error, not a first match.
+pub fn claiming_image<'a>(
+    entry_dir: &Path,
+    entry_pkg: &str,
+    bringup_dirs: impl IntoIterator<Item = &'a Path>,
+) -> Result<Option<LeafSystem>, String> {
+    if let Some(own) = read(entry_dir)? {
+        return Ok(Some(own));
+    }
+    let mut hit: Option<(PathBuf, LeafSystem)> = None;
+    for dir in bringup_dirs {
+        if !dir.join(SYSTEM_TOML).is_file() || is_package_dir(dir) {
+            continue; // not a bringup
+        }
+        let Some(l) = for_entry(entry_dir, entry_pkg, dir)? else {
+            continue;
+        };
+        if let Some((prev, _)) = &hit {
+            return Err(format!(
+                "entry `{entry_pkg}` is claimed by images in two bringups ({} and {}) — an \
+                 entry is ONE image's program",
+                prev.display(),
+                dir.display()
+            ));
+        }
+        hit = Some((dir.to_path_buf(), l));
+    }
+    Ok(hit.map(|(_, l)| l))
 }
 
 /// The board `dir` deploys to, from [`read`].
@@ -675,9 +726,9 @@ fn env_table(
 ///
 /// `[package.metadata.nros.node]` / `component` are not among them: on a
 /// single-package leaf they retired with W3b (and `check-leaf-deployment-
-/// spelling` refuses them there), but on a workspace node package they are the
-/// metadata pipeline's declaration of a class, not a deployment, and the
-/// deployment reader has no business refusing them.
+/// spelling` refuses them there), but on a workspace node package they are
+/// node REGISTRATION (issue 1289), not a deployment, and the deployment reader
+/// has no business refusing them.
 #[must_use]
 pub fn retired_deployment_keys(nros: &toml::Table) -> Vec<String> {
     let mut out = Vec::new();
@@ -1030,6 +1081,49 @@ domain_id = 4
         // `[system]` fills what the image leaves out — the leaf overlay.
         assert_eq!(l.network.domain_id, Some(0));
         assert!(matches!(l.origin, Origin::Bringup(_)));
+    }
+
+    /// Issue 1289 — an entry is the package an image CLAIMS; a manifest table
+    /// says nothing either way.
+    #[test]
+    fn an_entry_is_what_an_image_claims_not_what_a_manifest_marks() {
+        // Claimed by NAME (a generated `<id>_entry`), with no marker at all.
+        let (d, bringup, e) = workspace("esp32_entry", CARGO);
+        let l = claiming_image(&e, "esp32_entry", [bringup.as_path()])
+            .unwrap()
+            .expect("an image claims it, so it is an entry");
+        assert_eq!(l.image.as_deref(), Some("esp32"));
+        // Claimed by `entry = "<pkg>"`.
+        let z = d.path().join("src/zephyr_entry");
+        std::fs::create_dir_all(&z).unwrap();
+        std::fs::write(z.join("Cargo.toml"), CARGO).unwrap();
+        let l = claiming_image(&z, "zephyr_entry", [bringup.as_path()])
+            .unwrap()
+            .expect("claimed by entry =");
+        assert_eq!(l.image.as_deref(), Some("zephyr"));
+        // A package carrying the old empty marker that NO image claims is not
+        // an entry: the marker was never the fact.
+        let (_d2, bringup2, marked) = workspace(
+            "talker_pkg",
+            &format!("{CARGO}\n[package.metadata.nros.entry]\n"),
+        );
+        assert_eq!(
+            claiming_image(&marked, "talker_pkg", [bringup2.as_path()]).unwrap(),
+            None
+        );
+        // A single-package leaf is its own image, whatever bringups are given.
+        let leafd = leaf(&[("Cargo.toml", CARGO), ("system.toml", SYSTEM)]);
+        assert!(
+            claiming_image(leafd.path(), "talker", std::iter::empty::<&Path>())
+                .unwrap()
+                .is_some()
+        );
+        // A `system.toml` beside a PACKAGE passed as a bringup is a leaf, not
+        // a bringup: it claims nothing for anyone else.
+        assert_eq!(
+            claiming_image(&marked, "talker_pkg", [leafd.path()]).unwrap(),
+            None
+        );
     }
 
     #[test]

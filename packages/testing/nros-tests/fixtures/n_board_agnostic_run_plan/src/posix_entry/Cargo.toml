@@ -16,9 +16,8 @@ publish = false
 name = "posix_entry"
 path = "src/main.rs"
 
-# Marks this package as an ENTRY; its board is the `system.toml` beside this
-# manifest (phase-445 W5 retired the `deploy` key that lived here).
-[package.metadata.nros.entry]
+# An ENTRY because the `system.toml` beside this manifest declares its image
+# (issue 1289); its board is stated there too (phase-445 W5).
 
 [dependencies]
 # Board impl for the POSIX family.
