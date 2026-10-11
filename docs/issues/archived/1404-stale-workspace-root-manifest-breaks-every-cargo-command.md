@@ -3,12 +3,41 @@ id: 1404
 title: "A pre-RFC-0098 workspace-root `Cargo.toml` survives on disk and breaks
   every cargo command in that workspace; only a successful `nros build` of it
   removes the file, and `nros sync` leaves it alone"
-status: open
+status: resolved
 type: bug
 area: cli, examples, build
 severity: high
 related: [0463, 0474, 1114, 1406, phase-383, phase-445, RFC-0098]
+resolved_in: "phase-445 (nros sync retires a generated root)"
 ---
+
+## Resolved (2026-10-11)
+
+Both halves the issue asked for now hold, without a successful `nros build`
+first:
+
+- **Reported.** `check-example-workspace-members` (261352f042, issue 1366)
+  reads the ON-DISK roots and names the file.
+- **Removed.** `nros sync` now deletes a workspace-root `Cargo.toml` that
+  carries the generator's own marker, together with its lock
+  (`retire_generated_workspace_root` in `cmd/ws.rs`, through
+  `cargo_root::retire`). It prints
+  `sync: removed <path> — a workspace root the pre-RFC-0098 builder generated (issue 1404)`.
+  An authored `[workspace]` is left to `nros build`'s refusal: a single-package
+  Rust leaf legitimately has one, and sync never deletes a file a person wrote.
+
+Measured: main's stale `examples/workspaces/rust/Cargo.toml`, planted in a
+fresh worktree, survives `nros sync` on main (rc=0) and is removed by
+`nros sync` on the branch (rc=0). Unit tests:
+`retire_generated_root_tests::{a_generated_root_and_its_lock_are_removed,
+an_authored_workspace_is_left_alone}`.
+
+The third acceptance bullet is about one machine's untracked files. The stale
+roots go on that machine's next `nros sync` with this CLI.
+`examples/workspaces/rust/src/esp32_entry/` (a directory holding only a dead
+`.cargo/config.toml`) is outside any package, so nothing reads it, and it is
+left for the operator to delete.
+
 
 ## Symptom
 
