@@ -41,6 +41,39 @@ LOCKED_SITES = [
 ]
 
 
+def violations(files: dict[str, str]) -> list[str]:
+    """Every rule broken by `files` (path -> text). Pure, so the self-test can
+    plant each failure without touching the tree."""
+    bad = []
+    if "scripts/bin/cargo" in files:
+        bad.append("scripts/bin/cargo is tracked again — the --locked PATH shim is retired "
+                   "(phase-485 W4); the drift check replaces it.")
+    hits = [rel for rel, text in files.items()
+            if not rel.startswith(("docs/", "third-party/")) and RETIRED in text]
+    if hits:
+        bad.append(f"{RETIRED} is retired (phase-485 W4) but named in:\n    "
+                   + "\n    ".join(sorted(hits))
+                   + "\n  Drop the reader/setter; a closed-root build passes `--locked` itself.")
+    for rel, pat in LOCKED_SITES:
+        if not pat.search(files.get(rel, "")):
+            bad.append(f"{rel}: a closed-graph root build lost its `--locked` ({pat.pattern})")
+    return bad
+
+
+def self_test() -> None:
+    good = {
+        "justfile": 'cargo build --release --locked --manifest-path "$root/packages/cli/Cargo.toml"\n'
+                    'cargo build --release --locked --manifest-path "$crate/Cargo.toml"\n',
+        "scripts/build/cargo.sh": 'nros_cargo_nextest_args() {\n    echo "--locked"\n}\n',
+        "docs/x.md": RETIRED,
+    }
+    assert violations(good) == [], violations(good)
+    assert len(violations({**good, "scripts/bin/cargo": ""})) == 1, "a revived shim passed"
+    assert len(violations({**good, "a.sh": f"{RETIRED}= cargo build"})) == 1, "a setter passed"
+    dropped = {**good, "justfile": good["justfile"].replace("--release --locked", "--release", 1)}
+    assert len(violations(dropped)) == 1, "a lost --locked passed"
+
+
 def tracked() -> list[str]:
     return subprocess.run(
         ["git", "-C", str(ROOT), "ls-files"], capture_output=True, text=True, check=True
@@ -48,29 +81,14 @@ def tracked() -> list[str]:
 
 
 def main() -> int:
-    files = tracked()
-    bad = []
-    if "scripts/bin/cargo" in files:
-        bad.append("scripts/bin/cargo is tracked again — the --locked PATH shim is retired "
-                   "(phase-485 W4); the drift check replaces it.")
-    hits = []
-    for rel in files:
-        if rel.startswith("docs/") or rel.startswith("third-party/"):
-            continue
-        p = ROOT / rel
+    self_test()
+    files = {}
+    for rel in tracked():
         try:
-            text = p.read_text(errors="ignore")
+            files[rel] = (ROOT / rel).read_text(errors="ignore")
         except (IsADirectoryError, FileNotFoundError):
             continue
-        if RETIRED in text:
-            hits.append(rel)
-    if hits:
-        bad.append(f"{RETIRED} is retired (phase-485 W4) but named in:\n    "
-                   + "\n    ".join(hits)
-                   + "\n  Drop the reader/setter; a closed-root build passes `--locked` itself.")
-    for rel, pat in LOCKED_SITES:
-        if not pat.search((ROOT / rel).read_text()):
-            bad.append(f"{rel}: a closed-graph root build lost its `--locked` ({pat.pattern})")
+    bad = violations(files)
     if bad:
         print("check-cargo-locked FAILED:\n  " + "\n  ".join(bad), file=sys.stderr)
         return 1
