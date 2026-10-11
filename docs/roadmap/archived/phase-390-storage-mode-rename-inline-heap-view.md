@@ -1,6 +1,6 @@
 # Phase 390 — `owned`/`borrowed` name the wrong things; rename to `inline`/`heap`/`view`
 
-**Archived 2026-10-11.** W1-W5 landed. W6, renaming the code generator's internal `borrowed` predicates and template keys, was never started and moved to [issue 1807](../../issues/1807-codegen-internals-still-say-borrowed.md), with the one-commit-per-key, golden-diffed rule.
+**Archived 2026-10-11.** W1-W5 landed. W6, renaming the code generator's internal `borrowed` predicates and template keys, moved to [issue 1807](../../issues/archived/1807-codegen-internals-still-say-borrowed.md) and landed on 2026-10-12 (PR #1988), together with the refusal of the retired `owned`/`borrowed` tokens.
 
 **Status (2026-08-30). W1-W5 landed; W6 (emitter internals) recorded, not started.** Opened from a
 memory-allocation review that settled the message allocation strategy before
