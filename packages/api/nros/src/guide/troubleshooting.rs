@@ -7,8 +7,8 @@
 //!
 //! | Layer | Env var | Posix default |
 //! |-------|---------|---------------|
-//! | Defragmentation | `ZPICO_FRAG_MAX_SIZE` | 65536 |
-//! | Batch size | `ZPICO_BATCH_UNICAST_SIZE` | 65536 |
+//! | Defragmentation | `NROS_ZENOH_FRAG_MAX_SIZE` | 65536 |
+//! | Batch size | `NROS_ZENOH_BATCH_UNICAST_SIZE` | 65536 |
 //! | Shim buffer | `NROS_SUBSCRIBER_BUFFER_SIZE` | 1024 |
 //! | User receive buffer | — (const generic) | 1024 |
 //!

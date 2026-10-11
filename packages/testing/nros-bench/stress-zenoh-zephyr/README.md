@@ -1,7 +1,7 @@
 # stress-zenoh-zephyr — Zephyr streaming tx benchmark (phase-282 W2, #145)
 
 A tight-loop zpico publisher on `native_sim`, measuring the Zephyr zsock tx
-ceiling across the `ZPICO_TX_BATCH` / `Z_FEATURE_TX_SPLIT_LOCK` knobs. Publishes
+ceiling across the `NROS_ZENOH_TX_BATCH` / `Z_FEATURE_TX_SPLIT_LOCK` knobs. Publishes
 `STRESS_COUNT` (default 5000) payloads of `STRESS_SIZE` (default 64) bytes as
 fast as the loop allows, over the exact shared tx path every nano-ros language
 front-end uses (zpico shim → zenoh-pico), bypassing the executor so the number
@@ -33,12 +33,12 @@ batched publisher shows flush-cadence bursts, an express one doesn't.
 
 ```bash
 # IMPORTANT: build the LISTENER with a deep rx ring. The per-subscriber
-# SPSC ring depth is compile-time (ZPICO_SUBSCRIBER_RING_DEPTH, default 4);
+# SPSC ring depth is compile-time (NROS_ZENOH_SUBSCRIBER_RING_DEPTH, default 4);
 # a batched publisher delivers a whole wire batch as one callback burst and
 # a 4-slot ring silently drops the tail (drop-newest), undercounting the
 # measurement by >10x.
 (cd packages/testing/nros-bench/stress-zenoh && \
-  ZPICO_SUBSCRIBER_RING_DEPTH=1024 cargo build --release)
+  NROS_ZENOH_SUBSCRIBER_RING_DEPTH=1024 cargo build --release)
 
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:17866"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd &
 MODE=listener PAYLOAD_SIZE=64 EXPECTED_COUNT=5000 TIMEOUT_SECS=40 \

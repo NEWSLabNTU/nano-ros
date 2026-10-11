@@ -33,6 +33,9 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosResolved.cmake")
 # them the right place to clear a date a previous pass armed. FILE scope, same
 # reason as the two above.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosReconfigure.cmake")
+# phase-484 W5a (RFC-0103 D2b) -- `_nros_knob_env`, rung 1 under every spelling
+# of a knob's registry row. FILE scope, same reason as its neighbours.
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosKnobEnv.cmake")
 # Issue 1407 -- `nros_sizing_descriptor_west_fragment`, the one path both the
 # entry (writer) and `_nros_load_west_sizing_descriptor` (reader) name. FILE
 # scope, same reason as the three above.
@@ -174,8 +177,11 @@ function(_nros_resolve_knob env_name kconfig_value)
     if(ARGC GREATER 2)
         set(_source "${ARGV2}")
     endif()
-    if(DEFINED ENV{${env_name}} AND NOT "$ENV{${env_name}}" STREQUAL "")
-        set(_resolved "$ENV{${env_name}}")
+    # phase-484 W5a -- the environment under ANY spelling of the knob's row
+    # (`ZPICO_FRAG_MAX_SIZE` still reaches `NROS_ZENOH_FRAG_MAX_SIZE`).
+    _nros_knob_env(${env_name} _env_value _env_from)
+    if(NOT _env_value STREQUAL "")
+        set(_resolved "${_env_value}")
         set(_source environment)
         if(NOT "${_resolved}" STREQUAL "${kconfig_value}")
             message(STATUS
@@ -592,18 +598,19 @@ function(_nros_resolve_derivable_knob env_name kconfig_value derived_var)
         _nros_resolve_knob(${env_name} "${kconfig_value}")
         return()
     endif()
-    if((DEFINED ENV{${env_name}} AND NOT "$ENV{${env_name}}" STREQUAL "")
+    _nros_knob_env(${env_name} _env_value _env_from)
+    if(NOT _env_value STREQUAL ""
        OR "${env_name}" IN_LIST NROS_IMAGE_ENV_ROWS)
         # Rung 1 still outranks rung 3, and so does an `[image.<id>] env` row
         # with no Kconfig symbol (phase-481 W1). `_nros_resolve_knob` picks the
         # stating rung and prints it; give it the derived value (or the
         # sentinel) as the thing being overridden so the message names the
         # real loser.
-        if(DEFINED ENV{${env_name}} AND NOT "$ENV{${env_name}}" STREQUAL "")
+        if(NOT _env_value STREQUAL "")
             # phase-474 I5: a stated value below its derivation warns; an
             # `[image.<id>] env` row with no value here has nothing to compare.
-            _nros_compare_stated_to_derived(${env_name} "$ENV{${env_name}}"
-                "the environment (${env_name})" ${derived_var} "${_src}")
+            _nros_compare_stated_to_derived(${env_name} "${_env_value}"
+                "the environment (${_env_from})" ${derived_var} "${_src}")
         endif()
         _nros_resolve_knob(${env_name} "${${derived_var}}")
         return()
@@ -973,9 +980,9 @@ function(nros_resolve_knobs)
             "${NROS_RESOLVED_NROS_MAX_SUBSCRIBERS}" ZPICO_MAX_SUBSCRIBERS)
         _nros_c_array_pool_floor(_nros_zpico_qrys
             "${NROS_RESOLVED_NROS_MAX_QUERYABLES}" ZPICO_MAX_QUERYABLES)
-        _nros_resolve_knob(ZPICO_MAX_PUBLISHERS "${_nros_zpico_pubs}")
-        _nros_resolve_knob(ZPICO_MAX_SUBSCRIBERS "${_nros_zpico_subs}")
-        _nros_resolve_knob(ZPICO_MAX_QUERYABLES "${_nros_zpico_qrys}")
+        _nros_resolve_knob(NROS_ZENOH_MAX_PUBLISHERS "${_nros_zpico_pubs}")
+        _nros_resolve_knob(NROS_ZENOH_MAX_SUBSCRIBERS "${_nros_zpico_subs}")
+        _nros_resolve_knob(NROS_ZENOH_MAX_QUERYABLES "${_nros_zpico_qrys}")
         # The POSIX MUTEX and CONDITION-VARIABLE pools, for an image whose
         # entity inventory DERIVED its queryable table. zenoh-pico gives every
         # declared subscriber AND every declared queryable a callback-drop sync
@@ -1070,29 +1077,29 @@ function(nros_resolve_knobs)
         # the floor is the rule, not an inference from today's formula.
         _nros_c_array_pool_floor(_nros_zpico_lvl
             "${NROS_RESOLVED_NROS_MAX_LIVELINESS}" ZPICO_MAX_LIVELINESS)
-        _nros_resolve_knob(ZPICO_MAX_LIVELINESS "${_nros_zpico_lvl}")
-        _nros_resolve_knob(ZPICO_MAX_PENDING_GETS "${CONFIG_NROS_MAX_PENDING_GETS}")
-        _nros_resolve_knob(ZPICO_GET_REPLY_BUF_SIZE "${CONFIG_NROS_GET_REPLY_BUF_SIZE}")
-        _nros_resolve_knob(ZPICO_GET_POLL_INTERVAL_MS "${CONFIG_NROS_GET_POLL_INTERVAL_MS}")
-        _nros_resolve_knob(ZPICO_FRAG_MAX_SIZE "${CONFIG_NROS_FRAG_MAX_SIZE}")
-        _nros_resolve_knob(ZPICO_BATCH_UNICAST_SIZE "${CONFIG_NROS_BATCH_UNICAST_SIZE}")
+        _nros_resolve_knob(NROS_ZENOH_MAX_LIVELINESS "${_nros_zpico_lvl}")
+        _nros_resolve_knob(NROS_ZENOH_MAX_PENDING_GETS "${CONFIG_NROS_MAX_PENDING_GETS}")
+        _nros_resolve_knob(NROS_ZENOH_GET_REPLY_BUF_SIZE "${CONFIG_NROS_GET_REPLY_BUF_SIZE}")
+        _nros_resolve_knob(NROS_ZENOH_GET_POLL_INTERVAL_MS "${CONFIG_NROS_GET_POLL_INTERVAL_MS}")
+        _nros_resolve_knob(NROS_ZENOH_FRAG_MAX_SIZE "${CONFIG_NROS_FRAG_MAX_SIZE}")
+        _nros_resolve_knob(NROS_ZENOH_BATCH_UNICAST_SIZE "${CONFIG_NROS_BATCH_UNICAST_SIZE}")
 
         # phase-290 (RFC-0049) — tx knob trio, tri-state: always resolved to
         # (0|1) so the cargo-built zpico config header agrees with the zephyr
         # cmake TUs (issue-0135) and an explicit Kconfig `n` overrides the
         # zephyr platform toml's on-default.
         if(CONFIG_NROS_ZENOH_TX_BATCH)
-            _nros_resolve_knob(ZPICO_TX_BATCH "1")
+            _nros_resolve_knob(NROS_ZENOH_TX_BATCH "1")
         else()
-            _nros_resolve_knob(ZPICO_TX_BATCH "0")
+            _nros_resolve_knob(NROS_ZENOH_TX_BATCH "0")
         endif()
         if(CONFIG_NROS_ZENOH_TX_SPLIT_LOCK)
-            _nros_resolve_knob(ZPICO_TX_SPLIT_LOCK "1")
+            _nros_resolve_knob(NROS_ZENOH_TX_SPLIT_LOCK "1")
         else()
-            _nros_resolve_knob(ZPICO_TX_SPLIT_LOCK "0")
+            _nros_resolve_knob(NROS_ZENOH_TX_SPLIT_LOCK "0")
         endif()
         if(CONFIG_NROS_ZENOH_TX_BATCH_FLUSH_MS)
-            _nros_resolve_knob(ZPICO_TX_BATCH_FLUSH_MS
+            _nros_resolve_knob(NROS_ZENOH_TX_BATCH_FLUSH_MS
                 "${CONFIG_NROS_ZENOH_TX_BATCH_FLUSH_MS}")
         endif()
 
@@ -1131,17 +1138,17 @@ function(nros_resolve_knobs)
         else()
             set(_nros_gd_derived 1)
         endif()
-        _nros_resolve_knob(ZPICO_GRAPH_DISCOVERY "${_nros_gd_kconfig}")
-        if(NOT (DEFINED ENV{ZPICO_GRAPH_DISCOVERY} AND
-                NOT "$ENV{ZPICO_GRAPH_DISCOVERY}" STREQUAL ""))
+        _nros_resolve_knob(NROS_ZENOH_GRAPH_DISCOVERY "${_nros_gd_kconfig}")
+        _nros_knob_env(NROS_ZENOH_GRAPH_DISCOVERY _nros_gd_env)
+        if(_nros_gd_env STREQUAL "")
             if(_nros_gd_kconfig EQUAL _nros_gd_derived)
                 message(STATUS
-                    "nros: ZPICO_GRAPH_DISCOVERY=${_nros_gd_kconfig} DERIVED from this "
+                    "nros: NROS_ZENOH_GRAPH_DISCOVERY=${_nros_gd_kconfig} DERIVED from this "
                     "image's zenoh links (${_nros_gd_links_txt}); nothing in Kconfig or "
                     "the environment states otherwise")
             else()
                 message(STATUS
-                    "nros: ZPICO_GRAPH_DISCOVERY=${_nros_gd_kconfig} from "
+                    "nros: NROS_ZENOH_GRAPH_DISCOVERY=${_nros_gd_kconfig} from "
                     "CONFIG_NROS_ZENOH_GRAPH_DISCOVERY, which OVERRIDES the value "
                     "${_nros_gd_derived} derived from this image's zenoh links "
                     "(${_nros_gd_links_txt})")
@@ -1168,7 +1175,7 @@ function(nros_resolve_knobs)
         _nros_resolve_derivable_knob(NROS_SUBSCRIBER_BUFFER_SIZE
             "${CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE}"
             NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE)
-        _nros_resolve_knob(ZPICO_SERVICE_BUFFER_SIZE
+        _nros_resolve_knob(NROS_ZENOH_SERVICE_BUFFER_SIZE
             "${CONFIG_NROS_SERVICE_BUFFER_SIZE}")
         # The transient-local retention SLOT: the largest serialized bound over
         # the types this image publishes transient-local
@@ -1176,7 +1183,7 @@ function(nros_resolve_knobs)
         # ZPICO_MAX_TL_PUBLISHERS of these; a flat 1024 B slot was 5 x 1024 B
         # on the Autoware Safety Island for five 13-105 B latched messages.
         # No Kconfig row, so the sentinel literally, as for the type table.
-        _nros_resolve_derivable_knob(ZPICO_TL_RETAIN_BYTES
+        _nros_resolve_derivable_knob(NROS_ZENOH_TL_RETAIN_BYTES
             "${NROS_KNOB_DERIVE_SENTINEL}" NROS_DERIVED_TL_RETAIN_BYTES)
 
         # Issue 1549 -- zenoh-pico's same-session query path
@@ -1207,17 +1214,17 @@ function(nros_resolve_knobs)
         # of whatever shell ran ninja: a consumer exporting them got the right
         # image, and the same tree rebuilt by a bare `ninja` silently got crate
         # defaults. Same class as issue 0316 / #0749.
-        _nros_resolve_knob(ZPICO_SUBSCRIBER_RING_DEPTH
+        _nros_resolve_knob(NROS_ZENOH_SUBSCRIBER_RING_DEPTH
             "${CONFIG_NROS_SUBSCRIBER_RING_DEPTH}")
         # The two W6 named by name: "numbers a human produced by reading
         # generated headers with their eyes". Both derivable, and the count is
         # the one that has an answer of ZERO -- W4 made that legal precisely so
         # an image whose types all fit the small class stops reserving
         # RING_DEPTH x LARGE_SIZE for a class it never routes into.
-        _nros_resolve_derivable_knob(ZPICO_MAX_LARGE_SUBSCRIBERS
+        _nros_resolve_derivable_knob(NROS_ZENOH_MAX_LARGE_SUBSCRIBERS
             "${CONFIG_NROS_MAX_LARGE_SUBSCRIBERS}"
             NROS_DERIVED_MAX_LARGE_SUBSCRIBERS)
-        _nros_resolve_derivable_knob(ZPICO_SUBSCRIBER_LARGE_SIZE
+        _nros_resolve_derivable_knob(NROS_ZENOH_SUBSCRIBER_LARGE_SIZE
             "${CONFIG_NROS_SUBSCRIBER_LARGE_SIZE}"
             NROS_DERIVED_SUBSCRIBER_LARGE_SIZE)
 
@@ -1268,14 +1275,14 @@ function(nros_resolve_knobs)
         # file would have to invent.
         set(_nros_rx_need "")
         set(_nros_rx_need_knob "")
-        if(DEFINED NROS_RESOLVED_ZPICO_MAX_LARGE_SUBSCRIBERS
-           AND NROS_RESOLVED_ZPICO_MAX_LARGE_SUBSCRIBERS GREATER 0
-           AND DEFINED NROS_RESOLVED_ZPICO_SUBSCRIBER_LARGE_SIZE
-           AND NOT "${NROS_RESOLVED_ZPICO_SUBSCRIBER_LARGE_SIZE}" STREQUAL "")
+        if(DEFINED NROS_RESOLVED_NROS_ZENOH_MAX_LARGE_SUBSCRIBERS
+           AND NROS_RESOLVED_NROS_ZENOH_MAX_LARGE_SUBSCRIBERS GREATER 0
+           AND DEFINED NROS_RESOLVED_NROS_ZENOH_SUBSCRIBER_LARGE_SIZE
+           AND NOT "${NROS_RESOLVED_NROS_ZENOH_SUBSCRIBER_LARGE_SIZE}" STREQUAL "")
             # The image routes into the large class, so the large class is the
             # largest thing it can receive.
-            set(_nros_rx_need "${NROS_RESOLVED_ZPICO_SUBSCRIBER_LARGE_SIZE}")
-            set(_nros_rx_need_knob "ZPICO_SUBSCRIBER_LARGE_SIZE")
+            set(_nros_rx_need "${NROS_RESOLVED_NROS_ZENOH_SUBSCRIBER_LARGE_SIZE}")
+            set(_nros_rx_need_knob "NROS_ZENOH_SUBSCRIBER_LARGE_SIZE")
         elseif(DEFINED NROS_RESOLVED_NROS_SUBSCRIBER_BUFFER_SIZE
                AND NOT "${NROS_RESOLVED_NROS_SUBSCRIBER_BUFFER_SIZE}" STREQUAL "")
             set(_nros_rx_need "${NROS_RESOLVED_NROS_SUBSCRIBER_BUFFER_SIZE}")
@@ -1283,27 +1290,27 @@ function(nros_resolve_knobs)
         endif()
 
         if(NOT "${_nros_rx_need}" STREQUAL "")
-            set(_nros_rx_ceiling "${NROS_RESOLVED_ZPICO_FRAG_MAX_SIZE}")
-            set(_nros_rx_ceiling_knob "ZPICO_FRAG_MAX_SIZE")
-            if(NROS_RESOLVED_ZPICO_BATCH_UNICAST_SIZE GREATER _nros_rx_ceiling)
-                set(_nros_rx_ceiling "${NROS_RESOLVED_ZPICO_BATCH_UNICAST_SIZE}")
-                set(_nros_rx_ceiling_knob "ZPICO_BATCH_UNICAST_SIZE")
+            set(_nros_rx_ceiling "${NROS_RESOLVED_NROS_ZENOH_FRAG_MAX_SIZE}")
+            set(_nros_rx_ceiling_knob "NROS_ZENOH_FRAG_MAX_SIZE")
+            if(NROS_RESOLVED_NROS_ZENOH_BATCH_UNICAST_SIZE GREATER _nros_rx_ceiling)
+                set(_nros_rx_ceiling "${NROS_RESOLVED_NROS_ZENOH_BATCH_UNICAST_SIZE}")
+                set(_nros_rx_ceiling_knob "NROS_ZENOH_BATCH_UNICAST_SIZE")
             endif()
             if(_nros_rx_need GREATER _nros_rx_ceiling)
                 message(FATAL_ERROR
                     "nros: this image is built to receive a sample zenoh-pico "
                     "cannot deliver.\n"
-                    "  largest receivable sample = ${_nros_rx_need}"
+                    "  largest receivable sample     = ${_nros_rx_need}"
                     " (${_nros_rx_need_knob})\n"
-                    "  ZPICO_FRAG_MAX_SIZE       ="
-                    " ${NROS_RESOLVED_ZPICO_FRAG_MAX_SIZE}\n"
-                    "  ZPICO_BATCH_UNICAST_SIZE  ="
-                    " ${NROS_RESOLVED_ZPICO_BATCH_UNICAST_SIZE}\n"
-                    "  receive ceiling           = ${_nros_rx_ceiling}"
+                    "  NROS_ZENOH_FRAG_MAX_SIZE      ="
+                    " ${NROS_RESOLVED_NROS_ZENOH_FRAG_MAX_SIZE}\n"
+                    "  NROS_ZENOH_BATCH_UNICAST_SIZE ="
+                    " ${NROS_RESOLVED_NROS_ZENOH_BATCH_UNICAST_SIZE}\n"
+                    "  receive ceiling              = ${_nros_rx_ceiling}"
                     " (${_nros_rx_ceiling_knob})\n"
                     "\n"
                     "A fragmented sample that reassembles past "
-                    "ZPICO_FRAG_MAX_SIZE is dropped inside the transport: it "
+                    "NROS_ZENOH_FRAG_MAX_SIZE is dropped inside the transport: it "
                     "reaches no callback and raises no error, so the "
                     "subscription looks like one that never fires. The "
                     "ceiling above is the LARGER of the two, because a frame "
@@ -1311,7 +1318,7 @@ function(nros_resolve_knobs)
                     "defragmented.\n"
                     "\n"
                     "Set CONFIG_NROS_FRAG_MAX_SIZE to at least "
-                    "${_nros_rx_need} (or export ZPICO_FRAG_MAX_SIZE, which "
+                    "${_nros_rx_need} (or export NROS_ZENOH_FRAG_MAX_SIZE, which "
                     "wins over Kconfig). If ${_nros_rx_need_knob} OVER-states "
                     "what this image actually receives -- it is derived over "
                     "the linked interface closure when no entity inventory "

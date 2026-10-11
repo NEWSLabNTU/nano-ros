@@ -375,7 +375,7 @@ it.
 `rcl_qos_profile_rosout_default` — KEEP_LAST(1000), RELIABLE, TRANSIENT_LOCAL,
 10 s lifespan — and on an embedded target it is expensive: a transient-local
 publisher takes a retention slot AND a cache queryable out of a
-`ZPICO_MAX_QUERYABLES` that defaults to 8 and already has eleven claimants if
+`NROS_ZENOH_MAX_QUERYABLES` that defaults to 8 and already has eleven claimants if
 you run parameter and lifecycle services, and KEEP_LAST(1000) over a ~1 KB
 message is a megabyte of history. `qos_bounded()` is VOLATILE at the queue
 depth and costs neither. What you give up is that a subscriber which attaches

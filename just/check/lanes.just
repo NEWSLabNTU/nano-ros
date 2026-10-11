@@ -3013,7 +3013,7 @@ nros-log-riscv32:
 # the seam moved to the executor's registry).
 #
 # `loan_e2e` is NOT here: it opens two in-process sessions and needs
-# `ZPICO_MAX_SESSIONS=2`, which is a BUILD input — it belongs to
+# `NROS_ZENOH_MAX_SESSIONS=2`, which is a BUILD input — it belongs to
 # `test-zpico-multisession`, which already owns that env and its own target dir.
 # `custom_transport_loopback` is not here either; it needs a native fixture, so
 # it wants a fixture-gated lane rather than this one.

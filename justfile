@@ -1623,7 +1623,7 @@ _nextest-slow-tests junit="target/nextest/default/junit.xml" limit="20":
 # Miri (use `test-miri` or `test-all` for that).
 # issue 0393 — the ONE cell that exercises the multi-session zpico paths.
 #
-# `ZPICO_MAX_SESSIONS` defaults to 1, which is correct for a shipped target: the
+# `NROS_ZENOH_MAX_SESSIONS` defaults to 1, which is correct for a shipped target: the
 # C shim's session pool and the Rust shim's session-indexed SERVICE_BUFFERS /
 # REPLY_WAKERS (phase-328 / issues 0348, 0376) collapse to a single entry and the
 # static footprint stays minimal. But with nothing in the tree raising it,
@@ -1642,7 +1642,7 @@ test-zpico-multisession verbose="":
     set -euo pipefail
     source scripts/build/cargo.sh
     export CARGO_TARGET_DIR="$(nros_scoped_target_dir zpico-multisession)"  # issue 0400: box-aware
-    export ZPICO_MAX_SESSIONS=2
+    export NROS_ZENOH_MAX_SESSIONS=2
     # issue 0695 — through `_nextest-tolerant`, not a bare `cargo nextest run`
     # (issue 0673's rule): `nros_tests::lane_skip!` raised in ANOTHER package's own
     # test binary — this lane's `zenoh_integration` — is still a skip, and a
@@ -2600,7 +2600,7 @@ _check-fixtures-stale:
 # issue 0348 / 0393 — `test-zpico-multisession` is a DEPENDENCY here, not a step
 # on the `ci` line (issue 0319's rule: a suite named only on `ci` is a suite
 # `just check` never runs). It cannot fold into the nextest run below because it
-# needs `ZPICO_MAX_SESSIONS=2` — a BUILD input — and its own target dir.
+# needs `NROS_ZENOH_MAX_SESSIONS=2` — a BUILD input — and its own target dir.
 #
 # It was wired into `just test` (the dev tier) and nowhere else, so `just ci`,
 # `ci-matrix` and `ci-full` all reached `test-all` WITHOUT it and the

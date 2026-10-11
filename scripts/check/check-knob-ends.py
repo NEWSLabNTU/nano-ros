@@ -272,8 +272,31 @@ def zephyr_forwarded(path: str, text: str) -> set[str]:
 
 
 # ---------------------------------------------------------------------------
+def registry_spellings() -> list[set[str]]:
+    """Every registry row's env spellings, canonical and legacy (phase-484 W5a).
+
+    A row is ONE knob: `nros_zephyr_build::knob()` reads all of its spellings,
+    so a reader that names `"ZPICO_FRAG_MAX_SIZE"` reads `NROS_ZENOH_FRAG_MAX_SIZE`
+    too, and a document claiming the canonical name has that reader."""
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # the repo's interpreter is 3.10
+        import tomli as tomllib
+    with open(os.path.join(ROOT, "packages/tooling/nros-zephyr-build/knobs.toml"), "rb") as fh:
+        rows = tomllib.load(fh).get("knob", [])
+    return [{"NROS_" + r["id"], *r.get("legacy", [])} for r in rows]
+
+
+def _close_over_rows(names: set[str], rows: list[set[str]]) -> set[str]:
+    out = set(names)
+    for row in rows:
+        if row & names:
+            out |= row
+    return out
+
+
 def evaluate(texts: dict[str, str], read_callees: set[str], extra_readers: set[str],
-             ladder: set[str], build_knobs: set[str]):
+             ladder: set[str], build_knobs: set[str], rows: list[set[str]] | None = None):
     claims: dict[str, set[str]] = {}
     readers = set(extra_readers) | set(ladder)
     producers = set(ladder)
@@ -287,6 +310,9 @@ def evaluate(texts: dict[str, str], read_callees: set[str], extra_readers: set[s
         for n in zephyr_c_defaults(path, text):
             zdefaults[n] = path
         zfwd |= zephyr_forwarded(path, text)
+    # A row is read (or produced) under all its spellings once any one is.
+    readers = _close_over_rows(readers, rows or [])
+    producers = _close_over_rows(producers, rows or [])
 
     consumerless = {n: sorted(fs) for n, fs in claims.items()
                     if n not in readers and n not in EXEMPT_CONSUMERLESS}
@@ -331,6 +357,18 @@ def self_test() -> None:
     c, p, _ = evaluate(fixed, callees, set(), set(), {"NROS_ORPHAN_KNOB"})
     assert not c, f"selftest: rule 1 false positive {sorted(c)}"
     assert not p, f"selftest: rule 2 false positive {sorted(p)}"
+
+    # phase-484 W5a: a doc claiming the CANONICAL spelling of a registry row
+    # whose reader still names the LEGACY one is read -- one row, one knob --
+    # and without the row it is not, so the closure is what clears it.
+    renamed = dict(fixed)
+    renamed["book/src/reference/environment-variables.md"] = "| `NROS_ZENOH_DEAD_SIZE` | x | `1` |\n"
+    renamed["examples/fixtures.toml"] = ""
+    c, _, _ = evaluate(renamed, callees, set(), set(), set())
+    assert set(c) == {"NROS_ZENOH_DEAD_SIZE"}, f"selftest: no-row control found {sorted(c)}"
+    c, _, _ = evaluate(renamed, callees, set(), set(), set(),
+                       [{"NROS_ZENOH_DEAD_SIZE", "ZPICO_DEAD_SIZE"}])
+    assert not c, f"selftest: a legacy-spelled reader did not read its row: {sorted(c)}"
 
     # the two indirect read shapes: a legacy alias as a later argument, and a
     # name held in a `&str` const
@@ -395,7 +433,7 @@ def main() -> int:
                    if census.KNOB_CLASS.get(n, ("",))[0] in ("sizing", "derived")}
     consumerless, producerless, stale = evaluate(
         tracked_texts(), set(census.READ_CALLEES), census_readers,
-        census.ladder_env_keys(), build_knobs)
+        census.ladder_env_keys(), build_knobs, registry_spellings())
 
     if "--list" in sys.argv:
         print(f"{len(build_knobs)} build-script knobs checked for a producer")

@@ -128,7 +128,7 @@ fn dim_keys(d: SchedDim) -> &'static [&'static [&'static str]] {
 /// must AUTHOR no tiers (else `nros::main!` reads them and never derives, and
 /// the cell's runtime assert passes over a code path it never exercised), must
 /// state the rates the derivation ranks by (the contract beside the launch
-/// file), and its image must lower the band (`env ZPICO_READ_TASK_PRIORITY`). Each problem is a string naming what is wrong.
+/// file), and its image must lower the band (`env NROS_ZENOH_READ_PRIORITY`). Each problem is a string naming what is wrong.
 fn derived_bringup_problems(system_toml: &std::path::Path, doc: &toml::Value) -> Vec<String> {
     let bringup = system_toml.parent().expect("system.toml has a parent");
     let mut out = Vec::new();
@@ -181,7 +181,7 @@ fn derived_bringup_problems(system_toml: &std::path::Path, doc: &toml::Value) ->
     // `CONFIG_NROS_ZENOH_READ_PRIORITY` by the Zephyr module, after every conf
     // file), not a `prj-lowered-band.conf` that had to be named LAST in `conf`
     // to survive Kconfig's last-wins merge (issue 0876).
-    const BAND_KEY: &str = "ZPICO_READ_TASK_PRIORITY";
+    const BAND_KEY: &str = "NROS_ZENOH_READ_PRIORITY";
     let band = doc
         .get("image")
         .and_then(|i| i.get(DERIVED_IMAGE))

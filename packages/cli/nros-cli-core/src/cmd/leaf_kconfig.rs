@@ -546,8 +546,8 @@ endif # NROS
         let (_d, l) = leaf(
             "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n\
              [image.zephyr]\nboard = \"zephyr\"\nlocator = \"tcp/10.0.2.2:7447\"\n\
-             env = { NROS_EXECUTOR_MAX_CBS = \"13\", ZPICO_MAX_QUERYABLES = \"9\", \
-             ZPICO_TX_BATCH = \"1\", NROS_LINK_IP = \"0\" }\n",
+             env = { NROS_EXECUTOR_MAX_CBS = \"13\", NROS_ZENOH_MAX_QUERYABLES = \"9\", \
+             NROS_ZENOH_TX_BATCH = \"1\", NROS_LINK_IP = \"0\" }\n",
             &[],
         );
         let r = render(&l, Some(Language::C), &syms).unwrap();

@@ -17,17 +17,17 @@ the declaration does not** (`nros_cli_core::leaf_entity_env`):
 
 | knob | derived from |
 |---|---|
-| `ZPICO_MAX_PUBLISHERS` | the entity inventory (probe, or `[[component]] entities`), floored at 1 — it sizes a fixed C array where zero is not a smaller pool (issue 1015) |
-| `ZPICO_MAX_SUBSCRIBERS` | same, same floor |
+| `NROS_ZENOH_MAX_PUBLISHERS` | the entity inventory (probe, or `[[component]] entities`), floored at 1 — it sizes a fixed C array where zero is not a smaller pool (issue 1015) |
+| `NROS_ZENOH_MAX_SUBSCRIBERS` | same, same floor |
 | `NROS_EXECUTOR_MAX_CBS` | same |
 | `NROS_EXECUTOR_ACTION_CLIENTS` | same |
 | `NROS_RMW_SUBSCRIBER_SLOTS` | same |
 | `NROS_SUBSCRIBER_BUFFER_SIZE` | the message-bound payload classes: the largest *small*-class type this leaf subscribes to |
-| `ZPICO_SUBSCRIBER_LARGE_SIZE` | the largest *large*-class type; emitted only when the large count is non-zero |
-| `ZPICO_MAX_LARGE_SUBSCRIBERS` | how many subscribed types fall in the large class. Zero is an **answer**, not a floor — the pool becomes zero bytes |
+| `NROS_ZENOH_SUBSCRIBER_LARGE_SIZE` | the largest *large*-class type; emitted only when the large count is non-zero |
+| `NROS_ZENOH_MAX_LARGE_SUBSCRIBERS` | how many subscribed types fall in the large class. Zero is an **answer**, not a floor — the pool becomes zero bytes |
 | `NROS_EXECUTOR_ARENA_SIZE` | derived in `nros-node`'s build script from the same inventory; the env var is the override |
 
-`ZPICO_MAX_QUERYABLES` is a third case: `nros sync` never states it as a count.
+`NROS_ZENOH_MAX_QUERYABLES` is a third case: `nros sync` never states it as a count.
 It carries the FACTS (`NROS_DECLARED_SERVICE_SERVERS`,
 `NROS_DECLARED_INFRA_QUERYABLES`, `NROS_DECLARED_NODES`) and
 `nros-zpico-build` adds the parameter and lifecycle costs itself, beside the
@@ -36,9 +36,9 @@ facts and the consumer keeps its undeclared budget — 8 embedded, 32 hosted;
 large, never short.
 
 **Still yours to set by hand** — everything else on this page. The transport
-buffer sizes (`ZPICO_FRAG_MAX_SIZE`, `ZPICO_BATCH_*`,
-`ZPICO_SERVICE_BUFFER_SIZE`, `ZPICO_GET_REPLY_BUF_SIZE`), the remaining entity
-caps (`ZPICO_MAX_LIVELINESS`, `ZPICO_MAX_PENDING_GETS`), the smoltcp socket
+buffer sizes (`NROS_ZENOH_FRAG_MAX_SIZE`, `ZPICO_BATCH_*`,
+`NROS_ZENOH_SERVICE_BUFFER_SIZE`, `NROS_ZENOH_GET_REPLY_BUF_SIZE`), the remaining entity
+caps (`NROS_ZENOH_MAX_LIVELINESS`, `NROS_ZENOH_MAX_PENDING_GETS`), the smoltcp socket
 pools, every `XRCE_*` knob, and the parameter-server limits.
 
 ## Quick Start
@@ -52,9 +52,9 @@ derived on their behalf:
 # Example: constrained Cortex-M4 with 256KB RAM
 cd <leaf>
 nros sync
-ZPICO_FRAG_MAX_SIZE=1400 \
-ZPICO_BATCH_UNICAST_SIZE=1024 \
-ZPICO_GET_REPLY_BUF_SIZE=1024 \
+NROS_ZENOH_FRAG_MAX_SIZE=1400 \
+NROS_ZENOH_BATCH_UNICAST_SIZE=1024 \
+NROS_ZENOH_GET_REPLY_BUF_SIZE=1024 \
 nros build
 ```
 
@@ -75,25 +75,25 @@ statically allocated — unused slots still consume memory.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ZPICO_MAX_PUBLISHERS` | 8 | Max concurrent publishers |
-| `ZPICO_MAX_SUBSCRIBERS` | 8 | Max concurrent subscribers |
-| `ZPICO_MAX_QUERYABLES` | 8 | Max concurrent service servers |
-| `ZPICO_MAX_LIVELINESS` | 16 | Max concurrent liveliness tokens |
-| `ZPICO_MAX_PENDING_GETS` | 4 | Max concurrent in-flight service calls |
-| `ZPICO_MAX_TL_PUBLISHERS` | 2 | Max concurrent TRANSIENT_LOCAL publishers (each also costs one queryable) |
-| `ZPICO_TL_RETAIN_BYTES` | 1024 | Bytes one retained transient-local sample may hold |
+| `NROS_ZENOH_MAX_PUBLISHERS` | 8 | Max concurrent publishers |
+| `NROS_ZENOH_MAX_SUBSCRIBERS` | 8 | Max concurrent subscribers |
+| `NROS_ZENOH_MAX_QUERYABLES` | 8 | Max concurrent service servers |
+| `NROS_ZENOH_MAX_LIVELINESS` | 16 | Max concurrent liveliness tokens |
+| `NROS_ZENOH_MAX_PENDING_GETS` | 4 | Max concurrent in-flight service calls |
+| `NROS_ZENOH_MAX_TL_PUBLISHERS` | 2 | Max concurrent TRANSIENT_LOCAL publishers (each also costs one queryable) |
+| `NROS_ZENOH_TL_RETAIN_BYTES` | 1024 | Bytes one retained transient-local sample may hold |
 
 **Sizing rule:** the exact number your application uses, plus 1-2 spare slots
 for parameter services (if enabled). Over-provisioning wastes static memory;
 under-provisioning causes runtime failures.
 
 **You do not apply that rule by hand for the first three.**
-`ZPICO_MAX_PUBLISHERS` and `ZPICO_MAX_SUBSCRIBERS` are derived from the image's
-declared entities, and `ZPICO_MAX_QUERYABLES` is derived by the consumer from
+`NROS_ZENOH_MAX_PUBLISHERS` and `NROS_ZENOH_MAX_SUBSCRIBERS` are derived from the image's
+declared entities, and `NROS_ZENOH_MAX_QUERYABLES` is derived by the consumer from
 the facts `nros sync` carries — which is the only way the parameter and
 lifecycle families get counted, because a leaf picks those with cargo features
-the inventory cannot see (issue 0460). `ZPICO_MAX_LIVELINESS` and
-`ZPICO_MAX_PENDING_GETS` are still yours.
+the inventory cannot see (issue 0460). `NROS_ZENOH_MAX_LIVELINESS` and
+`NROS_ZENOH_MAX_PENDING_GETS` are still yours.
 
 ### Buffer Sizes
 
@@ -102,18 +102,18 @@ defaults** — embedded targets get smaller defaults than POSIX.
 
 | Variable | POSIX Default | Embedded Default | Description |
 |----------|---------------|------------------|-------------|
-| `ZPICO_FRAG_MAX_SIZE` | 65535 | 2048 | Max reassembled message size (bytes) |
-| `ZPICO_BATCH_UNICAST_SIZE` | 65535 | 1024 | Max unicast batch before fragmentation |
-| `ZPICO_BATCH_MULTICAST_SIZE` | 8192 | 1024 | Max multicast batch size |
+| `NROS_ZENOH_FRAG_MAX_SIZE` | 65535 | 2048 | Max reassembled message size (bytes) |
+| `NROS_ZENOH_BATCH_UNICAST_SIZE` | 65535 | 1024 | Max unicast batch before fragmentation |
+| `NROS_ZENOH_BATCH_MULTICAST_SIZE` | 8192 | 1024 | Max multicast batch size |
 
 **Platform classification:**
 - **POSIX**: Linux, macOS, NuttX (POSIX-compatible), ThreadX (NetX Duo BSD sockets)
 - **Embedded**: bare-metal, Zephyr, FreeRTOS
 
 **Key constraints:**
-- `ZPICO_FRAG_MAX_SIZE` limits the largest message your node can receive. Messages
+- `NROS_ZENOH_FRAG_MAX_SIZE` limits the largest message your node can receive. Messages
   exceeding this are silently dropped.
-- `ZPICO_BATCH_UNICAST_SIZE` limits the largest message your node can send without
+- `NROS_ZENOH_BATCH_UNICAST_SIZE` limits the largest message your node can send without
   fragmentation. Messages larger than this are split into fragments.
 - All batch sizes are capped at 65535 (u16 protocol limit).
 - For MTU-constrained networks (e.g., Ethernet 1500, Zephyr default ~1400), set
@@ -126,9 +126,9 @@ Each subscriber and service server has a static receive buffer.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `NROS_SUBSCRIBER_BUFFER_SIZE` | 1024 | Per-subscriber receive buffer (bytes) |
-| `ZPICO_SERVICE_BUFFER_SIZE` | 1024 | Per-service-server receive buffer (bytes) |
-| `ZPICO_GET_REPLY_BUF_SIZE` | 4096 | Service client reply buffer (bytes) |
-| `ZPICO_GET_POLL_INTERVAL_MS` | 10 | Service call polling interval (ms) |
+| `NROS_ZENOH_SERVICE_BUFFER_SIZE` | 1024 | Per-service-server receive buffer (bytes) |
+| `NROS_ZENOH_GET_REPLY_BUF_SIZE` | 4096 | Service client reply buffer (bytes) |
+| `NROS_ZENOH_GET_POLL_INTERVAL_MS` | 10 | Service call polling interval (ms) |
 
 **Sizing rule:** Set buffer sizes to the CDR-serialized size of the largest message
 the entity will receive. CDR overhead is typically 4-8 bytes alignment per field.
@@ -141,11 +141,11 @@ These apply only to bare-metal targets using the smoltcp TCP/IP stack.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ZPICO_SMOLTCP_MAX_SOCKETS` | 4 | Max concurrent TCP sockets |
-| `ZPICO_SMOLTCP_MAX_UDP_SOCKETS` | 2 | Max concurrent UDP sockets |
-| `ZPICO_SMOLTCP_BUFFER_SIZE` | 2048 | Per-socket staging buffer (bytes) |
-| `ZPICO_SMOLTCP_CONNECT_TIMEOUT_MS` | 30000 | TCP connection timeout (ms) |
-| `ZPICO_SMOLTCP_SOCKET_TIMEOUT_MS` | 10000 | TCP read/write timeout (ms) |
+| `NROS_SMOLTCP_MAX_SOCKETS` | 4 | Max concurrent TCP sockets |
+| `NROS_SMOLTCP_MAX_UDP_SOCKETS` | 2 | Max concurrent UDP sockets |
+| `NROS_SMOLTCP_BUFFER_SIZE` | 2048 | Per-socket staging buffer (bytes) |
+| `NROS_SMOLTCP_CONNECT_TIMEOUT_MS` | 30000 | TCP connection timeout (ms) |
+| `NROS_SMOLTCP_SOCKET_TIMEOUT_MS` | 10000 | TCP read/write timeout (ms) |
 
 **Note:** Increasing `MAX_SOCKETS` beyond 4 or `MAX_UDP_SOCKETS` beyond 2 requires
 adding static buffer declarations in `zpico-smoltcp/src/lib.rs`.
@@ -272,23 +272,23 @@ Suitable for simple pub/sub with 1-4 topics. Total transport overhead: ~20 KB.
 
 ```bash
 # Entity limits
-ZPICO_MAX_PUBLISHERS=4
-ZPICO_MAX_SUBSCRIBERS=4
-ZPICO_MAX_QUERYABLES=2
-ZPICO_MAX_LIVELINESS=8
-ZPICO_MAX_PENDING_GETS=2
+NROS_ZENOH_MAX_PUBLISHERS=4
+NROS_ZENOH_MAX_SUBSCRIBERS=4
+NROS_ZENOH_MAX_QUERYABLES=2
+NROS_ZENOH_MAX_LIVELINESS=8
+NROS_ZENOH_MAX_PENDING_GETS=2
 
 # Small buffers for constrained RAM
-ZPICO_FRAG_MAX_SIZE=1400
-ZPICO_BATCH_UNICAST_SIZE=1024
-ZPICO_BATCH_MULTICAST_SIZE=512
+NROS_ZENOH_FRAG_MAX_SIZE=1400
+NROS_ZENOH_BATCH_UNICAST_SIZE=1024
+NROS_ZENOH_BATCH_MULTICAST_SIZE=512
 NROS_SUBSCRIBER_BUFFER_SIZE=512
-ZPICO_SERVICE_BUFFER_SIZE=512
-ZPICO_GET_REPLY_BUF_SIZE=1024
+NROS_ZENOH_SERVICE_BUFFER_SIZE=512
+NROS_ZENOH_GET_REPLY_BUF_SIZE=1024
 
 # smoltcp (bare-metal)
-ZPICO_SMOLTCP_MAX_SOCKETS=2
-ZPICO_SMOLTCP_BUFFER_SIZE=1024
+NROS_SMOLTCP_MAX_SOCKETS=2
+NROS_SMOLTCP_BUFFER_SIZE=1024
 ```
 
 ### Standard (Cortex-M7, 1 MB RAM)
@@ -298,21 +298,21 @@ overhead: ~60 KB.
 
 ```bash
 # Entity limits (defaults are fine)
-ZPICO_MAX_PUBLISHERS=8
-ZPICO_MAX_SUBSCRIBERS=8
-ZPICO_MAX_QUERYABLES=8
-ZPICO_MAX_LIVELINESS=16
+NROS_ZENOH_MAX_PUBLISHERS=8
+NROS_ZENOH_MAX_SUBSCRIBERS=8
+NROS_ZENOH_MAX_QUERYABLES=8
+NROS_ZENOH_MAX_LIVELINESS=16
 
 # Moderate buffers
-ZPICO_FRAG_MAX_SIZE=4096
-ZPICO_BATCH_UNICAST_SIZE=2048
+NROS_ZENOH_FRAG_MAX_SIZE=4096
+NROS_ZENOH_BATCH_UNICAST_SIZE=2048
 NROS_SUBSCRIBER_BUFFER_SIZE=1024
-ZPICO_SERVICE_BUFFER_SIZE=1024
-ZPICO_GET_REPLY_BUF_SIZE=4096
+NROS_ZENOH_SERVICE_BUFFER_SIZE=1024
+NROS_ZENOH_GET_REPLY_BUF_SIZE=4096
 
 # smoltcp
-ZPICO_SMOLTCP_MAX_SOCKETS=4
-ZPICO_SMOLTCP_BUFFER_SIZE=2048
+NROS_SMOLTCP_MAX_SOCKETS=4
+NROS_SMOLTCP_BUFFER_SIZE=2048
 ```
 
 ### Large (Cortex-R52, 4+ MB RAM)
@@ -322,22 +322,22 @@ Total transport overhead: ~200 KB.
 
 ```bash
 # High entity counts
-ZPICO_MAX_PUBLISHERS=48
-ZPICO_MAX_SUBSCRIBERS=48
-ZPICO_MAX_QUERYABLES=16
-ZPICO_MAX_LIVELINESS=64
-ZPICO_MAX_PENDING_GETS=8
+NROS_ZENOH_MAX_PUBLISHERS=48
+NROS_ZENOH_MAX_SUBSCRIBERS=48
+NROS_ZENOH_MAX_QUERYABLES=16
+NROS_ZENOH_MAX_LIVELINESS=64
+NROS_ZENOH_MAX_PENDING_GETS=8
 
 # Large buffers for complex messages
-ZPICO_FRAG_MAX_SIZE=16384
-ZPICO_BATCH_UNICAST_SIZE=8192
+NROS_ZENOH_FRAG_MAX_SIZE=16384
+NROS_ZENOH_BATCH_UNICAST_SIZE=8192
 NROS_SUBSCRIBER_BUFFER_SIZE=4096
-ZPICO_SERVICE_BUFFER_SIZE=4096
-ZPICO_GET_REPLY_BUF_SIZE=8192
+NROS_ZENOH_SERVICE_BUFFER_SIZE=4096
+NROS_ZENOH_GET_REPLY_BUF_SIZE=8192
 
 # smoltcp
-ZPICO_SMOLTCP_MAX_SOCKETS=4
-ZPICO_SMOLTCP_BUFFER_SIZE=4096
+NROS_SMOLTCP_MAX_SOCKETS=4
+NROS_SMOLTCP_BUFFER_SIZE=4096
 ```
 
 ## Measured Memory Footprint
@@ -373,7 +373,7 @@ _z_queryable_t                  24 B
 
 ### Default configuration total
 
-At default sizing (`ZPICO_MAX_PUBLISHERS=8` / `MAX_SUBSCRIBERS=8` /
+At default sizing (`NROS_ZENOH_MAX_PUBLISHERS=8` / `MAX_SUBSCRIBERS=8` /
 `MAX_QUERYABLES=8` / `MAX_LIVELINESS=16` / `MAX_PENDING_GETS=4` /
 `GET_REPLY_BUF_SIZE=4096`):
 
@@ -393,8 +393,8 @@ At default sizing (`ZPICO_MAX_PUBLISHERS=8` / `MAX_SUBSCRIBERS=8` /
 | `_z_queryable_t` × 8 | 192 | per active queryable |
 | **zenoh-pico per-session working set** | **~2.5 KB** | scales with active entities |
 
-Adding the RX/TX batch buffers (default `ZPICO_BATCH_UNICAST_SIZE=1024` +
-`ZPICO_FRAG_MAX_SIZE=2048` on embedded targets) brings a typical "Standard"
+Adding the RX/TX batch buffers (default `NROS_ZENOH_BATCH_UNICAST_SIZE=1024` +
+`NROS_ZENOH_FRAG_MAX_SIZE=2048` on embedded targets) brings a typical "Standard"
 profile (Cortex-M7 / 1 MB RAM) to ~30 KB total zpico working set before
 application code.
 
@@ -446,7 +446,7 @@ uses CycloneDDS on Zephyr with these transport settings:
 |--------------------|-------|------------------|-------|
 | `ReceiveBufferSize` | 16 KB | N/A | zpico uses per-entity buffers instead of a shared pool |
 | `ReceiveBufferChunkSize` | 2 KB | `NROS_SUBSCRIBER_BUFFER_SIZE` | Per-entity in zpico vs shared chunks in CycloneDDS |
-| `MaxMessageSize` | 1400 B | `ZPICO_BATCH_UNICAST_SIZE` | MTU-aware limit to avoid IP fragmentation |
+| `MaxMessageSize` | 1400 B | `NROS_ZENOH_BATCH_UNICAST_SIZE` | MTU-aware limit to avoid IP fragmentation |
 | `AllowMulticast` | SPDP only | Cargo feature `link-udp-multicast` | Disabled by default in both |
 | C library heap | 1 MB | 0 | zpico uses only static allocation |
 
@@ -556,7 +556,7 @@ Two properties to keep in mind:
 
 ### Messages silently dropped
 
-Increase `ZPICO_FRAG_MAX_SIZE` — the message exceeds the reassembly limit.
+Increase `NROS_ZENOH_FRAG_MAX_SIZE` — the message exceeds the reassembly limit.
 
 ### Subscription receives truncated data
 
@@ -565,9 +565,9 @@ the serialized message.
 
 ### Service calls time out
 
-- Increase `ZPICO_GET_REPLY_BUF_SIZE` if reply messages are large.
-- Decrease `ZPICO_GET_POLL_INTERVAL_MS` for lower latency (at higher CPU cost).
-- Increase `ZPICO_MAX_PENDING_GETS` if multiple concurrent service calls are needed.
+- Increase `NROS_ZENOH_GET_REPLY_BUF_SIZE` if reply messages are large.
+- Decrease `NROS_ZENOH_GET_POLL_INTERVAL_MS` for lower latency (at higher CPU cost).
+- Increase `NROS_ZENOH_MAX_PENDING_GETS` if multiple concurrent service calls are needed.
 
 ### Entity creation fails at runtime
 
@@ -575,7 +575,7 @@ Increase the corresponding `ZPICO_MAX_*` limit — all slots are occupied.
 
 ### smoltcp connection timeouts
 
-- Increase `ZPICO_SMOLTCP_CONNECT_TIMEOUT_MS` on slow networks.
+- Increase `NROS_SMOLTCP_CONNECT_TIMEOUT_MS` on slow networks.
 - Verify the zenohd router is reachable at the configured `ZENOH_LOCATOR`.
 
 ### XRCE entity creation timeouts

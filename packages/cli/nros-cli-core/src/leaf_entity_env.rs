@@ -615,8 +615,8 @@ pub const DERIVED_ENV_KEYS: &[&str] = &[
     // issue 1130 — the per-kind capacity of a knob-capped component cell. An
     // explicit `ENTITY_BOUNDS` on a class still wins: it is per CLASS.
     "NROS_RUNTIME_MAX_CELL_ENTITIES",
-    "ZPICO_MAX_PUBLISHERS",
-    "ZPICO_MAX_SUBSCRIBERS",
+    "NROS_ZENOH_MAX_PUBLISHERS",
+    "NROS_ZENOH_MAX_SUBSCRIBERS",
 ];
 
 /// phase-496 W1 (issue 1471) -- the contract-monitor table sizes.
@@ -648,8 +648,8 @@ pub const DERIVED_MONITOR_ENV_KEYS: &[&str] = &[
 /// inventing a number. Same rule as `_nros_bounds_publish_payload_classes`.
 pub const DERIVED_PAYLOAD_ENV_KEYS: &[&str] = &[
     "NROS_SUBSCRIBER_BUFFER_SIZE",
-    "ZPICO_MAX_LARGE_SUBSCRIBERS",
-    "ZPICO_SUBSCRIBER_LARGE_SIZE",
+    "NROS_ZENOH_MAX_LARGE_SUBSCRIBERS",
+    "NROS_ZENOH_SUBSCRIBER_LARGE_SIZE",
 ];
 
 /// Issue 1233 — the CLOSURE-basis key, which is a THIRD group for a third
@@ -771,7 +771,7 @@ pub fn render_env_sidecar_with_facts(
     s.push_str("# every one of those runtime servers also declares a liveliness token,\n");
     s.push_str("# so `nros-zpico-build` completes it from the same facts (issue 1713).\n\n");
     s.push_str(
-        "# The two `ZPICO_*` rows are FLOORED AT ONE: they size fixed C arrays in\n\
+        "# The two `NROS_ZENOH_MAX_*` rows are FLOORED AT ONE: they size fixed C arrays in\n\
          # `zpico.c`, where zero is not a smaller pool (issue 1015). The floor is\n\
          # applied here, at the consumer, and not in the derivation -- the same\n\
          # derived counts reach the XRCE pools, where zero IS the answer and is\n\
@@ -795,8 +795,8 @@ pub fn render_env_sidecar_with_facts(
         // issue 1130 — unfloored: the cell registries are Rust arrays, and a
         // zero-capacity one is an empty registry, not a `#error`.
         ("NROS_RUNTIME_MAX_CELL_ENTITIES", knobs.max_cell_entities),
-        ("ZPICO_MAX_PUBLISHERS", floor(knobs.max_publishers)),
-        ("ZPICO_MAX_SUBSCRIBERS", floor(knobs.max_subscribers)),
+        ("NROS_ZENOH_MAX_PUBLISHERS", floor(knobs.max_publishers)),
+        ("NROS_ZENOH_MAX_SUBSCRIBERS", floor(knobs.max_subscribers)),
     ]);
     for (k, v) in &vals {
         s.push_str(&format!("{k} = \"{v}\"\n"));
@@ -835,7 +835,7 @@ pub fn render_env_sidecar_with_facts(
                 if p.subscribed == 1 { "y" } else { "ies" }
             ));
             s.push_str(&format!(
-                "ZPICO_MAX_LARGE_SUBSCRIBERS = \"{}\"\n",
+                "NROS_ZENOH_MAX_LARGE_SUBSCRIBERS = \"{}\"\n",
                 p.large_count
             ));
             // The small BLOCK moves with the count, and must: the shim routes
@@ -850,7 +850,7 @@ pub fn render_env_sidecar_with_facts(
             }
             if p.large_count > 0 && p.large_max > 0 {
                 s.push_str(&format!(
-                    "ZPICO_SUBSCRIBER_LARGE_SIZE = \"{}\"\n",
+                    "NROS_ZENOH_SUBSCRIBER_LARGE_SIZE = \"{}\"\n",
                     p.large_max
                 ));
             }
@@ -1563,11 +1563,11 @@ nros = { version = "*", features = ["std", "param-services"] }
         // name, which is how a `knob()` wrapper once took five knobs out of
         // that census. Measured — the helper version failed the gate.
         assert!(
-            out.contains("ZPICO_MAX_SUBSCRIBERS = \"1\"\n"),
+            out.contains("NROS_ZENOH_MAX_SUBSCRIBERS = \"1\"\n"),
             "floored at one (issue 1015), not the raw 0:\n{out}"
         );
         assert!(
-            out.contains("ZPICO_MAX_PUBLISHERS = \"1\"\n"),
+            out.contains("NROS_ZENOH_MAX_PUBLISHERS = \"1\"\n"),
             "the talker's one publisher:\n{out}"
         );
         assert!(
@@ -1695,8 +1695,8 @@ nros = { version = "*", features = ["std", "param-services"] }
         for key in DERIVED_ENV_KEYS {
             assert!(out.contains(key), "sidecar omits {key}:\n{out}");
         }
-        assert!(out.contains("ZPICO_MAX_SUBSCRIBERS = \"1\""), "{out}");
-        assert!(out.contains("ZPICO_MAX_PUBLISHERS = \"1\""), "{out}");
+        assert!(out.contains("NROS_ZENOH_MAX_SUBSCRIBERS = \"1\""), "{out}");
+        assert!(out.contains("NROS_ZENOH_MAX_PUBLISHERS = \"1\""), "{out}");
         // The infra-incomplete knob must NOT be stated as a value.
         assert!(
             !out.lines().any(|l| l.starts_with("ZPICO_MAX_QUERYABLES")),
@@ -1742,10 +1742,13 @@ nros = { version = "*", features = ["std", "param-services"] }
         let payload = crate::leaf_payload_classes::PayloadClasses::Derived(Default::default());
         let out = render_env_sidecar(&k, &payload, &refused_take(), "metadata/talker.json");
         assert!(
-            out.contains("ZPICO_MAX_LARGE_SUBSCRIBERS = \"0\""),
+            out.contains("NROS_ZENOH_MAX_LARGE_SUBSCRIBERS = \"0\""),
             "the derived zero must be STATED, not left to the crate default:\n{out}"
         );
-        for k in ["ZPICO_SUBSCRIBER_LARGE_SIZE", "NROS_SUBSCRIBER_BUFFER_SIZE"] {
+        for k in [
+            "NROS_ZENOH_SUBSCRIBER_LARGE_SIZE",
+            "NROS_SUBSCRIBER_BUFFER_SIZE",
+        ] {
             assert!(
                 !out.lines().any(|l| l.starts_with(k)),
                 "sidecar names {k} for a class it just declared empty:\n{out}"
@@ -1778,9 +1781,12 @@ nros = { version = "*", features = ["std", "param-services"] }
             },
         );
         let out = render_env_sidecar(&k, &payload, &refused_take(), "metadata/talker.json");
-        assert!(out.contains("ZPICO_MAX_LARGE_SUBSCRIBERS = \"2\""), "{out}");
         assert!(
-            out.contains("ZPICO_SUBSCRIBER_LARGE_SIZE = \"40000\""),
+            out.contains("NROS_ZENOH_MAX_LARGE_SUBSCRIBERS = \"2\""),
+            "{out}"
+        );
+        assert!(
+            out.contains("NROS_ZENOH_SUBSCRIBER_LARGE_SIZE = \"40000\""),
             "{out}"
         );
         assert!(
@@ -1817,6 +1823,6 @@ nros = { version = "*", features = ["std", "param-services"] }
         assert!(out.contains("# Payload classes NOT derived"), "{out}");
         // The entity half still lands — the two inventories refuse
         // independently, which is why they are two lists.
-        assert!(out.contains("ZPICO_MAX_SUBSCRIBERS = \"1\""), "{out}");
+        assert!(out.contains("NROS_ZENOH_MAX_SUBSCRIBERS = \"1\""), "{out}");
     }
 }

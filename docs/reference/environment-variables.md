@@ -80,29 +80,33 @@ These are auto-resolved by justfile recipes (defaulting to `external/` paths fro
 
 All optional — platform-appropriate defaults apply if unset.
 
-### Zenoh-pico (`ZPICO_*`)
+### Zenoh-pico (`NROS_ZENOH_*`)
+
+Each knob here was spelled `ZPICO_<X>` before phase-484 W5a (RFC-0103 D2b);
+the old spelling is still read, with a deprecation warning naming the new one,
+until phase-484 W8. Setting both to different values stops the build.
 
 | Variable                           | Description                                            | Default          | Crate          |
 |------------------------------------|--------------------------------------------------------|------------------|----------------|
-| `ZPICO_FRAG_MAX_SIZE`              | Max reassembled message size after defragmentation     | `65536` / `2048` | zpico-sys      |
-| `ZPICO_BATCH_UNICAST_SIZE`         | Max unicast batch size before fragmentation            | `65536` / `1024` | zpico-sys      |
-| `ZPICO_BATCH_MULTICAST_SIZE`       | Max multicast batch size                               | `8192` / `1024`  | zpico-sys      |
-| `ZPICO_MAX_PUBLISHERS`             | Max concurrent publishers in zenoh shim                | `8`              | zpico-sys      |
-| `ZPICO_MAX_SUBSCRIBERS`            | Max concurrent subscribers in zenoh shim               | `8`              | zpico-sys      |
-| `ZPICO_MAX_QUERYABLES`             | Max concurrent queryables in zenoh shim                | `8`              | zpico-sys      |
-| `ZPICO_MAX_LIVELINESS`             | Max concurrent liveliness tokens in zenoh shim         | `16`             | zpico-sys      |
-| `ZPICO_MAX_PENDING_GETS`          | Max concurrent in-flight service calls                 | `4`              | zpico-sys      |
+| `NROS_ZENOH_FRAG_MAX_SIZE`              | Max reassembled message size after defragmentation     | `65536` / `2048` | zpico-sys      |
+| `NROS_ZENOH_BATCH_UNICAST_SIZE`         | Max unicast batch size before fragmentation            | `65536` / `1024` | zpico-sys      |
+| `NROS_ZENOH_BATCH_MULTICAST_SIZE`       | Max multicast batch size                               | `8192` / `1024`  | zpico-sys      |
+| `NROS_ZENOH_MAX_PUBLISHERS`             | Max concurrent publishers in zenoh shim                | `8`              | zpico-sys      |
+| `NROS_ZENOH_MAX_SUBSCRIBERS`            | Max concurrent subscribers in zenoh shim               | `8`              | zpico-sys      |
+| `NROS_ZENOH_MAX_QUERYABLES`             | Max concurrent queryables in zenoh shim                | `8`              | zpico-sys      |
+| `NROS_ZENOH_MAX_LIVELINESS`             | Max concurrent liveliness tokens in zenoh shim         | `16`             | zpico-sys      |
+| `NROS_ZENOH_MAX_PENDING_GETS`          | Max concurrent in-flight service calls                 | `4`              | zpico-sys      |
 | `NROS_SUBSCRIBER_BUFFER_SIZE`      | `small` receive-class slot per subscriber in the zenoh shim; the executor arena reads the same name (`ZPICO_SUBSCRIBER_BUFFER_SIZE` is a dead spelling, issue 1181) | `1024` | nros-rmw-zenoh |
-| `ZPICO_SUBSCRIBER_SIZE_THRESHOLD`  | Small/large class split; must match the cmake derivation's assumed `2048` or a derived class count can disagree with runtime routing | `2048` | nros-rmw-zenoh |
-| `ZPICO_PUBLISHER_TX_BUFFER_SIZE`   | Per-publisher TX arena for the zero-copy loan path (issue 0813) | `1024` | nros-rmw-zenoh |
-| `ZPICO_SERVICE_BUFFER_SIZE`        | Per-service-server static buffer in zenoh shim         | `1024`           | nros-rmw-zenoh |
-| `ZPICO_GET_REPLY_BUF_SIZE`         | Stack buffer for service client replies                | `4096`           | zpico-sys      |
-| `ZPICO_GET_POLL_INTERVAL_MS`       | Single-threaded polling interval in `zenoh_shim_get()` | `10`             | zpico-sys      |
-| `ZPICO_SMOLTCP_MAX_SOCKETS`        | Max concurrent TCP sockets (smoltcp)                   | `4`              | zpico-smoltcp  |
-| `ZPICO_SMOLTCP_MAX_UDP_SOCKETS`    | Max concurrent UDP sockets (smoltcp)                   | `2`              | zpico-smoltcp  |
-| `ZPICO_SMOLTCP_BUFFER_SIZE`        | Per-socket staging buffer (smoltcp)                    | `2048`           | zpico-smoltcp  |
-| `ZPICO_SMOLTCP_CONNECT_TIMEOUT_MS` | TCP connection timeout (smoltcp)                       | `30000`          | zpico-smoltcp  |
-| `ZPICO_SMOLTCP_SOCKET_TIMEOUT_MS`  | TCP read/write timeout (smoltcp)                       | `10000`          | zpico-smoltcp  |
+| `NROS_ZENOH_SUBSCRIBER_SIZE_THRESHOLD`  | Small/large class split; must match the cmake derivation's assumed `2048` or a derived class count can disagree with runtime routing | `2048` | nros-rmw-zenoh |
+| `NROS_ZENOH_PUBLISHER_TX_BUFFER_SIZE`   | Per-publisher TX arena for the zero-copy loan path (issue 0813) | `1024` | nros-rmw-zenoh |
+| `NROS_ZENOH_SERVICE_BUFFER_SIZE`        | Per-service-server static buffer in zenoh shim         | `1024`           | nros-rmw-zenoh |
+| `NROS_ZENOH_GET_REPLY_BUF_SIZE`         | Stack buffer for service client replies                | `4096`           | zpico-sys      |
+| `NROS_ZENOH_GET_POLL_INTERVAL_MS`       | Single-threaded polling interval in `zenoh_shim_get()` | `10`             | zpico-sys      |
+| `NROS_SMOLTCP_MAX_SOCKETS`        | Max concurrent TCP sockets (smoltcp)                   | `4`              | zpico-smoltcp  |
+| `NROS_SMOLTCP_MAX_UDP_SOCKETS`    | Max concurrent UDP sockets (smoltcp)                   | `2`              | zpico-smoltcp  |
+| `NROS_SMOLTCP_BUFFER_SIZE`        | Per-socket staging buffer (smoltcp)                    | `2048`           | zpico-smoltcp  |
+| `NROS_SMOLTCP_CONNECT_TIMEOUT_MS` | TCP connection timeout (smoltcp)                       | `30000`          | zpico-smoltcp  |
+| `NROS_SMOLTCP_SOCKET_TIMEOUT_MS`  | TCP read/write timeout (smoltcp)                       | `10000`          | zpico-smoltcp  |
 
 ### XRCE-DDS (`XRCE_*`)
 

@@ -51,7 +51,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosImageEnv.cmake")
 #     is the one knob value knowable this early on a lane with no resolver.
 #     It is not a guess: `_nros_resolve_knob()`'s rung 1 is `$ENV{<name>}`, and
 #     `examples/fixtures.toml` states knobs exactly this way
-#     (`env = { ZPICO_MAX_QUERYABLES = "2" }`).
+#     (`env = { NROS_ZENOH_MAX_QUERYABLES = "2" }`).
 #
 # Road 1 wins per name. On Zephyr an env-stated knob has ALREADY been registered
 # by rung 1 of `_nros_resolve_knob()`, so road 2 contributes nothing and the key
@@ -80,6 +80,8 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosImageEnv.cmake")
 # for; nano-ros is consumed only as a source distribution (`add_subdirectory`),
 # so the file is always present and its absence is a real breakage rather than a
 # reason to degrade.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosKnobEnv.cmake")
+
 set(_NROS_KNOB_INVENTORY_FILE
     "${CMAKE_CURRENT_LIST_DIR}/../zephyr/cmake/nros_cargo_build.cmake"
     CACHE INTERNAL "phase-439 W1 — the authored knob-name inventory")
@@ -146,9 +148,13 @@ function(nros_knob_key_fields out_var)
         if("${_k}" IN_LIST _seen)
             continue()
         endif()
-        if(DEFINED ENV{${_k}} AND NOT "$ENV{${_k}}" STREQUAL "")
+        # phase-484 W5a -- under ANY spelling of the knob's registry row, keyed
+        # under the canonical one: a value exported as `ZPICO_MAX_QUERYABLES`
+        # reaches the build script, so it must reach the key too.
+        _nros_knob_env(${_k} _v)
+        if(NOT _v STREQUAL "")
             list(APPEND _seen "${_k}")
-            list(APPEND _fields "${_k}=$ENV{${_k}}")
+            list(APPEND _fields "${_k}=${_v}")
         endif()
     endforeach()
     # Road 3 (issue 1712) — the image's own `[image.<id>] env`, which reaches

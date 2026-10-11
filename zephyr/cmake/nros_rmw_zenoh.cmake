@@ -344,31 +344,31 @@ zephyr_include_directories(${NROS_REPO_DIR}/packages/rmw/zenoh/zpico-zephyr/incl
 # Kconfig always carried a number. So the sentinel is safe only where the
 # consumer supplies a default, and this consumer is the exception.
 foreach(_zp MAX_PUBLISHERS MAX_SUBSCRIBERS MAX_QUERYABLES)
-    if(NOT DEFINED NROS_RESOLVED_ZPICO_${_zp} OR
-       "${NROS_RESOLVED_ZPICO_${_zp}}" STREQUAL "")
-        set(NROS_RESOLVED_ZPICO_${_zp} 8)
+    if(NOT DEFINED NROS_RESOLVED_NROS_ZENOH_${_zp} OR
+       "${NROS_RESOLVED_NROS_ZENOH_${_zp}}" STREQUAL "")
+        set(NROS_RESOLVED_NROS_ZENOH_${_zp} 8)
         message(STATUS
-            "nros: ZPICO_${_zp} left at the zpico literal default 8 -- nothing "
+            "nros: NROS_ZENOH_${_zp} left at the zpico literal default 8 -- nothing "
             "stated it and the entity inventory derived nothing (a first "
             "configure on a clean build dir always lands here, issue 0991)")
     endif()
 endforeach()
 # phase-412 W2 -- the liveliness pool joined the three above on the DERIVE
 # sentinel, so it needs the same rescue, and its literal is zpico.c's 16, not 8.
-if(NOT DEFINED NROS_RESOLVED_ZPICO_MAX_LIVELINESS OR
-   "${NROS_RESOLVED_ZPICO_MAX_LIVELINESS}" STREQUAL "")
-    set(NROS_RESOLVED_ZPICO_MAX_LIVELINESS 16)
+if(NOT DEFINED NROS_RESOLVED_NROS_ZENOH_MAX_LIVELINESS OR
+   "${NROS_RESOLVED_NROS_ZENOH_MAX_LIVELINESS}" STREQUAL "")
+    set(NROS_RESOLVED_NROS_ZENOH_MAX_LIVELINESS 16)
     message(STATUS
-        "nros: ZPICO_MAX_LIVELINESS left at the zpico literal default 16 -- "
+        "nros: NROS_ZENOH_MAX_LIVELINESS left at the zpico literal default 16 -- "
         "nothing stated it and the entity inventory derived nothing")
 endif()
 
 zephyr_compile_definitions(
-    ZPICO_MAX_PUBLISHERS=${NROS_RESOLVED_ZPICO_MAX_PUBLISHERS}
-    ZPICO_MAX_SUBSCRIBERS=${NROS_RESOLVED_ZPICO_MAX_SUBSCRIBERS}
-    ZPICO_MAX_QUERYABLES=${NROS_RESOLVED_ZPICO_MAX_QUERYABLES}
-    ZPICO_MAX_LIVELINESS=${NROS_RESOLVED_ZPICO_MAX_LIVELINESS}
-    ZPICO_MAX_PENDING_GETS=${NROS_RESOLVED_ZPICO_MAX_PENDING_GETS}
+    ZPICO_MAX_PUBLISHERS=${NROS_RESOLVED_NROS_ZENOH_MAX_PUBLISHERS}
+    ZPICO_MAX_SUBSCRIBERS=${NROS_RESOLVED_NROS_ZENOH_MAX_SUBSCRIBERS}
+    ZPICO_MAX_QUERYABLES=${NROS_RESOLVED_NROS_ZENOH_MAX_QUERYABLES}
+    ZPICO_MAX_LIVELINESS=${NROS_RESOLVED_NROS_ZENOH_MAX_LIVELINESS}
+    ZPICO_MAX_PENDING_GETS=${NROS_RESOLVED_NROS_ZENOH_MAX_PENDING_GETS}
 )
 # Read straight from CONFIG_, unlike the block above, and deliberately: the
 # graph cache is allocated and consumed entirely inside zpico.c. The Rust side
@@ -379,20 +379,20 @@ zephyr_compile_definitions(
 # rung outranks Kconfig for it and `check-knob-delivery` holds the define to the
 # resolved value. Always 0 or 1: `zpico.c` defaults it to 1, so an empty value
 # here would compile the cache in under an image that asked for none.
-if(NOT DEFINED NROS_RESOLVED_ZPICO_GRAPH_DISCOVERY OR
-   "${NROS_RESOLVED_ZPICO_GRAPH_DISCOVERY}" STREQUAL "")
+if(NOT DEFINED NROS_RESOLVED_NROS_ZENOH_GRAPH_DISCOVERY OR
+   "${NROS_RESOLVED_NROS_ZENOH_GRAPH_DISCOVERY}" STREQUAL "")
     message(FATAL_ERROR
-        "nros: ZPICO_GRAPH_DISCOVERY was not resolved before nros_rmw_zenoh.cmake "
+        "nros: NROS_ZENOH_GRAPH_DISCOVERY was not resolved before nros_rmw_zenoh.cmake "
         "ran; nros_resolve_knobs() must run first (zephyr/CMakeLists.txt)")
 endif()
 zephyr_compile_definitions(
-    ZPICO_GRAPH_DISCOVERY=${NROS_RESOLVED_ZPICO_GRAPH_DISCOVERY})
+    ZPICO_GRAPH_DISCOVERY=${NROS_RESOLVED_NROS_ZENOH_GRAPH_DISCOVERY})
 zephyr_compile_definitions(
     ZPICO_GRAPH_CACHE_SIZE=${CONFIG_NROS_GRAPH_CACHE_SIZE}
-    ZPICO_GET_REPLY_BUF_SIZE=${NROS_RESOLVED_ZPICO_GET_REPLY_BUF_SIZE}
-    ZPICO_GET_POLL_INTERVAL_MS=${NROS_RESOLVED_ZPICO_GET_POLL_INTERVAL_MS}
-    ZPICO_FRAG_MAX_SIZE=${NROS_RESOLVED_ZPICO_FRAG_MAX_SIZE}
-    ZPICO_BATCH_UNICAST_SIZE=${NROS_RESOLVED_ZPICO_BATCH_UNICAST_SIZE}
+    ZPICO_GET_REPLY_BUF_SIZE=${NROS_RESOLVED_NROS_ZENOH_GET_REPLY_BUF_SIZE}
+    ZPICO_GET_POLL_INTERVAL_MS=${NROS_RESOLVED_NROS_ZENOH_GET_POLL_INTERVAL_MS}
+    ZPICO_FRAG_MAX_SIZE=${NROS_RESOLVED_NROS_ZENOH_FRAG_MAX_SIZE}
+    ZPICO_BATCH_UNICAST_SIZE=${NROS_RESOLVED_NROS_ZENOH_BATCH_UNICAST_SIZE}
 )
 
 # Issue 0626 — the read/lease task priority, normalized 0-31.

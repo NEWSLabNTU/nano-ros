@@ -14,7 +14,7 @@ location.
 
 Three corrections worth knowing if you found this file from an old bookmark:
 
-- The transport limits were shown as `ZPICO_FRAG_MAX_SIZE=… cargo build
+- The transport limits were shown as `NROS_ZENOH_FRAG_MAX_SIZE=… cargo build
   --features rmw-zenoh,platform-posix`. RMW and platform are no longer cargo
   features a user picks; they come from the leaf's `system.toml`
   ([RFC-0098](../design/0098-generated-leaf-build-config.md)). Set the knob in

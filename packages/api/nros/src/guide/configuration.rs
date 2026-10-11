@@ -22,9 +22,9 @@
 //!
 //! | Variable | Description | Posix | Embedded |
 //! |----------|-------------|-------|----------|
-//! | `ZPICO_FRAG_MAX_SIZE` | Max reassembled message size | 65536 | 2048 |
-//! | `ZPICO_BATCH_UNICAST_SIZE` | Max unicast batch before fragmentation | 65536 | 1024 |
-//! | `ZPICO_BATCH_MULTICAST_SIZE` | Max multicast batch size | 8192 | 1024 |
+//! | `NROS_ZENOH_FRAG_MAX_SIZE` | Max reassembled message size | 65536 | 2048 |
+//! | `NROS_ZENOH_BATCH_UNICAST_SIZE` | Max unicast batch before fragmentation | 65536 | 1024 |
+//! | `NROS_ZENOH_BATCH_MULTICAST_SIZE` | Max multicast batch size | 8192 | 1024 |
 //! | `NROS_SUBSCRIBER_BUFFER_SIZE` | Per-subscriber buffer in zenoh shim | 1024 | 1024 |
 //! | `NROS_SERVICE_INBOX_BYTES` | Request slot of a user service server's inbox ring (zenoh); `ZPICO_SERVICE_BUFFER_SIZE` is its one-release alias | 1024 | 1024 |
 //! | `NROS_SERVICE_INBOX_DEPTH` | Requests a user service server holds before dropping the newest | 4 | 4 |
@@ -65,5 +65,5 @@
 //! Example — increase zenoh defrag to 128 KB for large point clouds:
 //!
 //! ```bash
-//! ZPICO_FRAG_MAX_SIZE=131072 cargo build --features rmw-zenoh,platform-posix
+//! NROS_ZENOH_FRAG_MAX_SIZE=131072 cargo build --features rmw-zenoh,platform-posix
 //! ```

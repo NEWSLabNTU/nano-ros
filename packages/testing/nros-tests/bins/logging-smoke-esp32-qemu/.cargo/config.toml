@@ -24,7 +24,7 @@ rustflags = [
 # Gate: `scripts/check-stack-floor.py` (issue 1052). Deriving these from the
 # declarations instead of stating them is issue 1061.
 # declares no entities at all.
-ZPICO_MAX_QUERYABLES = "2"
+NROS_ZENOH_MAX_QUERYABLES = "2"
 ESP_LOG = "info"
 
 [unstable]
