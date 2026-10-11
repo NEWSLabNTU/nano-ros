@@ -36,7 +36,7 @@
 
 {%- macro ser_field(field, var) -%}
 {%- if field.is_primitive %}
-    if (nros_cdr_{{ field.cdr_write_method }}(&ptr, end, origin, {{ var }}->{{ field.name }}) < 0) return -1;
+    if (rclc_cdr_{{ field.cdr_write_method }}(&ptr, end, origin, {{ var }}->{{ field.name }}) < 0) return -1;
 {%- elif field.is_string %}
 {%- if field.is_heap %}
     if (rclc_cdr_write_string(&ptr, end, origin, {{ var }}->{{ field.name }}.data ? {{ var }}->{{ field.name }}.data : "") < 0) return -1;
@@ -46,7 +46,7 @@
 {%- elif field.is_array %}
     for (size_t i = 0; i < {{ field.array_size }}; ++i) {
 {%- if field.is_primitive_element %}
-        if (nros_cdr_{{ field.element_cdr_write_method }}(&ptr, end, origin, {{ var }}->{{ field.name }}[i]) < 0) return -1;
+        if (rclc_cdr_{{ field.element_cdr_write_method }}(&ptr, end, origin, {{ var }}->{{ field.name }}[i]) < 0) return -1;
 {%- elif field.is_string_element %}
         if (rclc_cdr_write_string(&ptr, end, origin, {{ var }}->{{ field.name }}[i]) < 0) return -1;
 {%- else %}
@@ -57,7 +57,7 @@
     if (rclc_cdr_write_u32(&ptr, end, origin, {{ var }}->{{ field.name }}.size) < 0) return -1;
     for (size_t i = 0; i < {{ var }}->{{ field.name }}.size; ++i) {
 {%- if field.is_primitive_element %}
-        if (nros_cdr_{{ field.element_cdr_write_method }}(&ptr, end, origin, {{ var }}->{{ field.name }}.data[i]) < 0) return -1;
+        if (rclc_cdr_{{ field.element_cdr_write_method }}(&ptr, end, origin, {{ var }}->{{ field.name }}.data[i]) < 0) return -1;
 {%- elif field.is_string_element %}
         if (rclc_cdr_write_string(&ptr, end, origin, {{ var }}->{{ field.name }}.data[i]) < 0) return -1;
 {%- else %}
@@ -71,7 +71,7 @@
 
 {%- macro deser_field(field, var, sname) -%}
 {%- if field.is_primitive %}
-    if (nros_cdr_{{ field.cdr_read_method }}(&ptr, end, origin, &{{ var }}->{{ field.name }}) < 0) return -1;
+    if (rclc_cdr_{{ field.cdr_read_method }}(&ptr, end, origin, &{{ var }}->{{ field.name }}) < 0) return -1;
 {%- elif field.is_string %}
 {%- if field.is_heap %}
     {
@@ -101,7 +101,7 @@
 {%- elif field.is_array %}
     for (size_t i = 0; i < {{ field.array_size }}; ++i) {
 {%- if field.is_primitive_element %}
-        if (nros_cdr_{{ field.element_cdr_read_method }}(&ptr, end, origin, &{{ var }}->{{ field.name }}[i]) < 0) return -1;
+        if (rclc_cdr_{{ field.element_cdr_read_method }}(&ptr, end, origin, &{{ var }}->{{ field.name }}[i]) < 0) return -1;
 {%- elif field.is_string_element %}
         if (rclc_cdr_read_string(&ptr, end, origin, {{ var }}->{{ field.name }}[i], sizeof({{ var }}->{{ field.name }}[i])) < 0) return -1;
 {%- else %}
@@ -132,7 +132,7 @@
 {%- if field.is_string_element %}
             if (rclc_cdr_read_string(&ptr, end, origin, {{ var }}->{{ field.name }}.data[i], sizeof(*{{ var }}->{{ field.name }}.data)) < 0) {
 {%- elif field.is_primitive_element %}
-            if (nros_cdr_{{ field.element_cdr_read_method }}(&ptr, end, origin, &{{ var }}->{{ field.name }}.data[i]) < 0) {
+            if (rclc_cdr_{{ field.element_cdr_read_method }}(&ptr, end, origin, &{{ var }}->{{ field.name }}.data[i]) < 0) {
 {%- else %}
             if ({{ field.element_struct_name }}_deserialize_inline(&{{ var }}->{{ field.name }}.data[i], &ptr, end, origin) < 0) {
 {%- endif %}
@@ -149,7 +149,7 @@
         if (len > {{ field.sequence_capacity }}) return -1;
         for (size_t i = 0; i < len; ++i) {
 {%- if field.is_primitive_element %}
-            if (nros_cdr_{{ field.element_cdr_read_method }}(&ptr, end, origin, &{{ var }}->{{ field.name }}.data[i]) < 0) return -1;
+            if (rclc_cdr_{{ field.element_cdr_read_method }}(&ptr, end, origin, &{{ var }}->{{ field.name }}.data[i]) < 0) return -1;
 {%- elif field.is_string_element %}
             if (rclc_cdr_read_string(&ptr, end, origin, {{ var }}->{{ field.name }}.data[i], sizeof({{ var }}->{{ field.name }}.data[i])) < 0) return -1;
 {%- else %}

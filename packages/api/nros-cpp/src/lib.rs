@@ -642,29 +642,29 @@ pub(crate) struct CppContext {
     /// this struct's later fields over the other's `Vec` — memory corruption, seen
     /// as PX4 dumping core. A tag turns that into a clean error.
     pub(crate) tag: u64,
-    pub(crate) executor: CppExecutor,
+    /// phase-492 W4 — the executor, which lives in [`c`](Self::c)'s inline
+    /// storage. A reference into this same pinned buffer (the self-borrow the
+    /// executor's backing already was), written once by [`write_context`], so
+    /// every `ctx.executor` reads as before. Dropped by `nros_cpp_fini`, never
+    /// by the struct's drop glue (a reference has none).
+    pub(crate) executor: &'static mut CppExecutor,
     pub(crate) domain_id: u32,
-    /// Reentrancy guard — `true` while a spin is dispatching callbacks.
-    ///
-    /// The C twin of this flag is `rclc_executor_t.in_dispatch` (nros-c
-    /// `executor.rs`), checked by `rclc_client_call` / `rclc_action_send_goal`
-    /// so a blocking helper invoked FROM a callback returns
-    /// `RCLC_RET_REENTRANT` instead of re-entering the executor. nros-cpp had
-    /// no such flag (issue 0290): every blocking C++ helper reached
-    /// `&mut *(handle as *mut CppContext)` unconditionally, so calling
-    /// `Client::call()` inside a callback aliased `&mut Executor` — silently,
-    /// with no error returned.
-    ///
-    /// Guarding here rather than in each helper covers the whole family at
-    /// once: `Future::wait` / `Client::call` (via `nros_cpp_spin_once`) and
-    /// the action helpers, which spin `ctx.executor` directly.
-    pub(crate) in_dispatch: bool,
     /// Issue 1635 — the `/diagnostics` reporter this executor's contract
     /// monitors publish through, armed by `nros_cpp_install_monitors` when the
     /// image installs a non-empty table. `None` for an uncontracted image.
     #[cfg(feature = "rmw-cffi")]
     pub(crate) diag: Option<DiagSink>,
-    pub(crate) backing: [core::mem::MaybeUninit<u64>; CPP_EXECUTOR_BACKING_U64S],
+    /// phase-492 W4 — the C API's face of this same executor. The executor and
+    /// its carved backing live in `c._opaque` exactly where `rclc_executor_init`
+    /// puts them (`nros_node::ExecutorInlineStorage`), so there is one executor
+    /// object whichever language hosts it: a C component hosted here is handed
+    /// `&c` (`nros_cpp_node_bind_c`) and registers through the C API on the
+    /// executor this context spins. `c.in_dispatch` is the reentrancy guard for
+    /// both bindings — `true` while a spin is dispatching, checked by the
+    /// blocking helpers (`Client::call`, `rclc_client_call`, ...) so one called
+    /// from a callback returns REENTRANT instead of aliasing `&mut Executor`
+    /// (issue 0290).
+    pub(crate) c: nros_c::rclc_executor_t,
 }
 
 /// Issue 1635 — write every field of a freshly opened [`CppContext`] but the
@@ -685,12 +685,38 @@ pub(crate) unsafe fn write_context(
     domain_id: u32,
 ) {
     unsafe {
-        core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).executor), executor);
+        // phase-492 W4 — the C header first (it also clears `in_dispatch`),
+        // then the executor into the inline slot whose backing it already
+        // borrows (`inline_backing`), then the reference to it.
+        let inline = nros_c::host_executor_init(core::ptr::addr_of_mut!((*ctx_ptr).c));
+        let slot = core::ptr::addr_of_mut!((*inline).exec) as *mut CppExecutor;
+        core::ptr::write(slot, executor);
+        core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).executor), &mut *slot);
         core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).domain_id), domain_id);
-        core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).in_dispatch), false);
         core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).diag), None);
         // LAST: the tag means "fully initialised" (issue 0436).
         core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).tag), CPP_CONTEXT_TAG);
+    }
+}
+
+/// phase-492 W4 — the executor's carved backing: the tail of the inline
+/// storage in the embedded `rclc_executor_t` (`CppContext::c`), the region
+/// `rclc_executor_init` carves for a C executor.
+///
+/// # Safety
+/// `ctx_ptr` points at caller storage for a `CppContext` that outlives the
+/// executor (`nros_cpp_init`'s contract).
+#[cfg(feature = "rmw-cffi")]
+pub(crate) unsafe fn inline_backing(
+    ctx_ptr: *mut CppContext,
+) -> &'static mut [core::mem::MaybeUninit<u64>] {
+    unsafe {
+        let inline =
+            core::ptr::addr_of_mut!((*ctx_ptr).c._opaque) as *mut nros_node::ExecutorInlineStorage;
+        core::slice::from_raw_parts_mut(
+            core::ptr::addr_of_mut!((*inline).backing) as *mut core::mem::MaybeUninit<u64>,
+            CPP_EXECUTOR_BACKING_U64S,
+        )
     }
 }
 
@@ -747,8 +773,11 @@ const _: () = assert!(core::mem::offset_of!(CppContext, tag) == 0);
 /// `__nros_component_<pkg>_install(node, executor, self)`.
 ///
 /// `rclcpp::global_handle()` and every tier's `executor` are `CppContext`s, and
-/// the executor sits behind the tag word, so passing the handle itself hands
-/// the Rust side a pointer eight bytes short of the executor. The generated
+/// the executor is not at the handle's address: since phase-492 W4 it lives in
+/// the embedded `rclc_executor_t`'s storage and the context holds a REFERENCE
+/// to it (`CppContext::executor`), so this follows that reference. Taking the
+/// field's own address instead hands the Rust side a pointer to the reference
+/// -- the mixed workspace's Rust component then registered into garbage. The generated
 /// C++ entry calls this before every Rust install; the install refuses an
 /// unwrapped context (`-4`).
 ///
@@ -761,10 +790,71 @@ const _: () = assert!(core::mem::offset_of!(CppContext, tag) == 0);
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_executor_inner(handle: *mut c_void) -> *mut c_void {
     match unsafe { cpp_ctx_checked(handle) } {
-        Some(ctx) => core::ptr::addr_of_mut!(ctx.executor).cast(),
+        Some(ctx) => core::ptr::from_mut::<CppExecutor>(ctx.executor).cast(),
         None => core::ptr::null_mut(),
     }
 }
+
+/// phase-492 W4 — give a C component its C-API handles: `node_out` (an
+/// `rcl_node_t *`) becomes the node this host created, and `*executor_out` is
+/// set to the host's executor as an `rclc_executor_t *` — the one embedded in
+/// the context (`CppContext::c`), not a copy. The node's QoS-override table
+/// carries across.
+///
+/// The generated component seam (`RCLC_C_COMPONENT`) calls this before the
+/// component's `configure`, so a C component is written against the C API
+/// alone and `nros_cpp_*` stays the C++ binding's. `node_out` must live as long
+/// as the host spins — the seam keeps it in static storage. Typed `void *` so
+/// this header does not pull in the C API's.
+///
+/// # Safety
+/// `node` must be a live node from `nros_cpp_node_create*`; `node_out` valid
+/// for writes of an `rcl_node_t`; `executor_out` valid for a pointer write.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_node_bind_c(
+    node: *const nros_cpp_node_t,
+    node_out: *mut c_void,
+    executor_out: *mut *mut c_void,
+) -> nros_cpp_ret_t {
+    let Some(node) = (unsafe { node.as_ref() }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let Some(id) = node_id_opt(node) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let Some(ctx) = (unsafe { cpp_ctx_checked(node.executor) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    if node_out.is_null() || executor_out.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let c = core::ptr::addr_of_mut!(ctx.c);
+    let node_out = node_out.cast::<nros_c::rcl_node_t>();
+    if unsafe { nros_c::bind_host_node(c, id, node_out) } != nros_c::RCL_RET_OK {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    // The two override rows are one layout, asserted below; the table's
+    // storage is the entry's, static, so the pointer carries across as is.
+    unsafe {
+        (*node_out).qos_overrides = node.qos_overrides.cast();
+        (*node_out).qos_overrides_len = node.qos_overrides_len;
+        *executor_out = c.cast();
+    }
+    NROS_CPP_RET_OK
+}
+
+#[cfg(feature = "rmw-cffi")]
+const _: () = {
+    assert!(
+        core::mem::size_of::<nros_cpp_qos_override_t>()
+            == core::mem::size_of::<nros_c::rclc_qos_override_t>()
+    );
+    assert!(
+        core::mem::align_of::<nros_cpp_qos_override_t>()
+            == core::mem::align_of::<nros_c::rclc_qos_override_t>()
+    );
+};
 
 /// Issue 0436 — validate a caller-supplied executor handle before treating it as a
 /// [`CppContext`]. Returns `None` for null or for a buffer this crate did not
@@ -810,7 +900,7 @@ pub(crate) unsafe fn release_dispatch_entry(
     let id = nros_node::HandleId::from_raw(handle_id);
     // SAFETY: every C++ path to this slot goes through a generation-checked
     // handle, so none reaches its next occupant.
-    if unsafe { release(&mut ctx.executor, id) } {
+    if unsafe { release(ctx.executor, id) } {
         NROS_CPP_RET_OK
     } else {
         NROS_CPP_RET_ERROR
@@ -1504,12 +1594,7 @@ pub unsafe extern "C" fn nros_cpp_init_multi(
     let owned = &flat[..specs_len];
 
     let ctx_ptr = storage as *mut CppContext;
-    let backing: &'static mut [core::mem::MaybeUninit<u64>] = unsafe {
-        core::slice::from_raw_parts_mut(
-            core::ptr::addr_of_mut!((*ctx_ptr).backing) as *mut core::mem::MaybeUninit<u64>,
-            CPP_EXECUTOR_BACKING_U64S,
-        )
-    };
+    let backing: &'static mut [core::mem::MaybeUninit<u64>] = unsafe { inline_backing(ctx_ptr) };
     // SAFETY: as `nros_cpp_init` — caller-owned, correctly sized/aligned buffer.
     match unsafe { CppExecutor::open_multi_in(owned, backing, nros_node::ExecutorSizing::DEFAULT) }
     {
@@ -1680,6 +1765,9 @@ pub unsafe extern "C" fn nros_cpp_fini(storage: *mut c_void) -> nros_cpp_ret_t {
         (*ctx).executor.set_violation_sink(None);
         (*ctx).diag = None;
         let _ = (*ctx).executor.close();
+        // phase-492 W4 — the executor lives in `c._opaque` and `executor` is
+        // a reference to it, so the struct's drop glue does not reach it.
+        core::ptr::drop_in_place(core::ptr::addr_of_mut!(*(*ctx).executor));
         core::ptr::drop_in_place(ctx);
         // AFTER the drop: the storage is now uninitialised memory the caller
         // still owns, and this write is what stops it reading as ours. Written
@@ -1938,12 +2026,7 @@ unsafe fn executor_backing_for_open(
     }
     // SAFETY: caller contract -- the inline tail is `CPP_EXECUTOR_BACKING_U64S`
     // words sized for `ExecutorSizing::DEFAULT` and lives as long as the buffer.
-    let backing = unsafe {
-        core::slice::from_raw_parts_mut(
-            core::ptr::addr_of_mut!((*ctx_ptr).backing) as *mut core::mem::MaybeUninit<u64>,
-            CPP_EXECUTOR_BACKING_U64S,
-        )
-    };
+    let backing = unsafe { inline_backing(ctx_ptr) };
     (backing, nros_node::ExecutorSizing::DEFAULT)
 }
 
@@ -2794,7 +2877,7 @@ pub unsafe extern "C" fn nros_cpp_node_create(
     out.name[..name_str.len()].copy_from_slice(name_str.as_bytes());
     // Issue 1473 — the RESOLVED namespace, read back from the record the
     // builder just wrote, never the argument. See `store_recorded_namespace`.
-    store_recorded_namespace(&ctx.executor, node_id, out);
+    store_recorded_namespace(ctx.executor, node_id, out);
     store_node_id(out, node_id);
     out._reserved = [0u8; NROS_CPP_NODE_RESERVED];
     // Every field of an OUT parameter is written here: a caller may hand in
@@ -3010,7 +3093,7 @@ pub unsafe extern "C" fn nros_cpp_node_create_ex(
     // `.namespace()` call above had deliberately not overridden: the executor
     // recorded `/island` and the handle — which every C++ publisher,
     // subscription and service reads its namespace from — said `/`.
-    store_recorded_namespace(&ctx.executor, node_id, out);
+    store_recorded_namespace(ctx.executor, node_id, out);
     store_node_id(out, node_id);
     out._reserved = [0u8; NROS_CPP_NODE_RESERVED];
     // Every field of an OUT parameter is written here: a caller may hand in
@@ -3396,7 +3479,7 @@ pub unsafe extern "C" fn nros_cpp_spin_once(
     // `ErrorCode::Reentrant` rather than corruption.
     let CppContext {
         executor,
-        in_dispatch,
+        c: nros_c::rclc_executor_t { in_dispatch, .. },
         ..
     } = ctx;
     let Some(_guard) = DispatchGuard::enter(in_dispatch) else {
@@ -4887,7 +4970,7 @@ pub unsafe extern "C" fn nros_cpp_executor_drain_violations(
     let Some(cb) = cb else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
-    if cpp.in_dispatch {
+    if cpp.c.in_dispatch {
         return NROS_CPP_RET_REENTRANT;
     }
     cpp.executor.drain_violations(|v| {
@@ -5131,7 +5214,7 @@ pub unsafe extern "C" fn nros_cpp_install_argv_remaps(
         let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
             return NROS_CPP_RET_INVALID_ARGUMENT;
         };
-        Some(&mut ctx.executor)
+        Some(&mut *ctx.executor)
     };
 
     // phase-482 W5 — an image that can hold parameter overrides honours
@@ -5267,12 +5350,7 @@ pub unsafe extern "C" fn nros_cpp_executor_open_over_session(
     // domain_id. The executor Borrows the session — does NOT open a new RMW
     // session and does NOT close it on drop (the Rust tier-task pattern).
     let ctx_ptr = out_storage as *mut CppContext;
-    let backing: &'static mut [core::mem::MaybeUninit<u64>] = unsafe {
-        core::slice::from_raw_parts_mut(
-            core::ptr::addr_of_mut!((*ctx_ptr).backing) as *mut core::mem::MaybeUninit<u64>,
-            CPP_EXECUTOR_BACKING_U64S,
-        )
-    };
+    let backing: &'static mut [core::mem::MaybeUninit<u64>] = unsafe { inline_backing(ctx_ptr) };
     // SAFETY: the handle's session is alive (caller's contract); `backing` is
     // sized/aligned per `ExecutorSizing::DEFAULT` and lives for the caller's
     // buffer lifetime, meeting `open_with_session_handle_in`'s contract.

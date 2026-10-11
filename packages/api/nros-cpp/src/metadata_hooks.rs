@@ -429,6 +429,70 @@ mod census_fixture_tests {
         assert_eq!(nros::metadata_mode::entity_count(), 8);
         nros::metadata_mode::reset();
     }
+
+    /// phase-492 W4 — a C component hosted here is handed the C API's handles
+    /// over THIS executor, not a copy: what the host registers, the C face
+    /// sees, and the C face's `fini` leaves the host's executor running.
+    #[test]
+    fn a_c_component_gets_the_hosts_executor_and_node() {
+        nros::metadata_mode::reset();
+        let mut storage = MaybeUninit::<ExecutorStorage>::uninit();
+        let exec = storage.as_mut_ptr().cast::<c_void>();
+        let rc = unsafe {
+            nros_cpp_init_rmw(
+                c"metadata".as_ptr(),
+                core::ptr::null(),
+                0,
+                c"c_host".as_ptr(),
+                c"/".as_ptr(),
+                exec,
+            )
+        };
+        assert_eq!(rc, NROS_CPP_RET_OK);
+        let mut opts = nros_cpp_node_options_t::default();
+        let ns = b"/island";
+        opts.namespace[..ns.len()].copy_from_slice(ns);
+        opts.namespace_len = ns.len();
+        let mut node = MaybeUninit::<nros_cpp_node_t>::uninit();
+        let rc = unsafe {
+            nros_cpp_node_create_ex(exec, c"c_talker".as_ptr(), &opts, node.as_mut_ptr())
+        };
+        assert_eq!(rc, NROS_CPP_RET_OK);
+
+        let mut c_node = nros_c::rcl_get_zero_initialized_node();
+        let mut c_exec: *mut c_void = core::ptr::null_mut();
+        let rc = unsafe {
+            crate::nros_cpp_node_bind_c(
+                node.as_ptr(),
+                (&raw mut c_node).cast::<c_void>(),
+                &mut c_exec,
+            )
+        };
+        assert_eq!(rc, NROS_CPP_RET_OK);
+        let c_exec = c_exec.cast::<nros_c::rclc_executor_t>();
+        assert!(unsafe { nros_c::rclc_executor_is_valid(c_exec) });
+        assert_eq!(&c_node.name[..c_node.name_len], b"c_talker");
+        assert_eq!(&c_node.namespace[..c_node.namespace_len], b"/island");
+        assert!(core::ptr::eq(c_node.executor, c_exec));
+
+        // One executor: a registration through the host moves the arena the
+        // C face reports.
+        let before = unsafe { nros_c::rclc_executor_get_arena_used(c_exec) };
+        let mut handle_id = 0usize;
+        let rc = unsafe {
+            nros_cpp_timer_create(exec, 100, Some(noop), core::ptr::null_mut(), &mut handle_id)
+        };
+        assert_eq!(rc, NROS_CPP_RET_OK);
+        assert!(unsafe { nros_c::rclc_executor_get_arena_used(c_exec) } > before);
+
+        // The C face does not own it: its fini drops nothing, and the host's
+        // teardown is still the one that closes the executor.
+        assert_eq!(
+            unsafe { nros_c::rclc_executor_fini(c_exec) },
+            nros_c::RCL_RET_OK
+        );
+        assert_eq!(unsafe { nros_cpp_fini(exec) }, NROS_CPP_RET_OK);
+    }
 }
 
 /// Issue 1679 -- a C++ image built WITHOUT the parameter store still records

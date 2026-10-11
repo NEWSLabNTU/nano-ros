@@ -241,34 +241,6 @@ typedef enum nros_cpp_qos_liveliness_t {
 typedef int nros_cpp_ret_t;
 
 /**
- * Issue 0436 — C mirror of `nros_node::executor::SessionSpec`, matching
- * `rclc_session_spec_t` in `<nros/bridge.h>` field for field so a caller can use
- * either entry point with one struct.
- */
-typedef struct NrosCppSessionSpec {
-  /**
-   * Canonical backend name, e.g. `"zenoh"`. Must be registered.
-   */
-  const char *rmw;
-  /**
-   * Backend-specific locator. NULL = empty (uORB ignores it entirely).
-   */
-  const char *locator;
-  /**
-   * ROS domain id.
-   */
-  uint32_t domain_id;
-  /**
-   * Session-default node name. NULL = empty.
-   */
-  const char *node_name;
-  /**
-   * Session-default namespace. NULL = "/".
-   */
-  const char *namespace_;
-} NrosCppSessionSpec;
-
-/**
  * Phase 211.H (issue #52) — one per-topic QoS override, the C++-FFI mirror of
  * Rust's `nros_rmw::QoSOverride` (and nros-c's `rclc_qos_override_t`). The
  * deploy plan lowers a `qos_overrides.<topic>.<role>.<policy>` launch param
@@ -358,6 +330,34 @@ typedef struct nros_cpp_node_t {
    */
   size_t qos_overrides_len;
 } nros_cpp_node_t;
+
+/**
+ * Issue 0436 — C mirror of `nros_node::executor::SessionSpec`, matching
+ * `rclc_session_spec_t` in `<nros/bridge.h>` field for field so a caller can use
+ * either entry point with one struct.
+ */
+typedef struct NrosCppSessionSpec {
+  /**
+   * Canonical backend name, e.g. `"zenoh"`. Must be registered.
+   */
+  const char *rmw;
+  /**
+   * Backend-specific locator. NULL = empty (uORB ignores it entirely).
+   */
+  const char *locator;
+  /**
+   * ROS domain id.
+   */
+  uint32_t domain_id;
+  /**
+   * Session-default node name. NULL = empty.
+   */
+  const char *node_name;
+  /**
+   * Session-default namespace. NULL = "/".
+   */
+  const char *namespace_;
+} NrosCppSessionSpec;
 
 /**
  * Phase 104.C.9 — extended node-creation options (C++ FFI).
@@ -967,8 +967,11 @@ extern const uint32_t NROS_CPP_TRANSPORT_OPS_ABI_VERSION_V1;
  * `__nros_component_<pkg>_install(node, executor, self)`.
  *
  * `rclcpp::global_handle()` and every tier's `executor` are `CppContext`s, and
- * the executor sits behind the tag word, so passing the handle itself hands
- * the Rust side a pointer eight bytes short of the executor. The generated
+ * the executor is not at the handle's address: since phase-492 W4 it lives in
+ * the embedded `rclc_executor_t`'s storage and the context holds a REFERENCE
+ * to it (`CppContext::executor`), so this follows that reference. Taking the
+ * field's own address instead hands the Rust side a pointer to the reference
+ * -- the mixed workspace's Rust component then registered into garbage. The generated
  * C++ entry calls this before every Rust install; the install refuses an
  * unwrapped context (`-4`).
  *
@@ -979,6 +982,27 @@ extern const uint32_t NROS_CPP_TRANSPORT_OPS_ABI_VERSION_V1;
  * [`cpp_ctx_checked`]).
  */
 void *nros_cpp_executor_inner(void *handle);
+
+/**
+ * phase-492 W4 — give a C component its C-API handles: `node_out` (an
+ * `rcl_node_t *`) becomes the node this host created, and `*executor_out` is
+ * set to the host's executor as an `rclc_executor_t *` — the one embedded in
+ * the context (`CppContext::c`), not a copy. The node's QoS-override table
+ * carries across.
+ *
+ * The generated component seam (`RCLC_C_COMPONENT`) calls this before the
+ * component's `configure`, so a C component is written against the C API
+ * alone and `nros_cpp_*` stays the C++ binding's. `node_out` must live as long
+ * as the host spins — the seam keeps it in static storage. Typed `void *` so
+ * this header does not pull in the C API's.
+ *
+ * # Safety
+ * `node` must be a live node from `nros_cpp_node_create*`; `node_out` valid
+ * for writes of an `rcl_node_t`; `executor_out` valid for a pointer write.
+ */
+nros_cpp_ret_t nros_cpp_node_bind_c(const struct nros_cpp_node_t *node,
+                                    void *node_out,
+                                    void **executor_out);
 
 /**
  * Initialize an nros executor session.

@@ -1008,7 +1008,7 @@ pub unsafe extern "C" fn rclc_subscription_get_actual_qos(
                 }
                 let exec_t =
                     &mut *(subscription._executor as *mut crate::executor::rclc_executor_t);
-                let exec = crate::executor::get_executor(&mut exec_t._opaque);
+                let exec = crate::executor::get_executor(exec_t);
                 match exec.subscription_handle(subscription.handle_id) {
                     Some(handle) => nros_rmw::Subscription::actual_qos(handle),
                     None => return RCL_RET_NOT_INIT,

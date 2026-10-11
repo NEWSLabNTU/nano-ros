@@ -64,13 +64,25 @@ const _: () = assert!(
      and cannot close a feature-set gap."
 );
 
-/// Get a mutable reference to the internal executor from opaque storage.
+/// Get a mutable reference to the internal executor.
 ///
 /// # Safety
-/// The opaque storage must contain a live, initialized `CExecutor`.
+/// `executor` must be initialised: its `_opaque` holds a live `CExecutor`.
 #[inline]
-pub(crate) unsafe fn get_executor(opaque: &mut [u64; EXECUTOR_OPAQUE_U64S]) -> &mut CExecutor {
-    &mut *(opaque.as_mut_ptr() as *mut CExecutor)
+pub(crate) unsafe fn get_executor<'a>(executor: *mut rclc_executor_t) -> &'a mut CExecutor {
+    // Unbound lifetime, on purpose: the `CExecutor` lives in `_opaque` (or the
+    // host's storage) and never aliases the header fields callers keep writing
+    // (`_handle_entities`, `in_dispatch`) while it is in use — the disjointness
+    // the old `&mut [u64]` parameter expressed by borrowing `_opaque` alone.
+    &mut *(executor_ptr(&mut *executor) as *mut CExecutor)
+}
+
+/// The executor's `CExecutor`, as the untyped pointer entities store
+/// (`get_executor_from_ptr`). Always the one in `_opaque`; `_host` names the
+/// same place when a host owns it (phase-492 W4).
+#[inline]
+pub(crate) fn executor_ptr(executor: &mut rclc_executor_t) -> *mut core::ffi::c_void {
+    executor._opaque.as_mut_ptr() as *mut core::ffi::c_void
 }
 
 /// Get a mutable reference to the internal executor from a raw pointer.
@@ -319,6 +331,12 @@ pub struct rclc_executor_t {
     /// states the 64-handle ceiling) only changes how much slack the C object
     /// carries, exactly like the `_opaque` bounds.
     pub _handle_entities: [*mut core::ffi::c_void; NROS_EXECUTOR_MAX_HANDLES],
+    /// phase-492 W4 — NULL for an executor `rclc_executor_init` built. Non-NULL
+    /// when a HOST owns the executor (`host_executor_init`: the C++ binding's
+    /// context embeds this struct), pointing at the executor in `_opaque`.
+    /// `rclc_executor_fini` then drops nothing; the host does. Internal; no C
+    /// code reads it.
+    pub _host: *mut core::ffi::c_void,
     /// Inline opaque storage for the executor.
     /// Managed by rclc_executor_init/fini — no heap allocation needed.
     pub _opaque: [u64; EXECUTOR_OPAQUE_U64S],
@@ -341,6 +359,7 @@ impl Default for rclc_executor_t {
             invocation_time_ns: 0,
             in_dispatch: false,
             _handle_entities: [ptr::null_mut(); NROS_EXECUTOR_MAX_HANDLES],
+            _host: ptr::null_mut(),
             #[allow(clippy::large_stack_arrays)] // Intentional: inline opaque storage avoids heap
             _opaque: [0u64; EXECUTOR_OPAQUE_U64S],
         }
@@ -469,7 +488,7 @@ pub unsafe extern "C" fn rclc_executor_init(
     // bug than the one being fixed — it is a use-after-free with an arbitrary
     // window.
     #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
-    get_executor(&mut executor._opaque).install_wake_signal_on_primary();
+    get_executor(executor).install_wake_signal_on_primary();
 
     executor.max_handles = max_handles.min(NROS_EXECUTOR_MAX_HANDLES);
     executor.handle_count = 0;
@@ -535,7 +554,7 @@ pub unsafe extern "C" fn rclc_executor_ping(
     }
     #[cfg(feature = "rmw-cffi")]
     {
-        let exec = get_executor(&mut exec_t._opaque);
+        let exec = get_executor(exec_t);
         match exec.ping(timeout_ms) {
             Ok(()) => RCL_RET_OK,
             Err(nros_node::NodeError::Transport(nros_rmw::TransportError::Timeout)) => {
@@ -627,7 +646,7 @@ pub unsafe extern "C" fn rclc_executor_get_node_names(
     #[cfg(feature = "rmw-cffi")]
     {
         const NAME_MAX: usize = 256;
-        let exec = get_executor(&mut exec_t._opaque);
+        let exec = get_executor(exec_t);
         let mut cb = |name: &str, ns: &str, enclave: Option<&str>| -> bool {
             // NUL-terminated on the stack: the C contract borrows for the call
             // only, so nothing is allocated on either side of the seam. A name
@@ -853,7 +872,7 @@ unsafe fn nros_executor_wait_for_endpoints_impl(
             return RCL_RET_INVALID_ARGUMENT;
         };
         let timeout = core::time::Duration::from_millis(timeout_ms as u64);
-        let exec = get_executor(&mut exec_t._opaque);
+        let exec = get_executor(exec_t);
         let r = if publishers {
             exec.wait_for_publishers(topic, count, timeout)
         } else {
@@ -920,7 +939,7 @@ unsafe fn nros_executor_names_and_types_impl(
     {
         const NAME_MAX: usize = 256;
         const TYPES_MAX: usize = 8;
-        let exec = get_executor(&mut exec_t._opaque);
+        let exec = get_executor(exec_t);
         let mut cb = |name: &str, types: &[&str]| -> bool {
             // NUL-terminated on the stack; the C contract borrows for the call
             // only. A name or type that does not fit is SKIPPED rather than
@@ -992,7 +1011,7 @@ unsafe fn nros_executor_count_impl(
         let Ok(topic) = core::ffi::CStr::from_ptr(topic_name).to_str() else {
             return RCL_RET_INVALID_ARGUMENT;
         };
-        let exec = get_executor(&mut exec_t._opaque);
+        let exec = get_executor(exec_t);
         let r = match kind {
             CountKind::Publishers => exec.count_publishers(topic),
             CountKind::Subscribers => exec.count_subscribers(topic),
@@ -1076,7 +1095,7 @@ unsafe fn nros_executor_by_node_impl(
         };
         const NAME_MAX: usize = 256;
         const TYPES_MAX: usize = 8;
-        let exec = get_executor(&mut exec_t._opaque);
+        let exec = get_executor(exec_t);
         let mut cb = |n: &str, types: &[&str]| -> bool {
             let mut name_buf = [0u8; NAME_MAX];
             if n.len() >= NAME_MAX {
@@ -1223,7 +1242,7 @@ unsafe fn nros_executor_endpoint_info_impl(
             return RCL_RET_INVALID_ARGUMENT;
         };
         const NAME_MAX: usize = 256;
-        let exec = get_executor(&mut exec_t._opaque);
+        let exec = get_executor(exec_t);
         let mut cb = |info: &nros_rmw::GraphEndpointInfo<'_>| -> bool {
             let mut name_buf = [0u8; NAME_MAX];
             let mut ns_buf = [0u8; NAME_MAX];
@@ -1321,7 +1340,7 @@ pub unsafe extern "C" fn rclc_executor_set_semantics(
     if executor.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
         || executor.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING
     {
-        let rust_exec = get_executor(&mut executor._opaque);
+        let rust_exec = get_executor(executor);
         rust_exec.set_semantics(match semantics {
             rclc_executor_semantics_t::RCLC_SEMANTICS_RCLCPP_EXECUTOR => {
                 nros_node::ExecutorSemantics::RclcppExecutor
@@ -1429,7 +1448,7 @@ pub unsafe extern "C" fn rclc_executor_node_init(
     node_ref.sched_context_id = opts.sched_context_id;
 
     // Drive the Rust executor's NodeBuilder.
-    let rust_exec = get_executor(&mut executor._opaque);
+    let rust_exec = get_executor(executor);
     let name_str = core::str::from_utf8_unchecked(&node_ref.name[..node_ref.name_len]);
     let mut builder = rust_exec.node_builder(name_str);
     if opts.rmw_name_len > 0 {
@@ -1471,7 +1490,7 @@ pub unsafe extern "C" fn rclc_executor_node_init(
     // `metadata-mode` is on -- and under `ACTIVE`, because the namespace
     // lookup is work an empty hook body does not remove (phase-463 W5 I4).
     if nros::census_hooks::ACTIVE {
-        let rust_exec = get_executor(&mut executor._opaque);
+        let rust_exec = get_executor(executor);
         let ns = match rust_exec.node(node_id).map(|r| r.namespace.as_str()) {
             Some(s) if !s.is_empty() => s,
             _ => "/",
@@ -1493,6 +1512,98 @@ pub unsafe extern "C" fn rclc_executor_node_init(
     node_ref.executor = executor as *const rclc_executor_t;
     node_ref.state = rclc_node_state_t::RCLC_NODE_STATE_INITIALIZED;
 
+    RCL_RET_OK
+}
+
+/// phase-492 W4 — make `executor` the C-API face of an executor a HOST owns,
+/// and return the inline storage the host builds that executor in.
+///
+/// The C++ binding's context (`nros-cpp`'s `CppContext`) embeds an
+/// `rclc_executor_t` and opens its executor inside that struct's `_opaque`,
+/// exactly where `rclc_executor_init` would. So there is ONE executor object
+/// whichever language hosts it, and a C component hosted by a C++ (or
+/// generated C) entry is handed this very `rclc_executor_t` — it registers its
+/// entities with `rclc_executor_add_*` on the executor the host spins.
+///
+/// The host keeps ownership: `_host` is set, so `rclc_executor_fini` drops
+/// nothing and the host's own teardown drops the executor. Only the header is
+/// written; `_opaque` is the caller's to fill (no 100 KiB zero-fill and no
+/// stack temporary — RFC-0105 D10).
+///
+/// # Safety
+/// `executor` must point at writable storage for an `rclc_executor_t` that is
+/// pinned for the executor's life.
+#[doc(hidden)]
+pub unsafe fn host_executor_init(
+    executor: *mut rclc_executor_t,
+) -> *mut nros_node::ExecutorInlineStorage {
+    use core::ptr::addr_of_mut as at;
+    let opaque = at!((*executor)._opaque) as *mut core::ffi::c_void;
+    ptr::write(
+        at!((*executor).state),
+        rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED,
+    );
+    ptr::write(at!((*executor).timeout_ns), 100_000_000); // rclc_executor_init's default
+    ptr::write(
+        at!((*executor).semantics),
+        rclc_executor_semantics_t::RCLC_SEMANTICS_RCLCPP_EXECUTOR,
+    );
+    ptr::write(at!((*executor).support), ptr::null());
+    ptr::write(at!((*executor).trigger), None);
+    ptr::write(at!((*executor).trigger_context), ptr::null_mut());
+    ptr::write(at!((*executor).handle_count), 0);
+    ptr::write(at!((*executor).max_handles), NROS_EXECUTOR_MAX_HANDLES);
+    ptr::write(at!((*executor).subscription_count), 0);
+    ptr::write(at!((*executor).timer_count), 0);
+    ptr::write(at!((*executor).service_count), 0);
+    ptr::write(at!((*executor).invocation_time_ns), 0);
+    ptr::write(at!((*executor).in_dispatch), false);
+    ptr::write(
+        at!((*executor)._handle_entities),
+        [ptr::null_mut(); NROS_EXECUTOR_MAX_HANDLES],
+    );
+    ptr::write(at!((*executor)._host), opaque);
+    opaque as *mut nros_node::ExecutorInlineStorage
+}
+
+/// phase-492 W4 — make `node` the executor-bound C handle of the node a host
+/// already created on `executor` as `node_id` (see [`host_executor_init`]).
+///
+/// The generated entry creates every node itself — it applies the launch
+/// plan's namespace, scheduling, remaps and QoS overrides there — and hands a
+/// C component this handle, so the component never creates the node and the
+/// C++ FFI stays the C++ binding's.
+///
+/// # Safety
+/// `executor` must be initialised and outlive `node`; `node` valid for writes.
+#[doc(hidden)]
+pub unsafe fn bind_host_node(
+    executor: *mut rclc_executor_t,
+    node_id: nros_node::executor::node_record::NodeId,
+    node: *mut crate::node::rcl_node_t,
+) -> rcl_ret_t {
+    use crate::node::{NROS_DOMAIN_ID_INHERIT, rclc_node_state_t};
+    validate_not_null!(executor, node);
+    let Some(record) = get_executor(executor).node(node_id) else {
+        return RCL_RET_INVALID_ARGUMENT;
+    };
+    let n = &mut *node;
+    let name = record.name.as_bytes();
+    let ns = record.namespace.as_bytes();
+    if name.len() > n.name.len() || ns.len() > n.namespace.len() {
+        return RCL_RET_INVALID_ARGUMENT;
+    }
+    n.name[..name.len()].copy_from_slice(name);
+    n.name_len = name.len();
+    n.namespace[..ns.len()].copy_from_slice(ns);
+    n.namespace_len = ns.len();
+    n.rmw_name_len = 0;
+    n.domain_id_override = NROS_DOMAIN_ID_INHERIT;
+    n.sched_context_id = record.default_sched.0;
+    n.node_id = node_id.raw();
+    n.support = ptr::null();
+    n.executor = executor as *const rclc_executor_t;
+    n.state = rclc_node_state_t::RCLC_NODE_STATE_INITIALIZED;
     RCL_RET_OK
 }
 
@@ -1597,7 +1708,7 @@ pub unsafe extern "C" fn rclc_executor_set_trigger(
     // Forward to the internal executor. The RAW predicate is always OUR bridge,
     // never the user's function directly: the user's function needs the entity
     // pointers, which live on this side.
-    let rust_exec = get_executor(&mut executor._opaque);
+    let rust_exec = get_executor(executor);
     match trigger {
         Some(_) => {
             rust_exec.set_trigger(nros_node::Trigger::RawPredicate {
@@ -1819,7 +1930,7 @@ unsafe fn register_subscription_entry(
     // because the subscription records the arena it was registered into and
     // the borrow checker will not hand out a second `&mut` inside one block.
     let executor_ptr = executor as *mut _ as *mut core::ffi::c_void;
-    let rust_exec = get_executor(&mut executor._opaque);
+    let rust_exec = get_executor(executor);
 
     let topic_str = core::str::from_utf8_unchecked(
         &subscription_ref.topic_name[..subscription_ref.topic_name_len],
@@ -2186,7 +2297,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_raw_with_info(
     };
 
     {
-        let rust_exec = get_executor(&mut executor._opaque);
+        let rust_exec = get_executor(executor);
         set_executor_node_identity_from_node(rust_exec, node);
         // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps
         // against the identity just set (executor-side remap table).
@@ -2314,7 +2425,7 @@ pub unsafe extern "C" fn rclc_executor_add_timer(
     }
 
     {
-        let rust_exec = get_executor(&mut executor._opaque);
+        let rust_exec = get_executor(executor);
 
         // Get the C callback and context from the timer
         let c_callback = match timer_ref.get_callback() {
@@ -2390,7 +2501,7 @@ pub unsafe extern "C" fn rclc_executor_add_timer(
                 // Store handle ID and executor pointer for cancel/reset operations
                 let timer_mut = &mut *timer;
                 timer_mut.set_handle_id(handle_id);
-                timer_mut.set_executor_ptr(executor._opaque.as_mut_ptr() as *mut core::ffi::c_void);
+                timer_mut.set_executor_ptr(executor_ptr(executor));
                 record_trigger_entity(
                     &mut executor._handle_entities,
                     handle_id,
@@ -2452,7 +2563,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_in_group(
         // registered into and the borrow checker will not hand out a second
         // `&mut` inside the same block.
         let executor_ptr = executor as *mut _ as *mut core::ffi::c_void;
-        let rust_exec = get_executor(&mut executor._opaque);
+        let rust_exec = get_executor(executor);
 
         let topic_str = core::str::from_utf8_unchecked(
             &subscription_ref.topic_name[..subscription_ref.topic_name_len],
@@ -2566,7 +2677,7 @@ pub unsafe extern "C" fn rclc_executor_add_timer_in_group(
     }
 
     {
-        let rust_exec = get_executor(&mut executor._opaque);
+        let rust_exec = get_executor(executor);
 
         let c_callback = match timer_ref.get_callback() {
             Some(cb) => cb,
@@ -2609,7 +2720,7 @@ pub unsafe extern "C" fn rclc_executor_add_timer_in_group(
                 );
                 let timer_mut = &mut *timer;
                 timer_mut.set_handle_id(handle_id);
-                timer_mut.set_executor_ptr(executor._opaque.as_mut_ptr() as *mut core::ffi::c_void);
+                timer_mut.set_executor_ptr(executor_ptr(executor));
                 record_trigger_entity(
                     &mut executor._handle_entities,
                     handle_id,
@@ -2680,7 +2791,7 @@ pub unsafe extern "C" fn rclc_executor_add_service_raw(
     }
 
     {
-        let rust_exec = get_executor(&mut executor._opaque);
+        let rust_exec = get_executor(executor);
 
         // Extract metadata from service struct
         let service_name = core::str::from_utf8_unchecked(
@@ -2816,7 +2927,7 @@ pub unsafe extern "C" fn rclc_executor_add_client(
     }
 
     {
-        let opaque_ptr = executor._opaque.as_mut_ptr() as *mut core::ffi::c_void;
+        let opaque_ptr = executor_ptr(executor);
         let rust_exec = get_executor_from_ptr(opaque_ptr);
 
         let service_name =
@@ -2958,7 +3069,7 @@ pub unsafe extern "C" fn rclc_executor_add_action_server(
 
     {
         // Grab the opaque pointer before borrowing for get_executor to avoid double borrow.
-        let opaque_ptr = executor._opaque.as_mut_ptr() as *mut core::ffi::c_void;
+        let opaque_ptr = executor_ptr(executor);
         let rust_exec = get_executor_from_ptr(opaque_ptr);
 
         // Extract metadata from action server struct
@@ -3110,7 +3221,7 @@ pub unsafe extern "C" fn rclc_executor_add_action_client(
     }
 
     {
-        let opaque_ptr = executor._opaque.as_mut_ptr() as *mut core::ffi::c_void;
+        let opaque_ptr = executor_ptr(executor);
         let rust_exec = get_executor_from_ptr(opaque_ptr);
 
         // Always register trampolines — they check the C struct's callback
@@ -3272,7 +3383,7 @@ pub unsafe extern "C" fn rclc_executor_remove_action_server(
         return RCLC_RET_REENTRANT;
     }
 
-    let opaque_ptr = executor._opaque.as_mut_ptr() as *mut core::ffi::c_void;
+    let opaque_ptr = executor_ptr(executor);
     if !server._internal.is_handle_set() || server._internal.executor_ptr != opaque_ptr {
         return RCLC_RET_NOT_FOUND;
     }
@@ -3340,7 +3451,7 @@ pub unsafe extern "C" fn rclc_executor_remove_action_client(
         return RCLC_RET_REENTRANT;
     }
 
-    let opaque_ptr = executor._opaque.as_mut_ptr() as *mut core::ffi::c_void;
+    let opaque_ptr = executor_ptr(executor);
     if client._internal.arena_entry_index < 0 || client._internal.executor_ptr != opaque_ptr {
         return RCLC_RET_NOT_FOUND;
     }
@@ -3435,7 +3546,7 @@ pub unsafe extern "C" fn rclc_executor_remove_subscription(
     }
 
     let handle_id = nros_node::executor::HandleId::from_raw(subscription.handle_id);
-    let rust_exec = get_executor(&mut executor._opaque);
+    let rust_exec = get_executor(executor);
     // SAFETY: the subscription's (handle, executor) pair is its only record of
     // the slot and is cleared below, so nothing names the slot afterwards.
     let released = rust_exec.release_subscription(handle_id);
@@ -3489,7 +3600,7 @@ pub unsafe extern "C" fn rclc_executor_remove_timer(
     }
     // The timer records the executor's OPAQUE pointer (its cancel/reset reach
     // the Rust executor through it), not the `rclc_executor_t`.
-    let opaque_ptr = executor._opaque.as_mut_ptr() as *mut core::ffi::c_void;
+    let opaque_ptr = executor_ptr(executor);
     if timer.handle_id == usize::MAX || timer._executor != opaque_ptr {
         return RCLC_RET_NOT_FOUND;
     }
@@ -3547,7 +3658,7 @@ pub unsafe extern "C" fn rclc_executor_remove_service(
 
     let handle_id =
         nros_node::executor::HandleId::for_owned_slot(service._internal.arena_entry_index as usize);
-    let rust_exec = get_executor(&mut executor._opaque);
+    let rust_exec = get_executor(executor);
     // SAFETY: as in `rclc_executor_remove_subscription`.
     let released = rust_exec.release_service(handle_id);
     service._internal.arena_entry_index = -1;
@@ -3606,7 +3717,7 @@ pub unsafe extern "C" fn rclc_executor_remove_client(
 
     let handle_id =
         nros_node::executor::HandleId::for_owned_slot(client._internal.arena_entry_index as usize);
-    let rust_exec = get_executor(&mut executor._opaque);
+    let rust_exec = get_executor(executor);
     // SAFETY: as in `rclc_executor_remove_subscription`.
     let released = rust_exec.release_service_client(handle_id);
     client._internal.arena_entry_index = -1;
@@ -3755,7 +3866,7 @@ pub unsafe extern "C" fn rclc_executor_spin_some(
     }
 
     {
-        let rust_exec = get_executor(&mut executor._opaque);
+        let rust_exec = get_executor(executor);
 
         // Convert timeout from nanoseconds to milliseconds (i32) for nros-node
         let timeout_ms: u64 = if timeout_ns > 0 {
@@ -3797,7 +3908,7 @@ pub unsafe extern "C" fn rclc_executor_spin(executor: *mut rclc_executor_t) -> r
     // executor: `enter_spin_loop` clears any stale cancel and raises the flag
     // `rclc_executor_is_spinning` reads. RFC-0019 — the loop keeps no bit of its
     // own. Paired with `exit_spin_loop` on BOTH exits below.
-    get_executor(&mut executor_ref._opaque).enter_spin_loop();
+    get_executor(executor_ref).enter_spin_loop();
 
     // Spin until shutdown, or until the SESSION dies persistently.
     //
@@ -3819,11 +3930,11 @@ pub unsafe extern "C" fn rclc_executor_spin(executor: *mut rclc_executor_t) -> r
     // raises from a signal handler: `state` is only readable by whoever holds the
     // struct, while the flag is what a `drive_io` blocked mid-poll is woken on.
     while executor_ref.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING
-        && !get_executor(&mut executor_ref._opaque).is_halted()
+        && !get_executor(executor_ref).is_halted()
     {
         let ret = rclc_executor_spin_some(executor, executor_ref.timeout_ns);
-        if get_executor(&mut executor_ref._opaque).session_io_failures() >= SPIN_ERROR_TOLERANCE {
-            get_executor(&mut executor_ref._opaque).exit_spin_loop();
+        if get_executor(executor_ref).session_io_failures() >= SPIN_ERROR_TOLERANCE {
+            get_executor(executor_ref).exit_spin_loop();
             if executor_ref.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING {
                 executor_ref.state = rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED;
             }
@@ -3835,7 +3946,7 @@ pub unsafe extern "C" fn rclc_executor_spin(executor: *mut rclc_executor_t) -> r
         }
     }
 
-    get_executor(&mut executor_ref._opaque).exit_spin_loop();
+    get_executor(executor_ref).exit_spin_loop();
     if executor_ref.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING {
         executor_ref.state = rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED;
     }
@@ -3886,10 +3997,10 @@ pub unsafe extern "C" fn rclc_executor_spin_period(
     executor_ref.state = rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING;
     executor_ref.invocation_time_ns = crate::platform::get_time_ns();
     // phase-417 W4.c — see `rclc_executor_spin`: one flag, owned by Rust.
-    get_executor(&mut executor_ref._opaque).enter_spin_loop();
+    get_executor(executor_ref).enter_spin_loop();
 
     while executor_ref.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING
-        && !get_executor(&mut executor_ref._opaque).is_halted()
+        && !get_executor(executor_ref).is_halted()
     {
         // phase-417 stage 3 — the WAIT is `timeout_ns`
         // (`rclc_executor_set_timeout`), never `period_ns`; the period is the
@@ -3908,8 +4019,8 @@ pub unsafe extern "C" fn rclc_executor_spin_period(
         // `RCL_RET_TIMEOUT`. See `rclc_executor_spin` for the full rationale:
         // an idle tick against a live transport is expected while a publisher
         // is still discovering, and must not count toward the tolerance.
-        if get_executor(&mut executor_ref._opaque).session_io_failures() >= SPIN_ERROR_TOLERANCE {
-            get_executor(&mut executor_ref._opaque).exit_spin_loop();
+        if get_executor(executor_ref).session_io_failures() >= SPIN_ERROR_TOLERANCE {
+            get_executor(executor_ref).exit_spin_loop();
             if executor_ref.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING {
                 executor_ref.state = rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED;
             }
@@ -3928,7 +4039,7 @@ pub unsafe extern "C" fn rclc_executor_spin_period(
         }
     }
 
-    get_executor(&mut executor_ref._opaque).exit_spin_loop();
+    get_executor(executor_ref).exit_spin_loop();
     if executor_ref.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING {
         executor_ref.state = rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED;
     }
@@ -4013,7 +4124,7 @@ pub unsafe extern "C" fn rclc_executor_cancel(executor: *mut rclc_executor_t) ->
     if executor.state != rclc_executor_state_t::RCLC_EXECUTOR_STATE_UNINITIALIZED
         && executor.state != rclc_executor_state_t::RCLC_EXECUTOR_STATE_SHUTDOWN
     {
-        get_executor(&mut executor._opaque).cancel();
+        get_executor(executor).cancel();
     }
 
     if executor.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING {
@@ -4061,8 +4172,8 @@ pub unsafe extern "C" fn rclc_executor_is_spinning(executor: *const rclc_executo
     //
     // The cast drops `const`: `get_executor` hands out `&mut CExecutor` because
     // every other caller mutates through it. Nothing is mutated here.
-    let opaque = &raw const executor._opaque;
-    get_executor(&mut *opaque.cast_mut()).is_spinning()
+    let executor = &raw const *executor;
+    get_executor(&mut *executor.cast_mut()).is_spinning()
 }
 
 /// Finalize an executor.
@@ -4094,11 +4205,16 @@ pub unsafe extern "C" fn rclc_executor_fini(executor: *mut rclc_executor_t) -> r
         return RCL_RET_OK;
     }
 
-    // Drop the internal executor in-place — arena entries are cleaned up
-    core::ptr::drop_in_place(executor._opaque.as_mut_ptr() as *mut CExecutor);
-    #[allow(clippy::large_stack_arrays)] // Intentional: zero-fill inline opaque storage
-    {
-        executor._opaque = [0u64; EXECUTOR_OPAQUE_U64S];
+    if executor._host.is_null() {
+        // Drop the internal executor in-place — arena entries are cleaned up
+        core::ptr::drop_in_place(executor._opaque.as_mut_ptr() as *mut CExecutor);
+        #[allow(clippy::large_stack_arrays)] // Intentional: zero-fill inline opaque storage
+        {
+            executor._opaque = [0u64; EXECUTOR_OPAQUE_U64S];
+        }
+    } else {
+        // A host owns this executor (phase-492 W4) and drops it itself; the C
+        // face just stops being usable.
     }
     executor.handle_count = 0;
     executor._handle_entities = [ptr::null_mut(); NROS_EXECUTOR_MAX_HANDLES];
@@ -4153,8 +4269,8 @@ pub unsafe extern "C" fn rclc_executor_get_arena_used(executor: *const rclc_exec
     }
     // The cast drops `const` only to reach the shared accessor; nothing is
     // mutated (the same shape as `rclc_executor_is_spinning`).
-    let opaque = &raw const executor._opaque;
-    get_executor(&mut *opaque.cast_mut()).arena_used()
+    let executor = &raw const *executor;
+    get_executor(&mut *executor.cast_mut()).arena_used()
 }
 
 /// Total bytes of arena this executor was given (`NROS_EXECUTOR_ARENA_SIZE`
@@ -4176,8 +4292,8 @@ pub unsafe extern "C" fn rclc_executor_get_arena_capacity(
     {
         return 0;
     }
-    let opaque = &raw const executor._opaque;
-    get_executor(&mut *opaque.cast_mut()).arena_capacity()
+    let executor = &raw const *executor;
+    get_executor(&mut *executor.cast_mut()).arena_capacity()
 }
 
 /// Check if executor is valid (initialized).
@@ -4212,7 +4328,7 @@ pub unsafe extern "C" fn rclc_executor_is_valid(executor: *const rclc_executor_t
 ///   `a_node_over_a_finalised_support_is_not_valid`); an executor-bound node
 ///   had no predicate that reached it.
 ///
-/// Both are also the precondition for `get_executor(&mut executor._opaque)`,
+/// Both are also the precondition for `get_executor(executor)`,
 /// which reinterprets that storage as a live `CExecutor` — over a zeroed
 /// `_opaque` that is UB, not a wrong answer.
 ///
@@ -4224,7 +4340,11 @@ pub unsafe extern "C" fn rclc_executor_is_valid(executor: *const rclc_executor_t
 pub(crate) unsafe fn executor_context_is_valid(executor: *const rclc_executor_t) -> bool {
     // `rclc_executor_is_valid` short-circuits NULL, so the deref below is only
     // reached for a pointer it has already accepted.
-    rclc_executor_is_valid(executor) && crate::support::rclc_support_is_valid((*executor).support)
+    // A host-owned executor (phase-492 W4) has no support: its session is the
+    // host's, alive for as long as the host keeps the executor.
+    rclc_executor_is_valid(executor)
+        && (!(*executor)._host.is_null()
+            || crate::support::rclc_support_is_valid((*executor).support))
 }
 
 /// Get remaining total handle capacity.
@@ -4421,7 +4541,7 @@ pub unsafe extern "C" fn rclc_executor_add_time_triggered_dispatcher(
         executor,
         rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
-    let rust_exec = get_executor(&mut executor._opaque);
+    let rust_exec = get_executor(executor);
     rust_exec.register_time_triggered_dispatcher(major_frame_us);
     RCL_RET_OK
 }
@@ -4446,7 +4566,7 @@ pub unsafe extern "C" fn rclc_executor_create_sched_context(
         executor,
         rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
-    let rust_exec = get_executor(&mut executor._opaque);
+    let rust_exec = get_executor(executor);
     let sc = convert_sched_context(&*cfg);
     match rust_exec.create_sched_context(sc) {
         Ok(id) => {
@@ -4500,7 +4620,7 @@ pub unsafe extern "C" fn rclc_executor_bind_handle_to_sched_context(
         executor,
         rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
-    let rust_exec = get_executor(&mut executor._opaque);
+    let rust_exec = get_executor(executor);
     let h = nros_node::executor::HandleId::from_raw(handle);
     let id = nros_node::executor::sched_context::SchedContextId(sc_id);
     match rust_exec.bind_handle_to_sched_context(h, id) {
@@ -4579,7 +4699,7 @@ pub unsafe extern "C" fn rclc_executor_add_pre_shutdown_callback(
         executor,
         rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
-    let rust_exec = get_executor(&mut executor._opaque);
+    let rust_exec = get_executor(executor);
     match rust_exec.add_pre_shutdown_callback(callback, context) {
         Ok(handle) => {
             *out_handle = handle.0;
@@ -4616,7 +4736,7 @@ pub unsafe extern "C" fn rclc_executor_add_on_shutdown_callback(
         executor,
         rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
-    let rust_exec = get_executor(&mut executor._opaque);
+    let rust_exec = get_executor(executor);
     match rust_exec.add_on_shutdown_callback(callback, context) {
         Ok(handle) => {
             *out_handle = handle.0;
@@ -4649,7 +4769,7 @@ pub unsafe extern "C" fn rclc_executor_remove_pre_shutdown_callback(
         executor,
         rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
-    let rust_exec = get_executor(&mut executor._opaque);
+    let rust_exec = get_executor(executor);
     if rust_exec.remove_pre_shutdown_callback(nros_node::ShutdownCallbackHandle(handle)) {
         RCL_RET_OK
     } else {
@@ -4673,7 +4793,7 @@ pub unsafe extern "C" fn rclc_executor_remove_on_shutdown_callback(
         executor,
         rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
-    let rust_exec = get_executor(&mut executor._opaque);
+    let rust_exec = get_executor(executor);
     if rust_exec.remove_on_shutdown_callback(nros_node::ShutdownCallbackHandle(handle)) {
         RCL_RET_OK
     } else {

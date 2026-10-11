@@ -106,8 +106,8 @@ const CDR_H: &str = r#"
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
-#define W(name, ty) int nros_cdr_write_##name(uint8_t** p, const uint8_t* e, const uint8_t* o, ty v);
-#define R(name, ty) int nros_cdr_read_##name(const uint8_t** p, const uint8_t* e, const uint8_t* o, ty* v);
+#define W(name, ty) int rclc_cdr_write_##name(uint8_t** p, const uint8_t* e, const uint8_t* o, ty v);
+#define R(name, ty) int rclc_cdr_read_##name(const uint8_t** p, const uint8_t* e, const uint8_t* o, ty* v);
 W(u8, uint8_t) R(u8, uint8_t)
 // Issue 0345: phase-303 W4 added the XCDR2 DHEADER/encapsulation seam to every
 // generated TU. This stub predated it, so `generated_heap_c_message_compiles`

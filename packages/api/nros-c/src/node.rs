@@ -1131,7 +1131,7 @@ pub unsafe extern "C" fn rcl_node_resolve_name(
         return RCL_RET_NOT_INIT;
     }
     let exec_mut = &mut *(node_ref.executor as *mut crate::executor::rclc_executor_t);
-    let rust_exec = crate::executor::get_executor(&mut exec_mut._opaque);
+    let rust_exec = crate::executor::get_executor(exec_mut);
     match rust_exec.resolve_entity_name_for(name, namespace, source) {
         Ok(resolved) => write_cstr_out(resolved.as_str(), output_name, output_size),
         Err(()) => RCL_RET_INVALID_ARGUMENT,
@@ -1191,7 +1191,7 @@ pub(crate) unsafe fn resolve_entity_name_on_node(
     }
 
     let exec_mut = &mut *(node.executor as *mut crate::executor::rclc_executor_t);
-    let rust_exec = crate::executor::get_executor(&mut exec_mut._opaque);
+    let rust_exec = crate::executor::get_executor(exec_mut);
     let id = nros_node::executor::node_record::NodeId::from_raw(node.node_id);
     // Clone out of the record so the immutable borrow ends before the resolve
     // call; `set_executor_node_identity` reads the same two strings for the
@@ -1377,7 +1377,7 @@ pub(crate) unsafe fn resolve_session_and_domain(
     if node.is_executor_bound() {
         let exec_mut = &mut *(node.executor as *mut crate::executor::rclc_executor_t);
         let support_ptr = exec_mut.support;
-        let rust_exec = crate::executor::get_executor(&mut exec_mut._opaque);
+        let rust_exec = crate::executor::get_executor(exec_mut);
         let node_id = nros_node::executor::node_record::NodeId::from_raw(node.node_id);
         let session = rust_exec.node_session_mut(node_id)?;
         // Inherit from the SESSION when there is no support context. The old
@@ -2078,7 +2078,7 @@ mod accessor_tests {
     /// and the reason it is not merely cosmetic.
     ///
     /// The next statement after this guard is
-    /// `get_executor(&mut executor._opaque)`, which reinterprets that storage
+    /// `get_executor(executor)`, which reinterprets that storage
     /// as a live `CExecutor`. `rclc_executor_fini` zeroes it. The pre-fix guard
     /// was constant true, so this input walked straight into that
     /// reinterpretation; the fix answers `RCL_RET_NOT_INIT` — the same verdict
@@ -2279,7 +2279,7 @@ mod accessor_tests {
     /// Declare the two rules both remap tests read, one per node.
     fn declare_remaps(executor: &mut crate::executor::rclc_executor_t) {
         unsafe {
-            let rust_exec = crate::executor::get_executor(&mut executor._opaque);
+            let rust_exec = crate::executor::get_executor(executor);
             rust_exec
                 .declare_remap("filter", "/sensing", "/sensing/scan", "/wire/primary")
                 .expect("remap table has room");

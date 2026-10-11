@@ -222,7 +222,7 @@ pub unsafe extern "C" fn nros_cpp_timer_create_capturing(
         capture_drop,
     ) {
         Ok(handle_id) => {
-            crate::issue_owned_handle(&mut ctx.executor, node_ref, handle_id, out_handle_id);
+            crate::issue_owned_handle(ctx.executor, node_ref, handle_id, out_handle_id);
             let kind = if matches!(source, nros_node::executor::TimerClockSource::Steady) {
                 nros::node_metadata::TimerKind::Wall
             } else {
