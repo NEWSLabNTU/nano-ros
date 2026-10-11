@@ -3309,6 +3309,17 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
         warn_if_cargo_predates_config_include(&ws_root);
     }
 
+    // Issue 1305 — a single-package leaf's generated selection package must
+    // exist before the metadata probe below resolves the leaf's manifest; the
+    // patch block written next points the leaf's dependency at it.
+    if single_pkg_mode
+        && let Some(nrp) = nano_ros_path.as_deref()
+        && let Some(img) = crate::cmd::leaf_settings::resolve(&ws_root, nrp)?
+        && let Some((name, dir)) = crate::cmd::leaf_settings::write_selection(&img, nrp)?
+    {
+        println!("sync: selection package {name} → {}", dir.display());
+    }
+
     for (authority, pkgs) in authority_to_pkgs {
         let mut unique = pkgs;
         unique.sort();
@@ -4618,6 +4629,27 @@ fn write_patch_block(
         leaf_dirs,
         nano_ros_path,
     )?);
+    // Issue 1305 — a single-package leaf's generated selection package. The
+    // row is here as well as in the image's settings file because the metadata
+    // probe resolves the leaf's manifest from THIS file, before sync writes the
+    // settings. Relative to the leaf, so the row is checkout-independent.
+    if let Some(nrp) = nano_ros_path {
+        for leaf in leaf_dirs {
+            // A leaf that does not resolve is reported where sync writes its
+            // settings; here it simply has no row.
+            let Ok(Some(img)) = crate::cmd::leaf_settings::resolve(leaf, nrp) else {
+                continue;
+            };
+            let Some((name, dir)) = crate::cmd::leaf_settings::selection_patch_row(&img) else {
+                continue;
+            };
+            let auth = authority_dir
+                .canonicalize()
+                .unwrap_or_else(|_| authority_dir.to_path_buf());
+            let rel = pathdiff::diff_paths(&dir, &auth).unwrap_or(dir);
+            entries.push((name, rel.display().to_string()));
+        }
+    }
     // #272 — how this leaf reaches the central trio (`nros`/`nros-core`/
     // `nros-serdes`) depends on whether it lives INSIDE the nano-ros checkout:
     //

@@ -15,6 +15,10 @@ entry_kind = "board-run"
 # phase-351 W4 — the stacks this board can be built with: `src/network.rs` drives smoltcp over the LAN9118.
 supported_netstacks = ["smoltcp"]
 board_crate = "nros-board-mps2-an385"
+# Issue 1305 — the board's `BoardEntry` impl, which `nros::main!` drives, is
+# behind this feature. A leaf used to name it on its own board dependency; the
+# dependency is generated now (RFC-0098 D6), so the board states it.
+board_features = ["board-entry"]
 # Phase 252 (issue 0072) — forwards [safety] to its zenoh backend.
 cargo_config = '''
 # phase-445 W2 (RFC-0098 D4) — the board's triple, stated HERE. It was missing,
@@ -50,7 +54,15 @@ CC_thumbv7m_none_eabi = "arm-none-eabi-gcc"
 [board.entry]
 signature = "#[nros_board_mps2_an385::entry]\nfn main() -> !"
 crate_root_extra = "use panic_semihosting as _;"
-crate_root_deps = ["panic-semihosting = \"0.6\""]
+# Issue 1305 — every crate the board's entry code names, not only the one
+# `crate_root_extra` does: `nros::main!` emits `#[cortex_m_rt::entry]` and
+# `cortex_m::asm::wfi()` for this board, and a leaf reaches each through its
+# generated selection package, which re-exports what is listed here.
+crate_root_deps = [
+    "panic-semihosting = { version = \"0.6\", features = [\"exit\"] }",
+    "cortex-m = \"0.7\"",
+    "cortex-m-rt = \"0.7\"",
+]
 
 # RFC-0042 D2 / phase-241 wave C — declared capabilities (SSoT).
 #

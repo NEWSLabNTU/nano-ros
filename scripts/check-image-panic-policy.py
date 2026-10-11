@@ -40,6 +40,7 @@ from pathlib import Path as _Path
 _sys.path.insert(0, str(_Path(__file__).resolve().parent / "lib"))
 from tracked import tracked  # issue 0721: index lookup, not a walk
 from leaf_target import leaf_target  # phase-445 W6: board -> triple, one spelling
+from leaf_target import leaf_crate_root_extra, names_selection_package  # issue 1305
 
 # Crates whose purpose is to define `#[panic_handler]`, plus `zephyr`, which
 # supplies the RTOS's own (see `zephyr_entry/src/lib.rs`: "Zephyr's allocator +
@@ -82,6 +83,17 @@ def is_hosted(crate_dir: Path) -> bool:
     return any(h in triple for h in HOSTED)
 
 
+def line_provides(code: str) -> bool:
+    if "#[panic_handler]" in code:
+        return True
+    if "panic_to_platform!()" in code or "panic_halt!()" in code:
+        return True
+    return any(
+        re.search(rf"\b(use|extern\s+crate)\s+{crate}\b", code)
+        for crate in PROVIDER_CRATES
+    )
+
+
 def has_provider(src_dir: Path) -> bool:
     for rs in tracked(src_dir, suffix=".rs"):
         try:
@@ -89,14 +101,16 @@ def has_provider(src_dir: Path) -> bool:
         except OSError:
             continue
         for line in text.splitlines():
-            code = line.split("//")[0]
-            if "#[panic_handler]" in code:
+            if line_provides(line.split("//")[0]):
                 return True
-            if "panic_to_platform!()" in code or "panic_halt!()" in code:
-                return True
-            for crate in PROVIDER_CRATES:
-                if re.search(rf"\b(use|extern\s+crate)\s+{crate}\b", code):
-                    return True
+    # Issue 1305 — a leaf on its generated selection package supplies the
+    # board's crate-root items through that package (`nros sync` writes them
+    # into its `lib.rs`), so its provider is in the board descriptor, not here.
+    leaf = src_dir.parent
+    if names_selection_package(leaf):
+        extra = leaf_crate_root_extra(leaf) or ""
+        if any(line_provides(l) for l in extra.replace("\\n", "\n").splitlines()):
+            return True
     return False
 
 

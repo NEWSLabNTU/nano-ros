@@ -103,3 +103,44 @@ def leaf_target(leaf_dir) -> "tuple[str | None, str]":
     if board not in _CATALOG:
         return None, f"board `{board}` is claimed by no descriptor"
     return _CATALOG[board], f"board `{board}`"
+
+
+def leaf_crate_root_extra(leaf_dir) -> "str | None":
+    """The board's `[board.entry] crate_root_extra`, for the leaf's board.
+
+    Issue 1305 — a leaf that names its generated selection package
+    ([`names_selection_package`]) gets these crate-root items from that
+    package, not from its own source, so a gate asking "what does this image
+    supply" has to read them here. `None` when the board does not resolve;
+    `""` when it states none.
+    """
+    board = leaf_board(leaf_dir)
+    if board is None:
+        return None
+    for desc in sorted((REPO / "packages" / "boards").glob("*/nros-board.toml")):
+        text = desc.read_text(encoding="utf-8", errors="replace")
+        for block in re.split(r"^\[\[board\]\]", text, flags=re.M)[1:]:
+            names = re.search(r'^names\s*=\s*\[([^\]]*)\]', block, re.M)
+            if not names or board not in re.findall(r'"([^"]+)"', names.group(1)):
+                continue
+            entry = re.search(r"^\[board\.entry\]\s*$(.*?)(?=^\[|\Z)", block, re.M | re.S)
+            if not entry:
+                return ""
+            extra = re.search(r'^crate_root_extra\s*=\s*"((?:[^"\\]|\\.)*)"', entry.group(1), re.M)
+            return extra.group(1) if extra else ""
+    return None
+
+
+def names_selection_package(leaf_dir) -> bool:
+    """Does the leaf's `Cargo.toml` name its generated `<pkg>_nros_selection`
+    package (issue 1305)? The same spelling `nros::main!` and `nros sync` use:
+    the `[package] name` with `-` folded to `_`."""
+    manifest = Path(leaf_dir) / "Cargo.toml"
+    if not manifest.is_file():
+        return False
+    text = manifest.read_text(encoding="utf-8", errors="replace")
+    m = re.search(r'^\[package\]\s*$.*?^name\s*=\s*"([^"]+)"', text, re.M | re.S)
+    if not m:
+        return False
+    want = m.group(1).replace("-", "_") + "_nros_selection"
+    return re.search(rf"^\s*{re.escape(want)}\s*=", text, re.M) is not None

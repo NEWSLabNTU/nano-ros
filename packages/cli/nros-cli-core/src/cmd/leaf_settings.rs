@@ -403,22 +403,129 @@ fn check_board_crate_dependency(img: &LeafImage) -> Result<()> {
     } else {
         format!("`{}`", boards.join("`, `"))
     };
+    let selection = selection_crate_name(&img.package);
     bail!(
         "{}: image `{}` builds for board `{}`, whose entry needs the crate `{want}`, \
-         but {} depends on {has}.\n  Replace the board dependency in {} with `{want}`, \
-         using the features that board crate has. Then compare the rest of the leaf's \
-         image-only dependencies with an in-tree example for board `{}`: a crate the old \
-         board needed can clash with the new one (an RMW backend carrying a `platform-*` \
-         feature stops the build with \"Only one platform backend can be selected\").\n  \
-         (issue 1305: a single-package leaf still names its image dependencies by hand; \
-         RFC-0098 D6 generates them only for a workspace entry).",
+         but {} depends on {has}.\n  Let `nros sync` generate the image-only \
+         dependencies instead (RFC-0098 D6, issue 1305): replace the board crate, the \
+         RMW backend and the runtime crates (rt, panic) in {} with ONE line,\n\n    \
+         [target.'cfg(target_os = \"none\")'.dependencies]\n    \
+         {selection} = {{ version = \"0.0.0\" }}\n\n  \
+         and drop any `use <panic crate> as _;` from the crate root: the generated \
+         package carries the board's crate-root items. A board switch is then the \
+         `system.toml` line alone.",
         img.leaf.display(),
         img.image_id,
         img.board,
         manifest.display(),
         manifest.display(),
-        img.board
     )
+}
+
+/// The generated selection package's crate name for a leaf package
+/// (`qemu-bsp-talker` → `qemu_bsp_talker_nros_selection`). `nros::main!`
+/// derives the same spelling from `CARGO_PKG_NAME`.
+#[must_use]
+pub fn selection_crate_name(package: &str) -> String {
+    format!("{}_nros_selection", package.replace('-', "_"))
+}
+
+/// `<leaf>/build/<image>/nros-selection` — beside the image's settings file,
+/// so each image of a leaf has its own and switching image re-points one
+/// `[patch]` row rather than rewriting a shared package.
+#[must_use]
+pub fn selection_dir(leaf: &Path, image_id: &str) -> PathBuf {
+    leaf.join("build").join(image_id).join("nros-selection")
+}
+
+/// Does the leaf's manifest name its generated selection package, in any
+/// dependency table (a target-scoped one included)?
+fn names_selection(img: &LeafImage) -> bool {
+    let want = selection_crate_name(&img.package);
+    let Ok(doc) = std::fs::read_to_string(img.leaf.join("Cargo.toml"))
+        .map_err(|e| e.to_string())
+        .and_then(|t| t.parse::<toml::Table>().map_err(|e| e.to_string()))
+    else {
+        return false;
+    };
+    let names = |scope: &toml::Table| {
+        ["dependencies", "build-dependencies"].iter().any(|k| {
+            scope
+                .get(*k)
+                .and_then(|d| d.as_table())
+                .is_some_and(|d| d.contains_key(&want))
+        })
+    };
+    names(&doc)
+        || doc
+            .get("target")
+            .and_then(|t| t.as_table())
+            .is_some_and(|t| t.values().filter_map(|v| v.as_table()).any(names))
+}
+
+/// Issue 1305 (RFC-0098 D6, 2026-10-11 amendment) — write the leaf image's
+/// generated selection package, when the leaf's manifest names one.
+///
+/// Returns the `[patch.crates-io]` row that points the leaf's dependency at it
+/// (`<crate> → <dir>`), or `None` for a leaf that still names its image-only
+/// dependencies by hand. The leaf names the package REGISTRY-STYLE
+/// (`version = "0.0.0"`) and this row redirects it, which is how the leaf
+/// already reaches its other in-repo crates: a path dependency would have to
+/// name one image's directory in the leaf's own manifest, and cargo cannot
+/// `[patch]` a path source. The row is per image, in that image's settings
+/// file; `nros sync` also puts it in the leaf's own `.cargo/config.toml` so the
+/// metadata probe, which runs before the settings file is written, resolves.
+pub fn write_selection(img: &LeafImage, nano_ros_root: &Path) -> Result<Option<(String, PathBuf)>> {
+    let Some(row) = selection_patch_row(img) else {
+        return Ok(None);
+    };
+    let catalog = BoardCatalog::load(nano_ros_root)
+        .map_err(|e| eyre!("board catalog under {}: {e}", nano_ros_root.display()))?;
+    let Some(d) = crate::cmd::board_facts::resolve_board(&catalog, &img.board) else {
+        bail!("board `{}` is claimed by no board descriptor", img.board);
+    };
+    // BOARD first, as the workspace entry generator orders it (`cmd::build`):
+    // the declared board, then the image id, then the platform.
+    let board = crate::builder::entry::BoardFacts::from_descriptor_for(
+        d,
+        &[
+            img.board.as_str(),
+            img.image_id.as_str(),
+            img.platform.as_str(),
+        ],
+    );
+    let origin = img.leaf.join(leaf_system::SYSTEM_TOML);
+    let sys: crate::orchestration::cargo_metadata_schema::SystemToml = toml::from_str(
+        &std::fs::read_to_string(&origin)
+            .wrap_err_with(|| format!("reading {}", origin.display()))?,
+    )
+    .map_err(|e| eyre!("parsing {}: {e}", origin.display()))?;
+    let nano_ros_root = nano_ros_root
+        .canonicalize()
+        .unwrap_or_else(|_| nano_ros_root.to_path_buf());
+    let spec = crate::orchestration::facade::LeafSelectionSpec {
+        crate_name: selection_crate_name(&img.package),
+        image_id: &img.image_id,
+        dir: selection_dir(&img.leaf, &img.image_id),
+        nano_ros_root: &nano_ros_root,
+        board: &board,
+        sys: &sys,
+    };
+    crate::orchestration::facade::write_leaf_selection(&spec)
+        .map_err(|e| eyre!("{}: selection package: {e}", img.leaf.display()))?;
+    Ok(Some(row))
+}
+
+/// The `[patch.crates-io]` row [`write_selection`] returns, without writing
+/// anything: `None` when the leaf names no selection package.
+#[must_use]
+pub fn selection_patch_row(img: &LeafImage) -> Option<(String, PathBuf)> {
+    names_selection(img).then(|| {
+        (
+            selection_crate_name(&img.package),
+            selection_dir(&img.leaf, &img.image_id),
+        )
+    })
 }
 
 pub fn write(leaf: &Path, nano_ros_root: &Path, who: &str) -> Result<Option<LeafImage>> {
@@ -426,7 +533,10 @@ pub fn write(leaf: &Path, nano_ros_root: &Path, who: &str) -> Result<Option<Leaf
         return Ok(None);
     };
     let leaf = img.leaf.as_path();
-    check_board_crate_dependency(&img)?;
+    let selection = write_selection(&img, nano_ros_root)?;
+    if selection.is_none() {
+        check_board_crate_dependency(&img)?;
+    }
 
     // Layer 2 — derived pools + facts.
     let mut env = crate::leaf_entity_env::leaf_env(leaf, who).env;
@@ -541,7 +651,11 @@ pub fn write(leaf: &Path, nano_ros_root: &Path, who: &str) -> Result<Option<Leaf
         target_dir: leaf.join("build").join(&img.image_id).join("target"),
         env,
         path_env,
-        patches: crate::cmd::build::registry_patches(leaf, nano_ros_root, leaf),
+        patches: {
+            let mut p = crate::cmd::build::registry_patches(leaf, nano_ros_root, leaf);
+            p.extend(selection);
+            p
+        },
         build_hint: Some(hint),
     };
     cargo_config::write(&spec, &img.config_path)
@@ -914,6 +1028,7 @@ mod board_crate_tests {
             .output()
             .expect("git ls-files");
         let mut checked = 0;
+        let mut generated = 0;
         for rel in String::from_utf8_lossy(&out.stdout)
             .split('\0')
             .filter(|s| !s.is_empty())
@@ -925,12 +1040,70 @@ mod board_crate_tests {
             let Some(img) = resolve(&leaf, &repo()).unwrap_or_else(|e| panic!("{rel}: {e}")) else {
                 continue;
             };
+            // A leaf on the generated selection package names no board crate
+            // at all, and `write` asks nothing of it.
+            if selection_patch_row(&img).is_some() {
+                generated += 1;
+                continue;
+            }
             check_board_crate_dependency(&img).unwrap_or_else(|e| panic!("{e}"));
             checked += 1;
         }
         assert!(
-            checked >= 10,
-            "the walk reached only {checked} cargo leaves"
+            checked + generated >= 10,
+            "the walk reached only {} cargo leaves",
+            checked + generated
+        );
+    }
+
+    /// Issue 1305's acceptance, at the unit level: a leaf that names only its
+    /// selection package gets the board crate of whatever board its image
+    /// declares, and the leaf's manifest is the same for both boards.
+    #[test]
+    fn a_switched_board_regenerates_the_selection_package_not_the_manifest() {
+        let tmp = tempfile::tempdir().unwrap();
+        let leaf = tmp.path().join("talker");
+        std::fs::create_dir_all(leaf.join("src")).unwrap();
+        let manifest = "[package]\nname = \"my-talker\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n\
+             [target.'cfg(target_os = \"none\")'.dependencies]\n\
+             my_talker_nros_selection = { version = \"0.0.0\" }\n";
+        std::fs::write(leaf.join("Cargo.toml"), manifest).unwrap();
+        let mut seen = Vec::new();
+        for (board, krate) in [
+            ("qemu-mps2-an385", "nros-board-mps2-an385"),
+            ("freertos", "nros-board-mps2-an385-freertos"),
+        ] {
+            std::fs::write(
+                leaf.join("system.toml"),
+                format!(
+                    "[system]\nname = \"t\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n[image.img]\nboard = \"{board}\"\n"
+                ),
+            )
+            .unwrap();
+            let img = resolve(&leaf, &repo()).unwrap().expect("a cargo leaf");
+            let (name, dir) = write_selection(&img, &repo())
+                .unwrap()
+                .expect("the leaf names its selection package");
+            assert_eq!(name, "my_talker_nros_selection");
+            assert_eq!(dir, selection_dir(&img.leaf, "img"));
+            let sel = std::fs::read_to_string(dir.join("Cargo.toml")).unwrap();
+            assert!(
+                sel.contains(&format!("{krate} = {{ path = ")),
+                "board `{board}`: {sel}"
+            );
+            assert!(sel.contains("rmw-zenoh"), "board `{board}`: {sel}");
+            let lib = std::fs::read_to_string(dir.join("src/lib.rs")).unwrap();
+            assert!(
+                lib.contains(&format!("pub use ::{};", krate.replace('-', "_"))),
+                "{lib}"
+            );
+            seen.push(sel);
+        }
+        assert_ne!(seen[0], seen[1]);
+        assert_eq!(
+            std::fs::read_to_string(leaf.join("Cargo.toml")).unwrap(),
+            manifest,
+            "a board switch must not touch the leaf's manifest"
         );
     }
 

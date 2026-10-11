@@ -522,6 +522,16 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // `system.toml` (`[image.<id>] board`), else the retiring
     // `[package.metadata.nros.{entry,deploy.*}]` keys. This macro used to walk
     // those manifest tables itself, in three places.
+    // Issue 1305 (RFC-0098 D6, 2026-10-11 amendment) — a single-package leaf
+    // names no image-only crate by hand: its manifest names ONE generated
+    // `<pkg>_nros_selection` package, which `nros sync` writes per image and
+    // which re-exports the board crate and the board's crate-root crates. Such
+    // a leaf has none of them in its own crate root, so every external path
+    // this macro emits for the board goes through that package. `None` for a
+    // generated workspace entry (it reaches its bringup through `launch =`,
+    // and its manifest names the board crate itself) and for a leaf that still
+    // names its board crate by hand.
+    let mut leaf_selection: Option<Ident> = None;
     let (board_path, deploy_for_framework, leaf_decl): (
         SynPath,
         Option<String>,
@@ -622,7 +632,28 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     ),
                 )
             })?;
+            // Only the in-tree table's paths are routed: an out-of-tree board
+            // reached through `NROS_BOARD_TYPE` is a crate the leaf names.
+            let resolved = match (&entry_bringup, board_path_for(&deploy)) {
+                (None, Some(_)) => {
+                    leaf_selection = leaf_selection_crate(&manifest_dir, &entry_pkg);
+                    match &leaf_selection {
+                        Some(sel) => route_through_selection(sel, resolved),
+                        None => resolved,
+                    }
+                }
+                _ => resolved,
+            };
             (resolved, Some(deploy), leaf)
+        }
+    };
+    // The prefix for a crate the board's entry code names (`cortex_m_rt`): the
+    // selection package when the leaf has one, the crate root otherwise.
+    let board_side_crate = |name: &str| -> proc_macro2::TokenStream {
+        let krate = Ident::new(name, Span::call_site());
+        match &leaf_selection {
+            Some(sel) => quote! { ::#sel::#krate },
+            None => quote! { ::#krate },
         }
     };
     let framework = match deploy_for_framework.as_deref() {
@@ -1608,16 +1639,18 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
 
     let none_entry_ts: proc_macro2::TokenStream =
         if is_baremetal_cortexm_deploy(deploy_for_framework.as_deref()) {
+            let cortex_m_rt = board_side_crate("cortex_m_rt");
+            let cortex_m = board_side_crate("cortex_m");
             quote! {
                 #[cfg(target_os = "none")]
-                #[::cortex_m_rt::entry]
+                #[#cortex_m_rt::entry]
                 fn __nros_cortex_m_reset() -> ! {
                     // `run_with_deploy` loops forever on success (firmware
                     // lifetime) and exits via the board on spin error; reaching
                     // here means `setup()` returned `Err` before the spin loop.
                     let _ = __nros_entry_run();
                     loop {
-                        ::cortex_m::asm::wfi();
+                        #cortex_m::asm::wfi();
                     }
                 }
             }
@@ -4397,6 +4430,44 @@ fn board_path_for(deploy: &str) -> Option<SynPath> {
     syn::parse_str::<SynPath>(path_str).ok()
 }
 
+/// Issue 1305 — the generated selection package this LEAF names, if any.
+///
+/// The name is `<package>_nros_selection` (the package name with `-` folded to
+/// `_`), the spelling `nros sync` writes it under and a workspace entry's
+/// facade already uses. Present in any dependency table, including a
+/// target-scoped one: the leaf keeps it there so the node still builds for the
+/// host metadata probe (issue 1265). Read from the manifest, like the other
+/// three manifest reads in this file, because a proc-macro cannot ask cargo
+/// what is in scope.
+fn leaf_selection_crate(manifest_dir: &Path, package: &str) -> Option<Ident> {
+    let name = format!("{}_nros_selection", package.replace('-', "_"));
+    let text = std::fs::read_to_string(manifest_dir.join("Cargo.toml")).ok()?;
+    let doc: toml::Value = toml::from_str(&text).ok()?;
+    let names = |scope: &toml::Value| {
+        ["dependencies", "build-dependencies"].iter().any(|k| {
+            scope
+                .get(*k)
+                .and_then(|d| d.as_table())
+                .is_some_and(|d| d.contains_key(&name))
+        })
+    };
+    let found = names(&doc)
+        || doc
+            .get("target")
+            .and_then(|t| t.as_table())
+            .is_some_and(|t| t.values().any(names));
+    found.then(|| Ident::new(&name, Span::call_site()))
+}
+
+/// `::nros_board_x::Board` → `::<sel>::nros_board_x::Board` (the selection
+/// package re-exports the board crate under its own name).
+fn route_through_selection(sel: &Ident, path: SynPath) -> SynPath {
+    let mut out = path;
+    out.leading_colon = Some(Default::default());
+    out.segments.insert(0, syn::PathSegment::from(sel.clone()));
+    out
+}
+
 /// The keys [`board_path_for`] accepts, for the "unknown board" diagnostic.
 ///
 /// Issue 1285 — DERIVED from `nros_orchestration_ir::BOARD_PATHS`, the table
@@ -5807,5 +5878,51 @@ mod launch_axis_tests {
     fn a_model_with_no_capabilities_emits_nothing() {
         let out = emitted(&model(None, &[]));
         assert!(out.trim().is_empty(), "emitted:\n{out}");
+    }
+}
+
+#[cfg(test)]
+mod leaf_selection_tests {
+    //! Issue 1305 — a leaf that names its generated selection package reaches
+    //! the board through it.
+    use super::*;
+
+    fn leaf(manifest: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "nros-macros-leaf-selection-{}-{}",
+            std::process::id(),
+            manifest.len()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("Cargo.toml"), manifest).unwrap();
+        dir
+    }
+
+    #[test]
+    fn a_target_scoped_selection_dependency_is_found() {
+        let dir = leaf(
+            "[package]\nname = \"my-talker\"\n\n\
+             [target.'cfg(target_os = \"none\")'.dependencies]\n\
+             my_talker_nros_selection = { version = \"0.0.0\" }\n",
+        );
+        let sel = leaf_selection_crate(&dir, "my-talker").expect("named");
+        assert_eq!(sel.to_string(), "my_talker_nros_selection");
+        let routed = route_through_selection(
+            &sel,
+            syn::parse_str::<SynPath>("::nros_board_mps2_an385::Mps2An385").unwrap(),
+        );
+        assert_eq!(
+            quote!(#routed).to_string().replace(' ', ""),
+            "::my_talker_nros_selection::nros_board_mps2_an385::Mps2An385"
+        );
+    }
+
+    #[test]
+    fn a_leaf_naming_its_board_crate_by_hand_is_left_alone() {
+        let dir = leaf(
+            "[package]\nname = \"other\"\n\n[dependencies]\n\
+             nros-board-mps2-an385 = { version = \"*\" }\n",
+        );
+        assert!(leaf_selection_crate(&dir, "other").is_none());
     }
 }
