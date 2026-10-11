@@ -282,3 +282,28 @@ Two sites can close it, and choosing between them is a scope decision:
 Either one makes the next scheduled host job green. The second is the one that
 matches "the lane's membership is exactly what a human has already measured",
 which this lane's own summary prints.
+
+### The board cells' first scheduled run: the board job refuses a FreeRTOS row (2026-10-11)
+
+`e2db26fb0` ("the two board cells answer too") recorded a PASS for
+`freertos-mps2-pubsub-c-zenoh-n2r`. On the next scheduled `live-peer
+regression` (run **38111158130**), job **114387061005** `rows whose board is
+NOT this runner` stopped at `just setup the scopes those rows need`, with
+`SCOPES: freertos qemu zephyr`:
+
+```
+This lane runs in a Zephyr image and can provision
+  zephyr and qemu. A row with a recorded PASS needs
+  'freertos', which it cannot — so this run would report a
+  green over cells it never built.
+Give that board its own job (or its own image) and
+  add it to LANES in scripts/ci/lane-stage.py.
+```
+
+The refusal is this issue's rule doing its job. Before, the lane would have
+reported green over a cell it never built. What it needs is a lane
+decision: a FreeRTOS board job (or image), registered in
+`scripts/ci/lane-stage.py`'s `LANES`, or the FreeRTOS verdict moving to a
+lane that can provision it. Until then the board half of live-peer reports
+NO VERDICT every night. The host half failed the same night for an unrelated
+reason, a resolver contract error fixed in the same PR as this note.
