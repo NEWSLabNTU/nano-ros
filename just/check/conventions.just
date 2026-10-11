@@ -144,6 +144,15 @@ ancestry-truncation:
 git-grep-status:
     @python3 scripts/check/check-git-grep-status.py
 
+# phase-492 W1 — the C API's `nros_` names, counted down to zero (RFC-0089,
+# amended 2026-10-12). Every `nros_`/`NROS_` name a public `nros-c` header
+# declares must be classified in `docs/reference/c-api-rename-map.tsv` (renamed,
+# or kept as seam / hook / build), and the number still spelled the old way is a
+# ratchet that only falls. Buildless, comment-blind, ~0.1 s.
+[private]
+c-api-nros-names:
+    @python3 scripts/check-c-api-nros-names.py
+
 # issue 1386 — `node_ref_is_live(node_ref_of(node))` mints a reference from the
 # node and compares it against the counter it was just read from, so it is
 # CONSTANT TRUE. Four sites wrote that independently, and behind three of them
