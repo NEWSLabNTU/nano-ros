@@ -734,19 +734,31 @@ config NROS_ZENOH_SERIAL_RX_RING_BYTES
 config NROS_ZENOH_SERIAL_TX_RING_BYTES
     int "Serial link: transmit ring between the sending thread and the UART ISR (bytes)"
     depends on NROS_ZENOH_LINK_SERIAL && UART_INTERRUPT_DRIVEN
-    default 256
+    default 2048
     range 32 16384
     help
       With interrupt-driven TX (issue 1534) a send copies the COBS frame into
-      this ring and the UART's TX interrupt drains it into the hardware FIFO;
-      a sender that finds the ring full sleeps until the ISR makes room, so
-      transmitting no longer holds the CPU (it used to be a uart_poll_out
-      busy-wait in the sending thread, which on Zephyr runs above the read
-      task and starved it). The size only sets how often a long frame's
-      sender wakes: 256 bytes are 2.8 ms of line at 921600. zenoh-pico counts
-      the sleeps in `_z_zephyr_serial_tx_stats.waits` and the most the ring
-      held in `ring_high_water`. Maps to _Z_ZEPHYR_SERIAL_TX_RING_BYTES
-      (zenoh-pico src/system/zephyr/network.c), whose default is the same 256.
+      this ring and the UART's TX interrupt drains it into the hardware FIFO.
+      A send whose frame fits is a copy and a return; the wire drains it in
+      the background. A send that does not fit queues what fits and sleeps
+      for the rest (bounded by _Z_ZEPHYR_SERIAL_TX_TIMEOUT_MS; reliable
+      traffic is never dropped to make room), and it sleeps HOLDING the
+      transport's TX mutex, so every other sender -- the executor's spin
+      thread publishing from a callback included -- waits for that frame's
+      wire time too (about 11 us a byte at 921600, 87 us at 115200).
+
+      The default, 2048, holds one maximum-size frame whole
+      (_Z_SERIAL_MAX_COBS_BUF_SIZE, 1516 bytes) with room to spare, so a
+      single send never waits for the wire. It used to be 256, which made
+      every publish longer than that wait: on the safety island (S32K344 at
+      921600) late spins of 1.4-2.8 ms (nano-ros I12). Raise it when frames
+      come in bursts: `_z_zephyr_serial_tx_stats.frames_waited` counts the
+      sends that did not fit whole (zero means the ring never filled), with
+      `waits`, `timeouts`, `ring_high_water` and `max_frame` beside it,
+      readable over a debugger. Below 1516 the ring still works, but a frame
+      longer than it always waits. The RAM is static. Maps to
+      _Z_ZEPHYR_SERIAL_TX_RING_BYTES (zenoh-pico
+      src/system/zephyr/network.c), whose default is the same 2048.
 
 config NROS_ZENOH_LINK_CAN
     bool "CAN / CAN FD link"
