@@ -176,7 +176,7 @@ pub fn read_spelled(name: &str, env: &dyn Fn(&str) -> Option<String>) -> Option<
 ///
 /// # Panics
 ///
-/// When two spellings hold different values — see [`env_spelled`]'s rule.
+/// When two spellings hold different values — see `env_spelled`'s rule.
 #[must_use]
 pub fn read_spelled_from(
     name: &str,
