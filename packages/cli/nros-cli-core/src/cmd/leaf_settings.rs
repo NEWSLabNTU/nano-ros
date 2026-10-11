@@ -877,7 +877,7 @@ mod board_crate_tests {
     /// that fails here was never buildable for its own image.
     #[test]
     fn every_in_tree_rust_leaf_names_the_board_crate_its_image_needs() {
-        let out = std::process::Command::new("git")
+        let out = crate::source_stamp::nros_git_command("git")
             .args(["ls-files", "-z", "--", "examples/*/system.toml"])
             .current_dir(repo())
             .output()
