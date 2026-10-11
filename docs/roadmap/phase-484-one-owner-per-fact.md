@@ -413,22 +413,41 @@ passes, left for the W8 retirement pass with the recipe.
 
 ### W5 -- one canonical name per knob
 
-- The Zephyr module defines nano-ros knob symbols with NO prompt and sources
-  a hook-generated `<build>/nros/Kconfig.from-system-toml` first: resolved
-  values as `default`s when the project has `system.toml`, added prompts when
-  it does not (RFC-0103 D2a). Coordinated with phase-481, whose fragment this
-  replaces for knobs.
+Split with phase-481 by RFC-0103 D2b (decided 2026-10-11: this phase builds the
+non-Zephyr half; the Zephyr hook stays phase-481's).
 
-- Each knob gets an id `<group>.<name>`; TOML / env / Kconfig spellings derive
-  mechanically. `KCONFIG_PAIRS` and the `ZPICO_*` / `NROS_SMOLTCP_*` user
-  names go; backend macros are generated. `[board.knobs]` → `[knobs]`.
-- Coordinated with phase-481: its fragment renderer and its `[image.<id>] env`
-  rows read the new names; the env-spelled rows stay accepted until 481
-  closes.
+**Census (2026-10-11).** 95 knob env names — 49 on the board/platform ladder
+(`[board.knobs]` settable), 46 env-only — plus 5 alias spellings; 37 are
+`ZPICO_*`. Every reader keys on the env NAME (`nros_zephyr_build::knob`,
+`platform_config::resolve_*`), so the registry slots in at the key. The
+TOML-key → env map is 11 hand `*_env_key` match functions in
+`platform_config.rs` (the tx knobs are literals); `KCONFIG_PAIRS` holds the 20
+env ↔ Kconfig rows whose names differ. Four readers bypass the ladder entirely
+(`nros-smoltcp`'s `env_usize_compat`, `nros-build-helpers::shared::env_usize`,
+`nros-rmw-cyclonedds-sys`'s `KNOBS`, the FreeRTOS heap/stack reads). `config-knob-census.py` misses ~19
+spellings because it only matches a literal first argument.
 
-**Acceptance:** the mechanical-name gate; every knob's three spellings derive
-from its id; one build per road shows identical resolved values before and
-after (a diff).
+- **W5a (this phase)** — the knob registry: one committed row per knob (id =
+  today's `CONFIG_NROS_<ID>` stem, so no Kconfig symbol is renamed; group,
+  type, RMW condition, unit, builtin, range, prompt, help). Env spelling
+  `NROS_<ID>`; today's other spellings become legacy rows accepted with a
+  deprecation until W8. `KCONFIG_PAIRS` and the `*_env_key` functions are
+  derived from it, then deleted; the four bypass readers go through the
+  ladder; the census reads the registry instead of regexes; a gate holds the
+  module `zephyr/Kconfig` knob section equal to what the registry generates
+  (prompts still present — 481 removes them).
+- **W5b (phase-481)** — measure RFC-0103 D2b's M1–M4; the hook writes
+  `Kconfig.from-system-toml`, the module's knob section goes prompt-less, the
+  fragment drops its knob rows, `-DNROS_OVERRIDE_<ID>` replaces the fixture
+  drivers' knob `-DCONFIG_*`. Choices, endpoint and domain stay in the
+  fragment unless M1/M2 are green.
+- `[board.knobs]` → `[knobs]` rides W5a (the descriptor parser already refuses
+  both at once).
+
+**Acceptance:** W5a — the registry is the only list (gate); every knob's
+env/TOML/Kconfig spelling derives from its id; one build per road shows
+identical resolved values before and after (a diff). W5b — 481's own
+acceptance, recorded in its phase doc.
 
 ### W6 -- generated output under `<build>/nros/`
 

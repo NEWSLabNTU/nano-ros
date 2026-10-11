@@ -143,6 +143,95 @@ file is parsed by Kconfig, so it is in Zephyr's own reconfigure inputs. The
 error names the symbol's definition site; the hook names the generated file
 `<build>/nros/Kconfig.from-system-toml` so that site reads as the answer.
 
+### D2b — Zephyr: the split with phase-481
+
+Phase-481 (RFC-0098 D10/D11) already renders an image into Zephyr's form: the
+module's `module_ext_root` hook writes a conf FRAGMENT from `system.toml` and
+places it last in `EXTRA_CONF_FILE`. It carries the RMW and API choices, the
+endpoint (`ZENOH_LOCATOR`, `XRCE_AGENT_*`), `DOMAIN_ID`, and every `[image.<id>]
+env` row with a Kconfig symbol. D2a replaces the fragment's KNOB rows with
+Kconfig defaults; this section fixes which facts move, who builds what, and in
+which order, so the two phases do not build the same carrier twice.
+
+**Measured (2026-10-11), the facts the split turns on:**
+
+- The module `Kconfig` defines 124 nano-ros symbols (80 `int`, 39 `bool`, 5
+  `string`), every one with a prompt; 73 sit under `if NROS_RMW_<X>`.
+- Zephyr exports `KCONFIG_BINARY_DIR` into the Kconfig environment on 3.7 and
+  4.4 (`cmake/modules/kconfig.cmake`, `COMMON_KCONFIG_ENV_SETTINGS`), so the
+  module can `osource "$(KCONFIG_BINARY_DIR)/…"` a file the hook writes — no
+  new plumbing.
+- The fixture drivers pass per-run values as `-DCONFIG_NROS_*`
+  (`zephyr-fixture-leaves.sh:450-452`, `zephyr-fixture-run-one.sh:159-165`: the
+  locator, the XRCE agent port, the Cyclone domain). Under D2a every such
+  symbol becomes a configure ERROR in a project with a `system.toml`.
+- 23 C/C++ sources read `CONFIG_NROS_*` directly (`ZENOH_LOCATOR` 13,
+  `ZEPHYR_HEAP_SIZE` 8, `SNTP_*`, `DOMAIN_ID`, tier stacks, boot report, …), so
+  an exported env override — which wins for cargo and the cmake knob lane —
+  never reaches them. Env alone cannot replace `-DCONFIG`.
+- The knob census (phase-484 W5, 2026-10-11): 95 knob env names (49 on the
+  board/platform ladder, 46 env-only) plus 5 alias spellings; 37 are
+  `ZPICO_*`. Every reader already keys on the env NAME (`nros_zephyr_build::
+  knob`, `platform_config::resolve_*`); the TOML-key → env map is 11 hand
+  `*_env_key` match functions (the tx knobs are literals); `KCONFIG_PAIRS`
+  holds the 20 env ↔ Kconfig rows whose names differ (its own comment still
+  says 19).
+
+**The split.**
+
+1. **By kind of fact.** KNOBS (pool sizes, buffers, stacks, timeouts — the
+   values a user's `prj.conf` used to set) move to D2a: prompt-less in the
+   module, defaults from the generated file, a conf assignment refused by
+   Kconfig. The RMW and API CHOICES, the ENDPOINT and the DOMAIN stay in
+   phase-481's fragment, which is measured on both lines; they move only if the
+   open measurements below are green. This keeps the fixture drivers'
+   endpoint `-DCONFIG_*` and the 4.x RMW snippets working unchanged.
+2. **One knob registry, anchored on today's Kconfig names.** A committed
+   registry row per knob: id, group, type, RMW condition, unit, builtin, range,
+   prompt and help. The id IS today's `CONFIG_NROS_<ID>` stem, so no Kconfig
+   symbol is renamed and no guest's `prj.conf` breaks on a rename. The env
+   spelling is `NROS_<ID>`; today's other spellings (`ZPICO_*`, the
+   `NROS_SMOLTCP_*`/`ZPICO_SMOLTCP_*` net group, params as `NROS_MAX_*`, the
+   per-platform memory names) are legacy rows in the registry, accepted with a
+   deprecation until W8. The TOML spelling is `[knobs.<group>] <name>`.
+   `KCONFIG_PAIRS` and the 11 `*_env_key` functions are DERIVED from the
+   registry, then deleted. The registry also generates the module `Kconfig`'s
+   knob section (prompt-less) and the prompt text a guest needs; a gate holds
+   the committed `zephyr/Kconfig` equal to the generated one.
+3. **A command-line override channel.** With knob prompts gone,
+   `-DCONFIG_<knob>` is an error for a `system.toml` project, and env cannot
+   reach C code that reads `CONFIG_*`. So the hook accepts
+   `-DNROS_OVERRIDE_<ID>=<v>` and renders it into the generated default with
+   provenance `transient` (RFC-0103 D2: the command line is an override, not a
+   source; W6's per-value provenance). Zephyr caches a `-DCONFIG_*` as
+   `CLI_CONFIG_*` and re-applies it (phase-481 W0 correction 1), so a build
+   directory that once passed one fails until it is `-U`'d; the refusal says so.
+
+**Ownership.**
+
+| piece | phase |
+| --- | --- |
+| the registry, its generator, mechanical env names + legacy rows, `KCONFIG_PAIRS` / `*_env_key` derived then deleted, the bypass readers routed through the ladder, the drift gate | 484 W5a (no Zephyr behaviour change) |
+| measure M1–M4 below, on 3.7 and 4.4 | 481 |
+| `Kconfig.from-system-toml` in the hook, the prompt-less knob section, the override channel, the fragment dropping knob rows | 481 |
+| the fixture drivers' KNOB `-DCONFIG_*` move to the override channel (endpoint ones stay) | 481 |
+| choices / endpoint / domain to D2a, if M1/M2 are green | joint, later |
+
+**Order.** 484 W5a lands first — it is what the hook's generator reads. 481
+then measures and builds the hook. Phase-484's W5 acceptance waits on that.
+
+**Open measurements (M1–M4), each a configure on 3.7 and 4.4:**
+
+- **M1** — a prompt-less NAMED choice (`choice NROS_RMW_BACKEND`) redefined in
+  the sourced file with a `default`: does it select, and does a conf
+  assignment of a member error out?
+- **M2** — a `default` in the sourced file, OUTSIDE `if NROS_RMW_<X>`, for a
+  symbol defined inside it: right value when the RMW is selected, no stray
+  value when it is not?
+- **M3** — `-DCONFIG_<prompt-less>` is a hard error on 4.4 as on 3.7.
+- **M4** — a guest (no `system.toml`) configures and RE-configures with the
+  prompts declared only in the generated file, and menuconfig shows them.
+
 ### D3 — One precedence order, every road
 
 Configuration:
@@ -450,6 +539,10 @@ Still open:
 
 ## Changelog
 
+- 2026-10-11 — D2b: the Zephyr split with phase-481. Knobs move to D2a
+  through one registry anchored on today's `CONFIG_NROS_*` names; choices,
+  endpoint and domain stay in 481's fragment until M1–M4 are measured; a
+  `-DNROS_OVERRIDE_<ID>` channel replaces the knob `-DCONFIG_*`.
 - 2026-10 — D8 corrected by measurement (phase-484 W6b): the config header's
   sizes come from the compiled rlib, so it stays a build product; its location
   is one function (`nros_build_paths::artifact`, `nros locate artifact`).
