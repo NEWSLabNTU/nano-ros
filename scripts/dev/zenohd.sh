@@ -193,8 +193,36 @@ nros_router_env_exec() {
     exec "$bin"
 }
 
+# Refuse a locator whose protocol is not a protocol name, before the router
+# sees it (issue 1818).
+#
+# `just` recipe parameters are POSITIONAL, so `just zenohd locator=tcp/…` does
+# not set `locator`: it passes the literal string `locator=tcp/…`. The router
+# then splits at the first `/` and reports
+#
+#     Unicast not supported for locator=tcp protocol
+#
+# which reads like a router built without TCP, or the wrong `libzenohc` on the
+# loader path (issue 0774). That misreading cost a measurement its runtime
+# check. A zenoh locator is `<protocol>/<address>`, and a protocol is a lower-case
+# name (`tcp`, `udp`, `serial`, `unixsock-stream`), so anything else is refused
+# here with what was probably meant.
+nros_router_check_locator() {
+    local locator="$1" proto
+    proto="${locator%%/*}"
+    if [ "$proto" = "$locator" ] || ! [[ "$proto" =~ ^[a-z][a-z0-9-]*$ ]]; then
+        echo "error: '$locator' is not a zenoh locator (<protocol>/<address>, e.g. tcp/127.0.0.1:7447)" >&2
+        if [[ "$proto" == *=* ]]; then
+            echo "       \`just\` parameters are positional: write \`just zenohd ${locator#*=}\`," >&2
+            echo "       not \`just zenohd ${locator}\`." >&2
+        fi
+        return 1
+    fi
+}
+
 nros_router_exec() {
     local locator="${1:?nros_router_exec: a locator is required}"
+    nros_router_check_locator "$locator" || return 2
     local bin
     bin="$(nros_zenohd_bin)" || return 1
     nros_zenohd_warn_if_unpaired "$bin"
