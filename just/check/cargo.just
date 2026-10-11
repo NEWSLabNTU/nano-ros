@@ -719,3 +719,25 @@ workspace-build-output:
 [private]
 workspace-order:
     @bash packages/testing/nros-tests/tests/workspace_order_gate.sh
+
+# phase-485 W9 (RFC-0104 D8) — cargo-deny over the Rust pin set: RustSec
+# advisories, licences, banned and unknown sources, and duplicate majors
+# (reported, not refused). A DEVELOPER lane, not merge-gating: it needs
+# `cargo-deny` (`[rust.cargo-tool.deny]`) and the network for the advisory
+# database. Runs over the two closed-graph roots, which hold 482 of the 512
+# pins. Config and its measured allow-lists: `deny.toml`. Findings that need a
+# breaking bump are issues (the first run filed 1805).
+deny:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cargo-deny >/dev/null 2>&1; then
+        echo "check deny: cargo-deny is not installed. It is pinned as [rust.cargo-tool.deny]" >&2
+        echo "  in nros-sdk-index.toml:  cargo install cargo-deny --locked --version <that version>" >&2
+        exit 1
+    fi
+    rc=0
+    for m in Cargo.toml packages/cli/Cargo.toml; do
+        echo "== cargo deny: $m"
+        cargo deny --manifest-path "$m" --config deny.toml --locked check || rc=1
+    done
+    exit "$rc"

@@ -43,6 +43,7 @@ build-serial  # the build-tier registry, still an authored dependency list
 cli-clippy  # called by `check-cli-fmt`'s body, not run standalone
 compile-smoke  # gate.yml runs it by name on pull_request; needs a compile
 default  # lane verb: `cli-fresh` + `fast` + `build` + `api-parity`
+deny  # developer lane (phase-485 W9, RFC-0104 D8): needs cargo-deny and the network (RustSec); run by hand, never merge-gating
 dep-chain  # post-submit.yml runs it by name; needs codegen output
 fast  # lane verb: fans this lane out through run-gates-parallel.sh
 fast-parallel  # retired alias for `fast`, kept for muscle memory

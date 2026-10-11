@@ -2504,6 +2504,20 @@ check = { cmd = "cargo-llvm-cov" }
 # crate = "espflash"
 # check = { cmd = "espflash" }
 
+# phase-485 W9 (RFC-0104 D8) — developer-only tools over the pin set, never
+# reached from a user build: cargo-deny runs `just check deny`; cargo-edit's
+# `cargo upgrade --incompatible` is the manifest edit a breaking `nros update
+# --crate` names.
+[rust.cargo-tool.deny]
+crate = "cargo-deny"
+version = "0.20.2"
+check = { cmd = "cargo-deny" }
+
+[rust.cargo-tool.edit]
+crate = "cargo-edit"
+version = "0.13.6"
+check = { cmd = "cargo-upgrade" }
+
 [rust.cargo-tool.rustfilt]
 crate = "rustfilt"
 check = { cmd = "rustfilt" }

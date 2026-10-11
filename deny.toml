@@ -1,0 +1,93 @@
+# cargo-deny over the Rust pin set (RFC-0104 D8, phase-485 W9).
+#
+# A DEVELOPER lane, `just check deny`: never on a user's build path, and not on
+# the fast line (the advisory check reads the RustSec database over the
+# network). It runs against the two closed-graph roots, the repo root and the
+# CLI workspace, which hold 482 of the 512 pins; the rest are leaf-only ranges.
+#
+# Every list below was MEASURED from those two roots on 2026-10-11 (`cargo deny
+# list -l license`), not copied from a template, so a NEW license or a NEW git
+# source is a change somebody reviews.
+
+[graph]
+all-features = true
+
+[advisories]
+# RustSec; `yanked` too, since a yanked crate in the pin set is a pin to move.
+yanked = "deny"
+# Known and TRACKED: each entry names the issue that owns it, so the lane
+# stays red only for something new. Delete an entry with its fix.
+ignore = [
+    { id = "RUSTSEC-2026-0194", reason = "quick-xml 0.37 -> 0.41 is a breaking bump; issue 1805" },
+    { id = "RUSTSEC-2026-0195", reason = "quick-xml 0.37 -> 0.41 is a breaking bump; issue 1805" },
+    { id = "RUSTSEC-2026-0110", reason = "bare-metal (via cortex-m) unmaintained; issue 1805" },
+    { id = "RUSTSEC-2025-0119", reason = "number_prefix (via indicatif) unmaintained; issue 1805" },
+    { id = "RUSTSEC-2024-0436", reason = "paste unmaintained; issue 1805" },
+    { id = "RUSTSEC-2026-0173", reason = "proc-macro-error2 unmaintained; issue 1805" },
+    { id = "RUSTSEC-2020-0163", reason = "term_size (via tokei) unmaintained; issue 1805" },
+]
+
+[licenses]
+confidence-threshold = 0.9
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "ISC",
+    "MIT",
+    "MPL-2.0",       # cbindgen, colored — file-level copyleft, build/dev tools
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+
+# The committed core message crates are GENERATED (`packages/interfaces/
+# generated/*`, RFC-0067) and carry no `license` field; they ship under the
+# workspace's own license.
+[[licenses.clarify]]
+crate = "nros-builtin-interfaces"
+expression = "MIT OR Apache-2.0"
+license-files = []
+
+[[licenses.clarify]]
+crate = "nros-diagnostic-msgs"
+expression = "MIT OR Apache-2.0"
+license-files = []
+
+[[licenses.clarify]]
+crate = "nros-lifecycle-msgs"
+expression = "MIT OR Apache-2.0"
+license-files = []
+
+[[licenses.clarify]]
+crate = "nros-rcl-interfaces"
+expression = "MIT OR Apache-2.0"
+license-files = []
+
+[[licenses.clarify]]
+crate = "nros-rosgraph-msgs"
+expression = "MIT OR Apache-2.0"
+license-files = []
+
+[[licenses.clarify]]
+crate = "nros-std-msgs"
+expression = "MIT OR Apache-2.0"
+license-files = []
+
+[bans]
+# Several majors of one crate are ALLOWED and REPORTED (RFC-0104 D7):
+# transitive deps make some unavoidable.
+multiple-versions = "warn"
+# Path dependencies are wildcards by construction here.
+wildcards = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-git = [
+    # ros-launch-manifest is a git-TAG dependency (one tag across the tree).
+    "https://github.com/NEWSLabNTU/ros-launch-manifest.git",
+]

@@ -1851,7 +1851,7 @@ fn drift_before_build(
         // this host for three tools a native build never touches. Where the
         // lock is the project's own record (RFC-0104 D4), a row the index
         // no longer names IS drift.
-        if nr.join(nros_build_paths::CHECKOUT_MARKER).is_file() {
+        if crate::orchestration::nano_ros_root::is_checkout(&nr) {
             continue;
         }
         let index_path = nr.join("nros-sdk-index.toml");
@@ -1878,7 +1878,7 @@ fn cargo_drift(
     let Some(pins) = crate::orchestration::registry_pins::pin_file(nr)? else {
         return Ok(Vec::new());
     };
-    let in_checkout = nr.join(nros_build_paths::CHECKOUT_MARKER).is_file();
+    let in_checkout = crate::orchestration::nano_ros_root::is_checkout(nr);
     let mut out = Vec::new();
     for root in &rec.cargo_roots {
         let label = root

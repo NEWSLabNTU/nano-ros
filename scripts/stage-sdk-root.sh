@@ -77,10 +77,16 @@
 #                       `nros-cpp` out of it — so without the lock the first
 #                       build either re-resolves every dependency (a version set
 #                       nobody tested, WRITTEN INTO the install prefix) or, under
-#                       this repo's project-wide `--locked`, fails with `cannot
-#                       create the lock file … because --locked was passed`.
+#                       `--locked`, fails with `cannot create the lock file …
+#                       because --locked was passed`.
 #                       Shipping it is the same promise a lock always makes:
 #                       someone else's build resolves what ours did.
+#   locks/             the Rust registry PIN SET (`[rust] registry_pins`, RFC-0104
+#                       D2). A user project's leaf `Cargo.lock` is SEEDED from
+#                       it on the first build (D3), so without it a released
+#                       SDK resolves the registry fresh — the gap RFC-0104
+#                       exists to close — and the drift check (D9) has nothing to
+#                       compare against. phase-485 W10.
 #   zephyr/            NOT just the Zephyr lane. `NanoRosSharedCargoDir.cmake`
 #                       reads `zephyr/cmake/nros_cargo_build.cmake` as the
 #                       AUTHORED knob-name inventory on every C/C++ configure
@@ -169,6 +175,7 @@ root="$prefix/$SHIPPED_SUBDIR"
 # in the header; a new one belongs there too.
 PATHS="cmake
 config
+locks
 packages
 zephyr
 scripts
@@ -254,6 +261,7 @@ need -f nano_rosConfig.cmake "the find_package(nano_ros) entry point"
 need -f CMakeLists.txt "the listfile _nros_import_once add_subdirectory()s"
 need -f Cargo.toml "the workspace manifest every member inherits from"
 need -f Cargo.lock "the resolution this release was built on"
+need -f locks/cargo-registry.lock "the registry pin set a user leaf lock is seeded from (RFC-0104 D3)"
 need -f zephyr/cmake/nros_cargo_build.cmake \
     "the authored knob inventory NanoRosSharedCargoDir reads on EVERY C/C++ configure"
 need -f config/rust-targets.txt "the stage-3 preflight's rustup-target-vs-build-std list"

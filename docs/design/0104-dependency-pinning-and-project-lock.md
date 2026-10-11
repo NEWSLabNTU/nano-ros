@@ -286,7 +286,7 @@ lock does not move until THEY run `nros update`.
    `[rmw.*]`, or a separate `[compat.*]` table.
 3. **Answered (phase-485 W3): a hash.** Whether `[cargo]` in the project lock stores a hash or the registry set
    itself — a hash is small, the set is diffable.
-4. How a released SDK ships the pin set beside the index (RFC-0099 D2's SDK
+4. **Answered (phase-485 W10): `locks/` ships in the SDK root, and a project records `[cargo_override.*]` in its own lock.** How a released SDK ships the pin set beside the index (RFC-0099 D2's SDK
    root) and how `nros update` behaves when the index is an installed one
    (read-only: an `--override` file in the project?).
 
@@ -356,3 +356,13 @@ lock does not move until THEY run `nros update`.
   observe), `range` and `why`. The ranges written are for `rmw_zenoh_cpp`
   and the host Cyclone. A move is reported once, an out-of-range
   observation on every build. Nothing refuses.
+- 2026-10-11 — D8 and W9: `cargo-deny` and `cargo-edit` are pinned
+  developer tools, and `just check deny` runs over the closed roots with
+  measured allow-lists. Its first run moved crossbeam-epoch with `nros update`
+  and filed issue 1805 for quick-xml. Open question 4 is answered (W10). A
+  released SDK root ships `locks/`. A project over an installed SDK records
+  `[cargo_override.<name>]` in its own `nros-sdk.lock`, and seeding and the
+  drift check lay those over the SDK's pins. Against an installed SDK, `nros
+  update` writes the project lock instead of the read-only pins. "Checkout"
+  means a `.git` beside the root, never the root marker, which the SDK ships
+  too.

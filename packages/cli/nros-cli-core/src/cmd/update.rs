@@ -86,15 +86,11 @@ pub fn run(args: Args) -> Result<()> {
     let cwd = std::env::current_dir()?;
     let root = crate::orchestration::nano_ros_root::resolve(args.nano_ros_path.clone(), &cwd)
         .ok_or_else(|| eyre!("no nano-ros root found; pass --nano-ros-path"))?;
-    if !root.join(nros_build_paths::CHECKOUT_MARKER).is_file() {
-        bail!(
-            "{} is an installed SDK, whose pin set is read-only. Moving a pin there is \
-             recorded as a project override (RFC-0104 open question 4, phase-485 W10).",
-            root.display()
-        );
-    }
     let index_path = root.join("nros-sdk-index.toml");
     let index = SdkIndex::load(&index_path)?;
+    if !crate::orchestration::nano_ros_root::is_checkout(&root) {
+        return update_project(&index, &args, &cwd);
+    }
     if args.pins {
         update_pins(&root, &index)
     } else if let Some(name) = &args.krate {
@@ -120,6 +116,102 @@ pub fn run(args: Args) -> Result<()> {
     } else {
         unreachable!("clap requires one of the kinds")
     }
+}
+
+// ---- an installed SDK: the PROJECT's lock moves (phase-485 W10) -------------
+
+/// RFC-0104 open question 4. An installed SDK's pin set is read-only — it is
+/// the release — so a move is recorded in the project's own `nros-sdk.lock`,
+/// which the project's owner commits:
+///
+/// * `--crate` resolves the move in the caller's leaf and writes a
+///   `[cargo_override.<name>]`, which seeding and the drift check lay over the
+///   SDK's pins;
+/// * `--source` / `--tool` ACCEPT what this SDK has, after a build refused
+///   because the project pinned something else (an SDK upgrade).
+fn update_project(index: &SdkIndex, args: &Args, project: &Path) -> Result<()> {
+    use crate::orchestration::sdk_store::{CargoOverride, LockEntry, ProvenanceKind, SdkLock};
+    let lock_path = crate::orchestration::store::lock_path_for(project);
+    let mut lock = SdkLock::load(&lock_path)?;
+    if let Some(name) = &args.krate {
+        if !project.join("Cargo.lock").is_file() {
+            bail!(
+                "{} has no Cargo.lock to resolve `{name}` in",
+                project.display()
+            );
+        }
+        let held: Vec<String> = read_lock(project)?
+            .into_iter()
+            .filter(|p| &p.name == name)
+            .map(|p| p.version)
+            .collect();
+        if held.is_empty() {
+            bail!("{} does not use `{name}`", project.display());
+        }
+        for v in &held {
+            cargo_update(project, &format!("{name}@{v}"), args.precise.as_deref())?;
+        }
+        let want = args.precise.as_deref().map(compat_range);
+        let now = read_lock(project)?
+            .into_iter()
+            .filter(|p| &p.name == name)
+            .find(|p| {
+                want.as_deref()
+                    .is_none_or(|r| compat_range(&p.version) == r)
+            })
+            .ok_or_else(|| eyre!("`{name}` left the graph during the update"))?;
+        println!("nros update: project override {name} = {}", now.version);
+        lock.cargo_override.insert(
+            name.clone(),
+            CargoOverride {
+                version: now.version,
+                source: now.source,
+                checksum: now.checksum,
+            },
+        );
+    } else if let Some(name) = &args.source {
+        let row = index
+            .source
+            .get(name)
+            .ok_or_else(|| eyre!("no [source.{name}] in this SDK's index"))?;
+        let commit = row.git_ref.clone().unwrap_or_default();
+        println!("nros update: project accepts source {name} at {commit}");
+        let origin = lock
+            .source
+            .get(name)
+            .map_or_else(|| "store".to_string(), |s| s.origin.clone());
+        lock.source.insert(
+            name.clone(),
+            crate::orchestration::project_lock::SourceRecord {
+                commit,
+                origin,
+                dirty: false,
+            },
+        );
+    } else if let Some(name) = &args.tool {
+        let t = index
+            .tool
+            .get(name)
+            .ok_or_else(|| eyre!("no [tool.{name}] in this SDK's index"))?;
+        let host = crate::orchestration::sdk_index::host_key();
+        println!("nros update: project accepts tool {name} {}", t.version);
+        lock.tool.insert(
+            name.clone(),
+            LockEntry {
+                version: t.version.clone(),
+                provenance: ProvenanceKind::Prebuilt,
+                sha256: t.dist_for(&host).map(|d| d.sha256.clone()),
+            },
+        );
+    } else {
+        bail!(
+            "an installed SDK's pin set and manifests are the release, so `--pins` and \
+             `--west` move nothing here; use a nano-ros checkout"
+        );
+    }
+    lock.save(&lock_path)?;
+    println!("nros update: wrote {} — commit it", lock_path.display());
+    Ok(())
 }
 
 // ---- --pins / --crate -------------------------------------------------------

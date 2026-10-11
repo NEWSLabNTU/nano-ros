@@ -47,6 +47,15 @@ pub enum Drift {
         have: String,
         pinned: String,
     },
+    /// Outside a checkout, a project's OWN lock pinned `name` at `pinned`, and
+    /// the SDK it now builds against has `now` (phase-485 W10: an entry the
+    /// project pinned is never rewritten without `nros update`).
+    Pinned {
+        kind: &'static str,
+        name: String,
+        pinned: String,
+        now: String,
+    },
 }
 
 impl std::fmt::Display for Drift {
@@ -76,6 +85,17 @@ impl std::fmt::Display for Drift {
                 f,
                 "source `{name}` is at {have}, pinned at {pinned} — `git submodule update` \
                  restores the pin; `nros update --source {name} --ref {have}` moves it"
+            ),
+            Drift::Pinned {
+                kind,
+                name,
+                pinned,
+                now,
+            } => write!(
+                f,
+                "{kind} `{name}`: this project's nros-sdk.lock pins {pinned}, the SDK now has \
+                 {now} — `nros update --{kind} {name}` accepts the SDK's, or build against the \
+                 SDK the lock was written with"
             ),
             Drift::Tool { name, have, pinned } => write!(
                 f,
@@ -122,11 +142,11 @@ pub fn check_cargo_root(dir: &Path, label: &str, pins_file: &Path) -> eyre::Resu
     ) else {
         return Ok(Vec::new());
     };
-    Ok(crate_drift(
-        label,
-        &parse_registry(&lock)?,
+    let pins = crate::orchestration::registry_pins::effective(
         &parse_registry(&pins)?,
-    ))
+        &crate::orchestration::registry_pins::project_overrides(dir)?,
+    );
+    Ok(crate_drift(label, &parse_registry(&lock)?, &pins))
 }
 
 /// The source kind: `rung` decides whether a moved tree is drift at all.
@@ -292,6 +312,34 @@ mod tests {
             ]
         );
         assert!(crate_drift("leaf", &pins, &pins).is_empty());
+    }
+
+    #[test]
+    fn the_drift_check_reads_the_projects_overrides() {
+        let t = tempfile::tempdir().unwrap();
+        let reg = "registry+https://github.com/rust-lang/crates.io-index";
+        let lock = |v: &str| {
+            format!(
+                "version = 4\n\n[[package]]\nname = \"libc\"\nversion = \"{v}\"\nsource = \"{reg}\"\n"
+            )
+        };
+        std::fs::write(t.path().join("pins.lock"), lock("0.2.186")).unwrap();
+        std::fs::write(t.path().join("Cargo.lock"), lock("0.2.190")).unwrap();
+        let pins = t.path().join("pins.lock");
+        assert_eq!(
+            check_cargo_root(t.path(), "p", &pins).unwrap().len(),
+            1,
+            "off the SDK pin"
+        );
+        std::fs::write(
+            t.path().join("nros-sdk.lock"),
+            format!("[cargo_override.libc]\nversion = \"0.2.190\"\nsource = \"{reg}\"\n"),
+        )
+        .unwrap();
+        assert!(
+            check_cargo_root(t.path(), "p", &pins).unwrap().is_empty(),
+            "the project's own override is its pin"
+        );
     }
 
     #[test]
