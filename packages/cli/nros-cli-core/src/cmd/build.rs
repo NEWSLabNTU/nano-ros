@@ -5229,7 +5229,8 @@ mod single_package_tests {
         std::fs::create_dir_all(leaf.join("src")).unwrap();
         std::fs::write(
             leaf.join("Cargo.toml"),
-            "[package]\nname = \"demo_talker\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[workspace]\n",
+            "[package]\nname = \"demo_talker\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n\
+             [dependencies]\nnros-board-linux = { version = \"*\" }\n\n[workspace]\n",
         )
         .unwrap();
         std::fs::write(leaf.join("src/main.rs"), "fn main() {}\n").unwrap();
