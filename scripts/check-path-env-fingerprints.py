@@ -220,13 +220,6 @@ UNRESOLVED_EXEMPTIONS = Exemptions(
             "count-knob reader; `declared` is an `NROS_DECLARED_*` count carrier",
         ("packages/core/nros-node/build.rs", "env_usize_declared", "declared"):
             "count-knob reader; `declared` is an `NROS_DECLARED_*` count carrier",
-        ("packages/drivers/net/nros-smoltcp/build.rs", "env_usize_compat", "name"):
-            "usize-knob reader; callers pass `NROS_SMOLTCP_*` sizes/timeouts",
-        ("packages/drivers/net/nros-smoltcp/build.rs", "env_usize_compat", "fallback_name"):
-            "usize-knob reader; callers pass the legacy `ZPICO_SMOLTCP_*` size names",
-        ("packages/rmw/cyclonedds/nros-rmw-cyclonedds-sys/build.rs", "forward_derived_knobs", "knob"):
-            "loop over the const `KNOBS` table beside it — five `NROS_CYCLONEDDS_MAX_*` "
-            "/ `*_BYTES` integers",
         ("packages/rmw/zenoh/nros-zpico-build/src/runner.rs", "build_zenoh_pico_unified", "env_var"):
             "`if_env` of a platform manifest's `[[extra_sources]]` — a presence flag "
             "selecting sources, not a location",
@@ -236,8 +229,6 @@ UNRESOLVED_EXEMPTIONS = Exemptions(
         ("packages/rmw/zenoh/nros-zpico-build/src/runner.rs", "build_zenoh_pico_unified", "var"):
             "a platform manifest's `rerun_if_env_changed` list — producer 2 of this "
             "gate, which classifies every entry of it",
-        ("packages/tooling/nros-build-helpers/src/shared.rs", "env_usize", "name"):
-            "usize-knob reader shared by the C/C++ build helpers; callers pass counts",
         ("packages/tooling/nros-platform-config/src/platform_config.rs", "watch_knob_env",
          "s"):
             "every spelling of one ladder knob (`knobs.toml` rows with a `toml` key) — "

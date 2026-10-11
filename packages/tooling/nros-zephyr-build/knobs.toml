@@ -18,7 +18,19 @@ id = "ACTION_INBOX_BYTES"
 id = "ACTION_INBOX_DEPTH"
 
 [[knob]]
+id = "CYCLONEDDS_HEAP_BUDGET_BYTES"
+
+[[knob]]
 id = "CYCLONEDDS_MAX_DESCRIPTOR_TYPES"
+
+[[knob]]
+id = "CYCLONEDDS_MAX_FIELDS"
+
+[[knob]]
+id = "CYCLONEDDS_MAX_KINDS"
+
+[[knob]]
+id = "CYCLONEDDS_MAX_NESTED_DEPTH"
 
 [[knob]]
 id = "CYCLONEDDS_MAX_TYPES"

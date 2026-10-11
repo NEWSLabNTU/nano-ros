@@ -141,14 +141,19 @@ pub fn add_lwip_includes(build: &mut cc::Build, lwip_dir: &Path) {
 /// The app-task stack size for this build, honouring
 /// `NROS_FREERTOS_APP_STACK_KB`. Emits the `rerun-if-env-changed` line.
 pub fn app_stack_bytes_from_build_env() -> u32 {
-    println!("cargo:rerun-if-env-changed=NROS_FREERTOS_APP_STACK_KB");
+    crate::platform_config::watch_knob_env("NROS_FREERTOS_APP_STACK_KB");
     let builtin = app_stack_bytes(None);
     // phase-400 W6 — the platform and board rungs, beneath the env front-end
     // that still wins. `None` when no lane named a platform, which is a bare
     // `cargo build`: then this is exactly the env-or-default it always was.
     match crate::platform_config::BuildRungs::from_build_env() {
         Some(rungs) => rungs.memory_value("app_stack_bytes", builtin as usize) as u32,
-        None => app_stack_bytes(env::var("NROS_FREERTOS_APP_STACK_KB").ok().as_deref()),
+        // phase-484 W5a — rung 1 through the registry, as the arm above reads
+        // it inside the ladder: every spelling, and two that disagree refused.
+        None => app_stack_bytes(
+            crate::platform_config::knob_env(&|k| env::var(k).ok(), "NROS_FREERTOS_APP_STACK_KB")
+                .as_deref(),
+        ),
     }
 }
 

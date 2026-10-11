@@ -986,14 +986,6 @@ pub fn write_atomic(dest: &std::path::Path, contents: &str) {
     }
 }
 
-pub fn env_usize(name: &str, default: usize) -> usize {
-    println!("cargo:rerun-if-env-changed={name}");
-    env::var(name)
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(default)
-}
-
 /// phase-382 W3' -- the carved parameter store's shape, from `nros-node`'s
 /// `links` metadata: an input to the probed executor size.
 pub const PARAM_STORE_SHAPE_DEP: &str = "DEP_NROS_NODE_PARAM_STORE_SHAPE";

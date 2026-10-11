@@ -80,3 +80,7 @@ portable-atomic = { version = "1", default-features = false, features = ["unsafe
 # not `nros-board-common`: that one reaches back here through `nros-platform ->
 # nros-platform-esp32-qemu -> nros-smoltcp`, which cargo rejects as a cycle.
 nros-platform-config = { path = "../../../tooling/nros-platform-config" }
+# phase-484 W5a — the one knob ladder, which reads every registry spelling of a
+# knob (`NROS_SMOLTCP_*` and its legacy `ZPICO_SMOLTCP_*`). Already in this
+# crate's graph through `nros-platform-config`; named so the call is direct.
+nros-zephyr-build = { path = "../../../tooling/nros-zephyr-build" }

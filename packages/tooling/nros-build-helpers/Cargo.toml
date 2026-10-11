@@ -40,6 +40,10 @@ cbindgen-drift-check = ["dep:cbindgen"]
 # phase-400 W6 — the ladder rungs. A regular dependency, not a build one:
 # this crate IS the helper a build script calls.
 nros-platform-config = { path = "../nros-platform-config" }
+# phase-484 W5a — the one knob ladder (`knob(name).rung(..).resolve(..)`), which
+# reads every registry spelling of a knob. Already reached through
+# `nros-platform-config`; named so the call is direct.
+nros-zephyr-build = { path = "../nros-zephyr-build" }
 cbindgen = { workspace = true, optional = true }
 cc = "1"
 # issue 0383 — strict C diagnostics (implicit-function-declaration,

@@ -232,24 +232,18 @@ fn forward_derived_knobs(cc: &mut cc::Build) {
         "NROS_CYCLONEDDS_MAX_NESTED_DEPTH",
         "NROS_CYCLONEDDS_HEAP_BUDGET_BYTES",
     ];
+    //
+    // phase-484 W5a — read through the one ladder, which watches and reads every
+    // registry spelling of each knob. `strict_env`: a non-numeric value is a hard
+    // failure rather than a silent skip — the producer (`nros codegen-system`)
+    // emits digits, so anything else is a hand-edit, and compiling with the
+    // DEFAULT while the user believes they set a size is the exact silent-default
+    // shape this campaign removes. `stated()`, not `resolve()`: absence must
+    // leave the header default alone (above).
     for knob in KNOBS {
-        println!("cargo:rerun-if-env-changed={knob}");
-        let Ok(raw) = std::env::var(knob) else {
-            continue;
-        };
-        let value = raw.trim();
-        // A non-numeric value is a hard failure rather than a silent skip: the
-        // producer emits digits, so anything else is a hand-edit, and compiling
-        // with the DEFAULT while the user believes they set a size is the exact
-        // silent-default shape this campaign removes.
-        if value.is_empty() || !value.bytes().all(|b| b.is_ascii_digit()) {
-            panic!(
-                "nros-rmw-cyclonedds-sys: {knob} is set to {raw:?}, which is not a count. \
-                 It is written by `nros codegen-system` from the SystemModel; unset it to \
-                 let nros size it."
-            );
+        if let Some(value) = nros_zephyr_build::knob(knob).strict_env().stated() {
+            cc.define(knob, value.to_string().as_str());
         }
-        cc.define(knob, value);
     }
 }
 
