@@ -243,7 +243,7 @@ impl LoweredField {
     }
 
     /// Zero-copy borrow into the receive buffer (RFC-0033 `mode = "view"`).
-    pub fn is_borrowed(&self) -> bool {
+    pub fn is_view(&self) -> bool {
         matches!(self.storage, LoweredStorage::Borrowed { .. })
     }
 
@@ -602,7 +602,7 @@ string<=8    str_bounded
         );
 
         // No field here is heap or borrowed under the empty resolver.
-        assert!(t.fields.iter().all(|f| !f.is_heap() && !f.is_borrowed()));
+        assert!(t.fields.iter().all(|f| !f.is_heap() && !f.is_view()));
     }
 
     /// A sequence OF strings: the element op is `String`, so

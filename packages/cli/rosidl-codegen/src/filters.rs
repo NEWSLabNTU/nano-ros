@@ -81,7 +81,7 @@ impl RustTypeSpell {
 #[derive(serde::Deserialize)]
 struct CppTypeSpell {
     field_type: rosidl_parser::FieldType,
-    is_borrowed: bool,
+    is_view: bool,
     is_heap: bool,
     cap: Option<usize>,
     current_package: String,
@@ -99,7 +99,7 @@ struct CppReprSpell {
     is_string: bool,
     is_sequence: bool,
     is_heap: bool,
-    is_borrowed: bool,
+    is_view: bool,
 }
 
 impl CppReprSpell {
@@ -189,10 +189,10 @@ const CPP: FilterSet = FilterSet {
         env.add_filter("cpp_type", |v: ViaDeserialize<CppTypeSpell>| {
             let c = &v.0;
             let cp = (!c.current_package.is_empty()).then_some(c.current_package.as_str());
-            crate::types::cpp_type_spelling(&c.field_type, c.is_borrowed, c.is_heap, c.cap, cp)
+            crate::types::cpp_type_spelling(&c.field_type, c.is_view, c.is_heap, c.cap, cp)
         });
         env.add_filter("cpp_array_suffix", |v: ViaDeserialize<CppTypeSpell>| {
-            crate::types::cpp_array_suffix_spelling(&v.0.field_type, v.0.is_borrowed)
+            crate::types::cpp_array_suffix_spelling(&v.0.field_type, v.0.is_view)
         });
         env.add_filter("cpp_repr_c_type", |v: ViaDeserialize<CppReprSpell>| {
             let c = &v.0;
@@ -211,7 +211,7 @@ const CPP: FilterSet = FilterSet {
             let c = &v.0;
             crate::types::cpp_view_repr_type_spelling(
                 &c.field_type,
-                c.is_borrowed,
+                c.is_view,
                 c.is_sequence,
                 c.is_heap,
                 c.is_string,

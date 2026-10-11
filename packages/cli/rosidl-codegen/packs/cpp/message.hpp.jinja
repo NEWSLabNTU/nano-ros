@@ -163,7 +163,7 @@ struct {{ message_name }} {
 /// subscription callback) — copy out anything retained.
 struct {{ message_name }}View {
 {%- for field in fields %}
-{%- if field.is_borrowed %}
+{%- if field.is_view %}
     {{ field.borrowed_cpp_type }} {{ field.name }};
 {%- else %}
     {{ field | cpp_type }} {{ field.name }}{{ field | cpp_array_suffix }} = {};

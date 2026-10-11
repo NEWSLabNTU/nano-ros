@@ -203,7 +203,7 @@ pub fn generate_nros_message_package(
 
     let has_fields = !fields.is_empty();
     let has_large_array = fields.iter().any(|f| f.is_large_array);
-    let has_borrowed = fields.iter().any(|f| f.is_borrowed);
+    let has_borrowed = fields.iter().any(|f| f.is_view);
     let schema = build_nros_message_schema(
         package_name,
         message_name,
@@ -268,7 +268,7 @@ pub fn generate_nros_inline_message(
 
     let has_fields = !fields.is_empty();
     let has_large_array = fields.iter().any(|f| f.is_large_array);
-    let has_borrowed = fields.iter().any(|f| f.is_borrowed);
+    let has_borrowed = fields.iter().any(|f| f.is_view);
     let schema = build_nros_message_schema(
         package_name,
         message_name,
@@ -413,7 +413,7 @@ pub fn generate_c_message_package_with_lookup(
         .collect();
 
     let has_fields = !fields.is_empty();
-    let has_borrowed = fields.iter().any(|f| f.is_borrowed);
+    let has_borrowed = fields.iter().any(|f| f.is_view);
 
     // issue 0896 layer 2 — the type's own size bound, computed with THE size
     // rule (`nros_serdes::size::max_serialized_size`) over a schema built by

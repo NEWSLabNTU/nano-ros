@@ -519,7 +519,7 @@ pub(super) fn field_to_nros_field_with_mode(
     // RFC-0033 `borrowed` (Phase 229.6, issue 0007): the owned `{Msg}` struct
     // keeps a default-capacity owned container for the publish path; the
     // additionally-emitted `{Msg}View<'a>` borrows this field zero-copy.
-    if field.is_borrowed() {
+    if field.is_view() {
         let (bt, expr) =
             nros_borrowed_view_for_field(field_type, package_name, message_name, &field.name)?;
         borrowed_rust_type = bt;
@@ -554,7 +554,7 @@ pub(super) fn field_to_nros_field_with_mode(
         is_string_element: field.element_is_string(),
         is_large_array: array_size > 32,
         is_heap: field.is_heap(),
-        is_borrowed: field.is_borrowed(),
+        is_view: field.is_view(),
         borrowed_rust_type,
         borrowed_read_expr,
     })
@@ -698,7 +698,7 @@ pub(super) fn build_c_field(
     // RFC-0033 `borrowed` (Phase 235, issue 0021): the owned `{Msg}` struct
     // keeps its resolved-capacity container for the publish path; the emitted
     // `{Msg}_View` borrows this field zero-copy.
-    if field.is_borrowed() {
+    if field.is_view() {
         let (bt, bfn) = c_borrowed_view_for_field(
             field_type,
             current_package.unwrap_or(""),
@@ -781,7 +781,7 @@ pub(super) fn build_c_field(
         is_primitive_element: field.element_is_primitive(),
         is_string_element: field.element_is_string(),
         is_heap: field.is_heap(),
-        is_borrowed: field.is_borrowed(),
+        is_view: field.is_view(),
         borrowed_c_type,
         borrowed_read_fn,
     })
@@ -946,7 +946,7 @@ pub(super) fn resolve_cap_override(
             Err(unsupported("heap"))
         };
     }
-    if field.is_borrowed() {
+    if field.is_view() {
         return Ok(CppStorage::Borrowed(
             cpp_borrow_kind(field_type, package, message_name, &field.name)?,
             Some(field.configured_cap()),
@@ -979,7 +979,7 @@ pub(super) fn build_cpp_field(
             is_heap: false,
             cap,
             current_package: cp,
-            is_borrowed: true,
+            is_view: true,
             borrowed_cpp_type: b.cpp_view_type(),
         },
         CppStorage::Owned(cap) => CppField {
@@ -988,7 +988,7 @@ pub(super) fn build_cpp_field(
             is_heap: false,
             cap,
             current_package: cp,
-            is_borrowed: false,
+            is_view: false,
             borrowed_cpp_type: String::new(),
         },
         CppStorage::Heap => CppField {
@@ -997,7 +997,7 @@ pub(super) fn build_cpp_field(
             is_heap: true,
             cap: None,
             current_package: cp,
-            is_borrowed: false,
+            is_view: false,
             borrowed_cpp_type: String::new(),
         },
     }
@@ -1024,7 +1024,7 @@ pub(super) fn build_cpp_ffi_field(
     // RFC-0033 borrowed (Phase 235): the `{Msg}ViewRepr` FFI struct stores this
     // field as `nros_cpp_borrow_t { *const u8, usize }`, filled from the
     // `CdrReader` borrow method; the owned `{Msg}` repr keeps its owned type.
-    let (is_borrowed, borrowed_reader_call, borrowed_le) = match storage {
+    let (is_view, borrowed_reader_call, borrowed_le) = match storage {
         CppStorage::Borrowed(b, _) => (true, b.reader_call(), b.is_le()),
         _ => (false, String::new(), false),
     };
@@ -1243,7 +1243,7 @@ pub(super) fn build_cpp_ffi_field(
         is_string_element,
         is_heap,
         element_repr_type,
-        is_borrowed,
+        is_view,
         borrowed_reader_call,
         borrowed_le,
     };
