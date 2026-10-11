@@ -1,5 +1,7 @@
 # Phase 414 — RTOS runtime correctness: the e2e failures that reproduce SOLO
 
+**Archived 2026-10-12.** All five original work items were closed by 2026-09-04. Of the three issues the phase adopted later, 0968 is resolved; 0997 and 1004 are still open and stand on their own (both list phase-177 as related), so the phase no longer holds anything they need. Issues 1034 and 1281 cite it as background only.
+
 **Status (2026-09-04). ALL FIVE WORK ITEMS CLOSED.** W3 — issue 0870 — was closed green with the cause UNATTRIBUTED, an owner decision taken on 383 consecutive passes across three build regimes and two emulators, and it records the objection it overrides plus the two experiments that reopen it without argument. The phase stays ACTIVE for the three issues it adopted later (#0997, #1004, #0968), not for its original five.** Opened
 as a HOME, not as a plan: five open issues had no phase that could hold them,
 and the survey that found that is the whole reason this doc exists — an issue
@@ -21,10 +23,10 @@ costs more than an open one because it is read as current.
 They are RUNTIME failures on a real RTOS: the image builds, links and boots, and
 then does the wrong thing. That is a different activity from either neighbour:
 
-* **[phase-349](phase-349-rtos-integration-shells.md)** is BUILD integration —
+* **[phase-349](../phase-349-rtos-integration-shells.md)** is BUILD integration —
   "make FreeRTOS an imported library like the rest". It is about how the RTOS
   enters the build, not about what the image does afterwards.
-* **[phase-358](archived/phase-358-embedded-runtime-under-load.md)** is footprint,
+* **[phase-358](phase-358-embedded-runtime-under-load.md)** is footprint,
   overrun and overload — failures that appear when you PUSH the runtime. These
   five fail at rest.
 
@@ -38,7 +40,7 @@ with a stable reproduction and no owner.
 
 Each is an existing issue. The item is "close it"; the issue holds the evidence.
 
-* **W1 — [issue 0877](../issues/archived/0877-freertos-pubsub-passes-by-hand-fails-under-harness.md),
+* **W1 — [issue 0877](../../issues/archived/0877-freertos-pubsub-passes-by-hand-fails-under-harness.md),
   FreeRTOS pubsub delivers NOTHING under the test. REDIAGNOSED, not yet
   closed.** The issue's evidence is dated 2026-08-29; issue **0906** (every
   zenoh-pico session dropping every ~20 s because `Z_TRANSPORT_LEASE` was 10 s
@@ -78,14 +80,14 @@ Each is an existing issue. The item is "close it"; the issue holds the evidence.
   bisect over Aug 20 -> Sep 3 is the first thing to do if it does.
   The `queue.c:1673` assert this issue also records is **issue 0899, already
   resolved** — the same 0906 session churn one layer down.
-* **W2 — [issue 0867](../issues/archived/0867-nuttx-c-action-goal-send-times-out.md).
+* **W2 — [issue 0867](../../issues/archived/0867-nuttx-c-action-goal-send-times-out.md).
   CLOSED — it was fixed before this phase opened.** `bb0631e5f` (2026-08-28)
   landed `start_server_then_client`; the issue was simply never closed. Cause
   was harness ordering, not the image: `start_pair` launched both NuttX
   instances at once, keyed on the PLATFORM — right for pub/sub, wrong for
   request/response where the client asks ONCE. 3/3 failing at 72-92 s ->
   passing at 16.2 s.
-* **W3 — [issue 0870](../issues/archived/0870-nuttx-cpp-action-client-transport-tx-failed.md),
+* **W3 — [issue 0870](../../issues/archived/0870-nuttx-cpp-action-client-transport-tx-failed.md),
   NuttX C++ `create_action_client` fails. OPEN, and no longer blind.**
   **NOT shared with W2**, structurally: W2's fix covers all three languages
   (`rtos_e2e.rs:922`), so C++ has been starting after the server's banner all
@@ -129,7 +131,7 @@ Each is an existing issue. The item is "close it"; the issue holds the evidence.
   with image CONTENT", and 1034 is a way 16 bytes of content move timing by 20 s,
   so a two-build comparison must check the `PT_LOAD` shape, and a hand-run is not
   comparable to a cell unless it runs the same emulator binary.
-* **W4 — [issue 0847](../issues/archived/0847-xrce-entity-drop-after-session-close.md).
+* **W4 — [issue 0847](../../issues/archived/0847-xrce-entity-drop-after-session-close.md).
   CLOSED.** The fix is a refcount (`live_entities` + `session_closed`), applied
   to all four entity destructors, with each checking `xrce_session_is_closed`
   before touching the session. The two shapes the issue left open were both
@@ -142,11 +144,11 @@ Each is an existing issue. The item is "close it"; the issue holds the evidence.
   contrast is what settled the shape.
   Gated by `tests/entity_lifetime.c` under `just check rmw-xrce`, asserting the
   EXIT STATUS as the issue required, and mutation-checked.
-* **W5 — [issue 0741](../issues/archived/0741-xrce-service-reply-history-payload-too-small.md),
+* **W5 — [issue 0741](../../issues/archived/0741-xrce-service-reply-history-payload-too-small.md),
   RESOLVED 2026-09-03 — the 28-byte sample is a FOREIGN peer's, on another
   host.** Everything below is the investigation that got there, kept because
   four of its steps were dead ends worth not repeating.
-* **W5 — [issue 0741](../issues/archived/0741-xrce-service-reply-history-payload-too-small.md),
+* **W5 — [issue 0741](../../issues/archived/0741-xrce-service-reply-history-payload-too-small.md),
   `test_xrce_service_ros2_client` fails on main — Fast-DDS refuses the
   request.** INTEROP with a real ROS 2 peer.
   **ROUTING DECIDED: it STAYS here. Not encoding, so not phase-303.** The
@@ -293,15 +295,15 @@ This phase opened as a home for five runtime failures with no owner. Three more
 were filed since and had none either. They meet the same admission test: the
 image builds, links and boots, and then does the wrong thing.
 
-* **[#0997](../issues/0997-island-announces-spdp-once-then-lease-expires.md)** —
+* **[#0997](../../issues/0997-island-announces-spdp-once-then-lease-expires.md)** —
   the timed-event tree empties itself on FreeRTOS: the SPDP resend is scheduled
   and never lands. Same platform and layer as W1.
-* **[#1004](../issues/1004-an536-image-fails-to-boot-transport-error.md)** — the
+* **[#1004](../../issues/1004-an536-image-fails-to-boot-transport-error.md)** — the
   an536 boot failures on this host were HOST LOAD, not a code regression. Kept
   rather than closed because the retraction is the finding: it is the third time
   a load artefact was filed as a defect here, and the phase's own W1 and W5 are
   two of the others.
-* **[#0968](../issues/archived/0968-tier2-runtime-failures-unreproduced.md)** — tier 2
+* **[#0968](../../issues/archived/0968-tier2-runtime-failures-unreproduced.md)** — tier 2
   has ~12 runtime e2e failures on main, unreproduced. This one is the phase's
   admission test applied at scale: *reproduces solo* is what makes a failure
   worth an owner, and nobody has run the tier to find out which of the twelve do.
@@ -320,4 +322,4 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1281](../issues/1281-riscv-nuttx-c-talker-router-drops-session.md) | `c_riscv_nuttx_talker_delivers_cross_process` fails again: the guest connects and the router never sees it. An image that boots and then misbehaves on an RTOS is this phase's admission test, and it is the sibling of the three issues already adopted above |
+| [#1281](../../issues/1281-riscv-nuttx-c-talker-router-drops-session.md) | `c_riscv_nuttx_talker_delivers_cross_process` fails again: the guest connects and the router never sees it. An image that boots and then misbehaves on an RTOS is this phase's admission test, and it is the sibling of the three issues already adopted above |
