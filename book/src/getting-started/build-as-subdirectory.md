@@ -132,12 +132,10 @@ cmake -B build
 cmake --build build
 ```
 
-(`nros build` does not yet drive a single-package C/C++ leaf — the
-synthesised bringup is named after the directory while the driver asks
-for `[system] name`. That is
-[issue 1296](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1296-nros-build-c-leaf-bringup-name-mismatch.md);
-use the two CMake commands above until it closes. A C/C++ *workspace*
-builds with `nros sync` + `nros build` as usual.)
+(`nros build` in the leaf runs these same two commands for you, into
+`build/<image>/cmake`, and passes the board's toolchain file
+([issue 1296](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1296-nros-build-c-leaf-bringup-name-mismatch.md), resolved). A C/C++ *workspace* builds with
+`nros sync` + `nros build` as usual.)
 
 All in-tree C/C++ examples follow that shape. The `add_subdirectory`
 mechanism on this page sits underneath it.

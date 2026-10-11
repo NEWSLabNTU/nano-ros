@@ -90,11 +90,11 @@ cmake -S examples/mps2-an385-freertos/cpp/talker -B build/talker \
 cmake --build build/talker
 ```
 
-`nros build` is what maps a board to its toolchain file, so this hand-passed
-flag goes away once a single-package C/C++ leaf can use it —
-[issue 1296](../issues/1296-nros-build-c-leaf-bringup-name-mismatch.md) is why
-it cannot today. `nros init` + `cmake --preset <board>` is the other way to
-avoid spelling the path (the presets `nros setup <board>` wrote).
+`nros build` is what maps a board to its toolchain file: run in the leaf, it
+passes this flag itself and builds into `build/<image>/cmake`
+([issue 1296](../issues/archived/1296-nros-build-c-leaf-bringup-name-mismatch.md)).
+`nros init` + `cmake --preset <board>` is the other way to avoid spelling the
+path (the presets `nros setup <board>` wrote).
 
 A single-package C/C++ leaf needs **no `nros sync`**: its message bindings are
 a CMake-time output, so a clean copy of the directory configures and builds with

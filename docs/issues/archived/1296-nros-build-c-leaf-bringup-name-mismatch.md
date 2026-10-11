@@ -1,13 +1,46 @@
 ---
 id: 1296
 title: "`nros build` in a single-package C/C++ leaf fails — the synthesised bringup is named after the DIRECTORY, the cmake driver asks for `[system] name`"
-status: open
+status: resolved
 type: bug
 area: tooling, cli, examples
 severity: medium
 found: 2026-09-11
 related: [rfc-0098, phase-445]
+resolved_in: "phase-445 (plan_single_package_cmake)"
 ---
+
+## Resolved (2026-10-11)
+
+The name mismatch was the first of two layers. Naming the bringup the same way
+on both sides got `nros plan` to the model, and then it refused for "missing
+source metadata". The workspace road had generated a root for a workspace of
+one, with a synthesised typed `<id>_entry` whose BRINGUP named
+`src/<[system] name>`, a directory no leaf has. A single-package C/C++ leaf is
+not a workspace: it declares its own executable in its own `CMakeLists.txt`,
+and RFC-0098 leaves that CMake side as it is.
+
+So `nros build` now has a cmake twin of the cargo leaf road,
+`plan_single_package_cmake` in `packages/cli/nros-cli-core/src/cmd/build.rs`.
+For a leaf with `CMakeLists.txt` and `system.toml`, no `Cargo.toml`, and a
+board whose road is cmake, it configures the leaf's OWN `CMakeLists.txt` into
+`build/<image>/cmake`. It passes `-DNROS_IMAGE=<id>` (which
+`nano_ros_read_leaf_system` honours), the board descriptor's toolchain file,
+the board heap and `nano_ros_ROOT`, and then runs `cmake --build`. It is the
+same pair the book documents, with the inputs a bare configure cannot know. A
+west or idf leaf returns `None` and keeps its road.
+
+Measured on the branch:
+- `examples/native/c/talker` and `examples/native/cpp/talker`: `nros sync`
+  then `nros build`, both rc=0.
+- `examples/mps2-an385-freertos/c/talker`: `nros build`, rc=0 (the
+  `arm-freertos-armcm3.cmake` toolchain was passed).
+- The same native C command on `main` fails with
+  `no SystemModel for native_c_talker/launch/system.launch.xml`.
+
+Tests: `single_package_tests::a_cmake_leaf_configures_its_own_cmakelists_for_its_image`
+and `…a_cmake_leaf_refuses_an_image_it_does_not_declare`. Both fail with the
+road disabled.
 
 # What happens
 

@@ -185,12 +185,13 @@ cmake -S examples/qemu-armv7a-nuttx/cpp/talker -B build/talker
 cmake --build build/talker
 ```
 
-Mapping a board to its toolchain file is `nros build`'s job (it writes the
-`CMAKE_TOOLCHAIN_FILE` into the generated cmake root before `project()`), so
-the hand-passed flag above goes away once a single-package C/C++ leaf can use
-that verb — [issue 1296](../issues/1296-nros-build-c-leaf-bringup-name-mismatch.md)
-is why it cannot today. `nros init` + `cmake --preset <board>` is the other way
-to avoid spelling the path.
+Mapping a board to its toolchain file is `nros build`'s job. In a workspace it
+writes `CMAKE_TOOLCHAIN_FILE` into the generated cmake root before `project()`;
+in a single-package leaf it passes `-DCMAKE_TOOLCHAIN_FILE` to the leaf's own
+configure, into `build/<image>/cmake`
+([issue 1296](../issues/archived/1296-nros-build-c-leaf-bringup-name-mismatch.md)).
+`nros init` + `cmake --preset <board>` is the other way to avoid spelling the
+path.
 
 A single-package C/C++ leaf needs no `nros sync`: its message bindings are a
 CMake-time output. The Corrosion target tree under `build/talker/cargo/` holds

@@ -350,9 +350,9 @@ cmake --build build
 
 What changed for it is where the facts come from: the board, RMW, domain and
 network identity are in `system.toml`, not in a `package.xml` `<nano_ros …/>`
-tuple and not on the `cmake` command line. `nros build` does not yet work in a
-single-package C/C++ leaf —
-[issue 1296](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1296-nros-build-c-leaf-bringup-name-mismatch.md).
+tuple and not on the `cmake` command line. `nros build` in the leaf runs
+the same pair into `build/<image>/cmake`, with the board's toolchain file
+([issue 1296](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1296-nros-build-c-leaf-bringup-name-mismatch.md)).
 
 This is a *project shape*, not a workspace shortcut: one `system.toml`, one
 package, and that is what makes a copy-out example copy out (RFC-0026). Two or
