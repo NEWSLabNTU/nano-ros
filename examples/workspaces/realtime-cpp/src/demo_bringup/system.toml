@@ -163,44 +163,35 @@ launch = "freertos_system.launch.xml"
 
 # issue 1517 / phase-470 W2 — the Arm AEMv8-R FVP, NOT native_sim. This row read
 # `board = "native_sim/native/64"` from the phase-383 W9 migration onward, and the
-# value never had to be right because `just zephyr build-fvp-ws-entry` passes no
-# `-b`: the board comes from `nano_ros_use_board(fvp-aemv8r-smp)` in the entry's
-# own CMakeLists (phase-215.B). `nros build fvp` DOES pass `-b`, so the wrong
-# value was reaching a real command line — measured: it emitted
-# `west build -b native_sim/native/64 src/fvp_entry`, which `nano_ros_use_board`
-# then warns about ("BOARD=... overrides the board crate's ZEPHYR_ID=...") and
-# builds anyway, i.e. the FVP application compiled for native_sim.
+# value never had to be right while a hand-written `src/fvp_entry` chose its own
+# board with `nano_ros_use_board(fvp-aemv8r-smp)` — `nros build fvp` passed the
+# wrong `-b` and the application compiled for native_sim, with a warning.
 #
 # `fvp-aemv8r-smp` is the nano-ros board id, which is what this field takes —
 # see `ImageBlock::board`: "NEVER a framework's own board string", the Zephyr
 # `<board>/<soc>/<variant>` spelling being a resolution RESULT. It resolves to
 # `packages/boards/nros-board-zephyr/boards/fvp-aemv8r-smp/nros-board.toml`,
 # whose `[board.zephyr] west_board` carries the Zephyr id `west -b` receives.
+#
+# issue 1288 / phase-477 W1 — the west application is GENERATED, so no
+# `entry =`. What the deleted `fvp_entry` stated that nothing else did was its
+# `nano_ros_use_board(fvp-aemv8r-smp)` preamble: the board package's base
+# `prj.conf`, `boards/<board>.conf` and devicetree overlay. `nros build` now
+# hands a generated application those same files, derived from the descriptor
+# by the rule `nano_ros_use_board` uses, so the board states them once. The
+# image's own Kconfig lives in `boards/fvp_baser_aemv8r_fvp_aemv8r_aarch64_smp/`.
 [image.fvp]
 board = "fvp-aemv8r-smp"
-# The overlay below and `fvp_entry`'s `EXTRA_CONF_FILE` both select Cyclone,
-# so the image says so: without this it inherited `[system] rmw = "zenoh"`
-# and NanoRosImageAgreement refused the configure (phase-477; unseen since
-# 2026-08-30 because the FVP lanes skipped as "license-gated").
+# The overlay below selects Cyclone, so the image says so: without this it
+# inherited `[system] rmw = "zenoh"` and NanoRosImageAgreement refused the
+# configure (phase-477; unseen since 2026-08-30 because the FVP lanes skipped
+# as "license-gated").
 rmw = "cyclonedds"
-# NOT derivable, and not for the reason this comment used to give. It claimed
-# two entry packages target this board and the choice was therefore ambiguous —
-# an ambiguity MANUFACTURED by the wrong `board` above: with both spellings
-# reading `native_sim/native/64`, `zephyr_entry` and `fvp_entry` both matched,
-# and the derivation refused with two candidates (measured, both states).
-#
-# With the board correct the derivation matches ZERO packages, so it falls back
-# to the bringup directory and dies on `conf fragment prj-cyclonedds.conf not
-# found` in `src/demo_bringup` (measured). The reason is structural: the
-# resolver matches a package by the board its `DEPLOY` token resolves to, and a
-# Zephyr entry's `DEPLOY` names the PLATFORM (`zephyr`) because that is what
-# `NanoRosEntry.cmake`'s link gate compares against (`NANO_ROS_PLATFORM`). The
-# board this entry really targets is chosen by `nano_ros_use_board(...)` inside
-# its CMakeLists, which the token scan does not read. So until an entry can
-# state its board where the resolver looks (issue 1288 generates the entry FROM
-# this row, which removes the question), the image names its application.
-entry = "fvp_entry"
-conf = ["prj-cyclonedds.conf"]
+# `prj.conf` is listed although Zephyr already reads it as CONF_FILE: CONF_FILE
+# merges BEFORE the board package's fragments, and this one's `CONFIG_RUST=n`
+# must land AFTER the board's `CONFIG_RUST=y`. The hand-written application
+# re-appended it for the same reason.
+conf = ["prj.conf", "prj-cyclonedds.conf"]
 
 [image.native]
 board = "native"

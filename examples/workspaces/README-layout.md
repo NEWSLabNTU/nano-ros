@@ -44,10 +44,11 @@ with the commands below rather than reading a number here.**
 `zephyr_entry` served an `[image.zephyr]` in two bringups, and the generated
 application is addressed by image id, so both resolved to one path (measured,
 phase-470 W5.b3). Phase-477 W1 gave the SMP bringup its own image id
-(`zephyr_smp`) and then generated both. The one C/C++ package still
-hand-written is `realtime-cpp/src/fvp_entry`, which states its own board through
-`nano_ros_use_board(fvp-aemv8r-smp)` and needs a Zephyr 3.7 workspace plus the
-Arm FVP to build, and acceptance for a migration here is a build.
+(`zephyr_smp`) and then generated both. The last, `realtime-cpp/src/fvp_entry`,
+existed to call `nano_ros_use_board(fvp-aemv8r-smp)`; since phase-477 W1
+`nros build` hands a generated application the board package's own Kconfig and
+devicetree overlay, so it was deleted too, and its merged `.config` was measured
+identical to the hand-written image's. No hand-written Zephyr entry remains.
 
 This is **not** a class called "hand-written entries". A shape that exists only
 because a generator is missing must not get a name that makes it look

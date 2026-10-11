@@ -244,10 +244,10 @@ Set the image's `entry` key when the derivation cannot answer. Either
 *several* packages claim one board (a coin flip, so `nros build` refuses and
 names the candidates; reachable for C/C++ entries, matched by their `DEPLOY`
 token) or *none* does, which falls back to the Bringup directory and surfaces
-as a conf fragment "not found" in the wrong path.
-`examples/workspaces/realtime-cpp`'s `[image.fvp]` is the second case:
-`fvp_entry` takes its board from `nano_ros_use_board(...)` in its own
-`CMakeLists.txt`, which the `DEPLOY` scan does not read (issue 1517).
+as a conf fragment "not found" in the wrong path. A hand-written application
+that takes its board from `nano_ros_use_board(...)` in its own `CMakeLists.txt`
+is the second case, because the `DEPLOY` scan does not read the call (issue
+1517).
 
 **Migrating off a hand-written entry is a deletion.** `nros build` keeps
 `src/<image_id>_entry/` when it carries a `Cargo.toml` or `CMakeLists.txt`;

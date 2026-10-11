@@ -8,16 +8,14 @@ DDS RMW backend on the Autoware safety-island stack.
 
 ```sh
 just setup zephyr       # one-time: workspace + SDK + zephyr-lang-rust
-west build \
-    -b fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp \
-    -d build-fvp \
-    examples/workspaces/realtime-cpp/src/fvp_entry
+just zephyr build-fvp-ws-entry   # nros build demo_bringup:fvp in examples/workspaces/realtime-cpp
 ```
 
-The crate's `boards/fvp_baser_aemv8r_fvp_aemv8r_aarch64_smp.conf` and
-`.overlay` are picked up automatically by the Zephyr build when the
-app's `boards/` directory contains them, or they can be layered
-via `-DEXTRA_CONF_FILE=...` / `-DEXTRA_DTC_OVERLAY_FILE=...`.
+This package's `prj.conf`, `boards/fvp_baser_aemv8r_fvp_aemv8r_aarch64_smp.conf`
+and `.overlay` reach an application two ways, derived by one rule
+(`board_projection::board_files`): `nros build` hands them to a GENERATED
+west application as the first `EXTRA_CONF_FILE` / `EXTRA_DTC_OVERLAY_FILE`
+entries, and a hand-written one gets them from `nano_ros_use_board(fvp-aemv8r-smp)`.
 
 ## Runtime
 

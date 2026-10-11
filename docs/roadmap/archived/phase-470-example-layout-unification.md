@@ -388,7 +388,7 @@ Detail, and the full W5.b inheritance list (the five `just/zephyr-ci.just` guard
 still keyed on an entry package — one of which gates `--include-workspace-entry`
 for the whole zephyr lane — the `conf_files` row key that must go, and the
 `zephyr_application_is_generated` predicate the fixture manifest now shares with
-the builder) → [issue 1288](../../issues/1288-zephyr-rust-workspace-entries-not-generated.md),
+the builder) → [issue 1288](../../issues/archived/1288-zephyr-rust-workspace-entries-not-generated.md),
 section "2026-09-28".
 
 **DONE (2026-10-03) — W5.b.** Three parts, each built at W5.a's bar (the package

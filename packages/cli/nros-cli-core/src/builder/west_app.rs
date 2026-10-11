@@ -233,7 +233,7 @@ pub fn capability_kconfig_cmake(capabilities: &[String]) -> String {
 /// | `PANIC platform` | `[image.<id>] panic` |
 /// | `BRINGUP` | the bringup being built, which is what makes `realtime-c`'s `if(CONFIG_SMP)` switch disappear: two bringups are two images |
 /// | `NROS_WS_RUST_NODE_DIRS` | a node package that is a cargo crate |
-/// | `nano_ros_use_board(...)` + `EXTRA_CONF_FILE` | NOT derived — see [`resolve_cmake`] |
+/// | `nano_ros_use_board(...)` + `EXTRA_CONF_FILE` | NOT emitted; the board files go on the `west build` line — see [`resolve_cmake`] |
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CmakeApp {
     /// `(source dir relative to the application, binary dir name)` for each
@@ -428,12 +428,14 @@ fn is_cargo_node(dir: &Path) -> bool {
 /// byte-identical across machines (W3.c) and the build order comes from each
 /// package's own `<depend>` tags rather than from this list.
 ///
-/// **What this deliberately does NOT derive: `fvp_entry`'s
-/// `nano_ros_use_board(fvp-aemv8r-smp)` + `EXTRA_CONF_FILE` preamble.** That
-/// application states its own board, which is the state this whole item exists
-/// to end — `[image.fvp] board` says it now (issue 1517) and `nros build`
-/// passes it as `-b`. Reproducing the preamble would re-create the second
-/// source rather than remove it.
+/// **What this deliberately does NOT emit: a `nano_ros_use_board(...)`
+/// preamble** (the retired `fvp_entry`'s). That stated the board inside the
+/// application, which is the state this whole item exists to end — `[image.fvp]
+/// board` says it (issue 1517) and `nros build` passes it as `-b`. The board
+/// package's FILES the preamble also added (base `prj.conf`,
+/// `boards/<board>.{conf,overlay}`) reach a generated application on the
+/// `west build` line instead, from `board_projection::board_files` (issue
+/// 1288), so they are derived by one rule for both roads.
 #[allow(clippy::too_many_arguments)]
 pub fn resolve_cmake(
     workspace: &Path,

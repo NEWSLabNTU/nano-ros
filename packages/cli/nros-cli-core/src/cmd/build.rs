@@ -1247,13 +1247,38 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // `board = "native_sim/native/64"` are the same board, so they
                 // must reach the same directory.
                 let west_board = descriptor.west_build_board(&board);
-                let overlays = crate::builder::zephyr::resolve_in(
+                let mut overlays = crate::builder::zephyr::resolve_in(
                     &bringup_dir,
                     Some(&app),
                     &west_board,
                     &image,
                 )
                 .map_err(|e| eyre::eyre!("{e}"))?;
+                // Issue 1288 — the board package's own Zephyr files (base
+                // `prj.conf`, `boards/<flat>.{conf,overlay}`) reach a
+                // GENERATED application here, by the rule
+                // `nano_ros_use_board()` applies to a hand-written one
+                // (`board_projection::board_files`, one derivation for both).
+                // Same position too: ahead of the image's own fragments, so a
+                // `conf` fragment overrides the board; the bringup's
+                // `prj.conf` is Zephyr's CONF_FILE and merges BEFORE every
+                // extra, so a value that must beat the board is listed in
+                // `conf`. A hand-written application owns its preamble and
+                // gets nothing added — it would get the files twice.
+                if generated.dir.is_some() {
+                    if let Some(dir) = nano_ros_root.as_deref().and_then(|r| {
+                        crate::orchestration::board_projection::descriptor_dir(descriptor, r)
+                    }) {
+                        let files =
+                            crate::orchestration::board_projection::board_files(&west_board, &dir);
+                        let mut confs = files.conf_files();
+                        confs.append(&mut overlays.extra_conf_file);
+                        overlays.extra_conf_file = confs;
+                        if let Some(o) = files.board_overlay {
+                            overlays.extra_dtc_overlay_file.insert(0, o);
+                        }
+                    }
+                }
                 // issue 0892 — Zephyr is not like the other drivers, and the
                 // handoff has to say so.
                 //
@@ -4064,9 +4089,10 @@ fn generated_output_collision_message(collisions: &[(PathBuf, Vec<String>)]) -> 
 /// CMakeLists, which this does not read. So for a Zephyr image on any board
 /// but the `zephyr` descriptor's own, the derivation finds ZERO candidates
 /// rather than too many, and the image must still name its entry.
-/// `realtime-cpp`'s `[image.fvp]` is that case; it USED to be the ambiguity
-/// case, because its `board` misread as `native_sim/native/64` made
-/// `fvp_entry` and `zephyr_entry` both match.
+/// `realtime-cpp`'s `[image.fvp]` was that case (and before that the
+/// ambiguity case, its `board` misread as `native_sim/native/64` making
+/// `fvp_entry` and `zephyr_entry` both match) until issue 1288 deleted its
+/// hand-written application.
 fn west_application_dir(
     image_id: &str,
     image: &crate::orchestration::image::ImageBlock,
