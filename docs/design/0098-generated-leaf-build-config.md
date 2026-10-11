@@ -312,7 +312,7 @@ DECIDED for it the same day — option "A". This text states the decided form.)
   `BOARD` and the user's `-D`s and module discovery runs inside
   `find_package(Zephyr)`; a two-step `find_package(Zephyr COMPONENTS …)` load
   loads nothing on its second call. Measurements:
-  [phase-481 W0](../roadmap/phase-481-image-config-one-source.md).
+  [phase-481 W0](../roadmap/archived/phase-481-image-config-one-source.md).
 - The hook is a no-op unless `APPLICATION_SOURCE_DIR` holds a `system.toml` or
   a generated application names its bringup and image before
   `find_package(Zephyr)` (below). It renders through the CLI (`nros ws
