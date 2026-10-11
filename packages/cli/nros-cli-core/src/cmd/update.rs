@@ -472,7 +472,7 @@ pub fn realign_leaf(dir: &Path, pins: &[RegistryPkg]) -> Result<()> {
 // ---- --source ---------------------------------------------------------------
 
 fn git(dir: &Path, args: &[&str]) -> Result<std::process::Output> {
-    Command::new("git")
+    crate::source_stamp::nros_git_command("git")
         .arg("-C")
         .arg(dir)
         .args(args)
@@ -512,12 +512,18 @@ fn update_source(
             .trim()
             .to_string();
         if !old.is_empty() && !allow_rewind {
-            let fwd = git(&dir, &["merge-base", "--is-ancestor", &old, &full])?;
-            if !fwd.status.success() {
-                bail!(
+            match crate::source_stamp::nros_git_ancestry(&dir, &old, &full) {
+                Some(true) => {}
+                Some(false) => bail!(
                     "{full} is not a descendant of the current pin {old}: a submodule pin moves \
                      FORWARD only (`check-submodule-pins`). Pass --allow-rewind and say why."
-                );
+                ),
+                None => bail!(
+                    "cannot tell whether {full} descends from the current pin {old}: {} has a \
+                     truncated history (issue 1476). `git -C {} fetch --unshallow`, then retry.",
+                    dir.display(),
+                    dir.display()
+                ),
             }
         }
         let co = git(&dir, &["checkout", "--detach", &full])?;

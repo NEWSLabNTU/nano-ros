@@ -200,7 +200,7 @@ fn ninja_deps(dir: &Path, out: &mut BTreeSet<PathBuf>) {
 /// The commit of the git checkout at `dir` and whether it is dirty, or `None`
 /// for a tree that is not a git checkout.
 pub fn git_commit(dir: &Path) -> Option<(String, bool)> {
-    let head = Command::new("git")
+    let head = crate::source_stamp::nros_git_command("git")
         .arg("-C")
         .arg(dir)
         .args(["rev-parse", "HEAD"])
@@ -208,7 +208,7 @@ pub fn git_commit(dir: &Path) -> Option<(String, bool)> {
         .ok()
         .filter(|o| o.status.success())?;
     let commit = String::from_utf8_lossy(&head.stdout).trim().to_string();
-    let dirty = Command::new("git")
+    let dirty = crate::source_stamp::nros_git_command("git")
         .arg("-C")
         .arg(dir)
         .args(["status", "--porcelain", "--untracked-files=no"])
