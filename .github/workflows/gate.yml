@@ -716,6 +716,30 @@ jobs:
                   || true
               done
 
+      # Two fast-line gates ask a question about the COMMIT GRAPH:
+      # `doc-commit-citations` (does every cited hash name a reachable commit?)
+      # and `roadmap-commit-refs` (is each cited commit on main?). On the
+      # shallow checkout both correctly refuse to answer -- a dead hash and an
+      # unfetched one look the same -- and report NOT VERIFIED. So CI never ran
+      # either one, while every local `just check fast` did. Phase-474's doc
+      # merged citing four pre-rebase hashes, and from then on every contributor's
+      # local fast line was red over a doc nobody in their PR had touched.
+      #
+      # The workflow provides the history, as the pin-baseline steps above do.
+      # `--filter=tree:0` fetches COMMITS only, which is all either gate reads.
+      # Measured from a depth-1 clone of this repository: 1.8 s and +13 MiB
+      # (13 706 commits), against 49 s and ~1 GiB for a full unshallow (issue
+      # 1476). In the merge queue this is what catches the class: a doc citing
+      # its own branch's commits passes on the PR, but the queue's rebase
+      # changes those hashes, so the merge group sees them dangle. A failed
+      # fetch fails the step rather than letting the gates skip again.
+      - name: Fetch commit history for the citation gates (commits only)
+        run: |
+          if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+            git fetch --no-tags --quiet --filter=tree:0 --unshallow origin
+          fi
+          git rev-list --count HEAD
+
       - name: just check fast
         run: |
           source ./activate.sh
