@@ -875,6 +875,15 @@ pub struct RustSection {
     /// Issue 1304 — how a host with NO Rust toolchain gets one.
     #[serde(default)]
     pub rustup: Option<RustupInstaller>,
+    /// RFC-0104 D2 (phase-485 W1) — the registry PIN SET: a tracked,
+    /// registry-only `Cargo.lock` holding one version per semver-compatible
+    /// range, relative to the index's directory. A leaf lock is seeded from it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registry_pins: Option<String>,
+    /// The closed-graph roots that keep their own tracked `Cargo.lock`, each a
+    /// subset of [`registry_pins`](Self::registry_pins), relative to the index.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub locked_roots: Vec<String>,
 }
 
 /// Issue 1304 — the pinned `rustup-init` `nros setup <board>` runs on a host
