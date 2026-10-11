@@ -756,6 +756,88 @@ tick late. It now waits for the absolute tick `now + n`
 Host tests: tests.rs `an_idle_periodic_spin_releases_on_the_grid` and the
 three after it (overrun, data-driven early spin, the rule's measure).
 
+### I12 -- a publish waited for another frame's wire time
+
+After I10 and I11 the island's run `sl-cadence-diag` (the act alone, decoded
+in the island's `build/timeline/sl-cadence-diag/spin-diag-act.txt`) still
+showed late spins: 10968 spins, 29 at 2 ms or more late, the worst 5.9 ms.
+None is the park or the reader any more. In every late interval the spin
+thread is inside a callback that sends, and it is either doing the framing
+itself or waiting on a zenoh mutex that a sender holds while it sleeps for
+the wire: 1.4-2.8 ms per late interval at `_z_link_send_wbuf` (link.c:253)
+and `_z_send_n_msg` (tx.c:660), with `zpico_flush` (k_thread 4) the other
+side.
+
+**Mechanism.** zenoh-pico `199e611f`, `src/system/zephyr/network.c`:
+
+- A. The interrupt-driven TX ring (issue 1534) was 256 bytes
+  (`_Z_ZEPHYR_SERIAL_TX_RING_BYTES`). A frame longer than that slept in
+  `_z_serial_tx_put` until the ISR drained it at line rate, about 11 us a
+  byte at 921,600 baud, and the sender sleeps holding the transport TX
+  mutex, so a publish from the spin thread also waited behind the tx-flush
+  or lease task's frame for its whole wire time.
+- C. Framing CPU on every frame, both directions: `_z_crc32`
+  (src/utils/checksum.c) ran a bitwise loop, 8 iterations a byte, and
+  `_z_send_serial_internal` z_malloc'ed two ~1.5 KiB buffers per send and
+  copied the payload twice (into a temporary frame, then COBS-encoded);
+  `_z_read_serial_internal` z_malloc'ed two more per received frame.
+
+The per-byte RX/TX ISRs (about 6.5 us each) are the third cost and are not
+touched here; DMA is a later item.
+
+**Fix** (zenoh-pico fork branch `nano-ros`, pinned by this change):
+
+1. The TX ring defaults to 2048 bytes, and
+   `CONFIG_NROS_ZENOH_SERIAL_TX_RING_BYTES` (zephyr/Kconfig, mapped to
+   `_Z_ZEPHYR_SERIAL_TX_RING_BYTES` in zephyr/cmake/nros_rmw_zenoh.cmake)
+   defaults to the same. 2048 holds one maximum-size frame
+   (`_Z_SERIAL_MAX_COBS_BUF_SIZE`, 1516) whole with room to spare, so a
+   send that finds the ring empty is a copy and a return, the way a Linux
+   tty's xmit buffer or an AUTOSAR COM send behaves; the wire drains it in
+   the background. A send that does not fit (earlier frames still queued)
+   queues what fits and sleeps for the rest, bounded by the existing
+   `_Z_ZEPHYR_SERIAL_TX_TIMEOUT_MS`: reliable traffic is never dropped to
+   make room. Two counters join `waits`, `timeouts` and `ring_high_water`
+   in `_z_zephyr_serial_tx_stats`: `frames_waited` (sends that did not fit
+   whole; zero means the ring never filled) and `max_frame` (the longest
+   frame queued). The RAM cost is the ring, static.
+2. `_z_crc32` is table-driven, with a 1 KiB const table in flash. The
+   result is bit-for-bit the old loop's, which is NOT the standard CRC-32:
+   it shifts right with the unreflected polynomial 0x04C11DB7, so
+   "123456789" gives 0xFC4F2BE9 (standard: 0xCBF43926). The value is on the
+   wire and stays.
+3. `_z_serial_msg_serialize_direct` COBS-encodes header, length, payload
+   and CRC straight into the output, with no temporary frame; the CRC runs
+   over the caller's payload. The output is byte-identical to the old path,
+   including the encoder's trailing code byte after a frame that ends on a
+   full 254-byte block. `_z_serial_msg_serialize` keeps its signature and
+   calls it, so the other ports get the single copy too.
+4. The Zephyr port's framing buffers are static: one send buffer, one
+   receive buffer and one decode buffer, each set under its own k_mutex.
+   The transport TX mutex does not cover every send (the handshake and the
+   split-lock fragment path send without it), so the port does not lean on
+   it; the locks are uncontended in steady state. The receive path did no
+   full-buffer clear (its `for (i < _Z_SERIAL_MAX_COBS_BUF_SIZE)` is the
+   polled path's byte loop); its two mallocs per frame are gone.
+
+Per send that is: no heap allocation (was two, ~3 KiB, plus their frees),
+one copy of the payload (COBS into the static buffer) plus the ring copy
+(was two plus the ring), and a CRC at one table lookup a byte (was eight
+shift-and-xor steps). Per received frame: no heap allocation (was two).
+Static RAM: +1516 send, +1516 + 1507 receive, +1792 ring at the default.
+
+**Verify.** Host: zenoh-pico `tests/z_msgcodec_test.c` checks the table
+CRC against the bitwise loop (the "123456789" vector and every single byte)
+and the direct serializer against the old tmp-and-COBS path byte for byte
+(empty frames, runs at 250-256 and 507-509 bytes, all zeros, a zero at
+either end, the MTU, random payloads of every length to 600), and that one
+byte short of room fails without writing past it. Board: build with
+`CONFIG_NROS_ZENOH_SERIAL_TX_RING_BYTES` (the island states 4096), run the
+act, and read over SWD `_z_zephyr_serial_tx_stats.frames_waited` (0 means
+no publish waited for the wire), `max_frame` and `timeouts` (0); the
+late-spin decode should lose the lock waits at link.c:253 and tx.c:660.
+Not yet measured on the board.
+
 ## Cross-repo
 
 - **play_launch** has a parallel phase on the same findings: F1 (charge
