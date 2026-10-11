@@ -54,7 +54,13 @@ export NROS_CARGO_PROFILE := env_var_or_default("NROS_CARGO_PROFILE", "")
 # (`ninja`, `make`, `cmake`) otherwise came from the parent shell's checkout:
 # a worktree's Zephyr leaf cached `CMAKE_MAKE_PROGRAM=<main>/third-party/
 # ninja/ninja`. `_NROS_HERE` is `just/sdk-env.just`'s, imported below.
-export PATH := shell('"$2"/scripts/lib/reroot-checkout-pathlist.sh "$1" "$2"', env("HOME") / ".local/bin" + ":" + env_var_or_default("PATH", ""), _NROS_HERE)
+#
+# phase-484 W2d (RFC-0103 D6) — and THIS checkout's own `nros` comes first, the
+# same entry `activate.sh` adds. With no exported root, a cmake leaf asks
+# `nros sdk-root` (the binary knows its own checkout), so a recipe run from a
+# shell that never sourced `activate.sh` must still find this checkout's CLI
+# rather than none or another checkout's.
+export PATH := _NROS_HERE / "packages/cli/target/release" + ":" + shell('"$2"/scripts/lib/reroot-checkout-pathlist.sh "$1" "$2"', env("HOME") / ".local/bin" + ":" + env_var_or_default("PATH", ""), _NROS_HERE)
 
 LOG_DIR := "test-logs"
 
