@@ -2,7 +2,8 @@
 //!
 //! `nros::main!()` reads the board (`[image.*] board = "freertos"`) and the
 //! network identity from this pkg's `system.toml` (RFC-0098 D3/D5), maps
-//! `"freertos"` → `::nros_board_mps2_an385_freertos::Mps2An385`, and emits
+//! `"freertos"` → `nros_board_mps2_an385_freertos::Mps2An385` (reached through
+//! the generated selection package, issue 1305), and emits
 //! the full `fn main()` body that delegates to `<Mps2An385 as
 //! BoardEntry>::run_with_deploy`.
 //!
@@ -12,4 +13,8 @@
 #![no_std]
 #![no_main]
 
-nros::main!(panic = "platform");
+// The panic handler is the board's crate-root item (`use panic_semihosting as
+// _;`), carried by the generated selection package with the board crate
+// (issue 1305) -- the same pair a generated FreeRTOS workspace entry gets, whose
+// image says `panic = "own"` for the same reason.
+nros::main!(panic = "own");

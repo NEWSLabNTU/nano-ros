@@ -26,20 +26,6 @@ crate-type = ["rlib"]
 # `nros` features below (alloc + the rmw-cffi vtable seam + ROS edition).
 
 [dependencies]
-# phase-338 W2 — carried over from the collapsed `-entry` package.
-# Phase 212.N.3 tier-1 per-board shim. `Mps2An385::run` provides the
-# `BoardEntry` lifecycle the Entry pkg's `main.rs` invokes.
-# Phase 248 C6f (#60 T5) — the BOARD is the RMW+platform selection point:
-# `features = ["rmw-zenoh"]` links+registers the zenoh-pico C backend (via
-# `nros-board-freertos`'s `nros-rmw-zenoh` dep + boot-path `register()`) AND
-# brings `nros-platform/platform-freertos`. The sibling node pkg + this Entry's
-# `nros` dep name neither `rmw-*` nor `platform-*`.
-nros-board-mps2-an385-freertos = { version = "*", features = ["rmw-zenoh"] }
-# phase-338 W2 — carried from the collapsed `-entry` package. Redundant: the
-# board crate already enables `nros-platform/platform-freertos`, and a leaf
-# without this line reaches "Application setup complete" and delivers
-# (measured 2026-10-12, issue 1305).
-nros-platform = { version = "*", default-features = false, features = ["platform-freertos"] }
 nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
 std_msgs = { path = "generated/std_msgs", default-features = false }
 # phase-277 W4 — chatter log lines (`Publishing:` / `I heard:`) route through
@@ -47,10 +33,20 @@ std_msgs = { path = "generated/std_msgs", default-features = false }
 log = "0.4"
 
 # The board, RMW, network identity and node declaration live in `system.toml`
-# beside this manifest (RFC-0098 D3/D5).
-# Its image-only dependencies below still name the board crate, so a board
-# switch edits this file too until RFC-0098 D6 reaches single-package leaves
-# (issue 1305).
+# beside this manifest (RFC-0098 D3/D5), and nothing here names the board:
+# switching board is editing `[image.*] board` there and re-running `nros sync`.
+#
+# ONE image-only dependency, the same for every board (RFC-0098 D6, issue
+# 1305): the selection package `nros sync` generates per image under
+# `build/<image>/`. It carries the board crate with the image's RMW feature
+# (which links + registers the zenoh-pico backend and brings
+# `nros-platform/platform-freertos`), the platform feature, and the board's
+# crate-root items; `nros::main!` reaches the board through it. TARGET-scoped,
+# so the node in `lib.rs` still builds for the host metadata probe (issue
+# 1265). The generated settings file's `[patch]` row points this name at the
+# image's copy.
+[target.'cfg(target_os = "none")'.dependencies]
+freertos_rs_talker_nros_selection = { version = "0.0.0" }
 
 [package.metadata.ament]
 build_depend = ["std_msgs"]
