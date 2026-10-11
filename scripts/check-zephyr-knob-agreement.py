@@ -20,6 +20,14 @@ between a stopgap and an end state (the `check-abi-bindings` shape).
 Kconfig stays HAND-WIRED otherwise, per RFC-0049 — only the three `default`
 lines are derived, in place, leaving prompts and help text alone.
 
+phase-484 W5a: these three symbols now sit in `zephyr/Kconfig`'s GENERATED knob
+section, rendered from `packages/tooling/nros-zephyr-build/knobs.toml`. The
+gate still reads the Kconfig default (what Zephyr sees), but `--write` edits
+the registry row's `default` attribute and re-renders, so the chain is one
+direction: platform TOML -> knobs.toml -> zephyr/Kconfig. Writing the Kconfig
+line in place would be undone by the next render and refused by
+`check-zephyr-kconfig-knobs` meanwhile.
+
 phase-405 W6 also folded in `nros-tests/tests/kconfig_platform_default_drift.rs`
 (phase-290 W3.b), which compared the same three pairs across the same two files
 in 80 lines of Rust on a later lane. Two checkers for one pair is the drift this
@@ -105,6 +113,28 @@ def rewrite_default(text, symbol, value):
     return text[: m.start(1)] + fixed + text[m.end(1) :]
 
 
+REGISTRY = os.path.join(ROOT, "packages/tooling/nros-zephyr-build/knobs.toml")
+
+
+def rewrite_registry_default(text, symbol, value):
+    """`knobs.toml` text with the row defining `symbol` given `default <value>`.
+
+    The row is found by its Kconfig symbol (`kconfig = "<sym>"`, else
+    `NROS_<id>`); its first `"default <x>"` attribute line moves and nothing
+    else does. Returns the text unchanged when no row/default matches."""
+    parts = re.split(r"(?m)^(?=\[\[knob\]\]\s*$)", text)
+    for i, part in enumerate(parts):
+        ident = re.search(r'(?m)^id = "([A-Z0-9_]+)"', part)
+        if not ident:
+            continue
+        kc = re.search(r'(?m)^kconfig = "([A-Z0-9_]+)"', part)
+        if (kc.group(1) if kc else "NROS_" + ident.group(1)) != symbol:
+            continue
+        parts[i] = re.sub(r'"default [^"\s]+"', f'"default {value}"', part, count=1)
+        return "".join(parts)
+    return text
+
+
 def selftest():
     """Exercise the parse, the compare and the rewrite on every run — phase-395.
 
@@ -131,6 +161,14 @@ def selftest():
     assert kconfig_default(out, "NROS_ZENOH_TX_BATCH") == "n", "rewrite did not take"
     assert kconfig_default(out, "OTHER") == "3", "rewrite touched a sibling symbol"
     assert '    bool "batching"' in out and "      words" in out, "rewrite ate hand-wired text"
+
+    # The registry rewrite moves the named row's default and no sibling's.
+    reg = ('[[knob]]\nid = "ZENOH_TX_BATCH"\ntype = "bool"\nkconfig_attrs = [\n'
+           '    "# note",\n    "default y",\n]\n\n'
+           '[[knob]]\nid = "OTHER"\ntype = "int"\nkconfig_attrs = ["default 3"]\n')
+    got = rewrite_registry_default(reg, "NROS_ZENOH_TX_BATCH", "n")
+    assert '"default n"' in got and '"default 3"' in got and '"# note"' in got, got
+    assert rewrite_registry_default(reg, "NROS_ABSENT", "n") == reg
 
     # A symbol with no `default` comes back untouched rather than gaining one.
     bare = "config NROS_BARE\n    bool \"x\"\n"
@@ -164,6 +202,8 @@ def main():
         )
         return 0
 
+    with open(REGISTRY, encoding="utf-8") as fh:
+        registry = fh.read()
     problems, wrote = [], []
     for key, symbol in PAIRS.items():
         if key not in tx:
@@ -177,7 +217,7 @@ def main():
                 f"renamed or removed?"
             )
         elif got != want and args.write:
-            kconfig = rewrite_default(kconfig, symbol, want)
+            registry = rewrite_registry_default(registry, symbol, want)
             wrote.append(f"{symbol}: {got} -> {want}")
         elif got != want:
             problems.append(
@@ -198,10 +238,13 @@ def main():
             )
 
     if wrote:
-        with open(KCONFIG, "w", encoding="utf-8") as fh:
-            fh.write(kconfig)
+        with open(REGISTRY, "w", encoding="utf-8") as fh:
+            fh.write(registry)
+        import subprocess
+        subprocess.run([sys.executable, os.path.join(ROOT, "scripts/gen-knob-registry.py")],
+                       check=True)
         for w in wrote:
-            print(f"zephyr knob agreement: rewrote {w}")
+            print(f"zephyr knob agreement: rewrote {w} (knobs.toml, then rendered)")
 
     if problems:
         sys.stderr.write("check-zephyr-knob-agreement: FAILED\n")

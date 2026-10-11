@@ -13,9 +13,38 @@
 
 [[knob]]
 id = "ACTION_INBOX_BYTES"
+type = "int"
+prompt = "Action inbox slot size (bytes, -1 = derive)"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Bytes one request slot holds in the inbox ring of each action server
+queryable (send_goal, cancel_goal, get_result).
+
+-1 means DERIVE it (phase-461 W3), from this image's declared
+`pkg/action/Name_SendGoal_Request` types -- the largest of the three
+requests those queryables receive. A SEPARATE family from the service
+one above, so neither inherits the other's worst case. Any other value
+is yours and WINS; when nothing derives, the crate falls through to
+the service family's resolved size. Maps to NROS_ACTION_INBOX_BYTES.
+'''
 
 [[knob]]
 id = "ACTION_INBOX_DEPTH"
+type = "int"
+prompt = "Action inbox ring depth"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default 4",
+]
+help = '''
+Requests one action server queryable holds before the newest is
+dropped: the family depth 4 was designed for, and the twin of the C
+shim's ZPICO_MAX_PENDING_REPLIES (both 4). Must be >= 1. Maps to
+NROS_ACTION_INBOX_DEPTH.
+'''
 
 [[knob]]
 id = "CYCLONEDDS_HEAP_BUDGET_BYTES"
@@ -41,39 +70,290 @@ id = "ENTRY_SPIN_MS"
 [[knob]]
 id = "EXECUTOR_ACTION_CLIENTS"
 toml = "executor.action_clients"
+type = "int"
+prompt = "Callback slots to budget at ActionClient size (-1 = derive)"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+How many of NROS_EXECUTOR_MAX_CBS slots the arena derivation budgets at
+ACTION CLIENT size (~18 KiB each) rather than pub/sub size (~3.5 KiB).
+
+-1 DERIVES it from the image's entity inventory, the same way MAX_CBS is
+derived: the count is the action clients AND action servers the image's
+components declare. An image whose inventory refuses -- any component
+that declared no ENTITIES -- falls through to MAX_CBS, which reproduces
+the historical arithmetic exactly, so nothing built before this moves.
+
+Action SERVERS count too, though the option is named for clients: the
+arena stores ActionServerArenaEntry, so a server image occupies the same
+heavy slots and zeroing this on one would trade the saving for a runtime
+BufferTooSmall.
+
+Set it to 0 on an image with no action client: at the defaults that takes
+the arena from 74240 bytes to 16384. The arena is INLINE ON THE TASK
+STACK, not in .bss, so this is stack headroom -- see the FreeRTOS
+"Invalid mbox" note in docs/reference/platform-implementation-notes.md.
+
+Too small fails at REGISTRATION with BufferTooSmall, not at link. The
+executor reports what it actually used on its first spin, so build once,
+read the advisory, then set this. Issue 0900.
+'''
 
 [[knob]]
 id = "EXECUTOR_ARENA_SIZE"
 toml = "executor.arena_size"
+type = "int"
+prompt = "Executor arena size in bytes (0 = derive)"
+kconfig_attrs = [
+    "default 0",
+]
+help = '''
+Explicit executor arena size. 0 means let nros-node build.rs derive it,
+which budgets EVERY callback slot at action-client size (~18 KiB) --
+correct, but several times over for a pub/sub-only image, which needs
+about max_cbs * ((depth + 1) * (NROS_SUBSCRIPTION_BUFFER_SIZE + 8) + 1024)
++ 2048.
+
+MIND THE DEPTH (issue 1190). A subscription's arena claim scales with its
+QoS history: KEEP_LAST(N > 1) is a ring of N + 1 slots plus a length
+beside each, and the ROS default is KEEP_LAST(10), so one ordinary
+subscription at the default buffer size costs 12 KiB and not 3.5 KiB.
+This help said "3 * NROS_SUBSCRIPTION_BUFFER_SIZE + 512" until the
+derivation itself did, and an image sized from that arithmetic dies at
+entity creation with NodeError::BufferTooSmall.
+
+Set it only with that arithmetic in hand. On an image that DECLARES its
+entities (every NROS_ENTITY_COUNT_* reached the build), a value below
+what they are modelled to need does not build: nros-node refuses it at
+compile time, naming this option, both numbers and the shortfall
+(phase-412, executor::arena_oracle). On an image that declares nothing
+the derivation is a worst-case budget, not a requirement, so a smaller
+value is accepted -- and too small still fails at runtime, at the first
+registration that does not fit, not at link.
+'''
 
 [[knob]]
 id = "EXECUTOR_BACKING_U64S"
 toml = "executor.backing_u64s"
+type = "int"
+prompt = "Executor backing reservation in 64-bit words (-1 = derive, 0 = none)"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+How many 64-bit words nros-node reserves in .bss for the executor's
+per-entry storage -- the named static
+nros_node::executor::backing::EXECUTOR_BACKING (phase-392 W6,
+RFC-0002 SS 4.4b). The reservation is exactly 8 x this many bytes, on
+every target.
+
+-1 DERIVES it, from ExecutorSizing::DEFAULT: MAX_CBS, MAX_SC, MAX_NODES
+and the arena (and the parameter store, when the image builds one).
+
+A STATED number covers the executor's tables only: when the image builds
+a parameter store (NROS_CAPABILITY_PARAM_SERVICES or NROS_PARAM_STORE),
+the store's words are carved from the same static and added ON TOP, so
+the reservation is then 8 x (this + the store). phase-382 W3'. That is the right answer for an image that does not care
+which budget the bytes come out of.
+
+STATE A NUMBER when the image lowers CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE
+to pay for the reservation (issue 1145). The Rust global allocator here is
+picolibc malloc, whose arena is ITSELF a fixed static, and before W6 the
+backing was a Box::leak out of it -- so leaving that arena where it was
+reserves the same bytes twice. Lowering it by a number copied out of `nm`
+pairs them once and then drifts the next time an executor knob moves,
+in whichever direction, with nothing to say so (issue 1171).
+
+Stating the size inverts that. The crate obeys this number, so the
+pairing is exact by construction and identical on every board -- the
+DERIVED size is target-dependent (87,256 B on mps2_an385 against
+88,328 B on native_sim/native/64 for one and the same conf, which is how
+1145's hand-paired leaf kept double-reserving 1,072 bytes on the second
+board) and 8 x this is not. State it too SMALL and nros-node refuses to
+compile naming this knob, which is the direction that would otherwise
+silently re-create the double reservation.
+
+ISSUE 1611 RETIRED THE PAIRING ABOVE. Issue 1324 moved every Zephyr Rust
+allocation onto the nros heap (NROS_ZEPHYR_HEAP_SIZE), so no Rust byte
+reaches picolibc's arena and there is nothing in it to lower; the six
+example confs that did so (a `# nros-arena-base:` marker, this knob and
+a lowered COMMON_LIBC_MALLOC_ARENA_SIZE) state none of the three now,
+and check-executor-backing-arena-pairing refuses the marker. Stating
+this knob is still how an image fixes the reservation at 8 x N bytes on
+every board. That a value is stated does not make it ENOUGH: the executor
+grows, the conf does not, and the image stops compiling. `just check
+node-std-tests` checks every stated value against the MEASURED default
+on each board the conf is built for (issue 1284), so restate it there.
+
+0 declines the static entirely and restores the pre-W6 leak, for an image
+that would rather keep the bytes in the allocator arena than have the
+linker price them.
+'''
 
 [[knob]]
 id = "EXECUTOR_MAX_AGE_MONITORS"
+type = "int"
+prompt = "Contract-monitor age rows per executor (-1 = derive)"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Age contract rows one executor watches (nros-node build.rs
+MAX_AGE_MONITORS, phase-496 W1): one per contracted subscription
+carrying max_age_ms. A separate knob from NROS_EXECUTOR_MAX_MONITORS
+because it is a separate table, so an image with rate contracts and
+no age contracts pays for one table only. `-1` derives it on the same
+terms, and a longer table is refused naming this knob.
+'''
 
 [[knob]]
 id = "EXECUTOR_MAX_CBS"
 toml = "executor.max_cbs"
+type = "int"
+prompt = "Maximum executor callback slots (-1 = derive)"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Maximum number of callback slots in the executor
+(subscriptions + timers + services + service clients + action
+entities + guard conditions). Controls both Rust and C APIs.
+Arena size is derived automatically from this value and the
+subscription buffer size.
+
+A PUBLISHER IS NOT ONE OF THEM. Every registration that claims a slot
+calls Executor::next_entry_slot(); create_publisher does not — it writes
+an RmwPublisher into caller-owned storage and there is no
+nros_executor_add_publisher on the C path. The mr-canhubk344 bring-up
+counted 33 "handles" for the island and set 36 here; 14 of those 33 are
+publishers and the slot demand is 19.
+
+-1 means DERIVE it from this image's ENTITY inventory (phase-403 W9 /
+issue 0965): the sum of every `nano_ros_node_register(... ENTITIES ...)`
+declaration in the image, counted by kind. It is derived only when EVERY
+component declared; one that did not makes the whole image refuse, so a
+partial answer can never be published as a whole one. Any value other
+than -1 is yours and WINS; the crate default when nothing is stated and
+nothing is derivable is 4.
+
+The derived value carries NO headroom, which makes the running image a
+checker of its own declaration: one entity past the table and
+registration returns ExecutorFull naming this knob, and the entry halts
+boot naming the node. Raise it deliberately if you want slack — the
+arena scales with it.
+
+4 is the crate default in nros-node/build.rs. This option was never
+forwarded to Cargo before issue 0316, so every Zephyr C image compiled
+that default regardless of what was configured here; the old default of
+16 had therefore never been built. Honouring it as-is would have grown a
+native_sim listener's .bss by 219 KB (+35%) as a side effect of repairing
+the plumbing.
+'''
 
 [[knob]]
 id = "EXECUTOR_MAX_MONITORS"
+type = "int"
+prompt = "Contract-monitor rate/latency rows per executor (-1 = derive)"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Rate/latency contract rows one executor watches (nros-node build.rs
+MAX_MONITORS, phase-496 W1 / issue 1471). One row per contracted
+publisher carrying min_rate_hz, plus latency-only rows from node
+paths carrying max_latency_ms.
+
+`-1` DERIVES this from the image's entity inventory, which counts the
+rows from the same contract the entry bakes its table from. Without
+a contract the crate default of 8 stands. A stated number wins, in
+both directions. The rows are inline in the executor (24 bytes each
+on a 32-bit target), so a board file should never state a count the
+contract already determines. A table longer than this is REFUSED at
+install (nros_cpp_install_monitors logs this knob's name and returns
+NROS_CPP_RET_FULL; a Rust entry fails to compile), never truncated.
+'''
 
 [[knob]]
 id = "EXECUTOR_MAX_NODES"
 toml = "executor.max_nodes"
+type = "int"
+prompt = "Maximum nodes per executor (-1 = derive)"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Nodes attachable to one executor (nros-node build.rs MAX_NODES,
+Phase 104.C.2).
+'''
 
 [[knob]]
 id = "EXECUTOR_MAX_SC"
 toml = "executor.max_sc"
+type = "int"
+prompt = "Maximum scheduling-context slots per executor (-1 = derive)"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+SchedContext slots per executor (nros-node build.rs MAX_SC,
+RFC-0052 / Phase 110.B).
+
+issue 1198 -- `-1` DERIVES this from the image's entity inventory:
+slot 0 is the reserved default Fifo context (create_sched_context
+searches 1..MAX_SC), plus one per scheduling context the schedule can
+create. The Rust runtime creates NONE -- apply_tier_sched_policy ends
+in set_default_sched_context, which mutates slot 0 -- while the C/C++
+entry pack creates one per tier. A stated number wins, in both
+directions. The old default was 8 for every image whatever it
+declared, worth 112 bytes a slot in the executor backing on
+thumbv7m-none-eabi. Too small is NodeError::NoSchedContextSlot at
+create_sched_context, which names this knob.
+'''
 
 [[knob]]
 id = "EXECUTOR_MAX_SHUTDOWN_CBS"
 toml = "executor.max_shutdown_cbs"
+type = "int"
+prompt = "Shutdown-hook slots per phase"
+kconfig_attrs = [
+    "default 2",
+]
+help = '''
+How many shutdown hooks the executor can hold PER PHASE — one table
+this size for pre-shutdown hooks (run while the session is still open,
+so a node can publish a final state or park an actuator) and a second
+for on-shutdown hooks (run after the close). Issue 0790;
+nros-node/build.rs NROS_EXECUTOR_MAX_SHUTDOWN_CBS.
+
+Deliberately small: the slots are static, so every image pays for them
+whether or not it registers a hook (the same cost issue 0460 measured
+for queryable slots). Raise it only when an image genuinely has more
+things to park on the way down. Overflow is reported at registration
+(NROS_RET_FULL), not silently dropped.
+'''
 
 [[knob]]
 id = "EXECUTOR_MAX_VIOLATIONS"
+type = "int"
+prompt = "Contract-violation ring depth per executor"
+kconfig_attrs = [
+    "default 8",
+    "range 1 256",
+]
+help = '''
+phase-474 I1 -- how many contract violations one executor's ring
+keeps for a drain (nros-node build.rs MAX_VIOLATIONS), and the slot
+count of the image-wide SWD record NROS_VIOLATION_RECORD (present
+with CONFIG_NROS_BOOT_REPORT).
+
+The ring keeps the LATEST entries: a violation into a full ring
+evicts the oldest and counts it (Executor::violations_dropped). It
+used to keep the FIRST entries, so a board whose start-up filled it
+stored nothing after. A slot costs 24 bytes in the ring and 28 in the
+record on a 32-bit target; 8 is 192 B per executor plus 264 B for
+the record. Raise it only when a burst must be kept whole.
+'''
 
 [[knob]]
 id = "FREERTOS_APP_STACK_KB"
@@ -83,6 +363,35 @@ id = "FREERTOS_HEAP_KB"
 
 [[knob]]
 id = "GRAPH_MAX_ENTITIES"
+type = "int"
+prompt = "Entities you expect on this ROS 2 domain (0 = state the bytes instead)"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default 0",
+]
+help = '''
+A DECLARED CAPABILITY, not a derivation. The graph cache holds one
+liveliness keyexpr for every entity of every node on the domain —
+remote nodes included — so nothing about this image can answer it.
+What an operator does know is roughly how many nodes and endpoints
+share the domain, and this takes that count.
+
+The bytes follow from a measurement, not a model: a ROS 2 liveliness
+keyexpr runs ~140 bytes and the cache stores them NUL-separated with
+no index, so one entity costs 141 bytes. Upstream measured a host
+running one stock talker plus the ROS 2 daemon carrying 222 tokens.
+
+0 means "I am stating the bytes instead" — NROS_GRAPH_CACHE_SIZE
+outranks this and keeps its own default, so nothing that already sets
+it changes.
+
+UNDER-STATING IS NOT A SMALLER CACHE. Overflow is counted, never
+truncated, and a non-zero dropped count makes service_is_ready answer
+"cannot say", which every caller reads as keep waiting; the node and
+topic list verbs discard the count entirely and simply under-report.
+Being generous costs .bss; being short costs a hang and a wrong graph
+answer.
+'''
 
 [[knob]]
 id = "KEYEXPR_STRING_SIZE"
@@ -95,70 +404,402 @@ toml = "runtime.let_buffer_size"
 [[knob]]
 id = "LOG_BUFFER_SIZE"
 toml = "log.buffer_size"
+type = "int"
+prompt = "nros-log per-call formatting buffer (bytes)"
+kconfig_attrs = [
+    "default 256",
+    "range 128 4096",
+]
+help = '''
+Bytes of the buffer one Rust log call formats into, and of the message
+held in each early-record and /rosout slot (nros-log build.rs, as
+NROS_LOG_BUFFER_SIZE; issue 1037). Longer messages are truncated with
+an ellipsis. The C/C++ NROS_LOG_* printf front-end keeps its own
+256-byte frame (<nros/log.h>), so a C record is bounded by the smaller
+of the two. Bigger costs stack on every logging task. Replaces the
+deprecated buffer-size-<N> cargo features.
+'''
 
 [[knob]]
 id = "LOG_DYNAMIC_LOGGERS"
 toml = "log.dynamic_loggers"
+type = "int"
+prompt = "Loggers nros-log may create at run time"
+kconfig_attrs = [
+    "default 16",
+    "range 0 1024",
+]
+help = '''
+How many loggers nros_log::get_or_create_logger may CREATE at run time
+(nros-log build.rs, as NROS_LOG_DYNAMIC_LOGGERS): a node's own logger,
+every distinct get_logger("x") and every distinct child name each take
+one slot. Each slot costs a Logger plus 24 bytes of name arena in .bss.
+
+0 declines the arenas entirely -- no runtime loggers, lookup only --
+which is right for an image whose loggers are all static. A creation
+past the capacity falls back to the parent logger and warns once.
+
+Size it from a measurement: the boot report records the slots in use
+against this capacity, and `just mem-report` prices the arenas.
+A board states its own default in [board.knobs.log] dynamic_loggers;
+this Kconfig value outranks it, and the environment outranks both.
+'''
 
 [[knob]]
 id = "LOG_EARLY_RECORDS"
 toml = "log.early_records"
+type = "int"
+prompt = "nros-log records held before init"
+kconfig_attrs = [
+    "default 4",
+    "range 0 256",
+]
+help = '''
+How many records nros_log::early holds before init installs the
+sinks (nros-log build.rs, as NROS_LOG_EARLY_RECORDS; issue 1037).
+0 declines the ring: early records are dropped and only counted.
+Each slot is a formatting buffer plus a logger name in .bss.
+Replaces the deprecated early-records-<N> cargo features.
+'''
 
 [[knob]]
 id = "LOG_MAX_LEVEL"
 toml = "log.max_level"
+type = "int"
+prompt = "nros-log compile-time severity ceiling"
+kconfig_attrs = [
+    "default 0",
+    "range 0 6",
+]
+help = '''
+The least severe record the image can emit at all (nros-log build.rs,
+as NROS_LOG_MAX_LEVEL; issue 1037): 0 trace, 1 debug, 2 info, 3 warn,
+4 error, 5 fatal, 6 off. A number, as Zephyr's own LOG_MAX_LEVEL is.
+
+Rust nros_*! call sites below the ceiling compile to nothing; C and
+C++ records below it are refused at the facade (the same check
+nros_log_is_enabled answers). It is a BOUND, not the runtime level:
+nros_logger_set_level / set_level still move each logger's threshold
+beneath it. Replaces the deprecated max-level-* cargo features.
+'''
 
 [[knob]]
 id = "LOG_ROSOUT_RECORDS"
 toml = "log.rosout_records"
+type = "int"
+prompt = "nros-log /rosout queue depth"
+kconfig_attrs = [
+    "default 16",
+    "range 1 1024",
+]
+help = '''
+Records the /rosout queue holds between pumps, and the KEEP_LAST
+depth of the /rosout publisher (nros-log build.rs, as
+NROS_LOG_ROSOUT_RECORDS; issue 1037). Only paid when nros-node's
+rosout feature is on. Replaces the deprecated rosout-records-<N>
+cargo features.
+'''
 
 [[knob]]
 id = "MAX_ARRAY_LEN"
 toml = "params.max_array_len"
+type = "int"
+prompt = "Array parameter capacity in elements (-1 = derive)"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Elements a `bool_array`, `integer_array`, `double_array` or
+`string_array` parameter can hold (nros-params build.rs).
+
+-1 DERIVES 0 when the contract's `params:` declare none of those
+types. When one is declared, state a number here; the build refuses,
+naming the parameter and this knob, if nothing does. Without a
+declaration the crate default of 32 stands.
+'''
 
 [[knob]]
 id = "MAX_BYTE_ARRAY_LEN"
 toml = "params.max_byte_array_len"
+type = "int"
+prompt = "Byte-array parameter capacity in bytes (-1 = derive)"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Bytes a `byte_array` parameter can hold (nros-params build.rs).
+
+-1 DERIVES 0 when the contract's `params:` declare no byte_array.
+When one is declared, state a number here; the build refuses, naming
+the parameter and this knob, if nothing does. Without a declaration
+the crate default of 256 stands.
+'''
 
 [[knob]]
 id = "MAX_PARAMETERS"
 toml = "params.max_parameters"
+type = "int"
+prompt = "Maximum declared parameters per image (-1 = derive)"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Static parameter-store pool size (nros-params build.rs). A node
+declaring more parameters than this fails declare_parameter with
+ErrorCode::Full (-5) at boot. The Autoware trajectory follower
+declares ~150.
+
+phase-446 W4 -- -1 DERIVES it from the contract's `params:`: every
+declared parameter plus one `use_sim_time` per node, which nano-ros
+declares on every node. An image whose contract declares no
+parameters (or declares them on only some nodes) falls through to the
+crate default of 32. Stating a number here WINS.
+'''
 
 [[knob]]
 id = "MAX_PARAM_CONSTRAINTS_LEN"
 toml = "params.max_param_constraints_len"
+type = "int"
+prompt = "Parameter additional_constraints capacity in bytes"
+kconfig_attrs = [
+    "default 0",
+    "range 0 256",
+]
+help = '''
+Longest `additional_constraints` a parameter's descriptor can hold
+(nros-params build.rs) -- the free text `ros2 param describe` prints
+and rclc's rclc_add_parameter_description takes as its fourth
+argument. Paid once per store slot whatever the slot holds.
+
+phase-417 W4.a -- a board fact, never derived, exactly like
+NROS_MAX_PARAM_DESCRIPTION_LEN beside it. It has its OWN knob rather
+than sharing that one, and the DEFAULT IS 0: the describe reply's
+derived buffer prices CAPACITY, not use, so sharing would have cost
+every image 256 bytes per parameter for a field it never sets -- 2,048
+bytes on the eight-parameter reference island, taking its reply past
+the 4,096 fallback. State a number here to use the field. Longer text
+is truncated at a character boundary and logged once per parameter,
+naming this knob.
+'''
 
 [[knob]]
 id = "MAX_PARAM_DESCRIPTION_LEN"
 toml = "params.max_param_description_len"
+type = "int"
+prompt = "Parameter description capacity in bytes"
+kconfig_attrs = [
+    "default 256",
+    "range 0 256",
+]
+help = '''
+Longest DESCRIPTION a parameter's descriptor can hold
+(nros-params build.rs). Paid once per store slot whatever the slot
+holds, like the other per-slot limits.
+
+phase-446 F2 -- a board fact, never derived: the contract states a
+parameter's name and type, not its description. 0 is a real choice
+meaning "no descriptions". A longer description is truncated at a
+character boundary and logged once per parameter, naming this knob.
+256 is the most an rcl_interfaces describe reply carries.
+'''
 
 [[knob]]
 id = "MAX_PARAM_NAME_LEN"
 toml = "params.max_param_name_len"
+type = "int"
+prompt = "Longest parameter name in bytes (-1 = derive)"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Per-slot name capacity of the parameter store (nros-params build.rs).
+
+-1 DERIVES it from the contract's `params:` -- the longest declared
+name, and never shorter than `use_sim_time`. Without a declaration
+the crate default of 64 stands.
+'''
 
 [[knob]]
 id = "MAX_STRING_VALUE_LEN"
 toml = "params.max_string_value_len"
+type = "int"
+prompt = "String parameter capacity in bytes (-1 = derive)"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Longest string a `string` or `string_array` parameter can hold, and
+the capacity of a parameter DESCRIPTION (nros-params build.rs). Every
+store slot is as large as the largest value the limits allow, so this
+is paid once per slot whatever the slot holds.
+
+-1 DERIVES 0 when the contract's `params:` declare no string, which is
+what takes a scalar-only image's slot from ~8.9 KiB to 168 bytes; at 0
+no parameter can carry a description either. When a node DOES declare
+a string the contract cannot say how long it may be -- that is a fact
+about the board -- so state a number here, and the build refuses,
+naming the parameter and this knob, if nothing does. Without a
+declaration the crate default of 256 stands.
+'''
 
 [[knob]]
 id = "PARAM_EVENTS_DEPTH"
 toml = "params.param_events_depth"
+type = "int"
+prompt = "/parameter_events publisher history depth"
+kconfig_attrs = [
+    "default 1",
+    "range 1 1000",
+]
+help = '''
+History depth of each node's /parameter_events publisher (phase-491
+W3, RFC-0105 D8), read by nros-params build.rs. Upstream's
+parameter_events profile is KEEP_LAST(1000); a reliable DDS writer
+reserves that history, so an RTOS image defaults to 1. Depth is not a
+QoS matching criterion, so a subscriber with upstream's profile still
+matches.
+'''
 
 [[knob]]
 id = "PARAM_SERVICE_BUFFER_SIZE"
 toml = "executor.param_service_buffer_size"
+type = "int"
+prompt = "Parameter service request/reply buffer size (bytes) (-1 = derive)"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Each half of the one request/reply buffer pair an executor's
+parameter services share (nros-node build.rs PARAM_SERVICE_BUFFER_SIZE).
+
+phase-446 F3 -- -1 DERIVES it: when the contract's `params:` declare
+every node's parameters, nros-node sizes the buffer for the largest
+message those names and types can produce at the store's capacities
+(CONFIG_NROS_MAX_STRING_VALUE_LEN, CONFIG_NROS_MAX_ARRAY_LEN,
+CONFIG_NROS_MAX_BYTE_ARRAY_LEN, CONFIG_NROS_MAX_PARAM_DESCRIPTION_LEN).
+Without a declaration the crate default of 4096 stands. Stating a
+number here WINS; a request or reply past it is dropped and logged
+once per service.
+'''
 
 [[knob]]
 id = "PARAM_SERVICE_INBOX_BYTES"
+type = "int"
+prompt = "Parameter/lifecycle service inbox slot size (bytes, -1 = derive)"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+phase-461 W2 -- bytes one request slot holds in the inbox ring of each
+ROS parameter service queryable (six per node) and each REP-2002
+lifecycle service queryable (five per node).
+
+-1 means DERIVE it, which is what almost every image wants: nros-node
+and nros-rmw-zenoh then size the slot from the contract's declared
+parameters, as the largest request a set_parameters over the
+worst-declared node can produce, against the parameter store's
+resolved capacities. On the Autoware Safety Island that is 1016 bytes
+(a 1015-byte set_parameters, rounded to the slot alignment).
+
+Any other value STATES the size and wins over the derivation. A stated
+size smaller than the declarations can produce FAILS THE BUILD naming
+this symbol, rather than dropping a well-formed request at run time
+(issue 1352). 0 is not a size and is refused (issue 1485): it used to
+be this symbol's derive sentinel, and the readers took it literally.
+On XRCE the same number is XRCE_PARAM_REQUEST_BYTES, which raises
+NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE to fit it (issue 1722).
+Maps to NROS_PARAM_SERVICE_INBOX_BYTES.
+'''
 
 [[knob]]
 id = "PARAM_SERVICE_INBOX_DEPTH"
+type = "int"
+prompt = "Parameter/lifecycle service inbox ring depth"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default 1",
+]
+help = '''
+phase-461 W2 -- requests one parameter or lifecycle service queryable
+holds before the newest is dropped.
+
+One, because this traffic is one request and one reply from a client
+that waits: ros2 param and rclcpp's SyncParametersClient block on each
+call, and a node's six services are polled serially in one spin. Two
+clients hitting the SAME service of the SAME node inside one spin
+period is the only case depth 1 loses, and the loser sees a timeout and
+retries. Raise it to 2 for an image that serves a parameter dashboard.
+Must be >= 1. Maps to NROS_PARAM_SERVICE_INBOX_DEPTH.
+'''
 
 [[knob]]
 id = "PUBSUB_QOS_DEPTH"
+type = "int"
+prompt = "QoS history depth the arena budgets per subscription"
+kconfig_attrs = [
+    "default 10",
+]
+help = '''
+How deep a history the executor arena reserves for each pub/sub
+callback slot. 10 is ROS 2's own default -- `rmw_qos_profile_default`
+is KEEP_LAST(10), which is what a subscription created with no QoS
+argument actually gets -- so an image that says nothing here is sized
+the way ROS would size it.
+
+STATE 1 IF YOUR SUBSCRIPTIONS ARE KEEP_LAST(1), and the saving is large
+rather than marginal. The buffer shape is a step function, not a slope:
+depth 1 is a TripleBuffer of 3 slots and anything deeper is an SpscRing
+of depth+1, so the default budgets 11 slots where 3 would do. Measured
+on the reference island's entity shape (11 subscriptions, 4 timers, 2
+service servers): 144,584 bytes of arena at 10, 53,504 at 1.
+
+This is the IMAGE-WIDE number. A per-endpoint answer is derived instead
+from `<stem>.contract.yaml`'s `qos.depth` when EVERY endpoint states one
+(phase-412 W3); that is finer, needs no knob, and this value still wins
+over it -- env > Kconfig/board > derived > default, the ladder every
+derivable knob follows.
+
+TOO SMALL IS NOT A SMALLER BUFFER. The arena is sized from this, and an
+arena that does not fit halts during entity creation, before the first
+spin -- so raise it, or state the depths, rather than trimming it to fit.
+'''
 
 [[knob]]
 id = "RMW_LOCAL_QUERYABLE"
+type = "int"
+prompt = "Same-session query delivery (-1 = derive, 0 = off, 1 = on)"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default -1",
+    "range -1 1",
+]
+help = '''
+Maps to Z_FEATURE_LOCAL_QUERYABLE, zenoh-pico's same-session query
+path. Every node of a Zephyr image shares ONE zenoh session, and
+neither zenoh-pico nor the router sends a query back to the session
+it came from. So a service client and a service server in the SAME
+image never meet without this: the call goes out, no server answers,
+and nothing reports it (issue 1549; measured on the Autoware Safety
+Island, whose handler's `operate` request never reached its own
+operator).
+
+`-1` DERIVES it from the image's entity inventory: on when the image
+declares at least one service client (an action client counts, it
+opens three) AND at least one service server (an action server
+counts, three queryables), off otherwise. An image with only one
+side of a service pays nothing for a path it cannot use. The sibling
+for topics, Z_FEATURE_LOCAL_SUBSCRIBER, is always on.
+
+Stating 0 or 1 WINS over the derivation, as for every derivable
+knob. Where the inventory cannot answer (a component that declares
+nothing), the knob keeps zenoh-pico's own default, 0, and the
+configure says so.
+
+The name is the RMW's, not zenoh's, because the boot record in
+nros-node carries the resolved value and its rung, and a core crate
+names no backend (RFC-0071). Only the zenoh backend consumes it.
+'''
 
 [[knob]]
 id = "RMW_MAX_BACKENDS"
@@ -174,6 +815,33 @@ toml = "rmw.message_info_slots"
 
 [[knob]]
 id = "RMW_SUBSCRIBER_SLOTS"
+type = "int"
+prompt = "Static subscription-handle slots (no_std targets) (-1 = derive)"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+nros-rmw-cffi keeps subscription handles in a static slot pool on
+no_std targets, since there is no allocator to Box them into. The
+Nth+1 create_subscription returns BAD_ALLOC and the executor surfaces
+it as an opaque SubscriberCreationFailed, so this must be at least the
+number of subscriptions the image creates. Pool size is this x 1024
+bytes. Read by nros-rmw-cffi build.rs.
+
+phase-412 W1 -- `-1` DERIVES this from the image's entity inventory
+(`nano_ros_node_register(... ENTITIES ...)`). Stating a number here WINS
+and suppresses the derivation, which is a fine thing to do deliberately
+and a silent cost otherwise.
+
+The derived value counts what the SESSION opens, which is not what the
+author declares: a declared action server is one entity that costs three
+queryables and two publishers, and an action client one subscription.
+Those multipliers live beside the calls that decide them.
+
+NOT counted, because a feature enables them and the inventory cannot see
+it: the parameter (6) and lifecycle (5) service families. An image
+carrying either must state this knob.
+'''
 
 [[knob]]
 id = "RMW_SUBSCRIBER_SLOT_BYTES"
@@ -197,9 +865,50 @@ toml = "runtime.max_components"
 
 [[knob]]
 id = "SERVICE_INBOX_BYTES"
+type = "int"
+prompt = "Service inbox slot size (bytes, -1 = derive)"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Bytes one request slot holds in the inbox ring of every USER service
+server (a zenoh queryable). The parameter and lifecycle services do
+not share it: they bring their own ring, sized by nros-node from the
+contract's declared parameters (phase-461, issue 1352). Maps to
+NROS_SERVICE_INBOX_BYTES in nros-rmw-zenoh's build script. A request
+larger than this is dropped with TransportError::MessageTooLarge.
+
+-1 means DERIVE it (phase-461 W3): the largest bound among the
+`pkg/srv/Name_Request` types this image's declared service servers and
+clients carry, which codegen prices and the entity inventory joins.
+Any other value is yours and WINS. If NOTHING derives -- no contract,
+or one request type with no static bound -- the crate falls through to
+NROS_SERVICE_BUFFER_SIZE (1024), and the configure says which.
+
+The derivation outranks the DEPRECATED alias NROS_SERVICE_BUFFER_SIZE
+and nothing else: to pin a size, state THIS symbol.
+
+Per queryable the ring costs
+  NROS_SERVICE_INBOX_DEPTH x (NROS_SERVICE_INBOX_BYTES + 12)
+plus a fixed header; the map (just mem-report) prices it exactly.
+'''
 
 [[knob]]
 id = "SERVICE_INBOX_DEPTH"
+type = "int"
+prompt = "Service inbox ring depth"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default 4",
+]
+help = '''
+Requests one USER service server holds before the newest is dropped.
+4 was chosen for the action path (a burst of queries in one read-task
+batch) and every family paid it; the parameter family's own depth is
+1, on its own ring (phase-461 W2). Must be >= 1. Maps to
+NROS_SERVICE_INBOX_DEPTH.
+'''
 
 [[knob]]
 id = "SERVICE_TIMEOUT_MS"
@@ -232,18 +941,123 @@ toml = "net.socket_timeout_ms"
 
 [[knob]]
 id = "SUBSCRIBER_BUFFER_SIZE"
+type = "int"
+prompt = "Per-subscriber static buffer size (-1 = derive)"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Size of the static buffer for each subscriber slot (bytes) -- the SMALL
+zenoh payload class. Maps to NROS_SUBSCRIBER_BUFFER_SIZE (one name: the executor arena reads it too, phase-403).
+
+-1 means DERIVE it from this image's message-bound inventory
+(phase-403 W8 / issue 0940): the largest derived bound at or under the
+small/large class split (ZPICO_SUBSCRIBER_SIZE_THRESHOLD, 2048 by
+default; it has no Kconfig row). Any other value is yours and WINS.
+
+READ THIS BEFORE TRUSTING THE DERIVED NUMBER. The inventory holds every
+type in the LINKED interface closure, not only the ones you subscribe to,
+so the derived size is an UPPER BOUND: too big, never too small. On the
+mr-canhubk344 island it is 1496 B, set by std_msgs/Float64MultiArray,
+against 880 B for the largest type the image actually receives -- the
+difference is the price of having no ENTITY inventory (phase-403 W4).
+The configure prints which type set the number; if it is one you do not
+receive, state your own value here.
+
+If ANY type in the closure has no derived bound, NOTHING is derived and
+the crate default (1024) applies -- the configure says so and names the
+types. Deriving over the bounded subset would publish a maximum a real
+sample can exceed, which is a SILENT drop on the C++ arena path.
+'''
 
 [[knob]]
 id = "SUBSCRIPTION_BUFFER_SIZE"
 toml = "executor.subscription_buffer_size"
+type = "int"
+prompt = "Per-subscription receive buffer size in bytes (-1 = derive)"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Serialized-sample capacity of every executor arena subscription
+(nros-node build.rs DEFAULT_RX_BUF_SIZE). A sample larger than this
+is dropped at take with BUFFER_TOO_SMALL — for the C++ arena
+dispatch path that drop is silent, so an undersized buffer looks
+like a subscription that never fires. Size it to the largest
+serialized message the image subscribes to (e.g. an Autoware
+/planning trajectory runs 9-14 KiB). The executor arena is derived
+from this value times the callback-slot count — raise it
+deliberately. This knob was resolvable only via environment on
+native lanes before; the Zephyr lane's curated cargo environment
+dropped it, so every Zephyr image silently compiled 1024
+(same class as issue 0316 / the NROS_EXECUTOR_MAX_CBS history).
+
+-1 means DERIVE it from this image's message-bound inventory
+(phase-403 W8 / issue 0940): the largest derived bound in the LINKED
+interface closure, which is an UPPER BOUND on what the image needs and
+never an under-estimate. "Size it to the largest serialized message the
+image subscribes to" is exactly the instruction nobody could follow by
+hand -- the island's board conf reasons its way to ~718 B for
+nav_msgs/Odometry, writes 512, and the derived bound is 880. Any value
+other than -1 is yours and WINS; the crate default when nothing is
+stated and nothing is derivable is 1024.
+
+COUPLED TO THE ARENA: the arena is max_cbs * (3 * this + 512) + 2048, so
+raising this raises the arena. An image that also PINS
+NROS_EXECUTOR_ARENA_SIZE must move the two together; leaving both to
+derive is the shape that cannot disagree.
+'''
 
 [[knob]]
 id = "XRCE_CUSTOM_TRANSPORT_MTU"
 toml = "xrce.custom_transport_mtu"
+type = "int"
+prompt = "XRCE custom-transport MTU"
+kconfig_if = "NROS_RMW_XRCE"
+kconfig_attrs = [
+    "default NROS_XRCE_TRANSPORT_MTU",
+    "range 128 65535",
+]
+help = '''
+MTU of the CUSTOM transport, which on Zephyr is the ONLY transport
+compiled in (see NROS_XRCE_TRANSPORT_MTU above for why). It sizes the
+two per-session reliable stream buffers, so the session struct carries
+2 x this x NROS_XRCE_STREAM_HISTORY bytes.
+Maps to UCLIENT_CUSTOM_TRANSPORT_MTU.
+
+Defaults to NROS_XRCE_TRANSPORT_MTU so an image states ONE MTU and gets
+it on whichever transport it actually links. Set this separately only
+when an image links both an IP transport and a custom one and they need
+different frame budgets.
+'''
 
 [[knob]]
 id = "XRCE_STREAM_HISTORY"
 toml = "xrce.stream_history"
+type = "int"
+prompt = "Reliable stream history depth"
+kconfig_if = "NROS_RMW_XRCE"
+kconfig_attrs = [
+    "default 16",
+    "range 2 16",
+]
+help = '''
+Reliable stream history depth for XRCE-DDS. Must be >= 2.
+Maps to XRCE_STREAM_HISTORY.
+
+phase-420 W9 — the old line named the ENVIRONMENT variable rather than
+the macro, and said "read by nros-rmw-xrce-cffi/build.rs", naming ONE
+lane. Both lanes read it now: nros-rmw-xrce/CMakeLists.txt read none of
+these six options and compiled the defaults instead.
+
+Defaults to 16 to match XRCE_STREAM_HISTORY in
+packages/rmw/xrce/nros-rmw-xrce/src/internal.h. This option was inert until
+issue 0316 (exported under a name nothing read), so the C default of 16
+is what Zephyr XRCE images have always compiled; a default of 4 here
+would have shrunk every reliable stream buffer 4x the moment the knob
+started working. Raise or lower deliberately, not as a side effect.
+'''
 
 [[knob]]
 id = "ZENOH_BATCH_MULTICAST_SIZE"
@@ -255,62 +1069,298 @@ id = "ZENOH_BATCH_UNICAST_SIZE"
 legacy = ["ZPICO_BATCH_UNICAST_SIZE"]
 kconfig = "NROS_BATCH_UNICAST_SIZE"
 toml = "zenoh.wire.batch_unicast_size"
+type = "int"
+prompt = "Maximum unicast batch size"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default 1024",
+]
+help = '''
+Maximum unicast batch size before fragmentation (bytes).
+Maps to ZPICO_BATCH_UNICAST_SIZE.
+'''
 
 [[knob]]
 id = "ZENOH_FRAG_MAX_SIZE"
 legacy = ["ZPICO_FRAG_MAX_SIZE"]
 kconfig = "NROS_FRAG_MAX_SIZE"
 toml = "zenoh.wire.frag_max_size"
+type = "int"
+prompt = "Maximum reassembled message size"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default 2048",
+]
+help = '''
+Maximum reassembled message size after defragmentation (bytes).
+Maps to ZPICO_FRAG_MAX_SIZE.
+'''
 
 [[knob]]
 id = "ZENOH_GET_POLL_INTERVAL_MS"
 legacy = ["ZPICO_GET_POLL_INTERVAL_MS"]
 kconfig = "NROS_GET_POLL_INTERVAL_MS"
 toml = "zenoh.wire.get_poll_interval_ms"
+type = "int"
+prompt = "Get poll interval (ms)"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default 10",
+]
+help = '''
+Polling interval for pending get operations (milliseconds).
+Maps to ZPICO_GET_POLL_INTERVAL_MS.
+'''
 
 [[knob]]
 id = "ZENOH_GET_REPLY_BUF_SIZE"
 legacy = ["ZPICO_GET_REPLY_BUF_SIZE"]
 kconfig = "NROS_GET_REPLY_BUF_SIZE"
 toml = "zenoh.wire.get_reply_buf_size"
+type = "int"
+prompt = "Get reply buffer size"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default 4096",
+]
+help = '''
+Size of the buffer for get (service call) reply payloads (bytes).
+Maps to ZPICO_GET_REPLY_BUF_SIZE.
+'''
 
 [[knob]]
 id = "ZENOH_GRAPH_CACHE_SIZE"
 legacy = ["ZPICO_GRAPH_CACHE_SIZE"]
 kconfig = "NROS_GRAPH_CACHE_SIZE"
+type = "int"
+prompt = "Graph liveliness cache size"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default 65536",
+]
+help = '''
+Bytes of NUL-separated liveliness keyexprs the graph cache holds.
+Maps to ZPICO_GRAPH_CACHE_SIZE.
+
+The 65536 default is sized for a HOST-scale domain: upstream measured a
+box running one stock talker plus the ROS 2 daemon carrying 222 tokens,
+about 31 KB, at roughly 140 bytes per keyexpr.
+
+That default is 20% of this board's entire SRAM, and it lands in .bss
+whether or not the graph is ever queried. An image whose domain holds a
+handful of entities should turn it down: 8192 still holds ~58 tokens.
+Overflow is counted and reported by zpico_graph_cache_copy, never
+silently truncated, so a value that is too small shows up as a drop
+count rather than as a wrong answer.
+'''
 
 [[knob]]
 id = "ZENOH_GRAPH_DISCOVERY"
 legacy = ["ZPICO_GRAPH_DISCOVERY"]
+type = "bool"
+prompt = "Keep a graph cache (liveliness subscriber on the whole domain)"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "# DERIVED default: off when every zenoh link this image compiles is serial",
+    "# or CAN. Mirrors `graph_discovery_derived` (nros-zpico-build) and the",
+    "# `zenoh.graph_discovery` implication of `transport.kind=serial`",
+    "# (nros-platform-config); cmake re-derives it to print where the value",
+    "# came from.",
+    "default n if (NROS_ZENOH_LINK_SERIAL || NROS_ZENOH_LINK_CAN || NROS_ZENOH_LINK_ISOTP) && \\",
+    "             !NROS_ZENOH_LINK_TCP && !NROS_ZENOH_LINK_UDP_UNICAST && \\",
+    "             !NROS_ZENOH_LINK_UDP_MULTICAST && !NROS_ZENOH_LINK_WS && \\",
+    "             !NROS_ZENOH_RAWETH_TRANSPORT",
+    "default y",
+]
+help = '''
+Maps to ZPICO_GRAPH_DISCOVERY (env ZPICO_GRAPH_DISCOVERY=0/1 wins over
+this for one build).
+
+y: the session declares one liveliness SUBSCRIBER with history on
+@ros2_lv/<domain>/** the first time a service client or a graph query
+needs it, and keeps every token of every node on the domain in a
+NROS_GRAPH_CACHE_SIZE-byte cache. `service_is_ready`, `count_publishers`,
+`get_node_names` and the other rcl graph queries answer from it.
+
+n: no subscriber, no cache (the array is compiled out). The image still
+DECLARES its own node and entity tokens, so a host's `ros2 node list`
+and `ros2 topic info` see it exactly as before; what goes is the reverse
+direction. Graph queries answer Unsupported. A service call is a z_get
+on the service key expression, matched by the router, so it works
+unchanged -- only `service_is_ready` stops being able to say yes.
+
+Why the default follows the link: a host running Autoware carries about
+136 nodes, and joining it replays all of their tokens toward the image
+at once. Measured on the safety island: over a 921,600-baud UART the
+burst overran the receive ring and stopped the read task; over TCP
+(QEMU, LAN9118) it exhausted a 1 MiB heap 2.3 s after joining. On a
+serial or CAN link the cache costs the link and buys nothing an image
+that makes no graph query of its own can use. An image that also
+compiles an IP link keeps the old default.
+'''
 
 [[knob]]
 id = "ZENOH_LEASE_PRIORITY"
 legacy = ["ZPICO_LEASE_TASK_PRIORITY"]
+type = "int"
+prompt = "zenoh-pico lease task priority (normalised band, 0-255)"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default 200",
+]
+help = '''
+As NROS_ZENOH_READ_PRIORITY, for the lease (keep-alive) task. The lease
+task is light but latency-sensitive: if it cannot run, the session's
+keep-alives stop and the router drops the peer, which presents as an
+unexplained disconnect rather than as a scheduling problem.
+'''
 
 [[knob]]
 id = "ZENOH_MAX_LARGE_SUBSCRIBERS"
 legacy = ["ZPICO_MAX_LARGE_SUBSCRIBERS"]
 kconfig = "NROS_MAX_LARGE_SUBSCRIBERS"
+type = "int"
+prompt = "Subscribers served from the large payload class (-1 = derive)"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Subscribers whose rx_buffer_hint exceeds SUBSCRIBER_SIZE_THRESHOLD and
+are therefore served from LARGE_PAYLOADS. Bounded separately from
+ZPICO_MAX_SUBSCRIBERS so raising SUBSCRIBER_LARGE_SIZE for one
+image-scale topic does not multiply across every subscriber.
+Maps to ZPICO_MAX_LARGE_SUBSCRIBERS.
+
+-1 means DERIVE it: how many types in the linked interface closure
+exceed the class split. This is the number issue 0940 records a human
+producing by reading generated C++ headers BY EYE -- headers that state
+an ESTIMATE and not a bound (phase-403 W6), which is how the island got
+2 where the derived answer is 0.
+
+0 is a legal, meaningful value and NOT the same as -1: it claims that
+every type this image receives fits the small class, and the large pool
+becomes zero bytes instead of RING_DEPTH x LARGE_SIZE. A hint no class
+can hold is then refused at create_subscription rather than served a
+block too small for it.
+
+Derived counts TYPES, not subscriptions -- an upper bound, since the
+closure is what is linked, not what is subscribed. See
+NROS_SUBSCRIBER_BUFFER_SIZE for the rest of that caveat.
+'''
 
 [[knob]]
 id = "ZENOH_MAX_LIVELINESS"
 legacy = ["ZPICO_MAX_LIVELINESS"]
 kconfig = "NROS_MAX_LIVELINESS"
+type = "int"
+prompt = "Maximum concurrent liveliness tokens (-1 = derive)"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Maximum number of concurrent liveliness tokens in the shim layer.
+Maps to ZPICO_MAX_LIVELINESS.
+
+phase-412 W2 -- `-1` DERIVES this from the image's entity inventory,
+on the same ladder as NROS_MAX_QUERYABLES. Stating a number here WINS.
+
+Every token is declared by THIS session, never by a peer: one for the
+session's own node, one per node name, and one per publisher,
+subscriber, service server and service client (three per action
+client, which the derivation multiplies). The graph cache's own
+subscriber takes no slot. An image with no inventory (nothing
+declared) keeps the zpico default of 16.
+
+Short is not a boot failure: the entity works and is invisible to
+`ros2 node list`, and the shim logs the exhaustion naming this knob.
+An image that BRIDGES (runtime-named nodes, declared nowhere) must
+state it.
+'''
 
 [[knob]]
 id = "ZENOH_MAX_PENDING_GETS"
 legacy = ["ZPICO_MAX_PENDING_GETS"]
 kconfig = "NROS_MAX_PENDING_GETS"
+type = "int"
+prompt = "Maximum concurrent pending get operations"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default 4",
+]
+help = '''
+Maximum number of concurrent pending get (service call) operations.
+Maps to ZPICO_MAX_PENDING_GETS.
+'''
 
 [[knob]]
 id = "ZENOH_MAX_PUBLISHERS"
 legacy = ["ZPICO_MAX_PUBLISHERS"]
 kconfig = "NROS_MAX_PUBLISHERS"
+type = "int"
+prompt = "Maximum concurrent publishers (-1 = derive)"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Maximum number of concurrent zenoh publishers in the shim layer.
+Maps to ZPICO_MAX_PUBLISHERS.
+
+phase-412 W1 -- `-1` DERIVES this from the image's entity inventory
+(`nano_ros_node_register(... ENTITIES ...)`). Stating a number here WINS
+and suppresses the derivation, which is a fine thing to do deliberately
+and a silent cost otherwise.
+
+The derived value counts what the SESSION opens, which is not what the
+author declares: a declared action server is one entity that costs three
+queryables and two publishers, and an action client one subscription.
+Those multipliers live beside the calls that decide them.
+
+NOT counted, because a feature enables them and the inventory cannot see
+it: the parameter (6) and lifecycle (5) service families. An image
+carrying either must state this knob.
+'''
 
 [[knob]]
 id = "ZENOH_MAX_QUERYABLES"
 legacy = ["ZPICO_MAX_QUERYABLES"]
 kconfig = "NROS_MAX_QUERYABLES"
+type = "int"
+prompt = "Maximum concurrent queryables (-1 = derive)"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Maximum number of concurrent zenoh queryables (service servers) in the shim.
+Maps to ZPICO_MAX_QUERYABLES.
+
+phase-412 W1 -- `-1` DERIVES this from the image's entity inventory
+(`nano_ros_node_register(... ENTITIES ...)`). Stating a number here WINS
+and suppresses the derivation, which is a fine thing to do deliberately
+and a silent cost otherwise.
+
+The derived value counts what the SESSION opens, which is not what the
+author declares: a declared action server is one entity that costs three
+queryables and two publishers, and an action client one subscription.
+Those multipliers live beside the calls that decide them.
+
+NOT counted, because a feature enables them and the inventory cannot see
+it: the parameter (6) and lifecycle (5) service families. An image
+carrying either must state this knob.
+
+phase-426 W3 -- the PARAMETER family is per NODE. `ros2 param list`
+enumerates an image's nodes, so one set of six services is registered
+under each node's own fully-qualified name: an N-node image carrying
+`[param_services]` claims 6*N slots before the application declares
+anything, plus 5 for the lifecycle family, which is still one set on the
+executor. A value below that DERIVED floor is refused at BUILD time by
+`nros-zpico-build` and the refusal names this knob -- it used to be a
+runtime `ServiceServerCreationFailed` with no explanation (issue 0460).
+Two nodes already need 12, which is over the historical default of 8.
+'''
 
 [[knob]]
 id = "ZENOH_MAX_SESSIONS"
@@ -320,6 +1370,30 @@ legacy = ["ZPICO_MAX_SESSIONS"]
 id = "ZENOH_MAX_SUBSCRIBERS"
 legacy = ["ZPICO_MAX_SUBSCRIBERS"]
 kconfig = "NROS_MAX_SUBSCRIBERS"
+type = "int"
+prompt = "Maximum concurrent subscribers (-1 = derive)"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Maximum number of concurrent zenoh subscribers in the shim layer.
+Maps to ZPICO_MAX_SUBSCRIBERS.
+
+phase-412 W1 -- `-1` DERIVES this from the image's entity inventory
+(`nano_ros_node_register(... ENTITIES ...)`). Stating a number here WINS
+and suppresses the derivation, which is a fine thing to do deliberately
+and a silent cost otherwise.
+
+The derived value counts what the SESSION opens, which is not what the
+author declares: a declared action server is one entity that costs three
+queryables and two publishers, and an action client one subscription.
+Those multipliers live beside the calls that decide them.
+
+NOT counted, because a feature enables them and the inventory cannot see
+it: the parameter (6) and lifecycle (5) service families. An image
+carrying either must state this knob.
+'''
 
 [[knob]]
 id = "ZENOH_MAX_TL_PUBLISHERS"
@@ -332,22 +1406,112 @@ legacy = ["ZPICO_PUBLISHER_TX_BUFFER_SIZE"]
 [[knob]]
 id = "ZENOH_READ_PRIORITY"
 legacy = ["ZPICO_READ_TASK_PRIORITY"]
+type = "int"
+prompt = "zenoh-pico read task priority (normalised band, 0-255)"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default 200",
+]
+help = '''
+Scheduling priority of the zenoh-pico READ task, on the platform ABI's
+normalised band: 0 = least urgent, NROS_PLATFORM_PRIORITY_MAX (255) =
+most urgent (phase-364 W5). nros_zephyr_native_priority maps it onto
+whatever sched_get_priority_min/max report for SCHED_RR in THIS image,
+which depends on CONFIG_NUM_PREEMPT_PRIORITIES.
+
+issue 0852 — THE SCALE CHANGED, AND THE OLD VALUES DO NOT CARRY OVER.
+This was documented "normalized 0-31" with a default of 16, and mapped by
+a second, private conversion (zpico_posix_set_priority) that wrote into a
+pthread_attr_t nothing on this platform ever read. Two normalised bands
+meeting in one scheduler is issue 0623 verbatim: a 16 authored against
+0-31 is (16*14)/255 = 0 through the real map — the LEAST urgent slot,
+which is exactly where every Zephyr transport task has been running.
+The private scale and its conversion are deleted; this band is the only
+one left.
+
+Why 200: on a CONFIG_NUM_PREEMPT_PRIORITIES=15 image it maps to SCHED_RR
+10, i.e. k_thread 4 — ABOVE the tier pool ([8,14] in
+[board.priority_plan]) and below the main thread. That ordering is
+CHOSEN, not inherited: it is what the board's priority plan already
+declares, and what FreeRTOS ships (app 3 / transport 4). The reverse
+starves the RX drain and stalls publishers on retransmission timeouts
+(issue 0623). Both orderings are legitimate; choosing by accident is the
+bug this issue was.
+
+The number is IMAGE-DERIVED (issue 0766): re-resolve it against your
+own .config rather than assuming k_thread 4.
+
+Before issue 0626 this was not settable at all on Zephyr: the shim's
+POSIX branch configured only the stack size, carrying a comment about
+SCHED_FIFO needing root — true of Linux, meaningless on Zephyr — so the
+transport tasks ran at whatever default applied and issue 0506's
+question (what preempts the RT tiers under load?) could not be asked.
+
+Raising it above your RT tiers means transport preempts control;
+lowering it below means a busy tier can starve the RX drain, which
+stalls publishers on retransmission timeouts. Both are real failure
+modes with real cost — see issues 0506 and 0623 before changing it.
+'''
 
 [[knob]]
 id = "ZENOH_SERVICE_BUFFER_SIZE"
 legacy = ["ZPICO_SERVICE_BUFFER_SIZE"]
 kconfig = "NROS_SERVICE_BUFFER_SIZE"
+type = "int"
+prompt = "Per-service static buffer size (alias of NROS_SERVICE_INBOX_BYTES)"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default 1024",
+]
+help = '''
+phase-461 W1 -- the one-release ALIAS of NROS_SERVICE_INBOX_BYTES,
+which defaults to this value. Set that symbol instead; this one stays
+so a board .conf that states it keeps building the same image.
+Maps to ZPICO_SERVICE_BUFFER_SIZE.
+'''
 
 [[knob]]
 id = "ZENOH_SUBSCRIBER_LARGE_SIZE"
 legacy = ["ZPICO_SUBSCRIBER_LARGE_SIZE"]
 kconfig = "NROS_SUBSCRIBER_LARGE_SIZE"
+type = "int"
+prompt = "Large-class payload buffer size (-1 = derive)"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default -1",
+]
+help = '''
+Per-sample capacity in the large payload class (bytes). The crate default
+is 16384, sized for image-scale messages; an image whose largest
+subscribed type is a few hundred bytes pays 2 x 4 x 16384 = 128 KiB for
+nothing. Maps to ZPICO_SUBSCRIBER_LARGE_SIZE.
+
+-1 means DERIVE it: the largest derived bound above the class split.
+When NO type is above the split the size is deliberately NOT derived --
+with zero blocks the pool is zero bytes whatever size it names, and
+naming one for a class that does not exist would be inventing a number.
+The crate default then applies and costs nothing.
+'''
 
 [[knob]]
 id = "ZENOH_SUBSCRIBER_RING_DEPTH"
 legacy = ["ZPICO_SUBSCRIBER_RING_DEPTH"]
 kconfig = "NROS_SUBSCRIBER_RING_DEPTH"
 toml = "zenoh.limits.subscriber_ring_depth"
+type = "int"
+prompt = "Receive ring depth per subscriber"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "default 4",
+]
+help = '''
+Samples held per subscriber before the ring drops the oldest. This is
+the receive queue depth, so lowering it is a QoS reduction, not slack.
+It multiplies BOTH zenoh payload classes:
+  SMALL_PAYLOADS = ZPICO_MAX_SUBSCRIBERS x DEPTH x SUBSCRIBER_BUFFER_SIZE
+  LARGE_PAYLOADS = MAX_LARGE_SUBSCRIBERS x DEPTH x SUBSCRIBER_LARGE_SIZE
+Maps to ZPICO_SUBSCRIBER_RING_DEPTH.
+'''
 
 [[knob]]
 id = "ZENOH_SUBSCRIBER_SIZE_THRESHOLD"
@@ -365,16 +1529,151 @@ legacy = ["ZPICO_TL_RETAIN_DEPTH"]
 id = "ZENOH_TX_BATCH"
 legacy = ["ZPICO_TX_BATCH"]
 toml = "zenoh.tx.batch"
+type = "bool"
+prompt = "zenoh-pico tx batching (one send per executor spin)"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "# DERIVED from nros-platform-zephyr [knobs.zenoh.tx].batch —",
+    "# re-render with `scripts/check-zephyr-knob-agreement.py --write`.",
+    "default y",
+]
+help = '''
+phase-279 (#145) — tx batching (ZPICO_TX_BATCH). Publishes queue
+in the transport write buffer and ship as ONE socket send per executor
+spin (zpico_spin_once flush), so total tx throughput scales with
+messages-per-flush instead of being capped at ~1 send per socket recv
+window (the zsock per-fd-mutex ceiling above). Adds up to FLUSH_MS of
+publish latency; service/query requests and replies bypass the batch
+(express), as do publishers declared express (tx_express QoS).
+phase-290 (RFC-0049) — DEFAULT ON for Zephyr: the phase-282 promotion
+(option C), measured 15-20x streaming on the only platform with the
+per-fd tx ceiling. Requires the issue-0213 fork fix (declarations
+bypass the batch — otherwise a server's readiness banner outruns its
+still-batched queryable declares and immediately-fired queries miss).
+This default MUST mirror
+config/zephyr/nros-platform.toml [knobs.zenoh.tx] — the
+kconfig_platform_default_drift test asserts the mirror.
+'''
 
 [[knob]]
 id = "ZENOH_TX_BATCH_FLUSH_MS"
 legacy = ["ZPICO_TX_BATCH_FLUSH_MS"]
 toml = "zenoh.tx.flush_ms"
+type = "int"
+prompt = "zenoh-pico tx batch flush cadence (ms)"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "# DERIVED from nros-platform-zephyr [knobs.zenoh.tx].flush_ms —",
+    "# re-render with `scripts/check-zephyr-knob-agreement.py --write`.",
+    "default 50",
+    "depends on NROS_ZENOH_TX_BATCH",
+]
+help = '''
+phase-282 (#145) — period of the dedicated tx-flush thread (and the
+rate limit of the spin-driven fallback flush) when TX_BATCH is on.
+Bounds the extra publish latency batching adds: a batched sample waits
+at most this long before it ships (express publishers bypass the batch
+entirely). Lower = less added latency, more (smaller) socket sends.
+Forwards to zpico.c's ZPICO_TX_BATCH_FLUSH_MS.
+'''
 
 [[knob]]
 id = "ZENOH_TX_SPLIT_LOCK"
 legacy = ["ZPICO_TX_SPLIT_LOCK"]
 toml = "zenoh.tx.split_lock"
+type = "bool"
+prompt = "zenoh-pico split tx locking (append while sending)"
+kconfig_if = "NROS_RMW_ZENOH"
+kconfig_attrs = [
+    "# DERIVED from nros-platform-zephyr [knobs.zenoh.tx].split_lock —",
+    "# re-render with `scripts/check-zephyr-knob-agreement.py --write`.",
+    "default y",
+    "depends on NROS_ZENOH_TX_BATCH",
+]
+help = '''
+phase-282 (#145) — the batch flush steals the pending write buffer under
+the tx mutex and performs the socket write under a separate link-write
+mutex, so publishers keep appending to the fresh batch while the (up to
+one recv-window) send is in flight. Wire order still equals SN order.
+Requires TX_BATCH. Costs a second wbuf (Z_BATCH_UNICAST_SIZE) of RAM
+per session. phase-290 — DEFAULT ON for Zephyr (promotion option C);
+mirrors config/zephyr/nros-platform.toml (drift-tested).
+'''
 
 [[knob]]
 id = "ZEPHYR_HEAP_SIZE"
+type = "int"
+prompt = "Application heap arena size (bytes)"
+kconfig_attrs = [
+    "default 1048576 if NROS_RMW_CYCLONEDDS",
+    "default 196608 if NROS_CAPABILITY_PARAM_SERVICES || NROS_PARAM_STORE || NROS_CAPABILITY_LIFECYCLE",
+    "default 131072 if RUST",
+    "default 65536",
+]
+help = '''
+A PARAM_SERVICES image, one whose launch seeds a parameter
+(NROS_PARAM_STORE, issue 1706), and a LIFECYCLE one get 192 KiB (issue
+1702): those capabilities allocate their services' buffers from this
+arena, and nothing sized it from the declaration, so such an image
+LINKED and then halted at boot.
+
+The PARAMETER STORE is NOT in this arena any more (phase-382 W3'). Those
+two symbols are exactly what makes nros-params carve the store out of
+the executor's .bss backing (nros_params::IMPLIED_STORE_SLOTS), so the
+store's ~8.5 KiB a slot -- 285,696 bytes at the default 32 slots, the
+`HEAP EXHAUSTED (TOO SMALL): request 285696` of issue 1702 -- moved to
+the linker and out of this default. It was 512 KiB for param_services
+until 2026-10-09; MEASURED after the move, zephyr_cpp_params (both axes)
+boots at 192 KiB, prints `parameter store: 32 slots (285696 B) carved
+from the executor backing` and reads its launch-seeded 250 back. A store
+only application code reaches is invisible to the build, stays on this
+heap, and is refused at run time with its size (issue 1706).
+
+MEASURED on native_sim/native/64 (boot record, live router,
+`read-boot-report.py --heap-headroom`), on features' images that
+declare BOTH axes: zephyr_cpp_params peaks at 111,360 without the store
+(46,848 with param_services alone, so lifecycle costs ~64.5 KiB --
+five services, each owning a 2 x 4,096-byte buffer pair); the Rust
+params image at 114,144 without it, and issue 1677's lifecycle and qos
+peaks less the store at 113,904 and 120,896.
+Worst + the 24,576-byte floor is 145,472, hence 192 KiB for either axis
+now that the store is carved.
+
+A CYCLONE image gets 1 MiB (issue 1633): ddsrt's whole heap lands here
+since the Zephyr road compiles the platform funnel (heap/nros/heap.c),
+where it used to be picolibc's 16 MiB arena. MEASURED on
+native_sim/native/64, c/talker cyclonedds: 840 nros_platform_alloc calls
+and a 153,072-byte peak by the first dds_write (gdb); 1 MiB is ~6.8x
+that, for discovery and samples in flight a peerless run does not reach.
+A Rust Cyclone image's Rust allocations share it.
+
+A RUST application gets twice the default (issue 1324): its Rust
+`alloc` goes through this arena too -- it used to land in a second,
+unpriced heap (zephyr-lang-rust's CONFIG_RUST_ALLOC over libc malloc).
+MEASURED one-heap peaks on native_sim/native/64 (boot record, 10 s
+against a live peer): rust/talker xrce 46,256; rust/listener zenoh
+42,304; rust/action-server zenoh 58,288 -- which leaves 7,760 bytes of
+a 64 KiB arena and is refused by `read-boot-report.py --heap-headroom`.
+128 KiB keeps the 24,576-byte floor over the worst of them. A C image
+measured 15,152 (c/talker zenoh), so its default is unchanged.
+
+Size of the rlsf arena in nros-platform's zephyr_heap, which backs
+BOTH z_malloc and __rust_alloc since the allocation funnel moved off
+Zephyr's kernel heap.
+
+CONFIG_HEAP_MEM_POOL_SIZE does NOT govern application allocation any
+more; this does. An application that outgrows the arena does not
+fault or log -- it stops, so size this to what the application
+actually needs rather than leaving the default in place and
+inferring from a hang.
+
+An NROS_ZEPHYR_HEAP_SIZE environment variable overrides this value.
+
+The boot record's capacity word reads this value + 512: zpico-alloc
+carves an 8 x 64 B slab beside the arena (phase-474 I5), so a
+configured 102400 reads 102912. Size from a dump with
+`read-boot-report.py --heap-headroom`, which judges the RUNNING peak
+(as of the dump) against a 24,576-byte floor and names the knob
+(peak + floor - 512); take the dump after the host graph has joined,
+not at boot.
+'''
