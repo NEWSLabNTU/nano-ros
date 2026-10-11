@@ -160,7 +160,44 @@ fn env_spelled(name: &str, watch: bool) -> Option<(String, String)> {
             println!("cargo:rerun-if-env-changed={s}");
         }
     }
-    read_spelled_from(name, &|k| env::var(k).ok())
+    let found = read_spelled_from(name, &|k| env::var(k).ok());
+    if let Some((spelled, _)) = &found
+        && let Some(notice) = deprecation_notice(spelled)
+        && first_notice_for(spelled)
+    {
+        println!("cargo:warning=nros: {notice}");
+    }
+    found
+}
+
+/// phase-484 W5a — what a build prints when a knob's value arrives under a
+/// LEGACY spelling, or `None` for a canonical (or unregistered) name.
+///
+/// The words are the registry's (`DEPRECATION_TEMPLATE`, generated with the
+/// cmake twin's from one string in `scripts/gen-knob-registry.py`), so a
+/// configure and a build script name the same replacement the same way.
+#[must_use]
+pub fn deprecation_notice(spelled: &str) -> Option<String> {
+    let row = knob_row(spelled)?;
+    (row.env != spelled).then(|| {
+        DEPRECATION_TEMPLATE
+            .replace("{legacy}", spelled)
+            .replace("{env}", row.env)
+    })
+}
+
+/// Once per spelling per build-script process: a knob read by several call
+/// sites (the zpico runner reads some twice) warns once, not per read.
+fn first_notice_for(spelled: &str) -> bool {
+    use std::{
+        collections::BTreeSet,
+        sync::{Mutex, OnceLock},
+    };
+    static SEEN: OnceLock<Mutex<BTreeSet<String>>> = OnceLock::new();
+    SEEN.get_or_init(|| Mutex::new(BTreeSet::new()))
+        .lock()
+        .map(|mut seen| seen.insert(spelled.to_string()))
+        .unwrap_or(true)
 }
 
 /// [`read_spelled_from`]'s value alone, for a reader that injects its env
@@ -651,6 +688,24 @@ mod tests {
     /// tables carried were exactly that, and the two `NROS_PARAM_SERVICE_INBOX_*`
     /// knobs 1490 measured as LIVE splits were among the names that shape
     /// affects.
+    /// phase-484 W5a — a legacy spelling is named with its replacement, in the
+    /// registry's words; a canonical or unregistered name earns nothing.
+    #[test]
+    fn a_legacy_spelling_names_its_replacement() {
+        let n = deprecation_notice("ZPICO_FRAG_MAX_SIZE").expect("a legacy spelling");
+        assert!(
+            n.starts_with(
+                "ZPICO_FRAG_MAX_SIZE is a deprecated spelling of NROS_ZENOH_FRAG_MAX_SIZE"
+            ),
+            "{n}"
+        );
+        assert!(!n.contains('{'), "every placeholder substituted: {n}");
+        assert_eq!(deprecation_notice("NROS_ZENOH_FRAG_MAX_SIZE"), None);
+        assert_eq!(deprecation_notice("NROS_NOT_A_KNOB"), None);
+        assert!(first_notice_for("ZPICO_TEST_ONCE"));
+        assert!(!first_notice_for("ZPICO_TEST_ONCE"), "once per spelling");
+    }
+
     #[test]
     fn every_pairing_row_earns_its_place() {
         for (env_name, kconfig) in KCONFIG_PAIRS {

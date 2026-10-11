@@ -333,6 +333,23 @@ pub fn image_layers(decl: &LeafSystem) -> BTreeMap<String, String> {
 /// instead. A key the registry does not hold is carried as written.
 #[must_use]
 pub fn canonical_env_key(key: &str) -> String {
+    if let Some(notice) = nros_zephyr_build::deprecation_notice(key) {
+        // Once per key per run: an image's layers are rendered on more than
+        // one road (`sync` writes the cargo file and the Kconfig fragment).
+        use std::{
+            collections::BTreeSet,
+            sync::{Mutex, OnceLock},
+        };
+        static SEEN: OnceLock<Mutex<BTreeSet<String>>> = OnceLock::new();
+        let first = SEEN
+            .get_or_init(|| Mutex::new(BTreeSet::new()))
+            .lock()
+            .map(|mut seen| seen.insert(key.to_string()))
+            .unwrap_or(true);
+        if first {
+            eprintln!("warning: nros: [image.<id>] env: {notice}");
+        }
+    }
     match nros_zephyr_build::knob_row(key) {
         Some(row) => row.env.to_string(),
         None => key.to_string(),
