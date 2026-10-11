@@ -59,7 +59,7 @@ fn repo_root() -> PathBuf {
 ///
 /// This is deliberately NOT
 /// `nros_orchestration_ir::model_location::launch_resolver_bin()`. That ladder
-/// ($NROS_LAUNCH_RESOLVE, $NROS_REPO_DIR, $NROS_HOME/bin) is the right question
+/// ($NROS_LAUNCH_RESOLVE, the owning or compiling checkout, $NROS_HOME/bin) is the right question
 /// for a test that exercises code which RESOLVES the binary; these tests run it
 /// themselves and mean the pinned in-tree build, as their headers say.
 pub fn pinned_launch_resolver() -> PathBuf {

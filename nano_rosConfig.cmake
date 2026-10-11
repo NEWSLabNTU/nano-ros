@@ -4,8 +4,9 @@
 # like an ament_cmake package opens with `find_package(rclcpp REQUIRED)`. Because
 # nano-ros is a SOURCE distribution (no install prefix, no crates.io — #171 D2),
 # resolution is source-backed: this config lives at the checkout root and is
-# located via `nano_ros_ROOT` (which `activate.sh` exports; a copy-out passes
-# `-Dnano_ros_ROOT=<checkout>` or lets a `nros setup` CMakePreset carry it — W5).
+# located via `-Dnano_ros_ROOT=<root>`, which `nros build` and the CMakePresets
+# `nros init` writes pass; a raw `cmake` names it (no shell exports it —
+# RFC-0103 D6, amended 2026-10-12).
 #
 # What `find_package(nano_ros)` wires up:
 #   1. imports nano-ros (add_subdirectory of the checkout — the machinery

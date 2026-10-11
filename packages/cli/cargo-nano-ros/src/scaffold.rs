@@ -467,9 +467,9 @@ default_namespace = "/"
 
 # A reusable component is a library (rlib); the deployed system links it.
 # nano-ros crates are not published to crates.io (RFC-0040) — `version = "*"` is
-# only the patched left-hand side. Run `nros sync` (with NROS_REPO_DIR set) to
-# write the nros-managed [patch.crates-io] block redirecting `nros` to your
-# nano-ros checkout, then `cargo build`.
+# only the patched left-hand side. Run `nros sync` to write the nros-managed
+# [patch.crates-io] block redirecting `nros` to your nano-ros SDK, then
+# `cargo build`. `nros` finds the SDK itself; `--nano-ros-path` names one.
 [dependencies]
 nros = {{ version = "*", default-features = false, features = [
     "alloc",
@@ -774,8 +774,8 @@ void {class_name}::on_tick() {{
     println!("  cd {}", cfg.name);
     println!("  # Solo build:");
     println!("  cmake -S . -B build");
-    println!("  #   (an installed toolchain needs nothing here; from an un-activated");
-    println!("  #    checkout shell add -DNROS_REPO_DIR=<path-to-nano-ros>)");
+    println!("  #   (the `nros` on PATH finds its own SDK; to name one explicitly");
+    println!("  #    add -DNROS_REPO_DIR=<path-to-nano-ros>)");
     println!("  cmake --build build");
     println!();
     println!("  # Or add it as a SUBDIR in a workspace root that calls");
@@ -913,8 +913,8 @@ NROS_C_COMPONENT({state_ty}, {configure_fn})
     println!("  cd {}", cfg.name);
     println!("  # Solo build:");
     println!("  cmake -S . -B build");
-    println!("  #   (an installed toolchain needs nothing here; from an un-activated");
-    println!("  #    checkout shell add -DNROS_REPO_DIR=<path-to-nano-ros>)");
+    println!("  #   (the `nros` on PATH finds its own SDK; to name one explicitly");
+    println!("  #    add -DNROS_REPO_DIR=<path-to-nano-ros>)");
     println!("  cmake --build build");
     println!();
     println!("  # Or add it as a SUBDIR in a C++ or Rust Entry workspace.");
@@ -967,8 +967,9 @@ fn scaffold_rust(
 const CARGO_PROFILES: &str = r#"
 # nano-ros crates are not published to crates.io (RFC-0040) — the `version = "*"`
 # requirements above are patched, not resolved from crates.io. Run `nros sync`
-# (with NROS_REPO_DIR set) to write the nros-managed [patch.crates-io] block here
-# (path deps into your nano-ros checkout + any generated msg crates), then build.
+# to write the nros-managed [patch.crates-io] block here (path deps into your
+# nano-ros SDK + any generated msg crates), then build. `nros` finds the SDK
+# itself; `--nano-ros-path` names one explicitly.
 
 # Named size/speed profiles (Phase 204.15): `cargo build --profile size|speed`.
 [profile.size]

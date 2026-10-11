@@ -134,12 +134,13 @@ section 212.K.7.
 
 ## Outside the nano-ros checkout
 
-A project that lives somewhere else needs to tell `nros sync` where the
-nano-ros source tree is — that is the only extra step:
+A project that lives somewhere else uses the SDK the `nros` binary
+belongs to — a release's own `share/nano-ros`, or the checkout an
+in-tree `nros` was built in — so a plain `nros sync` works. To name a
+different tree, pass it:
 
 ```bash
-export NROS_REPO_DIR=/path/to/nano-ros
-nros sync
+nros sync --nano-ros-path /path/to/nano-ros
 ```
 
 `nros sync` then writes the `[patch.crates-io]` rows into that image's

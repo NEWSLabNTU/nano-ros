@@ -1,58 +1,62 @@
-//! Where the nano-ros SDK root is — one ladder, four rungs (RFC-0099 D3,
-//! phase-447 A2).
+//! Where the nano-ros SDK root is — one ladder, three rungs (RFC-0099 D3,
+//! phase-447 A2; RFC-0103 D6 (amended 2026-10-12)).
 //!
 //! The SDK root is the directory a BUILD reads from: `cmake/` (the modules a
 //! workspace includes), `config/` and `packages/` (the board descriptors and
-//! the runtime crates a user's project compiles against). Until this module
-//! there was no such concept — every site resolved "a nano-ros CHECKOUT", three
-//! ways, in three separately-written `or_else` chains:
+//! the runtime crates a user's project compiles against). The ladder:
 //!
 //! ```text
-//! --nano-ros-path / -DNROS_REPO_DIR   ->  $NROS_REPO_DIR  ->  a walk-up
+//! --nano-ros-path / -DNROS_REPO_DIR  ->  a walk-up from the workspace
+//!                                    ->  the binary's own SDK root
 //! ```
 //!
-//! All three are a checkout, so the released `nros` could resolve none of them
-//! and `nros build` bailed with "no nano-ros checkout found". That is RFC-0099
-//! D1: the journey `install.sh` -> `nros setup` -> `nros new` -> `nros build`
-//! dead-ends one step from the end, and it breaks nobody today only because
-//! every contributor has `$NROS_REPO_DIR` from `activate.sh`.
+//! ## The binary's own root, and why nothing is exported any more
 //!
-//! ## The fourth rung, and why it is LAST
+//! RFC-0103 D6 (amended 2026-10-12): the `nros` binary knows its own SDK root,
+//! so contributors and users follow the same process and nobody exports one.
+//! A RELEASED `nros` reads `<prefix>/share/nano-ros` beside it (phase-447 A1);
+//! an IN-TREE `nros` (`<checkout>/packages/cli/target/release/nros`) reads the
+//! checkout it was built in. Both answers live in ONE function,
+//! [`nros_launcher::checkout::own_sdk_root_of`].
 //!
-//! A release now carries its own SDK root at `<prefix>/share/nano-ros/`
-//! (phase-447 A1), so a toolchain can answer the question out of itself.
+//! The `$NROS_REPO_DIR` rung that used to sit between the walk-up and this one
+//! is GONE. It was exported by `activate.sh` and inherited by every linked
+//! worktree, so it named the parent checkout in a session working in a child
+//! (issue 1510 moved it below the walk-up for exactly that reason). An exported
+//! variable cannot distinguish intent from inheritance; `--nano-ros-path` can,
+//! and the binary's own location needs no export at all.
 //!
-//! It is consulted **last**, and that is a decision rather than an ordering
-//! detail. The ownership guard ([`crate::stale_guard`], phase-431 W1) requires
-//! that an `nros` running inside a checkout be that checkout's own build,
-//! because a foreign binary emits with emitters nobody in that tree can see. A
-//! store rung placed EARLIER would answer with a store copy of the very tree a
-//! contributor is editing — the same class of silent substitution, one layer
-//! down, and it would be invisible because a store copy compiles perfectly
-//! well. Placed last it changes no existing behaviour: it is reached only when
-//! the three checkout rungs found nothing, which today is the case that has no
-//! answer at all.
+//! ## Why the own-root rung is LAST
+//!
+//! The ownership guard ([`crate::stale_guard`], phase-431 W1) requires that an
+//! `nros` running inside a checkout be that checkout's own build, because a
+//! foreign binary emits with emitters nobody in that tree can see. The own-root
+//! rung placed EARLIER would answer a workspace inside checkout B with the root
+//! of checkout A (or a store copy) because that is where the binary happened to
+//! come from — the same class of silent substitution, one layer down, and it
+//! would be invisible because a store copy compiles perfectly well. Placed last
+//! it answers only when the workspace sits in no checkout at all: a copy-out
+//! project, which is exactly the case that used to need an export.
 //!
 //! ## One ladder, spelled once
 //!
-//! Five call sites carried the three-rung chain by hand (`cmd::build`,
+//! Five call sites carried the chain by hand (`cmd::build`,
 //! `cmd::board_facts`, `orchestration::planner`, and two in `cmd::ws`). Adding
-//! a fourth spelling at one of them is how the sizes-header mirror was fixed
-//! five times, so the chain moved here and the sites ask. `nros sdk-root` is
-//! the same ladder exposed for cmake and shell — the bridge shape
-//! `nros sdk-path` and `nros model-path` already use, for the same reason: the
-//! derivation lives once and everyone else asks rather than re-deriving.
+//! a spelling at one of them is how the sizes-header mirror was fixed five
+//! times, so the chain lives here and the sites ask. `nros sdk-root` is the
+//! same ladder exposed for cmake and shell — the bridge shape `nros sdk-path`
+//! and `nros model-path` already use, for the same reason: the derivation
+//! lives once and everyone else asks rather than re-deriving.
 //!
 //! ## Where the pieces live
 //!
-//! The RUNG itself is in [`nros_launcher::checkout`], not here, and that is
+//! The own-root RUNG is in [`nros_launcher::checkout`], not here, and that is
 //! layering rather than accident: the launcher already owns
 //! [`MONOREPO_MARKER`](nros_launcher::checkout::MONOREPO_MARKER) — the tree's
-//! one answer to "is this a nano-ros root" — and `cargo-nano-ros` needs the
-//! same rung for the bundled `.msg` share dirs while sitting BELOW this crate.
-//! Putting it in the shared leaf is what stops `<prefix>/share/nano-ros` being
-//! derived in two places. What lives HERE is the ladder: the order, and what to
-//! say when no rung answers.
+//! one answer to "is this a nano-ros root" — and crates BELOW this one
+//! (`cargo-nano-ros`, `rosidl-bindgen`) need the same answer. Putting it in the
+//! shared leaf is what stops it being derived in two places. What lives HERE is
+//! the ladder: the order, and what to say when no rung answers.
 //!
 //! A shipped SDK root satisfies the marker because `packages/` is staged whole
 //! (`scripts/stage-sdk-root.sh`) — the asset is not a different SHAPE of root,
@@ -66,83 +70,104 @@ pub use nros_launcher::checkout::{
     shipped_sdk_root_beside as shipped_beside,
 };
 
-/// The four rungs, as data — so [`resolve_from`] is a pure function and the
-/// ORDER can be tested without touching the environment or `current_exe`.
+/// The ladder's inputs, as data — so [`resolve_from`] is a pure function and
+/// the ORDER can be tested without touching `current_exe`.
 #[derive(Debug, Default)]
 pub struct Rungs<'a> {
     /// `--nano-ros-path` / `-DNROS_REPO_DIR`, whatever the caller was told.
     pub explicit: Option<PathBuf>,
-    /// `$NROS_REPO_DIR`, as `activate.sh` exports it.
-    pub repo_dir: Option<PathBuf>,
     /// Where the walk-up starts — the workspace root.
     pub workspace: Option<&'a Path>,
-    /// `current_exe()`, for the shipped rung.
+    /// `current_exe()`, canonicalized, for the own-root rung.
     pub exe: Option<PathBuf>,
+    /// The CLI's compile-time source dir, the own-root rung's fallback for a
+    /// binary whose target dir is outside its checkout
+    /// ([`nros_launcher::checkout::built_in_dir`]).
+    pub built_in: Option<PathBuf>,
 }
 
-/// Walk the ladder. `None` means no rung answered.
+/// Which rung answered — what `nros sdk-root --explain` names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Rung {
+    /// `--nano-ros-path` / `-DNROS_REPO_DIR`.
+    Explicit,
+    /// The checkout enclosing the workspace.
+    Workspace,
+    /// A released binary's own `<prefix>/share/nano-ros`.
+    OwnShipped,
+    /// The checkout an in-tree binary was built in.
+    OwnCheckout,
+}
+
+impl Rung {
+    /// The phrase `nros sdk-root --explain` prints after "via".
+    #[must_use]
+    pub fn describe(self) -> &'static str {
+        match self {
+            Rung::Explicit => "--nano-ros-path",
+            Rung::Workspace => "the nano-ros checkout enclosing the workspace",
+            Rung::OwnShipped => "this toolchain's own share/nano-ros",
+            Rung::OwnCheckout => "the nano-ros checkout this `nros` was built in",
+        }
+    }
+}
+
+/// Walk the ladder, and say which rung answered. `None` means none did.
+#[must_use]
+pub fn resolve_explained_from(rungs: Rungs<'_>) -> Option<(PathBuf, Rung)> {
+    if let Some(p) = rungs.explicit {
+        return Some((p, Rung::Explicit));
+    }
+    if let Some(p) = rungs
+        .workspace
+        .and_then(crate::cmd::ws::autodetect_nano_ros_path)
+    {
+        return Some((p, Rung::Workspace));
+    }
+    // LAST. See the module header — earlier would answer a workspace in one
+    // checkout with the root of whichever tree the binary came from.
+    let exe = rungs.exe.as_deref()?;
+    if let Some(p) = shipped_beside(exe) {
+        return Some((p, Rung::OwnShipped));
+    }
+    nros_launcher::checkout::own_checkout_of(exe, rungs.built_in.as_deref())
+        .map(|p| (p, Rung::OwnCheckout))
+}
+
+/// [`resolve_explained_from`] without the attribution.
 #[must_use]
 pub fn resolve_from(rungs: Rungs<'_>) -> Option<PathBuf> {
-    rungs
-        .explicit
-        // The WALK-UP outranks the ambient variable — issue 1510.
-        //
-        // `$NROS_REPO_DIR` is exported by `activate.sh` and INHERITED by every
-        // linked worktree, so it names the parent checkout in a session working
-        // in a child. Above the walk it made a direct `nros sync` there resolve
-        // the PARENT: patch paths written into a tree nobody was editing, and a
-        // build of the parent's crates.
-        //
-        // `abi_guard::runtime_root` had already settled the same question the
-        // other way and written down why — "`NROS_REPO_DIR` is ambient after
-        // `source activate.sh`, so a contributor with two checkouts open would
-        // otherwise have every consumer in the second one measured against the
-        // first". Two ladders in one binary disagreeing about one hazard is the
-        // defect; they answer DIFFERENT questions (that one is "which tree does
-        // this consumer link", this one is "where is the SDK root a build
-        // reads") and stay separate, but they agree here.
-        //
-        // `explicit` is untouched above, and is now the only way to point a
-        // build at another checkout — which is the right shape: it distinguishes
-        // intent from inheritance, and an exported variable cannot.
-        .or_else(|| {
-            rungs
-                .workspace
-                .and_then(crate::cmd::ws::autodetect_nano_ros_path)
-        })
-        .or(rungs.repo_dir)
-        // LAST. See the module header — earlier would redirect a contributor to
-        // a store copy of the tree they are editing.
-        .or_else(|| rungs.exe.as_deref().and_then(shipped_beside))
+    resolve_explained_from(rungs).map(|(p, _)| p)
 }
 
-/// The ladder with the process environment read for it, once, here.
-///
-/// The shape every call site used to spell by hand, plus the rung a released
-/// toolchain can actually reach.
+/// The ladder for the running binary, with its rung.
+#[must_use]
+pub fn resolve_explained(explicit: Option<PathBuf>, workspace: &Path) -> Option<(PathBuf, Rung)> {
+    resolve_explained_from(Rungs {
+        explicit,
+        workspace: Some(workspace),
+        exe: nros_launcher::checkout::canonical_current_exe(),
+        built_in: Some(nros_launcher::checkout::built_in_dir().to_path_buf()),
+    })
+}
+
+/// The ladder for the running binary.
 #[must_use]
 pub fn resolve(explicit: Option<PathBuf>, workspace: &Path) -> Option<PathBuf> {
-    resolve_from(Rungs {
-        explicit,
-        // repo-dir-env-ok: THE 1510 ladder: `resolve_from` puts the workspace walk-up above this rung.
-        repo_dir: std::env::var_os("NROS_REPO_DIR").map(PathBuf::from),
-        workspace: Some(workspace),
-        exe: std::env::current_exe()
-            .ok()
-            .map(|e| e.canonicalize().unwrap_or(e)),
-    })
+    resolve_explained(explicit, workspace).map(|(p, _)| p)
 }
 
 /// What to tell someone when no rung answered.
 ///
-/// Names all four, because before A2 it named two and the reader had no way to
-/// learn that an installed toolchain is supposed to answer this by itself.
+/// Names every rung, because a reader cannot otherwise learn that the binary
+/// is supposed to answer this by itself.
 #[must_use]
 pub fn not_found_help() -> String {
     "no nano-ros SDK root found, so board ids cannot be resolved. Resolved in \
-     order: --nano-ros-path, $NROS_REPO_DIR, a walk-up from the workspace, then \
-     this toolchain's own share/nano-ros (present in a released `nros`, absent \
-     from a `cargo build` of the CLI). Inside a checkout, `source ./activate.sh`."
+     order: --nano-ros-path, a walk-up from the workspace, then this `nros` \
+     binary's own SDK root (share/nano-ros beside a released `nros`, or the \
+     checkout an in-tree `nros` was built in). Pass --nano-ros-path <root> to \
+     name one explicitly."
         .to_string()
 }
 
@@ -178,8 +203,13 @@ mod tests {
         exe
     }
 
+    fn fake_checkout(dir: &Path) -> PathBuf {
+        std::fs::create_dir_all(dir.join("packages/core/nros-core")).unwrap();
+        std::fs::write(dir.join(MARKER), "").unwrap();
+        dir.to_path_buf()
+    }
+
     /// A1 — an `nros` installed from a release answers out of its own asset.
-    /// This is the arm that has no answer at all before phase-447.
     #[test]
     fn an_installed_toolchain_resolves_its_own_shipped_root() {
         let tmp = tempfile::tempdir().unwrap();
@@ -187,29 +217,74 @@ mod tests {
         let elsewhere = tmp.path().join("some/users/project");
         std::fs::create_dir_all(&elsewhere).unwrap();
 
-        let got = resolve_from(Rungs {
+        let got = resolve_explained_from(Rungs {
             workspace: Some(&elsewhere),
             exe: Some(exe),
             ..Rungs::default()
         });
-        assert_eq!(got, Some(tmp.path().join(SHIPPED_SUBDIR)));
+        assert_eq!(
+            got,
+            Some((tmp.path().join(SHIPPED_SUBDIR), Rung::OwnShipped))
+        );
     }
 
-    /// The OTHER arm of the guard: a contributor inside a checkout still
-    /// resolves to their tree even though a shipped root is also reachable.
-    ///
-    /// This is the test the LAST placement exists for. With the rung moved
-    /// first it goes red; with the rung absent entirely it stays green, which
-    /// is why the test above is its pair rather than its substitute.
+    /// RFC-0103 D6 (amended) — an IN-TREE `nros` run from a project outside
+    /// every checkout answers with the checkout it was built in. This is the
+    /// case `$NROS_REPO_DIR` used to be exported for.
+    #[test]
+    fn an_in_tree_binary_answers_with_its_own_checkout() {
+        let tmp = tempfile::tempdir().unwrap();
+        let checkout = fake_checkout(&tmp.path().join("checkout"));
+        let exe = checkout.join("packages/cli/target/release/nros");
+        std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
+        std::fs::write(&exe, "").unwrap();
+        let project = tmp.path().join("copy-out/project");
+        std::fs::create_dir_all(&project).unwrap();
+
+        let got = resolve_explained_from(Rungs {
+            workspace: Some(&project),
+            exe: Some(exe),
+            ..Rungs::default()
+        });
+        assert_eq!(got, Some((checkout, Rung::OwnCheckout)));
+    }
+
+    /// …and the workspace walk-up still OUTRANKS the binary's own checkout: a
+    /// binary built in checkout A, run in a workspace inside checkout B,
+    /// answers B. The nested shape (`<main>/.claude/worktrees/<id>`) is the one
+    /// a prefix test cannot separate (issue 1391), and the one issue 1510 hit.
+    #[test]
+    fn the_workspace_checkout_outranks_the_binarys_own() {
+        let tmp = tempfile::tempdir().unwrap();
+        let parent = fake_checkout(&tmp.path().join("parent"));
+        let worktree = fake_checkout(&parent.join(".claude/worktrees/agent-x"));
+        let exe = parent.join("packages/cli/target/release/nros");
+        std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
+        std::fs::write(&exe, "").unwrap();
+        let ws = worktree.join("examples/workspaces/mixed");
+        std::fs::create_dir_all(&ws).unwrap();
+
+        let got = resolve_explained_from(Rungs {
+            workspace: Some(&ws),
+            exe: Some(exe),
+            built_in: Some(parent.join("packages/cli/nros-launcher")),
+            ..Rungs::default()
+        });
+        assert_eq!(
+            got,
+            Some((worktree, Rung::Workspace)),
+            "the workspace's own checkout must outrank the binary's"
+        );
+    }
+
+    /// A contributor inside a checkout still resolves to their tree even
+    /// though a shipped root is also reachable — the test the LAST placement
+    /// exists for. And `--nano-ros-path` outranks everything.
     #[test]
     fn a_checkout_still_wins_over_a_reachable_shipped_root() {
         let tmp = tempfile::tempdir().unwrap();
         let exe = staged_prefix(tmp.path());
-
-        // A checkout, and a workspace nested inside it.
-        let checkout = tmp.path().join("checkout");
-        std::fs::create_dir_all(checkout.join("packages/core/nros-core")).unwrap();
-        std::fs::write(checkout.join(MARKER), "").unwrap();
+        let checkout = fake_checkout(&tmp.path().join("checkout"));
         let ws = checkout.join("examples/workspaces/mixed");
         std::fs::create_dir_all(&ws).unwrap();
 
@@ -224,76 +299,16 @@ mod tests {
             "the walk-up must outrank the store"
         );
 
-        // …and so must the two rungs above it.
-        let got = resolve_from(Rungs {
-            repo_dir: Some(checkout.clone()),
-            workspace: Some(tmp.path()),
-            exe: Some(exe.clone()),
-            ..Rungs::default()
-        });
-        assert_eq!(
-            got,
-            Some(checkout.clone()),
-            "$NROS_REPO_DIR must outrank the store"
-        );
-
-        let got = resolve_from(Rungs {
+        let got = resolve_explained_from(Rungs {
             explicit: Some(checkout.clone()),
-            repo_dir: Some(tmp.path().to_path_buf()),
             workspace: Some(tmp.path()),
             exe: Some(exe),
+            built_in: None,
         });
         assert_eq!(
             got,
-            Some(checkout),
+            Some((checkout, Rung::Explicit)),
             "--nano-ros-path must outrank everything"
-        );
-    }
-
-    /// Issue 1510 — the WORKSPACE's own checkout outranks an ambient
-    /// `$NROS_REPO_DIR` naming a different one.
-    ///
-    /// `NROS_REPO_DIR` is exported by `activate.sh` and INHERITED by every
-    /// linked worktree, so a session working in a worktree carries the parent
-    /// checkout's path in its environment. With the variable above the walk-up,
-    /// a direct `nros sync` there resolved the PARENT: it wrote patch paths into
-    /// a tree the user was not editing, and the build compiled the parent's
-    /// crates. `abi_guard::runtime_root` had already settled the same question
-    /// the other way, and said why — "a contributor with two checkouts open
-    /// would otherwise have every consumer in the second one measured against
-    /// the first".
-    ///
-    /// The deliberate escape hatch is `explicit` (rung 1, asserted above): a
-    /// genuine cross-checkout build names the path on the command line instead
-    /// of relying on an exported variable that cannot distinguish intent from
-    /// inheritance.
-    #[test]
-    fn the_workspace_checkout_outranks_an_inherited_repo_dir() {
-        let tmp = tempfile::tempdir().unwrap();
-
-        // Two real checkouts, the child NESTED inside the parent exactly as an
-        // agent worktree is (`<main>/.claude/worktrees/<id>`) — the shape that
-        // makes a lexical prefix test useless, issue 1391.
-        let parent = tmp.path().join("parent");
-        std::fs::create_dir_all(parent.join("packages/core/nros-core")).unwrap();
-        std::fs::write(parent.join(MARKER), "").unwrap();
-
-        let worktree = parent.join(".claude/worktrees/agent-x");
-        std::fs::create_dir_all(worktree.join("packages/core/nros-core")).unwrap();
-        std::fs::write(worktree.join(MARKER), "").unwrap();
-
-        let got = resolve_from(Rungs {
-            // What `activate.sh` left in the environment of the parent shell.
-            repo_dir: Some(parent.clone()),
-            // Where the user actually is.
-            workspace: Some(&worktree),
-            ..Rungs::default()
-        });
-        assert_eq!(
-            got,
-            Some(worktree),
-            "an inherited $NROS_REPO_DIR must not outrank the checkout the \
-             workspace is inside (issue 1510)"
         );
     }
 
@@ -331,5 +346,14 @@ mod tests {
         let exe = tmp.path().join("bin/nros");
         std::fs::write(&exe, "").unwrap();
         assert_eq!(shipped_beside(&exe), None);
+    }
+
+    /// The help text names the explicit override and no longer points at a
+    /// variable nothing reads.
+    #[test]
+    fn not_found_help_names_the_flag_not_the_retired_variable() {
+        let h = not_found_help();
+        assert!(h.contains("--nano-ros-path"), "{h}");
+        assert!(!h.contains("NROS_REPO_DIR"), "{h}");
     }
 }

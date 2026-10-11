@@ -317,19 +317,19 @@ pub fn launch_resolver_bin() -> Option<PathBuf> {
 /// [`launch_resolver_bin`], with "this checkout" anchored to the checkout that
 /// owns `near` — issue 1641.
 ///
-/// `$NROS_REPO_DIR` used to be taken as given. A linked worktree inherits it
-/// from the shell that spawned it, pointing at the PARENT, so a model
-/// self-resolved while compiling inside a worktree was produced by the parent
-/// checkout's resolver — and a resolver from a different layer-2 checkout
-/// writes a model that is MISSING DATA rather than failing (issue 0409).
-///
-/// The variable now goes through `nros_build_paths::reroot_foreign`, the
-/// issue-1280 rule: outside every checkout it is kept (the out-of-tree SDK case
-/// env-first exists for); inside the checkout that owns `near` it is kept; and
-/// inside a DIFFERENT checkout it is re-rooted onto `near`'s. If that checkout
-/// has not built its resolver, the lookup falls through to the store rather
-/// than borrowing the parent's — silent cross-tree skew is the defect, and a
-/// missing resolver already has a remedy message at the caller.
+/// `$NROS_REPO_DIR` used to be read here (first as given, then through the
+/// issue-1280 re-root rule). A linked worktree inherits it from the shell that
+/// spawned it, pointing at the PARENT, so a model self-resolved while compiling
+/// inside a worktree was produced by the parent checkout's resolver — and a
+/// resolver from a different layer-2 checkout writes a model that is MISSING
+/// DATA rather than failing (issue 0409). RFC-0103 D6 (amended 2026-10-12)
+/// removed the variable: "this checkout" is the one that owns `near`, by the
+/// marker walk — else, with no `near` or one in no checkout, the SDK root this
+/// crate itself was compiled from (the D6-M rule: every nros crate is compiled
+/// from inside one). If that checkout has not built its resolver,
+/// the lookup falls through to the store rather than borrowing another tree's —
+/// silent cross-tree skew is the defect, and a missing resolver already has a
+/// remedy message at the caller.
 pub fn launch_resolver_bin_near(near: Option<&Path>) -> Option<PathBuf> {
     if let Some(p) = std::env::var_os("NROS_LAUNCH_RESOLVE") {
         let p = PathBuf::from(p);
@@ -339,18 +339,9 @@ pub fn launch_resolver_bin_near(near: Option<&Path>) -> Option<PathBuf> {
     }
     let here = near
         .map(|n| n.canonicalize().unwrap_or_else(|_| n.to_path_buf()))
-        .and_then(|n| nros_build_paths::checkout_root_of(&n));
-    // repo-dir-env-ok: the issue-1280 rule is applied on the next line.
-    if let Some(repo) = std::env::var_os("NROS_REPO_DIR").map(PathBuf::from) {
-        let repo = match &here {
-            Some(h) => nros_build_paths::reroot_foreign(&repo, h),
-            None => repo,
-        };
-        let p = repo.join("packages/cli/nros-launch-resolve/target/release/nros-launch-resolve");
-        if p.is_file() {
-            return Some(p);
-        }
-    } else if let Some(h) = &here {
+        .and_then(|n| nros_build_paths::checkout_root_of(&n))
+        .or_else(|| nros_build_paths::checkout_root_of(Path::new(env!("CARGO_MANIFEST_DIR"))));
+    if let Some(h) = &here {
         let p = h.join("packages/cli/nros-launch-resolve/target/release/nros-launch-resolve");
         if p.is_file() {
             return Some(p);

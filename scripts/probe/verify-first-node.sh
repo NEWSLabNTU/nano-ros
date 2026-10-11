@@ -35,8 +35,10 @@ rm -rf "$ws"
 cd "$ws"
 # No root build file and no hand-written entry (RFC-0098 D9, phase-445 W5):
 # the entry is generated from the bringup's `[image.native]` by `nros build`.
-NROS_REPO_DIR="$repo_root" nros sync
-NROS_REPO_DIR="$repo_root" nros build
+# No root is named: the in-tree `nros` knows the checkout it was built in
+# (RFC-0103 D6, amended 2026-10-12), exactly as the book's flow says.
+nros sync
+nros build
 
 bin=build/posix-cyclonedds-native/cmake/native_entry
 [ -x "$bin" ] || { echo "PROBE FAIL: entry binary missing at $bin"; exit 1; }
@@ -74,8 +76,10 @@ ws_rs=/tmp/probe_quickstart_rs
 rm -rf "$ws_rs"
 ( cd /tmp && nros new probe_quickstart_rs --workspace --lang rust )
 cd "$ws_rs"
-NROS_REPO_DIR="$repo_root" nros sync
-NROS_REPO_DIR="$repo_root" nros build
+# No root is named: the in-tree `nros` knows the checkout it was built in
+# (RFC-0103 D6, amended 2026-10-12), exactly as the book's flow says.
+nros sync
+nros build
 # Issue 1439 (resolved): the generated entry must say `spin = "forever"`.
 # Without it the macro's hosted default is register-and-exit, and this
 # section failed as `nros: application complete` + "exited before

@@ -57,19 +57,20 @@ pub fn run(args: Args) -> Result<()> {
         Some(w) => w,
         None => std::env::current_dir()?,
     };
-    let Some(root) = nano_ros_root::resolve(args.nano_ros_path, &workspace) else {
+    let Some((root, rung)) = nano_ros_root::resolve_explained(args.nano_ros_path, &workspace)
+    else {
         bail!("{}", nano_ros_root::not_found_help());
     };
     if args.explain {
-        // Named by comparison, not by re-walking: `shipped()` is the only rung
-        // whose answer is a property of the BINARY, and it is the one a reader
-        // is surprised by.
-        let via = if nano_ros_root::shipped().as_deref() == Some(root.as_path()) {
-            "this toolchain's own share/nano-ros"
-        } else {
-            "a nano-ros checkout"
-        };
-        eprintln!("nros sdk-root: {} — via {via}", root.display());
+        // The ladder REPORTS which rung answered rather than this command
+        // re-deriving it by comparison: the own-root rung has two arms (a
+        // released binary's share/nano-ros, an in-tree binary's checkout), and
+        // "a nano-ros checkout" could not tell the reader which tree that was.
+        eprintln!(
+            "nros sdk-root: {} — via {}",
+            root.display(),
+            rung.describe()
+        );
     }
     println!("{}", root.display());
     Ok(())

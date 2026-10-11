@@ -586,11 +586,10 @@ git-dir-layout-assumptions:
 # parent's headers, and 1641 found seven more — one WROTE the central patch file
 # into the parent and one emitted path deps that compiled the parent's core crates.
 #
-# A read is allowed only where it is handed to something that applies the rule,
-# and the site says which in a `repo-dir-env-ok: <reason>` comment within three
-# lines. A reason AT THE SITE rather than an allowlist here, because an allowlist
-# does not move when the code does. Verified against the pre-fix tree: it flags
-# all seven 1641 readers, plus the two correct ones that stated no reason.
+# 1641 allowed a read only with a `repo-dir-env-ok: <reason>` beside it. RFC-0103
+# D6 (amended 2026-10-12) finished the job: the `nros` binary knows its own SDK
+# root and every other reader walks up from its own location, so NO Rust code
+# reads the variable any more, and a read — reason or not — now fails.
 [private]
 repo-dir-readers:
     @python3 scripts/check-repo-dir-readers.py

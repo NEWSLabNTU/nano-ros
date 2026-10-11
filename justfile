@@ -2790,7 +2790,7 @@ rust-rtos-link-check: _codegen
                examples/qemu-armv7a-nuttx/rust/talker \
                examples/threadx-linux/rust/talker; do
         NROS_REPO_DIR="$PWD" nros_codegen_stamp_check_or_wipe "$dir"
-        NROS_REPO_DIR="$PWD" "$nros_cli" sync "$dir" >/dev/null
+        "$nros_cli" sync "$dir" >/dev/null
         NROS_REPO_DIR="$PWD" nros_codegen_stamp_write "$dir"
     done
     # ...and the same W6 move took the leaf's `[build] target` with it. That key
@@ -3765,9 +3765,9 @@ acceptance: setup-cli
     nros="$(nros_cli_bin)"
     work="$repo/tmp/acceptance"
     rm -rf "$work"; mkdir -p "$work"; cd "$work"
-    NROS_REPO_DIR="$repo" "$nros" new accept_app --platform native --lang rust --use-case talker
+    "$nros" new accept_app --platform native --lang rust --use-case talker
     cd accept_app
-    NROS_REPO_DIR="$repo" "$nros" sync
+    "$nros" sync
     cargo build
     # profile-literal-ok: unprofiled: accept_app is a plain `cargo build` smoke binary
     # issue 1741 — the image is bounded by a deadline that ESCALATES.

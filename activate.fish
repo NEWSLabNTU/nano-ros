@@ -12,10 +12,11 @@
 # `pwd -P` resolves symlinks so a checkout reached through a symlinked parent
 # records the ONE physical path (issue 0375; mirror of activate.sh).
 set -l _nros_root (cd (dirname (status -f)); pwd -P)
-set -gx NROS_REPO_DIR $_nros_root
-# RFC-0048 (phase-287): find_package(nano_ros) locates nano_rosConfig.cmake via
-# CMake's <pkg>_ROOT env var — a sourced shell then needs no -Dnano_ros_ROOT.
-set -gx nano_ros_ROOT $_nros_root
+# RFC-0103 D6 (amended 2026-10-12) — neither NROS_REPO_DIR nor CMake's
+# nano_ros_ROOT is exported (mirror of activate.sh). The `nros` binary knows its
+# own SDK root, cmake modules locate it from their own path, and an explicit
+# root is a flag (`--nano-ros-path`, `-Dnano_ros_ROOT`). A path in the shell is
+# what a linked worktree inherits from its parent (issue 1280).
 
 # pyo3 0.24 caps the interpreter at 3.13; a rolling distro ships 3.14 and the
 # resolver build dies. Build against the stable ABI instead — inert where the

@@ -49,6 +49,15 @@ if [ -z "${SOURCE_VARS// /}" ]; then
     echo "FAIL: no [source.*] env names parsed from nros-sdk-index.toml" >&2
     exit 1
 fi
+# RFC-0103 D6 (amended 2026-10-12) — the checkout root (`NROS_REPO_DIR`,
+# `nano_ros_ROOT`) joins that set: `just` recipes get it, a user's shell does
+# not. Read from the `# just-only:` line in just/sdk-env.just, never restated.
+JUST_ONLY_VARS="$(sed -n 's/^# just-only:[[:space:]]*//p' "$REPO_ROOT/just/sdk-env.just")"
+if [ -z "${JUST_ONLY_VARS// /}" ]; then
+    echo "FAIL: no '# just-only:' names parsed from just/sdk-env.just" >&2
+    exit 1
+fi
+SOURCE_VARS="$SOURCE_VARS $JUST_ONLY_VARS"
 _kept=""
 for _v in $SSOT_VARS; do
     case " $SOURCE_VARS " in *" $_v "*) ;; *) _kept="$_kept $_v" ;; esac
@@ -60,9 +69,11 @@ fail() {
     FAILURES=$((FAILURES + 1))
 }
 
-# A completed activation is one that (a) exits 0, (b) leaves NROS_REPO_DIR set
-# to the checkout, and (c) reached the LAST statement of the file — proven by
-# `_nros_root` being unset again, which only happens on the final lines.
+# A completed activation is one that (a) exits 0, (b) leaves NROS_REPO_DIR
+# UNSET (RFC-0103 D6, amended 2026-10-12 — the `nros` binary knows its own SDK
+# root, so nothing exports one), and (c) reached the LAST statement of the file
+# — proven by `_nros_root` being unset again, which only happens on the final
+# lines.
 # Sentinel output is a single line so any shell can emit it identically.
 #
 # The SSoT-variable check emits its own `PROBEVARS` line rather than extending
@@ -141,8 +152,8 @@ run_case() {
         printf '%s\n' "$out" | sed 's/^/    /' >&2
         return 0
     fi
-    if ! nros_grep_q "repo=$REPO_ROOT " <<<"$probe"; then
-        fail "$shell/$label: NROS_REPO_DIR wrong or unset ($probe)"
+    if ! nros_grep_q "repo= " <<<"$probe"; then
+        fail "$shell/$label: activation exported NROS_REPO_DIR ($probe) — RFC-0103 D6 (amended)"
         return 0
     fi
     if ! nros_grep_q 'root_unset=$' <<<"$probe"; then

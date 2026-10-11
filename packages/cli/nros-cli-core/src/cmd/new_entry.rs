@@ -413,8 +413,8 @@ fn render_cargo_toml(name: &str, board: &str, rmw: &str, components: &[String]) 
 # this directory instead — `nros new entry` added that line.
 #
 # nano-ros crates are not published (RFC-0040); `version = "*"` is only the
-# left-hand side of the patch `nros sync` writes. Run `nros sync` with
-# NROS_REPO_DIR set before building.
+# left-hand side of the patch `nros sync` writes. Run `nros sync` before
+# building; it finds the SDK itself (`--nano-ros-path` names one explicitly).
 
 [package]
 name = "{name}"

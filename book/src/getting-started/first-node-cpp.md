@@ -185,9 +185,9 @@ same `rclcpp::init_in` call — see the GitHub source for the full pattern.
 
 ```bash
 cd examples/native/cpp/talker
-cmake -B build          # with ./activate.sh sourced, nano_ros_ROOT is
-                        # exported; a copy-out passes
-                        # -Dnano_ros_ROOT=<path-to-nano-ros> explicitly
+cmake -B build -Dnano_ros_ROOT="$(nros sdk-root)"
+                        # raw cmake names the root; `nros build` (or the
+                        # CMakePresets `nros init` writes) passes it for you
 cmake --build build
 ```
 

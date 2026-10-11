@@ -53,17 +53,18 @@ Four things, and the order matters:
    without it.
 2. **An activated environment** for interactive use:
    `source third_party/nano-ros/activate.sh` wires `nros` and the
-   SDK-store tools onto `PATH` and exports `nano_ros_ROOT`. CI can
-   skip this and pass paths explicitly (`-Dnano_ros_ROOT=…`, absolute
-   CLI path).
+   SDK-store tools onto `PATH`. It exports no root: `nros` knows the
+   checkout it was built in. CI can skip this and use an absolute CLI
+   path (a raw `cmake` passes `-Dnano_ros_ROOT=…`).
 3. **Provisioned toolchains.** `nros setup <board> --rmw <rmw>`
    fetches the cross-compiler, emulator, and SDK sources for exactly
    that pair into the shared store at `${NROS_HOME:-~/.nros}/sdk`.
    `--dry-run` prints the plan first. (The zenoh *router* is
    deliberately not provisioned — it comes from a ROS 2 install,
    `ros2 run rmw_zenoh_cpp rmw_zenohd`.)
-4. **`nros sync`.** `NROS_REPO_DIR=<checkout> nros sync` from your
-   workspace root. It produces the message bindings *and* the build
+4. **`nros sync`.** `nros sync` from your workspace root (the vendored
+   `nros` answers with its own checkout; `--nano-ros-path <checkout>`
+   names it explicitly). It produces the message bindings *and* the build
    settings each `[image.*]` implies — see the next section for why
    this is not optional.
 
@@ -131,8 +132,8 @@ Two entry points, both source-backed:
 
 - **`find_package(nano_ros REQUIRED)`** — the ament-shaped entry
   (`nano_rosConfig.cmake` at the checkout root). Located via
-  `nano_ros_ROOT`, which `activate.sh` exports; CI passes
-  `-Dnano_ros_ROOT=<checkout>` explicitly.
+  `-Dnano_ros_ROOT=<checkout>`, which `nros build` and the CMakePresets
+  `nros init` writes pass; a raw `cmake` names it (no shell exports it).
 - **`add_subdirectory(third_party/nano-ros)`** — the lower-level
   shape. See [Build as a CMake subdirectory](build-as-subdirectory.md)
   for the cache-variable table.
@@ -210,8 +211,8 @@ missing packages, not like staleness.
 
 - [ ] Submodule pinned to an `nros-v` tag, forward-only
 - [ ] `play_launch` submodule initialized non-recursively
-- [ ] CI passes `-Dnano_ros_ROOT=` / `NROS_REPO_DIR=` explicitly (no
-      reliance on an activated shell)
+- [ ] CI drives `nros build` (or passes `-Dnano_ros_ROOT=` to a raw
+      `cmake`) — no reliance on an activated shell
 - [ ] `nros sync` runs in CI before any Rust build — before `nros build`,
       and before any cargo line that passes `--config
       build/<image-id>/nros-cargo.toml`; no build setting hand-written

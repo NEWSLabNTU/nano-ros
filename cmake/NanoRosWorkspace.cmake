@@ -93,19 +93,23 @@ endfunction()
 # order `nros`'s `nano_ros_root::resolve` uses):
 #   1. explicit `<NROS_REPO_DIR>` arg (workspace-root call),
 #   2. `-DNROS_REPO_DIR=…` cache var (an explicit argument too),
-#   3. the checkout that ENCLOSES <start_dir> — before the environment,
-#      because an inherited value names whichever checkout last ran
-#      `activate.sh`, not the one being built (issue 1280),
-#   4. `$NROS_REPO_DIR`, the one environment name for the root.
-# `$NANO_ROS_ROOT` in the ENVIRONMENT is retired (it was a second env name for
-# the same fact) and refused. Writes the resolved path to <out_var>
+#   3. the checkout that ENCLOSES <start_dir>,
+#   4. the SDK root THIS MODULE lives in — the cmake twin of the `nros`
+#      binary's own root (RFC-0103 D6, amended 2026-10-12): a module reached
+#      from a checkout or an installed `share/nano-ros` sits inside the root it
+#      belongs to, so nobody needs to export one.
+# No environment variable is read. `$NROS_REPO_DIR` was rung 4 until the D6
+# amendment — an inherited value names whichever checkout last ran
+# `activate.sh`, not the one being built (issue 1280).
+# `$NANO_ROS_ROOT` in the ENVIRONMENT is retired and refused. Writes the
+# resolved path to <out_var>
 # (PARENT_SCOPE) or errors via FATAL_ERROR with a hint when nothing resolves.
 # ---------------------------------------------------------------------------
 function(_nros_resolve_root explicit start_dir out_var)
     if(DEFINED ENV{NANO_ROS_ROOT})
         message(FATAL_ERROR
-            "nano-ros: the ENVIRONMENT variable NANO_ROS_ROOT is retired — set "
-            "NROS_REPO_DIR instead, or pass -DNROS_REPO_DIR=<path> (RFC-0103 D6).")
+            "nano-ros: the ENVIRONMENT variable NANO_ROS_ROOT is retired — pass "
+            "-DNROS_REPO_DIR=<path> instead (RFC-0103 D6).")
     endif()
     if(explicit AND NOT explicit STREQUAL "")
         set(${out_var} "${explicit}" PARENT_SCOPE)
@@ -120,15 +124,19 @@ function(_nros_resolve_root explicit start_dir out_var)
         set(${out_var} "${_walked}" PARENT_SCOPE)
         return()
     endif()
-    if(DEFINED ENV{NROS_REPO_DIR} AND NOT "$ENV{NROS_REPO_DIR}" STREQUAL "")
-        set(${out_var} "$ENV{NROS_REPO_DIR}" PARENT_SCOPE)
+    # `_NROS_WORKSPACE_DIR` is `<root>/cmake`, captured CACHE INTERNAL at file
+    # scope (inside a function `CMAKE_CURRENT_LIST_DIR` names the CALLER).
+    _nros_find_root("${_NROS_WORKSPACE_DIR}" _own)
+    if(NOT _own STREQUAL "_NROS_ROOT-NOTFOUND")
+        set(${out_var} "${_own}" PARENT_SCOPE)
         return()
     endif()
     message(FATAL_ERROR
-        "nano-ros: cannot locate nano-ros root from '${start_dir}'.\n"
+        "nano-ros: cannot locate nano-ros root from '${start_dir}' nor from this\n"
+        "  module's own location '${_NROS_WORKSPACE_DIR}'.\n"
         "  Pass NROS_REPO_DIR to `nano_ros_workspace()`, set the\n"
-        "  -DNROS_REPO_DIR=<path> cache var or $NROS_REPO_DIR, or run from\n"
-        "  inside a nano-ros checkout.")
+        "  -DNROS_REPO_DIR=<path> cache var, or run from inside a nano-ros\n"
+        "  checkout.")
 endfunction()
 
 # ---------------------------------------------------------------------------
@@ -490,7 +498,8 @@ function(nano_ros_workspace)
 
     # Issue 1304 — every member opens with `find_package(nano_ros REQUIRED)`,
     # and nano_rosConfig.cmake was located through `nano_ros_ROOT`, which only
-    # `activate.sh` exports. So a workspace configured anywhere else — an
+    # `activate.sh` exported (and since RFC-0103 D6's 2026-10-12 amendment,
+    # nothing does). So a workspace configured anywhere else — an
     # installed toolchain's (whose root came from `nros sdk-root`), or the
     # book's `-DNROS_REPO_DIR=<checkout>` from an un-activated shell — resolved
     # the root, imported it, and then failed in its first member with "Could not

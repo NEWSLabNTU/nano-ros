@@ -5,16 +5,17 @@ Issue 0933.
 
 ## Why
 
-`activate.sh` is the activation SSoT. It exports `NROS_REPO_DIR` and
-`nano_ros_ROOT`, puts the in-tree CLI and the toolchains on PATH, and sources
-ROS itself (picking the file the current shell can read, nounset-guarded —
-issue 0639). A step that skips it gets a shell that looks fine and is missing
-the one variable the build needs.
+`activate.sh` is the activation SSoT. It puts the in-tree CLI and the
+toolchains on PATH and sources ROS itself (picking the file the current shell
+can read, nounset-guarded — issue 0639). A step that skips it gets a shell that
+looks fine and is missing what the build needs. (It no longer exports
+`NROS_REPO_DIR` / `nano_ros_ROOT`: RFC-0103 D6, amended 2026-10-12 — `nros`
+knows its own SDK root and `nros build` passes `-Dnano_ros_ROOT` itself.)
 
 `nano_rosConfig.cmake` lives at the CHECKOUT ROOT and is located via
 `nano_ros_ROOT`. A generated workspace root sets no CMake prefix on purpose —
-its paths stay relative so they are byte-identical across machines — so the
-environment is the only channel that can carry it. Without it:
+its paths stay relative so they are byte-identical across machines. When
+nothing carried it, this happened:
 
     CMake Error at CMakeLists.txt:23 (find_package):
       ... asked CMake to find a package configuration file provided by

@@ -154,7 +154,7 @@ On an embedded image the same knobs are compile-baked from that image's
 
 ```bash probe=40
 cd examples/native/c/talker
-cmake -B build
+cmake -B build -Dnano_ros_ROOT="$(nros sdk-root)"
 cmake --build build
 ```
 
@@ -172,9 +172,11 @@ the same two `cmake` lines, into `build/<image>/cmake`, with the toolchain
 file the board names ([issue 1296](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1296-nros-build-c-leaf-bringup-name-mismatch.md)). In a
 [multi-node workspace](workspace-cpp.md) it is the only build verb.
 
-Outside a sourced checkout, tell cmake where nano-ros is —
-`cmake -B build -Dnano_ros_ROOT=/path/to/nano-ros`, or export
-`NROS_REPO_DIR` once.
+A raw `cmake` must be told where nano-ros is, as above —
+`-Dnano_ros_ROOT=/path/to/nano-ros`, or `"$(nros sdk-root)"`, which prints
+the SDK root the `nros` on PATH resolves. `nros build` (and the
+CMakePresets `nros init` writes) passes it for you; `activate.sh` does not
+export it.
 
 The first configure pulls and builds nano-ros's Rust staticlibs
 (~3 minutes). Re-builds finish in seconds.

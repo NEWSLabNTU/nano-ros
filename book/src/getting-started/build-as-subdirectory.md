@@ -19,8 +19,10 @@ the root it generates.
 The repo's top-level `CMakeLists.txt` exposes everything via
 `add_subdirectory(...)`. The higher-level, ament-shaped alternative is
 `find_package(nano_ros REQUIRED)` — `nano_rosConfig.cmake` at the
-checkout root, located via `nano_ros_ROOT` (RFC-0048) — which every
-in-tree example reaches through the workspace helpers. Either way there
+checkout root, located via `-Dnano_ros_ROOT=<root>` (RFC-0048), which
+`nros build` and the CMakePresets `nros init` writes pass for you (a raw
+`cmake` names it; no shell exports it) — which every in-tree example
+reaches through the workspace helpers. Either way there
 is NO install step: phase-140 removed the install prefix and the old
 `find_package(NanoRos)` (capital) config pipeline. Vendoring the repo
 into a company tree (pinning, offline CI, upgrade workflow) has its own

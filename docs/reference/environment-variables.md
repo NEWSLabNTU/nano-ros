@@ -29,7 +29,7 @@ the active binary in this order:
 |---------------------------|----------------------------------------------------------------------------------------------------------|------------------------|
 | `NROS_CLI`                | Absolute path to a `nros` binary; takes precedence over PATH / repo-local / `NROS_HOME` resolution.      | (unset → use chain)    |
 | `NROS_HOME`               | Root for the legacy install layout (`$NROS_HOME/bin/nros`, `$NROS_HOME/sdk/<tool>/`). **Transitional** — Phase 218 retires `~/.nros/bin` from the resolution chain. Existing installs remain functional until removed; new checkouts should use `just setup-cli` + `source ./activate.sh`. | `~/.nros`              |
-| `NROS_REPO_DIR`           | Workspace root, exported by `activate.sh` / `activate.fish` / `.envrc`. Consumed by scripts that need an absolute path to the checkout (e.g. SDK-store relative lookups, examples that resolve `nros-sdk-index.toml`). | (set by activate file) |
+| `NROS_REPO_DIR`           | Checkout root, exported by `just/sdk-env.just` to the SCRIPTS a `just` recipe runs, and nowhere else: `activate.sh` / `activate.fish` / `.envrc` no longer export it, and no Rust code reads it (RFC-0103 D6, amended 2026-10-12 — the `nros` binary knows its own SDK root; pass `--nano-ros-path` to name another). Also the cmake cache variable `-DNROS_REPO_DIR=<root>`. | (`just` recipes only) |
 | `NROS_SKIP_VERSION_CHECK` | Opt out of the Phase 218.E ABI guard that asserts the in-tree CLI build matches the runtime crates' codegen ABI hash. Set to `1` only when intentionally building / testing a CLI mismatch (e.g. bisecting an ABI drift, running pre-218 binaries against a 218 tree). | (unset → check enabled) |
 
 ## Runtime Configuration

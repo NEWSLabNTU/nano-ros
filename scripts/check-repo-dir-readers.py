@@ -1,30 +1,31 @@
 #!/usr/bin/env python3
-"""issue 1641 — every Rust read of `$NROS_REPO_DIR` must say where the 1280 rule is applied.
+"""RFC-0103 D6 (amended 2026-10-12) — no Rust code reads `$NROS_REPO_DIR`.
 
-A linked git worktree inherits `$NROS_REPO_DIR` from the shell that spawned it,
-and there it names the PARENT checkout. Read raw and used as given, the variable
-makes a worktree act on the parent: issue 1280 (build scripts compiled the
-parent's sources), issue 1510 (the CLI's SDK root), issue 1538 (a gate certified
-the parent's headers), and issue 1641 — seven more CLI-side readers, one of which
-WROTE a file into the parent checkout and one of which emitted path deps that
-compiled the parent's core crates.
+The `nros` binary knows its own SDK root (`nros_launcher::checkout::own_sdk_root`:
+a released binary's `share/nano-ros`, an in-tree binary's checkout), every other
+reader walks up from its own location, and an explicit root is a FLAG
+(`--nano-ros-path`, `-DNROS_REPO_DIR`). So the variable has no Rust reader left,
+and this gate keeps it that way.
 
-That is the same rule fixed three times where the symptom was seen, which is
-issue 0196's shape. This gate is the class fix: a read of the variable is only
-allowed where it hands the value to something that applies the rule —
-`nros_build_paths::reroot_foreign`, `nano_ros_root::resolve`, or a site-specific
-ladder that puts the caller's own checkout first — and the site has to SAY which,
-in a `repo-dir-env-ok: <reason>` comment within three lines above the read.
+History: issue 1641 made this gate require a `repo-dir-env-ok:` reason beside
+every read, because a linked git worktree inherits `$NROS_REPO_DIR` from the
+shell that spawned it and there it names the PARENT checkout. Read raw, the
+variable made a worktree act on the parent: issue 1280 (build scripts compiled
+the parent's sources), 1510 (the CLI's SDK root), 1538 (a gate certified the
+parent's headers), and 1641 itself — seven more CLI-side readers, one of which
+WROTE a file into the parent checkout. Every reason those sites gave was "the
+caller's own checkout comes first"; the amendment finished the thought by
+removing the rung below it, so a read is now refused outright rather than
+excused.
 
-A reason at the site rather than an allowlist here, because the reason belongs
-next to the code it excuses: an allowlist is only as complete as whoever last
-edited it, and it does not move when the code does.
+`just` recipes still export the variable to the SCRIPTS they run
+(`just/sdk-env.just`); that is shell plumbing inside one checkout, not an input
+any Rust code may take.
 
 Scope: tracked `*.rs` outside test code (a `tests/` directory, or a `*_tests.rs`
 file). A test that reads the variable to decide whether to skip is not acting on
-a checkout. `#[cfg(test)]` modules inside a source file are NOT exempt — a marker
-there costs one line, and a reader cannot tell a test module from a cfg'd
-production path by grep.
+a checkout. `#[cfg(test)]` modules inside a source file are NOT exempt — a
+reader cannot tell a test module from a cfg'd production path by grep.
 """
 
 from __future__ import annotations
@@ -37,8 +38,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 READ_RE = re.compile(r'\benv::var(?:_os)?\s*\(\s*"NROS_REPO_DIR"\s*\)|\benv!\s*\(\s*"NROS_REPO_DIR"')
-MARKER_RE = re.compile(r"repo-dir-env-ok:\s*\S")
-WINDOW = 3
 
 
 def is_test_path(rel: str) -> bool:
@@ -46,27 +45,23 @@ def is_test_path(rel: str) -> bool:
 
 
 def findings(rel: str, text: str) -> list[str]:
-    """One message per unmarked read in one file."""
+    """One message per read in one file."""
     out = []
-    lines = text.splitlines()
-    for i, line in enumerate(lines):
+    for i, line in enumerate(text.splitlines()):
         if not READ_RE.search(line):
             continue
         stripped = line.lstrip()
         if stripped.startswith("//"):
             continue  # prose naming the variable is not a read
-        window = lines[max(0, i - WINDOW) : i + 1]
-        if any(MARKER_RE.search(w) for w in window):
-            continue
         out.append(
-            f"{rel}:{i + 1}: reads $NROS_REPO_DIR with no `repo-dir-env-ok:` reason "
-            f"in the {WINDOW} lines above.\n"
+            f"{rel}:{i + 1}: reads $NROS_REPO_DIR.\n"
             f"      {stripped.strip()}\n"
-            f"      In a linked worktree this variable names the PARENT checkout "
-            f"(issues 1280/1510/1538/1641). Hand it to "
-            f"`nros_build_paths::reroot_foreign` or `nano_ros_root::resolve`, or "
-            f"to a ladder that puts the caller's own checkout first, and say "
-            f"which in a `// repo-dir-env-ok: <reason>` comment."
+            f"      RFC-0103 D6 (amended 2026-10-12): nothing exports it to a user's "
+            f"shell, and in a linked worktree an inherited value names the PARENT "
+            f"checkout (issues 1280/1510/1538/1641). Ask the ladder "
+            f"(`nano_ros_root::resolve`), the binary's own root "
+            f"(`nros_launcher::checkout::own_sdk_root`), or walk up from your own "
+            f"location (`nros_build_paths::checkout_root_of`)."
         )
     return out
 
@@ -74,18 +69,15 @@ def findings(rel: str, text: str) -> list[str]:
 def self_test() -> None:
     """Negative controls on the normal path — a rule that never fires proves nothing."""
     bad = 'fn f() {\n    let r = std::env::var_os("NROS_REPO_DIR");\n}\n'
-    assert len(findings("a.rs", bad)) == 1, "an unmarked read must fire"
+    assert len(findings("a.rs", bad)) == 1, "a read must fire"
     assert len(findings("a.rs", 'let r = std::env::var("NROS_REPO_DIR").ok();')) == 1
-    good = (
+    assert len(findings("a.rs", 'const R: &str = env!("NROS_REPO_DIR");')) == 1
+    # The old per-site excuse no longer excuses anything.
+    marked = (
         "    // repo-dir-env-ok: handed to nano_ros_root::resolve below.\n"
         '    let r = std::env::var_os("NROS_REPO_DIR");\n'
     )
-    assert findings("a.rs", good) == []
-    # A marker too far above does not count — it must be next to the read.
-    far = "// repo-dir-env-ok: x\n" + "\n" * WINDOW + 'let r = std::env::var_os("NROS_REPO_DIR");\n'
-    assert len(findings("a.rs", far)) == 1, "a distant marker must not excuse a read"
-    # An empty reason is not a reason.
-    assert len(findings("a.rs", '// repo-dir-env-ok:\nlet r = std::env::var_os("NROS_REPO_DIR");')) == 1
+    assert len(findings("a.rs", marked)) == 1, "a reason must not excuse a read"
     # Prose that names the variable is not a read.
     assert findings("a.rs", '/// `std::env::var_os("NROS_REPO_DIR")` used to win.') == []
     assert is_test_path("packages/x/tests/foo.rs") and not is_test_path("packages/x/src/foo.rs")
@@ -102,31 +94,26 @@ def main() -> int:
     )
     if r.returncode != 0:
         sys.exit(f"check-repo-dir-readers: `git ls-files` failed:\n  {r.stderr.strip()}")
-    errors, reads = [], 0
+    errors, scanned = [], 0
     for rel in (x.strip() for x in r.stdout.splitlines()):
         if not rel or is_test_path(rel):
             continue
         path = ROOT / rel
         if not path.is_file():
             continue
+        scanned += 1
         text = path.read_text(errors="replace")
         if "NROS_REPO_DIR" not in text:
             continue
-        reads += sum(
-            1 for ln in text.splitlines() if READ_RE.search(ln) and not ln.lstrip().startswith("//")
-        )
         errors += findings(rel, text)
+    if scanned == 0:
+        sys.exit("check-repo-dir-readers: scanned NO Rust files — an empty scan passes vacuously.")
     if errors:
         print("check-repo-dir-readers: FAIL", file=sys.stderr)
         for e in errors:
             print(f"  - {e}", file=sys.stderr)
         return 1
-    if reads == 0:
-        sys.exit(
-            "check-repo-dir-readers: found NO reads at all — the reader has drifted "
-            "from the spelling the code uses, and an empty scan passes vacuously."
-        )
-    print(f"check-repo-dir-readers: OK — {reads} read(s) of $NROS_REPO_DIR, each naming where the 1280 rule is applied.")
+    print(f"check-repo-dir-readers: OK — {scanned} Rust file(s), none reads $NROS_REPO_DIR.")
     return 0
 
 

@@ -37,8 +37,8 @@ pub struct Args {
     #[arg(long)]
     pub workspace: Option<PathBuf>,
 
-    /// nano-ros checkout holding `packages/boards`. Defaults to
-    /// `NROS_REPO_DIR`, then an autodetect walk from the workspace.
+    /// nano-ros SDK root holding `packages/boards`. Defaults to a walk-up
+    /// from the workspace, then this `nros` binary's own SDK root.
     #[arg(long)]
     pub nano_ros_path: Option<PathBuf>,
 
@@ -1477,10 +1477,9 @@ fn plan_single_package(
     root: &std::path::Path,
     planning: Planning,
 ) -> Result<Option<Vec<ResolvedBuild>>> {
-    // issue 1641 — the 1510 ladder, not a hand-spelled one: the checkout the
-    // workspace sits in outranks an inherited `$NROS_REPO_DIR`, which in a
-    // linked worktree names the PARENT. This was `explicit > env > walk-up`,
-    // i.e. the order 1510 fixed in `nano_ros_root` and left standing here.
+    // issue 1641 — the one ladder, not a hand-spelled one. This was
+    // `explicit > env > walk-up`, the order 1510 fixed in `nano_ros_root` and
+    // left standing here; RFC-0103 D6 (amended) has since removed the env rung.
     let Some(nros_root) =
         crate::orchestration::nano_ros_root::resolve(args.nano_ros_path.clone(), root)
     else {
@@ -2347,7 +2346,7 @@ fn plan_packages(
             let Some(nros_root) = nano_ros_root else {
                 eyre::bail!(
                     "no nano-ros checkout found, so `{}`'s cmake root cannot be generated. \
-                     Pass --nano-ros-path, or set NROS_REPO_DIR.",
+                     Pass --nano-ros-path <checkout>.",
                     pkg.name
                 );
             };

@@ -476,13 +476,12 @@ pub struct SyncArgs {
     #[arg(long)]
     pub no_metadata: bool,
 
-    /// Path to the nano-ros source tree. Accepted for back-compat but
-    /// currently a NO-OP since post-212 alignment: the canonical 212
-    /// shape carries nros-* runtime crates as path-deps in the user's
-    /// own `[dependencies]`, so duplicating them in the patch block
-    /// triggers cargo's "patch unused" warnings. Falls back to the env
-    /// var `NROS_REPO_DIR` (cmake-side contract) when the flag is
-    /// omitted.
+    /// The nano-ros SDK root the probes and board lookups read. Defaults to
+    /// a walk-up from the workspace, then this `nros` binary's own SDK root
+    /// (RFC-0103 D6). It adds nothing to the patch block: the canonical 212
+    /// shape carries nros-* runtime crates as path-deps in the user's own
+    /// `[dependencies]`, so duplicating them there triggers cargo's "patch
+    /// unused" warnings.
     #[arg(long)]
     pub nano_ros_path: Option<PathBuf>,
 }
@@ -516,7 +515,7 @@ pub struct SeedLockArgs {
     /// The cargo root (the directory holding its `Cargo.toml`).
     pub dir: PathBuf,
     /// The nano-ros root whose index names the pin set; resolved the usual
-    /// way (walk-up, `NROS_REPO_DIR`, this toolchain's own) when absent.
+    /// way (walk-up, then this binary's own SDK root) when absent.
     #[arg(long)]
     pub nano_ros_path: Option<PathBuf>,
 }
@@ -884,18 +883,12 @@ pub fn provider_index_path(ws_root: &Path) -> PathBuf {
 /// it can name its inputs.
 pub fn provider_search_path(workspace: &Path) -> Result<provider_scan::SearchPath> {
     let nano_ros_root = crate::abi_guard::find_monorepo_root(workspace)
-        .or_else(|| {
-            let exe = std::env::current_exe().ok()?;
-            let exe = exe.canonicalize().unwrap_or(exe);
-            crate::abi_guard::find_monorepo_root(&exe)
-        })
-        // phase-447 A2 — and LAST, this toolchain's own shipped SDK root. The
-        // providers under `packages/interfaces/` are what let `std_msgs` and
-        // friends resolve, so without this rung a released `nros` finds no
-        // message packages at all: the arm above walks up from the binary, and
-        // a store prefix has no checkout above it (that is exactly the case
-        // `runtime_root`'s doc calls "falls through to `None`").
-        .or_else(crate::orchestration::nano_ros_root::shipped);
+        // Then this binary's own SDK root (RFC-0103 D6, amended 2026-10-12):
+        // the checkout an in-tree `nros` was built in, or a released one's
+        // `share/nano-ros` (phase-447 A2). The providers under
+        // `packages/interfaces/` are what let `std_msgs` and friends resolve,
+        // so without this rung a released `nros` finds no message packages.
+        .or_else(nros_launcher::checkout::own_sdk_root);
     provider_search_path_with(nano_ros_root.as_deref(), workspace)
 }
 
@@ -2488,10 +2481,11 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
 ///   1. `$NROS_LAUNCH_RESOLVE` — explicit override, the twin of `$NROS_CLI`
 ///      (packaging, CI, and tests that ship the helper elsewhere);
 ///   2. a sibling of the running `nros` — the installed layout;
-///   3. `$NROS_REPO_DIR/packages/cli/nros-launch-resolve/target/release/…`,
-///      then the same path derived by walking up from the running binary —
-///      the per-checkout build, which `cargo.sh` also prefers so each worktree
-///      carries its own tools with no cross-tree skew.
+///   3. `<checkout>/packages/cli/nros-launch-resolve/target/release/…`,
+///      derived by walking up from the running binary, then the same path
+///      under this binary's own SDK root — the per-checkout build, which
+///      `cargo.sh` also prefers so each worktree carries its own tools with no
+///      cross-tree skew.
 ///
 /// issue 0409 — refuse a `nros-launch-resolve` built from a different
 /// `play_launch` checkout than this `nros`.
@@ -2621,21 +2615,20 @@ fn resolver_beside(exe: &std::path::Path) -> Option<std::path::PathBuf> {
     resolver_from(
         exe,
         std::env::var_os("NROS_LAUNCH_RESOLVE").map(std::path::PathBuf::from),
-        // repo-dir-env-ok: only rung 4 of `resolver_from`, after the running CLI's own checkout (issue 1641).
-        std::env::var_os("NROS_REPO_DIR").map(std::path::PathBuf::from),
+        nros_launcher::checkout::own_sdk_root(),
     )
 }
 
 /// The search itself, pure in its inputs.
 ///
-/// Taking the two env values as arguments rather than reading them keeps this
-/// hermetic: the tests below would otherwise race each other through the
-/// process-wide environment, and would also see a real `$NROS_REPO_DIR` from
-/// the developer's shell.
+/// Taking the env override and the binary's own SDK root as arguments rather
+/// than reading them keeps this hermetic: the tests below would otherwise race
+/// each other through the process-wide environment, and would see the real
+/// checkout the test binary was compiled in.
 fn resolver_from(
     exe: &std::path::Path,
     explicit: Option<std::path::PathBuf>,
-    repo_dir: Option<std::path::PathBuf>,
+    own_root: Option<std::path::PathBuf>,
 ) -> Option<std::path::PathBuf> {
     // 1. Explicit override, mirroring `$NROS_CLI`. A non-existent override
     //    falls through rather than failing: the caller degrades to the
@@ -2665,13 +2658,12 @@ fn resolver_from(
             .join("release")
             .join(LAUNCH_RESOLVER)
     };
-    // issue 1641 — the RUNNING CLI's own checkout comes BEFORE
-    // `$NROS_REPO_DIR`. It came after, so a worktree's CLI resolved launch
-    // files with the PARENT checkout's resolver: the variable is inherited from
-    // the shell that spawned the worktree. That defeated the reason stated just
-    // above — "each worktree carries its own tools, with no cross-tree skew" —
-    // and a resolver from another layer-2 checkout writes models that are
-    // MISSING DATA rather than failing (issue 0409).
+    // issue 1641 — the RUNNING CLI's own checkout comes first. An inherited
+    // `$NROS_REPO_DIR` used to be consulted (first before, then after this),
+    // and a worktree's CLI resolved launch files with the PARENT checkout's
+    // resolver. A resolver from another layer-2 checkout writes models that
+    // are MISSING DATA rather than failing (issue 0409). RFC-0103 D6 (amended
+    // 2026-10-12) removed the variable altogether.
     //
     // `dir` is <repo>/packages/cli/target/release, so <repo> is four ancestors
     // up (target, cli, packages, repo).
@@ -2683,10 +2675,10 @@ fn resolver_from(
     {
         return Some(p);
     }
-    // 4. A CLI that is not inside a checkout (an installed one with no sibling
-    //    resolver): the environment is then the only statement of which
-    //    checkout's resolver is meant.
-    repo_dir
+    // 4. The binary's own SDK root (RFC-0103 D6, amended 2026-10-12) — for a
+    //    CLI whose target dir is outside its checkout, the checkout it was
+    //    built in.
+    own_root
         .map(|root| in_checkout(&root))
         .filter(|p| p.is_file())
 }
@@ -2909,7 +2901,7 @@ fn generate_bridge_configs(
                 image: None,
                 // Issue 0951 — this bridge plan runs inside the user's
                 // workspace, not a nano-ros checkout, so the resolver's own
-                // ladder (NROS_REPO_DIR, then an autodetect walk) is the right
+                // ladder (an autodetect walk, then the binary's own root) is the right
                 // answer rather than a path invented here.
                 nano_ros_path: None,
             },
@@ -2990,7 +2982,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     // Issue 1304 — the probes' nano-ros path asks the ONE ladder
     // (`orchestration::nano_ros_root`), so an installed toolchain answers out of
     // its own `share/nano-ros`. Both rungs of the old two-rung chain were a
-    // CHECKOUT (`--nano-ros-path`, then `$NROS_REPO_DIR`), so on a machine with
+    // CHECKOUT (`--nano-ros-path`, then the retired `$NROS_REPO_DIR`), so on a machine with
     // neither, every C/C++ component reported "no producer … (no nano-ros
     // path)" and the bake fell back to the SystemModel bound — silently, since
     // that fallback is also the documented degradation.
@@ -3008,11 +3000,10 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     // Anchor: a nano-ros checkout named on the COMMAND LINE wins (it IS the
     // runtime this workspace links), then the workspace itself, which the
     // resolver walks up from — the arm that reaches a C/C++-only workspace
-    // with no `Cargo.lock`. Deliberately NOT the probes' own path below, whose
-    // `NROS_REPO_DIR` fallback is ambient after `source activate.sh`: that
-    // would measure every workspace against whichever checkout the shell was
-    // opened in. `runtime_root` still consults the env, one rung lower, for a
-    // consumer that is inside no tree at all.
+    // with no `Cargo.lock`. Deliberately NOT the probes' own path above, whose
+    // last rung is this binary's own root: that would measure every workspace
+    // against whichever tree the binary came from. `runtime_root` consults
+    // that root too, one rung lower, for a consumer that is inside no tree.
     {
         let anchor = nano_ros_root
             .clone()
@@ -4104,10 +4095,9 @@ fn extract_cargo_path_deps(body: &str) -> Vec<String> {
 
 /// Phase 212.M-F.21 — walk up from `ws_root` looking for a nano-ros
 /// source tree (marker: `packages/core/nros-core/Cargo.toml`). Used as
-/// a fallback when neither `--nros-repo` nor `NROS_REPO_DIR` is set.
-/// In-tree fixtures + examples sit several levels below the nano-ros
-/// root, so this turns the most common "I forgot to set NROS_REPO_DIR"
-/// case into a no-op — patches still flow.
+/// a fallback when `--nano-ros-path` is not given. In-tree fixtures +
+/// examples sit several levels below the nano-ros root, so they need no
+/// flag — patches still flow.
 ///
 /// phase-447 A2 — the walk was written out here and identically in
 /// `nros_launcher::checkout`, against the same marker file. One spelling now:
@@ -4336,7 +4326,7 @@ fn warn_if_cargo_predates_config_include(ws_root: &Path) {
 #[derive(Debug, ClapArgs)]
 pub struct CentralPatchArgs {
     /// nano-ros checkout to write into. Defaults to the checkout containing the
-    /// current directory, then `$NROS_REPO_DIR`.
+    /// current directory, then the checkout this `nros` was built in.
     #[arg(long)]
     pub nano_ros_path: Option<PathBuf>,
 }
@@ -4347,8 +4337,7 @@ fn run_central_patch(args: CentralPatchArgs) -> Result<()> {
     let root = central_patch_root(
         args.nano_ros_path,
         &cwd,
-        // repo-dir-env-ok: `central_patch_root` puts the checkout containing cwd first (issue 1641).
-        std::env::var_os("NROS_REPO_DIR").map(PathBuf::from),
+        nros_launcher::checkout::own_checkout(),
     )?;
     let dst = write_central_patch_file(&root)?;
     println!("{}", dst.display());
@@ -4362,21 +4351,22 @@ fn run_central_patch(args: CentralPatchArgs) -> Result<()> {
 /// that spawned it, so from inside a worktree the command wrote the PARENT
 /// checkout's central patch file — a silent cross-tree WRITE, not a misread.
 ///
-/// The ladder now puts the checkout that CONTAINS the current directory above
-/// the environment, by the CLI's one marker walk, which stops at the innermost
-/// marker and so separates a nested agent worktree from its parent (issue
-/// 1391). The variable is still honoured when the current directory is in no
-/// checkout at all, which is the out-of-tree case env-first exists for.
+/// The ladder puts the checkout that CONTAINS the current directory first, by
+/// the CLI's one marker walk, which stops at the innermost marker and so
+/// separates a nested agent worktree from its parent (issue 1391). When the
+/// current directory is in no checkout, the checkout this `nros` was BUILT in
+/// answers (RFC-0103 D6, amended 2026-10-12 — the variable is gone).
 ///
 /// Deliberately NOT `nano_ros_root::resolve`, which answers "where is an SDK
-/// root a build READS": its last rung is the installed toolchain's own
-/// `share/nano-ros`, and writing into that is worse than the bug this fixes.
+/// root a build READS": its own-root rung includes the installed toolchain's
+/// `share/nano-ros`, and writing into that is worse than the bug this fixes —
+/// so `own_checkout` is the in-tree half alone.
 /// And no longer "the current directory itself" as a last resort: that wrote a
 /// patch file into whatever directory the command happened to run in.
 fn central_patch_root(
     explicit: Option<PathBuf>,
     cwd: &Path,
-    env_root: Option<PathBuf>,
+    own_checkout: Option<PathBuf>,
 ) -> Result<PathBuf> {
     if let Some(p) = explicit {
         return Ok(p);
@@ -4384,10 +4374,10 @@ fn central_patch_root(
     if let Some(here) = nros_launcher::checkout::find_monorepo_root(cwd) {
         return Ok(here);
     }
-    env_root.ok_or_else(|| {
+    own_checkout.ok_or_else(|| {
         eyre::eyre!(
             "`nros ws central-patch`: {} is not inside a nano-ros checkout and \
-             $NROS_REPO_DIR is unset. Pass --nano-ros-path <checkout>.",
+             this `nros` was not built in one. Pass --nano-ros-path <checkout>.",
             cwd.display()
         )
     })
@@ -6237,9 +6227,9 @@ mod launch_resolver_tests {
     /// Per-checkout layout: `nros` is at `packages/cli/target/release/nros`,
     /// but the helper is its OWN cargo workspace, so it lands under
     /// `packages/cli/nros-launch-resolve/target/release/` instead. Found via
-    /// `$NROS_REPO_DIR` and via the walk-up, matching `nros_cli_bin()`.
+    /// the binary's own root and via the walk-up, matching `nros_cli_bin()`.
     #[test]
-    fn finds_the_in_tree_helper_by_repo_dir_and_by_walk_up() {
+    fn finds_the_in_tree_helper_by_own_root_and_by_walk_up() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         let exe = root
@@ -6261,17 +6251,17 @@ mod launch_resolver_tests {
         assert_eq!(
             resolver_from(&exe, None, Some(root.to_path_buf())),
             Some(helper.clone()),
-            "$NROS_REPO_DIR should locate the per-checkout helper"
+            "the binary's own root should locate the per-checkout helper"
         );
         assert_eq!(
             resolver_from(&exe, None, None),
             Some(helper),
-            "and the walk-up should find it without the env var"
+            "and the walk-up should find it on its own"
         );
     }
 
-    /// issue 1641 — a worktree's CLI uses the worktree's resolver, even with the
-    /// PARENT checkout inherited in `$NROS_REPO_DIR`. Built in the NESTED shape
+    /// issue 1641 — a worktree's CLI uses the worktree's resolver, even when the
+    /// PARENT checkout is the own-root fallback. Built in the NESTED shape
     /// agent worktrees actually have (`<main>/.claude/worktrees/<id>`), where the
     /// parent's root is a strict prefix of the worktree's (issue 1391).
     #[test]
@@ -6304,10 +6294,10 @@ mod launch_resolver_tests {
         );
     }
 
-    /// The case the environment rung still exists for: a CLI that lives in no
-    /// checkout and ships no sibling resolver.
+    /// The case the own-root rung exists for: a CLI whose target dir is in no
+    /// checkout and ships no sibling resolver takes its own checkout's.
     #[test]
-    fn an_out_of_tree_cli_still_takes_the_named_checkouts_resolver() {
+    fn an_out_of_tree_cli_takes_its_own_checkouts_resolver() {
         let tmp = tempfile::tempdir().unwrap();
         let checkout = tmp.path().join("sdk");
         let helper = checkout
@@ -6331,7 +6321,7 @@ mod launch_resolver_tests {
     }
 
     /// issue 1641 — `nros ws central-patch` from inside a worktree writes into
-    /// the WORKTREE, with the parent inherited in `$NROS_REPO_DIR`. Nested
+    /// the WORKTREE, even when the binary was built in the parent. Nested
     /// shape, as agent worktrees are.
     #[test]
     fn central_patch_from_a_worktree_does_not_write_into_the_parent() {
@@ -6350,7 +6340,7 @@ mod launch_resolver_tests {
     }
 
     #[test]
-    fn central_patch_outside_every_checkout_takes_the_named_one_or_refuses() {
+    fn central_patch_outside_every_checkout_takes_its_own_or_refuses() {
         let tmp = tempfile::tempdir().unwrap();
         let sdk = fake_checkout(&tmp.path().join("sdk"));
         let elsewhere = tmp.path().join("not-a-checkout");

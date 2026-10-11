@@ -273,7 +273,8 @@ nros_sizes_probe_dir() {
     fi
     # An INHERITED `NROS_REPO_DIR` may name a different checkout.
     #
-    # It is exported by `activate.sh` (phase-218.C), so a shell that activated
+    # It was exported by `activate.sh` (phase-218.C) until RFC-0103 D6's 2026-10-12
+    # amendment, and `just/sdk-env.just` still exports it to recipes, so a shell that activated
     # another nano-ros — or a git worktree, which is how parallel agent sessions
     # work here — carries it in. This used to be trusted blindly and then
     # `source`d, so pointing at a checkout without `scripts/build/build-root.sh`
@@ -457,7 +458,7 @@ nros_cli_bin() {
         return 0
     fi
     # Per-checkout binary at packages/cli/target/release/nros. Use
-    # $NROS_REPO_DIR (exported by activate.sh, Phase 218.C) when set;
+    # $NROS_REPO_DIR (exported to `just` recipes by just/sdk-env.just) when set;
     # otherwise walk up from this script to find the repo root so callers
     # without activate.sh sourced still resolve correctly.
     local repo_root="${NROS_REPO_DIR:-}"
@@ -612,7 +613,7 @@ nros_cargo_fetch_standalone_manifests() {
 # depend on a root-level recipe, and the alternative was spelling these two
 # lines once per platform module.
 nros_ensure_central_patch() {
-    NROS_REPO_DIR="${NROS_REPO_DIR:-$PWD}" "$(nros_cli_bin)" ws central-patch >/dev/null
+    "$(nros_cli_bin)" ws central-patch >/dev/null
 }
 
 # issue 1038 follow-up — ensure ONE leaf's `generated/<pkg>` message crates
@@ -639,5 +640,5 @@ nros_ensure_central_patch() {
 # CMake-driven message-dependent leaf needs, not two. Idempotent.
 nros_ensure_leaf_synced() {
     local dir="$1"
-    NROS_REPO_DIR="${NROS_REPO_DIR:-$PWD}" "$(nros_cli_bin)" sync "$dir" >/dev/null
+    "$(nros_cli_bin)" sync "$dir" >/dev/null
 }

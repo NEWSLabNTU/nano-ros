@@ -368,7 +368,7 @@ nros codegen-system --bringup demo_bringup --ahead-of-vendor px4   # + PX4 modul
 | `--bringup <pkg>` | Bringup pkg name or path. Defaults to `[workspace.metadata.nros].default_system` |
 | `--target <id>` | The `[image.<id>]` / `[deploy.<id>]` this bake is for — it selects the domain, RMW, locator, launch and tier sub-table. A triple or platform name that matches no block selects nothing and every one of those falls back to the `[system]` default (issue 1312) |
 | `--for-entry <pkg>` | Name the ENTRY PACKAGE instead (a name, or a path to its directory) and the `[image.*]` that claims it supplies the target. What a framework configure can answer: west/ESP-IDF know the application directory, never the image id. Mutually exclusive with `--target` |
-| `--nano-ros-path <dir>` | nano-ros checkout holding `packages/boards`, for the board catalog a resolved target needs. Default: `$NROS_REPO_DIR`, then a walk up from the workspace, then the toolchain's own `share/nano-ros` |
+| `--nano-ros-path <dir>` | nano-ros checkout holding `packages/boards`, for the board catalog a resolved target needs. Default: a walk up from the workspace, then this `nros` binary's own SDK root (a release's `share/nano-ros`, or the checkout an in-tree `nros` was built in) |
 | `--out <dir>` | Output directory; `nros-system/` subdir created inside. Default: `<workspace>/build/<bringup>/` |
 | `--launch <file>` | Multi-launch disambiguation: pick `<bringup>/launch/<file>` (`--file` is an alias) |
 | `--exec <exec>` | `<node exec="…">` override for synthesised launches |

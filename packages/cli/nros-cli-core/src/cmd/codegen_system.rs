@@ -95,8 +95,8 @@ pub struct Args {
     pub for_entry: Option<String>,
 
     /// nano-ros checkout holding `packages/boards`, for the board catalog a
-    /// resolved target needs. Defaults to `$NROS_REPO_DIR`, then a walk up from
-    /// the workspace, then this toolchain's own `share/nano-ros`.
+    /// resolved target needs. Defaults to a walk up from the workspace, then
+    /// this `nros` binary's own SDK root.
     ///
     /// The SAME top rung `nros image-facts` and `nros ws board-facts` take, and
     /// for issue 1263's reason: the walk-up finds nothing for a downstream

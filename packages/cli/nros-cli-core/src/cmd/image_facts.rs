@@ -67,7 +67,8 @@ pub struct Args {
     #[arg(long)]
     pub workspace: Option<PathBuf>,
 
-    /// nano-ros checkout. Defaults to `NROS_REPO_DIR`, then an autodetect walk.
+    /// nano-ros SDK root. Defaults to a walk-up from the workspace, then this
+    /// `nros` binary's own SDK root.
     #[arg(long)]
     pub nano_ros_path: Option<PathBuf>,
 

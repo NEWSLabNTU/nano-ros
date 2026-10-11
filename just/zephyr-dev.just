@@ -93,7 +93,7 @@ build-one example rmw="zenoh" board="native_sim/native/64":
         # `DOTCONFIG` from a cmake configure this sync is the prerequisite for).
         # The flag was a blunter version of the same thing — it suppressed
         # probing for EVERY component in the workspace.
-        NROS_REPO_DIR="$(pwd)" "$codegen_tool" sync "$src"
+        "$codegen_tool" sync "$src"
         NROS_REPO_DIR="$(pwd)" nros_codegen_stamp_write "$src"
         ;;
     esac

@@ -32,14 +32,15 @@ somewhere else). Fix:
 
 ```bash
 cd <the example dir>
-NROS_REPO_DIR=/path/to/nano-ros nros sync
+nros sync        # or: nros sync --nano-ros-path /path/to/nano-ros
 ```
 
 Driving cargo directly skips that refusal and gets cargo's own version of it
 instead — `no matching package named 'nros' found`, or an unresolved import.
 Same cause, same fix: sync, then pass the generated file with `--config`.
-`NROS_REPO_DIR` is what ties a copied-out example to a checkout, so re-run sync
-after moving the directory.
+`nros sync` is what ties a copied-out example to an SDK (the `nros` binary's
+own, or the one `--nano-ros-path` names), so re-run it after moving the
+directory.
 
 This is **not** an `nros setup` issue — `nros setup` only fetches
 the SDK / source-package payload (zenoh-pico, mbedtls, cyclonedds,

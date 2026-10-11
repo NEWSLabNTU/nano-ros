@@ -116,7 +116,7 @@ build-examples:
         talker listener service-server service-client action-server action-client; do
         dir="examples/mps2-an385-freertos/rust/$example"
         NROS_REPO_DIR="$PWD" nros_codegen_stamp_check_or_wipe "$dir"
-        NROS_REPO_DIR="$PWD" "$nros_cli" sync "$dir" >/dev/null
+        "$nros_cli" sync "$dir" >/dev/null
         NROS_REPO_DIR="$PWD" nros_codegen_stamp_write "$dir"
     done
     # phase-336 / phase-340 P2 — the profile is the `freertos-qemu` carve-out,

@@ -86,10 +86,17 @@ _NROS_REROOT := if _NROS_INHERITED_FROM == "" { _NROS_REROOT_CMD } else { _NROS_
 # worse than failing (issue 1280, phase-454 W3).
 export NROS_REPO_DIR := _NROS_HERE
 # Same argument, same variable one layer over: CMake's `<pkg>_ROOT` for
-# `find_package(nano_ros)`. `activate.sh` and `activate.fish` already export
-# both unconditionally; this makes a `just` run that was never activated agree
-# with them.
+# `find_package(nano_ros)`.
 export nano_ros_ROOT := _NROS_HERE
+# RFC-0103 D6 (amended 2026-10-12) — those two reach the SCRIPTS a recipe runs
+# and NOTHING ELSE: no Rust code reads `NROS_REPO_DIR` (the `nros` binary knows
+# its own SDK root; `check-repo-dir-readers`), and `activate.sh` /
+# `activate.fish` no longer put either into a user's shell, where a linked
+# worktree would inherit the parent's (issue 1280). The line below is READ by
+# `scripts/sdk-env.sh` (which skips these when exporting into a shell) and by
+# `scripts/check-activate-shells.sh` (which asserts they do not leak) — one
+# list, never restated.
+# just-only: NROS_REPO_DIR nano_ros_ROOT
 
 # phase-484 W2b (RFC-0103 D1) — `FREERTOS_PORT`, `FREERTOS_CONFIG_DIR`,
 # `THREADX_CONFIG_DIR` and `NETX_CONFIG_DIR` are BOARD facts: each board's
