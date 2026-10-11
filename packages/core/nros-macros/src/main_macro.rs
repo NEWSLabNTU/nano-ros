@@ -2803,7 +2803,16 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 ::nros_platform::log::init_default();
                 #( #register_calls )*
                 #( #typed_register_calls )*
-                ::nros_bridge::run_from_config_str(::core::include_str!(#cfg_lit))
+                // issue 1310 (and 1732's class) — the bridge loop ends on what
+                // every other hosted funnel ends on: a guarded termination
+                // signal, or a numeric `NROS_ENTRY_SPIN_MS` deadline. The bridge
+                // crate has no platform layer to ask about the signal, so the
+                // entry asks; the deadline it reads itself (no `std` here, 1381).
+                ::nros_platform::termination::install_guard();
+                ::nros_bridge::run_from_config_str_until(
+                    ::core::include_str!(#cfg_lit),
+                    &mut || ::nros_platform::termination::requested(),
+                )
             }
         };
         return Ok(expanded);

@@ -1,6 +1,6 @@
 # Phase 445 — one board choice generates the leaf's build configuration
 
-**Status (2026-10-11). Re-measured on main 2026-10-11; the phase is NOT
+**Status (2026-10-12). Re-measured on main 2026-10-11; the phase is NOT
 complete.** Acceptance: bullet 1 is MET for Rust and now for C/C++ (issue 1296,
 resolved). Bullet 2 is NOT MET for a single-package Rust leaf (issue 1305,
 reproduced; a switch now fails at `nros sync`, naming both crates, until D6
@@ -8,10 +8,11 @@ reaches leaves). Bullet 3 was not measured. Bullet 4 holds for TRACKED files, an
 issue 1404 (resolved) `nros sync` also removes a stale GENERATED workspace root
 left on disk. Bullet 5 is NOT MET with 35 hits, down from 45 (issue 1289).
 1117 resolved 2026-10-11 (its four exempt siblings fixed or deleted). 1277 resolved the same day (fixed by
-`1f3b0d4ad5`, never closed). 1310 is fixed in code and still open: its runtime
-test has not been RUN here. 1261: a workspace that omits `SYSTEM` over a bringup
-declaring a capability now refuses at configure (gate `workspace-system-required`);
-its Zephyr hand-written road stays open.
+`1f3b0d4ad5`, never closed). 1310 resolved 2026-10-12: its runtime test RAN over all 24
+Linux Rust rows (22 register with a router and Agent up; issue 1819 tracks the
+test starting its own peers). 1261 resolved 2026-10-11: a workspace that omits `SYSTEM` over a bringup
+declaring a capability refuses at configure, and a west application that states
+no `NANO_ROS_FEATURES` gets its image's axes (gate `workspace-system-required`).
 
 **Review 2026-10-11 (later).** The design still holds and later work builds on
 it (RFC-0100's descriptor rides this file's `[env]`; phase-486's `nros.toml`
@@ -475,6 +476,6 @@ evidence, the item is *close it*.
 | issue | why it belongs here |
 | --- | --- |
 | [#1117](../issues/archived/1117-cross-build-accepts-unpinned-host-toolchain.md) (resolved 2026-10-11) | a cross build silently accepted an unpinned host toolchain — the pin said one thing and the build fell through to the distribution's `arm-none-eabi-gcc`. The board descriptor is what should carry it, and preflight is what should print it |
-| [#1261](../issues/1261-capabilities-decided-by-two-sources-disagree-at-link.md) | an image's capabilities are decided in two places and a disagreement is silent. Generated from the entry's BRINGUP is this phase's shape; restated per consumer as `-DNANO_ROS_FEATURES` is the state it replaces |
+| [#1261](../issues/archived/1261-capabilities-decided-by-two-sources-disagree-at-link.md) | an image's capabilities are decided in two places and a disagreement is silent. Generated from the entry's BRINGUP is this phase's shape; restated per consumer as `-DNANO_ROS_FEATURES` is the state it replaces |
 | [#1265](../issues/archived/1265-cross-only-leaves-cannot-be-probed.md) | the metadata probe cannot run for a cross-only leaf, so esp32 and mps2 examples must DECLARE their entities. W3 cites this as the reason leaves declare; owning the probe is the fix the citation stands in for |
 | [#1277](../issues/archived/1277-preflight-build-std-board-demands-rust-std.md) (resolved 2026-10-11) | `nros build` preflight demands a prebuilt `rust-std` for a board that builds its own core. The preflight must require `rust-src` instead, against W4's rendered `nros-cargo.toml` |

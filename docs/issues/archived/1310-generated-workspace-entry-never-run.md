@@ -1,10 +1,11 @@
 ---
 id: 1310
 title: "A generated workspace entry is BUILT and symbol-checked but never RUN — the RMW axis has no runtime coverage except zenoh"
-status: open
+status: resolved
 type: tech-debt
 area: [testing, ci, rmw]
-related: [1295, 0831, 1058, rfc-0065, phase-445]
+related: [1295, 0831, 1058, 1819, 1732, rfc-0065, phase-445]
+resolved: 2026-10-12
 ---
 
 # What is missing
@@ -81,3 +82,32 @@ it away), but anyone testing a facade change by hand will meet it.
   it would still ship.
 - The run asserts node REGISTRATION, not delivery. Delivery needs a peer per
   RMW; that is the matrix's job and it runs different binaries.
+
+# Resolution (2026-10-12)
+
+The runtime test above exists (`a_rows_entry_registers_its_nodes_at_runtime`)
+and was RUN for the first time over every Linux Rust row:
+`scripts/build/workspace-fixtures-build.sh linux rust` built all 24.
+
+| peers running | rows that registered |
+| --- | --- |
+| none | 1 — the cyclonedds row (DDS needs no peer), i.e. 1295's row, now green at runtime |
+| `rmw_zenohd` + `MicroXRCEAgent` on loopback | 22 |
+| plus `NROS_LOCATOR` on the two xrce rows | 24 (the xrce pair checked by hand) |
+
+Running it found two entry kinds that never exit, so a bounded observer could
+only report them as HUNG:
+
+- **Tiered Rust entries ignored `NROS_ENTRY_SPIN_MS`.** `nros-board-linux`'s
+  `spin_forever` looped until a signal; it now also stops at the deadline the
+  knob sets (`entry_spin_deadline`), as the single-executor road and the C/C++
+  tiered runner already did.
+- **Bridge entries were a bare `loop {}`** that ignored both the deadline and
+  SIGTERM — issue 1732's termination guard never reached the bridge, so a
+  signal killed it with its sessions open. `nros::main!`'s bridge arm now
+  installs the guard and calls `nros_rmw_bridge::run_from_config_str_until`,
+  which stops on either and closes the executor.
+
+What this does not cover moves to **issue 1819**: the test starts no peers of
+its own and passes no locator, so on a host without them 23 of 24 rows are a
+stderr note rather than a red. The scaffold-build gap above is unchanged.

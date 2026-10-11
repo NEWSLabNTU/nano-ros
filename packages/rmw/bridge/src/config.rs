@@ -258,7 +258,7 @@ pub fn run_from_config(path: impl AsRef<Path>) -> Result<(), ConfigError> {
         .map_err(|e| ConfigError::Io(format!("{}: {e}", path.as_ref().display())))?;
     // phase-421 W3 — carry the path so a wiring error can NAME the file the
     // user has to edit. `run_from_config_str` has no path to carry.
-    run_from_config_source(&raw, &format!("{}", path.as_ref().display()))
+    run_from_config_source(&raw, &format!("{}", path.as_ref().display()), &mut || false)
 }
 
 /// phase-267 W1c/C4 — run a bridge from the config CONTENTS (not a file path).
@@ -268,7 +268,32 @@ pub fn run_from_config(path: impl AsRef<Path>) -> Result<(), ConfigError> {
 /// file path to get wrong) and hands the contents here. Identical wiring to
 /// [`run_from_config`]; only the source differs.
 pub fn run_from_config_str(raw: &str) -> Result<(), ConfigError> {
-    run_from_config_source(raw, EMBEDDED_CONFIG_SOURCE)
+    run_from_config_source(raw, EMBEDDED_CONFIG_SOURCE, &mut || false)
+}
+
+/// [`run_from_config_str`] that returns once `stop()` answers `true`, or a
+/// numeric `NROS_ENTRY_SPIN_MS` deadline passes, having closed the sessions it
+/// opened.
+///
+/// The bridge crate has no platform layer, so it cannot ask whether a
+/// termination signal arrived (issue 1732's guard lives in `nros-platform`):
+/// the `nros::main!` entry asks and hands the answer in as `stop`. The bounded
+/// run is read HERE, where `config` already has `std`, so the emitted entry
+/// names no `std` path (issue 1381). Before this the loop had no exit at all,
+/// so a signal killed a bridge with every session open and a bounded observer
+/// could only report it as hung (issue 1310).
+pub fn run_from_config_str_until(
+    raw: &str,
+    stop: &mut dyn FnMut() -> bool,
+) -> Result<(), ConfigError> {
+    let deadline = std::env::var("NROS_ENTRY_SPIN_MS")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .filter(|ms| *ms > 0)
+        .map(|ms| std::time::Instant::now() + std::time::Duration::from_millis(ms));
+    run_from_config_source(raw, EMBEDDED_CONFIG_SOURCE, &mut || {
+        stop() || deadline.is_some_and(|d| std::time::Instant::now() >= d)
+    })
 }
 
 /// Label used for a config whose bytes were baked in by `nros::main!` and so
@@ -277,7 +302,11 @@ const EMBEDDED_CONFIG_SOURCE: &str = "<nros-bridge.toml baked by nros::main!>";
 
 /// Shared body of [`run_from_config`] and [`run_from_config_str`]. `source`
 /// names where `raw` came from, for diagnostics only.
-fn run_from_config_source(raw: &str, source: &str) -> Result<(), ConfigError> {
+fn run_from_config_source(
+    raw: &str,
+    source: &str,
+    stop: &mut dyn FnMut() -> bool,
+) -> Result<(), ConfigError> {
     let mut cfg: ConfigFile =
         toml::from_str(raw).map_err(|e| ConfigError::Parse(format!("{e}")))?;
     apply_node_env_overrides(&mut cfg.node);
@@ -386,7 +415,7 @@ fn run_from_config_source(raw: &str, source: &str) -> Result<(), ConfigError> {
     // callbacks; bridges live outside the callback registry by
     // design (they own their handles), so the loop here is explicit.
     use std::time::Duration;
-    loop {
+    while !stop() {
         exec.spin_once(Duration::from_millis(10));
         for b in bridges.iter_mut() {
             // Forward every queued sample. Errors short-circuit the
@@ -395,6 +424,23 @@ fn run_from_config_source(raw: &str, source: &str) -> Result<(), ConfigError> {
             let _ = b.pump();
         }
     }
+    // The bridges own subscription / publisher handles on the executor's
+    // sessions, so they go first; then the sessions close, as the board
+    // funnels close theirs (issue 1732).
+    drop(bridges);
+    if let Err(e) = exec.close() {
+        nros_log::log_error!(
+            nros_log::get_logger("nros_bridge"),
+            "nros: closing the bridge sessions failed: {:?}",
+            e
+        );
+    }
+    // Same line the board funnels end on (`nros_tests::output::ENTRY_COMPLETE_MARKER`).
+    nros_log::log_info!(
+        nros_log::get_logger("nros_bridge"),
+        "nros: application complete"
+    );
+    Ok(())
 }
 
 /// Render a [`crate::BridgeError`] into a config-level message: which file,
