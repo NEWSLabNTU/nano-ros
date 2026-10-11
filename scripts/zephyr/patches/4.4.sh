@@ -34,4 +34,9 @@ bash ./scripts/zephyr/nsos-adapt-ipproto-ip-patch-4.4.sh "$WORKSPACE"
 # NORMAL semantics (Zephyr 4.x k_mutex owner-only-unlock aborts
 # ddsrt's xevent thread right after the first publish).
 bash ./scripts/zephyr/pthread-mutex-unlock-patch-4.4.sh "$WORKSPACE"
+# phase-474 I16: Cortex-M ITCM/DTCM output sections SUBALIGN(4) -> ALIGN(4)
+# (backport of upstream de3deb75d44d + c456d2b1279b, not in v4.4.0). Without it
+# eDMA's __aligned(32) TCD pool in DTCM can land 8-aligned and the first DMA
+# transfer asserts in EDMA_TcdSetTransferConfig.
+bash ./scripts/zephyr/tcm-section-align-patch-4.4.sh "$WORKSPACE"
 echo "[zephyr setup] 4.4 line: legacy 3.7 Rust/cyclone-submodule patches skipped (Tasks 4-9)"
