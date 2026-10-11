@@ -209,7 +209,7 @@ build-fixtures:
             # not run and cannot (this sync is its prerequisite). The probe is
             # INAPPLICABLE to a Zephyr leaf, not merely slow. Codegen — the
             # reason this preflight exists — is unaffected.
-            NROS_REPO_DIR="$(pwd)" "$nros_cli" sync --no-metadata "$dir"
+            "$nros_cli" sync --no-metadata "$dir"
             NROS_REPO_DIR="$(pwd)" nros_codegen_stamp_write "$dir"
             # Record the CONTENT the sync was run against, so an identical
             # package.xml reads as fresh however its mtime moved.
@@ -328,8 +328,8 @@ build-fixtures:
     if [ -d examples/workspaces/rust ]; then
         echo "  → workspace-entry prep (nros sync + codegen-system)"
         ( cd examples/workspaces/rust
-          NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null
-          NROS_REPO_DIR="$nros_root" "$nros_cli" codegen-system --bringup src/demo_bringup --out build-fixtures/demo_bringup >/dev/null )
+          "$nros_cli" sync >/dev/null
+          "$nros_cli" codegen-system --bringup src/demo_bringup --out build-fixtures/demo_bringup >/dev/null )
     fi
     # phase-276 W1/W3/W5 (#128) — the capability workspace's three Zephyr
     # Entries (params, lifecycle, qos). Pure-cargo `nros::main!` path: `nros
@@ -346,7 +346,7 @@ build-fixtures:
     if [ -d examples/workspaces/features ]; then
         echo "  → features workspace-entry prep (nros sync)"
         ( cd examples/workspaces/features
-          NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null )
+          "$nros_cli" sync >/dev/null )
     fi
     # phase-276 W4 — the E2E-safety (CRC) workspace's Zephyr Entry (nros sync only).
     # phase-470 W5.b2 — keyed on the WORKSPACE, not on `src/zephyr_rust_safety_entry`:
@@ -355,14 +355,14 @@ build-fixtures:
     if [ -d examples/workspaces/safety ]; then
         echo "  → safety workspace-entry prep (nros sync)"
         ( cd examples/workspaces/safety
-          NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null )
+          "$nros_cli" sync >/dev/null )
     fi
     # phase-276 W2 / #128 half 2 — the RT-tiers workspace's Zephyr Entry (nros sync only).
     # phase-470 W5.b2 — same correction, same reason: `src/zephyr_entry` is gone here too.
     if [ -d examples/workspaces/realtime-rust ]; then
         echo "  → ws-realtime workspace-entry prep (nros sync)"
         ( cd examples/workspaces/realtime-rust
-          NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null )
+          "$nros_cli" sync >/dev/null )
     fi
     # issue 1575 — the derived-tier C++ workspace's Zephyr Entry. Its tier table
     # is DERIVED from the SystemModel only `nros sync` writes; no native row
@@ -370,7 +370,7 @@ build-fixtures:
     if [ -d examples/workspaces/derived-tiers-cpp ]; then
         echo "  → derived-tiers-cpp workspace-entry prep (nros sync)"
         ( cd examples/workspaces/derived-tiers-cpp
-          NROS_REPO_DIR="$nros_root" "$nros_cli" sync >/dev/null )
+          "$nros_cli" sync >/dev/null )
     fi
 
     # Issue 1419 -- the census each contracted workspace image's configure will

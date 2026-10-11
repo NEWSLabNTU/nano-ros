@@ -139,7 +139,7 @@ build:
         if [ -f "$dir/package.xml" ]; then
             echo "  sync $dir"
             NROS_REPO_DIR="$PWD" nros_codegen_stamp_check_or_wipe "$dir"
-            NROS_REPO_DIR="$PWD" "$nros_cli" sync "$dir" >/dev/null
+            "$nros_cli" sync "$dir" >/dev/null
             NROS_REPO_DIR="$PWD" nros_codegen_stamp_write "$dir"
         fi
         echo "  build $dir"
@@ -161,7 +161,7 @@ build:
         # the generated/ [patch.crates-io] path.
         if [ -f "$dir/package.xml" ]; then
             NROS_REPO_DIR="$PWD" nros_codegen_stamp_check_or_wipe "$dir"
-            NROS_REPO_DIR="$PWD" "$nros_cli" sync "$dir" >/dev/null
+            "$nros_cli" sync "$dir" >/dev/null
             NROS_REPO_DIR="$PWD" nros_codegen_stamp_write "$dir"
         fi
         nros_seed_leaf_lock "$dir"

@@ -599,7 +599,7 @@ fn a_cargo_image_generates_an_entry_from_the_launch_file() {
     // precondition the same way.
     //
     // Asked through `launch_resolver_bin`, which is the ladder the code under
-    // test uses ($NROS_LAUNCH_RESOLVE, $NROS_REPO_DIR, $NROS_HOME/bin) — a
+    // test uses ($NROS_LAUNCH_RESOLVE, the owning or compiling checkout, $NROS_HOME/bin) — a
     // hand-written path here could disagree with it in either direction.
     assert!(
         nros_cli_core::orchestration::model_location::launch_resolver_bin().is_some(),
@@ -1061,12 +1061,19 @@ fn a_plan_is_answerable_with_no_zephyr_on_the_machine() {
     assert!(line.contains("west build -b"), "{line}");
 }
 
-/// Without the framework the build stops and NAMES the two ways to supply it.
+/// Without the framework the build stops and NAMES how to supply it.
 ///
 /// In one checkout the autodetect walk finds `packages/boards` by accident of
 /// layout. A genuinely separate tree has no such luck, so this is the first
 /// thing a two-tree user hits — and a message that merely said "no board
 /// matched" would send them to their own `system.toml` instead.
+///
+/// RFC-0103 D6 (amended 2026-10-12): the binary's own SDK root is the last
+/// rung, so a binary built inside a checkout — this test binary is one —
+/// legitimately answers with that checkout. The refusal is reachable only from
+/// a binary with no root of its own; this asserts the message when it is
+/// reached and the own-root answer when it is not, and never the retired
+/// `$NROS_REPO_DIR`.
 #[test]
 fn a_missing_framework_names_how_to_supply_it() {
     let ws = tempfile::tempdir().unwrap();
@@ -1074,23 +1081,21 @@ fn a_missing_framework_names_how_to_supply_it() {
 
     let mut a = args(ws.path(), &["zephyr"]);
     a.nano_ros_path = None;
-    // `NROS_REPO_DIR` is process-global; this asserts the message rather than
-    // the env, so it holds however the harness was launched.
-    let err = match plan_builds(&a) {
-        Err(e) => e.to_string(),
-        Ok(_) => {
-            // A host that exports NROS_REPO_DIR resolves it legitimately. Not a
-            // failure of the code under test, and not something to assert
-            // around — say so and stop.
+    match plan_builds(&a) {
+        Err(e) => {
+            let err = e.to_string();
             assert!(
-                std::env::var_os("NROS_REPO_DIR").is_some(),
-                "no framework and no NROS_REPO_DIR, yet the plan resolved"
+                nros_launcher::checkout::own_sdk_root().is_none(),
+                "the binary has its own SDK root, yet the plan refused: {err}"
             );
-            return;
+            assert!(err.contains("--nano-ros-path"), "{err}");
+            assert!(!err.contains("NROS_REPO_DIR"), "{err}");
         }
-    };
-    assert!(err.contains("--nano-ros-path"), "{err}");
-    assert!(err.contains("NROS_REPO_DIR"), "{err}");
+        Ok(_) => assert!(
+            nros_launcher::checkout::own_sdk_root().is_some(),
+            "no framework and no SDK root of the binary's own, yet the plan resolved"
+        ),
+    }
 }
 
 // ---- phase-420 W7 — the selection verbs, end to end (RFC-0087 D7) --------

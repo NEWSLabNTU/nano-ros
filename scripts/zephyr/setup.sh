@@ -462,14 +462,10 @@ export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
 # manifest project carries no checkout now), so the path would name a directory
 # holding only a manifest file.
 #
-# The checkout is the CALLER's, and every caller already has one: activate.sh
-# exports NROS_REPO_DIR, and just derives it from justfile_directory().
-# So this preserves what the caller set and says what to do when there is none,
-# rather than inventing an answer that is wrong for everybody but one tree.
-if [ -z "\${NROS_REPO_DIR:-}" ]; then
-    echo "env.sh: NROS_REPO_DIR is not set — source your checkout's activate.sh first." >&2
-    echo "        This workspace is shared, so it cannot name one for you." >&2
-fi
+# The checkout is the CALLER's. RFC-0103 D6 (amended 2026-10-12): nothing
+# exports it any more — `nros` knows its own SDK root, and `just` derives it from
+# justfile_directory() for its own recipes — so this file names none and the
+# hint below spells the checkout as a placeholder.
 
 # Local bin
 export PATH="\$HOME/.local/bin:\$PATH"
@@ -477,12 +473,11 @@ export PATH="\$HOME/.local/bin:\$PATH"
 echo "nros Zephyr environment ready"
 echo "  ZEPHYR_BASE: \$ZEPHYR_BASE"
 echo "  ZEPHYR_SDK: $SDK_PATH"
-echo "  NROS_REPO_DIR: \${NROS_REPO_DIR:-<unset — source activate.sh in your checkout>}"
 echo ""
 echo "Build example (from YOUR checkout, which supplies the nros module):"
 echo "  cd \$WORKSPACE"
-echo "  west build -b native_sim/native/64 \$NROS_REPO_DIR/examples/zephyr/rust/talker \\\\"
-echo "      -- -DZEPHYR_EXTRA_MODULES=\$NROS_REPO_DIR -DCONF_FILE=\"prj.conf;prj-zenoh.conf\""
+echo "  west build -b native_sim/native/64 <checkout>/examples/zephyr/rust/talker \\\\"
+echo "      -- -DZEPHYR_EXTRA_MODULES=<checkout> -DCONF_FILE=\"prj.conf;prj-zenoh.conf\""
 ENVEOF
     chmod +x "$WORKSPACE_DIR/env.sh"
 }

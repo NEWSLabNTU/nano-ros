@@ -22,10 +22,10 @@
 #
 # `cd -P` resolves symlinks, so a checkout reached through a symlinked parent
 # (e.g. ~/data -> /mnt/wd) still records the ONE physical path. Plain `cd` +
-# `pwd` keeps the alias, and the alias then propagates into NROS_REPO_DIR,
-# nano_ros_ROOT, the rc line bootstrap.sh proposes, RFC-0048's absolute-path
-# `nros sync` output, and every path-keyed build cache — two names for one
-# tree (issue 0375). scripts/bootstrap.sh resolves the same way.
+# `pwd` keeps the alias, and the alias then propagates into PATH, the rc line
+# bootstrap.sh proposes, RFC-0048's absolute-path `nros sync` output, and every
+# path-keyed build cache — two names for one tree (issue 0375).
+# scripts/bootstrap.sh resolves the same way.
 # The CONDITION tests shell-version variables, not ${BASH_SOURCE[0]} — a
 # plain POSIX sh (dash) rejects that as "Bad substitution" when the line
 # EXECUTES, and the old `[ -n "${BASH_SOURCE[0]:-}" ]` guard executed in
@@ -42,8 +42,8 @@ else
     # here, not this file). Fall back to the current directory.
     _nros_root="$(pwd -P)"
 fi
-# Verify in EVERY shell — a wrong silent root would poison NROS_REPO_DIR,
-# the patch tables, and every path-keyed cache (issue 0375's
+# Verify in EVERY shell — a wrong silent root would poison PATH, the patch
+# tables, and every path-keyed cache (issue 0375's
 # two-names-for-one-tree, worse). This is what catches a shell whose
 # self-path idiom quietly broke (an eval'd `${(%):-%N}` returned the CALLER
 # under zsh during this fix's own review — root=/tmp, no complaint).
@@ -54,7 +54,15 @@ if [ ! -f "$_nros_root/activate.sh" ] || [ ! -f "$_nros_root/nros-sdk-index.toml
     echo "  (cd <checkout> && . ./activate.sh)." >&2
     return 1 2>/dev/null || exit 1
 fi
-export NROS_REPO_DIR="$_nros_root"
+# RFC-0103 D6 (amended 2026-10-12) — the checkout root is NOT exported, neither
+# as NROS_REPO_DIR nor as CMake's nano_ros_ROOT. The `nros` binary knows its own
+# SDK root (an in-tree build reads the checkout it was built in; a release
+# reads its own share/nano-ros), cmake modules locate the root from their own
+# path, and an explicit root is a flag (`--nano-ros-path`, `-Dnano_ros_ROOT`).
+# A path in the shell is what a linked worktree inherits from its parent
+# (issue 1280), so contributors and users now follow the same process.
+# `_nros_root` stays a private variable for the PATH wiring below, and is unset
+# at the end of this file.
 
 # --- SDK-store lookup helpers (issue 0372) ---------------------------------
 # THE RULE FOR THIS FILE: never let a glob reach the shell's word expansion.
@@ -129,11 +137,9 @@ _nros_dir_has_gcc() {
     [ -n "$(find "$1" -maxdepth 1 -name '*-gcc' 2>/dev/null)" ]
 }
 # RFC-0048 (phase-287): the ament shape's `find_package(nano_ros REQUIRED)`
-# locates the in-tree `nano_rosConfig.cmake` via CMake's `<pkg>_ROOT` env var.
-# Exporting it here means a sourced shell needs no `-Dnano_ros_ROOT`; a copy-out
-# built outside a sourced shell passes `-Dnano_ros_ROOT=<checkout>` (or a `nros
-# setup` CMakePreset carries it).
-export nano_ros_ROOT="$_nros_root"
+# locates `nano_rosConfig.cmake` through `-Dnano_ros_ROOT=<root>`, which
+# `nros build` and the CMakePresets `nros init` writes pass. It is no longer
+# exported here (RFC-0103 D6, amended 2026-10-12); a raw `cmake` names it.
 
 # Rustup-managed toolchain: `scripts/bootstrap.sh` installs rustup, but only
 # FUTURE shells pick up `~/.cargo/bin` (rustup edits .bashrc/.profile). The

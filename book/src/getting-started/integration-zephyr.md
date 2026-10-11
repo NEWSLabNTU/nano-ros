@@ -713,7 +713,7 @@ Two things differ for a **Rust** app (C/C++ apps skip this section):
    `nros setup`, which provides the codegen toolchain + message sources):
 
    ```bash
-   NROS_REPO_DIR=<path-to-your-nano-ros-module> nros sync
+   nros sync --nano-ros-path <path-to-your-nano-ros-module>
    ```
 
    This writes `generated/<pkg>/` (the message crates) and a `.cargo/config.toml`

@@ -74,10 +74,11 @@ rung 3 is for, and nothing else in nano-ros changes.
 > sibling crates with `../../` walks
 > (`manifest.parent().join("nros-board-freertos/config")`, drivers,
 > `nros-c` includes) — those only resolve inside `packages/boards/`. An
-> out-of-tree board crate resolves the nano-ros root ONCE from an env
-> var instead (`NROS_REPO_DIR`, the same variable `nros sync` uses) and
-> derives every include from it:
-> `let root = PathBuf::from(env::var("NROS_REPO_DIR")?);`
+> out-of-tree board crate resolves the nano-ros root ONCE by walking
+> up from where its nros dependency was compiled — the SDK root holds
+> the marker `packages/core/nros-core/Cargo.toml` — and derives every
+> include from it (no environment variable names it any more,
+> RFC-0103 D6):
 > `hal.include(root.join("packages/api/nros-c/include"));` — same
 > files, absolute anchor.
 

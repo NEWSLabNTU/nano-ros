@@ -678,19 +678,16 @@ const _: () = assert!(
 ///     own `nros sync`, exactly like the central `nros-patch.toml` it replaces,
 ///     so a host path is correct there.
 ///
-/// WHICH checkout is decided by [`checkout_for_output`], never by
-/// `$NROS_REPO_DIR` alone (issue 1641): see there.
+/// WHICH checkout is decided by [`checkout_for_output`] (issue 1641): see
+/// there.
 ///
-/// With neither (codegen invoked outside any checkout and with no SDK named),
-/// fall back to the registry form so behaviour is unchanged rather than
-/// emitting a path that cannot resolve.
+/// With neither (codegen invoked outside any checkout by a binary with no SDK
+/// root of its own), fall back to the registry form so behaviour is unchanged
+/// rather than emitting a path that cannot resolve.
 fn nros_dep_line(crate_name: &str, package_output: &Path) -> String {
     let registry = format!(r#"{crate_name} = {{ version = "*", default-features = false }}"#);
-    let Some(root) = checkout_for_output(
-        package_output,
-        // repo-dir-env-ok: `checkout_for_output` uses the output's own checkout first (issue 1641).
-        std::env::var_os("NROS_REPO_DIR").map(PathBuf::from),
-    ) else {
+    let Some(root) = checkout_for_output(package_output, nros_launcher::checkout::own_sdk_root())
+    else {
         return registry;
     };
     // Subpath per crate: most live under packages/core, the RMW backends do not.
@@ -731,13 +728,14 @@ fn nros_dep_line(crate_name: &str, package_output: &Path) -> String {
 /// then compiled the parent's core crates against its own generated messages —
 /// issue 1280's symptom, reached through codegen instead of a build script.
 ///
-/// Outside every checkout (a copy-out project), the variable is the only
-/// statement of which SDK the user means, so it is used as given — that is the
-/// case env-first exists for, and the reason this is not a plain "ignore the
-/// environment". "Which checkout" is `find_monorepo_root`, the CLI's one marker
-/// walk, which stops at the INNERMOST marker — what separates an agent worktree
-/// nested at `<main>/.claude/worktrees/<id>` from its parent (issue 1391).
-fn checkout_for_output(package_output: &Path, env_root: Option<PathBuf>) -> Option<PathBuf> {
+/// Outside every checkout (a copy-out project), the SDK root of the running
+/// binary answers — RFC-0103 D6 (amended 2026-10-12): a released `nros`'s
+/// `share/nano-ros`, or the checkout an in-tree `nros` was built in. No
+/// variable is read. "Which checkout" is `find_monorepo_root`, the CLI's one
+/// marker walk, which stops at the INNERMOST marker — what separates an agent
+/// worktree nested at `<main>/.claude/worktrees/<id>` from its parent (issue
+/// 1391).
+fn checkout_for_output(package_output: &Path, own_root: Option<PathBuf>) -> Option<PathBuf> {
     let probe = package_output
         .canonicalize()
         .unwrap_or_else(|_| package_output.to_path_buf());
@@ -747,7 +745,7 @@ fn checkout_for_output(package_output: &Path, env_root: Option<PathBuf>) -> Opti
         .find(|p| p.exists())
         .map(Path::to_path_buf)
         .unwrap_or(probe);
-    nros_launcher::checkout::find_monorepo_root(&start).or(env_root)
+    nros_launcher::checkout::find_monorepo_root(&start).or(own_root)
 }
 
 /// phase-403 W6 -- write the derived-bound inventory into a generated Rust
@@ -1949,8 +1947,9 @@ mod checkout_for_output_tests {
         assert_eq!(checkout_for_output(&out, Some(parent)), Some(worktree));
     }
 
+    /// A copy-out project takes the running binary's own SDK root, or none.
     #[test]
-    fn a_copy_out_project_takes_the_named_sdk_or_none() {
+    fn a_copy_out_project_takes_the_binarys_own_sdk_or_none() {
         let tmp = tempfile::tempdir().unwrap();
         let sdk = fake_checkout(&tmp.path().join("sdk"));
         let out = tmp.path().join("my_project/generated/std_msgs");

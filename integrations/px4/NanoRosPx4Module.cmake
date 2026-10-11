@@ -50,13 +50,13 @@
 include_guard(GLOBAL)
 
 # --- Resolve the nano-ros checkout ------------------------------------------
+# An explicit `-DNROS_REPO_DIR` wins; otherwise the module locates the root
+# from its OWN path — RFC-0103 D6 (amended 2026-10-12): no environment variable
+# is read, so a value a linked worktree inherits from its parent's shell cannot
+# redirect the build.
 if(NOT DEFINED NROS_REPO_DIR OR NROS_REPO_DIR STREQUAL "")
-    if(DEFINED ENV{NROS_REPO_DIR} AND NOT "$ENV{NROS_REPO_DIR}" STREQUAL "")
-        set(NROS_REPO_DIR "$ENV{NROS_REPO_DIR}")
-    else()
-        # <root>/integrations/px4/ → up two.
-        get_filename_component(NROS_REPO_DIR "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
-    endif()
+    # <root>/integrations/px4/ → up two.
+    get_filename_component(NROS_REPO_DIR "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
 endif()
 
 # --- Where the cargo-built artifacts land -----------------------------------

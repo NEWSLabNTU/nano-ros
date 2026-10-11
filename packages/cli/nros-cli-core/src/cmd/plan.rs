@@ -84,9 +84,9 @@ pub struct Args {
     pub image: Option<String>,
 
     /// nano-ros checkout holding `packages/boards`, used to derive the selected
-    /// image's rustc triple from its board descriptor. Defaults to
-    /// `NROS_REPO_DIR`, then an autodetect walk — the same ladder
-    /// `nros build` uses.
+    /// image's rustc triple from its board descriptor. Defaults to a walk-up
+    /// from the workspace, then this `nros` binary's own SDK root — the same
+    /// ladder `nros build` uses.
     #[arg(long = "nano-ros-path")]
     pub nano_ros_path: Option<std::path::PathBuf>,
 

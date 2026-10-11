@@ -40,10 +40,12 @@ nros build
 `nros sync` resolves the launch file into the system model; `nros build`
 generates the entry for each `[image.*]` in `system.toml` and drives
 CMake under `build/`. The first build compiles nano-ros's runtime into
-the build tree (~3 minutes); rebuilds are seconds. Outside a nano-ros
-checkout, `nros` finds the SDK itself; inside one, `direnv`/`activate.sh`
-exports `NROS_REPO_DIR` and that is used. `nros sdk-root --explain`
-prints the root it would use and where that came from.
+the build tree (~3 minutes); rebuilds are seconds. Inside a nano-ros
+checkout that checkout is used; anywhere else `nros` uses its own SDK
+(a release's `share/nano-ros`, or the checkout an in-tree `nros` was
+built in), and `--nano-ros-path <dir>` names one explicitly. Nothing is
+exported. `nros sdk-root --explain` prints the root it would use and
+where that came from.
 
 ## Run
 

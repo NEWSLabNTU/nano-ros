@@ -67,9 +67,10 @@ my_native_node/
 
 Examples are copy-out ready, and nothing in a copied one names a path back
 into the checkout. For Rust, `cp -r` the example, then
-`NROS_REPO_DIR=<nano-ros checkout> nros sync` and `nros build`. For C/C++,
-`cp -r` and configure with `-Dnano_ros_ROOT=<nano-ros checkout>` (or export
-`NROS_REPO_DIR`) — a single-package C/C++ leaf needs no `nros sync`, because
+`nros sync` and `nros build` (`nros` finds its own SDK; `--nano-ros-path`
+names another). For C/C++, `cp -r` and run `nros build`, or configure a raw
+`cmake` with `-Dnano_ros_ROOT=<nano-ros checkout>` — a single-package C/C++
+leaf needs no `nros sync`, because
 its message bindings are a CMake-time output.
 
 ## Code Example

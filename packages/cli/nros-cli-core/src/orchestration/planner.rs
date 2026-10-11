@@ -45,7 +45,7 @@ pub struct PlanOptions {
     /// nano-ros checkout holding `packages/boards`, for deriving the selected
     /// image's rustc triple from its board descriptor.
     ///
-    /// `None` ⇒ `NROS_REPO_DIR`, then an autodetect walk from the workspace —
+    /// `None` ⇒ an autodetect walk from the workspace, then the binary's own root —
     /// the same ladder `nros build` uses, because the two must agree about
     /// which board descriptors exist. Finding none is not an error: a plan that
     /// needs no triple is still a valid plan.
@@ -188,8 +188,8 @@ pub fn plan_system(options: PlanOptions) -> Result<PlanningOutput> {
     // field that is going away.
     //
     // Resolved exactly as `nros build` resolves it — literally the same
-    // function since phase-447 A2 (`--nano-ros-path` → `NROS_REPO_DIR` → an
-    // autodetect walk → this toolchain's own `share/nano-ros`) — because the
+    // function since phase-447 A2 (`--nano-ros-path` → an autodetect walk →
+    // this binary's own SDK root, RFC-0103 D6 amended) — because the
     // two must agree about which descriptors exist. Unlike `build`, a MISSING
     // checkout is not fatal here: `nros plan` legitimately runs outside a
     // nano-ros tree, and every plan that needs no triple still works. What is

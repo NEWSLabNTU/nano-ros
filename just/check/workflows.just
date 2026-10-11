@@ -693,9 +693,9 @@ lane-stage-reporting:
     @python3 scripts/ci/nightly-triage.py --selftest
 
 # issue 0933 — a CI step that invokes `just`/`nros`/`west` must source the repo
-# environment. `activate.sh` is what exports `nano_ros_ROOT`, and that is how
-# `find_package(nano_ros)` resolves: the config lives at the checkout root and a
-# generated workspace root sets no prefix on purpose. `just doctor` enforces this
+# environment: `activate.sh` puts the in-tree CLI and toolchains on PATH and
+# sources ROS. (`nano_ros_ROOT` is no longer exported — RFC-0103 D6, amended
+# 2026-10-12; `nros build` passes it.) `just doctor` enforces this
 # for a developer shell; nothing enforced it for a CI step, which is the one
 # place the shell is fresh every time.
 #

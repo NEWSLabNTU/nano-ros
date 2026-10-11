@@ -18,14 +18,14 @@
 # even inside `[ -n … ]` (activate.sh's identical guard was the first thing
 # dash died on). The untaken branch bodies are safe: a substitution only
 # errors on the line that RUNS. Under plain sh, activate.sh has already
-# verified $NROS_REPO_DIR before sourcing us, so prefer it over $0 (which is
-# the SHELL when sourced, not this file).
+# verified its root (`_nros_root`) before sourcing us, so prefer it over $0
+# (which is the SHELL when sourced, not this file).
 if [ -n "${BASH_VERSION:-}" ]; then
     _nros_sdk_env_script="${BASH_SOURCE[0]}"
 elif [ -n "${ZSH_VERSION:-}" ]; then
     _nros_sdk_env_script="${(%):-%N}"
-elif [ -n "${NROS_REPO_DIR:-}" ]; then
-    _nros_sdk_env_script="$NROS_REPO_DIR/scripts/sdk-env.sh"
+elif [ -n "${_nros_root:-}" ]; then
+    _nros_sdk_env_script="$_nros_root/scripts/sdk-env.sh"
 else
     _nros_sdk_env_script="$0"
 fi
@@ -70,9 +70,15 @@ _nros_sdk_env_names() {
     # set is the index's `[source.*] env` names — DERIVED, never listed here.
     # `just` recipes still get them from `just/sdk-env.just` for their own
     # processes; `--print <VAR>` still answers.
+    #
+    # RFC-0103 D6 (amended 2026-10-12) — and the checkout root itself
+    # (`NROS_REPO_DIR`, `nano_ros_ROOT`) is never exported into a shell either:
+    # the `# just-only:` line in `just/sdk-env.just` names them.
     local skip
     skip="|$(sed -n 's/^env = "\([A-Za-z_][A-Za-z0-9_]*\)"$/\1/p' \
         "${_nros_sdk_env_root}/nros-sdk-index.toml" | tr '\n' '|')"
+    skip="${skip}$(sed -n 's/^# just-only:[[:space:]]*//p' \
+        "${_nros_sdk_env_root}/just/sdk-env.just" | tr ' ' '\n' | sed '/^$/d' | tr '\n' '|')"
     sed -n 's/^export \([A-Za-z_][A-Za-z0-9_]*\)[[:space:]]*:=.*/\1/p' \
         "${_nros_sdk_env_root}/just/sdk-env.just" |
         while IFS= read -r n; do
@@ -213,8 +219,8 @@ _nros_sdk_env_print_fish() {
 # (Same dash rule as the resolver above: guard on $BASH_VERSION so the
 # array subscript never sits on an executed line in plain sh. A plain sh
 # reaches the fallthrough: sourced-from-activate.sh is the only supported
-# plain-sh path, so default to SOURCED there when activate.sh's root export
-# is present.)
+# plain-sh path, so default to SOURCED there when activate.sh's private root
+# variable `_nros_root` is present — it is set only while activate.sh runs.)
 _nros_sdk_env_executed=1
 if [ -n "${BASH_VERSION:-}" ]; then
     [ "${BASH_SOURCE[0]}" = "$0" ] || _nros_sdk_env_executed=0
@@ -222,7 +228,7 @@ elif [ -n "${ZSH_VERSION:-}" ]; then
     case "${ZSH_EVAL_CONTEXT:-}" in
         *:file*) _nros_sdk_env_executed=0 ;;
     esac
-elif [ -n "${NROS_REPO_DIR:-}" ]; then
+elif [ -n "${_nros_root:-}" ]; then
     _nros_sdk_env_executed=0
 fi
 

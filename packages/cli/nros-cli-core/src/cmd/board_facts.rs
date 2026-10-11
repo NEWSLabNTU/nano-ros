@@ -49,8 +49,8 @@ pub struct BoardFactsArgs {
     #[arg(long)]
     pub board: Option<String>,
 
-    /// nano-ros checkout holding `packages/boards`. Defaults to `NROS_REPO_DIR`
-    /// then an upward search.
+    /// nano-ros SDK root holding `packages/boards`. Defaults to an upward
+    /// search, then this `nros` binary's own SDK root.
     #[arg(long)]
     pub nano_ros_path: Option<PathBuf>,
 }

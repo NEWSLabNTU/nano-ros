@@ -45,13 +45,14 @@
 //!
 //! ## When the guard cannot answer
 //!
-//! [`runtime_root`] can fail — a prebuilt `nros` invoked by a consumer with no
-//! nano-ros checkout above it and no `NROS_REPO_DIR` set. So can the parse, if
+//! [`runtime_root`] can fail — a `nros` with no SDK root of its own (neither a
+//! staged `share/nano-ros` nor a checkout it was built in) invoked by a
+//! consumer with no nano-ros checkout above it. So can the parse, if
 //! the located tree predates phase-429 and has no `codegen_version.rs`. Both
 //! are note-and-continue, not refusal: a guard that cannot see the runtime has
 //! no evidence of a mismatch, and refusing on absence of evidence is the same
-//! trained-to-bypass failure as (1). Point it at a tree with `NROS_REPO_DIR`
-//! to get the check back.
+//! trained-to-bypass failure as (1). Run it from inside the tree (or with an
+//! `nros` built in or shipped with one) to get the check back.
 //!
 //! ## Opt-out
 //!
@@ -80,11 +81,6 @@ pub const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Env-var name that bypasses the guard (any non-empty value opts out).
 pub const SKIP_ENV: &str = "NROS_SKIP_VERSION_CHECK";
-
-/// Env-var naming the nano-ros runtime tree explicitly. Same spelling
-/// `nros sync` already uses for "which nano-ros checkout", so a consumer that
-/// has told us once has told us for both.
-pub const RUNTIME_ROOT_ENV: &str = "NROS_REPO_DIR";
 
 // The marker that identifies a nano-ros source tree, relative to its root.
 // Owned by `nros_launcher::checkout` since phase-443 W3 — see
@@ -163,31 +159,19 @@ pub fn find_monorepo_root(start: &Path) -> Option<PathBuf> {
 /// 1. A nano-ros tree ABOVE the consumer. In-tree examples, fixtures and
 ///    workspaces link the runtime they sit inside, whatever language they are
 ///    written in — this is the arm that covers a C or C++ consumer with no
-///    `Cargo.lock`. It beats the environment on purpose: `NROS_REPO_DIR` is
-///    ambient after `source activate.sh`, so a contributor with two checkouts
-///    open would otherwise have every consumer in the second one measured
-///    against the first.
-/// 2. `NROS_REPO_DIR` — the consumer said which checkout it links, and is not
-///    inside one. Honoured as given, so a wrong value fails at the parse
-///    rather than being silently ignored.
-/// 3. A nano-ros tree above THIS BINARY. A contributor's `nros` built by
-///    `just setup-cli` lives in the tree whose runtime an out-of-tree
-///    consumer is nearly always pointed at by `[patch.crates-io]` or by
-///    `find_package(NanoRos)`. It is the optimistic arm — an external consumer
-///    resolving `nros-core` from elsewhere would be checked against the wrong
-///    tree — but the alternative is no check at all, and a prebuilt `nros`
-///    copied out of its tree (the case that arm would get wrong most often)
-///    has no tree above it and falls through to `None`.
+///    `Cargo.lock`. It comes first so a contributor with two checkouts open
+///    has every consumer measured against the tree it sits in.
+/// 2. THIS BINARY's own SDK root (RFC-0103 D6, amended 2026-10-12) — the
+///    `share/nano-ros` a released `nros` ships, else the checkout an in-tree
+///    `nros` was built in, which is the tree an out-of-tree consumer is nearly
+///    always pointed at by `[patch.crates-io]` or by `find_package(NanoRos)`.
+///    It is the optimistic arm — an external consumer resolving `nros-core`
+///    from elsewhere would be checked against the wrong tree — but the
+///    alternative is no check at all. The `$NROS_REPO_DIR` rung that used to
+///    sit between the two is gone: an exported path is what a linked worktree
+///    inherits from its parent.
 pub fn runtime_root(start: &Path) -> Option<PathBuf> {
-    if let Some(root) = find_monorepo_root(start) {
-        return Some(root);
-    }
-    if let Some(explicit) = env::var_os(RUNTIME_ROOT_ENV).filter(|v| !v.is_empty()) {
-        return Some(PathBuf::from(explicit));
-    }
-    let exe = env::current_exe().ok()?;
-    let exe = exe.canonicalize().unwrap_or(exe);
-    find_monorepo_root(&exe)
+    find_monorepo_root(start).or_else(nros_launcher::checkout::own_sdk_root)
 }
 
 /// Read a runtime tree's accepted codegen-version range out of its own
@@ -306,9 +290,9 @@ fn note(msg: std::fmt::Arguments<'_>) {
 
 fn warn_no_runtime(start: &Path, verb: Verb) {
     note(format_args!(
-        "note: {} found no nano-ros runtime tree at or above {} (and none above \
-         this binary); skipping the codegen version guard. Set {RUNTIME_ROOT_ENV} \
-         to the nano-ros checkout you link to enable it.",
+        "note: {} found no nano-ros runtime tree at or above {} (and this binary \
+         has no SDK root of its own); skipping the codegen version guard. Run an \
+         `nros` built in, or shipped with, the nano-ros you link to enable it.",
         verb.as_str(),
         start.display(),
     ));

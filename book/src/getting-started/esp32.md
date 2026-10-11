@@ -128,7 +128,8 @@ and pack the flash image:
 ```bash
 # once per checkout location — message bindings + the generated
 # build/esp32-c3-baremetal/nros-cargo.toml:
-NROS_REPO_DIR=<path-to-nano-ros> nros sync
+# (`nros` finds the SDK it belongs to; `--nano-ros-path <dir>` names another)
+nros sync
 
 # nros build hands cargo the generated settings file. That file asks for
 # `[unstable] build-std`, so a nightly carrying `rust-src` must be the ACTIVE

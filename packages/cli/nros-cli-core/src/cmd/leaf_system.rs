@@ -28,7 +28,8 @@ pub struct LeafSystemArgs {
     pub path: PathBuf,
 
     /// nano-ros checkout whose board catalog maps the board to its platform.
-    /// Default: `$NROS_REPO_DIR`, then the checkout enclosing the leaf.
+    /// Default: the checkout enclosing the leaf, then this `nros` binary's own
+    /// SDK root.
     #[arg(long)]
     pub nano_ros_path: Option<PathBuf>,
 
@@ -279,8 +280,8 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
             leaf.origin_path().display()
         )
     })?;
-    // issue 1641 — the 1510 ladder: the leaf's own checkout outranks an
-    // inherited `$NROS_REPO_DIR` (in a linked worktree, the PARENT's).
+    // issue 1641 — the one ladder: the leaf's own checkout comes first, so a
+    // linked worktree never answers with the PARENT's.
     let root = crate::orchestration::nano_ros_root::resolve(args.nano_ros_path, &dir);
     let catalog = root.as_deref().and_then(|r| BoardCatalog::load(r).ok());
     let deploy = deploy_token(catalog.as_ref(), &board);

@@ -213,8 +213,9 @@ under the leaf, because the generated settings file names that
 `target-dir` — so an in-tree build leaves no `target/` beside the
 sources for the repo's own gate to reject
 (`check-example-leaf-target-dirs`). A copied-out example carries no path
-into the checkout at all: `NROS_REPO_DIR` is the only thing tying it to
-one, and it is on the command line rather than in a file.
+into the checkout at all: `nros` ties it to the SDK the binary belongs
+to, and `--nano-ros-path` names another on the command line rather than
+in a file.
 
 So: exploring in the checkout, `cd <leaf> && nros sync && nros build`.
 Building your own thing, copy the example out and run the same two

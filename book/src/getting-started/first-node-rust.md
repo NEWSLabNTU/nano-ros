@@ -155,14 +155,16 @@ directory lives now:
 
 ```bash
 cp -r examples/native/rust/talker ~/my-talker && cd ~/my-talker
-NROS_REPO_DIR=/path/to/nano-ros nros sync
-NROS_REPO_DIR=/path/to/nano-ros nros build
+nros sync
+nros build
 RUST_LOG=info ./build/native/target/debug/talker
 ```
 
 Nothing in the copied directory names a path into the checkout, so the
-copy is a checkout-independent starter: `NROS_REPO_DIR` is the only
-thing tying it to one, and it is on the command line, not in a file.
+copy is a checkout-independent starter: `nros` finds the SDK it belongs
+to (the checkout an in-tree `nros` was built in, or a release's own
+`share/nano-ros`), and `--nano-ros-path <dir>` names another on the
+command line, never in a file.
 
 Prefer vendoring instead? `examples/templates/multi-package-workspace/`
 documents the path-dep workspace layout.
@@ -271,8 +273,7 @@ seconds:
 Canonical, copy-out:
 [`examples/native/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/native/rust/talker)
 
-Copy the directory, run `NROS_REPO_DIR=<nano-ros checkout> nros sync`
-inside it, rename the package, and your starter is ready to modify.
+Copy the directory, run `nros sync` inside it, rename the package, and your starter is ready to modify.
 To aim it at a board, change `[image.native] board` in `system.toml` to
 that board's name (`nros board list` prints them), swap the board crate
 in `[dependencies]` to match (issue 1305), and re-run `nros sync`.

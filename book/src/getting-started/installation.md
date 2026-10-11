@@ -387,8 +387,8 @@ The activate file also sources `/opt/ros/humble/setup.bash` if
 present (used by the rmw_zenoh interop tests, and it lets codegen
 resolve message packages from the ament index; building with any RMW —
 Cyclone included — does NOT require ROS 2, only the pip-installable
-`rosidl_adapter` Python packages from the prerequisites) and exports
-`NROS_REPO_DIR`.
+`rosidl_adapter` Python packages from the prerequisites). It exports no
+checkout root: the in-tree `nros` knows the checkout it was built in.
 
 ### 3. Provision a board (+ RMW)
 
@@ -483,8 +483,9 @@ Rust packages consume nano-ros one of two ways:
 
 - **Registry-style names + patch redirection** (what every shipped
   example uses): declare `nros = { version = "*" }` (+ msg crates) and
-  let `nros sync` resolve the names into the checkout
-  (`NROS_REPO_DIR` names it). The `[patch.crates-io]` block it writes
+  let `nros sync` resolve the names into the SDK root (the checkout the
+  project sits in, else the `nros` binary's own; `--nano-ros-path` names
+  one). The `[patch.crates-io]` block it writes
   goes into the generated settings file under `build/`, not into your
   package — `nros build` hands that file to cargo with `--config`, and
   a cargo command you drive yourself passes the same path. Copy the
