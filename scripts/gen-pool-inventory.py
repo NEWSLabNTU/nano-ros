@@ -45,6 +45,8 @@ import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+import git_grep  # noqa: E402  issue 1816 — a failed search is not "no match"
 OUT = os.path.join(ROOT, "book", "src", "reference", "static-pool-inventory.md")
 
 # The spellings a knob is read by. Each yields (NAME, default-literal).
@@ -595,10 +597,7 @@ def symbol_defined(sym):
     else:
         pat = rf"\b{re.escape(sym)}\b"
         where = "."
-    r = subprocess.run(
-        ["git", "grep", "-q", "-E", pat, "--", where], cwd=ROOT, capture_output=True
-    )
-    return r.returncode == 0
+    return git_grep.any_match(["-E", pat, "--", where], ROOT)
 
 
 def cost_problems(knobs, pools, costs, defined=symbol_defined):

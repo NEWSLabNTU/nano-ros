@@ -82,11 +82,12 @@ from __future__ import annotations
 
 import importlib.util
 import re
-import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+import git_grep  # noqa: E402  issue 1816 — a failed search is not "no match"
 CENSUS = ROOT / "scripts/nros-build-wiring.py"
 BASELINE = ROOT / ".config/foreign-env-path-inputs-baseline.txt"
 
@@ -184,11 +185,9 @@ def repo_produces(name: str) -> str | None:
         rf'["\']{re.escape(name)}=',
     ]
     for pat in patterns:
-        r = subprocess.run(
-            ["git", "grep", "-lE", pat, "--", *producer_pathspec()],
-            cwd=ROOT, capture_output=True, text=True)
-        if r.returncode == 0 and r.stdout.strip():
-            return r.stdout.split()[0]
+        out = git_grep.run(["-lE", pat, "--", *producer_pathspec()], ROOT)
+        if out.strip():
+            return out.split()[0]
     return None
 
 

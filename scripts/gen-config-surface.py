@@ -51,10 +51,11 @@ Run:  python3 scripts/gen-config-surface.py [--check] [--self-test]
 
 import os
 import re
-import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+import git_grep  # noqa: E402  issue 1816 — a failed search is not "no match"
 OUT = os.path.join(ROOT, "book", "src", "reference", "configuration-surface.md")
 KCONFIG = os.path.join(ROOT, "zephyr", "Kconfig")
 CMAKE_FORWARD = os.path.join(ROOT, "zephyr", "cmake", "nros_cargo_build.cmake")
@@ -188,12 +189,7 @@ def readers(symbols):
     enough that someone would run it less often than the gate does.
     """
     kinds = {s: set() for s in symbols}
-    try:
-        out = subprocess.run(
-            ["git", "grep", "-n", "-F", "--", "CONFIG_NROS_"],
-            cwd=ROOT, capture_output=True, text=True, check=False).stdout
-    except OSError:
-        return kinds
+    out = git_grep.run(["-n", "-F", "--", "CONFIG_NROS_"], ROOT)
     for line in out.splitlines():
         try:
             path, _, body = line.split(":", 2)

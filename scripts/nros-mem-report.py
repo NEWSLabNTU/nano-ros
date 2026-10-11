@@ -85,6 +85,8 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+import git_grep  # noqa: E402  issue 1816 — a failed search is not "no match"
 
 # nm type letters. Lowercase is local, uppercase global; the CLASS is the same.
 RAM_TYPES = set("bBdDgGsS")  # .bss + .data + small-data variants
@@ -1406,16 +1408,16 @@ def check_storage_roles():
     # A plain alternation for git (its ERE has no `(?:`), the real pattern in
     # Python: a regex git cannot parse makes `git grep` print nothing, and an
     # empty scan would pass this check vacuously.
-    out = subprocess.run(
-        ["git", "grep", "-n", "-E",
+    out = git_grep.run(
+        ["-n", "-E",
          "executor_storage|EXECUTOR_BACKING|_SLOT_STORE|__nros_comp_buf_|GlobalStorageHolder",
          "--", "*.rs", "*.c", "*.h", "*.hpp", "*.cpp", "*.jinja",
          ":!*.golden", ":!third-party", ":!scripts/nros-mem-report.py"],
-        cwd=ROOT, capture_output=True, text=True,
+        ROOT,
     )
-    assert out.returncode == 0, f"git grep failed: {out.stderr.strip()}"
+    assert out, "git grep matched no executor storage at all — the scan would pass vacuously"
     defining = set()
-    for line in out.stdout.splitlines():
+    for line in out.splitlines():
         path, _n, body = line.split(":", 2)
         stripped = body.strip()
         if stripped.startswith(("//", "*", "/*", "#", "\"")) or "assert" in body or "contains(" in body:

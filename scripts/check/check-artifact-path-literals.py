@@ -23,13 +23,13 @@ Buildless, ~0.2 s; self-tests its matcher on every run.
 from __future__ import annotations
 
 import re
-import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 import comments  # noqa: E402
+import git_grep  # noqa: E402  issue 1816 — a failed search is not "no match"
 
 # `target/` (any prefix) followed by an artifact this module owns.
 PATTERN = re.compile(
@@ -94,11 +94,11 @@ def main() -> int:
     if self_test():
         print("check-artifact-path-literals --self-test: FAILED")
         return 1
-    files = subprocess.run(
-        ["git", "grep", "-lIE", r"target/.*(nros-c(pp)?-generated|libnros_c(pp)?\.a)", "--",
+    files = git_grep.run(
+        ["-lIE", r"target/.*(nros-c(pp)?-generated|libnros_c(pp)?\.a)", "--",
          ":!docs", ":!*.md", ":!book", ":!third-party"],
-        cwd=ROOT, capture_output=True, text=True, check=False,
-    ).stdout.split()
+        ROOT,
+    ).split()
     found = []
     seen_allowed = set()
     for f in files:

@@ -131,6 +131,19 @@ set-e-bare-assignment:
 ancestry-truncation:
     @python3 scripts/check/check-ancestry-truncation.py
 
+# Issue 1816 — `git grep` exits 1 for "matched nothing" and 128 for "could not
+# search" (not a repository; a regex git rejects), and prints nothing on stdout
+# for either. 13 of the 14 Python call sites read 128 as "no match", so outside
+# a checkout a gate that FORBIDS a spelling searched nothing and said OK
+# (`check-deprecated-cmake-names` over a `git archive` export). One helper,
+# `scripts/lib/git_grep.py`, raises on any other status; this keeps a raw
+# `["git", …, "grep", …]` literal from reappearing. Buildless (an AST walk over
+# tracked `.py`), ~0.5 s; every run self-tests its own pattern AND the
+# helper's two failure modes (outside a repository; a regex git rejects).
+[private]
+git-grep-status:
+    @python3 scripts/check/check-git-grep-status.py
+
 # phase-426 W4 — no shipped example may demonstrate the CALLER-STORAGE parameter
 # store. `nros_parameter_server_t` (and the `nros::ParameterServer<Cap>` wrapper
 # this wave deletes) is node-local and nothing joins it to the executor's

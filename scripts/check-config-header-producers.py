@@ -60,11 +60,11 @@ Run:  python3 scripts/check-config-header-producers.py [--self-test]
 
 import os
 import re
-import subprocess
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
 import per_item  # noqa: E402  phase-472 W6 — every definition, not the first
+import git_grep  # noqa: E402  issue 1816 — a failed search is not "no match"
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -136,10 +136,7 @@ def file_problems(rel, text, rng):
 
 def producers(root):
     """Files that define the storage-size macro: the config-header producers."""
-    out = subprocess.run(
-        ["git", "grep", "-l", MARKER, "--", "*.h", "*.template", "*.rs", "*.jinja"],
-        cwd=root, capture_output=True, text=True,
-    ).stdout.split()
+    out = git_grep.run(["-l", MARKER, "--", "*.h", "*.template", "*.rs", "*.jinja"], root).split()
     # `codegen_version.rs` and the gates themselves would match on a mention.
     return [f for f in out if not f.startswith("scripts/")]
 

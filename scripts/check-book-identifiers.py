@@ -41,7 +41,6 @@ Gate: just check book-identifiers
 
 import os
 import re
-import subprocess
 import sys
 
 import sys as _sys
@@ -50,6 +49,7 @@ from pathlib import Path as _Path
 _sys.path.insert(0, str(_Path(__file__).resolve().parent / "lib"))
 from tracked import tracked  # issue 0721: index lookup, not a walk
 import comments  # phase-472 W3 — "occurs in code", not "occurs"
+import git_grep  # noqa: E402  issue 1816 — a failed search is not "no match"
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BOOK = os.path.join(ROOT, "book", "src")
@@ -130,11 +130,9 @@ def git_grep_word(ident, pathspecs):
     """True when `ident` occurs word-bounded in the CODE of a file in the pathspecs.
 
     `git grep` nominates candidates; the stripped text decides."""
-    res = subprocess.run(
-        ["git", "grep", "-lw", "--", ident] + pathspecs,
-        cwd=ROOT, capture_output=True, text=True)
+    res = git_grep.run(["-lw", "--", ident] + pathspecs, ROOT)
     rx = re.compile(r"(?<![A-Za-z0-9_])" + re.escape(ident) + r"(?![A-Za-z0-9_])")
-    for rel in res.stdout.split():
+    for rel in res.split():
         code = code_of(rel)
         if code is not None and rx.search(code):
             return True
@@ -164,10 +162,8 @@ def cmake_defines(name, text):
 
 
 def cmake_defined(name):
-    res = subprocess.run(
-        ["git", "grep", "-liE", "--", rf"(function|macro)\s*\(\s*{name}\b"]
-        + CMAKE_SPECS, cwd=ROOT, capture_output=True, text=True)
-    for rel in res.stdout.split():
+    res = git_grep.run(["-liE", "--", rf"(function|macro)\s*\(\s*{name}\b"] + CMAKE_SPECS, ROOT)
+    for rel in res.split():
         with open(os.path.join(ROOT, rel), encoding="utf-8", errors="replace") as fh:
             if cmake_defines(name, fh.read()):
                 return True

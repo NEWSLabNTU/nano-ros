@@ -28,7 +28,6 @@ Buildless, tracked files only, ~0.2 s. Self-tests its comment filter.
 from __future__ import annotations
 
 import re
-import subprocess
 import sys
 from pathlib import Path
 
@@ -38,6 +37,8 @@ except ImportError:  # Python < 3.11
     import tomli as tomllib
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+import git_grep  # noqa: E402  issue 1816 — a failed search is not "no match"
 
 # file -> why it may name a store-first row's checkout path.
 ALLOWED = {
@@ -104,15 +105,14 @@ def store_dests() -> dict[str, str]:
 
 
 def hits(dest: str) -> list[tuple[str, int, str]]:
-    out = subprocess.run(
+    out = git_grep.run(
         [
-            "git", "-C", str(ROOT), "grep", "-n", "-F", dest, "--",
+            "-n", "-F", dest, "--",
             ":!docs", ":!*.md", ":!nros-sdk-index.toml", ":!.gitmodules",
             ":!scripts/check/check-store-source-readers.py",
         ],
-        capture_output=True,
-        text=True,
-    ).stdout
+        ROOT,
+    )
     found = []
     for line in out.splitlines():
         path, lineno, text = line.split(":", 2)
