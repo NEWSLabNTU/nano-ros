@@ -1,7 +1,8 @@
 # Phase 484 -- one owner per fact: resource locations and configuration
 
 **Status (2026-10-12).** W0, W1, W3, W4 (but W4b-2), W6 and W7a/W7b landed; W2
-has four leftovers; W5a in progress (slices 1-2); W5b folded in from
+has four leftovers; W5a in progress (slices 1-6; `[board.knobs]` →
+`[knobs]` left); W5b folded in from
 phase-481, not started; W8 waits on a release. Implements
 [RFC-0103](../design/0103-one-owner-per-fact.md). Tracks issues
 [1767](../issues/1767-resource-location-resolved-many-ways.md) and
@@ -558,8 +559,37 @@ app-stack reads take rung 1 through `knob_env` on the no-platform arm too,
 where only the ladder arm did. The registry gained the four cyclonedds rows it
 lacked (90 rows). One behaviour change, the intended one: `NROS_SMOLTCP_X` and
 `ZPICO_SMOLTCP_X` set to different values now stop the build where the old
-fallback silently took the first. Next: callers onto canonical names, the
-`zephyr/Kconfig` drift gate.
+fallback silently took the first. Slice 4: every in-tree WRITER uses the
+canonical spelling — the Zephyr cmake lane resolves and forwards
+`NROS_ZENOH_*` (its rung 1 reads every spelling through `_nros_knob_env`, from
+a `cmake/NanoRosKnobRegistry.cmake` the generator now writes beside the Rust
+table), the cargo-leaf sidecar writes `NROS_ZENOH_MAX_*`, an `[image.<id>] env`
+row is carried under its canonical key, and the examples, the multisession lane,
+docs/book and `.env.example` follow; C `-DZPICO_*` macro names stay. The gates
+that matched a reader by its literal (`kconfig-knob-forwarding`, `knob-ends`,
+`c-array-pool-floors`) now credit any spelling of the row. Slice 5: a value
+that arrives under a legacy spelling is used and says so, once — a build
+script's `cargo:warning=`, cmake's `DEPRECATION`, the CLI's stderr — in one
+generated sentence (`DEPRECATION_TEMPLATE`). Slice 6: the 58 knob symbols the
+module defines carry their definition in the registry row (`type`, `prompt`,
+`kconfig_if`, `kconfig_attrs`, `help`) and `zephyr/Kconfig`'s knob section is
+RENDERED from it; `check-zephyr-kconfig-knobs` holds the section equal to the
+render and refuses a registry symbol defined outside it. No value moved: the
+rows were extracted from the committed Kconfig and a block-by-block compare
+found 0 of 58 differing; `check-zephyr-knob-agreement --write` now edits the
+registry row and re-renders. **Per-road diff (2026-10-12)**, `origin/main`
+(81aa972a7c) against the branch, each road built incrementally in one worktree
+and every resolved value dumped with legacy names mapped to canonical (build
+script `OUT_DIR` consts/defines, `cargo:rustc-env/cfg`, `CMakeCache`
+`NROS_RESOLVED_*`/`NROS_KNOB_SOURCE_*`, the zephyr `.config`, the leaf
+`nros-cargo.toml [env]`): cargo leaf `examples/native/rust/talker` 202 rows,
+cmake `examples/native/c/talker` 243 rows, west `features`
+`zephyr_rust_params` on Zephyr 3.7 `native_sim/native/64` (the image whose
+`ZPICO_MAX_QUERYABLES` row moved; 70 resolver + 83 Kconfig + 14,481
+build-script rows) 14,634 rows — **0 differences on all three**. Not measured:
+`realtime-rust`'s `zephyr_derived` (the moved `ZENOH_READ_PRIORITY` row reaches
+the same `CONFIG_NROS_ZENOH_READ_PRIORITY` by `kconfig_key_for`, unit-tested)
+and the 4.4 line. Next: `[board.knobs]` → `[knobs]`, then W5b.
 
 **Acceptance:** W5a — the registry is the only list (gate); every knob's
 env/TOML/Kconfig spelling derives from its id; one build per road shows
