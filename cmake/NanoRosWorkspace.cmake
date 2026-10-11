@@ -381,6 +381,49 @@ function(nano_ros_workspace)
         set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
             "${_NRW_WORKSPACE_ROOT}/src/${_NRW_SYSTEM}/system.toml")
         set(NANO_ROS_FEATURES "${NANO_ROS_FEATURES}" PARENT_SCOPE)
+    else()
+        # Issue 1261 — no SYSTEM, so no capability axes reach the library
+        # build. That is correct for a workspace with no bringup ("workspaces
+        # without a Bringup pkg are valid"), and wrong for one whose bringup
+        # declares a capability: codegen reads that declaration through
+        # `nros sync`, so the generated entry calls e.g.
+        # `nros_cpp_register_parameter_services` while nros-cpp was built
+        # without `param-services`, and the disagreement surfaced only at LINK
+        # as an undefined symbol. Ask the same SSoT accessor with no `--system`
+        # (it answers for the default or only bringup and fails when there is
+        # none) and refuse here, naming the argument, if it declares anything.
+        # OPTIONAL: a bringup-less workspace never needed the CLI here, and
+        # with no CLI there is no codegen to disagree with.
+        set(_nrw_cli "${NROS_BIN}")
+        if(NOT _nrw_cli)
+            include("${_nros_root}/cmake/NanoRosCodegenCore.cmake")
+            nros_resolve_cli(_nrw_cli OPTIONAL CONTEXT "nano_ros_workspace")
+        endif()
+        set(_caps_rc 1)
+        if(_nrw_cli)
+            execute_process(
+                COMMAND "${_nrw_cli}" config show
+                        --workspace "${_NRW_WORKSPACE_ROOT}"
+                        --format cmake
+                OUTPUT_VARIABLE _caps_out
+                RESULT_VARIABLE _caps_rc
+                ERROR_QUIET)
+        endif()
+        if(_caps_rc EQUAL 0 AND _caps_out MATCHES "set\\(NANO_ROS_FEATURES \"([^\"]+)\"")
+            set(_declared "${CMAKE_MATCH_1}")
+            set(_bringup "<bringup pkg>")
+            if(_caps_out MATCHES "\\(([^()\n]*)/system\\.toml\\)")
+                get_filename_component(_bringup "${CMAKE_MATCH_1}" NAME)
+            endif()
+            string(REPLACE ";" ", " _declared "${_declared}")
+            message(FATAL_ERROR
+                "nano_ros_workspace: no SYSTEM argument, but the workspace's "
+                "bringup `${_bringup}` declares capabilities (${_declared}).\n"
+                "Without SYSTEM the C/C++ libraries are built without them while "
+                "the generated code calls them, which fails at link with an "
+                "undefined symbol. Pass `SYSTEM ${_bringup}` to "
+                "nano_ros_workspace() (issue 1261).")
+        endif()
     endif()
 
     _nros_import_once("${_nros_root}")
