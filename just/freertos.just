@@ -37,6 +37,8 @@ doctor:
     #!/usr/bin/env bash
     bash scripts/dev/deprecated-scope-alias.sh freertos doctor "just doctor freertos"
     set +e
+    source scripts/build/cargo.sh
+    nros_locate_sdk_trees  # phase-484 W2 — the trees W3c stopped exporting
     fail=0
     if [ -d "$FREERTOS_DIR/include" ]; then
         echo "  [OK] FreeRTOS kernel: $FREERTOS_DIR"
@@ -74,6 +76,8 @@ build: build-examples
 build-examples:
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    nros_locate_sdk_trees  # phase-484 W2 — the trees W3c stopped exporting
     # issue 0650 — first step of the lane: clear last run's skip notes, so a
     # lane that is complete this time is not reported SKIPPED from history.
     # shellcheck source=scripts/build/lane-skip.sh
@@ -173,6 +177,8 @@ build-examples:
 build-fixtures-posix:
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    nros_locate_sdk_trees  # phase-484 W2 — the trees W3c stopped exporting
     # shellcheck source=scripts/build/lane-skip.sh
     source scripts/build/lane-skip.sh
     source scripts/build/cargo.sh
@@ -319,6 +325,8 @@ test verbose="": build-fixtures
     #!/usr/bin/env bash
     bash scripts/dev/deprecated-scope-alias.sh freertos test "just test freertos"
     set -e
+    source scripts/build/cargo.sh
+    nros_locate_sdk_trees  # phase-484 W2 — the trees W3c stopped exporting
     if [ ! -d "$FREERTOS_DIR/include" ]; then
         echo "ERROR: FreeRTOS not found at $FREERTOS_DIR. Run: just freertos setup"
         exit 1

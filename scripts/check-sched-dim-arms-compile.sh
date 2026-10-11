@@ -43,6 +43,11 @@ repo_root="$(pwd)"
 # no cross compiler), which is exactly the case the ledger exists for.
 # shellcheck source=scripts/build/check-skip.sh
 . "$repo_root/scripts/build/check-skip.sh"
+# phase-484 W2 — the kernel trees through the one ladder, not an inherited
+# export (W3c stopped exporting them; reading the variable made this gate
+# skip in every shell that never carried a pre-W3c `activate.sh`).
+. "$repo_root/scripts/build/cargo.sh"
+nros_locate_sdk_trees
 
 fail=0
 
@@ -83,7 +88,7 @@ head2 "freertos core-pin arm (vTaskCoreAffinitySet)"
 # This one checked a level too shallow. Issue 0196's class — a probe narrower
 # than the rule it enforces.
 if [ -z "${FREERTOS_DIR:-}" ] || [ ! -f "${FREERTOS_DIR}/include/FreeRTOS.h" ]; then
-    nros_check_skip "sched-dim-arms(freertos)" "FREERTOS_DIR unset, or no include/FreeRTOS.h (source ./activate.sh)"
+    nros_check_skip "sched-dim-arms(freertos)" "FreeRTOS kernel not provisioned, or no include/FreeRTOS.h (nros setup --source freertos-kernel)"
 elif [ -z "$arm_gcc_usable" ]; then
     nros_check_skip "sched-dim-arms(freertos)" "$arm_gcc_unusable_why"
 else
@@ -185,7 +190,7 @@ fi
 # arm-none-eabi-gcc the other arms need.
 head2 "threadx core-pin arm (tx_thread_smp_core_exclude)"
 if [ -z "${THREADX_DIR:-}" ] || [ ! -d "${THREADX_DIR}/common_smp/inc" ]; then
-    nros_check_skip "sched-dim-arms(threadx)" "THREADX_DIR unset, or no common_smp/inc (source ./activate.sh)"
+    nros_check_skip "sched-dim-arms(threadx)" "ThreadX not provisioned, or no common_smp/inc (nros setup --source threadx)"
 elif [ -z "$arm_gcc_usable" ]; then
     nros_check_skip "sched-dim-arms(threadx)" "$arm_gcc_unusable_why"
 else
