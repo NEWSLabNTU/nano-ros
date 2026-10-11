@@ -138,7 +138,7 @@
  * `_z_link_free`, lwIP's close waited for an operation that could never
  * complete, and the lease task parked there forever. The session stayed closed
  * (`_tp._type == _Z_TRANSPORT_NONE`), so every later publish returned
- * `NROS_RET_PUBLISH_FAILED` and the image went quiet after ~19 messages while
+ * `RCLC_RET_PUBLISH_FAILED` and the image went quiet after ~19 messages while
  * still printing "Publishing" for each one.
  *
  * SEM_PER_THREAD also has a requirement of its own that is easy to miss: the

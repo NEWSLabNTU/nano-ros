@@ -76,7 +76,7 @@ EXEMPT = {
     # Named by the book precisely BECAUSE they do not exist here. Before
     # phase-472 W3 each "existed" through a comment or string somewhere, which
     # is how this list stayed short while being wrong.
-    "nros_init": "troubleshooting-first-10-min says it does NOT exist (use nros_support_init)",
+    "nros_init": "troubleshooting-first-10-min says it does NOT exist (use rclc_support_init)",
     "rclc_support_init": "ros2-comparison names upstream rclc's init; ours differs in arity and is not provided (rcl_compat.h)",
     "rcl_jump_threshold_t": "simulated-time says upstream's jump machinery has NO counterpart here",
 }

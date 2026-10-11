@@ -35,7 +35,7 @@
 ///
 /// Gated by `check-codegen-version-surface`, which fails when the surface
 /// generated code names changes and this constant does not.
-pub const NROS_CODEGEN_VERSION: u32 = 12;
+pub const NROS_CODEGEN_VERSION: u32 = 13;
 
 /// The oldest codegen version this runtime still accepts.
 ///
@@ -48,7 +48,7 @@ pub const NROS_CODEGEN_VERSION: u32 = 12;
 /// phase-429's gate). That surface move is ADDITIVE plus one relocation, so a
 /// tree generated against version 1 still runs: the C additions are new entry
 /// points, the two C++ changes add `size()`/`empty()` and `std::string` interop
-/// to `FixedString`/`HeapString`, and the four `nros_ret_t` declarations that
+/// to `FixedString`/`HeapString`, and the four `rcl_ret_t` declarations that
 /// left `action.h` / `client.h` / `parameter.h` / `service.h` were CONSOLIDATED
 /// into `nros_generated.h`, which all four still reach through `nros/types.h`
 /// — the headers say so in a comment, and keeping that include is what makes
@@ -57,8 +57,8 @@ pub const NROS_CODEGEN_VERSION: u32 = 12;
 /// than a migration.
 ///
 /// Still 2 while [`NROS_CODEGEN_VERSION`] moved to 3 (issues 1148/1149). That
-/// move is one ADDED runtime entry point, `nros_cdr_align`, which the
-/// header-only `nros_cdr_borrow_le_slice_*` now call so an 8-byte borrowed
+/// move is one ADDED runtime entry point, `rclc_cdr_align`, which the
+/// header-only `rclc_cdr_borrow_le_slice_*` now call so an 8-byte borrowed
 /// sequence starts on its stream boundary. A version-2 tree names nothing that
 /// was withdrawn: it compiles against the corrected `nros/view.h` and picks the
 /// fix up for free, because the view helpers are `static inline` in the header
@@ -85,11 +85,11 @@ pub const NROS_CODEGEN_VERSION: u32 = 12;
 /// at all: the rclc preset constructors landed as `static inline` forwarders in
 /// `<nros/{publisher,subscription,service,client,action}.h>`, and naming a type
 /// inside one of those headers is what puts a `c|type|<header>|<name>` row in
-/// the extracted surface — `nros_message_type_t`, `nros_node_t`,
-/// `nros_service_type_t` and `nros_action_type_t` were already declared in
+/// the extracted surface — `rclc_message_type_t`, `rcl_node_t`,
+/// `rclc_service_type_t` and `rclc_action_type_t` were already declared in
 /// `nros_generated.h` and still are, reached the same way. The one genuinely
 /// new declaration a demanded name resolves to is
-/// `nros_service_init_with_qos`, which is an entry point that already existed
+/// `rclc_service_init_with_qos`, which is an entry point that already existed
 /// and is now also visible from `<nros/service.h>`. Nothing a version-4 tree
 /// names was withdrawn, so this is the window the doc above describes rather
 /// than a migration.
@@ -117,13 +117,13 @@ pub const NROS_CODEGEN_VERSION: u32 = 12;
 /// client halves) and two enumerators on each of the four `nros_qos_*_t`
 /// enums (`UNKNOWN`, and `SYSTEM_DEFAULT` on three of them), appended so every
 /// existing discriminant keeps its value. The append is `_executor` on
-/// `nros_subscription_t`, placed after `_opaque` so every existing field
+/// `rcl_subscription_t`, placed after `_opaque` so every existing field
 /// offset is unchanged — it grows the struct, which is why this is a surface
 /// move at all, and a version-6 tree that only names the struct by pointer is
 /// unaffected. Nothing was withdrawn, so the floor stays where it is.
 ///
 /// The gate reports the move as two CHANGED types rather than as the four
-/// added prototypes, because a `const struct nros_service_t *` parameter is a
+/// added prototypes, because a `const struct rcl_service_t *` parameter is a
 /// tagged reference and keys on the same `c|type|<header>|<name>` row as the
 /// struct itself. That is the gate being fail-closed on text, which is the
 /// property the version-4 paragraph above argues for keeping.
@@ -173,28 +173,36 @@ pub const NROS_CODEGEN_VERSION: u32 = 12;
 /// Still 10 while [`NROS_CODEGEN_VERSION`] moved to 11 (phase-487 W1). The
 /// surface the gate saw move is `subscription.h`'s `static inline`
 /// `rclc_subscription_init_best_effort`, whose body forwards to
-/// `nros_subscription_init_with_qos` and lost the two `NULL`s that function no
+/// `rclc_subscription_init_with_qos` and lost the two `NULL`s that function no
 /// longer takes. Generated C does not call either: a message header's typed
-/// registration is `nros_executor_add_subscription_typed_sized`, whose
-/// signature is unchanged, and it passes `struct nros_subscription_t *`, whose
+/// registration is `rclc_executor_add_subscription_typed_sized`, whose
+/// signature is unchanged, and it passes `struct rcl_subscription_t *`, whose
 /// layout shrank but which generated code never dereferences. A version-10
 /// tree therefore still compiles and runs.
 ///
 /// RAISED to 12 when [`NROS_CODEGEN_VERSION`] moved to 12 (phase-487 W2). A
 /// generated C service header's `<Srv>_service_init` called
-/// `nros_service_init_with_qos` with the trampoline and handler in two
+/// `rclc_service_init_with_qos` with the trampoline and handler in two
 /// positions that function no longer has, because the executor arena owns a
 /// dispatched server's callback and the struct keeps none. The binding moved
 /// to a new generated `<Srv>_executor_add_service` over
-/// `nros_executor_add_service_raw`. A version-10 or -11 C tree with a service
+/// `rclc_executor_add_service_raw`. A version-10 or -11 C tree with a service
 /// therefore does not compile against this runtime, so it is refused by
 /// version rather than by a wall of argument-count errors.
+///
+/// RAISED to 13 with [`NROS_CODEGEN_VERSION`] (phase-492 W3, RFC-0089
+/// amended 2026-10-12). The C API dropped `nros_`: every function, type and
+/// constant generated C names took its upstream spelling or `rclc_`
+/// (`docs/reference/c-api-rename-map.tsv`), with no forwarders. A version-12 C
+/// tree calls names this runtime no longer defines, so it is refused by
+/// version rather than by a wall of undeclared identifiers. Rust and C++ trees
+/// are unaffected, but the version is one number for all three.
 ///
 /// The range `[NROS_CODEGEN_VERSION_MIN, NROS_CODEGEN_VERSION]` is expressed to
 /// C and C++ as a SET OF DEFINED SYMBOLS rather than as a comparison — see
 /// `nros-build-helpers`' codegen-version anchor — so there is no range check on
 /// that side that could itself be wrong.
-pub const NROS_CODEGEN_VERSION_MIN: u32 = 12;
+pub const NROS_CODEGEN_VERSION_MIN: u32 = 13;
 
 /// Does `emitted` fall in the range this runtime accepts?
 ///

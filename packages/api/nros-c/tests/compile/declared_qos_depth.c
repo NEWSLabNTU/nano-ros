@@ -70,35 +70,35 @@ _Static_assert(NROS_DECLARED_DEPTH_OR(NROS_DECLARED_DEPTH("std_msgs/msg/Bool", "
 
 /* The DEPTH a C call site states. A literal in a macro argument is the one
  * shape that survives to `_Static_assert`: `nros_qos_default()`'s `.depth` is a
- * struct field, and `NROS_QOS_DEFAULT` is an `extern const` object resolved at
+ * struct field, and `RCLC_QOS_DEFAULT` is an `extern const` object resolved at
  * link time, so neither is a constant expression. Naming the number once, as a
  * macro, is what lets the build check it -- and it is the same discipline the
  * C++ side gets for free from `constexpr nros::QoS(1)`. */
 #define CHATTER_DEPTH 1
 
-nros_ret_t nros_c_declared_qos_compile_test(struct nros_subscription_t* sub,
-                                            const struct nros_node_t* node,
-                                            const struct nros_message_type_t* type_info);
-nros_ret_t nros_c_declared_qos_compile_test(struct nros_subscription_t* sub,
-                                            const struct nros_node_t* node,
-                                            const struct nros_message_type_t* type_info) {
+rcl_ret_t nros_c_declared_qos_compile_test(struct rcl_subscription_t* sub,
+                                           const struct rcl_node_t* node,
+                                           const struct rclc_message_type_t* type_info);
+rcl_ret_t nros_c_declared_qos_compile_test(struct rcl_subscription_t* sub,
+                                           const struct rcl_node_t* node,
+                                           const struct rclc_message_type_t* type_info) {
     /* Mode 1: the code states the depth and the declaration agrees. */
-    struct nros_qos_t qos = NROS_QOS_DEFAULT;
+    struct rclc_qos_t qos = RCLC_QOS_DEFAULT;
     qos.depth = CHATTER_DEPTH;
     NROS_ASSERT_DECLARED_DEPTH("std_msgs::msg::dds_::Int32_", "/chatter", CHATTER_DEPTH,
                                "\"/chatter\"");
-    nros_ret_t rc = nros_subscription_init_with_qos(sub, node, type_info, "/chatter", &qos);
-    if (rc != NROS_RET_OK) {
+    rcl_ret_t rc = rclc_subscription_init_with_qos(sub, node, type_info, "/chatter", &qos);
+    if (rc != RCL_RET_OK) {
         return rc;
     }
 
     /* An endpoint the contract declares nothing for: not an error, and not a
      * default anybody guessed -- whatever the call site already passed. */
-    struct nros_qos_t other = NROS_QOS_DEFAULT;
+    struct rclc_qos_t other = RCLC_QOS_DEFAULT;
     other.depth = 4;
     NROS_ASSERT_DECLARED_DEPTH("std_msgs::msg::dds_::Bool_", "/undeclared", 4, "\"/undeclared\"");
-    rc = nros_subscription_init_with_qos(sub, node, type_info, "/undeclared", &other);
-    if (rc != NROS_RET_OK) {
+    rc = rclc_subscription_init_with_qos(sub, node, type_info, "/undeclared", &other);
+    if (rc != RCL_RET_OK) {
         return rc;
     }
 
@@ -110,20 +110,20 @@ nros_ret_t nros_c_declared_qos_compile_test(struct nros_subscription_t* sub,
      * rows, same answer; this is what a call site whose topic is built at run
      * time gets instead of the build failure. */
     const char* topic = "/chatter";
-    if (nros_declared_depth(topic, topic) != NROS_DECLARED_DEPTH_UNDECLARED) {
-        return NROS_RET_ERROR;
+    if (rclc_declared_depth(topic, topic) != NROS_DECLARED_DEPTH_UNDECLARED) {
+        return RCL_RET_ERROR;
     }
-    if (nros_declared_depth("std_msgs/msg/Int32", topic) != 1) {
-        return NROS_RET_ERROR;
+    if (rclc_declared_depth("std_msgs/msg/Int32", topic) != 1) {
+        return RCL_RET_ERROR;
     }
-    if (!nros_declared_depth_agrees("std_msgs/msg/Int32", topic, 1)) {
-        return NROS_RET_ERROR;
+    if (!rclc_declared_depth_agrees("std_msgs/msg/Int32", topic, 1)) {
+        return RCL_RET_ERROR;
     }
-    if (nros_declared_depth_agrees("std_msgs/msg/Int32", topic, 10)) {
-        return NROS_RET_ERROR;
+    if (rclc_declared_depth_agrees("std_msgs/msg/Int32", topic, 10)) {
+        return RCL_RET_ERROR;
     }
-    if (!nros_declared_depth_agrees("std_msgs/msg/Bool", "/undeclared", 4)) {
-        return NROS_RET_ERROR;
+    if (!rclc_declared_depth_agrees("std_msgs/msg/Bool", "/undeclared", 4)) {
+        return RCL_RET_ERROR;
     }
-    return NROS_RET_OK;
+    return RCL_RET_OK;
 }

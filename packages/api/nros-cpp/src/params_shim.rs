@@ -1,7 +1,7 @@
 //! Phase 269 (W0) — executor-shim: parameter-service FFI over the CppContext handle.
 //!
 //! Mirrors `nros-c/src/parameter.rs`'s executor-backed functions but recovers the
-//! executor from `CppContext*` instead of `nros_executor_t*`. W1 emitters call these;
+//! executor from `CppContext*` instead of `rclc_executor_t*`. W1 emitters call these;
 //! no emitter wires them yet this wave.
 //!
 //! Issue 0436 — user-supplied executor handles are tag-validated via
@@ -2208,7 +2208,7 @@ mod tests {
 
     /// Every wire-facing verdict maps to a DISTINCT C++ code where the C++ side
     /// can act on the difference, and the codes are pinned by value because the
-    /// facades compare against `NROS_RET_ALREADY_EXISTS` and
+    /// facades compare against `RCLC_RET_ALREADY_EXISTS` and
     /// `ErrorCode::Unsupported` by number (issue #229's one numbering).
     #[test]
     fn set_verdicts_map_to_actionable_codes() {

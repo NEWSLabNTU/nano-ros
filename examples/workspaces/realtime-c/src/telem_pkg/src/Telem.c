@@ -34,12 +34,12 @@ static void on_tick(void* ctx) {
     self->count++;
 }
 
-static nros_ret_t telem_configure(const nros_cpp_node_t* node, void* executor, telem_t* self) {
+static rcl_ret_t telem_configure(const nros_cpp_node_t* node, void* executor, telem_t* self) {
     /* Line-buffer stdout so each tick flushes immediately when piped. */
     setvbuf(stdout, NULL, _IOLBF, 0);
     self->count = 0;
     int32_t rc = nros_cpp_publisher_create(node, "/telem", std_msgs_msg_int32_get_type_name(),
-                                           std_msgs_msg_int32_get_type_hash(), nros_c_qos_default(),
+                                           std_msgs_msg_int32_get_type_hash(), rclc_c_qos_default(),
                                            self->pub);
     if (rc != 0) {
         return rc;
@@ -48,4 +48,4 @@ static nros_ret_t telem_configure(const nros_cpp_node_t* node, void* executor, t
     return nros_cpp_timer_create(executor, /*period_ms=*/100, on_tick, self, &timer_handle);
 }
 
-NROS_C_COMPONENT(telem_t, telem_configure)
+RCLC_C_COMPONENT(telem_t, telem_configure)

@@ -10,7 +10,7 @@ pub const SERVICE_DEFAULT_TIMEOUT_MS: u32 = @SERVICE_DEFAULT_TIMEOUT_MS@;
 /// Maximum buffer size for subscription/service data (derived from NROS_SUBSCRIPTION_BUFFER_SIZE via nros-node).
 pub const MESSAGE_BUFFER_SIZE: usize = @MESSAGE_BUFFER_SIZE@;
 
-/// Inline opaque storage for `Executor` inside `nros_executor_t` (in u64 units).
+/// Inline opaque storage for `Executor` inside `rclc_executor_t` (in u64 units).
 /// Upper bound derived from nros-node's MAX_CBS and ARENA_SIZE.
 /// Validated at compile time by `size_of::<Executor>()` assertion.
 pub const EXECUTOR_OPAQUE_U64S: usize = @EXECUTOR_OPAQUE_U64S@;

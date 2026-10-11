@@ -15,10 +15,10 @@ void Talker::on_tick() {
     if (pub_.publish(m).ok()) {
         std::printf("Published: %d\n", m.data);
     }
-    // A5 — log each tick via the nros-log facade. `nros_log_default_logger()` is the built-in
+    // A5 — log each tick via the nros-log facade. `rclc_log_default_logger()` is the built-in
     // DEFAULT_LOGGER (level Info; nullptr would DROP the record). The first emit lazy-installs the
     // default sink → the posix platform writer → "[INFO] nros: cpp_talker logging seq=N".
-    NROS_LOG_INFO(nros_log_default_logger(), "cpp_talker logging seq=%d", m.data);
+    RCLC_LOG_INFO(rclc_log_default_logger(), "cpp_talker logging seq=%d", m.data);
 }
 
 ::rclcpp::Result Talker::configure(::rclcpp::Node& node) {

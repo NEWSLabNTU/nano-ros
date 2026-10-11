@@ -107,7 +107,7 @@ app calls any of it, and `NodeHandle::create_action_client_raw` is present as a
 GLOBAL in every C entry — `native_entry` (a talker) and `native_action_client_entry`
 are byte-for-byte indistinguishable on this probe. Such an image is reported
 INDETERMINATE, never OK: presence proves nothing there. It is detected by the
-FFI surface itself (`nros_cpp_action_client_create` / `nros_action_client_init`),
+FFI surface itself (`nros_cpp_action_client_create` / `rcl_action_client_init`),
 which is absent from every pure-Rust image measured.
 
 Images built by CMake outside a cargo profile directory (the `examples/

@@ -35,10 +35,10 @@ NROS_ASSERT_MESSAGE_FORMAT(NROS_MSG_FORMAT_ID_px4_msgs_msg_vehicle_status,
 
 /* ...and this is the C entry that would have published it. Kept so the probe
    describes a real mistake rather than a bare assertion in a vacuum. */
-nros_ret_t nros_probe_publish_vehicle_status(struct nros_publisher_t* publisher,
-                                             const uint8_t* payload, size_t payload_len);
+rcl_ret_t nros_probe_publish_vehicle_status(struct rcl_publisher_t* publisher,
+                                            const uint8_t* payload, size_t payload_len);
 
-nros_ret_t nros_probe_publish_vehicle_status(struct nros_publisher_t* publisher,
-                                             const uint8_t* payload, size_t payload_len) {
-    return nros_publish_raw(publisher, payload, payload_len);
+rcl_ret_t nros_probe_publish_vehicle_status(struct rcl_publisher_t* publisher,
+                                            const uint8_t* payload, size_t payload_len) {
+    return rclc_publish_raw(publisher, payload, payload_len);
 }

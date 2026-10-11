@@ -63,7 +63,7 @@ static inline int32_t probe_msg_reading_deserialize_erased(void* msg, const uint
 #define PROBE_MSG_READING_RX_MAX_SERIALIZED_SIZE 48
 #define probe_msg_reading_executor_add_subscription_sized(executor, subscription, msg, cb, ctx,    \
                                                           invocation, rx_bytes)                    \
-    nros_executor_add_subscription_typed_sized(                                                    \
+    rclc_executor_add_subscription_typed_sized(                                                    \
         (executor), (subscription), (1 ? (msg) : (probe_msg_reading*)0),                           \
         probe_msg_reading_deserialize_erased, (cb), (ctx), (invocation), (uint32_t)(rx_bytes))
 #define probe_msg_reading_executor_add_subscription(executor, subscription, msg, cb, ctx,          \
@@ -76,30 +76,30 @@ static inline int32_t probe_msg_reading_deserialize_erased(void* msg, const uint
  * 1. The entry points exist with the documented signatures.
  * ------------------------------------------------------------------ */
 
-static nros_ret_t (*const kAddTyped)(
-    struct nros_executor_t*, struct nros_subscription_t*, void*, nros_message_deserialize_fn_t,
-    nros_typed_subscription_callback_t, void*,
-    nros_executor_handle_invocation_t) = nros_executor_add_subscription_typed;
+static rcl_ret_t (*const kAddTyped)(
+    struct rclc_executor_t*, struct rcl_subscription_t*, void*, rclc_message_deserialize_fn_t,
+    rclc_typed_subscription_callback_t, void*,
+    rclc_executor_handle_invocation_t) = rclc_executor_add_subscription_typed;
 
-static nros_ret_t (*const kAddTypedSized)(struct nros_executor_t*, struct nros_subscription_t*,
-                                          void*, nros_message_deserialize_fn_t,
-                                          nros_typed_subscription_callback_t, void*,
-                                          nros_executor_handle_invocation_t,
-                                          uint32_t) = nros_executor_add_subscription_typed_sized;
+static rcl_ret_t (*const kAddTypedSized)(struct rclc_executor_t*, struct rcl_subscription_t*, void*,
+                                         rclc_message_deserialize_fn_t,
+                                         rclc_typed_subscription_callback_t, void*,
+                                         rclc_executor_handle_invocation_t,
+                                         uint32_t) = rclc_executor_add_subscription_typed_sized;
 
 /* The two callback typedefs are what a ported file writes its handlers against,
  * so they must be nameable and must have rclc's shapes. */
-static const nros_typed_subscription_callback_t kNullTypedCb =
-    (nros_typed_subscription_callback_t)0;
-static const nros_message_deserialize_fn_t kErased = probe_msg_reading_deserialize_erased;
+static const rclc_typed_subscription_callback_t kNullTypedCb =
+    (rclc_typed_subscription_callback_t)0;
+static const rclc_message_deserialize_fn_t kErased = probe_msg_reading_deserialize_erased;
 
 /* The raw path STAYS — this is additive, and a byte-oriented subscriber is a
  * legitimate thing to want. Naming it here is the assertion that W5.a did not
  * replace it. Since phase-487 W1 it takes its callback and context itself:
  * the subscription struct no longer stores either. */
-static nros_ret_t (*const kAddRaw)(
-    struct nros_executor_t*, struct nros_subscription_t*, nros_subscription_callback_t, void*,
-    nros_executor_handle_invocation_t) = nros_executor_add_subscription_raw;
+static rcl_ret_t (*const kAddRaw)(
+    struct rclc_executor_t*, struct rcl_subscription_t*, rclc_subscription_callback_t, void*,
+    rclc_executor_handle_invocation_t) = rclc_executor_add_subscription_raw;
 
 /* ------------------------------------------------------------------ *
  * 2. A ported rclc node, as it now reads.
@@ -110,8 +110,8 @@ typedef struct {
 } probe_app_ctx;
 
 static struct {
-    nros_executor_t executor;
-    nros_subscription_t subscription;
+    rclc_executor_t executor;
+    rcl_subscription_t subscription;
     /* The caller's message storage. This is the whole mechanism: no allocator
      * is involved on the delivery path because the storage is already here,
      * exactly as rclc does it. */
@@ -134,8 +134,8 @@ static void probe_on_reading(const void* msgin, void* context) {
     ctx->count += (msg->value != 0) ? 1 : 0;
 }
 
-nros_ret_t nros_typed_subscription_probe(void);
-nros_ret_t nros_typed_subscription_probe(void) {
+rcl_ret_t nros_typed_subscription_probe(void);
+rcl_ret_t nros_typed_subscription_probe(void) {
     (void)kAddTyped;
     (void)kAddTypedSized;
     (void)kAddRaw;
@@ -147,5 +147,5 @@ nros_ret_t nros_typed_subscription_probe(void) {
      * ours:  the same six arguments, in the same order. */
     return probe_msg_reading_executor_add_subscription(&g_app.executor, &g_app.subscription,
                                                        &g_app.msg, probe_on_reading, &g_app.app,
-                                                       NROS_EXECUTOR_ON_NEW_DATA);
+                                                       RCLC_EXECUTOR_ON_NEW_DATA);
 }

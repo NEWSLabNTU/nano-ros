@@ -23,7 +23,7 @@
  * ONE number serves the C and the C++ typed carriers and the C++ half could not
  * be BUILT at all — every embedded C++ FreeRTOS target died in `<string>` ->
  * `requires_hosted.h` under `-ffreestanding` (issue 1187, then issue 1330's
- * one-byte `nros_log_severity_t`). Both are fixed, so the number was taken.
+ * one-byte `rcl_log_severity_t`). Both are fixed, so the number was taken.
  *
  * `uxTaskGetStackHighWaterMark` on the app task, every image RUN on qemu
  * mps2-an385 against a live `rmw_zenohd`, 2026-09-12 — the pubsub and service

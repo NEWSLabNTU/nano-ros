@@ -292,7 +292,7 @@ mod global_allocator {
 // pressure. The *unified* figure is the platform's own
 // `nros_platform_heap_used_bytes` (RFC-0034 D7).
 //
-// No `#[no_mangle]` here: the C names (`nros_heap_used_bytes` …) belong to the
+// No `#[no_mangle]` here: the C names (`rclc_heap_used_bytes` …) belong to the
 // C/C++ API surface and stay exported by `nros-c` / `nros-cpp`, which read
 // these accessors. A pure-Rust image gets the counter without gaining C
 // symbols it never asked for.

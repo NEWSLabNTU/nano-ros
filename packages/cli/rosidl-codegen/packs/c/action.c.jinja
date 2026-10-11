@@ -14,12 +14,12 @@
 #include <string.h>
 
 // Type support structure
-static const struct nros_action_type_t {{ action_struct_name }}_type_support = {
+static const struct rclc_action_type_t {{ action_struct_name }}_type_support = {
     .type_name = "{{ package_name }}::action::dds_::{{ action_name }}_",
     .type_hash = "{{ type_hash }}",
 };
 
-const struct nros_action_type_t* {{ action_struct_name }}_get_type_support(void) {
+const struct rclc_action_type_t* {{ action_struct_name }}_get_type_support(void) {
     return &{{ action_struct_name }}_type_support;
 }
 
@@ -51,9 +51,9 @@ int32_t {{ goal_struct_name }}_serialize(const {{ goal_struct_name }}* msg, uint
     const uint8_t* end = buffer + buffer_size;
 
     // phase-303 W4 (#0267) — edition-appropriate encapsulation header + DHEADER.
-    if (nros_cdr_write_encaps_header(&ptr, end) < 0) return -1;
+    if (rclc_cdr_write_encaps_header(&ptr, end) < 0) return -1;
     const uint8_t* origin = ptr; // CDR alignment origin (after header)
-    int64_t __dh = nros_cdr_begin_dheader(&ptr, end, origin);
+    int64_t __dh = rclc_cdr_begin_dheader(&ptr, end, origin);
     if (__dh < -1) return -1;
 
 {%- if has_goal_fields %}
@@ -63,10 +63,10 @@ int32_t {{ goal_struct_name }}_serialize(const {{ goal_struct_name }}* msg, uint
 {%- else %}
     // Issue 1293 — rosidl's padding member (`structure_needs_at_least_one_member`):
     // every stock typesupport writes it and refuses a payload without it.
-    if (nros_cdr_write_u8(&ptr, end, origin, 0) < 0) return -1;
+    if (rclc_cdr_write_u8(&ptr, end, origin, 0) < 0) return -1;
 {%- endif %}
 
-    if (nros_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
+    if (rclc_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
     if (serialized_size != NULL) {
         *serialized_size = (size_t)(ptr - buffer);
     }
@@ -83,7 +83,7 @@ int32_t {{ goal_struct_name }}_deserialize({{ goal_struct_name }}* msg, const ui
     if (ptr + 4 > end) return -1;
     ptr += 4;
     const uint8_t* origin = ptr; // CDR alignment origin (after header)
-    int64_t __dh = nros_cdr_begin_dheader_read(&ptr, end, origin);
+    int64_t __dh = rclc_cdr_begin_dheader_read(&ptr, end, origin);
     if (__dh < -1) return -1;
 
     {{ goal_struct_name }}_init(msg);
@@ -96,11 +96,11 @@ int32_t {{ goal_struct_name }}_deserialize({{ goal_struct_name }}* msg, const ui
     // Issue 1293 — the padding byte every stock peer sends.
     {
         uint8_t __pad;
-        if (nros_cdr_read_u8(&ptr, end, origin, &__pad) < 0) return -1;
+        if (rclc_cdr_read_u8(&ptr, end, origin, &__pad) < 0) return -1;
     }
 {%- endif %}
 
-    if (nros_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;
+    if (rclc_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;
     return 0;
 }
 
@@ -132,9 +132,9 @@ int32_t {{ result_struct_name }}_serialize(const {{ result_struct_name }}* msg, 
     const uint8_t* end = buffer + buffer_size;
 
     // phase-303 W4 (#0267) — edition-appropriate encapsulation header + DHEADER.
-    if (nros_cdr_write_encaps_header(&ptr, end) < 0) return -1;
+    if (rclc_cdr_write_encaps_header(&ptr, end) < 0) return -1;
     const uint8_t* origin = ptr; // CDR alignment origin (after header)
-    int64_t __dh = nros_cdr_begin_dheader(&ptr, end, origin);
+    int64_t __dh = rclc_cdr_begin_dheader(&ptr, end, origin);
     if (__dh < -1) return -1;
 
 {%- if has_result_fields %}
@@ -144,10 +144,10 @@ int32_t {{ result_struct_name }}_serialize(const {{ result_struct_name }}* msg, 
 {%- else %}
     // Issue 1293 — rosidl's padding member (`structure_needs_at_least_one_member`):
     // every stock typesupport writes it and refuses a payload without it.
-    if (nros_cdr_write_u8(&ptr, end, origin, 0) < 0) return -1;
+    if (rclc_cdr_write_u8(&ptr, end, origin, 0) < 0) return -1;
 {%- endif %}
 
-    if (nros_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
+    if (rclc_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
     if (serialized_size != NULL) {
         *serialized_size = (size_t)(ptr - buffer);
     }
@@ -164,7 +164,7 @@ int32_t {{ result_struct_name }}_deserialize({{ result_struct_name }}* msg, cons
     if (ptr + 4 > end) return -1;
     ptr += 4;
     const uint8_t* origin = ptr; // CDR alignment origin (after header)
-    int64_t __dh = nros_cdr_begin_dheader_read(&ptr, end, origin);
+    int64_t __dh = rclc_cdr_begin_dheader_read(&ptr, end, origin);
     if (__dh < -1) return -1;
 
     {{ result_struct_name }}_init(msg);
@@ -177,11 +177,11 @@ int32_t {{ result_struct_name }}_deserialize({{ result_struct_name }}* msg, cons
     // Issue 1293 — the padding byte every stock peer sends.
     {
         uint8_t __pad;
-        if (nros_cdr_read_u8(&ptr, end, origin, &__pad) < 0) return -1;
+        if (rclc_cdr_read_u8(&ptr, end, origin, &__pad) < 0) return -1;
     }
 {%- endif %}
 
-    if (nros_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;
+    if (rclc_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;
     return 0;
 }
 
@@ -213,9 +213,9 @@ int32_t {{ feedback_struct_name }}_serialize(const {{ feedback_struct_name }}* m
     const uint8_t* end = buffer + buffer_size;
 
     // phase-303 W4 (#0267) — edition-appropriate encapsulation header + DHEADER.
-    if (nros_cdr_write_encaps_header(&ptr, end) < 0) return -1;
+    if (rclc_cdr_write_encaps_header(&ptr, end) < 0) return -1;
     const uint8_t* origin = ptr; // CDR alignment origin (after header)
-    int64_t __dh = nros_cdr_begin_dheader(&ptr, end, origin);
+    int64_t __dh = rclc_cdr_begin_dheader(&ptr, end, origin);
     if (__dh < -1) return -1;
 
 {%- if has_feedback_fields %}
@@ -225,10 +225,10 @@ int32_t {{ feedback_struct_name }}_serialize(const {{ feedback_struct_name }}* m
 {%- else %}
     // Issue 1293 — rosidl's padding member (`structure_needs_at_least_one_member`):
     // every stock typesupport writes it and refuses a payload without it.
-    if (nros_cdr_write_u8(&ptr, end, origin, 0) < 0) return -1;
+    if (rclc_cdr_write_u8(&ptr, end, origin, 0) < 0) return -1;
 {%- endif %}
 
-    if (nros_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
+    if (rclc_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
     if (serialized_size != NULL) {
         *serialized_size = (size_t)(ptr - buffer);
     }
@@ -245,7 +245,7 @@ int32_t {{ feedback_struct_name }}_deserialize({{ feedback_struct_name }}* msg, 
     if (ptr + 4 > end) return -1;
     ptr += 4;
     const uint8_t* origin = ptr; // CDR alignment origin (after header)
-    int64_t __dh = nros_cdr_begin_dheader_read(&ptr, end, origin);
+    int64_t __dh = rclc_cdr_begin_dheader_read(&ptr, end, origin);
     if (__dh < -1) return -1;
 
     {{ feedback_struct_name }}_init(msg);
@@ -258,11 +258,11 @@ int32_t {{ feedback_struct_name }}_deserialize({{ feedback_struct_name }}* msg, 
     // Issue 1293 — the padding byte every stock peer sends.
     {
         uint8_t __pad;
-        if (nros_cdr_read_u8(&ptr, end, origin, &__pad) < 0) return -1;
+        if (rclc_cdr_read_u8(&ptr, end, origin, &__pad) < 0) return -1;
     }
 {%- endif %}
 
-    if (nros_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;
+    if (rclc_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;
     return 0;
 }
 {%- if has_view_goal %}

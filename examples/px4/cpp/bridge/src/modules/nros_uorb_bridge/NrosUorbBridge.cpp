@@ -156,7 +156,7 @@ bool NrosUorbBridge::init() {
     // locator (in-process broker), the networked one takes the executor default
     // unless overridden. The backends must be REGISTERED first — the generated
     // `nros_app_register_backends()` (from `BACKENDS uorb zenoh`) does that.
-    // Register the backends FIRST. `nros_init_multi` — unlike `nros_cpp_init`,
+    // Register the backends FIRST. `rclc_init_multi` — unlike `nros_cpp_init`,
     // which `rclcpp::init_in()` calls — does NOT invoke the generated
     // `nros_app_register_backends()`, so on the MultiExecutor path nothing has
     // populated the registry yet and both `open_with_rmw` lookups would miss
@@ -173,7 +173,7 @@ bool NrosUorbBridge::init() {
     }
 
     PX4_INFO("outward %s locator: %s", NROS_BRIDGE_RMW, out_locator);
-    // Issue 0436 — `nros_cpp_init_multi` (NOT `nros_init_multi`/`MultiExecutor`):
+    // Issue 0436 — `nros_cpp_init_multi` (NOT `rclc_init_multi`/`MultiExecutor`):
     // it opens the sessions into a real `CppContext`, which is the handle type
     // `rclcpp::Node` / `NodeBuilder` expect. The bridge crate's handle is a different
     // struct behind the same `void*`; both start with an `Executor` so the cast

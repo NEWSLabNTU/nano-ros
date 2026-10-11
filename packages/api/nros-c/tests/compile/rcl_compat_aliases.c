@@ -24,8 +24,8 @@
  *      that quietly reordered arguments would still pass a call-shaped test.
  *
  *   2. `if (ret == RCL_RET_TIMEOUT)` is true exactly when a REAL nano-ros call
- *      timed out. `nros_executor_ping` is the call: its own header documents
- *      `NROS_RET_TIMEOUT` as the no-reply-within-budget code
+ *      timed out. `rclc_executor_ping` is the call: its own header documents
+ *      `RCL_RET_TIMEOUT` as the no-reply-within-budget code
  *      (`nros/nros_generated.h:4292`). This is the property RFC-0089 says must
  *      survive the spelling change, and the only one a porting user can
  *      observe. (`ping` has no rcl name — micro-ROS spells it
@@ -37,7 +37,7 @@
  *      dispatch is usually a switch, and the collapse would otherwise show up
  *      as one arm silently shadowing another.
  *
- *   4. the VALUES stayed ours. RFC-0089 forbids renumbering `nros_ret_t` to
+ *   4. the VALUES stayed ours. RFC-0089 forbids renumbering `rcl_ret_t` to
  *      rcl's numbers — a stored return code crosses the C, C++ and Rust FFI
  *      seams, so renumbering flips all three at once with nothing to read. The
  *      header asserts this too; asserted again from the CONSUMER side because
@@ -53,7 +53,7 @@
  * `-std=c11` -- and under `-Wall -Wextra` too. That was measured, not assumed:
  * mutating `rclc_node_init_default` to forward positionally (the way a macro
  * alias would, dropping the reorder onto `nros_node_init`) left this TU at
- * rc=0 with only `note: expected 'const struct nros_support_t *' but argument
+ * rc=0 with only `note: expected 'const struct rclc_support_t *' but argument
  * is of type 'const char *'` to show for it.
  *
  * Since the reorder is the whole reason that alias is a `static inline` and
@@ -92,10 +92,10 @@ static rcl_ret_t (*const k_trigger)(rcl_guard_condition_t*) = rcl_trigger_guard_
  * reason.
  */
 static rcl_ret_t (*const k_pub_init_default)(rcl_publisher_t*, const rcl_node_t*,
-                                             const struct nros_message_type_t*,
+                                             const struct rclc_message_type_t*,
                                              const char*) = rclc_publisher_init_default;
 static rcl_ret_t (*const k_cli_init_default)(rcl_client_t*, const rcl_node_t*,
-                                             const struct nros_service_type_t*,
+                                             const struct rclc_service_type_t*,
                                              const char*) = rclc_client_init_default;
 static rcl_ret_t (*const k_node_init_default)(rcl_node_t*, const char*, const char*,
                                               const rclc_support_t*) = rclc_node_init_default;
@@ -109,10 +109,10 @@ static rcl_ret_t (*const k_node_init_default)(rcl_node_t*, const char*, const ch
  * is what makes a silent re-growth of the argument list fail.
  */
 static rcl_ret_t (*const k_sub_init_default)(rcl_subscription_t*, const rcl_node_t*,
-                                             const struct nros_message_type_t*,
+                                             const struct rclc_message_type_t*,
                                              const char*) = rclc_subscription_init_default;
 static rcl_ret_t (*const k_srv_init_default)(rcl_service_t*, const rcl_node_t*,
-                                             const struct nros_service_type_t*,
+                                             const struct rclc_service_type_t*,
                                              const char*) = rclc_service_init_default;
 
 /*
@@ -122,12 +122,12 @@ static rcl_ret_t (*const k_srv_init_default)(rcl_service_t*, const rcl_node_t*,
  * storage, so a byte-oriented entry point must not wear their names
  * (RFC-0089's compile-or-conform rule).
  */
-static nros_ret_t (*const k_add_sub_raw)(
-    struct nros_executor_t*, struct nros_subscription_t*, nros_subscription_callback_t, void*,
-    enum nros_executor_handle_invocation_t) = nros_executor_add_subscription_raw;
-static nros_ret_t (*const k_add_srv_raw)(struct nros_executor_t*, struct nros_service_t*,
-                                         nros_service_callback_t,
-                                         void*) = nros_executor_add_service_raw;
+static rcl_ret_t (*const k_add_sub_raw)(
+    struct rclc_executor_t*, struct rcl_subscription_t*, rclc_subscription_callback_t, void*,
+    enum rclc_executor_handle_invocation_t) = rclc_executor_add_subscription_raw;
+static rcl_ret_t (*const k_add_srv_raw)(struct rclc_executor_t*, struct rcl_service_t*,
+                                         rclc_service_callback_t,
+                                         void*) = rclc_executor_add_service_raw;
 
 /* ── 2. A ported file's own shape: rcl types, rcl zero-init, rcl codes ─── */
 
@@ -137,12 +137,12 @@ static nros_ret_t (*const k_add_srv_raw)(struct nros_executor_t*, struct nros_se
  * the alias -- the type and the free function -- so this statement is the
  * whole idiom under test, not a spot check of either.
  */
-rcl_ret_t nros_rcl_compat_ported_shape(struct nros_executor_t* executor, rclc_support_t* support_in,
-                                       const struct nros_message_type_t* msg_type,
-                                       const struct nros_service_type_t* srv_type);
-rcl_ret_t nros_rcl_compat_ported_shape(struct nros_executor_t* executor, rclc_support_t* support_in,
-                                       const struct nros_message_type_t* msg_type,
-                                       const struct nros_service_type_t* srv_type) {
+rcl_ret_t nros_rcl_compat_ported_shape(struct rclc_executor_t* executor, rclc_support_t* support_in,
+                                       const struct rclc_message_type_t* msg_type,
+                                       const struct rclc_service_type_t* srv_type);
+rcl_ret_t nros_rcl_compat_ported_shape(struct rclc_executor_t* executor, rclc_support_t* support_in,
+                                       const struct rclc_message_type_t* msg_type,
+                                       const struct rclc_service_type_t* srv_type) {
     rclc_support_t support = *support_in;
     rcl_node_t node = rcl_get_zero_initialized_node();
     rcl_publisher_t publisher = rcl_get_zero_initialized_publisher();
@@ -196,12 +196,12 @@ rcl_ret_t nros_rcl_compat_ported_shape(struct nros_executor_t* executor, rclc_su
 
     /*
      * THE assertion of this file, in the form a ported program writes it.
-     * `nros_executor_ping` documents NROS_RET_TIMEOUT for "no reply within
+     * `rclc_executor_ping` documents RCL_RET_TIMEOUT for "no reply within
      * budget"; the ported line tests RCL_RET_TIMEOUT and must be true for
      * exactly that outcome. The mapping is what makes the two the same
      * comparison -- NOT a renumbering of what ping returns.
      */
-    ret = nros_executor_ping(executor, 100);
+    ret = rclc_executor_ping(executor, 100);
     if (ret == RCL_RET_TIMEOUT) {
         return RCL_RET_TIMEOUT;
     }
@@ -260,13 +260,13 @@ _Static_assert(RCL_RET_INVALID_ARGUMENT == RMW_RET_INVALID_ARGUMENT,
 
 /*
  * Asserted from the consumer side as well as inside the header, because this
- * is the mutation RFC-0089 singles out: renumbering `nros_ret_t` to rcl's
+ * is the mutation RFC-0089 singles out: renumbering `rcl_ret_t` to rcl's
  * values would keep every one of the aliases above compiling while flipping
  * the meaning of every return code already stored across the C, C++ and Rust
  * FFI seams. The header would still be self-consistent; only a check that
  * names the OLD values catches it.
  */
-_Static_assert(RCL_RET_TIMEOUT == NROS_RET_TIMEOUT,
+_Static_assert(RCL_RET_TIMEOUT == RCL_RET_TIMEOUT,
                "RCL_RET_TIMEOUT must MAP to the code a nano-ros timeout returns");
 _Static_assert(RCL_RET_TIMEOUT == -2, "a nano-ros timeout is -2; rcl's own RCL_RET_TIMEOUT is 2");
 _Static_assert(RCL_RET_ERROR == -1, "a nano-ros error is -1; rcl's own RCL_RET_ERROR is 1");
@@ -299,13 +299,13 @@ static const rclc_subscription_callback_with_context_t k_typed_sub_cb = typed_su
  * calls has no other way to go wrong and no other way to be checked: if the
  * alias were ever re-spelled as its own function type and one of the two moved,
  * this argument is what stops compiling. */
-static nros_ret_t register_typed_subscription(struct nros_executor_t* executor,
-                                              struct nros_subscription_t* subscription, void* msg,
-                                              nros_message_deserialize_fn_t deserialize,
+static rcl_ret_t register_typed_subscription(struct rclc_executor_t* executor,
+                                              struct rcl_subscription_t* subscription, void* msg,
+                                              rclc_message_deserialize_fn_t deserialize,
                                               void* context) {
-    return nros_executor_add_subscription_typed(executor, subscription, msg, deserialize,
+    return rclc_executor_add_subscription_typed(executor, subscription, msg, deserialize,
                                                 k_typed_sub_cb, context,
-                                                NROS_EXECUTOR_ON_NEW_DATA);
+                                                RCLC_EXECUTOR_ON_NEW_DATA);
 }
 
 /* Silence "defined but not used" without needing a main(). */

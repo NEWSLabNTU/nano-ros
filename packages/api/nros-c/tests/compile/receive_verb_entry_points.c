@@ -28,22 +28,22 @@
  * drains and the `_raw` service/client drains take the POLLED types: since
  * phase-487 a polled entity is `nros_polling_<kind>_t`, and the dispatched
  * struct has no entity of its own to take from. */
-static int32_t (*const k_new_sub_take_serialized)(struct nros_polling_subscription_t*, uint8_t*,
+static int32_t (*const k_new_sub_take_serialized)(struct rclc_polling_subscription_t*, uint8_t*,
                                                   size_t) =
-    nros_polling_subscription_take_serialized;
-static int32_t (*const k_new_sub_take_sequence)(struct nros_polling_subscription_t*, uint8_t*,
+    rclc_polling_subscription_take_serialized;
+static int32_t (*const k_new_sub_take_sequence)(struct rclc_polling_subscription_t*, uint8_t*,
                                                 size_t, size_t,
-                                                size_t*) = nros_polling_subscription_take_sequence;
-static int32_t (*const k_new_sub_take_validated)(struct nros_polling_subscription_t*, uint8_t*,
-                                                 size_t, struct nros_integrity_status_t*) =
-    nros_polling_subscription_take_validated;
-static int32_t (*const k_new_srv_take_request_raw)(struct nros_polling_service_t*, uint8_t*, size_t,
+                                                size_t*) = rclc_polling_subscription_take_sequence;
+static int32_t (*const k_new_sub_take_validated)(struct rclc_polling_subscription_t*, uint8_t*,
+                                                 size_t, struct rclc_integrity_status_t*) =
+    rclc_polling_subscription_take_validated;
+static int32_t (*const k_new_srv_take_request_raw)(struct rclc_polling_service_t*, uint8_t*, size_t,
                                                    int64_t*) =
-    nros_polling_service_take_request_raw;
-static int32_t (*const k_new_cli_take_response_raw)(struct nros_polling_client_t*, uint8_t*,
-                                                    size_t) = nros_polling_client_take_response_raw;
-static nros_ret_t (*const k_new_cli_take_response)(struct nros_client_t*, uint8_t*, size_t,
-                                                   size_t*) = nros_client_take_response;
+    rclc_polling_service_take_request_raw;
+static int32_t (*const k_new_cli_take_response_raw)(struct rclc_polling_client_t*, uint8_t*,
+                                                    size_t) = rclc_polling_client_take_response_raw;
+static rcl_ret_t (*const k_new_cli_take_response)(struct rcl_client_t*, uint8_t*, size_t,
+                                                  size_t*) = rclc_client_take_response;
 
 /* Silence "defined but not used" without needing a main(). */
 const void* nros_receive_verb_entry_point_probe(void);

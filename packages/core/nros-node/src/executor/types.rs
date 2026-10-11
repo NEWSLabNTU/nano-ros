@@ -750,7 +750,7 @@ fn baked_domain_source(baked: Option<u32>) -> crate::boot_report::KnobSource {
 /// carries owned diagnostic strings (`Backend` / `BackendDynamic`). Rust
 /// callers that matched on `NodeError` by value may need `ref` arms or
 /// `.clone()`; C/C++ callers are unaffected (they see an integer
-/// `nros_ret_t`).
+/// `rcl_ret_t`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NodeError {
     /// Transport-level error.
@@ -1289,7 +1289,7 @@ pub enum Trigger {
     ///
     /// The callback receives a `bool` array of readiness flags (one per handle),
     /// the count of handles, and a user-provided context pointer.
-    /// Used by the C API to bridge `nros_executor_trigger_t` to the Rust trigger system.
+    /// Used by the C API to bridge `rclc_executor_trigger_t` to the Rust trigger system.
     RawPredicate {
         /// C trigger callback
         callback: unsafe extern "C" fn(
@@ -1473,7 +1473,7 @@ pub type RawAcceptedCallback =
 /// - `goal_id` is valid for the duration of the call
 ///
 /// Returns the PER-GOAL decision `nros_core::CancelResponse` (0=Reject,
-/// 1=Accept) — the same two values C's `nros_cancel_response_t` and C++'s
+/// 1=Accept) — the same two values C's `rclc_cancel_response_t` and C++'s
 /// `nros::CancelResponse` use. Issue 0796: this used to return the
 /// `action_msgs/srv/CancelGoal` RPC return code (now `CancelReturnCode`), so a
 /// callback answering one goal spoke in whole-request status codes and the
@@ -1583,7 +1583,7 @@ unsafe impl Sync for GuardCondition {}
 /// that dispatches, so a second handle adds no contract.
 ///
 /// Written rather than derived so the reason is here: the graph-change edge
-/// needs one handle in the CALLER's `nros_guard_condition_t` and one the
+/// needs one handle in the CALLER's `rcl_guard_condition_t` and one the
 /// EXECUTOR owns for the backend to fire (issue 1385's shape). Not `Copy` —
 /// an implicit copy of a trigger handle reads as a value and behaves as an
 /// alias, which is exactly the confusion the 1385 fix is about.
@@ -2536,7 +2536,7 @@ pub struct ShutdownCallbackHandle(pub u32);
 
 impl ShutdownCallbackHandle {
     /// The value no registration ever returns. C callers compare against
-    /// `NROS_SHUTDOWN_CALLBACK_HANDLE_INVALID`, which is this number.
+    /// `RCLC_SHUTDOWN_CALLBACK_HANDLE_INVALID`, which is this number.
     pub const INVALID: ShutdownCallbackHandle = ShutdownCallbackHandle(u32::MAX);
 
     /// Bit position the phase tag occupies. 16 bits of index is more slots

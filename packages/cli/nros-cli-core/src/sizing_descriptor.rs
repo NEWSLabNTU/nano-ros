@@ -605,7 +605,7 @@ fn endpoint_kind(k: EntityKind) -> Option<EndpointKind> {
 /// `NROS_DECLARED_SERVICE_SERVERS=3` / `INFRA_QUERYABLES=none`, the zenoh
 /// backend sized `ZPICO_MAX_QUERYABLES=3` from exactly that, and the action
 /// server's own `/status` cache queryable was the FOURTH declaration — `Full`,
-/// at boot, with `nros_executor_add_action_server` returning -1. The cargo-leaf
+/// at boot, with `rclc_executor_add_action_server` returning -1. The cargo-leaf
 /// road never saw it because `nros sync` writes that road a descriptor, whose
 /// `action_server` row phase-455 W5 already counts.
 ///

@@ -566,7 +566,7 @@ pub struct ExecutorSizing {
     /// Conditional rather than fixed, and that is a decision measured in
     /// phase-382's W3' notes: a fixed `MAX_PARAMETERS` region adds the whole
     /// store (280,832 B on armv7m at the default 32 slots) to every image's
-    /// backing — Rust `EXECUTOR_BACKING`, every C/C++ `nros_executor_t`, every
+    /// backing — Rust `EXECUTOR_BACKING`, every C/C++ `rclc_executor_t`, every
     /// tier slot — which is issue 1702's rejected `.bss` static, everywhere.
     pub params: usize,
 }
@@ -619,7 +619,7 @@ impl ExecutorSizing {
 /// requirement) and carves its per-entry tables from the SAME buffer's
 /// [`backing`](Self::backing) tail. Because that buffer is **pinned** — the C
 /// caller allocates it, it is initialised in place, and it is only ever reached
-/// through a stable `nros_executor_t*` (never moved after init) — the resulting
+/// through a stable `rclc_executor_t*` (never moved after init) — the resulting
 /// self-borrow (the header's slices pointing into the same struct's tail) is
 /// sound. The FFI probes `size_of` of THIS type (not bare `Executor`) to size
 /// its `_opaque` array, and reinterprets `_opaque` as `*mut ExecutorInlineStorage`

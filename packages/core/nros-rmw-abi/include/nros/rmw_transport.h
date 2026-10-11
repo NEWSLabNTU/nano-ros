@@ -63,7 +63,7 @@ extern "C" {
 /**
  * Current ABI version of `nros_transport_ops_t`. Consumers MUST
  * fill this in before passing the struct to
- * `nros_set_custom_transport`.
+ * `rclc_set_custom_transport`.
  */
 #define NROS_TRANSPORT_OPS_ABI_VERSION_V1 ((uint32_t)1)
 
@@ -113,7 +113,7 @@ typedef struct nros_transport_ops_s {
     /**
      * Tear the transport down. After `close` returns, the runtime
      * will not invoke `read` or `write` on this transport unless
-     * `nros_set_custom_transport` is called again.
+     * `rclc_set_custom_transport` is called again.
      */
     void (*close)(void *user_data);
 

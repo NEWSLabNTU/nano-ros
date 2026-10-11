@@ -293,7 +293,7 @@ Rust through `Executor::declare_parameter` and `Node::parameter`.
 |---|---|---|
 | `ParameterDescriptor` (description, ranges, read-only, dynamic_typing) | not exposed | descriptor metadata is host-side concern; embedded server enforces type at declare-time, range checks belong in `set` callbacks (deferred — see below) |
 | `add_pre_set_parameters_callback` / `add_on_set_parameters_callback` / `add_post_set_parameters_callback` | one `rclc_parameter_callback_t` per C server — rclc's `(old, new, context)`, fired before the write, `false` refuses | three callbacks → three indirection slots × N subscribers; one callback covers the safety-island validation use case (`reject if out of range`) |
-| `set_parameter` returning `SetParametersResult` (`successful: bool`, `reason: string`) | returns `nros_ret_t` | string `reason` would force heap or fixed-buffer; ret code captures the binary outcome |
+| `set_parameter` returning `SetParametersResult` (`successful: bool`, `reason: string`) | returns `rcl_ret_t` | string `reason` would force heap or fixed-buffer; ret code captures the binary outcome |
 | `set_parameters_atomically` | not exposed | atomic multi-set requires transaction log; not justified by current embedded use |
 | `declare_parameters` (multi-declare with namespace) | C++ only, hosted only: `rclcpp::Node::declare_parameters<T>(prefix, map)` | upstream's argument is a `std::map`, so it needs an allocator; returns `Result`, not the `std::vector<T>` of values in effect (read back with `get_parameter<T>`). Rust and C declare one at a time |
 | Parameter overrides from CLI / launch / yaml | not exposed | embedded apps configure via Kconfig / `Config` struct; runtime overrides come over the wire via `~/set_parameters` (when `param-services` is on) |

@@ -6,7 +6,7 @@
 /// decoding each sample with the GENERATED typed C deserializer
 /// (`nros_find_interfaces(LANGUAGE C)` in CMakeLists — phase-277 W4; was
 /// hand-rolled CDR) and logging the official ROS 2 demo line
-/// (`I heard: [Hello World: N]`). `NROS_C_COMPONENT` emits the C-ABI factory +
+/// (`I heard: [Hello World: N]`). `RCLC_C_COMPONENT` emits the C-ABI factory +
 /// configure the Zephyr typed Entry carrier (the shared entry pack)
 /// calls. No declarative descriptor, no synthesizing interpreter, no callback
 /// name.
@@ -35,14 +35,13 @@ static void on_raw(const uint8_t* data, size_t len, void* ctx) {
     }
 }
 
-static nros_ret_t listener_configure(const nros_cpp_node_t* node, void* executor,
-                                     listener_t* self) {
+static rcl_ret_t listener_configure(const nros_cpp_node_t* node, void* executor, listener_t* self) {
     setvbuf(stdout, NULL, _IONBF, 0);
     (void)executor; /* node-scoped sub; executor unused */
     size_t handle;
     int32_t rc =
         nros_cpp_subscription_register(node, "/chatter", std_msgs_msg_string_get_type_name(), "",
-                                       nros_c_qos_default(), on_raw, self, &handle,
+                                       rclc_c_qos_default(), on_raw, self, &handle,
                                        /*options=*/NULL); /* phase-402: NULL = defaults */
     if (rc == 0) {
         /* Readiness markers the harness greps before driving the talker.
@@ -56,4 +55,4 @@ static nros_ret_t listener_configure(const nros_cpp_node_t* node, void* executor
     return rc;
 }
 
-NROS_C_COMPONENT(listener_t, listener_configure)
+RCLC_C_COMPONENT(listener_t, listener_configure)

@@ -5,7 +5,7 @@ is required ([RFC-0026](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/de
 
 ## What this shows
 
-A C **typed component** (`NROS_C_COMPONENT`, RFC-0043) deployed with
+A C **typed component** (`RCLC_C_COMPONENT`, RFC-0043) deployed with
 `nros_components_register_node(... TYPED DEPLOY nuttx)`. The image comes
 from the NuttX **typed-entry carrier**, which generates a C++ entry that
 holds the component's node as a static object and boots it on the board's

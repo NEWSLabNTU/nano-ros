@@ -48,13 +48,13 @@ int main(void) {
     // Borrowed numeric (LE view): aliases buf, decodes per element.
     assert(view.ranges.count == 2);
     assert(view.ranges.bytes >= buf && view.ranges.bytes < buf + n);
-    assert(nros_le_slice_view_f32_get(view.ranges, 0) == 1.5f);
-    assert(nros_le_slice_view_f32_get(view.ranges, 1) == 2.5f);
+    assert(rclc_le_slice_view_f32_get(view.ranges, 0) == 1.5f);
+    assert(rclc_le_slice_view_f32_get(view.ranges, 1) == 2.5f);
 
     printf("C borrowed E2E OK: width=%x label=\"%.*s\" data.size=%zu ranges=[%g,%g]; "
            "all views alias the CDR buffer\n",
            view.width, (int)view.label.size, view.label.data, view.data.size,
-           (double)nros_le_slice_view_f32_get(view.ranges, 0),
-           (double)nros_le_slice_view_f32_get(view.ranges, 1));
+           (double)rclc_le_slice_view_f32_get(view.ranges, 0),
+           (double)rclc_le_slice_view_f32_get(view.ranges, 1));
     return 0;
 }

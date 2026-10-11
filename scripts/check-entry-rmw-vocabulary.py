@@ -3,7 +3,7 @@
 
 The RMW selector became a BAKED rung: `nano_ros_entry()` and
 `nros_px4_add_module()` put `NROS_ENTRY_RMW="<name>"` on the target, the C/C++
-headers pass it to `nros_cpp_init_rmw` / `nros_support_init_rmw`, and the core
+headers pass it to `nros_cpp_init_rmw` / `rclc_support_init_rmw`, and the core
 resolves it through `nros_rmw_cffi::resolve_backend`.
 
 That resolution is a LOOKUP, and a miss is `BackendResolution::Unknown` — a hard
@@ -29,8 +29,8 @@ puts it in the registry of every image that links the crate anyway, and since
 issue 1050 a second registered name makes a selector-less open `Ambiguous`, i.e.
 a hard refusal. That is not hypothetical: the census recorder's ctor did exactly
 this to every native C and C++ image, and because the C surface reads no baked
-rung (issue 1531) every native C example failed `nros_support_init` with
-`NROS_RET_INVALID_ARGUMENT` for eighteen days behind an absorbing stale verdict.
+rung (issue 1531) every native C example failed `rclc_support_init` with
+`RCL_RET_INVALID_ARGUMENT` for eighteen days behind an absorbing stale verdict.
 
 The rule lives HERE rather than in a gate of its own because this script already
 owns both vocabularies and the exemption list that distinguishes them. A second

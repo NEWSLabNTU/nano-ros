@@ -13,7 +13,7 @@
  * `nros/declared_qos.hpp` gives C++ a `static_assert` that fails the BUILD when
  * the QoS depth a `NROS_SUBSCRIBE` passes disagrees with the depth the system
  * DECLARED for that topic in the contract sidecar beside the launch file. The
- * descriptor that carries those depths -- `nros_declared_qos_generated.h`, put
+ * descriptor that carries those depths -- `rclc_declared_qos_generated.h`, put
  * on the component's PRIVATE include path by `nano_ros_node_register()` -- is
  * pure preprocessor and language-neutral, and a C component already gets it:
  * `_nros_declared_qos_arm()` returns early only for RUST components and for
@@ -56,14 +56,14 @@
  * Every C toolchain this project supports is one of those two, and a compiler
  * that is neither loses only the compile-time half: @ref NROS_DECLARED_DEPTH
  * answers @ref NROS_DECLARED_DEPTH_UNDECLARED there, every assertion holds
- * trivially, and `nros_declared_depth()` below still answers at runtime.
+ * trivially, and `rclc_declared_depth()` below still answers at runtime.
  *
  * # Reliability and durability too (issue 1256)
  *
  * The table also carries each subscription's declared RELIABILITY and
  * DURABILITY. @ref NROS_ASSERT_DECLARED_RELIABILITY and
  * @ref NROS_ASSERT_DECLARED_DURABILITY fail the build on a disagreement, in
- * `nros_qos_t`'s own enumerator values; a component's `nros_cpp_qos_t`, which
+ * `rclc_qos_t`'s own enumerator values; a component's `nros_cpp_qos_t`, which
  * numbers reliability the C++ way, is held to the same table at REGISTRATION.
  *
  * # ABSENCE IS NOT ZERO
@@ -100,8 +100,8 @@
  * component whose endpoints state no `qos: { depth: }`, and every out-of-tree
  * consumer of this header has no such file and gets an empty table. */
 #if defined(__has_include)
-#if __has_include(<nros/nros_declared_qos_generated.h>)
-#include <nros/nros_declared_qos_generated.h>
+#if __has_include(<nros/rclc_declared_qos_generated.h>)
+#include <nros/rclc_declared_qos_generated.h>
 #endif
 #endif
 
@@ -122,7 +122,7 @@
 #define NROS_DECLARED_POLICY_UNDECLARED (-1)
 
 /* issue 1256 -- the policy TOKENS the generated header carries, mapped to C's
- * own enumerator values: `nros_qos_reliability_t` / `nros_qos_durability_t` in
+ * own enumerator values: `rclc_qos_reliability_t` / `rclc_qos_durability_t` in
  * `nros_generated.h`, where RELIABLE is 1 and BEST_EFFORT is 0. C++ numbers the
  * same enums the other way round, which is why the header carries tokens and
  * each language pastes them onto a prefix of its own. This header stays
@@ -131,7 +131,7 @@
  *
  * NOTE the C++ FFI's `nros_cpp_qos_t` (what a C COMPONENT hands
  * `nros_cpp_subscription_register`) uses the C++ numbering. The compile-time
- * policy macros below take `nros_qos_t` values; a component's `nros_cpp_qos_t`
+ * policy macros below take `rclc_qos_t` values; a component's `nros_cpp_qos_t`
  * is checked at REGISTRATION instead, by the same comparison in
  * `nros_node::declared_qos::check`, which every FFI seam calls. */
 #define _NROS_DQ_C_NROS_DQ_UNDECLARED (-1)
@@ -154,19 +154,19 @@
 /* One row of the constant-expression search. Both operands of each comparison
  * are string literals at every call site the compile-time half serves, so the
  * whole chain folds to one integer before any code is generated. */
-#define _NROS_DQ_STREQ(nros_a, nros_b) (__builtin_strcmp((nros_a), (nros_b)) == 0)
-#define _NROS_DQ_FIND_ROW(nros_t, nros_tp, nros_d, nros_r, nros_u, nros_q_type, nros_q_topic)      \
-    (_NROS_DQ_STREQ((nros_t), (nros_q_type)) && _NROS_DQ_STREQ((nros_tp), (nros_q_topic)))         \
-        ? (nros_d)                                                                                 \
+#define _NROS_DQ_STREQ(rclc_a, rclc_b) (__builtin_strcmp((rclc_a), (rclc_b)) == 0)
+#define _NROS_DQ_FIND_ROW(rclc_t, rclc_tp, rclc_d, rclc_r, rclc_u, rclc_q_type, rclc_q_topic)      \
+    (_NROS_DQ_STREQ((rclc_t), (rclc_q_type)) && _NROS_DQ_STREQ((rclc_tp), (rclc_q_topic)))         \
+        ? (rclc_d)                                                                                 \
         :
 /* issue 1256 -- the same search, answering the RELIABILITY / DURABILITY column. */
-#define _NROS_DQ_FIND_REL_ROW(nros_t, nros_tp, nros_d, nros_r, nros_u, nros_q_type, nros_q_topic)  \
-    (_NROS_DQ_STREQ((nros_t), (nros_q_type)) && _NROS_DQ_STREQ((nros_tp), (nros_q_topic)))         \
-        ? (_NROS_DQ_C_##nros_r)                                                                    \
+#define _NROS_DQ_FIND_REL_ROW(rclc_t, rclc_tp, rclc_d, rclc_r, rclc_u, rclc_q_type, rclc_q_topic)  \
+    (_NROS_DQ_STREQ((rclc_t), (rclc_q_type)) && _NROS_DQ_STREQ((rclc_tp), (rclc_q_topic)))         \
+        ? (_NROS_DQ_C_##rclc_r)                                                                    \
         :
-#define _NROS_DQ_FIND_DUR_ROW(nros_t, nros_tp, nros_d, nros_r, nros_u, nros_q_type, nros_q_topic)  \
-    (_NROS_DQ_STREQ((nros_t), (nros_q_type)) && _NROS_DQ_STREQ((nros_tp), (nros_q_topic)))         \
-        ? (_NROS_DQ_C_##nros_u)                                                                    \
+#define _NROS_DQ_FIND_DUR_ROW(rclc_t, rclc_tp, rclc_d, rclc_r, rclc_u, rclc_q_type, rclc_q_topic)  \
+    (_NROS_DQ_STREQ((rclc_t), (rclc_q_type)) && _NROS_DQ_STREQ((rclc_tp), (rclc_q_topic)))         \
+        ? (_NROS_DQ_C_##rclc_u)                                                                    \
         :
 
 /**
@@ -176,39 +176,39 @@
  * is what every call site the compile-time half serves writes. Sibling of C++'s
  * `rclcpp::declared_depth()`, and it answers the same numbers from the same rows.
  */
-#define NROS_DECLARED_DEPTH(nros_type_lit, nros_topic_lit)                                         \
-    (NROS_DECLARED_QOS_ROWS_Q(_NROS_DQ_FIND_ROW, (nros_type_lit), (nros_topic_lit))                \
+#define NROS_DECLARED_DEPTH(rclc_type_lit, rclc_topic_lit)                                         \
+    (NROS_DECLARED_QOS_ROWS_Q(_NROS_DQ_FIND_ROW, (rclc_type_lit), (rclc_topic_lit))                \
          NROS_DECLARED_DEPTH_UNDECLARED)
 
 /** issue 1256 -- the declared RELIABILITY for `(type, topic)` as an
- *  `nros_qos_reliability_t` value, or @ref NROS_DECLARED_POLICY_UNDECLARED.
+ *  `rclc_qos_reliability_t` value, or @ref NROS_DECLARED_POLICY_UNDECLARED.
  *  An integer constant expression on the same terms as @ref NROS_DECLARED_DEPTH. */
-#define NROS_DECLARED_RELIABILITY(nros_type_lit, nros_topic_lit)                                   \
-    (NROS_DECLARED_QOS_ROWS_Q(_NROS_DQ_FIND_REL_ROW, (nros_type_lit), (nros_topic_lit))            \
+#define NROS_DECLARED_RELIABILITY(rclc_type_lit, rclc_topic_lit)                                   \
+    (NROS_DECLARED_QOS_ROWS_Q(_NROS_DQ_FIND_REL_ROW, (rclc_type_lit), (rclc_topic_lit))            \
          NROS_DECLARED_POLICY_UNDECLARED)
 
-/** issue 1256 -- the declared DURABILITY as an `nros_qos_durability_t` value,
+/** issue 1256 -- the declared DURABILITY as an `rclc_qos_durability_t` value,
  *  or @ref NROS_DECLARED_POLICY_UNDECLARED. */
-#define NROS_DECLARED_DURABILITY(nros_type_lit, nros_topic_lit)                                    \
-    (NROS_DECLARED_QOS_ROWS_Q(_NROS_DQ_FIND_DUR_ROW, (nros_type_lit), (nros_topic_lit))            \
+#define NROS_DECLARED_DURABILITY(rclc_type_lit, rclc_topic_lit)                                    \
+    (NROS_DECLARED_QOS_ROWS_Q(_NROS_DQ_FIND_DUR_ROW, (rclc_type_lit), (rclc_topic_lit))            \
          NROS_DECLARED_POLICY_UNDECLARED)
 
 #else /* no table, or a compiler that does not fold __builtin_strcmp */
 
-#define NROS_DECLARED_DEPTH(nros_type_lit, nros_topic_lit) (NROS_DECLARED_DEPTH_UNDECLARED)
-#define NROS_DECLARED_RELIABILITY(nros_type_lit, nros_topic_lit) (NROS_DECLARED_POLICY_UNDECLARED)
-#define NROS_DECLARED_DURABILITY(nros_type_lit, nros_topic_lit) (NROS_DECLARED_POLICY_UNDECLARED)
+#define NROS_DECLARED_DEPTH(rclc_type_lit, rclc_topic_lit) (NROS_DECLARED_DEPTH_UNDECLARED)
+#define NROS_DECLARED_RELIABILITY(rclc_type_lit, rclc_topic_lit) (NROS_DECLARED_POLICY_UNDECLARED)
+#define NROS_DECLARED_DURABILITY(rclc_type_lit, rclc_topic_lit) (NROS_DECLARED_POLICY_UNDECLARED)
 
 #endif /* NROS_DECLARED_QOS_COMPILE_TIME */
 
 /** The depth to CHECK against: the declared one, or the passed one when nothing
  *  was declared -- in which case the assertion below compares a number with
  *  itself and holds. An image that has not opted in is not an image in error. */
-#define NROS_DECLARED_DEPTH_OR(nros_declared, nros_passed)                                         \
-    (((nros_declared) == NROS_DECLARED_DEPTH_UNDECLARED) ? (nros_passed) : (nros_declared))
+#define NROS_DECLARED_DEPTH_OR(rclc_declared, rclc_passed)                                         \
+    (((rclc_declared) == NROS_DECLARED_DEPTH_UNDECLARED) ? (rclc_passed) : (rclc_declared))
 
-#define _NROS_DQ_CAT_(nros_a, nros_b) nros_a##nros_b
-#define _NROS_DQ_CAT(nros_a, nros_b) _NROS_DQ_CAT_(nros_a, nros_b)
+#define _NROS_DQ_CAT_(rclc_a, rclc_b) rclc_a##rclc_b
+#define _NROS_DQ_CAT(rclc_a, rclc_b) _NROS_DQ_CAT_(rclc_a, rclc_b)
 
 /**
  * Fail the BUILD when a declared depth and a passed QoS depth disagree.
@@ -229,7 +229,7 @@
  *     nothing happens. When they disagree the redeclaration conflicts, and the
  *     diagnostic names BOTH NUMBERS:
  *
- *         error: conflicting types for 'nros_declared_depth_vs_passed_at_line_42';
+ *         error: conflicting types for 'rclc_declared_depth_vs_passed_at_line_42';
  *                have 'char[10]'
  *         note: previous declaration ... with type 'char[1]'
  *
@@ -251,90 +251,90 @@
  * A call site whose topic or depth is built at runtime cannot be looked up at
  * compile time and takes the REGISTRATION-time check instead: the depth reaches
  * the executor through `nros_cpp_subscription_register` /
- * `nros_subscription_init_with_qos`, which is where a non-constant call site is
+ * `rclc_subscription_init_with_qos`, which is where a non-constant call site is
  * caught.
  */
-#define NROS_ASSERT_DECLARED_DEPTH(nros_type_lit, nros_topic_lit, nros_depth_expr,                 \
-                                   nros_topic_text)                                                \
+#define NROS_ASSERT_DECLARED_DEPTH(rclc_type_lit, rclc_topic_lit, rclc_depth_expr,                 \
+                                   rclc_topic_text)                                                \
     _Static_assert(                                                                                \
-        NROS_DECLARED_DEPTH((nros_type_lit), (nros_topic_lit)) ==                                  \
+        NROS_DECLARED_DEPTH((rclc_type_lit), (rclc_topic_lit)) ==                                  \
                 NROS_DECLARED_DEPTH_UNDECLARED ||                                                  \
-            NROS_DECLARED_DEPTH((nros_type_lit), (nros_topic_lit)) == (nros_depth_expr),           \
-        "nros: the QoS depth passed for topic " nros_topic_text                                    \
+            NROS_DECLARED_DEPTH((rclc_type_lit), (rclc_topic_lit)) == (rclc_depth_expr),           \
+        "nros: the QoS depth passed for topic " rclc_topic_text                                    \
         " disagrees with the depth declared for that topic in the contract sidecar "               \
         "beside the launch file (<bringup>/launch/<stem>.contract.yaml, "                          \
         "contracts.sub_endpoints.<ep>.qos). Both numbers are in the "                              \
-        "nros_declared_depth_vs_passed_at_line_* diagnostic beside this one -- declared "          \
+        "rclc_declared_depth_vs_passed_at_line_* diagnostic beside this one -- declared "          \
         "first, passed second. Fix whichever is wrong: the contract row, or the QoS at "           \
         "the call site. Depth is a multiplier on the executor arena, so the two must "             \
         "state one number, not two.");                                                             \
     extern char _NROS_DQ_CAT(                                                                      \
-        nros_declared_depth_vs_passed_at_line_,                                                    \
-        __LINE__)[NROS_DECLARED_DEPTH_OR(NROS_DECLARED_DEPTH((nros_type_lit), (nros_topic_lit)),   \
-                                         (nros_depth_expr)) == (nros_depth_expr)                   \
+        rclc_declared_depth_vs_passed_at_line_,                                                    \
+        __LINE__)[NROS_DECLARED_DEPTH_OR(NROS_DECLARED_DEPTH((rclc_type_lit), (rclc_topic_lit)),   \
+                                         (rclc_depth_expr)) == (rclc_depth_expr)                   \
                       ? 1                                                                          \
                       : NROS_DECLARED_DEPTH_OR(                                                    \
-                            NROS_DECLARED_DEPTH((nros_type_lit), (nros_topic_lit)),                \
-                            (nros_depth_expr))];                                                   \
+                            NROS_DECLARED_DEPTH((rclc_type_lit), (rclc_topic_lit)),                \
+                            (rclc_depth_expr))];                                                   \
     extern char _NROS_DQ_CAT(                                                                      \
-        nros_declared_depth_vs_passed_at_line_,                                                    \
-        __LINE__)[NROS_DECLARED_DEPTH_OR(NROS_DECLARED_DEPTH((nros_type_lit), (nros_topic_lit)),   \
-                                         (nros_depth_expr)) == (nros_depth_expr)                   \
+        rclc_declared_depth_vs_passed_at_line_,                                                    \
+        __LINE__)[NROS_DECLARED_DEPTH_OR(NROS_DECLARED_DEPTH((rclc_type_lit), (rclc_topic_lit)),   \
+                                         (rclc_depth_expr)) == (rclc_depth_expr)                   \
                       ? 1                                                                          \
-                      : (nros_depth_expr)];                                                        \
-    (void)sizeof(_NROS_DQ_CAT(nros_declared_depth_vs_passed_at_line_, __LINE__))
+                      : (rclc_depth_expr)];                                                        \
+    (void)sizeof(_NROS_DQ_CAT(rclc_declared_depth_vs_passed_at_line_, __LINE__))
 
 /** The policy to CHECK against, on @ref NROS_DECLARED_DEPTH_OR's rule. */
-#define NROS_DECLARED_POLICY_OR(nros_declared, nros_passed)                                        \
-    (((nros_declared) == NROS_DECLARED_POLICY_UNDECLARED) ? (nros_passed) : (nros_declared))
+#define NROS_DECLARED_POLICY_OR(rclc_declared, rclc_passed)                                        \
+    (((rclc_declared) == NROS_DECLARED_POLICY_UNDECLARED) ? (rclc_passed) : (rclc_declared))
 
 /* One policy assertion, shared by the two below. The conflicting `extern char`
  * pair carries the two VALUES as array sizes, offset by one so a 0 is a legal
  * size: `char[1]` is the value 0 and `char[2]` the value 1. The identifier
  * names both the policy and that legend, because it is what the compiler
  * prints. */
-#define _NROS_DQ_ASSERT_POLICY(nros_declared_expr, nros_passed_expr, nros_name, nros_message)      \
-    _Static_assert((nros_declared_expr) == NROS_DECLARED_POLICY_UNDECLARED ||                      \
-                       (nros_declared_expr) == (nros_passed_expr),                                 \
-                   nros_message);                                                                  \
+#define _NROS_DQ_ASSERT_POLICY(rclc_declared_expr, rclc_passed_expr, rclc_name, rclc_message)      \
+    _Static_assert((rclc_declared_expr) == NROS_DECLARED_POLICY_UNDECLARED ||                      \
+                       (rclc_declared_expr) == (rclc_passed_expr),                                 \
+                   rclc_message);                                                                  \
     extern char _NROS_DQ_CAT(                                                                      \
-        nros_name,                                                                                 \
-        __LINE__)[NROS_DECLARED_POLICY_OR((nros_declared_expr), (nros_passed_expr)) + 1];          \
-    extern char _NROS_DQ_CAT(nros_name, __LINE__)[(nros_passed_expr) + 1];                         \
-    (void)sizeof(_NROS_DQ_CAT(nros_name, __LINE__))
+        rclc_name,                                                                                 \
+        __LINE__)[NROS_DECLARED_POLICY_OR((rclc_declared_expr), (rclc_passed_expr)) + 1];          \
+    extern char _NROS_DQ_CAT(rclc_name, __LINE__)[(rclc_passed_expr) + 1];                         \
+    (void)sizeof(_NROS_DQ_CAT(rclc_name, __LINE__))
 
 /**
  * issue 1256 -- fail the BUILD when a declared RELIABILITY and the passed one
- * disagree. `nros_rel_expr` is an `nros_qos_reliability_t` constant expression
- * -- spell the enumerator (`NROS_QOS_RELIABILITY_BEST_EFFORT`): a member of a
- * `const` struct such as `NROS_QOS_SENSOR_DATA.reliability` is not an integer
+ * disagree. `rclc_rel_expr` is an `rclc_qos_reliability_t` constant expression
+ * -- spell the enumerator (`RCLC_QOS_RELIABILITY_BEST_EFFORT`): a member of a
+ * `const` struct such as `RCLC_QOS_SENSOR_DATA.reliability` is not an integer
  * constant expression in C. Same four-argument shape as
  * @ref NROS_ASSERT_DECLARED_DEPTH.
  *
  * Not about memory: an incompatible-QoS match never delivers, so a call site
  * contradicting its contract is a link that silently carries nothing.
  */
-#define NROS_ASSERT_DECLARED_RELIABILITY(nros_type_lit, nros_topic_lit, nros_rel_expr,             \
-                                         nros_topic_text)                                          \
+#define NROS_ASSERT_DECLARED_RELIABILITY(rclc_type_lit, rclc_topic_lit, rclc_rel_expr,             \
+                                         rclc_topic_text)                                          \
     _NROS_DQ_ASSERT_POLICY(                                                                        \
-        NROS_DECLARED_RELIABILITY((nros_type_lit), (nros_topic_lit)), (nros_rel_expr),             \
-        nros_declared_reliability_vs_passed__1_best_effort_2_reliable__at_line_,                   \
-        "nros: the QoS reliability passed for topic " nros_topic_text                              \
+        NROS_DECLARED_RELIABILITY((rclc_type_lit), (rclc_topic_lit)), (rclc_rel_expr),             \
+        rclc_declared_reliability_vs_passed__1_best_effort_2_reliable__at_line_,                   \
+        "nros: the QoS reliability passed for topic " rclc_topic_text                              \
         " disagrees with the reliability declared for that topic in the "                          \
         "contract sidecar (<stem>.contract.yaml). Both values are in the "                         \
         "nros_declared_reliability_vs_passed_* diagnostic beside this one -- "                     \
         "declared first, passed second.")
 
 /**
- * issue 1256 -- the same for DURABILITY. `nros_dur_expr` is an
- * `nros_qos_durability_t` constant expression.
+ * issue 1256 -- the same for DURABILITY. `rclc_dur_expr` is an
+ * `rclc_qos_durability_t` constant expression.
  */
-#define NROS_ASSERT_DECLARED_DURABILITY(nros_type_lit, nros_topic_lit, nros_dur_expr,              \
-                                        nros_topic_text)                                           \
+#define NROS_ASSERT_DECLARED_DURABILITY(rclc_type_lit, rclc_topic_lit, rclc_dur_expr,              \
+                                        rclc_topic_text)                                           \
     _NROS_DQ_ASSERT_POLICY(                                                                        \
-        NROS_DECLARED_DURABILITY((nros_type_lit), (nros_topic_lit)), (nros_dur_expr),              \
-        nros_declared_durability_vs_passed__1_volatile_2_transient_local__at_line_,                \
-        "nros: the QoS durability passed for topic " nros_topic_text                               \
+        NROS_DECLARED_DURABILITY((rclc_type_lit), (rclc_topic_lit)), (rclc_dur_expr),              \
+        rclc_declared_durability_vs_passed__1_volatile_2_transient_local__at_line_,                \
+        "nros: the QoS durability passed for topic " rclc_topic_text                               \
         " disagrees with the durability declared for that topic in the contract sidecar "          \
         "(<stem>.contract.yaml). Both values are in the "                                          \
         "nros_declared_durability_vs_passed_* diagnostic beside this one -- declared first, "      \
@@ -360,24 +360,24 @@
 /** Issue 1608 -- the declared depth of the PUBLISHER on `(type, topic)`, or
  *  @ref NROS_DECLARED_DEPTH_UNDECLARED. A constant expression on the terms of
  *  @ref NROS_DECLARED_DEPTH. */
-#define NROS_DECLARED_PUB_DEPTH(nros_type_lit, nros_topic_lit)                                     \
-    (NROS_DECLARED_PUB_QOS_ROWS_Q(_NROS_DQ_FIND_ROW, (nros_type_lit), (nros_topic_lit))            \
+#define NROS_DECLARED_PUB_DEPTH(rclc_type_lit, rclc_topic_lit)                                     \
+    (NROS_DECLARED_PUB_QOS_ROWS_Q(_NROS_DQ_FIND_ROW, (rclc_type_lit), (rclc_topic_lit))            \
          NROS_DECLARED_DEPTH_UNDECLARED)
-/** Issue 1608 -- the publisher's declared RELIABILITY (`nros_qos_reliability_t`). */
-#define NROS_DECLARED_PUB_RELIABILITY(nros_type_lit, nros_topic_lit)                               \
-    (NROS_DECLARED_PUB_QOS_ROWS_Q(_NROS_DQ_FIND_REL_ROW, (nros_type_lit), (nros_topic_lit))        \
+/** Issue 1608 -- the publisher's declared RELIABILITY (`rclc_qos_reliability_t`). */
+#define NROS_DECLARED_PUB_RELIABILITY(rclc_type_lit, rclc_topic_lit)                               \
+    (NROS_DECLARED_PUB_QOS_ROWS_Q(_NROS_DQ_FIND_REL_ROW, (rclc_type_lit), (rclc_topic_lit))        \
          NROS_DECLARED_POLICY_UNDECLARED)
-/** Issue 1608 -- the publisher's declared DURABILITY (`nros_qos_durability_t`). */
-#define NROS_DECLARED_PUB_DURABILITY(nros_type_lit, nros_topic_lit)                                \
-    (NROS_DECLARED_PUB_QOS_ROWS_Q(_NROS_DQ_FIND_DUR_ROW, (nros_type_lit), (nros_topic_lit))        \
+/** Issue 1608 -- the publisher's declared DURABILITY (`rclc_qos_durability_t`). */
+#define NROS_DECLARED_PUB_DURABILITY(rclc_type_lit, rclc_topic_lit)                                \
+    (NROS_DECLARED_PUB_QOS_ROWS_Q(_NROS_DQ_FIND_DUR_ROW, (rclc_type_lit), (rclc_topic_lit))        \
          NROS_DECLARED_POLICY_UNDECLARED)
 
 #else /* no publisher rows, or a compiler that does not fold __builtin_strcmp */
 
-#define NROS_DECLARED_PUB_DEPTH(nros_type_lit, nros_topic_lit) (NROS_DECLARED_DEPTH_UNDECLARED)
-#define NROS_DECLARED_PUB_RELIABILITY(nros_type_lit, nros_topic_lit)                               \
+#define NROS_DECLARED_PUB_DEPTH(rclc_type_lit, rclc_topic_lit) (NROS_DECLARED_DEPTH_UNDECLARED)
+#define NROS_DECLARED_PUB_RELIABILITY(rclc_type_lit, rclc_topic_lit)                               \
     (NROS_DECLARED_POLICY_UNDECLARED)
-#define NROS_DECLARED_PUB_DURABILITY(nros_type_lit, nros_topic_lit)                                \
+#define NROS_DECLARED_PUB_DURABILITY(rclc_type_lit, rclc_topic_lit)                                \
     (NROS_DECLARED_POLICY_UNDECLARED)
 
 #endif /* NROS_DECLARED_PUB_QOS_COMPILE_TIME */
@@ -388,7 +388,7 @@
  *
  * The four arguments and the three-declaration expansion of
  * @ref NROS_ASSERT_DECLARED_DEPTH, against the publisher rows. Write it beside
- * the call that creates the publisher (`nros_publisher_init_with_qos`), whose
+ * the call that creates the publisher (`rclc_publisher_init_with_qos`), whose
  * QoS is a constant expression at every call site this half serves; a
  * non-constant one is held to the same rows at REGISTRATION instead
  * (`nros_node::declared_qos::honour_publisher`).
@@ -397,43 +397,43 @@
  * publisher asking LESS than its declaration is what registration would
  * quietly raise -- which the build is the place to make the code say.
  */
-#define NROS_ASSERT_DECLARED_PUB_DEPTH(nros_type_lit, nros_topic_lit, nros_depth_expr,             \
-                                       nros_topic_text)                                            \
+#define NROS_ASSERT_DECLARED_PUB_DEPTH(rclc_type_lit, rclc_topic_lit, rclc_depth_expr,             \
+                                       rclc_topic_text)                                            \
     _Static_assert(                                                                                \
-        NROS_DECLARED_PUB_DEPTH((nros_type_lit), (nros_topic_lit)) ==                              \
+        NROS_DECLARED_PUB_DEPTH((rclc_type_lit), (rclc_topic_lit)) ==                              \
                 NROS_DECLARED_DEPTH_UNDECLARED ||                                                  \
-            NROS_DECLARED_PUB_DEPTH((nros_type_lit), (nros_topic_lit)) == (nros_depth_expr),       \
-        "nros: the QoS depth passed for the publisher on topic " nros_topic_text                   \
+            NROS_DECLARED_PUB_DEPTH((rclc_type_lit), (rclc_topic_lit)) == (rclc_depth_expr),       \
+        "nros: the QoS depth passed for the publisher on topic " rclc_topic_text                   \
         " disagrees with the depth declared for that publisher in the contract sidecar "           \
         "(<stem>.contract.yaml, contracts.pub_endpoints.<ep>.qos). Both numbers are in the "       \
-        "nros_declared_pub_depth_vs_passed_at_line_* diagnostic beside this one -- declared "      \
+        "rclc_declared_pub_depth_vs_passed_at_line_* diagnostic beside this one -- declared "      \
         "first, passed second.");                                                                  \
-    extern char _NROS_DQ_CAT(nros_declared_pub_depth_vs_passed_at_line_, __LINE__)                 \
-        [NROS_DECLARED_DEPTH_OR(NROS_DECLARED_PUB_DEPTH((nros_type_lit), (nros_topic_lit)),        \
-                                (nros_depth_expr)) == (nros_depth_expr)                            \
+    extern char _NROS_DQ_CAT(rclc_declared_pub_depth_vs_passed_at_line_, __LINE__)                 \
+        [NROS_DECLARED_DEPTH_OR(NROS_DECLARED_PUB_DEPTH((rclc_type_lit), (rclc_topic_lit)),        \
+                                (rclc_depth_expr)) == (rclc_depth_expr)                            \
              ? 1                                                                                   \
-             : NROS_DECLARED_DEPTH_OR(NROS_DECLARED_PUB_DEPTH((nros_type_lit), (nros_topic_lit)),  \
-                                      (nros_depth_expr))];                                         \
+             : NROS_DECLARED_DEPTH_OR(NROS_DECLARED_PUB_DEPTH((rclc_type_lit), (rclc_topic_lit)),  \
+                                      (rclc_depth_expr))];                                         \
     extern char _NROS_DQ_CAT(                                                                      \
-        nros_declared_pub_depth_vs_passed_at_line_,                                                \
+        rclc_declared_pub_depth_vs_passed_at_line_,                                                \
         __LINE__)[NROS_DECLARED_DEPTH_OR(                                                          \
-                      NROS_DECLARED_PUB_DEPTH((nros_type_lit), (nros_topic_lit)),                  \
-                      (nros_depth_expr)) == (nros_depth_expr)                                      \
+                      NROS_DECLARED_PUB_DEPTH((rclc_type_lit), (rclc_topic_lit)),                  \
+                      (rclc_depth_expr)) == (rclc_depth_expr)                                      \
                       ? 1                                                                          \
-                      : (nros_depth_expr)];                                                        \
-    (void)sizeof(_NROS_DQ_CAT(nros_declared_pub_depth_vs_passed_at_line_, __LINE__))
+                      : (rclc_depth_expr)];                                                        \
+    (void)sizeof(_NROS_DQ_CAT(rclc_declared_pub_depth_vs_passed_at_line_, __LINE__))
 
 /**
  * Issue 1608 -- the PUBLISHER's RELIABILITY, on @ref
  * NROS_ASSERT_DECLARED_RELIABILITY's terms. An incompatible-QoS match never
  * delivers, and a BEST_EFFORT writer is matched by no RELIABLE reader.
  */
-#define NROS_ASSERT_DECLARED_PUB_RELIABILITY(nros_type_lit, nros_topic_lit, nros_rel_expr,         \
-                                             nros_topic_text)                                      \
+#define NROS_ASSERT_DECLARED_PUB_RELIABILITY(rclc_type_lit, rclc_topic_lit, rclc_rel_expr,         \
+                                             rclc_topic_text)                                      \
     _NROS_DQ_ASSERT_POLICY(                                                                        \
-        NROS_DECLARED_PUB_RELIABILITY((nros_type_lit), (nros_topic_lit)), (nros_rel_expr),         \
-        nros_declared_pub_reliability_vs_passed__1_best_effort_2_reliable__at_line_,               \
-        "nros: the QoS reliability passed for the publisher on topic " nros_topic_text             \
+        NROS_DECLARED_PUB_RELIABILITY((rclc_type_lit), (rclc_topic_lit)), (rclc_rel_expr),         \
+        rclc_declared_pub_reliability_vs_passed__1_best_effort_2_reliable__at_line_,               \
+        "nros: the QoS reliability passed for the publisher on topic " rclc_topic_text             \
         " disagrees with the reliability declared for that publisher in the contract "             \
         "sidecar (<stem>.contract.yaml). Both values are in the "                                  \
         "nros_declared_pub_reliability_vs_passed_* diagnostic beside this one -- "                 \
@@ -445,12 +445,12 @@
  * disagreement is also a SIZING error: the build counted (or did not count) a
  * slot the code does not (or does) declare.
  */
-#define NROS_ASSERT_DECLARED_PUB_DURABILITY(nros_type_lit, nros_topic_lit, nros_dur_expr,          \
-                                            nros_topic_text)                                       \
+#define NROS_ASSERT_DECLARED_PUB_DURABILITY(rclc_type_lit, rclc_topic_lit, rclc_dur_expr,          \
+                                            rclc_topic_text)                                       \
     _NROS_DQ_ASSERT_POLICY(                                                                        \
-        NROS_DECLARED_PUB_DURABILITY((nros_type_lit), (nros_topic_lit)), (nros_dur_expr),          \
-        nros_declared_pub_durability_vs_passed__1_volatile_2_transient_local__at_line_,            \
-        "nros: the QoS durability passed for the publisher on topic " nros_topic_text              \
+        NROS_DECLARED_PUB_DURABILITY((rclc_type_lit), (rclc_topic_lit)), (rclc_dur_expr),          \
+        rclc_declared_pub_durability_vs_passed__1_volatile_2_transient_local__at_line_,            \
+        "nros: the QoS durability passed for the publisher on topic " rclc_topic_text              \
         " disagrees with the durability declared for that publisher in the contract sidecar "      \
         "(<stem>.contract.yaml). Both values are in the "                                          \
         "nros_declared_pub_durability_vs_passed_* diagnostic beside this one -- declared "         \
@@ -458,15 +458,15 @@
 
 /** `strcmp(a, b) == 0`, spelled here so this header needs no `<string.h>` --
  *  which a freestanding C implementation is not required to provide. */
-static inline int nros_declared_qos_streq(const char* nros_a, const char* nros_b) {
-    if (nros_a == NULL || nros_b == NULL) {
-        return nros_a == nros_b;
+static inline int rclc_declared_qos_streq(const char* rclc_a, const char* rclc_b) {
+    if (rclc_a == NULL || rclc_b == NULL) {
+        return rclc_a == rclc_b;
     }
-    while (*nros_a != '\0' && *nros_a == *nros_b) {
-        ++nros_a;
-        ++nros_b;
+    while (*rclc_a != '\0' && *rclc_a == *rclc_b) {
+        ++rclc_a;
+        ++rclc_b;
     }
-    return *nros_a == *nros_b;
+    return *rclc_a == *rclc_b;
 }
 
 /**
@@ -478,61 +478,61 @@ static inline int nros_declared_qos_streq(const char* nros_a, const char* nros_b
  * wants to REPORT rather than refuse to build. No storage: the table is an
  * `if` chain over string literals, so a TU that never calls this emits nothing.
  */
-static inline int nros_declared_depth(const char* nros_type, const char* nros_topic) {
+static inline int rclc_declared_depth(const char* rclc_type, const char* rclc_topic) {
 #if defined(NROS_DECLARED_QOS_ROWS_Q)
-#define _NROS_DQ_RUNTIME_ROW(nros_t, nros_tp, nros_d, nros_r, nros_u, nros_q_type, nros_q_topic)   \
-    if (nros_declared_qos_streq((nros_t), (nros_q_type)) &&                                        \
-        nros_declared_qos_streq((nros_tp), (nros_q_topic))) {                                      \
-        return (nros_d);                                                                           \
+#define _NROS_DQ_RUNTIME_ROW(rclc_t, rclc_tp, rclc_d, rclc_r, rclc_u, rclc_q_type, rclc_q_topic)   \
+    if (rclc_declared_qos_streq((rclc_t), (rclc_q_type)) &&                                        \
+        rclc_declared_qos_streq((rclc_tp), (rclc_q_topic))) {                                      \
+        return (rclc_d);                                                                           \
     }
-    NROS_DECLARED_QOS_ROWS_Q(_NROS_DQ_RUNTIME_ROW, nros_type, nros_topic)
+    NROS_DECLARED_QOS_ROWS_Q(_NROS_DQ_RUNTIME_ROW, rclc_type, rclc_topic)
 #undef _NROS_DQ_RUNTIME_ROW
 #else
-    (void)nros_type;
-    (void)nros_topic;
+    (void)rclc_type;
+    (void)rclc_topic;
 #endif
     return NROS_DECLARED_DEPTH_UNDECLARED;
 }
 
 /**
  * issue 1256 -- the declared RELIABILITY at RUNTIME, as an
- * `nros_qos_reliability_t` value, or @ref NROS_DECLARED_POLICY_UNDECLARED.
+ * `rclc_qos_reliability_t` value, or @ref NROS_DECLARED_POLICY_UNDECLARED.
  * The same rows as @ref NROS_DECLARED_RELIABILITY.
  */
-static inline int nros_declared_reliability(const char* nros_type, const char* nros_topic) {
+static inline int rclc_declared_reliability(const char* rclc_type, const char* rclc_topic) {
 #if defined(NROS_DECLARED_QOS_ROWS_Q)
-#define _NROS_DQ_RUNTIME_REL_ROW(nros_t, nros_tp, nros_d, nros_r, nros_u, nros_q_type,             \
-                                 nros_q_topic)                                                     \
-    if (nros_declared_qos_streq((nros_t), (nros_q_type)) &&                                        \
-        nros_declared_qos_streq((nros_tp), (nros_q_topic))) {                                      \
-        return (_NROS_DQ_C_##nros_r);                                                              \
+#define _NROS_DQ_RUNTIME_REL_ROW(rclc_t, rclc_tp, rclc_d, rclc_r, rclc_u, rclc_q_type,             \
+                                 rclc_q_topic)                                                     \
+    if (rclc_declared_qos_streq((rclc_t), (rclc_q_type)) &&                                        \
+        rclc_declared_qos_streq((rclc_tp), (rclc_q_topic))) {                                      \
+        return (_NROS_DQ_C_##rclc_r);                                                              \
     }
-    NROS_DECLARED_QOS_ROWS_Q(_NROS_DQ_RUNTIME_REL_ROW, nros_type, nros_topic)
+    NROS_DECLARED_QOS_ROWS_Q(_NROS_DQ_RUNTIME_REL_ROW, rclc_type, rclc_topic)
 #undef _NROS_DQ_RUNTIME_REL_ROW
 #else
-    (void)nros_type;
-    (void)nros_topic;
+    (void)rclc_type;
+    (void)rclc_topic;
 #endif
     return NROS_DECLARED_POLICY_UNDECLARED;
 }
 
 /**
  * issue 1256 -- the declared DURABILITY at RUNTIME, as an
- * `nros_qos_durability_t` value, or @ref NROS_DECLARED_POLICY_UNDECLARED.
+ * `rclc_qos_durability_t` value, or @ref NROS_DECLARED_POLICY_UNDECLARED.
  */
-static inline int nros_declared_durability(const char* nros_type, const char* nros_topic) {
+static inline int rclc_declared_durability(const char* rclc_type, const char* rclc_topic) {
 #if defined(NROS_DECLARED_QOS_ROWS_Q)
-#define _NROS_DQ_RUNTIME_DUR_ROW(nros_t, nros_tp, nros_d, nros_r, nros_u, nros_q_type,             \
-                                 nros_q_topic)                                                     \
-    if (nros_declared_qos_streq((nros_t), (nros_q_type)) &&                                        \
-        nros_declared_qos_streq((nros_tp), (nros_q_topic))) {                                      \
-        return (_NROS_DQ_C_##nros_u);                                                              \
+#define _NROS_DQ_RUNTIME_DUR_ROW(rclc_t, rclc_tp, rclc_d, rclc_r, rclc_u, rclc_q_type,             \
+                                 rclc_q_topic)                                                     \
+    if (rclc_declared_qos_streq((rclc_t), (rclc_q_type)) &&                                        \
+        rclc_declared_qos_streq((rclc_tp), (rclc_q_topic))) {                                      \
+        return (_NROS_DQ_C_##rclc_u);                                                              \
     }
-    NROS_DECLARED_QOS_ROWS_Q(_NROS_DQ_RUNTIME_DUR_ROW, nros_type, nros_topic)
+    NROS_DECLARED_QOS_ROWS_Q(_NROS_DQ_RUNTIME_DUR_ROW, rclc_type, rclc_topic)
 #undef _NROS_DQ_RUNTIME_DUR_ROW
 #else
-    (void)nros_type;
-    (void)nros_topic;
+    (void)rclc_type;
+    (void)rclc_topic;
 #endif
     return NROS_DECLARED_POLICY_UNDECLARED;
 }
@@ -544,12 +544,12 @@ static inline int nros_declared_durability(const char* nros_type, const char* nr
  *
  * For a call site that cannot be checked at compile time. It answers; it does
  * not print. A caller that wants the two numbers in a diagnostic reads
- * `nros_declared_depth()` for the declared one and already holds the other.
+ * `rclc_declared_depth()` for the declared one and already holds the other.
  */
-static inline int nros_declared_depth_agrees(const char* nros_type, const char* nros_topic,
-                                             int nros_depth) {
-    const int nros_declared = nros_declared_depth(nros_type, nros_topic);
-    return nros_declared == NROS_DECLARED_DEPTH_UNDECLARED || nros_declared == nros_depth;
+static inline int rclc_declared_depth_agrees(const char* rclc_type, const char* rclc_topic,
+                                             int rclc_depth) {
+    const int rclc_declared = rclc_declared_depth(rclc_type, rclc_topic);
+    return rclc_declared == NROS_DECLARED_DEPTH_UNDECLARED || rclc_declared == rclc_depth;
 }
 
 #endif /* !__cplusplus */

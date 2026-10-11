@@ -47,7 +47,7 @@ static int32_t stub_open(void *user_data, const void *params) {
     (void)user_data;
     (void)params;
     s_open_calls++;
-    return 0; /* NROS_RET_OK */
+    return 0; /* RCL_RET_OK */
 }
 
 static void stub_close(void *user_data) {
@@ -60,7 +60,7 @@ static int32_t stub_write(void *user_data, const uint8_t *buf, size_t len) {
     (void)buf;
     (void)len;
     s_write_calls++;
-    return 0; /* NROS_RET_OK */
+    return 0; /* RCL_RET_OK */
 }
 
 static int32_t stub_read(void *user_data, uint8_t *buf, size_t len, uint32_t timeout_ms) {

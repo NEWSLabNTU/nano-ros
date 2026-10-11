@@ -8,12 +8,12 @@
  * `rqt_console` read. Here it is three calls, and the application makes them:
  *
  * @code
- * nros_publisher_t rosout = rcl_get_zero_initialized_publisher();
- * nros_rosout_publisher_init(&rosout, &node, NULL);   // NULL = bounded QoS
- * nros_rosout_enable();                               // AFTER the publisher
+ * rcl_publisher_t rosout = rcl_get_zero_initialized_publisher();
+ * rclc_rosout_publisher_init(&rosout, &node, NULL);   // NULL = bounded QoS
+ * rclc_rosout_enable();                               // AFTER the publisher
  * for (;;) {
  *     rclc_executor_spin_some(&executor, 10000000);
- *     nros_rosout_pump(&rosout, NULL);
+ *     rclc_rosout_pump(&rosout, NULL);
  * }
  * @endcode
  *
@@ -24,14 +24,14 @@
  *
  * **Which records.** Decided by the image's ROS release (RFC-0102 D4): on
  * Humble, and with no release named, records from node loggers only (the
- * logger `nros_node_get_logger()` returns); on Iron/Jazzy, node loggers and
- * their `nros_logger_get_child()` descendants. Free loggers
- * (`nros_log_get_logger()`) never.
+ * logger `rclc_node_get_logger()` returns); on Iron/Jazzy, node loggers and
+ * their `rclc_logger_get_child()` descendants. Free loggers
+ * (`rclc_log_get_logger()`) never.
  *
  * **Build.** Declare the `rosout` capability (`[system].features =
  * ["rosout"]`, or `NROS_FEATURES` for a bare CMake build). Without it every
- * symbol below still links: nros_logging_rosout_enabled() answers false and
- * the others ::NROS_RET_UNSUPPORTED, so a ported program compiles and says why.
+ * symbol below still links: rcl_logging_rosout_enabled() answers false and
+ * the others ::RCL_RET_UNSUPPORTED, so a ported program compiles and says why.
  */
 
 #ifndef NROS_ROSOUT_H
@@ -49,9 +49,9 @@ extern "C" {
 /**
  * `rcl_logging_rosout_enabled()`: true iff this image was built with the
  * `rosout` capability. A build-time answer, as upstream's is — it does not
- * report whether nros_rosout_enable() has been called.
+ * report whether rclc_rosout_enable() has been called.
  */
-bool nros_logging_rosout_enabled(void);
+bool rcl_logging_rosout_enabled(void);
 
 /**
  * Create the `/rosout` publisher on `node` (topic `/rosout`, absolute, so no
@@ -61,31 +61,31 @@ bool nros_logging_rosout_enabled(void);
  *            VOLATILE, 10 s lifespan — which needs no transient-local slot.
  *            A tool that subscribes after boot then misses the boot records;
  *            `ros2 topic echo /rosout` still matches it. Pass
- *            nros_rosout_qos_default() for upstream's TRANSIENT_LOCAL profile
+ *            rclc_rosout_qos_default() for upstream's TRANSIENT_LOCAL profile
  *            on a target that has budgeted for it.
- * @return what nros_publisher_init_with_qos() returns, or
- *         ::NROS_RET_UNSUPPORTED without the `rosout` capability.
+ * @return what rclc_publisher_init_with_qos() returns, or
+ *         ::RCL_RET_UNSUPPORTED without the `rosout` capability.
  */
-nros_ret_t nros_rosout_publisher_init(nros_publisher_t* publisher, const nros_node_t* node,
-                                      const nros_qos_t* qos);
+rcl_ret_t rclc_rosout_publisher_init(rcl_publisher_t* publisher, const rcl_node_t* node,
+                                     const rclc_qos_t* qos);
 
 /**
  * Upstream's `rcl_qos_profile_rosout_default`: KEEP_LAST(1000), RELIABLE,
  * TRANSIENT_LOCAL, 10 s lifespan. On the zenoh backend that is one retention
  * slot plus one queryable, out of a budget of 8 on an embedded build.
  */
-nros_qos_t nros_rosout_qos_default(void);
+rclc_qos_t rclc_rosout_qos_default(void);
 
 /**
  * Start queueing log records for `/rosout`. Call it after
- * nros_rosout_publisher_init(): records queued with nowhere to drain to are
+ * rclc_rosout_publisher_init(): records queued with nowhere to drain to are
  * only counted as dropped.
  *
- * @return ::NROS_RET_OK; ::NROS_RET_ERROR if the queueing sink could not be
- *         registered (sink table full); ::NROS_RET_UNSUPPORTED without the
+ * @return ::RCL_RET_OK; ::RCL_RET_ERROR if the queueing sink could not be
+ *         registered (sink table full); ::RCL_RET_UNSUPPORTED without the
  *         `rosout` capability.
  */
-nros_ret_t nros_rosout_enable(void);
+rcl_ret_t rclc_rosout_enable(void);
 
 /**
  * Publish every queued record on `publisher`. Call it from the spin loop; it
@@ -95,11 +95,11 @@ nros_ret_t nros_rosout_enable(void);
  *
  * @param out_sent NULL, or receives the number of messages that reached the
  *                 transport (on failure: those before the first refusal).
- * @return ::NROS_RET_OK; ::NROS_RET_PUBLISH_FAILED on the first transport
+ * @return ::RCL_RET_OK; ::RCLC_RET_PUBLISH_FAILED on the first transport
  *         refusal (the queue is still drained, so it never wedges);
- *         ::NROS_RET_UNSUPPORTED without the `rosout` capability.
+ *         ::RCL_RET_UNSUPPORTED without the `rosout` capability.
  */
-nros_ret_t nros_rosout_pump(const nros_publisher_t* publisher, size_t* out_sent);
+rcl_ret_t rclc_rosout_pump(const rcl_publisher_t* publisher, size_t* out_sent);
 
 #ifdef __cplusplus
 }

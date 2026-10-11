@@ -2672,7 +2672,7 @@ lang = "c"
 rmw = "zenoh"
 dir = "examples/native/c/listener"
 
-# Issue 0073 — C E2E-safety listener (polls nros_polling_subscription_take_validated).
+# Issue 0073 — C E2E-safety listener (polls rclc_polling_subscription_take_validated).
 # Its CMakeLists forces NROS_SAFETY_E2E=ON, so the harness build (zenoh only —
 # the CRC path) needs no extra flag. Consumed by tests/safety_e2e.rs::
 # test_c_safety_listener_validates_crc (paired with the safety talker).
@@ -2795,7 +2795,7 @@ dir = "examples/native/c/action-client"
 # regression probe, so it lives under packages/testing/ per the examples-are-
 # copy-out-projects rule), but it is a CMake C leaf like any other and builds
 # through the same `linux c zenoh` group. It is the ONLY caller of
-# `nros_polling_action_client_send_goal_raw` in the tree: the FFI shipped a double
+# `rclc_polling_action_client_send_goal_raw` in the tree: the FFI shipped a double
 # encapsulation header precisely because nothing called it.
 [[fixture]]
 platform = "linux"
@@ -2812,8 +2812,8 @@ dir = "packages/testing/nros-tests/bins/action-raw-goal-probe"
 # custom-platform is no longer in that list: issue 1384 gave it a RUNTIME cell
 # (`matrix::CELLS`, `Workload::ExecutorBoundNode`, consumed by
 # `native_example_executor_bound_node_e2e.rs`). It had to. Being build-only is
-# what let its `rclc_publisher_init_default` answer NROS_RET_NOT_INIT for four
-# phases after PR #1064 moved it onto `nros_executor_node_init` — the row
+# what let its `rclc_publisher_init_default` answer RCL_RET_NOT_INIT for four
+# phases after PR #1064 moved it onto `rclc_executor_node_init` — the row
 # compiled and linked in every lane that built it, and no lane ever ran the
 # binary. A build-only row reads as coverage and is not.
 [[fixture]]

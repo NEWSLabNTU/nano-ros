@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import importlib.util
 import re
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -129,10 +130,21 @@ def code_of(text):
     return STRING.sub('""', COMMENT.sub(" ", text))
 
 
+def tracked_headers(base):
+    """The tracked `.h` files under `base` -- an index lookup, not a walk."""
+    rel = Path(base).relative_to(ROOT)
+    out = subprocess.run(
+        ["git", "-C", str(ROOT), "ls-files", "-z", "--", f"{rel}/*.h", f"{rel}/**/*.h"],
+        capture_output=True,
+        check=True,
+    ).stdout
+    return sorted({ROOT / p.decode() for p in out.split(b"\0") if p})
+
+
 def tokens_in(paths):
     out = set()
     for base in paths:
-        for f in sorted(Path(base).rglob("*.h")):
+        for f in tracked_headers(base):
             out |= set(TOKEN.findall(code_of(f.read_text(errors="replace"))))
     return out
 

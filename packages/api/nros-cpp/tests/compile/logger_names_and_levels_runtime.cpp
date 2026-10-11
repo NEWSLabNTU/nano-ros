@@ -60,7 +60,7 @@ void check(bool cond, const char* what) {
 const size_t MAX_RECORDS = 32;
 
 struct Record {
-    nros_log_severity_t severity;
+    rcl_log_severity_t severity;
     char logger[64];
     char message[128];
 };
@@ -76,7 +76,7 @@ void copy_bounded(char* dst, size_t dst_len, const char* src, size_t src_len) {
     dst[n] = '\0';
 }
 
-extern "C" void capture_sink(void* user_data, nros_log_severity_t severity, const char* logger_name,
+extern "C" void capture_sink(void* user_data, rcl_log_severity_t severity, const char* logger_name,
                              size_t logger_name_len, const char* message, size_t message_len,
                              const char* file, size_t file_len, uint32_t line,
                              uint64_t timestamp_ns) {
@@ -120,8 +120,8 @@ int records_anywhere(const char* needle) {
 } // namespace
 
 int main() {
-    nros_log_init();
-    check(nros_log_add_sink(capture_sink, nullptr),
+    rclc_log_init();
+    check(rclc_log_add_sink(capture_sink, nullptr),
           "the capture sink must install — an uninstalled sink never fires, which is "
           "indistinguishable from a filter that dropped everything");
 
@@ -148,8 +148,8 @@ int main() {
     check(static_cast<const void*>(alpha_log) != static_cast<const void*>(beta_log),
           "two nodes answered ONE logger handle — phase-427 W5's defect, and every record in "
           "the image would name the same logger");
-    check(static_cast<const void*>(alpha_log) != nros_log_default_logger() &&
-              static_cast<const void*>(beta_log) != nros_log_default_logger(),
+    check(static_cast<const void*>(alpha_log) != rclc_log_default_logger() &&
+              static_cast<const void*>(beta_log) != rclc_log_default_logger(),
           "a node logger must not BE the catch-all: its threshold is shared with every "
           "unnamed logger, so moving it moves everyone");
     check(std::strcmp(alpha_log.get_name(), "w4d_cpp_alpha") == 0,
@@ -204,11 +204,11 @@ int main() {
     // WRITING A THRESHOLD through it must not, and this is the assertion that
     // says so: redirecting it would move the level of every unnamed logger in
     // the image while reading, at the call site, as if it had moved "orphan"'s.
-    const nros_log_severity_t before = nros_logger_get_level(nros_log_default_logger());
+    const rcl_log_severity_t before = rclc_logger_get_level(rclc_log_default_logger());
     rclcpp::Logger orphan("orphan");
     check(!orphan.set_level(rclcpp::Logger::Level::Fatal).ok(),
           "set_level on a Logger with no handle must REFUSE");
-    check(nros_logger_get_level(nros_log_default_logger()) == before,
+    check(rclc_logger_get_level(rclc_log_default_logger()) == before,
           "a refused set_level must not have moved the CATCH-ALL's level — that redirect is "
           "the silent failure this refusal exists to prevent");
 

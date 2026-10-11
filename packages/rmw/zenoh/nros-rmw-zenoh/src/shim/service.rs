@@ -1289,7 +1289,7 @@ pub struct ZenohServiceClient {
     /// Handles for outstanding non-blocking get operations.
     ///
     /// Was `Option<i32>` (single handle). The C-API blocking
-    /// `nros_client_call` resends the request every ~500 ms during a
+    /// `rclc_client_call` resends the request every ~500 ms during a
     /// discovery race (Phase 89.12 cold-boot fix), each resend calling
     /// `send_request_raw` → `zpico_get_start` → fresh slot. Storing only
     /// the latest handle dropped the older slots: when the server's
@@ -1432,7 +1432,7 @@ impl ZenohServiceClient {
     /// remember it would lose its reply. The dropped handle's reply
     /// (if any) is forfeited; that slot is recycled by the C
     /// allocator once its dropper fires (zenoh-pico query timeout).
-    /// In practice this only triggers when `nros_client_call`'s
+    /// In practice this only triggers when `rclc_client_call`'s
     /// resend loop produces more than `ZPICO_MAX_PENDING_GETS`
     /// generations in a single user-visible call — unusual.
     fn track_outstanding(&mut self, handle: i32, seq: i64) {
@@ -1448,7 +1448,7 @@ impl ClientTrait for ZenohServiceClient {
     type Error = TransportError;
 
     fn register_waker(&self, waker: &core::task::Waker) {
-        // Wake on any outstanding handle — `nros_client_call`'s resend
+        // Wake on any outstanding handle — `rclc_client_call`'s resend
         // can leave several gens in flight; any of them could complete
         // first (see `pending_handles` docs).
         for &(handle, _seq) in &self.pending_handles {

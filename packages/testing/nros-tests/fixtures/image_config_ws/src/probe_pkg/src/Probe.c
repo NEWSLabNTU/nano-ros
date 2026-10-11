@@ -18,18 +18,18 @@ typedef struct {
     int32_t unused;
 } probe_t;
 
-static nros_ret_t probe_configure(const nros_cpp_node_t* node, void* executor, probe_t* self) {
+static rcl_ret_t probe_configure(const nros_cpp_node_t* node, void* executor, probe_t* self) {
     (void)node;
     (void)executor;
     (void)self;
     setvbuf(stdout, NULL, _IOLBF, 0);
-    nros_logger_t logger = nros_log_get_logger("image_config_probe");
-    nros_logger_set_level(logger, NROS_LOG_SEVERITY_DEBUG);
+    rclc_logger_t logger = rclc_log_get_logger("image_config_probe");
+    rclc_logger_set_level(logger, RCLC_LOG_SEVERITY_DEBUG);
     printf("image-config-probe: max_handles=%d info_enabled=%d warn_enabled=%d\n",
            (int)NROS_EXECUTOR_MAX_HANDLES,
-           nros_logger_is_enabled(logger, NROS_LOG_SEVERITY_INFO) ? 1 : 0,
-           nros_logger_is_enabled(logger, NROS_LOG_SEVERITY_WARN) ? 1 : 0);
+           rclc_logger_is_enabled(logger, RCLC_LOG_SEVERITY_INFO) ? 1 : 0,
+           rclc_logger_is_enabled(logger, RCLC_LOG_SEVERITY_WARN) ? 1 : 0);
     return 0;
 }
 
-NROS_C_COMPONENT(probe_t, probe_configure)
+RCLC_C_COMPONENT(probe_t, probe_configure)

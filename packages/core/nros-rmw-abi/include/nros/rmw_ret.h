@@ -164,7 +164,7 @@ typedef int32_t rmw_ret_t;
 /** Phase 155.B.3 — backend reached the wire but couldn't establish a
  *  session: refused TCP connect, unreachable agent, peer dropped the
  *  link mid-handshake. Distinct from `NROS_RMW_RET_ERROR` so callers
- *  (and the C-side `nros_support_init` / `nros_cpp_init` log lines)
+ *  (and the C-side `rclc_support_init` / `nros_cpp_init` log lines)
  *  can distinguish "I can't reach the router" from "internal
  *  backend invariant tripped". Maps to / from
  *  `TransportError::ConnectionFailed` and `Disconnected`. */

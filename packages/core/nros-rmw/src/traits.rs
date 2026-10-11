@@ -233,7 +233,7 @@ impl<'a> ServiceInfo<'a> {
 /// string diagnostic, which can't be `Copy`. Rust callers that used to
 /// copy a `TransportError` value repeatedly now need `.clone()` or
 /// `ref` in match arms. C/C++ callers are unaffected — both map
-/// `TransportError` to integer codes (`nros_ret_t` / `ErrorCode`)
+/// `TransportError` to integer codes (`rcl_ret_t` / `ErrorCode`)
 /// before crossing the FFI boundary.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransportError {
@@ -594,7 +594,7 @@ pub enum QoSOverrideValue {
 /// Issue 0303 — the wire form a baked QoS override travels in:
 /// `(topic, role, policy, value)`, all primitives.
 ///
-/// One numbering for every language: `nros_qos_override_t` (C),
+/// One numbering for every language: `rclc_qos_override_t` (C),
 /// `nros_cpp_qos_override_t` (C++), `RuntimeCtx::qos_overrides` (the Rust
 /// entry bake) and `NodeRecord::qos_overrides` are all THIS tuple. Codes rather
 /// than [`QoSOverride`] because the table crosses the C ABI and rides
@@ -1262,7 +1262,7 @@ qos_profiles! {
 //   Every application-facing preset used to state AUTOMATIC where upstream
 //   states the SYSTEM_DEFAULT sentinel. W10 moved this table and
 //   `rmw_entity.h` onto the sentinel and could not move the remaining three —
-//   `nros-c`'s `NROS_QOS_*`, `nros_c_qos_default()` and `nros::QoS`'s
+//   `nros-c`'s `NROS_QOS_*`, `rclc_c_qos_default()` and `nros::QoS`'s
 //   constructor — because `liveliness_kind` crosses the C ABI as its
 //   discriminant, so flipping one surface alone makes a C caller's default and
 //   a Rust caller's default differ in a field cyclonedds puts on the wire. All
@@ -2300,7 +2300,7 @@ impl QoSPolicyMask {
     /// "which policy was refused".
     ///
     /// The name is stored as a [`core::ffi::CStr`] and not as a `&str`,
-    /// because the C entry point (`nros_qos_policy_kind_to_cstr`) needs the
+    /// because the C entry point (`rclc_qos_policy_kind_to_cstr`) needs the
     /// trailing NUL and a `&str` does not carry one. Storing the `&str` form
     /// and NUL-terminating it in `nros-c` was the first shape here, and it put
     /// the twelve identifiers in a second file — which is the drift this row
@@ -3806,7 +3806,7 @@ pub trait ClientTrait {
     /// from an answer that does not distinguish the two.
     ///
     /// User-facing surface: `Client<S>::server_available()` in Rust,
-    /// `nros_client_server_available()` in C/C++. Clients use this
+    /// `rclc_client_server_available()` in C/C++. Clients use this
     /// to gate the first request so a startup-ordering race
     /// (client opens before server's discovery announcement lands)
     /// doesn't surface as a request-side timeout.

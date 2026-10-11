@@ -12,9 +12,9 @@
 ///  2. **No `printf` substitution.** `nros-baremetal-common`'s `vsnprintf` is a
 ///     stub that copies the format string VERBATIM (deliberately — see its
 ///     doc comment: muteness is worse than an unsubstituted message), so the
-///     `NROS_LOG_INFO(logger, "…%d…")` macros would print their own format
+///     `RCLC_LOG_INFO(logger, "…%d…")` macros would print their own format
 ///     string here. Records are built by hand and emitted through
-///     `nros_log_emit_at`, which takes text and takes no format.
+///     `rclc_log_emit_at`, which takes text and takes no format.
 ///
 /// `NROS_APP_MAIN_REGISTER()` emits `void app_main(void)` on this platform, and
 /// `src/main.rs` is the startup chain that calls it after the board is up —
@@ -46,7 +46,7 @@
 // Backend registration — the image's, exactly as on the cmake road
 // ----------------------------------------------------------------------------
 //
-// `nros_support_init` calls `nros_app_register_backends()` unconditionally: the
+// `rclc_support_init` calls `nros_app_register_backends()` unconditionally: the
 // weak no-op was removed in phase-249 P4a, so every C/C++ image supplies a
 // strong definition. On the cmake road `nano_ros_link_rmw()` GENERATES this exact
 // TU into the build dir; a cargo-rooted image has no such generator, so it is
@@ -54,7 +54,7 @@
 //
 // Not a Rust `nros_rmw_zenoh::register()` in `main.rs` instead, though that call
 // exists and is idempotent (`nros-board-mps2-an385`'s own `entry::boot` makes it):
-// this is the hook `nros_support_init` itself reaches, so defining it is what
+// this is the hook `rclc_support_init` itself reaches, so defining it is what
 // makes the ordering a property of the runtime rather than of the boot shim.
 extern int nros_rmw_zenoh_register(void);
 
@@ -67,21 +67,21 @@ void nros_app_register_backends(void) {
 // ----------------------------------------------------------------------------
 
 typedef struct {
-    nros_publisher_t* publisher;
+    rcl_publisher_t* publisher;
     std_msgs_msg_string message;
     int32_t count;
 } talker_context_t;
 
 static struct {
-    nros_support_t support;
-    nros_node_t node;
-    nros_publisher_t publisher;
+    rclc_support_t support;
+    rcl_node_t node;
+    rcl_publisher_t publisher;
     talker_context_t talker_ctx;
-    nros_timer_t timer;
-    nros_executor_t executor;
+    rcl_timer_t timer;
+    rclc_executor_t executor;
 } app;
 
-static nros_logger_t g_logger;
+static rclc_logger_t g_logger;
 
 // ----------------------------------------------------------------------------
 // Hand-rolled formatting — see the file header for why printf is unavailable
@@ -117,15 +117,15 @@ static size_t append_str(char* out, size_t cap, size_t pos, const char* text) {
 }
 
 /// Emit one already-built line, so no call site hand-counts a length.
-static void emit(nros_log_severity_t severity, const char* text, const char* file, uint32_t line) {
-    nros_log_emit_at(g_logger, severity, text, strlen(text), file, line);
+static void emit(rcl_log_severity_t severity, const char* text, const char* file, uint32_t line) {
+    rclc_log_emit_at(g_logger, severity, text, strlen(text), file, line);
 }
 
 // ----------------------------------------------------------------------------
 // Timer callback — publish one message
 // ----------------------------------------------------------------------------
 
-static void timer_callback(struct nros_timer_t* timer, void* context) {
+static void timer_callback(struct rcl_timer_t* timer, void* context) {
     (void)timer;
     talker_context_t* ctx = (talker_context_t*)context;
 
@@ -137,7 +137,7 @@ static void timer_callback(struct nros_timer_t* timer, void* context) {
     pos = append_u32(ctx->message.data, msg_cap, pos, (uint32_t)ctx->count);
     ctx->message.data[pos] = '\0';
 
-    NROS_SOFTCHECK(std_msgs_msg_string_publish(ctx->publisher, &ctx->message));
+    RCLC_SOFTCHECK(std_msgs_msg_string_publish(ctx->publisher, &ctx->message));
 
     // The marker the QEMU e2e greps for, spelled the way the `rust/talker`
     // sibling spells it (`nros_tests::output` owns the constant). Sized from the
@@ -148,7 +148,7 @@ static void timer_callback(struct nros_timer_t* timer, void* context) {
     len = append_str(line, sizeof(line), len, ctx->message.data);
     len = append_str(line, sizeof(line), len, "'");
     line[len] = '\0';
-    emit(NROS_LOG_SEVERITY_INFO, line, __FILE__, __LINE__);
+    emit(RCLC_LOG_SEVERITY_INFO, line, __FILE__, __LINE__);
 }
 
 // ----------------------------------------------------------------------------
@@ -164,12 +164,12 @@ int nros_app_main(int argc, char** argv) {
     // the empty bottom rung, which the linked backend substitutes its own
     // default for; baking this image's `[image.*] locator` from `system.toml`
     // is what the runtime lane needs and is tracked on issue 1512.
-    NROS_CHECK_RET(
-        nros_support_init(&app.support, NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID), 1);
-    NROS_CHECK_RET(rclc_node_init_default(&app.node, "talker", "/", &app.support), 1);
-    g_logger = nros_node_get_logger(&app.node);
+    RCLC_CHECK_RET(
+        rclc_support_init(&app.support, NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID), 1);
+    RCLC_CHECK_RET(rclc_node_init_default(&app.node, "talker", "/", &app.support), 1);
+    g_logger = rclc_node_get_logger(&app.node);
 
-    NROS_CHECK_RET(rclc_publisher_init_default(&app.publisher, &app.node,
+    RCLC_CHECK_RET(rclc_publisher_init_default(&app.publisher, &app.node,
                                                std_msgs_msg_string_get_type_support(), "/chatter"),
                    1);
 
@@ -177,23 +177,23 @@ int nros_app_main(int argc, char** argv) {
     app.talker_ctx.count = 0;
     std_msgs_msg_string_init(&app.talker_ctx.message);
 
-    NROS_CHECK_RET(
-        nros_timer_init(&app.timer, &app.support, 1000000000ULL, timer_callback, &app.talker_ctx),
+    RCLC_CHECK_RET(
+        rcl_timer_init(&app.timer, &app.support, 1000000000ULL, timer_callback, &app.talker_ctx),
         1);
-    NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
-    NROS_CHECK_RET(rclc_executor_add_timer(&app.executor, &app.timer), 1);
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support, 4), 1);
+    RCLC_CHECK_RET(rclc_executor_add_timer(&app.executor, &app.timer), 1);
 
     // Spin forever with a 100 ms period. There is no signal to cancel on and no
     // process to return to: on this board `app_main` returning is the end of the
     // image, which `src/main.rs` turns into a semihosting exit.
-    nros_ret_t ret = rclc_executor_spin_period(&app.executor, 100000000ULL);
-    if (ret != NROS_RET_OK) {
-        emit(NROS_LOG_SEVERITY_ERROR, "executor spin failed", __FILE__, __LINE__);
+    rcl_ret_t ret = rclc_executor_spin_period(&app.executor, 100000000ULL);
+    if (ret != RCL_RET_OK) {
+        emit(RCLC_LOG_SEVERITY_ERROR, "executor spin failed", __FILE__, __LINE__);
     }
 
     rclc_executor_fini(&app.executor);
     rcl_timer_fini(&app.timer);
-    nros_publisher_fini(&app.publisher);
+    rcl_publisher_fini(&app.publisher);
     rcl_node_fini(&app.node);
     rclc_support_fini(&app.support);
     return 0;

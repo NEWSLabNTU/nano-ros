@@ -747,7 +747,7 @@ macro_rules! zephyr_component_main {
             // framework record was constructed, dispatched and never seen.
             //
             // This is the funnel: a pure-Rust Zephyr image has no
-            // `libnros_c.a` (issue 0163), so `nros_log_init` / `nros_log_emit`'s
+            // `libnros_c.a` (issue 0163), so `rclc_log_init` / `rclc_log_emit`'s
             // lazy `ensure_default_sinks()` never run, and `nros-board-zephyr`
             // covers only `run_tiers`. Reached through `nros_platform` because
             // the example leaves dep that and not `nros-platform-cffi`.
@@ -1091,7 +1091,7 @@ pub mod internals {
         };
         // Phase 155.B — propagate the real `TransportError` instead of
         // collapsing every backend failure to `ConnectionFailed`. The
-        // C-side `nros_support_init` decodes the variant into a
+        // C-side `rclc_support_init` decodes the variant into a
         // specific `NROS_RET_*` code so "init -> -X" tells the user
         // which precondition the backend rejected.
         // issue 1050 defect (3) — the selector ARRIVES here now. It used to be
@@ -1142,7 +1142,7 @@ pub use nros_node::{
 // Nothing here changes what `nros::` exports.
 //
 // There is deliberately NO numeric code type beside them. A Rust caller matches
-// a flat enum; the numeric vocabulary is the C ABI's `nros_ret_t` /
+// a flat enum; the numeric vocabulary is the C ABI's `rcl_ret_t` /
 // `NROS_RET_*` (0, -1..-16), which is its own space and not `rcl_ret_t`'s.
 // nros-core carried an `rcl_ret_t` mirror (`RclReturnCode`) and an error that
 // wrapped it (`NanoRosError`); neither was ever reachable from this facade and

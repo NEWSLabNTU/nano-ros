@@ -54,7 +54,7 @@ static inline int32_t probe_msg_reading_deserialize_erased(void* msg, const uint
 #define PROBE_MSG_READING_RX_MAX_SERIALIZED_SIZE 48
 #define probe_msg_reading_executor_add_subscription_sized(executor, subscription, msg, cb, ctx,    \
                                                           invocation, rx_bytes)                    \
-    nros_executor_add_subscription_typed_sized(                                                    \
+    rclc_executor_add_subscription_typed_sized(                                                    \
         (executor), (subscription), (1 ? (msg) : (probe_msg_reading*)0),                           \
         probe_msg_reading_deserialize_erased, (cb), (ctx), (invocation), (uint32_t)(rx_bytes))
 #define probe_msg_reading_executor_add_subscription(executor, subscription, msg, cb, ctx,          \
@@ -64,8 +64,8 @@ static inline int32_t probe_msg_reading_deserialize_erased(void* msg, const uint
                                                       PROBE_MSG_READING_RX_MAX_SERIALIZED_SIZE)
 
 static struct {
-    nros_executor_t executor;
-    nros_subscription_t subscription;
+    rclc_executor_t executor;
+    rcl_subscription_t subscription;
     /* The storage the caller owns -- and it is the WRONG type for the
      * subscription being registered below. */
     probe_msg_command msg;
@@ -76,11 +76,11 @@ static void probe_on_reading(const void* msgin, void* context) {
     (void)context;
 }
 
-nros_ret_t nros_typed_subscription_mismatch_probe(void);
-nros_ret_t nros_typed_subscription_mismatch_probe(void) {
+rcl_ret_t nros_typed_subscription_mismatch_probe(void);
+rcl_ret_t nros_typed_subscription_mismatch_probe(void) {
     /* `&g_app.msg` is a `probe_msg_command*`; the registration is for
      * `probe_msg_reading`. This is the line that must not compile. */
     return probe_msg_reading_executor_add_subscription(&g_app.executor, &g_app.subscription,
                                                        &g_app.msg, probe_on_reading, NULL,
-                                                       NROS_EXECUTOR_ON_NEW_DATA);
+                                                       RCLC_EXECUTOR_ON_NEW_DATA);
 }

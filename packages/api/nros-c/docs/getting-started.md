@@ -75,8 +75,8 @@ Resolution order for each file:
 2. `${AMENT_PREFIX_PATH}/share/<target>/<file>` (ROS 2 install)
 3. `<install_prefix>/share/nano-ros/interfaces/<target>/<file>` (bundled)
 
-Generated type info structs (`nros_message_type_t`, `nros_service_type_t`,
-`nros_action_type_t`) are defined in `<nros/types.h>`.
+Generated type info structs (`rclc_message_type_t`, `rclc_service_type_t`,
+`rclc_action_type_t`) are defined in `<nros/types.h>`.
 
 ## 3. RMW Backend Selection
 
@@ -104,7 +104,7 @@ Create `src/main.c`:
  * For this example we define a minimal Int32 manually. */
 typedef struct { int32_t data; } std_msgs_Int32;
 
-static const nros_message_type_t std_msgs_Int32_type = {
+static const rclc_message_type_t std_msgs_Int32_type = {
     .type_name = "std_msgs::msg::dds_::Int32_",
     .type_hash = "RIHS01_5bf22a2e7c2c8a4ca3f55054648f6d8c7c77cc0ae5695a1ff1df0b7ef8df1f09",
     .serialized_size_max = 8,
@@ -123,22 +123,22 @@ static int32_t serialize_int32(const std_msgs_Int32 *msg,
     return 8;
 }
 
-static nros_publisher_t *g_pub;
+static rcl_publisher_t *g_pub;
 static int g_count = 0;
 
-static void timer_cb(struct nros_timer_t *timer, void *ctx) {
+static void timer_cb(struct rcl_timer_t *timer, void *ctx) {
     (void)timer; (void)ctx;
     g_count++;
     std_msgs_Int32 msg = { .data = g_count };
     uint8_t buf[64];
     int32_t len = serialize_int32(&msg, buf, sizeof(buf));
-    if (len > 0 && nros_publish_raw(g_pub, buf, (size_t)len) == NROS_RET_OK) {
+    if (len > 0 && rclc_publish_raw(g_pub, buf, (size_t)len) == RCL_RET_OK) {
         printf("Published: %d\n", g_count);
     }
 }
 
 static volatile sig_atomic_t running = 1;
-static nros_executor_t *g_exec;
+static rclc_executor_t *g_exec;
 
 static void on_signal(int sig) {
     (void)sig;
@@ -151,25 +151,25 @@ int main(void) {
     if (!locator) locator = "tcp/127.0.0.1:7447";
 
     /* Initialise transport */
-    nros_support_t support = nros_support_get_zero_initialized();
-    if (nros_support_init(&support, locator, 0) != NROS_RET_OK) return 1;
+    rclc_support_t support = rclc_support_get_zero_initialized();
+    if (rclc_support_init(&support, locator, 0) != RCL_RET_OK) return 1;
 
     /* Create node */
-    nros_node_t node = nros_node_get_zero_initialized();
+    rcl_node_t node = nros_node_get_zero_initialized();
     nros_node_init(&node, &support, "c_talker", "/");
 
     /* Create publisher */
-    nros_publisher_t pub = nros_publisher_get_zero_initialized();
+    rcl_publisher_t pub = nros_publisher_get_zero_initialized();
     nros_publisher_init(&pub, &node, &std_msgs_Int32_type, "/chatter");
     g_pub = &pub;
 
     /* Create 1 Hz timer */
-    nros_timer_t timer = nros_timer_get_zero_initialized();
-    nros_timer_init(&timer, &support, 1000000000ULL, timer_cb, NULL);
+    rcl_timer_t timer = nros_timer_get_zero_initialized();
+    rcl_timer_init(&timer, &support, 1000000000ULL, timer_cb, NULL);
 
     /* Create executor and add timer */
-    nros_executor_t exec = nros_executor_get_zero_initialized();
-    nros_executor_init(&exec, &support, 4);
+    rclc_executor_t exec = nros_executor_get_zero_initialized();
+    rclc_executor_init(&exec, &support, 4);
     nros_executor_add_timer(&exec, &timer);
     g_exec = &exec;
 
@@ -180,7 +180,7 @@ int main(void) {
     /* Tear down in reverse order */
     nros_executor_fini(&exec);
     nros_timer_fini(&timer);
-    nros_publisher_fini(&pub);
+    rcl_publisher_fini(&pub);
     nros_node_fini(&node);
     nros_support_fini(&support);
     return 0;

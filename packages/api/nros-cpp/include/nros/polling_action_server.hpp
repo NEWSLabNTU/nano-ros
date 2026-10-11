@@ -185,7 +185,7 @@ template <typename A> class PollingActionServer {
     /// Terminate `goal_id` as SUCCEEDED — phase-417 W4.b.
     ///
     /// The same three terminal verbs `ActionServer<A>` grew, for the same
-    /// reason: C spells them `nros_action_succeed` / `_abort` / `_canceled`,
+    /// reason: C spells them `rclc_action_succeed` / `_abort` / `_canceled`,
     /// Rust `ActionServerHandle::succeed` / `abort` / `canceled`, and
     /// rclcpp_action `goal_handle->succeed(result)`. Forwarders onto
     /// `complete_goal` — no state, no second code path.

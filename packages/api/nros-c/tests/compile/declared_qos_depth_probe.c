@@ -21,7 +21,7 @@
  *
  *   error: static assertion failed: "nros: the QoS depth passed for topic
  *          "/chatter" disagrees with the depth declared for that topic ..."
- *   error: conflicting types for 'nros_declared_depth_vs_passed_at_line_NN';
+ *   error: conflicting types for 'rclc_declared_depth_vs_passed_at_line_NN';
  *          have 'char[10]'
  *   note: previous declaration ... with type 'char[1]'
  *

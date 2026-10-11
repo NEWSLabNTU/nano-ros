@@ -3,10 +3,10 @@
 /// (RFC-0043 / phase-244.C4).
 ///
 /// `talker_configure` creates a raw publisher on `/chatter` + a 1 Hz timer that
-/// publishes a CDR-encoded Int32 counter. `NROS_C_COMPONENT` emits the C-ABI
+/// publishes a CDR-encoded Int32 counter. `RCLC_C_COMPONENT` emits the C-ABI
 /// factory/configure the native typed Entry carrier (the shared entry pack)
 /// calls; the carrier runs it on the real executor (NativeBoard::run_components) —
-/// no hand-written `nros_app_main`, no `nros_support_init`/`node_init`/
+/// no hand-written `nros_app_main`, no `rclc_support_init`/`node_init`/
 /// `executor_init`/spin-loop boilerplate (issue-0049 P1/P7).
 
 #include <stddef.h>
@@ -35,10 +35,10 @@ static void on_tick(void* ctx) {
     self->count++;
 }
 
-static nros_ret_t talker_configure(const nros_cpp_node_t* node, void* executor, talker_t* self) {
+static rcl_ret_t talker_configure(const nros_cpp_node_t* node, void* executor, talker_t* self) {
     self->count = 0;
     int32_t rc = nros_cpp_publisher_create(node, "/chatter", std_msgs_msg_int32_get_type_name(), "",
-                                           nros_c_qos_default(), self->pub);
+                                           rclc_c_qos_default(), self->pub);
     if (rc != 0) {
         return rc;
     }
@@ -46,4 +46,4 @@ static nros_ret_t talker_configure(const nros_cpp_node_t* node, void* executor, 
     return nros_cpp_timer_create(executor, /*period_ms=*/1000, on_tick, self, &timer_handle);
 }
 
-NROS_C_COMPONENT(talker_t, talker_configure)
+RCLC_C_COMPONENT(talker_t, talker_configure)

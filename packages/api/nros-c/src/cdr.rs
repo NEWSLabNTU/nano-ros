@@ -45,7 +45,7 @@ fn reader_at(buf: &[u8], pos: usize) -> Result<CdrReader<'_>, DeserError> {
 /// # Safety
 /// `ptr` is a `*mut *mut u8` cursor; `end` bounds the buffer.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cdr_write_encaps_header(ptr: *mut *mut u8, end: *const u8) -> i32 {
+pub unsafe extern "C" fn rclc_cdr_write_encaps_header(ptr: *mut *mut u8, end: *const u8) -> i32 {
     if ptr.is_null() || end.is_null() {
         return -1;
     }
@@ -71,13 +71,13 @@ pub unsafe extern "C" fn nros_cdr_write_encaps_header(ptr: *mut *mut u8, end: *c
 /// DHEADER at the cursor (aligned) and advances it, returning the mark (its byte
 /// offset). Under XCDR1 (humble) this is a NO-OP returning `-1`. The generated C
 /// `_serialize_inline` calls this at the top of every struct and passes the mark
-/// to [`nros_cdr_end_dheader`]. Returns `-2` on any bounds/pointer failure.
+/// to [`rclc_cdr_end_dheader`]. Returns `-2` on any bounds/pointer failure.
 ///
 /// # Safety
 /// `ptr`/`end`/`origin` follow the same `(cursor, end, origin)` contract as the
 /// write helpers.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cdr_begin_dheader(
+pub unsafe extern "C" fn rclc_cdr_begin_dheader(
     ptr: *mut *mut u8,
     end: *const u8,
     origin: *const u8,
@@ -108,13 +108,13 @@ pub unsafe extern "C" fn nros_cdr_begin_dheader(
 }
 
 /// Finish a DHEADER-delimited struct: backpatch the reserved slot (from
-/// [`nros_cdr_begin_dheader`]) with the bytes written since. `mark < 0` (XCDR1)
+/// [`rclc_cdr_begin_dheader`]) with the bytes written since. `mark < 0` (XCDR1)
 /// is a no-op. Returns 0 on success, -1 on failure.
 ///
 /// # Safety
 /// Same buffer contract as the write helpers.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cdr_end_dheader(
+pub unsafe extern "C" fn rclc_cdr_end_dheader(
     mark: i64,
     ptr: *mut *mut u8,
     end: *const u8,
@@ -148,12 +148,12 @@ pub unsafe extern "C" fn nros_cdr_end_dheader(
 /// Begin reading a DHEADER-delimited struct. Under XCDR2 reads the 4-byte
 /// DHEADER at the cursor (advancing it) and returns the struct's END offset;
 /// under XCDR1 returns `-1` (no-op). Returns `-2` on failure. The generated C
-/// `_deserialize` passes the result to [`nros_cdr_end_dheader_read`].
+/// `_deserialize` passes the result to [`rclc_cdr_end_dheader_read`].
 ///
 /// # Safety
 /// Same `(cursor, end, origin)` contract as the read helpers.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cdr_begin_dheader_read(
+pub unsafe extern "C" fn rclc_cdr_begin_dheader_read(
     ptr: *mut *const u8,
     end: *const u8,
     origin: *const u8,
@@ -185,13 +185,13 @@ pub unsafe extern "C" fn nros_cdr_begin_dheader_read(
 
 /// Finish reading a DHEADER-delimited struct: skip any unknown trailing members
 /// by advancing the cursor to the struct END (`scope` from
-/// [`nros_cdr_begin_dheader_read`]). `scope < 0` (XCDR1) is a no-op. Returns 0
+/// [`rclc_cdr_begin_dheader_read`]). `scope < 0` (XCDR1) is a no-op. Returns 0
 /// on success, -1 if the reader over-read past the declared end.
 ///
 /// # Safety
 /// Same buffer contract as the read helpers.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cdr_end_dheader_read(
+pub unsafe extern "C" fn rclc_cdr_end_dheader_read(
     scope: i64,
     ptr: *mut *const u8,
     end: *const u8,
@@ -300,7 +300,7 @@ where
 /// Returns 0 on success, -1 if the cursor would overrun `end` or any
 /// pointer is null.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cdr_write_bool(
+pub unsafe extern "C" fn rclc_cdr_write_bool(
     ptr: *mut *mut u8,
     end: *const u8,
     origin: *const u8,
@@ -310,9 +310,9 @@ pub unsafe extern "C" fn nros_cdr_write_bool(
 }
 
 /// Write a CDR-encoded `uint8_t` and advance the cursor. See
-/// [`nros_cdr_write_bool`] for the buffer contract.
+/// [`rclc_cdr_write_bool`] for the buffer contract.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cdr_write_u8(
+pub unsafe extern "C" fn rclc_cdr_write_u8(
     ptr: *mut *mut u8,
     end: *const u8,
     origin: *const u8,
@@ -323,7 +323,7 @@ pub unsafe extern "C" fn nros_cdr_write_u8(
 
 /// Write a CDR-encoded `int8_t` and advance the cursor.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cdr_write_i8(
+pub unsafe extern "C" fn rclc_cdr_write_i8(
     ptr: *mut *mut u8,
     end: *const u8,
     origin: *const u8,
@@ -335,7 +335,7 @@ pub unsafe extern "C" fn nros_cdr_write_i8(
 /// Write a CDR-encoded `uint16_t` (2 bytes, little-endian, 2-byte
 /// aligned) and advance the cursor.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cdr_write_u16(
+pub unsafe extern "C" fn rclc_cdr_write_u16(
     ptr: *mut *mut u8,
     end: *const u8,
     origin: *const u8,
@@ -346,7 +346,7 @@ pub unsafe extern "C" fn nros_cdr_write_u16(
 
 /// Write a CDR-encoded `int16_t` and advance the cursor.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cdr_write_i16(
+pub unsafe extern "C" fn rclc_cdr_write_i16(
     ptr: *mut *mut u8,
     end: *const u8,
     origin: *const u8,
@@ -358,7 +358,7 @@ pub unsafe extern "C" fn nros_cdr_write_i16(
 /// Write a CDR-encoded `uint32_t` (4 bytes, little-endian, 4-byte
 /// aligned) and advance the cursor.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cdr_write_u32(
+pub unsafe extern "C" fn rclc_cdr_write_u32(
     ptr: *mut *mut u8,
     end: *const u8,
     origin: *const u8,
@@ -369,7 +369,7 @@ pub unsafe extern "C" fn nros_cdr_write_u32(
 
 /// Write a CDR-encoded `int32_t` and advance the cursor.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cdr_write_i32(
+pub unsafe extern "C" fn rclc_cdr_write_i32(
     ptr: *mut *mut u8,
     end: *const u8,
     origin: *const u8,
@@ -381,7 +381,7 @@ pub unsafe extern "C" fn nros_cdr_write_i32(
 /// Write a CDR-encoded `uint64_t` (8 bytes, little-endian, 8-byte
 /// aligned) and advance the cursor.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cdr_write_u64(
+pub unsafe extern "C" fn rclc_cdr_write_u64(
     ptr: *mut *mut u8,
     end: *const u8,
     origin: *const u8,
@@ -392,7 +392,7 @@ pub unsafe extern "C" fn nros_cdr_write_u64(
 
 /// Write a CDR-encoded `int64_t` and advance the cursor.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cdr_write_i64(
+pub unsafe extern "C" fn rclc_cdr_write_i64(
     ptr: *mut *mut u8,
     end: *const u8,
     origin: *const u8,
@@ -404,7 +404,7 @@ pub unsafe extern "C" fn nros_cdr_write_i64(
 /// Write a CDR-encoded IEEE-754 `float` (4-byte aligned) and advance
 /// the cursor.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cdr_write_f32(
+pub unsafe extern "C" fn rclc_cdr_write_f32(
     ptr: *mut *mut u8,
     end: *const u8,
     origin: *const u8,
@@ -416,7 +416,7 @@ pub unsafe extern "C" fn nros_cdr_write_f32(
 /// Write a CDR-encoded IEEE-754 `double` (8-byte aligned) and advance
 /// the cursor.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cdr_write_f64(
+pub unsafe extern "C" fn rclc_cdr_write_f64(
     ptr: *mut *mut u8,
     end: *const u8,
     origin: *const u8,
@@ -427,7 +427,7 @@ pub unsafe extern "C" fn nros_cdr_write_f64(
 
 /// Write a null-terminated string (CDR: u32 length inc. null + bytes + null).
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cdr_write_string(
+pub unsafe extern "C" fn rclc_cdr_write_string(
     ptr: *mut *mut u8,
     end: *const u8,
     origin: *const u8,
@@ -446,7 +446,7 @@ pub unsafe extern "C" fn nros_cdr_write_string(
 
 /// Write a ptr+len string (CDR: u32 length inc. null + bytes + null).
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cdr_write_string_n(
+pub unsafe extern "C" fn rclc_cdr_write_string_n(
     ptr: *mut *mut u8,
     end: *const u8,
     origin: *const u8,
@@ -482,7 +482,7 @@ fn write_string_payload(w: &mut CdrWriter<'_>, data: &[u8]) -> Result<(), SerErr
 /// Returns 0 on success, -1 if the cursor would overrun `end`, the
 /// payload is malformed, or any pointer is null.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cdr_read_bool(
+pub unsafe extern "C" fn rclc_cdr_read_bool(
     ptr: *mut *const u8,
     end: *const u8,
     origin: *const u8,
@@ -498,9 +498,9 @@ pub unsafe extern "C" fn nros_cdr_read_bool(
 }
 
 /// Read a CDR-encoded `uint8_t` into `*value` and advance the cursor.
-/// See [`nros_cdr_read_bool`] for the buffer contract.
+/// See [`rclc_cdr_read_bool`] for the buffer contract.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cdr_read_u8(
+pub unsafe extern "C" fn rclc_cdr_read_u8(
     ptr: *mut *const u8,
     end: *const u8,
     origin: *const u8,
@@ -517,7 +517,7 @@ pub unsafe extern "C" fn nros_cdr_read_u8(
 
 /// Read a CDR-encoded `int8_t` into `*value` and advance the cursor.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cdr_read_i8(
+pub unsafe extern "C" fn rclc_cdr_read_i8(
     ptr: *mut *const u8,
     end: *const u8,
     origin: *const u8,
@@ -534,7 +534,7 @@ pub unsafe extern "C" fn nros_cdr_read_i8(
 
 /// Read a CDR-encoded `uint16_t` (2-byte aligned) into `*value`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cdr_read_u16(
+pub unsafe extern "C" fn rclc_cdr_read_u16(
     ptr: *mut *const u8,
     end: *const u8,
     origin: *const u8,
@@ -551,7 +551,7 @@ pub unsafe extern "C" fn nros_cdr_read_u16(
 
 /// Read a CDR-encoded `int16_t` into `*value`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cdr_read_i16(
+pub unsafe extern "C" fn rclc_cdr_read_i16(
     ptr: *mut *const u8,
     end: *const u8,
     origin: *const u8,
@@ -568,7 +568,7 @@ pub unsafe extern "C" fn nros_cdr_read_i16(
 
 /// Read a CDR-encoded `uint32_t` (4-byte aligned) into `*value`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cdr_read_u32(
+pub unsafe extern "C" fn rclc_cdr_read_u32(
     ptr: *mut *const u8,
     end: *const u8,
     origin: *const u8,
@@ -585,7 +585,7 @@ pub unsafe extern "C" fn nros_cdr_read_u32(
 
 /// Read a CDR-encoded `int32_t` into `*value`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cdr_read_i32(
+pub unsafe extern "C" fn rclc_cdr_read_i32(
     ptr: *mut *const u8,
     end: *const u8,
     origin: *const u8,
@@ -602,7 +602,7 @@ pub unsafe extern "C" fn nros_cdr_read_i32(
 
 /// Read a CDR-encoded `uint64_t` (8-byte aligned) into `*value`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cdr_read_u64(
+pub unsafe extern "C" fn rclc_cdr_read_u64(
     ptr: *mut *const u8,
     end: *const u8,
     origin: *const u8,
@@ -619,7 +619,7 @@ pub unsafe extern "C" fn nros_cdr_read_u64(
 
 /// Read a CDR-encoded `int64_t` into `*value`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cdr_read_i64(
+pub unsafe extern "C" fn rclc_cdr_read_i64(
     ptr: *mut *const u8,
     end: *const u8,
     origin: *const u8,
@@ -636,7 +636,7 @@ pub unsafe extern "C" fn nros_cdr_read_i64(
 
 /// Read a CDR-encoded IEEE-754 `float` into `*value`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cdr_read_f32(
+pub unsafe extern "C" fn rclc_cdr_read_f32(
     ptr: *mut *const u8,
     end: *const u8,
     origin: *const u8,
@@ -653,7 +653,7 @@ pub unsafe extern "C" fn nros_cdr_read_f32(
 
 /// Read a CDR-encoded IEEE-754 `double` into `*value`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cdr_read_f64(
+pub unsafe extern "C" fn rclc_cdr_read_f64(
     ptr: *mut *const u8,
     end: *const u8,
     origin: *const u8,
@@ -671,7 +671,7 @@ pub unsafe extern "C" fn nros_cdr_read_f64(
 /// Read a CDR string into a fixed-size C buffer. Fails if the encoded length
 /// exceeds `max_len`. Always null-terminates the output on success.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cdr_read_string(
+pub unsafe extern "C" fn rclc_cdr_read_string(
     ptr: *mut *const u8,
     end: *const u8,
     origin: *const u8,
@@ -707,7 +707,7 @@ pub unsafe extern "C" fn nros_cdr_read_string(
 /// Returns 0 on success, -1 if `alignment` is 0 or the padding would run past
 /// `end`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cdr_align(
+pub unsafe extern "C" fn rclc_cdr_align(
     ptr: *mut *const u8,
     end: *const u8,
     origin: *const u8,
@@ -741,12 +741,12 @@ mod tests {
         let end = unsafe { buffer.as_ptr().add(buffer.len()) };
         let origin = buffer.as_ptr();
         unsafe {
-            assert_eq!(nros_cdr_write_u32(&mut ptr, end, origin, 0x12345678), 0);
+            assert_eq!(rclc_cdr_write_u32(&mut ptr, end, origin, 0x12345678), 0);
         }
         let mut read_ptr = buffer.as_ptr();
         let mut value: u32 = 0;
         unsafe {
-            assert_eq!(nros_cdr_read_u32(&mut read_ptr, end, origin, &mut value), 0);
+            assert_eq!(rclc_cdr_read_u32(&mut read_ptr, end, origin, &mut value), 0);
         }
         assert_eq!(value, 0x12345678);
     }
@@ -758,12 +758,12 @@ mod tests {
         let end = unsafe { buffer.as_ptr().add(buffer.len()) };
         let origin = buffer.as_ptr();
         unsafe {
-            assert_eq!(nros_cdr_write_i32(&mut ptr, end, origin, -12345), 0);
+            assert_eq!(rclc_cdr_write_i32(&mut ptr, end, origin, -12345), 0);
         }
         let mut read_ptr = buffer.as_ptr();
         let mut value: i32 = 0;
         unsafe {
-            assert_eq!(nros_cdr_read_i32(&mut read_ptr, end, origin, &mut value), 0);
+            assert_eq!(rclc_cdr_read_i32(&mut read_ptr, end, origin, &mut value), 0);
         }
         assert_eq!(value, -12345);
     }
@@ -776,12 +776,12 @@ mod tests {
         let origin = buffer.as_ptr();
         let test_val = 1234567.89012345_f64;
         unsafe {
-            assert_eq!(nros_cdr_write_f64(&mut ptr, end, origin, test_val), 0);
+            assert_eq!(rclc_cdr_write_f64(&mut ptr, end, origin, test_val), 0);
         }
         let mut read_ptr = buffer.as_ptr();
         let mut value: f64 = 0.0;
         unsafe {
-            assert_eq!(nros_cdr_read_f64(&mut read_ptr, end, origin, &mut value), 0);
+            assert_eq!(rclc_cdr_read_f64(&mut read_ptr, end, origin, &mut value), 0);
         }
         assert_eq!(value, test_val);
     }
@@ -795,7 +795,7 @@ mod tests {
         let test_str = b"Hello, World!\0";
         unsafe {
             assert_eq!(
-                nros_cdr_write_string(&mut ptr, end, origin, test_str.as_ptr() as *const c_char),
+                rclc_cdr_write_string(&mut ptr, end, origin, test_str.as_ptr() as *const c_char),
                 0
             );
         }
@@ -805,7 +805,7 @@ mod tests {
         let mut value: [c_char; 32] = [0; 32];
         unsafe {
             assert_eq!(
-                nros_cdr_read_string(&mut read_ptr, end, origin, value.as_mut_ptr(), value.len()),
+                rclc_cdr_read_string(&mut read_ptr, end, origin, value.as_mut_ptr(), value.len()),
                 0
             );
         }
@@ -820,8 +820,8 @@ mod tests {
         let end = unsafe { buffer.as_ptr().add(buffer.len()) };
         let origin = buffer.as_ptr();
         unsafe {
-            assert_eq!(nros_cdr_write_u8(&mut ptr, end, origin, 0xAA), 0);
-            assert_eq!(nros_cdr_write_u32(&mut ptr, end, origin, 0x12345678), 0);
+            assert_eq!(rclc_cdr_write_u8(&mut ptr, end, origin, 0xAA), 0);
+            assert_eq!(rclc_cdr_write_u32(&mut ptr, end, origin, 0x12345678), 0);
         }
         assert_eq!(buffer[0], 0xAA);
         assert_eq!(buffer[1], 0);
@@ -845,13 +845,13 @@ mod tests {
         let mut ptr = unsafe { buffer.as_mut_ptr().add(4) };
         let test_val: i64 = 0x0102030405060708;
         unsafe {
-            assert_eq!(nros_cdr_write_i64(&mut ptr, end, origin, test_val), 0);
+            assert_eq!(rclc_cdr_write_i64(&mut ptr, end, origin, test_val), 0);
         }
         assert_eq!(ptr, unsafe { buffer.as_mut_ptr().add(12) });
         let mut read_ptr: *const u8 = unsafe { buffer.as_ptr().add(4) };
         let mut value: i64 = 0;
         unsafe {
-            assert_eq!(nros_cdr_read_i64(&mut read_ptr, end, origin, &mut value), 0);
+            assert_eq!(rclc_cdr_read_i64(&mut read_ptr, end, origin, &mut value), 0);
         }
         assert_eq!(value, test_val);
     }
@@ -867,16 +867,16 @@ mod tests {
         let origin = unsafe { buffer.as_ptr().add(4) };
         let mut ptr = unsafe { buffer.as_mut_ptr().add(4) };
         unsafe {
-            assert_eq!(nros_cdr_write_i64(&mut ptr, end, origin, 3), 0);
-            assert_eq!(nros_cdr_write_i64(&mut ptr, end, origin, 5), 0);
+            assert_eq!(rclc_cdr_write_i64(&mut ptr, end, origin, 3), 0);
+            assert_eq!(rclc_cdr_write_i64(&mut ptr, end, origin, 5), 0);
         }
         assert_eq!(ptr, unsafe { buffer.as_mut_ptr().add(20) });
         let mut read_ptr: *const u8 = unsafe { buffer.as_ptr().add(4) };
         let mut a: i64 = 0;
         let mut b: i64 = 0;
         unsafe {
-            assert_eq!(nros_cdr_read_i64(&mut read_ptr, end, origin, &mut a), 0);
-            assert_eq!(nros_cdr_read_i64(&mut read_ptr, end, origin, &mut b), 0);
+            assert_eq!(rclc_cdr_read_i64(&mut read_ptr, end, origin, &mut a), 0);
+            assert_eq!(rclc_cdr_read_i64(&mut read_ptr, end, origin, &mut b), 0);
         }
         assert_eq!(a, 3);
         assert_eq!(b, 5);
@@ -888,12 +888,12 @@ mod tests {
         let origin: *const u8 = core::ptr::null();
         // NULL ptr → -1
         assert_eq!(
-            unsafe { nros_cdr_write_u8(core::ptr::null_mut(), end, origin, 0) },
+            unsafe { rclc_cdr_write_u8(core::ptr::null_mut(), end, origin, 0) },
             -1
         );
         let mut val: u32 = 0;
         assert_eq!(
-            unsafe { nros_cdr_read_u32(core::ptr::null_mut(), end, origin, &mut val) },
+            unsafe { rclc_cdr_read_u32(core::ptr::null_mut(), end, origin, &mut val) },
             -1
         );
     }

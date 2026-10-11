@@ -374,7 +374,16 @@ def demand(text=None):
     for m in re.finditer(r"\b(?:rclcpp|rclcpp_action|rclcpp_lifecycle)::((?:[A-Za-z_][A-Za-z0-9_]*::)*[A-Za-z_][A-Za-z0-9_]*)", text):
         cpp.add(m.group(1))
 
-    for m in re.finditer(r"\b(nros_[A-Za-z0-9_]*|NROS_[A-Z0-9_]*)(\{)?", text):
+    # phase-492 W3 — the C API is `rcl_`/`rclc_`-spelled (RFC-0089 amended
+    # 2026-10-12), so a harvest of `nros_` alone would lose every name generated
+    # C calls and pass on a SMALLER surface: 268 items fell to 157 the moment the
+    # rename landed. `nros_`/`NROS_` stay for the hooks and build facts that
+    # kept their spelling.
+    for m in re.finditer(
+        r"\b(nros_[A-Za-z0-9_]*|NROS_[A-Z0-9_]*|rclc?_[A-Za-z0-9_]*|rcl_action_[A-Za-z0-9_]*"
+        r"|RCLC?_[A-Z0-9_]*)(\{)?",
+        text,
+    ):
         name, interp = m.group(1), m.group(2)
         if interp:
             prefixes.add(name)
@@ -570,7 +579,7 @@ C_PROTO = re.compile(
 def c_surface(wanted, prefixes):
     out = {}
     for path in c_files(C_RUNTIME, (".h",)):
-        # Keyed by HEADER, not by name alone: `nros_cdr_write_u32` is declared
+        # Keyed by HEADER, not by name alone: `rclc_cdr_write_u32` is declared
         # in both `cdr.h` and the cbindgen aggregate `nros_generated.h`, and a
         # name-only key let the second silently shadow the first — a C-side
         # mutation went unreported while the Rust one beside it fired. Two
@@ -916,9 +925,9 @@ def self_test(quiet=False):
     assert not errors, "baseline refreshed at the new version must pass"
 
     # Additions and removals are named too, with their own sign.
-    errors, _ = compare({**surf, "c|fn|cdr.h|nros_cdr_write_u32": "int nros_cdr_write_u32(void)"},
+    errors, _ = compare({**surf, "c|fn|cdr.h|rclc_cdr_write_u32": "int rclc_cdr_write_u32(void)"},
                         base, 1, 1, 1)
-    assert "+ c|fn|cdr.h|nros_cdr_write_u32" in errors[0], "an ADDED item must be named"
+    assert "+ c|fn|cdr.h|rclc_cdr_write_u32" in errors[0], "an ADDED item must be named"
     errors, _ = compare({}, base, 1, 1, 1)
     assert "- rust|trait|nros_core::Serialize" in errors[0], "a REMOVED item must be named"
 

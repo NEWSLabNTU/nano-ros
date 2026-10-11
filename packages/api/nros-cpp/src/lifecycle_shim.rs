@@ -1,7 +1,7 @@
 //! Phase 269 (W0) — executor-shim: lifecycle FFI over the CppContext handle.
 //!
 //! Mirrors `nros-c/src/lifecycle.rs`'s service-backed module but recovers the
-//! executor from `CppContext*` instead of `nros_executor_t*`. W1/W2 emitters
+//! executor from `CppContext*` instead of `rclc_executor_t*`. W1/W2 emitters
 //! call these; no emitter wires them yet this wave.
 //!
 //! Issue 0436 — user-supplied executor handles are tag-validated via

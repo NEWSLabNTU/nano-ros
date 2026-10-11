@@ -4,7 +4,7 @@
 *   board   = zephyr
 *
 * DO NOT EDIT — regenerated at configure time. Routes each launch node
-* to the real executor via its `NROS_C_COMPONENT` factory/configure seam
+* to the real executor via its `RCLC_C_COMPONENT` factory/configure seam
 * (no synthesizing interpreter); `nros_board_zephyr_run_tiers_tasks_in`
 * owns init/spin/shutdown.
 */
@@ -13,7 +13,7 @@
 #include <nros/main.h>         /* the board's C-ABI run_components / run_tiers */
 #include <nros/nros_cpp_ffi.h> /* nros_cpp_node_t + nros_cpp_node_create + ret codes */
 
-/* C component factory + configure seam (NROS_C_COMPONENT). The node's
+/* C component factory + configure seam (RCLC_C_COMPONENT). The node's
  * `nros_cpp_node_t*` + executor handle are handed to `configure`, which
  * registers the component's real callbacks on the executor. */
 extern void* __nros_c_component_ctrl_pkg_create(void);

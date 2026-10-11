@@ -330,7 +330,7 @@ Deliberately small: the slots are static, so every image pays for them
 whether or not it registers a hook (the same cost issue 0460 measured
 for queryable slots). Raise it only when an image genuinely has more
 things to park on the way down. Overflow is reported at registration
-(NROS_RET_FULL), not silently dropped.
+(RCLC_RET_FULL), not silently dropped.
 '''
 
 [[knob]]
@@ -479,7 +479,7 @@ as NROS_LOG_MAX_LEVEL; issue 1037): 0 trace, 1 debug, 2 info, 3 warn,
 Rust nros_*! call sites below the ceiling compile to nothing; C and
 C++ records below it are refused at the facade (the same check
 nros_log_is_enabled answers). It is a BOUND, not the runtime level:
-nros_logger_set_level / set_level still move each logger's threshold
+rclc_logger_set_level / set_level still move each logger's threshold
 beneath it. Replaces the deprecated max-level-* cargo features.
 '''
 

@@ -263,7 +263,7 @@ function(nros_board_link_app target)
                 continue()
             endif()
             # phase-263 C2b — a node component lib (a `<pkg>_<exec>_component` static lib
-            # carrying `NROS_C_COMPONENT` sources, each compiled with its own
+            # carrying `RCLC_C_COMPONENT` sources, each compiled with its own
             # `-DNROS_PKG_NAME`). The host-built `.a` is the WRONG ARCH for the NuttX kernel
             # link (`armv7a-nuttx-eabihf` → "file format not recognized"), so do NOT link it.
             # Hand its SOURCES to the cargo cc-rs build to recompile for the ARM target, each
@@ -325,7 +325,7 @@ function(nros_board_link_app target)
     # linked and there is no `<lib>_ffi_lib`. Hand its generated `.c` SOURCES to the
     # cc-rs cross-compile so they are recompiled for the ARM target; the include dirs +
     # codegen order already flow through LINK_INTERFACES. The serdes TUs carry no
-    # `NROS_C_COMPONENT`, so they need no `-DNROS_PKG_NAME`. They go through the DEDICATED
+    # `RCLC_C_COMPONENT`, so they need no `-DNROS_PKG_NAME`. They go through the DEDICATED
     # `INTERFACE_SOURCES` channel (not `SOURCES`), so `nros_nuttx_build_example` compiles
     # them into a TRAILING `app_iface` archive linked AFTER the per-node `app_pkg_*`
     # archives: the node TUs REFERENCE the serdes, so the defining archive must come later

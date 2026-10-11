@@ -51,12 +51,12 @@ static const char* const kFormatName = NROS_SERIALIZATION_FORMAT;
 
 /* A C entry publishing that message. The format assertion above is what makes
    the call below legitimate — it is the compile-time proof that this image's
-   backend can encode what `nros_publish_raw` is handed. */
-nros_ret_t nros_probe_publish_reading(struct nros_publisher_t* publisher, const uint8_t* cdr,
-                                      size_t cdr_len);
+   backend can encode what `rclc_publish_raw` is handed. */
+rcl_ret_t nros_probe_publish_reading(struct rcl_publisher_t* publisher, const uint8_t* cdr,
+                                     size_t cdr_len);
 
-nros_ret_t nros_probe_publish_reading(struct nros_publisher_t* publisher, const uint8_t* cdr,
-                                      size_t cdr_len) {
+rcl_ret_t nros_probe_publish_reading(struct rcl_publisher_t* publisher, const uint8_t* cdr,
+                                     size_t cdr_len) {
     (void)kFormatName;
-    return nros_publish_raw(publisher, cdr, cdr_len);
+    return rclc_publish_raw(publisher, cdr, cdr_len);
 }

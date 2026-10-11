@@ -256,7 +256,7 @@ pub fn run_nuttx() {
     }
 
     // phase-263 C2b — per-component `NROS_PKG_NAME`. A multi-node LAUNCH entry composes
-    // several `NROS_C_COMPONENT(...)` nodes, each of which names its `extern "C"` seam
+    // several `RCLC_C_COMPONENT(...)` nodes, each of which names its `extern "C"` seam
     // `__nros_c_component_<NROS_PKG_NAME>_*` from the `-DNROS_PKG_NAME=<pkg>` define. A
     // single `cc::Build` carries one define for ALL its files, so the cmake side passes
     // `APP_EXTRA_SOURCE_PKGS="<abs-src>=<pkg>;…"` and each mapped source is compiled in its
@@ -334,7 +334,7 @@ pub fn run_nuttx() {
     // seen EARLIER on the line — so the archive DEFINING the serdes must come after the
     // ones referencing them. (The C++ lane's serdes ride the trailing Rust `_ffi_lib` via
     // APP_FFI_LIBS, which is already emitted last; the pure-C serdes have no such lib.)
-    // These TUs carry no `NROS_C_COMPONENT`, so no `-DNROS_PKG_NAME` is needed. Skipped
+    // These TUs carry no `RCLC_C_COMPONENT`, so no `-DNROS_PKG_NAME` is needed. Skipped
     // cleanly when empty (the pure-C pub/sub nuttx entry, whose nodes use no generated
     // serdes, passes nothing here).
     {

@@ -2031,7 +2031,7 @@ impl<'a> CallbackCtx<'a> {
     ///
     /// Issue 0796 — `CancelResponse` here is the PER-GOAL decision
     /// (`Reject` / `Accept`), the twin of [`GoalResponse`] and the same two
-    /// values C's `nros_cancel_response_t` and C++'s `nros::CancelResponse`
+    /// values C's `rclc_cancel_response_t` and C++'s `nros::CancelResponse`
     /// carry. It used to be the `action_msgs/srv/CancelGoal` RPC return code
     /// (now `nros_core::CancelReturnCode`), so answering "cancel this goal"
     /// was spelled `CancelResponse::Ok` — a whole-request status code used to

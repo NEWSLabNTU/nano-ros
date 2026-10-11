@@ -89,8 +89,8 @@ struct Row {
 
 #if defined(NROS_DECLARED_PARAM_NODES) && defined(NROS_DECLARED_PARAM_ROWS)
 #define NROS_DECLARED_PARAM_NODE(nros_fqn, nros_contract) {(nros_fqn), (nros_contract)},
-#define NROS_DECLARED_PARAM_ROW(nros_fqn, nros_name, nros_type)                                    \
-    {(nros_fqn), (nros_name), (nros_type)},
+#define NROS_DECLARED_PARAM_ROW(nros_fqn, rclc_name, rclc_type)                                    \
+    {(nros_fqn), (rclc_name), (rclc_type)},
 /// Trailing sentinels keep each array non-empty, which C++ requires; the
 /// COUNTs are what the lookups read.
 constexpr Node NODES[] = {NROS_DECLARED_PARAM_NODES{nullptr, nullptr}};

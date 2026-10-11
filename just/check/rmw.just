@@ -232,7 +232,7 @@ declared-qos-registration:
 #
 # phase-454 W1 (issue 1256) — and the SIX OTHER SITES. W10 bound the table to
 # upstream and left every transcription of it hanging off nothing: a Kconfig
-# `default`, the `NROS_RMW_QOS_PROFILE_*` macros, `nros_c_qos_default()`,
+# `default`, the `NROS_RMW_QOS_PROFILE_*` macros, `rclc_c_qos_default()`,
 # `nros-c`'s statics, the C++ `qos_table` and XRCE's own no-QoS fallback all
 # restated `rmw_qos_profile_default`'s KEEP_LAST(10) independently. The Rust
 # ones now READ `QoSProfile::QOS_PROFILE_*` and the rest are compared here,
@@ -310,7 +310,7 @@ entry-rmw-vocabulary:
 # added the rung and in the same commit made a selector-less open with more than
 # one registered backend a hard refusal, so C got the new failure mode and not
 # the new capability. Issue 1530 is the bill — every native C example failed
-# `nros_support_init` with `NROS_RET_INVALID_ARGUMENT` for eighteen days, behind
+# `rclc_support_init` with `RCL_RET_INVALID_ARGUMENT` for eighteen days, behind
 # an absorbing stale verdict that reported a `.stamp` file instead.
 #
 # Scope is DERIVED on both sides (the cmake bakes, intersected with

@@ -23,23 +23,23 @@
 // ----------------------------------------------------------------------------
 
 typedef struct {
-    nros_publisher_t* publisher;
+    rcl_publisher_t* publisher;
     std_msgs_msg_string message;
     int count;
 } talker_context_t;
 
 // Static allocation — all nros structs live in .bss, not on the stack
 static struct {
-    nros_support_t support;
-    nros_node_t node;
-    nros_publisher_t publisher;
+    rclc_support_t support;
+    rcl_node_t node;
+    rcl_publisher_t publisher;
     talker_context_t talker_ctx;
-    nros_timer_t timer;
-    nros_executor_t executor;
+    rcl_timer_t timer;
+    rclc_executor_t executor;
 } app;
 
 static volatile sig_atomic_t g_running = 1;
-static nros_executor_t* g_executor = NULL;
+static rclc_executor_t* g_executor = NULL;
 
 // ----------------------------------------------------------------------------
 // Signal handler for graceful shutdown
@@ -49,7 +49,7 @@ static void signal_handler(int signum) {
     (void)signum;
     g_running = 0;
     if (g_executor) {
-        nros_executor_cancel(g_executor);
+        rclc_executor_cancel(g_executor);
     }
 }
 
@@ -57,7 +57,7 @@ static void signal_handler(int signum) {
 // Timer callback - publish a message
 // ----------------------------------------------------------------------------
 
-static void timer_callback(struct nros_timer_t* timer, void* context) {
+static void timer_callback(struct rcl_timer_t* timer, void* context) {
     (void)timer;
     talker_context_t* ctx = (talker_context_t*)context;
 
@@ -65,7 +65,7 @@ static void timer_callback(struct nros_timer_t* timer, void* context) {
     // official ROS 2 demo talker (demo_nodes_cpp `talker.cpp`).
     ctx->count++;
     snprintf(ctx->message.data, sizeof(ctx->message.data), "Hello World: %d", ctx->count);
-    NROS_SOFTCHECK(std_msgs_msg_string_publish(ctx->publisher, &ctx->message));
+    RCLC_SOFTCHECK(std_msgs_msg_string_publish(ctx->publisher, &ctx->message));
     printf("Publishing: '%s'\n", ctx->message.data);
 }
 
@@ -99,10 +99,10 @@ int nros_app_main(int argc, char** argv) {
     memset(&app, 0, sizeof(app));
 
     // Initialize support context
-    NROS_CHECK_RET(nros_support_init(&app.support, locator, domain_id), 1);
-    NROS_CHECK_RET(rclc_node_init_default(&app.node, "talker", "/", &app.support), 1);
+    RCLC_CHECK_RET(rclc_support_init(&app.support, locator, domain_id), 1);
+    RCLC_CHECK_RET(rclc_node_init_default(&app.node, "talker", "/", &app.support), 1);
 
-    NROS_CHECK_RET(rclc_publisher_init_default(&app.publisher, &app.node,
+    RCLC_CHECK_RET(rclc_publisher_init_default(&app.publisher, &app.node,
                                                std_msgs_msg_string_get_type_support(), "/chatter"),
                    1);
 
@@ -114,27 +114,27 @@ int nros_app_main(int argc, char** argv) {
     };
     std_msgs_msg_string_init(&app.talker_ctx.message);
 
-    NROS_CHECK_RET(
-        nros_timer_init(&app.timer, &app.support, 1000000000ULL, timer_callback, &app.talker_ctx),
+    RCLC_CHECK_RET(
+        rcl_timer_init(&app.timer, &app.support, 1000000000ULL, timer_callback, &app.talker_ctx),
         1);
-    NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support, 4), 1);
     g_executor = &app.executor;
-    NROS_CHECK_RET(rclc_executor_add_timer(&app.executor, &app.timer), 1);
+    RCLC_CHECK_RET(rclc_executor_add_timer(&app.executor, &app.timer), 1);
 
     // Set up signal handler
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 
     // Spin with 100ms period
-    nros_ret_t ret = rclc_executor_spin_period(&app.executor, 100000000ULL);
-    if (ret != NROS_RET_OK && g_running) {
+    rcl_ret_t ret = rclc_executor_spin_period(&app.executor, 100000000ULL);
+    if (ret != RCL_RET_OK && g_running) {
         fprintf(stderr, "Executor spin failed: %d\n", ret);
     }
 
     // Cleanup
     rclc_executor_fini(&app.executor);
     rcl_timer_fini(&app.timer);
-    nros_publisher_fini(&app.publisher);
+    rcl_publisher_fini(&app.publisher);
     rcl_node_fini(&app.node);
     rclc_support_fini(&app.support);
 

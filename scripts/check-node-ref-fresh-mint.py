@@ -12,13 +12,13 @@ can be.
 
 That is not a slightly-weak check. It reads as coverage:
 
-  * three `NROS_RET_STALE_NODE` arms could never be returned, one of them in a
+  * three `RCLC_RET_STALE_NODE` arms could never be returned, one of them in a
     verb whose `# Returns` block documented the verdict (PR #1064);
   * `rcl_node_is_valid` claimed to check "the generation it was bound at" on an
-    `nros_node_t` that stores no such generation;
-  * and in `nros_node_resolve_name` the inert guard stood in front of
+    `rcl_node_t` that stores no such generation;
+  * and in `rcl_node_resolve_name` the inert guard stood in front of
     `get_executor(&mut executor._opaque)`, so a finalised executor produced
-    `NROS_RET_OK` out of zeroed storage rather than a refusal.
+    `RCL_RET_OK` out of zeroed storage rather than a refusal.
 
 The phase-379 W4 mechanism is sound in its ONE legitimate shape: an entity
 stores the reference when it is created and compares it LATER, which is what
@@ -106,7 +106,7 @@ def hits_in(text):
 SELF_TESTS = [
     # (source, expected number of hits, what the case is for)
     (
-        "if !node_ref_is_live(node_ref_of(node)) { return NROS_RET_STALE_NODE; }",
+        "if !node_ref_is_live(node_ref_of(node)) { return RCLC_RET_STALE_NODE; }",
         1,
         "the reported shape",
     ),

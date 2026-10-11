@@ -11,7 +11,7 @@
 //! `rcutils_get_logger("x")` CREATE, so a C caller doing
 //!
 //! ```c
-//! nros_logger_set_level(nros_log_get_logger("nav"), NROS_LOG_SEVERITY_DEBUG);
+//! rclc_logger_set_level(rclc_log_get_logger("nav"), RCLC_LOG_SEVERITY_DEBUG);
 //! ```
 //!
 //! over a lookup-only implementation would silently have moved the threshold

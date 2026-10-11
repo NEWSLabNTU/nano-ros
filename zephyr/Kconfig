@@ -209,8 +209,8 @@ config NROS_TRACE_TAKES
       callback's start (18), followed by the sample's source stamp (26 sec,
       27 nanosec) when its place is known: the type's own leading stamp on a
       typed Rust subscription, or the offset an application names with
-      nros_trace_set_take(handle, on, stamp_offset) on the C and C++ paths.
-      Off by default; nros_trace_set_take() opts single subscriptions in or
+      rclc_trace_set_take(handle, on, stamp_offset) on the C and C++ paths.
+      Off by default; rclc_trace_set_take() opts single subscriptions in or
       out either way. The take-to-stamp difference is the link hop of an
       input, on the trace's own clock.
 
@@ -221,7 +221,7 @@ config NROS_TRACE_TIMER_EVERY
     range 0 65534
     help
       phase-474 I3 -- keep the start/end pair (18/19) of one timer tick in
-      N, image-wide; nros_trace_set_timer_every(handle, n) overrides it per
+      N, image-wide; rclc_trace_set_timer_every(handle, n) overrides it per
       timer. A RAM trace window that cannot hold every tick of every timer
       can thin the rest and keep the one whose jitter is the measurement
       whole. Subscription, service and action dispatches are always traced.
@@ -1135,12 +1135,12 @@ config NROS_VIOLATION_DRAIN_REPORT
       whose log does.
 
 config NROS_MONITOR_ARM_ON_CALL
-    bool "Arm contract monitors only when the application calls nros_monitors_arm()"
+    bool "Arm contract monitors only when the application calls rclc_monitors_arm()"
     help
       phase-474 I2 -- with this off (the default) the executor's contract
       monitors judge from the first spin, which is what every image did
       before. On, they wait until the application says its start-up is
-      over: nros_monitors_arm() (C), nros::arm_monitors() (C++),
+      over: rclc_monitors_arm() (C), nros::arm_monitors() (C++),
       nros::monitor::request_monitor_arming() or Executor::arm_monitors()
       (Rust) -- for example where a node's INIT/RUN state machine enters
       RUN.
@@ -1162,7 +1162,7 @@ config NROS_MONITOR_ARM_GRACE_MS
     help
       phase-474 I2 -- a deadline for arming, counted from the executor's
       first spin. With NROS_MONITOR_ARM_ON_CALL it is the backstop for an
-      application that never calls nros_monitors_arm(); without it, it is
+      application that never calls rclc_monitors_arm(); without it, it is
       a grace period for an application with no lifecycle at all. 0 means
       no deadline: armed at the first spin without ON_CALL, only by the
       call with it. A build with no clock arms at the first spin instead
@@ -1490,7 +1490,7 @@ config NROS_EXECUTOR_MAX_SHUTDOWN_CBS
       whether or not it registers a hook (the same cost issue 0460 measured
       for queryable slots). Raise it only when an image genuinely has more
       things to park on the way down. Overflow is reported at registration
-      (NROS_RET_FULL), not silently dropped.
+      (RCLC_RET_FULL), not silently dropped.
 
 
 # prompt: Contract-violation ring depth per executor
@@ -1574,7 +1574,7 @@ config NROS_LOG_MAX_LEVEL
       Rust nros_*! call sites below the ceiling compile to nothing; C and
       C++ records below it are refused at the facade (the same check
       nros_log_is_enabled answers). It is a BOUND, not the runtime level:
-      nros_logger_set_level / set_level still move each logger's threshold
+      rclc_logger_set_level / set_level still move each logger's threshold
       beneath it. Replaces the deprecated max-level-* cargo features.
 
 

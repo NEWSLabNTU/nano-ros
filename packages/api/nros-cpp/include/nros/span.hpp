@@ -88,7 +88,7 @@ struct StringView {
 
 /// Alignment-agnostic view over a little-endian numeric sequence in the CDR
 /// receive buffer (RFC-0033 borrowed mode — the C++ analogue of Rust's
-/// `nros_core::LeSliceView` and C's `nros_le_slice_view_*`).
+/// `nros_core::LeSliceView` and C's `rclc_le_slice_view_*`).
 ///
 /// `T` is a fixed-width numeric (`uint16_t`, `float`, …). The raw LE bytes are
 /// borrowed zero-copy; `operator[]` decodes one element by value (no `T*` is

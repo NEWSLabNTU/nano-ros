@@ -210,7 +210,7 @@ fn elapse_then_spin_once(executor: &mut Executor, ms: u64) -> super::types::Spin
 /// how many idle spins elapse. The C spin loops
 /// (`nros_executor_spin`/`nros_executor_spin_period`) gate their dead-session
 /// bail on this counter; the bug was that they instead counted `spin_some`'s
-/// idle `NROS_RET_TIMEOUT`, so a healthy C listener that idled longer than
+/// idle `RCL_RET_TIMEOUT`, so a healthy C listener that idled longer than
 /// `SPIN_ERROR_TOLERANCE * period` before its publisher was discovered got
 /// killed — the CycloneDDS ros2→nano 0-delivery defect. Only a genuine
 /// `drive_io` error may raise the counter.
@@ -4761,7 +4761,7 @@ fn test_timer_repeats() {
 /// DISPATCHER is about to do, not a second opinion about it.
 ///
 /// These two exist because the C accessors `nros_timer_is_ready` and
-/// `nros_timer_get_time_since_last_call` were filed as gaps: the state was
+/// `rcl_timer_get_time_since_last_call` were filed as gaps: the state was
 /// already in the arena and nothing exposed it. The risk in exposing it is a
 /// readiness answer that drifts from `arena::timer_try_process`'s own guard,
 /// so the assertion here is agreement — not-yet-due, due, and due-again after
@@ -6580,7 +6580,7 @@ unsafe extern "C" fn typed_probe_deserialize(
 
 /// A deserialiser that always refuses — stands in for a sample that does not
 /// fit the caller's storage (a string longer than its declared bound refuses
-/// exactly this way; `nros_cdr_read_string` errors on `str_len > max_len`
+/// exactly this way; `rclc_cdr_read_string` errors on `str_len > max_len`
 /// rather than truncating).
 unsafe extern "C" fn typed_probe_deserialize_refuses(
     _msg: *mut core::ffi::c_void,
@@ -8181,7 +8181,7 @@ fn expire_completed_results_reclaims_only_delivered_results() {
 /// `goal_exists` answers rcl's question, which is WIDER than a status lookup —
 /// phase-417 W4.b, ledger row `c:action_server_goal_exists`.
 ///
-/// The row sat open on the claim that `nros_action_get_goal_status` already
+/// The row sat open on the claim that `rclc_action_get_goal_status` already
 /// answered it ("ours answers the stronger question"), so it might be a
 /// documentation fix. It is not, and this is the measurement that says so. A
 /// status lookup reads the ACTIVE set; rcl's `rcl_action_server_goal_exists`
@@ -10850,7 +10850,7 @@ fn a_node_level_ros_time_timer_follows_the_simulated_clock() {
 ///
 /// The compile probe (`packages/api/nros-cpp/tests/compile/one_node_type.cpp`,
 /// `two_nodes_two_logger_names`) pins that `get_logger()` is BUILT from the
-/// node's name and that the handle still converts to `nros_logger_t`. Neither
+/// node's name and that the handle still converts to `rclc_logger_t`. Neither
 /// is the claim: a name a caller reads off the accessor says nothing about
 /// what a dispatched `Record` carries, and until this landed the two answers
 /// disagreed. `Node::logger` — and the C and C++ accessors beside it — called
@@ -13174,7 +13174,7 @@ fn monitors_arm_at_the_first_spin_by_default() {
 
 /// phase-474 I2 -- armed on call: a verdict before the call is counted and not
 /// stored; the call arms, and the next one is stored. The app's call is the
-/// global request (`nros_monitors_arm`), seen at the next spin.
+/// global request (`rclc_monitors_arm`), seen at the next spin.
 #[cfg(feature = "alloc")]
 #[test]
 fn monitors_armed_on_call_count_but_do_not_store_start_up() {

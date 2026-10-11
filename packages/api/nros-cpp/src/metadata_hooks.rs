@@ -566,7 +566,7 @@ mod census_without_store_tests {
 /// reach the two node APIs that are NOT this crate's ABI.
 ///
 /// Before the move, a C node that opens its own node through `nros-c`
-/// (`nros_executor_node_init`, `rclc_node_init_default`) reached the recording
+/// (`rclc_executor_node_init`, `rclc_node_init_default`) reached the recording
 /// backend with no node attribution and its timers, guard conditions and
 /// parameters not at all; a Rust node's `register()` (the `nros::main!` install
 /// path, `ExecutorSink`) reached none of the hooks. Each test drives the REAL
@@ -601,7 +601,7 @@ mod census_hooks_reach_every_api {
         }
     }
 
-    unsafe extern "C" fn timer_noop(_t: *mut nros_c::nros_timer_t, _c: *mut c_void) {}
+    unsafe extern "C" fn timer_noop(_t: *mut nros_c::rcl_timer_t, _c: *mut c_void) {}
     unsafe extern "C" fn guard_noop(_c: *mut c_void) {}
 
     /// A C node opened through `nros-c`'s own node entry point: its timer,
@@ -616,9 +616,9 @@ mod census_hooks_reach_every_api {
         nros::metadata_mode::reset();
         let _ = nros_rmw_metadata::nros_rmw_metadata_register();
 
-        let mut support = alloc::boxed::Box::new(nros_support_get_zero_initialized());
+        let mut support = alloc::boxed::Box::new(rclc_support_get_zero_initialized());
         let rc = unsafe {
-            nros_support_init_rmw(
+            rclc_support_init_rmw(
                 &mut *support,
                 core::ptr::null(),
                 0,
@@ -626,26 +626,26 @@ mod census_hooks_reach_every_api {
                 c"metadata".as_ptr(),
             )
         };
-        assert_eq!(rc, NROS_RET_OK, "the metadata backend must open");
+        assert_eq!(rc, RCL_RET_OK, "the metadata backend must open");
 
         let mut executor = alloc::boxed::Box::new(rclc_executor_get_zero_initialized_executor());
-        let rc = unsafe { nros_executor_init(&mut *executor, &*support, 8) };
-        assert_eq!(rc, NROS_RET_OK);
+        let rc = unsafe { rclc_executor_init(&mut *executor, &*support, 8) };
+        assert_eq!(rc, RCL_RET_OK);
 
         let mut node = alloc::boxed::Box::new(rcl_get_zero_initialized_node());
         let rc = unsafe {
-            nros_executor_node_init(
+            rclc_executor_node_init(
                 &mut *executor,
                 &mut *node,
                 c"c_census_node".as_ptr(),
                 core::ptr::null(),
             )
         };
-        assert_eq!(rc, NROS_RET_OK);
+        assert_eq!(rc, RCL_RET_OK);
 
         let mut timer = alloc::boxed::Box::new(rcl_get_zero_initialized_timer());
         let rc = unsafe {
-            nros_timer_init(
+            rcl_timer_init(
                 &mut *timer,
                 &*support,
                 50_000_000,
@@ -653,28 +653,28 @@ mod census_hooks_reach_every_api {
                 core::ptr::null_mut(),
             )
         };
-        assert_eq!(rc, NROS_RET_OK);
+        assert_eq!(rc, RCL_RET_OK);
         let rc = unsafe { rclc_executor_add_timer(&mut *executor, &mut *timer) };
-        assert_eq!(rc, NROS_RET_OK);
+        assert_eq!(rc, RCL_RET_OK);
 
         let mut guard = alloc::boxed::Box::new(rcl_get_zero_initialized_guard_condition());
         let rc = unsafe {
-            nros_node_create_guard_condition(
+            rclc_node_create_guard_condition(
                 &mut *node,
                 &mut *guard,
                 Some(guard_noop),
                 core::ptr::null_mut(),
             )
         };
-        assert_eq!(rc, NROS_RET_OK);
+        assert_eq!(rc, RCL_RET_OK);
 
         // phase-491 — the C parameter surface is rclc's server handle now.
         let mut params: alloc::boxed::Box<rclc_parameter_server_t> =
             alloc::boxed::Box::new(unsafe { core::mem::zeroed() });
         let rc = unsafe { rclc_parameter_server_init_default(&mut *params, &mut *node) };
-        assert_eq!(rc, NROS_RET_OK);
+        assert_eq!(rc, RCL_RET_OK);
         let rc = unsafe { rclc_parameter_declare_double(&mut *params, c"gain".as_ptr(), 1.5) };
-        assert_eq!(rc, NROS_RET_OK);
+        assert_eq!(rc, RCL_RET_OK);
 
         let export =
             nros::node_metadata::SourceMetadataExport::new("c_pkg", "c_census_node").language("c");
@@ -696,7 +696,7 @@ mod census_hooks_reach_every_api {
     }
 
     /// The legacy rclc-style node (`rclc_node_init_default` ->
-    /// `nros_node_init_ex`), which is what every `nros_app_main` application
+    /// `rclc_node_init_ex`), which is what every `nros_app_main` application
     /// (the twelve NuttX C leaves of issue 1556) opens.
     #[test]
     fn an_rclc_node_opens_the_census_cursor() {
@@ -704,9 +704,9 @@ mod census_hooks_reach_every_api {
         nros::metadata_mode::reset();
         let _ = nros_rmw_metadata::nros_rmw_metadata_register();
 
-        let mut support = alloc::boxed::Box::new(nros_support_get_zero_initialized());
+        let mut support = alloc::boxed::Box::new(rclc_support_get_zero_initialized());
         let rc = unsafe {
-            nros_support_init_rmw(
+            rclc_support_init_rmw(
                 &mut *support,
                 core::ptr::null(),
                 7,
@@ -714,7 +714,7 @@ mod census_hooks_reach_every_api {
                 c"metadata".as_ptr(),
             )
         };
-        assert_eq!(rc, NROS_RET_OK);
+        assert_eq!(rc, RCL_RET_OK);
         let mut node = alloc::boxed::Box::new(rcl_get_zero_initialized_node());
         let rc = unsafe {
             rclc_node_init_default(
@@ -724,7 +724,7 @@ mod census_hooks_reach_every_api {
                 &*support,
             )
         };
-        assert_eq!(rc, NROS_RET_OK);
+        assert_eq!(rc, RCL_RET_OK);
 
         let export = nros::node_metadata::SourceMetadataExport::new("c_pkg", "rclc_node");
         let json = nros::metadata_mode::to_json(&export).expect("serialize");
@@ -736,7 +736,7 @@ mod census_hooks_reach_every_api {
         nros::metadata_mode::reset();
     }
 
-    /// A C timer registered before ANY node -- legal (`nros_timer_init` needs
+    /// A C timer registered before ANY node -- legal (`rcl_timer_init` needs
     /// only a support context; `nros-c`'s `timer_clock_source.c` does it). The
     /// slot is counted under the executor scope instead of panicking the
     /// process, which is what a bare `record` with no current node would do in
@@ -747,9 +747,9 @@ mod census_hooks_reach_every_api {
         nros::metadata_mode::reset();
         let _ = nros_rmw_metadata::nros_rmw_metadata_register();
 
-        let mut support = alloc::boxed::Box::new(nros_support_get_zero_initialized());
+        let mut support = alloc::boxed::Box::new(rclc_support_get_zero_initialized());
         let rc = unsafe {
-            nros_support_init_rmw(
+            rclc_support_init_rmw(
                 &mut *support,
                 core::ptr::null(),
                 0,
@@ -757,15 +757,15 @@ mod census_hooks_reach_every_api {
                 c"metadata".as_ptr(),
             )
         };
-        assert_eq!(rc, NROS_RET_OK);
+        assert_eq!(rc, RCL_RET_OK);
         let mut executor = alloc::boxed::Box::new(rclc_executor_get_zero_initialized_executor());
         assert_eq!(
-            unsafe { nros_executor_init(&mut *executor, &*support, 4) },
-            NROS_RET_OK
+            unsafe { rclc_executor_init(&mut *executor, &*support, 4) },
+            RCL_RET_OK
         );
         let mut timer = alloc::boxed::Box::new(rcl_get_zero_initialized_timer());
         let rc = unsafe {
-            nros_timer_init(
+            rcl_timer_init(
                 &mut *timer,
                 &*support,
                 10_000_000,
@@ -773,10 +773,10 @@ mod census_hooks_reach_every_api {
                 core::ptr::null_mut(),
             )
         };
-        assert_eq!(rc, NROS_RET_OK);
+        assert_eq!(rc, RCL_RET_OK);
         assert_eq!(
             unsafe { rclc_executor_add_timer(&mut *executor, &mut *timer) },
-            NROS_RET_OK
+            RCL_RET_OK
         );
 
         let json = nros::metadata_mode::to_json(&nros::node_metadata::SourceMetadataExport::new(

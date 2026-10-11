@@ -80,9 +80,9 @@ pub const NROS_TRANSPORT_OPS_ABI_VERSION_V1: u32 = 1;
 /// # Return-code conventions
 ///
 /// `open` / `write` return `NROS_RMW_RET_OK` (== 0) on success and
-/// a negative `nros_ret_t` (see `nros-rmw-cffi`) on failure. `read`
+/// a negative `rcl_ret_t` (see `nros-rmw-cffi`) on failure. `read`
 /// returns the non-negative byte count on success or a negative
-/// `nros_ret_t` on error / timeout.
+/// `rcl_ret_t` on error / timeout.
 ///
 /// # Safety contract for the four fn pointers
 ///
@@ -120,13 +120,13 @@ pub struct NrosTransportOps {
     /// transport unless `set_custom_transport` is called again.
     pub close: unsafe extern "C" fn(user_data: *mut c_void),
     /// Send `len` bytes from `buf`. Returns 0 on success, negative
-    /// `nros_ret_t` on failure. Must NOT block beyond a brief
+    /// `rcl_ret_t` on failure. Must NOT block beyond a brief
     /// hardware retry; long blocking should surface as
     /// `NROS_RMW_RET_TIMEOUT` (-2).
     pub write: unsafe extern "C" fn(user_data: *mut c_void, buf: *const u8, len: usize) -> i32,
     /// Receive up to `len` bytes into `buf` within `timeout_ms`.
     /// Returns the non-negative byte count on success (may be less
-    /// than `len`), or a negative `nros_ret_t` on error / timeout.
+    /// than `len`), or a negative `rcl_ret_t` on error / timeout.
     pub read: unsafe extern "C" fn(
         user_data: *mut c_void,
         buf: *mut u8,
@@ -156,10 +156,10 @@ static SLOT: Mutex<Option<NrosTransportOps>> = Mutex::new(None);
 
 /// Phase 115.A — register a custom transport vtable. Must be called
 /// **before** the first `Rmw::open` (or
-/// `nros_support_init` from the C surface). v1 leaves enforcement of
+/// `rclc_support_init` from the C surface). v1 leaves enforcement of
 /// "before init" to backend code, and NO backend enforces it: a call
 /// after `Rmw::open` is implementation-defined, which is also what the
-/// C entry point `nros_set_custom_transport` documents. This line
+/// C entry point `rclc_set_custom_transport` documents. This line
 /// used to say backends "reject re-registration with
 /// `ALREADY_INIT`" — `rmw_ret.h` defines no such code
 /// (issue 1126), so the sentence promised both a behaviour and a

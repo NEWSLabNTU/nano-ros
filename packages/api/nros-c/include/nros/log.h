@@ -3,17 +3,17 @@
  * @ingroup grp_log
  * @brief Phase 88.12 — ROS 2 style leveled logging surface for the C API.
  *
- * Mirrors the Rust [`nros_log`] facade. Each `nros_node_t` exposes a
- * `&'static nros_log::Logger` via `nros_node_get_logger(node)`; the
+ * Mirrors the Rust [`nros_log`] facade. Each `rcl_node_t` exposes a
+ * `&'static nros_log::Logger` via `rclc_node_get_logger(node)`; the
  * `NROS_LOG_*` macros render the message, attach severity + line
  * info, and dispatch through the same per-platform sink chain as
  * Rust call sites (see Phase 88.5 onwards).
  *
  * Usage:
  * @code
- * nros_logger_t logger = nros_node_get_logger(&node);
- * NROS_LOG_INFO(logger, "started; domain=%u", domain_id);
- * NROS_LOG_WARN(logger, "queue depth %u exceeds soft limit", depth);
+ * rclc_logger_t logger = rclc_node_get_logger(&node);
+ * RCLC_LOG_INFO(logger, "started; domain=%u", domain_id);
+ * RCLC_LOG_WARN(logger, "queue depth %u exceeds soft limit", depth);
  * @endcode
  *
  * Per-platform delivery (POSIX stderr / Zephyr LOG / ESP-IDF
@@ -52,16 +52,16 @@ extern "C" {
  * below it, and a value outside the range resolves rather than being rejected,
  * so any `int` a C caller can produce here is defined.
  *
- * `NROS_LOG_SEVERITY_TRACE` is ours; rcutils has no trace level. It takes `5`,
+ * `RCLC_LOG_SEVERITY_TRACE` is ours; rcutils has no trace level. It takes `5`,
  * inside rcutils's own `UNSET`..`DEBUG` gap, which is what that gap is for.
  *
  * **`UNSET` MEANS INHERIT, NOT "THE FLOOR"** (phase-467; it meant the floor
  * until then, and that was ledger row `c:log_severity_t`'s whole debt).
- * `nros_logger_set_level(logger, NROS_LOG_SEVERITY_UNSET)` takes away that
+ * `rclc_logger_set_level(logger, RCLC_LOG_SEVERITY_UNSET)` takes away that
  * logger's own level, after which it filters on its nearest ancestor's level
- * (below), else the PROCESS DEFAULT — `nros_log_get_default_level()`,
- * `NROS_LOG_SEVERITY_INFO` until
- * `nros_log_set_default_level()` moves it, which is the value and the starting
+ * (below), else the PROCESS DEFAULT — `rclc_log_get_default_level()`,
+ * `RCLC_LOG_SEVERITY_INFO` until
+ * `rclc_log_set_default_level()` moves it, which is the value and the starting
  * point `RCUTILS_DEFAULT_LOGGER_DEFAULT_LEVEL` has upstream. A logger you
  * never set a level on is already in that state.
  *
@@ -72,27 +72,27 @@ extern "C" {
  * own. The bound: upstream keys a level by NAME in an allocator-backed map, so
  * an ancestor can carry a level without being a logger; here a level lives in
  * a logger, so an ancestor carries one by EXISTING — and setting a level by
- * name (`nros_log_get_logger("nav")` then `nros_logger_set_level`) creates it,
+ * name (`rclc_log_get_logger("nav")` then `rclc_logger_set_level`) creates it,
  * which is the case that matters. The links are made when a logger is created,
  * in either order, so the log path never parses a name. Names are capped at 48
- * bytes and the runtime-logger arena is bounded; see `nros_logger_get_child`.
+ * bytes and the runtime-logger arena is bounded; see `rclc_logger_get_child`.
  * (RFC-0089: the envelope is part of the API, not a footnote.)
  *
  * `UNSET` is only special where a LEVEL IS STORED. Passed as a record's
- * severity (`nros_log_emit`) or as a threshold question
- * (`nros_logger_is_enabled`) it resolves by band like any other integer, which
+ * severity (`rclc_log_emit`) or as a threshold question
+ * (`rclc_logger_is_enabled`) it resolves by band like any other integer, which
  * puts it at `TRACE`: "no level set" is not a level to emit at, upstream has
  * no answer for that call either, and refusing it would make one of these
  * entry points reject a value the other needs.
  */
-typedef enum nros_log_severity_t {
-    NROS_LOG_SEVERITY_UNSET = 0,
-    NROS_LOG_SEVERITY_TRACE = 5,
-    NROS_LOG_SEVERITY_DEBUG = 10,
-    NROS_LOG_SEVERITY_INFO = 20,
-    NROS_LOG_SEVERITY_WARN = 30,
-    NROS_LOG_SEVERITY_ERROR = 40,
-    NROS_LOG_SEVERITY_FATAL = 50,
+typedef enum rcl_log_severity_t {
+    RCLC_LOG_SEVERITY_UNSET = 0,
+    RCLC_LOG_SEVERITY_TRACE = 5,
+    RCLC_LOG_SEVERITY_DEBUG = 10,
+    RCLC_LOG_SEVERITY_INFO = 20,
+    RCLC_LOG_SEVERITY_WARN = 30,
+    RCLC_LOG_SEVERITY_ERROR = 40,
+    RCLC_LOG_SEVERITY_FATAL = 50,
     /* NOT a level — a WIDTH PIN (issue 1330). Every ARM EABI compiler defaults
      * to `-fshort-enums` (it is the AAPCS default, not a flag this tree picks),
      * so an enum whose largest value is 50 is packed to ONE byte there. That
@@ -107,8 +107,8 @@ typedef enum nros_log_severity_t {
      * Trailing underscore: reserved, never emitted, never switched on.
      * `to_facade` is TOTAL, so a caller that somehow passed it resolves to
      * FATAL like any other out-of-range `int` rather than being rejected. */
-    NROS_LOG_SEVERITY_FORCE_INT_WIDTH_ = 0x7fffffff,
-} nros_log_severity_t;
+    RCLC_LOG_SEVERITY_FORCE_INT_WIDTH_ = 0x7fffffff,
+} rcl_log_severity_t;
 
 /* ── Width guard ──────────────────────────────────────────────────────────────
  * This `enum` is HAND-MIRRORED in Rust (`packages/api/nros-c/src/log.rs`), which
@@ -118,27 +118,25 @@ typedef enum nros_log_severity_t {
  * survived only by how the ABIs in play happen to pass small integers. Nothing
  * asserted the width anywhere in `include/` or `src/`. It does now. */
 #if defined(__cplusplus) && __cplusplus >= 201103L
-static_assert(sizeof(nros_log_severity_t) == sizeof(int),
-              "nros_log_severity_t must be int-sized: the Rust mirror is repr(transparent) "
+static_assert(sizeof(rcl_log_severity_t) == sizeof(int),
+              "rcl_log_severity_t must be int-sized: the Rust mirror is repr(transparent) "
               "over c_int");
-static_assert(NROS_LOG_SEVERITY_INFO == 20, "nros_log_severity_t must stay on rcutils's numbering");
-static_assert(NROS_LOG_SEVERITY_FATAL == 50,
-              "nros_log_severity_t must stay on rcutils's numbering");
+static_assert(RCLC_LOG_SEVERITY_INFO == 20, "rcl_log_severity_t must stay on rcutils's numbering");
+static_assert(RCLC_LOG_SEVERITY_FATAL == 50, "rcl_log_severity_t must stay on rcutils's numbering");
 #elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
-_Static_assert(sizeof(nros_log_severity_t) == sizeof(int),
-               "nros_log_severity_t must be int-sized: the Rust mirror is repr(transparent) "
+_Static_assert(sizeof(rcl_log_severity_t) == sizeof(int),
+               "rcl_log_severity_t must be int-sized: the Rust mirror is repr(transparent) "
                "over c_int");
-_Static_assert(NROS_LOG_SEVERITY_INFO == 20,
-               "nros_log_severity_t must stay on rcutils's numbering");
-_Static_assert(NROS_LOG_SEVERITY_FATAL == 50,
-               "nros_log_severity_t must stay on rcutils's numbering");
+_Static_assert(RCLC_LOG_SEVERITY_INFO == 20, "rcl_log_severity_t must stay on rcutils's numbering");
+_Static_assert(RCLC_LOG_SEVERITY_FATAL == 50,
+               "rcl_log_severity_t must stay on rcutils's numbering");
 #endif /* static_assert */
 
 /**
  * Opaque handle to a `&'static nros_log::Logger`. Obtain via
- * `nros_node_get_logger(...)`. NEVER free.
+ * `rclc_node_get_logger(...)`. NEVER free.
  */
-typedef const void* nros_logger_t;
+typedef const void* rclc_logger_t;
 
 /**
  * Low-level emit. Renders `message` (already-formatted UTF-8 text;
@@ -148,27 +146,27 @@ typedef const void* nros_logger_t;
  * Most users should use the `NROS_LOG_*` printf-style macros below
  * rather than calling this directly.
  *
- * @param logger    Logger handle from `nros_node_get_logger`. NULL =
+ * @param logger    Logger handle from `rclc_node_get_logger`. NULL =
  *                  silently drops (kept total to simplify call sites).
- * @param severity  One of `nros_log_severity_t`.
+ * @param severity  One of `rcl_log_severity_t`.
  * @param message   UTF-8 text; not required to be null-terminated.
  * @param message_len  Length of `message` in bytes.
  */
-void nros_log_emit(nros_logger_t logger, nros_log_severity_t severity, const char* message,
+void rclc_log_emit(rclc_logger_t logger, rcl_log_severity_t severity, const char* message,
                    size_t message_len);
 
 /**
  * Internal helper used by the macros. Formats `fmt + args` into a
- * stack buffer, then calls `nros_log_emit`. Buffer size = 256 bytes;
+ * stack buffer, then calls `rclc_log_emit`. Buffer size = 256 bytes;
  * overflow is truncated + appended `...`.
  */
-void nros_log_emit_fmt(nros_logger_t logger, nros_log_severity_t severity, const char* fmt, ...)
+void rclc_log_emit_fmt(rclc_logger_t logger, rcl_log_severity_t severity, const char* fmt, ...)
     __attribute__((format(printf, 3, 4)));
 
 /**
  * phase-417 W4.d — emit WITH the call site.
  *
- * `nros_log_emit` above hardcoded `file = "<nros-c>"`, `line = 0` and
+ * `rclc_log_emit` above hardcoded `file = "<nros-c>"`, `line = 0` and
  * `timestamp_ns = 0` into every record, contradicting this file's own header
  * comment ("attach severity + line info"). Every C and C++ record in the tree
  * therefore reached the sinks stripped of the two fields the sinks render.
@@ -179,9 +177,9 @@ void nros_log_emit_fmt(nros_logger_t logger, nros_log_severity_t severity, const
  *
  * The timestamp is NOT a parameter: it comes from `nros_log`'s own clock, so a
  * C record is stamped by the same clock at the same resolution as a Rust one.
- * See `nros_log_timestamp_available()`.
+ * See `rclc_log_timestamp_available()`.
  */
-void nros_log_emit_at(nros_logger_t logger, nros_log_severity_t severity, const char* message,
+void rclc_log_emit_at(rclc_logger_t logger, rcl_log_severity_t severity, const char* message,
                       size_t message_len, const char* file, uint32_t line);
 
 /** Stack buffer the located printf-style entry point below renders into.
@@ -196,21 +194,21 @@ void nros_log_emit_at(nros_logger_t logger, nros_log_severity_t severity, const 
 /**
  * phase-417 W4.d — printf-style emit carrying `__FILE__` / `__LINE__`.
  *
- * `static inline` rather than a sibling of `nros_log_emit_fmt` in
+ * `static inline` rather than a sibling of `rclc_log_emit_fmt` in
  * `c-stubs/log_fmt.c` because the variadic entry point cannot be written in
  * Rust (`c_variadic` is unstable) and this header is the C surface's own file.
  * The cost is one copy of ~30 instructions per translation unit that logs; the
- * de-duplication — moving this beside `nros_log_emit_fmt` and having that one
+ * de-duplication — moving this beside `rclc_log_emit_fmt` and having that one
  * forward with `file = NULL` — is a follow-up in `c-stubs/log_fmt.c`.
  *
- * `nros_log_emit_fmt` is UNCHANGED and still exported: it is the ABI existing
+ * `rclc_log_emit_fmt` is UNCHANGED and still exported: it is the ABI existing
  * consumers link, and it simply carries no call site.
  */
-static inline void nros_log_emit_fmt_at(nros_logger_t logger, nros_log_severity_t severity,
+static inline void rclc_log_emit_fmt_at(rclc_logger_t logger, rcl_log_severity_t severity,
                                         const char* file, uint32_t line, const char* fmt, ...)
     __attribute__((format(printf, 5, 6)));
 
-static inline void nros_log_emit_fmt_at(nros_logger_t logger, nros_log_severity_t severity,
+static inline void rclc_log_emit_fmt_at(rclc_logger_t logger, rcl_log_severity_t severity,
                                         const char* file, uint32_t line, const char* fmt, ...) {
     if (logger == NULL || fmt == NULL) {
         return;
@@ -227,41 +225,41 @@ static inline void nros_log_emit_fmt_at(nros_logger_t logger, nros_log_severity_
     if (n >= sizeof(buf)) {
         /* `vsnprintf` returns the would-have-written length on overflow but
          * writes at most `sizeof(buf) - 1` bytes. Append "..." inside the
-         * buffer to mark truncation — same convention as `nros_log_emit_fmt`. */
+         * buffer to mark truncation — same convention as `rclc_log_emit_fmt`. */
         n = sizeof(buf) - 1;
         buf[n - 3] = '.';
         buf[n - 2] = '.';
         buf[n - 1] = '.';
     }
-    nros_log_emit_at(logger, severity, buf, n, file, line);
+    rclc_log_emit_at(logger, severity, buf, n, file, line);
 }
 
 /* ---- Convenience macros ---- */
 /* The macros stage the printf args into a stack buffer inside
- * `nros_log_emit_fmt_at`, which attaches `__FILE__` / `__LINE__`.
+ * `rclc_log_emit_fmt_at`, which attaches `__FILE__` / `__LINE__`.
  * Filtering happens on the Rust side: the image's compile-time CEILING
  * (`NROS_LOG_MAX_LEVEL`, issue 1037 — `trace` unless stated) and then the
- * per-logger threshold (`nros_logger_set_level`), both inside the same check
- * `nros_logger_is_enabled` answers. The call site still formats; guard it with
- * `nros_logger_is_enabled` if the arguments are expensive. */
+ * per-logger threshold (`rclc_logger_set_level`), both inside the same check
+ * `rclc_logger_is_enabled` answers. The call site still formats; guard it with
+ * `rclc_logger_is_enabled` if the arguments are expensive. */
 
-#define NROS_LOG_TRACE(logger, ...)                                                                \
-    nros_log_emit_fmt_at((logger), NROS_LOG_SEVERITY_TRACE, __FILE__, (uint32_t)__LINE__,          \
+#define RCLC_LOG_TRACE(logger, ...)                                                                \
+    rclc_log_emit_fmt_at((logger), RCLC_LOG_SEVERITY_TRACE, __FILE__, (uint32_t)__LINE__,          \
                          __VA_ARGS__)
-#define NROS_LOG_DEBUG(logger, ...)                                                                \
-    nros_log_emit_fmt_at((logger), NROS_LOG_SEVERITY_DEBUG, __FILE__, (uint32_t)__LINE__,          \
+#define RCLC_LOG_DEBUG(logger, ...)                                                                \
+    rclc_log_emit_fmt_at((logger), RCLC_LOG_SEVERITY_DEBUG, __FILE__, (uint32_t)__LINE__,          \
                          __VA_ARGS__)
-#define NROS_LOG_INFO(logger, ...)                                                                 \
-    nros_log_emit_fmt_at((logger), NROS_LOG_SEVERITY_INFO, __FILE__, (uint32_t)__LINE__,           \
+#define RCLC_LOG_INFO(logger, ...)                                                                 \
+    rclc_log_emit_fmt_at((logger), RCLC_LOG_SEVERITY_INFO, __FILE__, (uint32_t)__LINE__,           \
                          __VA_ARGS__)
-#define NROS_LOG_WARN(logger, ...)                                                                 \
-    nros_log_emit_fmt_at((logger), NROS_LOG_SEVERITY_WARN, __FILE__, (uint32_t)__LINE__,           \
+#define RCLC_LOG_WARN(logger, ...)                                                                 \
+    rclc_log_emit_fmt_at((logger), RCLC_LOG_SEVERITY_WARN, __FILE__, (uint32_t)__LINE__,           \
                          __VA_ARGS__)
-#define NROS_LOG_ERROR(logger, ...)                                                                \
-    nros_log_emit_fmt_at((logger), NROS_LOG_SEVERITY_ERROR, __FILE__, (uint32_t)__LINE__,          \
+#define RCLC_LOG_ERROR(logger, ...)                                                                \
+    rclc_log_emit_fmt_at((logger), RCLC_LOG_SEVERITY_ERROR, __FILE__, (uint32_t)__LINE__,          \
                          __VA_ARGS__)
-#define NROS_LOG_FATAL(logger, ...)                                                                \
-    nros_log_emit_fmt_at((logger), NROS_LOG_SEVERITY_FATAL, __FILE__, (uint32_t)__LINE__,          \
+#define RCLC_LOG_FATAL(logger, ...)                                                                \
+    rclc_log_emit_fmt_at((logger), RCLC_LOG_SEVERITY_FATAL, __FILE__, (uint32_t)__LINE__,          \
                          __VA_ARGS__)
 
 /**
@@ -272,24 +270,24 @@ static inline void nros_log_emit_fmt_at(nros_logger_t logger, nros_log_severity_
  * platform-log writer is registered (typically right after
  * `nros_node_init` returns). Pins `nros_log::init` as a linker root
  * so `--gc-sections` keeps it; without this, the lazy guard inside
- * `nros_log_emit` can be unreachable and every record silently
+ * `rclc_log_emit` can be unreachable and every record silently
  * drops.
  *
  * Idempotent. Hosted POSIX consumers can skip this — the
  * `.init_array` ctors already wire the dispatcher.
  */
-void nros_log_init(void);
+void rclc_log_init(void);
 
 /**
  * Phase 88.16.H — opaque handle to the catch-all `nros` logger.
  *
  * Lets C callers emit through `NROS_LOG_*` without standing up a
- * full `nros_node_t` (useful for boot diagnostics, panic hooks,
+ * full `rcl_node_t` (useful for boot diagnostics, panic hooks,
  * smoke fixtures). The returned handle is `'static`. Never free.
  *
- * @return `nros_logger_t` for the default ("nros") logger.
+ * @return `rclc_logger_t` for the default ("nros") logger.
  */
-nros_logger_t nros_log_default_logger(void);
+rclc_logger_t rclc_log_default_logger(void);
 
 /* -------------------------------------------------------------------------
  * phase-417 W4.d — named loggers, per-logger levels, sinks, throttle.
@@ -303,13 +301,13 @@ nros_logger_t nros_log_default_logger(void);
  * Look up a logger by name, CREATING one if the name is new.
  *
  * `rclcpp::get_logger("x")`'s shape. Until phase-417 the C surface had only
- * `nros_log_default_logger()`, so every C node in an image shared one logger
+ * `rclc_log_default_logger()`, so every C node in an image shared one logger
  * and therefore one threshold.
  *
  * Total — always returns a usable handle, `'static`, never freed. A NULL or
  * empty name, a name longer than 48 bytes, or an exhausted logger arena answers
  * the CATCH-ALL logger and says so at WARN through that logger. Check the log
- * before calling `nros_logger_set_level` on a handle you did not verify: the
+ * before calling `rclc_logger_set_level` on a handle you did not verify: the
  * catch-all's threshold is shared with every other unnamed logger.
  *
  * Arena size is the `NROS_LOG_DYNAMIC_LOGGERS` knob (default 16; Linux host
@@ -317,7 +315,7 @@ nros_logger_t nros_log_default_logger(void);
  *
  * @param name  NUL-terminated UTF-8. Copied; need not outlive the call.
  */
-nros_logger_t nros_log_get_logger(const char* name);
+rclc_logger_t rclc_log_get_logger(const char* name);
 
 /**
  * Copy `logger`'s name into `buf` as a NUL-terminated string.
@@ -330,39 +328,39 @@ nros_logger_t nros_log_get_logger(const char* name);
  * length-delimited `&str`: its pointer is not NUL-terminated, and handing it
  * out would hand out a string every C function reads past the end of.
  */
-size_t nros_logger_get_name(nros_logger_t logger, char* buf, size_t buf_len);
+size_t rclc_logger_get_name(rclc_logger_t logger, char* buf, size_t buf_len);
 
 /**
  * Set `logger`'s runtime severity threshold. Records below it are dropped
  * before any sink sees them.
  *
- * `NROS_LOG_SEVERITY_UNSET` takes the level away again rather than setting one:
- * the logger goes back to filtering on `nros_log_get_default_level()`. See the
- * `nros_log_severity_t` comment for what that inheritance is and is not.
+ * `RCLC_LOG_SEVERITY_UNSET` takes the level away again rather than setting one:
+ * the logger goes back to filtering on `rclc_log_get_default_level()`. See the
+ * `rcl_log_severity_t` comment for what that inheritance is and is not.
  *
  * @return false for a NULL handle, true otherwise.
  */
-bool nros_logger_set_level(nros_logger_t logger, nros_log_severity_t severity);
+bool rclc_logger_set_level(rclc_logger_t logger, rcl_log_severity_t severity);
 
 /**
  * A logger that is a descendant of `logger` — `rclcpp::Logger::get_child`'s C
  * half (RFC-0102). Named `<parent>.<suffix>`; the catch-all's
- * (`nros_log_default_logger()`) children are top-level names (`suffix`).
+ * (`rclc_log_default_logger()`) children are top-level names (`suffix`).
  *
  * A child with no level of its own filters at its nearest ancestor's, so
- * `nros_logger_set_level(parent, NROS_LOG_SEVERITY_DEBUG)` reaches it. The same
+ * `rclc_logger_set_level(parent, RCLC_LOG_SEVERITY_DEBUG)` reaches it. The same
  * name answers the same handle, `'static`, never freed.
  *
  * @return the child, or NULL — warned once per process — when the full name is
  *         over 48 bytes or empty, or the runtime-logger arena is full. NULL,
  *         not the parent: the substitute is the caller's choice, and handing
- *         back the parent would make `nros_logger_set_level(child, ..)` move
+ *         back the parent would make `rclc_logger_set_level(child, ..)` move
  *         the parent's threshold. `rclcpp::Logger::get_child` emits through the
  *         parent and refuses `set_level` in that case.
  *
  * @param suffix  NUL-terminated UTF-8. Copied; need not outlive the call.
  */
-nros_logger_t nros_logger_get_child(nros_logger_t logger, const char* suffix);
+rclc_logger_t rclc_logger_get_child(rclc_logger_t logger, const char* suffix);
 
 /**
  * `logger`'s EFFECTIVE runtime severity threshold — its own level if it has
@@ -370,12 +368,12 @@ nros_logger_t nros_logger_get_child(nros_logger_t logger, const char* suffix);
  *
  * `rcutils_logging_get_logger_effective_level`'s answer rather than
  * `rcutils_logging_get_logger_level`'s: this is the number that decides
- * whether a record is emitted, so it is never `NROS_LOG_SEVERITY_UNSET`.
+ * whether a record is emitted, so it is never `RCLC_LOG_SEVERITY_UNSET`.
  *
- * A NULL handle answers `NROS_LOG_SEVERITY_FATAL` — the quiet end — so a
+ * A NULL handle answers `RCLC_LOG_SEVERITY_FATAL` — the quiet end — so a
  * dropped handle cannot read as "trace everything".
  */
-nros_log_severity_t nros_logger_get_level(nros_logger_t logger);
+rcl_log_severity_t rclc_logger_get_level(rclc_logger_t logger);
 
 /**
  * Move the threshold that every logger WITHOUT a level of its own filters on.
@@ -384,23 +382,23 @@ nros_log_severity_t nros_logger_get_level(nros_logger_t logger);
  * because "no level of its own" is a stored state and not a value copied in at
  * construction. A logger that states its own level is NOT overridden.
  *
- * `NROS_LOG_SEVERITY_UNSET` here restores `NROS_LOG_SEVERITY_INFO`, which is
+ * `RCLC_LOG_SEVERITY_UNSET` here restores `RCLC_LOG_SEVERITY_INFO`, which is
  * `rcutils_logging_set_default_logger_level`'s documented behaviour for the
  * same argument. Every other value resolves by band, as everywhere else on
  * this surface.
  *
- * Not `nros_logger_set_level(nros_log_default_logger(), ...)`: that moves the
+ * Not `rclc_logger_set_level(rclc_log_default_logger(), ...)`: that moves the
  * threshold of the one logger NAMED `"nros"`, which is a different logger from
  * "every logger that has not been given a level".
  */
-void nros_log_set_default_level(nros_log_severity_t severity);
+void rclc_log_set_default_level(rcl_log_severity_t severity);
 
 /**
  * The threshold every logger without a level of its own filters on.
  *
- * `NROS_LOG_SEVERITY_INFO` until `nros_log_set_default_level` moves it.
+ * `RCLC_LOG_SEVERITY_INFO` until `rclc_log_set_default_level` moves it.
  */
-nros_log_severity_t nros_log_get_default_level(void);
+rcl_log_severity_t rclc_log_get_default_level(void);
 
 /**
  * Whether a record at `severity` would pass `logger`'s threshold.
@@ -409,10 +407,10 @@ nros_log_severity_t nros_log_get_default_level(void);
  * the throttle window: a record the level filters must not consume the window.
  * NULL handle answers false.
  */
-bool nros_logger_is_enabled(nros_logger_t logger, nros_log_severity_t severity);
+bool rclc_logger_is_enabled(rclc_logger_t logger, rcl_log_severity_t severity);
 
 /**
- * A C log sink — see `nros_log_add_sink`.
+ * A C log sink — see `rclc_log_add_sink`.
  *
  * Flat arguments rather than a `const nros_log_record_t *` on purpose: a struct
  * crossing this FFI would be hand-mirrored (cbindgen skips the logging module),
@@ -425,9 +423,9 @@ bool nros_logger_is_enabled(nros_logger_t logger, nros_log_severity_t severity);
  * NUL-terminated. They are valid only for the duration of the call.
  *
  * `timestamp_ns` is 0 when no monotonic clock is linked — see
- * `nros_log_timestamp_available()`.
+ * `rclc_log_timestamp_available()`.
  */
-typedef void (*nros_log_sink_fn)(void* user_data, nros_log_severity_t severity,
+typedef void (*rclc_log_sink_fn)(void* user_data, rcl_log_severity_t severity,
                                  const char* logger_name, size_t logger_name_len,
                                  const char* message, size_t message_len, const char* file,
                                  size_t file_len, uint32_t line, uint64_t timestamp_ns);
@@ -435,7 +433,7 @@ typedef void (*nros_log_sink_fn)(void* user_data, nros_log_severity_t severity,
 /**
  * Install a C callback as a log sink.
  *
- * Until phase-417 the C surface could not install a sink at all: `nros_log_init`
+ * Until phase-417 the C surface could not install a sink at all: `rclc_log_init`
  * takes no arguments and hardcodes the platform default. This APPENDS, so a
  * consumer teeing records to its own transport does not discard whatever the
  * board installed.
@@ -451,7 +449,7 @@ typedef void (*nros_log_sink_fn)(void* user_data, nros_log_severity_t severity,
  *         that was silently not installed is indistinguishable from one that
  *         never fires.
  */
-bool nros_log_add_sink(nros_log_sink_fn sink, void* user_data);
+bool rclc_log_add_sink(rclc_log_sink_fn sink, void* user_data);
 
 /**
  * Whether records carry a real `timestamp_ns` rather than a constant 0.
@@ -460,9 +458,9 @@ bool nros_log_add_sink(nros_log_sink_fn sink, void* user_data);
  * platform's `[capabilities] clock` nor its `platform-clock` feature (issue
  * 1037) — so
  * nothing derived from the timestamp — the throttle windows above all — has a
- * time base. See `nros_log_throttle_admit`.
+ * time base. See `rclc_log_throttle_admit`.
  */
-bool nros_log_timestamp_available(void);
+bool rclc_log_timestamp_available(void);
 
 /**
  * Decide whether a throttled call site may emit now, and arm its window.
@@ -491,7 +489,7 @@ bool nros_log_timestamp_available(void);
  * and each site emits its first record and nothing after it; the first such
  * call reports that at WARN rather than degrading quietly.
  */
-bool nros_log_throttle_admit(uint64_t* last_ns, uint64_t interval_ms);
+bool rclc_log_throttle_admit(uint64_t* last_ns, uint64_t interval_ms);
 
 /* ---- Throttled convenience macros ---- */
 /* One `static uint64_t` per call site, which is what makes the window
@@ -503,27 +501,27 @@ bool nros_log_throttle_admit(uint64_t* last_ns, uint64_t interval_ms);
  * filters must not consume the window, or a raised-then-lowered log level
  * loses its first record for a whole interval. */
 
-#define NROS_LOG_THROTTLE_AT(logger, severity, interval_ms, ...)                                   \
+#define RCLC_LOG_THROTTLE_AT(logger, severity, interval_ms, ...)                                   \
     do {                                                                                           \
         static uint64_t _nros_log_throttle_last = 0;                                               \
-        if (nros_logger_is_enabled((logger), (severity)) &&                                        \
-            nros_log_throttle_admit(&_nros_log_throttle_last, (uint64_t)(interval_ms))) {          \
-            nros_log_emit_fmt_at((logger), (severity), __FILE__, (uint32_t)__LINE__, __VA_ARGS__); \
+        if (rclc_logger_is_enabled((logger), (severity)) &&                                        \
+            rclc_log_throttle_admit(&_nros_log_throttle_last, (uint64_t)(interval_ms))) {          \
+            rclc_log_emit_fmt_at((logger), (severity), __FILE__, (uint32_t)__LINE__, __VA_ARGS__); \
         }                                                                                          \
     } while (0)
 
-#define NROS_LOG_TRACE_THROTTLE(logger, interval_ms, ...)                                          \
-    NROS_LOG_THROTTLE_AT((logger), NROS_LOG_SEVERITY_TRACE, (interval_ms), __VA_ARGS__)
-#define NROS_LOG_DEBUG_THROTTLE(logger, interval_ms, ...)                                          \
-    NROS_LOG_THROTTLE_AT((logger), NROS_LOG_SEVERITY_DEBUG, (interval_ms), __VA_ARGS__)
-#define NROS_LOG_INFO_THROTTLE(logger, interval_ms, ...)                                           \
-    NROS_LOG_THROTTLE_AT((logger), NROS_LOG_SEVERITY_INFO, (interval_ms), __VA_ARGS__)
-#define NROS_LOG_WARN_THROTTLE(logger, interval_ms, ...)                                           \
-    NROS_LOG_THROTTLE_AT((logger), NROS_LOG_SEVERITY_WARN, (interval_ms), __VA_ARGS__)
-#define NROS_LOG_ERROR_THROTTLE(logger, interval_ms, ...)                                          \
-    NROS_LOG_THROTTLE_AT((logger), NROS_LOG_SEVERITY_ERROR, (interval_ms), __VA_ARGS__)
-#define NROS_LOG_FATAL_THROTTLE(logger, interval_ms, ...)                                          \
-    NROS_LOG_THROTTLE_AT((logger), NROS_LOG_SEVERITY_FATAL, (interval_ms), __VA_ARGS__)
+#define RCLC_LOG_TRACE_THROTTLE(logger, interval_ms, ...)                                          \
+    RCLC_LOG_THROTTLE_AT((logger), RCLC_LOG_SEVERITY_TRACE, (interval_ms), __VA_ARGS__)
+#define RCLC_LOG_DEBUG_THROTTLE(logger, interval_ms, ...)                                          \
+    RCLC_LOG_THROTTLE_AT((logger), RCLC_LOG_SEVERITY_DEBUG, (interval_ms), __VA_ARGS__)
+#define RCLC_LOG_INFO_THROTTLE(logger, interval_ms, ...)                                           \
+    RCLC_LOG_THROTTLE_AT((logger), RCLC_LOG_SEVERITY_INFO, (interval_ms), __VA_ARGS__)
+#define RCLC_LOG_WARN_THROTTLE(logger, interval_ms, ...)                                           \
+    RCLC_LOG_THROTTLE_AT((logger), RCLC_LOG_SEVERITY_WARN, (interval_ms), __VA_ARGS__)
+#define RCLC_LOG_ERROR_THROTTLE(logger, interval_ms, ...)                                          \
+    RCLC_LOG_THROTTLE_AT((logger), RCLC_LOG_SEVERITY_ERROR, (interval_ms), __VA_ARGS__)
+#define RCLC_LOG_FATAL_THROTTLE(logger, interval_ms, ...)                                          \
+    RCLC_LOG_THROTTLE_AT((logger), RCLC_LOG_SEVERITY_FATAL, (interval_ms), __VA_ARGS__)
 
 #ifdef __cplusplus
 } /* extern "C" */

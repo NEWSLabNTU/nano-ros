@@ -18,12 +18,12 @@
 int nros_app_main(int argc, char** argv) {
     (void)argc;
     (void)argv;
-    nros_logger_t logger = nros_log_get_logger("image_env_probe");
-    nros_logger_set_level(logger, NROS_LOG_SEVERITY_DEBUG);
+    rclc_logger_t logger = rclc_log_get_logger("image_env_probe");
+    rclc_logger_set_level(logger, RCLC_LOG_SEVERITY_DEBUG);
     printf("image-env-probe-c: max_handles=%d info_enabled=%d warn_enabled=%d\n",
            (int)NROS_EXECUTOR_MAX_HANDLES,
-           nros_logger_is_enabled(logger, NROS_LOG_SEVERITY_INFO) ? 1 : 0,
-           nros_logger_is_enabled(logger, NROS_LOG_SEVERITY_WARN) ? 1 : 0);
+           rclc_logger_is_enabled(logger, RCLC_LOG_SEVERITY_INFO) ? 1 : 0,
+           rclc_logger_is_enabled(logger, RCLC_LOG_SEVERITY_WARN) ? 1 : 0);
     return 0;
 }
 

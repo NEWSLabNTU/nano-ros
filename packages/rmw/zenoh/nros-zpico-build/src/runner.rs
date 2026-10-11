@@ -2206,7 +2206,7 @@ pub fn run() {
         // it inline in a1/a2; alias TU's `_z_open_tcp` tail-calls
         // `nros_platform_tcp_open` treating a1 as a pointer →
         // `lhu a2, 2(a1)` faults with a1 = 10.0.2.2 (the IP value).
-        // Same class of bug closed NuttX (`nros_support_init -> -4`)
+        // Same class of bug closed NuttX (`rclc_support_init -> -4`)
         // in Phase 159. Emit the network section ONLY for bare-metal;
         // every other platform's vendor network.c is the single source
         // of truth and the alias TU stays out of the link.

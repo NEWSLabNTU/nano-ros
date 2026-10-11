@@ -73,17 +73,17 @@ static void probe_service_handler(const fingerprint_corpus_srv_probe_request* re
  * it needs the service's own storage duration. Static here, a member of the
  * node's context in a real program. */
 static fingerprint_corpus_srv_probe_service_handler_t g_probe_handler;
-static struct nros_service_t g_probe_service;
+static struct rcl_service_t g_probe_service;
 
-static nros_ret_t bring_up_typed_service(struct nros_executor_t* executor,
-                                         const struct nros_node_t* node) {
-    nros_ret_t ret = fingerprint_corpus_srv_probe_service_handler_init(&g_probe_handler,
-                                                                       probe_service_handler, NULL);
-    if (ret != NROS_RET_OK) {
+static rcl_ret_t bring_up_typed_service(struct rclc_executor_t* executor,
+                                        const struct rcl_node_t* node) {
+    rcl_ret_t ret = fingerprint_corpus_srv_probe_service_handler_init(&g_probe_handler,
+                                                                      probe_service_handler, NULL);
+    if (ret != RCL_RET_OK) {
         return ret;
     }
     ret = fingerprint_corpus_srv_probe_service_init(&g_probe_service, node, "/add");
-    if (ret != NROS_RET_OK) {
+    if (ret != RCL_RET_OK) {
         return ret;
     }
     /* phase-487 W2: the handler is bound where rclc binds it, at registration. */
@@ -93,14 +93,14 @@ static nros_ret_t bring_up_typed_service(struct nros_executor_t* executor,
 
 /* A refused request is queryable without a logger — `last_error` is one of the
  * NROS_SERVICE_TYPED_* codes and `error_count` is monotonic. The ERROR record
- * `nros_service_typed_report_error()` emits is the loud half; this is for a
+ * `rclc_service_typed_report_error()` emits is the loud half; this is for a
  * caller that would rather poll than read logs. */
 static bool typed_service_is_healthy(void) {
-    return g_probe_handler.last_error == NROS_SERVICE_TYPED_OK && g_probe_handler.error_count == 0u;
+    return g_probe_handler.last_error == RCLC_SERVICE_TYPED_OK && g_probe_handler.error_count == 0u;
 }
 
 /* ===================================================================
- * 2. The trampoline really is an `nros_service_callback_t`.
+ * 2. The trampoline really is an `rclc_service_callback_t`.
  *
  * A function POINTER, so a drift between the generated trampoline's argument
  * list and the executor's callback ABI is a compile error here rather than an
@@ -108,7 +108,7 @@ static bool typed_service_is_healthy(void) {
  * the assertion the whole file exists for.
  * =================================================================== */
 
-static const nros_service_callback_t k_trampoline =
+static const rclc_service_callback_t k_trampoline =
     fingerprint_corpus_srv_probe_service_handle_request;
 
 /* ===================================================================
@@ -122,12 +122,12 @@ static void probe_response_handler(const fingerprint_corpus_srv_probe_response* 
 }
 
 static fingerprint_corpus_srv_probe_client_handler_t g_probe_client_handler;
-static struct nros_client_t g_probe_client;
+static struct rcl_client_t g_probe_client;
 
-static const nros_response_callback_t k_response_trampoline =
+static const rclc_response_callback_t k_response_trampoline =
     fingerprint_corpus_srv_probe_client_handle_response;
 
-static nros_ret_t drive_typed_client(void) {
+static rcl_ret_t drive_typed_client(void) {
     /* Caller-supplied scratch. The service pack emits no
      * `_MAX_SERIALIZED_SIZE` constants yet (issue 0896 gave the MESSAGE pack
      * its own), so the buffer is the caller's decision rather than a hidden
@@ -136,16 +136,16 @@ static nros_ret_t drive_typed_client(void) {
     uint8_t response_scratch[512];
     fingerprint_corpus_srv_probe_request request;
     fingerprint_corpus_srv_probe_response response;
-    nros_ret_t ret;
+    rcl_ret_t ret;
 
     ret = fingerprint_corpus_srv_probe_client_handler_init(&g_probe_client_handler,
                                                            probe_response_handler, NULL);
-    if (ret != NROS_RET_OK) {
+    if (ret != RCL_RET_OK) {
         return ret;
     }
     ret = fingerprint_corpus_srv_probe_client_set_response_callback(&g_probe_client,
                                                                     &g_probe_client_handler);
-    if (ret != NROS_RET_OK) {
+    if (ret != RCL_RET_OK) {
         return ret;
     }
 
@@ -155,18 +155,18 @@ static nros_ret_t drive_typed_client(void) {
     /* Async pair. */
     ret = fingerprint_corpus_srv_probe_client_send_request(
         &g_probe_client, &request, request_scratch, sizeof(request_scratch));
-    if (ret != NROS_RET_OK) {
+    if (ret != RCL_RET_OK) {
         return ret;
     }
     ret = fingerprint_corpus_srv_probe_client_take_response(
         &g_probe_client, &response, response_scratch, sizeof(response_scratch));
-    /* NROS_RET_TRY_AGAIN is the "no reply yet" code the raw take already
+    /* RCLC_RET_TRY_AGAIN is the "no reply yet" code the raw take already
      * returns, so a polling loop written against the byte API is unchanged. */
-    if (ret != NROS_RET_OK && ret != NROS_RET_TRY_AGAIN) {
+    if (ret != RCL_RET_OK && ret != RCLC_RET_TRY_AGAIN) {
         return ret;
     }
 
-    /* ...and the blocking convenience, which forwards to `nros_client_call` so
+    /* ...and the blocking convenience, which forwards to `rclc_client_call` so
      * the timeout and the executor spin stay where they already live. */
     ret = fingerprint_corpus_srv_probe_client_call(&g_probe_client, &request, &response,
                                                    request_scratch, sizeof(request_scratch),
@@ -185,7 +185,7 @@ static nros_ret_t drive_typed_client(void) {
  * header uncompilable while the Rust side stayed green.
  * =================================================================== */
 
-static void (*const k_report_error)(int32_t, const char*) = nros_service_typed_report_error;
+static void (*const k_report_error)(int32_t, const char*) = rclc_service_typed_report_error;
 
 /* Reference everything so no compiler prunes the lookups this file exists to
  * force. */

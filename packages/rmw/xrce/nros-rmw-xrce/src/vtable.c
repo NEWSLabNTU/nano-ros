@@ -137,7 +137,7 @@ rmw_ret_t nros_rmw_xrce_register(void) {
 
 /* Phase 115.K.2.5.2 — auto-register on library load.
  *
- * The C/C++ APIs go through `nros_support_init` (C) or `nros::init`
+ * The C/C++ APIs go through `rclc_support_init` (C) or `nros::init`
  * (C++). The C++ path explicitly calls `nros_rmw_xrce_register`
  * inside `nros::init` (gated on `NROS_RMW_XRCE` from CMake). The
  * pure-C path doesn't have an analogous explicit hook today, so we

@@ -307,7 +307,7 @@ fn cargo_rust_workspace_entry_writes_a_census_without_a_router() {
 }
 
 /// Issue 1556 item 2 -- an rclc-style C APPLICATION that owns its own `main`
-/// and its own spin loop is a census producer: `nros_support_init` selects the
+/// and its own spin loop is a census producer: `rclc_support_init` selects the
 /// recording backend, the application creates its node, publisher and timer
 /// through `nros-c` (each crossing `nros::census_hooks` or the recorder), and
 /// its first `rclc_executor_spin_period` writes the census and exits 0 -- no

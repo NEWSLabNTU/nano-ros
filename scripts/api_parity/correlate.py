@@ -277,7 +277,7 @@ _TYPE_NOISE = [
     (re.compile(r"\bconst\s+"), ""),
     (re.compile(r"\b(struct|enum|union)\s+"), ""),
     # The library prefix is not part of the type's identity, exactly as it is
-    # not part of a name's: `struct nros_client_t *` and `rcl_client_t *` are
+    # not part of a name's: `struct rcl_client_t *` and `rcl_client_t *` are
     # the same concept spelled by two libraries. Without this, every handle
     # parameter reads as a type mismatch.
     (re.compile(r"\b(nros|rclc|rcl|rmw|rosidl)_"), ""),

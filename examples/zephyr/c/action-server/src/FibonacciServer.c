@@ -36,19 +36,19 @@ static void write_u32_le(uint8_t* p, uint32_t v) {
 static int32_t on_goal(const uint8_t goal_id[16], const uint8_t* data, size_t len, void* ctx) {
     fib_server_t* self = (fib_server_t*)ctx;
     if (len < 8 || self->pending) {
-        return NROS_C_GOAL_REJECT;
+        return RCLC_C_GOAL_REJECT;
     }
     memcpy(self->goal_id, goal_id, 16);
     self->order = read_i32_le(data + 4);
     self->pending = 1;
     printf("Received goal request with order %d\n", (int)self->order);
-    return NROS_C_GOAL_ACCEPT_AND_EXECUTE;
+    return RCLC_C_GOAL_ACCEPT_AND_EXECUTE;
 }
 
 static int32_t on_cancel(const uint8_t goal_id[16], void* ctx) {
     (void)goal_id;
     (void)ctx;
-    return NROS_C_CANCEL_REJECT;
+    return RCLC_C_CANCEL_REJECT;
 }
 
 static void on_tick(void* ctx) {
@@ -86,7 +86,7 @@ static void on_tick(void* ctx) {
 
     int32_t rc = nros_cpp_action_server_complete_goal(self->storage, self->executor,
                                                       (const uint8_t(*)[16])self->goal_id,
-                                                      NROS_GOAL_STATUS_SUCCEEDED, buf, result_len);
+                                                      RCLC_GOAL_STATUS_SUCCEEDED, buf, result_len);
     if (rc == 0) {
         printf("Goal succeeded\n");
     } else {
@@ -94,11 +94,10 @@ static void on_tick(void* ctx) {
     }
 }
 
-static nros_ret_t server_configure(const nros_cpp_node_t* node, void* executor,
-                                   fib_server_t* self) {
+static rcl_ret_t server_configure(const nros_cpp_node_t* node, void* executor, fib_server_t* self) {
     setvbuf(stdout, NULL, _IONBF, 0);
     self->executor = executor;
-    nros_cpp_qos_t qos = nros_c_qos_default();
+    nros_cpp_qos_t qos = rclc_c_qos_default();
     int32_t rc = nros_cpp_action_server_create(
         node, "/fibonacci", "example_interfaces/action/Fibonacci", "", qos, self->storage);
     if (rc != 0) {
@@ -123,4 +122,4 @@ static nros_ret_t server_configure(const nros_cpp_node_t* node, void* executor,
     return rc;
 }
 
-NROS_C_COMPONENT(fib_server_t, server_configure)
+RCLC_C_COMPONENT(fib_server_t, server_configure)

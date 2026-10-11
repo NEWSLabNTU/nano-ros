@@ -13,7 +13,7 @@
 
 #include <nros/types.h>
 {%- if has_view_goal or has_view_result or has_view_feedback %}
-// Issue 0346 — borrowed views use nros_view_str_t / the LE slice views.
+// Issue 0346 — borrowed views use rclc_view_str_t / the LE slice views.
 #include <nros/view.h>
 {%- endif %}
 
@@ -143,8 +143,8 @@ static inline const char* {{ action_struct_name }}_get_type_hash(void) {
     return "{{ type_hash }}";
 }
 
-/// Get the nros_action_type_t for this action type
-const struct nros_action_type_t* {{ action_struct_name }}_get_type_support(void);
+/// Get the rclc_action_type_t for this action type
+const struct rclc_action_type_t* {{ action_struct_name }}_get_type_support(void);
 
 #ifdef __cplusplus
 }

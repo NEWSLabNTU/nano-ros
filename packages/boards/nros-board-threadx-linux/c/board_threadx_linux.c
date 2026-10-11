@@ -130,7 +130,7 @@ static void board_stderr_line(const char *s)
  * Two facts made that happen, and each is enough on its own:
  *
  *   1. The C/C++ examples install `signal(SIGTERM, handler)` — the idiomatic
- *      graceful shutdown: set a flag, `nros_executor_cancel()`, let the spin
+ *      graceful shutdown: set a flag, `rclc_executor_cancel()`, let the spin
  *      return and tear down. That shutdown is RUN BY THE RTOS: the app thread
  *      has to be scheduled to see the cancel. When the ThreadX scheduler is
  *      wedged (the measured image: every pthread parked on `_tx_linux_mutex`

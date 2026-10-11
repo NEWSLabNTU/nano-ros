@@ -50,9 +50,9 @@ size_t append_i64(char* out, size_t cap, size_t pos, int64_t value) {
     return pos;
 }
 
-void emit(nros_logger_t logger, nros_log_severity_t severity, const char* text, const char* file,
+void emit(rclc_logger_t logger, rcl_log_severity_t severity, const char* text, const char* file,
           uint32_t line) {
-    nros_log_emit_at(logger, severity, text, strlen(text), file, line);
+    rclc_log_emit_at(logger, severity, text, strlen(text), file, line);
 }
 
 } // namespace
@@ -65,24 +65,24 @@ int nros_app_main(int argc, char** argv) {
     rclcpp::PollClient<example_interfaces::srv::AddTwoInts> client;
 
     if (!rclcpp::init_in(NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID)).ok()) {
-        emit(nros_log_default_logger(), NROS_LOG_SEVERITY_ERROR, "rclcpp::init failed", __FILE__,
+        emit(rclc_log_default_logger(), RCLC_LOG_SEVERITY_ERROR, "rclcpp::init failed", __FILE__,
              __LINE__);
         return 1;
     }
     if (!rclcpp::create_node(node, "add_two_ints_client").ok()) {
-        emit(nros_log_default_logger(), NROS_LOG_SEVERITY_ERROR, "create_node failed", __FILE__,
+        emit(rclc_log_default_logger(), RCLC_LOG_SEVERITY_ERROR, "create_node failed", __FILE__,
              __LINE__);
         return 1;
     }
-    nros_logger_t logger = node.get_logger();
+    rclc_logger_t logger = node.get_logger();
     if (!node.create_client(client, "/add_two_ints").ok()) {
-        emit(logger, NROS_LOG_SEVERITY_ERROR, "create_client failed", __FILE__, __LINE__);
+        emit(logger, RCLC_LOG_SEVERITY_ERROR, "create_client failed", __FILE__, __LINE__);
         return 1;
     }
 
     rclcpp::Result ret = client.wait_for_service(10000);
     if (!ret.ok() && ret.code() != rclcpp::ErrorCode::Unsupported) {
-        emit(logger, NROS_LOG_SEVERITY_ERROR, "service did not appear within 10s", __FILE__,
+        emit(logger, RCLC_LOG_SEVERITY_ERROR, "service did not appear within 10s", __FILE__,
              __LINE__);
         rclcpp::shutdown();
         return 1;
@@ -94,7 +94,7 @@ int nros_app_main(int argc, char** argv) {
     example_interfaces::srv::AddTwoInts::Response resp;
     auto fut = client.send_request(req);
     if (fut.is_consumed()) {
-        emit(logger, NROS_LOG_SEVERITY_ERROR, "send_request failed", __FILE__, __LINE__);
+        emit(logger, RCLC_LOG_SEVERITY_ERROR, "send_request failed", __FILE__, __LINE__);
         rclcpp::shutdown();
         return 1;
     }
@@ -105,9 +105,9 @@ int nros_app_main(int argc, char** argv) {
         size_t len = append_str(line, sizeof(line), 0u, "Result of add_two_ints: ");
         len = append_i64(line, sizeof(line), len, resp.sum);
         line[len] = '\0';
-        emit(logger, NROS_LOG_SEVERITY_INFO, line, __FILE__, __LINE__);
+        emit(logger, RCLC_LOG_SEVERITY_INFO, line, __FILE__, __LINE__);
     } else {
-        emit(logger, NROS_LOG_SEVERITY_ERROR, "service call failed", __FILE__, __LINE__);
+        emit(logger, RCLC_LOG_SEVERITY_ERROR, "service call failed", __FILE__, __LINE__);
         exit_code = 1;
     }
     rclcpp::shutdown();

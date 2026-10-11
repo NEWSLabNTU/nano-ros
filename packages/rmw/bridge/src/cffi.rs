@@ -22,7 +22,7 @@ use nros_rmw_cffi::{
 use crate::PubSubBridge;
 
 /// C-side spec mirroring `nros_node::executor::SessionSpec`. Fields
-/// must stay in lockstep with `nros_session_spec_t` in
+/// must stay in lockstep with `rclc_session_spec_t` in
 /// `<nros/bridge.h>`.
 #[repr(C)]
 pub struct NrosSessionSpec {
@@ -33,14 +33,14 @@ pub struct NrosSessionSpec {
     pub namespace_: *const c_char,
 }
 
-/// Owned handle returned by [`nros_init_multi`]. Trait-object façade
+/// Owned handle returned by [`rclc_init_multi`]. Trait-object façade
 /// wraps the executor + any bridges built against it; the binary
-/// hands the raw pointer back to [`nros_fini_multi`] for cleanup.
+/// hands the raw pointer back to [`rclc_fini_multi`] for cleanup.
 struct ExecutorBox {
     executor: Executor<'static>,
     /// Persistent storage for the C-string copies the executor still
     /// references (`SessionSpec` holds `&'cfg str` borrows). Kept
-    /// alive for the executor's lifetime; freed by `nros_fini_multi`.
+    /// alive for the executor's lifetime; freed by `rclc_fini_multi`.
     _spec_strings: Vec<String>,
 }
 
@@ -64,7 +64,7 @@ unsafe fn cstr_or_empty(p: *const c_char) -> &'static str {
 /// Open an executor against the given specs. See `<nros/bridge.h>`
 /// for the documented contract.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_init_multi(
+pub unsafe extern "C" fn rclc_init_multi(
     specs: *const NrosSessionSpec,
     specs_len: usize,
     out: *mut *mut core::ffi::c_void,
@@ -154,16 +154,16 @@ pub unsafe extern "C" fn nros_init_multi(
         Err(e) => {
             nros_log::log_error!(
                 nros_log::get_logger("nros_rmw_bridge"),
-                "nros_init_multi failed — {e:?}"
+                "rclc_init_multi failed — {e:?}"
             );
             NROS_RMW_RET_ERROR
         }
     }
 }
 
-/// Tear down a `nros_init_multi`-opened executor. Idempotent on NULL.
+/// Tear down a `rclc_init_multi`-opened executor. Idempotent on NULL.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_fini_multi(exec: *mut core::ffi::c_void) {
+pub unsafe extern "C" fn rclc_fini_multi(exec: *mut core::ffi::c_void) {
     if exec.is_null() {
         return;
     }
@@ -212,7 +212,7 @@ pub struct NrosBridgeEndpoint {
 /// Create a raw pubsub bridge. See `<nros/bridge.h>` for the
 /// documented contract.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_pubsub_bridge_create(
+pub unsafe extern "C" fn rclc_pubsub_bridge_create(
     exec: *mut core::ffi::c_void,
     src: *const NrosBridgeEndpoint,
     dst: *const NrosBridgeEndpoint,
@@ -251,7 +251,7 @@ pub unsafe extern "C" fn nros_pubsub_bridge_create(
         Err(nros_node::executor::NodeError::NodeTableFull) => {
             nros_log::log_error!(
                 nros_log::get_logger("nros_rmw_bridge"),
-                "nros_pubsub_bridge_create: node table FULL creating the source \
+                "rclc_pubsub_bridge_create: node table FULL creating the source \
                  node -- raise NROS_EXECUTOR_MAX_NODES. A bridge creates TWO \
                  nodes and declares neither, so a DERIVED value does not count \
                  them (phase-412 W2)."
@@ -272,7 +272,7 @@ pub unsafe extern "C" fn nros_pubsub_bridge_create(
         Err(nros_node::executor::NodeError::NodeTableFull) => {
             nros_log::log_error!(
                 nros_log::get_logger("nros_rmw_bridge"),
-                "nros_pubsub_bridge_create: node table FULL creating the \
+                "rclc_pubsub_bridge_create: node table FULL creating the \
                  destination node -- raise NROS_EXECUTOR_MAX_NODES (phase-412 W2)."
             );
             return NROS_RMW_RET_ERROR;
@@ -302,7 +302,7 @@ pub unsafe extern "C" fn nros_pubsub_bridge_create(
         Err(e) => {
             nros_log::log_error!(
                 nros_log::get_logger("nros_rmw_bridge"),
-                "nros_pubsub_bridge_create: {}",
+                "rclc_pubsub_bridge_create: {}",
                 e
             );
             return NROS_RMW_RET_ERROR;
@@ -316,7 +316,7 @@ pub unsafe extern "C" fn nros_pubsub_bridge_create(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_pubsub_bridge_pump(bridge: *mut core::ffi::c_void) -> usize {
+pub unsafe extern "C" fn rclc_pubsub_bridge_pump(bridge: *mut core::ffi::c_void) -> usize {
     if bridge.is_null() {
         return 0;
     }
@@ -325,7 +325,7 @@ pub unsafe extern "C" fn nros_pubsub_bridge_pump(bridge: *mut core::ffi::c_void)
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_pubsub_bridge_pump_with_stats(
+pub unsafe extern "C" fn rclc_pubsub_bridge_pump_with_stats(
     bridge: *mut core::ffi::c_void,
 ) -> NrosPumpStats {
     if bridge.is_null() {
@@ -343,7 +343,7 @@ pub unsafe extern "C" fn nros_pubsub_bridge_pump_with_stats(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_pubsub_bridge_destroy(bridge: *mut core::ffi::c_void) {
+pub unsafe extern "C" fn rclc_pubsub_bridge_destroy(bridge: *mut core::ffi::c_void) {
     if bridge.is_null() {
         return;
     }

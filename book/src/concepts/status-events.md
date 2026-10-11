@@ -76,15 +76,15 @@ let status = sub.next_deadline_miss().await?;
 
 ```c
 static void on_liveliness_changed(
-        nros_subscription_t *sub,
-        nros_liveliness_changed_status_t status,
+        rcl_subscription_t *sub,
+        rclc_liveliness_changed_status_t status,
         void *user_context) {
     if (status.alive_count == 0) {
         trigger_failover();
     }
 }
 
-nros_subscription_set_liveliness_changed_callback(
+rclc_subscription_set_liveliness_changed_callback(
     sub, on_liveliness_changed, NULL);
 ```
 

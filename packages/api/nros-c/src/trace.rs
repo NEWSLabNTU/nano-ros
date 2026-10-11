@@ -42,7 +42,7 @@
 ///
 /// and, with the later blocks, 20 (handle-tagged name chunk), 21-24 (a stored
 /// contract violation, phase-474 I1) and 25-27 (a take and its source stamp,
-/// phase-474 I3, see [`nros_trace_set_take`]); the full table is in
+/// phase-474 I3, see [`rclc_trace_set_take`]); the full table is in
 /// `nros_node::executor::callback_trace`.
 ///
 /// Call it once at startup, BEFORE anything is registered on the executor: a
@@ -58,7 +58,7 @@
 /// re-entrant and must not unwind. It must remain valid until it is replaced
 /// or cleared.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_set_trace_sink(sink: Option<unsafe extern "C" fn(u32, u32)>) {
+pub unsafe extern "C" fn rclc_set_trace_sink(sink: Option<unsafe extern "C" fn(u32, u32)>) {
     #[cfg(all(feature = "trace-callbacks", feature = "rmw-cffi"))]
     nros_node::executor::callback_trace::set_trace_sink(sink);
     #[cfg(not(all(feature = "trace-callbacks", feature = "rmw-cffi")))]
@@ -76,7 +76,7 @@ pub unsafe extern "C" fn nros_set_trace_sink(sink: Option<unsafe extern "C" fn(u
 /// image whose monitors arm at the first spin (the default) it does nothing.
 /// No-op in a build without an RMW, which has no monitors.
 #[unsafe(no_mangle)]
-pub extern "C" fn nros_monitors_arm() {
+pub extern "C" fn rclc_monitors_arm() {
     #[cfg(feature = "rmw-cffi")]
     nros_node::executor::monitor::request_monitor_arming();
 }
@@ -94,7 +94,7 @@ pub extern "C" fn nros_monitors_arm() {
 ///
 /// No-op unless the crate was built with `trace-callbacks`.
 #[unsafe(no_mangle)]
-pub extern "C" fn nros_trace_set_take(handle: u8, on: bool, stamp_offset: i32) {
+pub extern "C" fn rclc_trace_set_take(handle: u8, on: bool, stamp_offset: i32) {
     #[cfg(all(feature = "trace-callbacks", feature = "rmw-cffi"))]
     nros_node::executor::callback_trace::set_take_trace(
         handle,
@@ -113,7 +113,7 @@ pub extern "C" fn nros_trace_set_take(handle: u8, on: bool, stamp_offset: i32) {
 ///
 /// No-op unless the crate was built with `trace-callbacks`.
 #[unsafe(no_mangle)]
-pub extern "C" fn nros_trace_set_timer_every(handle: u8, every: u16) {
+pub extern "C" fn rclc_trace_set_timer_every(handle: u8, every: u16) {
     #[cfg(all(feature = "trace-callbacks", feature = "rmw-cffi"))]
     nros_node::executor::callback_trace::set_timer_trace_every(handle, every);
     #[cfg(not(all(feature = "trace-callbacks", feature = "rmw-cffi")))]

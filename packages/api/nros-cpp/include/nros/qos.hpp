@@ -490,7 +490,7 @@ constexpr bool operator!=(const QoS& left, const QoS& right) {
 /// enumerator, and "no policy was identified" is a real answer a caller must
 /// be able to tell apart from a policy that was.
 ///
-/// The bytes are `nros_qos_policy_kind_to_cstr`'s, which are
+/// The bytes are `rclc_qos_policy_kind_to_cstr`'s, which are
 /// `nros_rmw::QoSPolicyMask::NAMED`'s. This header declares the C entry point
 /// rather than including `<nros/nros_generated.h>` — `qos.hpp` is deliberately
 /// self-contained (see issue 0112 at the top of this file) — and a signature
@@ -503,12 +503,12 @@ constexpr bool operator!=(const QoS& left, const QoS& right) {
 /// only one of them is "ignored because it conflicts with previous
 /// declaration", a warning that becomes an error on this tree's `-Werror`
 /// lanes and whose text points at neither file's real problem.
-extern "C" NROS_PUBLIC const char* nros_qos_policy_kind_to_cstr(uint32_t policy);
+extern "C" NROS_PUBLIC const char* rclc_qos_policy_kind_to_cstr(uint32_t policy);
 
 /// `rclcpp::qos_policy_kind_to_cstr` — see the entry point above, which it
 /// forwards to unchanged.
 inline const char* qos_policy_kind_to_cstr(uint32_t policy) {
-    return nros_qos_policy_kind_to_cstr(policy);
+    return rclc_qos_policy_kind_to_cstr(policy);
 }
 
 namespace detail {
@@ -560,7 +560,7 @@ namespace detail {
 //     `nros-qos-mirror-deviation` record whose own reason was that this
 //     surface and `nros-c`'s "move together with the C ABI or not at all".
 //     They moved together (issue 1329): this constructor, `nros-c`'s
-//     `NROS_QOS_*` statics and `nros_c_qos_default()`.
+//     `NROS_QOS_*` statics and `rclc_c_qos_default()`.
 //
 //     The forcing argument is issue 1329's per-backend QoS mask. XRCE honours
 //     no liveliness, so an AUTOMATIC default would have made

@@ -21,13 +21,13 @@
  * TWO things, and neither is a spelling:
  *
  * 1. **The `RCL_RET_*` value MAPPING (section 1).** RFC-0089 forbids
- *    renumbering `nros_ret_t` to rcl's values — that would silently flip the
+ *    renumbering `rcl_ret_t` to rcl's values — that would silently flip the
  *    meaning of every stored return code across three FFI seams. So
  *    `RCL_RET_TIMEOUT` does not go away; it becomes the NAME of our constant,
  *    with our value. A ported `if (ret == RCL_RET_TIMEOUT)` is correct; a
  *    program that hardcodes `if (ret == 2)` is not, and never was.
  * 2. **The handle TYPEDEFS (section 2).** Our structs are still
- *    `struct nros_node_t` and friends, so `rcl_node_t` is still an alias
+ *    `struct rcl_node_t` and friends, so `rcl_node_t` is still an alias
  *    rather than the name itself. These retire with the TYPE rename, which is
  *    a separate step from the entry-point rename this file records.
  *
@@ -55,7 +55,7 @@
  * ONE diagnostic. Letting it fall through would bury the message under a
  * cascade of "RCL_RET_OK redefined" warnings, which is the shape of an error
  * a reader skims past. */
-#if defined(RCL_RET_OK) || defined(RCL__TYPES_H_)
+#if defined(RCL__TYPES_H_)
 #error "<nros/rcl_compat.h> collides with the real <rcl/types.h>: both define \
 RCL_RET_* and the VALUES differ (nano-ros ERROR/TIMEOUT/INVALID_ARGUMENT/NOT_INIT \
 are -1/-2/-3/-7, rcl's are 1/2/11/101). Include one. If you are building against \
@@ -71,12 +71,12 @@ RMW_RET_* and the VALUES differ. Include one."
  * 1. Return codes — the SPELLING is adopted, the VALUES are NOT
  * ═══════════════════════════════════════════════════════════════════════════
  *
- * `nros_ret_t`'s own doc comment USED TO claim it was "Compatible with
+ * `rcl_ret_t`'s own doc comment USED TO claim it was "Compatible with
  * rcl_ret_t for familiarity". **It is not**, and W5.b corrected the comment as
  * well as adding the mapping below — a doc comment is the only thing a caller
  * can read at the call site, so leaving it while shipping a header that
  * contradicts it would have kept the defect and added a second copy of it.
- * `<nros/nros_generated.h>`'s `nros_ret_t` now leads with "NOT value-compatible
+ * `<nros/nros_generated.h>`'s `rcl_ret_t` now leads with "NOT value-compatible
  * with `rcl_ret_t` — only `OK` (0) agrees" and carries this same table. (No
  * line number: the generated header moves, and a stale `:840` is how a citation
  * stops being checkable.) Only OK agrees:
@@ -93,7 +93,7 @@ RMW_RET_* and the VALUES differ. Include one."
  * `rcl/rcl/types.h:26-41`.)
  *
  * So this header MAPS the constants onto ours. It does NOT renumber
- * `nros_ret_t` — RFC-0089 records this as the one place where taking rcl's
+ * `rcl_ret_t` — RFC-0089 records this as the one place where taking rcl's
  * spelling must not mean taking rcl's values, because a stored return code
  * crosses three FFI seams (C, C++, the Rust bindings) and renumbering would
  * flip the meaning of every one of them silently. A ported
@@ -111,13 +111,13 @@ RMW_RET_* and the VALUES differ. Include one."
  * Not defined, and the reason:
  *
  * - `RCL_RET_BAD_ALLOC` — rcl means "an allocation failed, and freeing may
- *   let you retry". The nearest nano-ros code is `NROS_RET_FULL`, which means
+ *   let you retry". The nearest nano-ros code is `RCLC_RET_FULL`, which means
  *   "a compile-time arena is full; rebuild it larger". Same shape, different
  *   REMEDY, so a ported handler would do the wrong thing while compiling
  *   cleanly. Refused rather than approximated.
  * - `RCL_RET_SUBSCRIPTION_TAKE_FAILED` / `_CLIENT_TAKE_FAILED` /
  *   `_SERVICE_TAKE_FAILED` — our take entry points report "nothing available"
- *   as a byte COUNT (`int32_t`), not as an `nros_ret_t`; there is no code to
+ *   as a byte COUNT (`int32_t`), not as an `rcl_ret_t`; there is no code to
  *   map onto.
  * - `RCL_RET_ALREADY_INIT`, `RCL_RET_ALREADY_SHUTDOWN`,
  *   `RCL_RET_*_INVALID`, `RCL_RET_TIMER_CANCELED`, `RCL_RET_WAIT_SET_*`,
@@ -127,41 +127,33 @@ RMW_RET_* and the VALUES differ. Include one."
  *   signal not to guess.
  */
 
-/** rcl's return type. Upstream this is `rmw_ret_t`, an `int32_t`; ours is
- *  `nros_ret_t`, an `int`. The width guard is asserted below. */
-typedef nros_ret_t rcl_ret_t;
+/* `rcl_ret_t` itself is ours since phase-492 (the generated header defines
+ * it, an `int`); the width guard is asserted below. */
 /** Upstream `rcl_ret_t` IS `rmw_ret_t`, and ported rcl code mixes the two
  *  freely, so the alias exists here too. Nothing else of rmw is provided —
  *  this is the rcl compat header, not an rmw one. */
-typedef nros_ret_t rmw_ret_t;
+typedef rcl_ret_t rmw_ret_t;
 
 /** Success. The one code where ours and rcl's VALUES agree (both 0). */
-#define RMW_RET_OK NROS_RET_OK
+#define RMW_RET_OK RCL_RET_OK
 /** Generic error. rcl's value is 1; ours is -1. Mapped, not renumbered. */
-#define RMW_RET_ERROR NROS_RET_ERROR
+#define RMW_RET_ERROR RCL_RET_ERROR
 /** The operation exceeded its timeout. rcl's value is 2; ours is -2. */
-#define RMW_RET_TIMEOUT NROS_RET_TIMEOUT
+#define RMW_RET_TIMEOUT RCL_RET_TIMEOUT
 /** The operation is not supported by the active backend. rcl's is 3. */
-#define RMW_RET_UNSUPPORTED NROS_RET_UNSUPPORTED
+#define RMW_RET_UNSUPPORTED RCL_RET_UNSUPPORTED
 /** An argument to the function was invalid. rcl's value is 11; ours is -3. */
-#define RMW_RET_INVALID_ARGUMENT NROS_RET_INVALID_ARGUMENT
+#define RMW_RET_INVALID_ARGUMENT RCL_RET_INVALID_ARGUMENT
 
-/* rcl re-exports the rmw codes under its own names (`rcl/types.h:26-36`), so
- * `RCL_RET_ERROR == RMW_RET_ERROR` holds here exactly as it does upstream. */
-#define RCL_RET_OK RMW_RET_OK
-#define RCL_RET_ERROR RMW_RET_ERROR
-#define RCL_RET_TIMEOUT RMW_RET_TIMEOUT
-#define RCL_RET_UNSUPPORTED RMW_RET_UNSUPPORTED
-#define RCL_RET_INVALID_ARGUMENT RMW_RET_INVALID_ARGUMENT
-/** `rcl_init()` has not been called. rcl's value is 101; ours is -7. rcl-only
- *  (there is no `RMW_RET_NOT_INIT`), so it is spelled only as `RCL_RET_*`. */
-#define RCL_RET_NOT_INIT NROS_RET_NOT_INIT
+/* Since phase-492 the `RCL_RET_*` codes are the generated header's own
+ * constants (our values), so `RCL_RET_ERROR == RMW_RET_ERROR` holds here
+ * exactly as it does upstream, with no second definition. */
 
 /* ── Drift guards ─────────────────────────────────────────────────────────
  * Two mutations would break the mapping silently, and each has its own
  * assertion:
  *
- *   (a) someone renumbers `nros_ret_t` — the first block pins every mapped
+ *   (a) someone renumbers `rcl_ret_t` — the first block pins every mapped
  *       code to the literal it has today, so a moved value fails HERE rather
  *       than at a consumer that stored the old one. Pinning six exact
  *       literals also makes the mapping provably INJECTIVE, so a ported
@@ -182,33 +174,32 @@ typedef nros_ret_t rmw_ret_t;
 #endif
 
 /* (a) ours have not moved. */
-NROS_RCL_COMPAT_ASSERT(NROS_RET_OK == 0, "NROS_RET_OK moved; rcl_compat.h's mapping is stale");
-NROS_RCL_COMPAT_ASSERT(NROS_RET_ERROR == -1,
-                       "NROS_RET_ERROR moved; rcl_compat.h's mapping is stale");
-NROS_RCL_COMPAT_ASSERT(NROS_RET_TIMEOUT == -2,
-                       "NROS_RET_TIMEOUT moved; rcl_compat.h's mapping is stale");
-NROS_RCL_COMPAT_ASSERT(NROS_RET_INVALID_ARGUMENT == -3,
-                       "NROS_RET_INVALID_ARGUMENT moved; rcl_compat.h's mapping is stale");
-NROS_RCL_COMPAT_ASSERT(NROS_RET_NOT_INIT == -7,
-                       "NROS_RET_NOT_INIT moved; rcl_compat.h's mapping is stale");
-NROS_RCL_COMPAT_ASSERT(NROS_RET_UNSUPPORTED == -16,
-                       "NROS_RET_UNSUPPORTED moved; rcl_compat.h's mapping is stale");
+NROS_RCL_COMPAT_ASSERT(RCL_RET_OK == 0, "RCL_RET_OK moved; rcl_compat.h's mapping is stale");
+NROS_RCL_COMPAT_ASSERT(RCL_RET_ERROR == -1, "RCL_RET_ERROR moved; rcl_compat.h's mapping is stale");
+NROS_RCL_COMPAT_ASSERT(RCL_RET_TIMEOUT == -2,
+                       "RCL_RET_TIMEOUT moved; rcl_compat.h's mapping is stale");
+NROS_RCL_COMPAT_ASSERT(RCL_RET_INVALID_ARGUMENT == -3,
+                       "RCL_RET_INVALID_ARGUMENT moved; rcl_compat.h's mapping is stale");
+NROS_RCL_COMPAT_ASSERT(RCL_RET_NOT_INIT == -7,
+                       "RCL_RET_NOT_INIT moved; rcl_compat.h's mapping is stale");
+NROS_RCL_COMPAT_ASSERT(RCL_RET_UNSUPPORTED == -16,
+                       "RCL_RET_UNSUPPORTED moved; rcl_compat.h's mapping is stale");
 
 /* (b) we took rcl's SPELLINGS and not its VALUES. RFC-0089: renumbering
- *     nros_ret_t would silently flip every stored return code across the C,
+ *     rcl_ret_t would silently flip every stored return code across the C,
  *     C++ and Rust FFI seams. OK is the sole code where the two agree. */
 NROS_RCL_COMPAT_ASSERT(RCL_RET_OK == 0, "RCL_RET_OK must be 0 -- the one value ours and rcl share");
 NROS_RCL_COMPAT_ASSERT(RCL_RET_ERROR != 1,
-                       "nros_ret_t was renumbered to rcl's values; see RFC-0089 -- MAP, never "
+                       "rcl_ret_t was renumbered to rcl's values; see RFC-0089 -- MAP, never "
                        "renumber (three FFI seams store these)");
 NROS_RCL_COMPAT_ASSERT(RCL_RET_TIMEOUT != 2,
-                       "nros_ret_t was renumbered to rcl's values; see RFC-0089");
+                       "rcl_ret_t was renumbered to rcl's values; see RFC-0089");
 NROS_RCL_COMPAT_ASSERT(RCL_RET_UNSUPPORTED != 3,
-                       "nros_ret_t was renumbered to rcl's values; see RFC-0089");
+                       "rcl_ret_t was renumbered to rcl's values; see RFC-0089");
 NROS_RCL_COMPAT_ASSERT(RCL_RET_INVALID_ARGUMENT != 11,
-                       "nros_ret_t was renumbered to rcl's values; see RFC-0089");
+                       "rcl_ret_t was renumbered to rcl's values; see RFC-0089");
 NROS_RCL_COMPAT_ASSERT(RCL_RET_NOT_INIT != 101,
-                       "nros_ret_t was renumbered to rcl's values; see RFC-0089");
+                       "rcl_ret_t was renumbered to rcl's values; see RFC-0089");
 
 /* The type alias must be able to hold what upstream's `int32_t` holds. */
 NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as upstream's rmw_ret_t");
@@ -229,19 +220,9 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  * C has no portable way to deprecate a typedef (see `nros/visibility.h`), so
  * these carry a comment and no attribute, as the repo's convention requires.
  */
-typedef struct nros_node_t rcl_node_t;
-typedef struct nros_publisher_t rcl_publisher_t;
-typedef struct nros_subscription_t rcl_subscription_t;
-typedef struct nros_client_t rcl_client_t;
-typedef struct nros_service_t rcl_service_t;
-typedef struct nros_timer_t rcl_timer_t;
-typedef struct nros_guard_condition_t rcl_guard_condition_t;
-/** rclc's executor. Spelled `rclc_`, not `rcl_`: the executor is rclc's, and
- *  rcl has no executor type at all. */
-typedef struct nros_executor_t rclc_executor_t;
-/** rclc's init/context bundle, built once and passed to node and timer init.
- *  Same role and same opacity as ours; `rclc_` for the same reason. */
-typedef struct nros_support_t rclc_support_t;
+/* Since phase-492 the entity types carry these names themselves
+ * (`rcl_node_t`, `rcl_publisher_t`, ..., `rclc_executor_t`, `rclc_support_t`
+ * are the generated header's own structs), so no alias is needed here. */
 
 /*
  * NOT aliased: `rosidl_message_type_support_t` / `rosidl_service_type_support_t`.
@@ -254,11 +235,11 @@ typedef struct nros_support_t rclc_support_t;
  * A rosidl typesupport is the opposite: its MEMBERS are the contract. Upstream
  * carries `typesupport_identifier`, `data` and the `func` dispatcher that
  * resolves a nested typesupport; ours is a flat descriptor of `type_name`,
- * `type_hash` and `serialized_size_max` (`nros_message_type_t` in
+ * `type_hash` and `serialized_size_max` (`rclc_message_type_t` in
  * `<nros/nros_generated.h>` — by NAME: that header is cbindgen output and the
  * line number this cited had moved on by 105 lines). Same
  * ROLE, different substance, so the name is not taken. The `init` forwarders
- * below therefore spell this parameter `const struct nros_message_type_t *`,
+ * below therefore spell this parameter `const struct rclc_message_type_t *`,
  * which costs a ported call site nothing: the argument it passes comes from
  * OUR codegen either way, because `ROSIDL_GET_MSG_TYPE_SUPPORT` is absent and
  * a ported line that tries to produce one fails to compile.
@@ -328,11 +309,11 @@ typedef struct nros_support_t rclc_support_t;
  * SWAPPING a callback on a live entity, not supplying one at registration.
  *
  * So the callback moved to where rclc puts it:
- *   - typed path: `nros_executor_add_subscription_typed(exec, sub, msg,
+ *   - typed path: `rclc_executor_add_subscription_typed(exec, sub, msg,
  *     deserialize, cb, ctx, invocation)`, which the generated per-type macro
  *     collapses to rclc's six arguments in rclc's order;
- *   - byte path: `nros_executor_add_subscription_raw(exec, sub, cb, ctx,
- *     invocation)` and `nros_executor_add_service_raw(exec, service, cb, ctx)`.
+ *   - byte path: `rclc_executor_add_subscription_raw(exec, sub, cb, ctx,
+ *     invocation)` and `rclc_executor_add_service_raw(exec, service, cb, ctx)`.
  *     These keep the `nros_` prefix on purpose: rclc's `add_subscription` and
  *     `add_service` deliver DESERIALIZED messages into caller-owned storage,
  *     so a byte-oriented entry point must not wear their names.
@@ -340,7 +321,7 @@ typedef struct nros_support_t rclc_support_t;
  * ── The typesupport parameter still keeps OUR type ────────────────────────
  *
  * `rclc_publisher_init_default` and friends spell their third parameter
- * `const struct nros_message_type_t *` (or `nros_service_type_t`), not
+ * `const struct rclc_message_type_t *` (or `rclc_service_type_t`), not
  * `rosidl_message_type_support_t`. Settled 2026-09-04 and unchanged by the
  * rename: a rosidl typesupport's MEMBERS are its contract — the
  * `typesupport_identifier`, the `data`, and the `func` dispatcher that
@@ -362,13 +343,13 @@ typedef struct nros_support_t rclc_support_t;
  *   rclc: rcl_ret_t rclc_timer_init_default(
  *             rcl_timer_t *timer, rclc_support_t *support,
  *             const uint64_t timeout_ns, const rcl_timer_callback_t callback)
- *   ours: nros_ret_t nros_timer_init(
- *             struct nros_timer_t *timer, const struct nros_support_t *support,
- *             uint64_t period_ns, nros_timer_callback_t callback,
+ *   ours: rcl_ret_t rcl_timer_init(
+ *             struct rcl_timer_t *timer, const struct rclc_support_t *support,
+ *             uint64_t period_ns, rcl_timer_callback_t callback,
  *             void *context)
  *
  *   rcl_timer_callback_t   = void (*)(rcl_timer_t *, int64_t last_call_time)
- *   nros_timer_callback_t  = void (*)(struct nros_timer_t *, void *context)
+ *   rcl_timer_callback_t  = void (*)(struct rcl_timer_t *, void *context)
  *
  * Both are two-parameter and both lead with the timer; the SECOND parameter
  * carries entirely different information. Upstream hands the callback the time
@@ -381,7 +362,7 @@ typedef struct nros_support_t rclc_support_t;
  * rest on that: a target where the two are assignable would make the mistake
  * silent.
  *
- * `nros_timer_init` therefore keeps its name, its arity and its `context`, and
+ * `rcl_timer_init` therefore keeps its name, its arity and its `context`, and
  * is NOT deprecated. Closing this needs a decision about what our timer
  * callback receives, not a rename.
  *
@@ -394,12 +375,12 @@ typedef struct nros_support_t rclc_support_t;
  *             rcl_context_t *context, int64_t period,
  *             const rcl_timer_callback_t callback, rcl_allocator_t allocator)
  *
- * — clock SECOND, immediately after the timer. `nros_timer_init_on_clock`
- * takes an `nros_clock_t *` in exactly that position, ahead of the
+ * — clock SECOND, immediately after the timer. `rclc_timer_init_on_clock`
+ * takes an `rcl_clock_t *` in exactly that position, ahead of the
  * context-carrying `support`, which is RFC-0089's "C takes rcl's spellings"
  * applied to the half of the spelling that survives our callback contract.
  *
- * It is a SECOND verb rather than a widened `nros_timer_init` because C has no
+ * It is a SECOND verb rather than a widened `rcl_timer_init` because C has no
  * overloading and every existing caller passes five arguments. The clock-less
  * form is the wall timer (rclcpp's `create_wall_timer`), which is what those
  * callers have always had; the clock-taking form is how a C node asks for a
@@ -421,7 +402,7 @@ typedef struct nros_support_t rclc_support_t;
  *   out-parameter; ours returns it. Different data flow, not a different word.
  * * `rcl_timer_get_time_until_next_call` — was in the bullet above and is NOT
  *   any more. phase-417 stage 3 gave ours upstream's shape exactly,
- *   `nros_ret_t (const nros_timer_t *, int64_t *)`: the caller-supplied "now"
+ *   `rcl_ret_t (const rcl_timer_t *, int64_t *)`: the caller-supplied "now"
  *   is gone, the value moved to a SIGNED out-parameter so overdue is
  *   expressible, and the status return carries the error channel the old
  *   `uint64_t` had spent on `0`. What remains between it and the NAME is the
@@ -431,13 +412,13 @@ typedef struct nros_support_t rclc_support_t;
  *   nanosecond value is a microsecond quantity scaled by 1000; and
  *   `RCL_RET_TIMER_INVALID` / `RCL_RET_TIMER_CANCELED` have no counterpart
  *   here (see the constant block), so those and "not registered with an
- *   executor" all arrive as `NROS_RET_NOT_INIT`.
+ *   executor" all arrive as `RCL_RET_NOT_INIT`.
  *   **The NAME was taken in W5.c (2026-09-13).** This bullet said the rename
  *   "is stage 6's step"; stage 6 renamed twelve entry points and left this one,
  *   and nothing noticed until W5.c added its absolute sibling
  *   `rcl_timer_get_next_call_time` beside it — at which point one family had
  *   two prefixes with a stated reason for only one of them
- *   (`nros_timer_get_time_since_last_call` keeps `nros_` because its
+ *   (`rcl_timer_get_time_since_last_call` keeps `nros_` because its
  *   out-parameter is `uint64_t *` against upstream's `int64_t *`, which is a
  *   real contract difference; this one had none). It is
  *   `rcl_timer_get_time_until_next_call` now, with no forwarder, per stage 6
@@ -445,7 +426,7 @@ typedef struct nros_support_t rclc_support_t;
  * * `rcl_timer_get_time_since_last_call` — same shape, but `uint64_t *`
  *   against upstream's `int64_t *`; caller-authored out-parameter again.
  * * `rcl_clock_get_now` — upstream writes an `int64_t` nanosecond count, ours
- *   writes a `struct nros_time_t`.
+ *   writes a `struct rclc_time_t`.
  * * `rcl_clock_init`, `rcl_guard_condition_init`, `rcl_node_resolve_name`,
  *   `rcl_node_get_fully_qualified_name`, `rclc_support_init`,
  *   `rclc_executor_init`, the `rcl_action_*` constructors and the
@@ -454,8 +435,8 @@ typedef struct nros_support_t rclc_support_t;
  * * `rcl_take_request` / `rcl_take_response` — upstream hands back a
  *   DESERIALIZED message plus an `rmw_request_id_t` out-struct
  *   (`rcl/service.h:279`, `rcl/client.h:301`); ours are the CDR-byte drains
- *   `nros_polling_service_take_request_raw(service, buf, buf_len, int64_t *seq)` and
- *   `nros_client_take_response(client, buf, buf_len, size_t *out_len)`.
+ *   `rclc_polling_service_take_request_raw(service, buf, buf_len, int64_t *seq)` and
+ *   `rclc_client_take_response(client, buf, buf_len, size_t *out_len)`.
  *   Different arity, different argument order, different data. This is
  *   `PollingSubscription::take()`'s class exactly — a plausible name over an
  *   opposite data contract — and it is the reason RFC-0089 exists.
@@ -488,7 +469,7 @@ typedef struct nros_support_t rclc_support_t;
  *
  *   rclc: typedef void (*rclc_subscription_callback_with_context_t)(
  *             const void *msg, void *context);
- *   ours: typedef void (*nros_typed_subscription_callback_t)(
+ *   ours: typedef void (*rclc_typed_subscription_callback_t)(
  *             const void *msg, void *context);
  *
  * Same two parameters, same order, same meanings — an EXACT alias rather than
@@ -502,7 +483,7 @@ typedef struct nros_support_t rclc_support_t;
  * second spelling of one signature is issue 0160's hand-mirror class, and this
  * one would drift silently because nothing calls a typedef.
  */
-typedef nros_typed_subscription_callback_t rclc_subscription_callback_with_context_t;
+typedef rclc_typed_subscription_callback_t rclc_subscription_callback_with_context_t;
 
 /*
  * The context-LESS `rclc_subscription_callback_t` is still not offered, and its
@@ -518,17 +499,17 @@ typedef nros_typed_subscription_callback_t rclc_subscription_callback_with_conte
  *             rclc_executor_t *executor, rcl_subscription_t *subscription,
  *             void *msg, rclc_subscription_callback_with_context_t callback,
  *             void *context, rclc_executor_handle_invocation_t invocation)
- *   ours: nros_ret_t nros_executor_add_subscription_typed(
- *             struct nros_executor_t *executor,
- *             struct nros_subscription_t *subscription, void *msg,
- *             nros_message_deserialize_fn_t deserialize,
- *             nros_typed_subscription_callback_t callback, void *context,
- *             enum nros_executor_handle_invocation_t invocation)
+ *   ours: rcl_ret_t rclc_executor_add_subscription_typed(
+ *             struct rclc_executor_t *executor,
+ *             struct rcl_subscription_t *subscription, void *msg,
+ *             rclc_message_deserialize_fn_t deserialize,
+ *             rclc_typed_subscription_callback_t callback, void *context,
+ *             enum rclc_executor_handle_invocation_t invocation)
  *
  * This section predicted "a direct six-argument alias". It cannot be one: ours
  * takes SEVEN. The extra argument is `deserialize`, and it is FORCED rather
  * than chosen — a rosidl typesupport carries the `func` dispatcher that finds
- * the deserialiser, and `nros_message_type_t` (which section 2 declines to
+ * the deserialiser, and `rclc_message_type_t` (which section 2 declines to
  * alias for exactly this reason) is a flat descriptor with no such slot. So the
  * function that writes the message into `msg` has to arrive from somewhere, and
  * a `static inline` in this file has nowhere to get it: the header knows the
@@ -551,16 +532,16 @@ typedef nros_typed_subscription_callback_t rclc_subscription_callback_with_conte
  *             void *context)
  *         typedef void (*rclc_service_callback_with_context_t)(
  *             const void *request, void *response, void *context);
- *   ours: nros_ret_t nros_executor_add_service_raw(
- *             struct nros_executor_t *, struct nros_service_t *,
- *             nros_service_callback_t callback, void *context)
- *         typedef bool (*nros_service_callback_t)(
+ *   ours: rcl_ret_t rclc_executor_add_service_raw(
+ *             struct rclc_executor_t *, struct rcl_service_t *,
+ *             rclc_service_callback_t callback, void *context)
+ *         typedef bool (*rclc_service_callback_t)(
  *             const uint8_t *request, size_t request_len, uint8_t *response,
  *             size_t response_capacity, size_t *response_len, void *context);
  *
  * Two things this paragraph used to get wrong. Ours is NOT "bound at creation"
  * any more — phase-417 stage 6 moved the callback to REGISTRATION, where rclc
- * puts it, and `nros_executor_add_service_raw` is that call. And the typed
+ * puts it, and `rclc_executor_add_service_raw` is that call. And the typed
  * service path is no longer missing: phase-417 W5.e ships it per service, out
  * of `packs/c/service.h.jinja` —
  *

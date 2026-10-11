@@ -164,7 +164,7 @@ static_assert(static_cast<int32_t>(ErrorCode::NotFound) == -4 &&
                   static_cast<int32_t>(ErrorCode::TryAgain) == -14 &&
                   static_cast<int32_t>(ErrorCode::Reentrant) == -15 &&
                   static_cast<int32_t>(ErrorCode::Unsupported) == -16,
-              "ErrorCode numbering must match nros_ret_t (issue #229)");
+              "ErrorCode numbering must match rcl_ret_t (issue #229)");
 
 /// The result of a fallible operation: `Result` when it produces nothing,
 /// `ResultOf<T>` when it produces a value. This is the whole error channel —
@@ -295,7 +295,7 @@ using Result = ResultOf<void>;
 /// Like NROS_TRY but for void-returning callers (RTOS `app_main(void)`,
 /// task entry points, …). Logs the failure via the same `NROS_TRY_LOG`
 /// hook as `NROS_TRY_RET` and bails with a bare `return;`.
-#define NROS_CHECK(expr)                                                                           \
+#define RCLC_CHECK(expr)                                                                           \
     do {                                                                                           \
         ::rclcpp::Result _nros_r = (expr);                                                         \
         if (!_nros_r.ok()) {                                                                       \

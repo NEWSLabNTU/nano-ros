@@ -3,7 +3,7 @@
  * @ingroup grp_executor
  * @brief Periodic timer API.
  *
- * Create timers with nros_timer_init() and register them with an
+ * Create timers with rcl_timer_init() and register them with an
  * executor via nros_executor_add_timer().
  */
 
@@ -21,7 +21,7 @@
  * rcl's `rcl_difference_times(const rcl_time_point_t *start,
  * const rcl_time_point_t *finish, rcl_duration_t *delta)` — **Time - Time ->
  * Duration**. Ledger row `c:difference_times` (phase-379 W5, group B) records
- * why this was a gap rather than a rename: `nros_time_sub` is Time - Duration
+ * why this was a gap rather than a rename: `rclc_time_sub` is Time - Duration
  * -> Time, a different operation with different operands and a different
  * return type, so there was never a rename to make. C++ ships the operation as
  * `Time::operator-(const Time &) -> Duration` and Rust as
@@ -31,15 +31,15 @@
  * A `static inline` rather than an exported symbol because there is no state
  * behind it: this is arithmetic on two values the caller already holds.
  * Nothing is computed here that is not already an entry point — the
- * decode is `nros_time_to_nanoseconds` and the encode is
- * `nros_duration_from_nanoseconds`, which is the ONE place the
+ * decode is `rclc_time_to_nanoseconds` and the encode is
+ * `rclc_duration_from_nanoseconds`, which is the ONE place the
  * `builtin_interfaces` `{sec, nanosec}` split (floor division, non-negative
  * remainder, issue 0799) is implemented. Open-coding the split here is what
  * the C++ `Duration::to_msg` used to do, and it got negatives wrong.
  *
  * ### Overflow, and how this differs from rcl
  *
- * The nanosecond subtraction **cannot** overflow. `nros_time_t` is
+ * The nanosecond subtraction **cannot** overflow. `rclc_time_t` is
  * `{int32_t sec, uint32_t nanosec}`, so a decoded time point is bounded by
  * roughly ±2.15e18 ns and any difference of two of them by ±4.3e18 ns —
  * inside `int64_t`'s ±9.22e18. rcl has no such bound: `rcl_time_point_t`
@@ -50,8 +50,8 @@
  * for it.
  *
  * What *can* exceed its type is the RESULT once re-encoded: a duration of
- * ±4.3e9 seconds does not fit `nros_duration_t`'s `int32_t sec`.
- * `nros_duration_from_nanoseconds` SATURATES there — it clamps to the
+ * ±4.3e9 seconds does not fit `rcl_duration_t`'s `int32_t sec`.
+ * `rclc_duration_from_nanoseconds` SATURATES there — it clamps to the
  * nearest representable duration rather than wrapping, which keeps the
  * encoding monotone (see its own note on `split_nanoseconds`). It is the only
  * behaviour available to a function with no error channel, and it is the same
@@ -61,7 +61,7 @@
  *
  * rcl returns `RCL_RET_ERROR` when the two points carry different
  * `clock_type`s. Ours cannot: ledger row `c:time_point_t` records that
- * `nros_time_t` is the value alone and the clock kind is a property of the
+ * `rclc_time_t` is the value alone and the clock kind is a property of the
  * clock it was read from, not of every timestamp — which halves a timestamp
  * on the wire and in a message. Differencing two times read from different
  * clocks is therefore the caller's obligation here, and the header says so
@@ -72,20 +72,20 @@
  * @param[out] delta  `finish - start`. Negative when `finish` precedes
  *                    `start`, encoded the way `builtin_interfaces/msg/Duration`
  *                    requires (`{sec: -2, nanosec: 3e8}` is -1.7 s).
- * @return `NROS_RET_OK`, or `NROS_RET_INVALID_ARGUMENT` if any argument is
+ * @return `RCL_RET_OK`, or `RCL_RET_INVALID_ARGUMENT` if any argument is
  *         NULL.
  */
-static inline nros_ret_t nros_difference_times(const struct nros_time_t* start,
-                                               const struct nros_time_t* finish,
-                                               struct nros_duration_t* delta) {
+static inline rcl_ret_t rcl_difference_times(const struct rclc_time_t* start,
+                                             const struct rclc_time_t* finish,
+                                             struct rcl_duration_t* delta) {
     if (start == NULL || finish == NULL || delta == NULL) {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     /* Both decodes go through the exported entry point; see the note above on
      * why neither the decode nor the encode is spelled out here. */
-    *delta = nros_duration_from_nanoseconds(nros_time_to_nanoseconds(finish) -
-                                            nros_time_to_nanoseconds(start));
-    return NROS_RET_OK;
+    *delta = rclc_duration_from_nanoseconds(rclc_time_to_nanoseconds(finish) -
+                                            rclc_time_to_nanoseconds(start));
+    return RCL_RET_OK;
 }
 
 #endif /* NROS_TIMER_H */

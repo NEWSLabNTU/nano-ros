@@ -18,7 +18,7 @@ fn fixed(comptime n: usize, comptime s: []const u8) [n]u8 {
     return out;
 }
 
-// The C components' factory + configure seams (NROS_C_COMPONENT).
+// The C components' factory + configure seams (RCLC_C_COMPONENT).
 extern fn __nros_c_component_c_talker_pkg_create() ?*anyopaque;
 extern fn __nros_c_component_c_talker_pkg_configure(node: *const c.nros_cpp_node_t, executor: ?*anyopaque, self: ?*anyopaque) i32;
 

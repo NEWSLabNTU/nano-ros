@@ -22,7 +22,7 @@
 #include <stdint.h>
 
 /** The backend name this registers under. Pass it as the `rmw` selector to
- *  `nros_support_init_rmw`, and as `$NROS_RMW` if the environment might name
+ *  `rclc_support_init_rmw`, and as `$NROS_RMW` if the environment might name
  *  another backend. */
 #define NROS_STUB_RMW_NAME "stub"
 
@@ -41,7 +41,7 @@ uint32_t nros_stub_rmw_drive_io_calls(void);
  *  is a spin that waits longer, which is a number and not a fact. This is the
  *  fact — the backend's own slot, read back.
  *
- *  It answers BOTH halves of 1385: false after `nros_executor_init` means the
+ *  It answers BOTH halves of 1385: false after `rclc_executor_init` means the
  *  C path installed nothing, and true after `rclc_executor_fini` means a
  *  backend is holding a callback into storage the fini has zero-filled. */
 bool nros_stub_rmw_wake_cb_installed(void);

@@ -54,9 +54,9 @@ pub fn run() {
         true,
     );
 
-    // Phase 88.12 — `nros_log_emit_fmt` C shim. Implemented in C
+    // Phase 88.12 — `rclc_log_emit_fmt` C shim. Implemented in C
     // because Rust's `c_variadic` feature is still unstable. The shim
-    // vsnprintfs and forwards to the Rust-side `nros_log_emit`.
+    // vsnprintfs and forwards to the Rust-side `rclc_log_emit`.
     compile_c_stub(
         &manifest_dir,
         "c-stubs/log_fmt.c",
@@ -335,7 +335,7 @@ fn generate_config(
         .replace("@EXECUTOR_OPAQUE_U64S@", &executor_opaque_u64s.to_string())
         // phase-417 stage 3 — the same `max_cbs` the Rust-side
         // NROS_EXECUTOR_MAX_HANDLES is built from, because cbindgen prints that
-        // constant's NAME as `nros_executor_t._handle_entities`'s array bound.
+        // constant's NAME as `rclc_executor_t._handle_entities`'s array bound.
         .replace("@NROS_EXECUTOR_MAX_HANDLES@", &max_cbs.to_string())
         .replace(
             "@GUARD_HANDLE_OPAQUE_U64S@",
@@ -408,7 +408,7 @@ fn generate_config(
         .replace("@EXACT_EXECUTOR_U64S@", &exact_executor_u64s.to_string())
         // phase-417 stage 3 — see the upper-bound template's copy. This is the
         // template that is actually WRITTEN, so a define missing here is a
-        // `NROS_EXECUTOR_MAX_HANDLES undeclared` on `nros_executor_t`.
+        // `NROS_EXECUTOR_MAX_HANDLES undeclared` on `rclc_executor_t`.
         .replace("@NROS_EXECUTOR_MAX_HANDLES@", &max_cbs.to_string())
         .replace("@EXACT_GUARD_U64S@", &exact_guard_u64s.to_string())
         .replace("@EXACT_LIFECYCLE_U64S@", &exact_lifecycle_u64s.to_string())

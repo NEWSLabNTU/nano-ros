@@ -260,7 +260,7 @@ class Timer {
     /// not know. That collides with "fires exactly now", which is why
     /// [`is_valid`] is the question to ask first — the C surface spends a
     /// return code on the distinction (`rcl_timer_get_time_until_next_call`
-    /// answers `NROS_RET_NOT_INIT`) and a `Duration`-returning accessor has no
+    /// answers `RCL_RET_NOT_INIT`) and a `Duration`-returning accessor has no
     /// room for one.
     Duration time_until_trigger() const {
         if (!initialized_) return Duration();

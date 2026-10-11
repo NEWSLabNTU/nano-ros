@@ -333,7 +333,7 @@ fn exec_for(platform: MP, lang: ML) -> Vec<Exec> {
             boot: Boot::FreertosMps2,
             proof: Proof::SerialTicks(&["ctrl", "telem"]),
             note: "phase-281 W2: C nodes over the SHARED nros_board_freertos_run_tiers glue \
-                   (codegen routes embedded-C via the C++ emitter + NROS_C_COMPONENT seam)",
+                   (codegen routes embedded-C via the C++ emitter + RCLC_C_COMPONENT seam)",
         }],
         // issue 0636 gap 2 — the Rust arm of the FreeRTOS multi-tier path, which
         // was exported from `nros-board-freertos`, reachable from the macro, and

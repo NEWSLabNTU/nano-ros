@@ -70,7 +70,7 @@ arrives; bump `XRCE_BUFFER_SIZE` if topics are big.
 ## Runtime drain symbol not exported
 
 `nros_rmw_xrce_init_custom_transport(framing)` is supposed to drain
-whatever `nros_set_custom_transport()` (the `nros-c` C surface)
+whatever `rclc_set_custom_transport()` (the `nros-c` C surface)
 registered into the Rust runtime's slot, then install it on the
 XRCE custom transport. That requires a C symbol like
 `extern int32_t nros_rmw_take_custom_transport(struct nros_transport_ops *out);`

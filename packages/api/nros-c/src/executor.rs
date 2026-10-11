@@ -12,15 +12,15 @@ use core::{
 use crate::{
     action::{
         ActionServerInternal, cancel_callback_trampoline, goal_callback_trampoline,
-        nros_action_client_state_t, nros_action_client_t, nros_action_server_state_t,
-        nros_action_server_t, nros_goal_status_t, nros_goal_uuid_t,
+        rcl_action_client_t, rcl_action_server_t, rclc_action_client_state_t,
+        rclc_action_server_state_t, rclc_goal_status_t, rclc_goal_uuid_t,
     },
     error::*,
-    node::nros_node_t,
-    service::{nros_client_state_t, nros_client_t, nros_service_state_t, nros_service_t},
-    subscription::{nros_subscription_state_t, nros_subscription_t},
-    support::{nros_support_state_t, nros_support_t},
-    timer::{nros_timer_state_t, nros_timer_t},
+    node::rcl_node_t,
+    service::{rcl_client_t, rcl_service_t, rclc_client_state_t, rclc_service_state_t},
+    subscription::{rcl_subscription_t, rclc_subscription_state_t},
+    support::{rclc_support_state_t, rclc_support_t},
+    timer::{rcl_timer_t, rclc_timer_state_t},
 };
 
 pub use crate::config::*;
@@ -80,7 +80,7 @@ pub(crate) unsafe fn get_executor(opaque: &mut [u64; EXECUTOR_OPAQUE_U64S]) -> &
 ///
 /// # Safety
 /// `ptr` must point to the `_opaque` field of a live, initialized
-/// `nros_executor_t`.
+/// `rclc_executor_t`.
 #[inline]
 pub(crate) unsafe fn get_executor_from_ptr(ptr: *mut core::ffi::c_void) -> &'static mut CExecutor {
     &mut *(ptr as *mut CExecutor)
@@ -93,14 +93,14 @@ pub(crate) unsafe fn get_executor_from_ptr(ptr: *mut core::ffi::c_void) -> &'sta
 /// subscribers won't discover the entity.
 ///
 /// # Safety
-/// `node` must be NULL or point to an initialized `nros_node_t` with
+/// `node` must be NULL or point to an initialized `rcl_node_t` with
 /// valid `name_len` / `namespace_len`.
 unsafe fn set_executor_node_identity(
     rust_exec: &mut CExecutor,
-    node: crate::node::nros_node_ref_t,
+    node: crate::node::rclc_node_ref_t,
 ) {
     // phase-379 W4 — resolve the IDENTITY against the executor's own
-    // `NodeRecord`, rather than dereferencing a `*const nros_node_t` the entity
+    // `NodeRecord`, rather than dereferencing a `*const rcl_node_t` the entity
     // captured at init.
     //
     // This is the call that made the stored pointer load-bearing: it reads the
@@ -112,7 +112,7 @@ unsafe fn set_executor_node_identity(
     // The generation check belongs HERE and only here: `node` was minted when
     // the entity was created and this call happens later, which is the whole
     // premise. Eight of the nine callers pass such a stored reference; the
-    // ninth had a live `*const nros_node_t` and no stored reference, and used
+    // ninth had a live `*const rcl_node_t` and no stored reference, and used
     // `node_ref_of` to make one on the spot — which is the same counter
     // compared with itself (issue 1386). That caller takes
     // [`set_executor_node_identity_from_node`] instead.
@@ -131,16 +131,16 @@ unsafe fn set_executor_node_identity(
 /// executor's identity alone rather than claim slot 0.
 ///
 /// # Safety
-/// `node` must be NULL or point to a valid `nros_node_t`.
+/// `node` must be NULL or point to a valid `rcl_node_t`.
 unsafe fn set_executor_node_identity_from_node(
     rust_exec: &mut CExecutor,
-    node: *const crate::node::nros_node_t,
+    node: *const crate::node::rcl_node_t,
 ) {
     if node.is_null() {
         return;
     }
     let node = &*node;
-    if node.state != crate::node::nros_node_state_t::NROS_NODE_STATE_INITIALIZED {
+    if node.state != crate::node::rclc_node_state_t::RCLC_NODE_STATE_INITIALIZED {
         return;
     }
     set_executor_node_identity_for_slot(rust_exec, node.node_id);
@@ -167,7 +167,7 @@ fn set_executor_node_identity_for_slot(rust_exec: &mut CExecutor, node_id: u8) {
 
 /// One registered handle, as a trigger predicate sees it.
 ///
-/// This is the array element `nros_executor_trigger_t` walks — rclc's
+/// This is the array element `rclc_executor_trigger_t` walks — rclc's
 /// `rclc_executor_handle_t` narrowed to the two things a trigger may
 /// legitimately read. It deliberately does NOT take rclc's name (RFC-0089: an
 /// upstream name may be adopted only if the contract is the same), so a ported
@@ -180,11 +180,11 @@ fn set_executor_node_identity_for_slot(rust_exec: &mut CExecutor, node_id: u8) {
 /// carried no entity identity at all — see `rclc_executor_trigger_one`.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct nros_executor_trigger_handle_t {
-    /// The entity this handle was registered from: the `nros_subscription_t *`,
-    /// `nros_timer_t *`, `nros_service_t *`, `nros_client_t *`,
-    /// `nros_guard_condition_t *`, `nros_action_server_t *` or
-    /// `nros_action_client_t *` that was passed to the matching
+pub struct rclc_executor_trigger_handle_t {
+    /// The entity this handle was registered from: the `rcl_subscription_t *`,
+    /// `rcl_timer_t *`, `rcl_service_t *`, `rcl_client_t *`,
+    /// `rcl_guard_condition_t *`, `rcl_action_server_t *` or
+    /// `rcl_action_client_t *` that was passed to the matching
     /// `nros_executor_add_*` / `rclc_executor_add_*` call.
     ///
     /// NULL for a handle whose registering entity is not a C object (nothing in
@@ -212,9 +212,9 @@ pub struct nros_executor_trigger_handle_t {
 /// # Returns
 /// * `true` if executor should process callbacks
 /// * `false` if executor should skip processing
-pub type nros_executor_trigger_t = Option<
+pub type rclc_executor_trigger_t = Option<
     unsafe extern "C" fn(
-        handles: *const nros_executor_trigger_handle_t,
+        handles: *const rclc_executor_trigger_handle_t,
         size: usize,
         obj: *mut core::ffi::c_void,
     ) -> bool,
@@ -223,11 +223,11 @@ pub type nros_executor_trigger_t = Option<
 /// Callback invocation mode
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nros_executor_handle_invocation_t {
+pub enum rclc_executor_handle_invocation_t {
     /// Only invoke callback when new data is available
-    NROS_EXECUTOR_ON_NEW_DATA = 0,
+    RCLC_EXECUTOR_ON_NEW_DATA = 0,
     /// Always invoke callback (even with NULL data)
-    NROS_EXECUTOR_ALWAYS = 1,
+    RCLC_EXECUTOR_ALWAYS = 1,
 }
 
 /// Executor data communication semantics
@@ -235,30 +235,30 @@ pub enum nros_executor_handle_invocation_t {
 /// Defines when data is taken from DDS during spin operations.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nros_executor_semantics_t {
+pub enum rclc_executor_semantics_t {
     /// RCLCPP executor semantics: Data is taken from DDS just before
     /// the corresponding callback is called.
-    NROS_SEMANTICS_RCLCPP_EXECUTOR = 0,
+    RCLC_SEMANTICS_RCLCPP_EXECUTOR = 0,
     /// Logical Execution Time (LET) semantics: At one sampling point,
     /// new data of all ready subscriptions are taken from DDS.
     /// During sequential processing, the data from that sampling point
     /// is used. New data arriving after the sampling point is not
     /// considered until the next spin iteration.
-    NROS_SEMANTICS_LOGICAL_EXECUTION_TIME = 1,
+    RCLC_SEMANTICS_LOGICAL_EXECUTION_TIME = 1,
 }
 
 /// Executor state
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nros_executor_state_t {
+pub enum rclc_executor_state_t {
     /// Not initialized
-    NROS_EXECUTOR_STATE_UNINITIALIZED = 0,
+    RCLC_EXECUTOR_STATE_UNINITIALIZED = 0,
     /// Initialized and ready
-    NROS_EXECUTOR_STATE_INITIALIZED = 1,
+    RCLC_EXECUTOR_STATE_INITIALIZED = 1,
     /// Currently spinning
-    NROS_EXECUTOR_STATE_SPINNING = 2,
+    RCLC_EXECUTOR_STATE_SPINNING = 2,
     /// Shutdown
-    NROS_EXECUTOR_STATE_SHUTDOWN = 3,
+    RCLC_EXECUTOR_STATE_SHUTDOWN = 3,
 }
 
 /// Executor structure.
@@ -271,17 +271,17 @@ pub enum nros_executor_state_t {
 /// allocation is needed. The storage size is computed at build time
 /// from `NROS_EXECUTOR_MAX_CBS` and `NROS_EXECUTOR_ARENA_SIZE`.
 #[repr(C)]
-pub struct nros_executor_t {
+pub struct rclc_executor_t {
     /// Current state
-    pub state: nros_executor_state_t,
+    pub state: rclc_executor_state_t,
     /// Timeout in nanoseconds for spin_some
     pub timeout_ns: u64,
     /// Data communication semantics
-    pub semantics: nros_executor_semantics_t,
+    pub semantics: rclc_executor_semantics_t,
     /// Pointer to support context
-    pub support: *const nros_support_t,
+    pub support: *const rclc_support_t,
     /// Trigger function (NULL = default "any" trigger)
-    pub trigger: nros_executor_trigger_t,
+    pub trigger: rclc_executor_trigger_t,
     /// User context for trigger function
     pub trigger_context: *mut core::ffi::c_void,
     /// Number of handles registered
@@ -297,14 +297,14 @@ pub struct nros_executor_t {
     /// Next invocation time in nanoseconds for drift-compensated spin_period
     pub invocation_time_ns: u64,
     /// Reentrancy guard: set to `true` while `spin_once` is dispatching
-    /// callbacks. Blocking helpers (`nros_client_call`, `nros_action_send_goal`,
-    /// etc.) check this flag and return `NROS_RET_REENTRANT` if set.
+    /// callbacks. Blocking helpers (`rclc_client_call`, `rclc_action_send_goal`,
+    /// etc.) check this flag and return `RCLC_RET_REENTRANT` if set.
     pub in_dispatch: bool,
     /// Entity pointer per registered handle slot, indexed by the executor's
     /// handle id (phase-417 stage 3).
     ///
     /// Written by every `..._add_*` that registers a handle, read only when
-    /// building the [`nros_executor_trigger_handle_t`] array a trigger
+    /// building the [`rclc_executor_trigger_handle_t`] array a trigger
     /// predicate walks. This is the storage that makes
     /// `rclc_executor_trigger_one`'s upstream contract — "fire iff `obj` is one
     /// of MY entities and that entity has data" — expressible at all: the
@@ -320,16 +320,16 @@ pub struct nros_executor_t {
     /// carries, exactly like the `_opaque` bounds.
     pub _handle_entities: [*mut core::ffi::c_void; NROS_EXECUTOR_MAX_HANDLES],
     /// Inline opaque storage for the executor.
-    /// Managed by nros_executor_init/fini — no heap allocation needed.
+    /// Managed by rclc_executor_init/fini — no heap allocation needed.
     pub _opaque: [u64; EXECUTOR_OPAQUE_U64S],
 }
 
-impl Default for nros_executor_t {
+impl Default for rclc_executor_t {
     fn default() -> Self {
         Self {
-            state: nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED,
+            state: rclc_executor_state_t::RCLC_EXECUTOR_STATE_UNINITIALIZED,
             timeout_ns: 100_000_000, // 100ms default
-            semantics: nros_executor_semantics_t::NROS_SEMANTICS_RCLCPP_EXECUTOR,
+            semantics: rclc_executor_semantics_t::RCLC_SEMANTICS_RCLCPP_EXECUTOR,
             support: ptr::null(),
             trigger: None,
             trigger_context: ptr::null_mut(),
@@ -349,8 +349,8 @@ impl Default for nros_executor_t {
 
 /// Get a zero-initialized executor.
 #[unsafe(no_mangle)]
-pub extern "C" fn rclc_executor_get_zero_initialized_executor() -> nros_executor_t {
-    nros_executor_t::default()
+pub extern "C" fn rclc_executor_get_zero_initialized_executor() -> rclc_executor_t {
+    rclc_executor_t::default()
 }
 
 /// Initialize an executor.
@@ -361,22 +361,22 @@ pub extern "C" fn rclc_executor_get_zero_initialized_executor() -> nros_executor
 /// * `max_handles` - Maximum number of handles (capped at NROS_EXECUTOR_MAX_HANDLES)
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if any pointer is NULL or max_handles is 0
-/// * `NROS_RET_NOT_INIT` if support is not initialized
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` if any pointer is NULL or max_handles is 0
+/// * `RCL_RET_NOT_INIT` if support is not initialized
 ///
 /// # Safety
 /// * All pointers must be valid
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_init(
-    executor: *mut nros_executor_t,
-    support: *const nros_support_t,
+pub unsafe extern "C" fn rclc_executor_init(
+    executor: *mut rclc_executor_t,
+    support: *const rclc_support_t,
     max_handles: usize,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(executor, support);
 
     if max_handles == 0 {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
 
     let executor = &mut *executor;
@@ -384,19 +384,19 @@ pub unsafe extern "C" fn nros_executor_init(
 
     validate_state!(
         executor,
-        nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED,
-        NROS_RET_BAD_SEQUENCE
+        rclc_executor_state_t::RCLC_EXECUTOR_STATE_UNINITIALIZED,
+        RCLC_RET_BAD_SEQUENCE
     );
     validate_state!(
         support_ref,
-        nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED
+        rclc_support_state_t::RCLC_SUPPORT_STATE_INITIALIZED
     );
 
     // Create the internal nros-node executor using a borrowed session pointer.
     // Written directly into inline opaque storage — no heap allocation.
     let session_ptr = support_ref.get_session_ptr();
     if session_ptr.is_null() {
-        return NROS_RET_NOT_INIT;
+        return RCL_RET_NOT_INIT;
     }
 
     // `mut` only needed under `feature = "env"` where the
@@ -418,7 +418,7 @@ pub unsafe extern "C" fn nros_executor_init(
         CExecutor::from_session_ptr_in(session_ptr, backing, nros_node::ExecutorSizing::DEFAULT);
     // Phase 156 — populate executor's primary identity fields
     // so `NodeBuilder::resolve_session_slot` can return slot 0
-    // when a C-side `nros_executor_node_init(rmw_name, ...)`
+    // when a C-side `rclc_executor_node_init(rmw_name, ...)`
     // names the same backend the support session opened
     // against. Mirror env-var resolution `open_session` uses so
     // primary picks line up.
@@ -465,7 +465,7 @@ pub unsafe extern "C" fn nros_executor_init(
     // The matching clear is the executor's own (`clear_wake_signal`, run from
     // `Drop`), and it landed FIRST: `rclc_executor_fini` `drop_in_place`s this
     // executor and then ZERO-FILLS `_opaque` while the borrowed session lives
-    // on in `nros_support_t`, so installing without a clear is not a smaller
+    // on in `rclc_support_t`, so installing without a clear is not a smaller
     // bug than the one being fixed — it is a use-after-free with an arbitrary
     // window.
     #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
@@ -476,9 +476,9 @@ pub unsafe extern "C" fn nros_executor_init(
     executor._handle_entities = [ptr::null_mut(); NROS_EXECUTOR_MAX_HANDLES];
     executor.support = support;
     executor.timeout_ns = 100_000_000; // 100ms default
-    executor.state = nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED;
+    executor.state = rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED;
 
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// Set the executor timeout.
@@ -487,21 +487,21 @@ pub unsafe extern "C" fn nros_executor_init(
 /// * `executor` must be a valid pointer to an initialized executor
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_executor_set_timeout(
-    executor: *mut nros_executor_t,
+    executor: *mut rclc_executor_t,
     timeout_ns: u64,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(executor);
 
     let executor = &mut *executor;
 
-    if executor.state == nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED
-        || executor.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN
+    if executor.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_UNINITIALIZED
+        || executor.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_SHUTDOWN
     {
-        return NROS_RET_NOT_INIT;
+        return RCL_RET_NOT_INIT;
     }
 
     executor.timeout_ns = timeout_ns;
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// Phase 124.F.3 — session-level connectivity probe.
@@ -513,44 +513,44 @@ pub unsafe extern "C" fn rclc_executor_set_timeout(
 /// tears down / re-opens the session on timeout.
 ///
 /// # Returns
-/// * `NROS_RET_OK` — peer responded within budget.
-/// * `NROS_RET_TIMEOUT` — no reply before `timeout_ms`.
-/// * `NROS_RET_UNSUPPORTED` — active backend can't probe.
-/// * `NROS_RET_NOT_INIT` — executor not initialised.
-/// * `NROS_RET_INVALID_ARGUMENT` — `executor` is NULL.
+/// * `RCL_RET_OK` — peer responded within budget.
+/// * `RCL_RET_TIMEOUT` — no reply before `timeout_ms`.
+/// * `RCL_RET_UNSUPPORTED` — active backend can't probe.
+/// * `RCL_RET_NOT_INIT` — executor not initialised.
+/// * `RCL_RET_INVALID_ARGUMENT` — `executor` is NULL.
 ///
 /// # Safety
 /// * `executor` must be a valid pointer to an initialized executor.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_ping(
-    executor: *mut nros_executor_t,
+pub unsafe extern "C" fn rclc_executor_ping(
+    executor: *mut rclc_executor_t,
     timeout_ms: i32,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(executor);
     let exec_t = &mut *executor;
-    if exec_t.state == nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED
-        || exec_t.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN
+    if exec_t.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_UNINITIALIZED
+        || exec_t.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_SHUTDOWN
     {
-        return NROS_RET_NOT_INIT;
+        return RCL_RET_NOT_INIT;
     }
     #[cfg(feature = "rmw-cffi")]
     {
         let exec = get_executor(&mut exec_t._opaque);
         match exec.ping(timeout_ms) {
-            Ok(()) => NROS_RET_OK,
+            Ok(()) => RCL_RET_OK,
             Err(nros_node::NodeError::Transport(nros_rmw::TransportError::Timeout)) => {
-                NROS_RET_TIMEOUT
+                RCL_RET_TIMEOUT
             }
             Err(nros_node::NodeError::Transport(nros_rmw::TransportError::Unsupported)) => {
-                NROS_RET_UNSUPPORTED
+                RCL_RET_UNSUPPORTED
             }
-            Err(_) => NROS_RET_ERROR,
+            Err(_) => RCL_RET_ERROR,
         }
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = timeout_ms;
-        NROS_RET_UNSUPPORTED
+        RCL_RET_UNSUPPORTED
     }
 }
 
@@ -562,7 +562,7 @@ pub unsafe extern "C" fn nros_executor_ping(
 ///
 /// Every string is BORROWED for the duration of the call — copy anything you
 /// keep. Return `false` to stop the enumeration early.
-pub type nros_node_visit_fn = Option<
+pub type rclc_node_visit_fn = Option<
     unsafe extern "C" fn(
         ctx: *mut core::ffi::c_void,
         node_name: *const core::ffi::c_char,
@@ -576,7 +576,7 @@ pub type nros_node_visit_fn = Option<
 /// `types_count` may legitimately be 0 on a partially discovered graph:
 /// reporting the name without a type beats dropping it. Strings are BORROWED.
 /// Return `false` to stop.
-pub type nros_names_and_types_visit_fn = Option<
+pub type rclc_names_and_types_visit_fn = Option<
     unsafe extern "C" fn(
         ctx: *mut core::ffi::c_void,
         name: *const core::ffi::c_char,
@@ -599,30 +599,30 @@ pub type nros_names_and_types_visit_fn = Option<
 /// empty enumeration means "nobody seen yet", never "nobody exists".
 ///
 /// # Returns
-/// * `NROS_RET_OK` — enumeration ran (possibly visiting nothing).
-/// * `NROS_RET_UNSUPPORTED` — this backend has no graph. DISTINCT from an
+/// * `RCL_RET_OK` — enumeration ran (possibly visiting nothing).
+/// * `RCL_RET_UNSUPPORTED` — this backend has no graph. DISTINCT from an
 ///   empty graph, deliberately.
-/// * `NROS_RET_NOT_INIT` — executor not initialised.
-/// * `NROS_RET_INVALID_ARGUMENT` — `executor` or `visit` is NULL.
+/// * `RCL_RET_NOT_INIT` — executor not initialised.
+/// * `RCL_RET_INVALID_ARGUMENT` — `executor` or `visit` is NULL.
 ///
 /// # Safety
 /// * `executor` must point to an initialised executor.
 /// * `visit` must be callable for the duration of the call.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_get_node_names(
-    executor: *mut nros_executor_t,
-    visit: nros_node_visit_fn,
+pub unsafe extern "C" fn rclc_executor_get_node_names(
+    executor: *mut rclc_executor_t,
+    visit: rclc_node_visit_fn,
     ctx: *mut core::ffi::c_void,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(executor);
     let Some(visit) = visit else {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     };
     let exec_t = &mut *executor;
-    if exec_t.state == nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED
-        || exec_t.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN
+    if exec_t.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_UNINITIALIZED
+        || exec_t.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_SHUTDOWN
     {
-        return NROS_RET_NOT_INIT;
+        return RCL_RET_NOT_INIT;
     }
     #[cfg(feature = "rmw-cffi")]
     {
@@ -656,17 +656,17 @@ pub unsafe extern "C" fn nros_executor_get_node_names(
             )
         };
         match exec.get_node_names(&mut cb) {
-            Ok(()) => NROS_RET_OK,
+            Ok(()) => RCL_RET_OK,
             Err(nros_node::NodeError::Transport(nros_rmw::TransportError::Unsupported)) => {
-                NROS_RET_UNSUPPORTED
+                RCL_RET_UNSUPPORTED
             }
-            Err(_) => NROS_RET_ERROR,
+            Err(_) => RCL_RET_ERROR,
         }
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (visit, ctx);
-        NROS_RET_UNSUPPORTED
+        RCL_RET_UNSUPPORTED
     }
 }
 
@@ -677,39 +677,39 @@ pub unsafe extern "C" fn nros_executor_get_node_names(
 /// partially discovered graph — reporting the name without a type beats
 /// dropping it.
 ///
-/// Same discovery caveat as `nros_executor_get_node_names`: an empty
+/// Same discovery caveat as `rclc_executor_get_node_names`: an empty
 /// enumeration means "nobody seen yet", not "nobody exists".
 ///
 /// # Returns
-/// * `NROS_RET_OK` — enumeration ran (possibly visiting nothing).
-/// * `NROS_RET_UNSUPPORTED` — this backend has no graph.
-/// * `NROS_RET_NOT_INIT` — executor not initialised.
-/// * `NROS_RET_INVALID_ARGUMENT` — `executor` or `visit` is NULL.
+/// * `RCL_RET_OK` — enumeration ran (possibly visiting nothing).
+/// * `RCL_RET_UNSUPPORTED` — this backend has no graph.
+/// * `RCL_RET_NOT_INIT` — executor not initialised.
+/// * `RCL_RET_INVALID_ARGUMENT` — `executor` or `visit` is NULL.
 ///
 /// # Safety
 /// * `executor` must point to an initialised executor.
 /// * `visit` must be callable for the duration of the call.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_get_topic_names_and_types(
-    executor: *mut nros_executor_t,
-    visit: nros_names_and_types_visit_fn,
+pub unsafe extern "C" fn rclc_executor_get_topic_names_and_types(
+    executor: *mut rclc_executor_t,
+    visit: rclc_names_and_types_visit_fn,
     ctx: *mut core::ffi::c_void,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     nros_executor_names_and_types_impl(executor, visit, ctx, NamesAndTypesKind::Topics)
 }
 
 /// phase-381 W4 — every service on the graph, with its types. As
-/// `nros_executor_get_topic_names_and_types`, over servers and clients.
+/// `rclc_executor_get_topic_names_and_types`, over servers and clients.
 ///
 /// # Safety
 /// * `executor` must point to an initialised executor.
 /// * `visit` must be callable for the duration of the call.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_get_service_names_and_types(
-    executor: *mut nros_executor_t,
-    visit: nros_names_and_types_visit_fn,
+pub unsafe extern "C" fn rclc_executor_get_service_names_and_types(
+    executor: *mut rclc_executor_t,
+    visit: rclc_names_and_types_visit_fn,
     ctx: *mut core::ffi::c_void,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     nros_executor_names_and_types_impl(executor, visit, ctx, NamesAndTypesKind::Services)
 }
 
@@ -724,27 +724,27 @@ pub unsafe extern "C" fn nros_executor_get_service_names_and_types(
 /// * `topic_name` must be a valid NUL-terminated string.
 /// * `out_count` must be writable.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_count_publishers(
-    executor: *mut nros_executor_t,
+pub unsafe extern "C" fn rclc_executor_count_publishers(
+    executor: *mut rclc_executor_t,
     topic_name: *const core::ffi::c_char,
     out_count: *mut usize,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     nros_executor_count_impl(executor, topic_name, out_count, CountKind::Publishers)
 }
 
 /// phase-381 W4 — how many subscribers are visible on `topic_name`. See
-/// `nros_executor_count_publishers` for the caveats.
+/// `rclc_executor_count_publishers` for the caveats.
 ///
 /// # Safety
 /// * `executor` must point to an initialised executor.
 /// * `topic_name` must be a valid NUL-terminated string.
 /// * `out_count` must be writable.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_count_subscribers(
-    executor: *mut nros_executor_t,
+pub unsafe extern "C" fn rclc_executor_count_subscribers(
+    executor: *mut rclc_executor_t,
     topic_name: *const core::ffi::c_char,
     out_count: *mut usize,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     nros_executor_count_impl(executor, topic_name, out_count, CountKind::Subscribers)
 }
 
@@ -752,65 +752,65 @@ pub unsafe extern "C" fn nros_executor_count_subscribers(
 /// `topic_name`, or `timeout_ms` elapses. Upstream's `rcl_wait_for_publishers`.
 ///
 /// The startup-ordering primitive one entity kind over from
-/// [`nros_client_wait_for_service`](crate::service::nros_client_wait_for_service),
+/// [`rclc_client_wait_for_service`](crate::service::rclc_client_wait_for_service),
 /// and built the same way: a spin on the discovery count, so other
 /// subscriptions and timers keep making progress while it waits (RFC-0021 —
 /// a blocking helper takes the executor and drives it, which is what makes
 /// the timeout reliable on a single-threaded transport).
 ///
 /// This is the one BLOCKING member of the graph family, and it does not
-/// weaken the family's contract — it composes it. `nros_executor_count_publishers`
+/// weaken the family's contract — it composes it. `rclc_executor_count_publishers`
 /// underneath still reports only what has been DISCOVERED and still never
 /// blocks; what waits is this loop, by polling it.
 ///
 /// A backend that cannot see the graph at all (XRCE) returns
-/// `NROS_RET_UNSUPPORTED` IMMEDIATELY rather than waiting out the budget.
-/// That differs deliberately from `nros_client_wait_for_service`, which waits
-/// and reports `NROS_RET_TIMEOUT` (issue 1087): for a service probe,
+/// `RCL_RET_UNSUPPORTED` IMMEDIATELY rather than waiting out the budget.
+/// That differs deliberately from `rclc_client_wait_for_service`, which waits
+/// and reports `RCL_RET_TIMEOUT` (issue 1087): for a service probe,
 /// not-yet-answerable is a transient; for the graph it is permanent, and
 /// spending the budget to say `TIMEOUT` would report "none appeared" for a
 /// backend that cannot see publishers at all — collapsing "cannot tell you"
 /// into "not there", which is the distinction RFC-0036 exists to keep.
 ///
-/// `count == 0` returns `NROS_RET_OK` immediately without asking the backend:
+/// `count == 0` returns `RCL_RET_OK` immediately without asking the backend:
 /// "at least zero" is true of every graph and needs no discovery.
 ///
 /// # Returns
-/// * `NROS_RET_OK` — at least `count` publishers are visible.
-/// * `NROS_RET_TIMEOUT` — `timeout_ms` elapsed with fewer than `count`.
-/// * `NROS_RET_UNSUPPORTED` — the backend cannot read the graph.
-/// * `NROS_RET_REENTRANT` — called from inside a dispatch.
-/// * `NROS_RET_NOT_INIT` — executor not initialised.
-/// * `NROS_RET_INVALID_ARGUMENT` — `executor` or `topic_name` is null.
+/// * `RCL_RET_OK` — at least `count` publishers are visible.
+/// * `RCL_RET_TIMEOUT` — `timeout_ms` elapsed with fewer than `count`.
+/// * `RCL_RET_UNSUPPORTED` — the backend cannot read the graph.
+/// * `RCLC_RET_REENTRANT` — called from inside a dispatch.
+/// * `RCL_RET_NOT_INIT` — executor not initialised.
+/// * `RCL_RET_INVALID_ARGUMENT` — `executor` or `topic_name` is null.
 ///
 /// # Safety
 /// * `executor` must point to an initialised executor.
 /// * `topic_name` must be a valid NUL-terminated string.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_wait_for_publishers(
-    executor: *mut nros_executor_t,
+pub unsafe extern "C" fn rclc_executor_wait_for_publishers(
+    executor: *mut rclc_executor_t,
     topic_name: *const core::ffi::c_char,
     count: usize,
     timeout_ms: u32,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     nros_executor_wait_for_endpoints_impl(executor, topic_name, count, timeout_ms, true)
 }
 
 /// phase-444 — block until at least `count` subscribers are visible on
 /// `topic_name`. Upstream's `rcl_wait_for_subscribers`. See
-/// `nros_executor_wait_for_publishers` for the contract, the return codes,
+/// `rclc_executor_wait_for_publishers` for the contract, the return codes,
 /// and why a backend with no graph answers immediately.
 ///
 /// # Safety
 /// * `executor` must point to an initialised executor.
 /// * `topic_name` must be a valid NUL-terminated string.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_wait_for_subscribers(
-    executor: *mut nros_executor_t,
+pub unsafe extern "C" fn rclc_executor_wait_for_subscribers(
+    executor: *mut rclc_executor_t,
     topic_name: *const core::ffi::c_char,
     count: usize,
     timeout_ms: u32,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     nros_executor_wait_for_endpoints_impl(executor, topic_name, count, timeout_ms, false)
 }
 
@@ -826,31 +826,31 @@ pub unsafe extern "C" fn nros_executor_wait_for_subscribers(
 /// wrapper in C. This function translates pointers and error codes and does
 /// not decide anything.
 unsafe fn nros_executor_wait_for_endpoints_impl(
-    executor: *mut nros_executor_t,
+    executor: *mut rclc_executor_t,
     topic_name: *const core::ffi::c_char,
     count: usize,
     timeout_ms: u32,
     publishers: bool,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(executor);
     if topic_name.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     let exec_t = &mut *executor;
-    if exec_t.state == nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED
-        || exec_t.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN
+    if exec_t.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_UNINITIALIZED
+        || exec_t.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_SHUTDOWN
     {
-        return NROS_RET_NOT_INIT;
+        return RCL_RET_NOT_INIT;
     }
     // RFC-0021's reentrancy guard: this helper drives the executor, so
     // calling it from inside a callback would re-enter the dispatch loop.
     if exec_t.in_dispatch {
-        return NROS_RET_REENTRANT;
+        return RCLC_RET_REENTRANT;
     }
     #[cfg(feature = "rmw-cffi")]
     {
         let Ok(topic) = core::ffi::CStr::from_ptr(topic_name).to_str() else {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         };
         let timeout = core::time::Duration::from_millis(timeout_ms as u64);
         let exec = get_executor(&mut exec_t._opaque);
@@ -860,18 +860,18 @@ unsafe fn nros_executor_wait_for_endpoints_impl(
             exec.wait_for_subscribers(topic, count, timeout)
         };
         match r {
-            Ok(true) => NROS_RET_OK,
-            Ok(false) => NROS_RET_TIMEOUT,
+            Ok(true) => RCL_RET_OK,
+            Ok(false) => RCL_RET_TIMEOUT,
             Err(nros_node::NodeError::Transport(nros_rmw::TransportError::Unsupported)) => {
-                NROS_RET_UNSUPPORTED
+                RCL_RET_UNSUPPORTED
             }
-            Err(_) => NROS_RET_ERROR,
+            Err(_) => RCL_RET_ERROR,
         }
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (topic_name, count, timeout_ms, publishers);
-        NROS_RET_UNSUPPORTED
+        RCL_RET_UNSUPPORTED
     }
 }
 
@@ -901,20 +901,20 @@ enum CountKind {
 /// # Safety
 /// Same contract as its callers.
 unsafe fn nros_executor_names_and_types_impl(
-    executor: *mut nros_executor_t,
-    visit: nros_names_and_types_visit_fn,
+    executor: *mut rclc_executor_t,
+    visit: rclc_names_and_types_visit_fn,
     ctx: *mut core::ffi::c_void,
     #[allow(unused_variables)] kind: NamesAndTypesKind,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(executor);
     let Some(visit) = visit else {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     };
     let exec_t = &mut *executor;
-    if exec_t.state == nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED
-        || exec_t.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN
+    if exec_t.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_UNINITIALIZED
+        || exec_t.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_SHUTDOWN
     {
-        return NROS_RET_NOT_INIT;
+        return RCL_RET_NOT_INIT;
     }
     #[cfg(feature = "rmw-cffi")]
     {
@@ -953,17 +953,17 @@ unsafe fn nros_executor_names_and_types_impl(
             NamesAndTypesKind::Services => exec.get_service_names_and_types(&mut cb),
         };
         match r {
-            Ok(()) => NROS_RET_OK,
+            Ok(()) => RCL_RET_OK,
             Err(nros_node::NodeError::Transport(nros_rmw::TransportError::Unsupported)) => {
-                NROS_RET_UNSUPPORTED
+                RCL_RET_UNSUPPORTED
             }
-            Err(_) => NROS_RET_ERROR,
+            Err(_) => RCL_RET_ERROR,
         }
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (visit, ctx);
-        NROS_RET_UNSUPPORTED
+        RCL_RET_UNSUPPORTED
     }
 }
 
@@ -972,25 +972,25 @@ unsafe fn nros_executor_names_and_types_impl(
 /// # Safety
 /// Same contract as its callers.
 unsafe fn nros_executor_count_impl(
-    executor: *mut nros_executor_t,
+    executor: *mut rclc_executor_t,
     topic_name: *const core::ffi::c_char,
     out_count: *mut usize,
     #[allow(unused_variables)] kind: CountKind,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(executor);
     if topic_name.is_null() || out_count.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     let exec_t = &mut *executor;
-    if exec_t.state == nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED
-        || exec_t.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN
+    if exec_t.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_UNINITIALIZED
+        || exec_t.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_SHUTDOWN
     {
-        return NROS_RET_NOT_INIT;
+        return RCL_RET_NOT_INIT;
     }
     #[cfg(feature = "rmw-cffi")]
     {
         let Ok(topic) = core::ffi::CStr::from_ptr(topic_name).to_str() else {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         };
         let exec = get_executor(&mut exec_t._opaque);
         let r = match kind {
@@ -1000,18 +1000,18 @@ unsafe fn nros_executor_count_impl(
         match r {
             Ok(n) => {
                 *out_count = n;
-                NROS_RET_OK
+                RCL_RET_OK
             }
             Err(nros_node::NodeError::Transport(nros_rmw::TransportError::Unsupported)) => {
-                NROS_RET_UNSUPPORTED
+                RCL_RET_UNSUPPORTED
             }
-            Err(_) => NROS_RET_ERROR,
+            Err(_) => RCL_RET_ERROR,
         }
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (topic_name, out_count);
-        NROS_RET_UNSUPPORTED
+        RCL_RET_UNSUPPORTED
     }
 }
 
@@ -1023,7 +1023,7 @@ unsafe fn nros_executor_count_impl(
 /// no backend can read one back yet, and reporting the remote's DECLARED
 /// profile instead would be a confident wrong answer.
 #[repr(C)]
-pub struct nros_endpoint_info_t {
+pub struct rclc_endpoint_info_t {
     /// Node that owns the endpoint.
     pub node_name: *const core::ffi::c_char,
     /// That node's namespace.
@@ -1037,8 +1037,8 @@ pub struct nros_endpoint_info_t {
 }
 
 /// phase-381 W4 — visit one endpoint. Return `false` to stop.
-pub type nros_endpoint_info_visit_fn = Option<
-    unsafe extern "C" fn(ctx: *mut core::ffi::c_void, info: *const nros_endpoint_info_t) -> bool,
+pub type rclc_endpoint_info_visit_fn = Option<
+    unsafe extern "C" fn(ctx: *mut core::ffi::c_void, info: *const rclc_endpoint_info_t) -> bool,
 >;
 
 /// The shared body for the four `*_by_node` entry points.
@@ -1046,25 +1046,25 @@ pub type nros_endpoint_info_visit_fn = Option<
 /// # Safety
 /// Same contract as its callers.
 unsafe fn nros_executor_by_node_impl(
-    executor: *mut nros_executor_t,
+    executor: *mut rclc_executor_t,
     node_name: *const core::ffi::c_char,
     node_namespace: *const core::ffi::c_char,
-    visit: nros_names_and_types_visit_fn,
+    visit: rclc_names_and_types_visit_fn,
     ctx: *mut core::ffi::c_void,
     #[allow(unused_variables)] kind: u8,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(executor);
     if node_name.is_null() || node_namespace.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     let Some(visit) = visit else {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     };
     let exec_t = &mut *executor;
-    if exec_t.state == nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED
-        || exec_t.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN
+    if exec_t.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_UNINITIALIZED
+        || exec_t.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_SHUTDOWN
     {
-        return NROS_RET_NOT_INIT;
+        return RCL_RET_NOT_INIT;
     }
     #[cfg(feature = "rmw-cffi")]
     {
@@ -1072,7 +1072,7 @@ unsafe fn nros_executor_by_node_impl(
             core::ffi::CStr::from_ptr(node_name).to_str(),
             core::ffi::CStr::from_ptr(node_namespace).to_str(),
         ) else {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         };
         const NAME_MAX: usize = 256;
         const TYPES_MAX: usize = 8;
@@ -1108,17 +1108,17 @@ unsafe fn nros_executor_by_node_impl(
             _ => exec.get_client_names_and_types_by_node(name, ns, &mut cb),
         };
         match r {
-            Ok(()) => NROS_RET_OK,
+            Ok(()) => RCL_RET_OK,
             Err(nros_node::NodeError::Transport(nros_rmw::TransportError::Unsupported)) => {
-                NROS_RET_UNSUPPORTED
+                RCL_RET_UNSUPPORTED
             }
-            Err(_) => NROS_RET_ERROR,
+            Err(_) => RCL_RET_ERROR,
         }
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (node_name, node_namespace, visit, ctx);
-        NROS_RET_UNSUPPORTED
+        RCL_RET_UNSUPPORTED
     }
 }
 
@@ -1129,13 +1129,13 @@ unsafe fn nros_executor_by_node_impl(
 /// * `node_name` / `node_namespace` must be valid NUL-terminated strings.
 /// * `visit` must be callable for the duration of the call.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_get_publisher_names_and_types_by_node(
-    executor: *mut nros_executor_t,
+pub unsafe extern "C" fn rclc_executor_get_publisher_names_and_types_by_node(
+    executor: *mut rclc_executor_t,
     node_name: *const core::ffi::c_char,
     node_namespace: *const core::ffi::c_char,
-    visit: nros_names_and_types_visit_fn,
+    visit: rclc_names_and_types_visit_fn,
     ctx: *mut core::ffi::c_void,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     nros_executor_by_node_impl(executor, node_name, node_namespace, visit, ctx, 0)
 }
 
@@ -1153,43 +1153,43 @@ pub unsafe extern "C" fn nros_executor_get_publisher_names_and_types_by_node(
 /// * `node_name` / `node_namespace` must be valid NUL-terminated strings.
 /// * `visit` must be callable for the duration of the call.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_get_subscriber_names_and_types_by_node(
-    executor: *mut nros_executor_t,
+pub unsafe extern "C" fn rclc_executor_get_subscriber_names_and_types_by_node(
+    executor: *mut rclc_executor_t,
     node_name: *const core::ffi::c_char,
     node_namespace: *const core::ffi::c_char,
-    visit: nros_names_and_types_visit_fn,
+    visit: rclc_names_and_types_visit_fn,
     ctx: *mut core::ffi::c_void,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     nros_executor_by_node_impl(executor, node_name, node_namespace, visit, ctx, 1)
 }
 
 /// phase-381 W4 — what services one named node SERVES, with the types.
 ///
 /// # Safety
-/// As `nros_executor_get_publisher_names_and_types_by_node`.
+/// As `rclc_executor_get_publisher_names_and_types_by_node`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_get_service_names_and_types_by_node(
-    executor: *mut nros_executor_t,
+pub unsafe extern "C" fn rclc_executor_get_service_names_and_types_by_node(
+    executor: *mut rclc_executor_t,
     node_name: *const core::ffi::c_char,
     node_namespace: *const core::ffi::c_char,
-    visit: nros_names_and_types_visit_fn,
+    visit: rclc_names_and_types_visit_fn,
     ctx: *mut core::ffi::c_void,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     nros_executor_by_node_impl(executor, node_name, node_namespace, visit, ctx, 2)
 }
 
 /// phase-381 W4 — what services one named node CALLS, with the types.
 ///
 /// # Safety
-/// As `nros_executor_get_publisher_names_and_types_by_node`.
+/// As `rclc_executor_get_publisher_names_and_types_by_node`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_get_client_names_and_types_by_node(
-    executor: *mut nros_executor_t,
+pub unsafe extern "C" fn rclc_executor_get_client_names_and_types_by_node(
+    executor: *mut rclc_executor_t,
     node_name: *const core::ffi::c_char,
     node_namespace: *const core::ffi::c_char,
-    visit: nros_names_and_types_visit_fn,
+    visit: rclc_names_and_types_visit_fn,
     ctx: *mut core::ffi::c_void,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     nros_executor_by_node_impl(executor, node_name, node_namespace, visit, ctx, 3)
 }
 
@@ -1198,29 +1198,29 @@ pub unsafe extern "C" fn nros_executor_get_client_names_and_types_by_node(
 /// # Safety
 /// Same contract as its callers.
 unsafe fn nros_executor_endpoint_info_impl(
-    executor: *mut nros_executor_t,
+    executor: *mut rclc_executor_t,
     topic_name: *const core::ffi::c_char,
-    visit: nros_endpoint_info_visit_fn,
+    visit: rclc_endpoint_info_visit_fn,
     ctx: *mut core::ffi::c_void,
     #[allow(unused_variables)] publishers: bool,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(executor);
     if topic_name.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     let Some(visit) = visit else {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     };
     let exec_t = &mut *executor;
-    if exec_t.state == nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED
-        || exec_t.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN
+    if exec_t.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_UNINITIALIZED
+        || exec_t.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_SHUTDOWN
     {
-        return NROS_RET_NOT_INIT;
+        return RCL_RET_NOT_INIT;
     }
     #[cfg(feature = "rmw-cffi")]
     {
         let Ok(topic) = core::ffi::CStr::from_ptr(topic_name).to_str() else {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         };
         const NAME_MAX: usize = 256;
         let exec = get_executor(&mut exec_t._opaque);
@@ -1237,14 +1237,14 @@ unsafe fn nros_executor_endpoint_info_impl(
             name_buf[..info.node_name.len()].copy_from_slice(info.node_name.as_bytes());
             ns_buf[..info.node_namespace.len()].copy_from_slice(info.node_namespace.as_bytes());
             ty_buf[..info.topic_type.len()].copy_from_slice(info.topic_type.as_bytes());
-            let c_info = nros_endpoint_info_t {
+            let c_info = rclc_endpoint_info_t {
                 node_name: name_buf.as_ptr() as *const core::ffi::c_char,
                 node_namespace: ns_buf.as_ptr() as *const core::ffi::c_char,
                 topic_type: ty_buf.as_ptr() as *const core::ffi::c_char,
                 is_publisher: info.is_publisher,
                 endpoint_gid: info.endpoint_gid,
             };
-            visit(ctx, &c_info as *const nros_endpoint_info_t)
+            visit(ctx, &c_info as *const rclc_endpoint_info_t)
         };
         let r = if publishers {
             exec.get_publishers_info_by_topic(topic, &mut cb)
@@ -1252,17 +1252,17 @@ unsafe fn nros_executor_endpoint_info_impl(
             exec.get_subscriptions_info_by_topic(topic, &mut cb)
         };
         match r {
-            Ok(()) => NROS_RET_OK,
+            Ok(()) => RCL_RET_OK,
             Err(nros_node::NodeError::Transport(nros_rmw::TransportError::Unsupported)) => {
-                NROS_RET_UNSUPPORTED
+                RCL_RET_UNSUPPORTED
             }
-            Err(_) => NROS_RET_ERROR,
+            Err(_) => RCL_RET_ERROR,
         }
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (topic_name, visit, ctx);
-        NROS_RET_UNSUPPORTED
+        RCL_RET_UNSUPPORTED
     }
 }
 
@@ -1273,26 +1273,26 @@ unsafe fn nros_executor_endpoint_info_impl(
 /// * `topic_name` must be a valid NUL-terminated string.
 /// * `visit` must be callable for the duration of the call.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_get_publishers_info_by_topic(
-    executor: *mut nros_executor_t,
+pub unsafe extern "C" fn rclc_executor_get_publishers_info_by_topic(
+    executor: *mut rclc_executor_t,
     topic_name: *const core::ffi::c_char,
-    visit: nros_endpoint_info_visit_fn,
+    visit: rclc_endpoint_info_visit_fn,
     ctx: *mut core::ffi::c_void,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     nros_executor_endpoint_info_impl(executor, topic_name, visit, ctx, true)
 }
 
 /// phase-381 W4 — the subscriptions on `topic_name`, one visit each.
 ///
 /// # Safety
-/// As `nros_executor_get_publishers_info_by_topic`.
+/// As `rclc_executor_get_publishers_info_by_topic`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_get_subscriptions_info_by_topic(
-    executor: *mut nros_executor_t,
+pub unsafe extern "C" fn rclc_executor_get_subscriptions_info_by_topic(
+    executor: *mut rclc_executor_t,
     topic_name: *const core::ffi::c_char,
-    visit: nros_endpoint_info_visit_fn,
+    visit: rclc_endpoint_info_visit_fn,
     ctx: *mut core::ffi::c_void,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     nros_executor_endpoint_info_impl(executor, topic_name, visit, ctx, false)
 }
 
@@ -1302,37 +1302,37 @@ pub unsafe extern "C" fn nros_executor_get_subscriptions_info_by_topic(
 /// * `executor` must be a valid pointer to an initialized executor
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_executor_set_semantics(
-    executor: *mut nros_executor_t,
-    semantics: nros_executor_semantics_t,
-) -> nros_ret_t {
+    executor: *mut rclc_executor_t,
+    semantics: rclc_executor_semantics_t,
+) -> rcl_ret_t {
     validate_not_null!(executor);
 
     let executor = &mut *executor;
 
-    if executor.state == nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED
-        || executor.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN
+    if executor.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_UNINITIALIZED
+        || executor.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_SHUTDOWN
     {
-        return NROS_RET_NOT_INIT;
+        return RCL_RET_NOT_INIT;
     }
 
     executor.semantics = semantics;
 
     // Forward to the internal executor
-    if executor.state == nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
-        || executor.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING
+    if executor.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
+        || executor.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING
     {
         let rust_exec = get_executor(&mut executor._opaque);
         rust_exec.set_semantics(match semantics {
-            nros_executor_semantics_t::NROS_SEMANTICS_RCLCPP_EXECUTOR => {
+            rclc_executor_semantics_t::RCLC_SEMANTICS_RCLCPP_EXECUTOR => {
                 nros_node::ExecutorSemantics::RclcppExecutor
             }
-            nros_executor_semantics_t::NROS_SEMANTICS_LOGICAL_EXECUTION_TIME => {
+            rclc_executor_semantics_t::RCLC_SEMANTICS_LOGICAL_EXECUTION_TIME => {
                 nros_node::ExecutorSemantics::LogicalExecutionTime
             }
         });
     }
 
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// Phase 104.C.8.b — initialize a Node via the executor's
@@ -1343,13 +1343,13 @@ pub unsafe extern "C" fn rclc_executor_set_semantics(
 /// namespace(...).sched(...).build()`. Materialises a Node inside the
 /// executor's node table and stores the returned NodeId in
 /// `node.node_id` so subsequent
-/// [`nros_executor_add_subscription_raw`] / `_service` / `_client` /
+/// [`rclc_executor_add_subscription_raw`] / `_service` / `_client` /
 /// `_action_*` calls route through `register_*_on(NodeId, ...)`
 /// instead of the legacy single-Node path.
 ///
 /// Replaces the pre-104.C ordering of `support_init → node_init →
 /// executor_init` with the rclcpp-aligned `support_init → executor_init →
-/// executor_node_init`. The old `rclc_node_init_default` / `nros_node_init_ex`
+/// executor_node_init`. The old `rclc_node_init_default` / `rclc_node_init_ex`
 /// entry points are preserved for source compatibility — they still
 /// drive the single-Node legacy path and leave `node.node_id = 0`.
 ///
@@ -1357,31 +1357,31 @@ pub unsafe extern "C" fn rclc_executor_set_semantics(
 /// * `executor` — Pointer to an initialised executor.
 /// * `node` — Pointer to a zero-initialised node. Populated on success.
 /// * `name` — Node name (null-terminated). Must not be NULL.
-/// * `options` — Pointer to populated `nros_node_options_t`. NULL =
+/// * `options` — Pointer to populated `rcl_node_options_t`. NULL =
 ///   default options (no rmw override, inherits executor's locator
 ///   + domain, executor-default SchedContext).
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success.
-/// * `NROS_RET_INVALID_ARGUMENT` on NULL pointers / bad strings.
-/// * `NROS_RET_BAD_SEQUENCE` if node is already initialised.
-/// * `NROS_RET_NOT_INIT` if executor isn't initialised.
-/// * `NROS_RET_ERROR` if the executor's node table is full
+/// * `RCL_RET_OK` on success.
+/// * `RCL_RET_INVALID_ARGUMENT` on NULL pointers / bad strings.
+/// * `RCLC_RET_BAD_SEQUENCE` if node is already initialised.
+/// * `RCL_RET_NOT_INIT` if executor isn't initialised.
+/// * `RCL_RET_ERROR` if the executor's node table is full
 ///   (`NROS_EXECUTOR_MAX_NODES`) or the backend session open failed.
 ///
 /// # Safety
 /// All pointer arguments must satisfy their per-parameter rules. `options`
 /// length fields must not overrun their buffers.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_node_init(
-    executor: *mut nros_executor_t,
-    node: *mut nros_node_t,
+pub unsafe extern "C" fn rclc_executor_node_init(
+    executor: *mut rclc_executor_t,
+    node: *mut rcl_node_t,
     name: *const c_char,
-    options: *const crate::node::nros_node_options_t,
-) -> nros_ret_t {
+    options: *const crate::node::rcl_node_options_t,
+) -> rcl_ret_t {
     use crate::{
         constants::{MAX_LOCATOR_LEN, MAX_NAMESPACE_LEN, MAX_RMW_NAME_LEN},
-        node::{NROS_DOMAIN_ID_INHERIT, nros_node_options_t, nros_node_state_t},
+        node::{NROS_DOMAIN_ID_INHERIT, rcl_node_options_t, rclc_node_state_t},
     };
 
     validate_not_null!(executor, node, name);
@@ -1391,21 +1391,21 @@ pub unsafe extern "C" fn nros_executor_node_init(
 
     validate_state!(
         executor,
-        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
-    if node_ref.state != nros_node_state_t::NROS_NODE_STATE_UNINITIALIZED {
-        return NROS_RET_BAD_SEQUENCE;
+    if node_ref.state != rclc_node_state_t::RCLC_NODE_STATE_UNINITIALIZED {
+        return RCLC_RET_BAD_SEQUENCE;
     }
 
     // Length-bound + copy node name into struct.
     node_ref.name_len = crate::util::copy_cstr_into(name, &mut node_ref.name);
     if node_ref.name_len == 0 {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
 
     // Stack-copy a defaulted options struct when caller passed NULL,
     // so the rest of the function reads a uniform shape.
-    let default_opts = nros_node_options_t::default();
+    let default_opts = rcl_node_options_t::default();
     let opts = if options.is_null() {
         &default_opts
     } else {
@@ -1414,7 +1414,7 @@ pub unsafe extern "C" fn nros_executor_node_init(
             || opts_ref.rmw_name_len > MAX_RMW_NAME_LEN
             || opts_ref.locator_len > MAX_LOCATOR_LEN
         {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         }
         opts_ref
     };
@@ -1457,7 +1457,7 @@ pub unsafe extern "C" fn nros_executor_node_init(
     }
     let node_id = match builder.build() {
         Ok(id) => id,
-        Err(_) => return NROS_RET_ERROR,
+        Err(_) => return RCL_RET_ERROR,
     };
 
     // Persist NodeId so handle-creation paths can hit the `_on()`
@@ -1490,10 +1490,10 @@ pub unsafe extern "C" fn nros_executor_node_init(
 
     node_ref.node_id = node_id.raw();
     node_ref.support = core::ptr::null();
-    node_ref.executor = executor as *const nros_executor_t;
-    node_ref.state = nros_node_state_t::NROS_NODE_STATE_INITIALIZED;
+    node_ref.executor = executor as *const rclc_executor_t;
+    node_ref.state = rclc_node_state_t::RCLC_NODE_STATE_INITIALIZED;
 
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// Record the entity a handle slot was registered from, so a trigger predicate
@@ -1518,16 +1518,16 @@ pub(crate) fn record_trigger_entity(
 
 /// Bridge from the internal executor's readiness snapshot to the C trigger ABI.
 ///
-/// `context` is the owning `nros_executor_t *`. The internal executor knows
+/// `context` is the owning `rclc_executor_t *`. The internal executor knows
 /// which slots have data but nothing about C entities; the C executor knows the
 /// entities but not the readiness. This joins them into the
-/// [`nros_executor_trigger_handle_t`] array the user's predicate walks, which is
+/// [`rclc_executor_trigger_handle_t`] array the user's predicate walks, which is
 /// what lets `rclc_executor_trigger_one` be upstream's function rather than a
 /// different one wearing its name.
 ///
 /// # Safety
 /// * `ready` must point to at least `count` booleans.
-/// * `context` must be the live `nros_executor_t` this trigger was set on.
+/// * `context` must be the live `rclc_executor_t` this trigger was set on.
 unsafe extern "C" fn trigger_bridge(
     ready: *const bool,
     count: usize,
@@ -1536,7 +1536,7 @@ unsafe extern "C" fn trigger_bridge(
     if context.is_null() {
         return false;
     }
-    let executor = &*(context as *const nros_executor_t);
+    let executor = &*(context as *const rclc_executor_t);
     let Some(trigger) = executor.trigger else {
         // No user trigger: `rclc_executor_set_trigger(exec, NULL, …)` maps to
         // the internal `Any` and never reaches this bridge. Reaching it anyway
@@ -1551,7 +1551,7 @@ unsafe extern "C" fn trigger_bridge(
     // hypothetical `NROS_EXECUTOR_MAX_CBS > 64` from reading past either.
     const READY_LEN: usize = 64;
     let n = count.min(NROS_EXECUTOR_MAX_HANDLES).min(READY_LEN);
-    let mut handles = [nros_executor_trigger_handle_t {
+    let mut handles = [rclc_executor_trigger_handle_t {
         entity: ptr::null_mut(),
         data_available: false,
     }; NROS_EXECUTOR_MAX_HANDLES];
@@ -1576,19 +1576,19 @@ unsafe extern "C" fn trigger_bridge(
 ///   handle array.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_executor_set_trigger(
-    executor: *mut nros_executor_t,
-    trigger: nros_executor_trigger_t,
+    executor: *mut rclc_executor_t,
+    trigger: rclc_executor_trigger_t,
     context: *mut core::ffi::c_void,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(executor);
 
     let executor_ptr = executor;
     let executor = &mut *executor;
 
-    if executor.state == nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED
-        || executor.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN
+    if executor.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_UNINITIALIZED
+        || executor.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_SHUTDOWN
     {
-        return NROS_RET_NOT_INIT;
+        return RCL_RET_NOT_INIT;
     }
 
     executor.trigger = trigger;
@@ -1610,7 +1610,7 @@ pub unsafe extern "C" fn rclc_executor_set_trigger(
         }
     }
 
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 // ============================================================================
@@ -1626,7 +1626,7 @@ pub unsafe extern "C" fn rclc_executor_set_trigger(
 /// * `handles` must point to a valid array of at least `size` elements
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_executor_trigger_any(
-    handles: *const nros_executor_trigger_handle_t,
+    handles: *const rclc_executor_trigger_handle_t,
     size: usize,
     obj: *mut core::ffi::c_void,
 ) -> bool {
@@ -1656,7 +1656,7 @@ pub unsafe extern "C" fn rclc_executor_trigger_any(
 /// * `handles` must point to a valid array of at least `size` elements
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_executor_trigger_all(
-    handles: *const nros_executor_trigger_handle_t,
+    handles: *const rclc_executor_trigger_handle_t,
     size: usize,
     obj: *mut core::ffi::c_void,
 ) -> bool {
@@ -1680,7 +1680,7 @@ pub unsafe extern "C" fn rclc_executor_trigger_all(
 /// * `handles`, `size` and `obj` are unused
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_executor_trigger_always(
-    handles: *const nros_executor_trigger_handle_t,
+    handles: *const rclc_executor_trigger_handle_t,
     size: usize,
     obj: *mut core::ffi::c_void,
 ) -> bool {
@@ -1705,7 +1705,7 @@ pub unsafe extern "C" fn rclc_executor_trigger_always(
 /// essentially always out of range — so the trigger never fired, the executor
 /// dispatched nothing, and nothing said so (RFC-0089: never compile and differ).
 /// The index form still exists under its own name,
-/// [`nros_executor_trigger_index`].
+/// [`rclc_executor_trigger_index`].
 ///
 /// A NULL `obj`, or an entity this executor never registered, matches nothing
 /// and the trigger never fires — upstream's behaviour for an unknown object.
@@ -1714,7 +1714,7 @@ pub unsafe extern "C" fn rclc_executor_trigger_always(
 /// * `handles` must point to a valid array of at least `size` elements
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_executor_trigger_one(
-    handles: *const nros_executor_trigger_handle_t,
+    handles: *const rclc_executor_trigger_handle_t,
     size: usize,
     obj: *mut core::ffi::c_void,
 ) -> bool {
@@ -1745,15 +1745,15 @@ pub unsafe extern "C" fn rclc_executor_trigger_one(
 ///
 /// ```c
 /// static size_t my_trigger_index = 2;
-/// rclc_executor_set_trigger(&exec, nros_executor_trigger_index, &my_trigger_index);
+/// rclc_executor_set_trigger(&exec, rclc_executor_trigger_index, &my_trigger_index);
 /// ```
 ///
 /// # Safety
 /// * `handles` must point to a valid array of at least `size` elements.
 /// * `obj` must point to a valid `size_t` alive for the trigger's lifetime.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_trigger_index(
-    handles: *const nros_executor_trigger_handle_t,
+pub unsafe extern "C" fn rclc_executor_trigger_index(
+    handles: *const rclc_executor_trigger_handle_t,
     size: usize,
     obj: *mut core::ffi::c_void,
 ) -> bool {
@@ -1773,21 +1773,21 @@ pub unsafe extern "C" fn nros_executor_trigger_index(
 // ============================================================================
 
 /// The registration road every `nros_executor_add_subscription*` that takes a
-/// `nros_subscription_t` shares — issue 1668.
+/// `rcl_subscription_t` shares — issue 1668.
 ///
 /// Validates both objects, reads the subscription's topic / type / hash / QoS
 /// and node, resolves the name, and hands those to `register` — the one part
 /// that differs per verb (raw bytes, typed, raw + message info). On success it
-/// records the entry the way [`nros_executor_remove_subscription`] reads it
+/// records the entry the way [`rclc_executor_remove_subscription`] reads it
 /// back: the `(handle, executor)` pair in the subscription, the trigger-entity
 /// row, the invocation mode, the requested scheduling context, and both
 /// counts. ONE spelling, so a new subscription verb cannot register an entry
 /// the remover cannot find (the 1668 shape was a copy of this body that
 /// recorded none of it).
 unsafe fn register_subscription_entry(
-    executor: *mut nros_executor_t,
-    subscription: *mut nros_subscription_t,
-    invocation: nros_executor_handle_invocation_t,
+    executor: *mut rclc_executor_t,
+    subscription: *mut rcl_subscription_t,
+    invocation: rclc_executor_handle_invocation_t,
     register: impl FnOnce(
         &mut CExecutor,
         Option<nros_node::executor::NodeId>,
@@ -1795,8 +1795,8 @@ unsafe fn register_subscription_entry(
         &str,
         &str,
         nros_node::QoSProfile,
-    ) -> Result<nros_node::executor::HandleId, nros_ret_t>,
-) -> nros_ret_t {
+    ) -> Result<nros_node::executor::HandleId, rcl_ret_t>,
+) -> rcl_ret_t {
     validate_not_null!(executor, subscription);
 
     let executor = &mut *executor;
@@ -1804,15 +1804,15 @@ unsafe fn register_subscription_entry(
 
     validate_state!(
         executor,
-        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
     validate_state!(
         subscription_ref,
-        nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
+        rclc_subscription_state_t::RCLC_SUBSCRIPTION_STATE_INITIALIZED
     );
 
     if executor.handle_count >= executor.max_handles {
-        return NROS_RET_FULL;
+        return RCLC_RET_FULL;
     }
 
     // issue 1437 — taken BEFORE `get_executor` borrows `executor` mutably,
@@ -1839,11 +1839,11 @@ unsafe fn register_subscription_entry(
     // against the identity just set (executor-side remap table).
     let __resolved_name = match rust_exec.resolve_entity_name(topic_str) {
         Ok(r) => r,
-        Err(()) => return NROS_RET_INVALID_ARGUMENT,
+        Err(()) => return RCL_RET_INVALID_ARGUMENT,
     };
     let topic_str = __resolved_name.as_str();
 
-    // Phase 104.C.8.b — a Node created via `nros_executor_node_init` routes
+    // Phase 104.C.8.b — a Node created via `rclc_executor_node_init` routes
     // through `_on(NodeId, ...)` so multi-RMW bridges land on the right
     // session; a legacy Node carries `node_id == 0` and takes the single-Node
     // entry point.
@@ -1867,14 +1867,14 @@ unsafe fn register_subscription_entry(
         subscription as *mut core::ffi::c_void,
     );
 
-    if invocation == nros_executor_handle_invocation_t::NROS_EXECUTOR_ALWAYS {
+    if invocation == rclc_executor_handle_invocation_t::RCLC_EXECUTOR_ALWAYS {
         rust_exec.set_invocation(handle_id, nros_node::InvocationMode::Always);
     }
 
     // Phase 189.M3 — apply a scheduling-context binding requested via
-    // `nros_subscription_init_with_options`. `0` = inherit the default (no-op).
+    // `rclc_subscription_init_with_options`. `0` = inherit the default (no-op).
     // A non-zero slot must be a valid id from
-    // `nros_executor_create_sched_context`; an unknown id fails the
+    // `rclc_executor_create_sched_context`; an unknown id fails the
     // registration so the caller learns the binding was rejected rather than
     // silently dropped.
     let requested_sc = sub_mut.sched_context_id;
@@ -1884,24 +1884,24 @@ unsafe fn register_subscription_entry(
             .bind_handle_to_sched_context(handle_id, sc_id)
             .is_err()
         {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         }
     }
 
     executor.handle_count += 1;
     executor.subscription_count += 1;
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// phase-417 W5.a — the deserialiser handed to
-/// [`nros_executor_add_subscription_typed`].
+/// [`rclc_executor_add_subscription_typed`].
 ///
 /// Writes the CDR bytes at `buffer[..buffer_size]` into `msg`, which is storage
 /// the CALLER owns. Returns `0` on success, non-zero on failure. This is the
 /// type-erased form of the generated `<Msg>_deserialize`, which already has
 /// exactly this contract; generated headers emit a `<Msg>_deserialize_erased`
 /// with this signature so no call goes through a cast function pointer.
-pub type nros_message_deserialize_fn_t = Option<
+pub type rclc_message_deserialize_fn_t = Option<
     unsafe extern "C" fn(msg: *mut core::ffi::c_void, buffer: *const u8, buffer_size: usize) -> i32,
 >;
 
@@ -1910,14 +1910,14 @@ pub type nros_message_deserialize_fn_t = Option<
 /// (`rclc_subscription_callback_with_context_t`).
 ///
 /// `msg` is the caller's own storage, populated by this subscription's
-/// [`nros_message_deserialize_fn_t`] immediately before the call. It is valid
+/// [`rclc_message_deserialize_fn_t`] immediately before the call. It is valid
 /// for the duration of the call and is overwritten by the next dispatch — copy
 /// out anything retained.
 ///
 /// The `context` parameter is why this is the analog of rclc's
 /// *with-context* callback rather than its bare `void (*)(const void *)`: C has
 /// no closures and every other callback in this API already carries one.
-pub type nros_typed_subscription_callback_t =
+pub type rclc_typed_subscription_callback_t =
     Option<unsafe extern "C" fn(msg: *const core::ffi::c_void, context: *mut core::ffi::c_void)>;
 
 /// phase-417 W5.a (RFC-0089 stage 5) — add a subscription that delivers a
@@ -1928,16 +1928,16 @@ pub type nros_typed_subscription_callback_t =
 /// ```c
 /// rclc_executor_add_subscription(&exec, &sub, &msg, &cb, ON_NEW_DATA);
 /// rclc_executor_add_subscription_with_context(&exec, &sub, &msg, &cb, &ctx, ON_NEW_DATA);
-/// nros_executor_add_subscription_typed(&exec, &sub, &msg, MyMsg_deserialize_erased,
-///                                      &cb, &ctx, NROS_EXECUTOR_ON_NEW_DATA);
+/// rclc_executor_add_subscription_typed(&exec, &sub, &msg, MyMsg_deserialize_erased,
+///                                      &cb, &ctx, RCLC_EXECUTOR_ON_NEW_DATA);
 /// ```
 ///
-/// One argument more than rclc's, and it is the only one: `nros_message_type_t`
+/// One argument more than rclc's, and it is the only one: `rclc_message_type_t`
 /// carries a type NAME and a type HASH and no deserialiser, so the function
 /// that writes this type into `msg` has to arrive from somewhere. Generated
 /// headers collapse it away, so a ported line is rclc's six arguments in rclc's
 /// order:
-/// `MyMsg_executor_add_subscription(&exec, &sub, &msg, &cb, &ctx, NROS_EXECUTOR_ON_NEW_DATA)`.
+/// `MyMsg_executor_add_subscription(&exec, &sub, &msg, &cb, &ctx, RCLC_EXECUTOR_ON_NEW_DATA)`.
 ///
 /// The CONTEXT-LESS `rclc_executor_add_subscription` (a `void (*)(const void*)`
 /// callback) is deliberately absent: adapting it needs a trampoline that
@@ -1951,7 +1951,7 @@ pub type nros_typed_subscription_callback_t =
 /// operates under the same constraint, so the stated reason was refuted by the
 /// thing it was compared against (issue 1022, W-C3).
 ///
-/// The byte-oriented [`nros_executor_add_subscription_raw`] is untouched and stays.
+/// The byte-oriented [`rclc_executor_add_subscription_raw`] is untouched and stays.
 /// This is additive; a raw subscriber is a legitimate thing to want.
 ///
 /// # What the callback sees when decoding fails
@@ -1964,14 +1964,14 @@ pub type nros_typed_subscription_callback_t =
 ///
 /// A message too large for the caller's storage arrives here as that same
 /// failure and never as a truncation: a bounded string whose wire length
-/// exceeds its declared capacity fails in `nros_cdr_read_string`
+/// exceeds its declared capacity fails in `rclc_cdr_read_string`
 /// (`str_len > max_len`), and a bounded sequence fails on
 /// `len > capacity` — both return `-1` rather than writing a short value.
 ///
 /// # What is read from the subscription
 /// What describes the ENTITY — topic, type name, type hash, QoS, node binding,
 /// and the scheduling context requested via
-/// `nros_subscription_init_with_options`. The typed callback and its `context`
+/// `rclc_subscription_init_with_options`. The typed callback and its `context`
 /// are supplied here, exactly as rclc's
 /// `rclc_executor_add_subscription_with_context` does, and the arena entry
 /// owns them; the subscription struct has had no callback field since
@@ -1983,16 +1983,16 @@ pub type nros_typed_subscription_callback_t =
 ///   must stay valid for as long as the subscription is registered. Nothing
 ///   here allocates it, copies it, or frees it.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_add_subscription_typed(
-    executor: *mut nros_executor_t,
-    subscription: *mut nros_subscription_t,
+pub unsafe extern "C" fn rclc_executor_add_subscription_typed(
+    executor: *mut rclc_executor_t,
+    subscription: *mut rcl_subscription_t,
     msg: *mut core::ffi::c_void,
-    deserialize: nros_message_deserialize_fn_t,
-    callback: nros_typed_subscription_callback_t,
+    deserialize: rclc_message_deserialize_fn_t,
+    callback: rclc_typed_subscription_callback_t,
     context: *mut core::ffi::c_void,
-    invocation: nros_executor_handle_invocation_t,
-) -> nros_ret_t {
-    nros_executor_add_subscription_typed_sized(
+    invocation: rclc_executor_handle_invocation_t,
+) -> rcl_ret_t {
+    rclc_executor_add_subscription_typed_sized(
         executor,
         subscription,
         msg,
@@ -2004,7 +2004,7 @@ pub unsafe extern "C" fn nros_executor_add_subscription_typed(
     )
 }
 
-/// phase-417 W5.a — [`nros_executor_add_subscription_typed`] with the
+/// phase-417 W5.a — [`rclc_executor_add_subscription_typed`] with the
 /// receive-buffer hint stated by the caller.
 ///
 /// `rx_bytes` is the same hint the raw path takes (issue 0896 / phase-403 W5):
@@ -2017,25 +2017,25 @@ pub unsafe extern "C" fn nros_executor_add_subscription_typed(
 /// bound.
 ///
 /// # Safety
-/// See [`nros_executor_add_subscription_typed`].
+/// See [`rclc_executor_add_subscription_typed`].
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_add_subscription_typed_sized(
-    executor: *mut nros_executor_t,
-    subscription: *mut nros_subscription_t,
+pub unsafe extern "C" fn rclc_executor_add_subscription_typed_sized(
+    executor: *mut rclc_executor_t,
+    subscription: *mut rcl_subscription_t,
     msg: *mut core::ffi::c_void,
-    deserialize: nros_message_deserialize_fn_t,
-    callback: nros_typed_subscription_callback_t,
+    deserialize: rclc_message_deserialize_fn_t,
+    callback: rclc_typed_subscription_callback_t,
     context: *mut core::ffi::c_void,
-    invocation: nros_executor_handle_invocation_t,
+    invocation: rclc_executor_handle_invocation_t,
     rx_bytes: u32,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(executor, subscription, msg);
 
     let (Some(deserialize_fn), Some(callback_fn)) = (deserialize, callback) else {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     };
     let Some(msg_nn) = core::ptr::NonNull::new(msg) else {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     };
 
     // The name resolution, node routing and bookkeeping are the raw path's —
@@ -2060,7 +2060,7 @@ pub unsafe extern "C" fn nros_executor_add_subscription_typed_sized(
                     None,
                     rx_bytes as usize,
                 )
-                .map_err(|_| NROS_RET_ERROR)
+                .map_err(|_| RCL_RET_ERROR)
         },
     )
 }
@@ -2068,7 +2068,7 @@ pub unsafe extern "C" fn nros_executor_add_subscription_typed_sized(
 /// phase-417 stage 6 — register a BYTE-oriented subscription, supplying its
 /// callback HERE rather than at `*_init`.
 ///
-/// This is the raw-path sibling of [`nros_executor_add_subscription_typed`].
+/// This is the raw-path sibling of [`rclc_executor_add_subscription_typed`].
 /// `rclc_subscription_init_default` takes no callback (rclc's arity), so the
 /// byte callback that used to ride on `nros_subscription_init` is supplied at
 /// registration, which is where rclc supplies it
@@ -2084,7 +2084,7 @@ pub unsafe extern "C" fn nros_executor_add_subscription_typed_sized(
 /// callback an init call had stored in the struct.
 ///
 /// # Returns
-/// As [`nros_executor_add_subscription_typed`]; `NROS_RET_INVALID_ARGUMENT`
+/// As [`rclc_executor_add_subscription_typed`]; `RCL_RET_INVALID_ARGUMENT`
 /// for a NULL `callback`, since an entry with nothing to dispatch would hold a
 /// subscriber and a slot for no reader.
 ///
@@ -2092,13 +2092,13 @@ pub unsafe extern "C" fn nros_executor_add_subscription_typed_sized(
 /// * `executor` and `subscription` must be valid, initialised objects.
 /// * `context` is passed through untouched and may be NULL.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_add_subscription_raw(
-    executor: *mut nros_executor_t,
-    subscription: *mut nros_subscription_t,
-    callback: crate::subscription::nros_subscription_callback_t,
+pub unsafe extern "C" fn rclc_executor_add_subscription_raw(
+    executor: *mut rclc_executor_t,
+    subscription: *mut rcl_subscription_t,
+    callback: crate::subscription::rclc_subscription_callback_t,
     context: *mut core::ffi::c_void,
-    invocation: nros_executor_handle_invocation_t,
-) -> nros_ret_t {
+    invocation: rclc_executor_handle_invocation_t,
+) -> rcl_ret_t {
     validate_not_null!(executor, subscription);
     register_subscription_entry(
         executor,
@@ -2108,17 +2108,17 @@ pub unsafe extern "C" fn nros_executor_add_subscription_raw(
             // Checked here, after the state checks, so an uninitialised
             // subscription still answers NOT_INIT rather than "no callback".
             let Some(callback) = callback else {
-                return Err(NROS_RET_INVALID_ARGUMENT);
+                return Err(RCL_RET_INVALID_ARGUMENT);
             };
             // Phase 189.M2.b — the single kept C-FFI subscription core.
             rust_exec
                 .add_arena_subscription_c_callback::<MESSAGE_BUFFER_SIZE>(
                     node_id, topic, type_name, type_hash, qos, callback, context,
-                    None, // Phase 273 W3: group threading is via nros_executor_add_subscription_in_group
+                    None, // Phase 273 W3: group threading is via rclc_executor_add_subscription_in_group
                     // phase-402 W2 — this path states no hint; 0 = no opinion.
                     0,
                 )
-                .map_err(|_| NROS_RET_ERROR)
+                .map_err(|_| RCL_RET_ERROR)
         },
     )
 }
@@ -2126,20 +2126,20 @@ pub unsafe extern "C" fn nros_executor_add_subscription_raw(
 /// Phase 189.M3.4 — register a raw subscription whose callback also receives
 /// the sample's wire **attachment** (the C analog of the Rust
 /// `node.subscription(t).generic(..).message_info()` builder; rclc's
-/// generic-with-info subscription). Direct-arg form (no `nros_subscription_t`
+/// generic-with-info subscription). Direct-arg form (no `rcl_subscription_t`
 /// struct): the callback signature differs from the plain
-/// `nros_subscription_callback_t`, so this is its own entry point rather than
-/// a flag on `nros_executor_add_subscription_raw`.
+/// `rclc_subscription_callback_t`, so this is its own entry point rather than
+/// a flag on `rclc_executor_add_subscription_raw`.
 ///
 /// **Not removable** (issue 1668): it takes no subscription object and hands
 /// back nothing, so its entry — slot, arena bytes and subscriber — lives
 /// until `rclc_executor_fini`. Kept for ABI compatibility (RFC-0054 is
-/// additive). Prefer [`nros_executor_add_subscription_with_info`], which
-/// registers the same entry into a `nros_subscription_t` that
-/// `nros_executor_remove_subscription` takes back out.
+/// additive). Prefer [`rclc_executor_add_subscription_with_info`], which
+/// registers the same entry into a `rcl_subscription_t` that
+/// `rclc_executor_remove_subscription` takes back out.
 ///
 /// `node` may be NULL (legacy single-Node path) or a Node created via
-/// `nros_executor_node_init` (routes to that Node's session). `qos` may be NULL
+/// `rclc_executor_node_init` (routes to that Node's session). `qos` may be NULL
 /// (defaults). Cross-RMW bridges read the `bridge_origin` tag from the
 /// attachment for echo suppression.
 ///
@@ -2147,28 +2147,28 @@ pub unsafe extern "C" fn nros_executor_add_subscription_raw(
 /// All non-NULL pointers must be valid; the C strings must be NUL-terminated
 /// UTF-8 valid for the duration of the call.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_add_subscription_raw_with_info(
-    executor: *mut nros_executor_t,
-    node: *const nros_node_t,
+pub unsafe extern "C" fn rclc_executor_add_subscription_raw_with_info(
+    executor: *mut rclc_executor_t,
+    node: *const rcl_node_t,
     topic_name: *const c_char,
     type_name: *const c_char,
     type_hash: *const c_char,
-    qos: *const crate::qos::nros_qos_t,
-    callback: crate::subscription::nros_subscription_info_callback_t,
+    qos: *const crate::qos::rclc_qos_t,
+    callback: crate::subscription::rclc_subscription_info_callback_t,
     context: *mut core::ffi::c_void,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(executor, topic_name, type_name, type_hash);
     let Some(cb) = callback else {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     };
 
     let executor = &mut *executor;
     validate_state!(
         executor,
-        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
     if executor.handle_count >= executor.max_handles {
-        return NROS_RET_FULL;
+        return RCLC_RET_FULL;
     }
 
     let (Ok(topic_str), Ok(type_str), Ok(type_hash_str)) = (
@@ -2176,7 +2176,7 @@ pub unsafe extern "C" fn nros_executor_add_subscription_raw_with_info(
         core::ffi::CStr::from_ptr(type_name).to_str(),
         core::ffi::CStr::from_ptr(type_hash).to_str(),
     ) else {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     };
 
     let qos_settings = if qos.is_null() {
@@ -2192,7 +2192,7 @@ pub unsafe extern "C" fn nros_executor_add_subscription_raw_with_info(
         // against the identity just set (executor-side remap table).
         let __resolved_name = match rust_exec.resolve_entity_name(topic_str) {
             Ok(r) => r,
-            Err(()) => return NROS_RET_INVALID_ARGUMENT,
+            Err(()) => return RCL_RET_INVALID_ARGUMENT,
         };
         let topic_str = __resolved_name.as_str();
         let node_raw_id = if node.is_null() { 0 } else { (*node).node_id };
@@ -2217,57 +2217,57 @@ pub unsafe extern "C" fn nros_executor_add_subscription_raw_with_info(
             Ok(_handle_id) => {
                 executor.handle_count += 1;
                 executor.subscription_count += 1;
-                NROS_RET_OK
+                RCL_RET_OK
             }
-            Err(_) => NROS_RET_ERROR,
+            Err(_) => RCL_RET_ERROR,
         }
     }
 }
 
 /// Issue 1668 — register a raw subscription whose callback also receives the
-/// sample's wire **attachment**, into a `nros_subscription_t` the caller keeps,
+/// sample's wire **attachment**, into a `rcl_subscription_t` the caller keeps,
 /// so it can be REMOVED.
 ///
-/// The removable sibling of [`nros_executor_add_subscription_raw_with_info`],
+/// The removable sibling of [`rclc_executor_add_subscription_raw_with_info`],
 /// in the rclc shape every other subscription add has — the info-callback twin
-/// of [`nros_executor_add_subscription_raw`]:
+/// of [`rclc_executor_add_subscription_raw`]:
 ///
 /// ```c
 /// rclc_subscription_init_default(&sub, &node, &type, "/topic");
-/// nros_executor_add_subscription_with_info(&exec, &sub, on_sample, ctx,
-///                                          NROS_EXECUTOR_ON_NEW_DATA);
+/// rclc_executor_add_subscription_with_info(&exec, &sub, on_sample, ctx,
+///                                          RCLC_EXECUTOR_ON_NEW_DATA);
 /// ...
-/// nros_executor_remove_subscription(&exec, &sub);
-/// nros_subscription_fini(&sub);
+/// rclc_executor_remove_subscription(&exec, &sub);
+/// rcl_subscription_fini(&sub);
 /// ```
 ///
 /// Topic, type, hash, QoS and node come from the subscription (a caller that
-/// holds only type-name strings builds a `nros_message_type_t` from them — its
+/// holds only type-name strings builds a `rclc_message_type_t` from them — its
 /// fields are the same two strings the direct-arg form takes). The entry is
 /// the one the direct-arg form registers; what differs is that the
 /// subscription records `(handle, executor)` and the trigger table names it,
-/// so `nros_executor_remove_subscription` releases it and
+/// so `rclc_executor_remove_subscription` releases it and
 /// `rclc_executor_trigger_one` can name it. The subscription's own plain
 /// `callback` field is left untouched; `callback` here is the one dispatched.
 ///
 /// # Returns
-/// As [`nros_executor_add_subscription_raw`]; `NROS_RET_INVALID_ARGUMENT` for a
+/// As [`rclc_executor_add_subscription_raw`]; `RCL_RET_INVALID_ARGUMENT` for a
 /// NULL `callback`.
 ///
 /// # Safety
 /// * `executor` and `subscription` must be valid, initialised objects.
 /// * `context` is passed through untouched and may be NULL.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_add_subscription_with_info(
-    executor: *mut nros_executor_t,
-    subscription: *mut nros_subscription_t,
-    callback: crate::subscription::nros_subscription_info_callback_t,
+pub unsafe extern "C" fn rclc_executor_add_subscription_with_info(
+    executor: *mut rclc_executor_t,
+    subscription: *mut rcl_subscription_t,
+    callback: crate::subscription::rclc_subscription_info_callback_t,
     context: *mut core::ffi::c_void,
-    invocation: nros_executor_handle_invocation_t,
-) -> nros_ret_t {
+    invocation: rclc_executor_handle_invocation_t,
+) -> rcl_ret_t {
     validate_not_null!(executor, subscription);
     let Some(cb) = callback else {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     };
     register_subscription_entry(
         executor,
@@ -2280,7 +2280,7 @@ pub unsafe extern "C" fn nros_executor_add_subscription_with_info(
                     // As the direct-arg form: no hint, the small payload class.
                     0,
                 )
-                .map_err(|_| NROS_RET_ERROR)
+                .map_err(|_| RCL_RET_ERROR)
         },
     )
 }
@@ -2294,9 +2294,9 @@ pub unsafe extern "C" fn nros_executor_add_subscription_with_info(
 /// * All pointers must be valid and point to initialized objects
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_executor_add_timer(
-    executor: *mut nros_executor_t,
-    timer: *mut nros_timer_t,
-) -> nros_ret_t {
+    executor: *mut rclc_executor_t,
+    timer: *mut rcl_timer_t,
+) -> rcl_ret_t {
     validate_not_null!(executor, timer);
 
     let executor = &mut *executor;
@@ -2304,13 +2304,13 @@ pub unsafe extern "C" fn rclc_executor_add_timer(
 
     validate_state!(
         executor,
-        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
-    validate_state!(timer_ref, nros_timer_state_t::NROS_TIMER_STATE_RUNNING);
+    validate_state!(timer_ref, rclc_timer_state_t::RCLC_TIMER_STATE_RUNNING);
 
     // Check capacity
     if executor.handle_count >= executor.max_handles {
-        return NROS_RET_FULL;
+        return RCLC_RET_FULL;
     }
 
     {
@@ -2319,7 +2319,7 @@ pub unsafe extern "C" fn rclc_executor_add_timer(
         // Get the C callback and context from the timer
         let c_callback = match timer_ref.get_callback() {
             Some(cb) => cb,
-            None => return NROS_RET_INVALID_ARGUMENT,
+            None => return RCL_RET_INVALID_ARGUMENT,
         };
         let c_context = timer_ref.get_context();
         let timer_ptr = timer;
@@ -2340,13 +2340,13 @@ pub unsafe extern "C" fn rclc_executor_add_timer(
         // request.
         let period_us = timer_ref.period_ns / 1_000;
         if period_us == 0 {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         }
 
         // phase-430 W1 — the clock the timer was initialised on selects the
         // schedule, and every timer this crate creates ends at the ONE dispatch
         // `Executor::register_timer_on_clock`. A NULL clock is the wall timer
-        // `nros_timer_init` makes, which is `TimerClockSource::Steady` — the
+        // `rcl_timer_init` makes, which is `TimerClockSource::Steady` — the
         // pre-425 code path, byte for byte.
         //
         // The clock's type is read HERE rather than cached at init because that
@@ -2360,12 +2360,12 @@ pub unsafe extern "C" fn rclc_executor_add_timer(
             nros_node::executor::TimerClockSource::Steady
         } else {
             let clock_ref = &*timer_ref.clock;
-            if clock_ref.state != crate::clock::nros_clock_state_t::NROS_CLOCK_STATE_READY {
-                return NROS_RET_NOT_INIT;
+            if clock_ref.state != crate::clock::rclc_clock_state_t::RCLC_CLOCK_STATE_READY {
+                return RCL_RET_NOT_INIT;
             }
             match crate::clock::nros_timer_clock_source(clock_ref.r#type as u8) {
                 Some(source) => source,
-                None => return NROS_RET_INVALID_ARGUMENT,
+                None => return RCL_RET_INVALID_ARGUMENT,
             }
         };
 
@@ -2376,7 +2376,7 @@ pub unsafe extern "C" fn rclc_executor_add_timer(
                 // Issue 1556 item 1 — a timer never reaches the RMW, so the
                 // recording backend cannot see it; this hook is how a C timer
                 // enters the census. `Clock` when the timer was initialised on
-                // a clock (`nros_timer_init_on_clock`), `Wall` otherwise — the
+                // a clock (`rclc_timer_init_on_clock`), `Wall` otherwise — the
                 // same split `nros-cpp`'s two entry points report. No-op unless
                 // `metadata-mode` is on.
                 nros::census_hooks::on_timer_create(
@@ -2399,20 +2399,20 @@ pub unsafe extern "C" fn rclc_executor_add_timer(
 
                 executor.handle_count += 1;
                 executor.timer_count += 1;
-                NROS_RET_OK
+                RCL_RET_OK
             }
-            Err(_) => NROS_RET_ERROR,
+            Err(_) => RCL_RET_ERROR,
         }
     }
 }
 
 /// Phase 273 (RFC-0047) — register a subscription in a named callback group.
 ///
-/// Identical to [`nros_executor_add_subscription_raw`] but additionally
+/// Identical to [`rclc_executor_add_subscription_raw`] but additionally
 /// passes the group name to the executor so the seeded `group_sched_table`
 /// can bind the callback to the group's `SchedContext`. `callback_group` may
 /// be NULL or an empty string — both behave identically to
-/// `nros_executor_add_subscription_raw`.
+/// `rclc_executor_add_subscription_raw`.
 ///
 /// phase-487 W1 — `callback` and `context` are arguments here, as on the
 /// `_raw` path; the subscription struct no longer stores them.
@@ -2420,14 +2420,14 @@ pub unsafe extern "C" fn rclc_executor_add_timer(
 /// # Safety
 /// All non-NULL pointers must be valid and point to initialized objects.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_add_subscription_in_group(
-    executor: *mut nros_executor_t,
-    subscription: *mut nros_subscription_t,
-    callback: crate::subscription::nros_subscription_callback_t,
+pub unsafe extern "C" fn rclc_executor_add_subscription_in_group(
+    executor: *mut rclc_executor_t,
+    subscription: *mut rcl_subscription_t,
+    callback: crate::subscription::rclc_subscription_callback_t,
     context: *mut core::ffi::c_void,
-    invocation: nros_executor_handle_invocation_t,
+    invocation: rclc_executor_handle_invocation_t,
     callback_group: *const c_char,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(executor, subscription);
 
     let executor = &mut *executor;
@@ -2435,15 +2435,15 @@ pub unsafe extern "C" fn nros_executor_add_subscription_in_group(
 
     validate_state!(
         executor,
-        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
     validate_state!(
         subscription_ref,
-        nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
+        rclc_subscription_state_t::RCLC_SUBSCRIPTION_STATE_INITIALIZED
     );
 
     if executor.handle_count >= executor.max_handles {
-        return NROS_RET_FULL;
+        return RCLC_RET_FULL;
     }
 
     {
@@ -2466,7 +2466,7 @@ pub unsafe extern "C" fn nros_executor_add_subscription_in_group(
         let qos = subscription_ref.get_qos_settings();
         let callback = match callback {
             Some(cb) => cb,
-            None => return NROS_RET_INVALID_ARGUMENT,
+            None => return RCL_RET_INVALID_ARGUMENT,
         };
 
         set_executor_node_identity(rust_exec, subscription_ref.node);
@@ -2474,7 +2474,7 @@ pub unsafe extern "C" fn nros_executor_add_subscription_in_group(
         // against the identity just set (executor-side remap table).
         let __resolved_name = match rust_exec.resolve_entity_name(topic_str) {
             Ok(r) => r,
-            Err(()) => return NROS_RET_INVALID_ARGUMENT,
+            Err(()) => return RCL_RET_INVALID_ARGUMENT,
         };
         let topic_str = __resolved_name.as_str();
 
@@ -2520,17 +2520,17 @@ pub unsafe extern "C" fn nros_executor_add_subscription_in_group(
                 );
 
                 // Apply invocation override if not the default (on-new-data = 0).
-                if invocation == nros_executor_handle_invocation_t::NROS_EXECUTOR_ALWAYS {
+                if invocation == rclc_executor_handle_invocation_t::RCLC_EXECUTOR_ALWAYS {
                     rust_exec.set_invocation(handle_id, nros_node::InvocationMode::Always);
                 }
 
                 executor.handle_count += 1;
                 // Issue 1631 — every other subscription add counts here, and
-                // `nros_executor_remove_subscription` uncounts.
+                // `rclc_executor_remove_subscription` uncounts.
                 executor.subscription_count += 1;
-                NROS_RET_OK
+                RCL_RET_OK
             }
-            Err(_) => NROS_RET_ERROR,
+            Err(_) => RCL_RET_ERROR,
         }
     }
 }
@@ -2545,11 +2545,11 @@ pub unsafe extern "C" fn nros_executor_add_subscription_in_group(
 /// # Safety
 /// All non-NULL pointers must be valid and point to initialized objects.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_add_timer_in_group(
-    executor: *mut nros_executor_t,
-    timer: *mut nros_timer_t,
+pub unsafe extern "C" fn rclc_executor_add_timer_in_group(
+    executor: *mut rclc_executor_t,
+    timer: *mut rcl_timer_t,
     callback_group: *const c_char,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(executor, timer);
 
     let executor = &mut *executor;
@@ -2557,12 +2557,12 @@ pub unsafe extern "C" fn nros_executor_add_timer_in_group(
 
     validate_state!(
         executor,
-        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
-    validate_state!(timer_ref, nros_timer_state_t::NROS_TIMER_STATE_RUNNING);
+    validate_state!(timer_ref, rclc_timer_state_t::RCLC_TIMER_STATE_RUNNING);
 
     if executor.handle_count >= executor.max_handles {
-        return NROS_RET_FULL;
+        return RCLC_RET_FULL;
     }
 
     {
@@ -2570,7 +2570,7 @@ pub unsafe extern "C" fn nros_executor_add_timer_in_group(
 
         let c_callback = match timer_ref.get_callback() {
             Some(cb) => cb,
-            None => return NROS_RET_INVALID_ARGUMENT,
+            None => return RCL_RET_INVALID_ARGUMENT,
         };
         let c_context = timer_ref.get_context();
         let timer_ptr = timer;
@@ -2582,7 +2582,7 @@ pub unsafe extern "C" fn nros_executor_add_timer_in_group(
         // Issue #505 — microseconds, as in `rclc_executor_add_timer`.
         let period_us = timer_ref.period_ns / 1_000;
         if period_us == 0 {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         }
 
         // Extract the group name (NULL or empty ⇒ None).
@@ -2618,9 +2618,9 @@ pub unsafe extern "C" fn nros_executor_add_timer_in_group(
 
                 executor.handle_count += 1;
                 executor.timer_count += 1;
-                NROS_RET_OK
+                RCL_RET_OK
             }
-            Err(_) => NROS_RET_ERROR,
+            Err(_) => RCL_RET_ERROR,
         }
     }
 }
@@ -2631,7 +2631,7 @@ pub unsafe extern "C" fn nros_executor_add_timer_in_group(
 /// `rclc_service_init_default` takes no callback (rclc's arity), so the handler
 /// that used to ride on `nros_service_init` is supplied at registration — the
 /// call rclc calls `rclc_executor_add_service`. The `nros_` prefix is kept for
-/// the same reason as `nros_executor_add_subscription_raw`: rclc's
+/// the same reason as `rclc_executor_add_subscription_raw`: rclc's
 /// `rclc_executor_add_service` carries caller-owned `request_msg` /
 /// `response_msg` storage and a `void (*)(const void *, void *)` handler, while
 /// ours is a CDR-byte handler that RETURNS a value. Same capability, different
@@ -2645,21 +2645,21 @@ pub unsafe extern "C" fn nros_executor_add_timer_in_group(
 /// stored in the struct.
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` for a NULL `callback`
-/// * `NROS_RET_FULL` when the executor has no handle left
-/// * `NROS_RET_ERROR` when the server could not be created
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` for a NULL `callback`
+/// * `RCLC_RET_FULL` when the executor has no handle left
+/// * `RCL_RET_ERROR` when the server could not be created
 ///
 /// # Safety
 /// * Both pointers must reference initialized objects.
 /// * `context` is passed through untouched and may be NULL.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_add_service_raw(
-    executor: *mut nros_executor_t,
-    service: *mut nros_service_t,
-    callback: crate::service::nros_service_callback_t,
+pub unsafe extern "C" fn rclc_executor_add_service_raw(
+    executor: *mut rclc_executor_t,
+    service: *mut rcl_service_t,
+    callback: crate::service::rclc_service_callback_t,
     context: *mut core::ffi::c_void,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(executor, service);
 
     let executor = &mut *executor;
@@ -2667,16 +2667,16 @@ pub unsafe extern "C" fn nros_executor_add_service_raw(
 
     validate_state!(
         executor,
-        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
     validate_state!(
         service_ref,
-        nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED
+        rclc_service_state_t::RCLC_SERVICE_STATE_INITIALIZED
     );
 
     // Check capacity
     if executor.handle_count >= executor.max_handles {
-        return NROS_RET_FULL;
+        return RCLC_RET_FULL;
     }
 
     {
@@ -2693,7 +2693,7 @@ pub unsafe extern "C" fn nros_executor_add_service_raw(
 
         let callback = match callback {
             Some(cb) => cb,
-            None => return NROS_RET_INVALID_ARGUMENT,
+            None => return RCL_RET_INVALID_ARGUMENT,
         };
 
         // Propagate node identity for liveliness key expression.
@@ -2702,19 +2702,19 @@ pub unsafe extern "C" fn nros_executor_add_service_raw(
         // against the identity just set (executor-side remap table).
         let __resolved_name = match rust_exec.resolve_entity_name(service_name) {
             Ok(r) => r,
-            Err(()) => return NROS_RET_INVALID_ARGUMENT,
+            Err(()) => return RCL_RET_INVALID_ARGUMENT,
         };
         let service_name = __resolved_name.as_str();
 
         // Phase 104.C.8.b — route multi-Node services through the
         // `_on(NodeId, ...)` variant when the Node was created via
-        // `nros_executor_node_init`.
+        // `rclc_executor_node_init`.
         let node_raw_id = if !service_ref.node.is_bound() {
             0
         } else {
             service_ref.node.node_id
         };
-        // Phase 193.4 — the service's QoS (set via nros_service_init_with_qos;
+        // Phase 193.4 — the service's QoS (set via rclc_service_init_with_qos;
         // defaults to services_default via nros_service_init).
         let svc_qos = service_ref.get_qos_settings();
         // Phase 189.M3.3.a — capture the requested sched-context slot before the
@@ -2749,7 +2749,7 @@ pub unsafe extern "C" fn nros_executor_add_service_raw(
                     service as *mut core::ffi::c_void,
                 );
                 // Phase 189.M3.3.a — apply a scheduling-context binding requested
-                // via `nros_service_init_with_options`. Done *before* the
+                // via `rclc_service_init_with_options`. Done *before* the
                 // `executor as *mut _` store below so `rust_exec`'s borrow of
                 // `executor._opaque` ends here (no overlap with the whole-executor
                 // reborrow). `0` = inherit the default (no-op). An unknown slot
@@ -2761,7 +2761,7 @@ pub unsafe extern "C" fn nros_executor_add_service_raw(
                         .bind_handle_to_sched_context(handle_id, sc_id)
                         .is_err()
                     {
-                        return NROS_RET_INVALID_ARGUMENT;
+                        return RCL_RET_INVALID_ARGUMENT;
                     }
                 }
 
@@ -2771,9 +2771,9 @@ pub unsafe extern "C" fn nros_executor_add_service_raw(
 
                 executor.handle_count += 1;
                 executor.service_count += 1;
-                NROS_RET_OK
+                RCL_RET_OK
             }
-            Err(_) => NROS_RET_ERROR,
+            Err(_) => RCL_RET_ERROR,
         }
     }
 }
@@ -2782,21 +2782,21 @@ pub unsafe extern "C" fn nros_executor_add_service_raw(
 ///
 /// Creates the underlying `RmwServiceClient` inside the executor's arena
 /// and stashes the executor pointer + arena entry index into the
-/// client's `_internal` blob so subsequent calls to `nros_client_call`,
-/// `nros_client_send_request_async`, and friends can drive the executor
+/// client's `_internal` blob so subsequent calls to `rclc_client_call`,
+/// `rclc_client_send_request_async`, and friends can drive the executor
 /// without taking it as an explicit argument.
 ///
 /// Must be called exactly once after `rclc_client_init_default` and before any
 /// send/call. Calling it twice on the same client returns
-/// `NROS_RET_BAD_SEQUENCE`.
+/// `RCLC_RET_BAD_SEQUENCE`.
 ///
 /// # Safety
 /// * Both pointers must reference initialized objects.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_add_client(
-    executor: *mut nros_executor_t,
-    client: *mut nros_client_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_executor_add_client(
+    executor: *mut rclc_executor_t,
+    client: *mut rcl_client_t,
+) -> rcl_ret_t {
     validate_not_null!(executor, client);
 
     let executor = &mut *executor;
@@ -2804,15 +2804,15 @@ pub unsafe extern "C" fn nros_executor_add_client(
 
     validate_state!(
         executor,
-        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
     validate_state!(
         client_ref,
-        nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED
+        rclc_client_state_t::RCLC_CLIENT_STATE_INITIALIZED
     );
 
     if executor.handle_count >= executor.max_handles {
-        return NROS_RET_FULL;
+        return RCLC_RET_FULL;
     }
 
     {
@@ -2826,10 +2826,10 @@ pub unsafe extern "C" fn nros_executor_add_client(
         let type_hash_str =
             core::str::from_utf8_unchecked(&client_ref.type_hash[..client_ref.type_hash_len]);
 
-        // phase-487 W2 — no callback yet: `nros_client_set_response_callback`
-        // writes the user's pair into this entry, and `nros_client_call`
+        // phase-487 W2 — no callback yet: `rclc_client_set_response_callback`
+        // writes the user's pair into this entry, and `rclc_client_call`
         // swaps a one-shot capture in and out of it. Until W2 the entry held
-        // a trampoline whose context was the `nros_client_t` itself, so a
+        // a trampoline whose context was the `rcl_client_t` itself, so a
         // late reply read the C struct (issue 1631's use-after-free).
         let cb: Option<nros_node::RawResponseCallback> = None;
         let client_ctx = core::ptr::null_mut();
@@ -2840,7 +2840,7 @@ pub unsafe extern "C" fn nros_executor_add_client(
         // against the identity just set (executor-side remap table).
         let __resolved_name = match rust_exec.resolve_entity_name(service_name) {
             Ok(r) => r,
-            Err(()) => return NROS_RET_INVALID_ARGUMENT,
+            Err(()) => return RCL_RET_INVALID_ARGUMENT,
         };
         let service_name = __resolved_name.as_str();
 
@@ -2850,7 +2850,7 @@ pub unsafe extern "C" fn nros_executor_add_client(
         } else {
             client_ref.node.node_id
         };
-        // Phase 193.4b — the client's QoS (set via nros_client_init_with_qos;
+        // Phase 193.4b — the client's QoS (set via rclc_client_init_with_qos;
         // defaults to services_default via rclc_client_init_default).
         let client_qos = client_ref.get_qos_settings();
         // Phase 189.M3.3.a — capture the requested sched-context slot before the
@@ -2885,7 +2885,7 @@ pub unsafe extern "C" fn nros_executor_add_client(
                     client as *mut core::ffi::c_void,
                 );
                 // Phase 189.M3.3.a — apply a sched-context binding requested via
-                // `nros_client_init_with_options`, *before* the `executor as
+                // `rclc_client_init_with_options`, *before* the `executor as
                 // *mut _` store below so `rust_exec`'s `executor._opaque` borrow
                 // ends here (no overlap with the whole-executor reborrow). `0` =
                 // inherit (no-op); an unknown slot fails registration.
@@ -2895,19 +2895,19 @@ pub unsafe extern "C" fn nros_executor_add_client(
                         .bind_handle_to_sched_context(handle_id, sc_id)
                         .is_err()
                     {
-                        return NROS_RET_INVALID_ARGUMENT;
+                        return RCL_RET_INVALID_ARGUMENT;
                     }
                 }
 
                 let client_mut = &mut *client;
                 client_mut._internal.arena_entry_index = handle_id.slot() as i32;
                 client_mut._internal.executor_ptr = executor as *mut _ as *mut core::ffi::c_void;
-                client_mut.state = nros_client_state_t::NROS_CLIENT_STATE_REGISTERED;
+                client_mut.state = rclc_client_state_t::RCLC_CLIENT_STATE_REGISTERED;
 
                 executor.handle_count += 1;
-                NROS_RET_OK
+                RCL_RET_OK
             }
-            Err(_) => NROS_RET_ERROR,
+            Err(_) => RCL_RET_ERROR,
         }
     }
 }
@@ -2920,7 +2920,7 @@ pub unsafe extern "C" fn nros_executor_add_client(
 // watches — for however long the caller took to reach this function, and
 // forever if it never did (the one in-tree example never did).
 //
-// The creation verb is `nros_node_create_guard_condition(node, out, cb, ctx)`
+// The creation verb is `rclc_node_create_guard_condition(node, out, cb, ctx)`
 // in `guard_condition.rs`: one call, on the owner a caller has in hand, with
 // the callback bound at creation like every other entity (RFC-0041/0043) and
 // the node's `SchedContext` inherited like every other handle the node makes.
@@ -2933,10 +2933,10 @@ pub unsafe extern "C" fn nros_executor_add_client(
 /// # Safety
 /// * All pointers must be valid and point to initialized objects
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_add_action_server(
-    executor: *mut nros_executor_t,
-    server: *mut nros_action_server_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_executor_add_action_server(
+    executor: *mut rclc_executor_t,
+    server: *mut rcl_action_server_t,
+) -> rcl_ret_t {
     validate_not_null!(executor, server);
 
     let executor = &mut *executor;
@@ -2944,16 +2944,16 @@ pub unsafe extern "C" fn nros_executor_add_action_server(
 
     validate_state!(
         executor,
-        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
     validate_state!(
         server_ref,
-        nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED
+        rclc_action_server_state_t::RCLC_ACTION_SERVER_STATE_INITIALIZED
     );
 
     // Check capacity
     if executor.handle_count >= executor.max_handles {
-        return NROS_RET_FULL;
+        return RCLC_RET_FULL;
     }
 
     {
@@ -2971,7 +2971,7 @@ pub unsafe extern "C" fn nros_executor_add_action_server(
 
         // The goal callback is required (validated during init too).
         if server_ref.goal_callback.is_none() {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         }
 
         // Create the internal struct (handle filled after registration).
@@ -2996,7 +2996,7 @@ pub unsafe extern "C" fn nros_executor_add_action_server(
         // against the identity just set (executor-side remap table).
         let __resolved_name = match rust_exec.resolve_entity_name(action_name) {
             Ok(r) => r,
-            Err(()) => return NROS_RET_INVALID_ARGUMENT,
+            Err(()) => return RCL_RET_INVALID_ARGUMENT,
         };
         let action_name = __resolved_name.as_str();
 
@@ -3012,8 +3012,8 @@ pub unsafe extern "C" fn nros_executor_add_action_server(
         // accept reply is sent, so the user's long-running execution does
         // not delay the reply the client is blocking on.
         // Phase 193.4b — the action server's QoS (set via
-        // nros_action_server_init_with_qos; defaults to services_default via
-        // nros_action_server_init). Applies to the three underlying service
+        // rclc_action_server_init_with_qos; defaults to services_default via
+        // rcl_action_server_init). Applies to the three underlying service
         // servers.
         let server_qos = server_ref.get_qos_settings();
         // Phase 189.M3.3.b — requested sched-context slot (bind applied at the
@@ -3056,18 +3056,18 @@ pub unsafe extern "C" fn nros_executor_add_action_server(
                         .bind_handle_to_sched_context(handle.handle_id(), sc_id)
                         .is_err()
                     {
-                        return NROS_RET_INVALID_ARGUMENT;
+                        return RCL_RET_INVALID_ARGUMENT;
                     }
                 }
                 // Fill in the handle now that registration succeeded
                 server_mut._internal.handle = handle;
                 executor.handle_count += 1;
-                NROS_RET_OK
+                RCL_RET_OK
             }
             Err(_) => {
                 // Registration failed — reset the internal back to invalid.
                 server_mut._internal = ActionServerInternal::invalid_default();
-                NROS_RET_ERROR
+                RCL_RET_ERROR
             }
         }
     }
@@ -3079,18 +3079,18 @@ pub unsafe extern "C" fn nros_executor_add_action_server(
 /// pending requests (goal response, feedback, result) and invokes the
 /// registered callbacks.
 ///
-/// The action client must already be initialized via `nros_action_client_init`.
-/// Callbacks should be set via `nros_action_client_set_goal_response_callback`,
-/// `nros_action_client_set_feedback_callback`, and `nros_action_client_set_result_callback`
+/// The action client must already be initialized via `rcl_action_client_init`.
+/// Callbacks should be set via `rclc_action_client_set_goal_response_callback`,
+/// `rclc_action_client_set_feedback_callback`, and `rclc_action_client_set_result_callback`
 /// before or after this call.
 ///
 /// # Safety
 /// * `executor` and `client` must be valid pointers to initialized structs.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_add_action_client(
-    executor: *mut nros_executor_t,
-    client: *mut nros_action_client_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_executor_add_action_client(
+    executor: *mut rclc_executor_t,
+    client: *mut rcl_action_client_t,
+) -> rcl_ret_t {
     validate_not_null!(executor, client);
 
     let executor = &mut *executor;
@@ -3098,15 +3098,15 @@ pub unsafe extern "C" fn nros_executor_add_action_client(
 
     validate_state!(
         executor,
-        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
     validate_state!(
         client_ref,
-        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
+        rclc_action_client_state_t::RCLC_ACTION_CLIENT_STATE_INITIALIZED
     );
 
     if executor.handle_count >= executor.max_handles {
-        return NROS_RET_FULL;
+        return RCLC_RET_FULL;
     }
 
     {
@@ -3115,7 +3115,7 @@ pub unsafe extern "C" fn nros_executor_add_action_client(
 
         // Always register trampolines — they check the C struct's callback
         // pointer at invocation time, so they handle None gracefully. This is
-        // critical: the blocking wrappers (nros_action_send_goal, etc.) install
+        // critical: the blocking wrappers (rclc_action_send_goal, etc.) install
         // temporary callbacks on the C struct AFTER registration. If we only
         // register trampolines when callbacks are non-None at registration time,
         // the arena will consume replies without invoking the trampoline,
@@ -3144,7 +3144,7 @@ pub unsafe extern "C" fn nros_executor_add_action_client(
         // against the identity just set (executor-side remap table).
         let __resolved_name = match rust_exec.resolve_entity_name(action_name) {
             Ok(r) => r,
-            Err(()) => return NROS_RET_INVALID_ARGUMENT,
+            Err(()) => return RCL_RET_INVALID_ARGUMENT,
         };
         let action_name = __resolved_name.as_str();
 
@@ -3202,14 +3202,14 @@ pub unsafe extern "C" fn nros_executor_add_action_client(
                         .bind_handle_to_sched_context(handle_id, sc_id)
                         .is_err()
                     {
-                        return NROS_RET_INVALID_ARGUMENT;
+                        return RCL_RET_INVALID_ARGUMENT;
                     }
                 }
 
                 executor.handle_count += 1;
-                NROS_RET_OK
+                RCL_RET_OK
             }
-            Err(_) => NROS_RET_ERROR,
+            Err(_) => RCL_RET_ERROR,
         }
     }
 }
@@ -3217,11 +3217,11 @@ pub unsafe extern "C" fn nros_executor_add_action_client(
 /// Remove an action server from the executor — issue 1609, the C twin of
 /// issue 1496's resolution 2.
 ///
-/// `nros_executor_add_action_server` registers an arena entry whose callback
-/// `context` is `&server->_internal`, and `nros_action_server_fini` does not
+/// `rclc_executor_add_action_server` registers an arena entry whose callback
+/// `context` is `&server->_internal`, and `rcl_action_server_fini` does not
 /// (and cannot) undo it: `fini` is handed only the entity, and the executor's
 /// own tables — `handle_count` and the trigger entity table — live in the
-/// `nros_executor_t` it never sees. This is the call that can, in rclc's shape
+/// `rclc_executor_t` it never sees. This is the call that can, in rclc's shape
 /// (`rclc_executor_remove_*`: the executor and the entity).
 ///
 /// It undoes all three tables at once:
@@ -3236,25 +3236,25 @@ pub unsafe extern "C" fn nros_executor_add_action_client(
 /// * the trigger table's entity pointer for the slot is cleared.
 ///
 /// The server stays INITIALIZED: it can be re-added, or finalised with
-/// `nros_action_server_fini`. Call this BEFORE `fini` and before the
-/// `nros_action_server_t` storage goes away. A server that is never removed
+/// `rcl_action_server_fini`. Call this BEFORE `fini` and before the
+/// `rcl_action_server_t` storage goes away. A server that is never removed
 /// keeps its entry until `rclc_executor_fini`, which drops every entry.
 ///
 /// # Returns
-/// * `NROS_RET_OK` — removed.
-/// * `NROS_RET_INVALID_ARGUMENT` — a NULL pointer.
-/// * `NROS_RET_NOT_INIT` — the executor or the server is not initialised.
-/// * `NROS_RET_NOT_FOUND` — the server is not registered on THIS executor.
-/// * `NROS_RET_REENTRANT` — called from inside a callback this executor is
+/// * `RCL_RET_OK` — removed.
+/// * `RCL_RET_INVALID_ARGUMENT` — a NULL pointer.
+/// * `RCL_RET_NOT_INIT` — the executor or the server is not initialised.
+/// * `RCLC_RET_NOT_FOUND` — the server is not registered on THIS executor.
+/// * `RCLC_RET_REENTRANT` — called from inside a callback this executor is
 ///   dispatching; the entry may be the one running.
 ///
 /// # Safety
 /// `executor` and `server` must be valid pointers to initialised objects.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_remove_action_server(
-    executor: *mut nros_executor_t,
-    server: *mut nros_action_server_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_executor_remove_action_server(
+    executor: *mut rclc_executor_t,
+    server: *mut rcl_action_server_t,
+) -> rcl_ret_t {
     validate_not_null!(executor, server);
 
     let executor = &mut *executor;
@@ -3262,24 +3262,24 @@ pub unsafe extern "C" fn nros_executor_remove_action_server(
 
     validate_state!(
         executor,
-        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
     validate_state!(
         server,
-        nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED
+        rclc_action_server_state_t::RCLC_ACTION_SERVER_STATE_INITIALIZED
     );
     if executor.in_dispatch {
-        return NROS_RET_REENTRANT;
+        return RCLC_RET_REENTRANT;
     }
 
     let opaque_ptr = executor._opaque.as_mut_ptr() as *mut core::ffi::c_void;
     if !server._internal.is_handle_set() || server._internal.executor_ptr != opaque_ptr {
-        return NROS_RET_NOT_FOUND;
+        return RCLC_RET_NOT_FOUND;
     }
 
     let handle_id = server._internal.handle.handle_id();
     let rust_exec = get_executor_from_ptr(opaque_ptr);
-    // SAFETY: the entry was registered by `nros_executor_add_action_server`
+    // SAFETY: the entry was registered by `rclc_executor_add_action_server`
     // through `register_action_server_raw_sized` with exactly these const
     // parameters, and `server._internal` (the only copy of its handle) is
     // reset below, so nothing names the slot after it is handed back.
@@ -3299,10 +3299,10 @@ pub unsafe extern "C" fn nros_executor_remove_action_server(
 
 /// Remove an action client from the executor — issue 1609.
 ///
-/// The client half of [`nros_executor_remove_action_server`], with the same
+/// The client half of [`rclc_executor_remove_action_server`], with the same
 /// three tables and the same reason: the arena entry
-/// `nros_executor_add_action_client` registered holds `client` itself as its
-/// callback `context`, and `nros_action_client_fini` cannot reach the
+/// `rclc_executor_add_action_client` registered holds `client` itself as its
+/// callback `context`, and `rcl_action_client_fini` cannot reach the
 /// executor to undo it. The entry is dropped in place
 /// (`Executor::release_action_client_raw`, the default-sized form the add
 /// used) — its three service clients and feedback subscription are destroyed
@@ -3310,19 +3310,19 @@ pub unsafe extern "C" fn nros_executor_remove_action_server(
 /// trigger table forgets the client.
 ///
 /// The client stays INITIALIZED (re-addable, or finalisable with
-/// `nros_action_client_fini`). Any goal it was waiting on is abandoned with
+/// `rcl_action_client_fini`). Any goal it was waiting on is abandoned with
 /// the entry.
 ///
 /// # Returns
-/// As [`nros_executor_remove_action_server`].
+/// As [`rclc_executor_remove_action_server`].
 ///
 /// # Safety
 /// `executor` and `client` must be valid pointers to initialised objects.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_remove_action_client(
-    executor: *mut nros_executor_t,
-    client: *mut nros_action_client_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_executor_remove_action_client(
+    executor: *mut rclc_executor_t,
+    client: *mut rcl_action_client_t,
+) -> rcl_ret_t {
     validate_not_null!(executor, client);
 
     let executor = &mut *executor;
@@ -3330,24 +3330,24 @@ pub unsafe extern "C" fn nros_executor_remove_action_client(
 
     validate_state!(
         executor,
-        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
     validate_state!(
         client,
-        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
+        rclc_action_client_state_t::RCLC_ACTION_CLIENT_STATE_INITIALIZED
     );
     if executor.in_dispatch {
-        return NROS_RET_REENTRANT;
+        return RCLC_RET_REENTRANT;
     }
 
     let opaque_ptr = executor._opaque.as_mut_ptr() as *mut core::ffi::c_void;
     if client._internal.arena_entry_index < 0 || client._internal.executor_ptr != opaque_ptr {
-        return NROS_RET_NOT_FOUND;
+        return RCLC_RET_NOT_FOUND;
     }
 
     let entry_index = client._internal.arena_entry_index as usize;
     let rust_exec = get_executor_from_ptr(opaque_ptr);
-    // SAFETY: registered by `nros_executor_add_action_client` through the
+    // SAFETY: registered by `rclc_executor_add_action_client` through the
     // default-sized `register_action_client_raw`; the index is cleared below,
     // so no copy of it is used after the slot is handed back.
     let released = rust_exec.release_action_client_raw(entry_index);
@@ -3368,51 +3368,51 @@ pub unsafe extern "C" fn nros_executor_remove_action_client(
 /// (a stale handle kept would release whatever registers into the slot next),
 /// and the executor's tables are left alone because they never counted it.
 fn forget_removed_handle(
-    executor: &mut nros_executor_t,
+    executor: &mut rclc_executor_t,
     handle_id: nros_node::executor::HandleId,
     released: bool,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     if !released {
-        return NROS_RET_NOT_FOUND;
+        return RCLC_RET_NOT_FOUND;
     }
     record_trigger_entity(&mut executor._handle_entities, handle_id, ptr::null_mut());
     executor.handle_count = executor.handle_count.saturating_sub(1);
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// Remove a subscription from the executor — issue 1631, rclc's
 /// `rclc_executor_remove_subscription`.
 ///
 /// Every `nros_executor_add_subscription*` that takes a
-/// `nros_subscription_t` registers an arena entry and records it in the
-/// subscription; `nros_subscription_fini` is handed only the subscription, so
+/// `rcl_subscription_t` registers an arena entry and records it in the
+/// subscription; `rcl_subscription_fini` is handed only the subscription, so
 /// it cannot undo the executor's side. This does, the way
-/// [`nros_executor_remove_action_server`] does for an action: the arena entry
+/// [`rclc_executor_remove_action_server`] does for an action: the arena entry
 /// is DROPPED (the subscriber leaves the graph, its callback slot and its
 /// arena bytes — receive ring included — are reused by the next
 /// registration), `handle_count` and `subscription_count` come back down, and
 /// the trigger table forgets the subscription.
 ///
 /// The subscription stays INITIALIZED: it can be re-added, or finalised with
-/// `nros_subscription_fini`. Call this BEFORE `fini`. Typed message storage
-/// handed to `nros_executor_add_subscription_typed*` is not written again
+/// `rcl_subscription_fini`. Call this BEFORE `fini`. Typed message storage
+/// handed to `rclc_executor_add_subscription_typed*` is not written again
 /// after this returns.
 ///
 /// # Returns
-/// * `NROS_RET_OK` — removed.
-/// * `NROS_RET_INVALID_ARGUMENT` — a NULL pointer.
-/// * `NROS_RET_NOT_INIT` — the executor or the subscription is not initialised.
-/// * `NROS_RET_NOT_FOUND` — the subscription is not registered on THIS executor.
-/// * `NROS_RET_REENTRANT` — called from inside a callback this executor is
+/// * `RCL_RET_OK` — removed.
+/// * `RCL_RET_INVALID_ARGUMENT` — a NULL pointer.
+/// * `RCL_RET_NOT_INIT` — the executor or the subscription is not initialised.
+/// * `RCLC_RET_NOT_FOUND` — the subscription is not registered on THIS executor.
+/// * `RCLC_RET_REENTRANT` — called from inside a callback this executor is
 ///   dispatching; the entry may be the one running.
 ///
 /// # Safety
 /// `executor` and `subscription` must be valid pointers to initialised objects.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_remove_subscription(
-    executor: *mut nros_executor_t,
-    subscription: *mut nros_subscription_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_executor_remove_subscription(
+    executor: *mut rclc_executor_t,
+    subscription: *mut rcl_subscription_t,
+) -> rcl_ret_t {
     validate_not_null!(executor, subscription);
 
     let executor_ptr = executor as *mut core::ffi::c_void;
@@ -3421,17 +3421,17 @@ pub unsafe extern "C" fn nros_executor_remove_subscription(
 
     validate_state!(
         executor,
-        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
     validate_state!(
         subscription,
-        nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
+        rclc_subscription_state_t::RCLC_SUBSCRIPTION_STATE_INITIALIZED
     );
     if executor.in_dispatch {
-        return NROS_RET_REENTRANT;
+        return RCLC_RET_REENTRANT;
     }
     if subscription.handle_id == usize::MAX || subscription._executor != executor_ptr {
-        return NROS_RET_NOT_FOUND;
+        return RCLC_RET_NOT_FOUND;
     }
 
     let handle_id = nros_node::executor::HandleId::from_raw(subscription.handle_id);
@@ -3450,26 +3450,26 @@ pub unsafe extern "C" fn nros_executor_remove_subscription(
 /// Remove a timer from the executor — issue 1631, rclc's
 /// `rclc_executor_remove_timer`.
 ///
-/// The arena entry `rclc_executor_add_timer` / `nros_executor_add_timer_in_group`
+/// The arena entry `rclc_executor_add_timer` / `rclc_executor_add_timer_in_group`
 /// registered wraps the timer's C callback in a closure that captured the
-/// `nros_timer_t *` itself, so after `rcl_timer_fini` alone it kept firing
+/// `rcl_timer_t *` itself, so after `rcl_timer_fini` alone it kept firing
 /// with a pointer to the finalised (or freed) struct. This drops the entry —
 /// the closure with it — and undoes `handle_count`, `timer_count` and the
-/// trigger table, as [`nros_executor_remove_subscription`] does.
+/// trigger table, as [`rclc_executor_remove_subscription`] does.
 ///
 /// The timer keeps its state (RUNNING or CANCELED) and can be re-added, or
 /// finalised with `rcl_timer_fini`. Call this BEFORE `fini`.
 ///
 /// # Returns
-/// As [`nros_executor_remove_subscription`].
+/// As [`rclc_executor_remove_subscription`].
 ///
 /// # Safety
 /// `executor` and `timer` must be valid pointers to initialised objects.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_remove_timer(
-    executor: *mut nros_executor_t,
-    timer: *mut nros_timer_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_executor_remove_timer(
+    executor: *mut rclc_executor_t,
+    timer: *mut rcl_timer_t,
+) -> rcl_ret_t {
     validate_not_null!(executor, timer);
 
     let executor = &mut *executor;
@@ -3477,26 +3477,26 @@ pub unsafe extern "C" fn nros_executor_remove_timer(
 
     validate_state!(
         executor,
-        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
-    if timer.state == crate::timer::nros_timer_state_t::NROS_TIMER_STATE_UNINITIALIZED
-        || timer.state == crate::timer::nros_timer_state_t::NROS_TIMER_STATE_SHUTDOWN
+    if timer.state == crate::timer::rclc_timer_state_t::RCLC_TIMER_STATE_UNINITIALIZED
+        || timer.state == crate::timer::rclc_timer_state_t::RCLC_TIMER_STATE_SHUTDOWN
     {
-        return NROS_RET_NOT_INIT;
+        return RCL_RET_NOT_INIT;
     }
     if executor.in_dispatch {
-        return NROS_RET_REENTRANT;
+        return RCLC_RET_REENTRANT;
     }
     // The timer records the executor's OPAQUE pointer (its cancel/reset reach
-    // the Rust executor through it), not the `nros_executor_t`.
+    // the Rust executor through it), not the `rclc_executor_t`.
     let opaque_ptr = executor._opaque.as_mut_ptr() as *mut core::ffi::c_void;
     if timer.handle_id == usize::MAX || timer._executor != opaque_ptr {
-        return NROS_RET_NOT_FOUND;
+        return RCLC_RET_NOT_FOUND;
     }
 
     let handle_id = nros_node::executor::HandleId::from_raw(timer.handle_id);
     let rust_exec = get_executor_from_ptr(opaque_ptr);
-    // SAFETY: as in `nros_executor_remove_subscription`.
+    // SAFETY: as in `rclc_executor_remove_subscription`.
     let released = rust_exec.release_timer(handle_id);
     timer.handle_id = usize::MAX;
     timer._executor = ptr::null_mut();
@@ -3509,21 +3509,21 @@ pub unsafe extern "C" fn nros_executor_remove_timer(
 /// Remove a service server from the executor — issue 1631, rclc's
 /// `rclc_executor_remove_service`.
 ///
-/// Drops the arena entry `nros_executor_add_service_raw` registered (the
+/// Drops the arena entry `rclc_executor_add_service_raw` registered (the
 /// server leaves the graph; its slot and bytes are reused) and undoes
 /// `handle_count`, `service_count` and the trigger table, as
-/// [`nros_executor_remove_subscription`] does. The service stays INITIALIZED.
+/// [`rclc_executor_remove_subscription`] does. The service stays INITIALIZED.
 ///
 /// # Returns
-/// As [`nros_executor_remove_subscription`].
+/// As [`rclc_executor_remove_subscription`].
 ///
 /// # Safety
 /// `executor` and `service` must be valid pointers to initialised objects.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_remove_service(
-    executor: *mut nros_executor_t,
-    service: *mut nros_service_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_executor_remove_service(
+    executor: *mut rclc_executor_t,
+    service: *mut rcl_service_t,
+) -> rcl_ret_t {
     validate_not_null!(executor, service);
 
     let executor_ptr = executor as *mut core::ffi::c_void;
@@ -3532,23 +3532,23 @@ pub unsafe extern "C" fn nros_executor_remove_service(
 
     validate_state!(
         executor,
-        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
     validate_state!(
         service,
-        nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED
+        rclc_service_state_t::RCLC_SERVICE_STATE_INITIALIZED
     );
     if executor.in_dispatch {
-        return NROS_RET_REENTRANT;
+        return RCLC_RET_REENTRANT;
     }
     if service._internal.arena_entry_index < 0 || service._internal.executor_ptr != executor_ptr {
-        return NROS_RET_NOT_FOUND;
+        return RCLC_RET_NOT_FOUND;
     }
 
     let handle_id =
         nros_node::executor::HandleId::for_owned_slot(service._internal.arena_entry_index as usize);
     let rust_exec = get_executor(&mut executor._opaque);
-    // SAFETY: as in `nros_executor_remove_subscription`.
+    // SAFETY: as in `rclc_executor_remove_subscription`.
     let released = rust_exec.release_service(handle_id);
     service._internal.arena_entry_index = -1;
     service._internal.executor_ptr = ptr::null_mut();
@@ -3561,25 +3561,25 @@ pub unsafe extern "C" fn nros_executor_remove_service(
 /// Remove a service client from the executor — issue 1631, rclc's
 /// `rclc_executor_remove_client`.
 ///
-/// Until phase-487 W2 the arena entry `nros_executor_add_client` registered
-/// dispatched replies through a trampoline that READ the `nros_client_t`, so
-/// after `nros_client_fini` alone a late reply was a use-after-free of a stack
+/// Until phase-487 W2 the arena entry `rclc_executor_add_client` registered
+/// dispatched replies through a trampoline that READ the `rcl_client_t`, so
+/// after `rcl_client_fini` alone a late reply was a use-after-free of a stack
 /// or freed client; the entry now holds the user's callback itself. This drops the entry (the client leaves the graph, and a
 /// reply it was still waiting for is abandoned), undoes `handle_count` and the
 /// trigger table, and returns the client from REGISTERED to INITIALIZED — so
-/// it can be re-added, or finalised with `nros_client_fini`. Its timeout
+/// it can be re-added, or finalised with `rcl_client_fini`. Its timeout
 /// setting is kept.
 ///
 /// # Returns
-/// As [`nros_executor_remove_subscription`].
+/// As [`rclc_executor_remove_subscription`].
 ///
 /// # Safety
 /// `executor` and `client` must be valid pointers to initialised objects.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_remove_client(
-    executor: *mut nros_executor_t,
-    client: *mut nros_client_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_executor_remove_client(
+    executor: *mut rclc_executor_t,
+    client: *mut rcl_client_t,
+) -> rcl_ret_t {
     validate_not_null!(executor, client);
 
     let executor_ptr = executor as *mut core::ffi::c_void;
@@ -3588,45 +3588,45 @@ pub unsafe extern "C" fn nros_executor_remove_client(
 
     validate_state!(
         executor,
-        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
     // `add_client` moves the client to REGISTERED; INITIALIZED is accepted so
     // that a client never added answers NOT_FOUND, not NOT_INIT.
-    if client.state != nros_client_state_t::NROS_CLIENT_STATE_REGISTERED
-        && client.state != nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED
+    if client.state != rclc_client_state_t::RCLC_CLIENT_STATE_REGISTERED
+        && client.state != rclc_client_state_t::RCLC_CLIENT_STATE_INITIALIZED
     {
-        return NROS_RET_NOT_INIT;
+        return RCL_RET_NOT_INIT;
     }
     if executor.in_dispatch {
-        return NROS_RET_REENTRANT;
+        return RCLC_RET_REENTRANT;
     }
     if client._internal.arena_entry_index < 0 || client._internal.executor_ptr != executor_ptr {
-        return NROS_RET_NOT_FOUND;
+        return RCLC_RET_NOT_FOUND;
     }
 
     let handle_id =
         nros_node::executor::HandleId::for_owned_slot(client._internal.arena_entry_index as usize);
     let rust_exec = get_executor(&mut executor._opaque);
-    // SAFETY: as in `nros_executor_remove_subscription`.
+    // SAFETY: as in `rclc_executor_remove_subscription`.
     let released = rust_exec.release_service_client(handle_id);
     client._internal.arena_entry_index = -1;
     client._internal.executor_ptr = ptr::null_mut();
-    client.state = nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED;
+    client.state = rclc_client_state_t::RCLC_CLIENT_STATE_INITIALIZED;
     forget_removed_handle(executor, handle_id, released)
 }
 
 /// Goal response trampoline — adapts nros-node callback to C API callback.
 ///
 /// # Safety
-/// `context` must point to a valid `nros_action_client_t`.
+/// `context` must point to a valid `rcl_action_client_t`.
 unsafe extern "C" fn goal_response_trampoline(
     goal_id: *const nros_node::GoalId,
     accepted: bool,
     context: *mut core::ffi::c_void,
 ) {
-    let client = &*(context as *const nros_action_client_t);
+    let client = &*(context as *const rcl_action_client_t);
     if let Some(cb) = client.goal_response_callback {
-        let uuid = nros_goal_uuid_t {
+        let uuid = rclc_goal_uuid_t {
             uuid: (*goal_id).uuid,
         };
         cb(&uuid, accepted, client.context);
@@ -3636,16 +3636,16 @@ unsafe extern "C" fn goal_response_trampoline(
 /// Feedback trampoline — adapts nros-node callback to C API callback.
 ///
 /// # Safety
-/// `context` must point to a valid `nros_action_client_t`.
+/// `context` must point to a valid `rcl_action_client_t`.
 unsafe extern "C" fn feedback_trampoline(
     goal_id: *const nros_node::GoalId,
     feedback_data: *const u8,
     feedback_len: usize,
     context: *mut core::ffi::c_void,
 ) {
-    let client = &*(context as *const nros_action_client_t);
+    let client = &*(context as *const rcl_action_client_t);
     if let Some(cb) = client.feedback_callback {
-        let uuid = nros_goal_uuid_t {
+        let uuid = rclc_goal_uuid_t {
             uuid: (*goal_id).uuid,
         };
         cb(&uuid, feedback_data, feedback_len, client.context);
@@ -3655,7 +3655,7 @@ unsafe extern "C" fn feedback_trampoline(
 /// Result trampoline — adapts nros-node callback to C API callback.
 ///
 /// # Safety
-/// `context` must point to a valid `nros_action_client_t`.
+/// `context` must point to a valid `rcl_action_client_t`.
 unsafe extern "C" fn result_trampoline(
     goal_id: *const nros_node::GoalId,
     status: nros_node::GoalStatus,
@@ -3663,16 +3663,16 @@ unsafe extern "C" fn result_trampoline(
     result_len: usize,
     context: *mut core::ffi::c_void,
 ) {
-    let client = &*(context as *const nros_action_client_t);
+    let client = &*(context as *const rcl_action_client_t);
     if let Some(cb) = client.result_callback {
-        let uuid = nros_goal_uuid_t {
+        let uuid = rclc_goal_uuid_t {
             uuid: (*goal_id).uuid,
         };
         let c_status = match status {
-            nros_node::GoalStatus::Succeeded => nros_goal_status_t::NROS_GOAL_STATUS_SUCCEEDED,
-            nros_node::GoalStatus::Canceled => nros_goal_status_t::NROS_GOAL_STATUS_CANCELED,
-            nros_node::GoalStatus::Aborted => nros_goal_status_t::NROS_GOAL_STATUS_ABORTED,
-            _ => nros_goal_status_t::NROS_GOAL_STATUS_UNKNOWN,
+            nros_node::GoalStatus::Succeeded => rclc_goal_status_t::RCLC_GOAL_STATUS_SUCCEEDED,
+            nros_node::GoalStatus::Canceled => rclc_goal_status_t::RCLC_GOAL_STATUS_CANCELED,
+            nros_node::GoalStatus::Aborted => rclc_goal_status_t::RCLC_GOAL_STATUS_ABORTED,
+            _ => rclc_goal_status_t::RCLC_GOAL_STATUS_UNKNOWN,
         };
         cb(&uuid, c_status, result_data, result_len, client.context);
     }
@@ -3685,12 +3685,12 @@ unsafe extern "C" fn result_trampoline(
 /// What a COMPLETED spin cycle returns, as a function of whether it did any
 /// work (phase-417 stage 3).
 ///
-/// It returns `NROS_RET_OK` either way, and `any_work` is a parameter only so
+/// It returns `RCL_RET_OK` either way, and `any_work` is a parameter only so
 /// the case that used to differ has a name. rclc's `rclc_executor_spin_some`
 /// does `rc = rcl_wait(…); RCLC_UNUSED(rc);` — it DISCARDS the wait's
 /// `RCL_RET_TIMEOUT` — so an idle tick is a success upstream, and its own
 /// callers (`rclc_executor_spin`, `rclc_executor_spin_one_period`) accept
-/// `RCL_RET_TIMEOUT` as well. Ours returned `NROS_RET_TIMEOUT` on every idle
+/// `RCL_RET_TIMEOUT` as well. Ours returned `RCL_RET_TIMEOUT` on every idle
 /// tick, so the ported and legal
 /// `if (rclc_executor_spin_some(&exec, t) != RCL_RET_OK) error();` fired the
 /// first time the transport was quiet.
@@ -3700,9 +3700,9 @@ unsafe extern "C" fn result_trampoline(
 /// 0355 — a live-but-idle transport is not a failing one), and no caller in the
 /// tree wants it. Session health is `session_io_failures()`.
 #[inline]
-fn spin_cycle_ret(any_work: bool) -> nros_ret_t {
+fn spin_cycle_ret(any_work: bool) -> rcl_ret_t {
     let _ = any_work;
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// The WAIT BUDGET a period spin hands to `rclc_executor_spin_some`
@@ -3720,7 +3720,7 @@ fn spin_cycle_ret(any_work: bool) -> nros_ret_t {
 /// `period_ns` is taken and ignored so that a future edit re-conflating them has
 /// to go through this function and its test.
 #[inline]
-fn period_spin_wait_ns(executor: &nros_executor_t, period_ns: u64) -> u64 {
+fn period_spin_wait_ns(executor: &rclc_executor_t, period_ns: u64) -> u64 {
     let _ = period_ns;
     executor.timeout_ns
 }
@@ -3730,7 +3730,7 @@ fn period_spin_wait_ns(executor: &nros_executor_t, period_ns: u64) -> u64 {
 /// Drives middleware I/O, then dispatches ready callbacks.
 ///
 /// # Returns
-/// `NROS_RET_OK` for any completed cycle, whether or not a callback ran —
+/// `RCL_RET_OK` for any completed cycle, whether or not a callback ran —
 /// rclc discards the wait's timeout, so an idle tick is a success. See
 /// `spin_cycle_ret`.
 ///
@@ -3738,9 +3738,9 @@ fn period_spin_wait_ns(executor: &nros_executor_t, period_ns: u64) -> u64 {
 /// * `executor` must be a valid pointer to an initialized executor
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_executor_spin_some(
-    executor: *mut nros_executor_t,
+    executor: *mut rclc_executor_t,
     timeout_ns: u64,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(executor);
     // Issue 1556 item 2 — a census run writes and exits here, instead of spinning.
     crate::census::finish_if_armed();
@@ -3748,10 +3748,10 @@ pub unsafe extern "C" fn rclc_executor_spin_some(
     let executor = &mut *executor;
 
     // Accept both INITIALIZED and SPINNING states
-    if executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
-        && executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING
+    if executor.state != rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
+        && executor.state != rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING
     {
-        return NROS_RET_NOT_INIT;
+        return RCL_RET_NOT_INIT;
     }
 
     {
@@ -3780,7 +3780,7 @@ pub unsafe extern "C" fn rclc_executor_spin_some(
 /// # Safety
 /// * `executor` must be a valid pointer to an initialized executor
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rclc_executor_spin(executor: *mut nros_executor_t) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_executor_spin(executor: *mut rclc_executor_t) -> rcl_ret_t {
     validate_not_null!(executor);
     // Issue 1556 item 2 — a census run writes and exits here, instead of spinning.
     crate::census::finish_if_armed();
@@ -3789,13 +3789,13 @@ pub unsafe extern "C" fn rclc_executor_spin(executor: *mut nros_executor_t) -> n
 
     validate_state!(
         executor_ref,
-        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
 
-    executor_ref.state = nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING;
+    executor_ref.state = rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING;
     // phase-417 W4.c — this loop owns its own iteration, so it must tell the
     // executor: `enter_spin_loop` clears any stale cancel and raises the flag
-    // `nros_executor_is_spinning` reads. RFC-0019 — the loop keeps no bit of its
+    // `rclc_executor_is_spinning` reads. RFC-0019 — the loop keeps no bit of its
     // own. Paired with `exit_spin_loop` on BOTH exits below.
     get_executor(&mut executor_ref._opaque).enter_spin_loop();
 
@@ -3807,7 +3807,7 @@ pub unsafe extern "C" fn rclc_executor_spin(executor: *mut nros_executor_t) -> n
     // "ran until you stopped me" from "spun uselessly against a dead session".
     //
     // issue 0355 — dead-session detection reads the REAL `drive_io` health
-    // counter, NOT `spin_some`'s return. `spin_some` returns `NROS_RET_TIMEOUT`
+    // counter, NOT `spin_some`'s return. `spin_some` returns `RCL_RET_TIMEOUT`
     // on every idle tick (`!any_work()`) against a perfectly LIVE transport, so
     // counting those returns killed a healthy listener that simply idled before
     // its publisher was discovered — normal DDS timing (the old
@@ -3815,31 +3815,31 @@ pub unsafe extern "C" fn rclc_executor_spin(executor: *mut nros_executor_t) -> n
     // executor's `session_io_failures()` counts only genuine `drive_io` errors
     // (dead router, closed socket, expired lease) and resets on any successful
     // drive, so a benign idle leaves it at 0. Same threshold, correct signal.
-    // The cancel flag is the second exit, and it is the one `nros_executor_cancel`
+    // The cancel flag is the second exit, and it is the one `rclc_executor_cancel`
     // raises from a signal handler: `state` is only readable by whoever holds the
     // struct, while the flag is what a `drive_io` blocked mid-poll is woken on.
-    while executor_ref.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING
+    while executor_ref.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING
         && !get_executor(&mut executor_ref._opaque).is_halted()
     {
         let ret = rclc_executor_spin_some(executor, executor_ref.timeout_ns);
         if get_executor(&mut executor_ref._opaque).session_io_failures() >= SPIN_ERROR_TOLERANCE {
             get_executor(&mut executor_ref._opaque).exit_spin_loop();
-            if executor_ref.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING {
-                executor_ref.state = nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED;
+            if executor_ref.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING {
+                executor_ref.state = rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED;
             }
-            return if ret != NROS_RET_OK {
+            return if ret != RCL_RET_OK {
                 ret
             } else {
-                NROS_RET_ERROR
+                RCL_RET_ERROR
             };
         }
     }
 
     get_executor(&mut executor_ref._opaque).exit_spin_loop();
-    if executor_ref.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING {
-        executor_ref.state = nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED;
+    if executor_ref.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING {
+        executor_ref.state = rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED;
     }
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// How many CONSECUTIVE `drive_io` failures (the executor's
@@ -3854,7 +3854,7 @@ pub unsafe extern "C" fn rclc_executor_spin(executor: *mut nros_executor_t) -> n
 ///
 /// It gates the REAL health counter (which increments only on a genuine
 /// `drive_io` error and resets on any successful drive), NOT `spin_some`'s
-/// return — issue 0355: a live-but-idle transport returns `NROS_RET_TIMEOUT`
+/// return — issue 0355: a live-but-idle transport returns `RCL_RET_TIMEOUT`
 /// every tick, so counting THOSE killed a healthy listener that idled before its
 /// publisher was discovered.
 const SPIN_ERROR_TOLERANCE: u32 = 16;
@@ -3865,30 +3865,30 @@ const SPIN_ERROR_TOLERANCE: u32 = 16;
 /// * `executor` must be a valid pointer to an initialized executor
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_executor_spin_period(
-    executor: *mut nros_executor_t,
+    executor: *mut rclc_executor_t,
     period_ns: u64,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(executor);
     // Issue 1556 item 2 — a census run writes and exits here, instead of spinning.
     crate::census::finish_if_armed();
 
     if period_ns == 0 {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
 
     let executor_ref = &mut *executor;
 
     validate_state!(
         executor_ref,
-        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
 
-    executor_ref.state = nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING;
+    executor_ref.state = rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING;
     executor_ref.invocation_time_ns = crate::platform::get_time_ns();
     // phase-417 W4.c — see `rclc_executor_spin`: one flag, owned by Rust.
     get_executor(&mut executor_ref._opaque).enter_spin_loop();
 
-    while executor_ref.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING
+    while executor_ref.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING
         && !get_executor(&mut executor_ref._opaque).is_halted()
     {
         // phase-417 stage 3 — the WAIT is `timeout_ns`
@@ -3905,18 +3905,18 @@ pub unsafe extern "C" fn rclc_executor_spin_period(
         let ret = rclc_executor_spin_some(executor, wait_ns);
         // issue 0355 — bail only on genuine SESSION death, read from the real
         // `drive_io` health counter, NOT from `spin_some`'s idle
-        // `NROS_RET_TIMEOUT`. See `rclc_executor_spin` for the full rationale:
+        // `RCL_RET_TIMEOUT`. See `rclc_executor_spin` for the full rationale:
         // an idle tick against a live transport is expected while a publisher
         // is still discovering, and must not count toward the tolerance.
         if get_executor(&mut executor_ref._opaque).session_io_failures() >= SPIN_ERROR_TOLERANCE {
             get_executor(&mut executor_ref._opaque).exit_spin_loop();
-            if executor_ref.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING {
-                executor_ref.state = nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED;
+            if executor_ref.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING {
+                executor_ref.state = rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED;
             }
-            return if ret != NROS_RET_OK {
+            return if ret != RCL_RET_OK {
                 ret
             } else {
-                NROS_RET_ERROR
+                RCL_RET_ERROR
             };
         }
 
@@ -3929,10 +3929,10 @@ pub unsafe extern "C" fn rclc_executor_spin_period(
     }
 
     get_executor(&mut executor_ref._opaque).exit_spin_loop();
-    if executor_ref.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING {
-        executor_ref.state = nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED;
+    if executor_ref.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING {
+        executor_ref.state = rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED;
     }
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// Spin the executor for one period.
@@ -3941,23 +3941,23 @@ pub unsafe extern "C" fn rclc_executor_spin_period(
 /// * `executor` must be a valid pointer to an initialized executor
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_executor_spin_one_period(
-    executor: *mut nros_executor_t,
+    executor: *mut rclc_executor_t,
     period_ns: u64,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(executor);
     // Issue 1556 item 2 — a census run writes and exits here, instead of spinning.
     crate::census::finish_if_armed();
 
     if period_ns == 0 {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
 
     let executor_ref = &mut *executor;
 
-    if executor_ref.state != nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
-        && executor_ref.state != nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING
+    if executor_ref.state != rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
+        && executor_ref.state != rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING
     {
-        return NROS_RET_NOT_INIT;
+        return RCL_RET_NOT_INIT;
     }
 
     let start = crate::platform::get_time_ns();
@@ -3975,7 +3975,7 @@ pub unsafe extern "C" fn rclc_executor_spin_one_period(
         crate::platform::sleep_ns(period_ns - elapsed);
     }
 
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// Ask a spinning executor to stop — `rclcpp::Executor::cancel` /
@@ -3990,7 +3990,7 @@ pub unsafe extern "C" fn rclc_executor_spin_one_period(
 ///
 /// `cancel` sets a flag the spin loop observes at the NEXT POLL BOUNDARY, so it
 /// returns BEFORE spinning has actually stopped;
-/// [`nros_executor_is_spinning`] is the observable that tells you when it has.
+/// [`rclc_executor_is_spinning`] is the observable that tells you when it has.
 /// The boundary is one `spin_once` timeout wide (`rclc_executor_set_timeout`).
 ///
 /// It does NOT tear down the session: the executor stays initialised, keeps its
@@ -4001,7 +4001,7 @@ pub unsafe extern "C" fn rclc_executor_spin_one_period(
 /// # Safety
 /// * `executor` must be a valid pointer
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_cancel(executor: *mut nros_executor_t) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_executor_cancel(executor: *mut rclc_executor_t) -> rcl_ret_t {
     validate_not_null!(executor);
 
     let executor = &mut *executor;
@@ -4010,25 +4010,25 @@ pub unsafe extern "C" fn nros_executor_cancel(executor: *mut nros_executor_t) ->
     // `nros_node::Executor` owns (which also wakes a `drive_io` blocked on its
     // full timeout); the `state` transition below is the C ABI's own
     // observable, not a second copy of the decision.
-    if executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED
-        && executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN
+    if executor.state != rclc_executor_state_t::RCLC_EXECUTOR_STATE_UNINITIALIZED
+        && executor.state != rclc_executor_state_t::RCLC_EXECUTOR_STATE_SHUTDOWN
     {
         get_executor(&mut executor._opaque).cancel();
     }
 
-    if executor.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING {
-        executor.state = nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED;
+    if executor.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING {
+        executor.state = rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED;
     }
 
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// Is a blocking spin (`rclc_executor_spin` / `_spin_period`) running on this
 /// executor right now? phase-417 W4.c — `rclcpp::Executor::is_spinning`.
 ///
-/// The C API has always MODELLED this (`NROS_EXECUTOR_STATE_SPINNING`) and
+/// The C API has always MODELLED this (`RCLC_EXECUTOR_STATE_SPINNING`) and
 /// never exported a way to ask, so a C caller could stop a spin but not observe
-/// that it had stopped — the second half of [`nros_executor_cancel`]'s envelope
+/// that it had stopped — the second half of [`rclc_executor_cancel`]'s envelope
 /// had no reader.
 ///
 /// A DIFFERENT question from "was cancel requested": between `cancel()` and the
@@ -4041,15 +4041,15 @@ pub unsafe extern "C" fn nros_executor_cancel(executor: *mut nros_executor_t) ->
 /// # Safety
 /// * `executor` must be null or a valid pointer
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_is_spinning(executor: *const nros_executor_t) -> bool {
+pub unsafe extern "C" fn rclc_executor_is_spinning(executor: *const rclc_executor_t) -> bool {
     if executor.is_null() {
         return false;
     }
 
     let executor = &*executor;
 
-    if executor.state == nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED
-        || executor.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN
+    if executor.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_UNINITIALIZED
+        || executor.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_SHUTDOWN
     {
         return false;
     }
@@ -4068,30 +4068,30 @@ pub unsafe extern "C" fn nros_executor_is_spinning(executor: *const nros_executo
 /// Finalize an executor.
 ///
 /// IDEMPOTENT: a zero-initialised executor is not an error and returns
-/// `NROS_RET_OK` (phase-417 stage 3, the same sweep as
+/// `RCL_RET_OK` (phase-417 stage 3, the same sweep as
 /// `rcl_guard_condition_fini` / `rcl_node_fini`). rclc says so in a comment of
 /// its own — `rclc/src/rclc/executor.c` @ humble:
 /// `} else { // Repeated calls to fini or calling fini on a zero initialized
 /// executor is ok }` followed by `return RCL_RET_OK;`. Ours returned
-/// `NROS_RET_NOT_INIT`.
+/// `RCL_RET_NOT_INIT`.
 ///
 /// # Safety
 /// * `executor` must be a valid pointer
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rclc_executor_fini(executor: *mut nros_executor_t) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_executor_fini(executor: *mut rclc_executor_t) -> rcl_ret_t {
     validate_not_null!(executor);
 
     let executor = &mut *executor;
 
-    if executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
-        && executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING
+    if executor.state != rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
+        && executor.state != rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING
     {
         // No live internal executor in `_opaque`: either one was never
         // constructed (UNINITIALIZED) or this fini already dropped it and
         // zeroed the storage (SHUTDOWN). Nothing to drop — and `drop_in_place`
         // on the zeroed storage is UB, which the old `== UNINITIALIZED` guard
         // let a second `fini` call reach. Idempotent, per rclc.
-        return NROS_RET_OK;
+        return RCL_RET_OK;
     }
 
     // Drop the internal executor in-place — arena entries are cleaned up
@@ -4106,9 +4106,9 @@ pub unsafe extern "C" fn rclc_executor_fini(executor: *mut nros_executor_t) -> n
     executor.timer_count = 0;
     executor.service_count = 0;
     executor.support = ptr::null();
-    executor.state = nros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN;
+    executor.state = rclc_executor_state_t::RCLC_EXECUTOR_STATE_SHUTDOWN;
 
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 // ============================================================================
@@ -4117,7 +4117,7 @@ pub unsafe extern "C" fn rclc_executor_fini(executor: *mut nros_executor_t) -> n
 
 /// Get the number of handles in the executor.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_get_handle_count(executor: *const nros_executor_t) -> c_int {
+pub unsafe extern "C" fn rclc_executor_get_handle_count(executor: *const rclc_executor_t) -> c_int {
     if executor.is_null() {
         return 0;
     }
@@ -4133,7 +4133,7 @@ pub unsafe extern "C" fn nros_executor_get_handle_count(executor: *const nros_ex
 /// fits and only then moves the bump pointer, so this number grows only when
 /// a registration found nothing to reuse. A create / remove loop whose value
 /// stays at the first cycle's is reusing its bytes; one that climbs is
-/// leaking them. Pair it with `nros_executor_get_arena_capacity` for the
+/// leaking them. Pair it with `rclc_executor_get_arena_capacity` for the
 /// headroom.
 ///
 /// Returns 0 for NULL or an executor that is not initialised.
@@ -4141,18 +4141,18 @@ pub unsafe extern "C" fn nros_executor_get_handle_count(executor: *const nros_ex
 /// # Safety
 /// `executor` must be NULL or a valid pointer.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_get_arena_used(executor: *const nros_executor_t) -> usize {
+pub unsafe extern "C" fn rclc_executor_get_arena_used(executor: *const rclc_executor_t) -> usize {
     if executor.is_null() {
         return 0;
     }
     let executor = &*executor;
-    if executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
-        && executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING
+    if executor.state != rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
+        && executor.state != rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING
     {
         return 0;
     }
     // The cast drops `const` only to reach the shared accessor; nothing is
-    // mutated (the same shape as `nros_executor_is_spinning`).
+    // mutated (the same shape as `rclc_executor_is_spinning`).
     let opaque = &raw const executor._opaque;
     get_executor(&mut *opaque.cast_mut()).arena_used()
 }
@@ -4164,15 +4164,15 @@ pub unsafe extern "C" fn nros_executor_get_arena_used(executor: *const nros_exec
 /// # Safety
 /// `executor` must be NULL or a valid pointer.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_get_arena_capacity(
-    executor: *const nros_executor_t,
+pub unsafe extern "C" fn rclc_executor_get_arena_capacity(
+    executor: *const rclc_executor_t,
 ) -> usize {
     if executor.is_null() {
         return 0;
     }
     let executor = &*executor;
-    if executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
-        && executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING
+    if executor.state != rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
+        && executor.state != rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING
     {
         return 0;
     }
@@ -4182,7 +4182,7 @@ pub unsafe extern "C" fn nros_executor_get_arena_capacity(
 
 /// Check if executor is valid (initialized).
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_is_valid(executor: *const nros_executor_t) -> bool {
+pub unsafe extern "C" fn rclc_executor_is_valid(executor: *const rclc_executor_t) -> bool {
     if executor.is_null() {
         return false;
     }
@@ -4190,24 +4190,24 @@ pub unsafe extern "C" fn nros_executor_is_valid(executor: *const nros_executor_t
     let executor = &*executor;
     matches!(
         executor.state,
-        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
-            | nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING
+        rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
+            | rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING
     )
 }
 
 /// Is the executor usable AND is the context it names still valid?
 ///
 /// issue 1386 — the question an executor-BOUND node has to ask to answer rcl's
-/// `rcl_node_is_valid`. `nros_executor_node_init` leaves `nros_node_t::support`
+/// `rcl_node_is_valid`. `rclc_executor_node_init` leaves `rcl_node_t::support`
 /// NULL on purpose (the multi-Node paths key off `node_id` + executor,
 /// phase-156 sub-bug D), so such a node reaches its context only THROUGH the
 /// executor, and the two halves fail independently:
 ///
 /// * `rclc_executor_fini` zeroes `_opaque` and marks the executor `SHUTDOWN` —
-///   `nros_executor_is_valid` knows;
+///   `rclc_executor_is_valid` knows;
 /// * `rclc_support_fini` drops the inline session, zeroes ITS `_opaque` and
 ///   marks the SUPPORT shut down while touching neither node nor executor —
-///   only [`crate::support::nros_support_is_valid`] knows. That is the same
+///   only [`crate::support::rclc_support_is_valid`] knows. That is the same
 ///   split state phase-417 stage 3 measured for a legacy node (`node.rs`,
 ///   `a_node_over_a_finalised_support_is_not_valid`); an executor-bound node
 ///   had no predicate that reached it.
@@ -4216,21 +4216,21 @@ pub unsafe extern "C" fn nros_executor_is_valid(executor: *const nros_executor_t
 /// which reinterprets that storage as a live `CExecutor` — over a zeroed
 /// `_opaque` that is UB, not a wrong answer.
 ///
-/// `nros_executor_init` refuses a NULL or uninitialised support, so a valid
+/// `rclc_executor_init` refuses a NULL or uninitialised support, so a valid
 /// executor always has one to consult.
 ///
 /// # Safety
-/// `executor` must be NULL or point to a valid `nros_executor_t`.
-pub(crate) unsafe fn executor_context_is_valid(executor: *const nros_executor_t) -> bool {
-    // `nros_executor_is_valid` short-circuits NULL, so the deref below is only
+/// `executor` must be NULL or point to a valid `rclc_executor_t`.
+pub(crate) unsafe fn executor_context_is_valid(executor: *const rclc_executor_t) -> bool {
+    // `rclc_executor_is_valid` short-circuits NULL, so the deref below is only
     // reached for a pointer it has already accepted.
-    nros_executor_is_valid(executor) && crate::support::nros_support_is_valid((*executor).support)
+    rclc_executor_is_valid(executor) && crate::support::rclc_support_is_valid((*executor).support)
 }
 
 /// Get remaining total handle capacity.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_get_remaining_handles(
-    executor: *const nros_executor_t,
+pub unsafe extern "C" fn rclc_executor_get_remaining_handles(
+    executor: *const rclc_executor_t,
 ) -> c_int {
     if executor.is_null() {
         return -1;
@@ -4253,17 +4253,17 @@ mod verification {
     #[kani::unwind(5)]
     fn executor_init_null_ptrs() {
         // NULL executor → INVALID_ARGUMENT
-        let support = crate::support::nros_support_get_zero_initialized();
+        let support = crate::support::rclc_support_get_zero_initialized();
         assert_eq!(
-            unsafe { nros_executor_init(core::ptr::null_mut(), &support, 4) },
-            NROS_RET_INVALID_ARGUMENT,
+            unsafe { rclc_executor_init(core::ptr::null_mut(), &support, 4) },
+            RCL_RET_INVALID_ARGUMENT,
         );
 
         // NULL support → INVALID_ARGUMENT
         let mut executor = rclc_executor_get_zero_initialized_executor();
         assert_eq!(
-            unsafe { nros_executor_init(&mut executor, core::ptr::null(), 4) },
-            NROS_RET_INVALID_ARGUMENT,
+            unsafe { rclc_executor_init(&mut executor, core::ptr::null(), 4) },
+            RCL_RET_INVALID_ARGUMENT,
         );
     }
 
@@ -4273,7 +4273,7 @@ mod verification {
         let executor = rclc_executor_get_zero_initialized_executor();
         assert_eq!(
             executor.state,
-            nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED,
+            rclc_executor_state_t::RCLC_EXECUTOR_STATE_UNINITIALIZED,
         );
         assert!(executor.support.is_null());
         assert_eq!(executor.handle_count, 0);
@@ -4289,12 +4289,12 @@ mod verification {
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(non_camel_case_types)]
-pub enum nros_sched_class_t {
-    NROS_SCHED_CLASS_FIFO = 0,
-    NROS_SCHED_CLASS_EDF = 1,
-    NROS_SCHED_CLASS_SPORADIC = 2,
-    NROS_SCHED_CLASS_BEST_EFFORT = 3,
-    NROS_SCHED_CLASS_TIME_TRIGGERED = 4,
+pub enum rclc_sched_class_t {
+    RCLC_SCHED_CLASS_FIFO = 0,
+    RCLC_SCHED_CLASS_EDF = 1,
+    RCLC_SCHED_CLASS_SPORADIC = 2,
+    RCLC_SCHED_CLASS_BEST_EFFORT = 3,
+    RCLC_SCHED_CLASS_TIME_TRIGGERED = 4,
 }
 
 /// Criticality bucket. Lower numeric value = higher priority.
@@ -4302,10 +4302,10 @@ pub enum nros_sched_class_t {
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(non_camel_case_types)]
-pub enum nros_sched_priority_t {
-    NROS_SCHED_PRIORITY_CRITICAL = 0,
-    NROS_SCHED_PRIORITY_NORMAL = 1,
-    NROS_SCHED_PRIORITY_BEST_EFFORT = 2,
+pub enum rclc_sched_priority_t {
+    RCLC_SCHED_PRIORITY_CRITICAL = 0,
+    RCLC_SCHED_PRIORITY_NORMAL = 1,
+    RCLC_SCHED_PRIORITY_BEST_EFFORT = 2,
 }
 
 /// Deadline interpretation policy.
@@ -4313,24 +4313,24 @@ pub enum nros_sched_priority_t {
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(non_camel_case_types)]
-pub enum nros_deadline_policy_t {
-    NROS_DEADLINE_POLICY_RELEASED = 0,
-    NROS_DEADLINE_POLICY_ACTIVATED = 1,
-    NROS_DEADLINE_POLICY_INHERITED = 2,
+pub enum rclc_deadline_policy_t {
+    RCLC_DEADLINE_POLICY_RELEASED = 0,
+    RCLC_DEADLINE_POLICY_ACTIVATED = 1,
+    RCLC_DEADLINE_POLICY_INHERITED = 2,
 }
 
 /// Scheduling-context descriptor passed to
-/// [`nros_executor_create_sched_context`].
+/// [`rclc_executor_create_sched_context`].
 ///
 /// Time fields use a `0` sentinel for "absent" (mirrors the Rust
 /// `OptUs` newtype). Cbindgen emits these as plain `uint32_t`.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 #[allow(non_camel_case_types)]
-pub struct nros_sched_context_t {
-    pub class: nros_sched_class_t,
-    pub priority: nros_sched_priority_t,
-    pub deadline_policy: nros_deadline_policy_t,
+pub struct rclc_sched_context_t {
+    pub class: rclc_sched_class_t,
+    pub priority: rclc_sched_priority_t,
+    pub deadline_policy: rclc_deadline_policy_t,
     /// Period in microseconds (0 = absent).
     pub period_us: u32,
     /// Budget in microseconds (0 = absent).
@@ -4354,44 +4354,44 @@ pub struct nros_sched_context_t {
 /// auto-created default `Fifo` SC. Mirrors
 /// `nros_node::executor::sched_context::SchedContextId`.
 #[allow(non_camel_case_types)]
-pub type nros_sched_context_id_t = u8;
+pub type rclc_sched_context_id_t = u8;
 
 /// Identifier of the auto-created default `Fifo`-class SC. Every
 /// callback registered without an explicit binding maps to it.
 /// Phase 110.B.
 #[unsafe(no_mangle)]
-pub extern "C" fn nros_executor_default_sched_context_id() -> nros_sched_context_id_t {
+pub extern "C" fn rclc_executor_default_sched_context_id() -> rclc_sched_context_id_t {
     0
 }
 
 fn convert_sched_context(
-    cfg: &nros_sched_context_t,
+    cfg: &rclc_sched_context_t,
 ) -> nros_node::executor::sched_context::SchedContext {
     use nros_node::executor::sched_context::{
         DeadlinePolicy, OptUs, Priority, SchedClass, SchedContext,
     };
     SchedContext {
         class: match cfg.class {
-            nros_sched_class_t::NROS_SCHED_CLASS_FIFO => SchedClass::Fifo,
-            nros_sched_class_t::NROS_SCHED_CLASS_EDF => SchedClass::Edf,
-            nros_sched_class_t::NROS_SCHED_CLASS_SPORADIC => SchedClass::Sporadic,
-            nros_sched_class_t::NROS_SCHED_CLASS_BEST_EFFORT => SchedClass::BestEffort,
+            rclc_sched_class_t::RCLC_SCHED_CLASS_FIFO => SchedClass::Fifo,
+            rclc_sched_class_t::RCLC_SCHED_CLASS_EDF => SchedClass::Edf,
+            rclc_sched_class_t::RCLC_SCHED_CLASS_SPORADIC => SchedClass::Sporadic,
+            rclc_sched_class_t::RCLC_SCHED_CLASS_BEST_EFFORT => SchedClass::BestEffort,
             // Phase 110.G refactor: TimeTriggered is not a class (phase-482 W6
             // deleted the Rust variant);
             // accept the C-side enum value but route to Fifo. Callers
             // should switch to populating tt_window_offset_us /
             // tt_window_duration_us for the gate semantics.
-            nros_sched_class_t::NROS_SCHED_CLASS_TIME_TRIGGERED => SchedClass::Fifo,
+            rclc_sched_class_t::RCLC_SCHED_CLASS_TIME_TRIGGERED => SchedClass::Fifo,
         },
         priority: match cfg.priority {
-            nros_sched_priority_t::NROS_SCHED_PRIORITY_CRITICAL => Priority::Critical,
-            nros_sched_priority_t::NROS_SCHED_PRIORITY_NORMAL => Priority::Normal,
-            nros_sched_priority_t::NROS_SCHED_PRIORITY_BEST_EFFORT => Priority::BestEffort,
+            rclc_sched_priority_t::RCLC_SCHED_PRIORITY_CRITICAL => Priority::Critical,
+            rclc_sched_priority_t::RCLC_SCHED_PRIORITY_NORMAL => Priority::Normal,
+            rclc_sched_priority_t::RCLC_SCHED_PRIORITY_BEST_EFFORT => Priority::BestEffort,
         },
         deadline_policy: match cfg.deadline_policy {
-            nros_deadline_policy_t::NROS_DEADLINE_POLICY_RELEASED => DeadlinePolicy::Released,
-            nros_deadline_policy_t::NROS_DEADLINE_POLICY_ACTIVATED => DeadlinePolicy::Activated,
-            nros_deadline_policy_t::NROS_DEADLINE_POLICY_INHERITED => DeadlinePolicy::Inherited,
+            rclc_deadline_policy_t::RCLC_DEADLINE_POLICY_RELEASED => DeadlinePolicy::Released,
+            rclc_deadline_policy_t::RCLC_DEADLINE_POLICY_ACTIVATED => DeadlinePolicy::Activated,
+            rclc_deadline_policy_t::RCLC_DEADLINE_POLICY_INHERITED => DeadlinePolicy::Inherited,
         },
         period_us: OptUs::from_us(cfg.period_us),
         budget_us: OptUs::from_us(cfg.budget_us),
@@ -4411,64 +4411,64 @@ fn convert_sched_context(
 /// # Safety
 /// `executor` must be a valid pointer to an initialized executor.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_add_time_triggered_dispatcher(
-    executor: *mut nros_executor_t,
+pub unsafe extern "C" fn rclc_executor_add_time_triggered_dispatcher(
+    executor: *mut rclc_executor_t,
     major_frame_us: u32,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(executor);
     let executor = &mut *executor;
     validate_state!(
         executor,
-        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
     let rust_exec = get_executor(&mut executor._opaque);
     rust_exec.register_time_triggered_dispatcher(major_frame_us);
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// Register a new scheduling context with the executor. Phase 110.B.
 ///
 /// On success writes the new `SchedContextId` through `out_sc_id` and
-/// returns `NROS_RET_OK`. Returns `NROS_RET_FULL` when no slot is
+/// returns `RCL_RET_OK`. Returns `RCLC_RET_FULL` when no slot is
 /// available (build-time `NROS_EXECUTOR_MAX_SC` exhausted).
 ///
 /// # Safety
 /// All pointers must be valid and the executor initialized.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_create_sched_context(
-    executor: *mut nros_executor_t,
-    cfg: *const nros_sched_context_t,
-    out_sc_id: *mut nros_sched_context_id_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_executor_create_sched_context(
+    executor: *mut rclc_executor_t,
+    cfg: *const rclc_sched_context_t,
+    out_sc_id: *mut rclc_sched_context_id_t,
+) -> rcl_ret_t {
     validate_not_null!(executor, cfg, out_sc_id);
     let executor = &mut *executor;
     validate_state!(
         executor,
-        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
     let rust_exec = get_executor(&mut executor._opaque);
     let sc = convert_sched_context(&*cfg);
     match rust_exec.create_sched_context(sc) {
         Ok(id) => {
             *out_sc_id = id.0;
-            NROS_RET_OK
+            RCL_RET_OK
         }
         // issue 1198 — NAME THE KNOB. `NROS_EXECUTOR_MAX_SC` is derived per
         // image since phase-448 W6 (slot 0 plus one per tier the schedule can
         // create), and the one thing that derivation cannot see is a caller
         // creating scheduling contexts BY HAND through this function. A bare
-        // `NROS_RET_FULL` made that under-count silent, which is exactly the
+        // `RCLC_RET_FULL` made that under-count silent, which is exactly the
         // condition under which a count must not be derived. The text is
         // `NodeError::NoSchedContextSlot`'s own Display, so it is written once.
         Err(e) => {
             nros_log::log_error!(
                 nros_log::get_logger("nros-c"),
-                "nros_executor_create_sched_context: {} — this image's \
+                "rclc_executor_create_sched_context: {} — this image's \
                  NROS_EXECUTOR_MAX_SC is derived from its schedule, and a \
                  context created by hand is declared nowhere. State the knob.",
                 e
             );
-            NROS_RET_FULL
+            RCLC_RET_FULL
         }
     }
 }
@@ -4480,32 +4480,32 @@ pub unsafe extern "C" fn nros_executor_create_sched_context(
 ///
 /// `handle` is the index returned by the corresponding
 /// `nros_executor_add_*` call. `sc_id` must be a value previously
-/// returned from [`nros_executor_create_sched_context`] (or 0 for the
+/// returned from [`rclc_executor_create_sched_context`] (or 0 for the
 /// auto-created default Fifo SC).
 ///
-/// Returns `NROS_RET_INVALID_ARGUMENT` for an out-of-range handle, an
+/// Returns `RCL_RET_INVALID_ARGUMENT` for an out-of-range handle, an
 /// empty entry slot, or an unknown `sc_id`.
 ///
 /// # Safety
 /// `executor` must be a valid pointer to an initialized executor.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_bind_handle_to_sched_context(
-    executor: *mut nros_executor_t,
+pub unsafe extern "C" fn rclc_executor_bind_handle_to_sched_context(
+    executor: *mut rclc_executor_t,
     handle: usize,
-    sc_id: nros_sched_context_id_t,
-) -> nros_ret_t {
+    sc_id: rclc_sched_context_id_t,
+) -> rcl_ret_t {
     validate_not_null!(executor);
     let executor = &mut *executor;
     validate_state!(
         executor,
-        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
     let rust_exec = get_executor(&mut executor._opaque);
     let h = nros_node::executor::HandleId::from_raw(handle);
     let id = nros_node::executor::sched_context::SchedContextId(sc_id);
     match rust_exec.bind_handle_to_sched_context(h, id) {
-        Ok(()) => NROS_RET_OK,
-        Err(_) => NROS_RET_INVALID_ARGUMENT,
+        Ok(()) => RCL_RET_OK,
+        Err(_) => RCL_RET_INVALID_ARGUMENT,
     }
 }
 
@@ -4521,15 +4521,15 @@ pub unsafe extern "C" fn nros_executor_bind_handle_to_sched_context(
 // A LOCAL alias, not `nros_node::ShutdownCallbackFn`. cbindgen runs with
 // `parse_deps = false`, so a type owned by another crate in an `extern "C"`
 // signature degrades to an opaque struct that C cannot call through — the same
-// reason `nros_timer_callback_t` is spelled here rather than imported.
-pub type nros_shutdown_callback_t = Option<unsafe extern "C" fn(context: *mut core::ffi::c_void)>;
+// reason `rcl_timer_callback_t` is spelled here rather than imported.
+pub type rclc_shutdown_callback_t = Option<unsafe extern "C" fn(context: *mut core::ffi::c_void)>;
 
 /// Handle to a registered shutdown hook.
 ///
 /// Returned by `nros_executor_add_{pre,on}_shutdown_callback` and consumed by
 /// the matching `remove`. Opaque: the only operations are "pass it back" and
-/// "compare against `NROS_SHUTDOWN_CALLBACK_HANDLE_INVALID`".
-pub type nros_shutdown_callback_handle_t = u32;
+/// "compare against `RCLC_SHUTDOWN_CALLBACK_HANDLE_INVALID`".
+pub type rclc_shutdown_callback_handle_t = u32;
 
 /// The value no successful registration ever produces.
 //
@@ -4537,10 +4537,10 @@ pub type nros_shutdown_callback_handle_t = u32;
 // a constant whose initializer it cannot evaluate, and a constant that is
 // missing from the header is worse than one that is wrong — C compiles until
 // someone uses it. The `const _` below is what keeps the literal honest.
-pub const NROS_SHUTDOWN_CALLBACK_HANDLE_INVALID: nros_shutdown_callback_handle_t = 0xFFFF_FFFF;
+pub const RCLC_SHUTDOWN_CALLBACK_HANDLE_INVALID: rclc_shutdown_callback_handle_t = 0xFFFF_FFFF;
 
 const _: () = assert!(
-    NROS_SHUTDOWN_CALLBACK_HANDLE_INVALID == nros_node::ShutdownCallbackHandle::INVALID.0,
+    RCLC_SHUTDOWN_CALLBACK_HANDLE_INVALID == nros_node::ShutdownCallbackHandle::INVALID.0,
     "the C-visible invalid-handle literal drifted from nros_node's ShutdownCallbackHandle::INVALID"
 );
 
@@ -4551,7 +4551,7 @@ const _: () = assert!(
 /// request, park an actuator or release a bus. After teardown it cannot.
 ///
 /// On success writes the handle through `out_handle` and returns
-/// `NROS_RET_OK`. Returns `NROS_RET_FULL` when the phase's fixed table is
+/// `RCL_RET_OK`. Returns `RCLC_RET_FULL` when the phase's fixed table is
 /// exhausted (build-time `NROS_EXECUTOR_MAX_SHUTDOWN_CBS`, default 2).
 ///
 /// The hooks run when the executor is finalized — `rclc_executor_fini()`, or
@@ -4564,30 +4564,30 @@ const _: () = assert!(
 /// * `callback` must be safe to invoke once with `context`, and `context` must
 ///   stay valid until the hook runs or is removed.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_add_pre_shutdown_callback(
-    executor: *mut nros_executor_t,
-    callback: nros_shutdown_callback_t,
+pub unsafe extern "C" fn rclc_executor_add_pre_shutdown_callback(
+    executor: *mut rclc_executor_t,
+    callback: rclc_shutdown_callback_t,
     context: *mut core::ffi::c_void,
-    out_handle: *mut nros_shutdown_callback_handle_t,
-) -> nros_ret_t {
+    out_handle: *mut rclc_shutdown_callback_handle_t,
+) -> rcl_ret_t {
     validate_not_null!(executor, out_handle);
     let Some(callback) = callback else {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     };
     let executor = &mut *executor;
     validate_state!(
         executor,
-        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
     let rust_exec = get_executor(&mut executor._opaque);
     match rust_exec.add_pre_shutdown_callback(callback, context) {
         Ok(handle) => {
             *out_handle = handle.0;
-            NROS_RET_OK
+            RCL_RET_OK
         }
         Err(_) => {
-            *out_handle = NROS_SHUTDOWN_CALLBACK_HANDLE_INVALID;
-            NROS_RET_FULL
+            *out_handle = RCLC_SHUTDOWN_CALLBACK_HANDLE_INVALID;
+            RCLC_RET_FULL
         }
     }
 }
@@ -4596,88 +4596,88 @@ pub unsafe extern "C" fn nros_executor_add_pre_shutdown_callback(
 ///
 /// Issue 0790 — rclcpp's `add_on_shutdown_callback` / `rclcpp::on_shutdown`.
 /// The entities are gone by the time it runs, so anything that needs the wire
-/// belongs in [`nros_executor_add_pre_shutdown_callback`] instead.
+/// belongs in [`rclc_executor_add_pre_shutdown_callback`] instead.
 ///
 /// # Safety
-/// Same contract as [`nros_executor_add_pre_shutdown_callback`].
+/// Same contract as [`rclc_executor_add_pre_shutdown_callback`].
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_add_on_shutdown_callback(
-    executor: *mut nros_executor_t,
-    callback: nros_shutdown_callback_t,
+pub unsafe extern "C" fn rclc_executor_add_on_shutdown_callback(
+    executor: *mut rclc_executor_t,
+    callback: rclc_shutdown_callback_t,
     context: *mut core::ffi::c_void,
-    out_handle: *mut nros_shutdown_callback_handle_t,
-) -> nros_ret_t {
+    out_handle: *mut rclc_shutdown_callback_handle_t,
+) -> rcl_ret_t {
     validate_not_null!(executor, out_handle);
     let Some(callback) = callback else {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     };
     let executor = &mut *executor;
     validate_state!(
         executor,
-        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
     let rust_exec = get_executor(&mut executor._opaque);
     match rust_exec.add_on_shutdown_callback(callback, context) {
         Ok(handle) => {
             *out_handle = handle.0;
-            NROS_RET_OK
+            RCL_RET_OK
         }
         Err(_) => {
-            *out_handle = NROS_SHUTDOWN_CALLBACK_HANDLE_INVALID;
-            NROS_RET_FULL
+            *out_handle = RCLC_SHUTDOWN_CALLBACK_HANDLE_INVALID;
+            RCLC_RET_FULL
         }
     }
 }
 
 /// Remove a previously registered pre-shutdown callback.
 ///
-/// Returns `NROS_RET_OK` when `handle` named a live hook, `NROS_RET_NOT_FOUND`
+/// Returns `RCL_RET_OK` when `handle` named a live hook, `RCLC_RET_NOT_FOUND`
 /// when it did not — including a handle that was already removed, and a handle
-/// issued by `nros_executor_add_on_shutdown_callback` (the phase is part of the
+/// issued by `rclc_executor_add_on_shutdown_callback` (the phase is part of the
 /// handle, so it cannot cross over and remove the wrong hook).
 ///
 /// # Safety
 /// `executor` must be a valid pointer to an initialized executor.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_remove_pre_shutdown_callback(
-    executor: *mut nros_executor_t,
-    handle: nros_shutdown_callback_handle_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_executor_remove_pre_shutdown_callback(
+    executor: *mut rclc_executor_t,
+    handle: rclc_shutdown_callback_handle_t,
+) -> rcl_ret_t {
     validate_not_null!(executor);
     let executor = &mut *executor;
     validate_state!(
         executor,
-        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
     let rust_exec = get_executor(&mut executor._opaque);
     if rust_exec.remove_pre_shutdown_callback(nros_node::ShutdownCallbackHandle(handle)) {
-        NROS_RET_OK
+        RCL_RET_OK
     } else {
-        NROS_RET_NOT_FOUND
+        RCLC_RET_NOT_FOUND
     }
 }
 
 /// Remove a previously registered on-shutdown callback.
-/// See [`nros_executor_remove_pre_shutdown_callback`].
+/// See [`rclc_executor_remove_pre_shutdown_callback`].
 ///
 /// # Safety
 /// `executor` must be a valid pointer to an initialized executor.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_remove_on_shutdown_callback(
-    executor: *mut nros_executor_t,
-    handle: nros_shutdown_callback_handle_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_executor_remove_on_shutdown_callback(
+    executor: *mut rclc_executor_t,
+    handle: rclc_shutdown_callback_handle_t,
+) -> rcl_ret_t {
     validate_not_null!(executor);
     let executor = &mut *executor;
     validate_state!(
         executor,
-        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
     let rust_exec = get_executor(&mut executor._opaque);
     if rust_exec.remove_on_shutdown_callback(nros_node::ShutdownCallbackHandle(handle)) {
-        NROS_RET_OK
+        RCL_RET_OK
     } else {
-        NROS_RET_NOT_FOUND
+        RCLC_RET_NOT_FOUND
     }
 }
 
@@ -4685,7 +4685,7 @@ pub unsafe extern "C" fn nros_executor_remove_on_shutdown_callback(
 mod tests {
     use super::*;
 
-    /// Stand-in for a registered C entity (`nros_subscription_t`, …). Only its
+    /// Stand-in for a registered C entity (`rcl_subscription_t`, …). Only its
     /// ADDRESS is ever compared, but the payload is deliberately a `usize` that
     /// looks like a plausible handle index: the pre-phase-417
     /// `rclc_executor_trigger_one` read exactly this word and used it as one.
@@ -4700,15 +4700,15 @@ mod tests {
     fn handle(
         entity: *mut core::ffi::c_void,
         data_available: bool,
-    ) -> nros_executor_trigger_handle_t {
-        nros_executor_trigger_handle_t {
+    ) -> rclc_executor_trigger_handle_t {
+        rclc_executor_trigger_handle_t {
             entity,
             data_available,
         }
     }
 
     /// An empty handle array, spelled once so the `[]` has a type.
-    const NO_HANDLES: [nros_executor_trigger_handle_t; 0] = [];
+    const NO_HANDLES: [rclc_executor_trigger_handle_t; 0] = [];
 
     #[test]
     fn trigger_any_fires_when_one_handle_has_data() {
@@ -4887,27 +4887,27 @@ mod tests {
             // A fresh binding per case: the index is read through a raw
             // pointer, which the unused-assignment lint cannot see.
             let mut ready_slot: usize = 1;
-            assert!(nros_executor_trigger_index(
+            assert!(rclc_executor_trigger_index(
                 h.as_ptr(),
                 h.len(),
                 &mut ready_slot as *mut usize as *mut core::ffi::c_void,
             ));
 
             let mut idle_slot: usize = 0;
-            assert!(!nros_executor_trigger_index(
+            assert!(!rclc_executor_trigger_index(
                 h.as_ptr(),
                 h.len(),
                 &mut idle_slot as *mut usize as *mut core::ffi::c_void,
             ));
 
             let mut out_of_range: usize = 10;
-            assert!(!nros_executor_trigger_index(
+            assert!(!rclc_executor_trigger_index(
                 h.as_ptr(),
                 h.len(),
                 &mut out_of_range as *mut usize as *mut core::ffi::c_void,
             ));
 
-            assert!(!nros_executor_trigger_index(
+            assert!(!rclc_executor_trigger_index(
                 h.as_ptr(),
                 h.len(),
                 ptr::null_mut()
@@ -4917,12 +4917,12 @@ mod tests {
 
     /// phase-417 stage 3 / ledger row `c:executor_spin_some`. rclc discards
     /// `rcl_wait`'s `RCL_RET_TIMEOUT`, so a cycle that did nothing is still OK;
-    /// ours returned `NROS_RET_TIMEOUT` and broke the ported
+    /// ours returned `RCL_RET_TIMEOUT` and broke the ported
     /// `if (rclc_executor_spin_some(...) != RCL_RET_OK) error();`.
     #[test]
     fn spin_some_returns_ok_for_an_idle_cycle() {
-        assert_eq!(spin_cycle_ret(false), NROS_RET_OK);
-        assert_eq!(spin_cycle_ret(true), NROS_RET_OK);
+        assert_eq!(spin_cycle_ret(false), RCL_RET_OK);
+        assert_eq!(spin_cycle_ret(true), RCL_RET_OK);
     }
 
     /// phase-417 stage 3 / ledger rows `c:executor_spin_period` +
@@ -4950,15 +4950,15 @@ mod tests {
     fn executor_fini_is_idempotent() {
         unsafe {
             let mut executor = rclc_executor_get_zero_initialized_executor();
-            assert_eq!(rclc_executor_fini(&mut executor), NROS_RET_OK);
+            assert_eq!(rclc_executor_fini(&mut executor), RCL_RET_OK);
             // And again, now that the state says SHUTDOWN — the old guard let
             // this reach `drop_in_place` on zeroed storage.
-            executor.state = nros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN;
-            assert_eq!(rclc_executor_fini(&mut executor), NROS_RET_OK);
+            executor.state = rclc_executor_state_t::RCLC_EXECUTOR_STATE_SHUTDOWN;
+            assert_eq!(rclc_executor_fini(&mut executor), RCL_RET_OK);
 
             assert_eq!(
                 rclc_executor_fini(ptr::null_mut()),
-                NROS_RET_INVALID_ARGUMENT,
+                RCL_RET_INVALID_ARGUMENT,
                 "a NULL handle is still an argument error, as in rcl"
             );
         }
@@ -4974,7 +4974,7 @@ mod tests {
                 Some(rclc_executor_trigger_all),
                 ptr::null_mut(),
             );
-            assert_eq!(ret, NROS_RET_NOT_INIT);
+            assert_eq!(ret, RCL_RET_NOT_INIT);
         }
     }
 
@@ -4986,7 +4986,7 @@ mod tests {
                 Some(rclc_executor_trigger_all),
                 ptr::null_mut(),
             );
-            assert_eq!(ret, NROS_RET_INVALID_ARGUMENT);
+            assert_eq!(ret, RCL_RET_INVALID_ARGUMENT);
         }
     }
 
@@ -4995,22 +4995,22 @@ mod tests {
         unsafe {
             // Manually initialize (no real session needed for semantics test)
             let mut executor = rclc_executor_get_zero_initialized_executor();
-            executor.state = nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED;
+            executor.state = rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED;
             executor.max_handles = 4;
 
             assert_eq!(
                 executor.semantics,
-                nros_executor_semantics_t::NROS_SEMANTICS_RCLCPP_EXECUTOR
+                rclc_executor_semantics_t::RCLC_SEMANTICS_RCLCPP_EXECUTOR
             );
 
             let ret = rclc_executor_set_semantics(
                 &mut executor,
-                nros_executor_semantics_t::NROS_SEMANTICS_RCLCPP_EXECUTOR,
+                rclc_executor_semantics_t::RCLC_SEMANTICS_RCLCPP_EXECUTOR,
             );
-            assert_eq!(ret, NROS_RET_OK);
+            assert_eq!(ret, RCL_RET_OK);
             assert_eq!(
                 executor.semantics,
-                nros_executor_semantics_t::NROS_SEMANTICS_RCLCPP_EXECUTOR
+                rclc_executor_semantics_t::RCLC_SEMANTICS_RCLCPP_EXECUTOR
             );
         }
     }
@@ -5020,17 +5020,17 @@ mod tests {
         unsafe {
             // Manually initialize (no real session needed for semantics test)
             let mut executor = rclc_executor_get_zero_initialized_executor();
-            executor.state = nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED;
+            executor.state = rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED;
             executor.max_handles = 4;
 
             let ret = rclc_executor_set_semantics(
                 &mut executor,
-                nros_executor_semantics_t::NROS_SEMANTICS_LOGICAL_EXECUTION_TIME,
+                rclc_executor_semantics_t::RCLC_SEMANTICS_LOGICAL_EXECUTION_TIME,
             );
-            assert_eq!(ret, NROS_RET_OK);
+            assert_eq!(ret, RCL_RET_OK);
             assert_eq!(
                 executor.semantics,
-                nros_executor_semantics_t::NROS_SEMANTICS_LOGICAL_EXECUTION_TIME
+                rclc_executor_semantics_t::RCLC_SEMANTICS_LOGICAL_EXECUTION_TIME
             );
         }
     }
@@ -5042,9 +5042,9 @@ mod tests {
 
             let ret = rclc_executor_set_semantics(
                 &mut executor,
-                nros_executor_semantics_t::NROS_SEMANTICS_LOGICAL_EXECUTION_TIME,
+                rclc_executor_semantics_t::RCLC_SEMANTICS_LOGICAL_EXECUTION_TIME,
             );
-            assert_eq!(ret, NROS_RET_NOT_INIT);
+            assert_eq!(ret, RCL_RET_NOT_INIT);
         }
     }
 
@@ -5052,7 +5052,7 @@ mod tests {
     fn test_spin_one_period_null() {
         unsafe {
             let ret = rclc_executor_spin_one_period(ptr::null_mut(), 10_000_000);
-            assert_eq!(ret, NROS_RET_INVALID_ARGUMENT);
+            assert_eq!(ret, RCL_RET_INVALID_ARGUMENT);
         }
     }
 
@@ -5061,7 +5061,7 @@ mod tests {
         unsafe {
             let mut executor = rclc_executor_get_zero_initialized_executor();
             let ret = rclc_executor_spin_one_period(&mut executor, 0);
-            assert_eq!(ret, NROS_RET_INVALID_ARGUMENT);
+            assert_eq!(ret, RCL_RET_INVALID_ARGUMENT);
         }
     }
 
@@ -5070,7 +5070,7 @@ mod tests {
         unsafe {
             let mut executor = rclc_executor_get_zero_initialized_executor();
             let ret = rclc_executor_spin_one_period(&mut executor, 10_000_000);
-            assert_eq!(ret, NROS_RET_NOT_INIT);
+            assert_eq!(ret, RCL_RET_NOT_INIT);
         }
     }
 
@@ -5078,7 +5078,7 @@ mod tests {
     fn test_spin_period_null() {
         unsafe {
             let ret = rclc_executor_spin_period(ptr::null_mut(), 10_000_000);
-            assert_eq!(ret, NROS_RET_INVALID_ARGUMENT);
+            assert_eq!(ret, RCL_RET_INVALID_ARGUMENT);
         }
     }
 
@@ -5087,7 +5087,7 @@ mod tests {
         unsafe {
             let mut executor = rclc_executor_get_zero_initialized_executor();
             let ret = rclc_executor_spin_period(&mut executor, 0);
-            assert_eq!(ret, NROS_RET_INVALID_ARGUMENT);
+            assert_eq!(ret, RCL_RET_INVALID_ARGUMENT);
         }
     }
 
@@ -5108,7 +5108,7 @@ mod tests {
     #[test]
     fn test_remaining_handles_null() {
         unsafe {
-            assert_eq!(nros_executor_get_remaining_handles(ptr::null()), -1);
+            assert_eq!(rclc_executor_get_remaining_handles(ptr::null()), -1);
         }
     }
 
@@ -5116,11 +5116,11 @@ mod tests {
     fn test_remaining_capacity_initial() {
         unsafe {
             let mut executor = rclc_executor_get_zero_initialized_executor();
-            executor.state = nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED;
+            executor.state = rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED;
             executor.max_handles = NROS_EXECUTOR_MAX_HANDLES;
 
             assert_eq!(
-                nros_executor_get_remaining_handles(&executor),
+                rclc_executor_get_remaining_handles(&executor),
                 NROS_EXECUTOR_MAX_HANDLES as c_int
             );
         }

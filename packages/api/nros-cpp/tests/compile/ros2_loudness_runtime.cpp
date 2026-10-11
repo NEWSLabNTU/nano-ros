@@ -19,7 +19,7 @@
 //    it. The SIGNATURE half (the no-argument form) is
 //    `ros2_refuse_unbounded_spin_probe.cpp`.
 //
-// Links `libnros_cpp.a` because it must: `nros_log_add_sink` and the dispatcher
+// Links `libnros_cpp.a` because it must: `rclc_log_add_sink` and the dispatcher
 // behind `NROS_LOG_*` are the real thing, not a stub. A sink is the only
 // observer that can tell "the record reached nros_log at FATAL" from "something
 // printed to stderr", which is precisely the distinction issue 1019 is about.
@@ -37,7 +37,7 @@
 namespace {
 
 struct Record {
-    nros_log_severity_t severity;
+    rcl_log_severity_t severity;
     char logger[64];
     char message[2048];
     bool used;
@@ -53,7 +53,7 @@ void copy_bounded(char* dst, size_t dst_len, const char* src, size_t src_len) {
     dst[n] = '\0';
 }
 
-extern "C" void capture_sink(void* user_data, nros_log_severity_t severity, const char* logger_name,
+extern "C" void capture_sink(void* user_data, rcl_log_severity_t severity, const char* logger_name,
                              size_t logger_name_len, const char* message, size_t message_len,
                              const char* file, size_t file_len, uint32_t line,
                              uint64_t timestamp_ns) {
@@ -80,7 +80,7 @@ void check(bool cond, const char* what) {
 }
 
 /// Did any captured record carry `needle` at exactly `severity`?
-bool saw(nros_log_severity_t severity, const char* needle) {
+bool saw(rcl_log_severity_t severity, const char* needle) {
     for (size_t i = 0; i < g_count; ++i) {
         if (g_records[i].severity == severity &&
             ::strstr(g_records[i].message, needle) != nullptr) {
@@ -110,8 +110,8 @@ bool saw_from(const char* logger, const char* needle) {
 extern "C" void nros_app_register_backends(void) {}
 
 int main() {
-    if (!nros_log_add_sink(&capture_sink, nullptr)) {
-        ::std::fprintf(stderr, "FAIL: nros_log_add_sink refused the sink; nothing below can be "
+    if (!rclc_log_add_sink(&capture_sink, nullptr)) {
+        ::std::fprintf(stderr, "FAIL: rclc_log_add_sink refused the sink; nothing below can be "
                                "measured, so this is a failure and not a skip\n");
         return 1;
     }
@@ -121,7 +121,7 @@ int main() {
     // A NAMED logger, because the name is half the defect: the family cast the
     // logger to void, so `rclcpp::get_logger("planner")` selected nothing.
     rclcpp::Logger logger = rclcpp::get_logger("loudness_probe");
-    nros_logger_set_level(static_cast<const void*>(logger), NROS_LOG_SEVERITY_TRACE);
+    rclc_logger_set_level(static_cast<const void*>(logger), RCLC_LOG_SEVERITY_TRACE);
 
     RCLCPP_INFO(logger, "info-marker %d", 1);
     RCLCPP_WARN(logger, "warn-marker %d", 2);
@@ -129,18 +129,18 @@ int main() {
     RCLCPP_FATAL(logger, "fatal-marker %d", 4);
     RCLCPP_DEBUG(logger, "debug-marker %d", 5);
 
-    check(saw(NROS_LOG_SEVERITY_INFO, "info-marker 1"),
+    check(saw(RCLC_LOG_SEVERITY_INFO, "info-marker 1"),
           "RCLCPP_INFO must reach nros_log at INFO with its message");
-    check(saw(NROS_LOG_SEVERITY_WARN, "warn-marker 2"),
+    check(saw(RCLC_LOG_SEVERITY_WARN, "warn-marker 2"),
           "RCLCPP_WARN must reach nros_log at WARN with its message");
-    check(saw(NROS_LOG_SEVERITY_ERROR, "error-marker 3"),
+    check(saw(RCLC_LOG_SEVERITY_ERROR, "error-marker 3"),
           "RCLCPP_ERROR must reach nros_log at ERROR with its message");
     // The row itself: FATAL is a DISTINCT severity and must not lower to ERROR.
-    check(saw(NROS_LOG_SEVERITY_FATAL, "fatal-marker 4"),
-          "RCLCPP_FATAL must emit at NROS_LOG_SEVERITY_FATAL, not lower to ERROR");
-    check(!saw(NROS_LOG_SEVERITY_ERROR, "fatal-marker 4"),
+    check(saw(RCLC_LOG_SEVERITY_FATAL, "fatal-marker 4"),
+          "RCLCPP_FATAL must emit at RCLC_LOG_SEVERITY_FATAL, not lower to ERROR");
+    check(!saw(RCLC_LOG_SEVERITY_ERROR, "fatal-marker 4"),
           "RCLCPP_FATAL must not ALSO appear at ERROR");
-    check(saw(NROS_LOG_SEVERITY_DEBUG, "debug-marker 5"),
+    check(saw(RCLC_LOG_SEVERITY_DEBUG, "debug-marker 5"),
           "RCLCPP_DEBUG must reach nros_log at DEBUG");
 
     // The logger is CARRIED, not discarded — issue 1019 defect 3.
@@ -152,13 +152,13 @@ int main() {
     // handle would have swapped one silent drop for another.
     rclcpp::Logger anonymous;
     RCLCPP_ERROR(anonymous, "anonymous-marker %d", 6);
-    check(saw(NROS_LOG_SEVERITY_ERROR, "anonymous-marker 6"),
+    check(saw(RCLC_LOG_SEVERITY_ERROR, "anonymous-marker 6"),
           "a Logger with a null handle must fall back to the catch-all logger, not drop");
 
 #if defined(NROS_CPP_HAS_STD_SSTREAM)
     // issue 1019 defect 2 — the stream family used to expand to `"%s", ""`.
     RCLCPP_FATAL_STREAM(logger, "stream-marker " << 7);
-    check(saw(NROS_LOG_SEVERITY_FATAL, "stream-marker 7"),
+    check(saw(RCLC_LOG_SEVERITY_FATAL, "stream-marker 7"),
           "RCLCPP_FATAL_STREAM must carry its message at FATAL");
 #endif
 

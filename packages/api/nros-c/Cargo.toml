@@ -77,15 +77,15 @@ rmw-cffi = ["nros/rmw-cffi"]
 # C/C++ API. Forwards to the `nros` umbrella (the CFFI integrity machinery +
 # `IntegrityStatus`) AND the zenoh backend's own `safety-e2e` (the CRC attach on
 # publish + validate on receive — `nros/safety-e2e` does not reach the backend;
-# Cargo features don't propagate upward). Surfaces `nros_integrity_status_t` +
-# `nros_polling_subscription_take_validated` across the C ABI. zenoh-only (the only
+# Cargo features don't propagate upward). Surfaces `rclc_integrity_status_t` +
+# `rclc_polling_subscription_take_validated` across the C ABI. zenoh-only (the only
 # backend with the CRC path); `?` keeps it inert when zenoh isn't selected.
 safety-e2e = ["nros/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]
 
 
 # Phase 124.A — opt in to the zero-copy publisher loan / subscriber
-# borrow surface (`nros_publisher_loan` / `_commit` / `_discard` /
-# `nros_polling_subscription_borrow` / `_release`). Threads the
+# borrow surface (`rclc_publisher_loan` / `_commit` / `_discard` /
+# `rclc_polling_subscription_borrow` / `_release`). Threads the
 # `nros-rmw-cffi/lending` cargo bound through.
 lending = ["rmw-cffi", "nros/lending"]
 
@@ -100,7 +100,7 @@ trace-callbacks = ["nros/trace-callbacks"]
 # Phase 123.A.11 — `cffi-xrce-c` / `cffi-dds-cffi` / `cffi-zenoh-cffi`
 # DELETED. They previously selected which `extern fn
 # nros_rmw_<x>_register()` call site got compiled into
-# `nros_support_init`. The auto-register pattern in each backend's
+# `rclc_support_init`. The auto-register pattern in each backend's
 # wrapper staticlib makes nros-c truly RMW-agnostic — one
 # `libnros_c.a` per target triple covers every backend.
 #
@@ -191,7 +191,7 @@ critical-section = ["dep:critical-section"]
 # phase-417 W4.d — every platform arm activates `nros-log/platform-clock`,
 # because a linked port is exactly the condition under which
 # `nros_platform_clock_ns` resolves. Without it `nros_log_*` records carry
-# `timestamp_ns: 0` and `nros_log_throttle_admit` has no time base — a stuck
+# `timestamp_ns: 0` and `rclc_log_throttle_admit` has no time base — a stuck
 # clock is a window that never elapses, so a 200 ms window admits the FIRST
 # record and then none (issue 1152; before it the same constant admitted EVERY
 # record: measured 40 of 40 without, 5 of 40 with).
@@ -333,7 +333,7 @@ panic-platform = []
 # Opt-in instrumentation of the RTOS Rust global allocator (FreeRTOS
 # pvPortMalloc / ThreadX z_malloc / Zephyr k_malloc). Tracks used/peak
 # bytes routed through the Rust `#[global_allocator]` and exposes them via
-# `nros_heap_used_bytes()` / `nros_heap_peak_bytes()`. NOTE: counts only the
+# `rclc_heap_used_bytes()` / `rclc_heap_peak_bytes()`. NOTE: counts only the
 # Rust allocator's footprint — zenoh-pico's direct C-side z_malloc/pvPortMalloc
 # traffic is not included (see issue #6).
 # phase-361 W8.c — the counter moved to `nros-platform` with the allocator it
@@ -348,13 +348,13 @@ alloc-stats = ["nros-platform/alloc-stats"]
 param-services = ["nros/param-services", "nros-node/param-services"]
 
 # Expose ROS 2 lifecycle services (~/change_state, ~/get_state, etc. — REP-2002)
-# via `nros_executor_register_lifecycle_services`. Requires alloc for boxed
+# via `rclc_executor_register_lifecycle_services`. Requires alloc for boxed
 # service responses.
 lifecycle-services = ["nros/lifecycle-services", "nros-node/lifecycle-services"]
 
 # issue 1589 — the `/rosout` bridge from C (`nros_rosout_*`, declared in
 # `<nros/log.h>`). Pulls code in and nothing else: without it every symbol
-# still links and answers `NROS_RET_UNSUPPORTED` / `false`. Chosen per image by
+# still links and answers `RCL_RET_UNSUPPORTED` / `false`. Chosen per image by
 # the `rosout` capability axis (`[system].features`), not named by hand.
 rosout = ["nros/rosout", "nros-node/rosout"]
 
@@ -386,7 +386,7 @@ nros-rmw-metadata = { path = "../../rmw/metadata", optional = true }
 # Phase 248 C5c — platform impl + the `nros_platform_*` cffi symbols come from
 # here (via the `platform-X` features above), not the agnostic `nros` umbrella.
 nros-platform = { workspace = true, default-features = false }
-# Phase 88.12 — `nros_node_get_logger` returns a `&'static nros_log::Logger`
+# Phase 88.12 — `rclc_node_get_logger` returns a `&'static nros_log::Logger`
 # resolved via the facade's intern table.
 # phase-417 W4.d — NOT `features = ["platform-clock"]` here, deliberately.
 # Cargo unifies features across a workspace build, so turning it on at the

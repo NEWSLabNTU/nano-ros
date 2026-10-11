@@ -13,7 +13,7 @@ REP-2012 style: rcutils's five levels in rcutils's order, plus `Trace`. The
 numbers are NOT `rcutils_log_severity_t`'s (`UNSET=0, DEBUG=10 … FATAL=50`)
 and there is no `Unset` level — in Rust a logger's "no level of its own" state
 is `Logger::unset_level()`, and `Logger::set_default_level` takes a `Severity`
-(pass `Info` where rclrs passes `Unset`). The C surface's `nros_log_severity_t`
+(pass `Info` where rclrs passes `Unset`). The C surface's `rcl_log_severity_t`
 does use rcutils's numbers, `UNSET` included.
 
 | Severity | u8 | When to use |
@@ -63,15 +63,15 @@ log_info!(node.logger(), "subscribed to {}", topic);
 #include <nros/log.h>
 
 int main(void) {
-    nros_support_t support = nros_support_get_zero_initialized();
-    nros_support_init(&support, "tcp/127.0.0.1:7447", 0);
+    rclc_support_t support = rclc_support_get_zero_initialized();
+    rclc_support_init(&support, "tcp/127.0.0.1:7447", 0);
 
-    nros_node_t node = rcl_get_zero_initialized_node();
+    rcl_node_t node = rcl_get_zero_initialized_node();
     rclc_node_init_default(&node, "my_node", "/", &support);
 
-    nros_logger_t logger = nros_node_get_logger(&node);
-    NROS_LOG_INFO(logger, "started; domain=%u", 42);
-    NROS_LOG_WARN(logger, "queue depth %u exceeds soft limit", 5);
+    rclc_logger_t logger = rclc_node_get_logger(&node);
+    RCLC_LOG_INFO(logger, "started; domain=%u", 42);
+    RCLC_LOG_WARN(logger, "queue depth %u exceeds soft limit", 5);
 
     rcl_node_fini(&node);
     rclc_support_fini(&support);
@@ -92,8 +92,8 @@ int main() {
     rclcpp::create_node(node, "my_node");
 
     auto logger = node.get_logger();
-    NROS_LOG_INFO(logger, "started; domain=%u", 42);
-    NROS_LOG_WARN(logger, "queue depth %u exceeds soft limit", 5);
+    RCLC_LOG_INFO(logger, "started; domain=%u", 42);
+    RCLC_LOG_WARN(logger, "queue depth %u exceeds soft limit", 5);
 
     rclcpp::shutdown_in();
     return 0;
@@ -151,7 +151,7 @@ Environment / `[image.<id>] env` beats Kconfig beats the board; `nros config
 explain` prints which rung decided it. A Rust `nros_*!` call below the ceiling
 folds to a constant-false branch and its format call is dead-code-eliminated.
 C and C++ records — formatted on the C side — are refused by the same check
-in the facade (`nros_logger_is_enabled` answers `false` below the ceiling).
+in the facade (`rclc_logger_is_enabled` answers `false` below the ceiling).
 
 The ceiling is a BOUND, not the runtime level: the per-logger threshold below
 still moves freely above it, and a threshold below it is unreachable. rcutils
@@ -187,9 +187,9 @@ Logger::new("my_node")` compiled into the image follows it — and it never
 overrides a logger that states its own level, so `Logger::with_level(name,
 Severity::Info)` keeps `Info` whatever the default becomes.
 
-From C, the same three verbs are `nros_log_set_default_level`,
-`nros_log_get_default_level`, and `nros_logger_set_level(logger,
-NROS_LOG_SEVERITY_UNSET)` — which UNSETS the level rather than selecting a
+From C, the same three verbs are `rclc_log_set_default_level`,
+`rclc_log_get_default_level`, and `rclc_logger_set_level(logger,
+RCLC_LOG_SEVERITY_UNSET)` — which UNSETS the level rather than selecting a
 value, exactly as `rcutils_logging_set_logger_level(name,
 RCUTILS_LOG_SEVERITY_UNSET)` does. C++ spells the last one
 `logger.set_level(rclcpp::Logger::Level::Unset)`.
@@ -212,7 +212,7 @@ auto planner = node->get_logger().get_child("planner");   // C++
 ```
 
 ```c
-nros_logger_t planner = nros_logger_get_child(node_log, "planner");   /* C */
+rclc_logger_t planner = rclc_logger_get_child(node_log, "planner");   /* C */
 ```
 
 A child with its own level keeps it; `unset_level()` hands it back to the
@@ -227,7 +227,7 @@ a bounded arena. When a child cannot be made:
 
 - Rust's `create_child` returns `Err(ChildError::{NameTooLong, EmptyName,
   ArenaFull})`, as rclrs's is fallible too;
-- C's `nros_logger_get_child` returns `NULL` and warns once;
+- C's `rclc_logger_get_child` returns `NULL` and warns once;
 - C++'s `get_child`, whose upstream shape cannot fail, **emits through the
   parent** (records carry the parent's name and level) and **refuses
   `set_level`**, so it can never move the parent's threshold. `get_name()`
@@ -292,7 +292,7 @@ filter.
   `nros_platform_log_write` / `nros_platform_log_flush` /
   `nros_platform_register_log_writer` ABI.
 - `packages/api/nros-c/include/nros/log.h` — C API surface
-  (`NROS_LOG_*` macros + `nros_log_emit_fmt`).
+  (`NROS_LOG_*` macros + `rclc_log_emit_fmt`).
 - `packages/api/nros-cpp/include/nros/log.hpp` — C++ macros (the
   legacy `NROS_INFO` / etc. file:line printf surface stays
   alongside the new `NROS_LOG_*` macros).
@@ -325,12 +325,12 @@ loop {
 C (`<nros/rosout.h>`):
 
 ```c
-nros_publisher_t rosout = rcl_get_zero_initialized_publisher();
-nros_rosout_publisher_init(&rosout, &node, NULL);   /* NULL = bounded QoS */
-nros_rosout_enable();
+rcl_publisher_t rosout = rcl_get_zero_initialized_publisher();
+rclc_rosout_publisher_init(&rosout, &node, NULL);   /* NULL = bounded QoS */
+rclc_rosout_enable();
 for (;;) {
     rclc_executor_spin_some(&executor, 10000000);
-    nros_rosout_pump(&rosout, NULL);
+    rclc_rosout_pump(&rosout, NULL);
 }
 ```
 
@@ -347,7 +347,7 @@ for (;;) {
 ```
 
 All three share one encoder, so the records are identical. Without the
-capability the C and C++ entry points still link: `nros_logging_rosout_enabled()`
+capability the C and C++ entry points still link: `rcl_logging_rosout_enabled()`
 / `nros::rosout::enabled()` answer `false` and the rest answer UNSUPPORTED.
 `rclcpp::NodeOptions::enable_rosout(true)` still refuses to compile; "It is
 not automatic" below says why the publisher is yours to create.

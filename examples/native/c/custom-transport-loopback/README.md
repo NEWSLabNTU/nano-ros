@@ -2,7 +2,7 @@
 
 Pure-C demonstration of the runtime-pluggable transport vtable
 (`nros_transport_ops_t`). The example installs a ring-buffer-backed
-transport via `nros_set_custom_transport`, opens an nros session
+transport via `rclc_set_custom_transport`, opens an nros session
 over `custom://loopback`, and exercises the four callbacks (`open`,
 `close`, `write`, `read`) end-to-end. Exits non-zero if any of the
 four never fires.
@@ -40,13 +40,13 @@ Process exit code is `0` when every callback fired at least once.
 
 ## What this proves
 
-* `nros_set_custom_transport(&ops)` with the V1 `abi_version`
-  returns `NROS_RET_OK`.
+* `rclc_set_custom_transport(&ops)` with the V1 `abi_version`
+  returns `RCL_RET_OK`.
 * Session bring-up calls `open` exactly once.
 * Every publish drives `write`.
 * The executor's spin tick polls `read` (returns 0 when the
   ring is empty, the byte count when there's a frame).
-* Teardown drives `close` via `nros_set_custom_transport(NULL)`.
+* Teardown drives `close` via `rclc_set_custom_transport(NULL)`.
 
 ## Threading contract
 

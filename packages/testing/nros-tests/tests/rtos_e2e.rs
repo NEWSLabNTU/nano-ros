@@ -653,7 +653,7 @@ fn build_pair(platform: Platform, lang: Lang, variant: Variant) -> (&'static Pat
 /// A request/response client asks ONCE and gives up. Started alongside the
 /// server, the NuttX C action client reaches `Sending goal` while the server's
 /// queryable is not yet declared, and the deadline that expires is the app's
-/// OWN — `Failed to send goal: -2` (`NROS_RET_TIMEOUT`), 3/3, solo, which no
+/// OWN — `Failed to send goal: -2` (`RCL_RET_TIMEOUT`), 3/3, solo, which no
 /// test-side budget can move (issue 0867). Booted by hand with the client
 /// started after the server's banner, the same two images complete
 /// goal -> accept -> feedback -> result every time.
@@ -709,7 +709,7 @@ fn boot_budget(platform: Platform) -> Duration {
 /// How many delivered samples the pub/sub cell requires before it is satisfied.
 ///
 /// Every talker example in the matrix runs a **1 Hz** timer (`TimerDuration::
-/// from_millis(1000)` in the Rust ones, `nros_timer_init(..., 1000000000ULL,
+/// from_millis(1000)` in the Rust ones, `rcl_timer_init(..., 1000000000ULL,
 /// ...)` in the C/C++ ones), so this number is also *how many seconds of
 /// SESSION LIFE the cell observes* — the property issue 1013 says a 15 s
 /// run-to-completion window did not have.
@@ -1310,7 +1310,7 @@ fn test_rtos_service_e2e(
     )
     .expect("Failed to start server/client");
 
-    // NuttX C service is slower: 4 nros_client_call round-trips over
+    // NuttX C service is slower: 4 rclc_client_call round-trips over
     // QEMU slirp + zenoh-pico TCP are routinely in the 40–60 s range,
     // and the first call can time out if the server queryable isn't
     // fully registered yet (cold-host runs). Give extra headroom.

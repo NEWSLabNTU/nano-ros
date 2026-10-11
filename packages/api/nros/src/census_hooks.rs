@@ -86,7 +86,7 @@ pub const CENSUS_SIZING: nros_node::ExecutorSizing = {
 /// An empty `#[inline]` body costs nothing, but its ARGUMENTS still do: a
 /// namespace read back from the executor, a `from_utf8` over the node name.
 /// LLVM keeps those, because it cannot prove a lookup or a validation loop is
-/// free of effects -- measured: 48 bytes of `nros_node_init_ex` in every
+/// free of effects -- measured: 48 bytes of `rclc_node_init_ex` in every
 /// NuttX C image with the hook "off". A call site whose arguments do work
 /// computes them under `if ACTIVE`, a constant, so the whole block folds away
 /// and the call is still there for `check-census-hooks-complete` to see.
@@ -220,7 +220,7 @@ pub fn on_param_declare(_name: &str, _value: &crate::ParameterValue) {
 }
 
 /// The node an executor-side entity is attributed to when the code created it
-/// before ANY node — legal in C (`nros_timer_init` takes only a support
+/// before ANY node — legal in C (`rcl_timer_init` takes only a support
 /// context, and `nros-c`'s own `timer_clock_source.c` run test does exactly
 /// that). Recording it under a named scope keeps the slot in the count and
 /// makes the census say plainly that no node owns it; failing would turn a

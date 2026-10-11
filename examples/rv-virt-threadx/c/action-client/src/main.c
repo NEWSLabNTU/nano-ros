@@ -22,10 +22,10 @@
 // ----------------------------------------------------------------------------
 
 static struct {
-    nros_support_t support;
-    nros_node_t node;
-    nros_action_client_t action_client;
-    nros_executor_t executor;
+    rclc_support_t support;
+    rcl_node_t node;
+    rcl_action_client_t action_client;
+    rclc_executor_t executor;
 } app;
 
 static volatile sig_atomic_t g_running = 1;
@@ -52,7 +52,7 @@ static void print_sequence(const example_interfaces_action_fibonacci_feedback* f
 // Feedback callback
 // ----------------------------------------------------------------------------
 
-static void feedback_callback(const nros_goal_uuid_t* goal_uuid, const uint8_t* feedback,
+static void feedback_callback(const rclc_goal_uuid_t* goal_uuid, const uint8_t* feedback,
                               size_t feedback_len, void* context) {
     (void)goal_uuid;
     (void)context;
@@ -75,7 +75,7 @@ static void feedback_callback(const nros_goal_uuid_t* goal_uuid, const uint8_t* 
 
 static int g_result_received = 0;
 
-static void result_callback(const nros_goal_uuid_t* goal_uuid, nros_goal_status_t status,
+static void result_callback(const rclc_goal_uuid_t* goal_uuid, rclc_goal_status_t status,
                             const uint8_t* result, size_t result_len, void* context) {
     (void)goal_uuid;
     (void)status;
@@ -122,7 +122,7 @@ int nros_app_main(int argc, char** argv) {
     memset(&app, 0, sizeof(app));
 
     // Build action type info using generated type name/hash
-    nros_action_type_t fibonacci_type = {
+    rclc_action_type_t fibonacci_type = {
         .type_name = example_interfaces_action_fibonacci_get_type_name(),
         .type_hash = example_interfaces_action_fibonacci_get_type_hash(),
         .goal_serialized_size_max = 8,
@@ -130,24 +130,24 @@ int nros_app_main(int argc, char** argv) {
         .feedback_serialized_size_max = 264,
     };
 
-    NROS_CHECK_RET(nros_support_init(&app.support, locator, domain_id), 1);
+    RCLC_CHECK_RET(rclc_support_init(&app.support, locator, domain_id), 1);
     printf("Support initialized\n");
-    NROS_CHECK_RET(rclc_node_init_default(&app.node, "fibonacci_action_client", "/", &app.support),
+    RCLC_CHECK_RET(rclc_node_init_default(&app.node, "fibonacci_action_client", "/", &app.support),
                    1);
     printf("Node created: %s\n", rcl_node_get_name(&app.node));
 
-    NROS_CHECK_RET(
-        nros_action_client_init(&app.action_client, &app.node, "/fibonacci", &fibonacci_type), 1);
+    RCLC_CHECK_RET(
+        rcl_action_client_init(&app.action_client, &app.node, "/fibonacci", &fibonacci_type), 1);
     printf("Action client created: /fibonacci\n");
 
-    NROS_SOFTCHECK(
-        nros_action_client_set_feedback_callback(&app.action_client, feedback_callback, NULL));
-    NROS_SOFTCHECK(
-        nros_action_client_set_result_callback(&app.action_client, result_callback, NULL));
+    RCLC_SOFTCHECK(
+        rclc_action_client_set_feedback_callback(&app.action_client, feedback_callback, NULL));
+    RCLC_SOFTCHECK(
+        rclc_action_client_set_result_callback(&app.action_client, result_callback, NULL));
 
-    NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
-    NROS_CHECK_RET(nros_executor_add_action_client(&app.executor, &app.action_client), 1);
-    nros_ret_t ret = NROS_RET_OK;
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support, 4), 1);
+    RCLC_CHECK_RET(rclc_executor_add_action_client(&app.executor, &app.action_client), 1);
+    rcl_ret_t ret = RCL_RET_OK;
 
     // Warm-up: spin to allow Zenoh to discover the server's queryables
     for (int i = 0; i < 300; i++) {
@@ -181,11 +181,11 @@ int nros_app_main(int argc, char** argv) {
     // approximating: it probes the send-goal queryable's liveliness and
     // RE-probes until the budget expires, so a server that appears mid-wait is
     // still seen. Same shape as `rclcpp_action::Client::wait_for_action_server`.
-    ret = nros_action_client_wait_for_action_server(&app.action_client, &app.executor, 10000);
-    // issue 1686 — NROS_RET_UNSUPPORTED: this backend cannot see servers at
+    ret = rclc_action_client_wait_for_action_server(&app.action_client, &app.executor, 10000);
+    // issue 1686 — RCL_RET_UNSUPPORTED: this backend cannot see servers at
     // all (XRCE: the Agent owns the DDS graph), so the wait answered at once.
     // Send anyway; the request's own timeout is then the probe.
-    if (ret != NROS_RET_OK && ret != NROS_RET_UNSUPPORTED) {
+    if (ret != RCL_RET_OK && ret != RCL_RET_UNSUPPORTED) {
         fprintf(stderr, "Action server did not appear within 10s: %d\n", ret);
         fprintf(stderr, "(Is the action server running?)\n");
         goto cleanup;
@@ -193,17 +193,17 @@ int nros_app_main(int argc, char** argv) {
 
     printf("\nSending goal\n");
 
-    nros_goal_uuid_t goal_uuid;
-    ret = nros_action_send_goal(&app.action_client, &app.executor, goal_buf, goal_len, &goal_uuid);
+    rclc_goal_uuid_t goal_uuid;
+    ret = rclc_action_send_goal(&app.action_client, &app.executor, goal_buf, goal_len, &goal_uuid);
 
-    if (ret != NROS_RET_OK) {
+    if (ret != RCL_RET_OK) {
         // Issue 0868 — the C++ sibling printed "Goal was rejected by server"
         // for every non-OK code; this one was only vague. Both are fixable
-        // now that `nros_action_send_goal` distinguishes REJECTED (the server
+        // now that `rclc_action_send_goal` distinguishes REJECTED (the server
         // decided) from TIMEOUT (no answer) from ERROR (never sent).
-        if (ret == NROS_RET_REJECTED) {
+        if (ret == RCLC_RET_REJECTED) {
             fprintf(stderr, "Goal was rejected by server\n");
-        } else if (ret == NROS_RET_TIMEOUT) {
+        } else if (ret == RCL_RET_TIMEOUT) {
             fprintf(stderr, "No goal response from server: %d\n", ret);
             fprintf(stderr, "(Is the action server running?)\n");
         } else {
@@ -219,13 +219,13 @@ int nros_app_main(int argc, char** argv) {
     signal(SIGTERM, signal_handler);
 
     // Poll for result using get_result (blocking)
-    nros_goal_status_t final_status;
+    rclc_goal_status_t final_status;
     uint8_t result_buf[512];
     size_t result_len = 0;
-    ret = nros_action_get_result(&app.action_client, &app.executor, &goal_uuid, &final_status,
+    ret = rclc_action_get_result(&app.action_client, &app.executor, &goal_uuid, &final_status,
                                  result_buf, sizeof(result_buf), &result_len);
 
-    if (ret == NROS_RET_OK) {
+    if (ret == RCL_RET_OK) {
         example_interfaces_action_fibonacci_result result;
         if (example_interfaces_action_fibonacci_result_deserialize(&result, result_buf,
                                                                    result_len) == 0) {
@@ -238,7 +238,7 @@ int nros_app_main(int argc, char** argv) {
         } else {
             fprintf(stderr, "Failed to deserialize result\n");
         }
-    } else if (ret == NROS_RET_TIMEOUT) {
+    } else if (ret == RCL_RET_TIMEOUT) {
         fprintf(stderr, "Timeout waiting for result\n");
     } else {
         fprintf(stderr, "Failed to get result: %d\n", ret);
@@ -248,12 +248,12 @@ cleanup:
     // Cleanup
     printf("\nShutting down...\n");
     rclc_executor_fini(&app.executor);
-    nros_action_client_fini(&app.action_client);
+    rcl_action_client_fini(&app.action_client);
     rcl_node_fini(&app.node);
     rclc_support_fini(&app.support);
 
     printf("Goodbye!\n");
-    return (ret == NROS_RET_OK) ? 0 : 1;
+    return (ret == RCL_RET_OK) ? 0 : 1;
 }
 
 NROS_APP_MAIN_REGISTER()

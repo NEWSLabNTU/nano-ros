@@ -29,8 +29,8 @@ static void on_raw(const uint8_t* data, size_t len, void* ctx) {
     }
 }
 
-static nros_ret_t reading_listener_configure(const nros_cpp_node_t* node, void* executor,
-                                             reading_listener_t* self) {
+static rcl_ret_t reading_listener_configure(const nros_cpp_node_t* node, void* executor,
+                                            reading_listener_t* self) {
     (void)executor; /* node-scoped sub; executor unused */
     /* Line-buffer stdout so each `reading seq=` flushes immediately when piped
      * (an external test reads the output live; glibc block-buffers a pipe). */
@@ -39,7 +39,7 @@ static nros_ret_t reading_listener_configure(const nros_cpp_node_t* node, void* 
     size_t handle;
     int32_t rc =
         nros_cpp_subscription_register(node, "/reading", custom_msgs_msg_reading_get_type_name(),
-                                       "", nros_c_qos_default(), on_raw, self, &handle,
+                                       "", rclc_c_qos_default(), on_raw, self, &handle,
                                        /*options=*/NULL); /* phase-402: NULL = defaults */
     if (rc == 0) {
         printf("Waiting for messages\n");
@@ -47,4 +47,4 @@ static nros_ret_t reading_listener_configure(const nros_cpp_node_t* node, void* 
     return rc;
 }
 
-NROS_C_COMPONENT(reading_listener_t, reading_listener_configure)
+RCLC_C_COMPONENT(reading_listener_t, reading_listener_configure)

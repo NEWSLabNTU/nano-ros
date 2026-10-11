@@ -30,7 +30,7 @@ pub mod zpico;
 ///
 /// This is the single source of truth for the value. RMW-agnostic layers
 /// (`nros-node`'s boot-config resolver, `nros`'s env ladder, the C
-/// `nros_support_init` edge, the C++ `nros::init` header, the
+/// `rclc_support_init` edge, the C++ `nros::init` header, the
 /// `NROS_ENTRY_LOCATOR` macro) must NOT restate it: they hand the backend an
 /// *absent* locator (`None`, or the empty string — see
 /// [`shim::session::effective_client_locator`]) and the backend substitutes

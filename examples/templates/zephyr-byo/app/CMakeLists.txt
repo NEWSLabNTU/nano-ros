@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # nano-ros Zephyr BYO starter app (zenoh, C) — TYPED component
 # (RFC-0043 / phase-244.C4). The node is a stateful C component
-# (`NROS_C_COMPONENT(talker_t, talker_configure)`); the nano-ros module's Zephyr
+# (`RCLC_C_COMPONENT(talker_t, talker_configure)`); the nano-ros module's Zephyr
 # typed carrier (the shared entry pack) generates the entry +
 # composes it into `app` (ZephyrBoard::run_components) — no hand-written
 # `nros_app_main`. The raw publisher carries the type name as a string, so no

@@ -1093,7 +1093,7 @@ function(nros_rmw_cyclonedds_typesupport_for_target)
         # link line; CMake then de-duplicates it out of the
         # `--whole-archive` group NanoRos sets up, so the backend's
         # `.nros_rmw_init` self-registration entry gets GC'd and the
-        # RMW registry comes up empty (`nros_support_init -> -3`). The
+        # RMW registry comes up empty (`rclc_support_init -> -3`). The
         # `nros_rmw_cyclonedds_register_descriptor` symbol the register
         # TUs call is resolved at exe link via NanoRos's whole-archived
         # backend, so the ts lib never needs to link it directly.

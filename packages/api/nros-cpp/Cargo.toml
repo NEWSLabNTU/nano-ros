@@ -75,7 +75,7 @@ env = ["nros/env", "nros-c/env"]
 # backend rlib directly. Reverts Phase 161's drop, mirroring nros-c's W2.
 rmw-cffi = ["nros/rmw-cffi", "nros-c/rmw-cffi"]
 
-# Issue 0436 — the multi-RMW bridge ABI (`nros_init_multi` / `nros_fini_multi` /
+# Issue 0436 — the multi-RMW bridge ABI (`rclc_init_multi` / `rclc_fini_multi` /
 # `nros_pubsub_bridge_*`) that `<nros/bridge.hpp>`'s `MultiExecutor` calls.
 #
 # The header shipped without any archive carrying its symbols: `nros-bridge` was
@@ -254,7 +254,7 @@ panic-platform = ["nros-c/panic-platform"]
 # Opt-in instrumentation of the RTOS Rust global allocator (FreeRTOS
 # pvPortMalloc / ThreadX z_malloc / Zephyr k_malloc). Tracks used/peak
 # bytes routed through the Rust `#[global_allocator]` and exposes them via
-# `nros_heap_used_bytes()` / `nros_heap_peak_bytes()`. NOTE: counts only the
+# `rclc_heap_used_bytes()` / `rclc_heap_peak_bytes()`. NOTE: counts only the
 # Rust allocator's footprint — zenoh-pico's direct C-side z_malloc/pvPortMalloc
 # traffic is not included (see issue #6).
 # phase-361 W8.c — FORWARDS to nros-c rather than defining a second copy. Both
@@ -292,7 +292,7 @@ nros-node.workspace = true
 # optional backend deps.
 nros-c = { version = "0.5.0", path = "../nros-c", default-features = false }
 # Issue 0436 — the C/C++ multi-RMW bridge ABI behind the `bridge` feature. `cffi`
-# is what emits the `nros_init_multi` / `nros_pubsub_bridge_*` exports that
+# is what emits the `rclc_init_multi` / `nros_pubsub_bridge_*` exports that
 # `<nros/bridge.h>` declares and `<nros/bridge.hpp>` wraps.
 nros-bridge = { version = "0.5.0", path = "../../rmw/bridge", default-features = false, features = ["cffi", "alloc"], optional = true }
 # Phase 88.12 — `nros_cpp_node_get_logger` returns `&'static nros_log::Logger`.

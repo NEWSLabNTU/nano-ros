@@ -42,7 +42,7 @@ OPENER = re.compile(r"_deserialize\s*\(.*\)\s*!=\s*0\s*\)\s*\{")
 # `log_error`/`log_warn` are the post-phase-417 Rust spellings; `nros_error`/
 # `nros_warn` stay listed because the C API and older prose still use them.
 SAYS_SOMETHING = re.compile(
-    r"\b(printf|fprintf|puts|log_error|log_warn|nros_error|nros_warn|NROS_LOG|std::cerr|nros_log_emit\w*)\b"
+    r"\b(printf|fprintf|puts|log_error|log_warn|nros_error|nros_warn|NROS_LOG|std::cerr|rclc_log_emit\w*)\b"
 )
 
 
@@ -71,7 +71,7 @@ def offenders(path: Path):
 
 def calls_local_sink(arm, code):
     """A file-local helper whose own body reaches a sink (`emit()` in the
-    no-libc bare-metal leaves wraps `nros_log_emit_at`) says something too."""
+    no-libc bare-metal leaves wraps `rclc_log_emit_at`) says something too."""
     for name in set(re.findall(r"\b([A-Za-z_]\w*)\s*\(", arm)):
         m = re.search(r"\b" + re.escape(name) + r"\s*\([^;{]*\)\s*\{", code)
         if m:

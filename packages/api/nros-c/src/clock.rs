@@ -13,7 +13,7 @@ use crate::error::*;
 /// Time representation compatible with builtin_interfaces/msg/Time.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct nros_time_t {
+pub struct rclc_time_t {
     /// Seconds component
     pub sec: i32,
     /// Nanoseconds component (0 to 999,999,999)
@@ -23,7 +23,7 @@ pub struct nros_time_t {
 /// Duration representation compatible with builtin_interfaces/msg/Duration.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct nros_duration_t {
+pub struct rcl_duration_t {
     /// Seconds component (can be negative)
     pub sec: i32,
     /// Nanoseconds component (0 to 999,999,999)
@@ -37,26 +37,26 @@ pub struct nros_duration_t {
 /// Clock type enumeration.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nros_clock_type_t {
+pub enum rcl_clock_type_t {
     /// Uninitialized clock
-    NROS_CLOCK_UNINITIALIZED = 0,
+    RCLC_CLOCK_UNINITIALIZED = 0,
     /// ROS time - follows /clock topic if available, otherwise system time
-    NROS_CLOCK_ROS_TIME = 1,
+    RCLC_CLOCK_ROS_TIME = 1,
     /// System time - wall clock time from the operating system
-    NROS_CLOCK_SYSTEM_TIME = 2,
+    RCLC_CLOCK_SYSTEM_TIME = 2,
     /// Steady time - monotonic clock, not affected by system time changes
-    NROS_CLOCK_STEADY_TIME = 3,
+    RCLC_CLOCK_STEADY_TIME = 3,
 }
 
 /// phase-430 W1 — the ONE mapping from a C clock kind to the executor's
 /// timer clock source, and the reason it lives here rather than in
-/// `nros-node`: these discriminants belong to `nros_clock_type_t`, so a copy
+/// `nros-node`: these discriminants belong to `rcl_clock_type_t`, so a copy
 /// of them a crate away is the hand-mirror drift 0135/0160 measured one layer
-/// down. Both FFI crates call this — `nros_timer_init_on_clock` (C) and
+/// down. Both FFI crates call this — `rclc_timer_init_on_clock` (C) and
 /// `nros_cpp_timer_create_on_clock` (C++) — so a clock kind cannot mean one
 /// thing in a C image and another in a C++ one.
 ///
-/// `None` for a kind that names no source: `NROS_CLOCK_UNINITIALIZED`, and any
+/// `None` for a kind that names no source: `RCLC_CLOCK_UNINITIALIZED`, and any
 /// out-of-range byte a C caller widened into the parameter. Both are REJECTED
 /// by the callers rather than defaulted to `Steady` — a timer created on a
 /// clock the caller never initialised would silently be a wall timer, which is
@@ -84,9 +84,9 @@ pub fn nros_timer_clock_source(clock_type: u8) -> Option<nros_node::executor::Ti
     use nros_node::executor::TimerClockSource;
 
     match clock_type {
-        x if x == nros_clock_type_t::NROS_CLOCK_STEADY_TIME as u8 => Some(TimerClockSource::Steady),
-        x if x == nros_clock_type_t::NROS_CLOCK_ROS_TIME as u8 => Some(TimerClockSource::Ros),
-        x if x == nros_clock_type_t::NROS_CLOCK_SYSTEM_TIME as u8 => Some(TimerClockSource::System),
+        x if x == rcl_clock_type_t::RCLC_CLOCK_STEADY_TIME as u8 => Some(TimerClockSource::Steady),
+        x if x == rcl_clock_type_t::RCLC_CLOCK_ROS_TIME as u8 => Some(TimerClockSource::Ros),
+        x if x == rcl_clock_type_t::RCLC_CLOCK_SYSTEM_TIME as u8 => Some(TimerClockSource::System),
         _ => None,
     }
 }
@@ -94,31 +94,31 @@ pub fn nros_timer_clock_source(clock_type: u8) -> Option<nros_node::executor::Ti
 /// Clock state enumeration.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nros_clock_state_t {
+pub enum rclc_clock_state_t {
     /// Not initialized
-    NROS_CLOCK_STATE_UNINITIALIZED = 0,
+    RCLC_CLOCK_STATE_UNINITIALIZED = 0,
     /// Initialized and ready
-    NROS_CLOCK_STATE_READY = 1,
+    RCLC_CLOCK_STATE_READY = 1,
     /// Shutdown
-    NROS_CLOCK_STATE_SHUTDOWN = 2,
+    RCLC_CLOCK_STATE_SHUTDOWN = 2,
 }
 
 /// Clock structure.
 #[repr(C)]
-pub struct nros_clock_t {
+pub struct rcl_clock_t {
     /// Clock type
-    pub r#type: nros_clock_type_t,
+    pub r#type: rcl_clock_type_t,
     /// Current state
-    pub state: nros_clock_state_t,
+    pub state: rclc_clock_state_t,
     /// Internal: steady clock epoch (nanoseconds since process start)
     pub _steady_epoch_ns: u64,
 }
 
-impl Default for nros_clock_t {
+impl Default for rcl_clock_t {
     fn default() -> Self {
         Self {
-            r#type: nros_clock_type_t::NROS_CLOCK_UNINITIALIZED,
-            state: nros_clock_state_t::NROS_CLOCK_STATE_UNINITIALIZED,
+            r#type: rcl_clock_type_t::RCLC_CLOCK_UNINITIALIZED,
+            state: rclc_clock_state_t::RCLC_CLOCK_STATE_UNINITIALIZED,
             _steady_epoch_ns: 0,
         }
     }
@@ -143,11 +143,11 @@ pub(crate) fn get_steady_time_ns() -> u64 {
     platform::get_time_ns()
 }
 
-/// What a `NROS_CLOCK_ROS_TIME` clock reads (issue 0789).
+/// What a `RCLC_CLOCK_ROS_TIME` clock reads (issue 0789).
 ///
 /// The ROS time override when one is active — a simulator's or a bag player's
 /// `/clock`, installed through `rcl_set_ros_time_override` — and otherwise the
-/// system clock, which is what `NROS_CLOCK_ROS_TIME` has always read here and
+/// system clock, which is what `RCLC_CLOCK_ROS_TIME` has always read here and
 /// what rcl's ROS-time clock falls back to when the override is disabled.
 ///
 /// The override itself is `nros_core::Clock`'s, not a second copy: the C
@@ -158,7 +158,7 @@ pub(crate) fn get_steady_time_ns() -> u64 {
 /// issue 1334 — that last sentence used to carry a parenthesis admitting the
 /// two surfaces DID differ, on the fallback rather than the override: Rust's
 /// `RosTime` with no override read `nros_core`'s in-image steady counter, which
-/// nothing in the tree advances, so `nros_clock_get_now(NROS_CLOCK_ROS_TIME)`
+/// nothing in the tree advances, so `rcl_clock_get_now(RCLC_CLOCK_ROS_TIME)`
 /// and `Clock::ros_time().now()` gave different answers about the same image in
 /// the same state. The Rust arm now evaluates the same wall clock this one
 /// does, and `ros_time_agrees_with_the_rust_surface` below is what holds the
@@ -176,119 +176,119 @@ fn get_ros_time_ns() -> i64 {
 
 /// Get a zero-initialized clock.
 #[unsafe(no_mangle)]
-pub extern "C" fn nros_clock_get_zero_initialized() -> nros_clock_t {
-    nros_clock_t::default()
+pub extern "C" fn rclc_clock_get_zero_initialized() -> rcl_clock_t {
+    rcl_clock_t::default()
 }
 
 /// Initialize a clock.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_clock_init(
-    clock: *mut nros_clock_t,
-    clock_type: nros_clock_type_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rcl_clock_init(
+    clock: *mut rcl_clock_t,
+    clock_type: rcl_clock_type_t,
+) -> rcl_ret_t {
     if clock.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
 
     // Validate clock type
     match clock_type {
-        nros_clock_type_t::NROS_CLOCK_ROS_TIME
-        | nros_clock_type_t::NROS_CLOCK_SYSTEM_TIME
-        | nros_clock_type_t::NROS_CLOCK_STEADY_TIME => {}
-        _ => return NROS_RET_INVALID_ARGUMENT,
+        rcl_clock_type_t::RCLC_CLOCK_ROS_TIME
+        | rcl_clock_type_t::RCLC_CLOCK_SYSTEM_TIME
+        | rcl_clock_type_t::RCLC_CLOCK_STEADY_TIME => {}
+        _ => return RCL_RET_INVALID_ARGUMENT,
     }
 
     let clock = &mut *clock;
 
     // Check if already initialized
-    if clock.state != nros_clock_state_t::NROS_CLOCK_STATE_UNINITIALIZED {
-        return NROS_RET_ALREADY_EXISTS;
+    if clock.state != rclc_clock_state_t::RCLC_CLOCK_STATE_UNINITIALIZED {
+        return RCLC_RET_ALREADY_EXISTS;
     }
 
     clock.r#type = clock_type;
-    clock.state = nros_clock_state_t::NROS_CLOCK_STATE_READY;
+    clock.state = rclc_clock_state_t::RCLC_CLOCK_STATE_READY;
 
     // For steady time, record the epoch
-    if clock_type == nros_clock_type_t::NROS_CLOCK_STEADY_TIME {
+    if clock_type == rcl_clock_type_t::RCLC_CLOCK_STEADY_TIME {
         clock._steady_epoch_ns = get_steady_time_ns();
     }
 
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// Get the current time from a clock.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_clock_get_now(
-    clock: *const nros_clock_t,
-    time_out: *mut nros_time_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rcl_clock_get_now(
+    clock: *const rcl_clock_t,
+    time_out: *mut rclc_time_t,
+) -> rcl_ret_t {
     if clock.is_null() || time_out.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
 
     let clock = &*clock;
 
-    if clock.state != nros_clock_state_t::NROS_CLOCK_STATE_READY {
-        return NROS_RET_NOT_INIT;
+    if clock.state != rclc_clock_state_t::RCLC_CLOCK_STATE_READY {
+        return RCL_RET_NOT_INIT;
     }
 
     let nanos = match clock.r#type {
-        nros_clock_type_t::NROS_CLOCK_ROS_TIME => get_ros_time_ns(),
-        nros_clock_type_t::NROS_CLOCK_SYSTEM_TIME => get_system_time_ns(),
-        nros_clock_type_t::NROS_CLOCK_STEADY_TIME => {
+        rcl_clock_type_t::RCLC_CLOCK_ROS_TIME => get_ros_time_ns(),
+        rcl_clock_type_t::RCLC_CLOCK_SYSTEM_TIME => get_system_time_ns(),
+        rcl_clock_type_t::RCLC_CLOCK_STEADY_TIME => {
             // Steady time relative to epoch
             get_steady_time_ns() as i64
         }
-        _ => return NROS_RET_ERROR,
+        _ => return RCL_RET_ERROR,
     };
 
-    *time_out = nros_time_from_nanoseconds(nanos);
-    NROS_RET_OK
+    *time_out = rclc_time_from_nanoseconds(nanos);
+    RCL_RET_OK
 }
 
 /// Get the current time from a clock as nanoseconds.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_clock_get_now_ns(
-    clock: *const nros_clock_t,
+pub unsafe extern "C" fn rclc_clock_get_now_ns(
+    clock: *const rcl_clock_t,
     nanoseconds: *mut i64,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     if clock.is_null() || nanoseconds.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
 
     let clock = &*clock;
 
-    if clock.state != nros_clock_state_t::NROS_CLOCK_STATE_READY {
-        return NROS_RET_NOT_INIT;
+    if clock.state != rclc_clock_state_t::RCLC_CLOCK_STATE_READY {
+        return RCL_RET_NOT_INIT;
     }
 
     let nanos = match clock.r#type {
-        nros_clock_type_t::NROS_CLOCK_ROS_TIME => get_ros_time_ns(),
-        nros_clock_type_t::NROS_CLOCK_SYSTEM_TIME => get_system_time_ns(),
-        nros_clock_type_t::NROS_CLOCK_STEADY_TIME => get_steady_time_ns() as i64,
-        _ => return NROS_RET_ERROR,
+        rcl_clock_type_t::RCLC_CLOCK_ROS_TIME => get_ros_time_ns(),
+        rcl_clock_type_t::RCLC_CLOCK_SYSTEM_TIME => get_system_time_ns(),
+        rcl_clock_type_t::RCLC_CLOCK_STEADY_TIME => get_steady_time_ns() as i64,
+        _ => return RCL_RET_ERROR,
     };
 
     *nanoseconds = nanos;
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// Check if a clock is valid.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_clock_is_valid(clock: *const nros_clock_t) -> bool {
+pub unsafe extern "C" fn rclc_clock_is_valid(clock: *const rcl_clock_t) -> bool {
     if clock.is_null() {
         return false;
     }
 
     let clock = &*clock;
-    clock.state == nros_clock_state_t::NROS_CLOCK_STATE_READY
+    clock.state == rclc_clock_state_t::RCLC_CLOCK_STATE_READY
 }
 
 /// Get the clock type.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_clock_get_type(clock: *const nros_clock_t) -> nros_clock_type_t {
+pub unsafe extern "C" fn rclc_clock_get_type(clock: *const rcl_clock_t) -> rcl_clock_type_t {
     if clock.is_null() {
-        return nros_clock_type_t::NROS_CLOCK_UNINITIALIZED;
+        return rcl_clock_type_t::RCLC_CLOCK_UNINITIALIZED;
     }
 
     (*clock).r#type
@@ -296,22 +296,22 @@ pub unsafe extern "C" fn nros_clock_get_type(clock: *const nros_clock_t) -> nros
 
 /// Finalize a clock.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rcl_clock_fini(clock: *mut nros_clock_t) -> nros_ret_t {
+pub unsafe extern "C" fn rcl_clock_fini(clock: *mut rcl_clock_t) -> rcl_ret_t {
     if clock.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
 
     let clock = &mut *clock;
 
-    if clock.state == nros_clock_state_t::NROS_CLOCK_STATE_UNINITIALIZED {
-        return NROS_RET_NOT_INIT;
+    if clock.state == rclc_clock_state_t::RCLC_CLOCK_STATE_UNINITIALIZED {
+        return RCL_RET_NOT_INIT;
     }
 
-    clock.state = nros_clock_state_t::NROS_CLOCK_STATE_SHUTDOWN;
-    clock.r#type = nros_clock_type_t::NROS_CLOCK_UNINITIALIZED;
+    clock.state = rclc_clock_state_t::RCLC_CLOCK_STATE_SHUTDOWN;
+    clock.r#type = rcl_clock_type_t::RCLC_CLOCK_UNINITIALIZED;
     clock._steady_epoch_ns = 0;
 
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 // ============================================================================
@@ -346,41 +346,41 @@ pub unsafe extern "C" fn rcl_clock_fini(clock: *mut nros_clock_t) -> nros_ret_t 
 
 /// Shared precondition for every ROS-time switch: a live clock, of ROS type.
 ///
-/// `NROS_RET_NOT_ALLOWED` for the wrong clock TYPE names why the call was
+/// `RCLC_RET_NOT_ALLOWED` for the wrong clock TYPE names why the call was
 /// refused; rcl returns its generic error there. A steady or system clock is
 /// not a thing `/clock` can drive, and silently accepting the call would leave
 /// the caller believing the image is simulated when it is reading the wall.
-unsafe fn ros_time_clock_ok(clock: *const nros_clock_t) -> nros_ret_t {
+unsafe fn ros_time_clock_ok(clock: *const rcl_clock_t) -> rcl_ret_t {
     if clock.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     let clock = &*clock;
-    if clock.state != nros_clock_state_t::NROS_CLOCK_STATE_READY {
-        return NROS_RET_NOT_INIT;
+    if clock.state != rclc_clock_state_t::RCLC_CLOCK_STATE_READY {
+        return RCL_RET_NOT_INIT;
     }
-    if clock.r#type != nros_clock_type_t::NROS_CLOCK_ROS_TIME {
-        return NROS_RET_NOT_ALLOWED;
+    if clock.r#type != rcl_clock_type_t::RCLC_CLOCK_ROS_TIME {
+        return RCLC_RET_NOT_ALLOWED;
     }
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
-/// Enable the ROS time override on a `NROS_CLOCK_ROS_TIME` clock.
+/// Enable the ROS time override on a `RCLC_CLOCK_ROS_TIME` clock.
 ///
 /// Mirrors `rcl_enable_ros_time_override`. If no override is active yet the
 /// clock starts at time 0 — the state rcl reports as "not started"
 /// (`rcl_clock_time_started`), i.e. enabled but waiting for the first
 /// `/clock` sample. An already-active override keeps its value.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rcl_enable_ros_time_override(clock: *const nros_clock_t) -> nros_ret_t {
+pub unsafe extern "C" fn rcl_enable_ros_time_override(clock: *const rcl_clock_t) -> rcl_ret_t {
     let ret = ros_time_clock_ok(clock);
-    if ret != NROS_RET_OK {
+    if ret != RCL_RET_OK {
         return ret;
     }
 
     if !nros_core::Clock::is_ros_time_override_active() {
         nros_core::Clock::set_ros_time_override(0);
     }
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// Disable the ROS time override; the clock reads the system clock again.
@@ -390,88 +390,88 @@ pub unsafe extern "C" fn rcl_enable_ros_time_override(clock: *const nros_clock_t
 /// one piece of state there is nowhere for an inert value to live, so
 /// re-enabling starts from 0 again.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rcl_disable_ros_time_override(clock: *const nros_clock_t) -> nros_ret_t {
+pub unsafe extern "C" fn rcl_disable_ros_time_override(clock: *const rcl_clock_t) -> rcl_ret_t {
     let ret = ros_time_clock_ok(clock);
-    if ret != NROS_RET_OK {
+    if ret != RCL_RET_OK {
         return ret;
     }
 
     nros_core::Clock::clear_ros_time_override();
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// Whether the ROS time override is in effect.
 ///
 /// Mirrors `rcl_is_enabled_ros_time_override`. Writes `is_enabled` only on
-/// `NROS_RET_OK`.
+/// `RCL_RET_OK`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_is_enabled_ros_time_override(
-    clock: *const nros_clock_t,
+    clock: *const rcl_clock_t,
     is_enabled: *mut bool,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     if is_enabled.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     let ret = ros_time_clock_ok(clock);
-    if ret != NROS_RET_OK {
+    if ret != RCL_RET_OK {
         return ret;
     }
 
     *is_enabled = nros_core::Clock::is_ros_time_override_active();
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
-/// Set the time a `NROS_CLOCK_ROS_TIME` clock reads, in nanoseconds since the
+/// Set the time a `RCLC_CLOCK_ROS_TIME` clock reads, in nanoseconds since the
 /// epoch — the entry point a `/clock` subscriber or a bag player calls.
 ///
 /// Mirrors `rcl_set_ros_time_override`, with the one model difference stated at
 /// the top of this section: setting a value also ENABLES the override, and a
-/// NEGATIVE `nanoseconds` is `NROS_RET_INVALID_ARGUMENT` because a negative
+/// NEGATIVE `nanoseconds` is `RCL_RET_INVALID_ARGUMENT` because a negative
 /// value is the "no override" sentinel.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_set_ros_time_override(
-    clock: *const nros_clock_t,
+    clock: *const rcl_clock_t,
     nanoseconds: i64,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     if nanoseconds < 0 {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     let ret = ros_time_clock_ok(clock);
-    if ret != NROS_RET_OK {
+    if ret != RCL_RET_OK {
         return ret;
     }
 
     nros_core::Clock::set_ros_time_override(nanoseconds);
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// Read the ROS time override back, in nanoseconds since the epoch.
 ///
 /// The C face of `nros_core::Clock::get_ros_time_override`, whose `Option` this
-/// splits into a status and an out-parameter: `NROS_RET_OK` and a value when an
-/// override is in effect, `NROS_RET_NOT_FOUND` and an untouched out-parameter
+/// splits into a status and an out-parameter: `RCL_RET_OK` and a value when an
+/// override is in effect, `RCLC_RET_NOT_FOUND` and an untouched out-parameter
 /// when none is. rcl has no equivalent — a caller there reads the clock — but
 /// dropping it would leave the C mirror of the Rust surface one entry point
 /// short, and "is a simulator driving me, and at what time" is one question.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_get_ros_time_override(
-    clock: *const nros_clock_t,
+pub unsafe extern "C" fn rclc_get_ros_time_override(
+    clock: *const rcl_clock_t,
     nanoseconds: *mut i64,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     if nanoseconds.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     let ret = ros_time_clock_ok(clock);
-    if ret != NROS_RET_OK {
+    if ret != RCL_RET_OK {
         return ret;
     }
 
     match nros_core::Clock::get_ros_time_override() {
         Some(t) => {
             *nanoseconds = t.to_nanos();
-            NROS_RET_OK
+            RCL_RET_OK
         }
-        None => NROS_RET_NOT_FOUND,
+        None => RCLC_RET_NOT_FOUND,
     }
 }
 
@@ -483,9 +483,9 @@ pub unsafe extern "C" fn nros_get_ros_time_override(
 /// `rcl_enable_ros_time_override` leaves behind — and for a system or steady
 /// clock it is true as soon as the clock is valid.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rcl_clock_time_started(clock: *const nros_clock_t) -> bool {
+pub unsafe extern "C" fn rcl_clock_time_started(clock: *const rcl_clock_t) -> bool {
     let mut nanoseconds: i64 = 0;
-    if nros_clock_get_now_ns(clock, &mut nanoseconds) != NROS_RET_OK {
+    if rclc_clock_get_now_ns(clock, &mut nanoseconds) != RCL_RET_OK {
         return false;
     }
     nanoseconds != 0
@@ -533,16 +533,16 @@ fn split_nanoseconds(nanoseconds: i64) -> (i32, u32) {
     )
 }
 
-/// Convert nanoseconds to a nros_time_t structure.
+/// Convert nanoseconds to a rclc_time_t structure.
 #[unsafe(no_mangle)]
-pub extern "C" fn nros_time_from_nanoseconds(nanoseconds: i64) -> nros_time_t {
+pub extern "C" fn rclc_time_from_nanoseconds(nanoseconds: i64) -> rclc_time_t {
     let (sec, nanosec) = split_nanoseconds(nanoseconds);
-    nros_time_t { sec, nanosec }
+    rclc_time_t { sec, nanosec }
 }
 
-/// Convert nanoseconds to a nros_duration_t structure.
+/// Convert nanoseconds to a rcl_duration_t structure.
 ///
-/// The duration half of `nros_time_from_nanoseconds`, and the same encoding —
+/// The duration half of `rclc_time_from_nanoseconds`, and the same encoding —
 /// `builtin_interfaces/msg/Duration` has the identical `{sec, nanosec}` shape
 /// and the identical `[0, 1e9)` rule on `nanosec`. Issue 0799: a negative span
 /// is ordinary ("how far ahead of the deadline are we" is negative half the
@@ -550,14 +550,14 @@ pub extern "C" fn nros_time_from_nanoseconds(nanoseconds: i64) -> nros_time_t {
 /// split rather than delegate to a `_time_` entry point that got negatives
 /// wrong.
 #[unsafe(no_mangle)]
-pub extern "C" fn nros_duration_from_nanoseconds(nanoseconds: i64) -> nros_duration_t {
+pub extern "C" fn rclc_duration_from_nanoseconds(nanoseconds: i64) -> rcl_duration_t {
     let (sec, nanosec) = split_nanoseconds(nanoseconds);
-    nros_duration_t { sec, nanosec }
+    rcl_duration_t { sec, nanosec }
 }
 
-/// Convert a nros_time_t structure to nanoseconds.
+/// Convert a rclc_time_t structure to nanoseconds.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_time_to_nanoseconds(time: *const nros_time_t) -> i64 {
+pub unsafe extern "C" fn rclc_time_to_nanoseconds(time: *const rclc_time_t) -> i64 {
     if time.is_null() {
         return 0;
     }
@@ -568,25 +568,25 @@ pub unsafe extern "C" fn nros_time_to_nanoseconds(time: *const nros_time_t) -> i
 
 /// Add a duration to a time.
 #[unsafe(no_mangle)]
-pub extern "C" fn nros_time_add(time: nros_time_t, duration: nros_duration_t) -> nros_time_t {
+pub extern "C" fn rclc_time_add(time: rclc_time_t, duration: rcl_duration_t) -> rclc_time_t {
     let time_ns = (time.sec as i64) * (NANOS_PER_SEC as i64) + (time.nanosec as i64);
     let duration_ns = (duration.sec as i64) * (NANOS_PER_SEC as i64) + (duration.nanosec as i64);
 
-    nros_time_from_nanoseconds(time_ns + duration_ns)
+    rclc_time_from_nanoseconds(time_ns + duration_ns)
 }
 
 /// Subtract a duration from a time.
 #[unsafe(no_mangle)]
-pub extern "C" fn nros_time_sub(time: nros_time_t, duration: nros_duration_t) -> nros_time_t {
+pub extern "C" fn rclc_time_sub(time: rclc_time_t, duration: rcl_duration_t) -> rclc_time_t {
     let time_ns = (time.sec as i64) * (NANOS_PER_SEC as i64) + (time.nanosec as i64);
     let duration_ns = (duration.sec as i64) * (NANOS_PER_SEC as i64) + (duration.nanosec as i64);
 
-    nros_time_from_nanoseconds(time_ns - duration_ns)
+    rclc_time_from_nanoseconds(time_ns - duration_ns)
 }
 
 /// Compare two times.
 #[unsafe(no_mangle)]
-pub extern "C" fn nros_time_compare(a: nros_time_t, b: nros_time_t) -> c_int {
+pub extern "C" fn rclc_time_compare(a: rclc_time_t, b: rclc_time_t) -> c_int {
     if a.sec < b.sec {
         -1
     } else if a.sec > b.sec {
@@ -662,8 +662,8 @@ mod tests {
     /// The wire decoder, which is the correct inverse of the correct encoding —
     /// so a round trip through it EXPOSES an encoder error rather than
     /// cancelling it (issue 0799).
-    fn decode(t: nros_time_t) -> i64 {
-        unsafe { nros_time_to_nanoseconds(&t) }
+    fn decode(t: rclc_time_t) -> i64 {
+        unsafe { rclc_time_to_nanoseconds(&t) }
     }
 
     /// The largest and smallest nanosecond counts an `int32` seconds field can
@@ -677,23 +677,23 @@ mod tests {
     fn encodes_the_convention_time_msg_documents() {
         // "The time -1.7 seconds is represented as {sec: -2, nanosec: 3e8}"
         assert_eq!(
-            nros_time_from_nanoseconds(-1_700_000_000),
-            nros_time_t {
+            rclc_time_from_nanoseconds(-1_700_000_000),
+            rclc_time_t {
                 sec: -2,
                 nanosec: 300_000_000
             }
         );
         // The sub-second case that used to come back with the sign gone.
         assert_eq!(
-            nros_time_from_nanoseconds(-500_000_000),
-            nros_time_t {
+            rclc_time_from_nanoseconds(-500_000_000),
+            rclc_time_t {
                 sec: -1,
                 nanosec: 500_000_000
             }
         );
         assert_eq!(
-            nros_time_from_nanoseconds(1_700_000_000),
-            nros_time_t {
+            rclc_time_from_nanoseconds(1_700_000_000),
+            rclc_time_t {
                 sec: 1,
                 nanosec: 700_000_000
             }
@@ -701,13 +701,13 @@ mod tests {
         // Exactly on a second boundary: no borrow, `nanosec` is zero on both
         // sides of zero.
         assert_eq!(
-            nros_time_from_nanoseconds(-2 * NS),
-            nros_time_t {
+            rclc_time_from_nanoseconds(-2 * NS),
+            rclc_time_t {
                 sec: -2,
                 nanosec: 0
             }
         );
-        assert_eq!(nros_time_from_nanoseconds(0), nros_time_t::default());
+        assert_eq!(rclc_time_from_nanoseconds(0), rclc_time_t::default());
     }
 
     /// The deliverable of issue 0799: encode/decode is the identity over
@@ -766,7 +766,7 @@ mod tests {
         });
 
         for ns in edges.into_iter().chain(generated) {
-            let t = nros_time_from_nanoseconds(ns);
+            let t = rclc_time_from_nanoseconds(ns);
 
             assert!(
                 t.nanosec < NS as u32,
@@ -789,7 +789,7 @@ mod tests {
             );
 
             // The duration encoding is the same encoding.
-            let d = nros_duration_from_nanoseconds(ns);
+            let d = rclc_duration_from_nanoseconds(ns);
             assert_eq!(
                 (d.sec, d.nanosec),
                 (t.sec, t.nanosec),
@@ -804,65 +804,65 @@ mod tests {
     /// the encoding stays monotone and the sign survives.
     #[test]
     fn out_of_range_saturates_rather_than_wrapping() {
-        let past_max = nros_time_from_nanoseconds(MAX_ENCODABLE_NS + 1);
+        let past_max = rclc_time_from_nanoseconds(MAX_ENCODABLE_NS + 1);
         assert_eq!(
             past_max,
-            nros_time_t {
+            rclc_time_t {
                 sec: i32::MAX,
                 nanosec: 999_999_999
             }
         );
-        assert_eq!(nros_time_from_nanoseconds(i64::MAX), past_max);
+        assert_eq!(rclc_time_from_nanoseconds(i64::MAX), past_max);
 
-        let past_min = nros_time_from_nanoseconds(MIN_ENCODABLE_NS - 1);
+        let past_min = rclc_time_from_nanoseconds(MIN_ENCODABLE_NS - 1);
         assert_eq!(
             past_min,
-            nros_time_t {
+            rclc_time_t {
                 sec: i32::MIN,
                 nanosec: 0
             }
         );
-        assert_eq!(nros_time_from_nanoseconds(i64::MIN), past_min);
+        assert_eq!(rclc_time_from_nanoseconds(i64::MIN), past_min);
 
         // Monotone across the clamp, and still signed the right way — the two
         // properties wrapping destroyed.
         assert!(decode(past_max) > 0);
         assert!(decode(past_min) < 0);
-        assert!(decode(past_max) > decode(nros_time_from_nanoseconds(MAX_ENCODABLE_NS - NS)));
-        assert!(decode(past_min) < decode(nros_time_from_nanoseconds(MIN_ENCODABLE_NS + NS)));
+        assert!(decode(past_max) > decode(rclc_time_from_nanoseconds(MAX_ENCODABLE_NS - NS)));
+        assert!(decode(past_min) < decode(rclc_time_from_nanoseconds(MIN_ENCODABLE_NS + NS)));
     }
 
-    /// `nros_time_add` / `nros_time_sub` route their `i64` result through the
+    /// `rclc_time_add` / `rclc_time_sub` route their `i64` result through the
     /// encoder, so a result landing in (−1 s, 0) is exactly the case that used
     /// to come back positive.
     #[test]
     fn arithmetic_across_zero_keeps_its_sign() {
-        let quarter_second = nros_duration_t {
+        let quarter_second = rcl_duration_t {
             sec: 0,
             nanosec: 250_000_000,
         };
 
         // 0.1 s − 0.25 s = −0.15 s, which lands inside the broken window.
-        let t = nros_time_t {
+        let t = rclc_time_t {
             sec: 0,
             nanosec: 100_000_000,
         };
-        let diff = nros_time_sub(t, quarter_second);
+        let diff = rclc_time_sub(t, quarter_second);
         assert_eq!(decode(diff), -150_000_000);
         assert_eq!(
             diff,
-            nros_time_t {
+            rclc_time_t {
                 sec: -1,
                 nanosec: 850_000_000
             }
         );
 
         // Adding it back is the identity.
-        assert_eq!(nros_time_add(diff, quarter_second), t);
+        assert_eq!(rclc_time_add(diff, quarter_second), t);
 
         // And ordering survives: an earlier time compares less, which is what
         // a receiver reasoning about latency depends on.
-        assert_eq!(nros_time_compare(diff, t), -1);
+        assert_eq!(rclc_time_compare(diff, t), -1);
     }
 
     /// Issue 0789 — the ROS-time switches C did not have, and the clock read
@@ -871,127 +871,118 @@ mod tests {
     /// thread pool.
     #[test]
     fn ros_time_override_drives_a_ros_clock() {
-        let mut ros = nros_clock_get_zero_initialized();
-        let mut system = nros_clock_get_zero_initialized();
+        let mut ros = rclc_clock_get_zero_initialized();
+        let mut system = rclc_clock_get_zero_initialized();
         unsafe {
             assert_eq!(
-                nros_clock_init(&mut ros, nros_clock_type_t::NROS_CLOCK_ROS_TIME),
-                NROS_RET_OK
+                rcl_clock_init(&mut ros, rcl_clock_type_t::RCLC_CLOCK_ROS_TIME),
+                RCL_RET_OK
             );
             assert_eq!(
-                nros_clock_init(&mut system, nros_clock_type_t::NROS_CLOCK_SYSTEM_TIME),
-                NROS_RET_OK
+                rcl_clock_init(&mut system, rcl_clock_type_t::RCLC_CLOCK_SYSTEM_TIME),
+                RCL_RET_OK
             );
 
             // Start from a known state — another crate in the image may have
             // installed one.
-            assert_eq!(rcl_disable_ros_time_override(&ros), NROS_RET_OK);
+            assert_eq!(rcl_disable_ros_time_override(&ros), RCL_RET_OK);
 
             let mut enabled = true;
             assert_eq!(
                 rcl_is_enabled_ros_time_override(&ros, &mut enabled),
-                NROS_RET_OK
+                RCL_RET_OK
             );
             assert!(!enabled);
 
             let mut nanoseconds: i64 = 42;
             assert_eq!(
-                nros_get_ros_time_override(&ros, &mut nanoseconds),
-                NROS_RET_NOT_FOUND
+                rclc_get_ros_time_override(&ros, &mut nanoseconds),
+                RCLC_RET_NOT_FOUND
             );
             assert_eq!(nanoseconds, 42, "out-parameter written with no override");
 
             // With no override the ROS clock reads the wall, as it always has.
-            assert_eq!(nros_clock_get_now_ns(&ros, &mut nanoseconds), NROS_RET_OK);
+            assert_eq!(rclc_clock_get_now_ns(&ros, &mut nanoseconds), RCL_RET_OK);
             assert!(nanoseconds > 0);
             assert!(rcl_clock_time_started(&ros));
 
             // Enabled but no `/clock` sample yet: time 0, and NOT started —
             // the state `rcl_clock_time_started` exists to report.
-            assert_eq!(rcl_enable_ros_time_override(&ros), NROS_RET_OK);
+            assert_eq!(rcl_enable_ros_time_override(&ros), RCL_RET_OK);
             assert_eq!(
                 rcl_is_enabled_ros_time_override(&ros, &mut enabled),
-                NROS_RET_OK
+                RCL_RET_OK
             );
             assert!(enabled);
-            assert_eq!(nros_clock_get_now_ns(&ros, &mut nanoseconds), NROS_RET_OK);
+            assert_eq!(rclc_clock_get_now_ns(&ros, &mut nanoseconds), RCL_RET_OK);
             assert_eq!(nanoseconds, 0);
             assert!(!rcl_clock_time_started(&ros));
 
             // A `/clock` sample arrives.
             let simulated = 1_234_500_000_000i64;
-            assert_eq!(rcl_set_ros_time_override(&ros, simulated), NROS_RET_OK);
-            assert_eq!(nros_clock_get_now_ns(&ros, &mut nanoseconds), NROS_RET_OK);
+            assert_eq!(rcl_set_ros_time_override(&ros, simulated), RCL_RET_OK);
+            assert_eq!(rclc_clock_get_now_ns(&ros, &mut nanoseconds), RCL_RET_OK);
             assert_eq!(nanoseconds, simulated);
             assert!(rcl_clock_time_started(&ros));
 
             let mut read_back: i64 = 0;
-            assert_eq!(
-                nros_get_ros_time_override(&ros, &mut read_back),
-                NROS_RET_OK
-            );
+            assert_eq!(rclc_get_ros_time_override(&ros, &mut read_back), RCL_RET_OK);
             assert_eq!(read_back, simulated);
 
-            let mut stamp = nros_time_t::default();
-            assert_eq!(nros_clock_get_now(&ros, &mut stamp), NROS_RET_OK);
+            let mut stamp = rclc_time_t::default();
+            assert_eq!(rcl_clock_get_now(&ros, &mut stamp), RCL_RET_OK);
             assert_eq!(
                 stamp,
-                nros_time_t {
+                rclc_time_t {
                     sec: 1234,
                     nanosec: 500_000_000
                 }
             );
 
             // Time does not move while the simulator holds it.
-            assert_eq!(nros_clock_get_now_ns(&ros, &mut nanoseconds), NROS_RET_OK);
+            assert_eq!(rclc_clock_get_now_ns(&ros, &mut nanoseconds), RCL_RET_OK);
             assert_eq!(nanoseconds, simulated);
 
             // A negative override is the "no override" sentinel, so it is
             // refused rather than silently clearing the clock.
             assert_eq!(
                 rcl_set_ros_time_override(&ros, -1),
-                NROS_RET_INVALID_ARGUMENT
+                RCL_RET_INVALID_ARGUMENT
             );
-            assert_eq!(
-                nros_get_ros_time_override(&ros, &mut read_back),
-                NROS_RET_OK
-            );
+            assert_eq!(rclc_get_ros_time_override(&ros, &mut read_back), RCL_RET_OK);
             assert_eq!(read_back, simulated);
 
             // A system clock is not something `/clock` can drive, and the
             // system clock keeps reading the wall while ROS time is held.
-            assert_eq!(rcl_enable_ros_time_override(&system), NROS_RET_NOT_ALLOWED);
+            assert_eq!(rcl_enable_ros_time_override(&system), RCLC_RET_NOT_ALLOWED);
             assert_eq!(
                 rcl_is_enabled_ros_time_override(&system, &mut enabled),
-                NROS_RET_NOT_ALLOWED
+                RCLC_RET_NOT_ALLOWED
             );
-            assert_eq!(
-                nros_clock_get_now_ns(&system, &mut nanoseconds),
-                NROS_RET_OK
-            );
+            assert_eq!(rclc_clock_get_now_ns(&system, &mut nanoseconds), RCL_RET_OK);
             assert!(nanoseconds > simulated);
 
             // Null clock, null out-parameter, and an uninitialised clock.
             assert_eq!(
                 rcl_enable_ros_time_override(core::ptr::null()),
-                NROS_RET_INVALID_ARGUMENT
+                RCL_RET_INVALID_ARGUMENT
             );
             assert_eq!(
                 rcl_is_enabled_ros_time_override(&ros, core::ptr::null_mut()),
-                NROS_RET_INVALID_ARGUMENT
+                RCL_RET_INVALID_ARGUMENT
             );
-            let fresh = nros_clock_get_zero_initialized();
-            assert_eq!(rcl_enable_ros_time_override(&fresh), NROS_RET_NOT_INIT);
+            let fresh = rclc_clock_get_zero_initialized();
+            assert_eq!(rcl_enable_ros_time_override(&fresh), RCL_RET_NOT_INIT);
             assert!(!rcl_clock_time_started(&fresh));
 
             // Released: the ROS clock reads the wall again.
-            assert_eq!(rcl_disable_ros_time_override(&ros), NROS_RET_OK);
+            assert_eq!(rcl_disable_ros_time_override(&ros), RCL_RET_OK);
             assert_eq!(
                 rcl_is_enabled_ros_time_override(&ros, &mut enabled),
-                NROS_RET_OK
+                RCL_RET_OK
             );
             assert!(!enabled);
-            assert_eq!(nros_clock_get_now_ns(&ros, &mut nanoseconds), NROS_RET_OK);
+            assert_eq!(rclc_clock_get_now_ns(&ros, &mut nanoseconds), RCL_RET_OK);
             assert!(nanoseconds > simulated);
         }
     }

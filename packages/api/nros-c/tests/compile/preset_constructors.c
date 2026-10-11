@@ -8,7 +8,7 @@
  * All five are `static inline` forwarders in the per-module headers
  * (`<nros/publisher.h>`, `<nros/subscription.h>`, `<nros/service.h>`,
  * `<nros/client.h>`, `<nros/action.h>`), which is the shape
- * `nros_difference_times` in `<nros/timer.h>` already has: no exported symbol,
+ * `rcl_difference_times` in `<nros/timer.h>` already has: no exported symbol,
  * no writable data. That is also why this probe compiles rather than links —
  * there is no symbol to resolve, and a link would need a registered RMW
  * backend, which is a fixture rather than a syntax check.
@@ -44,46 +44,46 @@
 
 /* ── 1. Every preset resolves, with the documented signature ────────────── */
 
-static nros_ret_t (*const k_pub_be)(struct nros_publisher_t*, const struct nros_node_t*,
-                                    const struct nros_message_type_t*,
-                                    const char*) = rclc_publisher_init_best_effort;
+static rcl_ret_t (*const k_pub_be)(struct rcl_publisher_t*, const struct rcl_node_t*,
+                                   const struct rclc_message_type_t*,
+                                   const char*) = rclc_publisher_init_best_effort;
 
-static nros_ret_t (*const k_sub_be)(struct nros_subscription_t*, const struct nros_node_t*,
-                                    const struct nros_message_type_t*,
-                                    const char*) = rclc_subscription_init_best_effort;
+static rcl_ret_t (*const k_sub_be)(struct rcl_subscription_t*, const struct rcl_node_t*,
+                                   const struct rclc_message_type_t*,
+                                   const char*) = rclc_subscription_init_best_effort;
 
-static nros_ret_t (*const k_srv_be)(struct nros_service_t*, const struct nros_node_t*,
-                                    const struct nros_service_type_t*,
-                                    const char*) = rclc_service_init_best_effort;
+static rcl_ret_t (*const k_srv_be)(struct rcl_service_t*, const struct rcl_node_t*,
+                                   const struct rclc_service_type_t*,
+                                   const char*) = rclc_service_init_best_effort;
 
-static nros_ret_t (*const k_cli_be)(struct nros_client_t*, const struct nros_node_t*,
-                                    const struct nros_service_type_t*,
-                                    const char*) = rclc_client_init_best_effort;
+static rcl_ret_t (*const k_cli_be)(struct rcl_client_t*, const struct rcl_node_t*,
+                                   const struct rclc_service_type_t*,
+                                   const char*) = rclc_client_init_best_effort;
 
 /* rclc's order: typesupport third, action name fourth. If someone "fixes" this
- * to match `nros_action_client_init`'s order, the assignment stops compiling —
+ * to match `rcl_action_client_init`'s order, the assignment stops compiling —
  * which is the point, because the CALL would only have warned. */
-static nros_ret_t (*const k_action_cli)(struct nros_action_client_t*, const struct nros_node_t*,
-                                        const struct nros_action_type_t*,
-                                        const char*) = rclc_action_client_init_default;
+static rcl_ret_t (*const k_action_cli)(struct rcl_action_client_t*, const struct rcl_node_t*,
+                                       const struct rclc_action_type_t*,
+                                       const char*) = rclc_action_client_init_default;
 
 /* ── 2. The one preset with BEHAVIOUR is proved by the pragma above ──────
  *
  * `rclc_action_client_init_default`'s body swaps arguments 3 and 4 onto
- * `nros_action_client_init`. Because the forwarder is `static inline`, that
+ * `rcl_action_client_init`. Because the forwarder is `static inline`, that
  * body is compiled in THIS translation unit, and with
  * `-Wincompatible-pointer-types` promoted to an error a forwarder that dropped
- * the swap — passing `const struct nros_action_type_t *` into the `const char *`
+ * the swap — passing `const struct rclc_action_type_t *` into the `const char *`
  * parameter — fails here. That is a stronger check than a call could give and
  * it costs no fixture: a RUN would need an initialised node, which needs a
  * registered RMW backend.
  *
- * The other four change only which `nros_qos_t` reaches
+ * The other four change only which `rclc_qos_t` reaches
  * `nros_*_init_with_qos`; there is no code path to exercise, so the assertion
  * is the shape above plus the profile relationships pinned as Rust unit tests
- * in `packages/api/nros-c/src/qos.rs` (`NROS_QOS_SENSOR_DATA` is NOT
- * `NROS_QOS_DEFAULT` with reliability flipped — the depth differs — and
- * `NROS_QOS_SERVICES` is field-identical to `NROS_QOS_DEFAULT`, which is what
+ * in `packages/api/nros-c/src/qos.rs` (`RCLC_QOS_SENSOR_DATA` is NOT
+ * `RCLC_QOS_DEFAULT` with reliability flipped — the depth differs — and
+ * `RCLC_QOS_SERVICES` is field-identical to `RCLC_QOS_DEFAULT`, which is what
  * makes the reliable/best-effort service pair differ in exactly one field).
  *
  * Compile-only, no `main`: like `rcl_compat_aliases.c` next door, the claim is

@@ -68,13 +68,13 @@ namespace rclcpp_action {
 /// a map key in most real action servers, so the array-decay spelling is a
 /// drop-in BLOCKER rather than a style difference.
 ///
-/// C has had `nros_goal_uuid_t` (`nros/nros_generated.h`) and Rust
+/// C has had `rclc_goal_uuid_t` (`nros/nros_generated.h`) and Rust
 /// `nros_core::GoalId` all along; C++ was the odd one out. This is a value
 /// type over the SAME 16 bytes, not a second identity scheme: standard
 /// layout, trivially copyable, `sizeof == 16`, no allocator, no call into
 /// anything — so it reaches every target the freestanding headers do.
 ///
-/// Generation is deliberately NOT here. C's `nros_goal_uuid_generate` draws
+/// Generation is deliberately NOT here. C's `rclc_goal_uuid_generate` draws
 /// randomness, which is behaviour, and RFC-0019 keeps behaviour Rust-side; the
 /// goal id a server sees is the one the FFI hands it.
 ///
@@ -158,7 +158,7 @@ static const size_t ACTION_NAME_MAX = 256;
 /// stored integer means the same thing on both. (Until issue 1637 these were
 /// 0-based and CamelCase: `Reject = 0`, `AcceptAndExecute = 1`, ...)
 ///
-/// The FFI below is 0-based (`NROS_C_GOAL_REJECT = 0` in `component.h`),
+/// The FFI below is 0-based (`RCLC_C_GOAL_REJECT = 0` in `component.h`),
 /// because a zero-initialised decision slot must mean reject. That integer
 /// is not this enum: convert with `rclcpp_action::to_ffi(GoalResponse)`, NEVER with a
 /// `static_cast<int32_t>` — the cast yields upstream's value, and the FFI
@@ -174,22 +174,22 @@ enum class GoalResponse : int8_t {
 /// Issue 0796 — this is NOT the `action_msgs/srv/CancelGoal` RPC status; that
 /// is `CancelReturnCode` below. The two carry different meanings on
 /// overlapping FFI values (reject and `Ok` are both 0 there), so never cast between
-/// them. C names them apart too (`nros_cancel_response_t` vs
-/// `nros_cancel_return_code_t`), and Rust now does (`nros_core::CancelResponse`
+/// them. C names them apart too (`rclc_cancel_response_t` vs
+/// `rclc_cancel_return_code_t`), and Rust now does (`nros_core::CancelResponse`
 /// vs `nros_core::CancelReturnCode`).
 ///
 /// Upstream's enum, value for value: `rclcpp_action::CancelResponse` is
 /// `int8_t` with `REJECT = 1, ACCEPT = 2`, and so is this one (0-based and
 /// CamelCase until issue 1637). The FFI is
-/// 0-based (`NROS_C_CANCEL_REJECT = 0`): convert with
+/// 0-based (`RCLC_C_CANCEL_REJECT = 0`): convert with
 /// `rclcpp_action::to_ffi(CancelResponse)`, never with a `static_cast<int32_t>`.
 enum class CancelResponse : int8_t {
     REJECT = 1,
     ACCEPT = 2,
 };
 
-/// The FFI discriminant of a goal decision — `NROS_C_GOAL_REJECT` (0),
-/// `NROS_C_GOAL_ACCEPT_AND_EXECUTE` (1), `NROS_C_GOAL_ACCEPT_AND_DEFER` (2).
+/// The FFI discriminant of a goal decision — `RCLC_C_GOAL_REJECT` (0),
+/// `RCLC_C_GOAL_ACCEPT_AND_EXECUTE` (1), `RCLC_C_GOAL_ACCEPT_AND_DEFER` (2).
 /// This is the value a raw component callback (`create_action_server_raw`)
 /// returns. Anything outside upstream's three values maps to reject, the
 /// FFI's own answer for "nobody decided".
@@ -199,8 +199,8 @@ constexpr int32_t to_ffi(GoalResponse r) {
                                                    : 0;
 }
 
-/// The FFI discriminant of a cancel decision — `NROS_C_CANCEL_REJECT` (0),
-/// `NROS_C_CANCEL_ACCEPT` (1). Anything but `ACCEPT` maps to reject.
+/// The FFI discriminant of a cancel decision — `RCLC_C_CANCEL_REJECT` (0),
+/// `RCLC_C_CANCEL_ACCEPT` (1). Anything but `ACCEPT` maps to reject.
 constexpr int32_t to_ffi(CancelResponse r) {
     return (r == CancelResponse::ACCEPT) ? 1 : 0;
 }
@@ -390,8 +390,8 @@ template <typename A> class Server {
     /// instead, and the goal is driven through this server (`publish_feedback`,
     /// `succeed`, ...) because goals live in the server's static arena.
     ///
-    /// Mirrors C's `nros_accepted_callback_t` (passed at
-    /// `nros_action_server_init`) and Rust's third argument to
+    /// Mirrors C's `rclc_accepted_callback_t` (passed at
+    /// `rcl_action_server_init`) and Rust's third argument to
     /// `create_action_server_with_callbacks(goal, cancel, accepted)`. Without
     /// it a C++ user who returned ACCEPT_AND_DEFER was never told the goal had
     /// been accepted.
@@ -443,7 +443,7 @@ template <typename A> class Server {
     /// Issue 0796 — `status` used to be hardcoded `Succeeded` inside the shim,
     /// so a server that aborted a goal reported success to the client. The
     /// parameter order matches `PollingActionServer::complete_goal` and the C
-    /// API's `nros_polling_action_server_complete_goal_raw`, so the three surfaces
+    /// API's `rclc_polling_action_server_complete_goal_raw`, so the three surfaces
     /// agree; `Succeeded` is defaulted because it is the common case and
     /// because that keeps existing two-argument calls compiling.
     ///
@@ -491,7 +491,7 @@ template <typename A> class Server {
 
     /// Terminate `goal_id` as SUCCEEDED — phase-417 W4.b.
     ///
-    /// C has `nros_action_succeed` / `_abort` / `_canceled`, Rust has
+    /// C has `rclc_action_succeed` / `_abort` / `_canceled`, Rust has
     /// `ActionServerHandle::succeed` / `abort` / `canceled`, and every
     /// rclcpp_action server ends with `goal_handle->succeed(result)`. C++ had
     /// only `complete_goal`, so the terminal line of a ported server was one
@@ -607,7 +607,7 @@ template <typename A> class Server {
     /// Is `goal_id` a goal this server still knows about? — phase-417 W4.b.
     ///
     /// rcl's `rcl_action_server_goal_exists`, and C's
-    /// `nros_action_server_goal_exists`. TRUE while the goal is ACTIVE and
+    /// `rcl_action_server_goal_exists`. TRUE while the goal is ACTIVE and
     /// while its completed result is still retained for a later `get_result`,
     /// which is rcl's own window. A predicate rather than a `Result`, because
     /// the ported idiom is a guard.

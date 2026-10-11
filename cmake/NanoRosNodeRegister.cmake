@@ -833,7 +833,7 @@ function(nano_ros_node_register)
             # Issue 0088: also depend on the `nros_{c,cpp}_config_header` mirror
             # targets — the cargo dep alone races the POST_BUILD-era copy.)
             _nros_node_register_config_header_deps(${_lib})
-            # Phase 257 (W0-A) — a TYPED C component (`NROS_C_COMPONENT`) calls the
+            # Phase 257 (W0-A) — a TYPED C component (`RCLC_C_COMPONENT`) calls the
             # `nros_cpp_*` seam (publisher/subscription/timer), which lives in the
             # C++ umbrella (nros-cpp), so it links NanoRosCpp like a C++ component —
             # NOT the C-only NanoRos. (A legacy declarative C node keeps NanoRos.)
@@ -1012,7 +1012,7 @@ function(nano_ros_node_register)
             elseif(_nrc_lang STREQUAL "C")
                 # Phase 240.4 — C typed component. The entry TU is C++ but
                 # constructs the C component via its `__nros_c_component_<pkg>_*`
-                # factory/configure seam (NROS_C_COMPONENT). `NROS_ENTRY_PKG_SYM`
+                # factory/configure seam (RCLC_C_COMPONENT). `NROS_ENTRY_PKG_SYM`
                 # is already set above to the sanitized pkg.
                 _nros_node_register_entry_tu(nuttx c "${_entry_src}")
             else()
@@ -1023,7 +1023,7 @@ function(nano_ros_node_register)
         else()
             # Phase 257 (Stage-3) — the non-TYPED NuttX carrier drove the retired
             # `EntryNodeRuntime` interpreter (`NuttxBoard::run`); it is gone. Every
-            # NuttX Node pkg is now TYPED (`NROS_C_COMPONENT` / `configure`).
+            # NuttX Node pkg is now TYPED (`RCLC_C_COMPONENT` / `configure`).
             message(FATAL_ERROR
                 "nano_ros_node_register: the non-typed NuttX carrier is retired "
                 "(phase-257). Pass `TYPED` (LANGUAGE C or CPP) for the real-executor "
@@ -1302,7 +1302,7 @@ function(nano_ros_node_register)
             # Phase 244.C2 — Zephyr C typed carrier (mirrors the NuttX C path).
             # The entry TU is C++ but constructs the C component via its
             # `__nros_c_component_<pkg>_*` factory/configure seam
-            # (NROS_C_COMPONENT).
+            # (RCLC_C_COMPONENT).
             _nros_node_register_entry_tu(zephyr c "${_zephyr_entry_src}")
         endif()
         # Idempotency marker — guard one entry TU per Node pkg (re-runnable
@@ -1466,7 +1466,7 @@ function(_nros_declared_qos_arm _component _target _lang)
     endif()
 
     # One dir per component, and the `nros/` level is what makes the include
-    # spelling `<nros/nros_declared_qos_generated.h>` -- the same shape the
+    # spelling `<nros/rclc_declared_qos_generated.h>` -- the same shape the
     # per-build sizes headers use, so nothing here needs a new convention.
     set(_nrq_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-declared-qos/${_component}")
     file(MAKE_DIRECTORY "${_nrq_dir}/nros")
@@ -1591,7 +1591,7 @@ function(_nros_emit_declared_qos_header _pkg _component _dir)
         return()
     endif()
 
-    set(_nrq_hdr "${_dir}/nros/nros_declared_qos_generated.h")
+    set(_nrq_hdr "${_dir}/nros/rclc_declared_qos_generated.h")
     file(MAKE_DIRECTORY "${_dir}/nros")
     execute_process(
         COMMAND "${_nrq_cli}" ws entity-inventory

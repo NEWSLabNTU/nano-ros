@@ -12,7 +12,7 @@
  * builds (`__STDC_HOSTED__` or `NROS_CPP_STD` defined) the sink
  * writes to `stderr` with a `[level] file:line — fmt…` prefix.
  * Freestanding builds route through `nros_log`'s C ABI
- * (`nros_log_emit_fmt_at` on the default logger), which reaches
+ * (`rclc_log_emit_fmt_at` on the default logger), which reaches
  * `LOG_ERR`/`printk` on Zephyr and the per-platform sink on every other
  * `no_std` target (issue 1576). They used to compile to a no-op, so a
  * freestanding image's `report_component_failure` line — the only thing
@@ -54,17 +54,17 @@
 #include <nros/log.h>
 namespace rclcpp {
 namespace detail {
-constexpr nros_log_severity_t sink_severity(const char* level) {
-    return level[0] == 'E'   ? NROS_LOG_SEVERITY_ERROR
-           : level[0] == 'W' ? NROS_LOG_SEVERITY_WARN
-           : level[0] == 'I' ? NROS_LOG_SEVERITY_INFO
-           : level[0] == 'D' ? NROS_LOG_SEVERITY_DEBUG
-                             : NROS_LOG_SEVERITY_ERROR;
+constexpr rcl_log_severity_t sink_severity(const char* level) {
+    return level[0] == 'E'   ? RCLC_LOG_SEVERITY_ERROR
+           : level[0] == 'W' ? RCLC_LOG_SEVERITY_WARN
+           : level[0] == 'I' ? RCLC_LOG_SEVERITY_INFO
+           : level[0] == 'D' ? RCLC_LOG_SEVERITY_DEBUG
+                             : RCLC_LOG_SEVERITY_ERROR;
 }
 } // namespace detail
 } // namespace rclcpp
 #define NROS_LOG_SINK(level, file, line, ...)                                                      \
-    ::nros_log_emit_fmt_at(::nros_log_default_logger(), ::rclcpp::detail::sink_severity(level),    \
+    ::rclc_log_emit_fmt_at(::rclc_log_default_logger(), ::rclcpp::detail::sink_severity(level),    \
                            (file), static_cast<uint32_t>(line), __VA_ARGS__)
 #endif
 #endif
@@ -87,7 +87,7 @@ constexpr nros_log_severity_t sink_severity(const char* level) {
  * The macros above are legacy (Phase 123.B.7) — file:line-prefixed
  * stderr printf with no per-logger routing. The macros below carry
  * a Logger handle through to the post-Phase-88 dispatcher
- * (`nros_log_emit_fmt` → per-platform sinks, see
+ * (`rclc_log_emit_fmt` → per-platform sinks, see
  * `<nros/platform.h>` for the ABI).
  *
  * Obtain the handle from a Node via `node.get_logger()`:
@@ -96,7 +96,7 @@ constexpr nros_log_severity_t sink_severity(const char* level) {
  * rclcpp::Node node;
  * NROS_TRY(rclcpp::create_node(node, "my_node"));
  * auto logger = node.get_logger();
- * NROS_LOG_INFO(logger, "started; domain=%u", 42);
+ * RCLC_LOG_INFO(logger, "started; domain=%u", 42);
  * ```
  *
  * Below-threshold filtering happens runtime-side via the
@@ -107,7 +107,7 @@ constexpr nros_log_severity_t sink_severity(const char* level) {
  * there rather than compiled out. */
 
 /* `<nros/log.h>` already defines the six Phase-88 macros
- * (`NROS_LOG_TRACE` … `NROS_LOG_FATAL`) — include it here so C++
+ * (`RCLC_LOG_TRACE` … `RCLC_LOG_FATAL`) — include it here so C++
  * call sites pick up the same definitions without re-emitting
  * them (would trigger -Wmacro-redefined on identical-but-redeclared
  * macros). */
@@ -260,7 +260,7 @@ template <typename T> struct refuse {
     "measures the window on the `clock` argument you pass; nano-ros's throttle measures it on "    \
     "nros_log's own clock, so forwarding this macro would drop `clock` and compile and differ -- " \
     "the defect this family had when it expanded to the plain RCLCPP_* macro. For a throttle "     \
-    "on nros_log's clock, write NROS_LOG_INFO_THROTTLE(logger, interval_ms, ...) and its "         \
+    "on nros_log's clock, write RCLC_LOG_INFO_THROTTLE(logger, interval_ms, ...) and its "         \
     "siblings (<nros/log.h>) directly; otherwise rate-limit at the call site."
 
 // phase-417 stage 3 (W3.a). ONE concept: "spin until work arrives, with no
@@ -377,7 +377,7 @@ class Logger {
     /// `rclcpp::Logger::Level` -- upstream's nested severity enum, phase-417
     /// W4.d.
     ///
-    /// The values ARE `nros_log_severity_t`'s, which are rcutils's
+    /// The values ARE `rcl_log_severity_t`'s, which are rcutils's
     /// (`UNSET=0, DEBUG=10 ... FATAL=50`, `<nros/log.h>`), so the casts below
     /// are identities and there is no second number line to drift. That
     /// numbering is not this row's doing: phase-417 stage 3 moved the C enum
@@ -391,24 +391,24 @@ class Logger {
     /// `Unset` is NOT a level: it means INHERIT (phase-467, ledger row
     /// `c:log_severity_t`). `set_level(Level::Unset)` takes this logger's own
     /// level away, after which it filters on the process default
-    /// (`nros_log_get_default_level()`, `<nros/log.h>`). It reached that
+    /// (`rclc_log_get_default_level()`, `<nros/log.h>`). It reached that
     /// meaning without a line changing here, because the cast is an identity
     /// and the C entry point is where the decision lives -- which is RFC-0019
     /// working.
     enum class Level : int {
-        Unset = NROS_LOG_SEVERITY_UNSET,
-        Trace = NROS_LOG_SEVERITY_TRACE,
-        Debug = NROS_LOG_SEVERITY_DEBUG,
-        Info = NROS_LOG_SEVERITY_INFO,
-        Warn = NROS_LOG_SEVERITY_WARN,
-        Error = NROS_LOG_SEVERITY_ERROR,
-        Fatal = NROS_LOG_SEVERITY_FATAL,
+        Unset = RCLC_LOG_SEVERITY_UNSET,
+        Trace = RCLC_LOG_SEVERITY_TRACE,
+        Debug = RCLC_LOG_SEVERITY_DEBUG,
+        Info = RCLC_LOG_SEVERITY_INFO,
+        Warn = RCLC_LOG_SEVERITY_WARN,
+        Error = RCLC_LOG_SEVERITY_ERROR,
+        Fatal = RCLC_LOG_SEVERITY_FATAL,
     };
 
     /// `rclcpp::Logger::set_level(Level)` -- raise or lower THIS logger's
     /// runtime threshold. phase-417 W4.d.
     ///
-    /// A forwarder onto `nros_logger_set_level` (`<nros/log.h>`), which
+    /// A forwarder onto `rclc_logger_set_level` (`<nros/log.h>`), which
     /// forwards to `nros_log::Logger::set_level`. No level table, and no
     /// comparison against one, lives on this side: RFC-0019 makes the Rust API
     /// the implementation and C++ a shim, and a second threshold store is the
@@ -437,7 +437,7 @@ class Logger {
         if (handle_ == nullptr || !owns_level_) {
             return ::rclcpp::Result(::rclcpp::ErrorCode::InvalidArgument);
         }
-        return nros_logger_set_level(handle_, static_cast<nros_log_severity_t>(level))
+        return rclc_logger_set_level(handle_, static_cast<rcl_log_severity_t>(level))
                    ? ::rclcpp::Result::success()
                    : ::rclcpp::Result(::rclcpp::ErrorCode::InvalidArgument);
     }
@@ -447,35 +447,35 @@ class Logger {
     /// so it is never `Level::Unset`.
     /// OURS-ONLY, phase-417 W4.d.
     ///
-    /// rclcpp has no getter. C (`nros_logger_get_level`) and Rust
+    /// rclcpp has no getter. C (`rclc_logger_get_level`) and Rust
     /// (`nros_log::Logger::level`) both do, and W4.d is about our own three
     /// languages agreeing rather than about upstream's surface, so the one
     /// language missing it was the thing to fix.
     ///
     /// A null handle answers `Fatal` -- the quiet end, so a dropped handle
     /// cannot read as "trace everything". That rule is the C entry point's and
-    /// is reached rather than restated: `nros_logger_get_level(NULL)` already
-    /// answers `NROS_LOG_SEVERITY_FATAL`.
-    Level get_level() const { return static_cast<Level>(nros_logger_get_level(handle_)); }
+    /// is reached rather than restated: `rclc_logger_get_level(NULL)` already
+    /// answers `RCLC_LOG_SEVERITY_FATAL`.
+    Level get_level() const { return static_cast<Level>(rclc_logger_get_level(handle_)); }
 
     /// Would a record at `level` pass this logger's threshold? -- OURS-ONLY.
     ///
-    /// Spelled `is_enabled` to agree with C's `nros_logger_is_enabled` and
+    /// Spelled `is_enabled` to agree with C's `rclc_logger_is_enabled` and
     /// Rust's `Logger::is_enabled` rather than with rcutils's
     /// `rcutils_logging_logger_is_enabled_for`, for the same reason as
     /// `get_level`: this trio exists so our three languages stop disagreeing,
     /// and a third spelling would be the disagreement in a new place. Null
     /// handle answers false, from the C entry point.
     bool is_enabled(Level level) const {
-        return nros_logger_is_enabled(handle_, static_cast<nros_log_severity_t>(level));
+        return rclc_logger_is_enabled(handle_, static_cast<rcl_log_severity_t>(level));
     }
 
-    /// Implicit conversion to `nros_logger_t` (`const void*`, `<nros/log.h>`).
+    /// Implicit conversion to `rclc_logger_t` (`const void*`, `<nros/log.h>`).
     ///
     /// This is what let `get_logger()` become ONE accessor with upstream's
     /// return type without breaking the native call sites. Before the merge
     /// there were two: `rclcpp::Node::get_logger() -> const void*` for
-    /// `NROS_LOG_INFO(logger, …)`, and the shim's `-> rclcpp::Logger` for
+    /// `RCLC_LOG_INFO(logger, …)`, and the shim's `-> rclcpp::Logger` for
     /// `RCLCPP_INFO(get_logger(), …)`. Two overloads differing only in return
     /// type are ill-formed, so the ported channel won (RFC-0089 clause 2) and
     /// the native one is reached by conversion — including `logger == nullptr`,
@@ -502,8 +502,8 @@ class Logger {
     /// the parent's threshold; `get_name()` still answers the requested name.
     /// One warning per process says which name did not fit.
     Logger get_child(const char* suffix) const {
-        const void* parent = handle_ != nullptr ? handle_ : nros_log_get_logger(name_.c_str());
-        const bool top = parent == nros_log_default_logger();
+        const void* parent = handle_ != nullptr ? handle_ : rclc_log_get_logger(name_.c_str());
+        const bool top = parent == rclc_log_default_logger();
         char full[NROS_CPP_LOGGER_NAME_CAPACITY + 1];
         ::size_t at = 0;
         if (!top) {
@@ -520,7 +520,7 @@ class Logger {
             full[at++] = *c;
         }
         full[at] = '\0';
-        const void* child = nros_logger_get_child(parent, suffix);
+        const void* child = rclc_logger_get_child(parent, suffix);
         if (child != nullptr) {
             return Logger(full, child);
         }
@@ -547,12 +547,12 @@ class Logger {
 /// RESOLVES the name now. It used to build a name-only sentinel with a null
 /// handle, so `rclcpp::get_logger("planner")` selected nothing and every
 /// `RCLCPP_*` call through it shared one threshold with every other logger in
-/// the image — issue 1019's third defect. `nros_log_get_logger` (phase-417
+/// the image — issue 1019's third defect. `rclc_log_get_logger` (phase-417
 /// W4.d, `<nros/log.h>`) is the C surface that made this possible; it is
 /// TOTAL, so this is too, and a NULL or over-long name answers the catch-all
 /// logger rather than a null handle.
 inline Logger get_logger(const char* name) {
-    return Logger(name, name != nullptr ? nros_log_get_logger(name) : nros_log_default_logger());
+    return Logger(name, name != nullptr ? rclc_log_get_logger(name) : rclc_log_default_logger());
 }
 
 #ifdef NROS_CPP_HAS_STD_STRING // hosted-family: string-interop
@@ -569,20 +569,20 @@ namespace detail {
 /// call site was handed — issue 1019.
 ///
 /// Two overloads rather than one, and the fallback is the point.
-/// `nros_log_emit_fmt_at` RETURNS EARLY on a null handle, so routing the
+/// `rclc_log_emit_fmt_at` RETURNS EARLY on a null handle, so routing the
 /// `RCLCPP_*` family at it without this would have swapped one silent drop for
 /// another: a `Logger` built from a name alone, or from an uninitialised node,
 /// carries a null handle. Those records go to the catch-all `nros` logger
 /// instead, which is where a record with no owner belongs.
 ///
-/// The `const void*` overload exists because `nros_logger_t` IS `const void*`
+/// The `const void*` overload exists because `rclc_logger_t` IS `const void*`
 /// and a native call site may hand one straight in; `Logger` binds the
 /// reference overload by identity, so the two never compete.
-inline nros_logger_t log_handle(const void* handle) {
-    return handle != nullptr ? handle : nros_log_default_logger();
+inline rclc_logger_t log_handle(const void* handle) {
+    return handle != nullptr ? handle : rclc_log_default_logger();
 }
 
-inline nros_logger_t log_handle(const Logger& logger) {
+inline rclc_logger_t log_handle(const Logger& logger) {
     return log_handle(static_cast<const void*>(logger));
 }
 
@@ -610,7 +610,7 @@ const size_t RUNTIME_REFUSAL_MAX = 160;
 /// refusal nobody can read is the defect this whole stage exists to remove, so
 /// it must not be possible to add one by accident.
 ///
-/// `nros_log_emit_at`, not the `NROS_LOG_*` printf path: that one renders
+/// `rclc_log_emit_at`, not the `NROS_LOG_*` printf path: that one renders
 /// through its own 256-byte stack buffer as well, and there is no reason to pay
 /// two truncation risks for a message that needs no formatting.
 ///
@@ -623,7 +623,7 @@ inline void say_refused(const char (&message)[N], const char* file, uint32_t lin
                   "not truncated, it is DROPPED, and the reader sees a lone ellipsis. Keep the "
                   "long text on the static_assert, which the compiler prints in full, and give "
                   "the runtime site a short form that still names the alternative.");
-    nros_log_emit_at(log_handle(nullptr), NROS_LOG_SEVERITY_ERROR, message, N - 1, file, line);
+    rclc_log_emit_at(log_handle(nullptr), RCLC_LOG_SEVERITY_ERROR, message, N - 1, file, line);
 }
 
 /// **REFUSED** — the target of every `RCLCPP_*_THROTTLE` macro. Variadic so
@@ -661,7 +661,7 @@ void throttle_is_refused(Logger&&, Clock&&, Period&&, Rest&&...) {
 // All three are one fix: route at `NROS_LOG_*` (`<nros/log.h>`), which
 // dispatches through `nros_log` and therefore reaches `LOG_ERR`/`printk` on
 // exactly the targets where the legacy sink is a no-op, honours the per-logger
-// threshold, and has a distinct `NROS_LOG_SEVERITY_FATAL`.
+// threshold, and has a distinct `RCLC_LOG_SEVERITY_FATAL`.
 //
 // `NROS_INFO` and friends stay the unkeyed, file:line family. (Since issue
 // 1576 their FREESTANDING default is no longer a no-op either — it emits on
@@ -693,23 +693,23 @@ void throttle_is_refused(Logger&&, Clock&&, Period&&, Rest&&...) {
 #ifndef RCLCPP_INFO
 #define RCLCPP_DEBUG(logger, ...)                                                                  \
     do {                                                                                           \
-        NROS_LOG_DEBUG(::rclcpp::detail::log_handle(logger), __VA_ARGS__);                         \
+        RCLC_LOG_DEBUG(::rclcpp::detail::log_handle(logger), __VA_ARGS__);                         \
     } while (0)
 #define RCLCPP_INFO(logger, ...)                                                                   \
     do {                                                                                           \
-        NROS_LOG_INFO(::rclcpp::detail::log_handle(logger), __VA_ARGS__);                          \
+        RCLC_LOG_INFO(::rclcpp::detail::log_handle(logger), __VA_ARGS__);                          \
     } while (0)
 #define RCLCPP_WARN(logger, ...)                                                                   \
     do {                                                                                           \
-        NROS_LOG_WARN(::rclcpp::detail::log_handle(logger), __VA_ARGS__);                          \
+        RCLC_LOG_WARN(::rclcpp::detail::log_handle(logger), __VA_ARGS__);                          \
     } while (0)
 #define RCLCPP_ERROR(logger, ...)                                                                  \
     do {                                                                                           \
-        NROS_LOG_ERROR(::rclcpp::detail::log_handle(logger), __VA_ARGS__);                         \
+        RCLC_LOG_ERROR(::rclcpp::detail::log_handle(logger), __VA_ARGS__);                         \
     } while (0)
 #define RCLCPP_FATAL(logger, ...)                                                                  \
     do {                                                                                           \
-        NROS_LOG_FATAL(::rclcpp::detail::log_handle(logger), __VA_ARGS__);                         \
+        RCLC_LOG_FATAL(::rclcpp::detail::log_handle(logger), __VA_ARGS__);                         \
     } while (0)
 
 // REFUSED. The arguments are still forwarded so they are parsed and
@@ -756,7 +756,7 @@ void throttle_is_refused(Logger&&, Clock&&, Period&&, Rest&&...) {
 // target, formats with `vsnprintf` in a `static inline`.
 //
 // Two bounds, stated: the text is capped at `NROS_LOG_FMT_BUFFER_SIZE` (256)
-// bytes and a longer one ends in `...`, the convention `nros_log_emit_fmt_at`
+// bytes and a longer one ends in `...`, the convention `rclc_log_emit_fmt_at`
 // uses; and stream MANIPULATORS (`std::hex`, `std::setprecision`, `std::endl`)
 // are not supported. A type with its own `operator<<(std::ostream&, T)` (a
 // user struct, `std::string`) is formatted through `std::ostringstream` where

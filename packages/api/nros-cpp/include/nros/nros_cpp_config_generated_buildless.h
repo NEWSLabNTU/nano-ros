@@ -6,7 +6,7 @@
  * hand-kept UPPER BOUND, and it kept failing to be one: #167, #464, #954 and
  * issue 1568 each found a value below the build, the last as a live 36-byte
  * publisher overrun. It could not even be made right by hand — one file stood
- * for two architectures that measure differently, and `nros_subscription_t`
+ * for two architectures that measure differently, and `rcl_subscription_t`
  * carries a field after its opaque array, so any value but the build's own
  * moves that field in C relative to the Rust that writes it.
  *
@@ -98,8 +98,8 @@
  *
  * EXACT values, not upper bounds — a version range has no bound to be safe on.
  * Gated by `check-config-fallback-macros`. */
-#define NROS_CODEGEN_VERSION 12
-#define NROS_CODEGEN_VERSION_MIN 12
+#define NROS_CODEGEN_VERSION 13
+#define NROS_CODEGEN_VERSION_MIN 13
 
 /* Issue 0464 — the generator computes
  *   NROS_CPP_EXECUTOR_STORAGE_SIZE = NROS_EXECUTOR_SIZE + CPP_CONTEXT_OVERHEAD

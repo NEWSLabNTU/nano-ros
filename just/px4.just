@@ -261,7 +261,7 @@ build-bridge-example topics="debug_key_value" edition="jazzy":
         --target-dir "$EXT_DIR/ffi/target-bridge-ffi"
 
     echo "[3/4] building the nano-ros archives (outward backend $RMW baked in here)"
-    # `bridge` is what puts nros_init_multi / nros_pubsub_bridge_* (the ABI
+    # `bridge` is what puts rclc_init_multi / nros_pubsub_bridge_* (the ABI
     # nros::MultiExecutor calls) into libnros_cpp.a — issue 0436. Without it the
     # module compiles and fails to LINK.
     # `platform-posix` makes the umbrella's bundled zenoh-pico COMPLETE (core +

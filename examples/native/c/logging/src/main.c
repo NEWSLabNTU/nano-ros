@@ -1,9 +1,9 @@
 /*
  * Phase 88.13 — minimal C logging demo.
  *
- * Brings up a Node, fetches its Logger via `nros_node_get_logger`,
+ * Brings up a Node, fetches its Logger via `rclc_node_get_logger`,
  * and exercises every severity macro from <nros/log.h>. Threshold
- * adjustment uses the same `nros_logger_t` handle through a small
+ * adjustment uses the same `rclc_logger_t` handle through a small
  * helper that calls into the Rust facade via the executor handle.
  *
  * Run after starting zenohd:
@@ -34,22 +34,22 @@ int main(void) {
         locator = NROS_ENTRY_LOCATOR;
     }
 
-    nros_support_t support = nros_support_get_zero_initialized();
-    if (nros_support_init(&support, locator, 0) != 0) {
-        fprintf(stderr, "nros_support_init failed (locator=%s)\n", locator);
+    rclc_support_t support = rclc_support_get_zero_initialized();
+    if (rclc_support_init(&support, locator, 0) != 0) {
+        fprintf(stderr, "rclc_support_init failed (locator=%s)\n", locator);
         return 1;
     }
 
-    nros_node_t node = rcl_get_zero_initialized_node();
+    rcl_node_t node = rcl_get_zero_initialized_node();
     if (rclc_node_init_default(&node, "demo", "/", &support) != 0) {
         fprintf(stderr, "rclc_node_init_default failed\n");
         rclc_support_fini(&support);
         return 1;
     }
 
-    nros_logger_t logger = nros_node_get_logger(&node);
+    rclc_logger_t logger = rclc_node_get_logger(&node);
     if (logger == NULL) {
-        fprintf(stderr, "nros_node_get_logger returned NULL\n");
+        fprintf(stderr, "rclc_node_get_logger returned NULL\n");
         rcl_node_fini(&node);
         rclc_support_fini(&support);
         return 1;
@@ -58,12 +58,12 @@ int main(void) {
     /* Default threshold = Info. Below-Info severities go quiet
      * unless caller bumps via the Rust API; mirror that here by
      * just exercising every macro and observing the filter. */
-    NROS_LOG_TRACE(logger, "round 1: trace=%d (dropped at default Info threshold)", 1);
-    NROS_LOG_DEBUG(logger, "round 1: debug=%d (dropped at default Info threshold)", 1);
-    NROS_LOG_INFO(logger, "round 1: info=%d (visible)", 1);
-    NROS_LOG_WARN(logger, "round 1: warn=%d", 1);
-    NROS_LOG_ERROR(logger, "round 1: error=%d", 1);
-    NROS_LOG_FATAL(logger, "round 1: fatal=%d", 1);
+    RCLC_LOG_TRACE(logger, "round 1: trace=%d (dropped at default Info threshold)", 1);
+    RCLC_LOG_DEBUG(logger, "round 1: debug=%d (dropped at default Info threshold)", 1);
+    RCLC_LOG_INFO(logger, "round 1: info=%d (visible)", 1);
+    RCLC_LOG_WARN(logger, "round 1: warn=%d", 1);
+    RCLC_LOG_ERROR(logger, "round 1: error=%d", 1);
+    RCLC_LOG_FATAL(logger, "round 1: fatal=%d", 1);
 
     rcl_node_fini(&node);
     rclc_support_fini(&support);

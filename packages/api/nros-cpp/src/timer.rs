@@ -78,7 +78,7 @@ pub unsafe extern "C" fn nros_cpp_timer_create(
 ///
 /// `nros_cpp_timer_create` is the WALL timer: it advances with the executor's
 /// monotonic spin delta and no simulator can slow it down. This one advances
-/// with `clock_type`, so a `NROS_CLOCK_ROS_TIME` timer follows `/clock` — it
+/// with `clock_type`, so a `RCLC_CLOCK_ROS_TIME` timer follows `/clock` — it
 /// stops while the simulator is paused, and it tracks a bag's replay rate.
 ///
 /// With no `/clock` source installed, a ROS-time timer reads system time, the
@@ -107,7 +107,7 @@ pub unsafe extern "C" fn nros_cpp_timer_create_on_clock(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
-    // `u8` and not `nros_clock_type_t`, deliberately: `nros_cpp_ffi.h` is
+    // `u8` and not `rcl_clock_type_t`, deliberately: `nros_cpp_ffi.h` is
     // generated with `no_includes`, so a parameter typed with nros-c's enum
     // would name a type the header does not declare and every TU that includes
     // it without `nros/clock.h` fails to compile (action_client.hpp did). C++
@@ -121,8 +121,8 @@ pub unsafe extern "C" fn nros_cpp_timer_create_on_clock(
     // unlike a transmute into the enum.
     //
     // phase-430 W1 — the mapping itself is `nros_c::nros_timer_clock_source`,
-    // the one place the `nros_clock_type_t` discriminants are decoded, so the C
-    // verb (`nros_timer_init_on_clock`) and this one cannot disagree about what
+    // the one place the `rcl_clock_type_t` discriminants are decoded, so the C
+    // verb (`rclc_timer_init_on_clock`) and this one cannot disagree about what
     // a clock kind means.
     let Some(source) = nros_c::nros_timer_clock_source(clock_type) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
@@ -174,8 +174,8 @@ pub unsafe extern "C" fn nros_cpp_timer_create_on_clock(
 /// the timer is released (or the executor finalised): the capture's bytes were
 /// moved here by copy, so that is where its destructor runs.
 ///
-/// `clock_type` is a `nros_clock_type_t` discriminant: `NROS_CLOCK_STEADY_TIME`
-/// is the wall timer that advances with the spin delta, `NROS_CLOCK_ROS_TIME`
+/// `clock_type` is a `rcl_clock_type_t` discriminant: `RCLC_CLOCK_STEADY_TIME`
+/// is the wall timer that advances with the spin delta, `RCLC_CLOCK_ROS_TIME`
 /// follows `/clock`. `capture_len == 0` (or a NULL `capture`) passes NULL to
 /// `callback`.
 ///
@@ -462,7 +462,7 @@ pub unsafe extern "C" fn nros_cpp_timer_reset(
 /// matching `nros_cpp_timer_is_canceled`'s shape: this pair returns the plain
 /// `bool` the C++ predicate needs, and the C surface is where the
 /// "cannot answer" outcome has a return code of its own
-/// (`rcl_timer_is_ready`'s `NROS_RET_NOT_INIT`).
+/// (`rcl_timer_is_ready`'s `RCL_RET_NOT_INIT`).
 ///
 /// # Safety
 /// `executor_handle` must be a valid executor handle.

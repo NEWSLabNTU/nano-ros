@@ -151,7 +151,7 @@ pub struct PlanNode {
     /// Phase 240.4 (RFC-0043) — component implementation language from the
     /// cmake metadata. `None` for the launch-only legacy path. The **typed**
     /// entry emitter branches on it: a [`Lang::C`] node is constructed via its
-    /// C-ABI factory + `configure(node_handle, self)` seam (`NROS_C_COMPONENT`),
+    /// C-ABI factory + `configure(node_handle, self)` seam (`RCLC_C_COMPONENT`),
     /// a [`Lang::Cpp`] node via its C++ class + `configure(node)`.
     ///
     /// phase-469 — the ENUM, not the string it is written as. Every consumer
@@ -315,7 +315,7 @@ pub struct BakedSession {
     /// baking `""` WITH the bit set would assert a configured-empty endpoint.
     pub locator: Option<String>,
     /// `execution.deploy.<fqn>.rmw`, when every deployed node agrees. Empty is
-    /// normalised to `None` for the same reason `nros_support_init` does it
+    /// normalised to `None` for the same reason `rclc_support_init` does it
     /// (issue 1050 defect (3)): an empty selector is "unset", never a backend
     /// named `""`.
     pub rmw: Option<String>,

@@ -24,10 +24,10 @@ static int env_int(const char* key, int fallback) {
 }
 
 static struct {
-    nros_support_t support;
-    nros_node_t node;
-    nros_publisher_t rosout;
-    nros_executor_t executor;
+    rclc_support_t support;
+    rcl_node_t node;
+    rcl_publisher_t rosout;
+    rclc_executor_t executor;
 } app;
 
 int nros_app_main(int argc, char** argv) {
@@ -47,17 +47,17 @@ int nros_app_main(int argc, char** argv) {
     int period_ms = env_int("ROSOUT_PROBE_PERIOD_MS", 250);
 
     memset(&app, 0, sizeof(app));
-    if (!nros_logging_rosout_enabled()) {
+    if (!rcl_logging_rosout_enabled()) {
         printf("ROSOUT_PROBE_NOT_BUILT\n");
         return 3;
     }
-    NROS_CHECK_RET(nros_support_init(&app.support, locator, domain_id), 1);
-    NROS_CHECK_RET(rclc_node_init_default(&app.node, "rosout_talker", "/", &app.support), 1);
-    NROS_CHECK_RET(nros_rosout_publisher_init(&app.rosout, &app.node, NULL), 1);
-    NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 1), 1);
+    RCLC_CHECK_RET(rclc_support_init(&app.support, locator, domain_id), 1);
+    RCLC_CHECK_RET(rclc_node_init_default(&app.node, "rosout_talker", "/", &app.support), 1);
+    RCLC_CHECK_RET(rclc_rosout_publisher_init(&app.rosout, &app.node, NULL), 1);
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support, 1), 1);
 
-    nros_logger_t probe = nros_node_get_logger(&app.node);
-    if (nros_rosout_enable() != NROS_RET_OK) {
+    rclc_logger_t probe = rclc_node_get_logger(&app.node);
+    if (rclc_rosout_enable() != RCL_RET_OK) {
         printf("ROSOUT_PROBE_SINK_FULL\n");
         return 4;
     }
@@ -65,15 +65,15 @@ int nros_app_main(int argc, char** argv) {
 
     size_t total = 0;
     for (int i = 0; i < records; i++) {
-        NROS_LOG_INFO(probe, "nros rosout probe record %d", i);
+        RCLC_LOG_INFO(probe, "nros rosout probe record %d", i);
         if (i % 2 == 1) {
-            NROS_LOG_WARN(probe, "nros rosout probe warning at %d", i);
+            RCLC_LOG_WARN(probe, "nros rosout probe warning at %d", i);
         }
         (void)rclc_executor_spin_some(&app.executor, (uint64_t)period_ms * 1000000ULL);
         size_t sent = 0;
-        nros_ret_t ret = nros_rosout_pump(&app.rosout, &sent);
+        rcl_ret_t ret = rclc_rosout_pump(&app.rosout, &sent);
         total += sent;
-        if (ret != NROS_RET_OK) {
+        if (ret != RCL_RET_OK) {
             printf("ROSOUT_PROBE_PUBLISH_ERR pumped=%zu ret=%d\n", total, (int)ret);
             return 5;
         }
@@ -82,7 +82,7 @@ int nros_app_main(int argc, char** argv) {
     printf("ROSOUT_PROBE_DONE pumped=%zu\n", total);
 
     rclc_executor_fini(&app.executor);
-    nros_publisher_fini(&app.rosout);
+    rcl_publisher_fini(&app.rosout);
     rcl_node_fini(&app.node);
     rclc_support_fini(&app.support);
     return 0;

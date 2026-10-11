@@ -341,7 +341,7 @@ constexpr bool argv_has_ros_args(int argc, char const* const* argv, int i = 0) {
     // record it was over 1180 bytes, which a real sink cannot carry: the body
     // is dropped and only an ellipsis is printed, so the process aborted
     // without saying why.
-    NROS_LOG_ERROR(log_handle(nullptr), "rclcpp::Node::%s(\"%.64s\") failed: rclcpp::ErrorCode %d",
+    RCLC_LOG_ERROR(log_handle(nullptr), "rclcpp::Node::%s(\"%.64s\") failed: rclcpp::ErrorCode %d",
                    verb, name != nullptr ? name : "", static_cast<int>(code));
     NROS_RCLCPP_SAY_REFUSED(NROS_RCLCPP_ABORT_FAILED_CREATE);
     ::std::abort();
@@ -787,9 +787,9 @@ namespace rclcpp {
 // ADOPT-BOUNDED trade `get_clock()` itself makes.
 //
 // WHAT THE CLOCK DOES, and it is the whole point of the verb: a
-// `NROS_CLOCK_ROS_TIME` clock follows `/clock`, so the timer stops when a bag
+// `RCLC_CLOCK_ROS_TIME` clock follows `/clock`, so the timer stops when a bag
 // stops and re-times when the bag is replayed at another rate; a
-// `NROS_CLOCK_STEADY_TIME` one does not. `create_wall_timer` is the steady
+// `RCLC_CLOCK_STEADY_TIME` one does not. `create_wall_timer` is the steady
 // verb and is unaffected by simulated time. Upstream distinguishes the two
 // cases by TYPE (`WallTimer` vs `GenericTimer<ClockT>`) *and* by VERB; the type
 // distinction is unportable here (the clock is a runtime field on one flat
@@ -1081,7 +1081,7 @@ namespace detail {
 /// capture that owns something (a `std::string`, a `shared_ptr`) is destroyed
 /// exactly once, there.
 template <typename Cb>
-inline TimerHandle register_timer_capturing(::rclcpp::Node& node, nros_clock_type_t clock_type,
+inline TimerHandle register_timer_capturing(::rclcpp::Node& node, rcl_clock_type_t clock_type,
                                             Duration period, Cb&& cb, const char* verb) {
     using Capture = InplaceFn<void()>;
     Capture captured(tr::relay<Cb>(cb));
@@ -1115,7 +1115,7 @@ namespace rclcpp {
 
 template <typename Cb>
 inline ::rclcpp::TimerHandle Node::create_wall_timer(::rclcpp::Duration period, Cb cb) {
-    return ::rclcpp::detail::register_timer_capturing(*this, NROS_CLOCK_STEADY_TIME, period,
+    return ::rclcpp::detail::register_timer_capturing(*this, RCLC_CLOCK_STEADY_TIME, period,
                                                       ::rclcpp::tr::forward_rvalue(cb),
                                                       "create_wall_timer");
 }
@@ -1157,7 +1157,7 @@ template <typename NodeT, typename CallbackT>
 inline ::rclcpp::TimerHandle create_timer(NodeT&& node, ::rclcpp::Clock* clock,
                                           ::rclcpp::Duration period, CallbackT&& callback) {
     ::rclcpp::Node& n = detail::as_node_ref(node);
-    const nros_clock_type_t type =
+    const rcl_clock_type_t type =
         clock != nullptr ? clock->get_clock_type() : n.get_clock()->get_clock_type();
     return ::rclcpp::detail::register_timer_capturing(
         n, type, period, ::rclcpp::tr::relay<CallbackT>(callback), "create_timer");
@@ -1241,7 +1241,7 @@ template <typename T> inline T Node::declare_parameter(const char* name, T defau
     }
     const ::nros_cpp_node_t* h = this->ffi_handle();
     Result r = ::rclcpp::detail::node_param_declare(h, name, default_value);
-    if (!r.ok() && r.raw() != NROS_RET_ALREADY_EXISTS) {
+    if (!r.ok() && r.raw() != RCLC_RET_ALREADY_EXISTS) {
         return default_value;
     }
     T out = T();
@@ -1339,12 +1339,12 @@ inline ParameterType Node::get_parameter_type(const char* name) const {
 inline Result Node::get_parameter_types(const char* const* names, ::size_t count,
                                         ParameterType* out) const {
     if ((names == nullptr || out == nullptr) && count != 0) {
-        return Result(NROS_RET_INVALID_ARGUMENT);
+        return Result(RCL_RET_INVALID_ARGUMENT);
     }
     for (::size_t i = 0; i < count; ++i) {
         out[i] = this->get_parameter_type(names[i]);
     }
-    return Result(NROS_RET_OK);
+    return Result(RCL_RET_OK);
 }
 
 inline Result Node::describe_parameter(const char* name, ParameterDescriptor& out, char* text,
@@ -1363,7 +1363,7 @@ inline Result Node::describe_parameter(const char* name, ParameterDescriptor& ou
     int32_t type = 0;
     Result r = ::rclcpp::detail::node_param_describe(this->ffi_handle(), name, description, half,
                                                      constraints, half, &out.read_only, &type);
-    if (r.raw() == NROS_RET_NOT_FOUND) {
+    if (r.raw() == RCLC_RET_NOT_FOUND) {
         return r;
     }
     out.description = description;

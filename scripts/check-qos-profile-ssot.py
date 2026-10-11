@@ -525,37 +525,37 @@ def _rmw_entity_profiles(text, where):
 # canonical vocabulary here.
 _C_API_ENUMS = {
     "reliability": {
-        "NROS_QOS_RELIABILITY_RELIABLE": "RELIABLE",
-        "NROS_QOS_RELIABILITY_BEST_EFFORT": "BEST_EFFORT",
+        "RCLC_QOS_RELIABILITY_RELIABLE": "RELIABLE",
+        "RCLC_QOS_RELIABILITY_BEST_EFFORT": "BEST_EFFORT",
     },
     "durability": {
-        "NROS_QOS_DURABILITY_VOLATILE": "VOLATILE",
-        "NROS_QOS_DURABILITY_TRANSIENT_LOCAL": "TRANSIENT_LOCAL",
+        "RCLC_QOS_DURABILITY_VOLATILE": "VOLATILE",
+        "RCLC_QOS_DURABILITY_TRANSIENT_LOCAL": "TRANSIENT_LOCAL",
     },
     "history": {
-        "NROS_QOS_HISTORY_KEEP_LAST": "KEEP_LAST",
-        "NROS_QOS_HISTORY_KEEP_ALL": "KEEP_ALL",
+        "RCLC_QOS_HISTORY_KEEP_LAST": "KEEP_LAST",
+        "RCLC_QOS_HISTORY_KEEP_ALL": "KEEP_ALL",
     },
     "liveliness_kind": {
-        "NROS_QOS_LIVELINESS_NONE": "SYSTEM_DEFAULT",
-        "NROS_QOS_LIVELINESS_AUTOMATIC": "AUTOMATIC",
-        "NROS_QOS_LIVELINESS_MANUAL_BY_TOPIC": "MANUAL_BY_TOPIC",
-        "NROS_QOS_LIVELINESS_MANUAL_BY_NODE": "MANUAL_BY_NODE",
+        "RCLC_QOS_LIVELINESS_NONE": "SYSTEM_DEFAULT",
+        "RCLC_QOS_LIVELINESS_AUTOMATIC": "AUTOMATIC",
+        "RCLC_QOS_LIVELINESS_MANUAL_BY_TOPIC": "MANUAL_BY_TOPIC",
+        "RCLC_QOS_LIVELINESS_MANUAL_BY_NODE": "MANUAL_BY_NODE",
     },
 }
 
 _CPP_FFI_ENUMS = {
-    "reliability": {"NROS_C_QOS_RELIABLE": "RELIABLE", "NROS_C_QOS_BEST_EFFORT": "BEST_EFFORT"},
+    "reliability": {"RCLC_C_QOS_RELIABLE": "RELIABLE", "RCLC_C_QOS_BEST_EFFORT": "BEST_EFFORT"},
     "durability": {
-        "NROS_C_QOS_VOLATILE": "VOLATILE",
-        "NROS_C_QOS_TRANSIENT_LOCAL": "TRANSIENT_LOCAL",
+        "RCLC_C_QOS_VOLATILE": "VOLATILE",
+        "RCLC_C_QOS_TRANSIENT_LOCAL": "TRANSIENT_LOCAL",
     },
-    "history": {"NROS_C_QOS_KEEP_LAST": "KEEP_LAST", "NROS_C_QOS_KEEP_ALL": "KEEP_ALL"},
+    "history": {"RCLC_C_QOS_KEEP_LAST": "KEEP_LAST", "RCLC_C_QOS_KEEP_ALL": "KEEP_ALL"},
     "liveliness_kind": {
-        "NROS_C_QOS_LIVELINESS_NONE": "SYSTEM_DEFAULT",
-        "NROS_C_QOS_LIVELINESS_AUTOMATIC": "AUTOMATIC",
-        "NROS_C_QOS_LIVELINESS_MANUAL_BY_TOPIC": "MANUAL_BY_TOPIC",
-        "NROS_C_QOS_LIVELINESS_MANUAL_BY_NODE": "MANUAL_BY_NODE",
+        "RCLC_C_QOS_LIVELINESS_NONE": "SYSTEM_DEFAULT",
+        "RCLC_C_QOS_LIVELINESS_AUTOMATIC": "AUTOMATIC",
+        "RCLC_C_QOS_LIVELINESS_MANUAL_BY_TOPIC": "MANUAL_BY_TOPIC",
+        "RCLC_C_QOS_LIVELINESS_MANUAL_BY_NODE": "MANUAL_BY_NODE",
     },
 }
 
@@ -570,18 +570,18 @@ def _canon(enums, field, tok, where):
 
 
 def _component_h_default(text, where):
-    """`nros_c_qos_default()` — what every generated `*_SUBSCRIBE` macro uses."""
+    """`rclc_c_qos_default()` — what every generated `*_SUBSCRIBE` macro uses."""
     body = re.search(
-        r"static inline nros_cpp_qos_t nros_c_qos_default\(void\)\s*\{(.*?)\n\}", text, re.S
+        r"static inline nros_cpp_qos_t rclc_c_qos_default\(void\)\s*\{(.*?)\n\}", text, re.S
     )
     if not body:
-        raise Fail(f"{where}: nros_c_qos_default() is not where the gate reads it")
+        raise Fail(f"{where}: rclc_c_qos_default() is not where the gate reads it")
     fields = {}
     for field, raw in re.findall(r"q\.([a-z_]+)\s*=\s*([A-Za-z0-9_]+)\s*;", body.group(1)):
         if field not in UPSTREAM_FIELDS + NROS_ONLY_FIELDS:
             continue
         fields[field] = _c_scalar(_CPP_FFI_ENUMS, field, raw, where)
-    return {"nros_c_qos_default": fields}
+    return {"rclc_c_qos_default": fields}
 
 
 def _c_scalar(enums, field, raw, where):
@@ -597,7 +597,7 @@ def _c_scalar(enums, field, raw, where):
 
 
 def _nros_c_statics(text, where):
-    """`NROS_QOS_DEFAULT` / `_SENSOR_DATA` / `_SERVICES` in `nros-c/src/qos.rs`.
+    """`RCLC_QOS_DEFAULT` / `_SENSOR_DATA` / `_SERVICES` in `nros-c/src/qos.rs`.
 
     `depth` is DELIBERATELY not extracted: phase-454 W1 made these read
     `QoSProfile::QOS_PROFILE_*.depth`, so the compiler binds them and a gate
@@ -606,7 +606,7 @@ def _nros_c_statics(text, where):
     """
     out = {}
     for name, body in re.findall(
-        r"pub static (NROS_QOS_[A-Z_]+): nros_qos_t = nros_qos_t \{(.*?)\n\};", text, re.S
+        r"pub static (RCLC_QOS_[A-Z_]+): rclc_qos_t = rclc_qos_t \{(.*?)\n\};", text, re.S
     ):
         fields = {}
         for field, raw in re.findall(r"^\s+([a-z_]+)\s*:\s*([^,\n]+),", body, re.M):
@@ -618,7 +618,7 @@ def _nros_c_statics(text, where):
             fields[field] = _c_scalar(_C_API_ENUMS, field, tok, where)
         out[name] = fields
     if not out:
-        raise Fail(f"{where}: no `pub static NROS_QOS_*: nros_qos_t` parsed")
+        raise Fail(f"{where}: no `pub static RCLC_QOS_*: rclc_qos_t` parsed")
     return out
 
 
@@ -793,16 +793,16 @@ MIRRORS = [
         "component.h",
         ROOT / "packages" / "api" / "nros-c" / "include" / "nros" / "component.h",
         _component_h_default,
-        {"nros_c_qos_default": "QOS_PROFILE_DEFAULT"},
+        {"rclc_c_qos_default": "QOS_PROFILE_DEFAULT"},
     ),
     Mirror(
         "nros-c/qos.rs",
         ROOT / "packages" / "api" / "nros-c" / "src" / "qos.rs",
         _nros_c_statics,
         {
-            "NROS_QOS_DEFAULT": "QOS_PROFILE_DEFAULT",
-            "NROS_QOS_SENSOR_DATA": "QOS_PROFILE_SENSOR_DATA",
-            "NROS_QOS_SERVICES": "QOS_PROFILE_SERVICES_DEFAULT",
+            "RCLC_QOS_DEFAULT": "QOS_PROFILE_DEFAULT",
+            "RCLC_QOS_SENSOR_DATA": "QOS_PROFILE_SENSOR_DATA",
+            "RCLC_QOS_SERVICES": "QOS_PROFILE_SERVICES_DEFAULT",
         },
     ),
     Mirror(
@@ -1701,18 +1701,18 @@ _MIRROR_SOURCE_PROBE = {
     "component.h": (
         "q.depth = 10;",
         "q.depth = 17;",
-        "nros_c_qos_default",
+        "rclc_c_qos_default",
         "depth",
         17,
     ),
     "nros-c/qos.rs": (
-        "    history: nros_qos_history_t::NROS_QOS_HISTORY_KEEP_LAST,\n"
-        "    liveliness_kind: nros_qos_liveliness_t::NROS_QOS_LIVELINESS_NONE,\n"
+        "    history: rclc_qos_history_t::RCLC_QOS_HISTORY_KEEP_LAST,\n"
+        "    liveliness_kind: rclc_qos_liveliness_t::RCLC_QOS_LIVELINESS_NONE,\n"
         "    depth: c_depth(nros_node::QoSProfile::QOS_PROFILE_SENSOR_DATA.depth),",
-        "    history: nros_qos_history_t::NROS_QOS_HISTORY_KEEP_ALL,\n"
-        "    liveliness_kind: nros_qos_liveliness_t::NROS_QOS_LIVELINESS_NONE,\n"
+        "    history: rclc_qos_history_t::RCLC_QOS_HISTORY_KEEP_ALL,\n"
+        "    liveliness_kind: rclc_qos_liveliness_t::RCLC_QOS_LIVELINESS_NONE,\n"
         "    depth: c_depth(nros_node::QoSProfile::QOS_PROFILE_SENSOR_DATA.depth),",
-        "NROS_QOS_SENSOR_DATA",
+        "RCLC_QOS_SENSOR_DATA",
         "history",
         "KEEP_ALL",
     ),

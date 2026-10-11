@@ -38,9 +38,9 @@
  * expression a C11 `_Static_assert` accepts. C++ reads the form
  * above; C reads this one. */
 #define NROS_DECLARED_QOS_ROWS_Q(NROS_DECLARED_QOS_ROW_Q, \
-        nros_q_type, nros_q_topic) \
-    NROS_DECLARED_QOS_ROW_Q("std_msgs::msg::dds_::Int32_", "/chatter", 1, NROS_DQ_UNDECLARED, NROS_DQ_UNDECLARED, nros_q_type, nros_q_topic) \
-    NROS_DECLARED_QOS_ROW_Q("std_msgs/msg/Int32", "/chatter", 1, NROS_DQ_UNDECLARED, NROS_DQ_UNDECLARED, nros_q_type, nros_q_topic) \
+        rclc_q_type, rclc_q_topic) \
+    NROS_DECLARED_QOS_ROW_Q("std_msgs::msg::dds_::Int32_", "/chatter", 1, NROS_DQ_UNDECLARED, NROS_DQ_UNDECLARED, rclc_q_type, rclc_q_topic) \
+    NROS_DECLARED_QOS_ROW_Q("std_msgs/msg/Int32", "/chatter", 1, NROS_DQ_UNDECLARED, NROS_DQ_UNDECLARED, rclc_q_type, rclc_q_topic) \
     /* end */
 #define NROS_DECLARED_QOS_ROW_COUNT 2
 

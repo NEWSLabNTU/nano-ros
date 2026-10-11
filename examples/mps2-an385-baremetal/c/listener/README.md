@@ -9,7 +9,7 @@ link root is Rust (`src/main.rs` boots the board and calls `nros_app_main()`), a
 files are byte-identical to the talker's; this leaf differs in `package.xml` and
 `src/listener.c` only, plus `nros-codegen.toml`. No libc, and no
 `printf` substitution — records are built by hand and emitted through
-`nros_log_emit_at`.
+`rclc_log_emit_at`.
 
 `nros-codegen.toml` bounds `std_msgs/String.data` (256): typed delivery deserializes into storage the caller owns, so an unbounded type has no receive bound to size it with (issue 0964), the same file the FreeRTOS sibling carries.
 

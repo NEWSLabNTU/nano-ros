@@ -52,14 +52,14 @@ size_t append_i64(char* out, size_t cap, size_t pos, int64_t value) {
     return pos;
 }
 
-void emit(nros_logger_t logger, nros_log_severity_t severity, const char* text, const char* file,
+void emit(rclc_logger_t logger, rcl_log_severity_t severity, const char* text, const char* file,
           uint32_t line) {
-    nros_log_emit_at(logger, severity, text, strlen(text), file, line);
+    rclc_log_emit_at(logger, severity, text, strlen(text), file, line);
 }
 
 /// `<prefix>[a, b, c]` — the sequence formatting both log lines share.
 template <typename Seq>
-void emit_sequence(nros_logger_t logger, const char* prefix, const Seq& seq, uint32_t line_no) {
+void emit_sequence(rclc_logger_t logger, const char* prefix, const Seq& seq, uint32_t line_no) {
     char line[384];
     size_t len = append_str(line, sizeof(line), 0u, prefix);
     len = append_str(line, sizeof(line), len, "[");
@@ -71,7 +71,7 @@ void emit_sequence(nros_logger_t logger, const char* prefix, const Seq& seq, uin
     }
     len = append_str(line, sizeof(line), len, "]");
     line[len] = '\0';
-    emit(logger, NROS_LOG_SEVERITY_INFO, line, __FILE__, line_no);
+    emit(logger, RCLC_LOG_SEVERITY_INFO, line, __FILE__, line_no);
 }
 
 } // namespace
@@ -84,43 +84,43 @@ int nros_app_main(int argc, char** argv) {
     rclcpp_action::Client<Fibonacci> client;
 
     if (!rclcpp::init_in(NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID)).ok()) {
-        emit(nros_log_default_logger(), NROS_LOG_SEVERITY_ERROR, "rclcpp::init failed", __FILE__,
+        emit(rclc_log_default_logger(), RCLC_LOG_SEVERITY_ERROR, "rclcpp::init failed", __FILE__,
              __LINE__);
         return 1;
     }
     if (!rclcpp::create_node(node, "fibonacci_action_client").ok()) {
-        emit(nros_log_default_logger(), NROS_LOG_SEVERITY_ERROR, "create_node failed", __FILE__,
+        emit(rclc_log_default_logger(), RCLC_LOG_SEVERITY_ERROR, "create_node failed", __FILE__,
              __LINE__);
         return 1;
     }
-    nros_logger_t logger = node.get_logger();
+    rclc_logger_t logger = node.get_logger();
     if (!node.create_action_client(client, "/fibonacci").ok()) {
-        emit(logger, NROS_LOG_SEVERITY_ERROR, "create_action_client failed", __FILE__, __LINE__);
+        emit(logger, RCLC_LOG_SEVERITY_ERROR, "create_action_client failed", __FILE__, __LINE__);
         return 1;
     }
 
     rclcpp::Result ret = client.wait_for_action_server(10000);
     if (!ret.ok() && ret.code() != rclcpp::ErrorCode::Unsupported) {
-        emit(logger, NROS_LOG_SEVERITY_ERROR, "action server did not appear within 10s", __FILE__,
+        emit(logger, RCLC_LOG_SEVERITY_ERROR, "action server did not appear within 10s", __FILE__,
              __LINE__);
         rclcpp::shutdown();
         return 2;
     }
 
-    emit(logger, NROS_LOG_SEVERITY_INFO, "Sending goal", __FILE__, __LINE__);
+    emit(logger, RCLC_LOG_SEVERITY_INFO, "Sending goal", __FILE__, __LINE__);
     Fibonacci::Goal goal;
     goal.order = 10;
     uint8_t goal_id[16];
     ret = client.send_goal(goal, goal_id);
     if (!ret.ok()) {
-        emit(logger, NROS_LOG_SEVERITY_ERROR,
+        emit(logger, RCLC_LOG_SEVERITY_ERROR,
              ret.code() == rclcpp::ErrorCode::Rejected ? "goal was rejected by server"
                                                        : "failed to send goal",
              __FILE__, __LINE__);
         rclcpp::shutdown();
         return 2;
     }
-    emit(logger, NROS_LOG_SEVERITY_INFO, "Goal accepted by server, waiting for result", __FILE__,
+    emit(logger, RCLC_LOG_SEVERITY_INFO, "Goal accepted by server, waiting for result", __FILE__,
          __LINE__);
 
     auto& feedback = client.feedback_stream();
@@ -135,7 +135,7 @@ int nros_app_main(int argc, char** argv) {
     Fibonacci::Result result;
     ret = client.get_result(goal_id, result);
     if (!ret.ok()) {
-        emit(logger, NROS_LOG_SEVERITY_ERROR, "failed to get result", __FILE__, __LINE__);
+        emit(logger, RCLC_LOG_SEVERITY_ERROR, "failed to get result", __FILE__, __LINE__);
         rclcpp::shutdown();
         return 1;
     }

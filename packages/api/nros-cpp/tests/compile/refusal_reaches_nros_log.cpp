@@ -13,7 +13,7 @@
 // parses. So this TU is COMPILED to an object (`-c -ffreestanding -nostdinc++`
 // against the ThreadX minimal libcpp, like `one_node_type_freestanding.cpp`),
 // and the recipe asks the object's symbol table whether it calls
-// `nros_log_emit_at`, the entry point every `nros_log` sink hangs off.
+// `rclc_log_emit_at`, the entry point every `nros_log` sink hangs off.
 //
 // The recipe compiles it once per refusal, selecting one with `-DREFUSAL=<n>`,
 // so each object holds one refusal and the inline helpers it reaches. That is

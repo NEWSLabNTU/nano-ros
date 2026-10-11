@@ -19,13 +19,13 @@
  * @brief rclc's default preset constructor for an action client.
  *
  * phase-417 W5.d. Ledger row `c:action_client_init_default` was `declined` on
- * "`nros_action_client_init` takes no QoS and IS the default form" — which
+ * "`rcl_action_client_init` takes no QoS and IS the default form" — which
  * says the CAPABILITY corresponds, not that the name may be missing. RFC-0089
  * is explicit that a correspondence is a reason to take the spelling, so a
  * ported `rclc_action` file compiles on this line instead of on a diff.
  *
  * **The argument order is rclc's, and that is the whole reason this exists as
- * a separate name rather than as a rename of nros_action_client_init():**
+ * a separate name rather than as a rename of rcl_action_client_init():**
  * rclc puts the typesupport third and the action name fourth, ours has them
  * the other way round. Both are pointers, so a caller who guessed wrong gets a
  * WARNING and a client initialised with a type descriptor as its name — the
@@ -36,7 +36,7 @@
  *
  * This is the CALLBACK-mode client (rclc registers the goal/feedback/result
  * callbacks later, at `rclc_executor_add_action_client`), so it forwards to
- * nros_action_client_init() and not to nros_polling_action_client_init(),
+ * rcl_action_client_init() and not to rclc_polling_action_client_init(),
  * which builds the separate polled type (phase-487 W4).
  *
  * `static inline`: no symbol, no writable data.
@@ -45,13 +45,13 @@
  * @param[in]  node          An initialised node.
  * @param[in]  type_info     Generated action type descriptor.
  * @param[in]  action_name   Action name, null-terminated.
- * @return Whatever nros_action_client_init() returns.
+ * @return Whatever rcl_action_client_init() returns.
  */
-static inline nros_ret_t rclc_action_client_init_default(struct nros_action_client_t* action_client,
-                                                         const struct nros_node_t* node,
-                                                         const struct nros_action_type_t* type_info,
-                                                         const char* action_name) {
-    return nros_action_client_init(action_client, node, action_name, type_info);
+static inline rcl_ret_t rclc_action_client_init_default(struct rcl_action_client_t* action_client,
+                                                        const struct rcl_node_t* node,
+                                                        const struct rclc_action_type_t* type_info,
+                                                        const char* action_name) {
+    return rcl_action_client_init(action_client, node, action_name, type_info);
 }
 
 /*
@@ -66,20 +66,20 @@ static inline nros_ret_t rclc_action_client_init_default(struct nros_action_clie
  *
  * rclc's body (`rclc/src/rclc/action_server.c` @ `10eadcc`) reads `support`
  * for exactly one thing — it passes `&support->clock` to `rcl_action_server_init`.
- * Ours has nothing to pass it to: `nros_action_server_init` "stores metadata
+ * Ours has nothing to pass it to: `rcl_action_server_init` "stores metadata
  * (name, type, callbacks)" and defers RMW entity creation to
- * `nros_executor_add_action_server()`, so it takes neither a clock nor a
+ * `rclc_executor_add_action_server()`, so it takes neither a clock nor a
  * support handle. A faithful-looking five-argument forwarder would therefore
  * carry an argument it IGNORES — the inert-parameter defect RFC-0089 exists to
- * end, and the same refusal `nros_node_resolve_name` makes for rcl's
+ * end, and the same refusal `rcl_node_resolve_name` makes for rcl's
  * `allocator` and `is_service`.
  *
  * The second half is the callbacks. rclc registers goal and cancel handlers at
  * `rclc_executor_add_action_server`; ours are bound at init
- * (`nros_action_server_init(server, node, action_name, type_info, goal_cb,
+ * (`rcl_action_server_init(server, node, action_name, type_info, goal_cb,
  * cancel_cb, accepted_cb, ...)`). Forwarding to the callback-free
- * `nros_polling_action_server_init` instead would not even compile since
- * phase-487 W4 (it takes a `nros_polling_action_server_t`), and before that it
+ * `rclc_polling_action_server_init` instead would not even compile since
+ * phase-487 W4 (it takes a `rclc_polling_action_server_t`), and before that it
  * compiled and then dispatched
  * nothing, which is the "plausible name over an opposite data contract" class.
  *

@@ -413,7 +413,7 @@ fn test_generate_c_type_support() {
     let source = fs::read_to_string(output_dir.join("msg/type_test_msg_type_test.c")).unwrap();
 
     // Type support structure should be present
-    assert!(source.contains("nros_message_type_t"));
+    assert!(source.contains("rclc_message_type_t"));
     assert!(source.contains("_type_support"));
     assert!(source.contains("get_type_support"));
 }

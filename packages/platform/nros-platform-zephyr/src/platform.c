@@ -570,7 +570,7 @@ void nros_platform_random_fill(void *buf, size_t len) {
 /* The wall clock IS the SNTP epoch above (issue 0758), in the unit this
  * symbol speaks. It used to be a hard `return 0`, which left the epoch
  * reachable only through `nros_platform_epoch_us`: every reader of the wall
- * clock -- `nros_clock_get_now_ns(SYSTEM_TIME)`, `rclcpp::Clock().now()`,
+ * clock -- `rclc_clock_get_now_ns(SYSTEM_TIME)`, `rclcpp::Clock().now()`,
  * `nros_core::Clock::system()`, the executor's `default_epoch_us` -- reads
  * THIS symbol, so an image that had acquired its epoch still read 0 (and fell
  * back to boot-relative time) everywhere a caller asked for the wall. The

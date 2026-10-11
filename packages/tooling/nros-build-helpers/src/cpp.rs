@@ -431,7 +431,7 @@ static const unsigned char *const nros__cpp_config_variant_anchor =
     let guard_u64s_c = exact_guard.div_ceil(8);
     let lifecycle_u64s_c = probe_lifecycle_ctx.div_ceil(8);
     let raw_handle_u64s_c = probe_action_server_raw_handle.div_ceil(8);
-    // phase-417 stage 3 — `nros_executor_t._handle_entities[NROS_EXECUTOR_MAX_HANDLES]`.
+    // phase-417 stage 3 — `rclc_executor_t._handle_entities[NROS_EXECUTOR_MAX_HANDLES]`.
     // THIS crate is the third producer of the C config header (see the note
     // beside NROS_CODEGEN_VERSION below), and the single-writer guard compares
     // define VALUES — so a macro added to nros-c's two templates and not here
@@ -510,7 +510,7 @@ NROS_STACK_MIN_ACKNOWLEDGE if this image builds its executor off the main thread
 #define NROS_LIFECYCLE_CTX_OPAQUE_U64S {lifecycle_u64s_c}
 
 /* Handle-table width, = NROS_EXECUTOR_MAX_CBS. cbindgen prints the Rust
- * constant's NAME for a fixed-size array member, so nros_executor_t's
+ * constant's NAME for a fixed-size array member, so rclc_executor_t's
  * `_handle_entities[NROS_EXECUTOR_MAX_HANDLES]` (phase-417 stage 3: the entity
  * pointer per handle slot that rclc_executor_trigger_one compares against)
  * needs this spelled as a C macro, exactly like the *_OPAQUE_U64S above. */

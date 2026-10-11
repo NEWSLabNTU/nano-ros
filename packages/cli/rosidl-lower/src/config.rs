@@ -927,7 +927,7 @@ fn describe_shape(ty: &rosidl_parser::ast::FieldType) -> String {
 ///
 /// Every emitter in the tree -- the Rust container
 /// (`heapless::String<N>`, whose `try_from` returns `CapacityExceeded` above
-/// `N`), the C `char[N]` that `nros_cdr_read_string` sizes with `sizeof`, the
+/// `N`), the C `char[N]` that `rclc_cdr_read_string` sizes with `sizeof`, the
 /// C++ `rclcpp::FixedString<N>`, the schema value, and the emitted
 /// `Message::FIELDS` -- ALREADY handles a bounded element correctly, because a
 /// `.msg` has always been able to say `string<=10[]`. Threading a separate

@@ -12,7 +12,7 @@
 ///     say it exists, so `-ffreestanding` (build.rs) keeps it out.
 ///  2. **No `printf` substitution.** `nros-baremetal-common`'s `vsnprintf`
 ///     copies its format verbatim, so a `NROS_INFO("n=%d", n)` would print
-///     `n=%d`. Records are built by hand and emitted through `nros_log_emit_at`,
+///     `n=%d`. Records are built by hand and emitted through `rclc_log_emit_at`,
 ///     exactly as the `c/talker` sibling does.
 ///
 /// `NROS_APP_MAIN_REGISTER()` emits `void app_main(void)` on this platform and
@@ -49,7 +49,7 @@ namespace {
 
 struct TalkerContext {
     rclcpp::Publisher<std_msgs::msg::String>* publisher;
-    nros_logger_t logger;
+    rclc_logger_t logger;
     uint32_t count;
 };
 
@@ -80,9 +80,9 @@ size_t append_str(char* out, size_t cap, size_t pos, const char* text) {
     return pos;
 }
 
-void emit(nros_logger_t logger, nros_log_severity_t severity, const char* text, const char* file,
+void emit(rclc_logger_t logger, rcl_log_severity_t severity, const char* text, const char* file,
           uint32_t line) {
-    nros_log_emit_at(logger, severity, text, strlen(text), file, line);
+    rclc_log_emit_at(logger, severity, text, strlen(text), file, line);
 }
 
 // ----------------------------------------------------------------------------
@@ -105,7 +105,7 @@ void timer_callback(void* context) {
 
     rclcpp::Result ret = ctx->publisher->publish(msg);
     if (!ret.ok()) {
-        emit(ctx->logger, NROS_LOG_SEVERITY_ERROR, "publish failed", __FILE__, __LINE__);
+        emit(ctx->logger, RCLC_LOG_SEVERITY_ERROR, "publish failed", __FILE__, __LINE__);
         return;
     }
 
@@ -116,7 +116,7 @@ void timer_callback(void* context) {
     len = append_str(line, sizeof(line), len, msg.data.c_str());
     len = append_str(line, sizeof(line), len, "'");
     line[len] = '\0';
-    emit(ctx->logger, NROS_LOG_SEVERITY_INFO, line, __FILE__, __LINE__);
+    emit(ctx->logger, RCLC_LOG_SEVERITY_INFO, line, __FILE__, __LINE__);
 }
 
 } // namespace
@@ -146,24 +146,24 @@ int nros_app_main(int argc, char** argv) {
     // with its own default; baking this image's `[image.*] locator` from
     // `system.toml` is what the runtime lane needs and is tracked on issue 1512.
     if (!rclcpp::init_in(NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID)).ok()) {
-        emit(nros_log_default_logger(), NROS_LOG_SEVERITY_ERROR, "rclcpp::init failed", __FILE__,
+        emit(rclc_log_default_logger(), RCLC_LOG_SEVERITY_ERROR, "rclcpp::init failed", __FILE__,
              __LINE__);
         return 1;
     }
     if (!rclcpp::create_node(node, "talker").ok()) {
-        emit(nros_log_default_logger(), NROS_LOG_SEVERITY_ERROR, "create_node failed", __FILE__,
+        emit(rclc_log_default_logger(), RCLC_LOG_SEVERITY_ERROR, "create_node failed", __FILE__,
              __LINE__);
         return 1;
     }
     ctx.logger = node.get_logger();
     if (!node.create_publisher(pub, "/chatter").ok()) {
-        emit(ctx.logger, NROS_LOG_SEVERITY_ERROR, "create_publisher failed", __FILE__, __LINE__);
+        emit(ctx.logger, RCLC_LOG_SEVERITY_ERROR, "create_publisher failed", __FILE__, __LINE__);
         return 1;
     }
     ctx.publisher = &pub;
     ctx.count = 0;
     if (!node.create_wall_timer(timer, 1000, timer_callback, &ctx).ok()) {
-        emit(ctx.logger, NROS_LOG_SEVERITY_ERROR, "create_wall_timer failed", __FILE__, __LINE__);
+        emit(ctx.logger, RCLC_LOG_SEVERITY_ERROR, "create_wall_timer failed", __FILE__, __LINE__);
         return 1;
     }
 

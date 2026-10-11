@@ -59,8 +59,8 @@ static bool add_server_callback(const uint8_t* req_data, size_t req_len, uint8_t
     return true;
 }
 
-static nros_ret_t add_server_configure(const nros_cpp_node_t* node, void* executor,
-                                       add_server_t* self) {
+static rcl_ret_t add_server_configure(const nros_cpp_node_t* node, void* executor,
+                                      add_server_t* self) {
     (void)executor; /* service server is node-scoped; executor unused */
     /* Line-buffer stdout so each line flushes when piped to the test harness. */
     setvbuf(stdout, NULL, _IOLBF, 0);
@@ -69,7 +69,7 @@ static nros_ret_t add_server_configure(const nros_cpp_node_t* node, void* execut
     size_t handle;
     int32_t rc = nros_cpp_service_server_register(
         node, "/add_two_ints", example_interfaces_srv_add_two_ints_get_type_name(),
-        example_interfaces_srv_add_two_ints_get_type_hash(), nros_c_qos_default(),
+        example_interfaces_srv_add_two_ints_get_type_hash(), rclc_c_qos_default(),
         add_server_callback, self, /*sched_context=*/0, &handle);
     if (rc == 0) {
         printf("[service_server_pkg] add_two_ints server ready\n");
@@ -77,4 +77,4 @@ static nros_ret_t add_server_configure(const nros_cpp_node_t* node, void* execut
     return rc;
 }
 
-NROS_C_COMPONENT(add_server_t, add_server_configure)
+RCLC_C_COMPONENT(add_server_t, add_server_configure)

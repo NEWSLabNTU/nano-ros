@@ -692,7 +692,7 @@ static ARENA_ADVISORY_DONE: portable_atomic::AtomicBool = portable_atomic::Atomi
 /// consts. What is inline is `ExecutorInlineStorage::backing`, which the C FFI
 /// sizes its `_opaque` from.
 ///
-/// * **`.bss`** -- all 34 in-tree C `nros_executor_t` objects are file-scope
+/// * **`.bss`** -- all 34 in-tree C `rclc_executor_t` objects are file-scope
 ///   statics; the C++ entry reaches `Node::GlobalStorageHolder`, also a static;
 ///   and the `alloc` convenience constructors serve from
 ///   `super::backing::EXECUTOR_BACKING`. Visible to `nm` and `mem-report`.
@@ -702,7 +702,7 @@ static ARENA_ADVISORY_DONE: portable_atomic::AtomicBool = portable_atomic::Atomi
 ///   an entry sized past the reservation, or `NROS_EXECUTOR_BACKING_U64S=0`).
 ///   This was the ONLY Rust answer before W6, and it has no symbol, which is
 ///   why the campaign's own instrument could not see its largest consumer.
-/// * **a task stack** -- a stack-declared `nros_executor_t`. Legal, and nothing
+/// * **a task stack** -- a stack-declared `rclc_executor_t`. Legal, and nothing
 ///   in the tree does it.
 ///
 /// Do not size against one placement and assume another.
@@ -2471,7 +2471,7 @@ static TYPED_DESERIALIZE_FAILURES: portable_atomic::AtomicU32 = portable_atomic:
 ///
 /// The single most likely cause is the one this message names first: the
 /// generated struct's inline capacity is smaller than the sample. Both
-/// `nros_cdr_read_string` (`str_len > max_len`) and the bounded-sequence arm
+/// `rclc_cdr_read_string` (`str_len > max_len`) and the bounded-sequence arm
 /// (`len > capacity`) FAIL rather than truncate, so an oversized message
 /// arrives here as a refusal and never as a short message the callback cannot
 /// tell from a real one.

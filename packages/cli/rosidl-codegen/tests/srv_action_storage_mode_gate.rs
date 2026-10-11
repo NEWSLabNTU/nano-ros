@@ -10,7 +10,7 @@
 //! each is a real capability gap rather than an oversight:
 //!
 //! 0345: C `heap` also works now. The blocker recorded in 0343/0344 — "every C
-//! consumer must be taught to free" — was a wrong model: `nros_service_callback_t`
+//! consumer must be taught to free" — was a wrong model: `rclc_service_callback_t`
 //! hands the callback `request_data`/`request_len`, so nros-c never builds a typed
 //! payload struct. The CALLER declares it and calls `_deserialize`, so the caller
 //! `_fini`s it, exactly as for messages. The fix was the shared C arms

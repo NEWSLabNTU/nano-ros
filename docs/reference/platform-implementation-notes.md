@@ -238,7 +238,7 @@ Consequences and rules:
   publisher — tiers 43.2 total (+27%), streaming **~181 msg/s vs ~9 baseline
   (20×)** with a tight-loop publisher completing instead of stalling. Wire
   order stays == SN order. Per-publisher escape: `tx_express` in the QoS
-  profile (Rust `.tx_express(true)` / C `nros_qos_t.tx_express` / C++
+  profile (Rust `.tx_express(true)` / C `rclc_qos_t.tx_express` / C++
   `rclcpp::QoS().tx_express(true)`) bypasses the batch for latency-critical
   low-rate topics (on Zephyr an express put pays the socket window itself —
   never use it for streams). Flush-thread attrs:

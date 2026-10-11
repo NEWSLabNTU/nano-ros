@@ -69,7 +69,7 @@ loop {
 
 Convenience wrappers exist for desktop-style use cases -- `spin(SpinOptions)` (rclrs's name and shape: run until cancelled, a timeout expires, or a callback count is reached), `spin_some(max)` (rclcpp's drain verb: execute what is ready, return), `spin_forever(SpinOptions)` (`-> !`, the body of an RTOS task) and `spin_period(duration)` (fixed-rate, drift-compensated) -- but each is implemented as a `spin_once()` loop that the user could write by hand. `spin` and `spin_period` need `alloc`; `spin_once`, `spin_some` and `spin_forever` reach a `no_std` no-alloc target.
 
-This is the reason every blocking API in nros takes `&mut Executor`. `Promise::wait`, `Stream::wait_next`, `Client::call_blocking`, the C++ `Future::wait(executor.handle(), ...)`, and the C `nros_client_call(..., timeout_ms)` all internally call `spin_once()` to keep I/O moving while waiting. They cannot rely on a background thread doing it for them, because there is none.
+This is the reason every blocking API in nros takes `&mut Executor`. `Promise::wait`, `Stream::wait_next`, `Client::call_blocking`, the C++ `Future::wait(executor.handle(), ...)`, and the C `rclc_client_call(..., timeout_ms)` all internally call `spin_once()` to keep I/O moving while waiting. They cannot rely on a background thread doing it for them, because there is none.
 
 ## Executor is the session owner, not a singleton
 
@@ -118,8 +118,8 @@ NROS_TRY(fut.wait(executor.handle(), 5000, resp));
 nros_call_service(client, &req, sizeof(req), &reply, sizeof(reply), 5000);
 
 // Async: returns immediately, result via callback registered ahead of time.
-nros_action_send_goal_async(client, &goal, sizeof(goal));
-nros_action_client_set_result_callback(client, on_result);
+rclc_action_send_goal_async(client, &goal, sizeof(goal));
+rclc_action_client_set_result_callback(client, on_result);
 // User keeps calling nros_spin_once() to drive callbacks.
 ```
 

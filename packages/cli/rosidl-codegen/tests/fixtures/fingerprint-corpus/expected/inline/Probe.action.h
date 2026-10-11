@@ -15,8 +15,8 @@
 
 #include <nros/nros_config_generated.h>
 
-/* RFC-0090 — emitted by nano-ros codegen version 12. */
-#define NROS_EMITTED_CODEGEN_VERSION 12
+/* RFC-0090 — emitted by nano-ros codegen version 13. */
+#define NROS_EMITTED_CODEGEN_VERSION 13
 
 #ifndef NROS_CODEGEN_VERSION
 #error "nros: the generated config header did not define NROS_CODEGEN_VERSION. This generated artifact cannot tell whether the runtime accepts it; rebuild the nano-ros runtime so its config header is regenerated."
@@ -124,8 +124,8 @@ static inline const char* fingerprint_corpus_action_probe_get_type_hash(void) {
     return "h";
 }
 
-/// Get the nros_action_type_t for this action type
-const struct nros_action_type_t* fingerprint_corpus_action_probe_get_type_support(void);
+/// Get the rclc_action_type_t for this action type
+const struct rclc_action_type_t* fingerprint_corpus_action_probe_get_type_support(void);
 
 #ifdef __cplusplus
 }

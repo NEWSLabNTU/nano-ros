@@ -30,7 +30,7 @@
 
 namespace rclcpp {
 
-/// Mirror of `nros_session_spec_t` — one entry per backend session.
+/// Mirror of `rclc_session_spec_t` — one entry per backend session.
 /// Use `SessionSpec("zenoh", "tcp/127.0.0.1:7447")` for the common
 /// case; chainable setters cover the rest.
 struct SessionSpec {
@@ -58,17 +58,17 @@ struct SessionSpec {
     }
 };
 
-/// RAII handle around `nros_init_multi` / `nros_fini_multi`. Opens
+/// RAII handle around `rclc_init_multi` / `rclc_fini_multi`. Opens
 /// the executor on construction; closes on destruction.
 class MultiExecutor {
   public:
     /// Open the executor against `specs`. Throws nothing; check
     /// `valid()` and `last_ret()` after construction.
     explicit MultiExecutor(const std::vector<SessionSpec>& specs) {
-        std::vector<nros_session_spec_t> c_specs;
+        std::vector<rclc_session_spec_t> c_specs;
         c_specs.reserve(specs.size());
         for (auto& s : specs) {
-            c_specs.push_back(nros_session_spec_t{
+            c_specs.push_back(rclc_session_spec_t{
                 s.rmw.c_str(),
                 s.locator.c_str(),
                 s.domain_id,
@@ -76,12 +76,12 @@ class MultiExecutor {
                 s.namespace_.empty() ? nullptr : s.namespace_.c_str(),
             });
         }
-        last_ret_ = nros_init_multi(c_specs.data(), c_specs.size(), &handle_);
+        last_ret_ = rclc_init_multi(c_specs.data(), c_specs.size(), &handle_);
     }
 
     ~MultiExecutor() {
         if (handle_ != nullptr) {
-            nros_fini_multi(handle_);
+            rclc_fini_multi(handle_);
         }
     }
 
@@ -94,7 +94,7 @@ class MultiExecutor {
     MultiExecutor& operator=(MultiExecutor&& other) noexcept {
         if (this != &other) {
             if (handle_ != nullptr) {
-                nros_fini_multi(handle_);
+                rclc_fini_multi(handle_);
             }
             handle_ = other.handle_;
             last_ret_ = other.last_ret_;
@@ -105,16 +105,16 @@ class MultiExecutor {
 
     bool valid() const { return handle_ != nullptr && last_ret_ == 0; }
     int32_t last_ret() const { return last_ret_; }
-    nros_executor_handle_t handle() const { return handle_; }
+    rclc_executor_handle_t handle() const { return handle_; }
 
   private:
-    nros_executor_handle_t handle_ = nullptr;
+    rclc_executor_handle_t handle_ = nullptr;
     int32_t last_ret_ = 0;
 };
 
 namespace bridge {
 
-/// Per-pump counters mirroring `nros_pump_stats_t`.
+/// Per-pump counters mirroring `rclc_pump_stats_t`.
 struct PumpStats {
     size_t forwarded = 0;
     size_t dropped_echo = 0;
@@ -134,11 +134,11 @@ class PubSubBridge {
     /// construct one directly — use the factory below.
     PubSubBridge() = default;
 
-    explicit PubSubBridge(nros_pubsub_bridge_t handle) : handle_(handle) {}
+    explicit PubSubBridge(rclc_pubsub_bridge_t handle) : handle_(handle) {}
 
     ~PubSubBridge() {
         if (handle_ != nullptr) {
-            nros_pubsub_bridge_destroy(handle_);
+            rclc_pubsub_bridge_destroy(handle_);
         }
     }
 
@@ -150,7 +150,7 @@ class PubSubBridge {
     PubSubBridge& operator=(PubSubBridge&& other) noexcept {
         if (this != &other) {
             if (handle_ != nullptr) {
-                nros_pubsub_bridge_destroy(handle_);
+                rclc_pubsub_bridge_destroy(handle_);
             }
             handle_ = other.handle_;
             other.handle_ = nullptr;
@@ -165,19 +165,19 @@ class PubSubBridge {
     /// dedup window are not counted).
     size_t pump() {
         if (handle_ == nullptr) return 0;
-        return nros_pubsub_bridge_pump(handle_);
+        return rclc_pubsub_bridge_pump(handle_);
     }
 
     PumpStats pump_with_stats() {
         if (handle_ == nullptr) return {};
-        auto s = nros_pubsub_bridge_pump_with_stats(handle_);
+        auto s = rclc_pubsub_bridge_pump_with_stats(handle_);
         return PumpStats{s.forwarded, s.dropped_echo};
     }
 
-    nros_pubsub_bridge_t handle() const { return handle_; }
+    rclc_pubsub_bridge_t handle() const { return handle_; }
 
   private:
-    nros_pubsub_bridge_t handle_ = nullptr;
+    rclc_pubsub_bridge_t handle_ = nullptr;
 };
 
 /// Construct a raw pubsub bridge. `origin` enables the dedup window
@@ -188,11 +188,11 @@ inline ResultOf<PubSubBridge> pubsub_raw(MultiExecutor& exec, const std::string&
                                          const std::string& dst_node, const std::string& dst_rmw,
                                          const std::string& dst_topic, const std::string& type_name,
                                          const std::string& type_hash, const std::string& origin) {
-    nros_pubsub_bridge_t handle = nullptr;
-    nros_bridge_endpoint_t src{src_node.c_str(), src_rmw.c_str(), src_topic.c_str()};
-    nros_bridge_endpoint_t dst{dst_node.c_str(), dst_rmw.c_str(), dst_topic.c_str()};
+    rclc_pubsub_bridge_t handle = nullptr;
+    rclc_bridge_endpoint_t src{src_node.c_str(), src_rmw.c_str(), src_topic.c_str()};
+    rclc_bridge_endpoint_t dst{dst_node.c_str(), dst_rmw.c_str(), dst_topic.c_str()};
     int32_t rc =
-        nros_pubsub_bridge_create(exec.handle(), &src, &dst, type_name.c_str(), type_hash.c_str(),
+        rclc_pubsub_bridge_create(exec.handle(), &src, &dst, type_name.c_str(), type_hash.c_str(),
                                   origin.empty() ? nullptr : origin.c_str(), &handle);
     if (rc != 0) {
         return ResultOf<PubSubBridge>::error(static_cast<ErrorCode>(rc));

@@ -664,7 +664,7 @@ fn main() {
     // phase-474 I2 -- when the contract monitors ARM, by default. Read from the
     // build environment / Kconfig only: the contract has no key for it.
     // `NROS_MONITOR_ARM_ON_CALL=1` (`CONFIG_NROS_MONITOR_ARM_ON_CALL=y`) waits
-    // for the application's `nros_monitors_arm()`; `NROS_MONITOR_ARM_GRACE_MS`
+    // for the application's `rclc_monitors_arm()`; `NROS_MONITOR_ARM_GRACE_MS`
     // arms anyway that long after the first spin (0 = no deadline). Neither
     // stated = armed at the first spin, which is what every image did before.
     let monitor_arm_on_call = nros_zephyr_build::knob("NROS_MONITOR_ARM_ON_CALL")

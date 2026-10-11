@@ -117,12 +117,12 @@ def state(row):
 
 # ---------------------------------------------------------------- signatures
 # Both sides spell the same concept differently BY CONSTRUCTION -- `rcl_node_t`
-# against `nros_node_t`, `rclcpp::QoS` against `nros::QoS`. Diffing raw type
+# against `rcl_node_t`, `rclcpp::QoS` against `nros::QoS`. Diffing raw type
 # strings would therefore mark every argument of every row as changed, which is
 # the same as marking none: the column would carry no information at all.
 #
 # So the diff runs on types with the vendor rename normalised away. What
-# survives is a real difference -- `rmw_qos_profile_t` against `nros_qos_t`
+# survives is a real difference -- `rmw_qos_profile_t` against `rclc_qos_t`
 # stays flagged, because a profile struct and a flat QoS word ARE different
 # shapes, and that is exactly what a reader needs to see.
 VENDOR_PREFIX = re.compile(r"\b(rmw|rcl|rclc|rcutils|rosidl|nros)_")
@@ -477,8 +477,8 @@ def self_test():
 
     # signatures come from the parsed record, never from a name
     s = sig({"qual": "nros_take", "kind": "function", "overloads": [
-        {"params": [{"name": "sub", "type": "nros_subscription_t *"}], "ret": "nros_ret_t"}]})
-    check(s == "nros_ret_t nros_take(nros_subscription_t * sub)", "signature render: %r" % s)
+        {"params": [{"name": "sub", "type": "rcl_subscription_t *"}], "ret": "rcl_ret_t"}]})
+    check(s == "rcl_ret_t nros_take(rcl_subscription_t * sub)", "signature render: %r" % s)
     check(sig(None) == "", "a missing item did not render empty")
     check("+1 overload */" in sig({"qual": "f", "overloads": [
         {"params": [], "ret": "int"}, {"params": [], "ret": "int"}]}),
@@ -486,13 +486,13 @@ def self_test():
 
     # the vendor rename must NOT read as an argument difference -- otherwise
     # every row diffs on every argument, which is the same as diffing on none
-    check(norm_type("rcl_node_t *") == norm_type("nros_node_t *"),
+    check(norm_type("rcl_node_t *") == norm_type("rcl_node_t *"),
           "the vendor prefix survived normalisation")
-    check(norm_type("const rcl_subscription_t *") == norm_type("struct nros_subscription_t *"),
+    check(norm_type("const rcl_subscription_t *") == norm_type("struct rcl_subscription_t *"),
           "qualifiers or `struct` survived normalisation")
     check(norm_type("rclcpp::QoS") == norm_type("nros::QoS"), "namespace not normalised")
     # ...but a genuinely different shape must stay flagged
-    check(norm_type("rmw_qos_profile_t") != norm_type("nros_qos_t"),
+    check(norm_type("rmw_qos_profile_t") != norm_type("rclc_qos_t"),
           "normalisation erased a real type difference")
 
     # a dropped MIDDLE argument must not mis-align the tail
@@ -500,14 +500,14 @@ def self_test():
         [{"type": "rcl_node_t *", "name": "node"},
          {"type": "rcl_allocator_t", "name": "alloc"},
          {"type": "size_t", "name": "n"}],
-        [{"type": "nros_node_t *", "name": "node"},
+        [{"type": "rcl_node_t *", "name": "node"},
          {"type": "size_t", "name": "n"}])
     check([f for _, f in tf] == ["", "del", ""], "middle drop mis-aligned: %r" % tf)
     check([f for _, f in of] == ["", ""], "our side wrongly flagged: %r" % of)
 
     # an argument only WE take is an addition, on our side alone
     tf, of = diff_params([{"type": "rcl_node_t *"}],
-                         [{"type": "nros_node_t *"}, {"type": "nros_qos_t"}])
+                         [{"type": "rcl_node_t *"}, {"type": "rclc_qos_t"}])
     check([f for _, f in tf] == [""], "upstream flagged for our addition")
     check([f for _, f in of] == ["", "add"], "addition not flagged: %r" % of)
 

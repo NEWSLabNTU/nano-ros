@@ -12,7 +12,7 @@
  *
  *  - Nothing here allocates. The store is the executor's, sized at build time
  *    (`NROS_MAX_PARAMETERS`); `max_params` is a per-node quota inside it.
- *  - The node must be bound to an executor (`nros_executor_node_init`) before
+ *  - The node must be bound to an executor (`rclc_executor_node_init`) before
  *    `rclc_parameter_server_init_*`; otherwise `RCL_RET_NOT_INIT`.
  *  - Local typed sets fire the callback and skip read-only and range checks,
  *    as rclc's do. REMOTE sets enforce read-only AND the range rclc only
@@ -29,8 +29,8 @@
  * Calling context: the executor's task only, never an ISR. Like rclc, nothing
  * here takes a lock.
  *
- * Types are spelled with nano-ros's names (`nros_ret_t`, `struct nros_node_t`,
- * `struct nros_executor_t`); `<nros/rcl_compat.h>` makes `rcl_ret_t`,
+ * Types are spelled with nano-ros's names (`rcl_ret_t`, `struct rcl_node_t`,
+ * `struct rclc_executor_t`); `<nros/rcl_compat.h>` makes `rcl_ret_t`,
  * `rcl_node_t`, `rclc_executor_t` and the `RCL_RET_*` codes the same types, so
  * a ported file that includes it compiles unchanged. phase-492 makes the rcl
  * spellings primary across the C API.
@@ -188,56 +188,56 @@ typedef struct rclc_parameter_server_t {
  * =================================================================== */
 
 /** Defaults: events on, 4 parameters, undeclared sets refused. */
-NROS_PUBLIC nros_ret_t rclc_parameter_server_init_default(rclc_parameter_server_t* parameter_server,
-                                                          struct nros_node_t* node);
-NROS_PUBLIC nros_ret_t rclc_parameter_server_init_with_option(
-    rclc_parameter_server_t* parameter_server, struct nros_node_t* node,
+NROS_PUBLIC rcl_ret_t rclc_parameter_server_init_default(rclc_parameter_server_t* parameter_server,
+                                                         struct rcl_node_t* node);
+NROS_PUBLIC rcl_ret_t rclc_parameter_server_init_with_option(
+    rclc_parameter_server_t* parameter_server, struct rcl_node_t* node,
     const rclc_parameter_options_t* options);
 /** Unregisters the callback and deletes the node's parameters. */
-NROS_PUBLIC nros_ret_t rclc_parameter_server_fini(rclc_parameter_server_t* parameter_server,
-                                                  struct nros_node_t* node);
+NROS_PUBLIC rcl_ret_t rclc_parameter_server_fini(rclc_parameter_server_t* parameter_server,
+                                                 struct rcl_node_t* node);
 
 /** Registers the six parameter services and the callback (NULL = none).
  *  `executor` must be the one the server's node is bound to. */
-NROS_PUBLIC nros_ret_t rclc_executor_add_parameter_server(
-    struct nros_executor_t* executor, rclc_parameter_server_t* parameter_server,
-    rclc_parameter_callback_t on_modification);
-NROS_PUBLIC nros_ret_t rclc_executor_add_parameter_server_with_context(
-    struct nros_executor_t* executor, rclc_parameter_server_t* parameter_server,
+NROS_PUBLIC rcl_ret_t rclc_executor_add_parameter_server(struct rclc_executor_t* executor,
+                                                         rclc_parameter_server_t* parameter_server,
+                                                         rclc_parameter_callback_t on_modification);
+NROS_PUBLIC rcl_ret_t rclc_executor_add_parameter_server_with_context(
+    struct rclc_executor_t* executor, rclc_parameter_server_t* parameter_server,
     rclc_parameter_callback_t on_modification, void* context);
 
 /** Declares `type`'s zero value. A launch value already baked under this name
  *  with this type is kept. */
-NROS_PUBLIC nros_ret_t rclc_add_parameter(rclc_parameter_server_t* parameter_server,
-                                          const char* parameter_name, rclc_parameter_type_t type);
-NROS_PUBLIC nros_ret_t rclc_delete_parameter(rclc_parameter_server_t* parameter_server,
-                                             const char* parameter_name);
+NROS_PUBLIC rcl_ret_t rclc_add_parameter(rclc_parameter_server_t* parameter_server,
+                                         const char* parameter_name, rclc_parameter_type_t type);
+NROS_PUBLIC rcl_ret_t rclc_delete_parameter(rclc_parameter_server_t* parameter_server,
+                                            const char* parameter_name);
 
-NROS_PUBLIC nros_ret_t rclc_parameter_set_bool(rclc_parameter_server_t* parameter_server,
-                                               const char* parameter_name, bool value);
-NROS_PUBLIC nros_ret_t rclc_parameter_set_int(rclc_parameter_server_t* parameter_server,
-                                              const char* parameter_name, int64_t value);
-NROS_PUBLIC nros_ret_t rclc_parameter_set_double(rclc_parameter_server_t* parameter_server,
-                                                 const char* parameter_name, double value);
-NROS_PUBLIC nros_ret_t rclc_parameter_get_bool(rclc_parameter_server_t* parameter_server,
-                                               const char* parameter_name, bool* output);
-NROS_PUBLIC nros_ret_t rclc_parameter_get_int(rclc_parameter_server_t* parameter_server,
-                                              const char* parameter_name, int64_t* output);
-NROS_PUBLIC nros_ret_t rclc_parameter_get_double(rclc_parameter_server_t* parameter_server,
-                                                 const char* parameter_name, double* output);
+NROS_PUBLIC rcl_ret_t rclc_parameter_set_bool(rclc_parameter_server_t* parameter_server,
+                                              const char* parameter_name, bool value);
+NROS_PUBLIC rcl_ret_t rclc_parameter_set_int(rclc_parameter_server_t* parameter_server,
+                                             const char* parameter_name, int64_t value);
+NROS_PUBLIC rcl_ret_t rclc_parameter_set_double(rclc_parameter_server_t* parameter_server,
+                                                const char* parameter_name, double value);
+NROS_PUBLIC rcl_ret_t rclc_parameter_get_bool(rclc_parameter_server_t* parameter_server,
+                                              const char* parameter_name, bool* output);
+NROS_PUBLIC rcl_ret_t rclc_parameter_get_int(rclc_parameter_server_t* parameter_server,
+                                             const char* parameter_name, int64_t* output);
+NROS_PUBLIC rcl_ret_t rclc_parameter_get_double(rclc_parameter_server_t* parameter_server,
+                                                const char* parameter_name, double* output);
 
-NROS_PUBLIC nros_ret_t rclc_add_parameter_description(rclc_parameter_server_t* parameter_server,
-                                                      const char* parameter_name,
-                                                      const char* parameter_description,
-                                                      const char* additional_constraints);
+NROS_PUBLIC rcl_ret_t rclc_add_parameter_description(rclc_parameter_server_t* parameter_server,
+                                                     const char* parameter_name,
+                                                     const char* parameter_description,
+                                                     const char* additional_constraints);
 /** Refuses REMOTE writes; the owner's local sets still go through. */
-NROS_PUBLIC nros_ret_t rclc_set_parameter_read_only(rclc_parameter_server_t* parameter_server,
-                                                    const char* parameter_name, bool read_only);
+NROS_PUBLIC rcl_ret_t rclc_set_parameter_read_only(rclc_parameter_server_t* parameter_server,
+                                                   const char* parameter_name, bool read_only);
 /** Advertised by `describe` and enforced on REMOTE writes. */
-NROS_PUBLIC nros_ret_t rclc_add_parameter_constraint_integer(
+NROS_PUBLIC rcl_ret_t rclc_add_parameter_constraint_integer(
     rclc_parameter_server_t* parameter_server, const char* parameter_name, int64_t from_value,
     int64_t to_value, uint64_t step);
-NROS_PUBLIC nros_ret_t rclc_add_parameter_constraint_double(
+NROS_PUBLIC rcl_ret_t rclc_add_parameter_constraint_double(
     rclc_parameter_server_t* parameter_server, const char* parameter_name, double from_value,
     double to_value, double step);
 
@@ -247,37 +247,36 @@ NROS_PUBLIC nros_ret_t rclc_add_parameter_constraint_double(
 
 /** Declare with a default, keeping a launch value of the same type (rclcpp's
  *  `declare_parameter`). Prefer these over add-then-set, which overwrites it. */
-NROS_PUBLIC nros_ret_t rclc_parameter_declare_bool(rclc_parameter_server_t* parameter_server,
-                                                   const char* parameter_name, bool default_value);
-NROS_PUBLIC nros_ret_t rclc_parameter_declare_int(rclc_parameter_server_t* parameter_server,
-                                                  const char* parameter_name,
-                                                  int64_t default_value);
-NROS_PUBLIC nros_ret_t rclc_parameter_declare_double(rclc_parameter_server_t* parameter_server,
-                                                     const char* parameter_name,
-                                                     double default_value);
-NROS_PUBLIC nros_ret_t rclc_parameter_declare_string(rclc_parameter_server_t* parameter_server,
-                                                     const char* parameter_name,
-                                                     const char* default_value);
+NROS_PUBLIC rcl_ret_t rclc_parameter_declare_bool(rclc_parameter_server_t* parameter_server,
+                                                  const char* parameter_name, bool default_value);
+NROS_PUBLIC rcl_ret_t rclc_parameter_declare_int(rclc_parameter_server_t* parameter_server,
+                                                 const char* parameter_name, int64_t default_value);
+NROS_PUBLIC rcl_ret_t rclc_parameter_declare_double(rclc_parameter_server_t* parameter_server,
+                                                    const char* parameter_name,
+                                                    double default_value);
+NROS_PUBLIC rcl_ret_t rclc_parameter_declare_string(rclc_parameter_server_t* parameter_server,
+                                                    const char* parameter_name,
+                                                    const char* default_value);
 
-NROS_PUBLIC nros_ret_t rclc_parameter_set_string(rclc_parameter_server_t* parameter_server,
-                                                 const char* parameter_name, const char* value);
-/** `NROS_RET_FULL` when `capacity` (NUL included) is too small; nothing is
+NROS_PUBLIC rcl_ret_t rclc_parameter_set_string(rclc_parameter_server_t* parameter_server,
+                                                const char* parameter_name, const char* value);
+/** `RCLC_RET_FULL` when `capacity` (NUL included) is too small; nothing is
  *  written then. */
-NROS_PUBLIC nros_ret_t rclc_parameter_get_string(rclc_parameter_server_t* parameter_server,
-                                                 const char* parameter_name, char* output,
-                                                 size_t capacity);
+NROS_PUBLIC rcl_ret_t rclc_parameter_get_string(rclc_parameter_server_t* parameter_server,
+                                                const char* parameter_name, char* output,
+                                                size_t capacity);
 
 /* Arrays, bounded by NROS_MAX_ARRAY_LEN (bytes: NROS_MAX_BYTE_ARRAY_LEN). A get
- * writes the stored length to `*out_len` and returns `NROS_RET_FULL` without
+ * writes the stored length to `*out_len` and returns `RCLC_RET_FULL` without
  * copying when it exceeds `capacity`. */
 #define NROS__RCLC_ARRAY(NAME, T)                                                                  \
-    NROS_PUBLIC nros_ret_t rclc_parameter_declare_##NAME##_array(                                  \
+    NROS_PUBLIC rcl_ret_t rclc_parameter_declare_##NAME##_array(                                   \
         rclc_parameter_server_t* parameter_server, const char* parameter_name, const T* data,      \
         size_t len);                                                                               \
-    NROS_PUBLIC nros_ret_t rclc_parameter_set_##NAME##_array(                                      \
+    NROS_PUBLIC rcl_ret_t rclc_parameter_set_##NAME##_array(                                       \
         rclc_parameter_server_t* parameter_server, const char* parameter_name, const T* data,      \
         size_t len);                                                                               \
-    NROS_PUBLIC nros_ret_t rclc_parameter_get_##NAME##_array(                                      \
+    NROS_PUBLIC rcl_ret_t rclc_parameter_get_##NAME##_array(                                       \
         rclc_parameter_server_t* parameter_server, const char* parameter_name, T* output,          \
         size_t capacity, size_t* out_len);
 NROS__RCLC_ARRAY(bool, bool)
@@ -289,41 +288,41 @@ NROS__RCLC_ARRAY(byte, uint8_t)
 /* String arrays: `data` is `len` C strings, each at most NROS_MAX_STRING_VALUE_LEN
  * bytes. A get copies into `capacity` rows of `stride` bytes, each
  * NUL-terminated, writes the stored length to `*out_len`, and returns
- * `NROS_RET_FULL` without copying when the rows or a row are too small. */
-NROS_PUBLIC nros_ret_t rclc_parameter_declare_string_array(
-    rclc_parameter_server_t* parameter_server, const char* parameter_name, const char* const* data,
-    size_t len);
-NROS_PUBLIC nros_ret_t rclc_parameter_set_string_array(rclc_parameter_server_t* parameter_server,
-                                                       const char* parameter_name,
-                                                       const char* const* data, size_t len);
-NROS_PUBLIC nros_ret_t rclc_parameter_get_string_array(rclc_parameter_server_t* parameter_server,
-                                                       const char* parameter_name, char* output,
-                                                       size_t stride, size_t capacity,
-                                                       size_t* out_len);
+ * `RCLC_RET_FULL` without copying when the rows or a row are too small. */
+NROS_PUBLIC rcl_ret_t rclc_parameter_declare_string_array(rclc_parameter_server_t* parameter_server,
+                                                          const char* parameter_name,
+                                                          const char* const* data, size_t len);
+NROS_PUBLIC rcl_ret_t rclc_parameter_set_string_array(rclc_parameter_server_t* parameter_server,
+                                                      const char* parameter_name,
+                                                      const char* const* data, size_t len);
+NROS_PUBLIC rcl_ret_t rclc_parameter_get_string_array(rclc_parameter_server_t* parameter_server,
+                                                      const char* parameter_name, char* output,
+                                                      size_t stride, size_t capacity,
+                                                      size_t* out_len);
 
 /** `RCLC_PARAMETER_NOT_SET` when undeclared. */
 NROS_PUBLIC rclc_parameter_type_t rclc_parameter_get_type(rclc_parameter_server_t* parameter_server,
                                                           const char* parameter_name);
-/** Any out pointer may be NULL. `NROS_RET_FULL` when a text was truncated (it
+/** Any out pointer may be NULL. `RCLC_RET_FULL` when a text was truncated (it
  *  is still written, NUL-terminated). */
-NROS_PUBLIC nros_ret_t rclc_parameter_describe(rclc_parameter_server_t* parameter_server,
-                                               const char* parameter_name, char* out_description,
-                                               size_t description_capacity, char* out_constraints,
-                                               size_t constraints_capacity, bool* out_read_only);
+NROS_PUBLIC rcl_ret_t rclc_parameter_describe(rclc_parameter_server_t* parameter_server,
+                                              const char* parameter_name, char* out_description,
+                                              size_t description_capacity, char* out_constraints,
+                                              size_t constraints_capacity, bool* out_read_only);
 /** `RCL_RET_ERROR` when no range of that kind is attached. */
-NROS_PUBLIC nros_ret_t rclc_parameter_get_integer_range(rclc_parameter_server_t* parameter_server,
-                                                        const char* parameter_name,
-                                                        int64_t* out_from, int64_t* out_to,
-                                                        int64_t* out_step);
-NROS_PUBLIC nros_ret_t rclc_parameter_get_double_range(rclc_parameter_server_t* parameter_server,
-                                                       const char* parameter_name, double* out_from,
-                                                       double* out_to, double* out_step);
+NROS_PUBLIC rcl_ret_t rclc_parameter_get_integer_range(rclc_parameter_server_t* parameter_server,
+                                                       const char* parameter_name,
+                                                       int64_t* out_from, int64_t* out_to,
+                                                       int64_t* out_step);
+NROS_PUBLIC rcl_ret_t rclc_parameter_get_double_range(rclc_parameter_server_t* parameter_server,
+                                                      const char* parameter_name, double* out_from,
+                                                      double* out_to, double* out_step);
 /** Names starting with `prefix` (NULL = all) into `max_names` rows of
  *  `name_stride` bytes. `*out_count` always receives the total; pass
- *  `max_names` 0 to count. `NROS_RET_FULL` when more matched than fit. */
-NROS_PUBLIC nros_ret_t rclc_parameter_list(rclc_parameter_server_t* parameter_server,
-                                           const char* prefix, char* out_names, size_t name_stride,
-                                           size_t max_names, size_t* out_count);
+ *  `max_names` 0 to count. `RCLC_RET_FULL` when more matched than fit. */
+NROS_PUBLIC rcl_ret_t rclc_parameter_list(rclc_parameter_server_t* parameter_server,
+                                          const char* prefix, char* out_names, size_t name_stride,
+                                          size_t max_names, size_t* out_count);
 
 #ifdef __cplusplus
 }

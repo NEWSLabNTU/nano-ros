@@ -49,7 +49,7 @@
  * Issue 0330 — the bottom rung is the EMPTY STRING, not a router endpoint.
  * This header is RMW-blind and must not restate a backend fact; `""` is the
  * established "absent — let the backend discover" value. It travels through
- * `nros_support_init` / `nros_cpp_init` to the RFC-0045 resolver's empty bottom
+ * `rclc_support_init` / `nros_cpp_init` to the RFC-0045 resolver's empty bottom
  * rung and then to the linked backend, which substitutes its own default
  * (zenoh: `nros_rmw_zenoh::DEFAULT_LOCATOR`).
  */

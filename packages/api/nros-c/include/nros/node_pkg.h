@@ -19,14 +19,14 @@
 
 #include "nros/visibility.h"
 
-typedef int nros_ret_t;
+typedef int rcl_ret_t;
 
-#ifndef NROS_RET_OK
-#define NROS_RET_OK 0
+#ifndef RCL_RET_OK
+#define RCL_RET_OK 0
 #endif
 
-#ifndef NROS_RET_INVALID_ARGUMENT
-#define NROS_RET_INVALID_ARGUMENT -3
+#ifndef RCL_RET_INVALID_ARGUMENT
+#define RCL_RET_INVALID_ARGUMENT -3
 #endif
 
 #ifdef __cplusplus
@@ -37,8 +37,8 @@ extern "C" {
  * (nros_node_context_t, nros_declared_*, NROS_NODE_REGISTER / NROS_COMPONENT,
  * the NodeEntityDescriptor structs) is retired; the EntryNodeRuntime
  * interpreter that consumed it is gone. Typed C components use
- * `<nros/component.h>` (NROS_C_COMPONENT). This header now only carries the
- * shared `nros_ret_t` + `NROS_RET_*` C return surface above. */
+ * `<nros/component.h>` (RCLC_C_COMPONENT). This header now only carries the
+ * shared `rcl_ret_t` + `NROS_RET_*` C return surface above. */
 
 #ifdef __cplusplus
 }

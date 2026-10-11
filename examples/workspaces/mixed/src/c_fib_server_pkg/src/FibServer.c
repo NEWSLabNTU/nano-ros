@@ -46,24 +46,24 @@ static int32_t fib_server_on_goal(const uint8_t goal_id[16], const uint8_t* data
          * a request that never arrived. */
         fprintf(stderr, "[c_fib_server_pkg] goal REJECTED — deserialize failed, %zu byte(s)\n",
                 len);
-        return NROS_C_GOAL_REJECT;
+        return RCLC_C_GOAL_REJECT;
     }
     if (goal.order < 0 || goal.order >= 64) {
         printf("[c_fib_server_pkg] goal order=%d REJECTED (out of range)\n", goal.order);
-        return NROS_C_GOAL_REJECT;
+        return RCLC_C_GOAL_REJECT;
     }
 
     memcpy(self->goal_id, goal_id, 16);
     self->order = goal.order;
     self->has_pending = true;
     printf("[c_fib_server_pkg] goal order=%d\n", goal.order);
-    return NROS_C_GOAL_ACCEPT_AND_EXECUTE;
+    return RCLC_C_GOAL_ACCEPT_AND_EXECUTE;
 }
 
 static int32_t fib_server_on_cancel(const uint8_t goal_id[16], void* ctx) {
     (void)goal_id;
     (void)ctx;
-    return NROS_C_CANCEL_ACCEPT;
+    return RCLC_C_CANCEL_ACCEPT;
 }
 
 /// Timer tick — the only place the executor is free for action ops. Computes the Fibonacci
@@ -97,7 +97,7 @@ static void on_tick(void* ctx) {
         return;
     }
     if (nros_cpp_action_server_complete_goal(self->server, self->executor, &self->goal_id,
-                                             NROS_GOAL_STATUS_SUCCEEDED, buf, n) == 0) {
+                                             RCLC_GOAL_STATUS_SUCCEEDED, buf, n) == 0) {
         self->has_pending = false;
         self->goal_count++;
         printf("[c_fib_server_pkg] completed last=%d\n",
@@ -105,8 +105,8 @@ static void on_tick(void* ctx) {
     }
 }
 
-static nros_ret_t fib_server_configure(const nros_cpp_node_t* node, void* executor,
-                                       fib_server_t* self) {
+static rcl_ret_t fib_server_configure(const nros_cpp_node_t* node, void* executor,
+                                      fib_server_t* self) {
     /* Line-buffer stdout so each line flushes when piped to the test harness. */
     setvbuf(stdout, NULL, _IOLBF, 0);
     self->executor = executor;
@@ -115,7 +115,7 @@ static nros_ret_t fib_server_configure(const nros_cpp_node_t* node, void* execut
 
     int32_t rc = nros_cpp_action_server_create(
         node, "/fibonacci", example_interfaces_action_fibonacci_get_type_name(),
-        example_interfaces_action_fibonacci_get_type_hash(), nros_c_qos_default(), self->server);
+        example_interfaces_action_fibonacci_get_type_hash(), rclc_c_qos_default(), self->server);
     if (rc != 0) {
         return rc;
     }
@@ -140,4 +140,4 @@ static nros_ret_t fib_server_configure(const nros_cpp_node_t* node, void* execut
     return rc;
 }
 
-NROS_C_COMPONENT(fib_server_t, fib_server_configure)
+RCLC_C_COMPONENT(fib_server_t, fib_server_configure)

@@ -23,7 +23,7 @@ pub const PUBLISHER_OPAQUE_U64S: usize = u64s_for::<nros::internals::RmwPublishe
 
 // Phase 122.3.b — L1 polling-mode subscription storage. Holds a
 // `RawSubscription<MESSAGE_BUFFER_SIZE>` (RmwSubscriber + buffer +
-// event regs) inline in `nros_subscription_t._opaque`. Sized so the
+// event regs) inline in `rcl_subscription_t._opaque`. Sized so the
 // Rust value fits exactly.
 #[cfg(feature = "rmw-cffi")]
 pub const SUBSCRIPTION_OPAQUE_U64S: usize =
@@ -50,8 +50,8 @@ pub const SERVICE_CLIENT_OPAQUE_U64S: usize = u64s_for::<
 >();
 
 // Phase 122.3.c.6 — typeless `ActionServerCore` / `ActionClientCore`
-// inline storage for L1 polling-mode `nros_action_server_t` /
-// `nros_action_client_t`. Buffer + goal-slot sizing matches the
+// inline storage for L1 polling-mode `rcl_action_server_t` /
+// `rcl_action_client_t`. Buffer + goal-slot sizing matches the
 // L2 callback path (`MESSAGE_BUFFER_SIZE` triple buffers,
 // `MAX_GOALS = 4`).
 #[cfg(feature = "rmw-cffi")]
@@ -226,7 +226,7 @@ const _: () = {
 // with the same `#[repr(C)]` field shape; we assert at compile time
 // that the byte sizes match. Mismatch = the C-side
 // `NROS_ACTION_SERVER_INTERNAL_SIZE` macro is wrong, which would
-// silently corrupt the `nros_action_server_t` struct layout.
+// silently corrupt the `rcl_action_server_t` struct layout.
 #[cfg(feature = "rmw-cffi")]
 const _: () = assert!(
     size_of::<crate::action::ActionServerInternal>()

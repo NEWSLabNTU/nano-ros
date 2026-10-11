@@ -109,7 +109,7 @@ nros_components_register_node(talker_lib
 ```c
 // apps/my_app/src/Talker.c
 // `talker_configure` creates a raw publisher on `/chatter` + a timer that
-// publishes a CDR-encoded Int32 counter each tick. `NROS_C_COMPONENT` emits
+// publishes a CDR-encoded Int32 counter each tick. `RCLC_C_COMPONENT` emits
 // the C-ABI factory/configure the Zephyr typed Entry carrier calls.
 #include <stddef.h>
 #include <stdint.h>
@@ -144,10 +144,10 @@ static void on_tick(void* ctx) {
     self->count++;
 }
 
-static nros_ret_t talker_configure(const nros_cpp_node_t* node, void* executor, talker_t* self) {
+static rcl_ret_t talker_configure(const nros_cpp_node_t* node, void* executor, talker_t* self) {
     self->count = 0;
     int32_t rc = nros_cpp_publisher_create(node, "/chatter", "std_msgs::msg::dds_::Int32_", "",
-                                           nros_c_qos_default(), self->pub);
+                                           rclc_c_qos_default(), self->pub);
     if (rc != 0) {
         return rc;
     }
@@ -155,7 +155,7 @@ static nros_ret_t talker_configure(const nros_cpp_node_t* node, void* executor, 
     return nros_cpp_timer_create(executor, /*period_ms=*/500, on_tick, self, &timer_handle);
 }
 
-NROS_C_COMPONENT(talker_t, talker_configure)
+RCLC_C_COMPONENT(talker_t, talker_configure)
 ```
 
 See [`examples/templates/zephyr-byo/app/src/Talker.c`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/templates/zephyr-byo/app/src/Talker.c)

@@ -3,7 +3,7 @@
 ///
 /// `server_configure` binds `handle_add` (by identity) as a raw callback-style
 /// service on `/add_two_ints`; the real handler decodes the CDR request
-/// (int64 a, b) and writes the CDR reply (int64 sum). `NROS_C_COMPONENT` emits
+/// (int64 a, b) and writes the CDR reply (int64 sum). `RCLC_C_COMPONENT` emits
 /// the C-ABI factory + configure seam the Zephyr typed Entry carrier
 /// (the shared entry pack) drives. No interpreter synthesis.
 
@@ -55,14 +55,13 @@ static bool handle_add(const uint8_t* req, size_t req_len, uint8_t* resp, size_t
     return true;
 }
 
-static nros_ret_t server_configure(const nros_cpp_node_t* node, void* executor,
-                                   add_server_t* self) {
+static rcl_ret_t server_configure(const nros_cpp_node_t* node, void* executor, add_server_t* self) {
     setvbuf(stdout, NULL, _IONBF, 0);
     (void)executor; /* node-scoped service; executor unused */
     size_t handle;
     int32_t rc =
         nros_cpp_service_server_register(node, "/add_two_ints", "example_interfaces/srv/AddTwoInts",
-                                         "", nros_c_qos_default(), handle_add, self,
+                                         "", rclc_c_qos_default(), handle_add, self,
                                          /*sched_context=*/0, &handle);
     if (rc == 0) {
         /* Readiness marker the e2e harness greps before driving the client. */
@@ -71,4 +70,4 @@ static nros_ret_t server_configure(const nros_cpp_node_t* node, void* executor,
     return rc;
 }
 
-NROS_C_COMPONENT(add_server_t, server_configure)
+RCLC_C_COMPONENT(add_server_t, server_configure)

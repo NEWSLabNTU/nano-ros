@@ -570,9 +570,9 @@ NROS_RMW_REGISTER_BACKEND(nros_rmw_cyclonedds_section_register)
 // `default-features = false` and its `rmw-cffi` feature does not
 // re-enable `linkme-register`, so on the C-API path the walker is the
 // no-op stub (returns 0) and the linkme entry is never invoked —
-// `nros_support_init` then comes up with an empty registry and returns
-// `NROS_RET_INVALID_ARGUMENT` (-3). A constructor runs before `main()`
-// (hence before `nros_support_init`) regardless of the walker. The
+// `rclc_support_init` then comes up with an empty registry and returns
+// `RCL_RET_INVALID_ARGUMENT` (-3). A constructor runs before `main()`
+// (hence before `rclc_support_init`) regardless of the walker. The
 // `--whole-archive` link keeps this object's `.init_array` slot.
 // `nros_rmw_cffi_register_named` is idempotent (same-name overwrite),
 // so this is harmless when the walker IS active (Rust-API builds).

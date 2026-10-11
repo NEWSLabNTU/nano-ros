@@ -156,7 +156,7 @@ c-api-nros-names:
 # issue 1386 — `node_ref_is_live(node_ref_of(node))` mints a reference from the
 # node and compares it against the counter it was just read from, so it is
 # CONSTANT TRUE. Four sites wrote that independently, and behind three of them
-# sat a `NROS_RET_STALE_NODE` arm no caller could ever obtain — one of them
+# sat a `RCLC_RET_STALE_NODE` arm no caller could ever obtain — one of them
 # documented in a `# Returns` block. The fourth had no return code, so it
 # produced no evidence at all and the issue's own measurement missed it.
 #

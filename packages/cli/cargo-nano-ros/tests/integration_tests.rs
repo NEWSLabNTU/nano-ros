@@ -848,7 +848,7 @@ mod component_scaffold {
         assert!(cmake.contains("nano_ros_add_node(talker CLASS c_talker::Talker TYPED"));
 
         let source = fs::read_to_string(dir.join("src/Talker.c")).unwrap();
-        assert!(source.contains("NROS_C_COMPONENT(c_talker_t, talker_configure)"));
+        assert!(source.contains("RCLC_C_COMPONENT(c_talker_t, talker_configure)"));
         assert!(source.contains("nros_cpp_publisher_create("));
         assert!(source.contains("nros_cpp_timer_create("));
         assert!(

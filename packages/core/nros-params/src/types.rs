@@ -23,7 +23,7 @@ pub use crate::config::*;
 ///
 /// The key is the executor's node INDEX, not a name: `nros_node::NodeId` is
 /// already a `u8` index into the executor's node table, it is already the
-/// identity the FFI persists (`nros_node_t.node_id`, `nros_cpp_node_t.node_id`),
+/// identity the FFI persists (`rcl_node_t.node_id`, `nros_cpp_node_t.node_id`),
 /// and one byte per slot keeps the store's arena the size it was. A name would
 /// cost `MAX_PARAM_NAME_LEN` bytes per slot and would need a second answer to
 /// "which node is this" that could disagree with the table.

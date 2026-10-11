@@ -90,7 +90,7 @@ pub use throttle::{ThrottleState, interval_ms_to_ns, throttle_decide};
 /// and no `Unset` variant. The integer representation is stable and part of the
 /// ABI for `nros_platform_log_write`, so every value must be a level a sink can
 /// render; "no level of its own" is the verb [`Logger::unset_level`] instead.
-/// (The C surface's `nros_log_severity_t` does carry rcutils's numbers and
+/// (The C surface's `rcl_log_severity_t` does carry rcutils's numbers and
 /// `UNSET`.) Lower value = more verbose.
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -136,13 +136,13 @@ impl Severity {
     /// [`as_u8`](Self::as_u8) is this crate's own compact discriminant (`0..=5`,
     /// chosen so a level comparison is an integer compare). It is NOT what a
     /// `rcl_interfaces/msg/Log` carries, nor what `<nros/log.h>`'s
-    /// `nros_log_severity_t` crosses the FFI as, nor what
+    /// `rcl_log_severity_t` crosses the FFI as, nor what
     /// `rcutils_logging_set_logger_level` takes. Those are all rcutils's
     /// `DEBUG=10 / INFO=20 / WARN=30 / ERROR=40 / FATAL=50`.
     ///
     /// THE ONE SPELLING of that mapping (issue 1025's class: one number, two
     /// derivations, agreeing until the day they do not). `nros-c`'s
-    /// `nros_log_severity_t::from_facade` is built on this, and a test there
+    /// `rcl_log_severity_t::from_facade` is built on this, and a test there
     /// pins the result against the values `<nros/log.h>` declares — which is
     /// the strongest join available, since this crate cannot see that header.
     ///
@@ -410,7 +410,7 @@ impl Logger {
     /// [`Logger::default_level`] again.
     ///
     /// `rcutils_logging_set_logger_level(name, RCUTILS_LOG_SEVERITY_UNSET)`'s
-    /// effect, and what `nros_logger_set_level(logger, NROS_LOG_SEVERITY_UNSET)`
+    /// effect, and what `rclc_logger_set_level(logger, RCLC_LOG_SEVERITY_UNSET)`
     /// reaches. phase-467.
     ///
     /// rclrs spells this `logger.set_level(LogSeverity::Unset)`. Here it is a verb,
@@ -483,7 +483,7 @@ impl Logger {
     /// applied here too, first: a runtime level below it is unreachable. That
     /// is what brings the C and C++ surfaces under the same bound — their
     /// macros format on the C side and reach the facade through this check
-    /// (`nros_log_emit_at`, `nros_log_is_enabled`), so the ceiling the Rust
+    /// (`rclc_log_emit_at`, `nros_log_is_enabled`), so the ceiling the Rust
     /// macros fold away at compile time filters theirs at the FFI boundary.
     pub fn is_enabled(&self, severity: Severity) -> bool {
         severity_enabled_at_compile_time(severity)
@@ -855,7 +855,7 @@ pub(crate) fn find_published(name: &str) -> Option<&'static Logger> {
 
 /// [`resolve_logger`] for a NODE's own logger, marking it as one — the one
 /// spelling the node-shaped accessors use (`Node::logger`,
-/// `nros_node_get_logger`, the C++ node's), so the `/rosout` sink can publish
+/// `rclc_node_get_logger`, the C++ node's), so the `/rosout` sink can publish
 /// what upstream publishes (RFC-0102 D4). The catch-all is never marked: a node
 /// whose name fell back to it would otherwise publish every unnamed logger.
 #[must_use]
@@ -871,8 +871,8 @@ pub fn resolve_node_logger(name: &str) -> &'static Logger {
 /// and the one spelling every node-shaped accessor uses.
 ///
 /// phase-427 W5. Four accessors answer "which logger is this node's?" —
-/// `nros_node::executor::Node::logger`, `nros_node_get_logger`,
-/// `nros_cpp_node_get_logger` and `nros_log_get_logger`. All four had the same
+/// `nros_node::executor::Node::logger`, `rclc_node_get_logger`,
+/// `nros_cpp_node_get_logger` and `rclc_log_get_logger`. All four had the same
 /// job and, before this, three of them called [`get_logger`], which is a
 /// LOOKUP: a node whose name nobody `register_logger`ed resolved to
 /// [`DEFAULT_LOGGER`]. Two nodes in one image therefore emitted every record
@@ -1005,7 +1005,7 @@ impl SinkSlot {
 //
 // `init` REPLACES the list, which is right for the board — it names, once, the
 // whole delivery it chose. It is the wrong verb for a consumer: C and C++ had
-// no way to install a sink at all (`nros_log_init(void)` takes no arguments
+// no way to install a sink at all (`rclc_log_init(void)` takes no arguments
 // and hardcodes the platform default), and a library that wants to tee records
 // to /rosout cannot call `init` without discarding whatever the board
 // installed.

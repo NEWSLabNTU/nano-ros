@@ -18,7 +18,7 @@
 /// found" for a node that is right there.)
 ///
 /// Two nano-ros rules, both stated in the header: the node is bound to the
-/// executor (`nros_executor_node_init`) BEFORE the server is initialised, and
+/// executor (`rclc_executor_node_init`) BEFORE the server is initialised, and
 /// nothing here allocates. The example exits 0 only when every roundtrip
 /// passes; a non-zero exit code encodes which assertion failed. Consumed by
 /// the `parameters_roundtrip` test.
@@ -39,9 +39,9 @@
 
 /* Static allocation — all nros structs live in .bss, not on the stack. */
 static struct {
-    nros_support_t support;
-    nros_executor_t executor;
-    nros_node_t node;
+    rclc_support_t support;
+    rclc_executor_t executor;
+    rcl_node_t node;
     rclc_parameter_server_t params;
 } app;
 
@@ -73,10 +73,10 @@ static unsigned spin_ms(void) {
 
 static int run(void) {
     /* Clock demo: read the system clock once. */
-    nros_clock_t clock;
-    if (nros_clock_init(&clock, NROS_CLOCK_SYSTEM_TIME) == NROS_RET_OK) {
-        nros_time_t now;
-        if (nros_clock_get_now(&clock, &now) == NROS_RET_OK) {
+    rcl_clock_t clock;
+    if (rcl_clock_init(&clock, RCLC_CLOCK_SYSTEM_TIME) == RCL_RET_OK) {
+        rclc_time_t now;
+        if (rcl_clock_get_now(&clock, &now) == RCL_RET_OK) {
             printf("System time: %d.%09u sec\n", now.sec, now.nanosec);
         }
         (void)rcl_clock_fini(&clock);
@@ -93,15 +93,15 @@ static int run(void) {
     }
 
     memset(&app, 0, sizeof(app));
-    NROS_CHECK_RET(nros_support_init(&app.support, locator, domain_id), 1);
+    RCLC_CHECK_RET(rclc_support_init(&app.support, locator, domain_id), 1);
     /* 16 handles: the six rcl_interfaces parameter services plus headroom. */
-    NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 16), 1);
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support, 16), 1);
     /* The namespace is explicit: NULL options leave it EMPTY, and an empty
      * namespace is not the root one. */
-    nros_node_options_t node_opts = rcl_node_get_default_options();
+    rcl_node_options_t node_opts = rcl_node_get_default_options();
     node_opts.namespace_[0] = (uint8_t)'/';
     node_opts.namespace_len = 1;
-    NROS_CHECK_RET(nros_executor_node_init(&app.executor, &app.node, "c_parameters", &node_opts),
+    RCLC_CHECK_RET(rclc_executor_node_init(&app.executor, &app.node, "c_parameters", &node_opts),
                    1);
 
     /* The server handle. The node is already bound to the executor, which is
@@ -110,19 +110,19 @@ static int run(void) {
                                      .max_params = 8,
                                      .allow_undeclared_parameters = false,
                                      .low_mem_mode = false};
-    NROS_CHECK_RET(rclc_parameter_server_init_with_option(&app.params, &app.node, &opts), 1);
+    RCLC_CHECK_RET(rclc_parameter_server_init_with_option(&app.params, &app.node, &opts), 1);
     /* The six rcl_interfaces parameter services, plus the callback. */
-    NROS_CHECK_RET(
+    RCLC_CHECK_RET(
         rclc_executor_add_parameter_server(&app.executor, &app.params, on_parameter_change), 1);
 
     /* Declare with code defaults. `rclc_parameter_declare_*` keeps a launch
      * value baked under the same name; nothing seeds a standalone image, so the
      * defaults win here. (rclc's `rclc_add_parameter` + `rclc_parameter_set_*`
      * works too, and overwrites a launch value, as upstream.) */
-    if (rclc_parameter_declare_bool(&app.params, "verbose", false) != NROS_RET_OK) return 1;
-    if (rclc_parameter_declare_int(&app.params, "publish_rate_hz", 1) != NROS_RET_OK) return 1;
-    if (rclc_parameter_declare_double(&app.params, "scale_factor", 1.0) != NROS_RET_OK) return 1;
-    if (rclc_parameter_declare_string(&app.params, "topic_name", "/chatter") != NROS_RET_OK)
+    if (rclc_parameter_declare_bool(&app.params, "verbose", false) != RCL_RET_OK) return 1;
+    if (rclc_parameter_declare_int(&app.params, "publish_rate_hz", 1) != RCL_RET_OK) return 1;
+    if (rclc_parameter_declare_double(&app.params, "scale_factor", 1.0) != RCL_RET_OK) return 1;
+    if (rclc_parameter_declare_string(&app.params, "topic_name", "/chatter") != RCL_RET_OK)
         return 1;
     (void)rclc_add_parameter_constraint_integer(&app.params, "publish_rate_hz", 1, 100, 1);
 
@@ -131,10 +131,10 @@ static int run(void) {
     double scale = 0.0;
     char topic[64] = {0};
 
-    if (rclc_parameter_get_bool(&app.params, "verbose", &verbose) != NROS_RET_OK) return 2;
-    if (rclc_parameter_get_int(&app.params, "publish_rate_hz", &rate_hz) != NROS_RET_OK) return 2;
-    if (rclc_parameter_get_double(&app.params, "scale_factor", &scale) != NROS_RET_OK) return 2;
-    if (rclc_parameter_get_string(&app.params, "topic_name", topic, sizeof(topic)) != NROS_RET_OK)
+    if (rclc_parameter_get_bool(&app.params, "verbose", &verbose) != RCL_RET_OK) return 2;
+    if (rclc_parameter_get_int(&app.params, "publish_rate_hz", &rate_hz) != RCL_RET_OK) return 2;
+    if (rclc_parameter_get_double(&app.params, "scale_factor", &scale) != RCL_RET_OK) return 2;
+    if (rclc_parameter_get_string(&app.params, "topic_name", topic, sizeof(topic)) != RCL_RET_OK)
         return 2;
 
     printf("Parameters: verbose=%s, rate=%lld Hz, scale=%.2f, topic=%s\n",
@@ -146,22 +146,22 @@ static int run(void) {
     if (strcmp(topic, "/chatter") != 0) return 3;
 
     /* Local sets fire the callback, as rclc's do. */
-    if (rclc_parameter_set_bool(&app.params, "verbose", true) != NROS_RET_OK) return 4;
-    if (rclc_parameter_get_bool(&app.params, "verbose", &verbose) != NROS_RET_OK) return 4;
+    if (rclc_parameter_set_bool(&app.params, "verbose", true) != RCL_RET_OK) return 4;
+    if (rclc_parameter_get_bool(&app.params, "verbose", &verbose) != RCL_RET_OK) return 4;
     if (verbose != true) return 4;
     printf("After set: verbose=%s\n", verbose ? "true" : "false");
 
-    if (rclc_parameter_set_int(&app.params, "publish_rate_hz", 10) != NROS_RET_OK) return 4;
-    if (rclc_parameter_get_int(&app.params, "publish_rate_hz", &rate_hz) != NROS_RET_OK) return 4;
+    if (rclc_parameter_set_int(&app.params, "publish_rate_hz", 10) != RCL_RET_OK) return 4;
+    if (rclc_parameter_get_int(&app.params, "publish_rate_hz", &rate_hz) != RCL_RET_OK) return 4;
     if (rate_hz != 10) return 4;
 
-    if (rclc_parameter_set_string(&app.params, "topic_name", "/rosout") != NROS_RET_OK) return 4;
-    if (rclc_parameter_get_string(&app.params, "topic_name", topic, sizeof(topic)) != NROS_RET_OK)
+    if (rclc_parameter_set_string(&app.params, "topic_name", "/rosout") != RCL_RET_OK) return 4;
+    if (rclc_parameter_get_string(&app.params, "topic_name", topic, sizeof(topic)) != RCL_RET_OK)
         return 4;
     if (strcmp(topic, "/rosout") != 0) return 4;
     /* Read-only to the OUTSIDE, as rclc means it: a `ros2 param set` on it is
      * refused from now on, while this node's own sets still go through. */
-    if (rclc_set_parameter_read_only(&app.params, "topic_name", true) != NROS_RET_OK) return 4;
+    if (rclc_set_parameter_read_only(&app.params, "topic_name", true) != RCL_RET_OK) return 4;
 
     /* The callback's veto, and a typed set of the wrong type. */
     if (rclc_parameter_set_int(&app.params, "publish_rate_hz", 0) !=
@@ -173,9 +173,9 @@ static int run(void) {
     if (g_changes < 4) return 5;
 
     /* Unknown parameters are refused, not invented — on read AND on write. */
-    if (rclc_parameter_get_bool(&app.params, "missing", &verbose) == NROS_RET_OK) return 6;
+    if (rclc_parameter_get_bool(&app.params, "missing", &verbose) == RCL_RET_OK) return 6;
     if (rclc_parameter_get_type(&app.params, "missing") != RCLC_PARAMETER_NOT_SET) return 6;
-    if (rclc_parameter_set_bool(&app.params, "missing", true) == NROS_RET_OK) return 6;
+    if (rclc_parameter_set_bool(&app.params, "missing", true) == RCL_RET_OK) return 6;
 
     printf("OK verbose=%s rate=%lld topic=%s\n", verbose ? "true" : "false", (long long)rate_hz,
            topic);

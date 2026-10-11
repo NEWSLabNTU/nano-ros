@@ -47,15 +47,15 @@ typedef struct {
     uint32_t domain_id;     /**< ROS domain id. 0 unless otherwise. */
     const char* node_name;  /**< Session-default node name. NULL = empty. */
     const char* namespace_; /**< Session-default namespace. NULL = "/". */
-} nros_session_spec_t;
+} rclc_session_spec_t;
 
 /**
- * @brief Opaque executor handle returned by `nros_init_multi`.
+ * @brief Opaque executor handle returned by `rclc_init_multi`.
  *
  * Owned by the runtime; pass to `nros_create_node_on`,
- * `nros_pubsub_bridge_create`, and `nros_fini_multi`.
+ * `rclc_pubsub_bridge_create`, and `rclc_fini_multi`.
  */
-typedef void* nros_executor_handle_t;
+typedef void* rclc_executor_handle_t;
 
 /**
  * @brief Open an executor against multiple RMW backends.
@@ -70,11 +70,11 @@ typedef void* nros_executor_handle_t;
  *   was not linked in.
  * - `NROS_RMW_RET_ERROR` — backend rejected the open.
  */
-int32_t nros_init_multi(const nros_session_spec_t* specs, size_t specs_len,
-                        nros_executor_handle_t* out);
+int32_t rclc_init_multi(const rclc_session_spec_t* specs, size_t specs_len,
+                        rclc_executor_handle_t* out);
 
-/** @brief Tear down a `nros_init_multi`-opened executor. */
-void nros_fini_multi(nros_executor_handle_t exec);
+/** @brief Tear down a `rclc_init_multi`-opened executor. */
+void rclc_fini_multi(rclc_executor_handle_t exec);
 
 /* ------------------------------------------------------------------ */
 /* Bridge wiring                                                      */
@@ -82,9 +82,9 @@ void nros_fini_multi(nros_executor_handle_t exec);
 
 /**
  * @brief Opaque pubsub-bridge handle returned by
- * `nros_pubsub_bridge_create`.
+ * `rclc_pubsub_bridge_create`.
  */
-typedef void* nros_pubsub_bridge_t;
+typedef void* rclc_pubsub_bridge_t;
 
 /**
  * @brief One side (source or destination) of a pubsub bridge: the
@@ -94,7 +94,7 @@ typedef struct {
     const char* node;
     const char* rmw;
     const char* topic;
-} nros_bridge_endpoint_t;
+} rclc_bridge_endpoint_t;
 
 /**
  * @brief Create a raw pubsub bridge between two backends.
@@ -116,30 +116,30 @@ typedef struct {
  * encoding; construction refuses instead. The log line on the
  * `nros_rmw_bridge` channel names both formats.
  */
-int32_t nros_pubsub_bridge_create(nros_executor_handle_t exec, const nros_bridge_endpoint_t* src,
-                                  const nros_bridge_endpoint_t* dst, const char* type_name,
+int32_t rclc_pubsub_bridge_create(rclc_executor_handle_t exec, const rclc_bridge_endpoint_t* src,
+                                  const rclc_bridge_endpoint_t* dst, const char* type_name,
                                   const char* type_hash, const char* origin,
-                                  nros_pubsub_bridge_t* out);
+                                  rclc_pubsub_bridge_t* out);
 
 /**
  * @brief Drain the source subscription, forwarding each sample to
  * the destination publisher. Returns the number of samples that
  * crossed; samples suppressed by the dedup window are NOT counted
- * here (use `nros_pubsub_bridge_pump_with_stats` for the breakdown).
+ * here (use `rclc_pubsub_bridge_pump_with_stats` for the breakdown).
  */
-size_t nros_pubsub_bridge_pump(nros_pubsub_bridge_t bridge);
+size_t rclc_pubsub_bridge_pump(rclc_pubsub_bridge_t bridge);
 
 /** Per-pump counters. */
 typedef struct {
     size_t forwarded;
     size_t dropped_echo;
-} nros_pump_stats_t;
+} rclc_pump_stats_t;
 
 /** @brief Per-pump statistics variant of `pump`. */
-nros_pump_stats_t nros_pubsub_bridge_pump_with_stats(nros_pubsub_bridge_t bridge);
+rclc_pump_stats_t rclc_pubsub_bridge_pump_with_stats(rclc_pubsub_bridge_t bridge);
 
 /** @brief Tear down a bridge. */
-void nros_pubsub_bridge_destroy(nros_pubsub_bridge_t bridge);
+void rclc_pubsub_bridge_destroy(rclc_pubsub_bridge_t bridge);
 
 #ifdef __cplusplus
 }

@@ -7,7 +7,7 @@
 /// property of having no RTOS, not of the C++ API (issue 1512) — see the
 /// `talker` sibling's header: no libc or C++ runtime (`-ffreestanding`), and no
 /// `printf`, so log lines are built by hand and emitted through
-/// `nros_log_emit_at`.
+/// `rclc_log_emit_at`.
 ///
 /// `NROS_APP_MAIN_REGISTER()` emits `void app_main(void)` on this platform and
 /// `src/main.rs` calls it once the board is up.
@@ -42,9 +42,9 @@ size_t append_str(char* out, size_t cap, size_t pos, const char* text) {
     return pos;
 }
 
-void emit(nros_logger_t logger, nros_log_severity_t severity, const char* text, const char* file,
+void emit(rclc_logger_t logger, rcl_log_severity_t severity, const char* text, const char* file,
           uint32_t line) {
-    nros_log_emit_at(logger, severity, text, strlen(text), file, line);
+    rclc_log_emit_at(logger, severity, text, strlen(text), file, line);
 }
 
 } // namespace
@@ -59,21 +59,21 @@ int nros_app_main(int argc, char** argv) {
     rclcpp::PollSubscription<std_msgs::msg::String> sub;
 
     if (!rclcpp::init_in(NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID)).ok()) {
-        emit(nros_log_default_logger(), NROS_LOG_SEVERITY_ERROR, "rclcpp::init failed", __FILE__,
+        emit(rclc_log_default_logger(), RCLC_LOG_SEVERITY_ERROR, "rclcpp::init failed", __FILE__,
              __LINE__);
         return 1;
     }
     if (!rclcpp::create_node(node, "listener").ok()) {
-        emit(nros_log_default_logger(), NROS_LOG_SEVERITY_ERROR, "create_node failed", __FILE__,
+        emit(rclc_log_default_logger(), RCLC_LOG_SEVERITY_ERROR, "create_node failed", __FILE__,
              __LINE__);
         return 1;
     }
-    nros_logger_t logger = node.get_logger();
+    rclc_logger_t logger = node.get_logger();
     if (!node.create_subscription(sub, "/chatter").ok()) {
-        emit(logger, NROS_LOG_SEVERITY_ERROR, "create_subscription failed", __FILE__, __LINE__);
+        emit(logger, RCLC_LOG_SEVERITY_ERROR, "create_subscription failed", __FILE__, __LINE__);
         return 1;
     }
-    emit(logger, NROS_LOG_SEVERITY_INFO, "Subscriber created for topic: /chatter", __FILE__,
+    emit(logger, RCLC_LOG_SEVERITY_INFO, "Subscriber created for topic: /chatter", __FILE__,
          __LINE__);
 
     while (rclcpp::ok()) {
@@ -87,7 +87,7 @@ int nros_app_main(int argc, char** argv) {
             len = append_str(line, sizeof(line), len, msg.data.c_str());
             len = append_str(line, sizeof(line), len, "]");
             line[len] = '\0';
-            emit(logger, NROS_LOG_SEVERITY_INFO, line, __FILE__, __LINE__);
+            emit(logger, RCLC_LOG_SEVERITY_INFO, line, __FILE__, __LINE__);
         }
     }
     rclcpp::shutdown();

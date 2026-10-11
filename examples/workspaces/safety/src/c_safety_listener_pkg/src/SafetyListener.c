@@ -64,8 +64,8 @@ static void on_chatter_validated(const uint8_t* data, size_t len, int64_t gap, b
     }
 }
 
-static nros_ret_t listener_configure(const nros_cpp_node_t* node, void* executor,
-                                     safety_listener_t* self) {
+static rcl_ret_t listener_configure(const nros_cpp_node_t* node, void* executor,
+                                    safety_listener_t* self) {
     setvbuf(stdout, NULL, _IOLBF, 0);
     (void)executor;
     self->received = 0;
@@ -73,7 +73,7 @@ static nros_ret_t listener_configure(const nros_cpp_node_t* node, void* executor
 
     /* Create /safe_ok publisher to report CRC-valid counts */
     int32_t rc = nros_cpp_publisher_create(node, "/safe_ok", std_msgs_msg_int32_get_type_name(),
-                                           std_msgs_msg_int32_get_type_hash(), nros_c_qos_default(),
+                                           std_msgs_msg_int32_get_type_hash(), rclc_c_qos_default(),
                                            self->pub);
     if (rc != 0) {
         return rc;
@@ -85,8 +85,8 @@ static nros_ret_t listener_configure(const nros_cpp_node_t* node, void* executor
     size_t handle;
     return nros_cpp_subscription_register_validated(
         node, "/chatter", std_msgs_msg_int32_get_type_name(), std_msgs_msg_int32_get_type_hash(),
-        nros_c_qos_default(), on_chatter_validated, self, &handle,
+        rclc_c_qos_default(), on_chatter_validated, self, &handle,
         /*options=*/NULL); /* phase-402: NULL = defaults */
 }
 
-NROS_C_COMPONENT(safety_listener_t, listener_configure)
+RCLC_C_COMPONENT(safety_listener_t, listener_configure)

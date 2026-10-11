@@ -11,7 +11,7 @@ use super::common::*;
 use crate::{
     constants::{MAX_ACTION_NAME_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN},
     error::*,
-    node::{nros_node_state_t, nros_node_t},
+    node::{rcl_node_t, rclc_node_state_t},
 };
 
 /// CDR sequence<uint8, 16> length prefix (4 bytes) in front of the UUID bytes.
@@ -30,13 +30,13 @@ const FEEDBACK_FRAMING_LEN: usize = CDR_HEADER_LEN + GOAL_ID_SEQ_PREFIX_LEN + Go
 ///
 /// Lightweight — stores only the arena entry index and executor pointer.
 /// The `ActionClientCore` (transport handles) lives in the executor's arena,
-/// created by `nros_executor_add_action_client`.
+/// created by `rclc_executor_add_action_client`.
 #[repr(C)]
 pub struct ActionClientInternal {
-    /// Arena entry index (set by nros_executor_add_action_client).
+    /// Arena entry index (set by rclc_executor_add_action_client).
     /// -1 means not registered with executor.
     pub arena_entry_index: i32,
-    /// Pointer to the executor (set by nros_executor_add_action_client).
+    /// Pointer to the executor (set by rclc_executor_add_action_client).
     pub executor_ptr: *mut core::ffi::c_void,
 }
 
@@ -76,16 +76,16 @@ impl Default for ActionClientInternal {
 /// Action client state.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nros_action_client_state_t {
+pub enum rclc_action_client_state_t {
     /// Not initialized
-    NROS_ACTION_CLIENT_STATE_UNINITIALIZED = 0,
-    /// Initialized. For a `nros_action_client_t` the transport is created
-    /// by `nros_executor_add_action_client`; for a
-    /// `nros_polling_action_client_t` its `ActionClientCore` is live in the
+    RCLC_ACTION_CLIENT_STATE_UNINITIALIZED = 0,
+    /// Initialized. For a `rcl_action_client_t` the transport is created
+    /// by `rclc_executor_add_action_client`; for a
+    /// `rclc_polling_action_client_t` its `ActionClientCore` is live in the
     /// struct.
-    NROS_ACTION_CLIENT_STATE_INITIALIZED = 1,
+    RCLC_ACTION_CLIENT_STATE_INITIALIZED = 1,
     /// Shutdown
-    NROS_ACTION_CLIENT_STATE_SHUTDOWN = 2,
+    RCLC_ACTION_CLIENT_STATE_SHUTDOWN = 2,
 }
 
 /// An action client the executor dispatches.
@@ -94,11 +94,11 @@ pub enum nros_action_client_state_t {
 /// channels and buffers; this struct holds the arena handle (`_internal`),
 /// the registration description and the callback record the arena's
 /// trampolines read, as the C++ action client does. A client the caller
-/// drives itself is a [`nros_polling_action_client_t`].
+/// drives itself is a [`rclc_polling_action_client_t`].
 #[repr(C)]
-pub struct nros_action_client_t {
+pub struct rcl_action_client_t {
     /// Current state
-    pub state: nros_action_client_state_t,
+    pub state: rclc_action_client_state_t,
     /// Action name storage
     pub action_name: [u8; MAX_ACTION_NAME_LEN],
     /// Action name length
@@ -112,21 +112,21 @@ pub struct nros_action_client_t {
     /// Type hash length
     pub type_hash_len: usize,
     /// Goal response callback (for async send_goal)
-    pub goal_response_callback: nros_goal_response_callback_t,
+    pub goal_response_callback: rclc_goal_response_callback_t,
     /// Feedback callback
-    pub feedback_callback: nros_feedback_callback_t,
+    pub feedback_callback: rclc_feedback_callback_t,
     /// Result callback
-    pub result_callback: nros_result_callback_t,
+    pub result_callback: rclc_result_callback_t,
     /// User context pointer
     pub context: *mut c_void,
     /// Pointer to parent node
-    pub node: crate::node::nros_node_ref_t,
+    pub node: crate::node::rclc_node_ref_t,
     /// Phase 189.M3.3.b — scheduling-context slot to bind the action client's
     /// executor handle to. `0` = inherit the executor / Node default; set via
-    /// `nros_action_client_init_with_options`. When non-zero,
-    /// `nros_executor_add_action_client` binds the handle after
+    /// `rclc_action_client_init_with_options`. When non-zero,
+    /// `rclc_executor_add_action_client` binds the handle after
     /// registration. No effect on the L1 polling path.
-    pub sched_context_id: crate::executor::nros_sched_context_id_t,
+    pub sched_context_id: crate::executor::rclc_sched_context_id_t,
     /// Internal state (arena entry index + executor pointer). Phase 87.5:
     /// Typed C-ABI handle field.
     pub _internal: ActionClientInternal,
@@ -135,29 +135,29 @@ pub struct nros_action_client_t {
 /// An action client the CALLER drives, with no executor (phase-487 W4).
 ///
 /// The C counterpart of C++'s `nros::PollingActionClient<A>`. `_opaque` holds
-/// an `ActionClientCore` from `nros_polling_action_client_init` until
-/// `nros_polling_action_client_fini`. Zero-initialised is UNINITIALIZED.
+/// an `ActionClientCore` from `rclc_polling_action_client_init` until
+/// `rclc_polling_action_client_fini`. Zero-initialised is UNINITIALIZED.
 /// Until phase-487 it was the `NROS_ACTION_CLIENT_STATE_POLLING` state of
-/// `nros_action_client_t`.
+/// `rcl_action_client_t`.
 #[repr(C)]
-pub struct nros_polling_action_client_t {
+pub struct rclc_polling_action_client_t {
     /// Current state: UNINITIALIZED, INITIALIZED (core live) or SHUTDOWN.
-    pub state: nros_action_client_state_t,
+    pub state: rclc_action_client_state_t,
     /// The node the channels were created on.
-    pub node: crate::node::nros_node_ref_t,
+    pub node: crate::node::rclc_node_ref_t,
     /// Inline storage for the `ActionClientCore`. Internal: treat as opaque.
     pub _opaque: [u64; crate::opaque_sizes::ACTION_CLIENT_OPAQUE_U64S],
 }
 
-impl Default for nros_polling_action_client_t {
+impl Default for rclc_polling_action_client_t {
     // The `_opaque` array sizes to the probed ActionClient size, which
     // exceeds clippy's 16 KB stack-array threshold. It is RVO'd into its
     // destination by the optimiser.
     #[allow(clippy::large_stack_arrays)]
     fn default() -> Self {
         Self {
-            state: nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_UNINITIALIZED,
-            node: crate::node::nros_node_ref_t::none(),
+            state: rclc_action_client_state_t::RCLC_ACTION_CLIENT_STATE_UNINITIALIZED,
+            node: crate::node::rclc_node_ref_t::none(),
             _opaque: [0u64; crate::opaque_sizes::ACTION_CLIENT_OPAQUE_U64S],
         }
     }
@@ -166,15 +166,15 @@ impl Default for nros_polling_action_client_t {
 /// Get a zero-initialized polling action client.
 #[unsafe(no_mangle)]
 #[allow(clippy::large_stack_arrays)]
-pub extern "C" fn nros_get_zero_initialized_polling_action_client() -> nros_polling_action_client_t
+pub extern "C" fn rclc_get_zero_initialized_polling_action_client() -> rclc_polling_action_client_t
 {
-    nros_polling_action_client_t::default()
+    rclc_polling_action_client_t::default()
 }
 
-impl Default for nros_action_client_t {
+impl Default for rcl_action_client_t {
     fn default() -> Self {
         Self {
-            state: nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_UNINITIALIZED,
+            state: rclc_action_client_state_t::RCLC_ACTION_CLIENT_STATE_UNINITIALIZED,
             action_name: [0u8; MAX_ACTION_NAME_LEN],
             action_name_len: 0,
             type_name: [0u8; MAX_TYPE_NAME_LEN],
@@ -185,7 +185,7 @@ impl Default for nros_action_client_t {
             feedback_callback: None,
             result_callback: None,
             context: ptr::null_mut(),
-            node: crate::node::nros_node_ref_t::none(),
+            node: crate::node::rclc_node_ref_t::none(),
             sched_context_id: 0,
             _internal: ActionClientInternal::new(),
         }
@@ -198,18 +198,18 @@ impl Default for nros_action_client_t {
 
 /// Get a zero-initialized action client.
 #[unsafe(no_mangle)]
-pub extern "C" fn rcl_action_get_zero_initialized_client() -> nros_action_client_t {
-    nros_action_client_t::default()
+pub extern "C" fn rcl_action_get_zero_initialized_client() -> rcl_action_client_t {
+    rcl_action_client_t::default()
 }
 
 /// Initialize an action client.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_client_init(
-    client: *mut nros_action_client_t,
-    node: *const nros_node_t,
+pub unsafe extern "C" fn rcl_action_client_init(
+    client: *mut rcl_action_client_t,
+    node: *const rcl_node_t,
     action_name: *const core::ffi::c_char,
-    type_info: *const nros_action_type_t,
-) -> nros_ret_t {
+    type_info: *const rclc_action_type_t,
+) -> rcl_ret_t {
     validate_not_null!(client, node, action_name, type_info);
 
     let client = &mut *client;
@@ -218,15 +218,15 @@ pub unsafe extern "C" fn nros_action_client_init(
 
     validate_state!(
         client,
-        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_UNINITIALIZED,
-        NROS_RET_BAD_SEQUENCE
+        rclc_action_client_state_t::RCLC_ACTION_CLIENT_STATE_UNINITIALIZED,
+        RCLC_RET_BAD_SEQUENCE
     );
-    validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
+    validate_state!(node_ref, rclc_node_state_t::RCLC_NODE_STATE_INITIALIZED);
 
     // Copy action name (required — empty rejected)
     client.action_name_len = crate::util::copy_cstr_into(action_name, &mut client.action_name);
     if client.action_name_len == 0 {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
 
     // Copy type name + hash (both optional — null sources leave dst untouched)
@@ -237,92 +237,92 @@ pub unsafe extern "C" fn nros_action_client_init(
     client.node = unsafe { crate::node::node_ref_of(node) };
 
     // Metadata only — no transport handles created here.
-    // Transport handles are created in nros_executor_add_action_client,
+    // Transport handles are created in rclc_executor_add_action_client,
     // which places the ActionClientCore in the executor's arena.
     client._internal = ActionClientInternal::new();
 
-    client.state = nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED;
+    client.state = rclc_action_client_state_t::RCLC_ACTION_CLIENT_STATE_INITIALIZED;
 
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// Phase 189.M3.3.b — rclc-style named action-client options (action clients
 /// carry no QoS field, so this is options-only). Zero-init = default behaviour.
 #[repr(C)]
 #[derive(Default)]
-pub struct nros_action_client_options_t {
+pub struct rcl_action_client_options_t {
     /// Scheduling-context slot to bind the action client's executor handle to.
     /// `0` = inherit the executor / Node default. A non-zero value must be an id
-    /// from `nros_executor_create_sched_context`; the bind is applied by
-    /// `nros_executor_add_action_client` once the handle exists. No effect
+    /// from `rclc_executor_create_sched_context`; the bind is applied by
+    /// `rclc_executor_add_action_client` once the handle exists. No effect
     /// on the L1 polling path.
-    pub sched_context: crate::executor::nros_sched_context_id_t,
+    pub sched_context: crate::executor::rclc_sched_context_id_t,
     /// Reserved for future use; must be zero. Pads for ABI stability.
     pub _reserved: [u8; 3],
 }
 
-/// Get a zero-initialised [`nros_action_client_options_t`] (`sched_context = 0`).
+/// Get a zero-initialised [`rcl_action_client_options_t`] (`sched_context = 0`).
 #[unsafe(no_mangle)]
-pub extern "C" fn rcl_action_client_get_default_options() -> nros_action_client_options_t {
-    nros_action_client_options_t::default()
+pub extern "C" fn rcl_action_client_get_default_options() -> rcl_action_client_options_t {
+    rcl_action_client_options_t::default()
 }
 
 /// Phase 189.M3.3.b — initialize an action client with named options. Like
-/// [`nros_action_client_init`] except a non-zero `options->sched_context` is
-/// stashed so `nros_executor_add_action_client` binds the resulting
+/// [`rcl_action_client_init`] except a non-zero `options->sched_context` is
+/// stashed so `rclc_executor_add_action_client` binds the resulting
 /// executor handle to that scheduling context once known.
 ///
 /// # Safety
 /// All non-NULL pointers must be valid + the node initialized; `options` may be
 /// NULL.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_client_init_with_options(
-    client: *mut nros_action_client_t,
-    node: *const nros_node_t,
+pub unsafe extern "C" fn rclc_action_client_init_with_options(
+    client: *mut rcl_action_client_t,
+    node: *const rcl_node_t,
     action_name: *const core::ffi::c_char,
-    type_info: *const nros_action_type_t,
-    options: *const nros_action_client_options_t,
-) -> nros_ret_t {
-    let ret = nros_action_client_init(client, node, action_name, type_info);
-    if ret != NROS_RET_OK {
+    type_info: *const rclc_action_type_t,
+    options: *const rcl_action_client_options_t,
+) -> rcl_ret_t {
+    let ret = rcl_action_client_init(client, node, action_name, type_info);
+    if ret != RCL_RET_OK {
         return ret;
     }
     if !options.is_null() {
         (*client).sched_context_id = (*options).sched_context;
     }
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// Set feedback callback.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_client_set_feedback_callback(
-    client: *mut nros_action_client_t,
-    callback: nros_feedback_callback_t,
+pub unsafe extern "C" fn rclc_action_client_set_feedback_callback(
+    client: *mut rcl_action_client_t,
+    callback: rclc_feedback_callback_t,
     context: *mut c_void,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(client);
 
     let client = &mut *client;
     client.feedback_callback = callback;
     client.context = context;
 
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// Set result callback.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_client_set_result_callback(
-    client: *mut nros_action_client_t,
-    callback: nros_result_callback_t,
+pub unsafe extern "C" fn rclc_action_client_set_result_callback(
+    client: *mut rcl_action_client_t,
+    callback: rclc_result_callback_t,
     context: *mut c_void,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(client);
 
     let client = &mut *client;
     client.result_callback = callback;
     client.context = context;
 
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// Block until the action server's send-goal queryable is discoverable
@@ -331,49 +331,49 @@ pub unsafe extern "C" fn nros_action_client_set_result_callback(
 /// Mirrors `rclcpp_action::Client::wait_for_action_server` and the
 /// underlying `ActionClient::wait_for_action_server`. Spins on the
 /// action's `send_goal` service client's readiness (the goal queryable is
-/// the load-bearing entity for the first `nros_action_send_goal` call) via
-/// the same primitive as `nros_client_wait_for_service` (phase-428 W13).
+/// the load-bearing entity for the first `rclc_action_send_goal` call) via
+/// the same primitive as `rclc_client_wait_for_service` (phase-428 W13).
 ///
 /// # Returns
-/// * `NROS_RET_OK` — server visible.
-/// * `NROS_RET_TIMEOUT` — `timeout_ms` elapsed without seeing a token.
-/// * `NROS_RET_UNSUPPORTED` — the backend cannot know whether a server is up
+/// * `RCL_RET_OK` — server visible.
+/// * `RCL_RET_TIMEOUT` — `timeout_ms` elapsed without seeing a token.
+/// * `RCL_RET_UNSUPPORTED` — the backend cannot know whether a server is up
 ///   (XRCE: the Agent owns the DDS graph), returned at once rather than after
 ///   the budget, because no answer can arrive (issue 1686). A caller that may
 ///   send blind proceeds; the goal request's own timeout is then the probe.
-/// * `NROS_RET_NOT_INIT` — client not registered with an executor.
-/// * `NROS_RET_ERROR` — transport-level failure.
+/// * `RCL_RET_NOT_INIT` — client not registered with an executor.
+/// * `RCL_RET_ERROR` — transport-level failure.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_client_wait_for_action_server(
-    client: *mut nros_action_client_t,
-    executor: *mut crate::executor::nros_executor_t,
+pub unsafe extern "C" fn rclc_action_client_wait_for_action_server(
+    client: *mut rcl_action_client_t,
+    executor: *mut crate::executor::rclc_executor_t,
     timeout_ms: u32,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(client, executor);
 
     #[cfg(feature = "rmw-cffi")]
     {
         let client_ref = &mut *client;
-        if client_ref.state != nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED {
-            return NROS_RET_NOT_INIT;
+        if client_ref.state != rclc_action_client_state_t::RCLC_ACTION_CLIENT_STATE_INITIALIZED {
+            return RCL_RET_NOT_INIT;
         }
         let internal = &mut client_ref._internal;
         if internal.executor_ptr.is_null() || internal.arena_entry_index < 0 {
-            return NROS_RET_NOT_INIT;
+            return RCL_RET_NOT_INIT;
         }
         // Note: action clients store an opaque pointer into
-        // `executor._opaque` (see `nros_executor_add_action_client`),
-        // not to the outer `nros_executor_t`, so we can't recover the
+        // `executor._opaque` (see `rclc_executor_add_action_client`),
+        // not to the outer `rclc_executor_t`, so we can't recover the
         // wrapper from `internal.executor_ptr`. Take `executor` as a
         // separate argument — same convention as
-        // `nros_action_send_goal`.
+        // `rclc_action_send_goal`.
         let exec_t = &mut *executor;
         if exec_t.in_dispatch {
-            return NROS_RET_REENTRANT;
+            return RCLC_RET_REENTRANT;
         }
 
         // phase-428 W13 — spin, then ask again; see
-        // `nros_client_wait_for_service`.
+        // `rclc_client_wait_for_service`.
         let start_ns = crate::platform::get_time_ns();
         let timeout_ns: u64 = (timeout_ms as u64).saturating_mul(1_000_000);
         loop {
@@ -381,20 +381,20 @@ pub unsafe extern "C" fn nros_action_client_wait_for_action_server(
                 let exec = crate::executor::get_executor(&mut exec_t._opaque);
                 let core = match exec.action_client_core_mut(internal.arena_entry_index as usize) {
                     Some(c) => c,
-                    None => return NROS_RET_NOT_INIT,
+                    None => return RCL_RET_NOT_INIT,
                 };
                 // issue 1686 — one classification for every wait loop.
                 match nros_node::executor::ServerVisibility::of(core.server_readiness()) {
-                    nros_node::executor::ServerVisibility::Visible => return NROS_RET_OK,
+                    nros_node::executor::ServerVisibility::Visible => return RCL_RET_OK,
                     nros_node::executor::ServerVisibility::Unknowable => {
-                        return NROS_RET_UNSUPPORTED;
+                        return RCL_RET_UNSUPPORTED;
                     }
                     nros_node::executor::ServerVisibility::NotYet => {}
                 }
             }
             let elapsed_ns = crate::platform::get_time_ns().saturating_sub(start_ns);
             if elapsed_ns >= timeout_ns {
-                return NROS_RET_TIMEOUT;
+                return RCL_RET_TIMEOUT;
             }
             crate::executor::rclc_executor_spin_some(executor, 10_000_000);
         }
@@ -403,7 +403,7 @@ pub unsafe extern "C" fn nros_action_client_wait_for_action_server(
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (client, executor, timeout_ms);
-        NROS_RET_OK
+        RCL_RET_OK
     }
 }
 
@@ -424,17 +424,17 @@ pub unsafe extern "C" fn nros_action_client_wait_for_action_server(
 /// # Returns
 /// * Pointer to the action name (NUL-terminated), or NULL when `client` is
 ///   NULL or was never initialised. A polled client is its own type since
-///   phase-487 W4 (`nros_polling_action_client_t`) and keeps no name.
+///   phase-487 W4 (`rclc_polling_action_client_t`) and keeps no name.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_action_client_get_action_name(
-    client: *const nros_action_client_t,
+    client: *const rcl_action_client_t,
 ) -> *const core::ffi::c_char {
     if client.is_null() {
         return core::ptr::null();
     }
     let client = &*client;
     match client.state {
-        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED => {
+        rclc_action_client_state_t::RCLC_ACTION_CLIENT_STATE_INITIALIZED => {
             client.action_name.as_ptr() as *const core::ffi::c_char
         }
         _ => core::ptr::null(),
@@ -444,11 +444,11 @@ pub unsafe extern "C" fn rcl_action_client_get_action_name(
 /// Non-blocking snapshot of action-server visibility. Mirrors
 /// `rclcpp_action::Client::action_server_is_ready`. Takes `executor`
 /// for the same reason as
-/// [`nros_action_client_wait_for_action_server`].
+/// [`rclc_action_client_wait_for_action_server`].
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_client_action_server_is_ready(
-    client: *const nros_action_client_t,
-    executor: *mut crate::executor::nros_executor_t,
+pub unsafe extern "C" fn rclc_action_client_action_server_is_ready(
+    client: *const rcl_action_client_t,
+    executor: *mut crate::executor::rclc_executor_t,
 ) -> bool {
     if client.is_null() || executor.is_null() {
         return false;
@@ -456,7 +456,7 @@ pub unsafe extern "C" fn nros_action_client_action_server_is_ready(
     #[cfg(feature = "rmw-cffi")]
     {
         let client_ref = &*client;
-        if client_ref.state != nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED {
+        if client_ref.state != rclc_action_client_state_t::RCLC_ACTION_CLIENT_STATE_INITIALIZED {
             return false;
         }
         let internal = &client_ref._internal;
@@ -481,7 +481,7 @@ pub unsafe extern "C" fn nros_action_client_action_server_is_ready(
 #[unsafe(no_mangle)]
 /// Send a goal (blocking convenience).
 ///
-/// Calls `nros_action_send_goal_async` then spins the executor until the
+/// Calls `rclc_action_send_goal_async` then spins the executor until the
 /// goal is accepted/rejected or timeout. Never calls `zpico_get` directly —
 /// all I/O is driven by the executor's `spin_once`.
 ///
@@ -492,32 +492,32 @@ pub unsafe extern "C" fn nros_action_client_action_server_is_ready(
 /// Three outcomes, three codes — they were two before issue 0868 (see the C++
 /// twin `nros_cpp_action_client_send_goal`):
 ///
-/// * `NROS_RET_OK` — the server ACCEPTED; `goal_uuid` is filled.
-/// * `NROS_RET_REJECTED` — the server RECEIVED the goal and declined it.
-/// * `NROS_RET_TIMEOUT` — no goal response within the blocking budget. The
+/// * `RCL_RET_OK` — the server ACCEPTED; `goal_uuid` is filled.
+/// * `RCLC_RET_REJECTED` — the server RECEIVED the goal and declined it.
+/// * `RCL_RET_TIMEOUT` — no goal response within the blocking budget. The
 ///   server may never have received the goal at all.
-/// * `NROS_RET_ERROR` — the goal could not be SENT.
-/// * `NROS_RET_REENTRANT` — called from inside a dispatch callback.
+/// * `RCL_RET_ERROR` — the goal could not be SENT.
+/// * `RCLC_RET_REENTRANT` — called from inside a dispatch callback.
 #[allow(static_mut_refs)]
-pub unsafe extern "C" fn nros_action_send_goal(
-    client: *mut nros_action_client_t,
-    executor: *mut crate::executor::nros_executor_t,
+pub unsafe extern "C" fn rclc_action_send_goal(
+    client: *mut rcl_action_client_t,
+    executor: *mut crate::executor::rclc_executor_t,
     goal: *const u8,
     goal_len: usize,
-    goal_uuid: *mut nros_goal_uuid_t,
-) -> nros_ret_t {
+    goal_uuid: *mut rclc_goal_uuid_t,
+) -> rcl_ret_t {
     validate_not_null!(client, goal, goal_uuid, executor);
 
     // Reentrancy guard: this function spins the executor internally,
     // so it must not be called from inside a dispatch callback.
     let exec_ref = &*executor;
     if exec_ref.in_dispatch {
-        return NROS_RET_REENTRANT;
+        return RCLC_RET_REENTRANT;
     }
 
     // Send async
-    let ret = nros_action_send_goal_async(client, goal, goal_len, goal_uuid);
-    if ret != NROS_RET_OK {
+    let ret = rclc_action_send_goal_async(client, goal, goal_len, goal_uuid);
+    if ret != RCL_RET_OK {
         return ret;
     }
 
@@ -539,7 +539,7 @@ pub unsafe extern "C" fn nros_action_send_goal(
     let orig_cb = client_ref.goal_response_callback;
     let orig_ctx = client_ref.context;
     unsafe extern "C" fn blocking_goal_cb(
-        _uuid: *const nros_goal_uuid_t,
+        _uuid: *const rclc_goal_uuid_t,
         accepted: bool,
         _ctx: *mut core::ffi::c_void,
     ) {
@@ -569,9 +569,9 @@ pub unsafe extern "C" fn nros_action_send_goal(
             // could not be sent at all, so reusing it here left the caller
             // unable to tell "the server said no" from "it never left".
             return if flag == 1 {
-                NROS_RET_OK
+                RCL_RET_OK
             } else {
-                NROS_RET_REJECTED
+                RCLC_RET_REJECTED
             };
         }
         let elapsed_ns = crate::platform::get_time_ns().saturating_sub(start_ns);
@@ -581,22 +581,22 @@ pub unsafe extern "C" fn nros_action_send_goal(
     }
     client_ref.goal_response_callback = orig_cb;
     client_ref.context = orig_ctx;
-    NROS_RET_TIMEOUT
+    RCL_RET_TIMEOUT
 }
 
 /// Request cancellation of a goal.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_cancel_goal(
-    client: *mut nros_action_client_t,
-    goal_uuid: *const nros_goal_uuid_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_action_cancel_goal(
+    client: *mut rcl_action_client_t,
+    goal_uuid: *const rclc_goal_uuid_t,
+) -> rcl_ret_t {
     validate_not_null!(client, goal_uuid);
 
     let client = &mut *client;
 
     validate_state!(
         client,
-        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
+        rclc_action_client_state_t::RCLC_ACTION_CLIENT_STATE_INITIALIZED
     );
 
     let internal = &mut client._internal;
@@ -605,41 +605,41 @@ pub unsafe extern "C" fn nros_action_cancel_goal(
 
     let core = match unsafe { internal.arena_core_mut() } {
         Some(c) => c,
-        None => return NROS_RET_NOT_INIT,
+        None => return RCL_RET_NOT_INIT,
     };
     match core.send_cancel_request(&goal_id) {
-        Ok(()) => NROS_RET_OK,
-        Err(_) => NROS_RET_ERROR,
+        Ok(()) => RCL_RET_OK,
+        Err(_) => RCL_RET_ERROR,
     }
 }
 
 /// Request result of a goal (blocking convenience).
 ///
-/// Calls `nros_action_get_result_async` then spins the executor until the
+/// Calls `rclc_action_get_result_async` then spins the executor until the
 /// result arrives or timeout. Never calls `zpico_get` directly.
 #[unsafe(no_mangle)]
 #[allow(static_mut_refs)]
-pub unsafe extern "C" fn nros_action_get_result(
-    client: *mut nros_action_client_t,
-    executor: *mut crate::executor::nros_executor_t,
-    goal_uuid: *const nros_goal_uuid_t,
-    status: *mut nros_goal_status_t,
+pub unsafe extern "C" fn rclc_action_get_result(
+    client: *mut rcl_action_client_t,
+    executor: *mut crate::executor::rclc_executor_t,
+    goal_uuid: *const rclc_goal_uuid_t,
+    status: *mut rclc_goal_status_t,
     result: *mut u8,
     result_capacity: usize,
     result_len: *mut usize,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(client, executor, goal_uuid, status, result, result_len);
 
     // Reentrancy guard: this function spins the executor internally,
     // so it must not be called from inside a dispatch callback.
     let exec_ref = &*executor;
     if exec_ref.in_dispatch {
-        return NROS_RET_REENTRANT;
+        return RCLC_RET_REENTRANT;
     }
 
     // Send get_result request async
-    let ret = nros_action_get_result_async(client, goal_uuid);
-    if ret != NROS_RET_OK {
+    let ret = rclc_action_get_result_async(client, goal_uuid);
+    if ret != RCL_RET_OK {
         return ret;
     }
 
@@ -671,8 +671,8 @@ pub unsafe extern "C" fn nros_action_get_result(
     let orig_cb = client_ref.result_callback;
     let orig_ctx = client_ref.context;
     unsafe extern "C" fn blk_result_cb(
-        _uuid: *const nros_goal_uuid_t,
-        st: nros_goal_status_t,
+        _uuid: *const rclc_goal_uuid_t,
+        st: rclc_goal_status_t,
         data: *const u8,
         len: usize,
         _ctx: *mut core::ffi::c_void,
@@ -706,13 +706,13 @@ pub unsafe extern "C" fn nros_action_get_result(
             let data_len = rlen as usize;
 
             *status = match BLK_RESULT_STATUS.load(Ordering::Relaxed) {
-                1 => nros_goal_status_t::NROS_GOAL_STATUS_ACCEPTED,
-                2 => nros_goal_status_t::NROS_GOAL_STATUS_EXECUTING,
-                3 => nros_goal_status_t::NROS_GOAL_STATUS_CANCELING,
-                4 => nros_goal_status_t::NROS_GOAL_STATUS_SUCCEEDED,
-                5 => nros_goal_status_t::NROS_GOAL_STATUS_CANCELED,
-                6 => nros_goal_status_t::NROS_GOAL_STATUS_ABORTED,
-                _ => nros_goal_status_t::NROS_GOAL_STATUS_UNKNOWN,
+                1 => rclc_goal_status_t::RCLC_GOAL_STATUS_ACCEPTED,
+                2 => rclc_goal_status_t::RCLC_GOAL_STATUS_EXECUTING,
+                3 => rclc_goal_status_t::RCLC_GOAL_STATUS_CANCELING,
+                4 => rclc_goal_status_t::RCLC_GOAL_STATUS_SUCCEEDED,
+                5 => rclc_goal_status_t::RCLC_GOAL_STATUS_CANCELED,
+                6 => rclc_goal_status_t::RCLC_GOAL_STATUS_ABORTED,
+                _ => rclc_goal_status_t::RCLC_GOAL_STATUS_UNKNOWN,
             };
 
             // Issue #179 — the dispatch paths now deliver the result WITH its
@@ -722,7 +722,7 @@ pub unsafe extern "C" fn nros_action_get_result(
             // reply and, combined with the poll path's off-by-alignment slice,
             // broke every zenoh C/C++ action client.
             if data_len > result_capacity {
-                return NROS_RET_ERROR;
+                return RCL_RET_ERROR;
             }
             let out = core::slice::from_raw_parts_mut(result, result_capacity);
             // SAFETY: BLK_RESULT_LEN's Acquire load above fences the
@@ -730,7 +730,7 @@ pub unsafe extern "C" fn nros_action_get_result(
             let buf = unsafe { &*BLK_RESULT_BUF.0.get() };
             out[..data_len].copy_from_slice(&buf[..data_len]);
             *result_len = data_len;
-            return NROS_RET_OK;
+            return RCL_RET_OK;
         }
         let elapsed_ns = crate::platform::get_time_ns().saturating_sub(start_ns);
         if elapsed_ns >= timeout_ns {
@@ -739,38 +739,38 @@ pub unsafe extern "C" fn nros_action_get_result(
     }
     client_ref.result_callback = orig_cb;
     client_ref.context = orig_ctx;
-    NROS_RET_TIMEOUT
+    RCL_RET_TIMEOUT
 }
 
 /// Try to receive feedback for an active goal (non-blocking).
 ///
 /// If feedback is available, invokes the feedback callback (if set).
-/// Returns `NROS_RET_OK` if feedback was received and dispatched,
-/// `NROS_RET_TIMEOUT` if no feedback is available.
+/// Returns `RCL_RET_OK` if feedback was received and dispatched,
+/// `RCL_RET_TIMEOUT` if no feedback is available.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_try_recv_feedback(
-    client: *mut nros_action_client_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_action_try_recv_feedback(
+    client: *mut rcl_action_client_t,
+) -> rcl_ret_t {
     validate_not_null!(client);
 
     let client = &mut *client;
 
     validate_state!(
         client,
-        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
+        rclc_action_client_state_t::RCLC_ACTION_CLIENT_STATE_INITIALIZED
     );
 
     let internal = &mut client._internal;
 
     let core = match unsafe { internal.arena_core_mut() } {
         Some(c) => c,
-        None => return NROS_RET_NOT_INIT,
+        None => return RCL_RET_NOT_INIT,
     };
 
     match core.try_recv_feedback_raw() {
         Ok(Some((goal_id, len))) => {
             if let Some(cb) = client.feedback_callback {
-                let uuid = nros_goal_uuid_t { uuid: goal_id.uuid };
+                let uuid = rclc_goal_uuid_t { uuid: goal_id.uuid };
 
                 // Feedback wire layout: [CDR_HEADER][GoalId seq prefix][UUID][feedback fields].
                 // The C deserializer expects [CDR_HEADER][fields], so we
@@ -799,10 +799,10 @@ pub unsafe extern "C" fn nros_action_try_recv_feedback(
                 }
             }
 
-            NROS_RET_OK
+            RCL_RET_OK
         }
-        Ok(None) => NROS_RET_TIMEOUT,
-        Err(_) => NROS_RET_ERROR,
+        Ok(None) => RCL_RET_TIMEOUT,
+        Err(_) => RCL_RET_ERROR,
     }
 }
 
@@ -814,7 +814,7 @@ pub unsafe extern "C" fn nros_action_try_recv_feedback(
 ///
 /// Sends the goal request and returns immediately. The goal response
 /// (accepted/rejected) arrives via the goal_response_callback registered
-/// with `nros_action_client_set_goal_response_callback`, invoked during
+/// with `rclc_action_client_set_goal_response_callback`, invoked during
 /// `rclc_executor_spin_some`.
 ///
 /// The `goal_uuid` output is filled with the generated goal UUID on success.
@@ -823,19 +823,19 @@ pub unsafe extern "C" fn nros_action_try_recv_feedback(
 /// All pointers must be valid. `goal` must point to `goal_len` bytes of
 /// CDR-serialized goal data (with CDR header).
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_send_goal_async(
-    client: *mut nros_action_client_t,
+pub unsafe extern "C" fn rclc_action_send_goal_async(
+    client: *mut rcl_action_client_t,
     goal: *const u8,
     goal_len: usize,
-    goal_uuid: *mut nros_goal_uuid_t,
-) -> nros_ret_t {
+    goal_uuid: *mut rclc_goal_uuid_t,
+) -> rcl_ret_t {
     validate_not_null!(client, goal, goal_uuid);
 
     let client = &mut *client;
 
     validate_state!(
         client,
-        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
+        rclc_action_client_state_t::RCLC_ACTION_CLIENT_STATE_INITIALIZED
     );
 
     let internal = &mut client._internal;
@@ -846,7 +846,7 @@ pub unsafe extern "C" fn nros_action_send_goal_async(
 
     let core = match unsafe { internal.arena_core_mut() } {
         Some(c) => c,
-        None => return NROS_RET_NOT_INIT,
+        None => return RCL_RET_NOT_INIT,
     };
 
     // Non-blocking: uses zpico_get_start internally (not zpico_get).
@@ -854,9 +854,9 @@ pub unsafe extern "C" fn nros_action_send_goal_async(
         Ok(goal_id) => {
             let uuid = &mut *goal_uuid;
             uuid.uuid = goal_id.uuid;
-            NROS_RET_OK
+            RCL_RET_OK
         }
-        Err(_) => NROS_RET_ERROR,
+        Err(_) => RCL_RET_ERROR,
     }
 }
 
@@ -864,23 +864,23 @@ pub unsafe extern "C" fn nros_action_send_goal_async(
 ///
 /// Sends the get_result request and returns immediately. The result
 /// arrives via the result_callback registered with
-/// `nros_action_client_set_result_callback`, invoked during
+/// `rclc_action_client_set_result_callback`, invoked during
 /// `rclc_executor_spin_some`.
 ///
 /// # Safety
 /// All pointers must be valid.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_get_result_async(
-    client: *mut nros_action_client_t,
-    goal_uuid: *const nros_goal_uuid_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_action_get_result_async(
+    client: *mut rcl_action_client_t,
+    goal_uuid: *const rclc_goal_uuid_t,
+) -> rcl_ret_t {
     validate_not_null!(client, goal_uuid);
 
     let client = &mut *client;
 
     validate_state!(
         client,
-        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
+        rclc_action_client_state_t::RCLC_ACTION_CLIENT_STATE_INITIALIZED
     );
 
     let internal = &mut client._internal;
@@ -889,29 +889,29 @@ pub unsafe extern "C" fn nros_action_get_result_async(
 
     let core = match unsafe { internal.arena_core_mut() } {
         Some(c) => c,
-        None => return NROS_RET_NOT_INIT,
+        None => return RCL_RET_NOT_INIT,
     };
 
     // Non-blocking: uses zpico_get_start internally.
     match core.send_get_result_request(&goal_id) {
-        Ok(()) => NROS_RET_OK,
-        Err(_) => NROS_RET_ERROR,
+        Ok(()) => RCL_RET_OK,
+        Err(_) => RCL_RET_ERROR,
     }
 }
 
 /// Set the goal response callback for async goal sending.
 ///
 /// Called during `rclc_executor_spin_some` when the server accepts or
-/// rejects a goal sent via `nros_action_send_goal_async`.
+/// rejects a goal sent via `rclc_action_send_goal_async`.
 ///
 /// # Safety
 /// `client` must be valid.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_client_set_goal_response_callback(
-    client: *mut nros_action_client_t,
-    callback: nros_goal_response_callback_t,
+pub unsafe extern "C" fn rclc_action_client_set_goal_response_callback(
+    client: *mut rcl_action_client_t,
+    callback: rclc_goal_response_callback_t,
     context: *mut c_void,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(client);
 
     let client = &mut *client;
@@ -919,7 +919,7 @@ pub unsafe extern "C" fn nros_action_client_set_goal_response_callback(
     if !context.is_null() {
         client.context = context;
     }
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// Poll the action client for pending async replies (non-blocking).
@@ -931,14 +931,14 @@ pub unsafe extern "C" fn nros_action_client_set_goal_response_callback(
 /// # Safety
 /// `client` must be a valid pointer.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_client_poll(client: *mut nros_action_client_t) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_action_client_poll(client: *mut rcl_action_client_t) -> rcl_ret_t {
     validate_not_null!(client);
 
     let client_ref = &mut *client;
 
     validate_state!(
         client_ref,
-        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
+        rclc_action_client_state_t::RCLC_ACTION_CLIENT_STATE_INITIALIZED
     );
 
     let internal = &mut client_ref._internal;
@@ -946,7 +946,7 @@ pub unsafe extern "C" fn nros_action_client_poll(client: *mut nros_action_client
 
     let core = match unsafe { internal.arena_core_mut() } {
         Some(c) => c,
-        None => return NROS_RET_NOT_INIT,
+        None => return RCL_RET_NOT_INIT,
     };
 
     // Poll goal acceptance reply
@@ -955,7 +955,7 @@ pub unsafe extern "C" fn nros_action_client_poll(client: *mut nros_action_client
     {
         let buf = core.result_buffer_ref();
         let accepted = total_len >= 5 && buf[4] != 0;
-        let uuid = nros_goal_uuid_t {
+        let uuid = rclc_goal_uuid_t {
             uuid: {
                 let mut u = [0u8; 16];
                 u[..8].copy_from_slice(&core.goal_counter().to_le_bytes());
@@ -971,13 +971,13 @@ pub unsafe extern "C" fn nros_action_client_poll(client: *mut nros_action_client
     {
         let buf = core.feedback_buffer_ref();
         // NOTE: this polling path uses CDR_HEADER + UUID (20 bytes) whereas
-        // `nros_action_try_recv_feedback` above uses CDR_HEADER + seq_prefix
+        // `rclc_action_try_recv_feedback` above uses CDR_HEADER + seq_prefix
         // + UUID (24). The discrepancy is tracked as a Phase 83 audit finding
         // — preserve current semantics until the feedback framing is unified
         // inside `ActionClientCore`.
         let offset = CDR_HEADER_LEN + GoalId::UUID_LEN;
         if total_len > offset {
-            let uuid = nros_goal_uuid_t { uuid: goal_id.uuid };
+            let uuid = rclc_goal_uuid_t { uuid: goal_id.uuid };
             cb(
                 &uuid,
                 buf[offset..total_len].as_ptr(),
@@ -995,10 +995,10 @@ pub unsafe extern "C" fn nros_action_client_poll(client: *mut nros_action_client
         if total_len >= 5 {
             let status_byte = buf[4];
             let c_status = match status_byte {
-                4 => nros_goal_status_t::NROS_GOAL_STATUS_SUCCEEDED,
-                5 => nros_goal_status_t::NROS_GOAL_STATUS_CANCELED,
-                6 => nros_goal_status_t::NROS_GOAL_STATUS_ABORTED,
-                _ => nros_goal_status_t::NROS_GOAL_STATUS_UNKNOWN,
+                4 => rclc_goal_status_t::RCLC_GOAL_STATUS_SUCCEEDED,
+                5 => rclc_goal_status_t::RCLC_GOAL_STATUS_CANCELED,
+                6 => rclc_goal_status_t::RCLC_GOAL_STATUS_ABORTED,
+                _ => rclc_goal_status_t::RCLC_GOAL_STATUS_UNKNOWN,
             };
             // Issue #179 — the reply is `[CDR hdr 4][status i8][align(4)]
             // [result payload]`: the payload starts at stream-pos 4 = byte 8,
@@ -1013,7 +1013,7 @@ pub unsafe extern "C" fn nros_action_client_poll(client: *mut nros_action_client
             // raw, so splice the reply's own (always-valid) top-level encap
             // in front. Callback contract: bytes = encap-headered result.
             let result_offset = (CDR_HEADER_LEN + 4).min(total_len);
-            let uuid = nros_goal_uuid_t {
+            let uuid = rclc_goal_uuid_t {
                 uuid: {
                     let mut u = [0u8; 16];
                     u[..8].copy_from_slice(&core.goal_counter().to_le_bytes());
@@ -1036,40 +1036,40 @@ pub unsafe extern "C" fn nros_action_client_poll(client: *mut nros_action_client
         }
     }
 
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// Finalize an action client.
 ///
 /// Issue 1609 — `fini` does NOT remove the client from an executor; its arena
 /// entry holds this struct as its callback `context`. Call
-/// `nros_executor_remove_action_client(executor, client)` first, which drops
+/// `rclc_executor_remove_action_client(executor, client)` first, which drops
 /// the entry (the action leaves the graph) and brings the executor's
 /// `handle_count` back down.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_client_fini(client: *mut nros_action_client_t) -> nros_ret_t {
+pub unsafe extern "C" fn rcl_action_client_fini(client: *mut rcl_action_client_t) -> rcl_ret_t {
     validate_not_null!(client);
 
     let client = &mut *client;
 
     match client.state {
-        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED => {
+        rclc_action_client_state_t::RCLC_ACTION_CLIENT_STATE_INITIALIZED => {
             // L2: client lives in executor arena (if registered) —
             // reset metadata only. Releasing the entry needs the owning
-            // `nros_executor_t` (issue 1609): that is
-            // `nros_executor_remove_action_client`.
+            // `rclc_executor_t` (issue 1609): that is
+            // `rclc_executor_remove_action_client`.
         }
-        _ => return NROS_RET_NOT_INIT,
+        _ => return RCL_RET_NOT_INIT,
     }
 
     client._internal = ActionClientInternal::new();
     client.feedback_callback = None;
     client.result_callback = None;
     client.context = ptr::null_mut();
-    client.node = crate::node::nros_node_ref_t::none();
-    client.state = nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_SHUTDOWN;
+    client.node = crate::node::rclc_node_ref_t::none();
+    client.state = rclc_action_client_state_t::RCLC_ACTION_CLIENT_STATE_SHUTDOWN;
 
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 // ============================================================================
@@ -1080,27 +1080,27 @@ pub unsafe extern "C" fn nros_action_client_fini(client: *mut nros_action_client
 ///
 /// Creates the 4 transport channels (3 service clients + feedback
 /// subscriber) immediately and stores the `ActionClientCore` inline
-/// in the `nros_polling_action_client_t`. The caller drives the goal lifecycle via:
-/// * `nros_polling_action_client_send_goal_raw` — start a new goal; returns
+/// in the `rclc_polling_action_client_t`. The caller drives the goal lifecycle via:
+/// * `rclc_polling_action_client_send_goal_raw` — start a new goal; returns
 ///   the generated 16-byte UUID.
-/// * `nros_polling_action_client_try_recv_goal_response_raw` — poll for the
+/// * `rclc_polling_action_client_try_recv_goal_response_raw` — poll for the
 ///   send_goal RPC reply (accepted / rejected).
-/// * `nros_polling_action_client_send_get_result_request_raw` +
+/// * `rclc_polling_action_client_send_get_result_request_raw` +
 ///   `_try_recv_result_raw` — fetch the terminal result.
-/// * `nros_polling_action_client_send_cancel_request_raw` +
+/// * `rclc_polling_action_client_send_cancel_request_raw` +
 ///   `_try_recv_cancel_response_raw` — cancel a goal.
-/// * `nros_polling_action_client_try_recv_feedback_raw` — drain feedback.
+/// * `rclc_polling_action_client_try_recv_feedback_raw` — drain feedback.
 ///
 /// # Safety
 /// All pointers must be valid; `action_name` must be a valid
 /// null-terminated string.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_action_client_init(
-    client: *mut nros_polling_action_client_t,
-    node: *const nros_node_t,
-    type_info: *const super::common::nros_action_type_t,
+pub unsafe extern "C" fn rclc_polling_action_client_init(
+    client: *mut rclc_polling_action_client_t,
+    node: *const rcl_node_t,
+    type_info: *const super::common::rclc_action_type_t,
     action_name: *const core::ffi::c_char,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(client, node, type_info, action_name);
 
     let client_mut = &mut *client;
@@ -1109,17 +1109,17 @@ pub unsafe extern "C" fn nros_polling_action_client_init(
 
     validate_state!(
         client_mut,
-        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_UNINITIALIZED,
-        NROS_RET_BAD_SEQUENCE
+        rclc_action_client_state_t::RCLC_ACTION_CLIENT_STATE_UNINITIALIZED,
+        RCLC_RET_BAD_SEQUENCE
     );
-    validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
+    validate_state!(node_ref, rclc_node_state_t::RCLC_NODE_STATE_INITIALIZED);
 
     // Read into locals: the polled struct keeps the core, not the
     // description it was created from.
     let mut name_buf = [0u8; MAX_ACTION_NAME_LEN];
     let name_len = crate::util::copy_cstr_into(action_name, &mut name_buf);
     if name_len == 0 {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     let mut type_buf = [0u8; MAX_TYPE_NAME_LEN];
     let type_len = crate::util::copy_cstr_into(type_info_ref.type_name, &mut type_buf);
@@ -1130,13 +1130,13 @@ pub unsafe extern "C" fn nros_polling_action_client_init(
     let _ = (&type_buf, type_len, &hash_buf, hash_len);
 
     // Resolve the SOURCE action name to its wire name — see
-    // `nros_publisher_init_with_qos`. All five channel keyexprs are derived
+    // `rclc_publisher_init_with_qos`. All five channel keyexprs are derived
     // from it below, so resolving once here moves the whole action.
     let _resolved_name = {
         let source = core::str::from_utf8_unchecked(&name_buf[..name_len]);
         match crate::node::resolve_entity_name_on_node(node_ref, source) {
             Some(r) => r,
-            None => return NROS_RET_INVALID_ARGUMENT,
+            None => return RCL_RET_INVALID_ARGUMENT,
         }
     };
 
@@ -1146,7 +1146,7 @@ pub unsafe extern "C" fn nros_polling_action_client_init(
         // `rclc_publisher_init_default`).
         let (session, domain_id) = match crate::node::resolve_session_and_domain(node_ref) {
             Some(t) => t,
-            None => return NROS_RET_NOT_INIT,
+            None => return RCL_RET_NOT_INIT,
         };
 
         // RESOLVED name on the wire — see the resolution above.
@@ -1179,7 +1179,7 @@ pub unsafe extern "C" fn nros_polling_action_client_init(
         let send_goal_client =
             match session.create_client(&send_goal_info, QoSProfile::services_default()) {
                 Ok(h) => h,
-                Err(_) => return NROS_RET_ERROR,
+                Err(_) => return RCL_RET_ERROR,
             };
 
         let cancel_goal_keyexpr: nros_core::heapless::String<256> = action_info.cancel_goal_key();
@@ -1194,7 +1194,7 @@ pub unsafe extern "C" fn nros_polling_action_client_init(
         let cancel_goal_client =
             match session.create_client(&cancel_goal_info, QoSProfile::services_default()) {
                 Ok(h) => h,
-                Err(_) => return NROS_RET_ERROR,
+                Err(_) => return RCL_RET_ERROR,
             };
 
         let get_result_keyexpr: nros_core::heapless::String<256> = action_info.get_result_key();
@@ -1208,7 +1208,7 @@ pub unsafe extern "C" fn nros_polling_action_client_init(
         let get_result_client =
             match session.create_client(&get_result_info, QoSProfile::services_default()) {
                 Ok(h) => h,
-                Err(_) => return NROS_RET_ERROR,
+                Err(_) => return RCL_RET_ERROR,
             };
 
         let feedback_keyexpr: nros_core::heapless::String<256> = action_info.feedback_key();
@@ -1221,7 +1221,7 @@ pub unsafe extern "C" fn nros_polling_action_client_init(
         let feedback_subscriber =
             match session.create_subscription(&feedback_topic, QoSProfile::BEST_EFFORT) {
                 Ok(h) => h,
-                Err(_) => return NROS_RET_ERROR,
+                Err(_) => return RCL_RET_ERROR,
             };
 
         type Core = nros_node::ActionClientCore<
@@ -1239,18 +1239,18 @@ pub unsafe extern "C" fn nros_polling_action_client_init(
     }
 
     client_mut.node = unsafe { crate::node::node_ref_of(node) };
-    client_mut.state = nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED;
-    NROS_RET_OK
+    client_mut.state = rclc_action_client_state_t::RCLC_ACTION_CLIENT_STATE_INITIALIZED;
+    RCL_RET_OK
 }
 
 /// Finalize a polled action client: drops the inline core, which closes its
 /// channels.
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if `client` is NULL
-/// * `NROS_RET_NOT_INIT` if it is not initialised
-/// * `NROS_RET_STALE_NODE` if its node has already been finalised (issue 1386)
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` if `client` is NULL
+/// * `RCL_RET_NOT_INIT` if it is not initialised
+/// * `RCLC_RET_STALE_NODE` if its node has already been finalised (issue 1386)
 ///
 /// # Safety
 /// `client` must be a valid pointer.
@@ -1259,25 +1259,25 @@ pub unsafe extern "C" fn nros_polling_action_client_init(
 // through the existing `*mut` — no transient stack copy in release.
 #[allow(clippy::large_stack_arrays)]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_action_client_fini(
-    client: *mut nros_polling_action_client_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_polling_action_client_fini(
+    client: *mut rclc_polling_action_client_t,
+) -> rcl_ret_t {
     validate_not_null!(client);
     let client = &mut *client;
-    if client.state != nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
+    if client.state != rclc_action_client_state_t::RCLC_ACTION_CLIENT_STATE_INITIALIZED {
+        return RCL_RET_NOT_INIT;
     }
     if client.node.is_bound() && !crate::node::node_ref_is_live(client.node) {
-        return crate::error::NROS_RET_STALE_NODE;
+        return crate::error::RCLC_RET_STALE_NODE;
     }
     #[cfg(feature = "rmw-cffi")]
     {
         core::ptr::drop_in_place(client._opaque.as_mut_ptr() as *mut PollingClientCore);
         client._opaque = [0u64; crate::opaque_sizes::ACTION_CLIENT_OPAQUE_U64S];
     }
-    client.node = crate::node::nros_node_ref_t::none();
-    client.state = nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_SHUTDOWN;
-    NROS_RET_OK
+    client.node = crate::node::rclc_node_ref_t::none();
+    client.state = rclc_action_client_state_t::RCLC_ACTION_CLIENT_STATE_SHUTDOWN;
+    RCL_RET_OK
 }
 
 #[cfg(feature = "rmw-cffi")]
@@ -1290,13 +1290,13 @@ type PollingClientCore = nros_node::ActionClientCore<
 #[cfg(feature = "rmw-cffi")]
 #[inline]
 unsafe fn polling_client_core(
-    client: *mut nros_polling_action_client_t,
+    client: *mut rclc_polling_action_client_t,
 ) -> Option<&'static mut PollingClientCore> {
     if client.is_null() {
         return None;
     }
     let client_mut = &mut *client;
-    if client_mut.state != nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED {
+    if client_mut.state != rclc_action_client_state_t::RCLC_ACTION_CLIENT_STATE_INITIALIZED {
         return None;
     }
     Some(&mut *(client_mut._opaque.as_mut_ptr() as *mut PollingClientCore))
@@ -1304,22 +1304,22 @@ unsafe fn polling_client_core(
 
 /// Phase 122.3.c.6.b — L1 polling: send a goal. Writes the generated
 /// 16-byte UUID into `goal_id_out`. Poll for the accept/reject reply
-/// via `nros_polling_action_client_try_recv_goal_response_raw`.
+/// via `rclc_polling_action_client_try_recv_goal_response_raw`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_action_client_send_goal_raw(
-    client: *mut nros_polling_action_client_t,
+pub unsafe extern "C" fn rclc_polling_action_client_send_goal_raw(
+    client: *mut rclc_polling_action_client_t,
     goal_cdr: *const u8,
     goal_len: usize,
     goal_id_out: *mut [u8; 16],
-) -> nros_ret_t {
+) -> rcl_ret_t {
     if client.is_null() || goal_id_out.is_null() || (goal_cdr.is_null() && goal_len != 0) {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     #[cfg(feature = "rmw-cffi")]
     {
         let core = match polling_client_core(client) {
             Some(c) => c,
-            None => return NROS_RET_INVALID_ARGUMENT,
+            None => return RCL_RET_INVALID_ARGUMENT,
         };
         // Issue 0454 / phase-354 W3 — STRIP the encapsulation header.
         //
@@ -1338,15 +1338,15 @@ pub unsafe extern "C" fn nros_polling_action_client_send_goal_raw(
         match core.send_goal_raw(strip_cdr_header(slice)) {
             Ok(id) => {
                 (*goal_id_out).copy_from_slice(&id.uuid);
-                NROS_RET_OK
+                RCL_RET_OK
             }
-            Err(_) => NROS_RET_ERROR,
+            Err(_) => RCL_RET_ERROR,
         }
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (goal_cdr, goal_len, goal_id_out);
-        NROS_RET_NOT_INIT
+        RCL_RET_NOT_INIT
     }
 }
 
@@ -1354,19 +1354,19 @@ pub unsafe extern "C" fn nros_polling_action_client_send_goal_raw(
 /// (the accept/reject response). Returns `0` when no reply yet, `>0`
 /// bytes when one was copied into `buf`, negative on error.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_action_client_try_recv_goal_response_raw(
-    client: *mut nros_polling_action_client_t,
+pub unsafe extern "C" fn rclc_polling_action_client_try_recv_goal_response_raw(
+    client: *mut rclc_polling_action_client_t,
     buf: *mut u8,
     buf_len: usize,
 ) -> i32 {
     if client.is_null() || (buf.is_null() && buf_len != 0) {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     #[cfg(feature = "rmw-cffi")]
     {
         let core = match polling_client_core(client) {
             Some(c) => c,
-            None => return NROS_RET_INVALID_ARGUMENT,
+            None => return RCL_RET_INVALID_ARGUMENT,
         };
         match core.try_recv_send_goal_reply() {
             Ok(Some(len)) => {
@@ -1376,42 +1376,42 @@ pub unsafe extern "C" fn nros_polling_action_client_try_recv_goal_response_raw(
                 copy_len as i32
             }
             Ok(None) => 0,
-            Err(_) => NROS_RET_ERROR,
+            Err(_) => RCL_RET_ERROR,
         }
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (buf, buf_len);
-        NROS_RET_NOT_INIT
+        RCL_RET_NOT_INIT
     }
 }
 
 /// Phase 122.3.c.6.b — L1 polling: send a get_result request for the
 /// given goal. Reply lands via `_try_recv_result_raw`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_action_client_send_get_result_request_raw(
-    client: *mut nros_polling_action_client_t,
+pub unsafe extern "C" fn rclc_polling_action_client_send_get_result_request_raw(
+    client: *mut rclc_polling_action_client_t,
     goal_id: *const [u8; 16],
-) -> nros_ret_t {
+) -> rcl_ret_t {
     if client.is_null() || goal_id.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     #[cfg(feature = "rmw-cffi")]
     {
         let core = match polling_client_core(client) {
             Some(c) => c,
-            None => return NROS_RET_INVALID_ARGUMENT,
+            None => return RCL_RET_INVALID_ARGUMENT,
         };
         let id = nros::GoalId { uuid: *goal_id };
         match core.send_get_result_request(&id) {
-            Ok(_) => NROS_RET_OK,
-            Err(_) => NROS_RET_ERROR,
+            Ok(_) => RCL_RET_OK,
+            Err(_) => RCL_RET_ERROR,
         }
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = goal_id;
-        NROS_RET_NOT_INIT
+        RCL_RET_NOT_INIT
     }
 }
 
@@ -1419,19 +1419,19 @@ pub unsafe extern "C" fn nros_polling_action_client_send_get_result_request_raw(
 /// reply. Returns `0` when no reply yet, `>0` bytes copied, negative
 /// on error.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_action_client_try_recv_result_raw(
-    client: *mut nros_polling_action_client_t,
+pub unsafe extern "C" fn rclc_polling_action_client_try_recv_result_raw(
+    client: *mut rclc_polling_action_client_t,
     buf: *mut u8,
     buf_len: usize,
 ) -> i32 {
     if client.is_null() || (buf.is_null() && buf_len != 0) {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     #[cfg(feature = "rmw-cffi")]
     {
         let core = match polling_client_core(client) {
             Some(c) => c,
-            None => return NROS_RET_INVALID_ARGUMENT,
+            None => return RCL_RET_INVALID_ARGUMENT,
         };
         match core.try_recv_get_result_reply() {
             Ok(Some(len)) => {
@@ -1441,41 +1441,41 @@ pub unsafe extern "C" fn nros_polling_action_client_try_recv_result_raw(
                 copy_len as i32
             }
             Ok(None) => 0,
-            Err(_) => NROS_RET_ERROR,
+            Err(_) => RCL_RET_ERROR,
         }
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (buf, buf_len);
-        NROS_RET_NOT_INIT
+        RCL_RET_NOT_INIT
     }
 }
 
 /// Phase 122.3.c.6.b — L1 polling: send a cancel request.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_action_client_send_cancel_request_raw(
-    client: *mut nros_polling_action_client_t,
+pub unsafe extern "C" fn rclc_polling_action_client_send_cancel_request_raw(
+    client: *mut rclc_polling_action_client_t,
     goal_id: *const [u8; 16],
-) -> nros_ret_t {
+) -> rcl_ret_t {
     if client.is_null() || goal_id.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     #[cfg(feature = "rmw-cffi")]
     {
         let core = match polling_client_core(client) {
             Some(c) => c,
-            None => return NROS_RET_INVALID_ARGUMENT,
+            None => return RCL_RET_INVALID_ARGUMENT,
         };
         let id = nros::GoalId { uuid: *goal_id };
         match core.send_cancel_request(&id) {
-            Ok(_) => NROS_RET_OK,
-            Err(_) => NROS_RET_ERROR,
+            Ok(_) => RCL_RET_OK,
+            Err(_) => RCL_RET_ERROR,
         }
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = goal_id;
-        NROS_RET_NOT_INIT
+        RCL_RET_NOT_INIT
     }
 }
 
@@ -1483,19 +1483,19 @@ pub unsafe extern "C" fn nros_polling_action_client_send_cancel_request_raw(
 /// reply. Returns `0` when no reply yet, `>0` bytes copied into
 /// `buf`, negative on error.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_action_client_try_recv_cancel_response_raw(
-    client: *mut nros_polling_action_client_t,
+pub unsafe extern "C" fn rclc_polling_action_client_try_recv_cancel_response_raw(
+    client: *mut rclc_polling_action_client_t,
     buf: *mut u8,
     buf_len: usize,
 ) -> i32 {
     if client.is_null() || (buf.is_null() && buf_len != 0) {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     #[cfg(feature = "rmw-cffi")]
     {
         let core = match polling_client_core(client) {
             Some(c) => c,
-            None => return NROS_RET_INVALID_ARGUMENT,
+            None => return RCL_RET_INVALID_ARGUMENT,
         };
         match core.try_recv_cancel_reply() {
             Ok(Some(len)) => {
@@ -1505,58 +1505,58 @@ pub unsafe extern "C" fn nros_polling_action_client_try_recv_cancel_response_raw
                 copy_len as i32
             }
             Ok(None) => 0,
-            Err(_) => NROS_RET_ERROR,
+            Err(_) => RCL_RET_ERROR,
         }
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (buf, buf_len);
-        NROS_RET_NOT_INIT
+        RCL_RET_NOT_INIT
     }
 }
 
 /// Phase 122.3.c.6.e — register a C wake callback on the
 /// send_goal-reply channel of an L1 polling-mode action client.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_action_client_set_goal_response_wake_callback(
-    client: *mut nros_polling_action_client_t,
-    state: *mut crate::service::nros_wake_state_t,
+pub unsafe extern "C" fn rclc_polling_action_client_set_goal_response_wake_callback(
+    client: *mut rclc_polling_action_client_t,
+    state: *mut crate::service::rclc_wake_state_t,
     cb: Option<unsafe extern "C" fn(*mut c_void)>,
     ctx: *mut c_void,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     set_action_client_wake_callback(client, state, cb, ctx, ClientChannel::GoalResponse)
 }
 
 /// Phase 122.3.c.6.e — wake on the cancel-reply channel.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_action_client_set_cancel_response_wake_callback(
-    client: *mut nros_polling_action_client_t,
-    state: *mut crate::service::nros_wake_state_t,
+pub unsafe extern "C" fn rclc_polling_action_client_set_cancel_response_wake_callback(
+    client: *mut rclc_polling_action_client_t,
+    state: *mut crate::service::rclc_wake_state_t,
     cb: Option<unsafe extern "C" fn(*mut c_void)>,
     ctx: *mut c_void,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     set_action_client_wake_callback(client, state, cb, ctx, ClientChannel::CancelResponse)
 }
 
 /// Phase 122.3.c.6.e — wake on the get_result-reply channel.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_action_client_set_result_wake_callback(
-    client: *mut nros_polling_action_client_t,
-    state: *mut crate::service::nros_wake_state_t,
+pub unsafe extern "C" fn rclc_polling_action_client_set_result_wake_callback(
+    client: *mut rclc_polling_action_client_t,
+    state: *mut crate::service::rclc_wake_state_t,
     cb: Option<unsafe extern "C" fn(*mut c_void)>,
     ctx: *mut c_void,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     set_action_client_wake_callback(client, state, cb, ctx, ClientChannel::Result)
 }
 
 /// Phase 122.3.c.6.e — wake on the feedback channel.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_action_client_set_feedback_wake_callback(
-    client: *mut nros_polling_action_client_t,
-    state: *mut crate::service::nros_wake_state_t,
+pub unsafe extern "C" fn rclc_polling_action_client_set_feedback_wake_callback(
+    client: *mut rclc_polling_action_client_t,
+    state: *mut crate::service::rclc_wake_state_t,
     cb: Option<unsafe extern "C" fn(*mut c_void)>,
     ctx: *mut c_void,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     set_action_client_wake_callback(client, state, cb, ctx, ClientChannel::Feedback)
 }
 
@@ -1568,20 +1568,20 @@ enum ClientChannel {
 }
 
 unsafe fn set_action_client_wake_callback(
-    client: *mut nros_polling_action_client_t,
-    state: *mut crate::service::nros_wake_state_t,
+    client: *mut rclc_polling_action_client_t,
+    state: *mut crate::service::rclc_wake_state_t,
     cb: Option<unsafe extern "C" fn(*mut c_void)>,
     ctx: *mut c_void,
     channel: ClientChannel,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     if client.is_null() || state.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     #[cfg(feature = "rmw-cffi")]
     {
         let core = match polling_client_core(client) {
             Some(c) => c,
-            None => return NROS_RET_INVALID_ARGUMENT,
+            None => return RCL_RET_INVALID_ARGUMENT,
         };
         let state_ptr = state as *mut nros_node::c_waker::CWakeState;
         core::ptr::write(
@@ -1595,12 +1595,12 @@ unsafe fn set_action_client_wake_callback(
             ClientChannel::Result => core.register_result_waker(&waker),
             ClientChannel::Feedback => core.register_feedback_waker(&waker),
         }
-        NROS_RET_OK
+        RCL_RET_OK
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (state, cb, ctx, channel);
-        NROS_RET_NOT_INIT
+        RCL_RET_NOT_INIT
     }
 }
 
@@ -1608,20 +1608,20 @@ unsafe fn set_action_client_wake_callback(
 /// goal. Returns `0` when no feedback yet, `>0` bytes copied (with
 /// `goal_id_out` filled), negative on error.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_action_client_try_recv_feedback_raw(
-    client: *mut nros_polling_action_client_t,
+pub unsafe extern "C" fn rclc_polling_action_client_try_recv_feedback_raw(
+    client: *mut rclc_polling_action_client_t,
     buf: *mut u8,
     buf_len: usize,
     goal_id_out: *mut [u8; 16],
 ) -> i32 {
     if client.is_null() || (buf.is_null() && buf_len != 0) || goal_id_out.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     #[cfg(feature = "rmw-cffi")]
     {
         let core = match polling_client_core(client) {
             Some(c) => c,
-            None => return NROS_RET_INVALID_ARGUMENT,
+            None => return RCL_RET_INVALID_ARGUMENT,
         };
         match core.try_recv_feedback_raw() {
             Ok(Some((id, len))) => {
@@ -1632,13 +1632,13 @@ pub unsafe extern "C" fn nros_polling_action_client_try_recv_feedback_raw(
                 copy_len as i32
             }
             Ok(None) => 0,
-            Err(_) => NROS_RET_ERROR,
+            Err(_) => RCL_RET_ERROR,
         }
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (buf, buf_len, goal_id_out);
-        NROS_RET_NOT_INIT
+        RCL_RET_NOT_INIT
     }
 }
 
@@ -1653,10 +1653,10 @@ mod verification {
     use core::ptr;
 
     // Helper to create a dummy action type info
-    fn dummy_action_type() -> nros_action_type_t {
+    fn dummy_action_type() -> rclc_action_type_t {
         let type_name = b"example_interfaces::action::dds_::Fibonacci_\0";
         let type_hash = b"RIHS01_test\0";
-        nros_action_type_t {
+        rclc_action_type_t {
             type_name: type_name.as_ptr() as *const core::ffi::c_char,
             type_hash: type_hash.as_ptr() as *const core::ffi::c_char,
             goal_serialized_size_max: 8,
@@ -1675,49 +1675,49 @@ mod verification {
         // NULL client
         assert_eq!(
             unsafe {
-                nros_action_client_init(
+                rcl_action_client_init(
                     ptr::null_mut(),
                     &node,
                     action_name.as_ptr() as *const core::ffi::c_char,
                     &type_info,
                 )
             },
-            NROS_RET_INVALID_ARGUMENT,
+            RCL_RET_INVALID_ARGUMENT,
         );
 
         // NULL node
         let mut cli = rcl_action_get_zero_initialized_client();
         assert_eq!(
             unsafe {
-                nros_action_client_init(
+                rcl_action_client_init(
                     &mut cli,
                     ptr::null(),
                     action_name.as_ptr() as *const core::ffi::c_char,
                     &type_info,
                 )
             },
-            NROS_RET_INVALID_ARGUMENT,
+            RCL_RET_INVALID_ARGUMENT,
         );
 
         // NULL action_name
         let mut cli = rcl_action_get_zero_initialized_client();
         assert_eq!(
-            unsafe { nros_action_client_init(&mut cli, &node, ptr::null(), &type_info) },
-            NROS_RET_INVALID_ARGUMENT,
+            unsafe { rcl_action_client_init(&mut cli, &node, ptr::null(), &type_info) },
+            RCL_RET_INVALID_ARGUMENT,
         );
 
         // NULL type_info
         let mut cli = rcl_action_get_zero_initialized_client();
         assert_eq!(
             unsafe {
-                nros_action_client_init(
+                rcl_action_client_init(
                     &mut cli,
                     &node,
                     action_name.as_ptr() as *const core::ffi::c_char,
                     ptr::null(),
                 )
             },
-            NROS_RET_INVALID_ARGUMENT,
+            RCL_RET_INVALID_ARGUMENT,
         );
     }
 
@@ -1731,14 +1731,14 @@ mod verification {
         let mut cli = rcl_action_get_zero_initialized_client();
         assert_eq!(
             unsafe {
-                nros_action_client_init(
+                rcl_action_client_init(
                     &mut cli,
                     &node,
                     action_name.as_ptr() as *const core::ffi::c_char,
                     &type_info,
                 )
             },
-            NROS_RET_NOT_INIT,
+            RCL_RET_NOT_INIT,
         );
     }
 
@@ -1748,7 +1748,7 @@ mod verification {
         let cli = rcl_action_get_zero_initialized_client();
         assert_eq!(
             cli.state,
-            nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_UNINITIALIZED,
+            rclc_action_client_state_t::RCLC_ACTION_CLIENT_STATE_UNINITIALIZED,
         );
         assert!(cli.node.is_null());
         assert_eq!(cli._internal.arena_entry_index, -1);
@@ -1762,15 +1762,15 @@ mod verification {
     fn action_client_fini_null_safety() {
         // NULL → INVALID_ARGUMENT
         assert_eq!(
-            unsafe { nros_action_client_fini(ptr::null_mut()) },
-            NROS_RET_INVALID_ARGUMENT,
+            unsafe { rcl_action_client_fini(ptr::null_mut()) },
+            RCL_RET_INVALID_ARGUMENT,
         );
 
         // UNINITIALIZED → NOT_INIT
         let mut cli = rcl_action_get_zero_initialized_client();
         assert_eq!(
-            unsafe { nros_action_client_fini(&mut cli) },
-            NROS_RET_NOT_INIT,
+            unsafe { rcl_action_client_fini(&mut cli) },
+            RCL_RET_NOT_INIT,
         );
     }
 
@@ -1778,40 +1778,40 @@ mod verification {
     #[kani::unwind(5)]
     fn action_send_goal_null_ptrs() {
         let goal_data = [0u8; 8];
-        let mut uuid = nros_goal_uuid_t::default();
+        let mut uuid = rclc_goal_uuid_t::default();
 
         // NULL client
         assert_eq!(
-            unsafe { nros_action_send_goal(ptr::null_mut(), goal_data.as_ptr(), 8, &mut uuid) },
-            NROS_RET_INVALID_ARGUMENT,
+            unsafe { rclc_action_send_goal(ptr::null_mut(), goal_data.as_ptr(), 8, &mut uuid) },
+            RCL_RET_INVALID_ARGUMENT,
         );
 
         // NULL goal
         let mut cli = rcl_action_get_zero_initialized_client();
         assert_eq!(
-            unsafe { nros_action_send_goal(&mut cli, ptr::null(), 0, &mut uuid) },
-            NROS_RET_INVALID_ARGUMENT,
+            unsafe { rclc_action_send_goal(&mut cli, ptr::null(), 0, &mut uuid) },
+            RCL_RET_INVALID_ARGUMENT,
         );
 
         // NULL uuid
         assert_eq!(
-            unsafe { nros_action_send_goal(&mut cli, goal_data.as_ptr(), 8, ptr::null_mut()) },
-            NROS_RET_INVALID_ARGUMENT,
+            unsafe { rclc_action_send_goal(&mut cli, goal_data.as_ptr(), 8, ptr::null_mut()) },
+            RCL_RET_INVALID_ARGUMENT,
         );
     }
 
     #[kani::proof]
     #[kani::unwind(5)]
     fn action_get_result_null_ptrs() {
-        let uuid = nros_goal_uuid_t::default();
-        let mut status = nros_goal_status_t::NROS_GOAL_STATUS_UNKNOWN;
+        let uuid = rclc_goal_uuid_t::default();
+        let mut status = rclc_goal_status_t::RCLC_GOAL_STATUS_UNKNOWN;
         let mut result_buf = [0u8; 8];
         let mut result_len: usize = 0;
 
         // NULL client
         assert_eq!(
             unsafe {
-                nros_action_get_result(
+                rclc_action_get_result(
                     ptr::null_mut(),
                     &uuid,
                     &mut status,
@@ -1820,14 +1820,14 @@ mod verification {
                     &mut result_len,
                 )
             },
-            NROS_RET_INVALID_ARGUMENT,
+            RCL_RET_INVALID_ARGUMENT,
         );
 
         // NULL uuid
         let mut cli = rcl_action_get_zero_initialized_client();
         assert_eq!(
             unsafe {
-                nros_action_get_result(
+                rclc_action_get_result(
                     &mut cli,
                     ptr::null(),
                     &mut status,
@@ -1836,13 +1836,13 @@ mod verification {
                     &mut result_len,
                 )
             },
-            NROS_RET_INVALID_ARGUMENT,
+            RCL_RET_INVALID_ARGUMENT,
         );
 
         // NULL status
         assert_eq!(
             unsafe {
-                nros_action_get_result(
+                rclc_action_get_result(
                     &mut cli,
                     &uuid,
                     ptr::null_mut(),
@@ -1851,13 +1851,13 @@ mod verification {
                     &mut result_len,
                 )
             },
-            NROS_RET_INVALID_ARGUMENT,
+            RCL_RET_INVALID_ARGUMENT,
         );
 
         // NULL result
         assert_eq!(
             unsafe {
-                nros_action_get_result(
+                rclc_action_get_result(
                     &mut cli,
                     &uuid,
                     &mut status,
@@ -1866,13 +1866,13 @@ mod verification {
                     &mut result_len,
                 )
             },
-            NROS_RET_INVALID_ARGUMENT,
+            RCL_RET_INVALID_ARGUMENT,
         );
 
         // NULL result_len
         assert_eq!(
             unsafe {
-                nros_action_get_result(
+                rclc_action_get_result(
                     &mut cli,
                     &uuid,
                     &mut status,
@@ -1881,7 +1881,7 @@ mod verification {
                     ptr::null_mut(),
                 )
             },
-            NROS_RET_INVALID_ARGUMENT,
+            RCL_RET_INVALID_ARGUMENT,
         );
     }
 }

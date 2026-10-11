@@ -295,8 +295,8 @@ pub const RECORDER_SLOT: bool = nros_rmw_cffi::RECORDER_SLOT;
 // C and C++ image. Since issue 1050 a nameless open with more than one
 // registered backend is `Ambiguous`, i.e. a hard refusal — which is exactly
 // what the doc comment on `nros_rmw_metadata_register` above predicts, and it
-// is what took every native C example's `nros_support_init` to
-// `NROS_RET_INVALID_ARGUMENT` for eighteen days.
+// is what took every native C example's `rclc_support_init` to
+// `RCL_RET_INVALID_ARGUMENT` for eighteen days.
 //
 // The one consumer that wants this backend SELECTED registers it and then names
 // it (`census_select_backend` sets `$NROS_RMW=metadata`), which is the whole

@@ -17,7 +17,7 @@ pub const MAX_NAMESPACE_LEN: usize = 128;
 /// Maximum length of an RMW backend name (e.g., "zenoh", "cyclonedds", "xrce").
 ///
 /// Matches `BACKEND_NAME_MAX` in `nros-rmw-cffi/src/lib.rs`. Lifted to a
-/// public constant here so `nros_node_options_t` can declare a fixed-size
+/// public constant here so `rcl_node_options_t` can declare a fixed-size
 /// buffer that round-trips through the registry without truncation.
 pub const MAX_RMW_NAME_LEN: usize = 32;
 
@@ -39,11 +39,11 @@ pub const MAX_TYPE_HASH_LEN: usize = 128;
 /// Maximum number of concurrent goals per action server.
 ///
 /// This is a fixed constant (not configurable via env var) because it
-/// affects `nros_action_server_t` struct layout. Changing it requires
+/// affects `rcl_action_server_t` struct layout. Changing it requires
 /// rebuilding the runtime and the consuming application together.
 pub const NROS_MAX_CONCURRENT_GOALS: usize = 4;
 
-/// Inline storage (in `u64`) for `nros_lifecycle_state_machine_t`.
+/// Inline storage (in `u64`) for `rcl_lifecycle_state_machine_t`.
 ///
 /// `core::mem::size_of`, no longer a hand-coded upper bound. The C-side
 /// counterpart `NROS_LIFECYCLE_CTX_SIZE` (in `nros_config_generated.h`) is
@@ -86,7 +86,7 @@ pub use crate::opaque_sizes::{
 //
 // **Only meaningful in a single-backend image.** A bridge image links two
 // backends and has no single answer; it asks each session instead
-// (`nros_node_get_serialization_format()`). `check-format-macro-scope` refuses a
+// (`rclc_node_get_serialization_format()`). `check-format-macro-scope` refuses a
 // bridge-linked image that references either macro.
 //
 // The literals are MIRRORED, not authored: they exist so `cbindgen` — which

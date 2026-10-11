@@ -3,7 +3,7 @@
 ///
 /// Mirrors the blocking `service-client` example, but receives each reply
 /// through a typed response callback dispatched by `rclc_executor_spin_some`
-/// — the dual-mode alternative to `nros_client_call`. Send is non-blocking
+/// — the dual-mode alternative to `rclc_client_call`. Send is non-blocking
 /// (`..._client_send_request`); the reply lands in the callback when the
 /// executor next spins (the C analogue of rclcpp `async_send_request(req, cb)`).
 ///
@@ -40,10 +40,10 @@
 // ----------------------------------------------------------------------------
 
 static struct {
-    nros_support_t support;
-    nros_node_t node;
-    nros_client_t client;
-    nros_executor_t executor;
+    rclc_support_t support;
+    rcl_node_t node;
+    rcl_client_t client;
+    rclc_executor_t executor;
     // Caller-owned response storage + the typed callback. Must outlive the
     // client, so it lives here beside it.
     example_interfaces_srv_add_two_ints_client_handler_t handler;
@@ -106,30 +106,30 @@ int nros_app_main(int argc, char** argv) {
 
     memset(&app, 0, sizeof(app));
 
-    nros_service_type_t add_two_ints_type = {
+    rclc_service_type_t add_two_ints_type = {
         .type_name = example_interfaces_srv_add_two_ints_get_type_name(),
         .type_hash = example_interfaces_srv_add_two_ints_get_type_hash(),
     };
 
-    NROS_CHECK_RET(nros_support_init(&app.support, locator, domain_id), 1);
+    RCLC_CHECK_RET(rclc_support_init(&app.support, locator, domain_id), 1);
     printf("Support initialized\n");
-    NROS_CHECK_RET(rclc_node_init_default(&app.node, "add_two_ints_client_cb", "/", &app.support),
+    RCLC_CHECK_RET(rclc_node_init_default(&app.node, "add_two_ints_client_cb", "/", &app.support),
                    1);
     printf("Node created: %s\n", rcl_node_get_name(&app.node));
 
-    NROS_CHECK_RET(
+    RCLC_CHECK_RET(
         rclc_client_init_default(&app.client, &app.node, &add_two_ints_type, "/add_two_ints"), 1);
     printf("Client created for service: %s\n", rcl_client_get_service_name(&app.client));
 
     // Clients must be registered with an executor before use.
-    NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
-    NROS_CHECK_RET(nros_executor_add_client(&app.executor, &app.client), 1);
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support, 4), 1);
+    RCLC_CHECK_RET(rclc_executor_add_client(&app.executor, &app.client), 1);
 
     // Register the reply callback. It fires at spin, not via poll.
-    NROS_CHECK_RET(
+    RCLC_CHECK_RET(
         example_interfaces_srv_add_two_ints_client_handler_init(&app.handler, on_response, NULL),
         1);
-    NROS_CHECK_RET(
+    RCLC_CHECK_RET(
         example_interfaces_srv_add_two_ints_client_set_response_callback(&app.client, &app.handler),
         1);
     printf("Response callback registered\n");
@@ -149,9 +149,9 @@ int nros_app_main(int argc, char** argv) {
     // Caller-owned scratch for the request's wire form; borrowed for the send.
     uint8_t req_buf[256];
     {
-        nros_ret_t ret = example_interfaces_srv_add_two_ints_client_send_request(
+        rcl_ret_t ret = example_interfaces_srv_add_two_ints_client_send_request(
             &app.client, &request, req_buf, sizeof(req_buf));
-        if (ret != NROS_RET_OK) {
+        if (ret != RCL_RET_OK) {
             fprintf(stderr, "Async send failed with error %d\n", ret);
             exit_code = 1;
         } else {
@@ -178,7 +178,7 @@ int nros_app_main(int argc, char** argv) {
 
     printf("\nShutting down...\n");
     rclc_executor_fini(&app.executor);
-    nros_client_fini(&app.client);
+    rcl_client_fini(&app.client);
     rcl_node_fini(&app.node);
     rclc_support_fini(&app.support);
 

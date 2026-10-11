@@ -45,10 +45,10 @@
 
 #include "nros/nros.h"
 
-nros_ret_t nros_rcl_node_init_reorder_probe(struct nros_node_t* node,
-                                            const struct nros_support_t* support);
-nros_ret_t nros_rcl_node_init_reorder_probe(struct nros_node_t* node,
-                                            const struct nros_support_t* support) {
+rcl_ret_t nros_rcl_node_init_reorder_probe(struct rcl_node_t* node,
+                                           const struct rclc_support_t* support);
+rcl_ret_t nros_rcl_node_init_reorder_probe(struct rcl_node_t* node,
+                                           const struct rclc_support_t* support) {
     /* THE STALE CALL: the pre-stage-6 argument order under the post-stage-6
      * identifier. `support` lands in the `name` slot and `"probe"` in the
      * `support` slot. Must not compile. */

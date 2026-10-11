@@ -12,13 +12,13 @@
 #include <stddef.h>
 
 #include <nros/types.h>
-// Issue 0346 — borrowed views use nros_view_str_t / the LE slice views.
+// Issue 0346 — borrowed views use rclc_view_str_t / the LE slice views.
 #include <nros/view.h>
 
 #include <nros/nros_config_generated.h>
 
-/* RFC-0090 — emitted by nano-ros codegen version 12. */
-#define NROS_EMITTED_CODEGEN_VERSION 12
+/* RFC-0090 — emitted by nano-ros codegen version 13. */
+#define NROS_EMITTED_CODEGEN_VERSION 13
 
 #ifndef NROS_CODEGEN_VERSION
 #error "nros: the generated config header did not define NROS_CODEGEN_VERSION. This generated artifact cannot tell whether the runtime accepts it; rebuild the nano-ros runtime so its config header is regenerated."
@@ -126,8 +126,8 @@ static inline const char* fingerprint_corpus_action_probe_get_type_hash(void) {
     return "h";
 }
 
-/// Get the nros_action_type_t for this action type
-const struct nros_action_type_t* fingerprint_corpus_action_probe_get_type_support(void);
+/// Get the rclc_action_type_t for this action type
+const struct rclc_action_type_t* fingerprint_corpus_action_probe_get_type_support(void);
 
 #ifdef __cplusplus
 }
@@ -137,7 +137,7 @@ const struct nros_action_type_t* fingerprint_corpus_action_probe_get_type_suppor
 /// Borrowed fields point into the source buffer — the raw service/action callback
 /// bytes — and are valid ONLY while it lives. Copy out anything retained.
 typedef struct fingerprint_corpus_action_probe_goal_View {
-    nros_le_slice_view_i64_t waypoints;
+    rclc_le_slice_view_i64_t waypoints;
     char name[256];
 } fingerprint_corpus_action_probe_goal_View;
 
@@ -149,7 +149,7 @@ int32_t fingerprint_corpus_action_probe_goal_deserialize_view(fingerprint_corpus
 /// bytes — and are valid ONLY while it lives. Copy out anything retained.
 typedef struct fingerprint_corpus_action_probe_result_View {
     int64_t total;
-    nros_view_str_t report;
+    rclc_view_str_t report;
 } fingerprint_corpus_action_probe_result_View;
 
 /// Deserialize into a borrowed view (no allocation, so no `_fini` is required).
@@ -160,7 +160,7 @@ int32_t fingerprint_corpus_action_probe_result_deserialize_view(fingerprint_corp
 /// bytes — and are valid ONLY while it lives. Copy out anything retained.
 typedef struct fingerprint_corpus_action_probe_feedback_View {
     int64_t done;
-    nros_view_str_t stage;
+    rclc_view_str_t stage;
 } fingerprint_corpus_action_probe_feedback_View;
 
 /// Deserialize into a borrowed view (no allocation, so no `_fini` is required).

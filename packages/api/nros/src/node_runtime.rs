@@ -2845,7 +2845,7 @@ fn capability_reason(e: &nros_node::NodeError) -> &'static str {
 /// it must: `TransportError::BackendDynamic` is gated on `nros-rmw/alloc`,
 /// which feature unification can switch on from another crate in the graph
 /// without `nros/alloc` — so no spelling of the arm is correct in both builds
-/// (`nros-c`'s `nros_ret_t` mapping carries the same wildcard for the same
+/// (`nros-c`'s `rcl_ret_t` mapping carries the same wildcard for the same
 /// reason). Every other variant is named, so the wildcard's text is what an
 /// unmapped one looks like.
 #[cfg(any(feature = "lifecycle-services", feature = "param-services"))]

@@ -6,8 +6,8 @@
  * @ingroup grp_clock
  * @brief `rclcpp::Duration` — a signed nanosecond span, mirroring upstream's.
  *
- * Issue 0789. The value surface already existed in C (`nros_duration_t`,
- * `nros_time_add`, `nros_time_sub`) and in Rust (`Duration`, `TimerDuration`);
+ * Issue 0789. The value surface already existed in C (`rcl_duration_t`,
+ * `rclc_time_add`, `rclc_time_sub`) and in Rust (`Duration`, `TimerDuration`);
  * this is the C++ face over it, so a ported rclcpp node that builds a duration
  * or stamps a header compiles here.
  *
@@ -27,7 +27,7 @@
 // `INT32_MAX` below is spelled unqualified for that reason.
 #include <stdint.h>
 
-// `nros_duration_from_nanoseconds` — the C entry point `to_msg` decomposes
+// `rclc_duration_from_nanoseconds` — the C entry point `to_msg` decomposes
 // through. `nros_generated.h` carries its own `extern "C"` guard.
 #include "nros/clock.h"
 
@@ -146,7 +146,7 @@ class Duration {
     /// rclcpp::Duration::from_seconds(0.1).to_msg(msg.lifespan);
     /// ```
     template <typename DurationMsgT> void to_msg(DurationMsgT& out) const {
-        nros_duration_t d = nros_duration_from_nanoseconds(ns_);
+        rcl_duration_t d = rclc_duration_from_nanoseconds(ns_);
         out.sec = d.sec;
         out.nanosec = d.nanosec;
     }

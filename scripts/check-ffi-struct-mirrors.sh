@@ -80,7 +80,7 @@ CANONICAL = "packages/api/nros-cpp/include/nros/nros_cpp_ffi.h"
 # is the field that drifted twice. What stays authored is the enum-prefix
 # NORMALIZATION a mirror needs, keyed per tag and stale-checked.
 PREFIX_MAPS = {
-    "nros_cpp_qos_t": {"nros_c_qos_": "nros_cpp_qos_"},
+    "nros_cpp_qos_t": {"rclc_c_qos_": "nros_cpp_qos_"},
 }
 TAG_RE = re.compile(r"typedef struct (nros_cpp_[A-Za-z0-9_]+) \{")
 
@@ -170,7 +170,7 @@ QOS_ENUM_TAGS = [
 
 QOS_ENUM_MIRRORS = [
     # (path, tag spelling in that file, enumerator prefix map)
-    (MIRROR, lambda tag: tag.replace("nros_cpp_", "nros_c_"), {"NROS_C_QOS_": "NROS_CPP_QOS_"}),
+    (MIRROR, lambda tag: tag.replace("nros_cpp_", "rclc_c_"), {"RCLC_C_QOS_": "NROS_CPP_QOS_"}),
     ("packages/api/nros-cpp/include/nros/qos.hpp", lambda tag: tag, {}),
 ]
 

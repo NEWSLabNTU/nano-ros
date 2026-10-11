@@ -33,7 +33,7 @@
 //      clock-taking timer verb (phase-430 W6) — compiles and returns the same
 //      cell `create_wall_timer` does.
 //   6. `get_logger()` is NAMED FOR THE NODE (phase-427 W5) and still converts
-//      to the opaque `nros_logger_t` the `NROS_LOG_*` macros take.
+//      to the opaque `rclc_logger_t` the `NROS_LOG_*` macros take.
 //
 // WHAT IT DOES NOT PROVE
 //   That any callback FIRES. That needs a session, a backend and a peer; the
@@ -208,14 +208,14 @@ inline void clock_driven_timer_is_humbles_free_verb() {
 // The RETURN TYPE is upstream's, because two `get_logger()` overloads differing
 // only in return type are ill-formed and the ported channel wins (RFC-0089
 // clause 2). The native call sites keep working through the implicit conversion
-// to `nros_logger_t`, which is what this pins.
+// to `rclc_logger_t`, which is what this pins.
 
 static_assert(
     std::is_same<decltype(std::declval<const rclcpp::Node&>().get_logger()), rclcpp::Logger>::value,
     "Node::get_logger() must return rclcpp::Logger -- upstream's channel");
 
 static_assert(std::is_convertible<rclcpp::Logger, const void*>::value,
-              "rclcpp::Logger must still convert to nros_logger_t, or every NROS_LOG_* call "
+              "rclcpp::Logger must still convert to rclc_logger_t, or every NROS_LOG_* call "
               "site that takes node.get_logger() stops compiling");
 
 inline void two_nodes_two_logger_names() {
@@ -229,7 +229,7 @@ inline void two_nodes_two_logger_names() {
     (void)an;
     (void)bn;
     // The opaque handle still reaches the log macros.
-    NROS_LOG_INFO(a.get_logger(), "up");
+    RCLC_LOG_INFO(a.get_logger(), "up");
 }
 
 // --- parameters, on the one facade ------------------------------------------

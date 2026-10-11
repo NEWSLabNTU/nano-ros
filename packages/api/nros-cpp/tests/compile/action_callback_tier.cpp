@@ -2,8 +2,8 @@
 // hook and client-side cancel.
 //
 // Both were missing while C and Rust had them: C takes
-// `nros_accepted_callback_t` at `nros_action_server_init` and has
-// `nros_action_cancel_goal`; Rust takes an accepted callback in
+// `rclc_accepted_callback_t` at `rcl_action_server_init` and has
+// `rclc_action_cancel_goal`; Rust takes an accepted callback in
 // `create_action_server_with_callbacks(goal, cancel, accepted)` and has
 // `ActionClient::cancel_goal`. `rclcpp_action::Server<A>` had only
 // `set_goal_callback` / `set_cancel_callback`, so a user who returned

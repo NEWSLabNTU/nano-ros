@@ -17,7 +17,7 @@
 #include "rclcpp_pkg/rcl_one.hpp"
 #include "rclcpp_pkg/rcl_two.hpp"
 
-// C component factory + configure seam (NROS_C_COMPONENT); the
+// C component factory + configure seam (RCLC_C_COMPONENT); the
 // node's `ffi_handle()` is handed to the C `configure` as an opaque
 // `nros_cpp_node_t*` — the C side registers real callbacks on it.
 extern "C" {

@@ -26,7 +26,7 @@
  *
  * A bridge image (`Executor::open_multi`) links two backends and therefore has
  * no single answer, so neither macro means anything there; such an image asks
- * per session instead, with `nros_node_get_serialization_format()`.
+ * per session instead, with `rclc_node_get_serialization_format()`.
  * `scripts/check-format-macro-scope.py` refuses a bridge-linked translation
  * unit that references either macro.
  *
@@ -69,7 +69,7 @@
 #define NROS_STATIC_ASSERT_TAG_ __LINE__
 #endif
 #define NROS_STATIC_ASSERT(cond, msg)                                                              \
-    typedef char NROS_STATIC_ASSERT_CAT(nros_static_assert_,                                       \
+    typedef char NROS_STATIC_ASSERT_CAT(rclc_static_assert_,                                       \
                                         NROS_STATIC_ASSERT_TAG_)[(cond) ? 1 : -1]
 #endif
 

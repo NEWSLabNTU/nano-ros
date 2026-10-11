@@ -65,10 +65,10 @@ extern crate alloc;
 // Phase 230 1b.3 / RFC-0034 D7 — the platform ABI exposes the TRUE *unified*
 // heap figures (`nros_platform_heap_used_bytes` / `_total_bytes`), where the
 // platform owns one kernel heap shared by the C side and the Rust
-// `#[global_allocator]`. Design: keep `nros_heap_used_bytes()` /
-// `nros_heap_peak_bytes()` as the Rust-footprint view (unchanged semantics, so
+// `#[global_allocator]`. Design: keep `rclc_heap_used_bytes()` /
+// `rclc_heap_peak_bytes()` as the Rust-footprint view (unchanged semantics, so
 // callers tracking only the Rust allocator keep their meaning) and add
-// `nros_heap_platform_used_bytes()` + `nros_heap_total_bytes()` that forward to
+// `rclc_heap_platform_used_bytes()` + `rclc_heap_total_bytes()` that forward to
 // the platform query for the unified figure. Both return `0` on ports that
 // don't instrument their heap.
 //
@@ -87,13 +87,13 @@ mod heap_stats {
 
     /// Bytes currently outstanding through the Rust global allocator.
     #[unsafe(no_mangle)]
-    pub extern "C" fn nros_heap_used_bytes() -> usize {
+    pub extern "C" fn rclc_heap_used_bytes() -> usize {
         nros_platform::heap_stats::used()
     }
 
     /// Peak outstanding bytes through the Rust global allocator since boot.
     #[unsafe(no_mangle)]
-    pub extern "C" fn nros_heap_peak_bytes() -> usize {
+    pub extern "C" fn rclc_heap_peak_bytes() -> usize {
         nros_platform::heap_stats::peak()
     }
 
@@ -102,14 +102,14 @@ mod heap_stats {
     /// (zenoh-pico etc.), where the port owns one shared kernel heap. `0` if
     /// the port does not instrument heap usage.
     #[unsafe(no_mangle)]
-    pub extern "C" fn nros_heap_platform_used_bytes() -> usize {
+    pub extern "C" fn rclc_heap_platform_used_bytes() -> usize {
         unsafe { nros_platform_heap_used_bytes() }
     }
 
     /// Total managed heap size in bytes (used + free) reported by the
     /// platform, or `0` if unknown.
     #[unsafe(no_mangle)]
-    pub extern "C" fn nros_heap_total_bytes() -> usize {
+    pub extern "C" fn rclc_heap_total_bytes() -> usize {
         unsafe { nros_platform_heap_total_bytes() }
     }
 }
@@ -284,7 +284,7 @@ mod opaque_sizes;
 mod parameter;
 mod platform;
 mod qos;
-// phase-8 — `nros_set_trace_sink`. Deliberately UNGATED so the symbol exists
+// phase-8 — `rclc_set_trace_sink`. Deliberately UNGATED so the symbol exists
 // in every build (the body is what the feature gates), which is also what puts
 // it in the generated `c_surface_anchor` and keeps DCE from dropping it when
 // `nros-c` is bundled as an rlib by the `nros-cpp` umbrella.

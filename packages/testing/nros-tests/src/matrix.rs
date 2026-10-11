@@ -377,7 +377,7 @@ pub enum Workload {
     /// `nros_platform_task_init` prove `errno` is PER-THREAD (issue 0680).
     /// Single image, self-contained, no peer.
     Errno,
-    /// issue 1384 — a node created through `nros_executor_node_init` (bound to
+    /// issue 1384 — a node created through `rclc_executor_node_init` (bound to
     /// an executor, `support` left NULL on purpose) BOOTS: it creates its guard
     /// condition, its eager publisher and its timer, and publishes.
     ///
@@ -385,7 +385,7 @@ pub enum Workload {
     /// same reason [`Workload::Errno`] is not one: there is no peer and nothing
     /// to deliver to. The subject is the node→executor BINDING, which fails
     /// entirely inside one process — `rclc_publisher_init_default` answered
-    /// `NROS_RET_NOT_INIT` for four phases and the only in-tree caller
+    /// `RCL_RET_NOT_INIT` for four phases and the only in-tree caller
     /// (`examples/native/c/custom-platform`) was a build-only fixture, so
     /// nothing ran the binary and nothing saw it. A pubsub cell would not have
     /// caught it either: every pubsub example uses the LEGACY
@@ -661,9 +661,9 @@ pub const CELLS: &[Cell] = &[
     cell(Linux, C,    Zenoh,      Pubsub,  Example, Runtime),
     cell(Linux, Cpp,  Zenoh,      Pubsub,  Example, Runtime),
     // issue 1384 — `examples/native/c/custom-platform`, the one in-tree caller
-    // of `nros_executor_node_init` that creates an eager entity. Its
+    // of `rclc_executor_node_init` that creates an eager entity. Its
     // fixtures.toml row was BUILD-ONLY, so nothing ran the binary and its
-    // publisher failed NROS_RET_NOT_INIT unobserved for four phases.
+    // publisher failed RCL_RET_NOT_INIT unobserved for four phases.
     cell(Linux, C,    Zenoh,      ExecutorBoundNode, Example, Runtime),
     cell(Linux, Rust, Zenoh,      Service, Example, Runtime),
     cell(Linux, C,    Zenoh,      Service, Example, Runtime),

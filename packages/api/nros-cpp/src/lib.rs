@@ -64,17 +64,17 @@ use nros_platform_cffi as _;
 // Phase 230 1b.3 / RFC-0034 D7 — the platform ABI exposes the TRUE *unified*
 // heap figures (`nros_platform_heap_used_bytes` / `_total_bytes`), where the
 // platform owns one kernel heap shared by the C side and the Rust
-// `#[global_allocator]`. Design: keep `nros_heap_used_bytes()` /
-// `nros_heap_peak_bytes()` as the Rust-footprint view (unchanged semantics, so
+// `#[global_allocator]`. Design: keep `rclc_heap_used_bytes()` /
+// `rclc_heap_peak_bytes()` as the Rust-footprint view (unchanged semantics, so
 // callers tracking only the Rust allocator keep their meaning) and add
-// `nros_heap_platform_used_bytes()` + `nros_heap_total_bytes()` that forward to
+// `rclc_heap_platform_used_bytes()` + `rclc_heap_total_bytes()` that forward to
 // the platform query for the unified figure. Both return `0` on ports that
 // don't instrument their heap.
 //
 // phase-361 W8.c / issue 0594 — this crate defines NONE of it. The four
 // `#[no_mangle]` names above are the same symbols `nros-c` exports, and
 // `nros-c` is a hard dependency below, so enabling `alloc-stats` on both
-// crates produced duplicate definitions of `nros_heap_used_bytes` and friends.
+// crates produced duplicate definitions of `rclc_heap_used_bytes` and friends.
 // That is the single-runtime rule already stated for `#[global_allocator]` /
 // `#[panic_handler]` / `critical_section::set_impl!` — exactly ONE of each
 // across the crate graph — applied to the heap counter too:
@@ -99,7 +99,7 @@ mod rmw_backend;
 
 // Phase 241.D3-rev — pull nros-c's FULL `#[no_mangle]` C surface into libnros_cpp.a.
 // nros-cpp bundles nros-c as an rlib and links only libnros_cpp.a, so rustc DCEs any
-// C entry point the C++ FFI itself never references (e.g. nros_clock_init) —
+// C entry point the C++ FFI itself never references (e.g. rcl_clock_init) —
 // yet a C++ binary may call it via the C ABI. nros-c's own `#[used]` anchor is DCE'd
 // as a dependency; referencing it from THIS staticlib root keeps it + the entry
 // points it names.
@@ -107,14 +107,14 @@ mod rmw_backend;
 static _KEEP_C_SURFACE: &[unsafe extern "C" fn()] = &nros_c::c_surface_anchor::C_SURFACE_ANCHOR;
 
 // Issue 0436 — same DCE class, for the multi-RMW bridge ABI. `nros-bridge` is an
-// rlib dep whose `nros_init_multi` / `nros_pubsub_bridge_*` exports nothing in
+// rlib dep whose `rclc_init_multi` / `nros_pubsub_bridge_*` exports nothing in
 // this crate calls, so rustc drops them from `libnros_cpp.a` and a C++ binary that
 // includes `<nros/bridge.hpp>` fails to link. Reference them from the staticlib
 // ROOT to keep them (the FORCE_LINK pattern `rmw_backend` uses for backends).
 // Must be a RUST path into the crate (not an `extern "C"` redeclaration): the
 // dependency edge is what pulls the rlib's objects into this staticlib. Declaring
 // the symbols `extern "C"` only creates UNDEFINED references — verified: the
-// archive then carried `U nros_init_multi` and nothing to satisfy it.
+// archive then carried `U rclc_init_multi` and nothing to satisfy it.
 #[cfg(feature = "bridge")]
 #[used]
 static _KEEP_BRIDGE_SURFACE: &[unsafe extern "C" fn(*mut core::ffi::c_void)] =
@@ -223,7 +223,7 @@ pub type nros_cpp_ret_t = c_int;
 // `rclcpp::ErrorCode`); `Result(any C code)` is correct by identity. The
 // static_assert pin tables in nros-cpp's result.hpp / parameter.hpp fail
 // the build on any re-divergence. (Pre-#229 this space numbered -4..-8
-// differently from nros_ret_t — a raw -5 read as "Full" when the C side
+// differently from rcl_ret_t — a raw -5 read as "Full" when the C side
 // meant ALREADY_EXISTS.)
 /// Success.
 pub const NROS_CPP_RET_OK: nros_cpp_ret_t = 0;
@@ -262,7 +262,7 @@ pub const NROS_CPP_RET_TRY_AGAIN: nros_cpp_ret_t = -14;
 pub const NROS_CPP_RET_REENTRANT: nros_cpp_ret_t = -15;
 /// Phase 108 — operation not implemented by the active backend.
 pub const NROS_CPP_RET_UNSUPPORTED: nros_cpp_ret_t = -16;
-/// Transport / connection error (C++-space extension; nros_ret_t stops at -16).
+/// Transport / connection error (C++-space extension; rcl_ret_t stops at -16).
 pub const NROS_CPP_RET_TRANSPORT_ERROR: nros_cpp_ret_t = -100;
 /// phase-454 W10 — a subscription's QoS depth disagrees with the depth its
 /// system's contract DECLARES for that topic. issue 1256 — and the same code
@@ -400,7 +400,7 @@ pub enum nros_cpp_qos_liveliness_t {
 /// (`reliability`, `durability`, `history`, `depth`) plus extended
 /// policies (`liveliness_kind`, `deadline_ms`, `lifespan_ms`,
 /// `liveliness_lease_ms`, `avoid_ros_namespace_conventions`) match
-/// `nros_qos_t` (C API) and `QoSProfile` (Rust API).
+/// `rclc_qos_t` (C API) and `QoSProfile` (Rust API).
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct nros_cpp_qos_t {
@@ -637,7 +637,7 @@ pub(crate) struct CppContext {
     /// takes a `void*` executor handle checks it.
     ///
     /// Two different structs used to travel as `void*`: this one and
-    /// `nros-bridge`'s `ExecutorBox` (from `nros_init_multi`). Both begin with the
+    /// `nros-bridge`'s `ExecutorBox` (from `rclc_init_multi`). Both begin with the
     /// SAME `Executor<'static>`, so a mixed-up handle READ correctly and then wrote
     /// this struct's later fields over the other's `Vec` — memory corruption, seen
     /// as PX4 dumping core. A tag turns that into a clean error.
@@ -646,10 +646,10 @@ pub(crate) struct CppContext {
     pub(crate) domain_id: u32,
     /// Reentrancy guard — `true` while a spin is dispatching callbacks.
     ///
-    /// The C twin of this flag is `nros_executor_t.in_dispatch` (nros-c
-    /// `executor.rs`), checked by `nros_client_call` / `nros_action_send_goal`
+    /// The C twin of this flag is `rclc_executor_t.in_dispatch` (nros-c
+    /// `executor.rs`), checked by `rclc_client_call` / `rclc_action_send_goal`
     /// so a blocking helper invoked FROM a callback returns
-    /// `NROS_RET_REENTRANT` instead of re-entering the executor. nros-cpp had
+    /// `RCLC_RET_REENTRANT` instead of re-entering the executor. nros-cpp had
     /// no such flag (issue 0290): every blocking C++ helper reached
     /// `&mut *(handle as *mut CppContext)` unconditionally, so calling
     /// `Client::call()` inside a callback aliased `&mut Executor` — silently,
@@ -768,7 +768,7 @@ pub unsafe extern "C" fn nros_cpp_executor_inner(handle: *mut c_void) -> *mut c_
 
 /// Issue 0436 — validate a caller-supplied executor handle before treating it as a
 /// [`CppContext`]. Returns `None` for null or for a buffer this crate did not
-/// stamp (e.g. an `nros_init_multi` bridge handle).
+/// stamp (e.g. an `rclc_init_multi` bridge handle).
 ///
 /// # Safety
 /// `handle` must either be null or point to a readable 8-byte-aligned allocation.
@@ -1409,9 +1409,9 @@ pub(crate) fn node_error_to_cpp_ret(err: nros_node::NodeError) -> nros_cpp_ret_t
 /// Issue 0436 — multi-RMW init for the C++ surface: opens one session per spec
 /// into the CALLER'S storage, producing a real [`CppContext`].
 ///
-/// # Why this exists next to `nros_init_multi`
+/// # Why this exists next to `rclc_init_multi`
 ///
-/// `nros_init_multi` (the `nros-bridge` C ABI behind `<nros/bridge.hpp>`'s
+/// `rclc_init_multi` (the `nros-bridge` C ABI behind `<nros/bridge.hpp>`'s
 /// `MultiExecutor`) returns a heap `ExecutorBox { executor, _spec_strings }`. The
 /// C++ Node surface casts its handle to `*mut CppContext`
 /// (`{ executor, domain_id, in_dispatch, backing }`). Both begin with the SAME
@@ -1450,7 +1450,7 @@ pub unsafe extern "C" fn nros_cpp_init_multi(
     }
     // Same as `nros_cpp_init`: the generated strong def registers the linked
     // backends. Without this the registry is empty and every spec's lookup misses
-    // (issue 0436 — `nros_init_multi` does NOT do it, which is its own trap).
+    // (issue 0436 — `rclc_init_multi` does NOT do it, which is its own trap).
     unsafe {
         nros_app_register_backends();
     }
@@ -1528,7 +1528,7 @@ pub unsafe extern "C" fn nros_cpp_init_multi(
 }
 
 /// Issue 0436 — C mirror of `nros_node::executor::SessionSpec`, matching
-/// `nros_session_spec_t` in `<nros/bridge.h>` field for field so a caller can use
+/// `rclc_session_spec_t` in `<nros/bridge.h>` field for field so a caller can use
 /// either entry point with one struct.
 #[cfg(feature = "rmw-cffi")]
 #[repr(C)]
@@ -2444,7 +2444,7 @@ pub struct nros_cpp_node_t {
 }
 
 /// Phase 211.H (issue #52) — one per-topic QoS override, the C++-FFI mirror of
-/// Rust's `nros_rmw::QoSOverride` (and nros-c's `nros_qos_override_t`). The
+/// Rust's `nros_rmw::QoSOverride` (and nros-c's `rclc_qos_override_t`). The
 /// deploy plan lowers a `qos_overrides.<topic>.<role>.<policy>` launch param
 /// into a `&'static` array of these, which the entry installs on the node via
 /// [`nros_cpp_node_set_qos_overrides`]; the node folds matching `(topic, role)`
@@ -2585,7 +2585,7 @@ pub const NROS_CPP_DOMAIN_ID_INHERIT: u32 = u32::MAX;
 
 /// Phase 104.C.9 — extended node-creation options (C++ FFI).
 ///
-/// Mirrors `nros_node_options_t` in nros-c (Phase 104.C.8) — same field
+/// Mirrors `rcl_node_options_t` in nros-c (Phase 104.C.8) — same field
 /// shape, separate FFI surface so the two language wrappers can evolve
 /// independently. Used by `nros_cpp_node_create_ex` and the C++
 /// `NodeBuilder` wrapper in `nros/node.hpp`.
@@ -2967,7 +2967,7 @@ pub unsafe extern "C" fn nros_cpp_node_create_ex(
     // through `Executor::node_session_mut(NodeId)` instead of the
     // primary session.
     // Issue 0436 — VALIDATE the handle. This is the site where a `MultiExecutor` /
-    // `nros_init_multi` handle used to be cast to `CppContext`: both start with the
+    // `rclc_init_multi` handle used to be cast to `CppContext`: both start with the
     // same `Executor`, so the cast read fine and the later field writes corrupted
     // the other struct's `Vec` (PX4 dumped core). Now it is a clean error.
     let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
@@ -4994,7 +4994,7 @@ pub unsafe extern "C" fn nros_cpp_executor_set_monitor_arming(
 /// phase-474 I2 -- the application's start-up is over: arm the contract
 /// monitors of every executor in the image that waits for it. Safe from any
 /// thread and from a callback (it bumps an atomic; each executor arms at its
-/// next spin). The C spelling is `nros_monitors_arm()`; this is the same call
+/// next spin). The C spelling is `rclc_monitors_arm()`; this is the same call
 /// on the C++ ABI, wrapped by `nros::arm_monitors()`.
 #[cfg(feature = "rmw-cffi")]
 #[unsafe(no_mangle)]

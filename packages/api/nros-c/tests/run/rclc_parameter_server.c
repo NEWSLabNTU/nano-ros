@@ -89,9 +89,9 @@ static bool on_change(const Parameter* old_param, const Parameter* new_param, vo
 }
 
 int main(void) {
-    struct nros_support_t support;
-    struct nros_executor_t executor = rclc_executor_get_zero_initialized_executor();
-    struct nros_node_t talker, listener, unbound;
+    struct rclc_support_t support;
+    struct rclc_executor_t executor = rclc_executor_get_zero_initialized_executor();
+    struct rcl_node_t talker, listener, unbound;
     rclc_parameter_server_t ps, ps2, ps3;
     int64_t got = 0;
 
@@ -105,18 +105,18 @@ int main(void) {
     memset(&g_cb, 0, sizeof(g_cb));
 
     nros_stub_rmw_set_accept_entities(true);
-    CHECK(nros_support_init_rmw(&support, NULL, 0, "rclc_param_server", NROS_STUB_RMW_NAME) ==
-              NROS_RET_OK,
+    CHECK(rclc_support_init_rmw(&support, NULL, 0, "rclc_param_server", NROS_STUB_RMW_NAME) ==
+              RCL_RET_OK,
           "support init");
-    CHECK(nros_executor_init(&executor, &support, 8) == NROS_RET_OK, "executor init");
+    CHECK(rclc_executor_init(&executor, &support, 8) == RCL_RET_OK, "executor init");
 
     /* D3 — a node bound to no executor has no store to serve from. */
     CHECK(rclc_parameter_server_init_default(&ps, &unbound) == RCL_RET_NOT_INIT,
           "init accepted a node that is bound to no executor");
 
-    CHECK(nros_executor_node_init(&executor, &talker, "talker", NULL) == NROS_RET_OK,
+    CHECK(rclc_executor_node_init(&executor, &talker, "talker", NULL) == RCL_RET_OK,
           "talker node init");
-    CHECK(nros_executor_node_init(&executor, &listener, "listener", NULL) == NROS_RET_OK,
+    CHECK(rclc_executor_node_init(&executor, &listener, "listener", NULL) == RCL_RET_OK,
           "listener node init");
     if (g_failures != 0) {
         printf("rclc_parameter_server: %d setup failure(s)\n", g_failures);
@@ -195,8 +195,8 @@ int main(void) {
     CHECK(rclc_parameter_get_string(&ps, "frame", text, sizeof(text)) == RCL_RET_OK &&
               strcmp(text, "base_link") == 0,
           "frame read back as `%s`", text);
-    CHECK(rclc_parameter_get_string(&ps, "frame", text, 4) == NROS_RET_FULL,
-          "a too-small buffer was not NROS_RET_FULL");
+    CHECK(rclc_parameter_get_string(&ps, "frame", text, 4) == RCLC_RET_FULL,
+          "a too-small buffer was not RCLC_RET_FULL");
     const double gains[3] = {1.0, 2.0, 3.0};
     double out[4] = {0};
     size_t n = 0;
@@ -213,8 +213,8 @@ int main(void) {
     CHECK(rclc_parameter_get_string_array(&ps, "frames", &rows[0][0], 8, 3, &n) == RCL_RET_OK &&
               n == 2 && strcmp(rows[1], "odom") == 0,
           "frames read back n=%zu `%s`", n, rows[1]);
-    CHECK(rclc_parameter_get_string_array(&ps, "frames", &rows[0][0], 3, 3, &n) == NROS_RET_FULL,
-          "a row too short for `odom` was not NROS_RET_FULL");
+    CHECK(rclc_parameter_get_string_array(&ps, "frames", &rows[0][0], 3, 3, &n) == RCLC_RET_FULL,
+          "a row too short for `odom` was not RCLC_RET_FULL");
 
     /* declare_* keeps a value already declared with the same type (how a baked
      * launch value survives), and refuses a different type. */
@@ -240,12 +240,12 @@ int main(void) {
           "max_params=2 accepted a third parameter");
 
     size_t count = 0;
-    CHECK(rclc_parameter_list(&ps, NULL, NULL, 0, 0, &count) == NROS_RET_FULL || count == 0,
+    CHECK(rclc_parameter_list(&ps, NULL, NULL, 0, 0, &count) == RCLC_RET_FULL || count == 0,
           "list count call");
     CHECK(count == 4, "talker lists %zu parameters, expected rate/frame/gains/frames", count);
 
     /* add_parameter_server checks the executor is the node's. */
-    struct nros_executor_t other = rclc_executor_get_zero_initialized_executor();
+    struct rclc_executor_t other = rclc_executor_get_zero_initialized_executor();
     CHECK(rclc_executor_add_parameter_server(&other, &ps2, NULL) == RCL_RET_INVALID_ARGUMENT,
           "a server was added to an executor its node is not bound to");
 

@@ -101,7 +101,7 @@ endfunction()
 _nros_px4_resolve_archive(_NROS_PX4_CPP_A NROS_CPP_ARCHIVE NROS_CPP_ARCHIVE
     "${_NROS_PX4_CPP_A_DEFAULT}"
     # Issue 0436 — a MULTI-RMW module (a uORB->RMW bridge) additionally needs the
-    # `bridge` feature, which is what puts `nros_init_multi` / `nros_pubsub_bridge_*`
+    # `bridge` feature, which is what puts `rclc_init_multi` / `nros_pubsub_bridge_*`
     # (the ABI `<nros/bridge.hpp>`'s MultiExecutor calls) into this archive:
     #   cargo build -p nros-cpp --no-default-features \
     #       --features std,rmw-zenoh-cffi,bridge --release
@@ -209,7 +209,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/NanoRosArchivePairing.cmake)
 # and the archive are the same cargo byproduct, so the fix is always "rebuild the
 # umbrella" — but WHICH features depends on the module, and a hint that named only
 # the uORB set would send a bridge developer to the command that breaks their
-# link (issue 0436: `bridge` is what puts nros_init_multi / nros_pubsub_bridge_*
+# link (issue 0436: `bridge` is what puts rclc_init_multi / nros_pubsub_bridge_*
 # in, and `rmw-<net>-cffi` is what makes the outward backend exist at all). At
 # file scope BACKENDS is not yet known, so the hint says both rather than
 # guessing one.

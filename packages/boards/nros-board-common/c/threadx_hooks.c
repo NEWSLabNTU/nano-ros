@@ -87,7 +87,7 @@ _Static_assert(sizeof(ULONG) == 4,
  * UNSTATED (the default 0) leaves the pool at the base, which is the SAFE
  * direction: the image pays for the backing twice, exactly as it does today.
  * A C or C++ ThreadX image is in that case permanently and correctly — its
- * `nros_executor_t` objects are file-scope statics and were never drawn from
+ * `rclc_executor_t` objects are file-scope statics and were never drawn from
  * this pool, so there is nothing to give back.
  */
 /* The BASE, documented against measured peaks (issue 1557, split from 1145).

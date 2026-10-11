@@ -10,7 +10,7 @@
   The C ownership convention (RFC-0033): payloads ride the raw `(data, len)`
   callbacks and the USER owns the struct — they call `_deserialize` and then
   `_fini`. Services and actions are identical in that respect
-  (`nros_service_callback_t` hands the callback `request_data`/`request_len`,
+  (`rclc_service_callback_t` hands the callback `request_data`/`request_len`,
   never a typed struct), so heap needs no framework or ownership change — only
   these arms plus a `_fini` per payload struct.
 
@@ -39,27 +39,27 @@
     if (nros_cdr_{{ field.cdr_write_method }}(&ptr, end, origin, {{ var }}->{{ field.name }}) < 0) return -1;
 {%- elif field.is_string %}
 {%- if field.is_heap %}
-    if (nros_cdr_write_string(&ptr, end, origin, {{ var }}->{{ field.name }}.data ? {{ var }}->{{ field.name }}.data : "") < 0) return -1;
+    if (rclc_cdr_write_string(&ptr, end, origin, {{ var }}->{{ field.name }}.data ? {{ var }}->{{ field.name }}.data : "") < 0) return -1;
 {%- else %}
-    if (nros_cdr_write_string(&ptr, end, origin, {{ var }}->{{ field.name }}) < 0) return -1;
+    if (rclc_cdr_write_string(&ptr, end, origin, {{ var }}->{{ field.name }}) < 0) return -1;
 {%- endif %}
 {%- elif field.is_array %}
     for (size_t i = 0; i < {{ field.array_size }}; ++i) {
 {%- if field.is_primitive_element %}
         if (nros_cdr_{{ field.element_cdr_write_method }}(&ptr, end, origin, {{ var }}->{{ field.name }}[i]) < 0) return -1;
 {%- elif field.is_string_element %}
-        if (nros_cdr_write_string(&ptr, end, origin, {{ var }}->{{ field.name }}[i]) < 0) return -1;
+        if (rclc_cdr_write_string(&ptr, end, origin, {{ var }}->{{ field.name }}[i]) < 0) return -1;
 {%- else %}
         if ({{ field.element_struct_name }}_serialize_inline(&{{ var }}->{{ field.name }}[i], &ptr, end, origin) < 0) return -1;
 {%- endif %}
     }
 {%- elif field.is_sequence %}
-    if (nros_cdr_write_u32(&ptr, end, origin, {{ var }}->{{ field.name }}.size) < 0) return -1;
+    if (rclc_cdr_write_u32(&ptr, end, origin, {{ var }}->{{ field.name }}.size) < 0) return -1;
     for (size_t i = 0; i < {{ var }}->{{ field.name }}.size; ++i) {
 {%- if field.is_primitive_element %}
         if (nros_cdr_{{ field.element_cdr_write_method }}(&ptr, end, origin, {{ var }}->{{ field.name }}.data[i]) < 0) return -1;
 {%- elif field.is_string_element %}
-        if (nros_cdr_write_string(&ptr, end, origin, {{ var }}->{{ field.name }}.data[i]) < 0) return -1;
+        if (rclc_cdr_write_string(&ptr, end, origin, {{ var }}->{{ field.name }}.data[i]) < 0) return -1;
 {%- else %}
         if ({{ field.element_struct_name }}_serialize_inline(&{{ var }}->{{ field.name }}.data[i], &ptr, end, origin) < 0) return -1;
 {%- endif %}
@@ -79,7 +79,7 @@
         // read it, then raw-copy the bytes (chars need no alignment). Freed by
         // {{ sname }}_fini.
         uint32_t slen;
-        if (nros_cdr_read_u32(&ptr, end, origin, &slen) < 0) return -1;
+        if (rclc_cdr_read_u32(&ptr, end, origin, &slen) < 0) return -1;
         if ((size_t)(end - ptr) < slen) return -1;
         if (slen > 0) {
             {{ var }}->{{ field.name }}.data = nros_platform_malloc(slen);
@@ -96,14 +96,14 @@
         ptr += slen;
     }
 {%- else %}
-    if (nros_cdr_read_string(&ptr, end, origin, {{ var }}->{{ field.name }}, sizeof({{ var }}->{{ field.name }})) < 0) return -1;
+    if (rclc_cdr_read_string(&ptr, end, origin, {{ var }}->{{ field.name }}, sizeof({{ var }}->{{ field.name }})) < 0) return -1;
 {%- endif %}
 {%- elif field.is_array %}
     for (size_t i = 0; i < {{ field.array_size }}; ++i) {
 {%- if field.is_primitive_element %}
         if (nros_cdr_{{ field.element_cdr_read_method }}(&ptr, end, origin, &{{ var }}->{{ field.name }}[i]) < 0) return -1;
 {%- elif field.is_string_element %}
-        if (nros_cdr_read_string(&ptr, end, origin, {{ var }}->{{ field.name }}[i], sizeof({{ var }}->{{ field.name }}[i])) < 0) return -1;
+        if (rclc_cdr_read_string(&ptr, end, origin, {{ var }}->{{ field.name }}[i], sizeof({{ var }}->{{ field.name }}[i])) < 0) return -1;
 {%- else %}
         if ({{ field.element_struct_name }}_deserialize_inline(&{{ var }}->{{ field.name }}[i], &ptr, end, origin) < 0) return -1;
 {%- endif %}
@@ -111,7 +111,7 @@
 {%- elif field.is_sequence %}
     {
         uint32_t len;
-        if (nros_cdr_read_u32(&ptr, end, origin, &len) < 0) return -1;
+        if (rclc_cdr_read_u32(&ptr, end, origin, &len) < 0) return -1;
 {%- if field.is_heap %}
         // Heap sequence (RFC-0033): allocate exactly `len` elements; freed by
         // {{ sname }}_fini. A re-deserialize leaks the prior buffer unless
@@ -120,7 +120,7 @@
             // `len` is wire data: a bare `(size_t)len * sizeof` wraps on a
             // 32-bit target and under-allocates (issue 1149's class).
             size_t bytelen;
-            if (nros_cdr_seq_byte_len(len, sizeof(*{{ var }}->{{ field.name }}.data), SIZE_MAX, &bytelen) < 0) return -1;
+            if (rclc_cdr_seq_byte_len(len, sizeof(*{{ var }}->{{ field.name }}.data), SIZE_MAX, &bytelen) < 0) return -1;
             {{ var }}->{{ field.name }}.data = nros_platform_malloc(bytelen);
             if ({{ var }}->{{ field.name }}.data == NULL) return -1;
         } else {
@@ -130,7 +130,7 @@
         {{ var }}->{{ field.name }}.capacity = len;
         for (size_t i = 0; i < len; ++i) {
 {%- if field.is_string_element %}
-            if (nros_cdr_read_string(&ptr, end, origin, {{ var }}->{{ field.name }}.data[i], sizeof(*{{ var }}->{{ field.name }}.data)) < 0) {
+            if (rclc_cdr_read_string(&ptr, end, origin, {{ var }}->{{ field.name }}.data[i], sizeof(*{{ var }}->{{ field.name }}.data)) < 0) {
 {%- elif field.is_primitive_element %}
             if (nros_cdr_{{ field.element_cdr_read_method }}(&ptr, end, origin, &{{ var }}->{{ field.name }}.data[i]) < 0) {
 {%- else %}
@@ -151,7 +151,7 @@
 {%- if field.is_primitive_element %}
             if (nros_cdr_{{ field.element_cdr_read_method }}(&ptr, end, origin, &{{ var }}->{{ field.name }}.data[i]) < 0) return -1;
 {%- elif field.is_string_element %}
-            if (nros_cdr_read_string(&ptr, end, origin, {{ var }}->{{ field.name }}.data[i], sizeof({{ var }}->{{ field.name }}.data[i])) < 0) return -1;
+            if (rclc_cdr_read_string(&ptr, end, origin, {{ var }}->{{ field.name }}.data[i], sizeof({{ var }}->{{ field.name }}.data[i])) < 0) return -1;
 {%- else %}
             if ({{ field.element_struct_name }}_deserialize_inline(&{{ var }}->{{ field.name }}.data[i], &ptr, end, origin) < 0) return -1;
 {%- endif %}
