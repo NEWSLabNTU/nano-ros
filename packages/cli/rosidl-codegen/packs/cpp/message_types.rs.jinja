@@ -295,7 +295,7 @@ pub fn {{ deserialize_view_fn }}(reader: &mut CdrReader, out: &mut {{ view_repr_
 {%- if field.is_view %}
     {
         let __b = reader.{{ field.view_reader_call }}?;
-{%- if field.borrowed_le %}
+{%- if field.view_le %}
         out.{{ field.name }} = nros_cpp_borrow_t { ptr: __b.as_bytes().as_ptr(), len: __b.len() };
 {%- else %}
         out.{{ field.name }} = nros_cpp_borrow_t { ptr: __b.as_ptr() as *const u8, len: __b.len() };

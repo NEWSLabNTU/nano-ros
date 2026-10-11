@@ -1024,7 +1024,7 @@ pub(super) fn build_cpp_ffi_field(
     // RFC-0033 borrowed (Phase 235): the `{Msg}ViewRepr` FFI struct stores this
     // field as `nros_cpp_borrow_t { *const u8, usize }`, filled from the
     // `CdrReader` borrow method; the owned `{Msg}` repr keeps its owned type.
-    let (is_view, view_reader_call, borrowed_le) = match storage {
+    let (is_view, view_reader_call, view_le) = match storage {
         CppStorage::Borrowed(b, _) => (true, b.reader_call(), b.is_le()),
         _ => (false, String::new(), false),
     };
@@ -1245,7 +1245,7 @@ pub(super) fn build_cpp_ffi_field(
         element_repr_type,
         is_view,
         view_reader_call,
-        borrowed_le,
+        view_le,
     };
 
     (ffi_field, seq_struct)
