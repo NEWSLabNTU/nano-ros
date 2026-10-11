@@ -1,12 +1,22 @@
 ---
 id: 968
 title: "Tier 2 has ~12 runtime e2e failures on main, unreproduced — nobody has run the tier in a long time"
-status: open
+status: resolved
+resolved_in: "2026-10-11 — #1804 (rtic cell); esp32 cells green on nightly then dormant per #1525; zephyr xrce-cpp cells green, no zeth needed"
 area: testing
 severity: medium
 found: 2026-08-31
-related: [0967, 1750, phase-410, RFC-0061]
+related: [0967, 1750, 1804, 1525, phase-410, RFC-0061]
 ---
+
+> **Resolved 2026-10-11. All twelve are accounted for, each by a run** (see the
+> last section):
+> the rtic cell was a clock defect, fixed as [issue 1804](1804-rtic-tick-timer-shares-the-clock-timer.md);
+> the three threadx-linux cyclone cells were [issue 1750](1750-threadx-linux-cyclone-host-threads-wedge-the-scheduler.md);
+> of the five esp32 cells, the four `esp32_emulator` ones passed on seven
+> consecutive scheduled nightlies and `logging_smoke` passed solo. All five are
+> now dormant with the platform ([issue 1525](1525-esp32-c-cpp-has-no-build-road.md));
+> the three zephyr xrce-cpp cells pass on a host with NO `zeth`.
 
 # What was measured, and what was not
 
@@ -91,12 +101,12 @@ built (zephyr, native, qemu, freertos, nuttx, threadx_linux). The other two are
 new findings, both COMPILE/BUILD failures rather than runtime ones, and both are
 this issue's own thesis arriving one stage earlier than it predicted:
 
-* **[#1023](archived/1023-sertype-hosted-includes-break-freestanding.md)** —
+* **[#1023](1023-sertype-hosted-includes-break-freestanding.md)** —
   `threadx_riscv64` cannot compile `nros_sertype.cpp`: it includes `<memory>`
   and `<string>` and the target is freestanding. The file is new in issue 0970's
   commit, and `examples/fixtures.toml:3146` declares the coordinate, so this is
   a supported cell that has been unbuildable since it landed.
-* **[#1025](archived/1025-esp32-flash-image-consumer-drops-the-row-variant.md)** — ESP32
+* **[#1025](1025-esp32-flash-image-consumer-drops-the-row-variant.md)** — ESP32
   QEMU flash images cannot be packed. The ELF builds fine; the packer looks in
   `build/cargo-fixtures/qemu-esp32-baremetal/` while the build writes to
   `qemu-esp32-baremetal-4118800323`, because the packer asks
@@ -254,7 +264,7 @@ Rust)` is 10210, and the firmware's `Cargo.toml` bakes
 
 So the router is listening on the host and the guest is dialling the right
 gateway and port, and the connection still fails. The next suspect is
-[issue 0774](archived/0774-zenohd-loads-unpaired-libzenohc.md): the router is ROS's `rmw_zenohd`, which loads whatever
+[issue 0774](0774-zenohd-loads-unpaired-libzenohc.md): the router is ROS's `rmw_zenohd`, which loads whatever
 `libzenohc.so` the loader finds and SEGVs mid-startup when the pairing is wrong
 — a router that binds, satisfies `wait_for_port`, and is gone by the time
 firmware connects would produce exactly this. Checking that means watching the
@@ -325,7 +335,7 @@ already there — the per-cell `heap=` / `zeth=` counts above are recorded so th
 next reader can tell them apart without taking anyone's word.
 ## The esp32 cluster, RUN for the first time 2026-09-04 (5 of the 12)
 
-These five could not run at all until [issue 1025](archived/1025-esp32-flash-image-consumer-drops-the-row-variant.md) was fixed —
+These five could not run at all until [issue 1025](1025-esp32-flash-image-consumer-drops-the-row-variant.md) was fixed —
 no ESP32 QEMU flash image could be packed. With that fixed and every image
 rebuilt (talker, listener and ws-entry all stamped within minutes of the run, so
 no stale-artifact confound):
@@ -508,7 +518,7 @@ line announcing it is dropped by the facade — so the cell greps for a marker t
 image is structurally unable to emit, and reports a messaging failure for a
 logging defect.
 
-Filed as [issue 1048](archived/1048-esp32-log-records-are-silently-dropped.md) with the
+Filed as [issue 1048](1048-esp32-log-records-are-silently-dropped.md) with the
 five closed hypotheses and the one remaining candidate (`log::set_logger`
 succeeds at most once per process, and this image has two log paths racing for
 the facade — the board registers a platform writer immediately above its
@@ -603,7 +613,7 @@ defect: Cyclone's host threads entered ThreadX (ddsrt's heap via
 `nros_platform_alloc`, and the data-available wake), leaked the Linux port's
 `_tx_linux_mutex` one level per call, and the whole image stopped within ~2 s —
 after its first few SPDP announcements, which is what the trace showed.
-[Issue 1750](archived/1750-threadx-linux-cyclone-host-threads-wedge-the-scheduler.md)
+[Issue 1750](1750-threadx-linux-cyclone-host-threads-wedge-the-scheduler.md)
 has the gdb evidence and the fix.
 
 Re-run SOLO on fixtures built from the fix branch (threadx-linux C/C++
@@ -621,3 +631,92 @@ against the same build with the fix reverted:
 (the zephyr xrce-cpp cells on `zeth`, the rtic cell, and the esp32 confirmations
 above). Not established: that a tier-2 SWEEP (as opposed to solo runs) is green
 for these cells — a CI run is the evidence for that, as for the esp32 fixes.
+
+
+## Closed 2026-10-11: the last four cells, each by a run
+
+Every verdict below comes from a run on fixtures built from this tree
+(`66104bdd9c` plus the #1804 commit). Each cell was run SOLO with `--retries 0`.
+
+### `test_qemu_rtic_service_e2e`: NOT issue 0774. It was the clock, filed and fixed as #1804
+
+The 0774 hypothesis was checked first and is wrong. The router (`ZENOHD_LOG=debug`)
+stays up through the whole run, and in a failing run it accepts the guest's TCP
+connection. Then it receives a SECOND `InitSyn` 23 ms later, where it expects
+the `OpenSyn`. So the guest abandoned its own handshake, and the router did not
+die.
+
+The guest's log timestamps showed why. The first `nros` line of the server prints at
+`[  687.19]` one second after boot, and every timer callback reports
+`timer-overrun-runtime measured=171`. 2^32 ticks / 25 MHz = 171.8 s. The RTIC
+entry armed CMSDK **TIMER0** as its 1 ms tick, and TIMER0 is also the
+free-running monotonic clock, which counts each reload as a 32-bit wrap. So
+every timeout (TCP connect, `read_exact`, the zenoh handshake) fired on the next
+tick. The full diagnosis is in [issue 1804](1804-rtic-tick-timer-shares-the-clock-timer.md).
+
+| build | runs | failed | server requests handled for ONE client call |
+| --- | ---: | ---: | --- |
+| fix reverted | 41 | 5 | 6 to 100 (the client retransmitted on spurious timeouts) |
+| fixed | 40 | 0 | exactly 1, in 40 of 40 |
+
+The other three RTIC cells (`pubsub`, `mixed_priority_pubsub`, `action`) also
+pass with the fix.
+
+### The five esp32 cells: green on CI, then dormant with the platform
+
+The three cells this issue still owed after issue 1112 (`test_esp32_to_native`,
+`test_native_to_esp32`, `test_esp32_workspace_entry_e2e`) were CONFIRMED by
+scheduled nightlies, not by a solo run. The `esp32` job of every scheduled
+`nightly.yml` run from 2026-09-30 to 2026-10-06 (7 consecutive runs, e.g. run
+37428880604, job 112155484036, `main` at `60951831406b`) reports:
+
+```
+PASS test_esp32_qemu_talker_boots
+PASS test_esp32_workspace_entry_e2e
+PASS test_esp32_talker_listener_e2e
+PASS test_esp32_to_native
+PASS test_native_to_esp32
+Summary 5 tests run: 5 passed, 0 skipped
+```
+
+Every `esp32` job from 2026-09-05 to 2026-09-29 was red. The first green one is
+2026-09-30.
+
+`logging_smoke_esp32_qemu_emits_every_severity` passed solo on 2026-09-04 (above).
+
+On 2026-10-07 (`719b6eda1d`) ESP32 went dormant ([issue 1525](1525-esp32-c-cpp-has-no-build-road.md)).
+Its fixture rows were deleted, its `matrix` cells became `CarveOut(ESP32_DORMANT)`,
+and all six esp32 tests are `#[ignore = "ESP32 support is dormant (issue 1525) ..."]`.
+That retirement is already complete. The nextest overrides still match live
+test names, so nothing is stranded, and the code stays for a revival as 1525
+intends. So no esp32 cell from this list is owed. If the platform is revived,
+these cells come back with it.
+
+### The three zephyr xrce-cpp cells: green, and they need NO `zeth`
+
+The previous section expected these cells to need root (`net-setup.sh`). They
+do not: today's images carry the native_sim NSOS overlay.
+`scripts/build/zephyr-fixture-leaves.sh` appends `zephyr/native-sim-nsos.conf`
+to every native_sim row, and the built `build-cpp-talker-xrce/zephyr/.config`
+reads `# CONFIG_ETH_NATIVE_POSIX is not set` and
+`CONFIG_NET_NATIVE_OFFLOADED_SOCKETS=y`. On this host, which has no `zeth`
+interface (`/sys/class/net`: docker0 enp7s0 lo tailscale0 tap0):
+
+| cell | run 1 | run 2 | run 3 |
+| --- | --- | --- | --- |
+| `example_e2e::case_21_xrce_cpp_pubsub_e2e` | PASS | PASS | PASS |
+| `example_e2e::case_24_xrce_cpp_service_e2e` | PASS (`Result of add_two_ints: 5`) | PASS | PASS |
+| `example_e2e::case_27_xrce_cpp_action_e2e` | PASS (`Result received: [0, 1, 1, 2, 3, 5, 8, 13, 21, 34]`) | PASS | PASS |
+
+**NOT established:** why the 2026-09-04 images printed
+`eth_posix: Cannot create zeth`. The NSOS append in the leaf script predates that
+date (2026-06), so the cause there is not the overlay going missing. It could be
+the build of that day, or the stray `zephyr.exe` processes that section already
+flagged. That run's artifacts are gone. The question no longer blocks anything,
+because the cells pass without the TAP.
+
+### What this does NOT establish
+
+That a tier-2 SWEEP is green for these cells. Every verdict above is SOLO or
+from a scheduled nightly job. The next tier-2 run is the evidence for a sweep.
+

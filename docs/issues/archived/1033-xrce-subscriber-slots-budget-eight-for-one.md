@@ -75,7 +75,7 @@ ladder beside the zenoh ones.
 ## Do not just raise the heap
 
 Raising `NROS_ZEPHYR_HEAP_SIZE` past 310 KB would make the three cells in
-[issue 0968](../0968-tier2-runtime-failures-unreproduced.md) pass while leaving an
+[issue 0968](0968-tier2-runtime-failures-unreproduced.md) pass while leaving an
 image that reserves 86% of its session struct for entities it does not create.
 That is the shape this campaign exists to remove, and the boot failure is
 currently the only thing making it visible.
