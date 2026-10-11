@@ -9,6 +9,26 @@ found: 2026-09-11
 related: [rfc-0098, rfc-0065, phase-445]
 ---
 
+## 2026-10-11 — re-measured, and now refused up front (still OPEN)
+
+Re-measured on main: still true. The same one-line switch of
+`examples/mps2-an385-baremetal/rust/talker` to `board = "freertos"` gave
+`nros sync` rc=0, then `nros build` rc=101 with
+`cannot find nros_board_mps2_an385_freertos`.
+
+**Interim:** `leaf_settings::check_board_crate_dependency` runs where sync and
+build both pass (`leaf_settings::write`). It compares the crate the image's
+board maps to (`entry::macro_board_crate`, the macro's own mapping) with what
+the leaf's `Cargo.toml` names, including target-scoped tables. A mismatch now
+fails at `nros sync` (rc=1) with a message naming both crates and the one edit.
+A test walks every in-tree cargo leaf, so the refusal fires on no example.
+
+**Still owed (why this stays open):** D6 itself. The board dependency should
+be generated for a leaf as it is for a workspace entry, so the switch is one
+line. Size L. A leaf is its own cargo root, and a `--config` file cannot add a
+dependency.
+
+
 # The claim
 
 RFC-0098 D6: *"the board crate dependency is generated… No user manifest

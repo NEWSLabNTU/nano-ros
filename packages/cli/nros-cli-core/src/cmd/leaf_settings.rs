@@ -336,11 +336,92 @@ pub fn image_block_layers(
 /// is not a leaf this road builds ([`resolve`]).
 ///
 /// `who` prefixes diagnostics (`sync`, `nros build`).
+/// Issue 1305 — a single-package Rust leaf still names its board crate by hand.
+///
+/// RFC-0098 D6 generates the board dependency for a generated WORKSPACE entry
+/// only. A leaf is its own entry, so `nros::main!` asks for the crate the
+/// IMAGE's board maps to while `Cargo.toml` names whichever crate it was
+/// written with. After a one-line board switch in `system.toml`, sync used to
+/// succeed and the build then died in the leaf's own crate:
+/// "cannot find `nros_board_<new>` in the crate root". This refuses at the
+/// point both sync and build pass through, naming the two crates and the one
+/// edit, until D6 reaches leaves. The crate is the MACRO's
+/// (`entry::macro_board_crate`), because the macro's expansion is what has to
+/// compile.
+fn check_board_crate_dependency(img: &LeafImage) -> Result<()> {
+    let Some(want) = crate::builder::entry::macro_board_crate(&[
+        img.image_id.as_str(),
+        img.board.as_str(),
+        img.platform.as_str(),
+    ]) else {
+        return Ok(());
+    };
+    let manifest = img.leaf.join("Cargo.toml");
+    let Ok(doc) = std::fs::read_to_string(&manifest)
+        .map_err(|e| e.to_string())
+        .and_then(|t| t.parse::<toml::Table>().map_err(|e| e.to_string()))
+    else {
+        return Ok(());
+    };
+    // A dependency's crate is its `package = "…"` when renamed, else its key.
+    // Target-scoped tables count too: an image-only board crate lives under
+    // `[target.'cfg(target_os = "none")'.dependencies]` so the node still
+    // builds for the host probe (issue 1265).
+    let mut tables: Vec<&toml::Table> = Vec::new();
+    for scope in std::iter::once(&doc).chain(
+        doc.get("target")
+            .and_then(|t| t.as_table())
+            .into_iter()
+            .flat_map(|t| t.values().filter_map(|v| v.as_table())),
+    ) {
+        for key in ["dependencies", "build-dependencies"] {
+            if let Some(deps) = scope.get(key).and_then(|d| d.as_table()) {
+                tables.push(deps);
+            }
+        }
+    }
+    let mut named: Vec<String> = Vec::new();
+    for deps in tables {
+        for (k, v) in deps {
+            let krate = v
+                .get("package")
+                .and_then(|p| p.as_str())
+                .unwrap_or(k.as_str());
+            named.push(krate.replace('_', "-"));
+        }
+    }
+    if named.iter().any(|n| n == &want) {
+        return Ok(());
+    }
+    let boards: Vec<&str> = named
+        .iter()
+        .map(String::as_str)
+        .filter(|n| n.starts_with("nros-board-"))
+        .collect();
+    let has = if boards.is_empty() {
+        "no board crate".to_string()
+    } else {
+        format!("`{}`", boards.join("`, `"))
+    };
+    bail!(
+        "{}: image `{}` builds for board `{}`, whose entry needs the crate `{want}`, \
+         but {} depends on {has}.\n  Replace the board dependency in {} with `{want}` \
+         (issue 1305: a single-package leaf still names its board crate by hand; \
+         RFC-0098 D6 generates it only for a workspace entry).",
+        img.leaf.display(),
+        img.image_id,
+        img.board,
+        manifest.display(),
+        manifest.display()
+    )
+}
+
 pub fn write(leaf: &Path, nano_ros_root: &Path, who: &str) -> Result<Option<LeafImage>> {
     let Some(img) = resolve(leaf, nano_ros_root)? else {
         return Ok(None);
     };
     let leaf = img.leaf.as_path();
+    check_board_crate_dependency(&img)?;
 
     // Layer 2 — derived pools + facts.
     let mut env = crate::leaf_entity_env::leaf_env(leaf, who).env;
@@ -802,5 +883,76 @@ mod tests {
             "{text}"
         );
         assert_eq!(text.matches("nros-cargo.toml").count(), 1, "{text}");
+    }
+}
+
+#[cfg(test)]
+mod board_crate_tests {
+    //! Issue 1305 — the leaf's board crate and the image's board must agree.
+    use super::*;
+
+    fn repo() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .canonicalize()
+            .unwrap()
+    }
+
+    /// Every in-tree single-package Rust leaf on a cargo road already names
+    /// the crate its image needs, so the refusal fires on no example. A leaf
+    /// that fails here was never buildable for its own image.
+    #[test]
+    fn every_in_tree_rust_leaf_names_the_board_crate_its_image_needs() {
+        let out = std::process::Command::new("git")
+            .args(["ls-files", "-z", "--", "examples/*/system.toml"])
+            .current_dir(repo())
+            .output()
+            .expect("git ls-files");
+        let mut checked = 0;
+        for rel in String::from_utf8_lossy(&out.stdout)
+            .split('\0')
+            .filter(|s| !s.is_empty())
+        {
+            let leaf = repo().join(rel).parent().unwrap().to_path_buf();
+            if !leaf.join("Cargo.toml").is_file() {
+                continue;
+            }
+            let Some(img) = resolve(&leaf, &repo()).unwrap_or_else(|e| panic!("{rel}: {e}")) else {
+                continue;
+            };
+            check_board_crate_dependency(&img).unwrap_or_else(|e| panic!("{e}"));
+            checked += 1;
+        }
+        assert!(
+            checked >= 10,
+            "the walk reached only {checked} cargo leaves"
+        );
+    }
+
+    #[test]
+    fn a_switched_board_is_refused_naming_both_crates() {
+        let tmp = tempfile::tempdir().unwrap();
+        let leaf = tmp.path().join("talker");
+        std::fs::create_dir_all(leaf.join("src")).unwrap();
+        std::fs::write(
+            leaf.join("Cargo.toml"),
+            "[package]\nname = \"t\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n\
+             [dependencies]\nnros-board-mps2-an385 = { version = \"*\" }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            leaf.join("system.toml"),
+            "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n[image.native]\nboard = \"native\"\n",
+        )
+        .unwrap();
+        let img = resolve(&leaf, &repo()).unwrap().expect("a cargo leaf");
+        let e = check_board_crate_dependency(&img)
+            .expect_err("the image needs nros-board-linux")
+            .to_string();
+        assert!(
+            e.contains("`nros-board-linux`") && e.contains("`nros-board-mps2-an385`"),
+            "{e}"
+        );
+        assert!(e.contains("issue 1305"), "{e}");
     }
 }
