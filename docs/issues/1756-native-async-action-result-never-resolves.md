@@ -45,13 +45,45 @@ lane never built (issue 1685).
   strengthened one: it now requires the awaited result, where it used to accept
   goal acceptance alone.
 
-## Not yet known
+## Cause (measured)
 
-It is not known whether this is the `.await` path or the reduced depth. The
-first thing to establish is whether it reproduces solo on a host. If it does,
-re-run with `ZPICO_SUBSCRIBER_RING_DEPTH` raised to 10. If that makes it pass,
-the depth grant is losing the `get_result` reply. If it still fails, the async
-`get_result` / feedback path stalls.
+Neither the `.await` path nor the `get_result` reply. The example client
+(`examples/native/rust/action-client-async/src/main.rs`) sent `get_result` only
+after it had seen the LAST feedback sample: its `while let Some(..) =
+stream.next().await` loop broke only on `feedback.sequence.len() > order`.
+Feedback is lossy:
+
+- In its default unpaced mode the server (`examples/native/rust/action-server`)
+  publishes all 11 feedback samples in one tick, then completes the goal.
+- The client's feedback subscriber ring holds 4
+  (`SUBSCRIBER_RING_DEPTH_DEFAULT`), and when it is full the producer drops the
+  NEWEST sample (`nros-rmw-zenoh` `shim/subscriber.rs`).
+- If the spin task does not drain the ring during the burst, the final sample
+  is lost, the stream waits forever, `get_result` is never sent, and the test
+  times out at 40 s.
+
+The sync `action-client` passes because it is callback-driven and its result
+does not depend on feedback.
+
+Measured by hand (zenohd + `action-server` + `native-rs-async-action-client`
+on unique ports, with a fixture build loading the host), 8 runs: 2 hung. One
+received 4 samples (`last=[0, 1, 1, 2]`, exactly the ring depth). The other
+received 9 and missed the len-11 sample. Every server log showed all 11
+`Publish feedback` lines and `Goal succeeded`.
+
+Raising `ZPICO_SUBSCRIBER_RING_DEPTH` only narrows the window: 11 samples is
+still more than 10 slots, and draining depends on timing.
+
+## Fix
+
+The client stops reading feedback when the stream has been quiet for 1 s, then
+always awaits `get_result`, which is the authoritative end of the goal.
+Feedback is lossy in ROS 2 too. With the fix, the same hand-run harness passed
+12 of 12, including runs that dropped the final sample.
+
+Whether the library should change as well (a latest-wins feedback ring, or an
+API that waits on feedback and result together) is a separate design question,
+not filed here.
 
 ## What would close it
 

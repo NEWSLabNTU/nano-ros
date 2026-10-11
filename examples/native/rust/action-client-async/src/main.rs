@@ -96,7 +96,13 @@ async fn main() {
 
                 // StreamExt::next() drives the stream one item at a time.
                 // The background spin_async() task processes I/O concurrently.
-                while let Some(result) = stream.next().await {
+                // Feedback is lossy (a full receive ring drops the NEWEST
+                // sample), so the final feedback may never arrive. Stop on a
+                // quiet stream instead of waiting for it; the result below is
+                // the authoritative end of the goal (issue 1756).
+                while let Ok(Some(result)) =
+                    tokio::time::timeout(core::time::Duration::from_secs(1), stream.next()).await
+                {
                     match result {
                         Ok(feedback) => {
                             log_info!(
