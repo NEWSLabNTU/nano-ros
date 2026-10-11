@@ -53,9 +53,8 @@ ALONE, which is what made #1536's clippy sites findable at all; the rustdoc and
 embedded gates are one invocation each. `--keep-going` would close that, and is
 not passed: it is a per-invocation flag with no config key (measured — neither
 `CARGO_BUILD_KEEP_GOING` nor `--config build.keep-going` is honoured), so
-passing it means editing every recipe or the `scripts/bin/cargo` shim that
-every cargo call in the tree goes through. Not worth that for an advisory
-number; worth saying.
+passing it means editing every recipe. Not worth that for an advisory number;
+worth saying.
 
 Usage::
 

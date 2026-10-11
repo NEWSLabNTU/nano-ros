@@ -11,11 +11,10 @@
 # rustup-init, configure found Rust and the build died at 92 % with a bare
 # "No such file or directory" from the first message package's FFI glue.
 #
-# BY NAME WHEN THE NAME RESOLVES. That is not a fallback kept for safety: a
-# contributor's `cargo` on PATH is `scripts/bin/cargo`, the shim that injects
-# `--locked` project-wide (CLAUDE.md, issues 0359/0378), and it can only reach
-# a command that asks for `cargo` by name. So the answer is unchanged for
-# every host where the name already worked, and differs only where it failed.
+# BY NAME WHEN THE NAME RESOLVES, so the answer is unchanged for every host
+# where the name already worked, and differs only where it failed. (A
+# `--locked` PATH shim once made the name load-bearing too, issues 0359/0378;
+# it is retired, phase-485 W4.)
 #
 # Otherwise, in the order FindRust itself looks: the rustup PROXY beside the
 # `rustup` it found (a proxy, not the toolchain binary, because the NuttX lane

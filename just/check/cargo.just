@@ -199,18 +199,18 @@ bringup-workspace-root:
 cargo-custom-command-depfile:
     @python3 scripts/check-cargo-custom-command-depfile.py
 
-# issue 0359/0378 — `--locked` is injected project-wide by the scripts/bin/cargo
-# PATH shim (cargo has no config/env knob for it, and per-site flags would miss
-# cmake/corrosion, which invoke `cargo` by name). This asserts the mechanism is
-# still wired; without it every build silently rewrites Cargo.lock. Buildless.
+# issue 0359/0378, phase-485 W4 (RFC-0104 D9) — the `--locked` PATH shim is
+# RETIRED: a seeded leaf lock is checked by `nros build` after resolution, and
+# each locked root's lock is held to the pin set by `check-cargo-registry-pins`.
+# This holds the retirement (no shim, the variable named nowhere outside docs/)
+# and that the closed-root builds pass `--locked` themselves. Buildless.
 [private]
 cargo-locked:
-    @bash scripts/check-cargo-locked.sh
+    @python3 scripts/check/check-cargo-locked.py
 
-# issue 1307 — the shim above cannot reach a BUILD SCRIPT. Inside one, cargo
-# exports `CARGO` as the path of the real binary, and `scripts/bin/cargo` execs
-# that same binary, so `Command::new(env::var_os("CARGO"))` runs cargo with the
-# shim skipped and no `--locked`. The size probe did, and injected a
+# issue 1307 — no outer `--locked` reaches a BUILD SCRIPT's nested cargo
+# (`Command::new(env::var_os("CARGO"))` runs the real binary; the PATH shim
+# that injected it everywhere else is retired, phase-485 W4). The size probe did, and injected a
 # `[patch.crates-io] libc` the root lock cannot match, so EVERY NuttX build
 # appended a `[[patch.unused]]` block to the root `Cargo.lock`.
 #

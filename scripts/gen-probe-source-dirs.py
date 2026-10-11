@@ -94,9 +94,7 @@ def parse_tree(stdout, repo=REPO):
 
 def closure(pkg, features):
     env = dict(os.environ)
-    # `--locked` is injected project-wide by the `scripts/bin/cargo` shim;
     # `cargo tree` resolves nothing new.
-    env["NROS_CARGO_FLAGS"] = ""
     cmd = ["cargo", "tree", "-p", pkg, "-e", "normal,build",
            "--prefix", "none", "--format", "{p}"]
     if features:

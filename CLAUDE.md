@@ -1351,11 +1351,12 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   (phase-485 W7: every locked root and the pin set move together; `just lock-update` is the
   per-root form and ends in `nros update --pins`) is the only sanctioned way to move one — never
   bare `cargo generate-lockfile`, which re-resolves
-  EVERY package (26 leaf locks once moved 5388 lines as a "cleanup"). `--locked` is injected
-  PROJECT-WIDE by the `scripts/bin/cargo` PATH shim (`NROS_CARGO_FLAGS`, wired in `activate.sh`),
-  so a mismatch FAILS instead of silently rewriting the file. Cargo has no config/env knob for it
-  (`[build] locked` is an unused key), and per-site flags would miss cmake/corrosion, which invoke
-  `cargo` by NAME. Escape hatch: `NROS_CARGO_FLAGS= just <recipe>`. **Generated msg crates are the
+  EVERY package (26 leaf locks once moved 5388 lines as a "cleanup"). The `--locked` PATH shim
+  that once enforced this is RETIRED (phase-485 W4, RFC-0104 D9): every leak it had was a new way
+  of invoking cargo it did not see. Enforcement is now a SET comparison after resolution, which no
+  invocation path bypasses — `nros build` checks a seeded leaf lock against the pin set
+  (realigning it in a checkout, refusing what it cannot), and `check-cargo-registry-pins` holds
+  every locked root; the closed-root recipes pass `--locked` themselves. **Generated msg crates are the
   exception**: they are produced per host by `nros sync` from the consumer's ament install and
   never shipped, so codegen emits a CONSTANT `version = "0.0.0"` (the ament version moves to
   `[package.metadata.nros] ament_version`) — otherwise a committed lock asserts which ROS install

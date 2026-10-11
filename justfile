@@ -4252,7 +4252,7 @@ setup-cli:
     fi
     echo "[setup-cli] building nros CLI (packages/cli)…"
     # profile-literal-ok: host tool: builds the nros CLI itself
-    cargo build --release --manifest-path "$root/packages/cli/Cargo.toml" --bin nros
+    cargo build --release --locked --manifest-path "$root/packages/cli/Cargo.toml" --bin nros
     # phase-302 W5 added this to stop mtime-based scans flagging the CLI stale
     # FOREVER when cargo skipped a relink. Issue 0363 removed that need — those
     # scans are gone and freshness is a content stamp, which a `touch` cannot
@@ -4491,7 +4491,7 @@ setup-launch-resolve:
     # code path to keep in step. Revisit when the vendored pin moves past 0.24.
     export PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
     # profile-literal-ok: host tool: builds nros-launch-resolve
-    cargo build --release --manifest-path "$crate/Cargo.toml"
+    cargo build --release --locked --manifest-path "$crate/Cargo.toml"
     # The Python HALF, and it is not optional packaging — it is half the tool.
     #
     # 0897 W3 made the resolver load an interpreter at RUNTIME instead of linking

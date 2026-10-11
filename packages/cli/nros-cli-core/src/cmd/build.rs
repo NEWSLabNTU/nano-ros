@@ -888,9 +888,8 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     // (it restricts the cache without pinning resolution).
                     a.push("--frozen".to_string());
                 }
-                // A GENERATED entry has a GENERATED lock beside it, and the
-                // PATH shim's project-wide `--locked` (or `--frozen` above)
-                // forbids creating or moving one:
+                // A GENERATED entry has a GENERATED lock beside it, and
+                // `--frozen` above forbids creating or moving one:
                 //
                 //   error: cannot update the lock file … because --frozen
                 //   was passed to prevent this
@@ -905,8 +904,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // missing lock and otherwise touches only the entry itself, so
                 // an unchanged image keeps every version it already resolved
                 // instead of re-resolving the world on each build.
-                // `NROS_CARGO_FLAGS=` because the shim would forbid this step
-                // too. A hand-written entry's EXISTING lock is the user's and is
+                // A hand-written entry's EXISTING lock is the user's and is
                 // left alone; one with NO lock gets one created, because each
                 // entry is its own cargo root now (RFC-0098 D9) and the lock
                 // that used to cover it was the deleted workspace root's —
@@ -930,11 +928,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     if args.offline {
                         u.push("--offline".to_string());
                     }
-                    cargo_prepare = Some(
-                        Handoff::new("cargo", u)
-                            .in_dir(&root)
-                            .with_env("NROS_CARGO_FLAGS", ""),
-                    );
+                    cargo_prepare = Some(Handoff::new("cargo", u).in_dir(&root));
                 }
                 a.extend(args.native_args.iter().cloned());
                 // From the workspace root, which no longer carries anything: the
@@ -1561,9 +1555,7 @@ fn plan_single_package(
         if args.offline {
             u.push("--offline".to_string());
         }
-        Handoff::new("cargo", u)
-            .in_dir(&cwd)
-            .with_env("NROS_CARGO_FLAGS", "")
+        Handoff::new("cargo", u).in_dir(&cwd)
     });
     if args.offline {
         a.push("--frozen".to_string());
@@ -1800,10 +1792,22 @@ pub fn run(args: Args) -> Result<()> {
 
     let plans = plan_builds(&args)?;
     pin_this_project(&args)?;
+    if !args.dry_run {
+        let drifts = drift_before_build(&plans, args.nano_ros_path.clone())?;
+        if !drifts.is_empty() {
+            eyre::bail!("{}", crate::orchestration::drift::report(&drifts));
+        }
+    }
     match drive(&plans, args.dry_run, &mut perform) {
         Ok(()) => {
             if !args.dry_run {
-                record_project_lock(&plans, args.nano_ros_path.clone());
+                let drifts = record_project_lock(&plans, args.nano_ros_path.clone())?;
+                if !drifts.is_empty() {
+                    eyre::bail!(
+                        "the build finished, but it resolved off the pin set.\n{}",
+                        crate::orchestration::drift::report(&drifts)
+                    );
+                }
             }
             Ok(())
         }
@@ -1819,26 +1823,111 @@ pub fn run(args: Args) -> Result<()> {
     }
 }
 
+/// RFC-0104 D9 (phase-485 W4) — what can be checked BEFORE the build: each
+/// cargo root that already has a lock (realigned onto the pins in a checkout,
+/// refused where that cannot be done), and each tool the project lock records.
+fn drift_before_build(
+    plans: &[ResolvedBuild],
+    nano_ros_path: Option<std::path::PathBuf>,
+) -> Result<Vec<crate::orchestration::drift::Drift>> {
+    let mut out = Vec::new();
+    for p in plans {
+        if p.record.project.as_os_str().is_empty() {
+            continue;
+        }
+        let Some(nr) =
+            crate::orchestration::nano_ros_root::resolve(nano_ros_path.clone(), &p.record.project)
+        else {
+            continue;
+        };
+        out.extend(cargo_drift(&p.record, &nr)?);
+        // Tools only OUTSIDE a checkout. Inside one, every tool path is
+        // CONSTRUCTED from the index pin (`<store>/<tool>/<pin>`, issue 1546),
+        // so the build cannot use another version, and the lock's `[tool]` rows
+        // are a gitignored history of past `nros setup` runs — measured stale on
+        // this host for three tools a native build never touches. Where the
+        // lock is the project's own record (RFC-0104 D4), a row the index
+        // no longer names IS drift.
+        if nr.join(nros_build_paths::CHECKOUT_MARKER).is_file() {
+            continue;
+        }
+        let index_path = nr.join("nros-sdk-index.toml");
+        if let Ok(index) = crate::orchestration::sdk_index::SdkIndex::load(&index_path) {
+            let lock = crate::orchestration::sdk_store::SdkLock::load(
+                &crate::orchestration::store::lock_path_for(&p.record.project),
+            )?;
+            out.extend(crate::orchestration::drift::tool_drift(
+                &lock,
+                &index,
+                &crate::orchestration::sdk_index::host_key(),
+            ));
+        }
+    }
+    out.dedup();
+    Ok(out)
+}
+
+/// The cargo kind for every root of one plan.
+fn cargo_drift(
+    rec: &crate::orchestration::project_lock::BuildRecord,
+    nr: &std::path::Path,
+) -> Result<Vec<crate::orchestration::drift::Drift>> {
+    let Some(pins) = crate::orchestration::registry_pins::pin_file(nr)? else {
+        return Ok(Vec::new());
+    };
+    let in_checkout = nr.join(nros_build_paths::CHECKOUT_MARKER).is_file();
+    let mut out = Vec::new();
+    for root in &rec.cargo_roots {
+        let label = root
+            .strip_prefix(&rec.project)
+            .ok()
+            .map(|r| r.display().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| root.display().to_string());
+        out.extend(crate::orchestration::drift::enforce_cargo_root(
+            root,
+            &label,
+            &pins,
+            in_checkout,
+        )?);
+    }
+    Ok(out)
+}
+
 /// RFC-0104 D4 (phase-485 W3) — fold every finished plan into its project's
 /// `nros-sdk.lock`: the sources it read, the West modules it used and each
-/// cargo root's registry set.
+/// cargo root's registry set. Returns what the build resolved off the pin set
+/// (RFC-0104 D9, phase-485 W4): a lock the build created or moved, and a source
+/// read at another commit than its pin.
 ///
 /// After the build, never before: what a build READ is only on disk once it has
-/// run. A failure here is a WARNING — the build succeeded, and the lock is a
-/// record of it, not a condition on it.
-fn record_project_lock(plans: &[ResolvedBuild], nano_ros_path: Option<std::path::PathBuf>) {
+/// run. A failure to WRITE the lock is a warning; drift is not.
+fn record_project_lock(
+    plans: &[ResolvedBuild],
+    nano_ros_path: Option<std::path::PathBuf>,
+) -> Result<Vec<crate::orchestration::drift::Drift>> {
+    let mut drifts = Vec::new();
     for p in plans {
         if p.record.project.as_os_str().is_empty() {
             continue;
         }
         let nr =
             crate::orchestration::nano_ros_root::resolve(nano_ros_path.clone(), &p.record.project);
+        if let Some(nr) = &nr {
+            drifts.extend(cargo_drift(&p.record, nr)?);
+        }
         match crate::orchestration::project_lock::record(&p.record, nr.as_deref()) {
-            Ok(Some(path)) => eprintln!("nros build:   recorded → {}", path.display()),
-            Ok(None) => {}
+            Ok(r) => {
+                if let Some(path) = r.written {
+                    eprintln!("nros build:   recorded → {}", path.display());
+                }
+                drifts.extend(r.drifts);
+            }
             Err(e) => eprintln!("nros build: warning: project lock not recorded: {e:#}"),
         }
     }
+    drifts.dedup();
+    Ok(drifts)
 }
 
 /// RFC-0095 D9 — the first `nros build` writes the pin it used and says so.
@@ -2222,9 +2311,7 @@ fn plan_packages(
                 if args.offline {
                     u.push("--offline".to_string());
                 }
-                Handoff::new("cargo", u)
-                    .in_dir(&pkg.dir)
-                    .with_env("NROS_CARGO_FLAGS", "")
+                Handoff::new("cargo", u).in_dir(&pkg.dir)
             });
             (
                 Driver::Cargo,

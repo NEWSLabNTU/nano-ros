@@ -11,10 +11,8 @@ use std::path::{Path, PathBuf};
 /// `resolver.lockfile-path` key itself; this is only the path, derived once.
 ///
 /// THE PROBLEM. These files spawn `Command::new(env!("CARGO"))`, which is the
-/// real cargo binary the outer test run exported, not the `scripts/bin/cargo`
-/// PATH shim. So the project-wide `--locked` (`NROS_CARGO_FLAGS`, issues
-/// 0359/0378) never reaches the nested command and nothing says what it does to
-/// a lockfile. `check-nested-cargo-lock-discipline` refuses exactly that, and
+/// real cargo binary the outer test run exported, and no outer `--locked`
+/// (issues 0359/0378) reaches it, so nothing says what it does to a lockfile. `check-nested-cargo-lock-discipline` refuses exactly that, and
 /// until issue 1392 it could not see these sites at all: its detector read
 /// `env::var("CARGO")` and not the macro spelling every one of them uses.
 ///

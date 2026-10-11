@@ -234,21 +234,12 @@ else
         "needs no daemon — see book/src/getting-started/installation.md" >&2
 fi
 
-# Issues 0359/0378 — project-wide cargo args, injected by a PATH shim.
-#
-# `Cargo.lock` only means something if builds REFUSE to rewrite it, and cargo
-# has no config key or env var for `--locked` (both verified: `[build] locked`
-# is an "unused config key", `CARGO_LOCKED` is ignored). It is CLI-only.
-#
-# Rather than append the flag at 57 call sites — which would still miss cmake
-# and corrosion, since they invoke `cargo` BY NAME — the flags are defined once
-# here and injected by `scripts/bin/cargo`. Same mechanism this file already
-# uses for `nros`, `play_launch_parser` and `zenohd`.
-#
-# Escape hatch, for a deliberate dependency change:
-#     NROS_CARGO_FLAGS= just <recipe>      # or: just lock-update <crate>
-: "${NROS_CARGO_FLAGS=--locked}"
-export NROS_CARGO_FLAGS
+# Issues 0359/0378 — the `scripts/bin/cargo` PATH shim that injected
+# `--locked` project-wide is RETIRED (phase-485 W4,
+# RFC-0104 D9). A leaf lock is seeded from the registry pin set and checked by
+# `nros build` after resolution; the locked roots' locks are held to the pin set
+# by `check-cargo-registry-pins`, and the recipes that build them pass `--locked`
+# themselves. No variable to set, and no escape hatch to remember.
 
 # pyo3 refuses an interpreter newer than the maximum it knows, and a rolling
 # distro outruns that — this fired as:
@@ -274,10 +265,6 @@ export NROS_CARGO_FLAGS
 # stands.
 : "${PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1}"
 export PYO3_USE_ABI3_FORWARD_COMPATIBILITY
-case ":$PATH:" in
-    *":$_nros_root/scripts/bin:"*) ;;
-    *) export PATH="$_nros_root/scripts/bin:$PATH" ;;
-esac
 
 # `nros` CLI resolution: the in-tree per-checkout binary at
 # `packages/cli/target/release/nros`, built by `just setup-cli`. Each

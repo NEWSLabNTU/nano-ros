@@ -444,8 +444,7 @@ fn a_cmake_workspace_gets_a_root_under_build_unlike_cargo() {
     let cargo_plans = plan_builds(&args(tmp2.path(), &["native"])).expect("plans");
     if let Some(pre) = &cargo_plans[0].configure {
         assert!(
-            pre.display()
-                .starts_with("NROS_CARGO_FLAGS= cargo update --workspace"),
+            pre.display().starts_with("cargo update --workspace"),
             "cargo's pre-step resolves the generated entry's lock: {}",
             pre.display()
         );

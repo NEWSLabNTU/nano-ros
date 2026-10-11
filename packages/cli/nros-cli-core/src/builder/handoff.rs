@@ -358,9 +358,7 @@ mod tests {
         // Issue 0873: the retry must differ from the original in
         // ONE way. Anything else and a cold-cache retry would run a
         // command the caller never authorised.
-        let h = Handoff::new("cargo", vec!["generate-lockfile", "--offline"])
-            .in_dir("/w")
-            .with_env("NROS_CARGO_FLAGS", "");
+        let h = Handoff::new("cargo", vec!["generate-lockfile", "--offline"]).in_dir("/w");
         let online = h.without_offline().expect("it carries --offline");
         assert_eq!(online.args, vec![OsString::from("generate-lockfile")]);
         assert_eq!(online.cwd, h.cwd, "the retry must run in the same dir");

@@ -275,11 +275,11 @@ jobs:
           echo "host workspace fixtures (derived from the cells' tests):"
           printf '  %s\n' "$wss"
           if [ -n "$wss" ]; then
-              NROS_CARGO_FLAGS= just _codegen
+              just _codegen
               while IFS= read -r id; do
                   [ -n "$id" ] || continue
                   echo "=== workspace-fixtures-build.sh linux --id $id ==="
-                  NROS_CARGO_FLAGS= bash scripts/build/workspace-fixtures-build.sh linux --id "$id"
+                  bash scripts/build/workspace-fixtures-build.sh linux --id "$id"
               done <<< "$wss"
           fi
           # DERIVED, not written: one `fixtures-build.sh linux <lang> <rmw>` per

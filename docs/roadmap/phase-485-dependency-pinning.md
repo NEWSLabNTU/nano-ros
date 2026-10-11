@@ -1,7 +1,7 @@
 # Phase 485 — dependency pinning: one pin set, one project lock
 
 **Status (2026-10-11). M1–M3 measured, and the issue-1781 fix landed. W1 has
-landed (the registry pin set), and so have W2 (seeded leaf locks), W3 (the project lock across kinds) and W7 (`nros update`); W4–W6 and W8–W10 are open.** Implements
+landed (the registry pin set), and so have W2 (seeded leaf locks), W3 (the project lock across kinds), W7 (`nros update`) and W4 (the drift check; the shim is retired); W5, W6 and W8–W10 are open.** Implements
 [RFC-0104](../design/0104-dependency-pinning-and-project-lock.md). The RFC's
 D3 and D5 rested on facts that were not yet measured, so M1–M3 ran before any
 implementation and amended the RFC.
@@ -302,6 +302,57 @@ shim's wiring from `activate.sh` and its gates (`check-*` naming the shim).
 
 **Acceptance:** a planted out-of-pin crate, source commit and tool sha each
 fail; `NROS_CARGO_FLAGS` no longer exists.
+
+**Result (2026-10-11) — landed.**
+
+- **The check (`orchestration::drift`).** It runs as a SET comparison in
+  `nros build`, at two points.
+  - **Before the build**, on each cargo root that already has a lock, plus
+    the recorded tools.
+  - **After the build**, on what cargo resolved during it, plus every source
+    the build read.
+
+  Cargo, source and tool drift each print a line naming the remedy (`nros
+  update --crate/--source/--tool`, `git submodule update`, `nros setup`).
+  A refusal after the build makes the command fail even though the native
+  build succeeded, so a resolve that moved off the pins never exits green.
+- **Two refinements**, both measured, both recorded in RFC-0104's changelog:
+  - **Checkout leaves are realigned, not refused.** A leaf lock there is
+    seeded build output; this host had hundreds resolved before W2. So a
+    crate merely off its pin is moved back (`cargo update --precise`) with a
+    `realigned N crate(s)` line. What realignment cannot fix is refused.
+  - **Tool drift only outside a checkout.** Inside one, every tool path is
+    constructed from the index pin, so the gitignored lock's `[tool]` rows
+    are history. The first run refused a native talker build over three
+    stale rows, `arm-none-eabi-gcc`, `play_launch_parser` and `qemu`, none
+    of which that build touches.
+- **Source drift is rung-aware.** Only a tree read from `checkout` or `store`
+  can drift. `env`, `arg`, `project` and `local-edit` are the user's
+  deliberate choices (RFC-0103 D5).
+- **Measured on `examples/native/rust/talker`.**
+  - `libc` planted at 0.2.190 against a pin of 0.2.186 was realigned to
+    0.2.186, and the build exited 0.
+  - `itoa = "0.4"` (no pinned 0.4 range) was refused after the build, `1
+    dependency drift(s)`, exit 1.
+  - Tool drift and source drift outside a checkout are covered by unit
+    tests. The out-of-tree project is W10's.
+- **The shim is retired.**
+  - `scripts/bin/cargo` and its `activate.sh` wiring are gone, and the
+    variable has 0 references outside `docs/`.
+  - `--locked` now lives in the recipes that build a closed-graph root:
+    `setup-cli`, `setup-launch-resolve`, and `nros_cargo_nextest_args`, which
+    every repo-root nextest run uses.
+  - `check-cargo-locked` used to assert the shim was wired. It now asserts
+    the opposite: no shim, the variable named nowhere outside `docs/`, and
+    the three `--locked` sites present.
+  - `nros-sizes-build` stopped reading the variable. Cargo hands a build
+    script no trace of the outer flags, so the variable was the only carrier.
+    The probe keeps its lockfile redirect and `WorkspaceLockGuard`, which did
+    the protecting.
+  - `check-nested-cargo-lock-discipline` is unchanged in substance; its
+    remedy no longer names the variable.
+  - About 30 comments that described the shim in the present tense are
+    reworded.
 
 ### W5 — regenerate on ament change (D5)
 

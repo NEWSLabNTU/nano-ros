@@ -156,6 +156,12 @@ nros_cargo_nextest_profile_args() {
 nros_cargo_nextest_args() {
     nros_cargo_nextest_profile_args || return 1
     nros_nextest_cpu_budget_args
+    # phase-485 W4 (RFC-0104 D9) — every caller runs nextest in the repo-root
+    # workspace, a LOCKED root, so the run refuses to rewrite its tracked
+    # `Cargo.lock`. This is where `--locked` lives now that the PATH shim that
+    # injected it everywhere is retired; a root lock moved off the pin set by
+    # any OTHER invocation is refused by `check-cargo-registry-pins`.
+    echo "--locked"
     return 0
 }
 

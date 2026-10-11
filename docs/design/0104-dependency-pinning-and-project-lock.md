@@ -331,3 +331,19 @@ lock does not move until THEY run `nros update`.
   it. A breaking bump is tried in EVERY root. A root whose manifests refuse
   the new major is reported as a straggler, and the verb refuses only when no
   root can move.
+- 2026-10-11 — D9 implemented (phase-485 W4), with two refinements found by
+  measuring:
+  - In a CHECKOUT, a leaf lock is seeded build output, not a promise. A crate
+    merely off its pin is REALIGNED onto it and reported. What realignment
+    cannot fix is refused: a crate in no pinned range, or a manifest the pin
+    does not satisfy. Outside a checkout, every drift refuses.
+  - Tool drift is checked only outside a checkout. Inside one, every tool
+    path is constructed from the index pin, and the gitignored lock's
+    `[tool]` rows are history: three were measured stale on a host where the
+    build used the pinned tools.
+
+  Source drift is refused only for a tree read from the `checkout` or
+  `store` rung. The `env`, `arg`, `project` and `local-edit` rungs are the
+  user's deliberate choice (RFC-0103 D5), and those trees are recorded as
+  such. The shim is retired, and `--locked` lives in `setup-cli`,
+  `setup-launch-resolve` and `nros_cargo_nextest_args`.

@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
-"""A nested cargo that bypasses the `--locked` PATH shim must say what it does
-to the lockfile.
+"""A nested cargo must say what it does to the lockfile.
+
+Since phase-485 W4 (RFC-0104 D9) the `--locked` PATH shim described below is
+RETIRED, so no outer invocation's lock discipline reaches ANY nested cargo:
+each must carry its own, which is what this gate requires. The history below
+is why the rule exists; the rule itself never depended on the shim.
 
 THE CLASS
 ---------
@@ -173,7 +177,7 @@ LOCK_DISCIPLINE = re.compile(
 FIX = (
     "Either confine the invocation to a subcommand that does not resolve\n"
     "(`metadata --no-deps`, `locate-project`, `--version`), or give it lock\n"
-    "discipline: forward `NROS_CARGO_FLAGS`' `--locked`/`--frozen` when it\n"
+    "discipline: pass `--locked`/`--frozen` when it\n"
     "resolves the workspace lock as-is, and redirect with\n"
     "`--config resolver.lockfile-path=\"<probe dir>/Cargo.lock\"` (seeded from\n"
     "the workspace lock) when it injects a `[patch]` that lock cannot record.\n"
@@ -604,8 +608,8 @@ def main() -> int:
         return 1
     if bad:
         print("check-nested-cargo-lock-discipline: FAIL (issue 1307)")
-        print("  A nested cargo bypasses the `scripts/bin/cargo` --locked shim")
-        print("  ($CARGO is the real binary) and says nothing about the lockfile")
+        print("  A nested cargo ($CARGO is the real binary, and no outer --locked")
+        print("  reaches it) says nothing about the lockfile")
         print("  it may rewrite:")
         print("")
         for rel, lineno, sig, why in bad:
