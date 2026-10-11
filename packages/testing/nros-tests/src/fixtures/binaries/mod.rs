@@ -941,16 +941,10 @@ fn ninja_configure_deps(build_root: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-/// Return the first dependency listed in a make-style `.d` dep-info file whose
-/// mtime is newer than `reference`. Shared by the direct-cargo probe
-/// ([`dep_info_newer_source`], `.d` next to the binary) and the Zephyr probe
-/// (the west staticlib's `.d` vs the linked `zephyr.exe`, which are different
-/// artifacts). Missing/unreadable `.d` → `None` (treated fresh).
-fn dep_file_newer_than(dep_file: &Path, reference: std::time::SystemTime) -> Option<PathBuf> {
-    dep_file_newer_than_for(dep_file, reference).0
-}
-
-/// [`dep_file_newer_than`], plus the dep list it walked.
+/// The first dependency listed in a make-style `.d` dep-info file whose mtime
+/// is newer than `reference`, plus the dep list it walked (truncated at that
+/// entry). The direct-cargo probe's input ([`dep_info_newer_source`], `.d` next
+/// to the binary). Missing/unreadable `.d` → `None` (treated fresh).
 ///
 /// phase-353 W2 direction (3) — the dep list comes back so the caller can put
 /// the whole set through the CONTENT check. `git pull --rebase`,
@@ -1911,20 +1905,107 @@ pub(crate) fn require_prebuilt_binary_fresh_cmake(binary_path: &Path) -> TestRes
     Ok(resolved)
 }
 
-/// Locate the west-built Rust app staticlib's `.d` dep-info under a Zephyr
-/// build root (`<root>/rust/target/<triple>/<profile>/librustapp.d`). The
-/// board triple varies (native_sim = `x86_64-unknown-none`, arm boards
-/// differ), so scan the `rust/target/*/<profile>/` dirs rather than hardcode.
-fn zephyr_staticlib_dep_file(build_root: &Path) -> Option<PathBuf> {
+/// Every cargo staticlib dep-info (`.d`) a Zephyr image links — issue 1794.
+///
+/// Two roads build the Rust half of a Zephyr image, and they leave the `.d` in
+/// different places:
+///
+/// * zephyr-lang-rust (`rust_cargo_application`, a pure-Rust leaf) writes
+///   `<root>/rust/target/<triple>/<profile>/librustapp.d`. Its `build.ninja`
+///   names the archive under a `debug/` dir it never writes (measured on
+///   `build-rs-talker-zenoh`: `debug/librustapp.a` in the manifest, the file
+///   under `nros-fast-release/`), so this road is found by PROFILE, as before.
+/// * the cmake road (Corrosion / `nros_cargo_build`) — every C and C++ image,
+///   and every GENERATED workspace entry, the mixed one included — writes
+///   `<root>/<group>/<triple>/<profile>/lib<crate>.{a,d}`. Only the first road
+///   was looked for, so on these images the Rust closure was watched by no
+///   `.d` at all: the mixed entry links `rust_heartbeat_pkg` and its probe read
+///   `examined 0 input(s)`.
+///
+/// The cmake road is found by asking the BUILD which archives it links: every
+/// `*.a` named in `build.ninja` whose `.d` sits beside it is a cargo unit (a
+/// cmake-built C archive has no `.d`). Asking the manifest rather than walking
+/// for profile dirs is what keeps a leftover profile — an older `.d` the image
+/// no longer links — from reading as an input.
+fn zephyr_staticlib_dep_files(build_root: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
     let profile = cargo_target_profile_dir();
-    let target_root = build_root.join("rust/target");
-    for entry in fs::read_dir(&target_root).ok()?.flatten() {
-        let cand = entry.path().join(&profile).join("librustapp.d");
-        if cand.exists() {
-            return Some(cand);
+    if let Ok(entries) = fs::read_dir(build_root.join("rust/target")) {
+        for entry in entries.flatten() {
+            let cand = entry.path().join(&profile).join("librustapp.d");
+            if cand.is_file() {
+                out.push(cand);
+                break;
+            }
         }
     }
-    None
+    out.extend(ninja_linked_cargo_dep_files(build_root));
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// The `.d` beside each archive `build.ninja` names — see
+/// [`zephyr_staticlib_dep_files`]. Tokens come as a plain relative path, as
+/// `${cmake_ninja_workdir}<rel>`, or inside a link flag
+/// (`-Wl,--whole-archive,<abs>`); the path is the text after the last `,`.
+fn ninja_linked_cargo_dep_files(build_root: &Path) -> Vec<PathBuf> {
+    let Ok(text) = fs::read_to_string(build_root.join("build.ninja")) else {
+        return Vec::new();
+    };
+    let mut out: Vec<PathBuf> = Vec::new();
+    for token in text.split_whitespace() {
+        let token = token.rsplit(',').next().unwrap_or(token);
+        let token = token
+            .strip_prefix("${cmake_ninja_workdir}")
+            .unwrap_or(token);
+        if !token.ends_with(".a") {
+            continue;
+        }
+        let archive = if Path::new(token).is_absolute() {
+            PathBuf::from(token)
+        } else {
+            build_root.join(token)
+        };
+        let dep = archive.with_extension("d");
+        if dep.is_file() && !out.contains(&dep) {
+            out.push(dep);
+        }
+    }
+    out
+}
+
+/// The whole Rust input closure of a Zephyr image, plus the first input newer
+/// than it — issue 1794.
+///
+/// Gathers EVERY input before deciding (issue 0764's rule; the early-return
+/// helper truncates its list at the first newer entry). Nothing is counted
+/// here: the whole set, exempt inputs included, is handed to
+/// [`crate::zephyr::source_dir_is_stale`], which accounts (and exempts) each
+/// file exactly once, so an exemption shows on the `probe:` line. Only the
+/// "first newer" answer skips an exempt input, by the same shared rule.
+fn zephyr_rust_inputs(
+    build_root: &Path,
+    exe_mtime: std::time::SystemTime,
+) -> (Option<PathBuf>, Vec<PathBuf>) {
+    let mut inputs: Vec<PathBuf> = Vec::new();
+    let mut newer: Option<PathBuf> = None;
+    for dep_file in zephyr_staticlib_dep_files(build_root) {
+        for dep_path in staleness::dep_file_paths(&dep_file) {
+            if inputs.contains(&dep_path) {
+                continue; // `libnros_c.d` and `libnros_cpp.d` overlap heavily
+            }
+            if newer.is_none()
+                && staleness::exempt_probe_input(&dep_path).is_none()
+                && let Ok(m) = fs::metadata(&dep_path).and_then(|m| m.modified())
+                && m > exe_mtime
+            {
+                newer = Some(dep_path.clone());
+            }
+            inputs.push(dep_path);
+        }
+    }
+    (newer, inputs)
 }
 
 /// Which leaf a Zephyr image was built FROM — issue 0466.
@@ -1970,9 +2051,11 @@ impl<'a> ZephyrLeafSource<'a> {
 /// `.ninja_deps` does not track the Rust entry/node source; the Rust-source
 /// staleness (the dominant drift for these entries — see the phase-276
 /// stale-image reruns) lives in the staticlib's `.d`. Compare that `.d`'s deps
-/// against the LINKED `zephyr.exe` mtime: a Rust source newer than the image
-/// means west never relinked. Reads the staticlib `.d` + `stat()`; never
-/// builds. Missing `.d` → existence-only fallback.
+/// against the LINKED `zephyr.exe`: a Rust source newer than the image means
+/// west never relinked. Reads the staticlib `.d`s + `stat()`; never builds.
+/// The `.d`s are one of three input sets (Rust closure, authored leaf sources,
+/// recorded configure inputs) compared together, by content, and counted on
+/// the `probe:` line (issue 1794).
 pub(crate) fn require_prebuilt_binary_fresh_zephyr(
     zephyr_exe: &Path,
     src: ZephyrLeafSource<'_>,
@@ -2010,34 +2093,29 @@ pub(crate) fn require_prebuilt_binary_fresh_zephyr(
     }
     staleness::begin_probe();
 
-    // Half 1 — the cargo staticlib's `.d`. Watches the REAL dependency closure
-    // of the Rust half (529 entries for a workspace leaf, generated msg crates
-    // included), which no hand-written candidate list could enumerate. Absent
-    // for a C-only image, which is precisely why it cannot be the only half.
-    // `<build-root>/zephyr/zephyr.exe` → `<build-root>`. Every link in the chain
-    // is genuinely optional — a C-only image has no staticlib `.d` at all — so a
-    // miss anywhere just means half 1 has nothing to say, and half 2 answers.
-    if let Some(build_root) = zephyr_exe.parent().and_then(Path::parent)
-        && let Ok(exe_mtime) = fs::metadata(zephyr_exe).and_then(|m| m.modified())
-        && let Some(dep_file) = zephyr_staticlib_dep_file(build_root)
-        && let Some(newer) = dep_file_newer_than(&dep_file, exe_mtime)
-    {
-        return Err(staleness::stale_error(
-            "Zephyr fixture",
-            zephyr_exe,
-            &newer,
-            "Run `just zephyr build-fixtures` first \
-             (or set NROS_SKIP_FIXTURE_CHECK=1 if you built it another way).",
-        ));
-    }
+    // Half 1 — the Rust closure, from the cargo staticlibs' `.d` (issue 1794:
+    // EVERY staticlib the image links, on both roads). Watches the real
+    // dependency closure (529 entries for a workspace leaf, generated msg
+    // crates included), which no hand-written candidate list could enumerate.
+    //
+    // It no longer returns a verdict of its own. Its inputs join half 2's ONE
+    // content-aware comparison: two comparisons would keep two input sets
+    // against the one `.nros-srcbaseline` and each would read the other's
+    // files as additions. What it keeps is its strictness — an input already
+    // newer than the image makes the no-baseline answer STALE, not fresh.
+    let build_root = zephyr_exe.parent().and_then(Path::parent);
+    let (rust_newer, rust_inputs) = match (
+        build_root,
+        fs::metadata(zephyr_exe).and_then(|m| m.modified()),
+    ) {
+        (Some(root), Ok(exe_mtime)) => zephyr_rust_inputs(root, exe_mtime),
+        _ => (None, Vec::new()),
+    };
 
     // phase-363 W5 — the configure inputs the build recorded, handed to the
     // content-aware check below rather than judged on mtime here.
-    let configure_inputs = zephyr_exe
-        .parent()
-        .and_then(Path::parent)
-        .map(ninja_configure_deps)
-        .unwrap_or_default();
+    let mut measured_inputs = build_root.map(ninja_configure_deps).unwrap_or_default();
+    measured_inputs.extend(rust_inputs);
 
     // Half 2 — issue 0466. The leaf's own AUTHORED sources: `prj.conf`, the
     // board overlays, `CMakeLists.txt`, `src/`, plus the shared core and RMW
@@ -2067,12 +2145,13 @@ pub(crate) fn require_prebuilt_binary_fresh_zephyr(
         src.lang,
         src.rmw,
         src.conf_files,
-        &configure_inputs,
+        &measured_inputs,
+        rust_newer.is_none(),
     ) {
         return Err(staleness::stale_error(
             "Zephyr fixture",
             zephyr_exe,
-            &src_dir,
+            rust_newer.as_deref().unwrap_or(&src_dir),
             "Run `just zephyr build-fixtures` first \
              (or set NROS_SKIP_FIXTURE_CHECK=1 if you built it another way).",
         ));
@@ -7941,7 +8020,7 @@ mod tests {
     }
     /// phase-353 W2 direction (3) — the DEP-INFO arm must be content-aware too.
     ///
-    /// The zephyr arm has consulted `candidates_changed_content` since #147 /
+    /// The zephyr arm has consulted `candidates_changed_content_policy` since #147 /
     /// phase-286 W2; this arm compared raw mtimes, so `git pull --rebase`,
     /// `git stash push/pop` and a branch switch — all of which rewrite tracked
     /// files whose BYTES are identical — turned every prebuilt fixture cold
@@ -8376,5 +8455,57 @@ mod tests {
             stamped_tool("2026-09-24T04:39:46Z\n", "tool:nros-launch-resolve="),
             None
         );
+    }
+
+    /// Issue 1794 — the Zephyr probe finds the Rust closure on BOTH roads, and
+    /// only through archives the build links. Hermetic: a synthetic build root
+    /// carrying the three token shapes measured in real `build.ninja` files,
+    /// a C archive with no `.d`, and a leftover profile the manifest no longer
+    /// names (which a profile-dir walk would have picked up).
+    #[test]
+    fn zephyr_probe_watches_every_linked_cargo_staticlib() {
+        use std::time::{Duration, SystemTime};
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let mk = |rel: &str, body: &str| {
+            let p = root.join(rel);
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(&p, body).unwrap();
+            p
+        };
+        let src = mk("src/lib.rs", "//! input\n");
+        let deps = format!("x: {}\n", src.display());
+        // cmake road, relative + `${cmake_ninja_workdir}` + inside a link flag.
+        mk("nros-rust/t/p/libnros_c.a", "");
+        let c_d = mk("nros-rust/t/p/libnros_c.d", &deps);
+        mk("ws/t/p/libnros_ws_runtime.a", "");
+        let ws_d = mk("ws/t/p/libnros_ws_runtime.d", &deps);
+        let ffi_a = mk("ffi/target/t/q/libffi.a", "");
+        let ffi_d = mk("ffi/target/t/q/libffi.d", &deps);
+        // a cmake C archive (no `.d`) and a leftover profile nothing links.
+        mk("app/libapp.a", "");
+        mk("nros-rust/t/old/libnros_c.a", "");
+        mk("nros-rust/t/old/libnros_c.d", &deps);
+        mk(
+            "build.ninja",
+            &format!(
+                "build zephyr/zephyr.elf: LINK app/libapp.a nros-rust/t/p/libnros_c.a \
+                 ${{cmake_ninja_workdir}}ws/t/p/libnros_ws_runtime.a\n  \
+                 LINK_FLAGS = -Wl,--whole-archive,{}\n",
+                ffi_a.display()
+            ),
+        );
+
+        let mut found = zephyr_staticlib_dep_files(root);
+        found.sort();
+        let mut want = vec![c_d, ws_d, ffi_d];
+        want.sort();
+        assert_eq!(found, want);
+
+        // The closure is gathered whole and deduplicated, with the newer input named.
+        let exe_mtime = SystemTime::UNIX_EPOCH + Duration::from_secs(1);
+        let (newer, inputs) = zephyr_rust_inputs(root, exe_mtime);
+        assert_eq!(inputs, vec![src.clone()]);
+        assert_eq!(newer, Some(src));
     }
 }

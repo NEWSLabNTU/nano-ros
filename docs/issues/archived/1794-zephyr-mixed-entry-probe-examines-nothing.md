@@ -1,7 +1,8 @@
 ---
 id: 1794
 title: "The Zephyr fixture freshness probe reports `examined 0 input(s)` for the mixed workspace entry — half 2 never accounts, and half 1 looks for a `.d` this road does not write"
-status: open
+status: resolved
+resolved: 2026-10-11
 type: bug
 area: [testing]
 severity: medium
@@ -60,3 +61,40 @@ Half 2 accounts through `note_candidate` like every other arm, and half 1
 finds the Rust dep-info the cmake road writes (or says it measured none, via
 `note_unmeasured_input_set`). The mixed cell's `probe:` line then names a
 non-zero count, and `NROS_STRICT_STALENESS_PROBE=1` passes on it.
+
+## Resolution (2026-10-11)
+
+Both gaps closed in `require_prebuilt_binary_fresh_zephyr`, and it is still one
+function every Zephyr resolver goes through.
+
+1. **Half 2 accounts.** `zephyr::source_dir_is_stale` flattens its candidates
+   to files and puts each through `staleness::note_candidate`, the shared
+   accounting + exemption rule, before the content comparison. Each file is
+   counted once.
+2. **Half 1 finds both roads.** `zephyr_staticlib_dep_files` keeps the
+   zephyr-lang-rust lookup (`rust/target/*/<profile>/librustapp.d`, found by
+   profile because that road's `build.ninja` names a `debug/` archive it never
+   writes) and adds every archive `build.ninja` LINKS whose `.d` sits beside it
+   — the cmake road's `nros-rust/…/libnros_c.a`, `libnros_cpp.a`, the
+   generated entry's `libnros_ws_runtime.a`, the C++ FFI image staticlib. Asking
+   the manifest rather than walking profile dirs keeps a leftover profile out.
+   The C single-example images had the same gap: they link `libnros_c.a` and
+   `libnros_rmw_zenoh_staticlib.a` and no `.d` was read.
+3. **One comparison, not two.** Half 1 no longer returns an mtime verdict of
+   its own: its inputs join half 2's single content-aware check, because two
+   checks against the one `.nros-srcbaseline` would each read the other's
+   files as additions. Its strictness stays: when a Rust input is already
+   newer than the image, the no-baseline answer is STALE
+   (`first_sight_is_fresh = false`), as on the cargo dep-info arm.
+
+Measured, same fixtures, `NROS_STRICT_STALENESS_PROBE=1`:
+
+| image | before (main) | after |
+| --- | --- | --- |
+| `build-ws-mixed-entry-zenoh` | `examined 0 input(s)` — DEGRADED, cell refused | 3388 examined, 1 exempt; `zephyr/mixed/entry_pubsub` ran |
+| `build-c-talker-zenoh` | `examined 0` | 3262 examined, 1 exempt |
+| `build-c-listener-zenoh` | `examined 0` — `case_02_zenoh_c_pubsub_e2e` refused | 3262 examined; passed |
+
+Hermetic test: `fixtures::binaries::tests::zephyr_probe_watches_every_linked_cargo_staticlib`
+(the three `build.ninja` token shapes, a C archive with no `.d`, a leftover
+profile nothing links).

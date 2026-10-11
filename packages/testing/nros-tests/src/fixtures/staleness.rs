@@ -24,7 +24,7 @@
 //!
 //! [`exempt_probe_input`] is the single place that decides whether a candidate
 //! dependency is an edit event. It exists because the three probe arms
-//! (`dep_file_newer_than`, `cmake_dep_info_newer_source`,
+//! (`dep_file_newer_than_for`, `cmake_dep_info_newer_source`,
 //! `newest_source_after`) each carried their OWN subset of the exemptions:
 //! cargo-`OUT_DIR` products were skipped by one arm only, and the in-place
 //! header list by two of three. That divergence IS issue 0442, and issue 0196
@@ -424,14 +424,8 @@ fn write_srcbaseline(path: &Path, binary_path: &Path, bin_hash: u64, files: &[Pa
     }
 }
 
-pub(crate) fn candidates_changed_content(
-    binary_path: &Path,
-    candidates: &[PathBuf],
-) -> Option<bool> {
-    candidates_changed_content_policy(binary_path, candidates, true)
-}
-
-/// [`candidates_changed_content`], with the no-baseline answer named.
+/// Whether any of `candidates` changed CONTENT since `binary_path` was last
+/// seen fresh, with the no-baseline answer named.
 ///
 /// `first_sight_is_fresh = true` is the zephyr arm's long-standing behaviour;
 /// `false` keeps the dep-info arm strict, so an artifact whose mtime already

@@ -210,7 +210,10 @@ install an nros-cpp context, not an executor.
 
 **Status 2026-10-11:** done — issue 1535 resolved (PR #1891). `just ci gate`
 6/6 and the `zephyr/mixed/entry_pubsub` cell green on the rebased tree. The
-probe gap found on the way is issue 1794.
+probe gap found on the way is issue
+[1794](../issues/archived/1794-zephyr-mixed-entry-probe-examines-nothing.md),
+resolved: the Zephyr probe counts what it compares and reads every linked
+cargo staticlib's `.d` (mixed entry 0 → 3388 inputs).
 
 ## Out of scope, with where they belong
 
