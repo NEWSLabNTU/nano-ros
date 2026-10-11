@@ -6,7 +6,7 @@ type: tech-debt
 area: [cli, orchestration]
 severity: low
 found: 2026-10-11
-related: []
+related: [0951]
 ---
 
 ## Measured
@@ -17,29 +17,25 @@ fields inside `[deploy.*]` (`board`, `target`, `rmw`) and promised removal at th
 next minor version. That last step, W10.b, is the only item left, and the phase
 was archived on 2026-10-11 with it moved here.
 
-State as phase-383 last measured it (2026-08-31):
+Re-measured 2026-10-12 on main:
 
-1. **The warning is emitted.** `deprecated_deploy_build_field_warnings` is
-   reached from `collect_images` (`packages/cli/nros-cli-core/src/cmd/build.rs`),
-   which every `nros build` passes through. A wiring test asserts it. The
-   deprecation period started when that landed, not at `0.5.0`.
-2. **The version boundary has not been crossed.** The workspace is `0.5.0`.
+1. **The tree is already migrated.** No tracked `system.toml` has a `[deploy.*]`
+   block. Issue 0951 took it from 96 blocks to 0 on 2026-08-31 (`eb20898644`).
+   Placement went to `[host.<name>]`, build facts to `[image.<id>]` and site
+   config to `[board_config.<board>]`. The "42 build fields in about 14 blocks"
+   phase-383 recorded is no longer true.
+2. **The support code is still live, for out-of-tree files.**
+   `SystemToml::deploy` is still parsed (`cargo_metadata_schema.rs`), and the lint
+   `deprecated_deploy_build_field_warnings` (`orchestration/image.rs`) is still
+   reached from `collect_images` in `cmd/build.rs`. The deploy arm of
+   `SystemToml::resolved_rmw` is still consulted below an `[image.*].rmw`.
+3. **The version boundary has not been crossed.** The workspace is `0.5.0`.
    Bumping the minor version is a release decision, not a migration step.
-3. **42 build fields remain, in about 14 deploy blocks, and none has a matching
-   `[image.*]`.** The 20 that duplicated an image key were removed (dry-run
-   output byte-identical before and after). Migrating the rest means creating
-   new image blocks, each a new unit `nros build --all` would build. Several
-   are placement-only deploys (`robot1` / `robot2` with a host `target`), where
-   whether an image should exist is a design question.
-4. **`[deploy.*].rmw` is still read.** `SystemToml::resolved_rmw` is called with
-   a real deploy target from `codegen_system.rs` and `planner.rs`
-   (`nros plan --target`), where an `[image.*].rmw` now outranks it.
 
 ## What 0.6.0 must do
 
-Decide, per remaining deploy block, whether it becomes an image or loses its
-build fields. Then delete the lint, `DEPRECATED_DEPLOY_BUILD_FIELDS`, the
-wiring in `collect_images`, and the deploy arm of `resolved_rmw`.
-
-Re-count first. Phase-383's count went from 37 to 56 between two measurements,
-so treat the numbers above as a starting point only.
+Delete the lint (`deprecated_deploy_build_field_warnings`), its call in
+`collect_images`, the deploy arm of `resolved_rmw` and its precedence test, and
+then the `deploy` table in the schema, so that an old `[deploy.*]` block is
+refused by name rather than silently ignored. Nothing in-tree needs migrating
+first, which `git grep -n '^\[deploy' -- '*.toml'` (empty) confirms.
