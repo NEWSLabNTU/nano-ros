@@ -1066,6 +1066,25 @@ ring overflows 0; the island's gate act still PASS.
 - **simple-autoware-safety-island** has its own phase 9, which consumes this
   phase's items (the violation channel, the arming, the trace hooks) and the
   play_launch phase's keys, and re-runs the board acts on them.
+- **Carved out of [phase-463](archived/phase-463-host-census-reconciles-contract-with-code.md)**
+  when it was archived on 2026-10-12. Both are island-repo work; every
+  nano-ros half they depend on has landed.
+  - **`island-W2` -- the census becomes the island's configure gate.** The
+    island deletes the `NROS_EXECUTOR_MAX_CBS=32` export from its `just build`
+    and builds with `[census]` at `refuse`. The nano-ros halves: issue 1419
+    made `refuse` the default for every bringup on 2026-10-03, and phase-463
+    W6 made a current census the callback count in
+    `check_executor_capacity`, so the export now only hides what the census
+    would report. Acceptance: the island's board build refuses a stale census,
+    and `nros ws entity-census check` passes on its pristine contract
+    (phase-463 W3 measured 53 confirmed rows and one error, the seventh
+    subscription the contract was missing).
+  - **phase-463 W7's replay on the island's own native image.** Run that image
+    60 s with `$NROS_PROFILE_OUT` set, then join the profile with the census
+    and the contract through `scripts/check-profile-against-census.py`
+    (P1-P4). In-tree, `examples/workspaces/derived-tiers-cpp` (the island's
+    shape: 4 derived tiers, 4 timers) passes that join 4 <-> 4. What is still
+    unverified is the island's real graph and its contract `paths.*.output`.
 
 ## Order
 

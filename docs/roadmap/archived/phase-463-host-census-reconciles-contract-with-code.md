@@ -1,16 +1,18 @@
 # phase-463 - the host census: the code's entities, compared with the contract before any image is built
 
-**Archived 2026-10-11.** W0-W4 and W7 landed, W6's nano-ros half landed with issue 1419, and W5's I3(c) was measured on Zephyr `cpp/talker` with W7 (byte-identical `objcopy -O binary`; see W7's status). What remains is `island-W2`, which belongs to the island's own phase doc.
-
-**Status (2026-10-12). Every in-tree wave has landed; the open items are the
-island's own.** W0-W4 landed, and W4's `[census]`
-default is `refuse` (issue 1419: `nros ws entity-census take`, the fixture
-pre-pass). W5: I2, I3(a) and I3(b) gated, I1 holds by construction, I3(c)
-measured on the twelve NuttX ARM images and on Zephyr `cpp/talker` with W7. W6: the nano-ros half landed (a current census replaces the max in
-`check_executor_capacity`); the island half (`island-W2`) is external. W7 (the
-profiling half, a separate GO decision) LANDED 2026-10-07; the island's own 60 s
-replay stays external. Each wave's own Status line below is the current one;
-this line read "W6 open" and "I3c open" after both had landed.
+**Status (2026-10-12). COMPLETE -- archived. Every in-tree wave has landed;
+the island's two items are carved out to
+[phase-474](../phase-474-safety-island-board-findings.md) "Cross-repo".**
+W0-W4 landed, and W4's `[census]` default is `refuse` (issue 1419: `nros ws
+entity-census take`, the fixture pre-pass). W5: I2, I3(a) and I3(b) gated, I1
+holds by construction, I3(c) measured on the twelve NuttX ARM images for the
+census hooks and on Zephyr `cpp/talker` for `profile-mode` (W7). W6: the
+nano-ros half landed (a current census replaces the max in
+`check_executor_capacity`). W7 (the profiling half, a separate GO decision)
+LANDED 2026-10-07, accepted in-tree by `check-profile-against-census.py`.
+Carved out, both island-repo work: `island-W2` (the island's `[census]` flip
+and its deleted `NROS_EXECUTOR_MAX_CBS=32` export) and W7's 60 s replay on the
+island's own native image. Each wave's own Status line below is the current one.
 Opened from the safety-island experiments of 2026-09-20 (E3a/E3b/E3c in the
 island's experiment brief) and from the layer map they produced. Home phase for
 [issue 1419](../../issues/archived/1419-no-layer-reconciles-contract-endpoints-with-the-code.md).
