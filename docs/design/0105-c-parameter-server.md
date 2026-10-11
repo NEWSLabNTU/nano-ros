@@ -135,7 +135,7 @@ the executor's carved region, sized from the image's declarations
 (`[params] store` in the sizing descriptor, `NROS_MAX_PARAMETERS`). The upstream
 header's "Allocates Memory: Yes" rows become "No". Issue 1812 removes the
 remaining heap use in the services, so the whole path runs on an image with no
-heap.
+heap. D10 states the whole RTOS contract this decision is one part of.
 
 ### D6 — The callback, and where it fires
 
@@ -173,7 +173,8 @@ the callback.
 enforced.** Read-only matches rclc. Range enforcement is stricter than rclc and
 matches rclcpp. The range is what `describe_parameters` advertises, so a tool
 that reads it expects a set outside it to be refused. A refused set's reason
-string names the range. ADOPT-BOUNDED: a request rclc accepts can be refused,
+is a static string (`"Value out of range"`). It does not print the range, so
+the callee never formats a double (D10). ADOPT-BOUNDED: a request rclc accepts can be refused,
 never the reverse.
 
 **Local typed sets follow rclc exactly**: type check, callback, write. Read-only
@@ -186,15 +187,24 @@ divergence catalog records it.
 
 When `notify_changed_over_dds` is set, the server creates one publisher on
 `/parameter_events`: type `rcl_interfaces/msg/ParameterEvent`, QoS
-KEEP_LAST(1000) RELIABLE VOLATILE (upstream's `parameter_events` profile). It
+RELIABLE VOLATILE, as upstream's `parameter_events` profile. Its depth is
+upstream's 1000 on a hosted build and a build-time knob
+(`NROS_PARAM_EVENTS_DEPTH`, default 1) on an RTOS, because on a DDS backend a
+reliable writer's history is memory the RMW reserves. Depth is not a QoS
+matching criterion, so a subscriber with upstream's profile still matches. It
 publishes on every successful add, set and delete, from both the local and the
 service path, with one parameter in `new_parameters`, `changed_parameters` or
 `deleted_parameters`, and `node` set to the node's fully qualified name. That is
 what rclc emits, and it is what rqt_reconfigure, `rclcpp::ParameterEventHandler`
 and `AsyncParametersClient::on_parameter_event` consume.
 
-The event is serialised straight from the store into the publisher's buffer.
-The `ParameterEvent` struct is never built. The publisher takes one publisher
+The event is serialised straight from the store into a carved buffer sized at
+build time from the largest event the store can produce (one parameter at the
+configured bounds, plus the node name). The `ParameterEvent` struct is never
+built. `stamp` comes from the executor's clock. That is ROS time when the image
+has one; on a board with no wall clock it is time since boot, which
+`ParameterEvent` consumers only display and never compare. rclc's
+`rcutils_system_time_now` is not called. The publisher takes one publisher
 slot and no queryable slot. The emitter lives in `nros-node` behind
 `param-services`, so the C++ and Rust surfaces can turn it on later without a
 second implementation.
@@ -217,6 +227,50 @@ Removed, with every caller migrated in the same phase:
 The census hook (`on_param_declare`, issue 1556) moves to the new declare path.
 `check-census-hooks-complete` and `check-c-executor-remove-coverage` follow it.
 
+### D10 — The RTOS contract
+
+Every function in `<rclc_parameter/rclc_parameter.h>` holds to this on every
+platform. The header says so once, and each function's doc block says
+"Allocates Memory: No".
+
+1. **The callee never allocates.** No `malloc`, no Rust global allocator, no
+   RMW-side allocation reached from a parameter call. All memory is either the
+   caller's (the server handle, string and array buffers passed in) or the
+   executor's carved backing (the store, the staging slot, the service and
+   event buffers).
+2. **No large stack temporaries.** A `ParameterValue` at the default bounds is
+   about 8.5 KiB, mostly the string array. Today a remote set decodes the
+   incoming value into a stack local before `apply`. That moves into ONE carved
+   staging slot per executor, which is also what the callback's `new` points at
+   for a remote set. A local set needs no staging: `new` points at the caller's
+   own value or buffer, and the store copies it into its slot after the callback
+   accepts. No parameter path may put more than a fixed, documented number of
+   bytes on the calling task's stack, and a test measures it.
+3. **No host services.** Nothing reads a file, an environment variable or
+   `argv`; nothing writes to stdio. Parameter files (`ros2 param load`,
+   `--params-file`) are handled where they live, on the client side, through
+   the set service. `--ros-args -p` overrides (`install_argv_params`) are a
+   hosted-only feature built on `alloc`, and the C surface never depends on it.
+   On a hosted build they still apply, since that is upstream's behaviour where
+   `argv` exists.
+4. **No formatting in the callee.** Service reason strings are static
+   literals. Log lines, where any exist, go through `nros_log` and never format
+   a float.
+5. **No hidden time source.** The only clock read is the executor's, for the
+   event stamp (D8).
+6. **Calling context is the executor's task.** Like rclc, the API is not
+   thread-safe and takes no lock. It may be called from the task that spins the
+   executor, including from inside its callbacks (subject to the re-entrancy
+   refusal), and from nowhere else. It is never ISR-safe. RFC-0002's one
+   executor per task is what makes that sufficient.
+7. **Every capacity is a build-time number with a named knob**, and running out
+   is a return code: `NROS_MAX_PARAMETERS`, `NROS_MAX_PARAM_NAME_LEN`,
+   `NROS_MAX_STRING_VALUE_LEN`, `NROS_MAX_ARRAY_LEN`, `NROS_PARAM_EVENTS_DEPTH`. No
+   path degrades to the heap when one is too small: the current
+   `leak_parameter_storage` fallback is a build error on an image without
+   `alloc` (issue 1812), and a C image whose store was not carved refuses at
+   server init with `NROS_RET_FULL`.
+
 ## Extensions
 
 These are in `<rclc_parameter/rclc_parameter.h>` with rclc-style names because
@@ -224,7 +278,7 @@ rclc has no equivalent:
 
 | Function | Why |
 | --- | --- |
-| `rclc_parameter_declare_{bool,int,double,string}(server, name, default)` | Declare with a default **and keep a launch-file value** for that name, as rclcpp does. rclc's `add_parameter` + `set_*` overwrites a launch value, which matches upstream rclc (it has no overrides) and is kept. Docs and examples lead with `declare_*`. |
+| `rclc_parameter_declare_{bool,int,double,string}(server, name, default)` | Declare with a default **and keep a launch value** for that name, as rclcpp does. Launch values are baked into the image at build time (the launch seeds `nros sync` emits); nothing is read from a file, `argv` or the environment at run time (D10). rclc's `add_parameter` + `set_*` overwrites a launch value, which matches upstream rclc (it has no overrides) and is kept. Docs and examples lead with `declare_*`. |
 | `rclc_parameter_{get,set}_string(server, name, buf, len)` | rclc is bool/int/double only. Strings are bounded by `MAX_STRING_VALUE_LEN`. |
 | `rclc_parameter_{get,set}_{bool,int,double,string}_array` | Arrays are bounded by `MAX_ARRAY_LEN` (32). |
 | `rclc_parameter_get_type`, `rclc_parameter_list` | Read-side helpers the executor family had. |
@@ -238,6 +292,9 @@ rclc has no equivalent:
 | Upstream behaviour | nano-ros | Disposition |
 | --- | --- | --- |
 | Server allocates its storage | No allocation; capacity is build-time | ADOPT-BOUNDED |
+| Event stamp is wall-clock time | Executor clock; time since boot where there is no wall clock | ADOPT-BOUNDED |
+| `/parameter_events` depth 1000 | 1000 hosted; `NROS_PARAM_EVENTS_DEPTH` (default 1) on an RTOS | ADOPT-BOUNDED |
+| Thread safety: none | None, and never ISR-safe | ADOPT |
 | Server init before executor | `RCL_RET_NOT_INIT` | ADOPT-BOUNDED |
 | `Parameter` is a rosidl message | Member-path compatible, not rosidl ABI | ADOPT-BOUNDED (rosidl construction is REFUSE-LOUD) |
 | Names and strings unbounded | `MAX_PARAM_NAME_LEN`, `MAX_STRING_VALUE_LEN` | ADOPT-BOUNDED, over-length returns `RCL_RET_INVALID_ARGUMENT` |
