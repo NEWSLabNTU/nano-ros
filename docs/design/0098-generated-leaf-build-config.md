@@ -251,11 +251,13 @@ hand-written entries and the manifest fallback that served them:
   cargo from the package's own directory).
 - **D6 does not hold on Zephyr yet.** "No user manifest names a board crate"
   is still false for the hand-written Rust west entries: the entry is derivable,
-  the west application around it is not generated (issue 1288). And the phase's
-  acceptance `rg '^\[package\.metadata\.nros\.(deploy|entry|node|component)'
-  examples` cannot return nothing while the selection facade keys on the entry
-  table's presence and workspace node packages declare their class in the
-  manifest (issue 1289); `deploy` returns nothing.
+  the west application around it is not generated (issue 1288). The phase's
+  acceptance `rg` was narrowed to `(deploy|entry)` by issue 1289 (resolved
+  2026-10-12) and returns nothing: an entry is the package an image claims
+  (`leaf_system::claiming_image`), not one an empty `[package.metadata.nros.
+  entry]` marks, and a workspace node package's `[package.metadata.nros.node]`
+  is node REGISTRATION — the Rust `nros_components_register_node` — which D5's
+  deployment retirement does not cover.
 
 ## Amendment — one source for image configuration, on every road (2026-10-07, phase-481)
 

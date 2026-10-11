@@ -97,8 +97,9 @@ and resolved the same day: the 64 KiB Cyclone `Sizing` baseline was gated on
 ran Cyclone's desktop defaults. One predicate now
 (`NROS_RMW_CYCLONEDDS_EMBEDDED_TARGET`); `verify-fvp-runtime` passes in 3.6 s.
 
-Also in this theme: [1289](../issues/1289-workspace-node-tables-still-in-manifests.md)
-(45 node packages still declare their class in `[package.metadata.nros.node]`),
+Also in this theme: [1289](../issues/archived/1289-workspace-node-tables-still-in-manifests.md)
+(resolved 2026-10-12: the node tables are registration and stay; the empty
+entry markers and `default_namespace = "/"` went),
 [1520](../issues/1520-ambiguity-example-cited-everywhere-was-the-manufactured-one.md)
 (the `entry =` ambiguity docs cite), and
 [1511](../issues/1511-no-worked-example-of-entry-customisation.md) (the
