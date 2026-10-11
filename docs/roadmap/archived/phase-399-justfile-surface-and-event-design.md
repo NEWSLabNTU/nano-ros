@@ -54,6 +54,15 @@ else.
 
 ## W1 — `import`, not `mod` — LANDED
 
+> **Superseded 2026-08-30 (`faab1c23bd`).** The decision below was reversed a
+> day after it landed. The justfile now says `mod check 'just/check.just'`, so
+> the gates are spelled `just check <name>` (`just check fast`), and the flat
+> `check-*` names are gone with no forwarders. CLAUDE.md's "What do I type?" row
+> describes the current layout. The text below is the record of the first
+> choice. Where it reads "`import` keeps them flat (`just check fast`)", the
+> flat spelling it meant was `just check-fast`; a later tree-wide rename
+> rewrote it.
+
 `just/check.just`, brought in with **`import`** (which the root file already
 does for `sdk-env.just`), NOT `mod`.
 

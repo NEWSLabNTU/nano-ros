@@ -26,7 +26,7 @@ turns on were originally planned as **fields of the ROS-edition profile**
 (**RFC-0056**) — `humble` keeps XCDR1, `jazzy`+ turns on XCDR2 *(refuted — see
 CORRECTION)*. Sibling phase **phase-41** owns the other edition-profile field
 (RIHS01 type hash for Iron+); **phase-304** coordinates the whole axis + the
-multi-distro test method (this phase's W1b = phase-304 W5's encoding field).
+multi-distro test method (this phase's W1b = phase-304 W5's encoding field; since 2026-10-12 the item lives only here, and phase-304 points to it).
 Originally rooted in issue **#0267** (Control mis-walked after a `domain_bridge`
 republish) — but #0267's cause was the descriptor builder, not the missing
 DHEADER this phase hypothesized, and it is now closed independently.

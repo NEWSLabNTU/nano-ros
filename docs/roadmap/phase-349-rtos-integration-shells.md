@@ -1,9 +1,15 @@
 # Phase 349 — RTOS integration: make FreeRTOS an imported library like the rest
 
-**Status (2026-09-01). W1 LANDED — with it,
+**Status (2026-10-12). W1 LANDED; W2–W6 open.** With W1,
 [phase-348](archived/phase-348-source-time-provider-discovery.md) is complete.
-W2 is UNBLOCKED (its prerequisite exists now; see its note) but not started.
-W3–W6 open.**
+W2 is unblocked but not started.
+
+**Path correction (2026-10-12).** The platform descriptors no longer live under
+`config/<platform>/`. phase-400 W1 (`3164c93a7a`) moved each one beside its
+crate, so the FreeRTOS one is now
+`packages/platform/nros-platform-freertos/nros-platform.toml` (likewise
+`nros-platform-{nuttx,posix,threadx,zephyr}`). W1's bullets below keep the old
+paths, because that was the layout they changed. W2's are rewritten.
 
 **Implements:** [RFC-0072](../design/0072-rtos-integration-nano-ros-is-a-guest.md).
 
@@ -238,11 +244,11 @@ indistinguishable from a live result.
 
 - [ ] `[board.integration]` carries `rtos` and `netstack` as facts, with
       `capabilities`.
-- [ ] The six lwIP-specific lines leave `config/freertos*/` for the zenoh
+- [ ] The six lwIP-specific lines leave `packages/platform/nros-platform-freertos/nros-platform.toml` for the zenoh
       backend descriptor as a `(rtos, netstack)` port row.
 - [ ] `freertos_plus_tcp` gains its row and becomes reachable — zenoh-pico
-      already ships `system/freertos/freertos_plus_tcp/network.c`; nothing in
-      `config/` can select it today.
+      already ships `system/freertos/freertos_plus_tcp/network.c`; no platform
+      descriptor can select it today.
 - [ ] `[build.zenoh]` leaves **every** platform file. Platforms keep
       `[capabilities]`, `[arch.*]`, `compile`, `required_env`.
 

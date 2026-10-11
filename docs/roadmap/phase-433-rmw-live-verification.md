@@ -1,6 +1,11 @@
 # Phase 433 — the RMW contract is closed; proving it works is a different job
 
-**Status (2026-09-06). Not started. Analysis complete, jobs proposed below.**
+**Status (2026-10-12). W0, W1, W3, W5.a and W5 LANDED.** W5 is the scheduled
+live-peer lane over the cells that passed. W2 has run: 17 of 20 cells carry a
+live verdict (`63f142819c`). In W6, job 2 (a QoS event against a live peer,
+`e2d60fef70`) and jobs 3–5 (the advertised-state cell) landed. Still open: W4,
+W6 job 1 (actions), and W7 (an on-target cell that is not QoS).
+The line this replaces said "Not started".
 This phase exists because phase-393 finished the RMW *contract* and said so,
 then wrote its own warning at the bottom: `produced` means something writes a
 slot and something reads it, **not** that either was ever exercised against a

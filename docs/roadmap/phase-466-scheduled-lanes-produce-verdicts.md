@@ -1,5 +1,10 @@
 # phase-466 -- every scheduled lane produces a verdict again
 
+**Status (2026-10-12). All four waves LANDED (#1209–#1212). Acceptance waits
+on issue 1364**: the zephyr CI image is Python 3.10 with no TOML parser, so the
+lanes that read a manifest in it still cannot report. Archive this phase once a
+scheduled run of each lane produces a verdict.
+
 **Status (2026-09-23). IN FLIGHT, four waves, all four claimed and running.**
 This phase was not planned; it was opened from a measurement. Every scheduled
 lane except `pr-verdicts` has failed on every run for eleven days, so the
