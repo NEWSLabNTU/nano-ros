@@ -370,9 +370,11 @@ retries = 2
 # (lease expiry) and reopen, which measured 39.8 s after the restart every run
 # (6 of 6) at the shim's default 10 s lease. That is past the default 60 s
 # ceiling once the outage phase is added, so it gets one more period.
+# Issue 1802: under load the resume took over 50 s in 1 run of 96, so the
+# test's own limit is 75 s and the ceiling is a third period (135 s).
 [[profile.default.overrides]]
 filter = "binary(zenoh_integration) and test(declares_keep_running_across_a_reconnect)"
-slow-timeout = { period = "45s", terminate-after = 2 }
+slow-timeout = { period = "45s", terminate-after = 3 }
 
 # Issue 1732 -- two endings in sequence, each with its own XRCE Agent, a domain
 # checked quiet with the `ros2` CLI, and a 12 s bounded run. 17-25 s solo; one
