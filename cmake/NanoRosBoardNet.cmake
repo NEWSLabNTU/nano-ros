@@ -73,8 +73,23 @@ function(nros_board_net_c board out_var)
     # Two `set()` lines, evaluated in this scope: nothing is written to the
     # build dir, so nothing there can go stale between configures.
     cmake_language(EVAL CODE "${_out}")
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-        "${NROS_BOARD_NET_DESCRIPTOR}")
+    # Ninja canonicalises paths, so one file registered under two spellings
+    # (`cmake/board/../../packages/…` from a board module, the CLI's absolute
+    # one here) is two RERUN_CMAKE outputs for one path: "defined as an output
+    # multiple times", at load, before any rule runs. Compare canonical forms.
+    get_filename_component(_desc "${NROS_BOARD_NET_DESCRIPTOR}" ABSOLUTE)
+    get_property(_deps DIRECTORY PROPERTY CMAKE_CONFIGURE_DEPENDS)
+    set(_seen FALSE)
+    foreach(_d IN LISTS _deps)
+        get_filename_component(_d "${_d}" ABSOLUTE)
+        if(_d STREQUAL _desc)
+            set(_seen TRUE)
+            break()
+        endif()
+    endforeach()
+    if(NOT _seen)
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_desc}")
+    endif()
     set(${out_var} "${NROS_BOARD_NET_C}" PARENT_SCOPE)
     if(_NBN_GATEWAY_VAR)
         set(${_NBN_GATEWAY_VAR} "${NROS_BOARD_NET_GATEWAY}" PARENT_SCOPE)
