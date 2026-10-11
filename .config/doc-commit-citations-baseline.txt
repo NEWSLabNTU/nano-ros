@@ -26,6 +26,18 @@
 
 # ---- FOREIGN ----------------------------------------------------------------
 
+# phase-474 I14-I16 (`docs/roadmap/phase-474-safety-island-board-findings.md`),
+# added by cdbb9a85b7. The four commits were written in the safety-island
+# repository's nano-ros SUBMODULE checkout, not on any branch of this one:
+# GitHub resolves them only through the fork network (no branch or pull request
+# here contains them, measured 2026-10-12). They become ordinary citations
+# when that work is upstreamed — and if it is rebased on the way, the lines
+# here start offending and the gate says so.
+ef3ae60df
+6ad29e721
+6bb0c6305
+2f001fe0e
+
 # zenoh core, cited by RFC-0082 (`docs/design/0082-a-demonstrable-can-stack.md`).
 # The document says so itself — "That commit is not on ..." — and pins the
 # container build to it. Upstream history, not ours.
