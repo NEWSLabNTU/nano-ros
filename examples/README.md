@@ -89,7 +89,7 @@ Each example is a standalone Cargo + CMake package — no walk-up in the manifes
 
 - Prefer vendoring the checkout into your own workspace instead? See [`templates/multi-package-workspace/`](templates/multi-package-workspace/), which documents the path-dep Pattern A layout.
 
-Embedded targets additionally need their SDK env vars (`*_DIR`, `FREERTOS_PORT`, …) — `source activate.sh` in the nano-ros checkout provides them. The RMW is part of the deployment, so it is stated with the rest of it: `[system] rmw = "<backend>"` in the leaf's (or bringup's) `system.toml`, in one place for every language. Supported backend names are `zenoh`, `xrce`, `cyclonedds`, and `uorb`; the legacy dust-DDS `dds` backend was retired in Phase 169. Zephyr keeps its own front-end on top — the `prj-<backend>.conf` Kconfig overlay a west build selects.
+Embedded targets locate their SDK trees through `nros` (the board descriptor states board facts such as the FreeRTOS port) — `source activate.sh` in the nano-ros checkout puts it on PATH. The RMW is part of the deployment, so it is stated with the rest of it: `[system] rmw = "<backend>"` in the leaf's (or bringup's) `system.toml`, in one place for every language. Supported backend names are `zenoh`, `xrce`, `cyclonedds`, and `uorb`; the legacy dust-DDS `dds` backend was retired in Phase 169. Zephyr keeps its own front-end on top — the `prj-<backend>.conf` Kconfig overlay a west build selects.
 
 ## Layout classes
 

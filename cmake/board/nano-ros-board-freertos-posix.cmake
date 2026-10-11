@@ -92,35 +92,15 @@ endforeach()
 set(FREERTOS_CONFIG_DIR "${_NROS_BOARD_CONFIG_DIR}" CACHE PATH
     "Directory containing FreeRTOSConfig.h for freertos-posix" FORCE)
 
-# The port is a BOARD FACT here, so this board SETS it rather than defaulting it.
-#
-# Every other FreeRTOS overlay writes `if(NOT DEFINED FREERTOS_PORT AND NOT
-# DEFINED ENV{FREERTOS_PORT})`, which reads a family-wide default that
-# `activate.sh` exports for the Cortex-M boards:
-#
-#     just/sdk-env.just:4: export FREERTOS_PORT := env("FREERTOS_PORT", "GCC/ARM_CM3")
-#
-# On this board that default can never be right, and deferring to it is not a
-# hypothetical: it compiled `portable/GCC/ARM_CM3/port.c` into a host binary and
-# failed on `configMAX_SYSCALL_INTERRUPT_PRIORITY` — an NVIC macro, undeclared
-# because the POSIX FreeRTOSConfig.h has no NVIC to describe. The error named a
-# macro in a vendored header, three layers from the variable that chose it.
-#
-# The POSIX simulator has exactly one port, so an explicit disagreement is a
-# mistake worth naming rather than overriding in silence. The ENV is not
-# consulted at all: it is a Cortex-M default that says nothing about this board.
-#
-# The path carries `ThirdParty/` because upstream ships the port under
-# `portable/ThirdParty/GCC/Posix` rather than `portable/GCC/…`.
-set(_NROS_BOARD_FREERTOS_PORT "ThirdParty/GCC/Posix")
-if(DEFINED FREERTOS_PORT AND NOT FREERTOS_PORT STREQUAL "${_NROS_BOARD_FREERTOS_PORT}")
-    message(FATAL_ERROR
-        "nano-ros-board-freertos-posix: FREERTOS_PORT is '${FREERTOS_PORT}', but this "
-        "board has exactly one port: '${_NROS_BOARD_FREERTOS_PORT}' (the FreeRTOS POSIX "
-        "simulator). Drop the -DFREERTOS_PORT, or pick a board whose port you meant.")
-endif()
-set(FREERTOS_PORT "${_NROS_BOARD_FREERTOS_PORT}" CACHE STRING
-    "FreeRTOS portable-layer subdir for freertos-posix" FORCE)
+# The port is a BOARD FACT, so this board SETS it (`nros_freertos_board_port`,
+# which every FreeRTOS overlay now uses). Deferring to an inherited
+# `FREERTOS_PORT` was not hypothetical here: the Cortex-M default `activate.sh`
+# used to export compiled `portable/GCC/ARM_CM3/port.c` into a host binary and
+# failed on `configMAX_SYSCALL_INTERRUPT_PRIORITY` — an NVIC macro the POSIX
+# FreeRTOSConfig.h has no reason to define. The POSIX simulator has exactly one
+# port, so a disagreeing `-D` is refused. The path carries `ThirdParty/`
+# because upstream ships it under `portable/ThirdParty/GCC/Posix`.
+nros_freertos_board_port(nano-ros-board-freertos-posix "ThirdParty/GCC/Posix")
 
 # ---------------------------------------------------------------------------
 # Kernel. Two departures from every other FreeRTOS board here, both required by
