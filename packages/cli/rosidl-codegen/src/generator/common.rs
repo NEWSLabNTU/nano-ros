@@ -85,7 +85,7 @@ pub enum GeneratorError {
 }
 
 /// Resolve the borrowed-view field type + full `CdrReader` read expression for
-/// a `borrowed`-mode field (RFC-0033, Phase 229.6, issue 0007).
+/// a `view`-mode field (RFC-0033, Phase 229.6, issue 0007).
 ///
 /// Returns `(view_rust_type, read_expr)`:
 /// - **strings** → `&'a str` via `reader.read_string()?`,
@@ -149,7 +149,7 @@ fn nros_view_for_field(
 }
 
 /// Resolve the borrowed-view **C** field type + the `nros/view.h` reader
-/// function for a `borrowed`-mode field (RFC-0033, Phase 235, issue 0021).
+/// function for a `view`-mode field (RFC-0033, Phase 235, issue 0021).
 ///
 /// Returns `(view_c_type, borrow_fn)` — both `nros/view.h` symbols. All
 /// three readers share the signature
@@ -371,9 +371,9 @@ pub(super) fn cdr_op_rust_method(op: rosidl_lower::CdrOp) -> String {
 ///
 /// | mode | Rust srv/action | C srv/action | C++ srv/action |
 /// | --- | --- | --- | --- |
-/// | `owned` | yes | yes | yes |
+/// | `inline` | yes | yes | yes |
 /// | `heap` | **yes** (0344) | **yes** (0345) | n/a (FFI-delegated) |
-/// | `borrowed` | rejected — see below | rejected | n/a |
+/// | `view` | **yes** (0346) | **yes** (0346) | n/a |
 ///
 /// **C heap (0345).** The premise 0343/0344 recorded — that supporting heap in C
 /// would need every consumer taught to free — was wrong: `nros_service_callback_t`
@@ -383,11 +383,12 @@ pub(super) fn cdr_op_rust_method(op: rosidl_lower::CdrOp) -> String {
 /// The fix was therefore the shared arms (`_c_field.jinja`) plus a generated
 /// `_fini` per payload struct, with no framework or ownership change.
 ///
-/// **Why `borrowed` stays rejected everywhere.** `borrowed` works by emitting a
-/// `{Msg}View<'a>` / `{Msg}_View` alongside the owned struct; the srv/action
-/// templates emit no view type. The mode would therefore silently degrade to
-/// `owned` — the field builder keeps the owned container for the publish path —
-/// which is a wrong answer rather than an error.
+/// **View (0346).** `view` works by emitting a `{Msg}View<'a>` / `{Msg}_View`
+/// alongside the owned struct. Until 0346 the srv/action templates emitted no
+/// view type, so the mode was rejected here rather than silently degrading to
+/// `inline`; they now emit `{Payload}View` / `{Payload}_View` +
+/// `deserialize_view`, so nothing is rejected and this stays as the one place a
+/// future unsupported combination is refused.
 ///
 /// C++ needs no policy here: its templates delegate serialization across the FFI
 /// to the Rust core, so the container type is all that changes.
@@ -516,7 +517,7 @@ pub(super) fn field_to_nros_field_with_mode(
 
     let mut view_rust_type = String::new();
     let mut view_read_expr = String::new();
-    // RFC-0033 `borrowed` (Phase 229.6, issue 0007): the owned `{Msg}` struct
+    // RFC-0033 `view` (Phase 229.6, issue 0007): the owned `{Msg}` struct
     // keeps a default-capacity owned container for the publish path; the
     // additionally-emitted `{Msg}View<'a>` borrows this field zero-copy.
     if field.is_view() {
@@ -694,7 +695,7 @@ pub(super) fn build_c_field(
             return Err(unsupported("heap"));
         }
     }
-    // RFC-0033 `borrowed` (Phase 235, issue 0021): the owned `{Msg}` struct
+    // RFC-0033 `view` (Phase 235, issue 0021): the owned `{Msg}` struct
     // keeps its resolved-capacity container for the publish path; the emitted
     // `{Msg}_View` borrows this field zero-copy.
     if field.is_view() {
@@ -794,7 +795,7 @@ pub(super) fn build_c_field(
 pub(super) enum CppStorage {
     Owned(Option<usize>),
     Heap,
-    /// RFC-0033 `borrowed` (Phase 235): a zero-copy view into the CDR buffer.
+    /// RFC-0033 `view` (Phase 235): a zero-copy view into the CDR buffer.
     /// Carries the resolved owned capacity too — the owned `{Msg}` struct keeps
     /// a fixed-capacity container for the publish path; only `{Msg}View` borrows.
     Borrowed(CppView, Option<usize>),
@@ -842,7 +843,7 @@ impl CppView {
     }
 }
 
-/// Resolve the borrowed C++ view kind for a `borrowed`-mode field. Strings and
+/// Resolve the borrowed C++ view kind for a `view`-mode field. Strings and
 /// byte/numeric sequences borrow; sequences of strings or nested messages are
 /// rejected (no fixed-width byte span) — same policy as Rust and C.
 fn cpp_borrow_kind(
@@ -915,7 +916,7 @@ fn cpp_borrow_kind(
 /// Resolve the per-field storage for a C++ field (RFC-0033). Owned shapes carry
 /// their resolved capacity; `heap` is allowed only for primitive sequences
 /// (rejected for heap strings / sequences of strings / nested messages, and for
-/// `borrowed`). Shared by the C++ header + FFI builders so both agree.
+/// `view`). Shared by the C++ header + FFI builders so both agree.
 pub(super) fn resolve_cap_override(
     field: &rosidl_lower::LoweredField,
     current_package: Option<&str>,

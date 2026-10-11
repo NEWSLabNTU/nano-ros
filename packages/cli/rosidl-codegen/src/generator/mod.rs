@@ -597,7 +597,7 @@ mod tests {
 
     #[test]
     fn test_c_borrowed_view_generation() {
-        // RFC-0033 `borrowed` (Phase 235): a `mode = "view"` field emits a
+        // RFC-0033 `view` (Phase 235): a `mode = "view"` field emits a
         // `{Msg}_View` (borrowed field as an `nros/view.h` view, copied
         // fields owned) + `{Msg}_deserialize_view`, alongside the unchanged
         // owned struct.
@@ -952,8 +952,8 @@ mod tests {
 
     #[test]
     fn test_nros_borrowed_mode_view_and_marker() {
-        // RFC-0033 `borrowed` (Phase 229.6, issue 0007): a byte-sequence field
-        // marked `borrowed` additionally emits `{Msg}View<'a>` (zero-copy slice)
+        // RFC-0033 `view` (Phase 229.6, issue 0007): a byte-sequence field
+        // marked `view` additionally emits `{Msg}View<'a>` (zero-copy slice)
         // + a `{Msg}Borrow` marker, alongside the unchanged owned `{Msg}`.
         let msg = parse_message("uint32 width\nstring encoding\nuint8[] data\n").unwrap();
         let deps = HashSet::new();

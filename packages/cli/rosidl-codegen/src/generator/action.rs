@@ -212,9 +212,9 @@ pub fn generate_nros_action_package(
     let result_msg = format!("{action_name}_Result");
     let feedback_msg = format!("{action_name}_Feedback");
     // Issues 0343/0344 — Rust srv/action share the message deserialize macro
-    // (`_nros_field.jinja`) so `heap` works here; `borrowed` still has no view
-    // type, and the C emitter has no `_fini` to free heap fields with. The
-    // policy table lives on `ensure_supported_storage_for_payload`.
+    // (`_nros_field.jinja`) so `heap` works here, and `view` emits a
+    // `{Payload}View` since issue 0346. The policy table lives on
+    // `ensure_supported_storage_for_payload`.
     ensure_supported_storage_for_payload(
         "action",
         PayloadLang::Rust,
@@ -418,9 +418,9 @@ pub fn generate_nros_inline_action(
     let result_msg = format!("{action_name}_Result");
     let feedback_msg = format!("{action_name}_Feedback");
     // Issues 0343/0344 — Rust srv/action share the message deserialize macro
-    // (`_nros_field.jinja`) so `heap` works here; `borrowed` still has no view
-    // type, and the C emitter has no `_fini` to free heap fields with. The
-    // policy table lives on `ensure_supported_storage_for_payload`.
+    // (`_nros_field.jinja`) so `heap` works here, and `view` emits a
+    // `{Payload}View` since issue 0346. The policy table lives on
+    // `ensure_supported_storage_for_payload`.
     ensure_supported_storage_for_payload(
         "action",
         PayloadLang::Rust,
@@ -686,9 +686,9 @@ pub fn generate_c_action_package(
     let result_msg = format!("{action_name}_Result");
     let feedback_msg = format!("{action_name}_Feedback");
     // Issues 0343/0344 — Rust srv/action share the message deserialize macro
-    // (`_nros_field.jinja`) so `heap` works here; `borrowed` still has no view
-    // type, and the C emitter has no `_fini` to free heap fields with. The
-    // policy table lives on `ensure_supported_storage_for_payload`.
+    // (`_nros_field.jinja`) so `heap` works here, and `view` emits a
+    // `{Payload}View` since issue 0346. The policy table lives on
+    // `ensure_supported_storage_for_payload`.
     ensure_supported_storage_for_payload(
         "action",
         PayloadLang::C,
