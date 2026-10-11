@@ -980,7 +980,7 @@ pub(super) fn build_cpp_field(
             cap,
             current_package: cp,
             is_view: true,
-            borrowed_cpp_type: b.cpp_view_type(),
+            view_cpp_type: b.cpp_view_type(),
         },
         CppStorage::Owned(cap) => CppField {
             name: escaped_name,
@@ -989,7 +989,7 @@ pub(super) fn build_cpp_field(
             cap,
             current_package: cp,
             is_view: false,
-            borrowed_cpp_type: String::new(),
+            view_cpp_type: String::new(),
         },
         CppStorage::Heap => CppField {
             name: escaped_name,
@@ -998,7 +998,7 @@ pub(super) fn build_cpp_field(
             cap: None,
             current_package: cp,
             is_view: false,
-            borrowed_cpp_type: String::new(),
+            view_cpp_type: String::new(),
         },
     }
 }

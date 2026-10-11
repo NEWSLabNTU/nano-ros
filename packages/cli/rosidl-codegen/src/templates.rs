@@ -730,7 +730,7 @@ pub struct CppField {
     pub is_view: bool,
     /// Borrowed view type for `{Msg}View` (`rclcpp::StringView` / `Span<T>` /
     /// `LeSpan<T>`). Empty unless [`is_view`](Self::is_view).
-    pub borrowed_cpp_type: String,
+    pub view_cpp_type: String,
 }
 
 /// Sequence helper struct definition for Rust #[repr(C)]

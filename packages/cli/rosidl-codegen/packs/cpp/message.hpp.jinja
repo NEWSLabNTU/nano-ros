@@ -164,7 +164,7 @@ struct {{ message_name }} {
 struct {{ message_name }}View {
 {%- for field in fields %}
 {%- if field.is_view %}
-    {{ field.borrowed_cpp_type }} {{ field.name }};
+    {{ field.view_cpp_type }} {{ field.name }};
 {%- else %}
     {{ field | cpp_type }} {{ field.name }}{{ field | cpp_array_suffix }} = {};
 {%- endif %}
