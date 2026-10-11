@@ -54,9 +54,9 @@ These features are orthogonal to the three axes above and can be combined freely
 | Feature                  | Description                                                                     |
 |--------------------------|---------------------------------------------------------------------------------|
 | `std`                    | Enables `std`-dependent APIs: `spin()`, `spin_period()`, system clock  |
-| `alloc`                  | Enables heap-dependent APIs: boxed callbacks, `param-services`                  |
+| `alloc`                  | Enables heap-dependent APIs: boxed callbacks, the parameter store heap fallback |
 | `safety-e2e`             | CRC-32 integrity + sequence tracking (AUTOSAR E2E / EN 50159)                   |
-| `param-services`         | ROS 2 parameter service handlers (`~/get_parameters`, etc.). Implies `alloc`.   |
+| `param-services`         | ROS 2 parameter service handlers (`~/get_parameters`, etc.). Uses `alloc` only for its fallback (issue 1812). |
 | `ffi-sync`               | Wraps transport FFI calls in `critical_section::with()` for RTOS reentrancy     |
 | `sync-spin`              | Use spin-lock mutex (default)                                                   |
 | `sync-critical-section`  | Use `critical-section` mutex (for RTIC, Embassy)                                |

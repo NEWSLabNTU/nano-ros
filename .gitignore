@@ -97,6 +97,10 @@ tools/*
 /target-param-services/
 # Issue 1529 -- the third shape: nros-cpp with the parameter store alone.
 /target-param-store/
+# Issue 1812 -- nros-node param-services with no heap: the carved row and the
+# refused (no store) row, one dir each (`scripts/check-param-services-heap-free.sh`).
+/target-param-heap-free/
+/target-param-heap-free-nostore/
 
 # Issue 1472 — `just check test-targets` runs the tests of workspace-excluded
 # crates in its own target dir. Issue 1491: this line was the one scoped dir

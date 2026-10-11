@@ -42,7 +42,7 @@ invisible to `ros2 param`. Its only in-tree callers are its own pins: `nros-c`'s
 
 The "conciliate" direction below is superseded. Nothing is left to
 conciliate. The `alloc` half of phase-382 moved to issue
-[#1812](../1812-param-services-require-alloc.md).
+[#1812](1812-param-services-require-alloc.md).
 
 ## Problem
 

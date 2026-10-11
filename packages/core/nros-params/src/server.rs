@@ -773,6 +773,77 @@ impl<'s> ParameterServer<'s> {
         }
     }
 
+    /// [`apply`](Self::apply), taking the value from a caller-owned STAGING
+    /// slot instead of by value — RFC-0105 D10.2 / issue 1812.
+    ///
+    /// A `ParameterValue` is sized by its largest variant (~8.5 KiB at the
+    /// default bounds), so `apply(value)` puts one on the caller's stack, and
+    /// the wire handler that decoded it put another there before that. A
+    /// remote set decodes into a slot carved from the executor backing and
+    /// hands it here: the same rules, hooks and order as `apply`, and the
+    /// write is a SWAP between the slot and the stored value, so no
+    /// value-sized temporary exists on any path that sets an existing
+    /// parameter. On return `staged` holds the previous value (or whatever it
+    /// held, when the set was refused); its content is scratch.
+    ///
+    /// The one path that still builds an entry is the undeclared add
+    /// (`allow_undeclared`), which places an EMPTY entry first and then swaps
+    /// the value into it; see [`Self::declare_placeholder`].
+    pub fn apply_staged(
+        &mut self,
+        node: NodeKey,
+        name: &str,
+        staged: &mut ParameterValue,
+    ) -> SetParameterResult {
+        if matches!(staged, ParameterValue::NotSet) && self.delete_on_not_set.get(node) {
+            return self.apply_delete(node, name);
+        }
+        let verdict = self.check_apply(node, name, staged);
+        if !verdict.is_success() {
+            return verdict;
+        }
+        if !self.run_on_set_callbacks(node, name, self.get(node, name), Some(staged)) {
+            return SetParameterResult::Rejected;
+        }
+        let idx = match self.find_index(node, name) {
+            Some(idx) => idx,
+            None => match self.declare_placeholder(node, name) {
+                Some(idx) => idx,
+                None => return SetParameterResult::StorageFull,
+            },
+        };
+        match self.table.entries[idx].as_mut() {
+            Some(entry) => {
+                core::mem::swap(&mut entry.param.value, staged);
+                SetParameterResult::Success
+            }
+            None => SetParameterResult::NotFound,
+        }
+    }
+
+    /// Place a `NotSet` entry named `name` on `node` and return its index —
+    /// the undeclared-add half of [`apply_staged`](Self::apply_staged).
+    ///
+    /// Out of line on purpose: an unoptimised build materialises the entry it
+    /// writes, and that frame belongs on the rare path only, never on the
+    /// frame every remote set runs in.
+    #[inline(never)]
+    fn declare_placeholder(&mut self, node: NodeKey, name: &str) -> Option<usize> {
+        let slot = self.find_empty_slot()?;
+        let mut stored = String::new();
+        stored.push_str(name).ok()?;
+        self.table.entries[slot] = Some(ParameterEntry {
+            node,
+            param: Parameter {
+                name: stored,
+                value: ParameterValue::NotSet,
+            },
+            descriptor: None,
+        });
+        self.count += 1;
+        Some(slot)
+    }
+
     /// The delete half of [`apply`](Self::apply) for a node that asked for
     /// [`set_delete_on_not_set`](Self::set_delete_on_not_set): read-only
     /// refuses, the hooks see `(old, None)`, then the parameter is removed.
@@ -2315,6 +2386,108 @@ mod tests {
             SetParameterResult::ReadOnly
         );
         assert!(server.has(NODE, "ro"));
+    }
+
+    /// Issue 1812 / RFC-0105 D10.2 — `apply_staged` is `apply` with the value
+    /// taken from a slot: the same verdict for every row `apply` decides, and
+    /// the same store afterwards. Each row runs on two fresh, identically
+    /// prepared servers, one per entry point.
+    #[test]
+    fn apply_staged_is_apply_from_a_slot() {
+        fn reject(
+            _: NodeKey,
+            name: &str,
+            _: Option<&ParameterValue>,
+            _: Option<&ParameterValue>,
+            _: OnSetContext,
+        ) -> bool {
+            name != "vetoed"
+        }
+        fn prepared(storage: &mut ParameterStorage<4>) -> ParameterServer<'_> {
+            let mut server = ParameterServer::new_in(storage.as_table());
+            assert!(server.declare(NODE, "rate", ParameterValue::Integer(1)));
+            assert!(
+                server.declare_with_descriptor(
+                    NODE,
+                    "ro",
+                    ParameterValue::Integer(1),
+                    Some(
+                        ParameterDescriptor::new("ro", ParameterType::Integer)
+                            .unwrap()
+                            .with_read_only(true)
+                    ),
+                )
+            );
+            assert!(server.declare_with_descriptor(
+                NODE,
+                "typed",
+                ParameterValue::Integer(1),
+                Some(ParameterDescriptor::new("typed", ParameterType::Integer).unwrap()),
+            ));
+            assert!(server.declare(NODE, "vetoed", ParameterValue::Integer(1)));
+            server
+                .add_on_set_parameters_callback(NODE, reject, OnSetContext::new(0))
+                .expect("a free slot");
+            server
+        }
+        // The value is built per row (a `fn`), not held in the table: a
+        // `ParameterValue` is ~8.5 KiB, which is the point of the slot.
+        type Row = (&'static str, fn() -> ParameterValue, bool, bool);
+        let rows: [Row; 7] = [
+            ("rate", || ParameterValue::Integer(7), false, false),
+            ("ro", || ParameterValue::Integer(7), false, false),
+            ("typed", || ParameterValue::Bool(true), false, false),
+            ("vetoed", || ParameterValue::Integer(7), false, false),
+            ("fresh", || ParameterValue::Integer(7), false, false),
+            // allow_undeclared: declares, but the 4-slot table is full.
+            ("fresh", || ParameterValue::Integer(7), true, false),
+            // delete_on_not_set: the rclc remote delete.
+            ("rate", || ParameterValue::NotSet, false, true),
+        ];
+        for (name, value, allow, delete) in rows {
+            let mut a_storage: ParameterStorage<4> = ParameterStorage::new();
+            let mut b_storage: ParameterStorage<4> = ParameterStorage::new();
+            let mut by_value = prepared(&mut a_storage);
+            let mut by_slot = prepared(&mut b_storage);
+            for s in [&mut by_value, &mut by_slot] {
+                s.set_allow_undeclared(NODE, allow);
+                s.set_delete_on_not_set(NODE, delete);
+            }
+            let want = by_value.apply(NODE, name, value());
+            let mut slot = value();
+            let got = by_slot.apply_staged(NODE, name, &mut slot);
+            assert_eq!(got, want, "verdict for `{name}`");
+            for probe in ["rate", "ro", "typed", "vetoed", "fresh"] {
+                assert_eq!(
+                    by_slot.get(NODE, probe).map(ParameterValue::param_type),
+                    by_value.get(NODE, probe).map(ParameterValue::param_type),
+                    "`{probe}` after setting `{name}`"
+                );
+                assert_eq!(
+                    by_slot.get_integer(NODE, probe),
+                    by_value.get_integer(NODE, probe),
+                    "`{probe}` after setting `{name}`"
+                );
+            }
+        }
+
+        // The undeclared add, with room: declared, value swapped in.
+        let mut storage: ParameterStorage<4> = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
+        server.set_allow_undeclared(NODE, true);
+        let mut slot = ParameterValue::Double(2.5);
+        assert_eq!(
+            server.apply_staged(NODE, "fresh", &mut slot),
+            SetParameterResult::Success
+        );
+        assert_eq!(server.get_double(NODE, "fresh"), Some(2.5));
+        assert_eq!(server.len(NODE), 1);
+
+        // A SWAP: the slot comes back holding the value it displaced.
+        let mut slot = ParameterValue::Double(4.0);
+        assert!(server.apply_staged(NODE, "fresh", &mut slot).is_success());
+        assert_eq!(slot.as_double(), Some(2.5));
+        assert_eq!(server.get_double(NODE, "fresh"), Some(4.0));
     }
 
     /// The registry is BOUNDED and says so: the (N+1)th registration is `None`,

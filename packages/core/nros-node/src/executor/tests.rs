@@ -12798,6 +12798,8 @@ fn a_store_carved_from_the_backing_never_asks_the_heap() {
     };
     let backing: &'static mut [core::mem::MaybeUninit<u64>] =
         alloc::boxed::Box::leak(alloc::boxed::Box::new_uninit_slice(sizing.u64_len()));
+    let carved = backing.as_ptr_range();
+    let carved = carved.start as usize..carved.end as usize;
     let _refuse = super::spin::RefuseParameterStore::arm();
     // SAFETY: `backing` is exactly `sizing.u64_len()` words, `'static`, and is
     // handed to this executor alone.
@@ -12822,6 +12824,39 @@ fn a_store_carved_from_the_backing_never_asks_the_heap() {
         executor.get_parameter("b").and_then(|v| v.as_integer()),
         Some(1),
         "values read back from the carved slots"
+    );
+
+    // Issue 1812 — and the SERVICES' state is the backing's too: the state,
+    // its (inline) set of six, the shared buffer pair and the staging slot.
+    // Before 1812 each of these was a heap allocation even over a carved
+    // store, which is what kept `param-services` behind `alloc`.
+    executor.set_node_identity("carved", "/");
+    executor
+        .reconcile_parameter_services()
+        .expect("one set of six over the mock session");
+    let params = executor.params.as_ref().expect("the state exists");
+    assert!(
+        matches!(params, crate::parameter_services::Placed::Carved(_)),
+        "a backing with a store carves the services' state too"
+    );
+    let state: &crate::parameter_services::ParamState<'_> = params;
+    let within = |addr: usize, what: &str| {
+        assert!(
+            carved.contains(&addr),
+            "{what} at {addr:#x} is outside the executor backing {carved:x?}"
+        );
+    };
+    within(state as *const _ as usize, "the parameter-service state");
+    within(&state.staged as *const _ as usize, "the staging slot");
+    assert_eq!(state.services.len(), 1, "one set of six, held inline");
+    within(&state.services[0] as *const _ as usize, "the set of six");
+    within(
+        state
+            .buffers
+            .as_ref()
+            .expect("a carved home brings its pair")
+            .request_addr(),
+        "the request buffer",
     );
 }
 
@@ -12865,6 +12900,14 @@ fn a_backing_that_carved_no_store_falls_back_to_the_heap() {
     assert!(
         heaped.declare_parameter("burst", ParameterValue::Integer(1)),
         "the fallback store is MAX_PARAMETERS long, not the carved zero"
+    );
+    // Issue 1812 — no carved home either, so the state is the heap's.
+    assert!(
+        matches!(
+            heaped.params,
+            Some(crate::parameter_services::Placed::Heap(_))
+        ),
+        "a backing with no store carves no services' home"
     );
 }
 

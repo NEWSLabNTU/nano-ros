@@ -1028,11 +1028,16 @@ compile-smoke:
     # issue 1382's hazard (which is `nros-sizes-build`'s, in nros-c/nros-cpp)
     # does not apply. The feature list is read out of `lib.rs`. ~12 s warm.
     bash scripts/check-feature-gated-modules.sh
+    # Issue 1812 -- and `nros-node` with `param-services` and NO `alloc`: the
+    # services are carved from the executor backing now, and only a build that
+    # turns the heap OFF can say so. Every other build here has `alloc` on.
+    # Positive row (store carved) + negative row (no store: refused by name).
+    bash scripts/check-param-services-heap-free.sh
     echo "compile smoke: workspace + all targets check clean (no lints; see check-build);"
     echo "  nros-c + nros-cpp check clean in the shipped shape ({{C_API_SHIPPED_FEATURES}}),"
     echo "  with param-services (issue 1260), nros-cpp with param-store alone"
-    echo "  (issue 1529), and nros-node per module-gating"
-    echo "  feature alone (issue 1468)."
+    echo "  (issue 1529), nros-node per module-gating"
+    echo "  feature alone (issue 1468), and nros-node param-services heap-free (issue 1812)."
 
 # Check C++ headers: formatting + freestanding syntax + nros-cpp clippy. The
 # clippy (rmw-zenoh-cffi) + syntax probe COMPILE nros-cpp/nros-c (zpico-sys pulls

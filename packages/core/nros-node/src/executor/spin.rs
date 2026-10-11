@@ -735,7 +735,7 @@ pub(crate) fn group_filter_accepts(
 /// board's string/array capacities). No formula and no measured constant: the
 /// compiler's own answer, so the number reported below cannot drift from the
 /// allocation it describes.
-#[cfg(feature = "param-services")]
+#[cfg(all(feature = "param-services", feature = "alloc"))]
 pub const PARAMETER_STORE_BYTES: usize = core::mem::size_of::<nros_params::ParameterStorage>();
 
 /// Issue 1706 -- a TEST seam standing in for a platform heap that returns NULL
@@ -779,6 +779,33 @@ impl Drop for RefuseParameterStore {
 #[cfg(feature = "param-services")]
 #[cold]
 fn report_parameter_store_refused() {
+    // Issue 1812 -- with no heap there was no allocation to refuse: the
+    // backing carved no store, and that is the whole story.
+    #[cfg(not(feature = "alloc"))]
+    {
+        let logger = nros_log::get_logger("nros");
+        nros_log::log_error!(
+            logger,
+            "parameter store refused: this executor's backing carves none and the build has no heap"
+        );
+        nros_log::log_error!(
+            logger,
+            "every parameter declaration on this executor is refused (issue 1812)"
+        );
+        nros_log::log_error!(
+            logger,
+            "open it with ExecutorSizing::params > 0 (NROS_PARAM_STORE=1, NROS_MAX_PARAMETERS)"
+        );
+    }
+    #[cfg(feature = "alloc")]
+    report_parameter_heap_store_refused();
+}
+
+/// The `alloc` half of [`report_parameter_store_refused`]: the heap refused
+/// the store's one allocation (issue 1706).
+#[cfg(all(feature = "param-services", feature = "alloc"))]
+#[cold]
+fn report_parameter_heap_store_refused() {
     let slots = nros_params::MAX_PARAMETERS;
     // THREE short lines, not one sentence: a log backend truncates a long
     // line (Zephyr's cut the first draft at its slot count), and the number
@@ -814,7 +841,7 @@ fn report_parameter_store_refused() {
 /// A `NotSet` declaration has no type to follow, so the text decides: `true` /
 /// `false`, then an integer, then a double, then a string — the order rcl's
 /// YAML reading gives an unquoted scalar.
-#[cfg(feature = "param-services")]
+#[cfg(all(feature = "param-services", feature = "alloc"))]
 fn typed_param_override(
     text: &str,
     declared: &nros_params::ParameterValue,
@@ -1826,14 +1853,24 @@ pub struct Executor<'s> {
     /// Drop joins the worker thread and closes the fd.
     #[cfg(all(feature = "signal-fd-wake", target_os = "linux"))]
     pub(crate) signal_fd: Option<WakeSignalFd>,
+    /// Issue 1812 — CARVED from the backing's [`ParamHome`](super::storage::ParamHome)
+    /// when the sizing carves a store; with `alloc`, one heap allocation
+    /// otherwise. Without `alloc` there is no heap arm, and an executor whose
+    /// backing carves no home refuses parameters by name instead.
     #[cfg(feature = "param-services")]
-    pub(crate) params: Option<alloc::boxed::Box<crate::parameter_services::ParamState<'s>>>,
+    pub(crate) params:
+        Option<crate::parameter_services::Placed<'s, crate::parameter_services::ParamState<'s>>>,
     /// phase-382 W3' — the parameter store's slots, CARVED from this
     /// executor's backing and still uninitialised. Taken (left empty) the
     /// first time something builds the store; empty from the start when the
     /// sizing carved none, in which case the store comes from the heap.
     #[cfg(feature = "param-services")]
     pub(crate) param_slots: &'s mut [MaybeUninit<nros_params::ParameterSlot>],
+    /// Issue 1812 — the services' home, CARVED beside the store's slots and
+    /// still uninitialised. Taken with them; empty when the sizing carved no
+    /// store.
+    #[cfg(feature = "param-services")]
+    pub(crate) param_home: &'s mut [MaybeUninit<super::storage::ParamHome>],
     /// Issue 1706 -- the parameter store's one allocation was refused by the
     /// platform heap. Recorded so the refusal is REPORTED once and not retried
     /// on every declaration: a retry cannot succeed on a heap that only shrinks
@@ -2098,13 +2135,15 @@ impl<'s> Executor<'s> {
             alive_slots,
             slot_tags,
             params: param_slots,
+            param_home,
         } = slices;
         // phase-382 W3' — only an executor that can build a store keeps the
         // carved slots; without `param-services` the region (sized by the
         // build, not by a feature, so the layout never depends on one) is
-        // simply never initialised.
+        // simply never initialised. The services' home (issue 1812) is
+        // zero-sized without the feature.
         #[cfg(not(feature = "param-services"))]
-        let _ = param_slots;
+        let _ = (param_slots, param_home);
         // Slot 0 = the auto-created default Fifo SC (see field doc). carve
         // initialised the whole table to `None`; populate the reserved slot.
         if let Some(slot0) = sched_contexts.first_mut() {
@@ -2197,6 +2236,8 @@ impl<'s> Executor<'s> {
             params: None,
             #[cfg(feature = "param-services")]
             param_slots,
+            #[cfg(feature = "param-services")]
+            param_home,
             #[cfg(feature = "param-services")]
             param_store_refused: false,
             #[cfg(feature = "param-services")]
@@ -9904,6 +9945,7 @@ impl<'s> Executor<'s> {
                             server,
                             services,
                             buffers,
+                            staged,
                             ..
                         } = &mut **params;
                         // phase-426 W3 — one set per node; every set is pumped,
@@ -9915,7 +9957,7 @@ impl<'s> Executor<'s> {
                         // inside, once per service; there is no error to drop.
                         if let Some(buffers) = buffers {
                             for set in services.iter_mut() {
-                                handled += set.process_services(server, buffers);
+                                handled += set.process(server, staged, buffers);
                             }
                         }
                     }
@@ -10591,13 +10633,14 @@ impl<'s> Executor<'s> {
                     server,
                     services,
                     buffers,
+                    staged,
                     ..
                 } = &mut **params;
                 // phase-426 W3 -- one set per node; see the sibling site above,
                 // including why nothing here can discard an error (1270/1271).
                 if let Some(buffers) = buffers {
                     for set in services.iter_mut() {
-                        let n = set.process_services(server, buffers);
+                        let n = set.process(server, staged, buffers);
                         result.services_handled += n;
                         handled += n;
                     }
@@ -10906,7 +10949,7 @@ impl<'s> Executor<'s> {
     /// it without carrying the reconcile's frame (see below).
     #[inline]
     pub(crate) fn parameter_services_pending(&self) -> bool {
-        self.params.as_ref().is_some_and(|p| {
+        self.params.as_deref().is_some_and(|p| {
             p.requested
                 && p.services.len() < self.nodes.len().max(1)
                 // Issue 1268 — a failure that cannot change is not pending
@@ -10930,7 +10973,7 @@ impl<'s> Executor<'s> {
     #[cold]
     #[inline(never)]
     fn report_parameter_service_reconcile_failure(&mut self, e: NodeError) {
-        let Some(params) = self.params.as_mut() else {
+        let Some(params) = self.params.as_deref_mut() else {
             return;
         };
         if params.reconcile_failure_reported {
@@ -10997,7 +11040,7 @@ impl<'s> Executor<'s> {
     /// the first time this was reachable from the spin path.
     #[inline(never)]
     pub(crate) fn reconcile_parameter_services(&mut self) -> Result<(), NodeError> {
-        let Some(params) = self.params.as_ref() else {
+        let Some(params) = self.params.as_deref() else {
             return Ok(());
         };
         if !params.requested {
@@ -11033,17 +11076,24 @@ impl<'s> Executor<'s> {
         // allocated with the first set so an image that declares parameters
         // and serves none pays nothing for it. `params` is `Some` here: the
         // scan above returned early otherwise.
-        if let Some(params) = self.params.as_mut()
+        // Issue 1812 -- a carved home hands its pair over with the state, so
+        // this is reached only on the heap fallback.
+        if let Some(params) = self.params.as_deref_mut()
             && params.buffers.is_none()
         {
             // Issue 1551 — an exhausted heap is an error this fn returns, not
             // an abort through libstd's OOM hook.
-            params.buffers = Some(
-                crate::parameter_services::ParamServiceBuffers::try_with_capacity(
-                    crate::parameter_services::param_service_buffer_bytes(),
-                )
-                .ok_or(NodeError::Transport(TransportError::BadAlloc))?,
-            );
+            #[cfg(feature = "alloc")]
+            {
+                params.buffers = Some(
+                    crate::parameter_services::ParamServiceBuffers::try_with_capacity(
+                        crate::parameter_services::param_service_buffer_bytes(),
+                    )
+                    .ok_or(NodeError::Transport(TransportError::BadAlloc))?,
+                );
+            }
+            #[cfg(not(feature = "alloc"))]
+            return Err(NodeError::Transport(TransportError::BadAlloc));
         }
         for (index, name, namespace) in todo {
             let servers = match self.build_parameter_service_set(
@@ -11060,7 +11110,7 @@ impl<'s> Executor<'s> {
                     // `rcl_interfaces` types), so a later spin asks the same
                     // question and gets the same answer.
                     let permanent = matches!(e, NodeError::Transport(TransportError::Unsupported));
-                    if let Some(params) = self.params.as_mut() {
+                    if let Some(params) = self.params.as_deref_mut() {
                         let mut node_fqn = heapless::String::<256>::new();
                         if let Ok(fqn) = crate::names::fully_qualified_name(&name, &namespace) {
                             let _ = node_fqn.push_str(fqn.as_str());
@@ -11075,16 +11125,15 @@ impl<'s> Executor<'s> {
                     return Err(e);
                 }
             };
-            let services_box: alloc::boxed::Box<
-                dyn crate::parameter_services::ParamServiceProcessor,
-            > = alloc::boxed::Box::new(servers);
+            // Issue 1812 -- the set lives INLINE in the (carved) state now, not
+            // in a box of its own.
             // Issue 0745 — PRESERVE an already-initialized store: launch-param
             // seeding may have run before any node existed (services can't be
             // registered that early). Overwriting here would wipe the seeds.
             match &mut self.params {
                 Some(params) => params
                     .services
-                    .push(services_box)
+                    .push(servers)
                     .map_err(|_| NodeError::NodeTableFull)?,
                 None => {
                     // Issue 0756 — see new_param_state: never build a ParamState
@@ -11094,15 +11143,16 @@ impl<'s> Executor<'s> {
                     if self.param_store_refused {
                         return Err(NodeError::Transport(TransportError::BadAlloc));
                     }
-                    let Some(mut state) =
-                        Self::new_param_state(core::mem::take(&mut self.param_slots))
-                    else {
+                    let Some(mut state) = Self::new_param_state(
+                        core::mem::take(&mut self.param_slots),
+                        core::mem::take(&mut self.param_home),
+                    ) else {
                         self.param_store_refused = true;
                         report_parameter_store_refused();
                         return Err(NodeError::Transport(TransportError::BadAlloc));
                     };
                     state.requested = true;
-                    let _ = state.services.push(services_box);
+                    let _ = state.services.push(servers);
                     self.params = Some(state);
                 }
             }
@@ -11123,7 +11173,7 @@ impl<'s> Executor<'s> {
         }
         // Issue 1271 -- every node is served now, so a later failure (a node
         // registered after this one) is news again and earns its own line.
-        if let Some(params) = self.params.as_mut() {
+        if let Some(params) = self.params.as_deref_mut() {
             params.reconcile_failure_reported = false;
             // Issue 1268 -- and drop the record with it, so a later failure is
             // reported against the node it actually happened on.
@@ -11308,7 +11358,7 @@ impl<'s> Executor<'s> {
         &self,
     ) -> heapless::Vec<crate::names::ResolvedName, { crate::param_sizing::MAX_SERVICE_SETS }> {
         let mut out = heapless::Vec::new();
-        let Some(params) = self.params.as_ref() else {
+        let Some(params) = self.params.as_deref() else {
             return out;
         };
         for set in params.services.iter() {
@@ -11652,7 +11702,10 @@ impl<'s> Executor<'s> {
             if self.param_store_refused {
                 return false;
             }
-            let Some(state) = Self::new_param_state(core::mem::take(&mut self.param_slots)) else {
+            let Some(state) = Self::new_param_state(
+                core::mem::take(&mut self.param_slots),
+                core::mem::take(&mut self.param_home),
+            ) else {
                 self.param_store_refused = true;
                 report_parameter_store_refused();
                 return false;
@@ -11706,7 +11759,7 @@ impl<'s> Executor<'s> {
     /// that does nothing is worse than an absent one.
     fn seed_use_sim_time_default(&mut self, node: super::node_record::NodeId) {
         #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
-        if let Some(params) = self.params.as_mut()
+        if let Some(params) = self.params.as_deref_mut()
             && let Some(seeded) = params.sim_time_seeded.get_mut(node.index())
             && params.server.declare(
                 node.into(),
@@ -11734,7 +11787,7 @@ impl<'s> Executor<'s> {
     fn yield_seeded_use_sim_time(&mut self, node: super::node_record::NodeId, name: &str) -> bool {
         #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
         if name == crate::time_source::USE_SIM_TIME_PARAM
-            && let Some(params) = self.params.as_mut()
+            && let Some(params) = self.params.as_deref_mut()
             && let Some(seeded) = params.sim_time_seeded.get_mut(node.index())
             && core::mem::replace(seeded, false)
         {
@@ -11784,6 +11837,10 @@ impl<'s> Executor<'s> {
     /// caller already has a refusal to return (`declare_parameter` is a
     /// `bool`), so the failure is now one, named by
     /// [`report_parameter_store_refused`] with the size it asked for.
+    ///
+    /// Issue 1812 -- `alloc` only. Without a heap there is no fallback, and
+    /// the store is the carved one or none (see `new_param_state`).
+    #[cfg(feature = "alloc")]
     fn leak_parameter_storage() -> Option<nros_params::ParameterTable<'static>> {
         #[cfg(all(test, feature = "std"))]
         if RefuseParameterStore::armed() {
@@ -11801,50 +11858,53 @@ impl<'s> Executor<'s> {
 
     /// Build the executor's `ParamState`.
     ///
-    /// phase-382 W2' — this is a plain `Box::new` again: `ParameterServer` is
-    /// now a table borrow plus a count, so `ParamState` is tens of bytes and
-    /// nothing about constructing one depends on `MAX_PARAMETERS`. The bulk
-    /// (and issue 0756's placement requirement with it) lives in
-    /// [`leak_parameter_storage`](Self::leak_parameter_storage).
-    ///
     /// phase-382 W3' — `carved` are the backing's store slots: non-empty, they
     /// ARE the store and the heap is not asked; empty, the store falls back to
     /// [`leak_parameter_storage`](Self::leak_parameter_storage).
+    ///
+    /// Issue 1812 — and `home` is the services' carved region, which the
+    /// backing places on the same condition: non-empty, the state, its service
+    /// sets, the buffer pair and the staging slot are built IN it and nothing
+    /// here allocates. Otherwise the state is one heap allocation, initialised
+    /// in place (`ParamState::try_boxed` — it is several KiB now, so never a
+    /// by-value `Box::new`). Without `alloc` that fallback does not exist and
+    /// an executor whose backing carved nothing gets `None`, which every caller
+    /// reports as the named refusal (`report_parameter_store_refused`).
     fn new_param_state(
         carved: &'s mut [MaybeUninit<nros_params::ParameterSlot>],
-    ) -> Option<alloc::boxed::Box<crate::parameter_services::ParamState<'s>>> {
+        home: &'s mut [MaybeUninit<super::storage::ParamHome>],
+    ) -> Option<crate::parameter_services::Placed<'s, crate::parameter_services::ParamState<'s>>>
+    {
         let table = if carved.is_empty() {
-            Self::leak_parameter_storage()?
+            #[cfg(feature = "alloc")]
+            {
+                Self::leak_parameter_storage()?
+            }
+            #[cfg(not(feature = "alloc"))]
+            {
+                return None;
+            }
         } else {
             // Said once per store, so a boot log answers "where did the store
             // come from" without a debugger: issue 1706's measurements were
             // all heap-peak arithmetic, and this line is the direct answer.
             nros_log::log_info!(
                 nros_log::get_logger("nros"),
-                "parameter store: {} slots ({} B) carved from the executor backing",
+                "parameter store: {} slots ({} B) + services ({} B) carved from the executor backing",
                 carved.len(),
-                core::mem::size_of_val(carved)
+                core::mem::size_of_val(carved),
+                core::mem::size_of_val(home)
             );
             nros_params::ParameterTable::init_in(carved)
         };
-        Some(alloc::boxed::Box::new(
-            crate::parameter_services::ParamState {
-                server: nros_params::ParameterServer::new_in(table),
-                argv_overrides: alloc::vec::Vec::new(),
-                // phase-426 W3 — the sets attach in `reconcile_parameter_services`,
-                // one per node, once the node table is populated.
-                services: heapless::Vec::new(),
-                requested: false,
-                // Issue 1270 -- allocated with the first set of services, not here.
-                buffers: None,
-                reconcile_failure_reported: false,
-                reconcile_failure: None,
-                // phase-430 W2 — no node has been auto-declared yet; the caller
-                // (`ensure_parameter_store`) seeds PRIMARY immediately after.
-                #[cfg(feature = "sim-time")]
-                sim_time_seeded: [false; crate::param_sizing::MAX_SERVICE_SETS],
-            },
-        ))
+        let server = nros_params::ParameterServer::new_in(table);
+        match home.first_mut() {
+            Some(home) => Some(crate::parameter_services::ParamHome::init_in(home, server)),
+            #[cfg(feature = "alloc")]
+            None => crate::parameter_services::ParamState::try_boxed(server),
+            #[cfg(not(feature = "alloc"))]
+            None => None,
+        }
     }
 
     /// Install `-p` / `--params-file` parameter overrides — phase-482 W5.
@@ -11868,6 +11928,7 @@ impl<'s> Executor<'s> {
     ///
     /// Fails only when the parameter store could not be allocated (issue 1706),
     /// in which case nothing is installed.
+    #[cfg(feature = "alloc")]
     pub fn install_argv_params<'p, I>(&mut self, params: I) -> Result<usize, NodeError>
     where
         I: IntoIterator<Item = crate::ros_args::ParamArg<'p>>,
@@ -11875,7 +11936,7 @@ impl<'s> Executor<'s> {
         if !self.ensure_parameter_store() {
             return Err(NodeError::Transport(TransportError::BadAlloc));
         }
-        let Some(state) = self.params.as_mut() else {
+        let Some(state) = self.params.as_deref_mut() else {
             return Err(NodeError::Transport(TransportError::BadAlloc));
         };
         let mut n = 0;
@@ -11900,13 +11961,26 @@ impl<'s> Executor<'s> {
     /// applied: it is logged at error severity, naming the parameter, the text
     /// and the type, and the declared default stands (RFC-0015 §9.6 — "log +
     /// ignore, never panic"). An array-typed declaration takes no override yet.
+    #[cfg(not(feature = "alloc"))]
+    fn apply_argv_param_override(
+        &self,
+        _node: super::node_record::NodeId,
+        _name: &str,
+        declared: nros_params::ParameterValue,
+    ) -> (nros_params::ParameterValue, bool) {
+        // Issue 1812 -- argv overrides are a hosted-edge input installed
+        // through `install_argv_params`, which is `alloc`-only.
+        (declared, false)
+    }
+
+    #[cfg(feature = "alloc")]
     fn apply_argv_param_override(
         &self,
         node: super::node_record::NodeId,
         name: &str,
         declared: nros_params::ParameterValue,
     ) -> (nros_params::ParameterValue, bool) {
-        let Some(state) = self.params.as_ref() else {
+        let Some(state) = self.params.as_deref() else {
             return (declared, false);
         };
         if state.argv_overrides.is_empty() {
@@ -12060,7 +12134,7 @@ impl<'s> Executor<'s> {
     /// walking its table.
     #[cold]
     fn report_truncated_descriptions(&mut self) {
-        let Some(params) = self.params.as_mut() else {
+        let Some(params) = self.params.as_deref_mut() else {
             return;
         };
         let nodes = &self.nodes;
@@ -12279,7 +12353,7 @@ impl<'s> Executor<'s> {
         node: super::node_record::NodeId,
         name: &str,
     ) -> Option<&nros_params::ParameterValue> {
-        self.params.as_ref()?.server.get(node.into(), name)
+        self.params.as_deref()?.server.get(node.into(), name)
     }
 
     /// Get an integer parameter value by name from the primary node (convenience).
@@ -12292,12 +12366,12 @@ impl<'s> Executor<'s> {
 
     /// Get a reference to the parameter server (if registered).
     pub fn params(&self) -> Option<&nros_params::ParameterServer<'s>> {
-        self.params.as_ref().map(|p| &p.server)
+        self.params.as_deref().map(|p| &p.server)
     }
 
     /// Get a mutable reference to the parameter server (if registered).
     pub fn params_mut(&mut self) -> Option<&mut nros_params::ParameterServer<'s>> {
-        self.params.as_mut().map(|p| &mut p.server)
+        self.params.as_deref_mut().map(|p| &mut p.server)
     }
 
     /// Create a typed parameter builder (rclrs-compatible API).
@@ -12507,7 +12581,7 @@ impl<'s> Executor<'s> {
         node: super::node_record::NodeId,
         name: &str,
     ) -> Option<nros_params::ParameterType> {
-        self.params.as_ref()?.server.get_type(node.into(), name)
+        self.params.as_deref()?.server.get_type(node.into(), name)
     }
 
     /// [`get_parameter_type_on`](Self::get_parameter_type_on) for the primary
@@ -14013,7 +14087,7 @@ impl<'s> Executor<'s> {
         // The scan is over the executor's own node table, which is the same
         // `u8` index space `NodeKey` wraps, so there is one node identity here
         // and not two.
-        let Some(params) = self.params.as_ref() else {
+        let Some(params) = self.params.as_deref() else {
             return;
         };
         let mut stated = false;

@@ -119,8 +119,10 @@ pub const UNDECLARED_REASON: &str =
 /// the formula sits beside the serializers it bounds, where the test that
 /// serializes the worst messages holds the two together.
 ///
-/// A function rather than a second constant because the buffers are sized at
-/// run time (`ParamServiceBuffers::with_capacity`, in `crate::parameter_services`).
+/// A `const fn` rather than a second constant: it sizes the pair carved into
+/// the executor backing (`HOME_BUFFER_BYTES`, issue 1812) and the heap
+/// fallback's (`ParamServiceBuffers::try_with_capacity`), both in
+/// `crate::parameter_services`.
 #[inline]
 pub(crate) const fn param_service_buffer_bytes() -> usize {
     match crate::config::DECLARED_PARAM_SERVICE_SHAPES {

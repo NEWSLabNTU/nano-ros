@@ -9,7 +9,7 @@ RFC-0020 — the Rust store (`nros-params`) is the implementation and C delegate
 **Closes, when implemented:** issues
 [0793](../issues/archived/0793-c-params-declared-via-legacy-store-invisible-to-ros2.md) and
 [0865](../issues/archived/0865-no-example-registers-parameter-services.md), and the C half
-of [1812](../issues/1812-param-services-require-alloc.md).
+of [1812](../issues/archived/1812-param-services-require-alloc.md).
 **Builds on:** the executor-owned store of
 [phase-382](../roadmap/archived/phase-382-unified-parameter-store-caller-owned.md)
 and the service plumbing of phase-426.
@@ -354,5 +354,10 @@ items are tracked in phase-491 § Progress.
 - **Remote `NOT_SET` deletes** only on nodes served by this API
   (`ParameterServer::set_delete_on_not_set`). rclcpp-shaped nodes in the same
   store keep their semantics.
-- **Not yet:** `/parameter_events` (D8, phase-491 W3), the carved staging slot
-  (D10.2), string-array get/set, and C components (phase-492 W4).
+- **D5 / D10.2 (2026-10-12, phase-491 W7, issue 1812).** The services' state,
+  buffers and the staging slot are carved from the executor backing with the
+  store, so the whole path runs with no heap. A remote set decodes into the
+  slot and applies by swapping it with the stored value
+  (`ParameterServer::apply_staged`).
+- **Not yet:** `/parameter_events` (D8, phase-491 W3), string-array get/set,
+  and C components (phase-492 W4).

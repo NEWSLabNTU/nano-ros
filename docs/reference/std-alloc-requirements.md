@@ -118,15 +118,19 @@ is propagated through the feature chain but does not add any API surface.
 | `TimerCallback` (`Box<dyn FnMut() + Send>`)      | nros-node/timer.rs              | Boxed closure for timer callbacks                     |
 | `Timer::new_with_box()`, `set_callback_box()`    | nros-node/timer.rs              | Construct/update boxed timer callbacks                |
 | `EmbeddedServiceServer::handle_request_boxed()`    | nros-node/handles.rs            | Returns `Box<Reply>` for large response types         |
-| `param-services` feature (all of it)             | nros-node/parameter_services.rs | Service response types (~1MB) require heap allocation |
+| `param-services` heap fallback                   | nros-node/executor/spin.rs      | Store + service state when the backing carves none    |
+| Argv parameter overrides (`-p`, `--params-file`) | nros-node/ros_args.rs           | Owned override strings from the hosted edge           |
 
-**Parameter services detail:** The `param-services` feature (which implies `alloc`)
-provides ROS 2 parameter service handlers for `~/get_parameters`,
-`~/set_parameters`, etc. Response types like `GetParametersResponse` contain
-`heapless::Vec<ParameterValue, 64>` — each `ParameterValue` is large, making the
-total response ~1MB. `Box<Response>` is required to avoid stack overflow.
-The core `ParameterServer` API works without alloc; only the ROS 2 service
-protocol layer requires it.
+**Parameter services detail:** since issue 1812 the `param-services` feature
+does not need `alloc`. The six handlers stream requests and replies, and the
+parameter store, the service state, the shared request/reply buffers and the
+slot a remote set decodes its value into are all carved from the executor
+backing whenever the build knows the image builds a store
+(`NROS_PARAM_STORE=1`, `params:` in the contract, or `param_services` in the
+bringup; capacity `NROS_MAX_PARAMETERS`). Without `alloc`, a build that carves
+no store is refused at compile time and the message names `NROS_PARAM_STORE`.
+With `alloc`, such a build falls back to the heap as before.
+The core `ParameterServer` API works without alloc.
 
 ### Requires `std`
 

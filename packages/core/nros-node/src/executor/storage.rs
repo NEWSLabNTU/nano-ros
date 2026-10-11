@@ -32,6 +32,14 @@ use super::{
 };
 use crate::session::ConcreteSession;
 
+/// Issue 1812 — the parameter services' carved home. A zero-sized stand-in
+/// where the services are not compiled, so the region costs nothing there and
+/// `carve` still has one type to place.
+#[cfg(feature = "param-services")]
+pub(crate) type ParamHome = crate::parameter_services::ParamHome;
+#[cfg(not(feature = "param-services"))]
+pub(crate) type ParamHome = ();
+
 #[cfg(feature = "alloc")]
 type SporadicAtomic = (
     portable_atomic_util::Arc<super::sched_context::AtomicSporadicState>,
@@ -241,6 +249,7 @@ pub(crate) struct ExecutorStorage<
     const ARENA: usize,
     const NODES: usize,
     const PARAMS: usize,
+    const HOMES: usize,
 > {
     arena: [MaybeUninit<u8>; ARENA],
     entries: [Option<CallbackMeta>; CBS],
@@ -264,6 +273,8 @@ pub(crate) struct ExecutorStorage<
     slot_tags: [SlotTag; CBS],
     // phase-382 W3' — the parameter store, LAST.
     params: [MaybeUninit<nros_params::ParameterSlot>; PARAMS],
+    // issue 1812 — the parameter services' home, after the store.
+    param_home: [MaybeUninit<ParamHome>; HOMES],
 }
 
 /// The typed, mutable sub-slices an [`Executor`](super::spin::Executor) borrows
@@ -317,6 +328,11 @@ pub(crate) struct ExecutorSlices<'s> {
     /// boot time. Empty when the sizing carves no store, which is every image
     /// the build does not know to build one ([`ExecutorSizing::params`]).
     pub(crate) params: &'s mut [MaybeUninit<nros_params::ParameterSlot>],
+    /// Issue 1812 — the parameter SERVICES' home ([`ParamHome`]): one when the
+    /// sizing carves a store, none otherwise. Handed over UNINITIALISED, like
+    /// `params`; `ParamHome::init_in` builds the state in it the first time
+    /// something asks for the store.
+    pub(crate) param_home: &'s mut [MaybeUninit<ParamHome>],
 }
 
 /// Byte offsets of each field within the backing + total size/align. Computed
@@ -343,6 +359,7 @@ struct FieldOffsets {
     alive_slots: usize,
     slot_tags: usize,
     params: usize,
+    param_home: usize,
     size: usize,
     align: usize,
 }
@@ -380,6 +397,7 @@ pub const NATIVE_UNITS: RegionUnits = RegionUnits {
     alive_slot: unit_of::<AliveSlot>(),
     slot_tag: unit_of::<SlotTag>(),
     parameter_slot: unit_of::<nros_params::ParameterSlot>(),
+    param_home: unit_of::<ParamHome>(),
 };
 
 /// issue 1197 — publish the backing's TOTAL size as a symbol whose storage size
@@ -428,7 +446,16 @@ const fn counts_for(sizing: ExecutorSizing) -> RegionCounts {
         violations: MAX_VIOLATIONS,
         alloc: cfg!(feature = "alloc"),
         params: sizing.params,
+        param_home: param_homes(sizing),
     }
+}
+
+/// Issue 1812 — how many parameter-service homes a `sizing` carves: one exactly
+/// when it carves a store. The services are what the store is FOR on an image
+/// that declares parameters, so the two travel together, and an image whose
+/// build knows of no store pays for neither (issue 1702's rule).
+pub(crate) const fn param_homes(sizing: ExecutorSizing) -> usize {
+    if sizing.params > 0 { 1 } else { 0 }
 }
 
 const fn compute_offsets(sizing: ExecutorSizing) -> FieldOffsets {
@@ -464,6 +491,7 @@ const fn compute_offsets_with(sizing: ExecutorSizing, units: &RegionUnits) -> Fi
         alive_slots: o.alive_slots,
         slot_tags: o.slot_tags,
         params: o.params,
+        param_home: o.param_home,
         size: o.size,
         align: o.align,
     }
@@ -739,6 +767,11 @@ pub(crate) unsafe fn carve<'s>(
             base.add(o.params) as *mut MaybeUninit<nros_params::ParameterSlot>,
             param_slots,
         );
+        // issue 1812 — no init either: `ParamHome::init_in` builds it in place.
+        let home_s = region_slice(
+            base.add(o.param_home) as *mut MaybeUninit<ParamHome>,
+            param_homes(sizing),
+        );
 
         ExecutorSlices {
             arena: arena_s,
@@ -761,6 +794,7 @@ pub(crate) unsafe fn carve<'s>(
             alive_slots: alive_s,
             slot_tags: tags_s,
             params: params_s,
+            param_home: home_s,
         }
     }
 }
@@ -848,6 +882,7 @@ mod tests {
             alive_slot: RegionUnit { size: 0, align: 1 },
             slot_tag: RegionUnit { size: 0, align: 1 },
             parameter_slot: RegionUnit { size: 0, align: 1 },
+            param_home: RegionUnit { size: 0, align: 1 },
         };
         let arena_only = executor_storage_layout_with(
             ExecutorSizing {
@@ -887,13 +922,15 @@ mod tests {
         // The manual const-fn layout must equal the compiler's `#[repr(C)]` layout
         // of the typed storage — proof the carve offsets are the real field offsets.
         let got = executor_storage_layout(DEFAULT);
-        let want = Layout::new::<ExecutorStorage<CBS, SC, ARENA, NODES, DEFAULT_PARAMS>>();
+        let want = Layout::new::<
+            ExecutorStorage<CBS, SC, ARENA, NODES, DEFAULT_PARAMS, { param_homes(DEFAULT) }>,
+        >();
         assert_eq!(got.size(), want.size(), "size");
         assert_eq!(got.align(), want.align(), "align");
         // phase-382 W3' — and with a store carved, which is the layout every
         // image that declares a parameter links.
         let got = executor_storage_layout(WITH_STORE);
-        let want = Layout::new::<ExecutorStorage<CBS, SC, ARENA, NODES, PARAMS>>();
+        let want = Layout::new::<ExecutorStorage<CBS, SC, ARENA, NODES, PARAMS, 1>>();
         assert_eq!(got.size(), want.size(), "size with a carved store");
         assert_eq!(got.align(), want.align(), "align with a carved store");
     }
@@ -913,6 +950,7 @@ mod tests {
         };
         let mut no_unit = NATIVE_UNITS;
         no_unit.parameter_slot = RegionUnit { size: 0, align: 1 };
+        no_unit.param_home = RegionUnit { size: 0, align: 1 };
         assert_eq!(
             executor_storage_layout(none).size(),
             executor_storage_layout_with(WITH_STORE, no_unit).size(),
@@ -946,7 +984,7 @@ mod tests {
     /// `extra_sessions`' memory, which is not a size bug and no total would show.
     #[test]
     fn every_carved_region_starts_where_repr_c_puts_it() {
-        type Ref = ExecutorStorage<CBS, SC, ARENA, NODES, PARAMS>;
+        type Ref = ExecutorStorage<CBS, SC, ARENA, NODES, PARAMS, 1>;
         let o = compute_offsets(WITH_STORE);
         macro_rules! same {
             ($f:ident) => {
@@ -978,6 +1016,8 @@ mod tests {
         same!(slot_tags);
         // phase-382 W3' — the store, last.
         same!(params);
+        // issue 1812 — and the services' home after it.
+        same!(param_home);
     }
 
     #[test]
@@ -1163,6 +1203,20 @@ mod tests {
         #[cfg(feature = "param-services")]
         {
             ceiling += size_of::<&mut [MaybeUninit<nros_params::ParameterSlot>]>();
+            // issue 1812 -- and one slice reference to the services' home,
+            // which is carved for the same reason, plus the word that says
+            // whether the state is carved or (with `alloc`) boxed. Neither
+            // scales with a knob.
+            ceiling += size_of::<&mut [MaybeUninit<ParamHome>]>();
+            ceiling += size_of::<
+                Option<
+                    crate::parameter_services::Placed<
+                        'static,
+                        crate::parameter_services::ParamState<'static>,
+                    >,
+                >,
+            >()
+            .saturating_sub(size_of::<usize>());
         }
         assert!(
             value <= ceiling,
@@ -1281,6 +1335,8 @@ mod tests {
         assert_eq!(s.group_sched_table.len(), 0);
         // phase-382 W3' — the store region, at this build's implied count.
         assert_eq!(s.params.len(), DEFAULT.params);
+        // issue 1812 — and the services' home, present exactly with a store.
+        assert_eq!(s.param_home.len(), param_homes(DEFAULT));
     }
 
     /// phase-382 W3' — carve a store and USE it, with no allocator anywhere.
@@ -1311,6 +1367,7 @@ mod tests {
         // SAFETY: `backing` is exactly `executor_storage_u64_len(TINY)` words.
         let s = unsafe { carve(backing, TINY) };
         assert_eq!(s.params.len(), PARAMS, "the store's slots are carved");
+        assert_eq!(s.param_home.len(), 1, "and the services' home with them");
         let table = nros_params::ParameterTable::init_in(s.params);
         assert_eq!(table.capacity(), PARAMS);
         assert_eq!(table.occupied(), 0, "carved slots start empty");
