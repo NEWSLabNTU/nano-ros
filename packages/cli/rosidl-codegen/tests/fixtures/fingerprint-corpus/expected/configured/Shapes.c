@@ -205,7 +205,7 @@ int32_t fingerprint_corpus_msg_shapes_deserialize(fingerprint_corpus_msg_shapes*
 }
 
 // =============================================================================
-// Borrowed deserialize (RFC-0033 `borrowed`, Phase 235) — `mode = "borrowed"`
+// Borrowed deserialize (RFC-0033 `view`, Phase 235) — `mode = "view"`
 // fields are pointed into `buffer` (zero-copy); other fields are copied exactly
 // as the owned deserializer does. `out` is zeroed first so unset pointers are
 // NULL. The borrowed views alias `buffer` and are valid only while it lives.

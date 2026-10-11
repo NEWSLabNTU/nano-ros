@@ -155,8 +155,8 @@ struct {{ message_name }} {
 
 {%- if has_borrowed %}
 
-/// Borrowed (zero-copy) view of {{ message_name }} — RFC-0033 `borrowed` mode.
-/// `mode = "borrowed"` fields are `rclcpp::Span`/`StringView`/`LeSpan` pointing
+/// Borrowed (zero-copy) view of {{ message_name }} — RFC-0033 `view` mode.
+/// `mode = "view"` fields are `rclcpp::Span`/`StringView`/`LeSpan` pointing
 /// into the CDR receive buffer (set by `deserialize_view`); other fields
 /// are copied. Layout-compatible with the Rust `{{ message_name }}View` repr.
 /// The borrowed views are valid ONLY while the source buffer lives (e.g. the

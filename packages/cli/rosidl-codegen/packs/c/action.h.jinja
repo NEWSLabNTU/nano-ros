@@ -152,7 +152,7 @@ const struct nros_action_type_t* {{ action_struct_name }}_get_type_support(void)
 
 {%- if has_borrowed_goal %}
 
-/// Borrowed (zero-copy) view of {{ goal_struct_name }} (RFC-0033 `borrowed`, issue 0346).
+/// Borrowed (zero-copy) view of {{ goal_struct_name }} (RFC-0033 `view`, issue 0346).
 /// Borrowed fields point into the source buffer — the raw service/action callback
 /// bytes — and are valid ONLY while it lives. Copy out anything retained.
 typedef struct {{ goal_struct_name }}_View {
@@ -167,7 +167,7 @@ int32_t {{ goal_struct_name }}_deserialize_view({{ goal_struct_name }}_View* out
 
 {%- if has_borrowed_result %}
 
-/// Borrowed (zero-copy) view of {{ result_struct_name }} (RFC-0033 `borrowed`, issue 0346).
+/// Borrowed (zero-copy) view of {{ result_struct_name }} (RFC-0033 `view`, issue 0346).
 /// Borrowed fields point into the source buffer — the raw service/action callback
 /// bytes — and are valid ONLY while it lives. Copy out anything retained.
 typedef struct {{ result_struct_name }}_View {
@@ -182,7 +182,7 @@ int32_t {{ result_struct_name }}_deserialize_view({{ result_struct_name }}_View*
 
 {%- if has_borrowed_feedback %}
 
-/// Borrowed (zero-copy) view of {{ feedback_struct_name }} (RFC-0033 `borrowed`, issue 0346).
+/// Borrowed (zero-copy) view of {{ feedback_struct_name }} (RFC-0033 `view`, issue 0346).
 /// Borrowed fields point into the source buffer — the raw service/action callback
 /// bytes — and are valid ONLY while it lives. Copy out anything retained.
 typedef struct {{ feedback_struct_name }}_View {

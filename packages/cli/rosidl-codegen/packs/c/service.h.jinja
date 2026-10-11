@@ -482,7 +482,7 @@ static inline nros_ret_t {{ service_struct_name }}_client_call(
 
 {%- if has_borrowed_request %}
 
-/// Borrowed (zero-copy) view of {{ request_struct_name }} (RFC-0033 `borrowed`, issue 0346).
+/// Borrowed (zero-copy) view of {{ request_struct_name }} (RFC-0033 `view`, issue 0346).
 /// Borrowed fields point into the source buffer — the raw service/action callback
 /// bytes — and are valid ONLY while it lives. Copy out anything retained.
 typedef struct {{ request_struct_name }}_View {
@@ -497,7 +497,7 @@ int32_t {{ request_struct_name }}_deserialize_view({{ request_struct_name }}_Vie
 
 {%- if has_borrowed_response %}
 
-/// Borrowed (zero-copy) view of {{ response_struct_name }} (RFC-0033 `borrowed`, issue 0346).
+/// Borrowed (zero-copy) view of {{ response_struct_name }} (RFC-0033 `view`, issue 0346).
 /// Borrowed fields point into the source buffer — the raw service/action callback
 /// bytes — and are valid ONLY while it lives. Copy out anything retained.
 typedef struct {{ response_struct_name }}_View {

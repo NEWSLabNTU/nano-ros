@@ -268,7 +268,7 @@ int32_t {{ feedback_struct_name }}_deserialize({{ feedback_struct_name }}* msg, 
 {%- if has_borrowed_goal %}
 
 // =============================================================================
-// Borrowed deserialize (RFC-0033 `borrowed`, issue 0346) — `mode = "borrowed"`
+// Borrowed deserialize (RFC-0033 `view`, issue 0346) — `mode = "view"`
 // fields are pointed into `buffer` (zero-copy); other fields are copied exactly
 // as the owned deserializer does. `out` is zeroed first so unset pointers are
 // NULL. The views alias `buffer`, which for a service/action payload is the raw
@@ -298,7 +298,7 @@ int32_t {{ goal_struct_name }}_deserialize_view({{ goal_struct_name }}_View* out
 {%- if has_borrowed_result %}
 
 // =============================================================================
-// Borrowed deserialize (RFC-0033 `borrowed`, issue 0346) — `mode = "borrowed"`
+// Borrowed deserialize (RFC-0033 `view`, issue 0346) — `mode = "view"`
 // fields are pointed into `buffer` (zero-copy); other fields are copied exactly
 // as the owned deserializer does. `out` is zeroed first so unset pointers are
 // NULL. The views alias `buffer`, which for a service/action payload is the raw
@@ -328,7 +328,7 @@ int32_t {{ result_struct_name }}_deserialize_view({{ result_struct_name }}_View*
 {%- if has_borrowed_feedback %}
 
 // =============================================================================
-// Borrowed deserialize (RFC-0033 `borrowed`, issue 0346) — `mode = "borrowed"`
+// Borrowed deserialize (RFC-0033 `view`, issue 0346) — `mode = "view"`
 // fields are pointed into `buffer` (zero-copy); other fields are copied exactly
 // as the owned deserializer does. `out` is zeroed first so unset pointers are
 // NULL. The views alias `buffer`, which for a service/action payload is the raw

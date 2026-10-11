@@ -131,8 +131,8 @@ struct Shapes {
     }
 };
 
-/// Borrowed (zero-copy) view of Shapes — RFC-0033 `borrowed` mode.
-/// `mode = "borrowed"` fields are `rclcpp::Span`/`StringView`/`LeSpan` pointing
+/// Borrowed (zero-copy) view of Shapes — RFC-0033 `view` mode.
+/// `mode = "view"` fields are `rclcpp::Span`/`StringView`/`LeSpan` pointing
 /// into the CDR receive buffer (set by `deserialize_view`); other fields
 /// are copied. Layout-compatible with the Rust `ShapesView` repr.
 /// The borrowed views are valid ONLY while the source buffer lives (e.g. the
