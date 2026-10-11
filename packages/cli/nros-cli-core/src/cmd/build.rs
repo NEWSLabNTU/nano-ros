@@ -1110,6 +1110,12 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 if preamble.is_file() {
                     a.push(format!("-DNROS_WS_PREAMBLE={}", preamble.display()));
                 }
+                // Issue 1827 — the bringup this image is built from. The
+                // configure's board-facts lookup asked the WORKSPACE, and a
+                // workspace with two bringups (`realtime-c`) is an ambiguity
+                // the verb refuses, so FreeRTOS images there got no
+                // `FREERTOS_PORT` and `zpico-sys` panicked.
+                a.push(format!("-DNROS_BRINGUP_DIR={}", bringup_dir.display()));
                 // RFC-0094 D1 — where stage 3.5 put this image's answer. The
                 // configure READS it; it does not re-derive it.
                 //
