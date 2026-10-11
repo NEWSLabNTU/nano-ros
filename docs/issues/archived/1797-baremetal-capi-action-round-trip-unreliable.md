@@ -103,5 +103,8 @@ Both `(QemuBaremetal, C|Cpp, Zenoh, Action)` cells are `Runtime`, and
 case now prints BOTH images' transcripts, since "the server answered" vs "the
 goal never arrived" is the first question.
 
-Not verified: the ESP32-C3 QEMU bare-metal board, the other `ZPICO_SMOLTCP`
-consumer (not provisioned here).
+Not verified, and nothing to verify against: the ESP32-C3 QEMU bare-metal
+board, the other `ZPICO_SMOLTCP` consumer. ESP32 support has been dormant
+since 2026-10-07 (issue [1525](1525-esp32-c-cpp-has-no-build-road.md)): its
+code is kept, but no lane builds, tests or provisions it. Re-check this fix
+there if ESP32 is revived.
