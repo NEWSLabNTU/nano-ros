@@ -216,13 +216,18 @@ else
 fi
 
 fixture_rmws=(zenoh)
+# Cyclone leaves on the 3.7 line whose configure would have no host idlc —
+# reported at the end (issue 1777), never dropped silently.
+idlc_missing_ids=()
 if [ "$zephyr_version" != "4.4" ]; then
     fixture_rmws=(zenoh xrce)
-    nros_store_root="${NROS_HOME:-$HOME/.nros}/sdk"
-    if command -v idlc >/dev/null 2>&1 \
-        || [ -n "$(ls "$nros_store_root"/cyclonedds/*/bin/idlc 2>/dev/null)" ] \
-        || [ -x "$nros_root/build/cyclonedds/bin/idlc" ] \
-        || [ -x "$nros_root/build/install/bin/idlc" ]; then
+    # issue 1777 — the ONE host-idlc probe, in the Cyclone configure's own
+    # search order. This used to be a private spelling that enumerated
+    # `<store>/cyclonedds/*/bin` (a sibling checkout's pin could answer — issue
+    # 1546) and ignored IDLC_EXECUTABLE, which the configure reads first.
+    # shellcheck source=scripts/lib/host-idlc.sh
+    source "$nros_root/scripts/lib/host-idlc.sh"
+    if nros_host_idlc "$nros_root" >/dev/null; then
         fixture_rmws+=(cyclonedds)
     fi
 fi
@@ -370,8 +375,17 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
     # them unconditionally (a row is an identity, not a host capability), so the
     # skip moves here — which is also what lets `check-zephyr-fixture-rows.py`
     # compare the two sides per-RMW instead of demanding raw set equality.
+    #
+    # issue 1777 — and a dropped leaf the run SELECTED is no longer silent: its
+    # id is collected AFTER the filter below and reported as a
+    # `NROS_ZEPHYR_IDLC_MISSING:` line on stderr, which `just/zephyr-ci.just`
+    # turns into the lane's verdict (a failure when the lane was named or
+    # coordinate-scoped — issue 1758). The emitter itself stays exit 0: the
+    # gates that run it read-only on an idlc-less host must keep working.
+    idlc_drop=0
     if [ "$rmw" = "cyclonedds" ] && ! printf '%s\n' "${fixture_rmws[@]}" | grep -qx cyclonedds; then
-        continue
+        [ "$zephyr_version" = "4.4" ] && continue
+        idlc_drop=1
     fi
 
     # issue 0549 — logging-smoke is an ORDINARY leaf now. It used to be gated
@@ -469,6 +483,10 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
     if [ -n "$fixture_filter" ] && ! [[ "$filter_haystack" =~ $fixture_filter ]]; then
         continue
     fi
+    if [ "$idlc_drop" = "1" ]; then
+        idlc_missing_ids+=("$id")
+        continue
+    fi
     selected=$((selected + 1))
     sig_file="$build_dir/.nros-zephyr-fixture.sig"
     sig="$(printf '%s\n' \
@@ -534,7 +552,10 @@ done < <(python3 "$nros_root/scripts/build/fixtures-manifest.py" west-leaves "${
 # answer from "this script failed". The filter also narrows the
 # `[[compile_check_fixture]]` west rows (`west-fixtures.sh`, same exit code), so
 # `just zephyr build-fixtures` fails only when NEITHER half matched.
-if [ "$selected" -eq 0 ]; then
+if [ "${#idlc_missing_ids[@]}" -gt 0 ]; then
+    echo "NROS_ZEPHYR_IDLC_MISSING: ${#idlc_missing_ids[@]} selected cyclonedds leaf(s) not emitted: ${idlc_missing_ids[*]}" >&2
+fi
+if [ "$selected" -eq 0 ] && [ "${#idlc_missing_ids[@]}" -eq 0 ]; then
     echo "zephyr-fixture-leaves: no records matched filter: $fixture_filter" >&2
     exit 3
 fi

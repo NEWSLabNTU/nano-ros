@@ -391,6 +391,84 @@ def validate_compile_check_fixtures(entries):
     return len(seen)
 
 
+_KCONFIG_RMW = re.compile(r"^\s*CONFIG_NROS_RMW_([A-Z0-9_]+)\s*=\s*y\s*$")
+_USE_BOARD = re.compile(r"^\s*nano_ros_use_board\(\s*([A-Za-z0-9_.-]+)")
+# zephyr/Kconfig `choice NROS_RMW_BACKEND` — `default NROS_RMW_ZENOH`.
+WEST_KCONFIG_DEFAULT_RMW = "zenoh"
+
+
+def _board_default_rmw(name):
+    """`[board.zephyr] default_rmw` of the board descriptor named `name`, the
+    value `nano_ros_use_board()` caches as `NANO_ROS_RMW` (via the board
+    projection's `NROS_BOARD_DEFAULT_RMW`). Read from the tracked descriptors."""
+    listed = subprocess.run(
+        ["git", "ls-files", "-z", "--", "packages/boards/*nros-board.toml"],
+        cwd=SCRIPT_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    for rel in listed.split("\0"):
+        if not rel:
+            continue
+        with open(SCRIPT_ROOT / rel, "rb") as f:
+            doc = tomllib.load(f)
+        for board in doc.get("board", []):
+            if name in board.get("names", []):
+                return (board.get("zephyr") or {}).get("default_rmw")
+    return None
+
+
+def west_compile_check_rmw(entry):
+    """The RMW a `west-*` compile-check row's image selects — issue 1777.
+
+    DERIVED from the row's own build inputs, never authored beside them (an
+    `rmw =` key here would be a second statement of what the conf files
+    already say, and would drift the first time one moved). Precedence is the
+    configure's:
+
+      1. `-DNANO_ROS_RMW=<x>` in `west_extra`;
+      2. the board crate's `default_rmw`, when the app calls
+         `nano_ros_use_board(<board>)` — its RMW snippet is merged as an
+         EXTRA_CONF_FILE, after the app's own conf;
+      3. the last `CONFIG_NROS_RMW_<X>=y` across the row's CONF_FILE list
+         (`-DCONF_FILE=` in `west_extra`, else the app's `prj.conf`);
+      4. the Kconfig choice default.
+
+    Returns None for a non-west row. The west lane asks this to know which rows
+    need a host `idlc` BEFORE configuring them.
+    """
+    if entry.get("builder") not in WEST_COMPILE_CHECK_BUILDERS:
+        return None
+    app = SCRIPT_ROOT / entry.get("dir", "") / entry.get("west_subdir", ".")
+    extra = entry.get("west_extra", "")
+    defs = {}
+    for tok in extra.split():
+        if tok.startswith("-D") and "=" in tok:
+            key, _, val = tok[2:].partition("=")
+            defs[key.split(":")[0]] = val
+    if defs.get("NANO_ROS_RMW"):
+        return defs["NANO_ROS_RMW"].lower()
+    cmakelists = app / "CMakeLists.txt"
+    if cmakelists.is_file():
+        for line in cmakelists.read_text(encoding="utf-8").splitlines():
+            m = _USE_BOARD.match(line)
+            if m:
+                rmw = _board_default_rmw(m.group(1))
+                if rmw:
+                    return rmw
+    rmw = None
+    for conf in (defs.get("CONF_FILE") or "prj.conf").split(";"):
+        path = app / conf
+        if not path.is_file():
+            continue
+        for line in path.read_text(encoding="utf-8").splitlines():
+            m = _KCONFIG_RMW.match(line)
+            if m:
+                rmw = m.group(1).lower()
+    return rmw or WEST_KCONFIG_DEFAULT_RMW
+
+
 def compile_check_record(entry):
     """One \x1f-separated record: id, builder, dir, pkg, manifest_dir, target,
     profiles, output, west_subdir, west_board, west_extra.
@@ -2029,6 +2107,11 @@ def main():
             if a.id and e.get("id") != a.id:
                 continue
             if a.builder and e.get("builder") != a.builder:
+                continue
+            # issue 1777 — `--rmw` selects the west rows whose DERIVED RMW is
+            # that backend (`west_compile_check_rmw`); a non-west row has no
+            # RMW to match and is never selected by it.
+            if a.rmw and west_compile_check_rmw(e) != a.rmw:
                 continue
             entries.append(e)
 

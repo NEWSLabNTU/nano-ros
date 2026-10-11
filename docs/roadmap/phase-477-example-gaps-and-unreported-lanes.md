@@ -117,7 +117,8 @@ roots the census found, and `just check example-build-coverage` (188/194 built,
   — a `west-configure` fixture counts a failed configure as built when its
   declared output is written before the generate step. **Resolved 2026-10-10
   (D1):** the rows declare `build.ninja`, gated by `validate-compile-checks`;
-  the Cyclone provisioning red it uncovers is issue 1777.
+  the Cyclone provisioning red it uncovers is issue
+  [1777](../issues/archived/1777-west-cyclone-rows-without-idlc.md) (resolved 2026-10-11).
 - **The FVP lanes were exempt on a false premise** (2026-10-05). Five recipes
   (`build-/run-fvp-ws-entry`, `build-/run-fvp-board-import`,
   `verify-fvp-runtime`) were excluded from "a NAMED lane must work" as
@@ -312,6 +313,10 @@ the tier-1 job of run 37945434581.
 declare `build.ninja`, gated by `validate-compile-checks`; `require_west_fixture`
 requires the build stamp; D2 needed no lane change, tier 2 already builds the
 five rows). The Cyclone provisioning red D1 exposes is issue 1777.
+**Issue [1777](../issues/archived/1777-west-cyclone-rows-without-idlc.md)
+resolved 2026-10-11 (option 2):** the Zephyr lane asks for a host `idlc`
+(`scripts/lib/host-idlc.sh`) before configuring a Cyclone row — derived by
+`west_compile_check_rmw` — and fails with the remedy instead of at configure.
 
 ## Checkpoint — 2026-10-10 (session stopped here)
 

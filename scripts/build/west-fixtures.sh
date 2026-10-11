@@ -166,6 +166,34 @@ records="$(python3 "$repo_root/scripts/build/fixtures-manifest.py" \
 fixture_filter="${NROS_ZEPHYR_FIXTURE_FILTER:-}"
 [ -z "$fixture_filter" ] || echo "west-fixtures: filter: $fixture_filter"
 
+# issue 1777 — a Cyclone row's configure needs a host `idlc`, so ASK before
+# configuring one, the way the FreeRTOS/ThreadX lanes ask before their Cyclone
+# passes. Without this, `west_bringup_zephyr_cyclone_user_config` and
+# `west_board_import` (whose board crate defaults `NANO_ROS_RMW` to cyclonedds)
+# reached their configure on a runner with no idlc and died there, one
+# `host Cyclone idlc not found` per row, behind ~1 minute of sync + configure
+# each.
+#
+# WHICH rows: the manifest's DERIVATION of each row's RMW
+# (`west_compile_check_rmw` — the conf files / board crate the configure itself
+# reads), never a list here. WHERE the idlc is: `nros_host_idlc`, the one probe,
+# in the configure's own search order. A SELECTED row whose tool is missing is
+# a FAILURE (issue 1758), counted in the tally below like any other — the
+# other rows still build.
+# shellcheck source=scripts/lib/host-idlc.sh
+source "$repo_root/scripts/lib/host-idlc.sh"
+# A failed query is not "no Cyclone rows" (the 1249/1466 shape): fatal.
+cyclone_ids=""
+for _wf_b in west-build west-configure; do
+    if ! _wf_ids="$(python3 "$repo_root/scripts/build/fixtures-manifest.py" \
+        list-compile-checks --builder "$_wf_b" --rmw cyclonedds)"; then
+        echo "west-fixtures: FAILED — could not derive which $_wf_b rows select cyclonedds (above)" >&2
+        exit 1
+    fi
+    cyclone_ids+="$(printf '%s\n' "$_wf_ids" | cut -d$'\x1f' -f1)"$'\n'
+done
+host_idlc="$(nros_host_idlc "$repo_root")" || host_idlc=""
+
 n=0
 # issue 0700 — see the exit check at the end of the loop.
 failed=0
@@ -233,6 +261,17 @@ while IFS= read -r record; do
         n=$((n + 1))
         reused=$((reused + 1))
         continue
+    fi
+
+    if [[ $'\n'"$cyclone_ids" == *$'\n'"$id"$'\n'* ]]; then
+        if [ -z "$host_idlc" ]; then
+            echo "   FAILED $id — not configured: its image selects rmw=cyclonedds, and" >&2
+            echo "   $(nros_host_idlc_missing_reason native "Cyclone west rows")." >&2
+            echo "   (The Zephyr lane's own provisioning, \`just zephyr setup\`, runs that nros setup.)" >&2
+            failed=$((failed + 1))
+            continue
+        fi
+        echo "   host idlc: $host_idlc"
     fi
 
     rm -rf "$bld"
