@@ -3,11 +3,16 @@ id: 1301
 title: "The NuttX link lane builds its own cargo command and delivers no BOARD
   facts — and `check-board-facts-delivery` cannot see it, because the gate reads
   two directories and the lane is in a third"
-status: open
+status: resolved
 type: tech-debt
 area: [build, boards]
 related: [1142, 0529, 0196]
+resolved_in: "57fdfc4d9b"
 ---
+
+## Resolution (2026-10-12)
+
+Fixed on main by `57fdfc4d9b`. `nros-nuttx.cmake` calls `nros_resolve_board_facts()` and puts the result on its cargo env, and the gate now reads every tracked cmake file (#1541). Found during the re-homing sweep when phase-448 was archived. The original report follows.
 
 ## What
 

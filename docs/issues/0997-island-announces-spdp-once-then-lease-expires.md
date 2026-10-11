@@ -4,8 +4,10 @@ title: "The timed-event tree empties itself on FreeRTOS: the SPDP resend is sche
 status: open
 area: [rmw, platform, embedded]
 severity: high
-related: [0917, 0888, phase-177]
+related: [0917, 0888, phase-177, phase-441]
 ---
+
+**Home: [phase-441](../roadmap/phase-441-rmw-on-target-verification.md)** — re-homed 2026-10-12 from phase-414, which is archived.
 
 # The announcements are correct, on schedule, and then they stop
 

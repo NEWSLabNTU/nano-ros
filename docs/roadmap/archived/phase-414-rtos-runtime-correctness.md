@@ -1,6 +1,15 @@
 # Phase 414 — RTOS runtime correctness: the e2e failures that reproduce SOLO
 
-**Archived 2026-10-12.** All five original work items were closed by 2026-09-04. Of the three issues the phase adopted later, 0968 is resolved; 0997 and 1004 are still open and stand on their own (both list phase-177 as related), so the phase no longer holds anything they need. Issues 1034 and 1281 cite it as background only.
+**Status (2026-10-12). COMPLETE — archived 2026-10-12.** All five work items
+were closed on 2026-09-04. The phase then stayed open only for the issues it had
+adopted, and the status line below overstated that by calling the phase done.
+Re-checked 2026-10-12: #1004 is fixed and archived (`a6c8e8b56e`), and #0968 was
+already archived. #0997 moved to
+[phase-441](../phase-441-rmw-on-target-verification.md). #1281, the riscv NuttX
+router session that was never reproduced, has no active phase that fits, so it
+is left unhomed. #1034 was resolved under phase-424's sweep.
+
+**Archive note as first written (2026-10-12), before the re-check above; its "0997 and 1004 are still open" no longer holds.** All five original work items were closed by 2026-09-04. Of the three issues the phase adopted later, 0968 is resolved; 0997 and 1004 are still open and stand on their own (both list phase-177 as related), so the phase no longer holds anything they need. Issues 1034 and 1281 cite it as background only.
 
 **Status (2026-09-04). ALL FIVE WORK ITEMS CLOSED.** W3 — issue 0870 — was closed green with the cause UNATTRIBUTED, an owner decision taken on 383 consecutive passes across three build regimes and two emulators, and it records the objection it overrides plus the two experiments that reopen it without argument. The phase stays ACTIVE for the three issues it adopted later (#0997, #1004, #0968), not for its original five.** Opened
 as a HOME, not as a plan: five open issues had no phase that could hold them,
@@ -289,16 +298,16 @@ It does not add tests, lanes or gates. Every one of these already has a failing
 test; the problem is that nothing was accountable for making them pass.
 
 
-## Adopted issues (2026-09-04) — three more that reproduce on an RTOS
+## Formerly adopted issues (2026-09-04; re-homed or resolved 2026-10-12) — three more that reproduce on an RTOS
 
 This phase opened as a home for five runtime failures with no owner. Three more
 were filed since and had none either. They meet the same admission test: the
 image builds, links and boots, and then does the wrong thing.
 
-* **[#0997](../../issues/0997-island-announces-spdp-once-then-lease-expires.md)** —
+* **[#0997](../../issues/0997-island-announces-spdp-once-then-lease-expires.md)** — **re-homed to [phase-441](../phase-441-rmw-on-target-verification.md) 2026-10-12** —
   the timed-event tree empties itself on FreeRTOS: the SPDP resend is scheduled
   and never lands. Same platform and layer as W1.
-* **[#1004](../../issues/1004-an536-image-fails-to-boot-transport-error.md)** — the
+* **[#1004](../../issues/archived/1004-an536-image-fails-to-boot-transport-error.md)** — **RESOLVED 2026-10-12** (`a6c8e8b56e`) — the
   an536 boot failures on this host were HOST LOAD, not a code regression. Kept
   rather than closed because the retraction is the finding: it is the third time
   a load artefact was filed as a defect here, and the phase's own W1 and W5 are
@@ -313,7 +322,7 @@ retracted issues CLAUDE.md records from a sweep whose fixtures predated the fix,
 are the standing reason to check artifact mtimes against the code being blamed
 before writing a cause down.
 
-## Issues homed here (survey 2026-09-11)
+## Issues formerly homed here (survey 2026-09-11; re-homed or resolved 2026-10-12)
 
 Every open issue was checked for a home phase; these had none, or were mentioned
 here only in passing. A mention is not an owner — an issue with no work item is
@@ -322,4 +331,4 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1281](../../issues/1281-riscv-nuttx-c-talker-router-drops-session.md) | `c_riscv_nuttx_talker_delivers_cross_process` fails again: the guest connects and the router never sees it. An image that boots and then misbehaves on an RTOS is this phase's admission test, and it is the sibling of the three issues already adopted above |
+| [#1281](../../issues/1281-riscv-nuttx-c-talker-router-drops-session.md) | `c_riscv_nuttx_talker_delivers_cross_process` fails again: the guest connects and the router never sees it. An image that boots and then misbehaves on an RTOS is this phase's admission test, and it is the sibling of the three issues already adopted above — **unhomed 2026-10-12** (no active phase fits) |

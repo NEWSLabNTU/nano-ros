@@ -1,11 +1,16 @@
 ---
 id: 1004
 title: "an536 boot failures on this host were HOST LOAD, not a code regression — and the measurements taken during them should not be trusted"
-status: open
+status: resolved
 area: [rmw, platform, embedded]
 severity: high
 related: [0997, 1000, phase-177]
+resolved_in: "a6c8e8b56e"
 ---
+
+## Resolution (2026-10-12)
+
+Fixed on main by `a6c8e8b56e`. The boot failures were retracted as host load, and the Cyclone pin bump stops a suppressed-NACK acknack re-arming into the past. Minor residue: the FreeRTOS overflow banner prints an empty task name. Found during the re-homing sweep when phase-414 was archived. The original report follows.
 
 # The same image that ran for minutes this morning now halts at boot
 
@@ -120,8 +125,8 @@ Two things are worth separating, because it is tempting to collapse them:
 
 ## Why it matters beyond itself
 
-It blocks [#0997](0997-island-announces-spdp-once-then-lease-expires.md) and
-[#1000](archived/1000-spdp-periodic-event-orphaned-by-handler-early-return.md). Neither
+It blocks [#0997](../0997-island-announces-spdp-once-then-lease-expires.md) and
+[#1000](1000-spdp-periodic-event-orphaned-by-handler-early-return.md). Neither
 can be confirmed or refuted while the image does not reach a steady state
 deterministically, and #1000's proposed mechanism is already contradicted by the
 one counter read that did complete (`nros_dbg_spdp_unknown_guid = 0`,
@@ -179,7 +184,7 @@ confounder, and the earlier "3-attempt predicate" that retracted the bracket was
 itself measured under the same contamination.
 
 **Any an536 timing measurement in this issue, in
-[#0997](0997-island-announces-spdp-once-then-lease-expires.md), and in the
+[#0997](../0997-island-announces-spdp-once-then-lease-expires.md), and in the
 autoware-safety-island delivery sweeps from the same period should be re-taken on
 a quiet host before being cited.** A `uptime` reading belongs beside every
 future number.
