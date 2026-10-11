@@ -154,6 +154,7 @@ int32_t fingerprint_corpus_srv_probe_response_serialize(const fingerprint_corpus
     for (size_t i = 0; i < msg->lines.size; ++i) {
         if (nros_cdr_write_string(&ptr, end, origin, msg->lines.data[i]) < 0) return -1;
     }
+    if (nros_cdr_write_string(&ptr, end, origin, msg->summary) < 0) return -1;
 
     if (nros_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
     if (serialized_size != NULL) {
@@ -187,7 +188,96 @@ int32_t fingerprint_corpus_srv_probe_response_deserialize(fingerprint_corpus_srv
             if (nros_cdr_read_string(&ptr, end, origin, msg->lines.data[i], sizeof(msg->lines.data[i])) < 0) return -1;
         }
     }
+    if (nros_cdr_read_string(&ptr, end, origin, msg->summary, sizeof(msg->summary)) < 0) return -1;
 
     if (nros_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;
+    return 0;
+}
+
+// =============================================================================
+// Borrowed deserialize (RFC-0033 `view`, issue 0346) — `mode = "view"`
+// fields are pointed into `buffer` (zero-copy); other fields are copied exactly
+// as the owned deserializer does. `out` is zeroed first so unset pointers are
+// NULL. The views alias `buffer`, which for a service/action payload is the raw
+// callback buffer — valid only for the callback scope, so copy out anything you
+// retain. No malloc, so the view needs no `_fini`.
+// =============================================================================
+int32_t fingerprint_corpus_srv_probe_request_deserialize_view(fingerprint_corpus_srv_probe_request_View* out, const uint8_t* buffer, size_t buffer_size) {
+    if (out == NULL || buffer == NULL) return -1;
+
+    const uint8_t* ptr = buffer;
+    const uint8_t* end = buffer + buffer_size;
+
+    // Skip CDR header
+    if (ptr + 4 > end) return -1;
+    ptr += 4;
+    const uint8_t* origin = ptr; // CDR alignment origin (after header)
+    (void)origin;
+
+    memset(out, 0, sizeof(*out));
+    {
+        uint32_t len;
+        if (nros_cdr_read_u32(&ptr, end, origin, &len) < 0) return -1;
+        // Heap sequence (RFC-0033): allocate exactly `len` elements; freed by
+        // fingerprint_corpus_srv_probe_request_fini. A re-deserialize leaks the prior buffer unless
+        // the caller _fini's first.
+        if (len > 0) {
+            // `len` is wire data: a bare `(size_t)len * sizeof` wraps on a
+            // 32-bit target and under-allocates (issue 1149's class).
+            size_t bytelen;
+            if (nros_cdr_seq_byte_len(len, sizeof(*out->items.data), SIZE_MAX, &bytelen) < 0) return -1;
+            out->items.data = nros_platform_malloc(bytelen);
+            if (out->items.data == NULL) return -1;
+        } else {
+            out->items.data = NULL;
+        }
+        out->items.size = len;
+        out->items.capacity = len;
+        for (size_t i = 0; i < len; ++i) {
+            if (nros_cdr_read_i64(&ptr, end, origin, &out->items.data[i]) < 0) {
+                nros_platform_free(out->items.data);
+                out->items.data = NULL;
+                out->items.size = 0;
+                out->items.capacity = 0;
+                return -1;
+            }
+        }
+    }
+    if (nros_cdr_borrow_string(&ptr, end, origin, &out->note) < 0) return -1;
+    return 0;
+}
+
+// =============================================================================
+// Borrowed deserialize (RFC-0033 `view`, issue 0346) — `mode = "view"`
+// fields are pointed into `buffer` (zero-copy); other fields are copied exactly
+// as the owned deserializer does. `out` is zeroed first so unset pointers are
+// NULL. The views alias `buffer`, which for a service/action payload is the raw
+// callback buffer — valid only for the callback scope, so copy out anything you
+// retain. No malloc, so the view needs no `_fini`.
+// =============================================================================
+int32_t fingerprint_corpus_srv_probe_response_deserialize_view(fingerprint_corpus_srv_probe_response_View* out, const uint8_t* buffer, size_t buffer_size) {
+    if (out == NULL || buffer == NULL) return -1;
+
+    const uint8_t* ptr = buffer;
+    const uint8_t* end = buffer + buffer_size;
+
+    // Skip CDR header
+    if (ptr + 4 > end) return -1;
+    ptr += 4;
+    const uint8_t* origin = ptr; // CDR alignment origin (after header)
+    (void)origin;
+
+    memset(out, 0, sizeof(*out));
+    if (nros_cdr_read_i64(&ptr, end, origin, &out->sum) < 0) return -1;
+    {
+        uint32_t len;
+        if (nros_cdr_read_u32(&ptr, end, origin, &len) < 0) return -1;
+        out->lines.size = len;
+        if (len > 64) return -1;
+        for (size_t i = 0; i < len; ++i) {
+            if (nros_cdr_read_string(&ptr, end, origin, out->lines.data[i], sizeof(out->lines.data[i])) < 0) return -1;
+        }
+    }
+    if (nros_cdr_borrow_string(&ptr, end, origin, &out->summary) < 0) return -1;
     return 0;
 }

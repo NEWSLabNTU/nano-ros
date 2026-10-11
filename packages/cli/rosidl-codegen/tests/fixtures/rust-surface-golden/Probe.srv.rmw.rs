@@ -116,6 +116,8 @@ pub struct ProbeResponse {
     
     pub lines: crate::rosidl_runtime_rs::Sequence<crate::rosidl_runtime_rs::String>,
     
+    pub summary: crate::rosidl_runtime_rs::String,
+    
 }
 
 impl ProbeResponse {

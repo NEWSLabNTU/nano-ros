@@ -81,6 +81,7 @@ impl ::nros_serdes::Message for ProbeRequest {
 pub struct ProbeResponse {
     pub sum: i64,
     pub lines: heapless::Vec<heapless::String<256>, 64>,
+    pub summary: heapless::String<256>,
 }
 
 impl Serialize for ProbeResponse {
@@ -92,6 +93,7 @@ impl Serialize for ProbeResponse {
         for item in &self.lines {
             writer.write_string(item.as_str())?;
         }
+        writer.write_string(self.summary.as_str())?;
         writer.end_dheader(__dh)?;
         Ok(())
     }
@@ -111,6 +113,10 @@ impl Deserialize for ProbeResponse {
                     vec.push(elem).map_err(|_| DeserError::CapacityExceeded)?;
                 }
                 vec
+            },
+            summary: {
+                let s = reader.read_string()?;
+                heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?
             },
         };
         reader.end_dheader(__dh)?;
@@ -139,6 +145,11 @@ impl ::nros_serdes::Message for ProbeResponse {
             name: "lines",
             ty: ::nros_serdes::FieldType::Sequence(&RESP_FT_LINES_ELEM),
             offset: ::core::mem::offset_of!(ProbeResponse, lines),
+        },
+        ::nros_serdes::Field {
+            name: "summary",
+            ty: ::nros_serdes::FieldType::String,
+            offset: ::core::mem::offset_of!(ProbeResponse, summary),
         },
 ];
 }

@@ -67,7 +67,7 @@ int32_t fingerprint_corpus_action_probe_goal_deserialize(fingerprint_corpus_acti
 /// Probe result structure
 typedef struct fingerprint_corpus_action_probe_result {
     int64_t total;
-    char report[256];
+    char report[32];
 } fingerprint_corpus_action_probe_result;
 
 /// Initialize a Probe result to default values
@@ -94,7 +94,7 @@ int32_t fingerprint_corpus_action_probe_result_deserialize(fingerprint_corpus_ac
 /// Probe feedback structure
 typedef struct fingerprint_corpus_action_probe_feedback {
     int64_t done;
-    char stage[256];
+    char stage[32];
 } fingerprint_corpus_action_probe_feedback;
 
 /// Initialize a Probe feedback to default values
@@ -143,5 +143,27 @@ typedef struct fingerprint_corpus_action_probe_goal_View {
 
 /// Deserialize into a borrowed view (no allocation, so no `_fini` is required).
 int32_t fingerprint_corpus_action_probe_goal_deserialize_view(fingerprint_corpus_action_probe_goal_View* out, const uint8_t* buffer, size_t buffer_size);
+
+/// Borrowed (zero-copy) view of fingerprint_corpus_action_probe_result (RFC-0033 `view`, issue 0346).
+/// Borrowed fields point into the source buffer — the raw service/action callback
+/// bytes — and are valid ONLY while it lives. Copy out anything retained.
+typedef struct fingerprint_corpus_action_probe_result_View {
+    int64_t total;
+    nros_view_str_t report;
+} fingerprint_corpus_action_probe_result_View;
+
+/// Deserialize into a borrowed view (no allocation, so no `_fini` is required).
+int32_t fingerprint_corpus_action_probe_result_deserialize_view(fingerprint_corpus_action_probe_result_View* out, const uint8_t* buffer, size_t buffer_size);
+
+/// Borrowed (zero-copy) view of fingerprint_corpus_action_probe_feedback (RFC-0033 `view`, issue 0346).
+/// Borrowed fields point into the source buffer — the raw service/action callback
+/// bytes — and are valid ONLY while it lives. Copy out anything retained.
+typedef struct fingerprint_corpus_action_probe_feedback_View {
+    int64_t done;
+    nros_view_str_t stage;
+} fingerprint_corpus_action_probe_feedback_View;
+
+/// Deserialize into a borrowed view (no allocation, so no `_fini` is required).
+int32_t fingerprint_corpus_action_probe_feedback_deserialize_view(fingerprint_corpus_action_probe_feedback_View* out, const uint8_t* buffer, size_t buffer_size);
 
 #endif // FINGERPRINT_CORPUS_ACTION_PROBE_H
