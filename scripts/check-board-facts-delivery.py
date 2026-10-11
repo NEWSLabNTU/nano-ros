@@ -82,6 +82,12 @@ EXEMPT = {
     # The `nros` CLI: a HOST tool the superproject builds to run codegen. It is
     # never linked into an image, so there is no deploy and no board to state.
     "packages/cli/nros-cli/CMakeLists.txt": "builds the host `nros` CLI, never an image",
+    # Spawns NO cargo. Its one `-E env` is `nros_codegen_env_prefix()`, the
+    # interface-search-path prefix on `nros codegen` (issue 1780); OWN_CARGO
+    # then reaches the word `cargo` in a later message string. A statement-
+    # bounded pattern was measured and rejected: it loses the real
+    # `set(_ffi_env … -E env …)` + later-cargo shape in NanoRosGenerateInterfaces.
+    "cmake/NanoRosCodegenCore.cmake": "spawns no cargo; `-E env` prefixes `nros codegen` only",
     # A staged integration-test template (`@NROS_REPO_DIR@` is rewritten at
     # stage time) exercising the Corrosion superbuild of a user-shaped HOST
     # workspace; it declares no deploy, so `nros ws board-facts` has nothing

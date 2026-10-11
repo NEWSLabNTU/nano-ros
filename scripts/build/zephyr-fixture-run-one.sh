@@ -310,6 +310,67 @@ if [ -n "$nros_image" ]; then
     fi
 fi
 
+# Issue 1780's ninja-path gap — the AMENT inputs, by content. The configure
+# compares each package's ament witness with its generated record
+# (`nros_codegen_ament_stale`, RFC-0104 D5), but nothing makes ninja configure
+# when they move: an apt upgrade installs files with the `.deb`'s mtime and an
+# overlay moves no file, so no CMAKE_CONFIGURE_DEPENDS edge fires and the
+# ninja path below rebuilt museum generated code. Recompute each witness into a
+# temp file with the tool THIS build dir cached and compare; a moved one takes
+# the west path, whose configure regenerates. Read-only: the real witness is
+# left for the configure to rewrite.
+ament_witness_moved() {
+    local dir="$1" tool w args lang tmp search
+    tool="$(sed -n 's/^_NROS_ZEPHYR_CODEGEN_TOOL:INTERNAL=//p' "$dir/CMakeCache.txt" 2>/dev/null)"
+    [ -n "$tool" ] && [ -x "$tool" ] || return 1
+    tmp="$(mktemp -d)"
+    while IFS= read -r -d '' w; do
+        args="${w%.ament.toml}.json"
+        [ -f "$args" ] || continue
+        case "$w" in
+            *_cpp_args__*) lang=cpp ;;
+            *) lang=c ;;
+        esac
+        # A witness that cannot be recomputed is treated as moved: the
+        # configure that follows runs the same command and fails loudly,
+        # where reusing the old configure would hide it.
+        # The interface search path the configure computed this witness under
+        # (`nros_codegen_ament_stale` records it): a workspace may set it as a
+        # cmake variable, which this shell never sees.
+        search=""
+        [ -f "${w%.toml}.search-path" ] && search="$(cat "${w%.toml}.search-path")"
+        if ! env NROS_INTERFACE_SEARCH_PATH="$search" "$tool" codegen --args-file "$args" \
+                --language "$lang" --ament-witness "$tmp/now.toml" >/dev/null 2>&1; then
+            echo "  ament witness could not be recomputed: $(basename "$args" .json) — reconfiguring"
+            rm -rf "$tmp"
+            return 0
+        fi
+        if ! cmp -s "$tmp/now.toml" "$w"; then
+            echo "  ament inputs moved: $(basename "$args" .json) — reconfiguring"
+            rm -rf "$tmp"
+            return 0
+        fi
+        rm -f "$tmp/now.toml"
+    done < <(find "$dir" -maxdepth 3 -name '*_args__*.ament.toml' -print0 2>/dev/null)
+    rm -rf "$tmp"
+    return 1
+}
+if [ "$needs_west" = "0" ] && ament_witness_moved "$build_dir"; then
+    needs_west=1
+fi
+# The witness above re-hashes the interface files the last configure RESOLVED,
+# so it sees an in-place change and never a prefix that newly shadows a package
+# (an overlay sourced since): only a configure re-resolves. So the prefix list
+# the build dir was configured under is recorded beside it, and a different one
+# takes the west path. A build dir with no record yet is a first sight: it is
+# recorded, not forced, so landing this does not reconfigure every leaf at once.
+ament_prefix_file="$build_dir/nros-ament-prefix.txt"
+if [ "$needs_west" = "0" ] && [ -f "$ament_prefix_file" ] \
+        && [ "$(cat "$ament_prefix_file")" != "${AMENT_PREFIX_PATH:-}" ]; then
+    echo "  AMENT_PREFIX_PATH differs from the one $build_name was configured under — reconfiguring"
+    needs_west=1
+fi
+
 use_west=0
 if [ "$needs_west" = "0" ]; then
     if [ "$jobserver" = "1" ]; then
@@ -359,6 +420,9 @@ set +e
     rc=$?
     if [ "$rc" -eq 0 ] && [ "$use_west" = "1" ]; then
         printf '%s\n' "$sig" > "$sig_file"
+    fi
+    if [ "$rc" -eq 0 ]; then
+        printf '%s\n' "${AMENT_PREFIX_PATH:-}" > "$ament_prefix_file"
     fi
     exit "$rc"
 ) > "$log" 2>&1

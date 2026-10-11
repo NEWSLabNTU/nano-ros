@@ -3,7 +3,7 @@ id: 1803
 title: "Once a codegen args file is rewritten, `nros_codegen_outputs_stale()` reads
   that package as stale on EVERY later configure — codegen writes only changed
   files, so the untouched outputs stay older than the args file forever"
-status: open
+status: resolved
 type: tech-debt
 area: build, codegen, cmake
 severity: low
@@ -49,3 +49,38 @@ distinguished from a correct one by watching it fire.
 Compare against a stamp codegen ALWAYS rewrites when it runs (or the
 `nros-generated.toml` record issue 1780 added, compared by CONTENT),
 not against every output — the shape `nros_codegen_ament_stale()` already uses.
+
+## Resolution (2026-10-11)
+
+The predicate compares input mtimes against a RUN STAMP instead of the outputs.
+`nros_codegen_run_stamp()` names `<args>.ran.stamp` beside the args file;
+`nros_codegen_touch_run_stamp()` touches it after every successful configure-time
+run (both lanes), and the canonical lane's build-time custom command touches it
+too, so a build-time run counts as a run. `nros_codegen_outputs_stale()` now
+takes `STAMP` (required) and is TRUE when an output is missing, the stamp is
+missing, or an input is newer than the STAMP. An output's existence is still
+checked; its mtime is no longer read. A build dir from before the stamp
+regenerates once and settles.
+
+Measured with `strace -f -e trace=execve`, counting `nros codegen --args-file`
+generations (the `--ament-witness` calls excluded), on a scratch build dir per
+tree. Step 3 `touch`es `nano_ros_generate_c_args__std_msgs.json`, i.e. the
+rewrite this issue records:
+
+| step | canonical, before | canonical, after | west, before | west, after |
+| --- | --- | --- | --- | --- |
+| 1 fresh configure | 2 | 2 | 2 | 2 |
+| 2 no-change reconfigure | 0 | 0 | 0 | 0 |
+| 3 args file moved | 1 | 1 | 1 | 1 |
+| 4 no-change reconfigure | **1** | 0 | **1** | 0 |
+| 5 no-change reconfigure | **1** | 0 | **1** | 0 |
+
+Canonical = `examples/native/c/talker`, `cmake -G Ninja`; west =
+`examples/zephyr/c/talker`, `native_sim/native/64`, Zephyr 3.7, `--cmake-only`.
+"Before" is origin/main's three cmake files swapped into the same tree. Also
+measured on the canonical lane: `cmake --build` writes both packages' stamps
+from the custom command, and the next reconfigure runs codegen 0 times.
+
+Sweep: `git grep -n 'nros_codegen_outputs_stale(\|--args-file' -- cmake zephyr`
+— two predicate callers, three generation sites (the fourth `--args-file` is
+the ament witness, which generates nothing).

@@ -471,12 +471,15 @@ function(nros_generate_interfaces target)
     OUTPUT_DIR "${_output_dir}")
   set(_nros_gi_fragment_inputs ${_interface_files} "${_NANO_ROS_CODEGEN_TOOL}"
       ${_NROS_CODEGEN_CONFIG_CHAIN})
+  nros_codegen_run_stamp(_nros_gi_run_stamp "${_args_file}")
+  nros_codegen_env_prefix(_nros_gi_env)
   nros_codegen_outputs_stale(_nros_gi_fragment_stale
+    STAMP "${_nros_gi_run_stamp}"
     OUTPUTS "${_bounds_json}" "${_bounds_cmake}"
     INPUTS ${_nros_gi_fragment_inputs} "${_args_file}")
   if(_nros_gi_fragment_stale OR _nros_gi_version_stale OR _nros_gi_ament_stale)
     execute_process(
-      COMMAND "${_NANO_ROS_CODEGEN_TOOL}" codegen --language "${_lang_flag}" --args-file "${_args_file}"
+      COMMAND ${_nros_gi_env} "${_NANO_ROS_CODEGEN_TOOL}" codegen --language "${_lang_flag}" --args-file "${_args_file}"
       WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
       RESULT_VARIABLE _nros_gi_codegen_rc
       OUTPUT_VARIABLE _nros_gi_codegen_out
@@ -487,6 +490,7 @@ function(nros_generate_interfaces target)
         "  stdout: ${_nros_gi_codegen_out}\n"
         "  stderr: ${_nros_gi_codegen_err}")
     endif()
+    nros_codegen_touch_run_stamp("${_args_file}")
   endif()
   # Issue 1018 -- a configure-time emitter must re-run when the tool moves.
   nros_codegen_tool_reconfigure("${_NANO_ROS_CODEGEN_TOOL}")
@@ -497,7 +501,10 @@ function(nros_generate_interfaces target)
   add_custom_command(
     OUTPUT ${_generated_headers} ${_generated_sources} ${_generated_rs_files}
            "${_bounds_json}" "${_bounds_cmake}"
-    COMMAND "${_NANO_ROS_CODEGEN_TOOL}" codegen --language "${_lang_flag}" --args-file "${_args_file}"
+    COMMAND ${_nros_gi_env} "${_NANO_ROS_CODEGEN_TOOL}" codegen --language "${_lang_flag}" --args-file "${_args_file}"
+    # issue 1803 — a build-time run is a run too; the configure-time predicate
+    # compares its inputs against this stamp, never against the outputs.
+    COMMAND "${CMAKE_COMMAND}" -E touch "${_nros_gi_run_stamp}"
     # issue 1470 — the caps that BOUND these types are an input to them, so
     # every `nros-codegen.toml` that reaches this generation is named here
     # (`_nros_write_codegen_args_json` composes the set). The args file names
