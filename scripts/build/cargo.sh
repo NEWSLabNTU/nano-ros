@@ -436,13 +436,19 @@ nros_locate_artifact() {
 }
 
 nros_cli_bin() {
-    # Phase 218.D.3 — resolution order:
+    # Phase 218.D.3, reordered by phase-484 W2d (RFC-0103 D6) — resolution order:
     #   1. $NROS_CLI                                — explicit override
-    #   2. nros on PATH                             — activate.sh / shell env
-    #   3. packages/cli/target/release/nros         — per-checkout binary (preferred)
-    #   4. ${NROS_HOME:-~/.nros}/bin/nros           — transitional, pre-218 install
-    # Per-checkout wins over ~/.nros/bin so each worktree carries its own
-    # CLI, no global PATH skew across trees.
+    #   2. <this checkout>/packages/cli/target/release/nros
+    #                                               — the checkout these scripts
+    #                                                 are in, found from this
+    #                                                 file's own path
+    #   3. nros on PATH                             — activate.sh / shell env
+    #   4. ${NROS_HOME:-~/.nros}/bin/nros           — an installed toolchain
+    # The checkout's own CLI comes BEFORE PATH: a linked worktree inherits its
+    # parent shell's PATH, so `command -v nros` there named the PARENT
+    # checkout's binary — an older one that lacked `nros locate`, which made
+    # every `nros_locate_source` call in the worktree answer nothing (issue
+    # 1280's class). `$NROS_REPO_DIR` is no longer consulted (D6).
     if [ -n "${NROS_CLI:-}" ]; then
         if [ -x "$NROS_CLI" ]; then
             printf '%s\n' "$NROS_CLI"
@@ -451,27 +457,20 @@ nros_cli_bin() {
         echo "NROS_CLI points to a non-executable path: $NROS_CLI" >&2
         return 2
     fi
+    # This file lives at <repo>/scripts/build/cargo.sh.
+    local repo_root="" _self
+    _self="${BASH_SOURCE[0]:-$0}"
+    if [ -n "$_self" ]; then
+        repo_root="$(cd "$(dirname "$_self")/../.." 2>/dev/null && pwd)" || repo_root=""
+    fi
+    if [ -n "$repo_root" ] && [ -x "$repo_root/packages/cli/target/release/nros" ]; then
+        printf '%s\n' "$repo_root/packages/cli/target/release/nros"
+        return 0
+    fi
     if command -v nros >/dev/null 2>&1; then
         local _path_nros
         _path_nros="$(command -v nros)"
         printf '%s\n' "$_path_nros"
-        return 0
-    fi
-    # Per-checkout binary at packages/cli/target/release/nros. Use
-    # $NROS_REPO_DIR (exported to `just` recipes by just/sdk-env.just) when set;
-    # otherwise walk up from this script to find the repo root so callers
-    # without activate.sh sourced still resolve correctly.
-    local repo_root="${NROS_REPO_DIR:-}"
-    if [ -z "$repo_root" ]; then
-        # This file lives at <repo>/scripts/build/cargo.sh.
-        local _self
-        _self="${BASH_SOURCE[0]:-$0}"
-        if [ -n "$_self" ]; then
-            repo_root="$(cd "$(dirname "$_self")/../.." 2>/dev/null && pwd)" || repo_root=""
-        fi
-    fi
-    if [ -n "$repo_root" ] && [ -x "$repo_root/packages/cli/target/release/nros" ]; then
-        printf '%s\n' "$repo_root/packages/cli/target/release/nros"
         return 0
     fi
     local home_nros="${NROS_HOME:-$HOME/.nros}/bin/nros"
