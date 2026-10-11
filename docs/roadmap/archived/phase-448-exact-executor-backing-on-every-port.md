@@ -247,7 +247,7 @@ number having stopped matching the model.
 ## Not owned here
 
 - **Arena exhaustion diagnostics** — issue 1036, homed in
-  [phase 412](../phase-412-derived-counts-and-sizes.md), whose second rule is that a
+  [phase 412](phase-412-derived-counts-and-sizes.md), whose second rule is that a
   derived count is safe only where exhaustion names the knob.
 - **The runtime stack-headroom rule** — phase 436.
 - **Main-stack and Zephyr-heap derivation** — phase 412 W2's table, which records

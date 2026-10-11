@@ -518,7 +518,7 @@ is the same "nobody is accountable" state the survey set out to remove.** The
 table is kept as the record of what the survey found; the two rows that are
 still open moved to a live phase on the same day:
 [#1041](../phase-436-poll-wake-revision-deadline-driven-executor.md) and
-[#1203](../phase-426-parameters-rust-ssot.md). #1049 needed no move — it is
+[#1203](phase-426-parameters-rust-ssot.md). #1049 needed no move — it is
 resolved and archived.
 
 | issue | why it belongs here |

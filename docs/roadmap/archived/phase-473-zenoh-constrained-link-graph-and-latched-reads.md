@@ -1,5 +1,7 @@
 # Phase 473 -- zenoh on a constrained link: graph discovery off, latched reads on
 
+**Archived 2026-10-11.** W1 (#1435) and W2 (#1437) both landed; the status line below predates #1435 merging. The one unticked acceptance, a run against the island's full Autoware container, happens in the island repository and is tracked as [issue 1806](../../issues/1806-zenoh-constrained-link-unvalidated-on-full-autoware-graph.md), together with the per-publisher late-joiner detection this phase left out.
+
 **Status (2026-09-29). W1 in review (#1435); W2 LANDED (#1437).** Two backend changes the
 safety-island demo (simple-autoware-safety-island, phase 8, design D9 and gaps
 G3/G4) needs from `nros-rmw-zenoh`, each measured on the island's QEMU image

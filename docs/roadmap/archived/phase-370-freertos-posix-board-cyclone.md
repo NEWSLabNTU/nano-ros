@@ -1,5 +1,7 @@
 # Phase 370 — freertos-posix board variant + first live Cyclone-on-FreeRTOS cell
 
+**Archived 2026-10-11.** W1-W4 landed. W5 is ASI switching its `freertos-posix` target to this board, which is ASI's own work (its phase-4 W5.a); a wall it hits is filed as an ordinary issue here.
+
 **Status (2026-08-20).** W1–W4 LANDED. The embedded Cyclone × FreeRTOS cell
 builds, boots, and creates writers and readers — the stretch item's goal.
 W5 (the ASI consumer switch) is open. Implements the "go, small"

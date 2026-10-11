@@ -18,7 +18,7 @@ revision 4 (2026-08-22) and revision 5 (2026-09-06).
 **Related:** [phase-320](phase-320-board-support-tiers.md) (W3.b opened
 the maintainer field and left it unenforced — this closes it),
 [phase-346](phase-346-out-of-tree-board-seam.md) (the seam W5 needs,
-COMPLETE), [phase-370](../phase-370-freertos-posix-board-cyclone.md) and
+COMPLETE), [phase-370](phase-370-freertos-posix-board-cyclone.md) and
 [phase-372](../phase-372-s32z270-freertos-board-bundle.md) (the two boards whose
 onboarding cost is the evidence).
 

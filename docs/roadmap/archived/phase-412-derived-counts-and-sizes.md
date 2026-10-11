@@ -1,5 +1,7 @@
 # Phase 412 — every count and size the image can state about itself
 
+**Archived 2026-10-11.** Every count the entity inventory can answer is derived, and all four acceptance items were met on 2026-09-06. The knobs nothing in the image can derive moved to [issue 1808](../../issues/1808-sizing-knobs-with-no-static-derivation.md); 1036 has since been resolved, and the two other issues homed below (1120, 1140) stay open on their own, and the sizing knobs still off the RFC-0049 ladder belong to [phase-400](../phase-400-unified-configuration.md).
+
 **Status (2026-09-02). Opened from the mr-canhubk344 island audit.** phase-403
 proved an image can derive its own buffer sizes; phase-409 proved the same for
 the `Executor` value. This phase is the campaign that finishes the job: no
@@ -411,7 +413,7 @@ seventh that survives the build system entirely.
 
 ### Found while building it
 
-[#1036](../issues/archived/1036-arena-exhaustion-is-half-silent-and-wholly-unreachable.md):
+[#1036](../../issues/archived/1036-arena-exhaustion-is-half-silent-and-wholly-unreachable.md):
 `arena_alloc_with_trailing` reported NOTHING on failure while its sibling
 `arena_alloc` has named the knob since issue 0900. Half of arena exhaustion was
 silent -- and it is the half carrying buffered subscriptions and action
@@ -430,7 +432,7 @@ A `NROS_DERIVED_*` fact is published by one of two inventories
 (`cmake/NanoRosEntityInventory.cmake`, `cmake/NanoRosMessageBounds.cmake`) and
 then takes zero or more of three roads into a compile — resolver / sidecar /
 declared, the table in
-[issue 1199](../issues/archived/1199-derived-counts-need-the-declared-road.md).
+[issue 1199](../../issues/archived/1199-derived-counts-need-the-declared-road.md).
 Three registries described that: `DERIVED_PAIRS` and `C_DEFINE_KNOBS` in
 `scripts/check-knob-delivery.py`, `ROAD_PAIRS` and `ROAD_UNPAIRED` in
 `scripts/check-declared-fact-carriers.py`. **All of them were green and all of
@@ -444,7 +446,7 @@ Measured over the 14 published facts before this item:
 | carried by a road and in NO registry | 2 | `NROS_DERIVED_EXECUTOR_ACTION_CLIENTS` (resolver AND sidecar), `NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE` (resolver) |
 | a fact whose SECOND resolved knob no registry named | 2 | `MAX_SUBSCRIBERS` -> `NROS_XRCE_MAX_SUBSCRIBERS`, `MAX_QUERYABLES` -> `NROS_XRCE_MAX_SERVICE_SERVERS` |
 | published, on no road, unrecorded | 3 | `LARGEST_TYPE`, `LARGEST_RX`, `LARGE_TYPES` — provenance, and correct, but reading identically to a wire nobody connected |
-| road-gaps with no reason anywhere in the tree | 4 | `EXECUTOR_MAX_NODES` and `SUBSCRIPTION_BUFFER_SIZE`, off both cargo roads — [issue 1233](../issues/archived/1233-derived-fact-road-gaps.md), all four CLOSED by delivery |
+| road-gaps with no reason anywhere in the tree | 4 | `EXECUTOR_MAX_NODES` and `SUBSCRIPTION_BUFFER_SIZE`, off both cargo roads — [issue 1233](../../issues/archived/1233-derived-fact-road-gaps.md), all four CLOSED by delivery |
 
 **`DERIVED_PAIRS` was 1:1 and the road is not.** `nros_resolve_knobs()` makes
 thirteen `_nros_resolve_derivable_knob` calls over eleven facts. A 1:1 map can
@@ -588,11 +590,11 @@ holds the evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0991](../issues/archived/0991-a-clean-build-of-an-entity-declaring-image-does-not-link.md) | a clean build of an entity-declaring image derived the WRONG payload basis and did not link — **RESOLVED 2026-09-03**; the recovery every reader relied on had never fired |
-| [#1036](../issues/archived/1036-arena-exhaustion-is-half-silent-and-wholly-unreachable.md) | arena exhaustion was half silent, and on the island wholly unreachable. The host half is fixed. What is left is a CELL that exhausts a real image's arena on purpose and asserts the boot record names the shortfall, plus a sweep of the other diagnostics that assume a sink. It lives here because of this phase's second rule: a derived count is safe only where exhaustion NAMES the knob |
-| [#1130](../issues/archived/1130-derive-cell-entity-bounds-from-the-declaration.md) | **RESOLVED 2026-09-11.** a component's cell registries are sized by a const the author must write. The inventory already knows the figure: `max_cell_entities` goes in `DerivedEntityKnobs`, composed across entries by MAX, abstaining when any entry refuses. An explicit `ENTITY_BOUNDS` keeps winning, being per-class |
-| [#1142](../issues/archived/1142-nuttx-standalone-example-has-no-entity-declaration.md) | a standalone copy-out example reaches none of the three declaration channels, so the guessed budget is the only one it can get. This is W5's open design question in its most concrete form; answering W5 closes it |
-| [#1181](../issues/archived/1181-stale-zpico-subscriber-buffer-size-name.md) | `ZPICO_SUBSCRIBER_BUFFER_SIZE` is documented in four places and read by nothing. A knob that sizes nothing is deleted from the docs, not derived — the census is this phase's |
+| [#0991](../../issues/archived/0991-a-clean-build-of-an-entity-declaring-image-does-not-link.md) | a clean build of an entity-declaring image derived the WRONG payload basis and did not link — **RESOLVED 2026-09-03**; the recovery every reader relied on had never fired |
+| [#1036](../../issues/archived/1036-arena-exhaustion-is-half-silent-and-wholly-unreachable.md) | arena exhaustion was half silent, and on the island wholly unreachable. The host half is fixed. What is left is a CELL that exhausts a real image's arena on purpose and asserts the boot record names the shortfall, plus a sweep of the other diagnostics that assume a sink. It lives here because of this phase's second rule: a derived count is safe only where exhaustion NAMES the knob |
+| [#1130](../../issues/archived/1130-derive-cell-entity-bounds-from-the-declaration.md) | **RESOLVED 2026-09-11.** a component's cell registries are sized by a const the author must write. The inventory already knows the figure: `max_cell_entities` goes in `DerivedEntityKnobs`, composed across entries by MAX, abstaining when any entry refuses. An explicit `ENTITY_BOUNDS` keeps winning, being per-class |
+| [#1142](../../issues/archived/1142-nuttx-standalone-example-has-no-entity-declaration.md) | a standalone copy-out example reaches none of the three declaration channels, so the guessed budget is the only one it can get. This is W5's open design question in its most concrete form; answering W5 closes it |
+| [#1181](../../issues/archived/1181-stale-zpico-subscriber-buffer-size-name.md) | `ZPICO_SUBSCRIBER_BUFFER_SIZE` is documented in four places and read by nothing. A knob that sizes nothing is deleted from the docs, not derived — the census is this phase's |
 
 ## Issues homed here (survey 2026-09-11)
 
@@ -603,9 +605,9 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1120](../issues/1120-entity-inventory-refusal-names-retired-entities.md) | the entity inventory's refusal tells the user to add `ENTITIES`, which this phase retired. The two halves of the retirement disagree, and the CLI half is this phase's own tail |
-| [#1140](../issues/1140-describes-wiring-misses-timer-only-contract.md) | two predicates ask whether a contract was authored and disagree on a timer-only contract. This phase owns the inventory and its authoring test, so it owns the disagreement |
-| [#1256](../issues/archived/1256-contract-qos-carries-depth-only.md) | contract QoS reaches the build as DEPTH only — reliability, history and durability are dropped. `entity_inventory`'s declaration grammar left the room; this phase owns that grammar |
+| [#1120](../../issues/1120-entity-inventory-refusal-names-retired-entities.md) | the entity inventory's refusal tells the user to add `ENTITIES`, which this phase retired. The two halves of the retirement disagree, and the CLI half is this phase's own tail |
+| [#1140](../../issues/1140-describes-wiring-misses-timer-only-contract.md) | two predicates ask whether a contract was authored and disagree on a timer-only contract. This phase owns the inventory and its authoring test, so it owns the disagreement |
+| [#1256](../../issues/archived/1256-contract-qos-carries-depth-only.md) | contract QoS reaches the build as DEPTH only — reliability, history and durability are dropped. `entity_inventory`'s declaration grammar left the room; this phase owns that grammar |
 
 ## CHECKPOINT 2026-09-09 — what is done, what is in the queue, what is left
 

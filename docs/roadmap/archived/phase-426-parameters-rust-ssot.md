@@ -1,8 +1,10 @@
 # Phase 426 — parameters get a Rust SSoT, and `ros2 param list` works
 
+**Archived 2026-10-11.** All six work items are met. The phase stayed active only to own [issue 1203](../../issues/1203-parameter-builder-bypasses-reserved-parameter-hook.md), which is real, low severity and needs no phase to hold it; it stays open on its own.
+
 **Status (2026-09-13). ALL SIX WORK ITEMS ARE MET AND RE-AUDITED. The phase is
 STILL ACTIVE for exactly one reason, and it is not a work item: it owns one
-OPEN issue, [#1203](../issues/1203-parameter-builder-bypasses-reserved-parameter-hook.md).**
+OPEN issue, [#1203](../../issues/1203-parameter-builder-bypasses-reserved-parameter-hook.md).**
 Archiving it with 1203 open would put open work under a finished phase — the
 rule this phase itself applied when 1203 arrived here from the archived
 phase-430. **Resolve 1203 and this phase archives with no other change.**
@@ -138,7 +140,7 @@ line that says nobody checked.
 Run `git log --grep='phase-426 W'` for the full list. The one hole this phase's
 promise used to have is CLOSED: on Cyclone the parameter services never started,
 so `ros2 param list` saw the parameters on zenoh only — issue 1268, owned by
-[phase-444](archived/phase-444-rmw-fix-up.md) W6, resolved and archived 2026-09-12 with a
+[phase-444](phase-444-rmw-fix-up.md) W6, resolved and archived 2026-09-12 with a
 live two-node `list`/`get`/`set` against a ROS 2 Humble peer.
 
 ### The 27 parameter rows are not ours
@@ -154,10 +156,10 @@ scope" above.** This phase's subject is that ONE store exists, keyed by node,
 with six services per node and no second implementation in C or C++ — which is
 what W1–W6 delivered. The 27 rows are missing SURFACE on top of that one store:
 cross-language capability the wrappers never exposed. Their owner is
-[phase-417](archived/phase-417-ros2-api-adoption.md) **stage 4 W4.a**, which names them
+[phase-417](phase-417-ros2-api-adoption.md) **stage 4 W4.a**, which names them
 explicitly.
 
-[phase-444](archived/phase-444-rmw-fix-up.md) § "The ROS 2 gap list" INDEXES them. It is
+[phase-444](phase-444-rmw-fix-up.md) § "The ROS 2 gap list" INDEXES them. It is
 an index and not an owner — its own words — so read it to find them and read
 phase-417 W4.a to find out who is doing them.
 
@@ -471,12 +473,12 @@ shape is there and the remaining work is here.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1203](../issues/1203-parameter-builder-bypasses-reserved-parameter-hook.md) | `Executor::parameter`'s `ParameterBuilder` declares straight into the store, bypassing the reserved-parameter hook that phase-430 W3 fixed on the other two paths — so `use_sim_time` named through the builder attaches no clock source |
+| [#1203](../../issues/1203-parameter-builder-bypasses-reserved-parameter-hook.md) | `Executor::parameter`'s `ParameterBuilder` declares straight into the store, bypassing the reserved-parameter hook that phase-430 W3 fixed on the other two paths — so `use_sim_time` named through the builder attaches no clock source |
 
 **This is the whole of what keeps the phase active.** It is one issue, not a
 work item: no acceptance here depends on it, and no other phase is waiting on
 it. Re-measured live 2026-09-13 (see the status block). When it resolves, move
 this document to `archived/` and repoint the inbound references — at the time of
-writing those are [phase-417](archived/phase-417-ros2-api-adoption.md) § "Where the
-remaining work lives" and [phase-444](archived/phase-444-rmw-fix-up.md) § "The ROS 2 gap
+writing those are [phase-417](phase-417-ros2-api-adoption.md) § "Where the
+remaining work lives" and [phase-444](phase-444-rmw-fix-up.md) § "The ROS 2 gap
 list".

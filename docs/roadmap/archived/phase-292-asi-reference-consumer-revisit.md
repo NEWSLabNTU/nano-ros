@@ -1,5 +1,7 @@
 # Phase 292 — ASI reference-consumer revisit: FVP entry parity, consumer-wall intake, S32Z board
 
+**Archived 2026-10-11.** W1, W3 and W4 landed. W2.a was a standing intake rule, never a work item: a wall an ASI pin bump surfaces gets a repro and an issue in `docs/issues/`, which is how every bug is filed anyway. The intake log below stays as the record.
+
 **Status (2026-09-04). W1, W3 and W4 LANDED 2026-07-17 — the day AFTER the
 "Draft" line below was written, which is why it never moved. W2.a is a STANDING
 intake item and stays open by design. Three as-landed claims have since drifted

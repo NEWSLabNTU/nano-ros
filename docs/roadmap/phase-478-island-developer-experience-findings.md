@@ -18,7 +18,7 @@ do. Different owners in the tree (the CLI, the doctor, the cmake ladder, the
 docs) and different tests, so they get their own acceptance list.
 
 **Prior:** [phase-474](phase-474-safety-island-board-findings.md) (the runtime
-half), [phase-463](phase-463-host-census-reconciles-contract-with-code.md)
+half), [phase-463](archived/phase-463-host-census-reconciles-contract-with-code.md)
 (contract vs code, the island's E3 experiments), phase-412 (derived entity
 knobs, liveliness), RFC-0095 and design 0014 (the shared store and
 `nros-sdk.lock`), phase-431 W1 (the foreign-binary guard), commit `3d52070ec`

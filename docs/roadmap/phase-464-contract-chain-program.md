@@ -10,7 +10,7 @@ indexes are [457](phase-457-consume-the-shared-derivation.md),
 [460](phase-460-formal-checks-on-the-contract-chain.md),
 [461](phase-461-service-inbox-per-family.md),
 [462](phase-462-safety-vocabulary-on-target.md) and
-[463](phase-463-host-census-reconciles-contract-with-code.md); outside this
+[463](archived/phase-463-host-census-reconciles-contract-with-code.md); outside this
 repository, play_launch `docs/roadmap/phase-78-one-derivation-two-consumers.md`,
 ros-launch-manifest `docs/design-issues.md` #52, and the island's
 `docs/roadmap/phase-5-contract-chain.md`.

@@ -1,5 +1,7 @@
 # Phase 390 — `owned`/`borrowed` name the wrong things; rename to `inline`/`heap`/`view`
 
+**Archived 2026-10-11.** W1-W5 landed. W6, renaming the code generator's internal `borrowed` predicates and template keys, was never started and moved to [issue 1807](../../issues/1807-codegen-internals-still-say-borrowed.md), with the one-commit-per-key, golden-diffed rule.
+
 **Status (2026-08-30). W1-W5 landed; W6 (emitter internals) recorded, not started.** Opened from a
 memory-allocation review that settled the message allocation strategy before
 touching layout. Renames the RFC-0033 storage modes and amends the RFC with a
@@ -180,5 +182,5 @@ internal tidiness with a real footgun attached.
 The support matrix does not change. `heap` and `view` remain unsupported for
 srv/action payloads and shape-limited in C/C++ exactly as
 `config.rs:45-65` records today. Whether `heap` survives at all is a question
-for [phase 391](archived/phase-391-allocation-unification-and-tier-model.md), which owns
+for [phase 391](phase-391-allocation-unification-and-tier-model.md), which owns
 the tier model; this phase renames what exists.
