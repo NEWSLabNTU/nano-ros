@@ -190,8 +190,10 @@ pursued (D4); on the cargo-rooted road all six C and six C++ roles now RUN:
 the image's declared locator/network reaches the C/C++ compile and the boot
 config, a quiet smoltcp spin is no longer reported as a connection failure, and
 the four bare-metal C/C++ pubsub/service cells are `Runtime`
-(`test_qemu_baremetal_capi_e2e`). The action pairs do not reliably round-trip
-yet: issue 1797.
+(`test_qemu_baremetal_capi_e2e`). The action pairs joined them with issue
+[1797](../issues/archived/1797-baremetal-capi-action-round-trip-unreliable.md):
+a burst of batches desynchronised the smoltcp read, which now takes zenoh-pico's
+bounded multi-batch path — all six C/C++ bare-metal cells are `Runtime`.
 
 ### W6 — board identity residue
 

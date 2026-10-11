@@ -369,8 +369,8 @@ fn test_qemu_bsp_pubsub_e2e() {
 }
 
 /// Issue 1512 — the C and C++ API on bare metal, end to end: every
-/// `(QemuBaremetal, C|Cpp, Zenoh, Pubsub|Service)` Runtime cell. The action
-/// pairs are `BuildOnly` (issue 1797); add their cases back with the cells.
+/// `(QemuBaremetal, C|Cpp, Zenoh, *)` Runtime cell. The action pairs joined
+/// with issue 1797 (a burst of batches desynchronised the smoltcp read).
 ///
 /// Each pair is a cargo-rooted leaf under `examples/mps2-an385-baremetal/`:
 /// the Rust startup owns the link and compiles the C/C++ application in. Both
@@ -408,6 +408,18 @@ fn test_qemu_bsp_pubsub_e2e() {
     "baremetal-cpp-service-server",
     "baremetal-cpp-service-client"
 )]
+#[case::c_action(
+    Lang::C,
+    Workload::Action,
+    "baremetal-c-action-server",
+    "baremetal-c-action-client"
+)]
+#[case::cpp_action(
+    Lang::Cpp,
+    Workload::Action,
+    "baremetal-cpp-action-server",
+    "baremetal-cpp-action-client"
+)]
 fn test_qemu_baremetal_capi_e2e(
     #[case] lang: Lang,
     #[case] workload: Workload,
@@ -434,6 +446,7 @@ fn test_qemu_baremetal_capi_e2e(
     let (marker, observer_is_first) = match workload {
         Workload::Pubsub => (nros_tests::output::LISTENER_LOG_PREFIX, true),
         Workload::Service => (nros_tests::output::SERVICE_RESULT_PREFIX, false),
+        Workload::Action => (nros_tests::output::ACTION_RESULT_PREFIX, false),
         other => unreachable!("no bare-metal C/C++ case for {other:?}"),
     };
     let observed = if observer_is_first {
@@ -441,10 +454,26 @@ fn test_qemu_baremetal_capi_e2e(
     } else {
         b.collect_until(marker, Duration::from_secs(60))
     };
+    // The other side's view is what tells "never reached" from "answered but
+    // not heard" (issue 1797), so a failure prints both transcripts.
+    let other_view = if observed.contains(marker) {
+        String::new()
+    } else if observer_is_first {
+        b.collect_until("\u{0}", Duration::from_secs(1))
+    } else {
+        a.collect_until("\u{0}", Duration::from_secs(1))
+    };
     b.kill();
     a.kill();
-    let observer = if observer_is_first { first } else { second };
+    let (observer, other) = if observer_is_first {
+        (first, second)
+    } else {
+        (second, first)
+    };
     eprintln!("{observer} output:\n{observed}");
+    if !other_view.is_empty() {
+        eprintln!("{other} output:\n{other_view}");
+    }
 
     assert!(
         !observed.contains(nros_tests::output::SESSION_OPEN_FAILED_MARKER),

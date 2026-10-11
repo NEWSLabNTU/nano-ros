@@ -222,7 +222,7 @@ rather than left unnamed for the next survey to invent:
   `mps2-an385-baremetal` C/C++ used to state the old cause;
   [issue 1512](../docs/issues/archived/1512-c-api-does-not-reach-bare-metal.md) measured
   all of this, and the family now has six C and six C++ leaves, rooted in cargo;
-  their pubsub and service pairs run end to end under QEMU (actions: issue 1797) — not in that cmake seam, which still has no
+  all their pairs (pubsub, service, action) run end to end under QEMU — not in that cmake seam, which still has no
   consumer and is recorded as not pursued.)
 
 ### `examples/px4/` — class X, a foreign-build integration
