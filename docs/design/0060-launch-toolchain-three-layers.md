@@ -1,6 +1,6 @@
 # RFC-0060 — Three layers: spec, resolver, runtime
 
-**Status:** Stable (2026-07-28; amended 2026-10-10 — [what the SystemModel may carry](#amendment-2026-10-10--what-the-systemmodel-may-carry-and-where-nano-ross-own-facts-go))
+**Status:** Stable (2026-07-28; amended 2026-10-10, revised 2026-10-12 — [what the SystemModel may carry](#amendment-2026-10-10--what-the-systemmodel-may-carry-and-where-nano-ross-own-facts-go))
 **Supersedes nothing. Amends:** RFC-0059 (launch-toolchain-split) — this is the
 repository-level answer to the same problem RFC-0059 framed at crate level.
 **Motivated by:** issue 0285 (a PATH-resolved `play_launch` broke every
@@ -40,18 +40,26 @@ name the owner: "nano-ros `[lifecycle]`", "nano-ros `[param_services]`",
 | `system.toml` input | model field | verdict |
 | --- | --- | --- |
 | `[system] features`, `[param_services]` (sugar for `features = ["param_services"]`) | `execution.features` | **fails.** nano-ros capability switches. In ROS every rclcpp node has parameter services unless its CODE opts out (`start_parameter_services`); nano-ros defaults them off. Opting in is nano-ros build policy |
-| `[lifecycle] autostart` (system-wide, `none\|configure\|active`) | each lifecycle node's `lifecycle_autostart` | **the TABLE fails; the per-node FIELD passes.** Managed nodes are ROS; Jazzy `launch_ros` `LifecycleNode(autostart=True)` drives one node to `active` (verified against the `jazzy` branch). Humble has no `autostart` at all. A system-wide default is nano-ros boot policy |
-| `[deploy.<n>]` `board` / `framework` / `profile` / `optimize` / `features` / `[deploy.<n>.nros]` | `execution.deploy.<n>.target = mcu:<board>`, `.extra` | **fails.** These describe a build. rlm's own comment says so ("describes a BUILD"), and nano-ros already moved them out of placement: `[image.*]` (phase-383, RFC-0065 D6) and `[board_config.*]` (RFC-0072 §5). No tracked `system.toml` writes `[deploy.*]` today (0 of 189) |
-| `[host.<n>]`, `[deploy.<n>] kind`/`nodes`/`launch` | `execution.deploy` placement | **passes** — which machine runs which node is topology |
+| `[lifecycle] autostart` (system-wide, `none\|configure\|active`) | each lifecycle node's `lifecycle_autostart` (copied by play_launch's resolver, `resolve/src/model.rs`, not by `apply_to_launch`) | **the TABLE fails; the per-node FIELD passes.** Managed nodes are ROS; Jazzy `launch_ros` `LifecycleNode(autostart=True)` drives one node to `active` (verified against the `jazzy` branch). Humble has no `autostart` at all. A system-wide default is nano-ros boot policy |
+| `[deploy.<n>]` `board` / `kind` / `framework` / `profile` / `optimize` / `features` / `[deploy.<n>.nros]` | `execution.deploy.<n>.target = mcu:<board>`, `.extra` | **fails.** These describe a build. rlm's own comment says so ("describes a BUILD"), and nano-ros already moved them out of placement: `[image.*]` (phase-383, RFC-0065 D6) and `[board_config.*]` (RFC-0072 §5). No tracked `system.toml` writes `[deploy.*]` today (0 of 189) |
+| `[host.<n>]` (`nodes`/`launch` scoping, `domain_id`, `locator`) | `execution.deploy.<n>` `domain` / `locator` / `rmw` | **passes** — which machine runs which node, on which bus, is topology. The table's KEY (`extra.host_name`) is read by nothing and leaves with `extra` |
 | `[tiers.*]`, `[[component]] group_tiers` | `execution.tiers`, `execution.bindings` | **passes** — scheduling, in the shared `sched` schema |
 | `[[component]] params` / `params_files` | `structure.nodes[].params` | **passes** — ROS parameter values |
 | `[system] rmw` / `domain_id` / `locator`, `[[transport]]`, `[[bridge]]` | `execution.deploy`, `transports`, `bridges` | **passes** — ROS environment and topology |
 
-So three things leave the model: `execution.features`, the system-wide
-lifecycle default, and the build half of `execution.deploy` (`extra`).
-*(Corrected 2026-10-11, phase-486 W0: `target = mcu:<board>` stays. The
-board-slice readers use it as placement, and play_launch reads it as "not
-mine", which is the same meaning.)*
+So four things leave the model: `execution.features`, the system-wide
+lifecycle default, `execution.deploy.<n>.extra`, and `execution.deploy.<n>.target`.
+
+*Revised 2026-10-12.* The 2026-10-11 correction kept `target = mcu:<board>`
+as placement on the premise that "play_launch reads it as not mine". Measured
+on play_launch `main` with `git grep`: **nothing in play_launch reads
+`execution.deploy` at all** — not `target`, not `Mcu`, not `extra`. And its
+one writer is `[deploy.<n>] board`, which no tracked `system.toml` uses
+(0 of 218). nano-ros's two board-slice readers (`codegen/entry/mod.rs` and
+`nros::main!`, issue 0358's duplicate) therefore act only on a table nobody
+writes. `target` leaves with the rest of `[deploy.*]`, and the two readers
+are deleted rather than moved. Per-node placement that DOES change behaviour
+(`domain`, `locator`, `rmw`, from `[host.*]` and `[system]`) stays.
 
 ### Where they go: a nano-ros OVERLAY beside the model
 
@@ -101,15 +109,31 @@ nothing, but "configure and wait" is meaningful to any lifecycle manager,
 play_launch included, so it is not nano-ros-specific — only its system-wide
 DEFAULT is.
 
-### rlm stays lax about keys it does not own
+### rlm owns a neutral system config, and nano-ros extends it
 
-rlm's `SystemConfigToml` reads the same file nano-ros's strict parser reads.
-If rlm REFUSED a key it no longer projects, every valid nano-ros
-`system.toml` would fail to resolve. So rlm stops projecting the keys and
-keeps ignoring them; validation stays where it already is, in nano-ros's
-`deny_unknown_fields` parser. A model written before the change still LOADS:
-the model types have no `deny_unknown_fields`, which is how rlm already
-retired `jitter_ms` (rlm phase 68) without a schema version bump.
+*Revised 2026-10-12.* rlm is agnostic to its realizers, so its
+`SystemConfigToml` stops being a lax copy of nano-ros's file (issue 0293's
+two parsers for one file) and becomes rlm's own format for the SHARED layers
+only: `[system]` `rmw`/`domain_id`/`locator`, `[host.*]`, `[tiers.*]`,
+`[[component]]`, `[[transport]]`, `[[bridge]]`. **Every other table is
+ignored by design**, and rlm's doc comments name no realizer (rlm
+`docs/model-boundary.md`, revised the same day).
+
+nano-ros then parses each key ONCE: the shared keys through rlm's struct,
+its own tables (`[image.*]`, `[image_defaults]`, `[board_config.*]`,
+`[lifecycle]`, `[system] features`) through `SystemToml`, both from the same
+parsed document. Strictness is kept on the UNION: a key that neither struct
+declares is refused by name. Not with `#[serde(flatten)]` — serde does not
+support it together with `deny_unknown_fields` — but by collecting what each
+deserialiser ignored (`serde_ignored`) and refusing the intersection.
+
+Until nano-ros's readers have moved (phase-486 W3), rlm keeps PARSING the
+nano-ros keys into nothing, so a valid nano-ros `system.toml` never fails to
+resolve mid-migration. A model written before the change still LOADS: the
+model types have no `deny_unknown_fields`, which is how rlm already retired
+`jitter_ms` (rlm phase 68). Removing writes needs no schema bump; rlm's
+`SCHEMA_VERSION` is 2 since `v0.1.51` for an unrelated reason (list
+parameters), which phase-486 W7 must absorb.
 
 ### Consequence for RFC-0100
 
