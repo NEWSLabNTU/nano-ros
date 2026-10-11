@@ -1,17 +1,36 @@
 ---
 id: 1807
 title: "The code generator's internal predicates and template keys still say `borrowed` after the storage-mode rename"
-status: open
+status: resolved
 type: tech-debt
 area: [codegen]
 severity: low
 found: 2026-10-11
-related: []
+related: [1821]
 ---
+
+## Resolved 2026-10-12 (PR #1988)
+
+Every key in the table below, plus seven siblings the table missed
+(`borrowed_rust_type`, `borrowed_reader_call`, `borrowed_read_expr`,
+`borrowed_cpp_type`, `borrowed_le`, the `borrowed_deser_field` macro and
+`*_borrowed_view_for_field`), is renamed to `view`, one commit per key. The
+footgun this issue named was closed BEFORE the renames, in two steps:
+
+1. The message packs render with strict undefined keys, so a key renamed on one
+   side only is a render error naming the template and line.
+2. A corpus fixture gives every srv/action payload a view field, because the
+   srv/action view bodies had never been rendered.
+
+After each rename the re-recorded golden corpus was byte-identical. One thing
+is left on purpose: the C++ FFI symbol suffix `{}_borrowed` in
+`generator/cpp.rs`. Renaming it changes emitted symbol names, so it is a
+breaking change of phase-390 W2's kind, not internal tidiness. The same PR
+refuses the retired `owned`/`borrowed` config tokens.
 
 ## Measured
 
-[phase-390](../roadmap/archived/phase-390-storage-mode-rename-inline-heap-view.md)
+[phase-390](../../roadmap/archived/phase-390-storage-mode-rename-inline-heap-view.md)
 renamed the RFC-0033 storage modes to `inline` / `heap` / `view` in every type,
 trait and API a user names (W1-W5). Its W6, the generator's own vocabulary, was
 recorded and never started. The phase was archived on 2026-10-11 with W6 moved
