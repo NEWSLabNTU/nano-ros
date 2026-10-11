@@ -788,6 +788,15 @@ mod component_scaffold {
             !cargo.contains("[[bin]]"),
             "component is a library: {cargo}"
         );
+        // Issue 1289 — the node table is REGISTRATION (class / name), the
+        // Rust spelling of `nros_components_register_node`. A namespace is the
+        // launch file's to give, as it is for C/C++, so the template writes no
+        // `default_namespace` (it was always `"/"`, i.e. nothing).
+        assert!(cargo.contains("[package.metadata.nros.node]"), "{cargo}");
+        assert!(
+            !cargo.contains("default_namespace"),
+            "a namespace belongs to the launch file: {cargo}"
+        );
         assert!(dir.join("package.xml").is_file());
     }
 

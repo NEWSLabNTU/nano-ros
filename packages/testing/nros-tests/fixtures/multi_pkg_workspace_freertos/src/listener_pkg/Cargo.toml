@@ -23,7 +23,6 @@ path = "src/lib.rs"
 [package.metadata.nros.node]
 class = "listener_pkg::Listener"
 name = "listener"
-default_namespace = "/"
 
 [dependencies]
 # Phase 212.M-F.13 path (b) — `nros::component!()` now emits references

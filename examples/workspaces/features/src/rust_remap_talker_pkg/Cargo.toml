@@ -14,7 +14,6 @@ path = "src/lib.rs"
 [package.metadata.nros.node]
 class = "rust_remap_talker_pkg::RemapTalker"
 name = "remap_talker"
-default_namespace = "/"
 
 [dependencies]
 # Single platform/RMW-agnostic `nros` dep (phase-248 C6a): the concrete RMW

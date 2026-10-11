@@ -15,7 +15,6 @@ path = "src/lib.rs"
 [package.metadata.nros.node]
 class = "service_server_pkg::AddServer"
 name = "add_server"
-default_namespace = "/"
 
 [dependencies]
 nros = { path = "../../../../../packages/api/nros", default-features = false, features = [

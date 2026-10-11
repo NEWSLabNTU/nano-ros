@@ -11,7 +11,6 @@ path = "src/lib.rs"
 [package.metadata.nros.node]
 class = "rust_reading_talker_pkg::ReadingTalker"
 name = "reading_talker"
-default_namespace = "/"
 
 [dependencies]
 nros = { path = "../../../../../packages/api/nros", default-features = false, features = [

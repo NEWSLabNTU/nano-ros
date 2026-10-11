@@ -13,7 +13,6 @@ path = "src/lib.rs"
 [package.metadata.nros.node]
 class = "burst_pkg::BurstTalker"
 name = "burst_talker"
-default_namespace = "/"
 
 [dependencies]
 # Platform/RMW-agnostic: platform + RMW flow from the board crate the sibling

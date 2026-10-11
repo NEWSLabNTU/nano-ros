@@ -15,7 +15,6 @@ path = "src/lib.rs"
 [package.metadata.nros.node]
 class = "action_server_pkg::FibonacciServer"
 name = "fibonacci_server"
-default_namespace = "/"
 
 [dependencies]
 nros = { path = "../../../../../packages/api/nros", default-features = false, features = [

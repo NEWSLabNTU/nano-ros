@@ -10,7 +10,6 @@ name       = "talker_pkg"
 crate-type = ["staticlib", "rlib"]
 
 [package.metadata.nros.node]
-default_namespace = "/"
 parameters = {}
 remaps = []
 

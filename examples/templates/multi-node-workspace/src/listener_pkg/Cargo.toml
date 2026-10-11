@@ -14,7 +14,6 @@ path = "src/lib.rs"
 [package.metadata.nros.node]
 class = "listener_pkg::Listener"
 name = "listener"
-default_namespace = "/"
 
 [dependencies]
 nros = { version = "*", default-features = false, features = [

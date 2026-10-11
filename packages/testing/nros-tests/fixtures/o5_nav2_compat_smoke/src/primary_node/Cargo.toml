@@ -27,7 +27,6 @@ path = "src/lib.rs"
 [package.metadata.nros.node]
 class = "primary_node::Primary"
 name = "primary"
-default_namespace = "/"
 
 [dependencies]
 # Host-target Component pkg — `platform-posix` so the integration test

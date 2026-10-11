@@ -13,7 +13,6 @@ path = "src/lib.rs"
 [package.metadata.nros.node]
 class = "talker_pkg::Talker"
 name = "talker"
-default_namespace = "/"
 
 [dependencies]
 # Phase 248 C5c — node pkgs are platform/RMW-agnostic; `platform-posix`
