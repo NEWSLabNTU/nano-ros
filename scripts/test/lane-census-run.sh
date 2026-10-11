@@ -38,7 +38,7 @@ export PATH="$PWD/packages/cli/target/release:$PATH"
 # which needs it too (issue 1656).
 just setup-launch-resolve >/dev/null 2>&1 \
     || { echo "census: the gate job's launch-resolver build failed" >&2; exit 2; }
-NROS_CARGO_FLAGS= cargo nextest run -p nros-tests --no-run >/dev/null 2>&1 \
+cargo nextest run -p nros-tests --no-run >/dev/null 2>&1 \
     || { echo "census: nros-tests does not build here" >&2; exit 2; }
 # issue 1656 — stage the compile-check stamps the gate lane builds. A target
 # that reads a build-stage stamp or verdict classifies FIXTURE when nothing
@@ -58,7 +58,7 @@ else
 fi
 for i in $(seq 1 "$runs"); do
     start=$(date +%s)
-    NROS_CARGO_FLAGS= cargo nextest run -p nros-tests --no-fail-fast >/dev/null 2>&1
+    cargo nextest run -p nros-tests --no-fail-fast >/dev/null 2>&1
     echo "census: run $i/$runs took $(( $(date +%s) - start ))s"
     cp target/nextest/default/junit.xml "$out/junit-$i.xml"
 done

@@ -150,8 +150,7 @@ CMAKEEOF
 printf '#include "gen.h"\nint main(void){return PROBE_CONST - 7;}\n' > "$work/cell/main.c"
 
 # The cargo leaf. `[workspace]` detaches it from any enclosing workspace; the
-# lock is written by hand because the `scripts/bin/cargo` shim injects
-# `--locked` project-wide and a dependency-free crate's lock is three lines.
+# lock is written by hand because a dependency-free crate's lock is three lines.
 mkdir -p "$work/leaf/src"
 cat > "$work/leaf/Cargo.toml" <<'TOMLEOF'
 [workspace]

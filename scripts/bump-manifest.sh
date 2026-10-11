@@ -127,19 +127,17 @@ done
 echo "  rewrote ${#MANIFESTS[@]} manifest(s)"
 
 # --- refresh each workspace's lock -----------------------------------------
-# `NROS_CARGO_FLAGS=` drops the project-wide `--locked` that the `scripts/bin/cargo`
-# PATH shim injects; without that, updating a lock is exactly what cargo refuses.
 # `-p <crate>` keeps this to the crate named, never a whole-graph re-resolve
 # (issue 0359: a bare `generate-lockfile` once moved 5388 lines).
 for ws in "${!WORKSPACES[@]}"; do
     echo "  refreshing lock in ${ws#"$ROOT"/}"
     for crate in ros-launch-manifest-types ros-launch-manifest-model ros-launch-manifest-sched; do
-        (cd "$ws" && NROS_CARGO_FLAGS= cargo update -p "$crate" >/dev/null 2>&1) || true
+        (cd "$ws" && cargo update -p "$crate" >/dev/null 2>&1) || true
     done
     # A pin move can add or drop a member crate, which `-p` on a name that is no
     # longer in the graph cannot express; this settles the rest without
     # re-resolving unrelated packages.
-    (cd "$ws" && NROS_CARGO_FLAGS= cargo update --workspace >/dev/null 2>&1) || true
+    (cd "$ws" && cargo update --workspace >/dev/null 2>&1) || true
 done
 
 # --- verify: every lock names exactly ONE revision, and it is the one asked for

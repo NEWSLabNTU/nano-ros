@@ -173,9 +173,7 @@ enum Updated {
 /// is an ANSWER rather than an error — a breaking bump asks it of every root.
 fn try_cargo_update(dir: &Path, spec: &str, precise: Option<&str>) -> Result<Updated> {
     let mut c = Command::new("cargo");
-    c.current_dir(dir)
-        .env("NROS_CARGO_FLAGS", "")
-        .args(["update", "-p", spec]);
+    c.current_dir(dir).args(["update", "-p", spec]);
     if let Some(v) = precise {
         c.args(["--precise", v]);
     }
@@ -198,9 +196,7 @@ fn try_cargo_update(dir: &Path, spec: &str, precise: Option<&str>) -> Result<Upd
 /// a lock is the one operation that flag exists to forbid everywhere else.
 fn cargo_update(dir: &Path, spec: &str, precise: Option<&str>) -> Result<()> {
     let mut c = Command::new("cargo");
-    c.current_dir(dir)
-        .env("NROS_CARGO_FLAGS", "")
-        .args(["update", "-p", spec]);
+    c.current_dir(dir).args(["update", "-p", spec]);
     if let Some(v) = precise {
         c.args(["--precise", v]);
     }

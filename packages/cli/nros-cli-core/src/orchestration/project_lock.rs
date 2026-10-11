@@ -318,8 +318,17 @@ pub struct BuildRecord {
 /// Entries are MERGED: a build records what IT read, and a project with
 /// several images keeps every image's sources. An entry is only ever
 /// replaced by a newer reading of the same tree.
-pub fn record(rec: &BuildRecord, nano_ros_root: Option<&Path>) -> eyre::Result<Option<PathBuf>> {
+/// What [`record`] did: where it wrote (when anything changed), and every
+/// source the build read from a pinned rung at another commit (RFC-0104 D9).
+#[derive(Debug, Default)]
+pub struct Recorded {
+    pub written: Option<PathBuf>,
+    pub drifts: Vec<crate::orchestration::drift::Drift>,
+}
+
+pub fn record(rec: &BuildRecord, nano_ros_root: Option<&Path>) -> eyre::Result<Recorded> {
     use crate::orchestration::sdk_store::SdkLock;
+    let mut drifts = Vec::new();
     let lock_path = crate::orchestration::store::lock_path_for(&rec.project);
     let mut lock = SdkLock::load(&lock_path)?;
     let before = lock.clone();
@@ -364,12 +373,15 @@ pub fn record(rec: &BuildRecord, nano_ros_root: Option<&Path>) -> eyre::Result<O
             if !used.contains(name) {
                 continue;
             }
-            let (commit, dirty) = git_commit(path).unwrap_or_else(|| {
-                (
-                    index.source[name].git_ref.clone().unwrap_or_default(),
-                    false,
-                )
-            });
+            let pinned = index.source[name].git_ref.clone();
+            let (commit, dirty) =
+                git_commit(path).unwrap_or_else(|| (pinned.clone().unwrap_or_default(), false));
+            drifts.extend(crate::orchestration::drift::source_drift(
+                name,
+                rung,
+                &commit,
+                pinned.as_deref(),
+            ));
             lock.source.insert(
                 name.clone(),
                 SourceRecord {
@@ -388,10 +400,16 @@ pub fn record(rec: &BuildRecord, nano_ros_root: Option<&Path>) -> eyre::Result<O
     }
 
     if lock == before {
-        return Ok(None);
+        return Ok(Recorded {
+            written: None,
+            drifts,
+        });
     }
     lock.save(&lock_path)?;
-    Ok(Some(lock_path))
+    Ok(Recorded {
+        written: Some(lock_path),
+        drifts,
+    })
 }
 
 #[cfg(test)]

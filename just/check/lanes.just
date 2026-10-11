@@ -855,10 +855,8 @@ c: c-fmt
 #   * `--exclude ros-launch-manifest-{model,sched,types}` — these are vendored
 #     submodule crates under third-party/, pulled in as path-dep members; their
 #     lints are upstream's, out of scope here.
-#   * `--locked` sits BEFORE `--`: the scripts/bin/cargo shim (issues 0359/0378)
-#     appends $NROS_CARGO_FLAGS at the END of argv, which would land after `--`
-#     and reach clippy-driver ("Unrecognized option: 'locked'"). Passing it
-#     ourselves makes the shim skip its own injection.
+#   * `--locked` sits BEFORE `--`: after `--` it would reach clippy-driver
+#     ("Unrecognized option: 'locked'", issue 0384).
 [private]
 cli-clippy:
     #!/usr/bin/env bash

@@ -163,16 +163,15 @@ const _: () = assert!(
 );
 RS
     }
-    # `NROS_CARGO_FLAGS=` clears the repo's `--locked` shim: this crate is
-    # synthesized outside any workspace and has no lock to honour.
+    # This crate is synthesized outside any workspace and has no lock to honour.
     write_probe "$emitted"
-    if NROS_CARGO_FLAGS= cargo check -q --manifest-path "$probe/Cargo.toml" 2>/dev/null; then
+    if cargo check -q --manifest-path "$probe/Cargo.toml" 2>/dev/null; then
         ok "D  Rust: version $emitted inside the accepted range compiles"
     else
         bad "D  Rust: the emitted version does NOT compile against a runtime that accepts it"
     fi
     write_probe "$((emitted + 6))"
-    out="$(NROS_CARGO_FLAGS= cargo check -q --manifest-path "$probe/Cargo.toml" 2>&1 || true)"
+    out="$(cargo check -q --manifest-path "$probe/Cargo.toml" 2>&1 || true)"
     if nros_grep_q 'E0080' <<< "$out"; then
         ok "D  Rust: a version outside the range is REFUSED at compile time"
     else

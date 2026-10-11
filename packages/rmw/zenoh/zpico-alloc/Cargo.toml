@@ -19,8 +19,8 @@ categories = ["embedded", "no-std", "memory-management"]
 #
 # Already a transitive dependency of `nros-board-esp32-qemu` (via esp-alloc), so
 # it is proven to build for a bare-metal target in this tree, and it is present
-# in the local registry — which matters because `--locked` is injected
-# project-wide by the scripts/bin/cargo shim.
+# in the registry pin set (`locks/cargo-registry.lock`), which a leaf is seeded
+# from (RFC-0104 D3).
 # `unstable` is an EMPTY, purely additive feature in rlsf 0.2.3 -- it gates
 # extra APIs and nothing else; the only nightly `feature(...)` in that crate
 # is behind `doc_cfg`, which stays off. It is enabled for

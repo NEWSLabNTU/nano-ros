@@ -11,6 +11,7 @@ pub mod bridge_gen;
 pub mod cargo_metadata_schema;
 pub mod cmake_preset;
 pub mod config;
+pub mod drift;
 // phase-440 W7 (RFC-0095 D8) — the launcher: read the pin, ensure that
 // toolchain, `exec` it. Three jobs; a fourth is a bug.
 //

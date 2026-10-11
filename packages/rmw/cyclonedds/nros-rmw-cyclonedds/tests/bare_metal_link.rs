@@ -101,9 +101,8 @@ fn bare_metal_no_std_clean() {
     let root = workspace_root();
     // `--locked` because this build RESOLVES THE TRACKED ROOT LOCK (issue 1392).
     //
-    // `env!("CARGO")` is the real cargo the outer test run exported, not the
-    // `scripts/bin/cargo` PATH shim, so the project-wide `--locked`
-    // (`NROS_CARGO_FLAGS`, issues 0359/0378) never reached this command — and
+    // `env!("CARGO")` is the real cargo the outer test run exported, and no
+    // outer `--locked` (issues 0359/0378) reaches it — and
     // `current_dir` is the workspace root with the default target dir, so the
     // file it may rewrite is the committed one. A `check::build` lane running
     // this `#[ignore]`d test rewrote `Cargo.lock` during phase-454 and nothing

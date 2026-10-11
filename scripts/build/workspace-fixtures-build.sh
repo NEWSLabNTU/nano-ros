@@ -93,9 +93,6 @@ source "$repo_root/scripts/build/cargo.sh"
 # CI could not resolve is the drift issues 0359/0378 exist to prevent, and
 # fetching is what avoids it — permitting re-resolution would not.
 #
-# `NROS_CARGO_FLAGS=` because the PATH shim injects `--locked` project-wide, and
-# a leaf whose lock `nros sync` regenerates would be refused by it here.
-#
 # Local runs pay nothing: a warm cache makes this a no-op, which is also why the
 # defect never showed up in a developer sweep — only `--offline` exposes it.
 _NROS_WARMED_LEAVES=""
@@ -120,7 +117,7 @@ nros_warm_leaf_cache() {
     # fixed half the failure and looked like a fix.
     if [ -z "$_NROS_WARMED_ROOT" ]; then
         _NROS_WARMED_ROOT=1
-        if ( cd "$repo_root" && NROS_CARGO_FLAGS= cargo fetch >/dev/null 2>&1 ); then
+        if ( cd "$repo_root" && cargo fetch >/dev/null 2>&1 ); then
             :
         else
             echo "  leaf-fetch: could NOT warm the cargo cache for the repo root." >&2
@@ -158,7 +155,7 @@ nros_warm_leaf_cache() {
         [ -n "$manifest" ] || return 0
         cfg="$(printf '%s\n' "$plan" \
             | sed -n 's/^cargo build .*--config \([^ ]*\).*/\1/p' | head -n 1)"
-        if ( cd "$ws" && NROS_CARGO_FLAGS= cargo fetch --manifest-path "$manifest" \
+        if ( cd "$ws" && cargo fetch --manifest-path "$manifest" \
                 ${cfg:+--config "$cfg"} >/dev/null 2>&1 ); then
             return 0
         fi

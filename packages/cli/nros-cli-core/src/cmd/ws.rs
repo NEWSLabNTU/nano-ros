@@ -531,7 +531,6 @@ fn run_seed_lock(a: SeedLockArgs) -> Result<()> {
         .args(["locate-project", "--workspace", "--message-format", "plain"])
         .arg("--manifest-path")
         .arg(&manifest)
-        .env("NROS_CARGO_FLAGS", "")
         .output()
         .wrap_err("run `cargo locate-project`")?;
     if !out.status.success() {
@@ -4289,11 +4288,10 @@ fn warn_if_cargo_predates_config_include(ws_root: &Path) {
     //
     // Measured on `examples/workspaces/mixed`: 0.160 s with the probe,
     // 0.093 s with it failing fast — **42 % of the run, to decide whether to
-    // print a warning**. The cost is not `cargo --version` itself but the
-    // `scripts/bin/cargo` PATH shim it goes through, which fans out into
-    // `env` -> `bash` -> `dirname` -> `grep` -> the real cargo -> `rustc -vV`.
-    // That is also why `strace -c` misattributes it: the weight lands on the
-    // children, not on this process's `execve`.
+    // print a warning**. The cost was not `cargo --version` itself but the
+    // `--locked` PATH shim it went through (retired, phase-485 W4), which fanned
+    // out into `env` -> `bash` -> `dirname` -> `grep` -> the real cargo ->
+    // `rustc -vV`; `strace -c` misattributed it to the children.
     //
     // An IN-REPO workspace cannot be the case the warning is for: the toolchain
     // is pinned by the checkout, and the build that follows uses the same

@@ -119,10 +119,8 @@ def embedded_input_dirs():
 
 def cargo_metadata():
     env = dict(os.environ)
-    # `--locked` is injected project-wide by the `scripts/bin/cargo` PATH shim;
-    # metadata does not resolve anything new, and a lock this tree cannot
-    # satisfy is the gate's problem, not this script's.
-    env["NROS_CARGO_FLAGS"] = ""
+    # Metadata resolves nothing new; a lock this tree cannot satisfy is the
+    # gate's problem, not this script's.
     proc = subprocess.run(
         ["cargo", "metadata", "--format-version", "1",
          "--manifest-path", str(REPO / "packages" / "cli" / "Cargo.toml")],

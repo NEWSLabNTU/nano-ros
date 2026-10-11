@@ -135,9 +135,9 @@ _SH_SHEBANG = re.compile(rb"^#!\s*(?:/usr)?/bin/(?:env\s+)?(?:ba|da|z)?sh\b")
 def shebang_shell(repo=None, exclude_parts=DEFAULT_EXCLUDE_PARTS) -> list:
     """Tracked EXTENSION-LESS files whose shebang names a POSIX shell.
 
-    A shell script needs no `.sh`: `scripts/bin/cargo` (the `--locked` shim every
-    cargo call goes through) is bash, and a suffix-keyed population never read it
-    (issue 1614, `check-set-e-bare-assignment`). The shebang is the kind.
+    A shell script needs no `.sh`: the retired `--locked` cargo shim was bash
+    with no suffix, and a suffix-keyed population never read it (issue 1614,
+    `check-set-e-bare-assignment`). The shebang is the kind.
     """
     repo = str(repo or REPO)
     out = []

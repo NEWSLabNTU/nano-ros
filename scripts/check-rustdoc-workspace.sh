@@ -104,8 +104,8 @@ edition = "2021"
 [lib]
 path = "src/lib.rs"
 TOML
-    # `--locked` is injected project-wide by the `scripts/bin/cargo` PATH shim,
-    # so a lockless probe would fail for a reason that is not the probe's.
+    # A committed-shape lock, so the probe resolves the same crate set on every
+    # host and never needs the network.
     cat > "$tmp/probe/Cargo.lock" <<'LOCK'
 version = 3
 

@@ -723,12 +723,8 @@ _sweep_disk() {
         for root in "${cargo_roots[@]}"; do
             [ -d "$root/target" ] || continue
             local out=""
-            # NROS_CARGO_FLAGS is cleared for the same reason `cargo binstall`
-            # needs it cleared: `scripts/bin/cargo` injects `--locked`
-            # project-wide (issues 0359/0378), and `cargo-sweep` shells out to
-            # `cargo metadata`, which then sees a flag meant for a build.
             if [ "$CHECK" -eq 1 ]; then
-                out="$(NROS_CARGO_FLAGS= cargo-sweep sweep --dry-run --time "$sweep_days" "$root" 2>&1 || true)"
+                out="$(cargo-sweep sweep --dry-run --time "$sweep_days" "$root" 2>&1 || true)"
                 # `Would clean: nothing from "…"` is cargo-sweep's NO-OP
                 # answer, not a finding. Matching on "Would clean" alone marks
                 # the sweep dirty on a tree with nothing to do, which under
@@ -740,7 +736,7 @@ _sweep_disk() {
                     *) _say "      $root: nothing older than ${sweep_days}d" ;;
                 esac
             else
-                out="$(NROS_CARGO_FLAGS= cargo-sweep sweep --time "$sweep_days" "$root" 2>&1 || true)"
+                out="$(cargo-sweep sweep --time "$sweep_days" "$root" 2>&1 || true)"
                 case "$out" in
                     *"Cleaned nothing"*) _say "      $root: nothing older than ${sweep_days}d" ;;
                     *"Cleaned"*) dirty=1; _did "cargo-sweep --time $sweep_days $root: ${out##*Cleaned }" ;;
