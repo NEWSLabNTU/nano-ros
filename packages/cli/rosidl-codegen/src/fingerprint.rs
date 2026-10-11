@@ -46,8 +46,8 @@ const PROBE_SRV: &str = include_str!("../tests/fixtures/fingerprint-corpus/srv/P
 const PROBE_ACTION: &str = include_str!("../tests/fixtures/fingerprint-corpus/action/Probe.action");
 const CODEGEN_TOML: &str = include_str!("../tests/fixtures/fingerprint-corpus/nros-codegen.toml");
 
-/// Storage-mode variants the corpus is generated under. `owned` is the default
-/// path; the configured file exercises `heap` + `borrowed` (issues 0343–0346),
+/// Storage-mode variants the corpus is generated under. `inline` is the default
+/// path; the configured file exercises `heap` + `view` (issues 0343–0346),
 /// which have their own emitter arms and must move the fingerprint when they
 /// change.
 fn resolvers() -> Vec<(&'static str, CapacityResolver)> {

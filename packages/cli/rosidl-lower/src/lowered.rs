@@ -72,7 +72,7 @@ pub enum LoweredStorage {
     /// Heap-backed (`alloc::Vec` / `String` — the config's `heap` mode).
     Heap,
     /// Zero-copy borrow of `cap` into the CDR receive buffer (the config's
-    /// `borrowed` mode — RFC-0033 / issue 0007).
+    /// `view` mode — RFC-0033 / issue 0007).
     Borrowed { cap: usize },
 }
 
@@ -470,7 +470,7 @@ string<=8    str_bounded
     #[test]
     fn string_and_bounded_facts() {
         let t = lower_shapes();
-        // unbounded string, empty config → the `owned` default: a fixed-capacity
+        // unbounded string, empty config → the `inline` default: a fixed-capacity
         // buffer sized to the nros string default (256).
         assert_eq!(
             field(&t, "text").storage,

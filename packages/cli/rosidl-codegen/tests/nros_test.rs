@@ -396,7 +396,7 @@ fn bounded_field_ignores_config() {
 
 #[test]
 fn borrowed_mode_emits_zero_copy_view() {
-    // Phase 229.6 (issue 0007): a byte-sequence field marked `borrowed` emits a
+    // Phase 229.6 (issue 0007): a byte-sequence field marked `view` emits a
     // `{Msg}View<'a>` zero-copy view + a `{Msg}Borrow` marker, alongside the
     // unchanged owned `{Msg}` (which keeps a default-capacity owned container
     // for the publish path).

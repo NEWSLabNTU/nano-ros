@@ -692,7 +692,7 @@ pub fn nros_type_for_field_with_mode(
 /// `cap` (resolved per-field from `nros-codegen.toml`, RFC-0033). All other
 /// field shapes — bounded strings/sequences, arrays, primitives, nested types,
 /// and sequence *element* types — keep their default rendering. Used by the
-/// `owned` storage mode; the resolver picks `cap`.
+/// `inline` storage mode; the resolver picks `cap`.
 pub fn nros_type_for_field_with_capacity(
     field_type: &FieldType,
     current_package: Option<&str>,
@@ -1138,7 +1138,7 @@ pub fn c_type_for_field(field_type: &FieldType, _current_package: Option<&str>) 
 }
 
 /// Like [`c_type_for_field`], but overrides the capacity of a **top-level
-/// unbounded** `Sequence` with `cap` (RFC-0033, `owned` mode). Strings carry
+/// unbounded** `Sequence` with `cap` (RFC-0033, `inline` mode). Strings carry
 /// their capacity in the array suffix, not the base type, so the string arms
 /// are unchanged here — see [`c_array_suffix_for_field_with_capacity`].
 pub fn c_type_for_field_with_capacity(
@@ -1565,7 +1565,7 @@ pub fn cpp_type_for_field(field_type: &FieldType, current_package: Option<&str>)
 }
 
 /// Like [`cpp_type_for_field`], but overrides the capacity of a **top-level
-/// unbounded** `String` / `WString` / `Sequence` with `cap` (RFC-0033, `owned`).
+/// unbounded** `String` / `WString` / `Sequence` with `cap` (RFC-0033, `inline`).
 pub fn cpp_type_for_field_with_capacity(
     field_type: &FieldType,
     current_package: Option<&str>,

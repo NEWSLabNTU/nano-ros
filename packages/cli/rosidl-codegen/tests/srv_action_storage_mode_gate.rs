@@ -15,9 +15,9 @@
 //! payload struct. The CALLER declares it and calls `_deserialize`, so the caller
 //! `_fini`s it, exactly as for messages. The fix was the shared C arms
 //! (`_c_field.jinja`) plus a generated `_fini` per payload struct.
-//! * **`borrowed`** — works by emitting a `{Msg}View<'a>` alongside the owned
-//!   struct; srv/action emit no view type, so the mode would silently degrade to
-//!   `owned` (a wrong answer, not an error).
+//! * **`view`** — works by emitting a `{Msg}View<'a>` alongside the owned
+//!   struct; before 0346 srv/action emitted no view type, so the mode would have
+//!   silently degraded to `inline` (a wrong answer, not an error).
 //!
 //! These tests assert generated TEXT and diagnostics, so they need no toolchain
 //! and run in the default lane — unlike the `#[ignore]`d `*_heap_compile_check`
@@ -113,7 +113,7 @@ fn the_inline_service_emitter_supports_heap_too() {
 
 // ── still rejected, for stated reasons ──────────────────────────────────────
 
-/// 0346 — `borrowed` emits a `{Payload}View<'a>` beside the owned struct, so the
+/// 0346 — `view` emits a `{Payload}View<'a>` beside the owned struct, so the
 /// owned publish path is untouched and the view aliases the raw callback buffer.
 /// Both directions read from a buffer (the server reads `request_data`, the client
 /// reads `response`), so the lifetime story matches a subscription's.
