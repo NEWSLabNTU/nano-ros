@@ -103,3 +103,24 @@ def leaf_target(leaf_dir) -> "tuple[str | None, str]":
     if board not in _CATALOG:
         return None, f"board `{board}` is claimed by no descriptor"
     return _CATALOG[board], f"board `{board}`"
+
+
+def board_crate_root_extra(board: str) -> str:
+    """The `[board.entry] crate_root_extra` of the descriptor claiming `board`.
+
+    Issue 1305 — a single-package leaf that depends on its generated
+    `<pkg>_nros_selection` package gets these crate-root items (a panic
+    provider such as `use panic_semihosting as _;`) from that package's
+    `src/lib.rs`, not from its own sources; a gate that asks what a leaf
+    SUPPLIES has to look here for such a leaf. "" for an unknown board or a
+    board with no entry items.
+    """
+    for desc in sorted((REPO / "packages" / "boards").glob("*/nros-board.toml")):
+        text = desc.read_text(encoding="utf-8", errors="replace")
+        for block in re.split(r"^\[\[board\]\]", text, flags=re.M)[1:]:
+            names = re.search(r'^names\s*=\s*\[([^\]]*)\]', block, re.M)
+            if not names or board not in re.findall(r'"([^"]+)"', names.group(1)):
+                continue
+            m = re.search(r'^crate_root_extra\s*=\s*"((?:[^"\\]|\\.)*)"', block, re.M)
+            return m.group(1).encode().decode("unicode_escape") if m else ""
+    return ""
