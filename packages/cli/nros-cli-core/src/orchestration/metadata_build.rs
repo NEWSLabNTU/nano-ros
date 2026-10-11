@@ -422,28 +422,55 @@ pub fn render_harness_main(o: &MetadataBuildOptions) -> Result<String> {
 /// cargo resolves a config path; the file written here lives elsewhere, so a
 /// relative path would otherwise point at the wrong tree.
 ///
+/// Issue 1829 — TWO chains, not one. The rows the leaf's own build reads sit
+/// on the COMPONENT's chain: its patch authority is the nearest ancestor of
+/// `component_dir` holding a `[workspace]` (`find_patch_authority`), and sync
+/// writes the authority's `.cargo/config.toml` there. The harness sits under
+/// `<ws>/build/nros-metadata/`, so in a colcon workspace whose Rust leaf is its
+/// own cargo workspace (`examples/templates/local-msg-package`) the leaf's
+/// config is a SIBLING of the harness's chain, never an ancestor: walking only
+/// the harness chain found no row, the leaf's crates.io-named `nros` searched
+/// crates.io, and #1817's resolution check then called the leaf unresolvable.
+/// For a single-package leaf (harness under `<leaf>/build/`) the component
+/// chain is a suffix of the harness chain, so nothing changes there. Component
+/// chain first (farthest to nearest), then the harness-only directories, so a
+/// row the harness's own tree states still wins.
+///
 /// `Ok(None)` when no file contributes a patch row: the probe then gets no
 /// `--config` at all.
-fn probe_patch_config(harness_dir: &Path, cwd: &Path) -> Result<Option<PathBuf>> {
+fn probe_patch_config(
+    harness_dir: &Path,
+    component_dir: &Path,
+    cwd: &Path,
+) -> Result<Option<PathBuf>> {
     let cwd_chain: Vec<PathBuf> = cwd.ancestors().map(Path::to_path_buf).collect();
-    // Nearest first, as `ancestors()` yields them.
-    let mut layers: Vec<toml::Table> = Vec::new();
-    for dir in harness_dir.ancestors() {
-        if cwd_chain.iter().any(|c| c == dir) {
-            break;
-        }
+    let below_cwd = |start: &Path| -> Vec<PathBuf> {
+        start
+            .ancestors()
+            .take_while(|d| !cwd_chain.iter().any(|c| c == d))
+            .map(Path::to_path_buf)
+            .collect()
+    };
+    // Each chain nearest first, as `ancestors()` yields them.
+    let component_chain = below_cwd(component_dir);
+    let harness_only: Vec<PathBuf> = below_cwd(harness_dir)
+        .into_iter()
+        .filter(|d| !component_chain.contains(d))
+        .collect();
+    // Farthest first, so a nearer layer overrides a farther one.
+    let mut merged = toml::Table::new();
+    for dir in component_chain
+        .iter()
+        .rev()
+        .chain(harness_only.iter().rev())
+    {
         for name in ["config.toml", "config"] {
             let file = dir.join(".cargo").join(name);
             if file.is_file() {
-                layers.push(patch_rows_of(&file)?);
+                merge_patch(&mut merged, patch_rows_of(&file)?);
                 break;
             }
         }
-    }
-    // Farthest first, so a nearer layer overrides a farther one.
-    let mut merged = toml::Table::new();
-    for layer in layers.into_iter().rev() {
-        merge_patch(&mut merged, layer);
     }
     if merged.is_empty() {
         return Ok(None);
@@ -585,7 +612,7 @@ pub fn build_metadata(o: &MetadataBuildOptions) -> Result<()> {
     // the leaf's config the probe needs -- are named with `--config`. See
     // `probe_patch_config`.
     let cwd = probe_cwd(o);
-    let patch_config = probe_patch_config(&o.harness_dir, &cwd)?;
+    let patch_config = probe_patch_config(&o.harness_dir, &o.component_dir, &cwd)?;
     let mut cmd = Command::new("cargo");
     cmd
         // phase-307 W1 — a Node pkg's generated interface deps
@@ -710,8 +737,15 @@ pub fn component_resolution_error(o: &MetadataBuildOptions) -> Option<String> {
     let cwd = probe_cwd(o);
     let mut cmd = Command::new("cargo");
     cmd.current_dir(&cwd);
-    if let Ok(Some(cfg)) = probe_patch_config(&o.harness_dir, &cwd) {
-        cmd.arg("--config").arg(cfg);
+    // Issue 1829 — an unreadable patch config (a missing `include`) is a cargo
+    // MANIFEST-PARSE error for the leaf's own build too, so it is the cause,
+    // not something to drop and then report cargo's unpatched error instead.
+    match probe_patch_config(&o.harness_dir, &o.component_dir, &cwd) {
+        Ok(Some(cfg)) => {
+            cmd.arg("--config").arg(cfg);
+        }
+        Ok(None) => {}
+        Err(e) => return Some(format!("{e:#}")),
     }
     let out = cmd
         .args([
@@ -1059,7 +1093,7 @@ mod tests {
         )
         .unwrap();
 
-        let out = probe_patch_config(&harness, &cwd)
+        let out = probe_patch_config(&harness, &leaf, &cwd)
             .unwrap()
             .expect("the leaf has patch rows");
         let text = std::fs::read_to_string(&out).unwrap();
@@ -1079,8 +1113,67 @@ mod tests {
         );
 
         // A config ABOVE the cwd is cargo's own chain and is not re-read.
-        let none = probe_patch_config(&cwd.join("sub"), &cwd).unwrap();
+        let none = probe_patch_config(&cwd.join("sub"), &cwd.join("sub"), &cwd).unwrap();
         assert!(none.is_none());
+    }
+
+    /// Issue 1829 — a colcon workspace whose Rust leaf is its own cargo
+    /// workspace keeps its patch rows in `<ws>/src/<leaf>/.cargo/`, a SIBLING
+    /// of the harness's `<ws>/build/nros-metadata/…` chain. The probe must take
+    /// them from the component's chain, or the leaf's crates.io-named `nros`
+    /// searches crates.io and #1817 calls the leaf unresolvable.
+    #[test]
+    fn the_probe_takes_a_sibling_leafs_patch_rows() {
+        let root = tempfile::tempdir().unwrap();
+        let cwd = root.path().join("checkout");
+        let ws = root.path().join("ws");
+        let leaf = ws.join("src/rust_consumer");
+        let harness = ws.join("build/nros-metadata/metadata-probe/rust_consumer");
+        std::fs::create_dir_all(&cwd).unwrap();
+        std::fs::create_dir_all(leaf.join(".cargo")).unwrap();
+        std::fs::create_dir_all(ws.join(".cargo")).unwrap();
+        std::fs::create_dir_all(&harness).unwrap();
+        std::fs::write(
+            root.path().join("nros-patch.toml"),
+            "[patch.crates-io]\nnros = { path = \"/checkout/packages/api/nros\" }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            leaf.join(".cargo/config.toml"),
+            "include = [\"../../../../nros-patch.toml\"]\n\
+             [patch.crates-io]\nnros-platform = { path = \"../../plat\" }\n",
+        )
+        .unwrap();
+        // A farther layer the leaf's nearer one overrides.
+        std::fs::write(
+            ws.join(".cargo/config.toml"),
+            "[patch.crates-io]\nnros-platform = { path = \"wrong\" }\n",
+        )
+        .unwrap();
+
+        let out = probe_patch_config(&harness, &leaf, &cwd)
+            .unwrap()
+            .expect("the sibling leaf's rows must be found");
+        let text = std::fs::read_to_string(&out).unwrap();
+        let doc: toml::Table = text.parse().unwrap();
+        let crates = doc["patch"]["crates-io"].as_table().unwrap();
+        assert_eq!(
+            crates["nros"]["path"].as_str().unwrap(),
+            "/checkout/packages/api/nros",
+            "{text}"
+        );
+        assert_eq!(
+            crates["nros-platform"]["path"].as_str().unwrap(),
+            leaf.join("../../plat").display().to_string(),
+            "{text}"
+        );
+
+        // The pre-1829 walk (harness chain only) found nothing of the leaf's.
+        let only_ws = probe_patch_config(&harness, &harness, &cwd)
+            .unwrap()
+            .unwrap();
+        let text = std::fs::read_to_string(&only_ws).unwrap();
+        assert!(!text.contains("packages/api/nros"), "{text}");
     }
 
     /// issue 0699 — a RUNTIME failure in the harness must reach the operator.
