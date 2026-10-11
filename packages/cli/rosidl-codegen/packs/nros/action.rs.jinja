@@ -742,7 +742,7 @@ impl RosAction for {{ action_name }} {
         ::core::result::Result::Ok(())
     }
 }
-{%- if has_borrowed_goal %}
+{%- if has_view_goal %}
 
 // ── RFC-0033 `view` (issue 0346) ────────────────────────────────────────
 // Zero-copy view of the goal payload: fields marked `mode = "view"`
@@ -770,7 +770,7 @@ impl<'a> nros_core::DeserializeView<'a> for {{ action_name }}GoalView<'a> {
 }
 {%- endif %}
 
-{%- if has_borrowed_result %}
+{%- if has_view_result %}
 
 // ── RFC-0033 `view` (issue 0346) ────────────────────────────────────────
 // Zero-copy view of the result payload: fields marked `mode = "view"`
@@ -798,7 +798,7 @@ impl<'a> nros_core::DeserializeView<'a> for {{ action_name }}ResultView<'a> {
 }
 {%- endif %}
 
-{%- if has_borrowed_feedback %}
+{%- if has_view_feedback %}
 
 // ── RFC-0033 `view` (issue 0346) ────────────────────────────────────────
 // Zero-copy view of the feedback payload: fields marked `mode = "view"`

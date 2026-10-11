@@ -188,7 +188,7 @@ int32_t {{ response_struct_name }}_deserialize({{ response_struct_name }}* msg, 
     if (nros_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;
     return 0;
 }
-{%- if has_borrowed_request %}
+{%- if has_view_request %}
 
 // =============================================================================
 // Borrowed deserialize (RFC-0033 `view`, issue 0346) — `mode = "view"`
@@ -218,7 +218,7 @@ int32_t {{ request_struct_name }}_deserialize_view({{ request_struct_name }}_Vie
 }
 {%- endif %}
 
-{%- if has_borrowed_response %}
+{%- if has_view_response %}
 
 // =============================================================================
 // Borrowed deserialize (RFC-0033 `view`, issue 0346) — `mode = "view"`
