@@ -110,7 +110,7 @@
 
 {#- Issue 0346 — the borrowed deserialize arm: borrowed fields read a slice out
     of the buffer, everything else falls back to the owned arm above. -#}
-{%- macro borrowed_deser_field(field, inline_mode) -%}
+{%- macro view_deser_field(field, inline_mode) -%}
 {%- if field.is_view %}
             {{ field.name }}: {{ field.view_read_expr }},
 {%- else %}
