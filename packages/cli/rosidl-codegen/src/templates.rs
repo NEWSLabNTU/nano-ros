@@ -711,7 +711,7 @@ pub struct CppFfiField {
     pub view_reader_call: String,
     /// `true` for the `LeSpan` case — the FFI takes `.as_bytes().as_ptr()`
     /// (element count) instead of `.as_ptr()` / `.len()` (byte slice / string).
-    pub borrowed_le: bool,
+    pub view_le: bool,
 }
 
 /// C++ field info for header generation (uses FixedString/FixedSequence types)
