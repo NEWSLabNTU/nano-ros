@@ -1,6 +1,6 @@
 # RFC-0098 — A leaf's build configuration is generated from one board choice
 
-**Status:** Draft (2026-09-10; revised 2026-09-10 — generated settings live under `build/`, and a workspace has no root build file; 2026-09-11 — three facts measured by phase-445 W4; 2026-09-11 — the app rung gets its spelling and the leaf `.cargo/` is deleted, phase-445 W6; 2026-10-07 — image configuration has ONE source on every road: D10–D12, phase-481; 2026-10-07 — D11's locator revision from phase-481 W0 DECIDED: the module's `module_ext_root` hook appends the fragment; 2026-10-11 — D10–D12 IMPLEMENTED by phase-481 W1–W5: every Zephyr example states its nano-ros config in `system.toml` and no leaf conf file holds a nano-ros knob. 2026-10-11 — D1's path defers to RFC-0103 D7, and D6 covers every image-only dependency of a single-package leaf through a generated selection package. Stays Draft while phase-445, D1–D9, is open)
+**Status:** Draft (2026-09-10; revised 2026-09-10 — generated settings live under `build/`, and a workspace has no root build file; 2026-09-11 — three facts measured by phase-445 W4; 2026-09-11 — the app rung gets its spelling and the leaf `.cargo/` is deleted, phase-445 W6; 2026-10-07 — image configuration has ONE source on every road: D10–D12, phase-481; 2026-10-07 — D11's locator revision from phase-481 W0 DECIDED: the module's `module_ext_root` hook appends the fragment; 2026-10-11 — D10–D12 IMPLEMENTED by phase-481 W1–W5: every Zephyr example states its nano-ros config in `system.toml` and no leaf conf file holds a nano-ros knob. 2026-10-11 — D1's path defers to RFC-0103 D7, and D6 covers every image-only dependency of a single-package leaf through a generated selection package. 2026-10-12 — that package IMPLEMENTED (issue 1305, two pilot leaves): the leaf names it registry-style and a per-image `[patch]` row points it at `build/<image>/nros-selection/`. Stays Draft while phase-445, D1–D9, is open)
 
 Home phase: [phase-445](../roadmap/phase-445-board-choice-generates-leaf-config.md).
 
@@ -448,6 +448,19 @@ network.
 
 Rejected: making every single-package leaf a generated entry. It meets D6 but
 removes the documented plain-cargo flow for the most common example shape.
+
+**Implemented 2026-10-12 (issue 1305), with one refinement.** The leaf names
+the package REGISTRY-STYLE (`<pkg>_nros_selection = { version = "0.0.0" }`)
+and a per-image `[patch.crates-io]` row, in that image's `nros-cargo.toml`,
+points it at `build/<image>/nros-selection/`. A literal `path =` cannot be
+board- and image-agnostic: it names one image's directory in the user's
+manifest, and cargo cannot `[patch]` a path source. The package's `lib.rs`
+re-exports the board crate and each `crate_root_deps` crate and carries the
+board's `crate_root_extra`, so the leaf's crate root names no board crate either
+(its `nros::main!` says `panic = "own"`). `crate_root_deps` therefore lists
+every crate the board's entry code names, not only the panic crate (the mps2
+bare-metal board gained `cortex-m` / `cortex-m-rt`). Two pilots migrated; the
+other single-package leaves are the open part of issue 1305.
 
 ## What is NOT decided here
 

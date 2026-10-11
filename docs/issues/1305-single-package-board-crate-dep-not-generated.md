@@ -9,6 +9,85 @@ found: 2026-09-11
 related: [rfc-0098, rfc-0065, phase-445]
 ---
 
+## 2026-10-12 (later) — the generated selection package landed; two pilots migrated (still OPEN)
+
+The fix the 2026-10-11 amendment describes is implemented, and two leaves use
+it: `examples/mps2-an385-baremetal/rust/talker` and
+`examples/mps2-an385-freertos/rust/talker`. Each names ONE image-only
+dependency, the same for every board:
+
+```toml
+[target.'cfg(target_os = "none")'.dependencies]
+qemu_bsp_talker_nros_selection = { version = "0.0.0" }
+```
+
+**What generates it.** `nros sync` (and `nros build`) write
+`<leaf>/build/<image>/nros-selection/` with
+`orchestration::facade::write_leaf_selection`. Its inputs are the ones a
+generated workspace entry uses, through the same code: `builder::entry`'s
+`board_crate_dep` / `platform_dep` (now shared with `render_manifest`) give the
+board crate with the descriptor's `board_features`, and `nros-platform` with
+the platform feature; `facade::derive_selection` (split out of `write_facade`)
+gives the edition and capabilities on `nros` and the board's non-RMW defaults
+plus one `rmw-*` per backend the image links. The board's `crate_root_deps` are
+dependencies too, and its `lib.rs` re-exports the board crate and each of those
+crates under its own name, then carries the board's `crate_root_extra`
+(`use panic_semihosting as _;`), the lines a generated entry puts in `main.rs`.
+
+**How the leaf reaches it.** The leaf names the package registry-style and a
+per-image `[patch.crates-io]` row points it at that image's copy. A literal
+`path =` would put one image's directory in the leaf's own manifest, and cargo
+cannot `[patch]` a path source, so a multi-image leaf could not switch images
+without editing the manifest. This is how the leaf already reached its other
+in-repo crates (`nros = { version = "*" }`). The row is in the image's
+`nros-cargo.toml` (for `nros build` and `cargo --config`) and in the leaf's own
+gitignored `.cargo/config.toml` (`ws::write_patch_block`), because the metadata
+probe resolves the leaf's manifest before sync writes the settings file, and
+cargo resolves target-scoped dependencies for the host too.
+
+**How the macro reaches the board.** `nros::main!` checks the leaf's manifest
+for a dependency named `<package>_nros_selection` (Form 1 leaves only; a
+generated workspace entry reaches its bringup through `launch =` and is
+unchanged). When it is there, the board path becomes
+`::<sel>::nros_board_<x>::<Board>` and the bare-metal Cortex-M entry's
+`cortex_m_rt` / `cortex_m` paths go through the same package.
+
+Two descriptor rows the generated dependency needed, both in
+`packages/boards/nros-board-mps2-an385/nros-board.toml`: `board_features =
+["board-entry"]` (the leaf used to name it), and `cortex-m` / `cortex-m-rt` in
+`crate_root_deps` (the macro emits both for this board; a generated entry on
+it lacked them too). `panic-semihosting` there now carries the leaf's `exit`
+feature. A leaf on the package says `nros::main!(panic = "own")`, since its
+panic handler is the board's crate-root item; the FreeRTOS pilot moved from
+`"platform"` to `"own"`, as the generated FreeRTOS workspace image already
+says.
+
+**Acceptance, measured.** A copy of the baremetal talker's tracked files
+(`tmp/accept/talker`, inside the checkout), with `[image.mps2-an385-baremetal]
+board = "freertos"` the ONLY edit (its `Cargo.toml` byte-identical to the
+example's, sha1 `b973fc5b`): `nros sync` rc=0, `nros build` rc=0. The selection
+package names `nros-board-mps2-an385-freertos` (`rmw-zenoh`) and `nros-platform`
+(`platform-freertos`). In QEMU (slirp, `lan9118`, `rmw_zenohd` on
+`tcp/127.0.0.1:10500`) it prints the FreeRTOS banner, "Application setup
+complete", and publishes 27 messages in 30 s. ROS 2 delivery was not
+re-checked. Both pilots, unmodified, also sync, build and boot on their own
+boards (29 and 27 messages in 30 s).
+
+**Unmigrated leaves are unchanged.** A leaf that still names its board crate
+gets no package, and `check_board_crate_dependency` still refuses a mismatch;
+its message now names the selection-package line as the fix.
+
+**Still owed (why this stays open):** the sweep. 57 other single-package Rust
+leaves name a board crate, across `qemu-mps2-an385` (15 more), `rtic-mps2-an385`
+(8), `native` (8), `nuttx` (6), `rv-virt-threadx` (6), `threadx-linux` (6),
+`freertos` (5 more) and `esp32-c3-baremetal` (2). Several need more than the
+pilots did: RTIC leaves select `rtic`, not `board-entry`; the XRCE leaves select
+`xrce-transport` / serial; an `esp_app_desc!()` crate-root item may not survive
+being moved into a library; and a `native` (or `threadx-linux`) image is built
+FOR the host, so a `cfg(target_os = "none")` dependency never reaches it and
+its selection package must be named unscoped, which the host probe then builds
+too. Each family needs its own build, so the sweep was left for a follow-up.
+
 ## 2026-10-12 — the switched image delivers; two edits, not three
 
 The switch measured below was finished end to end. On a copy of
