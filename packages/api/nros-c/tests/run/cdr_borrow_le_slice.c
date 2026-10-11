@@ -15,7 +15,7 @@
  *         padding bytes as the low half of element 0 and left every field
  *         after the sequence four bytes short.
  *
- *   1149  the count is wire data. `nros_cdr_seq_byte_len` is the ONE place a
+ *   1149  the count is wire data. `rclc_cdr_seq_byte_len` is the ONE place a
  *         count meets `sizeof`, and it takes its limit as a parameter so this
  *         64-bit host can exercise the 32-bit wrap: `0x40000000 * 4` and
  *         `0xFFFFFFFF * 8` both wrap below a 32-bit SIZE_MAX to a length the
@@ -64,19 +64,19 @@ typedef struct {
 static void write_u32_then_f64_seq(stream_t* s, int lead, const double* xs, uint32_t n) {
     uint8_t* p = s->buf;
     const uint8_t* end = s->buf + sizeof s->buf;
-    CHECK(nros_cdr_write_encaps_header(&p, end) == 0);
+    CHECK(rclc_cdr_write_encaps_header(&p, end) == 0);
     uint8_t* origin = p;
-    CHECK(nros_cdr_write_u32(&p, end, origin, 0xA5A5A5A5u) == 0);
+    CHECK(rclc_cdr_write_u32(&p, end, origin, 0xA5A5A5A5u) == 0);
     for (int i = 0; i < lead; ++i)
-        CHECK(nros_cdr_write_u32(&p, end, origin, 0x5A5A5A5Au) == 0);
-    CHECK(nros_cdr_write_u32(&p, end, origin, n) == 0);
+        CHECK(rclc_cdr_write_u32(&p, end, origin, 0x5A5A5A5Au) == 0);
+    CHECK(rclc_cdr_write_u32(&p, end, origin, n) == 0);
     for (uint32_t i = 0; i < n; ++i) {
-        CHECK(nros_cdr_write_f64(&p, end, origin, xs[i]) == 0);
+        CHECK(rclc_cdr_write_f64(&p, end, origin, xs[i]) == 0);
         if (i == 0) s->elems_at = (size_t)(p - origin) - sizeof(double);
     }
     if (n == 0) s->elems_at = (size_t)(p - origin);
     s->tail_at = (size_t)(p - origin);
-    CHECK(nros_cdr_write_u32(&p, end, origin, 0xCAFEF00Du) == 0);
+    CHECK(rclc_cdr_write_u32(&p, end, origin, 0xCAFEF00Du) == 0);
     s->origin = origin;
     s->end = p;
 }
@@ -95,13 +95,13 @@ static void test_alignment(int lead) {
 
     const uint8_t* ptr = s.origin;
     uint32_t a = 0;
-    CHECK(nros_cdr_read_u32(&ptr, s.end, s.origin, &a) == 0);
+    CHECK(rclc_cdr_read_u32(&ptr, s.end, s.origin, &a) == 0);
     CHECK(a == 0xA5A5A5A5u);
     for (int i = 0; i < lead; ++i)
-        CHECK(nros_cdr_read_u32(&ptr, s.end, s.origin, &a) == 0);
+        CHECK(rclc_cdr_read_u32(&ptr, s.end, s.origin, &a) == 0);
 
-    nros_le_slice_view_f64_t view;
-    CHECK(nros_cdr_borrow_le_slice_f64(&ptr, s.end, s.origin, &view) == 0);
+    rclc_le_slice_view_f64_t view;
+    CHECK(rclc_cdr_borrow_le_slice_f64(&ptr, s.end, s.origin, &view) == 0);
     CHECK(view.count == 2);
     /* Byte-for-byte with the writer: the view begins where the writer put
      * element 0, and the cursor where it put the tail. */
@@ -115,26 +115,26 @@ static void test_alignment(int lead) {
         CHECK(s.elems_at == expect);
         CHECK(lead == 0 ? expect == 8 : expect == 16);
     }
-    CHECK(nros_le_slice_view_f64_get(view, 0) == 1111.0);
-    CHECK(nros_le_slice_view_f64_get(view, 1) == 2222.0);
+    CHECK(rclc_le_slice_view_f64_get(view, 0) == 1111.0);
+    CHECK(rclc_le_slice_view_f64_get(view, 1) == 2222.0);
 
     uint32_t tail = 0;
-    CHECK(nros_cdr_read_u32(&ptr, s.end, s.origin, &tail) == 0);
+    CHECK(rclc_cdr_read_u32(&ptr, s.end, s.origin, &tail) == 0);
     CHECK(tail == 0xCAFEF00Du);
     CHECK(ptr == s.end);
 
     /* Same stream, the integer family of the macro. */
     ptr = s.origin;
-    CHECK(nros_cdr_read_u32(&ptr, s.end, s.origin, &a) == 0);
+    CHECK(rclc_cdr_read_u32(&ptr, s.end, s.origin, &a) == 0);
     for (int i = 0; i < lead; ++i)
-        CHECK(nros_cdr_read_u32(&ptr, s.end, s.origin, &a) == 0);
-    nros_le_slice_view_u64_t uview;
-    CHECK(nros_cdr_borrow_le_slice_u64(&ptr, s.end, s.origin, &uview) == 0);
+        CHECK(rclc_cdr_read_u32(&ptr, s.end, s.origin, &a) == 0);
+    rclc_le_slice_view_u64_t uview;
+    CHECK(rclc_cdr_borrow_le_slice_u64(&ptr, s.end, s.origin, &uview) == 0);
     CHECK(uview.count == 2);
     CHECK((size_t)(uview.bytes - s.origin) == s.elems_at);
     uint64_t bits;
     memcpy(&bits, &xs[0], sizeof bits);
-    CHECK(nros_le_slice_view_u64_get(uview, 0) == bits);
+    CHECK(rclc_le_slice_view_u64_get(uview, 0) == bits);
     CHECK((size_t)(ptr - s.origin) == s.tail_at);
 }
 
@@ -145,23 +145,23 @@ static void test_empty_sequence_takes_no_padding(void) {
     uint8_t buf[64];
     uint8_t* p = buf;
     const uint8_t* end = buf + sizeof buf;
-    CHECK(nros_cdr_write_encaps_header(&p, end) == 0);
+    CHECK(rclc_cdr_write_encaps_header(&p, end) == 0);
     uint8_t* origin = p;
-    CHECK(nros_cdr_write_u32(&p, end, origin, 1) == 0);
-    CHECK(nros_cdr_write_u32(&p, end, origin, 2) == 0);
-    CHECK(nros_cdr_write_u32(&p, end, origin, 0) == 0);
-    CHECK(nros_cdr_write_u8(&p, end, origin, 0xAB) == 0);
+    CHECK(rclc_cdr_write_u32(&p, end, origin, 1) == 0);
+    CHECK(rclc_cdr_write_u32(&p, end, origin, 2) == 0);
+    CHECK(rclc_cdr_write_u32(&p, end, origin, 0) == 0);
+    CHECK(rclc_cdr_write_u8(&p, end, origin, 0xAB) == 0);
     const uint8_t* wend = p;
 
     const uint8_t* ptr = origin;
     uint32_t v;
-    CHECK(nros_cdr_read_u32(&ptr, wend, origin, &v) == 0);
-    CHECK(nros_cdr_read_u32(&ptr, wend, origin, &v) == 0);
-    nros_le_slice_view_f64_t view;
-    CHECK(nros_cdr_borrow_le_slice_f64(&ptr, wend, origin, &view) == 0);
+    CHECK(rclc_cdr_read_u32(&ptr, wend, origin, &v) == 0);
+    CHECK(rclc_cdr_read_u32(&ptr, wend, origin, &v) == 0);
+    rclc_le_slice_view_f64_t view;
+    CHECK(rclc_cdr_borrow_le_slice_f64(&ptr, wend, origin, &view) == 0);
     CHECK(view.count == 0);
     uint8_t flag = 0;
-    CHECK(nros_cdr_read_u8(&ptr, wend, origin, &flag) == 0);
+    CHECK(rclc_cdr_read_u8(&ptr, wend, origin, &flag) == 0);
     CHECK(flag == 0xAB);
     CHECK(ptr == wend);
 }
@@ -170,18 +170,18 @@ static void test_count_overflow(void) {
     size_t n = 0;
     const size_t limit32 = 0xFFFFFFFFu;
     /* The two wire counts from issue 1149, against a 32-bit SIZE_MAX. */
-    CHECK(nros_cdr_seq_byte_len(0x40000000u, sizeof(float), limit32, &n) == -1);
-    CHECK(nros_cdr_seq_byte_len(0xFFFFFFFFu, sizeof(double), limit32, &n) == -1);
-    CHECK(nros_cdr_seq_byte_len(0x20000000u, sizeof(double), limit32, &n) == -1);
+    CHECK(rclc_cdr_seq_byte_len(0x40000000u, sizeof(float), limit32, &n) == -1);
+    CHECK(rclc_cdr_seq_byte_len(0xFFFFFFFFu, sizeof(double), limit32, &n) == -1);
+    CHECK(rclc_cdr_seq_byte_len(0x20000000u, sizeof(double), limit32, &n) == -1);
     /* The largest count that fits, and an ordinary one. */
-    CHECK(nros_cdr_seq_byte_len(0x1FFFFFFFu, sizeof(double), limit32, &n) == 0);
+    CHECK(rclc_cdr_seq_byte_len(0x1FFFFFFFu, sizeof(double), limit32, &n) == 0);
     CHECK(n == 0xFFFFFFF8u);
-    CHECK(nros_cdr_seq_byte_len(3, sizeof(double), limit32, &n) == 0);
+    CHECK(rclc_cdr_seq_byte_len(3, sizeof(double), limit32, &n) == 0);
     CHECK(n == 24);
-    CHECK(nros_cdr_seq_byte_len(0, sizeof(double), limit32, &n) == 0);
+    CHECK(rclc_cdr_seq_byte_len(0, sizeof(double), limit32, &n) == 0);
     CHECK(n == 0);
     /* The call sites' own limit, whatever this host's size_t is. */
-    CHECK(nros_cdr_seq_byte_len(0xFFFFFFFFu, sizeof(double), SIZE_MAX, &n) ==
+    CHECK(rclc_cdr_seq_byte_len(0xFFFFFFFFu, sizeof(double), SIZE_MAX, &n) ==
           (SIZE_MAX == limit32 ? -1 : 0));
 
     /* Through the macro: a 4-byte header, then a count of 0xFFFFFFFF and
@@ -191,31 +191,31 @@ static void test_count_overflow(void) {
     const uint8_t* origin = buf + 4;
     const uint8_t* end = buf + sizeof buf;
     const uint8_t* ptr = origin;
-    nros_le_slice_view_f64_t v64 = {NULL, 0};
-    CHECK(nros_cdr_borrow_le_slice_f64(&ptr, end, origin, &v64) == -1);
+    rclc_le_slice_view_f64_t v64 = {NULL, 0};
+    CHECK(rclc_cdr_borrow_le_slice_f64(&ptr, end, origin, &v64) == -1);
     CHECK(v64.bytes == NULL && v64.count == 0);
-    nros_le_slice_view_f32_t v32 = {NULL, 0};
+    rclc_le_slice_view_f32_t v32 = {NULL, 0};
     buf[4] = 0x00, buf[5] = 0x00, buf[6] = 0x00, buf[7] = 0x40; /* 0x40000000 */
     ptr = origin;
-    CHECK(nros_cdr_borrow_le_slice_f32(&ptr, end, origin, &v32) == -1);
+    CHECK(rclc_cdr_borrow_le_slice_f32(&ptr, end, origin, &v32) == -1);
     CHECK(v32.bytes == NULL && v32.count == 0);
 #if SIZE_MAX == 0xFFFFFFFFu
     puts("cdr_borrow_le_slice: 32-bit size_t — the macro path exercised the overflow check");
 #else
     puts("cdr_borrow_le_slice: 64-bit size_t — the macro path fails on bounds; the overflow "
-         "check was exercised through nros_cdr_seq_byte_len with a 32-bit limit");
+         "check was exercised through rclc_cdr_seq_byte_len with a 32-bit limit");
 #endif
 }
 
 static void test_get_out_of_range_reads_nothing(void) {
     const uint8_t bytes[8] = {1, 0, 0, 0, 0, 0, 0, 0};
-    nros_le_slice_view_u32_t v = {bytes, 2};
-    CHECK(nros_le_slice_view_u32_get(v, 0) == 1);
-    CHECK(nros_le_slice_view_u32_get(v, 1) == 0);
-    CHECK(nros_le_slice_view_u32_get(v, 2) == 0);
-    CHECK(nros_le_slice_view_u32_get(v, SIZE_MAX) == 0);
-    nros_le_slice_view_f64_t e = {bytes, 0};
-    CHECK(nros_le_slice_view_f64_get(e, 0) == 0.0);
+    rclc_le_slice_view_u32_t v = {bytes, 2};
+    CHECK(rclc_le_slice_view_u32_get(v, 0) == 1);
+    CHECK(rclc_le_slice_view_u32_get(v, 1) == 0);
+    CHECK(rclc_le_slice_view_u32_get(v, 2) == 0);
+    CHECK(rclc_le_slice_view_u32_get(v, SIZE_MAX) == 0);
+    rclc_le_slice_view_f64_t e = {bytes, 0};
+    CHECK(rclc_le_slice_view_f64_get(e, 0) == 0.0);
 }
 
 int main(void) {

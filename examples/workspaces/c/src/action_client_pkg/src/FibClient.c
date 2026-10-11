@@ -120,15 +120,15 @@ static void on_tick(void* ctx) {
     }
 }
 
-static nros_ret_t fib_client_configure(const nros_cpp_node_t* node, void* executor,
-                                       fib_client_t* self) {
+static rcl_ret_t fib_client_configure(const nros_cpp_node_t* node, void* executor,
+                                      fib_client_t* self) {
     setvbuf(stdout, NULL, _IOLBF, 0);
     self->phase = FIB_IDLE;
     self->waits = 0;
 
     int32_t rc = nros_cpp_action_client_create(
         node, "/fibonacci", example_interfaces_action_fibonacci_get_type_name(),
-        example_interfaces_action_fibonacci_get_type_hash(), nros_c_qos_default(), self->client);
+        example_interfaces_action_fibonacci_get_type_hash(), rclc_c_qos_default(), self->client);
     if (rc != 0) {
         return rc;
     }
@@ -141,4 +141,4 @@ static nros_ret_t fib_client_configure(const nros_cpp_node_t* node, void* execut
     return nros_cpp_timer_create(executor, /*period_ms=*/500, on_tick, self, &timer_handle);
 }
 
-NROS_C_COMPONENT(fib_client_t, fib_client_configure)
+RCLC_C_COMPONENT(fib_client_t, fib_client_configure)

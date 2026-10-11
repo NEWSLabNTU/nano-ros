@@ -372,7 +372,7 @@ pub struct ComponentScaffoldConfig {
     /// `c` / `cpp` land the typed component shape (RFC-0043) in the RFC-0048
     /// ament spelling: `find_package(nano_ros REQUIRED)` +
     /// `nano_ros_add_node(...)` + a `configure(::rclcpp::Node&)` (C++) /
-    /// `NROS_C_COMPONENT` (C) seam.
+    /// `RCLC_C_COMPONENT` (C) seam.
     ///
     /// phase-469 — the enum, for the same reason [`ScaffoldConfig::lang`] is.
     pub lang: Language,
@@ -784,7 +784,7 @@ void {class_name}::on_tick() {{
 }
 
 /// Scaffold a **C Node pkg** — typed component (RFC-0043). Emits a
-/// `NROS_C_COMPONENT(<state>, <configure>)` factory/configure seam: a raw
+/// `RCLC_C_COMPONENT(<state>, <configure>)` factory/configure seam: a raw
 /// `/chatter` publisher + 1 Hz timer that publishes a CDR-encoded Int32. The
 /// typed Entry's `__nros_c_component_<pkg>_{create,configure}` calls run it on
 /// the real executor — no declarative descriptor, no interpreter.
@@ -850,7 +850,7 @@ nano_ros_add_node({node_name} CLASS {pkg_sym}::{class_name} TYPED
 //
 // Typed C component (RFC-0043). `{configure_fn}` creates a raw `/chatter`
 // publisher + a 1 Hz timer publishing a CDR-encoded Int32 counter.
-// `NROS_C_COMPONENT` emits the C-ABI factory/configure the typed Entry calls;
+// `RCLC_C_COMPONENT` emits the C-ABI factory/configure the typed Entry calls;
 // it runs on the real executor — no declarative descriptor, no interpreter.
 
 #include <stddef.h>
@@ -886,10 +886,10 @@ static void on_tick(void* ctx) {{
     self->count++;
 }}
 
-static nros_ret_t {configure_fn}(const nros_cpp_node_t* node, void* executor, {state_ty}* self) {{
+static rcl_ret_t {configure_fn}(const nros_cpp_node_t* node, void* executor, {state_ty}* self) {{
     self->count = 0;
     int32_t rc = nros_cpp_publisher_create(node, "/chatter", "std_msgs::msg::dds_::Int32_", "",
-                                           nros_c_qos_default(), self->pub);
+                                           rclc_c_qos_default(), self->pub);
     if (rc != 0) {{
         return rc;
     }}
@@ -897,7 +897,7 @@ static nros_ret_t {configure_fn}(const nros_cpp_node_t* node, void* executor, {s
     return nros_cpp_timer_create(executor, /*period_ms=*/1000, on_tick, self, &timer_handle);
 }}
 
-NROS_C_COMPONENT({state_ty}, {configure_fn})
+RCLC_C_COMPONENT({state_ty}, {configure_fn})
 "#,
         name = cfg.name,
     );
@@ -1365,22 +1365,22 @@ int main(int argc, char** argv) {{
     (void)argc;
     (void)argv;
 
-    nros_support_t support = nros_support_get_zero_initialized();
-    if (nros_support_init(&support, NULL, 0) != NROS_RET_OK) {{
-        fprintf(stderr, "nros_support_init failed\n");
+    rclc_support_t support = rclc_support_get_zero_initialized();
+    if (rclc_support_init(&support, NULL, 0) != RCL_RET_OK) {{
+        fprintf(stderr, "rclc_support_init failed\n");
         return 1;
     }}
 
-    nros_node_t node = rcl_get_zero_initialized_node();
-    if (rclc_node_init_default(&node, "{name}", "/", &support) != NROS_RET_OK) {{
+    rcl_node_t node = rcl_get_zero_initialized_node();
+    if (rclc_node_init_default(&node, "{name}", "/", &support) != RCL_RET_OK) {{
         fprintf(stderr, "rclc_node_init_default failed\n");
         return 1;
     }}
 
-    nros_publisher_t pub = rcl_get_zero_initialized_publisher();
+    rcl_publisher_t pub = rcl_get_zero_initialized_publisher();
     if (rclc_publisher_init_default(&pub, &node,
                                     std_msgs_msg_int32_get_type_support(),
-                                    "/chatter") != NROS_RET_OK) {{
+                                    "/chatter") != RCL_RET_OK) {{
         fprintf(stderr, "rclc_publisher_init_default failed\n");
         return 1;
     }}
@@ -1391,7 +1391,7 @@ int main(int argc, char** argv) {{
     (void)std_msgs_msg_int32_publish(&pub, &msg);
     printf("{name}: published 0 on /chatter\n");
 
-    nros_publisher_fini(&pub);
+    rcl_publisher_fini(&pub);
     rcl_node_fini(&node);
     rclc_support_fini(&support);
     return 0;

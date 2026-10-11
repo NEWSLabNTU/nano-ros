@@ -28,7 +28,7 @@ names: on `nros::Node`, rclrs's `create_subscription` and `create_service` take
 a callback, and a polled form under the same name would compile a ported line
 into a different contract.
 
-The C / C++ FFI mirrors this split: `nros_polling_subscription_init` + `nros_polling_subscription_take_serialized` (L1, the type `nros_polling_subscription_t`, inline storage — the caller takes from the entity) vs `rclc_subscription_init_default` + `nros_executor_add_subscription*` (L2, executor arena, callback supplied at registration).
+The C / C++ FFI mirrors this split: `rclc_polling_subscription_init` + `rclc_polling_subscription_take_serialized` (L1, the type `rclc_polling_subscription_t`, inline storage — the caller takes from the entity) vs `rclc_subscription_init_default` + `nros_executor_add_subscription*` (L2, executor arena, callback supplied at registration).
 
 ## What goes where
 
@@ -85,8 +85,8 @@ Service clients and action clients **stay on L1** in the current code — they h
 
 Both layers cross the FFI cleanly:
 
-- **C, L1 polling** — `nros_polling_subscription_init` writes a `RawSubscription` inline in `nros_polling_subscription_t._opaque`, and `nros_polling_subscription_take_serialized` reads from the inline buffer. Like C++, C splits the two layers by TYPE (phase-487): a dispatched `nros_subscription_t` has no inline storage at all. Services and clients have the same split: `nros_polling_service_t` / `nros_polling_client_t` with `nros_polling_service_take_request_raw` / `nros_polling_client_take_response_raw`, beside the dispatched `nros_service_t` / `nros_client_t`. Action servers and clients keep both roads in one type for now (phase-487 W4).
-- **C, L2 callback** — `rclc_subscription_init_default` creates the entity; the callback is supplied at registration (`nros_executor_add_subscription_typed` for the typed path, `nros_executor_add_subscription_raw` for the byte path), which also allocates the executor-arena entry. The arena entry owns the subscriber, the callback and its context; the struct keeps the arena handle and the description it was initialised with.
+- **C, L1 polling** — `rclc_polling_subscription_init` writes a `RawSubscription` inline in `rclc_polling_subscription_t._opaque`, and `rclc_polling_subscription_take_serialized` reads from the inline buffer. Like C++, C splits the two layers by TYPE (phase-487): a dispatched `rcl_subscription_t` has no inline storage at all. Services and clients have the same split: `rclc_polling_service_t` / `rclc_polling_client_t` with `rclc_polling_service_take_request_raw` / `rclc_polling_client_take_response_raw`, beside the dispatched `rcl_service_t` / `rcl_client_t`. Action servers and clients keep both roads in one type for now (phase-487 W4).
+- **C, L2 callback** — `rclc_subscription_init_default` creates the entity; the callback is supplied at registration (`rclc_executor_add_subscription_typed` for the typed path, `rclc_executor_add_subscription_raw` for the byte path), which also allocates the executor-arena entry. The arena entry owns the subscriber, the callback and its context; the struct keeps the arena handle and the description it was initialised with.
 - **C++** — typed templates wrap each FFI surface: `rclcpp::PollSubscription<M>` + `take`, `rclcpp::PollService<S>` + `take_request` and `rclcpp::PollClient<S>` + `send_request` for L1, `rclcpp::PollingActionServer<A>` for the L1 action path (122.3.d.b), the L2 executor-registered callback model via the existing `rclcpp::ActionServer<A>` API. The L1/L2 split is a TYPE split in C++ since phase-456: one class serving both owners offered the L1 method set on an L2 object, where the storage it reads is never filled.
 
 For the per-FFI-function spec, see the [Doxygen reference](../api/platform-cffi/index.html). For the example migration tally (32 examples on L2, 16 intentionally L1), see the [unify-api-paths roadmap doc](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/archived/phase-122-unify-api-paths.md).
@@ -95,4 +95,4 @@ For the per-FFI-function spec, see the [Doxygen reference](../api/platform-cffi/
 
 L1 polling assumes the caller has a spin loop. RTOS / embassy applications want the kernel to wake them when data lands. The `Raw*::register_waker(&Waker)` Rust API and the matching `*_set_wake_callback(state, cb, ctx)` C / C++ FFI plug a wake source into the same L1 handle. RMW backends that support waking (currently zenoh-pico for subscribers, service-clients, and service-servers) fire the callback from their rx path; other backends fall back to polling silently.
 
-For the underlying primitive (`ServiceTrait::register_waker` in `nros-rmw`), see the trait doc. For the C wake-callback POD shape (`nros_wake_state_t { fn_ptr, ctx }`), see the [Doxygen reference](../api/platform-cffi/index.html) — same canonical-spec rule as the platform API.
+For the underlying primitive (`ServiceTrait::register_waker` in `nros-rmw`), see the trait doc. For the C wake-callback POD shape (`rclc_wake_state_t { fn_ptr, ctx }`), see the [Doxygen reference](../api/platform-cffi/index.html) — same canonical-spec rule as the platform API.

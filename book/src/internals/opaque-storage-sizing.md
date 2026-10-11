@@ -44,10 +44,10 @@ Every size that crosses the Rust / C boundary follows the same path:
 4. **C/C++ structs use the macros** —
 
    ```c
-   typedef struct nros_publisher_t {
+   typedef struct rcl_publisher_t {
        /* ... */
        _Alignas(8) uint8_t _opaque[NROS_PUBLISHER_SIZE];
-   } nros_publisher_t;
+   } rcl_publisher_t;
    ```
 
    ```cpp
@@ -67,15 +67,15 @@ The `nros::sizes` module exports:
 
 | Symbol | Type | Used by |
 |---|---|---|
-| `SESSION_SIZE` | `RmwSession` | `nros_support_t._opaque` |
-| `PUBLISHER_SIZE` | `RmwPublisher` | `nros_publisher_t._opaque`, `nros::Publisher<M>::storage_` |
+| `SESSION_SIZE` | `RmwSession` | `rclc_support_t._opaque` |
+| `PUBLISHER_SIZE` | `RmwPublisher` | `rcl_publisher_t._opaque`, `nros::Publisher<M>::storage_` |
 | `SUBSCRIBER_SIZE` | `RmwSubscriber` | `rclcpp::PollSubscription<M>::storage_` |
 | `SERVICE_CLIENT_SIZE` | `RmwServiceClient` | `rclcpp::PollClient<S>::storage_` |
 | `SERVICE_SERVER_SIZE` | `RmwServiceServer` | `rclcpp::PollService<S>::storage_` |
-| `EXECUTOR_SIZE` | `nros_node::Executor` | `nros_executor_t._opaque`, `nros::Executor::storage_` |
-| `GUARD_CONDITION_SIZE` | `nros_node::GuardCondition` | `nros_guard_condition_t._guard_opaque`, `nros::GuardCondition::storage_` |
-| `LIFECYCLE_CTX_SIZE` | `nros_node::lifecycle::LifecyclePollingNodeCtx` | `nros_lifecycle_state_machine_t._opaque_storage` |
-| `ACTION_SERVER_INTERNAL_SIZE` | `ActionServerInternalLayout` | `nros_action_server_t._internal` |
+| `EXECUTOR_SIZE` | `nros_node::Executor` | `rclc_executor_t._opaque`, `nros::Executor::storage_` |
+| `GUARD_CONDITION_SIZE` | `nros_node::GuardCondition` | `rcl_guard_condition_t._guard_opaque`, `nros::GuardCondition::storage_` |
+| `LIFECYCLE_CTX_SIZE` | `nros_node::lifecycle::LifecyclePollingNodeCtx` | `rcl_lifecycle_state_machine_t._opaque_storage` |
+| `ACTION_SERVER_INTERNAL_SIZE` | `ActionServerInternalLayout` | `rcl_action_server_t._internal` |
 | `CPP_ACTION_SERVER_SIZE` | `CppActionServerLayout` | `rclcpp::ActionServer<A>::storage_` |
 | `CPP_ACTION_CLIENT_SIZE` | `CppActionClientLayout` | `rclcpp::ActionClient<A>::storage_` |
 
@@ -88,7 +88,7 @@ the C side just embeds them as typed fields, no opaque storage at all.
 
 Some downstream types — `nros-c::ActionServerInternal`,
 `nros-cpp::CppActionServer`, `nros-cpp::CppActionClient` — embed C-API
-pointer types (`*mut nros_action_server_t`, `*const nros_goal_handle_t`)
+pointer types (`*mut rcl_action_server_t`, `*const rclc_goal_handle_t`)
 that aren't visible from the `nros` umbrella crate. They can't be
 referenced from `nros::sizes` directly, but their byte size only
 depends on the field shape: pointers are pointers, `Option<extern "C"

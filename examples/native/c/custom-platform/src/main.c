@@ -41,7 +41,7 @@ typedef struct {
     int32_t data;
 } std_msgs_Int32;
 
-static const nros_message_type_t std_msgs_Int32_type = {
+static const rclc_message_type_t std_msgs_Int32_type = {
     .type_name = "std_msgs::msg::dds_::Int32_",
     .type_hash = "RIHS01_5bf22a2e7c2c8a4ca3f55054648f6d8c7c77cc0ae5695a1ff1df0b7ef8df1f09",
     .serialized_size_max = 8,
@@ -69,12 +69,12 @@ static int32_t std_msgs_Int32_serialize(const std_msgs_Int32* msg, uint8_t* buff
 // Application state (would be in .bss section on embedded)
 static struct {
     // nros resources
-    nros_support_t support;
-    nros_node_t node;
-    nros_publisher_t publisher;
-    nros_timer_t timer;
-    nros_executor_t executor;
-    nros_guard_condition_t shutdown_guard;
+    rclc_support_t support;
+    rcl_node_t node;
+    rcl_publisher_t publisher;
+    rcl_timer_t timer;
+    rclc_executor_t executor;
+    rcl_guard_condition_t shutdown_guard;
 
     // Application data
     std_msgs_Int32 message;
@@ -90,7 +90,7 @@ static uint8_t g_serialize_buffer[64];
 // silently drops. Moved here from after `main` (Phase 212.M native/c
 // sweep) so the C compiler sees the declaration before the callback's
 // use site.
-static nros_logger_t g_logger = NULL;
+static rclc_logger_t g_logger = NULL;
 
 // ============================================================================
 // Callbacks
@@ -104,7 +104,7 @@ static nros_logger_t g_logger = NULL;
  * - Publish telemetry
  * - Update control loops
  */
-static void timer_callback(struct nros_timer_t* timer, void* context) {
+static void timer_callback(struct rcl_timer_t* timer, void* context) {
     (void)timer;
     (void)context;
 
@@ -114,9 +114,9 @@ static void timer_callback(struct nros_timer_t* timer, void* context) {
     int32_t len =
         std_msgs_Int32_serialize(&app.message, g_serialize_buffer, sizeof(g_serialize_buffer));
     if (len > 0) {
-        nros_ret_t ret = nros_publish_raw(&app.publisher, g_serialize_buffer, (size_t)len);
-        if (ret == NROS_RET_OK) {
-            NROS_LOG_INFO(g_logger, "Published: %d", app.message.data);
+        rcl_ret_t ret = rclc_publish_raw(&app.publisher, g_serialize_buffer, (size_t)len);
+        if (ret == RCL_RET_OK) {
+            RCLC_LOG_INFO(g_logger, "Published: %d", app.message.data);
         }
     }
 }
@@ -133,7 +133,7 @@ static void shutdown_callback(void* context) {
     (void)context;
     printf("[Guard] Shutdown signal received!\n");
     app.running = false;
-    (void)nros_executor_cancel(&app.executor);
+    (void)rclc_executor_cancel(&app.executor);
 }
 
 // ============================================================================
@@ -146,7 +146,7 @@ static void signal_handler(int signum) {
 
     // This is how you would signal from an interrupt handler:
     // The guard condition trigger is thread-safe and can be called from any context
-    (void)nros_guard_condition_trigger(&app.shutdown_guard);
+    (void)rclc_guard_condition_trigger(&app.shutdown_guard);
 }
 
 // ============================================================================
@@ -157,11 +157,11 @@ static void demo_platform_time(void) {
     printf("\n=== Platform Time Demo ===\n");
 
     // Get time using platform abstraction
-    nros_clock_t clock = nros_clock_get_zero_initialized();
-    (void)nros_clock_init(&clock, NROS_CLOCK_STEADY_TIME);
+    rcl_clock_t clock = rclc_clock_get_zero_initialized();
+    (void)rcl_clock_init(&clock, RCLC_CLOCK_STEADY_TIME);
 
-    nros_time_t t1, t2;
-    (void)nros_clock_get_now(&clock, &t1);
+    rclc_time_t t1, t2;
+    (void)rcl_clock_get_now(&clock, &t1);
 
     // Sleep for 100ms using platform sleep
     printf("Sleeping for 100ms...\n");
@@ -171,9 +171,9 @@ static void demo_platform_time(void) {
     struct timespec ts = {0, 100000000}; // 100ms
     nanosleep(&ts, NULL);
 
-    (void)nros_clock_get_now(&clock, &t2);
+    (void)rcl_clock_get_now(&clock, &t2);
 
-    int64_t elapsed_ns = nros_time_to_nanoseconds(&t2) - nros_time_to_nanoseconds(&t1);
+    int64_t elapsed_ns = rclc_time_to_nanoseconds(&t2) - rclc_time_to_nanoseconds(&t1);
     printf("Elapsed time: %.3f ms\n", (double)elapsed_ns / 1000000.0);
 
     (void)rcl_clock_fini(&clock);
@@ -192,33 +192,33 @@ static void demo_guard_condition(void) {
     // and stopped after two, so the guard condition it printed as "initialized"
     // was never registered with anything: the SIGINT handler's trigger set a
     // byte in the struct and no executor ever looked at it. Every call returned
-    // NROS_RET_OK. Creation IS registration now, so that state no longer
+    // RCL_RET_OK. Creation IS registration now, so that state no longer
     // exists.
     app.shutdown_guard = rcl_get_zero_initialized_guard_condition();
-    nros_ret_t ret =
-        nros_node_create_guard_condition(&app.node, &app.shutdown_guard, shutdown_callback, NULL);
-    if (ret != NROS_RET_OK) {
+    rcl_ret_t ret =
+        rclc_node_create_guard_condition(&app.node, &app.shutdown_guard, shutdown_callback, NULL);
+    if (ret != RCL_RET_OK) {
         fprintf(stderr, "Failed to create guard condition: %d\n", ret);
         return;
     }
 
     printf("Guard condition created on the node and registered with its executor\n");
-    printf("  Is valid: %s\n", nros_guard_condition_is_valid(&app.shutdown_guard) ? "yes" : "no");
+    printf("  Is valid: %s\n", rclc_guard_condition_is_valid(&app.shutdown_guard) ? "yes" : "no");
     printf("  Is triggered: %s\n",
-           nros_guard_condition_is_triggered(&app.shutdown_guard) ? "yes" : "no");
+           rclc_guard_condition_is_triggered(&app.shutdown_guard) ? "yes" : "no");
 
     // The polling half: trigger, observe, clear WITHOUT dispatching. An RTOS
     // task that owns its own loop reads the flag here instead of waiting for a
     // callback (RFC-0022).
     printf("Triggering guard condition...\n");
-    (void)nros_guard_condition_trigger(&app.shutdown_guard);
+    (void)rclc_guard_condition_trigger(&app.shutdown_guard);
     printf("  Is triggered: %s\n",
-           nros_guard_condition_is_triggered(&app.shutdown_guard) ? "yes" : "no");
+           rclc_guard_condition_is_triggered(&app.shutdown_guard) ? "yes" : "no");
 
     printf("Clearing guard condition...\n");
-    (void)nros_guard_condition_clear(&app.shutdown_guard);
+    (void)rclc_guard_condition_clear(&app.shutdown_guard);
     printf("  Is triggered: %s\n",
-           nros_guard_condition_is_triggered(&app.shutdown_guard) ? "yes" : "no");
+           rclc_guard_condition_is_triggered(&app.shutdown_guard) ? "yes" : "no");
 }
 
 // ============================================================================
@@ -273,9 +273,9 @@ int nros_app_main(int argc, char** argv) {
     printf("Domain ID: %d\n", domain_id);
 
     // Initialize support
-    app.support = nros_support_get_zero_initialized();
-    nros_ret_t ret = nros_support_init(&app.support, locator, domain_id);
-    if (ret != NROS_RET_OK) {
+    app.support = rclc_support_get_zero_initialized();
+    rcl_ret_t ret = rclc_support_init(&app.support, locator, domain_id);
+    if (ret != RCL_RET_OK) {
         fprintf(stderr, "Failed to init support: %d\n", ret);
         return 1;
     }
@@ -284,19 +284,19 @@ int nros_app_main(int argc, char** argv) {
     // Initialize executor, THEN the node. The order is load-bearing since
     // phase-417 W4.e: a guard condition is created on the node and lands in
     // that node's executor arena, so the node has to be BOUND to an executor —
-    // `nros_executor_node_init`, not the legacy `rclc_node_init_default`, which
+    // `rclc_executor_node_init`, not the legacy `rclc_node_init_default`, which
     // leaves the node reaching no executor at all.
     app.executor = rclc_executor_get_zero_initialized_executor();
-    ret = nros_executor_init(&app.executor, &app.support, 4);
-    if (ret != NROS_RET_OK) {
+    ret = rclc_executor_init(&app.executor, &app.support, 4);
+    if (ret != RCL_RET_OK) {
         fprintf(stderr, "Failed to init executor: %d\n", ret);
         exit_code = 1;
         goto cleanup_support;
     }
 
     app.node = rcl_get_zero_initialized_node();
-    ret = nros_executor_node_init(&app.executor, &app.node, "baremetal_demo", NULL);
-    if (ret != NROS_RET_OK) {
+    ret = rclc_executor_node_init(&app.executor, &app.node, "baremetal_demo", NULL);
+    if (ret != RCL_RET_OK) {
         fprintf(stderr, "Failed to init node: %d\n", ret);
         exit_code = 1;
         goto cleanup_executor;
@@ -306,14 +306,14 @@ int nros_app_main(int argc, char** argv) {
     // Fetch the node's logger so NROS_LOG_* in the timer callback emits.
     // Without this g_logger stays NULL and every log call silently drops
     // (the timer still fires and publishing still succeeds — the messages
-    // just never print). See the logging example's `nros_node_get_logger`.
-    g_logger = nros_node_get_logger(&app.node);
+    // just never print). See the logging example's `rclc_node_get_logger`.
+    g_logger = rclc_node_get_logger(&app.node);
 
     // Initialize publisher
     app.publisher = rcl_get_zero_initialized_publisher();
     ret = rclc_publisher_init_default(&app.publisher, &app.node, &std_msgs_Int32_type,
                                       "/baremetal_demo/counter");
-    if (ret != NROS_RET_OK) {
+    if (ret != RCL_RET_OK) {
         fprintf(stderr, "Failed to init publisher: %d\n", ret);
         exit_code = 1;
         goto cleanup_node;
@@ -322,8 +322,8 @@ int nros_app_main(int argc, char** argv) {
 
     // Initialize timer (500ms period)
     app.timer = rcl_get_zero_initialized_timer();
-    ret = nros_timer_init(&app.timer, &app.support, 500000000ULL, timer_callback, NULL);
-    if (ret != NROS_RET_OK) {
+    ret = rcl_timer_init(&app.timer, &app.support, 500000000ULL, timer_callback, NULL);
+    if (ret != RCL_RET_OK) {
         fprintf(stderr, "Failed to init timer: %d\n", ret);
         exit_code = 1;
         goto cleanup_publisher;
@@ -332,12 +332,12 @@ int nros_app_main(int argc, char** argv) {
 
     // Add timer to executor
     ret = rclc_executor_add_timer(&app.executor, &app.timer);
-    if (ret != NROS_RET_OK) {
+    if (ret != RCL_RET_OK) {
         fprintf(stderr, "Failed to add timer: %d\n", ret);
         exit_code = 1;
         goto cleanup_timer;
     }
-    printf("Executor initialized with %d handles\n", nros_executor_get_handle_count(&app.executor));
+    printf("Executor initialized with %d handles\n", rclc_executor_get_handle_count(&app.executor));
 
     // Demo and setup guard condition
     demo_guard_condition();
@@ -369,7 +369,7 @@ cleanup_timer:
     printf("Timer finalized\n");
 
 cleanup_publisher:
-    (void)nros_publisher_fini(&app.publisher);
+    (void)rcl_publisher_fini(&app.publisher);
     printf("Publisher finalized\n");
 
 cleanup_node:

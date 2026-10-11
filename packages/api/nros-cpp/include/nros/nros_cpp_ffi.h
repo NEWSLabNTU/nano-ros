@@ -242,7 +242,7 @@ typedef int nros_cpp_ret_t;
 
 /**
  * Issue 0436 — C mirror of `nros_node::executor::SessionSpec`, matching
- * `nros_session_spec_t` in `<nros/bridge.h>` field for field so a caller can use
+ * `rclc_session_spec_t` in `<nros/bridge.h>` field for field so a caller can use
  * either entry point with one struct.
  */
 typedef struct NrosCppSessionSpec {
@@ -270,7 +270,7 @@ typedef struct NrosCppSessionSpec {
 
 /**
  * Phase 211.H (issue #52) — one per-topic QoS override, the C++-FFI mirror of
- * Rust's `nros_rmw::QoSOverride` (and nros-c's `nros_qos_override_t`). The
+ * Rust's `nros_rmw::QoSOverride` (and nros-c's `rclc_qos_override_t`). The
  * deploy plan lowers a `qos_overrides.<topic>.<role>.<policy>` launch param
  * into a `&'static` array of these, which the entry installs on the node via
  * [`nros_cpp_node_set_qos_overrides`]; the node folds matching `(topic, role)`
@@ -362,7 +362,7 @@ typedef struct nros_cpp_node_t {
 /**
  * Phase 104.C.9 — extended node-creation options (C++ FFI).
  *
- * Mirrors `nros_node_options_t` in nros-c (Phase 104.C.8) — same field
+ * Mirrors `rcl_node_options_t` in nros-c (Phase 104.C.8) — same field
  * shape, separate FFI surface so the two language wrappers can evolve
  * independently. Used by `nros_cpp_node_create_ex` and the C++
  * `NodeBuilder` wrapper in `nros/node.hpp`.
@@ -615,7 +615,7 @@ typedef void (*nros_cpp_guard_callback_t)(void *context);
  * (`reliability`, `durability`, `history`, `depth`) plus extended
  * policies (`liveliness_kind`, `deadline_ms`, `lifespan_ms`,
  * `liveliness_lease_ms`, `avoid_ros_namespace_conventions`) match
- * `nros_qos_t` (C API) and `QoSProfile` (Rust API).
+ * `rclc_qos_t` (C API) and `QoSProfile` (Rust API).
  */
 typedef struct nros_cpp_qos_t {
   enum nros_cpp_qos_reliability_t reliability;
@@ -703,7 +703,7 @@ typedef struct nros_cpp_subscription_options_t {
 /**
  * Phase 252 / issue 0073 — E2E message-integrity status for the C++ receive
  * path ([`nros_cpp_subscription_take_validated`]). The C++ analog of the
- * Rust `IntegrityStatus` / `nros_integrity_status_t`.
+ * Rust `IntegrityStatus` / `rclc_integrity_status_t`.
  */
 typedef struct nros_cpp_integrity_status_t {
   /**
@@ -923,7 +923,7 @@ typedef uint32_t nros_cpp_shutdown_callback_handle_t;
 #define NROS_CPP_RET_UNSUPPORTED -16
 
 /**
- * Transport / connection error (C++-space extension; nros_ret_t stops at -16).
+ * Transport / connection error (C++-space extension; rcl_ret_t stops at -16).
  */
 #define NROS_CPP_RET_TRANSPORT_ERROR -100
 
@@ -1043,9 +1043,9 @@ nros_cpp_ret_t nros_cpp_init_rmw(const char *rmw,
  * Issue 0436 — multi-RMW init for the C++ surface: opens one session per spec
  * into the CALLER'S storage, producing a real [`CppContext`].
  *
- * # Why this exists next to `nros_init_multi`
+ * # Why this exists next to `rclc_init_multi`
  *
- * `nros_init_multi` (the `nros-bridge` C ABI behind `<nros/bridge.hpp>`'s
+ * `rclc_init_multi` (the `nros-bridge` C ABI behind `<nros/bridge.hpp>`'s
  * `MultiExecutor`) returns a heap `ExecutorBox { executor, _spec_strings }`. The
  * C++ Node surface casts its handle to `*mut CppContext`
  * (`{ executor, domain_id, in_dispatch, backing }`). Both begin with the SAME
@@ -1951,7 +1951,7 @@ nros_cpp_ret_t nros_cpp_executor_set_monitor_arming(void *handle, bool on_call, 
  * phase-474 I2 -- the application's start-up is over: arm the contract
  * monitors of every executor in the image that waits for it. Safe from any
  * thread and from a callback (it bumps an atomic; each executor arms at its
- * next spin). The C spelling is `nros_monitors_arm()`; this is the same call
+ * next spin). The C spelling is `rclc_monitors_arm()`; this is the same call
  * on the C++ ABI, wrapped by `nros::arm_monitors()`.
  */
 void nros_cpp_monitors_arm(void);
@@ -2744,7 +2744,7 @@ nros_cpp_ret_t nros_cpp_service_client_server_available(void *storage,
 /**
  * phase-338 W8 — block until a matching service server is discoverable.
  *
- * The C API has had `nros_client_wait_for_service` since phase-124; C++ never
+ * The C API has had `rclc_client_wait_for_service` since phase-124; C++ never
  * bound it, so every C++ client example hand-rolled a retry loop around the
  * first request instead (three attempts, spin in between) to paper over slow
  * discovery. This is the primitive those loops were approximating.
@@ -3104,7 +3104,7 @@ nros_cpp_ret_t nros_cpp_timer_create(void *executor_handle,
  *
  * `nros_cpp_timer_create` is the WALL timer: it advances with the executor's
  * monotonic spin delta and no simulator can slow it down. This one advances
- * with `clock_type`, so a `NROS_CLOCK_ROS_TIME` timer follows `/clock` — it
+ * with `clock_type`, so a `RCLC_CLOCK_ROS_TIME` timer follows `/clock` — it
  * stops while the simulator is paused, and it tracks a bag's replay rate.
  *
  * With no `/clock` source installed, a ROS-time timer reads system time, the
@@ -3145,8 +3145,8 @@ nros_cpp_ret_t nros_cpp_timer_create_on_clock(void *executor_handle,
  * the timer is released (or the executor finalised): the capture's bytes were
  * moved here by copy, so that is where its destructor runs.
  *
- * `clock_type` is a `nros_clock_type_t` discriminant: `NROS_CLOCK_STEADY_TIME`
- * is the wall timer that advances with the spin delta, `NROS_CLOCK_ROS_TIME`
+ * `clock_type` is a `rcl_clock_type_t` discriminant: `RCLC_CLOCK_STEADY_TIME`
+ * is the wall timer that advances with the spin delta, `RCLC_CLOCK_ROS_TIME`
  * follows `/clock`. `capture_len == 0` (or a NULL `capture`) passes NULL to
  * `callback`.
  *
@@ -3271,7 +3271,7 @@ nros_cpp_ret_t nros_cpp_timer_reset(void *executor_handle, size_t handle_id);
  * matching `nros_cpp_timer_is_canceled`'s shape: this pair returns the plain
  * `bool` the C++ predicate needs, and the C surface is where the
  * "cannot answer" outcome has a return code of its own
- * (`rcl_timer_is_ready`'s `NROS_RET_NOT_INIT`).
+ * (`rcl_timer_is_ready`'s `RCL_RET_NOT_INIT`).
  *
  * # Safety
  * `executor_handle` must be a valid executor handle.
@@ -3418,7 +3418,7 @@ nros_cpp_ret_t nros_cpp_action_server_for_each_active_goal(void *handle,
 /**
  * Is `goal_id` a goal this server still knows about? — phase-417 W4.b.
  *
- * The C++ tier's binding of `nros_action_server_goal_exists` /
+ * The C++ tier's binding of `rcl_action_server_goal_exists` /
  * `ActionServerRawHandle::goal_exists`. TRUE while the goal is active AND
  * while its completed result is still retained, which is rcl's window.
  *
@@ -3540,7 +3540,7 @@ nros_cpp_ret_t nros_cpp_action_client_create(const struct nros_cpp_node_t *node,
  * phase-338 W8 — block until the action server's send-goal queryable is
  * discoverable.
  *
- * C++ sibling of `nros_action_client_wait_for_action_server`, which the C API
+ * C++ sibling of `rclc_action_client_wait_for_action_server`, which the C API
  * has had since phase-124 while C++ bound neither it nor a readiness probe —
  * so the C++ action-client examples hand-rolled a 3-attempt retry around
  * `send_goal`. Mirrors `rclcpp_action::Client::wait_for_action_server`.
@@ -3564,7 +3564,7 @@ nros_cpp_ret_t nros_cpp_action_client_wait_for_action_server(void *handle, uint3
  *
  * `rclcpp_action::ClientBase::action_server_is_ready`, the non-blocking half
  * of [`nros_cpp_action_client_wait_for_action_server`] and the C++ binding of
- * C's `nros_action_client_action_server_is_ready` / Rust's
+ * C's `rclc_action_client_action_server_is_ready` / Rust's
  * `ActionClient::action_server_is_ready` (ledger row
  * `cpp:Client::action_server_is_ready`, which was a C++-only gap: the other
  * two languages had the predicate and C++ could only BLOCK).
@@ -3771,7 +3771,7 @@ nros_cpp_ret_t nros_cpp_action_client_get_result_async(void *handle, const uint8
  * The RPC's return code arrives later; drain it with
  * [`nros_cpp_action_client_try_recv_cancel_response`].
  *
- * The callback tier had no cancel at all: C has `nros_action_cancel_goal`,
+ * The callback tier had no cancel at all: C has `rclc_action_cancel_goal`,
  * Rust has `ActionClient::cancel_goal`, and C++ had only the L1 polling
  * tier's `PollingActionClient::send_cancel_request` — so a C++ application
  * written against the callback tier could start a goal it could not stop.

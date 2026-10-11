@@ -102,8 +102,8 @@
 // consumer of this header has no such file, gets an empty table, and compiles
 // exactly as before.
 #if defined(__has_include)
-#if __has_include(<nros/nros_declared_qos_generated.h>)
-#include <nros/nros_declared_qos_generated.h>
+#if __has_include(<nros/rclc_declared_qos_generated.h>)
+#include <nros/rclc_declared_qos_generated.h>
 #endif
 #endif
 
@@ -123,7 +123,7 @@ constexpr int DECLARED_POLICY_UNDECLARED = -1;
 // language's own enumerator ordinals (`rclcpp::ReliabilityPolicy` /
 // `rclcpp::DurabilityPolicy` in `nros/qos.hpp`). The header carries TOKENS rather
 // than numbers because C numbers the same enums differently
-// (`NROS_QOS_RELIABILITY_RELIABLE` is 1, `rclcpp::Reliable` is 0), so each
+// (`RCLC_QOS_RELIABILITY_RELIABLE` is 1, `rclcpp::Reliable` is 0), so each
 // language pastes the token onto a prefix of its own. This header cannot
 // include `nros/qos.hpp` -- that one needs per-build generated config headers,
 // and this one must stay freestanding -- so the ordinals are literals here and
@@ -153,8 +153,8 @@ struct Entry {
 };
 
 #if defined(NROS_DECLARED_QOS_ROWS)
-#define NROS_DECLARED_QOS_ROW(nros_type, nros_topic, nros_depth, nros_rel, nros_dur)               \
-    {(nros_type), (nros_topic), (nros_depth), _NROS_DQ_CPP_##nros_rel, _NROS_DQ_CPP_##nros_dur},
+#define NROS_DECLARED_QOS_ROW(rclc_type, rclc_topic, rclc_depth, nros_rel, nros_dur)               \
+    {(rclc_type), (rclc_topic), (rclc_depth), _NROS_DQ_CPP_##nros_rel, _NROS_DQ_CPP_##nros_dur},
 /// The declared endpoints of THIS component. The trailing sentinel keeps the
 /// array non-empty, which C++ requires; `COUNT` is what the search reads, so
 /// the sentinel is never examined.
@@ -178,8 +178,8 @@ constexpr size_t COUNT = 0;
 // keys rows on `(type, topic)`, and a publisher and a subscription on one pair
 // are two endpoints with one key. Same `Entry`, same sentinel, same COUNT rule.
 #if defined(NROS_DECLARED_PUB_QOS_ROWS)
-#define NROS_DECLARED_PUB_QOS_ROW(nros_type, nros_topic, nros_depth, nros_rel, nros_dur)           \
-    {(nros_type), (nros_topic), (nros_depth), _NROS_DQ_CPP_##nros_rel, _NROS_DQ_CPP_##nros_dur},
+#define NROS_DECLARED_PUB_QOS_ROW(rclc_type, rclc_topic, rclc_depth, nros_rel, nros_dur)           \
+    {(rclc_type), (rclc_topic), (rclc_depth), _NROS_DQ_CPP_##nros_rel, _NROS_DQ_CPP_##nros_dur},
 constexpr Entry PUB_TABLE[] = {NROS_DECLARED_PUB_QOS_ROWS{
     nullptr, nullptr, ::rclcpp::DECLARED_DEPTH_UNDECLARED, ::rclcpp::DECLARED_POLICY_UNDECLARED,
     ::rclcpp::DECLARED_POLICY_UNDECLARED}};

@@ -4,7 +4,7 @@
 /// The same program as `examples/mps2-an385-freertos/c/service-server`, minus
 /// what a board with no RTOS does not have (the `c/talker` sibling's file header
 /// has the long form, issue 1512): no libc and no `printf` substitution, so
-/// records are built by hand and emitted through `nros_log_emit_at`.
+/// records are built by hand and emitted through `rclc_log_emit_at`.
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -36,15 +36,15 @@ typedef struct {
 
 // All nros state in .bss, never on the reset stack.
 static struct {
-    nros_support_t support;
-    nros_node_t node;
-    nros_service_t service;
-    nros_executor_t executor;
+    rclc_support_t support;
+    rcl_node_t node;
+    rcl_service_t service;
+    rclc_executor_t executor;
     server_context_t ctx;
     example_interfaces_srv_add_two_ints_service_handler_t handler;
 } app;
 
-static nros_logger_t g_logger;
+static rclc_logger_t g_logger;
 
 // Hand-rolled formatting: each takes the buffer's CAPACITY, truncates rather
 // than run past it, and leaves room for the caller's NUL.
@@ -78,8 +78,8 @@ static size_t append_i64(char* out, size_t cap, size_t pos, int64_t value) {
     return pos;
 }
 
-static void emit(nros_log_severity_t severity, const char* text, const char* file, uint32_t line) {
-    nros_log_emit_at(g_logger, severity, text, strlen(text), file, line);
+static void emit(rcl_log_severity_t severity, const char* text, const char* file, uint32_t line) {
+    rclc_log_emit_at(g_logger, severity, text, strlen(text), file, line);
 }
 
 // Typed service callback: the generated handler decodes the request and encodes
@@ -97,7 +97,7 @@ static void service_callback(const example_interfaces_srv_add_two_ints_request* 
     len = append_str(line, sizeof(line), len, " b: ");
     len = append_i64(line, sizeof(line), len, request->b);
     line[len] = '\0';
-    emit(NROS_LOG_SEVERITY_INFO, line, __FILE__, __LINE__);
+    emit(RCLC_LOG_SEVERITY_INFO, line, __FILE__, __LINE__);
 }
 
 int nros_app_main(int argc, char** argv) {
@@ -107,34 +107,34 @@ int nros_app_main(int argc, char** argv) {
     // `NROS_ENTRY_LOCATOR` is the one producer of the compile-time connect
     // configuration (`<nros/entry_config.h>`, issue 0946); on this leaf it is
     // the empty bottom rung — baking `system.toml`'s locator is issue 1512's.
-    NROS_CHECK_RET(
-        nros_support_init(&app.support, NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID), 1);
-    NROS_CHECK_RET(rclc_node_init_default(&app.node, "add_two_ints_server", "/", &app.support), 1);
-    g_logger = nros_node_get_logger(&app.node);
+    RCLC_CHECK_RET(
+        rclc_support_init(&app.support, NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID), 1);
+    RCLC_CHECK_RET(rclc_node_init_default(&app.node, "add_two_ints_server", "/", &app.support), 1);
+    g_logger = rclc_node_get_logger(&app.node);
 
-    NROS_CHECK_RET(example_interfaces_srv_add_two_ints_service_handler_init(
+    RCLC_CHECK_RET(example_interfaces_srv_add_two_ints_service_handler_init(
                        &app.handler, service_callback, &app.ctx),
                    1);
-    NROS_CHECK_RET(
+    RCLC_CHECK_RET(
         example_interfaces_srv_add_two_ints_service_init(&app.service, &app.node, "/add_two_ints"),
         1);
 
-    NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
-    NROS_CHECK_RET(example_interfaces_srv_add_two_ints_executor_add_service(
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support, 4), 1);
+    RCLC_CHECK_RET(example_interfaces_srv_add_two_ints_executor_add_service(
                        &app.executor, &app.service, &app.handler),
                    1);
 
     // The readiness marker the harness waits on (`expect_ready`, phase-342 W7).
-    emit(NROS_LOG_SEVERITY_INFO, "Waiting for service requests", __FILE__, __LINE__);
+    emit(RCLC_LOG_SEVERITY_INFO, "Waiting for service requests", __FILE__, __LINE__);
 
     // Spin forever: `app_main` returning is the end of the image.
-    nros_ret_t ret = rclc_executor_spin_period(&app.executor, 100000000ULL);
-    if (ret != NROS_RET_OK) {
-        emit(NROS_LOG_SEVERITY_ERROR, "executor spin failed", __FILE__, __LINE__);
+    rcl_ret_t ret = rclc_executor_spin_period(&app.executor, 100000000ULL);
+    if (ret != RCL_RET_OK) {
+        emit(RCLC_LOG_SEVERITY_ERROR, "executor spin failed", __FILE__, __LINE__);
     }
 
     rclc_executor_fini(&app.executor);
-    nros_service_fini(&app.service);
+    rcl_service_fini(&app.service);
     rcl_node_fini(&app.node);
     rclc_support_fini(&app.support);
     return 0;

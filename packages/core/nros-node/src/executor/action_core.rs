@@ -284,7 +284,7 @@ impl<
 {
     /// Phase 122.3.c.6.b — construct an `ActionServerCore` from the
     /// 5 already-built transport channels. Caller (typically the C
-    /// API's `nros_polling_action_server_init`) owns wiring the
+    /// API's `rclc_polling_action_server_init`) owns wiring the
     /// channels via the session's `create_*` methods.
     pub fn from_channels(
         send_goal_server: session::RmwServiceServer,
@@ -644,7 +644,7 @@ impl<
     /// Both halves are load-bearing, and that is why this row could not be
     /// closed as a documentation fix pointing at the status lookup. A status
     /// lookup reads the ACTIVE set only, so it answers "not found" — which the
-    /// C surface maps to `NROS_RET_NOT_FOUND` — for a goal that has completed
+    /// C surface maps to `RCLC_RET_NOT_FOUND` — for a goal that has completed
     /// and whose result is still sitting there to be fetched. "Not found" and
     /// "does not exist" therefore disagreed over exactly the window in which a
     /// client is expected to call `get_result`.

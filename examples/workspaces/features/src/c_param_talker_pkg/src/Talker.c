@@ -41,11 +41,11 @@ static void on_tick(void* ctx) {
     }
 }
 
-static nros_ret_t talker_configure(const nros_cpp_node_t* node, void* executor, talker_t* self) {
+static rcl_ret_t talker_configure(const nros_cpp_node_t* node, void* executor, talker_t* self) {
     setvbuf(stdout, NULL, _IOLBF, 0);
     self->executor = executor;
     int32_t rc = nros_cpp_publisher_create(node, "/chatter", std_msgs_msg_int32_get_type_name(),
-                                           std_msgs_msg_int32_get_type_hash(), nros_c_qos_default(),
+                                           std_msgs_msg_int32_get_type_hash(), rclc_c_qos_default(),
                                            self->pub);
     if (rc != 0) {
         return rc;
@@ -54,4 +54,4 @@ static nros_ret_t talker_configure(const nros_cpp_node_t* node, void* executor, 
     return nros_cpp_timer_create(executor, /*period_ms=*/500, on_tick, self, &timer_handle);
 }
 
-NROS_C_COMPONENT(talker_t, talker_configure)
+RCLC_C_COMPONENT(talker_t, talker_configure)

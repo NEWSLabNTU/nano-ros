@@ -21,32 +21,32 @@
  * which is what any C consumer holding a table of init functions depends on. If
  * `<nros/baked_rmw.h>` were ever written as an object-like macro this stops
  * compiling, which is the point. */
-typedef nros_ret_t (*nros_support_init_fn)(nros_support_t*, const char*, uint8_t);
-static nros_support_init_fn taken_address = &nros_support_init;
+typedef rcl_ret_t (*nros_support_init_fn)(rclc_support_t*, const char*, uint8_t);
+static nros_support_init_fn taken_address = &rclc_support_init;
 
 /* (2) The nameless spellings must still COMPILE at a call site, with the bake
  * present or absent. Both arities, because `<nros/baked_rmw.h>` wraps both and a
  * wrapper with the wrong parameter count is a compile error only where it is
  * actually called. */
-nros_ret_t nros_probe_baked_rmw_rung(nros_support_t* support);
+rcl_ret_t nros_probe_baked_rmw_rung(rclc_support_t* support);
 
-nros_ret_t nros_probe_baked_rmw_rung(nros_support_t* support) {
-    nros_ret_t rc = nros_support_init(support, NULL, 0);
-    if (rc != NROS_RET_OK) {
+rcl_ret_t nros_probe_baked_rmw_rung(rclc_support_t* support) {
+    rcl_ret_t rc = rclc_support_init(support, NULL, 0);
+    if (rc != RCL_RET_OK) {
         return rc;
     }
     /* Not reached in any run — this TU is never linked. It exists so the
      * four-argument wrapper is type-checked too. */
-    return nros_support_init_named(support, NULL, 0, "probe");
+    return rclc_support_init_named(support, NULL, 0, "probe");
 }
 
-/* (3) `nros_support_init_rmw` is deliberately NOT wrapped: a caller that names a
+/* (3) `rclc_support_init_rmw` is deliberately NOT wrapped: a caller that names a
  * backend has already answered the question the bake answers. Calling it with a
  * selector must stay legal and must keep its five-argument shape. */
-nros_ret_t nros_probe_explicit_selector(nros_support_t* support);
+rcl_ret_t nros_probe_explicit_selector(rclc_support_t* support);
 
-nros_ret_t nros_probe_explicit_selector(nros_support_t* support) {
-    return nros_support_init_rmw(support, NULL, 0, NULL, "cyclonedds");
+rcl_ret_t nros_probe_explicit_selector(rclc_support_t* support) {
+    return rclc_support_init_rmw(support, NULL, 0, NULL, "cyclonedds");
 }
 
 /* Silence `-Wunused-variable` for the address-taking check without making the

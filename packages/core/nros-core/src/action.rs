@@ -426,15 +426,15 @@ impl Deserialize for GoalStatusStamped {
 /// are fixed by `action_msgs`.
 ///
 /// Issue 0796 — this type used to be called `CancelResponse`, which is the
-/// name C ([`nros_cancel_response_t`]) and C++ ([`nros::CancelResponse`]) both
+/// name C ([`rclc_cancel_response_t`]) and C++ ([`nros::CancelResponse`]) both
 /// use for the PER-GOAL accept/reject decision. Two concepts under one name is
 /// how [`CancelResponse`] ended up being the type a per-goal cancel callback
 /// returned: `CancelResponse::Ok` meant "cancel this goal", which reads as an
 /// RPC status and is not one. C already named them apart
-/// (`nros_cancel_response_t` vs `nros_cancel_return_code_t`); the Rust names
+/// (`rclc_cancel_response_t` vs `rclc_cancel_return_code_t`); the Rust names
 /// now follow it.
 ///
-/// [`nros_cancel_response_t`]: https://docs.rs/nros-c
+/// [`rclc_cancel_response_t`]: https://docs.rs/nros-c
 /// [`nros::CancelResponse`]: CancelResponse
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 #[repr(i8)]
@@ -483,8 +483,8 @@ impl Deserialize for CancelReturnCode {
 /// server turns the answer into a [`CancelReturnCode`] plus a `goals_canceling`
 /// entry when it writes the `CancelGoal` reply.
 ///
-/// Discriminants match C's `nros_cancel_response_t` (`NROS_CANCEL_REJECT` = 0,
-/// `NROS_CANCEL_ACCEPT` = 1) and C++'s `nros::CancelResponse`, so the three
+/// Discriminants match C's `rclc_cancel_response_t` (`RCLC_CANCEL_REJECT` = 0,
+/// `RCLC_CANCEL_ACCEPT` = 1) and C++'s `nros::CancelResponse`, so the three
 /// surfaces agree. `Reject` is the default because a zeroed or unanswered
 /// decision must not cancel a goal nobody asked to cancel.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

@@ -542,7 +542,7 @@ rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain
 #endif
     } else {
         /* Issue 0330 — the backend owns its default agent endpoint. Agnostic
-         * layers (nros-c's `nros_support_init`, the `NROS_ENTRY_LOCATOR`
+         * layers (nros-c's `rclc_support_init`, the `NROS_ENTRY_LOCATOR`
          * macro, the RFC-0045 resolver's bottom rung) now hand us an ABSENT
          * locator instead of restating an XRCE fact — and absent is spelled
          * either NULL (Rust `None`) or `""` (the C/C++ ABI edges, which

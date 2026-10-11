@@ -62,8 +62,8 @@ pub type CppCancelCallback =
 /// Issue 0796 — the C++ callback tier had no way to register one, so a user
 /// who returned `AcceptAndDefer` from the goal callback was never told the
 /// goal had been accepted: the exact point at which a deferred goal is
-/// supposed to start executing. C takes `nros_accepted_callback_t` at
-/// `nros_action_server_init` and Rust takes one in
+/// supposed to start executing. C takes `rclc_accepted_callback_t` at
+/// `rcl_action_server_init` and Rust takes one in
 /// `create_action_server_with_callbacks(goal, cancel, accepted)`; this is the
 /// C++ spelling of the same hook.
 ///
@@ -577,7 +577,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_for_each_active_goal(
 
 /// Is `goal_id` a goal this server still knows about? — phase-417 W4.b.
 ///
-/// The C++ tier's binding of `nros_action_server_goal_exists` /
+/// The C++ tier's binding of `rcl_action_server_goal_exists` /
 /// `ActionServerRawHandle::goal_exists`. TRUE while the goal is active AND
 /// while its completed result is still retained, which is rcl's window.
 ///
@@ -1076,7 +1076,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_create(
 /// phase-338 W8 — block until the action server's send-goal queryable is
 /// discoverable.
 ///
-/// C++ sibling of `nros_action_client_wait_for_action_server`, which the C API
+/// C++ sibling of `rclc_action_client_wait_for_action_server`, which the C API
 /// has had since phase-124 while C++ bound neither it nor a readiness probe —
 /// so the C++ action-client examples hand-rolled a 3-attempt retry around
 /// `send_goal`. Mirrors `rclcpp_action::Client::wait_for_action_server`.
@@ -1144,7 +1144,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_wait_for_action_server(
 ///
 /// `rclcpp_action::ClientBase::action_server_is_ready`, the non-blocking half
 /// of [`nros_cpp_action_client_wait_for_action_server`] and the C++ binding of
-/// C's `nros_action_client_action_server_is_ready` / Rust's
+/// C's `rclc_action_client_action_server_is_ready` / Rust's
 /// `ActionClient::action_server_is_ready` (ledger row
 /// `cpp:Client::action_server_is_ready`, which was a C++-only gap: the other
 /// two languages had the predicate and C++ could only BLOCK).
@@ -1270,8 +1270,8 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal(
     // 10 s budget was racing this on test_zephyr_cpp_action_server_to_client_e2e.
     let ctx = unsafe { &mut *(client.executor_ptr as *mut CppContext) };
     // Issue 0290 — this helper BLOCKS by spinning the executor, so it must not
-    // run from inside a callback (the C twin `nros_action_send_goal` returns
-    // NROS_RET_REENTRANT for exactly this). Restore the caller's callback
+    // run from inside a callback (the C twin `rclc_action_send_goal` returns
+    // RCLC_RET_REENTRANT for exactly this). Restore the caller's callback
     // before bailing so the guard can't strand the client on the blocking one.
     let CppContext {
         executor,
@@ -1925,7 +1925,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result_async(
 /// The RPC's return code arrives later; drain it with
 /// [`nros_cpp_action_client_try_recv_cancel_response`].
 ///
-/// The callback tier had no cancel at all: C has `nros_action_cancel_goal`,
+/// The callback tier had no cancel at all: C has `rclc_action_cancel_goal`,
 /// Rust has `ActionClient::cancel_goal`, and C++ had only the L1 polling
 /// tier's `PollingActionClient::send_cancel_request` — so a C++ application
 /// written against the callback tier could start a goal it could not stop.
@@ -2128,7 +2128,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_poll(handle: *mut c_void) -> nro
 
 // ============================================================================
 // Phase 122.3.c.6.e — C-ABI wake-state slot. Same layout as
-// `nros_c::service::nros_wake_state_t` (16 bytes / 2 u64). Caller
+// `nros_c::service::rclc_wake_state_t` (16 bytes / 2 u64). Caller
 // declares one per (entity, channel) pair.
 // ============================================================================
 

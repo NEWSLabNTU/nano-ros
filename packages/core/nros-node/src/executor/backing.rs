@@ -19,7 +19,7 @@
 //! **Where that backing lives is the caller's choice**, and before this module
 //! the tree answered it three different ways:
 //!
-//! * **C** — all 34 in-tree `nros_executor_t` objects are file-scope `static`,
+//! * **C** — all 34 in-tree `rclc_executor_t` objects are file-scope `static`,
 //!   so the backing is carved from `_opaque` in `.bss`. Visible.
 //! * **C++** — `nros::Node::GlobalStorageHolder<0>::storage`, a template static
 //!   member, so also `.bss`. Visible.

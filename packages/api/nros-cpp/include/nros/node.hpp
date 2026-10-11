@@ -656,7 +656,7 @@ class Node {
     /// Default constructor — creates an uninitialized node. Pair with
     /// [`init`].
     Node()
-        : handle_(), initialized_(false), executor_handle_(nullptr), clock_(NROS_CLOCK_ROS_TIME) {}
+        : handle_(), initialized_(false), executor_handle_(nullptr), clock_(RCLC_CLOCK_ROS_TIME) {}
 
     // ==== phase-427 W2 — construction ======================================
     //
@@ -674,7 +674,7 @@ class Node {
     /// Q2), and a hand-written `main` must check it. The book says so; the
     /// compiler cannot.
     explicit Node(const char* name, const char* ns = nullptr)
-        : handle_(), initialized_(false), executor_handle_(nullptr), clock_(NROS_CLOCK_ROS_TIME) {
+        : handle_(), initialized_(false), executor_handle_(nullptr), clock_(RCLC_CLOCK_ROS_TIME) {
         (void)this->init(name, ns);
     }
 
@@ -729,7 +729,7 @@ class Node {
     /// dead — which is what keeps a hand-written `main` constructing the same
     /// component (no entry, no handle identity) working unchanged.
     explicit Node(::rclcpp::NodeHandle handle, const char* name, const char* ns = nullptr)
-        : handle_(), initialized_(false), executor_handle_(nullptr), clock_(NROS_CLOCK_ROS_TIME) {
+        : handle_(), initialized_(false), executor_handle_(nullptr), clock_(RCLC_CLOCK_ROS_TIME) {
         if (!handle.valid()) {
             this->set_error("ctor (null executor handle)", -1);
             return;
@@ -1249,11 +1249,11 @@ class Node {
             const ::std::string full = prefix.empty() ? it->first : (prefix + "." + it->first);
             const ::nros_cpp_node_t* h = this->ffi_handle();
             Result r = ::rclcpp::detail::node_param_declare(h, full.c_str(), it->second);
-            if (!r.ok() && r.raw() != NROS_RET_ALREADY_EXISTS) {
+            if (!r.ok() && r.raw() != RCLC_RET_ALREADY_EXISTS) {
                 return r;
             }
         }
-        return Result(NROS_RET_OK);
+        return Result(RCL_RET_OK);
     }
 #endif // NROS_CPP_HAS_STD_STRING
 
@@ -1309,7 +1309,7 @@ class Node {
     ///
     /// A buffer rather than rclcpp's returned string: rclcpp hands back a
     /// `const std::string &` it already stores, and there is no allocator here
-    /// to build one with. `nros_get_fully_qualified_name` (the C entry point) is
+    /// to build one with. `rclc_get_fully_qualified_name` (the C entry point) is
     /// the `std::string` spelling where `NROS_CPP_STD` is on.
     ///
     /// @param out_len Receives the length written, excluding the terminator —
@@ -1355,8 +1355,8 @@ class Node {
     /// ONE return type was forced by the merge (two `get_logger()` overloads
     /// differing only in return type are ill-formed), and the ported name keeps
     /// upstream's: `rclcpp::Logger`. That costs nothing at the call site —
-    /// `rclcpp::Logger` converts implicitly to `nros_logger_t` (`const void*`),
-    /// so `NROS_LOG_INFO(node.get_logger(), …)` and `logger == nullptr` both
+    /// `rclcpp::Logger` converts implicitly to `rclc_logger_t` (`const void*`),
+    /// so `RCLC_LOG_INFO(node.get_logger(), …)` and `logger == nullptr` both
     /// still compile and still carry the same opaque handle.
     ///
     /// The handle is `'static` and must NOT be freed; it is null on an
@@ -1912,7 +1912,7 @@ class Node {
     /// `create_wall_timer` is the steady one: it advances with the executor's
     /// monotonic spin delta, so no simulator can slow it down. This one advances
     /// with `clock`, which is what a node in a simulation or a bag replay wants:
-    /// a `NROS_CLOCK_ROS_TIME` timer stops while `/clock` is paused, tracks the
+    /// a `RCLC_CLOCK_ROS_TIME` timer stops while `/clock` is paused, tracks the
     /// replay rate, and restarts its period on a backwards jump rather than
     /// stalling for the length of it.
     ///
@@ -2016,8 +2016,8 @@ class Node {
     /// Bind a member `void C::on_tick()` as a timer on an explicit CLOCK —
     /// phase-430 W6, the member-binding half of `create_timer`.
     ///
-    /// A `NROS_CLOCK_ROS_TIME` clock follows `/clock` and stops when the bag
-    /// stops; a `NROS_CLOCK_STEADY_TIME` one does not. `create_wall_timer`
+    /// A `RCLC_CLOCK_ROS_TIME` clock follows `/clock` and stops when the bag
+    /// stops; a `RCLC_CLOCK_STEADY_TIME` one does not. `create_wall_timer`
     /// above is the steady verb and is unaffected by simulated time.
     template <class C, void (C::*Method)()>
     Result create_timer(Timer& out, const Clock& clock, uint64_t period_ms, C* self) {
@@ -2895,7 +2895,7 @@ inline int32_t apply_ros_args(void* executor, int argc, char const* const* argv)
         // text, whose length `say_refused` checks at compile time. As one
         // `NROS_ERROR` record it was over 870 bytes, which a real sink cannot
         // carry: the body is dropped and only an ellipsis is printed.
-        NROS_LOG_ERROR(::rclcpp::detail::log_handle(nullptr), "rclcpp::init: refused: %.120s",
+        RCLC_LOG_ERROR(::rclcpp::detail::log_handle(nullptr), "rclcpp::init: refused: %.120s",
                        why[0] != '\0' ? why : "invalid executor handle or argv");
         NROS_RCLCPP_SAY_REFUSED(NROS_RCLCPP_REFUSE_INIT_ARGV);
     }

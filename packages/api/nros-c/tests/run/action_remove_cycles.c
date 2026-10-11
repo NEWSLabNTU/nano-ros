@@ -2,7 +2,7 @@
  * and a create / remove loop runs forever.
  *
  * Before 1609 the C API had no executor-remove call for any entity, and
- * `nros_action_server_fini` / `nros_action_client_fini` reset only the C
+ * `rcl_action_server_fini` / `rcl_action_client_fini` reset only the C
  * struct: the arena entry `nros_executor_add_action_*` registered stayed live
  * with its callback `context` naming that struct, the action's RMW entities
  * stayed advertised, and `handle_count` never came back down. Issue 1496 gave
@@ -10,13 +10,13 @@
  * destructors; this is the C twin, through
  * `nros_executor_remove_action_{server,client}`.
  *
- * Every shape of the defect compiles — `fini` returning NROS_RET_OK while
+ * Every shape of the defect compiles — `fini` returning RCL_RET_OK while
  * leaving the entry is the defect — so only a run can see it. Three numbers,
  * each read from a different owner, because each half of the release is
  * invisible from the other two:
  *
- *   - `nros_executor_get_handle_count` — the C executor's own table;
- *   - `nros_executor_get_arena_used`   — the Rust arena's high-water mark. It
+ *   - `rclc_executor_get_handle_count` — the C executor's own table;
+ *   - `rclc_executor_get_arena_used`   — the Rust arena's high-water mark. It
  *     must equal the FIRST cycle's on every later cycle: that is the
  *     measurement that the released bytes are REUSED, not merely not yet
  *     exhausted;
@@ -60,7 +60,7 @@ static int s_failures = 0;
 
 #define CHECK_RET(expr, expected, msg)                                                             \
     do {                                                                                           \
-        nros_ret_t _r = (expr);                                                                    \
+        rcl_ret_t _r = (expr);                                                                     \
         if (_r != (expected)) {                                                                    \
             fprintf(stderr, "FAIL: %s -- got %d, expected %d (%s:%d)\n", (msg), (int)_r,           \
                     (int)(expected), __FILE__, __LINE__);                                          \
@@ -74,7 +74,7 @@ static int s_failures = 0;
 #define CYCLES 200
 #define MAX_HANDLES 4
 
-static const nros_action_type_t ACTION_TYPE = {
+static const rclc_action_type_t ACTION_TYPE = {
     .type_name = "example_interfaces::action::dds_::Fibonacci_",
     .type_hash = "RIHS01_0000000000000000000000000000000000000000000000000000000000000000",
     .goal_serialized_size_max = 64,
@@ -82,86 +82,85 @@ static const nros_action_type_t ACTION_TYPE = {
     .feedback_serialized_size_max = 64,
 };
 
-static enum nros_goal_response_t reject_goal(struct nros_action_server_t* server,
-                                             const struct nros_goal_handle_t* goal,
+static enum rclc_goal_response_t reject_goal(struct rcl_action_server_t* server,
+                                             const struct rclc_goal_handle_t* goal,
                                              const uint8_t* request, size_t len, void* ctx) {
     (void)server;
     (void)goal;
     (void)request;
     (void)len;
     (void)ctx;
-    return NROS_GOAL_REJECT;
+    return RCLC_GOAL_REJECT;
 }
 
 typedef struct {
-    struct nros_executor_t executor;
-    struct nros_node_t node;
+    struct rclc_executor_t executor;
+    struct rcl_node_t node;
 } rig_t;
 
-static void rig_open(rig_t* rig, struct nros_support_t* support, const char* node_name) {
+static void rig_open(rig_t* rig, struct rclc_support_t* support, const char* node_name) {
     rig->executor = rclc_executor_get_zero_initialized_executor();
-    CHECK_RET(nros_executor_init(&rig->executor, support, MAX_HANDLES), NROS_RET_OK,
+    CHECK_RET(rclc_executor_init(&rig->executor, support, MAX_HANDLES), RCL_RET_OK,
               "executor initialised");
-    nros_node_options_t opts = rcl_node_get_default_options();
+    rcl_node_options_t opts = rcl_node_get_default_options();
     rig->node = rcl_get_zero_initialized_node();
-    CHECK_RET(nros_executor_node_init(&rig->executor, &rig->node, node_name, &opts), NROS_RET_OK,
+    CHECK_RET(rclc_executor_node_init(&rig->executor, &rig->node, node_name, &opts), RCL_RET_OK,
               "node bound to the executor");
 }
 
 static void rig_close(rig_t* rig) {
     (void)rcl_node_fini(&rig->node);
-    CHECK_RET(rclc_executor_fini(&rig->executor), NROS_RET_OK, "executor finalised");
+    CHECK_RET(rclc_executor_fini(&rig->executor), RCL_RET_OK, "executor finalised");
 }
 
 /* ---- 1. server: add / remove / fini, CYCLES times ----------------------- */
 
-static void server_cycles(struct nros_support_t* support) {
+static void server_cycles(struct rclc_support_t* support) {
     rig_t rig;
     rig_open(&rig, support, "server_cycles");
 
-    const size_t capacity = nros_executor_get_arena_capacity(&rig.executor);
-    const size_t base_used = nros_executor_get_arena_used(&rig.executor);
+    const size_t capacity = rclc_executor_get_arena_capacity(&rig.executor);
+    const size_t base_used = rclc_executor_get_arena_used(&rig.executor);
     const int32_t base_live = nros_stub_rmw_live_entities();
     CHECK(capacity > 0, "the arena reports a capacity");
 
     size_t high_water = 0;
     int completed = 0;
     for (int i = 0; i < CYCLES; i++) {
-        struct nros_action_server_t server = rcl_action_get_zero_initialized_server();
-        if (nros_action_server_init(&server, &rig.node, "fibonacci", &ACTION_TYPE, reject_goal,
-                                    NULL, NULL, NULL) != NROS_RET_OK) {
+        struct rcl_action_server_t server = rcl_action_get_zero_initialized_server();
+        if (rcl_action_server_init(&server, &rig.node, "fibonacci", &ACTION_TYPE, reject_goal, NULL,
+                                   NULL, NULL) != RCL_RET_OK) {
             fprintf(stderr, "FAIL: server cycle %d: init\n", i);
             s_failures++;
             break;
         }
-        nros_ret_t r = nros_executor_add_action_server(&rig.executor, &server);
-        if (r != NROS_RET_OK) {
+        rcl_ret_t r = rclc_executor_add_action_server(&rig.executor, &server);
+        if (r != RCL_RET_OK) {
             fprintf(stderr, "FAIL: server cycle %d: add returned %d\n", i, (int)r);
             s_failures++;
             break;
         }
         if (i == 0) {
-            high_water = nros_executor_get_arena_used(&rig.executor);
+            high_water = rclc_executor_get_arena_used(&rig.executor);
             CHECK(high_water > base_used, "the first registration claimed arena bytes");
             CHECK(nros_stub_rmw_live_entities() - base_live == 5,
                   "an action server is five entities: three service servers + two publishers");
-        } else if (nros_executor_get_arena_used(&rig.executor) != high_water) {
+        } else if (rclc_executor_get_arena_used(&rig.executor) != high_water) {
             fprintf(stderr,
                     "FAIL: server cycle %d: arena used %zu, first cycle %zu -- the released "
                     "region was not reused\n",
-                    i, nros_executor_get_arena_used(&rig.executor), high_water);
+                    i, rclc_executor_get_arena_used(&rig.executor), high_water);
             s_failures++;
             break;
         }
-        CHECK(nros_executor_get_handle_count(&rig.executor) == 1, "one handle while registered");
+        CHECK(rclc_executor_get_handle_count(&rig.executor) == 1, "one handle while registered");
 
-        CHECK_RET(nros_executor_remove_action_server(&rig.executor, &server), NROS_RET_OK,
-                  "remove");
-        if (nros_executor_get_handle_count(&rig.executor) != 0 ||
+        CHECK_RET(rclc_executor_remove_action_server(&rig.executor, &server), RCL_RET_OK, "remove");
+        if (rclc_executor_get_handle_count(&rig.executor) != 0 ||
             nros_stub_rmw_live_entities() != base_live) {
             fprintf(stderr,
                     "FAIL: server cycle %d: after remove handle_count=%d live=%d (base %d)\n", i,
-                    nros_executor_get_handle_count(&rig.executor), nros_stub_rmw_live_entities(),
+                    rclc_executor_get_handle_count(&rig.executor), nros_stub_rmw_live_entities(),
                     base_live);
             s_failures++;
             break;
@@ -169,10 +168,10 @@ static void server_cycles(struct nros_support_t* support) {
         if (i == 0) {
             /* A second remove has nothing to remove — and must not release
              * whatever registers into that slot next. */
-            CHECK_RET(nros_executor_remove_action_server(&rig.executor, &server),
-                      NROS_RET_NOT_FOUND, "a second remove finds nothing");
+            CHECK_RET(rclc_executor_remove_action_server(&rig.executor, &server),
+                      RCLC_RET_NOT_FOUND, "a second remove finds nothing");
         }
-        CHECK_RET(nros_action_server_fini(&server), NROS_RET_OK, "fini after remove");
+        CHECK_RET(rcl_action_server_fini(&server), RCL_RET_OK, "fini after remove");
         completed++;
     }
     CHECK(completed == CYCLES, "every server cycle completed");
@@ -186,54 +185,53 @@ static void server_cycles(struct nros_support_t* support) {
 
 /* ---- 2. client: the same, for the client half --------------------------- */
 
-static void client_cycles(struct nros_support_t* support) {
+static void client_cycles(struct rclc_support_t* support) {
     rig_t rig;
     rig_open(&rig, support, "client_cycles");
 
-    const size_t capacity = nros_executor_get_arena_capacity(&rig.executor);
-    const size_t base_used = nros_executor_get_arena_used(&rig.executor);
+    const size_t capacity = rclc_executor_get_arena_capacity(&rig.executor);
+    const size_t base_used = rclc_executor_get_arena_used(&rig.executor);
     const int32_t base_live = nros_stub_rmw_live_entities();
 
     size_t high_water = 0;
     int completed = 0;
     for (int i = 0; i < CYCLES; i++) {
-        struct nros_action_client_t client = rcl_action_get_zero_initialized_client();
-        if (nros_action_client_init(&client, &rig.node, "fibonacci", &ACTION_TYPE) != NROS_RET_OK) {
+        struct rcl_action_client_t client = rcl_action_get_zero_initialized_client();
+        if (rcl_action_client_init(&client, &rig.node, "fibonacci", &ACTION_TYPE) != RCL_RET_OK) {
             fprintf(stderr, "FAIL: client cycle %d: init\n", i);
             s_failures++;
             break;
         }
-        nros_ret_t r = nros_executor_add_action_client(&rig.executor, &client);
-        if (r != NROS_RET_OK) {
+        rcl_ret_t r = rclc_executor_add_action_client(&rig.executor, &client);
+        if (r != RCL_RET_OK) {
             fprintf(stderr, "FAIL: client cycle %d: add returned %d\n", i, (int)r);
             s_failures++;
             break;
         }
         if (i == 0) {
-            high_water = nros_executor_get_arena_used(&rig.executor);
+            high_water = rclc_executor_get_arena_used(&rig.executor);
             CHECK(high_water > base_used, "the first registration claimed arena bytes");
             CHECK(nros_stub_rmw_live_entities() > base_live,
                   "the client's entities reached the backend");
-        } else if (nros_executor_get_arena_used(&rig.executor) != high_water) {
+        } else if (rclc_executor_get_arena_used(&rig.executor) != high_water) {
             fprintf(stderr,
                     "FAIL: client cycle %d: arena used %zu, first cycle %zu -- the released "
                     "region was not reused\n",
-                    i, nros_executor_get_arena_used(&rig.executor), high_water);
+                    i, rclc_executor_get_arena_used(&rig.executor), high_water);
             s_failures++;
             break;
         }
-        CHECK_RET(nros_executor_remove_action_client(&rig.executor, &client), NROS_RET_OK,
-                  "remove");
-        if (nros_executor_get_handle_count(&rig.executor) != 0 ||
+        CHECK_RET(rclc_executor_remove_action_client(&rig.executor, &client), RCL_RET_OK, "remove");
+        if (rclc_executor_get_handle_count(&rig.executor) != 0 ||
             nros_stub_rmw_live_entities() != base_live) {
             fprintf(stderr,
                     "FAIL: client cycle %d: after remove handle_count=%d live=%d (base %d)\n", i,
-                    nros_executor_get_handle_count(&rig.executor), nros_stub_rmw_live_entities(),
+                    rclc_executor_get_handle_count(&rig.executor), nros_stub_rmw_live_entities(),
                     base_live);
             s_failures++;
             break;
         }
-        CHECK_RET(nros_action_client_fini(&client), NROS_RET_OK, "fini after remove");
+        CHECK_RET(rcl_action_client_fini(&client), RCL_RET_OK, "fini after remove");
         completed++;
     }
     CHECK(completed == CYCLES, "every client cycle completed");
@@ -246,7 +244,7 @@ static void client_cycles(struct nros_support_t* support) {
 
 /* ---- 3. negative control: the pre-1609 teardown exhausts ---------------- */
 
-static void fini_alone_exhausts(struct nros_support_t* support) {
+static void fini_alone_exhausts(struct rclc_support_t* support) {
     rig_t rig;
     rig_open(&rig, support, "fini_alone");
     const int32_t base_live = nros_stub_rmw_live_entities();
@@ -254,23 +252,23 @@ static void fini_alone_exhausts(struct nros_support_t* support) {
     /* Storage outlives every iteration on purpose: the entries a fini-only
      * teardown leaves behind keep naming it, and this control must not turn
      * into a use-after-free of its own. */
-    static struct nros_action_server_t servers[CYCLES];
+    static struct rcl_action_server_t servers[CYCLES];
     int failed_at = -1;
-    nros_ret_t failed_with = NROS_RET_OK;
+    rcl_ret_t failed_with = RCL_RET_OK;
     for (int i = 0; i < CYCLES; i++) {
         servers[i] = rcl_action_get_zero_initialized_server();
-        CHECK_RET(nros_action_server_init(&servers[i], &rig.node, "fibonacci", &ACTION_TYPE,
-                                          reject_goal, NULL, NULL, NULL),
-                  NROS_RET_OK, "control: init");
-        nros_ret_t r = nros_executor_add_action_server(&rig.executor, &servers[i]);
-        if (r != NROS_RET_OK) {
+        CHECK_RET(rcl_action_server_init(&servers[i], &rig.node, "fibonacci", &ACTION_TYPE,
+                                         reject_goal, NULL, NULL, NULL),
+                  RCL_RET_OK, "control: init");
+        rcl_ret_t r = rclc_executor_add_action_server(&rig.executor, &servers[i]);
+        if (r != RCL_RET_OK) {
             failed_at = i;
             failed_with = r;
-            (void)nros_action_server_fini(&servers[i]);
+            (void)rcl_action_server_fini(&servers[i]);
             break;
         }
         /* fini WITHOUT remove — the teardown every C image used before 1609. */
-        CHECK_RET(nros_action_server_fini(&servers[i]), NROS_RET_OK, "control: fini");
+        CHECK_RET(rcl_action_server_fini(&servers[i]), RCL_RET_OK, "control: fini");
     }
     CHECK(failed_at >= 0, "an executor that never runs out proves nothing: fini alone must "
                           "exhaust it, or the positive loop measured nothing");
@@ -288,10 +286,10 @@ int main(void) {
     setenv("NROS_RMW", NROS_STUB_RMW_NAME, 1);
     nros_stub_rmw_set_accept_entities(true);
 
-    struct nros_support_t support = nros_support_get_zero_initialized();
-    CHECK_RET(nros_support_init_rmw(&support, "stub://none", 45, "action_remove_cycles",
+    struct rclc_support_t support = rclc_support_get_zero_initialized();
+    CHECK_RET(rclc_support_init_rmw(&support, "stub://none", 45, "action_remove_cycles",
                                     NROS_STUB_RMW_NAME),
-              NROS_RET_OK, "support opened on the stub backend");
+              RCL_RET_OK, "support opened on the stub backend");
     if (s_failures != 0) {
         return 1;
     }

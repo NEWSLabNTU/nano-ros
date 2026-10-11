@@ -47,7 +47,7 @@
                           // nros_cpp_lifecycle_callback_t typedef), all cbindgen-generated
                           // from nros-cpp/src/lifecycle_shim.rs.
 // phase-417 W4.f — `nros_lifecycle_transition_{label,start_state,goal_state}`
-// and `nros_lifecycle_transition_graph`, the in-process view of the REP-2002
+// and `rclc_lifecycle_transition_graph`, the in-process view of the REP-2002
 // table. They are PURE functions over `nros_core::lifecycle`, so `Transition`
 // below stores an id and nothing else: the labels and the two states have ONE
 // home, in Rust, and a C++ table of them would be the fourth copy.
@@ -182,7 +182,7 @@ class Transition {
     /// `8` and anything outside the table, for which the accessors below
     /// answer with `nullptr` / `LifecycleState::Unknown` rather than a
     /// neighbouring row.
-    bool valid() const { return nros_lifecycle_transition_label(id_) != nullptr; }
+    bool valid() const { return rclc_lifecycle_transition_label(id_) != nullptr; }
 
     /// The wire label — `"configure"`, `"shutdown"`, … — or `nullptr` for an
     /// id we do not implement. Borrowed, static lifetime, never freed.
@@ -190,12 +190,12 @@ class Transition {
     /// The three shutdown ids all read `"shutdown"`: that is upstream's
     /// spelling, and which one a `"shutdown"` request means is resolved
     /// against the CURRENT state (see [`shutdown_transition_for`]).
-    const char* label() const { return nros_lifecycle_transition_label(id_); }
+    const char* label() const { return rclc_lifecycle_transition_label(id_); }
 
     /// The state this transition may be taken FROM — rclcpp's
     /// `Transition::start_state()`.
     LifecycleState start_state() const {
-        return static_cast<LifecycleState>(nros_lifecycle_transition_start_state(id_));
+        return static_cast<LifecycleState>(rclc_lifecycle_transition_start_state(id_));
     }
 
     /// The state this transition ADVERTISES as its destination — rclcpp's
@@ -205,7 +205,7 @@ class Transition {
     /// erroring one routes to `ErrorProcessing`; both are runtime outcomes,
     /// not properties of the graph this describes.
     LifecycleState goal_state() const {
-        return static_cast<LifecycleState>(nros_lifecycle_transition_goal_state(id_));
+        return static_cast<LifecycleState>(rclc_lifecycle_transition_goal_state(id_));
     }
 
   private:
@@ -230,13 +230,13 @@ using TransitionVisitFn = bool (*)(void* ctx, const Transition& transition);
 /// deliberately asymmetric. Both spellings stay; this is the implementation
 /// and there is no second table.
 inline const char* state_label(LifecycleState state) {
-    return nros_lifecycle_state_label(static_cast<uint8_t>(state));
+    return rclc_lifecycle_state_label(static_cast<uint8_t>(state));
 }
 
 /// One REP-2002 primary state as a value — rclcpp's `rclcpp_lifecycle::State`.
 ///
 /// phase-417 G6, and it is a SURFACING job rather than a feature: every byte
-/// it returns already shipped (`nros_lifecycle_state_label`, W4.f), and what
+/// it returns already shipped (`rclc_lifecycle_state_label`, W4.f), and what
 /// was missing was the RECEIVER. Upstream's `State` is a value type with
 /// `.id()` and `.label()`; ours was a bare enum plus a free function, so a
 /// ported `state.label()` did not compile while the sibling
@@ -275,11 +275,11 @@ class State {
     /// Whether this id is a state nano-ros implements. `false` for anything
     /// outside the table, for which [`label`] answers `nullptr` rather than a
     /// neighbouring row.
-    bool valid() const { return nros_lifecycle_state_label(id_) != nullptr; }
+    bool valid() const { return rclc_lifecycle_state_label(id_) != nullptr; }
 
     /// The wire label — `"unconfigured"`, `"active"`, … — or `nullptr` for an
     /// id we do not implement. Borrowed, static lifetime, never freed.
-    const char* label() const { return nros_lifecycle_state_label(id_); }
+    const char* label() const { return rclc_lifecycle_state_label(id_); }
 
   private:
     uint8_t id_;
@@ -669,8 +669,8 @@ class LifecycleEngine {
         }
         const uint8_t* ids = nullptr;
         ::size_t count = 0;
-        const nros_ret_t r = nros_lifecycle_transition_graph(&ids, &count);
-        if (r != NROS_RET_OK) {
+        const rcl_ret_t r = rclc_lifecycle_transition_graph(&ids, &count);
+        if (r != RCL_RET_OK) {
             return ::rclcpp::Result(r);
         }
         for (::size_t i = 0; i < count; ++i) {
@@ -1125,7 +1125,7 @@ class LifecycleEngine {
     // the executor was bound. A POINTER, never a node: see `bind(Node&)`.
     ::rclcpp::Node* node_ = nullptr;
     /// This node's clock (ROS time), as `rclcpp::Node` carries one.
-    ::rclcpp::Clock clock_{NROS_CLOCK_ROS_TIME};
+    ::rclcpp::Clock clock_{RCLC_CLOCK_ROS_TIME};
     /// Head of the intrusive managed-entity list; see `add_managed_entity`.
     ManagedEntityInterface* managed_ = nullptr;
     TransitionCallbackType cb_configure_ = nullptr;

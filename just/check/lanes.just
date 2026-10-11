@@ -116,12 +116,12 @@ c: c-fmt
         -x c /dev/null
     echo "  - RFC-0033 borrow views: stream alignment + checked count (issues 1148/1149)"
     # The one COMPILE+LINK+RUN TU in this lane. The defects it pins are
-    # invisible to a syntax check: `nros_cdr_borrow_le_slice_*` returned 0 on
+    # invisible to a syntax check: `rclc_cdr_borrow_le_slice_*` returned 0 on
     # every 8-byte sequence while handing back padding as data, and a wire
     # count of 0x40000000 wrapped `(size_t)cnt * sizeof` to 0 on every 32-bit
     # target. The binary links the `libnros_c.a` the build above just produced
-    # (so `nros_cdr_align` is the Rust reader's own alignment, not a C copy of
-    # it) and exercises the 32-bit wrap through `nros_cdr_seq_byte_len`'s
+    # (so `rclc_cdr_align` is the Rust reader's own alignment, not a C copy of
+    # it) and exercises the 32-bit wrap through `rclc_cdr_seq_byte_len`'s
     # explicit limit, because this host's `size_t` cannot. `test -f` first —
     # a missing TU must not read as a pass (issue 0196's class).
     test -f packages/api/nros-c/tests/run/cdr_borrow_le_slice.c || { \
@@ -141,7 +141,7 @@ c: c-fmt
     echo "  - issue 1531: the C surface forwards the BAKED RMW rung, and only when baked"
     # Three properties, with a NEGATIVE CONTROL, because "it compiles" is what
     # the pre-fix tree also did. `<nros/baked_rmw.h>` rewrites the two nameless
-    # `nros_support_init` spellings to `nros_support_init_rmw(... NROS_ENTRY_RMW)`
+    # `rclc_support_init` spellings to `rclc_support_init_rmw(... NROS_ENTRY_RMW)`
     # when an entry baked one; the runtime half (does the selector reach the
     # backend) is measured on a two-backend image and cannot be a compile check.
     #
@@ -158,7 +158,7 @@ c: c-fmt
              exit 1; }; \
     done
     # The forward itself, read off the preprocessor rather than assumed. WITH a
-    # bake the three-argument call must become `nros_support_init_rmw`; WITHOUT
+    # bake the three-argument call must become `rclc_support_init_rmw`; WITHOUT
     # one it must NOT, because an image with no bake resolves namelessly exactly
     # as it always has and a macro that fired anyway would pass a nonexistent
     # token.
@@ -166,7 +166,7 @@ c: c-fmt
             -Ipackages/api/nros-c/include \
             -Ipackages/platform/nros-platform-api/include \
             packages/api/nros-c/tests/compile/baked_rmw_rung.c; }
-    # Keyed on the STATEMENT the probe writes (`rc = nros_support_init(...)`),
+    # Keyed on the STATEMENT the probe writes (`rc = rclc_support_init(...)`),
     # not on a whole-line match: the expansion spans several lines, so a
     # single-line grep for the selector reports a failure that is about the grep.
     #
@@ -193,21 +193,21 @@ c: c-fmt
         esac; \
     }
     _rung_assert \
-        "with NROS_ENTRY_RMW baked, nros_support_init must forward to nros_support_init_rmw -- the C surface is back to issue 1531." \
-        'rc = nros_support_init_rmw' "$_pp_baked" match
+        "with NROS_ENTRY_RMW baked, rclc_support_init must forward to rclc_support_init_rmw -- the C surface is back to issue 1531." \
+        'rc = rclc_support_init_rmw' "$_pp_baked" match
     _rung_assert \
         "the forward fired but did not carry NROS_ENTRY_RMW's value." \
-        'rc = nros_support_init_rmw[^;]*"cyclonedds"' "$_pp_baked_joined" match
+        'rc = rclc_support_init_rmw[^;]*"cyclonedds"' "$_pp_baked_joined" match
     # Negative control: with NO bake the nameless spelling must SURVIVE. An image
     # with no bake resolves namelessly exactly as it always has, and a macro that
     # fired anyway would pass a token that does not exist.
     _rung_assert \
-        "with NO bake, nros_support_init must stay nameless (issue 1531)." \
-        'rc = nros_support_init(' "$_pp_bare" match
+        "with NO bake, rclc_support_init must stay nameless (issue 1531)." \
+        'rc = rclc_support_init(' "$_pp_bare" match
     echo "  - phase-430 W1: a C timer created on a ROS clock FOLLOWS that clock"
     # The second COMPILE+LINK+RUN TU, and for the same reason as the first: the
-    # defect is a behaviour, not a signature. `nros_timer_init_on_clock` could
-    # accept an `nros_clock_t *`, store it, and schedule the timer on the wall
+    # defect is a behaviour, not a signature. `rclc_timer_init_on_clock` could
+    # accept an `rcl_clock_t *`, store it, and schedule the timer on the wall
     # anyway — that compiles, links, and reads as a ROS-time timer, which is
     # RFC-0089's "compiles and differs". So the probe stops the simulated clock
     # and asserts the ROS-time timer goes quiet while the wall timer beside it
@@ -244,8 +244,8 @@ c: c-fmt
     # only through an installed sink, because a `set_level`/`get_level` pair
     # over one shared cell agrees with itself while dropping the wrong records.
     #
-    # It also pins the SHARED HELPER: `nros_log_get_logger(name)` must return
-    # the handle `nros_node_get_logger` produced, so a future C-side named
+    # It also pins the SHARED HELPER: `rclc_log_get_logger(name)` must return
+    # the handle `rclc_node_get_logger` produced, so a future C-side named
     # logger surface cannot grow a second table beside `resolve_logger`
     # (RFC-0019). Same stub backend and same archive as the timer probe above.
     # `test -f` first -- a missing TU must not read as a pass (issue 0196).
@@ -269,7 +269,7 @@ c: c-fmt
     # this replaced compiled and ran and did nothing. `nros_guard_condition_init`
     # + `_set_callback` left the object INERT — nothing reached the executor's
     # arena until a third call, `nros_executor_add_guard_condition`, which the
-    # one in-tree C example never made — and every step answered NROS_RET_OK. So
+    # one in-tree C example never made — and every step answered RCL_RET_OK. So
     # a header check cannot tell the working shape from the broken one; only a
     # run can, and only by asserting registration (`handle_id != SIZE_MAX`), the
     # dispatch thread, the bound context, and the WAKE against a negative
@@ -293,7 +293,7 @@ c: c-fmt
     echo "  - issue 1385: a C executor INSTALLS the backend wake callback and HANDS IT BACK"
     # The FIFTH compile+link+run TU, and the first whose subject is a POINTER
     # the backend holds rather than a value a header states. Both halves of
-    # issue 1385 are invisible to every static check: `nros_executor_init`
+    # issue 1385 are invisible to every static check: `rclc_executor_init`
     # installing nothing compiles, and `Executor::drop` not clearing what it
     # installed compiles — the second only becomes a use-after-free once the
     # first is fixed, which is why the fix landed in that order and why this
@@ -314,8 +314,8 @@ c: c-fmt
     # `node_id != 0 && executor != NULL`, and the FIRST node an executor builds
     # takes slot 0 — so a correctly bound single-node C image (the commonest
     # shape in the tree) routed through the LEGACY arm, whose `support` pointer
-    # `nros_executor_node_init` sets to NULL on purpose. Every eager entity
-    # create then answered NROS_RET_NOT_INIT without ever reaching the backend,
+    # `rclc_executor_node_init` sets to NULL on purpose. Every eager entity
+    # create then answered RCL_RET_NOT_INIT without ever reaching the backend,
     # and the header, the prototypes and every compile check are identical
     # either way.
     #
@@ -342,7 +342,7 @@ c: c-fmt
     echo "  - issue 1609: a C action server/client is REMOVED from its executor, and a"
     echo "    create/remove loop runs past the handle table and the arena"
     # Compile+link+run, same reason as every probe above: `fini` returning
-    # NROS_RET_OK while the arena entry stays registered (context = the C
+    # RCL_RET_OK while the arena entry stays registered (context = the C
     # struct, the action still on the graph, `handle_count` still raised) IS the
     # defect, and it compiles. 200 add/remove/fini cycles per kind, with the
     # arena's used bytes pinned at the first cycle (reuse, not mere headroom),
@@ -646,7 +646,7 @@ c: c-fmt
     # BOTH depths. The topic can only come from the macro (a _Static_assert
     # message is a string literal); the numbers can only come from a TYPE, which
     # is why the conflicting `char[N]` declarations exist beside it.
-    for _want in '\"/chatter\"' 'char[1]' 'char[10]' 'nros_declared_depth_vs_passed_at_line_'; do \
+    for _want in '\"/chatter\"' 'char[1]' 'char[10]' 'rclc_declared_depth_vs_passed_at_line_'; do \
         case "$_dqc_out" in \
             *"$_want"*) ;; \
             *) echo "ERROR: the C declared-depth diagnostic does not contain: $_want" >&2; \
@@ -803,7 +803,7 @@ c: c-fmt
     # built re-runs nothing and rewrites nothing. Sharing one target dir
     # therefore links a header sized for the shipped shape against an archive
     # built for this one: `undefined reference to nros_config_variant_sz_<hash>`
-    # when the guard fires, and a wrong `nros_executor_t` if it ever did not.
+    # when the guard fires, and a wrong `rclc_executor_t` if it ever did not.
     # A separate dir makes header and archive one build, permanently.
     #
     # `CARGO_TARGET_DIR`, not `--target-dir`: the mirror resolves its root from
@@ -1181,7 +1181,7 @@ cpp: cpp-fmt
     #
     # This one LINKS `libnros_cpp.a` — the archive the `cargo build` at the head
     # of this recipe produced — because a real sink installed through
-    # `nros_log_add_sink` is the only observer that can tell "the record reached
+    # `rclc_log_add_sink` is the only observer that can tell "the record reached
     # nros_log at FATAL" from "something printed to stderr", and that is exactly
     # the distinction issue 1019 is about. No session, no backend, no router.
     test -f packages/api/nros-cpp/tests/compile/ros2_loudness_runtime.cpp || { \
@@ -1831,7 +1831,7 @@ cpp: cpp-fmt
     # every RTOS, and every syntax-only sweep above would stay green); the
     # message LENGTH is `failed_create_aborts`'s assertion, above. A COMPILE plus
     # a symbol-table read, once per refusal: the object must call
-    # `nros_log_emit_at`. `test -f` first, so a missing TU cannot read as a pass
+    # `rclc_log_emit_at`. `test -f` first, so a missing TU cannot read as a pass
     # (issue 0196).
     test -f packages/api/nros-cpp/tests/compile/refusal_reaches_nros_log.cpp || { \
         echo "ERROR: refusal_reaches_nros_log.cpp is MISSING -- this check" >&2; \
@@ -1862,7 +1862,7 @@ cpp: cpp-fmt
             0) ;;
             1)
                 echo "check-cpp: the ${_refusal#*:} refusal does not reach nros_log on a" >&2
-                echo "  freestanding target: its object never calls nros_log_emit_at, so on an" >&2
+                echo "  freestanding target: its object never calls rclc_log_emit_at, so on an" >&2
                 echo "  RTOS it aborts without a diagnostic (issue 1303)." >&2
                 exit 1 ;;
             *) echo "check-cpp: grep failed (rc=$_rc) reading $_obj's symbols" >&2; exit 1 ;;
@@ -2043,7 +2043,7 @@ cpp: cpp-fmt
     # Checking the macro under a standard no component uses would test a
     # different preprocessor.
     #
-    # The fixture dir carries `nros/nros_declared_qos_generated.h` — what
+    # The fixture dir carries `nros/rclc_declared_qos_generated.h` — what
     # `nros ws entity-inventory --output-header` renders, and the same bytes a
     # real component's configure puts on its own include path (issue 1084: the
     # register call claims the dir, a deferred render fills it from the

@@ -15,8 +15,8 @@
 
 #include <nros/nros_config_generated.h>
 
-/* RFC-0090 — emitted by nano-ros codegen version 12. */
-#define NROS_EMITTED_CODEGEN_VERSION 12
+/* RFC-0090 — emitted by nano-ros codegen version 13. */
+#define NROS_EMITTED_CODEGEN_VERSION 13
 
 #ifndef NROS_CODEGEN_VERSION
 #error "nros: the generated config header did not define NROS_CODEGEN_VERSION. This generated artifact cannot tell whether the runtime accepts it; rebuild the nano-ros runtime so its config header is regenerated."
@@ -98,15 +98,15 @@ static inline const char* fingerprint_corpus_srv_probe_get_type_hash(void) {
     return "h";
 }
 
-/// Get the nros_service_type_t for this service type
-const struct nros_service_type_t* fingerprint_corpus_srv_probe_get_type_support(void);
+/// Get the rclc_service_type_t for this service type
+const struct rclc_service_type_t* fingerprint_corpus_srv_probe_get_type_support(void);
 
 // ============================================================================
 // Typed service path (phase-417 W5.e)
 // ============================================================================
 //
 // Everything above is bytes: `rclc_service_init_default` takes an
-// `nros_service_callback_t`, which is
+// `rclc_service_callback_t`, which is
 // `(const uint8_t*, size_t, uint8_t*, size_t, size_t*, void*) -> bool`, so
 // every C service in the tree had to call `_request_deserialize` and
 // `_response_serialize` by hand at the top and bottom of its handler. The
@@ -127,7 +127,7 @@ const struct nros_service_type_t* fingerprint_corpus_srv_probe_get_type_support(
 // instead of two.
 //
 // No executor-side registration variant is needed. The subscription path (W5.a)
-// needs one because `nros_c_subscription_callback_t` has nowhere to put a
+// needs one because `rclc_c_subscription_callback_t` has nowhere to put a
 // caller-owned message; the SERVICE callback already receives a caller-visible
 // reply buffer (`response_data`/`response_capacity`), so the missing storage is
 // only the two payload STRUCTS, and those live in the handler struct below.
@@ -136,7 +136,7 @@ const struct nros_service_type_t* fingerprint_corpus_srv_probe_get_type_support(
 // reply buffer makes the trampoline return `false`, and
 // `srv_raw_try_process` sends NOTHING on `false` — so a truncated CDR payload
 // is never put on the wire. Refusing quietly would only move the problem, so
-// each refusal also calls `nros_service_typed_report_error()` (an `ERROR`
+// each refusal also calls `rclc_service_typed_report_error()` (an `ERROR`
 // record on the same sink chain as every other C log line) and records
 // `last_error` / `error_count` on the handler for a caller that would rather
 // poll than log.
@@ -156,7 +156,7 @@ typedef void (*fingerprint_corpus_srv_probe_handler_fn_t)(
 /// Caller-owned storage + callback for a typed Probe server.
 ///
 /// Declare one per service server, with whatever storage duration the server
-/// has (static, or a struct member alongside the `nros_service_t`). It must
+/// has (static, or a struct member alongside the `rcl_service_t`). It must
 /// outlive the service.
 ///
 /// Heap fields (RFC-0033 `mode = "heap"`): the trampoline `_init`s both structs
@@ -173,7 +173,7 @@ typedef struct fingerprint_corpus_srv_probe_service_handler_t {
     fingerprint_corpus_srv_probe_request request;
     /// Response storage your handler fills.
     fingerprint_corpus_srv_probe_response response;
-    /// Last NROS_SERVICE_TYPED_* code; NROS_SERVICE_TYPED_OK after a good call.
+    /// Last NROS_SERVICE_TYPED_* code; RCLC_SERVICE_TYPED_OK after a good call.
     int32_t last_error;
     /// Count of refused requests since init. Monotonic.
     uint32_t error_count;
@@ -181,25 +181,25 @@ typedef struct fingerprint_corpus_srv_probe_service_handler_t {
 
 /// Install `callback` + `context` and zero both payload structs.
 ///
-/// Returns NROS_RET_INVALID_ARGUMENT if `handler` or `callback` is NULL — a
+/// Returns RCL_RET_INVALID_ARGUMENT if `handler` or `callback` is NULL — a
 /// handler with no callback can only ever refuse, so it is rejected here rather
 /// than at the first request.
-static inline nros_ret_t fingerprint_corpus_srv_probe_service_handler_init(
+static inline rcl_ret_t fingerprint_corpus_srv_probe_service_handler_init(
     fingerprint_corpus_srv_probe_service_handler_t* handler,
     fingerprint_corpus_srv_probe_handler_fn_t callback, void* context) {
     if (handler == NULL || callback == NULL) {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     handler->callback = callback;
     handler->context = context;
     fingerprint_corpus_srv_probe_request_init(&handler->request);
     fingerprint_corpus_srv_probe_response_init(&handler->response);
-    handler->last_error = NROS_SERVICE_TYPED_OK;
+    handler->last_error = RCLC_SERVICE_TYPED_OK;
     handler->error_count = 0;
-    return NROS_RET_OK;
+    return RCL_RET_OK;
 }
 
-/// The `nros_service_callback_t` the executor actually calls. Not for direct
+/// The `rclc_service_callback_t` the executor actually calls. Not for direct
 /// use — pass it, with a handler as `context`, via
 /// fingerprint_corpus_srv_probe_service_init() below.
 static inline bool fingerprint_corpus_srv_probe_service_handle_request(
@@ -211,7 +211,7 @@ static inline bool fingerprint_corpus_srv_probe_service_handle_request(
         *response_len = 0;
     }
     if (handler == NULL || handler->callback == NULL) {
-        nros_service_typed_report_error(NROS_SERVICE_TYPED_ERR_NO_CALLBACK,
+        rclc_service_typed_report_error(RCLC_SERVICE_TYPED_ERR_NO_CALLBACK,
                                         fingerprint_corpus_srv_probe_get_type_name());
         return false;
     }
@@ -222,9 +222,9 @@ static inline bool fingerprint_corpus_srv_probe_service_handle_request(
            decode allocated, refuse, and say so — the executor sends nothing on
            `false`, so the peer sees a timeout rather than a wrong answer. */
         fingerprint_corpus_srv_probe_request_fini(&handler->request);
-        handler->last_error = NROS_SERVICE_TYPED_ERR_REQUEST_DESERIALIZE;
+        handler->last_error = RCLC_SERVICE_TYPED_ERR_REQUEST_DESERIALIZE;
         handler->error_count++;
-        nros_service_typed_report_error(handler->last_error,
+        rclc_service_typed_report_error(handler->last_error,
                                         fingerprint_corpus_srv_probe_get_type_name());
         return false;
     }
@@ -241,31 +241,31 @@ static inline bool fingerprint_corpus_srv_probe_service_handle_request(
         /* Oversized (or otherwise unencodable). `_serialize` writes only what
            fits and reports -1; forwarding `written` here would put a truncated
            CDR payload on the wire, which is the failure RFC-0089 names. */
-        handler->last_error = NROS_SERVICE_TYPED_ERR_RESPONSE_SERIALIZE;
+        handler->last_error = RCLC_SERVICE_TYPED_ERR_RESPONSE_SERIALIZE;
         handler->error_count++;
-        nros_service_typed_report_error(handler->last_error,
+        rclc_service_typed_report_error(handler->last_error,
                                         fingerprint_corpus_srv_probe_get_type_name());
         return false;
     }
     if (response_len != NULL) {
         *response_len = written;
     }
-    handler->last_error = NROS_SERVICE_TYPED_OK;
+    handler->last_error = RCLC_SERVICE_TYPED_OK;
     return true;
 }
 
-/// Create a typed Probe server: `nros_service_init_with_qos` with
+/// Create a typed Probe server: `rclc_service_init_with_qos` with
 /// this type's support and the services default QoS. Register it, with its
 /// handler, through fingerprint_corpus_srv_probe_executor_add_service().
-static inline nros_ret_t fingerprint_corpus_srv_probe_service_init(
-    struct nros_service_t* service, const struct nros_node_t* node, const char* service_name) {
-    return nros_service_init_with_qos(service, node,
+static inline rcl_ret_t fingerprint_corpus_srv_probe_service_init(
+    struct rcl_service_t* service, const struct rcl_node_t* node, const char* service_name) {
+    return rclc_service_init_with_qos(service, node,
                                       fingerprint_corpus_srv_probe_get_type_support(), service_name,
                                       NULL);
 }
 
 /// Add a typed Probe server to an executor: the forwarder onto
-/// `nros_executor_add_service_raw` that names the trampoline and the handler
+/// `rclc_executor_add_service_raw` that names the trampoline and the handler
 /// together, so the two cannot disagree. rclc's counterpart is
 /// `rclc_executor_add_service(executor, service, &req, &res, callback)`; the
 /// request and response storage live in the handler here.
@@ -275,13 +275,13 @@ static inline nros_ret_t fingerprint_corpus_srv_probe_service_init(
 /// until registration. The executor arena owns a dispatched server's callback
 /// now and the struct keeps none, so the binding moved here, which is also
 /// where rclc binds its handler. The handler must outlive the registration.
-static inline nros_ret_t fingerprint_corpus_srv_probe_executor_add_service(
-    struct nros_executor_t* executor, struct nros_service_t* service,
+static inline rcl_ret_t fingerprint_corpus_srv_probe_executor_add_service(
+    struct rclc_executor_t* executor, struct rcl_service_t* service,
     fingerprint_corpus_srv_probe_service_handler_t* handler) {
     if (handler == NULL || handler->callback == NULL) {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
-    return nros_executor_add_service_raw(executor, service,
+    return rclc_executor_add_service_raw(executor, service,
                                          fingerprint_corpus_srv_probe_service_handle_request, handler);
 }
 
@@ -319,21 +319,21 @@ typedef struct fingerprint_corpus_srv_probe_client_handler_t {
 } fingerprint_corpus_srv_probe_client_handler_t;
 
 /// Install `callback` + `context` and zero the response storage.
-static inline nros_ret_t fingerprint_corpus_srv_probe_client_handler_init(
+static inline rcl_ret_t fingerprint_corpus_srv_probe_client_handler_init(
     fingerprint_corpus_srv_probe_client_handler_t* handler,
     fingerprint_corpus_srv_probe_response_fn_t callback, void* context) {
     if (handler == NULL || callback == NULL) {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     handler->callback = callback;
     handler->context = context;
     fingerprint_corpus_srv_probe_response_init(&handler->response);
-    handler->last_error = NROS_SERVICE_TYPED_OK;
+    handler->last_error = RCLC_SERVICE_TYPED_OK;
     handler->error_count = 0;
-    return NROS_RET_OK;
+    return RCL_RET_OK;
 }
 
-/// The `nros_response_callback_t` the executor calls. Not for direct use —
+/// The `rclc_response_callback_t` the executor calls. Not for direct use —
 /// install it with fingerprint_corpus_srv_probe_client_set_response_callback().
 static inline void fingerprint_corpus_srv_probe_client_handle_response(const uint8_t* response,
                                                                     size_t response_len,
@@ -341,7 +341,7 @@ static inline void fingerprint_corpus_srv_probe_client_handle_response(const uin
     fingerprint_corpus_srv_probe_client_handler_t* handler =
         (fingerprint_corpus_srv_probe_client_handler_t*) context;
     if (handler == NULL || handler->callback == NULL) {
-        nros_service_typed_report_error(NROS_SERVICE_TYPED_ERR_NO_CALLBACK,
+        rclc_service_typed_report_error(RCLC_SERVICE_TYPED_ERR_NO_CALLBACK,
                                         fingerprint_corpus_srv_probe_get_type_name());
         return;
     }
@@ -349,120 +349,120 @@ static inline void fingerprint_corpus_srv_probe_client_handle_response(const uin
     if (fingerprint_corpus_srv_probe_response_deserialize(&handler->response, response, response_len) != 0) {
         fingerprint_corpus_srv_probe_response_fini(&handler->response);
         fingerprint_corpus_srv_probe_response_init(&handler->response);
-        handler->last_error = NROS_SERVICE_TYPED_ERR_RESPONSE_DESERIALIZE;
+        handler->last_error = RCLC_SERVICE_TYPED_ERR_RESPONSE_DESERIALIZE;
         handler->error_count++;
-        nros_service_typed_report_error(handler->last_error,
+        rclc_service_typed_report_error(handler->last_error,
                                         fingerprint_corpus_srv_probe_get_type_name());
         /* The user callback is NOT invoked. Handing it a zeroed struct would be
            indistinguishable from a server that answered with defaults. */
         return;
     }
-    handler->last_error = NROS_SERVICE_TYPED_OK;
+    handler->last_error = RCLC_SERVICE_TYPED_OK;
     handler->callback(&handler->response, handler->context);
     fingerprint_corpus_srv_probe_response_fini(&handler->response);
 }
 
 /// Route this client's replies through the typed handler. The client must
-/// already be added (`nros_executor_add_client`): since phase-487 W2 the
+/// already be added (`rclc_executor_add_client`): since phase-487 W2 the
 /// executor arena owns the response callback, so there is nowhere to keep it
-/// before registration (`NROS_RET_NOT_INIT`).
-static inline nros_ret_t fingerprint_corpus_srv_probe_client_set_response_callback(
-    struct nros_client_t* client, fingerprint_corpus_srv_probe_client_handler_t* handler) {
+/// before registration (`RCL_RET_NOT_INIT`).
+static inline rcl_ret_t fingerprint_corpus_srv_probe_client_set_response_callback(
+    struct rcl_client_t* client, fingerprint_corpus_srv_probe_client_handler_t* handler) {
     if (handler == NULL || handler->callback == NULL) {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
-    return nros_client_set_response_callback(
+    return rclc_client_set_response_callback(
         client, fingerprint_corpus_srv_probe_client_handle_response, handler);
 }
 
 /// Serialize `request` into `scratch` and send it asynchronously.
 ///
 /// `scratch` is the caller's, and it is only borrowed for this call —
-/// `nros_client_send_request_async` copies into the arena entry.
-/// NROS_SERVICE_TYPED_ERR_REQUEST_SERIALIZE is reported and
-/// NROS_RET_INVALID_ARGUMENT returned when the request does not fit; nothing is
+/// `rclc_client_send_request_async` copies into the arena entry.
+/// RCLC_SERVICE_TYPED_ERR_REQUEST_SERIALIZE is reported and
+/// RCL_RET_INVALID_ARGUMENT returned when the request does not fit; nothing is
 /// sent.
-static inline nros_ret_t fingerprint_corpus_srv_probe_client_send_request(
-    struct nros_client_t* client, const fingerprint_corpus_srv_probe_request* request, uint8_t* scratch,
+static inline rcl_ret_t fingerprint_corpus_srv_probe_client_send_request(
+    struct rcl_client_t* client, const fingerprint_corpus_srv_probe_request* request, uint8_t* scratch,
     size_t scratch_size) {
     size_t written = 0;
     if (request == NULL || scratch == NULL) {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     if (fingerprint_corpus_srv_probe_request_serialize(request, scratch, scratch_size, &written) != 0) {
-        nros_service_typed_report_error(NROS_SERVICE_TYPED_ERR_REQUEST_SERIALIZE,
+        rclc_service_typed_report_error(RCLC_SERVICE_TYPED_ERR_REQUEST_SERIALIZE,
                                         fingerprint_corpus_srv_probe_get_type_name());
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
-    return nros_client_send_request_async(client, scratch, written);
+    return rclc_client_send_request_async(client, scratch, written);
 }
 
 /// Poll for the reply and deserialize it into caller-owned `response`.
 ///
-/// Returns NROS_RET_TRY_AGAIN while no reply has arrived — the same code
-/// `nros_client_take_response` uses, so a polling loop is unchanged. On a CDR
+/// Returns RCLC_RET_TRY_AGAIN while no reply has arrived — the same code
+/// `rclc_client_take_response` uses, so a polling loop is unchanged. On a CDR
 /// failure `response` is left zeroed rather than half-filled, and
-/// NROS_SERVICE_TYPED_ERR_RESPONSE_DESERIALIZE is reported.
-static inline nros_ret_t fingerprint_corpus_srv_probe_client_take_response(
-    struct nros_client_t* client, fingerprint_corpus_srv_probe_response* response, uint8_t* scratch,
+/// RCLC_SERVICE_TYPED_ERR_RESPONSE_DESERIALIZE is reported.
+static inline rcl_ret_t fingerprint_corpus_srv_probe_client_take_response(
+    struct rcl_client_t* client, fingerprint_corpus_srv_probe_response* response, uint8_t* scratch,
     size_t scratch_size) {
     size_t received = 0;
-    nros_ret_t ret;
+    rcl_ret_t ret;
     if (response == NULL || scratch == NULL) {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
-    ret = nros_client_take_response(client, scratch, scratch_size, &received);
-    if (ret != NROS_RET_OK) {
+    ret = rclc_client_take_response(client, scratch, scratch_size, &received);
+    if (ret != RCL_RET_OK) {
         return ret;
     }
     fingerprint_corpus_srv_probe_response_init(response);
     if (fingerprint_corpus_srv_probe_response_deserialize(response, scratch, received) != 0) {
         fingerprint_corpus_srv_probe_response_fini(response);
         fingerprint_corpus_srv_probe_response_init(response);
-        nros_service_typed_report_error(NROS_SERVICE_TYPED_ERR_RESPONSE_DESERIALIZE,
+        rclc_service_typed_report_error(RCLC_SERVICE_TYPED_ERR_RESPONSE_DESERIALIZE,
                                         fingerprint_corpus_srv_probe_get_type_name());
-        return NROS_RET_ERROR;
+        return RCL_RET_ERROR;
     }
-    return NROS_RET_OK;
+    return RCL_RET_OK;
 }
 
-/// Blocking convenience over the pair above, forwarding to `nros_client_call`
+/// Blocking convenience over the pair above, forwarding to `rclc_client_call`
 /// so the timeout and the executor spin stay in one place (RFC-0021: the wait
 /// belongs to the entry point that already owns it, not to a loop here).
 ///
 /// Two scratch buffers because the request and the reply are on the wire at the
 /// same time; neither is retained past the call.
-static inline nros_ret_t fingerprint_corpus_srv_probe_client_call(
-    struct nros_client_t* client, const fingerprint_corpus_srv_probe_request* request,
+static inline rcl_ret_t fingerprint_corpus_srv_probe_client_call(
+    struct rcl_client_t* client, const fingerprint_corpus_srv_probe_request* request,
     fingerprint_corpus_srv_probe_response* response, uint8_t* request_scratch, size_t request_scratch_size,
     uint8_t* response_scratch, size_t response_scratch_size) {
     size_t written = 0;
     size_t received = 0;
-    nros_ret_t ret;
+    rcl_ret_t ret;
     if (request == NULL || response == NULL || request_scratch == NULL ||
         response_scratch == NULL) {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     if (fingerprint_corpus_srv_probe_request_serialize(request, request_scratch, request_scratch_size,
                                             &written) != 0) {
-        nros_service_typed_report_error(NROS_SERVICE_TYPED_ERR_REQUEST_SERIALIZE,
+        rclc_service_typed_report_error(RCLC_SERVICE_TYPED_ERR_REQUEST_SERIALIZE,
                                         fingerprint_corpus_srv_probe_get_type_name());
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
-    ret = nros_client_call(client, request_scratch, written, response_scratch,
+    ret = rclc_client_call(client, request_scratch, written, response_scratch,
                            response_scratch_size, &received);
-    if (ret != NROS_RET_OK) {
+    if (ret != RCL_RET_OK) {
         return ret;
     }
     fingerprint_corpus_srv_probe_response_init(response);
     if (fingerprint_corpus_srv_probe_response_deserialize(response, response_scratch, received) != 0) {
         fingerprint_corpus_srv_probe_response_fini(response);
         fingerprint_corpus_srv_probe_response_init(response);
-        nros_service_typed_report_error(NROS_SERVICE_TYPED_ERR_RESPONSE_DESERIALIZE,
+        rclc_service_typed_report_error(RCLC_SERVICE_TYPED_ERR_RESPONSE_DESERIALIZE,
                                         fingerprint_corpus_srv_probe_get_type_name());
-        return NROS_RET_ERROR;
+        return RCL_RET_ERROR;
     }
-    return NROS_RET_OK;
+    return RCL_RET_OK;
 }
 
 #ifdef __cplusplus

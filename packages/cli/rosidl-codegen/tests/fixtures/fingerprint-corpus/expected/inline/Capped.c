@@ -11,13 +11,13 @@
 #include <string.h>
 
 // Type support structure
-static const nros_message_type_t fingerprint_corpus_msg_capped_type_support = {
+static const rclc_message_type_t fingerprint_corpus_msg_capped_type_support = {
     .type_name = "fingerprint-corpus::msg::dds_::Capped_",
     .type_hash = "h",
     .serialized_size_max = 0,  // Dynamic/unknown
 };
 
-const nros_message_type_t* fingerprint_corpus_msg_capped_get_type_support(void) {
+const rclc_message_type_t* fingerprint_corpus_msg_capped_get_type_support(void) {
     return &fingerprint_corpus_msg_capped_type_support;
 }
 
@@ -44,18 +44,18 @@ int32_t fingerprint_corpus_msg_capped_serialize_inline(const fingerprint_corpus_
     uint8_t* ptr = *ptr_ref;
     (void)origin; // may be unused for empty structs
     // phase-303 W4 (#0267) — XCDR2 DHEADER wrap (no-op / returns -1 under XCDR1).
-    int64_t __dh = nros_cdr_begin_dheader(&ptr, end, origin);
+    int64_t __dh = rclc_cdr_begin_dheader(&ptr, end, origin);
     if (__dh < -1) return -1;
-    if (nros_cdr_write_string(&ptr, end, origin, msg->label) < 0) return -1;
-    if (nros_cdr_write_u32(&ptr, end, origin, msg->samples.size) < 0) return -1;
+    if (rclc_cdr_write_string(&ptr, end, origin, msg->label) < 0) return -1;
+    if (rclc_cdr_write_u32(&ptr, end, origin, msg->samples.size) < 0) return -1;
     for (size_t i = 0; i < msg->samples.size; ++i) {
-        if (nros_cdr_write_i64(&ptr, end, origin, msg->samples.data[i]) < 0) return -1;
+        if (rclc_cdr_write_i64(&ptr, end, origin, msg->samples.data[i]) < 0) return -1;
     }
-    if (nros_cdr_write_u32(&ptr, end, origin, msg->tags.size) < 0) return -1;
+    if (rclc_cdr_write_u32(&ptr, end, origin, msg->tags.size) < 0) return -1;
     for (size_t i = 0; i < msg->tags.size; ++i) {
-        if (nros_cdr_write_string(&ptr, end, origin, msg->tags.data[i]) < 0) return -1;
+        if (rclc_cdr_write_string(&ptr, end, origin, msg->tags.data[i]) < 0) return -1;
     }
-    if (nros_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
+    if (rclc_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
     *ptr_ref = ptr;
     return 0;
 }
@@ -72,7 +72,7 @@ int32_t fingerprint_corpus_msg_capped_serialize(const fingerprint_corpus_msg_cap
 
     // Write the edition-appropriate CDR encapsulation header (XCDR1 `00 01` or
     // XCDR2 DELIMITED `00 09`) — phase-303 W4 (#0267).
-    if (nros_cdr_write_encaps_header(&ptr, end) < 0) return -1;
+    if (rclc_cdr_write_encaps_header(&ptr, end) < 0) return -1;
     const uint8_t* origin = ptr; // CDR alignment origin (after header)
 
     if (fingerprint_corpus_msg_capped_serialize_inline(msg, &ptr, end, origin) < 0) return -1;
@@ -90,29 +90,29 @@ int32_t fingerprint_corpus_msg_capped_deserialize_inline(fingerprint_corpus_msg_
     if (msg == NULL || ptr_ref == NULL || *ptr_ref == NULL) return -1;
     const uint8_t* ptr = *ptr_ref;
     // phase-303 W4 (#0267) — XCDR2 DHEADER read (no-op / -1 under XCDR1).
-    int64_t __dh = nros_cdr_begin_dheader_read(&ptr, end, origin);
+    int64_t __dh = rclc_cdr_begin_dheader_read(&ptr, end, origin);
     if (__dh < -1) return -1;
     (void)origin;
-    if (nros_cdr_read_string(&ptr, end, origin, msg->label, sizeof(msg->label)) < 0) return -1;
+    if (rclc_cdr_read_string(&ptr, end, origin, msg->label, sizeof(msg->label)) < 0) return -1;
     {
         uint32_t len;
-        if (nros_cdr_read_u32(&ptr, end, origin, &len) < 0) return -1;
+        if (rclc_cdr_read_u32(&ptr, end, origin, &len) < 0) return -1;
         msg->samples.size = len;
         if (len > 64) return -1;
         for (size_t i = 0; i < len; ++i) {
-            if (nros_cdr_read_i64(&ptr, end, origin, &msg->samples.data[i]) < 0) return -1;
+            if (rclc_cdr_read_i64(&ptr, end, origin, &msg->samples.data[i]) < 0) return -1;
         }
     }
     {
         uint32_t len;
-        if (nros_cdr_read_u32(&ptr, end, origin, &len) < 0) return -1;
+        if (rclc_cdr_read_u32(&ptr, end, origin, &len) < 0) return -1;
         msg->tags.size = len;
         if (len > 64) return -1;
         for (size_t i = 0; i < len; ++i) {
-            if (nros_cdr_read_string(&ptr, end, origin, msg->tags.data[i], sizeof(msg->tags.data[i])) < 0) return -1;
+            if (rclc_cdr_read_string(&ptr, end, origin, msg->tags.data[i], sizeof(msg->tags.data[i])) < 0) return -1;
         }
     }
-    if (nros_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;
+    if (rclc_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;
     *ptr_ref = ptr;
     return 0;
 }

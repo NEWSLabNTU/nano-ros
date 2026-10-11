@@ -38,7 +38,7 @@
 //! multi-node component.
 //!
 //! [`begin_node`] closes that: every node entry point — `nros_cpp_node_create*`,
-//! `nros-c`'s `nros_executor_node_init` / `nros_node_init_ex`, and the Rust
+//! `nros-c`'s `rclc_executor_node_init` / `rclc_node_init_ex`, and the Rust
 //! install path's `ExecutorSink::create_node` — calls
 //! [`crate::census_hooks::on_node_create`] to open a node and make it current,
 //! and every entity recorded afterwards attributes to it.
@@ -143,7 +143,7 @@ pub fn begin_node(name: &str, namespace: &str, domain_id: u32) -> bool {
 }
 
 /// Issue 1556 item 1 -- is a node open? An executor-side entity the C API
-/// allows before any node (`nros_timer_init` needs only a support context)
+/// allows before any node (`rcl_timer_init` needs only a support context)
 /// asks this before it records, so it can open the executor scope instead of
 /// failing.
 pub fn has_current_node() -> bool {

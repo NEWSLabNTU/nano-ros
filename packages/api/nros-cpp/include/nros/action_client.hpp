@@ -163,7 +163,7 @@ template <typename A> class Client {
     ///
     /// `rclcpp_action::ClientBase::action_server_is_ready`, the NON-BLOCKING
     /// half of @ref wait_for_action_server. C has had
-    /// `nros_action_client_action_server_is_ready` and Rust
+    /// `rclc_action_client_action_server_is_ready` and Rust
     /// `ActionClient::action_server_is_ready` since phase-338; C++ had neither,
     /// so the only way to ask here was to block (ledger row
     /// `cpp:Client::action_server_is_ready`, a C++-only gap rather than a
@@ -452,7 +452,7 @@ template <typename A> class Client {
     ///
     /// Sends the `action_msgs/srv/CancelGoal` request and returns; read the
     /// RPC outcome with `try_recv_cancel_response()` once the executor has
-    /// spun. Mirrors C's `nros_action_cancel_goal` and Rust's
+    /// spun. Mirrors C's `rclc_action_cancel_goal` and Rust's
     /// `ActionClient::cancel_goal` — rclcpp_action's `async_cancel_goal`
     /// returns a future, which RFC-0021 has no runtime to await.
     ///

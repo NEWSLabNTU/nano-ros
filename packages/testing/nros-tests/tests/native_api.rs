@@ -76,11 +76,11 @@ impl Language {
     }
 
     /// Substring that every language-native binary prints after
-    /// `rclcpp::init_in` / `nros_support_init` succeeds. Used to assert that
+    /// `rclcpp::init_in` / `rclc_support_init` succeeds. Used to assert that
     /// the binary started cleanly.
     fn init_marker(&self) -> &'static str {
         match self {
-            // C binaries print `"Support initialized"` from `nros_support_init`.
+            // C binaries print `"Support initialized"` from `rclc_support_init`.
             Language::C => "Support initialized",
             // C++ binaries print `"Node created: <name>"` from `rclcpp::create_node`.
             Language::Cpp => "Node created",
@@ -1667,7 +1667,7 @@ fn negative_control_one_sigterm_does_not_end_a_process_that_catches_it() {
 /// `NROS_APP_MAIN_REGISTER_VOID()` used to discard `nros_app_main`'s return
 /// value, and the board ended the process with `_exit(0)` whatever happened.
 /// Measured before the fix: the zenoh service-server pointed at a port nothing
-/// listens on printed `nros_support_init(...) -> -4`, returned 1 from
+/// listens on printed `rclc_support_init(...) -> -4`, returned 1 from
 /// `nros_app_main`, and the process exited **0**.
 ///
 /// Both endings are asserted, and each is the other's control: a board that

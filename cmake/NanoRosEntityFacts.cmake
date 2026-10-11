@@ -365,7 +365,7 @@ endfunction()
 # dropped rather than re-argued: `NROS_EXECUTOR_MAX_NODES` was withheld by
 # phase-412 W1 "on the ground that under-counting HALTS the board". That ground
 # is now measured rather than assumed. Under-counting nodes has exactly ONE
-# source -- `nros_pubsub_bridge_create`, whose two nodes are runtime strings
+# source -- `rclc_pubsub_bridge_create`, whose two nodes are runtime strings
 # declared nowhere -- and that path NAMES this knob when the table fills, as do
 # the executor's own `NodeTableFull` and the zenoh session's per-node liveliness
 # table. Every other node is a component the inventory counted. The same test

@@ -125,7 +125,7 @@ platform-abi-mirror:
 
 # Issue 1126 — a doc may not name a return code neither ABI defines.
 #
-# `nros_ret_t` and `nros_rmw_ret_t` share a prefix family and not a vocabulary,
+# `rcl_ret_t` and `nros_rmw_ret_t` share a prefix family and not a vocabulary,
 # in BOTH directions: `BUFFER_TOO_SMALL` is RMW-only, `TRY_AGAIN` user-only.
 # Both headers are in scope in the same TU, so a comment naming the wrong half
 # reads as fact and compiles to nothing — the caller who copies it gets

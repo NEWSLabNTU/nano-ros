@@ -4,17 +4,17 @@
  * @brief Topic subscription API.
  *
  * Create a subscription with rclc_subscription_init_default() (or
- * nros_subscription_init_with_qos()) and add it to an executor, which owns
- * its subscriber and its callback: nros_executor_add_subscription_typed()
- * delivers deserialised messages, nros_executor_add_subscription_raw() CDR
+ * rclc_subscription_init_with_qos()) and add it to an executor, which owns
+ * its subscriber and its callback: rclc_executor_add_subscription_typed()
+ * delivers deserialised messages, rclc_executor_add_subscription_raw() CDR
  * bytes.
  *
  * For manual polling with no executor, use the separate type
- * ::nros_polling_subscription_t: create it with
- * nros_polling_subscription_init() and drain it with
- * nros_polling_subscription_take_serialized() — or
- * nros_polling_subscription_take_sequence() for a batch and
- * nros_polling_subscription_take_validated() for the E2E-safety variant.
+ * ::rclc_polling_subscription_t: create it with
+ * rclc_polling_subscription_init() and drain it with
+ * rclc_polling_subscription_take_serialized() — or
+ * rclc_polling_subscription_take_sequence() for a batch and
+ * rclc_polling_subscription_take_validated() for the E2E-safety variant.
  * The two types are separate since phase-487: a dispatched subscription's
  * storage is in the executor arena, a polled one's is in the struct.
  */
@@ -41,15 +41,15 @@
  * them and the enums they stand for, so the two are held equal HERE: a drift
  * fails every C build that includes the subscribe surface, rather than checking
  * every call site against the wrong enumerator. */
-_Static_assert(_NROS_DQ_C_NROS_DQ_RELIABLE == NROS_QOS_RELIABILITY_RELIABLE,
-               "declared_qos.h's reliable value drifted from NROS_QOS_RELIABILITY_RELIABLE");
-_Static_assert(_NROS_DQ_C_NROS_DQ_BEST_EFFORT == NROS_QOS_RELIABILITY_BEST_EFFORT,
-               "declared_qos.h's best_effort value drifted from NROS_QOS_RELIABILITY_BEST_EFFORT");
-_Static_assert(_NROS_DQ_C_NROS_DQ_VOLATILE == NROS_QOS_DURABILITY_VOLATILE,
-               "declared_qos.h's volatile value drifted from NROS_QOS_DURABILITY_VOLATILE");
-_Static_assert(_NROS_DQ_C_NROS_DQ_TRANSIENT_LOCAL == NROS_QOS_DURABILITY_TRANSIENT_LOCAL,
+_Static_assert(_NROS_DQ_C_NROS_DQ_RELIABLE == RCLC_QOS_RELIABILITY_RELIABLE,
+               "declared_qos.h's reliable value drifted from RCLC_QOS_RELIABILITY_RELIABLE");
+_Static_assert(_NROS_DQ_C_NROS_DQ_BEST_EFFORT == RCLC_QOS_RELIABILITY_BEST_EFFORT,
+               "declared_qos.h's best_effort value drifted from RCLC_QOS_RELIABILITY_BEST_EFFORT");
+_Static_assert(_NROS_DQ_C_NROS_DQ_VOLATILE == RCLC_QOS_DURABILITY_VOLATILE,
+               "declared_qos.h's volatile value drifted from RCLC_QOS_DURABILITY_VOLATILE");
+_Static_assert(_NROS_DQ_C_NROS_DQ_TRANSIENT_LOCAL == RCLC_QOS_DURABILITY_TRANSIENT_LOCAL,
                "declared_qos.h's transient_local value drifted from "
-               "NROS_QOS_DURABILITY_TRANSIENT_LOCAL");
+               "RCLC_QOS_DURABILITY_TRANSIENT_LOCAL");
 #endif
 
 /**
@@ -58,10 +58,10 @@ _Static_assert(_NROS_DQ_C_NROS_DQ_TRANSIENT_LOCAL == NROS_QOS_DURABILITY_TRANSIE
  * phase-417 W5.d; the sibling of rclc_publisher_init_best_effort() and the
  * same argument. rclc's body (`rclc/src/rclc/subscription.c` @ `10eadcc`) is
  * `rclc_subscription_init(..., &rmw_qos_profile_sensor_data)` — best-effort,
- * volatile, KEEP_LAST(5) — which ::NROS_QOS_SENSOR_DATA mirrors.
+ * volatile, KEEP_LAST(5) — which ::RCLC_QOS_SENSOR_DATA mirrors.
  *
  * Takes no callback, at rclc's arity: the callback is supplied at registration
- * by nros_executor_add_subscription_raw(), exactly where rclc supplies it
+ * by rclc_executor_add_subscription_raw(), exactly where rclc supplies it
  * (`rclc_executor_add_subscription`). That is the same split
  * `rclc_subscription_init_default` already makes, so the two presets differ
  * only in the profile they pass.
@@ -72,13 +72,13 @@ _Static_assert(_NROS_DQ_C_NROS_DQ_TRANSIENT_LOCAL == NROS_QOS_DURABILITY_TRANSIE
  * @param[in]  node         An initialised node.
  * @param[in]  type_info    Generated message type descriptor.
  * @param[in]  topic_name   Topic name, null-terminated.
- * @return Whatever nros_subscription_init_with_qos() returns.
+ * @return Whatever rclc_subscription_init_with_qos() returns.
  */
-static inline nros_ret_t rclc_subscription_init_best_effort(
-    struct nros_subscription_t* subscription, const struct nros_node_t* node,
-    const struct nros_message_type_t* type_info, const char* topic_name) {
-    return nros_subscription_init_with_qos(subscription, node, type_info, topic_name,
-                                           &NROS_QOS_SENSOR_DATA);
+static inline rcl_ret_t rclc_subscription_init_best_effort(
+    struct rcl_subscription_t* subscription, const struct rcl_node_t* node,
+    const struct rclc_message_type_t* type_info, const char* topic_name) {
+    return rclc_subscription_init_with_qos(subscription, node, type_info, topic_name,
+                                           &RCLC_QOS_SENSOR_DATA);
 }
 
 #endif /* NROS_SUBSCRIPTION_H */

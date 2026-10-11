@@ -8,7 +8,7 @@ find_package(std_msgs REQUIRED)
 
 # Runtime-pluggable custom transport demonstration in pure C (Phase
 # 115.F). The example installs a ring-buffer-backed
-# `nros_transport_ops_t` via `nros_set_custom_transport`, then opens
+# `nros_transport_ops_t` via `rclc_set_custom_transport`, then opens
 # an nros session over the custom byte pipe and publishes a few
 # std_msgs/String frames.
 # Hard-codes zenoh here — the custom transport is exercised over the

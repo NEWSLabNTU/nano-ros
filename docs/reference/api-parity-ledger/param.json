@@ -281,7 +281,7 @@
   "cpp:ParameterTypeException": {
     "verdict": "declined",
     "disposition": "absent",
-    "why": "thrown when a `Parameter` is read as the wrong type. nros-cpp is built `-fno-exceptions` (RFC-0018); every failure here is an `nros::Result` carrying an `nros_ret_t`, and a type mismatch is `NROS_RET_INVALID_ARGUMENT`."
+    "why": "thrown when a `Parameter` is read as the wrong type. nros-cpp is built `-fno-exceptions` (RFC-0018); every failure here is an `nros::Result` carrying an `rcl_ret_t`, and a type mismatch is `RCL_RET_INVALID_ARGUMENT`."
   },
   "cpp:ParameterValue": {
     "verdict": "declined",
@@ -712,7 +712,7 @@
       "file": "packages/api/nros-c/include/rclc_parameter/rclc_parameter.h",
       "text": "`rclc_parameter_server_init_*`; otherwise `RCL_RET_NOT_INIT`."
     },
-    "why": "The options form of `c:parameter_server_init_default`; same envelope. A `max_params` past the store's build-time capacity is refused with `NROS_RET_FULL`."
+    "why": "The options form of `c:parameter_server_init_default`; same envelope. A `max_params` past the store's build-time capacity is refused with `RCLC_RET_FULL`."
   },
   "c:parameter_options_t": {
     "verdict": "divergence",

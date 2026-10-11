@@ -2,7 +2,7 @@
 
 ## Runtime Environment Variables
 
-`nros_support_init()` reads these at startup when `locator` is `NULL`:
+`rclc_support_init()` reads these at startup when `locator` is `NULL`:
 
 | Variable | Description | Default |
 |----------|-------------|---------|

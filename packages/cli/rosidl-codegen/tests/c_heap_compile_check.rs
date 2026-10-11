@@ -15,60 +15,60 @@ const TYPES_H: &str = r#"
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
-typedef struct { const char* type_name; const char* type_hash; size_t serialized_size_max; } nros_message_type_t;
-// Issue 0345 — the service emitter defines a `struct nros_service_type_t`
+typedef struct { const char* type_name; const char* type_hash; size_t serialized_size_max; } rclc_message_type_t;
+// Issue 0345 — the service emitter defines a `struct rclc_service_type_t`
 // type-support object (mirrors nros_generated.h:2312).
-typedef struct nros_service_type_t {
+typedef struct rclc_service_type_t {
     const char* type_name;
     const char* type_hash;
-} nros_service_type_t;
-typedef int32_t nros_ret_t;
-struct nros_publisher_t;
-nros_ret_t nros_publish_raw(struct nros_publisher_t* p, const uint8_t* buf, size_t n);
+} rclc_service_type_t;
+typedef int32_t rcl_ret_t;
+struct rcl_publisher_t;
+rcl_ret_t rclc_publish_raw(struct rcl_publisher_t* p, const uint8_t* buf, size_t n);
 
 // phase-417 W5.e — the typed service/client glue the service pack now emits.
 // The stub grows with the surface the templates NAME; a stub that stops short
 // of it turns "the generated code is wrong" into "the stub is short", which is
 // the failure mode this comment exists to prevent.
-#define NROS_RET_OK 0
-#define NROS_RET_ERROR -1
-#define NROS_RET_INVALID_ARGUMENT -3
-#define NROS_RET_TRY_AGAIN -14
+#define RCL_RET_OK 0
+#define RCL_RET_ERROR -1
+#define RCL_RET_INVALID_ARGUMENT -3
+#define RCLC_RET_TRY_AGAIN -14
 
-#define NROS_SERVICE_TYPED_OK 0
-#define NROS_SERVICE_TYPED_ERR_REQUEST_DESERIALIZE -1
-#define NROS_SERVICE_TYPED_ERR_RESPONSE_SERIALIZE -2
-#define NROS_SERVICE_TYPED_ERR_REQUEST_SERIALIZE -3
-#define NROS_SERVICE_TYPED_ERR_RESPONSE_DESERIALIZE -4
-#define NROS_SERVICE_TYPED_ERR_NO_CALLBACK -5
+#define RCLC_SERVICE_TYPED_OK 0
+#define RCLC_SERVICE_TYPED_ERR_REQUEST_DESERIALIZE -1
+#define RCLC_SERVICE_TYPED_ERR_RESPONSE_SERIALIZE -2
+#define RCLC_SERVICE_TYPED_ERR_REQUEST_SERIALIZE -3
+#define RCLC_SERVICE_TYPED_ERR_RESPONSE_DESERIALIZE -4
+#define RCLC_SERVICE_TYPED_ERR_NO_CALLBACK -5
 
-struct nros_node_t;
-struct nros_service_t;
-struct nros_client_t;
-struct nros_executor_t;
-struct nros_qos_t;
+struct rcl_node_t;
+struct rcl_service_t;
+struct rcl_client_t;
+struct rclc_executor_t;
+struct rclc_qos_t;
 
-typedef bool (*nros_service_callback_t)(const uint8_t* request_data, size_t request_len,
+typedef bool (*rclc_service_callback_t)(const uint8_t* request_data, size_t request_len,
                                         uint8_t* response_data, size_t response_capacity,
                                         size_t* response_len, void* context);
-typedef void (*nros_response_callback_t)(const uint8_t* response, size_t response_len,
+typedef void (*rclc_response_callback_t)(const uint8_t* response, size_t response_len,
                                          void* context);
 
-void nros_service_typed_report_error(int32_t error, const char* type_name);
-nros_ret_t nros_service_init_with_qos(struct nros_service_t* service,
-                                      const struct nros_node_t* node,
-                                      const struct nros_service_type_t* type_info,
-                                      const char* service_name, const struct nros_qos_t* qos);
-nros_ret_t nros_executor_add_service_raw(struct nros_executor_t* executor,
-                                         struct nros_service_t* service,
-                                         nros_service_callback_t callback, void* context);
-nros_ret_t nros_client_set_response_callback(struct nros_client_t* client,
-                                             nros_response_callback_t callback, void* context);
-nros_ret_t nros_client_send_request_async(struct nros_client_t* client,
+void rclc_service_typed_report_error(int32_t error, const char* type_name);
+rcl_ret_t rclc_service_init_with_qos(struct rcl_service_t* service,
+                                      const struct rcl_node_t* node,
+                                      const struct rclc_service_type_t* type_info,
+                                      const char* service_name, const struct rclc_qos_t* qos);
+rcl_ret_t rclc_executor_add_service_raw(struct rclc_executor_t* executor,
+                                         struct rcl_service_t* service,
+                                         rclc_service_callback_t callback, void* context);
+rcl_ret_t rclc_client_set_response_callback(struct rcl_client_t* client,
+                                             rclc_response_callback_t callback, void* context);
+rcl_ret_t rclc_client_send_request_async(struct rcl_client_t* client,
                                           const uint8_t* request_data, size_t request_len);
-nros_ret_t nros_client_take_response(struct nros_client_t* client, uint8_t* response_data,
+rcl_ret_t rclc_client_take_response(struct rcl_client_t* client, uint8_t* response_data,
                                      size_t response_capacity, size_t* response_len);
-nros_ret_t nros_client_call(struct nros_client_t* client, const uint8_t* request_data,
+rcl_ret_t rclc_client_call(struct rcl_client_t* client, const uint8_t* request_data,
                             size_t request_len, uint8_t* response_data, size_t response_capacity,
                             size_t* response_len);
 #endif
@@ -89,11 +89,11 @@ const BORROWED_H: &str = r#"
 #include <stdint.h>
 #include <stddef.h>
 #include <nros/cdr.h>
-typedef struct { const char* data; size_t size; } nros_view_str_t;
-typedef struct { const uint8_t* data; size_t size; } nros_view_bytes_t;
-static inline int32_t nros_cdr_borrow_string(const uint8_t** p, const uint8_t* e,
-                                             const uint8_t* o, nros_view_str_t* out) {
-    uint32_t n; if (nros_cdr_read_u32(p, e, o, &n) < 0) return -1;
+typedef struct { const char* data; size_t size; } rclc_view_str_t;
+typedef struct { const uint8_t* data; size_t size; } rclc_view_bytes_t;
+static inline int32_t rclc_cdr_borrow_string(const uint8_t** p, const uint8_t* e,
+                                             const uint8_t* o, rclc_view_str_t* out) {
+    uint32_t n; if (rclc_cdr_read_u32(p, e, o, &n) < 0) return -1;
     if ((size_t)(e - *p) < n) return -1;
     out->data = (const char*)*p; out->size = n > 0 ? (size_t)(n - 1) : 0; *p += n; return 0;
 }
@@ -113,11 +113,11 @@ W(u8, uint8_t) R(u8, uint8_t)
 // generated TU. This stub predated it, so `generated_heap_c_message_compiles`
 // had been failing since — invisibly, because it is `#[ignore]`d and no lane
 // runs `--ignored` (issue 0328).
-int32_t nros_cdr_write_encaps_header(uint8_t** p, const uint8_t* e);
-int64_t nros_cdr_begin_dheader(uint8_t** p, const uint8_t* e, const uint8_t* o);
-int nros_cdr_end_dheader(int64_t mark, uint8_t** p, const uint8_t* e, const uint8_t* o);
-int64_t nros_cdr_begin_dheader_read(const uint8_t** p, const uint8_t* e, const uint8_t* o);
-int nros_cdr_end_dheader_read(int64_t scope, const uint8_t** p, const uint8_t* e, const uint8_t* o);
+int32_t rclc_cdr_write_encaps_header(uint8_t** p, const uint8_t* e);
+int64_t rclc_cdr_begin_dheader(uint8_t** p, const uint8_t* e, const uint8_t* o);
+int rclc_cdr_end_dheader(int64_t mark, uint8_t** p, const uint8_t* e, const uint8_t* o);
+int64_t rclc_cdr_begin_dheader_read(const uint8_t** p, const uint8_t* e, const uint8_t* o);
+int rclc_cdr_end_dheader_read(int64_t scope, const uint8_t** p, const uint8_t* e, const uint8_t* o);
 W(i8, int8_t) R(i8, int8_t)
 W(u16, uint16_t) R(u16, uint16_t)
 W(i16, int16_t) R(i16, int16_t)
@@ -128,8 +128,8 @@ W(i64, int64_t) R(i64, int64_t)
 W(f32, float) R(f32, float)
 W(f64, double) R(f64, double)
 W(bool, bool) R(bool, bool)   // cdr.h:227 uses bool*, not uint8_t*
-int nros_cdr_write_string(uint8_t** p, const uint8_t* e, const uint8_t* o, const char* s);
-int nros_cdr_read_string(const uint8_t** p, const uint8_t* e, const uint8_t* o, char* d, size_t n);
+int rclc_cdr_write_string(uint8_t** p, const uint8_t* e, const uint8_t* o, const char* s);
+int rclc_cdr_read_string(const uint8_t** p, const uint8_t* e, const uint8_t* o, char* d, size_t n);
 #undef W
 #undef R
 #endif

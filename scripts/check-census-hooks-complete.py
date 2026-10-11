@@ -32,9 +32,9 @@ WHAT THIS REFUSES
    `nros_cpp_node_declare_param_*` -> `on_param_declare`,
    `nros_cpp_node_create` / `_ex` -> `on_node_create` (the cursor every other
    record attributes to);
-   C -- `nros_executor_node_init` / `nros_node_init_ex` -> `on_node_create`,
-   `rclc_executor_add_timer` / `nros_executor_add_timer_in_group` ->
-   `on_timer_create`, `nros_node_create_guard_condition` ->
+   C -- `rclc_executor_node_init` / `rclc_node_init_ex` -> `on_node_create`,
+   `rclc_executor_add_timer` / `rclc_executor_add_timer_in_group` ->
+   `on_timer_create`, `rclc_node_create_guard_condition` ->
    `on_guard_condition_create`, the rclc parameter server's `declare`
    (every `rclc_add_parameter` / `rclc_parameter_declare_*` funnels through it,
    phase-491) -> `on_param_declare`;
@@ -117,11 +117,11 @@ ENTRY_HOOKS: tuple[tuple[str, str, str], ...] = (
     (PARAMS, "nros_cpp_node_declare_param_", "census_hooks::on_param_declare("),
     (NODE, "nros_cpp_node_create", "census_hooks::on_node_create("),
     # C (`nros-c`) -- issue 1556 item 1.
-    (C_NODE, "nros_node_init_ex", "census_hooks::on_node_create("),
-    (C_EXEC, "nros_executor_node_init", "census_hooks::on_node_create("),
+    (C_NODE, "rclc_node_init_ex", "census_hooks::on_node_create("),
+    (C_EXEC, "rclc_executor_node_init", "census_hooks::on_node_create("),
     (C_EXEC, "rclc_executor_add_timer", "census_hooks::on_timer_create("),
-    (C_EXEC, "nros_executor_add_timer_in_group", "census_hooks::on_timer_create("),
-    (C_GUARD, "nros_node_create_guard_condition", "census_hooks::on_guard_condition_create("),
+    (C_EXEC, "rclc_executor_add_timer_in_group", "census_hooks::on_timer_create("),
+    (C_GUARD, "rclc_node_create_guard_condition", "census_hooks::on_guard_condition_create("),
     (C_PARAMS, "declare", "census_hooks::on_param_declare("),
     # Rust (`nros::node_runtime`, the install path `nros::main!` takes) --
     # issue 1419's Rust item.
@@ -504,11 +504,11 @@ def self_test(files: dict[str, str]) -> None:
 
     # 7. A C entry point loses its hook: the group timer -- issue 1556 item 1.
     m = dict(files)
-    body_start = m[C_EXEC].find("fn nros_executor_add_timer_in_group(")
+    body_start = m[C_EXEC].find("fn rclc_executor_add_timer_in_group(")
     call = m[C_EXEC].find("nros::census_hooks::on_timer_create(", body_start)
     call_end = m[C_EXEC].find(";", call) + 1
     m[C_EXEC] = m[C_EXEC][:call] + m[C_EXEC][call_end:]
-    red("C group timer unhooked", m, "nros_executor_add_timer_in_group")
+    red("C group timer unhooked", m, "rclc_executor_add_timer_in_group")
 
     # 8. The C parameter server's one declare path loses its hook -- phase-491
     #    funnels every rclc declaration through it.

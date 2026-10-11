@@ -19,7 +19,7 @@
  * `-DNROS_C_RMW=xrce` is set):
  *
  *     nros_rmw_xrce_register();
- *     nros_support_init(...);
+ *     rclc_support_init(...);
  *     // ... create publishers / subscribers ...
  *
  * Phase 115.K.2.0–115.K.2.3 fill in session / pub / sub / service
@@ -113,7 +113,7 @@ rmw_ret_t nros_rmw_xrce_set_custom_transport_ops(
  * Phase 115.K.2.4 — drain whatever
  * `nros_rmw::custom_transport::take_custom_transport()` produces and
  * install it via `nros_rmw_xrce_set_custom_transport_ops`. Convenience
- * for callers that registered via `nros_set_custom_transport()`
+ * for callers that registered via `rclc_set_custom_transport()`
  * (the `nros-c` C surface) and want the active backend to consume
  * the slot at backend-init time.
  *

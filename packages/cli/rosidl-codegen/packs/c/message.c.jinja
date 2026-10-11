@@ -11,13 +11,13 @@
 #include <string.h>
 
 // Type support structure
-static const nros_message_type_t {{ struct_name }}_type_support = {
+static const rclc_message_type_t {{ struct_name }}_type_support = {
     .type_name = "{{ package_name }}::msg::dds_::{{ message_name }}_",
     .type_hash = "{{ type_hash }}",
     .serialized_size_max = 0,  // Dynamic/unknown
 };
 
-const nros_message_type_t* {{ struct_name }}_get_type_support(void) {
+const rclc_message_type_t* {{ struct_name }}_get_type_support(void) {
     return &{{ struct_name }}_type_support;
 }
 
@@ -47,7 +47,7 @@ int32_t {{ struct_name }}_serialize_inline(const {{ struct_name }}* msg, uint8_t
     uint8_t* ptr = *ptr_ref;
     (void)origin; // may be unused for empty structs
     // phase-303 W4 (#0267) — XCDR2 DHEADER wrap (no-op / returns -1 under XCDR1).
-    int64_t __dh = nros_cdr_begin_dheader(&ptr, end, origin);
+    int64_t __dh = rclc_cdr_begin_dheader(&ptr, end, origin);
     if (__dh < -1) return -1;
 {%- if has_fields %}
 {%- for field in fields %}
@@ -56,9 +56,9 @@ int32_t {{ struct_name }}_serialize_inline(const {{ struct_name }}* msg, uint8_t
 {%- else %}
     // Issue 1293 — rosidl's padding member (`structure_needs_at_least_one_member`):
     // every stock typesupport writes it and refuses a payload without it.
-    if (nros_cdr_write_u8(&ptr, end, origin, 0) < 0) return -1;
+    if (rclc_cdr_write_u8(&ptr, end, origin, 0) < 0) return -1;
 {%- endif %}
-    if (nros_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
+    if (rclc_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
     *ptr_ref = ptr;
     return 0;
 }
@@ -75,7 +75,7 @@ int32_t {{ struct_name }}_serialize(const {{ struct_name }}* msg, uint8_t* buffe
 
     // Write the edition-appropriate CDR encapsulation header (XCDR1 `00 01` or
     // XCDR2 DELIMITED `00 09`) — phase-303 W4 (#0267).
-    if (nros_cdr_write_encaps_header(&ptr, end) < 0) return -1;
+    if (rclc_cdr_write_encaps_header(&ptr, end) < 0) return -1;
     const uint8_t* origin = ptr; // CDR alignment origin (after header)
 
     if ({{ struct_name }}_serialize_inline(msg, &ptr, end, origin) < 0) return -1;
@@ -93,7 +93,7 @@ int32_t {{ struct_name }}_deserialize_inline({{ struct_name }}* msg, const uint8
     if (msg == NULL || ptr_ref == NULL || *ptr_ref == NULL) return -1;
     const uint8_t* ptr = *ptr_ref;
     // phase-303 W4 (#0267) — XCDR2 DHEADER read (no-op / -1 under XCDR1).
-    int64_t __dh = nros_cdr_begin_dheader_read(&ptr, end, origin);
+    int64_t __dh = rclc_cdr_begin_dheader_read(&ptr, end, origin);
     if (__dh < -1) return -1;
     (void)origin;
 {%- if has_fields %}
@@ -104,10 +104,10 @@ int32_t {{ struct_name }}_deserialize_inline({{ struct_name }}* msg, const uint8
     // Issue 1293 — the padding byte every stock peer sends.
     {
         uint8_t __pad;
-        if (nros_cdr_read_u8(&ptr, end, origin, &__pad) < 0) return -1;
+        if (rclc_cdr_read_u8(&ptr, end, origin, &__pad) < 0) return -1;
     }
 {%- endif %}
-    if (nros_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;
+    if (rclc_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;
     *ptr_ref = ptr;
     return 0;
 }

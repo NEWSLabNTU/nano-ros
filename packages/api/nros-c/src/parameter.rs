@@ -29,8 +29,8 @@ mod imp {
 
     use crate::{
         error::*,
-        executor::{CExecutor, get_executor, nros_executor_t},
-        node::{nros_node_state_t, nros_node_t},
+        executor::{CExecutor, get_executor, rclc_executor_t},
+        node::{rcl_node_t, rclc_node_state_t},
     };
 
     // ------------------------------------------------------------------------
@@ -39,11 +39,11 @@ mod imp {
     // ------------------------------------------------------------------------
 
     /// The on-set callback returned `false`.
-    pub const RCLC_PARAMETER_MODIFICATION_REJECTED: nros_ret_t = 4001;
+    pub const RCLC_PARAMETER_MODIFICATION_REJECTED: rcl_ret_t = 4001;
     /// A typed set of a parameter declared with another type.
-    pub const RCLC_PARAMETER_TYPE_MISMATCH: nros_ret_t = 4002;
+    pub const RCLC_PARAMETER_TYPE_MISMATCH: rcl_ret_t = 4002;
     /// A mutating call made from inside the on-set callback.
-    pub const RCLC_PARAMETER_DISABLED_ON_CALLBACK: nros_ret_t = 40004;
+    pub const RCLC_PARAMETER_DISABLED_ON_CALLBACK: rcl_ret_t = 40004;
 
     // ------------------------------------------------------------------------
     // Types
@@ -94,7 +94,7 @@ mod imp {
     /// rather than reading a different layout.
     #[repr(C)]
     pub struct rclc_parameter_server_t {
-        executor: *mut nros_executor_t,
+        executor: *mut rclc_executor_t,
         max_params: usize,
         on_modification: rclc_parameter_callback_t,
         context: *mut c_void,
@@ -189,12 +189,12 @@ mod imp {
     /// The executor and node key a READY server names.
     unsafe fn target<'a>(
         server: *const rclc_parameter_server_t,
-    ) -> Result<(&'a mut CExecutor, NodeId), nros_ret_t> {
+    ) -> Result<(&'a mut CExecutor, NodeId), rcl_ret_t> {
         let Some(s) = server.as_ref() else {
-            return Err(NROS_RET_INVALID_ARGUMENT);
+            return Err(RCL_RET_INVALID_ARGUMENT);
         };
         if !s.initialized || s.executor.is_null() {
-            return Err(NROS_RET_NOT_INIT);
+            return Err(RCL_RET_NOT_INIT);
         }
         Ok((
             get_executor(&mut (*s.executor)._opaque),
@@ -206,7 +206,7 @@ mod imp {
     /// rclc refuses it.
     unsafe fn target_mut<'a>(
         server: *mut rclc_parameter_server_t,
-    ) -> Result<(&'a mut CExecutor, NodeId), nros_ret_t> {
+    ) -> Result<(&'a mut CExecutor, NodeId), rcl_ret_t> {
         if let Some(s) = server.as_ref()
             && s.on_callback
         {
@@ -224,13 +224,13 @@ mod imp {
         };
     }
 
-    fn set_result(r: SetParameterResult) -> nros_ret_t {
+    fn set_result(r: SetParameterResult) -> rcl_ret_t {
         match r {
-            SetParameterResult::Success => NROS_RET_OK,
+            SetParameterResult::Success => RCL_RET_OK,
             SetParameterResult::TypeMismatch => RCLC_PARAMETER_TYPE_MISMATCH,
             SetParameterResult::Rejected => RCLC_PARAMETER_MODIFICATION_REJECTED,
-            SetParameterResult::NotFound | SetParameterResult::Undeclared => NROS_RET_ERROR,
-            _ => NROS_RET_INVALID_ARGUMENT,
+            SetParameterResult::NotFound | SetParameterResult::Undeclared => RCL_RET_ERROR,
+            _ => RCL_RET_INVALID_ARGUMENT,
         }
     }
 
@@ -273,27 +273,27 @@ mod imp {
         server: *mut rclc_parameter_server_t,
         name: *const c_char,
         value: ParameterValue,
-    ) -> nros_ret_t {
+    ) -> rcl_ret_t {
         let (exec, id) = tri!(target_mut(server));
         let Some(n) = name_str(name) else {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         };
         nros::census_hooks::on_param_declare(n, &value);
         if let Some(t) = exec.get_parameter_type_on(id, n) {
             return if t == value.param_type() {
-                NROS_RET_OK
+                RCL_RET_OK
             } else {
-                NROS_RET_ERROR
+                RCL_RET_ERROR
             };
         }
         if exec.list_parameters_on(id, "").count() >= (*server).max_params {
-            return NROS_RET_ERROR;
+            return RCL_RET_ERROR;
         }
         if exec.declare_parameter_on(id, n, value) {
             exec.flush_parameter_events();
-            NROS_RET_OK
+            RCL_RET_OK
         } else {
-            NROS_RET_ERROR
+            RCL_RET_ERROR
         }
     }
 
@@ -301,10 +301,10 @@ mod imp {
         server: *mut rclc_parameter_server_t,
         name: *const c_char,
         value: ParameterValue,
-    ) -> nros_ret_t {
+    ) -> rcl_ret_t {
         let (exec, id) = tri!(target_mut(server));
         let Some(n) = name_str(name) else {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         };
         let r = set_result(exec.set_parameter_local_on(id, n, value));
         exec.flush_parameter_events();
@@ -314,10 +314,10 @@ mod imp {
     unsafe fn get_value<'a>(
         server: *mut rclc_parameter_server_t,
         name: *const c_char,
-    ) -> Result<&'a ParameterValue, nros_ret_t> {
+    ) -> Result<&'a ParameterValue, rcl_ret_t> {
         let (exec, id) = target(server)?;
-        let n = name_str(name).ok_or(NROS_RET_INVALID_ARGUMENT)?;
-        exec.get_parameter_on(id, n).ok_or(NROS_RET_ERROR)
+        let n = name_str(name).ok_or(RCL_RET_INVALID_ARGUMENT)?;
+        exec.get_parameter_on(id, n).ok_or(RCL_RET_ERROR)
     }
 
     // ------------------------------------------------------------------------
@@ -493,34 +493,34 @@ mod imp {
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn rclc_parameter_server_init_default(
         server: *mut rclc_parameter_server_t,
-        node: *mut nros_node_t,
-    ) -> nros_ret_t {
+        node: *mut rcl_node_t,
+    ) -> rcl_ret_t {
         rclc_parameter_server_init_with_option(server, node, &DEFAULT_OPTIONS)
     }
 
     /// rclc's `rclc_parameter_server_init_with_option`.
     ///
-    /// RFC-0105 D3: `NROS_RET_NOT_INIT` (rcl's `RCL_RET_NOT_INIT`) when the
+    /// RFC-0105 D3: `RCL_RET_NOT_INIT` (rcl's `RCL_RET_NOT_INIT`) when the
     /// node is not bound to an executor — the store is the executor's, so
     /// there is nothing to serve from yet. Bind it with
-    /// `nros_executor_node_init` first. `NROS_RET_FULL` when `max_params`
+    /// `rclc_executor_node_init` first. `RCLC_RET_FULL` when `max_params`
     /// exceeds the store's build-time capacity (`NROS_MAX_PARAMETERS`).
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn rclc_parameter_server_init_with_option(
         server: *mut rclc_parameter_server_t,
-        node: *mut nros_node_t,
+        node: *mut rcl_node_t,
         options: *const rclc_parameter_options_t,
-    ) -> nros_ret_t {
+    ) -> rcl_ret_t {
         let (Some(s), Some(node), Some(opts)) = (server.as_mut(), node.as_ref(), options.as_ref())
         else {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         };
         if s.initialized {
-            return NROS_RET_ALREADY_EXISTS;
+            return RCLC_RET_ALREADY_EXISTS;
         }
-        if node.state != nros_node_state_t::NROS_NODE_STATE_INITIALIZED || !node.is_executor_bound()
+        if node.state != rclc_node_state_t::RCLC_NODE_STATE_INITIALIZED || !node.is_executor_bound()
         {
-            return NROS_RET_NOT_INIT;
+            return RCL_RET_NOT_INIT;
         }
         let executor = node.executor.cast_mut();
         let exec = get_executor(&mut (*executor)._opaque);
@@ -529,17 +529,17 @@ mod imp {
         // undeclared-set policy.
         exec.allow_undeclared_parameters_on(id, opts.allow_undeclared_parameters);
         let Some(capacity) = exec.params().map(|p| p.capacity()) else {
-            return NROS_RET_FULL;
+            return RCLC_RET_FULL;
         };
         if opts.max_params > capacity {
-            return NROS_RET_FULL;
+            return RCLC_RET_FULL;
         }
         // rclc's set service deletes on NOT_SET; rclcpp's refuses.
         exec.delete_parameters_on_not_set_on(id, true);
         // rclc's `notify_changed_over_dds` (default on): one
         // `/parameter_events` publisher for the node (RFC-0105 D8).
         if opts.notify_changed_over_dds && exec.enable_parameter_events_on(id).is_err() {
-            return NROS_RET_ERROR;
+            return RCL_RET_ERROR;
         }
         *s = rclc_parameter_server_t {
             executor,
@@ -554,7 +554,7 @@ mod imp {
             notify_changed_over_dds: opts.notify_changed_over_dds,
             low_mem_mode: opts.low_mem_mode,
         };
-        NROS_RET_OK
+        RCL_RET_OK
     }
 
     /// rclc's `rclc_parameter_server_fini`: unregisters the callback and
@@ -563,8 +563,8 @@ mod imp {
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn rclc_parameter_server_fini(
         server: *mut rclc_parameter_server_t,
-        _node: *mut nros_node_t,
-    ) -> nros_ret_t {
+        _node: *mut rcl_node_t,
+    ) -> rcl_ret_t {
         let (exec, id) = tri!(target_mut(server));
         let s = &mut *server;
         if s.has_hook {
@@ -591,16 +591,16 @@ mod imp {
         s.initialized = false;
         s.has_hook = false;
         s.on_modification = None;
-        NROS_RET_OK
+        RCL_RET_OK
     }
 
     /// rclc's `rclc_executor_add_parameter_server`.
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn rclc_executor_add_parameter_server(
-        executor: *mut nros_executor_t,
+        executor: *mut rclc_executor_t,
         server: *mut rclc_parameter_server_t,
         on_modification: rclc_parameter_callback_t,
-    ) -> nros_ret_t {
+    ) -> rcl_ret_t {
         rclc_executor_add_parameter_server_with_context(
             executor,
             server,
@@ -611,22 +611,22 @@ mod imp {
 
     /// rclc's `rclc_executor_add_parameter_server_with_context`: registers the
     /// six `rcl_interfaces` services and installs the callback.
-    /// `NROS_RET_INVALID_ARGUMENT` when `executor` is not the one the server's
+    /// `RCL_RET_INVALID_ARGUMENT` when `executor` is not the one the server's
     /// node is bound to.
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn rclc_executor_add_parameter_server_with_context(
-        executor: *mut nros_executor_t,
+        executor: *mut rclc_executor_t,
         server: *mut rclc_parameter_server_t,
         on_modification: rclc_parameter_callback_t,
         context: *mut c_void,
-    ) -> nros_ret_t {
+    ) -> rcl_ret_t {
         let (exec, id) = tri!(target_mut(server));
         let s = &mut *server;
         if executor.is_null() || executor != s.executor {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         }
         if exec.register_parameter_services().is_err() {
-            return NROS_RET_ERROR;
+            return RCL_RET_ERROR;
         }
         s.on_modification = on_modification;
         s.context = context;
@@ -637,10 +637,10 @@ mod imp {
                     s.hook = h.raw();
                     s.has_hook = true;
                 }
-                None => return NROS_RET_FULL,
+                None => return RCLC_RET_FULL,
             }
         }
-        NROS_RET_OK
+        RCL_RET_OK
     }
 
     // ------------------------------------------------------------------------
@@ -654,9 +654,9 @@ mod imp {
         server: *mut rclc_parameter_server_t,
         parameter_name: *const c_char,
         r#type: rclc_parameter_type_t,
-    ) -> nros_ret_t {
+    ) -> rcl_ret_t {
         let Some(v) = zero_of(r#type) else {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         };
         declare(server, parameter_name, v)
     }
@@ -667,16 +667,16 @@ mod imp {
     pub unsafe extern "C" fn rclc_delete_parameter(
         server: *mut rclc_parameter_server_t,
         parameter_name: *const c_char,
-    ) -> nros_ret_t {
+    ) -> rcl_ret_t {
         let (exec, id) = tri!(target_mut(server));
         let Some(n) = name_str(parameter_name) else {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         };
         if exec.undeclare_parameter_on(id, n) {
             exec.flush_parameter_events();
-            NROS_RET_OK
+            RCL_RET_OK
         } else {
-            NROS_RET_ERROR
+            RCL_RET_ERROR
         }
     }
 
@@ -690,7 +690,7 @@ mod imp {
                 server: *mut rclc_parameter_server_t,
                 parameter_name: *const c_char,
                 value: $t,
-            ) -> nros_ret_t {
+            ) -> rcl_ret_t {
                 set_local(server, parameter_name, $from(value))
             }
 
@@ -701,16 +701,16 @@ mod imp {
                 server: *mut rclc_parameter_server_t,
                 parameter_name: *const c_char,
                 output: *mut $t,
-            ) -> nros_ret_t {
+            ) -> rcl_ret_t {
                 if output.is_null() {
-                    return NROS_RET_INVALID_ARGUMENT;
+                    return RCL_RET_INVALID_ARGUMENT;
                 }
                 match tri!(get_value(server, parameter_name)).$as() {
                     Some(v) => {
                         *output = v;
-                        NROS_RET_OK
+                        RCL_RET_OK
                     }
-                    None => NROS_RET_INVALID_ARGUMENT,
+                    None => RCL_RET_INVALID_ARGUMENT,
                 }
             }
 
@@ -721,7 +721,7 @@ mod imp {
                 server: *mut rclc_parameter_server_t,
                 parameter_name: *const c_char,
                 default_value: $t,
-            ) -> nros_ret_t {
+            ) -> rcl_ret_t {
                 declare(server, parameter_name, $from(default_value))
             }
         };
@@ -765,10 +765,10 @@ mod imp {
         server: *mut rclc_parameter_server_t,
         parameter_name: *const c_char,
         default_value: *const c_char,
-    ) -> nros_ret_t {
+    ) -> rcl_ret_t {
         match string_value(default_value) {
             Some(v) => declare(server, parameter_name, v),
-            None => NROS_RET_INVALID_ARGUMENT,
+            None => RCL_RET_INVALID_ARGUMENT,
         }
     }
 
@@ -778,15 +778,15 @@ mod imp {
         server: *mut rclc_parameter_server_t,
         parameter_name: *const c_char,
         value: *const c_char,
-    ) -> nros_ret_t {
+    ) -> rcl_ret_t {
         match string_value(value) {
             Some(v) => set_local(server, parameter_name, v),
-            None => NROS_RET_INVALID_ARGUMENT,
+            None => RCL_RET_INVALID_ARGUMENT,
         }
     }
 
     /// Extension: copy a string parameter into `output` (`capacity` bytes,
-    /// NUL included). `NROS_RET_FULL` when it does not fit; nothing is
+    /// NUL included). `RCLC_RET_FULL` when it does not fit; nothing is
     /// written then.
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn rclc_parameter_get_string(
@@ -794,19 +794,19 @@ mod imp {
         parameter_name: *const c_char,
         output: *mut c_char,
         capacity: usize,
-    ) -> nros_ret_t {
+    ) -> rcl_ret_t {
         if output.is_null() {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         }
         let Some(s) = tri!(get_value(server, parameter_name)).as_string() else {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         };
         if s.len() + 1 > capacity {
-            return NROS_RET_FULL;
+            return RCLC_RET_FULL;
         }
         core::ptr::copy_nonoverlapping(s.as_ptr(), output.cast::<u8>(), s.len());
         *output.add(s.len()) = 0;
-        NROS_RET_OK
+        RCL_RET_OK
     }
 
     macro_rules! array {
@@ -819,10 +819,10 @@ mod imp {
                 parameter_name: *const c_char,
                 data: *const $t,
                 len: usize,
-            ) -> nros_ret_t {
+            ) -> rcl_ret_t {
                 match array_slice(data, len).and_then($from) {
                     Some(v) => declare(server, parameter_name, v),
-                    None => NROS_RET_INVALID_ARGUMENT,
+                    None => RCL_RET_INVALID_ARGUMENT,
                 }
             }
 
@@ -833,16 +833,16 @@ mod imp {
                 parameter_name: *const c_char,
                 data: *const $t,
                 len: usize,
-            ) -> nros_ret_t {
+            ) -> rcl_ret_t {
                 match array_slice(data, len).and_then($from) {
                     Some(v) => set_local(server, parameter_name, v),
-                    None => NROS_RET_INVALID_ARGUMENT,
+                    None => RCL_RET_INVALID_ARGUMENT,
                 }
             }
 
             /// Extension: copy an array parameter into `output` (`capacity`
             /// elements). `*out_len` always receives the stored length;
-            /// `NROS_RET_FULL` when it does not fit, and nothing is copied.
+            /// `RCLC_RET_FULL` when it does not fit, and nothing is copied.
             #[unsafe(no_mangle)]
             pub unsafe extern "C" fn $get(
                 server: *mut rclc_parameter_server_t,
@@ -850,23 +850,23 @@ mod imp {
                 output: *mut $t,
                 capacity: usize,
                 out_len: *mut usize,
-            ) -> nros_ret_t {
+            ) -> rcl_ret_t {
                 let Some(a) = tri!(get_value(server, parameter_name)).$as() else {
-                    return NROS_RET_INVALID_ARGUMENT;
+                    return RCL_RET_INVALID_ARGUMENT;
                 };
                 if !out_len.is_null() {
                     *out_len = a.len();
                 }
                 if a.len() > capacity {
-                    return NROS_RET_FULL;
+                    return RCLC_RET_FULL;
                 }
                 if !a.is_empty() {
                     if output.is_null() {
-                        return NROS_RET_INVALID_ARGUMENT;
+                        return RCL_RET_INVALID_ARGUMENT;
                     }
                     core::ptr::copy_nonoverlapping(a.as_ptr(), output, a.len());
                 }
-                NROS_RET_OK
+                RCL_RET_OK
             }
         };
     }
@@ -948,10 +948,10 @@ mod imp {
         parameter_name: *const c_char,
         data: *const *const c_char,
         len: usize,
-    ) -> nros_ret_t {
+    ) -> rcl_ret_t {
         match string_array_value(data, len) {
             Some(v) => declare(server, parameter_name, v),
-            None => NROS_RET_INVALID_ARGUMENT,
+            None => RCL_RET_INVALID_ARGUMENT,
         }
     }
 
@@ -962,16 +962,16 @@ mod imp {
         parameter_name: *const c_char,
         data: *const *const c_char,
         len: usize,
-    ) -> nros_ret_t {
+    ) -> rcl_ret_t {
         match string_array_value(data, len) {
             Some(v) => set_local(server, parameter_name, v),
-            None => NROS_RET_INVALID_ARGUMENT,
+            None => RCL_RET_INVALID_ARGUMENT,
         }
     }
 
     /// Extension: copy a string-array parameter into a caller rectangle of
     /// `capacity` rows × `stride` bytes, each NUL-terminated. `*out_len`
-    /// always receives the stored length; `NROS_RET_FULL` when there are more
+    /// always receives the stored length; `RCLC_RET_FULL` when there are more
     /// elements than rows or an element does not fit its row, and nothing is
     /// written then.
     #[unsafe(no_mangle)]
@@ -982,25 +982,25 @@ mod imp {
         stride: usize,
         capacity: usize,
         out_len: *mut usize,
-    ) -> nros_ret_t {
+    ) -> rcl_ret_t {
         let ParameterValue::StringArray(a) = tri!(get_value(server, parameter_name)) else {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         };
         if !out_len.is_null() {
             *out_len = a.len();
         }
         if a.len() > capacity || a.iter().any(|s| s.len() + 1 > stride) {
-            return NROS_RET_FULL;
+            return RCLC_RET_FULL;
         }
         if !a.is_empty() && output.is_null() {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         }
         for (i, s) in a.iter().enumerate() {
             let row = output.add(i * stride);
             core::ptr::copy_nonoverlapping(s.as_ptr(), row.cast::<u8>(), s.len());
             *row.add(s.len()) = 0;
         }
-        NROS_RET_OK
+        RCL_RET_OK
     }
 
     // ------------------------------------------------------------------------
@@ -1014,7 +1014,7 @@ mod imp {
         parameter_name: *const c_char,
         parameter_description: *const c_char,
         additional_constraints: *const c_char,
-    ) -> nros_ret_t {
+    ) -> rcl_ret_t {
         let (exec, id) = tri!(target_mut(server));
         let text = |p: *const c_char| {
             if p.is_null() {
@@ -1028,12 +1028,12 @@ mod imp {
             text(parameter_description),
             text(additional_constraints),
         ) else {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         };
         if exec.set_parameter_description_on(id, n, d, c) {
-            NROS_RET_OK
+            RCL_RET_OK
         } else {
-            NROS_RET_ERROR
+            RCL_RET_ERROR
         }
     }
 
@@ -1044,15 +1044,15 @@ mod imp {
         server: *mut rclc_parameter_server_t,
         parameter_name: *const c_char,
         read_only: bool,
-    ) -> nros_ret_t {
+    ) -> rcl_ret_t {
         let (exec, id) = tri!(target_mut(server));
         let Some(n) = name_str(parameter_name) else {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         };
         if exec.set_parameter_read_only_on(id, n, read_only) {
-            NROS_RET_OK
+            RCL_RET_OK
         } else {
-            NROS_RET_ERROR
+            RCL_RET_ERROR
         }
     }
 
@@ -1065,18 +1065,18 @@ mod imp {
         from_value: i64,
         to_value: i64,
         step: u64,
-    ) -> nros_ret_t {
+    ) -> rcl_ret_t {
         let (exec, id) = tri!(target_mut(server));
         let Some(n) = name_str(parameter_name) else {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         };
         let Ok(step) = i64::try_from(step) else {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         };
         if exec.set_parameter_integer_range_on(id, n, from_value, to_value, step) {
-            NROS_RET_OK
+            RCL_RET_OK
         } else {
-            NROS_RET_ERROR
+            RCL_RET_ERROR
         }
     }
 
@@ -1088,15 +1088,15 @@ mod imp {
         from_value: f64,
         to_value: f64,
         step: f64,
-    ) -> nros_ret_t {
+    ) -> rcl_ret_t {
         let (exec, id) = tri!(target_mut(server));
         let Some(n) = name_str(parameter_name) else {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         };
         if exec.set_parameter_float_range_on(id, n, from_value, to_value, step) {
-            NROS_RET_OK
+            RCL_RET_OK
         } else {
-            NROS_RET_ERROR
+            RCL_RET_ERROR
         }
     }
 
@@ -1120,13 +1120,13 @@ mod imp {
     }
 
     /// Copy text into a caller buffer, truncating at a character boundary.
-    /// `NROS_RET_FULL` when it was truncated.
-    unsafe fn put_text(src: &str, dst: *mut c_char, cap: usize) -> nros_ret_t {
+    /// `RCLC_RET_FULL` when it was truncated.
+    unsafe fn put_text(src: &str, dst: *mut c_char, cap: usize) -> rcl_ret_t {
         if dst.is_null() {
-            return NROS_RET_OK;
+            return RCL_RET_OK;
         }
         if cap == 0 {
-            return NROS_RET_FULL;
+            return RCLC_RET_FULL;
         }
         let mut cut = src.len().min(cap - 1);
         while !src.is_char_boundary(cut) {
@@ -1135,14 +1135,14 @@ mod imp {
         core::ptr::copy_nonoverlapping(src.as_ptr(), dst.cast::<u8>(), cut);
         *dst.add(cut) = 0;
         if cut < src.len() {
-            NROS_RET_FULL
+            RCLC_RET_FULL
         } else {
-            NROS_RET_OK
+            RCL_RET_OK
         }
     }
 
     /// Extension: read a parameter's descriptor into caller storage. Any out
-    /// pointer may be NULL. `NROS_RET_FULL` when a text was truncated (it is
+    /// pointer may be NULL. `RCLC_RET_FULL` when a text was truncated (it is
     /// still written).
     #[allow(clippy::too_many_arguments)]
     #[unsafe(no_mangle)]
@@ -1154,13 +1154,13 @@ mod imp {
         out_constraints: *mut c_char,
         constraints_capacity: usize,
         out_read_only: *mut bool,
-    ) -> nros_ret_t {
+    ) -> rcl_ret_t {
         let (exec, id) = tri!(target(server));
         let Some(n) = name_str(parameter_name) else {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         };
         if exec.get_parameter_type_on(id, n).is_none() {
-            return NROS_RET_ERROR;
+            return RCL_RET_ERROR;
         }
         let desc = exec.describe_parameter_on(id, n);
         if !out_read_only.is_null() {
@@ -1176,10 +1176,10 @@ mod imp {
             out_constraints,
             constraints_capacity,
         );
-        if a == NROS_RET_FULL || b == NROS_RET_FULL {
-            NROS_RET_FULL
+        if a == RCLC_RET_FULL || b == RCLC_RET_FULL {
+            RCLC_RET_FULL
         } else {
-            NROS_RET_OK
+            RCL_RET_OK
         }
     }
 
@@ -1192,22 +1192,22 @@ mod imp {
         out_from: *mut i64,
         out_to: *mut i64,
         out_step: *mut i64,
-    ) -> nros_ret_t {
+    ) -> rcl_ret_t {
         let (exec, id) = tri!(target(server));
         let Some(n) = name_str(parameter_name) else {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         };
         let Some(nros_node::ParameterRange::Integer(r)) =
             exec.describe_parameter_on(id, n).map(|d| d.range)
         else {
-            return NROS_RET_ERROR;
+            return RCL_RET_ERROR;
         };
         for (p, v) in [(out_from, r.min), (out_to, r.max), (out_step, r.step)] {
             if !p.is_null() {
                 *p = v;
             }
         }
-        NROS_RET_OK
+        RCL_RET_OK
     }
 
     /// Extension: the floating-point range attached to a parameter.
@@ -1218,27 +1218,27 @@ mod imp {
         out_from: *mut f64,
         out_to: *mut f64,
         out_step: *mut f64,
-    ) -> nros_ret_t {
+    ) -> rcl_ret_t {
         let (exec, id) = tri!(target(server));
         let Some(n) = name_str(parameter_name) else {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         };
         let Some(nros_node::ParameterRange::FloatingPoint(r)) =
             exec.describe_parameter_on(id, n).map(|d| d.range)
         else {
-            return NROS_RET_ERROR;
+            return RCL_RET_ERROR;
         };
         for (p, v) in [(out_from, r.min), (out_to, r.max), (out_step, r.step)] {
             if !p.is_null() {
                 *p = v;
             }
         }
-        NROS_RET_OK
+        RCL_RET_OK
     }
 
     /// Extension: the node's parameter names starting with `prefix` (NULL =
     /// all), into a caller rectangle of `max_names` rows × `name_stride`
-    /// bytes. `*out_count` always gets the TOTAL; `NROS_RET_FULL` when more
+    /// bytes. `*out_count` always gets the TOTAL; `RCLC_RET_FULL` when more
     /// matched than fit or a name was truncated.
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn rclc_parameter_list(
@@ -1248,31 +1248,31 @@ mod imp {
         name_stride: usize,
         max_names: usize,
         out_count: *mut usize,
-    ) -> nros_ret_t {
+    ) -> rcl_ret_t {
         let (exec, id) = tri!(target(server));
         let p = if prefix.is_null() {
             ""
         } else {
             match name_str(prefix) {
                 Some(p) => p,
-                None => return NROS_RET_INVALID_ARGUMENT,
+                None => return RCL_RET_INVALID_ARGUMENT,
             }
         };
         if max_names > 0 && (out_names.is_null() || name_stride == 0) {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         }
         let mut total = 0usize;
-        let mut ret = NROS_RET_OK;
+        let mut ret = RCL_RET_OK;
         for name in exec.list_parameters_on(id, p) {
             if total < max_names
-                && put_text(name, out_names.add(total * name_stride), name_stride) == NROS_RET_FULL
+                && put_text(name, out_names.add(total * name_stride), name_stride) == RCLC_RET_FULL
             {
-                ret = NROS_RET_FULL;
+                ret = RCLC_RET_FULL;
             }
             total += 1;
         }
         if total > max_names {
-            ret = NROS_RET_FULL;
+            ret = RCLC_RET_FULL;
         }
         if !out_count.is_null() {
             *out_count = total;

@@ -2147,7 +2147,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 // list and HOLDS each record in the bounded `nros_log::early`
                 // ring forever: issue 0710 removed the implicit platform
                 // fallback on purpose, and a pure-Rust Zephyr image has no
-                // `libnros_c.a` (issue 0163) to run `nros_log_emit`'s lazy
+                // `libnros_c.a` (issue 0163) to run `rclc_log_emit`'s lazy
                 // `ensure_default_sinks()`. `nros-board-zephyr` covers only
                 // `run_tiers`, so a single-tier image reached no funnel at all.
                 //

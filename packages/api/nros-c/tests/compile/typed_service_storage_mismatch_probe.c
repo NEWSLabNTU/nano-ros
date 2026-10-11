@@ -1,7 +1,7 @@
 /*
  * phase-417 W5.e — NEGATIVE CONTROL. This file MUST FAIL to compile.
  *
- * W5.a's subscription twin exists because `nros_executor_add_subscription_typed`
+ * W5.a's subscription twin exists because `rclc_executor_add_subscription_typed`
  * takes the caller's storage as `void *`: the wrong struct registered silently
  * and was then overwritten with a message of another type on every dispatch,
  * with no allocator anywhere to notice. The generated macro had to reintroduce
@@ -48,7 +48,7 @@ static void swapped_payload_handler(const fingerprint_corpus_srv_probe_response*
 
 static fingerprint_corpus_srv_probe_service_handler_t g_handler;
 
-static nros_ret_t install_swapped_handler(void) {
+static rcl_ret_t install_swapped_handler(void) {
     /* Expected: incompatible pointer type — the parameter is a
      * `fingerprint_corpus_srv_probe_handler_fn_t`, and the compiler names both
      * function types. */
@@ -62,9 +62,9 @@ static nros_ret_t install_swapped_handler(void) {
  * request storage the server needs, so the server trampoline would deserialize
  * a request off the end of the block. */
 static fingerprint_corpus_srv_probe_client_handler_t g_wrong_block;
-static struct nros_service_t g_service;
+static struct rcl_service_t g_service;
 
-static nros_ret_t bring_up_with_client_block(struct nros_executor_t* executor) {
+static rcl_ret_t bring_up_with_client_block(struct rclc_executor_t* executor) {
     /* Expected: incompatible pointer type, naming both handler structs. Since
      * phase-487 W2 the handler is bound at registration, so this is the call
      * that takes it. */

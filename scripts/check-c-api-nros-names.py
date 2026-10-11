@@ -47,20 +47,47 @@ def load_map():
     return rows
 
 
-def header_tokens():
-    out = {}
-    for f in sorted(C_INCLUDE.glob("*.h")):
-        code = STRING.sub('""', COMMENT.sub(" ", f.read_text(errors="replace")))
-        for t in TOKEN.findall(code):
-            out.setdefault(t, f.name)
+def tokens_of(text, name, out):
+    code = STRING.sub('""', COMMENT.sub(" ", text))
+    for t in TOKEN.findall(code):
+        out.setdefault(t, name)
     return out
 
 
-def main():
-    rows = load_map()
-    tokens = header_tokens()
+def header_tokens():
+    out = {}
+    for f in sorted(C_INCLUDE.glob("*.h")):
+        tokens_of(f.read_text(errors="replace"), f.name, out)
+    return out
+
+
+def classify(rows, tokens):
+    """(unmapped, pending): names the map does not know, and names still
+    spelled the way the map renames."""
     unmapped = sorted(t for t in tokens if t not in rows)
     pending = sorted(t for t in tokens if t in rows and rows[t][1] in RENAMED)
+    return unmapped, pending
+
+
+def self_test():
+    """Negative control on the normal path: a comment is not a declaration, a
+    kept name is not pending, an unknown name is refused."""
+    rows = {"nros_a_t": ("rclc_a_t", "ours"), "NROS_PUBLIC": ("NROS_PUBLIC", "build")}
+    text = '/* nros_retired_t */ NROS_PUBLIC nros_a_t f(void); "nros_in_string"; nros_new(void);'
+    unmapped, pending = classify(rows, tokens_of(text, "t.h", {}))
+    ok = unmapped == ["nros_new"] and pending == ["nros_a_t"]
+    if not ok:
+        print(f"check-c-api-nros-names: SELF-TEST FAILED: unmapped={unmapped} pending={pending}",
+              file=sys.stderr)
+    return ok
+
+
+def main():
+    if not self_test():
+        return 1
+    rows = load_map()
+    tokens = header_tokens()
+    unmapped, pending = classify(rows, tokens)
     errors = []
     if unmapped:
         errors.append(

@@ -51,7 +51,7 @@ shape after the quick run already harvested this surface's P1s (#321–#324).
   `spin_some(max_duration)`. → **#338**
 - **C6** · `nros-c/include/nros/nros_generated.h:4168` · P2 · **new** · The C executor
   renames rclc's `rclc_executor_add_*` to `nros_executor_register_*` for seven entity
-  kinds but leaves `nros_executor_add_client` on the rclc spelling — and every doc comment
+  kinds but leaves `rclc_executor_add_client` on the rclc spelling — and every doc comment
   in the family still reads "Add a X to the executor". A rename of a standard concept that
   is not even internally consistent. → **#338**
 - **C6** · `nros-cpp/include/nros/rclcpp_compat.hpp:477` · P2 · **new** ·

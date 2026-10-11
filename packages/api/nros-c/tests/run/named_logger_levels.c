@@ -13,7 +13,7 @@
  *
  *   1. two nodes -> two DISTINCT logger handles, neither of them the catch-all;
  *   2. each handle answers its OWN node's name;
- *   3. `nros_log_get_logger(name)` returns the SAME handle the node's accessor
+ *   3. `rclc_log_get_logger(name)` returns the SAME handle the node's accessor
  *      did — one resolve-or-create helper behind both, not a second table. This
  *      is the assertion that keeps a future C-side named-logger surface from
  *      re-implementing what `nros_log::resolve_logger` already does (RFC-0019);
@@ -21,7 +21,7 @@
  *      through an installed sink rather than through the getter, because a
  *      `set_level`/`get_level` pair over one shared cell would agree with
  *      itself and still drop the wrong records;
- *   5. `nros_logger_is_enabled` agrees with the level that was set.
+ *   5. `rclc_logger_is_enabled` agrees with the level that was set.
  *
  * The RMW backend is the shared stub (`stub_rmw_backend.c`), which this TU
  * links: a node needs an executor and an executor needs a session, and nothing
@@ -61,7 +61,7 @@ static int g_failures;
 #define MAX_RECORDS 32
 
 struct record {
-    nros_log_severity_t severity;
+    rcl_log_severity_t severity;
     char logger[64];
     char message[128];
 };
@@ -77,7 +77,7 @@ static void copy_bounded(char* dst, size_t dst_len, const char* src, size_t src_
     dst[n] = '\0';
 }
 
-static void capture_sink(void* user_data, nros_log_severity_t severity, const char* logger_name,
+static void capture_sink(void* user_data, rcl_log_severity_t severity, const char* logger_name,
                          size_t logger_name_len, const char* message, size_t message_len,
                          const char* file, size_t file_len, uint32_t line, uint64_t timestamp_ns) {
     (void)user_data;
@@ -127,30 +127,30 @@ static int records_anywhere(const char* needle) {
 }
 
 int main(void) {
-    struct nros_support_t support;
-    struct nros_executor_t executor = rclc_executor_get_zero_initialized_executor();
-    struct nros_node_t alpha;
-    struct nros_node_t beta;
-    nros_logger_t alpha_log;
-    nros_logger_t beta_log;
+    struct rclc_support_t support;
+    struct rclc_executor_t executor = rclc_executor_get_zero_initialized_executor();
+    struct rcl_node_t alpha;
+    struct rcl_node_t beta;
+    rclc_logger_t alpha_log;
+    rclc_logger_t beta_log;
     char name[64];
 
     memset(&support, 0, sizeof(support));
     memset(&alpha, 0, sizeof(alpha));
     memset(&beta, 0, sizeof(beta));
 
-    nros_log_init();
-    CHECK(nros_log_add_sink(capture_sink, NULL),
+    rclc_log_init();
+    CHECK(rclc_log_add_sink(capture_sink, NULL),
           "the capture sink must install — an uninstalled sink never fires, which is "
           "indistinguishable from a filter that dropped everything");
 
-    CHECK(nros_support_init_rmw(&support, NULL, 0, "w4d_named_loggers", NROS_STUB_RMW_NAME) ==
-              NROS_RET_OK,
+    CHECK(rclc_support_init_rmw(&support, NULL, 0, "w4d_named_loggers", NROS_STUB_RMW_NAME) ==
+              RCL_RET_OK,
           "support init");
-    CHECK(nros_executor_init(&executor, &support, 8) == NROS_RET_OK, "executor init");
-    CHECK(nros_executor_node_init(&executor, &alpha, "w4d_alpha", NULL) == NROS_RET_OK,
+    CHECK(rclc_executor_init(&executor, &support, 8) == RCL_RET_OK, "executor init");
+    CHECK(rclc_executor_node_init(&executor, &alpha, "w4d_alpha", NULL) == RCL_RET_OK,
           "alpha node init");
-    CHECK(nros_executor_node_init(&executor, &beta, "w4d_beta", NULL) == NROS_RET_OK,
+    CHECK(rclc_executor_node_init(&executor, &beta, "w4d_beta", NULL) == RCL_RET_OK,
           "beta node init");
     if (g_failures != 0) {
         printf("named_logger_levels: %d setup failure(s)\n", g_failures);
@@ -158,41 +158,41 @@ int main(void) {
     }
 
     /* --- 1. two nodes, two loggers, neither the catch-all ---------------- */
-    alpha_log = nros_node_get_logger(&alpha);
-    beta_log = nros_node_get_logger(&beta);
+    alpha_log = rclc_node_get_logger(&alpha);
+    beta_log = rclc_node_get_logger(&beta);
     CHECK(alpha_log != NULL && beta_log != NULL, "both node loggers must be non-NULL");
     CHECK(alpha_log != beta_log,
           "two nodes answered ONE logger handle — this is phase-427 W5's defect, and every "
           "record in the image would name the same logger");
-    CHECK(alpha_log != nros_log_default_logger() && beta_log != nros_log_default_logger(),
+    CHECK(alpha_log != rclc_log_default_logger() && beta_log != rclc_log_default_logger(),
           "a node logger must not BE the catch-all: the catch-all's threshold is shared with "
           "every unnamed logger, so moving it moves everyone");
 
     /* --- 2. each answers its own name ------------------------------------ */
-    (void)nros_logger_get_name(alpha_log, name, sizeof(name));
+    (void)rclc_logger_get_name(alpha_log, name, sizeof(name));
     CHECK(strcmp(name, "w4d_alpha") == 0, "alpha's logger names \"%s\", expected w4d_alpha", name);
-    (void)nros_logger_get_name(beta_log, name, sizeof(name));
+    (void)rclc_logger_get_name(beta_log, name, sizeof(name));
     CHECK(strcmp(name, "w4d_beta") == 0, "beta's logger names \"%s\", expected w4d_beta", name);
 
     /* --- 3. ONE resolve-or-create helper behind both spellings ----------- */
-    CHECK(nros_log_get_logger("w4d_alpha") == alpha_log,
-          "nros_log_get_logger(\"w4d_alpha\") answered a DIFFERENT handle than "
-          "nros_node_get_logger did — two tables, so a level set through one spelling would "
+    CHECK(rclc_log_get_logger("w4d_alpha") == alpha_log,
+          "rclc_log_get_logger(\"w4d_alpha\") answered a DIFFERENT handle than "
+          "rclc_node_get_logger did — two tables, so a level set through one spelling would "
           "not be the level the other filters on");
-    CHECK(nros_log_get_logger("w4d_beta") == beta_log,
+    CHECK(rclc_log_get_logger("w4d_beta") == beta_log,
           "same, for beta: the node accessor and the named lookup must reach one helper");
 
     /* --- 4. the thresholds are INDEPENDENT, measured at the sink --------- */
-    CHECK(nros_logger_set_level(alpha_log, NROS_LOG_SEVERITY_ERROR), "quiet alpha to ERROR");
-    CHECK(nros_logger_set_level(beta_log, NROS_LOG_SEVERITY_INFO), "hold beta at INFO");
-    CHECK(nros_logger_get_level(alpha_log) == NROS_LOG_SEVERITY_ERROR,
+    CHECK(rclc_logger_set_level(alpha_log, RCLC_LOG_SEVERITY_ERROR), "quiet alpha to ERROR");
+    CHECK(rclc_logger_set_level(beta_log, RCLC_LOG_SEVERITY_INFO), "hold beta at INFO");
+    CHECK(rclc_logger_get_level(alpha_log) == RCLC_LOG_SEVERITY_ERROR,
           "alpha's level must read back as it was set");
-    CHECK(nros_logger_get_level(beta_log) == NROS_LOG_SEVERITY_INFO,
+    CHECK(rclc_logger_get_level(beta_log) == RCLC_LOG_SEVERITY_INFO,
           "beta's level must read back as it was set");
 
-    NROS_LOG_INFO(alpha_log, "w4d_marker_alpha_info");
-    NROS_LOG_INFO(beta_log, "w4d_marker_beta_info");
-    NROS_LOG_ERROR(alpha_log, "w4d_marker_alpha_error");
+    RCLC_LOG_INFO(alpha_log, "w4d_marker_alpha_info");
+    RCLC_LOG_INFO(beta_log, "w4d_marker_beta_info");
+    RCLC_LOG_ERROR(alpha_log, "w4d_marker_alpha_error");
 
     CHECK(records_anywhere("w4d_marker_alpha_info") == 0,
           "an INFO record on a logger set to ERROR reached a sink (%d time(s))",
@@ -208,30 +208,30 @@ int main(void) {
           records_anywhere("w4d_marker_alpha_error"));
 
     /* --- 5. the predicate agrees with the level -------------------------- */
-    CHECK(!nros_logger_is_enabled(alpha_log, NROS_LOG_SEVERITY_INFO),
+    CHECK(!rclc_logger_is_enabled(alpha_log, RCLC_LOG_SEVERITY_INFO),
           "is_enabled(INFO) must be false on a logger set to ERROR");
-    CHECK(nros_logger_is_enabled(alpha_log, NROS_LOG_SEVERITY_ERROR),
+    CHECK(rclc_logger_is_enabled(alpha_log, RCLC_LOG_SEVERITY_ERROR),
           "is_enabled(ERROR) must be true on a logger set to ERROR");
-    CHECK(nros_logger_is_enabled(beta_log, NROS_LOG_SEVERITY_INFO),
+    CHECK(rclc_logger_is_enabled(beta_log, RCLC_LOG_SEVERITY_INFO),
           "is_enabled(INFO) must be true on a logger still at INFO");
 
-    /* --- 6. nros_logger_get_child (RFC-0102 / phase-479) ------------------ */
+    /* --- 6. rclc_logger_get_child (RFC-0102 / phase-479) ------------------ */
     {
-        nros_logger_t child = nros_logger_get_child(beta_log, "costmap");
+        rclc_logger_t child = rclc_logger_get_child(beta_log, "costmap");
         char cname[64];
         CHECK(child != NULL && child != beta_log, "get_child must create a distinct logger");
-        (void)nros_logger_get_name(child, cname, sizeof cname);
+        (void)rclc_logger_get_name(child, cname, sizeof cname);
         CHECK(strcmp(cname, "w4d_beta.costmap") == 0, "child names \"%s\"", cname);
-        CHECK(nros_logger_set_level(beta_log, NROS_LOG_SEVERITY_DEBUG), "parent to DEBUG");
-        CHECK(nros_logger_get_level(child) == NROS_LOG_SEVERITY_DEBUG,
+        CHECK(rclc_logger_set_level(beta_log, RCLC_LOG_SEVERITY_DEBUG), "parent to DEBUG");
+        CHECK(rclc_logger_get_level(child) == RCLC_LOG_SEVERITY_DEBUG,
               "an UNSET child reads its parent's level (RFC-0102 D2)");
-        CHECK(nros_logger_get_child(beta_log, "costmap") == child, "get_child is idempotent");
-        CHECK(nros_logger_get_child(beta_log,
+        CHECK(rclc_logger_get_child(beta_log, "costmap") == child, "get_child is idempotent");
+        CHECK(rclc_logger_get_child(beta_log,
                                     "this_suffix_is_long_enough_to_exceed_the_48_byte_cap") ==
                   NULL,
               "an over-long child is NULL, never a substitute handle");
-        nros_logger_t top = nros_logger_get_child(nros_log_default_logger(), "w4d_c_top");
-        (void)nros_logger_get_name(top, cname, sizeof cname);
+        rclc_logger_t top = rclc_logger_get_child(rclc_log_default_logger(), "w4d_c_top");
+        (void)rclc_logger_get_name(top, cname, sizeof cname);
         CHECK(strcmp(cname, "w4d_c_top") == 0, "the catch-all's child is top-level: \"%s\"",
               cname);
     }

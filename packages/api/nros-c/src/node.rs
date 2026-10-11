@@ -8,14 +8,14 @@ use core::{ffi::c_char, ptr};
 use crate::{
     constants::{MAX_LOCATOR_LEN, MAX_NAME_LEN, MAX_NAMESPACE_LEN, MAX_RMW_NAME_LEN},
     error::*,
-    support::{nros_support_state_t, nros_support_t},
+    support::{rclc_support_state_t, rclc_support_t},
 };
 
 /// issue 0972 — decode the C ABI `domain_id` byte, ONCE, for every caller.
 ///
-/// `nros_support_t.domain_id` stores the byte exactly as the C caller passed
+/// `rclc_support_t.domain_id` stores the byte exactly as the C caller passed
 /// it, and that byte is not a domain: it is an encoding.
-/// `nros_support_init` already decodes it correctly for the session
+/// `rclc_support_init` already decodes it correctly for the session
 /// (`support.rs`, via `baked_domain_from_c_abi`), but the two entity-resolution
 /// sites below read the RAW field and compared it against 0, which got both
 /// ends wrong:
@@ -62,25 +62,25 @@ pub const NROS_DOMAIN_ID_INHERIT: u32 = u32::MAX;
 /// Node state
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nros_node_state_t {
+pub enum rclc_node_state_t {
     /// Not initialized
-    NROS_NODE_STATE_UNINITIALIZED = 0,
+    RCLC_NODE_STATE_UNINITIALIZED = 0,
     /// Initialized and ready
-    NROS_NODE_STATE_INITIALIZED = 1,
+    RCLC_NODE_STATE_INITIALIZED = 1,
     /// Shutdown
-    NROS_NODE_STATE_SHUTDOWN = 2,
+    RCLC_NODE_STATE_SHUTDOWN = 2,
 }
 
 /// phase-379 W4 — a checkable reference to the node an entity was created on.
 ///
-/// Replaces the `*const nros_node_t` each entity used to store. That pointer
+/// Replaces the `*const rcl_node_t` each entity used to store. That pointer
 /// was never dereferenced anywhere in the C API — it was assigned, nulled, and
 /// asserted on — so it bought provenance nobody could use while leaving a raw
 /// pointer that invites a dereference the platform cannot support:
 ///
 /// * bare metal is safe (no MMU, no relocation, handles in `.bss`), but
 /// * an RTOS node declared on a task stack dies with `vTaskDelete`, and
-/// * `nros_node_t a = b;` is legal and silent — C has no move semantics, and we
+/// * `rcl_node_t a = b;` is legal and silent — C has no move semantics, and we
 ///   have no allocator to hide an indirection behind.
 ///
 /// rcl's alternative (`rcl_publisher_fini(&pub, &node)`) does not remove that
@@ -95,14 +95,14 @@ pub enum nros_node_state_t {
 /// common C mistake — can never resolve.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct nros_node_ref_t {
-    /// Executor node slot (`nros_node_t::node_id`). 0 = the primary node.
+pub struct rclc_node_ref_t {
+    /// Executor node slot (`rcl_node_t::node_id`). 0 = the primary node.
     pub node_id: u8,
     /// Slot generation when the entity was created. 0 = no node bound.
     pub generation: u32,
 }
 
-impl nros_node_ref_t {
+impl rclc_node_ref_t {
     /// The reference an uninitialised entity carries: bound to nothing.
     pub const fn none() -> Self {
         Self {
@@ -119,7 +119,7 @@ impl nros_node_ref_t {
 
 /// Per-slot generation counters, bumped when a node is finalised.
 ///
-/// A plain static rather than executor state because the C `nros_node_t` is
+/// A plain static rather than executor state because the C `rcl_node_t` is
 /// CALLER-allocated: there is no runtime-owned place to hang it that every
 /// entity can reach without the pointer this type exists to remove.
 static NODE_GENERATIONS: [core::sync::atomic::AtomicU32; nros_node::config::MAX_NODES] =
@@ -128,14 +128,14 @@ static NODE_GENERATIONS: [core::sync::atomic::AtomicU32; nros_node::config::MAX_
 /// Mint a reference to `node`'s current binding.
 ///
 /// # Safety
-/// `node` must point at an initialised `nros_node_t` for the duration of the
+/// `node` must point at an initialised `rcl_node_t` for the duration of the
 /// call. The reference outlives the pointer deliberately — that is the point.
-pub(crate) unsafe fn node_ref_of(node: *const nros_node_t) -> nros_node_ref_t {
+pub(crate) unsafe fn node_ref_of(node: *const rcl_node_t) -> rclc_node_ref_t {
     if node.is_null() {
-        return nros_node_ref_t::none();
+        return rclc_node_ref_t::none();
     }
     let id = unsafe { (*node).node_id };
-    nros_node_ref_t {
+    rclc_node_ref_t {
         node_id: id,
         generation: current_generation(id),
     }
@@ -165,7 +165,7 @@ pub(crate) fn retire_generation(id: u8) {
 }
 
 /// Does `r` still name a live binding?
-pub(crate) fn node_ref_is_live(r: nros_node_ref_t) -> bool {
+pub(crate) fn node_ref_is_live(r: rclc_node_ref_t) -> bool {
     r.is_bound() && current_generation(r.node_id) == r.generation
 }
 
@@ -173,9 +173,9 @@ pub(crate) fn node_ref_is_live(r: nros_node_ref_t) -> bool {
 ///
 /// Represents a ROS 2 node with a name and namespace.
 #[repr(C)]
-pub struct nros_node_t {
+pub struct rcl_node_t {
     /// Current state
-    pub state: nros_node_state_t,
+    pub state: rclc_node_state_t,
     /// Node name storage
     pub name: [u8; MAX_NAME_LEN],
     /// Node name length
@@ -185,13 +185,13 @@ pub struct nros_node_t {
     /// Namespace length
     pub namespace_len: usize,
     /// Pointer to parent support context
-    pub support: *const nros_support_t,
+    pub support: *const rclc_support_t,
 
     // Phase 104.C.8 — multi-RMW + per-Node SchedContext fields. Populated
-    // by `nros_node_init_ex` from `nros_node_options_t`. Zero values mean
+    // by `rclc_node_init_ex` from `rcl_node_options_t`. Zero values mean
     // "inherit from the support context / executor default" so the legacy
     // `rclc_node_init_default(node, name, ns, support)` entry point keeps its old
-    // single-Node behaviour through `nros_node_init_ex` with default
+    // single-Node behaviour through `rclc_node_init_ex` with default
     // options.
     /// RMW backend name (UTF-8, NUL-terminated within `rmw_name_len`).
     /// Empty (`rmw_name_len == 0`) selects the first-registered backend.
@@ -213,33 +213,33 @@ pub struct nros_node_t {
     /// `executor`). Internal use only — readers should treat as opaque.
     pub node_id: u8,
     /// Phase 156 / 104.C.8.b — executor pointer for the executor-bound
-    /// dispatch path. `nros_executor_node_init` populates this when
+    /// dispatch path. `rclc_executor_node_init` populates this when
     /// the Node is bound; per-entity `nros_*_init` paths
     /// (`rclc_publisher_init_default`, `nros_subscription_init`, etc.) branch
-    /// on `nros_node_t::is_executor_bound` — i.e. on this pointer ALONE — to
+    /// on `rcl_node_t::is_executor_bound` — i.e. on this pointer ALONE — to
     /// route through `Executor::node_session_mut(NodeId)` instead of the legacy
     /// support-based dispatch. NULL = legacy single-Node path
-    /// (`rclc_node_init_default` / `nros_node_init_ex`).
-    pub executor: *const crate::executor::nros_executor_t,
+    /// (`rclc_node_init_default` / `rclc_node_init_ex`).
+    pub executor: *const crate::executor::rclc_executor_t,
 
     // Phase 211.H (issue #52) — per-topic QoS overrides the deploy plan
     // lowered from `qos_overrides.<topic>.<role>.<policy>` launch params.
-    // Set by `nros_node_set_qos_overrides`; folded into each entity's QoS at
+    // Set by `rclc_node_set_qos_overrides`; folded into each entity's QoS at
     // `create_publisher` / `create_subscription` time. Appended at the END of
     // the struct so existing field offsets (hence the C ABI) are unchanged;
     // `null` / `0` means "no overrides" (the legacy behaviour).
-    /// Pointer to a `&'static`-lifetime array of `nros_qos_override_t`, or
+    /// Pointer to a `&'static`-lifetime array of `rclc_qos_override_t`, or
     /// null. The caller (a generated entry / a hand-written app) owns the
     /// storage for the node's lifetime.
-    pub qos_overrides: *const crate::qos::nros_qos_override_t,
+    pub qos_overrides: *const crate::qos::rclc_qos_override_t,
     /// Number of entries in `qos_overrides`. 0 = none.
     pub qos_overrides_len: usize,
 }
 
-impl Default for nros_node_t {
+impl Default for rcl_node_t {
     fn default() -> Self {
         Self {
-            state: nros_node_state_t::NROS_NODE_STATE_UNINITIALIZED,
+            state: rclc_node_state_t::RCLC_NODE_STATE_UNINITIALIZED,
             name: [0u8; MAX_NAME_LEN],
             name_len: 0,
             namespace: [0u8; MAX_NAMESPACE_LEN],
@@ -270,29 +270,29 @@ impl Default for nros_node_t {
 /// Pass `len == 0` (or a null `overrides`) to clear.
 ///
 /// # Safety
-/// * `node` must point to an initialised `nros_node_t`.
-/// * `overrides` must be null or point to `len` valid `nros_qos_override_t`
+/// * `node` must point to an initialised `rcl_node_t`.
+/// * `overrides` must be null or point to `len` valid `rclc_qos_override_t`
 ///   (each `topic` a valid NUL-terminated UTF-8 C string), living at least as
 ///   long as the node.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_node_set_qos_overrides(
-    node: *mut nros_node_t,
-    overrides: *const crate::qos::nros_qos_override_t,
+pub unsafe extern "C" fn rclc_node_set_qos_overrides(
+    node: *mut rcl_node_t,
+    overrides: *const crate::qos::rclc_qos_override_t,
     len: usize,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     let Some(node) = (unsafe { node.as_mut() }) else {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     };
     node.qos_overrides = overrides;
     node.qos_overrides_len = len;
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// Phase 104.C.8 — extended node-creation options.
 ///
 /// Mirrors the Rust `Executor::node_builder(name).rmw(rmw_name).
 /// locator(...).domain_id(...).namespace(...).sched(...)` chain. Pass an
-/// instance to [`nros_node_init_ex`] to bind a Node to a specific RMW
+/// instance to [`rclc_node_init_ex`] to bind a Node to a specific RMW
 /// backend, locator, domain, and default SchedContext. Zero fields keep
 /// the legacy single-Node single-backend behaviour for back-compat
 /// callers.
@@ -300,7 +300,7 @@ pub unsafe extern "C" fn nros_node_set_qos_overrides(
 /// The struct contains plain inline buffers — no pointer fields — so it
 /// is safe to stack-allocate, memcpy, and pass across the FFI.
 #[repr(C)]
-pub struct nros_node_options_t {
+pub struct rcl_node_options_t {
     /// Namespace storage (UTF-8, NUL-terminated within `namespace_len`).
     pub namespace: [u8; MAX_NAMESPACE_LEN],
     /// Length of `namespace` in bytes (excluding NUL).
@@ -323,7 +323,7 @@ pub struct nros_node_options_t {
     pub _reserved: [u8; 3],
 }
 
-impl Default for nros_node_options_t {
+impl Default for rcl_node_options_t {
     fn default() -> Self {
         Self {
             namespace: [0u8; MAX_NAMESPACE_LEN],
@@ -339,14 +339,14 @@ impl Default for nros_node_options_t {
     }
 }
 
-/// Get a zero-initialised `nros_node_options_t`.
+/// Get a zero-initialised `rcl_node_options_t`.
 ///
 /// All fields default to "inherit" — `rmw_name_len = 0`, `locator_len = 0`,
 /// `domain_id_override = NROS_DOMAIN_ID_INHERIT`, `sched_context_id = 0`.
 /// Callers populate only the fields they want to override.
 #[unsafe(no_mangle)]
-pub extern "C" fn rcl_node_get_default_options() -> nros_node_options_t {
-    nros_node_options_t::default()
+pub extern "C" fn rcl_node_get_default_options() -> rcl_node_options_t {
+    rcl_node_options_t::default()
 }
 
 /// Get a zero-initialized node.
@@ -354,8 +354,8 @@ pub extern "C" fn rcl_node_get_default_options() -> nros_node_options_t {
 /// # Safety
 /// Returns a stack-allocated struct that must be initialized before use.
 #[unsafe(no_mangle)]
-pub extern "C" fn rcl_get_zero_initialized_node() -> nros_node_t {
-    nros_node_t::default()
+pub extern "C" fn rcl_get_zero_initialized_node() -> rcl_node_t {
+    rcl_node_t::default()
 }
 
 /// Initialize a node with default options — rclc's `rclc_node_init_default`,
@@ -381,9 +381,9 @@ pub extern "C" fn rcl_get_zero_initialized_node() -> nros_node_t {
 /// and never a macro, because a macro would have forwarded positionally and
 /// silently built a node with its name in the support slot.
 ///
-/// Equivalent to building a [`nros_node_options_t`] via
+/// Equivalent to building a [`rcl_node_options_t`] via
 /// [`rcl_node_get_default_options`], copying `namespace_` into its
-/// `namespace` field, and calling [`nros_node_init_ex`] — which is
+/// `namespace` field, and calling [`rclc_node_init_ex`] — which is
 /// `rcl_node_init_with_options`'s counterpart and keeps OUR order, because it
 /// has no rclc counterpart to match.
 ///
@@ -394,27 +394,27 @@ pub extern "C" fn rcl_get_zero_initialized_node() -> nros_node_t {
 /// * `support` - Pointer to an initialized support context
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if any pointer is NULL or strings are invalid
-/// * `NROS_RET_NOT_INIT` if support is not initialized
-/// * `NROS_RET_ERROR` on initialization failure
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` if any pointer is NULL or strings are invalid
+/// * `RCL_RET_NOT_INIT` if support is not initialized
+/// * `RCL_RET_ERROR` on initialization failure
 ///
 /// # Safety
 /// * All pointers must be valid
 /// * `name` and `namespace_` must be valid null-terminated strings
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_node_init_default(
-    node: *mut nros_node_t,
+    node: *mut rcl_node_t,
     name: *const c_char,
     namespace_: *const c_char,
-    support: *const nros_support_t,
-) -> nros_ret_t {
+    support: *const rclc_support_t,
+) -> rcl_ret_t {
     if namespace_.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
-    let mut options = nros_node_options_t::default();
+    let mut options = rcl_node_options_t::default();
     options.namespace_len = crate::util::copy_cstr_into(namespace_, &mut options.namespace);
-    unsafe { nros_node_init_ex(node, support, name, &options) }
+    unsafe { rclc_node_init_ex(node, support, name, &options) }
 }
 
 /// Phase 104.C.8 — initialize a Node with extended options.
@@ -442,44 +442,44 @@ pub unsafe extern "C" fn rclc_node_init_default(
 /// * `node` - Pointer to a zero-initialized node
 /// * `support` - Pointer to an initialized support context
 /// * `name` - Node name (null-terminated string)
-/// * `options` - Pointer to an [`nros_node_options_t`] (must be non-NULL)
+/// * `options` - Pointer to an [`rcl_node_options_t`] (must be non-NULL)
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` on NULL / invalid strings / overrun buffers
-/// * `NROS_RET_BAD_SEQUENCE` if the node is already initialized
-/// * `NROS_RET_NOT_INIT` if support is not initialized
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` on NULL / invalid strings / overrun buffers
+/// * `RCLC_RET_BAD_SEQUENCE` if the node is already initialized
+/// * `RCL_RET_NOT_INIT` if support is not initialized
 ///
 /// # Safety
 /// * All pointers must be valid
 /// * `name` must be a valid NUL-terminated UTF-8 string
 /// * `options` fields must satisfy their declared length invariants
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_node_init_ex(
-    node: *mut nros_node_t,
-    support: *const nros_support_t,
+pub unsafe extern "C" fn rclc_node_init_ex(
+    node: *mut rcl_node_t,
+    support: *const rclc_support_t,
     name: *const c_char,
-    options: *const nros_node_options_t,
-) -> nros_ret_t {
+    options: *const rcl_node_options_t,
+) -> rcl_ret_t {
     if node.is_null() || support.is_null() || name.is_null() || options.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
 
     let node = &mut *node;
     let support_ref = &*support;
     let opts = &*options;
 
-    if node.state != nros_node_state_t::NROS_NODE_STATE_UNINITIALIZED {
-        return NROS_RET_BAD_SEQUENCE;
+    if node.state != rclc_node_state_t::RCLC_NODE_STATE_UNINITIALIZED {
+        return RCLC_RET_BAD_SEQUENCE;
     }
-    if support_ref.state != nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
+    if support_ref.state != rclc_support_state_t::RCLC_SUPPORT_STATE_INITIALIZED {
+        return RCL_RET_NOT_INIT;
     }
 
     // Copy name (required — empty rejected).
     node.name_len = crate::util::copy_cstr_into(name, &mut node.name);
     if node.name_len == 0 {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
 
     // Validate options length fields against their buffer caps.
@@ -487,7 +487,7 @@ pub unsafe extern "C" fn nros_node_init_ex(
         || opts.rmw_name_len > MAX_RMW_NAME_LEN
         || opts.locator_len > MAX_LOCATOR_LEN
     {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
 
     // Mirror namespace from options into the node.
@@ -506,7 +506,7 @@ pub unsafe extern "C" fn nros_node_init_ex(
     // here when the C executor exposes a stable factory entry.
 
     node.support = support;
-    node.state = nros_node_state_t::NROS_NODE_STATE_INITIALIZED;
+    node.state = rclc_node_state_t::RCLC_NODE_STATE_INITIALIZED;
 
     // Issue 1556 item 1 — the legacy rclc-style node (`rclc_node_init_default`
     // forwards here) opens the census cursor too, so a C application's
@@ -532,7 +532,7 @@ pub unsafe extern "C" fn nros_node_init_ex(
         );
     }
 
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// Finalize a node.
@@ -541,29 +541,29 @@ pub unsafe extern "C" fn nros_node_init_ex(
 /// * `node` - Pointer to an initialized node
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success, AND for a node that was never initialised or is
+/// * `RCL_RET_OK` on success, AND for a node that was never initialised or is
 ///   already finalised — `fini` is IDEMPOTENT (phase-417 stage 3, the same
 ///   sweep as `rcl_guard_condition_fini`). `rcl/src/rcl/node.c` @ humble says
 ///   it in words: `if (!node->impl) { // Repeat calls to fini or calling fini
 ///   on a zero initialized node is ok. return RCL_RET_OK; }`. Ours returned
-///   `NROS_RET_NOT_INIT`, so a ported cleanup path that checks the return —
+///   `RCL_RET_NOT_INIT`, so a ported cleanup path that checks the return —
 ///   `rcl_node_fini` is `RCL_WARN_UNUSED` upstream — reported a shutdown
 ///   failure that had not happened.
-/// * `NROS_RET_INVALID_ARGUMENT` if node is NULL
+/// * `RCL_RET_INVALID_ARGUMENT` if node is NULL
 ///
 /// # Safety
-/// * `node` must be a valid pointer to an initialized nros_node_t
+/// * `node` must be a valid pointer to an initialized rcl_node_t
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rcl_node_fini(node: *mut nros_node_t) -> nros_ret_t {
+pub unsafe extern "C" fn rcl_node_fini(node: *mut rcl_node_t) -> rcl_ret_t {
     if node.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
 
     let node = &mut *node;
 
-    if node.state != nros_node_state_t::NROS_NODE_STATE_INITIALIZED {
+    if node.state != rclc_node_state_t::RCLC_NODE_STATE_INITIALIZED {
         // Nothing to retire. Idempotent, per rcl.
-        return NROS_RET_OK;
+        return RCL_RET_OK;
     }
 
     // phase-379 W4 — retire the slot BEFORE marking shutdown, so any entity
@@ -572,9 +572,9 @@ pub unsafe extern "C" fn rcl_node_fini(node: *mut nros_node_t) -> nros_ret_t {
     retire_generation(node.node_id);
 
     node.support = ptr::null();
-    node.state = nros_node_state_t::NROS_NODE_STATE_SHUTDOWN;
+    node.state = rclc_node_state_t::RCLC_NODE_STATE_SHUTDOWN;
 
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// Get the node name.
@@ -588,13 +588,13 @@ pub unsafe extern "C" fn rcl_node_fini(node: *mut nros_node_t) -> nros_ret_t {
 /// # Safety
 /// * `node` must be a valid pointer
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rcl_node_get_name(node: *const nros_node_t) -> *const c_char {
+pub unsafe extern "C" fn rcl_node_get_name(node: *const rcl_node_t) -> *const c_char {
     if node.is_null() {
         return ptr::null();
     }
 
     let node = &*node;
-    if node.state != nros_node_state_t::NROS_NODE_STATE_INITIALIZED {
+    if node.state != rclc_node_state_t::RCLC_NODE_STATE_INITIALIZED {
         return ptr::null();
     }
 
@@ -612,13 +612,13 @@ pub unsafe extern "C" fn rcl_node_get_name(node: *const nros_node_t) -> *const c
 /// # Safety
 /// * `node` must be a valid pointer
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rcl_node_get_namespace(node: *const nros_node_t) -> *const c_char {
+pub unsafe extern "C" fn rcl_node_get_namespace(node: *const rcl_node_t) -> *const c_char {
     if node.is_null() {
         return ptr::null();
     }
 
     let node = &*node;
-    if node.state != nros_node_state_t::NROS_NODE_STATE_INITIALIZED {
+    if node.state != rclc_node_state_t::RCLC_NODE_STATE_INITIALIZED {
         return ptr::null();
     }
 
@@ -633,12 +633,12 @@ pub unsafe extern "C" fn rcl_node_get_namespace(node: *const nros_node_t) -> *co
 ///
 /// # Why this exists, and why it takes two strings rather than a handle
 ///
-/// `nros_executor_get_node_names` hands a visitor the name and namespace of a
+/// `rclc_executor_get_node_names` hands a visitor the name and namespace of a
 /// DISCOVERED node as two borrowed strings; this is the step that makes them
 /// one. ROS 2 has no counterpart: `rcl_get_node_names` returns two parallel
 /// arrays and leaves the correlation and the join to the caller, and
 /// `rcl_node_get_fully_qualified_name` answers only for the caller's OWN node
-/// (that one is [`nros_node_get_fully_qualified_name`]). rclcpp is the only
+/// (that one is [`rclc_node_get_fully_qualified_name`]). rclcpp is the only
 /// upstream layer that joins for you, and it is not available in C.
 ///
 /// # Parameters
@@ -647,18 +647,18 @@ pub unsafe extern "C" fn rcl_node_get_namespace(node: *const nros_node_t) -> *co
 /// * `buf` - destination for the null-terminated result
 /// * `buf_len` - capacity of `buf`, INCLUDING the terminator
 /// * `out_len` - receives the length written, excluding the terminator.
-///   On `NROS_RET_FULL` it receives the length that WOULD be written, so a
+///   On `RCLC_RET_FULL` it receives the length that WOULD be written, so a
 ///   caller can size a second attempt.
 ///
 /// # Returns
-/// * `NROS_RET_OK`
-/// * `NROS_RET_INVALID_ARGUMENT` — a NULL pointer, a non-UTF-8 input, or a
+/// * `RCL_RET_OK`
+/// * `RCL_RET_INVALID_ARGUMENT` — a NULL pointer, a non-UTF-8 input, or a
 ///   name so long the join cannot be represented
-/// * `NROS_RET_FULL` — `buf_len` is too small; `out_len` says what is needed.
-///   `FULL` and not `BUFFER_TOO_SMALL` because `nros_ret_t` has no such code:
+/// * `RCLC_RET_FULL` — `buf_len` is too small; `out_len` says what is needed.
+///   `FULL` and not `BUFFER_TOO_SMALL` because `rcl_ret_t` has no such code:
 ///   that one exists on the RMW ABI (`nros_rmw_ret_t`). It was CITED by a doc
-///   comment on `nros_publisher_publish_streamed`, which returns
-///   `NROS_RET_PUBLISH_FAILED` instead — corrected under issue 1126, so this
+///   comment on `rclc_publisher_publish_streamed`, which returns
+///   `RCLC_RET_PUBLISH_FAILED` instead — corrected under issue 1126, so this
 ///   is now the only place the two ABIs' spellings are contrasted. Naming a
 ///   constant the header does not define would have made that two wrong
 ///   references rather than one.
@@ -667,21 +667,21 @@ pub unsafe extern "C" fn rcl_node_get_namespace(node: *const nros_node_t) -> *co
 /// * `node_name` and `node_namespace` must be valid null-terminated strings
 /// * `buf` must be writable for `buf_len` bytes; `out_len` must be valid or NULL
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_get_fully_qualified_name(
+pub unsafe extern "C" fn rclc_get_fully_qualified_name(
     node_name: *const c_char,
     node_namespace: *const c_char,
     buf: *mut c_char,
     buf_len: usize,
     out_len: *mut usize,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     if node_name.is_null() || node_namespace.is_null() || buf.is_null() || buf_len == 0 {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     let (Ok(name), Ok(ns)) = (
         core::ffi::CStr::from_ptr(node_name).to_str(),
         core::ffi::CStr::from_ptr(node_namespace).to_str(),
     ) else {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     };
     write_fqn(name, ns, buf, buf_len, out_len)
 }
@@ -692,11 +692,11 @@ pub unsafe extern "C" fn nros_get_fully_qualified_name(
 /// cosmetic: rcl can hand back a pointer because it STORES the joined string,
 /// and storing it here would cost up to `MAX_NAME_LEN + MAX_NAMESPACE_LEN`
 /// bytes per node on a target that counts them, to cache something two strings
-/// already hold. Same shape as [`nros_get_fully_qualified_name`], which is the
+/// already hold. Same shape as [`rclc_get_fully_qualified_name`], which is the
 /// other half of this pair.
 ///
 /// # Returns
-/// As [`nros_get_fully_qualified_name`], plus `NROS_RET_NOT_INIT` when the node
+/// As [`rclc_get_fully_qualified_name`], plus `RCL_RET_NOT_INIT` when the node
 /// is not initialised.
 ///
 /// The composition is NOT written here. It is `nros_node::names::
@@ -712,18 +712,18 @@ pub unsafe extern "C" fn nros_get_fully_qualified_name(
 /// * `node` must be a valid pointer to an initialised node
 /// * `buf` must be writable for `buf_len` bytes; `out_len` must be valid or NULL
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_node_get_fully_qualified_name(
-    node: *const nros_node_t,
+pub unsafe extern "C" fn rclc_node_get_fully_qualified_name(
+    node: *const rcl_node_t,
     buf: *mut c_char,
     buf_len: usize,
     out_len: *mut usize,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(node, buf);
     if buf_len == 0 {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     let node_ref = &*node;
-    validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
+    validate_state!(node_ref, rclc_node_state_t::RCLC_NODE_STATE_INITIALIZED);
 
     // `inline_str` and not `CStr::from_ptr`: the name is an inline array with a
     // stored length, and a name that fills it need not be NUL-terminated. This
@@ -732,7 +732,7 @@ pub unsafe extern "C" fn nros_node_get_fully_qualified_name(
     // resolving by hand rather than by deleting one side.
     let name = inline_str(&node_ref.name, node_ref.name_len);
     if name.is_empty() {
-        return NROS_RET_NOT_INIT;
+        return RCL_RET_NOT_INIT;
     }
     let ns = inline_str(&node_ref.namespace, node_ref.namespace_len);
     write_fqn(name, ns, buf, buf_len, out_len)
@@ -749,9 +749,9 @@ unsafe fn write_fqn(
     buf: *mut c_char,
     buf_len: usize,
     out_len: *mut usize,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     let Ok(fqn) = nros_node::names::fully_qualified_name(name, ns) else {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     };
     let bytes = fqn.as_bytes();
     if !out_len.is_null() {
@@ -759,7 +759,7 @@ unsafe fn write_fqn(
     }
     // `buf_len` counts the terminator, so the text must fit in one less.
     if bytes.len() + 1 > buf_len {
-        return NROS_RET_FULL;
+        return RCLC_RET_FULL;
     }
     // `c_char` is `u8` on ARM/aarch64 and `i8` on x86, so `buf as *mut u8` is a
     // no-op on one and a real reinterpret on the other, and
@@ -768,7 +768,7 @@ unsafe fn write_fqn(
     // repo idiom, spelled out at `nros-rmw-zenoh/src/shim/service.rs`.
     ptr::copy_nonoverlapping(bytes.as_ptr(), buf.cast::<u8>(), bytes.len());
     *buf.cast::<u8>().add(bytes.len()) = 0;
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// RFC-0088 D4 / phase-421 W2 — the serialization format the backend behind
@@ -796,15 +796,15 @@ unsafe fn write_fqn(
 /// # Safety
 /// * `node` must be a valid pointer
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_node_get_serialization_format(
-    node: *const nros_node_t,
+pub unsafe extern "C" fn rclc_node_get_serialization_format(
+    node: *const rcl_node_t,
 ) -> *const c_char {
     if node.is_null() {
         return ptr::null();
     }
 
     let _node = &*node;
-    if _node.state != nros_node_state_t::NROS_NODE_STATE_INITIALIZED {
+    if _node.state != rclc_node_state_t::RCLC_NODE_STATE_INITIALIZED {
         return ptr::null();
     }
 
@@ -813,7 +813,7 @@ pub unsafe extern "C" fn nros_node_get_serialization_format(
         // The same resolver every entity-creation path uses, so the format
         // reported here is the format of the session a publisher created on
         // this node would actually be built against — both the multi-session
-        // (`nros_executor_node_init`) and legacy single-session shapes.
+        // (`rclc_executor_node_init`) and legacy single-session shapes.
         match resolve_session_and_domain(_node) {
             Some((session, _domain)) => session.serialization_format_cstr(),
             None => ptr::null(),
@@ -837,21 +837,19 @@ pub unsafe extern "C" fn nros_node_get_serialization_format(
 /// * `node` - Pointer to an initialized node.
 ///
 /// # Returns
-/// * Opaque `nros_logger_t *` (= `&'static nros_log::Logger`), or NULL
+/// * Opaque `rclc_logger_t *` (= `&'static nros_log::Logger`), or NULL
 ///   if `node` is NULL / uninitialised.
 ///
 /// # Safety
 /// * `node` must be a valid pointer.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_node_get_logger(
-    node: *const nros_node_t,
-) -> *const core::ffi::c_void {
+pub unsafe extern "C" fn rclc_node_get_logger(node: *const rcl_node_t) -> *const core::ffi::c_void {
     if node.is_null() {
         return core::ptr::null();
     }
 
     let node = &*node;
-    if node.state != nros_node_state_t::NROS_NODE_STATE_INITIALIZED {
+    if node.state != rclc_node_state_t::RCLC_NODE_STATE_INITIALIZED {
         return core::ptr::null();
     }
 
@@ -881,7 +879,7 @@ pub unsafe extern "C" fn nros_node_get_logger(
 // delegates). Nothing here adds a field, a cache, or a policy.
 // ============================================================================
 
-/// Read the NUL-terminated C string out of one of `nros_node_t`'s inline
+/// Read the NUL-terminated C string out of one of `rcl_node_t`'s inline
 /// buffers as a `&str`, empty on any surprise.
 ///
 /// The three accessors below all need this and the logger accessor above
@@ -898,18 +896,18 @@ fn inline_str(buf: &[u8], len: usize) -> &str {
 
 /// Copy `s` (plus a NUL) into a caller-owned buffer.
 ///
-/// `NROS_RET_FULL` when it does not fit — never a truncated name. A truncated
+/// `RCLC_RET_FULL` when it does not fit — never a truncated name. A truncated
 /// FQN is a name that routes somewhere else, which is the failure mode
 /// `Node::new`'s bounded push already refuses one layer down.
 ///
 /// # Safety
 /// `out` must be writable for `out_size` bytes.
-unsafe fn write_cstr_out(s: &str, out: *mut c_char, out_size: usize) -> nros_ret_t {
+unsafe fn write_cstr_out(s: &str, out: *mut c_char, out_size: usize) -> rcl_ret_t {
     if out.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     if s.len() + 1 > out_size {
-        return NROS_RET_FULL;
+        return RCLC_RET_FULL;
     }
     // As `u8`, not `c_char`: the latter is `i8` on x86_64/aarch64-linux and
     // `u8` elsewhere, so copying `s.as_bytes()` into it compiles on only one of
@@ -917,13 +915,13 @@ unsafe fn write_cstr_out(s: &str, out: *mut c_char, out_size: usize) -> nros_ret
     let dst = unsafe { core::slice::from_raw_parts_mut(out.cast::<u8>(), s.len() + 1) };
     dst[..s.len()].copy_from_slice(s.as_bytes());
     dst[s.len()] = 0;
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// Is this node handle usable?
 ///
-/// rcl's `rcl_node_is_valid`. We already had `nros_node_state_t` and
-/// `nros_support_is_valid` for the support object; the node had no predicate
+/// rcl's `rcl_node_is_valid`. We already had `rclc_node_state_t` and
+/// `rclc_support_is_valid` for the support object; the node had no predicate
 /// that read its own state, which is the whole of gap `c:node_is_valid`.
 ///
 /// **Upstream names exactly three invalidity conditions**, and they are what
@@ -946,39 +944,39 @@ unsafe fn write_cstr_out(s: &str, out: *mut c_char, out_size: usize) -> nros_ret
 ///
 /// The context is reached by a different route per node SHAPE, and NEITHER
 /// route is skipped now (issue 1386): a legacy (`rclc_node_init_default`) node
-/// records its support directly, while `nros_executor_node_init` leaves
+/// records its support directly, while `rclc_executor_node_init` leaves
 /// `support` NULL on purpose (the multi-Node paths key off `node_id` +
 /// executor, phase-156 sub-bug D) and reaches the same support through the
 /// executor — `crate::executor::executor_context_is_valid`, which consults
-/// [`crate::support::nros_support_is_valid`] rather than re-deriving it. An
+/// [`crate::support::rclc_support_is_valid`] rather than re-deriving it. An
 /// executor-bound node had NO context check at all before: the arm that stood
 /// there compared the slot's current generation with itself.
 ///
 /// **What this deliberately does NOT claim.** C has no move semantics, so
-/// `nros_node_t copy = original;` is legal and silent, and after
+/// `rcl_node_t copy = original;` is legal and silent, and after
 /// `rcl_node_fini(&original)` the copy still reads `INITIALIZED` over a live
 /// context. This answers `true` for it — measured, issue 1386 — and so does
 /// upstream for the analogous `rcl_node_t` copy, because a copy carries no
 /// evidence that its original was finalised. The phase-379 W4 generation
-/// (`nros_node_ref_t`) is what catches that class, and it can only catch it
+/// (`rclc_node_ref_t`) is what catches that class, and it can only catch it
 /// where a reference was STORED before the fini: an entity's
 /// `publisher.node` / `subscription.node` fails its own `_fini` with
-/// `NROS_RET_STALE_NODE`. A reference minted from the node inside this call is
+/// `RCLC_RET_STALE_NODE`. A reference minted from the node inside this call is
 /// the current generation by construction, so comparing it with the current
 /// generation is constant true — which is what it was.
 ///
 /// # Safety
-/// * `node` must be NULL or point to a valid `nros_node_t`.
+/// * `node` must be NULL or point to a valid `rcl_node_t`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rcl_node_is_valid(node: *const nros_node_t) -> bool {
+pub unsafe extern "C" fn rcl_node_is_valid(node: *const rcl_node_t) -> bool {
     if node.is_null() {
         return false;
     }
     let node_ref = &*node;
-    if node_ref.state != nros_node_state_t::NROS_NODE_STATE_INITIALIZED {
+    if node_ref.state != rclc_node_state_t::RCLC_NODE_STATE_INITIALIZED {
         return false;
     }
-    if !node_ref.support.is_null() && !crate::support::nros_support_is_valid(node_ref.support) {
+    if !node_ref.support.is_null() && !crate::support::rclc_support_is_valid(node_ref.support) {
         return false;
     }
     // NOT `is_multi_session()`: that also requires `node_id != 0`, and whether
@@ -997,7 +995,7 @@ pub unsafe extern "C" fn rcl_node_is_valid(node: *const nros_node_t) -> bool {
 ///
 /// rcl's `rcl_node_get_domain_id(node, size_t *domain_id)`. Gap
 /// `c:node_get_domain_id` records why it was missing: the domain is an INPUT
-/// to `nros_support_init` and could not be read back, while on a device the
+/// to `rclc_support_init` and could not be read back, while on a device the
 /// value that actually won came from the boot ladder.
 ///
 /// So this forwards to `resolve_session_and_domain` — the one place the
@@ -1016,35 +1014,35 @@ pub unsafe extern "C" fn rcl_node_is_valid(node: *const nros_node_t) -> bool {
 /// on this path reads it. What the executor lookup can fail on is a slot that
 /// names no `NodeRecord`.)
 ///
-/// Returns `NROS_RET_UNSUPPORTED` in a build with no RMW (`rmw-cffi` off):
+/// Returns `RCL_RET_UNSUPPORTED` in a build with no RMW (`rmw-cffi` off):
 /// there is no session, so there is no resolved domain to read.
 ///
 /// # Safety
-/// * `node` must be NULL or point to a valid `nros_node_t`.
+/// * `node` must be NULL or point to a valid `rcl_node_t`.
 /// * `domain_id` must be NULL or writable.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_node_get_domain_id(
-    node: *const nros_node_t,
+pub unsafe extern "C" fn rcl_node_get_domain_id(
+    node: *const rcl_node_t,
     domain_id: *mut u32,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(node, domain_id);
     let node_ref = &*node;
-    validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
+    validate_state!(node_ref, rclc_node_state_t::RCLC_NODE_STATE_INITIALIZED);
 
     #[cfg(feature = "rmw-cffi")]
     {
         match resolve_session_and_domain(node_ref) {
             Some((_session, resolved)) => {
                 *domain_id = resolved;
-                NROS_RET_OK
+                RCL_RET_OK
             }
-            None => NROS_RET_NOT_INIT,
+            None => RCL_RET_NOT_INIT,
         }
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = node_ref;
-        NROS_RET_UNSUPPORTED
+        RCL_RET_UNSUPPORTED
     }
 }
 
@@ -1067,76 +1065,76 @@ pub unsafe extern "C" fn nros_node_get_domain_id(
 /// rules; `false` also applies them.
 ///
 /// **Remaps live on the executor, so `only_expand == false` needs an
-/// executor-bound node** (`nros_executor_node_init`). On the legacy
-/// `rclc_node_init_default` path this returns `NROS_RET_NOT_INIT` rather than
+/// executor-bound node** (`rclc_executor_node_init`). On the legacy
+/// `rclc_node_init_default` path this returns `RCL_RET_NOT_INIT` rather than
 /// quietly expanding without the rules — silently dropping a routing rule is
 /// the failure this whole campaign exists to stop, and the caller who wants
 /// expansion alone can ask for it by passing `true`.
 ///
 /// **Divergences from rcl, both forced:** no `rcl_allocator_t` (we have no
-/// allocator, so the caller owns the buffer and `NROS_RET_FULL` reports a
+/// allocator, so the caller owns the buffer and `RCLC_RET_FULL` reports a
 /// short one), and no `is_service` (it selects between rcl's topic- and
 /// service-name VALIDATORS, which we do not ship; taking the argument and
 /// ignoring it would be the inert-parameter defect RFC-0089 §"The hazard"
 /// names).
 ///
 /// # Safety
-/// * `node` must be NULL or point to a valid `nros_node_t`.
+/// * `node` must be NULL or point to a valid `rcl_node_t`.
 /// * `input_name` must be NULL or a valid NUL-terminated C string.
 /// * `output_name` must be NULL or writable for `output_size` bytes.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_node_resolve_name(
-    node: *const nros_node_t,
+pub unsafe extern "C" fn rcl_node_resolve_name(
+    node: *const rcl_node_t,
     input_name: *const c_char,
     only_expand: bool,
     output_name: *mut c_char,
     output_size: usize,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(node, input_name, output_name);
     let node_ref = &*node;
-    validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
+    validate_state!(node_ref, rclc_node_state_t::RCLC_NODE_STATE_INITIALIZED);
 
     let Ok(source) = core::ffi::CStr::from_ptr(input_name).to_str() else {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     };
     if source.is_empty() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
 
     let name = inline_str(&node_ref.name, node_ref.name_len);
     if name.is_empty() {
-        return NROS_RET_NOT_INIT;
+        return RCL_RET_NOT_INIT;
     }
     let namespace = inline_str(&node_ref.namespace, node_ref.namespace_len);
 
     if only_expand {
         return match nros_node::names::expand_name(source, name, namespace) {
             Ok(expanded) => write_cstr_out(expanded.as_str(), output_name, output_size),
-            Err(()) => NROS_RET_INVALID_ARGUMENT,
+            Err(()) => RCL_RET_INVALID_ARGUMENT,
         };
     }
 
     // Remap rules live in the executor's table. No executor reachable means
     // the rules are unreadable, NOT absent — say so.
     if !node_ref.is_executor_bound() {
-        return NROS_RET_NOT_INIT;
+        return RCL_RET_NOT_INIT;
     }
     // issue 1386 — this arm used to be `node_ref_is_live(node_ref_of(node))`,
     // which minted a reference from the node and compared it against the same
-    // counter: constant true, so the `NROS_RET_STALE_NODE` it guarded could
+    // counter: constant true, so the `RCLC_RET_STALE_NODE` it guarded could
     // never be returned. The reachable failure is the one the NEXT line makes
     // load-bearing: `get_executor` reinterprets `_opaque` as a live executor,
     // and `rclc_executor_fini` / `rclc_support_fini` leave it zeroed.
-    // `NROS_RET_NOT_INIT` for the same reason the arm above gives it — the
+    // `RCL_RET_NOT_INIT` for the same reason the arm above gives it — the
     // remap table is UNREACHABLE from this node, not absent.
     if !crate::executor::executor_context_is_valid(node_ref.executor) {
-        return NROS_RET_NOT_INIT;
+        return RCL_RET_NOT_INIT;
     }
-    let exec_mut = &mut *(node_ref.executor as *mut crate::executor::nros_executor_t);
+    let exec_mut = &mut *(node_ref.executor as *mut crate::executor::rclc_executor_t);
     let rust_exec = crate::executor::get_executor(&mut exec_mut._opaque);
     match rust_exec.resolve_entity_name_for(name, namespace, source) {
         Ok(resolved) => write_cstr_out(resolved.as_str(), output_name, output_size),
-        Err(()) => NROS_RET_INVALID_ARGUMENT,
+        Err(()) => RCL_RET_INVALID_ARGUMENT,
     }
 }
 
@@ -1152,7 +1150,7 @@ pub unsafe extern "C" fn nros_node_resolve_name(
 /// namespaced node whose publisher and subscription, given the SAME string,
 /// landed on DIFFERENT keys and never connected, and a launch
 /// `<remap from= to=/>` that moved one and not the other — both returning
-/// `NROS_RET_OK`. `TopicInfo::with_namespace` does not close it: the zenoh
+/// `RCL_RET_OK`. `TopicInfo::with_namespace` does not close it: the zenoh
 /// keyexpr is built from `TopicInfo::name` alone (`keyexpr.rs::to_key`), so a
 /// namespace attached beside an unexpanded name reaches nothing.
 ///
@@ -1164,25 +1162,25 @@ pub unsafe extern "C" fn nros_node_resolve_name(
 ///
 /// The two arms are a property of the NODE, not a choice:
 ///
-/// * executor-bound node (`nros_executor_node_init`) → expansion + remaps.
+/// * executor-bound node (`rclc_executor_node_init`) → expansion + remaps.
 ///   Identity comes from the executor's `NodeRecord` when it has one, because
 ///   that is the identity the remap table is KEYED on; the caller's struct is
 ///   the fallback, not the preference.
 /// * legacy node (`rclc_node_init_default` / `nros_node_init`) → expansion
 ///   only. There is no executor, and `declare_remap` is an executor call, so
-///   there are no rules to drop — unlike `nros_node_resolve_name`, which is
+///   there are no rules to drop — unlike `rcl_node_resolve_name`, which is
 ///   ASKED for the rules and must refuse when it cannot read them.
 ///
 /// Returns `None` when the source name cannot be expanded (empty, a `~` with
 /// no node name, or a result past `MAX_RESOLVED_NAME_LEN`). Callers surface
-/// that as `NROS_RET_INVALID_ARGUMENT`; a name we cannot resolve must never
+/// that as `RCL_RET_INVALID_ARGUMENT`; a name we cannot resolve must never
 /// fall back to the raw spelling, which is the bug this closes.
 ///
 /// # Safety
-/// `node` must be an initialised `nros_node_t`, and when it is executor-bound
-/// its `executor` pointer must reference a live `nros_executor_t`.
+/// `node` must be an initialised `rcl_node_t`, and when it is executor-bound
+/// its `executor` pointer must reference a live `rclc_executor_t`.
 pub(crate) unsafe fn resolve_entity_name_on_node(
-    node: &nros_node_t,
+    node: &rcl_node_t,
     source: &str,
 ) -> Option<nros_node::names::ResolvedName> {
     let struct_name = inline_str(&node.name, node.name_len);
@@ -1192,7 +1190,7 @@ pub(crate) unsafe fn resolve_entity_name_on_node(
         return nros_node::names::expand_name(source, struct_name, struct_ns).ok();
     }
 
-    let exec_mut = &mut *(node.executor as *mut crate::executor::nros_executor_t);
+    let exec_mut = &mut *(node.executor as *mut crate::executor::rclc_executor_t);
     let rust_exec = crate::executor::get_executor(&mut exec_mut._opaque);
     let id = nros_node::executor::node_record::NodeId::from_raw(node.node_id);
     // Clone out of the record so the immutable borrow ends before the resolve
@@ -1224,7 +1222,7 @@ mod verification {
         let ns = b"/\0";
 
         // NULL node → INVALID_ARGUMENT
-        let mut support = crate::support::nros_support_get_zero_initialized();
+        let mut support = crate::support::rclc_support_get_zero_initialized();
         assert_eq!(
             unsafe {
                 rclc_node_init_default(
@@ -1234,7 +1232,7 @@ mod verification {
                     &support,
                 )
             },
-            NROS_RET_INVALID_ARGUMENT,
+            RCL_RET_INVALID_ARGUMENT,
         );
 
         // NULL support → INVALID_ARGUMENT
@@ -1248,7 +1246,7 @@ mod verification {
                     core::ptr::null(),
                 )
             },
-            NROS_RET_INVALID_ARGUMENT,
+            RCL_RET_INVALID_ARGUMENT,
         );
 
         // NULL name → INVALID_ARGUMENT
@@ -1261,7 +1259,7 @@ mod verification {
                     &support,
                 )
             },
-            NROS_RET_INVALID_ARGUMENT,
+            RCL_RET_INVALID_ARGUMENT,
         );
 
         // NULL namespace → INVALID_ARGUMENT
@@ -1274,7 +1272,7 @@ mod verification {
                     &support,
                 )
             },
-            NROS_RET_INVALID_ARGUMENT,
+            RCL_RET_INVALID_ARGUMENT,
         );
     }
 
@@ -1282,12 +1280,12 @@ mod verification {
     #[kani::unwind(5)]
     fn node_zero_initialized_state() {
         let node = rcl_get_zero_initialized_node();
-        assert_eq!(node.state, nros_node_state_t::NROS_NODE_STATE_UNINITIALIZED);
+        assert_eq!(node.state, rclc_node_state_t::RCLC_NODE_STATE_UNINITIALIZED);
         assert!(node.support.is_null());
     }
 }
 
-impl nros_node_t {
+impl rcl_node_t {
     /// Get the node name as a string slice
     pub(crate) fn get_name_str(&self) -> &str {
         unsafe { core::str::from_utf8_unchecked(&self.name[..self.name_len]) }
@@ -1299,7 +1297,7 @@ impl nros_node_t {
     }
 
     /// Get the support context
-    pub(crate) unsafe fn get_support(&self) -> Option<&nros_support_t> {
+    pub(crate) unsafe fn get_support(&self) -> Option<&rclc_support_t> {
         if self.support.is_null() {
             None
         } else {
@@ -1313,18 +1311,18 @@ impl nros_node_t {
     /// intentional for C FFI where the node stores a const pointer but the
     /// support may need to be mutated.
     #[allow(clippy::mut_from_ref)]
-    pub(crate) unsafe fn get_support_mut(&self) -> Option<&mut nros_support_t> {
+    pub(crate) unsafe fn get_support_mut(&self) -> Option<&mut rclc_support_t> {
         if self.support.is_null() {
             None
         } else {
-            Some(&mut *(self.support as *mut nros_support_t))
+            Some(&mut *(self.support as *mut rclc_support_t))
         }
     }
 
     /// Does this node REACH an executor?
     ///
-    /// True on a node bound via `nros_executor_node_init`, false on one
-    /// initialised via `rclc_node_init_default` / `nros_node_init_ex` (the
+    /// True on a node bound via `rclc_executor_node_init`, false on one
+    /// initialised via `rclc_node_init_default` / `rclc_node_init_ex` (the
     /// legacy support-based path, which reaches no executor at all).
     ///
     /// **This was `is_multi_session`, and it also required `node_id != 0`**
@@ -1337,11 +1335,11 @@ impl nros_node_t {
     /// the second question is the one its call sites ask: a node's right to
     /// read the remap table, or to reach its session, does not depend on how
     /// many siblings it has. The name went with the body, because nothing
-    /// about a second node makes a session "multi" — `nros_executor_node_init`
+    /// about a second node makes a session "multi" — `rclc_executor_node_init`
     /// leaves `support` NULL and routes through the executor whether there is
     /// one node or eight.
     ///
-    /// ONE spelling, on purpose. `nros_node_create_guard_condition` and
+    /// ONE spelling, on purpose. `rclc_node_create_guard_condition` and
     /// `parameter.rs`'s `node_key` had each written their own
     /// `executor.is_null()` test beside this one, which is how two of the three
     /// were right while this one was wrong.
@@ -1353,7 +1351,7 @@ impl nros_node_t {
 
 /// Phase 156 Sub-bug D — resolve the per-Node session + effective
 /// domain id for entity-init paths. Branches on
-/// `nros_node_t::is_executor_bound`:
+/// `rcl_node_t::is_executor_bound`:
 ///   * Executor-bound: dereferences `node.executor`, walks the
 ///     NodeRecord table via [`Executor::node_session_mut`], pulls the
 ///     domain id from `node.domain_id_override` (or the executor's
@@ -1361,23 +1359,23 @@ impl nros_node_t {
 ///   * Legacy: falls back to `node.get_support_mut` +
 ///     `support.get_session_mut`, mirrors the pre-Phase-156 dispatch.
 ///
-/// The branch is the severe half of issue 1384. `nros_executor_node_init`
+/// The branch is the severe half of issue 1384. `rclc_executor_node_init`
 /// leaves `support` NULL **on purpose**, so sending an executor-bound node down
 /// the legacy arm reads a NULL support, answers `None`, and every C entity
 /// created EAGERLY rather than at registration — `rclc_publisher_init_default`
 /// and its QoS/options siblings, the polling subscription, `nros_service_init`,
-/// `nros_client_init` — failed `NROS_RET_NOT_INIT` before reaching the backend.
+/// `nros_client_init` — failed `RCL_RET_NOT_INIT` before reaching the backend.
 /// That is what the old `node_id != 0` term did to every single-node C image.
 ///
 /// Returns `None` when any lookup fails so callers can map to
-/// `NROS_RET_NOT_INIT`.
+/// `RCL_RET_NOT_INIT`.
 #[cfg(feature = "rmw-cffi")]
 #[allow(clippy::mut_from_ref)]
 pub(crate) unsafe fn resolve_session_and_domain(
-    node: &nros_node_t,
+    node: &rcl_node_t,
 ) -> Option<(&mut nros::internals::RmwSession, u32)> {
     if node.is_executor_bound() {
-        let exec_mut = &mut *(node.executor as *mut crate::executor::nros_executor_t);
+        let exec_mut = &mut *(node.executor as *mut crate::executor::rclc_executor_t);
         let support_ptr = exec_mut.support;
         let rust_exec = crate::executor::get_executor(&mut exec_mut._opaque);
         let node_id = nros_node::executor::node_record::NodeId::from_raw(node.node_id);
@@ -1400,7 +1398,7 @@ pub(crate) unsafe fn resolve_session_and_domain(
         Some((session, domain_id))
     } else {
         let support_mut = node.get_support_mut()?;
-        if support_mut.state != crate::support::nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED
+        if support_mut.state != crate::support::rclc_support_state_t::RCLC_SUPPORT_STATE_INITIALIZED
         {
             return None;
         }
@@ -1426,11 +1424,11 @@ mod fqn_tests {
     extern crate alloc;
     use alloc::{string::String, vec};
 
-    fn join(name: &[u8], ns: &[u8], cap: usize) -> (nros_ret_t, String, usize) {
+    fn join(name: &[u8], ns: &[u8], cap: usize) -> (rcl_ret_t, String, usize) {
         let mut buf = vec![0u8; cap.max(1)];
         let mut out_len = 0usize;
         let ret = unsafe {
-            nros_get_fully_qualified_name(
+            rclc_get_fully_qualified_name(
                 name.as_ptr() as *const c_char,
                 ns.as_ptr() as *const c_char,
                 buf.as_mut_ptr() as *mut c_char,
@@ -1455,7 +1453,7 @@ mod fqn_tests {
             (&b"\0"[..], "/talker"),
         ] {
             let (ret, text, len) = join(b"talker\0", ns, 64);
-            assert_eq!(ret, NROS_RET_OK, "ns={ns:?}");
+            assert_eq!(ret, RCL_RET_OK, "ns={ns:?}");
             assert_eq!(text, want, "ns={ns:?}");
             assert_eq!(len, want.len(), "out_len must exclude the terminator");
         }
@@ -1466,15 +1464,15 @@ mod fqn_tests {
     #[test]
     fn a_short_buffer_reports_the_length_it_wanted() {
         let (ret, _, len) = join(b"talker\0", b"/robot\0", 4);
-        assert_eq!(ret, NROS_RET_FULL);
+        assert_eq!(ret, RCLC_RET_FULL);
         assert_eq!(len, "/robot/talker".len());
         // And the boundary: exactly the text plus its terminator fits.
         let (ret, text, _) = join(b"talker\0", b"/robot\0", "/robot/talker".len() + 1);
-        assert_eq!(ret, NROS_RET_OK);
+        assert_eq!(ret, RCL_RET_OK);
         assert_eq!(text, "/robot/talker");
         let (ret, _, _) = join(b"talker\0", b"/robot\0", "/robot/talker".len());
         assert_eq!(
-            ret, NROS_RET_FULL,
+            ret, RCLC_RET_FULL,
             "no room for the terminator is still too small"
         );
     }
@@ -1484,7 +1482,7 @@ mod fqn_tests {
         let mut buf = [0u8; 32];
         let mut n = 0usize;
         let ret = unsafe {
-            nros_get_fully_qualified_name(
+            rclc_get_fully_qualified_name(
                 core::ptr::null(),
                 c"/".as_ptr(),
                 buf.as_mut_ptr() as *mut c_char,
@@ -1492,7 +1490,7 @@ mod fqn_tests {
                 &mut n,
             )
         };
-        assert_eq!(ret, NROS_RET_INVALID_ARGUMENT);
+        assert_eq!(ret, RCL_RET_INVALID_ARGUMENT);
     }
 }
 
@@ -1578,7 +1576,7 @@ mod node_ref_tests {
     /// resolving after it.
     ///
     /// This is the whole behavioural change. Before W4 the entity held a
-    /// `*const nros_node_t` that nothing dereferenced, so "finalise the node,
+    /// `*const rcl_node_t` that nothing dereferenced, so "finalise the node,
     /// then finalise its publisher" succeeded silently and the teardown-order
     /// obligation the C API places on the caller was unenforceable.
     #[test]
@@ -1586,7 +1584,7 @@ mod node_ref_tests {
         // Slot 3 rather than 0: the primary node is the legacy path and the
         // interesting case is a bound one.
         let id = 3u8;
-        let before = nros_node_ref_t {
+        let before = rclc_node_ref_t {
             node_id: id,
             generation: current_generation(id),
         };
@@ -1598,7 +1596,7 @@ mod node_ref_tests {
             "a reference minted before the slot was retired must stop resolving"
         );
 
-        let after = nros_node_ref_t {
+        let after = rclc_node_ref_t {
             node_id: id,
             generation: current_generation(id),
         };
@@ -1615,13 +1613,13 @@ mod node_ref_tests {
     /// `calloc`, a `static`, and `memset` all produce.
     #[test]
     fn a_zeroed_reference_is_never_live() {
-        let zeroed = nros_node_ref_t {
+        let zeroed = rclc_node_ref_t {
             node_id: 0,
             generation: 0,
         };
         assert!(!zeroed.is_bound());
         assert!(!node_ref_is_live(zeroed));
-        assert!(!node_ref_is_live(nros_node_ref_t::none()));
+        assert!(!node_ref_is_live(rclc_node_ref_t::none()));
     }
 
     /// The wrap never lands on 0, because 0 means "unbound".
@@ -1650,27 +1648,27 @@ mod accessor_tests {
     /// `rcl_guard_condition_fini`; this is its sibling). `rcl/src/rcl/node.c` @
     /// humble: `if (!node->impl) { // Repeat calls to fini or calling fini on a
     /// zero initialized node is ok. return RCL_RET_OK; }`. Ours returned
-    /// `NROS_RET_NOT_INIT`.
+    /// `RCL_RET_NOT_INIT`.
     #[test]
     fn node_fini_is_idempotent() {
         unsafe {
             let mut node = rcl_get_zero_initialized_node();
             assert_eq!(
                 rcl_node_fini(&mut node),
-                NROS_RET_OK,
+                RCL_RET_OK,
                 "fini on a zero-initialised node is not an error"
             );
 
-            node.state = nros_node_state_t::NROS_NODE_STATE_SHUTDOWN;
+            node.state = rclc_node_state_t::RCLC_NODE_STATE_SHUTDOWN;
             assert_eq!(
                 rcl_node_fini(&mut node),
-                NROS_RET_OK,
+                RCL_RET_OK,
                 "a repeated fini is not an error"
             );
 
             assert_eq!(
                 rcl_node_fini(ptr::null_mut()),
-                NROS_RET_INVALID_ARGUMENT,
+                RCL_RET_INVALID_ARGUMENT,
                 "a NULL pointer is still an argument error, as in rcl"
             );
         }
@@ -1678,13 +1676,13 @@ mod accessor_tests {
 
     /// A node on the legacy (`rclc_node_init_default`) path: initialised, not bound
     /// to an executor.
-    fn unbound_node(name: &str, namespace: &str) -> nros_node_t {
-        let mut node = nros_node_t::default();
+    fn unbound_node(name: &str, namespace: &str) -> rcl_node_t {
+        let mut node = rcl_node_t::default();
         node.name[..name.len()].copy_from_slice(name.as_bytes());
         node.name_len = name.len();
         node.namespace[..namespace.len()].copy_from_slice(namespace.as_bytes());
         node.namespace_len = namespace.len();
-        node.state = nros_node_state_t::NROS_NODE_STATE_INITIALIZED;
+        node.state = rclc_node_state_t::RCLC_NODE_STATE_INITIALIZED;
         node
     }
 
@@ -1698,14 +1696,14 @@ mod accessor_tests {
         let mut node = unbound_node("talker", "/");
         assert!(unsafe { rcl_node_is_valid(&node) });
 
-        assert_eq!(unsafe { rcl_node_fini(&mut node) }, NROS_RET_OK);
+        assert_eq!(unsafe { rcl_node_fini(&mut node) }, RCL_RET_OK);
         assert!(
             !unsafe { rcl_node_is_valid(&node) },
             "a finalised node is not usable"
         );
 
         assert!(!unsafe { rcl_node_is_valid(core::ptr::null()) });
-        assert!(!unsafe { rcl_node_is_valid(&nros_node_t::default()) });
+        assert!(!unsafe { rcl_node_is_valid(&rcl_node_t::default()) });
     }
 
     /// phase-417 stage 3, ledger row `c:node_is_valid` — what separates
@@ -1718,8 +1716,8 @@ mod accessor_tests {
     /// publish dereferences the zeroed `_opaque`.
     #[test]
     fn a_node_over_a_finalised_support_is_not_valid() {
-        let mut support = crate::support::nros_support_get_zero_initialized();
-        support.state = nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED;
+        let mut support = crate::support::rclc_support_get_zero_initialized();
+        support.state = rclc_support_state_t::RCLC_SUPPORT_STATE_INITIALIZED;
 
         let mut node = unbound_node("talker", "/");
         node.support = &support;
@@ -1729,10 +1727,10 @@ mod accessor_tests {
         );
 
         // What `rclc_support_fini` leaves behind, without needing an RMW.
-        support.state = nros_support_state_t::NROS_SUPPORT_STATE_SHUTDOWN;
+        support.state = rclc_support_state_t::RCLC_SUPPORT_STATE_SHUTDOWN;
         support._opaque = [0u64; crate::constants::SESSION_OPAQUE_U64S];
         assert!(
-            !unsafe { crate::support::nros_support_is_valid(&support) },
+            !unsafe { crate::support::rclc_support_is_valid(&support) },
             "precondition: the support predicate must already know"
         );
         assert!(
@@ -1741,38 +1739,38 @@ mod accessor_tests {
         );
 
         // And an uninitialised context is no context either.
-        let never_started = crate::support::nros_support_get_zero_initialized();
+        let never_started = crate::support::rclc_support_get_zero_initialized();
         node.support = &never_started;
         assert!(!unsafe { rcl_node_is_valid(&node) });
     }
 
     /// A support context that has been opened, with no RMW behind it. Enough
     /// for every predicate that reads STATE rather than `_opaque`.
-    fn live_support() -> crate::support::nros_support_t {
-        let mut support = crate::support::nros_support_get_zero_initialized();
-        support.state = nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED;
+    fn live_support() -> crate::support::rclc_support_t {
+        let mut support = crate::support::rclc_support_get_zero_initialized();
+        support.state = rclc_support_state_t::RCLC_SUPPORT_STATE_INITIALIZED;
         support
     }
 
-    /// An executor over that support, in the state `nros_executor_init` leaves.
+    /// An executor over that support, in the state `rclc_executor_init` leaves.
     /// Boxed because the struct carries the inline executor storage.
     fn live_executor(
-        support: *const crate::support::nros_support_t,
-    ) -> std::boxed::Box<crate::executor::nros_executor_t> {
+        support: *const crate::support::rclc_support_t,
+    ) -> std::boxed::Box<crate::executor::rclc_executor_t> {
         let mut executor =
             std::boxed::Box::new(crate::executor::rclc_executor_get_zero_initialized_executor());
-        executor.state = crate::executor::nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED;
+        executor.state = crate::executor::rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED;
         executor.support = support;
         executor
     }
 
-    /// The shape `nros_executor_node_init` builds: `support` NULL on purpose,
+    /// The shape `rclc_executor_node_init` builds: `support` NULL on purpose,
     /// the context reachable only through the executor.
     fn bound_node(
         name: &str,
         node_id: u8,
-        executor: *const crate::executor::nros_executor_t,
-    ) -> nros_node_t {
+        executor: *const crate::executor::rclc_executor_t,
+    ) -> rcl_node_t {
         let mut node = unbound_node(name, "/");
         node.support = ptr::null();
         node.node_id = node_id;
@@ -1805,7 +1803,7 @@ mod accessor_tests {
 
         // What `rclc_support_fini` leaves behind: the session is dropped and
         // `_opaque` zeroed, while node and executor are untouched.
-        support.state = nros_support_state_t::NROS_SUPPORT_STATE_SHUTDOWN;
+        support.state = rclc_support_state_t::RCLC_SUPPORT_STATE_SHUTDOWN;
         support._opaque = [0u64; crate::constants::SESSION_OPAQUE_U64S];
         assert!(
             !unsafe { rcl_node_is_valid(&node) },
@@ -1813,7 +1811,7 @@ mod accessor_tests {
              \"rcl_shutdown has been called since the node has been initialized\""
         );
 
-        support.state = nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED;
+        support.state = rclc_support_state_t::RCLC_SUPPORT_STATE_INITIALIZED;
         assert!(
             unsafe { rcl_node_is_valid(&node) },
             "precondition: nothing else is holding the answer down"
@@ -1821,7 +1819,7 @@ mod accessor_tests {
 
         // What `rclc_executor_fini` leaves behind: `_opaque` zeroed, state
         // SHUTDOWN, `support` nulled — the support object itself is still live.
-        executor.state = crate::executor::nros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN;
+        executor.state = crate::executor::rclc_executor_state_t::RCLC_EXECUTOR_STATE_SHUTDOWN;
         executor.support = ptr::null();
         assert!(
             !unsafe { rcl_node_is_valid(&node) },
@@ -1832,7 +1830,7 @@ mod accessor_tests {
         // A SPINNING executor is a live one: a node asked about from inside a
         // callback must not read invalid.
         executor.support = &support;
-        executor.state = crate::executor::nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING;
+        executor.state = crate::executor::rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING;
         assert!(
             unsafe { rcl_node_is_valid(&node) },
             "SPINNING is a usable executor, not a finalised one"
@@ -1853,9 +1851,9 @@ mod accessor_tests {
 
         assert!(unsafe { rcl_node_is_valid(&node) });
 
-        support.state = nros_support_state_t::NROS_SUPPORT_STATE_SHUTDOWN;
+        support.state = rclc_support_state_t::RCLC_SUPPORT_STATE_SHUTDOWN;
         assert!(
-            !unsafe { crate::support::nros_support_is_valid(&support) },
+            !unsafe { crate::support::rclc_support_is_valid(&support) },
             "precondition: the support predicate must already know"
         );
         assert!(
@@ -1867,7 +1865,7 @@ mod accessor_tests {
     /// issue 1386's own probe, reproduced — and the boundary of what this
     /// predicate claims.
     ///
-    /// C has no move semantics: `nros_node_t copy = original;` is legal and
+    /// C has no move semantics: `rcl_node_t copy = original;` is legal and
     /// silent, and after `rcl_node_fini(&original)` the copy still reads
     /// `INITIALIZED` over a live context. `rcl_node_is_valid(&copy)` answers
     /// TRUE — it did before this fix and it does after, because a copy carries
@@ -1894,9 +1892,9 @@ mod accessor_tests {
         assert!(unsafe { rcl_node_is_valid(&node) });
 
         // What a C caller writes, and what nothing can stop them writing.
-        let copy: nros_node_t = unsafe { ptr::read(&node) };
+        let copy: rcl_node_t = unsafe { ptr::read(&node) };
 
-        assert_eq!(unsafe { rcl_node_fini(&mut node) }, NROS_RET_OK);
+        assert_eq!(unsafe { rcl_node_fini(&mut node) }, RCL_RET_OK);
 
         assert!(
             !unsafe { rcl_node_is_valid(&node) },
@@ -1933,14 +1931,14 @@ mod accessor_tests {
             let mut out_len = usize::MAX;
             assert_eq!(
                 unsafe {
-                    nros_node_get_fully_qualified_name(
+                    rclc_node_get_fully_qualified_name(
                         &node,
                         buf.as_mut_ptr() as *mut c_char,
                         buf.len(),
                         &mut out_len,
                     )
                 },
-                NROS_RET_OK,
+                RCL_RET_OK,
                 "namespace {ns:?}"
             );
             assert_eq!(read_out(&buf), expected, "namespace {ns:?}");
@@ -1962,14 +1960,14 @@ mod accessor_tests {
         let mut out_len = usize::MAX;
         assert_eq!(
             unsafe {
-                nros_node_get_fully_qualified_name(
+                rclc_node_get_fully_qualified_name(
                     &node,
                     exact.as_mut_ptr() as *mut c_char,
                     exact.len(),
                     &mut out_len,
                 )
             },
-            NROS_RET_OK
+            RCL_RET_OK
         );
         assert_eq!(read_out(&exact), "/sensing/talker");
         assert_eq!(out_len, 15);
@@ -1978,26 +1976,26 @@ mod accessor_tests {
         let mut short_len = usize::MAX;
         assert_eq!(
             unsafe {
-                nros_node_get_fully_qualified_name(
+                rclc_node_get_fully_qualified_name(
                     &node,
                     short.as_mut_ptr() as *mut c_char,
                     short.len(),
                     &mut short_len,
                 )
             },
-            NROS_RET_FULL
+            RCLC_RET_FULL
         );
         assert!(
             short.iter().all(|&b| b == 0xAA),
             "a refused write must leave the caller's buffer untouched"
         );
         // The FULL path still reports the size, which is the whole point of
-        // `out_len`: a caller that gets NROS_RET_FULL learns how big a buffer to
+        // `out_len`: a caller that gets RCLC_RET_FULL learns how big a buffer to
         // bring back. Returning FULL and leaving `out_len` untouched would make
         // the error unactionable, and nothing else asserts this.
         assert_eq!(
             short_len, 15,
-            "NROS_RET_FULL must still report the length the caller needs"
+            "RCLC_RET_FULL must still report the length the caller needs"
         );
 
         // `out_len` is documented optional and the implementation branches on
@@ -2007,14 +2005,14 @@ mod accessor_tests {
         let mut ok_buf = [0u8; 64];
         assert_eq!(
             unsafe {
-                nros_node_get_fully_qualified_name(
+                rclc_node_get_fully_qualified_name(
                     &node,
                     ok_buf.as_mut_ptr() as *mut c_char,
                     ok_buf.len(),
                     core::ptr::null_mut(),
                 )
             },
-            NROS_RET_OK,
+            RCL_RET_OK,
             "a NULL out_len is legal and must not be written through"
         );
         assert_eq!(read_out(&ok_buf), "/sensing/talker");
@@ -2034,7 +2032,7 @@ mod accessor_tests {
             let input_c = alloc_cstr(input);
             assert_eq!(
                 unsafe {
-                    nros_node_resolve_name(
+                    rcl_node_resolve_name(
                         &node,
                         input_c.as_ptr() as *const c_char,
                         true,
@@ -2042,7 +2040,7 @@ mod accessor_tests {
                         buf.len(),
                     )
                 },
-                NROS_RET_OK,
+                RCL_RET_OK,
                 "input {input:?}"
             );
             assert_eq!(read_out(&buf), expected, "input {input:?}");
@@ -2060,7 +2058,7 @@ mod accessor_tests {
         let mut buf = [0xAAu8; 64];
         assert_eq!(
             unsafe {
-                nros_node_resolve_name(
+                rcl_node_resolve_name(
                     &node,
                     input_c.as_ptr() as *const c_char,
                     false,
@@ -2068,7 +2066,7 @@ mod accessor_tests {
                     buf.len(),
                 )
             },
-            NROS_RET_NOT_INIT
+            RCL_RET_NOT_INIT
         );
         assert!(
             buf.iter().all(|&b| b == 0xAA),
@@ -2083,7 +2081,7 @@ mod accessor_tests {
     /// `get_executor(&mut executor._opaque)`, which reinterprets that storage
     /// as a live `CExecutor`. `rclc_executor_fini` zeroes it. The pre-fix guard
     /// was constant true, so this input walked straight into that
-    /// reinterpretation; the fix answers `NROS_RET_NOT_INIT` — the same verdict
+    /// reinterpretation; the fix answers `RCL_RET_NOT_INIT` — the same verdict
     /// the un-bound node above gets, for the same reason: the remap table is
     /// unreachable, not absent.
     #[test]
@@ -2093,14 +2091,14 @@ mod accessor_tests {
         let node = bound_node("filter", 1, &*executor);
 
         // What `rclc_executor_fini` leaves behind.
-        executor.state = crate::executor::nros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN;
+        executor.state = crate::executor::rclc_executor_state_t::RCLC_EXECUTOR_STATE_SHUTDOWN;
         executor.support = ptr::null();
 
         let input_c = alloc_cstr("scan");
         let mut buf = [0xAAu8; 64];
         assert_eq!(
             unsafe {
-                nros_node_resolve_name(
+                rcl_node_resolve_name(
                     &node,
                     input_c.as_ptr() as *const c_char,
                     false,
@@ -2108,7 +2106,7 @@ mod accessor_tests {
                     buf.len(),
                 )
             },
-            NROS_RET_NOT_INIT
+            RCL_RET_NOT_INIT
         );
         assert!(
             buf.iter().all(|&b| b == 0xAA),
@@ -2123,7 +2121,7 @@ mod accessor_tests {
         let empty = alloc_cstr("");
         assert_eq!(
             unsafe {
-                nros_node_resolve_name(
+                rcl_node_resolve_name(
                     &node,
                     core::ptr::null(),
                     true,
@@ -2131,11 +2129,11 @@ mod accessor_tests {
                     buf.len(),
                 )
             },
-            NROS_RET_INVALID_ARGUMENT
+            RCL_RET_INVALID_ARGUMENT
         );
         assert_eq!(
             unsafe {
-                nros_node_resolve_name(
+                rcl_node_resolve_name(
                     &node,
                     empty.as_ptr() as *const c_char,
                     true,
@@ -2143,7 +2141,7 @@ mod accessor_tests {
                     buf.len(),
                 )
             },
-            NROS_RET_INVALID_ARGUMENT
+            RCL_RET_INVALID_ARGUMENT
         );
     }
 
@@ -2153,17 +2151,17 @@ mod accessor_tests {
     fn domain_id_on_a_session_less_node_is_reported_not_guessed() {
         let node = unbound_node("talker", "/");
         let mut domain: u32 = 0xFFFF;
-        let rc = unsafe { nros_node_get_domain_id(&node, &mut domain) };
-        assert_ne!(rc, NROS_RET_OK);
+        let rc = unsafe { rcl_node_get_domain_id(&node, &mut domain) };
+        assert_ne!(rc, RCL_RET_OK);
         assert_eq!(domain, 0xFFFF, "a failed read must not write the out-param");
 
         assert_eq!(
-            unsafe { nros_node_get_domain_id(&node, core::ptr::null_mut()) },
-            NROS_RET_INVALID_ARGUMENT
+            unsafe { rcl_node_get_domain_id(&node, core::ptr::null_mut()) },
+            RCL_RET_INVALID_ARGUMENT
         );
         assert_eq!(
-            unsafe { nros_node_get_domain_id(core::ptr::null(), &mut domain) },
-            NROS_RET_INVALID_ARGUMENT
+            unsafe { rcl_node_get_domain_id(core::ptr::null(), &mut domain) },
+            RCL_RET_INVALID_ARGUMENT
         );
     }
 
@@ -2185,7 +2183,7 @@ mod accessor_tests {
     // ========================================================================
 
     /// An executor whose `_opaque` holds a live `CExecutor`, built exactly as
-    /// `nros_executor_init` builds one except that the session pointer is NULL.
+    /// `rclc_executor_init` builds one except that the session pointer is NULL.
     ///
     /// Name resolution never touches the session: `declare_remap`,
     /// `node_builder(..).build()` (which returns slot 0 without consulting a
@@ -2196,7 +2194,7 @@ mod accessor_tests {
     ///
     /// The executor is never dropped: it is written into a `[u64; N]`, which
     /// carries no destructor. That is the same lifetime the C API gives it.
-    fn executor_with_null_session() -> std::boxed::Box<crate::executor::nros_executor_t> {
+    fn executor_with_null_session() -> std::boxed::Box<crate::executor::rclc_executor_t> {
         let mut executor =
             std::boxed::Box::new(crate::executor::rclc_executor_get_zero_initialized_executor());
         let sizing = nros_node::ExecutorSizing::DEFAULT;
@@ -2215,59 +2213,59 @@ mod accessor_tests {
             );
         }
         executor.max_handles = 8;
-        executor.state = crate::executor::nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED;
+        executor.state = crate::executor::rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED;
         // A real executor always carries a support object, and since issue 1386
-        // `rcl_node_is_valid` / `nros_node_resolve_name` ask it whether the
+        // `rcl_node_is_valid` / `rcl_node_resolve_name` ask it whether the
         // node's CONTEXT is alive (rcl: "rcl_shutdown has been called since the
         // node was initialized"). The session pointer stays NULL — that is what
         // this harness is for — but an executor with no support at all is a
         // shape no image produces, and leaving it so would make these tests
         // measure 1386's refusal instead of 1384's predicate. Leaked: a test
         // fixture that must outlive the executor pointing at it.
-        let support = std::boxed::Box::leak(std::boxed::Box::new(crate::support::nros_support_t {
-            state: crate::support::nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED,
+        let support = std::boxed::Box::leak(std::boxed::Box::new(crate::support::rclc_support_t {
+            state: crate::support::rclc_support_state_t::RCLC_SUPPORT_STATE_INITIALIZED,
             ..Default::default()
         }));
-        executor.support = support as *mut crate::support::nros_support_t;
+        executor.support = support as *mut crate::support::rclc_support_t;
         executor
     }
 
     /// Bind a node through the real entry point, so the slot a caller actually
     /// gets is the slot under test.
     fn bind_node(
-        executor: &mut crate::executor::nros_executor_t,
+        executor: &mut crate::executor::rclc_executor_t,
         name: &str,
         namespace: &str,
-    ) -> nros_node_t {
+    ) -> rcl_node_t {
         let mut node = rcl_get_zero_initialized_node();
-        let mut opts = nros_node_options_t::default();
+        let mut opts = rcl_node_options_t::default();
         opts.namespace[..namespace.len()].copy_from_slice(namespace.as_bytes());
         opts.namespace_len = namespace.len();
         let name_c = alloc_cstr(name);
         assert_eq!(
             unsafe {
-                crate::executor::nros_executor_node_init(
+                crate::executor::rclc_executor_node_init(
                     executor,
                     &mut node,
                     name_c.as_ptr() as *const c_char,
                     &opts,
                 )
             },
-            NROS_RET_OK,
+            RCL_RET_OK,
             "binding {name:?} to the executor"
         );
         node
     }
 
     fn resolve_name(
-        node: &nros_node_t,
+        node: &rcl_node_t,
         input: &str,
         only_expand: bool,
-    ) -> (nros_ret_t, std::string::String) {
+    ) -> (rcl_ret_t, std::string::String) {
         let input_c = alloc_cstr(input);
         let mut buf = [0u8; 128];
         let rc = unsafe {
-            nros_node_resolve_name(
+            rcl_node_resolve_name(
                 node,
                 input_c.as_ptr() as *const c_char,
                 only_expand,
@@ -2279,7 +2277,7 @@ mod accessor_tests {
     }
 
     /// Declare the two rules both remap tests read, one per node.
-    fn declare_remaps(executor: &mut crate::executor::nros_executor_t) {
+    fn declare_remaps(executor: &mut crate::executor::rclc_executor_t) {
         unsafe {
             let rust_exec = crate::executor::get_executor(&mut executor._opaque);
             rust_exec
@@ -2315,7 +2313,7 @@ mod accessor_tests {
         // commonest shape in the tree (issue 1384).
         assert!(
             primary.is_executor_bound(),
-            "a node bound through nros_executor_node_init reaches an executor, slot 0 included"
+            "a node bound through rclc_executor_node_init reaches an executor, slot 0 included"
         );
         assert!(second.is_executor_bound());
         // A legacy node reaches none, and must keep answering so.
@@ -2325,9 +2323,9 @@ mod accessor_tests {
         assert!(unsafe { rcl_node_is_valid(&second) });
     }
 
-    /// `nros_node_resolve_name(only_expand = false)` is ASKED for the remap
+    /// `rcl_node_resolve_name(only_expand = false)` is ASKED for the remap
     /// rules, so it must read them for every node that reaches an executor. The
-    /// primary node answered `NROS_RET_NOT_INIT` — the reported symptom of issue
+    /// primary node answered `RCL_RET_NOT_INIT` — the reported symptom of issue
     /// 1384, and the mildest of its three outcomes.
     #[test]
     fn resolve_name_reads_the_remap_table_for_both_slots() {
@@ -2341,25 +2339,25 @@ mod accessor_tests {
         // half of this defect.
         assert_eq!(
             resolve_name(&primary, "scan", false),
-            (NROS_RET_OK, std::string::String::from("/wire/primary")),
+            (RCL_RET_OK, std::string::String::from("/wire/primary")),
             "the primary node's remap rule must be applied, not dropped"
         );
         assert_eq!(
             resolve_name(&second, "scan", false),
-            (NROS_RET_OK, std::string::String::from("/wire/second"))
+            (RCL_RET_OK, std::string::String::from("/wire/second"))
         );
 
         // `only_expand` is answerable without the table and must not have moved.
         assert_eq!(
             resolve_name(&primary, "scan", true),
-            (NROS_RET_OK, std::string::String::from("/sensing/scan"))
+            (RCL_RET_OK, std::string::String::from("/sensing/scan"))
         );
     }
 
     /// The UNMASKING trap (issue 1384's third row). `resolve_entity_name_on_node`
     /// runs BEFORE the session lookup at all four of its call sites, so while the
     /// session predicate was also wrong this silently dropped the primary node's
-    /// remap table behind the louder `NROS_RET_NOT_INIT`. Fixing the session arm
+    /// remap table behind the louder `RCL_RET_NOT_INIT`. Fixing the session arm
     /// ALONE would have turned a loud failure into a publisher and a
     /// subscription, given the same string, landing on different wire names.
     ///

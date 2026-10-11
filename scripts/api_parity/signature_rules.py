@@ -57,7 +57,7 @@ THEIRS_DROPS = [
         # "there is no runtime options struct to accept". Seven ship --
         # nros_{node,publisher,subscription,service,client,action_client,
         # action_server}_options_t -- plus seven *_get_default_options, and the
-        # correlator buckets all fourteen `same`. nros_node_options_t carries a
+        # correlator buckets all fourteen `same`. rcl_node_options_t carries a
         # RUNTIME domain_id_override. Because this rule GENERATES row text rather
         # than storing it, the false sentence reached ~12 rows that no ledger edit
         # could reach; correcting the ledger alone would have been whack-a-mole.
@@ -321,8 +321,8 @@ def self_test():
             ]
         }
 
-    # `rcl_client_fini(client, node)` against `nros_client_fini(client)`.
-    got = explain("client_fini", item(["struct nros_client_t *"]),
+    # `rcl_client_fini(client, node)` against `rcl_client_fini(client)`.
+    got = explain("client_fini", item(["struct rcl_client_t *"]),
                   item(["rcl_client_t *", "rcl_node_t *"]))
     if got != ["handle-owns-node"]:
         failures.append("client_fini: got %r" % (got,))
@@ -331,8 +331,8 @@ def self_test():
     # over-explanation guard: dropping both would leave theirs shorter.
     got = explain(
         "publisher_init",
-        item(["struct nros_publisher_t *", "struct nros_node_t *",
-              "struct nros_message_type_t *", "char *"]),
+        item(["struct rcl_publisher_t *", "struct rcl_node_t *",
+              "struct rclc_message_type_t *", "char *"]),
         item(["rcl_publisher_t *", "rcl_node_t *", "rosidl_message_type_support_t *",
               "char *", "rcl_publisher_options_t *"]),
     )

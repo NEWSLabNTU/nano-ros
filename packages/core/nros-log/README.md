@@ -64,7 +64,7 @@ re-entrant by construction.
   consume it.
 - The rule itself is `nros_log::throttle_decide`, a pure function over ONE
   state word — bit 0 says "has emitted", the 63 bits above it hold the last
-  emitted timestamp; the C API's `nros_log_throttle_admit` calls the same one
+  emitted timestamp; the C API's `rclc_log_throttle_admit` calls the same one
   over caller-owned storage. A clock that wraps still measures real elapsed
   time across the wrap; a clock that is STUCK (at any value, `0` included)
   admits once and then never (issue 1152 — the old `0`-sentinel-plus-skew made

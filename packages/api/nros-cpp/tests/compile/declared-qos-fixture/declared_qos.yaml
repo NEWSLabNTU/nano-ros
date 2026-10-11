@@ -21,12 +21,12 @@
 #                                     population and does not count as an
 #                                     undeclared endpoint
 #
-# `nros/nros_declared_qos_generated.h` beside this file is what
+# `nros/rclc_declared_qos_generated.h` beside this file is what
 #   nros ws entity-inventory \
 #     --metadata packages/api/nros-cpp/tests/compile/declared-qos-fixture/nros-metadata.json \
 #     --model packages/api/nros-cpp/tests/compile/declared-qos-fixture/declared_qos.yaml \
 #     --component demo::listener \
-#     --output-header packages/api/nros-cpp/tests/compile/declared-qos-fixture/nros/nros_declared_qos_generated.h
+#     --output-header packages/api/nros-cpp/tests/compile/declared-qos-fixture/nros/rclc_declared_qos_generated.h
 # renders, and `the_committed_compile_fixture_is_what_this_emitter_renders`
 # (nros-cli-core, cmd/entity_inventory.rs) holds the two together. Regenerate;
 # never hand-edit.

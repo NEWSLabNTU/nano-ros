@@ -114,16 +114,16 @@ Guard conditions provide a thread-safe mechanism for signaling events:
 
 ```c
 // Creation is ONE call, on the node, with the callback bound then and there.
-// The node must already be bound to an executor (`nros_executor_node_init`):
+// The node must already be bound to an executor (`rclc_executor_node_init`):
 // the flag lives in that executor's arena.
-nros_node_create_guard_condition(&node, &shutdown_guard, shutdown_callback, NULL);
+rclc_node_create_guard_condition(&node, &shutdown_guard, shutdown_callback, NULL);
 
 // In a signal handler (or an interrupt handler on embedded), from any thread:
-nros_guard_condition_trigger(&shutdown_guard);
+rclc_guard_condition_trigger(&shutdown_guard);
 
 // Dispatched on the executor's thread, at its next spin:
 void shutdown_callback(void* context) {
-    nros_executor_cancel(&executor);
+    rclc_executor_cancel(&executor);
 }
 ```
 

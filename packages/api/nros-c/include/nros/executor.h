@@ -29,7 +29,7 @@
  * be rebuilt.
  *
  * phase-417 stage 6 step B — the `nros_executor_add_timer` forwarder this
- * macro used to route through is DELETED, so `nros_executor_register_timer`
+ * macro used to route through is DELETED, so `rclc_executor_register_timer`
  * now names `rclc_executor_add_timer` directly. It is the only member of the
  * family whose target moved: every other `nros_executor_add_*` here is a live
  * exported symbol, not a stage-6 rename. Note what the retirement costs this
@@ -39,22 +39,22 @@
  * phase-487 W1 — `nros_executor_register_subscription` is gone with its target:
  * the three-argument `nros_executor_add_subscription` dispatched a callback the
  * subscription struct stored, and that struct no longer stores one. Its
- * replacement takes the callback, `nros_executor_add_subscription_raw`, so the
+ * replacement takes the callback, `rclc_executor_add_subscription_raw`, so the
  * alias could not forward without changing arity. `_in_group` kept its alias
  * and gained the same two arguments. phase-487 W2 retired
  * `nros_executor_register_service` the same way: its target, the two-argument
- * `nros_executor_add_service`, is gone, and `nros_executor_add_service_raw`
+ * `nros_executor_add_service`, is gone, and `rclc_executor_add_service_raw`
  * takes the callback.
  */
 #ifndef NROS_NO_DEPRECATED_EXECUTOR_REGISTER_ALIASES
-#define nros_executor_register_subscription_raw_with_info                                          \
-    nros_executor_add_subscription_raw_with_info
-#define nros_executor_register_subscription_in_group nros_executor_add_subscription_in_group
-#define nros_executor_register_timer rclc_executor_add_timer
-#define nros_executor_register_timer_in_group nros_executor_add_timer_in_group
-#define nros_executor_register_action_server nros_executor_add_action_server
-#define nros_executor_register_action_client nros_executor_add_action_client
-#define nros_executor_register_time_triggered_dispatcher nros_executor_add_time_triggered_dispatcher
+#define rclc_executor_register_subscription_raw_with_info                                          \
+    rclc_executor_add_subscription_raw_with_info
+#define rclc_executor_register_subscription_in_group rclc_executor_add_subscription_in_group
+#define rclc_executor_register_timer rclc_executor_add_timer
+#define rclc_executor_register_timer_in_group rclc_executor_add_timer_in_group
+#define rclc_executor_register_action_server rclc_executor_add_action_server
+#define rclc_executor_register_action_client rclc_executor_add_action_client
+#define rclc_executor_register_time_triggered_dispatcher rclc_executor_add_time_triggered_dispatcher
 #endif /* NROS_NO_DEPRECATED_EXECUTOR_REGISTER_ALIASES */
 
 #endif /* NROS_EXECUTOR_H */

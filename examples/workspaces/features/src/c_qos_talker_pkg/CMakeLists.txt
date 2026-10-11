@@ -13,7 +13,7 @@ find_package(std_msgs REQUIRED)
 # Typed component (RFC-0043): publishes std_msgs/Int32 on /chatter via the
 # generated C serializer. The differentiator vs the committed c_talker_pkg is
 # the QoS: this declares a NON-DEFAULT profile (reliable + transient-local +
-# keep-last-10) in code rather than `nros_c_qos_default()` (see
+# keep-last-10) in code rather than `rclc_c_qos_default()` (see
 # src/QosTalker.c).
 nano_ros_auto_add_library(c_qos_talker_lib STATIC src/QosTalker.c)
 

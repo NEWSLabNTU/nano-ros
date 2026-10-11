@@ -776,7 +776,7 @@ impl<'a> CdrReader<'a> {
     /// that followed an empty `float64[]`. `len` is wire data, so the byte
     /// length is a checked product — on a 32-bit target `u32::MAX * 8` wraps
     /// to a length the bounds check accepts (issues 1148/1149, whose C
-    /// counterpart `nros_cdr_borrow_le_slice_*` had both defects).
+    /// counterpart `rclc_cdr_borrow_le_slice_*` had both defects).
     pub fn read_le_slice<T: LeDecode>(&mut self) -> Result<LeSliceView<'a, T>, DeserError> {
         let len = self.read_u32()? as usize;
         let byte_len = len.checked_mul(T::SIZE).ok_or(DeserError::InvalidData)?;

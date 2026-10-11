@@ -934,7 +934,7 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   three documents, a build-script comment and a RUNTIME advisory string said it was,
   for five phases (corrected phase-392 W6). `Executor` holds `arena: &'s mut
   [MaybeUninit<u8>]`, a slice borrowed from caller-supplied backing, so **placement is
-  the CALLER's**: all 34 C `nros_executor_t` objects are file-scope statics, C++ uses
+  the CALLER's**: all 34 C `rclc_executor_t` objects are file-scope statics, C++ uses
   `Node::GlobalStorageHolder<0>::storage`, and every RUST board reached an `alloc`
   convenience constructor that `Box::leak`ed it — **invisible to `mem-report`, which
   reads symbols**. The Rust arm is a named `.bss` static now

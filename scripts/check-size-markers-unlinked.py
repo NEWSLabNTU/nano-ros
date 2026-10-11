@@ -209,18 +209,18 @@ def probe_env_value(text: str) -> str | None:
 def rule_c(root: Path) -> list[str]:
     errs = []
     try:
-        nros_b = code_text(root / NROS_BUILD_RS)
+        rclc_b = code_text(root / NROS_BUILD_RS)
         sizes_b = code_text(root / SIZES_BUILD_RS)
         req = code_text(root / PROBE_REQUEST_RS)
     except OSError as e:
         return [f"rule C: cannot read {e.filename}"]
-    a, b = probe_env_value(nros_b), probe_env_value(sizes_b)
+    a, b = probe_env_value(rclc_b), probe_env_value(sizes_b)
     if a is None or b is None:
         errs.append(f"rule C: `PROBE_BUILD_ENV` missing from {NROS_BUILD_RS} or {SIZES_BUILD_RS}")
     elif a != b:
         errs.append(f"rule C: probe variable disagrees — {NROS_BUILD_RS} reads `{a}`, "
                     f"{SIZES_BUILD_RS} sets `{b}`; the refusal would fire on the probe itself")
-    if "CARGO_FEATURE_FFI_SIZE_MARKERS" not in nros_b or "refuse_size_markers_outside_the_probe()" not in nros_b:
+    if "CARGO_FEATURE_FFI_SIZE_MARKERS" not in rclc_b or "refuse_size_markers_outside_the_probe()" not in rclc_b:
         errs.append(f"rule C: {NROS_BUILD_RS} no longer refuses `ffi-size-markers` outside the probe")
     if not re.search(r"\.env\(\s*PROBE_BUILD_ENV\s*,\s*\"1\"\s*\)", sizes_b):
         errs.append(f"rule C: {SIZES_BUILD_RS} no longer marks the nested probe build")

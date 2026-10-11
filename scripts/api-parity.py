@@ -124,6 +124,7 @@ nothing is marked `ported` today. See CPP_TRANSLATION_UNITS and `run_lang`.
 """
 
 import contextlib
+import glob
 import io
 import argparse
 import json
@@ -853,13 +854,21 @@ def _validate_provides_targets(entries, surfaces):
                 known.add(qual)
     if not known:
         return []
+    # phase-492 — OUR C API is `rcl_`/`rclc_`-spelled too (RFC-0089 amended
+    # 2026-10-12), so an `rclc_` arrow is no longer necessarily upstream's. A
+    # name our own C headers declare is ours; read them as text (no clang), so
+    # this stays the cheap structural check it was.
+    ours_c = set()
+    for header in sorted(glob.glob(os.path.join(ROOT, "packages", "api", "nros-c", "include", "*", "*.h"))):
+        with open(header, encoding="utf-8", errors="replace") as fh:
+            ours_c |= set(re.findall(r"\b(rcl[a-z_]*_[a-z0-9_]+)\b", fh.read()))
     complaints = []
     for key, value in entries.items():
         if key == "_doc" or not isinstance(value, dict):
             continue
         for target in value.get("provides", []) or []:
             upstream = target.startswith(("rclrs::", "rclcpp::", "rcl_", "rclc_"))
-            if upstream and target not in known:
+            if upstream and target not in known and target not in ours_c:
                 complaints.append(
                     "ledger %s: `provides` names %s, which no recorded surface declares. "
                     "An arrow that resolves to nothing reads as a re-map and is one."
@@ -2171,7 +2180,7 @@ def self_test():
 
     # A library prefix is not a type difference; a meaning is.
     handles = correlate.shares_only_arity(
-        {"overloads": [{"params": [{"type": "struct nros_client_t *"}]}]},
+        {"overloads": [{"params": [{"type": "struct rcl_client_t *"}]}]},
         {"overloads": [{"params": [{"type": "rcl_client_t *"}]}]},
     )
     check("prefixed handles are the same type", handles, False)
@@ -2328,7 +2337,7 @@ def self_test():
         "verdict": "their-rename",
         "why": "x",
         "their_rename": {
-            "ours": "nros_clock_is_valid",
+            "ours": "rclc_clock_is_valid",
             "majority": ["rcl: 14 x `rcl_*_is_valid`"],
             "outlier": "rcl_clock_valid",
         },

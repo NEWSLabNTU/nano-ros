@@ -109,7 +109,7 @@ fn a_nano_ros_log_call_reaches_ros2_topic_echo_rosout() {
     run_cell(probe_bin);
 }
 
-/// issue 1589 — the C surface: `nros_rosout_publisher_init` / `_enable` /
+/// issue 1589 — the C surface: `rclc_rosout_publisher_init` / `_enable` /
 /// `_pump` (`bins/rosout-talker-c`, fixture row `rosout-talker-c`).
 #[test]
 fn a_c_log_call_reaches_ros2_topic_echo_rosout() {

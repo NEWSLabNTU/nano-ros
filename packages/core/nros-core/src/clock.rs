@@ -345,7 +345,7 @@ impl Clock {
     /// owner never arrived — nothing outside this file's own tests has ever
     /// called `update_steady_time` — so on every shipped image
     /// `Clock::steady().now()` was the constant 0, while the C surface
-    /// answered the SAME question (`NROS_CLOCK_STEADY_TIME`) with
+    /// answered the SAME question (`RCLC_CLOCK_STEADY_TIME`) with
     /// `nros_platform_clock_ns`. That is issue 1334's complaint exactly, one
     /// clock over: two surfaces, one image, different answers, and the Rust
     /// one is not a clock. W10's own rule settles it — when a port is linked
@@ -704,7 +704,7 @@ mod tests {
     ///
     /// `rclcpp`'s `ClockType::ROS_TIME` with `use_sim_time` false reads the
     /// system clock; five doc sites in this tree across Rust, C and C++ said we
-    /// did too; and the C surface (`nros_clock_get_now(NROS_CLOCK_ROS_TIME)`)
+    /// did too; and the C surface (`rcl_clock_get_now(RCLC_CLOCK_ROS_TIME)`)
     /// always did. This is the arm that disagreed with all of them.
     #[test]
     #[cfg(feature = "platform-clock")]
@@ -755,7 +755,7 @@ mod tests {
     ///
     /// Fails on the pre-fix tree, where `SteadyTime` read the counter on every
     /// flavour and therefore returned 0 in every shipped image, while the C
-    /// surface answered `NROS_CLOCK_STEADY_TIME` with `nros_platform_clock_ns`.
+    /// surface answered `RCLC_CLOCK_STEADY_TIME` with `nros_platform_clock_ns`.
     #[test]
     #[cfg(feature = "platform-clock")]
     fn platform_port_outranks_the_counter_for_the_steady_clock() {

@@ -677,7 +677,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_send_on_handle(
             // CRITICAL (RFC-0041 / Phase 239): `service_client_raw_try_process`
             // early-returns unless `pending` is set, so the reply would never be
             // dispatched to the response trampoline without this. Mirror the C
-            // wrapper's `nros_client_send_request_async` exactly.
+            // wrapper's `rclc_client_send_request_async` exactly.
             entry.pending = true;
             // Register a waker that flips `reply_ready` when the transport
             // delivers the reply, so the executor wakes instead of blind-polling.
@@ -833,7 +833,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_server_available(
 
 /// phase-338 W8 — block until a matching service server is discoverable.
 ///
-/// The C API has had `nros_client_wait_for_service` since phase-124; C++ never
+/// The C API has had `rclc_client_wait_for_service` since phase-124; C++ never
 /// bound it, so every C++ client example hand-rolled a retry loop around the
 /// first request instead (three attempts, spin in between) to paper over slow
 /// discovery. This is the primitive those loops were approximating.

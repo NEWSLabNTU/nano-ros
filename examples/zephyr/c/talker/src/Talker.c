@@ -5,7 +5,7 @@
 /// publishes the official ROS 2 demo payload (`std_msgs/String`,
 /// `Hello World: N`) each tick, via the GENERATED typed C bindings
 /// (`nros_find_interfaces(LANGUAGE C)` in CMakeLists — phase-277 W4; was
-/// hand-rolled CDR). `NROS_C_COMPONENT` emits the C-ABI factory/configure the
+/// hand-rolled CDR). `RCLC_C_COMPONENT` emits the C-ABI factory/configure the
 /// Zephyr typed Entry carrier (the shared entry pack) calls.
 
 #include <stddef.h>
@@ -42,11 +42,11 @@ static void on_tick(void* ctx) {
     }
 }
 
-static nros_ret_t talker_configure(const nros_cpp_node_t* node, void* executor, talker_t* self) {
+static rcl_ret_t talker_configure(const nros_cpp_node_t* node, void* executor, talker_t* self) {
     setvbuf(stdout, NULL, _IONBF, 0);
     self->count = 0;
     int32_t rc = nros_cpp_publisher_create(node, "/chatter", std_msgs_msg_string_get_type_name(),
-                                           "", nros_c_qos_default(), self->pub);
+                                           "", rclc_c_qos_default(), self->pub);
     if (rc != 0) {
         return rc;
     }
@@ -54,4 +54,4 @@ static nros_ret_t talker_configure(const nros_cpp_node_t* node, void* executor, 
     return nros_cpp_timer_create(executor, /*period_ms=*/500, on_tick, self, &timer_handle);
 }
 
-NROS_C_COMPONENT(talker_t, talker_configure)
+RCLC_C_COMPONENT(talker_t, talker_configure)

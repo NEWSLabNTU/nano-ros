@@ -22,7 +22,7 @@ use super::{
 /// when it does not — phase-417 G7.
 ///
 /// Six `create_*` paths ran `qos.validate_against(…).map_err(NodeError::Transport)`
-/// and that was the whole diagnostic: the C caller saw `NROS_RET_REJECTED`, the
+/// and that was the whole diagnostic: the C caller saw `RCLC_RET_REJECTED`, the
 /// C++ caller `NROS_CPP_RET_NOT_ALLOWED`, and neither could learn WHICH policy
 /// the backend declined — while `rmw_vtable.h`'s `supported_qos_policies` block
 /// told the reader those creates fail "naming a policy". This is the one place
@@ -168,7 +168,7 @@ impl<'a> NodeHandle<'a> {
     /// answer must be a value: a bridge, a diagnostic, a tool.
     ///
     /// **`None` means the backend has not said** — the same discipline the C
-    /// entry point `nros_node_get_serialization_format` has always kept by
+    /// entry point `rclc_node_get_serialization_format` has always kept by
     /// returning NULL, and the one `rmw_vtable.h` states for the slot
     /// underneath. It is not a synonym for `"cdr"`.
     #[must_use]

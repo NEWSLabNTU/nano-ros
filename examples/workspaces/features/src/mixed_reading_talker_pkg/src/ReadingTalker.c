@@ -43,15 +43,15 @@ static void on_tick(void* ctx) {
     self->count++;
 }
 
-static nros_ret_t reading_talker_configure(const nros_cpp_node_t* node, void* executor,
-                                           reading_talker_t* self) {
+static rcl_ret_t reading_talker_configure(const nros_cpp_node_t* node, void* executor,
+                                          reading_talker_t* self) {
     /* Line-buffer stdout so each `sent seq=` flushes immediately when piped (the
      * test reads the output live; glibc block-buffers a pipe otherwise). */
     setvbuf(stdout, NULL, _IOLBF, 0);
     self->count = 0;
     int32_t rc =
         nros_cpp_publisher_create(node, "/reading", custom_msgs_msg_reading_get_type_name(), "",
-                                  nros_c_qos_default(), self->pub);
+                                  rclc_c_qos_default(), self->pub);
     if (rc != 0) {
         return rc;
     }
@@ -59,4 +59,4 @@ static nros_ret_t reading_talker_configure(const nros_cpp_node_t* node, void* ex
     return nros_cpp_timer_create(executor, /*period_ms=*/1000, on_tick, self, &timer_handle);
 }
 
-NROS_C_COMPONENT(reading_talker_t, reading_talker_configure)
+RCLC_C_COMPONENT(reading_talker_t, reading_talker_configure)

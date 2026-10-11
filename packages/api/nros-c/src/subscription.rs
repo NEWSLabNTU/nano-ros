@@ -10,10 +10,10 @@ use core::{
 use crate::{
     constants::{MAX_TOPIC_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN},
     error::*,
-    node::{nros_node_state_t, nros_node_t},
+    node::{rcl_node_t, rclc_node_state_t},
     opaque_sizes::SUBSCRIPTION_OPAQUE_U64S,
-    publisher::nros_message_type_t,
-    qos::nros_qos_t,
+    publisher::rclc_message_type_t,
+    qos::rclc_qos_t,
 };
 
 /// Subscription callback function type.
@@ -22,13 +22,13 @@ use crate::{
 /// * `data` - Pointer to received CDR-serialized message data
 /// * `len` - Length of data in bytes
 /// * `context` - User-provided context pointer
-pub type nros_subscription_callback_t =
+pub type rclc_subscription_callback_t =
     Option<unsafe extern "C" fn(data: *const u8, len: usize, context: *mut c_void)>;
 
 /// Subscription callback that also receives the sample's wire **attachment**
 /// (Phase 189.M3.4 — the C analog of the Rust
 /// `node.subscription(t).generic(..).message_info()` builder path). Used by
-/// `nros_executor_add_subscription_raw_with_info`.
+/// `rclc_executor_add_subscription_raw_with_info`.
 ///
 /// # Parameters
 /// * `data` / `len` — received CDR bytes.
@@ -36,7 +36,7 @@ pub type nros_subscription_callback_t =
 ///   (`attachment_len == 0` ⇒ none). Cross-RMW bridges read the
 ///   `bridge_origin` tag from it. Valid only during the call.
 /// * `context` — user-provided context pointer.
-pub type nros_subscription_info_callback_t = Option<
+pub type rclc_subscription_info_callback_t = Option<
     unsafe extern "C" fn(
         data: *const u8,
         len: usize,
@@ -49,16 +49,16 @@ pub type nros_subscription_info_callback_t = Option<
 /// Subscription state
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nros_subscription_state_t {
+pub enum rclc_subscription_state_t {
     /// Not initialized
-    NROS_SUBSCRIPTION_STATE_UNINITIALIZED = 0,
-    /// Initialized. For a `nros_subscription_t` the subscriber entity is
+    RCLC_SUBSCRIPTION_STATE_UNINITIALIZED = 0,
+    /// Initialized. For a `rcl_subscription_t` the subscriber entity is
     /// created later, by `nros_executor_add_subscription_*`, inside the
-    /// executor arena. For a `nros_polling_subscription_t` the subscriber is
+    /// executor arena. For a `rclc_polling_subscription_t` the subscriber is
     /// live in the struct's own storage.
-    NROS_SUBSCRIPTION_STATE_INITIALIZED = 1,
+    RCLC_SUBSCRIPTION_STATE_INITIALIZED = 1,
     /// Shutdown
-    NROS_SUBSCRIPTION_STATE_SHUTDOWN = 2,
+    RCLC_SUBSCRIPTION_STATE_SHUTDOWN = 2,
 }
 
 /// A subscription the executor dispatches (rclc's `rcl_subscription_t`).
@@ -75,11 +75,11 @@ pub enum nros_subscription_state_t {
 /// the polled form's subscriber storage (`_opaque`). On the dispatched road
 /// none of the three was read after registration, because the arena keeps its
 /// own copies. A subscription the caller drains itself is a
-/// [`nros_polling_subscription_t`].
+/// [`rclc_polling_subscription_t`].
 #[repr(C)]
-pub struct nros_subscription_t {
+pub struct rcl_subscription_t {
     /// Current state
-    pub state: nros_subscription_state_t,
+    pub state: rclc_subscription_state_t,
     /// Topic name storage
     pub topic_name: [u8; MAX_TOPIC_LEN],
     /// Topic name length
@@ -93,19 +93,19 @@ pub struct nros_subscription_t {
     /// Type hash length
     pub type_hash_len: usize,
     /// Pointer to parent node
-    pub node: crate::node::nros_node_ref_t,
+    pub node: crate::node::rclc_node_ref_t,
     /// QoS settings (stored during init, used by executor registration)
-    pub qos: crate::qos::nros_qos_t,
+    pub qos: crate::qos::rclc_qos_t,
     /// Handle ID from executor registration (SIZE_MAX = not registered)
     pub handle_id: usize,
     /// Phase 189.M3 — scheduling-context slot requested via
-    /// [`nros_subscription_init_with_options`]. `0` = inherit the
+    /// [`rclc_subscription_init_with_options`]. `0` = inherit the
     /// executor / Node default (no explicit bind), matching the
-    /// `nros_node_options_t::sched_context_id` convention. When non-zero,
+    /// `rcl_node_options_t::sched_context_id` convention. When non-zero,
     /// `nros_executor_add_subscription_*` binds the freshly-created
     /// handle to this SC after registration.
-    pub sched_context_id: crate::executor::nros_sched_context_id_t,
-    /// issue 1437 — the `nros_executor_t` holding this subscription's arena
+    pub sched_context_id: crate::executor::rclc_sched_context_id_t,
+    /// issue 1437 — the `rclc_executor_t` holding this subscription's arena
     /// entry, or NULL before registration. Set beside
     /// [`handle_id`](Self::handle_id) by `nros_executor_add_subscription_*`:
     /// the pair is the same `(executor_ptr, arena_entry_index)` that
@@ -115,18 +115,18 @@ pub struct nros_subscription_t {
     pub _executor: *mut c_void,
 }
 
-impl Default for nros_subscription_t {
+impl Default for rcl_subscription_t {
     fn default() -> Self {
         Self {
-            state: nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_UNINITIALIZED,
+            state: rclc_subscription_state_t::RCLC_SUBSCRIPTION_STATE_UNINITIALIZED,
             topic_name: [0u8; MAX_TOPIC_LEN],
             topic_name_len: 0,
             type_name: [0u8; MAX_TYPE_NAME_LEN],
             type_name_len: 0,
             type_hash: [0u8; MAX_TYPE_HASH_LEN],
             type_hash_len: 0,
-            node: crate::node::nros_node_ref_t::none(),
-            qos: crate::qos::nros_qos_t::default(),
+            node: crate::node::rclc_node_ref_t::none(),
+            qos: crate::qos::rclc_qos_t::default(),
             handle_id: usize::MAX,
             sched_context_id: 0,
             _executor: ptr::null_mut(),
@@ -140,41 +140,41 @@ impl Default for nros_subscription_t {
 /// `create_polling_subscription`. Nothing dispatches it, so it has no arena
 /// slot and keeps its subscriber in its own storage: `_opaque` holds a
 /// `RawSubscription<MESSAGE_BUFFER_SIZE>` (subscriber, receive buffer and
-/// event registrations) from `nros_polling_subscription_init*` until
-/// `nros_polling_subscription_fini`. Zero-initialised is UNINITIALIZED.
+/// event registrations) from `rclc_polling_subscription_init*` until
+/// `rclc_polling_subscription_fini`. Zero-initialised is UNINITIALIZED.
 ///
 /// It was the `NROS_SUBSCRIPTION_STATE_POLLING` state of
-/// `nros_subscription_t` until phase-487, which made every dispatched
+/// `rcl_subscription_t` until phase-487, which made every dispatched
 /// subscription carry this storage unused.
 #[repr(C)]
-pub struct nros_polling_subscription_t {
+pub struct rclc_polling_subscription_t {
     /// Current state: UNINITIALIZED, INITIALIZED (subscriber live) or SHUTDOWN.
-    pub state: nros_subscription_state_t,
+    pub state: rclc_subscription_state_t,
     /// The node the subscriber was created on, kept so `fini` can refuse a
-    /// teardown after the node's (`NROS_RET_STALE_NODE`).
-    pub node: crate::node::nros_node_ref_t,
+    /// teardown after the node's (`RCLC_RET_STALE_NODE`).
+    pub node: crate::node::rclc_node_ref_t,
     /// Inline storage for the `RawSubscription`. Internal: treat as opaque.
     pub _opaque: [u64; SUBSCRIPTION_OPAQUE_U64S],
 }
 
-impl Default for nros_polling_subscription_t {
+impl Default for rclc_polling_subscription_t {
     fn default() -> Self {
         Self {
-            state: nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_UNINITIALIZED,
-            node: crate::node::nros_node_ref_t::none(),
+            state: rclc_subscription_state_t::RCLC_SUBSCRIPTION_STATE_UNINITIALIZED,
+            node: crate::node::rclc_node_ref_t::none(),
             _opaque: [0u64; SUBSCRIPTION_OPAQUE_U64S],
         }
     }
 }
 
-impl nros_polling_subscription_t {
+impl rclc_polling_subscription_t {
     /// The live `RawSubscription`, or `None` if this subscription is not
     /// INITIALIZED.
     #[cfg(feature = "rmw-cffi")]
     unsafe fn raw(
         &mut self,
     ) -> Option<&mut nros_node::RawSubscription<{ crate::config::MESSAGE_BUFFER_SIZE }>> {
-        if self.state != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED {
+        if self.state != rclc_subscription_state_t::RCLC_SUBSCRIPTION_STATE_INITIALIZED {
             return None;
         }
         Some(unsafe {
@@ -186,14 +186,14 @@ impl nros_polling_subscription_t {
 
 /// Get a zero-initialized polling subscription.
 #[unsafe(no_mangle)]
-pub extern "C" fn nros_get_zero_initialized_polling_subscription() -> nros_polling_subscription_t {
-    nros_polling_subscription_t::default()
+pub extern "C" fn rclc_get_zero_initialized_polling_subscription() -> rclc_polling_subscription_t {
+    rclc_polling_subscription_t::default()
 }
 
 /// Get a zero-initialized subscription.
 #[unsafe(no_mangle)]
-pub extern "C" fn rcl_get_zero_initialized_subscription() -> nros_subscription_t {
-    nros_subscription_t::default()
+pub extern "C" fn rcl_get_zero_initialized_subscription() -> rcl_subscription_t {
+    rcl_subscription_t::default()
 }
 
 /// Phase 189.M3 — rclc-style named subscription options.
@@ -203,18 +203,18 @@ pub extern "C" fn rcl_get_zero_initialized_subscription() -> nros_subscription_t
 /// axes. The struct holds only plain scalar fields — no pointers — so it
 /// is safe to stack-allocate, memcpy, and pass across the FFI. Zero-init
 /// (all fields 0) selects the default behaviour, identical to
-/// `nros_subscription_init_with_qos`.
+/// `rclc_subscription_init_with_qos`.
 #[repr(C)]
 #[derive(Default)]
-pub struct nros_subscription_options_t {
+pub struct rcl_subscription_options_t {
     /// Scheduling-context slot to bind the subscription's executor
     /// handle to. `0` = inherit the executor / Node default (no explicit
-    /// bind), matching the `nros_node_options_t::sched_context_id`
+    /// bind), matching the `rcl_node_options_t::sched_context_id`
     /// convention. A non-zero value must be an id previously returned
-    /// from `nros_executor_create_sched_context`; the bind is applied by
+    /// from `rclc_executor_create_sched_context`; the bind is applied by
     /// `nros_executor_add_subscription_*` once the handle exists. Has
     /// no effect on the L1 polling path.
-    pub sched_context: crate::executor::nros_sched_context_id_t,
+    pub sched_context: crate::executor::rclc_sched_context_id_t,
     /// Reserved — needs a with-info arena path (Phase 189.M3.4), not yet
     /// wired. When a future M3.4 lands this will request the
     /// message-info delivery variant (sample identity + reception
@@ -226,15 +226,15 @@ pub struct nros_subscription_options_t {
     pub _reserved: [u8; 2],
 }
 
-/// Get a zero-initialised [`nros_subscription_options_t`].
+/// Get a zero-initialised [`rcl_subscription_options_t`].
 ///
 /// All fields default to "inherit"/"off": `sched_context = 0` (executor
 /// default), `message_info = 0` (reserved, off). Callers populate only
 /// the fields they want before passing the struct to
-/// [`nros_subscription_init_with_options`].
+/// [`rclc_subscription_init_with_options`].
 #[unsafe(no_mangle)]
-pub extern "C" fn rcl_subscription_get_default_options() -> nros_subscription_options_t {
-    nros_subscription_options_t::default()
+pub extern "C" fn rcl_subscription_get_default_options() -> rcl_subscription_options_t {
+    rcl_subscription_options_t::default()
 }
 
 /// Initialize a subscription with default QoS (RELIABLE, KEEP_LAST(10)).
@@ -253,12 +253,12 @@ pub extern "C" fn rcl_subscription_get_default_options() -> nros_subscription_op
 ///   does not do.
 ///
 /// So the callback is supplied where rclc supplies it, at registration:
-/// `nros_executor_add_subscription_typed` for the typed path (rclc's
+/// `rclc_executor_add_subscription_typed` for the typed path (rclc's
 /// `rclc_executor_add_subscription_with_context` shape) and
-/// `nros_executor_add_subscription_raw` for the byte path, which has no rclc
+/// `rclc_executor_add_subscription_raw` for the byte path, which has no rclc
 /// counterpart and therefore keeps an `nros_` name.
 ///
-/// The typesupport parameter stays `const nros_message_type_t *` rather than
+/// The typesupport parameter stays `const rclc_message_type_t *` rather than
 /// taking `rosidl_message_type_support_t`'s name: a rosidl typesupport's
 /// MEMBERS are its contract, including the `func` dispatcher we do not have,
 /// so adopting the name would claim a structure we lack (RFC-0089, settled
@@ -277,22 +277,22 @@ pub extern "C" fn rcl_subscription_get_default_options() -> nros_subscription_op
 /// * `topic_name` - Topic name (null-terminated string)
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if any required pointer is NULL
-/// * `NROS_RET_NOT_INIT` if node is not initialized
-/// * `NROS_RET_ERROR` on initialization failure
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` if any required pointer is NULL
+/// * `RCL_RET_NOT_INIT` if node is not initialized
+/// * `RCL_RET_ERROR` on initialization failure
 ///
 /// # Safety
 /// * All required pointers must be valid
 /// * `topic_name` must be a valid null-terminated string
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_subscription_init_default(
-    subscription: *mut nros_subscription_t,
-    node: *const nros_node_t,
-    type_info: *const nros_message_type_t,
+    subscription: *mut rcl_subscription_t,
+    node: *const rcl_node_t,
+    type_info: *const rclc_message_type_t,
     topic_name: *const c_char,
-) -> nros_ret_t {
-    nros_subscription_init_with_qos(subscription, node, type_info, topic_name, ptr::null())
+) -> rcl_ret_t {
+    rclc_subscription_init_with_qos(subscription, node, type_info, topic_name, ptr::null())
 }
 
 /// Initialize a subscription with custom QoS.
@@ -302,20 +302,20 @@ pub unsafe extern "C" fn rclc_subscription_init_default(
 /// between the topic and the QoS. The struct stored them only for
 /// the (since removed) three-argument `nros_executor_add_subscription` to read back, and the arena kept its own
 /// copies; the callback is now supplied at registration, by
-/// `nros_executor_add_subscription_raw` / `_typed` / `_with_info`.
+/// `rclc_executor_add_subscription_raw` / `_typed` / `_with_info`.
 ///
 /// # Safety
 /// * All required pointers must be valid
 /// * `topic_name` must be a valid null-terminated string
-/// * `qos` may be NULL (default) or point to a valid `nros_qos_t`
+/// * `qos` may be NULL (default) or point to a valid `rclc_qos_t`
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_subscription_init_with_qos(
-    subscription: *mut nros_subscription_t,
-    node: *const nros_node_t,
-    type_info: *const nros_message_type_t,
+pub unsafe extern "C" fn rclc_subscription_init_with_qos(
+    subscription: *mut rcl_subscription_t,
+    node: *const rcl_node_t,
+    type_info: *const rclc_message_type_t,
     topic_name: *const c_char,
-    qos: *const nros_qos_t,
-) -> nros_ret_t {
+    qos: *const rclc_qos_t,
+) -> rcl_ret_t {
     validate_not_null!(subscription, node, type_info, topic_name);
 
     let subscription = &mut *subscription;
@@ -324,17 +324,17 @@ pub unsafe extern "C" fn nros_subscription_init_with_qos(
 
     validate_state!(
         subscription,
-        nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_UNINITIALIZED,
-        NROS_RET_BAD_SEQUENCE
+        rclc_subscription_state_t::RCLC_SUBSCRIPTION_STATE_UNINITIALIZED,
+        RCLC_RET_BAD_SEQUENCE
     );
 
-    validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
+    validate_state!(node_ref, rclc_node_state_t::RCLC_NODE_STATE_INITIALIZED);
 
     // Copy topic name (required — empty rejected)
     subscription.topic_name_len =
         crate::util::copy_cstr_into(topic_name, &mut subscription.topic_name);
     if subscription.topic_name_len == 0 {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
 
     // Copy type name + hash (both optional — null sources leave dst untouched)
@@ -347,7 +347,7 @@ pub unsafe extern "C" fn nros_subscription_init_with_qos(
 
     // Store QoS settings for later use by executor registration
     subscription.qos = if qos.is_null() {
-        crate::qos::NROS_QOS_DEFAULT
+        crate::qos::RCLC_QOS_DEFAULT
     } else {
         *qos
     };
@@ -359,16 +359,16 @@ pub unsafe extern "C" fn nros_subscription_init_with_qos(
     // clearing half would leave a stale executor pointer paired with
     // "not registered".
     subscription._executor = ptr::null_mut();
-    subscription.state = nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED;
+    subscription.state = rclc_subscription_state_t::RCLC_SUBSCRIPTION_STATE_INITIALIZED;
 
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// Phase 189.M3 — initialize a subscription with custom QoS + named options.
 ///
 /// rclc-style entry point: QoS is passed separately (`qos`, NULL =
 /// default) and the non-QoS axes ride in `options` (NULL = defaults).
-/// Behaves exactly like [`nros_subscription_init_with_qos`] except that
+/// Behaves exactly like [`rclc_subscription_init_with_qos`] except that
 /// a non-zero `options->sched_context` is stashed on the subscription so
 /// that `nros_executor_add_subscription_*` binds the resulting
 /// executor handle to that scheduling context once the handle is known
@@ -385,26 +385,26 @@ pub unsafe extern "C" fn nros_subscription_init_with_qos(
 /// * `options` - Pointer to subscription options (NULL for defaults)
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if any required pointer is NULL
-/// * `NROS_RET_NOT_INIT` if node is not initialized
-/// * `NROS_RET_ERROR` on initialization failure
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` if any required pointer is NULL
+/// * `RCL_RET_NOT_INIT` if node is not initialized
+/// * `RCL_RET_ERROR` on initialization failure
 ///
 /// # Safety
 /// * All required pointers must be valid
 /// * `topic_name` must be a valid null-terminated string
 /// * `qos` / `options` may be NULL or point to valid structs
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_subscription_init_with_options(
-    subscription: *mut nros_subscription_t,
-    node: *const nros_node_t,
-    type_info: *const nros_message_type_t,
+pub unsafe extern "C" fn rclc_subscription_init_with_options(
+    subscription: *mut rcl_subscription_t,
+    node: *const rcl_node_t,
+    type_info: *const rclc_message_type_t,
     topic_name: *const c_char,
-    qos: *const nros_qos_t,
-    options: *const nros_subscription_options_t,
-) -> nros_ret_t {
-    let ret = nros_subscription_init_with_qos(subscription, node, type_info, topic_name, qos);
-    if ret != NROS_RET_OK {
+    qos: *const rclc_qos_t,
+    options: *const rcl_subscription_options_t,
+) -> rcl_ret_t {
+    let ret = rclc_subscription_init_with_qos(subscription, node, type_info, topic_name, qos);
+    if ret != RCL_RET_OK {
         return ret;
     }
 
@@ -421,7 +421,7 @@ pub unsafe extern "C" fn nros_subscription_init_with_options(
         (*subscription).sched_context_id = opts.sched_context;
     }
 
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 // ============================================================================
@@ -431,25 +431,25 @@ pub unsafe extern "C" fn nros_subscription_init_with_options(
 // L1 is for callers that own their own scheduler (RTIC, embassy,
 // FreeRTOS-native task-per-entity). The subscriber entity is created
 // at init time and stored inline in `_opaque`; the caller polls it
-// directly via `nros_polling_subscription_take_serialized`, never
-// registering with an `nros_executor_t`.
+// directly via `rclc_polling_subscription_take_serialized`, never
+// registering with an `rclc_executor_t`.
 //
-// phase-487 W1 — L1 is its own TYPE, `nros_polling_subscription_t`, so
+// phase-487 W1 — L1 is its own TYPE, `rclc_polling_subscription_t`, so
 // "a polled subscription cannot be added to an executor" is a compile
-// error rather than a state check, and a dispatched `nros_subscription_t`
+// error rather than a state check, and a dispatched `rcl_subscription_t`
 // no longer carries the storage only this road fills. State transitions:
 //
-//   UNINITIALIZED → INITIALIZED (via nros_polling_subscription_init*)
-//   INITIALIZED   → SHUTDOWN    (via nros_polling_subscription_fini)
+//   UNINITIALIZED → INITIALIZED (via rclc_polling_subscription_init*)
+//   INITIALIZED   → SHUTDOWN    (via rclc_polling_subscription_fini)
 
 /// Phase 122.3.b — initialize an L1 polling-mode subscription.
 ///
 /// Creates the underlying RMW subscriber immediately and stores it
 /// inline in the subscription's `_opaque` field. The caller drains
-/// received messages via `nros_polling_subscription_take_serialized`.
+/// received messages via `rclc_polling_subscription_take_serialized`.
 ///
 /// Uses default QoS (RELIABLE, KEEP_LAST(10)). For custom QoS, use
-/// `nros_polling_subscription_init_with_qos`.
+/// `rclc_polling_subscription_init_with_qos`.
 ///
 /// # Parameters
 /// * `subscription` - Pointer to a zero-initialized subscription
@@ -458,39 +458,39 @@ pub unsafe extern "C" fn nros_subscription_init_with_options(
 /// * `topic_name` - Topic name (null-terminated)
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if any pointer is NULL or topic empty
-/// * `NROS_RET_NOT_INIT` if node / support not initialized
-/// * `NROS_RET_ERROR` if subscriber creation failed
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` if any pointer is NULL or topic empty
+/// * `RCL_RET_NOT_INIT` if node / support not initialized
+/// * `RCL_RET_ERROR` if subscriber creation failed
 ///
 /// # Safety
 /// * All pointers must be valid
 /// * `topic_name` must be a valid null-terminated string
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_subscription_init(
-    subscription: *mut nros_polling_subscription_t,
-    node: *const nros_node_t,
-    type_info: *const nros_message_type_t,
+pub unsafe extern "C" fn rclc_polling_subscription_init(
+    subscription: *mut rclc_polling_subscription_t,
+    node: *const rcl_node_t,
+    type_info: *const rclc_message_type_t,
     topic_name: *const c_char,
-) -> nros_ret_t {
-    nros_polling_subscription_init_with_qos(subscription, node, type_info, topic_name, ptr::null())
+) -> rcl_ret_t {
+    rclc_polling_subscription_init_with_qos(subscription, node, type_info, topic_name, ptr::null())
 }
 
 /// Phase 122.3.b — initialize an L1 polling-mode subscription with custom QoS.
 ///
-/// See `nros_polling_subscription_init` for the threading + lifecycle
+/// See `rclc_polling_subscription_init` for the threading + lifecycle
 /// contract.
 ///
 /// # Safety
-/// See `nros_polling_subscription_init`.
+/// See `rclc_polling_subscription_init`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_subscription_init_with_qos(
-    subscription: *mut nros_polling_subscription_t,
-    node: *const nros_node_t,
-    type_info: *const nros_message_type_t,
+pub unsafe extern "C" fn rclc_polling_subscription_init_with_qos(
+    subscription: *mut rclc_polling_subscription_t,
+    node: *const rcl_node_t,
+    type_info: *const rclc_message_type_t,
     topic_name: *const c_char,
-    qos: *const nros_qos_t,
-) -> nros_ret_t {
+    qos: *const rclc_qos_t,
+) -> rcl_ret_t {
     validate_not_null!(subscription, node, type_info, topic_name);
 
     let subscription_mut = &mut *subscription;
@@ -499,10 +499,10 @@ pub unsafe extern "C" fn nros_polling_subscription_init_with_qos(
 
     validate_state!(
         subscription_mut,
-        nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_UNINITIALIZED,
-        NROS_RET_BAD_SEQUENCE
+        rclc_subscription_state_t::RCLC_SUBSCRIPTION_STATE_UNINITIALIZED,
+        RCLC_RET_BAD_SEQUENCE
     );
-    validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
+    validate_state!(node_ref, rclc_node_state_t::RCLC_NODE_STATE_INITIALIZED);
 
     // The description is needed only to create the subscriber, which
     // happens below, so it is read into locals: the polled struct keeps the
@@ -511,14 +511,14 @@ pub unsafe extern "C" fn nros_polling_subscription_init_with_qos(
     let mut topic_buf = [0u8; MAX_TOPIC_LEN];
     let topic_len = crate::util::copy_cstr_into(topic_name, &mut topic_buf);
     if topic_len == 0 {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     let mut type_buf = [0u8; MAX_TYPE_NAME_LEN];
     let type_len = crate::util::copy_cstr_into(type_info_ref.type_name, &mut type_buf);
     let mut hash_buf = [0u8; MAX_TYPE_HASH_LEN];
     let hash_len = crate::util::copy_cstr_into(type_info_ref.type_hash, &mut hash_buf);
     let qos_value = if qos.is_null() {
-        crate::qos::NROS_QOS_DEFAULT
+        crate::qos::RCLC_QOS_DEFAULT
     } else {
         *qos
     };
@@ -529,13 +529,13 @@ pub unsafe extern "C" fn nros_polling_subscription_init_with_qos(
     // Resolve the SOURCE topic name to its wire name. The L2 (callback) path
     // gets this from `nros_executor_add_subscription_*`; the L1 path creates the
     // entity right here and so never reached that seam — the same gap
-    // `nros_publisher_init_with_qos` had, and the reason both are fixed
+    // `rclc_publisher_init_with_qos` had, and the reason both are fixed
     // together rather than at the site the sweep reported.
     let _resolved_topic = {
         let source = core::str::from_utf8_unchecked(&topic_buf[..topic_len]);
         match crate::node::resolve_entity_name_on_node(node_ref, source) {
             Some(r) => r,
-            None => return NROS_RET_INVALID_ARGUMENT,
+            None => return RCL_RET_INVALID_ARGUMENT,
         }
     };
 
@@ -549,7 +549,7 @@ pub unsafe extern "C" fn nros_polling_subscription_init_with_qos(
         // `rclc_publisher_init_default` for the long form).
         let (session, domain_id) = match crate::node::resolve_session_and_domain(node_ref) {
             Some(t) => t,
-            None => return NROS_RET_NOT_INIT,
+            None => return RCL_RET_NOT_INIT,
         };
 
         let topic_str = core::str::from_utf8_unchecked(&topic_buf[..topic_len]);
@@ -579,12 +579,12 @@ pub unsafe extern "C" fn nros_polling_subscription_init_with_qos(
         );
         // phase-454 W10 — the REGISTRATION half of C's declared-depth check.
         // `NROS_ASSERT_DECLARED_DEPTH` catches a C call site whose depth is a
-        // constant expression at COMPILE time; a `nros_qos_t` built at run time
+        // constant expression at COMPILE time; a `rclc_qos_t` built at run time
         // has no constant to assert on, and this is where it lands instead.
         if nros_node::declared_qos::check(topic_info.type_name, topic_info.name, &qos_settings)
             .is_err()
         {
-            return NROS_RET_ERROR;
+            return RCL_RET_ERROR;
         }
         match session.create_subscription(&topic_info, qos_settings) {
             Ok(handle) => {
@@ -597,18 +597,18 @@ pub unsafe extern "C" fn nros_polling_subscription_init_with_qos(
                     raw,
                 );
             }
-            Err(_) => return NROS_RET_ERROR,
+            Err(_) => return RCL_RET_ERROR,
         }
     }
 
     subscription_mut.node = unsafe { crate::node::node_ref_of(node) };
-    subscription_mut.state = nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED;
-    NROS_RET_OK
+    subscription_mut.state = rclc_subscription_state_t::RCLC_SUBSCRIPTION_STATE_INITIALIZED;
+    RCL_RET_OK
 }
 
 /// Phase 122.3.c.6.e — register a C wake callback on an L1
 /// polling-mode subscription. `state` is a caller-owned
-/// `nros_wake_state_t` (declared next to the subscription) that
+/// `rclc_wake_state_t` (declared next to the subscription) that
 /// must outlive the subscription and not move. Pass `cb = NULL`
 /// to disable. The backend wakes the callback when a new message
 /// arrives.
@@ -617,24 +617,24 @@ pub unsafe extern "C" fn nros_polling_subscription_init_with_qos(
 /// All pointers valid; `state` storage stable for the
 /// subscription's lifetime.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_subscription_set_wake_callback(
-    subscription: *mut nros_polling_subscription_t,
-    state: *mut crate::service::nros_wake_state_t,
+pub unsafe extern "C" fn rclc_polling_subscription_set_wake_callback(
+    subscription: *mut rclc_polling_subscription_t,
+    state: *mut crate::service::rclc_wake_state_t,
     cb: Option<unsafe extern "C" fn(*mut c_void)>,
     ctx: *mut c_void,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     if subscription.is_null() || state.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     let subscription_mut = &mut *subscription;
-    if subscription_mut.state != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED {
-        return NROS_RET_INVALID_ARGUMENT;
+    if subscription_mut.state != rclc_subscription_state_t::RCLC_SUBSCRIPTION_STATE_INITIALIZED {
+        return RCL_RET_INVALID_ARGUMENT;
     }
 
     #[cfg(feature = "rmw-cffi")]
     {
         let Some(raw) = subscription_mut.raw() else {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         };
         let state_ptr = state as *mut nros_node::c_waker::CWakeState;
         core::ptr::write(
@@ -643,18 +643,18 @@ pub unsafe extern "C" fn nros_polling_subscription_set_wake_callback(
         );
         let waker = nros_node::c_waker::make_waker(state_ptr);
         raw.register_waker(&waker);
-        NROS_RET_OK
+        RCL_RET_OK
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (state, cb, ctx);
-        NROS_RET_NOT_INIT
+        RCL_RET_NOT_INIT
     }
 }
 
 /// Phase 122.3.b — non-blocking poll on an L1 polling-mode
 /// subscription. Returns the number of bytes received on success
-/// (may be 0 if no data available), or a negative `nros_ret_t` on
+/// (may be 0 if no data available), or a negative `rcl_ret_t` on
 /// error.
 ///
 /// # Parameters
@@ -664,30 +664,30 @@ pub unsafe extern "C" fn nros_polling_subscription_set_wake_callback(
 ///
 /// # Returns
 /// * `>= 0` — number of bytes copied into `buf`
-/// * `NROS_RET_INVALID_ARGUMENT` if any pointer is NULL or state is wrong
-/// * `NROS_RET_ERROR` on transport failure
+/// * `RCL_RET_INVALID_ARGUMENT` if any pointer is NULL or state is wrong
+/// * `RCL_RET_ERROR` on transport failure
 ///
 /// # Safety
 /// * `subscription` must be an initialized polling subscription
 /// * `buf` must point to writable memory of at least `buf_len` bytes
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_subscription_take_serialized(
-    subscription: *mut nros_polling_subscription_t,
+pub unsafe extern "C" fn rclc_polling_subscription_take_serialized(
+    subscription: *mut rclc_polling_subscription_t,
     buf: *mut u8,
     buf_len: usize,
 ) -> i32 {
     if subscription.is_null() || (buf.is_null() && buf_len != 0) {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     let subscription_mut = &mut *subscription;
-    if subscription_mut.state != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED {
-        return NROS_RET_BAD_SEQUENCE;
+    if subscription_mut.state != rclc_subscription_state_t::RCLC_SUBSCRIPTION_STATE_INITIALIZED {
+        return RCLC_RET_BAD_SEQUENCE;
     }
 
     #[cfg(feature = "rmw-cffi")]
     {
         let Some(raw) = subscription_mut.raw() else {
-            return NROS_RET_BAD_SEQUENCE;
+            return RCLC_RET_BAD_SEQUENCE;
         };
         match raw.take_serialized() {
             Ok(Some(len)) => {
@@ -696,22 +696,22 @@ pub unsafe extern "C" fn nros_polling_subscription_take_serialized(
                 to_copy as i32
             }
             Ok(None) => 0,
-            Err(_) => NROS_RET_ERROR,
+            Err(_) => RCL_RET_ERROR,
         }
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (subscription_mut, buf, buf_len);
-        NROS_RET_ERROR
+        RCL_RET_ERROR
     }
 }
 
 /// Phase 252 / issue 0073 — E2E message-integrity status surfaced to the C/C++
-/// receive path ([`nros_polling_subscription_take_validated`]). The C analog of the
+/// receive path ([`rclc_polling_subscription_take_validated`]). The C analog of the
 /// Rust `IntegrityStatus` / `CallbackCtx::integrity()`.
 #[cfg(feature = "safety-e2e")]
 #[repr(C)]
-pub struct nros_integrity_status_t {
+pub struct rclc_integrity_status_t {
     /// Sequence-number gap since the previous in-order message (0 = none).
     pub gap: i64,
     /// `true` if this sample's sequence number was already seen (a duplicate).
@@ -723,7 +723,7 @@ pub struct nros_integrity_status_t {
 
 /// Phase 252 / issue 0073 — non-blocking poll that ALSO returns the E2E
 /// integrity status (CRC + sequence gap/dup) of the received sample. The
-/// safety-e2e analog of [`nros_polling_subscription_take_serialized`]: it requests
+/// safety-e2e analog of [`rclc_polling_subscription_take_serialized`]: it requests
 /// validation on the backend (the zenoh shim recomputes + compares the CRC
 /// attachment and tracks the sequence) and writes the verdict to `*out_status`.
 ///
@@ -733,41 +733,41 @@ pub struct nros_integrity_status_t {
 ///
 /// # Returns
 /// * `>= 0` — number of bytes copied into `buf` (0 = no data available)
-/// * `NROS_RET_INVALID_ARGUMENT` if `subscription`/`buf` is NULL
-/// * `NROS_RET_BAD_SEQUENCE` if the polling subscription is not initialized
-/// * `NROS_RET_ERROR` on transport failure
+/// * `RCL_RET_INVALID_ARGUMENT` if `subscription`/`buf` is NULL
+/// * `RCLC_RET_BAD_SEQUENCE` if the polling subscription is not initialized
+/// * `RCL_RET_ERROR` on transport failure
 ///
 /// # Safety
 /// * `subscription` must be an initialized polling subscription
 /// * `buf` must point to writable memory of at least `buf_len` bytes
-/// * `out_status`, if non-NULL, must point to a writable `nros_integrity_status_t`
+/// * `out_status`, if non-NULL, must point to a writable `rclc_integrity_status_t`
 #[cfg(feature = "safety-e2e")]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_subscription_take_validated(
-    subscription: *mut nros_polling_subscription_t,
+pub unsafe extern "C" fn rclc_polling_subscription_take_validated(
+    subscription: *mut rclc_polling_subscription_t,
     buf: *mut u8,
     buf_len: usize,
-    out_status: *mut nros_integrity_status_t,
+    out_status: *mut rclc_integrity_status_t,
 ) -> i32 {
     if subscription.is_null() || (buf.is_null() && buf_len != 0) {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     let subscription_mut = &mut *subscription;
-    if subscription_mut.state != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED {
-        return NROS_RET_BAD_SEQUENCE;
+    if subscription_mut.state != rclc_subscription_state_t::RCLC_SUBSCRIPTION_STATE_INITIALIZED {
+        return RCLC_RET_BAD_SEQUENCE;
     }
 
     #[cfg(feature = "rmw-cffi")]
     {
         let Some(raw) = subscription_mut.raw() else {
-            return NROS_RET_BAD_SEQUENCE;
+            return RCLC_RET_BAD_SEQUENCE;
         };
         match raw.take_validated() {
             Ok(Some((len, status))) => {
                 let to_copy = len.min(buf_len);
                 core::ptr::copy_nonoverlapping(raw.buffer().as_ptr(), buf, to_copy);
                 if !out_status.is_null() {
-                    *out_status = nros_integrity_status_t {
+                    *out_status = rclc_integrity_status_t {
                         gap: status.gap,
                         duplicate: status.duplicate,
                         crc_valid: match status.crc_valid {
@@ -780,13 +780,13 @@ pub unsafe extern "C" fn nros_polling_subscription_take_validated(
                 to_copy as i32
             }
             Ok(None) => 0,
-            Err(_) => NROS_RET_ERROR,
+            Err(_) => RCL_RET_ERROR,
         }
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (subscription_mut, buf, buf_len, out_status);
-        NROS_RET_ERROR
+        RCL_RET_ERROR
     }
 }
 
@@ -798,12 +798,12 @@ pub unsafe extern "C" fn nros_polling_subscription_take_validated(
 /// in place (zero-copy receive path).
 ///
 /// **Availability:** requires the `lending` AND `alloc` cargo features,
-/// and no shipped build enables `lending` — see `nros_publisher_loan`
+/// and no shipped build enables `lending` — see `rclc_publisher_loan`
 /// for what that means for this header. Issue 0814.
 ///
 /// Bypasses the subscription's staging buffer. On success, `*out_buf`
 /// points at `*out_len` bytes the caller can read directly. Caller MUST
-/// pass `*out_token` back to [`nros_polling_subscription_release`] before
+/// pass `*out_token` back to [`rclc_polling_subscription_release`] before
 /// requesting another borrow on the same subscription — only one
 /// outstanding view per subscription at a time.
 ///
@@ -824,29 +824,29 @@ pub unsafe extern "C" fn nros_polling_subscription_take_validated(
 /// # Returns
 /// * `> 0` — message length written into `*out_len`; view is ready.
 /// * `0` — no message ready right now.
-/// * negative — error (see `nros_ret_t`).
+/// * negative — error (see `rcl_ret_t`).
 ///
 /// # Safety
 /// * `subscription` must be a valid polling subscription.
 /// * `out_buf` / `out_len` / `out_token` must be valid pointers.
 #[cfg(all(feature = "lending", feature = "alloc"))]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_subscription_borrow(
-    subscription: *mut nros_polling_subscription_t,
+pub unsafe extern "C" fn rclc_polling_subscription_borrow(
+    subscription: *mut rclc_polling_subscription_t,
     out_buf: *mut *const u8,
     out_len: *mut usize,
     out_token: *mut *mut core::ffi::c_void,
 ) -> i32 {
     if subscription.is_null() || out_buf.is_null() || out_len.is_null() || out_token.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     let subscription_mut = &mut *subscription;
-    if subscription_mut.state != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED {
-        return NROS_RET_BAD_SEQUENCE;
+    if subscription_mut.state != rclc_subscription_state_t::RCLC_SUBSCRIPTION_STATE_INITIALIZED {
+        return RCLC_RET_BAD_SEQUENCE;
     }
 
     let Some(raw) = subscription_mut.raw() else {
-        return NROS_RET_BAD_SEQUENCE;
+        return RCLC_RET_BAD_SEQUENCE;
     };
     // RawSubscription::try_borrow returns a RecvView bound to &mut raw.
     // For the C-side token plumbing, we erase the lifetime and Box it
@@ -871,45 +871,45 @@ pub unsafe extern "C" fn nros_polling_subscription_borrow(
             len as i32
         }
         Ok(None) => 0,
-        Err(_) => NROS_RET_ERROR,
+        Err(_) => RCL_RET_ERROR,
     }
 }
 
 /// Phase 124.A.6 — release a previously borrowed view.
 ///
 /// **Availability:** requires `lending` AND `alloc`, and no shipped build
-/// enables `lending` — see `nros_publisher_loan`. Issue 0814.
+/// enables `lending` — see `rclc_publisher_loan`. Issue 0814.
 ///
-/// `token` MUST come from a prior `nros_polling_subscription_borrow` on the
+/// `token` MUST come from a prior `rclc_polling_subscription_borrow` on the
 /// SAME subscription; consuming it is mandatory before the
 /// subscription's next borrow / destroy.
 ///
 /// **Requires `alloc` as well as `lending`** — it unboxes the `RecvView`
-/// its paired `nros_polling_subscription_borrow` boxed. See that function.
+/// its paired `rclc_polling_subscription_borrow` boxed. See that function.
 ///
 /// # Safety
 /// * `subscription` must be the subscription the token was borrowed from.
 /// * `token` must not be NULL and must not be reused after this call.
 #[cfg(all(feature = "lending", feature = "alloc"))]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_subscription_release(
-    subscription: *mut nros_polling_subscription_t,
+pub unsafe extern "C" fn rclc_polling_subscription_release(
+    subscription: *mut rclc_polling_subscription_t,
     token: *mut core::ffi::c_void,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     if subscription.is_null() || token.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     let subscription_mut = &mut *subscription;
-    if subscription_mut.state != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED {
-        return NROS_RET_BAD_SEQUENCE;
+    if subscription_mut.state != rclc_subscription_state_t::RCLC_SUBSCRIPTION_STATE_INITIALIZED {
+        return RCLC_RET_BAD_SEQUENCE;
     }
     // SAFETY: token came from `Box::into_raw(Box<RecvView<'static>>)`
-    // inside `nros_polling_subscription_borrow`. Reconstitute and drop —
+    // inside `rclc_polling_subscription_borrow`. Reconstitute and drop —
     // RecvView::drop fires the backend's sub_release (or no-op for
     // the staging-buffer fallback path).
     let _view: alloc::boxed::Box<nros_node::RecvView<'static>> =
         alloc::boxed::Box::from_raw(token as *mut nros_node::RecvView<'static>);
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// Phase 124.D.1 — burst-take. Drain up to `max_msgs` queued samples
@@ -921,7 +921,7 @@ pub unsafe extern "C" fn nros_polling_subscription_release(
 /// of at least `max_msgs` `size_t` slots.
 ///
 /// Returns the number of messages delivered (`>= 0`) on success, or
-/// a negative `nros_ret_t` error code. Partial drains are reported
+/// a negative `rcl_ret_t` error code. Partial drains are reported
 /// as the count, never as an error.
 ///
 /// # Safety
@@ -931,25 +931,25 @@ pub unsafe extern "C" fn nros_polling_subscription_release(
 /// * `out_lens` must point to a writable array of at least
 ///   `max_msgs` `size_t` slots.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_subscription_take_sequence(
-    subscription: *mut nros_polling_subscription_t,
+pub unsafe extern "C" fn rclc_polling_subscription_take_sequence(
+    subscription: *mut rclc_polling_subscription_t,
     buf: *mut u8,
     per_msg_cap: usize,
     max_msgs: usize,
     out_lens: *mut usize,
 ) -> i32 {
     if subscription.is_null() || buf.is_null() || out_lens.is_null() || per_msg_cap == 0 {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     let subscription_mut = &mut *subscription;
-    if subscription_mut.state != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED {
-        return NROS_RET_BAD_SEQUENCE;
+    if subscription_mut.state != rclc_subscription_state_t::RCLC_SUBSCRIPTION_STATE_INITIALIZED {
+        return RCLC_RET_BAD_SEQUENCE;
     }
 
     #[cfg(feature = "rmw-cffi")]
     {
         let Some(raw) = subscription_mut.raw() else {
-            return NROS_RET_BAD_SEQUENCE;
+            return RCLC_RET_BAD_SEQUENCE;
         };
         // `RawSubscription`'s `handle` is the cffi subscriber that
         // drives the vtable slot (or its loop fallback). Borrow the
@@ -958,20 +958,20 @@ pub unsafe extern "C" fn nros_polling_subscription_take_sequence(
         let lens_slice = core::slice::from_raw_parts_mut(out_lens, max_msgs);
         match raw.take_sequence(buf_slice, per_msg_cap, max_msgs, lens_slice) {
             Ok(count) => count as i32,
-            Err(_) => NROS_RET_ERROR,
+            Err(_) => RCL_RET_ERROR,
         }
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (subscription_mut, buf, per_msg_cap, max_msgs, out_lens);
-        NROS_RET_ERROR
+        RCL_RET_ERROR
     }
 }
 
 /// The QoS profile this subscription is ACTUALLY running — issue 1437.
 ///
 /// `rcl_subscription_get_actual_qos`. See
-/// [`nros_publisher_get_actual_qos`](crate::publisher::nros_publisher_get_actual_qos)
+/// [`rclc_publisher_get_actual_qos`](crate::publisher::rclc_publisher_get_actual_qos)
 /// for what "actual" means, why an unreportable policy reads back as
 /// `NROS_QOS_*_UNKNOWN` rather than as your request, and why this API returns
 /// a status with an out-parameter where `rcl` returns an interior pointer.
@@ -979,87 +979,87 @@ pub unsafe extern "C" fn nros_polling_subscription_take_sequence(
 /// The executor arena owns this subscription's subscriber and the handle
 /// carries only `(executor, handle_id)`, so the answer is read through the
 /// arena. A polled subscription answers through
-/// [`nros_polling_subscription_get_actual_qos`].
+/// [`rclc_polling_subscription_get_actual_qos`].
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if either pointer is NULL
-/// * `NROS_RET_NOT_INIT` if the subscription is not initialised, or has not
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` if either pointer is NULL
+/// * `RCL_RET_NOT_INIT` if the subscription is not initialised, or has not
 ///   been added to an executor yet — there is no entity to ask, which is a
 ///   different answer from `UNKNOWN` ("there is an entity and it cannot say")
 ///
 /// # Safety
 /// * `subscription` must be a valid pointer to an initialized subscription.
-/// * `out_qos` must be a valid, writable `nros_qos_t`.
+/// * `out_qos` must be a valid, writable `rclc_qos_t`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_subscription_get_actual_qos(
-    subscription: *const nros_subscription_t,
-    out_qos: *mut nros_qos_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_subscription_get_actual_qos(
+    subscription: *const rcl_subscription_t,
+    out_qos: *mut rclc_qos_t,
+) -> rcl_ret_t {
     validate_not_null!(subscription, out_qos);
 
     #[cfg(feature = "rmw-cffi")]
     {
         let subscription = &*subscription;
         let granted = match subscription.state {
-            nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED => {
+            rclc_subscription_state_t::RCLC_SUBSCRIPTION_STATE_INITIALIZED => {
                 if subscription._executor.is_null() || subscription.handle_id == usize::MAX {
-                    return NROS_RET_NOT_INIT;
+                    return RCL_RET_NOT_INIT;
                 }
                 let exec_t =
-                    &mut *(subscription._executor as *mut crate::executor::nros_executor_t);
+                    &mut *(subscription._executor as *mut crate::executor::rclc_executor_t);
                 let exec = crate::executor::get_executor(&mut exec_t._opaque);
                 match exec.subscription_handle(subscription.handle_id) {
                     Some(handle) => nros_rmw::Subscription::actual_qos(handle),
-                    None => return NROS_RET_NOT_INIT,
+                    None => return RCL_RET_NOT_INIT,
                 }
             }
-            _ => return NROS_RET_NOT_INIT,
+            _ => return RCL_RET_NOT_INIT,
         };
-        *out_qos = nros_qos_t::from_qos_settings(granted);
-        NROS_RET_OK
+        *out_qos = rclc_qos_t::from_qos_settings(granted);
+        RCL_RET_OK
     }
 
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = subscription;
-        NROS_RET_NOT_INIT
+        RCL_RET_NOT_INIT
     }
 }
 
 /// The QoS profile a polled subscription is ACTUALLY running.
 ///
-/// The polled twin of [`nros_subscription_get_actual_qos`]: the subscriber is
+/// The polled twin of [`rclc_subscription_get_actual_qos`]: the subscriber is
 /// inline in the struct, so it answers directly.
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if either pointer is NULL
-/// * `NROS_RET_NOT_INIT` if the polling subscription is not initialised
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` if either pointer is NULL
+/// * `RCL_RET_NOT_INIT` if the polling subscription is not initialised
 ///
 /// # Safety
 /// * `subscription` must be a valid pointer.
-/// * `out_qos` must be a valid, writable `nros_qos_t`.
+/// * `out_qos` must be a valid, writable `rclc_qos_t`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_subscription_get_actual_qos(
-    subscription: *mut nros_polling_subscription_t,
-    out_qos: *mut nros_qos_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_polling_subscription_get_actual_qos(
+    subscription: *mut rclc_polling_subscription_t,
+    out_qos: *mut rclc_qos_t,
+) -> rcl_ret_t {
     validate_not_null!(subscription, out_qos);
 
     #[cfg(feature = "rmw-cffi")]
     {
         let Some(raw) = (*subscription).raw() else {
-            return NROS_RET_NOT_INIT;
+            return RCL_RET_NOT_INIT;
         };
-        *out_qos = nros_qos_t::from_qos_settings(raw.qos());
-        NROS_RET_OK
+        *out_qos = rclc_qos_t::from_qos_settings(raw.qos());
+        RCL_RET_OK
     }
 
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = subscription;
-        NROS_RET_NOT_INIT
+        RCL_RET_NOT_INIT
     }
 }
 
@@ -1067,30 +1067,30 @@ pub unsafe extern "C" fn nros_polling_subscription_get_actual_qos(
 /// the RMW entity.
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if `subscription` is NULL
-/// * `NROS_RET_NOT_INIT` if it is not initialised
-/// * `NROS_RET_STALE_NODE` if its node has already been finalised — the
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` if `subscription` is NULL
+/// * `RCL_RET_NOT_INIT` if it is not initialised
+/// * `RCLC_RET_STALE_NODE` if its node has already been finalised — the
 ///   teardown order was wrong, and nothing is dropped (issue 1386).
 ///
 /// # Safety
 /// * `subscription` must be a valid pointer
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_subscription_fini(
-    subscription: *mut nros_polling_subscription_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_polling_subscription_fini(
+    subscription: *mut rclc_polling_subscription_t,
+) -> rcl_ret_t {
     validate_not_null!(subscription);
 
     let subscription = &mut *subscription;
-    if subscription.state != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
+    if subscription.state != rclc_subscription_state_t::RCLC_SUBSCRIPTION_STATE_INITIALIZED {
+        return RCL_RET_NOT_INIT;
     }
     // phase-379 W4 — the node this entity was created on is gone, so its
     // teardown ORDER was wrong. Reported rather than performed: before W4 the
     // entity held a pointer nothing dereferenced and this case succeeded
     // silently, which is what made the ordering obligation unenforceable.
     if subscription.node.is_bound() && !crate::node::node_ref_is_live(subscription.node) {
-        return crate::error::NROS_RET_STALE_NODE;
+        return crate::error::RCLC_RET_STALE_NODE;
     }
 
     #[cfg(feature = "rmw-cffi")]
@@ -1100,21 +1100,21 @@ pub unsafe extern "C" fn nros_polling_subscription_fini(
         subscription._opaque = [0u64; SUBSCRIPTION_OPAQUE_U64S];
     }
 
-    subscription.node = crate::node::nros_node_ref_t::none();
-    subscription.state = nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_SHUTDOWN;
-    NROS_RET_OK
+    subscription.node = crate::node::rclc_node_ref_t::none();
+    subscription.state = rclc_subscription_state_t::RCLC_SUBSCRIPTION_STATE_SHUTDOWN;
+    RCL_RET_OK
 }
 
 /// Finalize a subscription.
 ///
 /// The subscriber is the executor arena's: remove it with
-/// `nros_executor_remove_subscription` first if it was added. This resets
+/// `rclc_executor_remove_subscription` first if it was added. This resets
 /// the description and the handle.
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if `subscription` is NULL
-/// * `NROS_RET_NOT_INIT` if it is in no finalisable state
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` if `subscription` is NULL
+/// * `RCL_RET_NOT_INIT` if it is in no finalisable state
 ///   finalised — the teardown order was wrong, and nothing is dropped. Stated
 ///   here because of issue 1386: that issue is three sites documenting a
 ///   stale-node verdict they could not produce, and the same sweep found this
@@ -1123,15 +1123,13 @@ pub unsafe extern "C" fn nros_polling_subscription_fini(
 /// # Safety
 /// * `subscription` must be a valid pointer
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_subscription_fini(
-    subscription: *mut nros_subscription_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rcl_subscription_fini(subscription: *mut rcl_subscription_t) -> rcl_ret_t {
     validate_not_null!(subscription);
 
     let subscription = &mut *subscription;
 
-    if subscription.state != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
+    if subscription.state != rclc_subscription_state_t::RCLC_SUBSCRIPTION_STATE_INITIALIZED {
+        return RCL_RET_NOT_INIT;
     }
 
     subscription.handle_id = usize::MAX;
@@ -1139,13 +1137,13 @@ pub unsafe extern "C" fn nros_subscription_fini(
     // clearing half would leave a stale executor pointer paired with
     // "not registered".
     subscription._executor = ptr::null_mut();
-    subscription.node = crate::node::nros_node_ref_t::none();
-    subscription.state = nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_SHUTDOWN;
+    subscription.node = crate::node::rclc_node_ref_t::none();
+    subscription.state = rclc_subscription_state_t::RCLC_SUBSCRIPTION_STATE_SHUTDOWN;
 
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
-impl nros_subscription_t {
+impl rcl_subscription_t {
     /// Can this handle be USED? — the one predicate behind both
     /// `rcl_subscription_is_valid` and `rcl_subscription_get_topic_name`.
     ///
@@ -1156,7 +1154,7 @@ impl nros_subscription_t {
     pub(crate) const fn is_usable(&self) -> bool {
         matches!(
             self.state,
-            nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
+            rclc_subscription_state_t::RCLC_SUBSCRIPTION_STATE_INITIALIZED
         )
     }
 }
@@ -1168,10 +1166,10 @@ impl nros_subscription_t {
 ///
 /// # Returns
 /// * Pointer to topic name (null-terminated), or NULL if the handle is not
-///   usable (see `nros_subscription_t::is_usable`) or NULL
+///   usable (see `rcl_subscription_t::is_usable`) or NULL
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_subscription_get_topic_name(
-    subscription: *const nros_subscription_t,
+    subscription: *const rcl_subscription_t,
 ) -> *const c_char {
     if subscription.is_null() {
         return ptr::null();
@@ -1191,7 +1189,7 @@ pub unsafe extern "C" fn rcl_subscription_get_topic_name(
 /// `c:subscription_get_publisher_count`. The subscription half of
 /// [`rcl_publisher_get_subscription_count`](crate::publisher::rcl_publisher_get_subscription_count),
 /// which states the weakening (topic-wide, not matched-to-this-entity), why
-/// the executor is a parameter, and why `NROS_RET_UNSUPPORTED` is not `0`.
+/// the executor is a parameter, and why `RCL_RET_UNSUPPORTED` is not `0`.
 ///
 /// # Parameters
 /// * `subscription` - Pointer to a subscription
@@ -1203,18 +1201,18 @@ pub unsafe extern "C" fn rcl_subscription_get_topic_name(
 /// * `out_count` must point to a writable `size_t` or be NULL
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_subscription_get_publisher_count(
-    subscription: *const nros_subscription_t,
-    executor: *mut crate::executor::nros_executor_t,
+    subscription: *const rcl_subscription_t,
+    executor: *mut crate::executor::rclc_executor_t,
     out_count: *mut usize,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     if subscription.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     let subscription = &*subscription;
     if !subscription.is_usable() {
-        return NROS_RET_NOT_INIT;
+        return RCL_RET_NOT_INIT;
     }
-    crate::executor::nros_executor_count_publishers(
+    crate::executor::rclc_executor_count_publishers(
         executor,
         subscription.topic_name.as_ptr() as *const c_char,
         out_count,
@@ -1225,7 +1223,7 @@ pub unsafe extern "C" fn rcl_subscription_get_publisher_count(
 ///
 /// rcl's `rcl_subscription_is_valid`, whose contract is "true for any handle
 /// that can be used" — the ported idiom is a guard. See
-/// `nros_subscription_t::is_usable` for which states those are.
+/// `rcl_subscription_t::is_usable` for which states those are.
 ///
 /// # Parameters
 /// * `subscription` - Pointer to a subscription
@@ -1234,7 +1232,7 @@ pub unsafe extern "C" fn rcl_subscription_get_publisher_count(
 /// * `true` if usable, `false` if finalised, uninitialised or NULL
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_subscription_is_valid(
-    subscription: *const nros_subscription_t,
+    subscription: *const rcl_subscription_t,
 ) -> bool {
     if subscription.is_null() {
         return false;
@@ -1244,7 +1242,7 @@ pub unsafe extern "C" fn rcl_subscription_is_valid(
 }
 
 // Internal helper methods for executor
-impl nros_subscription_t {
+impl rcl_subscription_t {
     /// Get the stored QoS as `nros_rmw::QoSProfile`
     pub(crate) fn get_qos_settings(&self) -> nros_rmw::QoSProfile {
         self.qos.to_qos_settings()
@@ -1276,16 +1274,16 @@ mod validity_tests {
 
     /// A polled subscription is its own type since phase-487, so this struct
     /// has one live state.
-    const LIVE_STATES: [nros_subscription_state_t; 1] =
-        [nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED];
+    const LIVE_STATES: [rclc_subscription_state_t; 1] =
+        [rclc_subscription_state_t::RCLC_SUBSCRIPTION_STATE_INITIALIZED];
 
-    const DEAD_STATES: [nros_subscription_state_t; 2] = [
-        nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_UNINITIALIZED,
-        nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_SHUTDOWN,
+    const DEAD_STATES: [rclc_subscription_state_t; 2] = [
+        rclc_subscription_state_t::RCLC_SUBSCRIPTION_STATE_UNINITIALIZED,
+        rclc_subscription_state_t::RCLC_SUBSCRIPTION_STATE_SHUTDOWN,
     ];
 
-    fn named_subscription(state: nros_subscription_state_t) -> nros_subscription_t {
-        let mut s = nros_subscription_t::default();
+    fn named_subscription(state: rclc_subscription_state_t) -> rcl_subscription_t {
+        let mut s = rcl_subscription_t::default();
         s.topic_name[..6].copy_from_slice(b"/chatt");
         s.topic_name_len = 6;
         s.state = state;
@@ -1342,19 +1340,19 @@ mod validity_tests {
     /// The publisher is the CONTROL for this class: its state enum has no
     /// third live value, so `INITIALIZED` really is the whole of "usable" and
     /// its predicate is correct as written. Pinned so a future state added to
-    /// `nros_publisher_state_t` cannot quietly re-create the defect.
+    /// `rclc_publisher_state_t` cannot quietly re-create the defect.
     #[test]
     fn the_publisher_has_no_third_live_state_to_miss() {
-        use crate::publisher::{nros_publisher_state_t, nros_publisher_t, rcl_publisher_is_valid};
-        let mut p = nros_publisher_t::default();
+        use crate::publisher::{rcl_publisher_is_valid, rcl_publisher_t, rclc_publisher_state_t};
+        let mut p = rcl_publisher_t::default();
         for state in [
-            nros_publisher_state_t::NROS_PUBLISHER_STATE_UNINITIALIZED,
-            nros_publisher_state_t::NROS_PUBLISHER_STATE_SHUTDOWN,
+            rclc_publisher_state_t::RCLC_PUBLISHER_STATE_UNINITIALIZED,
+            rclc_publisher_state_t::RCLC_PUBLISHER_STATE_SHUTDOWN,
         ] {
             p.state = state;
             assert!(!unsafe { rcl_publisher_is_valid(&p) }, "{state:?}");
         }
-        p.state = nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED;
+        p.state = rclc_publisher_state_t::RCLC_PUBLISHER_STATE_INITIALIZED;
         assert!(unsafe { rcl_publisher_is_valid(&p) });
     }
 }

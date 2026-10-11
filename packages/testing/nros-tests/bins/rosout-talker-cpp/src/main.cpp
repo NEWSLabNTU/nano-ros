@@ -71,9 +71,9 @@ static int run(rclcpp::Node& node, int records, int period_ms) {
 
     size_t total = 0;
     for (int i = 0; i < records; i++) {
-        NROS_LOG_INFO(probe, "nros rosout probe record %d", i);
+        RCLC_LOG_INFO(probe, "nros rosout probe record %d", i);
         if (i % 2 == 1) {
-            NROS_LOG_WARN(probe, "nros rosout probe warning at %d", i);
+            RCLC_LOG_WARN(probe, "nros rosout probe warning at %d", i);
         }
         (void)rclcpp::spin_once(period_ms);
         size_t sent = 0;

@@ -602,7 +602,7 @@ static ARM_REQUESTS: AtomicU32 = AtomicU32::new(0);
 /// Callable from anywhere -- a node's callback, another thread -- because it
 /// only bumps an atomic; each executor arms at its next spin. On an executor
 /// that is already armed (the default: armed at the first spin) it does
-/// nothing. C: `nros_monitors_arm()`; C++: `nros::arm_monitors()`.
+/// nothing. C: `rclc_monitors_arm()`; C++: `nros::arm_monitors()`.
 ///
 /// [`Executor::set_monitor_arming`]: super::Executor::set_monitor_arming
 pub fn request_monitor_arming() {

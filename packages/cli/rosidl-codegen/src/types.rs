@@ -1165,7 +1165,7 @@ pub fn c_type_for_field_with_capacity(
 /// two dimensions swapped, so the container held 256 strings of 63 characters
 /// where the config said 64 strings of 255. The total byte count is the same,
 /// which is why nothing caught it: the struct is the right SIZE and the wrong
-/// SHAPE, and `nros_cdr_read_string(..., sizeof(data[i]))` then enforced the
+/// SHAPE, and `rclc_cdr_read_string(..., sizeof(data[i]))` then enforced the
 /// sequence cap on the string and no cap at all on the count.
 ///
 /// Latent while a sequence element could only be bounded from a `.msg` (rare in

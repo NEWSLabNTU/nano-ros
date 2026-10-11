@@ -128,10 +128,10 @@ stub that wires signal handling and forwards to your function.
 #include "std_msgs.h"
 
 int nros_app_main(int argc, char** argv) {
-    // 1. nros_support_init() — opens the zenoh session
-    // 2. nros_executor_init() / rclc_node_init_default()
+    // 1. rclc_support_init() — opens the zenoh session
+    // 2. rclc_executor_init() / rclc_node_init_default()
     // 3. std_msgs_msg_int32_publisher_init() — typed publisher
-    // 4. nros_timer_init() with a 1 Hz period + publish callback
+    // 4. rcl_timer_init() with a 1 Hz period + publish callback
     // 5. rclc_executor_spin() until SIGINT
 }
 ```
@@ -215,8 +215,8 @@ the count at 1, matching the official ROS 2 demo talker. If no
 `Publishing:` line in 30 seconds:
 
 1. Confirm the router is running (terminal 1). Without it,
-   `nros_support_init` returns immediately with `-4`
-   (`NROS_RET_NOT_FOUND` — connection refused).
+   `rclc_support_init` returns immediately with `-4`
+   (`RCLC_RET_NOT_FOUND` — connection refused).
 2. Wrong locator / unreachable host → same `-4` signature in stderr.
    Reachable host but mismatched port → talker hangs on session-open
    handshake rather than returning a code.

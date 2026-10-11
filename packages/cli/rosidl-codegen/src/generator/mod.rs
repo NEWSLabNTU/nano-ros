@@ -515,9 +515,9 @@ mod tests {
 
         // Check source file
         assert!(pkg.source.contains("test_msgs_msg_point.h"));
-        assert!(pkg.source.contains("nros_cdr_write_i32"));
-        assert!(pkg.source.contains("nros_cdr_write_f64"));
-        assert!(pkg.source.contains("nros_cdr_write_bool"));
+        assert!(pkg.source.contains("rclc_cdr_write_i32"));
+        assert!(pkg.source.contains("rclc_cdr_write_f64"));
+        assert!(pkg.source.contains("rclc_cdr_write_bool"));
 
         // Check file names
         assert_eq!(pkg.header_name, "test_msgs_msg_point.h");
@@ -627,7 +627,7 @@ mod tests {
             "view missing:\n{h}"
         );
         assert!(
-            h.contains("nros_view_bytes_t data;"),
+            h.contains("rclc_view_bytes_t data;"),
             "borrowed byte view missing:\n{h}"
         );
         // Copied field stays owned in the view. (C headers stay plain —
@@ -643,14 +643,14 @@ mod tests {
 
         // Source: the borrowed field is read with the zero-copy borrow helper.
         assert!(
-            c.contains("nros_cdr_borrow_bytes(&ptr, end, origin, &out->data)"),
+            c.contains("rclc_cdr_borrow_bytes(&ptr, end, origin, &out->data)"),
             "borrow call missing:\n{c}"
         );
     }
 
     #[test]
     fn test_c_borrowed_string_and_float_views() {
-        // string → nros_view_str_t / borrow_string; float32[] → the
+        // string → rclc_view_str_t / borrow_string; float32[] → the
         // alignment-agnostic LE view / borrow_le_slice_f32.
         let msg = parse_message("string label\nfloat32[] ranges\n").unwrap();
         let resolver = crate::config::CapacityResolver::from_toml_str(
@@ -665,19 +665,19 @@ mod tests {
         let h = &pkg.header;
         let c = &pkg.source;
         assert!(
-            h.contains("nros_view_str_t label;"),
+            h.contains("rclc_view_str_t label;"),
             "borrowed str view missing:\n{h}"
         );
         assert!(
-            h.contains("nros_le_slice_view_f32_t ranges;"),
+            h.contains("rclc_le_slice_view_f32_t ranges;"),
             "LE f32 view missing:\n{h}"
         );
         assert!(
-            c.contains("nros_cdr_borrow_string(&ptr, end, origin, &out->label)"),
+            c.contains("rclc_cdr_borrow_string(&ptr, end, origin, &out->label)"),
             "{c}"
         );
         assert!(
-            c.contains("nros_cdr_borrow_le_slice_f32(&ptr, end, origin, &out->ranges)"),
+            c.contains("rclc_cdr_borrow_le_slice_f32(&ptr, end, origin, &out->ranges)"),
             "{c}"
         );
     }
@@ -873,7 +873,7 @@ mod tests {
 
         let pkg = result.unwrap();
         assert!(pkg.header.contains("char name[256]"));
-        assert!(pkg.source.contains("nros_cdr_write_string"));
+        assert!(pkg.source.contains("rclc_cdr_write_string"));
     }
 
     #[test]
@@ -938,13 +938,13 @@ mod tests {
         let pkg = generate_c_message_package("my_msgs", "Blob", &msg, "h", &resolver)
             .expect("C borrowed should be supported");
         assert!(
-            pkg.header.contains("nros_view_bytes_t data;"),
+            pkg.header.contains("rclc_view_bytes_t data;"),
             "{}",
             pkg.header
         );
         assert!(
             pkg.source
-                .contains("nros_cdr_borrow_bytes(&ptr, end, origin, &out->data)"),
+                .contains("rclc_cdr_borrow_bytes(&ptr, end, origin, &out->data)"),
             "{}",
             pkg.source
         );
@@ -1157,7 +1157,7 @@ mod tests {
         );
         // Per-element read_string into the malloc'd char[N] rows.
         assert!(
-            pkg.source.contains("nros_cdr_read_string"),
+            pkg.source.contains("rclc_cdr_read_string"),
             "{}",
             pkg.source
         );

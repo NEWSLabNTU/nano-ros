@@ -6,7 +6,7 @@ project(pkg_c_talker LANGUAGES C CXX)
 # Phase 140 / 244.C4 — multi-package workspace demo, add_subdirectory shape.
 #
 # C talker as a TYPED component (RFC-0043): the node is
-# `NROS_C_COMPONENT(talker_t, talker_configure)` (src/Talker.c, a raw /chatter
+# `RCLC_C_COMPONENT(talker_t, talker_configure)` (src/Talker.c, a raw /chatter
 # publisher + 1 Hz timer). RFC-0057 (phase-305) split shape: library owns
 # sources, register owns identity — the generated C++ entry carrier + the
 # executable come from the register (DEPLOY native), same as before.

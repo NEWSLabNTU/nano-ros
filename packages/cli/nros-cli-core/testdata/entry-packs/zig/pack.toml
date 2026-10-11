@@ -28,7 +28,7 @@ entry_template = "entry_zig.zig"
 #  * the template reads `LoweredEntry` itself;
 #  * it quotes with `c_str` — Zig's escapes for `\` and `"` are C's, and those
 #    are the two `c_str` writes — and spells identifiers with `pkg_ident`;
-#  * it constructs C components (through their `NROS_C_COMPONENT` seam, which
+#  * it constructs C components (through their `RCLC_C_COMPONENT` seam, which
 #    Zig reaches as plain `extern fn`s) and calls the board's C-ABI runners,
 #    which a Zig program reaches through `@cImport`.
 context = "lowered-entry"

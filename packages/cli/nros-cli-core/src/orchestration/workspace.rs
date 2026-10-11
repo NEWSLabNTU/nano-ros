@@ -1002,7 +1002,7 @@ fn parse_add_node_call(
 /// as TEXT — `SOURCES ${_controller_sources}` is one token that expands to
 /// nothing here, though cmake expands it fine at configure time. A C++
 /// component then read as C, was probed against the C ABI seam, and the probe
-/// failed to link against symbols `NROS_C_COMPONENT` never emitted.
+/// failed to link against symbols `RCLC_C_COMPONENT` never emitted.
 ///
 /// Returning `None` hands the decision back to the caller, which has the class
 /// shape to fall back on and can say out loud that it is guessing.

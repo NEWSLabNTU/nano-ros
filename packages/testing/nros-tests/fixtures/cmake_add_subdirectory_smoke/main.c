@@ -2,7 +2,7 @@
 #include <nros/init.h>
 
 int main(void) {
-    nros_support_t support = nros_support_get_zero_initialized();
+    rclc_support_t support = rclc_support_get_zero_initialized();
     (void)support;
     return 0;
 }

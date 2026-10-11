@@ -996,7 +996,7 @@ def resolvers_used(test_name):
 # `nros-c`'s default feature is `panic-platform`, which compiles almost none of
 # the C surface; what ships is `std,rmw-cffi,platform-posix,ros-humble`, and
 # every consumer says so with `default-features = false`. PR #329 landed a
-# second `#[no_mangle] nros_node_get_fully_qualified_name` inside an
+# second `#[no_mangle] rclc_node_get_fully_qualified_name` inside an
 # `rmw-cffi` region: `cargo check -p nros-c` green, the shipped shape E0428.
 # `compile-smoke` (the PR gate) checked defaults; `check-c` compiles the
 # shipped set but runs on schedule; `test-unit` on the merge group compiles

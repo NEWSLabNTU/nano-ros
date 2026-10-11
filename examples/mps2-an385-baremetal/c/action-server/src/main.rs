@@ -43,7 +43,7 @@ unsafe extern "C" {
 ///
 /// `nros-c` is an RLIB here, not the staticlib the cmake road imports, and this
 /// board links with `--gc-sections` (the board descriptor's rustflags). Nothing
-/// in this crate's Rust references `nros_support_init` and friends — only the C
+/// in this crate's Rust references `rclc_support_init` and friends — only the C
 /// object does, and it is an archive member the linker reaches later — so
 /// without a live reference from the binary's own code the whole surface is
 /// dropped and every C call becomes an undefined symbol.
@@ -62,7 +62,7 @@ fn main() -> ! {
 
     // NOTE: the backend is deliberately NOT registered here. Bare metal runs no
     // `.init_array` and the linkme section is never walked, so registration is
-    // explicit — and the hook `nros_support_init` itself calls is the C
+    // explicit — and the hook `rclc_support_init` itself calls is the C
     // `nros_app_register_backends()`, which the leaf's `src/*.c` defines the way
     // `nano_ros_link_rmw()` generates it on the cmake road. A
     // `nros_rmw_zenoh::register()` here would be idempotent and harmless, and it

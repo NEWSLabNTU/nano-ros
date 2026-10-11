@@ -1,7 +1,7 @@
 //! Phase 88.12 — C-API surface for the `nros_log` facade.
 //!
-//! Mirrors `<nros/log.h>`. The `nros_log_emit` /
-//! `nros_log_emit_fmt` symbols dispatch through the same per-platform
+//! Mirrors `<nros/log.h>`. The `rclc_log_emit` /
+//! `rclc_log_emit_fmt` symbols dispatch through the same per-platform
 //! sink chain the Rust call sites use (Phase 88.5 onwards).
 //!
 //! cbindgen is told to skip every item in this module — the
@@ -44,29 +44,29 @@ use core::ffi::{c_char, c_void};
 /// cbindgen:ignore
 #[repr(transparent)]
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub struct nros_log_severity_t(pub core::ffi::c_int);
+pub struct rcl_log_severity_t(pub core::ffi::c_int);
 
-impl nros_log_severity_t {
+impl rcl_log_severity_t {
     /// rcutils's "no level set" — INHERIT, not a level. Where a level is
-    /// STORED ([`nros_logger_set_level`], [`nros_log_set_default_level`]) it
+    /// STORED ([`rclc_logger_set_level`], [`rclc_log_set_default_level`]) it
     /// means "take the stored level away"; anywhere a severity is merely
     /// compared it resolves by band like any other integer, which puts it at
     /// `TRACE` (see [`Self::to_facade`]).
     /// cbindgen:ignore
-    pub const NROS_LOG_SEVERITY_UNSET: Self = Self(0);
+    pub const RCLC_LOG_SEVERITY_UNSET: Self = Self(0);
     /// Ours, in rcutils's `UNSET`..`DEBUG` gap — rcutils has no trace level.
     /// cbindgen:ignore
-    pub const NROS_LOG_SEVERITY_TRACE: Self = Self(5);
+    pub const RCLC_LOG_SEVERITY_TRACE: Self = Self(5);
     /// cbindgen:ignore
-    pub const NROS_LOG_SEVERITY_DEBUG: Self = Self(10);
+    pub const RCLC_LOG_SEVERITY_DEBUG: Self = Self(10);
     /// cbindgen:ignore
-    pub const NROS_LOG_SEVERITY_INFO: Self = Self(20);
+    pub const RCLC_LOG_SEVERITY_INFO: Self = Self(20);
     /// cbindgen:ignore
-    pub const NROS_LOG_SEVERITY_WARN: Self = Self(30);
+    pub const RCLC_LOG_SEVERITY_WARN: Self = Self(30);
     /// cbindgen:ignore
-    pub const NROS_LOG_SEVERITY_ERROR: Self = Self(40);
+    pub const RCLC_LOG_SEVERITY_ERROR: Self = Self(40);
     /// cbindgen:ignore
-    pub const NROS_LOG_SEVERITY_FATAL: Self = Self(50);
+    pub const RCLC_LOG_SEVERITY_FATAL: Self = Self(50);
 
     /// The integer this severity crosses the ABI as.
     #[must_use]
@@ -85,7 +85,7 @@ impl nros_log_severity_t {
     /// **`UNSET` IS NOT RESOLVED HERE, AND THAT IS THE POINT** (ledger row
     /// `c:log_severity_t`). `UNSET` means INHERIT, which is a statement about
     /// a STORED level, not about a severity being compared —
-    /// [`nros_logger_set_level`] and [`nros_log_set_default_level`] read it
+    /// [`rclc_logger_set_level`] and [`rclc_log_set_default_level`] read it
     /// before they ever reach this function, and they are the only two entry
     /// points where "take the level away" is a thing a caller can mean. What
     /// arrives here is a record's severity or a threshold question, for which
@@ -96,11 +96,11 @@ impl nros_log_severity_t {
     /// the transparent newtype exists to avoid.
     fn to_facade(self) -> nros_log::Severity {
         match self.0 {
-            v if v >= Self::NROS_LOG_SEVERITY_FATAL.0 => nros_log::Severity::Fatal,
-            v if v >= Self::NROS_LOG_SEVERITY_ERROR.0 => nros_log::Severity::Error,
-            v if v >= Self::NROS_LOG_SEVERITY_WARN.0 => nros_log::Severity::Warn,
-            v if v >= Self::NROS_LOG_SEVERITY_INFO.0 => nros_log::Severity::Info,
-            v if v >= Self::NROS_LOG_SEVERITY_DEBUG.0 => nros_log::Severity::Debug,
+            v if v >= Self::RCLC_LOG_SEVERITY_FATAL.0 => nros_log::Severity::Fatal,
+            v if v >= Self::RCLC_LOG_SEVERITY_ERROR.0 => nros_log::Severity::Error,
+            v if v >= Self::RCLC_LOG_SEVERITY_WARN.0 => nros_log::Severity::Warn,
+            v if v >= Self::RCLC_LOG_SEVERITY_INFO.0 => nros_log::Severity::Info,
+            v if v >= Self::RCLC_LOG_SEVERITY_DEBUG.0 => nros_log::Severity::Debug,
             _ => nros_log::Severity::Trace,
         }
     }
@@ -110,26 +110,26 @@ impl nros_log_severity_t {
 /// dispatcher hands it to whichever sink list was registered via
 /// `nros_log::init`.
 ///
-/// `logger` is the opaque handle from `nros_node_get_logger(...)`;
+/// `logger` is the opaque handle from `rclc_node_get_logger(...)`;
 /// passing NULL drops the record silently.
 ///
 /// Carries no call site — the record lands with `file`/`line` unknown. Kept at
 /// this signature because it is the C ABI every existing consumer (and
-/// `nros_log_emit_fmt`) already links; new call sites want
-/// [`nros_log_emit_at`], which the `NROS_LOG_*` macros use.
+/// `rclc_log_emit_fmt`) already links; new call sites want
+/// [`rclc_log_emit_at`], which the `NROS_LOG_*` macros use.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_log_emit(
+pub unsafe extern "C" fn rclc_log_emit(
     logger: *const c_void,
-    severity: nros_log_severity_t,
+    severity: rcl_log_severity_t,
     message: *const c_char,
     message_len: usize,
 ) {
-    nros_log_emit_at(logger, severity, message, message_len, core::ptr::null(), 0);
+    rclc_log_emit_at(logger, severity, message, message_len, core::ptr::null(), 0);
 }
 
 /// phase-417 W4.d — emit WITH the call site.
 ///
-/// The record `nros_log_emit` built was hardcoded: `file: "<nros-c>", line: 0,
+/// The record `rclc_log_emit` built was hardcoded: `file: "<nros-c>", line: 0,
 /// timestamp_ns: 0`, while `<nros/log.h>`'s own header comment promised the
 /// macros "attach severity + line info". Every C and C++ record in the tree
 /// therefore reached the sinks stripped of the two fields the sinks render.
@@ -138,7 +138,7 @@ pub unsafe extern "C" fn nros_log_emit(
 /// what the macros pass. It is borrowed for the life of the program (a
 /// [`nros_log::Record`] holds `&'static str`), never copied. NULL means
 /// "unknown" and lands as `<nros-c>`, which is what the un-located
-/// `nros_log_emit` above passes.
+/// `rclc_log_emit` above passes.
 ///
 /// `timestamp_ns` is not a parameter: it comes from `nros_log`'s own
 /// `__timestamp_ns()`, so C records are stamped by the same clock, at the same
@@ -146,14 +146,14 @@ pub unsafe extern "C" fn nros_log_emit(
 /// C-side clock read would be a second answer to "when".
 ///
 /// # Safety
-/// * `logger` is NULL or a handle from `nros_log_get_logger` /
-///   `nros_log_default_logger` / `nros_node_get_logger`.
+/// * `logger` is NULL or a handle from `rclc_log_get_logger` /
+///   `rclc_log_default_logger` / `rclc_node_get_logger`.
 /// * `message` is readable for `message_len` bytes.
 /// * `file` is NULL or a NUL-terminated string with static storage duration.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_log_emit_at(
+pub unsafe extern "C" fn rclc_log_emit_at(
     logger: *const c_void,
-    severity: nros_log_severity_t,
+    severity: rcl_log_severity_t,
     message: *const c_char,
     message_len: usize,
     file: *const c_char,
@@ -163,7 +163,7 @@ pub unsafe extern "C" fn nros_log_emit_at(
         return;
     }
     // Lazy-install the default sink list on first emit so C/C++
-    // call sites work without an explicit `nros_log_init` step from
+    // call sites work without an explicit `rclc_log_init` step from
     // the user. Rust callers that want a custom sink list can still
     // call `nros_log::init(...)` before any record fires (the
     // install is idempotent — replacing the pointer is fine).
@@ -228,7 +228,7 @@ static DEFAULT_SINKS_INSTALLED: AtomicBool = AtomicBool::new(false);
 /// Install the platform's default sink list once, unless something already did.
 ///
 /// Called on the first C/C++ emit (below) AND, since issue 1551, from every
-/// C/C++ session-init entry point (`nros_support_init_rmw`, `nros_cpp_init_rmw`,
+/// C/C++ session-init entry point (`rclc_support_init_rmw`, `nros_cpp_init_rmw`,
 /// `nros_cpp_init_multi`). Before that, a C or C++ image on an RTOS board had
 /// no sink until its OWN code logged something: every RUST-side record the
 /// runtime raised first — the RMW adapter's out-of-heap diagnostic, the
@@ -259,7 +259,7 @@ pub fn ensure_default_sinks() {
 /// same default. Safe to call from any task / thread once the
 /// platform-log fn-ptr slot is registered by the board crate.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_log_init() {
+pub unsafe extern "C" fn rclc_log_init() {
     DEFAULT_SINKS_INSTALLED.store(true, Ordering::Release);
     nros_log::init(nros_platform_cffi::log::default_sinks());
 }
@@ -270,7 +270,7 @@ pub unsafe extern "C" fn nros_log_init() {
 /// (useful for boot-time diagnostics, panic hooks, smoke fixtures).
 /// The returned pointer is `'static`. Never free.
 #[unsafe(no_mangle)]
-pub extern "C" fn nros_log_default_logger() -> *const c_void {
+pub extern "C" fn rclc_log_default_logger() -> *const c_void {
     (&raw const nros_log::DEFAULT_LOGGER).cast()
 }
 
@@ -287,13 +287,13 @@ pub extern "C" fn nros_log_default_logger() -> *const c_void {
 /// Look up a logger by name, CREATING one if the name is new.
 ///
 /// `rclcpp::get_logger` / `rcutils`' shape. Before this the C surface had only
-/// `nros_log_default_logger()`, so every C node shared one logger and one
+/// `rclc_log_default_logger()`, so every C node shared one logger and one
 /// threshold.
 ///
 /// Total: always returns a usable handle. NULL/empty `name`, a name longer
 /// than `nros_log::MAX_LOGGER_NAME_LEN`, or an exhausted arena answers the
 /// catch-all logger AND reports it at WARN — the alternative is handing back
-/// the catch-all silently, which makes `nros_logger_set_level` on the result
+/// the catch-all silently, which makes `rclc_logger_set_level` on the result
 /// move the threshold of every other unnamed logger in the image.
 ///
 /// The handle is `'static`. Never free it.
@@ -301,9 +301,9 @@ pub extern "C" fn nros_log_default_logger() -> *const c_void {
 /// # Safety
 /// `name` is NULL or a NUL-terminated UTF-8 string valid for this call.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_log_get_logger(name: *const c_char) -> *const c_void {
+pub unsafe extern "C" fn rclc_log_get_logger(name: *const c_char) -> *const c_void {
     let Some(name) = borrowed_str(name).filter(|n| !n.is_empty()) else {
-        return nros_log_default_logger();
+        return rclc_log_default_logger();
     };
     // phase-427 W5 — the create-or-fall-back-loudly resolution moved to
     // `nros_log::resolve_logger`, because three OTHER accessors answering
@@ -327,7 +327,7 @@ pub unsafe extern "C" fn nros_log_get_logger(name: *const c_char) -> *const c_vo
 /// `logger` is NULL or a handle from this module; `buf` is NULL or writable for
 /// `buf_len` bytes.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_logger_get_name(
+pub unsafe extern "C" fn rclc_logger_get_name(
     logger: *const c_void,
     buf: *mut c_char,
     buf_len: usize,
@@ -346,10 +346,10 @@ pub unsafe extern "C" fn nros_logger_get_name(
 
 /// A logger that is a descendant of `logger` — `rclcpp::Logger::get_child`'s
 /// C half (RFC-0102 D1). Named `<parent>.<suffix>`, except that the
-/// catch-all's (`nros_log_default_logger()`) children are top-level names.
+/// catch-all's (`rclc_log_default_logger()`) children are top-level names.
 ///
 /// A child with no level of its own filters at its nearest ancestor's, so
-/// `nros_logger_set_level(parent, DEBUG)` reaches it. Idempotent: the same
+/// `rclc_logger_set_level(parent, DEBUG)` reaches it. Idempotent: the same
 /// name answers the same handle, which is `'static` — never free it.
 ///
 /// Returns NULL, and warns ONCE per process, when no child can be made: the
@@ -357,14 +357,14 @@ pub unsafe extern "C" fn nros_logger_get_name(
 /// runtime-logger arena is full. NULL rather than a substitute, because the
 /// right substitute is the caller's: `rclcpp::Logger::get_child` emits through
 /// the parent and refuses `set_level` (RFC-0102 D3), and handing back the
-/// parent here would make a C caller's `nros_logger_set_level(child, ..)` move
+/// parent here would make a C caller's `rclc_logger_set_level(child, ..)` move
 /// the parent's threshold silently.
 ///
 /// # Safety
 /// `logger` is NULL or a handle from this module; `suffix` is NULL or a
 /// NUL-terminated UTF-8 string valid for this call.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_logger_get_child(
+pub unsafe extern "C" fn rclc_logger_get_child(
     logger: *const c_void,
     suffix: *const c_char,
 ) -> *const c_void {
@@ -392,8 +392,8 @@ pub unsafe extern "C" fn nros_logger_get_child(
 /// Set this logger's runtime severity threshold. Records below it are dropped
 /// before any sink sees them.
 ///
-/// `NROS_LOG_SEVERITY_UNSET` UNSETS the level instead of setting one — the
-/// logger goes back to filtering on [`nros_log_get_default_level`]. phase-467,
+/// `RCLC_LOG_SEVERITY_UNSET` UNSETS the level instead of setting one — the
+/// logger goes back to filtering on [`rclc_log_get_default_level`]. phase-467,
 /// ledger row `c:log_severity_t`: this used to resolve `UNSET` by band and so
 /// selected `TRACE`, the most verbose level, where upstream restores a default.
 ///
@@ -404,7 +404,7 @@ pub unsafe extern "C" fn nros_logger_get_child(
 /// `RCUTILS_LOG_SEVERITY_UNSET`, and `..._get_logger_effective_level` treats
 /// that exactly as it treats an absent entry — it keeps walking, and falls to
 /// `g_rcutils_logging_default_logger_level`. See `<nros/log.h>`'s
-/// `nros_log_severity_t` comment for the one thing we do NOT do: the ancestry
+/// `rcl_log_severity_t` comment for the one thing we do NOT do: the ancestry
 /// walk itself.
 ///
 /// Returns `false` for a NULL handle, `true` otherwise.
@@ -412,13 +412,13 @@ pub unsafe extern "C" fn nros_logger_get_child(
 /// # Safety
 /// `logger` is NULL or a handle from this module.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_logger_set_level(
+pub unsafe extern "C" fn rclc_logger_set_level(
     logger: *const c_void,
-    severity: nros_log_severity_t,
+    severity: rcl_log_severity_t,
 ) -> bool {
     match logger_ref(logger) {
         Some(logger) => {
-            if severity == nros_log_severity_t::NROS_LOG_SEVERITY_UNSET {
+            if severity == rcl_log_severity_t::RCLC_LOG_SEVERITY_UNSET {
                 logger.unset_level();
             } else {
                 logger.set_level(severity.to_facade());
@@ -435,20 +435,20 @@ pub unsafe extern "C" fn nros_logger_set_level(
 ///
 /// `rcutils_logging_get_logger_effective_level`'s answer rather than
 /// `rcutils_logging_get_logger_level`'s, so it is never
-/// `NROS_LOG_SEVERITY_UNSET`: this is the number that decides whether a record
+/// `RCLC_LOG_SEVERITY_UNSET`: this is the number that decides whether a record
 /// is emitted, which is the question a call site asks.
 ///
-/// A NULL handle answers `NROS_LOG_SEVERITY_FATAL` — the value at which almost
+/// A NULL handle answers `RCLC_LOG_SEVERITY_FATAL` — the value at which almost
 /// nothing is emitted — so a dropped handle reads as "quiet", not as "trace
 /// everything".
 ///
 /// # Safety
 /// `logger` is NULL or a handle from this module.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_logger_get_level(logger: *const c_void) -> nros_log_severity_t {
+pub unsafe extern "C" fn rclc_logger_get_level(logger: *const c_void) -> rcl_log_severity_t {
     match logger_ref(logger) {
-        Some(logger) => nros_log_severity_t::from_facade(logger.level()),
-        None => nros_log_severity_t::NROS_LOG_SEVERITY_FATAL,
+        Some(logger) => rcl_log_severity_t::from_facade(logger.level()),
+        None => rcl_log_severity_t::RCLC_LOG_SEVERITY_FATAL,
     }
 }
 
@@ -457,7 +457,7 @@ pub unsafe extern "C" fn nros_logger_get_level(logger: *const c_void) -> nros_lo
 /// phase-467. `nros_log::Logger::set_default_level`, which is where the one
 /// process-wide byte lives; RFC-0019 keeps the store on the Rust side.
 ///
-/// `NROS_LOG_SEVERITY_UNSET` restores `NROS_LOG_SEVERITY_INFO` rather than
+/// `RCLC_LOG_SEVERITY_UNSET` restores `RCLC_LOG_SEVERITY_INFO` rather than
 /// resolving by band — `rcutils_logging_set_default_logger_level` documents
 /// exactly that ("the default value for the default logger,
 /// `RCUTILS_DEFAULT_LOGGER_DEFAULT_LEVEL`, will be restored instead"), and
@@ -465,8 +465,8 @@ pub unsafe extern "C" fn nros_logger_get_level(logger: *const c_void) -> nros_lo
 /// There is nothing for the default itself to inherit FROM, so this is the one
 /// place where `UNSET` means "restore" rather than "take away".
 #[unsafe(no_mangle)]
-pub extern "C" fn nros_log_set_default_level(severity: nros_log_severity_t) {
-    let level = if severity == nros_log_severity_t::NROS_LOG_SEVERITY_UNSET {
+pub extern "C" fn rclc_log_set_default_level(severity: rcl_log_severity_t) {
+    let level = if severity == rcl_log_severity_t::RCLC_LOG_SEVERITY_UNSET {
         nros_log::Severity::Info
     } else {
         severity.to_facade()
@@ -476,10 +476,10 @@ pub extern "C" fn nros_log_set_default_level(severity: nros_log_severity_t) {
 
 /// The threshold every logger without a level of its own filters on.
 ///
-/// `NROS_LOG_SEVERITY_INFO` until [`nros_log_set_default_level`] moves it.
+/// `RCLC_LOG_SEVERITY_INFO` until [`rclc_log_set_default_level`] moves it.
 #[unsafe(no_mangle)]
-pub extern "C" fn nros_log_get_default_level() -> nros_log_severity_t {
-    nros_log_severity_t::from_facade(nros_log::Logger::default_level())
+pub extern "C" fn rclc_log_get_default_level() -> rcl_log_severity_t {
+    rcl_log_severity_t::from_facade(nros_log::Logger::default_level())
 }
 
 /// Whether a record at `severity` would pass this logger's threshold.
@@ -491,9 +491,9 @@ pub extern "C" fn nros_log_get_default_level() -> nros_log_severity_t {
 /// # Safety
 /// `logger` is NULL or a handle from this module.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_logger_is_enabled(
+pub unsafe extern "C" fn rclc_logger_is_enabled(
     logger: *const c_void,
-    severity: nros_log_severity_t,
+    severity: rcl_log_severity_t,
 ) -> bool {
     logger_ref(logger).is_some_and(|logger| logger.is_enabled(severity.to_facade()))
 }
@@ -508,7 +508,7 @@ unsafe fn logger_ref(logger: *const c_void) -> Option<&'static nros_log::Logger>
     }
 }
 
-impl nros_log_severity_t {
+impl rcl_log_severity_t {
     /// A facade severity on rcutils's number line.
     ///
     /// ONE DERIVATION (issue 1025's class). This used to be a six-arm match
@@ -533,7 +533,7 @@ impl nros_log_severity_t {
 // C sinks.
 // -----------------------------------------------------------------------------
 
-/// A C log sink. See `nros_log_add_sink`.
+/// A C log sink. See `rclc_log_add_sink`.
 ///
 /// Deliberately NOT a `const nros_log_record_t *`: a struct crossing this FFI
 /// would be a hand-mirrored one (cbindgen skips this module), and a mirror that
@@ -545,9 +545,9 @@ impl nros_log_severity_t {
 /// Strings are pointer + length and are NOT NUL-terminated.
 ///
 /// cbindgen:ignore
-pub type nros_log_sink_fn = unsafe extern "C" fn(
+pub type rclc_log_sink_fn = unsafe extern "C" fn(
     user_data: *mut c_void,
-    severity: nros_log_severity_t,
+    severity: rcl_log_severity_t,
     logger_name: *const c_char,
     logger_name_len: usize,
     message: *const c_char,
@@ -580,16 +580,16 @@ impl nros_log::LogSink for CSink {
         if raw.is_null() {
             return;
         }
-        // SAFETY: `raw` is non-null only after `nros_log_add_sink` stored a
-        // `nros_log_sink_fn` there, and the slot is never rewritten.
-        let func: nros_log_sink_fn = unsafe { core::mem::transmute(raw) };
+        // SAFETY: `raw` is non-null only after `rclc_log_add_sink` stored a
+        // `rclc_log_sink_fn` there, and the slot is never rewritten.
+        let func: rclc_log_sink_fn = unsafe { core::mem::transmute(raw) };
         let user = self.user.load(Ordering::Acquire);
         // SAFETY: the callback is the caller's, invoked with the pointers and
         // lengths its type declares; all four slices outlive the call.
         unsafe {
             func(
                 user,
-                nros_log_severity_t::from_facade(record.severity),
+                rcl_log_severity_t::from_facade(record.severity),
                 record.logger_name.as_ptr().cast::<c_char>(),
                 record.logger_name.len(),
                 record.message.as_ptr().cast::<c_char>(),
@@ -611,7 +611,7 @@ static C_SINKS: [CSink; nros_log::MAX_ADDED_SINKS] = [EMPTY_C_SINK; nros_log::MA
 
 /// Install a C callback as a log sink.
 ///
-/// Before this the C surface could not install a sink at all: `nros_log_init()`
+/// Before this the C surface could not install a sink at all: `rclc_log_init()`
 /// takes no arguments and hardcodes the platform default. `add_sink` APPENDS,
 /// so a consumer teeing records to its own transport does not discard whatever
 /// the board installed.
@@ -631,8 +631,8 @@ static C_SINKS: [CSink; nros_log::MAX_ADDED_SINKS] = [EMPTY_C_SINK; nros_log::MA
 /// `sink` must be callable for the life of the program, and `user_data` valid
 /// for the same.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_log_add_sink(
-    sink: Option<nros_log_sink_fn>,
+pub unsafe extern "C" fn rclc_log_add_sink(
+    sink: Option<rclc_log_sink_fn>,
     user_data: *mut c_void,
 ) -> bool {
     let Some(sink) = sink else {
@@ -689,7 +689,7 @@ pub unsafe extern "C" fn nros_log_add_sink(
 /// `last_ns` is NULL or points to a `u64` that lives as long as the call site
 /// (a function-scope `static`).
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_log_throttle_admit(last_ns: *mut u64, interval_ms: u64) -> bool {
+pub unsafe extern "C" fn rclc_log_throttle_admit(last_ns: *mut u64, interval_ms: u64) -> bool {
     if last_ns.is_null() {
         return true;
     }
@@ -741,18 +741,18 @@ fn warn_once_if_no_clock() {
 /// Exposed so a C consumer can decide what a zero timestamp means instead of
 /// guessing — and so the throttle's degradation above is inspectable.
 #[unsafe(no_mangle)]
-pub extern "C" fn nros_log_timestamp_available() -> bool {
+pub extern "C" fn rclc_log_timestamp_available() -> bool {
     nros_log::timestamp_available()
 }
 
-// `nros_log_emit_fmt` is implemented in C
+// `rclc_log_emit_fmt` is implemented in C
 // (`packages/api/nros-c/c-stubs/log_fmt.c`) because the Rust
 // `c_variadic` feature is still unstable on stable. The C shim
-// vsnprintfs the format args + forwards to `nros_log_emit` above.
+// vsnprintfs the format args + forwards to `rclc_log_emit` above.
 unsafe extern "C" {
-    pub fn nros_log_emit_fmt(
+    pub fn rclc_log_emit_fmt(
         logger: *const c_void,
-        severity: nros_log_severity_t,
+        severity: rcl_log_severity_t,
         fmt: *const c_char,
         ...
     );
@@ -760,28 +760,28 @@ unsafe extern "C" {
 
 // Force the Rust symbol to land even when the linker greedily prunes.
 #[used]
-static _ANCHOR: unsafe extern "C" fn(*const c_void, nros_log_severity_t, *const c_char, usize) =
-    nros_log_emit;
+static _ANCHOR: unsafe extern "C" fn(*const c_void, rcl_log_severity_t, *const c_char, usize) =
+    rclc_log_emit;
 
 // Same for the phase-417 W4.d entry points. The `NROS_LOG_*` macros reach
-// `nros_log_emit_at` and `nros_log_throttle_admit` from C, and
-// `nros_log_get_logger` is the entry a C node starts from — none of them is
+// `rclc_log_emit_at` and `rclc_log_throttle_admit` from C, and
+// `rclc_log_get_logger` is the entry a C node starts from — none of them is
 // referenced from Rust, so `--gc-sections` on a cross-language image is free to
 // drop them. That is the Phase 88.16.H failure mode one family over.
 #[used]
 static _ANCHOR_EMIT_AT: unsafe extern "C" fn(
     *const c_void,
-    nros_log_severity_t,
+    rcl_log_severity_t,
     *const c_char,
     usize,
     *const c_char,
     u32,
-) = nros_log_emit_at;
+) = rclc_log_emit_at;
 #[used]
 static _ANCHOR_GET_LOGGER: unsafe extern "C" fn(*const c_char) -> *const c_void =
-    nros_log_get_logger;
+    rclc_log_get_logger;
 #[used]
-static _ANCHOR_THROTTLE: unsafe extern "C" fn(*mut u64, u64) -> bool = nros_log_throttle_admit;
+static _ANCHOR_THROTTLE: unsafe extern "C" fn(*mut u64, u64) -> bool = rclc_log_throttle_admit;
 
 // ============================================================================
 // phase-417 stage 3 — ledger row `c:log_severity_t`.
@@ -801,13 +801,13 @@ mod severity_tests {
     #[test]
     fn the_c_severities_sit_on_rcutils_number_line() {
         for (severity, want) in [
-            (nros_log_severity_t::NROS_LOG_SEVERITY_UNSET, 0),
-            (nros_log_severity_t::NROS_LOG_SEVERITY_TRACE, 5),
-            (nros_log_severity_t::NROS_LOG_SEVERITY_DEBUG, 10),
-            (nros_log_severity_t::NROS_LOG_SEVERITY_INFO, 20),
-            (nros_log_severity_t::NROS_LOG_SEVERITY_WARN, 30),
-            (nros_log_severity_t::NROS_LOG_SEVERITY_ERROR, 40),
-            (nros_log_severity_t::NROS_LOG_SEVERITY_FATAL, 50),
+            (rcl_log_severity_t::RCLC_LOG_SEVERITY_UNSET, 0),
+            (rcl_log_severity_t::RCLC_LOG_SEVERITY_TRACE, 5),
+            (rcl_log_severity_t::RCLC_LOG_SEVERITY_DEBUG, 10),
+            (rcl_log_severity_t::RCLC_LOG_SEVERITY_INFO, 20),
+            (rcl_log_severity_t::RCLC_LOG_SEVERITY_WARN, 30),
+            (rcl_log_severity_t::RCLC_LOG_SEVERITY_ERROR, 40),
+            (rcl_log_severity_t::RCLC_LOG_SEVERITY_FATAL, 50),
         ] {
             assert_eq!(severity.value(), want, "{severity:?}");
         }
@@ -820,7 +820,7 @@ mod severity_tests {
     #[test]
     fn the_rust_mirror_is_the_width_of_a_c_enum() {
         assert_eq!(
-            size_of::<nros_log_severity_t>(),
+            size_of::<rcl_log_severity_t>(),
             size_of::<core::ffi::c_int>()
         );
     }
@@ -844,7 +844,7 @@ mod severity_tests {
             (9, nros_log::Severity::Trace),
         ] {
             assert_eq!(
-                nros_log_severity_t(raw).to_facade(),
+                rcl_log_severity_t(raw).to_facade(),
                 want,
                 "raw severity {raw}"
             );
@@ -872,7 +872,7 @@ mod severity_tests {
         ] {
             // The point is that this is a total function: no arm is missing,
             // so no value reaches an unreachable match.
-            let resolved = nros_log_severity_t(raw).to_facade();
+            let resolved = rcl_log_severity_t(raw).to_facade();
             assert!(
                 resolved.as_u8() <= nros_log::Severity::Fatal.as_u8(),
                 "raw {raw} resolved out of range"
@@ -891,46 +891,46 @@ mod severity_tests {
     /// safety argument (`check-unsafe-census`).
     #[test]
     fn unset_takes_a_stored_level_away_rather_than_selecting_trace() {
-        use nros_log_severity_t as Sev;
+        use rcl_log_severity_t as Sev;
 
         // SAFETY: `name` is a NUL-terminated literal, and every handle passed
-        // below is the `'static` one `nros_log_get_logger` returned (it is
+        // below is the `'static` one `rclc_log_get_logger` returned (it is
         // total — the catch-all on failure — so it is never null). A fresh
-        // interned logger, not `nros_log_default_logger()`: that is the one
+        // interned logger, not `rclc_log_default_logger()`: that is the one
         // logger named "nros" and every other test in this binary can see it.
         unsafe {
-            let logger = nros_log_get_logger(c"phase467_c_unset".as_ptr());
+            let logger = rclc_log_get_logger(c"phase467_c_unset".as_ptr());
             assert!(!logger.is_null());
 
             // Stated, then taken away: the level falls back to the process
             // default, which is INFO. Before phase-467 this selected TRACE.
-            assert!(nros_logger_set_level(logger, Sev::NROS_LOG_SEVERITY_ERROR));
-            assert_eq!(nros_logger_get_level(logger), Sev::NROS_LOG_SEVERITY_ERROR);
-            assert!(nros_logger_set_level(logger, Sev::NROS_LOG_SEVERITY_UNSET));
-            assert_eq!(nros_logger_get_level(logger), Sev::NROS_LOG_SEVERITY_INFO);
-            assert!(!nros_logger_is_enabled(
+            assert!(rclc_logger_set_level(logger, Sev::RCLC_LOG_SEVERITY_ERROR));
+            assert_eq!(rclc_logger_get_level(logger), Sev::RCLC_LOG_SEVERITY_ERROR);
+            assert!(rclc_logger_set_level(logger, Sev::RCLC_LOG_SEVERITY_UNSET));
+            assert_eq!(rclc_logger_get_level(logger), Sev::RCLC_LOG_SEVERITY_INFO);
+            assert!(!rclc_logger_is_enabled(
                 logger,
-                Sev::NROS_LOG_SEVERITY_TRACE
+                Sev::RCLC_LOG_SEVERITY_TRACE
             ));
 
             // The process default is reachable from C, and moving it moves
             // this logger with it.
-            assert_eq!(nros_log_get_default_level(), Sev::NROS_LOG_SEVERITY_INFO);
-            nros_log_set_default_level(Sev::NROS_LOG_SEVERITY_WARN);
-            assert_eq!(nros_logger_get_level(logger), Sev::NROS_LOG_SEVERITY_WARN);
+            assert_eq!(rclc_log_get_default_level(), Sev::RCLC_LOG_SEVERITY_INFO);
+            rclc_log_set_default_level(Sev::RCLC_LOG_SEVERITY_WARN);
+            assert_eq!(rclc_logger_get_level(logger), Sev::RCLC_LOG_SEVERITY_WARN);
         }
 
         // `UNSET` on the DEFAULT restores INFO — the one place it means
         // "restore" rather than "take away", because the default has nothing
         // to inherit from. `rcutils_logging_set_default_logger_level`
         // documents exactly this.
-        nros_log_set_default_level(Sev::NROS_LOG_SEVERITY_UNSET);
-        assert_eq!(nros_log_get_default_level(), Sev::NROS_LOG_SEVERITY_INFO);
+        rclc_log_set_default_level(Sev::RCLC_LOG_SEVERITY_UNSET);
+        assert_eq!(rclc_log_get_default_level(), Sev::RCLC_LOG_SEVERITY_INFO);
 
         // A value in a gap still bands, on this entry point too.
-        nros_log_set_default_level(Sev(31));
-        assert_eq!(nros_log_get_default_level(), Sev::NROS_LOG_SEVERITY_WARN);
-        nros_log_set_default_level(Sev::NROS_LOG_SEVERITY_INFO);
+        rclc_log_set_default_level(Sev(31));
+        assert_eq!(rclc_log_get_default_level(), Sev::RCLC_LOG_SEVERITY_WARN);
+        rclc_log_set_default_level(Sev::RCLC_LOG_SEVERITY_INFO);
     }
 
     /// The join `from_facade` names: the header's constants and
@@ -943,14 +943,14 @@ mod severity_tests {
     /// mirror, the header static_asserts itself, and this closes the triangle.
     #[test]
     fn the_constants_agree_with_the_facade_rule() {
-        use nros_log_severity_t as Sev;
+        use rcl_log_severity_t as Sev;
         for (severity, spelled) in [
-            (nros_log::Severity::Trace, Sev::NROS_LOG_SEVERITY_TRACE),
-            (nros_log::Severity::Debug, Sev::NROS_LOG_SEVERITY_DEBUG),
-            (nros_log::Severity::Info, Sev::NROS_LOG_SEVERITY_INFO),
-            (nros_log::Severity::Warn, Sev::NROS_LOG_SEVERITY_WARN),
-            (nros_log::Severity::Error, Sev::NROS_LOG_SEVERITY_ERROR),
-            (nros_log::Severity::Fatal, Sev::NROS_LOG_SEVERITY_FATAL),
+            (nros_log::Severity::Trace, Sev::RCLC_LOG_SEVERITY_TRACE),
+            (nros_log::Severity::Debug, Sev::RCLC_LOG_SEVERITY_DEBUG),
+            (nros_log::Severity::Info, Sev::RCLC_LOG_SEVERITY_INFO),
+            (nros_log::Severity::Warn, Sev::RCLC_LOG_SEVERITY_WARN),
+            (nros_log::Severity::Error, Sev::RCLC_LOG_SEVERITY_ERROR),
+            (nros_log::Severity::Fatal, Sev::RCLC_LOG_SEVERITY_FATAL),
         ] {
             assert_eq!(
                 Sev::from_facade(severity),
@@ -966,7 +966,7 @@ mod severity_tests {
     }
 
     /// Every facade severity has a C spelling, and it maps back unchanged —
-    /// `nros_logger_get_level` and the sink shim both round-trip through here.
+    /// `rclc_logger_get_level` and the sink shim both round-trip through here.
     #[test]
     fn every_facade_severity_round_trips_through_the_c_mirror() {
         for severity in [
@@ -978,7 +978,7 @@ mod severity_tests {
             nros_log::Severity::Fatal,
         ] {
             assert_eq!(
-                nros_log_severity_t::from_facade(severity).to_facade(),
+                rcl_log_severity_t::from_facade(severity).to_facade(),
                 severity
             );
         }

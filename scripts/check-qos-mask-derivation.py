@@ -749,7 +749,7 @@ def check(files: dict[str, str]) -> tuple[list[str], list[Backend]]:
     #
     # `QoSPolicyMask::NAMED` is what the three surfaces print when a create is
     # refused: `TransportError::IncompatibleQos` carries the bit, `nros-node`
-    # logs the name, and `nros_qos_policy_kind_to_cstr` /
+    # logs the name, and `rclc_qos_policy_kind_to_cstr` /
     # `nros::qos_policy_kind_to_cstr` hand the same bytes to C and C++. So the
     # table is the one place a policy could acquire a SECOND name — which is
     # precisely the failure this whole gate exists over, and which the header
@@ -779,7 +779,7 @@ def check(files: dict[str, str]) -> tuple[list[str], list[Backend]]:
             errs.append(
                 f"`QoSPolicyMask::NAMED` spells {bit} as {named[bit]!r}. A policy's name is "
                 "its constant's own identifier — a second choice of word here is a second "
-                "vocabulary, which is what `nros_qos_policy_kind_to_cstr` exists to avoid."
+                "vocabulary, which is what `rclc_qos_policy_kind_to_cstr` exists to avoid."
             )
 
     return errs, backends

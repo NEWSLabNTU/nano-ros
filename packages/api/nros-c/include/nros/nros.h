@@ -7,8 +7,8 @@
  * @c <nros/publisher.h>) if you prefer finer-grained includes.
  */
 
-#ifndef NROS_H
-#define NROS_H
+#ifndef RCLC_H
+#define RCLC_H
 
 #include "nros/types.h"
 #include "nros/check.h"
@@ -27,7 +27,7 @@
 #include "nros/node_pkg.h"
 #include "nros/cdr.h"
 /* issue 0795 — the RFC-0033 zero-copy reader (`nros_cdr_borrow_*`,
- * `nros_view_str_t`, the `nros_le_slice_view_*_t` family). Reached only
+ * `rclc_view_str_t`, the `rclc_le_slice_view_*_t` family). Reached only
  * from generated message headers until now, so a user who included the
  * umbrella had no zero-copy read path and the C surface read as lacking one. */
 #include "nros/view.h"
@@ -40,4 +40,4 @@
 #include "nros/rosout.h"
 #include "nros/boot_config.h"
 
-#endif /* NROS_H */
+#endif /* RCLC_H */

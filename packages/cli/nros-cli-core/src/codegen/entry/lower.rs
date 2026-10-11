@@ -95,7 +95,7 @@ pub(crate) fn node_namespace(n: &PlanNode) -> &str {
 /// How a plan node's component is constructed — the one reading of the cmake
 /// metadata's `lang` and `shape` (RFC-0043 / RFC-0044 / phase-257).
 ///
-/// A `C` node is reached through its `NROS_C_COMPONENT` seam, a `Rust` node
+/// A `C` node is reached through its `RCLC_C_COMPONENT` seam, a `Rust` node
 /// through its install seam; anything else is a C++ class, constructed with a
 /// handle when its shape is `rclcpp` and default-constructed then
 /// `configure`d otherwise (`None` included — the 240.x back-compat default).

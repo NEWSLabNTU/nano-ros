@@ -600,7 +600,7 @@ function(nano_ros_entry)
         # must already list every component, so the node pkgs' add_subdirectory
         # has to precede the entry's (it links them anyway).
         # Phase 257 (W0-A) — TYPED now supports LANG c too: the generated C TU
-        # routes each node to the real executor via its `NROS_C_COMPONENT`
+        # routes each node to the real executor via its `RCLC_C_COMPONENT`
         # factory/configure seam + `nros_board_native_run_components`.
         # `_NRA_MODEL` is `nros model-path`'s answer and is used AS GIVEN.
         # Phase-484 W6d: a second ladder used to re-route it here
@@ -796,7 +796,7 @@ function(nano_ros_entry)
     endif()
 
     # Phase 249 P4a (issue #57) — wire the strong `nros_app_register_backends()`
-    # for native (host) C/C++ entries. `nros_cpp_init` / `nros_support_init`
+    # for native (host) C/C++ entries. `nros_cpp_init` / `rclc_support_init`
     # call that symbol unconditionally, and P4a removed its weak default — the only
     # def is the one `nano_ros_link_rmw()` (via `nros_platform_link_app`) generates.
     # The `nano_ros_node_register` native carrier (244.C4) calls it, but the

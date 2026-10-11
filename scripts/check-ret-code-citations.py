@@ -3,7 +3,7 @@
 
 TWO ABIs, ONE PREFIX FAMILY, AND THE COMPILER CHECKS NEITHER COMMENT
 --------------------------------------------------------------------
-`nros_ret_t` (the USER ABI, `packages/api/nros-c/src/error.rs` -> the generated
+`rcl_ret_t` (the USER ABI, `packages/api/nros-c/src/error.rs` -> the generated
 `nros_generated.h`) and `nros_rmw_ret_t` (the RMW ABI,
 `packages/core/nros-rmw-abi/include/nros/rmw_ret.h`) have overlapping but
 DIFFERENT vocabularies, and the difference is not guessable:
@@ -74,7 +74,14 @@ RMW_ABI_HEADER = ROOT / "packages" / "core" / "nros-rmw-abi" / "include" / "nros
 SCAN_ROOTS = ("packages", "book/src", "docs", "examples")
 SKIP_PARTS = ("third-party", "archived", "generated")
 
-TOKEN = re.compile(r"\bNROS_(?:RMW_)?RET_[A-Z0-9_]+")
+# phase-492 — the user codes are `RCL_RET_*` (where rcl names the code) and
+# `RCLC_RET_*` (ours) since the C API dropped `nros_`. `RCL_RET_*` is not
+# scanned: it is upstream's namespace too, and `rcl_compat.h` names upstream
+# codes it deliberately refuses. `NROS_RET_*` still is, so a stale old spelling
+# is caught -- unless the rename map records that code as renamed, which is how
+# a decision record cites a code as it was.
+TOKEN = re.compile(r"\b(?:NROS_(?:RMW_)?RET|RCLC_RET)_[A-Z0-9_]+")
+RENAME_MAP = ROOT / "docs" / "reference" / "c-api-rename-map.tsv"
 
 # A harvest that silently returns few names would make this gate pass on
 # everything. Both floors are well under today's counts (19 user, 22 RMW) and
@@ -87,7 +94,7 @@ def defined_codes():
     """(names, problem). The two ABIs' vocabularies, read from their SSoT."""
     user = set(
         re.findall(
-            r"pub\s+const\s+(NROS_RET_[A-Z0-9_]+)\s*:\s*nros_ret_t",
+            r"pub\s+const\s+(RCLC?_RET_[A-Z0-9_]+)\s*:\s*rcl_ret_t",
             USER_ABI_CONSTS.read_text(encoding="utf-8", errors="replace"),
         )
     )
@@ -111,7 +118,13 @@ def defined_codes():
             f"{RMW_ABI_HEADER.relative_to(ROOT)}. Refusing to judge citations "
             f"against a vocabulary this small — fix the harvest, not the docs."
         )
-    return user | rmw, problem
+    renamed = set()
+    if RENAME_MAP.exists():
+        for line in RENAME_MAP.read_text(encoding="utf-8").splitlines():
+            parts = line.split("\t")
+            if len(parts) >= 3 and parts[2] == "ret":
+                renamed.add(parts[0])
+    return user | rmw | renamed, problem
 
 
 def citations(text, defined):
@@ -143,9 +156,9 @@ def files():
 
 
 def self_test():
-    defined = {"NROS_RET_FULL", "NROS_RMW_RET_BUFFER_TOO_SMALL"}
+    defined = {"RCLC_RET_FULL", "NROS_RMW_RET_BUFFER_TOO_SMALL"}
     cases = [
-        ("returns `NROS_RET_FULL` on overflow", []),
+        ("returns `RCLC_RET_FULL` on overflow", []),
         ("returns `NROS_RMW_RET_BUFFER_TOO_SMALL`", []),
         # The two real defects, one per direction of the prefix confusion.
         ("returns `NROS_RET_BUFFER_TOO_SMALL`", ["NROS_RET_BUFFER_TOO_SMALL"]),

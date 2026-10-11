@@ -434,7 +434,7 @@ mod tests {
     /// slashes and nothing else. So a publisher handed the raw `"chatter"` on a
     /// `/ns` node and a subscription handed the resolved `"/ns/chatter"` are on
     /// two different keys with no error anywhere — which is precisely what
-    /// `nros_publisher_init_with_qos` did until it resolved first.
+    /// `rclc_publisher_init_with_qos` did until it resolved first.
     ///
     /// This is the CONSEQUENCE half of the fix; the resolution half is pinned
     /// by `nros-c/src/publisher.rs`'s `name_resolution_tests`.

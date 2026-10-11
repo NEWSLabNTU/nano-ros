@@ -35,7 +35,7 @@ itself — the type strings are composed **in the pack** by registered filters:
 
 - `c_type` / `c_array_suffix`, `cpp_type` / `cpp_array_suffix`,
   `cpp_repr_c_type` / `cpp_view_repr_type`
-- `rust_type_rmw` / `rust_type_idiomatic`, `nros_type`
+- `rust_type_rmw` / `rust_type_idiomatic`, `rclc_type`
 - `snake_case`
 
 The view struct carries only **neutral facts** (the parsed `field_type`, resolved

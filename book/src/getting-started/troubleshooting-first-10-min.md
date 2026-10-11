@@ -216,17 +216,17 @@ Default ports: `tcp/127.0.0.1:7447` on POSIX,
 `7452` NuttX, `7453` ThreadX-RV, `7454` ESP32, `7455`
 ThreadX-Linux, `7447` Zephyr.
 
-### B2. C: `NROS_CHECK failed: nros_support_init(...) -> -4`
+### B2. C: `RCLC_CHECK failed: rclc_support_init(...) -> -4`
 
 ```
-NROS_CHECK failed at src/main.c:152: nros_support_init(&app.support, locator, domain_id) -> -4
+RCLC_CHECK failed at src/main.c:152: rclc_support_init(&app.support, locator, domain_id) -> -4
 ```
 
-Process exits `1` (the `retval` passed to `NROS_CHECK_RET`).
-`-4 = NROS_RET_NOT_FOUND` — the locator was unreachable (zenohd
+Process exits `1` (the `retval` passed to `RCLC_CHECK_RET`).
+`-4 = RCLC_RET_NOT_FOUND` — the locator was unreachable (zenohd
 not running, or wrong port). Same fix as B1 above.
 
-The C API entry point is `nros_support_init`, **not** `nros_init`
+The C API entry point is `rclc_support_init`, **not** `nros_init`
 or `nros::init` — those don't exist in the C API.
 
 ### B3. C++: process exits 156 after a `rclcpp::init_in` failure

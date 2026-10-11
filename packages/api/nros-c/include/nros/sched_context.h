@@ -10,7 +10,7 @@
  *
  * The default Fifo SC is auto-created at executor init — every
  * callback registered without an explicit
- * `nros_executor_bind_handle_to_sched_context` call binds to it.
+ * `rclc_executor_bind_handle_to_sched_context` call binds to it.
  *
  * Single-thread non-preemption: an in-flight `BestEffort` callback
  * blocks `Critical` work that becomes ready mid-cycle. Hard-RT

@@ -6,7 +6,7 @@
  * @ingroup grp_clock
  * @brief `rclcpp::Time` — a timestamp, mirroring upstream's `rclcpp::Time`.
  *
- * Issue 0789. `nros_time_t` and the `nros_time_*` arithmetic have existed in C
+ * Issue 0789. `rclc_time_t` and the `nros_time_*` arithmetic have existed in C
  * since the C API shipped; this is the C++ face over them, so
  * `msg.header.stamp` can be filled from `node.now()` instead of by hand.
  */
@@ -19,7 +19,7 @@
 
 #include "nros/duration.hpp"
 
-// `nros_clock_type_t` and `nros_time_from_nanoseconds` — the C surface this
+// `rcl_clock_type_t` and `rclc_time_from_nanoseconds` — the C surface this
 // wraps. `nros_generated.h` carries its own `extern "C"` guard.
 #include "nros/clock.h"
 
@@ -55,13 +55,13 @@ class Time {
     /// Nanoseconds since the clock's epoch. Both arguments default, so
     /// `Time()` is the zero point on the system clock — the
     /// `rclcpp::Time(int64_t = 0, rcl_clock_type_t = RCL_SYSTEM_TIME)` shape.
-    constexpr Time(int64_t nanoseconds = 0, nros_clock_type_t clock_type = NROS_CLOCK_SYSTEM_TIME)
+    constexpr Time(int64_t nanoseconds = 0, rcl_clock_type_t clock_type = RCLC_CLOCK_SYSTEM_TIME)
         : ns_(nanoseconds), clock_type_(clock_type) {}
 
     /// Seconds + nanoseconds, the `rclcpp::Time(int32_t, uint32_t,
     /// rcl_clock_type_t)` shape.
     constexpr Time(int32_t seconds, uint32_t nanoseconds,
-                   nros_clock_type_t clock_type = NROS_CLOCK_SYSTEM_TIME)
+                   rcl_clock_type_t clock_type = RCLC_CLOCK_SYSTEM_TIME)
         : ns_(static_cast<int64_t>(seconds) * ::rclcpp::NANOSECONDS_PER_SECOND +
               static_cast<int64_t>(nanoseconds)),
           clock_type_(clock_type) {}
@@ -78,7 +78,7 @@ class Time {
     }
 
     /// Which clock this value was read from.
-    constexpr nros_clock_type_t get_clock_type() const { return clock_type_; }
+    constexpr rcl_clock_type_t get_clock_type() const { return clock_type_; }
 
     // -- Arithmetic -------------------------------------------------------
 
@@ -132,14 +132,14 @@ class Time {
         // is what `Time.msg` specifies — for a time before the epoch as much
         // as after it (issue 0799). `Duration::to_msg` is the same call on the
         // duration entry point.
-        nros_time_t t = nros_time_from_nanoseconds(ns_);
+        rclc_time_t t = rclc_time_from_nanoseconds(ns_);
         out.sec = t.sec;
         out.nanosec = t.nanosec;
     }
 
   private:
     int64_t ns_;
-    nros_clock_type_t clock_type_;
+    rcl_clock_type_t clock_type_;
 };
 
 /// `duration + time`, so the sum reads either way round. The one free operator

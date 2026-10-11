@@ -41,16 +41,16 @@ NROS_PUBLIC
 // every struct so appendable types carry a DHEADER matching a modern ROS 2 peer.
 // begin returns >=0 mark or -1 (XCDR1) on success, -2 on error.
 // Writes the edition-appropriate 4-byte encapsulation header (XCDR1 or XCDR2).
-int32_t nros_cdr_write_encaps_header(uint8_t** ptr, const uint8_t* end);
+int32_t rclc_cdr_write_encaps_header(uint8_t** ptr, const uint8_t* end);
 
-int64_t nros_cdr_begin_dheader(uint8_t** ptr, const uint8_t* end, const uint8_t* origin);
-int32_t nros_cdr_end_dheader(int64_t mark, uint8_t** ptr, const uint8_t* end,
+int64_t rclc_cdr_begin_dheader(uint8_t** ptr, const uint8_t* end, const uint8_t* origin);
+int32_t rclc_cdr_end_dheader(int64_t mark, uint8_t** ptr, const uint8_t* end,
                              const uint8_t* origin);
-int64_t nros_cdr_begin_dheader_read(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin);
-int32_t nros_cdr_end_dheader_read(int64_t scope, const uint8_t** ptr, const uint8_t* end,
+int64_t rclc_cdr_begin_dheader_read(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin);
+int32_t rclc_cdr_end_dheader_read(int64_t scope, const uint8_t** ptr, const uint8_t* end,
                                   const uint8_t* origin);
 
-int32_t nros_cdr_write_bool(uint8_t** ptr, const uint8_t* end, const uint8_t* origin, bool value);
+int32_t rclc_cdr_write_bool(uint8_t** ptr, const uint8_t* end, const uint8_t* origin, bool value);
 
 /**
  * @brief Write a u8 value to the buffer.
@@ -62,7 +62,7 @@ int32_t nros_cdr_write_bool(uint8_t** ptr, const uint8_t* end, const uint8_t* or
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_write_u8(uint8_t** ptr, const uint8_t* end, const uint8_t* origin, uint8_t value);
+int32_t rclc_cdr_write_u8(uint8_t** ptr, const uint8_t* end, const uint8_t* origin, uint8_t value);
 
 /**
  * @brief Write an i8 value to the buffer.
@@ -74,7 +74,7 @@ int32_t nros_cdr_write_u8(uint8_t** ptr, const uint8_t* end, const uint8_t* orig
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_write_i8(uint8_t** ptr, const uint8_t* end, const uint8_t* origin, int8_t value);
+int32_t rclc_cdr_write_i8(uint8_t** ptr, const uint8_t* end, const uint8_t* origin, int8_t value);
 
 /**
  * @brief Write a u16 value to the buffer (with alignment).
@@ -86,7 +86,7 @@ int32_t nros_cdr_write_i8(uint8_t** ptr, const uint8_t* end, const uint8_t* orig
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_write_u16(uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+int32_t rclc_cdr_write_u16(uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
                            uint16_t value);
 
 /**
@@ -99,7 +99,7 @@ int32_t nros_cdr_write_u16(uint8_t** ptr, const uint8_t* end, const uint8_t* ori
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_write_i16(uint8_t** ptr, const uint8_t* end, const uint8_t* origin, int16_t value);
+int32_t rclc_cdr_write_i16(uint8_t** ptr, const uint8_t* end, const uint8_t* origin, int16_t value);
 
 /**
  * @brief Write a u32 value to the buffer (with alignment).
@@ -111,7 +111,7 @@ int32_t nros_cdr_write_i16(uint8_t** ptr, const uint8_t* end, const uint8_t* ori
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_write_u32(uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+int32_t rclc_cdr_write_u32(uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
                            uint32_t value);
 
 /**
@@ -124,7 +124,7 @@ int32_t nros_cdr_write_u32(uint8_t** ptr, const uint8_t* end, const uint8_t* ori
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_write_i32(uint8_t** ptr, const uint8_t* end, const uint8_t* origin, int32_t value);
+int32_t rclc_cdr_write_i32(uint8_t** ptr, const uint8_t* end, const uint8_t* origin, int32_t value);
 
 /**
  * @brief Write a u64 value to the buffer (with alignment).
@@ -136,7 +136,7 @@ int32_t nros_cdr_write_i32(uint8_t** ptr, const uint8_t* end, const uint8_t* ori
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_write_u64(uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+int32_t rclc_cdr_write_u64(uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
                            uint64_t value);
 
 /**
@@ -149,7 +149,7 @@ int32_t nros_cdr_write_u64(uint8_t** ptr, const uint8_t* end, const uint8_t* ori
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_write_i64(uint8_t** ptr, const uint8_t* end, const uint8_t* origin, int64_t value);
+int32_t rclc_cdr_write_i64(uint8_t** ptr, const uint8_t* end, const uint8_t* origin, int64_t value);
 
 /**
  * @brief Write a f32 value to the buffer (with alignment).
@@ -161,7 +161,7 @@ int32_t nros_cdr_write_i64(uint8_t** ptr, const uint8_t* end, const uint8_t* ori
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_write_f32(uint8_t** ptr, const uint8_t* end, const uint8_t* origin, float value);
+int32_t rclc_cdr_write_f32(uint8_t** ptr, const uint8_t* end, const uint8_t* origin, float value);
 
 /**
  * @brief Write a f64 value to the buffer (with alignment).
@@ -173,7 +173,7 @@ int32_t nros_cdr_write_f32(uint8_t** ptr, const uint8_t* end, const uint8_t* ori
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_write_f64(uint8_t** ptr, const uint8_t* end, const uint8_t* origin, double value);
+int32_t rclc_cdr_write_f64(uint8_t** ptr, const uint8_t* end, const uint8_t* origin, double value);
 
 /**
  * @brief Write a string to the buffer (length-prefixed).
@@ -188,7 +188,7 @@ int32_t nros_cdr_write_f64(uint8_t** ptr, const uint8_t* end, const uint8_t* ori
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_write_string(uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+int32_t rclc_cdr_write_string(uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
                               const char* value);
 
 /**
@@ -207,7 +207,7 @@ int32_t nros_cdr_write_string(uint8_t** ptr, const uint8_t* end, const uint8_t* 
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_write_string_n(uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+int32_t rclc_cdr_write_string_n(uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
                                 const char* data, size_t len);
 
 /* ===================================================================
@@ -224,7 +224,7 @@ int32_t nros_cdr_write_string_n(uint8_t** ptr, const uint8_t* end, const uint8_t
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_read_bool(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+int32_t rclc_cdr_read_bool(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
                            bool* value);
 
 /**
@@ -237,7 +237,7 @@ int32_t nros_cdr_read_bool(const uint8_t** ptr, const uint8_t* end, const uint8_
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_read_u8(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+int32_t rclc_cdr_read_u8(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
                          uint8_t* value);
 
 /**
@@ -250,7 +250,7 @@ int32_t nros_cdr_read_u8(const uint8_t** ptr, const uint8_t* end, const uint8_t*
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_read_i8(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+int32_t rclc_cdr_read_i8(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
                          int8_t* value);
 
 /**
@@ -263,7 +263,7 @@ int32_t nros_cdr_read_i8(const uint8_t** ptr, const uint8_t* end, const uint8_t*
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_read_u16(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+int32_t rclc_cdr_read_u16(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
                           uint16_t* value);
 
 /**
@@ -276,7 +276,7 @@ int32_t nros_cdr_read_u16(const uint8_t** ptr, const uint8_t* end, const uint8_t
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_read_i16(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+int32_t rclc_cdr_read_i16(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
                           int16_t* value);
 
 /**
@@ -289,7 +289,7 @@ int32_t nros_cdr_read_i16(const uint8_t** ptr, const uint8_t* end, const uint8_t
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_read_u32(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+int32_t rclc_cdr_read_u32(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
                           uint32_t* value);
 
 /**
@@ -302,7 +302,7 @@ int32_t nros_cdr_read_u32(const uint8_t** ptr, const uint8_t* end, const uint8_t
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_read_i32(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+int32_t rclc_cdr_read_i32(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
                           int32_t* value);
 
 /**
@@ -315,7 +315,7 @@ int32_t nros_cdr_read_i32(const uint8_t** ptr, const uint8_t* end, const uint8_t
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_read_u64(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+int32_t rclc_cdr_read_u64(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
                           uint64_t* value);
 
 /**
@@ -328,7 +328,7 @@ int32_t nros_cdr_read_u64(const uint8_t** ptr, const uint8_t* end, const uint8_t
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_read_i64(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+int32_t rclc_cdr_read_i64(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
                           int64_t* value);
 
 /**
@@ -341,7 +341,7 @@ int32_t nros_cdr_read_i64(const uint8_t** ptr, const uint8_t* end, const uint8_t
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_read_f32(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+int32_t rclc_cdr_read_f32(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
                           float* value);
 
 /**
@@ -354,7 +354,7 @@ int32_t nros_cdr_read_f32(const uint8_t** ptr, const uint8_t* end, const uint8_t
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_read_f64(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+int32_t rclc_cdr_read_f64(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
                           double* value);
 
 /**
@@ -371,7 +371,7 @@ int32_t nros_cdr_read_f64(const uint8_t** ptr, const uint8_t* end, const uint8_t
  * @return 0 on success, negative on overflow or truncation.
  */
 NROS_PUBLIC
-int32_t nros_cdr_read_string(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+int32_t rclc_cdr_read_string(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
                              char* value, size_t max_len);
 
 /**
@@ -394,7 +394,7 @@ int32_t nros_cdr_read_string(const uint8_t** ptr, const uint8_t* end, const uint
  *         past @p end.
  */
 NROS_PUBLIC
-int32_t nros_cdr_align(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+int32_t rclc_cdr_align(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
                        size_t alignment);
 
 /**
@@ -410,7 +410,7 @@ int32_t nros_cdr_align(const uint8_t** ptr, const uint8_t* end, const uint8_t* o
  *
  * @return 0 and @p *out on success, -1 when `count * elem_size > limit`.
  */
-static inline int32_t nros_cdr_seq_byte_len(uint32_t count, size_t elem_size, size_t limit,
+static inline int32_t rclc_cdr_seq_byte_len(uint32_t count, size_t elem_size, size_t limit,
                                             size_t* out) {
     if (elem_size == 0 || (size_t)count > limit / elem_size) return -1;
     *out = (size_t)count * elem_size;

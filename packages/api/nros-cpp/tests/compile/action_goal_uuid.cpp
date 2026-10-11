@@ -3,7 +3,7 @@
 // Two cross-language disagreements this TU pins down, both catalogued by the
 // stage-4 audit ("make our own three languages agree"):
 //
-//  1. C++ had no goal-id TYPE. C has `nros_goal_uuid_t` and Rust has
+//  1. C++ had no goal-id TYPE. C has `rclc_goal_uuid_t` and Rust has
 //     `nros_core::GoalId`; C++ spelled every goal id `const uint8_t
 //     goal_id[16]`, which DECAYS to a pointer — it cannot be compared with
 //     `==`, cannot be returned by value, and cannot be stored in a container.
@@ -11,7 +11,7 @@
 //     in most real action servers, so this was a drop-in blocker rather than a
 //     style difference. `rclcpp_action::GoalUUID` is that type, over the SAME 16 bytes.
 //
-//  2. C++ had no terminal verbs. C has `nros_action_succeed` / `_abort` /
+//  2. C++ had no terminal verbs. C has `rclc_action_succeed` / `_abort` /
 //     `_canceled`, Rust has `ActionServerHandle::succeed` / `abort` /
 //     `canceled` (renamed from `cancel` in the same work item), and every
 //     rclcpp_action server ends with `goal_handle->succeed(result)`. C++ had
@@ -238,7 +238,7 @@ static_assert(std::is_same<decltype(std::declval<::rclcpp_action::Server<Fib>&>(
                                std::declval<const Fib::Result&>())),
                            ::rclcpp::Result>::value,
               "ActionServer<A>::canceled must return rclcpp::Result — and be spelled `canceled`, "
-              "not `cancel`: C says `nros_action_canceled`, rclcpp_action says `canceled`, and "
+              "not `cancel`: C says `rclc_action_canceled`, rclcpp_action says `canceled`, and "
               "Rust was renamed to match in phase-417 W4.b");
 static_assert(std::is_same<decltype(std::declval<::rclcpp::PollingActionServer<Fib>&>().abort(
                                std::declval<const ::rclcpp_action::GoalUUID&>(),
@@ -258,7 +258,7 @@ static_assert(std::is_same<decltype(std::declval<::rclcpp::PollingActionServer<F
 //    it here. All four C++ classes read ONE bound, `rclcpp_action::ACTION_NAME_MAX`.
 //  * `action_server_is_ready` existed in C and Rust and NOT in C++, so the
 //    only way to ask here was to block in `wait_for_action_server`.
-//  * `goal_exists` is rcl's; C now has `nros_action_server_goal_exists` and
+//  * `goal_exists` is rcl's; C now has `rcl_action_server_goal_exists` and
 //    this is its C++ binding.
 //
 // Return types are asserted, not just names: a `get_action_name` that came

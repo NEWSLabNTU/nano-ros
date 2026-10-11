@@ -17,7 +17,7 @@
 /// where rclc's `request_msg` / `response_msg` arguments would have put it.
 ///
 /// The byte-oriented callback this file used to carry is not gone — it is
-/// `nros_executor_add_service_raw()`, and it remains the only shape for a
+/// `rclc_executor_add_service_raw()`, and it remains the only shape for a
 /// caller doing its own CDR.
 
 #include <stdio.h>
@@ -46,10 +46,10 @@ typedef struct {
 
 // Static allocation
 static struct {
-    nros_support_t support;
-    nros_node_t node;
-    nros_service_t service;
-    nros_executor_t executor;
+    rclc_support_t support;
+    rcl_node_t node;
+    rcl_service_t service;
+    rclc_executor_t executor;
     server_context_t ctx;
     // Caller-owned request + response storage and the typed callback. It must
     // outlive the service, so it lives here beside it.
@@ -57,7 +57,7 @@ static struct {
 } app;
 
 static volatile sig_atomic_t g_running = 1;
-static nros_executor_t* g_executor = NULL;
+static rclc_executor_t* g_executor = NULL;
 
 // ----------------------------------------------------------------------------
 // Signal handler for graceful shutdown
@@ -67,7 +67,7 @@ static void signal_handler(int signum) {
     (void)signum;
     g_running = 0;
     if (g_executor) {
-        nros_executor_cancel(g_executor);
+        rclc_executor_cancel(g_executor);
     }
 }
 
@@ -122,29 +122,29 @@ int nros_app_main(int argc, char** argv) {
     // Zero-initialize all static state
     memset(&app, 0, sizeof(app));
 
-    NROS_CHECK_RET(nros_support_init(&app.support, locator, domain_id), 1);
+    RCLC_CHECK_RET(rclc_support_init(&app.support, locator, domain_id), 1);
     printf("Support initialized\n");
-    NROS_CHECK_RET(rclc_node_init_default(&app.node, "add_two_ints_server", "/", &app.support), 1);
+    RCLC_CHECK_RET(rclc_node_init_default(&app.node, "add_two_ints_server", "/", &app.support), 1);
     printf("Node created: %s\n", rcl_node_get_name(&app.node));
 
     // Install the typed handler and create the service. The generated
     // `_service_init` names the type support and `_executor_add_service` binds
     // the trampoline to the handler, so neither can disagree with the type —
-    // there is no hand-written `nros_service_type_t` here any more.
-    NROS_CHECK_RET(example_interfaces_srv_add_two_ints_service_handler_init(
+    // there is no hand-written `rclc_service_type_t` here any more.
+    RCLC_CHECK_RET(example_interfaces_srv_add_two_ints_service_handler_init(
                        &app.handler, service_callback, &app.ctx),
                    1);
-    NROS_CHECK_RET(
+    RCLC_CHECK_RET(
         example_interfaces_srv_add_two_ints_service_init(&app.service, &app.node, "/add_two_ints"),
         1);
     printf("Service created: %s\n", rcl_service_get_service_name(&app.service));
 
-    NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support, 4), 1);
     g_executor = &app.executor;
-    NROS_CHECK_RET(example_interfaces_srv_add_two_ints_executor_add_service(
+    RCLC_CHECK_RET(example_interfaces_srv_add_two_ints_executor_add_service(
                        &app.executor, &app.service, &app.handler),
                    1);
-    printf("Executor created with %d handle(s)\n", nros_executor_get_handle_count(&app.executor));
+    printf("Executor created with %d handle(s)\n", rclc_executor_get_handle_count(&app.executor));
 
     // Set up signal handler
     signal(SIGINT, signal_handler);
@@ -153,8 +153,8 @@ int nros_app_main(int argc, char** argv) {
     printf("\nWaiting for service requests (Ctrl+C to exit)...\n\n");
 
     // Spin with 100ms period
-    nros_ret_t ret = rclc_executor_spin_period(&app.executor, 100000000ULL);
-    if (ret != NROS_RET_OK && g_running) {
+    rcl_ret_t ret = rclc_executor_spin_period(&app.executor, 100000000ULL);
+    if (ret != RCL_RET_OK && g_running) {
         fprintf(stderr, "Executor spin failed: %d\n", ret);
     }
 
@@ -168,7 +168,7 @@ int nros_app_main(int argc, char** argv) {
                 (int)app.handler.last_error);
     }
     rclc_executor_fini(&app.executor);
-    nros_service_fini(&app.service);
+    rcl_service_fini(&app.service);
     rcl_node_fini(&app.node);
     rclc_support_fini(&app.support);
 

@@ -1051,7 +1051,7 @@ pub struct TopicEndpoint {
 ///
 /// Issue 0690 — [`topic_endpoint_block`] returns the FIRST block of a kind, and
 /// a topic can carry more than one. `case_08_c_qos` failed in-sweep and passed
-/// solo with the publisher advertising exactly `nros_c_qos_default()`, which is
+/// solo with the publisher advertising exactly `rclc_c_qos_default()`, which is
 /// what reading a FOREIGN endpoint's profile looks like; the same binaries
 /// passed and failed, so it was never a product regression.
 ///
@@ -2298,7 +2298,7 @@ QoS profile:
 
     /// The regression this issue is about: positional selection reads whichever
     /// publisher ROS 2 listed first. Built explicitly with the FOREIGN endpoint
-    /// first and carrying `nros_c_qos_default()` — which is the profile the
+    /// first and carrying `rclc_c_qos_default()` — which is the profile the
     /// in-sweep failure actually printed.
     #[test]
     fn selecting_by_node_ignores_a_foreign_publisher() {

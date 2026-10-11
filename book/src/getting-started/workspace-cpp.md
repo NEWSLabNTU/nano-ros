@@ -16,7 +16,7 @@ changes language-side is the cmake-fn / macro surface.
 
 | Role | Rust | C / C++ |
 |---|---|---|
-| **Node pkg** | `lib.rs` with `nros::node!(MyNode)`, declared by a `[[component]]` row in the bringup's `system.toml` | `Talker.{hpp,cpp}` with a `configure(::rclcpp::Node&)` component method (C++) / `NROS_C_COMPONENT` (C); `CMakeLists.txt` calling `nano_ros_auto_add_library` + `nros_components_register_node` (RFC-0057) |
+| **Node pkg** | `lib.rs` with `nros::node!(MyNode)`, declared by a `[[component]]` row in the bringup's `system.toml` | `Talker.{hpp,cpp}` with a `configure(::rclcpp::Node&)` component method (C++) / `RCLC_C_COMPONENT` (C); `CMakeLists.txt` calling `nano_ros_auto_add_library` + `nros_components_register_node` (RFC-0057) |
 | **Bringup pkg** | `package.xml` + `system.toml` + `launch/*.launch.xml` (no `Cargo.toml`) | identical (language-agnostic) |
 | **Image** | `[image.native] board = "native"` in the bringup's `system.toml` | identical (language-agnostic) |
 | **The entry** | GENERATED into `build/<coord>/native_entry/` — a `Cargo.toml` and a `nros::main!(launch = "demo_bringup")` | GENERATED into `build/<coord>/CMakeLists.txt` — a `nano_ros_add_executable(native_entry BOARD … BRINGUP … LAUNCH … LANG cpp TYPED DEPLOY native)` call, plus the `main` TU the verb emits |
@@ -281,7 +281,7 @@ void Talker::on_tick() {
 
 The generated entry constructs `Talker` in static storage and calls
 `configure(node)` on the real executor — the same component model the Rust `nros::node!(Talker)` +
-the C `NROS_C_COMPONENT` paths use, so C++, C, and Rust Node pkgs interoperate in
+the C `RCLC_C_COMPONENT` paths use, so C++, C, and Rust Node pkgs interoperate in
 one launch graph.
 
 Scaffold a C++ Node pkg with:

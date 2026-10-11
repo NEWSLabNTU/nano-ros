@@ -108,7 +108,7 @@ impl CppReprSpell {
     }
 }
 
-/// Neutral facts the `nros_type` pack filter composes the nros Rust type from.
+/// Neutral facts the `rclc_type` pack filter composes the nros Rust type from.
 #[derive(serde::Deserialize)]
 struct NrosTypeSpell {
     field_type: rosidl_parser::FieldType,
@@ -231,7 +231,7 @@ const CPP: FilterSet = FilterSet {
 const RUST: FilterSet = FilterSet {
     language: Some(Language::Rust),
     name: "rust",
-    filters: &["rust_type_rmw", "rust_type_idiomatic", "nros_type"],
+    filters: &["rust_type_rmw", "rust_type_idiomatic", "rclc_type"],
     register: |env| {
         env.add_filter("rust_type_rmw", |v: ViaDeserialize<RustTypeSpell>| {
             crate::types::rust_type_for_field(&v.0.field_type, true, v.0.pkg())
@@ -239,7 +239,7 @@ const RUST: FilterSet = FilterSet {
         env.add_filter("rust_type_idiomatic", |v: ViaDeserialize<RustTypeSpell>| {
             crate::types::rust_type_for_field(&v.0.field_type, false, v.0.pkg())
         });
-        env.add_filter("nros_type", |v: ViaDeserialize<NrosTypeSpell>| {
+        env.add_filter("rclc_type", |v: ViaDeserialize<NrosTypeSpell>| {
             let n = &v.0;
             let cp = (!n.current_package.is_empty()).then_some(n.current_package.as_str());
             crate::types::nros_type_spelling(

@@ -71,7 +71,7 @@
 //!
 //! Every knob here reaches the C and C++ surfaces through this crate, which
 //! `nros-c` / `nros-cpp` link: the ceiling through [`Logger::is_enabled`]
-//! (which `nros_log_emit_at` and `nros_logger_is_enabled` call), the arenas and
+//! (which `rclc_log_emit_at` and `rclc_logger_is_enabled` call), the arenas and
 //! rings because they ARE this crate's. The one thing that does not follow is
 //! the C printf front-ends' own stack frame (`NROS_LOG_FMT_BUFFER_SIZE` in
 //! `<nros/log.h>`, 256): it is compiled in the CALLER's translation unit from a

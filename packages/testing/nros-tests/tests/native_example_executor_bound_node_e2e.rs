@@ -1,11 +1,11 @@
 //! issue 1384 — the runtime consumer for the `ExecutorBoundNode` cell.
 //!
 //! `examples/native/c/custom-platform` is the one in-tree image that builds its
-//! node with `nros_executor_node_init` AND then creates an entity eagerly
+//! node with `rclc_executor_node_init` AND then creates an entity eagerly
 //! (`rclc_publisher_init_default`, three lines further down). PR #1064 moved it
-//! onto that entry point because `nros_node_create_guard_condition` needs a node
+//! onto that entry point because `rclc_node_create_guard_condition` needs a node
 //! that reaches an executor — correctly — and from then on its publisher
-//! answered `NROS_RET_NOT_INIT`, because the predicate deciding which dispatch
+//! answered `RCL_RET_NOT_INIT`, because the predicate deciding which dispatch
 //! arm to take also required `node_id != 0` and the first node an executor
 //! builds takes slot 0.
 //!
@@ -124,7 +124,7 @@ fn an_executor_bound_node_creates_its_eager_publisher_and_publishes() {
         !out.contains(CUSTOM_PLATFORM_PUBLISHER_FAILED_PREFIX),
         "the eager publisher was REFUSED on an executor-bound node — this is issue 1384 \
          (`{CUSTOM_PLATFORM_PUBLISHER_FAILED_PREFIX} -7` means resolve_session_and_domain took \
-         the legacy arm into the NULL support that nros_executor_node_init sets on \
+         the legacy arm into the NULL support that rclc_executor_node_init sets on \
          purpose).\n--- output ---\n{out}"
     );
     assert!(

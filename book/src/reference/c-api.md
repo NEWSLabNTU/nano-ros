@@ -13,7 +13,7 @@ public surface a user application needs.
 ## Where to start
 
 - [`nros/nros.h`](../api/c/nros_8h.html) — convenience umbrella include
-- [`nros/init.h`](../api/c/init_8h.html) — `nros_support_init`, `rclc_support_fini`
+- [`nros/init.h`](../api/c/init_8h.html) — `rclc_support_init`, `rclc_support_fini`
 - [`nros/node.h`](../api/c/node_8h.html) — `rclc_node_init_default`, `rcl_node_fini`
 - [`nros/executor.h`](../api/c/executor_8h.html) — spin loop, executor lifecycle
 - [`nros/publisher.h`](../api/c/publisher_8h.html) / [`subscription.h`](../api/c/subscription_8h.html) — pub/sub
@@ -36,7 +36,7 @@ public surface a user application needs.
 > **Event-driven wake callbacks.** Each L1 polling entity supports
 > `nros_*_set_wake_callback(entity, &state, cb, ctx)` for event-
 > driven RTOS / embassy callers. State is a
-> caller-owned `nros_wake_state_t` POD; the backend fires `cb(ctx)`
+> caller-owned `rclc_wake_state_t` POD; the backend fires `cb(ctx)`
 > on rx / reply / request arrival. Per-channel for actions
 > (`set_{goal,cancel,get_result}_wake_callback` on the server,
 > `set_{goal_response,cancel_response,result,feedback}_wake_callback`
@@ -47,51 +47,51 @@ public surface a user application needs.
 `<nros/action.h>` exposes two parallel entry-point families for sending
 goals, requesting results, and cancelling:
 
-- **Async (non-blocking):** `nros_action_send_goal_async()`,
-  `nros_action_get_result_async()`, `nros_action_cancel_goal()`,
-  `nros_action_try_recv_feedback()`. Return immediately. Replies are
+- **Async (non-blocking):** `rclc_action_send_goal_async()`,
+  `rclc_action_get_result_async()`, `rclc_action_cancel_goal()`,
+  `rclc_action_try_recv_feedback()`. Return immediately. Replies are
   delivered through the callbacks registered with
-  `nros_action_client_set_goal_response_callback()`,
-  `nros_action_client_set_feedback_callback()`, and
-  `nros_action_client_set_result_callback()`. The callbacks fire from
+  `rclc_action_client_set_goal_response_callback()`,
+  `rclc_action_client_set_feedback_callback()`, and
+  `rclc_action_client_set_result_callback()`. The callbacks fire from
   `rclc_executor_spin_some()` — your spin loop is the only place
   callbacks run.
-- **Blocking convenience:** `nros_action_send_goal()` and
-  `nros_action_get_result()`. These call the async variant and then
+- **Blocking convenience:** `rclc_action_send_goal()` and
+  `rclc_action_get_result()`. These call the async variant and then
   drive `rclc_executor_spin_some()` internally on a wall-clock budget
   until the reply lands (or 15 s / 30 s timeout). They take the
-  `nros_executor_t*` explicitly because the action client stores its
+  `rclc_executor_t*` explicitly because the action client stores its
   handle as an opaque slot inside the executor (registered via
-  `nros_executor_add_action_client()`). The same applies to
-  `nros_action_client_wait_for_action_server()` and
-  `nros_action_client_action_server_is_ready()`. Calling any of them
-  from inside a dispatch callback returns `NROS_RET_REENTRANT`.
-- **Teardown:** `nros_action_server_fini()` / `nros_action_client_fini()`
+  `rclc_executor_add_action_client()`). The same applies to
+  `rclc_action_client_wait_for_action_server()` and
+  `rclc_action_client_action_server_is_ready()`. Calling any of them
+  from inside a dispatch callback returns `RCLC_RET_REENTRANT`.
+- **Teardown:** `rcl_action_server_fini()` / `rcl_action_client_fini()`
   reset only the struct. To take an action off an executor that keeps
-  running, call `nros_executor_remove_action_server()` /
-  `nros_executor_remove_action_client()` first: they drop the arena entry
+  running, call `rclc_executor_remove_action_server()` /
+  `rclc_executor_remove_action_client()` first: they drop the arena entry
   (the action leaves the graph), free its callback slot and arena bytes for
-  reuse, and bring `nros_executor_get_handle_count()` back down. A program
+  reuse, and bring `rclc_executor_get_handle_count()` back down. A program
   that tears the executor down with `rclc_executor_fini()` needs neither —
   that drops every entry (issue 1609).
 - **The same holds for every other entity the executor registers** (issue
-  1631): `nros_executor_remove_subscription()`, `nros_executor_remove_timer()`,
-  `nros_executor_remove_service()` and `nros_executor_remove_client()` — rclc's
+  1631): `rclc_executor_remove_subscription()`, `rclc_executor_remove_timer()`,
+  `rclc_executor_remove_service()` and `rclc_executor_remove_client()` — rclc's
   `rclc_executor_remove_*` shape — each drop the arena entry (receive ring
   included), free the slot and bring `handle_count` back down. Call one before
   the entity's `fini` when the executor keeps running; a timer or client that
   is `fini`'d without it is still dispatched into. A removed client returns to
-  INITIALIZED and can be re-added. All return `NROS_RET_NOT_FOUND` for an
-  entity not registered on that executor and `NROS_RET_REENTRANT` from inside
+  INITIALIZED and can be re-added. All return `RCLC_RET_NOT_FOUND` for an
+  entity not registered on that executor and `RCLC_RET_REENTRANT` from inside
   a callback. A subscription whose callback also receives the sample's
-  attachment is registered with `nros_executor_add_subscription_with_info()`
-  into a `nros_subscription_t` and removed the same way (issue 1668); the
-  older direct-arg `nros_executor_add_subscription_raw_with_info()` takes no
+  attachment is registered with `rclc_executor_add_subscription_with_info()`
+  into a `rcl_subscription_t` and removed the same way (issue 1668); the
+  older direct-arg `rclc_executor_add_subscription_raw_with_info()` takes no
   subscription object, so its entry lives until `rclc_executor_fini()`.
 
-The equivalent service client helper `nros_client_call()` does **not**
+The equivalent service client helper `rclc_client_call()` does **not**
 take an explicit executor — the client stashes the executor pointer
-during `nros_executor_add_client()` and recovers it internally —
+during `rclc_executor_add_client()` and recovers it internally —
 but it follows the same async-then-spin contract.
 
 Canonical pattern: declare the executor, register the client, then
@@ -101,9 +101,9 @@ the example layouts in `examples/native/c/action-client/` and
 `examples/mps2-an385-freertos/c/action-client/`.
 
 Phase 122.3 added a separate L1 polling family
-(`nros_polling_action_client_init` + the `_raw` send/recv siblings)
+(`rclc_polling_action_client_init` + the `_raw` send/recv siblings)
 that stores `ActionClientCore` inline in the separate type
-`nros_polling_action_client_t` (phase-487 W4) and skips the executor entirely;
+`rclc_polling_action_client_t` (phase-487 W4) and skips the executor entirely;
 see the Doxygen for the full L1 verb list.
 
 ## CMake integration

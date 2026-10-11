@@ -66,15 +66,14 @@ static void on_tick(void* ctx) {
     }
 }
 
-static nros_ret_t client_configure(const nros_cpp_node_t* node, void* executor,
-                                   add_client_t* self) {
+static rcl_ret_t client_configure(const nros_cpp_node_t* node, void* executor, add_client_t* self) {
     setvbuf(stdout, NULL, _IONBF, 0);
     self->executor = executor;
     self->a = 2;
     self->b = 3;
     int32_t rc =
         nros_cpp_service_client_create(node, "/add_two_ints", "example_interfaces/srv/AddTwoInts",
-                                       "", nros_c_qos_default(), self->storage);
+                                       "", rclc_c_qos_default(), self->storage);
     if (rc != 0) {
         return rc;
     }
@@ -86,4 +85,4 @@ static nros_ret_t client_configure(const nros_cpp_node_t* node, void* executor,
     return rc;
 }
 
-NROS_C_COMPONENT(add_client_t, client_configure)
+RCLC_C_COMPONENT(add_client_t, client_configure)

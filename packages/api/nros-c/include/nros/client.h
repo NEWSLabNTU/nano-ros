@@ -4,15 +4,15 @@
  * @brief Service client API.
  *
  * Create a service client with rclc_client_init_default(), add it to an
- * executor with nros_executor_add_client(), and call services with
- * nros_client_call() (blocking). The executor arena owns the client; a
+ * executor with rclc_executor_add_client(), and call services with
+ * rclc_client_call() (blocking). The executor arena owns the client; a
  * response callback is set on the ADDED client with
- * nros_client_set_response_callback() (phase-487 W2).
+ * rclc_client_set_response_callback() (phase-487 W2).
  *
- * The non-blocking paths take the reply: nros_client_take_response()
- * after nros_client_send_request_async(), and
- * nros_polling_client_take_response_raw() on a client of the separate polled
- * type ::nros_polling_client_t, created with nros_polling_client_init().
+ * The non-blocking paths take the reply: rclc_client_take_response()
+ * after rclc_client_send_request_async(), and
+ * rclc_polling_client_take_response_raw() on a client of the separate polled
+ * type ::rclc_polling_client_t, created with rclc_polling_client_init().
  *
  * All four are BYTES. For a typed reply — a deserialised response struct
  * rather than a CDR buffer — the generated per-service header emits
@@ -39,7 +39,7 @@
  * This per-module header is kept as a thin shim so existing code that
  * does `#include <nros/client.h>` continues to compile. */
 #include "nros/types.h"
-/* phase-417 W5.d — `nros_qos_services_best_effort()`, the profile rclc's
+/* phase-417 W5.d — `rclc_qos_services_best_effort()`, the profile rclc's
  * service AND client `_best_effort` presets share. One definition, in the
  * service header both halves of the request/response pair already belong to
  * (`@ingroup grp_service` above). */
@@ -49,7 +49,7 @@
  * @brief rclc's best-effort preset constructor for a service client.
  *
  * phase-417 W5.d; the client-side sibling of rclc_service_init_best_effort(),
- * sharing its profile through nros_qos_services_best_effort() so the two
+ * sharing its profile through rclc_qos_services_best_effort() so the two
  * cannot drift — rclc's `client.c` and `service.c` build the same value the
  * same way, and one place to read it here is what keeps that true.
  *
@@ -59,14 +59,14 @@
  * @param[in]  node         An initialised node.
  * @param[in]  type_info    Generated service type descriptor.
  * @param[in]  service_name Service name, null-terminated.
- * @return Whatever nros_client_init_with_qos() returns.
+ * @return Whatever rclc_client_init_with_qos() returns.
  */
-static inline nros_ret_t rclc_client_init_best_effort(struct nros_client_t* client,
-                                                      const struct nros_node_t* node,
-                                                      const struct nros_service_type_t* type_info,
-                                                      const char* service_name) {
-    struct nros_qos_t qos = nros_qos_services_best_effort();
-    return nros_client_init_with_qos(client, node, type_info, service_name, &qos);
+static inline rcl_ret_t rclc_client_init_best_effort(struct rcl_client_t* client,
+                                                     const struct rcl_node_t* node,
+                                                     const struct rclc_service_type_t* type_info,
+                                                     const char* service_name) {
+    struct rclc_qos_t qos = rclc_qos_services_best_effort();
+    return rclc_client_init_with_qos(client, node, type_info, service_name, &qos);
 }
 
 #endif /* NROS_CLIENT_H */

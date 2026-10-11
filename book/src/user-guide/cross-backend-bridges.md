@@ -132,12 +132,12 @@ extern int8_t nros_rmw_zenoh_register(void);
 int nros_app_main(int argc, char** argv) {
     if (nros_rmw_xrce_register() != 0)  return 1;
     if (nros_rmw_zenoh_register() != 0) return 1;
-    // ... nros_support_init / nros_executor_init / nros_executor_node_init
+    // ... rclc_support_init / rclc_executor_init / rclc_executor_node_init
 }
 ```
 
-`nros_executor_node_init` honours per-Node `rmw_name` +
-`locator` via the `nros_node_options_t` struct; the executor
+`rclc_executor_node_init` honours per-Node `rmw_name` +
+`locator` via the `rcl_node_options_t` struct; the executor
 sets `node.executor` so subsequent `nros_*_init` calls
 (publisher, subscription, service, action) route to the right
 session.
@@ -166,7 +166,7 @@ pin the primary** before `open()`:
 NROS_RMW=zenoh ./my_bridge
 ```
 
-The C-side `nros_support_init` reads it and routes
+The C-side `rclc_support_init` reads it and routes
 `Executor::open` through `open_with_rmw(name, ...)`. Without
 this, the linkme walker returns whichever backend's ctor
 fired first, which is non-deterministic across link
@@ -320,7 +320,7 @@ spans RMW backends by nature, so RMW is not a directory axis.
 |---------|--------------|
 | `Transport(ConnectionFailed)` on `open_with_rmw("X", ...)` | Backend X's rlib not pulled into the link line. Rust: add a `register()` call. C / C++: confirm `--whole-archive` wraps the staticlib. |
 | Second node's `.rmw("zenoh")` returns `Transport(...)` | Both nodes try to open against the same singleton-state backend. Set `NROS_RMW=zenoh` so the primary lands on zenoh + the second Node hits the session-cache (slot 0) instead of double-opening. |
-| `rclc_publisher_init_default -> -7` after `nros_executor_node_init` | Stale build — the C-side multi-Session dispatch predates nros-v0.5.0; rebuild `nros-c` after updating. |
+| `rclc_publisher_init_default -> -7` after `rclc_executor_node_init` | Stale build — the C-side multi-Session dispatch predates nros-v0.5.0; rebuild `nros-c` after updating. |
 | `Bridge spinning` marker never reaches piped test harness | Add `setvbuf(stdout, NULL, _IOLBF, 0)` at the top of `nros_app_main`. glibc full-buffers piped stdout; line-buffering surfaces readiness markers before the long-lived `spin_period` loop. |
 
 ## See also

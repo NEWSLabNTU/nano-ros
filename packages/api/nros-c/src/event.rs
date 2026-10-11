@@ -8,7 +8,7 @@
 
 use core::ffi::c_void;
 
-use crate::{error::*, publisher::nros_publisher_t, subscription::nros_subscription_t};
+use crate::{error::*, publisher::rcl_publisher_t, subscription::rcl_subscription_t};
 
 /// Tier-1 status-event kinds. Stable u8 values matching
 /// `rmw_event_type_t` in `<nros/rmw_event.h>`.
@@ -30,7 +30,7 @@ pub enum nros_event_kind_t {
 /// Liveliness payload. Matches DDS `rmw_liveliness_changed_status_t`.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default)]
-pub struct nros_liveliness_changed_status_t {
+pub struct rclc_liveliness_changed_status_t {
     pub alive_count: u16,
     pub not_alive_count: u16,
     pub alive_count_change: i16,
@@ -40,7 +40,7 @@ pub struct nros_liveliness_changed_status_t {
 /// Count payload. Used for deadline-missed and message-lost events.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default)]
-pub struct nros_count_status_t {
+pub struct rclc_count_status_t {
     pub total_count: u32,
     pub total_count_change: u32,
 }
@@ -50,20 +50,20 @@ pub struct nros_count_status_t {
 // ============================================================================
 
 /// Callback for `NROS_EVENT_LIVELINESS_CHANGED`.
-pub type nros_event_liveliness_changed_cb_t = Option<
+pub type rclc_event_liveliness_changed_cb_t = Option<
     unsafe extern "C" fn(
-        sub: *mut nros_subscription_t,
-        status: nros_liveliness_changed_status_t,
+        sub: *mut rcl_subscription_t,
+        status: rclc_liveliness_changed_status_t,
         user_context: *mut c_void,
     ),
 >;
 
 /// Callback for `NROS_EVENT_REQUESTED_DEADLINE_MISSED`,
 /// `NROS_EVENT_MESSAGE_LOST` (subscriber side).
-pub type nros_event_subscriber_count_cb_t = Option<
+pub type rclc_event_subscriber_count_cb_t = Option<
     unsafe extern "C" fn(
-        sub: *mut nros_subscription_t,
-        status: nros_count_status_t,
+        sub: *mut rcl_subscription_t,
+        status: rclc_count_status_t,
         user_context: *mut c_void,
     ),
 >;
@@ -76,18 +76,18 @@ pub type nros_event_subscriber_count_cb_t = Option<
 ///
 /// # Safety
 ///
-/// `sub` must point to a valid, initialised `nros_subscription_t`.
+/// `sub` must point to a valid, initialised `rcl_subscription_t`.
 /// `cb` must be a valid function pointer or `None`. `user_context`
 /// is opaque to nros and must outlive the subscription.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_subscription_set_liveliness_changed_callback(
-    _sub: *mut nros_subscription_t,
-    _cb: nros_event_liveliness_changed_cb_t,
+pub unsafe extern "C" fn rclc_subscription_set_liveliness_changed_callback(
+    _sub: *mut rcl_subscription_t,
+    _cb: rclc_event_liveliness_changed_cb_t,
     _user_context: *mut c_void,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     // Backend wiring lands per-phase (109+); for now, the API surface
     // is exposed but no backend implements the underlying event.
-    NROS_RET_UNSUPPORTED
+    RCL_RET_UNSUPPORTED
 }
 
 /// Register a callback for `NROS_EVENT_REQUESTED_DEADLINE_MISSED`.
@@ -98,29 +98,29 @@ pub unsafe extern "C" fn nros_subscription_set_liveliness_changed_callback(
 ///
 /// # Safety
 ///
-/// See [`nros_subscription_set_liveliness_changed_callback`].
+/// See [`rclc_subscription_set_liveliness_changed_callback`].
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_subscription_set_requested_deadline_missed_callback(
-    _sub: *mut nros_subscription_t,
+pub unsafe extern "C" fn rclc_subscription_set_requested_deadline_missed_callback(
+    _sub: *mut rcl_subscription_t,
     _deadline_ms: u32,
-    _cb: nros_event_subscriber_count_cb_t,
+    _cb: rclc_event_subscriber_count_cb_t,
     _user_context: *mut c_void,
-) -> nros_ret_t {
-    NROS_RET_UNSUPPORTED
+) -> rcl_ret_t {
+    RCL_RET_UNSUPPORTED
 }
 
 /// Register a callback for `NROS_EVENT_MESSAGE_LOST`.
 ///
 /// # Safety
 ///
-/// See [`nros_subscription_set_liveliness_changed_callback`].
+/// See [`rclc_subscription_set_liveliness_changed_callback`].
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_subscription_set_message_lost_callback(
-    _sub: *mut nros_subscription_t,
-    _cb: nros_event_subscriber_count_cb_t,
+pub unsafe extern "C" fn rclc_subscription_set_message_lost_callback(
+    _sub: *mut rcl_subscription_t,
+    _cb: rclc_event_subscriber_count_cb_t,
     _user_context: *mut c_void,
-) -> nros_ret_t {
-    NROS_RET_UNSUPPORTED
+) -> rcl_ret_t {
+    RCL_RET_UNSUPPORTED
 }
 
 // ============================================================================
@@ -129,10 +129,10 @@ pub unsafe extern "C" fn nros_subscription_set_message_lost_callback(
 
 /// Callback for `NROS_EVENT_LIVELINESS_LOST`,
 /// `NROS_EVENT_OFFERED_DEADLINE_MISSED` (publisher side).
-pub type nros_event_publisher_count_cb_t = Option<
+pub type rclc_event_publisher_count_cb_t = Option<
     unsafe extern "C" fn(
-        pub_: *mut nros_publisher_t,
-        status: nros_count_status_t,
+        pub_: *mut rcl_publisher_t,
+        status: rclc_count_status_t,
         user_context: *mut c_void,
     ),
 >;
@@ -141,15 +141,15 @@ pub type nros_event_publisher_count_cb_t = Option<
 ///
 /// # Safety
 ///
-/// `pub_` must point to a valid, initialised `nros_publisher_t`.
+/// `pub_` must point to a valid, initialised `rcl_publisher_t`.
 /// `cb` must be a valid function pointer or `None`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_publisher_set_liveliness_lost_callback(
-    _pub_: *mut nros_publisher_t,
-    _cb: nros_event_publisher_count_cb_t,
+pub unsafe extern "C" fn rclc_publisher_set_liveliness_lost_callback(
+    _pub_: *mut rcl_publisher_t,
+    _cb: rclc_event_publisher_count_cb_t,
     _user_context: *mut c_void,
-) -> nros_ret_t {
-    NROS_RET_UNSUPPORTED
+) -> rcl_ret_t {
+    RCL_RET_UNSUPPORTED
 }
 
 /// Register a callback for `NROS_EVENT_OFFERED_DEADLINE_MISSED`.
@@ -158,13 +158,13 @@ pub unsafe extern "C" fn nros_publisher_set_liveliness_lost_callback(
 ///
 /// # Safety
 ///
-/// See [`nros_publisher_set_liveliness_lost_callback`].
+/// See [`rclc_publisher_set_liveliness_lost_callback`].
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_publisher_set_offered_deadline_missed_callback(
-    _pub_: *mut nros_publisher_t,
+pub unsafe extern "C" fn rclc_publisher_set_offered_deadline_missed_callback(
+    _pub_: *mut rcl_publisher_t,
     _deadline_ms: u32,
-    _cb: nros_event_publisher_count_cb_t,
+    _cb: rclc_event_publisher_count_cb_t,
     _user_context: *mut c_void,
-) -> nros_ret_t {
-    NROS_RET_UNSUPPORTED
+) -> rcl_ret_t {
+    RCL_RET_UNSUPPORTED
 }

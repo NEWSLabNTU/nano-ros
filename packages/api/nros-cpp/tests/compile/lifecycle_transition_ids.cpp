@@ -63,34 +63,34 @@ static_assert(static_cast<uint8_t>(rclcpp_lifecycle::LifecycleState::Finalized) 
 // 2. C and C++ share ONE id space.
 // ---------------------------------------------------------------------------
 // This is the assertion that rules out the other candidate fix. Translating
-// only at the C++ boundary would have left `NROS_LIFECYCLE_TRANSITION_ACTIVATE`
+// only at the C++ boundary would have left `RCLC_LIFECYCLE_TRANSITION_ACTIVATE`
 // (our 2) and `trigger_transition(2)` (upstream CLEANUP) meaning different
 // things inside a single mixed-language image — a worse trap than the one being
 // fixed, because both spellings look correct.
 
 static_assert(id_of(rclcpp_lifecycle::LifecycleTransition::Configure) ==
-                  NROS_LIFECYCLE_TRANSITION_CONFIGURE,
+                  RCLC_LIFECYCLE_TRANSITION_CONFIGURE,
               "");
 static_assert(id_of(rclcpp_lifecycle::LifecycleTransition::Cleanup) ==
-                  NROS_LIFECYCLE_TRANSITION_CLEANUP,
+                  RCLC_LIFECYCLE_TRANSITION_CLEANUP,
               "");
 static_assert(id_of(rclcpp_lifecycle::LifecycleTransition::Activate) ==
-                  NROS_LIFECYCLE_TRANSITION_ACTIVATE,
+                  RCLC_LIFECYCLE_TRANSITION_ACTIVATE,
               "");
 static_assert(id_of(rclcpp_lifecycle::LifecycleTransition::Deactivate) ==
-                  NROS_LIFECYCLE_TRANSITION_DEACTIVATE,
+                  RCLC_LIFECYCLE_TRANSITION_DEACTIVATE,
               "");
 static_assert(id_of(rclcpp_lifecycle::LifecycleTransition::ShutdownUnconfigured) ==
-                  NROS_LIFECYCLE_TRANSITION_SHUTDOWN_UNCONFIGURED,
+                  RCLC_LIFECYCLE_TRANSITION_SHUTDOWN_UNCONFIGURED,
               "");
 static_assert(id_of(rclcpp_lifecycle::LifecycleTransition::ShutdownInactive) ==
-                  NROS_LIFECYCLE_TRANSITION_SHUTDOWN_INACTIVE,
+                  RCLC_LIFECYCLE_TRANSITION_SHUTDOWN_INACTIVE,
               "");
 static_assert(id_of(rclcpp_lifecycle::LifecycleTransition::ShutdownActive) ==
-                  NROS_LIFECYCLE_TRANSITION_SHUTDOWN_ACTIVE,
+                  RCLC_LIFECYCLE_TRANSITION_SHUTDOWN_ACTIVE,
               "");
 static_assert(id_of(rclcpp_lifecycle::LifecycleTransition::ErrorRecovery) ==
-                  NROS_LIFECYCLE_TRANSITION_ERROR_RECOVERY,
+                  RCLC_LIFECYCLE_TRANSITION_ERROR_RECOVERY,
               "");
 
 // No two transitions may share an id — a renumbering that collapsed two

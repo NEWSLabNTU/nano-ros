@@ -29,11 +29,11 @@ int main(void) {
     /* --- node accessors (ledger: c:node_is_valid, c:node_get_domain_id,
      * c:node_get_fully_qualified_name, c:node_resolve_name) --------------- */
 
-    /* `bool`, not `nros_ret_t`: rcl's `rcl_node_is_valid` is a predicate, and
+    /* `bool`, not `rcl_ret_t`: rcl's `rcl_node_is_valid` is a predicate, and
      * a predicate over a handle we hold cannot fail to answer. phase-417
      * stage 6 gave it rcl's NAME too — the old `nros_node_is_valid` is a
      * deprecated forwarder in `<nros/node.h>`. */
-    bool (*p_is_valid)(const struct nros_node_t*) = rcl_node_is_valid;
+    bool (*p_is_valid)(const struct rcl_node_t*) = rcl_node_is_valid;
 
     /* Out-param + status, NOT a bare `uint32_t` return. 0 is a legal ROS
      * domain, so a bare return would have to spend it on "cannot answer" —
@@ -45,69 +45,67 @@ int main(void) {
      * and leave half of `id` uninitialised — the out-parameter type is
      * authored at the CALL SITE, which is what separates this from the
      * typesupport handle RFC-0089 settled we keep. */
-    nros_ret_t (*p_domain)(const struct nros_node_t*, uint32_t*) = nros_node_get_domain_id;
+    rcl_ret_t (*p_domain)(const struct rcl_node_t*, uint32_t*) = rcl_node_get_domain_id;
 
     /* Caller-owned buffer, not rcl's `const char *` return: we have no
      * allocator and the node struct holds no composed FQN. The trailing
-     * `size_t *out_len` is the retry size — a caller that gets NROS_RET_FULL
+     * `size_t *out_len` is the retry size — a caller that gets RCLC_RET_FULL
      * learns how large a buffer would have worked instead of doubling blindly.
      * This assertion previously named a THREE-argument form, which is how
      * issue 1162 (the symbol defined twice, with two signatures) stayed
      * invisible to every merge-gating lane: `check-build` is the only lane
      * that compiles this file, and it runs on schedule only. */
-    nros_ret_t (*p_fqn)(const struct nros_node_t*, char*, size_t, size_t*) =
-        nros_node_get_fully_qualified_name;
+    rcl_ret_t (*p_fqn)(const struct rcl_node_t*, char*, size_t, size_t*) =
+        rclc_node_get_fully_qualified_name;
 
     /* `only_expand` is rcl's own parameter and keeps rcl's meaning. rcl's
      * `allocator` and `is_service` are deliberately absent — the first
      * because there is no allocator, the second because it selects between
      * validators we do not ship, and an argument we ignore is the inert-
      * parameter defect RFC-0089 is written to end. */
-    nros_ret_t (*p_resolve)(const struct nros_node_t*, const char*, bool, char*, size_t) =
-        nros_node_resolve_name;
+    rcl_ret_t (*p_resolve)(const struct rcl_node_t*, const char*, bool, char*, size_t) =
+        rcl_node_resolve_name;
 
     /* --- timer accessors (ledger: c:timer_is_canceled, c:timer_is_ready,
      * c:timer_get_time_since_last_call) ----------------------------------- */
 
-    nros_ret_t (*p_canceled)(const struct nros_timer_t*, bool*) = rcl_timer_is_canceled;
-    nros_ret_t (*p_ready)(const struct nros_timer_t*, bool*) = rcl_timer_is_ready;
-    nros_ret_t (*p_since)(const struct nros_timer_t*, uint64_t*) =
-        nros_timer_get_time_since_last_call;
+    rcl_ret_t (*p_canceled)(const struct rcl_timer_t*, bool*) = rcl_timer_is_canceled;
+    rcl_ret_t (*p_ready)(const struct rcl_timer_t*, bool*) = rcl_timer_is_ready;
+    rcl_ret_t (*p_since)(const struct rcl_timer_t*, uint64_t*) = rcl_timer_get_time_since_last_call;
 
     /* phase-417 stage 3 (issue 1049, and the deleted ledger row
      * `c:timer_get_time_until_next_call`) — status return + a SIGNED out-param,
      * which is `rcl_timer_get_time_until_next_call`'s shape exactly. It was
-     * `uint64_t f(const struct nros_timer_t *, uint64_t current_time_ns)`:
+     * `uint64_t f(const struct rcl_timer_t *, uint64_t current_time_ns)`:
      * unsigned cannot express OVERDUE (rcl's header: "a negative value
      * indicates the timer call is overdue by that amount"), and the bare return
      * spent `0` on five distinct cases at once. Both regressions are a build
      * failure on this line — `int64_t*` against `uint64_t*` is the pointer
      * mismatch C only warns about, so the assignment is to a FUNCTION POINTER,
      * where the types must match exactly. */
-    nros_ret_t (*p_until)(const struct nros_timer_t*, int64_t*) =
-        rcl_timer_get_time_until_next_call;
+    rcl_ret_t (*p_until)(const struct rcl_timer_t*, int64_t*) = rcl_timer_get_time_until_next_call;
 
-    /* --- nros_difference_times: Time - Time -> Duration ------------------ */
+    /* --- rcl_difference_times: Time - Time -> Duration ------------------ */
 
     /* A `static inline` in <nros/timer.h>, so there is no exported symbol and
      * cbindgen has nothing to emit — but its SHAPE can still drift, and this
      * is the shape that matters. rcl's is
      * `(const rcl_time_point_t *, const rcl_time_point_t *, rcl_duration_t *)`:
      * two POINTERS to time points and a duration out-param. The neighbouring
-     * `nros_time_sub` takes `(nros_time_t, nros_duration_t)` BY VALUE and
+     * `rclc_time_sub` takes `(rclc_time_t, rcl_duration_t)` BY VALUE and
      * computes a different operation (Time - Duration -> Time), which is what
      * ledger row `c:difference_times` had to be corrected for once already.
      * Taking the address here is what makes a drift toward that shape a build
      * failure. */
-    nros_ret_t (*p_difference)(const struct nros_time_t*, const struct nros_time_t*,
-                               struct nros_duration_t*) = nros_difference_times;
+    rcl_ret_t (*p_difference)(const struct rclc_time_t*, const struct rclc_time_t*,
+                              struct rcl_duration_t*) = rcl_difference_times;
 
     /* And it must be CALLABLE with that shape — the pointer above would still
      * bind if an argument type were merely compatible. */
-    struct nros_time_t start = nros_time_from_nanoseconds((int64_t)1000000000);
-    struct nros_time_t finish = nros_time_from_nanoseconds((int64_t)2500000000);
-    struct nros_duration_t delta;
-    nros_ret_t rc = nros_difference_times(&start, &finish, &delta);
+    struct rclc_time_t start = rclc_time_from_nanoseconds((int64_t)1000000000);
+    struct rclc_time_t finish = rclc_time_from_nanoseconds((int64_t)2500000000);
+    struct rcl_duration_t delta;
+    rcl_ret_t rc = rcl_difference_times(&start, &finish, &delta);
 
     (void)p_is_valid;
     (void)p_domain;
@@ -120,5 +118,5 @@ int main(void) {
     (void)p_difference;
     (void)delta;
 
-    return rc == NROS_RET_OK ? 0 : 1;
+    return rc == RCL_RET_OK ? 0 : 1;
 }

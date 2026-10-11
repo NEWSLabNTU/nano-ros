@@ -157,7 +157,7 @@ pub struct SourceLanguageArgs {
 pub struct EntryNodeArgs {
     /// `c` or `cpp` — the COMPONENT's language. The emitted TU is C++
     /// either way; a C component is reached through its
-    /// `NROS_C_COMPONENT` factory/configure seam.
+    /// `RCLC_C_COMPONENT` factory/configure seam.
     #[arg(long, value_name = "LANG")]
     pub lang: String,
 
@@ -697,7 +697,7 @@ fn run_entry_node(args: EntryNodeArgs) -> Result<()> {
     if !is_cpp && (args.class.is_some() || args.header.is_some()) {
         bail!(
             "codegen entry-node --lang c: --class/--header do not apply — a C \
-             component is reached through its `NROS_C_COMPONENT` \
+             component is reached through its `RCLC_C_COMPONENT` \
              factory/configure seam, keyed on --pkg-sym"
         );
     }

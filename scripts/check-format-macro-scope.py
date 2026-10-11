@@ -17,7 +17,7 @@ backends, silently, with no diagnostic — a subtle wrong answer where the whole
 point of the design was to make a mismatch loud. A bridge asks per session
 instead:
 
-    C    nros_node_get_serialization_format(node)
+    C    rclc_node_get_serialization_format(node)
     C++  node.serialization_format()
     Rust session.serialization_format()  /  RawSubscription::format()
 
@@ -28,7 +28,7 @@ is a documented approximation, deliberately conservative in the direction that
 matters:
 
   * a translation unit is **bridge-linked** when it names the bridge API
-    (`<nros/bridge.h>`, `<nros/bridge.hpp>`, `nros_pubsub_bridge_create`,
+    (`<nros/bridge.h>`, `<nros/bridge.hpp>`, `rclc_pubsub_bridge_create`,
     `nros::bridge::`, `nros::MultiExecutor`), or when any sibling source under
     the same *entry root* does — an entry root being the nearest ancestor
     directory holding a `CMakeLists.txt`, `package.xml` or `Cargo.toml`, i.e.
@@ -94,8 +94,8 @@ TABLE_REF = re.compile(r"\bNROS_(?:CPP_)?SERIALIZATION_FORMAT_ID_[A-Z]+\b")
 BRIDGE_MARKERS = re.compile(
     r"(?:"
     r"#\s*include\s*[<\"]nros/bridge\.h(?:pp)?[>\"]"
-    r"|\bnros_pubsub_bridge_create\b"
-    r"|\bnros_bridge_endpoint_t\b"
+    r"|\brclc_pubsub_bridge_create\b"
+    r"|\brclc_bridge_endpoint_t\b"
     r"|\bnros::bridge::"
     r"|\bnros::MultiExecutor\b"
     r")"
@@ -210,8 +210,8 @@ def self_test(quiet: bool = False) -> None:
     for marker in (
         "#include <nros/bridge.h>",
         '#include "nros/bridge.hpp"',
-        "    nros_pubsub_bridge_create(exec, &src, &dst);",
-        "    nros_bridge_endpoint_t src;",
+        "    rclc_pubsub_bridge_create(exec, &src, &dst);",
+        "    rclc_bridge_endpoint_t src;",
         "    nros::MultiExecutor exec;",
     ):
         case(f"bridge marker: {marker.strip()[:34]}", bool(BRIDGE_MARKERS.search(marker)))
@@ -326,7 +326,7 @@ def main() -> int:
         print()
         print("       Ask the SESSION instead — that is the one place the answer is")
         print("       per-backend and therefore true:")
-        print("         C    nros_node_get_serialization_format(node)")
+        print("         C    rclc_node_get_serialization_format(node)")
         print("         C++  node.serialization_format()")
         print("         Rust session.serialization_format() / RawSubscription::format()")
         return 1

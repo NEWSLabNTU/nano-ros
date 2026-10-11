@@ -13,11 +13,11 @@ use core::{
 use crate::{
     constants::{MAX_SERVICE_NAME_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN},
     error::*,
-    executor::nros_executor_t,
-    node::{nros_node_state_t, nros_node_t},
+    executor::rclc_executor_t,
+    node::{rcl_node_t, rclc_node_state_t},
     opaque_sizes::{SERVICE_CLIENT_OPAQUE_U64S, SERVICE_SERVER_OPAQUE_U64S},
-    publisher::nros_service_type_t,
-    qos::nros_qos_t,
+    publisher::rclc_service_type_t,
+    qos::rclc_qos_t,
 };
 
 // ============================================================================
@@ -57,7 +57,7 @@ use crate::{
 ///    completes — including draining in-flight clones — before the
 ///    `AtomicBool`'s storage is invalidated.
 ///
-/// Callsites: today's only callsite at `service.rs::nros_client_send_request_async`
+/// Callsites: today's only callsite at `service.rs::rclc_client_send_request_async`
 /// borrows `&entry.reply_ready` where `entry` lives in the executor's
 /// service-client arena. The arena is heap-allocated via `core::ptr::write`
 /// at session-open and is never resized or recycled until the executor is
@@ -106,7 +106,7 @@ unsafe fn atomic_bool_waker(flag: &AtomicBool) -> Waker {
 /// # Returns
 /// * `true` if the request was handled successfully
 /// * `false` if there was an error handling the request
-pub type nros_service_callback_t = Option<
+pub type rclc_service_callback_t = Option<
     unsafe extern "C" fn(
         request_data: *const u8,
         request_len: usize,
@@ -120,15 +120,15 @@ pub type nros_service_callback_t = Option<
 /// Service server state
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nros_service_state_t {
+pub enum rclc_service_state_t {
     /// Not initialized
-    NROS_SERVICE_STATE_UNINITIALIZED = 0,
-    /// Initialized. For a `nros_service_t` the server is created later, by
-    /// `nros_executor_add_service_raw`, inside the executor arena. For a
-    /// `nros_polling_service_t` the server is live in the struct's storage.
-    NROS_SERVICE_STATE_INITIALIZED = 1,
+    RCLC_SERVICE_STATE_UNINITIALIZED = 0,
+    /// Initialized. For a `rcl_service_t` the server is created later, by
+    /// `rclc_executor_add_service_raw`, inside the executor arena. For a
+    /// `rclc_polling_service_t` the server is live in the struct's storage.
+    RCLC_SERVICE_STATE_INITIALIZED = 1,
     /// Shutdown
-    NROS_SERVICE_STATE_SHUTDOWN = 2,
+    RCLC_SERVICE_STATE_SHUTDOWN = 2,
 }
 
 /// A service server the executor dispatches (rclc's `rcl_service_t`).
@@ -137,11 +137,11 @@ pub enum nros_service_state_t {
 /// its request and reply buffers, the callback and its context. This struct
 /// keeps the arena handle (`_internal`) and the description the
 /// registration reads. A server the caller drains itself is a
-/// [`nros_polling_service_t`].
+/// [`rclc_polling_service_t`].
 #[repr(C)]
-pub struct nros_service_t {
+pub struct rcl_service_t {
     /// Current state
-    pub state: nros_service_state_t,
+    pub state: rclc_service_state_t,
     /// Service name storage
     pub service_name: [u8; MAX_SERVICE_NAME_LEN],
     /// Service name length
@@ -155,34 +155,34 @@ pub struct nros_service_t {
     /// Type hash length
     pub type_hash_len: usize,
     /// Pointer to parent node
-    pub node: crate::node::nros_node_ref_t,
+    pub node: crate::node::rclc_node_ref_t,
     /// Phase 193.4 — service QoS (applied to both request + reply endpoints).
     /// Defaults to the services profile (RELIABLE+VOLATILE+KEEP_LAST(10));
-    /// set via `nros_service_init_with_qos`.
-    pub qos: crate::qos::nros_qos_t,
+    /// set via `rclc_service_init_with_qos`.
+    pub qos: crate::qos::rclc_qos_t,
     /// Phase 189.M3.3.a — scheduling-context slot to bind the service's
     /// executor handle to. `0` = inherit the executor / Node default (no
-    /// explicit bind); set via `nros_service_init_with_options`. When non-zero,
-    /// `nros_executor_add_service_raw` binds the freshly-created handle to
+    /// explicit bind); set via `rclc_service_init_with_options`. When non-zero,
+    /// `rclc_executor_add_service_raw` binds the freshly-created handle to
     /// this SC after registration.
-    pub sched_context_id: crate::executor::nros_sched_context_id_t,
+    pub sched_context_id: crate::executor::rclc_sched_context_id_t,
     /// Internal state (arena entry index + executor pointer). Phase 87.5:
     /// Typed C-ABI handle field (was an opaque blob in earlier versions).
     pub _internal: ServiceServerInternal,
 }
 
-impl Default for nros_service_t {
+impl Default for rcl_service_t {
     fn default() -> Self {
         Self {
-            state: nros_service_state_t::NROS_SERVICE_STATE_UNINITIALIZED,
+            state: rclc_service_state_t::RCLC_SERVICE_STATE_UNINITIALIZED,
             service_name: [0u8; MAX_SERVICE_NAME_LEN],
             service_name_len: 0,
             type_name: [0u8; MAX_TYPE_NAME_LEN],
             type_name_len: 0,
             type_hash: [0u8; MAX_TYPE_HASH_LEN],
             type_hash_len: 0,
-            node: crate::node::nros_node_ref_t::none(),
-            qos: crate::qos::nros_qos_t::default(),
+            node: crate::node::rclc_node_ref_t::none(),
+            qos: crate::qos::rclc_qos_t::default(),
             sched_context_id: 0,
             _internal: ServiceServerInternal::new(),
         }
@@ -204,35 +204,35 @@ type RawClient = nros_node::RawServiceClient<
 ///
 /// The C counterpart of C++'s `nros::PollService<S>`. Nothing dispatches it,
 /// so it has no arena slot: `_opaque` holds a `RawServiceServer` from
-/// `nros_polling_service_init` until `nros_polling_service_fini`.
+/// `rclc_polling_service_init` until `rclc_polling_service_fini`.
 /// Zero-initialised is UNINITIALIZED. Until phase-487 it was the
-/// `NROS_SERVICE_STATE_POLLING` state of `nros_service_t`, which made every
+/// `NROS_SERVICE_STATE_POLLING` state of `rcl_service_t`, which made every
 /// dispatched server carry this storage unused.
 #[repr(C)]
-pub struct nros_polling_service_t {
+pub struct rclc_polling_service_t {
     /// Current state: UNINITIALIZED, INITIALIZED (server live) or SHUTDOWN.
-    pub state: nros_service_state_t,
+    pub state: rclc_service_state_t,
     /// The node the server was created on.
-    pub node: crate::node::nros_node_ref_t,
+    pub node: crate::node::rclc_node_ref_t,
     /// Inline storage for the `RawServiceServer`. Internal: treat as opaque.
     pub _opaque: [u64; SERVICE_SERVER_OPAQUE_U64S],
 }
 
-impl Default for nros_polling_service_t {
+impl Default for rclc_polling_service_t {
     fn default() -> Self {
         Self {
-            state: nros_service_state_t::NROS_SERVICE_STATE_UNINITIALIZED,
-            node: crate::node::nros_node_ref_t::none(),
+            state: rclc_service_state_t::RCLC_SERVICE_STATE_UNINITIALIZED,
+            node: crate::node::rclc_node_ref_t::none(),
             _opaque: [0u64; SERVICE_SERVER_OPAQUE_U64S],
         }
     }
 }
 
-impl nros_polling_service_t {
+impl rclc_polling_service_t {
     /// The live server, or `None` if this service is not INITIALIZED.
     #[cfg(feature = "rmw-cffi")]
     unsafe fn raw(&mut self) -> Option<&mut RawServer> {
-        if self.state != nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED {
+        if self.state != rclc_service_state_t::RCLC_SERVICE_STATE_INITIALIZED {
             return None;
         }
         Some(unsafe { &mut *(self._opaque.as_mut_ptr() as *mut RawServer) })
@@ -241,11 +241,11 @@ impl nros_polling_service_t {
 
 /// Get a zero-initialized polling service server.
 #[unsafe(no_mangle)]
-pub extern "C" fn nros_get_zero_initialized_polling_service() -> nros_polling_service_t {
-    nros_polling_service_t::default()
+pub extern "C" fn rclc_get_zero_initialized_polling_service() -> rclc_polling_service_t {
+    rclc_polling_service_t::default()
 }
 
-impl nros_service_t {
+impl rcl_service_t {
     /// Phase 193.4 — the service's QoS as `nros_node` settings.
     pub(crate) fn get_qos_settings(&self) -> nros_rmw::QoSProfile {
         self.qos.to_qos_settings()
@@ -254,8 +254,8 @@ impl nros_service_t {
 
 /// Get a zero-initialized service server.
 #[unsafe(no_mangle)]
-pub extern "C" fn rcl_get_zero_initialized_service() -> nros_service_t {
-    nros_service_t::default()
+pub extern "C" fn rcl_get_zero_initialized_service() -> rcl_service_t {
+    rcl_service_t::default()
 }
 
 /// Initialize a service server with an explicit QoS profile.
@@ -268,26 +268,26 @@ pub extern "C" fn rcl_get_zero_initialized_service() -> nros_service_t {
 /// * `qos` - QoS for both endpoints, or NULL for the services default
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if any required pointer is NULL
-/// * `NROS_RET_NOT_INIT` if node is not initialized
-/// * `NROS_RET_ERROR` on initialization failure
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` if any required pointer is NULL
+/// * `RCL_RET_NOT_INIT` if node is not initialized
+/// * `RCL_RET_ERROR` on initialization failure
 ///
 /// phase-487 W2 removed the `callback` and `context` this took between the
 /// name and the QoS: the struct stored them only for the (since removed)
 /// two-argument `nros_executor_add_service` to read back, while the arena
 /// entry kept its own copies. The callback is supplied at registration, by
-/// `nros_executor_add_service_raw` or a generated
+/// `rclc_executor_add_service_raw` or a generated
 /// `<Srv>_executor_add_service`, as rclc supplies it at
 /// `rclc_executor_add_service`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_service_init_with_qos(
-    service: *mut nros_service_t,
-    node: *const nros_node_t,
-    type_info: *const nros_service_type_t,
+pub unsafe extern "C" fn rclc_service_init_with_qos(
+    service: *mut rcl_service_t,
+    node: *const rcl_node_t,
+    type_info: *const rclc_service_type_t,
     service_name: *const c_char,
-    qos: *const crate::qos::nros_qos_t,
-) -> nros_ret_t {
+    qos: *const crate::qos::rclc_qos_t,
+) -> rcl_ret_t {
     validate_not_null!(service, node, type_info, service_name);
 
     let service = &mut *service;
@@ -296,15 +296,15 @@ pub unsafe extern "C" fn nros_service_init_with_qos(
 
     validate_state!(
         service,
-        nros_service_state_t::NROS_SERVICE_STATE_UNINITIALIZED,
-        NROS_RET_BAD_SEQUENCE
+        rclc_service_state_t::RCLC_SERVICE_STATE_UNINITIALIZED,
+        RCLC_RET_BAD_SEQUENCE
     );
-    validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
+    validate_state!(node_ref, rclc_node_state_t::RCLC_NODE_STATE_INITIALIZED);
 
     // Copy service name (required — empty rejected)
     service.service_name_len = crate::util::copy_cstr_into(service_name, &mut service.service_name);
     if service.service_name_len == 0 {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
 
     // Copy type name + hash (both optional — null sources leave dst untouched)
@@ -317,18 +317,18 @@ pub unsafe extern "C" fn nros_service_init_with_qos(
     // Phase 193.4 — default to the services profile; a non-NULL `qos`
     // overrides. (`register_service` reads this at registration time.)
     service.qos = if qos.is_null() {
-        crate::qos::nros_qos_t::default()
+        crate::qos::rclc_qos_t::default()
     } else {
         *qos
     };
 
-    // Service server creation is deferred to `nros_executor_add_service_raw`,
+    // Service server creation is deferred to `rclc_executor_add_service_raw`,
     // which creates it inside the executor arena.
     // Initialise the internal state (executor_ptr null until registration).
     service._internal = ServiceServerInternal::new();
-    service.state = nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED;
+    service.state = rclc_service_state_t::RCLC_SERVICE_STATE_INITIALIZED;
 
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// rclc's `rclc_service_init_default`, in rclc's argument order and at rclc's
@@ -336,7 +336,7 @@ pub unsafe extern "C" fn nros_service_init_with_qos(
 /// and `context` in positions 5 and 6; RFC-0089 records that the binding site
 /// was never mandated (RFC-0041 governs the DISPATCH MODEL, and
 /// `executor-owns-no-entity-storage` is defined nowhere), so the callback moves
-/// to registration where rclc puts it — `nros_executor_add_service_raw`.
+/// to registration where rclc puts it — `rclc_executor_add_service_raw`.
 ///
 /// The typesupport parameter keeps OUR type for the reason RFC-0089 settled on
 /// 2026-09-04: a rosidl typesupport's members are its contract, including a
@@ -349,44 +349,44 @@ pub unsafe extern "C" fn nros_service_init_with_qos(
 /// All non-NULL pointers must be valid + the node initialized.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_service_init_default(
-    service: *mut nros_service_t,
-    node: *const nros_node_t,
-    type_info: *const nros_service_type_t,
+    service: *mut rcl_service_t,
+    node: *const rcl_node_t,
+    type_info: *const rclc_service_type_t,
     service_name: *const c_char,
-) -> nros_ret_t {
-    nros_service_init_with_qos(service, node, type_info, service_name, core::ptr::null())
+) -> rcl_ret_t {
+    rclc_service_init_with_qos(service, node, type_info, service_name, core::ptr::null())
 }
 
 /// Phase 189.M3.3.a — rclc-style named service options.
 ///
 /// Sits ALONGSIDE the QoS profile (same convention as
-/// `nros_subscription_options_t`): QoS is passed separately, this struct
+/// `rcl_subscription_options_t`): QoS is passed separately, this struct
 /// carries the non-QoS service-creation axes. Plain scalar fields only — safe
 /// to stack-allocate, memcpy, and pass across the FFI. Zero-init selects the
-/// default behaviour, identical to `nros_service_init_with_qos`.
+/// default behaviour, identical to `rclc_service_init_with_qos`.
 #[repr(C)]
 #[derive(Default)]
-pub struct nros_service_options_t {
+pub struct rcl_service_options_t {
     /// Scheduling-context slot to bind the service's executor handle to.
     /// `0` = inherit the executor / Node default (no explicit bind). A non-zero
     /// value must be an id previously returned from
-    /// `nros_executor_create_sched_context`; the bind is applied by
-    /// `nros_executor_add_service_raw` once the handle exists.
-    pub sched_context: crate::executor::nros_sched_context_id_t,
+    /// `rclc_executor_create_sched_context`; the bind is applied by
+    /// `rclc_executor_add_service_raw` once the handle exists.
+    pub sched_context: crate::executor::rclc_sched_context_id_t,
     /// Reserved for future use; must be zero. Pads the struct for ABI stability.
     pub _reserved: [u8; 3],
 }
 
-/// Get a zero-initialised [`nros_service_options_t`] (`sched_context = 0`).
+/// Get a zero-initialised [`rcl_service_options_t`] (`sched_context = 0`).
 #[unsafe(no_mangle)]
-pub extern "C" fn rcl_service_get_default_options() -> nros_service_options_t {
-    nros_service_options_t::default()
+pub extern "C" fn rcl_service_get_default_options() -> rcl_service_options_t {
+    rcl_service_options_t::default()
 }
 
 /// Phase 189.M3.3.a — initialize a service server with custom QoS + named
-/// options. Behaves like [`nros_service_init_with_qos`] except a non-zero
+/// options. Behaves like [`rclc_service_init_with_qos`] except a non-zero
 /// `options->sched_context` is stashed on the service so that
-/// `nros_executor_add_service_raw` binds the resulting executor handle to
+/// `rclc_executor_add_service_raw` binds the resulting executor handle to
 /// that scheduling context once the handle is known (server creation is
 /// deferred to registration, so the handle does not exist at init time).
 ///
@@ -394,51 +394,51 @@ pub extern "C" fn rcl_service_get_default_options() -> nros_service_options_t {
 /// All non-NULL pointers must be valid + the node initialized; `qos` / `options`
 /// may be NULL.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_service_init_with_options(
-    service: *mut nros_service_t,
-    node: *const nros_node_t,
-    type_info: *const nros_service_type_t,
+pub unsafe extern "C" fn rclc_service_init_with_options(
+    service: *mut rcl_service_t,
+    node: *const rcl_node_t,
+    type_info: *const rclc_service_type_t,
     service_name: *const c_char,
-    qos: *const crate::qos::nros_qos_t,
-    options: *const nros_service_options_t,
-) -> nros_ret_t {
-    let ret = nros_service_init_with_qos(service, node, type_info, service_name, qos);
-    if ret != NROS_RET_OK {
+    qos: *const crate::qos::rclc_qos_t,
+    options: *const rcl_service_options_t,
+) -> rcl_ret_t {
+    let ret = rclc_service_init_with_qos(service, node, type_info, service_name, qos);
+    if ret != RCL_RET_OK {
         return ret;
     }
     if !options.is_null() {
         (*service).sched_context_id = (*options).sched_context;
     }
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// Finalize a service server.
 ///
 /// The server is the executor arena's: remove it with
-/// `nros_executor_remove_service` first if it was added and the executor
+/// `rclc_executor_remove_service` first if it was added and the executor
 /// keeps running. This resets the description and the handle.
 ///
 /// # Parameters
 /// * `service` - Pointer to an initialized service
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if service is NULL
-/// * `NROS_RET_NOT_INIT` if not initialized
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` if service is NULL
+/// * `RCL_RET_NOT_INIT` if not initialized
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_service_fini(service: *mut nros_service_t) -> nros_ret_t {
+pub unsafe extern "C" fn rcl_service_fini(service: *mut rcl_service_t) -> rcl_ret_t {
     validate_not_null!(service);
 
     let service = &mut *service;
-    if service.state != nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
+    if service.state != rclc_service_state_t::RCLC_SERVICE_STATE_INITIALIZED {
+        return RCL_RET_NOT_INIT;
     }
 
     service._internal = ServiceServerInternal::new();
-    service.node = crate::node::nros_node_ref_t::none();
-    service.state = nros_service_state_t::NROS_SERVICE_STATE_SHUTDOWN;
+    service.node = crate::node::rclc_node_ref_t::none();
+    service.state = rclc_service_state_t::RCLC_SERVICE_STATE_SHUTDOWN;
 
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 // ============================================================================
@@ -446,10 +446,10 @@ pub unsafe extern "C" fn nros_service_fini(service: *mut nros_service_t) -> nros
 // ============================================================================
 //
 // L1 path: caller owns scheduling. The transport server is created
-// during `nros_polling_service_init` and stored inline in the
-// `nros_polling_service_t`; caller drains requests via
-// `nros_polling_service_take_request_raw` and replies via
-// `nros_polling_service_send_response_raw`. No executor registration.
+// during `rclc_polling_service_init` and stored inline in the
+// `rclc_polling_service_t`; caller drains requests via
+// `rclc_polling_service_take_request_raw` and replies via
+// `rclc_polling_service_send_response_raw`. No executor registration.
 // phase-487 W2 made L1 its own TYPE, as W1 did for subscriptions. Used by
 // RTIC / embassy / FreeRTOS-task-per-entity patterns and the C/C++
 // FFI shims for callers that drive their own poll loops.
@@ -458,8 +458,8 @@ pub unsafe extern "C" fn nros_service_fini(service: *mut nros_service_t) -> nros
 ///
 /// Creates the underlying RMW server immediately and stores it inline
 /// in the service's `_opaque` field. The caller drains received
-/// requests via `nros_polling_service_take_request_raw` and sends replies
-/// via `nros_polling_service_send_response_raw`.
+/// requests via `rclc_polling_service_take_request_raw` and sends replies
+/// via `rclc_polling_service_send_response_raw`.
 ///
 /// # Parameters
 /// * `service` - Pointer to a zero-initialized service
@@ -468,21 +468,21 @@ pub unsafe extern "C" fn nros_service_fini(service: *mut nros_service_t) -> nros
 /// * `service_name` - Service name (null-terminated)
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if any pointer is NULL or name empty
-/// * `NROS_RET_NOT_INIT` if node / support not initialized
-/// * `NROS_RET_ERROR` if server creation failed
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` if any pointer is NULL or name empty
+/// * `RCL_RET_NOT_INIT` if node / support not initialized
+/// * `RCL_RET_ERROR` if server creation failed
 ///
 /// # Safety
 /// All pointers must be valid; `service_name` must be a valid
 /// null-terminated string.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_service_init(
-    service: *mut nros_polling_service_t,
-    node: *const nros_node_t,
-    type_info: *const nros_service_type_t,
+pub unsafe extern "C" fn rclc_polling_service_init(
+    service: *mut rclc_polling_service_t,
+    node: *const rcl_node_t,
+    type_info: *const rclc_service_type_t,
     service_name: *const c_char,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(service, node, type_info, service_name);
 
     let service_mut = &mut *service;
@@ -491,17 +491,17 @@ pub unsafe extern "C" fn nros_polling_service_init(
 
     validate_state!(
         service_mut,
-        nros_service_state_t::NROS_SERVICE_STATE_UNINITIALIZED,
-        NROS_RET_BAD_SEQUENCE
+        rclc_service_state_t::RCLC_SERVICE_STATE_UNINITIALIZED,
+        RCLC_RET_BAD_SEQUENCE
     );
-    validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
+    validate_state!(node_ref, rclc_node_state_t::RCLC_NODE_STATE_INITIALIZED);
 
     // Read into locals: the polled struct keeps the server, not the
     // description it was created from (same as W1's subscription).
     let mut name_buf = [0u8; MAX_SERVICE_NAME_LEN];
     let name_len = crate::util::copy_cstr_into(service_name, &mut name_buf);
     if name_len == 0 {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     let mut type_buf = [0u8; MAX_TYPE_NAME_LEN];
     let type_len = crate::util::copy_cstr_into(type_info_ref.type_name, &mut type_buf);
@@ -512,13 +512,13 @@ pub unsafe extern "C" fn nros_polling_service_init(
     let _ = (&type_buf, type_len, &hash_buf, hash_len);
 
     // Resolve the SOURCE service name to its wire name — see
-    // `nros_publisher_init_with_qos`. The callback-mode service reaches this
-    // through `nros_executor_add_service_raw`; the polling one creates here.
+    // `rclc_publisher_init_with_qos`. The callback-mode service reaches this
+    // through `rclc_executor_add_service_raw`; the polling one creates here.
     let _resolved_name = {
         let source = core::str::from_utf8_unchecked(&name_buf[..name_len]);
         match crate::node::resolve_entity_name_on_node(node_ref, source) {
             Some(r) => r,
-            None => return NROS_RET_INVALID_ARGUMENT,
+            None => return RCL_RET_INVALID_ARGUMENT,
         }
     };
 
@@ -530,7 +530,7 @@ pub unsafe extern "C" fn nros_polling_service_init(
         // `rclc_publisher_init_default`).
         let (session, domain_id) = match crate::node::resolve_session_and_domain(node_ref) {
             Some(t) => t,
-            None => return NROS_RET_NOT_INIT,
+            None => return RCL_RET_NOT_INIT,
         };
 
         let type_str = core::str::from_utf8_unchecked(&type_buf[..type_len]);
@@ -552,47 +552,47 @@ pub unsafe extern "C" fn nros_polling_service_init(
                     RawServer::new(handle),
                 );
             }
-            Err(_) => return NROS_RET_ERROR,
+            Err(_) => return RCL_RET_ERROR,
         }
     }
 
     service_mut.node = unsafe { crate::node::node_ref_of(node) };
-    service_mut.state = nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED;
-    NROS_RET_OK
+    service_mut.state = rclc_service_state_t::RCLC_SERVICE_STATE_INITIALIZED;
+    RCL_RET_OK
 }
 
 /// Finalize a polled service server: drops the inline server, which closes
 /// the RMW entity.
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if `service` is NULL
-/// * `NROS_RET_NOT_INIT` if it is not initialised
-/// * `NROS_RET_STALE_NODE` if its node has already been finalised — the
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` if `service` is NULL
+/// * `RCL_RET_NOT_INIT` if it is not initialised
+/// * `RCLC_RET_STALE_NODE` if its node has already been finalised — the
 ///   teardown order was wrong, and nothing is dropped (issue 1386)
 ///
 /// # Safety
 /// `service` must be a valid pointer.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_service_fini(
-    service: *mut nros_polling_service_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_polling_service_fini(
+    service: *mut rclc_polling_service_t,
+) -> rcl_ret_t {
     validate_not_null!(service);
     let service = &mut *service;
-    if service.state != nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
+    if service.state != rclc_service_state_t::RCLC_SERVICE_STATE_INITIALIZED {
+        return RCL_RET_NOT_INIT;
     }
     if service.node.is_bound() && !crate::node::node_ref_is_live(service.node) {
-        return crate::error::NROS_RET_STALE_NODE;
+        return crate::error::RCLC_RET_STALE_NODE;
     }
     #[cfg(feature = "rmw-cffi")]
     {
         core::ptr::drop_in_place(service._opaque.as_mut_ptr() as *mut RawServer);
         service._opaque = [0u64; SERVICE_SERVER_OPAQUE_U64S];
     }
-    service.node = crate::node::nros_node_ref_t::none();
-    service.state = nros_service_state_t::NROS_SERVICE_STATE_SHUTDOWN;
-    NROS_RET_OK
+    service.node = crate::node::rclc_node_ref_t::none();
+    service.state = rclc_service_state_t::RCLC_SERVICE_STATE_SHUTDOWN;
+    RCL_RET_OK
 }
 
 /// Phase 122.3.c.6.e — C-ABI wake-state slot. Caller declares one
@@ -603,21 +603,21 @@ pub unsafe extern "C" fn nros_polling_service_fini(
 /// `(fn_ptr, ctx)` pair plus 8-byte alignment.
 #[repr(C)]
 #[derive(Default)]
-pub struct nros_wake_state_t {
+pub struct rclc_wake_state_t {
     pub _opaque: [u64; 2],
 }
 
 /// Phase 122.3.c.6.e — zero-initialise a wake-state slot.
 #[unsafe(no_mangle)]
-pub extern "C" fn nros_wake_state_get_zero_initialized() -> nros_wake_state_t {
-    nros_wake_state_t::default()
+pub extern "C" fn rclc_wake_state_get_zero_initialized() -> rclc_wake_state_t {
+    rclc_wake_state_t::default()
 }
 
 /// Phase 122.3.c.6.e — register a C wake callback on an L1
 /// polling-mode service server. `state` must point to a
-/// `nros_wake_state_t` allocated by the caller; it must outlive
+/// `rclc_wake_state_t` allocated by the caller; it must outlive
 /// the service (typically declared inline next to the
-/// `nros_polling_service_t`) and must not move after this call.
+/// `rclc_polling_service_t`) and must not move after this call.
 /// Pass `cb = NULL` to disable. The backend wakes the callback
 /// when a new request arrives.
 ///
@@ -625,21 +625,21 @@ pub extern "C" fn nros_wake_state_get_zero_initialized() -> nros_wake_state_t {
 /// All pointers valid; `state` storage stable for the entity's
 /// lifetime.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_service_set_wake_callback(
-    service: *mut nros_polling_service_t,
-    state: *mut nros_wake_state_t,
+pub unsafe extern "C" fn rclc_polling_service_set_wake_callback(
+    service: *mut rclc_polling_service_t,
+    state: *mut rclc_wake_state_t,
     cb: Option<unsafe extern "C" fn(*mut c_void)>,
     ctx: *mut c_void,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     if service.is_null() || state.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     let service_mut = &mut *service;
 
     #[cfg(feature = "rmw-cffi")]
     {
         let Some(raw) = service_mut.raw() else {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         };
         let state_ptr = state as *mut nros_node::c_waker::CWakeState;
         // Re-initialise via volatile write — caller may pass a
@@ -653,34 +653,34 @@ pub unsafe extern "C" fn nros_polling_service_set_wake_callback(
         );
         let waker = nros_node::c_waker::make_waker(state_ptr);
         raw.register_waker(&waker);
-        NROS_RET_OK
+        RCL_RET_OK
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (service_mut, state, cb, ctx);
-        NROS_RET_NOT_INIT
+        RCL_RET_NOT_INIT
     }
 }
 
 /// Phase 122.3.c.6.e — register a C wake callback on an L1
 /// polling-mode service client. Wakes when a reply lands. See
-/// `nros_polling_service_set_wake_callback` for the lifetime contract.
+/// `rclc_polling_service_set_wake_callback` for the lifetime contract.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_client_set_wake_callback(
-    client: *mut nros_polling_client_t,
-    state: *mut nros_wake_state_t,
+pub unsafe extern "C" fn rclc_polling_client_set_wake_callback(
+    client: *mut rclc_polling_client_t,
+    state: *mut rclc_wake_state_t,
     cb: Option<unsafe extern "C" fn(*mut c_void)>,
     ctx: *mut c_void,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     if client.is_null() || state.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     let client_mut = &mut *client;
 
     #[cfg(feature = "rmw-cffi")]
     {
         let Some(raw) = client_mut.raw() else {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         };
         let state_ptr = state as *mut nros_node::c_waker::CWakeState;
         core::ptr::write(
@@ -689,12 +689,12 @@ pub unsafe extern "C" fn nros_polling_client_set_wake_callback(
         );
         let waker = nros_node::c_waker::make_waker(state_ptr);
         raw.register_waker(&waker);
-        NROS_RET_OK
+        RCL_RET_OK
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (client_mut, state, cb, ctx);
-        NROS_RET_NOT_INIT
+        RCL_RET_NOT_INIT
     }
 }
 
@@ -704,24 +704,24 @@ pub unsafe extern "C" fn nros_polling_client_set_wake_callback(
 ///
 /// # Returns
 /// * `>= 0` — number of bytes written to `buf` (0 = no request)
-/// * `NROS_RET_TRY_AGAIN` if a request IS pending but every reply slot is
+/// * `RCLC_RET_TRY_AGAIN` if a request IS pending but every reply slot is
 ///   held by a request not yet answered — send a response, then take again
 ///   (issue 1088; distinct from the `0` that means nothing is pending)
-/// * `NROS_RET_INVALID_ARGUMENT` if pointers / state wrong
-/// * `NROS_RET_ERROR` on transport failure
+/// * `RCL_RET_INVALID_ARGUMENT` if pointers / state wrong
+/// * `RCL_RET_ERROR` on transport failure
 ///
 /// # Safety
 /// `service` must be an initialized polling service. `buf` writable for `buf_len`
 /// bytes. `sequence_number` writable for `i64`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_service_take_request_raw(
-    service: *mut nros_polling_service_t,
+pub unsafe extern "C" fn rclc_polling_service_take_request_raw(
+    service: *mut rclc_polling_service_t,
     buf: *mut u8,
     buf_len: usize,
     sequence_number: *mut i64,
 ) -> i32 {
     if service.is_null() || (buf.is_null() && buf_len != 0) || sequence_number.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
 
     let service_mut = &mut *service;
@@ -729,7 +729,7 @@ pub unsafe extern "C" fn nros_polling_service_take_request_raw(
     #[cfg(feature = "rmw-cffi")]
     {
         let Some(raw) = service_mut.raw() else {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         };
         match raw.take_request_raw() {
             Ok(Some((len, seq))) => {
@@ -740,39 +740,39 @@ pub unsafe extern "C" fn nros_polling_service_take_request_raw(
             }
             Ok(None) => 0,
             // issue 1088 — "pending, but every reply slot is held" is
-            // `NROS_RET_TRY_AGAIN`, not the generic `NROS_RET_ERROR` and not
+            // `RCLC_RET_TRY_AGAIN`, not the generic `RCL_RET_ERROR` and not
             // the `0` that means nothing is pending.
             Err(nros_node::NodeError::Transport(nros_rmw::TransportError::WouldBlock)) => {
-                NROS_RET_TRY_AGAIN
+                RCLC_RET_TRY_AGAIN
             }
-            Err(_) => NROS_RET_ERROR,
+            Err(_) => RCL_RET_ERROR,
         }
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (service_mut, buf, buf_len, sequence_number);
-        NROS_RET_NOT_INIT
+        RCL_RET_NOT_INIT
     }
 }
 
 /// Phase 122.3.c.4 — send a reply on an L1 polling-mode service.
 ///
 /// `sequence_number` must equal the value returned by the most recent
-/// `nros_polling_service_take_request_raw` for the request being replied
+/// `rclc_polling_service_take_request_raw` for the request being replied
 /// to.
 ///
 /// # Safety
 /// `service` must be an initialized polling service. `data` readable for `len`
 /// bytes.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_service_send_response_raw(
-    service: *mut nros_polling_service_t,
+pub unsafe extern "C" fn rclc_polling_service_send_response_raw(
+    service: *mut rclc_polling_service_t,
     sequence_number: i64,
     data: *const u8,
     len: usize,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     if service.is_null() || (data.is_null() && len != 0) {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
 
     let service_mut = &mut *service;
@@ -780,18 +780,18 @@ pub unsafe extern "C" fn nros_polling_service_send_response_raw(
     #[cfg(feature = "rmw-cffi")]
     {
         let Some(raw) = service_mut.raw() else {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         };
         let slice = core::slice::from_raw_parts(data, len);
         match raw.send_response_raw(sequence_number, slice) {
-            Ok(()) => NROS_RET_OK,
-            Err(_) => NROS_RET_ERROR,
+            Ok(()) => RCL_RET_OK,
+            Err(_) => RCL_RET_ERROR,
         }
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (service_mut, sequence_number, data, len);
-        NROS_RET_NOT_INIT
+        RCL_RET_NOT_INIT
     }
 }
 
@@ -823,22 +823,22 @@ pub unsafe extern "C" fn nros_polling_service_send_response_raw(
 // record on the same sink chain every other C log record uses.
 
 /// Typed glue succeeded.
-pub const NROS_SERVICE_TYPED_OK: i32 = 0;
+pub const RCLC_SERVICE_TYPED_OK: i32 = 0;
 /// `<Req>_deserialize` rejected the request bytes — the request was malformed,
 /// truncated, or encoded by a peer whose schema disagrees. No reply is sent.
-pub const NROS_SERVICE_TYPED_ERR_REQUEST_DESERIALIZE: i32 = -1;
+pub const RCLC_SERVICE_TYPED_ERR_REQUEST_DESERIALIZE: i32 = -1;
 /// `<Resp>_serialize` did not fit the executor's reply buffer. No reply is
 /// sent — a truncated CDR payload is a wrong answer, not a partial one.
-pub const NROS_SERVICE_TYPED_ERR_RESPONSE_SERIALIZE: i32 = -2;
+pub const RCLC_SERVICE_TYPED_ERR_RESPONSE_SERIALIZE: i32 = -2;
 /// `<Req>_serialize` did not fit the scratch buffer the caller supplied to
 /// `<Srv>_client_send_request`. Nothing is sent.
-pub const NROS_SERVICE_TYPED_ERR_REQUEST_SERIALIZE: i32 = -3;
+pub const RCLC_SERVICE_TYPED_ERR_REQUEST_SERIALIZE: i32 = -3;
 /// `<Resp>_deserialize` rejected the reply bytes. The response struct is left
 /// zero-initialised rather than half-filled.
-pub const NROS_SERVICE_TYPED_ERR_RESPONSE_DESERIALIZE: i32 = -4;
+pub const RCLC_SERVICE_TYPED_ERR_RESPONSE_DESERIALIZE: i32 = -4;
 /// The handler struct reached the trampoline with no user callback installed —
 /// `<Srv>_service_handler_init` was skipped or the struct was re-zeroed.
-pub const NROS_SERVICE_TYPED_ERR_NO_CALLBACK: i32 = -5;
+pub const RCLC_SERVICE_TYPED_ERR_NO_CALLBACK: i32 = -5;
 
 /// Append as much of `s` as fits, silently stopping at the end of `buf`.
 ///
@@ -885,21 +885,21 @@ unsafe fn bounded_cstr(ptr: *const c_char, max: usize) -> &'static [u8] {
 /// # Safety
 /// `type_name` is NULL or a NUL-terminated string readable for its length.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_service_typed_report_error(error: i32, type_name: *const c_char) {
+pub unsafe extern "C" fn rclc_service_typed_report_error(error: i32, type_name: *const c_char) {
     let reason: &[u8] = match error {
-        NROS_SERVICE_TYPED_ERR_REQUEST_DESERIALIZE => {
+        RCLC_SERVICE_TYPED_ERR_REQUEST_DESERIALIZE => {
             b"request CDR did not decode; no reply sent" as &[u8]
         }
-        NROS_SERVICE_TYPED_ERR_RESPONSE_SERIALIZE => {
+        RCLC_SERVICE_TYPED_ERR_RESPONSE_SERIALIZE => {
             b"response did not fit the reply buffer; no reply sent" as &[u8]
         }
-        NROS_SERVICE_TYPED_ERR_REQUEST_SERIALIZE => {
+        RCLC_SERVICE_TYPED_ERR_REQUEST_SERIALIZE => {
             b"request did not fit the caller's scratch buffer; nothing sent" as &[u8]
         }
-        NROS_SERVICE_TYPED_ERR_RESPONSE_DESERIALIZE => {
+        RCLC_SERVICE_TYPED_ERR_RESPONSE_DESERIALIZE => {
             b"response CDR did not decode; response left zeroed" as &[u8]
         }
-        NROS_SERVICE_TYPED_ERR_NO_CALLBACK => {
+        RCLC_SERVICE_TYPED_ERR_NO_CALLBACK => {
             b"no typed callback installed on the handler" as &[u8]
         }
         _ => b"unknown typed service failure" as &[u8],
@@ -913,9 +913,9 @@ pub unsafe extern "C" fn nros_service_typed_report_error(error: i32, type_name: 
     append_bytes(&mut buf, &mut n, bounded_cstr(type_name, 128));
     append_bytes(&mut buf, &mut n, b")");
 
-    crate::log::nros_log_emit_at(
-        crate::log::nros_log_default_logger(),
-        crate::log::nros_log_severity_t::NROS_LOG_SEVERITY_ERROR,
+    crate::log::rclc_log_emit_at(
+        crate::log::rclc_log_default_logger(),
+        crate::log::rcl_log_severity_t::RCLC_LOG_SEVERITY_ERROR,
         buf.as_ptr() as *const c_char,
         n,
         c"<nros-c typed service>".as_ptr(),
@@ -923,7 +923,7 @@ pub unsafe extern "C" fn nros_service_typed_report_error(error: i32, type_name: 
     );
 }
 
-impl nros_service_t {
+impl rcl_service_t {
     /// Can this handle be USED? — the one predicate behind both
     /// `rcl_service_is_valid` and `rcl_service_get_service_name`.
     ///
@@ -935,7 +935,7 @@ impl nros_service_t {
     pub(crate) const fn is_usable(&self) -> bool {
         matches!(
             self.state,
-            nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED
+            rclc_service_state_t::RCLC_SERVICE_STATE_INITIALIZED
         )
     }
 }
@@ -947,10 +947,10 @@ impl nros_service_t {
 ///
 /// # Returns
 /// * Pointer to service name (null-terminated), or NULL if the handle is not
-///   usable (see `nros_service_t::is_usable`) or NULL
+///   usable (see `rcl_service_t::is_usable`) or NULL
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_service_get_service_name(
-    service: *const nros_service_t,
+    service: *const rcl_service_t,
 ) -> *const c_char {
     if service.is_null() {
         return ptr::null();
@@ -968,7 +968,7 @@ pub unsafe extern "C" fn rcl_service_get_service_name(
 ///
 /// rcl's `rcl_service_is_valid`, whose contract is "true for any handle that
 /// can be used" — the ported idiom is a guard. See
-/// `nros_service_t::is_usable` for which states those are.
+/// `rcl_service_t::is_usable` for which states those are.
 ///
 /// # Parameters
 /// * `service` - Pointer to a service
@@ -976,7 +976,7 @@ pub unsafe extern "C" fn rcl_service_get_service_name(
 /// # Returns
 /// * `true` if usable, `false` if finalised, uninitialised or NULL
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rcl_service_is_valid(service: *const nros_service_t) -> bool {
+pub unsafe extern "C" fn rcl_service_is_valid(service: *const rcl_service_t) -> bool {
     if service.is_null() {
         return false;
     }
@@ -1000,7 +1000,7 @@ pub unsafe extern "C" fn rcl_service_is_valid(service: *const nros_service_t) ->
 pub struct ServiceServerInternal {
     /// Arena entry index. -1 means not registered with any executor yet.
     pub arena_entry_index: i32,
-    /// Pointer to the outer `nros_executor_t` that owns the arena entry.
+    /// Pointer to the outer `rclc_executor_t` that owns the arena entry.
     pub executor_ptr: *mut c_void,
 }
 
@@ -1025,9 +1025,9 @@ impl Default for ServiceServerInternal {
 
 /// Default service-client RPC timeout in milliseconds (Phase 82).
 ///
-/// `nros_client_call` reads this from `ServiceClientInternal.timeout_ms`,
+/// `rclc_client_call` reads this from `ServiceClientInternal.timeout_ms`,
 /// which is initialised to this value by `rclc_client_init_default` and can be
-/// changed at any time via `nros_client_set_timeout`.
+/// changed at any time via `rclc_client_set_timeout`.
 ///
 /// Phase 192.4 — baked from `NROS_SERVICE_TIMEOUT_MS` at build time (default
 /// 30000), the same env var and default the zenoh backend uses, so the two
@@ -1040,7 +1040,7 @@ const NROS_DEFAULT_SERVICE_TIMEOUT_MS: u32 = crate::config::SERVICE_DEFAULT_TIME
 /// request has its response delivered. The CDR bytes are owned by the
 /// arena entry's reply buffer for the duration of the call — copy if you
 /// need to keep them.
-pub type nros_response_callback_t =
+pub type rclc_response_callback_t =
     Option<unsafe extern "C" fn(response: *const u8, response_len: usize, context: *mut c_void)>;
 
 /// Internal state for the service client (Phase 82).
@@ -1054,7 +1054,7 @@ pub struct ServiceClientInternal {
     pub arena_entry_index: i32,
     /// Pointer to the executor that owns the arena entry.
     pub executor_ptr: *mut c_void,
-    /// Default timeout used by `nros_client_call`.
+    /// Default timeout used by `rclc_client_call`.
     pub timeout_ms: u32,
 }
 
@@ -1077,32 +1077,32 @@ impl Default for ServiceClientInternal {
 /// Client state
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nros_client_state_t {
+pub enum rclc_client_state_t {
     /// Not initialized
-    NROS_CLIENT_STATE_UNINITIALIZED = 0,
+    RCLC_CLIENT_STATE_UNINITIALIZED = 0,
     /// Initialized — metadata stored, *not yet registered with an executor*.
-    NROS_CLIENT_STATE_INITIALIZED = 1,
+    RCLC_CLIENT_STATE_INITIALIZED = 1,
     /// Registered with an executor and ready for `send_request_async` / `call`.
-    NROS_CLIENT_STATE_REGISTERED = 2,
+    RCLC_CLIENT_STATE_REGISTERED = 2,
     /// Shutdown
-    NROS_CLIENT_STATE_SHUTDOWN = 3,
+    RCLC_CLIENT_STATE_SHUTDOWN = 3,
 }
 
 /// A service client the executor dispatches (rclc's `rcl_client_t`).
 ///
 /// phase-487 W2 (RFC-0096 D9, the C half): the arena entry owns the client,
 /// its reply buffer, the response callback and its context. This struct
-/// keeps the arena handle (`_internal`, with the `nros_client_call` timeout)
+/// keeps the arena handle (`_internal`, with the `rclc_client_call` timeout)
 /// and the description the registration reads. Before W2 the arena entry's
 /// callback was a trampoline that read the callback out of THIS struct, a
-/// back-reference that made a late reply after `nros_client_fini` a
+/// back-reference that made a late reply after `rcl_client_fini` a
 /// use-after-free (issue 1631); the entry now holds the user's callback
 /// directly. A client the caller drives itself is a
-/// [`nros_polling_client_t`].
+/// [`rclc_polling_client_t`].
 #[repr(C)]
-pub struct nros_client_t {
+pub struct rcl_client_t {
     /// Current state
-    pub state: nros_client_state_t,
+    pub state: rclc_client_state_t,
     /// Service name storage
     pub service_name: [u8; MAX_SERVICE_NAME_LEN],
     /// Service name length
@@ -1116,34 +1116,34 @@ pub struct nros_client_t {
     /// Type hash length
     pub type_hash_len: usize,
     /// Pointer to parent node
-    pub node: crate::node::nros_node_ref_t,
+    pub node: crate::node::rclc_node_ref_t,
     /// Phase 193.4b — service-client QoS (applied to both request + reply
     /// endpoints). Defaults to the services profile
-    /// (RELIABLE+VOLATILE+KEEP_LAST(10)); set via `nros_client_init_with_qos`.
-    pub qos: crate::qos::nros_qos_t,
+    /// (RELIABLE+VOLATILE+KEEP_LAST(10)); set via `rclc_client_init_with_qos`.
+    pub qos: crate::qos::rclc_qos_t,
     /// Phase 189.M3.3.a — scheduling-context slot to bind the client's executor
     /// handle to. `0` = inherit the executor / Node default; set via
-    /// `nros_client_init_with_options`. When non-zero,
-    /// `nros_executor_add_client` binds the freshly-created handle to this
+    /// `rclc_client_init_with_options`. When non-zero,
+    /// `rclc_executor_add_client` binds the freshly-created handle to this
     /// SC after registration.
-    pub sched_context_id: crate::executor::nros_sched_context_id_t,
+    pub sched_context_id: crate::executor::rclc_sched_context_id_t,
     /// Internal state (arena entry index + executor pointer + timeout).
     /// Typed C-ABI handle field.
     pub _internal: ServiceClientInternal,
 }
 
-impl Default for nros_client_t {
+impl Default for rcl_client_t {
     fn default() -> Self {
         Self {
-            state: nros_client_state_t::NROS_CLIENT_STATE_UNINITIALIZED,
+            state: rclc_client_state_t::RCLC_CLIENT_STATE_UNINITIALIZED,
             service_name: [0u8; MAX_SERVICE_NAME_LEN],
             service_name_len: 0,
             type_name: [0u8; MAX_TYPE_NAME_LEN],
             type_name_len: 0,
             type_hash: [0u8; MAX_TYPE_HASH_LEN],
             type_hash_len: 0,
-            node: crate::node::nros_node_ref_t::none(),
-            qos: crate::qos::nros_qos_t::default(),
+            node: crate::node::rclc_node_ref_t::none(),
+            qos: crate::qos::rclc_qos_t::default(),
             sched_context_id: 0,
             _internal: ServiceClientInternal::new(),
         }
@@ -1153,35 +1153,35 @@ impl Default for nros_client_t {
 /// A service client the CALLER drives, with no executor (phase-487 W2).
 ///
 /// The C counterpart of C++'s `nros::PollClient<S>`. `_opaque` holds a
-/// `RawServiceClient` from `nros_polling_client_init` until
-/// `nros_polling_client_fini`. Zero-initialised is UNINITIALIZED. Until
+/// `RawServiceClient` from `rclc_polling_client_init` until
+/// `rclc_polling_client_fini`. Zero-initialised is UNINITIALIZED. Until
 /// phase-487 it was the `NROS_CLIENT_STATE_POLLING` state of
-/// `nros_client_t`.
+/// `rcl_client_t`.
 #[repr(C)]
-pub struct nros_polling_client_t {
+pub struct rclc_polling_client_t {
     /// Current state: UNINITIALIZED, INITIALIZED (client live) or SHUTDOWN.
-    pub state: nros_client_state_t,
+    pub state: rclc_client_state_t,
     /// The node the client was created on.
-    pub node: crate::node::nros_node_ref_t,
+    pub node: crate::node::rclc_node_ref_t,
     /// Inline storage for the `RawServiceClient`. Internal: treat as opaque.
     pub _opaque: [u64; SERVICE_CLIENT_OPAQUE_U64S],
 }
 
-impl Default for nros_polling_client_t {
+impl Default for rclc_polling_client_t {
     fn default() -> Self {
         Self {
-            state: nros_client_state_t::NROS_CLIENT_STATE_UNINITIALIZED,
-            node: crate::node::nros_node_ref_t::none(),
+            state: rclc_client_state_t::RCLC_CLIENT_STATE_UNINITIALIZED,
+            node: crate::node::rclc_node_ref_t::none(),
             _opaque: [0u64; SERVICE_CLIENT_OPAQUE_U64S],
         }
     }
 }
 
-impl nros_polling_client_t {
+impl rclc_polling_client_t {
     /// The live client, or `None` if this client is not INITIALIZED.
     #[cfg(feature = "rmw-cffi")]
     unsafe fn raw(&mut self) -> Option<&mut RawClient> {
-        if self.state != nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED {
+        if self.state != rclc_client_state_t::RCLC_CLIENT_STATE_INITIALIZED {
             return None;
         }
         Some(unsafe { &mut *(self._opaque.as_mut_ptr() as *mut RawClient) })
@@ -1190,11 +1190,11 @@ impl nros_polling_client_t {
 
 /// Get a zero-initialized polling service client.
 #[unsafe(no_mangle)]
-pub extern "C" fn nros_get_zero_initialized_polling_client() -> nros_polling_client_t {
-    nros_polling_client_t::default()
+pub extern "C" fn rclc_get_zero_initialized_polling_client() -> rclc_polling_client_t {
+    rclc_polling_client_t::default()
 }
 
-impl nros_client_t {
+impl rcl_client_t {
     /// Phase 193.4b — the client's QoS as `nros_node` settings.
     pub(crate) fn get_qos_settings(&self) -> nros_rmw::QoSProfile {
         self.qos.to_qos_settings()
@@ -1203,23 +1203,23 @@ impl nros_client_t {
 
 /// Get a zero-initialized client.
 #[unsafe(no_mangle)]
-pub extern "C" fn rcl_get_zero_initialized_client() -> nros_client_t {
-    nros_client_t::default()
+pub extern "C" fn rcl_get_zero_initialized_client() -> rcl_client_t {
+    rcl_client_t::default()
 }
 
 /// Initialize a service client (Phase 82: metadata-only).
 ///
 /// Stores the service name/type metadata and a `ServiceClientInternal`
 /// blob; the actual transport handle (`RmwServiceClient`) is created
-/// later by `nros_executor_add_client`. This deferred lifecycle matches
+/// later by `rclc_executor_add_client`. This deferred lifecycle matches
 /// `rclc_service_init_default` (server side) and the action client.
 ///
 /// rclc's `rclc_client_init_default`, at rclc's arity. The typesupport
-/// argument keeps OUR type: `const nros_service_type_t*` where rclc takes a
+/// argument keeps OUR type: `const rclc_service_type_t*` where rclc takes a
 /// `const rosidl_service_type_support_t*`, so passing a rosidl typesupport is
 /// an incompatible-pointer diagnostic at the call (same reason as
 /// `rclc_service_init_default`: a typesupport's members are its contract). The
-/// response callback is supplied at registration (`nros_executor_add_client*`),
+/// response callback is supplied at registration (`rclc_executor_add_client*`),
 /// as rclc's is at `rclc_executor_add_client`.
 ///
 /// # Parameters
@@ -1229,16 +1229,16 @@ pub extern "C" fn rcl_get_zero_initialized_client() -> nros_client_t {
 /// * `service_name` - Service name (null-terminated string)
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if any required pointer is NULL
-/// * `NROS_RET_NOT_INIT` if node is not initialized
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` if any required pointer is NULL
+/// * `RCL_RET_NOT_INIT` if node is not initialized
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_client_init_default(
-    client: *mut nros_client_t,
-    node: *const nros_node_t,
-    type_info: *const nros_service_type_t,
+    client: *mut rcl_client_t,
+    node: *const rcl_node_t,
+    type_info: *const rclc_service_type_t,
     service_name: *const c_char,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(client, node, type_info, service_name);
 
     let client = &mut *client;
@@ -1247,15 +1247,15 @@ pub unsafe extern "C" fn rclc_client_init_default(
 
     validate_state!(
         client,
-        nros_client_state_t::NROS_CLIENT_STATE_UNINITIALIZED,
-        NROS_RET_BAD_SEQUENCE
+        rclc_client_state_t::RCLC_CLIENT_STATE_UNINITIALIZED,
+        RCLC_RET_BAD_SEQUENCE
     );
-    validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
+    validate_state!(node_ref, rclc_node_state_t::RCLC_NODE_STATE_INITIALIZED);
 
     // Copy service name (required — empty rejected)
     client.service_name_len = crate::util::copy_cstr_into(service_name, &mut client.service_name);
     if client.service_name_len == 0 {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
 
     // Copy type name + hash (both optional — null sources leave dst untouched)
@@ -1264,15 +1264,15 @@ pub unsafe extern "C" fn rclc_client_init_default(
 
     client.node = unsafe { crate::node::node_ref_of(node) };
 
-    // Phase 193.4b — default to the services profile; nros_client_init_with_qos
-    // overrides. (`nros_executor_add_client` reads this at registration.)
-    client.qos = crate::qos::nros_qos_t::default();
+    // Phase 193.4b — default to the services profile; rclc_client_init_with_qos
+    // overrides. (`rclc_executor_add_client` reads this at registration.)
+    client.qos = crate::qos::rclc_qos_t::default();
 
     // Initialise the internal state (executor_ptr null until registration).
     client._internal = ServiceClientInternal::new();
 
-    client.state = nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED;
-    NROS_RET_OK
+    client.state = rclc_client_state_t::RCLC_CLIENT_STATE_INITIALIZED;
+    RCL_RET_OK
 }
 
 /// Phase 193.4b — initialize a service client with an explicit QoS profile
@@ -1283,66 +1283,66 @@ pub unsafe extern "C" fn rclc_client_init_default(
 /// # Safety
 /// All non-NULL pointers must be valid + the node initialized.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_client_init_with_qos(
-    client: *mut nros_client_t,
-    node: *const nros_node_t,
-    type_info: *const nros_service_type_t,
+pub unsafe extern "C" fn rclc_client_init_with_qos(
+    client: *mut rcl_client_t,
+    node: *const rcl_node_t,
+    type_info: *const rclc_service_type_t,
     service_name: *const c_char,
-    qos: *const crate::qos::nros_qos_t,
-) -> nros_ret_t {
+    qos: *const crate::qos::rclc_qos_t,
+) -> rcl_ret_t {
     let ret = rclc_client_init_default(client, node, type_info, service_name);
-    if ret == NROS_RET_OK && !qos.is_null() {
+    if ret == RCL_RET_OK && !qos.is_null() {
         (*client).qos = *qos;
     }
     ret
 }
 
 /// Phase 189.M3.3.a — rclc-style named service-client options (mirrors
-/// `nros_service_options_t`). QoS is passed separately; this carries the
+/// `rcl_service_options_t`). QoS is passed separately; this carries the
 /// non-QoS axes. Zero-init selects the default behaviour.
 #[repr(C)]
 #[derive(Default)]
-pub struct nros_client_options_t {
+pub struct rcl_client_options_t {
     /// Scheduling-context slot to bind the client's executor handle to.
     /// `0` = inherit the executor / Node default. A non-zero value must be an id
-    /// from `nros_executor_create_sched_context`; the bind is applied by
-    /// `nros_executor_add_client` once the handle exists.
-    pub sched_context: crate::executor::nros_sched_context_id_t,
+    /// from `rclc_executor_create_sched_context`; the bind is applied by
+    /// `rclc_executor_add_client` once the handle exists.
+    pub sched_context: crate::executor::rclc_sched_context_id_t,
     /// Reserved for future use; must be zero. Pads for ABI stability.
     pub _reserved: [u8; 3],
 }
 
-/// Get a zero-initialised [`nros_client_options_t`] (`sched_context = 0`).
+/// Get a zero-initialised [`rcl_client_options_t`] (`sched_context = 0`).
 #[unsafe(no_mangle)]
-pub extern "C" fn rcl_client_get_default_options() -> nros_client_options_t {
-    nros_client_options_t::default()
+pub extern "C" fn rcl_client_get_default_options() -> rcl_client_options_t {
+    rcl_client_options_t::default()
 }
 
 /// Phase 189.M3.3.a — initialize a service client with custom QoS + named
-/// options. Like [`nros_client_init_with_qos`] except a non-zero
-/// `options->sched_context` is stashed so `nros_executor_add_client`
+/// options. Like [`rclc_client_init_with_qos`] except a non-zero
+/// `options->sched_context` is stashed so `rclc_executor_add_client`
 /// binds the resulting executor handle to that scheduling context once known.
 ///
 /// # Safety
 /// All non-NULL pointers must be valid + the node initialized; `qos` / `options`
 /// may be NULL.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_client_init_with_options(
-    client: *mut nros_client_t,
-    node: *const nros_node_t,
-    type_info: *const nros_service_type_t,
+pub unsafe extern "C" fn rclc_client_init_with_options(
+    client: *mut rcl_client_t,
+    node: *const rcl_node_t,
+    type_info: *const rclc_service_type_t,
     service_name: *const c_char,
-    qos: *const crate::qos::nros_qos_t,
-    options: *const nros_client_options_t,
-) -> nros_ret_t {
-    let ret = nros_client_init_with_qos(client, node, type_info, service_name, qos);
-    if ret != NROS_RET_OK {
+    qos: *const crate::qos::rclc_qos_t,
+    options: *const rcl_client_options_t,
+) -> rcl_ret_t {
+    let ret = rclc_client_init_with_qos(client, node, type_info, service_name, qos);
+    if ret != RCL_RET_OK {
         return ret;
     }
     if !options.is_null() {
         (*client).sched_context_id = (*options).sched_context;
     }
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// Finalize a service client.
@@ -1355,28 +1355,28 @@ pub unsafe extern "C" fn nros_client_init_with_options(
 /// * `client` - Pointer to an initialized client
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if client is NULL
-/// * `NROS_RET_NOT_INIT` if not initialized
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` if client is NULL
+/// * `RCL_RET_NOT_INIT` if not initialized
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_client_fini(client: *mut nros_client_t) -> nros_ret_t {
+pub unsafe extern "C" fn rcl_client_fini(client: *mut rcl_client_t) -> rcl_ret_t {
     validate_not_null!(client);
 
     let client = &mut *client;
 
-    if client.state == nros_client_state_t::NROS_CLIENT_STATE_UNINITIALIZED
-        || client.state == nros_client_state_t::NROS_CLIENT_STATE_SHUTDOWN
+    if client.state == rclc_client_state_t::RCLC_CLIENT_STATE_UNINITIALIZED
+        || client.state == rclc_client_state_t::RCLC_CLIENT_STATE_SHUTDOWN
     {
-        return NROS_RET_NOT_INIT;
+        return RCL_RET_NOT_INIT;
     }
 
     // Reset the inline ServiceClientInternal. The RmwServiceClient lives
     // in the executor's arena and is freed when the executor is destroyed.
     client._internal = ServiceClientInternal::new();
-    client.node = crate::node::nros_node_ref_t::none();
-    client.state = nros_client_state_t::NROS_CLIENT_STATE_SHUTDOWN;
+    client.node = crate::node::rclc_node_ref_t::none();
+    client.state = rclc_client_state_t::RCLC_CLIENT_STATE_SHUTDOWN;
 
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 // ============================================================================
@@ -1387,8 +1387,8 @@ pub unsafe extern "C" fn nros_client_fini(client: *mut nros_client_t) -> nros_re
 ///
 /// Creates the underlying RMW client immediately and stores it inline
 /// in the client's `_opaque` field. The caller drives the
-/// request/reply cycle via `nros_polling_client_send_request_raw` +
-/// `nros_polling_client_take_response_raw`.
+/// request/reply cycle via `rclc_polling_client_send_request_raw` +
+/// `rclc_polling_client_take_response_raw`.
 ///
 /// # Parameters
 /// * `client` - Pointer to a zero-initialized client
@@ -1397,21 +1397,21 @@ pub unsafe extern "C" fn nros_client_fini(client: *mut nros_client_t) -> nros_re
 /// * `service_name` - Service name (null-terminated)
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if any pointer is NULL or name empty
-/// * `NROS_RET_NOT_INIT` if node / support not initialized
-/// * `NROS_RET_ERROR` if client creation failed
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` if any pointer is NULL or name empty
+/// * `RCL_RET_NOT_INIT` if node / support not initialized
+/// * `RCL_RET_ERROR` if client creation failed
 ///
 /// # Safety
 /// All pointers must be valid; `service_name` must be a valid
 /// null-terminated string.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_client_init(
-    client: *mut nros_polling_client_t,
-    node: *const nros_node_t,
-    type_info: *const nros_service_type_t,
+pub unsafe extern "C" fn rclc_polling_client_init(
+    client: *mut rclc_polling_client_t,
+    node: *const rcl_node_t,
+    type_info: *const rclc_service_type_t,
     service_name: *const c_char,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(client, node, type_info, service_name);
 
     let client_mut = &mut *client;
@@ -1420,17 +1420,17 @@ pub unsafe extern "C" fn nros_polling_client_init(
 
     validate_state!(
         client_mut,
-        nros_client_state_t::NROS_CLIENT_STATE_UNINITIALIZED,
-        NROS_RET_BAD_SEQUENCE
+        rclc_client_state_t::RCLC_CLIENT_STATE_UNINITIALIZED,
+        RCLC_RET_BAD_SEQUENCE
     );
-    validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
+    validate_state!(node_ref, rclc_node_state_t::RCLC_NODE_STATE_INITIALIZED);
 
     // Read into locals: the polled struct keeps the client, not the
     // description it was created from.
     let mut name_buf = [0u8; MAX_SERVICE_NAME_LEN];
     let name_len = crate::util::copy_cstr_into(service_name, &mut name_buf);
     if name_len == 0 {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     let mut type_buf = [0u8; MAX_TYPE_NAME_LEN];
     let type_len = crate::util::copy_cstr_into(type_info_ref.type_name, &mut type_buf);
@@ -1441,13 +1441,13 @@ pub unsafe extern "C" fn nros_polling_client_init(
     let _ = (&type_buf, type_len, &hash_buf, hash_len);
 
     // Resolve the SOURCE service name to its wire name — see
-    // `nros_publisher_init_with_qos`. A client that resolved differently from
+    // `rclc_publisher_init_with_qos`. A client that resolved differently from
     // the server it calls is the same split one direction over.
     let _resolved_name = {
         let source = core::str::from_utf8_unchecked(&name_buf[..name_len]);
         match crate::node::resolve_entity_name_on_node(node_ref, source) {
             Some(r) => r,
-            None => return NROS_RET_INVALID_ARGUMENT,
+            None => return RCL_RET_INVALID_ARGUMENT,
         }
     };
 
@@ -1459,7 +1459,7 @@ pub unsafe extern "C" fn nros_polling_client_init(
         // `rclc_publisher_init_default`).
         let (session, domain_id) = match crate::node::resolve_session_and_domain(node_ref) {
             Some(t) => t,
-            None => return NROS_RET_NOT_INIT,
+            None => return RCL_RET_NOT_INIT,
         };
 
         let type_str = core::str::from_utf8_unchecked(&type_buf[..type_len]);
@@ -1481,63 +1481,61 @@ pub unsafe extern "C" fn nros_polling_client_init(
                     RawClient::new(handle),
                 );
             }
-            Err(_) => return NROS_RET_ERROR,
+            Err(_) => return RCL_RET_ERROR,
         }
     }
 
     client_mut.node = unsafe { crate::node::node_ref_of(node) };
-    client_mut.state = nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED;
-    NROS_RET_OK
+    client_mut.state = rclc_client_state_t::RCLC_CLIENT_STATE_INITIALIZED;
+    RCL_RET_OK
 }
 
 /// Finalize a polled service client: drops the inline client, which closes
 /// the RMW entity.
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if `client` is NULL
-/// * `NROS_RET_NOT_INIT` if it is not initialised
-/// * `NROS_RET_STALE_NODE` if its node has already been finalised (issue 1386)
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` if `client` is NULL
+/// * `RCL_RET_NOT_INIT` if it is not initialised
+/// * `RCLC_RET_STALE_NODE` if its node has already been finalised (issue 1386)
 ///
 /// # Safety
 /// `client` must be a valid pointer.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_client_fini(
-    client: *mut nros_polling_client_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_polling_client_fini(client: *mut rclc_polling_client_t) -> rcl_ret_t {
     validate_not_null!(client);
     let client = &mut *client;
-    if client.state != nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
+    if client.state != rclc_client_state_t::RCLC_CLIENT_STATE_INITIALIZED {
+        return RCL_RET_NOT_INIT;
     }
     if client.node.is_bound() && !crate::node::node_ref_is_live(client.node) {
-        return crate::error::NROS_RET_STALE_NODE;
+        return crate::error::RCLC_RET_STALE_NODE;
     }
     #[cfg(feature = "rmw-cffi")]
     {
         core::ptr::drop_in_place(client._opaque.as_mut_ptr() as *mut RawClient);
         client._opaque = [0u64; SERVICE_CLIENT_OPAQUE_U64S];
     }
-    client.node = crate::node::nros_node_ref_t::none();
-    client.state = nros_client_state_t::NROS_CLIENT_STATE_SHUTDOWN;
-    NROS_RET_OK
+    client.node = crate::node::rclc_node_ref_t::none();
+    client.state = rclc_client_state_t::RCLC_CLIENT_STATE_SHUTDOWN;
+    RCL_RET_OK
 }
 
 /// Phase 122.3.c.5 — send a raw request on an L1 polling-mode client.
 /// Non-blocking. Poll for the reply via
-/// `nros_polling_client_take_response_raw`.
+/// `rclc_polling_client_take_response_raw`.
 ///
 /// # Safety
 /// `client` must be an initialized polling client. `data` readable for `len`
 /// bytes.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_client_send_request_raw(
-    client: *mut nros_polling_client_t,
+pub unsafe extern "C" fn rclc_polling_client_send_request_raw(
+    client: *mut rclc_polling_client_t,
     data: *const u8,
     len: usize,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     if client.is_null() || (data.is_null() && len != 0) {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
 
     let client_mut = &mut *client;
@@ -1545,18 +1543,18 @@ pub unsafe extern "C" fn nros_polling_client_send_request_raw(
     #[cfg(feature = "rmw-cffi")]
     {
         let Some(raw) = client_mut.raw() else {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         };
         let slice = core::slice::from_raw_parts(data, len);
         match raw.send_request_raw(slice) {
-            Ok(()) => NROS_RET_OK,
-            Err(_) => NROS_RET_ERROR,
+            Ok(()) => RCL_RET_OK,
+            Err(_) => RCL_RET_ERROR,
         }
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (client_mut, data, len);
-        NROS_RET_NOT_INIT
+        RCL_RET_NOT_INIT
     }
 }
 
@@ -1565,20 +1563,20 @@ pub unsafe extern "C" fn nros_polling_client_send_request_raw(
 ///
 /// # Returns
 /// * `>= 0` — number of bytes written to `buf` (0 = no reply yet)
-/// * `NROS_RET_INVALID_ARGUMENT` if pointers / state wrong
-/// * `NROS_RET_ERROR` on transport failure
+/// * `RCL_RET_INVALID_ARGUMENT` if pointers / state wrong
+/// * `RCL_RET_ERROR` on transport failure
 ///
 /// # Safety
 /// `client` must be an initialized polling client. `buf` writable for `buf_len`
 /// bytes.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_client_take_response_raw(
-    client: *mut nros_polling_client_t,
+pub unsafe extern "C" fn rclc_polling_client_take_response_raw(
+    client: *mut rclc_polling_client_t,
     buf: *mut u8,
     buf_len: usize,
 ) -> i32 {
     if client.is_null() || (buf.is_null() && buf_len != 0) {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
 
     let client_mut = &mut *client;
@@ -1586,7 +1584,7 @@ pub unsafe extern "C" fn nros_polling_client_take_response_raw(
     #[cfg(feature = "rmw-cffi")]
     {
         let Some(raw) = client_mut.raw() else {
-            return NROS_RET_INVALID_ARGUMENT;
+            return RCL_RET_INVALID_ARGUMENT;
         };
         match raw.take_response_raw() {
             Ok(Some(len)) => {
@@ -1595,13 +1593,13 @@ pub unsafe extern "C" fn nros_polling_client_take_response_raw(
                 copy_len as i32
             }
             Ok(None) => 0,
-            Err(_) => NROS_RET_ERROR,
+            Err(_) => RCL_RET_ERROR,
         }
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (client_mut, buf, buf_len);
-        NROS_RET_NOT_INIT
+        RCL_RET_NOT_INIT
     }
 }
 
@@ -1615,20 +1613,20 @@ pub unsafe extern "C" fn nros_polling_client_take_response_raw(
 ///
 /// # Safety
 /// `client._internal.executor_ptr`, when set, must point to the live
-/// `nros_executor_t` that registered it.
+/// `rclc_executor_t` that registered it.
 #[cfg(feature = "rmw-cffi")]
 unsafe fn client_entry_callback(
-    client: &nros_client_t,
-    set: Option<(nros_response_callback_t, *mut c_void)>,
-) -> Option<(nros_response_callback_t, *mut c_void)> {
-    if client.state != nros_client_state_t::NROS_CLIENT_STATE_REGISTERED {
+    client: &rcl_client_t,
+    set: Option<(rclc_response_callback_t, *mut c_void)>,
+) -> Option<(rclc_response_callback_t, *mut c_void)> {
+    if client.state != rclc_client_state_t::RCLC_CLIENT_STATE_REGISTERED {
         return None;
     }
     let internal = &client._internal;
     if internal.executor_ptr.is_null() || internal.arena_entry_index < 0 {
         return None;
     }
-    let exec_t = unsafe { &mut *(internal.executor_ptr as *mut nros_executor_t) };
+    let exec_t = unsafe { &mut *(internal.executor_ptr as *mut rclc_executor_t) };
     let exec = crate::executor::get_executor(&mut exec_t._opaque);
     let entry = unsafe { exec.service_client_entry_mut(internal.arena_entry_index as usize) }?;
     if let Some((callback, context)) = set {
@@ -1641,9 +1639,9 @@ unsafe fn client_entry_callback(
 /// No RMW, no arena entry to read.
 #[cfg(not(feature = "rmw-cffi"))]
 unsafe fn client_entry_callback(
-    client: &nros_client_t,
-    set: Option<(nros_response_callback_t, *mut c_void)>,
-) -> Option<(nros_response_callback_t, *mut c_void)> {
+    client: &rcl_client_t,
+    set: Option<(rclc_response_callback_t, *mut c_void)>,
+) -> Option<(rclc_response_callback_t, *mut c_void)> {
     let _ = (client, set);
     None
 }
@@ -1653,55 +1651,55 @@ unsafe fn client_entry_callback(
 ///
 /// phase-487 W2 — the callback and `context` are written into the client's
 /// executor-arena entry, which owns them; the client struct keeps neither.
-/// So the client must be ADDED first (`nros_executor_add_client`), and a
+/// So the client must be ADDED first (`rclc_executor_add_client`), and a
 /// client removed and re-added starts with no callback. Before W2 the setter
 /// wrote the struct and the arena dispatched through a trampoline that read
 /// it back, which is the back-reference RFC-0096 D9 removes.
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if `client` is NULL
-/// * `NROS_RET_NOT_INIT` if the client is not added to an executor
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` if `client` is NULL
+/// * `RCL_RET_NOT_INIT` if the client is not added to an executor
 ///
 /// # Safety
 /// `client` must be a valid pointer; `context` is passed through untouched.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_client_set_response_callback(
-    client: *mut nros_client_t,
-    callback: nros_response_callback_t,
+pub unsafe extern "C" fn rclc_client_set_response_callback(
+    client: *mut rcl_client_t,
+    callback: rclc_response_callback_t,
     context: *mut c_void,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(client);
 
     #[cfg(feature = "rmw-cffi")]
     {
         match client_entry_callback(&*client, Some((callback, context))) {
-            Some(_) => NROS_RET_OK,
-            None => NROS_RET_NOT_INIT,
+            Some(_) => RCL_RET_OK,
+            None => RCL_RET_NOT_INIT,
         }
     }
 
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (callback, context);
-        NROS_RET_NOT_INIT
+        RCL_RET_NOT_INIT
     }
 }
 
-/// Set the default timeout used by `nros_client_call`.
+/// Set the default timeout used by `rclc_client_call`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_client_set_timeout(
-    client: *mut nros_client_t,
+pub unsafe extern "C" fn rclc_client_set_timeout(
+    client: *mut rcl_client_t,
     timeout_ms: u32,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(client);
     let client = &mut *client;
     client._internal.timeout_ms = timeout_ms;
-    NROS_RET_OK
+    RCL_RET_OK
 }
 
 /// Phase 124.C.3 — synchronous, graph-aware "is the matching server up?"
-/// probe. Unlike [`nros_client_wait_for_service`] this never spins the
+/// probe. Unlike [`rclc_client_wait_for_service`] this never spins the
 /// executor: it asks the active RMW backend whether at least one
 /// matching server has been observed on the RMW graph and returns
 /// immediately.
@@ -1710,21 +1708,21 @@ pub unsafe extern "C" fn nros_client_set_timeout(
 /// `-1` if the backend cannot answer (e.g. XRCE without participant
 /// enumeration). Callers that want the same answer rounded to a
 /// hard yes/no should treat `-1` as "unknown — assume yes" or use
-/// [`nros_client_wait_for_service`] instead.
+/// [`rclc_client_wait_for_service`] instead.
 ///
 /// # Returns
-/// * `NROS_RET_OK` — `*out` was written (`0`, `1`, or `-1`).
-/// * `NROS_RET_INVALID_ARGUMENT` — `client` or `out` is null.
-/// * `NROS_RET_NOT_INIT` — client not registered with an executor.
-/// * `NROS_RET_ERROR` — transport-level failure.
+/// * `RCL_RET_OK` — `*out` was written (`0`, `1`, or `-1`).
+/// * `RCL_RET_INVALID_ARGUMENT` — `client` or `out` is null.
+/// * `RCL_RET_NOT_INIT` — client not registered with an executor.
+/// * `RCL_RET_ERROR` — transport-level failure.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_client_server_available(
-    client: *mut nros_client_t,
+pub unsafe extern "C" fn rclc_client_server_available(
+    client: *mut rcl_client_t,
     out: *mut i32,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(client);
     if out.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
 
     #[cfg(feature = "rmw-cffi")]
@@ -1732,34 +1730,34 @@ pub unsafe extern "C" fn nros_client_server_available(
         use nros_node::ClientTrait;
 
         let client_ref = &mut *client;
-        if client_ref.state != nros_client_state_t::NROS_CLIENT_STATE_REGISTERED {
-            return NROS_RET_NOT_INIT;
+        if client_ref.state != rclc_client_state_t::RCLC_CLIENT_STATE_REGISTERED {
+            return RCL_RET_NOT_INIT;
         }
         let internal = &mut client_ref._internal;
         if internal.executor_ptr.is_null() || internal.arena_entry_index < 0 {
-            return NROS_RET_NOT_INIT;
+            return RCL_RET_NOT_INIT;
         }
-        let exec_t = &mut *(internal.executor_ptr as *mut nros_executor_t);
+        let exec_t = &mut *(internal.executor_ptr as *mut rclc_executor_t);
         let exec = crate::executor::get_executor(&mut exec_t._opaque);
         let entry = match exec.service_client_entry_mut(internal.arena_entry_index as usize) {
             Some(e) => e,
-            None => return NROS_RET_NOT_INIT,
+            None => return RCL_RET_NOT_INIT,
         };
         match entry.handle.service_is_ready() {
             Ok(true) => {
                 *out = 1;
-                NROS_RET_OK
+                RCL_RET_OK
             }
             Ok(false) => {
                 *out = 0;
-                NROS_RET_OK
+                RCL_RET_OK
             }
             Err(_) => {
                 // Backend can't answer (Unsupported). Surface a sentinel
                 // so callers can distinguish "no" (0) from "don't know"
                 // (-1) without losing the OK status.
                 *out = -1;
-                NROS_RET_OK
+                RCL_RET_OK
             }
         }
     }
@@ -1768,7 +1766,7 @@ pub unsafe extern "C" fn nros_client_server_available(
     {
         let _ = client;
         *out = -1;
-        NROS_RET_OK
+        RCL_RET_OK
     }
 }
 
@@ -1777,26 +1775,26 @@ pub unsafe extern "C" fn nros_client_server_available(
 /// the underlying `Client::wait_for_service`.
 ///
 /// The client must already have been registered with the executor via
-/// `nros_executor_add_client`. A spin on `nros_client_service_is_ready`'s
+/// `rclc_executor_add_client`. A spin on `rclc_client_service_is_ready`'s
 /// query: the executor is spun cooperatively between checks, and each check
 /// is a synchronous read of the discovery state the backend maintains (on
 /// zenoh, the matched-server set fed by liveliness PUT/DELETE — phase-428
 /// W13). Nothing is latched.
 ///
 /// # Returns
-/// * `NROS_RET_OK` — server is visible (proceed with `nros_client_call`).
-/// * `NROS_RET_TIMEOUT` — `timeout_ms` elapsed without seeing a token.
-/// * `NROS_RET_UNSUPPORTED` — the backend cannot know (XRCE), returned at
+/// * `RCL_RET_OK` — server is visible (proceed with `rclc_client_call`).
+/// * `RCL_RET_TIMEOUT` — `timeout_ms` elapsed without seeing a token.
+/// * `RCL_RET_UNSUPPORTED` — the backend cannot know (XRCE), returned at
 ///   once: issue 1087 made such a backend wait out the budget and report
 ///   TIMEOUT, which every client read as "no server" (issue 1686). A caller
 ///   that may send blind proceeds; the call's own timeout is the probe.
-/// * `NROS_RET_NOT_INIT` — client not registered with an executor.
-/// * `NROS_RET_ERROR` — transport-level failure.
+/// * `RCL_RET_NOT_INIT` — client not registered with an executor.
+/// * `RCL_RET_ERROR` — transport-level failure.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_client_wait_for_service(
-    client: *mut nros_client_t,
+pub unsafe extern "C" fn rclc_client_wait_for_service(
+    client: *mut rcl_client_t,
     timeout_ms: u32,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(client);
 
     #[cfg(feature = "rmw-cffi")]
@@ -1804,19 +1802,19 @@ pub unsafe extern "C" fn nros_client_wait_for_service(
         use nros_node::ClientTrait;
 
         let client_ref = &mut *client;
-        if client_ref.state != nros_client_state_t::NROS_CLIENT_STATE_REGISTERED {
-            return NROS_RET_NOT_INIT;
+        if client_ref.state != rclc_client_state_t::RCLC_CLIENT_STATE_REGISTERED {
+            return RCL_RET_NOT_INIT;
         }
         let internal = &mut client_ref._internal;
         if internal.executor_ptr.is_null() || internal.arena_entry_index < 0 {
-            return NROS_RET_NOT_INIT;
+            return RCL_RET_NOT_INIT;
         }
 
-        let exec_t = &mut *(internal.executor_ptr as *mut nros_executor_t);
+        let exec_t = &mut *(internal.executor_ptr as *mut rclc_executor_t);
         if exec_t.in_dispatch {
-            return NROS_RET_REENTRANT;
+            return RCLC_RET_REENTRANT;
         }
-        let executor = exec_t as *mut nros_executor_t;
+        let executor = exec_t as *mut rclc_executor_t;
 
         // phase-428 W13 — spin, then ask again. `Ok(true)` only means visible
         // (issue 1008); a backend that cannot answer returns at once (issue
@@ -1829,19 +1827,19 @@ pub unsafe extern "C" fn nros_client_wait_for_service(
                 let entry = match exec.service_client_entry_mut(internal.arena_entry_index as usize)
                 {
                     Some(e) => e,
-                    None => return NROS_RET_NOT_INIT,
+                    None => return RCL_RET_NOT_INIT,
                 };
                 match nros_node::executor::ServerVisibility::of(entry.handle.service_is_ready()) {
-                    nros_node::executor::ServerVisibility::Visible => return NROS_RET_OK,
+                    nros_node::executor::ServerVisibility::Visible => return RCL_RET_OK,
                     nros_node::executor::ServerVisibility::Unknowable => {
-                        return NROS_RET_UNSUPPORTED;
+                        return RCL_RET_UNSUPPORTED;
                     }
                     nros_node::executor::ServerVisibility::NotYet => {}
                 }
             }
             let elapsed_ns = crate::platform::get_time_ns().saturating_sub(start_ns);
             if elapsed_ns >= timeout_ns {
-                return NROS_RET_TIMEOUT;
+                return RCL_RET_TIMEOUT;
             }
             crate::executor::rclc_executor_spin_some(executor, 10_000_000);
         }
@@ -1850,7 +1848,7 @@ pub unsafe extern "C" fn nros_client_wait_for_service(
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (client, timeout_ms);
-        NROS_RET_OK
+        RCL_RET_OK
     }
 }
 
@@ -1858,10 +1856,10 @@ pub unsafe extern "C" fn nros_client_wait_for_service(
 /// currently visible. Mirrors `rclcpp::ClientBase::service_is_ready`
 /// and rcl's `rcl_service_server_is_available`. Returns `false` when
 /// the client isn't registered with an executor or the backend lacks
-/// liveliness discovery (in which case use `nros_client_wait_for_service`
+/// liveliness discovery (in which case use `rclc_client_wait_for_service`
 /// instead, which handles those cases conservatively).
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_client_service_is_ready(client: *const nros_client_t) -> bool {
+pub unsafe extern "C" fn rclc_client_service_is_ready(client: *const rcl_client_t) -> bool {
     if client.is_null() {
         return false;
     }
@@ -1870,14 +1868,14 @@ pub unsafe extern "C" fn nros_client_service_is_ready(client: *const nros_client
         use nros_node::ClientTrait;
 
         let client_ref = &*client;
-        if client_ref.state != nros_client_state_t::NROS_CLIENT_STATE_REGISTERED {
+        if client_ref.state != rclc_client_state_t::RCLC_CLIENT_STATE_REGISTERED {
             return false;
         }
         let internal = &client_ref._internal;
         if internal.executor_ptr.is_null() || internal.arena_entry_index < 0 {
             return false;
         }
-        let exec_t = &mut *(internal.executor_ptr as *mut nros_executor_t);
+        let exec_t = &mut *(internal.executor_ptr as *mut rclc_executor_t);
         let exec = crate::executor::get_executor(&mut exec_t._opaque);
         match exec.service_client_entry_mut(internal.arena_entry_index as usize) {
             // issue 1008 — a backend that cannot answer reports NOT ready.
@@ -1896,19 +1894,19 @@ pub unsafe extern "C" fn nros_client_service_is_ready(client: *const nros_client
 ///
 /// Non-blocking. The reply is delivered via the registered
 /// `response_callback` during `rclc_executor_spin_some`. The user must
-/// have previously registered the client with `nros_executor_add_client`.
+/// have previously registered the client with `rclc_executor_add_client`.
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_NOT_INIT` if the client is not registered with an executor
-/// * `NROS_RET_BAD_SEQUENCE` if a previous request is still pending
-/// * `NROS_RET_ERROR` on transport failure
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_NOT_INIT` if the client is not registered with an executor
+/// * `RCLC_RET_BAD_SEQUENCE` if a previous request is still pending
+/// * `RCL_RET_ERROR` on transport failure
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_client_send_request_async(
-    client: *mut nros_client_t,
+pub unsafe extern "C" fn rclc_client_send_request_async(
+    client: *mut rcl_client_t,
     request_data: *const u8,
     request_len: usize,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(client, request_data);
 
     #[cfg(feature = "rmw-cffi")]
@@ -1916,23 +1914,23 @@ pub unsafe extern "C" fn nros_client_send_request_async(
         use nros_node::ClientTrait;
 
         let client_ref = &mut *client;
-        if client_ref.state != nros_client_state_t::NROS_CLIENT_STATE_REGISTERED {
-            return NROS_RET_NOT_INIT;
+        if client_ref.state != rclc_client_state_t::RCLC_CLIENT_STATE_REGISTERED {
+            return RCL_RET_NOT_INIT;
         }
 
         let internal = &mut client_ref._internal;
         if internal.executor_ptr.is_null() || internal.arena_entry_index < 0 {
-            return NROS_RET_NOT_INIT;
+            return RCL_RET_NOT_INIT;
         }
 
-        let exec_t = &mut *(internal.executor_ptr as *mut nros_executor_t);
+        let exec_t = &mut *(internal.executor_ptr as *mut rclc_executor_t);
         let exec = crate::executor::get_executor(&mut exec_t._opaque);
         let entry = match exec.service_client_entry_mut(internal.arena_entry_index as usize) {
             Some(e) => e,
-            None => return NROS_RET_NOT_INIT,
+            None => return RCL_RET_NOT_INIT,
         };
         if entry.pending {
-            return NROS_RET_BAD_SEQUENCE;
+            return RCLC_RET_BAD_SEQUENCE;
         }
 
         let request = core::slice::from_raw_parts(request_data, request_len);
@@ -1961,33 +1959,33 @@ pub unsafe extern "C" fn nros_client_send_request_async(
                 // to the next call. Both # Safety invariants hold.
                 let waker = unsafe { atomic_bool_waker(&entry.reply_ready) };
                 entry.handle.register_waker(&waker);
-                NROS_RET_OK
+                RCL_RET_OK
             }
-            Err(_) => NROS_RET_ERROR,
+            Err(_) => RCL_RET_ERROR,
         }
     }
 
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (client, request_data, request_len);
-        NROS_RET_ERROR
+        RCL_RET_ERROR
     }
 }
 
 /// Poll for the reply to the most recently sent async request.
 ///
 /// # Returns
-/// * `NROS_RET_OK` if the reply was filled into `response_data`
-/// * `NROS_RET_TRY_AGAIN` if no reply yet (caller should spin and retry)
-/// * `NROS_RET_NOT_INIT` if the client isn't registered or has no pending request
-/// * `NROS_RET_ERROR` on transport failure
+/// * `RCL_RET_OK` if the reply was filled into `response_data`
+/// * `RCLC_RET_TRY_AGAIN` if no reply yet (caller should spin and retry)
+/// * `RCL_RET_NOT_INIT` if the client isn't registered or has no pending request
+/// * `RCL_RET_ERROR` on transport failure
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_client_take_response(
-    client: *mut nros_client_t,
+pub unsafe extern "C" fn rclc_client_take_response(
+    client: *mut rcl_client_t,
     response_data: *mut u8,
     response_capacity: usize,
     response_len: *mut usize,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(client, response_data, response_len);
 
     #[cfg(feature = "rmw-cffi")]
@@ -1995,23 +1993,23 @@ pub unsafe extern "C" fn nros_client_take_response(
         use nros_node::ClientTrait;
 
         let client_ref = &mut *client;
-        if client_ref.state != nros_client_state_t::NROS_CLIENT_STATE_REGISTERED {
-            return NROS_RET_NOT_INIT;
+        if client_ref.state != rclc_client_state_t::RCLC_CLIENT_STATE_REGISTERED {
+            return RCL_RET_NOT_INIT;
         }
 
         let internal = &mut client_ref._internal;
         if internal.executor_ptr.is_null() || internal.arena_entry_index < 0 {
-            return NROS_RET_NOT_INIT;
+            return RCL_RET_NOT_INIT;
         }
 
-        let exec_t = &mut *(internal.executor_ptr as *mut nros_executor_t);
+        let exec_t = &mut *(internal.executor_ptr as *mut rclc_executor_t);
         let exec = crate::executor::get_executor(&mut exec_t._opaque);
         let entry = match exec.service_client_entry_mut(internal.arena_entry_index as usize) {
             Some(e) => e,
-            None => return NROS_RET_NOT_INIT,
+            None => return RCL_RET_NOT_INIT,
         };
         if !entry.pending {
-            return NROS_RET_NOT_INIT;
+            return RCL_RET_NOT_INIT;
         }
 
         let buf = core::slice::from_raw_parts_mut(response_data, response_capacity);
@@ -2019,12 +2017,12 @@ pub unsafe extern "C" fn nros_client_take_response(
             Ok(Some((len, _seq))) => {
                 entry.pending = false;
                 *response_len = len;
-                NROS_RET_OK
+                RCL_RET_OK
             }
-            Ok(None) => NROS_RET_TRY_AGAIN,
+            Ok(None) => RCLC_RET_TRY_AGAIN,
             Err(_) => {
                 entry.pending = false;
-                NROS_RET_ERROR
+                RCL_RET_ERROR
             }
         }
     }
@@ -2032,17 +2030,17 @@ pub unsafe extern "C" fn nros_client_take_response(
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (client, response_data, response_capacity, response_len);
-        NROS_RET_ERROR
+        RCL_RET_ERROR
     }
 }
 
 /// Call a service (blocking convenience over the async pair).
 ///
 /// Phase 82: signature unchanged, but no longer blocks at the transport
-/// layer. Internally calls `nros_client_send_request_async` and spins
+/// layer. Internally calls `rclc_client_send_request_async` and spins
 /// the registered executor via `rclc_executor_spin_some` until the
 /// response arrives or the client's `timeout_ms` elapses. The client
-/// must have been registered with `nros_executor_add_client`.
+/// must have been registered with `rclc_executor_add_client`.
 ///
 /// # Parameters
 /// * `client` - Pointer to a registered client
@@ -2053,43 +2051,43 @@ pub unsafe extern "C" fn nros_client_take_response(
 /// * `response_len` - Output: actual length of response data
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if any pointer is NULL
-/// * `NROS_RET_NOT_INIT` if the client isn't registered with an executor
-/// * `NROS_RET_TIMEOUT` if no response within `timeout_ms`
-/// * `NROS_RET_ERROR` on call failure
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` if any pointer is NULL
+/// * `RCL_RET_NOT_INIT` if the client isn't registered with an executor
+/// * `RCL_RET_TIMEOUT` if no response within `timeout_ms`
+/// * `RCL_RET_ERROR` on call failure
 #[unsafe(no_mangle)]
 #[allow(static_mut_refs)]
-pub unsafe extern "C" fn nros_client_call(
-    client: *mut nros_client_t,
+pub unsafe extern "C" fn rclc_client_call(
+    client: *mut rcl_client_t,
     request_data: *const u8,
     request_len: usize,
     response_data: *mut u8,
     response_capacity: usize,
     response_len: *mut usize,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     validate_not_null!(client, request_data, response_data, response_len);
 
     let client_ref = &mut *client;
-    if client_ref.state != nros_client_state_t::NROS_CLIENT_STATE_REGISTERED {
-        return NROS_RET_NOT_INIT;
+    if client_ref.state != rclc_client_state_t::RCLC_CLIENT_STATE_REGISTERED {
+        return RCL_RET_NOT_INIT;
     }
 
     let executor_ptr = client_ref._internal.executor_ptr;
     let timeout_ms = client_ref._internal.timeout_ms;
     if executor_ptr.is_null() {
-        return NROS_RET_NOT_INIT;
+        return RCL_RET_NOT_INIT;
     }
 
-    // Reentrancy guard: nros_client_call spins the executor internally,
+    // Reentrancy guard: rclc_client_call spins the executor internally,
     // so it must not be called from inside a dispatch callback.
-    let exec_t = &*(executor_ptr as *const nros_executor_t);
+    let exec_t = &*(executor_ptr as *const rclc_executor_t);
     if exec_t.in_dispatch {
-        return NROS_RET_REENTRANT;
+        return RCLC_RET_REENTRANT;
     }
 
     // One-shot blocking response capture. Static is fine because
-    // nros_client_call is non-reentrant by design (callable only from
+    // rclc_client_call is non-reentrant by design (callable only from
     // outside spin_some; the reentrancy guard in 82.8 will enforce it).
     //
     // Phase 214.G.1 — replaced `static mut BLK_DONE/BLK_LEN/BLK_BUF`
@@ -2118,7 +2116,7 @@ pub unsafe extern "C" fn nros_client_call(
     // guarantees a registration, and `remove_client` (the only release)
     // cannot run while this call holds the thread.
     let Some((orig_cb, orig_ctx)) = client_entry_callback(client_ref, None) else {
-        return NROS_RET_NOT_INIT;
+        return RCL_RET_NOT_INIT;
     };
 
     unsafe extern "C" fn blocking_response_cb(data: *const u8, len: usize, _ctx: *mut c_void) {
@@ -2135,12 +2133,12 @@ pub unsafe extern "C" fn nros_client_call(
         client_ref,
         Some((Some(blocking_response_cb), ptr::null_mut())),
     );
-    let restore = |client_ref: &nros_client_t| {
+    let restore = |client_ref: &rcl_client_t| {
         client_entry_callback(client_ref, Some((orig_cb, orig_ctx)));
     };
 
-    let send = nros_client_send_request_async(client, request_data, request_len);
-    if send != NROS_RET_OK {
+    let send = rclc_client_send_request_async(client, request_data, request_len);
+    if send != RCL_RET_OK {
         restore(client_ref);
         return send;
     }
@@ -2156,7 +2154,7 @@ pub unsafe extern "C" fn nros_client_call(
     // (keep-alives, discovery gossip, …), so a pure iteration count can
     // burn through the nominal timeout in milliseconds and return TIMEOUT
     // before the reply actually has a chance to arrive. Budget by the clock.
-    let executor = executor_ptr as *mut nros_executor_t;
+    let executor = executor_ptr as *mut rclc_executor_t;
     let start_ns = crate::platform::get_time_ns();
     let timeout_ns: u64 = (timeout_ms as u64).saturating_mul(1_000_000);
     // Resend the request periodically until the reply arrives. The first
@@ -2174,14 +2172,14 @@ pub unsafe extern "C" fn nros_client_call(
             restore(client_ref);
             let blk_len = BLK_LEN.load(Ordering::Relaxed);
             if blk_len > response_capacity {
-                return NROS_RET_ERROR;
+                return RCL_RET_ERROR;
             }
             // SAFETY: BLK_DONE's Acquire load above fences the buffer
             // write in `blocking_response_cb`.
             let buf_ptr = unsafe { (*BLK_BUF.0.get()).as_ptr() };
             core::ptr::copy_nonoverlapping(buf_ptr, response_data, blk_len);
             *response_len = blk_len;
-            return NROS_RET_OK;
+            return RCL_RET_OK;
         }
         let now_ns = crate::platform::get_time_ns();
         if now_ns.saturating_sub(start_ns) >= timeout_ns {
@@ -2193,7 +2191,7 @@ pub unsafe extern "C" fn nros_client_call(
             {
                 let internal = &mut client_ref._internal;
                 if !internal.executor_ptr.is_null() && internal.arena_entry_index >= 0 {
-                    let exec_t2 = &mut *(internal.executor_ptr as *mut nros_executor_t);
+                    let exec_t2 = &mut *(internal.executor_ptr as *mut rclc_executor_t);
                     let exec2 = crate::executor::get_executor(&mut exec_t2._opaque);
                     if let Some(entry) =
                         exec2.service_client_entry_mut(internal.arena_entry_index as usize)
@@ -2202,15 +2200,15 @@ pub unsafe extern "C" fn nros_client_call(
                     }
                 }
             }
-            let _ = nros_client_send_request_async(client, request_data, request_len);
+            let _ = rclc_client_send_request_async(client, request_data, request_len);
             last_send_ns = now_ns;
         }
     }
     restore(client_ref);
 
-    // Phase 89.12: clear `entry.pending` (set by `nros_client_send_request_async`
-    // at line ~763) so the next `nros_client_call` doesn't bounce off
-    // NROS_RET_BAD_SEQUENCE. Without this, a single slow-first-RPC
+    // Phase 89.12: clear `entry.pending` (set by `rclc_client_send_request_async`
+    // at line ~763) so the next `rclc_client_call` doesn't bounce off
+    // RCLC_RET_BAD_SEQUENCE. Without this, a single slow-first-RPC
     // timeout cascades every subsequent blocking call on the same
     // client — which is exactly what NuttX `lang_2_C` rtos_e2e flakes
     // hit on QEMU cold-boot: call [1] times out because the server
@@ -2222,14 +2220,14 @@ pub unsafe extern "C" fn nros_client_call(
     //
     // Semantic note: if the late reply for the timed-out call arrives
     // before the caller fires another request, it will be picked up
-    // by the next `nros_client_take_response` / spin dispatch.
+    // by the next `rclc_client_take_response` / spin dispatch.
     // That's a known "stale reply" quirk of single-slot clients; the
     // caller either tolerates it (match on returned seq) or resets
     // the slot explicitly. The previous behaviour — silently jamming
     // every subsequent call — was strictly worse.
     let internal = &mut client_ref._internal;
     if !internal.executor_ptr.is_null() && internal.arena_entry_index >= 0 {
-        let exec_t = &mut *(internal.executor_ptr as *mut nros_executor_t);
+        let exec_t = &mut *(internal.executor_ptr as *mut rclc_executor_t);
         let exec = crate::executor::get_executor(&mut exec_t._opaque);
         if let Some(entry) = exec.service_client_entry_mut(internal.arena_entry_index as usize) {
             entry.pending = false;
@@ -2239,15 +2237,15 @@ pub unsafe extern "C" fn nros_client_call(
         }
     }
 
-    NROS_RET_TIMEOUT
+    RCL_RET_TIMEOUT
 }
 
-impl nros_client_t {
+impl rcl_client_t {
     /// Can this handle be USED? — the one predicate behind both
     /// `rcl_client_is_valid` and `rcl_client_get_service_name`.
     ///
     /// phase-417 stage 3, ledger row `c:client_is_valid`. `REGISTERED` is the
-    /// ORDINARY callback-mode state, set by `nros_executor_add_client`.
+    /// ORDINARY callback-mode state, set by `rclc_executor_add_client`.
     /// Testing `state == INITIALIZED` exactly meant the upstream guard
     /// `if (!rcl_client_is_valid(&c)) { bail; }` rejected a working client,
     /// and the name accessor returned NULL into whatever `%s` printed it. A
@@ -2256,8 +2254,8 @@ impl nros_client_t {
     pub(crate) const fn is_usable(&self) -> bool {
         matches!(
             self.state,
-            nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED
-                | nros_client_state_t::NROS_CLIENT_STATE_REGISTERED
+            rclc_client_state_t::RCLC_CLIENT_STATE_INITIALIZED
+                | rclc_client_state_t::RCLC_CLIENT_STATE_REGISTERED
         )
     }
 }
@@ -2269,11 +2267,9 @@ impl nros_client_t {
 ///
 /// # Returns
 /// * Pointer to service name (null-terminated), or NULL if the handle is not
-///   usable (see `nros_client_t::is_usable`) or NULL
+///   usable (see `rcl_client_t::is_usable`) or NULL
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rcl_client_get_service_name(
-    client: *const nros_client_t,
-) -> *const c_char {
+pub unsafe extern "C" fn rcl_client_get_service_name(client: *const rcl_client_t) -> *const c_char {
     if client.is_null() {
         return ptr::null();
     }
@@ -2289,7 +2285,7 @@ pub unsafe extern "C" fn rcl_client_get_service_name(
 /// Is this client handle usable?
 ///
 /// rcl's `rcl_client_is_valid`, whose contract is "true for any handle that can
-/// be used" — the ported idiom is a guard. See `nros_client_t::is_usable` for
+/// be used" — the ported idiom is a guard. See `rcl_client_t::is_usable` for
 /// which states those are.
 ///
 /// # Parameters
@@ -2298,7 +2294,7 @@ pub unsafe extern "C" fn rcl_client_get_service_name(
 /// # Returns
 /// * `true` if usable, `false` if finalised, uninitialised or NULL
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rcl_client_is_valid(client: *const nros_client_t) -> bool {
+pub unsafe extern "C" fn rcl_client_is_valid(client: *const rcl_client_t) -> bool {
     if client.is_null() {
         return false;
     }
@@ -2317,10 +2313,10 @@ mod verification {
     use core::ptr;
 
     // Helper to create a dummy type_info
-    fn dummy_service_type() -> nros_service_type_t {
+    fn dummy_service_type() -> rclc_service_type_t {
         let type_name = b"example_interfaces::srv::dds_::AddTwoInts_\0";
         let type_hash = b"RIHS01_test\0";
-        nros_service_type_t {
+        rclc_service_type_t {
             type_name: type_name.as_ptr() as *const core::ffi::c_char,
             type_hash: type_hash.as_ptr() as *const core::ffi::c_char,
         }
@@ -2338,7 +2334,7 @@ mod verification {
         // NULL service
         assert_eq!(
             unsafe {
-                nros_service_init_with_qos(
+                rclc_service_init_with_qos(
                     ptr::null_mut(),
                     &node,
                     &type_info,
@@ -2346,14 +2342,14 @@ mod verification {
                     ptr::null(),
                 )
             },
-            NROS_RET_INVALID_ARGUMENT,
+            RCL_RET_INVALID_ARGUMENT,
         );
 
         // NULL node
         let mut svc = rcl_get_zero_initialized_service();
         assert_eq!(
             unsafe {
-                nros_service_init_with_qos(
+                rclc_service_init_with_qos(
                     &mut svc,
                     ptr::null(),
                     &type_info,
@@ -2361,14 +2357,14 @@ mod verification {
                     ptr::null(),
                 )
             },
-            NROS_RET_INVALID_ARGUMENT,
+            RCL_RET_INVALID_ARGUMENT,
         );
 
         // NULL type_info
         let mut svc = rcl_get_zero_initialized_service();
         assert_eq!(
             unsafe {
-                nros_service_init_with_qos(
+                rclc_service_init_with_qos(
                     &mut svc,
                     &node,
                     ptr::null(),
@@ -2376,16 +2372,16 @@ mod verification {
                     ptr::null(),
                 )
             },
-            NROS_RET_INVALID_ARGUMENT,
+            RCL_RET_INVALID_ARGUMENT,
         );
 
         // NULL service_name
         let mut svc = rcl_get_zero_initialized_service();
         assert_eq!(
             unsafe {
-                nros_service_init_with_qos(&mut svc, &node, &type_info, ptr::null(), ptr::null())
+                rclc_service_init_with_qos(&mut svc, &node, &type_info, ptr::null(), ptr::null())
             },
-            NROS_RET_INVALID_ARGUMENT,
+            RCL_RET_INVALID_ARGUMENT,
         );
     }
 
@@ -2398,16 +2394,16 @@ mod verification {
         let svc_name = b"/add_two_ints\0";
         let type_info = dummy_service_type();
         let mut node = crate::node::rcl_get_zero_initialized_node();
-        node.state = crate::node::nros_node_state_t::NROS_NODE_STATE_INITIALIZED;
+        node.state = crate::node::rclc_node_state_t::RCLC_NODE_STATE_INITIALIZED;
 
-        let requested: crate::executor::nros_sched_context_id_t = 7;
-        let options = nros_service_options_t {
+        let requested: crate::executor::rclc_sched_context_id_t = 7;
+        let options = rcl_service_options_t {
             sched_context: requested,
             _reserved: [0; 3],
         };
         let mut svc = rcl_get_zero_initialized_service();
         let ret = unsafe {
-            nros_service_init_with_options(
+            rclc_service_init_with_options(
                 &mut svc,
                 &node,
                 &type_info,
@@ -2416,13 +2412,13 @@ mod verification {
                 &options,
             )
         };
-        assert_eq!(ret, NROS_RET_OK);
+        assert_eq!(ret, RCL_RET_OK);
         assert_eq!(svc.sched_context_id, requested);
 
         // NULL options ⇒ default (inherit).
         let mut svc2 = rcl_get_zero_initialized_service();
         let ret2 = unsafe {
-            nros_service_init_with_options(
+            rclc_service_init_with_options(
                 &mut svc2,
                 &node,
                 &type_info,
@@ -2431,7 +2427,7 @@ mod verification {
                 ptr::null(),
             )
         };
-        assert_eq!(ret2, NROS_RET_OK);
+        assert_eq!(ret2, RCL_RET_OK);
         assert_eq!(svc2.sched_context_id, 0);
     }
 
@@ -2445,7 +2441,7 @@ mod verification {
         let mut svc = rcl_get_zero_initialized_service();
         assert_eq!(
             unsafe {
-                nros_service_init_with_qos(
+                rclc_service_init_with_qos(
                     &mut svc,
                     &node,
                     &type_info,
@@ -2455,7 +2451,7 @@ mod verification {
                     ptr::null(),
                 )
             },
-            NROS_RET_INVALID_ARGUMENT,
+            RCL_RET_INVALID_ARGUMENT,
         );
     }
 
@@ -2470,7 +2466,7 @@ mod verification {
         let mut svc = rcl_get_zero_initialized_service();
         assert_eq!(
             unsafe {
-                nros_service_init_with_qos(
+                rclc_service_init_with_qos(
                     &mut svc,
                     &node,
                     &type_info,
@@ -2478,7 +2474,7 @@ mod verification {
                     ptr::null(),
                 )
             },
-            NROS_RET_NOT_INIT,
+            RCL_RET_NOT_INIT,
         );
     }
 
@@ -2488,7 +2484,7 @@ mod verification {
         let svc = rcl_get_zero_initialized_service();
         assert_eq!(
             svc.state,
-            nros_service_state_t::NROS_SERVICE_STATE_UNINITIALIZED,
+            rclc_service_state_t::RCLC_SERVICE_STATE_UNINITIALIZED,
         );
         assert!(!svc.node.is_bound(), "fini must unbind the node reference");
     }
@@ -2498,13 +2494,13 @@ mod verification {
     fn service_fini_null_safety() {
         // NULL → INVALID_ARGUMENT
         assert_eq!(
-            unsafe { nros_service_fini(ptr::null_mut()) },
-            NROS_RET_INVALID_ARGUMENT,
+            unsafe { rcl_service_fini(ptr::null_mut()) },
+            RCL_RET_INVALID_ARGUMENT,
         );
 
         // UNINITIALIZED → NOT_INIT
         let mut svc = rcl_get_zero_initialized_service();
-        assert_eq!(unsafe { nros_service_fini(&mut svc) }, NROS_RET_NOT_INIT,);
+        assert_eq!(unsafe { rcl_service_fini(&mut svc) }, RCL_RET_NOT_INIT,);
     }
 
     #[kani::proof]
@@ -2514,12 +2510,12 @@ mod verification {
         let type_info = dummy_service_type();
         let mut node = crate::node::rcl_get_zero_initialized_node();
         // Manually set node to initialized state for this test
-        node.state = crate::node::nros_node_state_t::NROS_NODE_STATE_INITIALIZED;
+        node.state = crate::node::rclc_node_state_t::RCLC_NODE_STATE_INITIALIZED;
 
         let mut svc = rcl_get_zero_initialized_service();
         // First init succeeds (metadata only)
         let ret = unsafe {
-            nros_service_init_with_qos(
+            rclc_service_init_with_qos(
                 &mut svc,
                 &node,
                 &type_info,
@@ -2527,12 +2523,12 @@ mod verification {
                 ptr::null(),
             )
         };
-        assert_eq!(ret, NROS_RET_OK);
+        assert_eq!(ret, RCL_RET_OK);
 
         // Second init → BAD_SEQUENCE
         assert_eq!(
             unsafe {
-                nros_service_init_with_qos(
+                rclc_service_init_with_qos(
                     &mut svc,
                     &node,
                     &type_info,
@@ -2540,7 +2536,7 @@ mod verification {
                     ptr::null(),
                 )
             },
-            NROS_RET_BAD_SEQUENCE,
+            RCLC_RET_BAD_SEQUENCE,
         );
     }
 
@@ -2554,15 +2550,15 @@ mod verification {
         let svc_name = b"/add_two_ints\0";
         let type_info = dummy_service_type();
         let mut node = crate::node::rcl_get_zero_initialized_node();
-        node.state = crate::node::nros_node_state_t::NROS_NODE_STATE_INITIALIZED;
+        node.state = crate::node::rclc_node_state_t::RCLC_NODE_STATE_INITIALIZED;
 
-        let options = nros_client_options_t {
+        let options = rcl_client_options_t {
             sched_context: 5,
             _reserved: [0; 3],
         };
         let mut client = rcl_get_zero_initialized_client();
         let ret = unsafe {
-            nros_client_init_with_options(
+            rclc_client_init_with_options(
                 &mut client,
                 &node,
                 &type_info,
@@ -2571,7 +2567,7 @@ mod verification {
                 &options,
             )
         };
-        assert_eq!(ret, NROS_RET_OK);
+        assert_eq!(ret, RCL_RET_OK);
         assert_eq!(client.sched_context_id, 5);
     }
 
@@ -2592,7 +2588,7 @@ mod verification {
                     svc_name.as_ptr() as *const core::ffi::c_char,
                 )
             },
-            NROS_RET_INVALID_ARGUMENT,
+            RCL_RET_INVALID_ARGUMENT,
         );
 
         // NULL node
@@ -2606,7 +2602,7 @@ mod verification {
                     svc_name.as_ptr() as *const core::ffi::c_char,
                 )
             },
-            NROS_RET_INVALID_ARGUMENT,
+            RCL_RET_INVALID_ARGUMENT,
         );
 
         // NULL type_info
@@ -2620,14 +2616,14 @@ mod verification {
                     svc_name.as_ptr() as *const core::ffi::c_char,
                 )
             },
-            NROS_RET_INVALID_ARGUMENT,
+            RCL_RET_INVALID_ARGUMENT,
         );
 
         // NULL service_name
         let mut client = rcl_get_zero_initialized_client();
         assert_eq!(
             unsafe { rclc_client_init_default(&mut client, &node, &type_info, ptr::null()) },
-            NROS_RET_INVALID_ARGUMENT,
+            RCL_RET_INVALID_ARGUMENT,
         );
     }
 
@@ -2648,7 +2644,7 @@ mod verification {
                     svc_name.as_ptr() as *const core::ffi::c_char,
                 )
             },
-            NROS_RET_NOT_INIT,
+            RCL_RET_NOT_INIT,
         );
     }
 
@@ -2658,7 +2654,7 @@ mod verification {
         let client = rcl_get_zero_initialized_client();
         assert_eq!(
             client.state,
-            nros_client_state_t::NROS_CLIENT_STATE_UNINITIALIZED,
+            rclc_client_state_t::RCLC_CLIENT_STATE_UNINITIALIZED,
         );
         assert!(
             !client.node.is_bound(),
@@ -2672,13 +2668,13 @@ mod verification {
     fn client_fini_null_safety() {
         // NULL → INVALID_ARGUMENT
         assert_eq!(
-            unsafe { nros_client_fini(ptr::null_mut()) },
-            NROS_RET_INVALID_ARGUMENT,
+            unsafe { rcl_client_fini(ptr::null_mut()) },
+            RCL_RET_INVALID_ARGUMENT,
         );
 
         // UNINITIALIZED → NOT_INIT
         let mut client = rcl_get_zero_initialized_client();
-        assert_eq!(unsafe { nros_client_fini(&mut client) }, NROS_RET_NOT_INIT,);
+        assert_eq!(unsafe { rcl_client_fini(&mut client) }, RCL_RET_NOT_INIT,);
     }
 
     #[kani::proof]
@@ -2691,7 +2687,7 @@ mod verification {
         // NULL client
         assert_eq!(
             unsafe {
-                nros_client_call(
+                rclc_client_call(
                     ptr::null_mut(),
                     req.as_ptr(),
                     req.len(),
@@ -2700,14 +2696,14 @@ mod verification {
                     &mut resp_len,
                 )
             },
-            NROS_RET_INVALID_ARGUMENT,
+            RCL_RET_INVALID_ARGUMENT,
         );
 
         // NULL request_data
         let mut client = rcl_get_zero_initialized_client();
         assert_eq!(
             unsafe {
-                nros_client_call(
+                rclc_client_call(
                     &mut client,
                     ptr::null(),
                     0,
@@ -2716,13 +2712,13 @@ mod verification {
                     &mut resp_len,
                 )
             },
-            NROS_RET_INVALID_ARGUMENT,
+            RCL_RET_INVALID_ARGUMENT,
         );
 
         // NULL response_data
         assert_eq!(
             unsafe {
-                nros_client_call(
+                rclc_client_call(
                     &mut client,
                     req.as_ptr(),
                     req.len(),
@@ -2731,13 +2727,13 @@ mod verification {
                     &mut resp_len,
                 )
             },
-            NROS_RET_INVALID_ARGUMENT,
+            RCL_RET_INVALID_ARGUMENT,
         );
 
         // NULL response_len
         assert_eq!(
             unsafe {
-                nros_client_call(
+                rclc_client_call(
                     &mut client,
                     req.as_ptr(),
                     req.len(),
@@ -2746,7 +2742,7 @@ mod verification {
                     ptr::null_mut(),
                 )
             },
-            NROS_RET_INVALID_ARGUMENT,
+            RCL_RET_INVALID_ARGUMENT,
         );
     }
 
@@ -2756,7 +2752,7 @@ mod verification {
         let svc_name = b"/add_two_ints\0";
         let type_info = dummy_service_type();
         let mut node = crate::node::rcl_get_zero_initialized_node();
-        node.state = crate::node::nros_node_state_t::NROS_NODE_STATE_INITIALIZED;
+        node.state = crate::node::rclc_node_state_t::RCLC_NODE_STATE_INITIALIZED;
 
         let mut client = rcl_get_zero_initialized_client();
         let ret = unsafe {
@@ -2767,15 +2763,15 @@ mod verification {
                 svc_name.as_ptr() as *const core::ffi::c_char,
             )
         };
-        assert_eq!(ret, NROS_RET_OK);
+        assert_eq!(ret, RCL_RET_OK);
 
         // Simulate registration: set state to REGISTERED and stash
         // a pointer to a fake executor with in_dispatch = true.
         let mut executor = crate::executor::rclc_executor_get_zero_initialized_executor();
-        executor.state = crate::executor::nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED;
+        executor.state = crate::executor::rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED;
         executor.in_dispatch = true;
 
-        client.state = nros_client_state_t::NROS_CLIENT_STATE_REGISTERED;
+        client.state = rclc_client_state_t::RCLC_CLIENT_STATE_REGISTERED;
         client._internal.executor_ptr = &mut executor as *mut _ as *mut core::ffi::c_void;
         client._internal.timeout_ms = NROS_DEFAULT_SERVICE_TIMEOUT_MS;
 
@@ -2785,7 +2781,7 @@ mod verification {
 
         assert_eq!(
             unsafe {
-                nros_client_call(
+                rclc_client_call(
                     &mut client,
                     req.as_ptr(),
                     req.len(),
@@ -2794,7 +2790,7 @@ mod verification {
                     &mut resp_len,
                 )
             },
-            NROS_RET_REENTRANT,
+            RCLC_RET_REENTRANT,
         );
     }
 
@@ -2824,10 +2820,10 @@ mod verification {
 // `rmw_client_t` have no `qos` field for exactly that reason, and upstream
 // ships four accessors rather than two. So do we.
 //
-// Both roads answer. The dispatched `nros_service_t` / `nros_client_t` read
+// Both roads answer. The dispatched `rcl_service_t` / `rcl_client_t` read
 // through the executor arena, where `_internal = (executor_ptr,
-// arena_entry_index)` points; the polled `nros_polling_service_t` /
-// `nros_polling_client_t` (phase-487 W2) read their inline entity through
+// arena_entry_index)` points; the polled `rclc_polling_service_t` /
+// `rclc_polling_client_t` (phase-487 W2) read their inline entity through
 // their own four `nros_polling_*` accessors below.
 // ============================================================================
 
@@ -2835,25 +2831,25 @@ mod verification {
 /// report. Written once so the two entry points below cannot disagree.
 #[cfg(feature = "rmw-cffi")]
 unsafe fn service_granted_qos(
-    service: &nros_service_t,
-) -> Result<(nros_rmw::QoSProfile, nros_rmw::QoSProfile), nros_ret_t> {
+    service: &rcl_service_t,
+) -> Result<(nros_rmw::QoSProfile, nros_rmw::QoSProfile), rcl_ret_t> {
     match service.state {
-        nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED => {
+        rclc_service_state_t::RCLC_SERVICE_STATE_INITIALIZED => {
             let internal = &service._internal;
             if internal.executor_ptr.is_null() || internal.arena_entry_index < 0 {
-                return Err(NROS_RET_NOT_INIT);
+                return Err(RCL_RET_NOT_INIT);
             }
-            let exec_t = &mut *(internal.executor_ptr as *mut nros_executor_t);
+            let exec_t = &mut *(internal.executor_ptr as *mut rclc_executor_t);
             let exec = crate::executor::get_executor(&mut exec_t._opaque);
             match exec.service_server_handle(internal.arena_entry_index as usize) {
                 Some(handle) => Ok((
                     nros_rmw::ServiceTrait::request_subscription_actual_qos(handle),
                     nros_rmw::ServiceTrait::response_publisher_actual_qos(handle),
                 )),
-                None => Err(NROS_RET_NOT_INIT),
+                None => Err(RCL_RET_NOT_INIT),
             }
         }
-        _ => Err(NROS_RET_NOT_INIT),
+        _ => Err(RCL_RET_NOT_INIT),
     }
 }
 
@@ -2861,25 +2857,25 @@ unsafe fn service_granted_qos(
 /// [`service_granted_qos`].
 #[cfg(feature = "rmw-cffi")]
 unsafe fn client_granted_qos(
-    client: &nros_client_t,
-) -> Result<(nros_rmw::QoSProfile, nros_rmw::QoSProfile), nros_ret_t> {
+    client: &rcl_client_t,
+) -> Result<(nros_rmw::QoSProfile, nros_rmw::QoSProfile), rcl_ret_t> {
     match client.state {
-        nros_client_state_t::NROS_CLIENT_STATE_REGISTERED => {
+        rclc_client_state_t::RCLC_CLIENT_STATE_REGISTERED => {
             let internal = &client._internal;
             if internal.executor_ptr.is_null() || internal.arena_entry_index < 0 {
-                return Err(NROS_RET_NOT_INIT);
+                return Err(RCL_RET_NOT_INIT);
             }
-            let exec_t = &mut *(internal.executor_ptr as *mut nros_executor_t);
+            let exec_t = &mut *(internal.executor_ptr as *mut rclc_executor_t);
             let exec = crate::executor::get_executor(&mut exec_t._opaque);
             match exec.service_client_handle(internal.arena_entry_index as usize) {
                 Some(handle) => Ok((
                     nros_rmw::ClientTrait::request_publisher_actual_qos(handle),
                     nros_rmw::ClientTrait::response_subscription_actual_qos(handle),
                 )),
-                None => Err(NROS_RET_NOT_INIT),
+                None => Err(RCL_RET_NOT_INIT),
             }
         }
-        _ => Err(NROS_RET_NOT_INIT),
+        _ => Err(RCL_RET_NOT_INIT),
     }
 }
 
@@ -2896,12 +2892,12 @@ unsafe fn client_granted_qos(
 ///
 /// `rcl_service_request_subscription_get_actual_qos`. **A policy the backend could not report reads back as
 /// `NROS_QOS_*_UNKNOWN`**, never as your request — see
-/// [`nros_publisher_get_actual_qos`](crate::publisher::nros_publisher_get_actual_qos).
+/// [`rclc_publisher_get_actual_qos`](crate::publisher::rclc_publisher_get_actual_qos).
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if either pointer is NULL
-/// * `NROS_RET_NOT_INIT` if the handle is in no usable state, or is
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` if either pointer is NULL
+/// * `RCL_RET_NOT_INIT` if the handle is in no usable state, or is
 ///   callback-mode and not yet added to an executor — there is no entity to
 ///   ask, which is a different answer from `UNKNOWN` ("there is an entity and
 ///   it cannot say")
@@ -2909,19 +2905,19 @@ unsafe fn client_granted_qos(
 /// # Safety
 /// Both pointers must be valid; `out_qos` must be writable.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_service_request_subscription_get_actual_qos(
-    handle: *const nros_service_t,
-    out_qos: *mut nros_qos_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_service_request_subscription_get_actual_qos(
+    handle: *const rcl_service_t,
+    out_qos: *mut rclc_qos_t,
+) -> rcl_ret_t {
     if handle.is_null() || out_qos.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     #[cfg(feature = "rmw-cffi")]
     {
         match service_granted_qos(&*handle) {
             Ok(pair) => {
-                *out_qos = nros_qos_t::from_qos_settings(pair.0);
-                NROS_RET_OK
+                *out_qos = rclc_qos_t::from_qos_settings(pair.0);
+                RCL_RET_OK
             }
             Err(ret) => ret,
         }
@@ -2929,7 +2925,7 @@ pub unsafe extern "C" fn nros_service_request_subscription_get_actual_qos(
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = handle;
-        NROS_RET_NOT_INIT
+        RCL_RET_NOT_INIT
     }
 }
 
@@ -2938,12 +2934,12 @@ pub unsafe extern "C" fn nros_service_request_subscription_get_actual_qos(
 ///
 /// `rcl_service_response_publisher_get_actual_qos`. **A policy the backend could not report reads back as
 /// `NROS_QOS_*_UNKNOWN`**, never as your request — see
-/// [`nros_publisher_get_actual_qos`](crate::publisher::nros_publisher_get_actual_qos).
+/// [`rclc_publisher_get_actual_qos`](crate::publisher::rclc_publisher_get_actual_qos).
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if either pointer is NULL
-/// * `NROS_RET_NOT_INIT` if the handle is in no usable state, or is
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` if either pointer is NULL
+/// * `RCL_RET_NOT_INIT` if the handle is in no usable state, or is
 ///   callback-mode and not yet added to an executor — there is no entity to
 ///   ask, which is a different answer from `UNKNOWN` ("there is an entity and
 ///   it cannot say")
@@ -2951,19 +2947,19 @@ pub unsafe extern "C" fn nros_service_request_subscription_get_actual_qos(
 /// # Safety
 /// Both pointers must be valid; `out_qos` must be writable.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_service_response_publisher_get_actual_qos(
-    handle: *const nros_service_t,
-    out_qos: *mut nros_qos_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_service_response_publisher_get_actual_qos(
+    handle: *const rcl_service_t,
+    out_qos: *mut rclc_qos_t,
+) -> rcl_ret_t {
     if handle.is_null() || out_qos.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     #[cfg(feature = "rmw-cffi")]
     {
         match service_granted_qos(&*handle) {
             Ok(pair) => {
-                *out_qos = nros_qos_t::from_qos_settings(pair.1);
-                NROS_RET_OK
+                *out_qos = rclc_qos_t::from_qos_settings(pair.1);
+                RCL_RET_OK
             }
             Err(ret) => ret,
         }
@@ -2971,7 +2967,7 @@ pub unsafe extern "C" fn nros_service_response_publisher_get_actual_qos(
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = handle;
-        NROS_RET_NOT_INIT
+        RCL_RET_NOT_INIT
     }
 }
 
@@ -2980,12 +2976,12 @@ pub unsafe extern "C" fn nros_service_response_publisher_get_actual_qos(
 ///
 /// `rcl_client_request_publisher_get_actual_qos`. **A policy the backend could not report reads back as
 /// `NROS_QOS_*_UNKNOWN`**, never as your request — see
-/// [`nros_publisher_get_actual_qos`](crate::publisher::nros_publisher_get_actual_qos).
+/// [`rclc_publisher_get_actual_qos`](crate::publisher::rclc_publisher_get_actual_qos).
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if either pointer is NULL
-/// * `NROS_RET_NOT_INIT` if the handle is in no usable state, or is
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` if either pointer is NULL
+/// * `RCL_RET_NOT_INIT` if the handle is in no usable state, or is
 ///   callback-mode and not yet added to an executor — there is no entity to
 ///   ask, which is a different answer from `UNKNOWN` ("there is an entity and
 ///   it cannot say")
@@ -2993,19 +2989,19 @@ pub unsafe extern "C" fn nros_service_response_publisher_get_actual_qos(
 /// # Safety
 /// Both pointers must be valid; `out_qos` must be writable.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_client_request_publisher_get_actual_qos(
-    handle: *const nros_client_t,
-    out_qos: *mut nros_qos_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_client_request_publisher_get_actual_qos(
+    handle: *const rcl_client_t,
+    out_qos: *mut rclc_qos_t,
+) -> rcl_ret_t {
     if handle.is_null() || out_qos.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     #[cfg(feature = "rmw-cffi")]
     {
         match client_granted_qos(&*handle) {
             Ok(pair) => {
-                *out_qos = nros_qos_t::from_qos_settings(pair.0);
-                NROS_RET_OK
+                *out_qos = rclc_qos_t::from_qos_settings(pair.0);
+                RCL_RET_OK
             }
             Err(ret) => ret,
         }
@@ -3013,7 +3009,7 @@ pub unsafe extern "C" fn nros_client_request_publisher_get_actual_qos(
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = handle;
-        NROS_RET_NOT_INIT
+        RCL_RET_NOT_INIT
     }
 }
 
@@ -3022,12 +3018,12 @@ pub unsafe extern "C" fn nros_client_request_publisher_get_actual_qos(
 ///
 /// `rcl_client_response_subscription_get_actual_qos`. **A policy the backend could not report reads back as
 /// `NROS_QOS_*_UNKNOWN`**, never as your request — see
-/// [`nros_publisher_get_actual_qos`](crate::publisher::nros_publisher_get_actual_qos).
+/// [`rclc_publisher_get_actual_qos`](crate::publisher::rclc_publisher_get_actual_qos).
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if either pointer is NULL
-/// * `NROS_RET_NOT_INIT` if the handle is in no usable state, or is
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` if either pointer is NULL
+/// * `RCL_RET_NOT_INIT` if the handle is in no usable state, or is
 ///   callback-mode and not yet added to an executor — there is no entity to
 ///   ask, which is a different answer from `UNKNOWN` ("there is an entity and
 ///   it cannot say")
@@ -3035,19 +3031,19 @@ pub unsafe extern "C" fn nros_client_request_publisher_get_actual_qos(
 /// # Safety
 /// Both pointers must be valid; `out_qos` must be writable.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_client_response_subscription_get_actual_qos(
-    handle: *const nros_client_t,
-    out_qos: *mut nros_qos_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_client_response_subscription_get_actual_qos(
+    handle: *const rcl_client_t,
+    out_qos: *mut rclc_qos_t,
+) -> rcl_ret_t {
     if handle.is_null() || out_qos.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     #[cfg(feature = "rmw-cffi")]
     {
         match client_granted_qos(&*handle) {
             Ok(pair) => {
-                *out_qos = nros_qos_t::from_qos_settings(pair.1);
-                NROS_RET_OK
+                *out_qos = rclc_qos_t::from_qos_settings(pair.1);
+                RCL_RET_OK
             }
             Err(ret) => ret,
         }
@@ -3055,151 +3051,151 @@ pub unsafe extern "C" fn nros_client_response_subscription_get_actual_qos(
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = handle;
-        NROS_RET_NOT_INIT
+        RCL_RET_NOT_INIT
     }
 }
 
 /// The `(request, response)` grant of a polled service — its inline server.
 #[cfg(feature = "rmw-cffi")]
 unsafe fn polling_service_granted_qos(
-    service: *mut nros_polling_service_t,
-) -> Result<(nros_rmw::QoSProfile, nros_rmw::QoSProfile), nros_ret_t> {
+    service: *mut rclc_polling_service_t,
+) -> Result<(nros_rmw::QoSProfile, nros_rmw::QoSProfile), rcl_ret_t> {
     match (*service).raw() {
         Some(raw) => Ok((
             raw.request_subscription_actual_qos(),
             raw.response_publisher_actual_qos(),
         )),
-        None => Err(NROS_RET_NOT_INIT),
+        None => Err(RCL_RET_NOT_INIT),
     }
 }
 
 /// The `(request, response)` grant of a polled client — its inline client.
 #[cfg(feature = "rmw-cffi")]
 unsafe fn polling_client_granted_qos(
-    client: *mut nros_polling_client_t,
-) -> Result<(nros_rmw::QoSProfile, nros_rmw::QoSProfile), nros_ret_t> {
+    client: *mut rclc_polling_client_t,
+) -> Result<(nros_rmw::QoSProfile, nros_rmw::QoSProfile), rcl_ret_t> {
     match (*client).raw() {
         Some(raw) => Ok((
             raw.request_publisher_actual_qos(),
             raw.response_subscription_actual_qos(),
         )),
-        None => Err(NROS_RET_NOT_INIT),
+        None => Err(RCL_RET_NOT_INIT),
     }
 }
 
-/// The QoS a polled entity's backend GRANTED: the polled twin of [`nros_service_request_subscription_get_actual_qos`], which carries the
-/// contract. Returns `NROS_RET_NOT_INIT` when the handle is not initialised.
+/// The QoS a polled entity's backend GRANTED: the polled twin of [`rclc_service_request_subscription_get_actual_qos`], which carries the
+/// contract. Returns `RCL_RET_NOT_INIT` when the handle is not initialised.
 ///
 /// # Safety
 /// Both pointers must be valid; `out_qos` must be writable.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_service_request_subscription_get_actual_qos(
-    handle: *mut nros_polling_service_t,
-    out_qos: *mut nros_qos_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_polling_service_request_subscription_get_actual_qos(
+    handle: *mut rclc_polling_service_t,
+    out_qos: *mut rclc_qos_t,
+) -> rcl_ret_t {
     if handle.is_null() || out_qos.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     #[cfg(feature = "rmw-cffi")]
     {
         match polling_service_granted_qos(handle) {
             Ok(pair) => {
-                *out_qos = nros_qos_t::from_qos_settings(pair.0);
-                NROS_RET_OK
+                *out_qos = rclc_qos_t::from_qos_settings(pair.0);
+                RCL_RET_OK
             }
             Err(rc) => rc,
         }
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
-        NROS_RET_NOT_INIT
+        RCL_RET_NOT_INIT
     }
 }
 
-/// The QoS a polled entity's backend GRANTED: the polled twin of [`nros_service_response_publisher_get_actual_qos`], which carries the
-/// contract. Returns `NROS_RET_NOT_INIT` when the handle is not initialised.
+/// The QoS a polled entity's backend GRANTED: the polled twin of [`rclc_service_response_publisher_get_actual_qos`], which carries the
+/// contract. Returns `RCL_RET_NOT_INIT` when the handle is not initialised.
 ///
 /// # Safety
 /// Both pointers must be valid; `out_qos` must be writable.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_service_response_publisher_get_actual_qos(
-    handle: *mut nros_polling_service_t,
-    out_qos: *mut nros_qos_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_polling_service_response_publisher_get_actual_qos(
+    handle: *mut rclc_polling_service_t,
+    out_qos: *mut rclc_qos_t,
+) -> rcl_ret_t {
     if handle.is_null() || out_qos.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     #[cfg(feature = "rmw-cffi")]
     {
         match polling_service_granted_qos(handle) {
             Ok(pair) => {
-                *out_qos = nros_qos_t::from_qos_settings(pair.1);
-                NROS_RET_OK
+                *out_qos = rclc_qos_t::from_qos_settings(pair.1);
+                RCL_RET_OK
             }
             Err(rc) => rc,
         }
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
-        NROS_RET_NOT_INIT
+        RCL_RET_NOT_INIT
     }
 }
 
-/// The QoS a polled entity's backend GRANTED: the polled twin of [`nros_client_request_publisher_get_actual_qos`], which carries the
-/// contract. Returns `NROS_RET_NOT_INIT` when the handle is not initialised.
+/// The QoS a polled entity's backend GRANTED: the polled twin of [`rclc_client_request_publisher_get_actual_qos`], which carries the
+/// contract. Returns `RCL_RET_NOT_INIT` when the handle is not initialised.
 ///
 /// # Safety
 /// Both pointers must be valid; `out_qos` must be writable.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_client_request_publisher_get_actual_qos(
-    handle: *mut nros_polling_client_t,
-    out_qos: *mut nros_qos_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_polling_client_request_publisher_get_actual_qos(
+    handle: *mut rclc_polling_client_t,
+    out_qos: *mut rclc_qos_t,
+) -> rcl_ret_t {
     if handle.is_null() || out_qos.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     #[cfg(feature = "rmw-cffi")]
     {
         match polling_client_granted_qos(handle) {
             Ok(pair) => {
-                *out_qos = nros_qos_t::from_qos_settings(pair.0);
-                NROS_RET_OK
+                *out_qos = rclc_qos_t::from_qos_settings(pair.0);
+                RCL_RET_OK
             }
             Err(rc) => rc,
         }
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
-        NROS_RET_NOT_INIT
+        RCL_RET_NOT_INIT
     }
 }
 
-/// The QoS a polled entity's backend GRANTED: the polled twin of [`nros_client_response_subscription_get_actual_qos`], which carries the
-/// contract. Returns `NROS_RET_NOT_INIT` when the handle is not initialised.
+/// The QoS a polled entity's backend GRANTED: the polled twin of [`rclc_client_response_subscription_get_actual_qos`], which carries the
+/// contract. Returns `RCL_RET_NOT_INIT` when the handle is not initialised.
 ///
 /// # Safety
 /// Both pointers must be valid; `out_qos` must be writable.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_polling_client_response_subscription_get_actual_qos(
-    handle: *mut nros_polling_client_t,
-    out_qos: *mut nros_qos_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_polling_client_response_subscription_get_actual_qos(
+    handle: *mut rclc_polling_client_t,
+    out_qos: *mut rclc_qos_t,
+) -> rcl_ret_t {
     if handle.is_null() || out_qos.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
     #[cfg(feature = "rmw-cffi")]
     {
         match polling_client_granted_qos(handle) {
             Ok(pair) => {
-                *out_qos = nros_qos_t::from_qos_settings(pair.1);
-                NROS_RET_OK
+                *out_qos = rclc_qos_t::from_qos_settings(pair.1);
+                RCL_RET_OK
             }
             Err(rc) => rc,
         }
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
-        NROS_RET_NOT_INIT
+        RCL_RET_NOT_INIT
     }
 }
 
@@ -3217,36 +3213,36 @@ mod validity_tests {
     use super::*;
 
     /// Every state a client can be USED in. `REGISTERED` is the ordinary
-    /// callback-mode path (`nros_executor_add_client`); a polled client is its
+    /// callback-mode path (`rclc_executor_add_client`); a polled client is its
     /// own type since phase-487 W2.
-    const LIVE_CLIENT_STATES: [nros_client_state_t; 2] = [
-        nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED,
-        nros_client_state_t::NROS_CLIENT_STATE_REGISTERED,
+    const LIVE_CLIENT_STATES: [rclc_client_state_t; 2] = [
+        rclc_client_state_t::RCLC_CLIENT_STATE_INITIALIZED,
+        rclc_client_state_t::RCLC_CLIENT_STATE_REGISTERED,
     ];
 
-    const DEAD_CLIENT_STATES: [nros_client_state_t; 2] = [
-        nros_client_state_t::NROS_CLIENT_STATE_UNINITIALIZED,
-        nros_client_state_t::NROS_CLIENT_STATE_SHUTDOWN,
+    const DEAD_CLIENT_STATES: [rclc_client_state_t; 2] = [
+        rclc_client_state_t::RCLC_CLIENT_STATE_UNINITIALIZED,
+        rclc_client_state_t::RCLC_CLIENT_STATE_SHUTDOWN,
     ];
 
-    const LIVE_SERVICE_STATES: [nros_service_state_t; 1] =
-        [nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED];
+    const LIVE_SERVICE_STATES: [rclc_service_state_t; 1] =
+        [rclc_service_state_t::RCLC_SERVICE_STATE_INITIALIZED];
 
-    const DEAD_SERVICE_STATES: [nros_service_state_t; 2] = [
-        nros_service_state_t::NROS_SERVICE_STATE_UNINITIALIZED,
-        nros_service_state_t::NROS_SERVICE_STATE_SHUTDOWN,
+    const DEAD_SERVICE_STATES: [rclc_service_state_t; 2] = [
+        rclc_service_state_t::RCLC_SERVICE_STATE_UNINITIALIZED,
+        rclc_service_state_t::RCLC_SERVICE_STATE_SHUTDOWN,
     ];
 
-    fn named_client(state: nros_client_state_t) -> nros_client_t {
-        let mut c = nros_client_t::default();
+    fn named_client(state: rclc_client_state_t) -> rcl_client_t {
+        let mut c = rcl_client_t::default();
         c.service_name[..10].copy_from_slice(b"/add_two_i");
         c.service_name_len = 10;
         c.state = state;
         c
     }
 
-    fn named_service(state: nros_service_state_t) -> nros_service_t {
-        let mut s = nros_service_t::default();
+    fn named_service(state: rclc_service_state_t) -> rcl_service_t {
+        let mut s = rcl_service_t::default();
         s.service_name[..10].copy_from_slice(b"/add_two_i");
         s.service_name_len = 10;
         s.state = state;

@@ -533,7 +533,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_capturing(
 /// Phase 189.M3.4 — register a **callback-style** subscription that also delivers
 /// the sample's wire **attachment**. The callback analogue of the poll-side
 /// `nros_cpp_subscription_take_serialized_with_attachment` (M3.4b), and the C++
-/// mirror of the C `nros_executor_add_subscription_raw_with_info`: same
+/// mirror of the C `rclc_executor_add_subscription_raw_with_info`: same
 /// arena dispatch + sched binding as `nros_cpp_subscription_register`, but routed
 /// through `add_arena_subscription_c_info_callback` so the trampoline receives
 /// `(data, len, attachment, attachment_len, ctx)`. Cross-RMW bridges read the
@@ -811,7 +811,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_take_serialized(
 
 /// Phase 252 / issue 0073 — E2E message-integrity status for the C++ receive
 /// path ([`nros_cpp_subscription_take_validated`]). The C++ analog of the
-/// Rust `IntegrityStatus` / `nros_integrity_status_t`.
+/// Rust `IntegrityStatus` / `rclc_integrity_status_t`.
 #[cfg(feature = "safety-e2e")]
 #[repr(C)]
 pub struct nros_cpp_integrity_status_t {

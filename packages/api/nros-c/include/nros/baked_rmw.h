@@ -11,15 +11,15 @@
  * C++ one. Until issue 1531 it had only C++ consumers
  * (`nros-cpp/include/nros/executor.hpp`, `node.hpp`), so a C image held its own
  * answer in its own preprocessor and never passed it: every C main calls the
- * three-argument `nros_support_init`, whose `rmw` is `NULL`.
+ * three-argument `rclc_support_init`, whose `rmw` is `NULL`.
  *
  * That was half of issue 1050. The same commit that added the baked rung made a
  * selector-less open with more than one registered backend a hard refusal
  * (`BackendResolution::Ambiguous`), so the C road got the new failure mode and
  * not the new capability. Issue 1530 is what that cost: a recorder
  * self-registering into every native C and C++ image made the registry
- * ambiguous, and every native C example failed `nros_support_init` with
- * `NROS_RET_INVALID_ARGUMENT` for eighteen days.
+ * ambiguous, and every native C example failed `rclc_support_init` with
+ * `RCL_RET_INVALID_ARGUMENT` for eighteen days.
  *
  * ## Why a macro, and why HERE
  *
@@ -27,12 +27,12 @@
  * every out-of-tree C app, and rewriting call sites would be fixing the sites
  * rather than the class. A function-like macro is the C analogue of what the C++
  * headers do at their own call site, and it only expands when followed by `(`,
- * so `&nros_support_init` is still the function's address.
+ * so `&rclc_support_init` is still the function's address.
  *
  * Placement is load-bearing in two directions:
  *
  *  * it must come AFTER `<nros/nros_generated.h>`, because that header
- *    DECLARES `nros_support_init(...)` and a function-like macro of the same
+ *    DECLARES `rclc_support_init(...)` and a function-like macro of the same
  *    name would eat the declaration. `<nros/types.h>` includes this file last
  *    for that reason;
  *  * it must be reached by EVERY consumer, not just those including
@@ -49,10 +49,10 @@
  * ## Precedence
  *
  * This is the BAKED rung of RFC-0045's precedence model A, and it stays below
- * the environment: `nros_support_init_rmw` hands the selector to
+ * the environment: `rclc_support_init_rmw` hands the selector to
  * `ExecutorConfig::try_resolve`, where `$NROS_RMW` still wins, alongside every
  * other field's precedence. An entry that wants to name a backend explicitly
- * calls `nros_support_init_rmw` itself, and nothing here overrides it.
+ * calls `rclc_support_init_rmw` itself, and nothing here overrides it.
  *
  * An image with no bake is unchanged: with `NROS_ENTRY_RMW` undefined these
  * macros do not exist, and a single-backend registry resolves namelessly as it
@@ -64,19 +64,19 @@
 
 #ifdef NROS_ENTRY_RMW
 
-/* The two nameless spellings forward the bake. `nros_support_init_rmw` is the
+/* The two nameless spellings forward the bake. `rclc_support_init_rmw` is the
  * one that takes a selector, so it is deliberately NOT wrapped — a caller
  * naming a backend has already answered the question this macro answers.
  *
  * An empty `NROS_ENTRY_RMW` is "unset", not a backend named "": the bake macro
  * expands to a string literal and an unresolved cmake variable produces `""`,
- * which `nros_support_init_rmw` already treats as no selector (issue 1050
+ * which `rclc_support_init_rmw` already treats as no selector (issue 1050
  * defect 3). So no `#if` on the VALUE is needed here, only on its presence. */
-#define nros_support_init(support, locator, domain_id)                                             \
-    nros_support_init_rmw((support), (locator), (domain_id), NULL, NROS_ENTRY_RMW)
+#define rclc_support_init(support, locator, domain_id)                                             \
+    rclc_support_init_rmw((support), (locator), (domain_id), NULL, NROS_ENTRY_RMW)
 
-#define nros_support_init_named(support, locator, domain_id, session_name)                         \
-    nros_support_init_rmw((support), (locator), (domain_id), (session_name), NROS_ENTRY_RMW)
+#define rclc_support_init_named(support, locator, domain_id, session_name)                         \
+    rclc_support_init_rmw((support), (locator), (domain_id), (session_name), NROS_ENTRY_RMW)
 
 #endif /* NROS_ENTRY_RMW */
 

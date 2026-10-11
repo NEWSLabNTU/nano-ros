@@ -5,7 +5,7 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
 # Same shape as examples/native/c/action-{client,server} deliberately: this is
-# the C caller `nros_polling_action_client_send_goal_raw` never had (issue 0454 /
+# the C caller `rclc_polling_action_client_send_goal_raw` never had (issue 0454 /
 # phase-354 W3), and it must be built by the SAME toolchain path a real C
 # consumer uses. A hand-rolled `gcc` line cannot: the opaque-size constants
 # (`GUARD_HANDLE_OPAQUE_U64S`, …) come from the generated config that only the

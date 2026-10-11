@@ -6,7 +6,7 @@
  * hand-kept UPPER BOUND, and it kept failing to be one: #167, #464, #954 and
  * issue 1568 each found a value below the build, the last as a live 36-byte
  * publisher overrun. It could not even be made right by hand — one file stood
- * for two architectures that measure differently, and `nros_subscription_t`
+ * for two architectures that measure differently, and `rcl_subscription_t`
  * carries a field after its opaque array, so any value but the build's own
  * moves that field in C relative to the Rust that writes it.
  *
@@ -65,7 +65,7 @@
 #define EXECUTOR_OPAQUE_U64S 12288
 #define GUARD_HANDLE_OPAQUE_U64S 3
 #define NROS_LIFECYCLE_CTX_OPAQUE_U64S 8
-/* phase-417 stage 3 — width of `nros_executor_t._handle_entities`, the entity
+/* phase-417 stage 3 — width of `rclc_executor_t._handle_entities`, the entity
  * pointer per handle slot that `rclc_executor_trigger_one` compares its `obj`
  * against. The per-build header states NROS_EXECUTOR_MAX_CBS; this snapshot
  * states the CEILING instead, 64, which is the most handles the executor can
@@ -125,8 +125,8 @@
  * carried it twice. Identical redefinitions are legal C and GCC keeps the LAST,
  * while both gates read the FIRST — a bump that edited one copy would pass them
  * and compile against the other. Both gates now refuse a second definition. */
-#define NROS_CODEGEN_VERSION 12
-#define NROS_CODEGEN_VERSION_MIN 12
+#define NROS_CODEGEN_VERSION 13
+#define NROS_CODEGEN_VERSION_MIN 13
 
 /* Issue 0464 — this file is a hand-maintained SNAPSHOT, so the pairs below can
  * drift against each other, and one of them did: #167 bumped

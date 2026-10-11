@@ -30,7 +30,7 @@ alloc = ["nros-node/alloc"]
 # an Executor + Nodes + bridges from the manifest. Pulls `toml` +
 # `serde`; requires `std` because both crates do.
 config = ["dep:toml", "dep:serde", "dep:nros-rmw"]
-# Phase 128.F.5 — C/C++ bridge ABI. Emits `nros_init_multi`,
+# Phase 128.F.5 — C/C++ bridge ABI. Emits `rclc_init_multi`,
 # `nros_pubsub_bridge_*` symbols matching `<nros/bridge.h>`. Requires
 # `alloc` (every entity handle is boxed).
 cffi = ["dep:nros-rmw-cffi"]

@@ -47,7 +47,7 @@ root nor the entry is yours to write.
 
 A C Node pkg is a **typed component** (RFC-0043): no `main()`. It defines a
 state struct + a `configure(node, executor, self)` function and exports the
-C-ABI factory/configure seam via `NROS_C_COMPONENT(StateT, configure_fn)` — the
+C-ABI factory/configure seam via `RCLC_C_COMPONENT(StateT, configure_fn)` — the
 typed Entry creates the node and runs `configure` on the real executor.
 
 ```cmake
@@ -80,21 +80,21 @@ static void on_tick(void* ctx) {
     self->count++;
 }
 
-static nros_ret_t talker_configure(const nros_cpp_node_t* node, void* executor,
+static rcl_ret_t talker_configure(const nros_cpp_node_t* node, void* executor,
                                    c_talker_pkg_t* self) {
     self->count = 0;
     int32_t rc = nros_cpp_publisher_create(node, "/chatter",
-        "std_msgs::msg::dds_::Int32_", "", nros_c_qos_default(), self->pub);
+        "std_msgs::msg::dds_::Int32_", "", rclc_c_qos_default(), self->pub);
     if (rc != 0) return rc;
     size_t timer;
     return nros_cpp_timer_create(executor, /*period_ms=*/1000, on_tick, self, &timer);
 }
 
-NROS_C_COMPONENT(c_talker_pkg_t, talker_configure)
+RCLC_C_COMPONENT(c_talker_pkg_t, talker_configure)
 ```
 
 `nano_ros_auto_add_library` injects `NROS_PKG_NAME` (language inferred from the sources), so
-`NROS_C_COMPONENT` exports the `__nros_c_component_<pkg>_{create,configure}`
+`RCLC_C_COMPONENT` exports the `__nros_c_component_<pkg>_{create,configure}`
 seam the typed Entry calls — interoperable with C++ `configure(Node&)` and Rust
 `nros::node!` components in one launch graph.
 

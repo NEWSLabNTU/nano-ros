@@ -4,15 +4,15 @@
  * @brief Service server API.
  *
  * Create a service server with rclc_service_init_default() (or
- * nros_service_init_with_qos()) and add it to an executor with
- * nros_executor_add_service_raw(), which takes the `nros_service_callback_t`.
+ * rclc_service_init_with_qos()) and add it to an executor with
+ * rclc_executor_add_service_raw(), which takes the `rclc_service_callback_t`.
  * The executor arena owns the server and the callback, delivers requests and
  * sends responses for you.
  *
  * For manual polling with no executor, use the separate type
- * ::nros_polling_service_t: create it with nros_polling_service_init(), take
- * requests with nros_polling_service_take_request_raw(), and send responses
- * with nros_polling_service_send_response_raw(). The two types are separate
+ * ::rclc_polling_service_t: create it with rclc_polling_service_init(), take
+ * requests with rclc_polling_service_take_request_raw(), and send responses
+ * with rclc_polling_service_send_response_raw(). The two types are separate
  * since phase-487: a dispatched server's storage is in the executor arena, a
  * polled one's is in the struct.
  *
@@ -48,20 +48,20 @@
  * call sites need that value, so it is computed in ONE place rather than
  * written out twice (issue 0160's hand-mirror class, at header scale).
  *
- * ::NROS_QOS_SERVICES is our mirror of `rmw_qos_profile_services_default`, so
+ * ::RCLC_QOS_SERVICES is our mirror of `rmw_qos_profile_services_default`, so
  * the copy starts there. The reliable sibling `rclc_service_init_default`
  * reaches its profile by passing a NULL `qos`, which resolves to
- * ::NROS_QOS_DEFAULT — field-identical to ::NROS_QOS_SERVICES today (both
+ * ::RCLC_QOS_DEFAULT — field-identical to ::RCLC_QOS_SERVICES today (both
  * RELIABLE / VOLATILE / KEEP_LAST(10)), so the pair differs only in
  * reliability, exactly as rclc's pair does.
  *
- * Returns by value: a `nros_qos_t` is a plain scalar struct, and the caller
+ * Returns by value: a `rclc_qos_t` is a plain scalar struct, and the caller
  * needs a mutable copy to take the address of. Nothing here is static, so the
  * header adds no writable data.
  */
-static inline struct nros_qos_t nros_qos_services_best_effort(void) {
-    struct nros_qos_t qos = NROS_QOS_SERVICES;
-    qos.reliability = NROS_QOS_RELIABILITY_BEST_EFFORT;
+static inline struct rclc_qos_t rclc_qos_services_best_effort(void) {
+    struct rclc_qos_t qos = RCLC_QOS_SERVICES;
+    qos.reliability = RCLC_QOS_RELIABILITY_BEST_EFFORT;
     return qos;
 }
 
@@ -74,7 +74,7 @@ static inline struct nros_qos_t nros_qos_services_best_effort(void) {
  * value" — true, and not a reason for the name rclc ships to be missing.
  *
  * Takes no callback, at rclc's arity: the handler is supplied at registration
- * by nros_executor_add_service_raw(), where rclc supplies it
+ * by rclc_executor_add_service_raw(), where rclc supplies it
  * (`rclc_executor_add_service`). Same split `rclc_service_init_default`
  * already makes.
  *
@@ -84,14 +84,14 @@ static inline struct nros_qos_t nros_qos_services_best_effort(void) {
  * @param[in]  node         An initialised node.
  * @param[in]  type_info    Generated service type descriptor.
  * @param[in]  service_name Service name, null-terminated.
- * @return Whatever nros_service_init_with_qos() returns.
+ * @return Whatever rclc_service_init_with_qos() returns.
  */
-static inline nros_ret_t rclc_service_init_best_effort(struct nros_service_t* service,
-                                                       const struct nros_node_t* node,
-                                                       const struct nros_service_type_t* type_info,
-                                                       const char* service_name) {
-    struct nros_qos_t qos = nros_qos_services_best_effort();
-    return nros_service_init_with_qos(service, node, type_info, service_name, &qos);
+static inline rcl_ret_t rclc_service_init_best_effort(struct rcl_service_t* service,
+                                                      const struct rcl_node_t* node,
+                                                      const struct rclc_service_type_t* type_info,
+                                                      const char* service_name) {
+    struct rclc_qos_t qos = rclc_qos_services_best_effort();
+    return rclc_service_init_with_qos(service, node, type_info, service_name, &qos);
 }
 
 #endif /* NROS_SERVICE_H */

@@ -16,7 +16,7 @@
  *
  *  2. `nros_rmw_xrce_init_custom_transport(framing)` —
  *     drains whatever the runtime registered via
- *     `nros_set_custom_transport`. Requires
+ *     `rclc_set_custom_transport`. Requires
  *     `nros_rmw_take_custom_transport()` from `nros-rmw-cffi`; that
  *     symbol is not yet exported, so this path returns
  *     `NROS_RMW_RET_UNSUPPORTED`. See docs/reference/xrce-known-limitations.md.

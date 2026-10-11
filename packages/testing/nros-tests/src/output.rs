@@ -106,7 +106,7 @@ pub const INT32_LISTENER_LOG_PREFIX: &str = "Received:";
 ///
 /// Its own constant because it is the only marker in the tree that proves an
 /// eager `rclc_publisher_init_default` succeeded on a node from
-/// `nros_executor_node_init`. The demo prints it only after the `NROS_RET_OK`;
+/// `rclc_executor_node_init`. The demo prints it only after the `RCL_RET_OK`;
 /// the failing shape prints [`CUSTOM_PLATFORM_PUBLISHER_FAILED_PREFIX`]
 /// instead and used to exit 0 anyway.
 pub const CUSTOM_PLATFORM_PUBLISHER_CREATED_PREFIX: &str = "Publisher created:";
@@ -453,18 +453,18 @@ pub fn diagsink_status_line(name: &str, hardware_id: &str, level: u8) -> String 
     format!("{CONTRACT_MONITOR_DIAG_PREFIX}{name} hw={hardware_id} level={level}")
 }
 
-/// The C workspace talker's per-tick `NROS_LOG_INFO` line marker
+/// The C workspace talker's per-tick `RCLC_LOG_INFO` line marker
 /// (`"c_talker logging seq=N"`); the MIXED workspace reuses the C talker,
 /// so its logging cell greps the same marker.
 pub const WS_C_LOGGING_MARKER: &str = "c_talker logging";
 
-/// The C++ workspace talker's per-tick `NROS_LOG_INFO` line marker
+/// The C++ workspace talker's per-tick `RCLC_LOG_INFO` line marker
 /// (`"cpp_talker logging seq=N"`).
 pub const WS_CPP_LOGGING_MARKER: &str = "cpp_talker logging";
 
 /// phase-479 W6 (RFC-0102) — the record every `logging-smoke-*` fixture emits
 /// through a CHILD of its `smoke` logger, as `<name>: <message>`. The dotted
-/// name is the point: it proves `create_child` / `nros_logger_get_child` named
+/// name is the point: it proves `create_child` / `rclc_logger_get_child` named
 /// the child `<parent>.<suffix>` and that the name reached the platform writer.
 /// Deliberately without the `[INFO] ` prefix — Zephyr's writer hands the same
 /// `<name>: <message>` text to `LOG_INF`, which prints its own `<inf>` tag.

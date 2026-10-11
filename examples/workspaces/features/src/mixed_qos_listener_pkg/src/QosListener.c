@@ -5,7 +5,7 @@
 ///
 /// `qos_listener_configure` builds the SAME non-default `nros_cpp_qos_t`
 /// (RELIABLE + TRANSIENT_LOCAL + KEEP_LAST(1)) the talker declares and passes it
-/// by value to `nros_cpp_subscription_register` — instead of `nros_c_qos_default()`.
+/// by value to `nros_cpp_subscription_register` — instead of `rclc_c_qos_default()`.
 /// QoS is a per-entity contract set in code; matching the profile is what lets the
 /// QoS-tagged endpoints connect. The callback decodes the CDR Int32 and prints
 /// `Received: N` so an external test can watch the QoS-matched delivery path
@@ -25,10 +25,10 @@ typedef struct {
 /// Byte-identical to the talker's `qos_profile()` — both endpoints must declare
 /// the same RELIABLE + TRANSIENT_LOCAL + KEEP_LAST(1) contract to connect.
 static nros_cpp_qos_t qos_profile(void) {
-    nros_cpp_qos_t q = nros_c_qos_default();
-    q.reliability = NROS_C_QOS_RELIABLE;
-    q.durability = NROS_C_QOS_TRANSIENT_LOCAL;
-    q.history = NROS_C_QOS_KEEP_LAST;
+    nros_cpp_qos_t q = rclc_c_qos_default();
+    q.reliability = RCLC_C_QOS_RELIABLE;
+    q.durability = RCLC_C_QOS_TRANSIENT_LOCAL;
+    q.history = RCLC_C_QOS_KEEP_LAST;
     q.depth = 1;
     return q;
 }
@@ -50,8 +50,8 @@ static void on_raw(const uint8_t* data, size_t len, void* ctx) {
     self->recv++;
 }
 
-static nros_ret_t qos_listener_configure(const nros_cpp_node_t* node, void* executor,
-                                         qos_listener_t* self) {
+static rcl_ret_t qos_listener_configure(const nros_cpp_node_t* node, void* executor,
+                                        qos_listener_t* self) {
     (void)executor; /* node-scoped sub; executor unused */
     /* Line-buffer stdout so each `Received:` flushes immediately when piped (an
      * external test reads the output live; glibc block-buffers a pipe otherwise). */
@@ -68,4 +68,4 @@ static nros_ret_t qos_listener_configure(const nros_cpp_node_t* node, void* exec
     return rc;
 }
 
-NROS_C_COMPONENT(qos_listener_t, qos_listener_configure)
+RCLC_C_COMPONENT(qos_listener_t, qos_listener_configure)

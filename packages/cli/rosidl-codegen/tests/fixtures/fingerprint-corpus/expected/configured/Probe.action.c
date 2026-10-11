@@ -14,12 +14,12 @@
 #include <string.h>
 
 // Type support structure
-static const struct nros_action_type_t fingerprint_corpus_action_probe_type_support = {
+static const struct rclc_action_type_t fingerprint_corpus_action_probe_type_support = {
     .type_name = "fingerprint-corpus::action::dds_::Probe_",
     .type_hash = "h",
 };
 
-const struct nros_action_type_t* fingerprint_corpus_action_probe_get_type_support(void) {
+const struct rclc_action_type_t* fingerprint_corpus_action_probe_get_type_support(void) {
     return &fingerprint_corpus_action_probe_type_support;
 }
 
@@ -48,17 +48,17 @@ int32_t fingerprint_corpus_action_probe_goal_serialize(const fingerprint_corpus_
     const uint8_t* end = buffer + buffer_size;
 
     // phase-303 W4 (#0267) — edition-appropriate encapsulation header + DHEADER.
-    if (nros_cdr_write_encaps_header(&ptr, end) < 0) return -1;
+    if (rclc_cdr_write_encaps_header(&ptr, end) < 0) return -1;
     const uint8_t* origin = ptr; // CDR alignment origin (after header)
-    int64_t __dh = nros_cdr_begin_dheader(&ptr, end, origin);
+    int64_t __dh = rclc_cdr_begin_dheader(&ptr, end, origin);
     if (__dh < -1) return -1;
-    if (nros_cdr_write_u32(&ptr, end, origin, msg->waypoints.size) < 0) return -1;
+    if (rclc_cdr_write_u32(&ptr, end, origin, msg->waypoints.size) < 0) return -1;
     for (size_t i = 0; i < msg->waypoints.size; ++i) {
-        if (nros_cdr_write_i64(&ptr, end, origin, msg->waypoints.data[i]) < 0) return -1;
+        if (rclc_cdr_write_i64(&ptr, end, origin, msg->waypoints.data[i]) < 0) return -1;
     }
-    if (nros_cdr_write_string(&ptr, end, origin, msg->name) < 0) return -1;
+    if (rclc_cdr_write_string(&ptr, end, origin, msg->name) < 0) return -1;
 
-    if (nros_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
+    if (rclc_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
     if (serialized_size != NULL) {
         *serialized_size = (size_t)(ptr - buffer);
     }
@@ -75,22 +75,22 @@ int32_t fingerprint_corpus_action_probe_goal_deserialize(fingerprint_corpus_acti
     if (ptr + 4 > end) return -1;
     ptr += 4;
     const uint8_t* origin = ptr; // CDR alignment origin (after header)
-    int64_t __dh = nros_cdr_begin_dheader_read(&ptr, end, origin);
+    int64_t __dh = rclc_cdr_begin_dheader_read(&ptr, end, origin);
     if (__dh < -1) return -1;
 
     fingerprint_corpus_action_probe_goal_init(msg);
     {
         uint32_t len;
-        if (nros_cdr_read_u32(&ptr, end, origin, &len) < 0) return -1;
+        if (rclc_cdr_read_u32(&ptr, end, origin, &len) < 0) return -1;
         msg->waypoints.size = len;
         if (len > 8) return -1;
         for (size_t i = 0; i < len; ++i) {
-            if (nros_cdr_read_i64(&ptr, end, origin, &msg->waypoints.data[i]) < 0) return -1;
+            if (rclc_cdr_read_i64(&ptr, end, origin, &msg->waypoints.data[i]) < 0) return -1;
         }
     }
-    if (nros_cdr_read_string(&ptr, end, origin, msg->name, sizeof(msg->name)) < 0) return -1;
+    if (rclc_cdr_read_string(&ptr, end, origin, msg->name, sizeof(msg->name)) < 0) return -1;
 
-    if (nros_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;
+    if (rclc_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;
     return 0;
 }
 
@@ -119,14 +119,14 @@ int32_t fingerprint_corpus_action_probe_result_serialize(const fingerprint_corpu
     const uint8_t* end = buffer + buffer_size;
 
     // phase-303 W4 (#0267) — edition-appropriate encapsulation header + DHEADER.
-    if (nros_cdr_write_encaps_header(&ptr, end) < 0) return -1;
+    if (rclc_cdr_write_encaps_header(&ptr, end) < 0) return -1;
     const uint8_t* origin = ptr; // CDR alignment origin (after header)
-    int64_t __dh = nros_cdr_begin_dheader(&ptr, end, origin);
+    int64_t __dh = rclc_cdr_begin_dheader(&ptr, end, origin);
     if (__dh < -1) return -1;
-    if (nros_cdr_write_i64(&ptr, end, origin, msg->total) < 0) return -1;
-    if (nros_cdr_write_string(&ptr, end, origin, msg->report) < 0) return -1;
+    if (rclc_cdr_write_i64(&ptr, end, origin, msg->total) < 0) return -1;
+    if (rclc_cdr_write_string(&ptr, end, origin, msg->report) < 0) return -1;
 
-    if (nros_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
+    if (rclc_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
     if (serialized_size != NULL) {
         *serialized_size = (size_t)(ptr - buffer);
     }
@@ -143,14 +143,14 @@ int32_t fingerprint_corpus_action_probe_result_deserialize(fingerprint_corpus_ac
     if (ptr + 4 > end) return -1;
     ptr += 4;
     const uint8_t* origin = ptr; // CDR alignment origin (after header)
-    int64_t __dh = nros_cdr_begin_dheader_read(&ptr, end, origin);
+    int64_t __dh = rclc_cdr_begin_dheader_read(&ptr, end, origin);
     if (__dh < -1) return -1;
 
     fingerprint_corpus_action_probe_result_init(msg);
-    if (nros_cdr_read_i64(&ptr, end, origin, &msg->total) < 0) return -1;
-    if (nros_cdr_read_string(&ptr, end, origin, msg->report, sizeof(msg->report)) < 0) return -1;
+    if (rclc_cdr_read_i64(&ptr, end, origin, &msg->total) < 0) return -1;
+    if (rclc_cdr_read_string(&ptr, end, origin, msg->report, sizeof(msg->report)) < 0) return -1;
 
-    if (nros_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;
+    if (rclc_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;
     return 0;
 }
 
@@ -179,14 +179,14 @@ int32_t fingerprint_corpus_action_probe_feedback_serialize(const fingerprint_cor
     const uint8_t* end = buffer + buffer_size;
 
     // phase-303 W4 (#0267) — edition-appropriate encapsulation header + DHEADER.
-    if (nros_cdr_write_encaps_header(&ptr, end) < 0) return -1;
+    if (rclc_cdr_write_encaps_header(&ptr, end) < 0) return -1;
     const uint8_t* origin = ptr; // CDR alignment origin (after header)
-    int64_t __dh = nros_cdr_begin_dheader(&ptr, end, origin);
+    int64_t __dh = rclc_cdr_begin_dheader(&ptr, end, origin);
     if (__dh < -1) return -1;
-    if (nros_cdr_write_i64(&ptr, end, origin, msg->done) < 0) return -1;
-    if (nros_cdr_write_string(&ptr, end, origin, msg->stage) < 0) return -1;
+    if (rclc_cdr_write_i64(&ptr, end, origin, msg->done) < 0) return -1;
+    if (rclc_cdr_write_string(&ptr, end, origin, msg->stage) < 0) return -1;
 
-    if (nros_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
+    if (rclc_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
     if (serialized_size != NULL) {
         *serialized_size = (size_t)(ptr - buffer);
     }
@@ -203,14 +203,14 @@ int32_t fingerprint_corpus_action_probe_feedback_deserialize(fingerprint_corpus_
     if (ptr + 4 > end) return -1;
     ptr += 4;
     const uint8_t* origin = ptr; // CDR alignment origin (after header)
-    int64_t __dh = nros_cdr_begin_dheader_read(&ptr, end, origin);
+    int64_t __dh = rclc_cdr_begin_dheader_read(&ptr, end, origin);
     if (__dh < -1) return -1;
 
     fingerprint_corpus_action_probe_feedback_init(msg);
-    if (nros_cdr_read_i64(&ptr, end, origin, &msg->done) < 0) return -1;
-    if (nros_cdr_read_string(&ptr, end, origin, msg->stage, sizeof(msg->stage)) < 0) return -1;
+    if (rclc_cdr_read_i64(&ptr, end, origin, &msg->done) < 0) return -1;
+    if (rclc_cdr_read_string(&ptr, end, origin, msg->stage, sizeof(msg->stage)) < 0) return -1;
 
-    if (nros_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;
+    if (rclc_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;
     return 0;
 }
 
@@ -235,8 +235,8 @@ int32_t fingerprint_corpus_action_probe_goal_deserialize_view(fingerprint_corpus
     (void)origin;
 
     memset(out, 0, sizeof(*out));
-    if (nros_cdr_borrow_le_slice_i64(&ptr, end, origin, &out->waypoints) < 0) return -1;
-    if (nros_cdr_read_string(&ptr, end, origin, out->name, sizeof(out->name)) < 0) return -1;
+    if (rclc_cdr_borrow_le_slice_i64(&ptr, end, origin, &out->waypoints) < 0) return -1;
+    if (rclc_cdr_read_string(&ptr, end, origin, out->name, sizeof(out->name)) < 0) return -1;
     return 0;
 }
 
@@ -261,8 +261,8 @@ int32_t fingerprint_corpus_action_probe_result_deserialize_view(fingerprint_corp
     (void)origin;
 
     memset(out, 0, sizeof(*out));
-    if (nros_cdr_read_i64(&ptr, end, origin, &out->total) < 0) return -1;
-    if (nros_cdr_borrow_string(&ptr, end, origin, &out->report) < 0) return -1;
+    if (rclc_cdr_read_i64(&ptr, end, origin, &out->total) < 0) return -1;
+    if (rclc_cdr_borrow_string(&ptr, end, origin, &out->report) < 0) return -1;
     return 0;
 }
 
@@ -287,7 +287,7 @@ int32_t fingerprint_corpus_action_probe_feedback_deserialize_view(fingerprint_co
     (void)origin;
 
     memset(out, 0, sizeof(*out));
-    if (nros_cdr_read_i64(&ptr, end, origin, &out->done) < 0) return -1;
-    if (nros_cdr_borrow_string(&ptr, end, origin, &out->stage) < 0) return -1;
+    if (rclc_cdr_read_i64(&ptr, end, origin, &out->done) < 0) return -1;
+    if (rclc_cdr_borrow_string(&ptr, end, origin, &out->stage) < 0) return -1;
     return 0;
 }

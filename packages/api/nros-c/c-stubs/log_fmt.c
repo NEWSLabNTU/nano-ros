@@ -1,10 +1,10 @@
 /*
- * Phase 88.12 — C shim for `nros_log_emit_fmt`.
+ * Phase 88.12 — C shim for `rclc_log_emit_fmt`.
  *
  * Rust's `c_variadic` feature is still unstable on stable, so the
  * printf-style entry point is implemented in C: it `vsnprintf`s into
  * a 256-byte stack buffer and forwards to the Rust-side
- * `nros_log_emit` (defined in `src/log.rs`).
+ * `rclc_log_emit` (defined in `src/log.rs`).
  *
  * Compiled by nros-c's `build.rs` via cc-rs; linked into the
  * nros-c staticlib alongside the Rust object files.
@@ -16,8 +16,8 @@
 #include <stddef.h>
 #include <stdio.h>
 
-void nros_log_emit_fmt(nros_logger_t logger,
-                       nros_log_severity_t severity,
+void rclc_log_emit_fmt(rclc_logger_t logger,
+                       rcl_log_severity_t severity,
                        const char *fmt,
                        ...) {
     if (logger == NULL || fmt == NULL) {
@@ -45,5 +45,5 @@ void nros_log_emit_fmt(nros_logger_t logger,
             buf[n - 1] = '.';
         }
     }
-    nros_log_emit(logger, severity, buf, n);
+    rclc_log_emit(logger, severity, buf, n);
 }

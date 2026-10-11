@@ -3,7 +3,7 @@
  *
  * Two coupled facts, and the order between them is the content of the issue.
  *
- *   1. `nros_executor_init` reaches `Executor::from_session_ptr_in` — the
+ *   1. `rclc_executor_init` reaches `Executor::from_session_ptr_in` — the
  *      borrowed-session constructor — which installed nothing, so
  *      `has_async_wake` was false for the entire life of EVERY C executor, on
  *      EVERY backend. The three Rust `Executor::open*` paths call
@@ -17,7 +17,7 @@
  *      own SAFETY comment said it must. The context is
  *      `Arc::as_ptr(&self.wake_ctx)`, executor-owned; `rclc_executor_fini`
  *      drops the executor and then ZERO-FILLS `_opaque`, while the borrowed
- *      session lives on in `nros_support_t` until `rclc_support_fini`. So
+ *      session lives on in `rclc_support_t` until `rclc_support_fini`. So
  *      installing without clearing converts a missed optimisation into a
  *      use-after-free with an arbitrarily wide window.
  *
@@ -44,7 +44,7 @@
 #include <stdlib.h>
 #include <time.h>
 
-/* The registration hook every C image owes `nros_support_init` — there is no
+/* The registration hook every C image owes `rclc_support_init` — there is no
  * weak default on the C path. */
 void nros_app_register_backends(void);
 void nros_app_register_backends(void) {
@@ -69,7 +69,7 @@ static int s_failures = 0;
 
 #define CHECK_RET(expr, expected, msg)                                                             \
     do {                                                                                           \
-        nros_ret_t _r = (expr);                                                                    \
+        rcl_ret_t _r = (expr);                                                                     \
         if (_r != (expected)) {                                                                    \
             fprintf(stderr, "FAIL: %s -- got %d, expected %d (%s:%d)\n", (msg), (int)_r,           \
                     (int)(expected), __FILE__, __LINE__);                                          \
@@ -98,7 +98,7 @@ static void sleep_ms(unsigned ms) {
  * datagram arrival, or from an ISR. This thread is that path: it waits until
  * the executor is already parked, then invokes the callback the backend was
  * handed. Nothing here touches the executor directly — that is the whole
- * point, since `nros_executor_cancel` and `Executor::wake` reach the
+ * point, since `rclc_executor_cancel` and `Executor::wake` reach the
  * `was_woken` arm without any backend involvement and are NOT what 1385 is
  * about. */
 
@@ -122,23 +122,23 @@ int main(void) {
           "the backend holds no wake callback before any executor exists -- if it did, this "
           "probe would be reading somebody else's install");
 
-    struct nros_support_t support = nros_support_get_zero_initialized();
-    CHECK_RET(nros_support_init_rmw(&support, "stub://none", 44, "executor_backend_wake",
+    struct rclc_support_t support = rclc_support_get_zero_initialized();
+    CHECK_RET(rclc_support_init_rmw(&support, "stub://none", 44, "executor_backend_wake",
                                     NROS_STUB_RMW_NAME),
-              NROS_RET_OK, "support opened on the stub backend");
+              RCL_RET_OK, "support opened on the stub backend");
 
     /* Opening a SESSION must not install anything: the wake callback belongs to
      * an executor's wake state, and no executor exists yet. */
     CHECK(!nros_stub_rmw_wake_cb_installed(),
           "opening the session alone installs no callback -- the context is executor-owned");
 
-    struct nros_executor_t executor = rclc_executor_get_zero_initialized_executor();
-    CHECK_RET(nros_executor_init(&executor, &support, 8), NROS_RET_OK, "executor initialised");
+    struct rclc_executor_t executor = rclc_executor_get_zero_initialized_executor();
+    CHECK_RET(rclc_executor_init(&executor, &support, 8), RCL_RET_OK, "executor initialised");
 
     /* ---- 1. The install ------------------------------------------------- */
 
     CHECK(nros_stub_rmw_wake_cb_installed(),
-          "nros_executor_init INSTALLED the runtime wake callback on the backend -- this is the "
+          "rclc_executor_init INSTALLED the runtime wake callback on the backend -- this is the "
           "defect: the C path built its executor through from_session_ptr_in and installed "
           "nothing, so every C executor on every backend waited out its full budget");
 
@@ -232,7 +232,7 @@ int main(void) {
      *
      * This is the half that must land FIRST. Observed, not asserted in prose:
      * the backend's own slot, read back. */
-    CHECK_RET(rclc_executor_fini(&executor), NROS_RET_OK, "executor finalised");
+    CHECK_RET(rclc_executor_fini(&executor), RCL_RET_OK, "executor finalised");
 
     if (nros_stub_rmw_wake_cb_installed()) {
         fprintf(stderr,
@@ -255,12 +255,12 @@ int main(void) {
      * the same support must get its own install. A teardown that latched the
      * backend off for good would pass part 3 and silently cost every later
      * executor its wake. */
-    struct nros_executor_t second = rclc_executor_get_zero_initialized_executor();
-    CHECK_RET(nros_executor_init(&second, &support, 8), NROS_RET_OK, "second executor initialised");
+    struct rclc_executor_t second = rclc_executor_get_zero_initialized_executor();
+    CHECK_RET(rclc_executor_init(&second, &support, 8), RCL_RET_OK, "second executor initialised");
     CHECK(nros_stub_rmw_wake_cb_installed(),
           "a second executor over the same session installs its OWN callback -- the clear must "
           "not latch the backend off");
-    CHECK_RET(rclc_executor_fini(&second), NROS_RET_OK, "second executor finalised");
+    CHECK_RET(rclc_executor_fini(&second), RCL_RET_OK, "second executor finalised");
     CHECK(!nros_stub_rmw_wake_cb_installed(), "and hands it back again");
 
     (void)rclc_support_fini(&support);

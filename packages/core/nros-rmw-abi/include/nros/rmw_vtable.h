@@ -649,7 +649,7 @@ typedef struct nros_rmw_vtable_t {
      *  `0`, or a negative code — the pre-W3.d shape that the rest of
      *  this same block goes on to explain was retired. Corrected
      *  2026-09-11, phase-428 W12.) The runtime exposes this to user
-     *  code as `nros_client_server_available()` /
+     *  code as `rclc_client_server_available()` /
      *  `Client<S>::server_available()` — clients use it to gate the
      *  first request so a startup-ordering race doesn't surface as
      *  a request-side timeout.
@@ -1543,7 +1543,7 @@ size_t nros_rmw_cffi_registered_names(const char **buf, size_t cap);
  *
  *  HOSTED (Rust + C/C++ on a hosted loader): the macro expands to an
  *  `.init_array` constructor (`__attribute__((constructor))`) that the
- *  loader fires before `main()` — hence before `nros_support_init` /
+ *  loader fires before `main()` — hence before `rclc_support_init` /
  *  `rclcpp::init` — calling `REGISTER_FN`. The `--whole-archive` link
  *  keeps this object's `.init_array` slot. `nros_rmw_cffi_register_named`
  *  is idempotent (same-name overwrite), so re-registration is harmless.

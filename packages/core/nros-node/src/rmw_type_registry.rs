@@ -65,7 +65,7 @@
 //! A registrar failure flattens onto [`crate::NodeError::Transport`] with
 //! [`nros_rmw::TransportError::PublisherCreationFailed`]. The choice not
 //! to add a dedicated `NodeError` variant is deliberate: the C/C++ FFI
-//! shim widens to a single `nros_ret_t`, and the failure mode
+//! shim widens to a single `rcl_ret_t`, and the failure mode
 //! (out-of-capacity registry, descriptor build error, etc.) is a "topic
 //! could not be created" from the caller's perspective.
 

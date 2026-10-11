@@ -9,7 +9,7 @@ link root is Rust (`src/main.rs` boots the board and calls `nros_app_main()`), a
 files are byte-identical to the talker's; this leaf differs in `package.xml` and
 `src/service_client.c` only. No libc, and no
 `printf` substitution — records are built by hand and emitted through
-`nros_log_emit_at`.
+`rclc_log_emit_at`.
 
 ## Build
 

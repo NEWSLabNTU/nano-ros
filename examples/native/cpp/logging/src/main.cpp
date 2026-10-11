@@ -1,7 +1,7 @@
 /// @file main.cpp
 /// @brief Phase 88.13 — minimal rclcpp::Node logging demo.
 ///
-/// Walks the Phase-88 macros (`NROS_LOG_TRACE` … `NROS_LOG_FATAL`)
+/// Walks the Phase-88 macros (`RCLC_LOG_TRACE` … `RCLC_LOG_FATAL`)
 /// against the Node's Logger handle. The first emit auto-installs
 /// `PlatformSink` so records reach the per-platform delivery
 /// (`nros_platform_log_write` → POSIX stderr by default).
@@ -52,12 +52,12 @@ int nros_app_main(int argc, char** argv) {
     }
 
     /* Default per-Logger threshold = Info — TRACE/DEBUG drop here. */
-    NROS_LOG_TRACE(logger, "round 1: trace=%d (dropped at default Info)", 1);
-    NROS_LOG_DEBUG(logger, "round 1: debug=%d (dropped at default Info)", 1);
-    NROS_LOG_INFO(logger, "round 1: info=%d", 1);
-    NROS_LOG_WARN(logger, "round 1: warn=%d", 1);
-    NROS_LOG_ERROR(logger, "round 1: error=%d", 1);
-    NROS_LOG_FATAL(logger, "round 1: fatal=%d", 1);
+    RCLC_LOG_TRACE(logger, "round 1: trace=%d (dropped at default Info)", 1);
+    RCLC_LOG_DEBUG(logger, "round 1: debug=%d (dropped at default Info)", 1);
+    RCLC_LOG_INFO(logger, "round 1: info=%d", 1);
+    RCLC_LOG_WARN(logger, "round 1: warn=%d", 1);
+    RCLC_LOG_ERROR(logger, "round 1: error=%d", 1);
+    RCLC_LOG_FATAL(logger, "round 1: fatal=%d", 1);
 
     rclcpp::shutdown();
     return 0;

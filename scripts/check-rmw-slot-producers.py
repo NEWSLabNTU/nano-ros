@@ -175,7 +175,7 @@ INERT_FAMILIES = {
     # stale-claim shape this table checks for. The FIRST clause was never a
     # reason for inertness and is still correct — a guard condition IS an
     # executor primitive a backend never hands out, which is exactly why the
-    # entry point is upstream's NAME over `nros_node_create_guard_condition`'s
+    # entry point is upstream's NAME over `rclc_node_create_guard_condition`'s
     # SHAPE rather than upstream's returned handle.
     # The `matched-counts` family stood here and is DELETED, not reworded:
     # issue 1643 gave `publisher_count_matched_subscriptions` and

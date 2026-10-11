@@ -88,7 +88,7 @@ max-threads = 3
 # start loses the bind outright:
 #
 #   ddsi_udp_create_conn: failed to bind to ANY:34150: address in use
-#   nros_support_init(&app.support, locator, domain_id) -> -1
+#   rclc_support_init(&app.support, locator, domain_id) -> -1
 #
 # and where the bind does succeed the two topologies simply cross-talk, which is
 # the quieter half of the same fault. Serialize them.

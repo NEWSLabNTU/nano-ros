@@ -165,7 +165,7 @@ pub struct ActionIdiomaticTemplate<'a> {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct NrosField {
     pub name: String,
-    /// RFC-0068 step 2 — the `nros_type` pack filter composes the Rust type
+    /// RFC-0068 step 2 — the `rclc_type` pack filter composes the Rust type
     /// string from these neutral facts (was the pre-baked `rust_type`).
     /// `is_configurable`/`is_heap`/`cap`/`mode` pick the owned-capacity / heap /
     /// plain spelling; `current_package` drives the self-ref choice.
@@ -463,12 +463,12 @@ pub struct CField {
     /// [`view_c_type`](Self::view_c_type) /
     /// [`view_read_fn`](Self::view_read_fn).
     pub is_view: bool,
-    /// Borrowed-view C type from `nros/view.h` (e.g. `nros_view_str_t`,
-    /// `nros_view_bytes_t`, `nros_le_slice_view_f32_t`). Empty unless
+    /// Borrowed-view C type from `nros/view.h` (e.g. `rclc_view_str_t`,
+    /// `rclc_view_bytes_t`, `rclc_le_slice_view_f32_t`). Empty unless
     /// [`is_view`](Self::is_view).
     pub view_c_type: String,
     /// `nros/view.h` reader for the borrowed view (e.g.
-    /// `nros_cdr_borrow_string`); all share one signature. Empty unless
+    /// `rclc_cdr_borrow_string`); all share one signature. Empty unless
     /// [`is_view`](Self::is_view).
     pub view_read_fn: String,
 }

@@ -1250,7 +1250,7 @@ pub struct DerivedEntityKnobs {
     /// its record"), so two components sharing a name share a slot and this
     /// OVER-counts by one. Over-counting is the safe direction.
     ///
-    /// UNDER-counting has exactly one source: `nros_pubsub_bridge_create`
+    /// UNDER-counting has exactly one source: `rclc_pubsub_bridge_create`
     /// creates TWO nodes whose names are RUNTIME strings, declared nowhere.
     /// That path now names this knob when the table is full rather than
     /// returning a bare error code, which is what makes deriving it safe -- the
@@ -1387,7 +1387,7 @@ pub struct DerivedEntityKnobs {
     ///
     /// UNDER-counting has one source, and it is the same shape as
     /// [`Self::max_nodes`]'s bridge: application code calling
-    /// `create_sched_context` (or `nros_executor_create_sched_context`) by
+    /// `create_sched_context` (or `rclc_executor_create_sched_context`) by
     /// hand, which no artifact describes. Every such path NAMES this knob when
     /// the table is full -- `NodeError::NoSchedContextSlot` spells it, and the
     /// three FFI wrappers log it rather than returning a bare `RET_FULL` --
@@ -1899,7 +1899,7 @@ impl DeclaredQos {
 }
 
 /// One SUBSCRIPTION's row in the compile-time declared-QoS table -- the
-/// `nros_declared_qos_generated.h` C and C++ check their call sites against
+/// `rclc_declared_qos_generated.h` C and C++ check their call sites against
 /// (issue 1256).
 ///
 /// The JOIN of the two declared views for one `(type, topic)`: the STATED depth
@@ -1932,7 +1932,7 @@ pub struct DeclaredQosHeaderRow {
 impl DeclaredQosHeaderRow {
     /// The preprocessor token a row carries for its reliability column. Bare
     /// TOKENS, not numbers, because C and C++ number the enum differently
-    /// (`NROS_QOS_RELIABILITY_RELIABLE` is 1 in `nros_generated.h`,
+    /// (`RCLC_QOS_RELIABILITY_RELIABLE` is 1 in `nros_generated.h`,
     /// `nros::Reliable` is 0 in `qos.hpp`): each consumer pastes the token onto
     /// a prefix of its own and so reads its OWN language's enumerator, and no
     /// number in this file can be right for one and wrong for the other.
@@ -4369,7 +4369,7 @@ impl EntityInventory {
         }
     }
 
-    /// The C and C++ compile-time table: `nros_declared_qos_generated.h`.
+    /// The C and C++ compile-time table: `rclc_declared_qos_generated.h`.
     ///
     /// TWO X-macro lists, the same rows in both (phase-454 W10):
     /// `NROS_DECLARED_QOS_ROWS`, read by `nros/declared_qos.hpp`, and
@@ -5571,7 +5571,7 @@ fn c_escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
-/// Render one component's declared-QoS table as `nros_declared_qos_generated.h`.
+/// Render one component's declared-QoS table as `rclc_declared_qos_generated.h`.
 ///
 /// A free function over a [`DeclaredQosHeaderTable`] rather than a method on the
 /// inventory, because a configure with several SystemModels renders the UNION
@@ -5609,15 +5609,15 @@ fn render_declared_pub_qos_rows(s: &mut String, pub_rows: &[DeclaredQosHeaderRow
     s.push_str("    /* end */\n");
     s.push_str(
         "#define NROS_DECLARED_PUB_QOS_ROWS_Q(NROS_DECLARED_PUB_QOS_ROW_Q, \\\n        \
-         nros_q_type, nros_q_topic) \\\n",
+         rclc_q_type, rclc_q_topic) \\\n",
     );
     let mut n_rows = 0usize;
     for r in pub_rows {
         for ty in row_type_spellings(&r.type_name) {
             n_rows += 1;
             s.push_str(&format!(
-                "    NROS_DECLARED_PUB_QOS_ROW_Q(\"{}\", \"{}\", {}, {}, {}, nros_q_type, \
-                 nros_q_topic) \\\n",
+                "    NROS_DECLARED_PUB_QOS_ROW_Q(\"{}\", \"{}\", {}, {}, {}, rclc_q_type, \
+                 rclc_q_topic) \\\n",
                 c_escape(&ty),
                 c_escape(&r.topic),
                 r.depth_literal(),
@@ -5752,15 +5752,15 @@ pub fn render_declared_qos_header(source: &str, table: &DeclaredQosHeaderTable) 
                 );
                 s.push_str(
                     "#define NROS_DECLARED_QOS_ROWS_Q(NROS_DECLARED_QOS_ROW_Q, \\\n        \
-                     nros_q_type, nros_q_topic) \\\n",
+                     rclc_q_type, rclc_q_topic) \\\n",
                 );
                 let mut n_rows = 0usize;
                 for r in rows {
                     for ty in row_type_spellings(&r.type_name) {
                         n_rows += 1;
                         s.push_str(&format!(
-                            "    NROS_DECLARED_QOS_ROW_Q(\"{}\", \"{}\", {}, {}, {}, nros_q_type, \
-                             nros_q_topic) \\\n",
+                            "    NROS_DECLARED_QOS_ROW_Q(\"{}\", \"{}\", {}, {}, {}, rclc_q_type, \
+                             rclc_q_topic) \\\n",
                             c_escape(&ty),
                             c_escape(&r.topic),
                             r.depth_literal(),
@@ -6504,7 +6504,7 @@ mod tests {
         assert!(
             h.contains(
                 "#define NROS_DECLARED_QOS_ROWS_Q(NROS_DECLARED_QOS_ROW_Q, \\\n        \
-                 nros_q_type, nros_q_topic)"
+                 rclc_q_type, rclc_q_topic)"
             ),
             "the C list must take the row macro and the queried (type, topic): {h}"
         );
@@ -6526,7 +6526,7 @@ mod tests {
             assert!(
                 h.contains(&format!(
                     "NROS_DECLARED_QOS_ROW_Q(\"{ty}\", \"{topic}\", {depth}, NROS_DQ_UNDECLARED, \
-                     NROS_DQ_UNDECLARED, nros_q_type, nros_q_topic)"
+                     NROS_DQ_UNDECLARED, rclc_q_type, rclc_q_topic)"
                 )),
                 "the C list is missing ({ty}, {topic}, {depth}): {h}"
             );
@@ -7453,7 +7453,7 @@ execution:
     ///
     /// Measured before the fix on `examples/qemu-armv7a-nuttx/c/action-server`:
     /// the table was sized to exactly three and the fourth declaration failed
-    /// `Full` at boot, taking `nros_executor_add_action_server` to -1.
+    /// `Full` at boot, taking `rclc_executor_add_action_server` to -1.
     #[test]
     fn an_action_server_owes_a_fourth_queryable_for_its_status_cache() {
         let mut inv = EntityInventory::new("test");
@@ -9521,7 +9521,7 @@ contracts:
             "NROS_DECLARED_PUB_QOS_ROW(\"std_msgs/msg/Int32\", \"/chatter\", 1, \
              NROS_DQ_UNDECLARED, NROS_DQ_TRANSIENT_LOCAL)",
             "NROS_DECLARED_PUB_QOS_ROW_Q(\"std_msgs/msg/Int32\", \"/chatter\", 1, \
-             NROS_DQ_UNDECLARED, NROS_DQ_TRANSIENT_LOCAL, nros_q_type, nros_q_topic)",
+             NROS_DQ_UNDECLARED, NROS_DQ_TRANSIENT_LOCAL, rclc_q_type, rclc_q_topic)",
             "#define NROS_DECLARED_PUB_QOS_ROW_COUNT 2",
             // The subscription keeps ITS values: one key, two endpoints.
             "NROS_DECLARED_QOS_ROW(\"std_msgs/msg/Int32\", \"/chatter\", 5, \
@@ -9615,7 +9615,7 @@ contracts:
         assert!(
             h.contains(
                 "NROS_DECLARED_QOS_ROW_Q(\"std_msgs/msg/Int32\", \"/chatter\", -1, \
-                 NROS_DQ_BEST_EFFORT, NROS_DQ_TRANSIENT_LOCAL, nros_q_type, nros_q_topic)"
+                 NROS_DQ_BEST_EFFORT, NROS_DQ_TRANSIENT_LOCAL, rclc_q_type, rclc_q_topic)"
             ),
             "the C list carries the same columns: {h}"
         );

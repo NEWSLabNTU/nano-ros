@@ -2,7 +2,7 @@
 //!
 //! Wraps the `nros_rmw::custom_transport::NrosTransportOps` vtable
 //! defined by Phase 115.A. Users register four C function pointers
-//! before `nros_support_init`; whichever RMW backend is active
+//! before `rclc_support_init`; whichever RMW backend is active
 //! consumes the registered ops via `nros_rmw::take_custom_transport`
 //! during `Rmw::open`.
 //!
@@ -16,14 +16,14 @@
 
 use core::ffi::c_void;
 
-use crate::error::{NROS_RET_ERROR, NROS_RET_INVALID_ARGUMENT, NROS_RET_OK, nros_ret_t};
+use crate::error::{RCL_RET_ERROR, RCL_RET_INVALID_ARGUMENT, RCL_RET_OK, rcl_ret_t};
 
 /// Phase 115.A.2 — current ABI version of [`nros_transport_ops_t`].
 ///
 /// C / C++ callers MUST fill in `ops.abi_version =
 /// NROS_TRANSPORT_OPS_ABI_VERSION_V1` before passing the struct to
-/// [`nros_set_custom_transport`]. Mismatched values are rejected
-/// with `NROS_RET_ERROR` (mapped from
+/// [`rclc_set_custom_transport`]. Mismatched values are rejected
+/// with `RCL_RET_ERROR` (mapped from
 /// `TransportError::IncompatibleAbi`); cffi consumers see
 /// `NROS_RMW_RET_INCOMPATIBLE_ABI`.
 #[unsafe(no_mangle)]
@@ -44,12 +44,12 @@ pub static NROS_TRANSPORT_OPS_ABI_VERSION_V1: u32 = nros_rmw::NROS_TRANSPORT_OPS
 /// - `open`: open the underlying medium. `params` is opaque
 ///   per-transport metadata supplied by the caller (e.g. UART baud
 ///   rate). May be `NULL`. Returns 0 on success, negative
-///   `nros_ret_t` on failure.
+///   `rcl_ret_t` on failure.
 /// - `close`: tear the transport down. Complement of `open`.
 /// - `write`: send `len` bytes from `buf`. Returns 0 on success,
-///   negative `nros_ret_t` on failure.
+///   negative `rcl_ret_t` on failure.
 /// - `read`: receive up to `len` bytes within `timeout_ms`. Returns
-///   the non-negative byte count on success, negative `nros_ret_t`
+///   the non-negative byte count on success, negative `rcl_ret_t`
 ///   on error / timeout.
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -57,10 +57,10 @@ pub struct nros_transport_ops_t {
     pub abi_version: u32,
     pub _reserved: u32,
     pub user_data: *mut c_void,
-    pub open: unsafe extern "C" fn(user_data: *mut c_void, params: *const c_void) -> nros_ret_t,
+    pub open: unsafe extern "C" fn(user_data: *mut c_void, params: *const c_void) -> rcl_ret_t,
     pub close: unsafe extern "C" fn(user_data: *mut c_void),
     pub write:
-        unsafe extern "C" fn(user_data: *mut c_void, buf: *const u8, len: usize) -> nros_ret_t,
+        unsafe extern "C" fn(user_data: *mut c_void, buf: *const u8, len: usize) -> rcl_ret_t,
     pub read: unsafe extern "C" fn(
         user_data: *mut c_void,
         buf: *mut u8,
@@ -71,7 +71,7 @@ pub struct nros_transport_ops_t {
 
 /// Phase 115.C — register a custom transport vtable.
 ///
-/// Must be called BEFORE `nros_support_init`. Subsequent calls
+/// Must be called BEFORE `rclc_support_init`. Subsequent calls
 /// before init overwrite the slot. After init, behaviour is
 /// implementation-defined — the active RMW backend may have already
 /// consumed the previously-registered vtable.
@@ -80,8 +80,8 @@ pub struct nros_transport_ops_t {
 ///
 /// # Returns
 ///
-/// - `NROS_RET_OK` on success.
-/// - `NROS_RET_INVALID_ARGUMENT` if `ops` is non-NULL but any of the
+/// - `RCL_RET_OK` on success.
+/// - `RCL_RET_INVALID_ARGUMENT` if `ops` is non-NULL but any of the
 ///   four function pointers is NULL.
 ///
 /// # Safety
@@ -89,13 +89,13 @@ pub struct nros_transport_ops_t {
 /// The four function pointers in `ops` must follow the threading
 /// contract documented in `<nros/transport.h>`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_set_custom_transport(ops: *const nros_transport_ops_t) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_set_custom_transport(ops: *const nros_transport_ops_t) -> rcl_ret_t {
     if ops.is_null() {
         // Clear request. Phase 214.A.2 — propagate teardown errors
         // instead of discarding the Result.
         return match unsafe { nros_rmw::set_custom_transport(None) } {
-            Ok(()) => NROS_RET_OK,
-            Err(_) => NROS_RET_ERROR,
+            Ok(()) => RCL_RET_OK,
+            Err(_) => RCL_RET_ERROR,
         };
     }
     // Copy by-value out of the caller's struct.
@@ -110,20 +110,20 @@ pub unsafe extern "C" fn nros_set_custom_transport(ops: *const nros_transport_op
         read: ops_copy.read,
     };
     match unsafe { nros_rmw::set_custom_transport(Some(nros_ops)) } {
-        Ok(()) => NROS_RET_OK,
-        Err(_) => NROS_RET_ERROR,
+        Ok(()) => RCL_RET_OK,
+        Err(_) => RCL_RET_ERROR,
     }
 }
 
 /// Phase 115.C — clear any previously-registered custom transport.
-/// Equivalent to `nros_set_custom_transport(NULL)`. Convenience for
+/// Equivalent to `rclc_set_custom_transport(NULL)`. Convenience for
 /// teardown paths.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_clear_custom_transport() -> nros_ret_t {
+pub unsafe extern "C" fn rclc_clear_custom_transport() -> rcl_ret_t {
     // Phase 214.A.2 — propagate teardown errors.
     match unsafe { nros_rmw::set_custom_transport(None) } {
-        Ok(()) => NROS_RET_OK,
-        Err(_) => NROS_RET_ERROR,
+        Ok(()) => RCL_RET_OK,
+        Err(_) => RCL_RET_ERROR,
     }
 }
 
@@ -132,7 +132,7 @@ pub unsafe extern "C" fn nros_clear_custom_transport() -> nros_ret_t {
 /// otherwise. Useful for board crates that want to fall back to
 /// a static transport when no runtime override has been provided.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_has_custom_transport() -> nros_ret_t {
+pub unsafe extern "C" fn rclc_has_custom_transport() -> rcl_ret_t {
     if nros_rmw::peek_custom_transport().is_some() {
         1
     } else {
@@ -142,4 +142,4 @@ pub unsafe extern "C" fn nros_has_custom_transport() -> nros_ret_t {
 
 // Touch the unused-import lint to keep the binding visible even when
 // no callers in this file consume it directly.
-const _: nros_ret_t = NROS_RET_INVALID_ARGUMENT;
+const _: rcl_ret_t = RCL_RET_INVALID_ARGUMENT;

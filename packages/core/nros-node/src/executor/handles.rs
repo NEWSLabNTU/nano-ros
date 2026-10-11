@@ -1676,7 +1676,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
 
     /// Phase 252 / issue 0073 — raw receive that also returns the E2E
     /// [`IntegrityStatus`](nros_rmw::IntegrityStatus) (CRC + sequence gap/dup) for
-    /// the C/C++ `nros_polling_subscription_take_validated` path. The validator lives
+    /// the C/C++ `rclc_polling_subscription_take_validated` path. The validator lives
     /// in the backend handle (`take_validated`), so no typed message is needed;
     /// the payload lives in [`buffer`](Self::buffer). `crc_valid == None` when the
     /// wire sample carried no CRC (e.g. a publisher built without `safety-e2e`).
@@ -3150,7 +3150,7 @@ impl<
 
     /// Eagerly reclaim every completed result already delivered — phase-417 W4.b.
     ///
-    /// rcl's `rcl_action_expire_goals`, C's `nros_action_expire_goals` and
+    /// rcl's `rcl_action_expire_goals`, C's `rclc_action_expire_goals` and
     /// `ActionServerHandle::expire_goals` are the same call; ONE vocabulary
     /// across the three languages, which is what stage 4 is for. The core's own
     /// spelling stays `expire_completed_results` because down there the

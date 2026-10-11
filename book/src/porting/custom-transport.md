@@ -31,7 +31,7 @@ interface, designed per
 | Layer | Owns | Crates / files |
 |-------|------|----------------|
 | **L0 — canonical C ABI** | `#[repr(C)]` struct + `abi_version: u32` field + four `unsafe extern "C" fn` pointers + `user_data: *mut c_void` | `nros-rmw::custom_transport` (Rust source); `<nros/transport.h>` is the cbindgen-emitted C header |
-| **L1 — language wrappers** | mechanical glue, no new design decisions | `nros-rmw::set_custom_transport` (Rust); `nros_set_custom_transport` (C); `rclcpp::set_custom_transport` (C++) |
+| **L1 — language wrappers** | mechanical glue, no new design decisions | `nros-rmw::set_custom_transport` (Rust); `rclc_set_custom_transport` (C); `rclcpp::set_custom_transport` (C++) |
 | **L2 — typed app API** | n/a — transport is platform-side | — |
 
 **All design decisions live at L0.** A new feature — say, a `flush`
@@ -122,12 +122,12 @@ unsafe {
 ```c
 #include <nros/transport.h>
 
-static nros_ret_t my_open(void *ud, const void *params) {
+static rcl_ret_t my_open(void *ud, const void *params) {
     (void)params;
     return my_uart_open((my_uart_t *)ud);
 }
 static void my_close(void *ud) { my_uart_close((my_uart_t *)ud); }
-static nros_ret_t my_write(void *ud, const uint8_t *buf, size_t len) {
+static rcl_ret_t my_write(void *ud, const uint8_t *buf, size_t len) {
     return my_uart_write((my_uart_t *)ud, buf, len);
 }
 static int32_t my_read(void *ud, uint8_t *buf, size_t len, uint32_t timeout_ms) {
@@ -144,9 +144,9 @@ int main(void) {
         .write = my_write,
         .read = my_read,
     };
-    nros_set_custom_transport(&ops);
+    rclc_set_custom_transport(&ops);
 
-    // ... continue with nros_support_init, rclc_node_init_default, etc.
+    // ... continue with rclc_support_init, rclc_node_init_default, etc.
 }
 ```
 
@@ -180,15 +180,15 @@ NROS_TRY(r);
 | `read` and `write` MAY be invoked concurrently from different threads on threaded backends. | The zenoh-pico backend runs a dedicated read-task thread on multi-threaded platforms (POSIX, Zephyr, FreeRTOS, NuttX), so `read` runs there while the application/tx thread drives `write`. Single-threaded platforms (bare-metal, ThreadX) instead serialise both through the spin-once / `drive_io` path. **A custom transport must therefore be full-duplex safe**: do not serialise `read` and `write` behind one lock held across a blocking `read`, or the read thread will starve the writer and deadlock session declaration. Most media (TCP, full-duplex UART/USB-CDC) already allow concurrent read and write; mirror that. With `std::net::TcpStream`, store the stream directly and use `&TcpStream` (which implements `Read`/`Write`) from both callbacks rather than a `Mutex<TcpStream>`. |
 | Callbacks must NOT be invoked from interrupt context. | The runtime path may take internal locks; ISR context could deadlock. Wrap ISR-driven hardware in a queue + `read` poller. |
 | `user_data` must outlive the transport's active period. | The runtime never copies it. Lifetime is from the first callback invocation through `close` returning. |
-| `set_custom_transport` must be called BEFORE `nros_support_init`. | The active backend reads the slot during `Rmw::open`. Calling after init is implementation-defined: the backend may already have consumed the previously-registered vtable, and no backend rejects the second call (this row promised an `ALREADY_INIT` code that neither ABI defines — issue 1126). |
+| `set_custom_transport` must be called BEFORE `rclc_support_init`. | The active backend reads the slot during `Rmw::open`. Calling after init is implementation-defined: the backend may already have consumed the previously-registered vtable, and no backend rejects the second call (this row promised an `ALREADY_INIT` code that neither ABI defines — issue 1126). |
 
 ## Return-code conventions
 
 - `open` / `write` return `0` (`NROS_RMW_RET_OK`) on success, a
-  negative `nros_ret_t` (e.g. `NROS_RMW_RET_TIMEOUT`,
+  negative `rcl_ret_t` (e.g. `NROS_RMW_RET_TIMEOUT`,
   `NROS_RMW_RET_ERROR`) on failure.
 - `read` returns the non-negative byte count on success (may be less
-  than `len`); a negative `nros_ret_t` on error / timeout.
+  than `len`); a negative `rcl_ret_t` on error / timeout.
 - `close` returns nothing — failures during teardown are best-effort.
 
 ## Framing

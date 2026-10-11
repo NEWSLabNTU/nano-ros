@@ -91,14 +91,14 @@ mod cffi;
 /// never references — so `<nros/bridge.hpp>`'s `MultiExecutor` compiled but failed
 /// to link, and a PX4 module could not reach the bridge API at all. The root
 /// references THIS from a `#[used]` static, which keeps the objects (and with them
-/// the whole `nros_init_multi` / `nros_pubsub_bridge_*` surface) in the archive.
+/// the whole `rclc_init_multi` / `nros_pubsub_bridge_*` surface) in the archive.
 ///
 /// Mirrors `nros_c::c_surface_anchor::C_SURFACE_ANCHOR`.
 #[cfg(feature = "cffi")]
 pub mod cffi_surface_anchor {
     /// Fn pointers into the C ABI. Never called through — an anchor only.
     pub static CFFI_SURFACE_ANCHOR: [unsafe extern "C" fn(*mut core::ffi::c_void); 1] =
-        [super::cffi::nros_fini_multi];
+        [super::cffi::rclc_fini_multi];
 }
 
 /// Size of the per-bridge payload-hash dedup ring. Forwarded sample
@@ -507,7 +507,7 @@ pub struct PumpStats {
     /// RFC-0088 D3 — samples a [`SerializationFormatConverter`] refused, and
     /// which therefore never reached the destination. Always `0` on a bridge
     /// built with [`PubSubBridge::new`], which has no converter. Not mirrored
-    /// into the C `nros_pump_stats_t` — that struct's layout is a published
+    /// into the C `rclc_pump_stats_t` — that struct's layout is a published
     /// ABI (`<nros/bridge.h>`) and appending to it is exactly the drift class
     /// `check-ffi-struct-mirrors` exists for.
     pub dropped_convert: usize,

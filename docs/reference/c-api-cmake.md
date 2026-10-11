@@ -77,45 +77,45 @@ nano_ros_generate_interfaces(${PROJECT_NAME}
 
 Resolution order for each file: `${CMAKE_CURRENT_SOURCE_DIR}/<file>` → `${AMENT_PREFIX_PATH}/share/<target>/<file>` → `<nano-ros-repo-root>/share/nano-ros/interfaces/<target>/<file>` (the in-tree bundled-interfaces fallback; `_NANO_ROS_PREFIX` resolves to the `add_subdirectory`'d repo root, NOT a system install prefix — Phase 140 deleted those).
 
-Type info structs (`nros_message_type_t`, `nros_service_type_t`, `nros_action_type_t`) are all defined in `nros/types.h`.
+Type info structs (`rclc_message_type_t`, `rclc_service_type_t`, `rclc_action_type_t`) are all defined in `nros/types.h`.
 
 ## Async Action Client (Executor-Driven)
 
 Action and service client entrypoints split into two families:
 
-- `nros_action_send_goal_async()`, `nros_action_get_result_async()`,
-  `nros_action_cancel_goal()`, `nros_client_send_request_async()` — non-blocking,
+- `rclc_action_send_goal_async()`, `rclc_action_get_result_async()`,
+  `rclc_action_cancel_goal()`, `rclc_client_send_request_async()` — non-blocking,
   return immediately. Replies arrive via callbacks invoked from
   `rclc_executor_spin_some()`.
-- `nros_action_send_goal()`, `nros_action_get_result()`, `nros_client_call()` —
+- `rclc_action_send_goal()`, `rclc_action_get_result()`, `rclc_client_call()` —
   blocking convenience wrappers. They call the async variant and then drive the
   executor (`rclc_executor_spin_some` internally in a wall-clock budgeted loop)
   until the reply lands or timeout. They never call `zpico_get` directly — all
   I/O still flows through the registered executor. Calling any of them from
-  inside a dispatch callback returns `NROS_RET_REENTRANT`.
+  inside a dispatch callback returns `RCLC_RET_REENTRANT`.
 
-The action-client blocking helpers (`nros_action_send_goal`,
-`nros_action_get_result`) take the executor as an explicit `executor`
+The action-client blocking helpers (`rclc_action_send_goal`,
+`rclc_action_get_result`) take the executor as an explicit `executor`
 parameter because the action client stores its arena handle as an opaque
 pointer into the executor's `_opaque` storage (set up by
-`nros_executor_register_action_client`) rather than a wrapper pointer.
-`nros_action_client_wait_for_action_server()` and
-`nros_action_client_action_server_is_ready()` take the same explicit
-executor argument for the same reason. `nros_client_call()` does not —
+`rclc_executor_register_action_client`) rather than a wrapper pointer.
+`rclc_action_client_wait_for_action_server()` and
+`rclc_action_client_action_server_is_ready()` take the same explicit
+executor argument for the same reason. `rclc_client_call()` does not —
 the service client stashes the executor pointer on
 `nros_executor_register_client()` and recovers it internally.
 
 Canonical call pattern (C):
 
 ```c
-nros_support_init(&support, locator, domain_id);
+rclc_support_init(&support, locator, domain_id);
 rclc_node_init_default(&node, "c_action_client", "/", &support);
-nros_action_client_init(&client, &node, "/fibonacci", &type_info);
-nros_action_client_set_feedback_callback(&client, on_feedback, NULL);
-nros_action_client_set_result_callback(&client, on_result, NULL);
+rcl_action_client_init(&client, &node, "/fibonacci", &type_info);
+rclc_action_client_set_feedback_callback(&client, on_feedback, NULL);
+rclc_action_client_set_result_callback(&client, on_result, NULL);
 
-nros_executor_init(&executor, &support, /*pool=*/4);
-nros_executor_register_action_client(&executor, &client);
+rclc_executor_init(&executor, &support, /*pool=*/4);
+rclc_executor_register_action_client(&executor, &client);
 
 /* Warm-up: let zenoh discover the action server. */
 for (int i = 0; i < 300; ++i) {
@@ -123,17 +123,17 @@ for (int i = 0; i < 300; ++i) {
 }
 
 /* Async path: returns immediately; goal_response_callback fires during spin. */
-nros_goal_uuid_t goal_uuid;
-nros_action_send_goal_async(&client, goal_buf, goal_len, &goal_uuid);
+rclc_goal_uuid_t goal_uuid;
+rclc_action_send_goal_async(&client, goal_buf, goal_len, &goal_uuid);
 while (!state.goal_responded) {
     rclc_executor_spin_some(&executor, 10000000ULL);
 }
 
 /* Blocking convenience: same async-then-spin pattern, packaged. */
-nros_goal_status_t status;
+rclc_goal_status_t status;
 uint8_t result_buf[512];
 size_t result_len = 0;
-nros_action_get_result(&client, &executor, &goal_uuid,
+rclc_action_get_result(&client, &executor, &goal_uuid,
                        &status, result_buf, sizeof(result_buf), &result_len);
 ```
 
@@ -143,8 +143,8 @@ Phase 122.3 added a separate **L1 polling** family
 `_try_recv_result_raw` / `_send_cancel_request_raw` /
 `_try_recv_cancel_response_raw` / `_try_recv_feedback_raw`) for callers
 that drive the action lifecycle without an executor arena. The L1 family
-stores its `ActionClientCore` inline in the `nros_action_client_t._opaque`
-slot and does not require `nros_executor_register_action_client`.
+stores its `ActionClientCore` inline in the `rcl_action_client_t._opaque`
+slot and does not require `rclc_executor_register_action_client`.
 
 ## System Install
 

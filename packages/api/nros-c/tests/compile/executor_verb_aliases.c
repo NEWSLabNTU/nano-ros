@@ -10,7 +10,7 @@
  *      release to migrate.
  *
  * The guard-condition pair left this probe in phase-417 W4.e: the node is the
- * owner and `nros_node_create_guard_condition` is the one creation shape, so
+ * owner and `rclc_node_create_guard_condition` is the one creation shape, so
  * `nros_executor_add_guard_condition` and its `register_*` alias are retired
  * rather than migrated. A retired name has nothing to pin here.
  *
@@ -22,19 +22,19 @@
 #include "nros/executor.h"
 
 /* 1. The rclc-spelled verbs exist. */
-static nros_ret_t (*const kAddTimer)(struct nros_executor_t*,
-                                     struct nros_timer_t*) = rclc_executor_add_timer;
+static rcl_ret_t (*const kAddTimer)(struct rclc_executor_t*,
+                                    struct rcl_timer_t*) = rclc_executor_add_timer;
 /* phase-487 W2: the service add takes its callback, as rclc's does. */
-static nros_ret_t (*const kAddService)(struct nros_executor_t*, struct nros_service_t*,
-                                       nros_service_callback_t,
-                                       void*) = nros_executor_add_service_raw;
-static nros_ret_t (*const kAddClient)(struct nros_executor_t*,
-                                      struct nros_client_t*) = nros_executor_add_client;
+static rcl_ret_t (*const kAddService)(struct rclc_executor_t*, struct rcl_service_t*,
+                                      rclc_service_callback_t,
+                                      void*) = rclc_executor_add_service_raw;
+static rcl_ret_t (*const kAddClient)(struct rclc_executor_t*,
+                                     struct rcl_client_t*) = rclc_executor_add_client;
 
 /* 2. The deprecated aliases still resolve, to the SAME functions. */
-static nros_ret_t (*const kOldTimer)(struct nros_executor_t*,
-                                     struct nros_timer_t*) = nros_executor_register_timer;
-/* `nros_executor_register_timer` is the one member of this family whose target
+static rcl_ret_t (*const kOldTimer)(struct rclc_executor_t*,
+                                    struct rcl_timer_t*) = rclc_executor_register_timer;
+/* `rclc_executor_register_timer` is the one member of this family whose target
  * moved. Phase-417 stage 6 made `nros_executor_add_timer` a deprecated
  * forwarder onto `rclc_executor_add_timer`, so for one release the macro
  * resolved through TWO deprecations; step B retired that forwarder and the

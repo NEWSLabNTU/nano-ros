@@ -29,11 +29,11 @@
 //! recorder; it REFUSES a census at support init rather than booting normally
 //! with no file.
 
-use crate::error::nros_ret_t;
+use crate::error::rcl_ret_t;
 
 /// Arm census mode at support init. `Ok(())` means "carry on": either no
 /// census was asked for, or the recorder is now the selected backend.
-pub(crate) fn arm() -> Result<(), nros_ret_t> {
+pub(crate) fn arm() -> Result<(), rcl_ret_t> {
     #[cfg(feature = "std")]
     {
         hosted::arm()
@@ -65,7 +65,7 @@ mod hosted {
     use alloc::string::{String, ToString};
     use core::sync::atomic::{AtomicBool, Ordering};
 
-    use crate::error::nros_ret_t;
+    use crate::error::rcl_ret_t;
 
     /// The census switch's variable name — the one the C++ and Rust funnels
     /// read.
@@ -82,7 +82,7 @@ mod hosted {
     }
 
     #[cfg(feature = "metadata-mode")]
-    pub(super) fn arm() -> Result<(), nros_ret_t> {
+    pub(super) fn arm() -> Result<(), rcl_ret_t> {
         if census_out_path().is_none() {
             return Ok(());
         }
@@ -108,10 +108,10 @@ mod hosted {
     }
 
     /// No recorder in this image: refuse the census by name at support init,
-    /// so the caller's `nros_support_init` fails and the run exits non-zero
+    /// so the caller's `rclc_support_init` fails and the run exits non-zero
     /// with no file — never a normal boot that dials a router.
     #[cfg(not(feature = "metadata-mode"))]
-    pub(super) fn arm() -> Result<(), nros_ret_t> {
+    pub(super) fn arm() -> Result<(), rcl_ret_t> {
         let Some(path) = census_out_path() else {
             return Ok(());
         };
@@ -121,7 +121,7 @@ mod hosted {
              `nros-c/metadata-mode` -- there is no recorder to dump",
             path
         );
-        Err(crate::error::NROS_RET_ERROR)
+        Err(crate::error::RCL_RET_ERROR)
     }
 
     pub(super) fn finish_if_armed() {

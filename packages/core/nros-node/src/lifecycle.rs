@@ -234,7 +234,7 @@ pub type LifecycleCallbackFnCtx = unsafe extern "C" fn(ctx: *mut c_void) -> u8;
 /// Recorded by [`LifecyclePollingNodeCtx::trigger_transition`] and drained by
 /// the executor, which owns the publisher. Recording where the transition
 /// HAPPENS rather than at each caller is the whole point: `ros2 lifecycle
-/// set`, `nros_executor_lifecycle_change_state`,
+/// set`, `rclc_executor_lifecycle_change_state`,
 /// `nros_cpp_lifecycle_change_state`, `nros_cpp_lifecycle_autostart` and the
 /// safe `LifecycleCallbacks` road all funnel through that one function, so a
 /// new caller is announced without being told to announce.

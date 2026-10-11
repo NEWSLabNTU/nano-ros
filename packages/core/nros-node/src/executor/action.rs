@@ -521,7 +521,7 @@ impl<A: RosAction> ActionServerHandle<A> {
     /// ACTION SPEC's terminal states, which is also what rclcpp_action's
     /// `ServerGoalHandle` spells them: `succeed(result)`, `abort(result)`,
     /// `canceled(result)` — and, since phase-417 W4.b, what C
-    /// (`nros_action_canceled`) and C++ (`ActionServer<A>::canceled`) spell
+    /// (`rclc_action_canceled`) and C++ (`ActionServer<A>::canceled`) spell
     /// them too. They take the goal ID rather than hanging off a
     /// handle because a goal here lives in a fixed-capacity arena and is named
     /// by its UUID — see the `divergence` row for why neither client library's
@@ -553,7 +553,7 @@ impl<A: RosAction> ActionServerHandle<A> {
     /// phase-417 W4.b — this was `cancel`, and the argument for that spelling
     /// lived on the `cancel` alias phase-482 W6 retired. It loses to the
     /// drop-in claim: C spells it
-    /// `nros_action_canceled`, rclcpp_action spells it
+    /// `rclc_action_canceled`, rclcpp_action spells it
     /// `ServerGoalHandle::canceled`, and Rust was the only one of the three
     /// disagreeing — over a naming preference with no platform reason behind
     /// it (RFC-0089: a rename is cheap, a surface our own languages disagree
@@ -1448,7 +1448,7 @@ impl ActionServerRawHandle {
     /// Is `goal_id` a goal this server still knows about? — phase-417 W4.b.
     ///
     /// The raw twin of [`ActionServerHandle::goal_exists`], and what the C
-    /// surface's `nros_action_server_goal_exists` and the C++
+    /// surface's `rcl_action_server_goal_exists` and the C++
     /// `Server<A>::goal_exists` both resolve to. Active OR completed-with-a-
     /// retained-result; `false` once the slot is gone from the executor.
     pub fn goal_exists(&self, executor: &Executor, goal_id: &nros_core::GoalId) -> bool {
@@ -1466,7 +1466,7 @@ impl ActionServerRawHandle {
 
     /// Eagerly reclaim delivered results — the raw twin of
     /// [`ActionServerHandle::expire_goals`], and what C's
-    /// `nros_action_expire_goals` resolves to. phase-417 W4.b.
+    /// `rclc_action_expire_goals` resolves to. phase-417 W4.b.
     pub fn expire_goals(&self, executor: &mut Executor) -> usize {
         match executor.entries[self.entry_index].as_ref() {
             Some(meta) => {
@@ -1500,7 +1500,7 @@ impl ActionServerRawHandle {
     /// retired (completed + result delivered, or cancelled + acknowledged).
     ///
     /// This is the authoritative source of goal status — the C/C++ FFI
-    /// layers call this from `nros_action_get_goal_status` rather than
+    /// layers call this from `rclc_action_get_goal_status` rather than
     /// reading a cached field on their own handle structs.
     pub fn goal_status(
         &self,
@@ -2174,7 +2174,7 @@ mod terminal_verb_tests {
         );
 
         // The renamed verb. `canceled` is the spelling C
-        // (`nros_action_canceled`), C++ (`ActionServer<A>::canceled`) and
+        // (`rclc_action_canceled`), C++ (`ActionServer<A>::canceled`) and
         // rclcpp_action (`ServerGoalHandle::canceled`) all use.
         LAST_STATUS.store(-1, Ordering::SeqCst);
         h.canceled(&mut executor, &goal, Unit).unwrap();

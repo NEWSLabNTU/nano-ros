@@ -148,9 +148,9 @@ let pub_ = node.create_publisher_with_qos::<Twist>("/cmd_vel", qos)?;
 C:
 
 ```c
-nros_qos_t qos = NROS_QOS_DEFAULT;
+rclc_qos_t qos = RCLC_QOS_DEFAULT;
 qos.tx_express = 1;
-nros_publisher_init_with_qos(&pub, &node, "/cmd_vel", ts, &qos);
+rclc_publisher_init_with_qos(&pub, &node, "/cmd_vel", ts, &qos);
 ```
 
 C++:

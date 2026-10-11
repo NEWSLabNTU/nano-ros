@@ -91,10 +91,10 @@ inline void the_ros2_timer_spelling_is_not_hosted_only() {
 
 /// A node's logger still reaches the log macros with no `<string>` anywhere:
 /// `rclcpp::Logger` is a name plus the opaque handle, and the conversion to
-/// `nros_logger_t` is what kept every native call site compiling when
+/// `rclc_logger_t` is what kept every native call site compiling when
 /// `get_logger()` took upstream's return type (phase-427 W5).
 inline void logger_reaches_a_freestanding_target(rclcpp::Node& node) {
-    NROS_LOG_INFO(node.get_logger(), "up");
+    RCLC_LOG_INFO(node.get_logger(), "up");
 }
 
 inline void probe_entry_points() {

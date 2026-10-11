@@ -23,27 +23,27 @@ header = """/**
 
 /* Forward declarations for callback typedefs that reference these
  * structs before they appear in source-order output. Without these,
- * gcc treats `struct nros_timer_t *` inside a callback parameter list
+ * gcc treats `struct rcl_timer_t *` inside a callback parameter list
  * as a parameter-local incomplete type that doesn't match the later
  * file-scope struct definition. */
 #ifdef __cplusplus
 extern "C" {
 #endif
-struct nros_executor_t;
-struct nros_node_t;
-struct nros_publisher_t;
-struct nros_subscription_t;
-struct nros_service_t;
-struct nros_client_t;
-struct nros_timer_t;
-struct nros_guard_condition_t;
-struct nros_action_server_t;
-struct nros_action_client_t;
-struct nros_lifecycle_state_machine_t;
-struct nros_support_t;
-struct nros_clock_t;
-struct nros_goal_handle_t;
-struct nros_goal_uuid_t;
+struct rclc_executor_t;
+struct rcl_node_t;
+struct rcl_publisher_t;
+struct rcl_subscription_t;
+struct rcl_service_t;
+struct rcl_client_t;
+struct rcl_timer_t;
+struct rcl_guard_condition_t;
+struct rcl_action_server_t;
+struct rcl_action_client_t;
+struct rcl_lifecycle_state_machine_t;
+struct rclc_support_t;
+struct rcl_clock_t;
+struct rclc_goal_handle_t;
+struct rclc_goal_uuid_t;
 #ifdef __cplusplus
 }
 #endif
@@ -84,7 +84,7 @@ exclude = [
     # `<nros/log.h>` so the macros + Doxygen comments survive.
     # Cbindgen would re-emit the enum + functions under their
     # mangled forms and collide with the hand-written header.
-    "nros_log_severity_t",
+    "rcl_log_severity_t",
     # phase-417 stage 3 — the seven `NROS_LOG_SEVERITY_*` levels are ASSOCIATED
     # CONSTS on that type now, and EXCLUDING THE TYPE DOES NOT EXCLUDE THEM:
     # cbindgen sees seven separate constant items whose value is a struct
@@ -93,36 +93,36 @@ exclude = [
     # (both were measured); the annotation that does work is a
     # `/// cbindgen:ignore` doc line on each const, which is where they carry
     # it. Look there, not here, if they ever reappear in the header.
-    "nros_log_emit",
-    "nros_log_emit_fmt",
-    "nros_log_init",
-    "nros_log_default_logger",
-    # phase-417 W4.d — same reason, same header. `nros_log_sink_fn` also brings
+    "rclc_log_emit",
+    "rclc_log_emit_fmt",
+    "rclc_log_init",
+    "rclc_log_default_logger",
+    # phase-417 W4.d — same reason, same header. `rclc_log_sink_fn` also brings
     # cbindgen's synthesised `Option_nros_log_sink_fn` (from the `Option<fn>`
     # nullable-callback slot), which is an OPAQUE struct in the generated header
     # and therefore not passable by value from C at all.
-    "nros_log_emit_at",
-    "nros_log_get_logger",
-    "nros_logger_get_name",
-    "nros_logger_set_level",
-    "nros_logger_get_child",
+    "rclc_log_emit_at",
+    "rclc_log_get_logger",
+    "rclc_logger_get_name",
+    "rclc_logger_set_level",
+    "rclc_logger_get_child",
     # issue 1589 — the `/rosout` bridge, hand-authored in the same header.
-    "nros_logging_rosout_enabled",
-    "nros_rosout_publisher_init",
-    "nros_rosout_qos_default",
-    "nros_rosout_enable",
-    "nros_rosout_pump",
-    "nros_logger_get_level",
-    "nros_logger_is_enabled",
+    "rcl_logging_rosout_enabled",
+    "rclc_rosout_publisher_init",
+    "rclc_rosout_qos_default",
+    "rclc_rosout_enable",
+    "rclc_rosout_pump",
+    "rclc_logger_get_level",
+    "rclc_logger_is_enabled",
     # phase-467 — the process-wide default threshold, hand-authored in
     # `<nros/log.h>` beside the rest of the level surface for the same reason.
-    "nros_log_set_default_level",
-    "nros_log_get_default_level",
-    "nros_log_sink_fn",
+    "rclc_log_set_default_level",
+    "rclc_log_get_default_level",
+    "rclc_log_sink_fn",
     "Option_nros_log_sink_fn",
-    "nros_log_add_sink",
-    "nros_log_throttle_admit",
-    "nros_log_timestamp_available",
+    "rclc_log_add_sink",
+    "rclc_log_throttle_admit",
+    "rclc_log_timestamp_available",
     # issue-0027 (gcc 14 / riscv NuttX) — platform-PROVIDED functions
     # (posix.h / board startup.c), imported by Rust in a `cfg(not(std))`
     # `unsafe extern "C"` block. `[parse] clean` does not strip the edition-2024

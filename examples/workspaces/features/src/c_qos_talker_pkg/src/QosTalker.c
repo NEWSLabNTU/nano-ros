@@ -2,7 +2,7 @@
 /// @brief ws-qos-c — C talker that publishes `std_msgs/Int32` on /chatter with an
 ///        EXPLICIT, NON-DEFAULT QoS profile (C projection of ws-qos-rust).
 ///
-/// The nano-ros QoS differentiator, in C: instead of `nros_c_qos_default()`
+/// The nano-ros QoS differentiator, in C: instead of `rclc_c_qos_default()`
 /// (reliable + VOLATILE + keep-last-10) the committed `c_talker_pkg` passes, this
 /// builds a `nros_cpp_qos_t` with reliability=RELIABLE, durability=TRANSIENT_LOCAL,
 /// history=KEEP_LAST, depth=1 and passes it BY VALUE to
@@ -36,10 +36,10 @@ typedef struct {
 /// retains one sample), and a stock `ros2 topic info -v` reads the served
 /// profile — KEEP_LAST(10) was advertised as 1 (issue 1687).
 static nros_cpp_qos_t qos_profile(void) {
-    nros_cpp_qos_t q = nros_c_qos_default();
-    q.reliability = NROS_C_QOS_RELIABLE;
-    q.durability = NROS_C_QOS_TRANSIENT_LOCAL;
-    q.history = NROS_C_QOS_KEEP_LAST;
+    nros_cpp_qos_t q = rclc_c_qos_default();
+    q.reliability = RCLC_C_QOS_RELIABLE;
+    q.durability = RCLC_C_QOS_TRANSIENT_LOCAL;
+    q.history = RCLC_C_QOS_KEEP_LAST;
     q.depth = 1;
     return q;
 }
@@ -58,8 +58,8 @@ static void on_tick(void* ctx) {
     self->count++;
 }
 
-static nros_ret_t qos_talker_configure(const nros_cpp_node_t* node, void* executor,
-                                       qos_talker_t* self) {
+static rcl_ret_t qos_talker_configure(const nros_cpp_node_t* node, void* executor,
+                                      qos_talker_t* self) {
     /* Line-buffer stdout so each `Published:` flushes immediately when piped (the
      * test reads the output live; glibc block-buffers a pipe otherwise). */
     setvbuf(stdout, NULL, _IOLBF, 0);
@@ -74,4 +74,4 @@ static nros_ret_t qos_talker_configure(const nros_cpp_node_t* node, void* execut
     return nros_cpp_timer_create(executor, /*period_ms=*/1000, on_tick, self, &timer_handle);
 }
 
-NROS_C_COMPONENT(qos_talker_t, qos_talker_configure)
+RCLC_C_COMPONENT(qos_talker_t, qos_talker_configure)

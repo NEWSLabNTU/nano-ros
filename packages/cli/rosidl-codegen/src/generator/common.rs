@@ -155,11 +155,11 @@ fn nros_view_for_field(
 /// three readers share the signature
 /// `int32_t fn(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin, T* out)`,
 /// so the C template calls them uniformly:
-/// - **strings** → `nros_view_str_t` / `nros_cdr_borrow_string`,
+/// - **strings** → `rclc_view_str_t` / `rclc_cdr_borrow_string`,
 /// - **single-byte sequences** (`uint8[]`/`byte[]`/`int8[]`/`bool[]`) →
-///   `nros_view_bytes_t` / `nros_cdr_borrow_bytes`,
+///   `rclc_view_bytes_t` / `rclc_cdr_borrow_bytes`,
 /// - **multi-byte numeric sequences** (`float32[]`, `uint16[]`, …) → the
-///   alignment-agnostic `nros_le_slice_view_<t>_t` / `nros_cdr_borrow_le_slice_<t>`.
+///   alignment-agnostic `rclc_le_slice_view_<t>_t` / `rclc_cdr_borrow_le_slice_<t>`.
 ///
 /// Sequences of strings or nested messages are rejected (no fixed-width byte
 /// span) — same policy as the Rust generator.
@@ -177,20 +177,20 @@ fn c_view_for_field(
     };
     let le_view = |suffix: &str| {
         (
-            format!("nros_le_slice_view_{suffix}_t"),
-            format!("nros_cdr_borrow_le_slice_{suffix}"),
+            format!("rclc_le_slice_view_{suffix}_t"),
+            format!("rclc_cdr_borrow_le_slice_{suffix}"),
         )
     };
     let bytes = || {
         (
-            "nros_view_bytes_t".to_string(),
-            "nros_cdr_borrow_bytes".to_string(),
+            "rclc_view_bytes_t".to_string(),
+            "rclc_cdr_borrow_bytes".to_string(),
         )
     };
     match field_type {
         FieldType::String | FieldType::WString => Ok((
-            "nros_view_str_t".to_string(),
-            "nros_cdr_borrow_string".to_string(),
+            "rclc_view_str_t".to_string(),
+            "rclc_cdr_borrow_string".to_string(),
         )),
         FieldType::Sequence { element_type } => match element_type.as_ref() {
             FieldType::Primitive(
@@ -376,7 +376,7 @@ pub(super) fn cdr_op_rust_method(op: rosidl_lower::CdrOp) -> String {
 /// | `view` | **yes** (0346) | **yes** (0346) | n/a |
 ///
 /// **C heap (0345).** The premise 0343/0344 recorded — that supporting heap in C
-/// would need every consumer taught to free — was wrong: `nros_service_callback_t`
+/// would need every consumer taught to free — was wrong: `rclc_service_callback_t`
 /// hands the callback `request_data`/`request_len`, so nros-c never builds a typed
 /// payload struct at all. The CALLER declares it and calls `_deserialize`, exactly
 /// as for messages, so the caller `_fini`s it — the RFC-0033 contract, unchanged.
@@ -673,7 +673,7 @@ pub(super) fn build_c_field(
 
     // phase-403 W7 — every branch below sees the `string<=N[]` the `.msg` could
     // have spelled, so `char name[16][32]` and its `sizeof`-bounded
-    // `nros_cdr_read_string` fall out of the existing bounded-element arms. The
+    // `rclc_cdr_read_string` fall out of the existing bounded-element arms. The
     // fold is `LoweredField::storage_type`; it used to be an `element_capped`
     // call this builder made for itself.
     let capped = field.storage_type();

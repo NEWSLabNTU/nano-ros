@@ -199,7 +199,7 @@ mechanisms, layered:
 
 1. **`linkme` distributed-slice** (/ 128.H.2) — each
    backend contributes an `RMW_INIT_ENTRIES` entry through the
-   `nros_rmw_register_backend!` macro. `nros_support_init` /
+   `nros_rmw_register_backend!` macro. `rclc_support_init` /
    `Executor::open` walks the slice and calls each entry. Canonical
    on the hosted targets whose linker sections `linkme` recognises —
    of which nano-ros builds only the `native` host board. Macro
@@ -244,7 +244,7 @@ Use the named entry points:
 - Rust: `Executor::open_with_rmw("zenoh", &cfg)` for the
   primary session; `node_builder("name").rmw("cyclonedds").build()`
   for additional Nodes.
-- C: `nros_node_init_ex` with `nros_node_options_t.rmw_name`
+- C: `rclc_node_init_ex` with `rcl_node_options_t.rmw_name`
   set.
 - C++: `rclcpp::Executor::open_with_rmw(...)` and
   `rclcpp::NodeBuilder::rmw(...)` mirror the Rust API (Phase

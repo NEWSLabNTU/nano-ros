@@ -126,7 +126,7 @@ fn parse_gated_modules(lib_rs: &str) -> std::collections::BTreeMap<String, Vec<S
 /// which links only `libnros_cpp.a`). rustc's staticlib emission dead-code-eliminates
 /// no_mangle symbols from a dependency rlib that the root crate does not reference, so
 /// a C++ binary calling a C-API function the C++ FFI itself never touches (e.g.
-/// `nros_clock_init`) fails at link with `undefined reference`. The anchor —
+/// `rcl_clock_init`) fails at link with `undefined reference`. The anchor —
 /// `#[used]`, so it survives DCE in every consumer — takes the address of each entry
 /// point, keeping the whole C surface in the archive. (We never call through it; the
 /// extern declarations only name the symbols, so their argument types are irrelevant.)
@@ -165,7 +165,7 @@ fn generate_c_surface_anchor() {
             // Anchor it only if that block has `#[unsafe(no_mangle)]` AND no
             // `#[cfg(...)]` — a feature-gated fn may not be compiled in the umbrella's
             // feature set, so referencing it would create an undefined symbol. Ungated
-            // entry points (the always-present C surface, e.g. nros_clock_init)
+            // entry points (the always-present C surface, e.g. rcl_clock_init)
             // are exactly what a C++ binary may call but the C++ FFI never references.
             let mut has_no_mangle = false;
             let mut has_cfg = false;
@@ -194,7 +194,9 @@ fn generate_c_surface_anchor() {
                             .chars()
                             .take_while(|c| c.is_alphanumeric() || *c == '_')
                             .collect();
-                        if name.starts_with("nros_") {
+                        // phase-492 — the C API is `rcl_`/`rclc_`-spelled now;
+                        // `nros_` keeps the entry hooks and seams it still has.
+                        if name.starts_with("nros_") || name.starts_with("rcl") {
                             names.insert(name);
                         }
                     }

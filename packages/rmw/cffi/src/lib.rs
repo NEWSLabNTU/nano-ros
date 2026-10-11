@@ -128,8 +128,8 @@ pub fn ret_from_error(err: &TransportError) -> NrosRmwRet {
         // `ZpicoError::Generic` (zpico_init returned -1) both flow
         // through `ZpicoError → ConnectionFailed`; the cmake-built
         // FreeRTOS C/C++ tests will now surface NOT_FOUND (the
-        // user-side mapping in `nros_support_init`) instead of the
-        // generic NROS_RET_ERROR catch-all.
+        // user-side mapping in `rclc_support_init`) instead of the
+        // generic RCL_RET_ERROR catch-all.
         TransportError::ConnectionFailed | TransportError::Disconnected => {
             NROS_RMW_RET_CONNECTION_FAILED
         }
@@ -182,7 +182,7 @@ pub fn error_from_ret(ret: NrosRmwRet) -> TransportError {
         // mapping. Decodes the new vtable-level code back to the
         // `TransportError::ConnectionFailed` variant; downstream
         // `transport_error_to_ret` in nros-c surfaces it as
-        // `NROS_RET_NOT_FOUND` (-4) to the user.
+        // `RCLC_RET_NOT_FOUND` (-4) to the user.
         NROS_RMW_RET_CONNECTION_FAILED => TransportError::ConnectionFailed,
         _ => TransportError::Backend("unknown rmw_ret_t"),
     }

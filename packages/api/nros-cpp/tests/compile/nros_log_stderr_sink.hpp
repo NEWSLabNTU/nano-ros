@@ -21,7 +21,7 @@
 // printed), so this sink writes `NROS_LOG_STDERR_SINK_OVERSIZE` in its place,
 // and a probe asserts the marker is absent. Before issue 1303 the failed-create
 // refusal was ONE record of over 1180 bytes; on a freestanding build
-// `nros_log_emit_fmt_at` cut it to 255, which is still past this bound, so its
+// `rclc_log_emit_fmt_at` cut it to 255, which is still past this bound, so its
 // body never reached the console.
 
 #ifndef NROS_TESTS_NROS_LOG_STDERR_SINK_HPP
@@ -34,12 +34,12 @@
 
 extern "C" {
 
-nros_logger_t nros_log_default_logger(void) {
+rclc_logger_t rclc_log_default_logger(void) {
     static const char tag = 0;
     return &tag;
 }
 
-void nros_log_emit_at(nros_logger_t, nros_log_severity_t, const char* message, size_t message_len,
+void rclc_log_emit_at(rclc_logger_t, rcl_log_severity_t, const char* message, size_t message_len,
                       const char*, uint32_t) {
     if (message_len > ::rclcpp::detail::RUNTIME_REFUSAL_MAX) {
         static const char oversize[] = "NROS_LOG_STDERR_SINK_OVERSIZE";

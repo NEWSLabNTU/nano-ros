@@ -14,12 +14,12 @@
 #include <string.h>
 
 // Type support structure
-static const struct nros_service_type_t fingerprint_corpus_srv_probe_type_support = {
+static const struct rclc_service_type_t fingerprint_corpus_srv_probe_type_support = {
     .type_name = "fingerprint-corpus::srv::dds_::Probe_",
     .type_hash = "h",
 };
 
-const struct nros_service_type_t* fingerprint_corpus_srv_probe_get_type_support(void) {
+const struct rclc_service_type_t* fingerprint_corpus_srv_probe_get_type_support(void) {
     return &fingerprint_corpus_srv_probe_type_support;
 }
 
@@ -48,18 +48,18 @@ int32_t fingerprint_corpus_srv_probe_request_serialize(const fingerprint_corpus_
     const uint8_t* end = buffer + buffer_size;
 
     // phase-303 W4 (#0267) — edition-appropriate encapsulation header + DHEADER.
-    if (nros_cdr_write_encaps_header(&ptr, end) < 0) return -1;
+    if (rclc_cdr_write_encaps_header(&ptr, end) < 0) return -1;
     const uint8_t* origin = ptr; // CDR alignment origin (after header)
     (void)origin;
-    int64_t __dh = nros_cdr_begin_dheader(&ptr, end, origin);
+    int64_t __dh = rclc_cdr_begin_dheader(&ptr, end, origin);
     if (__dh < -1) return -1;
-    if (nros_cdr_write_u32(&ptr, end, origin, msg->items.size) < 0) return -1;
+    if (rclc_cdr_write_u32(&ptr, end, origin, msg->items.size) < 0) return -1;
     for (size_t i = 0; i < msg->items.size; ++i) {
-        if (nros_cdr_write_i64(&ptr, end, origin, msg->items.data[i]) < 0) return -1;
+        if (rclc_cdr_write_i64(&ptr, end, origin, msg->items.data[i]) < 0) return -1;
     }
-    if (nros_cdr_write_string(&ptr, end, origin, msg->note) < 0) return -1;
+    if (rclc_cdr_write_string(&ptr, end, origin, msg->note) < 0) return -1;
 
-    if (nros_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
+    if (rclc_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
     if (serialized_size != NULL) {
         *serialized_size = (size_t)(ptr - buffer);
     }
@@ -77,22 +77,22 @@ int32_t fingerprint_corpus_srv_probe_request_deserialize(fingerprint_corpus_srv_
     ptr += 4;
     const uint8_t* origin = ptr; // CDR alignment origin (after header)
     (void)origin;
-    int64_t __dh = nros_cdr_begin_dheader_read(&ptr, end, origin);
+    int64_t __dh = rclc_cdr_begin_dheader_read(&ptr, end, origin);
     if (__dh < -1) return -1;
 
     fingerprint_corpus_srv_probe_request_init(msg);
     {
         uint32_t len;
-        if (nros_cdr_read_u32(&ptr, end, origin, &len) < 0) return -1;
+        if (rclc_cdr_read_u32(&ptr, end, origin, &len) < 0) return -1;
         msg->items.size = len;
         if (len > 64) return -1;
         for (size_t i = 0; i < len; ++i) {
-            if (nros_cdr_read_i64(&ptr, end, origin, &msg->items.data[i]) < 0) return -1;
+            if (rclc_cdr_read_i64(&ptr, end, origin, &msg->items.data[i]) < 0) return -1;
         }
     }
-    if (nros_cdr_read_string(&ptr, end, origin, msg->note, sizeof(msg->note)) < 0) return -1;
+    if (rclc_cdr_read_string(&ptr, end, origin, msg->note, sizeof(msg->note)) < 0) return -1;
 
-    if (nros_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;
+    if (rclc_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;
     return 0;
 }
 
@@ -121,19 +121,19 @@ int32_t fingerprint_corpus_srv_probe_response_serialize(const fingerprint_corpus
     const uint8_t* end = buffer + buffer_size;
 
     // phase-303 W4 (#0267) — edition-appropriate encapsulation header + DHEADER.
-    if (nros_cdr_write_encaps_header(&ptr, end) < 0) return -1;
+    if (rclc_cdr_write_encaps_header(&ptr, end) < 0) return -1;
     const uint8_t* origin = ptr; // CDR alignment origin (after header)
     (void)origin;
-    int64_t __dh = nros_cdr_begin_dheader(&ptr, end, origin);
+    int64_t __dh = rclc_cdr_begin_dheader(&ptr, end, origin);
     if (__dh < -1) return -1;
-    if (nros_cdr_write_i64(&ptr, end, origin, msg->sum) < 0) return -1;
-    if (nros_cdr_write_u32(&ptr, end, origin, msg->lines.size) < 0) return -1;
+    if (rclc_cdr_write_i64(&ptr, end, origin, msg->sum) < 0) return -1;
+    if (rclc_cdr_write_u32(&ptr, end, origin, msg->lines.size) < 0) return -1;
     for (size_t i = 0; i < msg->lines.size; ++i) {
-        if (nros_cdr_write_string(&ptr, end, origin, msg->lines.data[i]) < 0) return -1;
+        if (rclc_cdr_write_string(&ptr, end, origin, msg->lines.data[i]) < 0) return -1;
     }
-    if (nros_cdr_write_string(&ptr, end, origin, msg->summary) < 0) return -1;
+    if (rclc_cdr_write_string(&ptr, end, origin, msg->summary) < 0) return -1;
 
-    if (nros_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
+    if (rclc_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
     if (serialized_size != NULL) {
         *serialized_size = (size_t)(ptr - buffer);
     }
@@ -151,22 +151,22 @@ int32_t fingerprint_corpus_srv_probe_response_deserialize(fingerprint_corpus_srv
     ptr += 4;
     const uint8_t* origin = ptr; // CDR alignment origin (after header)
     (void)origin;
-    int64_t __dh = nros_cdr_begin_dheader_read(&ptr, end, origin);
+    int64_t __dh = rclc_cdr_begin_dheader_read(&ptr, end, origin);
     if (__dh < -1) return -1;
 
     fingerprint_corpus_srv_probe_response_init(msg);
-    if (nros_cdr_read_i64(&ptr, end, origin, &msg->sum) < 0) return -1;
+    if (rclc_cdr_read_i64(&ptr, end, origin, &msg->sum) < 0) return -1;
     {
         uint32_t len;
-        if (nros_cdr_read_u32(&ptr, end, origin, &len) < 0) return -1;
+        if (rclc_cdr_read_u32(&ptr, end, origin, &len) < 0) return -1;
         msg->lines.size = len;
         if (len > 64) return -1;
         for (size_t i = 0; i < len; ++i) {
-            if (nros_cdr_read_string(&ptr, end, origin, msg->lines.data[i], sizeof(msg->lines.data[i])) < 0) return -1;
+            if (rclc_cdr_read_string(&ptr, end, origin, msg->lines.data[i], sizeof(msg->lines.data[i])) < 0) return -1;
         }
     }
-    if (nros_cdr_read_string(&ptr, end, origin, msg->summary, sizeof(msg->summary)) < 0) return -1;
+    if (rclc_cdr_read_string(&ptr, end, origin, msg->summary, sizeof(msg->summary)) < 0) return -1;
 
-    if (nros_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;
+    if (rclc_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;
     return 0;
 }

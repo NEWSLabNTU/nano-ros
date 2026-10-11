@@ -285,11 +285,11 @@ def extract_c_macro_structs(text: str) -> dict[str, dict]:
     if not tm:
         return {}
     body, after = _balanced_body(macro, tm.end() - 1)
-    if not re.match(r"\s*nros_le_slice_view_##SUFFIX##_t\s*;", macro[after:]):
+    if not re.match(r"\s*rclc_le_slice_view_##SUFFIX##_t\s*;", macro[after:]):
         return {}
     out = {}
     for sfx, elem in ctypes.items():
-        out[f"nros_le_slice_view_{sfx}_t"] = _struct_info(re.sub(r"\bCT\b", elem, body))
+        out[f"rclc_le_slice_view_{sfx}_t"] = _struct_info(re.sub(r"\bCT\b", elem, body))
     return out
 
 
@@ -637,7 +637,7 @@ def check_arm(
             "- a corpus that emits nothing cannot agree about anything"
         )
 
-    # Types the generated headers reach for but do not define (`nros_view_str_t`
+    # Types the generated headers reach for but do not define (`rclc_view_str_t`
     # and friends) come from the authored C header, extracted the same way.
     missing = unresolved_c_types(c_structs, c_fnptrs)
     if missing:

@@ -52,9 +52,9 @@ a C reset/vector startup, and a C-callable board init).
 
 ## What is ordinary about it
 
-`src/talker.c` is the same program as its FreeRTOS sibling: `nros_support_init`,
+`src/talker.c` is the same program as its FreeRTOS sibling: `rclc_support_init`,
 `rclc_node_init_default`, `rclc_publisher_init_default`, a 1 Hz
-`nros_timer_init`, `nros_executor_init`, `rclc_executor_spin_period`. The C API
+`rcl_timer_init`, `rclc_executor_init`, `rclc_executor_spin_period`. The C API
 is not subset here — `nros-c` is built with the `platform-mps2-an385` arm and
 carries its whole surface.
 
@@ -66,8 +66,8 @@ carries its whole surface.
 * **`printf`-style logging does not substitute.** `nros-baremetal-common`'s
   `vsnprintf` copies its format string **verbatim** (a deliberate choice: an
   unsubstituted message still names the failure, where an empty buffer is
-  silence). So `NROS_LOG_INFO(logger, "n=%d", n)` prints `n=%d` on this
-  platform. Build the text and call `nros_log_emit_at`, as this example does.
+  silence). So `RCLC_LOG_INFO(logger, "n=%d", n)` prints `n=%d` on this
+  platform. Build the text and call `rclc_log_emit_at`, as this example does.
 
 ## Build
 

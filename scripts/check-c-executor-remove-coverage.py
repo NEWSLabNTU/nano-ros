@@ -16,7 +16,7 @@ WHAT THIS GATE HOLDS
 The coverage a Rust table cannot state, read from the C API's own sources.
 EVERY `nros_executor_add_*` / `rclc_executor_add_*` FFI is read (issue 1668 —
 until then only those whose SECOND parameter was an entity type were, so a verb
-that took `*const nros_node_t` there and handed back nothing was invisible),
+that took `*const rcl_node_t` there and handed back nothing was invisible),
 and each must be one of:
 
   * KEYED BY AN ENTITY — it takes a `*mut nros_<kind>_t`, and some
@@ -56,13 +56,18 @@ SRC = REPO / "packages" / "api" / "nros-c" / "src"
 ISSUES = REPO / "docs" / "issues"
 GATE = "check-c-executor-remove-coverage"
 
-# `pub unsafe extern "C" fn <name>(executor: *mut nros_executor_t, ...) -> ...`
+# `pub unsafe extern "C" fn <name>(executor: *mut rclc_executor_t, ...) -> ...`
 FFI = re.compile(
     r'pub unsafe extern "C" fn ((?:nros|rclc)_executor_(add|remove)_[a-z0-9_]+)\s*\(\s*'
-    r"executor:\s*\*mut nros_executor_t\s*,?",
+    r"executor:\s*\*mut rclc_executor_t\s*,?",
     re.S,
 )
-ENTITY = re.compile(r"^\*mut (nros_[a-z0-9_]+_t)$")
+# phase-492 — the entity types are `rcl_` / `rcl_action_` / `rclc_` spelled now.
+ENTITY = re.compile(r"^\*mut ((?:rcl|rclc|nros)_[a-z0-9_]+_t)$")
+# Handles a verb takes that are NOT executor entities: the rclc parameter
+# server registers the parameter services and an on-set hook, not an arena
+# entry, and its `fini` undoes both (phase-491). Its verbs are NOT_AN_ENTRY rows.
+NOT_ENTITY = {"rclc_parameter_server_t"}
 OUT_HANDLE = re.compile(r"^\*mut ([a-z0-9_]+_handle_t)$")
 BY_VALUE_HANDLE = re.compile(r"^([a-z0-9_]+_handle_t)$")
 
@@ -81,13 +86,13 @@ NOT_AN_ENTRY: dict[str, str] = {
     # the hook and the node's parameters.
     "rclc_executor_add_parameter_server": "the parameter services + the server's on-set hook",
     "rclc_executor_add_parameter_server_with_context": "the parameter services + the server's on-set hook",
-    "nros_executor_add_time_triggered_dispatcher": "the major-frame length of TT dispatch",
+    "rclc_executor_add_time_triggered_dispatcher": "the major-frame length of TT dispatch",
 }
 
 # Add verb -> the sibling that registers the same entry REMOVABLY.
 SUPERSEDED: dict[str, str] = {
     # issue 1668 — direct-arg, no subscription object, nothing handed back.
-    "nros_executor_add_subscription_raw_with_info": "nros_executor_add_subscription_with_info",
+    "rclc_executor_add_subscription_raw_with_info": "rclc_executor_add_subscription_with_info",
 }
 
 
@@ -141,7 +146,9 @@ class Ffi:
     def entity(self) -> str | None:
         for _, ty in self.params:
             m = ENTITY.match(ty)
-            if m and m.group(1) != "nros_executor_t" and not m.group(1).endswith("_handle_t"):
+            if m and m.group(1) in NOT_ENTITY:
+                m = None
+            if m and m.group(1) != "rclc_executor_t" and not m.group(1).endswith("_handle_t"):
                 return m.group(1)
         return None
 
@@ -300,47 +307,47 @@ def problems(
 GOOD = """
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_executor_add_widget(
-    executor: *mut nros_executor_t,
+    executor: *mut rclc_executor_t,
     widget: *mut nros_widget_t,
-) -> nros_ret_t { 0 }
+) -> rcl_ret_t { 0 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_add_widget_sized(executor: *mut nros_executor_t, widget: *mut nros_widget_t, n: usize) -> nros_ret_t { 0 }
+pub unsafe extern "C" fn nros_executor_add_widget_sized(executor: *mut rclc_executor_t, widget: *mut nros_widget_t, n: usize) -> rcl_ret_t { 0 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_executor_remove_widget(
-    executor: *mut nros_executor_t,
+    executor: *mut rclc_executor_t,
     widget: *mut nros_widget_t,
-) -> nros_ret_t { 0 }
+) -> rcl_ret_t { 0 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_executor_add_gadget(
-    executor: *mut nros_executor_t,
+    executor: *mut rclc_executor_t,
     gadget: *mut nros_gadget_t,
-) -> nros_ret_t { 0 }
+) -> rcl_ret_t { 0 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_executor_add_hook(
-    executor: *mut nros_executor_t,
+    executor: *mut rclc_executor_t,
     callback: Option<unsafe extern "C" fn(a: u8, b: u8)>,
     out_handle: *mut nros_hook_handle_t,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     0
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_executor_remove_hook(
-    executor: *mut nros_executor_t,
+    executor: *mut rclc_executor_t,
     handle: nros_hook_handle_t,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     0
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_executor_add_knob(
-    executor: *mut nros_executor_t,
+    executor: *mut rclc_executor_t,
     value: u32,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     0
 }
 """
@@ -350,10 +357,10 @@ pub unsafe extern "C" fn nros_executor_add_knob(
 LEAKY = """
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_executor_add_widget_direct(
-    executor: *mut nros_executor_t,
-    node: *const nros_node_t,
+    executor: *mut rclc_executor_t,
+    node: *const rcl_node_t,
     topic: *const c_char,
-) -> nros_ret_t {
+) -> rcl_ret_t {
     (*executor).handle_count += 1;
     0
 }
@@ -399,7 +406,7 @@ def self_test() -> None:
     )
 
     # 6. Issue 1668 — an add keyed by nothing, with no row, fails. This is the
-    #    pre-1668 tree's `nros_executor_add_subscription_raw_with_info`.
+    #    pre-1668 tree's `rclc_executor_add_subscription_raw_with_info`.
     leak = problems({"a.rs": GOOD + LEAKY}, table, {"9999"}, knob, {})
     assert any("nros_executor_add_widget_direct` takes no entity" in p for p in leak), (
         f"{GATE} selftest: a handle-less add with no row must fail, got {leak}"

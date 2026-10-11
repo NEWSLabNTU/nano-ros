@@ -106,7 +106,7 @@ Verdicts per row; the hole details and their class are in the issues named above
 | `build-script-path-resolution` | a build.rs resolving a path-valued SDK var uses nros_build_paths | bare std::env::var("THREADX_DIR") in nros-board-threadx/build.rs | 1 | — | — | **CLEAN** |
 | `build-tool-verbs-exempt` | every nros verb cmake invokes is exempt from the workspace check | drop RmwDispatch from ws_cmd_name's ws-build arm | 1 | — | — | **CLEAN** |
 | `build-type-spelling` | entries/boards/providers use nros_cargo/nros_cmake, interfaces ament_cmake | esp32-c3 listener entry build_type nros_cargo -> ament_cargo | 1 | — | — | **CLEAN** |
-| `c-executor-remove-coverage` | every C executor add verb has a remove verb (or a reason) | rename nros_executor_remove_timer | 1 | — | — | **CLEAN** |
+| `c-executor-remove-coverage` | every C executor add verb has a remove verb (or a reason) | rename rclc_executor_remove_timer | 1 | — | — | **CLEAN** |
 | `c-knob-guard-order` | a `#if KNOB < 1` guard comes after the knob's default define | copy the ZPICO_MAX_QUERYABLES guard above its #ifndef default | 1 | — | — | **CLEAN** |
 | `capability-conditionals` | a when.capability conditional names a declared capability and partitions | FreeRTOS ZENOH_ORIN_SPE arm -> ip_stack = true (arms no longer partition) | 1 | — | — | **CLEAN** |
 | `capability-flavour-guards` | every capability-gated std use is declared | nros-core: a std:: use gated on a capability feature | 1 | — | — | **CLEAN** |

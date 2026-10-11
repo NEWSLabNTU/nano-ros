@@ -29,7 +29,7 @@ use crate::{BoardFamily, CAbiRunners};
 /// How a component is constructed — the fact that picks a node's body.
 ///
 /// From the cmake metadata (RFC-0043 / RFC-0044 / phase-257): a C component is
-/// reached through its `NROS_C_COMPONENT` factory/configure seam, a Rust one
+/// reached through its `RCLC_C_COMPONENT` factory/configure seam, a Rust one
 /// self-creates through its install seam, and a C++ one is either a class the
 /// entry default-constructs and `configure`s or an `rclcpp`-shape class that
 /// OWNS its node and is constructed with a handle.

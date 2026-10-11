@@ -23,7 +23,7 @@
 //! | --- | --- | --- |
 //! | Rust `.bss` `EXECUTOR_BACKING` | `ExecutorSizing::DEFAULT.arena` = `ARENA_SIZE` | compile time, the `ARENA_SIZE` const item below |
 //! | Rust heap, default sizing (`open` / `open_multi` / `open_with_rmw` past the static) | the same `DEFAULT` | compile time, same assertion |
-//! | C `nros_executor_t::_opaque` | `EXECUTOR_OPAQUE_U64S`, measured from `ExecutorInlineStorage` = `DEFAULT` | compile time, same assertion (`nros-c` compiles after it) |
+//! | C `rclc_executor_t::_opaque` | `EXECUTOR_OPAQUE_U64S`, measured from `ExecutorInlineStorage` = `DEFAULT` | compile time, same assertion (`nros-c` compiles after it) |
 //! | C++ `Node::GlobalStorageHolder` / `Executor::storage_` | `CPP_EXECUTOR_OPAQUE_U64S`, measured the same way | compile time, same assertion |
 //! | Rust `open_in` over a caller's `const` sizing | the caller's `ExecutorSizing::arena` | compile time, OPT-IN: [`ExecutorSizing::assert_covers_model`](super::ExecutorSizing::assert_covers_model) |
 //! | Rust heap, per-entry sizing (`open_sized`, `arena_size_for(cbs)`) | a RUNTIME `cbs` handed through `BoardEntry` | NO — runtime |
@@ -63,7 +63,7 @@ use crate::config::arena_model;
 /// every image makes.
 ///
 /// The Rust `.bss` static (`executor::backing`), the heap fallback of the
-/// `alloc` constructors, the C `nros_executor_t::_opaque` and the C++
+/// `alloc` constructors, the C `rclc_executor_t::_opaque` and the C++
 /// `Node::GlobalStorageHolder` storage are all sized from
 /// `ExecutorSizing::DEFAULT`, whose arena IS `ARENA_SIZE`, and each already
 /// refuses at compile time to be smaller than that sizing. So this one item

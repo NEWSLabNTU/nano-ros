@@ -269,7 +269,7 @@ Fibonacci::Result result;
 NROS_TRY(client.get_result(goal_id, result));
 ```
 
-These helpers are syntactic sugar over `send_goal_async()` + `spin_once()`; they cannot be called from inside a dispatch callback (returns `NROS_RET_REENTRANT`).
+These helpers are syntactic sugar over `send_goal_async()` + `spin_once()`; they cannot be called from inside a dispatch callback (returns `RCLC_RET_REENTRANT`).
 
 **Future-based async.** `send_goal_future()` / `get_result_future()` return a `Future<T>` that polls the same arena slot:
 

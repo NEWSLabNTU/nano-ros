@@ -37,7 +37,7 @@
 //!
 //! All six retired templates emitted C++, including the C ones: the entry drives
 //! `Board::run_components` and holds the `nros::Node`, while the C component is
-//! reached through its `NROS_C_COMPONENT` factory/configure seam. The C emitter
+//! reached through its `RCLC_C_COMPONENT` factory/configure seam. The C emitter
 //! (the C pack) would emit a `.c` TU calling `nros_board_native_*`, which
 //! is both a different boot seam and — for every board but native — the WRONG
 //! one (it hardcodes the native runner whatever the board; see the phase-432

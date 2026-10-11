@@ -20,14 +20,14 @@
  *     // … decode + use self->recv …
  * }
  *
- * static nros_ret_t listener_configure(const nros_cpp_node_t* node, listener_t* self) {
+ * static rcl_ret_t listener_configure(const nros_cpp_node_t* node, listener_t* self) {
  *     size_t h;
  *     // trailing NULL = default options (phase-402)
  *     return nros_cpp_subscription_register(node, "/chatter", "std_msgs/msg/Int32", "",
- *                                           nros_c_qos_default(), on_raw, self, &h, NULL);
+ *                                           rclc_c_qos_default(), on_raw, self, &h, NULL);
  * }
  *
- * NROS_C_COMPONENT(listener_t, listener_configure)  // emits create/configure exports
+ * RCLC_C_COMPONENT(listener_t, listener_configure)  // emits create/configure exports
  * ```
  *
  * The bridge is the `nros_cpp_*` FFI: those symbols are C-ABI (the `cpp` is a
@@ -43,7 +43,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "nros/types.h"                /* nros_ret_t */
+#include "nros/types.h"                /* rcl_ret_t */
 #include "nros/serialization_format.h" /* NROS_STATIC_ASSERT (issue 1535) */
 /* phase-454 W10 — `NROS_ASSERT_DECLARED_DEPTH`, for a C component that states a
  * QoS depth on a `nros_cpp_subscription_register()` call. The C component
@@ -96,7 +96,7 @@ typedef struct nros_cpp_node_t nros_cpp_node_t;
 
 /** Raw zero-copy subscription callback — `(data, len, ctx)`. ABI-identical to
  *  the C++ `nros_cpp_subscription_message_callback_t`. */
-typedef void (*nros_c_subscription_callback_t)(const uint8_t* data, size_t len, void* ctx);
+typedef void (*rclc_c_subscription_callback_t)(const uint8_t* data, size_t len, void* ctx);
 
 /* Phase 269 W3 — E2E integrity status for the validated-subscription callback.
  * ABI-identical to `nros_cpp_integrity_status_t` (nros_cpp_ffi.h). The guard
@@ -117,7 +117,7 @@ typedef struct nros_cpp_integrity_status_t {
  *  component-callback analog of Rust's `FnMut(&[u8], &IntegrityStatus)`.
  *  Requires `NROS_SAFETY_E2E=ON` (lowered from
  *  `[system].features = ["safety"]` via `NanoRosCapabilities.cmake`). */
-typedef void (*nros_c_subscription_validated_callback_t)(const uint8_t* data, size_t len,
+typedef void (*rclc_c_subscription_validated_callback_t)(const uint8_t* data, size_t len,
                                                          int64_t gap, bool duplicate,
                                                          int8_t crc_valid, void* ctx);
 
@@ -129,30 +129,30 @@ typedef void (*nros_c_subscription_validated_callback_t)(const uint8_t* data, si
  * whose reliability reads 3 would have no name for it here, and the natural
  * repair is to invent one that disagrees with the FFI. They are values on the
  * REPORTING side — a component still requests only concrete policies. */
-enum nros_c_qos_reliability_t {
-    NROS_C_QOS_RELIABLE = 0,
-    NROS_C_QOS_BEST_EFFORT = 1,
-    NROS_C_QOS_RELIABILITY_SYSTEM_DEFAULT = 2,
-    NROS_C_QOS_RELIABILITY_UNKNOWN = 3
+enum rclc_c_qos_reliability_t {
+    RCLC_C_QOS_RELIABLE = 0,
+    RCLC_C_QOS_BEST_EFFORT = 1,
+    RCLC_C_QOS_RELIABILITY_SYSTEM_DEFAULT = 2,
+    RCLC_C_QOS_RELIABILITY_UNKNOWN = 3
 };
-enum nros_c_qos_durability_t {
-    NROS_C_QOS_VOLATILE = 0,
-    NROS_C_QOS_TRANSIENT_LOCAL = 1,
-    NROS_C_QOS_DURABILITY_SYSTEM_DEFAULT = 2,
-    NROS_C_QOS_DURABILITY_UNKNOWN = 3
+enum rclc_c_qos_durability_t {
+    RCLC_C_QOS_VOLATILE = 0,
+    RCLC_C_QOS_TRANSIENT_LOCAL = 1,
+    RCLC_C_QOS_DURABILITY_SYSTEM_DEFAULT = 2,
+    RCLC_C_QOS_DURABILITY_UNKNOWN = 3
 };
-enum nros_c_qos_history_t {
-    NROS_C_QOS_KEEP_LAST = 0,
-    NROS_C_QOS_KEEP_ALL = 1,
-    NROS_C_QOS_HISTORY_SYSTEM_DEFAULT = 2,
-    NROS_C_QOS_HISTORY_UNKNOWN = 3
+enum rclc_c_qos_history_t {
+    RCLC_C_QOS_KEEP_LAST = 0,
+    RCLC_C_QOS_KEEP_ALL = 1,
+    RCLC_C_QOS_HISTORY_SYSTEM_DEFAULT = 2,
+    RCLC_C_QOS_HISTORY_UNKNOWN = 3
 };
-enum nros_c_qos_liveliness_t {
-    NROS_C_QOS_LIVELINESS_NONE = 0,
-    NROS_C_QOS_LIVELINESS_AUTOMATIC = 1,
-    NROS_C_QOS_LIVELINESS_MANUAL_BY_TOPIC = 2,
-    NROS_C_QOS_LIVELINESS_MANUAL_BY_NODE = 3,
-    NROS_C_QOS_LIVELINESS_UNKNOWN = 4
+enum rclc_c_qos_liveliness_t {
+    RCLC_C_QOS_LIVELINESS_NONE = 0,
+    RCLC_C_QOS_LIVELINESS_AUTOMATIC = 1,
+    RCLC_C_QOS_LIVELINESS_MANUAL_BY_TOPIC = 2,
+    RCLC_C_QOS_LIVELINESS_MANUAL_BY_NODE = 3,
+    RCLC_C_QOS_LIVELINESS_UNKNOWN = 4
 };
 
 /** Layout-identical mirror of the C++ `nros_cpp_qos_t` (same field order/types),
@@ -162,10 +162,10 @@ enum nros_c_qos_liveliness_t {
  *  definition wins when its header guard `NROS_CPP_FFI_H` is already set. */
 #ifndef NROS_CPP_FFI_H
 typedef struct nros_cpp_qos_t {
-    enum nros_c_qos_reliability_t reliability;
-    enum nros_c_qos_durability_t durability;
-    enum nros_c_qos_history_t history;
-    enum nros_c_qos_liveliness_t liveliness_kind;
+    enum rclc_c_qos_reliability_t reliability;
+    enum rclc_c_qos_durability_t durability;
+    enum rclc_c_qos_history_t history;
+    enum rclc_c_qos_liveliness_t liveliness_kind;
     int depth;
     uint32_t deadline_ms;
     uint32_t lifespan_ms;
@@ -195,12 +195,12 @@ typedef struct nros_cpp_qos_t {
  *  policy upstream leaves unset. See `nros-c/src/qos.rs` for the wire
  *  measurements (none of the three backends puts this field anywhere a peer
  *  can see for the sentinel-vs-AUTOMATIC pair). */
-static inline nros_cpp_qos_t nros_c_qos_default(void) {
+static inline nros_cpp_qos_t rclc_c_qos_default(void) {
     nros_cpp_qos_t q;
-    q.reliability = NROS_C_QOS_RELIABLE;
-    q.durability = NROS_C_QOS_VOLATILE;
-    q.history = NROS_C_QOS_KEEP_LAST;
-    q.liveliness_kind = NROS_C_QOS_LIVELINESS_NONE;
+    q.reliability = RCLC_C_QOS_RELIABLE;
+    q.durability = RCLC_C_QOS_VOLATILE;
+    q.history = RCLC_C_QOS_KEEP_LAST;
+    q.liveliness_kind = RCLC_C_QOS_LIVELINESS_NONE;
     q.depth = 10;
     q.deadline_ms = 0;
     q.lifespan_ms = 0;
@@ -260,7 +260,7 @@ nros_cpp_subscription_options_t nros_cpp_subscription_default_options(void);
 
 int32_t nros_cpp_subscription_register(const nros_cpp_node_t* node, const char* topic,
                                        const char* type_name, const char* type_hash,
-                                       nros_cpp_qos_t qos, nros_c_subscription_callback_t callback,
+                                       nros_cpp_qos_t qos, rclc_c_subscription_callback_t callback,
                                        void* context, size_t* out_handle_id,
                                        const nros_cpp_subscription_options_t* options);
 
@@ -291,7 +291,7 @@ int32_t nros_cpp_subscription_register(const nros_cpp_node_t* node, const char* 
  *  default here instead of whatever the caller's frame held. */
 static inline int32_t nros_cpp_subscription_register_hinted(
     const nros_cpp_node_t* node, const char* topic, const char* type_name, const char* type_hash,
-    nros_cpp_qos_t qos, nros_c_subscription_callback_t callback, void* context,
+    nros_cpp_qos_t qos, rclc_c_subscription_callback_t callback, void* context,
     size_t* out_handle_id, uint32_t rx_buffer_hint) {
     nros_cpp_subscription_options_t options = nros_cpp_subscription_default_options();
     options.rx_buffer_hint = rx_buffer_hint;
@@ -302,7 +302,7 @@ static inline int32_t nros_cpp_subscription_register_hinted(
 int32_t nros_cpp_subscription_register_validated(const nros_cpp_node_t* node, const char* topic,
                                                  const char* type_name, const char* type_hash,
                                                  nros_cpp_qos_t qos,
-                                                 nros_c_subscription_validated_callback_t callback,
+                                                 rclc_c_subscription_validated_callback_t callback,
                                                  void* context, size_t* out_handle_id,
                                                  const nros_cpp_subscription_options_t* options);
 
@@ -318,7 +318,7 @@ int32_t nros_cpp_subscription_register_validated(const nros_cpp_node_t* node, co
  * call the `nros_cpp_*_create` functions these buffers are for, so nothing
  * that could run is refused. */
 #define NROS_C_STORAGE_SIZE_REFUSED_NO_PER_BUILD_nros_cpp_config_generated_h                       \
-    nros_c_storage_size_unavailable__the_per_build_nros_cpp_config_generated_h_is_not_on_this_include_path
+    rclc_c_storage_size_unavailable__the_per_build_nros_cpp_config_generated_h_is_not_on_this_include_path
 
 /* Issue 1566 — `nros_cpp_publisher_create` writes a `CppPublisher`, which is
  * `NROS_PUBLISHER_SIZE + sizeof(void*)` bytes (its own const assertion), and it
@@ -361,7 +361,7 @@ int32_t nros_cpp_publish_raw(void* storage, const uint8_t* data, size_t len);
  *  `req_len`), fills the reply into `resp` (capacity `resp_cap`) + writes the
  *  byte count to `*resp_len`; returns `true` to send, `false` to drop. ABI-
  *  identical to the C++ `nros_cpp_service_request_callback_t`. */
-typedef bool (*nros_c_service_request_callback_t)(const uint8_t* req, size_t req_len, uint8_t* resp,
+typedef bool (*rclc_c_service_request_callback_t)(const uint8_t* req, size_t req_len, uint8_t* resp,
                                                   size_t resp_cap, size_t* resp_len, void* ctx);
 
 /**
@@ -371,7 +371,7 @@ typedef bool (*nros_c_service_request_callback_t)(const uint8_t* req, size_t req
 int32_t nros_cpp_service_server_register(const nros_cpp_node_t* node, const char* service_name,
                                          const char* type_name, const char* type_hash,
                                          nros_cpp_qos_t qos,
-                                         nros_c_service_request_callback_t callback, void* context,
+                                         rclc_c_service_request_callback_t callback, void* context,
                                          uint8_t sched_context, size_t* out_handle_id);
 
 /* --- Action server (executor-scoped; needs the `executor` configure arg) -- */
@@ -414,24 +414,24 @@ NROS_STATIC_ASSERT(NROS_C_SERVICE_CLIENT_STORAGE_SIZE >= NROS_SERVICE_CLIENT_SIZ
 #endif
 
 /** GoalResponse discriminant returned from the goal callback. */
-enum nros_c_goal_response_t {
-    NROS_C_GOAL_REJECT = 0,
-    NROS_C_GOAL_ACCEPT_AND_EXECUTE = 1,
-    NROS_C_GOAL_ACCEPT_AND_DEFER = 2
+enum rclc_c_goal_response_t {
+    RCLC_C_GOAL_REJECT = 0,
+    RCLC_C_GOAL_ACCEPT_AND_EXECUTE = 1,
+    RCLC_C_GOAL_ACCEPT_AND_DEFER = 2
 };
 /** CancelResponse discriminant returned from the cancel callback. */
-enum nros_c_cancel_response_t { NROS_C_CANCEL_REJECT = 0, NROS_C_CANCEL_ACCEPT = 1 };
+enum rclc_c_cancel_response_t { RCLC_C_CANCEL_REJECT = 0, RCLC_C_CANCEL_ACCEPT = 1 };
 
 /** Goal callback: receives the goal UUID + the goal's CDR bytes; returns a
- *  `nros_c_goal_response_t`. ABI-identical to `nros_cpp_goal_callback_t`. */
-typedef int32_t (*nros_c_goal_callback_t)(const uint8_t goal_id[16], const uint8_t* data,
+ *  `rclc_c_goal_response_t`. ABI-identical to `nros_cpp_goal_callback_t`. */
+typedef int32_t (*rclc_c_goal_callback_t)(const uint8_t goal_id[16], const uint8_t* data,
                                           size_t len, void* ctx);
-/** Cancel callback: returns a `nros_c_cancel_response_t`. */
-typedef int32_t (*nros_c_cancel_callback_t)(const uint8_t goal_id[16], void* ctx);
+/** Cancel callback: returns a `rclc_c_cancel_response_t`. */
+typedef int32_t (*rclc_c_cancel_callback_t)(const uint8_t goal_id[16], void* ctx);
 /** Accepted-goal callback (issue 0796): fires once per accepted goal, after the
  *  accept reply has reached the client — for ACCEPT_AND_EXECUTE and
  *  ACCEPT_AND_DEFER alike. ABI-identical to `nros_cpp_accepted_callback_t`. */
-typedef void (*nros_c_accepted_callback_t)(const uint8_t goal_id[16], void* ctx);
+typedef void (*rclc_c_accepted_callback_t)(const uint8_t goal_id[16], void* ctx);
 
 /* Raw action-server FFI (C-ABI symbols from nros-cpp; node + executor scoped). */
 int32_t nros_cpp_action_server_create(const nros_cpp_node_t* node, const char* action_name,
@@ -440,8 +440,8 @@ int32_t nros_cpp_action_server_create(const nros_cpp_node_t* node, const char* a
 int32_t nros_cpp_action_server_register(void* storage, void* executor_handle,
                                         const char* action_name, const char* type_name,
                                         const char* type_hash, uint8_t sched_context);
-int32_t nros_cpp_action_server_set_callbacks(void* handle, nros_c_goal_callback_t goal_cb,
-                                             nros_c_cancel_callback_t cancel_cb, void* ctx);
+int32_t nros_cpp_action_server_set_callbacks(void* handle, rclc_c_goal_callback_t goal_cb,
+                                             rclc_c_cancel_callback_t cancel_cb, void* ctx);
 /* issue 0796 — the accepted-goal hook the C++ callback tier was missing. A
  * SEPARATE entry point rather than a fourth parameter on the call above: that
  * declaration is mirrored in three headers and called directly by C
@@ -451,7 +451,7 @@ int32_t nros_cpp_action_server_set_callbacks(void* handle, nros_c_goal_callback_
  * — and action_server.hpp is the other); the cross-include TU in
  * `just check c` is what catches a half-updated set. */
 int32_t nros_cpp_action_server_set_accepted_callback(void* handle,
-                                                     nros_c_accepted_callback_t accepted_cb,
+                                                     rclc_c_accepted_callback_t accepted_cb,
                                                      void* ctx);
 /* issue 0796 — `status` was hardcoded `Succeeded` in the shim, so an aborted
  * goal reached the client as succeeded. THIRD mirror of this declaration
@@ -464,12 +464,12 @@ int32_t nros_cpp_action_server_complete_goal(void* handle, void* executor_handle
 /* --- Timer (executor-scoped) -------------------------------------------- */
 
 /** Timer callback — `(ctx)`. ABI-identical to `nros_cpp_timer_callback_t`. */
-typedef void (*nros_c_timer_callback_t)(void* ctx);
+typedef void (*rclc_c_timer_callback_t)(void* ctx);
 
 /** Create + register a repeating timer on the executor (fires during spin_once).
  *  C-ABI symbol from nros-cpp. */
 int32_t nros_cpp_timer_create(void* executor_handle, uint64_t period_ms,
-                              nros_c_timer_callback_t callback, void* context,
+                              rclc_c_timer_callback_t callback, void* context,
                               size_t* out_handle_id);
 
 /* --- Service client (poll model) ---------------------------------------- */
@@ -517,21 +517,21 @@ int32_t nros_cpp_action_client_try_recv_result(void* handle, uint8_t* out_data, 
 int32_t nros_cpp_action_client_poll(void* handle);
 
 /* Callback dispatch (RFC-0041; issue-0047). ABI-identical to the C++ typedefs. */
-typedef void (*nros_c_action_goal_response_callback_t)(bool accepted, const uint8_t goal_id[16],
+typedef void (*rclc_c_action_goal_response_callback_t)(bool accepted, const uint8_t goal_id[16],
                                                        void* ctx);
-typedef void (*nros_c_action_feedback_callback_t)(const uint8_t goal_id[16], const uint8_t* data,
+typedef void (*rclc_c_action_feedback_callback_t)(const uint8_t goal_id[16], const uint8_t* data,
                                                   size_t len, void* ctx);
-typedef void (*nros_c_action_result_callback_t)(const uint8_t goal_id[16], int32_t status,
+typedef void (*rclc_c_action_result_callback_t)(const uint8_t goal_id[16], int32_t status,
                                                 const uint8_t* data, size_t len, void* ctx);
 int32_t nros_cpp_action_client_set_callbacks(void* handle,
-                                             nros_c_action_goal_response_callback_t goal_response,
-                                             nros_c_action_feedback_callback_t feedback,
-                                             nros_c_action_result_callback_t result, void* context);
+                                             rclc_c_action_goal_response_callback_t goal_response,
+                                             rclc_c_action_feedback_callback_t feedback,
+                                             rclc_c_action_result_callback_t result, void* context);
 
 /* --- Factory / configure export macro ----------------------------------- */
 
-#define NROS_C_PASTE_(a, b) a##b
-#define NROS_C_PASTE(a, b) NROS_C_PASTE_(a, b)
+#define RCLC_C_PASTE_(a, b) a##b
+#define RCLC_C_PASTE(a, b) RCLC_C_PASTE_(a, b)
 
 /**
  * Emit the C-ABI factory + configure exports the typed Entry calls, keyed on
@@ -539,22 +539,22 @@ int32_t nros_cpp_action_client_set_callbacks(void* handle,
  * `-DNROS_PKG_NAME=<pkg>` — the same token the C++ register macro keys on):
  *
  *   void*     __nros_c_component_<pkg>_create(void);    // -> &static instance
- *   nros_ret_t __nros_c_component_<pkg>_configure(const nros_cpp_node_t*, void*);
+ *   rcl_ret_t __nros_c_component_<pkg>_configure(const nros_cpp_node_t*, void*);
  *
  * `StructT` is the component state struct; `configure_fn` has signature
- * `nros_ret_t configure_fn(const nros_cpp_node_t* node, void* executor, StructT* self)`.
+ * `rcl_ret_t configure_fn(const nros_cpp_node_t* node, void* executor, StructT* self)`.
  * `executor` is the opaque executor handle (the C analog of
  * `Node::executor_handle()`) — needed for executor-scoped transports (action
  * server register / complete_goal); node-scoped binds (sub / service) ignore it.
  * Storage lives in this TU (no heap, no sizeof leak to the Entry).
  */
-#define NROS_C_COMPONENT(StructT, configure_fn)                                                    \
-    static StructT NROS_C_PASTE(__nros_c_inst_, NROS_PKG_NAME);                                    \
-    void* NROS_C_PASTE(NROS_C_PASTE(__nros_c_component_, NROS_PKG_NAME), _create)(void) {          \
-        return &NROS_C_PASTE(__nros_c_inst_, NROS_PKG_NAME);                                       \
+#define RCLC_C_COMPONENT(StructT, configure_fn)                                                    \
+    static StructT RCLC_C_PASTE(__nros_c_inst_, NROS_PKG_NAME);                                    \
+    void* RCLC_C_PASTE(RCLC_C_PASTE(__nros_c_component_, NROS_PKG_NAME), _create)(void) {          \
+        return &RCLC_C_PASTE(__nros_c_inst_, NROS_PKG_NAME);                                       \
     }                                                                                              \
-    nros_ret_t NROS_C_PASTE(NROS_C_PASTE(__nros_c_component_, NROS_PKG_NAME),                      \
-                            _configure)(const nros_cpp_node_t* node, void* executor, void* self) { \
+    rcl_ret_t RCLC_C_PASTE(RCLC_C_PASTE(__nros_c_component_, NROS_PKG_NAME),                       \
+                           _configure)(const nros_cpp_node_t* node, void* executor, void* self) {  \
         return configure_fn(node, executor, (StructT*)self);                                       \
     }
 

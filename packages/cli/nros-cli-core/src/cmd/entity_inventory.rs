@@ -1290,7 +1290,7 @@ contracts:
     ///     --metadata packages/api/nros-cpp/tests/compile/declared-qos-fixture/nros-metadata.json \
     ///     --model packages/api/nros-cpp/tests/compile/declared-qos-fixture/declared_qos.yaml \
     ///     --component demo::listener \
-    ///     --output-header packages/api/nros-cpp/tests/compile/declared-qos-fixture/nros/nros_declared_qos_generated.h
+    ///     --output-header packages/api/nros-cpp/tests/compile/declared-qos-fixture/nros/rclc_declared_qos_generated.h
     #[test]
     fn the_committed_compile_fixture_is_what_this_emitter_renders() {
         const REL: &str = "packages/api/nros-cpp/tests/compile/declared-qos-fixture";
@@ -1323,7 +1323,7 @@ contracts:
             None,
         );
         let narrowed = narrow_to_component(&inv, "demo::listener").expect("narrows");
-        let want = std::fs::read_to_string(dir.join("nros/nros_declared_qos_generated.h"))
+        let want = std::fs::read_to_string(dir.join("nros/rclc_declared_qos_generated.h"))
             .expect("the committed fixture header exists");
         assert_eq!(
             narrowed.to_declared_qos_header(),

@@ -61,7 +61,7 @@ extern void nros_zephyr_epoch_acquire_configured(void);
  * configuration and costs a single stored null pointer when either half is
  * absent — which is what lets the call below stay unguarded. */
 extern void nros_zephyr_trace_marker(uint32_t marker_id, uint32_t arg);
-extern void nros_set_trace_sink(void (*sink)(uint32_t, uint32_t));
+extern void rclc_set_trace_sink(void (*sink)(uint32_t, uint32_t));
 
 extern int nros_zephyr_tier_task_create(void* (*entry)(void*), void* arg, int32_t priority,
                                         const char* name, size_t stack_bytes, uint32_t core_plus1,
@@ -788,7 +788,7 @@ int32_t nros_board_zephyr_run_tiers_tasks_in(const char* locator, uint8_t domain
      * registration events emitted as callbacks are added are not lost. A sink
      * installed later is not an error, but every callback registered before it
      * decodes as a bare `handle N` with no name. */
-    nros_set_trace_sink(nros_zephyr_trace_marker);
+    rclc_set_trace_sink(nros_zephyr_trace_marker);
 
     /* --- Open the primary (owning) executor on the boot thread --- */
     const char* sn = (session_name != NULL && session_name[0] != '\0') ? session_name : "node";

@@ -72,13 +72,12 @@ static void on_poll(void* ctx) {
     nros_cpp_action_client_poll(self->storage); /* drain GET replies -> callbacks */
 }
 
-static nros_ret_t client_configure(const nros_cpp_node_t* node, void* executor,
-                                   fib_client_t* self) {
+static rcl_ret_t client_configure(const nros_cpp_node_t* node, void* executor, fib_client_t* self) {
     setvbuf(stdout, NULL, _IONBF, 0); /* callbacks print on transitions only */
     self->order = 10;
     int32_t rc =
         nros_cpp_action_client_create(node, "/fibonacci", "example_interfaces/action/Fibonacci", "",
-                                      nros_c_qos_default(), self->storage);
+                                      rclc_c_qos_default(), self->storage);
     if (rc != 0) {
         return rc;
     }
@@ -105,4 +104,4 @@ static nros_ret_t client_configure(const nros_cpp_node_t* node, void* executor,
     return 0;
 }
 
-NROS_C_COMPONENT(fib_client_t, client_configure)
+RCLC_C_COMPONENT(fib_client_t, client_configure)

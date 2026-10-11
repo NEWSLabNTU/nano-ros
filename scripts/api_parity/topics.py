@@ -13,7 +13,7 @@ one is not a feature.
 # The DECLARING HEADER decides first for a TYPE; the NAME decides for a MEMBER
 
 A C API spells everything `lower_snake_t`, so a name pattern broad enough to
-catch `nros_ret_t` also catches `rcl_bool_array_t`, `rcl_topic_endpoint_info_t`
+catch `rcl_ret_t` also catches `rcl_bool_array_t`, `rcl_topic_endpoint_info_t`
 and `rcl_jump_threshold_t` -- and files the YAML parameter parser, a graph query
 and a clock callback under "types". That is what the first version did, and the
 mistake is invisible in the counts.
@@ -292,7 +292,7 @@ HEADER_STEMS = {
 
 # Our whole C surface is declared in ONE cbindgen output, `nros_generated.h`,
 # so the header carries no topic and the name often does not either -- an
-# `nros_accepted_callback_t` taking a goal handle is action's, and nothing about
+# `rclc_accepted_callback_t` taking a goal handle is action's, and nothing about
 # the string says so. These are authored, each resolved by reading the
 # declaration, and they are few because everything else the name or the header
 # already settles.
@@ -310,7 +310,7 @@ KEY_OVERRIDES = {
     "event_liveliness_changed_cb_t": "qos",
     "event_subscriber_count_cb_t": "qos",
     "deadline_policy_t": "qos",
-    # RFC-0047's deadline-miss reaction, a field of `nros_sched_context_t` --
+    # RFC-0047's deadline-miss reaction, a field of `rclc_sched_context_t` --
     # not a QoS deadline. Its three siblings are already mapped to exec.
     "deadline_policy_t": "exec",
     # issue 0790's shutdown hooks: a `void(*)(void*)` and the `uint32_t` slot
@@ -537,7 +537,7 @@ def self_test():
     check("support_init", "init")
     check("lifecycle_change_state", "lifecycle")
     check("cdr_read_f32", "serde")
-    check("nros_ret_t", "types")
+    check("rcl_ret_t", "types")
     check("Expected::value", "types")
     # phase-427 W8 renamed `Expected<T>` to `ResultOf<T>`. `\bResult\b` does not
     # match it -- there is no word boundary after "Result" -- so without its own

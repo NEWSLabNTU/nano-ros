@@ -267,7 +267,7 @@ int main(void) {
     myos_init();
 
     /* nros calls nros_platform_* symbols directly */
-    nros_executor_t exec;
+    rclc_executor_t exec;
     nros_executor_open(&exec, &config);
     /* ... */
 }

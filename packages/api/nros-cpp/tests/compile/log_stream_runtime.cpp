@@ -9,7 +9,7 @@
 // what `std::ostringstream` prints for the same values, which is the promise
 // the formatter makes.
 //
-// Observed through a real `nros_log_add_sink`, like `ros2_loudness_runtime`:
+// Observed through a real `rclc_log_add_sink`, like `ros2_loudness_runtime`:
 // the record that reaches the logger is the thing a user reads.
 
 #include <cstdio>
@@ -27,7 +27,7 @@ namespace {
 char g_last[512];
 size_t g_last_len = 0;
 
-extern "C" void capture_sink(void*, nros_log_severity_t, const char*, size_t, const char* message,
+extern "C" void capture_sink(void*, rcl_log_severity_t, const char*, size_t, const char* message,
                              size_t message_len, const char*, size_t, uint32_t, uint64_t) {
     const size_t n = message_len < sizeof(g_last) - 1 ? message_len : sizeof(g_last) - 1;
     ::memcpy(g_last, message, n);
@@ -59,12 +59,12 @@ struct Point {
 extern "C" void nros_app_register_backends(void) {}
 
 int main() {
-    if (!nros_log_add_sink(&capture_sink, nullptr)) {
-        ::std::fprintf(stderr, "FAIL: nros_log_add_sink refused the sink\n");
+    if (!rclc_log_add_sink(&capture_sink, nullptr)) {
+        ::std::fprintf(stderr, "FAIL: rclc_log_add_sink refused the sink\n");
         return 1;
     }
     rclcpp::Logger logger = rclcpp::get_logger("stream_probe");
-    nros_logger_set_level(static_cast<const void*>(logger), NROS_LOG_SEVERITY_TRACE);
+    rclc_logger_set_level(static_cast<const void*>(logger), RCLC_LOG_SEVERITY_TRACE);
 
     RCLCPP_INFO_STREAM(logger, "i=" << 42 << " u=" << 7u << " neg=" << -3 << " ll="
                                     << 1234567890123LL << " s=" << static_cast<short>(-5));

@@ -5,7 +5,7 @@
  * rclcpp and rclrs all say `send_response`) and kept two old spellings one
  * release as `NROS_DEPRECATED_MSG` `static inline` forwarders:
  * `nros_service_send_reply_raw` (the plain rename) and
- * `nros_service_send_response` (a permanent NROS_RET_NOT_INIT stub from before
+ * `nros_service_send_response` (a permanent RCL_RET_NOT_INIT stub from before
  * the polling API, forwarded so the un-suffixed name could not read like a
  * second, working entry point). Phase-417 stage 6 step B retired both, so what
  * this TU pins is the live name alone.
@@ -25,9 +25,9 @@
 
 /* The live entry point, under the name the ROS client libraries use. */
 /* phase-487 W2: on the polled type, the only one with a server to reply from. */
-static nros_ret_t (*const k_send_response_raw)(struct nros_polling_service_t*, int64_t,
-                                               const uint8_t*,
-                                               size_t) = nros_polling_service_send_response_raw;
+static rcl_ret_t (*const k_send_response_raw)(struct rclc_polling_service_t*, int64_t,
+                                              const uint8_t*,
+                                              size_t) = rclc_polling_service_send_response_raw;
 
 /* Reference it so no compiler prunes the lookup this file exists to force. */
 const void* nros_service_reply_entry_point_anchors[] = {

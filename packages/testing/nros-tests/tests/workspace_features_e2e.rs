@@ -19,7 +19,7 @@
 //!   the listener prints ≥3 decoded `reading seq=` lines AND the `temp=`
 //!   second field (full CDR layout, not just a counter).
 //! - **Logging** (phase-263 A5 / phase-264 W3): a Node pkg's
-//!   `log_info!` / `NROS_LOG_INFO(nros_log_default_logger(), …)` reaches
+//!   `log_info!` / `RCLC_LOG_INFO(rclc_log_default_logger(), …)` reaches
 //!   the entry's OWN stdout — process-local, no subscriber (issue 0096
 //!   does not apply to logging). Per-lang markers differ (the mixed ws
 //!   reuses the C talker).
@@ -106,7 +106,7 @@ enum Proof {
     /// `printf("<marker> seq=%d")` would satisfy it: the proof could not tell
     /// the facade from a direct write, nor notice the level/logger metadata
     /// being lost. Every one of these nodes logs through
-    /// `log_info!` / `NROS_LOG_INFO` → the default sink → the posix writer,
+    /// `log_info!` / `RCLC_LOG_INFO` → the default sink → the posix writer,
     /// whose output is `[INFO] nros: <marker> seq=N`, so requiring the tag on
     /// the SAME line makes the assertion about the facade rather than about
     /// stdout.
@@ -218,14 +218,14 @@ fn exec_for(lang: ML, workload: MW) -> Exec {
             entry: || build_native_workspace_c_entry().map(|p| p.to_path_buf()),
             peer: None,
             proof: Proof::LoggingLines(nros_tests::output::WS_C_LOGGING_MARKER),
-            note: "phase-263 A5 C projection: NROS_LOG_INFO(nros_log_default_logger(), …) — a \
+            note: "phase-263 A5 C projection: RCLC_LOG_INFO(rclc_log_default_logger(), …) — a \
                    NULL logger handle DROPS the record (the A5 C/C++ finding)",
         },
         (ML::Cpp, MW::Logging) => Exec {
             entry: || build_native_workspace_cpp_entry().map(|p| p.to_path_buf()),
             peer: None,
             proof: Proof::LoggingLines(nros_tests::output::WS_CPP_LOGGING_MARKER),
-            note: "phase-263 A5 C++ projection: same facade chain (nros_log_emit_fmt → \
+            note: "phase-263 A5 C++ projection: same facade chain (rclc_log_emit_fmt → \
                    DEFAULT_LOGGER → lazy default sink → posix writer)",
         },
         (ML::Mixed, MW::Logging) => Exec {
@@ -240,7 +240,7 @@ fn exec_for(lang: ML, workload: MW) -> Exec {
             peer: Some(|| build_native_workspace_c_qos_listener_entry().map(|p| p.to_path_buf())),
             proof: Proof::QosMatchedProfile { topic: "/chatter" },
             note: "phase-263 B4 C projection: nros_cpp_qos_t by value to nros_cpp_publisher_create \
-                   (not nros_c_qos_default()); listener declares the BYTE-IDENTICAL profile",
+                   (not rclc_c_qos_default()); listener declares the BYTE-IDENTICAL profile",
         },
         (ML::Cpp, MW::Qos) => Exec {
             entry: || build_native_workspace_cpp_qos_talker_entry().map(|p| p.to_path_buf()),
@@ -733,7 +733,7 @@ fn run_cell(pcell: &MCell) {
                 // any other publisher on `/chatter` could be the one asserted
                 // against. That is what `case_08_c_qos` did when it failed
                 // in-sweep and passed solo: the profile it printed was exactly
-                // `nros_c_qos_default()`, i.e. somebody else's endpoint.
+                // `rclc_c_qos_default()`, i.e. somebody else's endpoint.
                 //
                 // The launch files name these nodes (`demo_bringup/launch/
                 // *qos*.xml`), and all three qos cells use the SAME two names —

@@ -70,7 +70,7 @@ impl LifecycleState {
     ///
     /// The C string is the SOURCE spelling and [`Self::label`] is derived from
     /// it, not the other way round: the C API hands this pointer straight to a
-    /// caller (`nros_lifecycle_state_label`), and a second set of literals for
+    /// caller (`rclc_lifecycle_state_label`), and a second set of literals for
     /// the `&str` form is exactly the drift this move exists to remove.
     pub const fn label_cstr(&self) -> &'static core::ffi::CStr {
         match self {

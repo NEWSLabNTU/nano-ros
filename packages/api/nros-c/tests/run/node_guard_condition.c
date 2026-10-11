@@ -10,7 +10,7 @@
  * third ran, so `handle_id` stayed `SIZE_MAX` and a trigger landed on a local
  * byte no executor watches. The one in-tree C caller did the first two and
  * never the third, for four phases, and it read like working code. A header
- * check cannot see any of that: `nros_ret_t` is `NROS_RET_OK` at every step.
+ * check cannot see any of that: `rcl_ret_t` is `RCL_RET_OK` at every step.
  *
  * So this asserts BEHAVIOUR, in four parts:
  *
@@ -19,14 +19,14 @@
  *   2. a trigger from another thread runs the callback ON THE EXECUTOR'S
  *      THREAD, with the context the creation call bound.
  *   3. the trigger travels through the ARENA, not the local fallback byte:
- *      `nros_guard_condition_is_triggered` sees the arena flag set before the
+ *      `rclc_guard_condition_is_triggered` sees the arena flag set before the
  *      spin and cleared by the dispatch that consumed it.
  *   4. the trigger WAKES a spin that would otherwise sleep out its budget.
  *      Measured against a negative control — an identical spin with nothing
  *      pending — because "returned quickly" means nothing without the number a
  *      sleeping spin costs.
  *
- * Both trigger spellings are exercised: `nros_guard_condition_trigger`, which
+ * Both trigger spellings are exercised: `rclc_guard_condition_trigger`, which
  * did not exist until this item (the ledger, the crate's docs and the
  * custom-platform README all named it while only rcl's verb-first spelling was
  * exported), and rcl's `rcl_trigger_guard_condition`, which forwards to it.
@@ -47,7 +47,7 @@
 #include <stdlib.h>
 #include <time.h>
 
-/* The registration hook every C image owes `nros_support_init` — there is no
+/* The registration hook every C image owes `rclc_support_init` — there is no
  * weak default on the C path. */
 void nros_app_register_backends(void);
 void nros_app_register_backends(void) {
@@ -72,7 +72,7 @@ static int s_failures = 0;
 
 #define CHECK_RET(expr, expected, msg)                                                             \
     do {                                                                                           \
-        nros_ret_t _r = (expr);                                                                    \
+        rcl_ret_t _r = (expr);                                                                     \
         if (_r != (expected)) {                                                                    \
             fprintf(stderr, "FAIL: %s -- got %d, expected %d (%s:%d)\n", (msg), (int)_r,           \
                     (int)(expected), __FILE__, __LINE__);                                          \
@@ -118,7 +118,7 @@ static void sleep_ms(unsigned ms) {
 
 /* ---- The other thread --------------------------------------------------- */
 
-static struct nros_guard_condition_t s_guard;
+static struct rcl_guard_condition_t s_guard;
 static unsigned s_trigger_delay_ms = 0;
 static bool s_trigger_uses_rcl_spelling = false;
 
@@ -128,7 +128,7 @@ static void* trigger_thread(void* unused) {
     if (s_trigger_uses_rcl_spelling) {
         (void)rcl_trigger_guard_condition(&s_guard);
     } else {
-        (void)nros_guard_condition_trigger(&s_guard);
+        (void)rclc_guard_condition_trigger(&s_guard);
     }
     return NULL;
 }
@@ -138,42 +138,42 @@ int main(void) {
      * hosted rung of precedence model A and beats the baked selector. */
     setenv("NROS_RMW", NROS_STUB_RMW_NAME, 1);
 
-    struct nros_support_t support = nros_support_get_zero_initialized();
-    CHECK_RET(nros_support_init_rmw(&support, "stub://none", 43, "node_guard_condition",
+    struct rclc_support_t support = rclc_support_get_zero_initialized();
+    CHECK_RET(rclc_support_init_rmw(&support, "stub://none", 43, "node_guard_condition",
                                     NROS_STUB_RMW_NAME),
-              NROS_RET_OK, "support opened on the stub backend");
+              RCL_RET_OK, "support opened on the stub backend");
 
-    struct nros_executor_t executor = rclc_executor_get_zero_initialized_executor();
-    CHECK_RET(nros_executor_init(&executor, &support, 8), NROS_RET_OK, "executor initialised");
+    struct rclc_executor_t executor = rclc_executor_get_zero_initialized_executor();
+    CHECK_RET(rclc_executor_init(&executor, &support, 8), RCL_RET_OK, "executor initialised");
 
     /* The node is BOUND to the executor — the executor exists first, then the
      * node. That ordering is what makes the node an owner that can reach an
      * arena; a node from the legacy `rclc_node_init_default` path reaches no
      * executor and the creation verb says so rather than half-working. */
-    struct nros_node_t node = rcl_get_zero_initialized_node();
-    CHECK_RET(nros_executor_node_init(&executor, &node, "guard_owner", NULL), NROS_RET_OK,
+    struct rcl_node_t node = rcl_get_zero_initialized_node();
+    CHECK_RET(rclc_executor_node_init(&executor, &node, "guard_owner", NULL), RCL_RET_OK,
               "node bound to the executor");
 
-    const int handles_before = nros_executor_get_handle_count(&executor);
+    const int handles_before = rclc_executor_get_handle_count(&executor);
 
     /* ---- 1. One call, and it REGISTERS ---------------------------------- */
 
     s_guard = rcl_get_zero_initialized_guard_condition();
     CHECK(s_guard.handle_id == SIZE_MAX, "a zero-initialised guard is not registered");
 
-    CHECK_RET(nros_node_create_guard_condition(&node, &s_guard, on_guard, &s_ctx), NROS_RET_OK,
+    CHECK_RET(rclc_node_create_guard_condition(&node, &s_guard, on_guard, &s_ctx), RCL_RET_OK,
               "the node created the guard condition");
-    CHECK(nros_guard_condition_is_valid(&s_guard), "the created guard condition is valid");
+    CHECK(rclc_guard_condition_is_valid(&s_guard), "the created guard condition is valid");
     CHECK(s_guard.handle_id != SIZE_MAX,
           "creation REGISTERED the guard -- this is the defect the three-call shape had, where "
           "the object stayed inert until a third call nobody had to make");
-    CHECK(nros_executor_get_handle_count(&executor) == handles_before + 1,
+    CHECK(rclc_executor_get_handle_count(&executor) == handles_before + 1,
           "the executor took one more handle");
 
     /* A second create into the same storage is a sequencing error, not a
      * silent second registration. */
-    CHECK_RET(nros_node_create_guard_condition(&node, &s_guard, on_guard, &s_ctx),
-              NROS_RET_BAD_SEQUENCE, "a double create is refused");
+    CHECK_RET(rclc_node_create_guard_condition(&node, &s_guard, on_guard, &s_ctx),
+              RCLC_RET_BAD_SEQUENCE, "a double create is refused");
 
     /* ---- 4a. The negative control: what a spin with nothing pending costs --
      *
@@ -200,7 +200,7 @@ int main(void) {
      * fallback an UNREGISTERED guard used, and nothing writes it now; the
      * reader answers the arena flag, which is the only reason it is not
      * permanently false. */
-    CHECK(nros_guard_condition_is_triggered(&s_guard),
+    CHECK(rclc_guard_condition_is_triggered(&s_guard),
           "the cross-thread trigger is visible to the polling reader BEFORE any spin");
 
     const uint64_t woken_start = now_ms();
@@ -212,7 +212,7 @@ int main(void) {
           "the callback got the context the CREATION call bound, unchanged");
     CHECK(pthread_equal(s_ctx.ran_on, pthread_self()),
           "the callback ran on the EXECUTOR's thread, not on the thread that triggered");
-    CHECK(!nros_guard_condition_is_triggered(&s_guard), "the dispatch CONSUMED the flag");
+    CHECK(!rclc_guard_condition_is_triggered(&s_guard), "the dispatch CONSUMED the flag");
 
     /* 4b. The wake, case ONE: the trigger landed BETWEEN two spins. The flag is
      * already set when the spin enters, so the spin must poll and dispatch
@@ -232,7 +232,7 @@ int main(void) {
      * executor installed no backend wake callback, so `has_async_wake` was
      * false, so the spin parked inside `drive_io(400 ms)` where a guard's
      * signal could not reach it. This comment said so and named it as a
-     * separate defect. Issue 1385 fixed it — `nros_executor_init` installs the
+     * separate defect. Issue 1385 fixed it — `rclc_executor_init` installs the
      * callback now — and the number moved with it: MEASURED 400 ms before,
      * 51 ms after, for the same trigger at 50 ms.
      *
@@ -282,17 +282,17 @@ int main(void) {
 
     /* ---- The polling half: clear without dispatching --------------------- */
 
-    CHECK_RET(nros_guard_condition_trigger(&s_guard), NROS_RET_OK, "triggered for the poller");
-    CHECK(nros_guard_condition_is_triggered(&s_guard), "the poller sees it");
-    CHECK_RET(nros_guard_condition_clear(&s_guard), NROS_RET_OK, "the poller cleared it");
-    CHECK(!nros_guard_condition_is_triggered(&s_guard), "clear() reached the same flag");
+    CHECK_RET(rclc_guard_condition_trigger(&s_guard), RCL_RET_OK, "triggered for the poller");
+    CHECK(rclc_guard_condition_is_triggered(&s_guard), "the poller sees it");
+    CHECK_RET(rclc_guard_condition_clear(&s_guard), RCL_RET_OK, "the poller cleared it");
+    CHECK(!rclc_guard_condition_is_triggered(&s_guard), "clear() reached the same flag");
     (void)rclc_executor_spin_some(&executor, 10000000ull);
     CHECK(s_ctx.fires == 3, "a cleared flag dispatches nothing");
 
     /* ---- Teardown -------------------------------------------------------- */
 
-    CHECK_RET(rcl_guard_condition_fini(&s_guard), NROS_RET_OK, "guard condition finalised");
-    CHECK_RET(rcl_guard_condition_fini(&s_guard), NROS_RET_OK, "fini is idempotent, as in rcl");
+    CHECK_RET(rcl_guard_condition_fini(&s_guard), RCL_RET_OK, "guard condition finalised");
+    CHECK_RET(rcl_guard_condition_fini(&s_guard), RCL_RET_OK, "fini is idempotent, as in rcl");
     (void)rclc_executor_fini(&executor);
     (void)rcl_node_fini(&node);
     (void)rclc_support_fini(&support);

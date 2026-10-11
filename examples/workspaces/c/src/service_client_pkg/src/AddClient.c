@@ -76,8 +76,8 @@ static void on_tick(void* ctx) {
     }
 }
 
-static nros_ret_t add_client_configure(const nros_cpp_node_t* node, void* executor,
-                                       add_client_t* self) {
+static rcl_ret_t add_client_configure(const nros_cpp_node_t* node, void* executor,
+                                      add_client_t* self) {
     setvbuf(stdout, NULL, _IOLBF, 0);
     self->a = 0;
     self->in_flight = false;
@@ -85,12 +85,12 @@ static nros_ret_t add_client_configure(const nros_cpp_node_t* node, void* execut
 
     int32_t rc = nros_cpp_service_client_create(
         node, "/add_two_ints", example_interfaces_srv_add_two_ints_get_type_name(),
-        example_interfaces_srv_add_two_ints_get_type_hash(), nros_c_qos_default(), self->client);
+        example_interfaces_srv_add_two_ints_get_type_hash(), rclc_c_qos_default(), self->client);
     if (rc != 0) {
         return rc;
     }
     rc = nros_cpp_publisher_create(node, "/sum", std_msgs_msg_int32_get_type_name(),
-                                   std_msgs_msg_int32_get_type_hash(), nros_c_qos_default(),
+                                   std_msgs_msg_int32_get_type_hash(), rclc_c_qos_default(),
                                    self->pub);
     if (rc != 0) {
         return rc;
@@ -99,4 +99,4 @@ static nros_ret_t add_client_configure(const nros_cpp_node_t* node, void* execut
     return nros_cpp_timer_create(executor, /*period_ms=*/500, on_tick, self, &timer_handle);
 }
 
-NROS_C_COMPONENT(add_client_t, add_client_configure)
+RCLC_C_COMPONENT(add_client_t, add_client_configure)

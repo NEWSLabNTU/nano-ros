@@ -34,15 +34,15 @@ typedef struct {
 } server_context_t;
 
 static struct {
-    nros_support_t support;
-    nros_node_t node;
-    nros_action_server_t action_server;
-    nros_executor_t executor;
+    rclc_support_t support;
+    rcl_node_t node;
+    rcl_action_server_t action_server;
+    rclc_executor_t executor;
     server_context_t ctx;
 } app;
 
 static volatile sig_atomic_t g_running = 1;
-static nros_executor_t* g_executor = NULL;
+static rclc_executor_t* g_executor = NULL;
 
 // ----------------------------------------------------------------------------
 // Signal handler for graceful shutdown
@@ -52,7 +52,7 @@ static void signal_handler(int signum) {
     (void)signum;
     g_running = 0;
     if (g_executor) {
-        nros_executor_cancel(g_executor);
+        rclc_executor_cancel(g_executor);
     }
 }
 
@@ -60,8 +60,8 @@ static void signal_handler(int signum) {
 // Action callbacks
 // ----------------------------------------------------------------------------
 
-static nros_goal_response_t goal_callback(nros_action_server_t* server,
-                                          const nros_goal_handle_t* goal,
+static rclc_goal_response_t goal_callback(rcl_action_server_t* server,
+                                          const rclc_goal_handle_t* goal,
                                           const uint8_t* goal_request, size_t goal_len,
                                           void* context) {
     (void)server;
@@ -72,7 +72,7 @@ static nros_goal_response_t goal_callback(nros_action_server_t* server,
     if (example_interfaces_action_fibonacci_goal_deserialize(&goal_msg, goal_request, goal_len) !=
         0) {
         fprintf(stderr, "Failed to deserialize goal\n");
-        return NROS_GOAL_REJECT;
+        return RCLC_GOAL_REJECT;
     }
 
     printf("Received goal request with order %d\n", goal_msg.order);
@@ -80,7 +80,7 @@ static nros_goal_response_t goal_callback(nros_action_server_t* server,
     // Reject negative orders or orders too large
     if (goal_msg.order < 0 || goal_msg.order >= 64) {
         printf("Goal rejected: order out of range\n");
-        return NROS_GOAL_REJECT;
+        return RCLC_GOAL_REJECT;
     }
 
     // issue 0453 — remember what was requested. Reading the order for the
@@ -92,18 +92,18 @@ static nros_goal_response_t goal_callback(nros_action_server_t* server,
         ctx->accepted_order = goal_msg.order;
     }
 
-    return NROS_GOAL_ACCEPT_AND_EXECUTE;
+    return RCLC_GOAL_ACCEPT_AND_EXECUTE;
 }
 
-static nros_cancel_response_t cancel_callback(nros_action_server_t* server,
-                                              const nros_goal_handle_t* goal, void* context) {
+static rclc_cancel_response_t cancel_callback(rcl_action_server_t* server,
+                                              const rclc_goal_handle_t* goal, void* context) {
     (void)server;
     (void)context;
     printf("Cancel request for goal (uuid=%02x%02x...)\n", goal->uuid.uuid[0], goal->uuid.uuid[1]);
-    return NROS_CANCEL_ACCEPT;
+    return RCLC_CANCEL_ACCEPT;
 }
 
-static void accepted_callback(nros_action_server_t* server, const nros_goal_handle_t* goal,
+static void accepted_callback(rcl_action_server_t* server, const rclc_goal_handle_t* goal,
                               void* context) {
     server_context_t* ctx = (server_context_t*)context;
     ctx->goal_count++;
@@ -117,8 +117,8 @@ static void accepted_callback(nros_action_server_t* server, const nros_goal_hand
     int32_t order = ctx->accepted_order;
 
     // Transition to executing state
-    nros_ret_t ret = nros_action_execute(server, goal);
-    if (ret != NROS_RET_OK) {
+    rcl_ret_t ret = rclc_action_execute(server, goal);
+    if (ret != RCL_RET_OK) {
         fprintf(stderr, "Failed to set executing state: %d\n", ret);
         return;
     }
@@ -145,8 +145,8 @@ static void accepted_callback(nros_action_server_t* server, const nros_goal_hand
         int32_t fb_len_rc = example_interfaces_action_fibonacci_feedback_serialize(
             &fb, fb_buf, sizeof(fb_buf), &fb_len);
         if (fb_len_rc == 0) {
-            ret = nros_action_publish_feedback(server, goal, fb_buf, fb_len);
-            if (ret != NROS_RET_OK) {
+            ret = rclc_action_publish_feedback(server, goal, fb_buf, fb_len);
+            if (ret != RCL_RET_OK) {
                 fprintf(stderr, "Failed to publish feedback: %d\n", ret);
             } else {
                 printf("Publish feedback\n");
@@ -165,8 +165,8 @@ static void accepted_callback(nros_action_server_t* server, const nros_goal_hand
     int32_t result_len_rc = example_interfaces_action_fibonacci_result_serialize(
         &result, result_buf, sizeof(result_buf), &result_len);
     if (result_len_rc == 0) {
-        ret = nros_action_succeed(server, goal, result_buf, result_len);
-        if (ret != NROS_RET_OK) {
+        ret = rclc_action_succeed(server, goal, result_buf, result_len);
+        if (ret != RCL_RET_OK) {
             fprintf(stderr, "Failed to send result: %d\n", ret);
         } else {
             printf("Goal succeeded\n");
@@ -211,7 +211,7 @@ int nros_app_main(int argc, char** argv) {
 
     // Build action type info using generated type name/hash
     // Sequence capacity: 4-byte CDR header + 4-byte length + 64*4-byte data = 264
-    nros_action_type_t fibonacci_type = {
+    rclc_action_type_t fibonacci_type = {
         .type_name = example_interfaces_action_fibonacci_get_type_name(),
         .type_hash = example_interfaces_action_fibonacci_get_type_hash(),
         .goal_serialized_size_max = 8,
@@ -219,21 +219,21 @@ int nros_app_main(int argc, char** argv) {
         .feedback_serialized_size_max = 264,
     };
 
-    NROS_CHECK_RET(nros_support_init(&app.support, locator, domain_id), 1);
+    RCLC_CHECK_RET(rclc_support_init(&app.support, locator, domain_id), 1);
     printf("Support initialized\n");
-    NROS_CHECK_RET(rclc_node_init_default(&app.node, "fibonacci_action_server", "/", &app.support),
+    RCLC_CHECK_RET(rclc_node_init_default(&app.node, "fibonacci_action_server", "/", &app.support),
                    1);
     printf("Node created: %s\n", rcl_node_get_name(&app.node));
 
-    NROS_CHECK_RET(nros_action_server_init(&app.action_server, &app.node, "/fibonacci",
-                                           &fibonacci_type, goal_callback, cancel_callback,
-                                           accepted_callback, &app.ctx),
+    RCLC_CHECK_RET(rcl_action_server_init(&app.action_server, &app.node, "/fibonacci",
+                                          &fibonacci_type, goal_callback, cancel_callback,
+                                          accepted_callback, &app.ctx),
                    1);
     printf("Action server created: /fibonacci\n");
 
-    NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 8), 1);
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support, 8), 1);
     g_executor = &app.executor;
-    NROS_CHECK_RET(nros_executor_add_action_server(&app.executor, &app.action_server), 1);
+    RCLC_CHECK_RET(rclc_executor_add_action_server(&app.executor, &app.action_server), 1);
 
     // Set up signal handler
     signal(SIGINT, signal_handler);
@@ -242,8 +242,8 @@ int nros_app_main(int argc, char** argv) {
     printf("\nWaiting for action goals (Ctrl+C to exit)...\n\n");
 
     // Spin with 100ms period
-    nros_ret_t ret = rclc_executor_spin_period(&app.executor, 100000000ULL);
-    if (ret != NROS_RET_OK && g_running) {
+    rcl_ret_t ret = rclc_executor_spin_period(&app.executor, 100000000ULL);
+    if (ret != RCL_RET_OK && g_running) {
         fprintf(stderr, "Executor spin failed: %d\n", ret);
     }
 
@@ -251,7 +251,7 @@ int nros_app_main(int argc, char** argv) {
     printf("\nShutting down...\n");
     printf("Total goals handled: %d\n", app.ctx.goal_count);
     rclc_executor_fini(&app.executor);
-    nros_action_server_fini(&app.action_server);
+    rcl_action_server_fini(&app.action_server);
     rcl_node_fini(&app.node);
     rclc_support_fini(&app.support);
 

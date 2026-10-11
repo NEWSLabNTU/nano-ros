@@ -15,8 +15,8 @@
 
 #include <nros/nros_config_generated.h>
 
-/* RFC-0090 — emitted by nano-ros codegen version 12. */
-#define NROS_EMITTED_CODEGEN_VERSION 12
+/* RFC-0090 — emitted by nano-ros codegen version 13. */
+#define NROS_EMITTED_CODEGEN_VERSION 13
 
 #ifndef NROS_CODEGEN_VERSION
 #error "nros: the generated config header did not define NROS_CODEGEN_VERSION. This generated artifact cannot tell whether the runtime accepts it; rebuild the nano-ros runtime so its config header is regenerated."
@@ -111,8 +111,8 @@ int32_t fingerprint_corpus_msg_shapes_serialize_inline(const fingerprint_corpus_
 /// serialize variant.
 int32_t fingerprint_corpus_msg_shapes_deserialize_inline(fingerprint_corpus_msg_shapes* msg, const uint8_t** ptr_ref, const uint8_t* end, const uint8_t* origin);
 
-/// Get the nros_message_type_t for this message type
-const nros_message_type_t* fingerprint_corpus_msg_shapes_get_type_support(void);
+/// Get the rclc_message_type_t for this message type
+const rclc_message_type_t* fingerprint_corpus_msg_shapes_get_type_support(void);
 
 
 /// NO size bound is emitted for this type.
@@ -141,12 +141,12 @@ const nros_message_type_t* fingerprint_corpus_msg_shapes_get_type_support(void);
 
 /// Typed publish helper. Serializes `msg` into a stack buffer sized from the
 /// type's own bound where one exists, and from `NROS_PUB_BUFFER_SIZE`
-/// otherwise. nros_ret_t / nros_publisher_t / nros_publish_raw all come in via
+/// otherwise. rcl_ret_t / rcl_publisher_t / rclc_publish_raw all come in via
 /// <nros/types.h> (already included at the top of this header).
 #ifndef NROS_PUB_BUFFER_SIZE
 #define NROS_PUB_BUFFER_SIZE 256
 #endif
-static inline nros_ret_t fingerprint_corpus_msg_shapes_publish(struct nros_publisher_t* publisher,
+static inline rcl_ret_t fingerprint_corpus_msg_shapes_publish(struct rcl_publisher_t* publisher,
                                                    const fingerprint_corpus_msg_shapes* msg) {
 
     /* No bound for this type (unbounded members: text (string), seq_prim (sequence<T>), seq_string (sequence<T>)), so the global knob is
@@ -156,7 +156,7 @@ static inline nros_ret_t fingerprint_corpus_msg_shapes_publish(struct nros_publi
     size_t n = 0;
     int32_t r = fingerprint_corpus_msg_shapes_serialize(msg, buf, sizeof(buf), &n);
     if (r != 0) return r;
-    return nros_publish_raw(publisher, buf, n);
+    return rclc_publish_raw(publisher, buf, n);
 }
 
 /// Typed subscribe helper -- the sibling of fingerprint_corpus_msg_shapes_publish above.
@@ -164,8 +164,8 @@ static inline nros_ret_t fingerprint_corpus_msg_shapes_publish(struct nros_publi
 /// A MACRO, not a function, deliberately. It expands at the CALL SITE, where
 /// <nros/component.h> is already included, so this header keeps its single
 /// include of <nros/types.h> and takes no dependency on the component ABI.
-/// nros_cpp_subscription_register, nros_cpp_node_t, nros_c_qos_default and
-/// nros_c_subscription_callback_t all come from component.h and none of them is
+/// nros_cpp_subscription_register, nros_cpp_node_t, rclc_c_qos_default and
+/// rclc_c_subscription_callback_t all come from component.h and none of them is
 /// named until the macro is actually used.
 ///
 /// ONE token names the type. The ROS type name, the type hash and the
@@ -188,7 +188,7 @@ static inline nros_ret_t fingerprint_corpus_msg_shapes_publish(struct nros_publi
 #define fingerprint_corpus_msg_shapes_subscribe_sized(node, topic, cb, ctx, out_handle, rx_bytes) \
     nros_cpp_subscription_register_hinted( \
         (node), (topic), fingerprint_corpus_msg_shapes_get_type_name(), fingerprint_corpus_msg_shapes_get_type_hash(), \
-        nros_c_qos_default(), (cb), (ctx), (out_handle), (uint32_t)(rx_bytes))
+        rclc_c_qos_default(), (cb), (ctx), (out_handle), (uint32_t)(rx_bytes))
 
 /* issue 0896 layer 5 -- this type has NO receive bound
    (unbounded members: text (string), seq_prim (sequence<T>), seq_string (sequence<T>)), so there is no number a plain `_subscribe` could
@@ -220,19 +220,19 @@ static inline int32_t fingerprint_corpus_msg_shapes_deserialize_erased(void* msg
 ///
 ///     rclc_executor_add_subscription_with_context(&exec, &sub, &msg, &cb, &ctx, ON_NEW_DATA);
 ///     fingerprint_corpus_msg_shapes_executor_add_subscription(&exec, &sub, &msg, &cb, &ctx,
-///                                                 NROS_EXECUTOR_ON_NEW_DATA);
+///                                                 RCLC_EXECUTOR_ON_NEW_DATA);
 ///
 /// Six arguments, rclc's order. The deserialiser and the receive-buffer hint are
 /// derived from the ONE type token, so they cannot disagree with each other or
 /// with the type — the same argument `fingerprint_corpus_msg_shapes_subscribe` above makes
 /// for the raw path.
 ///
-/// `cb` is an `nros_typed_subscription_callback_t`:
+/// `cb` is an `rclc_typed_subscription_callback_t`:
 /// `void (*)(const void* msg, void* context)`, rclc's
 /// `rclc_subscription_callback_with_context_t`. Cast `msg` to
 /// `const fingerprint_corpus_msg_shapes*` and read FIELDS; there is no CDR in a ported
 /// callback body. `ctx` is passed straight through — it is NOT the context
-/// given to `nros_executor_add_subscription_raw`, which belongs to the raw
+/// given to `rclc_executor_add_subscription_raw`, which belongs to the raw
 /// registration.
 ///
 /// If the sample cannot be decoded into `msg` — including a string or sequence
@@ -258,7 +258,7 @@ static inline int32_t fingerprint_corpus_msg_shapes_deserialize_erased(void* msg
 /// unaffected: `void *` is compatible with every object pointer.
 #define fingerprint_corpus_msg_shapes_executor_add_subscription_sized(executor, subscription, msg, cb, ctx, \
                                                           invocation, rx_bytes) \
-    nros_executor_add_subscription_typed_sized( \
+    rclc_executor_add_subscription_typed_sized( \
         (executor), (subscription), (1 ? (msg) : (fingerprint_corpus_msg_shapes*)0), \
         fingerprint_corpus_msg_shapes_deserialize_erased, (cb), (ctx), \
         (invocation), (uint32_t)(rx_bytes))

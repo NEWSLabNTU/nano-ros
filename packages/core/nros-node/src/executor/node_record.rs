@@ -34,7 +34,7 @@ impl NodeId {
 
     /// Phase 104.C.8.b / C.9.b — build a `NodeId` from a raw `u8` for
     /// FFI consumers that store the index in their own struct
-    /// (`nros_node_t.node_id`, `nros_cpp_node_t.node_id`). The value
+    /// (`rcl_node_t.node_id`, `nros_cpp_node_t.node_id`). The value
     /// is not validated against the executor's `nodes` table — the
     /// caller is responsible for only constructing ids that
     /// `node_builder(...).build()` previously returned. Out-of-range
@@ -88,7 +88,7 @@ pub struct NodeRecord {
     pub session_idx: u8,
     /// Issue #52 / phase-296 residue sweep — per-node QoS-override table, in the
     /// SAME primitive `(topic, role, policy, value)` code form the C and C++
-    /// ABIs use (`nros_qos_override_t` / `nros_cpp_qos_override_t`).
+    /// ABIs use (`rclc_qos_override_t` / `nros_cpp_qos_override_t`).
     ///
     /// Codes rather than [`nros_rmw::QoSOverride`] because the entry codegen
     /// bakes this through `RuntimeCtx`, and `nros-platform` sits BELOW

@@ -4,13 +4,13 @@
 `nano_ros_entry()` bakes `NROS_ENTRY_*` onto the entry target regardless of the
 entry's language, so a rung is available to C and C++ alike. Consuming it is a
 separate act, and for `NROS_ENTRY_RMW` only C++ ever did: the C road held its own
-answer in its own preprocessor and passed `NULL` to `nros_support_init`.
+answer in its own preprocessor and passed `NULL` to `rclc_support_init`.
 
 That asymmetry was invisible for three weeks and cost a high-severity outage. The
 same commit that added the rung (issue 1050) made a selector-less open with more
 than one registered backend a hard refusal, so C got the new failure mode and not
 the new capability; issue 1530 is what it cost, with every native C example
-failing `nros_support_init` for eighteen days behind an absorbing stale verdict.
+failing `rclc_support_init` for eighteen days behind an absorbing stale verdict.
 
 ## Scope, and why it is DERIVED rather than authored
 

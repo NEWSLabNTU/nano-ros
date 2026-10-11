@@ -646,7 +646,7 @@ impl<'cfg> SessionSpec<'cfg> {
 
 /// Session storage: owned or borrowed via raw pointer.
 ///
-/// The C API creates a session in `nros_support_init()` before the
+/// The C API creates a session in `rclc_support_init()` before the
 /// executor. `Borrowed` lets the executor use that session without owning it.
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum SessionStore {
@@ -1253,7 +1253,7 @@ impl Drop for WakeSignalFd {
 ///   via `signalfd`/`eventfd` + a runtime worker thread — Linux
 ///   only, since neither syscall is POSIX; until that lands,
 ///   signal-handler callers MUST use
-///   `nros_guard_condition_trigger` from a **separate thread** (not
+///   `rclc_guard_condition_trigger` from a **separate thread** (not
 ///   from the handler itself), OR set the wake_flag and rely on
 ///   the next poll deadline. This cb currently aliases the regular
 ///   `wake_cb` and is safe only from non-signal-handler ISR-like
@@ -1838,7 +1838,7 @@ pub struct Executor<'s> {
     /// This box is the whole answer to issue 1385 on this path. The backend
     /// fires the graph-change edge from a transport or worker thread, so
     /// whatever it dereferences must outlive every such call — and the thing
-    /// the caller has in hand is a `nros_guard_condition_t` in ITS storage,
+    /// the caller has in hand is a `rcl_guard_condition_t` in ITS storage,
     /// which the caller may free or reuse at any time. Handing that pointer
     /// over would BE 1385. So the executor keeps its own handle to the same
     /// arena flag, at a heap address that does not move when the executor
@@ -2729,7 +2729,7 @@ impl<'s> Executor<'s> {
     /// of opening a SECOND backend session against the same
     /// singleton (zenoh-pico's `g_session` is process-wide;
     /// opening twice fails). `Executor::open*` calls this
-    /// automatically; the C surface (`nros_executor_init`) calls
+    /// automatically; the C surface (`rclc_executor_init`) calls
     /// it manually because it constructs via `from_session_ptr`
     /// which doesn't know the open metadata. Empty strings = "no
     /// primary identity tracked"; the cache check degrades to
@@ -3682,7 +3682,7 @@ impl<'s> Executor<'s> {
     /// an executor that already armed stays armed.
     ///
     /// `on_call`: wait for [`Self::arm_monitors`] or
-    /// [`super::monitor::request_monitor_arming`] (`nros_monitors_arm()`).
+    /// [`super::monitor::request_monitor_arming`] (`rclc_monitors_arm()`).
     /// `grace_ms`: arm anyway that long after the first spin (0 = never by
     /// deadline; with `on_call == false`, 0 means "at the first spin").
     pub fn set_monitor_arming(&mut self, on_call: bool, grace_ms: u32) {
@@ -3798,7 +3798,7 @@ impl<'s> Executor<'s> {
             return;
         }
         if super::monitor::arm_requests() != v.arm_requests_seen {
-            self.arm_now("the application asked: nros_monitors_arm");
+            self.arm_now("the application asked: rclc_monitors_arm");
             return;
         }
         let grace_ms = v.arm_grace_ms;
@@ -4604,7 +4604,7 @@ impl<'s> Executor<'s> {
     /// `Executor::open*` paths call this automatically, and a binding that
     /// builds its executor over a session it BORROWS
     /// ([`from_session_ptr_in`](Self::from_session_ptr_in)) reaches none of
-    /// them, so it has to call it itself. `nros_executor_init` is that
+    /// them, so it has to call it itself. `rclc_executor_init` is that
     /// binding, and until 1385 it did not — leaving `has_async_wake` false
     /// for the life of every C executor on every backend.
     ///
@@ -4667,7 +4667,7 @@ impl<'s> Executor<'s> {
     /// paths the session is `SessionStore::Owned` and dies in the same drop,
     /// so the window is narrow; on the C path it is arbitrary —
     /// `rclc_executor_fini` drops the executor and zero-fills `_opaque` while
-    /// the session lives on in `nros_support_t` until `rclc_support_fini`.
+    /// the session lives on in `rclc_support_t` until `rclc_support_fini`.
     ///
     /// Clears the primary and every extra session, then latches off, so
     /// `close()` followed by drop clears once.
@@ -6013,7 +6013,7 @@ impl<'s> Executor<'s> {
     /// choice, not a property of this type. Three answers are real — a `.bss`
     /// static (the C/C++ entries, and the `alloc` constructors since phase-392
     /// W6), the heap (those constructors' fallback), and a stack-declared
-    /// `nros_executor_t`. See `super::backing` and `report_arena_headroom`.
+    /// `rclc_executor_t`. See `super::backing` and `report_arena_headroom`.
     pub fn arena_capacity(&self) -> usize {
         self.arena.len()
     }
@@ -8360,7 +8360,7 @@ impl<'s> Executor<'s> {
     /// ([`RawSubscriptionInfoCallback`]: `(data, len, attachment, att_len,
     /// context)`) — the C analog of the Rust
     /// `node.subscription(t).generic(..).message_info()` builder. Backs the C
-    /// FFI `nros_executor_add_subscription_raw_with_info`. Flat per-entry
+    /// FFI `rclc_executor_add_subscription_raw_with_info`. Flat per-entry
     /// payload + attachment buffers (cap `RAW_INFO_ATT_CAP`);
     /// one sample per `spin_once`.
     #[allow(clippy::too_many_arguments)]
@@ -9072,7 +9072,7 @@ impl<'s> Executor<'s> {
     /// allocator — they REFUSE rather than disappear.
     ///
     /// The cfg'd-out spelling was the first shape and it was wrong in a way
-    /// `just check fast` cannot see: `nros_node_get_graph_guard_condition` is
+    /// `just check fast` cannot see: `rclc_node_get_graph_guard_condition` is
     /// a C ABI symbol and calls this unconditionally, so a feature
     /// combination without the seam stopped `nros-c` from COMPILING
     /// (`check-build`'s `workspace-features`, which is the lane that unifies
@@ -9083,7 +9083,7 @@ impl<'s> Executor<'s> {
     /// without that seam there is no backend to install it on, and the
     /// executor-owned target needs an allocator for the box the backend holds
     /// a pointer to. `Unsupported` is what a caller gets from a backend with
-    /// no graph too, so the C entry point answers `NROS_RET_UNSUPPORTED` in
+    /// no graph too, so the C entry point answers `RCL_RET_UNSUPPORTED` in
     /// both cases and a ported program sees one behaviour, not two.
     #[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))]
     pub fn register_graph_change_guard_on<F>(
@@ -9202,7 +9202,7 @@ impl<'s> Executor<'s> {
     /// compares `elapsed_us` against, so this writes the period the
     /// DISPATCHER honours rather than a second copy of it (RFC-0019). The C
     /// entry point `rcl_timer_exchange_period` also keeps
-    /// `nros_timer_t::period_ns` in step, because that field is the
+    /// `rcl_timer_t::period_ns` in step, because that field is the
     /// registration input a later `rclc_executor_add_timer` would re-read.
     ///
     /// `elapsed_us` is deliberately NOT rewound, which is rcl's own behaviour:
@@ -9287,7 +9287,7 @@ impl<'s> Executor<'s> {
     /// phase-417 W5.c — added because the state was already here and nothing
     /// exposed it, which is why `c:timer_get_time_since_last_call` and
     /// `c:timer_is_ready` were both filed as gaps. The C forwarders
-    /// (`nros_timer_get_time_since_last_call`, `nros_timer_is_ready`) read
+    /// (`rcl_timer_get_time_since_last_call`, `nros_timer_is_ready`) read
     /// this; RFC-0019 puts the answer in Rust and only the spelling in the
     /// wrapper.
     pub fn timer_elapsed_us(&self, id: HandleId) -> Option<u64> {
@@ -12587,7 +12587,7 @@ impl<'s> Executor<'s> {
     //
     // Every one of these is a forwarder onto `nros_params::ParameterServer`,
     // the ONE store. They exist on the executor because that is the object the
-    // FFI holds: a C caller has an `nros_executor_t*` and an `nros_node_t*`,
+    // FFI holds: a C caller has an `rclc_executor_t*` and an `rcl_node_t*`,
     // and a C++ node has its `node_id`. Nothing here keeps state — a wrapper
     // that did would be the second store phase-426 removed.
     // ========================================================================

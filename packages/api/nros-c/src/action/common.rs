@@ -13,43 +13,43 @@ use crate::error::*;
 /// Compatible with action_msgs/msg/GoalStatus values.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nros_goal_status_t {
+pub enum rclc_goal_status_t {
     /// Goal state is unknown
-    NROS_GOAL_STATUS_UNKNOWN = 0,
+    RCLC_GOAL_STATUS_UNKNOWN = 0,
     /// Goal was accepted and is pending execution
-    NROS_GOAL_STATUS_ACCEPTED = 1,
+    RCLC_GOAL_STATUS_ACCEPTED = 1,
     /// Goal is currently being executed
-    NROS_GOAL_STATUS_EXECUTING = 2,
+    RCLC_GOAL_STATUS_EXECUTING = 2,
     /// Goal is being canceled
-    NROS_GOAL_STATUS_CANCELING = 3,
+    RCLC_GOAL_STATUS_CANCELING = 3,
     /// Goal completed successfully
-    NROS_GOAL_STATUS_SUCCEEDED = 4,
+    RCLC_GOAL_STATUS_SUCCEEDED = 4,
     /// Goal was canceled
-    NROS_GOAL_STATUS_CANCELED = 5,
+    RCLC_GOAL_STATUS_CANCELED = 5,
     /// Goal was aborted (failed)
-    NROS_GOAL_STATUS_ABORTED = 6,
+    RCLC_GOAL_STATUS_ABORTED = 6,
 }
 
 /// Goal response codes for goal request handling.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nros_goal_response_t {
+pub enum rclc_goal_response_t {
     /// Reject the goal
-    NROS_GOAL_REJECT = 0,
+    RCLC_GOAL_REJECT = 0,
     /// Accept the goal and start executing immediately
-    NROS_GOAL_ACCEPT_AND_EXECUTE = 1,
+    RCLC_GOAL_ACCEPT_AND_EXECUTE = 1,
     /// Accept the goal but defer execution
-    NROS_GOAL_ACCEPT_AND_DEFER = 2,
+    RCLC_GOAL_ACCEPT_AND_DEFER = 2,
 }
 
 /// Cancel response codes.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nros_cancel_response_t {
+pub enum rclc_cancel_response_t {
     /// Reject the cancel request
-    NROS_CANCEL_REJECT = 0,
+    RCLC_CANCEL_REJECT = 0,
     /// Accept the cancel request
-    NROS_CANCEL_ACCEPT = 1,
+    RCLC_CANCEL_ACCEPT = 1,
 }
 
 // ============================================================================
@@ -58,7 +58,7 @@ pub enum nros_cancel_response_t {
 
 /// Action type information.
 #[repr(C)]
-pub struct nros_action_type_t {
+pub struct rclc_action_type_t {
     /// Action type name (e.g., "example_interfaces::action::Fibonacci")
     pub type_name: *const c_char,
     /// Action type hash
@@ -78,7 +78,7 @@ pub struct nros_action_type_t {
 /// Goal UUID structure (16 bytes).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct nros_goal_uuid_t {
+pub struct rclc_goal_uuid_t {
     /// UUID bytes
     pub uuid: [u8; 16],
 }
@@ -92,16 +92,16 @@ pub struct nros_goal_uuid_t {
 /// Carries just the goal UUID. All lifecycle state (accepted, executing,
 /// cancelling, etc.) and per-goal context are managed outside the handle:
 /// status comes from the arena via
-/// [`nros_action_get_goal_status`](super::nros_action_get_goal_status);
+/// [`rclc_action_get_goal_status`](super::rclc_action_get_goal_status);
 /// per-goal user context is tracked in caller-managed `{uuid → state}`
 /// storage. The handle is copyable by value — trampolines build a
 /// stack-local and pass it to user callbacks, and users can copy it into
 /// their own data structures to reference the goal later.
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
-pub struct nros_goal_handle_t {
+pub struct rclc_goal_handle_t {
     /// Goal UUID
-    pub uuid: nros_goal_uuid_t,
+    pub uuid: rclc_goal_uuid_t,
 }
 
 // ============================================================================
@@ -110,52 +110,52 @@ pub struct nros_goal_handle_t {
 
 /// Goal request callback type.
 ///
-/// Invoked when a client sends a new goal. Return `NROS_GOAL_REJECT`,
-/// `NROS_GOAL_ACCEPT_AND_EXECUTE`, or `NROS_GOAL_ACCEPT_AND_DEFER`.
-pub type nros_goal_callback_t = Option<
+/// Invoked when a client sends a new goal. Return `RCLC_GOAL_REJECT`,
+/// `RCLC_GOAL_ACCEPT_AND_EXECUTE`, or `RCLC_GOAL_ACCEPT_AND_DEFER`.
+pub type rclc_goal_callback_t = Option<
     unsafe extern "C" fn(
-        server: *mut super::nros_action_server_t,
-        goal: *const nros_goal_handle_t,
+        server: *mut super::rcl_action_server_t,
+        goal: *const rclc_goal_handle_t,
         goal_request: *const u8,
         goal_len: usize,
         context: *mut c_void,
-    ) -> nros_goal_response_t,
+    ) -> rclc_goal_response_t,
 >;
 
 /// Cancel request callback type.
 ///
 /// Invoked when a client requests cancellation of an accepted goal.
-/// Return `NROS_CANCEL_ACCEPT` or `NROS_CANCEL_REJECT`.
-pub type nros_cancel_callback_t = Option<
+/// Return `RCLC_CANCEL_ACCEPT` or `RCLC_CANCEL_REJECT`.
+pub type rclc_cancel_callback_t = Option<
     unsafe extern "C" fn(
-        server: *mut super::nros_action_server_t,
-        goal: *const nros_goal_handle_t,
+        server: *mut super::rcl_action_server_t,
+        goal: *const rclc_goal_handle_t,
         context: *mut c_void,
-    ) -> nros_cancel_response_t,
+    ) -> rclc_cancel_response_t,
 >;
 
 /// Goal accepted callback type.
 ///
 /// Invoked after the arena has sent the accept reply to the client.
 /// Use this to kick off goal execution.
-pub type nros_accepted_callback_t = Option<
+pub type rclc_accepted_callback_t = Option<
     unsafe extern "C" fn(
-        server: *mut super::nros_action_server_t,
-        goal: *const nros_goal_handle_t,
+        server: *mut super::rcl_action_server_t,
+        goal: *const rclc_goal_handle_t,
         context: *mut c_void,
     ),
 >;
 
 /// Goal response callback type (for async client).
 /// Called when the action server accepts or rejects a goal.
-pub type nros_goal_response_callback_t = Option<
-    unsafe extern "C" fn(goal_uuid: *const nros_goal_uuid_t, accepted: bool, context: *mut c_void),
+pub type rclc_goal_response_callback_t = Option<
+    unsafe extern "C" fn(goal_uuid: *const rclc_goal_uuid_t, accepted: bool, context: *mut c_void),
 >;
 
 /// Feedback callback type (for client).
-pub type nros_feedback_callback_t = Option<
+pub type rclc_feedback_callback_t = Option<
     unsafe extern "C" fn(
-        goal_uuid: *const nros_goal_uuid_t,
+        goal_uuid: *const rclc_goal_uuid_t,
         feedback: *const u8,
         feedback_len: usize,
         context: *mut c_void,
@@ -163,10 +163,10 @@ pub type nros_feedback_callback_t = Option<
 >;
 
 /// Result callback type (for client).
-pub type nros_result_callback_t = Option<
+pub type rclc_result_callback_t = Option<
     unsafe extern "C" fn(
-        goal_uuid: *const nros_goal_uuid_t,
-        status: nros_goal_status_t,
+        goal_uuid: *const rclc_goal_uuid_t,
+        status: rclc_goal_status_t,
         result: *const u8,
         result_len: usize,
         context: *mut c_void,
@@ -179,9 +179,9 @@ pub type nros_result_callback_t = Option<
 
 /// Generate a new random goal UUID.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_goal_uuid_generate(uuid: *mut nros_goal_uuid_t) -> nros_ret_t {
+pub unsafe extern "C" fn rclc_goal_uuid_generate(uuid: *mut rclc_goal_uuid_t) -> rcl_ret_t {
     if uuid.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
+        return RCL_RET_INVALID_ARGUMENT;
     }
 
     let uuid = &mut *uuid;
@@ -225,15 +225,15 @@ pub unsafe extern "C" fn nros_goal_uuid_generate(uuid: *mut nros_goal_uuid_t) ->
         uuid.uuid[6] = (uuid.uuid[6] & 0x0f) | 0x40;
         uuid.uuid[8] = (uuid.uuid[8] & 0x3f) | 0x80;
 
-        NROS_RET_OK
+        RCL_RET_OK
     }
 }
 
 /// Compare two goal UUIDs.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_goal_uuid_equal(
-    a: *const nros_goal_uuid_t,
-    b: *const nros_goal_uuid_t,
+pub unsafe extern "C" fn rclc_goal_uuid_equal(
+    a: *const rclc_goal_uuid_t,
+    b: *const rclc_goal_uuid_t,
 ) -> bool {
     if a.is_null() || b.is_null() {
         return false;
@@ -247,15 +247,15 @@ pub unsafe extern "C" fn nros_goal_uuid_equal(
 
 /// Get status name as string.
 #[unsafe(no_mangle)]
-pub extern "C" fn nros_goal_status_to_string(status: nros_goal_status_t) -> *const c_char {
+pub extern "C" fn rclc_goal_status_to_string(status: rclc_goal_status_t) -> *const c_char {
     match status {
-        nros_goal_status_t::NROS_GOAL_STATUS_UNKNOWN => c"UNKNOWN".as_ptr(),
-        nros_goal_status_t::NROS_GOAL_STATUS_ACCEPTED => c"ACCEPTED".as_ptr(),
-        nros_goal_status_t::NROS_GOAL_STATUS_EXECUTING => c"EXECUTING".as_ptr(),
-        nros_goal_status_t::NROS_GOAL_STATUS_CANCELING => c"CANCELING".as_ptr(),
-        nros_goal_status_t::NROS_GOAL_STATUS_SUCCEEDED => c"SUCCEEDED".as_ptr(),
-        nros_goal_status_t::NROS_GOAL_STATUS_CANCELED => c"CANCELED".as_ptr(),
-        nros_goal_status_t::NROS_GOAL_STATUS_ABORTED => c"ABORTED".as_ptr(),
+        rclc_goal_status_t::RCLC_GOAL_STATUS_UNKNOWN => c"UNKNOWN".as_ptr(),
+        rclc_goal_status_t::RCLC_GOAL_STATUS_ACCEPTED => c"ACCEPTED".as_ptr(),
+        rclc_goal_status_t::RCLC_GOAL_STATUS_EXECUTING => c"EXECUTING".as_ptr(),
+        rclc_goal_status_t::RCLC_GOAL_STATUS_CANCELING => c"CANCELING".as_ptr(),
+        rclc_goal_status_t::RCLC_GOAL_STATUS_SUCCEEDED => c"SUCCEEDED".as_ptr(),
+        rclc_goal_status_t::RCLC_GOAL_STATUS_CANCELED => c"CANCELED".as_ptr(),
+        rclc_goal_status_t::RCLC_GOAL_STATUS_ABORTED => c"ABORTED".as_ptr(),
     }
 }
 
@@ -272,36 +272,36 @@ mod verification {
     #[kani::unwind(5)]
     fn goal_uuid_generate_null() {
         assert_eq!(
-            unsafe { nros_goal_uuid_generate(ptr::null_mut()) },
-            NROS_RET_INVALID_ARGUMENT,
+            unsafe { rclc_goal_uuid_generate(ptr::null_mut()) },
+            RCL_RET_INVALID_ARGUMENT,
         );
     }
 
     #[kani::proof]
     #[kani::unwind(5)]
     fn goal_uuid_equal_null() {
-        let uuid = nros_goal_uuid_t::default();
+        let uuid = rclc_goal_uuid_t::default();
 
-        assert!(!unsafe { nros_goal_uuid_equal(ptr::null(), &uuid) });
-        assert!(!unsafe { nros_goal_uuid_equal(&uuid, ptr::null()) });
-        assert!(!unsafe { nros_goal_uuid_equal(ptr::null(), ptr::null()) });
+        assert!(!unsafe { rclc_goal_uuid_equal(ptr::null(), &uuid) });
+        assert!(!unsafe { rclc_goal_uuid_equal(&uuid, ptr::null()) });
+        assert!(!unsafe { rclc_goal_uuid_equal(ptr::null(), ptr::null()) });
     }
 
     #[kani::proof]
     #[kani::unwind(5)]
     fn goal_status_to_string_all_variants() {
         let statuses = [
-            nros_goal_status_t::NROS_GOAL_STATUS_UNKNOWN,
-            nros_goal_status_t::NROS_GOAL_STATUS_ACCEPTED,
-            nros_goal_status_t::NROS_GOAL_STATUS_EXECUTING,
-            nros_goal_status_t::NROS_GOAL_STATUS_CANCELING,
-            nros_goal_status_t::NROS_GOAL_STATUS_SUCCEEDED,
-            nros_goal_status_t::NROS_GOAL_STATUS_CANCELED,
-            nros_goal_status_t::NROS_GOAL_STATUS_ABORTED,
+            rclc_goal_status_t::RCLC_GOAL_STATUS_UNKNOWN,
+            rclc_goal_status_t::RCLC_GOAL_STATUS_ACCEPTED,
+            rclc_goal_status_t::RCLC_GOAL_STATUS_EXECUTING,
+            rclc_goal_status_t::RCLC_GOAL_STATUS_CANCELING,
+            rclc_goal_status_t::RCLC_GOAL_STATUS_SUCCEEDED,
+            rclc_goal_status_t::RCLC_GOAL_STATUS_CANCELED,
+            rclc_goal_status_t::RCLC_GOAL_STATUS_ABORTED,
         ];
 
         for status in statuses {
-            let s = nros_goal_status_to_string(status);
+            let s = rclc_goal_status_to_string(status);
             assert!(!s.is_null());
         }
     }

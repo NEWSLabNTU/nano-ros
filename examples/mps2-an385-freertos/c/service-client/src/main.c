@@ -2,7 +2,7 @@
 /// @brief C service client example - calls AddTwoInts service (blocking)
 ///
 /// phase-417 W5.e — the call is TYPED. `..._client_call()` serializes the
-/// request into the caller's scratch buffer, forwards to `nros_client_call()`
+/// request into the caller's scratch buffer, forwards to `rclc_client_call()`
 /// so the timeout and the executor spin stay where they already live, and
 /// deserializes the reply into the caller's response struct. Nothing here
 /// names a CDR function.
@@ -33,10 +33,10 @@
 // ----------------------------------------------------------------------------
 
 static struct {
-    nros_support_t support;
-    nros_node_t node;
-    nros_client_t client;
-    nros_executor_t executor;
+    rclc_support_t support;
+    rcl_node_t node;
+    rcl_client_t client;
+    rclc_executor_t executor;
 } app;
 
 // ----------------------------------------------------------------------------
@@ -86,23 +86,23 @@ int nros_app_main(int argc, char** argv) {
     memset(&app, 0, sizeof(app));
 
     // Build type info using generated type name/hash
-    nros_service_type_t add_two_ints_type = {
+    rclc_service_type_t add_two_ints_type = {
         .type_name = example_interfaces_srv_add_two_ints_get_type_name(),
         .type_hash = example_interfaces_srv_add_two_ints_get_type_hash(),
     };
 
-    NROS_CHECK_RET(nros_support_init(&app.support, locator, domain_id), 1);
+    RCLC_CHECK_RET(rclc_support_init(&app.support, locator, domain_id), 1);
     printf("Support initialized\n");
-    NROS_CHECK_RET(rclc_node_init_default(&app.node, "add_two_ints_client", "/", &app.support), 1);
+    RCLC_CHECK_RET(rclc_node_init_default(&app.node, "add_two_ints_client", "/", &app.support), 1);
     printf("Node created: %s\n", rcl_node_get_name(&app.node));
 
-    NROS_CHECK_RET(
+    RCLC_CHECK_RET(
         rclc_client_init_default(&app.client, &app.node, &add_two_ints_type, "/add_two_ints"), 1);
     printf("Client created for service: %s\n", rcl_client_get_service_name(&app.client));
 
     // Clients must be registered with an executor before use.
-    NROS_CHECK_RET(nros_executor_init(&app.executor, &app.support, 4), 1);
-    NROS_CHECK_RET(nros_executor_add_client(&app.executor, &app.client), 1);
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support, 4), 1);
+    RCLC_CHECK_RET(rclc_executor_add_client(&app.executor, &app.client), 1);
 
     int exit_code = 0;
 
@@ -119,17 +119,17 @@ int nros_app_main(int argc, char** argv) {
     uint8_t req_buf[256];
     uint8_t resp_buf[256];
 
-    nros_ret_t ret = example_interfaces_srv_add_two_ints_client_call(
+    rcl_ret_t ret = example_interfaces_srv_add_two_ints_client_call(
         &app.client, &request, &response, req_buf, sizeof(req_buf), resp_buf, sizeof(resp_buf));
 
-    if (ret == NROS_RET_OK) {
+    if (ret == RCL_RET_OK) {
         printf("Result of add_two_ints: %lld\n", (long long)response.sum);
-    } else if (ret == NROS_RET_TIMEOUT) {
+    } else if (ret == RCL_RET_TIMEOUT) {
         fprintf(stderr, "Service call timed out (is the server running?)\n");
         exit_code = 1;
-    } else if (ret == NROS_RET_INVALID_ARGUMENT) {
+    } else if (ret == RCL_RET_INVALID_ARGUMENT) {
         // The request did not fit `req_buf`; nothing was sent. The loud half
-        // is an ERROR record from `nros_service_typed_report_error`.
+        // is an ERROR record from `rclc_service_typed_report_error`.
         fprintf(stderr, "Failed to encode request\n");
         exit_code = 1;
     } else {
@@ -143,7 +143,7 @@ int nros_app_main(int argc, char** argv) {
     // Cleanup
     printf("\nShutting down...\n");
     rclc_executor_fini(&app.executor);
-    nros_client_fini(&app.client);
+    rcl_client_fini(&app.client);
     rcl_node_fini(&app.node);
     rclc_support_fini(&app.support);
 
