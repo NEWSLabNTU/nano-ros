@@ -88,7 +88,7 @@ tier-2 from three broken modules to six of seven green.
 ## What this phase deliberately does NOT do
 
 It does not chase the runtime failures the lane then reveals. Those go to
-[phase-414](phase-414-rtos-runtime-correctness.md) (RTOS runtime correctness) and
+[phase-414](archived/phase-414-rtos-runtime-correctness.md) (RTOS runtime correctness) and
 [phase-391](archived/phase-391-allocation-unification-and-tier-model.md) (#1010). The
 distinction is worth keeping: this phase is about whether the lane can produce a
 verdict at all, not about whether the verdict is green.
