@@ -197,7 +197,7 @@ mod imp {
             return Err(RCL_RET_NOT_INIT);
         }
         Ok((
-            get_executor(&mut (*s.executor)._opaque),
+            get_executor(&mut (*s.executor)),
             NodeId::from_raw(s.node_id),
         ))
     }
@@ -523,7 +523,7 @@ mod imp {
             return RCL_RET_NOT_INIT;
         }
         let executor = node.executor.cast_mut();
-        let exec = get_executor(&mut (*executor)._opaque);
+        let exec = get_executor(&mut (*executor));
         let id = NodeId::from_raw(node.node_id);
         // Creates the store if this is its first use, and sets the node's
         // undeclared-set policy.

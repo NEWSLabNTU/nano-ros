@@ -36,6 +36,6 @@ pub(crate) fn arm(ctx: &mut CppContext) -> nros_cpp_ret_t {
     // SAFETY: the reporter lives inside the context, which is caller storage
     // that does not move for the executor's life; `nros_cpp_fini` unhooks it
     // before dropping it.
-    unsafe { nros::contract::arm_reporter(&mut ctx.executor, ctx.domain_id, &mut ctx.diag) };
+    unsafe { nros::contract::arm_reporter(ctx.executor, ctx.domain_id, &mut ctx.diag) };
     NROS_CPP_RET_OK
 }

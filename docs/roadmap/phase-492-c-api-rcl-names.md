@@ -148,3 +148,33 @@ sees zero allocations across publish and take.
   are the public entry points over them, and one umbrella keeps any
   declaration from having two spellings. Moving the examples' own includes to
   the upstream paths is cosmetic and is left for W5's tail.
+
+### 2026-10-12 — W4 (part 1): one executor object for both bindings
+
+- Design. A C component is hosted by the generated entry, which runs on the
+  C++ binding's context (`nros_cpp_init`, scheduling, monitors, remaps, QoS
+  overrides — all host services). A view `rclc_executor_t` over that context
+  was rejected: the struct carries the executor's inline backing (`_opaque`,
+  ~96 KiB at default sizing), so a view per component would waste that much
+  `.bss` each on an RTOS part. Instead the C++ context EMBEDS a real
+  `rclc_executor_t` and opens its executor in that struct's `_opaque`, exactly
+  where `rclc_executor_init` puts one (`nros_node::ExecutorInlineStorage`).
+  One executor object, whichever language hosts it.
+- `nros-c`: `rclc_executor_t._host` (NULL for `rclc_executor_init`; set by
+  `host_executor_init` for a host-owned executor, whose `fini` then drops
+  nothing). `get_executor` takes the executor, not its `_opaque`.
+  `bind_host_node` fills an executor-bound `rcl_node_t` for a node the host
+  created.
+- `nros-cpp`: `CppContext { tag, executor: &'static mut Executor, domain_id,
+  diag, c: rclc_executor_t }`; `c.in_dispatch` is the one reentrancy guard for
+  both bindings. Seam `nros_cpp_node_bind_c(node, rcl_node_t*,
+  rclc_executor_t**)`, which the component macro will call. Size estimate in
+  `nros-build-helpers/src/cpp.rs` adds the C header (128 + 8 per handle).
+- Test: `a_c_component_gets_the_hosts_executor_and_node` (census lane) — the
+  C face sees the host's registrations, and its `fini` leaves the host running.
+- Also fixed: W3 left the C pack's paste prefix `nros_cdr_{{ … }}` unrenamed,
+  so generated C called `nros_cdr_*`, which no longer exists.
+- Next (part 2, after W7/W8, so each component is ported once onto the new
+  message API): `RCLC_C_COMPONENT`'s `configure` takes `(rcl_node_t *,
+  rclc_executor_t *, StructT *)`; the 37 component sources move to the C API;
+  `component.h` stops declaring `nros_cpp_*`.

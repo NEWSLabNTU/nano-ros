@@ -83,7 +83,6 @@ fn generate_config(
     // Read executor layout from nros-node via Cargo `links` metadata.
     // Kept for `cargo:rerun-if-env-changed` plumbing now that hand-math
     // is gone (Phase 118.B closure of Phase 87.6).
-    let _ = dep_usize("DEP_NROS_NODE_MAX_CBS");
     let _ = dep_usize("DEP_NROS_NODE_ARENA_SIZE");
     // phase-382 W3' -- the carved parameter store, an input to the probed
     // executor size (see `shared::dep_watch`).
@@ -115,7 +114,15 @@ fn generate_config(
     // `Option` discriminant. Generous by design; the `lib.rs` const-assert
     // refuses an under-estimate at compile time.
     let probe_publisher_for_diag = probed.get("PUBLISHER_SIZE").copied().unwrap_or(0) as usize;
-    let cpp_context_overhead: usize = 16 + probe_publisher_for_diag.next_multiple_of(8) + 16;
+    //
+    // phase-492 W4 — plus the C header of the embedded `rclc_executor_t`
+    // (`CppContext::c`): its scalar fields (under 128 bytes) and one entity
+    // pointer per handle slot. Its `_opaque` IS the executor-plus-backing
+    // `EXECUTOR_SIZE` already counts, so that is not added twice.
+    let max_handles = dep_usize("DEP_NROS_NODE_MAX_CBS");
+    let c_executor_header: usize = 128 + 8 * max_handles;
+    let cpp_context_overhead: usize =
+        16 + probe_publisher_for_diag.next_multiple_of(8) + 16 + c_executor_header;
     let probe_executor_pre = probed.get("EXECUTOR_SIZE").copied().unwrap_or(0) as usize;
     // issue 0961 — the bare `Executor` value, which is what a caller's stack
     // pays. Deliberately NOT `EXECUTOR_SIZE`: that one includes the carved

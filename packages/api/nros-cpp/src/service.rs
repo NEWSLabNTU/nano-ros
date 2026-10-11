@@ -257,7 +257,7 @@ pub unsafe extern "C" fn nros_cpp_service_server_register(
                     return NROS_CPP_RET_INVALID_ARGUMENT;
                 }
             }
-            crate::issue_owned_handle(&mut ctx.executor, node_ref, handle_id, out_handle_id);
+            crate::issue_owned_handle(ctx.executor, node_ref, handle_id, out_handle_id);
             NROS_CPP_RET_OK
         }
         Err(e) => crate::node_error_to_cpp_ret(e),
@@ -629,7 +629,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_register(
                     return NROS_CPP_RET_INVALID_ARGUMENT;
                 }
             }
-            crate::issue_owned_handle(&mut ctx.executor, node_ref, handle_id, out_handle_id);
+            crate::issue_owned_handle(ctx.executor, node_ref, handle_id, out_handle_id);
             NROS_CPP_RET_OK
         }
         Err(e) => crate::node_error_to_cpp_ret(e),

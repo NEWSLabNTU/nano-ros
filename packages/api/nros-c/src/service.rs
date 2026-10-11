@@ -1627,7 +1627,7 @@ unsafe fn client_entry_callback(
         return None;
     }
     let exec_t = unsafe { &mut *(internal.executor_ptr as *mut rclc_executor_t) };
-    let exec = crate::executor::get_executor(&mut exec_t._opaque);
+    let exec = crate::executor::get_executor(exec_t);
     let entry = unsafe { exec.service_client_entry_mut(internal.arena_entry_index as usize) }?;
     if let Some((callback, context)) = set {
         entry.callback = callback;
@@ -1738,7 +1738,7 @@ pub unsafe extern "C" fn rclc_client_server_available(
             return RCL_RET_NOT_INIT;
         }
         let exec_t = &mut *(internal.executor_ptr as *mut rclc_executor_t);
-        let exec = crate::executor::get_executor(&mut exec_t._opaque);
+        let exec = crate::executor::get_executor(exec_t);
         let entry = match exec.service_client_entry_mut(internal.arena_entry_index as usize) {
             Some(e) => e,
             None => return RCL_RET_NOT_INIT,
@@ -1823,7 +1823,7 @@ pub unsafe extern "C" fn rclc_client_wait_for_service(
         let timeout_ns: u64 = (timeout_ms as u64).saturating_mul(1_000_000);
         loop {
             {
-                let exec = crate::executor::get_executor(&mut exec_t._opaque);
+                let exec = crate::executor::get_executor(exec_t);
                 let entry = match exec.service_client_entry_mut(internal.arena_entry_index as usize)
                 {
                     Some(e) => e,
@@ -1876,7 +1876,7 @@ pub unsafe extern "C" fn rclc_client_service_is_ready(client: *const rcl_client_
             return false;
         }
         let exec_t = &mut *(internal.executor_ptr as *mut rclc_executor_t);
-        let exec = crate::executor::get_executor(&mut exec_t._opaque);
+        let exec = crate::executor::get_executor(exec_t);
         match exec.service_client_entry_mut(internal.arena_entry_index as usize) {
             // issue 1008 — a backend that cannot answer reports NOT ready.
             Some(entry) => matches!(entry.handle.service_is_ready(), Ok(true)),
@@ -1924,7 +1924,7 @@ pub unsafe extern "C" fn rclc_client_send_request_async(
         }
 
         let exec_t = &mut *(internal.executor_ptr as *mut rclc_executor_t);
-        let exec = crate::executor::get_executor(&mut exec_t._opaque);
+        let exec = crate::executor::get_executor(exec_t);
         let entry = match exec.service_client_entry_mut(internal.arena_entry_index as usize) {
             Some(e) => e,
             None => return RCL_RET_NOT_INIT,
@@ -2003,7 +2003,7 @@ pub unsafe extern "C" fn rclc_client_take_response(
         }
 
         let exec_t = &mut *(internal.executor_ptr as *mut rclc_executor_t);
-        let exec = crate::executor::get_executor(&mut exec_t._opaque);
+        let exec = crate::executor::get_executor(exec_t);
         let entry = match exec.service_client_entry_mut(internal.arena_entry_index as usize) {
             Some(e) => e,
             None => return RCL_RET_NOT_INIT,
@@ -2192,7 +2192,7 @@ pub unsafe extern "C" fn rclc_client_call(
                 let internal = &mut client_ref._internal;
                 if !internal.executor_ptr.is_null() && internal.arena_entry_index >= 0 {
                     let exec_t2 = &mut *(internal.executor_ptr as *mut rclc_executor_t);
-                    let exec2 = crate::executor::get_executor(&mut exec_t2._opaque);
+                    let exec2 = crate::executor::get_executor(exec_t2);
                     if let Some(entry) =
                         exec2.service_client_entry_mut(internal.arena_entry_index as usize)
                     {
@@ -2228,7 +2228,7 @@ pub unsafe extern "C" fn rclc_client_call(
     let internal = &mut client_ref._internal;
     if !internal.executor_ptr.is_null() && internal.arena_entry_index >= 0 {
         let exec_t = &mut *(internal.executor_ptr as *mut rclc_executor_t);
-        let exec = crate::executor::get_executor(&mut exec_t._opaque);
+        let exec = crate::executor::get_executor(exec_t);
         if let Some(entry) = exec.service_client_entry_mut(internal.arena_entry_index as usize) {
             entry.pending = false;
             entry
@@ -2840,7 +2840,7 @@ unsafe fn service_granted_qos(
                 return Err(RCL_RET_NOT_INIT);
             }
             let exec_t = &mut *(internal.executor_ptr as *mut rclc_executor_t);
-            let exec = crate::executor::get_executor(&mut exec_t._opaque);
+            let exec = crate::executor::get_executor(exec_t);
             match exec.service_server_handle(internal.arena_entry_index as usize) {
                 Some(handle) => Ok((
                     nros_rmw::ServiceTrait::request_subscription_actual_qos(handle),
@@ -2866,7 +2866,7 @@ unsafe fn client_granted_qos(
                 return Err(RCL_RET_NOT_INIT);
             }
             let exec_t = &mut *(internal.executor_ptr as *mut rclc_executor_t);
-            let exec = crate::executor::get_executor(&mut exec_t._opaque);
+            let exec = crate::executor::get_executor(exec_t);
             match exec.service_client_handle(internal.arena_entry_index as usize) {
                 Some(handle) => Ok((
                     nros_rmw::ClientTrait::request_publisher_actual_qos(handle),

@@ -378,7 +378,7 @@ pub unsafe extern "C" fn rclc_action_client_wait_for_action_server(
         let timeout_ns: u64 = (timeout_ms as u64).saturating_mul(1_000_000);
         loop {
             {
-                let exec = crate::executor::get_executor(&mut exec_t._opaque);
+                let exec = crate::executor::get_executor(exec_t);
                 let core = match exec.action_client_core_mut(internal.arena_entry_index as usize) {
                     Some(c) => c,
                     None => return RCL_RET_NOT_INIT,
@@ -464,7 +464,7 @@ pub unsafe extern "C" fn rclc_action_client_action_server_is_ready(
             return false;
         }
         let exec_t = &mut *executor;
-        let exec = crate::executor::get_executor(&mut exec_t._opaque);
+        let exec = crate::executor::get_executor(exec_t);
         match exec.action_client_core_mut(internal.arena_entry_index as usize) {
             Some(core) => core.is_server_ready(),
             None => false,

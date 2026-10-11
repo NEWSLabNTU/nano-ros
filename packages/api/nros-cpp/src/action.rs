@@ -471,7 +471,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_publish_feedback(
         Some(h) => h,
         None => return NROS_CPP_RET_ERROR,
     };
-    match h.publish_feedback_raw(&mut ctx.executor, &id, feedback_fields) {
+    match h.publish_feedback_raw(ctx.executor, &id, feedback_fields) {
         Ok(()) => NROS_CPP_RET_OK,
         Err(_) => NROS_CPP_RET_ERROR,
     }
@@ -526,7 +526,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_complete_goal(
     };
     // issue 0796 — a result the server cannot retain (larger than the action
     // server's RESULT_BUF) is now reported instead of silently dropped.
-    match h.complete_goal_raw(&mut ctx.executor, &id, status, result_fields) {
+    match h.complete_goal_raw(ctx.executor, &id, status, result_fields) {
         Ok(()) => NROS_CPP_RET_OK,
         Err(_) => NROS_CPP_RET_ERROR,
     }
@@ -568,7 +568,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_for_each_active_goal(
         Some(h) => *h,
         None => return NROS_CPP_RET_ERROR,
     };
-    arena_handle.for_each_active_goal(&executor_ctx.executor, |g| unsafe {
+    arena_handle.for_each_active_goal(executor_ctx.executor, |g| unsafe {
         let uuid_ptr: *const [u8; 16] = &g.goal_id.uuid;
         visitor(uuid_ptr, g.status as i8, ctx);
     });
@@ -609,7 +609,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_goal_exists(
     let goal = nros_node::GoalId {
         uuid: unsafe { *goal_id },
     };
-    arena_handle.goal_exists(&executor_ctx.executor, &goal)
+    arena_handle.goal_exists(executor_ctx.executor, &goal)
 }
 
 /// RELEASE the arena entry this storage registered — issue 1496.
@@ -1275,7 +1275,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal(
     // before bailing so the guard can't strand the client on the blocking one.
     let CppContext {
         executor,
-        in_dispatch,
+        c: nros_c::rclc_executor_t { in_dispatch, .. },
         ..
     } = ctx;
     let Some(_guard) = DispatchGuard::enter(in_dispatch) else {
@@ -1417,7 +1417,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result(
     // Issue 0290 — blocking helper; refuse to re-enter from a callback.
     let CppContext {
         executor,
-        in_dispatch,
+        c: nros_c::rclc_executor_t { in_dispatch, .. },
         ..
     } = ctx;
     let Some(_guard) = DispatchGuard::enter(in_dispatch) else {

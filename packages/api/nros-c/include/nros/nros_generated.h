@@ -1287,6 +1287,14 @@ typedef struct rclc_executor_t {
    */
   void *_handle_entities[NROS_EXECUTOR_MAX_HANDLES];
   /**
+   * phase-492 W4 — NULL for an executor `rclc_executor_init` built. Non-NULL
+   * when a HOST owns the executor (`host_executor_init`: the C++ binding's
+   * context embeds this struct), pointing at the executor in `_opaque`.
+   * `rclc_executor_fini` then drops nothing; the host does. Internal; no C
+   * code reads it.
+   */
+  void *_host;
+  /**
    * Inline opaque storage for the executor.
    * Managed by rclc_executor_init/fini — no heap allocation needed.
    */
