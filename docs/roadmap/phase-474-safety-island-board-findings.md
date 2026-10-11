@@ -899,6 +899,22 @@ margin falls to about 2 characters (22 us), so it is off by default and the
 UART overrun counter is the check. A board with DMA should prefer I15/I16;
 this is the path for one without.
 
+**Implemented** (zenoh-pico `eb3eb60c`, nano-ros `ef3ae60df`):
+`CONFIG_NROS_ZENOH_SERIAL_FIFO_WATERMARK` (depends on
+`NROS_ZENOH_LINK_SERIAL && UART_INTERRUPT_DRIVEN && UART_MCUX_LPUART &&
+DT_HAS_NXP_LPUART_ENABLED`) -> `_Z_ZEPHYR_SERIAL_FIFO_WATERMARK`. The bind
+looks the device up in a table built from `DT_FOREACH_STATUS_OKAY(nxp_lpuart)`
+(`{DEVICE_DT_GET, DT_REG_ADDR}`, no driver-private state) and, after every
+`uart_configure`, writes WATER (RXWATER 2, TXWATER 0) and FIFO.RXIDEN 1 with
+TE/RE briefly off, as `LPUART_Init` does. `_z_serial_isr_body_lpuart`
+counts and clears STAT.OR (the driver clears it right after the callback),
+drains `WATER.RXCOUNT` bytes from DATA, and while TIE is on and TDRE set
+writes `PARAM.TXFIFO`-depth minus `WATER.TXCOUNT` bytes; ring, wake rules and
+counters as before, interrupt enables still through `uart_irq_*`. Registers
+through `LPUART_Type` (`fsl_device_registers.h`, S32K344_LPUART.h). Board
+image builds (TCM on): FLASH +432 B, RAM 0, ITCM +404 B, DTCM +8 B against
+the I13 image. Not run on the board.
+
 ### I15 -- TX by DMA
 
 **Fix.** `CONFIG_NROS_ZENOH_SERIAL_UART_ASYNC_TX` (Zephyr, default n, needs
@@ -911,6 +927,16 @@ semaphore. RX stays interrupt-driven, which needs
 driver translates the DTCM address itself (dma_mcux_edma.c), and no cache
 maintenance is needed. One or two DMA interrupts per frame instead of
 about 700.
+
+**Implemented, folded into I16.** I15 alone is not possible on Zephyr 4.4:
+with `UART_ASYNC_API` and `UART_INTERRUPT_DRIVEN` both on, the mcux LPUART
+driver requires `UART_EXCLUSIVE_API_CALLBACKS` (BUILD_ASSERT,
+uart_mcux_lpuart.c:50) and keeps one API per device: `uart_callback_set`
+returns -ENOTSUP once the IRQ callback is set (:785-788),
+`uart_irq_callback_user_data_set` clears the async callback (:412-425), and
+`mcux_lpuart_isr` dispatches to one API by `api_type` (:1088-1092). Interrupt
+RX next to DMA TX on one UART therefore cannot be had; both go to DMA under
+one option, below.
 
 ### I16 -- RX by DMA
 
@@ -926,6 +952,34 @@ ring 1-2 ticks late; the configured idle type is set on a local struct and
 never applied (:1243-1244), so idle may fire early (extra flushes, no lost
 data); any RX error stops reception (:1023-1057). Upstream's only S32K3 use
 is a 115,200 loopback test with all RAM in DTCM.
+
+**Implemented** (with I15; zenoh-pico `e3080885`, nano-ros `6bb0c6305`):
+`CONFIG_NROS_ZENOH_SERIAL_UART_ASYNC` (depends on `NROS_ZENOH_LINK_SERIAL &&
+UART_INTERRUPT_DRIVEN && UART_ASYNC_API` and `NROS_ZENOH_SERIAL_TCM ||
+!DCACHE`) -> `_Z_ZEPHYR_SERIAL_UART_ASYNC`, and
+`CONFIG_NROS_ZENOH_SERIAL_UART_ASYNC_RX_TIMEOUT_US` (default 25, range from 1:
+0 disables the driver's idle flush). The bind tries `uart_callback_set`
+first and keeps the interrupt path on failure, or when the first
+`uart_rx_enable` fails (`_z_zephyr_serial_async_stats.active` says which
+runs). TX: `_z_serial_tx_put` kicks `uart_tx` on the TX ring's contiguous
+run when none is in flight (`SYS_FOREVER_US`, no TX timer); TX_DONE/ABORTED
+finishes the claim (partially on abort), chains the next run, and gives the
+TX semaphore by I13's waiting rule. RX: two 256 B buffers, alternated on
+BUF_REQUEST; RX_RDY puts into the RX ring under a spinlock (the DMA ISR and
+the sysworkq flush both produce), same wake rule; RX_STOPPED reasons go to
+`overruns`/`framing_errors`/`noise_errors`/`parity_errors`; RX_DISABLED
+re-arms. A re-open aborts TX and disables RX before `uart_configure`
+(which runs `LPUART_Deinit`). `_z_zephyr_serial_async_stats` adds tx_dma,
+tx_aborts, tx_errors, rx_rdy, rx_stopped, rx_rearms, rx_rearm_failed; under
+`ISR_STATS` the callback's cycles count as ISR time (the sysworkq flush
+included). All of it in network.c's bss/text: DTCM 0x20000000.. and ITCM in
+the board image. Latency: the island's tick is 1000/s, so a frame's tail
+reaches the reader 1-2 ms after its last byte (the idle flush is a
+`k_work_reschedule(K_USEC(25))`, i.e. the next tick or two) -- a cost the
+interrupt path does not have, to be weighed on the board against the ISR
+time saved. Board image builds (TCM on, `CONFIG_UART_ASYNC_API=y`): FLASH
++11312 B, RAM +3464 B (driver async state, eDMA driver), ITCM +1176 B, DTCM
++2608 B against the I13 image. Not run on the board.
 
 **Verify (I15, I16).** Board: the spin diag's ISR count per late interval
 and the late-spin rates; `_z_zephyr_serial_stats` overruns, bad frames and
