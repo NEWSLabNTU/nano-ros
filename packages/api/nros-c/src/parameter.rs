@@ -103,8 +103,9 @@ mod imp {
         on_callback: bool,
         has_hook: bool,
         hook: u16,
-        // Recorded for phase-491 W3 (`/parameter_events`); nothing reads them
-        // until the emitter lands.
+        // `low_mem_mode` changes nothing (the services always stream); the
+        // events flag is acted on at init. Both are kept so the handle states
+        // what it was given.
         #[allow(dead_code)]
         notify_changed_over_dds: bool,
         #[allow(dead_code)]
@@ -289,6 +290,7 @@ mod imp {
             return NROS_RET_ERROR;
         }
         if exec.declare_parameter_on(id, n, value) {
+            exec.flush_parameter_events();
             NROS_RET_OK
         } else {
             NROS_RET_ERROR
@@ -304,7 +306,9 @@ mod imp {
         let Some(n) = name_str(name) else {
             return NROS_RET_INVALID_ARGUMENT;
         };
-        set_result(exec.set_parameter_local_on(id, n, value))
+        let r = set_result(exec.set_parameter_local_on(id, n, value));
+        exec.flush_parameter_events();
+        r
     }
 
     unsafe fn get_value<'a>(
@@ -532,6 +536,11 @@ mod imp {
         }
         // rclc's set service deletes on NOT_SET; rclcpp's refuses.
         exec.delete_parameters_on_not_set_on(id, true);
+        // rclc's `notify_changed_over_dds` (default on): one
+        // `/parameter_events` publisher for the node (RFC-0105 D8).
+        if opts.notify_changed_over_dds && exec.enable_parameter_events_on(id).is_err() {
+            return NROS_RET_ERROR;
+        }
         *s = rclc_parameter_server_t {
             executor,
             max_params: opts.max_params,
@@ -577,6 +586,7 @@ mod imp {
                 break;
             }
         }
+        exec.flush_parameter_events();
         exec.delete_parameters_on_not_set_on(id, false);
         s.initialized = false;
         s.has_hook = false;
@@ -663,6 +673,7 @@ mod imp {
             return NROS_RET_INVALID_ARGUMENT;
         };
         if exec.undeclare_parameter_on(id, n) {
+            exec.flush_parameter_events();
             NROS_RET_OK
         } else {
             NROS_RET_ERROR

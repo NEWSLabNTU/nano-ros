@@ -135,6 +135,23 @@ fn main() {
         0,
     );
 
+    // phase-491 W3 (RFC-0105 D8) -- the `/parameter_events` publisher's
+    // history depth. A board fact: nothing the contract states says how many
+    // events a node emits. Upstream's 1000 on a hosted target (a host has the
+    // RAM and a reader expects upstream's profile), 1 on an RTOS target, where
+    // a reliable DDS writer reserves the whole history.
+    let hosted = matches!(
+        env::var("CARGO_CFG_TARGET_OS").as_deref(),
+        Ok("linux" | "macos" | "windows")
+    );
+    let param_events_depth = knob(
+        "NROS_PARAM_EVENTS_DEPTH",
+        rungs.param_events_depth,
+        None,
+        if hosted { 1000 } else { 1 },
+    )
+    .max(1);
+
     // phase-382 W3' -- does this build KNOW the image builds a store? Then the
     // executor carves it from its backing instead of asking the heap for it.
     let implied_store_slots = if store_implied(params) {
@@ -182,6 +199,11 @@ fn main() {
          bytes (set via NROS_MAX_PARAM_CONSTRAINTS_LEN, default 0 = no \
          constraint text). phase-417 W4.a.\n\
          pub const MAX_PARAM_CONSTRAINTS_LEN: usize = {max_param_constraints_len};\n\
+         \n\
+         /// History depth of each node's `/parameter_events` publisher \
+         (set via NROS_PARAM_EVENTS_DEPTH; default 1000 on a hosted target, \
+         1 otherwise). phase-491 W3.\n\
+         pub const PARAM_EVENTS_DEPTH: u32 = {param_events_depth};\n\
          \n\
          /// Slots of the parameter store this build KNOWS the image builds: \
          `MAX_PARAMETERS` when the contract declares a parameter, the bringup \

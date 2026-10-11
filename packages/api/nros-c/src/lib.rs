@@ -386,7 +386,8 @@ rmw_modules! {
 // silently changes what their firmware image is; naming the feature they must
 // add does not.
 // ---------------------------------------------------------------------------
-#[cfg(all(feature = "param-services", not(feature = "alloc")))]
-compile_error!("`param-services` allocates: add \"alloc\" to this crate's features");
+// `param-services` needs no heap since issue 1812 (phase-491 W7): the
+// parameter services are carved from the executor backing, and the C
+// parameter server is a handle over them.
 #[cfg(all(feature = "lifecycle-services", not(feature = "alloc")))]
 compile_error!("`lifecycle-services` allocates: add \"alloc\" to this crate's features");

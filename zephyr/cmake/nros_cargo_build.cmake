@@ -1669,6 +1669,9 @@ function(nros_resolve_knobs)
     # description's knob.
     _nros_resolve_knob(NROS_MAX_PARAM_CONSTRAINTS_LEN
         "${CONFIG_NROS_MAX_PARAM_CONSTRAINTS_LEN}")
+    # phase-491 W3 -- the /parameter_events publisher's history depth.
+    _nros_resolve_knob(NROS_PARAM_EVENTS_DEPTH
+        "${CONFIG_NROS_PARAM_EVENTS_DEPTH}")
     # phase-479 W5 (RFC-0102 D5) -- the runtime-logger arenas, on the plain
     # ladder: Kconfig states it, the environment wins, nros-log's build script
     # reads it (and, on the Rust lane, reads the same symbol from $DOTCONFIG).

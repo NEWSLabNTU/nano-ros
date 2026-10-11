@@ -117,6 +117,7 @@ OWNERS: dict[str, str] = {
     # phase-417 W4.a -- the descriptor's OTHER free text. Its own capacity,
     # default 0, so no image pays for a field it never sets.
     "NROS_MAX_PARAM_CONSTRAINTS_LEN": "packages/core/nros-params/build.rs",
+    "NROS_PARAM_EVENTS_DEPTH": "packages/core/nros-params/build.rs",
     # phase-479 W5 (RFC-0102 D5) -- the logging tenant. The deprecated
     # `dynamic-loggers-<N>` features are read in the SAME script, never a
     # second one, so a feature can disagree with the knob only as a build error.

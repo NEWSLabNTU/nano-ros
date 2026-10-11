@@ -69,7 +69,8 @@ pub mod types;
 pub use declared::{DeclaredParamMismatch, DeclaredParams};
 pub use server::{
     DeclarationError, LegacyParameterBuilder, MAX_ON_SET_CALLBACKS, OnSetContext, OnSetParameterFn,
-    OnSetParameterHandle, ParameterServer, ParameterSlot, ParameterStorage, ParameterTable,
+    OnSetParameterHandle, PARAMETER_EVENT_LOG_LEN, ParameterEventKind, ParameterServer,
+    ParameterSlot, ParameterStorage, ParameterTable, PendingParameterEvent,
 };
 pub use typed::{
     MandatoryParameter, OptionalParameter, ParameterBuilder, ParameterError, RangeConvertible,
@@ -78,6 +79,7 @@ pub use typed::{
 pub use types::{
     FloatingPointRange, IMPLIED_STORE_SLOTS, IntegerRange, MAX_ARRAY_LEN, MAX_BYTE_ARRAY_LEN,
     MAX_PARAM_CONSTRAINTS_LEN, MAX_PARAM_DESCRIPTION_LEN, MAX_PARAM_NAME_LEN, MAX_PARAMETERS,
-    MAX_STRING_VALUE_LEN, NodeFlags, NodeKey, Parameter, ParameterDescriptor, ParameterRange,
-    ParameterType, ParameterValue, ParameterVariant, SetParameterResult, fit_description,
+    MAX_STRING_VALUE_LEN, NodeFlags, NodeKey, PARAM_EVENTS_DEPTH, Parameter, ParameterDescriptor,
+    ParameterRange, ParameterType, ParameterValue, ParameterVariant, SetParameterResult,
+    fit_description,
 };

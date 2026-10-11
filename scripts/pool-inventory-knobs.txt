@@ -78,6 +78,7 @@ NROS_PARAM_STORE | executor | | a switch: the image builds a parameter store, so
 NROS_CAPABILITY_PARAM_SERVICES | executor | | a switch: the bringup declares `param_services` (Zephyr Kconfig); like `NROS_PARAM_STORE` it makes the executor's storage carve the parameter store (phase-382 W3')
 NROS_MAX_PARAM_NAME_LEN | element | | bounds a parameter NAME inside every parameter-store slot (executor storage or heap, see `NROS_MAX_PARAMETERS`)
 NROS_MAX_PARAM_DESCRIPTION_LEN | element | | bounds a parameter descriptor's description inside every `ParameterStorage` slot
+NROS_PARAM_EVENTS_DEPTH | not-a-size | | a QoS history depth handed to the RMW when the `/parameter_events` publisher is created; what it costs is the backend's (a reliable DDS writer's history), not a nano-ros pool
 NROS_MAX_PARAM_CONSTRAINTS_LEN | element | | bounds a parameter descriptor's constraints text inside every `ParameterStorage` slot
 NROS_MAX_STRING_VALUE_LEN | element | | bounds a string parameter VALUE — `ParameterValue` is sized by its largest variant, so this is paid by every slot
 NROS_MAX_ARRAY_LEN | element | | bounds an array parameter value; paid by every `ParameterValue`, i.e. every slot
