@@ -1,0 +1,10 @@
+# Gates CI's `just check fast` (gate.yml, job `check`) may report NOT VERIFIED.
+# Read by scripts/ci/check-fast-skip-allowlist.sh: any OTHER skip fails the job,
+# and an entry here whose gate verified fails it too (the list only shrinks).
+#
+# Format: <gate name><TAB><why CI cannot give it its input>
+#
+ivc-fsp	the NVIDIA Orin SPE FSP tree is proprietary and cannot be provisioned on a hosted runner (phase-418 418.4)
+zephyr-workspace-foreign-checkout	inspects a developer host's provisioned Zephyr workspaces for one owned by another checkout; a fresh CI checkout has none by construction (issue 1387)
+artifact-identity-budget	reads a built workspace fixture tree; check-fast is buildless by contract, and no CI lane verifies it yet (issue 1832)
+sizes-header-mirrors	reads built nros-c/nros-cpp header mirrors; check-fast is buildless by contract, and no CI lane verifies it yet (issue 1832)

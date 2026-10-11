@@ -724,10 +724,46 @@ jobs:
           fi
           git rev-list --count HEAD
 
+      # Four more fast-line gates read SOURCES this job never checked out, so
+      # they reported NOT VERIFIED on every CI run while a local run verified
+      # them: `capability-conditionals` (zenoh-pico's platform.h),
+      # `xrce-vendored-versions` (micro-cdr, micro-xrce-dds-client),
+      # `leaf-lockfiles` (the nuttx FFI crates patch `libc` to
+      # third-party/nuttx/libc) and `cxx-compat-shim-facilities` (Zephyr's
+      # minimal libcpp headers). Depth-1 submodules plus a SPARSE Zephyr at the
+      # pinned west revision -- only `lib/cpp/minimal/include`, the one
+      # directory the gate reads. Measured from a fresh clone: ~8 s for the
+      # submodules, 2.4 s and 6 MiB for the Zephyr slice, and all four gates
+      # then verify.
+      - name: Provision the sources the fast-line source gates read
+        run: |
+          git submodule update --init --depth 1 \
+            packages/rmw/zenoh/zpico-sys/zenoh-pico \
+            packages/rmw/xrce/xrce-sys/micro-cdr \
+            packages/rmw/xrce/xrce-sys/micro-xrce-dds-client \
+            third-party/nuttx/libc
+          rev="$(awk '/- name: zephyr$/ { z = 1 } z && /revision:/ { print $2; exit }' west.yml)"
+          [ -n "$rev" ] || { echo "no zephyr revision in west.yml" >&2; exit 1; }
+          if [ ! -d zephyr-workspace/zephyr/lib/cpp/minimal/include ]; then
+            git clone --quiet --depth 1 --filter=blob:none --sparse --branch "$rev" \
+              https://github.com/zephyrproject-rtos/zephyr.git zephyr-workspace/zephyr
+            git -C zephyr-workspace/zephyr sparse-checkout set lib/cpp/minimal/include
+          fi
+
       - name: just check fast
         run: |
           source ./activate.sh
           just check fast
+
+      # The skip ledger is a CONTRACT here, not a report: every gate this job
+      # cannot give an input to is named in .config/ci-check-fast-skips.txt with
+      # the reason, and any other NOT VERIFIED fails the job. Without it, a gate
+      # that loses its input in CI goes quiet instead of red -- which is how the
+      # six gates above stopped verifying, one at a time, unnoticed.
+      - name: CI may skip only the allowlisted gates
+        run: |
+          source ./activate.sh
+          scripts/ci/check-fast-skip-allowlist.sh
 
       # A pin naming a commit no remote can serve is a repo that builds only on
       # the machine that made it: every clone and every CI run dies at

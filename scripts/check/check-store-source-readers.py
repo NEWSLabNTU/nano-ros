@@ -76,6 +76,7 @@ ALLOWED = {
     # Provisioning lists: they INITIALISE the checkout copy (the ladder's
     # last rung), they do not read a tree.
     ".github/workflows/live-peer.yml": "submodule init list",
+    ".github/workflows/gate.yml": "submodule init list (the check job's source gates)",
     ".config/worktree-provisioning.txt": "submodule init list",
     # Developer tools that read the checkout on purpose (they audit the
     # vendored sources a contributor edits, not what a build consumes).
