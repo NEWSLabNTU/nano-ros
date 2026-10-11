@@ -227,10 +227,6 @@ UNRESOLVED_EXEMPTIONS = Exemptions(
         ("packages/rmw/cyclonedds/nros-rmw-cyclonedds-sys/build.rs", "forward_derived_knobs", "knob"):
             "loop over the const `KNOBS` table beside it — five `NROS_CYCLONEDDS_MAX_*` "
             "/ `*_BYTES` integers",
-        ("packages/rmw/zenoh/nros-zpico-build/src/runner.rs", "run",
-         "platform_config::wire_env_key(key)"):
-            "`ZPICO_<KNOB>` over `platform_config::WIRE_KNOBS` — buffer sizes and "
-            "intervals",
         ("packages/rmw/zenoh/nros-zpico-build/src/runner.rs", "build_zenoh_pico_unified", "env_var"):
             "`if_env` of a platform manifest's `[[extra_sources]]` — a presence flag "
             "selecting sources, not a location",
@@ -242,9 +238,10 @@ UNRESOLVED_EXEMPTIONS = Exemptions(
             "gate, which classifies every entry of it",
         ("packages/tooling/nros-build-helpers/src/shared.rs", "env_usize", "name"):
             "usize-knob reader shared by the C/C++ build helpers; callers pass counts",
-        ("packages/tooling/nros-platform-config/src/platform_config.rs", "executor_rung_opt",
-         "key"):
-            "`executor_env_key(knob)` — the `NROS_EXECUTOR_*` sizing knobs",
+        ("packages/tooling/nros-platform-config/src/platform_config.rs", "watch_knob_env",
+         "s"):
+            "every spelling of one ladder knob (`knobs.toml` rows with a `toml` key) — "
+            "sizes, intervals and flags",
         ("packages/tooling/nros-zephyr-build/src/lib.rs", "env_spelled", "s"):
             "every env spelling of a registry knob (`knobs.toml`) — an integer or a flag",
     },

@@ -23,13 +23,15 @@ path = "src/lib.rs"
 #                     -> nros-smoltcp  -> nros-board-common
 #
 # That is every driver, and it blocked phase-400 W6's `net` tenant outright.
-# Nothing here may gain a workspace dependency beyond `nros-build-paths`, which
-# is itself a leaf — a new edge would rebuild the wall this crate exists to
-# remove.
+# Nothing here may gain a workspace dependency that is not itself a leaf —
+# `nros-build-paths`, and `nros-zephyr-build`, which holds the knob registry
+# (RFC-0103 D2b, phase-484 W5a) and depends on nothing. A new non-leaf edge
+# would rebuild the wall this crate exists to remove.
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 nros-build-paths = { path = "../nros-build-paths" }
+nros-zephyr-build = { path = "../nros-zephyr-build" }
 
 [dev-dependencies]
 tempfile = "3"

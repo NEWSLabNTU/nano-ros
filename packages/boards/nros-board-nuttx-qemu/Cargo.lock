@@ -411,6 +411,7 @@ name = "nros-platform-config"
 version = "0.5.0"
 dependencies = [
  "nros-build-paths",
+ "nros-zephyr-build",
  "serde",
  "toml",
 ]

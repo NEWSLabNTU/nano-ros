@@ -406,7 +406,44 @@ def scan(files=None, xrce=True):
         for m in POOL_ANNOT.finditer(text):
             expr = m.group(2).replace("\\", " ").strip()
             pools.append((m.group(1), expr, rel, text[: m.start()].count("\n") + 1))
+    if files is None:
+        fold_ladder_registry(knobs)
     return knobs, pools
+
+
+KNOB_REGISTRY = "packages/tooling/nros-zephyr-build/knobs.toml"
+
+
+def fold_ladder_registry(knobs):
+    """phase-484 W5a — the ladder's knobs, from the knob registry.
+
+    The `<tenant>_env_key` match arms `LADDER_ENV_KEY` read are gone: each of
+    those functions now asks the registry, so a ladder knob's name is written
+    only in `knobs.toml`. Every row with a `toml` key is listed under its
+    CANONICAL spelling, and a legacy spelling some source still names literally
+    folds into that row — one knob, one line on the page.
+    """
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # Python < 3.11 — the repo's interpreter is 3.10
+        import tomli as tomllib
+    path = os.path.join(ROOT, KNOB_REGISTRY)
+    with open(path, "rb") as fh:
+        rows = tomllib.load(fh).get("knob", [])
+    with open(path, encoding="utf8") as fh:
+        lines = fh.read().splitlines()
+    for r in rows:
+        if not r.get("toml"):
+            continue
+        canon = "NROS_" + r["id"]
+        for old in r.get("legacy", []):
+            if old in knobs:
+                knobs.setdefault(canon, knobs[old])
+                del knobs[old]
+        line = next(
+            (i + 1 for i, l in enumerate(lines) if l.strip() == f'id = "{r["id"]}"'), 1
+        )
+        knobs.setdefault(canon, (None, KNOB_REGISTRY, line, False))
 
 
 def scan_derived(files=None):

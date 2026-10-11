@@ -536,25 +536,41 @@ LADDER_MAPPED_NOT_MIGRATED = {
 SELECTIONS = {"NROS_TRANSPORT_KIND", "NROS_TRANSPORT_ENDPOINT"}
 
 
-def registry_spellings():
-    """Every env spelling the knob registry holds, canonical and legacy."""
+def _registry_rows():
     try:
         import tomllib
     except ModuleNotFoundError:  # Python < 3.11 — the repo's interpreter is 3.10
         import tomli as tomllib
-    with open(os.path.join(ROOT, "packages/tooling/nros-zephyr-build/knobs.toml"), "rb") as fh:
-        rows = tomllib.load(fh).get("knob", [])
+    path = os.path.join(ROOT, "packages/tooling/nros-zephyr-build/knobs.toml")
+    if not os.path.exists(path):
+        return []
+    with open(path, "rb") as fh:
+        return tomllib.load(fh).get("knob", [])
+
+
+def registry_spellings(ladder_only=False):
+    """Every env spelling the knob registry holds, canonical and legacy.
+
+    `ladder_only`: just the rows with a `toml` key — the ones the platform/board
+    ladder resolves. Since phase-484 W5a slice 2 the ladder's `*_env_key`
+    functions ASK the registry for those spellings, so `platform_config.rs`
+    no longer spells them and its match arms cannot be the evidence.
+    """
     out = set()
-    for r in rows:
+    for r in _registry_rows():
+        if ladder_only and not r.get("toml"):
+            continue
         out.add("NROS_" + r["id"])
         out.update(r.get("legacy", []))
     return out
 
 
 def ladder_env_keys():
-    """Env names the ladder READS, from `platform_config.rs` itself.
+    """Env names the ladder READS: every spelling of a registry row with a
+    `toml` key (the `*_env_key` functions derive from those), plus what
+    `platform_config.rs` still spells itself.
 
-    Three idioms, all in that one file: a match arm mapping a struct field to
+    Three idioms in that file: a match arm mapping a struct field to
     its env name, a direct `env("...")`, and `flag("...", default)` for a bool.
     The `#[cfg(test)]` module is cut first — its fixtures name knobs that the
     production reader does not, and counting those would classify a knob as
@@ -570,7 +586,7 @@ def ladder_env_keys():
         r'\bflag\(\s*"((?:NROS|ZPICO)_[A-Z0-9_]+)"',
     ):
         out |= set(re.findall(pat, src))
-    return out
+    return out | registry_spellings(ladder_only=True)
 
 
 def ladder_knobs():

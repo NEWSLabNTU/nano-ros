@@ -64,10 +64,10 @@ NROS_SMOLTCP_BUFFER_SIZE | pool | nros_smoltcp::bridge::SOCKET_RX_BUFFERS,nros_s
 NROS_ZEPHYR_HEAP_SIZE | heap | nros_platform::zephyr_heap::HEAP | the rlsf arena both zenoh-pico's `z_malloc` and Rust's allocator draw from on Zephyr; the symbol IS the region, measured per image
 NROS_FREERTOS_HEAP_KB | heap | ucHeap | FreeRTOS heap_4's `ucHeap[configTOTAL_HEAP_SIZE]`; the symbol IS the region, measured per image
 NROS_FREERTOS_APP_STACK_KB | stack | | the application task's stack, which FreeRTOS allocates out of `ucHeap` — it is inside that heap's figure, never a symbol of its own
-ZPICO_BATCH_UNICAST_SIZE | heap | | zenoh-pico allocates its unicast TX/RX batch buffers (`_z_wbuf_make`/`_z_zbuf_make`) when a session opens — heap bytes, no symbol
-ZPICO_BATCH_MULTICAST_SIZE | heap | | the multicast twin of the unicast batch buffers — heap at session open, no symbol
-ZPICO_FRAG_MAX_SIZE | heap | | zenoh-pico's defragmentation buffer, `_z_wbuf_make(Z_FRAG_MAX_SIZE)` on first fragment — heap, no symbol
-ZPICO_GET_REPLY_BUF_SIZE | stack | | the blocking `z_get` reply context is stack-allocated per call (`zpico.c`), so it costs stack in the caller, never static RAM
+NROS_ZENOH_BATCH_UNICAST_SIZE | heap | | zenoh-pico allocates its unicast TX/RX batch buffers (`_z_wbuf_make`/`_z_zbuf_make`) when a session opens — heap bytes, no symbol
+NROS_ZENOH_BATCH_MULTICAST_SIZE | heap | | the multicast twin of the unicast batch buffers — heap at session open, no symbol
+NROS_ZENOH_FRAG_MAX_SIZE | heap | | zenoh-pico's defragmentation buffer, `_z_wbuf_make(Z_FRAG_MAX_SIZE)` on first fragment — heap, no symbol
+NROS_ZENOH_GET_REPLY_BUF_SIZE | stack | | the blocking `z_get` reply context is stack-allocated per call (`zpico.c`), so it costs stack in the caller, never static RAM
 NROS_LOG_DYNAMIC_LOGGERS | pool | nros_log::pool::POOL,nros_log::pool::NAMES | runtime-logger slots (phase-479 W5): `POOL` holds a `Logger` per slot, a struct whose size moves with its fields; `NAMES` is exactly 24 bytes per slot, so `mem-report` reads the image's CAPACITY back out of its size
 NROS_LOG_EARLY_RECORDS | pool | nros_log::early::SLOTS | records held before `init` (issue 1037): each slot holds a formatted message of `NROS_LOG_BUFFER_SIZE` bytes plus a logger name, so `SLOTS` moves with both knobs; 0 declines the ring
 NROS_LOG_ROSOUT_RECORDS | pool | nros_log::rosout::SLOTS | the `/rosout` queue (issue 1037), linked only with `nros-node/rosout`: each slot holds a message of `NROS_LOG_BUFFER_SIZE` bytes plus a logger name
@@ -118,7 +118,10 @@ ZPICO_GRAPH_DISCOVERY | not-a-size | | switches the graph cache on; its bytes ar
 NROS_SERVICE_TIMEOUT_MS | not-a-size | | milliseconds
 NROS_SMOLTCP_CONNECT_TIMEOUT_MS | not-a-size | | milliseconds
 NROS_SMOLTCP_SOCKET_TIMEOUT_MS | not-a-size | | milliseconds
-ZPICO_GET_POLL_INTERVAL_MS | not-a-size | | milliseconds
+NROS_ZENOH_GET_POLL_INTERVAL_MS | not-a-size | | milliseconds
+NROS_ZENOH_TX_BATCH | not-a-size | | a switch: whether zenoh-pico batches outgoing messages (phase-282)
+NROS_ZENOH_TX_SPLIT_LOCK | not-a-size | | a switch: whether the TX path takes its own lock instead of the session's (phase-282)
+NROS_ZENOH_TX_BATCH_FLUSH_MS | not-a-size | | a time: the longest a batched message waits before it is flushed (phase-282)
 ZPICO_LEASE_TASK_PRIORITY | not-a-size | | a task priority
 ZPICO_READ_TASK_PRIORITY | not-a-size | | a task priority
 NROS_MULTIGOAL_GOALS | test-only | | `action-client-multigoal` test binary

@@ -136,6 +136,28 @@ INJECTED_READERS=(
     "packages/tooling/nros-platform-config/src/platform_config.rs|platform_config::"
 )
 
+# phase-484 W5a — the injected reader no longer SPELLS its knobs: each
+# `*_env_key` asks the knob registry (`registry_env`), so the names it resolves
+# are every spelling of a `knobs.toml` row with a `toml` key. Read from the
+# registry itself, never restated here; credited only while
+# `platform_config.rs` still derives through `registry_env(` (checked below).
+REGISTRY=packages/tooling/nros-zephyr-build/knobs.toml
+LADDER_SPELLINGS="$(python3 - "$REGISTRY" <<'PY'
+import sys
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib
+with open(sys.argv[1], "rb") as fh:
+    for r in tomllib.load(fh).get("knob", []):
+        if r.get("toml"):
+            print("NROS_" + r["id"])
+            for l in r.get("legacy", []):
+                print(l)
+PY
+)" || { echo "[FAIL] cannot read $REGISTRY" >&2; exit 1; }
+[ -n "$LADDER_SPELLINGS" ] || { echo "[FAIL] $REGISTRY names no ladder knob" >&2; exit 1; }
+
 # phase-420 W9 — a reader may name its knobs in a shared MANIFEST rather than in
 # its own source. `packages/rmw/xrce/xrce-config.txt` is the one statement of
 # every XRCE build value, read by BOTH the cargo lane (`build.rs`) and the cmake
@@ -445,6 +467,9 @@ for knob in $knobs; do
             break
         fi
     done
+    if [ "$found" = 0 ] && nros_grep_q -xF -- "$knob" <<<"$LADDER_SPELLINGS"; then
+        found=1
+    fi
     if [ "$found" = 0 ]; then
         # A knob stated in a shared manifest. Unquoted, word-bounded.
         for f in "${MANIFEST_READERS[@]}"; do
@@ -478,6 +503,14 @@ for f in "${READERS[@]}"; do
         fail=1
     }
 done
+
+# The registry credit above holds only while the ladder derives its env names
+# from the registry rather than spelling them.
+nros_grep_q -F 'registry_env(' "${INJECTED_READERS[0]%%|*}" || {
+    echo "[FAIL] ${INJECTED_READERS[0]%%|*} no longer calls registry_env(), so" >&2
+    echo "       the knobs.toml ladder rows are not evidence that it reads them." >&2
+    fail=1
+}
 
 # An injected reader is only a reader if a listed READER hands it the ladder.
 # Naming the file without that is a knob resolved by an accessor nobody supplied.

@@ -835,22 +835,49 @@ impl BuildRungs {
     }
 }
 
-/// The env front-end name for an executor knob. These are the EXISTING names
-/// `nros-node/build.rs` already reads, kept verbatim: migrating a knob into the
-/// ladder must not change how anyone sets it.
-pub fn executor_env_key(knob: &str) -> &'static str {
-    match knob {
-        "max_cbs" => "NROS_EXECUTOR_MAX_CBS",
-        "max_sc" => "NROS_EXECUTOR_MAX_SC",
-        "max_nodes" => "NROS_EXECUTOR_MAX_NODES",
-        "max_shutdown_cbs" => "NROS_EXECUTOR_MAX_SHUTDOWN_CBS",
-        "action_clients" => "NROS_EXECUTOR_ACTION_CLIENTS",
-        "arena_size" => "NROS_EXECUTOR_ARENA_SIZE",
-        "subscription_buffer_size" => "NROS_SUBSCRIPTION_BUFFER_SIZE",
-        "param_service_buffer_size" => "NROS_PARAM_SERVICE_BUFFER_SIZE",
-        "backing_u64s" => "NROS_EXECUTOR_BACKING_U64S",
-        other => panic!("unknown executor knob `{other}`"),
+/// The canonical env spelling of the `[knobs.<group>] <knob>` field, from the
+/// knob registry (`nros-zephyr-build/knobs.toml`, RFC-0103 D2b, phase-484 W5a).
+///
+/// Eleven `*_env_key` match tables used to hold this pairing beside the
+/// registry, so a knob had one name per table that knew it. Every one of them
+/// is now this lookup; a field the registry does not hold answers `None`, and
+/// each caller turns that into its own "unknown knob" panic.
+#[must_use]
+pub fn registry_env(group: &str, knob: &str) -> Option<&'static str> {
+    nros_zephyr_build::knob_by_toml(&format!("{group}.{knob}")).map(|r| r.env)
+}
+
+/// Rung 1 for one knob: its value under ANY of its registry spellings,
+/// canonical first. Two spellings that disagree stop the build, naming both.
+///
+/// Every env read in this file goes through here, so a deprecated spelling
+/// (`ZPICO_FRAG_MAX_SIZE` for `NROS_ZENOH_FRAG_MAX_SIZE`) keeps working until
+/// phase-484 W8 retires it — and a reader that asked only the canonical name
+/// would drop it silently.
+#[must_use]
+pub fn knob_env(env: &dyn Fn(&str) -> Option<String>, key: &str) -> Option<String> {
+    nros_zephyr_build::read_spelled(key, env)
+}
+
+/// `cargo:rerun-if-env-changed` for every spelling of one knob. A build
+/// script that watched only the canonical name would not re-run when someone
+/// changed the deprecated one it still honours.
+pub fn watch_knob_env(key: &str) {
+    for s in nros_zephyr_build::spellings(key) {
+        println!("cargo:rerun-if-env-changed={s}");
     }
+}
+
+/// The canonical env spelling of a zenoh tx lever (`batch`, `split_lock`,
+/// `flush_ms`) — `[knobs.zenoh.tx]`'s registry rows.
+pub fn tx_env_key(knob: &str) -> &'static str {
+    registry_env("zenoh.tx", knob).unwrap_or_else(|| panic!("unknown zenoh tx knob `{knob}`"))
+}
+
+/// The canonical env spelling of an executor knob, from the knob registry
+/// (see [`registry_env`]).
+pub fn executor_env_key(knob: &str) -> &'static str {
+    registry_env("executor", knob).unwrap_or_else(|| panic!("unknown executor knob `{knob}`"))
 }
 
 /// phase-400 W8 — the env front-end for one executor knob, with NO ladder.
@@ -863,8 +890,7 @@ pub fn executor_env_key(knob: &str) -> &'static str {
 /// `std::env::var("NROS_EXECUTOR_MAX_CBS")` is a finding rather than a style
 /// nit: two readers can disagree and nothing reports it.
 pub fn executor_env_only(knob: &str, default: usize) -> usize {
-    std::env::var(executor_env_key(knob))
-        .ok()
+    knob_env(&|k| std::env::var(k).ok(), executor_env_key(knob))
         .and_then(|v| v.trim().parse::<usize>().ok())
         .unwrap_or(default)
 }
@@ -892,10 +918,9 @@ pub fn executor_env_only(knob: &str, default: usize) -> usize {
 #[must_use]
 pub fn executor_rung_opt(knob: &str) -> Option<usize> {
     let key = executor_env_key(knob);
-    println!("cargo:rerun-if-env-changed={key}");
-    if let Some(v) = std::env::var(key)
-        .ok()
-        .and_then(|v| v.trim().parse::<usize>().ok())
+    watch_knob_env(key);
+    if let Some(v) =
+        knob_env(&|k| std::env::var(k).ok(), key).and_then(|v| v.trim().parse::<usize>().ok())
     {
         return Some(v);
     }
@@ -1041,16 +1066,9 @@ pub const RUNTIME_KNOBS: &[&str] = &[
     "let_buffer_size",
 ];
 
-/// The env front-end for a runtime knob — the EXISTING names, verbatim.
+/// The canonical env spelling of a runtime knob, from the knob registry.
 pub fn runtime_env_key(knob: &str) -> &'static str {
-    match knob {
-        "max_components" => "NROS_RUNTIME_MAX_COMPONENTS",
-        "component_slot_bytes" => "NROS_RUNTIME_COMPONENT_SLOT_BYTES",
-        "max_class_instances" => "NROS_RUNTIME_MAX_CLASS_INSTANCES",
-        "max_cell_entities" => "NROS_RUNTIME_MAX_CELL_ENTITIES",
-        "let_buffer_size" => "NROS_LET_BUFFER_SIZE",
-        other => panic!("unknown runtime knob `{other}`"),
-    }
+    registry_env("runtime", knob).unwrap_or_else(|| panic!("unknown runtime knob `{knob}`"))
 }
 
 /// phase-479 W5 (RFC-0102 D5) + issue 1037 — the logging tenant.
@@ -1177,16 +1195,9 @@ pub const LOG_KNOBS: &[&str] = &[
     "rosout_records",
 ];
 
-/// The env front-end for a log knob.
+/// The canonical env spelling of a log knob, from the knob registry.
 pub fn log_env_key(knob: &str) -> &'static str {
-    match knob {
-        "dynamic_loggers" => "NROS_LOG_DYNAMIC_LOGGERS",
-        "max_level" => "NROS_LOG_MAX_LEVEL",
-        "buffer_size" => "NROS_LOG_BUFFER_SIZE",
-        "early_records" => "NROS_LOG_EARLY_RECORDS",
-        "rosout_records" => "NROS_LOG_ROSOUT_RECORDS",
-        other => panic!("unknown log knob `{other}`"),
-    }
+    registry_env("log", knob).unwrap_or_else(|| panic!("unknown log knob `{knob}`"))
 }
 
 /// Every net knob, in a stable order. Same reason as [`EXECUTOR_KNOBS`].
@@ -1198,21 +1209,12 @@ pub const NET_KNOBS: &[&str] = &[
     "socket_timeout_ms",
 ];
 
-/// The env front-end for a net knob — the EXISTING `NROS_SMOLTCP_*` names.
-///
-/// The `ZPICO_SMOLTCP_*` spellings the build script also accepts are a
-/// DEPRECATED alias, not a second front-end: they rank WITH env, above this
-/// tenant's rungs, and are not listed here because nothing should start using
-/// them.
+/// The canonical env spelling of a net knob (`NROS_SMOLTCP_*`), from the knob
+/// registry. The `ZPICO_SMOLTCP_*` spellings are the registry's legacy rows:
+/// read at the same rung, never returned here, because nothing should start
+/// using them.
 pub fn net_env_key(knob: &str) -> &'static str {
-    match knob {
-        "max_sockets" => "NROS_SMOLTCP_MAX_SOCKETS",
-        "max_udp_sockets" => "NROS_SMOLTCP_MAX_UDP_SOCKETS",
-        "buffer_size" => "NROS_SMOLTCP_BUFFER_SIZE",
-        "connect_timeout_ms" => "NROS_SMOLTCP_CONNECT_TIMEOUT_MS",
-        "socket_timeout_ms" => "NROS_SMOLTCP_SOCKET_TIMEOUT_MS",
-        other => panic!("unknown net knob `{other}`"),
-    }
+    registry_env("net", knob).unwrap_or_else(|| panic!("unknown net knob `{knob}`"))
 }
 
 /// Every RMW knob, in a stable order. Same reason as [`EXECUTOR_KNOBS`].
@@ -1223,15 +1225,9 @@ pub const RMW_KNOBS: &[&str] = &[
     "subscriber_slot_bytes",
 ];
 
-/// The env front-end for an RMW knob — the EXISTING names, verbatim.
+/// The canonical env spelling of an RMW knob, from the knob registry.
 pub fn rmw_env_key(knob: &str) -> &'static str {
-    match knob {
-        "max_backends" => "NROS_RMW_MAX_BACKENDS",
-        "max_nodes" => "NROS_RMW_MAX_NODES",
-        "message_info_slots" => "NROS_RMW_MESSAGE_INFO_SLOTS",
-        "subscriber_slot_bytes" => "NROS_RMW_SUBSCRIBER_SLOT_BYTES",
-        other => panic!("unknown rmw knob `{other}`"),
-    }
+    registry_env("rmw", knob).unwrap_or_else(|| panic!("unknown rmw knob `{knob}`"))
 }
 
 /// Every parameter knob, in a stable order. Same reason as [`EXECUTOR_KNOBS`].
@@ -1245,18 +1241,9 @@ pub const PARAM_KNOBS: &[&str] = &[
     "max_param_constraints_len",
 ];
 
-/// The env front-end for a parameter knob — the EXISTING names, verbatim.
+/// The canonical env spelling of a parameter knob, from the knob registry.
 pub fn param_env_key(knob: &str) -> &'static str {
-    match knob {
-        "max_parameters" => "NROS_MAX_PARAMETERS",
-        "max_param_name_len" => "NROS_MAX_PARAM_NAME_LEN",
-        "max_string_value_len" => "NROS_MAX_STRING_VALUE_LEN",
-        "max_array_len" => "NROS_MAX_ARRAY_LEN",
-        "max_byte_array_len" => "NROS_MAX_BYTE_ARRAY_LEN",
-        "max_param_description_len" => "NROS_MAX_PARAM_DESCRIPTION_LEN",
-        "max_param_constraints_len" => "NROS_MAX_PARAM_CONSTRAINTS_LEN",
-        other => panic!("unknown param knob `{other}`"),
-    }
+    registry_env("params", knob).unwrap_or_else(|| panic!("unknown param knob `{knob}`"))
 }
 
 /// The zenoh tx tenant with NO platform rung — the env front-end over the
@@ -1276,21 +1263,24 @@ pub fn param_env_key(knob: &str) -> &'static str {
 /// one implementation rather than its own.
 #[must_use]
 pub fn tx_env_only(env: &dyn Fn(&str) -> Option<String>) -> ResolvedTxKnobs {
-    let flag =
-        |name: &str, builtin: bool| match env(name).and_then(|v| v.trim().parse::<u64>().ok()) {
-            Some(n) => Resolved {
-                value: n != 0,
-                source: KnobSource::Env,
-            },
-            None => Resolved {
-                value: builtin,
-                source: KnobSource::Builtin,
-            },
-        };
+    let flag = |name: &str, builtin: bool| match knob_env(env, name)
+        .and_then(|v| v.trim().parse::<u64>().ok())
+    {
+        Some(n) => Resolved {
+            value: n != 0,
+            source: KnobSource::Env,
+        },
+        None => Resolved {
+            value: builtin,
+            source: KnobSource::Builtin,
+        },
+    };
     ResolvedTxKnobs {
-        batch: flag("ZPICO_TX_BATCH", BUILTIN_TX_BATCH),
-        split_lock: flag("ZPICO_TX_SPLIT_LOCK", BUILTIN_TX_SPLIT_LOCK),
-        flush_ms: match env("ZPICO_TX_BATCH_FLUSH_MS").and_then(|v| v.trim().parse::<u64>().ok()) {
+        batch: flag(tx_env_key("batch"), BUILTIN_TX_BATCH),
+        split_lock: flag(tx_env_key("split_lock"), BUILTIN_TX_SPLIT_LOCK),
+        flush_ms: match knob_env(env, tx_env_key("flush_ms"))
+            .and_then(|v| v.trim().parse::<u64>().ok())
+        {
             Some(n) => Resolved {
                 value: n,
                 source: KnobSource::Env,
@@ -1544,13 +1534,9 @@ pub struct XrceKnobs {
 /// Every XRCE knob, in a stable order. Same reason as [`EXECUTOR_KNOBS`].
 pub const XRCE_KNOBS: &[&str] = &["custom_transport_mtu", "stream_history"];
 
-/// The env front-end for an XRCE knob — the EXISTING names, verbatim.
+/// The canonical env spelling of an XRCE knob, from the knob registry.
 pub fn xrce_env_key(knob: &str) -> &'static str {
-    match knob {
-        "custom_transport_mtu" => "NROS_XRCE_CUSTOM_TRANSPORT_MTU",
-        "stream_history" => "NROS_XRCE_STREAM_HISTORY",
-        other => panic!("unknown xrce knob `{other}`"),
-    }
+    registry_env("xrce", knob).unwrap_or_else(|| panic!("unknown xrce knob `{knob}`"))
 }
 
 /// phase-400 W6 — zenoh RUNTIME limits, read by `nros-rmw-zenoh`.
@@ -1576,14 +1562,10 @@ pub const ZENOH_LIMIT_KNOBS: &[&str] = &[
     "subscriber_ring_depth",
 ];
 
-/// The env front-end for a zenoh limit knob — the EXISTING names, verbatim.
+/// The canonical env spelling of a zenoh limit knob, from the knob registry.
 pub fn zenoh_limit_env_key(knob: &str) -> &'static str {
-    match knob {
-        "keyexpr_string_size" => "NROS_KEYEXPR_STRING_SIZE",
-        "service_timeout_ms" => "NROS_SERVICE_TIMEOUT_MS",
-        "subscriber_ring_depth" => "ZPICO_SUBSCRIBER_RING_DEPTH",
-        other => panic!("unknown zenoh limit knob `{other}`"),
-    }
+    registry_env("zenoh.limits", knob)
+        .unwrap_or_else(|| panic!("unknown zenoh limit knob `{knob}`"))
 }
 
 /// Every wire knob, in a stable order. Same reason as [`EXECUTOR_KNOBS`].
@@ -1595,16 +1577,10 @@ pub const WIRE_KNOBS: &[&str] = &[
     "get_poll_interval_ms",
 ];
 
-/// The env front-end for a wire knob — the EXISTING `ZPICO_*` names.
+/// The canonical env spelling of a wire knob (`NROS_ZENOH_*`), from the knob
+/// registry. The `ZPICO_*` names are its legacy rows, still read.
 pub fn wire_env_key(knob: &str) -> &'static str {
-    match knob {
-        "batch_unicast_size" => "ZPICO_BATCH_UNICAST_SIZE",
-        "batch_multicast_size" => "ZPICO_BATCH_MULTICAST_SIZE",
-        "frag_max_size" => "ZPICO_FRAG_MAX_SIZE",
-        "get_reply_buf_size" => "ZPICO_GET_REPLY_BUF_SIZE",
-        "get_poll_interval_ms" => "ZPICO_GET_POLL_INTERVAL_MS",
-        other => panic!("unknown wire knob `{other}`"),
-    }
+    registry_env("zenoh.wire", knob).unwrap_or_else(|| panic!("unknown wire knob `{knob}`"))
 }
 
 /// The phase-282 TX levers. All optional — `None` means "defer to the
@@ -2203,15 +2179,15 @@ impl PlatformsTree {
         );
 
         // Env front-end — top rung, tri-state.
-        if let Some(v) = env("ZPICO_TX_BATCH") {
+        if let Some(v) = knob_env(env, tx_env_key("batch")) {
             batch = v.trim().parse::<u64>().map(|n| n != 0).unwrap_or(false);
             batch_src = KnobSource::Env;
         }
-        if let Some(v) = env("ZPICO_TX_SPLIT_LOCK") {
+        if let Some(v) = knob_env(env, tx_env_key("split_lock")) {
             split = v.trim().parse::<u64>().map(|n| n != 0).unwrap_or(false);
             split_src = KnobSource::Env;
         }
-        if let Some(v) = env("ZPICO_TX_BATCH_FLUSH_MS")
+        if let Some(v) = knob_env(env, tx_env_key("flush_ms"))
             && let Ok(n) = v.trim().parse::<u64>()
         {
             flush = n;
@@ -2393,7 +2369,7 @@ impl PlatformsTree {
                     (None, None) => (*builtin, KnobSource::Builtin),
                 };
             let env_key = wire_env_key(name);
-            if let Some(raw) = env(env_key)
+            if let Some(raw) = knob_env(env, env_key)
                 && let Ok(n) = raw.trim().parse::<usize>()
             {
                 value = n;
@@ -2495,7 +2471,7 @@ impl PlatformsTree {
                     (None, None) => (*builtin, KnobSource::Builtin),
                 };
             let env_key = runtime_env_key(name);
-            if let Some(raw) = env(env_key)
+            if let Some(raw) = knob_env(env, env_key)
                 && let Ok(n) = raw.trim().parse::<usize>()
             {
                 value = n;
@@ -2544,7 +2520,7 @@ impl PlatformsTree {
                     raw.trim().parse::<usize>().ok()
                 }
             };
-            if let Some(n) = env(env_key).as_deref().and_then(parsed) {
+            if let Some(n) = knob_env(env, env_key).as_deref().and_then(parsed) {
                 value = n;
                 source = KnobSource::Env;
             }
@@ -2591,7 +2567,7 @@ impl PlatformsTree {
                     (None, None) => (*builtin, KnobSource::Builtin),
                 };
             let env_key = net_env_key(name);
-            if let Some(raw) = env(env_key)
+            if let Some(raw) = knob_env(env, env_key)
                 && let Ok(n) = raw.trim().parse::<usize>()
             {
                 value = n;
@@ -2646,7 +2622,7 @@ impl PlatformsTree {
                     (None, None) => (*builtin, KnobSource::Builtin),
                 };
             let env_key = rmw_env_key(name);
-            if let Some(raw) = env(env_key)
+            if let Some(raw) = knob_env(env, env_key)
                 && let Ok(n) = raw.trim().parse::<usize>()
             {
                 value = n;
@@ -2692,7 +2668,7 @@ impl PlatformsTree {
                     (None, None) => (*builtin, KnobSource::Builtin),
                 };
             let env_key = param_env_key(name);
-            if let Some(raw) = env(env_key)
+            if let Some(raw) = knob_env(env, env_key)
                 && let Ok(n) = raw.trim().parse::<usize>()
             {
                 value = n;
@@ -2786,7 +2762,7 @@ impl PlatformsTree {
                     (None, None) => (*builtin, KnobSource::Builtin),
                 };
             let env_key = memory_env_key_for(platform, name);
-            if let Some(raw) = env(env_key)
+            if let Some(raw) = knob_env(env, env_key)
                 && let Ok(n) = raw.trim().parse::<usize>()
             {
                 // The front-ends disagree about units and the ladder does not:
@@ -2843,7 +2819,7 @@ impl PlatformsTree {
         for (name, builtin) in defaults {
             let env_key = executor_env_key(name);
             let (value, source) = match (
-                env(env_key).and_then(|v| v.trim().parse::<usize>().ok()),
+                knob_env(env, env_key).and_then(|v| v.trim().parse::<usize>().ok()),
                 pick_board(name),
                 pick(name),
             ) {
@@ -2974,7 +2950,7 @@ impl PlatformsTree {
         let rule = format!("transport.kind={kind}");
         let mut implied = Vec::new();
         let mut imply = |knob: &str, value: bool, env_key: &str| {
-            let overridden_by = env(env_key).and_then(|v| {
+            let overridden_by = knob_env(env, env_key).and_then(|v| {
                 let want = v.trim().parse::<u64>().map(|n| n != 0).unwrap_or(false);
                 (want != value).then_some(KnobSource::Env)
             });
@@ -3579,6 +3555,78 @@ mod tests {
         let hit = got.iter().find(|(k, _)| *k == "frag_max_size").unwrap();
         assert_eq!(hit.1.value, 555);
         assert_eq!(hit.1.source, KnobSource::Env);
+    }
+
+    /// phase-484 W5a — every ladder field's env spelling comes from the knob
+    /// registry, and every spelling of a knob reaches the env rung.
+    #[test]
+    fn every_ladder_field_has_a_registry_spelling() {
+        // (toml group, the tenant's knob list, its env-key function)
+        type Tenant = (
+            &'static str,
+            &'static [&'static str],
+            fn(&str) -> &'static str,
+        );
+        let tenants: &[Tenant] = &[
+            ("executor", EXECUTOR_KNOBS, executor_env_key),
+            ("runtime", RUNTIME_KNOBS, runtime_env_key),
+            ("log", LOG_KNOBS, log_env_key),
+            ("net", NET_KNOBS, net_env_key),
+            ("rmw", RMW_KNOBS, rmw_env_key),
+            ("params", PARAM_KNOBS, param_env_key),
+            ("xrce", XRCE_KNOBS, xrce_env_key),
+            ("zenoh.limits", ZENOH_LIMIT_KNOBS, zenoh_limit_env_key),
+            ("zenoh.wire", WIRE_KNOBS, wire_env_key),
+        ];
+        for (group, knobs, env_key) in tenants {
+            for knob in *knobs {
+                let row = nros_zephyr_build::knob_by_toml(&format!("{group}.{knob}"))
+                    .unwrap_or_else(|| panic!("`{group}.{knob}` has no knobs.toml row"));
+                assert_eq!(env_key(knob), row.env, "{group}.{knob}");
+            }
+        }
+        for knob in ["batch", "split_lock", "flush_ms"] {
+            assert!(tx_env_key(knob).starts_with("NROS_ZENOH_TX_"), "{knob}");
+        }
+    }
+
+    #[test]
+    fn a_knob_is_read_under_its_canonical_and_its_legacy_spelling() {
+        let tmp = write_tree(&[("posix", "")]);
+        let tree = PlatformsTree::load(tmp.path()).unwrap();
+        let defaults = [("frag_max_size", 2048usize)];
+        assert_eq!(wire_env_key("frag_max_size"), "NROS_ZENOH_FRAG_MAX_SIZE");
+        let value = |env: &dyn Fn(&str) -> Option<String>| {
+            let got = tree.resolve_wire("posix", None, env, &defaults).unwrap();
+            (got[0].1.value, got[0].1.source)
+        };
+        let canonical = |k: &str| (k == "NROS_ZENOH_FRAG_MAX_SIZE").then(|| "321".to_string());
+        assert_eq!(value(&canonical), (321, KnobSource::Env));
+        let legacy = |k: &str| (k == "ZPICO_FRAG_MAX_SIZE").then(|| "123".to_string());
+        assert_eq!(value(&legacy), (123, KnobSource::Env));
+        let both_agree = |k: &str| {
+            matches!(k, "NROS_ZENOH_FRAG_MAX_SIZE" | "ZPICO_FRAG_MAX_SIZE")
+                .then(|| "64".to_string())
+        };
+        assert_eq!(value(&both_agree), (64, KnobSource::Env));
+        // The tx levers went through literals rather than a table; same rule.
+        let tx = tx_env_only(&|k| (k == "ZPICO_TX_BATCH").then(|| "1".to_string()));
+        assert!(tx.batch.value);
+        let tx = tx_env_only(&|k| (k == "NROS_ZENOH_TX_BATCH").then(|| "1".to_string()));
+        assert!(tx.batch.value);
+    }
+
+    #[test]
+    #[should_panic(expected = "name ONE knob with two values")]
+    fn two_spellings_that_disagree_stop_the_build() {
+        let tmp = write_tree(&[("posix", "")]);
+        let tree = PlatformsTree::load(tmp.path()).unwrap();
+        let env = |k: &str| match k {
+            "NROS_ZENOH_FRAG_MAX_SIZE" => Some("1".to_string()),
+            "ZPICO_FRAG_MAX_SIZE" => Some("2".to_string()),
+            _ => None,
+        };
+        let _ = tree.resolve_wire("posix", None, &env, &[("frag_max_size", 8usize)]);
     }
 
     /// An absent descriptor is `UnknownPlatform`; a BROKEN one is not.

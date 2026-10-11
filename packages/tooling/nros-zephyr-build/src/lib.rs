@@ -126,9 +126,20 @@ pub fn knob_row(name: &str) -> Option<&'static KnobRow> {
         .find(|r| r.env == name || r.legacy.contains(&name))
 }
 
+/// The registry row whose `[knobs]` key is `key` (`"zenoh.wire.frag_max_size"`).
+///
+/// How the platform/board ladder (`nros-platform-config`) finds the env
+/// spelling for a field it holds: the row is the one owner of that pairing,
+/// where eleven `*_env_key` match tables used to be.
+#[must_use]
+pub fn knob_by_toml(key: &str) -> Option<&'static KnobRow> {
+    KNOBS.iter().find(|r| r.toml == Some(key))
+}
+
 /// Every env spelling of the knob `name` names, canonical first. A name the
 /// registry does not hold is its own only spelling.
-fn spellings(name: &str) -> Vec<&str> {
+#[must_use]
+pub fn spellings(name: &str) -> Vec<&str> {
     match knob_row(name) {
         Some(r) => std::iter::once(r.env)
             .chain(r.legacy.iter().copied())
@@ -144,12 +155,36 @@ fn spellings(name: &str) -> Vec<&str> {
 /// (`cmake/NanoRosDeprecatedNames.cmake`): picking one silently would answer a
 /// question nobody asked.
 fn env_spelled(name: &str, watch: bool) -> Option<(String, String)> {
-    let mut found: Option<(String, String)> = None;
-    for s in spellings(name) {
-        if watch {
+    if watch {
+        for s in spellings(name) {
             println!("cargo:rerun-if-env-changed={s}");
         }
-        let Some(v) = env::var(s).ok().filter(|v| !v.trim().is_empty()) else {
+    }
+    read_spelled_from(name, &|k| env::var(k).ok())
+}
+
+/// [`read_spelled_from`]'s value alone, for a reader that injects its env
+/// accessor (the ladder does, so its tests need no process environment).
+#[must_use]
+pub fn read_spelled(name: &str, env: &dyn Fn(&str) -> Option<String>) -> Option<String> {
+    read_spelled_from(name, env).map(|(_, v)| v)
+}
+
+/// Rung 1 through an injected accessor: `(spelling, value)` for the first
+/// spelling set, canonical first, after checking that no other spelling
+/// disagrees. An empty value counts as unset.
+///
+/// # Panics
+///
+/// When two spellings hold different values — see [`env_spelled`]'s rule.
+#[must_use]
+pub fn read_spelled_from(
+    name: &str,
+    env: &dyn Fn(&str) -> Option<String>,
+) -> Option<(String, String)> {
+    let mut found: Option<(String, String)> = None;
+    for s in spellings(name) {
+        let Some(v) = env(s).filter(|v| !v.trim().is_empty()) else {
             continue;
         };
         match &found {

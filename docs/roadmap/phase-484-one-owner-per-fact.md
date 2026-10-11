@@ -497,6 +497,22 @@ spellings because it only matches a literal first argument.
 - `[board.knobs]` → `[knobs]` rides W5a (the descriptor parser already refuses
   both at once).
 
+**W5a progress.** Slice 1 (#1961): `nros-zephyr-build/knobs.toml`, 86 rows,
+generated into `KNOBS` + a derived `KCONFIG_PAIRS`; `knob()` reads every
+spelling and refuses two that disagree. Slice 2: the eleven `*_env_key` match
+tables in `nros-platform-config` and the three `ZPICO_TX_*` literals are gone —
+each asks `registry_env(<group>, <knob>)` — and every env read on the ladder
+goes through `knob_env`, which reads all spellings of the row, so
+`ZPICO_FRAG_MAX_SIZE` still reaches the rung `NROS_ZENOH_FRAG_MAX_SIZE` now
+names. The tools that used to read those match arms read the registry instead:
+the census's ladder set, `check-knob-single-reader` (owners keyed by canonical
+name, readers searched under every spelling — a second reader using the OLD
+literal is still a second reader), `check-kconfig-knob-forwarding` (credits a
+registry ladder row only while `platform_config.rs` still calls
+`registry_env(`), and the pool inventory (ladder rows listed under their
+canonical name, a legacy literal folded in). Next: the four bypass readers,
+callers onto canonical names, the `zephyr/Kconfig` drift gate.
+
 **Acceptance:** W5a — the registry is the only list (gate); every knob's
 env/TOML/Kconfig spelling derives from its id; one build per road shows
 identical resolved values before and after (a diff). W5b — 481's own

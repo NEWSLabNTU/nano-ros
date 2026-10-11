@@ -1766,9 +1766,9 @@ pub fn run() {
         "cargo:rerun-if-env-changed={}",
         crate::MULTICAST_TRANSPORT_ENV
     );
-    println!("cargo:rerun-if-env-changed=ZPICO_TX_BATCH");
-    println!("cargo:rerun-if-env-changed=ZPICO_TX_SPLIT_LOCK");
-    println!("cargo:rerun-if-env-changed=ZPICO_TX_BATCH_FLUSH_MS");
+    for knob in ["batch", "split_lock", "flush_ms"] {
+        platform_config::watch_knob_env(platform_config::tx_env_key(knob));
+    }
     // issue 0460 — the same env-or-Kconfig ladder the sized knobs use, so the
     // tx trio is not one more thing a Zephyr RUST image reads as "unset".
     let env_get = |name: &str| kconfig_fallback_str(name);
@@ -1851,10 +1851,7 @@ pub fn run() {
             ("get_poll_interval_ms", shim_config.get_poll_interval_ms),
         ];
         for key in platform_config::WIRE_KNOBS {
-            println!(
-                "cargo:rerun-if-env-changed={}",
-                platform_config::wire_env_key(key)
-            );
+            platform_config::watch_knob_env(platform_config::wire_env_key(key));
         }
         let resolved = match (&platforms_tree, platform_name) {
             (Some(tree), Some(name)) => tree
@@ -1872,7 +1869,7 @@ pub fn run() {
                 .iter()
                 .map(|(name, builtin)| {
                     let key = platform_config::wire_env_key(name);
-                    let value = env_get(key)
+                    let value = platform_config::knob_env(&env_get, key)
                         .and_then(|v| v.trim().parse::<usize>().ok())
                         .unwrap_or(*builtin);
                     (*name, value)

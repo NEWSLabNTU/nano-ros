@@ -101,6 +101,7 @@ name = "nros-platform-config"
 version = "0.5.0"
 dependencies = [
  "nros-build-paths",
+ "nros-zephyr-build",
  "serde",
  "toml",
 ]
@@ -116,6 +117,10 @@ dependencies = [
  "portable-atomic",
  "smoltcp",
 ]
+
+[[package]]
+name = "nros-zephyr-build"
+version = "0.5.0"
 
 [[package]]
 name = "portable-atomic"
