@@ -467,7 +467,7 @@ fn main() {
         ),
         8,
     );
-    // phase-467 W1 / issue 1471 -- the contract-monitor tables, TWO knobs
+    // phase-496 W1 / issue 1471 -- the contract-monitor tables, TWO knobs
     // because they are two tables: rate/latency rows (one per contracted
     // publisher, `monitor_rows`) and age rows (one per contracted subscriber,
     // `age_rows`). The image's own inventory counts both from the contract it
@@ -1149,12 +1149,12 @@ fn main() {
          \n\
          /// Contract-monitor RATE/LATENCY rows one executor can watch \
          (set via NROS_EXECUTOR_MAX_MONITORS, derived from the contract's \
-         `monitor_rows`, default 8). phase-467 W1.\n\
+         `monitor_rows`, default 8). phase-496 W1.\n\
          pub const MAX_MONITORS: usize = {max_monitors};\n\
          \n\
          /// Contract-monitor AGE rows one executor can watch \
          (set via NROS_EXECUTOR_MAX_AGE_MONITORS, derived from the contract's \
-         `age_rows`, default 8). phase-467 W1.\n\
+         `age_rows`, default 8). phase-496 W1.\n\
          pub const MAX_AGE_MONITORS: usize = {max_age_monitors};\n\
          \n\
          /// Executor arena size in bytes (derived from MAX_CBS, RX_BUF_SIZE \

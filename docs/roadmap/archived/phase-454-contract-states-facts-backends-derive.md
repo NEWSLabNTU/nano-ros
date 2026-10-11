@@ -585,7 +585,7 @@ carries the table. Consequences:
 
 **Issue 1339 is CLOSED, and the finding above is now history — read it with
 this.** rlm v0.1.37 (design issue #52) added `SubContract::buffer` and
-`PathContract::trigger`, the resolver lowers both, phase-457 W1 moved the pins,
+`PathContract::trigger`, the resolver lowers both, phase-495 W1 moved the pins,
 and issue 1339's consumer half wired the two reads. All three facts reach the
 build; the fixture derives `ceil(50 / 10) + 1 = 6` end to end. Two of the
 bullets above invert:

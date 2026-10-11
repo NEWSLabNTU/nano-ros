@@ -211,7 +211,7 @@ pub fn render_monitor_rs_at(rows: &[MonitorRow], ages: &[AgeRow], paths: RenderP
         ));
     }
     out.push_str("];\n\n");
-    // phase-467 W1 (issue 1471) -- the executor watches at most
+    // phase-496 W1 (issue 1471) -- the executor watches at most
     // `MAX_MONITORS` / `MAX_AGE_MONITORS` rows, and the spin loop inspects only
     // that many. A table past either is a COMPILE error here that names the
     // knob, never a table that boots with its tail unwatched. Both knobs derive

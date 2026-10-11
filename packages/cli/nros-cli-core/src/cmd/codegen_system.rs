@@ -621,7 +621,7 @@ pub fn run(args: Args) -> Result<()> {
             &target_rtos,
             &callback_groups,
         ) {
-            // phase-457 W2 (rlm design issue #52) - a node path the model
+            // phase-495 W2 (rlm design issue #52) - a node path the model
             // carries no `trigger` for is Unclassified in the shared
             // derivation: it is never guessed to be a timer, so it ranks
             // nothing and silently leaves the schedule. Say it once, by name,
@@ -2371,7 +2371,7 @@ launch = "system.launch.xml"
         // Contracts, no tiers: control is a tight 5 ms / 100 Hz loop, telem a
         // slack 100 ms / 10 Hz loop - the DAG ranking must place control above.
         //
-        // phase-457 W2 - each loop carries its `trigger` and NO publisher rate
+        // phase-495 W2 - each loop carries its `trigger` and NO publisher rate
         // promise. The shared derivation reads the rate off the trigger and
         // refuses to guess one from an empty `input`, so a fixture written the
         // old way now derives no tier at all; that refusal is the wave.

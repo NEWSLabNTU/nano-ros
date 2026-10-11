@@ -59,7 +59,7 @@ it swaps a call the other three leave in place. `packages/api/nros-cpp/src/param
 is phase-463 W1 (the `on_param_declare` hook call in the
 `nros_cpp_node_declare_param_*` family) then W6 here (the feature split);
 `packages/api/nros/src/lib.rs` is phase-460 W1 (`load_for_build_script`) then
-W6 here (:1397). Phase 457 shares no file with this phase.
+W6 here (:1397). Phase 495 shares no file with this phase.
 
 ## Why
 

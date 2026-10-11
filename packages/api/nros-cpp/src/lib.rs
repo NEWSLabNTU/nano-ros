@@ -4700,7 +4700,7 @@ fn carve_monitor_storage<C, S>(
 /// unwatched is the class of failure this table exists to remove. The refusal
 /// logs the knob to raise, `NROS_EXECUTOR_MAX_MONITORS` or
 /// `NROS_EXECUTOR_MAX_AGE_MONITORS`; both derive from the contract's row
-/// counts when nothing states them (phase-467 W1). A short or misaligned
+/// counts when nothing states them (phase-496 W1). A short or misaligned
 /// storage buffer is refused the same way.
 ///
 /// # Safety
@@ -4751,7 +4751,7 @@ unsafe fn install_monitor_tables(
     let Some(t) = (unsafe { tables.as_ref() }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
-    // phase-467 W1 (issue 1471) -- NAME THE KNOB. Each table has its own
+    // phase-496 W1 (issue 1471) -- NAME THE KNOB. Each table has its own
     // (`NROS_EXECUTOR_MAX_MONITORS` / `NROS_EXECUTOR_MAX_AGE_MONITORS`), derived
     // from the contract's row counts when nothing states them, so a refusal
     // here means a stated value below the contract or a table built by hand.

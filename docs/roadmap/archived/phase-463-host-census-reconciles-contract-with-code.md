@@ -66,7 +66,7 @@ is W1 here (the `on_param_declare` call) then phase-461 W6 (the feature
 split). `packages/cli/nros-cli-core/src/entity_inventory.rs` is owned by
 phase-460 W3, phase-461 W3 and phase-461 W6 in that order; W3 and W6 here
 read the inventory JSON and own no line of it, and if W3 needs a field added
-to the JSON it goes after 461 W3. Phase 457 shares no file with this phase.
+to the JSON it goes after 461 W3. Phase 495 shares no file with this phase.
 
 Relates to [RFC-0100](../../design/0100-rmw-agnostic-sizing-model.md) (the
 contract states the facts), [RFC-0078](../../design/0078-wcet-is-declared-per-profile.md)

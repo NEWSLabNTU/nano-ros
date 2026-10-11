@@ -1,4 +1,10 @@
-# Phase 457 - consume the shared mapper-input derivation, keep the realizer
+# Phase 495 - consume the shared mapper-input derivation, keep the realizer
+
+**Renumbered 2026-10-12 from 457**, which this doc shared with
+[phase-457](archived/phase-457-payload-class-sizing-on-every-road.md). Commit messages and
+PRs from before the renumbering call this phase `phase-457`: a `phase-457`
+reference about the mapper input, the contract trigger, `rlm` or the island
+parity fixture means this doc.
 
 **Status (2026-09-21). Planned; nothing landed.** Numbered 457 rather than 456
 on purpose: 455 was the highest phase on `main` when this was written and a
@@ -20,10 +26,10 @@ tree today unless marked `(new)`.
 
 | claim id | depends on | owns | gate | starts now? |
 | --- | --- | --- | --- | --- |
-| `phase-457-W1` | rlm R4 (tag v0.1.37); play_launch `phase-78-W4` (the 0.12.0 release) | the `ros-launch-manifest` pin lines in `packages/cli/nros-cli-core/Cargo.toml`, `packages/core/nros-orchestration-ir/Cargo.toml`, `packages/core/nros-macros/Cargo.toml`, `packages/testing/nros-tests/Cargo.toml`; `Cargo.lock`; the play_launch gitlink `packages/cli/third-party/play_launch`; the `#[cfg(test)]` module of `packages/core/nros-orchestration-ir/src/derive.rs` (`contract_model()` at :192 and below); the test module of `packages/cli/nros-cli-core/src/orchestration/model_ingest.rs` (`contract_model()` at :1144); model literals in `packages/testing/nros-tests/tests/*.rs` | `cargo test -p nros-orchestration-ir` and `cargo test -p nros-cli-core` compile and pass on the new pin | no |
-| `phase-457-W2` | `phase-457-W1` | `packages/core/nros-orchestration-ir/src/mapper_input.rs` (the whole file); the degradation print beside the derive call in `packages/cli/nros-cli-core/src/cmd/codegen_system.rs` (:433 and the lines that print `degradations`) | `cargo test -p nros-orchestration-ir`; `git grep -n min_rate_hz packages/core/nros-orchestration-ir` returns nothing | no |
-| `phase-457-W3` | `phase-457-W2`; rlm R3 (the parity snapshot rlm ships) | `packages/testing/nros-tests/tests/contract_derived_chain_parity.rs` (new); its fixture model under `packages/testing/nros-tests/fixtures/` (new file) | `cargo test -p nros-tests --test contract_derived_chain_parity`; `bash scripts/check-no-tracked-models.sh` | no |
-| `phase-457-W4` | `phase-457-W2`; `phase-459-W4` for ORDER only (it changes `realize_rtos` first; see below) | `node_facts` in `packages/core/nros-orchestration-ir/src/rtos_realizer.rs` (:256-:300) and one test in its `#[cfg(test)]` module | `cargo test -p nros-orchestration-ir` (the `max_response_ms` -> `k_thread_deadline_set` test) | no |
+| `phase-495-W1` | rlm R4 (tag v0.1.37); play_launch `phase-78-W4` (the 0.12.0 release) | the `ros-launch-manifest` pin lines in `packages/cli/nros-cli-core/Cargo.toml`, `packages/core/nros-orchestration-ir/Cargo.toml`, `packages/core/nros-macros/Cargo.toml`, `packages/testing/nros-tests/Cargo.toml`; `Cargo.lock`; the play_launch gitlink `packages/cli/third-party/play_launch`; the `#[cfg(test)]` module of `packages/core/nros-orchestration-ir/src/derive.rs` (`contract_model()` at :192 and below); the test module of `packages/cli/nros-cli-core/src/orchestration/model_ingest.rs` (`contract_model()` at :1144); model literals in `packages/testing/nros-tests/tests/*.rs` | `cargo test -p nros-orchestration-ir` and `cargo test -p nros-cli-core` compile and pass on the new pin | no |
+| `phase-495-W2` | `phase-495-W1` | `packages/core/nros-orchestration-ir/src/mapper_input.rs` (the whole file); the degradation print beside the derive call in `packages/cli/nros-cli-core/src/cmd/codegen_system.rs` (:433 and the lines that print `degradations`) | `cargo test -p nros-orchestration-ir`; `git grep -n min_rate_hz packages/core/nros-orchestration-ir` returns nothing | no |
+| `phase-495-W3` | `phase-495-W2`; rlm R3 (the parity snapshot rlm ships) | `packages/testing/nros-tests/tests/contract_derived_chain_parity.rs` (new); its fixture model under `packages/testing/nros-tests/fixtures/` (new file) | `cargo test -p nros-tests --test contract_derived_chain_parity`; `bash scripts/check-no-tracked-models.sh` | no |
+| `phase-495-W4` | `phase-495-W2`; `phase-459-W4` for ORDER only (it changes `realize_rtos` first; see below) | `node_facts` in `packages/core/nros-orchestration-ir/src/rtos_realizer.rs` (:256-:300) and one test in its `#[cfg(test)]` module | `cargo test -p nros-orchestration-ir` (the `max_response_ms` -> `k_thread_deadline_set` test) | no |
 
 No wave of this phase starts today: W1 waits on two releases in other
 repositories, and W2-W4 wait on W1. Nothing here is split; W1 is one claim
@@ -34,35 +40,35 @@ pins").
 phase-459, phase-462, the other session's phases 460/461/463 and play_launch
 phase 78:
 
-- `packages/core/nros-orchestration-ir/src/mapper_input.rs`: `phase-457-W2`
+- `packages/core/nros-orchestration-ir/src/mapper_input.rs`: `phase-495-W2`
   rewrites it; `phase-459-W7` only READS the trigger rate through it and edits
-  its own fixture contract. Order: `phase-457-W2`, then `phase-459-W7`.
+  its own fixture contract. Order: `phase-495-W2`, then `phase-459-W7`.
 - `packages/core/nros-orchestration-ir/src/derive.rs`: the body above
   `#[cfg(test)]` (:179) belongs to phase-459 (`phase-459-W1`, `-W2` call
   into it, `phase-459-W4` changes the one `realize_rtos` call at :86,
   `phase-459-W3` names derived tiers); the test module belongs to
-  `phase-457-W1`. Order: `phase-459-W1`, `phase-459-W2`, `phase-459-W4`,
-  `phase-457-W1`, `phase-459-W3`. `phase-457-W2` leaves `derive.rs:57`
+  `phase-495-W1`. Order: `phase-459-W1`, `phase-459-W2`, `phase-459-W4`,
+  `phase-495-W1`, `phase-459-W3`. `phase-495-W2` leaves `derive.rs:57`
   calling `mapper_input_from_model_with_wcet` and does not edit the file.
 - `packages/cli/nros-cli-core/src/orchestration/model_ingest.rs`:
   `phase-459-W1` (the `load_workspace_metadata` reader at :344, only if its
-  signature must change), `phase-457-W1` (the test fixture at :1144),
+  signature must change), `phase-495-W1` (the test fixture at :1144),
   `phase-459-W3` (the binding refusals at :108 and :197-:212),
   `phase-462-W2` (new `on_violation` rows beside `monitor_rows` :1336).
-  Order: `phase-459-W1`, `phase-457-W1`, `phase-459-W3`, `phase-462-W2`.
+  Order: `phase-459-W1`, `phase-495-W1`, `phase-459-W3`, `phase-462-W2`.
 - `packages/core/nros-orchestration-ir/src/rtos_realizer.rs`:
   `phase-459-W4` (`rank_to_priority` :336, `realize_rtos` :349,
-  `sched_caps_for` :140) before `phase-457-W4` (`node_facts` :256-:300).
+  `sched_caps_for` :140) before `phase-495-W4` (`node_facts` :256-:300).
 - `packages/cli/nros-cli-core/src/cmd/codegen_system.rs`: `phase-459-W5`
   (`resolve_target_block` :194), `phase-459-W3` (the "declared tiers always
-  win" test at :433), `phase-457-W2` (the print beside it). Order:
-  `phase-459-W5`, `phase-459-W3`, `phase-457-W2`. phase-460 W4 edits the
+  win" test at :433), `phase-495-W2` (the print beside it). Order:
+  `phase-459-W5`, `phase-459-W3`, `phase-495-W2`. phase-460 W4 edits the
   domain check at :856-:858, a disjoint region; the other session states
   where it lands relative to these three.
-- The four `Cargo.toml` pin lines and `Cargo.lock`: `phase-457-W1` bumps to
+- The four `Cargo.toml` pin lines and `Cargo.lock`: `phase-495-W1` bumps to
   v0.1.37 once; `phase-459-W3` bumps again, later, to the first tag that
   carries the `derived` key. Never in the same commit.
-- `packages/cli/third-party/play_launch` (the gitlink): `phase-457-W1` only.
+- `packages/cli/third-party/play_launch` (the gitlink): `phase-495-W1` only.
 
 ## What was open
 
@@ -148,7 +154,7 @@ Bump both pins. `derive.rs:192 contract_model()` and every model literal in
 keeps the old spelling is asserting the reconstruction this phase deletes, and
 must fail.
 
-Claim: phase-457-W1. Depends on: rlm R4 (tag v0.1.37), play_launch phase-78-W4 (the 0.12.0 release). Owns: the ros-launch-manifest pin lines in packages/cli/nros-cli-core/Cargo.toml, packages/core/nros-orchestration-ir/Cargo.toml, packages/core/nros-macros/Cargo.toml, packages/testing/nros-tests/Cargo.toml; Cargo.lock; packages/cli/third-party/play_launch; the #[cfg(test)] module of packages/core/nros-orchestration-ir/src/derive.rs; the test module of packages/cli/nros-cli-core/src/orchestration/model_ingest.rs; model literals in packages/testing/nros-tests/tests/*.rs. Gate: cargo test -p nros-orchestration-ir and cargo test -p nros-cli-core on the new pin. Status: landed in PR #1198 (a8c0e4513); rlm v0.1.37 and play_launch 0.12.0 pinned in one commit; orchestration-ir 151 and cli-core 1513 passed, check fast 343 ran. The `min_rate_hz` promises were kept equal to their timers here because W2 still read them; W2 removed that.
+Claim: phase-495-W1. Depends on: rlm R4 (tag v0.1.37), play_launch phase-78-W4 (the 0.12.0 release). Owns: the ros-launch-manifest pin lines in packages/cli/nros-cli-core/Cargo.toml, packages/core/nros-orchestration-ir/Cargo.toml, packages/core/nros-macros/Cargo.toml, packages/testing/nros-tests/Cargo.toml; Cargo.lock; packages/cli/third-party/play_launch; the #[cfg(test)] module of packages/core/nros-orchestration-ir/src/derive.rs; the test module of packages/cli/nros-cli-core/src/orchestration/model_ingest.rs; model literals in packages/testing/nros-tests/tests/*.rs. Gate: cargo test -p nros-orchestration-ir and cargo test -p nros-cli-core on the new pin. Status: landed in PR #1198 (a8c0e4513); rlm v0.1.37 and play_launch 0.12.0 pinned in one commit; orchestration-ir 151 and cli-core 1513 passed, check fast 343 ran. The `min_rate_hz` promises were kept equal to their timers here because W2 still read them; W2 removed that.
 
 ### W2 - the call
 
@@ -156,7 +162,7 @@ Replace the body of `mapper_input.rs` as above. The `WcetProfile ->
 DeriveFacts` conversion keeps rlm's boundary identity (`"<node fqn>/<path>"`,
 the key `boundaries_without_wcet` reports).
 
-Claim: phase-457-W2. Depends on: phase-457-W1. Owns: packages/core/nros-orchestration-ir/src/mapper_input.rs; the degradation print beside the derive call in packages/cli/nros-cli-core/src/cmd/codegen_system.rs. Gate: cargo test -p nros-orchestration-ir; git grep -n min_rate_hz packages/core/nros-orchestration-ir returns nothing. Status: landed in PR #1218 (19a52f273); mapper_input.rs is one call into ros-launch-manifest-derive v0.1.37, with pub_rate_hz, node_paths_for, parse_criticality and the local claims_concurrency deleted and `git grep min_rate_hz` in the crate returning nothing; orchestration-ir 154, cli-core 1360, check fast 345 ran, 0 failed. The rlm #52 scope seam is still in v0.1.37, so the namespace is derived from the FQN here as play_launch does it; rlm R5 fixes the crate. Two doc corrections: the degradation print is model_ingest.rs:270, and the derive call codegen_system.rs:599; a model literal in write_derived_workspace was missing from the ownership list and is updated here.
+Claim: phase-495-W2. Depends on: phase-495-W1. Owns: packages/core/nros-orchestration-ir/src/mapper_input.rs; the degradation print beside the derive call in packages/cli/nros-cli-core/src/cmd/codegen_system.rs. Gate: cargo test -p nros-orchestration-ir; git grep -n min_rate_hz packages/core/nros-orchestration-ir returns nothing. Status: landed in PR #1218 (19a52f273); mapper_input.rs is one call into ros-launch-manifest-derive v0.1.37, with pub_rate_hz, node_paths_for, parse_criticality and the local claims_concurrency deleted and `git grep min_rate_hz` in the crate returning nothing; orchestration-ir 154, cli-core 1360, check fast 345 ran, 0 failed. The rlm #52 scope seam is still in v0.1.37, so the namespace is derived from the FQN here as play_launch does it; rlm R5 fixes the crate. Two doc corrections: the degradation print is model_ingest.rs:270, and the derive call codegen_system.rs:599; a model literal in write_derived_workspace was missing from the ownership list and is updated here.
 
 ### W3 - parity
 
@@ -167,7 +173,7 @@ model ranks its four timer paths by period (30 Hz before 10 Hz) with `trigger`
 present and NO `min_rate_hz` in the model at all - the contract's promises
 deleted from the fixture, so the schedule is shown to come from the timers.
 
-Claim: phase-457-W3. Depends on: phase-457-W2, rlm R3 (the parity snapshot). Owns: packages/testing/nros-tests/tests/contract_derived_chain_parity.rs (new); its fixture model under packages/testing/nros-tests/fixtures/ (new). Gate: cargo test -p nros-tests --test contract_derived_chain_parity; bash scripts/check-no-tracked-models.sh. Status: PR #1227, in the queue; `contract_derived_chain_parity.rs` ranks rlm v0.1.37's fixture to rlm's committed `RankedPlan` snapshot byte for byte on the FIRST run, no adjustment on either side, both copied in at that tag, plus the island's four timers (30/10/30/10 Hz, no rate promise in the wire form) ranking by period; 4 new tests passed, `nros-orchestration-ir` 154 passed, `check-no-tracked-models` OK. One doc correction: that gate bans a tracked `*_model.yaml` outright, so the fixture is spelled `.resolved.yaml` rather than kept under rlm's own file name.
+Claim: phase-495-W3. Depends on: phase-495-W2, rlm R3 (the parity snapshot). Owns: packages/testing/nros-tests/tests/contract_derived_chain_parity.rs (new); its fixture model under packages/testing/nros-tests/fixtures/ (new). Gate: cargo test -p nros-tests --test contract_derived_chain_parity; bash scripts/check-no-tracked-models.sh. Status: PR #1227, in the queue; `contract_derived_chain_parity.rs` ranks rlm v0.1.37's fixture to rlm's committed `RankedPlan` snapshot byte for byte on the FIRST run, no adjustment on either side, both copied in at that tag, plus the island's four timers (30/10/30/10 Hz, no rate promise in the wire form) ranking by period; 4 new tests passed, `nros-orchestration-ir` 154 passed, `check-no-tracked-models` OK. One doc correction: that gate bans a tracked `*_model.yaml` outright, so the fixture is spelled `.resolved.yaml` rather than kept under rlm's own file name.
 
 ### W4 - the deadline fold
 
@@ -177,7 +183,7 @@ when set, its own fold of the paths otherwise, and a test pins that a
 `max_response_ms` reaches `k_thread_deadline_set`. Closes the first bullet of
 phase-434's "still open".
 
-Claim: phase-457-W4. Depends on: phase-457-W2; phase-459-W4 for order on rtos_realizer.rs. Owns: node_facts in packages/core/nros-orchestration-ir/src/rtos_realizer.rs and one test in its #[cfg(test)] module. Gate: cargo test -p nros-orchestration-ir. Status: landed 2026-09-29. Both dependencies verified before starting, not assumed: phase-459-W4 is in (`priority_plan.rs` exists), and the pinned `ros-launch-manifest-derive` (v0.1.40, `7737517`) does fold the bound -- `derive/src/lib.rs` chains `srv_max_response_ms` into the same min as the paths' `max_latency_ms`, and fills both `deadline_us` and `path_budget_ms` from it. `node_facts` now reads `MapperNode.deadline_us` first and keeps its own path fold only as the fallback for hand-built `MapperInput`s. Gate: `cargo test -p nros-orchestration-ir`, 178 passed.
+Claim: phase-495-W4. Depends on: phase-495-W2; phase-459-W4 for order on rtos_realizer.rs. Owns: node_facts in packages/core/nros-orchestration-ir/src/rtos_realizer.rs and one test in its #[cfg(test)] module. Gate: cargo test -p nros-orchestration-ir. Status: landed 2026-09-29. Both dependencies verified before starting, not assumed: phase-459-W4 is in (`priority_plan.rs` exists), and the pinned `ros-launch-manifest-derive` (v0.1.40, `7737517`) does fold the bound -- `derive/src/lib.rs` chains `srv_max_response_ms` into the same min as the paths' `max_latency_ms`, and fills both `deadline_us` and `path_budget_ms` from it. `node_facts` now reads `MapperNode.deadline_us` first and keeps its own path fold only as the fallback for hand-built `MapperInput`s. Gate: `cargo test -p nros-orchestration-ir`, 178 passed.
 
 **Two things the wave measured that the spec did not say.**
 

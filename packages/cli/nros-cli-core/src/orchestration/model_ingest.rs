@@ -1254,10 +1254,10 @@ mod tests {
             },
         );
         let mut node_paths = BTreeMap::new();
-        // Periodic 100 Hz control path with a 5 ms deadline. phase-457 W1:
+        // Periodic 100 Hz control path with a 5 ms deadline. phase-495 W1:
         // the rate is the path's `trigger` (rlm v0.1.37). The `min_rate_hz`
         // promise below is the publisher-monitor row this test is about, not a
-        // schedule input: since phase-457 W2 nothing derives a period from it
+        // schedule input: since phase-495 W2 nothing derives a period from it
         // (issue 1372).
         node_paths.insert(
             "/ctrl/loop".to_string(),
@@ -1520,7 +1520,7 @@ mod monitor_tests {
         assert_eq!(rows[0].topic, "/perception/objects");
         assert_eq!(rows[0].min_rate_hz_milli, 10_000);
         let rs = render_monitor_rs(&rows, &[]);
-        // phase-467 W1 -- the table carries its own bound, naming the knob.
+        // phase-496 W1 -- the table carries its own bound, naming the knob.
         assert!(
             rs.contains("1 <= ::nros_node::executor::monitor::MAX_MONITORS"),
             "{rs}"

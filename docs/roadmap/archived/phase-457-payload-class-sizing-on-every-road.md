@@ -2,6 +2,11 @@
 
 **Archived 2026-10-11.** Every work item landed or was answered; the remainder went to issues 1649 and 1595, both resolved.
 
+**Number shared until 2026-10-12** with the mapper-input phase, now
+[phase-495](../phase-495-consume-the-shared-derivation.md). An older `phase-457` reference
+about the mapper input, the contract trigger, `rlm` or the island parity fixture
+means that doc, not this one.
+
 **Status (2026-10-03). W0, W0.b, W1, W2, W3, W5 LANDED; W4 answered and then
 superseded by issue 1393's closure; W0.c's "keep the refusal" decision is
 WITHDRAWN** — its premise ("no configure in this tree declares more than one

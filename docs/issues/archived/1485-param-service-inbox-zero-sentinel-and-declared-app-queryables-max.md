@@ -4,12 +4,12 @@ title: "`NROS_PARAM_SERVICE_INBOX_BYTES` uses `0` as its derive sentinel while
   its readers treat `0` as a stated size, and `DECLARED_APP_QUERYABLES =
   usize::MAX` zeroes the builtin inbox on every Zephyr image"
 status: resolved
-resolved_in: phase-467 W2 (PR #1265), proven by the island in phase6-W8b
+resolved_in: phase-496 W2 (PR #1265), proven by the island in phase6-W8b
 type: bug
 area: [zephyr, rmw, zenoh, params, sizing]
 severity: high
 found: 2026-09-24
-related: [1352, phase-461, phase-467, rfc-0065]
+related: [1352, phase-461, phase-496, rfc-0065]
 ---
 
 ## What happens
@@ -119,7 +119,7 @@ derivation with no inbox line in the board file.
 
 ## Resolved, 2026-09-25
 
-phase-467 W2 (PR #1265) made `-1` the sentinel, made both readers agree that
+phase-496 W2 (PR #1265) made `-1` the sentinel, made both readers agree that
 a literal `0` is refused ("0 is not a size; -1 derives"), and carried
 `NROS_ENTITY_APP_QUERYABLES` to the Zephyr road so the builtin inbox is
 sized when the family is declared. The Autoware Safety Island then built

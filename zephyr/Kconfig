@@ -1691,7 +1691,7 @@ config NROS_EXECUTOR_MAX_MONITORS
     default -1
     help
       Rate/latency contract rows one executor watches (nros-node build.rs
-      MAX_MONITORS, phase-467 W1 / issue 1471). One row per contracted
+      MAX_MONITORS, phase-496 W1 / issue 1471). One row per contracted
       publisher carrying min_rate_hz, plus latency-only rows from node
       paths carrying max_latency_ms.
 
@@ -1709,7 +1709,7 @@ config NROS_EXECUTOR_MAX_AGE_MONITORS
     default -1
     help
       Age contract rows one executor watches (nros-node build.rs
-      MAX_AGE_MONITORS, phase-467 W1): one per contracted subscription
+      MAX_AGE_MONITORS, phase-496 W1): one per contracted subscription
       carrying max_age_ms. A separate knob from NROS_EXECUTOR_MAX_MONITORS
       because it is a separate table, so an image with rate contracts and
       no age contracts pays for one table only. `-1` derives it on the same

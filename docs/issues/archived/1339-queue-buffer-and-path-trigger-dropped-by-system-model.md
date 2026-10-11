@@ -5,7 +5,7 @@ status: resolved
 area: cli, launch, contract
 severity: medium
 found: 2026-09-12
-related: [1256, 1372, 0760, phase-454, phase-457, RFC-0100]
+related: [1256, 1372, 0760, phase-454, phase-495, RFC-0100]
 resolved: 2026-09-28
 ---
 
@@ -143,7 +143,7 @@ at closing. `PathContract` is also where `sync`, `min_latency_ms`, `max_jitter_m
 and `miss` arrived, which retires a second "when those travel" caveat in
 RFC-0100 D9's margin argument.
 
-phase-457 W1 had already flipped the two tripwires the Acceptance section names
+phase-495 W1 had already flipped the two tripwires the Acceptance section names
 (`the_model_does_not_carry_*_yet` → `the_model_carries_*`), so what remained was
 only the CONSUMER half.
 
@@ -222,5 +222,5 @@ Issue **1372** is the same substitute on the SCHEDULING side
 (`mapper_input::pub_rate_hz` → the realizer's period). It reads as already
 resolved — `pub_rate_hz` no longer exists in `nros-orchestration-ir`, and
 `mapper_input_and_report` delegates to rlm's own `derive` crate — but that was
-phase-457 W2's doing, not this issue's, and 1372 should be closed by whoever
+phase-495 W2's doing, not this issue's, and 1372 should be closed by whoever
 measures it.

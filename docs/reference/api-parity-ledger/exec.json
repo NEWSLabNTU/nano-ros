@@ -1006,7 +1006,7 @@
   },
   "rust:Executor::try_set_monitor_tables": {
     "verdict": "extension",
-    "why": "phase-467 W1 -- installs both baked contract-monitor tables or neither, REFUSING a table longer than the executor watches with a `MonitorTableFull` that names the knob to raise. rclrs has no on-target contract monitor. See `rust:MonitorSpec`."
+    "why": "phase-496 W1 -- installs both baked contract-monitor tables or neither, REFUSING a table longer than the executor watches with a `MonitorTableFull` that names the knob to raise. rclrs has no on-target contract monitor. See `rust:MonitorSpec`."
   },
   "rust:Executor::wait_for_subscribers": {
     "verdict": "divergence",

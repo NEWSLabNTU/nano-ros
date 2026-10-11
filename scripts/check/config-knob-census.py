@@ -297,19 +297,19 @@ KNOB_CLASS = {
     # issue 1649 -- the retention slot, the payload trio and two parameter
     # counts (issues 1498 / 1122 / 1199 / phase-446) retired from the DECLARED
     # road onto the sizing descriptor, so they are no longer read here.
-    # phase-467 W1 (issue 1471) -- the contract-monitor tables. DERIVED, and
+    # phase-496 W1 (issue 1471) -- the contract-monitor tables. DERIVED, and
     # deliberately not ladder candidates: the row count is a property of the
-    # CONTRACT the image bakes, never of the board it runs on (phase-467's rule:
+    # CONTRACT the image bakes, never of the board it runs on (phase-496's rule:
     # a board file states board facts, never a count the contract determines).
     "NROS_EXECUTOR_MAX_MONITORS": (
         "derived",
         "rate/latency monitor rows per executor; counted from the contract's "
-        "`monitor_rows` by the entity inventory, phase-467 W1",
+        "`monitor_rows` by the entity inventory, phase-496 W1",
     ),
     "NROS_EXECUTOR_MAX_AGE_MONITORS": (
         "derived",
         "age monitor rows per executor; counted from the contract's `age_rows` "
-        "by the entity inventory, phase-467 W1",
+        "by the entity inventory, phase-496 W1",
     ),
     # phase-446 W4 -- the parameter store, from the contract's `params:`. Same
     # category: what the image DECLARED, handed down as a default that every

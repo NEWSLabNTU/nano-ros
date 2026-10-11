@@ -82,7 +82,7 @@ static NATIVE_TALKER_HEADER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static CONTRACT_MONITOR_PUB_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static CONTRACT_MONITOR_SUB_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static CONTRACT_MONITOR_DIAGSINK_BINARY: OnceCell<PathBuf> = OnceCell::new();
-/// phase-467 W1 -- the monitor-capacity bin, built with
+/// phase-496 W1 -- the monitor-capacity bin, built with
 /// `NROS_EXECUTOR_MAX_MONITORS=14` stated.
 static MONITOR_CAPACITY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -6198,7 +6198,7 @@ pub fn build_contract_monitor_diagsink() -> TestResult<&'static Path> {
     )
 }
 
-/// phase-467 W1 (issue 1471) -- the monitor-capacity bin: installs `MC_ROWS`
+/// phase-496 W1 (issue 1471) -- the monitor-capacity bin: installs `MC_ROWS`
 /// rate rows through `Executor::try_set_monitor_tables` against a stated
 /// `NROS_EXECUTOR_MAX_MONITORS=14` (`examples/fixtures.toml` row
 /// `monitor-capacity`).

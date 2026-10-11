@@ -12,7 +12,7 @@
 # publication FLOOR the endpoint promises - a runtime-monitor input, never a
 # schedule input. They are chosen so that ranking by the promises would INVERT
 # the schedule: the 30 Hz pair promises only 5 Hz and the 10 Hz pair 8 Hz, so
-# a derivation still reading `min_rate_hz` (as nano-ros did before phase-457
+# a derivation still reading `min_rate_hz` (as nano-ros did before phase-495
 # W2) would put the slow pair first. `derived_tiers_bake` asserts it does not.
 #
 # Both promises are true lower bounds, which is why the resolver says nothing

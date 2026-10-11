@@ -307,7 +307,7 @@ SIZING_KNOBS = {
     "NROS_SUBSCRIBED_TYPE_BOUNDS": "each subscription's own region (issue 1255)",
 }
 NOT_SIZING = {
-    # phase-467 W1 -- the contract-monitor state tables are INLINE in the
+    # phase-496 W1 -- the contract-monitor state tables are INLINE in the
     # `Executor` value (the spin loop indexes them beside a `&'static` spec
     # table), not carved from the backing, so they move no backing word.
     "NROS_EXECUTOR_MAX_MONITORS": "inline in the Executor value, not the backing",

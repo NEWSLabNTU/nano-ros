@@ -1,4 +1,4 @@
-//! phase-457 W2 - `SystemModel -> MapperInput` is ONE call into
+//! phase-495 W2 - `SystemModel -> MapperInput` is ONE call into
 //! `ros_launch_manifest_derive`, the derivation play_launch calls too
 //! (rlm design issue #52, play_launch phase 78).
 //!
@@ -389,7 +389,7 @@ mod tests {
         assert_eq!(planner.rate_hz, None, "no timer path, no rate");
     }
 
-    /// phase-457 W2, W5 - `MapperNode::scope` is the NAMESPACE, not the
+    /// phase-495 W2, W5 - `MapperNode::scope` is the NAMESPACE, not the
     /// model's file-scope key.
     ///
     /// The mapper matches a `[[assign]] scope =` selector against a ROS
@@ -424,7 +424,7 @@ mod tests {
         assert_eq!(scope_of("/sensor"), Some("/".into()));
     }
 
-    /// phase-457 W2 - the model carries NO trigger for a path, so the path is
+    /// phase-495 W2 - the model carries NO trigger for a path, so the path is
     /// `Unclassified`, ranks nothing, and is NAMED. The old derivation read an
     /// empty `input` as a timer at the first output's promised rate, which is
     /// how a `once` map loader became a periodic task.
@@ -454,7 +454,7 @@ mod tests {
         );
     }
 
-    /// phase-457 W2, the point of the wave - an ISLAND-shaped model (two timer
+    /// phase-495 W2, the point of the wave - an ISLAND-shaped model (two timer
     /// loops, a fast one and a slow one) ranks by the timers' periods with NO
     /// publisher rate promise anywhere in it.
     ///

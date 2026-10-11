@@ -17,36 +17,36 @@ tree today unless marked `(new)`.
 | `phase-459-W0` | none | `examples/workspaces/derived-tiers-cpp/` (new, the whole tree); one coverage case in `packages/cli/nros-cli-core/tests/example_metadata_coverage.rs` | `cargo test -p nros-cli-core --test example_metadata_coverage` (the fixture resolves through the pinned resolver and its four `nros-metadata.json` rows carry `callback_groups: ["main"]`) | yes |
 | `phase-459-W1` | `phase-459-W0` | `packages/cli/nros-cli-core/src/orchestration/tier_resolver.rs` (`collect_callback_groups` :35); `load_workspace_metadata` in `packages/cli/nros-cli-core/src/orchestration/model_ingest.rs` (:344) only if its signature must change; `packages/cli/nros-cli-core/tests/derived_tiers_bake.rs` (new) | `cargo test -p nros-cli-core --test derived_tiers_bake` (`derived 2 scheduling tier(s)`, four members, keyword removed: four groupless notes) | no |
 | `phase-459-W2` | `phase-459-W0` | `resolve_plan_sched` in `packages/cli/nros-cli-core/src/codegen/entry/mod.rs` (NOT `plan_from_model`, which cannot see cmake callback groups); `packages/cli/nros-cli-core/tests/derived_tiers_entry.rs` (new). `emit_cpp.rs` needed no change | `cargo test -p nros-cli-core --test derived_tiers_entry` (`codegen entry --lang cpp --board zephyr` on the W0 fixture ends in `run_tiers(..., 4u)`) | no |
-| `phase-459-W3` | `phase-457-W1` (the pin moves once, to v0.1.37, before this wave moves it again to the first tag carrying `derived`); the rlm half is a PR against `ros-launch-manifest` (`model/src/system_config.rs`) that must be in that tag | `TierDef` in `packages/cli/nros-cli-core/src/orchestration/cargo_metadata_schema.rs`; the binding refusals in `packages/cli/nros-cli-core/src/orchestration/model_ingest.rs` (:108, :197-:212); the `tiers.is_empty()` test in `packages/cli/nros-cli-core/src/cmd/codegen_system.rs` (:433); derived-tier naming in the body of `packages/core/nros-orchestration-ir/src/derive.rs`; the four `Cargo.toml` pin lines and `Cargo.lock` (second bump); `packages/cli/nros-cli-core/tests/derived_tier_marker.rs` (new) | `cargo test -p nros-cli-core --test derived_tier_marker` (same two tiers as W1; sub-table beside the marker refused naming both lines; `ctrll` still refused) | no |
+| `phase-459-W3` | `phase-495-W1` (the pin moves once, to v0.1.37, before this wave moves it again to the first tag carrying `derived`); the rlm half is a PR against `ros-launch-manifest` (`model/src/system_config.rs`) that must be in that tag | `TierDef` in `packages/cli/nros-cli-core/src/orchestration/cargo_metadata_schema.rs`; the binding refusals in `packages/cli/nros-cli-core/src/orchestration/model_ingest.rs` (:108, :197-:212); the `tiers.is_empty()` test in `packages/cli/nros-cli-core/src/cmd/codegen_system.rs` (:433); derived-tier naming in the body of `packages/core/nros-orchestration-ir/src/derive.rs`; the four `Cargo.toml` pin lines and `Cargo.lock` (second bump); `packages/cli/nros-cli-core/tests/derived_tier_marker.rs` (new) | `cargo test -p nros-cli-core --test derived_tier_marker` (same two tiers as W1; sub-table beside the marker refused naming both lines; `ctrll` still refused) | no |
 | `phase-459-W4` | `phase-459-W0` for the fixture half of its gate only | `packages/core/nros-orchestration-ir/src/rtos_realizer.rs` (`sched_caps_for` :140, `rank_to_priority` :336, `realize_rtos` :349); `packages/core/nros-orchestration-ir/src/priority_plan.rs` (new) and its `mod` line in `lib.rs`; the one `realize_rtos` call in `packages/core/nros-orchestration-ir/src/derive.rs` (:86); `scripts/lib/priority_plan.py` and `scripts/check-tier-priority-plan-image.py` (the checker of the Rust result); `docs/design/0079-priority-is-allocated-not-authored.md` section 4.1; the module doc of `packages/platform/nros-platform/src/board/tier.rs` | `cargo test -p nros-orchestration-ir priority_plan`; `python3 scripts/check-tier-priority-plan-image.py` on the fixture's `.config` reports zero violations, and the `READ_PRIORITY=16` negative control reports the stale band | yes |
 | `phase-459-W5` | none | `resolve_target_block` in `packages/cli/nros-cli-core/src/cmd/codegen_system.rs` (:194-:250) and a unit test beside it | `cargo test -p nros-cli-core resolve_target_block` | yes |
 | `phase-459-W6` | none | `packages/api/nros-cpp/include/nros/node.hpp` (a code beside `DECLARED_DEPTH_MISMATCH` :261 and the check at construction); `packages/api/nros-cpp/include/nros/callback_group.hpp`; the declared-list plumbing in `cmake/NanoRosNodeRegister.cmake` (:1252) and `packages/cli/nros-cli-core/src/codegen/entry/registered_node.rs` if the list is emitted there; a negative test under `packages/api/nros-cpp/tests/compile/` (new file) | the negative test (`CALLBACK_GROUPS ctrl telem`, only `ctrl` created, refused naming both); `examples/workspaces/realtime-cpp` unchanged | yes |
-| `phase-459-W7` | `phase-457-W2` (the shared function reads `trigger`; this repository's `mapper_input.rs` becomes the call) | the contract under `examples/workspaces/derived-tiers-cpp/` (the two numbers made unequal, the comment removed); one case in `packages/cli/nros-cli-core/tests/derived_tiers_bake.rs` | `cargo test -p nros-cli-core --test derived_tiers_bake` (order follows `trigger.timer.rate_hz`, not `min_rate_hz`) | no |
+| `phase-459-W7` | `phase-495-W2` (the shared function reads `trigger`; this repository's `mapper_input.rs` becomes the call) | the contract under `examples/workspaces/derived-tiers-cpp/` (the two numbers made unequal, the comment removed); one case in `packages/cli/nros-cli-core/tests/derived_tiers_bake.rs` | `cargo test -p nros-cli-core --test derived_tiers_bake` (order follows `trigger.timer.rate_hz`, not `min_rate_hz`) | no |
 
 Four claims can start today: W0, W4, W5 and W6. W1 and W2 start the moment W0
 lands and are independent of each other. W3 is one claim although it spans two
 repositories: the rlm reader and the nano-ros half are useless apart, and the
 same session must land the rlm PR, see it tagged, and bump the pin. W7 is a
-fixture edit and a test, not a rewrite: issue 1372 item 2 is phase-457 W2's
+fixture edit and a test, not a rewrite: issue 1372 item 2 is phase-495 W2's
 work, and W7 consumes it.
 
 **Files two waves touch, and the order they serialise in.** Across this phase,
-phase-457, phase-462, the other session's phases 460/461/463 and play_launch
+phase-495, phase-462, the other session's phases 460/461/463 and play_launch
 phase 78:
 
 - `packages/core/nros-orchestration-ir/src/derive.rs`: the body above
   `#[cfg(test)]` (:179) is this phase's (`phase-459-W1` and `-W2` call into
   it, `phase-459-W4` changes the `realize_rtos` call at :86, `phase-459-W3`
-  names derived tiers); the test module is `phase-457-W1`'s. Order:
-  `phase-459-W1`, `phase-459-W2`, `phase-459-W4`, `phase-457-W1`,
+  names derived tiers); the test module is `phase-495-W1`'s. Order:
+  `phase-459-W1`, `phase-459-W2`, `phase-459-W4`, `phase-495-W1`,
   `phase-459-W3`.
-- `packages/core/nros-orchestration-ir/src/mapper_input.rs`: `phase-457-W2`
+- `packages/core/nros-orchestration-ir/src/mapper_input.rs`: `phase-495-W2`
   rewrites it; `phase-459-W7` reads through it and does not edit it. Order:
-  `phase-457-W2`, then `phase-459-W7`.
+  `phase-495-W2`, then `phase-459-W7`.
 - `packages/cli/nros-cli-core/src/orchestration/model_ingest.rs`:
-  `phase-459-W1` (:344 reader), `phase-457-W1` (test fixture :1144),
+  `phase-459-W1` (:344 reader), `phase-495-W1` (test fixture :1144),
   `phase-459-W3` (:108, :197-:212), `phase-462-W2` (rows beside :1336).
-  Order: `phase-459-W1`, `phase-457-W1`, `phase-459-W3`, `phase-462-W2`.
+  Order: `phase-459-W1`, `phase-495-W1`, `phase-459-W3`, `phase-462-W2`.
 - `packages/cli/nros-cli-core/src/codegen/entry/emit_cpp.rs`:
   `phase-459-W2` (the `run_tiers` table, :388-:510), `phase-462-W1` (a new
   monitor-table region installed before entity creation), then the other
@@ -56,12 +56,12 @@ phase 78:
   whose mutual order the other session states. Neither of ours edits :1086
   or the hosted boot funnel.
 - `packages/cli/nros-cli-core/src/cmd/codegen_system.rs`: `phase-459-W5`
-  (:194), `phase-459-W3` (:433), `phase-457-W2` (the degradation print).
-  Order: `phase-459-W5`, `phase-459-W3`, `phase-457-W2`. phase-460 W4's
+  (:194), `phase-459-W3` (:433), `phase-495-W2` (the degradation print).
+  Order: `phase-459-W5`, `phase-459-W3`, `phase-495-W2`. phase-460 W4's
   region (:856-:858) is disjoint; the other session places it.
 - `packages/core/nros-orchestration-ir/src/rtos_realizer.rs`: `phase-459-W4`
-  before `phase-457-W4` (`node_facts` only).
-- The four `ros-launch-manifest` pin lines and `Cargo.lock`: `phase-457-W1`
+  before `phase-495-W4` (`node_facts` only).
+- The four `ros-launch-manifest` pin lines and `Cargo.lock`: `phase-495-W1`
   first (v0.1.37), `phase-459-W3` second (the tag with `derived`); never one
   commit.
 - `packages/api/nros-cpp/include/nros/node.hpp`: `phase-459-W6` only, in
@@ -282,7 +282,7 @@ and W3's "one named tier SPLIT by rank" — rule 2 gives a named tier ONE
 priority, the most urgent rank among its members, and records a `Degradation`
 when the members disagree rather than inventing `ctrl-0`/`ctrl-1`.
 
-Claim: phase-459-W3. Depends on: phase-457-W1; an rlm PR adding the derived key to model/src/system_config.rs, tagged. Owns: TierDef in packages/cli/nros-cli-core/src/orchestration/cargo_metadata_schema.rs; the binding refusals in packages/cli/nros-cli-core/src/orchestration/model_ingest.rs; the tiers.is_empty() test in packages/cli/nros-cli-core/src/cmd/codegen_system.rs; derived-tier naming in packages/core/nros-orchestration-ir/src/derive.rs; the four Cargo.toml pin lines and Cargo.lock (second bump); packages/cli/nros-cli-core/tests/derived_tier_marker.rs (new). Gate: cargo test -p nros-cli-core --test derived_tier_marker. Status: not started.
+Claim: phase-459-W3. Depends on: phase-495-W1; an rlm PR adding the derived key to model/src/system_config.rs, tagged. Owns: TierDef in packages/cli/nros-cli-core/src/orchestration/cargo_metadata_schema.rs; the binding refusals in packages/cli/nros-cli-core/src/orchestration/model_ingest.rs; the tiers.is_empty() test in packages/cli/nros-cli-core/src/cmd/codegen_system.rs; derived-tier naming in packages/core/nros-orchestration-ir/src/derive.rs; the four Cargo.toml pin lines and Cargo.lock (second bump); packages/cli/nros-cli-core/tests/derived_tier_marker.rs (new). Gate: cargo test -p nros-cli-core --test derived_tier_marker. Status: not started.
 
 **W4 - the allocation honours the board's plan.** `realize_rtos` takes a
 `PriorityPlan` beside `SchedCaps`. For a STATIC plan (FreeRTOS, NuttX, ThreadX
@@ -331,7 +331,7 @@ This phase depends on it and does not implement it; until it lands the W0
 fixture keeps the two numbers equal, as the island does, and a comment in the
 fixture's contract says why.
 
-Claim: phase-459-W7. Depends on: phase-457-W2. Owns: the contract under examples/workspaces/derived-tiers-cpp/; one case in packages/cli/nros-cli-core/tests/derived_tiers_bake.rs. Gate: cargo test -p nros-cli-core --test derived_tiers_bake. Status: landed with issue 1372's resolution ("the schedule follows the timer trigger"). The fixture's 30 Hz pair promises a 5 Hz floor and its 10 Hz pair 8 Hz, so a promise-reading derivation would invert the order; derived periods are 33 333 / 100 000 us and the 30 Hz pair ranks first, and raising the slow pair's trigger to 60 Hz with no promise touched moves it to 16 667 us and to the top. Two corrections: the topics' `rate_hz` lines had to go too (a declared 30 above a 5 Hz floor is the resolver's `rate-hierarchy` ERROR), and `example_metadata_coverage` asserted `min_rate_hz == rate` on this fixture, so it now asserts the path's `trigger` instead. derived_tiers_bake 6, derived_tiers_entry 4, derived_tiers_precedence 7, example_metadata_coverage 3 passed.
+Claim: phase-459-W7. Depends on: phase-495-W2. Owns: the contract under examples/workspaces/derived-tiers-cpp/; one case in packages/cli/nros-cli-core/tests/derived_tiers_bake.rs. Gate: cargo test -p nros-cli-core --test derived_tiers_bake. Status: landed with issue 1372's resolution ("the schedule follows the timer trigger"). The fixture's 30 Hz pair promises a 5 Hz floor and its 10 Hz pair 8 Hz, so a promise-reading derivation would invert the order; derived periods are 33 333 / 100 000 us and the 30 Hz pair ranks first, and raising the slow pair's trigger to 60 Hz with no promise touched moves it to 16 667 us and to the top. Two corrections: the topics' `rate_hz` lines had to go too (a declared 30 above a 5 Hz floor is the resolver's `rate-hierarchy` ERROR), and `example_metadata_coverage` asserted `min_rate_hz == rate` on this fixture, so it now asserts the path's `trigger` instead. derived_tiers_bake 6, derived_tiers_entry 4, derived_tiers_precedence 7, example_metadata_coverage 3 passed.
 
 ### What the island then writes
 

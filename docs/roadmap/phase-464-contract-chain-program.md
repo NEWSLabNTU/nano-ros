@@ -5,7 +5,7 @@ This phase owns no code. It sequences six nano-ros phases, one play_launch
 phase, one ros-launch-manifest design issue and the safety island's own
 units into milestones ordered by what each guarantees, and it fixes the
 protocol several agent sessions use to work on them at once. The phases it
-indexes are [457](phase-457-consume-the-shared-derivation.md),
+indexes are [457](phase-495-consume-the-shared-derivation.md),
 [459](phase-459-cmake-image-reaches-tier-derivation.md),
 [460](phase-460-formal-checks-on-the-contract-chain.md),
 [461](phase-461-service-inbox-per-family.md),
@@ -84,10 +84,10 @@ Track B, the shared derivation, is the critical path of the program.
 | play_launch phase-78-W2 | consume the shared derivation | sched tests | W1 |
 | play_launch phase-78-W3 | `from_dump == from_model` on every Autoware fixture | transition gate | W2 |
 | play_launch phase-78-W4 | delete the private copy, ship 0.12.0 | release | W3 |
-| phase-457-W1 | pins bumped, fixtures re-resolved | `just check fast` | play_launch W4 |
-| phase-457-W2 | `mapper_input.rs` is a call into rlm | orchestration-ir tests | 457-W1 |
-| phase-457-W3 | the island ranks from timers with every `min_rate_hz` removed | parity fixture | 457-W2 |
-| phase-457-W4 | `deadline_us` folds through the shared input | test | 457-W2 |
+| phase-495-W1 | pins bumped, fixtures re-resolved | `just check fast` | play_launch W4 |
+| phase-495-W2 | `mapper_input.rs` is a call into rlm | orchestration-ir tests | 495-W1 |
+| phase-495-W3 | the island ranks from timers with every `min_rate_hz` removed | parity fixture | 495-W2 |
+| phase-495-W4 | `deadline_us` folds through the shared input | test | 495-W2 |
 
 Track A, the census, is independent of track B and of everything in M2.
 
@@ -110,9 +110,9 @@ Track A, the census, is independent of track B and of everything in M2.
 | phase-459-W4 | priorities allocated from the board's plan, below the transport band (1427) | realizer test, island projection 30 Hz -> 5, 10 Hz -> 6 | 459-W2 |
 | island-W1 | the island declares its groups; two 30 Hz nodes above two 10 Hz on their own threads, measured on native_sim | demo VERDICT + thread listing | 459-W2, 459-W4 |
 | phase-462-W1 | C++ entries bake the monitor table; `min_rate_hz` and `max_latency` watched on target | emitter parity test | now |
-| phase-462-W2 | `on_violation` lowers to the executor's deadline action and a silence monitor | executor test | 462-W1, 457-W2 |
+| phase-462-W2 | `on_violation` lowers to the executor's deadline action and a silence monitor | executor test | 462-W1, 495-W2 |
 | phase-459-W5, W6 | the hand-run form is refused; code and keyword agree | gates | 459-W2 |
-| phase-459-W7 | the trigger rate is read from the shared input | test | 457-W2 |
+| phase-459-W7 | the trigger rate is read from the shared input | test | 495-W2 |
 | phase-463-W5, W6 | compatibility invariants as gates; retire the max, flip the island | gates; island-W2 | 463-W4 |
 | island-W2 | the island's census is a configure gate | the island's board-build recipe refuses a stale census | 463-W4 |
 
@@ -136,8 +136,8 @@ Track A, the census, is independent of track B and of everything in M2.
 
 | unit | guarantee | gate | depends on |
 | --- | --- | --- | --- |
-| phase-462-W3 | `safe_state`, hazards, the FTTI budget against the tier plan | build-time check | 462-W2, 459-W4, 457-W2 |
-| phase-462-W4 | modes as tier-table variants | codegen test | 462-W2, 457-W2 |
+| phase-462-W3 | `safe_state`, hazards, the FTTI budget against the tier plan | build-time check | 462-W2, 459-W4, 495-W2 |
+| phase-462-W4 | modes as tier-table variants | codegen test | 462-W2, 495-W2 |
 | phase-462-W5 | deadline and liveliness QoS from the contract | rmw tests | rlm R1, 462-W2 |
 | phase-462-W6 | the ingress budget knob | measured stall count | now (schema half after rlm 0760) |
 

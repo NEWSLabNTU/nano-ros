@@ -105,7 +105,7 @@ DERIVED_PAIRS = {
     # whatever its schedule created -- and the Rust runtime creates NONE of
     # them (`apply_tier_sched_policy` mutates the reserved slot 0).
     "NROS_DERIVED_EXECUTOR_MAX_SC": ("NROS_RESOLVED_NROS_EXECUTOR_MAX_SC",),
-    # phase-467 W1 (issue 1471) -- the contract-monitor tables, which had no
+    # phase-496 W1 (issue 1471) -- the contract-monitor tables, which had no
     # rung at all: `MAX_MONITORS` was a source literal of 8.
     "NROS_DERIVED_EXECUTOR_MAX_MONITORS": ("NROS_RESOLVED_NROS_EXECUTOR_MAX_MONITORS",),
     "NROS_DERIVED_EXECUTOR_MAX_AGE_MONITORS": (

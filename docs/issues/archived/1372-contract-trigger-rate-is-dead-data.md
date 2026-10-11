@@ -9,8 +9,8 @@ area: [cli, launch, contract, orchestration]
 severity: medium
 found: 2026-09-18
 resolved: 2026-10-01
-resolved_in: "phase-457 W1/W2 (PRs #1198, #1218) carried and read the trigger; phase-459 W7 (\"the schedule follows the timer trigger\") measured it, made the realizer read the shared rate, and surfaced the resolver's divergence warning"
-related: [issue-1339, issue-1256, issue-0760, rfc-0052, rfc-0078, phase-454, phase-457, phase-459]
+resolved_in: "phase-495 W1/W2 (PRs #1198, #1218) carried and read the trigger; phase-459 W7 (\"the schedule follows the timer trigger\") measured it, made the realizer read the shared rate, and surfaced the resolver's divergence warning"
+related: [issue-1339, issue-1256, issue-0760, rfc-0052, rfc-0078, phase-454, phase-495, phase-459]
 ---
 
 ## Resolution (2026-10-01)
@@ -20,9 +20,9 @@ and nobody measured it (issue 1339's closing note said exactly that), and the
 third because it was half done: the resolver computed the warning and wrote it
 into a file no consumer read.
 
-**Item 2 - the trigger is carried and read.** phase-457 W1 (PR #1198) pinned
+**Item 2 - the trigger is carried and read.** phase-495 W1 (PR #1198) pinned
 rlm v0.1.37, whose `PathContract` carries `trigger` (the model now writes
-`trigger: {kind: timer, value: {rate_hz: ..}}` under every timer path). phase-457
+`trigger: {kind: timer, value: {rate_hz: ..}}` under every timer path). phase-495
 W2 (PR #1218) replaced `mapper_input.rs` with one call into
 `ros-launch-manifest-derive`, which takes a node's rate from its paths' `Timer`
 triggers "and nothing else: authored `topics.<t>.rate_hz` and
@@ -33,7 +33,7 @@ test that asserts it is NOT read.
 
 What this resolution adds on the consumer side: `rtos_realizer::node_facts`
 still re-folded the period from the paths itself. It now reads the shared
-`MapperNode.rate_hz` first, as phase-457 W4 made it read `deadline_us`, so the
+`MapperNode.rate_hz` first, as phase-495 W4 made it read `deadline_us`, so the
 Zephyr period and play_launch's rate-monotonic rank are one answer and the path
 fold is only the fallback for a hand-built `MapperInput`.
 
@@ -73,7 +73,7 @@ resolves it through the pinned resolver and asserts derived periods of
 33 333 us and 100 000 us (the promises would give 200 000 and 125 000) and the
 30 Hz pair above the 10 Hz pair; then it runs this issue's own experiment in
 reverse - raise the slow pair's TRIGGER to 60 Hz, touch no promise - and asserts
-the slow pair moves to 16 667 us and to the top. Before phase-457 W2 that edit
+the slow pair moves to 16 667 us and to the top. Before phase-495 W2 that edit
 changed nothing. `a_promise_above_the_timer_rate_is_a_resolver_warning`
 asserts the shipped fixture resolves warning-free and the raised promise yields
 the warning above. Unit level:

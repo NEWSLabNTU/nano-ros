@@ -1,4 +1,4 @@
-//! phase-457 W3 - nano-ros ranks the shared contract exactly as
+//! phase-495 W3 - nano-ros ranks the shared contract exactly as
 //! ros-launch-manifest's committed snapshot says it does.
 //!
 //! rlm design issue #52 split one derivation between two consumers. The
@@ -10,7 +10,7 @@
 //! Provenance. Both files under
 //! `fixtures/contract_derived_chain_parity/` are copies of
 //! ros-launch-manifest TAG v0.1.37 - the tag this repository pins
-//! (phase-457 W1) - byte for byte:
+//! (phase-495 W1) - byte for byte:
 //!
 //! - `contract_derived_chain.resolved.yaml` <-
 //!   `derive/tests/fixtures/contract_derived_chain.system_model.yaml`
@@ -35,7 +35,7 @@
 //! What this file does NOT do: re-derive, re-implement or paraphrase the
 //! ranking. It calls the same entry point `codegen-system` calls
 //! (`nros_orchestration_ir::mapper_input`), which is one call into
-//! `ros_launch_manifest_derive` since phase-457 W2.
+//! `ros_launch_manifest_derive` since phase-495 W2.
 
 use nros_orchestration_ir::mapper_input::{mapper_input_and_report, rank_from_model};
 use ros_launch_manifest_model::SystemModel;
@@ -134,7 +134,7 @@ fn the_shared_contract_ranks_to_the_snapshot_rlm_ships() {
 /// unclassified, and the timer's rate comes off the trigger.
 ///
 /// Without this a snapshot match could hide a derivation that ranked the
-/// right three items for the wrong reasons - and phase-457 exists because
+/// right three items for the wrong reasons - and phase-495 exists because
 /// that is exactly what happened for the whole of phase-296's lifetime.
 #[test]
 fn the_same_input_facts_reach_the_ranker_here() {
@@ -169,7 +169,7 @@ fn the_same_input_facts_reach_the_ranker_here() {
     assert_eq!(control.deadline_us, Some(10_000));
     assert!(input.nodes.iter().all(|n| !n.claims_concurrency));
 
-    // phase-457 W2's one consumer-side correction (rlm design issue #52's
+    // phase-495 W2's one consumer-side correction (rlm design issue #52's
     // open seam): `MapperNode::scope` is the ROS namespace a `[[assign]]
     // scope =` selector matches, not the model's launch-FILE scope key. It
     // does not reach the ranking - the snapshot above is unaffected - but
@@ -204,7 +204,7 @@ fn the_snapshot_is_a_ranked_plan_of_three_items() {
 ///
 /// The island declares its promises (`min_rate_hz` on every endpoint, equal
 /// to the timers; the resolver flags 14 as `derivable-min-rate`), so before
-/// phase-457 W2 the derived order here was right by a redundant declaration:
+/// phase-495 W2 the derived order here was right by a redundant declaration:
 /// the period was reconstructed from the first output's promise. Delete the
 /// promises, as this fixture does, and the old derivation ranked nothing.
 /// What ranks now is `contracts.node_paths.*.trigger`.
