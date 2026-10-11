@@ -66,4 +66,16 @@ cells whose nano side runs behind slirp, and it is empty.
    `cyclone_slirp_pair` stays here whichever option is chosen, until a lane
    runs on a host (not a container) that permits user namespaces.
 
-No option is chosen yet. Both tests run only by hand until one is.
+## Decision
+
+Option 1 for `workspace_shadowing`. `scripts/check-interop-verdicts.py` holds
+`HOST_ROS2_TESTS`, a declared list of `(binary, case)` beside the ledger. The
+live-peer host job builds what each case resolves (`--host-compile-checks`, so
+the `shadowing` fixture), runs it (`--filters`) and fails the lane as "could not
+run" if it produced no pass or fail (`--assert-ran`). The case records no
+ledger verdict, because it was never an interop measurement. Measured locally
+on the `shadowing` fixture against `/opt/ros/humble`: PASS in 0.386 s, and the
+assert reads 1 of 1.
+
+`cyclone_slirp_pair` stays in tier 3 and is run by hand (option 3). This issue
+stays open for it until a lane runs on a host that permits user namespaces.
