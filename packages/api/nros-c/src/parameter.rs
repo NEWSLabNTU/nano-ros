@@ -339,7 +339,7 @@ macro_rules! impl_param_scalar {
         union_field: $field:ident,
         doc: $doc:literal
     ) => {
-        paste::paste! {
+        pastey::paste! {
             #[doc = "Declare " $doc " parameter."]
             #[unsafe(no_mangle)]
             pub unsafe extern "C" fn [<nros_parameter_declare_ $name>](
@@ -567,7 +567,7 @@ macro_rules! impl_param_array {
         variant: $variant:ident,
         doc: $doc:literal
     ) => {
-        paste::paste! {
+        pastey::paste! {
             #[doc = "Declare " $doc " parameter.\n\n"]
             #[doc = "The caller must keep the array data valid for the lifetime of the parameter.\n"]
             #[doc = "`data` may be NULL only if `len` is 0."]
@@ -896,7 +896,7 @@ mod service_backed {
             as_variant: $as:ident,
             doc: $doc:literal
         ) => {
-            paste::paste! {
+            pastey::paste! {
                 #[doc = "Declare " $doc " parameter on the executor's PRIMARY node."]
                 #[unsafe(no_mangle)]
                 pub unsafe extern "C" fn [<nros_executor_declare_param_ $name>](

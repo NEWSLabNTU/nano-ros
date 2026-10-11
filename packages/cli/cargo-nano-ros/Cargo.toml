@@ -38,8 +38,12 @@ nros-lang = { workspace = true }
 # from becoming a second derivation of `<prefix>/share/nano-ros`.
 nros-launcher = { workspace = true }
 rayon = "1.10"
-indicatif = "0.17"
-quick-xml = "0.37"
+indicatif = "0.18"
+quick-xml = "0.41"
+# issue 1805 — `nros_pkg_index::xml`, the one spelling of "an element's text"
+# and "an attribute's value" under quick-xml 0.41, shared with the other
+# package.xml and launch-file readers.
+nros-pkg-index = { path = "../nros-pkg-index" }
 
 [dev-dependencies]
 tempfile = "3.8"

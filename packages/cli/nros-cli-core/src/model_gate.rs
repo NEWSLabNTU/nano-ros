@@ -465,8 +465,8 @@ pub fn launch_include_names(path: &Path) -> Vec<String> {
             {
                 for attr in e.attributes().flatten() {
                     if attr.key.as_ref() == b"file"
-                        && let Ok(v) = attr.unescape_value()
-                        && let Some(n) = Path::new(v.as_ref()).file_name().and_then(|s| s.to_str())
+                        && let Ok(v) = nros_pkg_index::xml::attr_value(&attr)
+                        && let Some(n) = Path::new(&v).file_name().and_then(|s| s.to_str())
                     {
                         out.push(n.to_string());
                     }

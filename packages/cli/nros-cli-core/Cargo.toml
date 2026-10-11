@@ -119,7 +119,7 @@ rosidl-parser = { path = "../rosidl-parser" }
 # Phase 219.A — workspace pkg-index walk + launch.xml parser (moved
 # in from `nros-build`; see `src/pkg_index.rs` + `src/launch_parser.rs`).
 walkdir = "2.0"
-quick-xml = "0.37"
+quick-xml = "0.41"
 
 # Phase 212.M-F.20 — `synthesize_workspace_ament_prefix` lays down a
 # throwaway ament prefix (TempDir) from the pkg-index so the launch parser's

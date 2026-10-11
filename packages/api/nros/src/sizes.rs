@@ -64,7 +64,7 @@ mod rmw_sizes {
             // EXPORTED from a staticlib whether or not it is `#[used]`, so the
             // attribute alone never kept one out of an image.
             // `check-size-markers-unlinked` holds every item here to this.
-            paste::paste! {
+            pastey::paste! {
                 #[cfg(feature = "ffi-size-markers")]
                 #[used]
                 #[unsafe(no_mangle)]

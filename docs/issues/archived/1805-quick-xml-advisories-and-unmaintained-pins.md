@@ -1,7 +1,7 @@
 ---
 id: 1805
 title: "The pin set carries quick-xml 0.37.5 (RUSTSEC-2026-0194/0195, fixed only in 0.41) and five unmaintained crates — found by the first `just check deny`"
-status: open
+status: resolved
 type: tech-debt
 area: [deps, cli]
 severity: medium
@@ -48,3 +48,41 @@ The seven advisory ids open here (RUSTSEC-2026-0194, -0195, -0110,
 -2025-0119, -2024-0436, -2026-0173, -2020-0163) are listed in `deny.toml`
 `[advisories] ignore`, each naming this issue, so `just check deny` stays red
 only for something new. Delete each entry with its fix.
+
+## Fixed
+
+- **quick-xml 0.37.5 -> 0.41.0** in all four manifests (`nros-pkg-index`,
+  `cargo-nano-ros`, `nros-launch-parser`, `nros-cli-core`), then `nros update
+  --crate quick-xml --precise 0.41.0`. Every locked root moved together.
+  RUSTSEC-2026-0194/0195 are no longer reported.
+  - The breaking part is semantic, not just a rename. Since 0.38 the reader
+    stops at every `&` and reports the reference as its own `GeneralRef`
+    event, so `a &amp; b` arrives as three events and `BytesText::unescape`
+    is gone. A port that only swapped `unescape` for `decode` would quietly
+    keep `"a "` as the whole value. `nros_pkg_index::xml` is now the one
+    spelling: `ElementText` collects `Text` + `GeneralRef` until the element
+    ends (trimming the whole, so `trim_text(true)` is off in both readers), and
+    `attr_value` uses `normalized_value` in place of the deprecated
+    `unescape_value`. Both `package.xml` readers and both attribute readers
+    use it.
+- **number_prefix**: indicatif 0.17 -> 0.18 (`cargo-nano-ros`), which uses
+  `unit-prefix` instead. Gone from the CLI root.
+- **paste**: nano-ros's own use (`nros`, `nros-c`) moved to `pastey` 0.2, the
+  maintained drop-in fork. `paste` stays in the graph through `riscv` 0.15 and
+  `esp-hal` 1.0.
+
+Decided, and kept in `deny.toml` `[advisories] ignore` with the parent named:
+
+- `bare-metal`: held by `cortex-m` 0.7, which is the current release line.
+- `paste`: held by `riscv` and `esp-hal`, as above.
+- `proc-macro-error2`: held by `defmt-macros` 1.1.
+- `term_size`: held by `tokei`. tokei 15.0.0 still depends on it
+  unconditionally (measured), so moving the `nros-tests` dev-dependency
+  would buy nothing.
+
+`just check deny` is green, and each remaining ignore is hit by at least one
+root.
+
+The pin set still lists quick-xml 0.37.5 next to 0.41.0. `nros update` never
+drops a range, because a leaf not built here may still resolve it. No in-tree
+manifest asks for 0.37 any more, so no seeded lock picks it up.

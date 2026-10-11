@@ -568,10 +568,9 @@ fn collect_attrs(
         let key = std::str::from_utf8(attr.key.local_name().as_ref())
             .map_err(|_| eyre!("non-UTF-8 attribute name in `{}`", here.display()))?
             .to_string();
-        let raw = attr
-            .unescape_value()
+        let raw = nros_pkg_index::xml::attr_value(&attr)
             .wrap_err_with(|| format!("unescape attr `{key}` in `{}`", here.display()))?;
-        let resolved = substitute(raw.as_ref(), scope, pkg_index, here)?;
+        let resolved = substitute(&raw, scope, pkg_index, here)?;
         out.insert(key, resolved);
     }
     Ok(out)

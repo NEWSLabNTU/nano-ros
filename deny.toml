@@ -15,16 +15,14 @@ all-features = true
 [advisories]
 # RustSec; `yanked` too, since a yanked crate in the pin set is a pin to move.
 yanked = "deny"
-# Known and TRACKED: each entry names the issue that owns it, so the lane
-# stays red only for something new. Delete an entry with its fix.
+# Known and DECIDED (issue 1805): each is unmaintained and reached only through
+# a third-party parent this tree cannot replace on its own, so the decision is
+# about the parent. Delete an entry when its parent moves off it.
 ignore = [
-    { id = "RUSTSEC-2026-0194", reason = "quick-xml 0.37 -> 0.41 is a breaking bump; issue 1805" },
-    { id = "RUSTSEC-2026-0195", reason = "quick-xml 0.37 -> 0.41 is a breaking bump; issue 1805" },
-    { id = "RUSTSEC-2026-0110", reason = "bare-metal (via cortex-m) unmaintained; issue 1805" },
-    { id = "RUSTSEC-2025-0119", reason = "number_prefix (via indicatif) unmaintained; issue 1805" },
-    { id = "RUSTSEC-2024-0436", reason = "paste unmaintained; issue 1805" },
-    { id = "RUSTSEC-2026-0173", reason = "proc-macro-error2 unmaintained; issue 1805" },
-    { id = "RUSTSEC-2020-0163", reason = "term_size (via tokei) unmaintained; issue 1805" },
+    { id = "RUSTSEC-2026-0110", reason = "bare-metal: held by cortex-m 0.7, the current release line; issue 1805" },
+    { id = "RUSTSEC-2024-0436", reason = "paste: held by riscv 0.15 and esp-hal 1.0 (nano-ros itself uses pastey); issue 1805" },
+    { id = "RUSTSEC-2026-0173", reason = "proc-macro-error2: held by defmt-macros 1.1; issue 1805" },
+    { id = "RUSTSEC-2020-0163", reason = "term_size: held by tokei 14 and 15 (a nros-tests dev-dependency); issue 1805" },
 ]
 
 [licenses]
