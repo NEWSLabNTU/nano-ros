@@ -182,6 +182,15 @@ retired-store-vars:
 source-refs:
     @python3 scripts/check/check-source-refs.py
 
+# phase-485 W1 (RFC-0104 D2) — ONE Rust registry pin set: `[rust]
+# registry_pins` holds one version per semver-compatible range, each
+# `[rust] locked_roots` lock is a subset of it, and it is what
+# `scripts/gen-cargo-registry-pins.py` writes today. Buildless, ~0.2 s;
+# self-tests both set checks on each run.
+[private]
+cargo-registry-pins:
+    @python3 scripts/check/check-cargo-registry-pins.py
+
 # phase-484 W3c (RFC-0103 D4/D5) — a `[source.*]` row with `location = "store"`
 # is store-first: readers LOCATE it (env > local edit > store > checkout). A
 # reader that spells its checkout path builds the checkout's copy even when the

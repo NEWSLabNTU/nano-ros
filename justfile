@@ -1020,9 +1020,12 @@ lock-update crate="" version="" dir=".":
         # failed, which is the one thing the caller needs in order to decide.
         cargo update --workspace
     fi
+    # RFC-0104 D2 (phase-485 W1): a locked root's lock and the registry pin set
+    # move together, or `check-cargo-registry-pins` refuses the pair.
+    python3 "{{justfile_directory()}}/scripts/gen-cargo-registry-pins.py"
     echo ""
     echo "[lock-update] REVIEW THE DIFF before committing:"
-    echo "    git diff -- '*Cargo.lock'"
+    echo "    git diff -- '*Cargo.lock' locks/"
     echo "  Added/removed packages are a dependency change, not a refresh."
 
 # Start the zenoh router — issue 0654's SSoT entry point.

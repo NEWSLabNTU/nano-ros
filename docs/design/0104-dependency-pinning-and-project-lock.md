@@ -80,10 +80,18 @@ The tracked root and CLI `Cargo.lock`s (closed graphs) stay, and are checked to
 be SUBSETS of the pin set, so `heapless` cannot be 0.8.1 in the root and 0.8.0
 in the examples.
 
-A vendored source has ONE pin value: the gitlink for a submodule-mode source,
-`ref` for a clone-mode one — already true (measured 2026-10-10: no source has
-both). The update verb (D7) writes whichever the entry uses; a gate keeps the
-two modes exclusive.
+A vendored source has ONE pin value. For a submodule-mode source it is the
+gitlink; for the one clone-mode source (`rosidl`) it is `ref`. Since phase-484
+W3a ([RFC-0103](0103-one-owner-per-fact.md) D5) every
+submodule row also carries `ref`, deliberately: an installed SDK root has no
+gitlinks and reads the pin from the index it ships. That `ref` is a DERIVED
+copy, not a second owner. `check-source-refs` holds it equal to the staged
+gitlink, and `--write` rewrites it from git. So the "one value" rule is met by
+derivation, not by exclusion. The update verb (D7) moves the gitlink and then
+re-derives `ref`. (Amended 2026-10-11, phase-485 W1: the first draft said no
+source carried both and proposed a gate keeping the modes exclusive. By W1,
+14 of the 15 sources carried both, and such a gate would refuse what RFC-0103
+D5 requires.)
 
 ### D3 — Leaf locks are SEEDED, never tracked
 
@@ -260,7 +268,7 @@ lock does not move until THEY run `nros update`.
 
 ## Open questions
 
-1. Where the registry pin file lives and its format — a plain registry-only
+1. **Answered (phase-485 W1).** Where the registry pin file lives and its format — a plain registry-only
    `Cargo.lock` (cargo can read it as a seed directly) vs a TOML subset keyed
    by name; M1 decides.
 2. The compatibility-range vocabulary in the index (D6): per `[source.*]`, per
@@ -284,3 +292,9 @@ lock does not move until THEY run `nros update`.
   `west.yml`, recorded per image from `zephyr_modules.txt` (phase-485 M3); the
   project lock's `[source]`/`[west]` sections are derived from build records;
   open question 5.
+- 2026-10-11 — D2 amended (phase-485 W1): every submodule-mode source now
+  carries a DERIVED `ref` (RFC-0103 D5), held equal to the gitlink by
+  `check-source-refs`, so the exclusive-modes gate is withdrawn. Open
+  question 1 answered: the pin set is `locks/cargo-registry.lock`, cargo's
+  own lock format, one version per semver-compatible range, named by
+  `[rust] registry_pins` beside `[rust] locked_roots`.
