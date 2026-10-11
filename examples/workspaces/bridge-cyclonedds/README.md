@@ -16,10 +16,10 @@ publisher that only speaks zenoh. **No build.rs, no user bridge code** — plain
    topic = "/chatter"
    type  = "std_msgs/msg/Int32"
    ```
-   This is the one `[package.metadata.nros.*]` table a workspace node package
-   still writes. RFC-0098 D5 moves node declaration into the bringup's
-   `[[component]]` row — every deployment key has already made that move, these
-   entity rows have not ([issue 1289](../../../docs/issues/1289-workspace-node-tables-still-in-manifests.md)).
+   This is node REGISTRATION, the one `[package.metadata.nros.*]` table a
+   workspace node package writes — the Rust counterpart of a C/C++ package's
+   `nros_components_register_node`, not a deployment, so it stays in the
+   manifest ([issue 1289](../../../docs/issues/archived/1289-workspace-node-tables-still-in-manifests.md)).
 2. The system declares the bridge, by topic NAME only:
    ```toml
    # src/demo_bringup/system.toml

@@ -106,17 +106,27 @@ name = "talker"
 | `name` | Default ROS 2 node name (remappable at launch) |
 | `dispatch` | Optional — the dispatch shape, when it is not the default |
 
-> The in-tree workspace node packages still carry a
-> `[package.metadata.nros.node]` table in their `Cargo.toml`. Nothing reads it
-> any more — the `[[component]]` row above is the declaration — and
-> [issue 1289](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1289-workspace-node-tables-still-in-manifests.md)
-> removes it from the examples.
+The node package's own manifest REGISTERS the class it exports, in a
+`[package.metadata.nros.node]` table. That is not a deployment and not a second
+copy of the row above: it is the Rust spelling of node registration, the
+counterpart of a C/C++ package's
+`nros_components_register_node(<target> PLUGIN pkg::Class …)` in its
+`CMakeLists.txt` (itself ROS's `rclcpp_components_register_node`). The metadata
+pipeline reads it — `nros sync`'s probe, `nros check`'s dispatch lint — and a
+package registers once however many bringups launch it, whereas a `[[component]]`
+row is one bringup's choice to run it. It names no namespace: that is the launch
+file's to give, as it is for a C/C++ node
+([issue 1289](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1289-workspace-node-tables-still-in-manifests.md)).
 
 The manifest beside `src/lib.rs` is then just this:
 
 ```toml
 [lib]
 path = "src/lib.rs"
+
+[package.metadata.nros.node]
+class = "talker_pkg::Talker"
+name = "talker"
 
 [dependencies]
 nros = { path = "../../../../../packages/api/nros", default-features = false,

@@ -137,9 +137,14 @@ netmask = "255.255.255.0"
 The same schema serves a workspace bringup (`src/<name>_bringup/system.toml`),
 so the resolver has one input shape either way. Retired by it, and refused
 wherever they still appear: `[package.metadata.nros.entry]` (including
-`deploy =`), `[package.metadata.nros.deploy.<board>]`,
-`[package.metadata.nros.node]`, `[package.metadata.nros.component]`, and the
-`package.xml` `<nano_ros deploy= board= rmw=/>` tuple.
+`deploy =` — an entry is the package an image claims, not one a manifest table
+marks), `[package.metadata.nros.deploy.<board>]`, and the `package.xml`
+`<nano_ros deploy= board= rmw=/>` tuple. On a single-package leaf
+`[package.metadata.nros.node]` / `component` are refused too (its
+`system.toml` `[[component]]` says it); on a workspace NODE package they are
+kept — they are the Rust spelling of node registration, the counterpart of
+`nros_components_register_node` in a C/C++ package's `CMakeLists.txt`, not a
+deployment (issue 1289).
 
 **The exception a contributor will hit.** A single-package leaf *is* its own
 entry, so it still names its board crate by hand in `[dependencies]` —

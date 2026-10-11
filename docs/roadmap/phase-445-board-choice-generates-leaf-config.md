@@ -1,12 +1,15 @@
 # Phase 445 — one board choice generates the leaf's build configuration
 
-**Status (2026-10-12). Re-measured on main 2026-10-11; the phase is NOT
-complete.** Acceptance: bullet 1 is MET for Rust and now for C/C++ (issue 1296,
+**Status (2026-10-12). Re-measured on main 2026-10-11, bullet 5 on
+2026-10-12; the phase is NOT complete.** Acceptance: bullet 1 is MET for Rust and now for C/C++ (issue 1296,
 resolved). Bullet 2 is NOT MET for a single-package Rust leaf (issue 1305,
 reproduced; a switch now fails at `nros sync`, naming both crates, until D6
 reaches leaves). Bullet 3 was not measured. Bullet 4 holds for TRACKED files, and since
 issue 1404 (resolved) `nros sync` also removes a stale GENERATED workspace root
-left on disk. Bullet 5 is NOT MET with 35 hits, down from 45 (issue 1289).
+left on disk. Bullet 5 is MET since 2026-10-12 (issue 1289, resolved): its `rg`
+was narrowed to the DEPLOYMENT tables (`deploy|entry`) and returns nothing, and
+it is now a gate; `node`/`component` tables are node registration, not
+deployment, and stay.
 1117 resolved 2026-10-11 (its four exempt siblings fixed or deleted). 1277 resolved the same day (fixed by
 `1f3b0d4ad5`, never closed). 1310 resolved 2026-10-12: its runtime test RAN over all 24
 Linux Rust rows (22 register with a router and Agent up; issue 1819 tracks the
@@ -23,8 +26,8 @@ selection package. The FreeRTOS switch of the mps2 Rust talker needed two
 `Cargo.toml` edits, not the one the refusal promised (issue 1305, re-scoped; the
 message is corrected). W1 and W5 are ticked; W4 is open for 1305 alone. The
 1296 fix routed around a bringup named two ways rather than unifying it (issue
-1813). RFC-0098 stays Draft until 1305, 1288 (blocked by 1253) and 1289 close
-and bullet 3 is measured.
+1813). RFC-0098 stays Draft until 1305 and 1288 (blocked by 1253) close and
+bullet 3 is measured; 1289 resolved 2026-10-12.
 
 *(2026-09-11: Every wave is WRITTEN; the phase is NOT complete, and
 two of its five acceptance bullets are measured NOT MET.)* W1, W2, W3b, W4b, W5
@@ -206,7 +209,7 @@ esp32 stack budgets.
   NOT done in W3b, and why:
   - `leaf_system::from_manifest`, the Rust manifest fallback, was NOT deleted:
     workspace entries still carried the retiring tables. **W5 deleted it** (see
-    below); the acceptance rg is issue 1289.
+    below); the acceptance rg was issue 1289 (resolved 2026-10-12).
 
   Built in this worktree, each family by its own `just` lane, with 0
   retired-key deprecation lines in any build log:
@@ -308,7 +311,8 @@ esp32 stack budgets.
     no `deploy`. `from_manifest` and its call are deleted; the retired keys are
     refused by the reader, `nros check` (`entry-deploy-retired`) and
     `check-leaf-deployment-spelling`, which stopped skipping workspace
-    manifests (their node/component tables are counted — issue 1289).
+    manifests (their node/component tables are counted as REGISTRATION, not
+    debt — issue 1289).
   - The hand-written Rust Zephyr entries and every nros-tests workspace fixture lost
     their manifest deployment keys (bringup images, or a leaf `system.toml`
     where the fixture has no bringup or tests a Form-1 `nros::main!()`); the
@@ -454,8 +458,21 @@ esp32 stack budgets.
 - `find examples -path '*/.cargo/*'` returns nothing, and no directory under
   `examples/workspaces/` or `examples/templates/` has a root `Cargo.toml` or
   `CMakeLists.txt`.
-- `rg '^\[package\.metadata\.nros\.(deploy|entry|node|component)' examples`
-  returns nothing.
+- `rg '^\[package\.metadata\.nros\.(deploy|entry)' examples` returns nothing.
+  **MET 2026-10-12 (issue 1289) and GATED** — `check-leaf-deployment-spelling`
+  R3 runs this `rg` over the tracked example manifests and also refuses, tree
+  wide, an `[package.metadata.nros.entry]` table that states no build fact.
+  Narrowed from `(deploy|entry|node|component)`: a workspace node package's
+  `[package.metadata.nros.node]` / `component` is node REGISTRATION — the Rust
+  spelling of a C/C++ package's `nros_components_register_node(<target> PLUGIN
+  pkg::Class …)`, which mirrors ROS's `rclcpp_components_register_node` — not a
+  deployment, so RFC-0098 D5's retirement does not apply to it ([issue
+  1289](../issues/archived/1289-workspace-node-tables-still-in-manifests.md)).
+  The `entry` half went because "is an entry" became "an image claims it"
+  (`leaf_system::claiming_image`) in every reader — the selection facade,
+  `nros check`'s dispatch lint, the metadata probe's `deploy_bound`, and the
+  board/sizing lookups — so the 11 empty markers had nothing left to say, and
+  the 9 RTIC `node_pkgs` lists each restated `nros::main!`'s own default.
 
 ## Related
 
