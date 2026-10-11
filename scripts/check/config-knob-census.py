@@ -694,6 +694,10 @@ NON_READ_CALLEES = {
     # phase-484 W5a -- `cargo:rerun-if-env-changed` for every registry spelling
     # of the name. A watch, not a read; `knob_env` beside it is the read.
     "watch_knob_env",
+    # phase-484 W5a -- the deprecation notice for a legacy spelling, and its
+    # once-per-spelling latch. Both take a name the read already resolved.
+    "deprecation_notice",
+    "first_notice_for",
     "define",          # emits a C preprocessor macro
     "set_var", "remove_var", "with_env",  # WRITES an environment
     "push", "insert",  # builds a list / a fact map

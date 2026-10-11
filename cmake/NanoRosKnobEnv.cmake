@@ -39,7 +39,7 @@ endfunction()
 # person set, under whichever name, or "" when none is set (an empty value
 # counts as unset, as on the Rust side). Two spellings holding DIFFERENT values
 # is a FATAL_ERROR naming both -- picking one silently would answer a question
-# nobody asked.
+# nobody asked. A value taken from a legacy spelling is a DEPRECATION message.
 function(_nros_knob_env name out_value)
     _nros_knob_canonical("${name}" _canon)
     set(_spellings "${_canon}")
@@ -69,6 +69,20 @@ function(_nros_knob_env name out_value)
             message(FATAL_ERROR "nros: ${_msg}")
         endif()
     endforeach()
+    # phase-484 W5a -- a value that arrived under a LEGACY spelling is used, and
+    # said so: once per spelling per configure (a knob is read on more than one
+    # road), in the registry's words, which the Rust build script prints too.
+    if(NOT _from STREQUAL "" AND NOT _from STREQUAL _canon)
+        get_property(_warned GLOBAL PROPERTY NROS_KNOB_DEPRECATION_WARNED)
+        list(FIND _warned "${_from}" _at)
+        if(_at EQUAL -1)
+            set_property(GLOBAL APPEND PROPERTY NROS_KNOB_DEPRECATION_WARNED "${_from}")
+            set(_msg "${NROS_KNOB_DEPRECATION_TEMPLATE}")
+            string(REPLACE "{legacy}" "${_from}" _msg "${_msg}")
+            string(REPLACE "{env}" "${_canon}" _msg "${_msg}")
+            message(DEPRECATION "nros: ${_msg}")
+        endif()
+    endif()
     set(${out_value} "${_value}" PARENT_SCOPE)
     if(ARGC GREATER 2)
         set(${ARGV2} "${_from}" PARENT_SCOPE)
