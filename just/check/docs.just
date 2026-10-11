@@ -277,6 +277,15 @@ roadmap-boxes:
 roadmap-claims:
     @python3 scripts/check-roadmap-claims.py
 
+# 2026-10-12 -- an open issue and an active phase that name each other do so
+# BOTH ways. Measured that day on 167 open issues: 23 links ran issue -> phase
+# only and 47 phase -> issue only. An issue may name no active phase at all
+# (#1957 archived 36 phases and left their issues standing alone); this checks
+# the links that exist, never demands one. No allowlist.
+[private]
+issue-phase-links:
+    @python3 scripts/check-issue-phase-links.py
+
 # phase-464 -- a `PR #1234 (abc1234)` citation must name a commit main can
 # reach. Third sibling of `roadmap-status` and `roadmap-claims`: those ask
 # whether a status EXISTS and whether it contradicts its own body; this one
