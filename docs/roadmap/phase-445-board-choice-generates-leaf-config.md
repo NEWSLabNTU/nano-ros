@@ -3,9 +3,9 @@
 **Status (2026-10-11). Re-measured on main 2026-10-11; the phase is NOT
 complete.** Acceptance: bullet 1 is MET for Rust and now for C/C++ (issue 1296,
 resolved). Bullet 2 is NOT MET for a single-package Rust leaf (issue 1305,
-reproduced). Bullet 3 was not measured. Bullet 4 holds for TRACKED files, but
-stale gitignored workspace roots survive on disk (issue 1404: `nros sync` still
-leaves them). Bullet 5 is NOT MET with 35 hits, down from 45 (issue 1289).
+reproduced). Bullet 3 was not measured. Bullet 4 holds for TRACKED files, and since
+issue 1404 (resolved) `nros sync` also removes a stale GENERATED workspace root
+left on disk. Bullet 5 is NOT MET with 35 hits, down from 45 (issue 1289).
 Fixed in code and still open on 2026-10-11: 1117, 1277, 1310.
 
 *(2026-09-11: Every wave is WRITTEN; the phase is NOT complete, and

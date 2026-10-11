@@ -2895,6 +2895,26 @@ fn lexically_join(base: &Path, rel: &Path) -> PathBuf {
     out
 }
 
+/// Issue 1404 — remove a workspace-root `Cargo.toml` the pre-RFC-0098 builder
+/// GENERATED, before anything reads it.
+///
+/// RFC-0098 D9 left a workspace with no root build file, and `nros build`
+/// deletes a stale generated one (`cargo_root::retire`), but only when it
+/// builds that workspace. Sync is what every lane runs first, and a stale root
+/// that names a member since deleted makes cargo refuse the WHOLE workspace at
+/// manifest parse. That surfaced as `cargo metadata` failing for an unrelated
+/// package deep in a fixture-build log. Only a file carrying the generator's
+/// own marker is removed. An authored `[workspace]` is left to `nros build`'s
+/// refusal: a single-package Rust leaf legitimately carries one, and sync must
+/// never delete a file a person wrote.
+fn retire_generated_workspace_root(ws_root: &Path) -> Result<Option<PathBuf>> {
+    use crate::builder::cargo_root::{RootState, retire, state};
+    if state(ws_root) != RootState::Generated {
+        return Ok(None);
+    }
+    retire(ws_root).map_err(|e| eyre!("sync: {e}"))
+}
+
 pub fn run_sync(args: SyncArgs) -> Result<()> {
     // Captured before `args.workspace` is moved below; the scope flags are read
     // near the END of sync, and a partial move would otherwise force the whole
@@ -2960,6 +2980,12 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
             ws_root.display()
         );
     };
+    if colcon_layout && let Some(gone) = retire_generated_workspace_root(&ws_root)? {
+        println!(
+            "sync: removed {} — a workspace root the pre-RFC-0098 builder generated (issue 1404)",
+            gone.display()
+        );
+    }
     let build_root = if args.build_dir.is_absolute() {
         args.build_dir.clone()
     } else {
@@ -7446,5 +7472,41 @@ mod search_path_tests {
         // A user's own include entry is not a retired one and survives.
         let out = render_patch_config_with("include = [\"mine.toml\"]\n", &[], None, true).unwrap();
         assert!(out.contains("mine.toml"), "{out}");
+    }
+}
+
+#[cfg(test)]
+mod retire_generated_root_tests {
+    //! Issue 1404 — sync removes the generator's stale root, never an authored one.
+    use super::*;
+
+    #[test]
+    fn a_generated_root_and_its_lock_are_removed() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join("Cargo.toml"),
+            format!(
+                "{} (phase-383 W3.a) — DO NOT EDIT.\n[workspace]\nmembers = [\"src/esp32_entry\"]\n",
+                crate::builder::cargo_root::GENERATED_MARKER
+            ),
+        )
+        .unwrap();
+        std::fs::write(tmp.path().join("Cargo.lock"), "version = 4\n").unwrap();
+        let gone = retire_generated_workspace_root(tmp.path()).unwrap();
+        assert_eq!(gone, Some(tmp.path().join("Cargo.toml")));
+        assert!(!tmp.path().join("Cargo.toml").exists());
+        assert!(!tmp.path().join("Cargo.lock").exists());
+    }
+
+    #[test]
+    fn an_authored_workspace_is_left_alone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let authored = "[workspace]\nmembers = [\"src/a\"]\n";
+        std::fs::write(tmp.path().join("Cargo.toml"), authored).unwrap();
+        assert_eq!(retire_generated_workspace_root(tmp.path()).unwrap(), None);
+        assert_eq!(
+            std::fs::read_to_string(tmp.path().join("Cargo.toml")).unwrap(),
+            authored
+        );
     }
 }
