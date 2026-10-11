@@ -1,6 +1,6 @@
 // Phase 235.8 — C++ borrowed runtime E2E driver.
 // Serialize an owned message (Rust FFI), then deserialize into the borrowed
-// view (real Rust nros_cpp_deserialize_*_borrowed) and assert every borrowed
+// view (real Rust nros_cpp_deserialize_*_view) and assert every borrowed
 // view (StringView / Span / LeSpan) aliases the CDR buffer with correct values.
 #include <cassert>
 #include <cstdio>

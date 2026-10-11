@@ -35,7 +35,7 @@ extern "C" {
 int nros_cpp_publish_fingerprint_corpus_msg_shapes(void* handle, const void* msg);
 int nros_cpp_serialize_fingerprint_corpus_msg_shapes(const void* msg, uint8_t* buf, size_t buf_len, size_t* out_len);
 int nros_cpp_deserialize_fingerprint_corpus_msg_shapes(const uint8_t* data, size_t len, void* out);
-int nros_cpp_deserialize_fingerprint_corpus_msg_shapes_borrowed(const uint8_t* data, size_t len, void* out);
+int nros_cpp_deserialize_fingerprint_corpus_msg_shapes_view(const uint8_t* data, size_t len, void* out);
 } // extern "C"
 
 namespace fingerprint_corpus { namespace msg {
@@ -159,7 +159,7 @@ struct ShapesView {
     /// Deserialize CDR `data` into a borrowed view. Returns 0 on success, -1 on
     /// error. The view's borrowed pointers alias `data`.
     static int deserialize_view(const uint8_t* data, size_t len, ShapesView* out) {
-        return nros_cpp_deserialize_fingerprint_corpus_msg_shapes_borrowed(data, len, out);
+        return nros_cpp_deserialize_fingerprint_corpus_msg_shapes_view(data, len, out);
     }
 };
 
