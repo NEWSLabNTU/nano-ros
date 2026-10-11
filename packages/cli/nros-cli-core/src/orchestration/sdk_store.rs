@@ -416,11 +416,26 @@ impl Provenance {
     }
 }
 
-/// `nros-sdk.lock` — the exact installed toolset, for reproducibility.
+/// `nros-sdk.lock` — what a project's builds used, for reproducibility.
+///
+/// `[tool.*]` is written by `nros setup`; the rest (RFC-0104 D4, phase-485 W3)
+/// by `nros build`, from what each build RECORDED reading — see
+/// [`crate::orchestration::project_lock`]. Every table but `tool` is skipped
+/// when empty, so a tools-only lock is byte-identical to what it was.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SdkLock {
     #[serde(default)]
     pub tool: BTreeMap<String, LockEntry>,
+    /// Each vendored source tree a build read, at the commit it read.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub source: BTreeMap<String, crate::orchestration::project_lock::SourceRecord>,
+    /// Each Zephyr module a build used (RFC-0104 D4a).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub west: BTreeMap<String, crate::orchestration::project_lock::WestRecord>,
+    /// Each cargo root's registry set, keyed by the root's path relative to the
+    /// project.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub cargo: BTreeMap<String, crate::orchestration::project_lock::CargoRecord>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

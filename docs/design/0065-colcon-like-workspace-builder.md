@@ -128,10 +128,13 @@ verb; `nros doctor` still warns on it.
 **That objection is to wrapping the compiler, not to deriving the root.** This
 RFC's builder does not wrap:
 
-* **Stage 5 is `exec`, not a pipe.** The native tool replaces the process. A
-  rustc error is byte-identical to `cargo build`'s, because nothing is capturing
-  it. This is also precisely what colcon cannot do — its per-package task model
-  must capture output in order to attribute it.
+* **Stage 5 hands off; it never pipes.** The native tool's stdio is the
+  terminal's. A rustc error is byte-identical to `cargo build`'s, because
+  nothing is capturing it. This is also precisely what colcon cannot do — its
+  per-package task model must capture output in order to attribute it. (Until
+  phase-485 W3 the handoff was an `exec`. It is now a child with INHERITED
+  stdio, so `nros` can record the project lock after the build (RFC-0104 D4).
+  Nothing is captured, and `nros build` exits with the child's own status.)
 * **The generated root is a real build tree.** `build/<coord>/CMakeLists.txt` is
   an ordinary cmake project; `cmake --build build/<coord>` works by hand
   forever after. RFC-0024 §2.3 ("cargo / cmake stay user-facing") holds
@@ -145,6 +148,14 @@ pure wrapping.
 ## Decision
 
 ### D1 — `nros build` is a five-stage pipeline that ends in `exec`
+
+> **Amended (phase-485 W3, RFC-0104 D4).** Stage 5 hands the native command
+> stdio by INHERITANCE and waits, instead of `exec`ing. A build's record of
+> what it READ exists only once it has run, and a process that has become the
+> build can record nothing. The two guarantees `exec` was chosen for still
+> hold. Output is never captured, so diagnostics are byte-identical. The exit
+> status is the native tool's own: a failing child's code becomes `nros
+> build`'s code, and a signal becomes 128 + signal.
 
 ```
 nros build [<image>] [--board <board>] [-- <native build args>]
@@ -1175,6 +1186,10 @@ rejected here, because neither has a derivation to perform.
 
 ## Changelog
 
+- **2026-10-11** — D1 amended (phase-485 W3): stage 5 waits on the native
+  command with inherited stdio instead of `exec`ing it, so `nros build` can
+  record `nros-sdk.lock` after the build (RFC-0104 D4). Diagnostics and the
+  exit status are unchanged.
 - **2026-09-28** — **D3 amended: `Driver::IdfPy` is deleted and the driver
   choice gained a third outcome.** There are three roads, not four. An esp32
   image whose package graph crosses languages now REFUSES rather than exec'ing

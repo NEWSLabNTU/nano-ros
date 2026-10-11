@@ -1,7 +1,7 @@
 # Phase 485 — dependency pinning: one pin set, one project lock
 
 **Status (2026-10-11). M1–M3 measured, and the issue-1781 fix landed. W1 has
-landed (the registry pin set), and so has W2 (seeded leaf locks); W3–W10 are open.** Implements
+landed (the registry pin set), and so have W2 (seeded leaf locks) and W3 (the project lock across kinds); W4–W10 are open.** Implements
 [RFC-0104](../design/0104-dependency-pinning-and-project-lock.md). The RFC's
 D3 and D5 rested on facts that were not yet measured, so M1–M3 ran before any
 implementation and amended the RFC.
@@ -238,6 +238,60 @@ build, only when content changes (the existing write-if-changed).
 
 W3 also records `[west.<module>]` for a Zephyr image (RFC-0104 D4a), from
 the build's `zephyr_modules.txt` at the manifest revision.
+
+**Result (2026-10-11) — landed.** `[system.*]` belongs to W6 and
+`[generated.*]` to W5; each is written by the work item that reads it.
+
+- **What gets recorded.** `orchestration::project_lock::record` folds each
+  finished plan into the lock that `store::lock_path_for` finds from the
+  project. That is the same lock `nros setup` writes `[tool.*]` into. It adds
+  three tables:
+  - `[source.<name>]`: commit, origin rung, and `dirty` when set;
+  - `[west.<module>]`: revision;
+  - `[cargo."<root>"]`: `sha256:` over the registry set, plus a count.
+
+  Entries merge, so a project with several images keeps every image's
+  sources. The file is written only when its content changes: a second
+  identical build writes nothing.
+- **Derived from what the build read, never from what the index declares.**
+  The input is every path in the build's own records:
+  - cargo dep-info (`*.d`, continuation lines included);
+  - build-script `rerun-if-changed` from `build/*/output`;
+  - `ninja -t deps` wherever the walk meets a `build.ninja`;
+  - Zephyr's `zephyr_modules.txt`.
+
+  A `[source.*]` is recorded iff a read path lies under its located root (the
+  same `locate` ladder `resolved.toml`'s `[locations]` uses). An unreadable
+  tree is a smaller record, never a failed build.
+- **Scoped to THIS image's directories.** The first version scanned the
+  whole `<ws>/build/`. It then recorded a native Cyclone image as reading
+  FreeRTOS, ThreadX, lwIP, NetX Duo and XRCE, all from other images' build
+  trees. Each driver arm now names its own directories:
+  - the generated entry's `target/`;
+  - `build/<coord>/` for cmake;
+  - the west `-d` directory.
+- **Measured, on the native talker (cargo) and two workspace cmake images.**
+  - **Talker and C `native` (zenoh, cmake).** Both record
+    `[source.zenoh-pico]` at the pin, from the checkout. For the cmake image
+    that comes through its cargo half, as M3 found. `mbedtls`, declared and
+    not read, is absent, as M3 measured.
+  - **C `native_cyclonedds`.** Records no source at all, and that is correct.
+    Its Cyclone is the TOOL store's prebuilt
+    (`~/.nros/sdk/cyclonedds/0.10.5-nros1`, which `dds/dds.h` resolves to),
+    not `[source.cyclonedds-src]`. That corrects M3's row for this image.
+  - **West.** Covered by a unit test over the real file format; a parse of a
+    real `zephyr_modules.txt` from a 3.7 build has the same shape. No west
+    image was built live for this item.
+- **RFC-0065 D1 amended.** The handoff used to be `exec`, so nothing could
+  run after the build. Every plan is now waited on with stdio INHERITED.
+  Nothing is captured, and a failing child's code (or 128 + signal) is
+  `nros build`'s exit code, carried as `ChildExit`. The two guarantees `exec`
+  was chosen for are kept, and the record has a place to happen.
+- **RFC-0104 open question 3 answered: a hash.** The leaf `Cargo.lock`
+  beside the root is the diffable set. `[cargo]` is keyed relative to the
+  LOCK, not the project, because a checkout's leaves all record into the one
+  lock at its root, where a project-relative key would be `"."` for all of
+  them.
 
 ### W4 — the drift check (D9)
 
