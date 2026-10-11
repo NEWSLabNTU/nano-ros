@@ -1,13 +1,41 @@
 ---
 id: 1796
 title: "On a Zephyr Rust image a DERIVED pool size reaches the C lane only — the Rust lane builds the crate default"
-status: open
+status: resolved
 type: bug
 area: [zephyr, build, sizing]
 severity: medium
 found: 2026-10-11
+resolved: 2026-10-11
 related: [0460, 1033, 1505, 1721, phase-481, rfc-0100]
 ---
+
+## Resolution (2026-10-11)
+
+Fixed by #1949, along the issue's first road: no second Kconfig render, no
+configure re-run. `nros_derived_knob_env()` (`zephyr/cmake/nros_cargo_build.cmake`)
+collects every knob resolved on the `derived` rung as `KEY=VALUE`, and
+`zephyr/CMakeLists.txt` appends the list to the Rust lane's existing
+`cmake -E env` carrier, `NROS_BOARD_FACTS_ENV` (issue 1662). That puts the value
+on rung 1 of `nros_zephyr_build`'s ladder, ahead of the `-1` in `$DOTCONFIG`.
+Only the derived rung goes: a value is derived only when nobody stated one, so
+the forward cannot outrank a statement.
+
+Measured, against the acceptance below:
+- `NROS_XRCE_MAX_SUBSCRIBERS` is deleted from `rust/talker`'s `zephyr_xrce` image.
+- The Rust lane's command in `build.ninja` carries
+  `NROS_XRCE_MAX_SUBSCRIBERS=0;NROS_EXECUTOR_MAX_CBS=1;NROS_EXECUTOR_ACTION_CLIENTS=0`.
+- `case_19_xrce_rust_pubsub_e2e` passes.
+- With the append commented out, the same rebuild fails it 3/3.
+
+The fix moves every derived knob on every Zephyr Rust image, not only this one,
+so every `build-rust-*` Zephyr fixture was rebuilt and all Zephyr Rust tests
+run: 17/18 pass. The one red (`zephyr_rust_zenoh_action_goal_completion_rate`)
+is an unmet precondition: its native peer was not built in that tree.
+
+Not done here: the OTHER stated pool rows in Zephyr Rust images that the
+inventory now answers on both lanes. Each needs its own measurement before it
+goes, as this one had.
 
 ## Measured
 

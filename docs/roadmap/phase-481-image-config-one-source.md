@@ -679,8 +679,11 @@ accepted), and each snippet's header says when it applies. `-DNROS_IMAGE`
 sticking in the cache is documented as `-b` behaviour rather than changed: a
 stale value fails loudly, naming the declared images.
 
-Still open: tier 2 for the Zephyr cells; the follow-up that a derived pool
-value does not reach the Zephyr Rust lane (filed separately).
+Still open: tier 2 for the Zephyr cells. The follow-up that a derived pool
+value did not reach the Zephyr Rust lane is
+[issue 1796](../issues/archived/1796-zephyr-rust-lane-ignores-derived-pool.md),
+resolved by #1949; `rust/talker`'s `zephyr_xrce` image no longer states
+`NROS_XRCE_MAX_SUBSCRIBERS`.
 
 ## Not in this phase
 
