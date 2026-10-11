@@ -1721,6 +1721,11 @@ fn plan_single_package_cmake(
         profile: None,
         cmake_build_dir: Some(build_dir),
         configure: Some(Handoff::new("cmake", a).in_dir(root)),
+        record: crate::orchestration::project_lock::BuildRecord {
+            project: root.to_path_buf(),
+            cargo_roots: Vec::new(),
+            build_dirs: vec![root.join("build").join(&image_id)],
+        },
     }]))
 }
 
