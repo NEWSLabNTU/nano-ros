@@ -88,3 +88,41 @@ pub fn nros_git_command(program: impl AsRef<std::ffi::OsStr>) -> std::process::C
     nros_clear_inherited_git_env(&mut cmd);
     cmd
 }
+
+/// Is `sha` in `tip`'s history, as far as THIS checkout can tell? — the Rust
+/// twin of `scripts/lib/git_history.py`'s `ancestry` and the shell
+/// `nros_git_ancestry` (issue 1476).
+///
+/// `Some(true)` counts in any clone: if git finds a path, the path exists.
+/// `Some(false)` only from a full history. `None` ("cannot tell here") when the
+/// history is truncated (a shallow clone grafts its tip parentless, so
+/// `merge-base --is-ancestor` answers NO for a pair the full history relates),
+/// when the object is absent from a truncated clone, or when git could not
+/// answer at all. A caller must report `None`, never read it as a verdict.
+#[allow(dead_code)] // each includer uses the half it needs
+pub fn nros_git_ancestry(dir: &std::path::Path, sha: &str, tip: &str) -> Option<bool> {
+    let git = |args: &[&str]| {
+        nros_git_command("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .output()
+            .ok()
+    };
+    let truncated = git(&["rev-parse", "--is-shallow-repository"])
+        .is_some_and(|o| String::from_utf8_lossy(&o.stdout).trim() == "true");
+    let present =
+        git(&["cat-file", "-e", &format!("{sha}^{{commit}}")]).is_some_and(|o| o.status.success());
+    if !present {
+        return if truncated { None } else { Some(false) };
+    }
+    match git(&["merge-base", "--is-ancestor", sha, tip])?
+        .status
+        .code()
+    {
+        Some(0) => Some(true),
+        Some(1) if truncated => None,
+        Some(1) => Some(false),
+        _ => None,
+    }
+}
