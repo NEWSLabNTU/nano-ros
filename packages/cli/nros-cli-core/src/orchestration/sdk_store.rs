@@ -436,6 +436,10 @@ pub struct SdkLock {
     /// project.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub cargo: BTreeMap<String, crate::orchestration::project_lock::CargoRecord>,
+    /// What a build OBSERVED of the host's system packages (RFC-0104 D6) —
+    /// recorded and warned about, never enforced.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub system: BTreeMap<String, crate::orchestration::system_obs::SystemRecord>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

@@ -1787,7 +1787,10 @@ pub fn run(args: Args) -> Result<()> {
             None => std::env::current_dir().wrap_err("resolving cwd as the workspace root")?,
         };
         let root = std::fs::canonicalize(&root).unwrap_or(root);
-        crate::cmd::ws::refresh_generated(&root, args.dry_run)?;
+        let regenerated = crate::cmd::ws::refresh_generated(&root, args.dry_run)?;
+        if !args.dry_run {
+            observe_system(&args, &regenerated);
+        }
     }
 
     let plans = plan_builds(&args)?;
@@ -1928,6 +1931,53 @@ fn record_project_lock(
     }
     drifts.dedup();
     Ok(drifts)
+}
+
+/// RFC-0104 D6 (phase-485 W6) — record what the host's system packages are and
+/// say, once, what moved; warn on every build while one is outside its declared
+/// range. Never refuses: the host's ROS is the user's, not ours to pin.
+fn observe_system(args: &Args, regenerated: &[String]) {
+    let root = match &args.workspace {
+        Some(w) => w.clone(),
+        None => match std::env::current_dir() {
+            Ok(d) => d,
+            Err(_) => return,
+        },
+    };
+    let prefixes = crate::orchestration::system_obs::ament_prefixes();
+    if prefixes.is_empty() {
+        return; // no ROS environment: nothing to observe, and nothing to say
+    }
+    let Some(nr) = crate::orchestration::nano_ros_root::resolve(args.nano_ros_path.clone(), &root)
+    else {
+        return;
+    };
+    let Ok(index) =
+        crate::orchestration::sdk_index::SdkIndex::load(&nr.join("nros-sdk-index.toml"))
+    else {
+        return;
+    };
+    let lock_path = crate::orchestration::store::lock_path_for(&root);
+    let Ok(mut lock) = crate::orchestration::sdk_store::SdkLock::load(&lock_path) else {
+        return;
+    };
+    let generated = crate::orchestration::system_obs::generated_names(&root);
+    let observed = crate::orchestration::system_obs::observe(&index.compat, &generated, &prefixes);
+    for line in crate::orchestration::system_obs::report(&lock.system, &observed, regenerated) {
+        eprintln!("{line}");
+    }
+    let before = lock.clone();
+    for o in observed {
+        lock.system.insert(
+            o.name,
+            crate::orchestration::system_obs::SystemRecord { version: o.version },
+        );
+    }
+    if lock != before
+        && let Err(e) = lock.save(&lock_path)
+    {
+        eprintln!("nros build: warning: system observations not recorded: {e:#}");
+    }
 }
 
 /// RFC-0095 D9 — the first `nros build` writes the pin it used and says so.

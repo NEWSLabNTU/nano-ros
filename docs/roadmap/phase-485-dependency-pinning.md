@@ -1,7 +1,7 @@
 # Phase 485 — dependency pinning: one pin set, one project lock
 
 **Status (2026-10-11). M1–M3 measured, and the issue-1781 fix landed. W1 has
-landed (the registry pin set), and so have W2 (seeded leaf locks), W3 (the project lock across kinds), W7 (`nros update`), W4 (the drift check; the shim is retired), W5 (issue 1780, landed on its own) and W8 (no fetch at build time); W6, W9 and W10 are open.** Implements
+landed (the registry pin set), and so have W2 (seeded leaf locks), W3 (the project lock across kinds), W7 (`nros update`), W4 (the drift check; the shim is retired), W5 (issue 1780, landed on its own), W6 (system libraries recorded and warned about) and W8 (no fetch at build time); W6, W9 and W10 are open.** Implements
 [RFC-0104](../design/0104-dependency-pinning-and-project-lock.md). The RFC's
 D3 and D5 rested on facts that were not yet measured, so M1–M3 ran before any
 implementation and amended the RFC.
@@ -377,6 +377,40 @@ Record `[system.*]`; on change, warn once naming what moved and what
 regenerated. Add compatibility ranges to the index (open question 2) for the
 zenoh router (`rmw_zenoh_cpp`'s zenoh vs zenoh-pico) and host Cyclone vs the
 fork's 0.10.5 line; an observation outside a range warns loudly.
+
+**Result (2026-10-11) — landed.**
+
+- **Open question 2 is answered with a separate `[compat.<name>]` table.**
+  A row names what to observe and the range it must fall in:
+  - `ament = "<pkg>"`, read from `package.xml`, or `cmake = "<Pkg>"`, read
+    from `<Pkg>ConfigVersion.cmake`;
+  - `range` (comma-separated bounds);
+  - `why`, printed when an observation leaves the range.
+
+  Two rows are written:
+  - `rmw_zenoh_cpp` `>=0.1.1, <0.3`: its zenoh is what the router speaks
+    (issues 0609, 0291).
+  - `cyclonedds` (CMake `CycloneDDS`) `>=0.10, <0.11`: the fork's line
+    (issue 0507).
+
+  Every ament package a build generated from is observed too.
+- **`nros build`** observes these against `AMENT_PREFIX_PATH`, first entry
+  wins (issue 1781), and records them in `nros-sdk.lock` `[system.*]`.
+  - A version that MOVED is printed once, in RFC-0104 D6's format, joined
+    with what W5 regenerated.
+  - A version OUTSIDE its range warns loudly on every build while it stays
+    outside.
+  - With no ROS environment, nothing is observed and nothing is said.
+  - Nothing here refuses: the host's ROS is the user's (issue 1248).
+- **Measured on the talker.**
+  - The first build recorded `rmw_zenoh_cpp 0.1.9`, `cyclonedds 0.10.5`,
+    `std_msgs 4.9.2` and `builtin_interfaces 1.2.3`, and printed nothing.
+  - An overlay moving `std_msgs` to 4.9.3 and `rmw_zenoh_cpp` to 0.3.0
+    printed, once, `system changed …` with `std_msgs 4.9.2 -> 4.9.3
+    regenerated: std_msgs` and `rmw_zenoh_cpp 0.1.9 -> 0.3.0`. Then, and
+    again on the next build, it printed `WARNING — rmw_zenoh_cpp 0.3.0 is
+    OUTSIDE its declared range` with the `why`.
+  - Removing the overlay reported the move back.
 
 ### W7 — `nros update` (D7)
 
