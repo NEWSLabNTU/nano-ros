@@ -1,13 +1,27 @@
 ---
 id: 1821
 title: "Two runs of the same `nros` binary over the same message closure emit some files with lines in a different order"
-status: open
+status: resolved
 type: bug
 severity: low
 area: [codegen]
 related: [0466]
 found: 2026-10-12
 ---
+
+## Resolved 2026-10-12 (PR #1995)
+
+Reproduced with the CLI: two runs of `nros generate all` over a 10-package
+Humble closure differed in 10 of 696 files, all package `Cargo.toml`
+dependency rows and C umbrella `<pkg>.h` includes. There were two causes:
+rosidl-bindgen's `generate_cargo_toml` iterated a `HashSet` straight into
+`[dependencies]`, and the C/C++ umbrella emitters wrote their lists in caller
+order. The fix covers the class. Every dependency set in rosidl-codegen and
+rosidl-bindgen is now a `BTreeSet`, and both umbrella emitters sort and dedup
+at the sink. After the fix, 4 runs gave 0 differing files. Old against new,
+13 files differ, and each is identical once sorted. The committed
+`packages/interfaces` tree is unchanged. Test:
+`umbrella_headers_do_not_depend_on_input_order`.
 
 ## Measured
 
