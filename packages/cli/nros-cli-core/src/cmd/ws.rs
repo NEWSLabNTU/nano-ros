@@ -1872,6 +1872,11 @@ fn synthesise_leaf_launch(leaf: &Path) -> Result<Option<PathBuf>> {
         ));
     }
     xml.push_str("</launch>\n");
+    // Issue 1813 — the bringup is named by its DIRECTORY, never by
+    // `[system] name`: `model_location::model_search_paths` keys every model
+    // lookup on `bringup_dir.file_name()`, and `nros plan`'s SYSTEM_PKG only
+    // names its output dir. Naming this launch dir anything else is how issue
+    // 1296's "no SystemModel" came back.
     let leaf_name = leaf
         .file_name()
         .map(PathBuf::from)
