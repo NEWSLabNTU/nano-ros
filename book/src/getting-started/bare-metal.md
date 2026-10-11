@@ -74,6 +74,8 @@ matching Cargo feature — never a different board crate:
 The in-tree RTIC peers (`listener-rtic/`, `service-client-rtic/`,
 `action-server-rtic/`, …) differ from their direct-exec siblings in exactly
 those two lines.
+(This talker no longer writes the row at all: its generated selection package,
+described below, derives `board-entry` or `rtic` from the board name.)
 
 The RTIC surface used to be a separate `nros-board-rtic-mps2-an385`
 crate; phase-337 W6.a folded it in, because it depended on this crate
@@ -122,17 +124,26 @@ backend. Everything the board implies — triple, linker script, runner, cross
 compiler, `[patch.crates-io]` — follows the `board =` line on the next
 `nros sync`, so no linker flag and no triple ever moves by hand.
 
-One thing does not follow yet. A single-package leaf *is* its own entry, so it
-still names its board crate in `[dependencies]`
-(`nros-board-mps2-an385 = { … }`), and `nros sync` writes its patch rows from
-what the manifest names rather than from what the image names. Change the
-`board =` line alone and sync reports success while the build fails inside
-your own `src/main.rs` with an unresolved board crate. **On a single-package
-Rust leaf the `board =` line and the `[dependencies]` row move together** —
-that is
-[issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1305-single-package-board-crate-dep-not-generated.md).
-In a workspace the entry is generated, so there the board line really is the
-only edit.
+That includes the board crate. This leaf's `Cargo.toml` names no board: its
+image-only dependencies (the board crate with the features its entry needs,
+the RMW backend, the runtime and the panic handler) come from one generated
+path dependency,
+
+```toml
+[target.'cfg(target_os = "none")'.dependencies]
+qemu_bsp_talker_nros_selection = { path = "build/nros/selection" }
+```
+
+which `nros sync` and `nros build` write for the image's board, and
+`nros::main!` reaches the board through it. So changing `board =` to
+`"freertos"` and re-running `nros sync && nros build` builds the FreeRTOS image
+with no other edit. Other in-tree single-package examples still name their
+board crate in `[dependencies]` until they are migrated the same way; on those,
+the `board =` line and the `[dependencies]` row move together, and `nros sync`
+refuses a mismatch naming both
+([issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1305-single-package-board-crate-dep-not-generated.md)).
+In a workspace the entry is generated, so there the board line is the only
+edit.
 
 QEMU Slirp networking — no host TAP / bridge / sudo. The zenoh
 default port is 7447; this example dials **10500** (the `locator`

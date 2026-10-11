@@ -231,7 +231,22 @@ esp32 stack budgets.
   SINGLE-PACKAGE leaf, which still names its board crate — issue 1305. The box
   stays open for that alone. One writer, `builder/cargo_config.rs`; the
   per-invocation `NROS_DECLARED_*` exports are gone, and
-  `workspace-fixtures-build.sh` refuses a cargo workspace row with no image.)* `nros sync` / `nros build` write `build/<image>/nros-cargo.toml` (board
+  `workspace-fixtures-build.sh` refuses a cargo workspace row with no image.)*
+  **W4c — D6 for single-package leaves, generator landed (2026-10-12, issue
+  1305, `fix/1305-leaf-selection-package`); the example sweep is still owed.**
+  A migrated leaf names one path dependency, `<pkg>_nros_selection = { path =
+  "build/nros/selection" }` (target-scoped where its node must build for the
+  host), and `nros sync` (before its first cargo call) and `nros build` write
+  that package for the image's board: the board crate with its features, the
+  `nros-platform` platform feature, the descriptor's crate-root deps, and the
+  edition/RMW features. One writer with the workspace entry
+  (`builder::entry::image_dependency_lines`, `orchestration::facade::derive`);
+  `nros::main!` reaches the board through the package's re-export. Migrated as
+  proof: `examples/mps2-an385-baremetal/rust/talker` and
+  `packages/testing/nros-tests/bins/entry-poc`. The other leaves keep their
+  hand-written board crate and the sync refusal until the sweep (issue 1305
+  lists it and the leaves that need more than the one dependency).
+  `nros sync` / `nros build` write `build/<image>/nros-cargo.toml` (board
   `cargo_config` + per-image `target-dir` + resolved `[env]` incl. the entity
   facts + in-repo patch rows) and the generated entry
   `build/<coord>/<entry>/Cargo.toml` as its own cargo root. Stage 5 runs
@@ -446,7 +461,12 @@ esp32 stack budgets.
   re-measured.**
 - Switching a single-package example to another board is ONE line in
   `system.toml`; `git diff` afterwards shows that line only.
-  **NOT MET for a Rust leaf — issue 1305.** Measured: one line changed,
+  **MET for a MIGRATED Rust leaf (2026-10-12, W4c): a copy of
+  `examples/mps2-an385-baremetal/rust/talker` outside the checkout, one line
+  (`board = "freertos"`), `nros sync` rc=0, `nros build` rc=0, `git diff`
+  shows that line only, and the FreeRTOS image boots in QEMU and publishes 27
+  messages to a router in 30 s. NOT MET yet for the leaves not migrated
+  (issue 1305).** Earlier measurement, before W4c: one line changed,
   `nros sync` reported `done.`, `nros build` failed with
   `cannot find nros_board_<new_board> in the crate root`. A single-package
   leaf is its own entry, so it still names its board crate in
