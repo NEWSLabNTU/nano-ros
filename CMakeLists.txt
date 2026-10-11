@@ -138,6 +138,28 @@ endif()
 #   - Sets `NROS_PLATFORM_LINK_FEATURES` (default link feature set)
 # Validation: the configured value must match a module on disk.
 # ---------------------------------------------------------------------------
+# phase-484 W4f — a standalone leaf that pulls nano-ros in with
+# `add_subdirectory()` (the Rust-staticlib leaves) states its board ONCE, in
+# its `system.toml`; the board MODULE comes from that board's descriptor
+# (`cmake_module`), read by the same `nros ws leaf-system` the find_package
+# road uses. Skipped when the board was already given (`-D`, a generated
+# workspace root) or the find_package road already read the leaf.
+if(NOT NANO_ROS_BOARD AND NOT DEFINED NANO_ROS_LEAF_SYSTEM
+   AND NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR
+   AND EXISTS "${CMAKE_SOURCE_DIR}/system.toml")
+    include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosPackageXml.cmake")
+    include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosCodegenCore.cmake")
+    nano_ros_read_leaf_system(DIR "${CMAKE_SOURCE_DIR}")
+    if(NANO_ROS_EXPORT_CMAKE_BOARD)
+        set(NANO_ROS_BOARD "${NANO_ROS_EXPORT_CMAKE_BOARD}")
+    endif()
+    # This is a subdirectory scope, so the leaf's own scope cannot see what was
+    # read; a board module that needs the leaf's locator takes it from here
+    # rather than asking the CLI a second time.
+    set_property(GLOBAL PROPERTY NROS_TOP_LEAF_READ "${CMAKE_SOURCE_DIR}")
+    set_property(GLOBAL PROPERTY NROS_TOP_LEAF_LOCATOR "${NANO_ROS_LEAF_LOCATOR}")
+endif()
+
 # Map legacy / variant NANO_ROS_PLATFORM values to their canonical
 # per-platform module names. The legacy cache strings (e.g.
 # `freertos_armcm3`, `threadx_riscv64`) name a specific platform+board

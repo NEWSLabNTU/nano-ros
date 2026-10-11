@@ -563,7 +563,16 @@ endfunction()
 # ---------------------------------------------------------------------------
 include("${_NROS_BOARD_ROOT}/cmake/NanoRosEntryLocator.cmake")
 function(_nros_rv64_image_locator out_var)
-    if(NOT DEFINED NROS_ENTRY_LOCATOR AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/system.toml")
+    # phase-484 W4f — the root already read this leaf (to derive its board
+    # module); take that answer instead of a second `nros ws leaf-system`.
+    get_property(_read GLOBAL PROPERTY NROS_TOP_LEAF_READ)
+    if(NOT DEFINED NROS_ENTRY_LOCATOR AND _read STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+        get_property(_loc GLOBAL PROPERTY NROS_TOP_LEAF_LOCATOR)
+        if(NOT "${_loc}" STREQUAL "")
+            set(${out_var} "${_loc}" PARENT_SCOPE)
+            return()
+        endif()
+    elseif(NOT DEFINED NROS_ENTRY_LOCATOR AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/system.toml")
         if(NOT COMMAND nano_ros_read_leaf_system)
             message(FATAL_ERROR
                 "nros_threadx_rv64_rust_app: ${CMAKE_CURRENT_SOURCE_DIR}/system.toml "

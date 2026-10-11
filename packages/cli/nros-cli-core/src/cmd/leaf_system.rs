@@ -135,6 +135,21 @@ pub fn write_image_env(
     Ok(Some(out.to_path_buf()))
 }
 
+/// The cmake BOARD MODULE a board builds with (phase-484 W4f): its
+/// descriptor's `cmake_module`, so a leaf may name its board by any alias.
+/// A board no single descriptor claims, or one that states no module, is
+/// passed through verbatim — the platform module then refuses a missing file
+/// exactly as it always has.
+pub fn cmake_board_module(catalog: Option<&BoardCatalog>, board: &str) -> String {
+    let Some(catalog) = catalog else {
+        return board.to_string();
+    };
+    match catalog.resolve_deploy(board) {
+        DeployResolution::Board(d) => d.cmake_module.clone().unwrap_or_else(|| board.to_string()),
+        _ => board.to_string(),
+    }
+}
+
 /// The C/C++ deploy token (the `NANO_ROS_PLATFORM` axis) a board implies:
 /// its descriptor's platform FAMILY (`PlatformKind::cmake_deploy`). A board
 /// no single descriptor claims, or one whose platform has no C/C++ module, is
@@ -269,6 +284,7 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
     let root = crate::orchestration::nano_ros_root::resolve(args.nano_ros_path, &dir);
     let catalog = root.as_deref().and_then(|r| BoardCatalog::load(r).ok());
     let deploy = deploy_token(catalog.as_ref(), &board);
+    let cmake_board = cmake_board_module(catalog.as_ref(), &board);
     let settings = match root.as_deref() {
         Some(r) if leaf_system::is_package_dir(&dir) => {
             crate::cmd::leaf_settings::resolve(&dir, r)?.map(|i| i.config_path)
@@ -308,6 +324,7 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
     for (k, v) in rows(&leaf, &deploy, settings.as_deref(), image_env.as_deref()) {
         println!("{k}={v}");
     }
+    println!("NROS_LEAF_CMAKE_BOARD={cmake_board}");
     println!(
         "NROS_LEAF_CONF={}",
         conf.iter()

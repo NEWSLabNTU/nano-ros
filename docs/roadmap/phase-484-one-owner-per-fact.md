@@ -450,6 +450,17 @@ no-router e2e bins that dial nothing on purpose. Not measured here: a NuttX
 QEMU run of the seven images (the env and the bake held the same value, so the
 binaries' locator strings cannot tell the carriers apart either way).
 
+**W4f — a leaf's cmake board is derived, not restated.** `nros ws
+leaf-system` prints `NROS_LEAF_CMAKE_BOARD` (the board's `cmake_module`,
+W4d), and both cmake roads take it: the find_package road sets
+`NANO_ROS_BOARD` from it instead of from the authored alias, and the
+`add_subdirectory` road (the six rv-virt-threadx Rust leaves) now derives it in
+the root `CMakeLists.txt` from the leaf's `system.toml` — the six
+`set(NANO_ROS_BOARD rv-virt-threadx)` lines are gone. The rv-virt board module
+takes the leaf's locator from that same read (one `leaf-system` call per
+configure, not two). Measured: the talker leaf configures, bakes
+`tcp/10.0.2.2:9400` from its `system.toml`, and links.
+
 ### W5 -- one canonical name per knob
 
 Split with phase-481 by RFC-0103 D2b (decided 2026-10-11: this phase builds the

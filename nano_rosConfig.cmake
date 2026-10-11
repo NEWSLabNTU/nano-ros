@@ -161,9 +161,16 @@ if(NANO_ROS_EXPORT_FOUND)
         set(NANO_ROS_RMW "${NANO_ROS_EXPORT_RMW}" CACHE STRING
             "RMW backend (from the leaf system.toml rmw)")
     endif()
-    if(NANO_ROS_EXPORT_BOARD AND NOT NANO_ROS_BOARD)
-        set(NANO_ROS_BOARD "${NANO_ROS_EXPORT_BOARD}" CACHE STRING
-            "nano-ros board (from the leaf system.toml [image] board)")
+    # phase-484 W4f — the board MODULE the leaf's board names, not the alias
+    # it was authored as (a package.xml-only leaf has no CMAKE_BOARD).
+    if(NANO_ROS_EXPORT_CMAKE_BOARD)
+        set(_nros_leaf_cmake_board "${NANO_ROS_EXPORT_CMAKE_BOARD}")
+    else()
+        set(_nros_leaf_cmake_board "${NANO_ROS_EXPORT_BOARD}")
+    endif()
+    if(_nros_leaf_cmake_board AND NOT NANO_ROS_BOARD)
+        set(NANO_ROS_BOARD "${_nros_leaf_cmake_board}" CACHE STRING
+            "nano-ros board module (from the leaf system.toml [image] board)")
     endif()
     # The verbs pick DEPLOY/BOARD up from these directory-scope vars.
     set(NROS_DEPLOY "${NANO_ROS_EXPORT_DEPLOY}")
