@@ -6,7 +6,7 @@ title: "parameter services are implemented and tested but undiscoverable: no
 status: open
 type: bug
 area: examples, docs
-related: [issue-0864, phase-426]
+related: [issue-0864, phase-426, rfc-0105, phase-491]
 ---
 
 ## What is actually true

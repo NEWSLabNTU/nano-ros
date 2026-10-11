@@ -6,7 +6,7 @@ type: limitation
 area: [params, node]
 severity: medium
 found: 2026-10-11
-related: [phase-382, phase-426, 0756, 1706]
+related: [phase-382, phase-426, 0756, 1706, rfc-0105, phase-491]
 ---
 
 ## What is true
