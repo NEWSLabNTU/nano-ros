@@ -461,7 +461,48 @@ read-task batch at depth 1 and asserts the counter reads 1 and the log line
 fires once; a 2,408 B request at a node declaring 8 parameters is counted as
 an overflow and logged with both numbers.
 
-Claim: phase-461-W4. Depends on: phase-461-W1, phase-461-W2. Owns: packages/rmw/zenoh/nros-rmw-zenoh/src/shim/service.rs (counters), packages/core/nros-node/src/parameter_services.rs (the issue-1271 once-log arm), packages/rmw/zenoh/nros-rmw-zenoh/tests/zenoh_integration.rs. Gate: the depth-1 double-request test and the 2,408 B overflow test. Status: not started.
+Claim: phase-461-W4. Depends on: phase-461-W1, phase-461-W2. Owns: packages/rmw/zenoh/nros-rmw-zenoh/src/shim/service.rs (counters), packages/core/nros-node/src/parameter_services.rs (the issue-1271 once-log arm), packages/rmw/zenoh/nros-rmw-zenoh/tests/zenoh_integration.rs. Gate: the depth-1 double-request test and the 2,408 B overflow test. Status: landed 2026-10-13 (below).
+
+**W4 result.**
+- **Counted per queryable, in the ring header** (`InboxDrops` on
+  `ServiceBuffer`): `ring_full` and `overflow`, read with
+  `ZenohServiceServer::inbox_drop_stats()`. The producer is the only writer,
+  so each count is a load and a store, never an atomic read-modify-write,
+  which riscv32imc (ESP32-C3) does not have. A re-bound header starts at
+  zero.
+- **One producer, one spelling.** The callback's enqueue became `admit`
+  (ring full: counted drop) and `store` (overflow: counted, LENGTH kept), and
+  the unit-test simulator calls the same two. Before, the simulator copied the
+  enqueue, so a counter added to the callback alone would have been invisible
+  to the tests.
+- **Said once per transition** (phase-444 W6's rule): an episode starts at
+  the first drop after a request got in (ring) or after one that fit
+  (overflow). The server says each new episode once, on the consumer side in
+  `take_request` (never on zenoh's read task), naming the ring's depth or slot
+  and the family's knob (`NROS_SERVICE_INBOX_*`, `NROS_ACTION_INBOX_*`,
+  `NROS_PARAM_SERVICE_INBOX_*`).
+- **The issue-1271 arm names the request's length.** An overflowing request
+  keeps its length in the ring entry, `take_request` reports it through
+  `refused_request_len`, and `ParameterServiceServers` passes it to the
+  `InboxOverflow` line beside `NROS_PARAM_SERVICE_INBOX_BYTES`.
+- **Tests, each with a negative control.**
+  - Unit (`shim::service::tests`): the depth-1 double request is counted 1
+    and said once; a ring that stays full is one line; an oversized request is
+    counted with its length; re-binding resets. Making `on_ring_full` a no-op
+    turns two red, and dropping the episode latch turns the once-per-episode
+    test red.
+  - Router-backed (`a_service_server_receives_through_the_ring_the_caller_supplied`,
+    extended): through the real C shim, 97 B into a 96 B slot reports
+    `refused_request_len() == Some(97)` and `overflow == 1`, and two requests
+    at depth 1 give `ring_full == 1`. Storing 0 instead of the length (the old
+    behaviour) turns it red.
+- **Not done as written:** the acceptance's "2,408 B request at a node
+  declaring 8 parameters". W2 measured that the 2,408 B premise was wrong (the
+  per-node worst request is 669 B and fits 1,024 B), so the overflow is
+  measured on the caller-ring server at its own slot size instead, the same
+  mechanism the builtin family uses. The log line's TEXT is not asserted:
+  nros-log has no capture hook. The once-ness it depends on is
+  (`DropAnnouncer`).
 
 ### W5 [zephyr, downstream] -- the island links, and the map says why
 

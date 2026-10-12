@@ -1695,9 +1695,29 @@ impl ParameterServiceServers {
         match r {
             Ok(answered) => usize::from(answered),
             Err(e) => {
-                self.note_failure(service, &e, cap);
+                // phase-461 W4 -- an inbox overflow keeps the request's length
+                // in the backend, so the line can say how big it was.
+                let request_len = matches!(e, TransportError::MessageTooLarge)
+                    .then(|| self.refused_request_len(service))
+                    .flatten();
+                self.note_failure(service, &e, cap, request_len);
                 0
             }
+        }
+    }
+
+    /// The length of the request `service`'s last take refused, when its
+    /// backend knows it (`ServiceTrait::refused_request_len`).
+    fn refused_request_len(&self, service: ParamService) -> Option<usize> {
+        match service {
+            ParamService::Get => self.get_parameters.handle.refused_request_len(),
+            ParamService::Set => self.set_parameters.handle.refused_request_len(),
+            ParamService::SetAtomically => {
+                self.set_parameters_atomically.handle.refused_request_len()
+            }
+            ParamService::List => self.list_parameters.handle.refused_request_len(),
+            ParamService::Describe => self.describe_parameters.handle.refused_request_len(),
+            ParamService::GetTypes => self.get_parameter_types.handle.refused_request_len(),
         }
     }
 
@@ -1709,7 +1729,13 @@ impl ParameterServiceServers {
     /// again every time a tool retries it.
     #[cold]
     #[inline(never)]
-    fn note_failure(&mut self, service: ParamService, e: &TransportError, cap: usize) {
+    fn note_failure(
+        &mut self,
+        service: ParamService,
+        e: &TransportError,
+        cap: usize,
+        request_len: Option<usize>,
+    ) {
         let kind = ParamServiceFailure::of(e);
         let bit = 1u64 << (service as u32 * FAILURE_KINDS + kind as u32);
         if self.reported & bit != 0 {
@@ -1742,16 +1768,32 @@ impl ParameterServiceServers {
             ),
             // nros-log truncates a line at its buffer, so the knobs come FIRST:
             // the first version of this line was cut before naming them.
-            ParamServiceFailure::InboxOverflow => nros_log::log_error!(
-                nros_log::get_logger("nros"),
-                "param service {}/{}: request dropped by the TRANSPORT inbox (not the {} B \
-                 executor buffer). NROS_PARAM_SERVICE_INBOX_BYTES; zenoh also \
-                 NROS_SERVICE_INBOX_BYTES, xrce NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE; or \
-                 declare `params:` (issues 1352, 1722)",
-                fqn,
-                svc,
-                cap
-            ),
+            // phase-461 W4 -- with the request's length when the backend kept
+            // it (zenoh does), so the line carries both numbers a reader needs:
+            // what arrived, and the knob that sizes the inbox it did not fit.
+            ParamServiceFailure::InboxOverflow => match request_len {
+                Some(len) => nros_log::log_error!(
+                    nros_log::get_logger("nros"),
+                    "param service {}/{}: a {} B request dropped by the TRANSPORT inbox (not \
+                     the {} B executor buffer). NROS_PARAM_SERVICE_INBOX_BYTES; zenoh also \
+                     NROS_SERVICE_INBOX_BYTES, xrce NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE; \
+                     or declare `params:` (issues 1352, 1722)",
+                    fqn,
+                    svc,
+                    len,
+                    cap
+                ),
+                None => nros_log::log_error!(
+                    nros_log::get_logger("nros"),
+                    "param service {}/{}: request dropped by the TRANSPORT inbox (not the {} \
+                     B executor buffer). NROS_PARAM_SERVICE_INBOX_BYTES; zenoh also \
+                     NROS_SERVICE_INBOX_BYTES, xrce NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE; or \
+                     declare `params:` (issues 1352, 1722)",
+                    fqn,
+                    svc,
+                    cap
+                ),
+            },
             ParamServiceFailure::ReplyTooLarge => nros_log::log_error!(
                 nros_log::get_logger("nros"),
                 "parameter service {}/{}: a request was dropped with no reply -- the reply does \

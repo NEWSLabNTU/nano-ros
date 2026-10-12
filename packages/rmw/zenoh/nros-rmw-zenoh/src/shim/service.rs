@@ -226,6 +226,25 @@ pub enum InboxSpec {
     Caller(&'static InboxRing),
 }
 
+impl InboxSpec {
+    /// phase-461 W4 -- the knobs that size this family's ring, (depth, slot
+    /// bytes), named by the drop log line.
+    fn knobs(&self) -> (&'static str, &'static str) {
+        match self {
+            InboxSpec::UserService => ("NROS_SERVICE_INBOX_DEPTH", "NROS_SERVICE_INBOX_BYTES"),
+            InboxSpec::Action => ("NROS_ACTION_INBOX_DEPTH", "NROS_ACTION_INBOX_BYTES"),
+            InboxSpec::Builtin => (
+                "NROS_PARAM_SERVICE_INBOX_DEPTH",
+                "NROS_PARAM_SERVICE_INBOX_BYTES",
+            ),
+            InboxSpec::Caller(_) => (
+                "the depth of the caller's own ring",
+                "the slot size of the caller's own ring",
+            ),
+        }
+    }
+}
+
 /// Shared buffer for service server callbacks -- a single-producer (the queryable
 /// callback on the zenoh read task) single-consumer (`take_request` on the
 /// executor) ring. `head`/`tail` are monotonic wrapping counters; the slot index
@@ -258,6 +277,9 @@ pub(super) struct ServiceBuffer {
     /// session's reply-slot table (this buffer array is process-global, so the
     /// handle cannot be recovered from the buffer index alone).
     pub(super) session: core::sync::atomic::AtomicPtr<zpico_sys::zpico_session_t>,
+    /// phase-461 W4 -- what this queryable's inbox dropped, counted by the
+    /// producer. See [`InboxDrops`].
+    pub(super) drops: InboxDrops,
 }
 
 impl ServiceBuffer {
@@ -270,8 +292,198 @@ impl ServiceBuffer {
             keyexpr_len: AtomicUsize::new(0),
             waker: AtomicWaker::new(),
             session: core::sync::atomic::AtomicPtr::new(core::ptr::null_mut()),
+            drops: InboxDrops::new(),
         }
     }
+}
+
+/// phase-461 W4 -- a queryable's two inbox drops, counted, and each said ONCE
+/// per transition into it.
+///
+/// Both were silent: a request arriving at a FULL ring is dropped on arrival
+/// (the producer keeps the buffered requests in order), and one LARGER than a
+/// slot is flagged and dropped at the take. The client of either sees only a
+/// timeout. These are per queryable, like phase-455 W1's reply-slot stats,
+/// and Rust-side because the ring is Rust.
+///
+/// **Single writer.** Only the producer (`queryable_callback`, or the test
+/// simulator through the same two functions) writes, so a count is a load and
+/// a store, never a read-modify-write. That is not a micro-optimisation: a
+/// `fetch_add` does not exist on a target without atomic RMW (riscv32imc, the
+/// ESP32-C3), and this crate reaches one.
+///
+/// **Once per transition** (phase-444 W6's rule, which phase-455 W1 also
+/// follows): an EPISODE starts at the first drop after a request was stored
+/// (for the ring) or after a request that fit (for the overflow), and the
+/// consumer announces each episode once ([`DropAnnouncer`]). A ring that stays
+/// full costs one log line, not one per spin.
+pub(super) struct InboxDrops {
+    ring_full: AtomicUsize,
+    overflow: AtomicUsize,
+    ring_full_episodes: AtomicUsize,
+    overflow_episodes: AtomicUsize,
+    in_ring_full: AtomicBool,
+    in_overflow: AtomicBool,
+    /// The request length of the most recent overflow, for the log line.
+    last_overflow_len: AtomicUsize,
+}
+
+/// What a queryable's inbox dropped since it was bound (phase-461 W4).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct InboxDropStats {
+    /// Requests dropped on arrival because the ring was full.
+    pub ring_full: usize,
+    /// Requests dropped because they were larger than a slot.
+    pub overflow: usize,
+}
+
+impl InboxDrops {
+    pub(super) const fn new() -> Self {
+        Self {
+            ring_full: AtomicUsize::new(0),
+            overflow: AtomicUsize::new(0),
+            ring_full_episodes: AtomicUsize::new(0),
+            overflow_episodes: AtomicUsize::new(0),
+            in_ring_full: AtomicBool::new(false),
+            in_overflow: AtomicBool::new(false),
+            last_overflow_len: AtomicUsize::new(0),
+        }
+    }
+
+    /// Producer only. Single writer, so load + store (see the type's docs).
+    fn bump(c: &AtomicUsize) {
+        c.store(c.load(Ordering::Relaxed).wrapping_add(1), Ordering::Release);
+    }
+
+    fn on_ring_full(&self) {
+        Self::bump(&self.ring_full);
+        if !self.in_ring_full.load(Ordering::Relaxed) {
+            self.in_ring_full.store(true, Ordering::Relaxed);
+            Self::bump(&self.ring_full_episodes);
+        }
+    }
+
+    fn on_stored(&self, overflow_len: Option<usize>) {
+        self.in_ring_full.store(false, Ordering::Relaxed);
+        match overflow_len {
+            Some(len) => {
+                self.last_overflow_len.store(len, Ordering::Relaxed);
+                Self::bump(&self.overflow);
+                if !self.in_overflow.load(Ordering::Relaxed) {
+                    self.in_overflow.store(true, Ordering::Relaxed);
+                    Self::bump(&self.overflow_episodes);
+                }
+            }
+            None => self.in_overflow.store(false, Ordering::Relaxed),
+        }
+    }
+
+    pub(super) fn stats(&self) -> InboxDropStats {
+        InboxDropStats {
+            ring_full: self.ring_full.load(Ordering::Acquire),
+            overflow: self.overflow.load(Ordering::Acquire),
+        }
+    }
+
+    /// Back to zero, when a header is (re)bound to a ring.
+    fn reset(&self) {
+        for c in [
+            &self.ring_full,
+            &self.overflow,
+            &self.ring_full_episodes,
+            &self.overflow_episodes,
+            &self.last_overflow_len,
+        ] {
+            c.store(0, Ordering::Release);
+        }
+        self.in_ring_full.store(false, Ordering::Release);
+        self.in_overflow.store(false, Ordering::Release);
+    }
+}
+
+/// The consumer's half of [`InboxDrops`]' once-per-transition rule: which
+/// episodes it has already said. Owned by the server, so it needs no atomics.
+#[derive(Clone, Copy, Debug, Default)]
+pub(super) struct DropAnnouncer {
+    ring_full_seen: usize,
+    overflow_seen: usize,
+}
+
+/// A drop the consumer should log now: one per new episode.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum DropAnnouncement {
+    RingFull { dropped: usize },
+    Overflow { dropped: usize, request_len: usize },
+}
+
+impl DropAnnouncer {
+    /// The episodes that started since the last call, at most one of each
+    /// kind (several episodes between two reads are still one line: the
+    /// count says how many requests went).
+    pub(super) fn take(&mut self, drops: &InboxDrops) -> [Option<DropAnnouncement>; 2] {
+        let mut out = [None, None];
+        let ring = drops.ring_full_episodes.load(Ordering::Acquire);
+        if ring != self.ring_full_seen {
+            self.ring_full_seen = ring;
+            out[0] = Some(DropAnnouncement::RingFull {
+                dropped: drops.ring_full.load(Ordering::Acquire),
+            });
+        }
+        let over = drops.overflow_episodes.load(Ordering::Acquire);
+        if over != self.overflow_seen {
+            self.overflow_seen = over;
+            out[1] = Some(DropAnnouncement::Overflow {
+                dropped: drops.overflow.load(Ordering::Acquire),
+                request_len: drops.last_overflow_len.load(Ordering::Relaxed),
+            });
+        }
+        out
+    }
+}
+
+/// phase-461 W4 -- the producer's first step, ONE spelling for the callback
+/// and the test simulator: the tail to write at, or `None` when the ring is
+/// full, which drops the request (counted) and keeps the buffered ones in
+/// order.
+fn admit(buffer: &ServiceBuffer) -> Option<usize> {
+    let ring = buffer.ring;
+    let head = buffer.head.load(Ordering::Acquire);
+    let tail = buffer.tail.load(Ordering::Relaxed);
+    if tail.wrapping_sub(head) >= ring.depth() {
+        buffer.drops.on_ring_full();
+        return None;
+    }
+    Some(tail)
+}
+
+/// The producer's second step: write `payload` at `tail` under `seq`, or flag
+/// it as an overflow when it is larger than a slot (counted, and its LENGTH
+/// kept so the take can name it), then publish.
+fn store(buffer: &ServiceBuffer, tail: usize, payload: &[u8], seq: SeqScalar) {
+    let payload_len = payload.len();
+    let ring = buffer.ring;
+    let index = tail % ring.depth();
+    let slot = ring.entry(index);
+    slot.seq.store(seq, Ordering::Relaxed);
+    if payload_len > ring.slot_bytes() {
+        // Request exceeds the slot - flag overflow, skip payload. The length
+        // is kept: the take reports it (`refused_request_len`).
+        slot.overflow.store(true, Ordering::Relaxed);
+        slot.len.store(payload_len, Ordering::Relaxed);
+        buffer.drops.on_stored(Some(payload_len));
+    } else {
+        slot.overflow.store(false, Ordering::Relaxed);
+        // Safety: `payload` is a live slice of `payload_len` bytes; the slot
+        // is `slot_bytes` long and no reader holds it (SPSC).
+        unsafe {
+            core::ptr::copy_nonoverlapping(payload.as_ptr(), ring.slot_ptr(index), payload_len);
+        }
+        slot.len.store(payload_len, Ordering::Relaxed);
+        buffer.drops.on_stored(None);
+    }
+    // Publish the slot: the Release pairs with the consumer's Acquire load of
+    // `tail`, so the data/len/seq writes above are visible before the request.
+    buffer.tail.store(tail.wrapping_add(1), Ordering::Release);
 }
 
 /// Static headers for service servers, one per queryable.
@@ -581,6 +793,7 @@ fn bind_ring(buffer_index: usize, ring: InboxRing) {
     buffer.ring = ring;
     buffer.head.store(0, Ordering::Release);
     buffer.tail.store(0, Ordering::Release);
+    buffer.drops.reset();
 }
 
 // ============================================================================
@@ -707,14 +920,11 @@ extern "C" fn queryable_callback(
 
     // Phase 237 follow-up — enqueue into the request ring. Drop the newest when
     // full (preserves in-order delivery of buffered requests), so a burst of
-    // concurrent arrivals doesn't clobber an unread request.
-    let head = buffer.head.load(Ordering::Acquire);
-    let tail = buffer.tail.load(Ordering::Relaxed);
-    if tail.wrapping_sub(head) >= ring.depth() {
+    // concurrent arrivals doesn't clobber an unread request. phase-461 W4 —
+    // the drop is counted (`admit`).
+    let Some(tail) = admit(buffer) else {
         return;
-    }
-    let index = tail % ring.depth();
-    let slot = ring.entry(index);
+    };
 
     // Phase 237 — the reply correlation token is the C shim's reply-slot index
     // (the cloned query held for a possibly-deferred reply), not a free-running
@@ -724,25 +934,10 @@ extern "C" fn queryable_callback(
     // small and fit. Symmetric with the `.into()` widening on load.
     let session = buffer.session.load(Ordering::Acquire);
     let seq = unsafe { zpico_sys::zpico_queryable_take_reply_seq(session, buffer_index as i32) };
-    slot.seq.store(seq as SeqScalar, Ordering::Relaxed);
-
-    if payload_len > ring.slot_bytes() {
-        // Request exceeds the slot - flag overflow, skip payload.
-        slot.overflow.store(true, Ordering::Relaxed);
-        slot.len.store(0, Ordering::Relaxed);
-    } else {
-        slot.overflow.store(false, Ordering::Relaxed);
-        // Safety: payload pointer is valid for payload_len bytes (from C shim);
-        // the slot is `slot_bytes` long and no reader holds it (SPSC).
-        unsafe {
-            core::ptr::copy_nonoverlapping(payload, ring.slot_ptr(index), payload_len);
-        }
-        slot.len.store(payload_len, Ordering::Relaxed);
-    }
-
-    // Publish the slot: the Release pairs with the consumer's Acquire load of
-    // `tail`, so the data/len/seq writes above are visible before the request.
-    buffer.tail.store(tail.wrapping_add(1), Ordering::Release);
+    // Safety: payload pointer is valid for payload_len bytes (from C shim),
+    // and non-null (checked above).
+    let payload = unsafe { core::slice::from_raw_parts(payload, payload_len) };
+    store(buffer, tail, payload, seq as SeqScalar);
 
     // Phase 122.3.c.6.e — wake any task that registered a Waker on
     // this server (event-driven callers).
@@ -791,6 +986,11 @@ pub struct ZenohServiceServer {
     /// as too big for the caller's buffer, for
     /// [`ServiceTrait::refused_request_len`].
     refused_len: Option<usize>,
+    /// phase-461 W4 -- which inbox-drop episodes this server has said.
+    announcer: DropAnnouncer,
+    /// phase-461 W4 -- the knobs that size this server's inbox, (depth, slot
+    /// bytes), for the drop log line: they differ per family.
+    inbox_knobs: (&'static str, &'static str),
     /// Phantom to indicate ownership
     _phantom: PhantomData<()>,
 }
@@ -927,6 +1127,7 @@ impl ZenohServiceServer {
         // phase-461 W1 - bind the ring BEFORE declaring, for the reason the
         // session is recorded first below: a query that arrives during
         // declaration must find storage to land in.
+        let inbox_knobs = inbox.knobs();
         let (ring, drawn_from) = match inbox {
             InboxSpec::Caller(ring) => (*ring, None),
             InboxSpec::UserService | InboxSpec::Action | InboxSpec::Builtin => {
@@ -1000,7 +1201,58 @@ impl ZenohServiceServer {
             _phantom: PhantomData,
             granted_qos: nros_rmw::QoSProfile::QOS_PROFILE_UNKNOWN,
             refused_len: None,
+            announcer: DropAnnouncer::default(),
+            inbox_knobs,
         })
+    }
+
+    /// phase-461 W4 -- what this server's inbox has dropped since it was
+    /// declared: requests that met a full ring, and requests larger than a
+    /// slot. Each is also logged once per transition into it.
+    pub fn inbox_drop_stats(&self) -> InboxDropStats {
+        self.buf.get().drops.stats()
+    }
+
+    /// phase-461 W4 -- say each new drop episode once. Read on the consumer's
+    /// side, never in the callback: the callback runs on zenoh's read task,
+    /// and `nros_log` is not a call to make there.
+    fn announce_drops(&mut self) {
+        let handle = self._queryable.handle();
+        let (depth_knob, bytes_knob) = self.inbox_knobs;
+        let ring = self.buf.get().ring;
+        for a in self
+            .announcer
+            .take(&self.buf.get().drops)
+            .into_iter()
+            .flatten()
+        {
+            match a {
+                DropAnnouncement::RingFull { dropped } => nros_log::log_error!(
+                    nros_log::get_logger("nros_rmw_zenoh"),
+                    "zenoh service inbox FULL on queryable {}: {} request(s) dropped on arrival \
+                     ({}-slot ring; {}). Their clients time out. Logged once per episode \
+                     (phase-461 W4).",
+                    handle,
+                    dropped,
+                    ring.depth(),
+                    depth_knob
+                ),
+                DropAnnouncement::Overflow {
+                    dropped,
+                    request_len,
+                } => nros_log::log_error!(
+                    nros_log::get_logger("nros_rmw_zenoh"),
+                    "zenoh service inbox slot too small on queryable {}: a {} B request \
+                     dropped ({} B slot; {}). {} so far. Logged once per episode (phase-461 \
+                     W4).",
+                    handle,
+                    request_len,
+                    ring.slot_bytes(),
+                    bytes_knob,
+                    dropped
+                ),
+            }
+        }
     }
 
     pub(super) fn set_liveliness(&mut self, liveliness: Option<super::LivelinessToken>) {
@@ -1046,6 +1298,10 @@ impl ServiceTrait for ZenohServiceServer {
         &mut self,
         buf: &'a mut [u8],
     ) -> Result<Option<ServiceRequest<'a>>, Self::Error> {
+        // phase-461 W4 -- a drop episode the producer started since the last
+        // take is said here, on the consumer's side. Two loads when there is
+        // nothing to say.
+        self.announce_drops();
         let buffer = self.buf.get();
 
         // Phase 237 follow-up — dequeue the head of the request ring. The Acquire
@@ -1067,7 +1323,11 @@ impl ServiceTrait for ZenohServiceServer {
         let pop = || buffer.head.store(head.wrapping_add(1), Ordering::Release);
 
         if slot.overflow.load(Ordering::Acquire) {
+            // phase-461 W4 -- the ring kept the request's length, so the
+            // caller can name what the slot was too small for.
+            self.refused_len = Some(slot.len.load(Ordering::Acquire));
             pop();
+            self.announce_drops();
             return Err(TransportError::MessageTooLarge);
         }
 
@@ -1793,32 +2053,13 @@ pub(super) mod tests {
         buffer.keyexpr[klen] = 0;
         buffer.keyexpr_len.store(klen, Ordering::Release);
 
-        let ring = buffer.ring;
-        let head = buffer.head.load(Ordering::Acquire);
-        let tail = buffer.tail.load(Ordering::Relaxed);
-        if tail.wrapping_sub(head) >= ring.depth() {
+        // phase-461 W4 -- the SAME two steps `queryable_callback` takes, so a
+        // test of the drop counters tests the producer that ships.
+        let Some(tail) = admit(buffer) else {
             return;
-        }
-        let index = tail % ring.depth();
-        let entry = ring.entry(index);
-        if payload.len() > ring.slot_bytes() {
-            entry.overflow.store(true, Ordering::Relaxed);
-            entry.len.store(0, Ordering::Relaxed);
-        } else {
-            entry.overflow.store(false, Ordering::Relaxed);
-            // Safety: the slot is `slot_bytes` long and nothing reads it yet.
-            unsafe {
-                core::ptr::copy_nonoverlapping(
-                    payload.as_ptr(),
-                    ring.slot_ptr(index),
-                    payload.len(),
-                );
-            }
-            entry.len.store(payload.len(), Ordering::Relaxed);
-        }
+        };
         let seq = SERVICE_SEQ_COUNTER.fetch_add(1, Ordering::Relaxed);
-        entry.seq.store(seq, Ordering::Relaxed);
-        buffer.tail.store(tail.wrapping_add(1), Ordering::Release);
+        store(buffer, tail, payload, seq);
     }
 
     /// Reset a service buffer to idle state (empty ring).
@@ -1829,6 +2070,7 @@ pub(super) mod tests {
         buffer.head.store(0, Ordering::Release);
         buffer.tail.store(0, Ordering::Release);
         buffer.keyexpr_len.store(0, Ordering::Release);
+        buffer.drops.reset();
     }
 
     /// Try to receive a service request from a buffer slot.
@@ -2129,6 +2371,153 @@ pub(super) mod tests {
         let result = take_service(slot_a, &mut recv_buf);
         assert!(matches!(result, Ok(Some(8))));
         assert_eq!(&recv_buf[..8], b"req_zero");
+    }
+
+    // ========================================================================
+    // phase-461 W4: an inbox drop is counted and said once
+    // ========================================================================
+
+    /// One slot of 64 bytes: the smallest ring that can be full, and a slot a
+    /// 200-byte request cannot fit.
+    static DEPTH1_STORAGE: InboxStorage<64, 1> = InboxStorage::new();
+    static DEPTH1_RING: InboxRing = InboxRing::over(&DEPTH1_STORAGE);
+
+    /// Below `CALLER_SLOT`, above every slot the older tests use (0..=7).
+    const DROP_SLOT: usize = SERVICE_BUFFER_COUNT - 2;
+
+    fn drop_slot_fresh() -> ServiceBufferRef {
+        const {
+            assert!(
+                DROP_SLOT >= 8,
+                "DROP_SLOT (SERVICE_BUFFER_COUNT - 2) collides with the slots the older tests use"
+            )
+        };
+        bind_caller_ring_for_test(DROP_SLOT, &DEPTH1_RING);
+        reset_service_buffer(DROP_SLOT);
+        ServiceBufferRef::new(DROP_SLOT)
+    }
+
+    /// Two requests in one batch at depth 1: the second is the ring-full drop.
+    /// Counted once per request, said once per EPISODE -- a ring that stays
+    /// full is one line, and only a request that gets in ends the episode.
+    #[test]
+    fn a_full_ring_drop_is_counted_and_said_once_per_episode() {
+        let slot = drop_slot_fresh();
+        let drops = &slot.get().drops;
+        let mut said = DropAnnouncer::default();
+        let mut recv = [0u8; 64];
+
+        simulate_service_request(DROP_SLOT, b"first", b"svc/drop");
+        simulate_service_request(DROP_SLOT, b"second", b"svc/drop");
+        assert_eq!(
+            drops.stats(),
+            InboxDropStats {
+                ring_full: 1,
+                overflow: 0
+            }
+        );
+        assert_eq!(
+            said.take(drops),
+            [Some(DropAnnouncement::RingFull { dropped: 1 }), None]
+        );
+        assert_eq!(said.take(drops), [None, None], "said once, not per read");
+
+        // Still full: three more go, in the SAME episode -- counted, not said.
+        for _ in 0..3 {
+            simulate_service_request(DROP_SLOT, b"more", b"svc/drop");
+        }
+        assert_eq!(drops.stats().ring_full, 4);
+        assert_eq!(said.take(drops), [None, None]);
+
+        // The buffered request is the first one: the drop kept order.
+        assert!(matches!(take_service(DROP_SLOT, &mut recv), Ok(Some(5))));
+        assert_eq!(&recv[..5], b"first");
+
+        // A request that gets in ends the episode; the next drop starts one.
+        simulate_service_request(DROP_SLOT, b"in", b"svc/drop");
+        simulate_service_request(DROP_SLOT, b"out", b"svc/drop");
+        assert_eq!(
+            said.take(drops),
+            [Some(DropAnnouncement::RingFull { dropped: 5 }), None]
+        );
+    }
+
+    /// A request larger than the slot is counted as an overflow and keeps its
+    /// LENGTH, so both numbers can be said: the request's and the slot's.
+    #[test]
+    fn an_oversized_request_is_counted_with_its_length() {
+        let slot = drop_slot_fresh();
+        let drops = &slot.get().drops;
+        let mut said = DropAnnouncer::default();
+        let mut recv = [0u8; 64];
+        let big = [0xEEu8; 200];
+
+        simulate_service_request(DROP_SLOT, &big, b"svc/drop");
+        assert_eq!(
+            drops.stats(),
+            InboxDropStats {
+                ring_full: 0,
+                overflow: 1
+            }
+        );
+        assert_eq!(
+            said.take(drops),
+            [
+                None,
+                Some(DropAnnouncement::Overflow {
+                    dropped: 1,
+                    request_len: 200
+                })
+            ]
+        );
+        let ring = ServiceBufferRef::new(DROP_SLOT).get().ring;
+        let head = ServiceBufferRef::new(DROP_SLOT)
+            .get()
+            .head
+            .load(Ordering::Acquire);
+        assert_eq!(
+            ring.entry(head % ring.depth()).len.load(Ordering::Acquire),
+            200,
+            "the flagged entry keeps the length the take reports"
+        );
+        assert!(matches!(
+            take_service(DROP_SLOT, &mut recv),
+            Err(TransportError::MessageTooLarge)
+        ));
+
+        // A second oversize request is the same episode: counted, not said.
+        simulate_service_request(DROP_SLOT, &big, b"svc/drop");
+        let _ = take_service(DROP_SLOT, &mut recv);
+        assert_eq!(drops.stats().overflow, 2);
+        assert_eq!(said.take(drops), [None, None]);
+
+        // One that fits ends it; the next oversize request starts another.
+        simulate_service_request(DROP_SLOT, b"fits", b"svc/drop");
+        let _ = take_service(DROP_SLOT, &mut recv);
+        simulate_service_request(DROP_SLOT, &big[..65], b"svc/drop");
+        assert_eq!(
+            said.take(drops),
+            [
+                None,
+                Some(DropAnnouncement::Overflow {
+                    dropped: 3,
+                    request_len: 65
+                })
+            ]
+        );
+    }
+
+    /// Re-binding a header (a new server on it) starts its counts at zero.
+    #[test]
+    fn binding_a_ring_resets_its_drop_counts() {
+        let slot = drop_slot_fresh();
+        let drops = &slot.get().drops;
+        simulate_service_request(DROP_SLOT, b"a", b"svc/drop");
+        simulate_service_request(DROP_SLOT, b"b", b"svc/drop");
+        assert_eq!(drops.stats().ring_full, 1);
+        bind_caller_ring_for_test(DROP_SLOT, &DEPTH1_RING);
+        assert_eq!(drops.stats(), InboxDropStats::default());
+        assert_eq!(DropAnnouncer::default().take(drops), [None, None]);
     }
 
     // ========================================================================
