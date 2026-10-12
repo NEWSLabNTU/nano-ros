@@ -36,7 +36,7 @@ pub enum rclc_timer_state_t {
 /// Already an arena handle before phase-487: `rclc_executor_add_timer`
 /// creates the timer inside the executor arena and records
 /// `(handle_id, _executor)` here, and every live accessor forwards there. The
-/// period, callback, context, node and clock are the REGISTRATION INPUTS:
+/// period, callback, context and clock are the REGISTRATION INPUTS:
 /// rclc's `rclc_timer_init_default(timer, support, period, callback)` takes
 /// them at init, before any executor exists, and a removed timer can be added
 /// again, so they stay. phase-487 W3 removed the one field that was a copy,
@@ -52,9 +52,6 @@ pub struct rcl_timer_t {
     pub callback: rclc_timer_callback_with_context_t,
     /// User context pointer
     pub context: *mut c_void,
-    /// The node the timer was created on (phase-492 W1.b: the witness that a
-    /// context exists, which was the support before the init took a node).
-    pub node: *const crate::node::rcl_node_t,
     /// The clock this timer is scheduled against, or NULL for the WALL timer
     /// `rclc_timer_init_with_context` creates (phase-430 W1).
     ///
@@ -76,7 +73,6 @@ impl Default for rcl_timer_t {
             period_ns: 0,
             callback: None,
             context: ptr::null_mut(),
-            node: ptr::null(),
             clock: ptr::null(),
             handle_id: usize::MAX,
             _executor: ptr::null_mut(),
@@ -116,10 +112,12 @@ pub extern "C" fn rcl_get_zero_initialized_timer() -> rcl_timer_t {
 /// Initialize a WALL timer — the clock-less case (phase-430 W1).
 ///
 /// phase-492 W1.b: this was spelled `rcl_timer_init`, which is rcl's name for
-/// a different contract (`<nros/rcl_compat.h>` §4), and took the support as
-/// its witness. It takes rclc's `_with_context` spelling — the callback gets
-/// the caller's context — and the NODE, which every caller has, including a C
-/// component the generated entry hosts (it has no support).
+/// a different contract (`<nros/rcl_compat.h>` §4), and took the support as a
+/// validity witness it never otherwise read. It takes rclc's `_with_context`
+/// spelling — the callback gets the caller's context — and no witness: the
+/// timer belongs to no node and no session until `rclc_executor_add_timer`,
+/// which is where the executor is checked. So a C component the generated
+/// entry hosts, which has no support, creates timers like any other caller.
 ///
 /// The timer is scheduled against the executor's monotonic spin delta, which
 /// is what every wall-timer caller has always got and is what rclcpp
@@ -130,7 +128,6 @@ pub extern "C" fn rcl_get_zero_initialized_timer() -> rcl_timer_t {
 ///
 /// # Parameters
 /// * `timer` - Pointer to a zero-initialized timer
-/// * `node` - The node the timer belongs to (initialised)
 /// * `period_ns` - Timer period in nanoseconds
 /// * `callback` - Callback function to invoke when timer fires
 /// * `context` - User context pointer passed to callback (can be NULL)
@@ -138,7 +135,6 @@ pub extern "C" fn rcl_get_zero_initialized_timer() -> rcl_timer_t {
 /// # Returns
 /// * `RCL_RET_OK` on success
 /// * `RCL_RET_INVALID_ARGUMENT` if any required pointer is NULL or period is 0
-/// * `RCL_RET_NOT_INIT` if the node is not initialized
 ///
 /// # Safety
 /// * All required pointers must be valid
@@ -146,19 +142,18 @@ pub extern "C" fn rcl_get_zero_initialized_timer() -> rcl_timer_t {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_timer_init_with_context(
     timer: *mut rcl_timer_t,
-    node: *const crate::node::rcl_node_t,
     period_ns: u64,
     callback: rclc_timer_callback_with_context_t,
     context: *mut c_void,
 ) -> rcl_ret_t {
-    unsafe { timer_init_inner(timer, ptr::null(), node, period_ns, callback, context) }
+    unsafe { timer_init_inner(timer, ptr::null(), period_ns, callback, context) }
 }
 
 /// Initialize a timer scheduled against `clock` — rcl's shape (phase-430 W1).
 ///
 /// `rcl_timer_init(timer, clock, context, period, callback, allocator)` takes
 /// its `rcl_clock_t *` immediately after the timer, and so does this: the
-/// clock is the second parameter, ahead of the node. That is RFC-0089's "C
+/// clock is the second parameter. That is RFC-0089's "C
 /// takes rcl's spellings" applied to the ARGUMENT LIST, which is the half of
 /// the spelling that survives our different callback contract —
 /// `<nros/rcl_compat.h>` §4 records why the NAME `rcl_timer_init` stays
@@ -189,7 +184,6 @@ pub unsafe extern "C" fn rclc_timer_init_with_context(
 /// * `timer` - Pointer to a zero-initialized timer
 /// * `clock` - Pointer to an initialized clock (must NOT be NULL — the
 ///   clock-less form is [`rclc_timer_init_with_context`])
-/// * `node` - The node the timer belongs to (initialised)
 /// * `period_ns` - Timer period in nanoseconds
 /// * `callback` - Callback function to invoke when timer fires
 /// * `context` - User context pointer passed to callback (can be NULL)
@@ -198,7 +192,7 @@ pub unsafe extern "C" fn rclc_timer_init_with_context(
 /// * `RCL_RET_OK` on success
 /// * `RCL_RET_INVALID_ARGUMENT` if any required pointer is NULL, the period
 ///   is 0, or the clock names no schedule (uninitialized clock type)
-/// * `RCL_RET_NOT_INIT` if the node or clock is not initialized
+/// * `RCL_RET_NOT_INIT` if the clock is not initialized
 ///
 /// # Safety
 /// * All required pointers must be valid
@@ -208,7 +202,6 @@ pub unsafe extern "C" fn rclc_timer_init_with_context(
 pub unsafe extern "C" fn rclc_timer_init_on_clock(
     timer: *mut rcl_timer_t,
     clock: *const rcl_clock_t,
-    node: *const crate::node::rcl_node_t,
     period_ns: u64,
     callback: rclc_timer_callback_with_context_t,
     context: *mut c_void,
@@ -216,7 +209,7 @@ pub unsafe extern "C" fn rclc_timer_init_on_clock(
     if clock.is_null() {
         return RCL_RET_INVALID_ARGUMENT;
     }
-    unsafe { timer_init_inner(timer, clock, node, period_ns, callback, context) }
+    unsafe { timer_init_inner(timer, clock, period_ns, callback, context) }
 }
 
 /// The one body behind both init verbs. `clock` NULL means the wall timer.
@@ -226,28 +219,22 @@ pub unsafe extern "C" fn rclc_timer_init_on_clock(
 unsafe fn timer_init_inner(
     timer: *mut rcl_timer_t,
     clock: *const rcl_clock_t,
-    node: *const crate::node::rcl_node_t,
     period_ns: u64,
     callback: rclc_timer_callback_with_context_t,
     context: *mut c_void,
 ) -> rcl_ret_t {
-    validate_not_null!(timer, node);
+    validate_not_null!(timer);
 
     if callback.is_none() || period_ns == 0 {
         return RCL_RET_INVALID_ARGUMENT;
     }
 
     let timer = &mut *timer;
-    let node_ref = &*node;
 
     validate_state!(
         timer,
         rclc_timer_state_t::RCLC_TIMER_STATE_UNINITIALIZED,
         RCLC_RET_BAD_SEQUENCE
-    );
-    validate_state!(
-        node_ref,
-        crate::node::rclc_node_state_t::RCLC_NODE_STATE_INITIALIZED
     );
 
     // The clock is validated HERE as well as at registration, so a caller that
@@ -266,7 +253,6 @@ unsafe fn timer_init_inner(
     timer.period_ns = period_ns;
     timer.callback = callback;
     timer.context = context;
-    timer.node = node;
     timer.clock = clock;
     timer.state = rclc_timer_state_t::RCLC_TIMER_STATE_RUNNING;
 
@@ -378,7 +364,6 @@ pub unsafe extern "C" fn rcl_timer_fini(timer: *mut rcl_timer_t) -> rcl_ret_t {
 
     timer.callback = None;
     timer.context = ptr::null_mut();
-    timer.node = ptr::null();
     timer.handle_id = usize::MAX;
     timer._executor = ptr::null_mut();
     timer.state = rclc_timer_state_t::RCLC_TIMER_STATE_SHUTDOWN;

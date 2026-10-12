@@ -30,9 +30,10 @@
  * 1. The entry points exist with the documented signatures.
  * ------------------------------------------------------------------ */
 
-static rcl_ret_t (*const kAddWithContext)(
-    struct rclc_executor_t*, struct rcl_subscription_t*, void*, rclc_typed_subscription_callback_t,
-    void*, rclc_executor_handle_invocation_t) = rclc_executor_add_subscription_with_context;
+static rcl_ret_t (*const kAddWithContext)(struct rclc_executor_t*, struct rcl_subscription_t*,
+                                          void*, rclc_subscription_callback_with_context_t, void*,
+                                          rclc_executor_handle_invocation_t) =
+    rclc_executor_add_subscription_with_context;
 
 static rcl_ret_t (*const kPublish)(const struct rcl_publisher_t*, const void*,
                                    rmw_publisher_allocation_t*) = rcl_publish;
@@ -47,7 +48,7 @@ static const rclc_message_deserialize_fn_t kNullDeserialize = (rclc_message_dese
 /* The raw path STAYS: a byte-oriented subscriber is a legitimate thing to
  * want. It takes its callback and context itself (phase-487 W1). */
 static rcl_ret_t (*const kAddRaw)(
-    struct rclc_executor_t*, struct rcl_subscription_t*, rclc_subscription_callback_t, void*,
+    struct rclc_executor_t*, struct rcl_subscription_t*, rclc_subscription_raw_callback_t, void*,
     rclc_executor_handle_invocation_t) = rclc_executor_add_subscription_raw;
 
 /* ------------------------------------------------------------------ *

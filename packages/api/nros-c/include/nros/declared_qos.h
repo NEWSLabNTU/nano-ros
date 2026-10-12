@@ -13,7 +13,7 @@
  * `nros/declared_qos.hpp` gives C++ a `static_assert` that fails the BUILD when
  * the QoS depth a `NROS_SUBSCRIBE` passes disagrees with the depth the system
  * DECLARED for that topic in the contract sidecar beside the launch file. The
- * descriptor that carries those depths -- `rclc_declared_qos_generated.h`, put
+ * descriptor that carries those depths -- `nros_declared_qos_generated.h`, put
  * on the component's PRIVATE include path by `nano_ros_node_register()` -- is
  * pure preprocessor and language-neutral, and a C component already gets it:
  * `_nros_declared_qos_arm()` returns early only for RUST components and for
@@ -100,8 +100,8 @@
  * component whose endpoints state no `qos: { depth: }`, and every out-of-tree
  * consumer of this header has no such file and gets an empty table. */
 #if defined(__has_include)
-#if __has_include(<nros/rclc_declared_qos_generated.h>)
-#include <nros/rclc_declared_qos_generated.h>
+#if __has_include(<nros/nros_declared_qos_generated.h>)
+#include <nros/nros_declared_qos_generated.h>
 #endif
 #endif
 

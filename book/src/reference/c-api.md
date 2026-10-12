@@ -62,7 +62,7 @@ goals, requesting results, and cancelling:
   until the reply lands (or 15 s / 30 s timeout). They take the
   `rclc_executor_t*` explicitly because the action client stores its
   handle as an opaque slot inside the executor (registered via
-  `rclc_executor_add_action_client()`). The same applies to
+  `rclc_executor_attach_action_client()`). The same applies to
   `rclc_action_client_wait_for_action_server()` and
   `rclc_action_client_action_server_is_ready()`. Calling any of them
   from inside a dispatch callback returns `RCLC_RET_REENTRANT`.
@@ -91,7 +91,7 @@ goals, requesting results, and cancelling:
 
 The equivalent service client helper `rclc_client_call()` does **not**
 take an explicit executor — the client stashes the executor pointer
-during `rclc_executor_add_client()` and recovers it internally —
+during `rclc_executor_attach_client()` and recovers it internally —
 but it follows the same async-then-spin contract.
 
 Canonical pattern: declare the executor, register the client, then

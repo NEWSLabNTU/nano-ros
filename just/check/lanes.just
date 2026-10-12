@@ -158,7 +158,7 @@ c: c-fmt
              exit 1; }; \
     done
     # The forward itself, read off the preprocessor rather than assumed. WITH a
-    # bake the three-argument call must become `rclc_support_init_rmw`; WITHOUT
+    # bake the nameless calls must gain the selector; WITHOUT
     # one it must NOT, because an image with no bake resolves namelessly exactly
     # as it always has and a macro that fired anyway would pass a nonexistent
     # token.
@@ -192,18 +192,27 @@ c: c-fmt
                exit 1 ;; \
         esac; \
     }
+    # phase-492 W1.b — two nameless spellings: rclc's `rclc_support_init(&s,
+    # argc, argv, &allocator)` forwards to the seam that carries the selector,
+    # and the (locator, domain) form to `rclc_support_init_rmw`.
     _rung_assert \
-        "with NROS_ENTRY_RMW baked, rclc_support_init must forward to rclc_support_init_rmw -- the C surface is back to issue 1531." \
-        'rc = rclc_support_init_rmw' "$_pp_baked" match
+        "with NROS_ENTRY_RMW baked, rclc_support_init must forward to nros_c_support_init_baked -- the C surface is back to issue 1531." \
+        'rc = nros_c_support_init_baked[^;]*"cyclonedds"' "$_pp_baked_joined" match
+    _rung_assert \
+        "with NROS_ENTRY_RMW baked, rclc_support_init_with_locator must forward to rclc_support_init_rmw -- issue 1531." \
+        'rc_locator = rclc_support_init_rmw' "$_pp_baked" match
     _rung_assert \
         "the forward fired but did not carry NROS_ENTRY_RMW's value." \
-        'rc = rclc_support_init_rmw[^;]*"cyclonedds"' "$_pp_baked_joined" match
+        'rc_locator = rclc_support_init_rmw[^;]*"cyclonedds"' "$_pp_baked_joined" match
     # Negative control: with NO bake the nameless spelling must SURVIVE. An image
     # with no bake resolves namelessly exactly as it always has, and a macro that
     # fired anyway would pass a token that does not exist.
     _rung_assert \
         "with NO bake, rclc_support_init must stay nameless (issue 1531)." \
         'rc = rclc_support_init(' "$_pp_bare" match
+    _rung_assert \
+        "with NO bake, rclc_support_init_with_locator must stay nameless (issue 1531)." \
+        'rc_locator = rclc_support_init_with_locator(' "$_pp_bare" match
     echo "  - phase-430 W1: a C timer created on a ROS clock FOLLOWS that clock"
     # The second COMPILE+LINK+RUN TU, and for the same reason as the first: the
     # defect is a behaviour, not a signature. `rclc_timer_init_on_clock` could
@@ -2084,7 +2093,7 @@ cpp: cpp-fmt
     # Checking the macro under a standard no component uses would test a
     # different preprocessor.
     #
-    # The fixture dir carries `nros/rclc_declared_qos_generated.h` — what
+    # The fixture dir carries `nros/nros_declared_qos_generated.h` — what
     # `nros ws entity-inventory --output-header` renders, and the same bytes a
     # real component's configure puts on its own include path (issue 1084: the
     # register call claims the dir, a deferred render fills it from the

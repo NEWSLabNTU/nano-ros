@@ -94,15 +94,16 @@ int nros_app_main(int argc, char** argv) {
     // `NROS_ENTRY_LOCATOR` is the one producer of the compile-time connect
     // configuration (`<nros/entry_config.h>`, issue 0946); on this leaf it is
     // the empty bottom rung — baking `system.toml`'s locator is issue 1512's.
-    RCLC_CHECK_RET(
-        rclc_support_init(&app.support, NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID), 1);
+    RCLC_CHECK_RET(rclc_support_init_with_locator(&app.support, NROS_ENTRY_LOCATOR,
+                                                  (uint8_t)NROS_ENTRY_DOMAIN_ID),
+                   1);
     RCLC_CHECK_RET(rclc_node_init_default(&app.node, "add_two_ints_client", "/", &app.support), 1);
     g_logger = rclc_node_get_logger(&app.node);
 
     RCLC_CHECK_RET(
         rclc_client_init_default(&app.client, &app.node, &add_two_ints_type, "/add_two_ints"), 1);
-    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support, 4), 1);
-    RCLC_CHECK_RET(rclc_executor_add_client(&app.executor, &app.client), 1);
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 4, NULL), 1);
+    RCLC_CHECK_RET(rclc_executor_attach_client(&app.executor, &app.client), 1);
 
     memset(&app.request, 0, sizeof(app.request));
     memset(&app.response, 0, sizeof(app.response));
@@ -133,7 +134,7 @@ int nros_app_main(int argc, char** argv) {
     }
 
     rclc_executor_fini(&app.executor);
-    rcl_client_fini(&app.client);
+    rcl_client_fini(&app.client, &app.node);
     rcl_node_fini(&app.node);
     rclc_support_fini(&app.support);
     return exit_code;

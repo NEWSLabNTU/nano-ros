@@ -131,7 +131,7 @@ int main(void) {
     if (!locator) locator = "tcp/127.0.0.1:7447";
 
     rclc_support_t support = rclc_support_get_zero_initialized();
-    if (rclc_support_init(&support, locator, 0) != RCL_RET_OK) return 1;
+    if (rclc_support_init_with_locator(&support, locator, 0) != RCL_RET_OK) return 1;
 
     rcl_node_t node = rcl_get_zero_initialized_node();
     if (rclc_node_init_default(&node, "c_talker", "/", &support) != RCL_RET_OK) return 1;
@@ -142,10 +142,10 @@ int main(void) {
                                     "/chatter") != RCL_RET_OK) return 1;
 
     rcl_timer_t timer = rcl_get_zero_initialized_timer();
-    rcl_timer_init(&timer, &support, 1000000000ULL, timer_cb, NULL);
+    rclc_timer_init_with_context(&timer, 1000000000ULL, timer_cb, NULL);
 
     rclc_executor_t exec = rclc_executor_get_zero_initialized_executor();
-    rclc_executor_init(&exec, &support, 4);
+    rclc_executor_init(&exec, &support.context, 4, NULL);
     rclc_executor_add_timer(&exec, &timer);
     g_exec = &exec;
 
@@ -155,7 +155,7 @@ int main(void) {
 
     rclc_executor_fini(&exec);
     rcl_timer_fini(&timer);
-    rcl_publisher_fini(&g_pub);
+    rcl_publisher_fini(&g_pub, &node);
     rcl_node_fini(&node);
     rclc_support_fini(&support);
     return 0;

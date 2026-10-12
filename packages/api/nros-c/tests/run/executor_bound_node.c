@@ -166,7 +166,8 @@ int main(void) {
               RCL_RET_OK, "support opened on the stub backend");
 
     struct rclc_executor_t executor = rclc_executor_get_zero_initialized_executor();
-    CHECK_RET(rclc_executor_init(&executor, &support, 8), RCL_RET_OK, "executor initialised");
+    CHECK_RET(rclc_executor_init(&executor, &support.context, 8, NULL), RCL_RET_OK,
+              "executor initialised");
 
     /* Both nodes take the same namespace, so the only thing that differs
      * between them is the slot. That is the point. */
@@ -209,12 +210,12 @@ int main(void) {
     /* Zeroed before every call so a REFUSED resolve reads as '' rather than as
      * whatever was on the stack — a refusal must not look like a name. */
     char resolved[128] = {0};
-    CHECK_RET(rcl_node_resolve_name(&primary, "chatter", false, resolved, sizeof(resolved)),
+    CHECK_RET(rclc_node_resolve_name(&primary, "chatter", false, resolved, sizeof(resolved)),
               RCL_RET_OK, "the primary node can read its remap table");
     CHECK_STR(resolved, "/sensing/chatter", "the primary node's resolved name");
 
     memset(resolved, 0, sizeof(resolved));
-    CHECK_RET(rcl_node_resolve_name(&second, "chatter", false, resolved, sizeof(resolved)),
+    CHECK_RET(rclc_node_resolve_name(&second, "chatter", false, resolved, sizeof(resolved)),
               RCL_RET_OK, "the second node can read its remap table");
     CHECK_STR(resolved, "/sensing/chatter", "the second node's resolved name");
 
@@ -264,12 +265,12 @@ int main(void) {
               "a legacy node still initialises");
     CHECK(legacy.executor == NULL, "a legacy node reaches no executor");
     memset(resolved, 0, sizeof(resolved));
-    CHECK_RET(rcl_node_resolve_name(&legacy, "chatter", false, resolved, sizeof(resolved)),
+    CHECK_RET(rclc_node_resolve_name(&legacy, "chatter", false, resolved, sizeof(resolved)),
               RCL_RET_NOT_INIT,
               "a node that reaches no executor cannot read remap rules and must SAY so rather "
               "than returning the bare expansion");
     memset(resolved, 0, sizeof(resolved));
-    CHECK_RET(rcl_node_resolve_name(&legacy, "chatter", true, resolved, sizeof(resolved)),
+    CHECK_RET(rclc_node_resolve_name(&legacy, "chatter", true, resolved, sizeof(resolved)),
               RCL_RET_OK, "expansion alone needs no executor");
     CHECK_STR(resolved, "/sensing/chatter", "the legacy node's expansion");
 

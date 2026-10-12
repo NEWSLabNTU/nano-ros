@@ -1272,7 +1272,7 @@
   {
    "header": "/opt/ros/humble/include/rcl/rcl/node.h",
    "kind": "function",
-   "name": "rcl_node_resolve_name",
+   "name": "rclc_node_resolve_name",
    "params": [
     {
      "default": false,
@@ -1305,7 +1305,7 @@
      "type": "char **"
     }
    ],
-   "qual": "rcl_node_resolve_name",
+   "qual": "rclc_node_resolve_name",
    "ret": "rcl_ret_t",
    "template": []
   },
@@ -1628,7 +1628,7 @@
   {
    "header": "/opt/ros/humble/include/rcl/rcl/time.h",
    "kind": "function",
-   "name": "rcl_clock_get_now",
+   "name": "rclc_clock_get_now_time",
    "params": [
     {
      "default": false,
@@ -1641,7 +1641,7 @@
      "type": "rcl_time_point_value_t *"
     }
    ],
-   "qual": "rcl_clock_get_now",
+   "qual": "rclc_clock_get_now_time",
    "ret": "rcl_ret_t",
    "template": []
   },
@@ -2112,7 +2112,7 @@
   {
    "header": "/opt/ros/humble/include/rcl/rcl/publisher.h",
    "kind": "function",
-   "name": "rcl_publisher_get_subscription_count",
+   "name": "rclc_publisher_get_subscription_count",
    "params": [
     {
      "default": false,
@@ -2125,7 +2125,7 @@
      "type": "size_t *"
     }
    ],
-   "qual": "rcl_publisher_get_subscription_count",
+   "qual": "rclc_publisher_get_subscription_count",
    "ret": "rcl_ret_t",
    "template": []
   },
@@ -2674,7 +2674,7 @@
   {
    "header": "/opt/ros/humble/include/rcl/rcl/subscription.h",
    "kind": "function",
-   "name": "rcl_subscription_get_publisher_count",
+   "name": "rclc_subscription_get_publisher_count",
    "params": [
     {
      "default": false,
@@ -2687,7 +2687,7 @@
      "type": "size_t *"
     }
    ],
-   "qual": "rcl_subscription_get_publisher_count",
+   "qual": "rclc_subscription_get_publisher_count",
    "ret": "rmw_ret_t",
    "template": []
   },
@@ -3331,8 +3331,8 @@
   {
    "header": "/opt/ros/humble/include/rcl/rcl/timer.h",
    "kind": "alias",
-   "name": "rcl_timer_callback_t",
-   "qual": "rcl_timer_callback_t",
+   "name": "rclc_timer_callback_with_context_t",
+   "qual": "rclc_timer_callback_with_context_t",
    "type": "void (*)(rcl_timer_t *, int64_t)"
   },
   {
@@ -3347,7 +3347,7 @@
   {
    "header": "/opt/ros/humble/include/rcl/rcl/timer.h",
    "kind": "function",
-   "name": "rcl_timer_init",
+   "name": "rclc_timer_init_with_context",
    "params": [
     {
      "default": false,
@@ -3372,7 +3372,7 @@
     {
      "default": false,
      "name": "callback",
-     "type": "const rcl_timer_callback_t"
+     "type": "const rclc_timer_callback_with_context_t"
     },
     {
      "default": false,
@@ -3380,7 +3380,7 @@
      "type": "rcl_allocator_t"
     }
    ],
-   "qual": "rcl_timer_init",
+   "qual": "rclc_timer_init_with_context",
    "ret": "rcl_ret_t",
    "template": []
   },
@@ -3571,7 +3571,7 @@
     }
    ],
    "qual": "rcl_timer_get_callback",
-   "ret": "rcl_timer_callback_t",
+   "ret": "rclc_timer_callback_with_context_t",
    "template": []
   },
   {
@@ -3587,11 +3587,11 @@
     {
      "default": false,
      "name": "new_callback",
-     "type": "const rcl_timer_callback_t"
+     "type": "const rclc_timer_callback_with_context_t"
     }
    ],
    "qual": "rcl_timer_exchange_callback",
-   "ret": "rcl_timer_callback_t",
+   "ret": "rclc_timer_callback_with_context_t",
    "template": []
   },
   {
@@ -5111,7 +5111,7 @@
   {
    "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_server.h",
    "kind": "function",
-   "name": "rcl_action_server_init",
+   "name": "rclc_action_server_init_with_callbacks",
    "params": [
     {
      "default": false,
@@ -5144,7 +5144,7 @@
      "type": "const rcl_action_server_options_t *"
     }
    ],
-   "qual": "rcl_action_server_init",
+   "qual": "rclc_action_server_init_with_callbacks",
    "ret": "rcl_ret_t",
    "template": []
   },
@@ -5535,7 +5535,7 @@
   {
    "header": "/opt/ros/humble/include/rcl_action/rcl_action/action_server.h",
    "kind": "function",
-   "name": "rcl_action_server_goal_exists",
+   "name": "rclc_action_server_goal_exists",
    "params": [
     {
      "default": false,
@@ -5548,7 +5548,7 @@
      "type": "const rcl_action_goal_info_t *"
     }
    ],
-   "qual": "rcl_action_server_goal_exists",
+   "qual": "rclc_action_server_goal_exists",
    "ret": "bool",
    "template": []
   },
@@ -7003,7 +7003,7 @@
     {
      "default": false,
      "name": "callback",
-     "type": "const rcl_timer_callback_t"
+     "type": "const rclc_timer_callback_with_context_t"
     }
    ],
    "qual": "rclc_timer_init_default",
@@ -7416,7 +7416,7 @@
   {
    "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/action_server.h",
    "kind": "function",
-   "name": "rclc_action_publish_feedback",
+   "name": "rclc_action_publish_feedback_raw",
    "params": [
     {
      "default": false,
@@ -7429,7 +7429,7 @@
      "type": "void *"
     }
    ],
-   "qual": "rclc_action_publish_feedback",
+   "qual": "rclc_action_publish_feedback_raw",
    "ret": "rcl_ret_t",
    "template": []
   },
@@ -7484,8 +7484,8 @@
   {
    "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor_handle.h",
    "kind": "alias",
-   "name": "rclc_subscription_callback_t",
-   "qual": "rclc_subscription_callback_t",
+   "name": "rclc_subscription_raw_callback_t",
+   "qual": "rclc_subscription_raw_callback_t",
    "type": "void (*)(const void *)"
   },
   {
@@ -7493,7 +7493,7 @@
    "kind": "alias",
    "name": "rclc_callback_t",
    "qual": "rclc_callback_t",
-   "type": "rclc_subscription_callback_t"
+   "type": "rclc_subscription_raw_callback_t"
   },
   {
    "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor_handle.h",
@@ -7505,8 +7505,8 @@
   {
    "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor_handle.h",
    "kind": "alias",
-   "name": "rclc_service_callback_t",
-   "qual": "rclc_service_callback_t",
+   "name": "rclc_service_raw_callback_t",
+   "qual": "rclc_service_raw_callback_t",
    "type": "void (*)(const void *, void *)"
   },
   {
@@ -7796,7 +7796,7 @@
     {
      "default": false,
      "name": "callback",
-     "type": "rclc_subscription_callback_t"
+     "type": "rclc_subscription_raw_callback_t"
     },
     {
      "default": false,
@@ -7871,7 +7871,7 @@
   {
    "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
-   "name": "rclc_executor_add_client",
+   "name": "rclc_executor_attach_client",
    "params": [
     {
      "default": false,
@@ -7894,7 +7894,7 @@
      "type": "rclc_client_callback_t"
     }
    ],
-   "qual": "rclc_executor_add_client",
+   "qual": "rclc_executor_attach_client",
    "ret": "rcl_ret_t",
    "template": []
   },
@@ -7956,7 +7956,7 @@
     {
      "default": false,
      "name": "callback",
-     "type": "rclc_service_callback_t"
+     "type": "rclc_service_raw_callback_t"
     }
    ],
    "qual": "rclc_executor_add_service",
@@ -7966,7 +7966,7 @@
   {
    "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
-   "name": "rclc_executor_add_action_client",
+   "name": "rclc_executor_attach_action_client",
    "params": [
     {
      "default": false,
@@ -8019,14 +8019,14 @@
      "type": "void *"
     }
    ],
-   "qual": "rclc_executor_add_action_client",
+   "qual": "rclc_executor_attach_action_client",
    "ret": "rcl_ret_t",
    "template": []
   },
   {
    "header": "/tmp/claude-1000005/-home-aeon-repos-nano-ros/e291b72c-60ed-4c67-9083-bfc2493df79c/scratchpad/rclc/rclc/include/rclc/executor.h",
    "kind": "function",
-   "name": "rclc_executor_add_action_server",
+   "name": "rclc_executor_attach_action_server",
    "params": [
     {
      "default": false,
@@ -8069,7 +8069,7 @@
      "type": "void *"
     }
    ],
-   "qual": "rclc_executor_add_action_server",
+   "qual": "rclc_executor_attach_action_server",
    "ret": "rcl_ret_t",
    "template": []
   },

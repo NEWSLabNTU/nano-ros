@@ -74,9 +74,9 @@ static unsigned spin_ms(void) {
 static int run(void) {
     /* Clock demo: read the system clock once. */
     rcl_clock_t clock;
-    if (rcl_clock_init(&clock, RCLC_CLOCK_SYSTEM_TIME) == RCL_RET_OK) {
+    if (rcl_clock_init(RCLC_CLOCK_SYSTEM_TIME, &clock, NULL) == RCL_RET_OK) {
         rclc_time_t now;
-        if (rcl_clock_get_now(&clock, &now) == RCL_RET_OK) {
+        if (rclc_clock_get_now_time(&clock, &now) == RCL_RET_OK) {
             printf("System time: %d.%09u sec\n", now.sec, now.nanosec);
         }
         (void)rcl_clock_fini(&clock);
@@ -93,9 +93,9 @@ static int run(void) {
     }
 
     memset(&app, 0, sizeof(app));
-    RCLC_CHECK_RET(rclc_support_init(&app.support, locator, domain_id), 1);
+    RCLC_CHECK_RET(rclc_support_init_with_locator(&app.support, locator, domain_id), 1);
     /* 16 handles: the six rcl_interfaces parameter services plus headroom. */
-    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support, 16), 1);
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 16, NULL), 1);
     /* The namespace is explicit: NULL options leave it EMPTY, and an empty
      * namespace is not the root one. */
     rcl_node_options_t node_opts = rcl_node_get_default_options();

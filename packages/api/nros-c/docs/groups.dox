@@ -2,15 +2,16 @@
  * @defgroup grp_init init
  * @brief Library initialisation and the support context.
  *
- * Includes `rclc_support_t` (the transport session anchor),
- * `nros_init`/`nros_fini`, and the global session helpers.
+ * Includes `rclc_support_t` (the transport session anchor) and its
+ * `context`, which `rclc_executor_init` takes.
  *
  * Typical lifecycle:
  * @code
+ * rcl_allocator_t allocator = rcl_get_default_allocator();
  * rclc_support_t support = rclc_support_get_zero_initialized();
- * rclc_support_init(&support, "tcp/127.0.0.1:7447", 0);
+ * rclc_support_init(&support, 0, NULL, &allocator);
  * // ... use the API ...
- * nros_support_fini(&support);
+ * rclc_support_fini(&support);
  * @endcode
  *
  * @see @ref grp_node, @ref getting_started
@@ -25,10 +26,10 @@
  * a node at init time and torn down before the node itself.
  *
  * @code
- * rcl_node_t node = nros_node_get_zero_initialized();
- * nros_node_init(&node, &support, "my_node", "/");
+ * rcl_node_t node = rcl_get_zero_initialized_node();
+ * rclc_node_init_default(&node, "my_node", "/", &support);
  * // ... bind entities ...
- * nros_node_fini(&node);
+ * rcl_node_fini(&node);
  * @endcode
  *
  * @see @ref grp_pubsub, @ref grp_service, @ref grp_action
@@ -59,7 +60,7 @@
  *
  * Provides request/response RPC via `rcl_service_t` (server) and
  * `rcl_client_t` (caller). Servers register a
- * `rclc_service_callback_t` that the executor dispatches when a request
+ * `rclc_service_raw_callback_t` that the executor dispatches when a request
  * arrives; clients can take responses synchronously or via callbacks.
  *
  * @see @ref grp_action for long-running calls with feedback
@@ -89,11 +90,11 @@
  * from any thread.
  *
  * @code
- * rclc_executor_t exec = nros_executor_get_zero_initialized();
- * rclc_executor_init(&exec, &support, 4);
+ * rclc_executor_t exec = rclc_executor_get_zero_initialized_executor();
+ * rclc_executor_init(&exec, &support.context, 4, &allocator);
  * rclc_executor_add_subscription_raw(&exec, &sub, on_bytes, NULL,
  *                                    RCLC_EXECUTOR_ON_NEW_DATA);
- * nros_executor_spin_period(&exec, 10000000ULL);
+ * rclc_executor_spin_period(&exec, 10000000ULL);
  * @endcode
  *
  * @see @ref grp_pubsub for callback-driven subscriptions

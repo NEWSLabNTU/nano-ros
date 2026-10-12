@@ -103,7 +103,7 @@ int nros_app_main(int argc, char** argv) {
     memset(&app, 0, sizeof(app));
 
     // Initialize support context
-    RCLC_CHECK_RET(rclc_support_init(&app.support, locator, domain_id), 1);
+    RCLC_CHECK_RET(rclc_support_init_with_locator(&app.support, locator, domain_id), 1);
     RCLC_CHECK_RET(rclc_node_init_default(&app.node, "talker", "/", &app.support), 1);
 
     RCLC_CHECK_RET(rclc_publisher_init_default(&app.publisher, &app.node,
@@ -120,9 +120,9 @@ int nros_app_main(int argc, char** argv) {
     std_msgs__msg__String__init_in(&app.talker_ctx.message, &app.talker_ctx.message_storage);
 
     RCLC_CHECK_RET(
-        rcl_timer_init(&app.timer, &app.support, 1000000000ULL, timer_callback, &app.talker_ctx),
+        rclc_timer_init_with_context(&app.timer, 1000000000ULL, timer_callback, &app.talker_ctx),
         1);
-    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support, 4), 1);
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 4, NULL), 1);
     g_executor = &app.executor;
     RCLC_CHECK_RET(rclc_executor_add_timer(&app.executor, &app.timer), 1);
 
@@ -139,7 +139,7 @@ int nros_app_main(int argc, char** argv) {
     // Cleanup
     rclc_executor_fini(&app.executor);
     rcl_timer_fini(&app.timer);
-    rcl_publisher_fini(&app.publisher);
+    rcl_publisher_fini(&app.publisher, &app.node);
     rcl_node_fini(&app.node);
     rclc_support_fini(&app.support);
 

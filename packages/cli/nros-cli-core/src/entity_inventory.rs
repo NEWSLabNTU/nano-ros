@@ -1899,7 +1899,7 @@ impl DeclaredQos {
 }
 
 /// One SUBSCRIPTION's row in the compile-time declared-QoS table -- the
-/// `rclc_declared_qos_generated.h` C and C++ check their call sites against
+/// `nros_declared_qos_generated.h` C and C++ check their call sites against
 /// (issue 1256).
 ///
 /// The JOIN of the two declared views for one `(type, topic)`: the STATED depth
@@ -4369,7 +4369,7 @@ impl EntityInventory {
         }
     }
 
-    /// The C and C++ compile-time table: `rclc_declared_qos_generated.h`.
+    /// The C and C++ compile-time table: `nros_declared_qos_generated.h`.
     ///
     /// TWO X-macro lists, the same rows in both (phase-454 W10):
     /// `NROS_DECLARED_QOS_ROWS`, read by `nros/declared_qos.hpp`, and
@@ -5571,7 +5571,7 @@ fn c_escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
-/// Render one component's declared-QoS table as `rclc_declared_qos_generated.h`.
+/// Render one component's declared-QoS table as `nros_declared_qos_generated.h`.
 ///
 /// A free function over a [`DeclaredQosHeaderTable`] rather than a method on the
 /// inventory, because a configure with several SystemModels renders the UNION
@@ -7453,7 +7453,7 @@ execution:
     ///
     /// Measured before the fix on `examples/qemu-armv7a-nuttx/c/action-server`:
     /// the table was sized to exactly three and the fourth declaration failed
-    /// `Full` at boot, taking `rclc_executor_add_action_server` to -1.
+    /// `Full` at boot, taking `rclc_executor_attach_action_server` to -1.
     #[test]
     fn an_action_server_owes_a_fourth_queryable_for_its_status_cache() {
         let mut inv = EntityInventory::new("test");

@@ -1361,11 +1361,9 @@ ament_package()
 #include <std_msgs/msg/int32.h>
 
 int main(int argc, char** argv) {{
-    (void)argc;
-    (void)argv;
-
+    rcl_allocator_t allocator = rcl_get_default_allocator();
     rclc_support_t support = rclc_support_get_zero_initialized();
-    if (rclc_support_init(&support, NULL, 0) != RCL_RET_OK) {{
+    if (rclc_support_init(&support, argc, (const char* const*)argv, &allocator) != RCL_RET_OK) {{
         fprintf(stderr, "rclc_support_init failed\n");
         return 1;
     }}
@@ -1389,7 +1387,7 @@ int main(int argc, char** argv) {{
     (void)rcl_publish(&pub, &msg, NULL);
     printf("{name}: published 0 on /chatter\n");
 
-    rcl_publisher_fini(&pub);
+    rcl_publisher_fini(&pub, &node);
     rcl_node_fini(&node);
     rclc_support_fini(&support);
     return 0;

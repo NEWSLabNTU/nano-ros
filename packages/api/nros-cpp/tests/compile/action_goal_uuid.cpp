@@ -258,7 +258,7 @@ static_assert(std::is_same<decltype(std::declval<::rclcpp::PollingActionServer<F
 //    it here. All four C++ classes read ONE bound, `rclcpp_action::ACTION_NAME_MAX`.
 //  * `action_server_is_ready` existed in C and Rust and NOT in C++, so the
 //    only way to ask here was to block in `wait_for_action_server`.
-//  * `goal_exists` is rcl's; C now has `rcl_action_server_goal_exists` and
+//  * `goal_exists` is rcl's; C now has `rclc_action_server_goal_exists` and
 //    this is its C++ binding.
 //
 // Return types are asserted, not just names: a `get_action_name` that came
@@ -305,7 +305,7 @@ static_assert(std::is_same<decltype(std::declval<const ::rclcpp_action::Server<F
                                std::declval<const ::rclcpp_action::GoalUUID&>())),
                            bool>::value,
               "ActionServer<A>::goal_exists must be a PREDICATE — rcl's "
-              "rcl_action_server_goal_exists returns bool and the ported idiom is a guard");
+              "rclc_action_server_goal_exists returns bool and the ported idiom is a guard");
 
 // One bound for the four action classes, not four literals (phase-417 W4.b).
 static_assert(::rclcpp::PollingActionServer<Fib>::ACTION_NAME_MAX ==

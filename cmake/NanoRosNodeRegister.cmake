@@ -1466,7 +1466,7 @@ function(_nros_declared_qos_arm _component _target _lang)
     endif()
 
     # One dir per component, and the `nros/` level is what makes the include
-    # spelling `<nros/rclc_declared_qos_generated.h>` -- the same shape the
+    # spelling `<nros/nros_declared_qos_generated.h>` -- the same shape the
     # per-build sizes headers use, so nothing here needs a new convention.
     set(_nrq_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-declared-qos/${_component}")
     file(MAKE_DIRECTORY "${_nrq_dir}/nros")
@@ -1591,7 +1591,7 @@ function(_nros_emit_declared_qos_header _pkg _component _dir)
         return()
     endif()
 
-    set(_nrq_hdr "${_dir}/nros/rclc_declared_qos_generated.h")
+    set(_nrq_hdr "${_dir}/nros/nros_declared_qos_generated.h")
     file(MAKE_DIRECTORY "${_dir}/nros")
     execute_process(
         COMMAND "${_nrq_cli}" ws entity-inventory

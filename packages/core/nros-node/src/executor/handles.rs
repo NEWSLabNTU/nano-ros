@@ -424,7 +424,7 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
 
     /// How many subscriptions this publisher reaches, RIGHT NOW —
     /// rclcpp's `Publisher::get_subscription_count`, rcl's
-    /// `rcl_publisher_get_subscription_count`. phase-444, issue 1643.
+    /// `rclc_publisher_get_subscription_count`. phase-444, issue 1643.
     ///
     /// **Upstream's question where the backend can answer it, a weaker one
     /// where it cannot — and the difference belongs here rather than in a
@@ -1571,7 +1571,7 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
 
     /// How many publishers are on this subscription's topic, RIGHT NOW —
     /// rclcpp's `Subscription::get_publisher_count`, rcl's
-    /// `rcl_subscription_get_publisher_count`. phase-444.
+    /// `rclc_subscription_get_publisher_count`. phase-444.
     ///
     /// The subscription half of
     /// [`EmbeddedPublisher::get_subscription_count`], which states the

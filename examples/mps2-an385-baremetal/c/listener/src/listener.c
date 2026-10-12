@@ -90,8 +90,9 @@ int nros_app_main(int argc, char** argv) {
     // `NROS_ENTRY_LOCATOR` is the one producer of the compile-time connect
     // configuration (`<nros/entry_config.h>`, issue 0946); on this leaf it is
     // the empty bottom rung — baking `system.toml`'s locator is issue 1512's.
-    RCLC_CHECK_RET(
-        rclc_support_init(&app.support, NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID), 1);
+    RCLC_CHECK_RET(rclc_support_init_with_locator(&app.support, NROS_ENTRY_LOCATOR,
+                                                  (uint8_t)NROS_ENTRY_DOMAIN_ID),
+                   1);
     RCLC_CHECK_RET(rclc_node_init_default(&app.node, "listener", "/", &app.support), 1);
     g_logger = rclc_node_get_logger(&app.node);
 
@@ -100,7 +101,7 @@ int nros_app_main(int argc, char** argv) {
                        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String), "/chatter"),
                    1);
 
-    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support, 4), 1);
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 4, NULL), 1);
     std_msgs__msg__String__init_in(&app.msg, &app.msg_storage);
     RCLC_CHECK_RET(rclc_executor_add_subscription_with_context(
                        &app.executor, &app.subscription, &app.msg, subscription_callback,
@@ -117,7 +118,7 @@ int nros_app_main(int argc, char** argv) {
     }
 
     rclc_executor_fini(&app.executor);
-    rcl_subscription_fini(&app.subscription);
+    rcl_subscription_fini(&app.subscription, &app.node);
     rcl_node_fini(&app.node);
     rclc_support_fini(&app.support);
     return 0;

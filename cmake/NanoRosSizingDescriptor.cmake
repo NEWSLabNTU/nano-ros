@@ -366,7 +366,7 @@ endfunction()
 # road issue 1378 measured FAILING. `examples/qemu-armv7a-nuttx/{c,cpp}/action-server`
 # declare one action server; the queryable table was sized to its three services
 # and the action server's own TRANSIENT_LOCAL `/status` publisher was the FOURTH
-# slot, so `rclc_executor_add_action_server` returned -1 at boot. The cargo-leaf
+# slot, so `rclc_executor_attach_action_server` returned -1 at boot. The cargo-leaf
 # road never saw it because `nros sync` writes that road a descriptor whose
 # `action_server` row is counted.
 #

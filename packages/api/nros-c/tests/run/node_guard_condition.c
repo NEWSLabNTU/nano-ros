@@ -144,7 +144,8 @@ int main(void) {
               RCL_RET_OK, "support opened on the stub backend");
 
     struct rclc_executor_t executor = rclc_executor_get_zero_initialized_executor();
-    CHECK_RET(rclc_executor_init(&executor, &support, 8), RCL_RET_OK, "executor initialised");
+    CHECK_RET(rclc_executor_init(&executor, &support.context, 8, NULL), RCL_RET_OK,
+              "executor initialised");
 
     /* The node is BOUND to the executor — the executor exists first, then the
      * node. That ordering is what makes the node an owner that can reach an

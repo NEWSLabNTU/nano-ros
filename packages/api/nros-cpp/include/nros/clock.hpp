@@ -73,19 +73,19 @@ class Clock {
     /// point of issue 0789.
     explicit Clock(rcl_clock_type_t clock_type = RCLC_CLOCK_SYSTEM_TIME)
         : clock_(rclc_clock_get_zero_initialized()) {
-        rcl_clock_init(&clock_, clock_type);
+        rcl_clock_init(clock_type, &clock_, NULL);
     }
 
     /// The current time.
     ///
-    /// Infallible, following the C surface: `rclc_clock_get_now_ns` cannot fail
+    /// Infallible, following the C surface: `rcl_clock_get_now` cannot fail
     /// once the clock is valid, because the platform seam (RFC-0073) either has
     /// a clock or the image did not boot. An INVALID clock — one built with
     /// `RCLC_CLOCK_UNINITIALIZED` — reads zero; `is_valid()` is how that is
     /// detected, not a `Result` on every timestamp.
     Time now() const {
         int64_t nanoseconds = 0;
-        if (rclc_clock_get_now_ns(&clock_, &nanoseconds) != 0) {
+        if (rcl_clock_get_now(&clock_, &nanoseconds) != 0) {
             nanoseconds = 0;
         }
         return Time(nanoseconds, get_clock_type());

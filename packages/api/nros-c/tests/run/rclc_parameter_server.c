@@ -108,7 +108,7 @@ int main(void) {
     CHECK(rclc_support_init_rmw(&support, NULL, 0, "rclc_param_server", NROS_STUB_RMW_NAME) ==
               RCL_RET_OK,
           "support init");
-    CHECK(rclc_executor_init(&executor, &support, 8) == RCL_RET_OK, "executor init");
+    CHECK(rclc_executor_init(&executor, &support.context, 8, NULL) == RCL_RET_OK, "executor init");
 
     /* D3 — a node bound to no executor has no store to serve from. */
     CHECK(rclc_parameter_server_init_default(&ps, &unbound) == RCL_RET_NOT_INIT,

@@ -133,7 +133,8 @@ int main(void) {
           "opening the session alone installs no callback -- the context is executor-owned");
 
     struct rclc_executor_t executor = rclc_executor_get_zero_initialized_executor();
-    CHECK_RET(rclc_executor_init(&executor, &support, 8), RCL_RET_OK, "executor initialised");
+    CHECK_RET(rclc_executor_init(&executor, &support.context, 8, NULL), RCL_RET_OK,
+              "executor initialised");
 
     /* ---- 1. The install ------------------------------------------------- */
 
@@ -256,7 +257,8 @@ int main(void) {
      * backend off for good would pass part 3 and silently cost every later
      * executor its wake. */
     struct rclc_executor_t second = rclc_executor_get_zero_initialized_executor();
-    CHECK_RET(rclc_executor_init(&second, &support, 8), RCL_RET_OK, "second executor initialised");
+    CHECK_RET(rclc_executor_init(&second, &support.context, 8, NULL), RCL_RET_OK,
+              "second executor initialised");
     CHECK(nros_stub_rmw_wake_cb_installed(),
           "a second executor over the same session installs its OWN callback -- the clear must "
           "not latch the backend off");

@@ -704,7 +704,7 @@ mod tests {
     ///
     /// `rclcpp`'s `ClockType::ROS_TIME` with `use_sim_time` false reads the
     /// system clock; five doc sites in this tree across Rust, C and C++ said we
-    /// did too; and the C surface (`rcl_clock_get_now(RCLC_CLOCK_ROS_TIME)`)
+    /// did too; and the C surface (`rclc_clock_get_now_time(RCLC_CLOCK_ROS_TIME)`)
     /// always did. This is the arm that disagreed with all of them.
     #[test]
     #[cfg(feature = "platform-clock")]

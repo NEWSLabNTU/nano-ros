@@ -709,7 +709,7 @@ fn boot_budget(platform: Platform) -> Duration {
 /// How many delivered samples the pub/sub cell requires before it is satisfied.
 ///
 /// Every talker example in the matrix runs a **1 Hz** timer (`TimerDuration::
-/// from_millis(1000)` in the Rust ones, `rcl_timer_init(..., 1000000000ULL,
+/// from_millis(1000)` in the Rust ones, `rclc_timer_init_with_context(..., 1000000000ULL,
 /// ...)` in the C/C++ ones), so this number is also *how many seconds of
 /// SESSION LIFE the cell observes* — the property issue 1013 says a 15 s
 /// run-to-completion window did not have.
