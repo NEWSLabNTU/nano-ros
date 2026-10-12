@@ -1,0 +1,21 @@
+# phase-492 W1.b — C names that keep upstream's spelling over a different
+# signature, each with the ruling that allows it. Read by
+# scripts/check-c-api-upstream-signatures.py. An entry that conforms or no
+# longer exists FAILS, so a ruling cannot outlive its deviation.
+#
+# kind	name	ruling
+#
+# The executor trigger family (phase-417 stage 3, ledger
+# `c:executor_trigger_handle_t`). The built-in triggers are passed BY NAME to
+# `rclc_executor_set_trigger`, and they mean what rclc's mean, so a ported
+# `rclc_executor_set_trigger(&e, rclc_executor_trigger_any, NULL)` compiles and
+# behaves the same. What differs is the handle array they walk: ours is
+# `rclc_executor_trigger_handle_t` (entity + readiness) against rclc's
+# `rclc_executor_handle_t`, which carries rclc's whole handle record. A
+# hand-written rclc trigger therefore fails to compile on the handle type —
+# loudly, at the function a porter wrote.
+cb	rclc_executor_trigger_t	phase-417 stage 3: built-ins by name, own handle array (ledger c:executor_trigger_handle_t)
+fn	rclc_executor_trigger_all	phase-417 stage 3: built-in trigger, passed by name (ledger c:executor_trigger_handle_t)
+fn	rclc_executor_trigger_always	phase-417 stage 3: built-in trigger, passed by name (ledger c:executor_trigger_handle_t)
+fn	rclc_executor_trigger_any	phase-417 stage 3: built-in trigger, passed by name (ledger c:executor_trigger_handle_t)
+fn	rclc_executor_trigger_one	phase-417 stage 3: built-in trigger, passed by name (ledger c:executor_trigger_handle_t)

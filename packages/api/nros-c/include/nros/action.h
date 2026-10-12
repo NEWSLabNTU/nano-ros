@@ -51,7 +51,7 @@ static inline rcl_ret_t rclc_action_client_init_default(struct rcl_action_client
                                                         const struct rcl_node_t* node,
                                                         const struct rclc_action_type_t* type_info,
                                                         const char* action_name) {
-    return rcl_action_client_init(action_client, node, action_name, type_info);
+    return rcl_action_client_init(action_client, node, type_info, action_name, NULL);
 }
 
 /*
@@ -66,17 +66,17 @@ static inline rcl_ret_t rclc_action_client_init_default(struct rcl_action_client
  *
  * rclc's body (`rclc/src/rclc/action_server.c` @ `10eadcc`) reads `support`
  * for exactly one thing — it passes `&support->clock` to `rcl_action_server_init`.
- * Ours has nothing to pass it to: `rcl_action_server_init` "stores metadata
+ * Ours has nothing to pass it to: `rclc_action_server_init_with_callbacks` "stores metadata
  * (name, type, callbacks)" and defers RMW entity creation to
- * `rclc_executor_add_action_server()`, so it takes neither a clock nor a
+ * `rclc_executor_attach_action_server()`, so it takes neither a clock nor a
  * support handle. A faithful-looking five-argument forwarder would therefore
  * carry an argument it IGNORES — the inert-parameter defect RFC-0089 exists to
- * end, and the same refusal `rcl_node_resolve_name` makes for rcl's
+ * end, and the same refusal `rclc_node_resolve_name` makes for rcl's
  * `allocator` and `is_service`.
  *
  * The second half is the callbacks. rclc registers goal and cancel handlers at
  * `rclc_executor_add_action_server`; ours are bound at init
- * (`rcl_action_server_init(server, node, action_name, type_info, goal_cb,
+ * (`rclc_action_server_init_with_callbacks(server, node, action_name, type_info, goal_cb,
  * cancel_cb, accepted_cb, ...)`). Forwarding to the callback-free
  * `rclc_polling_action_server_init` instead would not even compile since
  * phase-487 W4 (it takes a `rclc_polling_action_server_t`), and before that it

@@ -153,6 +153,16 @@ git-grep-status:
 c-api-nros-names:
     @python3 scripts/check-c-api-nros-names.py
 
+# phase-492 W1.b — a C name upstream also has takes upstream's CONTRACT, or a
+# distinct `rclc_` name (RFC-0089 rule 2). Parity compares names only, so W1
+# adopted sixteen spelling matches with a different arity or callback; this
+# compares signatures against the committed humble snapshot
+# (`docs/reference/upstream-c-signatures.tsv`) with a reviewed list of ruled
+# deviations. Buildless, ~0.2 s.
+[private]
+c-api-upstream-signatures:
+    @python3 scripts/check-c-api-upstream-signatures.py
+
 # issue 1386 — `node_ref_is_live(node_ref_of(node))` mints a reference from the
 # node and compares it against the counter it was just read from, so it is
 # CONSTANT TRUE. Four sites wrote that independently, and behind three of them

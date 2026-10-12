@@ -22,7 +22,7 @@ use crate::{
 /// * `data` - Pointer to received CDR-serialized message data
 /// * `len` - Length of data in bytes
 /// * `context` - User-provided context pointer
-pub type rclc_subscription_callback_t =
+pub type rclc_subscription_raw_callback_t =
     Option<unsafe extern "C" fn(data: *const u8, len: usize, context: *mut c_void)>;
 
 /// Subscription callback that also receives the sample's wire **attachment**
@@ -1217,8 +1217,14 @@ pub unsafe extern "C" fn rclc_polling_subscription_fini(
 /// # Safety
 /// * `subscription` must be a valid pointer
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rcl_subscription_fini(subscription: *mut rcl_subscription_t) -> rcl_ret_t {
-    validate_not_null!(subscription);
+pub unsafe extern "C" fn rcl_subscription_fini(
+    subscription: *mut rcl_subscription_t,
+    node: *mut crate::node::rcl_node_t,
+) -> rcl_ret_t {
+    // phase-492 W1.b — rcl's arity: the node the entity was created on.
+    // Checked non-NULL only; teardown needs nothing from it (RFC-0089
+    // ADOPT-BOUNDED, ledger `c:subscription_fini`).
+    validate_not_null!(subscription, node);
 
     let subscription = &mut *subscription;
 
@@ -1279,9 +1285,11 @@ pub unsafe extern "C" fn rcl_subscription_get_topic_name(
 
 /// How many publishers are on this subscription's topic, right now.
 ///
-/// rcl's `rcl_subscription_get_publisher_count` — phase-444, ledger row
+/// rcl's `rcl_subscription_get_publisher_count` with an executor parameter, hence the
+/// distinct `rclc_` name
+/// (phase-492 W1.b) — phase-444, ledger row
 /// `c:subscription_get_publisher_count`. The subscription half of
-/// [`rcl_publisher_get_subscription_count`](crate::publisher::rcl_publisher_get_subscription_count),
+/// [`rclc_publisher_get_subscription_count`](crate::publisher::rclc_publisher_get_subscription_count),
 /// which states the weakening (topic-wide, not matched-to-this-entity), why
 /// the executor is a parameter, and why `RCL_RET_UNSUPPORTED` is not `0`.
 ///
@@ -1294,7 +1302,7 @@ pub unsafe extern "C" fn rcl_subscription_get_topic_name(
 /// * `subscription` and `executor` must be valid pointers or NULL
 /// * `out_count` must point to a writable `size_t` or be NULL
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rcl_subscription_get_publisher_count(
+pub unsafe extern "C" fn rclc_subscription_get_publisher_count(
     subscription: *const rcl_subscription_t,
     executor: *mut crate::executor::rclc_executor_t,
     out_count: *mut usize,

@@ -275,6 +275,8 @@ compile_error!(
 );
 
 // Backend-independent modules (always available)
+// phase-492 W1.b — rcl's allocator argument; accepted, never allocates.
+mod allocator;
 mod cdr;
 mod clock;
 mod constants;
@@ -307,6 +309,7 @@ include!(concat!(env!("OUT_DIR"), "/variant_symbol.rs"));
 
 pub use cdr::*;
 // issue 1551 — reached by nros-cpp's init entry points, which bundle this crate.
+pub use allocator::*;
 pub use clock::*;
 pub use constants::*;
 pub use error::*;

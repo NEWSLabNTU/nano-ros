@@ -10,8 +10,8 @@
  * whatever its language — it is on the C compile line exactly as it is on the
  * C++ one. Until issue 1531 it had only C++ consumers
  * (`nros-cpp/include/nros/executor.hpp`, `node.hpp`), so a C image held its own
- * answer in its own preprocessor and never passed it: every C main calls the
- * three-argument `rclc_support_init`, whose `rmw` is `NULL`.
+ * answer in its own preprocessor and never passed it: every C main called a
+ * support init whose `rmw` is `NULL`.
  *
  * That was half of issue 1050. The same commit that added the baked rung made a
  * selector-less open with more than one registered backend a hard refusal
@@ -27,7 +27,10 @@
  * every out-of-tree C app, and rewriting call sites would be fixing the sites
  * rather than the class. A function-like macro is the C analogue of what the C++
  * headers do at their own call site, and it only expands when followed by `(`,
- * so `&rclc_support_init` is still the function's address.
+ * so `&rclc_support_init` is still the function's address. rclc's
+ * `rclc_support_init(&support, argc, argv, &allocator)` (phase-492 W1.b) has no
+ * selector argument to fill, so its macro forwards to the seam
+ * `nros_c_support_init_baked`, which is that init plus the selector.
  *
  * Placement is load-bearing in two directions:
  *
@@ -64,7 +67,7 @@
 
 #ifdef NROS_ENTRY_RMW
 
-/* The two nameless spellings forward the bake. `rclc_support_init_rmw` is the
+/* The nameless spellings forward the bake. `rclc_support_init_rmw` is the
  * one that takes a selector, so it is deliberately NOT wrapped — a caller
  * naming a backend has already answered the question this macro answers.
  *
@@ -72,7 +75,10 @@
  * expands to a string literal and an unresolved cmake variable produces `""`,
  * which `rclc_support_init_rmw` already treats as no selector (issue 1050
  * defect 3). So no `#if` on the VALUE is needed here, only on its presence. */
-#define rclc_support_init(support, locator, domain_id)                                             \
+#define rclc_support_init(support, argc, argv, allocator)                                          \
+    nros_c_support_init_baked((support), (argc), (argv), (allocator), NROS_ENTRY_RMW)
+
+#define rclc_support_init_with_locator(support, locator, domain_id)                                \
     rclc_support_init_rmw((support), (locator), (domain_id), NULL, NROS_ENTRY_RMW)
 
 #define rclc_support_init_named(support, locator, domain_id, session_name)                         \

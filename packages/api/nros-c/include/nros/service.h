@@ -5,7 +5,7 @@
  *
  * Create a service server with rclc_service_init_default() (or
  * rclc_service_init_with_qos()) and add it to an executor with
- * rclc_executor_add_service_raw(), which takes the `rclc_service_callback_t`.
+ * rclc_executor_add_service_raw(), which takes the `rclc_service_raw_callback_t`.
  * The executor arena owns the server and the callback, delivers requests and
  * sends responses for you.
  *

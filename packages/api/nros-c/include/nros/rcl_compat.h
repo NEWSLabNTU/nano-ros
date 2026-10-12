@@ -344,13 +344,13 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  *   rclc: rcl_ret_t rclc_timer_init_default(
  *             rcl_timer_t *timer, rclc_support_t *support,
  *             const uint64_t timeout_ns, const rcl_timer_callback_t callback)
- *   ours: rcl_ret_t rcl_timer_init(
- *             struct rcl_timer_t *timer, const struct rclc_support_t *support,
- *             uint64_t period_ns, rcl_timer_callback_t callback,
+ *   ours: rcl_ret_t rclc_timer_init_with_context(
+ *             struct rcl_timer_t *timer, const struct rcl_node_t *node,
+ *             uint64_t period_ns, rclc_timer_callback_with_context_t callback,
  *             void *context)
  *
- *   rcl_timer_callback_t   = void (*)(rcl_timer_t *, int64_t last_call_time)
- *   rcl_timer_callback_t  = void (*)(struct rcl_timer_t *, void *context)
+ *   rcl_timer_callback_t               = void (*)(rcl_timer_t *, int64_t last_call_time)
+ *   rclc_timer_callback_with_context_t = void (*)(struct rcl_timer_t *, void *context)
  *
  * Both are two-parameter and both lead with the timer; the SECOND parameter
  * carries entirely different information. Upstream hands the callback the time
@@ -363,8 +363,14 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  * rest on that: a target where the two are assignable would make the mistake
  * silent.
  *
- * `rcl_timer_init` therefore keeps its name, its arity and its `context`, and
- * is NOT deprecated. Closing this needs a decision about what our timer
+ * So our init takes a DISTINCT name, `rclc_timer_init_with_context` — rclc's
+ * `_with_context` spelling for a context-carrying callback — and keeps its
+ * arity and its `context`. phase-492 W1.b: the W3 rename had spelled it
+ * `rcl_timer_init` and its callback type `rcl_timer_callback_t`, i.e. took
+ * upstream's names over exactly this contract; `check-c-api-upstream-signatures`
+ * now refuses that. It takes the NODE rather than the support, which every
+ * caller has — including a C component the generated entry hosts, which has
+ * no support. Closing the gap for real needs a decision about what our timer
  * callback receives, not a rename.
  *
  * ── The CLOCK, though, is taken (phase-430 W1) ────────────────────────────
@@ -377,11 +383,11 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  *             const rcl_timer_callback_t callback, rcl_allocator_t allocator)
  *
  * — clock SECOND, immediately after the timer. `rclc_timer_init_on_clock`
- * takes an `rcl_clock_t *` in exactly that position, ahead of the
- * context-carrying `support`, which is RFC-0089's "C takes rcl's spellings"
+ * takes an `rcl_clock_t *` in exactly that position, ahead of the node,
+ * which is RFC-0089's "C takes rcl's spellings"
  * applied to the half of the spelling that survives our callback contract.
  *
- * It is a SECOND verb rather than a widened `rcl_timer_init` because C has no
+ * It is a SECOND verb rather than a widened `rclc_timer_init_with_context` because C has no
  * overloading and every existing caller passes five arguments. The clock-less
  * form is the wall timer (rclcpp's `create_wall_timer`), which is what those
  * callers have always had; the clock-taking form is how a C node asks for a
@@ -389,16 +395,18 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  *
  * ── Also still refused, and why, so the absence is a record ───────────────
  *
- * * `rcl_*_fini` for publisher / subscription / client / service / action —
- *   upstream takes `(entity, node)`; ours take `(entity)`. Arity, not
- *   spelling. (`rcl_node_fini`, `rcl_timer_fini`, `rcl_clock_fini`,
- *   `rcl_guard_condition_fini`, `rclc_executor_fini` and `rclc_support_fini`
- *   ARE arity 1 upstream and were adopted.)
- * * `rcl_node_get_domain_id` — upstream writes `size_t *`, ours writes
- *   `uint32_t *`. In C that mismatch is a WARNING, so a ported
- *   `size_t id; rcl_node_get_domain_id(&node, &id);` would compile and leave
- *   half of `id` uninitialised. The out-parameter type is authored at the
- *   CALL SITE, which is what separates this from the typesupport case above.
+ * * ADOPTED by phase-492 W1.b, so no longer in this list: the `rcl_*_fini`
+ *   of publisher / subscription / client / service / action client / action
+ *   server take rcl's `(entity, node)` (the node is checked non-NULL; teardown
+ *   needs nothing from it); `rcl_node_get_domain_id` writes rcl's `size_t *`;
+ *   `rcl_timer_get_time_since_last_call` writes rcl's `int64_t *`;
+ *   `rcl_clock_get_now` writes rcl's `int64_t` nanosecond count (the
+ *   `struct rclc_time_t` form is `rclc_clock_get_now_time`); `rcl_clock_init`,
+ *   `rclc_support_init` and `rclc_executor_init` take rcl's arguments,
+ *   including `rcl_allocator_t` (accepted, never used to allocate — a
+ *   caller-supplied one is refused) and `&support.context`; and
+ *   `rcl_action_client_init` takes rcl's `(client, node, type_support, name,
+ *   options)`.
  * * `rcl_timer_get_period` — upstream returns the value through an `int64_t *`
  *   out-parameter; ours returns it. Different data flow, not a different word.
  * * `rcl_timer_get_time_until_next_call` — was in the bullet above and is NOT
@@ -419,20 +427,17 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  *   and nothing noticed until W5.c added its absolute sibling
  *   `rcl_timer_get_next_call_time` beside it — at which point one family had
  *   two prefixes with a stated reason for only one of them
- *   (`rcl_timer_get_time_since_last_call` keeps `nros_` because its
- *   out-parameter is `uint64_t *` against upstream's `int64_t *`, which is a
- *   real contract difference; this one had none). It is
+ *   (`rcl_timer_get_time_since_last_call` kept its old prefix then because its
+ *   out-parameter was `uint64_t *` against upstream's `int64_t *`; phase-492
+ *   W1.b gave it rcl's type). It is
  *   `rcl_timer_get_time_until_next_call` now, with no forwarder, per stage 6
  *   step B's rule that a stale call should fail on the IDENTIFIER.
- * * `rcl_timer_get_time_since_last_call` — same shape, but `uint64_t *`
- *   against upstream's `int64_t *`; caller-authored out-parameter again.
- * * `rcl_clock_get_now` — upstream writes an `int64_t` nanosecond count, ours
- *   writes a `struct rclc_time_t`.
- * * `rcl_clock_init`, `rcl_guard_condition_init`, `rcl_node_resolve_name`,
- *   `rcl_node_get_fully_qualified_name`, `rclc_support_init`,
- *   `rclc_executor_init`, the `rcl_action_*` constructors and the
- *   `rclc_lifecycle_*` family — every one
- *   differs in ARITY, and several take an `rcl_allocator_t` we do not have.
+ * * `rcl_guard_condition_init`, `rcl_node_get_fully_qualified_name`, the
+ *   `rclc_lifecycle_*` family, `rcl_node_resolve_name` (ours,
+ *   `rclc_node_resolve_name`, writes a caller buffer where rcl allocates) and
+ *   `rcl_action_server_init` (ours, `rclc_action_server_init_with_callbacks`,
+ *   binds the callbacks rclc binds at `rclc_executor_add_action_server`) —
+ *   every one differs in ARITY or data flow, and keeps a distinct name.
  * * `rcl_take_request` / `rcl_take_response` — upstream hands back a
  *   DESERIALIZED message plus an `rmw_request_id_t` out-struct
  *   (`rcl/service.h:279`, `rcl/client.h:301`); ours are the CDR-byte drains
@@ -447,7 +452,7 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  */
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * 6. The executor's entity registration: one alias, two refusals
+ * 6. The executor's entity registration: one adoption, two refusals
  * ═══════════════════════════════════════════════════════════════════════════
  *
  * CORRECTED 2026-09-18 (phase-417 W5.e). This section used to tell a reader
@@ -466,25 +471,16 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  * this section used to carry pointed at unrelated code by the time anyone
  * looked (the same rot W5.d found one section up).
  *
- * ── The typed subscription callback: ALIASED ─────────────────────────
+ * ── The typed subscription callback: ADOPTED ─────────────────────────
  *
  *   rclc: typedef void (*rclc_subscription_callback_with_context_t)(
  *             const void *msg, void *context);
- *   ours: typedef void (*rclc_typed_subscription_callback_t)(
- *             const void *msg, void *context);
  *
- * Same two parameters, same order, same meanings — an EXACT alias rather than
- * an approximate one, which is not the usual case here. RFC-0089's ALIAS RULE
- * makes it non-optional: for a name upstream HAS and we lack, the ported alias
- * is load-bearing and "do not take the name" is not available. Ours stays the
- * DEFINITION, so a nano-ros program that never ported from rclc does not have
- * to include a compat header to name its own callback type.
- *
- * Aliased as our typedef NAME rather than re-spelled as a function type: a
- * second spelling of one signature is issue 0160's hand-mirror class, and this
- * one would drift silently because nothing calls a typedef.
+ * Same two parameters, same order, same meanings. It was our
+ * `rclc_typed_subscription_callback_t` plus an alias here; phase-492 W1.b gave
+ * the definition rclc's name, and per RFC-0089 rule 1 the twin is deleted, not
+ * aliased. A nano-ros program names it without a compat header.
  */
-typedef rclc_typed_subscription_callback_t rclc_subscription_callback_with_context_t;
 
 /*
  * The context-LESS `rclc_subscription_callback_t` is still not offered, and its
@@ -518,8 +514,8 @@ typedef rclc_typed_subscription_callback_t rclc_subscription_callback_with_conte
  *             const void *request, void *response, void *context);
  *   ours: rcl_ret_t rclc_executor_add_service_raw(
  *             struct rclc_executor_t *, struct rcl_service_t *,
- *             rclc_service_callback_t callback, void *context)
- *         typedef bool (*rclc_service_callback_t)(
+ *             rclc_service_raw_callback_t callback, void *context)
+ *         typedef bool (*rclc_service_raw_callback_t)(
  *             const uint8_t *request, size_t request_len, uint8_t *response,
  *             size_t response_capacity, size_t *response_len, void *context);
  *

@@ -33,7 +33,7 @@ pub enum rclc_action_server_state_t {
     /// Not initialized
     RCLC_ACTION_SERVER_STATE_UNINITIALIZED = 0,
     /// Initialized. For a `rcl_action_server_t` the transport is created
-    /// by `rclc_executor_add_action_server`; for a
+    /// by `rclc_executor_attach_action_server`; for a
     /// `rclc_polling_action_server_t` its `ActionServerCore` is live in the
     /// struct.
     RCLC_ACTION_SERVER_STATE_INITIALIZED = 1,
@@ -87,10 +87,10 @@ pub struct rcl_action_server_t {
     /// executor handle to (the goal-service slot; governs the action's callback
     /// dispatch). `0` = inherit the executor / Node default; set via
     /// `rclc_action_server_init_with_options`. When non-zero,
-    /// `rclc_executor_add_action_server` binds the handle after
+    /// `rclc_executor_attach_action_server` binds the handle after
     /// registration. No effect on the L1 polling path.
     pub sched_context_id: crate::executor::rclc_sched_context_id_t,
-    /// Internal state — set by `rclc_executor_add_action_server`.
+    /// Internal state — set by `rclc_executor_attach_action_server`.
     /// Typed C-ABI handle field (was an opaque blob in earlier versions).
     pub _internal: ActionServerInternal,
 }
@@ -234,7 +234,7 @@ pub(crate) unsafe extern "C" fn goal_callback_trampoline(
 ) -> nros_node::GoalResponse {
     let server = context as *mut rcl_action_server_t;
     let goal_handle = handle_from_goal_id(goal_id);
-    // `rclc_executor_add_action_server` refuses a server with no goal
+    // `rclc_executor_attach_action_server` refuses a server with no goal
     // callback, so this is only reached with one installed.
     let Some(goal_cb) = (*server).goal_callback else {
         return nros_node::GoalResponse::Reject;
@@ -343,9 +343,9 @@ pub extern "C" fn rcl_action_get_zero_initialized_server() -> rcl_action_server_
 /// Initialize an action server.
 ///
 /// Stores metadata (name, type, callbacks). RMW entity creation is deferred
-/// to `rclc_executor_add_action_server()`.
+/// to `rclc_executor_attach_action_server()`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rcl_action_server_init(
+pub unsafe extern "C" fn rclc_action_server_init_with_callbacks(
     server: *mut rcl_action_server_t,
     node: *const rcl_node_t,
     action_name: *const core::ffi::c_char,
@@ -391,10 +391,10 @@ pub unsafe extern "C" fn rcl_action_server_init(
 
     // Phase 193.4b — default to the services profile;
     // rclc_action_server_init_with_qos overrides. Read at registration time by
-    // rclc_executor_add_action_server.
+    // rclc_executor_attach_action_server.
     server.qos = crate::qos::rclc_qos_t::default();
 
-    // RMW entity creation is deferred to rclc_executor_add_action_server()
+    // RMW entity creation is deferred to rclc_executor_attach_action_server()
     server._internal = ActionServerInternal::invalid_default();
     server.state = rclc_action_server_state_t::RCLC_ACTION_SERVER_STATE_INITIALIZED;
 
@@ -405,7 +405,7 @@ pub unsafe extern "C" fn rcl_action_server_init(
 /// (rclc's `_with_options`). The profile applies to the three underlying
 /// service servers (send_goal / cancel_goal / get_result); the feedback +
 /// status publishers keep their own profiles. `qos` NULL ⇒ the services
-/// default. Same as [`rcl_action_server_init`] otherwise.
+/// default. Same as [`rclc_action_server_init_with_callbacks`] otherwise.
 ///
 /// # Safety
 /// All non-NULL pointers must be valid + the node initialized.
@@ -422,7 +422,7 @@ pub unsafe extern "C" fn rclc_action_server_init_with_qos(
     context: *mut c_void,
     qos: *const crate::qos::rclc_qos_t,
 ) -> rcl_ret_t {
-    let ret = rcl_action_server_init(
+    let ret = rclc_action_server_init_with_callbacks(
         server,
         node,
         action_name,
@@ -446,7 +446,7 @@ pub struct rcl_action_server_options_t {
     /// Scheduling-context slot to bind the action server's executor handle to.
     /// `0` = inherit the executor / Node default. A non-zero value must be an id
     /// from `rclc_executor_create_sched_context`; the bind is applied by
-    /// `rclc_executor_add_action_server` once the handle exists. No effect
+    /// `rclc_executor_attach_action_server` once the handle exists. No effect
     /// on the L1 polling path.
     pub sched_context: crate::executor::rclc_sched_context_id_t,
     /// Reserved for future use; must be zero. Pads for ABI stability.
@@ -461,7 +461,7 @@ pub extern "C" fn rcl_action_server_get_default_options() -> rcl_action_server_o
 
 /// Phase 189.M3.3.b — initialize an action server with custom QoS + named
 /// options. Like [`rclc_action_server_init_with_qos`] except a non-zero
-/// `options->sched_context` is stashed so `rclc_executor_add_action_server`
+/// `options->sched_context` is stashed so `rclc_executor_attach_action_server`
 /// binds the resulting executor handle to that scheduling context once known.
 ///
 /// # Safety
@@ -507,7 +507,7 @@ pub unsafe extern "C" fn rclc_action_server_init_with_options(
 /// enforces goal liveness and is the sole source of truth for lifecycle
 /// state.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rclc_action_publish_feedback(
+pub unsafe extern "C" fn rclc_action_publish_feedback_raw(
     server: *mut rcl_action_server_t,
     goal: *const rclc_goal_handle_t,
     feedback: *const u8,
@@ -786,7 +786,8 @@ pub unsafe extern "C" fn rcl_action_server_get_action_name(
 
 /// Is `goal` a goal this server still knows about?
 ///
-/// rcl's `rcl_action_server_goal_exists` — phase-417 W4.b, ledger row
+/// rcl's `rcl_action_server_goal_exists` over OUR goal handle, hence the
+/// distinct `rclc_` name (phase-492 W1.b) — phase-417 W4.b, ledger row
 /// `c:action_server_goal_exists`. TRUE while the goal is ACTIVE and while its
 /// completed result is still retained for a later `get_result`, which is
 /// rcl's own window (its goal-handle table keeps a terminated goal until
@@ -796,7 +797,7 @@ pub unsafe extern "C" fn rcl_action_server_get_action_name(
 /// was open on the guess that it was. That lookup reads the ACTIVE set only,
 /// so it returns `RCLC_RET_NOT_FOUND` for a goal that has completed and whose
 /// result is still sitting in the slab — i.e. for exactly the goals a client
-/// is in the middle of fetching. A ported `if (rcl_action_server_goal_exists
+/// is in the middle of fetching. A ported `if (rclc_action_server_goal_exists
 /// (...))` guard written against that mapping would have been wrong in the one
 /// window it matters.
 ///
@@ -810,7 +811,7 @@ pub unsafe extern "C" fn rcl_action_server_get_action_name(
 ///   there is no separate error channel — the ported idiom is a guard, the
 ///   same shape as `rcl_service_is_valid`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rcl_action_server_goal_exists(
+pub unsafe extern "C" fn rclc_action_server_goal_exists(
     server: *mut rcl_action_server_t,
     goal: *const rclc_goal_handle_t,
 ) -> bool {
@@ -967,8 +968,14 @@ fn c_status_to_rust(status: rclc_goal_status_t) -> nros_node::GoalStatus {
 /// finalised while still registered keeps answering goals into this struct
 /// until `rclc_executor_fini`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rcl_action_server_fini(server: *mut rcl_action_server_t) -> rcl_ret_t {
-    validate_not_null!(server);
+pub unsafe extern "C" fn rcl_action_server_fini(
+    server: *mut rcl_action_server_t,
+    node: *mut crate::node::rcl_node_t,
+) -> rcl_ret_t {
+    // phase-492 W1.b — rcl's arity: the node the entity was created on.
+    // Checked non-NULL only; teardown needs nothing from it (RFC-0089
+    // ADOPT-BOUNDED, ledger `c:action_server_fini`).
+    validate_not_null!(server, node);
 
     let server = &mut *server;
 
@@ -1271,7 +1278,7 @@ pub unsafe extern "C" fn rclc_polling_action_server_get_active_goal_count(
     }
 }
 
-/// The polled twin of [`rcl_action_server_goal_exists`].
+/// The polled twin of [`rclc_action_server_goal_exists`].
 ///
 /// # Safety
 /// `server` and `goal` must be NULL or valid pointers.
@@ -1818,7 +1825,7 @@ mod verification {
         // NULL server
         assert_eq!(
             unsafe {
-                rcl_action_server_init(
+                rclc_action_server_init_with_callbacks(
                     ptr::null_mut(),
                     &node,
                     action_name.as_ptr() as *const core::ffi::c_char,
@@ -1836,7 +1843,7 @@ mod verification {
         let mut srv = rcl_action_get_zero_initialized_server();
         assert_eq!(
             unsafe {
-                rcl_action_server_init(
+                rclc_action_server_init_with_callbacks(
                     &mut srv,
                     ptr::null(),
                     action_name.as_ptr() as *const core::ffi::c_char,
@@ -1854,7 +1861,7 @@ mod verification {
         let mut srv = rcl_action_get_zero_initialized_server();
         assert_eq!(
             unsafe {
-                rcl_action_server_init(
+                rclc_action_server_init_with_callbacks(
                     &mut srv,
                     &node,
                     ptr::null(),
@@ -1872,7 +1879,7 @@ mod verification {
         let mut srv = rcl_action_get_zero_initialized_server();
         assert_eq!(
             unsafe {
-                rcl_action_server_init(
+                rclc_action_server_init_with_callbacks(
                     &mut srv,
                     &node,
                     action_name.as_ptr() as *const core::ffi::c_char,
@@ -1897,7 +1904,7 @@ mod verification {
         let mut srv = rcl_action_get_zero_initialized_server();
         assert_eq!(
             unsafe {
-                rcl_action_server_init(
+                rclc_action_server_init_with_callbacks(
                     &mut srv,
                     &node,
                     action_name.as_ptr() as *const core::ffi::c_char,
@@ -1922,7 +1929,7 @@ mod verification {
         let mut srv = rcl_action_get_zero_initialized_server();
         assert_eq!(
             unsafe {
-                rcl_action_server_init(
+                rclc_action_server_init_with_callbacks(
                     &mut srv,
                     &node,
                     action_name.as_ptr() as *const core::ffi::c_char,
@@ -1956,14 +1963,21 @@ mod verification {
     fn action_server_fini_null_safety() {
         // NULL → INVALID_ARGUMENT
         assert_eq!(
-            unsafe { rcl_action_server_fini(ptr::null_mut()) },
+            unsafe {
+                rcl_action_server_fini(
+                    ptr::null_mut(),
+                    &mut crate::node::rcl_get_zero_initialized_node(),
+                )
+            },
             RCL_RET_INVALID_ARGUMENT,
         );
 
         // UNINITIALIZED → NOT_INIT
         let mut srv = rcl_action_get_zero_initialized_server();
         assert_eq!(
-            unsafe { rcl_action_server_fini(&mut srv) },
+            unsafe {
+                rcl_action_server_fini(&mut srv, &mut crate::node::rcl_get_zero_initialized_node())
+            },
             RCL_RET_NOT_INIT,
         );
     }
@@ -1978,7 +1992,7 @@ mod verification {
 
         let mut srv = rcl_action_get_zero_initialized_server();
         let ret = unsafe {
-            rcl_action_server_init(
+            rclc_action_server_init_with_callbacks(
                 &mut srv,
                 &node,
                 action_name.as_ptr() as *const core::ffi::c_char,
@@ -1994,7 +2008,7 @@ mod verification {
         // Second init → BAD_SEQUENCE
         assert_eq!(
             unsafe {
-                rcl_action_server_init(
+                rclc_action_server_init_with_callbacks(
                     &mut srv,
                     &node,
                     action_name.as_ptr() as *const core::ffi::c_char,
@@ -2045,20 +2059,24 @@ mod verification {
 
         // NULL server
         assert_eq!(
-            unsafe { rclc_action_publish_feedback(ptr::null_mut(), &goal, feedback.as_ptr(), 8) },
+            unsafe {
+                rclc_action_publish_feedback_raw(ptr::null_mut(), &goal, feedback.as_ptr(), 8)
+            },
             RCL_RET_INVALID_ARGUMENT,
         );
 
         // NULL goal
         let mut srv = rcl_action_get_zero_initialized_server();
         assert_eq!(
-            unsafe { rclc_action_publish_feedback(&mut srv, ptr::null(), feedback.as_ptr(), 8) },
+            unsafe {
+                rclc_action_publish_feedback_raw(&mut srv, ptr::null(), feedback.as_ptr(), 8)
+            },
             RCL_RET_INVALID_ARGUMENT,
         );
 
         // NULL feedback
         assert_eq!(
-            unsafe { rclc_action_publish_feedback(&mut srv, &goal, ptr::null(), 0) },
+            unsafe { rclc_action_publish_feedback_raw(&mut srv, &goal, ptr::null(), 0) },
             RCL_RET_INVALID_ARGUMENT,
         );
     }
@@ -2120,7 +2138,7 @@ mod tests {
 
         // NULL handle.
         assert!(unsafe { rcl_action_server_get_action_name(ptr::null()) }.is_null());
-        assert!(!unsafe { rcl_action_server_goal_exists(ptr::null_mut(), &goal) });
+        assert!(!unsafe { rclc_action_server_goal_exists(ptr::null_mut(), &goal) });
         assert_eq!(
             unsafe { rclc_action_expire_goals(ptr::null_mut(), &mut expired) },
             RCL_RET_INVALID_ARGUMENT
@@ -2132,8 +2150,8 @@ mod tests {
 
         // UNINITIALIZED handle — NOT an empty string, and NOT `true`.
         assert!(unsafe { rcl_action_server_get_action_name(&srv) }.is_null());
-        assert!(!unsafe { rcl_action_server_goal_exists(&mut srv, &goal) });
-        assert!(!unsafe { rcl_action_server_goal_exists(&mut srv, ptr::null()) });
+        assert!(!unsafe { rclc_action_server_goal_exists(&mut srv, &goal) });
+        assert!(!unsafe { rclc_action_server_goal_exists(&mut srv, ptr::null()) });
         assert_eq!(
             unsafe { rclc_action_expire_goals(&mut srv, &mut expired) },
             RCL_RET_NOT_INIT

@@ -70,12 +70,45 @@ pub enum rclc_support_state_t {
     RCLC_SUPPORT_STATE_SHUTDOWN = 2,
 }
 
+/// phase-492 W1.b — rcl's init context, as rclc programs reach it:
+/// `&support.context`. Here it is the handle by which an executor finds the
+/// support that owns the session; it carries nothing else. Upstream's members
+/// (global arguments, instance id) are not modelled, so it is opaque to C.
+#[repr(C)]
+pub struct rcl_context_t {
+    /// The support this context belongs to; NULL until `rclc_support_init`.
+    pub _support: *const rclc_support_t,
+}
+
+/// The support a context names, if it is a live one: the context must be the
+/// `context` member of the support it points back at, and that support
+/// initialised.
+///
+/// # Safety
+/// `context` must be NULL or point to a readable `rcl_context_t`.
+pub(crate) unsafe fn support_of_context<'a>(
+    context: *const rcl_context_t,
+) -> Option<&'a rclc_support_t> {
+    let ctx = unsafe { context.as_ref() }?;
+    let support = unsafe { ctx._support.as_ref() }?;
+    if !core::ptr::eq(core::ptr::addr_of!(support.context), context)
+        || support.state != rclc_support_state_t::RCLC_SUPPORT_STATE_INITIALIZED
+    {
+        return None;
+    }
+    Some(support)
+}
+
 /// Support context structure.
 ///
 /// This is the main context for nros, similar to rclc_support_t.
 /// It manages the middleware session and provides shared resources.
 #[repr(C)]
 pub struct rclc_support_t {
+    /// phase-492 W1.b — rclc's `support.context`, the argument
+    /// `rclc_executor_init(&executor, &support.context, n, &allocator)` takes.
+    /// Names this support; set by init, cleared by fini.
+    pub context: rcl_context_t,
     /// Current state
     pub state: rclc_support_state_t,
     /// Domain ID (ROS_DOMAIN_ID)
@@ -95,6 +128,9 @@ pub struct rclc_support_t {
 impl Default for rclc_support_t {
     fn default() -> Self {
         Self {
+            context: rcl_context_t {
+                _support: core::ptr::null(),
+            },
             state: rclc_support_state_t::RCLC_SUPPORT_STATE_UNINITIALIZED,
             domain_id: 0,
             locator: [0u8; MAX_LOCATOR_LEN],
@@ -113,15 +149,68 @@ pub extern "C" fn rclc_support_get_zero_initialized() -> rclc_support_t {
     rclc_support_t::default()
 }
 
-/// Initialize the support context.
+/// Initialize the support context — rclc's signature (phase-492 W1.b).
 ///
-/// This function initializes the middleware session and prepares the context
-/// for creating nodes, publishers, and subscribers.
+/// `rclc_support_init(&support, argc, argv, &allocator)`, as an rclc program
+/// writes it. The locator and domain come from the build and, on a hosted
+/// target, the environment (`NROS_LOCATOR`, `ROS_DOMAIN_ID`), exactly as
+/// [`rclc_support_init_with_locator`] resolves them when given NULL and 0.
 ///
-/// # Parameters
-/// * `support` - Pointer to a zero-initialized support context
-/// * `locator` - Middleware locator string (e.g., "tcp/127.0.0.1:7447"), or NULL for default
-/// * `domain_id` - ROS domain ID (0-232)
+/// The envelope: `argv` may carry program arguments, which are ignored as
+/// rcl ignores non-ROS ones, but `--ros-args` is REFUSED with
+/// `RCL_RET_UNSUPPORTED` — the C binding has no ROS-argument parser, and
+/// dropping remaps silently would run a different graph. `allocator` must be
+/// NULL or `rcl_get_default_allocator()`'s (nothing here allocates).
+///
+/// # Safety
+/// * `support` must point to a zero-initialized `rclc_support_t`.
+/// * `argv` must hold `argc` NUL-terminated strings, or be NULL with `argc` 0.
+/// * `allocator` must be NULL or readable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_support_init(
+    support: *mut rclc_support_t,
+    argc: core::ffi::c_int,
+    argv: *const *const c_char,
+    allocator: *const crate::allocator::rcl_allocator_t,
+) -> rcl_ret_t {
+    unsafe { nros_c_support_init_baked(support, argc, argv, allocator, core::ptr::null()) }
+}
+
+/// [`rclc_support_init`] with the image's BAKED RMW selector — the seam
+/// `<nros/baked_rmw.h>`'s `rclc_support_init` macro forwards to when the
+/// build defines `NROS_ENTRY_RMW` (issue 1531). Not for callers: an
+/// application names a backend with [`rclc_support_init_rmw`].
+///
+/// # Safety
+/// As [`rclc_support_init`]; `rmw` NULL or a NUL-terminated string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_c_support_init_baked(
+    support: *mut rclc_support_t,
+    argc: core::ffi::c_int,
+    argv: *const *const c_char,
+    allocator: *const crate::allocator::rcl_allocator_t,
+    rmw: *const c_char,
+) -> rcl_ret_t {
+    if !unsafe { crate::allocator::allocator_is_accepted(allocator) } {
+        return RCL_RET_INVALID_ARGUMENT;
+    }
+    if argc < 0 || (argc > 0 && argv.is_null()) {
+        return RCL_RET_INVALID_ARGUMENT;
+    }
+    for i in 0..argc as usize {
+        let arg = unsafe { *argv.add(i) };
+        if !arg.is_null() && unsafe { core::ffi::CStr::from_ptr(arg) }.to_bytes() == b"--ros-args" {
+            return RCL_RET_UNSUPPORTED;
+        }
+    }
+    unsafe { rclc_support_init_rmw(support, core::ptr::null(), 0, core::ptr::null(), rmw) }
+}
+
+/// Initialize the support context with an explicit locator and domain.
+///
+/// What `rclc_support_init` was before it took rclc's signature: the
+/// middleware locator (e.g. `"tcp/127.0.0.1:7447"`, or NULL for the default)
+/// and the ROS domain (0 = unset, resolved from the build / environment).
 ///
 /// # Returns
 /// * `RCL_RET_OK` on success
@@ -132,7 +221,7 @@ pub extern "C" fn rclc_support_get_zero_initialized() -> rclc_support_t {
 /// * `support` must be a valid pointer to a zero-initialized rclc_support_t
 /// * `locator` must be a valid null-terminated string or NULL
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rclc_support_init(
+pub unsafe extern "C" fn rclc_support_init_with_locator(
     support: *mut rclc_support_t,
     locator: *const c_char,
     domain_id: u8,
@@ -351,6 +440,7 @@ pub unsafe extern "C" fn rclc_support_init_rmw(
                     session,
                 );
                 support.state = rclc_support_state_t::RCLC_SUPPORT_STATE_INITIALIZED;
+                support.context._support = support as *const rclc_support_t;
                 RCL_RET_OK
             }
             // Phase 155.B — surface the inner `TransportError` variant
@@ -402,6 +492,7 @@ pub unsafe extern "C" fn rclc_support_fini(support: *mut rclc_support_t) -> rcl_
 
     support._opaque = [0u64; SESSION_OPAQUE_U64S];
     support.state = rclc_support_state_t::RCLC_SUPPORT_STATE_SHUTDOWN;
+    support.context._support = core::ptr::null();
 
     RCL_RET_OK
 }
@@ -432,7 +523,8 @@ mod verification {
     #[kani::unwind(5)]
     fn support_init_null_ptr() {
         // NULL support pointer → INVALID_ARGUMENT
-        let ret = unsafe { rclc_support_init(core::ptr::null_mut(), core::ptr::null(), 0) };
+        let ret =
+            unsafe { rclc_support_init_with_locator(core::ptr::null_mut(), core::ptr::null(), 0) };
         assert_eq!(ret, RCL_RET_INVALID_ARGUMENT);
     }
 

@@ -63,7 +63,7 @@ pub type CppCancelCallback =
 /// who returned `AcceptAndDefer` from the goal callback was never told the
 /// goal had been accepted: the exact point at which a deferred goal is
 /// supposed to start executing. C takes `rclc_accepted_callback_t` at
-/// `rcl_action_server_init` and Rust takes one in
+/// `rclc_action_server_init_with_callbacks` and Rust takes one in
 /// `create_action_server_with_callbacks(goal, cancel, accepted)`; this is the
 /// C++ spelling of the same hook.
 ///
@@ -577,7 +577,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_for_each_active_goal(
 
 /// Is `goal_id` a goal this server still knows about? — phase-417 W4.b.
 ///
-/// The C++ tier's binding of `rcl_action_server_goal_exists` /
+/// The C++ tier's binding of `rclc_action_server_goal_exists` /
 /// `ActionServerRawHandle::goal_exists`. TRUE while the goal is active AND
 /// while its completed result is still retained, which is rcl's window.
 ///

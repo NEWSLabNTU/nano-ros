@@ -1093,8 +1093,14 @@ pub unsafe extern "C" fn rclc_publisher_get_actual_qos(
 /// # Safety
 /// * `publisher` must be a valid pointer
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rcl_publisher_fini(publisher: *mut rcl_publisher_t) -> rcl_ret_t {
-    validate_not_null!(publisher);
+pub unsafe extern "C" fn rcl_publisher_fini(
+    publisher: *mut rcl_publisher_t,
+    node: *mut crate::node::rcl_node_t,
+) -> rcl_ret_t {
+    // phase-492 W1.b — rcl's arity: the node the entity was created on.
+    // Checked non-NULL only; teardown needs nothing from it (RFC-0089
+    // ADOPT-BOUNDED, ledger `c:publisher_fini`).
+    validate_not_null!(publisher, node);
 
     let publisher = &mut *publisher;
 
@@ -1171,7 +1177,9 @@ pub unsafe extern "C" fn rcl_publisher_get_topic_name(
 
 /// How many subscriptions are on this publisher's topic, right now.
 ///
-/// rcl's `rcl_publisher_get_subscription_count` — phase-444, ledger row
+/// rcl's `rcl_publisher_get_subscription_count` with an executor parameter, hence the
+/// distinct `rclc_` name
+/// (phase-492 W1.b) — phase-444, ledger row
 /// `c:publisher_get_subscription_count`.
 ///
 /// # A WEAKER QUESTION THAN UPSTREAM'S, stated here rather than discovered
@@ -1191,9 +1199,10 @@ pub unsafe extern "C" fn rcl_publisher_get_topic_name(
 ///
 /// We open ONE transport session per image and the executor owns it, so the
 /// graph is the executor's to read — the same receiver difference as every
-/// `nros_executor_get_*` graph verb (phase-381 W4). The name is upstream's so
-/// a ported file finds it; the extra argument is what the compiler makes the
-/// porter notice (RFC-0089's mechanical-edit test).
+/// `rclc_executor_get_*` graph verb (phase-381 W4). The name was upstream's,
+/// counting on the extra argument to make a porter notice; RFC-0089's
+/// 2026-10-12 rule 2 forbids an upstream name over a different arity, so it is
+/// `rclc_` (phase-492 W1.b) and a ported call fails on the name.
 ///
 /// # Parameters
 /// * `publisher` - Pointer to a publisher
@@ -1211,7 +1220,7 @@ pub unsafe extern "C" fn rcl_publisher_get_topic_name(
 /// * `publisher` and `executor` must be valid pointers or NULL
 /// * `out_count` must point to a writable `size_t` or be NULL
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rcl_publisher_get_subscription_count(
+pub unsafe extern "C" fn rclc_publisher_get_subscription_count(
     publisher: *const rcl_publisher_t,
     executor: *mut crate::executor::rclc_executor_t,
     out_count: *mut usize,
@@ -1496,7 +1505,7 @@ mod stale_node_tests {
         assert_eq!(unsafe { crate::node::rcl_node_fini(&mut node) }, RCL_RET_OK);
 
         assert_eq!(
-            unsafe { rcl_publisher_fini(&mut publisher) },
+            unsafe { rcl_publisher_fini(&mut publisher, &mut node) },
             RCLC_RET_STALE_NODE,
             "a publisher outliving its node must SAY so — this is the one \
              verdict the generation scheme exists to produce"

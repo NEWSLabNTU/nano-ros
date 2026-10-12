@@ -3,7 +3,7 @@
  * @ingroup grp_executor
  * @brief Periodic timer API.
  *
- * Create timers with rcl_timer_init() and register them with an
+ * Create timers with rclc_timer_init_with_context() and register them with an
  * executor via nros_executor_add_timer().
  */
 

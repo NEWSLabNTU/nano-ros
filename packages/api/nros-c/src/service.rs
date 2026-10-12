@@ -106,7 +106,7 @@ unsafe fn atomic_bool_waker(flag: &AtomicBool) -> Waker {
 /// # Returns
 /// * `true` if the request was handled successfully
 /// * `false` if there was an error handling the request
-pub type rclc_service_callback_t = Option<
+pub type rclc_service_raw_callback_t = Option<
     unsafe extern "C" fn(
         request_data: *const u8,
         request_len: usize,
@@ -426,8 +426,14 @@ pub unsafe extern "C" fn rclc_service_init_with_options(
 /// * `RCL_RET_INVALID_ARGUMENT` if service is NULL
 /// * `RCL_RET_NOT_INIT` if not initialized
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rcl_service_fini(service: *mut rcl_service_t) -> rcl_ret_t {
-    validate_not_null!(service);
+pub unsafe extern "C" fn rcl_service_fini(
+    service: *mut rcl_service_t,
+    node: *mut crate::node::rcl_node_t,
+) -> rcl_ret_t {
+    // phase-492 W1.b — rcl's arity: the node the entity was created on.
+    // Checked non-NULL only; teardown needs nothing from it (RFC-0089
+    // ADOPT-BOUNDED, ledger `c:service_fini`).
+    validate_not_null!(service, node);
 
     let service = &mut *service;
     if service.state != rclc_service_state_t::RCLC_SERVICE_STATE_INITIALIZED {
@@ -1124,7 +1130,7 @@ pub struct rcl_client_t {
     /// Phase 189.M3.3.a — scheduling-context slot to bind the client's executor
     /// handle to. `0` = inherit the executor / Node default; set via
     /// `rclc_client_init_with_options`. When non-zero,
-    /// `rclc_executor_add_client` binds the freshly-created handle to this
+    /// `rclc_executor_attach_client` binds the freshly-created handle to this
     /// SC after registration.
     pub sched_context_id: crate::executor::rclc_sched_context_id_t,
     /// Internal state (arena entry index + executor pointer + timeout).
@@ -1211,7 +1217,7 @@ pub extern "C" fn rcl_get_zero_initialized_client() -> rcl_client_t {
 ///
 /// Stores the service name/type metadata and a `ServiceClientInternal`
 /// blob; the actual transport handle (`RmwServiceClient`) is created
-/// later by `rclc_executor_add_client`. This deferred lifecycle matches
+/// later by `rclc_executor_attach_client`. This deferred lifecycle matches
 /// `rclc_service_init_default` (server side) and the action client.
 ///
 /// rclc's `rclc_client_init_default`, at rclc's arity. The typesupport
@@ -1219,7 +1225,7 @@ pub extern "C" fn rcl_get_zero_initialized_client() -> rcl_client_t {
 /// `const rosidl_service_type_support_t*`, so passing a rosidl typesupport is
 /// an incompatible-pointer diagnostic at the call (same reason as
 /// `rclc_service_init_default`: a typesupport's members are its contract). The
-/// response callback is supplied at registration (`rclc_executor_add_client*`),
+/// response callback is supplied at registration (`rclc_executor_attach_client*`),
 /// as rclc's is at `rclc_executor_add_client`.
 ///
 /// # Parameters
@@ -1265,7 +1271,7 @@ pub unsafe extern "C" fn rclc_client_init_default(
     client.node = unsafe { crate::node::node_ref_of(node) };
 
     // Phase 193.4b — default to the services profile; rclc_client_init_with_qos
-    // overrides. (`rclc_executor_add_client` reads this at registration.)
+    // overrides. (`rclc_executor_attach_client` reads this at registration.)
     client.qos = crate::qos::rclc_qos_t::default();
 
     // Initialise the internal state (executor_ptr null until registration).
@@ -1306,7 +1312,7 @@ pub struct rcl_client_options_t {
     /// Scheduling-context slot to bind the client's executor handle to.
     /// `0` = inherit the executor / Node default. A non-zero value must be an id
     /// from `rclc_executor_create_sched_context`; the bind is applied by
-    /// `rclc_executor_add_client` once the handle exists.
+    /// `rclc_executor_attach_client` once the handle exists.
     pub sched_context: crate::executor::rclc_sched_context_id_t,
     /// Reserved for future use; must be zero. Pads for ABI stability.
     pub _reserved: [u8; 3],
@@ -1320,7 +1326,7 @@ pub extern "C" fn rcl_client_get_default_options() -> rcl_client_options_t {
 
 /// Phase 189.M3.3.a — initialize a service client with custom QoS + named
 /// options. Like [`rclc_client_init_with_qos`] except a non-zero
-/// `options->sched_context` is stashed so `rclc_executor_add_client`
+/// `options->sched_context` is stashed so `rclc_executor_attach_client`
 /// binds the resulting executor handle to that scheduling context once known.
 ///
 /// # Safety
@@ -1359,8 +1365,14 @@ pub unsafe extern "C" fn rclc_client_init_with_options(
 /// * `RCL_RET_INVALID_ARGUMENT` if client is NULL
 /// * `RCL_RET_NOT_INIT` if not initialized
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rcl_client_fini(client: *mut rcl_client_t) -> rcl_ret_t {
-    validate_not_null!(client);
+pub unsafe extern "C" fn rcl_client_fini(
+    client: *mut rcl_client_t,
+    node: *mut crate::node::rcl_node_t,
+) -> rcl_ret_t {
+    // phase-492 W1.b — rcl's arity: the node the entity was created on.
+    // Checked non-NULL only; teardown needs nothing from it (RFC-0089
+    // ADOPT-BOUNDED, ledger `c:client_fini`).
+    validate_not_null!(client, node);
 
     let client = &mut *client;
 
@@ -1651,7 +1663,7 @@ unsafe fn client_entry_callback(
 ///
 /// phase-487 W2 — the callback and `context` are written into the client's
 /// executor-arena entry, which owns them; the client struct keeps neither.
-/// So the client must be ADDED first (`rclc_executor_add_client`), and a
+/// So the client must be ADDED first (`rclc_executor_attach_client`), and a
 /// client removed and re-added starts with no callback. Before W2 the setter
 /// wrote the struct and the arena dispatched through a trampoline that read
 /// it back, which is the back-reference RFC-0096 D9 removes.
@@ -1775,7 +1787,7 @@ pub unsafe extern "C" fn rclc_client_server_available(
 /// the underlying `Client::wait_for_service`.
 ///
 /// The client must already have been registered with the executor via
-/// `rclc_executor_add_client`. A spin on `rclc_client_service_is_ready`'s
+/// `rclc_executor_attach_client`. A spin on `rclc_client_service_is_ready`'s
 /// query: the executor is spun cooperatively between checks, and each check
 /// is a synchronous read of the discovery state the backend maintains (on
 /// zenoh, the matched-server set fed by liveliness PUT/DELETE — phase-428
@@ -1894,7 +1906,7 @@ pub unsafe extern "C" fn rclc_client_service_is_ready(client: *const rcl_client_
 ///
 /// Non-blocking. The reply is delivered via the registered
 /// `response_callback` during `rclc_executor_spin_some`. The user must
-/// have previously registered the client with `rclc_executor_add_client`.
+/// have previously registered the client with `rclc_executor_attach_client`.
 ///
 /// # Returns
 /// * `RCL_RET_OK` on success
@@ -2040,7 +2052,7 @@ pub unsafe extern "C" fn rclc_client_take_response(
 /// layer. Internally calls `rclc_client_send_request_async` and spins
 /// the registered executor via `rclc_executor_spin_some` until the
 /// response arrives or the client's `timeout_ms` elapses. The client
-/// must have been registered with `rclc_executor_add_client`.
+/// must have been registered with `rclc_executor_attach_client`.
 ///
 /// # Parameters
 /// * `client` - Pointer to a registered client
@@ -2245,7 +2257,7 @@ impl rcl_client_t {
     /// `rcl_client_is_valid` and `rcl_client_get_service_name`.
     ///
     /// phase-417 stage 3, ledger row `c:client_is_valid`. `REGISTERED` is the
-    /// ORDINARY callback-mode state, set by `rclc_executor_add_client`.
+    /// ORDINARY callback-mode state, set by `rclc_executor_attach_client`.
     /// Testing `state == INITIALIZED` exactly meant the upstream guard
     /// `if (!rcl_client_is_valid(&c)) { bail; }` rejected a working client,
     /// and the name accessor returned NULL into whatever `%s` printed it. A
@@ -2498,13 +2510,23 @@ mod verification {
     fn service_fini_null_safety() {
         // NULL → INVALID_ARGUMENT
         assert_eq!(
-            unsafe { rcl_service_fini(ptr::null_mut()) },
+            unsafe {
+                rcl_service_fini(
+                    ptr::null_mut(),
+                    &mut crate::node::rcl_get_zero_initialized_node(),
+                )
+            },
             RCL_RET_INVALID_ARGUMENT,
         );
 
         // UNINITIALIZED → NOT_INIT
         let mut svc = rcl_get_zero_initialized_service();
-        assert_eq!(unsafe { rcl_service_fini(&mut svc) }, RCL_RET_NOT_INIT,);
+        assert_eq!(
+            unsafe {
+                rcl_service_fini(&mut svc, &mut crate::node::rcl_get_zero_initialized_node())
+            },
+            RCL_RET_NOT_INIT,
+        );
     }
 
     #[kani::proof]
@@ -2672,13 +2694,26 @@ mod verification {
     fn client_fini_null_safety() {
         // NULL → INVALID_ARGUMENT
         assert_eq!(
-            unsafe { rcl_client_fini(ptr::null_mut()) },
+            unsafe {
+                rcl_client_fini(
+                    ptr::null_mut(),
+                    &mut crate::node::rcl_get_zero_initialized_node(),
+                )
+            },
             RCL_RET_INVALID_ARGUMENT,
         );
 
         // UNINITIALIZED → NOT_INIT
         let mut client = rcl_get_zero_initialized_client();
-        assert_eq!(unsafe { rcl_client_fini(&mut client) }, RCL_RET_NOT_INIT,);
+        assert_eq!(
+            unsafe {
+                rcl_client_fini(
+                    &mut client,
+                    &mut crate::node::rcl_get_zero_initialized_node(),
+                )
+            },
+            RCL_RET_NOT_INIT,
+        );
     }
 
     #[kani::proof]
@@ -3217,7 +3252,7 @@ mod validity_tests {
     use super::*;
 
     /// Every state a client can be USED in. `REGISTERED` is the ordinary
-    /// callback-mode path (`rclc_executor_add_client`); a polled client is its
+    /// callback-mode path (`rclc_executor_attach_client`); a polled client is its
     /// own type since phase-487 W2.
     const LIVE_CLIENT_STATES: [rclc_client_state_t; 2] = [
         rclc_client_state_t::RCLC_CLIENT_STATE_INITIALIZED,

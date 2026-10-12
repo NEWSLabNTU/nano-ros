@@ -4,7 +4,7 @@
  * @brief Service client API.
  *
  * Create a service client with rclc_client_init_default(), add it to an
- * executor with rclc_executor_add_client(), and call services with
+ * executor with rclc_executor_attach_client(), and call services with
  * rclc_client_call() (blocking). The executor arena owns the client; a
  * response callback is set on the ADDED client with
  * rclc_client_set_response_callback() (phase-487 W2).

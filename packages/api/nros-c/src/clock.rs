@@ -180,13 +180,19 @@ pub extern "C" fn rclc_clock_get_zero_initialized() -> rcl_clock_t {
     rcl_clock_t::default()
 }
 
-/// Initialize a clock.
+/// Initialize a clock — rcl's signature (phase-492 W1.b):
+/// `rcl_clock_init(type, &clock, &allocator)`. `allocator` must be NULL or
+/// `rcl_get_default_allocator()`'s; a clock allocates nothing.
+///
+/// # Safety
+/// `clock` must be valid for writes; `allocator` NULL or readable.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_clock_init(
-    clock: *mut rcl_clock_t,
     clock_type: rcl_clock_type_t,
+    clock: *mut rcl_clock_t,
+    allocator: *mut crate::allocator::rcl_allocator_t,
 ) -> rcl_ret_t {
-    if clock.is_null() {
+    if clock.is_null() || !unsafe { crate::allocator::allocator_is_accepted(allocator) } {
         return RCL_RET_INVALID_ARGUMENT;
     }
 
@@ -216,9 +222,13 @@ pub unsafe extern "C" fn rcl_clock_init(
     RCL_RET_OK
 }
 
-/// Get the current time from a clock.
+/// Get the current time from a clock as an `rclc_time_t` (seconds +
+/// nanoseconds). rcl's `rcl_clock_get_now` writes a nanosecond count; that is
+/// [`rcl_clock_get_now`] here, and this is the struct-valued sibling
+/// (phase-492 W1.b — it was the one spelled `rcl_clock_get_now`, with a
+/// different out-type than rcl's).
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rcl_clock_get_now(
+pub unsafe extern "C" fn rclc_clock_get_now_time(
     clock: *const rcl_clock_t,
     time_out: *mut rclc_time_t,
 ) -> rcl_ret_t {
@@ -246,9 +256,10 @@ pub unsafe extern "C" fn rcl_clock_get_now(
     RCL_RET_OK
 }
 
-/// Get the current time from a clock as nanoseconds.
+/// Get the current time from a clock as a nanosecond count — rcl's contract
+/// (`rcl_time_point_value_t *`). phase-492 W1.b: was `rclc_clock_get_now_ns`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rclc_clock_get_now_ns(
+pub unsafe extern "C" fn rcl_clock_get_now(
     clock: *const rcl_clock_t,
     nanoseconds: *mut i64,
 ) -> rcl_ret_t {
@@ -485,7 +496,7 @@ pub unsafe extern "C" fn rclc_get_ros_time_override(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_clock_time_started(clock: *const rcl_clock_t) -> bool {
     let mut nanoseconds: i64 = 0;
-    if rclc_clock_get_now_ns(clock, &mut nanoseconds) != RCL_RET_OK {
+    if rcl_clock_get_now(clock, &mut nanoseconds) != RCL_RET_OK {
         return false;
     }
     nanoseconds != 0
@@ -875,11 +886,19 @@ mod tests {
         let mut system = rclc_clock_get_zero_initialized();
         unsafe {
             assert_eq!(
-                rcl_clock_init(&mut ros, rcl_clock_type_t::RCLC_CLOCK_ROS_TIME),
+                rcl_clock_init(
+                    rcl_clock_type_t::RCLC_CLOCK_ROS_TIME,
+                    &mut ros,
+                    core::ptr::null_mut()
+                ),
                 RCL_RET_OK
             );
             assert_eq!(
-                rcl_clock_init(&mut system, rcl_clock_type_t::RCLC_CLOCK_SYSTEM_TIME),
+                rcl_clock_init(
+                    rcl_clock_type_t::RCLC_CLOCK_SYSTEM_TIME,
+                    &mut system,
+                    core::ptr::null_mut()
+                ),
                 RCL_RET_OK
             );
 
@@ -902,7 +921,7 @@ mod tests {
             assert_eq!(nanoseconds, 42, "out-parameter written with no override");
 
             // With no override the ROS clock reads the wall, as it always has.
-            assert_eq!(rclc_clock_get_now_ns(&ros, &mut nanoseconds), RCL_RET_OK);
+            assert_eq!(rcl_clock_get_now(&ros, &mut nanoseconds), RCL_RET_OK);
             assert!(nanoseconds > 0);
             assert!(rcl_clock_time_started(&ros));
 
@@ -914,14 +933,14 @@ mod tests {
                 RCL_RET_OK
             );
             assert!(enabled);
-            assert_eq!(rclc_clock_get_now_ns(&ros, &mut nanoseconds), RCL_RET_OK);
+            assert_eq!(rcl_clock_get_now(&ros, &mut nanoseconds), RCL_RET_OK);
             assert_eq!(nanoseconds, 0);
             assert!(!rcl_clock_time_started(&ros));
 
             // A `/clock` sample arrives.
             let simulated = 1_234_500_000_000i64;
             assert_eq!(rcl_set_ros_time_override(&ros, simulated), RCL_RET_OK);
-            assert_eq!(rclc_clock_get_now_ns(&ros, &mut nanoseconds), RCL_RET_OK);
+            assert_eq!(rcl_clock_get_now(&ros, &mut nanoseconds), RCL_RET_OK);
             assert_eq!(nanoseconds, simulated);
             assert!(rcl_clock_time_started(&ros));
 
@@ -930,7 +949,7 @@ mod tests {
             assert_eq!(read_back, simulated);
 
             let mut stamp = rclc_time_t::default();
-            assert_eq!(rcl_clock_get_now(&ros, &mut stamp), RCL_RET_OK);
+            assert_eq!(rclc_clock_get_now_time(&ros, &mut stamp), RCL_RET_OK);
             assert_eq!(
                 stamp,
                 rclc_time_t {
@@ -940,7 +959,7 @@ mod tests {
             );
 
             // Time does not move while the simulator holds it.
-            assert_eq!(rclc_clock_get_now_ns(&ros, &mut nanoseconds), RCL_RET_OK);
+            assert_eq!(rcl_clock_get_now(&ros, &mut nanoseconds), RCL_RET_OK);
             assert_eq!(nanoseconds, simulated);
 
             // A negative override is the "no override" sentinel, so it is
@@ -959,7 +978,7 @@ mod tests {
                 rcl_is_enabled_ros_time_override(&system, &mut enabled),
                 RCLC_RET_NOT_ALLOWED
             );
-            assert_eq!(rclc_clock_get_now_ns(&system, &mut nanoseconds), RCL_RET_OK);
+            assert_eq!(rcl_clock_get_now(&system, &mut nanoseconds), RCL_RET_OK);
             assert!(nanoseconds > simulated);
 
             // Null clock, null out-parameter, and an uninitialised clock.
@@ -982,7 +1001,7 @@ mod tests {
                 RCL_RET_OK
             );
             assert!(!enabled);
-            assert_eq!(rclc_clock_get_now_ns(&ros, &mut nanoseconds), RCL_RET_OK);
+            assert_eq!(rcl_clock_get_now(&ros, &mut nanoseconds), RCL_RET_OK);
             assert!(nanoseconds > simulated);
         }
     }

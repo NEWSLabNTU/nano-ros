@@ -336,8 +336,8 @@ nros_action_abort	rclc_action_abort	ours	ours-only
 nros_action_cancel_goal	rclc_action_cancel_goal	ours	ours-only
 nros_action_canceled	rclc_action_canceled	ours	ours-only
 nros_action_client_action_server_is_ready	rclc_action_client_action_server_is_ready	ours	ours-only
-nros_action_client_fini	rcl_action_client_fini	adopt	conforms to upstream `rcl_action_client_fini` (systematic)
-nros_action_client_init	rcl_action_client_init	adopt	conforms to upstream `rcl_action_client_init` (systematic)
+nros_action_client_fini	rcl_action_client_fini	adopt	given upstream `rcl_action_client_fini`'s signature and adopted (measured, phase-492 W1.b)
+nros_action_client_init	rcl_action_client_init	adopt	given upstream `rcl_action_client_init`'s signature and adopted (measured, phase-492 W1.b)
 nros_action_client_init_with_options	rclc_action_client_init_with_options	ours	ours-only
 nros_action_client_options_t	rcl_action_client_options_t	adopt	conforms to upstream `rcl_action_client_options_t` (same)
 nros_action_client_poll	rclc_action_client_poll	ours	ours-only
@@ -352,13 +352,13 @@ nros_action_expire_goals	rclc_action_expire_goals	ours	differs: keeps a distinct
 nros_action_get_goal_status	rclc_action_get_goal_status	ours	ours-only
 nros_action_get_result	rclc_action_get_result	ours	ours-only
 nros_action_get_result_async	rclc_action_get_result_async	ours	ours-only
-nros_action_publish_feedback	rclc_action_publish_feedback	ours	differs: keeps a distinct name
+nros_action_publish_feedback	rclc_action_publish_feedback_raw	ours	differs from `rclc_action_publish_feedback`: CDR bytes (phase-492 W1.b)
 nros_action_send_goal	rclc_action_send_goal	ours	ours-only
 nros_action_send_goal_async	rclc_action_send_goal_async	ours	ours-only
-nros_action_server_fini	rcl_action_server_fini	adopt	conforms to upstream `rcl_action_server_fini` (systematic)
+nros_action_server_fini	rcl_action_server_fini	adopt	given upstream `rcl_action_server_fini`'s signature and adopted (measured, phase-492 W1.b)
 nros_action_server_get_active_goal_count	rclc_action_server_get_active_goal_count	ours	ours-only
-nros_action_server_goal_exists	rcl_action_server_goal_exists	adopt	conforms to upstream `rcl_action_server_goal_exists` (same)
-nros_action_server_init	rcl_action_server_init	adopt	conforms to upstream `rcl_action_server_init` (systematic)
+nros_action_server_goal_exists	rclc_action_server_goal_exists	ours	differs from `rcl_action_server_goal_exists`: our goal handle (phase-492 W1.b)
+nros_action_server_init	rclc_action_server_init_with_callbacks	ours	differs from `rcl_action_server_init`: binds the callbacks (phase-492 W1.b)
 nros_action_server_init_with_options	rclc_action_server_init_with_options	ours	ours-only
 nros_action_server_init_with_qos	rclc_action_server_init_with_qos	ours	ours-only
 nros_action_server_options_t	rcl_action_server_options_t	adopt	conforms to upstream `rcl_action_server_options_t` (same)
@@ -418,6 +418,7 @@ nros_c_service_request_callback_t	rclc_c_service_request_callback_t	ours	ours-on
 nros_c_storage_size_unavailable__the_per_build_nros_cpp_config_generated_h_is_not_on_this_include_path	rclc_c_storage_size_unavailable__the_per_build_nros_cpp_config_generated_h_is_not_on_this_include_path	ours	ours-only
 nros_c_subscription_callback_t	rclc_c_subscription_callback_t	ours	ours-only
 nros_c_subscription_validated_callback_t	rclc_c_subscription_validated_callback_t	ours	ours-only
+nros_c_support_init_baked	nros_c_support_init_baked	build	carries the baked RMW selector from a header macro
 nros_c_timer_callback_t	rclc_c_timer_callback_t	ours	ours-only
 nros_cancel_callback_t	rclc_cancel_callback_t	ours	ours-only
 nros_cancel_response_t	rclc_cancel_response_t	ours	ours-only
@@ -459,7 +460,7 @@ nros_cdr_write_u64	rclc_cdr_write_u64	ours	ours-only
 nros_cdr_write_u8	rclc_cdr_write_u8	ours	ours-only
 nros_clear_custom_transport	rclc_clear_custom_transport	ours	ours-only
 nros_client_call	rclc_client_call	ours	ours-only
-nros_client_fini	rcl_client_fini	adopt	conforms to upstream `rcl_client_fini` (systematic)
+nros_client_fini	rcl_client_fini	adopt	given upstream `rcl_client_fini`'s signature and adopted (measured, phase-492 W1.b)
 nros_client_init_with_options	rclc_client_init_with_options	ours	ours-only
 nros_client_init_with_qos	rclc_client_init_with_qos	ours	ours-only
 nros_client_options_t	rcl_client_options_t	adopt	conforms to upstream `rcl_client_options_t` (same)
@@ -474,11 +475,11 @@ nros_client_state_t	rclc_client_state_t	ours	ours-only
 nros_client_t	rcl_client_t	alias	`rcl_client_t` already names it (a compat alias); the definition takes it
 nros_client_take_response	rclc_client_take_response	ours	ours-only
 nros_client_wait_for_service	rclc_client_wait_for_service	ours	ours-only
-nros_clock_get_now	rcl_clock_get_now	adopt	conforms to upstream `rcl_clock_get_now` (same)
-nros_clock_get_now_ns	rclc_clock_get_now_ns	ours	ours-only
+nros_clock_get_now	rclc_clock_get_now_time	ours	differs from `rcl_clock_get_now`: writes an rclc_time_t (phase-492 W1.b)
+nros_clock_get_now_ns	rcl_clock_get_now	adopt	conforms to upstream `rcl_clock_get_now` (measured) (phase-492 W1.b)
 nros_clock_get_type	rclc_clock_get_type	ours	ours-only
 nros_clock_get_zero_initialized	rclc_clock_get_zero_initialized	ours	ours-only
-nros_clock_init	rcl_clock_init	adopt	conforms to upstream `rcl_clock_init` (systematic)
+nros_clock_init	rcl_clock_init	adopt	given upstream `rcl_clock_init`'s signature and adopted (measured, phase-492 W1.b)
 nros_clock_is_valid	rclc_clock_is_valid	ours	ours-only
 nros_clock_state_t	rclc_clock_state_t	ours	ours-only
 nros_clock_t	rcl_clock_t	adopt	conforms to upstream `rcl_clock_t` (same)
@@ -539,9 +540,9 @@ nros_endpoint_info_visit_fn	rclc_endpoint_info_visit_fn	ours	ours-only
 nros_event_liveliness_changed_cb_t	rclc_event_liveliness_changed_cb_t	ours	ours-only
 nros_event_publisher_count_cb_t	rclc_event_publisher_count_cb_t	ours	ours-only
 nros_event_subscriber_count_cb_t	rclc_event_subscriber_count_cb_t	ours	ours-only
-nros_executor_add_action_client	rclc_executor_add_action_client	adopt	conforms to upstream `rclc_executor_add_action_client` (systematic)
-nros_executor_add_action_server	rclc_executor_add_action_server	adopt	conforms to upstream `rclc_executor_add_action_server` (systematic)
-nros_executor_add_client	rclc_executor_add_client	adopt	conforms to upstream `rclc_executor_add_client` (systematic)
+nros_executor_add_action_client	rclc_executor_attach_action_client	ours	differs from `rclc_executor_add_action_client`: callbacks bound at init (phase-492 W1.b)
+nros_executor_add_action_server	rclc_executor_attach_action_server	ours	differs from `rclc_executor_add_action_server`: callbacks bound at init (phase-492 W1.b)
+nros_executor_add_client	rclc_executor_attach_client	ours	differs from `rclc_executor_add_client`: no message/callback args (phase-492 W1.b)
 nros_executor_add_on_shutdown_callback	rclc_executor_add_on_shutdown_callback	ours	ours-only
 nros_executor_add_pre_shutdown_callback	rclc_executor_add_pre_shutdown_callback	ours	ours-only
 nros_executor_add_service_raw	rclc_executor_add_service_raw	ours	ours-only
@@ -574,7 +575,7 @@ nros_executor_get_subscriptions_info_by_topic	rclc_executor_get_subscriptions_in
 nros_executor_get_topic_names_and_types	rclc_executor_get_topic_names_and_types	ours	ours-only
 nros_executor_handle_invocation_t	rclc_executor_handle_invocation_t	ours	ours-only
 nros_executor_handle_t	rclc_executor_handle_t	ours	ours-only
-nros_executor_init	rclc_executor_init	adopt	conforms to upstream `rclc_executor_init` (systematic)
+nros_executor_init	rclc_executor_init	adopt	given upstream `rclc_executor_init`'s signature and adopted (measured, phase-492 W1.b)
 nros_executor_is_spinning	rclc_executor_is_spinning	ours	ours-only
 nros_executor_is_valid	rclc_executor_is_valid	ours	ours-only
 nros_executor_lifecycle_change_state	rclc_executor_lifecycle_change_state	ours	ours-only
@@ -597,12 +598,12 @@ nros_executor_register_timer	rclc_executor_register_timer	ours	ours-only
 nros_executor_register_timer_in_group	rclc_executor_register_timer_in_group	ours	ours-only
 nros_executor_remove_action_client	rclc_executor_remove_action_client	ours	ours-only
 nros_executor_remove_action_server	rclc_executor_remove_action_server	ours	ours-only
-nros_executor_remove_client	rclc_executor_remove_client	adopt	conforms to upstream `rclc_executor_remove_client` (same)
+nros_executor_remove_client	rclc_executor_remove_client	adopt	given upstream `rclc_executor_remove_client`'s signature and adopted (measured, phase-492 W1.b)
 nros_executor_remove_on_shutdown_callback	rclc_executor_remove_on_shutdown_callback	ours	ours-only
 nros_executor_remove_pre_shutdown_callback	rclc_executor_remove_pre_shutdown_callback	ours	ours-only
-nros_executor_remove_service	rclc_executor_remove_service	adopt	conforms to upstream `rclc_executor_remove_service` (same)
-nros_executor_remove_subscription	rclc_executor_remove_subscription	adopt	conforms to upstream `rclc_executor_remove_subscription` (same)
-nros_executor_remove_timer	rclc_executor_remove_timer	adopt	conforms to upstream `rclc_executor_remove_timer` (same)
+nros_executor_remove_service	rclc_executor_remove_service	adopt	given upstream `rclc_executor_remove_service`'s signature and adopted (measured, phase-492 W1.b)
+nros_executor_remove_subscription	rclc_executor_remove_subscription	adopt	given upstream `rclc_executor_remove_subscription`'s signature and adopted (measured, phase-492 W1.b)
+nros_executor_remove_timer	rclc_executor_remove_timer	adopt	given upstream `rclc_executor_remove_timer`'s signature and adopted (measured, phase-492 W1.b)
 nros_executor_semantics_t	rclc_executor_semantics_t	adopt	conforms to upstream `rclc_executor_semantics_t` (same)
 nros_executor_state_t	rclc_executor_state_t	ours	ours-only
 nros_executor_t	rclc_executor_t	alias	`rclc_executor_t` already names it (a compat alias); the definition takes it
@@ -692,7 +693,7 @@ nros_name	rclc_name	ours	ours-only
 nros_names_and_types_visit_fn	rclc_names_and_types_visit_fn	ours	ours-only
 nros_native_tier_spec_t	nros_native_tier_spec_t	hook	defined by the application or entry, called by startup code
 nros_node_create_guard_condition	rclc_node_create_guard_condition	ours	ours-only
-nros_node_get_domain_id	rcl_node_get_domain_id	adopt	conforms to upstream `rcl_node_get_domain_id` (same)
+nros_node_get_domain_id	rcl_node_get_domain_id	adopt	given upstream `rcl_node_get_domain_id`'s signature and adopted (measured, phase-492 W1.b)
 nros_node_get_fully_qualified_name	rclc_node_get_fully_qualified_name	ours	differs: keeps a distinct name
 nros_node_get_graph_guard_condition	rclc_node_get_graph_guard_condition	ours	differs: keeps a distinct name
 nros_node_get_logger	rclc_node_get_logger	ours	ours-only
@@ -700,7 +701,7 @@ nros_node_get_serialization_format	rclc_node_get_serialization_format	ours	ours-
 nros_node_init_ex	rclc_node_init_ex	ours	ours-only
 nros_node_options_t	rcl_node_options_t	adopt	conforms to upstream `rcl_node_options_t` (same)
 nros_node_ref_t	rclc_node_ref_t	ours	ours-only
-nros_node_resolve_name	rcl_node_resolve_name	adopt	conforms to upstream `rcl_node_resolve_name` (systematic)
+nros_node_resolve_name	rclc_node_resolve_name	ours	differs from `rcl_node_resolve_name`: caller buffer, no allocator (phase-492 W1.b)
 nros_node_set_qos_overrides	rclc_node_set_qos_overrides	ours	ours-only
 nros_node_state_t	rclc_node_state_t	ours	ours-only
 nros_node_t	rcl_node_t	alias	`rcl_node_t` already names it (a compat alias); the definition takes it
@@ -775,7 +776,7 @@ nros_polling_subscription_take_validated	rclc_polling_subscription_take_validate
 nros_publish_raw	rclc_publish_raw	ours	ours-only
 nros_publisher_commit	rclc_publisher_commit	ours	ours-only
 nros_publisher_discard	rclc_publisher_discard	ours	ours-only
-nros_publisher_fini	rcl_publisher_fini	adopt	conforms to upstream `rcl_publisher_fini` (systematic)
+nros_publisher_fini	rcl_publisher_fini	adopt	given upstream `rcl_publisher_fini`'s signature and adopted (measured, phase-492 W1.b)
 nros_publisher_get_actual_qos	rclc_publisher_get_actual_qos	ours	differs: keeps a distinct name
 nros_publisher_get_gid	rclc_publisher_get_gid	ours	ours-only
 nros_publisher_init_with_options	rclc_publisher_init_with_options	ours	ours-only
@@ -816,8 +817,8 @@ nros_sched_class_t	rclc_sched_class_t	ours	ours-only
 nros_sched_context_id_t	rclc_sched_context_id_t	ours	ours-only
 nros_sched_context_t	rclc_sched_context_t	ours	ours-only
 nros_sched_priority_t	rclc_sched_priority_t	ours	ours-only
-nros_service_callback_t	rclc_service_callback_t	ours	ours-only
-nros_service_fini	rcl_service_fini	adopt	conforms to upstream `rcl_service_fini` (systematic)
+nros_service_callback_t	rclc_service_raw_callback_t	ours	differs from `rclc_service_callback_t`: CDR bytes + context (phase-492 W1.b)
+nros_service_fini	rcl_service_fini	adopt	given upstream `rcl_service_fini`'s signature and adopted (measured, phase-492 W1.b)
 nros_service_init_with_options	rclc_service_init_with_options	ours	ours-only
 nros_service_init_with_qos	rclc_service_init_with_qos	ours	ours-only
 nros_service_options_t	rcl_service_options_t	adopt	conforms to upstream `rcl_service_options_t` (same)
@@ -833,8 +834,8 @@ nros_set_trace_sink	rclc_set_trace_sink	ours	ours-only
 nros_shutdown_callback_handle_t	rclc_shutdown_callback_handle_t	ours	ours-only
 nros_shutdown_callback_t	rclc_shutdown_callback_t	ours	ours-only
 nros_static_assert_	rclc_static_assert_	ours	ours-only
-nros_subscription_callback_t	rclc_subscription_callback_t	ours	ours-only
-nros_subscription_fini	rcl_subscription_fini	adopt	conforms to upstream `rcl_subscription_fini` (systematic)
+nros_subscription_callback_t	rclc_subscription_raw_callback_t	ours	differs from `rclc_subscription_callback_t`: CDR bytes + context (phase-492 W1.b)
+nros_subscription_fini	rcl_subscription_fini	adopt	given upstream `rcl_subscription_fini`'s signature and adopted (measured, phase-492 W1.b)
 nros_subscription_get_actual_qos	rclc_subscription_get_actual_qos	ours	differs: keeps a distinct name
 nros_subscription_info_callback_t	rclc_subscription_info_callback_t	ours	ours-only
 nros_subscription_init_with_options	rclc_subscription_init_with_options	ours	ours-only
@@ -846,7 +847,7 @@ nros_subscription_set_requested_deadline_missed_callback	rclc_subscription_set_r
 nros_subscription_state_t	rclc_subscription_state_t	ours	ours-only
 nros_subscription_t	rcl_subscription_t	alias	`rcl_subscription_t` already names it (a compat alias); the definition takes it
 nros_support_get_zero_initialized	rclc_support_get_zero_initialized	ours	ours-only
-nros_support_init	rclc_support_init	adopt	conforms to upstream `rclc_support_init` (systematic)
+nros_support_init	rclc_support_init_with_locator	ours	the (locator, domain) form; `rclc_support_init` now takes rclc's arguments (phase-492 W1.b)
 nros_support_init_named	rclc_support_init_named	ours	ours-only
 nros_support_init_rmw	rclc_support_init_rmw	ours	ours-only
 nros_support_is_valid	rclc_support_is_valid	ours	ours-only
@@ -860,10 +861,10 @@ nros_time_from_nanoseconds	rclc_time_from_nanoseconds	ours	ours-only
 nros_time_sub	rclc_time_sub	ours	ours-only
 nros_time_t	rclc_time_t	ours	ours-only
 nros_time_to_nanoseconds	rclc_time_to_nanoseconds	ours	ours-only
-nros_timer_callback_t	rcl_timer_callback_t	adopt	conforms to upstream `rcl_timer_callback_t` (same)
+nros_timer_callback_t	rclc_timer_callback_with_context_t	ours	differs from `rcl_timer_callback_t`: context, not last_call_time (phase-492 W1.b)
 nros_timer_get_period	rclc_timer_get_period	ours	differs: keeps a distinct name
-nros_timer_get_time_since_last_call	rcl_timer_get_time_since_last_call	adopt	conforms to upstream `rcl_timer_get_time_since_last_call` (same)
-nros_timer_init	rcl_timer_init	adopt	conforms to upstream `rcl_timer_init` (systematic)
+nros_timer_get_time_since_last_call	rcl_timer_get_time_since_last_call	adopt	given upstream `rcl_timer_get_time_since_last_call`'s signature and adopted (measured, phase-492 W1.b)
+nros_timer_init	rclc_timer_init_with_context	ours	differs from `rcl_timer_init`: our callback gets the caller's context (rcl_compat.h §4) (phase-492 W1.b)
 nros_timer_init_on_clock	rclc_timer_init_on_clock	ours	ours-only
 nros_timer_is_valid	rclc_timer_is_valid	ours	ours-only
 nros_timer_state_t	rclc_timer_state_t	ours	ours-only
@@ -877,7 +878,7 @@ nros_trace_set_timer_every	rclc_trace_set_timer_every	ours	ours-only
 nros_transport_ops_t	nros_transport_ops_t	seam	declared by a port seam or the C++ FFI
 nros_type	rclc_type	ours	ours-only
 nros_type_lit	rclc_type_lit	ours	ours-only
-nros_typed_subscription_callback_t	rclc_typed_subscription_callback_t	ours	ours-only
+nros_typed_subscription_callback_t	rclc_subscription_callback_with_context_t	adopt	identical to rclc's (the alias is gone) (phase-492 W1.b)
 nros_u	rclc_u	ours	ours-only
 nros_view_bytes_t	rclc_view_bytes_t	ours	ours-only
 nros_view_str_t	rclc_view_str_t	ours	ours-only
