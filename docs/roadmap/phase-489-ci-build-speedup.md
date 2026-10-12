@@ -243,7 +243,7 @@ time.
 the cache misses and the fixtures rebuild (issue 1360's codegen-version gate
 must still fire).
 
-**Landed (2026-10-13).** Measured first, and the split was not the one the
+**Landed (2026-10-13, PR #2072).** Measured first, and the split was not the one the
 title assumed: almost none of it is codegen.
 
 | part of `just generate-bindings` (host-tests run 38200041441, 1153 s) | time |
@@ -312,7 +312,19 @@ this was written (0–64 commits a day), so night to night the scheduled lanes
 will mostly take the miss path — now ~10 min instead of ~19–22 — and the
 under-3-min hit is what the second lane of the same night (`gate` 02:1x then
 `host-tests` 03:2x, same `main` commit, one cache scope) and every re-run get.
-The CI numbers wait for those runs.
+
+Measured on CI before merge, two `workflow_dispatch` runs of `host-tests` on
+the PR branch (same commit, hosted `ubuntu-22.04`, CI image):
+
+| run | restore | `just generate-bindings` | save |
+| --- | --- | --- | --- |
+| 38306090379 — cache empty, shared probe runtime | 1 s (miss) | **11.4 min** (was 18.7) | 3 s |
+| 38308233601 — exact hit | 2 s | **14 s** | skipped |
+
+The key step costs 1 s with the ament walk included. Still to do: the same
+numbers from the scheduled runs on `main` (the `gate` check-build sibling has
+not run the cache yet), and how often a night's first lane falls back to a
+prefix hit rather than a cold restore.
 
 ### W5 — shorten the slowest fast-line gates
 
