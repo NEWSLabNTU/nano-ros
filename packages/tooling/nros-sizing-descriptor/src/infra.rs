@@ -1,5 +1,5 @@
-//! The runtime's own service servers, priced from the two `NROS_DECLARED_*`
-//! facts every road carries.
+//! The runtime's own service servers, priced from the two facts every road
+//! carries.
 //!
 //! Issue 1743. A ROS parameter or REP-2002 lifecycle service is a served
 //! endpoint like any other, so EVERY backend that caps its service servers owes
@@ -11,8 +11,10 @@
 //!
 //! * `NROS_DECLARED_INFRA_QUERYABLES` — which families are compiled in:
 //!   `none`, `param`, `lifecycle` or `param+lifecycle` (`all` is a synonym).
-//! * `NROS_DECLARED_NODES` — how many nodes; the parameter family registers
-//!   once PER NODE (phase-426 W3), the lifecycle family once per executor.
+//! * the descriptor's `[image] model_nodes` — how many nodes; the parameter
+//!   family registers once PER NODE (phase-426 W3), the lifecycle family once
+//!   per executor. It arrived as `NROS_DECLARED_NODES` until phase-486 W9; the
+//!   build scripts pass it here in that carrier's spelling, a decimal count.
 //!
 //! The arithmetic lived in `nros-zpico-build` alone, and XRCE's build had no
 //! copy, so on the cargo and CMake roads an XRCE image carrying both families
@@ -47,7 +49,7 @@ pub fn stated(v: Option<&str>) -> Option<&str> {
     v.filter(|s| !s.trim().is_empty())
 }
 
-/// How many nodes carry the parameter family: `NROS_DECLARED_NODES`, floored at
+/// How many nodes carry the parameter family: `[image] model_nodes`, floored at
 /// one (the executor's own `nodes.len().max(1)`), and one when undeclared —
 /// the pre-phase-426 number.
 ///
@@ -60,7 +62,7 @@ pub fn declared_nodes(nodes: Option<&str>) -> usize {
         Some(v) => match v.trim().parse::<usize>() {
             Ok(n) => n.max(1),
             Err(_) => panic!(
-                "NROS_DECLARED_NODES={v:?} is not a count. It is the number of \
+                "the model's node count {v:?} is not a count. It is the number of \
                  nodes the entry's model declares, and the ROS parameter \
                  services are registered once PER NODE (phase-426 W3)."
             ),
@@ -153,7 +155,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "NROS_DECLARED_NODES")]
+    #[should_panic(expected = "node count")]
     fn a_node_count_that_is_not_a_count_refuses() {
         declared_nodes(Some("several"));
     }

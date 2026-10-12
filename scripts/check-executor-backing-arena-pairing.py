@@ -291,7 +291,6 @@ SIZING_KNOBS = {
     "NROS_EXECUTOR_ARENA_SIZE": "`arena`, directly",
     "NROS_EXECUTOR_ACTION_CLIENTS": "the arena's action-client term",
     "NROS_SUBSCRIPTION_BUFFER_SIZE": "the arena's rx-buffer terms",
-    "NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE": "the declared rung of the same (issue 1233)",
     "NROS_SUBSCRIBER_BUFFER_SIZE": "the arena's pub/sub region",
     "NROS_PUBSUB_QOS_DEPTH": "the arena's pub/sub region depth (issue 1190)",
     "NROS_ENTITY_COUNT_SUBSCRIPTION": "the per-kind arena sum (phase-403)",

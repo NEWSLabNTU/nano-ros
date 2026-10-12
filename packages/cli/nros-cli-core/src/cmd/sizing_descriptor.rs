@@ -296,13 +296,15 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
         // model with no wiring still says (`Wiring::Unwired`).
         let parent = model_path.parent();
         let params = crate::entity_inventory::ParamDeclarations::from_model(&model);
+        let infra = crate::entity_inventory::InfraServices::from_model(&model, None);
         let written =
             crate::sizing_descriptor::write_for_model(&crate::sizing_descriptor::ModelImage {
                 build_dir,
                 entry,
                 wiring: crate::sizing_descriptor::Wiring::Unwired {
                     params: &params,
-                    infra: crate::entity_inventory::InfraServices::from_model(&model, None),
+                    infra,
+                    model_nodes: Some(infra.model_nodes),
                     roots: parent.as_slice(),
                 },
                 target_triple: args.target_triple.clone(),
@@ -317,15 +319,9 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
         if let Some(written) = written {
             eprintln!(
                 "nros ws sizing-descriptor: `{}` describes no wiring; the descriptor states only \
-                 `[params] store = \"{}\"` (issue 1706)",
+                 what the model does -- its node count, the closure's wire bound and the \
+                 parameter store (issue 1706, phase-486 W9)",
                 model_path.display(),
-                written
-                    .desc
-                    .params
-                    .store()
-                    .stated()
-                    .map(|s| s.tag())
-                    .unwrap_or("?")
             );
             println!("{}", written.path.display());
             return Ok(());
@@ -487,6 +483,7 @@ fn write_runtime_from_models(args: &SizingDescriptorArgs) -> Result<()> {
             &image(crate::sizing_descriptor::Wiring::Unwired {
                 params: &params,
                 infra,
+                model_nodes: Some(infra.model_nodes),
                 roots: &[],
             }),
             &crate::sizing_descriptor::RuntimeComposition {
@@ -498,8 +495,9 @@ fn write_runtime_from_models(args: &SizingDescriptorArgs) -> Result<()> {
         if let Some(written) = written {
             eprintln!(
                 "nros ws sizing-descriptor: none of the {} model(s) this runtime is shared by \
-                 describes wiring; the runtime descriptor states only its parameter store \
-                 (issue 1706)",
+                 describes wiring; the runtime descriptor states only what the models do -- \
+                 their node count, the closure's wire bound and the parameter store (issue 1706, \
+                 phase-486 W9)",
                 models.len()
             );
             println!("{}", written.path.display());
@@ -718,13 +716,16 @@ fn write_from_leaf(args: &SizingDescriptorArgs, leaf: &std::path::Path) -> Resul
                     &system.features,
                     system.components.len(),
                 ),
+                // The declaration is the opt-in: an undescribed leaf states no
+                // node count, as `entity-facts --leaf` carried none.
+                model_nodes: None,
                 roots: &[dir.as_path()],
             },
         ))?;
         if let Some(written) = written {
             eprintln!(
                 "nros ws sizing-descriptor: {origin} declares no entities; the descriptor states \
-                 only its parameter store (issue 1706)"
+                 only what its `[system]` table does (issue 1706)"
             );
             println!("{}", written.path.display());
             return Ok(());

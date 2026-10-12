@@ -353,12 +353,18 @@ fn main() {
     let desc = sizing_descriptor();
     let mut demand = XrceDemand::derive_stated(desc.as_ref(), param_inbox_stated);
     // Issue 1743 — the service-server slots, completed from the runtime's own
-    // servers. Outside `derive_stated` because its inputs are the two
-    // `NROS_DECLARED_*` facts as well as the descriptor.
+    // servers. Outside `derive_stated` because one of its inputs is the
+    // `NROS_DECLARED_INFRA_QUERYABLES` fact as well as the descriptor. The node
+    // count is the descriptor's `[image] model_nodes` since phase-486 W9 (the
+    // `NROS_DECLARED_NODES` carrier retired), passed in that carrier's
+    // spelling so the shared rule keeps its one parser.
+    let model_nodes = desc
+        .as_ref()
+        .and_then(|d| d.image.model_nodes().stated().map(usize::to_string));
     demand.derive_service_servers(
         desc.as_ref(),
         declared_fact(ENV_DECLARED_INFRA).as_deref(),
-        declared_fact(ENV_DECLARED_NODES).as_deref(),
+        model_nodes.as_deref(),
     );
     demand.report();
     for row in &config.defines {
@@ -976,7 +982,6 @@ const ENV_PARAM_REQUEST: &str = "NROS_PARAM_SERVICE_INBOX_BYTES";
 // it with the runtime's own parameter and lifecycle servers.
 const ENV_SERVICE_SERVERS: &str = "NROS_XRCE_MAX_SERVICE_SERVERS";
 const ENV_DECLARED_INFRA: &str = "NROS_DECLARED_INFRA_QUERYABLES";
-const ENV_DECLARED_NODES: &str = "NROS_DECLARED_NODES";
 
 /// A `NROS_DECLARED_*` fact from the environment, WATCHED: an image that gains
 /// a node or a service family must re-run this script, or its slots stay sized
@@ -987,7 +992,6 @@ const ENV_DECLARED_NODES: &str = "NROS_DECLARED_NODES";
 /// (issue 1429).
 fn declared_fact(name: &str) -> Option<String> {
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_INFRA_QUERYABLES");
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_NODES");
     env::var(name).ok()
 }
 

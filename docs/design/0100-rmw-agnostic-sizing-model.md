@@ -1162,7 +1162,8 @@ reach the one number it carries. So the two carriers that deliver such a fact
 to a contract-less image — `NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE` and
 `NROS_DECLARED_NODES` — stay by design: where a descriptor IS named, its own
 field or count ranks first; where none is, the carrier is the delivery. They
-are `ByDesign` rows in `check-knob-single-reader`, citing D4.
+are `ByDesign` rows in `check-knob-single-reader`, citing D4. *(Both retired
+by phase-486 W9 under the 2026-10-10 ruling below.)*
 
 ### Ruling, 2026-10-09 — the parameter store earns a file of its own (issue 1706)
 
@@ -1234,18 +1235,27 @@ nothing.
 general rule applied to a descriptor whose only stated section is `[params]`.
 The code path that wrote it specially (the model producers' store-only branch, PR #1830)
 folds into the ordinary write: `write_for_model` / `write_for_runtime` take a
-`Wiring` — `Composed(inventory)` or `Unwired { params, infra, roots }` — and
+`Wiring` — `Composed(inventory)` or `Unwired { params, infra, roots }` (W9
+added `model_nodes`) — and
 return `None` (deleting a stale file at the path, whichever shape wrote it)
 when nothing is stated. `write_store_only` is gone. Measured byte-identical
 against the previous CLI over 242 writes (phase-486 W4 result). The `store` field, its four values and
 `Params::implies_store()` are unchanged, so no consumer moves.
 
-**What it opens, not done here.** The two carriers the 2026-10-03 ruling kept
-"by design" — `NROS_DECLARED_NODES` and `NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE`
-— exist because a model-only fact had no file. Under this rule, the
-parameter-service node count is an overlay-plus-model fact and can travel in
-the descriptor. Retiring them is phase-486 W9, measured per road. Retirement
-remains a question about the ROAD, never the field (CLAUDE.md, issue 1407).
+**What it opened, done in phase-486 W9.** The two carriers the 2026-10-03
+ruling kept "by design" — `NROS_DECLARED_NODES` and
+`NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE` — existed because a model-only fact
+had no file. Under this rule both are model facts that earn one: `Unwired`
+states `[image] model_nodes` (the model's `structure.nodes`, the MAX over a
+shared runtime's models; a new field, NOT `node_count`, which is the node
+TABLE and holds a slot for the lifecycle family's executor node, issue 1740)
+and, given the closure's bound tables, `[types] max_wire_bound_bytes`. So an
+image with no wiring writes a file whenever its model has a node, and both
+carriers are RETIRED (`check-knob-single-reader`, wave "phase-486 W9"). Zero
+is the same answer as absent for `model_nodes` (every consumer floors it at
+one), so an empty model still writes no file. Measured per road in the phase
+doc's W9 result; retirement stayed a question about the ROAD, never the field
+(CLAUDE.md, issue 1407).
 
 ### What this amendment does not change
 

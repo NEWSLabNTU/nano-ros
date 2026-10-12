@@ -343,7 +343,6 @@ fn type_bound(bounds: &[(String, usize)], ty: &str) -> Option<usize> {
 }
 
 fn main() {
-    watch_declared_facts();
     let out_dir = env::var("OUT_DIR").unwrap();
 
     // phase-454 W4 (RFC-0100 D4) -- the ONE artifact this build's target facts
@@ -500,26 +499,19 @@ fn main() {
     // (also 1024). If you change one, change the other — they share the
     // wire-format expectation. Both can be overridden independently via
     // their respective env vars.
-    // issue 1233 — the DECLARED take buffer, when cmake measured one.
+    // issue 1233 — the DECLARED take buffer. Published on the CLOSURE basis
+    // always, unlike the payload classes, because `RX_BUF` is one global size
+    // for every entity and `DEFAULT_TX_BUF` aliases it — "narrowing this one is
+    // the under-derivation", as its producer says.
     //
-    // The fourth size knob, and the one 1122 left behind when it swept the
-    // payload trio onto this road. Its guard is different and that is why: the
-    // classes need `BASIS subscribed`, while this one is published on the
-    // CLOSURE basis always, because `RX_BUF` is one global size for every
-    // entity and `DEFAULT_TX_BUF` aliases it — "narrowing this one is the
-    // under-derivation", as its producer says.
-    //
-    // So an absent variable means the join refused (some type in the closure
-    // carried no bound), and the crate default stands. A present one is an
-    // upper bound over every type the image could receive OR publish.
-    //
-    // issue 1595 -- and the DESCRIPTOR outranks that carrier: `[types]
-    // max_wire_bound_bytes` is the same closure maximum (RFC-0100 Amendment 1),
-    // composed by the cargo leaf's own rule, and it reaches every road that
-    // names a descriptor. A stated rung still wins over both.
-    let rx_buf_size = env_usize_declared_or(
+    // issue 1595 / phase-486 W9 -- the descriptor's `[types]
+    // max_wire_bound_bytes` is that closure maximum (RFC-0100 Amendment 1), and
+    // since W9 an image with no wiring states it too, so the
+    // `NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE` carrier cmake used to send
+    // retired. A refused or absent fact (some type in the closure carried no
+    // bound) leaves the crate default; a stated rung still wins.
+    let rx_buf_size = env_usize_described(
         "NROS_SUBSCRIPTION_BUFFER_SIZE",
-        "NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE",
         described_closure_bound(sizing.as_ref()),
         1024,
     );
@@ -528,7 +520,7 @@ fn main() {
     // declared parameters bound it -- finished in `parameter_services.rs`
     // against nros-params' resolved capacities -- and with no declaration the
     // 4096 default stands. Probed with a sentinel no rung can produce, as
-    // `env_usize_declared` does, so the ladder keeps ONE implementation.
+    // `env_usize_described` does, so the ladder keeps ONE implementation.
     let param_svc_probe = env_usize("NROS_PARAM_SERVICE_BUFFER_SIZE", usize::MAX);
     let param_svc_stated = param_svc_probe != usize::MAX;
     let param_svc_buf = if param_svc_stated {
@@ -1683,36 +1675,12 @@ fn descriptor_rung(name: &str) -> Option<usize> {
     rung_value(RUNGS.get_or_init(executor_rungs), knob)
 }
 
-/// issue 1199 — [`env_usize`] with the DECLARED rung spliced in.
-///
-/// The extra rung sits BELOW the board/platform descriptor and ABOVE the crate
-/// builtin, which is where the tree's stated precedence puts it: env >
-/// Kconfig/board > derived > crate default
-/// (`_nros_resolve_derivable_knob`). A board rung is a person's statement in
-/// the tree; the DECLARED value is what this image's own entity inventory
-/// derived. So an authored number still wins, and the derivation only replaces
-/// the literal nobody chose.
-///
-/// `None` when cmake made no claim: the carrier is written only when the
-/// inventory's status is `derived`, so absent means "no answer", never "zero".
-// issue 1199 — spelled literally so the wire is greppable; `env_usize_declared`
-// emits the same lines for whatever it is handed.
-fn watch_declared_facts() {
-    // issue 1233 — the take buffer. The six executor-table carriers that were
-    // watched here (MAX_CBS, ACTION_CLIENTS, MAX_NODES, MAX_SC and the two
-    // monitor tables) RETIRED onto the sizing descriptor's `[image]` fields
-    // (issue 1649); the descriptor file's own content edge
-    // (`load_for_build_script`) is what re-runs this script now.
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE");
-}
-
 /// issue 1595 -- the closure bound `RX_BUF` is sized from, off the descriptor.
 ///
 /// `Some` only for a STATED `[types] max_wire_bound_bytes`. A refusal is
-/// printed (RFC-0100 D6: the fallback is always loud) and answers `None`, so the
-/// `NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE` carrier -- the same maximum, derived
-/// by cmake -- and then the crate default decide. The two cannot disagree on a
-/// road that has both: they are one rule over one registered closure.
+/// printed (RFC-0100 D6: the fallback is always loud) and answers `None`, so
+/// the crate default decides (phase-486 W9 retired the cmake carrier that used
+/// to sit between them).
 fn described_closure_bound(
     desc: Option<&nros_sizing_descriptor::SizingDescriptor>,
 ) -> Option<usize> {
@@ -1721,14 +1689,14 @@ fn described_closure_bound(
     if let Some(why) = fact.refusal() {
         println!(
             "cargo::warning=nros-node: the sizing descriptor cannot size RX_BUF: {why}. \
-             NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE (or the 1024 default) decides it instead"
+             The 1024 default decides it instead"
         );
     }
     fact.stated().copied()
 }
 
 /// Issue 1655 — an `[image]` count off the descriptor, for the rung
-/// [`env_usize_declared_or`] puts between the stated rungs and the carrier.
+/// [`env_usize_described`] puts between the stated rungs and the builtin.
 ///
 /// `Some` only for a STATED fact; a refusal is printed and answers `None`, so
 /// the `NROS_DECLARED_*` carrier (the same `derive`, delivered by cmake) and
@@ -1756,49 +1724,6 @@ fn env_usize_described(name: &str, described: Option<usize>, default: usize) -> 
     let probe = usize::MAX;
     match env_usize(name, probe) {
         v if v == probe => described.unwrap_or(default),
-        v => v,
-    }
-}
-
-/// [`env_usize_declared`] with a DESCRIPTOR rung between the stated rungs and
-/// the carrier: env / dotconfig / board rungs, then `described`, then the
-/// `declared` carrier, then `default`. One ladder implementation, probed the
-/// same way.
-fn env_usize_declared_or(
-    name: &str,
-    declared: &str,
-    described: Option<usize>,
-    default: usize,
-) -> usize {
-    match described {
-        Some(v) => {
-            // Watch the carrier anyway: dropping the descriptor must re-run.
-            println!("cargo:rerun-if-env-changed={declared}");
-            let probe = usize::MAX;
-            match env_usize(name, probe) {
-                p if p == probe => v,
-                stated => stated,
-            }
-        }
-        None => env_usize_declared(name, declared, default),
-    }
-}
-
-fn env_usize_declared(name: &str, declared: &str, default: usize) -> usize {
-    println!("cargo:rerun-if-env-changed={declared}");
-    let from_cmake = || {
-        std::env::var(declared)
-            .ok()
-            .and_then(|v| v.trim().parse::<usize>().ok())
-    };
-    // Re-uses `env_usize`'s three upper rungs by asking it for a sentinel it
-    // cannot produce: if every rung above the builtin is silent it returns the
-    // default we passed, and only then does the declared value apply. Written
-    // this way so the ladder has ONE implementation -- a second copy of the
-    // env/dotconfig/rung order is how the two would drift.
-    let probe = usize::MAX;
-    match env_usize(name, probe) {
-        v if v == probe => from_cmake().unwrap_or(default),
         v => v,
     }
 }

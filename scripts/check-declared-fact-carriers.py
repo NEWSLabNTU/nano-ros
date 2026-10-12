@@ -232,6 +232,12 @@ _RETIRED_PAYLOAD = NotCarried(
     "It carried the payload trio",
     "retired onto the sizing descriptor (issue 1649): `nros-rmw-zenoh` reads "
     "`subscriber_payload_classes` / `transient_local_retain_bytes` first")
+_RETIRED_TAKE_BUFFER = NotCarried(
+    _FACTS,
+    "It carried `NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE` (issue 1233)",
+    "retired onto the sizing descriptor's `[types] max_wire_bound_bytes` "
+    "(phase-486 W9), which an image with no wiring states too; `nros-node` "
+    "reads only that")
 _RETIRED_PARAM_COUNTS = NotCarried(
     _FACTS,
     "MAX_PARAMETERS and MAX_PARAM_NAME_LEN left this list",
@@ -323,12 +329,12 @@ FACT_DISPOSITION = {
             "registration failure at boot rather than a smaller pool"),
         "declared": NotCarried(
             _LEAF, _QUERYABLES_COMPLETED,
-            "the declared road carries the RAW infrastructure inputs "
-            "(NROS_DECLARED_INFRA_QUERYABLES + NROS_DECLARED_NODES, the "
-            "second since phase-426 W3), the application's counts come from "
-            "the sizing descriptor (issue 1649 retired their two carriers), "
-            "and the consumer completes the sum, so the derived count itself "
-            "has nothing to carry"),
+            "the declared road carries the RAW infrastructure input "
+            "(NROS_DECLARED_INFRA_QUERYABLES), the node count and the "
+            "application's counts come from the sizing descriptor (phase-486 "
+            "W9 and issue 1649 retired their carriers), and the consumer "
+            "completes the sum, so the derived count itself has nothing to "
+            "carry"),
     },
     "NROS_DERIVED_EXECUTOR_MAX_NODES": {
         "resolver": ("NROS_RESOLVED_NROS_EXECUTOR_MAX_NODES",),
@@ -378,7 +384,7 @@ FACT_DISPOSITION = {
     "NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE": {
         "resolver": ("NROS_RESOLVED_NROS_SUBSCRIPTION_BUFFER_SIZE",),
         "sidecar": ("NROS_SUBSCRIPTION_BUFFER_SIZE",),
-        "declared": ("NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE",),
+        "declared": _RETIRED_TAKE_BUFFER,
     },
     # issue 1255 -- the PER-TYPE bound table, for the one consumer that
     # allocates per subscription rather than from a shared pool.
@@ -569,7 +575,12 @@ DESCRIPTOR_TWINS = {
     if len(_carried(e, "sidecar")) == 1
     and any(
         e["declared"] is r
-        for r in (_RETIRED_ONTO_DESCRIPTOR, _RETIRED_CELLS, _RETIRED_PAYLOAD)
+        for r in (
+            _RETIRED_ONTO_DESCRIPTOR,
+            _RETIRED_CELLS,
+            _RETIRED_PAYLOAD,
+            _RETIRED_TAKE_BUFFER,
+        )
     )
 }
 
@@ -582,15 +593,6 @@ ROAD_UNPAIRED = {
         "the consumer derives it from the facts (issue 0460). Since phase-445 "
         "W1 the cargo-leaf road carries this FACT itself "
         "(`leaf_entity_env::leaf_facts`), so there is no knob to pair.",
-    "NROS_DECLARED_NODES":
-        "a third raw input to the same queryable sizing (phase-426 W3): the "
-        "parameter services register once PER NODE, so the node count is a "
-        "term in ZPICO_MAX_QUERYABLES, which is DELIBERATELY NOT DERIVED. It "
-        "is NOT the executor node table -- NROS_DERIVED_EXECUTOR_MAX_NODES "
-        "travelled the declared road as NROS_DECLARED_EXECUTOR_MAX_NODES "
-        "(issue 1233) until it retired onto the descriptor's `[image] "
-        "node_count` (issue 1649) -- and only the zpico and XRCE build "
-        "scripts read this (issue 1743).",
     "NROS_DECLARED_QOS_MODELS": "QoS wiring, not a pool size.",
     "NROS_DECLARED_QOS_PENDING": "QoS wiring, not a pool size.",
     "NROS_DECLARED_QOS_SCHEDULED": "QoS wiring, not a pool size.",

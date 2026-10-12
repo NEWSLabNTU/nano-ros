@@ -1404,6 +1404,16 @@ fn image_facts(inputs: &DescriptorInputs<'_>) -> nros_sizing_descriptor::Image {
             }
         }
     }
+    // phase-486 W9 -- the `NROS_DECLARED_NODES` carrier's home. A MODEL fact,
+    // not an inventory one, so it is stated beside a derivation or a refusal
+    // alike, and on an image with no wiring (`compose_unwired`): the count the
+    // parameter services multiply by is `structure.nodes`, whatever the
+    // contract says. No bringup read (`infra` is `None`) leaves it ABSENT,
+    // which every consumer reads as one node -- what an absent carrier was.
+    // So does an EMPTY system: the carrier said `0` there and every consumer
+    // floors the count at one (`infra::declared_nodes`), so `0` and absent are
+    // one answer, and absent keeps an empty model at no file.
+    img.set_model_nodes(inputs.infra.map(|i| i.model_nodes).filter(|&n| n > 0));
     img
 }
 
@@ -2073,6 +2083,12 @@ pub enum Wiring<'a> {
     Unwired {
         params: &'a ParamDeclarations,
         infra: InfraServices,
+        /// phase-486 W9 -- `[image] model_nodes`: `Some` wherever the
+        /// `NROS_DECLARED_NODES` carrier used to be sent for this image (every
+        /// resolved model: `structure.nodes`, the MAX over a runtime's models),
+        /// `None` where it was not -- a standalone leaf that declares no
+        /// entities, whose declaration is the opt-in.
+        model_nodes: Option<usize>,
         /// The directories this producer read from, for the portability
         /// check (issue 0320).
         roots: &'a [&'a std::path::Path],
@@ -2439,9 +2455,10 @@ fn write_model_descriptor(
         Wiring::Unwired {
             params,
             infra,
+            model_nodes,
             roots,
         } => {
-            let Some(desc) = compose_store_only(img.entry, params, *infra, runtime) else {
+            let Some(desc) = compose_unwired(img, params, *infra, *model_nodes, runtime) else {
                 if path.exists() {
                     std::fs::remove_file(&path)
                         .map_err(|e| eyre::eyre!("removing the stale `{}`: {e}", path.display()))?;
@@ -2475,31 +2492,76 @@ fn write_model_descriptor(
     Ok(Some(WrittenDescriptor { path, desc }))
 }
 
-/// [`Wiring::Unwired`]'s descriptor: `[params]` alone, or `None` when the
-/// image builds no store and so states nothing.
-fn compose_store_only(
-    entry: &str,
+/// [`Wiring::Unwired`]'s descriptor: the MODEL facts an image states with no
+/// wiring at all.
+///
+/// * `[image] model_nodes` -- `structure.nodes`, always (phase-486 W9: the
+///   `NROS_DECLARED_NODES` carrier's home);
+/// * `[types] max_wire_bound_bytes` -- the closure maximum `RX_BUF` is sized
+///   from, when the caller handed the bound tables its configure registered
+///   (the cmake roads; phase-486 W9, the `NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE`
+///   carrier's home). It is a property of what the image LINKS, so wiring has
+///   nothing to do with it. A refusal is written only where tables were handed,
+///   which is where the carrier's own guard ran; a road with none leaves the
+///   field ABSENT, exactly as before;
+/// * `[params]` -- only when a store is implied (issue 1706), so `store =
+///   "none"` stays absent, the default every consumer takes.
+///
+/// Every other section stays ABSENT: `status = refused`, `basis = closure`,
+/// `undeclared_endpoints` refused. `None` only when nothing is stated, which
+/// with `model_nodes` always stated means a caller that read no model.
+fn compose_unwired(
+    img: &ModelImage<'_>,
     params: &ParamDeclarations,
     infra: InfraServices,
+    model_nodes: Option<usize>,
     runtime: Option<&RuntimeComposition<'_>>,
 ) -> Option<SizingDescriptor> {
     let inputs = DescriptorInputs {
-        entry: entry.to_string(),
+        entry: img.entry.to_string(),
         params: Some(params),
         infra: Some(infra),
         ..DescriptorInputs::default()
     };
-    let params = param_facts(&inputs);
-    if !params.implies_store() {
-        return None;
-    }
-    let mut desc = SizingDescriptor::new(entry, Status::Refused, Basis::Closure);
+    let mut desc = SizingDescriptor::new(img.entry, Status::Refused, Basis::Closure);
     desc.meta.refuse(
         "undeclared_endpoints",
-        "the model describes no wiring, so this file carries only the parameter store \
-         (issue 1706) -- absence is not zero",
+        "the model describes no wiring, so this file carries only what the model states \
+         (issue 1706, phase-486 W9) -- absence is not zero",
     );
-    desc.params = params;
+    let params = param_facts(&inputs);
+    if params.implies_store() {
+        desc.params = params;
+    }
+    // Zero is absent, as in `image_facts`: every consumer floors it at one.
+    let model_nodes = model_nodes.filter(|&n| n > 0);
+    desc.image.set_model_nodes(model_nodes);
+    if !img.bound_inventories.is_empty() {
+        let (bounds, bounds_error) =
+            match crate::leaf_payload_classes::bound_rows_from_tables(img.bound_inventories) {
+                Ok(rows) => (
+                    crate::leaf_payload_classes::project_bound_rows(rows).0,
+                    None,
+                ),
+                Err(e) => (Vec::new(), Some(e)),
+            };
+        closure_wire_bound(
+            &mut desc.types,
+            &DescriptorInputs {
+                bounds,
+                bounds_error,
+                ..DescriptorInputs::default()
+            },
+        );
+    }
+    // No stated fact, no file (RFC-0100's 2026-10-10 ruling): a refusal
+    // states nothing.
+    if model_nodes.is_none()
+        && !desc.params.implies_store()
+        && !desc.types.max_wire_bound_bytes().is_stated()
+    {
+        return None;
+    }
     if let Some(rt) = runtime {
         desc.meta.set_composed_entries(rt.entries.to_vec());
     }
@@ -4948,6 +5010,7 @@ execution:
             wiring: Wiring::Unwired {
                 params,
                 infra,
+                model_nodes: Some(infra.model_nodes),
                 roots: &[],
             },
             target_triple: None,
@@ -4994,11 +5057,13 @@ execution:
         assert_eq!(back.params.max_parameters().tag(), "absent");
     }
 
-    /// The negative control, and the stale file: no store implied writes
-    /// NOTHING, and removes a file an earlier configure left at the path the
-    /// cmake side reads -- otherwise dropping the axis kept carving the store.
+    /// The negative control, and the stale file: with no store implied the
+    /// rewritten file states NO store, so one an earlier configure left at the
+    /// path the cmake side reads does not survive -- otherwise dropping the
+    /// axis kept carving the store. Since phase-486 W9 the file itself stays:
+    /// the model's node count is a stated fact (`[image] model_nodes`).
     #[test]
-    fn no_store_writes_no_file_and_removes_a_stale_one() {
+    fn no_store_states_no_store_and_a_stale_one_does_not_survive() {
         let dir = tempfile::tempdir().unwrap();
         let with = store_model("param_services", "");
         let without = store_model("", "");
@@ -5014,18 +5079,25 @@ execution:
         };
         let path = write(&with).expect("written").path;
         assert!(path.is_file());
-        assert!(write(&without).is_none());
-        assert!(
-            !path.exists(),
-            "a stale store-only file must not outlive the axis"
+        let after = write(&without).expect("the node count is still stated");
+        assert_eq!(after.path, path);
+        assert_eq!(
+            after.desc.params.store().tag(),
+            "absent",
+            "a stale store must not outlive the axis"
         );
+        let back = nros_sizing_descriptor::read(&path).unwrap();
+        assert_eq!(back.params.store().tag(), "absent");
+        assert_eq!(back.image.model_nodes().stated(), Some(&2));
     }
 
     /// phase-486 W4 (W2's acceptance, measured where the switch is carried) --
     /// ONE bringup, two images, `param_services` stated on image `a` alone
     /// (`[image.a] features`). The overlay is the only input: the model states
-    /// no switch. Image `a`'s descriptor states the store; image `b` gets NO
-    /// file, so `nros-params` keeps `IMPLIED_STORE_SLOTS = 0` for it.
+    /// no switch. Image `a`'s descriptor states the store; image `b`'s states
+    /// none, so `nros-params` keeps `IMPLIED_STORE_SLOTS = 0` for it. (Before
+    /// phase-486 W9 `b` got no file at all; it now states the model's node
+    /// count, which both images share.)
     #[test]
     fn a_per_image_switch_builds_the_store_in_that_image_only() {
         let dir = tempfile::tempdir().unwrap();
@@ -5051,7 +5123,14 @@ execution:
             a.desc.params.store().stated(),
             Some(&ParamStore::ParamServices)
         );
-        assert!(write("b").is_none(), "image b builds no store, so no file");
+        let b = write("b").expect("image b states the model's node count");
+        assert_eq!(
+            b.desc.params.store().tag(),
+            "absent",
+            "image b builds no store"
+        );
+        assert_eq!(a.desc.image.model_nodes().stated(), Some(&2));
+        assert_eq!(b.desc.image.model_nodes().stated(), Some(&2));
     }
 
     /// phase-486 W4 -- ONE writer for both shapes, so the stale rule holds

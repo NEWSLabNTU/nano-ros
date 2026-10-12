@@ -169,11 +169,17 @@ fn the_leaves_issue_1378_measured_get_a_descriptor_that_states_their_queryables(
             desc.endpoints[0].kind,
             nros_sizing_descriptor::EndpointKind::ActionServer
         );
-        // `NROS_DECLARED_NODES` and `[image] node_count` are the same fact.
+        // phase-486 W9 -- the node count reaches the consumers on the
+        // descriptor (`[image] model_nodes`, one per `[[component]]`), and the
+        // carrier verb no longer states it.
         assert_eq!(
-            desc.image.node_count().stated().map(|n| n.to_string()),
-            facts.get("NROS_DECLARED_NODES").cloned(),
-            "{lang}: the node table count must agree across the two roads"
+            desc.image.model_nodes().stated(),
+            Some(&1),
+            "{lang}: one component, one node"
+        );
+        assert!(
+            !facts.contains_key("NROS_DECLARED_NODES"),
+            "{lang}: the retired carrier is not emitted: {facts:?}"
         );
         checked += 1;
     }

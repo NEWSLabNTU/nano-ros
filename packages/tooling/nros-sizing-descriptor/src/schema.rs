@@ -619,6 +619,7 @@ pub struct Image {
     cell_entities: Option<usize>,
     service_server_queryables: Option<usize>,
     entity_liveliness_tokens: Option<usize>,
+    model_nodes: Option<usize>,
     #[serde(default)]
     refused: BTreeMap<String, String>,
 }
@@ -644,6 +645,7 @@ impl Image {
         "cell_entities",
         "service_server_queryables",
         "entity_liveliness_tokens",
+        "model_nodes",
     ];
 
     /// Distinct `(name, namespace)` nodes the image registers — one per declared
@@ -847,6 +849,25 @@ impl Image {
         )
     }
 
+    /// How many nodes the image's MODEL resolves -- `structure.nodes` (a
+    /// standalone leaf's `[[component]]` rows), the MAX over a shared
+    /// runtime's models.
+    ///
+    /// Not [`Self::node_count`], which is the node TABLE and holds a slot for
+    /// the lifecycle family's executor node as well (issue 1740). This is the
+    /// count the ROS parameter services are registered over, once PER NODE
+    /// (phase-426 W3), so the zenoh queryable table, the zenoh liveliness pool
+    /// and XRCE's service-server slots multiply by it
+    /// (`nros_sizing_descriptor::infra::infra_service_servers`).
+    ///
+    /// The `NROS_DECLARED_NODES` carrier's descriptor home (phase-486 W9). A
+    /// model-only fact, so it is stated by an image with no wiring too, which
+    /// is what lets the carrier retire: under RFC-0100's 2026-10-10 ruling a
+    /// stated fact earns a file whatever it came from.
+    pub fn model_nodes(&self) -> Fact<usize> {
+        fact(&self.model_nodes, "model_nodes", &self.refused)
+    }
+
     pub fn new(
         node_count: Option<usize>,
         backend_count: Option<usize>,
@@ -940,6 +961,10 @@ impl Image {
         self.entity_liveliness_tokens = v;
         self
     }
+    pub fn set_model_nodes(&mut self, v: Option<usize>) -> &mut Self {
+        self.model_nodes = v;
+        self
+    }
 
     pub fn refuse(&mut self, field: &str, reason: impl Into<String>) -> &mut Self {
         debug_assert!(
@@ -975,6 +1000,7 @@ impl Image {
             "cell_entities" => self.cell_entities?.to_string(),
             "service_server_queryables" => self.service_server_queryables?.to_string(),
             "entity_liveliness_tokens" => self.entity_liveliness_tokens?.to_string(),
+            "model_nodes" => self.model_nodes?.to_string(),
             _ => return None,
         })
     }
@@ -1028,6 +1054,7 @@ impl Image {
                     "entity_liveliness_tokens",
                     self.entity_liveliness_tokens.is_some(),
                 ),
+                ("model_nodes", self.model_nodes.is_some()),
             ],
         )
     }
