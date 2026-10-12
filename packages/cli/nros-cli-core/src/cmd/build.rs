@@ -1489,24 +1489,50 @@ fn plan_single_package(
         // The workspace road reports a missing checkout in its own words.
         return Ok(None);
     };
-    let Some(img) = crate::cmd::leaf_settings::resolve(root, &nros_root)? else {
+    // ---- stage 2 — the image: the one named, else the leaf's own rule -----
+    //
+    // Issue 1305 — a leaf may declare several images (one per RMW and ROS
+    // edition). They share ONE generated selection package and ONE
+    // `generated/` tree, so one image is built per invocation: two in one plan
+    // would each rewrite what the other compiles against.
+    let Some(pkg) = crate::cmd::leaf_settings::leaf_package(root) else {
         return Ok(None);
     };
-    let qual = plan::qualified(&img.package, &img.image_id);
+    let named: Vec<&str> = args
+        .images
+        .iter()
+        .map(|w| match w.split_once(':') {
+            Some((p, id)) if p == pkg => id,
+            _ => w.as_str(),
+        })
+        .collect();
+    let image = match named.as_slice() {
+        [] => None,
+        [one] => Some(*one),
+        many => eyre::bail!(
+            "{} is a single-package leaf: build one image per `nros build` (asked for {}). \
+             Its images share one generated selection package and one `generated/` tree \
+             (issue 1305), so build them one after another.",
+            root.display(),
+            many.join(", ")
+        ),
+    };
+    let Some(img) = crate::cmd::leaf_settings::resolve_image(root, &nros_root, image)? else {
+        return Ok(None);
+    };
+    plan_leaf_image(args, root, &nros_root, planning, img)
+}
 
-    // ---- stage 2 — the image is the leaf's one image ---------------------
-    for want in &args.images {
-        if want != &img.image_id && want != &qual {
-            eyre::bail!(
-                "`{want}` is not an image of {}: it declares only `{}` (RFC-0098 D3). \
-                 Switch board by editing `[image.{}] board` in {} and re-running `nros sync`.",
-                root.display(),
-                img.image_id,
-                img.image_id,
-                img.decl.origin_path().display()
-            );
-        }
-    }
+/// Stages 3–4 for one resolved image of a single-package leaf.
+fn plan_leaf_image(
+    args: &Args,
+    root: &std::path::Path,
+    nros_root: &std::path::Path,
+    planning: Planning,
+    img: crate::cmd::leaf_settings::LeafImage,
+) -> Result<Option<Vec<ResolvedBuild>>> {
+    let nros_root = nros_root.to_path_buf();
+    let qual = plan::qualified(&img.package, &img.image_id);
     for p in args.packages_select.iter().chain(&args.packages_up_to) {
         if p != &img.package {
             eyre::bail!(
@@ -1547,6 +1573,27 @@ fn plan_single_package(
         );
     }
 
+    // Issue 1305 — `generated/` holds ONE edition's type hashes, and the image
+    // must be built against its own: a jazzy image over humble message crates
+    // would advertise the RIHS01 keyexpr tail with a `TypeHashNotSupported`
+    // hash, a mismatch no peer reports. Sync records the edition it generated
+    // for; a tree from before that record is not second-guessed.
+    let want = crate::cmd::leaf_settings::image_ros_edition(&img)?;
+    if let Some(have) = crate::cmd::ws::generated_edition(&img.leaf.join("generated"))
+        && have != want
+    {
+        eyre::bail!(
+            "{}: image `{}` builds for ROS {}, and `generated/` was synced for {}.\n  \
+             Run `nros sync --image {}` in {} first (issue 1305).",
+            root.display(),
+            img.image_id,
+            want.as_str(),
+            have.as_str(),
+            img.image_id,
+            root.display()
+        );
+    }
+
     // Issue 1716 — a query names the leaf's image and writes no settings file.
     if planning == Planning::Query {
         return Ok(Some(vec![ResolvedBuild {
@@ -1567,7 +1614,13 @@ fn plan_single_package(
     }
 
     // ---- stage 4 — the one settings file ------------------------------------
-    let Some(img) = crate::cmd::leaf_settings::write(root, &nros_root, "nros build")? else {
+    let Some(img) = crate::cmd::leaf_settings::write(
+        root,
+        &nros_root,
+        "nros build",
+        Some(img.image_id.as_str()),
+    )?
+    else {
         eyre::bail!(
             "{}: resolved as a single-package leaf, then not",
             root.display()

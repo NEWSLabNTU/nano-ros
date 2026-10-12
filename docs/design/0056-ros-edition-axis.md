@@ -3,7 +3,7 @@ rfc: 0056
 title: "ROS edition axis: per-distro interop profile (type hash + wire encoding + interface set)"
 status: Draft
 since: 2026-07
-last-reviewed: 2026-07
+last-reviewed: 2026-10
 implements-tracked-by: [phase-304, phase-41, phase-303]
 supersedes: []
 superseded-by: null
@@ -104,10 +104,40 @@ Implementation notes:
   writer/reader + DHEADER machinery is built but **parked**, to be re-activated
   per-type where a type declares `@appendable` — never by edition. (See the
   RFC-0055 CORRECTION and #0267.)
-- **Selection + lowering** — the edition is declared once (build feature today;
-  a future `system.toml [system].ros_edition` lowering is an open question),
-  and it propagates through the `nros` umbrella (`ros-humble`/`ros-iron` →
-  `nros-node/ros-*`) to every consumer, exactly like the existing two features.
+- **Selection + lowering** — the edition is DECLARED in `system.toml`, per
+  image (see "Declared per image" below), and lowered to the `ros-<edition>`
+  feature on the `nros` umbrella (→ `nros-node/ros-*`), on the board crate
+  (→ the backend's own `ros-*`, which the zenoh keyexpr gates its RIHS01 tail
+  on), and to codegen's `--ros-edition` (the baked `TYPE_HASH`). A cargo feature
+  is the lowering target, never the user's knob — RFC-0031's rule for the RMW.
+
+### Declared per image (amended 2026-10-12, issue 1305)
+
+The edition is a property of the BINARY, like the RMW (RFC-0031 § "Scope"), so
+it is declared where the binary is: `[image.<id>] ros_edition`, with the same
+precedence as `rmw`:
+
+1. `[image.<id>] ros_edition`
+2. `[image_defaults] ros_edition`
+3. `[system] ros_edition`
+4. `humble`
+
+An unknown name at any rung is a hard error naming the table it is in (the
+typo guard `[system] ros_edition` always had). One resolver,
+`SystemToml::image_ros_edition`, answers for both halves that must agree: the
+selection writer (`facade::derive`, shared by a workspace entry's facade and a
+single-package leaf's `<pkg>_nros_selection`) and the leaf's message codegen
+(`nros sync --image <id>`). So one leaf can build a humble image and a jazzy
+image — `examples/native/rust/*` declare `native`, `native_jazzy`,
+`native_xrce_jazzy`, … for `just ros_editions build-e2e-fixtures`, which used
+to pass `--features "rmw-<x> ros-<edition>"`.
+
+A leaf's `generated/` holds ONE edition's message crates at a time, so `nros
+sync` records the edition it generated for (`generated/.nros-ros-edition`) and
+`nros build <id>` refuses an image whose edition differs, naming `nros sync
+--image <id>`. A workspace still generates its shared message crates for
+`[system] ros_edition`; per-image editions inside one workspace would need one
+`generated/` per edition and are not supported.
 
 ### Non-goals
 
@@ -130,11 +160,14 @@ Implementation notes:
 
 ## Open questions
 
-1. **`system.toml` lowering** — should the ROS edition become a declared
+1. ~~**`system.toml` lowering** — should the ROS edition become a declared
    `[system].ros_edition` (like `rmw`) that codegen lowers to the `ros-<edition>`
-   feature + the interface-generation dir, instead of a hand-set cargo feature?
-   (Proposed answer: yes — [phase-304](../roadmap/archived/phase-304-complete-ros-edition-axis.md)
-   W2. The axis-completion + multi-distro test method lives there.)
+   feature + the interface-generation dir, instead of a hand-set cargo feature?~~
+   **ANSWERED (2026-10-12, issue 1305): yes, and per IMAGE.** `[system]
+   ros_edition` landed in [phase-304](../roadmap/archived/phase-304-complete-ros-edition-axis.md)
+   W2; `[image.<id>]` / `[image_defaults] ros_edition` rank above it with the
+   RMW's precedence (§ "Declared per image"), and no example names an edition
+   feature.
 2. **RIHS01 source** — compute in `rosidl-codegen` (add `sha2`, REP-2011
    canonical form) vs extract from an installed ament index vs hybrid
    (phase-41 §Implementation Options).
@@ -151,3 +184,7 @@ Implementation notes:
   keyexpr-only) into a per-edition interop profile spanning type hash
   (phase-41), wire encoding/extensibility (RFC-0055 / phase-303), and interface
   set; extends the enum to `jazzy`. (rolling is unsupported — a nightly release.)
+- 2026-10-12 (issue 1305) — the edition is declared per image
+  (`[image.<id>]` > `[image_defaults]` > `[system]` > humble, RFC-0031's
+  precedence) and lowered by the selection writer onto the umbrella and the
+  board crate; open question 1 answered.

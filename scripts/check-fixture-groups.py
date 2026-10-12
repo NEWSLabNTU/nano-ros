@@ -273,7 +273,8 @@ def export_rows():
         # first four fields, so it names them and ignores the rest — but by
         # UNPACKING the full arity rather than slicing, so a future field lands
         # here as a loud shape error instead of being silently dropped.
-        (root, platform, slug, shared, row_dir, rmw, feat, ndf, env,
+        # Issue 1305 added the row's `image`, after `env`.
+        (root, platform, slug, shared, row_dir, rmw, feat, ndf, env, image,
          _cplat, _clang, _crmw) = line.split(SEP)
         yield ExportRow(
             root,
@@ -281,7 +282,7 @@ def export_rows():
             slug,
             shared == "1",
             row_dir,
-            f"rmw={rmw} features={feat} no_default_features={ndf} env={env}",
+            f"rmw={rmw} features={feat} no_default_features={ndf} env={env} image={image}",
         )
 
 

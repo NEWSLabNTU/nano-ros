@@ -411,6 +411,14 @@ pub struct SyncArgs {
     #[arg(long)]
     pub ros_edition: Option<String>,
 
+    /// Single-package leaf only (issue 1305): sync for THIS `[image.<id>]` —
+    /// its selection package, its `build/<id>/nros-cargo.toml`, and message
+    /// codegen for its ROS edition. A leaf may declare one image per RMW and
+    /// edition; without this flag the leaf's own rule applies (one image, or
+    /// `[system] default_images`).
+    #[arg(long, value_name = "ID")]
+    pub image: Option<String>,
+
     /// Don't write — just print what would happen.
     #[arg(long)]
     pub dry_run: bool,
@@ -3058,7 +3066,11 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
         // through the ONE reader. A leaf still carrying a retired manifest key
         // is refused HERE, before anything is written, naming the file to
         // write (phase-445 W5 deleted the fallback that read those keys).
-        if let Err(e) = nros_orchestration_ir::leaf_system::read(&ws_root) {
+        let read = match args.image.as_deref() {
+            Some(id) => nros_orchestration_ir::leaf_system::read_image(&ws_root, id),
+            None => nros_orchestration_ir::leaf_system::read(&ws_root),
+        };
+        if let Err(e) = read {
             bail!("sync: {e}");
         }
         // Issue 1305 / RFC-0098 D6 — the leaf's generated selection package,
@@ -3066,7 +3078,8 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
         // this manifest: the leaf path-depends on it, and cargo refuses to
         // load a manifest whose path dependency does not exist yet.
         if let Some(nrp) = nano_ros_for_probes.as_deref()
-            && let Some(sel) = crate::cmd::leaf_settings::write_selection(&ws_root, nrp)?
+            && let Some(sel) =
+                crate::cmd::leaf_settings::write_selection(&ws_root, nrp, args.image.as_deref())?
         {
             println!("sync: selection → {}", sel.dir.display());
         }
@@ -3122,7 +3135,12 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     let no_metadata = args.no_metadata;
     let verbose = args.verbose;
 
-    let edition = resolve_sync_edition(args.ros_edition.as_deref(), &ws_root)?;
+    let sync_image = args.image.clone();
+    let edition = resolve_sync_edition(
+        args.ros_edition.as_deref(),
+        &ws_root,
+        single_pkg_mode.then_some(sync_image.as_deref()),
+    )?;
 
     // Track every pkg we generate so a later iteration (or AMENT-dep walk)
     // skips already-emitted ones. Keyed by pkg name.
@@ -3159,6 +3177,8 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
             args.verbose,
         )?;
     }
+
+    write_generated_edition(&build_root, edition)?;
 
     // phase-267 W1c/C3e — for each bringup declaring a `[[bridge]]`, plan it
     // (topic names→types resolve from the node pkgs' synthetic `publishes`
@@ -3353,7 +3373,8 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     // metadata (refreshed just above) and the model (resolved earlier).
     if single_pkg_mode
         && let Some(nrp) = nano_ros_path.as_deref()
-        && let Some(img) = crate::cmd::leaf_settings::write(&ws_root, nrp, "sync")?
+        && let Some(img) =
+            crate::cmd::leaf_settings::write(&ws_root, nrp, "sync", sync_image.as_deref())?
     {
         println!("sync: settings → {}", img.config_path.display());
     }
@@ -3532,16 +3553,59 @@ fn report_census_freshness(ws_root: &Path) {
     }
 }
 
+/// Where sync records the ROS edition `generated/` was produced for.
+const GENERATED_EDITION_FILE: &str = ".nros-ros-edition";
+
+/// Issue 1305 — record the edition the message crates under `build_root` were
+/// generated for (their baked `TYPE_HASH`). A single-package leaf may declare
+/// images on different editions, and `generated/` is ONE tree per leaf, so the
+/// build of an image checks this before compiling ([`generated_edition`]).
+/// Written only when it changes.
+fn write_generated_edition(build_root: &Path, edition: RosEdition) -> Result<()> {
+    if !build_root.is_dir() {
+        return Ok(());
+    }
+    let path = build_root.join(GENERATED_EDITION_FILE);
+    let want = format!("{}\n", edition.as_str());
+    if std::fs::read_to_string(&path).ok().as_deref() == Some(want.as_str()) {
+        return Ok(());
+    }
+    std::fs::write(&path, want).wrap_err_with(|| format!("sync: write {}", path.display()))
+}
+
+/// The edition `build_root`'s message crates were generated for, as the last
+/// sync recorded it ([`write_generated_edition`]). `None` when no sync since
+/// issue 1305 wrote one, or the record is unreadable.
+pub(crate) fn generated_edition(build_root: &Path) -> Option<RosEdition> {
+    std::fs::read_to_string(build_root.join(GENERATED_EDITION_FILE))
+        .ok()
+        .and_then(|s| RosEdition::parse(s.trim()))
+}
+
 fn parse_edition(s: &str) -> Result<RosEdition> {
     RosEdition::parse(s)
         .ok_or_else(|| eyre::eyre!("sync: unknown ROS edition '{s}' (humble | iron | jazzy)"))
 }
 
 /// Resolve the codegen edition (phase-304 W2b): an explicit `--ros-edition`
-/// wins; otherwise auto-lower `[system].ros_edition` from a `system.toml` at the
+/// wins; otherwise auto-lower the declared edition from a `system.toml` at the
 /// workspace root (declare once, RFC-0056); neither → humble (byte-identical).
 /// The baked type_hash then matches the runtime `ros-<edition>` keyexpr feature.
-fn resolve_sync_edition(cli: Option<&str>, ws_root: &Path) -> Result<RosEdition> {
+///
+/// `leaf_image` is `Some` for a single-package leaf (issue 1305): the edition is
+/// then the IMAGE's — `[image.<id>]` > `[image_defaults]` > `[system]`, through
+/// [`SystemToml::image_ros_edition`], the same resolver the selection writer
+/// lowers to `ros-<edition>` — for the image named (`Some(Some(id))`) or the
+/// leaf's own one (`Some(None)`: one image, or `[system] default_images`).
+/// A workspace (`None`) keeps `[system] ros_edition`: its message crates are
+/// shared by every image, so one edition is all it can generate.
+///
+/// [`SystemToml::image_ros_edition`]: crate::orchestration::cargo_metadata_schema::SystemToml::image_ros_edition
+fn resolve_sync_edition(
+    cli: Option<&str>,
+    ws_root: &Path,
+    leaf_image: Option<Option<&str>>,
+) -> Result<RosEdition> {
     if let Some(s) = cli {
         return parse_edition(s);
     }
@@ -3549,12 +3613,30 @@ fn resolve_sync_edition(cli: Option<&str>, ws_root: &Path) -> Result<RosEdition>
     if sys_toml.is_file() {
         let raw = std::fs::read_to_string(&sys_toml)
             .wrap_err_with(|| format!("sync: read {}", sys_toml.display()))?;
-        let sys: crate::orchestration::cargo_metadata_schema::SystemToml =
-            toml::from_str(&raw).wrap_err_with(|| format!("sync: parse {}", sys_toml.display()))?;
+        let mut table: toml::Table = raw
+            .parse()
+            .wrap_err_with(|| format!("sync: parse {}", sys_toml.display()))?;
+        // A leaf may leave `domain_id` to the runtime (`leaf_system` does);
+        // the bringup schema requires it and nothing here reads it — the same
+        // allowance `leaf_settings::write_selection` makes.
+        if leaf_image.is_some()
+            && let Some(system) = table.get_mut("system").and_then(|s| s.as_table_mut())
+        {
+            system.entry("domain_id").or_insert(toml::Value::Integer(0));
+        }
+        let sys: crate::orchestration::cargo_metadata_schema::SystemToml = table
+            .try_into()
+            .wrap_err_with(|| format!("sync: parse {}", sys_toml.display()))?;
+        let image = match leaf_image {
+            None => None,
+            Some(Some(id)) => Some(id.to_string()),
+            Some(None) => nros_orchestration_ir::leaf_system::read(ws_root)
+                .map_err(|e| eyre::eyre!("sync: {e}"))?
+                .and_then(|l| l.image),
+        };
         return sys
-            .system
-            .ros_edition()
-            .wrap_err_with(|| format!("sync: [system].ros_edition in {}", sys_toml.display()));
+            .image_ros_edition(image.as_deref())
+            .wrap_err_with(|| format!("sync: ros_edition in {}", sys_toml.display()));
     }
     Ok(RosEdition::Humble)
 }
@@ -3810,7 +3892,12 @@ pub(crate) fn refresh_generated(ws_root: &Path, dry_run: bool) -> Result<Vec<Str
         );
         return Ok(names);
     }
-    let edition = resolve_sync_edition(None, &ws_root)?;
+    // The edition the tree was generated FOR (issue 1305): a leaf's images may
+    // differ in edition, and regenerating a moved crate must not switch it.
+    let edition = match generated_edition(&build_root) {
+        Some(e) => e,
+        None => resolve_sync_edition(None, &ws_root, None)?,
+    };
     // Everything already on disk counts as emitted, so the dependency walk
     // below generates only what is MISSING (a dependency an upgraded
     // `package.xml` newly names), never a second copy of a fresh crate.

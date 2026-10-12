@@ -19,25 +19,37 @@
 # Every path here is absolute: the row's `dir` is repo-relative and the working
 # directory is no longer the leaf.
 
-# nros_leaf_settings_path <leaf-dir>
+# nros_leaf_settings_path <leaf-dir> [<image>]
 # The leaf's settings file as `nros ws leaf-system` reports it, or nothing when
 # the leaf does not build through one. FAILS for a leaf that states its board
 # in `system.toml` (the predicate `fixtures-manifest.py` uses to drop the row's
 # `--target`) but reports no settings file — building it the old way would
 # silently compile for the host.
 #
+# Issue 1305 — it also WRITES the image's selection package and settings file
+# (`nros ws leaf-system --write-settings`, the writer `nros build` uses), for
+# `<image>` when the row names one (`--nros-image=<id>` in its args) and for
+# the leaf's default image otherwise. A cargo leaf with several images has ONE
+# `build/nros/selection` for all of them, so the row that is about to build
+# must put its own image there — call this inside `nros_leaf_lock`, which is
+# what keeps a sibling row from rewriting it before cargo has read it.
+#
 # Needs `$NROS_CLI` (both callers export it) rather than calling
 # `nros_cli_bin` itself: this runs in a make leaf, which has only the functions
 # `export -f` gave it (`check-export-f-closure`).
 nros_leaf_settings_path() {
-    local dir="$1" root="${NROS_REPO_ROOT:-$PWD}" out path
+    local dir="$1" image="${2:-}" root="${NROS_REPO_ROOT:-$PWD}" out path
     [ -f "$root/$dir/system.toml" ] && [ -f "$root/$dir/Cargo.toml" ] || return 0
     if [ -z "${NROS_CLI:-}" ]; then
         printf 'nros_leaf_settings_path: NROS_CLI is not set\n' >&2
         return 1
     fi
-    out="$(NROS_REPO_DIR="$root" "$NROS_CLI" ws leaf-system "$root/$dir" 2>&1)" || {
-        printf 'nros_leaf_settings_path: "nros ws leaf-system %s" failed:\n%s\n' "$dir" "$out" >&2
+    local image_args=()
+    [ -z "$image" ] || image_args=(--image "$image")
+    out="$(NROS_REPO_DIR="$root" "$NROS_CLI" ws leaf-system --write-settings \
+        "${image_args[@]}" "$root/$dir" 2>&1)" || {
+        printf 'nros_leaf_settings_path: "nros ws leaf-system --write-settings %s %s" failed:\n%s\n' \
+            "${image_args[*]}" "$dir" "$out" >&2
         return 1
     }
     path="$(printf '%s\n' "$out" | sed -n 's/^NROS_LEAF_SETTINGS=//p')"
@@ -87,4 +99,64 @@ nros_leaf_settings_target_dir_flag() {
         *) td="$root/$dir/$td" ;;
     esac
     printf ' --target-dir %s' "$td"
+}
+
+# ── issue 1305 — one leaf, several images ─────────────────────────────────
+#
+# A `[[fixture]]` row of a single-package leaf names its image as one token in
+# its cargo args, `--nros-image=<id>` (`fixtures-manifest.py`, `ROW_IMAGE_TOKEN`)
+# — in the args because that string is the row's group key, so two images land
+# in two artifact dirs by the computation that already separates two feature
+# sets. These are its only readers.
+
+# nros_leaf_row_image <cargo-args>
+# The image the row names, or nothing.
+nros_leaf_row_image() {
+    local tok
+    # shellcheck disable=SC2086
+    for tok in ${1:-}; do
+        case "$tok" in
+            --nros-image=*) printf '%s' "${tok#--nros-image=}" ;;
+        esac
+    done
+}
+
+# nros_leaf_strip_row_image <cargo-args>
+# The args cargo is given: the row's, minus the image token.
+nros_leaf_strip_row_image() {
+    local tok out=()
+    # shellcheck disable=SC2086
+    for tok in ${1:-}; do
+        case "$tok" in
+            --nros-image=*) ;;
+            *) out+=("$tok") ;;
+        esac
+    done
+    printf '%s' "${out[*]:-}"
+}
+
+# nros_leaf_lock <leaf-dir> <command> [args…]
+# Run <command> holding the leaf's exclusive lock.
+#
+# Every image of a leaf shares `<leaf>/build/nros/selection` and
+# `<leaf>/generated/`, and the fixture build runs rows in parallel (make -j), so
+# two rows of one leaf naming different images would each rewrite the
+# selection the other's cargo is compiling against — an artifact built with the
+# wrong backend, in the right directory. Rows of DIFFERENT leaves still run in
+# parallel; rows of one leaf take turns, each writing its selection and
+# building before the next. Measured: the six native leaves have 3-5 rows each.
+# The staleness probe takes the same lock, because it rebuilds a row too.
+nros_leaf_lock() {
+    local dir="$1" root="${NROS_REPO_ROOT:-$PWD}"
+    shift
+    if ! command -v flock >/dev/null 2>&1; then
+        printf 'nros_leaf_lock: `flock` (util-linux) is required to serialise the rows of %s\n' \
+            "$dir" >&2
+        return 1
+    fi
+    mkdir -p "$root/$dir/build/nros"
+    (
+        flock -x 9
+        "$@"
+    ) 9>"$root/$dir/build/nros/.leaf.lock"
 }

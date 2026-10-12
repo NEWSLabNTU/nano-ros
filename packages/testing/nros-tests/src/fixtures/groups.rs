@@ -142,6 +142,9 @@ pub struct Selector {
     pub no_default_features: bool,
     /// `k=v`, sorted by key, comma-joined.
     pub env: String,
+    /// The `[image.<id>]` of a single-package leaf the row builds (issue
+    /// 1305); empty when it names none, i.e. the leaf's default image.
+    pub image: String,
 }
 
 static ROWS: OnceLock<Vec<GroupRow>> = OnceLock::new();
@@ -186,10 +189,11 @@ pub fn parse_rows(text: &str) -> Vec<GroupRow> {
         let f: Vec<&str> = line.split('\x1f').collect();
         assert_eq!(
             f.len(),
-            12,
-            "unexpected `fixture-groups` record shape (expected 12 \\x1f-separated \
+            13,
+            "unexpected `fixture-groups` record shape (expected 13 \\x1f-separated \
              fields: artifact_root, platform, slug, shared, dir, rmw, features, \
-             no_default_features, env, coord_platform, coord_lang, coord_rmw): {line:?}"
+             no_default_features, env, image, coord_platform, coord_lang, coord_rmw): \
+             {line:?}"
         );
         rows.push(GroupRow {
             artifact_root: f[0].to_string(),
@@ -202,8 +206,9 @@ pub fn parse_rows(text: &str) -> Vec<GroupRow> {
                 features: f[6].to_string(),
                 no_default_features: matches!(f[7], "1"),
                 env: f[8].to_string(),
+                image: f[9].to_string(),
             },
-            coord: (f[9].to_string(), f[10].to_string(), f[11].to_string()),
+            coord: (f[10].to_string(), f[11].to_string(), f[12].to_string()),
         });
     }
     rows
@@ -322,6 +327,7 @@ impl FixtureVariant {
             features: rmw.cargo_feature().to_string(),
             no_default_features: true,
             env: String::new(),
+            image: String::new(),
         })
     }
 
@@ -341,6 +347,18 @@ impl FixtureVariant {
         f.sort_unstable();
         Self(Selector {
             features: f.join(","),
+            ..Selector::default()
+        })
+    }
+
+    /// One image of a single-package leaf — `rmw = "<x>"`, `image = "<id>"`
+    /// and nothing else (issue 1305): how `examples/native/rust/*` select a
+    /// non-default RMW now that the RMW is declared in `system.toml`
+    /// (RFC-0031). [`select_rmw_row`] reaches these from an RMW alone.
+    pub fn image(rmw: super::Rmw, id: &str) -> Self {
+        Self(Selector {
+            rmw: rmw.cmake_value().to_string(),
+            image: id.to_string(),
             ..Selector::default()
         })
     }
@@ -471,6 +489,60 @@ pub fn leaf_has_rows(dir: &str) -> bool {
 pub fn leaf_is_multi_row(dir: &str) -> bool {
     let dir = dir.trim_end_matches('/');
     manifest_rows().iter().filter(|r| r.dir == dir).count() > 1
+}
+
+/// The row of `dir` that builds `rmw` — the selection `build_example_rmw`
+/// means (issue 1305).
+///
+/// Two leaf shapes answer it differently, and the LEAF's rows say which:
+///
+/// * a leaf whose rows select the RMW by cargo FEATURE (`features =
+///   ["rmw-<x>"]`, `no_default_features`) — [`FixtureVariant::rmw`], exactly;
+/// * a leaf whose rows select it by IMAGE (`image = "<id>"`, the RFC-0031
+///   spelling: `examples/native/rust/*`) — the one row with no feature, env or
+///   `no_default_features` variant whose COORDINATE (`row_coord`, the single
+///   computation, carried in the export) is `rmw`. That is the image row for a
+///   non-default RMW and the leaf's plain row for its default one.
+///
+/// Fails closed like [`select_row`]: none, or more than one, is an error.
+pub fn select_rmw_row(dir: &str, rmw: super::Rmw) -> TestResult<&'static GroupRow> {
+    select_rmw_row_in(manifest_rows(), dir, rmw)
+}
+
+/// [`select_rmw_row`] against a GIVEN row table (see [`select_row_in`]).
+pub fn select_rmw_row_in<'a>(
+    rows: &'a [GroupRow],
+    dir: &str,
+    rmw: super::Rmw,
+) -> TestResult<&'a GroupRow> {
+    let dir = dir.trim_end_matches('/');
+    let at: Vec<&GroupRow> = rows.iter().filter(|r| r.dir == dir).collect();
+    if !at.iter().any(|r| !r.selector.image.is_empty()) {
+        return select_row_in(rows, dir, &FixtureVariant::rmw(rmw));
+    }
+    let hits: Vec<&GroupRow> = at
+        .iter()
+        .copied()
+        .filter(|r| {
+            r.selector.features.is_empty()
+                && r.selector.env.is_empty()
+                && !r.selector.no_default_features
+                && r.coord.2 == rmw.cmake_value()
+        })
+        .collect();
+    match hits.as_slice() {
+        [row] => Ok(row),
+        none_or_many => Err(TestError::BuildFailed(format!(
+            "{dir} selects its RMW by image, and {} of its rows build {} with no other \
+             variant (want exactly 1). Rows: {}",
+            none_or_many.len(),
+            rmw.cmake_value(),
+            at.iter()
+                .map(|r| format!("{:?} @ {:?}", r.selector, r.coord))
+                .collect::<Vec<_>>()
+                .join("; ")
+        ))),
+    }
 }
 
 /// The row a caller means, by leaf dir and configuration — the selection half of

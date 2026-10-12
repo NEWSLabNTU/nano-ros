@@ -29,6 +29,12 @@
 #              omitting it puts the row in the wrong lane.
 #   id         optional  stable id (default: derived from dir+target_dir+features)
 #   # --- rust (cargo) ---
+#   image               optional  one `[image.<id>]` of a single-package leaf
+#                                 (a `system.toml` beside the `Cargo.toml`);
+#                                 absent = the leaf's default image. How a leaf
+#                                 row picks its RMW / ROS edition (issue 1305,
+#                                 RFC-0031) — never `features = ["rmw-<x>"]`.
+#                                 Part of the row's group key and selector.
 #   features            optional  string[] passed as --features a,b
 #   no_default_features optional  bool      adds --no-default-features
 #   target              optional  --target <triple> (cross)
@@ -1878,38 +1884,12 @@ lang = "rust"
 dir = "packages/testing/nros-tests/bins/message-info-observer"
 features = ["unstable-zenoh-api"]
 
-# Per-RMW collapsed talker/listener/service/action, isolated target-<rmw>/ dirs.
-[[fixture]]
-platform = "linux"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/native/rust/talker"
-no_default_features = true
-features = ["rmw-zenoh"]
-
-[[fixture]]
-platform = "linux"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/native/rust/listener"
-no_default_features = true
-features = ["rmw-zenoh"]
-
-[[fixture]]
-platform = "linux"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/native/rust/service-server"
-no_default_features = true
-features = ["rmw-zenoh"]
-
-[[fixture]]
-platform = "linux"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/native/rust/service-client"
-no_default_features = true
-features = ["rmw-zenoh"]
+# Per-RMW talker/listener/service/action. The six `examples/native/rust/*`
+# leaves select their RMW by IMAGE (`image = "native_<rmw>"`, issue 1305 —
+# RFC-0031: the RMW is declared in `system.toml` and lowered into the leaf's
+# generated selection package), so their zenoh build is the plain row above and
+# only xrce/cyclonedds need a row here. The image is part of the row's group
+# key, so each image lands in its own artifact dir.
 
 # #196 — this row was missing: `build_native_service_client_callback` resolves
 # `target-zenoh/<profile>/service-client-callback`, but only the plain
@@ -1927,50 +1907,30 @@ features = ["rmw-zenoh"]
 [[fixture]]
 platform = "linux"
 lang = "rust"
-rmw = "zenoh"
-dir = "examples/native/rust/action-server"
-no_default_features = true
-features = ["rmw-zenoh"]
-
-[[fixture]]
-platform = "linux"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/native/rust/action-client"
-no_default_features = true
-features = ["rmw-zenoh"]
-
-[[fixture]]
-platform = "linux"
-lang = "rust"
 rmw = "xrce"
 dir = "examples/native/rust/talker"
-no_default_features = true
-features = ["rmw-xrce"]
+image = "native_xrce"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
 rmw = "xrce"
 dir = "examples/native/rust/listener"
-no_default_features = true
-features = ["rmw-xrce"]
+image = "native_xrce"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
 rmw = "xrce"
 dir = "examples/native/rust/service-server"
-no_default_features = true
-features = ["rmw-xrce"]
+image = "native_xrce"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
 rmw = "xrce"
 dir = "examples/native/rust/service-client"
-no_default_features = true
-features = ["rmw-xrce"]
+image = "native_xrce"
 
 # issue 0466 — native rust CycloneDDS talker/listener. These two are consumed by
 # `test_native_cyclonedds_rust_talker_to_listener` /
@@ -1986,16 +1946,14 @@ platform = "linux"
 lang = "rust"
 rmw = "cyclonedds"
 dir = "examples/native/rust/talker"
-no_default_features = true
-features = ["rmw-cyclonedds"]
+image = "native_cyclonedds"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
 rmw = "cyclonedds"
 dir = "examples/native/rust/listener"
-no_default_features = true
-features = ["rmw-cyclonedds"]
+image = "native_cyclonedds"
 
 # issue #233 cell 1 — native rust CycloneDDS service pair (proven to deliver:
 # server sees the request, client prints `Result of add_two_ints: 5`).
@@ -2004,16 +1962,14 @@ platform = "linux"
 lang = "rust"
 rmw = "cyclonedds"
 dir = "examples/native/rust/service-server"
-no_default_features = true
-features = ["rmw-cyclonedds"]
+image = "native_cyclonedds"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
 rmw = "cyclonedds"
 dir = "examples/native/rust/service-client"
-no_default_features = true
-features = ["rmw-cyclonedds"]
+image = "native_cyclonedds"
 
 # issue #234 — native rust CycloneDDS action pair (now delivers: server sees
 # `Received goal request with order`, client prints the order-10 Fibonacci
@@ -2027,32 +1983,28 @@ platform = "linux"
 lang = "rust"
 rmw = "cyclonedds"
 dir = "examples/native/rust/action-server"
-no_default_features = true
-features = ["rmw-cyclonedds"]
+image = "native_cyclonedds"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
 rmw = "cyclonedds"
 dir = "examples/native/rust/action-client"
-no_default_features = true
-features = ["rmw-cyclonedds"]
+image = "native_cyclonedds"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
 rmw = "xrce"
 dir = "examples/native/rust/action-server"
-no_default_features = true
-features = ["rmw-xrce"]
+image = "native_xrce"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
 rmw = "xrce"
 dir = "examples/native/rust/action-client"
-no_default_features = true
-features = ["rmw-xrce"]
+image = "native_xrce"
 
 # Bench / stress fixtures (default features).
 [[fixture]]

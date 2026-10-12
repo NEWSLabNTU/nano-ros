@@ -71,9 +71,17 @@ fn talker_variants() -> Vec<(&'static str, FixtureVariant)> {
     vec![
         ("plain", FixtureVariant::plain()),
         ("link-tls", FixtureVariant::features(&["link-tls"])),
-        ("rmw-zenoh", FixtureVariant::rmw(Rmw::Zenoh)),
-        ("rmw-xrce", FixtureVariant::rmw(Rmw::Xrce)),
-        ("rmw-cyclonedds", FixtureVariant::rmw(Rmw::Cyclonedds)),
+        // Issue 1305 — the RMW is the leaf's IMAGE now (RFC-0031), and the
+        // zenoh build is the plain row: two images of one leaf must land in two
+        // group dirs exactly as two feature sets did.
+        (
+            "image native_xrce",
+            FixtureVariant::image(Rmw::Xrce, "native_xrce"),
+        ),
+        (
+            "image native_cyclonedds",
+            FixtureVariant::image(Rmw::Cyclonedds, "native_cyclonedds"),
+        ),
     ]
 }
 

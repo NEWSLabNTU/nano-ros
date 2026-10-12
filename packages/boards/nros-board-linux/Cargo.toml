@@ -93,9 +93,13 @@ libc = "0.2"
 # feature and the board's boot calls that backend's `register()`, so no app-side
 # backend ownership is needed. These omit `linkme-register` because the explicit
 # call replaces the linkme walk (Phase 249 P3.5b).
-nros-rmw-zenoh = { path = "../../rmw/zenoh/nros-rmw-zenoh", features = ["platform-posix"], optional = true }
+# `std` on the backends too (issue 1305): this board is hosted by
+# construction, and a backend's `std` is what turns on its `log` output (the
+# zenoh `Publishing … with attachment` trace the nano2nano GID tests read). The
+# native examples used to add it on their own backend dep; they name none now.
+nros-rmw-zenoh = { path = "../../rmw/zenoh/nros-rmw-zenoh", features = ["platform-posix", "std"], optional = true }
 nros-rmw-xrce-cffi = { path = "../../rmw/xrce/nros-rmw-xrce-cffi", default-features = false, features = ["std"], optional = true }
-nros-rmw-cyclonedds-sys = { path = "../../rmw/cyclonedds/nros-rmw-cyclonedds-sys", features = ["platform-posix"], optional = true }
+nros-rmw-cyclonedds-sys = { path = "../../rmw/cyclonedds/nros-rmw-cyclonedds-sys", features = ["platform-posix", "std"], optional = true }
 # Issue 1419 — the recording backend, behind `census`.
 nros-rmw-metadata = { path = "../../rmw/metadata", optional = true }
 
@@ -113,6 +117,16 @@ rmw-cyclonedds = ["dep:nros-rmw-cyclonedds-sys"]
 # rmw-zenoh. This host board validates the forwarding pattern the embedded
 # boards use.
 safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]
+# Issue 1305 (RFC-0056) — the image's ROS edition, forwarded to the backends
+# that branch on it. `nros/ros-<ed>` reaches `nros-node` only; the zenoh
+# keyexpr gates its RIHS01 type-hash tail on `nros-rmw-zenoh`'s OWN feature, so
+# a jazzy image needs it here. The selection writer (`facade::derive`) names
+# whichever of these the image's edition is, as it names `rmw-<x>`; `?` keeps
+# each inert for a backend the image does not link. Mutually exclusive, like
+# the umbrella's.
+ros-humble = ["nros-rmw-zenoh?/ros-humble", "nros-rmw-cyclonedds-sys?/ros-humble"]
+ros-iron = ["nros-rmw-zenoh?/ros-iron", "nros-rmw-cyclonedds-sys?/ros-iron"]
+ros-jazzy = ["nros-rmw-zenoh?/ros-jazzy", "nros-rmw-cyclonedds-sys?/ros-jazzy"]
 # Issue 1419 — the Rust entry is a census PRODUCER. With this feature the hosted
 # funnels answer `$NROS_CENSUS_OUT` by selecting the recording backend,
 # registering every component on an executor sized at its own ceilings

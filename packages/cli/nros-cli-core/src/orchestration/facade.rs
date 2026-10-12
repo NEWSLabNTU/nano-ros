@@ -114,10 +114,19 @@ struct RuntimeDeps {
 /// falls back to `[system] rmw`, which is what those have always used.
 fn image_rmw(entry_name: &str, sys: &SystemToml) -> Option<String> {
     let base = sys.image_defaults.clone().unwrap_or_default();
+    let id = claimed_image_id(entry_name, sys)?;
+    sys.image.get(&id).and_then(|img| img.with_base(&base).rmw)
+}
+
+/// The `[image.<id>]` whose generated entry is `entry_name` — the forward
+/// match [`image_rmw`] documents. Shared with the edition
+/// ([`SystemToml::image_ros_edition`]), so the RMW and the edition of one
+/// entry are read off the same image (issue 1305).
+fn claimed_image_id(entry_name: &str, sys: &SystemToml) -> Option<String> {
     sys.image
-        .iter()
-        .find(|(id, _)| crate::builder::entry::package_name(id) == entry_name)
-        .and_then(|(_, img)| img.with_base(&base).rmw)
+        .keys()
+        .find(|id| crate::builder::entry::package_name(id) == entry_name)
+        .cloned()
 }
 
 /// Every RMW an image's binary must LINK, not just the one it defaults to.
@@ -200,6 +209,7 @@ pub fn write_facade(
 
     // ---- the three declared axes ------------------------------------------
     let declared_rmw = image_rmw(entry_name, sys).unwrap_or_else(|| sys.system.rmw.clone());
+    let edition = sys.image_ros_edition(claimed_image_id(entry_name, sys).as_deref())?;
     let Derived {
         nros_features,
         board_features,
@@ -207,6 +217,7 @@ pub fn write_facade(
     } = derive(
         entry_name,
         sys,
+        edition,
         &declared_rmw,
         &image_backends(entry_name, sys),
         &nros_path,
@@ -227,6 +238,7 @@ pub fn write_facade(
         &backend_features,
         entry_name,
         sys,
+        edition,
     );
 
     std::fs::create_dir_all(dir.join("src"))
@@ -343,6 +355,7 @@ pub fn write_leaf_selection(spec: &LeafSelectionSpec<'_>, sys: &SystemToml) -> R
     } = derive(
         &crate_name,
         sys,
+        sys.image_ros_edition(Some(spec.image_id))?,
         &declared_rmw,
         &backends,
         &nros_path,
@@ -469,15 +482,16 @@ struct Derived {
 /// ([`write_facade`]) and a single-package leaf's selection package
 /// ([`write_leaf_selection`]), so both select the same features from the same
 /// declaration.
+#[allow(clippy::too_many_arguments)]
 fn derive(
     entry_name: &str,
     sys: &SystemToml,
+    edition: rosidl_codegen::RosEdition,
     declared_rmw: &str,
     backends: &[String],
     nros_path: &Path,
     board_dir: Option<&Path>,
 ) -> Result<Derived> {
-    let edition = sys.system.ros_edition()?;
     let rmw = crate::orchestration::rmw_resolver::resolve_rmw(declared_rmw)
         .map_err(|e| eyre::eyre!("facade: {entry_name}: {e}"))?;
 
@@ -590,6 +604,16 @@ fn derive(
                 if crate_declares_feature(path, &cf) {
                     f.push(cf);
                 }
+            }
+            // Issue 1305 — the EDITION on the board crate, for a board that
+            // forwards it to its backend (`nros-board-linux`'s `ros-<ed>` =
+            // `nros-rmw-zenoh?/ros-<ed>`). The umbrella's `ros-<ed>` reaches
+            // `nros-node` only, and the zenoh keyexpr gates its RIHS01 tail on
+            // the BACKEND's own feature, so without this a jazzy image would
+            // advertise humble's `TypeHashNotSupported`. Asked of the crate,
+            // like the RMW: a board with no such feature stays silent.
+            if crate_declares_feature(path, edition.cargo_feature()) {
+                f.push(edition.cargo_feature().to_string());
             }
             f.sort();
             f.dedup();
@@ -712,6 +736,7 @@ fn render_manifest(
     backend_features: &[String],
     entry_name: &str,
     sys: &SystemToml,
+    edition: rosidl_codegen::RosEdition,
 ) -> String {
     let feat_list = |f: &[String]| {
         f.iter()
@@ -735,10 +760,7 @@ fn render_manifest(
          # entry already depends on. Editing this file is pointless — the next\n\
          # `nros sync` overwrites it; edit `system.toml` instead.\n\n",
         sys.system.name,
-        sys.system
-            .ros_edition
-            .clone()
-            .unwrap_or_else(|| "humble (default)".into()),
+        edition.as_str(),
         sys.system.rmw,
         sys.system.features,
     ));
