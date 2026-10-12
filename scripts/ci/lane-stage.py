@@ -621,6 +621,17 @@ LANES = (
         "Provision cargo-nextest": PROVISIONING,
         "Run the board cells with a recorded PASS": CELLS,
     }),
+    # Issue 1758 — the board rows the Zephyr image cannot build, in their own
+    # job in the `nano-ros-ci` image, so each image's rows have their own stage.
+    LaneSpec("live-peer.yml", "board-ci", "stage-board-ci", {
+        "Build the nros CLI": BUILD,
+        "Reclaim disk before the SDK setup": PROVISIONING,
+        "Provision the declared system closure (phase-413 W3)": PROVISIONING,
+        "just setup the scopes those rows need": PROVISIONING,
+        "Build the fixtures those rows resolve": BUILD,
+        "Provision cargo-nextest": PROVISIONING,
+        "Run the board cells with a recorded PASS": CELLS,
+    }),
 )
 
 # Kept for `--history`'s default and for anything importing the old name.
