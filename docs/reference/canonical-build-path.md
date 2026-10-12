@@ -1,9 +1,12 @@
 # The canonical build path
 
 **What this is.** A map of how a nano-ros image actually gets built: the three
-roads, what carries a configuration knob to the compiler on each, and which RFC
-owns each decision. It exists because the decisions are all made and all
-scattered — six RFCs own a slice each, and nobody owned the picture.
+roads, what carries a configuration knob to the compiler on each, where a
+build finds a resource it did not produce, and which RFC owns each decision.
+It exists because the decisions are all made and all scattered — several RFCs
+own a slice each, and nobody owned the picture. The rule that ties them
+together is RFC-0103's: **every fact has one authored home, every other copy
+is generated from it, and every road reads the resolved answer.**
 
 **What this is not.** A new decision. Every rule here is already settled
 somewhere; this file points at the owner and explains how the pieces meet.
@@ -101,22 +104,38 @@ that states a value wins; a rung that is silent is not a zero.
 | --- | --- | --- |
 | builtin | the reading crate's own default | the crate |
 | platform | `nros-platform.toml` (`config/*/`, `packages/platform/*/`) | RFC-0049 |
-| board | `nros-board.toml` | RFC-0064 R5 D4 |
+| board | `nros-board.toml` `[knobs.<group>]` | RFC-0064 R5 D4, RFC-0103 D6 |
 | app | `[image.<id>] env` in the leaf's `system.toml` | RFC-0049 / RFC-0098 |
 | env | the process environment | RFC-0049 |
+
+**One name per knob** (RFC-0103 D6, phase-484 W5a). Every knob is one row in
+the registry `packages/tooling/nros-zephyr-build/knobs.toml`: id
+`<group>.<name>`, env `NROS_<GROUP>_<NAME>` (a knob of one RMW is
+`NROS_<RMW>_<X>`), Kconfig symbol `CONFIG_NROS_<ID>` unless the row names
+another. Everything else is generated from that file: the Rust `KNOBS` table
+and its derived `KCONFIG_PAIRS`, cmake's `NanoRosKnobRegistry.cmake`, and the
+knob section of `zephyr/Kconfig`. An older spelling (`ZPICO_MAX_PUBLISHERS`)
+is a legacy row: it is still read, says so once in the registry's deprecation
+sentence, and two spellings set to different values stop the build. Old
+spellings retire in phase-484 W8.
 
 **The app rung's carrier, per road** (issue 1712). Cargo: the generated
 `nros-cargo.toml` `[env]`. CMake: `--config <build>/nros/nros-image-env.toml`
 on every cargo command the configure spawns (written by `nros ws leaf-system
 --image-env-out`), the same unforced `[env]`, so an exported variable still
 wins and a changed row re-runs the build scripts that read it. West
-(phase-481 W1, RFC-0098 D11): the nano-ros module's `module_ext_root` hook
-renders the image into `<build>/nros/<image>.conf`, LAST in
-`EXTRA_CONF_FILE`, so a row with a Kconfig symbol reaches `$DOTCONFIG` and
-every build script reads it through its ladder; a row with none rides the same
-unforced `--config` `[env]` file on the Zephyr cargo commands. The image's
-RMW, endpoint and domain are rendered too, so a Zephyr leaf's conf files hold
-no nano-ros knob at all (gate `check-leaf-conf-nros-knobs`). A workspace
+(phase-481 W1, RFC-0098 D11, phase-484 W5b): the nano-ros module's
+`module_ext_root` hook writes two files. Knobs go to
+`<build>/nros/Kconfig.from-system-toml`, which the module's prompt-less knob
+section `osource`s first, so the image's `[image.<id>] env` value is the
+symbol's `default` and reaches `$DOTCONFIG`. A one-build override is
+`-DNROS_OVERRIDE_<ID>=<v>`; a `-DCONFIG_<knob>` or a knob line in a conf file
+is refused, naming `system.toml`. The image's RMW choice, endpoint and domain
+stay in the conf fragment `<build>/nros/<image>.conf`, LAST in
+`EXTRA_CONF_FILE`, because a Kconfig `choice` cannot be a prompt-less default
+(W5b's M1). A row with no Kconfig symbol rides the same unforced `--config`
+`[env]` file on the Zephyr cargo commands. A Zephyr leaf's conf files hold no
+nano-ros knob at all (gate `check-leaf-conf-nros-knobs`). A workspace
 image whose configuration differs gets its own cmake configure
 (`build/<coord>-cfg<hash>/`, D12).
 
@@ -133,6 +152,78 @@ distinction matters because a fact has no `$DOTCONFIG` counterpart:
 **A platform that resolves to no descriptor is an ERROR** (phase-468 W1): every
 board-declared name has a descriptor or an explicit declaration that it has no
 rungs, and an unanswered name panics rather than warning.
+
+## Where a resource comes from: the location ladder
+
+A build also needs things it did not produce: vendored source trees, cross
+toolchains, the `nros` CLI, generated artifacts. Before phase-484 a resource's
+location was decided by 13 mechanisms, and 13 resources were found two or more
+ways (issue 1767, archived with a per-item table). RFC-0103 D3 gives them one
+ladder, `nros_build_paths::locate`, with these rungs, highest first:
+
+| rung | stated by |
+| --- | --- |
+| `arg` | an explicit argument |
+| `env` | the resource's one `env` name in its index row |
+| `project` | `[sources]` / `[tools]` in the project's `system.toml` |
+| `local-edit` | a checkout submodule moved off its pin, or dirty |
+| `store` | `$NROS_HOME/sources/<name>/<version>+<sha8>/`, materialised by `nros setup --source` |
+| `checkout` | the submodule in this checkout |
+
+Every road asks the same ladder, never a copy of it:
+
+| road | front end |
+| --- | --- |
+| a build script | `nros_build_paths::locate::source(name)`; it watches the answer's CONTENT, never the variable (issue 0491) |
+| cmake | `nros_locate_source()`, `nros_locate_var()`, `nros_locate_artifact()` in `cmake/NanoRosLocate.cmake`: one `nros locate --all --format cmake` per configure, normal variables, never `CACHE` |
+| shell / `just` | `nros_locate_source` / `nros_locate_artifact` in `scripts/build/cargo.sh` |
+| Python gates | `scripts/lib/source_locate.py` |
+| a person | `nros locate <name> --why` prints the rung that answered |
+
+The image's resolve records the answers in `resolved.toml [locations]` (path,
+rung, and `transient` for an environment answer). That file is a record, not
+a carrier: build scripts re-ask the ladder.
+
+Two roots, one name each (phase-484 W1/W2d): the store is `$NROS_HOME`
+(`NROS_STORE` and `NROS_SDK_STORE` are refused, naming it), and the checkout
+is found by `--nano-ros-path` (`-DNROS_REPO_DIR` in cmake), then a walk up
+from the workspace, then the `nros` binary's own location (a release's
+`share/nano-ros`, or the checkout an in-tree build sits in). No environment
+variable names it. `activate.sh` exports no location at
+all: it puts `nros` on `PATH` and nothing else, so a linked worktree cannot
+inherit another checkout's trees (issue 1280).
+
+The last three resources found more than one way went through the same
+fix, each with a gate that refuses a new hand-written path:
+- the `nros` and `nros-launch-resolve` binaries: `nros_cli_bin
+  [--checkout-only]`, `nros locate tool`, and in Rust
+  `nros_cli_in_checkout` / `launch_resolver_from` (issue 1850,
+  `check-host-tool-path-literals`);
+- QEMU: `nros_qemu_bin` and `qemu_system_path` (issue 1851,
+  `check-qemu-one-ladder`);
+- the generated-header directory names: `nros locate artifact` and
+  `cmake/NanoRosArtifactLayout.cmake`, which read `nros_build_paths::artifact`
+  (issue 1852, `check-artifact-path-literals`).
+
+## Where a selection is stated
+
+The board, RMW, domain, locator, IP address and transport are stated in the
+image's `system.toml` (`[image.<id>]`, `[system]`). The board's descriptor
+supplies the defaults through `[board.net]`: every QEMU board joins the one
+`qemu` network (`10.0.2.0/24`, gateway `10.0.2.2`), and a router default is
+derived from the gateway as `tcp/<gateway>:7447` (phase-484 W4b). The board
+crate reads generated `BOARD_NET_*` constants rather than restating them.
+
+On the cargo road `nros::main!` bakes the image's selections into a deploy
+overlay, and every board family merges it over its own defaults with
+`BaseConfig::apply_overlay` before opening the session. That merge is the
+only way the image's locator reaches a board, because
+`BootConfig::over_board_defaults` lets the board's value win. NuttX once
+skipped it and every NuttX Rust image dialled an empty locator (issue 1836),
+so `check-image-locator-bake` now checks that each family's crates apply the
+overlay rather than trusting that they do. `ROS_DOMAIN_ID` and `NROS_LOCATOR`
+remain runtime overrides; `NROS_BOARD`, `ZENOH_LOCATOR` and a build-time
+`NROS_DOMAIN_ID` are not inputs.
 
 ## Where a value must NOT be stated
 
@@ -160,10 +251,12 @@ they are **not interchangeable**:
   mention proves **nothing**: three knobs were mentioned with no table row and
   silently compiled crate defaults (issue 1490).
 
-Held by `check-kconfig-knob-forwarding`. **phase-468 W4 is consolidating these
-into one resolution function with the Kconfig and env sources as inputs**; when
-it lands, that gate retires or narrows, and this section is the part of this
-file most likely to be stale — check the phase before trusting it.
+Held by `check-kconfig-knob-forwarding`. Both shapes now go through one
+resolution function, `nros_zephyr_build::knob("<ENV>")` with the Kconfig and
+env sources as inputs (phase-468 W4). Since phase-484 W5a the TABULATING
+table is no longer authored: `KCONFIG_PAIRS` is derived from the knob
+registry, so a missing row is a missing registry row, which
+`check-zephyr-kconfig-knobs` holds against the rendered Kconfig.
 
 ### How to prove a knob is delivered
 
@@ -220,6 +313,7 @@ The classes, the outlier verdicts and the migration order are
 | platform and build determinism | RFC-0042 |
 | the backend descriptor | RFC-0071 |
 | where a build script gets a vendored tree's ROOT | RFC-0101 |
+| one home per fact: the location ladder, knob names, selections | RFC-0103 |
 
 ## The recurring failure, stated once
 

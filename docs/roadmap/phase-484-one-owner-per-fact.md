@@ -1,9 +1,8 @@
 # Phase 484 -- one owner per fact: resource locations and configuration
 
-**Status (2026-10-12).** W0, W1, W3, W4 (but W4b-2), W6 and W7a/W7b landed; W2
-has four leftovers; W5a in progress (slices 1-6 and `[board.knobs]` →
-`[knobs]` done); W5b (folded in from phase-481) measured and built — M1 red
-so choices/endpoint/domain stay in the fragment; W8 waits on a release. Implements
+**Status (2026-10-13).** W0–W7 landed; RFC-0103 is Stable and issue 1767 is
+archived, and so are its residue issues 1850, 1851 and 1852. Only W8 is left: retiring
+the old names once the aliases have shipped in one release. Implements
 [RFC-0103](../design/0103-one-owner-per-fact.md). Tracks issues
 [1767](../issues/archived/1767-resource-location-resolved-many-ways.md) and
 [1768](../issues/archived/1768-build-wiring-census-misses-link-script-macro.md).
@@ -943,9 +942,20 @@ verb's answer is used as given.
   parsers (`BoardKnobsFile::parse_for_board`, the CLI's `BoardFile::parse`)
   stop accepting it and refuse it naming `[knobs]`.
 - ~~Issue 1768 (census classifier + fail on UNCLASSIFIED).~~ Done (W7a): the `linker-script` role knows `link_script!`; gate `build-wiring-classified`.
-- `canonical-build-path.md`, the book's configuration and getting-started
-  pages, CLAUDE.md pointers.
-- RFC-0103 → Stable; issue 1767 archived.
+- ~~`canonical-build-path.md`, the book's configuration and getting-started
+  pages, CLAUDE.md pointers.~~ Done (2026-10-13): the map gains "Where a
+  resource comes from" (the location ladder and its per-road front ends) and
+  "Where a selection is stated", the knob registry and the W5b Zephyr carrier;
+  the configuration page and both environment-variable references describe the
+  store-first trees instead of in-tree defaults and stop listing board facts
+  as user inputs; the book marks `nros::main!(board =)` deprecated; CLAUDE.md
+  points at `nros locate` and the knob registry.
+- ~~RFC-0103 → Stable; issue 1767 archived.~~ Done (2026-10-13): RFC-0103 is
+  Stable with its ARCHITECTURE section; 1767 is archived with a per-item
+  resolution table. Four items it still had are fixed (the Cyclone and
+  `nros-c` header paths, the Zephyr workspace ladder, the SystemModel
+  literal), and the three filed as issues 1850–1852 (host-tool binaries,
+  QEMU, the generated-header names) are fixed and archived too.
 
 **Acceptance:** `just ci gate` green; tier 2 green for the cells the waves
 touched; issue 1767 archived.
