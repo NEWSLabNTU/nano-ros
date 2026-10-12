@@ -449,6 +449,7 @@ pub fn write_selection(
         leaf: &img.leaf,
         image_id: &img.image_id,
         rmw: img.decl.rmw.as_deref(),
+        transport: img.decl.network.transport.as_deref(),
         board: &facts,
         candidates: &candidates,
         nano_ros_root,
