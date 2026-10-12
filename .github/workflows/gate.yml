@@ -1440,10 +1440,18 @@ jobs:
     # `check-workflow-runner-isolation` proves the route's condition cannot be
     # true on `pull_request` / `pull_request_target`.
     #
-    # THE INTERLOCK. `vars.NROS_SELF_HOSTED_READY` is the same switch queue L3
-    # uses. These jobs feed the REQUIRED `CI`, and a job with no runner waits
-    # rather than fails — so if the pool is down, set the variable to `false`
-    # and both jobs go back to the hosted runner on the next run.
+    # THE INTERLOCK — its OWN variable, `vars.NROS_GATE_SELF_HOSTED`, unset by
+    # default, so landing this changes nothing until an operator turns it on.
+    # Not `NROS_SELF_HOSTED_READY` (queue L3's): that switch is safe to leave on
+    # for a lane nothing requires, and these jobs feed the REQUIRED `CI`. A job
+    # whose labels no live runner takes does not fail, it WAITS, so a stalled
+    # pool would freeze the merge queue until its check timeout. Measured on
+    # 2026-10-12 while this was written: two of the three runners showed
+    # `online`/idle and took no job for hours (every queue L3 that day ran on
+    # newslab-server-241; nightly and run-matrix sat queued). Turn it on only
+    # after a `workflow_dispatch` run of this workflow has gone green on the
+    # pool; turn it off (unset, or anything but `true`) to send both jobs back
+    # to the hosted runner on the next run.
     #
     # `check-cli-tests` was NOT moved: on a host with `/opt/ros/$ROS_DISTRO`
     # its `cli-tests` step runs the rosidl parity tests, and the runner image
@@ -1462,7 +1470,7 @@ jobs:
     # fork-PR rule, the interlock variable and the clean-tree step: see the
     # `check-workspace-all` comment block. The expression is spelled ONCE, and
     # `check-workflow-runner-isolation` parses it (scripts/lib/runner_route.py).
-    runs-on: ${{ vars.NROS_SELF_HOSTED_READY == 'true' && contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && fromJSON('["self-hosted","linux","nros-sdk-zephyr","nros-big"]') || 'ubuntu-22.04' }}
+    runs-on: ${{ vars.NROS_GATE_SELF_HOSTED == 'true' && contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && fromJSON('["self-hosted","linux","nros-sdk-zephyr","nros-big"]') || 'ubuntu-22.04' }}
     permissions:
       contents: read
       packages: read
@@ -1470,7 +1478,7 @@ jobs:
     # cannot start a job container: the image is empty there and the steps run
     # in the runner's own image. An EMPTY image means "no container".
     container:
-      image: ${{ !(vars.NROS_SELF_HOSTED_READY == 'true' && contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name)) && 'ghcr.io/newslabntu/nano-ros-ci:humble' || '' }}
+      image: ${{ !(vars.NROS_GATE_SELF_HOSTED == 'true' && contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name)) && 'ghcr.io/newslabntu/nano-ros-ci:humble' || '' }}
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -1720,7 +1728,7 @@ jobs:
     # fork-PR rule, the interlock variable and the clean-tree step: see the
     # `check-workspace-all` comment block. The expression is spelled ONCE, and
     # `check-workflow-runner-isolation` parses it (scripts/lib/runner_route.py).
-    runs-on: ${{ vars.NROS_SELF_HOSTED_READY == 'true' && contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && fromJSON('["self-hosted","linux","nros-sdk-zephyr","nros-big"]') || 'ubuntu-22.04' }}
+    runs-on: ${{ vars.NROS_GATE_SELF_HOSTED == 'true' && contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && fromJSON('["self-hosted","linux","nros-sdk-zephyr","nros-big"]') || 'ubuntu-22.04' }}
     permissions:
       contents: read
       packages: read
@@ -1728,7 +1736,7 @@ jobs:
     # cannot start a job container: the image is empty there and the steps run
     # in the runner's own image. An EMPTY image means "no container".
     container:
-      image: ${{ !(vars.NROS_SELF_HOSTED_READY == 'true' && contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name)) && 'ghcr.io/newslabntu/nano-ros-ci:humble' || '' }}
+      image: ${{ !(vars.NROS_GATE_SELF_HOSTED == 'true' && contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name)) && 'ghcr.io/newslabntu/nano-ros-ci:humble' || '' }}
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
