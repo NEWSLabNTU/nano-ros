@@ -22,7 +22,15 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck source=scripts/build/build-root.sh
 source "$REPO_ROOT/scripts/build/build-root.sh"
 BUILD_DIR="$(nros_build_dir "$NROS_KIND_QEMU_ZENOH_PICO")"
-ZENOH_PICO_DIR="$REPO_ROOT/packages/rmw/zenoh/zpico-sys/zenoh-pico"
+# Issue 1811 — the tree through the ONE ladder (env override, local edit,
+# store, checkout at the pin): `just setup` materialises zenoh-pico into the
+# store, and a CI checkout has no submodule, so the in-tree path alone was
+# "not found" right after `[provisioned]`.
+# shellcheck source=scripts/build/cargo.sh
+source "$REPO_ROOT/scripts/build/cargo.sh"
+# The ladder's last rung IS the checkout at the pin, so there is no second
+# fallback here; only BUILD_DIR (outside the tree) is ever written.
+ZENOH_PICO_DIR="$(nros_locate_source zenoh-pico || true)"
 # The vendored tree's SOURCE root. Every path BELOW it is read from the shared
 # manifest (see the selection block further down), never spelled here — that is
 # what `check-zenoh-source-manifest`'s "no lane names a vendored path" asserts
@@ -49,8 +57,8 @@ fi
 
 # Check zenoh-pico submodule
 if [ ! -d "$ZENOH_PICO_DIR/include" ]; then
-    echo "Error: zenoh-pico submodule not found"
-    echo "Run: git submodule update --init"
+    echo "Error: zenoh-pico source not found (looked at $ZENOH_PICO_DIR)"
+    echo "Run: nros setup --source zenoh-pico"
     exit 1
 fi
 

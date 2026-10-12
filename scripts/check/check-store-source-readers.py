@@ -22,7 +22,16 @@ row's whole `dest`. Those were swept by hand when each row flipped; a fallback
 of that shape is legitimate when it follows a locate call (the ladder's last
 rung), which is why this is not widened to a per-segment match.
 
-Buildless, tracked files only, ~0.2 s. Self-tests its comment filter.
+A second rule (issue 1811): the four trees phase-484 W3c stopped exporting
+(`FREERTOS_DIR`, `LWIP_DIR`, `THREADX_DIR`, `NETX_DIR`) are still the names
+their tools take. A shell or `just` reader of one must SET it first, through
+`nros_use_sources` or `nros_locate_source`: in a `just` file, earlier in the
+same recipe; in a script, earlier in the file. Reading it straight from the
+caller's environment is what left four nightly ports and the live-peer board
+jobs with an unbound variable or an empty in-tree path after the move.
+
+Buildless, tracked files only, ~0.2 s. Self-tests its comment filter and the
+recipe rule.
 """
 
 from __future__ import annotations
@@ -85,7 +94,6 @@ ALLOWED = {
     # Developer tools that BUILD zenoh-pico in place (they write `build/` INTO
     # the tree, which the read-only store copy must never take).
     "justfile": "dev: builds zenoh-pico in the checkout",
-    "scripts/qemu/build-zenoh-pico.sh": "dev: builds zenoh-pico in the checkout",
     "scripts/debug/capture-ros2-keyexpr.sh": "dev: runs the in-checkout zenoh-pico build",
     "scripts/debug/compare-keyexprs.sh": "dev: runs the in-checkout zenoh-pico build",
     "scripts/debug/debug-keyexpr.sh": "dev: runs the in-checkout zenoh-pico build",
@@ -130,8 +138,57 @@ def self_test() -> None:
         assert not COMMENT.match(c), c
 
 
+TREE_VARS = re.compile(r"\$\{?(FREERTOS_DIR|LWIP_DIR|THREADX_DIR|NETX_DIR)\b")
+LOCATES = re.compile(r"\bnros_use_sources\b|\bnros_locate_source\b")
+RECIPE_HEAD = re.compile(r"^[A-Za-z_@][A-Za-z0-9_-]*( [^:=]*)?:(?!=)")
+
+
+def unlocated_reads(path: str, text: str) -> list[tuple[int, str]]:
+    """Lines reading a tree variable with no locate call ahead of them in the
+    same recipe (`just`) or file (script)."""
+    is_just = path.endswith(".just") or path == "justfile"
+    out: list[tuple[int, str]] = []
+    located = False
+    for n, line in enumerate(text.split("\n"), 1):
+        if is_just and RECIPE_HEAD.match(line):
+            located = False
+        if COMMENT.match(line):
+            continue
+        if LOCATES.search(line):
+            located = True
+            continue
+        if TREE_VARS.search(line) and not located:
+            out.append((n, line.strip()))
+    return out
+
+
+def tree_var_readers() -> list[str]:
+    out = git_grep.run(
+        ["-l", "-E", r"\$\{?(FREERTOS_DIR|LWIP_DIR|THREADX_DIR|NETX_DIR)\b", "--",
+         "just/*.just", "justfile", "scripts/*.sh", "scripts/**/*.sh"],
+        ROOT,
+    )
+    bad = []
+    for path in out.splitlines():
+        text = (ROOT / path).read_text()
+        for n, line in unlocated_reads(path, text):
+            bad.append(f"  {path}:{n}: reads a store-first tree's variable unlocated: {line[:110]}")
+    return bad
+
+
+def self_test_recipes() -> None:
+    ok = "a:\n    source x\n    nros_use_sources lwip=LWIP_DIR || true\n    echo $LWIP_DIR\n"
+    assert unlocated_reads("x.just", ok) == [], ok
+    # A second recipe does not inherit the first one's locate.
+    two = ok + "b:\n    echo $LWIP_DIR\n"
+    assert [n for n, _ in unlocated_reads("x.just", two)] == [6], two
+    assert unlocated_reads("x.sh", 'echo "${THREADX_DIR}/x"\n'), "script read"
+    assert not unlocated_reads("x.sh", "# $THREADX_DIR in prose\n"), "comment"
+
+
 def main() -> int:
     self_test()
+    self_test_recipes()
     dests = store_dests()
     bad: list[str] = []
     used: set[str] = set()
@@ -142,6 +199,21 @@ def main() -> int:
                 continue
             bad.append(f"  {path}:{lineno}: [source.{name}] spelled as {dest}: {text[:120]}")
     stale = sorted(set(ALLOWED) - used)
+    var_bad = tree_var_readers()
+    if var_bad:
+        print(
+            "check-store-source-readers: FAIL — a recipe or script reads a tree "
+            "variable phase-484 W3c no longer exports (issue 1811):",
+            file=sys.stderr,
+        )
+        print("\n".join(var_bad), file=sys.stderr)
+        print(
+            "  Set it first: `source scripts/build/cargo.sh; nros_use_sources "
+            "<source>=<VAR> ...`.",
+            file=sys.stderr,
+        )
+        if not (bad or stale):
+            return 1
     if bad or stale:
         if bad:
             print(

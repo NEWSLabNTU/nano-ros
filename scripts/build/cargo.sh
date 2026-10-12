@@ -422,6 +422,35 @@ nros_locate_source() {
     "$bin" locate --format path "$name" 2>/dev/null
 }
 
+# nros_use_sources <source>=<VAR>... — set each VAR, in THIS recipe's shell
+# only, to its tree from `nros_locate_source` (issue 1811). For the recipes
+# that hand a tree to a tool as `$FREERTOS_DIR` & co. Fails naming every tree
+# that is provisioned nowhere, with the command that provisions it, so a
+# missing tree is reported before anything builds rather than as an unbound
+# variable or an in-tree path that phase-484 W3c emptied.
+nros_use_sources() {
+    local pair name var dir missing=()
+    for pair in "$@"; do
+        name="${pair%%=*}" var="${pair#*=}"
+        if dir="$(nros_locate_source "$name")" && [ -n "$dir" ]; then
+            printf -v "$var" '%s' "$dir"
+            export "${var?}"
+        else
+            # Defined but empty, so a caller's own `[ -d "$VAR/..." ]` check
+            # still runs (and a `set -u` shell does not die on it).
+            printf -v "$var" '%s' ""
+            missing+=("$name")
+        fi
+    done
+    if [ "${#missing[@]}" -gt 0 ]; then
+        echo "source tree(s) not provisioned: ${missing[*]}" >&2
+        for name in "${missing[@]}"; do
+            echo "  nros setup --source $name" >&2
+        done
+        return 1
+    fi
+}
+
 # nros_locate_artifact <name> [--target <triple>] [--profile <p>] — where a
 # cargo-built nano-ros artifact lands (phase-484 W6b, RFC-0103 D7): `c-archive`,
 # `cpp-archive`, `c-include`, `cpp-include`, `c-config-header`,

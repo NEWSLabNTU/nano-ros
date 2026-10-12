@@ -54,3 +54,38 @@ from there, or `build-zenoh-pico`'s presence test asks `nros locate`. A gate
 that refuses a new `$FREERTOS_DIR`/`$THREADX_DIR`/`$NETX_DIR` read outside
 `sdk-env.just` keeps the class closed. Acceptance is the next 07:13Z nightly
 building all four ports.
+
+## Fix (2026-10-12)
+
+Every reader now locates its tree through the ladder (env override, local
+edit, store, checkout at the pin):
+
+- `scripts/build/cargo.sh` gains `nros_use_sources <source>=<VAR>...`. It
+  sets each variable in the calling shell from `nros_locate_source`, sets it
+  empty and names `nros setup --source <name>` for any tree provisioned
+  nowhere, and returns 1 then. An explicit env value still wins, since it is
+  rung 1 (`FREERTOS_DIR=/x nros locate --why freertos-kernel` chooses `env`).
+- The recipes that read `$FREERTOS_DIR`/`$LWIP_DIR` (`freertos`: doctor,
+  build-examples, build-fixtures-posix, test, test-all) and
+  `$THREADX_DIR`/`$NETX_DIR` (`threadx_linux` and `threadx_riscv64`:
+  doctor, build-examples, build-fixture-extras, test) call it first.
+- `scripts/qemu/build-zenoh-pico.sh` locates zenoh-pico. It was in
+  `check-store-source-readers`' allowlist as "dev: builds zenoh-pico in the
+  checkout", but `just setup qemu` runs it and it writes only to
+  `nros_build_dir`, so that reason was wrong. Locally it now builds 130
+  sources from `~/.nros/sources/zenoh-pico/1.7.2+17b14961`.
+- Same class, not in this issue's table: `check-sched-dim-arms-compile.sh`
+  read `$FREERTOS_DIR`/`$THREADX_DIR` from the environment, so both arms
+  skipped everywhere. They now locate and type-check (FreeRTOS V11.2.0,
+  ThreadX SMP).
+- `just workspace doctor` asked whether the four variables were EXPORTED,
+  which reported a correct setup as incomplete. It now asks `nros locate`.
+
+**Gate.** `check-store-source-readers` gains the rule this issue asked for: a
+`just` recipe or a script that reads one of the four variables must call
+`nros_use_sources` or `nros_locate_source` earlier in the same recipe (or
+file). Run over `main`'s versions of the four files, it reports 20, 11, 11
+and 7 unlocated reads; over this change, none.
+
+Acceptance is unchanged: a nightly that builds all four ports, and a
+`live-peer` run whose board jobs get past `just setup`.

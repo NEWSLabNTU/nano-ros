@@ -35,6 +35,9 @@ setup:
 [group("setup")]
 doctor:
     #!/usr/bin/env bash
+    # issue 1811 — the trees are store-first (phase-484 W3c); locate them here.
+    source scripts/build/cargo.sh
+    nros_use_sources freertos-kernel=FREERTOS_DIR lwip=LWIP_DIR || true
     bash scripts/dev/deprecated-scope-alias.sh freertos doctor "just doctor freertos"
     set +e
     fail=0
@@ -73,6 +76,9 @@ build: build-examples
 [group("main")]
 build-examples:
     #!/usr/bin/env bash
+    # issue 1811 — the trees are store-first (phase-484 W3c); locate them here.
+    source scripts/build/cargo.sh
+    nros_use_sources freertos-kernel=FREERTOS_DIR lwip=LWIP_DIR || true
     set -e
     # issue 0650 — first step of the lane: clear last run's skip notes, so a
     # lane that is complete this time is not reported SKIPPED from history.
@@ -172,6 +178,9 @@ build-examples:
 [group("examples")]
 build-fixtures-posix:
     #!/usr/bin/env bash
+    # issue 1811 — the trees are store-first (phase-484 W3c); locate them here.
+    source scripts/build/cargo.sh
+    nros_use_sources freertos-kernel=FREERTOS_DIR lwip=LWIP_DIR || true
     set -e
     # shellcheck source=scripts/build/lane-skip.sh
     source scripts/build/lane-skip.sh
@@ -317,6 +326,9 @@ build-all: build-fixtures
 [group("main")]
 test verbose="": build-fixtures
     #!/usr/bin/env bash
+    # issue 1811 — the trees are store-first (phase-484 W3c); locate them here.
+    source scripts/build/cargo.sh
+    nros_use_sources freertos-kernel=FREERTOS_DIR lwip=LWIP_DIR || true
     bash scripts/dev/deprecated-scope-alias.sh freertos test "just test freertos"
     set -e
     if [ ! -d "$FREERTOS_DIR/include" ]; then
@@ -368,6 +380,9 @@ test verbose="": build-fixtures
 [group("full-matrix")]
 test-all verbose="":
     #!/usr/bin/env bash
+    # issue 1811 — the trees are store-first (phase-484 W3c); locate them here.
+    source scripts/build/cargo.sh
+    nros_use_sources freertos-kernel=FREERTOS_DIR lwip=LWIP_DIR || true
     set -e
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))

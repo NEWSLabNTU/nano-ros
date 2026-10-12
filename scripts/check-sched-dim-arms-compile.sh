@@ -43,6 +43,12 @@ repo_root="$(pwd)"
 # no cross compiler), which is exactly the case the ledger exists for.
 # shellcheck source=scripts/build/check-skip.sh
 . "$repo_root/scripts/build/check-skip.sh"
+# Issue 1811 — FreeRTOS and ThreadX are store-first (phase-484 W3c) and no
+# longer exported, so reading `$FREERTOS_DIR`/`$THREADX_DIR` from the caller's
+# environment made both arms skip everywhere. Locate them (an explicit env
+# value still wins: it is rung 1 of the ladder).
+. "$repo_root/scripts/build/cargo.sh"
+nros_use_sources freertos-kernel=FREERTOS_DIR threadx=THREADX_DIR 2>/dev/null || true
 
 fail=0
 

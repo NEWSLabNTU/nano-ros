@@ -38,6 +38,9 @@ setup:
 [group("setup")]
 doctor:
     #!/usr/bin/env bash
+    # issue 1811 — the trees are store-first (phase-484 W3c); locate them here.
+    source scripts/build/cargo.sh
+    nros_use_sources threadx=THREADX_DIR threadx-netxduo=NETX_DIR || true
     bash scripts/dev/deprecated-scope-alias.sh threadx_riscv64 doctor "just doctor threadx_riscv64"
     set +e
     fail=0
@@ -136,6 +139,9 @@ build: build-examples
 [group("main")]
 build-examples:
     #!/usr/bin/env bash
+    # issue 1811 — the trees are store-first (phase-484 W3c); locate them here.
+    source scripts/build/cargo.sh
+    nros_use_sources threadx=THREADX_DIR threadx-netxduo=NETX_DIR || true
     set -e
     # issue 0650 — first step of the lane: clear last run's skip notes, so a
     # lane that is complete this time is not reported SKIPPED from history.
@@ -203,6 +209,9 @@ build-fixtures: build-examples build-fixture-extras
 [group("examples")]
 build-fixture-extras:
     #!/usr/bin/env bash
+    # issue 1811 — the trees are store-first (phase-484 W3c); locate them here.
+    source scripts/build/cargo.sh
+    nros_use_sources threadx=THREADX_DIR threadx-netxduo=NETX_DIR || true
     # shellcheck source=scripts/build/lane-skip.sh
     source scripts/build/lane-skip.sh
     set -e
@@ -485,6 +494,9 @@ build-all: build-fixtures
 [group("main")]
 test verbose="": build-fixtures
     #!/usr/bin/env bash
+    # issue 1811 — the trees are store-first (phase-484 W3c); locate them here.
+    source scripts/build/cargo.sh
+    nros_use_sources threadx=THREADX_DIR threadx-netxduo=NETX_DIR || true
     bash scripts/dev/deprecated-scope-alias.sh threadx_riscv64 test "just test threadx_riscv64"
     set -e
     if [ ! -d "$THREADX_DIR/common/inc" ]; then
