@@ -78,7 +78,7 @@ _Static_assert(sizeof(ULONG) == 4,
  *
  * `NROS_EXECUTOR_BACKING_U64S` is the image's STATEMENT of how many `u64`s that
  * static holds, and it is the same statement `nros-node` sizes the static from:
- * `[board.knobs.executor] backing_u64s` in the board's `nros-board.toml`,
+ * `[knobs.executor] backing_u64s` in the board's `nros-board.toml`,
  * resolved through the RFC-0049 ladder by `nros-node/build.rs` and, for this
  * file, by `threadx_sources::add_threadx_hooks_source`. One rung, two readers
  * — the subtrahend is never written down a second time, which is the defect

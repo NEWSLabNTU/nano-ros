@@ -1175,7 +1175,7 @@ impl Types {
 /// The three BOARD capacities — `MAX_STRING_VALUE_LEN`, `MAX_ARRAY_LEN`,
 /// `MAX_BYTE_ARRAY_LEN` — do not appear in this section, and a future reader
 /// will want to add them. They are RFC-0100 D1 **target** facts, owned by the
-/// board descriptor's `[board.knobs.params]`: an MCU and a PC want different
+/// board descriptor's `[knobs.params]`: an MCU and a PC want different
 /// string lengths for the same node, so a contract cannot name the number. The
 /// image states only whether it NEEDS each capacity and who needs it — see
 /// [`CapacityNeed`], whose `Unused` arm is a STATEMENT and not an absence.

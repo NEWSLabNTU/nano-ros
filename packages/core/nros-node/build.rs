@@ -1432,7 +1432,7 @@ fn emit_executor_backing(out_dir: &str) {
     //
     // phase-448 W5 / issue 1145 -- the ports with NO Kconfig (NuttX, ThreadX,
     // ESP32) reach the same statement through the RFC-0049 ladder instead, as
-    // `[board.knobs.executor] backing_u64s`. That rung matters because the
+    // `[knobs.executor] backing_u64s`. That rung matters because the
     // SUBTRAHEND has to come from the same place: on ThreadX the byte pool is
     // declared in C compiled by the board crate's own build script, and that
     // script resolves this same rung and subtracts `8 *` it. One statement, two

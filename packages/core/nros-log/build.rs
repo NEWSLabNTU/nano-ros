@@ -21,8 +21,8 @@
 //!    `nros-cargo.toml`'s `[env]`) and the cmake road (`corrosion_set_env_vars`);
 //! 2. `CONFIG_<knob>` in the `.config` named by `$DOTCONFIG` (the west road,
 //!    issue 0460);
-//! 3. the platform/board rung, `[board.knobs.log] <name>` (or `[knobs.log]` in
-//!    an `nros-platform.toml`), reached through `NROS_BOARD_TOML` /
+//! 3. the platform/board rung, `[knobs.log] <name>` in an `nros-board.toml`
+//!    or an `nros-platform.toml`, reached through `NROS_BOARD_TOML` /
 //!    `NROS_PLATFORM_NAME`;
 //! 4. the builtin.
 //!
@@ -172,7 +172,7 @@ fn main() {
 struct Family {
     /// The env front-end; the Kconfig symbol is `CONFIG_<knob>`.
     knob: &'static str,
-    /// The `[board.knobs.log]` / `[knobs.log]` key.
+    /// The `[knobs.log]` key (board or platform descriptor).
     toml_key: &'static str,
     builtin: usize,
     /// Legal values, inclusive. Out of range is a build error naming the knob.
@@ -319,7 +319,7 @@ fn resolve(
         }
     };
     let where_ = format!(
-        "`[image.<id>] env`, the board's `[board.knobs.log] {toml_key}`, or CONFIG_{knob} \
+        "`[image.<id>] env`, the board's `[knobs.log] {toml_key}`, or CONFIG_{knob} \
          on Zephyr"
     );
     if let Some(&(first, _)) = selected.first()
@@ -335,7 +335,7 @@ fn resolve(
     match (stated, selected.first()) {
         (Some(v), Some((n, feat))) if v != *n => Err(format!(
             "the deprecated feature `{feat}` asks for {knob}={}, and {knob} is stated as {} \
-             (environment, `[image.<id>] env`, Kconfig, or the board's `[board.knobs.log] \
+             (environment, `[image.<id>] env`, Kconfig, or the board's `[knobs.log] \
              {toml_key}`). Refusing to pick one silently -- drop the feature; the knob is the \
              one mechanism with a precedence. {since}.",
             show(*n),

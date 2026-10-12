@@ -607,7 +607,7 @@ _D12_UNMEASURED = (
 )
 
 # The three BOARD capacities. Not waiting on any issue: they are RFC-0100 D1
-# *target* facts owned by `[board.knobs.params]`, so they have no descriptor
+# *target* facts owned by `[knobs.params]`, so they have no descriptor
 # spelling BY DESIGN and never will -- an MCU and a PC want different string
 # lengths for the same node, so a contract cannot name the number. What the
 # descriptor carries is the NEED (`needs_max_*`), which is the half the contract

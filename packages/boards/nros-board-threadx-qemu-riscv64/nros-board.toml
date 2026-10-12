@@ -61,6 +61,10 @@ heap = true
 atomics = true
 threads = true
 
+# RFC-0048 §6 / phase-287 W5 — CMake toolchain file for `nros setup`'s preset.
+[board.cmake]
+toolchain_file = "cmake/toolchain/riscv64-threadx.cmake"
+
 # issue 1557 — the executor-backing rung, STATED (it was the one ThreadX board
 # left at the `#ifndef … 0` default, so its image reserved the backing twice:
 # once as `.bss` `EXECUTOR_BACKING`, once inside the 4 MiB byte pool).
@@ -80,9 +84,5 @@ threads = true
 # slot joined the backing, 4 slots x 4 B = 16 B = 2 words. `node-std-tests`
 # refused 11,069 on this target; its own `cargo check` accepts 11,071 and
 # refuses 11,070. Not re-measured with `nm` on a rebuilt image.
-[board.knobs.executor]
+[knobs.executor]
 backing_u64s = 11071
-
-# RFC-0048 §6 / phase-287 W5 — CMake toolchain file for `nros setup`'s preset.
-[board.cmake]
-toolchain_file = "cmake/toolchain/riscv64-threadx.cmake"

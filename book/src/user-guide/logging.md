@@ -143,7 +143,7 @@ State it per image or per board, like every other knob:
 env = { NROS_LOG_MAX_LEVEL = "info" }
 
 # nros-board.toml — every image on the board
-[board.knobs.log]
+[knobs.log]
 max_level = "info"
 ```
 
@@ -238,7 +238,7 @@ a bounded arena. When a child cannot be made:
 `nros-log` formats each record into a stack-resident `heapless::String<N>`.
 Overflow truncates and appends `…`; the macro never panics on a long format
 string. That `N`, and the two static rings, are knobs on the same ladder as
-the ceiling (`[board.knobs.log] <key>`, `[image.<id>] env`, Kconfig
+the ceiling (`[knobs.log] <key>`, `[image.<id>] env`, Kconfig
 `CONFIG_<knob>`):
 
 | Knob | Key | Default | What it sizes |

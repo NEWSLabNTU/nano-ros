@@ -218,7 +218,7 @@ fn forward_derived_knobs(cc: &mut cc::Build) {
     // descriptor builder's stack arrays; they are Rust-side today, forwarded here
     // so a C++ consumer of the same numbers reads the same table.
     //
-    // `HEAP_BUDGET_BYTES` (issue 1393) is the board's `[board.knobs.memory]
+    // `HEAP_BUDGET_BYTES` (issue 1393) is the board's `[knobs.memory]
     // heap_bytes`, which `WrittenDescriptor::cyclonedds_env` has written as a
     // cargo `[env]` row since phase-454 W6.c — and which nothing here read, so
     // `heap_budget.hpp`'s `kHeapBudgetStated` was false on every cargo build and

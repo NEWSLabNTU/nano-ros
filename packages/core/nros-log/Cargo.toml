@@ -23,7 +23,7 @@ categories = ["embedded", "no-std", "development-tools::debugging"]
 # queue depth and the runtime-logger arena are the `[knobs.log]` tenant —
 # `NROS_LOG_{MAX_LEVEL,BUFFER_SIZE,EARLY_RECORDS,ROSOUT_RECORDS,DYNAMIC_LOGGERS}`,
 # resolved by `build.rs` on the RFC-0049 ladder (`[image.<id>] env` /
-# environment > Kconfig > the board's `[board.knobs.log]` > builtin) and
+# environment > Kconfig > the board's `[knobs.log]` > builtin) and
 # printed by `nros config explain`. The features below that used to carry them
 # are DEPRECATED — see the block at the end of `[features]`.
 

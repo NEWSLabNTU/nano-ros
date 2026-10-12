@@ -166,7 +166,7 @@ endfunction()
 #
 # `--heap-budget-bytes <n>` when the caller of this configure stated the BOARD
 # heap (`-DNROS_BOARD_HEAP_BUDGET_BYTES`, which `nros build` stage 4 passes from
-# `[board.knobs.memory] heap_bytes`), or nothing -- and then the descriptor
+# `[knobs.memory] heap_bytes`), or nothing -- and then the descriptor
 # REFUSES `[target] heap_budget_bytes`, Cyclone's "nobody said".
 #
 # The configure never reads the board file itself: that would be a second
@@ -181,7 +181,7 @@ function(_nros_sizing_heap_args _out_var)
     if(NOT NROS_BOARD_HEAP_BUDGET_BYTES MATCHES "^[0-9]+$")
         message(FATAL_ERROR
             "nano-ros: NROS_BOARD_HEAP_BUDGET_BYTES=${NROS_BOARD_HEAP_BUDGET_BYTES} is not a "
-            "count of bytes. It is the board's `[board.knobs.memory] heap_bytes`, passed by "
+            "count of bytes. It is the board's `[knobs.memory] heap_bytes`, passed by "
             "`nros build`; unset it to leave the heap budget unstated.")
     endif()
     set(${_out_var} --heap-budget-bytes "${NROS_BOARD_HEAP_BUDGET_BYTES}" PARENT_SCOPE)

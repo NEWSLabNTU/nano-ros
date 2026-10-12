@@ -81,7 +81,7 @@ has one, on the logger that forwards to the `log` crate rather than to
 - `get_or_create_logger(name)` — `rclcpp::get_logger`'s shape, and what the C
   and C++ wrappers need. Creates from a bounded static arena sized by the
   `NROS_LOG_DYNAMIC_LOGGERS` knob (phase-479 W5): image env > Kconfig / the
-  board's `[board.knobs.log] dynamic_loggers` > 16. Linux host boards state
+  board's `[knobs.log] dynamic_loggers` > 16. Linux host boards state
   32; `0` declines the arena. The `dynamic-loggers-<N>` features are
   deprecated (see "Deprecated features" below).
   Returns `None` rather than a logger under the wrong name: aliasing onto
@@ -113,7 +113,7 @@ calls installs the first one (see the `early` module).
 
 Every size and the ceiling are KNOBS, resolved by `build.rs` on the RFC-0049
 ladder — environment / `[image.<id>] env` > Kconfig `CONFIG_<knob>` > the
-board's `[board.knobs.log] <key>` (or a platform's `[knobs.log]`) > builtin —
+board's (or else the platform's) `[knobs.log] <key>` > builtin —
 and printed by `nros config explain`:
 
 | Knob                       | Key               | Builtin | Range       | What |

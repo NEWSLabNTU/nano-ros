@@ -83,7 +83,7 @@ the same, which is the shape issue 1145 left behind for five weeks.
 
 The ThreadX arm is the only one with arithmetic to check, and it is NOT the
 Zephyr shape: the subtraction is done by the C preprocessor from the ONE stated
-rung (`[board.knobs.executor] backing_u64s`), so the two numbers cannot
+rung (`[knobs.executor] backing_u64s`), so the two numbers cannot
 disagree and there is nothing to add up. What CAN go wrong is a statement that
 reaches no subtraction — a board that reserves the backing and gives nothing
 back — so that is what is checked, in both directions.
@@ -129,7 +129,7 @@ except ModuleNotFoundError:  # python < 3.11
 
 BACKING_KEY = "CONFIG_NROS_EXECUTOR_BACKING_U64S"
 # The same claim as BACKING_KEY, spelled for a port with no Kconfig (issue 1388).
-BOARD_BACKING_KEY = "[board.knobs.executor] backing_u64s"
+BOARD_BACKING_KEY = "[knobs.executor] backing_u64s"
 ARENA_KEY = "CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE"
 BASE_MARKER = "nros-arena-base"
 
@@ -438,7 +438,7 @@ def check_board_rung(rel, text):
     """-> complaints for one `nros-board.toml`.
 
     The rung half of the pairing (phase-448 W5). A board may state
-    `[board.knobs.executor] backing_u64s` only where something SUBTRACTS it:
+    `[knobs.executor] backing_u64s` only where something SUBTRACTS it:
     a statement that reaches no subtraction reserves the backing and gives
     nothing back, which is a bigger image than not stating it at all -- and it
     fails silently, because `nros-node` honours the statement either way.
@@ -534,7 +534,7 @@ SIZING_SELF_TESTS = [
 ]
 
 _RUNG_BOARD = '[[board]]\nplatform = "threadx-linux"\n'
-_RUNG_BLOCK = f"[board.knobs.executor]\n{RUNG_KEY} = 4494\n"
+_RUNG_BLOCK = f"[knobs.executor]\n{RUNG_KEY} = 4494\n"
 
 RUNG_SELF_TESTS = [
     # (name, board descriptor body, expected number of complaints)
@@ -548,10 +548,10 @@ RUNG_SELF_TESTS = [
      '[[board]]\nplatform = "vxworks"\n' + _RUNG_BLOCK, 1),
     ("no platform named", _RUNG_BLOCK, 1),
     ("zero is the env front-end's spelling, not a board fact",
-     _RUNG_BOARD + f"[board.knobs.executor]\n{RUNG_KEY} = 0\n", 1),
+     _RUNG_BOARD + f"[knobs.executor]\n{RUNG_KEY} = 0\n", 1),
     # a knob that merely SHARES the prefix is not this one
     ("a different executor knob",
-     _RUNG_BOARD + "[board.knobs.executor]\narena_size = 16384\n", 0),
+     _RUNG_BOARD + "[knobs.executor]\narena_size = 16384\n", 0),
 ]
 
 THREADX_SITE_SELF_TESTS = [
@@ -715,7 +715,7 @@ def claims(repo, stating):
 
 
 def board_toml_claims(repo):
-    """-> (claims, refusals) for `[board.knobs.executor] backing_u64s` claims.
+    """-> (claims, refusals) for `[knobs.executor] backing_u64s` claims.
 
     Same shape as a conf claim — (source, words, board, width, cross) — so the
     consumers need no second code path.
@@ -737,10 +737,16 @@ def board_toml_claims(repo):
         except Exception as exc:  # a descriptor this gate cannot read is a refusal
             refused.append((rel, f"could not be parsed as TOML: {exc}"))
             continue
+        # RFC-0103 D6 — the rung is the top-level `[knobs]`, applying to every
+        # `[[board]]` in the file; the per-entry `[board.knobs]` is the legacy
+        # spelling (read until phase-484 W8), consulted only when the file
+        # states no top-level table — the parsers refuse a file stating both.
+        top = doc.get("knobs")
         for board in doc.get("board", []):
             if not isinstance(board, dict):
                 continue
-            words = (board.get("knobs") or {}).get("executor", {}).get("backing_u64s")
+            knobs = top if isinstance(top, dict) else (board.get("knobs") or {})
+            words = knobs.get("executor", {}).get("backing_u64s")
             if not isinstance(words, int) or words <= 0:
                 continue  # absent derives, 0 declines — neither is a claim
             if rel not in BOARD_TOML_TARGETS:

@@ -429,7 +429,11 @@ rows a contributor edits, which rung 4 serves from the checkout anyway.
   generated C macros, not user inputs.
 - Manifest sections are spelled the same in every file: `[knobs]`,
   `[capabilities]`, `[net]` (the file kind already says the owner, so
-  `[board.knobs]` → `[knobs]`).
+  `[board.knobs]` → `[knobs]`). **Landed for `[knobs]` (phase-484 W5):** a board descriptor's knob
+  section is the top-level `[knobs]` (`[knobs.<group>]`), applying to every
+  `[[board]]` in the file. The per-entry `[board.knobs]` is read with a
+  deprecation notice until phase-484 W8; a file stating both is refused by
+  both parsers (`BoardKnobsFile`, the CLI's `BoardFile`).
 
 ### D7 — Generated output lives under `<build>/nros/`
 

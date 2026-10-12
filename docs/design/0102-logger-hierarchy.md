@@ -199,7 +199,7 @@ Decision:
 - **Mechanism: a knob, not a feature.** The count becomes
   `NROS_LOG_DYNAMIC_LOGGERS`, resolved on the ladder every other pool count uses
   (RFC-0049; `knob()` in `nros-params/build.rs`): image env (`[image.<id>] env`) >
-  Kconfig / board knob (`[board.knobs.*]`) > built-in 16. It reaches all three
+  Kconfig / board knob (`[knobs.*]`) > built-in 16. It reaches all three
   roads the way existing knobs do, with a `CONFIG_NROS_LOG_DYNAMIC_LOGGERS` pairing
   on Zephyr, and passes the knob-forwarding gates. (The image-env rung did not:
   the cmake road dropped it until issue 1712, and the west road still does —

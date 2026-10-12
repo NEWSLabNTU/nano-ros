@@ -57,7 +57,7 @@
 //! also sets:
 //!
 //! 1. the board descriptor's `cargo_config` (triple, link group, build-std)
-//!    and its `[board.knobs]`, reached through `NROS_BOARD_TOML`;
+//!    and its `[knobs]`, reached through `NROS_BOARD_TOML`;
 //! 2. the derived pool knobs and the image's entity FACTS
 //!    ([`crate::leaf_entity_env::leaf_env`]);
 //! 3. the board facts (`nros ws board-facts`: `NROS_BOARD_TOML`,
@@ -688,7 +688,7 @@ pub fn write(
     // phase-454 W4 (RFC-0100 D4) — the sizing descriptor, written HERE because
     // this is the one place that has all three of its inputs at once: the
     // leaf's inventories, the board facts just resolved above (which carry
-    // `NROS_BOARD_TOML`, and therefore the `[board.knobs.memory]` rung), and
+    // `NROS_BOARD_TOML`, and therefore the `[knobs.memory]` rung), and
     // the image's declared backend.
     //
     // The variable below names a PATH and nothing watches the VARIABLE — issue

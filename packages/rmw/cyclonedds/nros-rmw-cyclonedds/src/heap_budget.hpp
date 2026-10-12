@@ -109,7 +109,7 @@ constexpr size_t kRequiredHeapBytes =
 /// Does this image state a heap budget at all?
 ///
 /// `[target].heap_budget_bytes` reaches here only when the board states
-/// `[board.knobs.memory] heap_bytes` AND the descriptor was written. Absent, the
+/// `[knobs.memory] heap_bytes` AND the descriptor was written. Absent, the
 /// check below is a no-op — a consumer with no declaration keeps its own
 /// behaviour, which here means "do not judge a number nobody gave you" (D6).
 #ifdef NROS_CYCLONEDDS_HEAP_BUDGET_BYTES

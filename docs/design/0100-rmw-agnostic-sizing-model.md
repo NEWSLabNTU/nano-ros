@@ -806,7 +806,7 @@ first-class consumer without inventing a static pool it does not have.
 An earlier draft of this decision said the derived REQUIREMENT is emitted into
 that field. It is not, and cannot be: the schema as shipped (D4) defines
 `heap_budget_bytes` as *"the heap this image is configured with"*, W4 populates
-it from the board's `[board.knobs.memory] heap_bytes`, and an assertion needs
+it from the board's `[knobs.memory] heap_bytes`, and an assertion needs
 both numbers. So the descriptor carries the CONFIGURED heap — the thing only the
 board knows — and the BACKEND derives its own requirement from `[types]`, in its
 own build, which is what D5 says every consumer does. Nothing else would have a

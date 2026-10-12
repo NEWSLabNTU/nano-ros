@@ -195,7 +195,7 @@ pub struct LeafSystem {
     /// `[env]` WITHOUT `force`, so the ladder still holds: a lane that exports
     /// the variable outranks it.
     ///
-    /// Reach for a board `[board.knobs]` FIRST. This is the rung for a fact
+    /// Reach for a board's `[knobs]` FIRST. This is the rung for a fact
     /// that is genuinely this image's — `examples/mps2-an385-baremetal/rust/
     /// talker-xrce`'s XRCE transport budget, on a board whose other twelve
     /// images want the defaults.

@@ -63,7 +63,7 @@ fn main() {
         64,
     );
     // The three CAPACITIES are BOARD facts (RFC-0100 D1 *target*), owned by
-    // `[board.knobs.params]`, and they are deliberately NOT in the descriptor:
+    // `[knobs.params]`, and they are deliberately NOT in the descriptor:
     // an MCU and a PC want different string lengths for the same node, so a
     // contract cannot name the number. `NROS_DECLARED_MAX_{...}_LEN` therefore
     // has no descriptor spelling to be preferred over, and stays exactly as it

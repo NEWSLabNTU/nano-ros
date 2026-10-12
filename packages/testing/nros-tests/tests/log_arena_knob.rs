@@ -40,22 +40,22 @@ fn read_toml(rel: &str) -> toml::Value {
     toml::from_str(&text).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()))
 }
 
-/// `[board.knobs.log] dynamic_loggers` of the `native` board.
+/// `[knobs.log] dynamic_loggers` of the `native` board's descriptor.
 fn board_statement() -> usize {
     let v = read_toml("packages/boards/linux/nros-board.toml");
     let boards = v["board"]
         .as_array()
         .expect("`[[board]]` in the native board file");
-    let n = boards
-        .iter()
-        .find(|b| {
-            b["names"]
-                .as_array()
-                .is_some_and(|names| names.iter().any(|n| n.as_str() == Some("native")))
-        })
-        .expect("the `native` board")["knobs"]["log"]["dynamic_loggers"]
+    assert!(
+        boards.iter().any(|b| b["names"]
+            .as_array()
+            .is_some_and(|names| names.iter().any(|n| n.as_str() == Some("native")))),
+        "the `native` board"
+    );
+    // RFC-0103 D6 — the board rung is the file's top-level `[knobs]`.
+    let n = v["knobs"]["log"]["dynamic_loggers"]
         .as_integer()
-        .expect("the native board states `[board.knobs.log] dynamic_loggers`");
+        .expect("the native board states `[knobs.log] dynamic_loggers`");
     usize::try_from(n).expect("a count")
 }
 

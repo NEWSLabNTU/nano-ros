@@ -401,7 +401,7 @@ rmw_ret_t session_create(const char* /*locator*/, uint8_t /*mode*/, uint32_t dom
         fprintf(stderr,
                 "nros-rmw-cyclonedds: configured heap %zu bytes is below the %zu this "
                 "image is certain to need (%u registered type(s), largest schema %u "
-                "kinds). Raise the board's `[board.knobs.memory] heap_bytes` — "
+                "kinds). Raise the board's `[knobs.memory] heap_bytes` — "
                 "CycloneDDS allocates every payload and every type descriptor from this "
                 "heap, and exhausting it surfaces as an anonymous abort() far from the "
                 "cause.\n",

@@ -181,7 +181,7 @@ reads through `--config` (RFC-0098 D1/D4). Where each fact moved:
 | `[target.…] rustflags = ["-C", "link-arg=-Tlinkall.x", "-C", "force-frame-pointers"]` | `cargo_config` `[target.riscv32imc-unknown-none-elf] rustflags` — plus `-C link-arg=--gc-sections`, hoisted from the 2 of 4 leaves that carried it |
 | `[unstable] build-std = ["core"]` | `cargo_config` `[unstable] build-std = ["core", "alloc"]` |
 | `ESP_LOG` in the leaf's `[env]` | `cargo_config` `[env] ESP_LOG = "info"` |
-| `NROS_SMOLTCP_MAX_UDP_SOCKETS=2` in the leaf's `[env]` | `[board.knobs.net] max_udp_sockets = 2` — a hardware budget, stated once (RFC-0049 board rung). The env front-end still wins over it |
+| `NROS_SMOLTCP_MAX_UDP_SOCKETS=2` in the leaf's `[env]` | `[knobs.net] max_udp_sockets = 2` — a hardware budget, stated once (RFC-0049 board rung). The env front-end still wins over it |
 
 Key points that did not move:
 
