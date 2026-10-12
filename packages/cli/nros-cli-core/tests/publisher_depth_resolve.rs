@@ -41,7 +41,11 @@ fn a_contracted_publisher_depth_reaches_the_entity_inventory() {
         m.contracts.pub_endpoints
     );
 
-    let inv = EntityInventory::from_model("fixture", &m).expect("the model describes wiring");
+    let inv = EntityInventory::from_model(
+        "fixture",
+        &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+    )
+    .expect("the model describes wiring");
     let mut publishers: Vec<(Option<String>, Option<u32>)> = inv
         .components()
         .iter()
@@ -66,8 +70,13 @@ fn a_contracted_publisher_depth_reaches_the_entity_inventory() {
 /// publisher-scoped undeclared count beside it.
 #[test]
 fn the_resolved_publisher_depth_is_tabled_under_its_own_kind() {
-    let inv = EntityInventory::from_model("fixture", &resolve("depths"))
-        .expect("the model describes wiring");
+    let inv = EntityInventory::from_model(
+        "fixture",
+        &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+            (resolve("depths")).clone(),
+        ),
+    )
+    .expect("the model describes wiring");
     let DeclaredDepths::Resolved {
         rows,
         undeclared_publishers,

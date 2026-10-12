@@ -818,6 +818,11 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 ),
             )
         })?;
+        // phase-486 W3 -- the nano-ros switches and lifecycle default travel
+        // beside the model, in the overlay `nros sync` / `ensure_model` wrote.
+        let model =
+            nros_orchestration_ir::overlay::LoadedModel::with_overlay_beside(model, &model_path)
+                .map_err(|e| syn::Error::new(model_lit.span(), format!("nros::main!: {e}")))?;
 
         // phase-454 W7 (RFC-0100 D8) -- the contract and the `qos_overrides.*`
         // parameters are two statements about ONE fact, so a divergence is a
@@ -871,59 +876,11 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         // (The bake-time host filter is gone — phase-326 / issue 0364:
         // multi-host partitions at RESOLVE time, so a per-host model already
         // contains only that host's nodes.)
-        use ros_launch_manifest_model::{ExtraValue, Target};
-        // phase-315 — does the model place ANYTHING on this board?
-        //
-        // `execution.deploy` is a PARTITION: node -> one target. That is the
-        // right shape for machines, and the wrong shape for
-        // board build-variants, where every board runs every node and the map
-        // simply cannot say so.
-        //
-        // So a board the map never mentions is not "a board with nothing on it",
-        // it is a board the model has no opinion about — exactly the case the
-        // `(None, _) => true` arm below already handles per-NODE, lifted to the
-        // board level. Before the resolver emitted `execution.deploy` at all,
-        // every such entry took this path via the `is_empty()` fallback; adding
-        // one `[deploy.native]` block silently narrowed five embedded entries to
-        // zero nodes (`places no nodes on board `freertos``).
-        //
-        // A board the map DOES mention stays partitioned, so a genuine
-        // mis-placement is still caught.
-        let board_mentioned = model.execution.deploy.values().any(|d| match &d.target {
-            Some(Target::Linux) => matches!(board_key, "native" | "posix"),
-            Some(Target::Mcu { board: b }) => {
-                b == board_key
-                    || matches!(
-                        d.extra.get("kind"),
-                        Some(ExtraValue::Str(k)) if k == board_key
-                    )
-            }
-            None => false,
-        });
-        let keep = |fqn: &str| -> bool {
-            let Some(dep) = model.execution.deploy.get(fqn) else {
-                return model.execution.deploy.is_empty();
-            };
-            if !board_mentioned {
-                // Unpartitioned for THIS board.
-                return true;
-            }
-            match (&dep.target, board_key) {
-                // Board-agnostic (multi-board system, issue 0356): the model
-                // names no board, so THIS entry's board decides — keep on
-                // every board.
-                (None, _) => true,
-                (Some(Target::Linux), "native" | "posix") => true,
-                (Some(Target::Mcu { board: b }), key) => {
-                    b == key
-                        || matches!(
-                            dep.extra.get("kind"),
-                            Some(ExtraValue::Str(k)) if k == key
-                        )
-                }
-                _ => false,
-            }
-        };
+        // phase-486 W3 -- PLACEMENT only: the same rule as the CLI's
+        // `plan_from_model`, from the same function. The board half
+        // (`Deploy.target` / `Mcu` / `extra.kind`) is gone with its only
+        // producer, `[deploy.<n>] board`.
+        let keep = |fqn: &str| nros_orchestration_ir::overlay::placed_here(&model, fqn);
 
         // phase-446 W6 -- the same nodes the loop below keeps.
         declared_nodes =
@@ -1112,7 +1069,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 model_lit.span(),
                 format!(
                     "nros::main!(model = …): SystemModel `{}` places no nodes on board \
-                     `{board_key}` — check execution.deploy targets",
+                     `{board_key}` — check the launch file the image resolves",
                     model_path.display()
                 ),
             ));
@@ -1229,7 +1186,8 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         // Lifecycle autostart + param-services capability from the model.
         // `lifecycle_code` is the u8 boot-transition level (0 none / 1
         // configure / 2 active), same encoding as `read_lifecycle_autostart`.
-        let model_caps = model_capabilities(&model);
+        let model_caps = model_capabilities(&model)
+            .map_err(|e| syn::Error::new(model_lit.span(), format!("nros::main!: {e}")))?;
         lifecycle_code = model_caps.lifecycle_code;
         param_services_enabled = model_caps.param_services;
         launch_axis_asserts = model_axis_assert_tokens(&model_caps);
@@ -3119,41 +3077,39 @@ struct ModelCapabilities {
     /// The first node `lifecycle_autostart` (0 none / 1 configure / 2 active,
     /// the `apply_lifecycle` encoding).
     lifecycle_code: Option<u8>,
-    /// `param_services` is in `execution.features`.
+    /// `param_services` is among the overlay's switches.
     param_services: bool,
-    /// Every capability axis `execution.features` names, de-duplicated.
+    /// Every capability axis the overlay's switches name, de-duplicated.
     axes: Vec<&'static nros_orchestration_ir::leaf_capabilities::LeafAxis>,
 }
 
-fn model_capabilities(model: &ros_launch_manifest_model::SystemModel) -> ModelCapabilities {
+/// phase-486 W3 -- the switches come from the nano-ros overlay beside the
+/// model and the lifecycle level from the ONE reducer (a disagreement between
+/// nodes is a compile error), never from `execution.features` or the first
+/// node's value.
+fn model_capabilities(
+    model: &nros_orchestration_ir::overlay::LoadedModel,
+) -> Result<ModelCapabilities, String> {
     use ros_launch_manifest_model::Autostart;
-    let lifecycle_code = model
-        .structure
-        .nodes
-        .values()
-        .find_map(|n| n.lifecycle_autostart)
-        .map(|a| match a {
-            Autostart::None => 0u8,
-            Autostart::Configure => 1,
-            Autostart::Active => 2,
-        });
+    let lifecycle_code = model.lifecycle_autostart()?.map(|a| match a {
+        Autostart::None => 0u8,
+        Autostart::Configure => 1,
+        Autostart::Active => 2,
+    });
+    let features = model.features(None);
     let mut axes: Vec<&'static nros_orchestration_ir::leaf_capabilities::LeafAxis> = Vec::new();
-    for f in &model.execution.features {
+    for f in &features {
         if let Some(a) = nros_orchestration_ir::leaf_capabilities::axis(f)
             && !axes.iter().any(|x| x.declared == a.declared)
         {
             axes.push(a);
         }
     }
-    ModelCapabilities {
+    Ok(ModelCapabilities {
         lifecycle_code,
-        param_services: model
-            .execution
-            .features
-            .iter()
-            .any(|f| f == "param_services"),
+        param_services: features.iter().any(|f| f == "param_services"),
         axes,
-    }
+    })
 }
 
 /// Issue 1766 follow-up — the launch arm's per-axis feature asserts.
@@ -3172,7 +3128,7 @@ fn model_axis_assert_tokens(caps: &ModelCapabilities) -> proc_macro2::TokenStrea
             axis_assert_tokens(
                 a,
                 &format!(
-                    "this system declares `{}` in its model's `execution.features`",
+                    "this system declares `{}` in its `system.toml` capability switches",
                     a.declared
                 ),
             )
@@ -5746,9 +5702,10 @@ mod launch_axis_tests {
     //! and registered no lifecycle services. These cases read a SystemModel the
     //! way the launch arm does and check the tokens it emits.
     use super::*;
+    use nros_orchestration_ir::overlay::LoadedModel;
     use ros_launch_manifest_model::{Autostart, NodeInstance, SystemModel};
 
-    fn model(autostart: Option<Autostart>, features: &[&str]) -> SystemModel {
+    fn model(autostart: Option<Autostart>, features: &[&str]) -> LoadedModel {
         let mut m = SystemModel::default();
         m.structure.nodes.insert(
             "/talker".into(),
@@ -5757,13 +5714,15 @@ mod launch_axis_tests {
                 ..NodeInstance::default()
             },
         );
-        m.execution.features = features.iter().map(|f| f.to_string()).collect();
-        m
+        // phase-486 W3 -- the switches live in the overlay, not the model.
+        let mut loaded = LoadedModel::bare(m);
+        loaded.overlay.features = features.iter().map(|f| f.to_string()).collect();
+        loaded
     }
 
     /// The emitted capability tokens of a launch-arm entry over `m`.
-    fn emitted(m: &SystemModel) -> String {
-        let caps = model_capabilities(m);
+    fn emitted(m: &LoadedModel) -> String {
+        let caps = model_capabilities(m).expect("capabilities");
         let lifecycle = lifecycle_call_tokens(caps.lifecycle_code);
         let axes = model_axis_assert_tokens(&caps);
         quote! { #axes #lifecycle }.to_string()
@@ -5808,7 +5767,11 @@ mod launch_axis_tests {
         // `param_services` is asserted by `param_services_call`, not here.
         let out = emitted(&model(None, &["param_services"]));
         assert!(!out.contains("PARAM_SERVICES_ENABLED"), "{out}");
-        assert!(model_capabilities(&model(None, &["param_services"])).param_services);
+        assert!(
+            model_capabilities(&model(None, &["param_services"]))
+                .expect("capabilities")
+                .param_services
+        );
     }
 
     /// Negative control: a model declaring nothing emits none of it, so the

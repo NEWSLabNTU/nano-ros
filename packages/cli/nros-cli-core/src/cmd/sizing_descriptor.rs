@@ -300,7 +300,7 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
                 build_dir,
                 entry,
                 params: &crate::entity_inventory::ParamDeclarations::from_model(&model),
-                infra: crate::entity_inventory::InfraServices::from_model(&model),
+                infra: crate::entity_inventory::InfraServices::from_model(&model, None),
                 runtime_entries: None,
                 roots: parent.as_slice(),
             })?
@@ -379,7 +379,7 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
 }
 
 /// Read one SystemModel and apply the two refusals every model producer makes.
-fn load_model(model_path: &std::path::Path) -> Result<ros_launch_manifest_model::SystemModel> {
+fn load_model(model_path: &std::path::Path) -> Result<nros_orchestration_ir::overlay::LoadedModel> {
     let raw = std::fs::read_to_string(model_path)
         .wrap_err_with(|| format!("reading `{}`", model_path.display()))?;
     let model: ros_launch_manifest_model::SystemModel = serde_yaml_ng::from_str(&raw)
@@ -393,7 +393,9 @@ fn load_model(model_path: &std::path::Path) -> Result<ros_launch_manifest_model:
     // authored -- so a broken one is a configuration error, not a normal state.
     crate::cmd::entity_inventory::reject_unknown_qos_values(&model)?;
     crate::cmd::entity_inventory::reject_qos_override_divergence(&model)?;
-    Ok(model)
+    // phase-486 W3 -- the nano-ros switches beside the model.
+    nros_orchestration_ir::overlay::LoadedModel::with_overlay_beside(model, model_path)
+        .map_err(|e| eyre::eyre!(e))
 }
 
 /// RFC-0100 D12 (issue 1649) — the RUNTIME write: one descriptor for the
@@ -452,7 +454,7 @@ fn write_runtime_from_models(args: &SizingDescriptorArgs) -> Result<()> {
             .collect();
         let infra = models
             .iter()
-            .map(|(_, m)| crate::entity_inventory::InfraServices::from_model(m))
+            .map(|(_, m)| crate::entity_inventory::InfraServices::from_model(m, None))
             .fold(crate::entity_inventory::InfraServices::default(), |a, b| {
                 a.union(b)
             });
@@ -489,7 +491,7 @@ fn write_runtime_from_models(args: &SizingDescriptorArgs) -> Result<()> {
         return Ok(());
     }
 
-    let labelled: Vec<(String, ros_launch_manifest_model::SystemModel)> = models
+    let labelled: Vec<(String, nros_orchestration_ir::overlay::LoadedModel)> = models
         .iter()
         .map(|(p, m)| (p.display().to_string(), m.clone()))
         .collect();
@@ -1291,8 +1293,11 @@ mod tests {
 
         // The verb's own composition, through the same two functions it calls.
         let decl = crate::cmd::entity_inventory::inventory_from_metadata_file(&metadata).unwrap();
-        let model_inv =
-            crate::entity_inventory::EntityInventory::from_model("m", &m).expect("wiring");
+        let model_inv = crate::entity_inventory::EntityInventory::from_model(
+            "m",
+            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+        )
+        .expect("wiring");
         let composed = decl.merged_per_kind_max(&model_inv);
         let knobs = composed.derive();
         let knobs = knobs.knobs().expect("the composed inventory derives");

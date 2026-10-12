@@ -755,3 +755,12 @@ cmake-deprecated-names:
         exit 0
     fi
     ./tests/cmake-deprecated-names-tests.sh
+
+# phase-486 W3 — no nano-ros reader names a SystemModel field that is not the
+# model's to carry: `execution.features` (the overlay holds the switches),
+# `Deploy.extra`, `Deploy.target`, or a first-node-wins lifecycle read. rlm
+# stops writing them at v0.1.55, so a reader that slips back works today and
+# reads nothing after the pin bump (W7). Buildless; self-test first.
+[group("check")]
+launch-model-boundary:
+    @python3 scripts/check-launch-model-boundary.py

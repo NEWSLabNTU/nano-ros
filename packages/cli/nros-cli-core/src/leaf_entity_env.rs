@@ -1002,7 +1002,7 @@ pub fn leaf_model_facts(leaf: &Path) -> Option<BTreeMap<String, String>> {
 /// but they must agree about WHICH file and about what an unreadable one means,
 /// and a second copy of this resolution is how the facts and the rows would
 /// come to describe different resolutions of one bringup.
-pub fn leaf_model(leaf: &Path) -> Option<ros_launch_manifest_model::SystemModel> {
+pub fn leaf_model(leaf: &Path) -> Option<nros_orchestration_ir::overlay::LoadedModel> {
     use nros_orchestration_ir::model_location;
     if !leaf
         .join(nros_orchestration_ir::leaf_system::SYSTEM_TOML)

@@ -37,7 +37,6 @@ use std::{collections::BTreeMap, path::PathBuf};
 
 use clap::Args as ClapArgs;
 use eyre::{Result, WrapErr, bail};
-use ros_launch_manifest_model::SystemModel;
 
 #[derive(Debug, ClapArgs)]
 pub struct EntityFactsArgs {
@@ -83,7 +82,9 @@ pub struct EntityFactsArgs {
 /// A pure function over the model, with file IO and the environment lifted out:
 /// a sizing rule verified by reading is how this campaign's other defects
 /// survived (phase-392 W5.d).
-pub fn facts_from_model(model: &SystemModel) -> BTreeMap<String, String> {
+pub fn facts_from_model(
+    model: &nros_orchestration_ir::overlay::LoadedModel,
+) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     out.insert(
         "NROS_DECLARED_INFRA_QUERYABLES".to_string(),
@@ -115,12 +116,12 @@ pub fn facts_from_model(model: &SystemModel) -> BTreeMap<String, String> {
 /// error. The consumer refuses an unknown SPELLING of this verb's own output,
 /// which is a different thing: that would be a broken channel, not an
 /// unrelated feature.
-fn declared_infra(model: &SystemModel) -> &'static str {
+fn declared_infra(model: &nros_orchestration_ir::overlay::LoadedModel) -> &'static str {
     // Issue 1270 -- the SAME predicate the entity inventory counts from, so
     // the cmake road and the inventory cannot disagree about whether a family
     // is in the image. Issue 1142 moved the four SPELLINGS there too, for the
     // same reason one level down: the leaf road emits them as well.
-    crate::entity_inventory::InfraServices::from_model(model).token()
+    crate::entity_inventory::InfraServices::from_model(model, None).token()
 }
 
 /// Issue 1142 — the same facts, for a STANDALONE leaf that has no model.
@@ -229,8 +230,8 @@ pub fn run(args: EntityFactsArgs) -> Result<()> {
 mod tests {
     use super::*;
 
-    fn model(yaml: &str) -> SystemModel {
-        SystemModel::from_yaml_str(yaml).expect("test model parses")
+    fn model(yaml: &str) -> ros_launch_manifest_model::SystemModel {
+        ros_launch_manifest_model::SystemModel::from_yaml_str(yaml).expect("test model parses")
     }
 
     const EMPTY: &str = "meta:\n  version: 1\nstructure: {}\n";
@@ -242,8 +243,15 @@ mod tests {
         // node is literally called `add_server` and whose model says nothing
         // about services because that workspace authors no contract.
         let m = model(EMPTY);
-        assert_eq!(declared_infra(&m), "none");
-        let f = facts_from_model(&m);
+        assert_eq!(
+            declared_infra(
+                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone())
+            ),
+            "none"
+        );
+        let f = facts_from_model(
+            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+        );
         // Issue 1649 -- only the two facts with no descriptor field travel.
         assert!(
             f.keys()
@@ -261,7 +269,9 @@ mod tests {
             let m = model(&format!(
                 "meta:\n  version: 1\nstructure: {{}}\nexecution:\n  features:\n{feats}"
             ));
-            declared_infra(&m)
+            declared_infra(
+                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            )
         };
         assert_eq!(f("  - param_services\n  - lifecycle\n"), "param+lifecycle");
         assert_eq!(f("  - param_services\n"), "param");
@@ -274,11 +284,21 @@ mod tests {
         // queryables. A verb that refused it would break every safety
         // workspace to answer a question it was not asked.
         let m = model("meta:\n  version: 1\nstructure: {}\nexecution:\n  features:\n  - safety\n");
-        assert_eq!(declared_infra(&m), "none");
+        assert_eq!(
+            declared_infra(
+                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone())
+            ),
+            "none"
+        );
         let m = model(
             "meta:\n  version: 1\nstructure: {}\nexecution:\n  features:\n  - safety\n  - lifecycle\n",
         );
-        assert_eq!(declared_infra(&m), "lifecycle");
+        assert_eq!(
+            declared_infra(
+                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone())
+            ),
+            "lifecycle"
+        );
     }
 
     #[test]
@@ -289,7 +309,9 @@ mod tests {
             "meta:\n  version: 1\nstructure:\n  services:\n    /add:\n      type: example/srv/Add\n\
              \n      server: [\"/a/add\"]\nexecution:\n  features:\n  - lifecycle\n",
         );
-        let f = facts_from_model(&m);
+        let f = facts_from_model(
+            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+        );
         assert_eq!(f["NROS_DECLARED_INFRA_QUERYABLES"], "lifecycle");
         // phase-426 W3 — the node count, the second name. Issue 1649 retired
         // the application's service-server and transient-local counts onto the
@@ -309,7 +331,9 @@ mod tests {
              \n      pkg: demo\n      exec: talker\n    /listener:\n      scope: root\n\
              \n      pkg: demo\n      exec: listener\nexecution:\n  features:\n  - param_services\n",
         );
-        let f = facts_from_model(&m);
+        let f = facts_from_model(
+            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+        );
         assert_eq!(f["NROS_DECLARED_NODES"], "2");
         assert_eq!(f["NROS_DECLARED_INFRA_QUERYABLES"], "param");
     }
@@ -411,7 +435,9 @@ mod tests {
             "meta:\n  version: 1\nstructure:\n  nodes:\n    /solo:\n      scope: root\n\
              \n      pkg: demo\n      exec: solo\n",
         );
-        let f = facts_from_model(&m);
+        let f = facts_from_model(
+            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+        );
         assert_eq!(f["NROS_DECLARED_NODES"], "1");
         assert_eq!(f["NROS_DECLARED_INFRA_QUERYABLES"], "none");
     }

@@ -51,7 +51,7 @@ use crate::orchestration::{cargo_metadata_schema::SystemToml, source_metadata::S
 /// is recoverable from the path when the file is absent. A path of any other
 /// shape (a temp file a caller resolved itself) exists by construction, so the
 /// fallback never sees it.
-pub fn load_model(path: &Path) -> Result<SystemModel> {
+pub fn load_model(path: &Path) -> Result<nros_orchestration_ir::overlay::LoadedModel> {
     let resolved: std::borrow::Cow<'_, Path> = if path.is_file() {
         std::borrow::Cow::Borrowed(path)
     } else {
@@ -71,8 +71,11 @@ pub fn load_model(path: &Path) -> Result<SystemModel> {
     };
     let yaml = std::fs::read_to_string(resolved.as_ref())
         .wrap_err_with(|| format!("read SystemModel {}", resolved.display()))?;
-    SystemModel::from_yaml_str(&yaml)
-        .map_err(|e| eyre::eyre!("load SystemModel {}: {e}", resolved.display()))
+    let model = SystemModel::from_yaml_str(&yaml)
+        .map_err(|e| eyre::eyre!("load SystemModel {}: {e}", resolved.display()))?;
+    // phase-486 W3 — the nano-ros facts travel beside the model, not in it.
+    nros_orchestration_ir::overlay::LoadedModel::with_overlay_beside(model, resolved.as_ref())
+        .map_err(|e| eyre::eyre!("{e}"))
 }
 
 /// Bare node name from a model FQN (`/ns/node` → `node`).
@@ -635,7 +638,9 @@ pub fn check_executor_capacity(
 /// non-CycloneDDS image the env is inert (the registry crate isn't linked), so
 /// an emitted value is harmless; the gate half only ever fires on a genuinely
 /// over-`N` type set the user pinned too small.
-pub fn resolve_cyclonedds_max_types(model: &SystemModel) -> Result<Option<usize>> {
+pub fn resolve_cyclonedds_max_types(
+    model: &nros_orchestration_ir::overlay::LoadedModel,
+) -> Result<Option<usize>> {
     let user_pin = std::env::var("NROS_CYCLONEDDS_MAX_TYPES")
         .ok()
         .map(|raw| raw.parse::<usize>().unwrap_or(0));
@@ -648,7 +653,7 @@ pub fn resolve_cyclonedds_max_types(model: &SystemModel) -> Result<Option<usize>
 /// different inputs. They did not, when there was one consumer; the moment there
 /// are two, "the same count answers both" stops being a sentence in a doc comment
 /// and becomes something a reader can check by following one call.
-fn count_cyclonedds_registered_types(model: &SystemModel) -> usize {
+fn count_cyclonedds_registered_types(model: &nros_orchestration_ir::overlay::LoadedModel) -> usize {
     use nros_orchestration_ir::cyclonedds_type_sizing as ty;
 
     // Issue 1268 — the model names what an ENTRY wires; the six parameter
@@ -656,7 +661,7 @@ fn count_cyclonedds_registered_types(model: &SystemModel) -> usize {
     // EXECUTOR's, so they are counted from the same feature
     // predicate `entity_facts` and the queryable counts use, not from a second
     // reading of `execution.features`.
-    let infra = crate::entity_inventory::InfraServices::from_model(model);
+    let infra = crate::entity_inventory::InfraServices::from_model(model, None);
     ty::count_dds_types(model, |_| true) + ty::infra_types(infra.param_services, infra.lifecycle)
 }
 
@@ -678,7 +683,9 @@ fn count_cyclonedds_registered_types(model: &SystemModel) -> usize {
 /// `publisher_create` returning UNSUPPORTED for an arbitrary package. The warning
 /// `find_descriptor` prints on the first miss (issue 0280's residual fix) is a
 /// diagnosis after the fact; this is the size before it.
-pub fn resolve_cyclonedds_max_descriptor_types(model: &SystemModel) -> Result<Option<usize>> {
+pub fn resolve_cyclonedds_max_descriptor_types(
+    model: &nros_orchestration_ir::overlay::LoadedModel,
+) -> Result<Option<usize>> {
     let user_pin = std::env::var("NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES")
         .ok()
         .map(|raw| raw.parse::<usize>().unwrap_or(0));
@@ -687,7 +694,7 @@ pub fn resolve_cyclonedds_max_descriptor_types(model: &SystemModel) -> Result<Op
 
 /// Pure core of [`resolve_cyclonedds_max_descriptor_types`].
 pub fn resolve_cyclonedds_max_descriptor_types_with(
-    model: &SystemModel,
+    model: &nros_orchestration_ir::overlay::LoadedModel,
     user_pin: Option<usize>,
 ) -> Result<Option<usize>> {
     use nros_orchestration_ir::cyclonedds_type_sizing as ty;
@@ -721,7 +728,7 @@ pub fn resolve_cyclonedds_max_descriptor_types_with(
 /// `NROS_CYCLONEDDS_MAX_TYPES` value (`None` = unset). Split out so the env read
 /// stays at the edge and the policy is deterministically testable.
 pub fn resolve_cyclonedds_max_types_with(
-    model: &SystemModel,
+    model: &nros_orchestration_ir::overlay::LoadedModel,
     user_pin: Option<usize>,
 ) -> Result<Option<usize>> {
     use nros_orchestration_ir::cyclonedds_type_sizing as ty;
@@ -1934,12 +1941,24 @@ mod cyclonedds_type_capacity_tests {
     #[test]
     fn empty_and_small_models_emit_nothing() {
         assert_eq!(
-            resolve_cyclonedds_max_types_with(&SystemModel::default(), None).unwrap(),
+            resolve_cyclonedds_max_types_with(
+                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+                    (SystemModel::default()).clone()
+                ),
+                None
+            )
+            .unwrap(),
             None
         );
         // 10 msgs = 10 types <= default 32 → keep default, no emit.
         assert_eq!(
-            resolve_cyclonedds_max_types_with(&model(10, 0), None).unwrap(),
+            resolve_cyclonedds_max_types_with(
+                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+                    (model(10, 0)).clone()
+                ),
+                None
+            )
+            .unwrap(),
             None
         );
     }
@@ -1948,12 +1967,24 @@ mod cyclonedds_type_capacity_tests {
     fn large_model_auto_sizes_to_next_power_of_two() {
         // 40 distinct msgs = 40 types → next_pow2 = 64.
         assert_eq!(
-            resolve_cyclonedds_max_types_with(&model(40, 0), None).unwrap(),
+            resolve_cyclonedds_max_types_with(
+                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+                    (model(40, 0)).clone()
+                ),
+                None
+            )
+            .unwrap(),
             Some(64)
         );
         // 4 actions = 4*8 + 3 = 35 types → 64.
         assert_eq!(
-            resolve_cyclonedds_max_types_with(&model(0, 4), None).unwrap(),
+            resolve_cyclonedds_max_types_with(
+                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+                    (model(0, 4)).clone()
+                ),
+                None
+            )
+            .unwrap(),
             Some(64)
         );
     }
@@ -1961,9 +1992,14 @@ mod cyclonedds_type_capacity_tests {
     #[test]
     fn user_pin_too_small_fails_loud() {
         // 4 actions = 35 types, pinned to 32 → bail naming the derived 64.
-        let err = resolve_cyclonedds_max_types_with(&model(0, 4), Some(32))
-            .unwrap_err()
-            .to_string();
+        let err = resolve_cyclonedds_max_types_with(
+            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+                (model(0, 4)).clone(),
+            ),
+            Some(32),
+        )
+        .unwrap_err()
+        .to_string();
         assert!(err.contains("35 distinct DDS types"), "{err}");
         assert!(err.contains("64"), "{err}");
         assert!(err.contains("NROS_CYCLONEDDS_MAX_TYPES"), "{err}");
@@ -1972,7 +2008,13 @@ mod cyclonedds_type_capacity_tests {
     #[test]
     fn user_pin_large_enough_is_respected_no_emit() {
         assert_eq!(
-            resolve_cyclonedds_max_types_with(&model(0, 4), Some(128)).unwrap(),
+            resolve_cyclonedds_max_types_with(
+                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+                    (model(0, 4)).clone()
+                ),
+                Some(128)
+            )
+            .unwrap(),
             None
         );
     }
@@ -1988,9 +2030,12 @@ mod cyclonedds_type_capacity_tests {
     #[test]
     fn an_over_cap_workspace_emits_a_descriptor_table_that_holds_it() {
         let m = model(300, 0);
-        let derived = resolve_cyclonedds_max_descriptor_types_with(&m, None)
-            .unwrap()
-            .expect("past the 256 default, so it must be emitted");
+        let derived = resolve_cyclonedds_max_descriptor_types_with(
+            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            None,
+        )
+        .unwrap()
+        .expect("past the 256 default, so it must be emitted");
         assert_eq!(derived, 300, "the bare demand, not rounded and not floored");
         assert!(
             derived > 256,
@@ -2003,12 +2048,24 @@ mod cyclonedds_type_capacity_tests {
     #[test]
     fn a_small_model_emits_no_descriptor_table_knob() {
         assert_eq!(
-            resolve_cyclonedds_max_descriptor_types_with(&model(40, 0), None).unwrap(),
+            resolve_cyclonedds_max_descriptor_types_with(
+                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+                    (model(40, 0)).clone()
+                ),
+                None
+            )
+            .unwrap(),
             None
         );
         // And a model that registers nothing says nothing.
         assert_eq!(
-            resolve_cyclonedds_max_descriptor_types_with(&SystemModel::default(), None).unwrap(),
+            resolve_cyclonedds_max_descriptor_types_with(
+                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+                    (SystemModel::default()).clone()
+                ),
+                None
+            )
+            .unwrap(),
             None
         );
     }
@@ -2020,9 +2077,14 @@ mod cyclonedds_type_capacity_tests {
     /// reader does not know that the alternative is a silent drop.
     #[test]
     fn a_descriptor_table_pin_under_the_count_fails_loud() {
-        let err = resolve_cyclonedds_max_descriptor_types_with(&model(300, 0), Some(256))
-            .unwrap_err()
-            .to_string();
+        let err = resolve_cyclonedds_max_descriptor_types_with(
+            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+                (model(300, 0)).clone(),
+            ),
+            Some(256),
+        )
+        .unwrap_err()
+        .to_string();
         assert!(err.contains("300 distinct DDS types"), "{err}");
         assert!(
             err.contains("NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES"),
@@ -2031,7 +2093,13 @@ mod cyclonedds_type_capacity_tests {
         assert!(err.contains("drops registrations"), "{err}");
         // Large enough is respected, with no emit.
         assert_eq!(
-            resolve_cyclonedds_max_descriptor_types_with(&model(300, 0), Some(512)).unwrap(),
+            resolve_cyclonedds_max_descriptor_types_with(
+                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+                    (model(300, 0)).clone()
+                ),
+                Some(512)
+            )
+            .unwrap(),
             None
         );
     }
@@ -2041,14 +2109,24 @@ mod cyclonedds_type_capacity_tests {
     fn both_cyclonedds_tables_are_sized_from_the_same_count() {
         use nros_orchestration_ir::cyclonedds_type_sizing as ty;
         let m = model(300, 0);
-        let counted = count_cyclonedds_registered_types(&m);
+        let counted = count_cyclonedds_registered_types(
+            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+        );
         assert_eq!(counted, 300);
         assert_eq!(
-            resolve_cyclonedds_max_types_with(&m, None).unwrap(),
+            resolve_cyclonedds_max_types_with(
+                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+                None
+            )
+            .unwrap(),
             Some(ty::derive_max_types(counted))
         );
         assert_eq!(
-            resolve_cyclonedds_max_descriptor_types_with(&m, None).unwrap(),
+            resolve_cyclonedds_max_descriptor_types_with(
+                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+                None
+            )
+            .unwrap(),
             Some(ty::derive_max_descriptor_types(counted))
         );
     }
