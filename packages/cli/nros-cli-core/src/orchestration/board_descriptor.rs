@@ -445,6 +445,18 @@ pub struct BoardDescriptor {
     /// Extra features to enable on the board crate dependency.
     #[serde(default)]
     pub board_features: Vec<String>,
+    /// Issue 1305 — the board-crate features each `[image.<id>] transport`
+    /// selects (`{ serial = ["serial"], tcp = ["ethernet"] }`).
+    ///
+    /// Every list is a LINK choice, so a generated selection package drops all
+    /// of them from the board crate's defaults and adds back the one the image
+    /// declares; an image declaring no transport keeps the defaults. Empty for a
+    /// board whose link is not a crate feature (the RTOS or host owns it). A
+    /// declared transport this table does not name is refused: the board has
+    /// no such link, and building its default one instead would boot an image
+    /// that dials the wrong way.
+    #[serde(default)]
+    pub transport_features: std::collections::BTreeMap<String, Vec<String>>,
     /// Phase 252 — the capability-axis features this board crate forwards to its
     /// backend (e.g. `["safety-e2e"]` → the board's `safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]`).
     /// A declared `[safety]` axis lowers to the board feature only when the board
@@ -2138,6 +2150,7 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             board_crate: None,
             crate_path: None,
             board_features: vec![],
+            transport_features: Default::default(),
             priority_plan: None,
             cargo_config: Some("inc = \"${workspace}/third-party/x\"".into()),
             entry: None,
@@ -2389,6 +2402,7 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             board_crate: None,
             crate_path: None,
             board_features: vec![],
+            transport_features: Default::default(),
             priority_plan: None,
             cargo_config: None,
             entry: None,

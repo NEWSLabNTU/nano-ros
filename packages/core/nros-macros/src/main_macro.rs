@@ -2355,9 +2355,26 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     format!("nros::main!: missing RTIC board spec for deploy `{deploy}`"),
                 )
             })?;
-            let rtic_device = rtic_spec.device_path;
+            // Issue 1305 — a leaf on its generated selection package names
+            // neither the board crate nor `rtic`; both are reached through
+            // that package, and `rtic`'s own expansion spells `rtic::export`
+            // relative to the module, so the name is brought into scope at the
+            // crate root (where the app module's `use super::*` finds it).
+            let (rtic_device, rtic_consumer, rtic_app, rtic_scope) = match &leaf_selection {
+                Some(sel) => (
+                    route_through_selection(sel, rtic_spec.device_path),
+                    route_through_selection(sel, rtic_spec.dispatch_consumer_path),
+                    quote! { ::#sel::rtic::app },
+                    quote! { use ::#sel::rtic; },
+                ),
+                None => (
+                    rtic_spec.device_path,
+                    rtic_spec.dispatch_consumer_path,
+                    quote! { ::rtic::app },
+                    quote! {},
+                ),
+            };
             let rtic_dispatchers = rtic_spec.dispatchers;
-            let rtic_consumer = rtic_spec.dispatch_consumer_path;
             // Phase 289 (#178) — optional periodic-tick hardware task. The
             // `binds` route wires the handler through RTIC's real vector
             // table (the same mechanism the dispatchers use) — a board-crate
@@ -2424,8 +2441,9 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
 
             quote! {
                 use #board_path as __NrosBoard;
+                #rtic_scope
 
-                #[::rtic::app(
+                #[#rtic_app(
                     device = #rtic_device,
                     dispatchers = [#( #rtic_dispatchers ),*]
                 )]
@@ -4696,7 +4714,10 @@ struct RticBoardSpec {
 fn rtic_board_spec_for(deploy: &str) -> Option<RticBoardSpec> {
     let (device, dispatchers, consumer, tick_irq) = match deploy {
         "rtic-mps2-an385" | "qemu-rtic-mps2-an385" => (
-            "mps2_an385_pac",
+            // Issue 1305 — the board crate's re-export (its `rtic` feature),
+            // not a crate the leaf names: a leaf on its generated selection
+            // package has no PAC of its own.
+            "::nros_board_mps2_an385::mps2_an385_pac",
             &["UARTRX0", "UARTTX0"][..],
             // phase-337 W6.a — folded into `nros-board-mps2-an385`'s `rtic`
             // feature, which re-exports the queue accessors at the crate root.
@@ -5896,6 +5917,20 @@ mod leaf_selection_tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("Cargo.toml"), manifest).unwrap();
         dir
+    }
+
+    /// The RTIC app's `device` is the board crate's re-exported PAC, so a
+    /// leaf on its selection package reaches it with the board crate and
+    /// names no PAC of its own.
+    #[test]
+    fn the_rtic_device_routes_through_the_board_crate() {
+        let spec = rtic_board_spec_for("rtic-mps2-an385").expect("an RTIC board");
+        let sel = Ident::new("my_talker_nros_selection", Span::call_site());
+        let device = route_through_selection(&sel, spec.device_path);
+        assert_eq!(
+            quote!(#device).to_string().replace(' ', ""),
+            "::my_talker_nros_selection::nros_board_mps2_an385::mps2_an385_pac"
+        );
     }
 
     #[test]

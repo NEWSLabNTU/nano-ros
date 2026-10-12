@@ -90,6 +90,12 @@ pub use rtic::{
     take_dispatch_consumer, take_dispatch_queue,
 };
 
+// Issue 1305 — the PAC an RTIC app names as its `device`. Re-exported so
+// `nros::main!` can spell it through the board crate, which a leaf on its
+// generated selection package reaches without naming the PAC itself.
+#[cfg(feature = "rtic")]
+pub use mps2_an385_pac;
+
 // Phase 127.D — re-export nros-smoltcp so RTIC examples can read the
 // poll/RX diagnostic counters without adding a direct dep.
 #[cfg(feature = "ethernet")]

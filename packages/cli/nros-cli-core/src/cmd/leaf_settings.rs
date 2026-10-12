@@ -510,6 +510,8 @@ pub fn write_selection(img: &LeafImage, nano_ros_root: &Path) -> Result<Option<(
         nano_ros_root: &nano_ros_root,
         board: &board,
         sys: &sys,
+        transport: img.decl.network.transport.as_deref(),
+        transport_features: &d.transport_features,
     };
     crate::orchestration::facade::write_leaf_selection(&spec)
         .map_err(|e| eyre!("{}: selection package: {e}", img.leaf.display()))?;

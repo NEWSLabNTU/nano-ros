@@ -18,10 +18,8 @@ bench = false
 crate-type = ["rlib"]
 
 # The board, network identity and node declaration live in `system.toml` beside
-# this manifest (RFC-0098 D3/D5).
-# Its image-only dependencies below still name the board crate, so a board
-# switch edits this file too until RFC-0098 D6 reaches single-package leaves
-# (issue 1305).
+# this manifest (RFC-0098 D3/D5), and nothing here names the board: switching board is
+# editing `[image.*] board` there and re-running `nros sync`.
 
 [package.metadata.nros.entry]
 node_pkgs = ["qemu-rtic-action-client"]
@@ -38,25 +36,19 @@ nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi
 # and the board bridges it to semihosting on BOTH boot paths.
 log = { version = "0.4", default-features = false }
 
-# Everything only the IMAGE needs is TARGET-scoped, so the node in `lib.rs`
-# builds for the host as well and `nros sync` can PROBE what it creates
-# (issues 1265, 1603). `main.rs` (the Entry) is never built for the host.
+# Everything only the IMAGE needs is one generated dependency, the same for
+# every board (RFC-0098 D6, issue 1305): the selection package `nros sync`
+# writes per image under `build/<image>/nros-selection/`. It carries the board
+# crate with the features the image's `system.toml` implies (RMW, transport,
+# entry shape), the platform and runtime crates, and the board's crate-root
+# items; `nros::main!` reaches the board through it. The generated settings
+# file's `[patch]` row points this name at the image's copy.
+#
+# Target-scoped, so the node in `lib.rs` still builds for the host: the
+# metadata probe compiles it there to learn what it creates (issue 1265),
+# and the image's crates do not build for the host.
 [target.'cfg(target_os = "none")'.dependencies]
-# RTIC board entry: brings up hardware + network, opens the executor, builds the
-# RTIC dispatch runtime consumed by the generated `#[rtic::app]`.
-# phase-337 W6.a — the RTIC entry surface is the base board crate's `rtic`
-# feature; `nros-board-rtic-mps2-an385` no longer exists.
-nros-board-mps2-an385 = { version = "*", features = ["rtic"] }
-# Linked RMW backend (registered by the board boot scaffold).
-nros-rmw-zenoh = { version = "*", features = ["platform-bare-metal", "ros-humble"] }
-# MPS2-AN385 PAC (interrupt bindings for RTIC dispatchers)
-mps2-an385-pac = { version = "*" }
-# RTIC v2
-rtic = { version = "2.1", features = ["thumbv7-backend"] }
-# Cortex-M runtime
-cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
-# Panic handler (required for no_std)
-panic-semihosting = { version = "0.6", features = ["exit"] }
+qemu_rtic_action_client_nros_selection = { version = "0.0.0" }
 
 [profile.release]
 codegen-units = 1

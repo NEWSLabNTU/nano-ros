@@ -153,6 +153,11 @@ serial = ["dep:zpico-serial", "dep:cmsdk-uart", "dep:mps2-an385-pac"]
 # `UART_DEVICE` with the zenoh-pico serial path) + a depender on
 # `nros-rmw-xrce-cffi` (the XRCE example).
 xrce-transport = ["serial", "dep:nros-rmw-xrce-cffi"]
+# Issue 1305 — the board's RMW selector for XRCE, the spelling every other
+# backend already has here (`rmw-zenoh`) and that a generated selection package
+# derives from `rmw = "xrce"`. On this board XRCE rides the UART custom
+# transport, so selecting the backend IS selecting that transport.
+rmw-xrce = ["xrce-transport"]
 # Docker networking mode (container with NAT, ethernet only)
 docker = []
 # TLS support (requires mbedTLS, increases heap, ethernet only)

@@ -18,10 +18,8 @@ bench = false
 crate-type = ["rlib"]
 
 # The board, network identity and node declaration live in `system.toml` beside
-# this manifest (RFC-0098 D3/D5).
-# Its image-only dependencies below still name the board crate, so a board
-# switch edits this file too until RFC-0098 D6 reaches single-package leaves
-# (issue 1305).
+# this manifest (RFC-0098 D3/D5), and nothing here names the board: switching board is
+# editing `[image.*] board` there and re-running `nros sync`.
 
 [dependencies]
 nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "macros"] }
@@ -33,26 +31,19 @@ log = { version = "0.4", default-features = false }
 # Generated message types (from package.xml via `nros generate-rust`).
 std_msgs = { path = "generated/std_msgs", default-features = false }
 
-# Everything only the IMAGE needs is TARGET-scoped, so the node in `lib.rs`
-# builds for the host as well (issue 1265). That is what lets `nros sync`
-# PROBE what the node creates instead of this leaf declaring it by hand: the
-# probe compiles the lib for the host, and these crates do not build there.
-# `main.rs` (the Entry) is never built for the host, so it keeps reaching all
-# of them.
+# Everything only the IMAGE needs is one generated dependency, the same for
+# every board (RFC-0098 D6, issue 1305): the selection package `nros sync`
+# writes per image under `build/<image>/nros-selection/`. It carries the board
+# crate with the features the image's `system.toml` implies (RMW, transport,
+# entry shape), the platform and runtime crates, and the board's crate-root
+# items; `nros::main!` reaches the board through it. The generated settings
+# file's `[patch]` row points this name at the image's copy.
+#
+# Target-scoped, so the node in `lib.rs` still builds for the host: the
+# metadata probe compiles it there to learn what it creates (issue 1265),
+# and the image's crates do not build for the host.
 [target.'cfg(target_os = "none")'.dependencies]
-# Phase 244.D1 enabler — `board-entry` pulls the `nros_platform::BoardEntry`
-# impl so `nros::main!(deploy = "qemu-mps2-an385")` can drive this board. Keeps
-# its existing ethernet + rmw-zenoh defaults.
-nros-board-mps2-an385 = { version = "*", features = ["board-entry"] }
-# Linked RMW backend (force-linked; self-registers via the macro's
-# `__register_linked_rmw()` on `target_os = "none"`).
-nros-rmw-zenoh = { version = "*", features = ["platform-bare-metal", "ros-humble"] }
-
-# Bare-metal Cortex-M entry: `nros::main!()` emits `#[cortex_m_rt::entry]` for
-# the `qemu-mps2-an385` deploy; the reset trampoline halts via `cortex_m::asm`.
-cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
-cortex-m-rt = "0.7"
-panic-semihosting = { version = "0.6", features = ["exit"] }
+qemu_bsp_listener_nros_selection = { version = "0.0.0" }
 
 # Phase 204.3 — size-optimized profile: opt-level "z" + strip, inheriting
 # release's lto/codegen-units. Build with `cargo build --profile size`.

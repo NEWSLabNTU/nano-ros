@@ -7,7 +7,11 @@
 # project their board block. Both are THIS board: the separate
 # `nros-board-rtic-mps2-an385` crate was folded into it (see its Cargo.toml),
 # so RTIC is a feature of this board, not another one.
-names = ["baremetal", "bare-metal", "qemu-mps2-an385", "rtic-mps2-an385"]
+# Issue 1305 — `rtic-mps2-an385` is the same board crate, but its own `[[board]]`
+# below: the RTIC entry turns on `rtic` instead of `board-entry` and names
+# different crate-root crates, and a generated selection package reads both
+# from the descriptor row the image's board resolves to.
+names = ["baremetal", "bare-metal", "qemu-mps2-an385"]
 cmake_module = "mps2-an385-baremetal"
 platform = "bare-metal"
 toolchain = "stable"
@@ -19,6 +23,10 @@ board_crate = "nros-board-mps2-an385"
 # behind this feature. A leaf used to name it on its own board dependency; the
 # dependency is generated now (RFC-0098 D6), so the board states it.
 board_features = ["board-entry"]
+# Issue 1305 — the link each declared `[image.<id>] transport` builds: the
+# LAN9118 + smoltcp stack (the crate default) or the CMSDK UART. A selection
+# package drops every link here from the defaults and adds the declared one.
+transport_features = { serial = ["serial"], tcp = ["ethernet"], udp = ["ethernet"] }
 # Phase 252 (issue 0072) — forwards [safety] to its zenoh backend.
 cargo_config = '''
 # phase-445 W2 (RFC-0098 D4) — the board's triple, stated HERE. It was missing,
@@ -99,6 +107,67 @@ crate_root_deps = [
 # `check-no-alloc-image --tier heap-free` gates it. That is an image dropping a
 # capability the board offers, which is not the same statement as the board not
 # having one.
+[board.capabilities]
+heap = true
+atomics = true
+threads = false
+
+# Issue 1305 — the RTIC entry on the same board crate (phase-337 W6.a folded
+# `nros-board-rtic-mps2-an385` into it as the `rtic` feature). Its own row,
+# because `rtic` and `board-entry` are two entry shapes an image picks exactly
+# one of, and the crate-root crates differ: `nros::main!` emits
+# `#[rtic::app(device = <the board's re-exported PAC>)]` instead of
+# `#[cortex_m_rt::entry]`. `cargo_config` is the row above's, verbatim: it is a
+# property of the silicon, not of the entry shape.
+[[board]]
+names = ["rtic-mps2-an385"]
+platform = "bare-metal"
+toolchain = "stable"
+entry_kind = "board-run"
+supported_netstacks = ["smoltcp"]
+board_crate = "nros-board-mps2-an385"
+board_features = ["rtic"]
+transport_features = { serial = ["serial"], tcp = ["ethernet"], udp = ["ethernet"] }
+cargo_config = '''
+# phase-445 W2 (RFC-0098 D4) — the board's triple, stated HERE. It was missing,
+# so 19 mps2 leaves (13 on this board) hand-wrote `[build] target` in their
+# own `.cargo/config.toml`, the only board family that had to.
+[build]
+target = "thumbv7m-none-eabi"
+
+[target.thumbv7m-none-eabi]
+runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihosting-config enable=on,target=native -kernel"
+rustflags = [
+    # cortex-m-rt's `link.x`. NOT `mps2_an385.ld`: that script belongs to the
+    # FreeRTOS board (`nros-board-mps2-an385-freertos`), whose C startup
+    # provides the vector table and reset handler cortex-m-rt provides here.
+    # phase-445 W2 measured both directions: this board linked with the other
+    # board's group fails, and vice versa (see that phase's W2 note).
+    "-C", "link-arg=-Tlink.x",
+    # phase-341 W1 — hoisted from the leaves. 25 of 32 `thumbv7m` leaf
+    # configs carried this and 7 did not, which is drift, not a choice:
+    # dead-section stripping is a property of the board's link, not of any
+    # one example. The FORCE_LINK anchors survive it because they are
+    # `#[used]` (CLAUDE.md records exactly this); the `__NROS_SIZE_*` probe
+    # markers are not in a linked image at all (issue 1765).
+    "-C", "link-arg=--gc-sections",
+]
+
+# The cc-crate cross compiler for this triple — a board toolchain fact
+# (phase-445 W2; `examples/workspaces/rust/.cargo/config.toml` carried it).
+[env]
+CC_thumbv7m_none_eabi = "arm-none-eabi-gcc"
+'''
+
+[board.entry]
+signature = "#[nros_board_mps2_an385::entry]\nfn main() -> !"
+crate_root_extra = "use panic_semihosting as _;"
+crate_root_deps = [
+    "panic-semihosting = { version = \"0.6\", features = [\"exit\"] }",
+    "cortex-m = { version = \"0.7\", features = [\"critical-section-single-core\"] }",
+    "rtic = { version = \"2.1\", features = [\"thumbv7-backend\"] }",
+]
+
 [board.capabilities]
 heap = true
 atomics = true

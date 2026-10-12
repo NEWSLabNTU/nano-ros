@@ -280,6 +280,43 @@ pub struct LeafSelectionSpec<'a> {
     pub board: &'a crate::builder::entry::BoardFacts,
     /// The leaf's `system.toml`.
     pub sys: &'a SystemToml,
+    /// The image's declared `transport`, if any.
+    pub transport: Option<&'a str>,
+    /// The board descriptor's `transport_features` table.
+    pub transport_features: &'a std::collections::BTreeMap<String, Vec<String>>,
+}
+
+/// Issue 1305 — the board-crate features once the image's declared transport
+/// has picked its link: every feature the board's `transport_features` table
+/// names is a link choice, so all of them leave the derived list and the one
+/// the image declares comes back. No declared transport, or a board whose
+/// table is empty, leaves the list as derived.
+fn apply_transport_features(
+    mut features: Vec<String>,
+    transport: Option<&str>,
+    table: &std::collections::BTreeMap<String, Vec<String>>,
+    image_id: &str,
+) -> Result<Vec<String>> {
+    features.sort();
+    features.dedup();
+    let Some(t) = transport else {
+        return Ok(features);
+    };
+    if table.is_empty() {
+        return Ok(features);
+    }
+    let Some(wanted) = table.get(t) else {
+        return Err(eyre::eyre!(
+            "image `{image_id}` declares `transport = \"{t}\"`, but its board has no such \
+             link (its descriptor's `transport_features` names: {})",
+            table.keys().cloned().collect::<Vec<_>>().join(", ")
+        ));
+    };
+    features.retain(|f| !table.values().flatten().any(|l| l == f));
+    features.extend(wanted.iter().cloned());
+    features.sort();
+    features.dedup();
+    Ok(features)
 }
 
 /// Write the package [`LeafSelectionSpec`] describes.
@@ -335,8 +372,12 @@ pub fn write_leaf_selection(spec: &LeafSelectionSpec<'_>) -> Result<Facade> {
         // names the image's RMW once.
         let mut features = dep.features.clone();
         features.extend(board_features.iter().cloned());
-        features.sort();
-        features.dedup();
+        let features = apply_transport_features(
+            features,
+            spec.transport,
+            spec.transport_features,
+            spec.image_id,
+        )?;
         m.push_str(&format!(
             "{} = {{ path = {:?}, default-features = false{} }}\n",
             dep.name,
@@ -781,6 +822,43 @@ fn write_if_changed(dst: &Path, body: &str) -> Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 1305 — a declared transport swaps the board's link feature and
+    /// keeps everything else; no declaration keeps the defaults; a link the
+    /// board does not have is refused rather than silently built as the
+    /// default one.
+    #[test]
+    fn a_declared_transport_selects_its_link_feature() {
+        let table: std::collections::BTreeMap<String, Vec<String>> = [
+            ("serial".to_string(), vec!["serial".to_string()]),
+            ("tcp".to_string(), vec!["ethernet".to_string()]),
+        ]
+        .into_iter()
+        .collect();
+        let derived = || {
+            vec![
+                "board-entry".to_string(),
+                "ethernet".to_string(),
+                "rmw-zenoh".to_string(),
+            ]
+        };
+        assert_eq!(
+            apply_transport_features(derived(), Some("serial"), &table, "img").unwrap(),
+            ["board-entry", "rmw-zenoh", "serial"]
+        );
+        assert_eq!(
+            apply_transport_features(derived(), None, &table, "img").unwrap(),
+            derived()
+        );
+        assert_eq!(
+            apply_transport_features(derived(), Some("serial"), &Default::default(), "img")
+                .unwrap(),
+            derived(),
+            "a board with no link table leaves the derived list alone"
+        );
+        let e = apply_transport_features(derived(), Some("udp"), &table, "img").unwrap_err();
+        assert!(e.to_string().contains("serial, tcp"), "{e}");
+    }
 
     #[test]
     fn rel_from_walks_up_then_down() {
