@@ -58,11 +58,12 @@ fn main() {
     // so the emitted .c rides along in the same staticlib (single archive
     // search per link pass). See `emit_app_config_def` for the value
     // contract.
-    let nros_c_include = workspace_root.join("packages/api/nros-c/include");
+    // issue 1767 item 4 — through the one resolver, not a join of the root.
+    let nros_c_include = nros_build_paths::nros_c_include();
     assert!(
         nros_c_include.join("nros/zephyr/app_config.h").exists(),
         "nros-c shipped header not found at {} — expected the M-F.10.1 \
-         `extern const` declaration. Did the workspace_root walk-up break?",
+         `extern const` declaration. Is NROS_C_INCLUDE pointing elsewhere?",
         nros_c_include.display()
     );
     let app_config_def_c = emit_app_config_def(&net);

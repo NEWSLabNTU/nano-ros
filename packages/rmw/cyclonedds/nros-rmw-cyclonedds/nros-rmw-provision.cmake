@@ -81,11 +81,19 @@ if(NOT CMAKE_CROSSCOMPILING
     unset(_nros_cyclone_rc)
 endif()
 
-if(NOT DEFINED CYCLONEDDS_SOURCE_DIR)
-    if(EXISTS "${_nros_cyclone_tree}/third-party/dds/cyclonedds/CMakeLists.txt")
-        set(CYCLONEDDS_SOURCE_DIR
-            "${_nros_cyclone_tree}/third-party/dds/cyclonedds"
-            CACHE PATH "CycloneDDS source tree for self-provisioning (Phase 186)")
-    endif()
+# The source tree through the one ladder (RFC-0103 D4, issue 1767 item 3): a
+# `-DCYCLONEDDS_SOURCE_DIR` wins, else `nros locate`'s `[source.cyclonedds-src]`
+# answer — whose `$CYCLONEDDS_SOURCE_DIR` rung is re-rooted (issue 1280) — the
+# same answer the cargo lane's cyclonedds-sys and the Zephyr module get. A normal
+# variable, never CACHE, so dropping an override takes effect on the next
+# configure. With no CLI the ladder answers nothing and this falls to the
+# checkout's submodule, as before.
+if(EXISTS "${_nros_cyclone_tree}/cmake/NanoRosLocate.cmake")
+    include("${_nros_cyclone_tree}/cmake/NanoRosLocate.cmake")
+    nros_locate_var(CYCLONEDDS_SOURCE_DIR)
+endif()
+if(NOT CYCLONEDDS_SOURCE_DIR
+   AND EXISTS "${_nros_cyclone_tree}/third-party/dds/cyclonedds/CMakeLists.txt")
+    set(CYCLONEDDS_SOURCE_DIR "${_nros_cyclone_tree}/third-party/dds/cyclonedds")
 endif()
 unset(_nros_cyclone_tree)

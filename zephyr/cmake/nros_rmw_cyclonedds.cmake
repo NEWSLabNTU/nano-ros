@@ -1,3 +1,7 @@
+# FILE scope: an include() inside the function below would resolve
+# CMAKE_CURRENT_LIST_DIR against its caller.
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosLocate.cmake")
+
 function(nros_zephyr_configure_rmw_cyclonedds)
 # -------------------------------------------------------------------------
 # Cyclone DDS RMW backend — Phase 117 + ASI Phase 1D
@@ -15,13 +19,27 @@ function(nros_zephyr_configure_rmw_cyclonedds)
 #   - link-time symbol gap fixes
 #   - ROM/RAM trimming for S32Z
 
-set(CYCLONEDDS_DIR ${NROS_REPO_DIR}/third-party/dds/cyclonedds)
+# The Cyclone tree through the one ladder (RFC-0103 D4, issue 1767 item 3) —
+# the `[source.cyclonedds-src]` row the cargo lane's cyclonedds-sys and the
+# cmake road's nros-rmw-provision.cmake also ask, so `$CYCLONEDDS_SOURCE_DIR`
+# (re-rooted, issue 1280) reaches this road too instead of being ignored here.
+# A CHECKOUT source (Zephyr patches it in place), so the ladder still answers
+# the submodule by default — and an override tree must carry the
+# `scripts/zephyr/cyclonedds-zephyr-*-patch.sh` edits itself, since those patch
+# the checkout copy. With no CLI the module answers nothing and this falls to
+# the checkout's submodule.
+nros_locate_source(CYCLONEDDS_DIR cyclonedds-src)
+if(NOT CYCLONEDDS_DIR)
+    set(CYCLONEDDS_DIR ${NROS_REPO_DIR}/third-party/dds/cyclonedds)
+endif()
 set(NROS_RMW_CDDS_DIR ${NROS_REPO_DIR}/packages/rmw/cyclonedds/nros-rmw-cyclonedds)
 
 if(NOT EXISTS ${CYCLONEDDS_DIR}/src/ddsrt/include/dds/config.h.in)
     message(FATAL_ERROR
-        "Cyclone DDS submodule not initialised at ${CYCLONEDDS_DIR}. "
-        "Run: git submodule update --init third-party/dds/cyclonedds")
+        "Cyclone DDS source not found at ${CYCLONEDDS_DIR}. "
+        "Run: git submodule update --init third-party/dds/cyclonedds "
+        "(or point CYCLONEDDS_SOURCE_DIR at a Cyclone tree; "
+        "`nros locate cyclonedds-src --why` says which rung answered)")
 endif()
 
 # ---- dds/config.h shim --------------------------------------------------

@@ -20,7 +20,7 @@ locations** (where the FreeRTOS kernel, the cross compiler, the SystemModel
 are). Two censuses on 2026-10-09/10 measured both, and found the same shape
 twice: one fact, many places that state or derive it, each correct under the
 configuration its author tested, all gates green
-([issue 1767](../issues/1767-resource-location-resolved-many-ways.md)).
+([issue 1767](../issues/archived/1767-resource-location-resolved-many-ways.md)).
 
 > **Every fact has exactly ONE authored home, chosen by who owns the fact.
 > Every other place that carries it is GENERATED from that home. Every road

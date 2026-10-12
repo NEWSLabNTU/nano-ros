@@ -267,6 +267,7 @@ KNOB_CLASS = {
     "NROS_REPO_DIR": ("infra", "path"),
     "NROS_TRACE": ("infra", "debug flag"),
     "NROS_ZEPHYR_WORKSPACE": ("infra", "path"),
+    "NROS_ZEPHYR_VERSION": ("infra", "the selected Zephyr line (3.7 / 4.4), which picks a workspace — not a size"),
     # --- ladder: the zenoh tx tenant (phase-282), read in the build HELPER ---
     # --- sizing: the zenoh-pico entity caps and buffers. The largest single
     # --- family left, and the one the phase doc calls "the per-entity caps".
