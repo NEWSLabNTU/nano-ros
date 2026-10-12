@@ -3,7 +3,8 @@
 //! `nros::main!()` reads the board
 //! (`[image.*] board = "threadx-linux"`) from this pkg's `system.toml`
 //! (RFC-0098 D3), maps `"threadx-linux"` →
-//! `::nros_board_threadx_linux::ThreadxLinux`, and emits a C-ABI `main`
+//! `nros_board_threadx_linux::ThreadxLinux` (reached through the generated
+//! selection package, issue 1305), and emits a C-ABI `main`
 //! that delegates to `<ThreadxLinux as BoardEntry>::run(...)`. The
 //! sibling Node pkg `threadx_linux_rs_service_client` is linked via the
 //! `[dependencies]` block; its `register` symbol is the macro's

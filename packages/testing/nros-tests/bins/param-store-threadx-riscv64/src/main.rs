@@ -8,7 +8,8 @@
 
 // rustc's staticlib/LTO DCE drops a dependency's `#[no_mangle]` exports without
 // a direct reference; this anchor keeps the board (boot asm, allocator,
-// critical section) in the image.
-extern crate nros_board_threadx_qemu_riscv64 as _;
+// critical section) in the image. The board is reached through the generated
+// selection package (issue 1305), which re-exports it.
+extern crate param_store_threadx_riscv64_nros_selection as _;
 
 nros::main!(panic = "platform");
