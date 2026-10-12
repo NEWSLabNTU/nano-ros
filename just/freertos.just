@@ -378,6 +378,7 @@ test-all verbose="":
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
+    nros_locate_sdk_trees  # phase-484 W2 — the trees W3c stopped exporting
     cargo_nextest_args=($(nros_cargo_nextest_args))
     if [ ! -d "$FREERTOS_DIR/include" ]; then
         echo "ERROR: FreeRTOS not found at $FREERTOS_DIR. Run: just freertos setup"
