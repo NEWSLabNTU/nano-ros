@@ -1431,8 +1431,11 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                          export NROS_ZEPHYR_WORKSPACE=<dir>\n\n\
                          or run west yourself:\n\n    {line}\n\n\
                          (searched: --zephyr-workspace, $ZEPHYR_BASE, \
-                         $NROS_ZEPHYR_WORKSPACE, <workspace>/zephyr-workspace, \
-                         ../nano-ros-workspace[-4.4])"
+                         $NROS_ZEPHYR_WORKSPACE, \
+                         $NROS_HOME/workspaces/zephyr/<line>, \
+                         <workspace>/zephyr-workspace, \
+                         ../nano-ros-workspace[-4.4]; <line> is \
+                         $NROS_ZEPHYR_VERSION, default 3.7)"
                     );
                 }
                 // Run from the nros workspace with ZEPHYR_BASE set, which is
@@ -4330,17 +4333,43 @@ fn cmake_deploy_token(text: &str) -> Option<String> {
 /// zephyr fixture in this tree builds from the repo root rather than from
 /// `zephyr-workspace/`.
 ///
-/// The ladder is `scripts/build/west-fixtures.sh`'s, verbatim, and
-/// `NROS_ZEPHYR_WORKSPACE` is the established spelling — 60 references across
-/// the tree. An earlier version of this invented `NROS_WEST_WORKSPACE`, which
-/// would have been a 61st name for one thing.
+/// Below the two rungs only this command has (`--zephyr-workspace`, an
+/// exported `ZEPHYR_BASE`), the ladder is `scripts/lib/zephyr-workspace.sh`'s
+/// (RFC-0095 D4) — the ONE workspace ladder `just` and the fixture builds use:
+/// `$NROS_ZEPHYR_WORKSPACE` (wins outright), the store's
+/// `$NROS_HOME/workspaces/zephyr/<line>`, then the checkout-relative trees of
+/// the selected line (`$NROS_ZEPHYR_VERSION`, default `3.7`). This copy had no
+/// store rung and searched both lines at once while claiming to be verbatim,
+/// so a host provisioned the way `just zephyr setup` provisions today could
+/// not `nros build` a west image (issue 1767 item 7). `NROS_ZEPHYR_WORKSPACE`
+/// is the established spelling — an earlier version of this invented
+/// `NROS_WEST_WORKSPACE`, which would have been one more name for one thing.
 fn zephyr_base(root: &std::path::Path, flag: Option<&std::path::Path>) -> Option<PathBuf> {
+    let line = zephyr_line(std::env::var("NROS_ZEPHYR_VERSION").ok());
     zephyr_base_with(
         flag,
         std::env::var_os("ZEPHYR_BASE"),
         std::env::var_os("NROS_ZEPHYR_WORKSPACE"),
+        Some(zephyr_store_workspace(
+            &crate::orchestration::store::root(),
+            &line,
+        )),
+        &line,
         root,
     )
+}
+
+/// The selected Zephyr line — `nros_zephyr_ws_version` in
+/// `scripts/lib/zephyr-workspace.sh`: `$NROS_ZEPHYR_VERSION`, else `3.7`.
+fn zephyr_line(env: Option<String>) -> String {
+    env.filter(|v| !v.is_empty())
+        .unwrap_or_else(|| "3.7".to_string())
+}
+
+/// `<store>/workspaces/zephyr/<line>` — `nros_zephyr_ws_store_dir`'s answer
+/// (RFC-0095 D2/D4: where `just zephyr setup` installs since phase-440 W4).
+fn zephyr_store_workspace(store_root: &std::path::Path, line: &str) -> PathBuf {
+    store_root.join("workspaces").join("zephyr").join(line)
 }
 
 /// Is this directory a Zephyr tree rather than the workspace above one?
@@ -4358,6 +4387,8 @@ fn zephyr_base_with(
     flag: Option<&std::path::Path>,
     base: Option<std::ffi::OsString>,
     workspace: Option<std::ffi::OsString>,
+    store_workspace: Option<PathBuf>,
+    line: &str,
     root: &std::path::Path,
 ) -> Option<PathBuf> {
     // `--zephyr-workspace` first: it is the only rung the user states in the
@@ -4383,14 +4414,28 @@ fn zephyr_base_with(
             return Some(p);
         }
     }
+    // From here on, `nros_zephyr_ws_candidates` rung for rung.
     let mut candidates: Vec<PathBuf> = Vec::new();
-    if let Some(w) = workspace {
-        candidates.push(PathBuf::from(w));
-    }
-    candidates.push(root.join("zephyr-workspace"));
-    if let Some(parent) = root.parent() {
-        candidates.push(parent.join("nano-ros-workspace"));
-        candidates.push(parent.join("nano-ros-workspace-4.4"));
+    match workspace.filter(|w| !w.is_empty()) {
+        // The override wins outright and ENDS the ladder — it is also the
+        // install target, and a tree it names that is not there yet must not
+        // be silently replaced by another one.
+        Some(w) => candidates.push(PathBuf::from(w)),
+        None => {
+            candidates.extend(store_workspace);
+            // The checkout-relative trees of THIS line only: a workspace of
+            // the other line is a west-manifest mismatch, not a fallback.
+            if line == "4.4" {
+                if let Some(parent) = root.parent() {
+                    candidates.push(parent.join("nano-ros-workspace-4.4"));
+                }
+            } else {
+                candidates.push(root.join("zephyr-workspace"));
+                if let Some(parent) = root.parent() {
+                    candidates.push(parent.join("nano-ros-workspace"));
+                }
+            }
+        }
     }
     candidates
         .into_iter()
@@ -5102,12 +5147,12 @@ mod zephyr_base_tests {
         std::fs::create_dir_all(&root).expect("mkdir");
 
         // Nothing anywhere.
-        assert_eq!(zephyr_base_with(None, None, None, &root), None);
+        assert_eq!(zephyr_base_with(None, None, None, None, "3.7", &root), None);
 
         // In-repo `zephyr-workspace/` — the common contributor layout.
         let inrepo = zdir(&root, "zephyr-workspace");
         assert_eq!(
-            zephyr_base_with(None, None, None, &root),
+            zephyr_base_with(None, None, None, None, "3.7", &root),
             Some(inrepo.join("zephyr"))
         );
 
@@ -5115,7 +5160,14 @@ mod zephyr_base_tests {
         // the tree), not a new one — outranks the in-repo default.
         let explicit = zdir(&base, "elsewhere");
         assert_eq!(
-            zephyr_base_with(None, None, Some(explicit.clone().into_os_string()), &root),
+            zephyr_base_with(
+                None,
+                None,
+                Some(explicit.clone().into_os_string()),
+                None,
+                "3.7",
+                &root
+            ),
             Some(explicit.join("zephyr")),
         );
 
@@ -5127,6 +5179,8 @@ mod zephyr_base_tests {
                 None,
                 Some(direct.clone().into_os_string()),
                 Some(explicit.into_os_string()),
+                None,
+                "3.7",
                 &root
             ),
             Some(direct),
@@ -5146,16 +5200,86 @@ mod zephyr_base_tests {
         std::fs::create_dir_all(&empty).expect("mkdir");
 
         assert_eq!(
-            zephyr_base_with(None, None, Some(empty.clone().into_os_string()), &root),
+            zephyr_base_with(
+                None,
+                None,
+                Some(empty.clone().into_os_string()),
+                None,
+                "3.7",
+                &root
+            ),
             None,
             "a workspace with no zephyr/ is not a workspace",
         );
         assert_eq!(
-            zephyr_base_with(None, Some(empty.join("nope").into_os_string()), None, &root),
+            zephyr_base_with(
+                None,
+                Some(empty.join("nope").into_os_string()),
+                None,
+                None,
+                "3.7",
+                &root
+            ),
             None,
             "a ZEPHYR_BASE that does not exist is not a Zephyr",
         );
         std::fs::remove_dir_all(&base).ok();
+    }
+
+    /// Issue 1767 item 7 — the rungs below the command's own are
+    /// `scripts/lib/zephyr-workspace.sh`'s: the store outranks the checkout
+    /// trees, only the selected line's checkout trees are candidates, and a
+    /// set `NROS_ZEPHYR_WORKSPACE` ends the ladder.
+    #[test]
+    fn the_workspace_ladder_is_the_shell_ladder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("nano-ros");
+        std::fs::create_dir_all(&root).unwrap();
+        let store = tmp.path().join("home");
+        let store_37 = zephyr_store_workspace(&store, "3.7");
+        assert_eq!(store_37, store.join("workspaces/zephyr/3.7"));
+
+        // A sibling 4.4 tree is NOT a 3.7 answer (a west-manifest mismatch).
+        let sib_44 = zdir(tmp.path(), "nano-ros-workspace-4.4");
+        assert_eq!(
+            zephyr_base_with(None, None, None, Some(store_37.clone()), "3.7", &root),
+            None
+        );
+        assert_eq!(
+            zephyr_base_with(None, None, None, None, "4.4", &root),
+            Some(sib_44.join("zephyr"))
+        );
+
+        // The store outranks the in-repo tree.
+        let inrepo = zdir(&root, "zephyr-workspace");
+        assert_eq!(
+            zephyr_base_with(None, None, None, Some(store_37.clone()), "3.7", &root),
+            Some(inrepo.join("zephyr")),
+            "an unpopulated store contributes nothing"
+        );
+        std::fs::create_dir_all(store_37.join("zephyr")).unwrap();
+        assert_eq!(
+            zephyr_base_with(None, None, None, Some(store_37.clone()), "3.7", &root),
+            Some(store_37.join("zephyr"))
+        );
+
+        // A set override ends the ladder, even over a populated store.
+        let missing = tmp.path().join("not-yet-installed");
+        assert_eq!(
+            zephyr_base_with(
+                None,
+                None,
+                Some(missing.into_os_string()),
+                Some(store_37),
+                "3.7",
+                &root
+            ),
+            None
+        );
+
+        assert_eq!(zephyr_line(None), "3.7");
+        assert_eq!(zephyr_line(Some(String::new())), "3.7");
+        assert_eq!(zephyr_line(Some("4.4".into())), "4.4");
     }
 }
 
@@ -5254,6 +5378,8 @@ mod zephyr_workspace_flag_tests {
                 Some(&flagged),
                 Some(stale_base.into_os_string()),
                 Some(env_ws.into_os_string()),
+                None,
+                "3.7",
                 tmp.path(),
             ),
             Some(flagged.join("zephyr")),
@@ -5276,7 +5402,7 @@ mod zephyr_workspace_flag_tests {
         std::fs::write(zephyr.join("Kconfig.zephyr"), "").unwrap();
 
         assert_eq!(
-            zephyr_base_with(Some(&zephyr), None, None, tmp.path()),
+            zephyr_base_with(Some(&zephyr), None, None, None, "3.7", tmp.path()),
             Some(zephyr),
         );
     }
@@ -5289,7 +5415,10 @@ mod zephyr_workspace_flag_tests {
         let tmp = tempfile::tempdir().unwrap();
         let empty = tmp.path().join("empty");
         std::fs::create_dir_all(&empty).unwrap();
-        assert_eq!(zephyr_base_with(Some(&empty), None, None, tmp.path()), None);
+        assert_eq!(
+            zephyr_base_with(Some(&empty), None, None, None, "3.7", tmp.path()),
+            None
+        );
     }
 }
 

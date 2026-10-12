@@ -405,7 +405,14 @@ _cc_verdict_prelude() {
     local id="$1" staged="$2"; shift 2
     case "$id" in
         main_macro_rebuilds_on_model_touch)
-            local model="$staged/build/nros/models/demo_bringup/system_model.yaml"
+            # Where the sync wrote the model is `model_location`'s answer,
+            # asked through `nros model-path` — never a spelled layout (issue
+            # 1767 item 11). Hermetic like the compile below: an inherited
+            # NROS_MODEL_DIR would name someone else's model.
+            local model nros_bin
+            nros_bin="$(nros_cli_bin)" || return 2
+            model="$(env -u NROS_MODEL_DIR -u OUT_DIR "$nros_bin" model-path \
+                --bringup-dir "$staged/src/demo_bringup")" || return 2
             [ -f "$model" ] || {
                 echo "compile-check: $id: the sync wrote no model at $model" >&2
                 return 2

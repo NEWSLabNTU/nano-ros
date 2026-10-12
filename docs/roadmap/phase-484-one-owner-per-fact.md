@@ -5,7 +5,7 @@ has four leftovers; W5a in progress (slices 1-6 and `[board.knobs]` →
 `[knobs]` done); W5b (folded in from phase-481) measured and built — M1 red
 so choices/endpoint/domain stay in the fragment; W8 waits on a release. Implements
 [RFC-0103](../design/0103-one-owner-per-fact.md). Tracks issues
-[1767](../issues/1767-resource-location-resolved-many-ways.md) and
+[1767](../issues/archived/1767-resource-location-resolved-many-ways.md) and
 [1768](../issues/archived/1768-build-wiring-census-misses-link-script-macro.md).
 
 **Not this phase:** the Zephyr leaf `.conf` migration, the image Kconfig
@@ -962,3 +962,6 @@ this phase will fix it.
 - [issue 0941](../issues/0941-board-facts-soft-failure-hides-unreachable-site-config.md) — `nros_resolve_board_facts` fails SOFT, so an unreachable site-config block is silent
 - [issue 1811](../issues/1811-nightly-ports-read-in-tree-sources-after-store-move.md) — After phase-484 moved source trees into the store, four nightly RTOS port jobs still look for them in-tree or through …
 - [issue 1816](../issues/1816-git-grep-error-read-as-no-match.md) — A `git grep` that could not search reads as "no match", so a forbidding gate passes outside a checkout
+- [issue 1850](../issues/1850-host-tool-binaries-located-by-literal-path.md) — The in-tree `nros` and `nros-launch-resolve` binaries are located by literal path at ~50 sites (issue 1767 items 8–9)
+- [issue 1851](../issues/1851-qemu-binary-located-three-ways.md) — QEMU is located three different ways (issue 1767 item 10)
+- [issue 1852](../issues/1852-generated-header-dir-joined-outside-artifact-locator.md) — `<target>/nros-c-generated` is still joined by hand outside `nros locate artifact` (issue 1767 item 12 residue)

@@ -576,7 +576,9 @@ fn resolve_overlay_env(default_port: &str) -> OverlayEnv {
     // remedy 0365 left was a per-site tripwire, not a fix for the class: a
     // counted walk breaks when THIS crate moves, which is a second way to be
     // wrong that no assert here could see.
-    let nros_c_include = nros_build_paths::repo_root().join("packages/api/nros-c/include");
+    // issue 1767 item 4 — through the one resolver (`NROS_C_INCLUDE`, re-rooted,
+    // else this checkout), the same answer nuttx_ffi_build.rs gets.
+    let nros_c_include = nros_build_paths::nros_c_include();
     assert!(
         nros_c_include.join("nros/app_config.h").exists(),
         "nros-c header not at {} — did nros-c move again? (issue 0365)",

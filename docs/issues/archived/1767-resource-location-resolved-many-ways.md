@@ -2,12 +2,13 @@
 id: 1767
 title: "A resource's location is decided by 13 mechanisms, and 13 resources are
   resolved two or more different ways"
-status: open
+status: resolved
+resolved: 2026-10-13
 type: tech-debt
 area: build
 severity: medium
 found: 2026-10-09
-related: [0196, 0460, 0491, 0500, 0616, 1025, 1280, 1527, 1558, 1560, RFC-0014, RFC-0049, RFC-0072, RFC-0094, RFC-0101, phase-484]
+related: [0196, 0460, 0491, 0500, 0616, 1025, 1280, 1527, 1558, 1560, 1850, 1851, 1852, RFC-0014, RFC-0049, RFC-0072, RFC-0094, RFC-0101, RFC-0103, phase-484]
 ---
 
 ## What this is
@@ -112,8 +113,36 @@ RFC-0101 §5's conformance table is also partly stale: the ThreadX RISC-V
 
 ## Direction
 
-The design is RFC-0103 ([one owner per fact](../design/0103-one-owner-per-fact.md)):
+The design is RFC-0103 ([one owner per fact](../../design/0103-one-owner-per-fact.md)):
 one resolver (`nros_build_paths` + `nros locate`), store first, and every road
 reading the resolved answer rather than re-deriving it — the RFC-0094 rule
 ("one place decides, every other place reads") extended from knobs to
 locations and selections.
+
+## Resolution (2026-10-13)
+
+Each item re-measured against the tree after phase-484 W1–W4/W6/W7 (RFC-0103).
+Eight are single-owner now, four of them closed by this change; the four that
+are not are real but are each a sweep of their own, filed separately rather
+than left under an umbrella.
+
+| # | resource | verdict | where |
+| --- | --- | --- | --- |
+| 1 | FreeRTOS kernel / lwIP | RESOLVED | W2b (`d3c235a43a`), W2c (`a3a6326806`), W3c (`4f7ecbf067`, `6c98b7510f`, `97d38d46e7`): `nros_build_paths::locate` in build scripts (`nros-board-freertos/build.rs:82,143`), `{source:}` tokens in descriptors, `nros_locate_var` in cmake, `nros_locate_sdk_trees` in `just`; the 81 `sdk = {env:…}` rows are gone (0 left) |
+| 2 | ThreadX config / includes | RESOLVED | W2b: `THREADX_CONFIG_DIR`/`NETX_CONFIG_DIR` are board facts (`force = true`, RFC-0103 D3 — no longer the reverse of the ladder, it IS the ladder); W3c: a relative `THREADX_EXTRA_INCLUDES` is relative to the LOCATED tree (`nros-board-threadx/build.rs:204`); `sdk-env.just` exports none |
+| 3 | Cyclone DDS source | RESOLVED here | `zephyr/cmake/nros_rmw_cyclonedds.cmake` and `nros-rmw-cyclonedds/nros-rmw-provision.cmake` now ask `[source.cyclonedds-src]` (`nros_locate_source` / `nros_locate_var`), the row cargo's `cyclonedds-sys` already asked, so `$CYCLONEDDS_SOURCE_DIR` reaches every road, re-rooted. `[tool.cyclonedds]` (prebuilt) vs `[source.cyclonedds-src]` (source) are two resources, not two answers |
+| 4 | `nros-c` headers | RESOLVED here | the three repo-root joins (`freertos_build.rs`, `threadx_qemu_riscv64_build.rs`, `nros-board-threadx-linux/build.rs`) call `nros_build_paths::nros_c_include()`; `DEP_NROS_C_*` is the `links` hand-off from nros-c's own build script, i.e. the producer, not a second answer |
+| 5 | nano-ros root | RESOLVED | W1 (`7f22564021`): one marker (`CHECKOUT_MARKER`), one env name; W2d (`f039374550`, `5d028ecd6d`): the binary and each cmake module find the root from their own path. `cmake-incremental.sh:78` still reads `$NROS_REPO_DIR` for a source outside every checkout, through the re-root rule |
+| 6 | SDK store root | RESOLVED | W1 (`ced67f797c`): `NROS_HOME` only, `NROS_STORE`/`NROS_SDK_STORE` refused; gate `check-retired-store-vars` |
+| 7 | Zephyr workspace | RESOLVED here | the CLI's `zephyr_base` (`cmd/build.rs`) gains the store rung and the shell's line-awareness and override-ends-the-ladder rule (`scripts/lib/zephyr-workspace.sh`), pinned by `the_workspace_ladder_is_the_shell_ladder` |
+| 8 | `nros-launch-resolve` | RESIDUE | issue [1850](../1850-host-tool-binaries-located-by-literal-path.md) — three ladders (`model_location.rs:333`, `cmd/ws.rs:2614`, `launch-resolver-identity.sh:59`) |
+| 9 | the `nros` CLI | RESIDUE | issue [1850](../1850-host-tool-binaries-located-by-literal-path.md) — 49 literal sites in 23 files beside `nros_cli_bin`; most are gate preconditions that need a checkout-only mode on the resolver, not a blind reroute |
+| 10 | QEMU | RESIDUE | issue [1851](../1851-qemu-binary-located-three-ways.md) — tests search env → `build/qemu` → store → PATH; recipes search one rung each |
+| 11 | SystemModel | RESOLVED | W6d (`870b1023ec`) deleted the cmake ladder mirror; the last literal (`compile-check-fixtures.sh`, the `main_macro_rebuilds_on_model_touch` prelude) asks `nros model-path` here |
+| 12 | `nros_config_generated.h` | RESOLVED, with residue | W6a (`d653615711`): one `OUT_DIR` parser; W6b (`b0c2a859fd`): one layout (`nros_build_paths::artifact`), the PX4 literal gone. Residue — ~140 hand joins of the layout onto a variable target dir, outside the gate's reach — is issue [1852](../1852-generated-header-dir-joined-outside-artifact-locator.md) |
+| 13 | a fixture's artifact dir | RESOLVED (before phase-484) | phase-340 B2 + issue 1025: the group slug has one computation (`nros_fixture_group_slug`), Rust joins it through `fixtures-manifest.py fixture-groups` (`groups.rs`) and `row_artifact_root()`; held by `check-fixture-artifact-dir-inputs` and `tests/build_root_derivation.sh` |
+
+Sweep commands used: `git grep -n 'third-party/dds/cyclonedds' -- '*.cmake'
+'*CMakeLists.txt'`, `git grep -n '"packages/api/nros-c\(pp\)\?/include"' --
+'*.rs'`, `grep -rn "packages/cli/target/release/nros\b" just justfile scripts`,
+`grep -rn "build/qemu\|command -v qemu" just scripts`.
