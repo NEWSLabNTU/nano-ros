@@ -29,8 +29,15 @@ such a reader answers "not set" from a fresh shell while the store holds the
 tree; the test preconditions did exactly that. The ladder already honours the
 variable as its first rung, so a reader loses nothing by asking it.
 
-Buildless, tracked files only, ~0.2 s. Self-tests its comment filter and the
-env-read pattern.
+And a third, the shell spelling (issue 1811): a `just` recipe or script that
+reads `$FREERTOS_DIR`, `$LWIP_DIR`, `$THREADX_DIR` or `$NETX_DIR` must SET it
+first, through `nros_locate_sdk_trees` or `nros_locate_source` — earlier in
+the same recipe (`just`), or earlier in the file (script). Reading it straight
+from the caller's environment is what left four nightly ports and the
+live-peer board jobs with an unbound variable or an empty path after the move.
+
+Buildless, tracked files only, ~0.2 s. Self-tests its comment filter, the
+env-read pattern and the recipe rule.
 """
 
 from __future__ import annotations
@@ -92,7 +99,6 @@ ALLOWED = {
     # Developer tools that BUILD zenoh-pico in place (they write `build/` INTO
     # the tree, which the read-only store copy must never take).
     "justfile": "dev: builds zenoh-pico in the checkout",
-    "scripts/qemu/build-zenoh-pico.sh": "dev: builds zenoh-pico in the checkout",
     "scripts/debug/capture-ros2-keyexpr.sh": "dev: runs the in-checkout zenoh-pico build",
     "scripts/debug/compare-keyexprs.sh": "dev: runs the in-checkout zenoh-pico build",
     "scripts/debug/debug-keyexpr.sh": "dev: runs the in-checkout zenoh-pico build",
@@ -180,8 +186,57 @@ def self_test() -> None:
         assert not pat.search(c), c
 
 
+TREE_VARS = re.compile(r"\$\{?(FREERTOS_DIR|LWIP_DIR|THREADX_DIR|NETX_DIR)\b")
+LOCATES = re.compile(r"\bnros_locate_sdk_trees\b|\bnros_locate_source\b")
+RECIPE_HEAD = re.compile(r"^[A-Za-z_@][A-Za-z0-9_-]*( [^:=]*)?:(?!=)")
+
+
+def unlocated_reads(path: str, text: str) -> list[tuple[int, str]]:
+    """Lines reading a tree variable with no locate call ahead of them in the
+    same recipe (`just`) or file (script)."""
+    is_just = path.endswith(".just") or path == "justfile"
+    out: list[tuple[int, str]] = []
+    located = False
+    for n, line in enumerate(text.split("\n"), 1):
+        if is_just and RECIPE_HEAD.match(line):
+            located = False
+        if COMMENT.match(line):
+            continue
+        if LOCATES.search(line):
+            located = True
+            continue
+        if TREE_VARS.search(line) and not located:
+            out.append((n, line.strip()))
+    return out
+
+
+def tree_var_readers() -> list[str]:
+    out = git_grep.run(
+        ["-l", "-E", r"\$\{?(FREERTOS_DIR|LWIP_DIR|THREADX_DIR|NETX_DIR)\b", "--",
+         "just/*.just", "justfile", "scripts/*.sh", "scripts/**/*.sh"],
+        ROOT,
+    )
+    bad = []
+    for path in out.splitlines():
+        text = (ROOT / path).read_text()
+        for n, line in unlocated_reads(path, text):
+            bad.append(f"  {path}:{n}: reads a store-first tree's variable unlocated: {line[:110]}")
+    return bad
+
+
+def self_test_recipes() -> None:
+    ok = "a:\n    source x\n    nros_locate_sdk_trees\n    echo $LWIP_DIR\n"
+    assert unlocated_reads("x.just", ok) == [], ok
+    # A second recipe does not inherit the first one's locate.
+    two = ok + "b:\n    echo $LWIP_DIR\n"
+    assert [n for n, _ in unlocated_reads("x.just", two)] == [6], two
+    assert unlocated_reads("x.sh", 'echo "${THREADX_DIR}/x"\n'), "script read"
+    assert not unlocated_reads("x.sh", "# $THREADX_DIR in prose\n"), "comment"
+
+
 def main() -> int:
     self_test()
+    self_test_recipes()
     dests = store_dests()
     bad: list[str] = []
     used: set[str] = set()
@@ -194,6 +249,18 @@ def main() -> int:
     envs = store_envs()
     env_bad = env_read_hits(envs)
     stale = sorted(set(ALLOWED) - used)
+    var_bad = tree_var_readers()
+    if var_bad:
+        print(
+            "check-store-source-readers: FAIL — a recipe or script reads a tree "
+            "variable phase-484 W3c no longer exports (issue 1811):",
+            file=sys.stderr,
+        )
+        print("\n".join(var_bad), file=sys.stderr)
+        print(
+            "  Set it first: `source scripts/build/cargo.sh; nros_locate_sdk_trees`.",
+            file=sys.stderr,
+        )
     if env_bad:
         print(
             "check-store-source-readers: FAIL — a store-first tree's variable is read "
@@ -201,7 +268,7 @@ def main() -> int:
             file=sys.stderr,
         )
         print("\n".join(env_bad), file=sys.stderr)
-    if bad or stale or env_bad:
+    if bad or stale or env_bad or var_bad:
         if bad:
             print(
                 "check-store-source-readers: FAIL — a store-first tree is read by its "
