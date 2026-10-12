@@ -198,6 +198,7 @@ mod tests {
     fn an_in_tree_binary_answers_with_its_checkout() {
         let tmp = tempfile::tempdir().unwrap();
         let checkout = fake_root(&tmp.path().join("checkout"));
+        // host-tool-path-ok: synthetic checkout under test — the layout is the fixture.
         let exe = touch(&checkout.join("packages/cli/target/release/nros"));
         assert_eq!(own_sdk_root_of(&exe, None), Some(checkout.clone()));
         assert_eq!(own_checkout_of(&exe, None), Some(checkout));

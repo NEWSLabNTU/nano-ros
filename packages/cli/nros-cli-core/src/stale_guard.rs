@@ -806,6 +806,7 @@ mod foreign_binary_tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().join("checkout");
         fake_checkout(&root);
+        // host-tool-path-ok: synthetic checkout under test — the layout is the fixture.
         let own = root.join("packages/cli/target/release/nros");
         fs::write(&own, "").unwrap();
         assert!(refuse_if_foreign_to_workspace(&own, &root).is_ok());

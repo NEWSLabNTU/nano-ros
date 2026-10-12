@@ -4878,7 +4878,9 @@ pub fn require_west_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
     if let Ok(stamp_text) = fs::read_to_string(&stamp) {
         let stamped = stamped_tool(&stamp_text, "tool:nros=");
         let stamped_tool = stamped.as_deref();
-        let cli = project_root().join("packages/cli/target/release/nros");
+        // Strictly THIS checkout's build — the shell stamps it with
+        // `NROS_CLI= nros_cli_bin --checkout-only --root` (issue 1850).
+        let cli = nros_build_paths::nros_cli_in_checkout(&project_root());
         // Same hasher the stamping script uses (sha256sum) — no new dep, and
         // byte-identical output by construction.
         let current = Command::new("sha256sum")
@@ -4906,9 +4908,10 @@ pub fn require_west_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
                 &fixture_dir.join(rel),
                 format!(
                     "West fixture {id} is STALE — built with a different `nros` CLI \
-                     than the current packages/cli/target/release/nros.\n  stamp: {}\n\
+                     than the current {}.\n  stamp: {}\n\
                      Run `bash scripts/build/west-fixtures.sh` (or `just zephyr \
                      build-fixtures`) to rebuild.",
+                    cli.display(),
                     stamp.display()
                 ),
             ));

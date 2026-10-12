@@ -6486,6 +6486,7 @@ mod launch_resolver_tests {
             .join("target/release")
             .join(LAUNCH_RESOLVER);
         touch(&parents);
+        // host-tool-path-ok: synthetic checkout under test — the layout is the fixture.
         let exe = worktree.join("packages/cli/target/release/nros");
         touch(&exe);
         let store = tmp.path().join("store");

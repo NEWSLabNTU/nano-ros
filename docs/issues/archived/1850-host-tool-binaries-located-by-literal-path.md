@@ -182,3 +182,89 @@ answered by `python3 scripts/check/check-host-tool-path-literals.py`.
   play_launch pin. `nros-cli-core` `launch_resolver_tests`: 10 passed,
   including a new case that an unbuilt worktree takes the STORE, never its
   parent's resolver.
+
+## Follow-up (2026-10-13)
+
+The Rust sites, the NuttX Makefile and the gate's reach — what the Fix left.
+
+**One owner per binary for "where does THIS checkout's build put it".** The
+launch resolver already had one, `model_location::launch_resolver_in_checkout`
+(the ladder's own checkout rung). `nros` had none in Rust, so
+`nros_build_paths::nros_cli_in_checkout(root)` is new — in `nros-build-paths`
+because both workspaces' consumers (`nros-cli-core`, `nros-tests`) already
+depend on it, so no edge and no lockfile moved. It is the PRODUCER's path; a
+caller that wants a CLI to run asks a ladder.
+
+Routed, by what each site asks:
+
+- **This checkout's build, nothing else → the owner.**
+  `nros-tests` `fixtures/binaries/mod.rs` (the west fixture's `tool:nros=`
+  hash — the shell stamps it with `NROS_CLI= nros_cli_bin --checkout-only
+  --root`, and the STALE message now prints the path it hashed rather than a
+  literal), `fixtures/cache_key.rs` (`nros source-stamp` of this tree), and
+  `nros-cli-core/tests/common/mod.rs::pinned_launch_resolver` (deliberately
+  checkout-only, as its doc already argued), which
+  `sizing_descriptor_model_road.rs` now calls instead of a seventh copy.
+- **A CLI to run → `nros_tests::nros_cli_bin_path`**, which was itself a
+  stale ladder: it claimed to mirror `nros_cli_bin` and still had the pre-W2d
+  order with NO checkout rung (`$NROS_CLI` → PATH → store), so in a worktree it
+  ran the parent's CLI (issue 1280's class). It now has the shell's order
+  (`$NROS_CLI` → `nros_cli_in_checkout` → PATH → store), and three
+  restatements fold onto it: `ros_env::host_nros_bin` (in-tree → PATH),
+  `tests/non_goals_grep.rs` (in-tree → `~/.nros/bin`) and
+  `process::nros_cli_path` (a private copy of the old order).
+- **A resolver to run → `launch_resolver_from`.** `nros_tests::launch_resolver_bin`
+  (the 4th ladder: a literal `is_file`) is now rungs 1-2 of the one ladder —
+  `$NROS_LAUNCH_RESOLVE`, this checkout's build — with `beside` and `store`
+  OFF on purpose. Its two callers (`launch_py_resolves_as_shipped`,
+  `multihost_partition_bake`) assert about THIS checkout's layer-2 pin; a store
+  resolver from another pin writes a model missing data rather than failing
+  (issue 0409), and the CLI's guard for that rung (`verify_resolver_pin`) is
+  not on a test's path. Same shape as `nros_cli_bin --checkout-only`.
+
+Marked, not routed — each BUILDS a synthetic checkout in a tempdir, so the
+literal is the fixture under test, and routing it through the owner would make
+the test agree with the code by construction:
+`stale_guard.rs` (`the_checkouts_own_binary_passes`), `cmd/ws.rs` (the
+worktree-never-borrows test), `orchestration/nano_ros_root.rs` (two tests),
+`nros-launcher/src/checkout.rs` (`an_in_tree_binary_answers_with_its_checkout`).
+Each carries `// host-tool-path-ok: synthetic checkout under test`.
+(`doctor.rs`'s `checkout/target/release/nros` never matched the pattern.)
+
+**NuttX `apps-external-template/Makefile` — ROUTED**: `NROS_BIN` is used (it
+runs `codegen-system`), and its restatement had drifted — no `$NROS_CLI`, the
+store ahead of PATH. It now asks `nros_cli_bin` through `$(shell bash -c '.
+"$1/scripts/build/cargo.sh" && nros_cli_bin' _ $(NROS_REPO_DIR))`, bare `nros`
+only when the resolver answers nothing. Measured with the fragment in a scratch
+makefile: this checkout's build; `/bin/true` under `NROS_CLI=/bin/true`; `nros`
+for a nonexistent root. Not measured in a NuttX build (no merge lane builds
+one).
+
+**`cmake/NanoRosCodegenCore.cmake` — left**: the literal is prose in a
+`FATAL_ERROR` remedy (`<this tree>/packages/cli/target/release/nros`), a path
+for a human to type, and computes nothing.
+
+**`.github/` — re-checked per site, all left.** Every literal sits in the step
+that BUILDS the binary: the `actions/cache` `path:` lists (YAML data, no shell
+to ask), the `source-stamp` assertion right after `cargo build` (which
+`check-ci-cli-from-source` requires VERBATIM — substituting it fails that
+gate), the `$GITHUB_PATH` line, `post-submit.yml`'s `nros setup` in the same
+build step, and `release-nros.yml`'s staging (`cp …/nros "$stage/bin/nros"`)
+and record/notes steps, whose subject is exactly the binary this job built —
+a resolver honouring `$NROS_CLI` would be a wrong answer there, and none of it
+is verifiable off CI. **`activate.*` — left**: they put the in-tree CLI on
+PATH, run before any CLI can be asked, and `activate.fish` cannot source the
+bash resolver.
+
+**Gate.** `check-host-tool-path-literals` now reads every `*.rs` under
+`packages/` (comments stripped by `scripts/lib/comments.py`; the marker read
+from the raw line or the one above). 18 self-test cases (7 new Rust: three
+positives incl. a string-literal message and a two-line join, a doc comment, a
+trailing comment, a marked synthetic checkout, an owner call). Negative
+control on the real tree: restoring the literal in `cache_key.rs` fails it
+naming `cache_key.rs:520`; deleting one synthetic-checkout marker fails it
+naming `checkout.rs:201`. Not matched, documented in the gate: split spellings
+(`.join("target/release")` beside a name constant), the shape both owners use.
+
+Sweep: `git grep -n 'target/release/nros\b\|target/release/nros-launch-resolve' -- 'packages/**/*.rs'`,
+now answered by `python3 scripts/check/check-host-tool-path-literals.py`.

@@ -1744,24 +1744,11 @@ pub fn require_cmake() {
     }
 }
 
-/// Resolve the `nros` CLI path: `$NROS_CLI` → `PATH` (incl in-tree
-/// `packages/cli/target/release/` via `activate.sh`) → `~/.nros/bin/nros`
-/// (transitional fallback).
-///
-/// Mirrors the shell `nros_cli_bin` helper in `scripts/build/cargo.sh`.
+/// Resolve the `nros` CLI path through the one test-side ladder,
+/// [`crate::nros_cli_bin_path`]; with nothing found, the store front, so the
+/// caller's spawn fails naming a path rather than a bare `nros`.
 fn nros_cli_path() -> std::path::PathBuf {
-    if let Ok(p) = std::env::var("NROS_CLI") {
-        return std::path::PathBuf::from(p);
-    }
-    if let Ok(out) = Command::new("sh").args(["-c", "command -v nros"]).output()
-        && out.status.success()
-    {
-        let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        if !s.is_empty() {
-            return std::path::PathBuf::from(s);
-        }
-    }
-    crate::store_root().join("bin/nros")
+    crate::nros_cli_bin_path().unwrap_or_else(|| crate::store_root().join("bin/nros"))
 }
 
 /// Check whether the installed `nros` CLI exposes the `nros sync` verb.

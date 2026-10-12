@@ -61,10 +61,11 @@ fn repo_root() -> PathBuf {
 /// `nros_orchestration_ir::model_location::launch_resolver_bin()`. That ladder
 /// ($NROS_LAUNCH_RESOLVE, the owning or compiling checkout, $NROS_HOME/bin) is the right question
 /// for a test that exercises code which RESOLVES the binary; these tests run it
-/// themselves and mean the pinned in-tree build, as their headers say.
+/// themselves and mean the pinned in-tree build, as their headers say. The
+/// PATH of that build has one owner,
+/// `model_location::launch_resolver_in_checkout` (issue 1850's follow-up).
 pub fn pinned_launch_resolver() -> PathBuf {
-    let resolver =
-        repo_root().join("packages/cli/nros-launch-resolve/target/release/nros-launch-resolve");
+    let resolver = nros_orchestration_ir::model_location::launch_resolver_in_checkout(&repo_root());
     assert!(
         resolver.is_file(),
         "nros-launch-resolve not built at {} -- run `just setup-launch-resolve`",

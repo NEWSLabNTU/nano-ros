@@ -1138,10 +1138,25 @@ mod probe_ran_tests {
 /// private copy would be a second answer. (`native_main_macro_misuse` was the
 /// other caller until issue 1620 moved its compiles, and the resolve that came
 /// with them, into the build stage.)
+///
+/// Issue 1850 follow-up: this was a fourth ladder (a literal `is_file` probe).
+/// It is now rungs 1-2 of THE ladder, `model_location::launch_resolver_from` —
+/// `$NROS_LAUNCH_RESOLVE`, then this checkout's build — with the "beside the
+/// running binary" and store rungs switched OFF on purpose: every caller
+/// asserts something about THIS checkout's layer-2 pin, and a store resolver
+/// from another pin writes a model that is missing data rather than failing
+/// (issue 0409). The CLI guards that rung with `verify_resolver_pin`; a test
+/// has no such guard, so it never takes it. Same shape as the shell's
+/// `nros_cli_bin --checkout-only`.
 pub fn launch_resolver_bin() -> Option<std::path::PathBuf> {
-    let p =
-        project_root().join("packages/cli/nros-launch-resolve/target/release/nros-launch-resolve");
-    p.is_file().then_some(p)
+    use nros_orchestration_ir::model_location::{LaunchResolverLadder, launch_resolver_from};
+    let root = project_root();
+    launch_resolver_from(&LaunchResolverLadder {
+        near: Some(&root),
+        beside: None,
+        store: None,
+        ..LaunchResolverLadder::from_env()
+    })
 }
 
 /// The nano-ros store root — `nros_build_paths::store`, the one spelling
@@ -1236,13 +1251,25 @@ fn assert_store_bin_loadable(tool: &str, bin: &std::path::Path) {
 }
 
 /// Resolve the `nros` CLI binary the same way `scripts/build/cargo.sh::nros_cli_bin`
-/// does: `$NROS_CLI` (must be executable) → `nros` on `PATH` → `${NROS_HOME:-~/.nros}/bin/nros`.
-/// Returns `None` if none resolve. Used by orchestration tests that drive
-/// `nros plan` / `nros deploy` without re-implementing the lookup.
+/// does: `$NROS_CLI` (must be a file) → this checkout's build
+/// ([`nros_build_paths::nros_cli_in_checkout`]) → `nros` on `PATH` →
+/// `<store>/bin/nros`. Returns `None` if none resolve. Used by orchestration
+/// tests that drive `nros plan` / `nros deploy` without re-implementing the
+/// lookup.
+///
+/// The checkout rung comes BEFORE `PATH` (RFC-0103 D6, phase-484 W2d): a
+/// linked worktree inherits its parent shell's `PATH`, so `command -v nros`
+/// there names the PARENT checkout's binary (issue 1280's class). Until the
+/// issue-1850 follow-up this function still had the pre-W2d order and no
+/// checkout rung at all, while its doc claimed to mirror the shell.
 pub fn nros_cli_bin_path() -> Option<std::path::PathBuf> {
     if let Some(p) = std::env::var_os("NROS_CLI") {
         let pb = std::path::PathBuf::from(p);
         return pb.is_file().then_some(pb);
+    }
+    let own = nros_build_paths::nros_cli_in_checkout(&project_root());
+    if own.is_file() {
+        return Some(own);
     }
     if let Ok(out) = std::process::Command::new("sh")
         .args(["-c", "command -v nros"])

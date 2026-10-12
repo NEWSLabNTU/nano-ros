@@ -21,14 +21,27 @@ files beside its resolver, some as `${NROS_CLI:-<path>}` — rungs 1-2 of the
 resolver restated without 3-4.
 
 This refuses the spelling in CODE (comments are prose) under `just/`,
-`justfile`, `scripts/`, `tests/` and the shell under `packages/testing/`. A
-line carrying (or directly under a line carrying) `host-tool-path-ok: <why>`
-is the resolver's own definition; an allowlisted file names its reason.
+`justfile`, `scripts/`, `tests/`, the shell under `packages/testing/`, and —
+since the 2026-10-13 follow-up — every Rust file under `packages/`. A line
+carrying (or directly under a line carrying) `host-tool-path-ok: <why>` is the
+resolver's own definition, or a test that BUILDS a synthetic checkout in a
+tempdir, where the layout is the fixture under test; an allowlisted file names
+its reason.
 
-Out of scope, on purpose: `.github/` (a workflow builds the binary and caches
-its directory — the producer, before any resolver can run), `activate.*`
-(puts the in-tree CLI on PATH, so it cannot ask a CLI), and Rust (the CLI's own
-crates, which ARE the ladders).
+Rust has ONE owner per binary for "where does THIS checkout's build put it":
+`nros_build_paths::nros_cli_in_checkout` and
+`model_location::launch_resolver_in_checkout`. A Rust caller that wants a CLI
+to run asks `nros_tests::nros_cli_bin_path` (tests) or the resolver ladder
+`model_location::launch_resolver_from` / `launch_resolver_bin_near`.
+
+Out of scope, on purpose: `.github/` (every literal there sits in the step that
+builds the binary, caches its directory, asserts its source stamp or stages it
+into a release — the producer, before any resolver can run, and
+`check-ci-cli-from-source` requires the stamp line verbatim), `activate.*`
+(puts the in-tree CLI on PATH, so it cannot ask a CLI; `activate.fish` cannot
+source bash at all). Split spellings (`.join("target/release")` beside a
+binary-name constant) are not matched — the two owners themselves use that
+shape.
 
 Buildless, ~0.2 s; self-tests its matcher on every run (negative control: a
 re-added literal must fail).
@@ -71,7 +84,14 @@ ALLOWED = {
     ),
 }
 
-SCOPE = ["just", "justfile", "scripts", "tests", "packages/testing"]
+SCOPE = ["just", "justfile", "scripts", "tests", "packages"]
+
+
+def in_scope(path: str) -> bool:
+    """`packages/` is in scope for its Rust and for `packages/testing`'s shell."""
+    if not path.startswith("packages/"):
+        return True
+    return path.endswith(".rs") or (path.startswith("packages/testing/") and path.endswith(".sh"))
 
 SELF_TESTS = [
     # (text, lang, should_match)
@@ -87,6 +107,16 @@ SELF_TESTS = [
     ('x="packages/cli/target/release/nros-foo"', "sh", False),
     ('    printf x  # host-tool-path-ok: the definition\n'
      '    printf "%s" "$r/packages/cli/target/release/nros"', "sh", False),
+    # Rust (2026-10-13 follow-up).
+    ('    let cli = project_root().join("packages/cli/target/release/nros");', "rust", True),
+    ('    let r =\n        repo.join("packages/cli/nros-launch-resolve/target/release/nros-launch-resolve");',
+     "rust", True),
+    ('    eprintln!("stale: built with packages/cli/target/release/nros");', "rust", True),
+    ('/// `nros` is at `packages/cli/target/release/nros`, built by setup-cli', "rust", False),
+    ('    let x = 1; // was packages/cli/target/release/nros', "rust", False),
+    ('    // host-tool-path-ok: synthetic checkout under test\n'
+     '    let exe = checkout.join("packages/cli/target/release/nros");', "rust", False),
+    ('    let cli = nros_build_paths::nros_cli_in_checkout(&project_root());', "rust", False),
 ]
 
 
@@ -131,7 +161,7 @@ def main() -> int:
     found = []
     seen_allowed = set()
     for f in files:
-        if f.startswith("packages/testing/") and not f.endswith(".sh"):
+        if not in_scope(f):
             continue
         lang = lang_of(f)
         if lang is None:
@@ -161,6 +191,11 @@ def main() -> int:
             "\n         Python: source_locate.nros_cli_bin(checkout_only=...)"
             "\n  nros-launch-resolve: nros_launch_resolve_bin <root> (what sync runs) or"
             "\n         nros_launch_resolve_built_bin <root> (what this checkout built)"
+            "\n  Rust:  nros_build_paths::nros_cli_in_checkout / model_location::"
+            "\n         launch_resolver_in_checkout (this checkout's build), or a ladder:"
+            "\n         nros_tests::nros_cli_bin_path, model_location::launch_resolver_from."
+            "\n         A test that BUILDS a synthetic checkout marks the line"
+            "\n         `// host-tool-path-ok: synthetic checkout under test`."
         )
     if stale:
         rc = 1

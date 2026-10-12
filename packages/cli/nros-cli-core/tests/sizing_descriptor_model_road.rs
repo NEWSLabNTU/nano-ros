@@ -437,16 +437,7 @@ fn std_msgs_bound_table() -> PathBuf {
 
 /// Resolve one of the `qos_policies` fixtures into `out`, the way a build does.
 fn resolve(stem: &str, out: &Path) -> SystemModel {
-    let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .expect("repo root");
-    let resolver = repo.join("packages/cli/nros-launch-resolve/target/release/nros-launch-resolve");
-    assert!(
-        resolver.is_file(),
-        "nros-launch-resolve not built at {} -- run `just setup-launch-resolve`",
-        resolver.display()
-    );
+    let resolver = common::pinned_launch_resolver();
     let bringup = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/qos_policies");
     let model = out.join("system_model.yaml");
     let output = std::process::Command::new(&resolver)

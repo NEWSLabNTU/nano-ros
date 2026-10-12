@@ -96,6 +96,23 @@ pub fn checkout_root_of(path: &std::path::Path) -> Option<PathBuf> {
     None
 }
 
+/// Where `just setup-cli` puts the `nros` CLI inside checkout `root` — the ONE
+/// Rust spelling of that build output (issue 1850's follow-up).
+///
+/// A pure function of `root`; it says nothing about whether the file exists.
+/// This is the PRODUCER's path, the answer to "what did THIS checkout build",
+/// asked by a check that fingerprints or stamps the tree itself (a fixture's
+/// `tool:nros=` hash, the CLI's source stamp). A caller that just needs a CLI
+/// to run asks a resolver ladder instead (`nros_cli_bin` in
+/// `scripts/build/cargo.sh`; in Rust tests `nros_tests::nros_cli_bin_path`,
+/// which has this as its checkout rung). The `nros-launch-resolve` twin is
+/// `nros_orchestration_ir::model_location::launch_resolver_in_checkout`.
+#[must_use]
+pub fn nros_cli_in_checkout(root: &std::path::Path) -> PathBuf {
+    // host-tool-path-ok: this IS the definition (`setup-cli` writes here).
+    root.join("packages/cli/target/release/nros")
+}
+
 /// The issue-1280 rule, as a pure function: an inherited absolute path that
 /// belongs to a nano-ros checkout OTHER than `here` is re-rooted onto `here`;
 /// everything else is returned unchanged.

@@ -515,7 +515,9 @@ fn kconfig_files(build_root: &Path) -> Vec<(String, u64)> {
 /// not a reason to refuse.
 fn cli_source_stamp() -> Option<u64> {
     let root = project_root();
-    let bin = root.join("packages/cli/target/release/nros");
+    // This checkout's own build, never a resolver ladder: the key hashes THIS
+    // tree's sources, and only this tree's CLI embeds a stamp over them.
+    let bin = nros_build_paths::nros_cli_in_checkout(&root);
     if !bin.is_file() {
         return None;
     }
