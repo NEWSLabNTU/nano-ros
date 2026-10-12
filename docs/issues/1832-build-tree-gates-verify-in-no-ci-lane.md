@@ -22,8 +22,9 @@ fixtures, skipped both:
 [SKIPPED] sizes-header-mirrors: NOT VERIFIED — 0 built mirror(s) across 0 build dir(s); 15 Makefile-generator build dir(s) not compared
 ```
 
-- `artifact-identity-budget` reads the `mixed` workspace's fixture build dir,
-  which the tier-1 lane does not build.
+- `artifact-identity-budget` reads the `mixed` workspace's fixture build dir.
+  The tier-1 lane builds it (the native `linux`/zenoh workspace rows), but the
+  gate ran in no job after that build: host-tests' gate job builds nothing.
 - `sizes-header-mirrors` compares Ninja build dirs only. The CI lanes configure
   with the Makefile generator, so it finds 15 build dirs and compares none of
   them.
@@ -40,8 +41,9 @@ For each gate, either:
   in the gate) for the second; or
 - record why no lane can, and drop the gate's claim to be a merge guard.
 
-Then delete the gate's row from `.config/ci-check-fast-skips.txt`; the
-allowlist script fails the job until it is gone.
+`check fast` stays buildless, so the gates' rows in
+`.config/ci-check-fast-skips.txt` stay too; their reasons now name the lane
+that verifies them instead.
 
 ## Progress
 
@@ -58,3 +60,21 @@ allowlist script fails the job until it is gone.
   is left is confirming the fixture-building lane's log now reads `OK — N
   pair(s)` rather than NOT VERIFIED.
 - `artifact-identity-budget` — unchanged, still open.
+- **All three gates now run after the tier-1 build.** `run-matrix.yml`'s
+  tier-1 job has a `Build-tree gates (issue 1832)` step right after
+  `just build tier1`. It resets the skip ledger, runs `artifact-identity-budget`,
+  `sizes-header-mirrors` and the FULL `zephyr-workspace-foreign-checkout` (its
+  `--manifest-only` half already ran before the build), and fails if any of
+  them recorded a skip. After a real build each has its input, so a skip there
+  means a lost input.
+- **`zephyr-workspace-foreign-checkout`'s rule was never unverified in CI.**
+  Every invocation runs its self-test first, which builds synthetic own and
+  foreign checkouts and workspaces and requires the foreign ones to fail. The
+  check-fast skip is only about the SUBJECT: a fresh CI checkout has no Zephyr
+  workspace.
+
+## Closes when
+
+The tier-1 lane's `Build-tree gates` step has run green once. Until then the
+step is in place but unproven: on 2026-10-11 the tier-1 lane stopped in
+provisioning and never reached its build (phase-466).
