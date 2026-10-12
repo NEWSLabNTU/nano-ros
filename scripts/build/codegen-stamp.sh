@@ -61,8 +61,16 @@ source "$(dirname "${BASH_SOURCE[0]}")/codegen-fingerprint.sh"
 # Resolve the nano-ros repo root. Callers either export NROS_REPO_DIR / NROS_REPO_ROOT
 # (the same env the recipes already use for `nros sync`) or pass `$PWD` from the
 # justfile (recipes always cd to the repo root).
+#
+# Issue 1840 — a SET root is put through the one rule (`checkout-paths.sh`)
+# against the checkout this file was read from, so an inherited root naming
+# ANOTHER checkout cannot hash that checkout's sources.
+_codegen_stamp_here="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=scripts/lib/checkout-paths.sh
+. "$_codegen_stamp_here/scripts/lib/checkout-paths.sh"
 _codegen_stamp_repo_root() {
     local candidate="${NROS_REPO_DIR:-${NROS_REPO_ROOT:-${PWD:-}}}"
+    candidate="$(nros_reroot_checkout_path "$candidate" "$_codegen_stamp_here")"
     if [ -z "$candidate" ]; then
         echo "codegen-stamp: cannot resolve nano-ros repo root (NROS_REPO_DIR / NROS_REPO_ROOT / PWD all empty)" >&2
         return 1

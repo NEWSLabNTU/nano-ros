@@ -30,7 +30,12 @@
 #     vs 11), and it also catches a plain host toolchain upgrade, where stale
 #     capability probes are the same hazard.
 #
-# Both rules WIPE rather than reconfigure, because neither a pinned compiler nor
+#  3. FOREIGN CHECKOUT (issue 1840). A cache configured against ANOTHER
+#     nano-ros checkout's runtime (an inherited `nano_ros_ROOT`) keeps that
+#     checkout in every cached path and in non-path answers too. Drops
+#     `CMakeCache.txt` only; see `nros_cmake_guard_foreign_checkout`.
+#
+# Rules 1 and 2 WIPE rather than reconfigure, because neither a pinned compiler nor
 # a cached probe result can be moved by re-running cmake.
 
 # The compiler a configured build dir actually uses.
@@ -162,4 +167,37 @@ nros_cmake_guard_build_dir() {
         echo "   cached check_symbol_exists results describe the OTHER environment, issue 0400)" >&2
         rm -rf "$build_dir"
     fi
+}
+
+# Rule 3 (issue 1840) — a cache BOUND TO ANOTHER nano-ros checkout.
+#
+# `$1` is a build dir, `$2` the checkout the build belongs to. A configure run
+# with an inherited `nano_ros_ROOT` naming another checkout (a linked worktree
+# whose parent shell activated the main checkout) records that checkout across
+# the WHOLE cache — `nano_ros_DIR`, `NROS_PLATFORM_CFFI_INCLUDE`,
+# `CYCLONEDDS_SOURCE_DIR`, ~25 `_NROS_*:INTERNAL` module dirs, and non-path
+# answers its older cmake gave (the RMW under its deprecated alias, which this checkout's
+# `NanoRosDeprecatedNames.cmake` then refuses as disagreeing). `find_package`
+# never re-searches a found `nano_ros_DIR`, so a later, correct configure keeps
+# every one of them: the cache cannot converge, the same reason rules 1/2 exist.
+# The non-path entries are why the repair is the CACHE and not a list of
+# `-U` names — they are not attributable to a checkout one by one.
+#
+# "Another checkout" is the ONE rule (`checkout-paths.sh`), applied to every
+# absolute value: an out-of-tree SDK, the system, the store, and this checkout
+# are all kept. Only `CMakeCache.txt` goes — objects and `.ninja_log` stay, so
+# ninja recompiles exactly what the reconfigure changed.
+nros_cmake_guard_foreign_checkout() {
+    local build_dir="$1" here="$2" cache="$1/CMakeCache.txt"
+    [ -f "$cache" ] && [ -n "$here" ] || return 0
+    local name value first="" n=0
+    while IFS=$'\t' read -r name value; do
+        [ "$(nros_reroot_checkout_path "$value" "$here")" = "$value" ] && continue
+        n=$((n + 1))
+        [ -n "$first" ] || first="$name=$value"
+    done < <(sed -n 's/^\([A-Za-z_][^:=]*\):[A-Z]*=\(\/.*\)$/\1\t\2/p' "$cache" | sort -u -t$'\t' -k2,2)
+    [ "$n" -gt 0 ] || return 0
+    echo "  (cache bound to another nano-ros checkout: $n value(s), first $first —" >&2
+    echo "   dropping $cache so it reconfigures against $here; issue 1840)" >&2
+    rm -f "$cache"
 }

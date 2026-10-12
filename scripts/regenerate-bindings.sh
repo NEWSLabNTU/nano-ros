@@ -6,7 +6,11 @@ source scripts/build/generate-rust-incremental.sh
 
 NROS="$(nros_cli_bin)"
 # `nros sync` resolves the nano-ros runtime path-deps via NROS_REPO_DIR.
-export NROS_REPO_DIR="${NROS_REPO_DIR:-$PWD}"
+# Issue 1840 — an inherited value naming ANOTHER checkout is re-rooted onto
+# this one by the one rule; an out-of-tree root is kept.
+. scripts/lib/checkout-paths.sh
+NROS_REPO_DIR="$(nros_reroot_checkout_path "${NROS_REPO_DIR:-$PWD}" "$PWD")"
+export NROS_REPO_DIR
 # Codegen only EMITS message structs — its output does not depend on the runtime
 # `nros-core` ABI, so bypass the CLI-vs-workspace ABI guard (phase-265
 # `abi_guard.rs`) here, exactly as `scripts/ci/dep-chain-check.sh` does for the same

@@ -62,6 +62,51 @@ _nros_sdk_env_get() { eval "printf '%s' \"\${$1-}\""; }
 #
 # A list that must be kept in step by hand is the mirror-drift class CLAUDE.md
 # names; the fix is to stop having a second list.
+# The names activation deliberately does NOT export, as a `|`-delimited set
+# (`|A|B|…|`). The list itself has ONE derivation, shared with
+# `cmake-incremental.sh` (issue 1840).
+# shellcheck source=scripts/lib/unexported-env-names.sh
+. "${_nros_sdk_env_root}/scripts/lib/unexported-env-names.sh"
+_nros_sdk_env_skipped() {
+    printf '|%s' "$(nros_unexported_env_names "$_nros_sdk_env_root" | tr '\n' '|')"
+}
+
+# Issue 1840 — a name activation SKIPS is also a name it never re-roots, so an
+# INHERITED value pointing into ANOTHER checkout used to survive activation
+# untouched: a worktree shell kept `nano_ros_ROOT=<main checkout>`, and
+# `cmake-incremental.sh` configured worktree fixtures against the main
+# checkout's runtime (`#error … codegen version the runtime does not accept`).
+#
+# Print every skipped name whose inherited value the ONE rule
+# (`checkout-paths.sh`) classes as a DIFFERENT checkout's. Those are UNSET, not
+# re-rooted: RFC-0103 D4 ("our tooling never EXPORTS a location into the user's
+# shell") and D6 (an exported `nano_ros_ROOT` and `$NROS_REPO_DIR` "retire as
+# inputs") mean the shell must not hold one at all, so a re-rooted value would
+# be activation exporting exactly what the RFC deletes. Every resolver locates
+# the tree itself once the value is gone. An inherited value OUTSIDE any
+# checkout (a real out-of-tree SDK) and one inside THIS checkout are kept —
+# the rule's other two rows.
+_nros_sdk_env_foreign_skipped() {
+    local n v
+    _nros_sdk_env_skipped | tr '|' '\n' | sed '/^$/d' |
+        while IFS= read -r n; do
+            _nros_sdk_env_is_set "$n" || continue
+            v="$(_nros_sdk_env_get "$n")"
+            [ -n "$v" ] || continue
+            if [ "$(nros_reroot_checkout_path "$v" "$_nros_sdk_env_root")" != "$v" ]; then
+                printf '%s\n' "$n"
+            fi
+        done
+}
+
+# The one line a user sees when activation drops inherited values. $1 is the
+# newline-separated name list. Never word-split: zsh does not split an
+# unquoted `$var`, which is why every list here goes through `tr`.
+_nros_sdk_env_foreign_note() {
+    printf 'nano-ros: unset inherited %s— each named another nano-ros checkout, not %s (issue 1840; RFC-0103 D4/D6)' \
+        "$(printf '%s\n' "$1" | sed '/^$/d' | tr '\n' ' ')" "${_nros_sdk_env_root}"
+}
+
 _nros_sdk_env_names() {
     # phase-484 W2c (RFC-0103 D4) — a SOURCE TREE's variable is never exported
     # into the user's shell: every resolver locates the tree itself (`nros
@@ -75,10 +120,7 @@ _nros_sdk_env_names() {
     # (`NROS_REPO_DIR`, `nano_ros_ROOT`) is never exported into a shell either:
     # the `# just-only:` line in `just/sdk-env.just` names them.
     local skip
-    skip="|$(sed -n 's/^env = "\([A-Za-z_][A-Za-z0-9_]*\)"$/\1/p' \
-        "${_nros_sdk_env_root}/nros-sdk-index.toml" | tr '\n' '|')"
-    skip="${skip}$(sed -n 's/^# just-only:[[:space:]]*//p' \
-        "${_nros_sdk_env_root}/just/sdk-env.just" | tr ' ' '\n' | sed '/^$/d' | tr '\n' '|')"
+    skip="$(_nros_sdk_env_skipped)"
     sed -n 's/^export \([A-Za-z_][A-Za-z0-9_]*\)[[:space:]]*:=.*/\1/p' \
         "${_nros_sdk_env_root}/just/sdk-env.just" |
         while IFS= read -r n; do
@@ -190,7 +232,19 @@ _nros_sdk_env_apply() {
     # `<<<` would run the loop in a subshell in some shells; a here-doc into a
     # while loop keeps the `export`s in THIS shell, which is the whole point of
     # sourcing this file.
-    local pairs
+    local pairs foreign n
+    foreign="$(_nros_sdk_env_foreign_skipped)"
+    if [ -n "$foreign" ]; then
+        while IFS= read -r n; do
+            [ -n "$n" ] && unset "$n"
+        done <<EOF
+$foreign
+EOF
+        if [ -z "${NROS_QUIET_ACTIVATE:-}" ]; then
+            _nros_sdk_env_foreign_note "$foreign" >&2
+            echo >&2
+        fi
+    fi
     pairs="$(_nros_sdk_env_pairs)" || return $?
     _nros_sdk_env_emit _nros_sdk_env_do_export <<EOF
 $pairs
@@ -205,11 +259,32 @@ _nros_sdk_env_print_fish_one() {
     printf 'set -gx %s %s\n' "$1" "$(_nros_sdk_env_fish_quote "$2")"
 }
 
+# The printers emit the same issue-1840 unsets as `_nros_sdk_env_apply`, as
+# code for the CALLER's shell — this process cannot unset anything there. The
+# note is emitted as code too, because `activate.fish` discards our stderr.
 _nros_sdk_env_print_shell() {
+    local foreign
+    foreign="$(_nros_sdk_env_foreign_skipped)"
+    if [ -n "$foreign" ]; then
+        printf '%s\n' "$foreign" | sed '/^$/d; s/^/unset /'
+        if [ -z "${NROS_QUIET_ACTIVATE:-}" ]; then
+            printf 'echo %s >&2\n' \
+                "$(_nros_sdk_env_shell_quote "$(_nros_sdk_env_foreign_note "$foreign")")"
+        fi
+    fi
     _nros_sdk_env_pairs | _nros_sdk_env_emit _nros_sdk_env_print_shell_one
 }
 
 _nros_sdk_env_print_fish() {
+    local foreign
+    foreign="$(_nros_sdk_env_foreign_skipped)"
+    if [ -n "$foreign" ]; then
+        printf '%s\n' "$foreign" | sed '/^$/d; s/^/set -e /'
+        if [ -z "${NROS_QUIET_ACTIVATE:-}" ]; then
+            printf 'echo %s >&2\n' \
+                "$(_nros_sdk_env_fish_quote "$(_nros_sdk_env_foreign_note "$foreign")")"
+        fi
+    fi
     _nros_sdk_env_pairs | _nros_sdk_env_emit _nros_sdk_env_print_fish_one
 }
 
@@ -260,6 +335,8 @@ else
         _nros_sdk_env_dump _nros_sdk_env_pairs _nros_sdk_env_emit \
         _nros_sdk_env_do_export _nros_sdk_env_print_shell_one _nros_sdk_env_print_fish_one \
         _nros_sdk_env_is_set _nros_sdk_env_get \
-        _nros_sdk_env_print_fish
+        _nros_sdk_env_print_fish _nros_sdk_env_skipped \
+        _nros_sdk_env_foreign_skipped _nros_sdk_env_foreign_note \
+        nros_unexported_env_names
     unset _nros_sdk_env_script _nros_sdk_env_root _nros_sdk_env_executed
 fi

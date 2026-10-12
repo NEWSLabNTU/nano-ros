@@ -40,8 +40,12 @@ DEFCONFIG="${NUTTX_DEFCONFIG:-$PROJECT_ROOT/packages/boards/nros-board-nuttx-qem
 
 # --- Auto-resolve paths from project root if not set ---
 
-NUTTX_DIR="${NUTTX_DIR:-$PROJECT_ROOT/third-party/nuttx/nuttx}"
-NUTTX_APPS_DIR="${NUTTX_APPS_DIR:-$PROJECT_ROOT/third-party/nuttx/nuttx-apps}"
+# Issue 1840 — an inherited path naming ANOTHER checkout is re-rooted onto
+# this one (the one rule, `checkout-paths.sh`); an out-of-tree SDK is kept.
+# shellcheck source=scripts/lib/checkout-paths.sh
+. "$PROJECT_ROOT/scripts/lib/checkout-paths.sh"
+NUTTX_DIR="$(nros_reroot_checkout_path "${NUTTX_DIR:-$PROJECT_ROOT/third-party/nuttx/nuttx}" "$PROJECT_ROOT")"
+NUTTX_APPS_DIR="$(nros_reroot_checkout_path "${NUTTX_APPS_DIR:-$PROJECT_ROOT/third-party/nuttx/nuttx-apps}" "$PROJECT_ROOT")"
 
 # --- Validate environment ---
 

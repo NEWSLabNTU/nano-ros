@@ -225,8 +225,12 @@ export NROS_METADATA_PROBE_CACHE="${NROS_METADATA_PROBE_CACHE:-0}"
 
 nros_require_sync "$nros_cli"
 
-export NROS_REPO_DIR="${NROS_REPO_DIR:-$repo_root}"
-export NROS_REPO_ROOT="${NROS_REPO_ROOT:-$repo_root}"
+# Issue 1840 — a SET value is not a trusted one: an inherited root naming
+# another checkout is re-rooted here by the one rule (`checkout-paths.sh`,
+# loaded by `cmake-incremental.sh` above); an out-of-tree root is kept.
+NROS_REPO_DIR="$(nros_reroot_checkout_path "${NROS_REPO_DIR:-$repo_root}" "$repo_root")"
+NROS_REPO_ROOT="$(nros_reroot_checkout_path "${NROS_REPO_ROOT:-$repo_root}" "$repo_root")"
+export NROS_REPO_DIR NROS_REPO_ROOT
 export NROS_CLI="$nros_cli"
 export NROS_CLI_BIN="$nros_cli"
 

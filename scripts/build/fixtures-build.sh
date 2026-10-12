@@ -325,9 +325,13 @@ if [ "${#cmake_records[@]}" -gt 0 ]; then
     # to ship too. Without them the leaf dies
     # "nros_cmake_toolchain_resolved_cc: command not found", which is where the
     # NuttX C rows failed the whole tier-2 fixture build.
+    # Issue 1840 added the root resolver and the foreign-checkout cache rule;
+    # the two `checkout-paths.sh` helpers they call ship from that file's own
+    # `export -f`.
     export -f nros_fixture_build_cmake nros_cmake_configure_if_needed \
         nros_cmake_guard_build_dir \
-        nros_cmake_toolchain_resolved_cc nros_cmake_dir_cc
+        nros_cmake_toolchain_resolved_cc nros_cmake_dir_cc \
+        nros_cmake_resolve_nano_ros_root nros_cmake_guard_foreign_checkout
     run nros_fixture_build_cmake
 fi
 
