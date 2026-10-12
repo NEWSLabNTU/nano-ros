@@ -1,12 +1,12 @@
 ---
 id: 1838
 title: "NuttX Rust e2e images fail `Executor::open` with `ConnectionFailed`; the C and C++ images on the same lane connect"
-status: open
+status: resolved
 type: bug
 area: [nuttx, zenoh, testing]
 severity: high
 found: 2026-10-12
-related: [1811]
+related: [1811, 1836]
 ---
 
 ## Measured
@@ -71,3 +71,21 @@ Build one Rust NuttX fixture (`listener`) at `90159b5d9e` and at
 `ba86ca6cf5`, then diff the locator and network constants each one embeds
 (`strings` on the ELF, or the `nros_config_generated.h` and `zpico` config
 used by the build) before bisecting.
+
+## Resolution: a duplicate of issue 1836
+
+Issue 1836 found the cause in parallel and fixed it in `a974d3f13c`.
+`nros-board-nuttx` read only the build-time `NROS_LOCATOR` and never applied
+the image's `nros::main!` deploy overlay. The board's empty default therefore
+won, `_z_open` saw no connect key, and the session failed to open before it
+sent a single packet. The C and C++ images carry their locator by another
+road, which is why only Rust failed. Phase-484 W4e had dropped the NuttX
+rows' env copy of the locator, and that is what exposed the bug.
+
+The suspect list above was wrong. The W5a knob commits and `f039374550` are
+not the cause.
+
+Verified by the dispatched nightly 38251102237 on `main` (`199f34afbd`).
+The `nuttx` job's `Test / e2e (nuttx)` ran 9 tests and all 9 passed,
+including all three Rust cells that failed here:
+`test_rtos_{action,pubsub,service}_e2e::platform_2_Platform__Nuttx::lang_1_Lang__Rust`.
