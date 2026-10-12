@@ -69,7 +69,7 @@ pub mod vocabulary;
 use std::path::{Path, PathBuf};
 
 pub use fact::Fact;
-pub use render::{portability_violation, render};
+pub use render::{portability_violation, render, states_any_fact};
 pub use schema::{Endpoint, Image, Meta, Params, Policy, SizingDescriptor, Target, Types};
 pub use vocabulary::{
     Basis, CapacityNeed, Durability, EndpointKind, History, ParamStore, RegistrationPath,
@@ -756,6 +756,30 @@ fn from_env_value_emitting(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// RFC-0100 2026-10-10 (phase-486 W4) -- no stated fact, no file.
+    #[test]
+    fn a_descriptor_states_a_fact_only_outside_meta_and_refusals() {
+        let bare = SizingDescriptor::new("e", Status::Refused, Basis::Closure);
+        assert!(!states_any_fact(&bare), "meta alone states nothing");
+        let mut refused_only = bare.clone();
+        refused_only
+            .meta
+            .refuse("undeclared_endpoints", "no wiring");
+        refused_only.image.refuse("node_count", "nothing observed");
+        assert!(
+            !states_any_fact(&refused_only),
+            "a refusal is not a statement"
+        );
+        let mut with_row = bare.clone();
+        with_row
+            .endpoints
+            .push(Endpoint::new(EndpointKind::Publisher, "p/msg/T", "/t"));
+        assert!(states_any_fact(&with_row), "an endpoint row is a statement");
+        let mut with_image = bare.clone();
+        with_image.image.set_subscription_entities(Some(0));
+        assert!(states_any_fact(&with_image), "zero is a stated demand (D7)");
+    }
 
     /// Issue 1595 -- the payload classes over a descriptor's subscription rows.
     fn subs_desc(bounds: &[Option<usize>], entities: Option<usize>) -> SizingDescriptor {

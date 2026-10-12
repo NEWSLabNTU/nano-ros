@@ -2465,8 +2465,6 @@ fn write_model_descriptor(
         desc.meta.set_composed_entries(rt.entries.to_vec());
         refuse_conflicts(&mut desc, rt.conflicts);
     }
-    let body = nros_sizing_descriptor::render(&desc);
-
     // Issue 0320, the same rule the leaf road holds to and for the same reason:
     // two checkouts of one tree at different paths must render identical bytes,
     // or every freshness comparison against this file is a lie. The directories
@@ -2480,20 +2478,50 @@ fn write_model_descriptor(
     if let Some(rt) = runtime {
         roots.extend(rt.model_paths.iter().filter_map(|p| p.parent()));
     }
-    if let Some(why) = nros_sizing_descriptor::portability_violation(&body, &roots) {
-        return Err(eyre::eyre!("{why}"));
-    }
-
     let path = match runtime {
         Some(_) => nros_sizing_descriptor::runtime_descriptor_path(img.build_dir),
         None => nros_sizing_descriptor::descriptor_path(img.build_dir, img.entry),
     };
+    // A composed inventory always states image facts, so "nothing stated" here
+    // is not a normal state; `persist` has already removed a stale file.
+    persist(desc, path, &roots)?.ok_or_else(|| {
+        eyre::eyre!(
+            "the sizing descriptor for `{}` states no fact, so none is written (RFC-0100, \
+             2026-10-10 ruling)",
+            img.entry
+        )
+    })
+}
+
+/// RFC-0100's 2026-10-10 ruling (phase-486 W4) — the ONE write every model
+/// producer goes through. **No stated fact ⇒ no file**
+/// ([`nros_sizing_descriptor::states_any_fact`]): a descriptor that states
+/// something is written (portability-checked, atomically); one that states
+/// nothing is not, and a stale file at `path` is DELETED, because the cmake
+/// side reads whatever sits there (measured: a removed `param_services` left
+/// the 369,992-byte executor in place until that deletion existed).
+fn persist(
+    desc: SizingDescriptor,
+    path: std::path::PathBuf,
+    roots: &[&std::path::Path],
+) -> eyre::Result<Option<WrittenDescriptor>> {
+    if !nros_sizing_descriptor::states_any_fact(&desc) {
+        if path.exists() {
+            std::fs::remove_file(&path)
+                .map_err(|e| eyre::eyre!("removing the stale `{}`: {e}", path.display()))?;
+        }
+        return Ok(None);
+    }
+    let body = nros_sizing_descriptor::render(&desc);
+    if let Some(why) = nros_sizing_descriptor::portability_violation(&body, roots) {
+        return Err(eyre::eyre!("{why}"));
+    }
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| eyre::eyre!("create `{}`: {e}", dir.display()))?;
     }
     crate::atomic_file::atomic_write(&path, &body)
         .map_err(|e| eyre::eyre!("write `{}`: {e}", path.display()))?;
-    Ok(WrittenDescriptor { path, desc })
+    Ok(Some(WrittenDescriptor { path, desc }))
 }
 
 /// Issue 1706 -- an image whose model describes NO wiring, as far as the
@@ -2542,48 +2570,32 @@ pub fn write_store_only(s: &StoreOnly<'_>) -> eyre::Result<Option<WrittenDescrip
         infra: Some(s.infra),
         ..DescriptorInputs::default()
     };
-    let params = param_facts(&inputs);
     let path = match s.runtime_entries {
         Some(_) => nros_sizing_descriptor::runtime_descriptor_path(s.build_dir),
         None => nros_sizing_descriptor::descriptor_path(s.build_dir, s.entry),
     };
-    if !params.implies_store() {
-        // No contract and no store: NO FILE -- and that includes one an earlier
-        // configure left behind. The cmake side reads whatever sits at this
-        // path (`nros_sizing_descriptor_read`), so a stale store-only file
-        // would keep carving a store the bringup no longer declares, and a
-        // stale full one would size from a contract that was deleted. MEASURED:
-        // removing `param_services` left the 369,992-byte executor in place
-        // until this removal. The runtime write deletes its stale file for the
-        // same reason.
-        if path.exists() {
-            std::fs::remove_file(&path)
-                .map_err(|e| eyre::eyre!("removing the stale `{}`: {e}", path.display()))?;
-        }
-        return Ok(None);
-    }
     let mut desc = SizingDescriptor::new(s.entry, Status::Refused, Basis::Closure);
     desc.meta.refuse(
         "undeclared_endpoints",
         "the model describes no wiring, so this file carries only the parameter store \
          (issue 1706) -- absence is not zero",
     );
-    desc.params = params;
+    // phase-486 W4 — no longer a special branch: the general rule decides
+    // ([`persist`]). With no wiring, `[params]` is the only section that can
+    // state anything, and `store = "none"` is the default every consumer
+    // already takes when the field is absent, so a store-less image leaves the
+    // section absent rather than stating the default -- which keeps it at NO
+    // FILE, byte for byte what the special branch produced.
+    let params = param_facts(&inputs);
+    if params.implies_store() {
+        desc.params = params;
+    }
     if let Some(entries) = s.runtime_entries {
         desc.meta.set_composed_entries(entries.to_vec());
     }
-    let body = nros_sizing_descriptor::render(&desc);
     let mut roots = vec![s.build_dir];
     roots.extend_from_slice(s.roots);
-    if let Some(why) = nros_sizing_descriptor::portability_violation(&body, &roots) {
-        return Err(eyre::eyre!("{why}"));
-    }
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| eyre::eyre!("create `{}`: {e}", dir.display()))?;
-    }
-    crate::atomic_file::atomic_write(&path, &body)
-        .map_err(|e| eyre::eyre!("write `{}`: {e}", path.display()))?;
-    Ok(Some(WrittenDescriptor { path, desc }))
+    persist(desc, path, &roots)
 }
 
 /// What [`write_for_leaf`] produced: the artifact, and the descriptor itself.
@@ -4940,6 +4952,43 @@ execution:
         let seeded = store_model("", "rate: 5");
         assert_eq!(store(&seeded, false), Some(ParamStore::LaunchSeed));
         assert!(leaf_store_infra(None, true).is_none());
+    }
+
+    /// phase-486 W2/W4 -- the switch is PER IMAGE. One bringup, two images,
+    /// `param_services` stated on `a` only: `a` gets a store descriptor (which
+    /// is what makes the executor carve `IMPLIED_STORE_SLOTS`), `b` gets no
+    /// file, and a stale `b` file is deleted by the same rule.
+    #[test]
+    fn a_per_image_switch_builds_the_store_in_that_image_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let model = store_model("", "");
+        let mut loaded = nros_orchestration_ir::overlay::LoadedModel::bare(model.clone());
+        loaded
+            .overlay
+            .images
+            .insert("a".into(), vec!["param_services".into()]);
+        let write = |entry: &str| {
+            write_store_only(&StoreOnly {
+                build_dir: dir.path(),
+                entry,
+                params: &ParamDeclarations::from_model(&model),
+                infra: InfraServices::from_model(&loaded, Some(entry)),
+                runtime_entries: None,
+                roots: &[],
+            })
+            .unwrap()
+        };
+        let a = write("a").expect("image a states a store");
+        assert_eq!(
+            a.desc.params.store().stated(),
+            Some(&ParamStore::ParamServices)
+        );
+        assert!(a.desc.params.implies_store());
+        let b_path = nros_sizing_descriptor::descriptor_path(dir.path(), "b");
+        std::fs::create_dir_all(b_path.parent().unwrap()).unwrap();
+        std::fs::write(&b_path, "stale").unwrap();
+        assert!(write("b").is_none(), "image b states nothing");
+        assert!(!b_path.exists(), "and its stale file is gone");
     }
 
     /// Issue 1706 -- a model with NO wiring still says whether the image builds

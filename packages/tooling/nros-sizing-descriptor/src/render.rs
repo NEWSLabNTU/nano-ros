@@ -58,6 +58,31 @@ const HEADER: &str = "\
 ///
 /// Portability is the producer's to assert — see [`portability_violation`] —
 /// because only the producer knows which directories it read from.
+/// RFC-0100's 2026-10-10 ruling (phase-486 W4) — does `desc` state a fact?
+///
+/// **No stated fact ⇒ no file.** A fact is stated when some section other than
+/// `[meta]` carries a value: an endpoint row, or a key of `[target]`, `[image]`,
+/// `[types]`, `[params]` or `[policy]` that is not its `refused` table. A
+/// refusal is not a statement: a descriptor whose every section is absent or
+/// refused moves the `[meta] basis` every consumer guards on in order to say
+/// nothing, so it is not written.
+///
+/// Read off the RENDERED file, not the struct, so the answer is about exactly
+/// the bytes a consumer would read and a new section cannot be forgotten here.
+pub fn states_any_fact(desc: &SizingDescriptor) -> bool {
+    let Ok(doc) = render(desc).parse::<toml::Table>() else {
+        // A render that does not parse is a bug the consumer would also hit;
+        // writing it is the louder failure.
+        return true;
+    };
+    doc.iter().any(|(k, v)| match (k.as_str(), v) {
+        ("schema_version" | "meta", _) => false,
+        ("endpoint", toml::Value::Array(rows)) => !rows.is_empty(),
+        (_, toml::Value::Table(t)) => t.keys().any(|f| f != "refused"),
+        _ => true,
+    })
+}
+
 pub fn render(desc: &SizingDescriptor) -> String {
     let mut out = String::from(HEADER);
     out.push('\n');

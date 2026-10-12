@@ -1166,7 +1166,7 @@ are `ByDesign` rows in `check-knob-single-reader`, citing D4.
 ### Ruling, 2026-10-09 — the parameter store earns a file of its own (issue 1706)
 
 *Superseded by the [2026-10-10 ruling](#ruling-2026-10-10--a-stated-fact-earns-a-file-whatever-it-came-from)
-once phase-486 W4 lands; kept as the record of why the store got a file.*
+(phase-486 W4 landed 2026-10-12); kept as the record of why the store got a file.*
 
 `[params] store` (`declared` / `param_services` / `launch_seed` / `none`) says
 whether the image BUILDS a parameter store, which since phase-382 W3' decides
@@ -1204,8 +1204,9 @@ entity fact ⇒ no file" stands for everything else.
 
 ### Ruling, 2026-10-10 — a stated fact earns a file, whatever it came from
 
-**Takes effect when phase-486 W4 lands; until then the 2026-10-09 ruling above
-describes the code.** RFC-0060's
+**In effect since phase-486 W4 (2026-10-12):** `nros_sizing_descriptor::states_any_fact`
+is the predicate, read off the rendered file, and every model producer writes
+through one `persist` that writes or deletes by it. RFC-0060's
 [2026-10-10 amendment](0060-launch-toolchain-three-layers.md#amendment-2026-10-10--what-the-systemmodel-may-carry-and-where-nano-ross-own-facts-go)
 moves nano-ros's capability switches out of the SystemModel into a nano-ros
 overlay (`nros.toml`, written beside the model by `nros sync`). The 2026-10-09

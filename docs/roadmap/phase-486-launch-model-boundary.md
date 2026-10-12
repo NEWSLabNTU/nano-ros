@@ -1,6 +1,6 @@
 # Phase 486 — the launch model carries what every realizer reads; nano-ros's own facts move to an overlay
 
-**Status (2026-10-12). W0–W3 LANDED; W5 landed in play_launch (`ca7eb1a`, its phase 86 W1–W4) and W6 in rlm (`v0.1.55`); W4 and W7–W9 open. Design revised 2026-10-12 (below) after re-reading rlm and play_launch `main`.** Implements RFC-0060's
+**Status (2026-10-12). W0–W4 LANDED; W5 landed in play_launch (`ca7eb1a`, its phase 86 W1–W4) and W6 in rlm (`v0.1.55`); W7–W9 open. Design revised 2026-10-12 (below) after re-reading rlm and play_launch `main`.** Implements RFC-0060's
 [2026-10-10 amendment](../design/0060-launch-toolchain-three-layers.md#amendment-2026-10-10--what-the-systemmodel-may-carry-and-where-nano-ross-own-facts-go)
 and RFC-0100's
 [2026-10-10 ruling](../design/0100-rmw-agnostic-sizing-model.md#ruling-2026-10-10--a-stated-fact-earns-a-file-whatever-it-came-from).
@@ -311,6 +311,31 @@ pointing one reader back at an empty model field turns a test red.
 `params:`) still carves 32 slots at a 640 KiB heap and delivers. A
 parameter-less image is byte-identical. Stale-file deletion still works, so a
 removed switch stops the carving on an incremental build.
+
+### W4 result (2026-10-12)
+
+- **One rule, one write.** `nros_sizing_descriptor::states_any_fact` answers
+  "does this descriptor state a fact" off the RENDERED file: an endpoint row,
+  or any key of `[target]`/`[image]`/`[types]`/`[params]`/`[policy]` other
+  than its `refused` table. `[meta]` and refusals state nothing. Every model
+  producer writes through one `persist`, which writes when a fact is stated
+  and otherwise deletes a stale file at the path.
+- **The store-only branch folded in.** `write_store_only` builds its
+  descriptor and calls `persist` like the composed road. With no wiring,
+  `[params]` is the only section that can state anything, and
+  `store = "none"` (the default every consumer takes when absent) is left
+  absent, so a store-less image stays at no file.
+- **Byte-identical, measured:** `nros ws sizing-descriptor` from the W3 CLI
+  vs the W4 CLI over every tracked model × {zenoh, cyclonedds}, single entry
+  and two-entry runtime: 156/156 cases identical (136 descriptor files).
+  The AN536 FreeRTOS Cyclone entry was not rebuilt; its descriptor input
+  path is one of those measured.
+- **Per image, measured at the descriptor:** a two-image test with
+  `param_services` on image `a` only writes `a` a `store = "param_services"`
+  descriptor (what makes the executor carve `IMPLIED_STORE_SLOTS`) and `b`
+  no file, deleting a stale `b`. Building the two images was not done.
+- Docs: RFC-0100's 2026-10-10 ruling is in effect and the 2026-10-09 one is
+  superseded; the CLAUDE.md descriptor line states the general rule.
 
 ## W5 — play_launch: the per-node lifecycle fact from the launch file (play_launch phase 86)
 
