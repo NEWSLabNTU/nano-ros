@@ -548,9 +548,18 @@ jobs:
           nros setup --system --sudo
 
       # The scopes come from the ROWS, via their platform coordinate — no list
-      # here to keep in step. `--skip-sdk` for zephyr because this image bakes
-      # it; the assertion above the loop is what keeps a scope this image cannot
-      # provision from being run as if it could.
+      # here to keep in step. The assertion above the loop is what keeps a scope
+      # this image cannot provision from being run as if it could.
+      #
+      # NOT `--skip-sdk` (issue 1811). This image bakes SDK 0.17.4, and Zephyr
+      # 3.7 pins 0.16.8 (`zephyr/SDK_VERSION`). 0.17.4 builds native_sim, which
+      # is all the nightly Zephyr jobs build. It does not build an SDK board on
+      # 3.7: picolibc's retarget locks conflict in Zephyr's own `libc-hooks.c`.
+      # This job's rows ARE SDK boards (mps2_an385), so it installs the pinned
+      # SDK, and `nros_zephyr_sdk_env` (scripts/build/zephyr-toolchain.sh) points
+      # the build at it. With `--skip-sdk` that helper found nothing, and the
+      # build fell back to 0.17.4 silently (run 38291960490). It now refuses
+      # instead.
       - name: just setup the scopes those rows need
         id: setup
         env:
@@ -573,10 +582,8 @@ jobs:
               esac
           done
           for s in $SCOPES; do
-              extra=""
-              [ "$s" = "zephyr" ] && extra="--skip-sdk"
-              echo "=== just setup $s $extra ==="
-              just setup "$s" $extra
+              echo "=== just setup $s ==="
+              just setup "$s"
           done
 
       # zephyr-sys' build.rs runs bindgen over Zephyr headers — needs libclang.so

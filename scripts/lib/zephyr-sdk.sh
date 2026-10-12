@@ -147,13 +147,27 @@ nros_zephyr_sdk_resolve() {
         [ -d "$cand" ] && { printf '%s\n' "$cand"; return 0; }
     fi
 
+    # The store and checkout arms must hold the version ASKED for, not merely
+    # exist. `nros sdk-path` answers for the `[tool.*]` entry that
+    # `NROS_ZEPHYR_VERSION` selects, not for `--version`. So a 4.4 tree asking
+    # for 1.0.1 from a shell left on the 3.7 default was handed the 0.16.8
+    # store dir (issue 1811). An SDK root states its own version in
+    # `sdk_version`; a tree without that file is accepted, as before.
     cand="$(nros_zephyr_sdk_store_dir "$version")"
-    [ -d "$cand" ] && { printf '%s\n' "$cand"; return 0; }
+    _nros_zephyr_sdk_is "$cand" "$version" && { printf '%s\n' "$cand"; return 0; }
 
     cand="$(nros_zephyr_sdk_checkout_dir "$version" "$root")"
-    [ -d "$cand" ] && { printf '%s\n' "$cand"; return 0; }
+    _nros_zephyr_sdk_is "$cand" "$version" && { printf '%s\n' "$cand"; return 0; }
 
     return 1
+}
+
+# True when <dir> is an SDK root of <version>: the directory exists and, where
+# it carries `sdk_version`, that file names <version>.
+_nros_zephyr_sdk_is() {
+    [ -d "$1" ] || return 1
+    [ -f "$1/sdk_version" ] || return 0
+    [ "$(tr -d '[:space:]' < "$1/sdk_version")" = "$2" ]
 }
 
 # Where provisioning INSTALLS — the store arm, existence-unchecked, because it

@@ -169,3 +169,47 @@ while setup reports `SDK directory: /github/home/.nros/sdk/zephyr-sdk/0.16.8/zep
 A lead, not measured: the compiler's picolibc headers may come from a different
 SDK than the one Zephyr 3.7's `libc-hooks.c` expects. Read the build's
 `Found toolchain:` line before trusting it.
+
+## The Zephyr SDK the board job builds with (live-peer 38251106285, 38291960490)
+
+The `libc-hooks.c` failure is SDK 0.17.4. A local build of
+`build-cortex-m-c-talker-zenoh` against 0.17.4 fails with exactly those errors,
+and the same row builds against the pinned 0.16.8. Zephyr 3.7's
+`FindZephyr-sdk.cmake` takes the HIGHEST registered SDK that satisfies the
+tree's minimum, and the Zephyr CI image bakes and registers 0.17.4.
+
+The first fix (PR #2050) made an SDK board name the SDK its tree pins
+(`nros_zephyr_sdk_env` reads `<zephyr>/SDK_VERSION`). Measured locally, with
+both SDKs registered under a throwaway `HOME`: with the override the build
+takes 0.16.8, and without it, 0.17.4. So the mechanism works. It still failed
+in CI (run 38291960490) for two reasons:
+
+- The live-peer board job ran `just setup zephyr --skip-sdk`, so 0.16.8 was
+  never installed (`Skipping SDK installation (--skip-sdk)` in the log).
+- When the pinned SDK was missing, the helper printed nothing, and the build
+  fell back to the registry, the very failure it was written to prevent. An
+  empty answer looked the same as success.
+
+The fix:
+
+- The board job installs the pinned SDK: no `--skip-sdk`.
+- The helper REFUSES an SDK board whose pinned SDK is not installed, naming
+  the remedy. It first accepts a registry entry of exactly the pinned version,
+  so a baked `/opt/zephyr-sdk-1.0.1` still serves 4.4. native_sim is exempt,
+  because it builds with host gcc and every SDK builds it. That is also why
+  the nightly Zephyr jobs, which build only native_sim, are green on 0.17.4.
+- Every caller tests the helper's status.
+- The resolver (`scripts/lib/zephyr-sdk.sh`) no longer hands back another
+  version's store dir. `nros sdk-path` answers for the `[tool.*]` entry that
+  `NROS_ZEPHYR_VERSION` selects, not for `--version`.
+
+Gate: `just check zephyr-sdk-env`, a hermetic self-test. It catches a
+silent fall-through, the resolver's version mix-up and a caller that ignores
+the status (each mutation measured red).
+
+Still open: the image comment "0.17.4 satisfies 3.7" is true only for boards
+that build with host gcc. Baking 0.16.8 for 3.7, as 1.0.1 is baked for 4.4,
+would save this job a download on every run.
+
+The same run also showed a router start failure in the ci-image board job:
+`rmw_zenohd ... logging system isn't initialized`. That is issue 1853.

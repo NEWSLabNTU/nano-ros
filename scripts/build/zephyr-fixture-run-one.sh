@@ -234,7 +234,9 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/zephyr-toolchain.sh"
 toolchain_env=(ZEPHYR_TOOLCHAIN_VARIANT="$(nros_zephyr_toolchain_variant "$board")")
 # issue 1811 — and WHICH SDK: the one this Zephyr tree pins, never the highest
 # the CMake registry happens to hold.
-_sdk_env="$(nros_zephyr_sdk_env "$board" "$workspace/zephyr")"
+if ! _sdk_env="$(nros_zephyr_sdk_env "$board" "$workspace/zephyr")"; then
+    die "no pinned Zephyr SDK for $board ($id); see the error above"
+fi
 [ -n "$_sdk_env" ] && toolchain_env+=("$_sdk_env")
 
 # issue 0698 follow-up — the Zephyr venv is this lane's, not the session's.

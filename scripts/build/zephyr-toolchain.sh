@@ -89,23 +89,75 @@ nros_zephyr_toolchain_variant() {
 # So an SDK board names its SDK: the version the Zephyr tree itself demands
 # (`<zephyr>/SDK_VERSION`), resolved by the one resolver
 # (`scripts/lib/zephyr-sdk.sh`, which honours a caller's
-# `ZEPHYR_SDK_INSTALL_DIR` first). Nothing resolved ⇒ nothing exported, and the
-# registry search runs as before — a host that provisioned the SDK some other
-# way still builds.
+# `ZEPHYR_SDK_INSTALL_DIR` first, at any version).
 #
+# A pinned SDK that is NOT installed is a REFUSAL for an SDK board, never a
+# fall-through. This helper first printed nothing in that case, and the registry
+# search took whatever SDK it held. The live-peer board job ran
+# `just setup zephyr --skip-sdk`, so 0.16.8 was never installed. Its
+# `mps2_an385` build took the baked 0.17.4 and died in `libc-hooks.c` exactly
+# as before, on the run that was meant to prove this fix (38291960490). An
+# empty answer looked the same as success. native_sim stays exempt: it builds
+# with host gcc, and every SDK builds it (the nightly Zephyr jobs build it on
+# the baked 0.17.4).
+#
+# nros_zephyr_sdk_registered <version>
+#
+# Prints the root of a CMake-registered Zephyr SDK whose `sdk_version` is
+# exactly <version>, or nothing. Each registry entry is a file holding the
+# SDK's `cmake/` directory (what `setup.sh -c` writes).
+nros_zephyr_sdk_registered() {
+    local want="${1:?nros_zephyr_sdk_registered: version}" entry dir root
+    for entry in "${HOME:-}"/.cmake/packages/Zephyr-sdk/*; do
+        [ -f "$entry" ] || continue
+        dir="$(head -n 1 "$entry" 2>/dev/null)" || continue
+        root="${dir%/}"
+        root="${root%/cmake}"
+        [ -f "$root/sdk_version" ] || continue
+        if [ "$(tr -d '[:space:]' < "$root/sdk_version")" = "$want" ]; then
+            printf '%s' "$root"
+            return 0
+        fi
+    done
+    return 1
+}
+
 # nros_zephyr_sdk_env <board> <zephyr tree>
 #
-# Prints `ZEPHYR_SDK_INSTALL_DIR=<sdk>` for an SDK board whose pinned SDK is
-# installed, or nothing. Written as an `env` argument so a caller can splice it
-# into the same array as the variant.
+# Prints `ZEPHYR_SDK_INSTALL_DIR=<sdk>` when the pinned SDK is installed, and
+# nothing for a board that needs no SDK. Returns 1, naming the remedy on
+# stderr, for an SDK board whose pinned SDK is missing. Written as an `env`
+# argument so a caller can splice it into the same array as the variant, and
+# a caller must test the status: `_sdk_env="$(nros_zephyr_sdk_env …)" || …`.
 nros_zephyr_sdk_env() {
     local board="${1:-}" zephyr_tree="${2:-}" want sdk
     [ "$(nros_zephyr_toolchain_variant "$board")" = "zephyr" ] || return 0
     [ -n "$zephyr_tree" ] && [ -f "$zephyr_tree/SDK_VERSION" ] || return 0
     want="$(tr -d '[:space:]' < "$zephyr_tree/SDK_VERSION")"
     [ -n "$want" ] || return 0
-    sdk="$(bash "$(dirname "${BASH_SOURCE[0]}")/../lib/zephyr-sdk.sh" --version "$want" resolve 2>/dev/null)" \
-        || return 0
-    [ -z "$sdk" ] || printf 'ZEPHYR_SDK_INSTALL_DIR=%s' "$sdk"
-    return 0
+    if sdk="$(bash "$(dirname "${BASH_SOURCE[0]}")/../lib/zephyr-sdk.sh" --version "$want" resolve 2>/dev/null)" \
+        && [ -n "$sdk" ]; then
+        printf 'ZEPHYR_SDK_INSTALL_DIR=%s' "$sdk"
+        return 0
+    fi
+    # An SDK of EXACTLY the pinned version that the CMake registry holds, wherever
+    # it was unpacked: a CI image bakes `/opt/zephyr-sdk-1.0.1` for 4.4 and
+    # registers it, and that is the pin. Only the version decides; the
+    # registry's own ordering is the defect this function exists to bypass.
+    if sdk="$(nros_zephyr_sdk_registered "$want")" && [ -n "$sdk" ]; then
+        printf 'ZEPHYR_SDK_INSTALL_DIR=%s' "$sdk"
+        return 0
+    fi
+    case "$board" in
+        native_sim | native_sim/* | native_sim*) return 0 ;;
+    esac
+    {
+        echo "error: board \`$board\` builds with the Zephyr SDK, and this tree pins SDK $want"
+        echo "       ($zephyr_tree/SDK_VERSION), which is not installed. Refusing rather than"
+        echo "       letting the build take whichever SDK the CMake registry holds: on 3.7 a"
+        echo "       newer SDK fails in Zephyr's own libc-hooks.c (issue 1811)."
+        echo "       Remedy: just setup zephyr   (without --skip-sdk), or set"
+        echo "       ZEPHYR_SDK_INSTALL_DIR to an SDK you mean to use."
+    } >&2
+    return 1
 }
