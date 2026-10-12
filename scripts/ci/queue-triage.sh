@@ -42,6 +42,11 @@ LOOKBACK="${NROS_TRIAGE_LOOKBACK:-15}"
 # LOOKBACK rows therefore samples mostly non-verdicts, and the distinct-PR count
 # the classifier needs cannot reach 2 even when a check is broken for everyone.
 FETCH=$((LOOKBACK * 5))
+# Issue 1843: restrict the history to ONE workflow. `queue-notify` sets this to
+# the workflow that ejected the PR, because a non-required workflow red for
+# everyone (`queue`'s L3, issue 1841) otherwise wins the distinct-PR count and
+# labels a genuine `gate` ejection "not your pull request".
+WORKFLOW_FILTER="${NROS_TRIAGE_WORKFLOW:-}"
 
 # Classify a set of (pr, check, conclusion) rows. Pure text in, verdict out, so
 # the judgement can be tested without a network.
@@ -72,8 +77,10 @@ classify() {
         }'
 }
 
-if [ "${1:-}" = "--selftest" ]; then
-    fails=0
+# Run on EVERY invocation, not only behind the flag (`check-gate-selftests`):
+# `queue-notify` acts on this verdict, so a broken classifier must not reach it.
+selftest() {
+    local fails=0
     t() { # t <desc> <expected-prefix> <rows>
         got="$(printf '%b' "$3" | classify | cut -f1)"
         if [ "$got" = "$2" ]; then
@@ -95,9 +102,18 @@ if [ "${1:-}" = "--selftest" ]; then
         '6\tcheck\tcancelled\n7\tcheck\tcancelled\n'
     t "running is not a verdict either" MINE \
         '6\tcheck\tfailure\n7\tcheck\trunning\n'
-    [ "$fails" -eq 0 ] || { echo "queue-triage selftest: FAILED"; exit 1; }
+    [ "$fails" -eq 0 ] || { echo "queue-triage selftest: FAILED"; return 1; }
     echo "queue-triage selftest: OK"
-    exit 0
+}
+
+if [ "${1:-}" = "--selftest" ]; then
+    selftest
+    exit $?
+fi
+
+if ! selftest >/dev/null; then
+    echo "[FAIL] queue-triage classifier selftest failed — run with --selftest" >&2
+    exit 1
 fi
 
 want_pr="${1:-}"
@@ -113,11 +129,30 @@ while IFS=$'\t' read -r rid head name concl; do
     pr="$(printf '%s' "$head" | sed -n 's#.*/pr-\([0-9][0-9]*\)-.*#\1#p')"
     [ -n "$pr" ] || pr="?"
     printf '  PR #%-4s %-34s %s\n' "$pr" "${name:0:34}" "$concl"
+    # Issue 1843: a WORKFLOW is not a check. Every `gate` failure carries the
+    # same workflow name, so counting by workflow called any two unrelated
+    # defects in two PRs "red for everyone". A failed run is expanded into its
+    # failed JOBS, and the aggregator (`CI`, which fails whenever anything does)
+    # is dropped when a more specific job failed beside it.
+    if [ "$concl" = "failure" ]; then
+        failed="$(gh api "repos/$REPO/actions/runs/$rid/jobs?per_page=100" \
+            --jq '[.jobs[] | select(.conclusion == "failure" or .conclusion == "timed_out") | .name]
+                  | (if length > 1 then map(select(. != "CI")) else . end) | .[]' \
+            2>/dev/null)" || failed=""
+        if [ -n "$failed" ]; then
+            while IFS= read -r job; do
+                printf '           %s\n' "${job:0:70}"
+                rows="${rows}${pr}	${job}	${concl}"$'\n'
+            done <<<"$failed"
+            continue
+        fi
+    fi
     rows="${rows}${pr}	${name}	${concl}"$'\n'
 done < <(
-    gh run list --event merge_group --limit "$FETCH" \
+    gh run list --repo "$REPO" --event merge_group --limit "$FETCH" \
+        ${WORKFLOW_FILTER:+--workflow "$WORKFLOW_FILTER"} \
         --json databaseId,headBranch,workflowName,conclusion \
-        --jq '.[] | [(.databaseId|tostring), .headBranch, .workflowName, (.conclusion // "running")] | @tsv' \
+        --jq '.[] | [(.databaseId|tostring), .headBranch, .workflowName, (if (.conclusion // "") == "" then "running" else .conclusion end)] | @tsv' \
         2>/dev/null
 )
 
