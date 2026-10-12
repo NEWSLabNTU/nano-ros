@@ -40,6 +40,7 @@ Gate: just check c-api-upstream-signatures
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -151,10 +152,11 @@ def render(sig: tuple[str, list[str]]) -> str:
 
 
 def write_snapshot(upstream: Path) -> int:
+    # walk-ok: an out-of-tree checkout of ros2/rcl + ros2/rclc, not this repo.
     files = [
         p
         for pkg in UPSTREAM_PACKAGES
-        for p in sorted(upstream.rglob(f"{pkg}/include/**/*.h"))
+        for p in sorted(upstream.rglob(f"{pkg}/include/**/*.h"))  # walk-ok: upstream checkout
     ]
     if not files:
         print(f"check-c-api-upstream-signatures: no {UPSTREAM_PACKAGES} headers under {upstream}",
@@ -236,7 +238,11 @@ def main(argv) -> int:
     if not self_test():
         return 1
     upstream = read_snapshot()
-    ours = harvest(sorted(OUR_HEADERS.rglob("*.h")))
+    listed = subprocess.run(
+        ["git", "-C", str(ROOT), "ls-files", "--", str(OUR_HEADERS.relative_to(ROOT))],
+        capture_output=True, text=True, check=True,
+    ).stdout.split()
+    ours = harvest(sorted(ROOT / p for p in listed if p.endswith(".h")))
     shared = set(upstream) & set(ours)
     if len(shared) < 50:
         print(f"check-c-api-upstream-signatures: only {len(shared)} shared names — the harvest "

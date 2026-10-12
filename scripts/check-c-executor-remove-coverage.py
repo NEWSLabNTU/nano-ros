@@ -58,12 +58,16 @@ GATE = "check-c-executor-remove-coverage"
 
 # `pub unsafe extern "C" fn <name>(executor: *mut rclc_executor_t, ...) -> ...`
 FFI = re.compile(
-    r'pub unsafe extern "C" fn ((?:nros|rclc)_executor_(add|remove)_[a-z0-9_]+)\s*\(\s*'
+    # phase-492 W1.b — `attach` registers too (the client / action entities
+    # whose callbacks were bound at init: `rclc_executor_attach_*`).
+    r'pub unsafe extern "C" fn ((?:nros|rclc)_executor_(add|attach|remove)_[a-z0-9_]+)\s*\(\s*'
     r"executor:\s*\*mut rclc_executor_t\s*,?",
     re.S,
 )
 # phase-492 — the entity types are `rcl_` / `rcl_action_` / `rclc_` spelled now.
-ENTITY = re.compile(r"^\*mut ((?:rcl|rclc|nros)_[a-z0-9_]+_t)$")
+# phase-492 W1.b — a remover takes `*const` (rclc's `rclc_executor_remove_*`
+# signature); a registration `*mut`. Either names the entity.
+ENTITY = re.compile(r"^\*(?:mut|const) ((?:rcl|rclc|nros)_[a-z0-9_]+_t)$")
 # Handles a verb takes that are NOT executor entities: the rclc parameter
 # server registers the parameter services and an on-set hook, not an arena
 # entry, and its `fini` undoes both (phase-491). Its verbs are NOT_AN_ENTRY rows.
@@ -146,6 +150,10 @@ class Ffi:
     def entity(self) -> str | None:
         for _, ty in self.params:
             m = ENTITY.match(ty)
+            # A registration takes its entity `*mut`; a `*const` there is
+            # context (the node). Only a remover's `*const` is the entity.
+            if m and ty.startswith("*const") and self.verb != "remove":
+                m = None
             if m and m.group(1) in NOT_ENTITY:
                 m = None
             if m and m.group(1) != "rclc_executor_t" and not m.group(1).endswith("_handle_t"):
@@ -172,7 +180,8 @@ def parse(sources: dict[str, str]) -> list[Ffi]:
     for _, text in sorted(sources.items()):
         for m in FFI.finditer(text):
             params, end = split_params(text, m.end())
-            out.append(Ffi(m.group(1), m.group(2), params, body_of(text, end)))
+            verb = "add" if m.group(2) == "attach" else m.group(2)
+            out.append(Ffi(m.group(1), verb, params, body_of(text, end)))
     return out
 
 
