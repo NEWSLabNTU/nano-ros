@@ -273,7 +273,11 @@ doctor:
     # workspace. Invoked by ABSOLUTE path, never via $PATH (issue 0285: an
     # unrelated ROS 2 `play_launch` won the PATH race and broke every platform's
     # fixture build), so this checks the file, not `command -v`.
-    nlr_bin="{{justfile_directory()}}/packages/cli/nros-launch-resolve/target/release/nros-launch-resolve"
+    # issue 1850 — THIS checkout's resolver (the producer's path), which is
+    # what the staleness walk below compares against this checkout's sources.
+    # shellcheck source=scripts/build/launch-resolve-stale.sh
+    source "{{justfile_directory()}}/scripts/build/launch-resolve-stale.sh"
+    nlr_bin="$(nros_launch_resolve_built_bin "{{justfile_directory()}}")"
     nlr_src="{{justfile_directory()}}/packages/cli/third-party/play_launch/src/ros-launch-resolve"
     if [ -x "$nlr_bin" ]; then
         # issue 0409 — existence is NOT enough. A resolver older than its sources
@@ -298,7 +302,7 @@ doctor:
             echo "          run: just setup-launch-resolve"
             fail=1
         else
-            echo "  [OK] nros-launch-resolve (packages/cli/nros-launch-resolve/target/release)"
+            echo "  [OK] nros-launch-resolve ($nlr_bin)"
         fi
     elif [ ! -f "{{justfile_directory()}}/packages/cli/third-party/play_launch/src/ros-launch-resolve/resolve/Cargo.toml" ]; then
         echo "  [MISSING] play_launch submodule — nros sync cannot resolve SystemModels"
@@ -513,11 +517,15 @@ doctor:
     done
     nros_path_status="ok"
     nros_resolved=""
-    nros_intree="{{justfile_directory()}}/packages/cli/target/release/nros"
+    # issue 1850 — strictly THIS checkout's build: `NROS_CLI=` because the
+    # question is whether PATH shadows the tree, not what an override names.
+    # shellcheck source=scripts/build/cargo.sh
+    source "{{justfile_directory()}}/scripts/build/cargo.sh"
+    nros_intree="$(NROS_CLI= nros_cli_bin --checkout-only)" || nros_intree=""
     # Canonicalise the in-tree path so we can compare against `which nros`
     # after symlink resolution (e.g. the user might have a symlink in
     # ~/.local/bin → packages/cli/target/release/nros).
-    if [ -x "$nros_intree" ]; then
+    if [ -n "$nros_intree" ] && [ -x "$nros_intree" ]; then
         nros_intree_real="$(readlink -f "$nros_intree" 2>/dev/null || echo "$nros_intree")"
     else
         nros_intree_real=""
@@ -544,7 +552,7 @@ doctor:
             # user is on the transitional / external-install path.
             :
         fi
-    elif [ -x "$nros_intree" ]; then
+    elif [ -n "$nros_intree" ] && [ -x "$nros_intree" ]; then
         nros_path_status="needs-activate"
     elif [ -x "${NROS_HOME:-$HOME/.nros}/bin/nros" ]; then
         nros_path_status="needs-path"
@@ -568,7 +576,7 @@ doctor:
             echo "         neither cargo-bin nor ~/.nros/bin is the source.)"
             fail=1
         elif [ "$nros_path_status" = "needs-activate" ]; then
-            echo "  [PATH] nros built at packages/cli/target/release/nros but not on PATH —"
+            echo "  [PATH] nros built at $nros_intree but not on PATH —"
             echo "         run: source ./activate.sh  (or direnv allow / source ./activate.fish)"
             fail=1
         elif [ "$nros_path_status" = "needs-path" ]; then

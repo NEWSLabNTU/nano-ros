@@ -55,13 +55,16 @@ for _t in cmake c++; do
     fi
 done
 
-NROS_BIN="$PROJECT_ROOT/packages/cli/target/release/nros"
-if [ ! -x "$NROS_BIN" ]; then
+# shellcheck source=scripts/build/cargo.sh
+source "$PROJECT_ROOT/scripts/build/cargo.sh"
+# issue 1850 — this checkout's CLI, or the explicit $NROS_CLI the gate passes.
+NROS_BIN="$(nros_cli_bin --checkout-only)" || NROS_BIN=""
+if [ -z "$NROS_BIN" ]; then
     fail "in-tree CLI not built at $NROS_BIN -- run \`just setup-cli\`"
     exit 1
 fi
 # Same env discipline as the sibling probe tests (issues 0363, 1280).
-export PATH="$PROJECT_ROOT/packages/cli/target/release:$PATH"
+export PATH="$(dirname "$NROS_BIN"):$PATH"
 export nano_ros_ROOT="$PROJECT_ROOT"
 export NROS_WORKSPACE="$PROJECT_ROOT"
 export NROS_REPO_DIR="$PROJECT_ROOT"

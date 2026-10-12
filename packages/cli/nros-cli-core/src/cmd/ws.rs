@@ -2493,12 +2493,14 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
 ///
 ///   1. `$NROS_LAUNCH_RESOLVE` — explicit override, the twin of `$NROS_CLI`
 ///      (packaging, CI, and tests that ship the helper elsewhere);
-///   2. a sibling of the running `nros` — the installed layout;
-///   3. `<checkout>/packages/cli/nros-launch-resolve/target/release/…`,
-///      derived by walking up from the running binary, then the same path
-///      under this binary's own SDK root — the per-checkout build, which
-///      `cargo.sh` also prefers so each worktree carries its own tools with no
-///      cross-tree skew.
+///   2. this checkout's build — the checkout owning the running binary,
+///      else the one it was compiled from — which `cargo.sh` also prefers so
+///      each worktree carries its own tools with no cross-tree skew;
+///   3. a sibling of the running `nros` — the installed layout;
+///   4. `<store>/bin/`. A store resolver from another play_launch pin is
+///      refused below (issue 0409), so this rung cannot skew silently.
+///
+/// The ladder is `model_location::launch_resolver_from` (issue 1850).
 ///
 /// issue 0409 — refuse a `nros-launch-resolve` built from a different
 /// `play_launch` checkout than this `nros`.
@@ -2608,92 +2610,15 @@ fn verify_resolver_pin(resolver: &std::path::Path) -> Result<()> {
     )
 }
 
-/// The helper is its OWN cargo workspace, so its binary is under
-/// `nros-launch-resolve/target/release/`, not beside `nros` in
-/// `packages/cli/target/release/`.
+/// `nros-launch-resolve` for this CLI — the ONE ladder,
+/// `model_location::launch_resolver_bin_for_exe` (issue 1850 folded this
+/// file's private `resolver_from` onto it). `nros locate tool
+/// nros-launch-resolve` prints the same answer for the shell.
 fn launch_resolver_path() -> Option<std::path::PathBuf> {
-    resolver_beside(&std::env::current_exe().ok()?)
-}
-
-/// The lookup itself, parameterised on the `nros` binary's own path so it can
-/// be tested without spawning anything.
-///
-/// Two locations, both derived from `exe` — never `$PATH`:
-/// 1. a sibling (installed layout: `nros` and the helper side by side);
-/// 2. `../../nros-launch-resolve/target/release/` (in-tree: the helper is its
-///    own cargo workspace, so it does NOT land in `packages/cli/target/`).
-const LAUNCH_RESOLVER: &str = "nros-launch-resolve";
-
-fn resolver_beside(exe: &std::path::Path) -> Option<std::path::PathBuf> {
-    resolver_from(
-        exe,
-        std::env::var_os("NROS_LAUNCH_RESOLVE").map(std::path::PathBuf::from),
-        nros_launcher::checkout::own_sdk_root(),
+    crate::orchestration::model_location::launch_resolver_bin_for_exe(
+        &std::env::current_exe().ok()?,
+        None,
     )
-}
-
-/// The search itself, pure in its inputs.
-///
-/// Taking the env override and the binary's own SDK root as arguments rather
-/// than reading them keeps this hermetic: the tests below would otherwise race
-/// each other through the process-wide environment, and would see the real
-/// checkout the test binary was compiled in.
-fn resolver_from(
-    exe: &std::path::Path,
-    explicit: Option<std::path::PathBuf>,
-    own_root: Option<std::path::PathBuf>,
-) -> Option<std::path::PathBuf> {
-    // 1. Explicit override, mirroring `$NROS_CLI`. A non-existent override
-    //    falls through rather than failing: the caller degrades to the
-    //    committed model, and a stale env var must not be harder to diagnose
-    //    than a missing tool.
-    if let Some(p) = explicit
-        && p.is_file()
-    {
-        return Some(p);
-    }
-
-    let dir = exe.parent()?;
-
-    // 2. Installed layout — beside the CLI we shipped.
-    let sibling = dir.join(LAUNCH_RESOLVER);
-    if sibling.is_file() {
-        return Some(sibling);
-    }
-
-    // 3. Per-checkout build, preferred by cargo.sh for the same reason: each
-    //    worktree carries its own tools, with no cross-tree skew.
-    let in_checkout = |root: &std::path::Path| {
-        root.join("packages")
-            .join("cli")
-            .join(LAUNCH_RESOLVER)
-            .join("target")
-            .join("release")
-            .join(LAUNCH_RESOLVER)
-    };
-    // issue 1641 — the RUNNING CLI's own checkout comes first. An inherited
-    // `$NROS_REPO_DIR` used to be consulted (first before, then after this),
-    // and a worktree's CLI resolved launch files with the PARENT checkout's
-    // resolver. A resolver from another layer-2 checkout writes models that
-    // are MISSING DATA rather than failing (issue 0409). RFC-0103 D6 (amended
-    // 2026-10-12) removed the variable altogether.
-    //
-    // `dir` is <repo>/packages/cli/target/release, so <repo> is four ancestors
-    // up (target, cli, packages, repo).
-    if let Some(p) = dir
-        .ancestors()
-        .nth(4)
-        .map(in_checkout)
-        .filter(|p| p.is_file())
-    {
-        return Some(p);
-    }
-    // 4. The binary's own SDK root (RFC-0103 D6, amended 2026-10-12) — for a
-    //    CLI whose target dir is outside its checkout, the checkout it was
-    //    built in.
-    own_root
-        .map(|root| in_checkout(&root))
-        .filter(|p| p.is_file())
 }
 
 /// phase-315 W1 — write one selection facade per ENTRY package.
@@ -6315,10 +6240,33 @@ mod config_include_version_tests {
 #[cfg(test)]
 mod launch_resolver_tests {
     use super::*;
+    use crate::orchestration::model_location::{
+        LAUNCH_RESOLVER, LaunchResolverLadder, launch_resolver_from,
+    };
 
     fn touch(path: &std::path::Path) {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, "#!/bin/sh\n").unwrap();
+    }
+
+    /// The ladder `nros sync` asks (`launch_resolver_bin_for_exe`), with every
+    /// input stated and NO store, so the real `~/.nros` cannot answer.
+    fn resolver_from(
+        exe: &std::path::Path,
+        explicit: Option<std::path::PathBuf>,
+        own_root: Option<std::path::PathBuf>,
+    ) -> Option<std::path::PathBuf> {
+        launch_resolver_from(&LaunchResolverLadder {
+            explicit,
+            near: Some(exe),
+            own_checkout: own_root,
+            beside: exe.parent(),
+            store: None,
+        })
+    }
+
+    fn mark_checkout(root: &std::path::Path) {
+        touch(&root.join(nros_launcher::checkout::MONOREPO_MARKER));
     }
 
     /// Installed layout: the helper sits beside the `nros` binary.
@@ -6356,6 +6304,7 @@ mod launch_resolver_tests {
             .join("release")
             .join(LAUNCH_RESOLVER);
         touch(&helper);
+        mark_checkout(root);
 
         assert_eq!(
             resolver_from(&exe, None, Some(root.to_path_buf())),
@@ -6388,6 +6337,8 @@ mod launch_resolver_tests {
         let worktree = parent.join(".claude").join("worktrees").join("x");
         touch(&in_tree(&parent));
         touch(&in_tree(&worktree));
+        mark_checkout(&parent);
+        mark_checkout(&worktree);
         let exe = worktree
             .join("packages")
             .join("cli")
@@ -6518,6 +6469,37 @@ mod launch_resolver_tests {
             None,
             "a helper reachable only via PATH must NOT be used"
         );
+    }
+
+    /// issue 1641's rule, kept by the fold (issue 1850): a checkout that has
+    /// not built its resolver falls to the STORE, never to another checkout's.
+    #[test]
+    fn an_unbuilt_checkout_takes_the_store_not_its_parent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let parent = tmp.path().join("main");
+        let worktree = parent.join(".claude").join("worktrees").join("x");
+        mark_checkout(&parent);
+        mark_checkout(&worktree);
+        let parents = parent
+            .join("packages/cli")
+            .join(LAUNCH_RESOLVER)
+            .join("target/release")
+            .join(LAUNCH_RESOLVER);
+        touch(&parents);
+        let exe = worktree.join("packages/cli/target/release/nros");
+        touch(&exe);
+        let store = tmp.path().join("store");
+        let stored = store.join("bin").join(LAUNCH_RESOLVER);
+        touch(&stored);
+
+        let got = launch_resolver_from(&LaunchResolverLadder {
+            explicit: None,
+            near: Some(&exe),
+            own_checkout: Some(parent.clone()),
+            beside: exe.parent(),
+            store: Some(store),
+        });
+        assert_eq!(got, Some(stored));
     }
 
     /// No helper anywhere is a clean `None`, so the caller degrades to the

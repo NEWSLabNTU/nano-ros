@@ -73,10 +73,16 @@ west_fixture_stamp() {
     # cannot tell them apart is how a build-only lane reads as covered (the
     # failure recorded in issue 0537). Optional so an older stamp still parses.
     local builder="${2:-}"
-    local nros_bin="$repo_root/packages/cli/target/release/nros"
+    local nros_bin
+    if ! declare -F nros_cli_bin >/dev/null; then
+        # shellcheck source=scripts/build/cargo.sh
+        source "$repo_root/scripts/build/cargo.sh"
+    fi
+    # issue 1850 — strictly this checkout's CLI (`NROS_CLI=`, as before).
+    nros_bin="$(NROS_CLI= nros_cli_bin --checkout-only --root "$repo_root")" || nros_bin=""
     {
         date -u +%Y-%m-%dT%H:%M:%SZ
-        if [ -x "$nros_bin" ]; then
+        if [ -n "$nros_bin" ]; then
             printf 'tool:nros=%s\n' "$(sha256sum "$nros_bin" | awk '{print $1}')"
         else
             printf 'tool:nros=absent\n'
@@ -317,7 +323,11 @@ while IFS= read -r record; do
     #
     # `set -e` is not in force here, but the issue-1249 shape still applies:
     # capture the status at the command, never at a later assignment.
-    _wf_cli="${NROS_CLI_BIN:-$repo_root/packages/cli/target/release/nros}"
+    if ! declare -F nros_cli_bin >/dev/null; then
+        # shellcheck source=scripts/build/cargo.sh
+        source "$repo_root/scripts/build/cargo.sh"
+    fi
+    _wf_cli="${NROS_CLI_BIN:-$(nros_cli_bin --checkout-only)}"   # issue 1850
     _wf_sync_failed=0
     _wf_bringups=0
     for _bringup in "$repo_root/$src"/*/; do

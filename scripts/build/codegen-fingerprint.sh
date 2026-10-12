@@ -40,8 +40,14 @@
 nros_codegen_fingerprint() {
     local root="${1:?usage: nros_codegen_fingerprint <repo_root> [fallback_prefix]}"
     local prefix="${2-}"
-    local bin="$root/packages/cli/target/release/nros"
-    [ -x "$bin" ] || return 1
+    local bin
+    # issue 1850 — the CLI checkout <root> built, strictly (`NROS_CLI=`, as
+    # before): never PATH, the store, or an override naming another binary.
+    if ! declare -F nros_cli_bin >/dev/null; then
+        # shellcheck source=scripts/build/cargo.sh
+        source "$(dirname "${BASH_SOURCE[0]}")/cargo.sh"
+    fi
+    bin="$(NROS_CLI= nros_cli_bin --checkout-only --root "$root")" || return 1
 
     local bin_hash cache fp
     bin_hash="$(sha256sum "$bin" | awk '{print $1}')"

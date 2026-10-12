@@ -30,10 +30,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-CRATE="packages/cli/nros-launch-resolve"
 # Honour CARGO_TARGET_DIR the way the recipe does (issue 0400): cargo writes
 # there, so a check that looks elsewhere reports on a binary nobody will run.
-BIN="${CARGO_TARGET_DIR:-$CRATE/target}/release/nros-launch-resolve"
+# One spelling of that path (issue 1850).
+# shellcheck source=scripts/build/launch-resolve-stale.sh
+. scripts/build/launch-resolve-stale.sh
+BIN="$(nros_launch_resolve_built_bin .)"
 
 # No resolver yet is a NORMAL state, not a failure — a fresh clone before
 # `just setup-launch-resolve`, and any CI job that builds no resolver. Gating on
@@ -71,13 +73,15 @@ fi
 _selftest() {
     local td stamp rc
     td="$(mktemp -d "${TMPDIR:-/tmp}/nros-lrf-selftest.XXXXXX")" || return 1
-    mkdir -p "$td/release"
-    : > "$td/release/nros-launch-resolve"
-    chmod +x "$td/release/nros-launch-resolve"
+    local tbin
+    tbin="$(CARGO_TARGET_DIR="$td" nros_launch_resolve_built_bin .)"
+    mkdir -p "$(dirname "$tbin")"
+    : > "$tbin"
+    chmod +x "$tbin"
 
     # (a) a stamp that matches the tree must read FRESH.
     stamp="$(nros_launch_resolve_stamp ".")"
-    printf '%s\n' "$stamp" > "$td/release/nros-launch-resolve.nros-source-stamp"
+    printf '%s\n' "$stamp" > "$tbin.nros-source-stamp"
     rc=0
     ( CARGO_TARGET_DIR="$td" nros_launch_resolve_stale "." ) || rc=$?
     if [ "$rc" -eq 0 ]; then
@@ -88,7 +92,7 @@ _selftest() {
 
     # (b) a stamp that does not must read STALE. This is the arm that fails if
     #     the predicate is ever made to answer "fresh" unconditionally.
-    printf 'not-the-stamp\n' > "$td/release/nros-launch-resolve.nros-source-stamp"
+    printf 'not-the-stamp\n' > "$tbin.nros-source-stamp"
     rc=0
     ( CARGO_TARGET_DIR="$td" nros_launch_resolve_stale "." ) || rc=$?
     if [ "$rc" -ne 0 ]; then

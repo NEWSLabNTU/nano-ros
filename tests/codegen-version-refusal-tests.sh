@@ -200,10 +200,10 @@ fi
 #     the Zephyr lane's arm is the same two lines. The generated .c TUs are never
 #     compiled here (they need the per-build knob header, a cargo byproduct), so
 #     the custom target names the HEADER — which is the versioned artifact.
-nros_cli=""
-for _cand in "$root/packages/cli/target/release/nros" "$(command -v nros || true)"; do
-    [ -n "$_cand" ] && [ -x "$_cand" ] && nros_cli="$_cand" && break
-done
+# The one resolver (issue 1850): $NROS_CLI, this checkout's build, PATH, store.
+# shellcheck source=scripts/build/cargo.sh
+source "$root/scripts/build/cargo.sh"
+nros_cli="$(nros_cli_bin 2>/dev/null)" || nros_cli=""
 if [ -z "$nros_cli" ] || ! command -v cmake >/dev/null; then
     echo "  SKIP  E  freshness: no in-tree \`nros\` or no cmake — cannot drive a configure" >&2
 else

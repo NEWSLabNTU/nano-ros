@@ -109,14 +109,13 @@ cd "$repo_root" || exit 2
 # shellcheck source=scripts/lib/grep-q.sh
 . "$repo_root/scripts/lib/grep-q.sh"
 
+# shellcheck source=scripts/build/cargo.sh
+. "$repo_root/scripts/build/cargo.sh"
+# The one resolver (issue 1850): $NROS_CLI, this checkout's build, PATH, store.
 nros_bin() {
-    if [ -n "${NROS_CLI:-}" ] && [ -x "${NROS_CLI}" ]; then
-        printf '%s' "$NROS_CLI"
-    elif [ -x "$repo_root/packages/cli/target/release/nros" ]; then
-        printf '%s' "$repo_root/packages/cli/target/release/nros"
-    else
-        command -v nros
-    fi
+    local b
+    b="$(nros_cli_bin 2>/dev/null)" || return 1
+    printf '%s' "$b"
 }
 
 # The `--lang` values the CLI itself declares, one per line.

@@ -44,12 +44,31 @@
 # disagrees with the sources on disk. Exit 1 (false) when it is current — or
 # when the submodule is not initialised, which `setup-launch-resolve` reports on
 # its own terms and this must not duplicate.
+# nros_launch_resolve_built_bin <repo-root>
+#
+# Where `just setup-launch-resolve` WRITES the resolver in checkout <repo-root>
+# — the PRODUCER's path, and the checkout-only answer (issue 1850): the one
+# spelling for the recipe that builds it, the staleness predicate below, and a
+# precondition probe asking "has THIS checkout built its resolver?". A CONSUMER
+# that wants the resolver that will actually run asks `nros_launch_resolve_bin`
+# (launch-resolver-identity.sh), i.e. the one ladder behind `nros locate tool`.
+#
+# `$CARGO_TARGET_DIR` is honoured because cargo writes there (issue 0400);
+# the consumer ladder deliberately does not read it (see
+# `model_location::launch_resolver_from`), so `setup-launch-resolve` warns when
+# a redirect takes the binary out of the checkout.
+nros_launch_resolve_built_bin() {
+    local root="${1:-.}"
+    # profile-literal-ok: host tool: the launch resolver's own binary
+    # host-tool-path-ok: the producer's path IS this definition (issue 1850).
+    printf '%s' "${CARGO_TARGET_DIR:-$root/packages/cli/nros-launch-resolve/target}/release/nros-launch-resolve"
+}
+
 nros_launch_resolve_stale() {
     local root="${1:-.}"
-    local crate="$root/packages/cli/nros-launch-resolve"
     local pl="$root/packages/cli/third-party/play_launch"
-    # profile-literal-ok: host tool: the launch resolver's own binary
-    local bin="${CARGO_TARGET_DIR:-$crate/target}/release/nros-launch-resolve"
+    local bin
+    bin="$(nros_launch_resolve_built_bin "$root")"
 
     [ -x "$bin" ] || return 0
     [ -d "$pl/src/ros-launch-resolve" ] || return 1

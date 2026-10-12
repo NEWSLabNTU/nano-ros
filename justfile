@@ -628,12 +628,14 @@ phase-new slug="":
 board-new *ARGS:
     #!/usr/bin/env bash
     set -e
-    # Same resolution order every other recipe uses: an explicit $NROS_CLI, then
-    # the in-tree release build. Not PATH — a stale `~/.nros/bin/nros` shadowing
-    # the in-tree CLI is the museum-binary trap `nros_resolve_cli` documents.
-    _cli="${NROS_CLI:-packages/cli/target/release/nros}"
-    if [ ! -x "$_cli" ]; then
-        echo "board-new: no nros CLI at $_cli — run \`just setup-cli\` first." >&2
+    # An explicit $NROS_CLI, then this checkout's build — `nros_cli_bin
+    # --checkout-only` (issue 1850). Not PATH — a stale `~/.nros/bin/nros`
+    # shadowing the in-tree CLI is the museum-binary trap `nros_resolve_cli`
+    # documents.
+    # shellcheck source=scripts/build/cargo.sh
+    source scripts/build/cargo.sh
+    if ! _cli="$(nros_cli_bin --checkout-only)"; then
+        echo "board-new: no nros CLI in this checkout — run \`just setup-cli\` first." >&2
         exit 1
     fi
     "$_cli" board new {{ARGS}}
@@ -791,6 +793,12 @@ setup-worktree:
     # then grew dependencies on two more that nobody added.
     mapfile -t paths < <(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' \
         -e 's/[[:space:]]*$//' .config/worktree-provisioning.txt)
+    # issue 1850 — strictly THIS checkout's CLI (`NROS_CLI=`): it provisions
+    # this checkout's store rows. Empty on a fresh clone, which is the
+    # chicken-and-egg case below ("no CLI yet").
+    # shellcheck source=scripts/build/cargo.sh
+    source scripts/build/cargo.sh
+    _cli="$(NROS_CLI= nros_cli_bin --checkout-only)" || _cli=""
     want=()
     for p in "${paths[@]}"; do
         # `git submodule status --cached` marks an uninitialised submodule with a
@@ -808,10 +816,10 @@ setup-worktree:
         # NEXT `setup-worktree` called and died on, and the order that works
         # (`setup-cli` before AND after) had to be learned by failing.
         # `source-stamp` is the freshness question `check cli-fresh` asks.
-        if [ -n "$row" ] && [ -x packages/cli/target/release/nros ] \
-            && packages/cli/target/release/nros source-stamp >/dev/null 2>&1; then
+        if [ -n "$row" ] && [ -n "$_cli" ] \
+            && "$_cli" source-stamp >/dev/null 2>&1; then
             echo "  [STORE]   $p -> nros setup --source $row"
-            packages/cli/target/release/nros setup --source "$row"
+            "$_cli" setup --source "$row"
             continue
         fi
         case "$line" in
@@ -891,9 +899,15 @@ _require-worktree-provisioning:
     # `check::launch-resolve-fresh` run first and SKIP when a binary is absent —
     # correct for a fresh clone, and the reason an absent one otherwise surfaces
     # as a `check::build` failure much later instead.
-    [ -x packages/cli/target/release/nros ] \
-        || missing+=("binary     packages/cli/target/release/nros        -> just setup-cli")
-    [ -x packages/cli/nros-launch-resolve/target/release/nros-launch-resolve ] \
+    # Both strictly THIS checkout's (issue 1850): `NROS_CLI=` and the
+    # resolver's producer path, never PATH or the store.
+    # shellcheck source=scripts/build/cargo.sh
+    source scripts/build/cargo.sh
+    # shellcheck source=scripts/build/launch-resolve-stale.sh
+    source scripts/build/launch-resolve-stale.sh
+    NROS_CLI= nros_cli_bin --checkout-only >/dev/null \
+        || missing+=("binary     nros (this checkout's CLI)              -> just setup-cli")
+    [ -x "$(nros_launch_resolve_built_bin .)" ] \
         || missing+=("binary     nros-launch-resolve                     -> just setup-launch-resolve")
     if [ "${#missing[@]}" -eq 0 ]; then
         echo "worktree-provisioning: OK (every gate-tier submodule and both binaries present)."
@@ -1039,7 +1053,12 @@ lock-update crate="" version="" dir=".":
     # `nros update --pins` settles any disagreement between roots upward and
     # regenerates the pin set; `nros update --crate <name>` is the one-step
     # form of this whole recipe for a crate.
-    "${NROS_CLI:-{{justfile_directory()}}/packages/cli/target/release/nros}" update --pins \
+    # issue 1850 — $NROS_CLI, else this checkout's CLI; never PATH.
+    # shellcheck source=scripts/build/cargo.sh
+    source "{{justfile_directory()}}/scripts/build/cargo.sh"
+    _cli="$(nros_cli_bin --checkout-only)" \
+        || { echo "[lock-update] no nros CLI in this checkout — run: just setup-cli" >&2; exit 1; }
+    "$_cli" update --pins \
         --nano-ros-path "{{justfile_directory()}}"
     echo ""
     echo "[lock-update] REVIEW THE DIFF before committing:"
@@ -3910,8 +3929,10 @@ format-cli:
     # used to be a 15-line mtime walk, i.e. a third spelling of the same
     # question, and it shipped with a bug (git's repo-root-relative paths vs
     # this recipe's `cd`) that made it silently never fire.
-    bin="{{justfile_directory()}}/packages/cli/target/release/nros"
-    if [ -x "$bin" ] && ! "$bin" source-stamp >/dev/null 2>&1; then
+    # shellcheck source=scripts/build/cargo.sh
+    source "{{justfile_directory()}}/scripts/build/cargo.sh"
+    if bin="$(NROS_CLI= nros_cli_bin --checkout-only)" \
+        && ! "$bin" source-stamp >/dev/null 2>&1; then
         echo "[format-cli] NOTE: reformatting left the built CLI stale." >&2
         echo "             Rebuild before running codegen lanes:  just setup-cli" >&2
     fi
@@ -4180,7 +4201,7 @@ build-zenoh-pico:
 # route (`scripts/bootstrap.sh` is the user front door for the same build).
 [group("maintenance")]
 install-nros-cli: setup-cli
-    @echo "nros CLI built in-tree at packages/cli/target/release/nros (Phase 218)."
+    @bash -c 'source scripts/build/cargo.sh; echo "nros CLI built in-tree at $(NROS_CLI= nros_cli_bin --checkout-only) (Phase 218)."'
 
 # Phase 218.D.1 — build the in-tree `nros` CLI sub-workspace into
 # `packages/cli/target/release/nros`. Idempotent: a no-op when the binary
@@ -4193,6 +4214,8 @@ setup-cli:
     #!/usr/bin/env bash
     set -e
     root="{{justfile_directory()}}"
+    # `nros_cli_bin` rung 2 reads the path this producer writes (issue 1850).
+    # host-tool-path-ok: the PRODUCER — where this recipe's `cargo build` writes.
     bin="$root/packages/cli/target/release/nros"
     lock="$root/packages/cli/Cargo.lock"
     # Phase 220.A.2 — emit a stale-shadow warning whenever we hand the user
@@ -4387,8 +4410,13 @@ setup-launch-resolve:
     # about a HOST binary sitting at the old path — and since that binary links
     # the host's libpython, `nros sync` inside the box then died with
     # `libpython3.14.so.1.0: cannot open shared object file`. Issue 0400.
-    # profile-literal-ok: host tool: the launch resolver's own binary
-    bin="${CARGO_TARGET_DIR:-$crate/target}/release/nros-launch-resolve"
+    # The CONSUMER ladder (`nros sync`, `nros locate tool`) deliberately does
+    # not follow the redirect (issue 1850), so a redirected build is reported
+    # below with the variable that makes it reachable.
+    # The producer's path has one spelling (issue 1850).
+    # shellcheck source=scripts/build/launch-resolve-stale.sh
+    source "$root/scripts/build/launch-resolve-stale.sh"
+    bin="$(nros_launch_resolve_built_bin "$root")"
     if [ ! -f "$crate/../third-party/play_launch/src/ros-launch-resolve/resolve/Cargo.toml" ]; then
         # issue 0409 — FAIL, do not skip. This recipe's job is to produce the
         # resolver binary; exiting 0 without producing one let `nros sync` run
@@ -4565,6 +4593,13 @@ setup-launch-resolve:
         | sed -n 's/.*play_launch \([0-9a-f]*\).*/\1/p' | head -1)"
     echo "[setup-launch-resolve] built: $bin"
     echo "                       play_launch ${_pin:-unknown}"
+    case "$bin" in
+        "$crate"/*) ;;
+        *)
+            echo "[setup-launch-resolve] NOTE: \$CARGO_TARGET_DIR moved the build out of this checkout;" >&2
+            echo "  \`nros sync\` will not look there. Export NROS_LAUNCH_RESOLVE=$bin (issue 1850)." >&2
+            ;;
+    esac
 
 # Regenerate Rust bindings in all examples and rcl-interfaces
 # Uses bundled interfaces (std_msgs, builtin_interfaces) — no ROS 2 environment required
@@ -5168,7 +5203,11 @@ _doctor-host:
     # it at `nros build`; this is the same answer at the moment someone is
     # asking whether their machine is ready, which is cheaper than at build time.
     if command -v nros >/dev/null 2>&1; then
-        in_tree="{{justfile_directory()}}/packages/cli/target/release/nros"
+        # issue 1850 — strictly THIS checkout's build (`NROS_CLI=`).
+        # shellcheck source=scripts/build/cargo.sh
+        source "{{justfile_directory()}}/scripts/build/cargo.sh"
+        in_tree="$(NROS_CLI= nros_cli_bin --checkout-only)" \
+            || in_tree="(not built — just setup-cli)"
         shadow="$(command -v nros)"
         shadow_real="$(readlink -f "$shadow" 2>/dev/null || echo "$shadow")"
         in_tree_real="$(readlink -f "$in_tree" 2>/dev/null || echo "$in_tree")"

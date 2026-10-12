@@ -18,7 +18,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-BIN="packages/cli/target/release/nros"
+# Strictly THIS checkout's binary (`NROS_CLI=`, issue 1850): the question is
+# whether the tree's own CLI matches the tree's sources.
+# shellcheck source=scripts/build/cargo.sh
+source "scripts/build/cargo.sh"
+BIN="$(NROS_CLI= nros_cli_bin --checkout-only)" || BIN=""
 
 # No in-tree binary is a normal state before `just setup-cli`, not a failure —
 # gating on it would make `check-fast` unrunnable on a fresh clone.
@@ -27,7 +31,7 @@ BIN="packages/cli/target/release/nros"
 # NROS_CHECK_SKIP_STRICT=1. One spelling: `nros_check_unverified`.
 # shellcheck source=scripts/build/check-skip.sh
 source "scripts/build/check-skip.sh"
-if [ ! -x "$BIN" ]; then
+if [ -z "$BIN" ]; then
     nros_check_unverified cli-fresh "no in-tree nros binary yet (run \`just setup-cli\`)" || exit 1
     exit 0
 fi

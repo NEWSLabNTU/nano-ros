@@ -240,6 +240,18 @@ artifact-path-literals:
 qemu-one-ladder:
     @python3 scripts/check/check-qemu-one-ladder.py
 
+# issue 1850 (RFC-0103 D4) — the in-tree `nros` and `nros-launch-resolve` are
+# each found by ONE resolver: `nros_cli_bin` (`--checkout-only` for a gate
+# precondition: this checkout's CLI or nothing, never PATH/store — issue 1280's
+# class) and `nros locate tool nros-launch-resolve` behind
+# `nros_launch_resolve_bin`. This refuses the binary's path spelled in code
+# under just/, scripts/, tests/ (comments are prose; the definitions carry a
+# `host-tool-path-ok:` marker) and reports a stale allowlist entry. Buildless,
+# ~0.2 s; self-tests its matcher (a re-added literal must fail) on each run.
+[private]
+host-tool-path-literals:
+    @python3 scripts/check/check-host-tool-path-literals.py
+
 # phase-484 W4d — a cmake board module (`cmake/board/nano-ros-board-<x>.cmake`)
 # is claimed by exactly one board descriptor's `cmake_module`, and every claim
 # names an existing file. `nros build` emits the descriptor's module rather

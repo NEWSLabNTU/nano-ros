@@ -301,6 +301,10 @@ pub fn model_rel_to_inputs(
     Some((format!("{stem}.launch.xml"), Vec::new()))
 }
 
+/// The `nros-launch-resolve` helper's file name — in a checkout, in the store's
+/// `bin/`, and beside an installed `nros`.
+pub const LAUNCH_RESOLVER: &str = "nros-launch-resolve";
+
 /// The `nros-launch-resolve` helper, by ABSOLUTE path.
 ///
 /// Never `$PATH` (issue 0285): a stale `~/.nros/bin` copy silently shadows the
@@ -331,24 +335,116 @@ pub fn launch_resolver_bin() -> Option<PathBuf> {
 /// silent cross-tree skew is the defect, and a missing resolver already has a
 /// remedy message at the caller.
 pub fn launch_resolver_bin_near(near: Option<&Path>) -> Option<PathBuf> {
-    if let Some(p) = std::env::var_os("NROS_LAUNCH_RESOLVE") {
-        let p = PathBuf::from(p);
-        if p.is_file() {
-            return Some(p);
+    launch_resolver_from(&LaunchResolverLadder {
+        near,
+        ..LaunchResolverLadder::from_env()
+    })
+}
+
+/// [`launch_resolver_bin_near`] for a caller that IS an installed binary —
+/// the `nros` CLI (issue 1850). `exe` adds the installed-layout rung (the
+/// helper shipped beside it) and anchors "this checkout" when `near` is
+/// `None`. `nros sync` and `nros locate tool nros-launch-resolve` both ask
+/// this, so the CLI, the shell (which reads `nros locate`) and a build script
+/// (which calls [`launch_resolver_bin_near`]) share ONE ladder.
+pub fn launch_resolver_bin_for_exe(exe: &Path, near: Option<&Path>) -> Option<PathBuf> {
+    launch_resolver_from(&LaunchResolverLadder {
+        near: Some(near.unwrap_or(exe)),
+        beside: exe.parent(),
+        ..LaunchResolverLadder::from_env()
+    })
+}
+
+/// The inputs of the ONE `nros-launch-resolve` ladder, stated rather than
+/// read, so the ladder is testable without the process environment (issue
+/// 1850 folded `nros-cli-core`'s `resolver_from` onto this).
+#[derive(Debug, Clone, Default)]
+pub struct LaunchResolverLadder<'a> {
+    /// `$NROS_LAUNCH_RESOLVE` — the twin of `$NROS_CLI`. A path that is not a
+    /// file falls through: a stale variable must not be harder to diagnose
+    /// than a missing tool.
+    pub explicit: Option<PathBuf>,
+    /// A path whose owning checkout is "this checkout".
+    pub near: Option<&'a Path>,
+    /// The checkout this code was compiled from — used only when `near` is in
+    /// none (or absent), never as a second chance after it.
+    pub own_checkout: Option<PathBuf>,
+    /// The directory of the running installed binary — the installed layout
+    /// ships the helper beside `nros`.
+    pub beside: Option<&'a Path>,
+    /// The store root; its `bin/` is the last rung.
+    pub store: Option<PathBuf>,
+}
+
+impl LaunchResolverLadder<'_> {
+    /// The process's own inputs: the variable, the compiled-from checkout and
+    /// the store. `near`/`beside` are the caller's.
+    pub fn from_env() -> Self {
+        Self {
+            explicit: std::env::var_os("NROS_LAUNCH_RESOLVE")
+                .filter(|v| !v.is_empty())
+                .map(PathBuf::from),
+            near: None,
+            own_checkout: nros_build_paths::checkout_root_of(Path::new(env!("CARGO_MANIFEST_DIR"))),
+            beside: None,
+            store: Some(nros_build_paths::store::root_unchecked()),
         }
     }
-    let here = near
+}
+
+/// Where `just setup-launch-resolve` puts the helper inside checkout `root`:
+/// it is its OWN cargo workspace, so it lands under
+/// `packages/cli/nros-launch-resolve/target/release/`, not beside an in-tree
+/// `nros` in `packages/cli/target/release/`.
+pub fn launch_resolver_in_checkout(root: &Path) -> PathBuf {
+    root.join("packages/cli")
+        .join(LAUNCH_RESOLVER)
+        .join("target/release")
+        .join(LAUNCH_RESOLVER)
+}
+
+/// The ladder itself, pure in its inputs:
+///
+///   1. `explicit` (`$NROS_LAUNCH_RESOLVE`);
+///   2. this checkout's build — the checkout owning `near`, else
+///      `own_checkout` (issue 1641: a worktree never borrows its parent's);
+///   3. beside the running binary — the installed layout;
+///   4. `<store>/bin/`.
+///
+/// Never `$PATH` (issue 0285). The rung `scripts/build/launch-resolver-
+/// identity.sh` used to add, `$CARGO_TARGET_DIR/release`, is deliberately NOT
+/// one: an ambient target dir is a property of a shell, not of a checkout, so
+/// it names whichever tree that shell last built (issue 0616's class), and the
+/// CLI that actually spawns the resolver never read it — an identity computed
+/// from it described a binary nobody ran.
+pub fn launch_resolver_from(l: &LaunchResolverLadder<'_>) -> Option<PathBuf> {
+    if let Some(p) = &l.explicit
+        && p.is_file()
+    {
+        return Some(p.clone());
+    }
+    let here = l
+        .near
         .map(|n| n.canonicalize().unwrap_or_else(|_| n.to_path_buf()))
         .and_then(|n| nros_build_paths::checkout_root_of(&n))
-        .or_else(|| nros_build_paths::checkout_root_of(Path::new(env!("CARGO_MANIFEST_DIR"))));
-    if let Some(h) = &here {
-        let p = h.join("packages/cli/nros-launch-resolve/target/release/nros-launch-resolve");
-        if p.is_file() {
-            return Some(p);
-        }
+        .or_else(|| l.own_checkout.clone());
+    if let Some(p) = here
+        .map(|h| launch_resolver_in_checkout(&h))
+        .filter(|p| p.is_file())
+    {
+        return Some(p);
     }
-    let p = nros_build_paths::store::root_unchecked().join("bin/nros-launch-resolve");
-    p.is_file().then_some(p)
+    if let Some(p) = l
+        .beside
+        .map(|d| d.join(LAUNCH_RESOLVER))
+        .filter(|p| p.is_file())
+    {
+        return Some(p);
+    }
+    l.store
+        .as_ref()
+        .map(|s| s.join("bin").join(LAUNCH_RESOLVER))
+        .filter(|p| p.is_file())
 }
 
 /// Where a consumer may WRITE a model it had to resolve itself, in the order

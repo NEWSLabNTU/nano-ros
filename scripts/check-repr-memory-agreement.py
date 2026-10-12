@@ -596,7 +596,9 @@ def self_test() -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--nros", default="packages/cli/target/release/nros")
+    # The recipe resolves it (`nros_cli_bin --checkout-only`, issue 1850);
+    # only `--self-test` runs without one.
+    ap.add_argument("--nros")
     ap.add_argument("--cxx", default="arm-none-eabi-g++")
     ap.add_argument("--nm", default="arm-none-eabi-nm")
     ap.add_argument("--keep", action="store_true", help="keep the probe sources for inspection")
@@ -605,6 +607,8 @@ def main() -> int:
 
     if args.self_test:
         return self_test()
+    if not args.nros:
+        ap.error("--nros is required (the recipe passes `nros_cli_bin --checkout-only`)")
     # Always, not only behind the flag (phase-472 W9): a negative control
     # nobody runs decays into a comment. Quiet on success.
     with contextlib.redirect_stdout(io.StringIO()) as _selftest_out:

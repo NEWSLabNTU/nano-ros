@@ -32,7 +32,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
-NROS="$ROOT/packages/cli/target/release/nros"
+# shellcheck source=../../../../scripts/build/cargo.sh
+. "$ROOT/scripts/build/cargo.sh"
+NROS="$(nros_cli_bin --checkout-only)" || NROS=""   # issue 1850
 MODULE="$ROOT/cmake/NanoRosProviders.cmake"
 
 # shellcheck source=../../../../scripts/build/check-skip.sh

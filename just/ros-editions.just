@@ -45,8 +45,9 @@ build-fixture distro="jazzy":
     #!/usr/bin/env bash
     set -euo pipefail
     FIX="{{_FIX}}"
-    NROS="$(command -v nros || echo "{{justfile_directory()}}/packages/cli/target/release/nros")"
-    [ -x "$NROS" ] || { echo "error: nros CLI not found — run \`just setup-cli\`" >&2; exit 1; }
+    # shellcheck source=scripts/build/cargo.sh
+    source "{{justfile_directory()}}/scripts/build/cargo.sh"
+    NROS="$(nros_cli_bin)" || { echo "error: nros CLI not found — run \`just setup-cli\`" >&2; exit 1; }
     if docker image inspect nano-ros-ros:{{distro}} >/dev/null 2>&1; then
         echo "regenerating geometry_msgs against {{distro}} defs (container)"
         docker run --rm \
@@ -105,8 +106,9 @@ build-e2e-fixtures distro="jazzy" rmw="cyclone":
     IMG="native"
     if [ "$RMW_ID" != zenoh ]; then IMG="${IMG}_${RMW_ID}"; fi
     if [ "$ED" != humble ]; then IMG="${IMG}_${ED}"; fi
-    NROS="$(command -v nros || echo "{{justfile_directory()}}/packages/cli/target/release/nros")"
-    [ -x "$NROS" ] || { echo "error: nros CLI not found — run \`just setup-cli\`" >&2; exit 1; }
+    # shellcheck source=scripts/build/cargo.sh
+    source "{{justfile_directory()}}/scripts/build/cargo.sh"
+    NROS="$(nros_cli_bin)" || { echo "error: nros CLI not found — run \`just setup-cli\`" >&2; exit 1; }
     # issue 0488 residue 2 — ONE build root per (edition, rmw), under
     # `$NROS_BUILD_ROOT`, instead of six per-leaf `target-ros-edition-*/` dirs.
     #
@@ -148,7 +150,9 @@ ci distro="jazzy":
     set -euo pipefail
     just ros_editions image {{distro}}
     just ros_editions image-check {{distro}}
-    if [ ! -x packages/cli/target/release/nros ] && ! command -v nros >/dev/null 2>&1; then
+    # shellcheck source=scripts/build/cargo.sh
+    source scripts/build/cargo.sh
+    if ! nros_cli_bin >/dev/null 2>&1; then
         echo "error: codegen lane needs the nros CLI — run \`just setup-cli\` first" >&2
         exit 1
     fi

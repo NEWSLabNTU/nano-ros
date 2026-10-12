@@ -47,8 +47,8 @@ Inside a checkout the tree's own build is the only correct binary: a released
 `nros` run against a nano-ros checkout is refused (RFC-0090 / phase-431 W1)
 and reported by `just doctor` as a shadow (W2), and it cannot stand in for the
 checkout's binary either, since `nros source-stamp` compares against the
-sources it was built from. It leaves the binary at
-packages/cli/target/release/nros; `just setup-cli` is the internal alias for
+sources it was built from. It leaves the binary in the checkout's
+packages/cli/target/release/; `just setup-cli` is the internal alias for
 the same build.
 
 USERS who only want the tool need no checkout and no cargo (phase-431 W4):
