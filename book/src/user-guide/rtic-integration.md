@@ -267,10 +267,10 @@ Either way the proc-macro reads the board from `system.toml`, resolves it
 to the `rtic` framework, and expands into a
 `#[rtic::app(device = mps2_an385_pac, dispatchers = [UARTRX0, UARTTX0])]`
 module with auto-generated `#[init]`, `__nros_spin`, and per-Node state
-slots. A single-package leaf still names the board crate's `rtic` feature
-in its own `[dependencies]`
-(`nros-board-mps2-an385 = { version = "*", features = ["rtic"] }`), because
-it is its own entry; a workspace's generated entry pulls it in for you.
+slots. A single-package leaf gets the board crate, with its `rtic` feature,
+from its generated selection package; it names only the PAC and `rtic`
+itself, because the `#[rtic::app]` expansion refers to both from the leaf's
+own crate. A workspace's generated entry pulls all of it in for you.
 
 ## `DispatchStrategy::Inline` vs `Deferred`
 
