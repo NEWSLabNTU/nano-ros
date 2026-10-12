@@ -21,7 +21,7 @@ extern crate nros_platform_cffi as _;
 fn main() {
     // Register the RMW backend the build linked (idempotent; must run before
     // the executor opens). RMW selection is build/config, never source.
-    nros_board_linux::register_linked_rmw();
+    native_rtic_talker_nros_selection::nros_board_linux::register_linked_rmw();
 
     nros_log::register_logger(&LOGGER);
     nros_log::init(nros_platform_cffi::log::default_sinks());

@@ -6368,14 +6368,19 @@ pub fn build_native_service_client() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
-/// Build native-rs-service-client-callback (cached, RFC-0041 / Phase 239)
+/// Build native-rs-service-client-callback (cached, RFC-0041 / Phase 239).
+///
+/// The leaf's zenoh build is its PLAIN row: its RMW is declared per image in
+/// `system.toml` (issue 1305), so the explicit `rmw-zenoh` feature row it had
+/// is gone, as the six per-RMW native leaves' were.
 pub fn build_native_service_client_callback() -> TestResult<&'static Path> {
     NATIVE_SERVICE_CLIENT_CALLBACK_BINARY
         .get_or_try_init(|| {
-            build_example_rmw(
+            build_example(
                 "native/rust/service-client-callback",
                 "service-client-callback",
-                Rmw::Zenoh,
+                None,
+                None,
             )
         })
         .map(|p| p.as_path())

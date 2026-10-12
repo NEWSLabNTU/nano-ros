@@ -677,26 +677,6 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         Some(d) => framework_for(d),
         None => Framework::OwnedSpin,
     };
-    // Issue 1305 — the ESP32 boot attribute through the board crate too. The
-    // attribute is `esp_hal::main`, and its expansion names
-    // `esp_hal::__macro_implementation::__entry` by a RELATIVE path whenever
-    // the calling package has no `esp-hal` dependency of its own
-    // (`proc_macro_crate::crate_name`). A leaf on its selection package has
-    // none — the board descriptor's `crate_root_deps` put it in the selection —
-    // so the name is brought into the crate root from the board's re-export,
-    // and the attribute and its expansion both resolve through it. Every other
-    // entry keeps the absolute `::esp_hal::main` of its own dependency.
-    let (esp_hal_scope_ts, esp_hal_main_attr) = if selection.is_some() {
-        (
-            quote! {
-                #[doc(hidden)]
-                use #board_crate_root::esp_hal;
-            },
-            quote! { esp_hal::main },
-        )
-    } else {
-        (quote! {}, quote! { ::esp_hal::main })
-    };
     // Issue 1381 — does an entry for this board link `std`? A `#![no_std]`
     // entry has no `std` in its crate root on ANY target, so the OwnedSpin
     // hosted scaffold (which needs `std::env` / `std::time` / `std::process`)
@@ -2302,8 +2282,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         // The Entry crate provides the panic handler (`esp-backtrace`)
         // and app descriptor (`esp_app_desc!`).
         Framework::Esp32 => quote! {
-            #esp_hal_scope_ts
-            #[#esp_hal_main_attr]
+            #[::esp_hal::main]
             fn main() -> ! {
                 let _ = __nros_esp32_entry_run();
                 #[allow(clippy::empty_loop)]
@@ -5772,27 +5751,6 @@ mod leaf_axis_tests {
             out.contains("axis_leaf_nros_selection :: nros_board_mps2_an385_freertos :: Mps2An385"),
             "{out}"
         );
-    }
-
-    /// Issue 1305 — the ESP32 boot attribute goes through the selection too:
-    /// `esp_hal` is brought into the crate root from the board's re-export, so
-    /// `#[esp_hal::main]` and the relative `esp_hal::__macro_implementation`
-    /// path its expansion names both resolve in a leaf with no `esp-hal`.
-    #[test]
-    fn a_migrated_esp32_leaf_reaches_esp_hal_through_its_selection_package() {
-        let deps = "\n[target.'cfg(target_os = \"none\")'.dependencies]\n\
-                    axis_leaf_nros_selection = { path = \"build/nros/selection\" }\n";
-        let out = expand_in("panic = \"own\"", "esp32-c3-baremetal", "", deps).unwrap();
-        assert!(
-            out.contains("use :: axis_leaf_nros_selection :: nros_board_esp32_qemu :: esp_hal"),
-            "esp_hal not brought in through the selection:\n{out}"
-        );
-        assert!(out.contains("# [esp_hal :: main]"), "{out}");
-        assert!(!out.contains("# [:: esp_hal :: main]"), "{out}");
-        // A leaf naming its own esp-hal (no selection) keeps the absolute path.
-        let out = expand_in("panic = \"own\"", "esp32-c3-baremetal", "", "").unwrap();
-        assert!(out.contains("# [:: esp_hal :: main]"), "{out}");
-        assert!(!out.contains("axis_leaf_nros_selection"), "{out}");
     }
 
     /// Negative control: a leaf that names its board crate directly (every

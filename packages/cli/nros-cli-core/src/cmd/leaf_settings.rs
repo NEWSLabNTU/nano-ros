@@ -528,6 +528,56 @@ pub fn image_ros_edition(img: &LeafImage) -> Result<rosidl_codegen::RosEdition> 
     system_toml(img)?.image_ros_edition(Some(img.image_id.as_str()))
 }
 
+/// The board crates `packages/boards/board-support.toml` marks
+/// `tier = "scaffold"` — explicitly not supported (the dormant ESP32, issue
+/// 1525). Issue 1305's walk derives its "unsupported board" exemption from
+/// here rather than naming a path.
+#[cfg(test)]
+fn scaffold_board_crates(root: &Path) -> Vec<String> {
+    let path = root.join("packages/boards/board-support.toml");
+    let doc: toml::Table = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+        .parse()
+        .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    doc.get("board")
+        .and_then(|b| b.as_array())
+        .into_iter()
+        .flatten()
+        .filter(|b| b.get("tier").and_then(|t| t.as_str()) == Some("scaffold"))
+        .filter_map(|b| b.get("crate").and_then(|c| c.as_str()).map(str::to_string))
+        .collect()
+}
+
+/// The `nros-board-*` crates a manifest names, in any dependency table
+/// (target-scoped ones included), by crate (`package = "…"` when renamed).
+/// The in-tree walk's question about a manifest with no image (issue 1305).
+#[cfg(test)]
+fn named_board_crates(doc: &toml::Table) -> Vec<String> {
+    let mut out = Vec::new();
+    for scope in std::iter::once(doc).chain(
+        doc.get("target")
+            .and_then(|t| t.as_table())
+            .into_iter()
+            .flat_map(|t| t.values().filter_map(|v| v.as_table())),
+    ) {
+        for key in ["dependencies", "build-dependencies", "dev-dependencies"] {
+            if let Some(deps) = scope.get(key).and_then(|d| d.as_table()) {
+                for (k, v) in deps {
+                    let krate = v
+                        .get("package")
+                        .and_then(|p| p.as_str())
+                        .unwrap_or(k.as_str())
+                        .replace('_', "-");
+                    if krate.starts_with("nros-board-") && !out.contains(&krate) {
+                        out.push(krate);
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
 /// Issue 1305 — a single-package Rust leaf's image-only dependencies must
 /// agree with its image's board.
 ///
@@ -1185,11 +1235,13 @@ mod board_crate_tests {
     /// reason it is not. Since phase E (2026-10-13) every entry is out of scope
     /// BY SHAPE (board code in the node, a harness-templated manifest, a lib a
     /// CMake image links, a measurement witness); no migratable class is left.
-    /// Every other in-tree cargo-road leaf — the copy-out templates' Rust
-    /// packages, the mps2 C/C++ apps on a cargo link root and the dormant ESP32
-    /// leaves included — depends on its `<pkg>_nros_selection` package and
-    /// names no board crate (enforced by [`check_board_crate_dependency`]). A
-    /// prefix matches a leaf path relative to the checkout.
+    /// Every other in-tree cargo-road leaf on a supported board — the copy-out
+    /// templates' Rust packages, the mps2 C/C++ apps on a cargo link root and
+    /// the native examples with a hand-written `main` included — depends on its
+    /// `<pkg>_nros_selection` package and names no board crate (enforced by
+    /// [`check_board_crate_dependency`]). A leaf for a `tier = "scaffold"`
+    /// board is skipped by that DERIVED property, never listed here. A prefix
+    /// matches a leaf path relative to the checkout.
     const NOT_ON_THE_SELECTION: &[(&str, &str)] = &[
         (
             "packages/testing/nros-tests/bins/in-place-subscriptions",
@@ -1242,6 +1294,12 @@ mod board_crate_tests {
         let mut on_selection = 0;
         let mut used = vec![false; NOT_ON_THE_SELECTION.len()];
         let mut stray = Vec::new();
+        // A leaf for an UNSUPPORTED board is out of scope by a DERIVED
+        // property, never by naming its path: the board registry's
+        // `tier = "scaffold"` (the dormant ESP32, issue 1525 — code kept,
+        // nothing built or migrated).
+        let scaffold = scaffold_board_crates(&repo());
+        let mut unsupported = 0;
         for rel in String::from_utf8_lossy(&out.stdout)
             .split('\0')
             .filter(|s| !s.is_empty())
@@ -1265,6 +1323,16 @@ mod board_crate_tests {
                 used[i] = true;
                 continue;
             }
+            if crate::builder::entry::macro_board_crate(&[
+                img.image_id.as_str(),
+                img.board.as_str(),
+                img.platform.as_str(),
+            ])
+            .is_some_and(|k| scaffold.contains(&k))
+            {
+                unsupported += 1;
+                continue;
+            }
             if depends_on_selection(&img.leaf, &img.package) {
                 // ...and names no board crate beside it — the refusal sync
                 // applies, asked of every migrated leaf here too.
@@ -1276,6 +1344,67 @@ mod board_crate_tests {
                 stray.push(leaf_rel);
             }
         }
+        // The walk above only reaches a leaf that HAS a `system.toml`, so a cargo
+        // package that names a board crate and declares no image at all was
+        // invisible to it — the gate's reach was narrower than its rule (issue
+        // 0196's shape; 15 `examples/native/rust/*` leaves sat there, issue 1305
+        // phase E). Every tracked `[package]` manifest under `examples/` with no
+        // `system.toml` beside it is asked here: naming a board crate makes it a
+        // stray, because a leaf with no image cannot get a selection package.
+        let out = crate::source_stamp::nros_git_command("git")
+            .args(["ls-files", "-z", "--", "examples/**/Cargo.toml"])
+            .current_dir(repo())
+            .output()
+            .expect("git ls-files");
+        let mut imageless = 0;
+        for rel in String::from_utf8_lossy(&out.stdout)
+            .split('\0')
+            .filter(|s| !s.is_empty())
+        {
+            let manifest = repo().join(rel);
+            let leaf = manifest.parent().unwrap();
+            if leaf.join("system.toml").is_file() {
+                continue;
+            }
+            let Some(doc) = std::fs::read_to_string(&manifest)
+                .ok()
+                .and_then(|t| t.parse::<toml::Table>().ok())
+            else {
+                continue;
+            };
+            if !doc.contains_key("package") {
+                continue;
+            }
+            imageless += 1;
+            let leaf_rel = Path::new(rel)
+                .parent()
+                .unwrap()
+                .to_string_lossy()
+                .to_string();
+            if let Some(i) = NOT_ON_THE_SELECTION
+                .iter()
+                .position(|(p, _)| leaf_rel.starts_with(p))
+            {
+                used[i] = true;
+                continue;
+            }
+            let boards = named_board_crates(&doc);
+            if !boards.is_empty() && boards.iter().all(|b| scaffold.contains(b)) {
+                unsupported += 1;
+                continue;
+            }
+            if !boards.is_empty() {
+                stray.push(format!(
+                    "{leaf_rel}: names `{}` and has no `system.toml` (no image, so no \
+                     selection package)",
+                    boards.join("`, `")
+                ));
+            }
+        }
+        assert!(
+            imageless >= 1,
+            "the image-less arm reached no `[package]` manifest under examples/"
+        );
         assert!(
             stray.is_empty(),
             "these cargo leaves name their image dependencies by hand; depend on the \
@@ -1290,8 +1419,14 @@ mod board_crate_tests {
             .map(|((p, _), _)| *p)
             .collect();
         assert!(stale.is_empty(), "exemptions matching no leaf: {stale:?}");
+        // The scaffold rule is only as good as its reach: it must find the
+        // dormant leaves it exists for, or the registry spelling drifted.
         assert!(
-            on_selection >= 56,
+            unsupported >= 1,
+            "no leaf matched a `tier = \"scaffold\"` board ({scaffold:?})"
+        );
+        assert!(
+            on_selection >= 69,
             "only {on_selection} leaves on the selection package"
         );
     }
