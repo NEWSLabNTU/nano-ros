@@ -1,8 +1,9 @@
 # RFC-0100 — One sizing model: the contract states facts, every backend derives its own buffers
 
-**Status:** Draft (2026-09-11; last reviewed 2026-10-10 — the
+**Status:** Draft (2026-09-11; last reviewed 2026-10-12 — the
 [2026-10-10 ruling](#ruling-2026-10-10--a-stated-fact-earns-a-file-whatever-it-came-from)
-restates the file rule over the nano-ros overlay; see also
+restates the file rule over the nano-ros overlay, in effect since phase-486 W4;
+see also
 [Amendment 1](#amendment-1-2026-10-03--the-unified-build-path-moved-under-this-model),
 which adds D12 and revises D4's producer and road language against RFC-0065's
 unified build path)
@@ -486,10 +487,10 @@ declared depth, `XRCE_STREAM_HISTORY` 16→4 from a declared `best_effort`,
 model that describes no wiring — 109 of 114 resolvable models — and the producer
 is not reached for one. An all-refused descriptor would move the `[meta] basis`
 every consumer guards on in order to say nothing, which is W12's own control
-held on a second road. (One exception, ruled 2026-10-09 below: a model that
-implies a parameter store writes a STORE-ONLY file. The 2026-10-10 ruling
-restates the rule over the nano-ros overlay as well and retires the exception
-once phase-486 W4 lands.)
+held on a second road. (Restated by the 2026-10-10 ruling below, in effect since
+phase-486 W4: **no stated fact ⇒ no file**. A model with no wiring whose image
+builds a parameter store states `[params]`, so it earns a file carrying that
+section alone — `sizing_descriptor::Wiring::Unwired`, through the same writer.)
 
 **One composer, two callers.** `write_for_leaf` and `write_for_model` both go
 through `sizing_descriptor::build`, differing by a `ModelHorizon` and nothing
@@ -1204,8 +1205,7 @@ entity fact ⇒ no file" stands for everything else.
 
 ### Ruling, 2026-10-10 — a stated fact earns a file, whatever it came from
 
-**Takes effect when phase-486 W4 lands; until then the 2026-10-09 ruling above
-describes the code.** RFC-0060's
+**In effect since phase-486 W4 (2026-10-12).** RFC-0060's
 [2026-10-10 amendment](0060-launch-toolchain-three-layers.md#amendment-2026-10-10--what-the-systemmodel-may-carry-and-where-nano-ross-own-facts-go)
 moves nano-ros's capability switches out of the SystemModel into a nano-ros
 overlay (`nros.toml`, written beside the model by `nros sync`). The 2026-10-09
@@ -1233,7 +1233,11 @@ nothing.
 **What retires.** The store-only file stops being an exception: it is the
 general rule applied to a descriptor whose only stated section is `[params]`.
 The code path that wrote it specially (the model producers' store-only branch, PR #1830)
-folds into the ordinary write. The `store` field, its four values and
+folds into the ordinary write: `write_for_model` / `write_for_runtime` take a
+`Wiring` — `Composed(inventory)` or `Unwired { params, infra, roots }` — and
+return `None` (deleting a stale file at the path, whichever shape wrote it)
+when nothing is stated. `write_store_only` is gone. Measured byte-identical
+against the previous CLI over 242 writes (phase-486 W4 result). The `store` field, its four values and
 `Params::implies_store()` are unchanged, so no consumer moves.
 
 **What it opens, not done here.** The two carriers the 2026-10-03 ruling kept

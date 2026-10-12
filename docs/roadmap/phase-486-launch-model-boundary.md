@@ -1,6 +1,6 @@
 # Phase 486 — the launch model carries what every realizer reads; nano-ros's own facts move to an overlay
 
-**Status (2026-10-12). W0–W3 LANDED; W5 landed in play_launch (`ca7eb1a`, its phase 86 W1–W4) and W6 in rlm (`v0.1.55`); W4 and W7–W9 open. Design revised 2026-10-12 (below) after re-reading rlm and play_launch `main`.** Implements RFC-0060's
+**Status (2026-10-12). W0–W3 LANDED; W4 in review; W5 landed in play_launch (`ca7eb1a`, its phase 86 W1–W4) and W6 in rlm (`v0.1.55`); W7–W9 open. Design revised 2026-10-12 (below) after re-reading rlm and play_launch `main`.** Implements RFC-0060's
 [2026-10-10 amendment](../design/0060-launch-toolchain-three-layers.md#amendment-2026-10-10--what-the-systemmodel-may-carry-and-where-nano-ross-own-facts-go)
 and RFC-0100's
 [2026-10-10 ruling](../design/0100-rmw-agnostic-sizing-model.md#ruling-2026-10-10--a-stated-fact-earns-a-file-whatever-it-came-from).
@@ -311,6 +311,44 @@ pointing one reader back at an empty model field turns a test red.
 `params:`) still carves 32 slots at a 640 KiB heap and delivers. A
 parameter-less image is byte-identical. Stale-file deletion still works, so a
 removed switch stops the carving on an incremental build.
+
+### W4 result (2026-10-12)
+
+- **One writer.** `ModelImage.inventory` became `wiring: Wiring`:
+  `Composed(&EntityInventory)` or `Unwired { params, infra, roots }`.
+  `write_for_model` / `write_for_runtime` return `Option<WrittenDescriptor>`:
+  `None` when nothing is stated, and a file at the path is deleted whichever
+  shape wrote it. `StoreOnly` / `write_store_only` are deleted; all six model-
+  and leaf-road call sites (`nros build`, `nros ws sizing-descriptor
+  --from-model`, its runtime form, `--from-leaf`) go through the two writers.
+  An unwired file's bytes are unchanged: `[params]` alone, `[meta]` refused.
+- **`[params] store` composes over both inputs** already since W3:
+  `InfraServices::from_model(model, image)` reads the overlay's switches, and
+  `ParamDeclarations::from_model` the model's seed and `params:`.
+- **Byte-identical, measured:** main's CLI vs this one over every tracked
+  bringup's resolved models and every tracked standalone cmake leaf, 242
+  writes, each preceded by a stale file at the target path: 21 full files and
+  28 parameter-store-only files (11 of them runtime files) identical, 168
+  "nothing stated" cases where both removed the stale file, 13 where both left
+  it (cargo leaves the leaf producer stands down for), 12 erroring the same
+  way on both. 0 differences.
+- **W2's acceptance, measured:** one bringup, two images, `param_services` on
+  image `a` alone (`[image.a] features`). Image `a`'s descriptor states
+  `store = "param_services"`; image `b` gets no file. Building `nros-params`
+  against each: `IMPLIED_STORE_SLOTS = 32` for `a`, `0` for `b`
+  (`a_per_image_switch_builds_the_store_in_that_image_only`).
+- **Mutation:** disabling the stale removal turns three tests red, including
+  the new `a_deleted_contract_with_no_store_removes_the_full_descriptor` (a
+  contract's full file, then the contract deleted, must leave no file).
+- **Not run:** the AN536 FreeRTOS Cyclone C++ entry on QEMU. Issue 1706's
+  run of it used UNCOMMITTED local edits (`param_services` added, heap cut to
+  640 KiB); the tracked `workspaces/cpp` bringup states `store = "none"`, and
+  its 6 writes above are byte-identical. The wired-with-switch and
+  unwired-with-switch shapes it exercised are among the identical writes
+  (21 full, 28 store-only), and the cmake side reads only that file, so the
+  carve follows from the bytes; the boot was not repeated.
+- RFC-0100's 2026-10-10 ruling is marked in effect; CLAUDE.md's descriptor
+  line now states "no stated fact ⇒ no file".
 
 ## W5 — play_launch: the per-node lifecycle fact from the launch file (play_launch phase 86)
 

@@ -720,6 +720,20 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // guards on in order to say nothing.
                 let mut path_env: std::collections::BTreeMap<String, PathBuf> =
                     std::collections::BTreeMap::new();
+                let image_for = |wiring| crate::sizing_descriptor::ModelImage {
+                    build_dir: &image_dir,
+                    entry: &image_id,
+                    wiring,
+                    target_triple: descriptor.target.clone(),
+                    // A board that pins no rustc triple builds for the
+                    // host, and that is the ONE case where this
+                    // process's own width is the target's.
+                    host_build: descriptor.target.is_none(),
+                    heap_budget_bytes: board_heap_budget(descriptor, &board, Some(nros_root)),
+                    rmw: image.rmw.clone(),
+                    bound_inventories: &[],
+                    horizon: crate::sizing_descriptor::ModelHorizon::new("a workspace cargo image"),
+                };
                 if let Some((inv, model)) = resolved
                     .as_ref()
                     .and_then(|r| r.inventory.as_ref().zip(r.model.as_ref()))
@@ -755,27 +769,11 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     let bound_tables = crate::leaf_payload_classes::generated_bound_tables(&root);
                     match crate::sizing_descriptor::write_for_model(
                         &crate::sizing_descriptor::ModelImage {
-                            build_dir: &image_dir,
-                            entry: &image_id,
-                            inventory: inv,
-                            target_triple: descriptor.target.clone(),
-                            // A board that pins no rustc triple builds for the
-                            // host, and that is the ONE case where this
-                            // process's own width is the target's.
-                            host_build: descriptor.target.is_none(),
-                            heap_budget_bytes: board_heap_budget(
-                                descriptor,
-                                &board,
-                                Some(nros_root),
-                            ),
-                            rmw: image.rmw.clone(),
                             bound_inventories: &bound_tables,
-                            horizon: crate::sizing_descriptor::ModelHorizon::new(
-                                "a workspace cargo image",
-                            ),
+                            ..image_for(crate::sizing_descriptor::Wiring::Composed(inv))
                         },
                     ) {
-                        Ok(written) => {
+                        Ok(Some(written)) => {
                             eprintln!(
                                 "nros build:   sizing descriptor → {}",
                                 written.path.display()
@@ -794,6 +792,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                                 written.path,
                             );
                         }
+                        Ok(None) => {}
                         // NOT fatal, and the same argument stage 3.5 makes:
                         // making the descriptor a new way for a build to stop
                         // would be a regression paid by every image for the
@@ -809,16 +808,14 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     // and the descriptor is this road's only carrier. A model
                     // with no wiring declares no `params:` either (issue 1436's
                     // predicate), so the declarations are `Absent`.
-                    match crate::sizing_descriptor::write_store_only(
-                        &crate::sizing_descriptor::StoreOnly {
-                            build_dir: &image_dir,
-                            entry: &image_id,
-                            params: &crate::entity_inventory::ParamDeclarations::Absent,
+                    let params = crate::entity_inventory::ParamDeclarations::Absent;
+                    match crate::sizing_descriptor::write_for_model(&image_for(
+                        crate::sizing_descriptor::Wiring::Unwired {
+                            params: &params,
                             infra,
-                            runtime_entries: None,
                             roots: &[root.as_path()],
                         },
-                    ) {
+                    )) {
                         Ok(Some(written)) => {
                             eprintln!(
                                 "nros build:   sizing descriptor (parameter store only, issue \

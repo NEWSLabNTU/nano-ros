@@ -293,18 +293,28 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
     });
     let Some(inventory) = inventory else {
         // Issue 1706 -- unless the bringup implies a parameter store, which a
-        // model with no wiring still says (`write_store_only`).
+        // model with no wiring still says (`Wiring::Unwired`).
         let parent = model_path.parent();
-        if let Some(written) =
-            crate::sizing_descriptor::write_store_only(&crate::sizing_descriptor::StoreOnly {
+        let params = crate::entity_inventory::ParamDeclarations::from_model(&model);
+        let written =
+            crate::sizing_descriptor::write_for_model(&crate::sizing_descriptor::ModelImage {
                 build_dir,
                 entry,
-                params: &crate::entity_inventory::ParamDeclarations::from_model(&model),
-                infra: crate::entity_inventory::InfraServices::from_model(&model, None),
-                runtime_entries: None,
-                roots: parent.as_slice(),
-            })?
-        {
+                wiring: crate::sizing_descriptor::Wiring::Unwired {
+                    params: &params,
+                    infra: crate::entity_inventory::InfraServices::from_model(&model, None),
+                    roots: parent.as_slice(),
+                },
+                target_triple: args.target_triple.clone(),
+                host_build: args.host_build,
+                heap_budget_bytes: args.heap_budget_bytes,
+                rmw: args.rmw.clone(),
+                bound_inventories: &args.bound_inventory,
+                horizon: crate::sizing_descriptor::ModelHorizon::new(
+                    args.road.as_deref().unwrap_or(DEFAULT_MODEL_ROAD),
+                ),
+            })?;
+        if let Some(written) = written {
             eprintln!(
                 "nros ws sizing-descriptor: `{}` describes no wiring; the descriptor states only \
                  `[params] store = \"{}\"` (issue 1706)",
@@ -361,7 +371,7 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
         crate::sizing_descriptor::write_for_model(&crate::sizing_descriptor::ModelImage {
             build_dir,
             entry,
-            inventory: &inventory,
+            wiring: crate::sizing_descriptor::Wiring::Composed(&inventory),
             target_triple: args.target_triple.clone(),
             host_build: args.host_build,
             heap_budget_bytes: args.heap_budget_bytes,
@@ -370,7 +380,8 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
             horizon: crate::sizing_descriptor::ModelHorizon::new(
                 args.road.as_deref().unwrap_or(DEFAULT_MODEL_ROAD),
             ),
-        })?;
+        })?
+        .expect("a composed inventory always states its wiring");
     println!("{}", written.path.display());
     for p in observation_inputs {
         println!("input {}", p.display());
@@ -438,7 +449,20 @@ fn write_runtime_from_models(args: &SizingDescriptorArgs) -> Result<()> {
                 .map(|inv| (crate::sizing_descriptor::model_label(p), inv))
         })
         .collect();
-    let path = nros_sizing_descriptor::runtime_descriptor_path(build_dir);
+    let model_paths: Vec<PathBuf> = models.iter().map(|(p, _)| p.clone()).collect();
+    let image = |wiring| crate::sizing_descriptor::ModelImage {
+        build_dir,
+        entry,
+        wiring,
+        target_triple: args.target_triple.clone(),
+        host_build: args.host_build,
+        heap_budget_bytes: args.heap_budget_bytes,
+        rmw: args.rmw.clone(),
+        bound_inventories: &args.bound_inventory,
+        horizon: crate::sizing_descriptor::ModelHorizon::new(
+            args.road.as_deref().unwrap_or(DEFAULT_MODEL_ROAD),
+        ),
+    };
     if wired.is_empty() {
         // Issue 1706 -- a store-only runtime file when ANY image implies a
         // store (RFC-0100 D12: the envelope over images, the union rule
@@ -458,17 +482,20 @@ fn write_runtime_from_models(args: &SizingDescriptorArgs) -> Result<()> {
             .fold(crate::entity_inventory::InfraServices::default(), |a, b| {
                 a.union(b)
             });
-        let roots: Vec<&std::path::Path> = models.iter().filter_map(|(p, _)| p.parent()).collect();
-        if let Some(written) =
-            crate::sizing_descriptor::write_store_only(&crate::sizing_descriptor::StoreOnly {
-                build_dir,
-                entry,
-                params: &crate::entity_inventory::ParamDeclarations::union_over_images(&labelled),
+        let params = crate::entity_inventory::ParamDeclarations::union_over_images(&labelled);
+        let written = crate::sizing_descriptor::write_for_runtime(
+            &image(crate::sizing_descriptor::Wiring::Unwired {
+                params: &params,
                 infra,
-                runtime_entries: Some(&args.composed_entry),
-                roots: &roots,
-            })?
-        {
+                roots: &[],
+            }),
+            &crate::sizing_descriptor::RuntimeComposition {
+                entries: &args.composed_entry,
+                model_paths: &model_paths,
+                conflicts: &[],
+            },
+        )?;
+        if let Some(written) = written {
             eprintln!(
                 "nros ws sizing-descriptor: none of the {} model(s) this runtime is shared by \
                  describes wiring; the runtime descriptor states only its parameter store \
@@ -476,17 +503,13 @@ fn write_runtime_from_models(args: &SizingDescriptorArgs) -> Result<()> {
                 models.len()
             );
             println!("{}", written.path.display());
-            return Ok(());
-        }
-        eprintln!(
-            "nros ws sizing-descriptor: none of the {} model(s) this runtime is shared by \
-             describes wiring, so no runtime descriptor is written and every consumer keeps its \
-             own defaults",
-            models.len()
-        );
-        if path.exists() {
-            std::fs::remove_file(&path)
-                .wrap_err_with(|| format!("removing the stale `{}`", path.display()))?;
+        } else {
+            eprintln!(
+                "nros ws sizing-descriptor: none of the {} model(s) this runtime is shared by \
+                 describes wiring, so no runtime descriptor is written and every consumer keeps \
+                 its own defaults",
+                models.len()
+            );
         }
         return Ok(());
     }
@@ -540,27 +563,15 @@ fn write_runtime_from_models(args: &SizingDescriptorArgs) -> Result<()> {
         }
     }
 
-    let model_paths: Vec<PathBuf> = models.iter().map(|(p, _)| p.clone()).collect();
     let written = crate::sizing_descriptor::write_for_runtime(
-        &crate::sizing_descriptor::ModelImage {
-            build_dir,
-            entry,
-            inventory: &inventory,
-            target_triple: args.target_triple.clone(),
-            host_build: args.host_build,
-            heap_budget_bytes: args.heap_budget_bytes,
-            rmw: args.rmw.clone(),
-            bound_inventories: &args.bound_inventory,
-            horizon: crate::sizing_descriptor::ModelHorizon::new(
-                args.road.as_deref().unwrap_or(DEFAULT_MODEL_ROAD),
-            ),
-        },
+        &image(crate::sizing_descriptor::Wiring::Composed(&inventory)),
         &crate::sizing_descriptor::RuntimeComposition {
             entries: &args.composed_entry,
             model_paths: &model_paths,
             conflicts: &conflicts,
         },
-    )?;
+    )?
+    .expect("a composed inventory always states its wiring");
     println!("{}", written.path.display());
     for p in observation_inputs {
         println!("input {}", p.display());
@@ -683,21 +694,34 @@ fn write_from_leaf(args: &SizingDescriptorArgs, leaf: &std::path::Path) -> Resul
             declaration,
         });
     }
+    let image = |wiring| crate::sizing_descriptor::ModelImage {
+        build_dir,
+        entry,
+        wiring,
+        target_triple: args.target_triple.clone(),
+        host_build: args.host_build,
+        heap_budget_bytes: args.heap_budget_bytes,
+        // The leaf states its own backend; `--rmw` still wins, for a caller
+        // that resolved it more specifically (a cmake `-D`).
+        rmw: args.rmw.clone().or_else(|| system.rmw.clone()),
+        bound_inventories: &args.bound_inventory,
+        horizon: crate::sizing_descriptor::ModelHorizon::for_leaf_declaration(
+            args.road.as_deref().unwrap_or(DEFAULT_LEAF_ROAD),
+        ),
+    };
     if !any_declared {
         // Issue 1706 -- `[system] features` can still imply a parameter store.
-        if let Some(written) =
-            crate::sizing_descriptor::write_store_only(&crate::sizing_descriptor::StoreOnly {
-                build_dir,
-                entry,
+        let written = crate::sizing_descriptor::write_for_model(&image(
+            crate::sizing_descriptor::Wiring::Unwired {
                 params: &crate::entity_inventory::ParamDeclarations::Absent,
                 infra: crate::entity_inventory::InfraServices::from_features(
                     &system.features,
                     system.components.len(),
                 ),
-                runtime_entries: None,
                 roots: &[dir.as_path()],
-            })?
-        {
+            },
+        ))?;
+        if let Some(written) = written {
             eprintln!(
                 "nros ws sizing-descriptor: {origin} declares no entities; the descriptor states \
                  only its parameter store (issue 1706)"
@@ -727,22 +751,10 @@ fn write_from_leaf(args: &SizingDescriptorArgs, leaf: &std::path::Path) -> Resul
         system.components.len(),
     ));
 
-    let written =
-        crate::sizing_descriptor::write_for_model(&crate::sizing_descriptor::ModelImage {
-            build_dir,
-            entry,
-            inventory: &inventory,
-            target_triple: args.target_triple.clone(),
-            host_build: args.host_build,
-            heap_budget_bytes: args.heap_budget_bytes,
-            // The leaf states its own backend; `--rmw` still wins, for a caller
-            // that resolved it more specifically (a cmake `-D`).
-            rmw: args.rmw.clone().or_else(|| system.rmw.clone()),
-            bound_inventories: &args.bound_inventory,
-            horizon: crate::sizing_descriptor::ModelHorizon::for_leaf_declaration(
-                args.road.as_deref().unwrap_or(DEFAULT_LEAF_ROAD),
-            ),
-        })?;
+    let written = crate::sizing_descriptor::write_for_model(&image(
+        crate::sizing_descriptor::Wiring::Composed(&inventory),
+    ))?
+    .expect("a composed inventory always states its wiring");
     println!("{}", written.path.display());
     Ok(())
 }

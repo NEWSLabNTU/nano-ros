@@ -28,7 +28,7 @@ use nros_cli_core::{
     entity_inventory::EntityInventory,
     sizing_descriptor::{
         DescriptorInputs, EntryLanguage, ModelHorizon, ModelImage, UNOBSERVED_ON_MODEL_ROAD_ISSUE,
-        build, write_for_model,
+        Wiring, build, write_for_model,
     },
 };
 use nros_sizing_descriptor::{Basis, EndpointKind, History, Reliability, Status};
@@ -48,7 +48,7 @@ fn a_contract_reaches_the_model_road_and_the_leaf_facts_refuse_by_name() {
     let written = write_for_model(&ModelImage {
         build_dir: &dir,
         entry: "policies",
-        inventory: &inv,
+        wiring: Wiring::Composed(&inv),
         target_triple: Some("thumbv7em-none-eabihf".into()),
         host_build: false,
         heap_budget_bytes: Some(65_536),
@@ -56,7 +56,8 @@ fn a_contract_reaches_the_model_road_and_the_leaf_facts_refuse_by_name() {
         bound_inventories: &[],
         horizon: ModelHorizon::new("a workspace cargo image"),
     })
-    .expect("the descriptor is written");
+    .expect("the descriptor is written")
+    .expect("a composed inventory always writes");
     let desc = &written.desc;
 
     // The file is where the ONE path rule says, so a consumer holding only the
@@ -179,7 +180,7 @@ fn a_model_road_descriptor_carries_no_path_from_this_checkout() {
     let written = write_for_model(&ModelImage {
         build_dir: &dir,
         entry: "policies",
-        inventory: &inv,
+        wiring: Wiring::Composed(&inv),
         target_triple: None,
         host_build: true,
         heap_budget_bytes: None,
@@ -187,7 +188,8 @@ fn a_model_road_descriptor_carries_no_path_from_this_checkout() {
         bound_inventories: &[],
         horizon: ModelHorizon::new("a workspace cargo image"),
     })
-    .expect("the descriptor is written");
+    .expect("the descriptor is written")
+    .expect("a composed inventory always writes");
     let body = fs::read_to_string(&written.path).expect("read the descriptor");
     assert!(
         !body.contains(&dir.display().to_string()),
@@ -214,7 +216,7 @@ fn keep_all_still_refuses_its_depth_on_the_model_road() {
     let written = write_for_model(&ModelImage {
         build_dir: &dir,
         entry: "keep_all",
-        inventory: &inv,
+        wiring: Wiring::Composed(&inv),
         target_triple: None,
         host_build: true,
         heap_budget_bytes: None,
@@ -222,7 +224,8 @@ fn keep_all_still_refuses_its_depth_on_the_model_road() {
         bound_inventories: &[],
         horizon: ModelHorizon::new("a cmake entry"),
     })
-    .expect("the descriptor is written");
+    .expect("the descriptor is written")
+    .expect("a composed inventory always writes");
     let sub = written
         .desc
         .endpoints
@@ -263,7 +266,7 @@ fn bound_tables_turn_the_model_roads_payload_refusals_into_facts() {
     let written = write_for_model(&ModelImage {
         build_dir: &dir,
         entry: "policies",
-        inventory: &inv,
+        wiring: Wiring::Composed(&inv),
         target_triple: Some("thumbv7em-none-eabihf".into()),
         host_build: false,
         heap_budget_bytes: Some(65_536),
@@ -271,7 +274,8 @@ fn bound_tables_turn_the_model_roads_payload_refusals_into_facts() {
         bound_inventories: &tables,
         horizon: ModelHorizon::new("a cmake entry"),
     })
-    .expect("the descriptor is written");
+    .expect("the descriptor is written")
+    .expect("a composed inventory always writes");
     let desc = &written.desc;
     let sub = desc
         .endpoints
@@ -391,7 +395,7 @@ fn a_registered_bound_table_not_yet_built_refuses_by_name() {
     let written = write_for_model(&ModelImage {
         build_dir: &dir,
         entry: "policies",
-        inventory: &inv,
+        wiring: Wiring::Composed(&inv),
         target_triple: Some("thumbv7em-none-eabihf".into()),
         host_build: false,
         heap_budget_bytes: Some(65_536),
@@ -399,7 +403,8 @@ fn a_registered_bound_table_not_yet_built_refuses_by_name() {
         bound_inventories: &tables,
         horizon: ModelHorizon::new("a cmake entry"),
     })
-    .expect("a pending table must not fail the descriptor -- it refuses a field");
+    .expect("a pending table must not fail the descriptor -- it refuses a field")
+    .expect("a composed inventory always writes");
     let sub = written
         .desc
         .endpoints

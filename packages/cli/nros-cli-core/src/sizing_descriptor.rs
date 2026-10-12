@@ -2008,8 +2008,9 @@ pub struct ModelImage<'a> {
     pub build_dir: &'a std::path::Path,
     /// `[meta] entry`, and the file stem.
     pub entry: &'a str,
-    /// What the contract declares, resolved through `EntityInventory::from_model`.
-    pub inventory: &'a EntityInventory,
+    /// What the image states: the contract's wiring, or -- for a model that
+    /// describes none -- only what it says about its parameter store.
+    pub wiring: Wiring<'a>,
     /// The rustc triple the board pins, when this road knows it.
     pub target_triple: Option<String>,
     /// Is the target the host? Decides whether an absent triple is an answer.
@@ -2043,21 +2044,52 @@ pub struct ModelImage<'a> {
     pub horizon: ModelHorizon,
 }
 
+/// What a model-road image states, as far as its descriptor is concerned.
+///
+/// RFC-0100's 2026-10-10 ruling: **a stated fact earns a file, whatever it came
+/// from** -- and no stated fact, no file. Two shapes of image state something:
+#[derive(Debug)]
+pub enum Wiring<'a> {
+    /// The contract describes wiring, composed through
+    /// `EntityInventory::from_model` (or a standalone leaf's `entities`). Every
+    /// section is composed from it; the file is always written.
+    Composed(&'a EntityInventory),
+    /// The model describes NO wiring (109 of 114 resolvable models when W14
+    /// counted). Its parameter store is still a stated fact: the overlay's
+    /// `param_services` switch and a contract's `params:` seed it (issue 1706),
+    /// and on the cargo and cmake roads the descriptor is the only carrier
+    /// there is (RFC-0100 D4; no `set(ENV{})`, issue 0460).
+    ///
+    /// Such a file states `[params]` and nothing else: `status = refused`,
+    /// `basis = closure`, `undeclared_endpoints` refused, and `[target]`,
+    /// `[image]`, `[types]` and every endpoint row ABSENT. A consumer reads a
+    /// field only through [`nros_sizing_descriptor::Fact::stated`], so an absent
+    /// field keeps its default exactly as a missing file does -- measured in
+    /// issue 1706's 2026-10-09 (2) section. When no store is implied, nothing
+    /// is stated and NO FILE is written; one an earlier configure left behind
+    /// is removed, because the cmake side reads whatever sits at the path
+    /// (`nros_sizing_descriptor_read`): MEASURED, removing `param_services`
+    /// left the 369,992-byte executor in place until that removal.
+    Unwired {
+        params: &'a ParamDeclarations,
+        infra: InfraServices,
+        /// The directories this producer read from, for the portability
+        /// check (issue 0320).
+        roots: &'a [&'a std::path::Path],
+    },
+}
+
 /// Build the descriptor a MODEL-only road can honestly write, and write it.
 ///
-/// **The caller decides whether to call this at all, and the rule is the W12
-/// control**: no contract, no descriptor. `EntityInventory::from_model` returns
-/// `None` for a model that describes no wiring — 109 of 114 resolvable models
-/// are in that state — and writing an all-refused file for one of those would
-/// put an artifact in front of seven consumers in order to say nothing, while
-/// changing the `[meta] basis` every one of them guards on. So this function
-/// takes an inventory by reference rather than an `Option`: reaching it at all
-/// is the statement that a contract was authored.
+/// `None` when the image states nothing ([`Wiring::Unwired`] with no store):
+/// no file, and a stale one removed. An all-refused file would put an artifact
+/// in front of seven consumers in order to say nothing, while changing the
+/// `[meta] basis` every one of them guards on (phase-454 W12's control).
 ///
 /// Write-if-changed through [`crate::atomic_file::atomic_write`], because the
 /// cmake consumer registers the result in `CMAKE_CONFIGURE_DEPENDS` (issue 1018)
 /// and identical bytes must keep their mtime.
-pub fn write_for_model(img: &ModelImage<'_>) -> eyre::Result<WrittenDescriptor> {
+pub fn write_for_model(img: &ModelImage<'_>) -> eyre::Result<Option<WrittenDescriptor>> {
     write_model_descriptor(img, None)
 }
 
@@ -2077,7 +2109,7 @@ pub fn write_for_model(img: &ModelImage<'_>) -> eyre::Result<WrittenDescriptor> 
 pub fn write_for_runtime(
     img: &ModelImage<'_>,
     runtime: &RuntimeComposition<'_>,
-) -> eyre::Result<WrittenDescriptor> {
+) -> eyre::Result<Option<WrittenDescriptor>> {
     write_model_descriptor(img, Some(runtime))
 }
 
@@ -2397,7 +2429,90 @@ fn refuse_conflicts(desc: &mut SizingDescriptor, conflicts: &[QosConflict]) {
 fn write_model_descriptor(
     img: &ModelImage<'_>,
     runtime: Option<&RuntimeComposition<'_>>,
-) -> eyre::Result<WrittenDescriptor> {
+) -> eyre::Result<Option<WrittenDescriptor>> {
+    let path = match runtime {
+        Some(_) => nros_sizing_descriptor::runtime_descriptor_path(img.build_dir),
+        None => nros_sizing_descriptor::descriptor_path(img.build_dir, img.entry),
+    };
+    let (desc, roots) = match &img.wiring {
+        Wiring::Composed(inventory) => compose_wired(img, inventory, runtime),
+        Wiring::Unwired {
+            params,
+            infra,
+            roots,
+        } => {
+            let Some(desc) = compose_store_only(img.entry, params, *infra, runtime) else {
+                if path.exists() {
+                    std::fs::remove_file(&path)
+                        .map_err(|e| eyre::eyre!("removing the stale `{}`: {e}", path.display()))?;
+                }
+                return Ok(None);
+            };
+            (desc, roots.to_vec())
+        }
+    };
+    let body = nros_sizing_descriptor::render(&desc);
+
+    // Issue 0320, the same rule the leaf road holds to and for the same reason:
+    // two checkouts of one tree at different paths must render identical bytes,
+    // or every freshness comparison against this file is a lie. The directories
+    // this producer read from are the build dir and the model(s) the inventory
+    // was composed from.
+    let mut all_roots: Vec<&std::path::Path> = vec![img.build_dir];
+    all_roots.extend(roots);
+    if let Some(rt) = runtime {
+        all_roots.extend(rt.model_paths.iter().filter_map(|p| p.parent()));
+    }
+    if let Some(why) = nros_sizing_descriptor::portability_violation(&body, &all_roots) {
+        return Err(eyre::eyre!("{why}"));
+    }
+
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| eyre::eyre!("create `{}`: {e}", dir.display()))?;
+    }
+    crate::atomic_file::atomic_write(&path, &body)
+        .map_err(|e| eyre::eyre!("write `{}`: {e}", path.display()))?;
+    Ok(Some(WrittenDescriptor { path, desc }))
+}
+
+/// [`Wiring::Unwired`]'s descriptor: `[params]` alone, or `None` when the
+/// image builds no store and so states nothing.
+fn compose_store_only(
+    entry: &str,
+    params: &ParamDeclarations,
+    infra: InfraServices,
+    runtime: Option<&RuntimeComposition<'_>>,
+) -> Option<SizingDescriptor> {
+    let inputs = DescriptorInputs {
+        entry: entry.to_string(),
+        params: Some(params),
+        infra: Some(infra),
+        ..DescriptorInputs::default()
+    };
+    let params = param_facts(&inputs);
+    if !params.implies_store() {
+        return None;
+    }
+    let mut desc = SizingDescriptor::new(entry, Status::Refused, Basis::Closure);
+    desc.meta.refuse(
+        "undeclared_endpoints",
+        "the model describes no wiring, so this file carries only the parameter store \
+         (issue 1706) -- absence is not zero",
+    );
+    desc.params = params;
+    if let Some(rt) = runtime {
+        desc.meta.set_composed_entries(rt.entries.to_vec());
+    }
+    Some(desc)
+}
+
+/// [`Wiring::Composed`]'s descriptor, and the directory its inventory was
+/// composed from.
+fn compose_wired<'i>(
+    img: &ModelImage<'_>,
+    inventory: &'i EntityInventory,
+    runtime: Option<&RuntimeComposition<'_>>,
+) -> (SizingDescriptor, Vec<&'i std::path::Path>) {
     let horizon = img.horizon.clone();
     // phase-457-payload W2 — the closure's bound tables, when the caller has
     // them, through the SAME reader and projection the leaf road uses. None
@@ -2418,7 +2533,7 @@ fn write_model_descriptor(
     };
     let inputs = DescriptorInputs {
         entry: img.entry.to_string(),
-        inventory: Some(img.inventory),
+        inventory: Some(inventory),
         // `bounds_error` is not an error channel -- it is the one place the
         // existing composer already asks "why is there no bound table", and
         // answering it is what carries the reason into `wire_bound_bytes` and
@@ -2436,12 +2551,12 @@ fn write_model_descriptor(
         // it because this road's inventory was composed from the same model
         // (`resolve_image` / `write_from_model` both attach it) — see
         // `DescriptorInputs::params` for why the leaf road cannot do that.
-        params: Some(img.inventory.param_declarations()),
+        params: Some(inventory.param_declarations()),
         // Issue 1706 -- the inventory's families ride along on every road
         // that composes it (`from_model`, the shared-runtime frames, a
         // standalone leaf's `[system] features`), so `[params] store` is the
         // envelope over a shared runtime's images by the same union.
-        infra: Some(img.inventory.infra()),
+        infra: Some(inventory.infra()),
         // No ONE entry language: this road is several packages. Since issue
         // 1393 that costs nothing a backend can answer without it — on a
         // descriptor-carrying backend every language gives `typed_bound`, and
@@ -2465,125 +2580,11 @@ fn write_model_descriptor(
         desc.meta.set_composed_entries(rt.entries.to_vec());
         refuse_conflicts(&mut desc, rt.conflicts);
     }
-    let body = nros_sizing_descriptor::render(&desc);
-
-    // Issue 0320, the same rule the leaf road holds to and for the same reason:
-    // two checkouts of one tree at different paths must render identical bytes,
-    // or every freshness comparison against this file is a lie. The directories
-    // this producer read from are the build dir and the model(s) the inventory
-    // was composed from.
-    let source = std::path::PathBuf::from(&img.inventory.source);
-    let mut roots: Vec<&std::path::Path> = vec![img.build_dir];
-    if let Some(parent) = source.parent() {
-        roots.push(parent);
-    }
-    if let Some(rt) = runtime {
-        roots.extend(rt.model_paths.iter().filter_map(|p| p.parent()));
-    }
-    if let Some(why) = nros_sizing_descriptor::portability_violation(&body, &roots) {
-        return Err(eyre::eyre!("{why}"));
-    }
-
-    let path = match runtime {
-        Some(_) => nros_sizing_descriptor::runtime_descriptor_path(img.build_dir),
-        None => nros_sizing_descriptor::descriptor_path(img.build_dir, img.entry),
-    };
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| eyre::eyre!("create `{}`: {e}", dir.display()))?;
-    }
-    crate::atomic_file::atomic_write(&path, &body)
-        .map_err(|e| eyre::eyre!("write `{}`: {e}", path.display()))?;
-    Ok(WrittenDescriptor { path, desc })
-}
-
-/// Issue 1706 -- an image whose model describes NO wiring, as far as the
-/// parameter store is concerned.
-///
-/// "No contract, no descriptor" (phase-454 W12) keeps an all-refused file out
-/// of the tree, because such a file would move the `[meta] basis` every
-/// consumer guards on in order to say nothing. A bringup that declares the
-/// `param_services` axis or seeds a launch `<param>` and states no wiring is
-/// different: it DOES say something, and on the cargo and cmake roads the
-/// descriptor is the only carrier there is (RFC-0100 D4; no `set(ENV{})`,
-/// issue 0460). Most resolvable models describe no wiring (109 of 114 when W14
-/// counted), so without this the axis reached the store only where somebody
-/// had also authored a contract -- and the image took the heap path, 280,832 B
-/// in one allocation on armv7.
-///
-/// So this writes a file ONLY when `[params] store` says a store is built, and
-/// that file states `[params]` and nothing else: `status = refused`,
-/// `basis = closure` and `undeclared_endpoints` refused -- the same `[meta]` the
-/// composer writes for an image whose inventory did not compose -- with
-/// `[target]`, `[image]`, `[types]` and every endpoint row ABSENT. A consumer
-/// reads a field only through [`nros_sizing_descriptor::Fact::stated`], so an
-/// absent field keeps its default exactly as a missing file did; that is
-/// measured, not argued, in issue 1706's 2026-10-09 (2) section.
-///
-/// When no store is implied it writes NOTHING and returns `None`, so every
-/// image without parameters keeps the no-file state byte for byte.
-pub struct StoreOnly<'a> {
-    pub build_dir: &'a std::path::Path,
-    pub entry: &'a str,
-    pub params: &'a ParamDeclarations,
-    pub infra: InfraServices,
-    /// RFC-0100 D12 -- `Some` for a shared runtime's file: it lands at
-    /// [`nros_sizing_descriptor::runtime_descriptor_path`] and names the
-    /// entries it is the envelope of.
-    pub runtime_entries: Option<&'a [String]>,
-    /// The directories this producer read from, for the portability check
-    /// (issue 0320).
-    pub roots: &'a [&'a std::path::Path],
-}
-
-pub fn write_store_only(s: &StoreOnly<'_>) -> eyre::Result<Option<WrittenDescriptor>> {
-    let inputs = DescriptorInputs {
-        entry: s.entry.to_string(),
-        params: Some(s.params),
-        infra: Some(s.infra),
-        ..DescriptorInputs::default()
-    };
-    let params = param_facts(&inputs);
-    let path = match s.runtime_entries {
-        Some(_) => nros_sizing_descriptor::runtime_descriptor_path(s.build_dir),
-        None => nros_sizing_descriptor::descriptor_path(s.build_dir, s.entry),
-    };
-    if !params.implies_store() {
-        // No contract and no store: NO FILE -- and that includes one an earlier
-        // configure left behind. The cmake side reads whatever sits at this
-        // path (`nros_sizing_descriptor_read`), so a stale store-only file
-        // would keep carving a store the bringup no longer declares, and a
-        // stale full one would size from a contract that was deleted. MEASURED:
-        // removing `param_services` left the 369,992-byte executor in place
-        // until this removal. The runtime write deletes its stale file for the
-        // same reason.
-        if path.exists() {
-            std::fs::remove_file(&path)
-                .map_err(|e| eyre::eyre!("removing the stale `{}`: {e}", path.display()))?;
-        }
-        return Ok(None);
-    }
-    let mut desc = SizingDescriptor::new(s.entry, Status::Refused, Basis::Closure);
-    desc.meta.refuse(
-        "undeclared_endpoints",
-        "the model describes no wiring, so this file carries only the parameter store \
-         (issue 1706) -- absence is not zero",
-    );
-    desc.params = params;
-    if let Some(entries) = s.runtime_entries {
-        desc.meta.set_composed_entries(entries.to_vec());
-    }
-    let body = nros_sizing_descriptor::render(&desc);
-    let mut roots = vec![s.build_dir];
-    roots.extend_from_slice(s.roots);
-    if let Some(why) = nros_sizing_descriptor::portability_violation(&body, &roots) {
-        return Err(eyre::eyre!("{why}"));
-    }
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| eyre::eyre!("create `{}`: {e}", dir.display()))?;
-    }
-    crate::atomic_file::atomic_write(&path, &body)
-        .map_err(|e| eyre::eyre!("write `{}`: {e}", path.display()))?;
-    Ok(Some(WrittenDescriptor { path, desc }))
+    let roots = std::path::Path::new(&inventory.source)
+        .parent()
+        .into_iter()
+        .collect();
+    (desc, roots)
 }
 
 /// What [`write_for_leaf`] produced: the artifact, and the descriptor itself.
@@ -4942,6 +4943,30 @@ execution:
         assert!(leaf_store_infra(None, true).is_none());
     }
 
+    /// An unwired model-road image: the case [`Wiring::Unwired`] exists for.
+    fn unwired<'a>(
+        dir: &'a std::path::Path,
+        entry: &'a str,
+        params: &'a ParamDeclarations,
+        infra: InfraServices,
+    ) -> ModelImage<'a> {
+        ModelImage {
+            build_dir: dir,
+            entry,
+            wiring: Wiring::Unwired {
+                params,
+                infra,
+                roots: &[],
+            },
+            target_triple: None,
+            host_build: true,
+            heap_budget_bytes: None,
+            rmw: None,
+            bound_inventories: &[],
+            horizon: ModelHorizon::new("a test model road"),
+        }
+    }
+
     /// Issue 1706 -- a model with NO wiring still says whether the image builds
     /// a store. Measured before this: such an image (the AN536 Cyclone C++
     /// entry with its contract removed) refused the store at 640 KiB, because
@@ -4953,17 +4978,16 @@ execution:
     fn a_model_with_no_wiring_writes_a_store_only_descriptor_when_the_axis_implies_one() {
         let dir = tempfile::tempdir().unwrap();
         let model = store_model("param_services", "");
-        let written = write_store_only(&StoreOnly {
-            build_dir: dir.path(),
-            entry: "img",
-            params: &ParamDeclarations::from_model(&model),
-            infra: InfraServices::from_model(
+        let params = ParamDeclarations::from_model(&model);
+        let written = write_for_model(&unwired(
+            dir.path(),
+            "img",
+            &params,
+            InfraServices::from_model(
                 &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(model.clone()),
                 None,
             ),
-            runtime_entries: None,
-            roots: &[],
-        })
+        ))
         .unwrap()
         .expect("the axis implies a store");
         assert_eq!(
@@ -4990,19 +5014,18 @@ execution:
         let with = store_model("param_services", "");
         let without = store_model("", "");
         let write = |m: &ros_launch_manifest_model::SystemModel| {
-            write_store_only(&StoreOnly {
-                build_dir: dir.path(),
-                entry: "img",
-                params: &ParamDeclarations::from_model(m),
-                infra: InfraServices::from_model(
+            let params = ParamDeclarations::from_model(m);
+            write_for_model(&unwired(
+                dir.path(),
+                "img",
+                &params,
+                InfraServices::from_model(
                     &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
                         (*m).clone(),
                     ),
                     None,
                 ),
-                runtime_entries: None,
-                roots: &[],
-            })
+            ))
             .unwrap()
         };
         let path = write(&with).expect("written").path;
@@ -5014,6 +5037,70 @@ execution:
         );
     }
 
+    /// phase-486 W4 (W2's acceptance, measured where the switch is carried) --
+    /// ONE bringup, two images, `param_services` stated on image `a` alone
+    /// (`[image.a] features`). The overlay is the only input: the model states
+    /// no switch. Image `a`'s descriptor states the store; image `b` gets NO
+    /// file, so `nros-params` keeps `IMPLIED_STORE_SLOTS = 0` for it.
+    #[test]
+    fn a_per_image_switch_builds_the_store_in_that_image_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let model = nros_orchestration_ir::overlay::LoadedModel {
+            model: store_model("", ""),
+            overlay: nros_orchestration_ir::overlay::Overlay {
+                images: [("a".to_string(), vec!["param_services".to_string()])].into(),
+                ..Default::default()
+            },
+        };
+        let params = ParamDeclarations::from_model(&model);
+        let write = |image: &str| {
+            write_for_model(&unwired(
+                &dir.path().join(image),
+                image,
+                &params,
+                InfraServices::from_model(&model, Some(image)),
+            ))
+            .unwrap()
+        };
+        let a = write("a").expect("image a states param_services");
+        assert_eq!(
+            a.desc.params.store().stated(),
+            Some(&ParamStore::ParamServices)
+        );
+        assert!(write("b").is_none(), "image b builds no store, so no file");
+    }
+
+    /// phase-486 W4 -- ONE writer for both shapes, so the stale rule holds
+    /// across them: a contract's full file, then the contract deleted and no
+    /// store, leaves NO file -- not the full one sizing from a deleted contract.
+    #[test]
+    fn a_deleted_contract_with_no_store_removes_the_full_descriptor() {
+        let dir = tempfile::tempdir().unwrap();
+        let inv = inventory(vec![]);
+        let full = write_for_model(&ModelImage {
+            wiring: Wiring::Composed(&inv),
+            ..unwired(
+                dir.path(),
+                "img",
+                &ParamDeclarations::Absent,
+                InfraServices::default(),
+            )
+        })
+        .unwrap()
+        .expect("a composed inventory always writes, store or not");
+        assert_eq!(full.desc.params.store().stated(), Some(&ParamStore::None));
+        assert!(full.path.is_file());
+        let gone = write_for_model(&unwired(
+            dir.path(),
+            "img",
+            &ParamDeclarations::Absent,
+            InfraServices::default(),
+        ))
+        .unwrap();
+        assert!(gone.is_none());
+        assert!(!full.path.exists(), "the full file outlived its contract");
+    }
+
     /// RFC-0100 D12 -- the runtime's store-only file lands at the runtime path
     /// and names the entries it is the envelope of.
     #[test]
@@ -5021,25 +5108,30 @@ execution:
         let dir = tempfile::tempdir().unwrap();
         let entries = vec!["a_entry".to_string(), "b_entry".to_string()];
         let seeded = store_model("", "rate: 5");
-        let written = write_store_only(&StoreOnly {
-            build_dir: dir.path(),
-            entry: "runtime",
-            params: &ParamDeclarations::Absent,
-            infra: InfraServices::from_model(
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(store_model(
-                    "", "",
+        let written = write_for_runtime(
+            &unwired(
+                dir.path(),
+                "runtime",
+                &ParamDeclarations::Absent,
+                InfraServices::from_model(
+                    &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+                        store_model("", ""),
+                    ),
+                    None,
+                )
+                .union(InfraServices::from_model(
+                    &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+                        seeded.clone(),
+                    ),
+                    None,
                 )),
-                None,
-            )
-            .union(InfraServices::from_model(
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
-                    seeded.clone(),
-                ),
-                None,
-            )),
-            runtime_entries: Some(&entries),
-            roots: &[],
-        })
+            ),
+            &RuntimeComposition {
+                entries: &entries,
+                model_paths: &[],
+                conflicts: &[],
+            },
+        )
         .unwrap()
         .expect("one image seeds a parameter");
         assert_eq!(
