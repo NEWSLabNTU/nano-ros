@@ -1,0 +1,25 @@
+# What this example deploys to (RFC-0098 D3/D5) — the same schema a workspace
+# bringup uses. This leaf keeps its own `main` (no `nros::main!`) and opens its
+# own executor, so it declares no component table; the file names its board,
+# RMW and edition, which reach the build through the generated selection
+# package (issue 1305).
+
+[system]
+name = "native_rtic_talker"
+rmw = "zenoh"
+domain_id = 0
+# The image a bare `nros sync` / `nros build` / `cargo build` builds.
+default_images = ["native"]
+
+# Host build. The locator and domain stay runtime env on native.
+[image_defaults]
+board = "native"
+
+[image.native]
+
+# One image per RMW (RFC-0031): `nros sync --image <id> && nros build <id>`.
+[image.native_xrce]
+rmw = "xrce"
+
+[image.native_cyclonedds]
+rmw = "cyclonedds"

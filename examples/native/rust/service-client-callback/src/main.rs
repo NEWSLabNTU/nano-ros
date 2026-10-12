@@ -75,7 +75,7 @@ fn run() -> i32 {
 fn main() {
     // Register the RMW backend the build linked (idempotent; must run before
     // the executor opens). RMW selection is build/config, never source.
-    nros_board_linux::register_linked_rmw();
+    native_rs_service_client_callback_nros_selection::nros_board_linux::register_linked_rmw();
 
     env_logger::init();
     std::process::exit(run());

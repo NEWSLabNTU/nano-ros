@@ -194,11 +194,15 @@ Key points that did not move:
   (below), which `nros setup esp32-c3-baremetal` provisions.
 
 Switching the example to another board is editing `[image.*] board` and
-re-running `nros sync`, and nothing else. The leaf names no board crate: the
-board (`nros-board-esp32-qemu`), `esp-hal`, `esp-backtrace` and the bootloader
-app descriptor come from the `<pkg>_nros_selection` package `nros sync`
-generates under `build/nros/selection/` for the image's board (RFC-0098 D6,
-[issue 1305](../issues/archived/1305-single-package-board-crate-dep-not-generated.md)).
+re-running `nros sync` — **plus one more edit, today.** A single-package leaf is
+its own entry, so it still names its board crate by hand in `[dependencies]`
+(`nros-board-esp32-qemu = { version = "*" }` here). RFC-0098 D6 generates that
+dependency for a workspace entry only, so a board change that touches just
+`system.toml` makes `nros sync` report success and `nros build` fail inside the
+leaf's own crate with `cannot find nros_board_<old> in the crate root`. Change
+both, until
+[issue 1305](../issues/1305-single-package-board-crate-dep-not-generated.md)
+closes.
 
 ## QEMU ESP32-C3 Testing
 

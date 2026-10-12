@@ -1891,19 +1891,6 @@ features = ["unstable-zenoh-api"]
 # only xrce/cyclonedds need a row here. The image is part of the row's group
 # key, so each image lands in its own artifact dir.
 
-# #196 — this row was missing: `build_native_service_client_callback` resolves
-# `target-zenoh/<profile>/service-client-callback`, but only the plain
-# (default-features → `target/`) row existed, so no sweep ever built or
-# refreshed the binary the test consumes (a hand-built June-12 artifact sat
-# there while `build-test-fixtures` reported green).
-[[fixture]]
-platform = "linux"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/native/rust/service-client-callback"
-no_default_features = true
-features = ["rmw-zenoh"]
-
 [[fixture]]
 platform = "linux"
 lang = "rust"
