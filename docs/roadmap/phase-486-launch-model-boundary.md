@@ -1,6 +1,6 @@
 # Phase 486 — the launch model carries what every realizer reads; nano-ros's own facts move to an overlay
 
-**Status (2026-10-12). W0, W1 and W2 LANDED; W3–W9 not started. Design revised 2026-10-12 (below) after re-reading rlm and play_launch `main`.** Implements RFC-0060's
+**Status (2026-10-12). W0–W3 LANDED; W5 landed in play_launch (`ca7eb1a`, its phase 86 W1–W4) and W6 in rlm (`v0.1.55`); W4 and W7–W9 open. Design revised 2026-10-12 (below) after re-reading rlm and play_launch `main`.** Implements RFC-0060's
 [2026-10-10 amendment](../design/0060-launch-toolchain-three-layers.md#amendment-2026-10-10--what-the-systemmodel-may-carry-and-where-nano-ross-own-facts-go)
 and RFC-0100's
 [2026-10-10 ruling](../design/0100-rmw-agnostic-sizing-model.md#ruling-2026-10-10--a-stated-fact-earns-a-file-whatever-it-came-from).
@@ -261,6 +261,41 @@ existing bringup is byte-identical, since none states per-image switches yet.
 **Acceptance:** every W0 image is byte-identical: knobs diffed per consumer,
 plus the sizes headers and `OUT_DIR` outputs (the PR #1830 method). Mutation:
 pointing one reader back at an empty model field turns a test red.
+
+### W3 result (2026-10-12)
+
+- **One loader.** `nros_orchestration_ir::overlay::LoadedModel` (model +
+  overlay, `load` / `with_overlay_beside`) derefs to the model;
+  `model_ingest::load_model` and the inventory and sizing loaders return it.
+  A model that still carries switches with no overlay beside it is refused,
+  naming `nros sync` — the migration rule, implemented.
+- **Switches** come from `LoadedModel::features(image)`. `nros build`'s store
+  seed asks per image (`[image.<id>] features`, W2); every other reader asks
+  for the system list.
+- **Lifecycle:** `reduce_lifecycle_autostart` replaces the three first-wins
+  reads (`codegen::entry`, `nros::main!`, the inventory). Nodes that state a
+  value agree and win; none ⇒ the overlay default; a disagreement is refused
+  naming both nodes.
+- **Board slice deleted** from both entry emitters. Placement is one shared
+  rule, `overlay::placed_here`: a node absent from a NON-EMPTY
+  `execution.deploy` was placed elsewhere. Found while deleting it: the old
+  `keep` also carried this `[host.*]` partition (23 tracked files use
+  `[host.*]`), which is placement and stays.
+- **Gate** `check-launch-model-boundary` (fast line): no source names
+  `execution.features`, `Deploy.extra`, `Deploy.target` or a first-wins
+  lifecycle read. Two allowlisted sites: the migration guard, and a test
+  proving issue 0951's EDF reader stays removed. Self-test first; a stale
+  allowlist entry fails.
+- **Byte-identical, measured** after `nros sync` of every tracked
+  workspace, old CLI (main) vs new: `nros ws entity-facts` 84/84 launch
+  files, `nros ws entity-inventory` 78/78 models, and `plan_from_model`
+  390/390 (78 models × native/freertos/zephyr/nuttx/threadx). The
+  `nros::main!` reader shares the reducer and `placed_here`, and its
+  unit tests pass; a compiled Rust entry was not diffed.
+- **Not yet:** the per-image `IMPLIED_STORE_SLOTS` 32-vs-0 measurement
+  (W2 moved it here). The reader is per image now, but no tracked bringup
+  states a per-image switch, so measuring it needs a two-image fixture; it
+  moves to W4 with the descriptor rule.
 
 ## W4 — the sizing descriptor composes over both inputs
 
