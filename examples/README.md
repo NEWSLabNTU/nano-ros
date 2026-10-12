@@ -73,7 +73,7 @@ Each example is a standalone Cargo + CMake package — no walk-up in the manifes
               --config my-talker/build/native/nros-cargo.toml
   ```
 
-  One caveat for a single-package **Rust** leaf: it is its own entry, so it still names its board crate in `[dependencies]`, and RFC-0098 D6's generated board dependency reaches only a workspace entry. Switching such a leaf to another board means editing `[image.*] board` **and** that dependency together — leave them disagreeing and `nros sync` reports success while the build fails inside your own crate ([issue 1305](../docs/issues/1305-single-package-board-crate-dep-not-generated.md)). A C/C++ leaf and a workspace really are one line.
+  A single-package **Rust** leaf is its own entry, and it names no board crate: it depends on `<pkg>_nros_selection = { path = "build/nros/selection" }`, which `nros sync` / `nros build` generate with the image's board crate, RMW backend and runtime crates (RFC-0098 D6), so switching it to another board is the `[image.*] board` line, as it is for a C/C++ leaf and a workspace ([issue 1305](../docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)).
 
 - **C / C++** — every CMakeLists resolves the nano-ros root through one guard: `-DNROS_REPO_DIR=<path>` cache var, else the `NROS_REPO_DIR` env var (exported by `activate.sh`), else the in-repo relative walk-up. That flag says where the checkout is and nothing else — the board, the RMW, the domain and the network identity come from the leaf's `system.toml`, not from `-D` flags and not from the retired `package.xml` `<nano_ros deploy= board= rmw=/>` tuple. A single-package C/C++ leaf needs no `nros sync`: its message bindings are a CMake-time output. Copy the directory anywhere, then:
 

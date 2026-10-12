@@ -78,7 +78,7 @@ One caveat for a **single package**: it is its own entry, so the board
 crate, its `rtic` feature, the RMW backend and the panic handler come from a
 generated `<pkg>_nros_selection` package the in-tree RTIC examples depend on
 (`nros sync` writes it for the image's board;
-[issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1305-single-package-board-crate-dep-not-generated.md)).
+[issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)).
 `rtic` and the PAC stay in the package's own `[dependencies]`, because the
 `#[rtic::app]` expansion names `rtic::` and `device = mps2_an385_pac` from
 that crate; they belong to the RTIC program, not to the board, and are the

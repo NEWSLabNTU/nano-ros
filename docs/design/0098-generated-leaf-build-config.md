@@ -462,6 +462,24 @@ with several images gets the selection of the image being synced or built. The
 macro uses the package only when the leaf does not also name the board crate, so
 a generated workspace entry, which names both, is unchanged.
 
+**Every single-package shape, as implemented (2026-10-13, issue 1305 phase E).**
+Three shapes the first sweep left out take the same package, with no second
+mechanism:
+
+- a workspace PACKAGE that is itself a leaf (the copy-out templates' Rust
+  packages, a `[package]` manifest with its own `system.toml` under `src/`):
+  `nros sync` in the workspace writes each such package's selection before
+  its first cargo call, as it does for a single-package leaf;
+- a C/C++ application on a cargo link root (`mps2-an385-baremetal/{c,cpp}`):
+  its hand-written `main.rs` names the board's re-exports through the
+  package (`<pkg>_nros_selection::nros_board_mps2_an385::{entry, run_bare,
+  Config}`), the path `nros::main!` emits for a Rust leaf, and the image states
+  `panic = "platform"` because the C runtime brings the handler;
+- the ESP32 entry: `#[esp_hal::main]`'s expansion names
+  `esp_hal::__macro_implementation` by a relative path when the calling
+  package has no `esp-hal`, so for a leaf on its selection `nros::main!`
+  brings `esp_hal` into the crate root from the board's re-export.
+
 ## What is NOT decided here
 
 - The C/C++ leaves' CMake side. They take their board from `system.toml` under

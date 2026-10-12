@@ -1,15 +1,15 @@
 # Phase 445 — one board choice generates the leaf's build configuration
 
-**Status (2026-10-12). Re-measured on main 2026-10-11, bullet 5 on
-2026-10-12; the phase is NOT complete.** Acceptance: bullet 1 is MET for Rust and now for C/C++ (issue 1296,
-resolved). Bullet 2 is MET for the 34 single-package Rust leaves on the
-generated selection package (issue 1305 phase C, 2026-10-12: the mps2
-bare-metal, FreeRTOS, NuttX, ThreadX-Linux and RTIC examples; phase D the same
-day: the six native examples, whose RMW and ROS edition are now declared per
-image) and NOT MET for the classes still outside it: two copy-out templates
-(issue 1829), the dormant ESP32 leaves (issue 1525) and the C/C++ apps on a
-cargo link root (issue 1305; a switch there fails at `nros sync`, naming both
-crates). Bullet 3 was not measured. Bullet 4 holds for TRACKED files, and since
+**Status (2026-10-13). Re-measured on main 2026-10-11, bullet 5 on
+2026-10-12, bullet 2 on 2026-10-13; the phase is NOT complete.** Acceptance: bullet 1 is MET for Rust and now for C/C++ (issue 1296,
+resolved). Bullet 2 is MET for every single-package leaf that can take the
+generated selection package — 56 of them (issue 1305, resolved 2026-10-13:
+phase C the mps2 bare-metal, FreeRTOS, NuttX, ThreadX-Linux and RTIC examples;
+phase D the six native examples, whose RMW and ROS edition are declared per
+image; phase E the two copy-out templates' Rust packages, the twelve mps2
+C/C++ apps on a cargo link root and the dormant ESP32 leaves). The leaves
+still naming a board crate are out of scope by shape and listed in
+`leaf_settings::NOT_ON_THE_SELECTION`. Bullet 3 was not measured. Bullet 4 holds for TRACKED files, and since
 issue 1404 (resolved) `nros sync` also removes a stale GENERATED workspace root
 left on disk. Bullet 5 is MET since 2026-10-12 (issue 1289, resolved): its `rg`
 was narrowed to the DEPLOYMENT tables (`deploy|entry`) and returns nothing, and
@@ -29,10 +29,11 @@ the RFC-0098 amendment of 2026-10-11: D1's path follows RFC-0103 D7, and D6
 covers EVERY image-only dependency of a single-package leaf, through a generated
 selection package. The FreeRTOS switch of the mps2 Rust talker needed two
 `Cargo.toml` edits, not the one the refusal promised (issue 1305, re-scoped; the
-message is corrected). W1 and W5 are ticked; W4 is open for 1305 alone. The
+message is corrected). W1, W4 and W5 are ticked (W4 was open for 1305 alone;
+1305 resolved 2026-10-13, W4c phase E). The
 1296 fix routed around a bringup named two ways rather than unifying it (issue
 1813). RFC-0098 stays Draft until 1305 and 1288 (blocked by 1253) close and
-bullet 3 is measured; 1289 resolved 2026-10-12.
+bullet 3 is measured; 1289 resolved 2026-10-12, 1305 resolved 2026-10-13.
 
 *(2026-09-11: Every wave is WRITTEN; the phase is NOT complete, and
 two of its five acceptance bullets are measured NOT MET.)* W1, W2, W3b, W4b, W5
@@ -45,12 +46,12 @@ workspace root build file, both gated.
 `archived/`.** The headline — pick a board in `system.toml`, run `nros build`,
 get an image — holds for Rust and not for the other two roads:
 
-* **issue 1305** — the one-line board switch is TRUE for a single-package Rust
-  leaf on its generated selection package (W4c; 40 in-tree leaves since phase D,
-  the native examples included) and still FALSE for the leaves outside it: the
-  copy-out templates, board-specific test fixtures, C/C++
-  apps on a cargo link root, the rv-virt-threadx staticlibs and the dormant
-  ESP32 leaves. `leaf_settings::NOT_ON_THE_SELECTION` lists them with reasons.
+* ~~**issue 1305** — the one-line board switch is false for a single-package
+  Rust leaf.~~ RESOLVED 2026-10-13: 56 in-tree leaves are on their generated
+  selection package (W4c phases C–E), templates, mps2 C/C++ cargo link roots
+  and ESP32 included. What still names a board crate is out of scope by shape
+  (board code in the node, harness-templated fixtures, the rv-virt-threadx
+  libs a CMake image links), listed in `leaf_settings::NOT_ON_THE_SELECTION`.
 * ~~**issue 1296** — `nros build` does not resolve a single-package C/C++
   leaf.~~ RESOLVED 2026-10-11, together with 1308: `nros build` now configures
   the leaf's OWN `CMakeLists.txt` into `build/<image>/cmake`
@@ -232,10 +233,11 @@ esp32 stack budgets.
   NOT built: Zephyr. The west workspace's `nano-ros` module is a symlink to
   another checkout, so a west build from here would compile that checkout,
   not this one. Its leaves resolve (`nros sync`, `nros ws leaf-system`).
-- [ ] **W4 — one generated settings file per image, under `build/` (D1, D6,
-  D7).** *(Re-measured 2026-10-11: everything here has landed except D6 for a
-  SINGLE-PACKAGE leaf, which still names its board crate — issue 1305. The box
-  stays open for that alone. One writer, `builder/cargo_config.rs`; the
+- [x] **W4 — one generated settings file per image, under `build/` (D1, D6,
+  D7).** *(Ticked 2026-10-13: issue 1305, the one thing it stayed open for, is
+  resolved — W4c phase E below. Re-measured 2026-10-11: everything here had
+  landed except D6 for a SINGLE-PACKAGE leaf, which still named its board
+  crate — issue 1305. The box stayed open for that alone. One writer, `builder/cargo_config.rs`; the
   per-invocation `NROS_DECLARED_*` exports are gone, and
   `workspace-fixtures-build.sh` refuses a cargo workspace row with no image.)*
   **W4c — D6 for single-package leaves, generator landed (2026-10-12, issue
@@ -277,6 +279,19 @@ esp32 stack budgets.
   images share one selection dir. Issue 1305 records the measurements. Left in
   `NOT_ON_THE_SELECTION`: two templates (1829), ESP32 (1525), the C/C++ apps
   on a cargo link root, and leaves outside D6 by shape.
+  **W4c phase E — the last three classes (2026-10-13,
+  `fix/1305-remaining-leaves`; issue 1305 RESOLVED).** The templates' Rust
+  packages (workspace sync now writes a member leaf's selection before its
+  first cargo call; `check-template-copy-out.sh` rc=0 on both, and the README's
+  `nros sync` + plain `cargo build` rc=0 on copies outside the checkout), the
+  twelve mps2 C/C++ apps (their `main.rs` reaches `entry`/`run_bare`/`Config`
+  through `<pkg>_nros_selection::nros_board_mps2_an385`; images state
+  `panic = "platform"`; `fixtures-build.sh baremetal c|cpp` rc=0,
+  `test_qemu_baremetal_capi_e2e` 6/6), and the ESP32 pair (the macro brings
+  `esp_hal` in from the board's re-export; built here, and in Espressif QEMU
+  225 published / 219 heard in 60 s). 56 leaves on the selection; the walk
+  test's exemptions for those classes are gone, mutation-checked. With 1305
+  resolved, D6 is met for every single-package leaf, so the box is ticked.
   `nros sync` / `nros build` write `build/<image>/nros-cargo.toml` (board
   `cargo_config` + per-image `target-dir` + resolved `[env]` incl. the entity
   facts + in-repo patch rows) and the generated entry
@@ -498,10 +513,13 @@ esp32 stack budgets.
   shows that line only, and the FreeRTOS image boots in QEMU and publishes 27
   messages to a router in 30 s. Phase C (2026-10-12) moved the mps2
   bare-metal, FreeRTOS, NuttX, ThreadX-Linux and RTIC examples onto the same
-  package (34 leaves), and phase D the six native examples (40). NOT MET yet
-  for the single-package leaves outside it: two copy-out templates (issue
-  1829), the dormant ESP32 leaves (issue 1525) and the twelve mps2 C/C++ apps
-  on a cargo link root (issue 1305).** Earlier measurement, before W4c: one line changed,
+  package (34 leaves), phase D the six native examples (40), and phase E
+  (2026-10-13) the two copy-out templates' Rust packages, the twelve mps2
+  C/C++ apps on a cargo link root and the two ESP32 leaves (56; issue 1305
+  resolved). A C/C++ app on a cargo link root is a bare-metal-only shape: its
+  `main.rs` calls that board's `run_bare` and `nros-c` keeps its per-board
+  platform arm, so for it the manifest names no board crate but a switch to
+  an RTOS board means the CMake road, not one line.** Earlier measurement, before W4c: one line changed,
   `nros sync` reported `done.`, `nros build` failed with
   `cannot find nros_board_<new_board> in the crate root`. A single-package
   leaf is its own entry, so it still names its board crate in

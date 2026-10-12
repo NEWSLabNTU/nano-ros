@@ -158,11 +158,13 @@ crates (RFC-0098 D6). So a new leaf names none of those, and switching
 `nros::main!(panic = "platform")`, state `panic = "platform"` in the
 `[image.*]` too, or the package also links the board's panic handler. Naming
 a board crate beside the selection package is refused at `nros sync`, and a
-unit test walks every in-tree leaf for it. The leaves still outside this shape
-(native examples with an RMW feature axis, C/C++ apps on a cargo link root,
-board-specific test fixtures) are listed with their reasons in
+unit test walks every in-tree leaf for it. A C/C++ app on a cargo link root
+(`examples/mps2-an385-baremetal/{c,cpp}/*`) takes the same dependency and
+reaches the board's re-exports through it from its own `main.rs`. The leaves
+outside this shape BY SHAPE (board code in the node, harness-templated test
+fixtures, a lib a CMake image links) are listed with their reasons in
 `leaf_settings::NOT_ON_THE_SELECTION`; see
-[issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1305-single-package-board-crate-dep-not-generated.md).
+[issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md).
 
 ### C / C++ (CMake)
 

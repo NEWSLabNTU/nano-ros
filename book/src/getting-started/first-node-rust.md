@@ -84,14 +84,11 @@ derives every one of those from `board = "native"` and writes them to
 `build/native/nros-cargo.toml`, which `nros build` hands cargo with
 `--config`.
 
-Retargeting is therefore almost entirely one line. *Almost*: this
-native talker still names its board crate (`nros-board-linux`) in
-`[dependencies]`, because its RMW and ROS edition are still cargo features, so that line has
-to move with the `board =` one. The bare-metal, FreeRTOS, NuttX,
-ThreadX-Linux and RTIC Rust examples no longer do: they depend on a generated
-`<pkg>_nros_selection` package that `nros sync` writes for the image's
-board, and there the `board =` line is the whole edit
-([issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1305-single-package-board-crate-dep-not-generated.md)).
+Retargeting is therefore one line. This native talker names no board
+crate: it depends on a generated `<pkg>_nros_selection` package that
+`nros sync` writes for the image's board (with that image's RMW and ROS
+edition), so the `board =` line is the whole edit
+([issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)).
 Everything else the board implies — the triple, the link group, the
 QEMU runner, the cross compiler — follows the `system.toml` edit on its
 own. A multi-node workspace has no such caveat: its entry is generated,
