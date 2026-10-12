@@ -390,14 +390,8 @@ pub fn lower(name: &str, value: &str) -> Result<Option<LoweredOverride>, QoSOver
             },
         ),
         "depth" => (qos_override_policy::DEPTH, ms("a non-negative integer")?),
-        "deadline" => (
-            qos_override_policy::DEADLINE,
-            ns(DURATION_NS)?,
-        ),
-        "lifespan" => (
-            qos_override_policy::LIFESPAN,
-            ns(DURATION_NS)?,
-        ),
+        "deadline" => (qos_override_policy::DEADLINE, ns(DURATION_NS)?),
+        "lifespan" => (qos_override_policy::LIFESPAN, ns(DURATION_NS)?),
         "liveliness" => (
             qos_override_policy::LIVELINESS,
             match v {
@@ -421,10 +415,7 @@ pub fn lower(name: &str, value: &str) -> Result<Option<LoweredOverride>, QoSOver
                 }
             },
         ),
-        "liveliness_lease_duration" => (
-            qos_override_policy::LIVELINESS_LEASE,
-            ns(DURATION_NS)?,
-        ),
+        "liveliness_lease_duration" => (qos_override_policy::LIVELINESS_LEASE, ns(DURATION_NS)?),
         _ => {
             return Err(QoSOverrideError::UnknownPolicy {
                 key,
@@ -684,7 +675,10 @@ mod tests {
             ("100", "a millisecond spelling"),
             ("999999", "just under the wire's resolution"),
             // At or past the u32 millisecond sentinel.
-            ("4294967295000000", "the infinite sentinel's own millisecond count"),
+            (
+                "4294967295000000",
+                "the infinite sentinel's own millisecond count",
+            ),
             ("-1", "negative"),
             ("1.5", "not an integer"),
         ] {

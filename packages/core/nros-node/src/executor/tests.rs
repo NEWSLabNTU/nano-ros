@@ -12872,10 +12872,12 @@ fn a_store_carved_from_the_backing_never_asks_the_heap() {
 #[cfg(all(feature = "std", feature = "param-services"))]
 #[test]
 fn the_carved_home_reserves_the_services_only_when_the_image_serves_them() {
-    use crate::param_sizing::{MAX_SERVICE_SETS, param_service_buffer_bytes};
-    use crate::parameter_services::{
-        HOME_BUFFER_BYTES, PARAM_SERVICE_SETS, ParamHome, ParamState, ParameterServiceServers,
-        Placed,
+    use crate::{
+        param_sizing::{MAX_SERVICE_SETS, param_service_buffer_bytes},
+        parameter_services::{
+            HOME_BUFFER_BYTES, PARAM_SERVICE_SETS, ParamHome, ParamState, ParameterServiceServers,
+            Placed,
+        },
     };
     use core::mem::size_of;
     use nros_params::ParameterValue;
@@ -12907,8 +12909,7 @@ fn the_carved_home_reserves_the_services_only_when_the_image_serves_them() {
         assert_eq!(PARAM_SERVICE_SETS, MAX_SERVICE_SETS);
         assert_eq!(HOME_BUFFER_BYTES, param_service_buffer_bytes());
         assert!(
-            size_of::<ParamState<'_>>()
-                >= MAX_SERVICE_SETS * size_of::<ParameterServiceServers>(),
+            size_of::<ParamState<'_>>() >= MAX_SERVICE_SETS * size_of::<ParameterServiceServers>(),
             "the sets are inline, one per node slot"
         );
         assert!(size_of::<ParamHome>() >= size_of::<ParamState<'_>>() + 2 * HOME_BUFFER_BYTES);

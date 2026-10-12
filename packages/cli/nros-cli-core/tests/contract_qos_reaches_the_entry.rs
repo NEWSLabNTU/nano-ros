@@ -175,10 +175,7 @@ fn a_contract_lease_and_deadline_bake_in_milliseconds() {
 
     let src = emit::emit_typed(Lang::Cpp, &plan).expect("typed C++ emit");
     for (p, v) in [(policy::LIVELINESS_LEASE, 500), (policy::DEADLINE, 4300)] {
-        let row = format!(
-            "{{ \"/availability\", {}, {p}, {v} }},",
-            role::SUBSCRIPTION
-        );
+        let row = format!("{{ \"/availability\", {}, {p}, {v} }},", role::SUBSCRIPTION);
         assert!(src.contains(&row), "{row} must be baked:\n{src}");
     }
 }
