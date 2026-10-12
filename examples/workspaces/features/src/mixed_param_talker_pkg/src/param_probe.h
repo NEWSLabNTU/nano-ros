@@ -14,7 +14,7 @@
 
 #include <stdint.h>
 
-#include <nros/types.h> /* rcl_node_t, rcl_ret_t */
+#include <rclc/types.h> /* rcl_node_t, rcl_ret_t */
 
 #ifdef __cplusplus
 extern "C" {

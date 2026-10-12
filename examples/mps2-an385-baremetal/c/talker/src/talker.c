@@ -31,13 +31,13 @@
 
 #include <nros/app_main.h>
 #include <nros/check.h>
-#include <nros/executor.h>
-#include <nros/init.h>
+#include <rclc/executor.h>
+#include <rclc/init.h>
 #include <nros/log.h>
-#include <nros/node.h>
-#include <nros/publisher.h>
-#include <nros/rcl_compat.h>
-#include <nros/timer.h>
+#include <rclc/node.h>
+#include <rclc/publisher.h>
+#include <rcl/rcl.h>
+#include <rclc/timer.h>
 
 // Generated message bindings (`nros generate c`, run by build.rs).
 #include "std_msgs.h"

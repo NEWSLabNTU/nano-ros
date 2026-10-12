@@ -6,13 +6,13 @@
 #include <string.h>
 #include <signal.h>
 
-// nros modular includes (rclc-style)
+// rclc include paths; nros/ holds the nano-ros-only entry and check helpers
 #include <nros/app_main.h>
 #include <nros/check.h>
-#include <nros/executor.h>
-#include <nros/init.h>
-#include <nros/node.h>
-#include <nros/subscription.h>
+#include <rclc/executor.h>
+#include <rclc/init.h>
+#include <rclc/node.h>
+#include <rclc/subscription.h>
 
 // Generated message bindings
 #include "std_msgs.h"

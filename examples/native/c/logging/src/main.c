@@ -14,8 +14,8 @@
  */
 
 #include <nros/app_main.h>
-#include <nros/init.h>
-#include <nros/node.h>
+#include <rclc/init.h>
+#include <rclc/node.h>
 #include <nros/log.h>
 
 #include <stdint.h>

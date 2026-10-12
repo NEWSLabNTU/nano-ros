@@ -6,13 +6,13 @@
 #include <string.h>
 #include <signal.h>
 
-// nros modular includes (rclc-style)
+// rclc include paths; nros/ holds the nano-ros-only entry and check helpers
 #include <nros/app_main.h>
-#include <nros/action.h>
+#include <rclc/action_server.h>
 #include <nros/check.h>
-#include <nros/executor.h>
-#include <nros/init.h>
-#include <nros/node.h>
+#include <rclc/executor.h>
+#include <rclc/init.h>
+#include <rclc/node.h>
 
 // Generated C bindings for example_interfaces/action/Fibonacci
 #include "example_interfaces.h"
