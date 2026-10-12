@@ -51,9 +51,23 @@ developer tree, refuses to move it.
 This is issue 1585's class (resolved 2026-09-29) one directory over. 1585
 was the runner-bootstrap STORE checkout leaving submodules behind; this is
 the per-job WORKSPACE, which `runner-bootstrap.sh` does not touch.
-`nano-ros-runner-newslab-server-241` runs ephemeral containers with a
-fresh workspace and is not affected, which is why the lane is not
-uniformly red.
+The first three failures were on 118 and 133 only, so when this was filed
+`nano-ros-runner-newslab-server-241` was taken to be unaffected, its
+containers being ephemeral. **That was wrong.** Its ephemeral container
+mounts a persistent workspace too, and it fails the same way:
+
+| merge_group run | job | runner |
+| --- | --- | --- |
+| 38241201245 (#2045 batch, 11:12Z) | L3 | nano-ros-runner-newslab-server-241 |
+| 38242035564 (#2047 batch, 11:20Z) | L3 | nano-ros-runner-newslab-133 |
+
+```
+setup: FAILED — packages/cli/third-party/play_launch is at d23720c7, not the pin this tree records,
+```
+
+So every self-hosted runner refuses at `setup`, and every L3 run since
+the pin bump is red. That includes 38234480678, 38237477170 and
+38240017467 on newslab-118.
 
 ## What it is not
 
