@@ -9,10 +9,13 @@
 # build of `nros-node` turns `alloc` on through `std` or through workspace
 # feature unification. A capability nothing builds is not a capability.
 #
-# Two rows, each a `cargo check` of `nros-node` alone, no `std`, no `alloc`:
+# Three rows, each a `cargo check` of `nros-node` alone, no `std`, no `alloc`:
 #
 #   1. NROS_PARAM_STORE=1 — the build KNOWS the image builds a store, so the
 #      default sizing carves it and the services' home with it. Must compile.
+#   1b. NROS_PARAM_STORE=1 NROS_CAPABILITY_PARAM_SERVICES=0 — a store the
+#      image holds and does not serve (issue 1856): the home carves the state
+#      alone. Must compile.
 #   2. No store known — nothing to carve and no heap to fall back to. Must be
 #      REFUSED at compile time, naming the knob. This row is the negative
 #      control for row 1 as well: if it compiled, row 1 would be proving
@@ -81,6 +84,18 @@ if ! CARGO_TARGET_DIR="$(nros_scoped_target_dir param-heap-free)" NROS_PARAM_STO
     echo "check-param-services-heap-free: nros-node does not build \`param-services\` without \`alloc\`" >&2
     echo "  over a carved store. Something on the service path reached for the heap again" >&2
     echo "  (issue 1812): carve it from the executor backing (\`ParamHome\`) instead." >&2
+    exit 1
+fi
+
+# Issue 1856 -- the store-only image: a store is known, and the build STATES
+# the image serves no parameter services. Its home carries no sets and no
+# buffer pair, and nothing on the store's path may reach for the heap either.
+echo "  - nros-node: param-services without alloc, store carved, services stated off"
+if ! CARGO_TARGET_DIR="$(nros_scoped_target_dir param-heap-free-store-only)" NROS_PARAM_STORE=1 \
+        NROS_CAPABILITY_PARAM_SERVICES=0 \
+        cargo check --quiet -p nros-node --no-default-features --features "$FEATURES"; then
+    echo "check-param-services-heap-free: nros-node does not build a store-only image" >&2
+    echo "  (NROS_CAPABILITY_PARAM_SERVICES=0) without \`alloc\` (issue 1856)." >&2
     exit 1
 fi
 

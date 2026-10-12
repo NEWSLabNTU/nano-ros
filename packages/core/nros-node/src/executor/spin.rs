@@ -769,6 +769,25 @@ impl Drop for RefuseParameterStore {
     }
 }
 
+/// Issue 1856 -- name the build statement that left `what` out of this image.
+///
+/// `nros_params::PARAM_SERVICES_SERVED` is false only when the build STATED
+/// `NROS_CAPABILITY_PARAM_SERVICES=0`; the carved home then has no service
+/// sets and no request/reply pair, so the call cannot be satisfied at run
+/// time. Cold and out of line: it formats.
+#[cfg(feature = "param-services")]
+#[cold]
+#[inline(never)]
+fn report_parameter_services_not_built(what: &str) {
+    nros_log::log_error!(
+        nros_log::get_logger("nros"),
+        "{} refused: this image was built with NROS_CAPABILITY_PARAM_SERVICES=0, so its \
+         executor reserves no parameter-service sets or buffers. Declare `param_services` \
+         in the bringup's `[system] features` (issue 1856).",
+        what
+    );
+}
+
 /// Issue 1706 -- say, once, that the parameter store did not fit.
 ///
 /// The RFC-0100 D11 shape, one layer up from Cyclone's boot check: the
@@ -10920,6 +10939,13 @@ impl<'s> Executor<'s> {
     /// executor.declare_parameter("start_value", ParameterValue::Integer(0));
     /// ```
     pub fn register_parameter_services(&mut self) -> Result<(), NodeError> {
+        // Issue 1856 -- the build stated this image serves no parameter
+        // services, so its carved home has no room for a set. Say so by name
+        // rather than fail later with a full table.
+        if !nros_params::PARAM_SERVICES_SERVED {
+            report_parameter_services_not_built("the six parameter services");
+            return Err(NodeError::Transport(TransportError::Unsupported));
+        }
         // Issue 1706 -- six services over a store that does not exist would
         // answer every request with "not declared"; say what went wrong
         // instead (`report_parameter_store_refused` has named the size).
@@ -12335,6 +12361,12 @@ impl<'s> Executor<'s> {
     ) -> Result<(), NodeError> {
         use nros_core::RosMessage;
         type Event = nros_rcl_interfaces::msg::ParameterEvent;
+        // Issue 1856 -- an event is encoded into the services' reply buffer,
+        // which an image that serves no parameter services does not carve.
+        if !nros_params::PARAM_SERVICES_SERVED {
+            report_parameter_services_not_built("the /parameter_events publisher");
+            return Err(NodeError::Transport(TransportError::Unsupported));
+        }
         if !self.ensure_parameter_store() {
             return Err(NodeError::Transport(TransportError::BadAlloc));
         }
