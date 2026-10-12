@@ -1406,6 +1406,8 @@ ref = "d0c2e80e2da61e274f8f53505b1974fcad7d1071"
 # them present (the export is built with the app, per Phase 194). The Rust libc
 # fork is the separate `[source.nuttx-libc]` (it's a board package).
 [source.nuttx-kernel]
+# Issue 1834 — built in place, so `locate` does not watch the whole tree.
+builds_in_place = true
 env = "NUTTX_DIR"
 version = "12.13.0"
 dest = "third-party/nuttx/nuttx"
@@ -1414,6 +1416,8 @@ git = "https://github.com/jerry73204/nuttx.git"
 ref = "aea00d736d698994a7c0a7339b56b04af30ec21e"
 
 [source.nuttx-apps]
+# Issue 1834 — built in place, so `locate` does not watch the whole tree.
+builds_in_place = true
 env = "NUTTX_APPS_DIR"
 version = "12.13.0"
 dest = "third-party/nuttx/nuttx-apps"

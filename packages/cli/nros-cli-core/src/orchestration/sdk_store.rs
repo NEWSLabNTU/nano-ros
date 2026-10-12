@@ -95,6 +95,7 @@ pub fn locate_row(name: &str, s: &SourcePackage) -> nros_build_paths::locate::Ro
         in_store: s.location == SourceLocation::Store,
         git_ref: s.git_ref.clone(),
         submodule: s.submodule.is_some(),
+        builds_in_place: s.builds_in_place,
     }
 }
 
@@ -2972,6 +2973,7 @@ mod tests {
             shallow: true,
             recursive: true,
             build_stage: false,
+            builds_in_place: false,
             check: None,
         };
         assert_eq!(
@@ -3105,6 +3107,7 @@ mod tests {
             shallow: false,
             recursive,
             build_stage: false,
+            builds_in_place: false,
             check: None,
         }
     }
