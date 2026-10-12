@@ -150,3 +150,22 @@ works). The next failure behind it is in Zephyr 3.7 itself:
 `libc-hooks.c: conflicting types for '__lock___libc_recursive_mutex'` while
 compiling the `mps2_an385` C talker. That one is not yet diagnosed.
 
+
+### 2026-10-12: the libc-hooks failure reproduces
+
+Live-peer run [38291960490](https://github.com/NEWSLabNTU/nano-ros/actions/runs/38291960490)
+on main at `a310e0305`. Job 114954544955, "rows whose board is NOT this runner",
+step "Build the fixtures those rows resolve". The first fixture the Zephyr make
+driver built was `zephyr/mps2_an385/c/talker/zenoh`
+(`build-cortex-m-c-talker-zenoh`), and it failed the same way:
+
+```
+zephyr/lib/libc/picolibc/libc-hooks.c:112:16: error: conflicting types for '__lock___libc_recursive_mutex'; have 'struct k_mutex'
+```
+
+It is followed by matching errors for every `__retarget_lock_*` hook. The same
+log shows two Zephyr SDKs in play: the image runs `/opt/zephyr-sdk/setup.sh -c`,
+while setup reports `SDK directory: /github/home/.nros/sdk/zephyr-sdk/0.16.8/zephyr-sdk-0.16.8`.
+A lead, not measured: the compiler's picolibc headers may come from a different
+SDK than the one Zephyr 3.7's `libc-hooks.c` expects. Read the build's
+`Found toolchain:` line before trusting it.
