@@ -482,7 +482,8 @@ use the package (mps2 bare-metal + RTIC, FreeRTOS, NuttX, ThreadX Linux).
   defaults and adds the declared one, and refuses a transport the board has
   no link for. A board whose entry SHAPE differs by name gets its own
   `[[board]]` row on the same crate (`rtic-mps2-an385`: `board_features =
-  ["rtic"]`, the RTIC crate-root crates).
+  ["rtic"]`, the RTIC crate-root crates), marked `variant_of` the silicon's
+  row so it answers only to its own name.
 
 ## What is NOT decided here
 

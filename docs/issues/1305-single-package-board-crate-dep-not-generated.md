@@ -33,7 +33,11 @@ related: [rfc-0098, rfc-0065, phase-445]
   `rmw-xrce = ["xrce-transport"]`, the selector the facade already derives
   from `rmw = "xrce"`; on this board XRCE rides the UART custom transport.
 - *RTIC is its own `[[board]]` row* on the same crate: `board_features =
-  ["rtic"]`, crate-root crates `rtic` / `cortex-m` / `panic-semihosting`. The
+  ["rtic"]`, crate-root crates `rtic` / `cortex-m` / `panic-semihosting`, and
+  `variant_of = "qemu-mps2-an385"`, which keeps the directory and platform
+  fallbacks of `resolve_deploy` on the silicon's row (without it a
+  `board = "mps2-an385"` deploy turned ambiguous; `check cli-tests` caught it
+  in `codegen_system_basic`). The
   board crate re-exports its PAC under `rtic`; the macro's RTIC `device` is
   that re-export, and in a selection leaf `nros::main!` routes `device`, the
   dispatch consumer and `#[rtic::app]` through the package and brings `rtic`

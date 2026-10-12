@@ -457,6 +457,17 @@ pub struct BoardDescriptor {
     /// that dials the wrong way.
     #[serde(default)]
     pub transport_features: std::collections::BTreeMap<String, Vec<String>>,
+    /// Issue 1305 — this row is another ENTRY SHAPE of the board another row
+    /// names (`rtic-mps2-an385` is `qemu-mps2-an385` driven by RTIC): same
+    /// crate, same silicon, different `board_features` and crate-root crates.
+    ///
+    /// Such a row answers only to its own `names`. The fallbacks that resolve
+    /// a board by its descriptor DIRECTORY or its PLATFORM skip it, because
+    /// they name the silicon, and the silicon's row is the one named here —
+    /// without this a `board = "mps2-an385"` deploy became ambiguous the day
+    /// the RTIC row got its own block.
+    #[serde(default)]
+    pub variant_of: Option<String>,
     /// Phase 252 — the capability-axis features this board crate forwards to its
     /// backend (e.g. `["safety-e2e"]` → the board's `safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]`).
     /// A declared `[safety]` axis lowers to the board feature only when the board
@@ -1411,8 +1422,11 @@ impl BoardCatalog {
             .descriptors
             .iter()
             .filter(|d| {
-                d.directory_alias()
-                    .is_some_and(|a| a.eq_ignore_ascii_case(deploy))
+                // Issue 1305 — an entry-shape variant answers to its own
+                // names only (`variant_of`).
+                d.variant_of.is_none()
+                    && d.directory_alias()
+                        .is_some_and(|a| a.eq_ignore_ascii_case(deploy))
             })
             .collect();
         match by_dir.len() {
@@ -1423,7 +1437,7 @@ impl BoardCatalog {
         let by_platform: Vec<&BoardDescriptor> = self
             .descriptors
             .iter()
-            .filter(|d| d.platform.kebab().eq_ignore_ascii_case(deploy))
+            .filter(|d| d.variant_of.is_none() && d.platform.kebab().eq_ignore_ascii_case(deploy))
             .collect();
         match by_platform.len() {
             1 => DeployResolution::Board(by_platform[0]),
@@ -1624,6 +1638,42 @@ mod tests {
                 matches!(catalog.resolve_deploy(spelling), DeployResolution::Board(_)),
                 "{spelling} did not resolve"
             );
+        }
+    }
+
+    /// Issue 1305 — an entry-shape variant (`variant_of`) answers to its own
+    /// name, and the directory / platform fallbacks still reach the one board
+    /// it is a variant of, rather than becoming ambiguous.
+    #[test]
+    fn an_entry_shape_variant_answers_only_to_its_own_name() {
+        let catalog = BoardCatalog::load(&repo_root_for_tests()).expect("load catalog");
+        let names = |r: DeployResolution<'_>| match r {
+            DeployResolution::Board(d) => d.names.clone(),
+            other => panic!(
+                "did not resolve to one board: {}",
+                match other {
+                    DeployResolution::Ambiguous(l) => l.join(", "),
+                    _ => "unknown".into(),
+                }
+            ),
+        };
+        assert_eq!(
+            names(catalog.resolve_deploy("rtic-mps2-an385")),
+            ["rtic-mps2-an385"]
+        );
+        let silicon = names(catalog.resolve_deploy("mps2-an385"));
+        assert!(
+            silicon.iter().any(|n| n == "qemu-mps2-an385"),
+            "{silicon:?}"
+        );
+        for d in catalog.descriptors() {
+            if let Some(of) = &d.variant_of {
+                assert!(
+                    matches!(catalog.resolve_deploy(of), DeployResolution::Board(_)),
+                    "{:?} is a variant of `{of}`, which resolves to no one board",
+                    d.names
+                );
+            }
         }
     }
 
@@ -2151,6 +2201,7 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             crate_path: None,
             board_features: vec![],
             transport_features: Default::default(),
+            variant_of: None,
             priority_plan: None,
             cargo_config: Some("inc = \"${workspace}/third-party/x\"".into()),
             entry: None,
@@ -2403,6 +2454,7 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             crate_path: None,
             board_features: vec![],
             transport_features: Default::default(),
+            variant_of: None,
             priority_plan: None,
             cargo_config: None,
             entry: None,

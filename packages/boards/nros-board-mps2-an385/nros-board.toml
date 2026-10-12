@@ -121,6 +121,7 @@ threads = false
 # property of the silicon, not of the entry shape.
 [[board]]
 names = ["rtic-mps2-an385"]
+variant_of = "qemu-mps2-an385"
 platform = "bare-metal"
 toolchain = "stable"
 entry_kind = "board-run"
