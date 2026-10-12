@@ -960,7 +960,7 @@ this phase will fix it.
 - [issue 0930](../issues/0930-built-qemu-can-be-stale-against-its-pin.md) — The built QEMU can be older than the commit `third-party/qemu/qemu` pins, and nothing says so
 - [issue 0934](../issues/0934-config-redundancy-map.md) — The same fact is authored in up to five config surfaces; no SSoT is declared for rmw, board or domain
 - [issue 0941](../issues/0941-board-facts-soft-failure-hides-unreachable-site-config.md) — `nros_resolve_board_facts` fails SOFT, so an unreachable site-config block is silent
-- [issue 1811](../issues/1811-nightly-ports-read-in-tree-sources-after-store-move.md) — After phase-484 moved source trees into the store, four nightly RTOS port jobs still look for them in-tree or through …
+- [issue 1811](../issues/archived/1811-nightly-ports-read-in-tree-sources-after-store-move.md) — After phase-484 moved source trees into the store, four nightly RTOS port jobs still look for them in-tree or through …
 - [issue 1816](../issues/1816-git-grep-error-read-as-no-match.md) — A `git grep` that could not search reads as "no match", so a forbidding gate passes outside a checkout
 - [issue 1850](../issues/1850-host-tool-binaries-located-by-literal-path.md) — The in-tree `nros` and `nros-launch-resolve` binaries are located by literal path at ~50 sites (issue 1767 items 8–9)
 - [issue 1851](../issues/1851-qemu-binary-located-three-ways.md) — QEMU is located three different ways (issue 1767 item 10)
