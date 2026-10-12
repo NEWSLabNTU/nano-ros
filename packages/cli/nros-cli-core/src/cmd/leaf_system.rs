@@ -80,6 +80,27 @@ pub struct LeafSystemArgs {
     #[arg(long, value_name = "PATH")]
     pub kconfig_out: Option<PathBuf>,
 
+    /// phase-484 W5b (RFC-0103 D2a/D2b) -- with `--kconfig-out`, write the
+    /// image's KNOB values (the `[image.<id>] env` rows whose Kconfig symbol is
+    /// a registry knob, `nros_zephyr_build::KCONFIG_KNOBS`) as prompt-less
+    /// Kconfig `default`s to PATH, `<build>/nros/Kconfig.from-system-toml`,
+    /// which the module's knob section sources first. Those rows leave the
+    /// fragment. Printed as `NROS_LEAF_KCONFIG_DEFAULTS`.
+    #[arg(long, value_name = "PATH", requires = "kconfig_out")]
+    pub kconfig_defaults_out: Option<PathBuf>,
+
+    /// phase-484 W5b -- a transient knob value for this build only, `ID=VALUE`
+    /// (the registry id: `EXECUTOR_ARENA_SIZE=32`). The Zephyr module hook
+    /// passes one per `-DNROS_OVERRIDE_<ID>=<VALUE>` on the configure line;
+    /// it replaces the image's own value in `--kconfig-defaults-out`, marked as
+    /// an override. Repeatable.
+    #[arg(
+        long = "override",
+        value_name = "ID=VALUE",
+        requires = "kconfig_defaults_out"
+    )]
+    pub overrides: Vec<String>,
+
     /// The language of the image's ENTRY, for the fragment's API row (`rust`,
     /// `c`, `cpp`), for a caller that knows it better than PATH does -- a
     /// generated workspace application, whose bringup holds no build file.
@@ -309,10 +330,22 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
                 }
                 None => crate::cmd::leaf_kconfig::package_language(&dir),
             };
-            let r =
-                crate::cmd::leaf_kconfig::render(&leaf, language, &syms).map_err(|e| eyre!(e))?;
+            let mut overrides = std::collections::BTreeMap::new();
+            for o in &args.overrides {
+                let (id, v) = o
+                    .split_once('=')
+                    .ok_or_else(|| eyre!("--override {o}: expected ID=VALUE"))?;
+                overrides.insert(id.to_string(), v.to_string());
+            }
+            let r = crate::cmd::leaf_kconfig::render(&leaf, language, &syms, &overrides)
+                .map_err(|e| eyre!(e))?;
             let text = crate::cmd::leaf_kconfig::fragment_text(&leaf, &r);
             let written = crate::cmd::leaf_kconfig::write_fragment(out, text.as_deref())?;
+            if let Some(d) = &args.kconfig_defaults_out {
+                let body = crate::cmd::leaf_kconfig::defaults_text(&leaf, &r);
+                crate::cmd::leaf_kconfig::write_fragment(d, Some(&body))?;
+                println!("NROS_LEAF_KCONFIG_DEFAULTS={}", d.display());
+            }
             (Some(written), r.cargo_rows)
         }
         None => (None, crate::cmd::leaf_settings::image_layers(&leaf)),

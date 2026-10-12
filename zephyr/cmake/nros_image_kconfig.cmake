@@ -56,8 +56,21 @@
 #    is. A bringup's `conf` is `nros build`'s to pass (RFC-0085 D4), never added
 #    here.
 #
-# The hook is a no-op for an application with no `system.toml`, except that it
-# drops a stale rendering of its own from the cache.
+# 5. THE KNOBS (phase-484 W5b, RFC-0103 D2a/D2b). The module's knob section
+#    defines every registry knob WITHOUT a prompt and `osource`s
+#    `<build>/nros/Kconfig.from-system-toml` first; this hook always writes it.
+#    For a project with a `system.toml`, `--kconfig-defaults-out` renders the
+#    image's knob values (and every `-DNROS_OVERRIDE_<ID>=<v>`, the transient
+#    channel) as prompt-less `default`s, and those rows leave the fragment.
+#    With no prompt anywhere a `prj.conf` knob line or a `-DCONFIG_<knob>` is a
+#    Kconfig error -- refused here first, because Kconfig's own message names
+#    only the module's definition (M3), never system.toml. For a GUEST (no
+#    system.toml) the file is a copy of `zephyr/Kconfig.knob-prompts`, which
+#    gives every knob back its prompt: prj.conf, menuconfig and `-DCONFIG_*`
+#    work exactly as before.
+#
+# For an application with no `system.toml` the hook writes the guest prompts
+# and drops a stale rendering of its own from the cache; nothing else.
 #
 # WHICH system.toml, and which image:
 #   * a single-package leaf: `${APPLICATION_SOURCE_DIR}/system.toml`;
@@ -68,6 +81,8 @@
 #     `find_package(Zephyr)` (`nros build`, `builder/west_app.rs`).
 
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosCli.cmake")
+# phase-484 W5b -- the Kconfig knob ids and symbols (`NROS_KNOB_KCONFIG_*`).
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosKnobRegistry.cmake")
 
 # The module root, captured at FILE scope (inside a function
 # `CMAKE_CURRENT_LIST_DIR` names the caller's file).
@@ -82,6 +97,25 @@ function(nros_image_kconfig_hook)
         set(_bin "${CMAKE_BINARY_DIR}")
     endif()
     set(_nros_dir "${_bin}/nros")
+
+    # phase-484 W5b -- the knob file the module's Kconfig `osource`s, at the
+    # path Kconfig spells it: `$(KCONFIG_BINARY_DIR)/../nros/…`, where
+    # `kconfig.cmake` defaults KCONFIG_BINARY_DIR to `<this binary dir>/Kconfig`
+    # on 3.7 and 4.4 (it has not been included yet; a caller may preset it).
+    if(DEFINED KCONFIG_BINARY_DIR AND NOT KCONFIG_BINARY_DIR STREQUAL "")
+        set(_kbin "${KCONFIG_BINARY_DIR}")
+    else()
+        set(_kbin "${CMAKE_CURRENT_BINARY_DIR}/Kconfig")
+    endif()
+    get_filename_component(_kgen "${_kbin}/../nros/Kconfig.from-system-toml" ABSOLUTE)
+    # Every `-DNROS_OVERRIDE_<ID>=<v>` on the configure line (cache entries).
+    get_cmake_property(_cache_vars CACHE_VARIABLES)
+    set(_overrides "")
+    foreach(_v IN LISTS _cache_vars)
+        if(_v MATCHES "^NROS_OVERRIDE_(.+)$")
+            list(APPEND _overrides "${CMAKE_MATCH_1}")
+        endif()
+    endforeach()
 
     # Drop an earlier rendering of ours from the cache value, whatever happens
     # below. A path that no longer exists would otherwise fail Kconfig.
@@ -131,6 +165,19 @@ function(nros_image_kconfig_hook)
         if(_had_ours)
             _nros_image_kconfig_set_cache("${_user}")
         endif()
+        # phase-484 W5b -- a GUEST: every knob gets its prompt back, so its conf
+        # files and `-DCONFIG_*` stay its one source. The override channel is a
+        # system.toml project's; a guest already has -DCONFIG_*.
+        if(_overrides)
+            list(TRANSFORM _overrides PREPEND "-DNROS_OVERRIDE_")
+            string(REPLACE ";" " " _overrides "${_overrides}")
+            message(FATAL_ERROR
+                "nano-ros: ${_overrides}: this application has no system.toml, so its knobs "
+                "keep their Kconfig prompts -- set them in prj.conf or with -DCONFIG_<symbol> "
+                "(-DNROS_OVERRIDE_<ID> overrides a system.toml image's value; phase-484 W5b)")
+        endif()
+        configure_file("${_NROS_IMAGE_KCONFIG_ROOT}/zephyr/Kconfig.knob-prompts" "${_kgen}"
+            COPYONLY)
         return()
     endif()
     if(NOT EXISTS "${_dir}/system.toml")
@@ -167,12 +214,49 @@ function(nros_image_kconfig_hook)
     endif()
     list(PREPEND _args --image "${_image}")
 
+    # phase-484 W5b -- a `-DCONFIG_<knob>` would be Kconfig's "not directly
+    # user-configurable" error, naming neither system.toml nor the override
+    # channel (M3). Zephyr caches it as `CONFIG_<SYM>` on the configure that
+    # passes it and as `CLI_CONFIG_<SYM>` on every re-configure after.
+    set(_cli_knobs "")
+    foreach(_id IN LISTS NROS_KNOB_KCONFIG_IDS)
+        set(_sym "${NROS_KNOB_KCONFIG_SYMBOL_${_id}}")
+        if(DEFINED CACHE{CONFIG_${_sym}} OR DEFINED CACHE{CLI_CONFIG_${_sym}})
+            if(DEFINED CACHE{CONFIG_${_sym}})
+                set(_val "$CACHE{CONFIG_${_sym}}")
+            else()
+                set(_val "$CACHE{CLI_CONFIG_${_sym}}")
+            endif()
+            string(APPEND _cli_knobs
+                "\n  -DCONFIG_${_sym}=${_val}  ->  -DNROS_OVERRIDE_${_id}=${_val} for this "
+                "build, or `env = { NROS_${_id} = \"${_val}\" }` in [image.${_image}]")
+        endif()
+    endforeach()
+    if(NOT _cli_knobs STREQUAL "")
+        message(FATAL_ERROR
+            "nano-ros: ${_dir}/system.toml is this image's one source of its nano-ros "
+            "knobs, and those Kconfig symbols have no prompt (RFC-0103 D2a), so the "
+            "command line cannot set them as CONFIG_*:${_cli_knobs}\n"
+            "Zephyr re-applies a cached -DCONFIG_* on every later configure: remove it "
+            "with -UCONFIG_<SYM> -UCLI_CONFIG_<SYM> (or a pristine build). (phase-484 W5b)")
+    endif()
+    set(_override_args "")
+    foreach(_id IN LISTS _overrides)
+        list(APPEND _override_args --override "${_id}=$CACHE{NROS_OVERRIDE_${_id}}")
+    endforeach()
+    if(_overrides)
+        string(REPLACE ";" ", " _ov "${_overrides}")
+        message(STATUS "nano-ros: image `${_image}` knob override(s) from the command line: "
+            "${_ov} (transient; RFC-0103 D2)")
+    endif()
+
     set(_frag "${_nros_dir}/${_image}.conf")
     set(_env "${_nros_dir}/${_image}-env.toml")
     execute_process(
         COMMAND "${_nros}" ws leaf-system "${_dir}"
                 --nano-ros-path "${_NROS_IMAGE_KCONFIG_ROOT}"
                 ${_args} --kconfig-out "${_frag}" --image-env-out "${_env}"
+                --kconfig-defaults-out "${_kgen}" ${_override_args}
         OUTPUT_VARIABLE _out ERROR_VARIABLE _err RESULT_VARIABLE _rc
         OUTPUT_STRIP_TRAILING_WHITESPACE)
     # A configure re-runs when the file changes, and when the CLI that rendered
@@ -238,6 +322,20 @@ function(nros_image_kconfig_hook)
     endif()
 
     _nros_image_kconfig_named_confs(_named)
+    # phase-484 W5b -- a knob assigned in a conf file this image merges is a
+    # Kconfig error too (no prompt); refuse it here, naming the file, the line
+    # and where the value belongs. The files the build names, the image's own
+    # `conf`, and Zephyr's default `prj.conf` when no CONF_FILE is given; a
+    # board fragment or a snippet still meets Kconfig's error as the backstop.
+    set(_scan ${_named} ${_user} ${_image_conf})
+    if(NOT DEFINED CACHE{CONF_FILE} AND NOT DEFINED CONF_FILE)
+        if(DEFINED APPLICATION_CONFIG_DIR AND NOT APPLICATION_CONFIG_DIR STREQUAL "")
+            list(APPEND _scan "${APPLICATION_CONFIG_DIR}/prj.conf")
+        else()
+            list(APPEND _scan "${APPLICATION_SOURCE_DIR}/prj.conf")
+        endif()
+    endif()
+    _nros_image_kconfig_refuse_conf_knobs("${_scan}" "${_dir}/system.toml" "${_image}")
     set(_inserted "")
     foreach(_c IN LISTS _image_conf)
         if(NOT _c IN_LIST _named AND NOT _c IN_LIST _user)
@@ -269,6 +367,45 @@ function(nros_image_kconfig_hook)
         message(STATUS
             "nano-ros: image `${_image}` env rows with no Kconfig symbol (${_keys}) -> "
             "every cargo command gets --config ${_envcfg} (issue 1712)")
+    endif()
+endfunction()
+
+# phase-484 W5b -- refuse a registry knob assigned in any of `files` (a project
+# with a system.toml). The symbol has no prompt, so Kconfig would refuse the
+# line anyway, but its message names the module's Kconfig, not where the value
+# belongs.
+function(_nros_image_kconfig_refuse_conf_knobs files system image)
+    set(_syms "")
+    foreach(_id IN LISTS NROS_KNOB_KCONFIG_IDS)
+        list(APPEND _syms "${NROS_KNOB_KCONFIG_SYMBOL_${_id}}")
+        set(_id_of_${NROS_KNOB_KCONFIG_SYMBOL_${_id}} "${_id}")
+    endforeach()
+    set(_found "")
+    list(REMOVE_DUPLICATES files)
+    foreach(_f IN LISTS files)
+        if(NOT EXISTS "${_f}" OR IS_DIRECTORY "${_f}")
+            continue()
+        endif()
+        file(STRINGS "${_f}" _lines REGEX "^[ \t]*CONFIG_[A-Za-z0-9_]+[ \t]*=")
+        foreach(_l IN LISTS _lines)
+            if(_l MATCHES "^[ \t]*CONFIG_([A-Za-z0-9_]+)[ \t]*=[ \t]*(.*)$")
+                set(_sym "${CMAKE_MATCH_1}")
+                set(_val "${CMAKE_MATCH_2}")
+                if(_sym IN_LIST _syms)
+                    set(_id "${_id_of_${_sym}}")
+                    string(APPEND _found
+                        "\n  ${_f}: CONFIG_${_sym}=${_val}  ->  `env = { NROS_${_id} = "
+                        "\"${_val}\" }` in [image.${image}], or -DNROS_OVERRIDE_${_id}=${_val} "
+                        "for one build")
+                endif()
+            endif()
+        endforeach()
+    endforeach()
+    if(NOT _found STREQUAL "")
+        message(FATAL_ERROR
+            "nano-ros: ${system} is this image's one source of its nano-ros knobs "
+            "(RFC-0103 D2a); those Kconfig symbols have no prompt, so a conf file "
+            "cannot set them:${_found}\n(phase-484 W5b)")
     endif()
 endfunction()
 

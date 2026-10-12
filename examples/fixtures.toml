@@ -5246,6 +5246,11 @@ west_image = "zephyr_zenoh"
 # copy-out example. Port 10787 = `alloc::port_of(ZephyrQemuCortexM, C,
 # BootReport)`: the image must open its session before it registers anything,
 # so the cell needs a router. Consumed by tests/zephyr_cortex_m_qemu.rs.
+#
+# phase-484 W5b — the arena size is a KNOB, prompt-less in a project with a
+# `system.toml`, so the overlay can no longer set it: it rides the transient
+# channel instead (`-DNROS_OVERRIDE_EXECUTOR_ARENA_SIZE=32`, `west_overrides`).
+# The talker's first registration claims 48 B, so 32 B is short by 16.
 [[fixture]]
 platform = "zephyr-cortex-m"
 lang = "c"
@@ -5258,6 +5263,7 @@ west_build_name = "build-cortex-m-c-boot-report-zenoh"
 west_zenoh_locator = "tcp/10.0.2.2:10787"
 conf_files = ["prj.conf", "../../../../packages/testing/nros-tests/fixtures/zephyr-boot-report/arena-exhausted.conf"]
 west_image = "zephyr_zenoh"
+west_overrides = { EXECUTOR_ARENA_SIZE = "32" }
 
 [[fixture]]
 platform = "zephyr-cortex-m"
