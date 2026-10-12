@@ -8,24 +8,26 @@ is required ([RFC-0026](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/de
 ```bash
 cp -r examples/native/rust/service-server-rtic ~/my-service-server-rtic && cd ~/my-service-server-rtic
 export NROS_REPO_DIR=/path/to/nano-ros   # your nano-ros checkout
-nros sync                                # generated/ message crates
-cargo build
+nros sync     # generated/ message crates + build/<image>/nros-cargo.toml
+nros build    # or: nros build native
 ```
-
-This leaf carries no `system.toml` yet, so it declares no `[image.*]` for
-`nros build` to resolve (RFC-0098 D3); cargo drives it until it gains one.
 
 ## Run
 
 Needs a zenoh router (`ros2 run rmw_zenoh_cpp rmw_zenohd`).
-The binary lands under `target/debug/`; `cargo run` runs it, after the
-`nros sync` above.
+`nros build` leaves the binary at `build/native/target/debug/rtic-service-server`.
 
 ## Config
 
-Board, RMW, domain and locator belong in a `system.toml` beside `Cargo.toml`
-(`[image.<id>]` + `[system]`, RFC-0098 D3/D5). This leaf has not been
-migrated yet, so it still selects its backend with the `rmw-*` Cargo
-features in `Cargo.toml` — the spelling RFC-0098 retires.
+Board, RMW, domain and locator: `system.toml` beside `Cargo.toml`
+(`[image.native]` + `[system]`, RFC-0098 D3/D5). No build command
+carries any of them.
+
+`Cargo.toml` names no board crate. The board crate, its RMW backend and
+its runtime crates come from the `<pkg>_nros_selection` package that
+`nros sync` / `nros build` generate under `build/nros/selection/` from
+`system.toml` (RFC-0098 D6), so switching board is the `[image.*] board`
+line and nothing else
+([issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)).
 
 Copy-out contract + the full example matrix: [`examples/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md).

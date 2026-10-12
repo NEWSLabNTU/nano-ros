@@ -120,7 +120,7 @@ the pool budgets all follow from that one word — none of them is yours to
 write. The board *crate* follows too in a workspace, where the entry is
 generated, and in a single-package **Rust** project that depends on its
 generated `<pkg>_nros_selection` package (every in-tree single-package
-example does); one that still names its board crate in `[dependencies]`
+example on a supported board does); one that still names its board crate in `[dependencies]`
 must move the two together
 ([issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)).
 

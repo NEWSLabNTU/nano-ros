@@ -118,8 +118,8 @@ RUST_LOG=info ./build/native/target/debug/listener
 and a domain are named — and writes everything that choice implies under
 `build/`; `nros build` then builds the image it declares. In a *workspace*, or a
 C/C++ example, switching board is that one `[image.*] board` line. A
-single-package **Rust** example is its own entry, and it names no board crate
-either: its image-only dependencies come from a `<pkg>_nros_selection` package
+single-package **Rust** example is its own entry, and (on a supported board)
+it names no board crate either: its image-only dependencies come from a `<pkg>_nros_selection` package
 `nros sync` generates for the image's board, so there too the board line is the
 whole edit ([issue 1305](docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)).
 
