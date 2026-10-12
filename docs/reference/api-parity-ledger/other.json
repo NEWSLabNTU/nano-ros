@@ -1652,5 +1652,9 @@
     "verdict": "extension",
     "why": "`shared_ptr::reset`'s shape with a narrower contract: it drops this handle's reference and destroys nothing, because a `Handle` owns nothing. The entity handles that DO release on `reset()` (`SubscriptionHandle`, `TimerHandle`, ...) are their own types.",
     "bucket": "ours-only"
+  },
+  "c:get_default_allocator": {
+    "verdict": "divergence",
+    "why": "rcl's `rcl_get_default_allocator()` (a macro over `rcutils_get_default_allocator`, which the extractor cannot see). Ours returns an allocator whose functions allocate nothing: every object lives in caller storage or the executor's carved backing (RFC-0105 D10). Platform constraint: no allocator. Inits that take one (`rclc_support_init`, `rclc_executor_init`, `rcl_clock_init`) accept NULL or this one and refuse any other, so a caller-supplied allocator is never silently ignored. phase-492 W1.b."
   }
 }

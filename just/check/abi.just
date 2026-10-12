@@ -73,7 +73,7 @@ cpp-destroy-shape:
     @python3 scripts/check-cpp-destroy-shape.py
 
 # Issue 1609 — the C surface's form of the same class: an entity the C executor
-# can ADD (`nros_executor_add_*` / `rclc_executor_add_*`) must have a
+# can ADD (`rclc_executor_add_*` / `rclc_executor_attach_*`) must have a
 # `nros_executor_remove_*` taking the same type, because its `fini` is handed
 # only the entity and cannot undo the arena entry, `handle_count` or the trigger
 # table. Kinds still without one are debt rows naming their open issue (1631);

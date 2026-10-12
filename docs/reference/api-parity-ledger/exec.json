@@ -1461,5 +1461,17 @@
   "c:executor_add_service": {
     "verdict": "divergence",
     "why": "rclc's `rclc_executor_add_service(exec, service, request_msg, response_msg, callback)`, which hands its callback DESERIALIZED payloads in caller storage. Ours is `rclc_executor_add_service_raw(exec, service, callback, context)` (CDR bytes; see `c:executor_add_service_raw` for why the name keeps `nros_` and `_raw`), and a generated `<Srv>_executor_add_service(exec, service, &handler)` gives the typed path with both payload structs inside the handler. The two-argument `nros_executor_add_service(exec, service)` that used this name until phase-487 W2 dispatched a callback the init call had stored in the struct, and went when the struct stopped storing one."
+  },
+  "c:executor_add_client": {
+    "verdict": "divergence",
+    "why": "rclc's `rclc_executor_add_client(executor, client, response_msg, callback)` takes the response storage and callback at registration. Ours takes them from the client (RFC-0041: the callback belongs to the entity; the response arrives as CDR into the client's own storage, no allocator), so ours is `rclc_executor_attach_client(executor, client)`. phase-492 W1.b moved ours off this name."
+  },
+  "c:executor_add_action_client": {
+    "verdict": "divergence",
+    "why": "rclc's `rclc_executor_add_action_client(executor, client, handles, result, feedback, goal_cb, feedback_cb, result_cb, cancel_cb, context)` binds everything at registration. Ours binds the callbacks on the client (`rclc_action_client_set_*_callback`), so ours is `rclc_executor_attach_action_client(executor, client)`. Constraint as `c:executor_add_client`. phase-492 W1.b."
+  },
+  "c:executor_add_action_server": {
+    "verdict": "divergence",
+    "why": "rclc's `rclc_executor_add_action_server(executor, server, handles, goal_request, size, goal_cb, cancel_cb, context)` binds the callbacks at registration; ours binds them at `rclc_action_server_init_with_callbacks`, so ours is `rclc_executor_attach_action_server(executor, server)`. Constraint as `c:executor_add_client`. phase-492 W1.b."
   }
 }

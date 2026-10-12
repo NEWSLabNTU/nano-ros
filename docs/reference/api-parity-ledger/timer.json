@@ -22,10 +22,6 @@
     "disposition": "absent",
     "why": "time-jump notification -- rcl calls back when the clock steps (simulation reset, NTP correction), with a threshold selecting which jumps qualify. Ours has no notification at all; on a device a monotonic clock does not step, and the simulation case now has ROS time in every language (issue 0789) without anyone asking to be TOLD that the clock stepped -- a simulator writes the time, the nodes read it. Describes which KIND of change occurred (ROS time activated, deactivated, stepped)."
   },
-  "c:clock_get_now_ns": {
-    "verdict": "divergence",
-    "why": "rcl's `rcl_clock_get_now(clock, rcl_time_point_value_t* out)` writes through a pointer and returns a status. Ours returns the nanoseconds directly, because a clock read cannot fail once the clock is valid -- the platform seam (RFC-0073) either has a clock or the image did not boot."
-  },
   "c:clock_get_type": {
     "verdict": "extension",
     "why": "reads back which kind of clock this is; rcl exposes the field directly on `rcl_clock_t`, ours is opaque."
@@ -1348,5 +1344,25 @@
   "rust:DeclarativeNode::create_timer_for_callback_name_on_clock": {
     "verdict": "divergence",
     "why": "phase-430 W4 -- the clock axis on the DECLARATIVE surface, and the sibling of `rust:DeclaredNode::create_timer_for_callback_name` directly above: same declarative model (entities are declared by a component, RFC-0043/0044), one argument more.\n\nFiled `divergence` and not `extension` because rclrs HAS the capability: a per-timer clock, expressed as a per-site OPTION (`IntoTimerOptions::{clock, node_time, steady_time, system_time}` on `Node::create_timer_repeating`, all `declined` in this shard) rather than as a second verb. What differs is the shape, and the same constraint that decided `rust:Executor::register_timer_on_clock` decides it here: a non-`Steady` timer READS a clock on every poll, which on an RTOS target is a platform call, so it is worth a distinct name at the call site rather than a default inside an options builder.\n\nWhy it exists at all: until W4 the clock reached only the executor, so a component -- which is how every workspace example writes a timer -- could not ask for one without reaching past its own API. `EntityMetadata::timer_clock` carries the choice to `node_runtime`, which registers through the one dispatch, `Executor::register_timer_on_clock`. The `#[doc(hidden)]` `create_timer_on_clock` / `create_timer_for_callback_on_clock` beneath it are the same verb with the entity ID spelled explicitly, as for the clock-less trio.\n\nphase-483 W3 — re-keyed from `DeclaredNode`: the declarative constructors are now the `nros::DeclarativeNode` extension trait on `nros::Node`, so a component's node and a program's node are one type."
+  },
+  "c:timer_init": {
+    "verdict": "divergence",
+    "why": "rcl's `rcl_timer_init(timer, clock, context, period, callback, allocator)` hands its callback the time since the last call; ours hands it the caller's context, so ours is `rclc_timer_init_with_context` (see that row). Platform constraint: no allocator and no state in a wrapper (RFC-0019/0020) -- a context-less callback could only reach its state through a trampoline that remembers it. `<nros/rcl_compat.h>` section 4 records the refusal. phase-492 W1.b moved ours off this name."
+  },
+  "c:timer_callback_t": {
+    "verdict": "divergence",
+    "why": "rcl's `void (*)(rcl_timer_t *, int64_t last_call_time)`; ours is `rclc_timer_callback_with_context_t`, `void (*)(rcl_timer_t *, void *context)`. Same constraint as `c:timer_init`. phase-492 W1.b."
+  },
+  "c:timer_init_with_context": {
+    "verdict": "divergence",
+    "why": "our wall-timer init: `(timer, period_ns, callback, context)`. The callback receives the caller's context, not rcl's last-call time (`c:timer_init`); there is no clock (the clock-taking verb is `rclc_timer_init_on_clock`), no rcl context (a timer belongs to no session until `rclc_executor_add_timer`) and no allocator. Platform constraints: no allocator, no state in a wrapper (RFC-0019/0020). Was `rcl_timer_init` until phase-492 W1.b, which took upstream's name over this contract."
+  },
+  "c:timer_callback_with_context_t": {
+    "verdict": "divergence",
+    "why": "see `c:timer_callback_t`: the context-carrying timer callback, under rclc's `_with_context` spelling. phase-492 W1.b."
+  },
+  "c:clock_get_now_time": {
+    "verdict": "extension",
+    "why": "the current time as an `rclc_time_t` (seconds + nanoseconds), beside rcl's `rcl_clock_get_now` (a nanosecond count, which we now have under rcl's name and signature). A device logging or stamping messages wants the split form without a division per call. Was spelled `rcl_clock_get_now` until phase-492 W1.b, which is rcl's name for the nanosecond contract."
   }
 }
