@@ -271,6 +271,9 @@ pub struct LeafSelectionSpec<'a> {
     /// The image's resolved RMW (`[image] rmw` > `[image_defaults]` >
     /// `[system]`), as `leaf_system` reads it.
     pub rmw: Option<&'a str>,
+    /// The image's declared link kind (`[image] transport`), which
+    /// [`crate::builder::entry::image_link_features`] reads.
+    pub transport: Option<&'a str>,
     /// The board's facts, crate taken from the macro's mapping
     /// ([`crate::builder::entry::BoardFacts::from_descriptor_for`]).
     pub board: &'a crate::builder::entry::BoardFacts,
@@ -300,7 +303,9 @@ pub struct LeafSelectionSpec<'a> {
 /// * the edition / capability / RMW features — [`derive`], shared with
 ///   [`write_facade`];
 /// * the entry surface (`board-entry` / `rtic`) —
-///   [`crate::builder::entry::entry_surface_features`].
+///   [`crate::builder::entry::entry_surface_features`];
+/// * the link the image declares (`serial`, `xrce-transport`) —
+///   [`crate::builder::entry::image_link_features`].
 ///
 /// Its `src/lib.rs` re-exports the board crate, which is how `nros::main!`
 /// reaches the board for a leaf that does not depend on it directly, and
@@ -348,6 +353,12 @@ pub fn write_leaf_selection(spec: &LeafSelectionSpec<'_>, sys: &SystemToml) -> R
             spec.candidates,
             |f| crate_declares_feature(bd, f),
         ));
+        crate::builder::entry::image_link_features(
+            spec.transport,
+            &declared_rmw,
+            &mut board_features,
+            |f| crate_declares_feature(bd, f),
+        );
     }
     board_features.sort();
     board_features.dedup();

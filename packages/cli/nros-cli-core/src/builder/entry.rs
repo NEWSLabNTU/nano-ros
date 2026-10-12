@@ -347,6 +347,53 @@ pub fn entry_surface_features(candidates: &[&str], declares: impl Fn(&str) -> bo
     }
 }
 
+/// The board crate's IP link feature — what a board's `default` turns on for
+/// its network link (`ethernet` on the mps2 bare-metal and esp32 crates).
+pub const IP_LINK_FEATURE: &str = "ethernet";
+
+/// The board-crate features an image's declared LINK and RMW imply, applied to
+/// `features` (the board features derived so far, defaults included).
+///
+/// Issue 1305 (phase C). `[image.<id>] transport = "serial"` and `rmw =
+/// "xrce"` are image facts, and on the mps2 bare-metal board crate they are
+/// also FEATURE choices: `serial` (the CMSDK UART link, which the crate
+/// refuses beside `ethernet`) and `xrce-transport` (the XRCE custom transport
+/// bound to that UART). The serial and XRCE leaves named both by hand, so a
+/// board switch had to edit their manifests; the selection package derives
+/// them here instead.
+///
+/// * `transport = "serial"`, on a board that declares `serial`: the IP link
+///   feature leaves the list and `serial` joins it — the same "a serial image
+///   has no IP link" rule `leaf_settings::transport_implications_of` applies
+///   to the build-script knobs (`ZPICO_NO_SMOLTCP`, `NROS_LINK_IP`).
+/// * `rmw = "xrce"` over that serial link, on a board that declares
+///   `xrce-transport`: that feature too. Over an IP link the XRCE client
+///   dials the agent itself and needs no board transport.
+///
+/// Only a feature the crate DECLARES is named (`declares`), so a board whose
+/// link is not a feature choice (the RTOS crates) is left as it was.
+///
+/// Called for a single-package leaf's selection package only. A generated
+/// workspace entry gets the board's defaults from its facade crate
+/// (`facade::derive`, which knows no image), so a serial workspace image on
+/// this board would still need the facade to drop `ethernet`; no in-tree
+/// workspace image declares a serial transport.
+pub fn image_link_features(
+    transport: Option<&str>,
+    rmw: &str,
+    features: &mut Vec<String>,
+    declares: impl Fn(&str) -> bool,
+) {
+    if transport != Some("serial") || !declares("serial") {
+        return;
+    }
+    features.retain(|f| f != IP_LINK_FEATURE);
+    features.push("serial".to_string());
+    if rmw == "xrce" && declares("xrce-transport") {
+        features.push("xrce-transport".to_string());
+    }
+}
+
 /// The IMAGE-ONLY dependency lines a board implies: the board crate (with its
 /// features), the explicit `nros-platform` platform feature, and the crates
 /// the board's crate-root items need.
@@ -1164,6 +1211,53 @@ mod tests {
                 "`nros-board-zephyr` no longer declares `{f}`; \
                  `schedule_board_features` names it as a literal and `declares` \
                  would now drop it silently"
+            );
+        }
+    }
+
+    /// Issue 1305 — the serial and XRCE leaves' hand-written board features,
+    /// derived from the image.
+    #[test]
+    fn a_serial_image_swaps_the_ip_link_for_serial_and_xrce_adds_its_transport() {
+        let mps2 = |f: &str| ["ethernet", "serial", "xrce-transport", "board-entry"].contains(&f);
+        let mut f = vec!["ethernet".to_string(), "rmw-zenoh".to_string()];
+        image_link_features(Some("serial"), "zenoh", &mut f, mps2);
+        assert_eq!(f, ["rmw-zenoh", "serial"]);
+
+        let mut f = vec!["ethernet".to_string()];
+        image_link_features(Some("serial"), "xrce", &mut f, mps2);
+        assert_eq!(f, ["serial", "xrce-transport"]);
+    }
+
+    #[test]
+    fn an_ip_image_or_a_board_without_the_feature_is_left_alone() {
+        let mps2 = |f: &str| ["ethernet", "serial", "xrce-transport"].contains(&f);
+        // No transport, or an IP one: the board keeps its IP link, and XRCE
+        // over IP needs no board transport.
+        for t in [None, Some("tcp"), Some("udp")] {
+            let mut f = vec!["ethernet".to_string()];
+            image_link_features(t, "xrce", &mut f, mps2);
+            assert_eq!(f, ["ethernet"], "transport {t:?}");
+        }
+        // A board whose link is no feature choice (the RTOS crates) gets
+        // nothing, serial or not.
+        let mut f = vec!["rmw-zenoh".to_string()];
+        image_link_features(Some("serial"), "xrce", &mut f, |_| false);
+        assert_eq!(f, ["rmw-zenoh"]);
+    }
+
+    /// The literals [`image_link_features`] names, asked of the board crate
+    /// that has them — a rename there would otherwise make `declares` drop
+    /// them silently.
+    #[test]
+    fn the_mps2_board_crate_still_declares_the_link_features_this_derives() {
+        let board = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../packages/boards/nros-board-mps2-an385");
+        assert!(board.join("Cargo.toml").is_file(), "{}", board.display());
+        for f in [IP_LINK_FEATURE, "serial", "xrce-transport"] {
+            assert!(
+                crate::orchestration::facade::crate_declares_feature(&board, f),
+                "`nros-board-mps2-an385` no longer declares `{f}`"
             );
         }
     }
