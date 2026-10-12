@@ -279,6 +279,30 @@ jobs:
         run: |
           source ./activate.sh
           just build tier1
+      # Issue 1832 — three gates read a BUILD tree, so `check fast` (buildless
+      # by contract) can only record them NOT VERIFIED, and until this step no
+      # lane with a build tree ran them either. Here the tree exists: tier 1
+      # builds the `mixed` workspace fixtures (artifact-identity-budget) and the
+      # nros-c/nros-cpp sizes-header mirrors (sizes-header-mirrors), and this
+      # runner's Zephyr workspace now holds build caches and a venv for the
+      # foreign-checkout gate's FULL scan (its `--manifest-only` half already
+      # runs before the build). So a skip here is a lost input, not an excuse:
+      # the ledger is reset, the three run, and any skip they record fails.
+      - name: Build-tree gates (issue 1832)
+        if: steps.build.outcome == 'success'
+        run: |
+          source ./activate.sh
+          source scripts/build/check-skip.sh
+          nros_check_skip_reset
+          just check artifact-identity-budget
+          just check sizes-header-mirrors
+          just check zephyr-workspace-foreign-checkout
+          ledger="$(_nros_check_skip_file)"
+          if [ -s "$ledger" ]; then
+            echo "::error::a build-tree gate did not verify after the tier-1 build:"
+            cat "$ledger"
+            exit 1
+          fi
       - name: just ci tier1 run
         id: cells
         env:
