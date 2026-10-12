@@ -36,10 +36,8 @@ nano-ros's registry-style names into your checkout — is **generated**,
 never written by hand. Retargeting is editing the `board` line: in a
 workspace that is the whole edit, and in a single-package Rust leaf too
 once it depends on its generated `<pkg>_nros_selection` package instead of
-a board crate, as the bare-metal, FreeRTOS, NuttX, ThreadX-Linux and RTIC
-examples do. The native Rust examples still
-name `nros-board-linux`, which moves with the `board` line
-([issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1305-single-package-board-crate-dep-not-generated.md)).
+a board crate, as every in-tree single-package example does
+([issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)).
 
 ## The step that is easy to miss
 

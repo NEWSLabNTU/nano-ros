@@ -169,7 +169,7 @@ generated selection dependency instead of a board crate —
 again the only edit. A package that names its board crate by hand must move it
 with `board`, or the build fails in your own `main.rs` with
 `cannot find <board crate> in the crate root`. See
-[issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1305-single-package-board-crate-dep-not-generated.md).
+[issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md).
 
 ## `DispatchStrategy::Deferred` is the common case
 

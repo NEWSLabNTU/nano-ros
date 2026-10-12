@@ -90,7 +90,7 @@ The two flavours differ in the `board =` line of their `system.toml` — plus,
 on the Rust side, how the board crate is reached. A `threadx-linux` Rust leaf
 names no board crate: it depends on a generated `<pkg>_nros_selection` package
 that `nros sync` writes for the image's board
-([issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1305-single-package-board-crate-dep-not-generated.md)),
+([issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)),
 so its board switch is the one line. The `rv-virt-threadx` Rust leaves are
 static libraries a CMake image links, and still name
 `nros-board-threadx-qemu-riscv64` by hand. The C leaves have no board crate and

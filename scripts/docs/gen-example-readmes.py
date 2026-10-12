@@ -238,21 +238,50 @@ def render(leaf: pathlib.Path) -> str:
 
     lines += ["", "## Config", ""]
     manifest = "`Cargo.toml`" if is_rust else "`CMakeLists.txt`"
-    if image and is_rust:
-        # Issue 1305: a single-package leaf IS its own entry, so it still names
-        # its board crate in `[dependencies]` — RFC-0098 D6 generates that only
-        # for a workspace entry. Do not promise a one-line board switch here.
+    on_selection = is_rust and re.search(
+        r"^\s*[A-Za-z0-9_]+_nros_selection\s*=",
+        (leaf / "Cargo.toml").read_text(encoding="utf-8", errors="replace"),
+        re.M,
+    )
+    names_board = is_rust and re.search(
+        r"^\s*nros-board-[a-z0-9-]+\s*=",
+        (leaf / "Cargo.toml").read_text(encoding="utf-8", errors="replace"),
+        re.M,
+    )
+    if image and on_selection:
+        # Issue 1305 (resolved): the leaf names no board crate; its image-only
+        # dependencies come from the generated `<pkg>_nros_selection` package,
+        # so a board switch IS the one `system.toml` line.
         lines += [
             f"Board, RMW, domain and locator: `system.toml` beside {manifest}",
             f"(`[image.{image}]` + `[system]`, RFC-0098 D3/D5). No build command",
             "carries any of them.",
             "",
-            "Switching board is two edits today, not one: the `[image.*] board` line",
-            f"and the board crate this leaf names in {manifest}'s `[dependencies]`. A",
-            "single-package leaf is its own entry, and RFC-0098 D6's generated board",
-            "dependency reaches only a workspace entry — leave the two disagreeing and",
-            "`nros sync` reports success while the build fails in your own crate",
-            f"([issue 1305]({GH}/docs/issues/1305-single-package-board-crate-dep-not-generated.md)).",
+            f"{manifest} names no board crate. The board crate, its RMW backend and",
+            "its runtime crates come from the `<pkg>_nros_selection` package that",
+            "`nros sync` / `nros build` generate under `build/nros/selection/` from",
+            "`system.toml` (RFC-0098 D6), so switching board is the `[image.*] board`",
+            "line and nothing else",
+            f"([issue 1305]({GH}/docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)).",
+        ]
+    elif image and names_board:
+        # A leaf that still names its board crate by hand (out of issue 1305's
+        # scope by shape, e.g. a lib a CMake image links).
+        lines += [
+            f"Board, RMW, domain and locator: `system.toml` beside {manifest}",
+            f"(`[image.{image}]` + `[system]`, RFC-0098 D3/D5). No build command",
+            "carries any of them.",
+            "",
+            "Switching board is two edits, not one: the `[image.*] board` line",
+            f"and the board crate this leaf names in {manifest}'s `[dependencies]`",
+            f"([issue 1305]({GH}/docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)).",
+        ]
+    elif image and is_rust:
+        # Names neither (a Zephyr leaf on the west road): no claim to make.
+        lines += [
+            f"Board, RMW, domain and locator: `system.toml` beside {manifest}",
+            f"(`[image.{image}]` + `[system]`, RFC-0098 D3/D5). No build command",
+            "carries any of them.",
         ]
     elif image:
         lines += [

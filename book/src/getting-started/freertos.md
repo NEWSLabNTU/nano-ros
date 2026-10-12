@@ -116,7 +116,7 @@ package `nros sync` and `nros build` generate for the image's board (with
 `nros-board-mps2-an385-freertos`, its RMW and `nros-platform`'s FreeRTOS
 feature). Its image also states `panic = "platform"`, as its `main.rs` does,
 so that package does not add the board's own panic handler. See
-[issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1305-single-package-board-crate-dep-not-generated.md).
+[issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md).
 
 Task stacks / priorities come from the board crate's defaults (Cargo
 features), not a config file — see the

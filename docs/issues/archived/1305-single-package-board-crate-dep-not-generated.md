@@ -1,13 +1,98 @@
 ---
 id: 1305
 title: "Switching a single-package Rust leaf's board edits its Cargo.toml too — every image-only dependency is still hand-written (RFC-0098 D6 unmet)"
-status: open
+status: resolved
+resolved: 2026-10-13
 type: bug
 area: tooling, cli, examples
 severity: medium
 found: 2026-09-11
 related: [rfc-0098, rfc-0065, phase-445]
 ---
+
+## 2026-10-13 (phase E) — the last three classes; RESOLVED
+
+Every single-package leaf that named a board crate by hand and could take the
+selection package now does (branch `fix/1305-remaining-leaves`). What is left in
+`leaf_settings::NOT_ON_THE_SELECTION` is out of scope BY SHAPE only:
+`bins/in-place-subscriptions` (1340's witness), `bins/qemu-baremetal-main-e2e`
+and `bins/rtic-run-plan-e2e` (board code in the node), `fixtures/*`
+(harness-templated), `examples/rv-virt-threadx/rust/*` (libs a CMake image
+links) and `log-arena-probe` (names no board). The sweep
+
+```sh
+git ls-files -z '*system.toml' | xargs -0 -n1 dirname | sort -u | while read -r d; do
+  [ -f "$d/Cargo.toml" ] && grep -lE '^\s*nros-board-[a-z0-9-]+\s*=' "$d/Cargo.toml"; done
+```
+
+prints exactly those 14 manifests (6 rv-virt-threadx, 3 bins, 5 fixtures) and
+nothing else. 56 leaves are on the selection package (was 40).
+
+**Templates** (`local-msg-package/src/rust_consumer`,
+`multi-package-workspace/src/pkg_rust_publisher`). Issue 1829 was resolved, so
+they moved. They are workspace PACKAGES that are also leaves, and the
+workspace arm of `nros sync` never wrote a selection: the first copy-out run
+failed at sync's metadata probe (`failed to load manifest for dependency
+`rust_consumer_nros_selection``). Sync's workspace arm now writes each such
+package's selection (`leaf_settings::write_selection`) before its first cargo
+call, exactly as the single-package arm does. Each package `.gitignore` gained
+`/build/`, since a copied-out tree has no repo-root ignore. Measured:
+`scripts/check-template-copy-out.sh local-msg-package multi-package-workspace`
+rc=0 (2 and 3 artifacts; it was rc=1 with the migration alone). The README's
+own flow on a copy outside the checkout — `nros sync` at the workspace, then
+plain `cargo build` in the package — rc=0 for both; each binary opens its
+session against a router and ends `nros: application complete`, the same
+output as a copy built from the old manifests.
+
+**mps2 C/C++ apps on a cargo link root** (the twelve
+`mps2-an385-baremetal/{c,cpp}/*`). No new mechanism: their `main.rs` reaches
+the board's re-exports through the selection package, the path `nros::main!`
+emits for a Rust leaf (`use <pkg>_nros_selection::nros_board_mps2_an385::{Config,
+entry, run_bare}`). `main.rs` never named `cortex_m_rt` itself — `entry` was
+already the board's re-export — so nothing had to be re-exported; the board
+crate, `nros-rmw-zenoh`, `cortex-m` and `cortex-m-rt` left the manifests. Each
+image states `panic = "platform"`, because `nros-c`'s `panic-platform` is the
+image's handler and the selection would otherwise also link
+`panic-semihosting`. `nros-c` keeps its `platform-mps2-an385` arm: it is the C
+API's own per-board selection (issue 1512 shape (a)), not a board crate. The
+C `main.rs` files stay identical but for that one `use` line. Measured:
+`fixtures-build.sh baremetal c` and `… cpp` rc=0 (12 rows);
+`test_qemu_baremetal_capi_e2e` 6/6 PASS (c/cpp × pubsub/service/action, run
+solo). Against images built from the old manifests just before: text +16 to
++28 B, data −4 B, bss 0 to −16 B per image; still one `rust_begin_unwind`,
+no `panic_semihosting` symbol.
+
+**Dormant ESP32** (`esp32-c3-baremetal/rust/{talker,listener}`). The macro's
+ESP32 arm emitted `#[::esp_hal::main]`, and `esp_hal::main`'s own expansion
+names `esp_hal::__macro_implementation::__entry` by a RELATIVE path whenever
+the calling package has no `esp-hal` of its own (`proc_macro_crate`). So for a
+leaf on its selection the macro now brings `esp_hal` into the crate root from
+the board (`nros-board-esp32-qemu` gained `#[doc(hidden)] pub use esp_hal;`)
+and writes `#[esp_hal::main]`; every other entry keeps the absolute path
+(unit-tested both ways). `esp-backtrace` and the `esp_app_desc!` item come from
+the descriptor's `crate_root_*` through the selection's `lib.rs`. Built here
+(`riscv32imc-unknown-none-elf` is installed): `nros sync` rc=0, and `nros
+build` compiled and linked both, then exited 1 on a PRE-EXISTING pin drift
+(`allocator-api2`, `esp-alloc`, `linked_list_allocator` in no pinned range),
+which the unmigrated manifest hits identically. Talker vs the old manifest:
+text 766,938 → 766,930, data 5,612 → 5,616, bss 211,352 → 211,360;
+`esp_app_desc` and `main` at the same addresses. In Espressif QEMU
+(`-M esp32c3`, open_eth) against a router on 9800, the migrated pair
+published 225 and heard 219 in 60 s. No esp32 lane was revived (issue 1525).
+
+**The gate.** `every_cargo_leaf_outside_the_open_classes_uses_its_selection_package`
+already walked every tracked `system.toml`, templates and C/C++ roots
+included; their exemptions are gone, and its floor is 56. Mutations, each
+confirmed applied: `nros-board-mps2-an385` re-added beside the C talker's
+selection → walk rc=101 naming the leaf, and `nros sync` rc=1 ("depends on its
+generated selection package … AND names the board crate"); the template's and
+the ESP32 talker's old manifests restored → rc=101 naming each leaf.
+Restored → rc=0 and sync rc=0.
+
+**Docs.** Every page that still said a single-package Rust leaf names its
+board crate (the README, ten book pages, two guides, `examples/README.md`,
+and the 51 generated example READMEs, via `gen-example-readmes.py`) now says
+the board line is the whole switch.
 
 ## 2026-10-12 (phase D) — the native leaves: one image per RMW × edition (still OPEN)
 

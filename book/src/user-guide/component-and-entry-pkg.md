@@ -313,11 +313,11 @@ the package depends on its generated selection package instead of a board
 crate: `<pkg>_nros_selection = { path = "build/nros/selection" }`, which
 `nros sync` / `nros build` write for the image's board (RFC-0098 D6) and
 `nros::main!` reaches the board through. The in-tree bare-metal, FreeRTOS,
-NuttX, ThreadX-Linux and RTIC examples do. A
-package that still names its board crate in `[dependencies]` (the native
-examples, whose RMW and ROS edition are still cargo features) has to move that line with
-`[image.*] board`; `nros sync` refuses the mismatch, naming both crates. See
-[issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1305-single-package-board-crate-dep-not-generated.md).
+NuttX, ThreadX-Linux, RTIC and native examples do (a native example declares
+one image per RMW and ROS edition). A package that still names its board crate
+in `[dependencies]` has to move that line with `[image.*] board`; `nros sync`
+refuses the mismatch, naming both crates. See
+[issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md).
 
 Build it the same two ways a workspace is built:
 

@@ -27,11 +27,8 @@ Board, RMW, domain and locator: `system.toml` beside `Cargo.toml`
 (`[image.rv-virt-threadx]` + `[system]`, RFC-0098 D3/D5). No build command
 carries any of them.
 
-Switching board is two edits today, not one: the `[image.*] board` line
-and the board crate this leaf names in `Cargo.toml`'s `[dependencies]`. A
-single-package leaf is its own entry, and RFC-0098 D6's generated board
-dependency reaches only a workspace entry — leave the two disagreeing and
-`nros sync` reports success while the build fails in your own crate
-([issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1305-single-package-board-crate-dep-not-generated.md)).
+Switching board is two edits, not one: the `[image.*] board` line
+and the board crate this leaf names in `Cargo.toml`'s `[dependencies]`
+([issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)).
 
 Copy-out contract + the full example matrix: [`examples/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md).

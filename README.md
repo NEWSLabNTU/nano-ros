@@ -117,10 +117,11 @@ RUST_LOG=info ./build/native/target/debug/listener
 `nros sync` reads the example's `system.toml` — the one place a board, an RMW
 and a domain are named — and writes everything that choice implies under
 `build/`; `nros build` then builds the image it declares. In a *workspace*, or a
-C/C++ example, switching board is that one `[image.*] board` line. In a
-single-package **Rust** example it is still two edits, because such a leaf is its
-own entry and names its board crate in `[dependencies]` —
-[issue 1305](docs/issues/1305-single-package-board-crate-dep-not-generated.md).
+C/C++ example, switching board is that one `[image.*] board` line. A
+single-package **Rust** example is its own entry, and it names no board crate
+either: its image-only dependencies come from a `<pkg>_nros_selection` package
+`nros sync` generates for the image's board, so there too the board line is the
+whole edit ([issue 1305](docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)).
 
 See [Installation](book/src/getting-started/installation.md) and
 [First Node — Rust](book/src/getting-started/first-node-rust.md) for the

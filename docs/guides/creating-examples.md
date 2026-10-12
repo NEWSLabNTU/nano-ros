@@ -18,14 +18,13 @@ that choice implies into `build/<image>/nros-cargo.toml`. No build setting is
 hand-written and nothing generated sits beside the package.
 
 What an example leaf contains today: `system.toml` (board, RMW, domain,
-`[[component]]` rows, network identity), a `Cargo.toml` naming the board crate
-and the RMW feature menu and nothing else board-ish, `package.xml`, `src/`, and
-**no `.cargo/`**. The board crate dependency is the one board fact a
-single-package leaf still states twice — RFC-0098 D6 generates it for a
-workspace entry only, so changing `[image.*] board` without changing
-`[dependencies]` leaves `nros sync` reporting success and `nros build` failing
-inside the leaf's own crate
-([issue 1305](../issues/1305-single-package-board-crate-dep-not-generated.md)).
+`[[component]]` rows, network identity), a `Cargo.toml` naming NO board crate
+— only `<pkg>_nros_selection = { path = "build/nros/selection" }`, the package
+`nros sync` / `nros build` generate with the image's board crate, RMW backend
+and runtime crates (RFC-0098 D6) — `package.xml`, `src/`, and **no
+`.cargo/`**. So changing `[image.*] board` is the whole board switch; a board
+crate named beside the selection package is refused at `nros sync`
+([issue 1305](../issues/archived/1305-single-package-board-crate-dep-not-generated.md)).
 
 ## See Also
 
