@@ -709,7 +709,7 @@ fn declared_timer_periods(contract: &Manifest, node: &str) -> Vec<(String, f64, 
     };
     let mut out = Vec::new();
     for (path, path_decl) in &decl.paths {
-        if let Some(ros_launch_manifest_types::Trigger::Timer { rate_hz }) = &path_decl.trigger
+        if let Some(ros_launch_manifest_types::Trigger::Timer { rate_hz, .. }) = &path_decl.trigger
             && *rate_hz > 0.0
         {
             out.push((path.clone(), *rate_hz, (1000.0 / rate_hz).round() as u64));
