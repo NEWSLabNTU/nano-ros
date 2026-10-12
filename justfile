@@ -4634,16 +4634,15 @@ generate-interfaces:
     stage="$PWD/packages/interfaces/generated/.humble.staging"
     rm -rf "$stage"
     trap 'rm -rf "$stage"' EXIT
-    (
-        cd packages/interfaces
-        $NROS generate-rust --force -o "$stage" --codegen-config nros-codegen.toml \
-            --rename builtin_interfaces=nros-builtin-interfaces \
-            --rename std_msgs=nros-std-msgs \
-            --rename rcl_interfaces=nros-rcl-interfaces \
-            --rename diagnostic_msgs=nros-diagnostic-msgs \
-            --rename rosgraph_msgs=nros-rosgraph-msgs \
-            --rename lifecycle_msgs=nros-lifecycle-msgs
-    )
+    cd packages/interfaces
+    $NROS generate-rust --force -o "$stage" --codegen-config nros-codegen.toml \
+        --rename builtin_interfaces=nros-builtin-interfaces \
+        --rename std_msgs=nros-std-msgs \
+        --rename rcl_interfaces=nros-rcl-interfaces \
+        --rename diagnostic_msgs=nros-diagnostic-msgs \
+        --rename rosgraph_msgs=nros-rosgraph-msgs \
+        --rename lifecycle_msgs=nros-lifecycle-msgs
+    cd ../..
     # `geometry_msgs` arrives in the closure via diagnostic_msgs' ament deps and
     # no message in the set references it. It is also the one emitted crate that
     # would ship an UNPREFIXED ament name, which is the collision RFC-0067 §D4
