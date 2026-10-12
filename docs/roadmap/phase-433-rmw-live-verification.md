@@ -620,3 +620,12 @@ change a decision.
 Not "the RMW works". At the end of every job above, the honest claim is still
 per-family and per-coordinate. The number that matters is how many of the 58
 `produced` slots a peer has touched, and today it is roughly twenty.
+
+## Open issues that name this phase
+
+Open issues whose `related:` names this phase (listed 2026-10-12, so the
+link runs both ways). Listing one here records the link, not a claim that
+this phase will fix it.
+
+- [issue 0902](../issues/0902-action-goal-completion-is-variable.md) — action goals complete between 20 % and 90 % of the time on the same build, with no session expiry and no fault to exp …
+- [issue 1828](../issues/1828-bridge-liveliness-keyexpr-rejected.md) — The zenoh→cyclonedds bridge entry declares two liveliness tokens zenoh rejects as `KeyExpr`, so its bridge endpoints …

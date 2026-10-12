@@ -5,7 +5,7 @@ title: "The whole zero-copy surface sits behind `feature = \"lending\"`, which o
 status: open
 type: test-gap
 area: rmw
-related: [issue-0812, issue-0813, issue-0781, issue-1400, issue-1369, issue-1422, phase-391, rfc-0010, rfc-0089]
+related: [issue-0812, issue-0813, issue-0781, issue-1400, issue-1369, issue-1422, phase-391, rfc-0010, rfc-0089, phase-394, phase-433, phase-460]
 ---
 
 ## Problem

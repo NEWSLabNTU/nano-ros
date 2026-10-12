@@ -7,7 +7,7 @@ type: docs
 area: [docs, examples, cli]
 severity: low
 found: 2026-09-27
-related: [1517, 1288, 1511]
+related: [1517, 1288, 1511, phase-477]
 ---
 
 ## What this is

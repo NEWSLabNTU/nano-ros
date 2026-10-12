@@ -497,3 +497,12 @@ evidence, the item is *close it*.
 | [#1265](../issues/archived/1265-cross-only-leaves-cannot-be-probed.md) | the metadata probe cannot run for a cross-only leaf, so esp32 and mps2 examples must DECLARE their entities. W3 cites this as the reason leaves declare; owning the probe is the fix the citation stands in for |
 | [#1277](../issues/archived/1277-preflight-build-std-board-demands-rust-std.md) (resolved 2026-10-11) | `nros build` preflight demands a prebuilt `rust-std` for a board that builds its own core. The preflight must require `rust-src` instead, against W4's rendered `nros-cargo.toml` |
 | [#1109](../issues/1109-board-native-vs-linux-naming-sweep.md) | re-homed 2026-10-12 from phase-401 (archived). About 194 `board = "native"` selectors predate the native/linux split, and the board a leaf states is this phase's input |
+
+## Open issues that name this phase
+
+Open issues whose `related:` names this phase (listed 2026-10-12, so the
+link runs both ways). Listing one here records the link, not a claim that
+this phase will fix it.
+
+- [issue 1281](../issues/1281-riscv-nuttx-c-talker-router-drops-session.md) — `c_riscv_nuttx_talker_delivers_cross_process` fails again: the guest connects and the router drops its session after …
+- [issue 1511](../issues/1511-no-worked-example-of-entry-customisation.md) — Generating every entry removes the last example of a hand-written one, and there is no tutorial for the escape hatch …

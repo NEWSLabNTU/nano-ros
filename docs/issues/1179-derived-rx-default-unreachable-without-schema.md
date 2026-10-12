@@ -4,7 +4,7 @@ title: "Derived-by-default receive buffers reach only backends declaring `type-d
 status: open
 type: enhancement
 area: core
-related: [phase-392, phase-403, issue-0896]
+related: [phase-392, phase-403, issue-0896, phase-394]
 ---
 
 **Home: [phase-403](../roadmap/phase-403-type-bound-rx-sizing.md)** — re-homed 2026-10-12 from phase-392, which is archived.

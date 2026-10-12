@@ -409,3 +409,12 @@ I5, I6, I7 and I8 are independent. I8's second half waits on 474 T3.
       re-run and its result recorded.
 - [ ] T3: the island image shows the stated-below-derived message and a
       liveliness composition that sums to the resolved value.
+
+## Open issues that name this phase
+
+Open issues whose `related:` names this phase (listed 2026-10-12, so the
+link runs both ways). Listing one here records the link, not a claim that
+this phase will fix it.
+
+- [issue 0772](../issues/0772-freertos-lwip-wall-clock-epoch.md) — FreeRTOS/lwIP has no wall-clock epoch — the same consumer that drove the Zephyr one runs a FreeRTOS board too
+- [issue 0913](../issues/0913-the-debugger-is-not-a-passive-instrument.md) — attaching pyocd RTT kills the zenoh session — the debugger perturbs the system under test, and issue 0879 makes the p …

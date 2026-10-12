@@ -5,7 +5,7 @@ status: open
 area: build
 severity: medium
 found: 2026-08-29
-related: [0359, 0463, phase-383, RFC-0065]
+related: [0359, 0463, phase-383, RFC-0065, phase-395]
 ---
 
 # `just format` walks into leaves whose workspace root is a build artifact

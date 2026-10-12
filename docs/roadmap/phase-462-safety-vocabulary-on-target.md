@@ -364,3 +364,11 @@ Parallel plan above cites them by claim id.
   it does not schedule it") and section 10, when W1 gives it monitors.
 - `docs/design/0074-ingress-budget-rate-and-burst.md`: `implements-tracked-by`
   gains this phase at W6.
+
+## Open issues that name this phase
+
+Open issues whose `related:` names this phase (listed 2026-10-12, so the
+link runs both ways). Listing one here records the link, not a claim that
+this phase will fix it.
+
+- [issue 0506](../issues/0506-transport-band-unbounded-preemption.md) — Transport tasks above application tiers is the right default but has no budget — inbound overload preempts every tier …

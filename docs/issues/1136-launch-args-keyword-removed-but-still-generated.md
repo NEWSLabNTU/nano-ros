@@ -6,7 +6,7 @@ type: bug
 area: build, cli, testing
 severity: high
 found: 2026-09-06
-related: [1127, 0433]
+related: [1127, 0433, phase-433]
 ---
 
 # The one lane that could produce a live-peer verdict has not finished in 30 runs

@@ -5,7 +5,7 @@ status: open
 area: build, cmake, cli
 severity: medium
 found: 2026-09-10
-related: [1228, 0940, 0965, 0991, 1002, 1119, 1061, 1125, phase-439, phase-403]
+related: [1228, 0940, 0965, 0991, 1002, 1119, 1061, 1125, phase-439, phase-403, phase-478]
 ---
 
 # What is left of the fixed point, MEASURED on a real image

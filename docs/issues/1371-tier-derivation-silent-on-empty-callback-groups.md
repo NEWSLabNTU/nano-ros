@@ -9,7 +9,7 @@ type: bug
 area: [cli, orchestration, zephyr]
 severity: medium
 found: 2026-09-18
-related: [issue-0259, issue-1283, issue-1286, phase-296, rfc-0047, rfc-0052]
+related: [issue-0259, issue-1283, issue-1286, phase-296, rfc-0047, rfc-0052, phase-459, phase-478]
 ---
 
 ## The gate

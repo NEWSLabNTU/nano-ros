@@ -5,7 +5,7 @@ title: "`realtime_tiers` nuttx-arm/rust: the fast tier now outruns the slow one
 status: open
 type: bug
 area: core, platform, testing
-related: [phase-281, issue-0636, issue-0623]
+related: [phase-281, issue-0636, issue-0623, phase-359]
 ---
 
 ## Symptom

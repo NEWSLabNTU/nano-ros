@@ -6,7 +6,7 @@ area: zenoh, zephyr, serial, scheduling
 severity: medium
 phases: [279, 282]
 rfcs: []
-related: [0626, 0623, 0852, 1533]
+related: [0626, 0623, 0852, 1533, phase-474, phase-478]
 ---
 
 # On Zephyr the tx-flush task runs above the read task

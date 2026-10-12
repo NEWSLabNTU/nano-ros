@@ -6,7 +6,7 @@ area: build
 severity: medium
 phases: [468]
 rfcs: [0049]
-related: [0460, 0751, 1233]
+related: [0460, 0751, 1233, phase-478]
 ---
 
 # `check-kconfig-knob-forwarding` proves a knob is MENTIONED, not that it is a table row

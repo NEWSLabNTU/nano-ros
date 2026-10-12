@@ -6,7 +6,7 @@ type: bug
 area: ci, testing
 severity: high
 found: 2026-10-03
-related: [1521, 1644, 1226, 1158]
+related: [1521, 1644, 1226, 1158, phase-477]
 ---
 
 ## What this is
