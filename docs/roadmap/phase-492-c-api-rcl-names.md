@@ -54,9 +54,14 @@ A C component gets an `rcl_node_t *` and an `rclc_executor_t *` from its
 context and uses the C API, so `nros_cpp_*` becomes C++-private. The codegen
 that emits C entries (`tests_c.rs`, `builder/west_app.rs`, the entry emitters
 calling `nros_app_main` and `nros_boot_config_*`) emits the new names.
-*Acceptance:* `git grep 'nros_cpp_' -- '*.c'` is empty outside `nros-cpp`'s own
-tests; `c_param_talker_pkg` and the other C component packages build and pass
-their cells.
+*Acceptance:* no C component calls `nros_cpp_*` — `git grep 'nros_cpp_' --
+'examples/**/*.c'` is empty — and `component.h` declares no C++-FFI type or call
+beyond the opaque node handle and the bind seam its macro uses. (As first
+written this said "outside `nros-cpp`'s own tests", which also counted the
+board runners that HOST the executor — `nros_cpp_init` / `_spin_once` / the tier
+runners. Those are the runtime's host seam, not a component, and stay.)
+`c_param_talker_pkg` and the other C component packages build and pass their
+cells.
 
 **W5 — Migrate every caller** (after W7 and W8).
 Examples (about 160 files), `packages/testing` (about 70), `packages/cli` (about
@@ -359,3 +364,36 @@ sees zero allocations across publish and take.
   family), and a stale ruling fails. The rename generator no longer adopts a
   `systematic` row without a measured conformance (`SIGNATURE_CONFORMED`).
 - Ledger rows are re-keyed in W6 against `just check api-parity`.
+
+### 2026-10-12 — W4 (part 2): C components on the C API
+
+- `RCLC_C_COMPONENT(StructT, configure_fn)`: `configure_fn(rcl_node_t *node,
+  rclc_executor_t *executor, StructT *self)`. The generated `configure` seam
+  keeps its host signature and binds the C handles itself
+  (`nros_cpp_node_bind_c` into a static `rcl_node_t` beside the instance), so
+  no entry emitter changed. `component.h` now declares only the opaque node
+  handle and that seam — the C mirrors of the C++ FFI types
+  (`nros_cpp_qos_t`, `rclc_c_qos_default()`, the `RCLC_C_*` enums, the
+  `NROS_C_*_STORAGE_SIZE` buffers, the `nros_cpp_*` prototypes) are gone.
+- Every C component moved: talkers / listeners (typed:
+  `rclc_executor_add_subscription_with_context`), QoS (`rclc_qos_t` +
+  `*_init_with_qos`), services (the generated typed handler and client
+  helpers), actions (`rclc_action_server_init_with_callbacks` +
+  `rclc_action_execute` / `rclc_action_succeed`; the async client), the
+  parameter talker (`rclc_parameter_server_t` over the host's store, never
+  added to the executor), the safety listener (new
+  `rclc_executor_add_subscription_raw_validated`, the callback-style sibling of
+  `rclc_polling_subscription_take_validated`), the Zephyr examples (generated
+  bindings instead of hand-rolled CDR), the templates and the `nros new --lang
+  c` scaffold (now declares `std_msgs`). The mixed param probe's C half takes an
+  `rcl_node_t`; its C++ caller binds one with `nros_cpp_node_bind_c`.
+- Found and fixed (`nros-node`): the executor's spin TOOK the reply of a
+  service client registered without a response callback and dropped it, so the
+  polling API (`rclc_client_take_response`) never saw one. A C component that
+  polls a client from a timer — the shape every C service-client component had
+  — got no reply while the server answered every request. A callback-less
+  client's reply is now left for the poll.
+- Gates: `check-ffi-struct-mirrors` family 1 moves to the mirror that is left
+  (`qos.hpp`'s `struct nros_cpp_qos_t`, which nothing had compared — mutation
+  tested); `check-qos-profile-ssot` drops the `component.h` subject; the issue
+  1535 short-buffer probe retires with the buffer.

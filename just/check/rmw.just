@@ -232,7 +232,7 @@ declared-qos-registration:
 #
 # phase-454 W1 (issue 1256) — and the SIX OTHER SITES. W10 bound the table to
 # upstream and left every transcription of it hanging off nothing: a Kconfig
-# `default`, the `NROS_RMW_QOS_PROFILE_*` macros, `rclc_c_qos_default()`,
+# `default`, the `NROS_RMW_QOS_PROFILE_*` macros, the C component default,
 # `nros-c`'s statics, the C++ `qos_table` and XRCE's own no-QoS fallback all
 # restated `rmw_qos_profile_default`'s KEEP_LAST(10) independently. The Rust
 # ones now READ `QoSProfile::QOS_PROFILE_*` and the rest are compared here,

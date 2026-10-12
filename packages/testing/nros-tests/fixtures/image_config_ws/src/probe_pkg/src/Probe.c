@@ -18,7 +18,7 @@ typedef struct {
     int32_t unused;
 } probe_t;
 
-static rcl_ret_t probe_configure(const nros_cpp_node_t* node, void* executor, probe_t* self) {
+static rcl_ret_t probe_configure(rcl_node_t* node, rclc_executor_t* executor, probe_t* self) {
     (void)node;
     (void)executor;
     (void)self;

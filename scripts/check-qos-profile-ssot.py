@@ -544,22 +544,6 @@ _C_API_ENUMS = {
     },
 }
 
-_CPP_FFI_ENUMS = {
-    "reliability": {"RCLC_C_QOS_RELIABLE": "RELIABLE", "RCLC_C_QOS_BEST_EFFORT": "BEST_EFFORT"},
-    "durability": {
-        "RCLC_C_QOS_VOLATILE": "VOLATILE",
-        "RCLC_C_QOS_TRANSIENT_LOCAL": "TRANSIENT_LOCAL",
-    },
-    "history": {"RCLC_C_QOS_KEEP_LAST": "KEEP_LAST", "RCLC_C_QOS_KEEP_ALL": "KEEP_ALL"},
-    "liveliness_kind": {
-        "RCLC_C_QOS_LIVELINESS_NONE": "SYSTEM_DEFAULT",
-        "RCLC_C_QOS_LIVELINESS_AUTOMATIC": "AUTOMATIC",
-        "RCLC_C_QOS_LIVELINESS_MANUAL_BY_TOPIC": "MANUAL_BY_TOPIC",
-        "RCLC_C_QOS_LIVELINESS_MANUAL_BY_NODE": "MANUAL_BY_NODE",
-    },
-}
-
-
 def _canon(enums, field, tok, where):
     table = enums.get(field)
     if table is None:
@@ -567,21 +551,6 @@ def _canon(enums, field, tok, where):
     if tok not in table:
         raise Fail(f"{where}: {field} = {tok!r} is not a policy spelling the gate knows")
     return table[tok]
-
-
-def _component_h_default(text, where):
-    """`rclc_c_qos_default()` — what every generated `*_SUBSCRIBE` macro uses."""
-    body = re.search(
-        r"static inline nros_cpp_qos_t rclc_c_qos_default\(void\)\s*\{(.*?)\n\}", text, re.S
-    )
-    if not body:
-        raise Fail(f"{where}: rclc_c_qos_default() is not where the gate reads it")
-    fields = {}
-    for field, raw in re.findall(r"q\.([a-z_]+)\s*=\s*([A-Za-z0-9_]+)\s*;", body.group(1)):
-        if field not in UPSTREAM_FIELDS + NROS_ONLY_FIELDS:
-            continue
-        fields[field] = _c_scalar(_CPP_FFI_ENUMS, field, raw, where)
-    return {"rclc_c_qos_default": fields}
 
 
 def _c_scalar(enums, field, raw, where):
@@ -790,12 +759,6 @@ MIRRORS = [
         },
     ),
     Mirror(
-        "component.h",
-        ROOT / "packages" / "api" / "nros-c" / "include" / "nros" / "component.h",
-        _component_h_default,
-        {"rclc_c_qos_default": "QOS_PROFILE_DEFAULT"},
-    ),
-    Mirror(
         "nros-c/qos.rs",
         ROOT / "packages" / "api" / "nros-c" / "src" / "qos.rs",
         _nros_c_statics,
@@ -830,7 +793,7 @@ MIRRORS = [
 # A deviation record may WRAP, because clang-format reflows the comments the C
 # and C++ mirrors carry it in and the record does not fit 100 columns.
 #
-# Measured, not feared: `clang-format --style=file` on `component.h` split
+# Measured, not feared: `clang-format --style=file` on a C mirror split
 # `... ours=AUTOMATIC` / `ssot=SYSTEM_DEFAULT ref="..." Upstream's ...` and
 # pulled the following PROSE up onto the second line. A single-line parser then
 # sees a record missing `ssot` and `ref` — loud rather than silent, but red for
@@ -1695,13 +1658,6 @@ _MIRROR_SOURCE_PROBE = {
         "NROS_RMW_QOS_PROFILE_FROM_POLICIES(BEST_EFFORT, VOLATILE, KEEP_LAST, 5, SYSTEM_DEFAULT)",
         "NROS_RMW_QOS_PROFILE_FROM_POLICIES(BEST_EFFORT, VOLATILE, KEEP_LAST, 17, SYSTEM_DEFAULT)",
         "SENSOR_DATA",
-        "depth",
-        17,
-    ),
-    "component.h": (
-        "q.depth = 10;",
-        "q.depth = 17;",
-        "rclc_c_qos_default",
         "depth",
         17,
     ),

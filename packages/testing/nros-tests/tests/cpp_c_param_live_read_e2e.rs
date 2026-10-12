@@ -39,7 +39,7 @@ fn spawn_entry(path: PathBuf, label: &str, locator: &str, spin_ms: u32) -> Manag
     ManagedProcess::spawn_command(cmd, label).expect("spawn entry")
 }
 
-/// C component reads the launch-baked initial (250) LIVE via nros_cpp_get_param_integer.
+/// C component reads the launch-baked initial (250) LIVE via rclc_parameter_get_int.
 #[rstest]
 fn c_param_live_read_publishes_baked_initial(zenohd_unique: ZenohRouter) {
     require_zenohd();

@@ -2,7 +2,7 @@
 /// @brief C validated-subscription listener for the E2E-safety workspace.
 ///
 /// Registers a validated callback subscription on /chatter via
-/// `nros_cpp_subscription_register_validated` (the C component-callback analog of
+/// `rclc_executor_add_subscription_raw_validated` (the C API's analog of
 /// Rust's `create_subscription_for_callback_name_with_safety`). The callback
 /// receives the CDR bytes AND the E2E integrity status scalars:
 ///   - gap       — sequence-number gap since the last in-order message (0 = none)
@@ -21,13 +21,13 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include <nros/nros_cpp_ffi.h>
 #include <nros/component.h>
 
 #include "std_msgs.h"
 
 typedef struct {
-    _Alignas(8) uint8_t pub[NROS_C_PUBLISHER_STORAGE_SIZE];
+    rcl_subscription_t sub;
+    rcl_publisher_t pub;
     int32_t received;
     int32_t integrity_faults;
 } safety_listener_t;
@@ -47,14 +47,8 @@ static void on_chatter_validated(const uint8_t* data, size_t len, int64_t gap, b
                duplicate ? "true" : "false");
         fflush(stdout);
 
-        std_msgs__msg__Int32 msg;
-        memset(&msg, 0, sizeof(msg));
-        msg.data = self->received;
-        uint8_t buf[16];
-        size_t buf_len = 0;
-        if (std_msgs__msg__Int32__serialize(&msg, buf, sizeof(buf), &buf_len) == 0) {
-            nros_cpp_publish_raw(self->pub, buf, buf_len);
-        }
+        std_msgs__msg__Int32 msg = {.data = self->received};
+        (void)rcl_publish(&self->pub, &msg, NULL);
     } else {
         self->integrity_faults++;
         printf("[LISTENER] integrity fault — crc_valid=%d gap=%lld dup=%s total_faults=%d\n",
@@ -64,29 +58,31 @@ static void on_chatter_validated(const uint8_t* data, size_t len, int64_t gap, b
     }
 }
 
-static rcl_ret_t listener_configure(const nros_cpp_node_t* node, void* executor,
+static rcl_ret_t listener_configure(rcl_node_t* node, rclc_executor_t* executor,
                                     safety_listener_t* self) {
     setvbuf(stdout, NULL, _IOLBF, 0);
-    (void)executor;
     self->received = 0;
     self->integrity_faults = 0;
 
     /* Create /safe_ok publisher to report CRC-valid counts */
-    int32_t rc = nros_cpp_publisher_create(node, "/safe_ok", std_msgs__msg__Int32__get_type_name(),
-                                           std_msgs__msg__Int32__get_type_hash(), rclc_c_qos_default(),
-                                           self->pub);
-    if (rc != 0) {
+    self->pub = rcl_get_zero_initialized_publisher();
+    rcl_ret_t rc = rclc_publisher_init_default(
+        &self->pub, node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32), "/safe_ok");
+    if (rc != RCL_RET_OK) {
         return rc;
     }
 
     /* Register the validated subscription on /chatter.
      * The callback receives CRC verdict + sequence info alongside the CDR bytes.
      * Requires NROS_SAFETY_E2E=ON. */
-    size_t handle;
-    return nros_cpp_subscription_register_validated(
-        node, "/chatter", std_msgs__msg__Int32__get_type_name(), std_msgs__msg__Int32__get_type_hash(),
-        rclc_c_qos_default(), on_chatter_validated, self, &handle,
-        /*options=*/NULL); /* phase-402: NULL = defaults */
+    self->sub = rcl_get_zero_initialized_subscription();
+    rc = rclc_subscription_init_default(
+        &self->sub, node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32), "/chatter");
+    if (rc != RCL_RET_OK) {
+        return rc;
+    }
+    return rclc_executor_add_subscription_raw_validated(executor, &self->sub, on_chatter_validated,
+                                                        self, RCLC_EXECUTOR_ON_NEW_DATA);
 }
 
 RCLC_C_COMPONENT(safety_listener_t, listener_configure)

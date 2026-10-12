@@ -4,9 +4,9 @@
 #
 # TWO families, one class of bug.
 #
-# 1. `component.h` re-declares a few `nros_cpp_ffi.h` structs behind
-#    `#ifndef NROS_CPP_FFI_H` so a plain-C TU can use the component API without
-#    the (cbindgen-generated) C++ FFI header. Those mirrors are hand-written and
+# 1. A header re-declares `nros_cpp_ffi.h` structs behind `#ifndef
+#    NROS_CPP_FFI_H` so it stays usable without the (cbindgen-generated) C++
+#    FFI header — `qos.hpp` now; `component.h` until phase-492 W4. Those mirrors are hand-written and
 #    have drifted on every append so far (phase-273 `callback_group`, phase-282
 #    `tx_express` — the #131 "stale mirror" ABI class: a mirror-only TU passes a
 #    SHORTER struct by value than the FFI consumer reads, so the tail field is
@@ -66,23 +66,25 @@ def decls(body):
 
 
 # ---------------------------------------------------------------------------
-# Family 1 — component.h mirrors of nros_cpp_ffi.h
+# Family 1 — hand mirrors of nros_cpp_ffi.h structs
 # ---------------------------------------------------------------------------
 
-MIRROR = "packages/api/nros-c/include/nros/component.h"
+# phase-492 W4 — `component.h` WAS the mirror (a plain-C component reached the
+# C++ FFI through it). C components use the C API now and `component.h` carries
+# no FFI struct, so the mirror this family checks is the one left:
+# `qos.hpp`'s `#ifndef NROS_CPP_FFI_H` block, which keeps that header
+# self-contained. Its struct had never been compared — only its enums (family
+# 1b) — so moving the harvest here closes that gap rather than dropping one.
+MIRROR = "packages/api/nros-cpp/include/nros/qos.hpp"
 CANONICAL = "packages/api/nros-cpp/include/nros/nros_cpp_ffi.h"
 
 # (struct tag, {mirror-prefix: canonical-prefix} applied to the mirror's text)
-# phase-472 W7 — the mirrored structs are HARVESTED: every `typedef struct
-# nros_cpp_*` the mirror header defines is a mirror of the canonical one. The
-# authored list named two of three, and the unchecked one was
-# `nros_cpp_subscription_options_t` — the struct whose tail (`callback_group`)
-# is the field that drifted twice. What stays authored is the enum-prefix
-# NORMALIZATION a mirror needs, keyed per tag and stale-checked.
-PREFIX_MAPS = {
-    "nros_cpp_qos_t": {"rclc_c_qos_": "nros_cpp_qos_"},
-}
-TAG_RE = re.compile(r"typedef struct (nros_cpp_[A-Za-z0-9_]+) \{")
+# phase-472 W7 — the mirrored structs are HARVESTED: every `struct nros_cpp_*`
+# the mirror header defines is a mirror of the canonical one. What stays
+# authored is the enum-prefix NORMALIZATION a mirror needs, keyed per tag and
+# stale-checked (none is needed while the mirror spells cbindgen's names).
+PREFIX_MAPS = {}
+TAG_RE = re.compile(r"(?:typedef )?struct (nros_cpp_[A-Za-z0-9_]+) \{")
 
 
 def harvested_checks(mirror_src, stale_check=True):
@@ -96,10 +98,10 @@ def harvested_checks(mirror_src, stale_check=True):
 
 
 # The reach, as a negative control on the normal path: the harvest finds a
-# struct the old list did not name.
-assert "nros_cpp_subscription_options_t" in [t for t, _ in harvested_checks(
-    "typedef struct nros_cpp_subscription_options_t {\n  int a;\n} nros_cpp_subscription_options_t;\n",
-    stale_check=False)]
+# struct in either spelling (C typedef, C++ plain struct).
+assert [t for t, _ in harvested_checks(
+    "struct nros_cpp_a_t {\n  int a;\n};\ntypedef struct nros_cpp_b_t {\n  int b;\n} nros_cpp_b_t;\n",
+    stale_check=False)] == ["nros_cpp_a_t", "nros_cpp_b_t"]
 CHECKS = harvested_checks(read(MIRROR))
 
 
@@ -109,7 +111,7 @@ def struct_fields(path, tag, prefix_map):
         r"typedef struct %s \{(.*?)\n\} %s;" % (re.escape(tag), re.escape(tag)),
         src,
         re.S,
-    )
+    ) or re.search(r"\bstruct %s \{(.*?)\n\};" % re.escape(tag), src, re.S)
     if not m:
         sys.exit(f"check-ffi-struct-mirrors: struct '{tag}' not found in {path}")
     body = m.group(1)
@@ -149,8 +151,8 @@ for tag, prefix_map in CHECKS:
 # the append that has drifted a mirror every previous time (`callback_group`,
 # `tx_express`).
 #
-# Two mirrors, one canonical:
-#   * `component.h`, so a plain-C component TU can name the policies;
+# One mirror, one canonical (phase-492 W4 retired the `component.h` mirror —
+# C components use the C API's own QoS type now):
 #   * `qos.hpp`'s `#ifndef NROS_CPP_FFI_H` block, so that header stays
 #     self-contained for a caller that does not pull in the cbindgen one.
 #
@@ -170,7 +172,6 @@ QOS_ENUM_TAGS = [
 
 QOS_ENUM_MIRRORS = [
     # (path, tag spelling in that file, enumerator prefix map)
-    (MIRROR, lambda tag: tag.replace("nros_cpp_", "rclc_c_"), {"RCLC_C_QOS_": "NROS_CPP_QOS_"}),
     ("packages/api/nros-cpp/include/nros/qos.hpp", lambda tag: tag, {}),
 ]
 
@@ -420,4 +421,4 @@ for path in TASK_MEM_C_MIRRORS:
 sys.exit(1 if failed else 0)
 PY
 
-echo "FFI struct mirrors in sync (component.h + nros_native_tier_spec_t ×8)."
+echo "FFI struct mirrors in sync (qos.hpp + nros_native_tier_spec_t ×8)."

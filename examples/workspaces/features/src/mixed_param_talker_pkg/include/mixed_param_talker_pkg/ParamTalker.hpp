@@ -2,6 +2,7 @@
 
 #include <nros/component.hpp>
 #include <nros/nros.hpp>
+#include <nros/types.h> /* rcl_node_t — the C half's handle on this node */
 
 #include "std_msgs.hpp"
 
@@ -25,10 +26,11 @@ namespace mixed_param_talker_pkg {
 class ParamTalker {
     ::rclcpp::Publisher<std_msgs::msg::Int32> pub_;
     ::rclcpp::Timer timer_;
-    /// Saved at configure: the C half is a free function over this handle, and
-    /// the parameter store is keyed by NODE (phase-426 W1), so naming the node
-    /// is what makes "the other language's parameter" resolvable at all.
-    const nros_cpp_node_t* node_handle_ = nullptr;
+    /// The C API's handle on this node, bound at configure: the C half reads
+    /// and declares through it, and the parameter store is keyed by NODE
+    /// (phase-426 W1), so naming the node is what makes "the other language's
+    /// parameter" resolvable at all. Must outlive the node's use (a member).
+    rcl_node_t c_node_{};
     double scale_ = 0.0;
 
     void on_tick();

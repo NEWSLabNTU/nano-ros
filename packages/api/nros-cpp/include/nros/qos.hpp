@@ -560,7 +560,8 @@ namespace detail {
 //     `nros-qos-mirror-deviation` record whose own reason was that this
 //     surface and `nros-c`'s "move together with the C ABI or not at all".
 //     They moved together (issue 1329): this constructor, `nros-c`'s
-//     `NROS_QOS_*` statics and `rclc_c_qos_default()`.
+//     `NROS_QOS_*` statics and (until phase-492 W4) `component.h`'s
+//     `rclc_c_qos_default()`.
 //
 //     The forcing argument is issue 1329's per-backend QoS mask. XRCE honours
 //     no liveliness, so an AUTOMATIC default would have made

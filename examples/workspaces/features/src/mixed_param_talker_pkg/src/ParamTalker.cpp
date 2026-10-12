@@ -19,7 +19,7 @@ void ParamTalker::on_tick() {
     // publish_period_ms N` moves this on the next tick, which is what makes it
     // a read of the store rather than of a value copied at configure time.
     int64_t period = -1;
-    (void)mixed_param_c_read_period(node_handle_, &period);
+    (void)mixed_param_c_read_period(&period);
 
     std_msgs::msg::Int32 m;
     m.data = static_cast<int32_t>(period * static_cast<int64_t>(scale_));
@@ -30,8 +30,11 @@ void ParamTalker::on_tick() {
 
 ::rclcpp::Result ParamTalker::configure(::rclcpp::Node& node) {
     ::setvbuf(stdout, nullptr, _IONBF, 0);
-    node_handle_ = node.ffi_handle();
-    if (node_handle_ == nullptr) {
+    // The C half needs the C API's handle on this same node (phase-492 W4).
+    void* c_executor = nullptr;
+    if (node.ffi_handle() == nullptr ||
+        nros_cpp_node_bind_c(node.ffi_handle(), &c_node_, &c_executor) != NROS_CPP_RET_OK ||
+        mixed_param_c_attach(&c_node_) != RCL_RET_OK) {
         return ::rclcpp::Result(::rclcpp::ErrorCode::NotInitialized);
     }
 
@@ -41,7 +44,7 @@ void ParamTalker::on_tick() {
     const int64_t period = node.declare_parameter<int64_t>("publish_period_ms", 100);
 
     // C SIDE: declare. Nothing in C++ ever names 3.0.
-    if (mixed_param_c_declare_scale(node_handle_, 3.0) != NROS_CPP_RET_OK) {
+    if (mixed_param_c_declare_scale(3.0) != RCL_RET_OK) {
         return ::rclcpp::Result(::rclcpp::ErrorCode::Error);
     }
 
@@ -55,8 +58,7 @@ void ParamTalker::on_tick() {
     // And C reads what C++ declared, once, at configure — so a broken crossing
     // fails the BOOT rather than showing up as a wrong number on the wire.
     int64_t seen_by_c = -1;
-    if (mixed_param_c_read_period(node_handle_, &seen_by_c) != NROS_CPP_RET_OK ||
-        seen_by_c != period) {
+    if (mixed_param_c_read_period(&seen_by_c) != RCL_RET_OK || seen_by_c != period) {
         std::fprintf(stderr, "[cpp] C read publish_period_ms as %lld, C++ declared %lld\n",
                      static_cast<long long>(seen_by_c), static_cast<long long>(period));
         return ::rclcpp::Result(::rclcpp::ErrorCode::Error);

@@ -239,8 +239,8 @@ fn exec_for(lang: ML, workload: MW) -> Exec {
             entry: || build_native_workspace_c_qos_talker_entry().map(|p| p.to_path_buf()),
             peer: Some(|| build_native_workspace_c_qos_listener_entry().map(|p| p.to_path_buf())),
             proof: Proof::QosMatchedProfile { topic: "/chatter" },
-            note: "phase-263 B4 C projection: nros_cpp_qos_t by value to nros_cpp_publisher_create \
-                   (not rclc_c_qos_default()); listener declares the BYTE-IDENTICAL profile",
+            note: "phase-263 B4 C projection: an rclc_qos_t to rclc_publisher_init_with_qos \
+                   (not RCLC_QOS_DEFAULT); listener declares the BYTE-IDENTICAL profile",
         },
         (ML::Cpp, MW::Qos) => Exec {
             entry: || build_native_workspace_cpp_qos_talker_entry().map(|p| p.to_path_buf()),
@@ -733,7 +733,7 @@ fn run_cell(pcell: &MCell) {
                 // any other publisher on `/chatter` could be the one asserted
                 // against. That is what `case_08_c_qos` did when it failed
                 // in-sweep and passed solo: the profile it printed was exactly
-                // `rclc_c_qos_default()`, i.e. somebody else's endpoint.
+                // the C default profile, i.e. somebody else's endpoint.
                 //
                 // The launch files name these nodes (`demo_bringup/launch/
                 // *qos*.xml`), and all three qos cells use the SAME two names —

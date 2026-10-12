@@ -2030,6 +2030,52 @@ unsafe fn register_subscription_entry(
     RCL_RET_OK
 }
 
+/// phase-492 W4 — register a raw subscription whose callback also receives
+/// the sample's E2E integrity status (CRC + sequence gap / duplicate): the
+/// C API's form of what a C component used to reach through the C++ FFI
+/// (`nros_cpp_subscription_register_validated`), and the callback-style
+/// sibling of `rclc_polling_subscription_take_validated`.
+///
+/// Requires the `safety-e2e` capability on both the runtime and the backend
+/// (`NROS_SAFETY_E2E=ON`); without it this answers `RCL_RET_UNSUPPORTED`.
+///
+/// # Safety
+/// * `executor` and `subscription` must be valid, initialised objects.
+/// * `context` is passed through untouched and may be NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_executor_add_subscription_raw_validated(
+    executor: *mut rclc_executor_t,
+    subscription: *mut rcl_subscription_t,
+    callback: crate::subscription::rclc_subscription_validated_callback_t,
+    context: *mut core::ffi::c_void,
+    invocation: rclc_executor_handle_invocation_t,
+) -> rcl_ret_t {
+    validate_not_null!(executor, subscription);
+    #[cfg(feature = "safety-e2e")]
+    {
+        register_subscription_entry(
+            executor,
+            subscription,
+            invocation,
+            |rust_exec, node_id, topic, type_name, type_hash, qos| {
+                let Some(callback) = callback else {
+                    return Err(RCL_RET_INVALID_ARGUMENT);
+                };
+                rust_exec
+                    .add_arena_subscription_c_validated_callback::<MESSAGE_BUFFER_SIZE>(
+                        node_id, topic, type_name, type_hash, qos, callback, context, 0,
+                    )
+                    .map_err(|_| RCL_RET_ERROR)
+            },
+        )
+    }
+    #[cfg(not(feature = "safety-e2e"))]
+    {
+        let _ = (callback, context, invocation);
+        RCL_RET_UNSUPPORTED
+    }
+}
+
 /// phase-417 W5.a — a subscription callback that receives the DESERIALISED
 /// message, the shape rclc delivers
 /// (`rclc_subscription_callback_with_context_t`, the alias `<rclc/executor.h>`
