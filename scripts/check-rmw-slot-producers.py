@@ -257,7 +257,26 @@ def consumers_in(text, slots):
     slot the Rust runtime already reads — a closed false-negative, not a
     recount.
     """
-    return {s for s in slots if re.search(CONSUME.format(re.escape(s)), text)}
+    # phase-489 W5 -- ONE pass over the text instead of one `re.search` per
+    # slot (868 files x every slot, the larger half of three gates' time). The
+    # look-ahead tries the receiver + operator at EVERY offset, overlapping
+    # included, exactly as each per-slot search would, and captures the whole
+    # identifier after the operator; `CONSUME`'s `{slot}\b` matches there iff
+    # that identifier IS the slot, so intersecting gives the same set. A slot
+    # that is not a plain identifier cannot be captured that way and keeps the
+    # per-slot search.
+    named = {m.group(1) for m in _CONSUME_ANY.finditer(text)}
+    return {
+        s for s in slots
+        if (
+            s in named if _IDENT.fullmatch(s)
+            else re.search(CONSUME.format(re.escape(s)), text)
+        )
+    }
+
+
+_CONSUME_ANY = re.compile(r"(?=(?:vtable|vtbl|\(\*vt\)|vt)\s*(?:\.|->)\s*(\w+))")
+_IDENT = re.compile(r"\w+")
 
 
 def backend_of(rel):

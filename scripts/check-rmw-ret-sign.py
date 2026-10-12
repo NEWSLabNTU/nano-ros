@@ -36,6 +36,7 @@ apart: one is "fix now", the other is "fix with the slot".
 Run: python3 scripts/check-rmw-ret-sign.py
 """
 
+import functools
 import os
 import re
 import subprocess
@@ -114,6 +115,16 @@ def strip_comments(text, rust):
     return text
 
 
+@functools.lru_cache(maxsize=None)
+def _name_patterns(names):
+    return [(name, re.compile(r"\b" + re.escape(name) + r"\b")) for name in names]
+
+
+@functools.lru_cache(maxsize=None)
+def _any_name_pattern(names):
+    return re.compile(r"\b(?:" + "|".join(re.escape(n) for n in names) + r")\b")
+
+
 def scan_file(rel, names, window=30):
     """[(line_no, slot, text)] — a sign test within `window` lines after a slot call.
 
@@ -143,6 +154,12 @@ def scan_file(rel, names, window=30):
     first — the alternative is tuning a number until the output looks tidy,
     which optimises for a quiet report rather than a complete one.
     """
+    # phase-489 W5 -- no names, no hit is possible (`seen` stays empty), so
+    # the file is not read or stripped at all. `main` asks twice per file and
+    # `DUAL_RETURN` is empty, so this halves the strips without changing a
+    # result.
+    if not names:
+        return []
     path = os.path.join(ROOT, rel)
     try:
         raw = open(path, encoding="utf-8", errors="replace").read()
@@ -151,12 +168,22 @@ def scan_file(rel, names, window=30):
     body = strip_comments(raw, rel.endswith(".rs"))
     lines = body.splitlines()
 
+    # phase-489 W5 -- the same per-name `\bname\b` test, compiled once rather
+    # than rebuilt (`re.escape` + cache lookup) for every (line, name): that was
+    # 53 M `re.search` calls and 150 of the gate's 166 s. `any_name` matches a
+    # line iff at least one per-name pattern does, so it only skips lines on
+    # which the loop would have set nothing; the loop itself, its order and
+    # therefore `seen`'s insertion order are unchanged.
+    pats = _name_patterns(tuple(names))
+    any_name = _any_name_pattern(tuple(names))
+
     hits = []
     seen = {}
     for i, line in enumerate(lines):
-        for name in names:
-            if re.search(r"\b" + re.escape(name) + r"\b", line):
-                seen[name] = i
+        if any_name.search(line):
+            for name, pat in pats:
+                if pat.search(line):
+                    seen[name] = i
         if SIGN_TEST.search(line):
             for name, at in sorted(seen.items(), key=lambda kv: -kv[1]):
                 if 0 <= i - at <= window:

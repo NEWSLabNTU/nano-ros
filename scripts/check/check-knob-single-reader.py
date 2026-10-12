@@ -49,6 +49,7 @@ here rather than remembered.
 
 from __future__ import annotations
 
+import functools
 import re
 import subprocess
 import sys
@@ -733,8 +734,15 @@ def retired_hits(entry: Retired, read):
     return hits
 
 
+@functools.lru_cache(maxsize=None)
 def strip_comments_hash(src: str) -> str:
-    """`#` comments, for the CMake half. Same concession, other language."""
+    """`#` comments, for the CMake half. Same concession, other language.
+
+    Memoised on the TEXT (phase-489 W5): eleven retired entries glob
+    overlapping file sets, so one file was stripped up to eleven times. The
+    key is the whole input string, so a hit can only ever return the strip of
+    identical text -- there is nothing for it to go stale against.
+    """
     # phase-472 W3 — the shared stripper (scripts/lib/comments.py).
     return comments.strip_comments(src, "cmake")
 
@@ -918,7 +926,17 @@ def readers_in(text: str, knob: str) -> bool:
     Factored out so the selftest can drive it on synthetic input rather than on
     the tree, which would make the control depend on the very thing it checks.
     """
-    stripped = strip_comments(text)
+    return reads_stripped(strip_comments(text), knob)
+
+
+def reads_stripped(stripped: str, knob: str) -> bool:
+    """`readers_in` over text ALREADY comment-stripped.
+
+    phase-489 W5: `main` strips each file ONCE and asks every knob of the
+    result. It used to strip inside `readers_in`, i.e. once per (file, knob,
+    spelling) -- 45 158 strips of 684 files, 240 of the gate's 261 s. Same
+    stripper, same text, same idioms: only the repetition is gone.
+    """
     if knob not in stripped:
         return False
     return any(
@@ -998,8 +1016,9 @@ def main() -> int:
         if "NROS_" not in text:
             continue
 
+        stripped = strip_comments(text)
         for knob, spelled in names.items():
-            if any(readers_in(text, n) for n in spelled):
+            if any(reads_stripped(stripped, n) for n in spelled):
                 readers[knob].add(rel)
 
     # Drift between the two halves, reported before the reader check so the
