@@ -98,6 +98,13 @@ Rules, all of them:
 
 1. Self-hosted jobs trigger **only** on `merge_group` and `push` to `main` —
    never on `pull_request` from a fork. Fork PRs get hosted runners only.
+   A job in a workflow that ALSO triggers on `pull_request` may reach the pool
+   only through an event-routed `runs-on` whose condition admits no
+   pull-request event (phase-489 W2: `gate.yml`'s `check-workspace-all` and
+   `check-test-unit`, self-hosted on `merge_group` / `workflow_dispatch`,
+   hosted otherwise). The repo requires approval only for FIRST-TIME
+   contributors, so a returning contributor's fork PR runs without one — the
+   route, not the approval setting, is what keeps it off the pool.
 2. Require approval for first-time contributors.
 3. Run the runner as a dedicated unprivileged user, ideally in a container or
    VM, never as the account holding other work.
@@ -130,7 +137,10 @@ Two things this does *not* buy, stated plainly:
 - It bounds what someone **with write access** can reach. It does not eliminate
   it. Rule 1 is what keeps fork PRs out, and it is load-bearing — verified: every
   self-hosted job triggers only on `push`, `merge_group`, `schedule` or
-  `workflow_dispatch`, and `check-workflow-runner-isolation` keeps it that way.
+  `workflow_dispatch`, or is event-routed to the pool on those alone, and
+  `check-workflow-runner-isolation` keeps it that way (it parses the route with
+  `scripts/lib/runner_route.py` and fails closed on any condition it does not
+  fully understand).
 - It is not a sandbox against a determined kernel exploit. It is a boundary
   against the ordinary case: a job that misbehaves, leaks processes, or fills a
   disk on a machine carrying unrelated research work.
