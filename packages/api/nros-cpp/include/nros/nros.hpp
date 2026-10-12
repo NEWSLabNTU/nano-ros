@@ -787,9 +787,9 @@ namespace rclcpp {
 // ADOPT-BOUNDED trade `get_clock()` itself makes.
 //
 // WHAT THE CLOCK DOES, and it is the whole point of the verb: a
-// `RCLC_CLOCK_ROS_TIME` clock follows `/clock`, so the timer stops when a bag
+// `RCL_ROS_TIME` clock follows `/clock`, so the timer stops when a bag
 // stops and re-times when the bag is replayed at another rate; a
-// `RCLC_CLOCK_STEADY_TIME` one does not. `create_wall_timer` is the steady
+// `RCL_STEADY_TIME` one does not. `create_wall_timer` is the steady
 // verb and is unaffected by simulated time. Upstream distinguishes the two
 // cases by TYPE (`WallTimer` vs `GenericTimer<ClockT>`) *and* by VERB; the type
 // distinction is unportable here (the clock is a runtime field on one flat
@@ -1115,9 +1115,8 @@ namespace rclcpp {
 
 template <typename Cb>
 inline ::rclcpp::TimerHandle Node::create_wall_timer(::rclcpp::Duration period, Cb cb) {
-    return ::rclcpp::detail::register_timer_capturing(*this, RCLC_CLOCK_STEADY_TIME, period,
-                                                      ::rclcpp::tr::forward_rvalue(cb),
-                                                      "create_wall_timer");
+    return ::rclcpp::detail::register_timer_capturing(
+        *this, RCL_STEADY_TIME, period, ::rclcpp::tr::forward_rvalue(cb), "create_wall_timer");
 }
 
 #ifdef NROS_CPP_HAS_STD_CHRONO // hosted-family: chrono-interop

@@ -39,13 +39,13 @@ pub struct rcl_duration_t {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum rcl_clock_type_t {
     /// Uninitialized clock
-    RCLC_CLOCK_UNINITIALIZED = 0,
+    RCL_CLOCK_UNINITIALIZED = 0,
     /// ROS time - follows /clock topic if available, otherwise system time
-    RCLC_CLOCK_ROS_TIME = 1,
+    RCL_ROS_TIME = 1,
     /// System time - wall clock time from the operating system
-    RCLC_CLOCK_SYSTEM_TIME = 2,
+    RCL_SYSTEM_TIME = 2,
     /// Steady time - monotonic clock, not affected by system time changes
-    RCLC_CLOCK_STEADY_TIME = 3,
+    RCL_STEADY_TIME = 3,
 }
 
 /// phase-430 W1 — the ONE mapping from a C clock kind to the executor's
@@ -56,7 +56,7 @@ pub enum rcl_clock_type_t {
 /// `nros_cpp_timer_create_on_clock` (C++) — so a clock kind cannot mean one
 /// thing in a C image and another in a C++ one.
 ///
-/// `None` for a kind that names no source: `RCLC_CLOCK_UNINITIALIZED`, and any
+/// `None` for a kind that names no source: `RCL_CLOCK_UNINITIALIZED`, and any
 /// out-of-range byte a C caller widened into the parameter. Both are REJECTED
 /// by the callers rather than defaulted to `Steady` — a timer created on a
 /// clock the caller never initialised would silently be a wall timer, which is
@@ -84,9 +84,9 @@ pub fn nros_timer_clock_source(clock_type: u8) -> Option<nros_node::executor::Ti
     use nros_node::executor::TimerClockSource;
 
     match clock_type {
-        x if x == rcl_clock_type_t::RCLC_CLOCK_STEADY_TIME as u8 => Some(TimerClockSource::Steady),
-        x if x == rcl_clock_type_t::RCLC_CLOCK_ROS_TIME as u8 => Some(TimerClockSource::Ros),
-        x if x == rcl_clock_type_t::RCLC_CLOCK_SYSTEM_TIME as u8 => Some(TimerClockSource::System),
+        x if x == rcl_clock_type_t::RCL_STEADY_TIME as u8 => Some(TimerClockSource::Steady),
+        x if x == rcl_clock_type_t::RCL_ROS_TIME as u8 => Some(TimerClockSource::Ros),
+        x if x == rcl_clock_type_t::RCL_SYSTEM_TIME as u8 => Some(TimerClockSource::System),
         _ => None,
     }
 }
@@ -117,7 +117,7 @@ pub struct rcl_clock_t {
 impl Default for rcl_clock_t {
     fn default() -> Self {
         Self {
-            r#type: rcl_clock_type_t::RCLC_CLOCK_UNINITIALIZED,
+            r#type: rcl_clock_type_t::RCL_CLOCK_UNINITIALIZED,
             state: rclc_clock_state_t::RCLC_CLOCK_STATE_UNINITIALIZED,
             _steady_epoch_ns: 0,
         }
@@ -143,11 +143,11 @@ pub(crate) fn get_steady_time_ns() -> u64 {
     platform::get_time_ns()
 }
 
-/// What a `RCLC_CLOCK_ROS_TIME` clock reads (issue 0789).
+/// What a `RCL_ROS_TIME` clock reads (issue 0789).
 ///
 /// The ROS time override when one is active — a simulator's or a bag player's
 /// `/clock`, installed through `rcl_set_ros_time_override` — and otherwise the
-/// system clock, which is what `RCLC_CLOCK_ROS_TIME` has always read here and
+/// system clock, which is what `RCL_ROS_TIME` has always read here and
 /// what rcl's ROS-time clock falls back to when the override is disabled.
 ///
 /// The override itself is `nros_core::Clock`'s, not a second copy: the C
@@ -158,7 +158,7 @@ pub(crate) fn get_steady_time_ns() -> u64 {
 /// issue 1334 — that last sentence used to carry a parenthesis admitting the
 /// two surfaces DID differ, on the fallback rather than the override: Rust's
 /// `RosTime` with no override read `nros_core`'s in-image steady counter, which
-/// nothing in the tree advances, so `rcl_clock_get_now(RCLC_CLOCK_ROS_TIME)`
+/// nothing in the tree advances, so `rcl_clock_get_now(RCL_ROS_TIME)`
 /// and `Clock::ros_time().now()` gave different answers about the same image in
 /// the same state. The Rust arm now evaluates the same wall clock this one
 /// does, and `ros_time_agrees_with_the_rust_surface` below is what holds the
@@ -198,9 +198,9 @@ pub unsafe extern "C" fn rcl_clock_init(
 
     // Validate clock type
     match clock_type {
-        rcl_clock_type_t::RCLC_CLOCK_ROS_TIME
-        | rcl_clock_type_t::RCLC_CLOCK_SYSTEM_TIME
-        | rcl_clock_type_t::RCLC_CLOCK_STEADY_TIME => {}
+        rcl_clock_type_t::RCL_ROS_TIME
+        | rcl_clock_type_t::RCL_SYSTEM_TIME
+        | rcl_clock_type_t::RCL_STEADY_TIME => {}
         _ => return RCL_RET_INVALID_ARGUMENT,
     }
 
@@ -215,7 +215,7 @@ pub unsafe extern "C" fn rcl_clock_init(
     clock.state = rclc_clock_state_t::RCLC_CLOCK_STATE_READY;
 
     // For steady time, record the epoch
-    if clock_type == rcl_clock_type_t::RCLC_CLOCK_STEADY_TIME {
+    if clock_type == rcl_clock_type_t::RCL_STEADY_TIME {
         clock._steady_epoch_ns = get_steady_time_ns();
     }
 
@@ -243,9 +243,9 @@ pub unsafe extern "C" fn rclc_clock_get_now_time(
     }
 
     let nanos = match clock.r#type {
-        rcl_clock_type_t::RCLC_CLOCK_ROS_TIME => get_ros_time_ns(),
-        rcl_clock_type_t::RCLC_CLOCK_SYSTEM_TIME => get_system_time_ns(),
-        rcl_clock_type_t::RCLC_CLOCK_STEADY_TIME => {
+        rcl_clock_type_t::RCL_ROS_TIME => get_ros_time_ns(),
+        rcl_clock_type_t::RCL_SYSTEM_TIME => get_system_time_ns(),
+        rcl_clock_type_t::RCL_STEADY_TIME => {
             // Steady time relative to epoch
             get_steady_time_ns() as i64
         }
@@ -274,9 +274,9 @@ pub unsafe extern "C" fn rcl_clock_get_now(
     }
 
     let nanos = match clock.r#type {
-        rcl_clock_type_t::RCLC_CLOCK_ROS_TIME => get_ros_time_ns(),
-        rcl_clock_type_t::RCLC_CLOCK_SYSTEM_TIME => get_system_time_ns(),
-        rcl_clock_type_t::RCLC_CLOCK_STEADY_TIME => get_steady_time_ns() as i64,
+        rcl_clock_type_t::RCL_ROS_TIME => get_ros_time_ns(),
+        rcl_clock_type_t::RCL_SYSTEM_TIME => get_system_time_ns(),
+        rcl_clock_type_t::RCL_STEADY_TIME => get_steady_time_ns() as i64,
         _ => return RCL_RET_ERROR,
     };
 
@@ -299,7 +299,7 @@ pub unsafe extern "C" fn rclc_clock_is_valid(clock: *const rcl_clock_t) -> bool 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_clock_get_type(clock: *const rcl_clock_t) -> rcl_clock_type_t {
     if clock.is_null() {
-        return rcl_clock_type_t::RCLC_CLOCK_UNINITIALIZED;
+        return rcl_clock_type_t::RCL_CLOCK_UNINITIALIZED;
     }
 
     (*clock).r#type
@@ -319,7 +319,7 @@ pub unsafe extern "C" fn rcl_clock_fini(clock: *mut rcl_clock_t) -> rcl_ret_t {
     }
 
     clock.state = rclc_clock_state_t::RCLC_CLOCK_STATE_SHUTDOWN;
-    clock.r#type = rcl_clock_type_t::RCLC_CLOCK_UNINITIALIZED;
+    clock.r#type = rcl_clock_type_t::RCL_CLOCK_UNINITIALIZED;
     clock._steady_epoch_ns = 0;
 
     RCL_RET_OK
@@ -369,13 +369,13 @@ unsafe fn ros_time_clock_ok(clock: *const rcl_clock_t) -> rcl_ret_t {
     if clock.state != rclc_clock_state_t::RCLC_CLOCK_STATE_READY {
         return RCL_RET_NOT_INIT;
     }
-    if clock.r#type != rcl_clock_type_t::RCLC_CLOCK_ROS_TIME {
+    if clock.r#type != rcl_clock_type_t::RCL_ROS_TIME {
         return RCLC_RET_NOT_ALLOWED;
     }
     RCL_RET_OK
 }
 
-/// Enable the ROS time override on a `RCLC_CLOCK_ROS_TIME` clock.
+/// Enable the ROS time override on a `RCL_ROS_TIME` clock.
 ///
 /// Mirrors `rcl_enable_ros_time_override`. If no override is active yet the
 /// clock starts at time 0 — the state rcl reports as "not started"
@@ -432,7 +432,7 @@ pub unsafe extern "C" fn rcl_is_enabled_ros_time_override(
     RCL_RET_OK
 }
 
-/// Set the time a `RCLC_CLOCK_ROS_TIME` clock reads, in nanoseconds since the
+/// Set the time a `RCL_ROS_TIME` clock reads, in nanoseconds since the
 /// epoch — the entry point a `/clock` subscriber or a bag player calls.
 ///
 /// Mirrors `rcl_set_ros_time_override`, with the one model difference stated at
@@ -887,7 +887,7 @@ mod tests {
         unsafe {
             assert_eq!(
                 rcl_clock_init(
-                    rcl_clock_type_t::RCLC_CLOCK_ROS_TIME,
+                    rcl_clock_type_t::RCL_ROS_TIME,
                     &mut ros,
                     core::ptr::null_mut()
                 ),
@@ -895,7 +895,7 @@ mod tests {
             );
             assert_eq!(
                 rcl_clock_init(
-                    rcl_clock_type_t::RCLC_CLOCK_SYSTEM_TIME,
+                    rcl_clock_type_t::RCL_SYSTEM_TIME,
                     &mut system,
                     core::ptr::null_mut()
                 ),

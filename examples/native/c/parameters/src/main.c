@@ -74,7 +74,7 @@ static unsigned spin_ms(void) {
 static int run(void) {
     /* Clock demo: read the system clock once. */
     rcl_clock_t clock;
-    if (rcl_clock_init(RCLC_CLOCK_SYSTEM_TIME, &clock, NULL) == RCL_RET_OK) {
+    if (rcl_clock_init(RCL_SYSTEM_TIME, &clock, NULL) == RCL_RET_OK) {
         rclc_time_t now;
         if (rclc_clock_get_now_time(&clock, &now) == RCL_RET_OK) {
             printf("System time: %d.%09u sec\n", now.sec, now.nanosec);

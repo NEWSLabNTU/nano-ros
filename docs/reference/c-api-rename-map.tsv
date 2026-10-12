@@ -53,13 +53,13 @@ NROS_CLIENT_STATE_REGISTERED	RCLC_CLIENT_STATE_REGISTERED	ours	API constant with
 NROS_CLIENT_STATE_SHUTDOWN	RCLC_CLIENT_STATE_SHUTDOWN	ours	API constant with no upstream spelling
 NROS_CLIENT_STATE_UNINITIALIZED	RCLC_CLIENT_STATE_UNINITIALIZED	ours	API constant with no upstream spelling
 NROS_CLOCK_H	NROS_CLOCK_H	build	build or configuration fact
-NROS_CLOCK_ROS_TIME	RCLC_CLOCK_ROS_TIME	ours	API constant with no upstream spelling
+NROS_CLOCK_ROS_TIME	RCL_ROS_TIME	adopt	upstream `rcl_clock_type_t` value, same number (phase-492 follow-up)
 NROS_CLOCK_STATE_READY	RCLC_CLOCK_STATE_READY	ours	API constant with no upstream spelling
 NROS_CLOCK_STATE_SHUTDOWN	RCLC_CLOCK_STATE_SHUTDOWN	ours	API constant with no upstream spelling
 NROS_CLOCK_STATE_UNINITIALIZED	RCLC_CLOCK_STATE_UNINITIALIZED	ours	API constant with no upstream spelling
-NROS_CLOCK_STEADY_TIME	RCLC_CLOCK_STEADY_TIME	ours	API constant with no upstream spelling
-NROS_CLOCK_SYSTEM_TIME	RCLC_CLOCK_SYSTEM_TIME	ours	API constant with no upstream spelling
-NROS_CLOCK_UNINITIALIZED	RCLC_CLOCK_UNINITIALIZED	ours	API constant with no upstream spelling
+NROS_CLOCK_STEADY_TIME	RCL_STEADY_TIME	adopt	upstream `rcl_clock_type_t` value, same number (phase-492 follow-up)
+NROS_CLOCK_SYSTEM_TIME	RCL_SYSTEM_TIME	adopt	upstream `rcl_clock_type_t` value, same number (phase-492 follow-up)
+NROS_CLOCK_UNINITIALIZED	RCL_CLOCK_UNINITIALIZED	adopt	upstream `rcl_clock_type_t` value, same number (phase-492 follow-up)
 NROS_CODEGEN_VERSION	NROS_CODEGEN_VERSION	build	build or configuration fact
 NROS_CODEGEN_VERSION_MIN	NROS_CODEGEN_VERSION_MIN	build	build or configuration fact
 NROS_COMPONENT_H	NROS_COMPONENT_H	build	build or configuration fact
@@ -125,10 +125,10 @@ NROS_ENTRY_LOCATOR	NROS_ENTRY_LOCATOR	hook	defined by the application or entry, 
 NROS_ENTRY_LOCATOR_STRINGIZE	NROS_ENTRY_LOCATOR_STRINGIZE	hook	defined by the application or entry, called by startup code
 NROS_ENTRY_LOCATOR_STRINGIZE_	NROS_ENTRY_LOCATOR_STRINGIZE_	hook	defined by the application or entry, called by startup code
 NROS_ENTRY_RMW	NROS_ENTRY_RMW	build	build or configuration fact
-NROS_EXECUTOR_ALWAYS	RCLC_EXECUTOR_ALWAYS	ours	API constant with no upstream spelling
+NROS_EXECUTOR_ALWAYS	ALWAYS	adopt	upstream `rclc_executor_handle_invocation_t` value, same number (phase-492 follow-up)
 NROS_EXECUTOR_H	NROS_EXECUTOR_H	build	build or configuration fact
 NROS_EXECUTOR_MAX_HANDLES	NROS_EXECUTOR_MAX_HANDLES	build	build or configuration fact
-NROS_EXECUTOR_ON_NEW_DATA	RCLC_EXECUTOR_ON_NEW_DATA	ours	API constant with no upstream spelling
+NROS_EXECUTOR_ON_NEW_DATA	ON_NEW_DATA	adopt	upstream `rclc_executor_handle_invocation_t` value, same number (phase-492 follow-up)
 NROS_EXECUTOR_SIZE	NROS_EXECUTOR_SIZE	build	build or configuration fact
 NROS_EXECUTOR_STATE_INITIALIZED	RCLC_EXECUTOR_STATE_INITIALIZED	ours	API constant with no upstream spelling
 NROS_EXECUTOR_STATE_SHUTDOWN	RCLC_EXECUTOR_STATE_SHUTDOWN	ours	API constant with no upstream spelling
@@ -273,8 +273,8 @@ NROS_SCHED_CONTEXT_H	NROS_SCHED_CONTEXT_H	build	build or configuration fact
 NROS_SCHED_PRIORITY_BEST_EFFORT	RCLC_SCHED_PRIORITY_BEST_EFFORT	ours	API constant with no upstream spelling
 NROS_SCHED_PRIORITY_CRITICAL	RCLC_SCHED_PRIORITY_CRITICAL	ours	API constant with no upstream spelling
 NROS_SCHED_PRIORITY_NORMAL	RCLC_SCHED_PRIORITY_NORMAL	ours	API constant with no upstream spelling
-NROS_SEMANTICS_LOGICAL_EXECUTION_TIME	RCLC_SEMANTICS_LOGICAL_EXECUTION_TIME	ours	API constant with no upstream spelling
-NROS_SEMANTICS_RCLCPP_EXECUTOR	RCLC_SEMANTICS_RCLCPP_EXECUTOR	ours	API constant with no upstream spelling
+NROS_SEMANTICS_LOGICAL_EXECUTION_TIME	LET	adopt	upstream `rclc_executor_semantics_t` value, same number (phase-492 follow-up)
+NROS_SEMANTICS_RCLCPP_EXECUTOR	RCLCPP_EXECUTOR	adopt	upstream `rclc_executor_semantics_t` value, same number (phase-492 follow-up)
 NROS_SERIALIZATION_FORMAT	NROS_SERIALIZATION_FORMAT	build	build or configuration fact
 NROS_SERIALIZATION_FORMAT_H	NROS_SERIALIZATION_FORMAT_H	build	build or configuration fact
 NROS_SERIALIZATION_FORMAT_ID	NROS_SERIALIZATION_FORMAT_ID	build	build or configuration fact

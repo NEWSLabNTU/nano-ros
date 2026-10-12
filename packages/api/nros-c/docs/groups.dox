@@ -93,7 +93,7 @@
  * rclc_executor_t exec = rclc_executor_get_zero_initialized_executor();
  * rclc_executor_init(&exec, &support.context, 4, &allocator);
  * rclc_executor_add_subscription_raw(&exec, &sub, on_bytes, NULL,
- *                                    RCLC_EXECUTOR_ON_NEW_DATA);
+ *                                    ON_NEW_DATA);
  * rclc_executor_spin_period(&exec, 10000000ULL);
  * @endcode
  *

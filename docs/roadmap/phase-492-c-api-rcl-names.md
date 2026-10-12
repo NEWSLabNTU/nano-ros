@@ -304,7 +304,7 @@ sees zero allocations across publish and take.
     `rclc_executor_add_service` stays refused, as before.
   - **The talker/listener probe is not literal micro-ROS code.** It uses
     nano-ros's `rclc_support_init` / `rclc_executor_init` and the
-    `RCLC_EXECUTOR_ON_NEW_DATA` enumerator. rclc's support/executor init
+    `ON_NEW_DATA` enumerator. rclc's support/executor init
     signatures and its bare `ON_NEW_DATA` are a separate question, outside W8.
   - **The type-check on a subscription's `msg` argument is gone with the
     retired macros.** The macros checked its type; rclc's `void *` does not.
@@ -397,3 +397,31 @@ sees zero allocations across publish and take.
   (`qos.hpp`'s `struct nros_cpp_qos_t`, which nothing had compared — mutation
   tested); `check-qos-profile-ssot` drops the `component.h` subject; the issue
   1535 short-buffer probe retires with the buffer.
+
+### 2026-10-13 — enum values take upstream's spelling
+
+- W1's map classified every constant without asking upstream ("API constant
+  with no upstream spelling"), so three enums that already carried upstream's
+  TYPE name kept `RCLC_` values a ported file cannot write:
+  - `rcl_clock_type_t`: `RCL_CLOCK_UNINITIALIZED`, `RCL_ROS_TIME`,
+    `RCL_SYSTEM_TIME`, `RCL_STEADY_TIME` (were `RCLC_CLOCK_*`);
+  - `rclc_executor_semantics_t`: `RCLCPP_EXECUTOR`, `LET` (were
+    `RCLC_SEMANTICS_*`);
+  - `rclc_executor_handle_invocation_t`: `ON_NEW_DATA`, `ALWAYS` (were
+    `RCLC_EXECUTOR_*`).
+
+  Same numbers; the eight map rows are now `adopt`. `RCLC_CLOCK_STATE_*`
+  stays (rcl has no clock-state enum).
+- Class closed by a rule, not the map: `check-c-api-upstream-signatures` now
+  also compares ENUM typedefs. Upstream's values must be a prefix of ours
+  (names and numbers), so `rclc_parameter_type_t`, which appends six kinds after
+  rclc's four, conforms. The snapshot
+  (`docs/reference/upstream-c-signatures.tsv`) gained the 10 upstream enums from
+  the same humble checkouts. Negative control: main's header fails on the
+  three enums above.
+- Not adopted: rcl_action's `GOAL_STATE_*`. Upstream spells them as macros
+  over an `int8_t` typedef (`rcl_action_goal_state_t`), and ours is the enum
+  `rclc_goal_status_t`, so the type names differ and this rule does not reach
+  them.
+- Also: `declared_qos.h` no longer says a C component hands `nros_cpp_qos_t`
+  (W4 part 2 moved components onto `rclc_qos_t`).

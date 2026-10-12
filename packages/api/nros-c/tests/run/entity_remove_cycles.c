@@ -149,7 +149,7 @@ static rcl_ret_t sub_init(entity_t* e, rig_t* rig) {
 }
 static rcl_ret_t sub_add(rig_t* rig, entity_t* e) {
     return rclc_executor_add_subscription_raw(&rig->executor, &e->sub, on_message, NULL,
-                                              RCLC_EXECUTOR_ON_NEW_DATA);
+                                              ON_NEW_DATA);
 }
 static rcl_ret_t sub_remove(rig_t* rig, entity_t* e) {
     return rclc_executor_remove_subscription(&rig->executor, &e->sub);
@@ -162,7 +162,7 @@ static rcl_ret_t sub_fini(entity_t* e, rig_t* rig) {
 
 static rcl_ret_t sub_info_add(rig_t* rig, entity_t* e) {
     return rclc_executor_add_subscription_with_info(&rig->executor, &e->sub, on_message_info, NULL,
-                                                    RCLC_EXECUTOR_ON_NEW_DATA);
+                                                    ON_NEW_DATA);
 }
 
 /* ---- timer -------------------------------------------------------------- */

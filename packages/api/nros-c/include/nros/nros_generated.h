@@ -267,19 +267,19 @@ typedef enum rcl_clock_type_t {
   /**
    * Uninitialized clock
    */
-  RCLC_CLOCK_UNINITIALIZED = 0,
+  RCL_CLOCK_UNINITIALIZED = 0,
   /**
    * ROS time - follows /clock topic if available, otherwise system time
    */
-  RCLC_CLOCK_ROS_TIME = 1,
+  RCL_ROS_TIME = 1,
   /**
    * System time - wall clock time from the operating system
    */
-  RCLC_CLOCK_SYSTEM_TIME = 2,
+  RCL_SYSTEM_TIME = 2,
   /**
    * Steady time - monotonic clock, not affected by system time changes
    */
-  RCLC_CLOCK_STEADY_TIME = 3,
+  RCL_STEADY_TIME = 3,
 } rcl_clock_type_t;
 
 /**
@@ -425,7 +425,7 @@ typedef enum rclc_executor_semantics_t {
    * RCLCPP executor semantics: Data is taken from DDS just before
    * the corresponding callback is called.
    */
-  RCLC_SEMANTICS_RCLCPP_EXECUTOR = 0,
+  RCLCPP_EXECUTOR = 0,
   /**
    * Logical Execution Time (LET) semantics: At one sampling point,
    * new data of all ready subscriptions are taken from DDS.
@@ -433,7 +433,7 @@ typedef enum rclc_executor_semantics_t {
    * is used. New data arriving after the sampling point is not
    * considered until the next spin iteration.
    */
-  RCLC_SEMANTICS_LOGICAL_EXECUTION_TIME = 1,
+  LET = 1,
 } rclc_executor_semantics_t;
 
 /**
@@ -657,11 +657,11 @@ typedef enum rclc_executor_handle_invocation_t {
   /**
    * Only invoke callback when new data is available
    */
-  RCLC_EXECUTOR_ON_NEW_DATA = 0,
+  ON_NEW_DATA = 0,
   /**
    * Always invoke callback (even with NULL data)
    */
-  RCLC_EXECUTOR_ALWAYS = 1,
+  ALWAYS = 1,
 } rclc_executor_handle_invocation_t;
 
 /**
@@ -3468,7 +3468,7 @@ NROS_PUBLIC enum rcl_clock_type_t rclc_clock_get_type(const struct rcl_clock_t *
 NROS_PUBLIC rcl_ret_t rcl_clock_fini(struct rcl_clock_t *clock);
 
 /**
- * Enable the ROS time override on a `RCLC_CLOCK_ROS_TIME` clock.
+ * Enable the ROS time override on a `RCL_ROS_TIME` clock.
  *
  * Mirrors `rcl_enable_ros_time_override`. If no override is active yet the
  * clock starts at time 0 — the state rcl reports as "not started"
@@ -3498,7 +3498,7 @@ rcl_ret_t rcl_is_enabled_ros_time_override(const struct rcl_clock_t *clock,
                                            bool *is_enabled);
 
 /**
- * Set the time a `RCLC_CLOCK_ROS_TIME` clock reads, in nanoseconds since the
+ * Set the time a `RCL_ROS_TIME` clock reads, in nanoseconds since the
  * epoch — the entry point a `/clock` subscriber or a bag player calls.
  *
  * Mirrors `rcl_set_ros_time_override`, with the one model difference stated at
@@ -5393,7 +5393,7 @@ rcl_ret_t rclc_executor_add_subscription_raw_with_info(struct rclc_executor_t *e
  * ```c
  * rclc_subscription_init_default(&sub, &node, &type, "/topic");
  * rclc_executor_add_subscription_with_info(&exec, &sub, on_sample, ctx,
- *                                          RCLC_EXECUTOR_ON_NEW_DATA);
+ *                                          ON_NEW_DATA);
  * ...
  * rclc_executor_remove_subscription(&exec, &sub);
  * rcl_subscription_fini(&sub);
@@ -8940,13 +8940,13 @@ rcl_ret_t rclc_timer_init_with_context(struct rcl_timer_t *timer,
  * The clock's TYPE selects the schedule, through the one mapping
  * [`crate::clock::nros_timer_clock_source`]:
  *
- * * `RCLC_CLOCK_STEADY_TIME` — identical to [`rclc_timer_init_with_context`].
- * * `RCLC_CLOCK_ROS_TIME` — follows the ROS clock. It stops while a
+ * * `RCL_STEADY_TIME` — identical to [`rclc_timer_init_with_context`].
+ * * `RCL_ROS_TIME` — follows the ROS clock. It stops while a
  *   simulator is paused, halves with a bag replayed at 0.5x, and restarts its
  *   period on a backwards jump. With no `/clock` override installed it reads
  *   system time, the same fallback `rclcpp::Clock` has, so a node written for
  *   simulation still runs standalone.
- * * `RCLC_CLOCK_SYSTEM_TIME` — the wall clock, NTP steps and all.
+ * * `RCL_SYSTEM_TIME` — the wall clock, NTP steps and all.
  *
  * An UNINITIALIZED clock is REJECTED rather than treated as steady: a timer
  * created on a clock the caller never initialised would silently be a wall
@@ -9266,7 +9266,7 @@ rcl_ret_t rcl_timer_exchange_period(const struct rcl_timer_t *timer,
  * with anything else the caller timestamps:
  *
  * * a timer created by `rclc_timer_init_on_clock` carries an
- *   `rcl_clock_t *`, and that clock is read — so a `RCLC_CLOCK_ROS_TIME`
+ *   `rcl_clock_t *`, and that clock is read — so a `RCL_ROS_TIME`
  *   timer answers on `/clock`'s timeline and stops advancing when the
  *   playback does, exactly as its dispatch does;
  * * a timer created by `rcl_timer_init` is the WALL timer (rclcpp's

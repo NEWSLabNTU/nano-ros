@@ -33,7 +33,7 @@
  *         &self->sub, node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32), "/chatter");
  *     if (rc != RCL_RET_OK) return rc;
  *     return rclc_executor_add_subscription_with_context(executor, &self->sub, &self->msg,
- *                                                        on_msg, self, RCLC_EXECUTOR_ON_NEW_DATA);
+ *                                                        on_msg, self, ON_NEW_DATA);
  * }
  *
  * RCLC_C_COMPONENT(listener_t, listener_configure)  // emits create/configure exports

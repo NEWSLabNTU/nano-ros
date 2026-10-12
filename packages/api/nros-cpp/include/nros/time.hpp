@@ -55,13 +55,13 @@ class Time {
     /// Nanoseconds since the clock's epoch. Both arguments default, so
     /// `Time()` is the zero point on the system clock — the
     /// `rclcpp::Time(int64_t = 0, rcl_clock_type_t = RCL_SYSTEM_TIME)` shape.
-    constexpr Time(int64_t nanoseconds = 0, rcl_clock_type_t clock_type = RCLC_CLOCK_SYSTEM_TIME)
+    constexpr Time(int64_t nanoseconds = 0, rcl_clock_type_t clock_type = RCL_SYSTEM_TIME)
         : ns_(nanoseconds), clock_type_(clock_type) {}
 
     /// Seconds + nanoseconds, the `rclcpp::Time(int32_t, uint32_t,
     /// rcl_clock_type_t)` shape.
     constexpr Time(int32_t seconds, uint32_t nanoseconds,
-                   rcl_clock_type_t clock_type = RCLC_CLOCK_SYSTEM_TIME)
+                   rcl_clock_type_t clock_type = RCL_SYSTEM_TIME)
         : ns_(static_cast<int64_t>(seconds) * ::rclcpp::NANOSECONDS_PER_SECOND +
               static_cast<int64_t>(nanoseconds)),
           clock_type_(clock_type) {}

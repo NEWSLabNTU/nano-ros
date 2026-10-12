@@ -158,7 +158,7 @@ static void demo_platform_time(void) {
 
     // Get time using platform abstraction
     rcl_clock_t clock = rclc_clock_get_zero_initialized();
-    (void)rcl_clock_init(RCLC_CLOCK_STEADY_TIME, &clock, NULL);
+    (void)rcl_clock_init(RCL_STEADY_TIME, &clock, NULL);
 
     rclc_time_t t1, t2;
     (void)rclc_clock_get_now_time(&clock, &t1);

@@ -63,8 +63,9 @@
  * The table also carries each subscription's declared RELIABILITY and
  * DURABILITY. @ref NROS_ASSERT_DECLARED_RELIABILITY and
  * @ref NROS_ASSERT_DECLARED_DURABILITY fail the build on a disagreement, in
- * `rclc_qos_t`'s own enumerator values; a component's `nros_cpp_qos_t`, which
- * numbers reliability the C++ way, is held to the same table at REGISTRATION.
+ * `rclc_qos_t`'s own enumerator values. A C component takes `rclc_qos_t` like
+ * any C caller (phase-492 W4), and every subscription is also held to the
+ * same table at REGISTRATION.
  *
  * # ABSENCE IS NOT ZERO
  *
@@ -129,11 +130,11 @@
  * freestanding, so the values are literals here and `<nros/subscription.h>`,
  * which sees both, `_Static_assert`s them equal to the enumerators.
  *
- * NOTE the C++ FFI's `nros_cpp_qos_t` (what a C COMPONENT hands
- * `nros_cpp_subscription_register`) uses the C++ numbering. The compile-time
- * policy macros below take `rclc_qos_t` values; a component's `nros_cpp_qos_t`
- * is checked at REGISTRATION instead, by the same comparison in
- * `nros_node::declared_qos::check`, which every FFI seam calls. */
+ * The compile-time policy macros below take `rclc_qos_t` values, which is what
+ * a C component passes too since phase-492 W4 moved components onto the C
+ * API. At REGISTRATION every subscription, C or C++, is checked again by the
+ * same comparison in `nros_node::declared_qos::check`, which both bindings'
+ * subscription init calls. */
 #define _NROS_DQ_C_NROS_DQ_UNDECLARED (-1)
 #define _NROS_DQ_C_NROS_DQ_RELIABLE 1
 #define _NROS_DQ_C_NROS_DQ_BEST_EFFORT 0

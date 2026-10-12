@@ -78,7 +78,7 @@ pub unsafe extern "C" fn nros_cpp_timer_create(
 ///
 /// `nros_cpp_timer_create` is the WALL timer: it advances with the executor's
 /// monotonic spin delta and no simulator can slow it down. This one advances
-/// with `clock_type`, so a `RCLC_CLOCK_ROS_TIME` timer follows `/clock` — it
+/// with `clock_type`, so a `RCL_ROS_TIME` timer follows `/clock` — it
 /// stops while the simulator is paused, and it tracks a bag's replay rate.
 ///
 /// With no `/clock` source installed, a ROS-time timer reads system time, the
@@ -174,8 +174,8 @@ pub unsafe extern "C" fn nros_cpp_timer_create_on_clock(
 /// the timer is released (or the executor finalised): the capture's bytes were
 /// moved here by copy, so that is where its destructor runs.
 ///
-/// `clock_type` is a `rcl_clock_type_t` discriminant: `RCLC_CLOCK_STEADY_TIME`
-/// is the wall timer that advances with the spin delta, `RCLC_CLOCK_ROS_TIME`
+/// `clock_type` is a `rcl_clock_type_t` discriminant: `RCL_STEADY_TIME`
+/// is the wall timer that advances with the spin delta, `RCL_ROS_TIME`
 /// follows `/clock`. `capture_len == 0` (or a NULL `capture`) passes NULL to
 /// `callback`.
 ///

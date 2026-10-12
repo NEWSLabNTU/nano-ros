@@ -176,7 +176,7 @@ std_msgs__msg__String__init_in(&msg, &storage);
 rosidl's allocating `<Msg>__init` / `__fini` / `__create` / `__destroy` are
 not declared. A subscription delivers into storage the same way:
 `rclc_executor_add_subscription_with_context(&exec, &sub, &msg, cb, ctx,
-RCLC_EXECUTOR_ON_NEW_DATA)` deserialises into `msg` and refuses a sample
+ON_NEW_DATA)` deserialises into `msg` and refuses a sample
 that does not fit its capacities.
 
 ## 5. Build and Run

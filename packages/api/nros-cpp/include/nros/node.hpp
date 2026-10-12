@@ -655,8 +655,7 @@ class Node {
   public:
     /// Default constructor — creates an uninitialized node. Pair with
     /// [`init`].
-    Node()
-        : handle_(), initialized_(false), executor_handle_(nullptr), clock_(RCLC_CLOCK_ROS_TIME) {}
+    Node() : handle_(), initialized_(false), executor_handle_(nullptr), clock_(RCL_ROS_TIME) {}
 
     // ==== phase-427 W2 — construction ======================================
     //
@@ -674,7 +673,7 @@ class Node {
     /// Q2), and a hand-written `main` must check it. The book says so; the
     /// compiler cannot.
     explicit Node(const char* name, const char* ns = nullptr)
-        : handle_(), initialized_(false), executor_handle_(nullptr), clock_(RCLC_CLOCK_ROS_TIME) {
+        : handle_(), initialized_(false), executor_handle_(nullptr), clock_(RCL_ROS_TIME) {
         (void)this->init(name, ns);
     }
 
@@ -729,7 +728,7 @@ class Node {
     /// dead — which is what keeps a hand-written `main` constructing the same
     /// component (no entry, no handle identity) working unchanged.
     explicit Node(::rclcpp::NodeHandle handle, const char* name, const char* ns = nullptr)
-        : handle_(), initialized_(false), executor_handle_(nullptr), clock_(RCLC_CLOCK_ROS_TIME) {
+        : handle_(), initialized_(false), executor_handle_(nullptr), clock_(RCL_ROS_TIME) {
         if (!handle.valid()) {
             this->set_error("ctor (null executor handle)", -1);
             return;
@@ -1912,7 +1911,7 @@ class Node {
     /// `create_wall_timer` is the steady one: it advances with the executor's
     /// monotonic spin delta, so no simulator can slow it down. This one advances
     /// with `clock`, which is what a node in a simulation or a bag replay wants:
-    /// a `RCLC_CLOCK_ROS_TIME` timer stops while `/clock` is paused, tracks the
+    /// a `RCL_ROS_TIME` timer stops while `/clock` is paused, tracks the
     /// replay rate, and restarts its period on a backwards jump rather than
     /// stalling for the length of it.
     ///
@@ -2016,8 +2015,8 @@ class Node {
     /// Bind a member `void C::on_tick()` as a timer on an explicit CLOCK —
     /// phase-430 W6, the member-binding half of `create_timer`.
     ///
-    /// A `RCLC_CLOCK_ROS_TIME` clock follows `/clock` and stops when the bag
-    /// stops; a `RCLC_CLOCK_STEADY_TIME` one does not. `create_wall_timer`
+    /// A `RCL_ROS_TIME` clock follows `/clock` and stops when the bag
+    /// stops; a `RCL_STEADY_TIME` one does not. `create_wall_timer`
     /// above is the steady verb and is unaffected by simulated time.
     template <class C, void (C::*Method)()>
     Result create_timer(Timer& out, const Clock& clock, uint64_t period_ms, C* self) {

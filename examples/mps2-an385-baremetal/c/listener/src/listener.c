@@ -103,9 +103,9 @@ int nros_app_main(int argc, char** argv) {
 
     RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 4, NULL), 1);
     std_msgs__msg__String__init_in(&app.msg, &app.msg_storage);
-    RCLC_CHECK_RET(rclc_executor_add_subscription_with_context(
-                       &app.executor, &app.subscription, &app.msg, subscription_callback,
-                       &app.listener_ctx, RCLC_EXECUTOR_ON_NEW_DATA),
+    RCLC_CHECK_RET(rclc_executor_add_subscription_with_context(&app.executor, &app.subscription,
+                                                               &app.msg, subscription_callback,
+                                                               &app.listener_ctx, ON_NEW_DATA),
                    1);
 
     // The readiness marker the harness waits on (`expect_ready`, phase-342 W7).
