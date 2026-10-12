@@ -215,7 +215,7 @@ fn both_rates_reach_the_endpoint_row_through_the_real_resolver() {
     let (_text, model) = resolve("queue");
     let inv = EntityInventory::from_model(
         "fixture",
-        &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((model).clone()),
+        &nros_orchestration_ir::overlay::LoadedModel::bare(model.clone()),
     )
     .expect("the model describes wiring");
     let sub = inv
@@ -264,7 +264,7 @@ fn the_endpoint_gets_its_depth_because_all_three_facts_arrived() {
     let (_text, model) = resolve("queue");
     let inv = EntityInventory::from_model(
         "fixture",
-        &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((model).clone()),
+        &nros_orchestration_ir::overlay::LoadedModel::bare(model.clone()),
     )
     .expect("the model describes wiring");
     let row = inv

@@ -79,9 +79,7 @@ fn the_resolver_carries_every_stated_policy_into_the_model() {
 fn a_four_policy_contract_reaches_the_inventory_and_both_projections() {
     let inv = EntityInventory::from_model(
         "fixture",
-        &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
-            (resolve("policies")).clone(),
-        ),
+        &nros_orchestration_ir::overlay::LoadedModel::bare((resolve("policies")).clone()),
     )
     .expect("the model describes wiring");
 
@@ -178,9 +176,7 @@ fn a_four_policy_contract_reaches_the_inventory_and_both_projections() {
 fn a_keep_all_endpoint_refuses_the_depth_table_and_names_itself() {
     let inv = EntityInventory::from_model(
         "fixture",
-        &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
-            (resolve("keep_all")).clone(),
-        ),
+        &nros_orchestration_ir::overlay::LoadedModel::bare((resolve("keep_all")).clone()),
     )
     .expect("the model describes wiring");
 
@@ -233,9 +229,7 @@ fn a_keep_all_endpoint_refuses_the_depth_table_and_names_itself() {
 fn the_keep_all_refusal_degrades_no_fact_it_says_nothing_about() {
     let inv = EntityInventory::from_model(
         "fixture",
-        &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
-            (resolve("keep_all")).clone(),
-        ),
+        &nros_orchestration_ir::overlay::LoadedModel::bare((resolve("keep_all")).clone()),
     )
     .expect("the model describes wiring");
 

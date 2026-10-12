@@ -1287,35 +1287,17 @@ fn render_plan_json(
     let launch_file: Option<String> = resolved_launch
         .map(|s| s.to_string())
         .or_else(|| {
-            // Issue 0951 — the SELECTED target's launch, from `[image.<t>]`
-            // first, then the DEPRECATED `[deploy.<t>]`.
-            //
-            // Two differences from what this used to do, both improvements
-            // that come free with the target being known here:
-            //
-            //  * it is scoped to the target rather than "the first deploy
-            //    block that has a `launch`, in BTreeMap order" — arbitrary
-            //    whenever several were declared;
-            //  * an image's `launch` is relative to the bringup's `launch/`
-            //    directory (`validate_image_launch` joins it that way), while
-            //    a deploy's is authored both ways in this tree. So the image
-            //    value gets the prefix and the deploy value is carried
-            //    verbatim, which is what each already means.
+            // Issue 0951 — the SELECTED target's launch, from `[image.<t>]`.
+            // An image's `launch` is relative to the bringup's `launch/`
+            // directory (`validate_image_launch` joins it that way). The
+            // `[deploy.<t>] launch` rung, and the any-deploy fallback below
+            // it, are gone: the parse refuses that field since phase-486 W8a.
             let t = target?;
-            let sys = &bringup.system;
-            sys.image_for(t)
-                .and_then(|img| img.launch)
-                .map(|l| format!("launch/{l}"))
-                .or_else(|| sys.deploy.get(t).and_then(|d| d.launch.clone()))
-        })
-        .or_else(|| {
-            // Any deploy block's launch, as before — the pre-0951 behaviour,
-            // kept for a workspace whose target does not resolve.
             bringup
                 .system
-                .deploy
-                .values()
-                .find_map(|d| d.launch.clone())
+                .image_for(t)
+                .and_then(|img| img.launch)
+                .map(|l| format!("launch/{l}"))
         })
         .or_else(|| {
             // Fall back to the conventional path.
@@ -1806,7 +1788,6 @@ name = "listener"
 kind = "qemu"
 target = "x86_64-unknown-linux-gnu"
 board = "native_sim"
-launch = "launch/system.launch.xml"
 "#,
         )
         .unwrap();
@@ -1926,7 +1907,6 @@ priority = 10
 [deploy.native]
 kind = "self"
 target = "x86_64-unknown-linux-gnu"
-launch = "system.launch.xml"
 "#,
         )
         .unwrap();
@@ -2364,7 +2344,6 @@ name = "telem_node"
 [deploy.native]
 kind = "self"
 target = "x86_64-unknown-linux-gnu"
-launch = "system.launch.xml"
 "#,
         )
         .unwrap();
@@ -2669,16 +2648,17 @@ structure:
     }
 
     /// Phase 255 Wave 3 — the C `#define NROS_SYSTEM_RMW*` resolves through the
-    /// SSoT precedence: `[deploy.<target>].rmw` overrides `[system].rmw` for that
-    /// target; with no target the system default drives.
+    /// SSoT precedence: `[image.<target>].rmw` overrides `[system].rmw` for that
+    /// target; with no target the system default drives. (The rung was
+    /// `[deploy.<target>].rmw` until phase-486 W8a refused that field.)
     #[test]
-    fn system_config_h_rmw_honours_deploy_override() {
+    fn system_config_h_rmw_honours_image_override() {
         let sys: SystemToml = toml::from_str(
-            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n[deploy.native]\nrmw=\"cyclonedds\"\n",
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n[image.native]\nrmw=\"cyclonedds\"\n",
         )
         .unwrap();
 
-        // `--target native` → the deploy override wins.
+        // `--target native` → the image override wins.
         let h = render_system_config_h(&sys, Some("native"), None);
         assert!(
             h.contains("#define NROS_SYSTEM_RMW \"cyclonedds\"\n"),
@@ -2693,19 +2673,21 @@ structure:
         assert!(hd.contains("#define NROS_SYSTEM_RMW_ZENOH\n"), "{hd}");
 
         // Phase 255 Wave 4 — `--rmw xrce` tops the ladder, beating both the
-        // deploy override and `[system].rmw`.
+        // image override and `[system].rmw`.
         let hc = render_system_config_h(&sys, Some("native"), Some("xrce"));
         assert!(hc.contains("#define NROS_SYSTEM_RMW \"xrce\"\n"), "{hc}");
         assert!(hc.contains("#define NROS_SYSTEM_RMW_XRCE\n"), "{hc}");
     }
 
     /// Phase 256 Wave 8 — the C `#define NROS_SYSTEM_DOMAIN_ID` / `_LOCATOR`
-    /// resolve through the deploy override too, matching the build for a target.
+    /// resolve through the image's bound `[host.*]`, matching the build for a
+    /// target. (They were `[deploy.<target>]` fields until phase-486 W8a.)
     #[test]
-    fn system_config_h_domain_locator_honour_deploy_override() {
+    fn system_config_h_domain_locator_honour_host_override() {
         let sys: SystemToml = toml::from_str(
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\nlocator=\"tcp/sys:7447\"\n\
-             [deploy.robot]\nkind=\"flash\"\ndomain_id=7\nlocator=\"tcp/robot:7450\"\n",
+             [host.robot]\ndomain_id=7\nlocator=\"tcp/robot:7450\"\n\
+             [image.robot]\nargs={ host=\"robot\" }\n",
         )
         .unwrap();
 
@@ -2724,6 +2706,35 @@ structure:
             hd.contains("#define NROS_SYSTEM_LOCATOR \"tcp/sys:7447\"\n"),
             "{hd}"
         );
+    }
+
+    /// phase-486 W8a — a `[deploy.*]` block that still places or sets a
+    /// session fact is refused BY NAME, naming each field's new home. rlm no
+    /// longer reads `[deploy.*]`, so accepting these would drop them silently.
+    #[test]
+    fn a_placing_deploy_block_is_refused_naming_its_new_home() {
+        let e = toml::from_str::<SystemToml>(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
+             [deploy.robot]\nkind=\"flash\"\ndomain_id=7\nrmw=\"xrce\"\nnodes=[\"/a\"]\n",
+        )
+        .unwrap_err()
+        .to_string();
+        for want in [
+            "[deploy.robot]",
+            "`nodes` (now `[host.<name>] nodes`)",
+            "`domain_id` (now `[host.<name>] domain_id`)",
+            "`rmw` (now `[image.<id>] rmw`)",
+            "issue 1809",
+        ] {
+            assert!(e.contains(want), "missing {want:?} in: {e}");
+        }
+        // A block of build fields alone still parses (warned until 0.6.0).
+        let ok: SystemToml = toml::from_str(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
+             [deploy.fw]\nkind=\"embedded\"\nboard=\"freertos\"\ntarget=\"thumbv7m-none-eabi\"\n",
+        )
+        .unwrap();
+        assert_eq!(ok.deploy["fw"].board.as_deref(), Some("freertos"));
     }
 
     /// 212.E.T1 — fixture bringup w/ 2 Rust components produces the expected

@@ -25,9 +25,11 @@ Before rlm `v0.1.55` reaches nano-ros (phase-486 W7) the fields are still
 POPULATED, so a reader that slips back would work today and silently read
 nothing after the bump. That is why this is a gate and not a review note.
 
-ALLOWED lists the sites that may name a field, each with its reason. An entry
-that no longer matches anything fails too, so the list cannot rot into
-permission for code that is gone. The list empties at phase-486 W8.
+ALLOWED is EMPTY since phase-486 W8a: the overlay's migration guard reads the
+retired key from the model's raw YAML (`legacy_projected_features`), and the
+one test that wrote `Deploy.target`/`extra` into a model was deleted with the
+fields. An entry added back must still match something, or the gate fails, so
+the list cannot rot into permission for code that is gone.
 """
 
 from __future__ import annotations
@@ -50,14 +52,7 @@ PATTERNS = [
 ]
 
 # (path, reason). Every entry must still match, or the gate fails.
-ALLOWED: dict[str, str] = {
-    "packages/core/nros-orchestration-ir/src/overlay.rs":
-        "the migration guard: a model that still carries switches with no overlay "
-        "beside it is refused, naming `nros sync` (phase-486 W3)",
-    "packages/cli/nros-cli-core/src/orchestration/model_ingest.rs":
-        "a TEST that writes `Deploy.target`/`extra` (`edf`) into a model to prove "
-        "the EDF slicing no longer reads them (issue 0951)",
-}
+ALLOWED: dict[str, str] = {}
 
 
 def code_of(line: str) -> str:

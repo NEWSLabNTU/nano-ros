@@ -831,7 +831,7 @@ mod tests {
         fold_model(
             parse(meta),
             "model",
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((model).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(model.clone()),
             None,
         )
     }
@@ -1319,7 +1319,7 @@ contracts:
         let inv = fold_model(
             inv,
             &format!("{REL}/declared_qos.yaml"),
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((model).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(model.clone()),
             None,
         );
         let narrowed = narrow_to_component(&inv, "demo::listener").expect("narrows");

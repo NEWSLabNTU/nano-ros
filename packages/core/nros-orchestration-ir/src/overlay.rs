@@ -329,18 +329,22 @@ impl LoadedModel {
         }
     }
 
-    /// A model as an rlm before `v0.1.55` resolved it, paired with the overlay
-    /// `nros sync` would have written for it: the switches rlm projected into
-    /// `execution.features` move into the overlay and leave the model.
+    /// Model YAML in the shape an rlm before `v0.1.55` wrote, paired with the
+    /// overlay `nros sync` would have written for it: the switches projected
+    /// into `execution: features:` move into the overlay. rlm deleted the
+    /// typed field (phase-486 W8), so they are read from the text by
+    /// [`legacy_projected_features`].
     ///
     /// For TESTS whose fixtures are model YAML written in the old shape. No
     /// production path uses it: a real model always has its overlay beside it.
-    pub fn from_legacy_projection(mut model: ros_launch_manifest_model::SystemModel) -> Self {
+    pub fn from_legacy_yaml(yaml: &str) -> Result<Self, String> {
+        let model = ros_launch_manifest_model::SystemModel::from_yaml_str(yaml)
+            .map_err(|e| format!("load SystemModel: {e}"))?;
         let overlay = Overlay {
-            features: std::mem::take(&mut model.execution.features),
+            features: legacy_projected_features(yaml),
             ..Overlay::default()
         };
-        Self { model, overlay }
+        Ok(Self { model, overlay })
     }
 
     /// Read the model at `path` and the overlay beside it.
@@ -357,7 +361,7 @@ impl LoadedModel {
         model: ros_launch_manifest_model::SystemModel,
         model_path: &Path,
     ) -> Result<Self, String> {
-        let overlay = load_beside(model_path, &model)?;
+        let overlay = load_beside(model_path)?;
         Ok(Self { model, overlay })
     }
 
@@ -382,20 +386,23 @@ impl LoadedModel {
 ///
 /// Absent file ⇒ an empty overlay: the bringup states no nano-ros facts. The
 /// one exception is a model that still CARRIES build switches — written by an
-/// `nros` from before phase-486 W1, or by an rlm that still projects them —
+/// `nros` from before phase-486 W1, or by an rlm that still projected them —
 /// with no overlay beside it. Reading "no switches" there would silently
 /// build the image without them, so it is refused, naming the fix.
-pub fn load_beside(
-    model_path: &Path,
-    model: &ros_launch_manifest_model::SystemModel,
-) -> Result<Overlay, String> {
+///
+/// The question is asked of the model FILE, not of a parsed
+/// `SystemModel`: rlm deleted the typed `execution.features` field at
+/// phase-486 W8, so a typed model can no longer say whether an old writer
+/// put switches there. [`legacy_projected_features`] reads the raw key.
+pub fn load_beside(model_path: &Path) -> Result<Overlay, String> {
     let path = overlay_path_for_model(model_path);
     match std::fs::read_to_string(&path) {
         Ok(text) => Overlay::parse(&text, &path),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            // check-launch-model-boundary: allowlisted — the migration guard is
-            // the one place that may look at the retired field.
-            if model.execution.features.is_empty() {
+            let legacy = std::fs::read_to_string(model_path)
+                .map(|t| legacy_projected_features(&t))
+                .unwrap_or_default();
+            if legacy.is_empty() {
                 Ok(Overlay::default())
             } else {
                 Err(format!(
@@ -403,12 +410,36 @@ pub fn load_beside(
                      sits beside it. nano-ros reads its switches from that overlay \
                      (phase-486); re-run `nros sync` to write it.",
                     model_path.display(),
-                    model.execution.features.join(", ")
+                    legacy.join(", ")
                 ))
             }
         }
         Err(e) => Err(format!("{}: cannot read: {e}", path.display())),
     }
+}
+
+/// The capability switches an older writer projected into a model's
+/// `execution: features:` key (rlm before `v0.1.55`), read from the YAML
+/// text. Empty for any model written since, and for text that is not a
+/// model at all — the caller's own parse reports that.
+#[must_use]
+pub fn legacy_projected_features(model_yaml: &str) -> Vec<String> {
+    // Field names differ from the YAML keys on purpose: this is the one
+    // reader of the retired key, and `check-launch-model-boundary` refuses
+    // the typed spelling anywhere in the tree.
+    #[derive(serde::Deserialize, Default)]
+    struct Doc {
+        #[serde(default, rename = "execution")]
+        exec: Exec,
+    }
+    #[derive(serde::Deserialize, Default)]
+    struct Exec {
+        #[serde(default, rename = "features")]
+        switches: Vec<String>,
+    }
+    serde_yaml_ng::from_str::<Doc>(model_yaml)
+        .map(|d| d.exec.switches)
+        .unwrap_or_default()
 }
 
 /// phase-486 W3 — does the image this model was resolved for run `fqn`?
@@ -670,34 +701,43 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("nros-overlay-load-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("system_model.yaml");
-        let mut legacy = SystemModel::default();
-        legacy.execution.features = vec!["param_services".into()];
-        let e = load_beside(&path, &legacy).unwrap_err();
-        assert!(e.contains("nros sync"), "{e}");
-        // No switches in the model and no file: nothing stated, no error.
-        assert_eq!(
-            load_beside(&path, &SystemModel::default()).unwrap(),
-            Overlay::default()
+        // The shape an rlm before `v0.1.55` wrote: switches in the model.
+        std::fs::write(
+            &path,
+            "meta:\n  version: 2\nstructure: {}\nexecution:\n  features:\n  - param_services\n",
+        )
+        .unwrap();
+        let e = load_beside(&path).unwrap_err();
+        assert!(
+            e.contains("nros sync") && e.contains("param_services"),
+            "{e}"
         );
+        // No switches in the model and no file: nothing stated, no error.
+        std::fs::write(&path, "meta:\n  version: 2\nstructure: {}\n").unwrap();
+        assert_eq!(load_beside(&path).unwrap(), Overlay::default());
         // With the file, the file answers, whatever the model carries.
+        std::fs::write(
+            &path,
+            "meta:\n  version: 2\nstructure: {}\nexecution:\n  features:\n  - param_services\n",
+        )
+        .unwrap();
         std::fs::write(
             dir.join(OVERLAY_FILE),
             "[meta]\nversion = 1\n[system]\nfeatures = [\"safety\"]\n",
         )
         .unwrap();
-        assert_eq!(
-            load_beside(&path, &legacy).unwrap().features,
-            vec!["safety"]
-        );
+        assert_eq!(load_beside(&path).unwrap().features, vec!["safety"]);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
     fn the_legacy_projection_moves_switches_out_of_the_model() {
-        let mut m = SystemModel::default();
-        m.execution.features = vec!["param_services".into()];
-        let l = LoadedModel::from_legacy_projection(m);
-        assert!(l.model.execution.features.is_empty());
+        let l = LoadedModel::from_legacy_yaml(
+            "meta:\n  version: 2\nstructure: {}\nexecution:\n  features:\n  - param_services\n",
+        )
+        .unwrap();
         assert_eq!(l.features(None), vec!["param_services"]);
+        assert!(legacy_projected_features("meta:\n  version: 2\nstructure: {}\n").is_empty());
+        assert!(legacy_projected_features("not: [a model").is_empty());
     }
 }

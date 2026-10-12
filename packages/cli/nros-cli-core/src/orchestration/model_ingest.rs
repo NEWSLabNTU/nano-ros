@@ -1366,48 +1366,6 @@ mod tests {
         assert_eq!(n.0, 0);
         assert!(system.tiers.is_empty());
     }
-
-    /// phase-296 W5.15 — edf knobs on entries for DIFFERENT boards must NOT
-    /// force a bake to agree: derive runs once per target_rtos, and each image
-    /// has its own kernel. A zephyr entry (edf=true) + a freertos entry
-    /// (edf=false) is a legal mixed model — each bake slices to its own board.
-    #[test]
-    fn edf_knobs_sliced_per_target_rtos() {
-        use ros_launch_manifest_model::{Deploy, ExtraValue, Target};
-        let make = |target_rtos: &str| {
-            let mut system: SystemToml =
-                toml::from_str("[system]\nname = \"t\"\nrmw = \"zenoh\"\ndomain_id = 0\n").unwrap();
-            let mut model = contract_model();
-            for (node, board, edf) in [
-                ("/ctrl", "zephyr-native-sim", true),
-                ("/telem", "mps2-an385-freertos", false),
-            ] {
-                let mut extra = BTreeMap::new();
-                extra.insert("edf".to_string(), ExtraValue::Bool(edf));
-                model.execution.deploy.insert(
-                    node.to_string(),
-                    Deploy {
-                        target: Some(Target::Mcu {
-                            board: board.to_string(),
-                        }),
-                        extra,
-                        ..Default::default()
-                    },
-                );
-            }
-            derive_execution_from_contracts(&mut system, &model, target_rtos, &ctrl_groups())
-        };
-        // Before W5.15 both bakes bailed on the cross-board disagreement.
-        assert!(
-            make("zephyr").is_ok(),
-            "zephyr bake must slice to the zephyr entry's edf=true, not bail on the \
-             freertos entry"
-        );
-        assert!(
-            make("freertos").is_ok(),
-            "freertos bake must slice to the freertos entry's edf=false"
-        );
-    }
 }
 
 // issue 1676 — the contract-monitor rows and their Rust rendering moved to
@@ -1942,7 +1900,7 @@ mod cyclonedds_type_capacity_tests {
     fn empty_and_small_models_emit_nothing() {
         assert_eq!(
             resolve_cyclonedds_max_types_with(
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+                &nros_orchestration_ir::overlay::LoadedModel::bare(
                     (SystemModel::default()).clone()
                 ),
                 None
@@ -1953,9 +1911,7 @@ mod cyclonedds_type_capacity_tests {
         // 10 msgs = 10 types <= default 32 → keep default, no emit.
         assert_eq!(
             resolve_cyclonedds_max_types_with(
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
-                    (model(10, 0)).clone()
-                ),
+                &nros_orchestration_ir::overlay::LoadedModel::bare((model(10, 0)).clone()),
                 None
             )
             .unwrap(),
@@ -1968,9 +1924,7 @@ mod cyclonedds_type_capacity_tests {
         // 40 distinct msgs = 40 types → next_pow2 = 64.
         assert_eq!(
             resolve_cyclonedds_max_types_with(
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
-                    (model(40, 0)).clone()
-                ),
+                &nros_orchestration_ir::overlay::LoadedModel::bare((model(40, 0)).clone()),
                 None
             )
             .unwrap(),
@@ -1979,9 +1933,7 @@ mod cyclonedds_type_capacity_tests {
         // 4 actions = 4*8 + 3 = 35 types → 64.
         assert_eq!(
             resolve_cyclonedds_max_types_with(
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
-                    (model(0, 4)).clone()
-                ),
+                &nros_orchestration_ir::overlay::LoadedModel::bare((model(0, 4)).clone()),
                 None
             )
             .unwrap(),
@@ -1993,9 +1945,7 @@ mod cyclonedds_type_capacity_tests {
     fn user_pin_too_small_fails_loud() {
         // 4 actions = 35 types, pinned to 32 → bail naming the derived 64.
         let err = resolve_cyclonedds_max_types_with(
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
-                (model(0, 4)).clone(),
-            ),
+            &nros_orchestration_ir::overlay::LoadedModel::bare((model(0, 4)).clone()),
             Some(32),
         )
         .unwrap_err()
@@ -2009,9 +1959,7 @@ mod cyclonedds_type_capacity_tests {
     fn user_pin_large_enough_is_respected_no_emit() {
         assert_eq!(
             resolve_cyclonedds_max_types_with(
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
-                    (model(0, 4)).clone()
-                ),
+                &nros_orchestration_ir::overlay::LoadedModel::bare((model(0, 4)).clone()),
                 Some(128)
             )
             .unwrap(),
@@ -2031,7 +1979,7 @@ mod cyclonedds_type_capacity_tests {
     fn an_over_cap_workspace_emits_a_descriptor_table_that_holds_it() {
         let m = model(300, 0);
         let derived = resolve_cyclonedds_max_descriptor_types_with(
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
             None,
         )
         .unwrap()
@@ -2049,9 +1997,7 @@ mod cyclonedds_type_capacity_tests {
     fn a_small_model_emits_no_descriptor_table_knob() {
         assert_eq!(
             resolve_cyclonedds_max_descriptor_types_with(
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
-                    (model(40, 0)).clone()
-                ),
+                &nros_orchestration_ir::overlay::LoadedModel::bare((model(40, 0)).clone()),
                 None
             )
             .unwrap(),
@@ -2060,7 +2006,7 @@ mod cyclonedds_type_capacity_tests {
         // And a model that registers nothing says nothing.
         assert_eq!(
             resolve_cyclonedds_max_descriptor_types_with(
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
+                &nros_orchestration_ir::overlay::LoadedModel::bare(
                     (SystemModel::default()).clone()
                 ),
                 None
@@ -2078,9 +2024,7 @@ mod cyclonedds_type_capacity_tests {
     #[test]
     fn a_descriptor_table_pin_under_the_count_fails_loud() {
         let err = resolve_cyclonedds_max_descriptor_types_with(
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
-                (model(300, 0)).clone(),
-            ),
+            &nros_orchestration_ir::overlay::LoadedModel::bare((model(300, 0)).clone()),
             Some(256),
         )
         .unwrap_err()
@@ -2094,9 +2038,7 @@ mod cyclonedds_type_capacity_tests {
         // Large enough is respected, with no emit.
         assert_eq!(
             resolve_cyclonedds_max_descriptor_types_with(
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
-                    (model(300, 0)).clone()
-                ),
+                &nros_orchestration_ir::overlay::LoadedModel::bare((model(300, 0)).clone()),
                 Some(512)
             )
             .unwrap(),
@@ -2110,12 +2052,12 @@ mod cyclonedds_type_capacity_tests {
         use nros_orchestration_ir::cyclonedds_type_sizing as ty;
         let m = model(300, 0);
         let counted = count_cyclonedds_registered_types(
-            &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+            &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         );
         assert_eq!(counted, 300);
         assert_eq!(
             resolve_cyclonedds_max_types_with(
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+                &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
                 None
             )
             .unwrap(),
@@ -2123,7 +2065,7 @@ mod cyclonedds_type_capacity_tests {
         );
         assert_eq!(
             resolve_cyclonedds_max_descriptor_types_with(
-                &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+                &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
                 None
             )
             .unwrap(),

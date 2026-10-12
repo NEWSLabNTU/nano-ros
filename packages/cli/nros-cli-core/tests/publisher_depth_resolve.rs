@@ -43,7 +43,7 @@ fn a_contracted_publisher_depth_reaches_the_entity_inventory() {
 
     let inv = EntityInventory::from_model(
         "fixture",
-        &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection((m).clone()),
+        &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
     )
     .expect("the model describes wiring");
     let mut publishers: Vec<(Option<String>, Option<u32>)> = inv
@@ -72,9 +72,7 @@ fn a_contracted_publisher_depth_reaches_the_entity_inventory() {
 fn the_resolved_publisher_depth_is_tabled_under_its_own_kind() {
     let inv = EntityInventory::from_model(
         "fixture",
-        &nros_orchestration_ir::overlay::LoadedModel::from_legacy_projection(
-            (resolve("depths")).clone(),
-        ),
+        &nros_orchestration_ir::overlay::LoadedModel::bare((resolve("depths")).clone()),
     )
     .expect("the model describes wiring");
     let DeclaredDepths::Resolved {

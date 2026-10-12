@@ -5058,18 +5058,18 @@ mod deprecation_wiring_tests {
         std::fs::remove_dir_all(&d).ok();
     }
 
-    /// A block that HAS its `[image.*]` is migrated, and a placement-only block
-    /// was never in scope — `[deploy.*]` keeps `kind`/`nodes`/`launch` and is
-    /// not being retired. Without this the test above would pass on a lint that
-    /// warned about everything.
+    /// A block that HAS its `[image.*]` is migrated, and a `kind`-only block
+    /// carries nothing that moved (placement is refused at parse since
+    /// phase-486 W8a, so it never reaches the lint). Without this the test
+    /// above would pass on a lint that warned about everything.
     #[test]
-    fn migrated_and_placement_only_blocks_stay_silent() {
+    fn migrated_and_kind_only_blocks_stay_silent() {
         let d = std::env::temp_dir().join(format!("nros-w10b-{}-{}", std::process::id(), line!()));
         write_system(
             &d,
             "[system]\nname = \"s\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
              [deploy.migrated]\nkind = \"embedded\"\nboard = \"mps2-an385-freertos\"\n\n\
-             [deploy.placement]\nkind = \"self\"\nnodes = [\"a\"]\n\n\
+             [deploy.placement]\nkind = \"self\"\n\n\
              [image.migrated]\nboard = \"mps2-an385-freertos\"\n",
         );
 

@@ -549,9 +549,24 @@ fn check_deploy_targets(config: &Path) -> Result<Option<usize>> {
         Ok(r) => r,
         Err(_) => return Ok(None),
     };
-    // Not a parseable system.toml (e.g. a plain component manifest) — skip.
-    let Ok(system) = toml::from_str::<SystemToml>(&raw) else {
+    // Not a system.toml at all (e.g. a plain component manifest) — skip.
+    let is_system = raw
+        .parse::<toml::Table>()
+        .is_ok_and(|t| t.contains_key("system"));
+    if !is_system {
         return Ok(None);
+    }
+    // A system.toml that does not PARSE is a problem to report, never a file
+    // to skip: the parse is where retired keys are refused by name (phase-486
+    // W8a — a placement-bearing `[deploy.*]`), and a doctor that skipped them
+    // would answer "healthy" about the one file every build refuses.
+    let system = match toml::from_str::<SystemToml>(&raw) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("nros doctor: {}", config.display());
+            eprintln!("  [!!] does not parse: {}", e.message());
+            return Ok(Some(1));
+        }
     };
     let bringup_dir = config
         .parent()
@@ -594,17 +609,8 @@ fn check_deploy_targets(config: &Path) -> Result<Option<usize>> {
         let kind = deploy.kind.as_deref().unwrap_or("(derived)");
         let target = deploy.target.as_deref().unwrap_or("(derived)");
         let board = deploy.board.as_deref().unwrap_or("-");
-        if let Some(launch) = &deploy.launch {
-            let launch_path = bringup_dir.join(launch);
-            if !launch_path.exists() {
-                eprintln!(
-                    "  [!!] {name}: kind={kind} launch={launch} — file {} not found",
-                    launch_path.display()
-                );
-                problems += 1;
-                continue;
-            }
-        }
+        // No launch check: a `[deploy.*] launch` is refused at parse since
+        // phase-486 W8a (it moved to `[host.*]`), so it never reaches here.
         eprintln!("  [OK] {name}: kind={kind} target={target} board={board}");
     }
     Ok(Some(problems))
@@ -858,24 +864,16 @@ mod tests {
         .unwrap();
         assert_eq!(check_deploy_targets(&system_toml).unwrap(), Some(0));
 
-        // A deploy referencing a non-existent launch file → 1 problem.
-        std::fs::write(
-            &system_toml,
-            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
-             [deploy.native]\nkind=\"self\"\nlaunch=\"missing.launch.xml\"\n",
-        )
-        .unwrap();
-        assert_eq!(check_deploy_targets(&system_toml).unwrap(), Some(1));
-
-        // Present launch file → 0 problems.
-        std::fs::write(dir.join("present.launch.xml"), "<launch/>").unwrap();
+        // phase-486 W8a — a deploy that still PLACES (`launch`, moved to
+        // `[host.*]`) is refused at parse, and doctor reports the refusal as
+        // a problem rather than skipping a file it cannot read.
         std::fs::write(
             &system_toml,
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
              [deploy.native]\nkind=\"self\"\nlaunch=\"present.launch.xml\"\n",
         )
         .unwrap();
-        assert_eq!(check_deploy_targets(&system_toml).unwrap(), Some(0));
+        assert_eq!(check_deploy_targets(&system_toml).unwrap(), Some(1));
 
         // A non-system.toml (no [system]) → None (skipped, not a problem).
         std::fs::write(&system_toml, "[component]\nname=\"c\"\n").unwrap();

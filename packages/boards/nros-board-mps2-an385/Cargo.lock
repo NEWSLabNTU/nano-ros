@@ -494,6 +494,7 @@ dependencies = [
  "ros-launch-manifest-types",
  "serde",
  "serde_json",
+ "serde_yaml_ng",
  "thiserror 1.0.69",
  "toml",
 ]

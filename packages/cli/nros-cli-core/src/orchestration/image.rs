@@ -922,26 +922,27 @@ entry_kind = "board-run"
     }
 }
 
-/// Fields on an upstream `[deploy.<id>]` that a nano-ros table now owns, each
-/// paired with WHERE it went (phase-383 W1.f, issue 0951).
+/// Fields on a deprecated `[deploy.<id>]` that another table now owns, each
+/// paired with WHERE it went (phase-383 W1.f, issue 0951). They still parse,
+/// with this warning, until 0.6.0 (issue 1809).
 ///
-/// `kind`, `nodes` and `launch` are absent by design: those are PLACEMENT, they
-/// stay upstream's, and they are not being retired.
+/// Absent by design: the fields the PARSE refuses since phase-486 W8a
+/// (`nodes`, `launch`, `domain_id`, `locator`, `rmw` — see
+/// `cargo_metadata_schema::DeployTarget`). Those reached an image only through
+/// rlm's placement, which no longer reads `[deploy.*]`, so a warning that let
+/// them through would let them be dropped silently. `kind` is absent because
+/// nothing reads it any more and it has no new home.
 ///
 /// The destination is part of the datum because it is not uniform, and a lint
 /// that guesses one destination for every field sends people to a table with no
-/// such key. `domain_id` and `locator` are RUNTIME facts about a machine and
-/// live on `[host.<name>]`; `nros` is SITE config about a BOARD and lives on
-/// `[board_config.<board>]`; only the rest are build description.
+/// such key. `nros` is SITE config about a BOARD and lives on
+/// `[board_config.<board>]`; the rest are build description.
 pub const DEPRECATED_DEPLOY_FIELDS: &[(&str, DeployFieldHome)] = &[
     ("board", DeployFieldHome::Image),
     ("target", DeployFieldHome::Image),
-    ("rmw", DeployFieldHome::Image),
     ("profile", DeployFieldHome::Image),
     ("optimize", DeployFieldHome::Image),
     ("features", DeployFieldHome::Image),
-    ("domain_id", DeployFieldHome::Host),
-    ("locator", DeployFieldHome::Host),
     ("nros", DeployFieldHome::BoardConfig),
 ];
 
@@ -950,8 +951,6 @@ pub const DEPRECATED_DEPLOY_FIELDS: &[(&str, DeployFieldHome)] = &[
 pub enum DeployFieldHome {
     /// `[image.<id>]` — build description, keyed by the same id.
     Image,
-    /// `[host.<name>]` — a machine's runtime facts.
-    Host,
     /// `[board_config.<board>]` — site config, keyed by BOARD.
     BoardConfig,
 }
@@ -960,7 +959,6 @@ impl DeployFieldHome {
     fn destination(self, id: &str) -> String {
         match self {
             DeployFieldHome::Image => format!("`[image.{id}]`"),
-            DeployFieldHome::Host => format!("`[host.{id}]`"),
             DeployFieldHome::BoardConfig => {
                 "`[board_config.<board>]`, keyed by the BOARD rather than by \
                  this block's name"
@@ -1022,10 +1020,9 @@ pub fn deprecated_deploy_build_field_warnings(
         for (destination, mut hits) in grouped {
             hits.sort_unstable();
             out.push(format!(
-                "[deploy.{id}] carries {} — {} now owns {}. `[deploy.*]` keeps \
-                 PLACEMENT (kind / nodes / launch) — that half is upstream's \
-                 schema and is not being retired. Set \
-                 NROS_SUPPRESS_DEPRECATION=1 to silence.",
+                "[deploy.{id}] carries {} — {} now owns {}. `[deploy.*]` is \
+                 removed at 0.6.0 (issue 1809); its placement already moved to \
+                 `[host.*]`. Set NROS_SUPPRESS_DEPRECATION=1 to silence.",
                 hits.join(", "),
                 destination,
                 if hits.len() == 1 { "it" } else { "them" },
@@ -1081,20 +1078,6 @@ mod deprecation_tests {
         );
     }
 
-    /// `domain_id` / `locator` are a machine's RUNTIME facts and live on
-    /// `[host.*]`. The first version of this list called them build fields, so
-    /// the warning named `[image.*]` — a table that has no such key.
-    #[test]
-    fn runtime_fields_point_at_the_host_table() {
-        let w = deprecated_deploy_build_field_warnings(
-            &blocks(&[("robot1", &["domain_id", "locator"])]),
-            &BTreeMap::new(),
-            false,
-        );
-        assert_eq!(w.len(), 1, "one destination, one warning: {w:?}");
-        assert!(w[0].contains("[host.robot1]"), "{}", w[0]);
-    }
-
     #[test]
     fn a_build_field_without_an_image_warns_once() {
         let w = deprecated_deploy_build_field_warnings(
@@ -1111,16 +1094,17 @@ mod deprecation_tests {
         );
     }
 
+    /// The fields the PARSE refuses (phase-486 W8a) never reach this lint, and
+    /// it must not claim them: a warning is "still works until 0.6.0", which
+    /// is false for a field rlm no longer reads.
     #[test]
-    fn placement_only_blocks_never_warn() {
-        // robot1/robot2 are the whole PLACEMENT-ONLY population in-tree, and
-        // they must stay silent forever: their table is upstream's.
+    fn refused_and_inert_fields_never_warn() {
         let w = deprecated_deploy_build_field_warnings(
-            &blocks(&[("robot1", &["kind", "nodes", "launch"])]),
+            &blocks(&[("robot1", &["kind", "nodes", "launch", "domain_id", "rmw"])]),
             &BTreeMap::new(),
             false,
         );
-        assert!(w.is_empty(), "placement must not warn: {w:?}");
+        assert!(w.is_empty(), "{w:?}");
     }
 
     #[test]
@@ -1152,17 +1136,12 @@ mod deprecation_tests {
             field("target").map(|(_, h)| *h),
             Some(DeployFieldHome::Image)
         );
-        // Placement stays upstream's and is not being retired.
-        assert!(field("kind").is_none());
-        assert!(field("nodes").is_none());
-        assert!(field("launch").is_none());
-        // The two fields that do NOT move to the image — a warning naming
-        // `[image.*]` for these would send the reader to a table with no such
-        // key.
-        assert_eq!(
-            field("domain_id").map(|(_, h)| *h),
-            Some(DeployFieldHome::Host)
-        );
+        // Refused at parse since phase-486 W8a, or inert: never warned.
+        for f in ["kind", "nodes", "launch", "domain_id", "locator", "rmw"] {
+            assert!(field(f).is_none(), "{f}");
+        }
+        // The one field that does NOT move to the image — a warning naming
+        // `[image.*]` for it would send the reader to a table with no such key.
         assert_eq!(
             field("nros").map(|(_, h)| *h),
             Some(DeployFieldHome::BoardConfig)

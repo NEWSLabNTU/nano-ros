@@ -3968,30 +3968,31 @@ mod tests {
         );
     }
 
-    /// Phase 256 — planner target-awareness: `[deploy.<t>].rmw` now reaches the
-    /// plan (the phase-255 stub resolved at target=None, so it never did). The
-    /// selected target comes from `--image`, else the sole image
-    /// `default_images` picks, else the sole deploy.
+    /// Phase 256 — planner target-awareness: the selected target's RMW reaches
+    /// the plan (the phase-255 stub resolved at target=None, so it never did).
+    /// The selected target comes from `--image`, else the sole image
+    /// `default_images` picks. (The rung was `[deploy.<t>].rmw` until phase-486
+    /// W8a refused that field; `[image.<t>].rmw` is its home.)
     #[test]
-    fn schema_build_json_resolves_per_deploy_rmw_via_target() {
+    fn schema_build_json_resolves_per_image_rmw_via_target() {
         let dir = tempfile::tempdir().unwrap();
         let st = dir.path().join("system.toml");
         std::fs::write(
             &st,
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
-             [deploy.qemu]\nkind=\"qemu\"\nrmw=\"cyclonedds\"\n",
+             [image.qemu]\nboard=\"native\"\nrmw=\"cyclonedds\"\n",
         )
         .unwrap();
 
-        // --target qemu → the deploy override reaches the plan.
+        // --target qemu → the image override reaches the plan.
         let picked = schema_build_json(Some(&st), None, Some("qemu"), None).expect("build json");
         assert_eq!(picked["rmw"], "cyclonedds");
 
-        // No flag, no images at all → the deprecated sole-deploy rung.
+        // No flag → the sole image is the selected target.
         let sole = schema_build_json(Some(&st), None, None, None).expect("build json");
         assert_eq!(
             sole["rmw"], "cyclonedds",
-            "sole deploy is the selected target"
+            "sole image is the selected target"
         );
 
         // `default_images` drives when set + no --image.
