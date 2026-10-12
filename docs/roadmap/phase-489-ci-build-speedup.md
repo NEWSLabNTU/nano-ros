@@ -1,9 +1,8 @@
 # Phase 489 — CI build speed-up: the required gate first, then the build-bound lanes
 
-**Status (2026-10-12). W1 + W3 landed, acceptance pending.** W1 and W3
-shipped together; their measured acceptance waits for post-merge runs (see
-each item). W2, W4–W7 not started. The numbers below were
-measured from the GitHub Actions API over 2026-10-09 to 2026-10-10. They are
+**Status (2026-10-12). W1, W3 and W5 landed, acceptance pending; W2 landed
+switched off (see W2).** Their measured acceptance waits for post-merge runs
+(see each item). W4, W6 and W7 not started. The numbers below were measured from the GitHub Actions API over 2026-10-09 to 2026-10-10. They are
 the baseline every work item is judged against. Implements no new RFC
 decision. It continues the cost work of
 [phase-353](archived/phase-353-build-and-fixture-cost.md),
@@ -130,6 +129,77 @@ and sccache caches.
 **Acceptance:** the moved siblings' median at least 40 % below their hosted
 median, and no new "passes only on a warm runner" red when one runner is
 re-provisioned.
+
+**Landed (2026-10-12), switched OFF.** `check-workspace-all` and
+`check-test-unit` carry an event-routed `runs-on`: `[self-hosted, linux,
+nros-sdk-zephyr, nros-big]` (queue L3's label set — the embedded clippy half
+needs `arm-none-eabi-gcc`) on `merge_group` / `workflow_dispatch` when
+`vars.NROS_GATE_SELF_HOSTED == 'true'`, and the old hosted job in the CI image
+otherwise. The container image is routed by the same condition: an EMPTY image
+means no container, which the unprivileged runner container needs (measured on
+a probe run, 38218504918: empty image ON-HOST, set image IN-CONTAINER, both
+with the credentials block present). The variable is unset, so nothing moves
+until an operator sets it after a green `workflow_dispatch` run on the pool.
+
+Hosted baseline, first day after W1 (successful jobs, 2026-10-12, Actions API):
+
+| Sibling | merge_group median (n) | pull_request median (n) |
+| --- | --- | --- |
+| `check-workspace-all` | 13.9 min (21) | 12.9 (20) |
+| `check-test-unit` | 9.4 (21) | — |
+| `check-cli-tests` | 14.6 (21) | 13.4 (20) |
+| `check-fast` (stays hosted) | 17.9 (21) | 20.2 (18) |
+
+What was decided, and why:
+
+- **Merge group only, not pull requests.** The merge-group run sets merge
+  throughput, so it is where a faster sibling pays. PR load was about twice the
+  merge-group load that day (41 vs 21 runs), and three runners also carry queue
+  L3 and the nightly lanes; routing both events would saturate the pool.
+- **No pull request reaches the pool, so no fork PR does.** The repo is
+  public and asks approval only of FIRST-TIME contributors.
+  `check-workflow-runner-isolation` now parses the route
+  (`scripts/lib/runner_route.py`) and refuses one whose condition admits
+  `pull_request` / `pull_request_target`, is widened by `||`, or has a
+  self-hosted fallback; any other expression stays fail closed.
+  `check-workflow-just-provisioning` reads the hosted arm's image and refuses a
+  container condition that differs from the `runs-on` one.
+- **Its own interlock, default off.** While this was written, two of the three
+  runners (`newslab-118-server`, `newslab-133`) showed online and idle and took
+  no job for hours — every L3 that day ran on `newslab-server-241`, and nightly
+  and run-matrix sat queued. A required-path job routed to that pool waits
+  rather than fails, so `NROS_SELF_HOSTED_READY` (on, for L3, which nothing
+  requires) was not reused.
+- **`check-cli-tests` stays hosted.** With `/opt/ros/$ROS_DISTRO/share`
+  present its `cli-tests` step runs the rosidl parity tests, and the runner
+  image carries one ROS package (the zenoh router) — no `std_msgs`,
+  `geometry_msgs`, `sensor_msgs` or `example_interfaces`, so they would print
+  `[NO-PKG]` and pass over nothing. Moving it needs those interface packages in
+  `[prereq.*]` for `runner-container.sh` first, and a runner rebuild.
+- **W7 is not routed around.** GitHub labels only select, never exclude, so
+  keeping jobs off `newslab-server-241` needs a new label on the other two
+  runners — a registration change (`NROS_RUNNER_LABELS`, re-applied on every
+  ephemeral re-registration), out of scope here.
+
+**Clean tree.** A self-hosted checkout lives in the `nros-runner-work` volume
+and `actions/checkout` cleans only the superproject, so an earlier job's
+submodule worktrees (its pin, its build output) survive. The first step after
+checkout on the pool is `scripts/ci/self-hosted-clean-tree.sh`: it reports what
+it found, deinits every live submodule, `git clean -ffdx`, refuses
+`CARGO_TARGET_DIR` or a `build.target-dir` in the runner's cargo config, and
+ASSERTS no untracked or ignored file and no submodule worktree remain before
+any step runs. It keeps the cargo registry, sccache (left on its persistent
+volume at the justfile's size — the hosted 1 GB would evict queue L3's warm
+cache), rustup and the pinned SDK store. Checked by planting state in a scratch
+clone: a submodule at an older commit with a stale `build/` inside, `target/`,
+`target-embedded/`, `build/.fixtures-built`, a museum `nros`, an untracked
+`generated/` — `--check` fails naming each, the clean leaves none, and the
+job's own `git submodule update --init` then lands at this commit's pin.
+
+**Still to do.** The acceptance numbers need the variable on: a green
+`workflow_dispatch` run on the pool first, then the moved siblings' merge-group
+median against the table above (at least 40 % below), and a merge group after
+one runner is re-provisioned with no warm-runner-only red.
 
 ### W3 — make the CLI cache cost seconds, not 3.8 minutes
 
