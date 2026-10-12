@@ -728,6 +728,15 @@ queue-notify-decision:
     @bash scripts/ci/queue-ejected.sh --selftest
     @bash scripts/ci/queue-triage.sh --selftest
 
+# issues 1081 + 1841 — `just setup` brings play_launch to its recorded pin. A
+# DIRTY off-pin submodule is refused in a developer tree (it may be work) and
+# discarded in a CI job (`GITHUB_ACTIONS=true`: a persistent self-hosted
+# workspace's residue, which refused every L3 job after #2038's pin bump).
+# The selftest builds both states in throwaway repositories.
+[private]
+cli-submodule-sync:
+    @bash scripts/lib/sync-cli-submodule.sh --selftest
+
 # nano-ros is PUBLIC and the self-hosted runners share machines with unrelated
 # research work. A self-hosted job reachable from a fork's `pull_request` runs
 # contributor code on that hardware. The property held by care alone until
