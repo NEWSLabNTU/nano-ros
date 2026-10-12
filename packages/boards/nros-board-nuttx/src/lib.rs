@@ -553,6 +553,8 @@ pub extern "C" fn nros_platform_panic(msg: *const u8, len: usize) -> ! {
 #[cfg(target_os = "nuttx")]
 pub fn run_entry<B, F, E>(
     boot_config: Option<&'static nros_platform::BakedBootConfig>,
+    locator: &'static str,
+    domain_id: u32,
     setup: F,
 ) -> Result<(), E>
 where
@@ -586,17 +588,21 @@ where
     // `ExecutorNodeRuntime` so the codegen-emitted `run_plan(runtime)`
     // body can register components against a live RMW session.
     //
-    // Locator/domain are baked at COMPILE time on NuttX, not read from
-    // the runtime env. Although NuttX ships `std` + libc `getenv`, the
-    // QEMU guest has no environment populated, so `from_env()` would
-    // silently fall back to its loopback default (`tcp/127.0.0.1:7447`)
-    // — the connection then never leaves the guest over virtio-net and
-    // fails fast with `Transport(ConnectionFailed)`. Bake via
-    // `option_env!` (the freertos/esp32 pattern; CLAUDE.md "compile-time
-    // on embedded"); an unset one is the EMPTY locator issue 0330 defines,
-    // which the backend then defaults.
-    const BAKED_LOCATOR: Option<&str> = option_env!("NROS_LOCATOR");
-    const BAKED_DOMAIN: Option<&str> = option_env!("NROS_DOMAIN_ID");
+    // Locator/domain are the BOARD's connect facts, handed in by the board
+    // overlay (`nros-board-nuttx-qemu`): its `[board.net]` default, under a
+    // build-time `NROS_LOCATOR` / `NROS_DOMAIN_ID`, under the image's own
+    // `system.toml` (`DeployOverlay`, through `BaseConfig::apply_overlay` —
+    // the merge every other embedded board already makes). Never the runtime
+    // env: the QEMU guest has none, so `from_env()` would fall back to
+    // loopback and never leave the guest.
+    //
+    // Issue 1836 — this used to read the `NROS_LOCATOR` bake HERE and
+    // nothing else, so the image's `[image.<id>] locator` reached the board
+    // and was dropped. Phase-484 W4e then retired the fixture rows' env copy
+    // on the strength of "every board applies the image's locator", and every
+    // NuttX Rust image dialled the EMPTY locator: zenoh-pico scouted, found
+    // nothing, and `Executor::open` reported `ConnectionFailed` without a
+    // packet on the wire.
     // Issue #98 / RFC-0045 — the node name comes from the baked boot config
     // `run_with_deploy` supplies; `"nros_app"` when called from `run`
     // (boot_config = None) or when the bake carries no name. It applies on
@@ -627,15 +633,8 @@ where
     let baked = boot_config
         .map(::nros::BootConfig::from_baked)
         .unwrap_or_default();
-    let exec_cfg = ::nros::ExecutorConfig::resolve(
-        baked.over_board_defaults(
-            BAKED_LOCATOR.unwrap_or(""),
-            BAKED_DOMAIN
-                .and_then(|s| s.parse::<u32>().ok())
-                .unwrap_or(0),
-            "nros_app",
-        ),
-    );
+    let exec_cfg =
+        ::nros::ExecutorConfig::resolve(baked.over_board_defaults(locator, domain_id, "nros_app"));
 
     // Explicitly register the zenoh RMW backend before opening the executor.
     // The unified-RMW `nros_rmw_register_backend!` macro is a no-op on NuttX
@@ -850,6 +849,8 @@ fn apply_tier_affinity(tier: &nros_platform::TierSpec<'_>) {
 #[cfg(target_os = "nuttx")]
 pub fn run_tiers<B, F, E>(
     boot_config: Option<&'static nros_platform::BakedBootConfig>,
+    locator: &'static str,
+    domain_id: u32,
     tiers: &[nros_platform::TierSpec<'_>],
     tier_backing: &'static mut [::nros::TierExecutorBackingSlot],
     setup: F,
@@ -890,11 +891,8 @@ where
         sys::exit_process(1);
     }
 
-    // Baked locator / domain / node name — identical to `run_entry` (compile-time
-    // on embedded; the QEMU guest has no populated env, so `from_env` would fall
-    // back to loopback and never leave the guest). See `run_entry` for detail.
-    const BAKED_LOCATOR: Option<&str> = option_env!("NROS_LOCATOR");
-    const BAKED_DOMAIN: Option<&str> = option_env!("NROS_DOMAIN_ID");
+    // Locator / domain from the board overlay, node name from the bake —
+    // identical to `run_entry`; see there (issue 1836).
     // Issue 1434 — the same board rung as `run_entry`, through the same
     // `BootConfig::over_board_defaults`. See there for why this spelling was
     // invisible to the issue's `namespace: None` grep, and for the two things
@@ -902,15 +900,8 @@ where
     let baked = boot_config
         .map(::nros::BootConfig::from_baked)
         .unwrap_or_default();
-    let exec_cfg = ::nros::ExecutorConfig::resolve(
-        baked.over_board_defaults(
-            BAKED_LOCATOR.unwrap_or(""),
-            BAKED_DOMAIN
-                .and_then(|s| s.parse::<u32>().ok())
-                .unwrap_or(0),
-            "nros_app",
-        ),
-    );
+    let exec_cfg =
+        ::nros::ExecutorConfig::resolve(baked.over_board_defaults(locator, domain_id, "nros_app"));
 
     // NuttX has no linkme / `.init_array` auto-register, so the backend register
     // is explicit (mirrors `run_entry`).

@@ -24,6 +24,11 @@
 use std::path::Path;
 
 fn main() {
+    // issue 1836 — `Config::default()` takes a build-time `NROS_LOCATOR` /
+    // `NROS_DOMAIN_ID` as the board's connect default (moved here from the
+    // family driver `nros-board-nuttx`, which now receives the merged pair).
+    println!("cargo:rerun-if-env-changed=NROS_LOCATOR");
+    println!("cargo:rerun-if-env-changed=NROS_DOMAIN_ID");
     // phase-484 W4b-2 (RFC-0103 D10) — the network defaults, ONCE and before
     // any early return, because `src/config.rs` `include!`s what it writes:
     // this crate's `[board.net]` (`network = "qemu"`, QEMU's own SLIRP network)

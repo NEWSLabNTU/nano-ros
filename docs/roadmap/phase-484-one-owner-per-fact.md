@@ -576,6 +576,17 @@ no-router e2e bins that dial nothing on purpose. Not measured here: a NuttX
 QEMU run of the seven images (the env and the bake held the same value, so the
 binaries' locator strings cannot tell the carriers apart either way).
 
+*Correction (issue 1836).* "Every board applies it" was false for NuttX, and
+the unmeasured run is where it showed. `over_board_defaults` makes the BOARD's
+locator win; the image's reaches a board only through its deploy-overlay merge
+(`BaseConfig::apply_overlay`), and `nros-board-nuttx` had none — it read
+`option_env!("NROS_LOCATOR")` and nothing else. With the row env gone, every
+NuttX Rust image dialled the empty locator, scouted, and failed
+`Executor::open` without putting a packet on the wire. The NuttX board now
+applies the overlay like the other five families, and
+`check-image-locator-bake` verifies that every family's crates do instead of
+assuming it.
+
 **W4f — a leaf's cmake board is derived, not restated.** `nros ws
 leaf-system` prints `NROS_LEAF_CMAKE_BOARD` (the board's `cmake_module`,
 W4d), and both cmake roads take it: the find_package road sets

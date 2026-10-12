@@ -33,7 +33,9 @@ nros-platform-cffi = { path = "../../platform/nros-platform-cffi" }
 # Phase 152.4.B — implements `nros_board_common::BoardInit` so the
 # `nros_board_nuttx` generic crate can drive boot via the
 # `run_generic<B: BoardInit>` shim.
-nros-board-common = { path = "../nros-board-common" }
+# `deploy-overlay` for `BaseConfig::apply_overlay`, the `DeployOverlay` -> config
+# merge the image's locator/domain/ip reach the session through (issue 1836).
+nros-board-common = { path = "../nros-board-common", features = ["deploy-overlay"] }
 # Phase 212.N.3 — implements the new platform-level board trait
 # family (`nros_platform::{BoardInit, BoardPrint, BoardExit,
 # BoardEntry}`) so the per-board ZST can plug directly into

@@ -7,7 +7,9 @@ its connect locator from one of two carriers:
   * the bringup's `system.toml` — `[image.<id>] locator` over `[image_defaults]`
     over `[system]` (the overlay `nros_orchestration_ir::leaf_system` resolves
     and `nros::main!` bakes into the `DeployOverlay` / `NROS_BOOT_CONFIG`).
-    EVERY board applies it.
+    A board applies it only if its crates SAY so — `BaseConfig::apply_overlay`
+    or a read of `deploy.locator` — and the gate VERIFIES that too (issue
+    1836: the NuttX board never did, and rule 1 counted the carrier anyway).
   * the row's `env = { NROS_LOCATOR = … }`, compiled in through
     `option_env!("NROS_LOCATOR")` — but only by a board crate that SAYS
     `option_env!("NROS_LOCATOR")`. On any other board the value reaches nothing.
@@ -31,10 +33,10 @@ policed by `check-entry-locator-ssot`):
   2. a row `NROS_LOCATOR` on a board that does not read it is REFUSED — dead
      config that reads as a bake is how 1581 hid;
   3. when both carriers state one they must agree;
-  4. and they must not state the SAME one (phase-484 W4e): `nros::main!` bakes
-     the image's locator OVER the board default the env feeds
-     (`BootConfig::over_board_defaults`), so an equal row value is a second
-     home that can only drift. State it once, in `system.toml`.
+  4. and they must not state the SAME one (phase-484 W4e): the board applies
+     the image's locator OVER the default the env feeds (its deploy-overlay
+     merge), so an equal row value is a second home that can only drift.
+     State it once, in `system.toml`.
 
 Scope (phase-484 W4e): a single-package cargo LEAF row — no `image`, a
 `system.toml` beside its `Cargo.toml` declaring its one image — is an image row
@@ -47,6 +49,14 @@ toward OK: a board listed as reading it whose crates never say
 `option_env!("NROS_LOCATOR")` fails, and so does one listed as not reading it
 whose crates do. A platform the table does not classify fails, so a new board
 family is ruled on rather than waved through.
+
+"Every board applies the image's locator" is verified the same way, one
+direction: each family's crates must apply the deploy overlay
+(`OVERLAY_APPLY`), unless `OVERLAY_ELSEWHERE` says how the image's locator
+reaches that board instead. Rule 1 trusts that carrier, so it must not be a
+claim nobody checks — it was, for NuttX, from phase-484 W4e until issue 1836:
+seven fixture rows lost their env copy and every NuttX Rust image dialled the
+empty locator.
 
 This gate does not check the PORT against `alloc::port_of`: a manifest row
 carries no workload, so the cell is not derivable here. The fixture resolvers
@@ -73,6 +83,9 @@ except ImportError:  # Python < 3.11
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MANIFEST = "examples/fixtures.toml"
 ENV_READ = re.compile(r'option_env!\(\s*"NROS_LOCATOR"\s*\)')
+# issue 1836 — what "this board applies the image's `system.toml` locator" looks
+# like in source: the shared merge, or a direct read of the overlay's field.
+OVERLAY_APPLY = re.compile(r'\.apply_overlay\(|\b(?:deploy|overlay)\.locator\b')
 
 # platform token -> (reads NROS_LOCATOR at build time?, board crates that decide it)
 READS_ENV = {
@@ -84,8 +97,10 @@ READS_ENV = {
         False,
         ["packages/boards/nros-board-threadx-linux", "packages/boards/nros-board-threadx"],
     ),
-    "nuttx": (True, ["packages/boards/nros-board-nuttx"]),
-    "nuttx-riscv": (True, ["packages/boards/nros-board-nuttx"]),
+    # issue 1836 — the board overlay owns the connect default (the family
+    # driver `nros-board-nuttx` receives the merged pair and reads no env).
+    "nuttx": (True, ["packages/boards/nros-board-nuttx-qemu"]),
+    "nuttx-riscv": (True, ["packages/boards/nros-board-nuttx-qemu"]),
     "esp32": (True, ["packages/boards/nros-board-esp32-qemu"]),
     # phase-484 W4e — reached once leaf rows came into scope.
     "baremetal": (True, ["packages/boards/nros-board-mps2-an385"]),
@@ -97,6 +112,16 @@ READS_ENV = {
     # `option_env!` (`Context::baked`, fed by `nros_zephyr_build`), and a test
     # may override it at run time (`-testargs --nros-locator`).
     "zephyr": (True, ["packages/api/nros"]),
+}
+
+
+# Families whose image locator reaches the board by a road other than the
+# `DeployOverlay`, with how. Every other family's crates must apply the overlay.
+OVERLAY_ELSEWHERE = {
+    "zephyr": (
+        "the image's locator is a Kconfig value the entry's build renders from "
+        "system.toml, read through `nros::Context::baked`, not a DeployOverlay"
+    ),
 }
 
 
@@ -160,7 +185,7 @@ def image_locator(row, root):
     return None, path, None
 
 
-def crates_read_env(crates, root):
+def crates_say(crates, root, pattern):
     # `git ls-files` rather than a walk: every caller passes ROOT (see
     # `verify_table`'s two call sites), so every path here is a tracked in-tree
     # crate source. A walk would also read generated or stray `.rs` under
@@ -177,7 +202,7 @@ def crates_read_env(crates, root):
             if not rel:
                 continue
             with open(os.path.join(root, rel), encoding="utf-8") as f:
-                if ENV_READ.search(f.read()):
+                if pattern.search(f.read()):
                     return True
     return False
 
@@ -189,12 +214,28 @@ def verify_table(table, root):
         if missing:
             problems.append(f"READS_ENV[{platform!r}] names crates with no src/: {missing}")
             continue
-        actual = crates_read_env(crates, root)
+        actual = crates_say(crates, root, ENV_READ)
         if actual != claim:
             problems.append(
                 f"READS_ENV[{platform!r}] claims reads-NROS_LOCATOR={claim}, but {crates} "
                 f"{'DO' if actual else 'do NOT'} say option_env!(\"NROS_LOCATOR\") — fix the "
                 f"table, it is what rule 2 trusts"
+            )
+    return problems
+
+
+def verify_overlay(table, root):
+    """issue 1836 — each family's crates apply the image's deploy overlay."""
+    problems = []
+    for platform, (_, crates) in sorted(table.items()):
+        if platform in OVERLAY_ELSEWHERE:
+            continue
+        if not crates_say(crates, root, OVERLAY_APPLY):
+            problems.append(
+                f"`{platform}`: {crates} never apply the deploy overlay (no `apply_overlay(` "
+                f"and no `deploy.locator`), so an image's `system.toml` locator reaches no "
+                f"session and rule 1 is trusting a carrier that is dead (issue 1836) — merge "
+                f"it with `BaseConfig::apply_overlay`, or name the road in OVERLAY_ELSEWHERE"
             )
     return problems
 
@@ -283,6 +324,10 @@ def self_test():
     # The table verifier must catch a claim the sources contradict.
     if not verify_table({"freertos": (True, READS_ENV["freertos"][1])}, ROOT):
         bad.append("self-test: a false READS_ENV claim (freertos reads env) was not caught")
+    # ...and a family whose crates never apply the overlay (the 1836 shape: the
+    # NuttX family driver alone, which receives the merged pair).
+    if not verify_overlay({"nuttx": (False, ["packages/boards/nros-board-nuttx"])}, ROOT):
+        bad.append("self-test: a board that never applies the deploy overlay was not caught")
     return bad
 
 
@@ -302,7 +347,7 @@ def main(argv):
         if leaf_system_toml(r, ROOT) and r.get("lang", "rust") == "rust":
             r["_leaf"] = True
 
-    problems = verify_table(READS_ENV, ROOT)
+    problems = verify_table(READS_ENV, ROOT) + verify_overlay(READS_ENV, ROOT)
     row_problems, audit = check_rows(rows, READS_ENV, lambda r: image_locator(r, ROOT))
     problems += row_problems
     if "--audit" in argv:

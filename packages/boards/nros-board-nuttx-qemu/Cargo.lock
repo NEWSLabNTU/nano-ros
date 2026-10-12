@@ -210,6 +210,7 @@ dependencies = [
  "cc",
  "nros-build-paths",
  "nros-cc-flags",
+ "nros-platform",
  "nros-platform-config",
  "serde",
  "toml",

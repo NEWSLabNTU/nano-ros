@@ -121,16 +121,18 @@ impl nros_platform::BoardEntry for NuttxQemu {
         F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
         E: core::fmt::Debug,
     {
-        entry_net_init(None);
-        nros_board_nuttx::run_entry::<Self, F, E>(None, setup)
+        let cfg = entry_net_init(None);
+        nros_board_nuttx::run_entry::<Self, F, E>(None, cfg.locator(), cfg.domain_id(), setup)
     }
 
     /// Issue #98 / RFC-0045 — thread the baked boot-config into the NuttX family
     /// driver so the node name comes from the launch-baked `.nros_boot_config`
-    /// static rather than the hardcoded `"nros_app"` default. Locator + domain-id
-    /// continue to be baked at compile time via `NROS_LOCATOR` / `NROS_DOMAIN_ID`
-    /// (the `BAKED_LOCATOR` / `BAKED_DOMAIN` constants in `run_entry`); only the
-    /// node-name originates from `deploy.boot_config` here.
+    /// static rather than the hardcoded `"nros_app"` default.
+    ///
+    /// Issue 1836 — the locator and domain come from the same overlay: the
+    /// image's `system.toml` over the board's default ([`entry_net_init`]).
+    /// They used to come from a build-time `NROS_LOCATOR` alone, so an image
+    /// that stated its locator only in `system.toml` dialled the empty one.
     ///
     /// Issue #130 — additionally push the (overlay-merged) guest IP into `eth0`
     /// before the family driver opens the executor; see [`entry_net_init`].
@@ -139,8 +141,13 @@ impl nros_platform::BoardEntry for NuttxQemu {
         F: FnOnce(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
         E: core::fmt::Debug,
     {
-        entry_net_init(Some(deploy));
-        nros_board_nuttx::run_entry::<Self, F, E>(deploy.boot_config, setup)
+        let cfg = entry_net_init(Some(deploy));
+        nros_board_nuttx::run_entry::<Self, F, E>(
+            deploy.boot_config,
+            cfg.locator(),
+            cfg.domain_id(),
+            setup,
+        )
     }
 }
 
@@ -171,8 +178,15 @@ impl NuttxQemu {
         F: Fn(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E> + Sync,
         E: core::fmt::Debug,
     {
-        entry_net_init(Some(deploy));
-        nros_board_nuttx::run_tiers::<Self, F, E>(deploy.boot_config, tiers, tier_backing, setup)
+        let cfg = entry_net_init(Some(deploy));
+        nros_board_nuttx::run_tiers::<Self, F, E>(
+            deploy.boot_config,
+            cfg.locator(),
+            cfg.domain_id(),
+            tiers,
+            tier_backing,
+            setup,
+        )
     }
 }
 
@@ -188,17 +202,17 @@ impl NuttxQemu {
 /// `10.0.2.2`); the leaf `system.toml`'s
 /// `[image.*]` `ip` / `netmask` / `gateway` keys override per entry so sibling
 /// guests can differ.
+///
+/// Returns the merged config, whose locator and domain the caller hands to the
+/// family driver — one overlay for the interface AND the session (issue 1836).
 #[cfg(target_os = "nuttx")]
-fn entry_net_init(deploy: Option<&nros_platform::DeployOverlay>) {
-    let ip = deploy.and_then(|d| d.ip).unwrap_or(SLIRP_DEFAULT_IP);
-    let gateway = deploy
-        .and_then(|d| d.gateway)
-        .unwrap_or(SLIRP_DEFAULT_GATEWAY);
-    let prefix = deploy
-        .and_then(|d| d.netmask)
-        .map(|m| u32::from_be_bytes(m).count_ones() as u8)
-        .unwrap_or(SLIRP_DEFAULT_PREFIX);
-    configure_entry_eth0(ip, prefix, gateway);
+fn entry_net_init(deploy: Option<&nros_platform::DeployOverlay>) -> crate::config::Config {
+    let cfg = match deploy {
+        Some(deploy) => crate::config::Config::default().with_deploy(deploy),
+        None => crate::config::Config::default(),
+    };
+    configure_entry_eth0(cfg.ip(), cfg.prefix(), cfg.gateway());
+    cfg
 }
 
 /// The SLIRP defaults an un-overridden entry pushes into `eth0`: this board's

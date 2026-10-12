@@ -36,15 +36,28 @@ include!(concat!(env!("OUT_DIR"), "/nros_board_net.rs"));
 
 impl Default for Config {
     /// The board's network defaults over the shared core (RFC-0103 D10).
+    ///
+    /// The connect pair also takes a build-time `NROS_LOCATOR` /
+    /// `NROS_DOMAIN_ID` (a fixture row's `env`, for a workspace image whose
+    /// `system.toml` states none). It is a BOARD-level default: the image's
+    /// own `[image.<id>] locator` / `domain_id` still win, applied by
+    /// [`Config::with_deploy`] (issue 1836).
     fn default() -> Self {
+        let base = BaseConfig::default();
         Self {
             base: BaseConfig {
                 ip: BOARD_NET_IP,
                 netmask: BOARD_NET_NETMASK,
                 gateway: BOARD_NET_GATEWAY,
                 mac: BOARD_NET_MAC,
-                zenoh_locator: BOARD_NET_LOCATOR,
-                ..BaseConfig::default()
+                zenoh_locator: match option_env!("NROS_LOCATOR") {
+                    Some(locator) => locator,
+                    None => BOARD_NET_LOCATOR,
+                },
+                domain_id: option_env!("NROS_DOMAIN_ID")
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(base.domain_id),
+                ..base
             },
         }
     }
@@ -135,6 +148,19 @@ impl Config {
     /// Builder: set ROS 2 domain ID.
     pub const fn with_domain_id(mut self, domain_id: u32) -> Self {
         self.base.domain_id = domain_id;
+        self
+    }
+
+    /// The image's deploy overlay (`system.toml` `[image.<id>]` `locator`,
+    /// `domain_id`, `ip`, `netmask`, `gateway`) over this config, field by
+    /// field — the one merge every embedded board makes
+    /// ([`BaseConfig::apply_overlay`]).
+    ///
+    /// Issue 1836 — NuttX was the one board that skipped it for the connect
+    /// pair, so an image's own locator never reached its session.
+    #[must_use]
+    pub fn with_deploy(mut self, deploy: &nros_platform::DeployOverlay) -> Self {
+        self.base.apply_overlay(deploy);
         self
     }
 
