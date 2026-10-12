@@ -2932,7 +2932,7 @@ rust-rtos-link-check: _codegen
     mapfile -t threadx_profile < <(nros_cargo_profile_args_for "$(nros_cargo_platform_profile threadx-linux)")
     assert_leaf_settings_included examples/threadx-linux/rust/talker
     ( cd examples/threadx-linux/rust/talker && \
-        cargo build "${threadx_profile[@]}" --no-default-features --features rmw-zenoh --target-dir target-zenoh ) >/dev/null
+        cargo build "${threadx_profile[@]}" --target-dir target-zenoh ) >/dev/null
     echo "Rust-RTOS link check OK."
 
 # Run CI: format check + clippy + every test tier (never modifies code).

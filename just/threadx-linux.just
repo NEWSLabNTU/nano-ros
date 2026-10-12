@@ -297,7 +297,7 @@ _run example:
     # and the run path come from ONE `nros_fixture_group` call, so the recipe
     # cannot look where it did not write (phase-340 item 7).
     source "{{justfile_directory()}}/scripts/build/fixtures-target-dir.sh"
-    args="--no-default-features --features rmw-zenoh"
+    args=""
     leaf="examples/threadx-linux/rust/{{example}}"
     tdir_flag="$(nros_fixture_target_dir_flag threadx-linux "$args" "")"
     artifact_dir="$(nros_fixture_row_artifact_dir "$leaf" threadx-linux "$args" "")"
