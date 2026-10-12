@@ -237,7 +237,7 @@ pub struct MessageNrosTemplate<'a> {
     pub has_fields: bool,
     /// True if any field is a large array (> 32 elements), requiring manual Default impl
     pub has_large_array: bool,
-    /// RFC-0033 `view` mode (Phase 229.6): true if any field resolves to
+    /// RFC-0033 `borrowed` mode (Phase 229.6): true if any field resolves to
     /// `mode = "view"`, which additionally emits a `{Msg}View<'a>` zero-copy
     /// view + a `{Msg}Borrow` marker alongside the owned `{Msg}`.
     pub has_view: bool,
@@ -289,7 +289,7 @@ pub struct ServiceNrosTemplate<'a> {
     pub resp_schema_helper_consts: String,
     pub resp_schema_fields_block: String,
     pub resp_schema_type_name: String,
-    /// Issue 0346 — RFC-0033 `view`: this payload has at least one field
+    /// Issue 0346 — RFC-0033 `borrowed`: this payload has at least one field
     /// that slices into the receive buffer, so a `_View` + `deserialize_view`
     /// is emitted beside the owned struct.
     pub has_view_request: bool,
@@ -401,7 +401,7 @@ pub struct ActionNrosTemplate<'a> {
     pub feedback_message_schema_helper_consts: String,
     pub feedback_message_schema_fields_block: String,
     pub feedback_message_schema_type_name: String,
-    /// Issue 0346 — RFC-0033 `view`: this payload has at least one field
+    /// Issue 0346 — RFC-0033 `borrowed`: this payload has at least one field
     /// that slices into the receive buffer, so a `_View` + `deserialize_view`
     /// is emitted beside the owned struct.
     pub has_view_goal: bool,
@@ -471,6 +471,20 @@ pub struct CField {
     /// `rclc_cdr_borrow_string`); all share one signature. Empty unless
     /// [`is_view`](Self::is_view).
     pub view_read_fn: String,
+    /// phase-492 W7 — a string member's `.msg` bound (`string<=N`), checked by
+    /// the serialiser in both directions; 0 = none.
+    pub str_bound: usize,
+    /// Bytes `__Storage` reserves for a string member, NUL included.
+    pub str_bytes: usize,
+    /// As [`str_bound`](Self::str_bound), for each string ELEMENT.
+    pub elem_str_bound: usize,
+    /// As [`str_bytes`](Self::str_bytes), for each string ELEMENT.
+    pub elem_str_bytes: usize,
+    /// A sequence's `.msg` bound (`T[<=N]`), checked in both directions; 0 =
+    /// none.
+    pub seq_bound: usize,
+    /// The C type of one element of an array or sequence; empty otherwise.
+    pub elem_type: String,
 }
 
 /// Constant for C code generation
@@ -486,6 +500,10 @@ pub struct MessageCHeaderTemplate<'a> {
     pub package_name: &'a str,
     pub message_name: &'a str,
     pub type_hash: &'a str,
+    /// `std_msgs` — the C identifier spelling of the package (phase-492 W7).
+    pub c_package_name: String,
+    /// `std_msgs/msg/string.h` — this header's rosidl include path.
+    pub include_path: String,
     pub guard_name: String,
     pub struct_name: String,
     pub constant_prefix: String,
@@ -539,12 +557,17 @@ pub struct MessageCSourceTemplate<'a> {
     pub package_name: &'a str,
     pub message_name: &'a str,
     pub type_hash: &'a str,
-    pub header_name: String,
+    /// See [`MessageCHeaderTemplate::c_package_name`].
+    pub c_package_name: String,
+    /// See [`MessageCHeaderTemplate::include_path`].
+    pub include_path: String,
     pub struct_name: String,
     pub fields: Vec<CField>,
     pub has_fields: bool,
     /// See [`MessageCHeaderTemplate::has_view`].
     pub has_view: bool,
+    /// The receive bound the descriptor carries (`None` = unbounded, 0).
+    pub rx_max_serialized_size: Option<usize>,
 }
 
 #[derive(serde::Serialize)]
@@ -552,6 +575,8 @@ pub struct ServiceCHeaderTemplate<'a> {
     pub package_name: &'a str,
     pub service_name: &'a str,
     pub type_hash: &'a str,
+    /// See [`MessageCHeaderTemplate::c_package_name`].
+    pub c_package_name: String,
     pub guard_name: String,
     pub service_struct_name: String,
     pub request_struct_name: String,
@@ -565,7 +590,7 @@ pub struct ServiceCHeaderTemplate<'a> {
     pub type_includes: Vec<String>,
     pub has_request_fields: bool,
     pub has_response_fields: bool,
-    /// Issue 0346 — RFC-0033 `view`: this payload has at least one field
+    /// Issue 0346 — RFC-0033 `borrowed`: this payload has at least one field
     /// that slices into the receive buffer, so a `_View` + `deserialize_view`
     /// is emitted beside the owned struct.
     pub has_view_request: bool,
@@ -577,7 +602,10 @@ pub struct ServiceCSourceTemplate<'a> {
     pub package_name: &'a str,
     pub service_name: &'a str,
     pub type_hash: &'a str,
-    pub header_name: String,
+    /// See [`MessageCHeaderTemplate::c_package_name`].
+    pub c_package_name: String,
+    /// `example_interfaces/srv/add_two_ints.h`.
+    pub include_path: String,
     pub service_struct_name: String,
     pub request_struct_name: String,
     pub response_struct_name: String,
@@ -585,7 +613,7 @@ pub struct ServiceCSourceTemplate<'a> {
     pub response_fields: Vec<CField>,
     pub has_request_fields: bool,
     pub has_response_fields: bool,
-    /// Issue 0346 — RFC-0033 `view`: this payload has at least one field
+    /// Issue 0346 — RFC-0033 `borrowed`: this payload has at least one field
     /// that slices into the receive buffer, so a `_View` + `deserialize_view`
     /// is emitted beside the owned struct.
     pub has_view_request: bool,
@@ -597,6 +625,8 @@ pub struct ActionCHeaderTemplate<'a> {
     pub package_name: &'a str,
     pub action_name: &'a str,
     pub type_hash: &'a str,
+    /// See [`MessageCHeaderTemplate::c_package_name`].
+    pub c_package_name: String,
     pub guard_name: String,
     pub action_struct_name: String,
     pub goal_struct_name: String,
@@ -614,7 +644,7 @@ pub struct ActionCHeaderTemplate<'a> {
     pub has_goal_fields: bool,
     pub has_result_fields: bool,
     pub has_feedback_fields: bool,
-    /// Issue 0346 — RFC-0033 `view`: this payload has at least one field
+    /// Issue 0346 — RFC-0033 `borrowed`: this payload has at least one field
     /// that slices into the receive buffer, so a `_View` + `deserialize_view`
     /// is emitted beside the owned struct.
     pub has_view_goal: bool,
@@ -627,7 +657,10 @@ pub struct ActionCSourceTemplate<'a> {
     pub package_name: &'a str,
     pub action_name: &'a str,
     pub type_hash: &'a str,
-    pub header_name: String,
+    /// See [`MessageCHeaderTemplate::c_package_name`].
+    pub c_package_name: String,
+    /// `example_interfaces/action/fibonacci.h`.
+    pub include_path: String,
     pub action_struct_name: String,
     pub goal_struct_name: String,
     pub result_struct_name: String,
@@ -638,7 +671,7 @@ pub struct ActionCSourceTemplate<'a> {
     pub has_goal_fields: bool,
     pub has_result_fields: bool,
     pub has_feedback_fields: bool,
-    /// Issue 0346 — RFC-0033 `view`: this payload has at least one field
+    /// Issue 0346 — RFC-0033 `borrowed`: this payload has at least one field
     /// that slices into the receive buffer, so a `_View` + `deserialize_view`
     /// is emitted beside the owned struct.
     pub has_view_goal: bool,

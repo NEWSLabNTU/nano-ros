@@ -41,7 +41,7 @@ static struct {
     rcl_service_t service;
     rclc_executor_t executor;
     server_context_t ctx;
-    example_interfaces_srv_add_two_ints_service_handler_t handler;
+    example_interfaces__srv__AddTwoInts__service_handler_t handler;
 } app;
 
 static rclc_logger_t g_logger;
@@ -84,8 +84,8 @@ static void emit(rcl_log_severity_t severity, const char* text, const char* file
 
 // Typed service callback: the generated handler decodes the request and encodes
 // the reply, so this body sees fields only.
-static void service_callback(const example_interfaces_srv_add_two_ints_request* request,
-                             example_interfaces_srv_add_two_ints_response* response,
+static void service_callback(const example_interfaces__srv__AddTwoInts_Request* request,
+                             example_interfaces__srv__AddTwoInts_Response* response,
                              void* context) {
     server_context_t* ctx = (server_context_t*)context;
     ctx->request_count++;
@@ -112,15 +112,15 @@ int nros_app_main(int argc, char** argv) {
     RCLC_CHECK_RET(rclc_node_init_default(&app.node, "add_two_ints_server", "/", &app.support), 1);
     g_logger = rclc_node_get_logger(&app.node);
 
-    RCLC_CHECK_RET(example_interfaces_srv_add_two_ints_service_handler_init(
+    RCLC_CHECK_RET(example_interfaces__srv__AddTwoInts__service_handler_init(
                        &app.handler, service_callback, &app.ctx),
                    1);
     RCLC_CHECK_RET(
-        example_interfaces_srv_add_two_ints_service_init(&app.service, &app.node, "/add_two_ints"),
+        example_interfaces__srv__AddTwoInts__service_init(&app.service, &app.node, "/add_two_ints"),
         1);
 
     RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support, 4), 1);
-    RCLC_CHECK_RET(example_interfaces_srv_add_two_ints_executor_add_service(
+    RCLC_CHECK_RET(example_interfaces__srv__AddTwoInts__executor_add_service(
                        &app.executor, &app.service, &app.handler),
                    1);
 

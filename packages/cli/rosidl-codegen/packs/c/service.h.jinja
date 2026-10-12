@@ -11,6 +11,9 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#include <rosidl_runtime_c/string.h>
+#include <rosidl_runtime_c/primitives_sequence.h>
+#include <rosidl_runtime_c/service_type_support_struct.h>
 #include <nros/types.h>
 {%- if has_view_request or has_view_response %}
 // Issue 0346 — borrowed views use rclc_view_str_t / the LE slice views.
@@ -19,98 +22,37 @@
 
 {% include "_codegen_version.jinja" %}
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 {%- for inc in type_includes %}
 #include "{{ inc }}"
 {%- endfor %}
 
-// ============================================================================
-// Request
-// ============================================================================
-
-// Request constants
-{%- for constant in request_constants %}
-#define {{ constant_prefix }}_REQUEST_{{ constant.name }} {{ constant.value }}
-{%- endfor %}
-
-/// {{ service_name }} request structure
-typedef struct {{ request_struct_name }} {
-{%- for field in request_fields %}
-    {{ field | c_type }} {{ field.name }}{{ field | c_array_suffix }};
-{%- endfor %}
-{%- if not has_request_fields %}
-    uint8_t _dummy; // Empty struct placeholder
-{%- endif %}
-} {{ request_struct_name }};
-
-/// Initialize a {{ service_name }} request to default values
-void {{ request_struct_name }}_init({{ request_struct_name }}* msg);
-/// Release heap-backed (`mode = "heap"`) fields; no-op without them (issue 0345).
-void {{ request_struct_name }}_fini({{ request_struct_name }}* msg);
-
-
-/// Serialize a {{ service_name }} request to CDR format
-/// Returns 0 on success, -1 on error. On success, *serialized_size contains
-/// bytes written (issue #228 — unified with the message convention).
-int32_t {{ request_struct_name }}_serialize(const {{ request_struct_name }}* msg, uint8_t* buffer, size_t buffer_size, size_t* serialized_size);
-
-/// Deserialize a {{ service_name }} request from CDR format
-/// Returns 0 on success, -1 on error
-int32_t {{ request_struct_name }}_deserialize({{ request_struct_name }}* msg, const uint8_t* buffer, size_t buffer_size);
-
-// ============================================================================
-// Response
-// ============================================================================
-
-// Response constants
-{%- for constant in response_constants %}
-#define {{ constant_prefix }}_RESPONSE_{{ constant.name }} {{ constant.value }}
-{%- endfor %}
-
-/// {{ service_name }} response structure
-typedef struct {{ response_struct_name }} {
-{%- for field in response_fields %}
-    {{ field | c_type }} {{ field.name }}{{ field | c_array_suffix }};
-{%- endfor %}
-{%- if not has_response_fields %}
-    uint8_t _dummy; // Empty struct placeholder
-{%- endif %}
-} {{ response_struct_name }};
-
-/// Initialize a {{ service_name }} response to default values
-void {{ response_struct_name }}_init({{ response_struct_name }}* msg);
-/// Release heap-backed (`mode = "heap"`) fields; no-op without them (issue 0345).
-void {{ response_struct_name }}_fini({{ response_struct_name }}* msg);
-
-
-/// Serialize a {{ service_name }} response to CDR format
-/// Returns 0 on success, -1 on error. On success, *serialized_size contains
-/// bytes written (issue #228 — unified with the message convention).
-int32_t {{ response_struct_name }}_serialize(const {{ response_struct_name }}* msg, uint8_t* buffer, size_t buffer_size, size_t* serialized_size);
-
-/// Deserialize a {{ service_name }} response from CDR format
-/// Returns 0 on success, -1 on error
-int32_t {{ response_struct_name }}_deserialize({{ response_struct_name }}* msg, const uint8_t* buffer, size_t buffer_size);
+#ifdef __cplusplus
+extern "C" {
+#endif
+{{ c.payload_h(request_struct_name, service_name ~ " request", request_fields, has_request_fields, request_constants, has_view_request) }}
+{{ c.payload_h(response_struct_name, service_name ~ " response", response_fields, has_response_fields, response_constants, has_view_response) }}
 
 // ============================================================================
 // Service Type Support
 // ============================================================================
 
 /// Get the ROS type name for {{ service_name }}
-static inline const char* {{ service_struct_name }}_get_type_name(void) {
+static inline const char* {{ service_struct_name }}__get_type_name(void) {
     return "{{ package_name }}::srv::dds_::{{ service_name }}_";
 }
 
 /// Get the type hash for {{ service_name }}
-static inline const char* {{ service_struct_name }}_get_type_hash(void) {
+static inline const char* {{ service_struct_name }}__get_type_hash(void) {
     return "{{ type_hash }}";
 }
 
-/// Get the rclc_service_type_t for this service type
-const struct rclc_service_type_t* {{ service_struct_name }}_get_type_support(void);
+/// The type descriptor for {{ service_name }}: name, hash and the request and
+/// response codecs. Reach it the way rosidl code does:
+///
+///     ROSIDL_GET_SRV_TYPE_SUPPORT({{ c_package_name }}, srv, {{ service_name }})
+///
+/// which is `&{{ service_struct_name }}__nros_type` (phase-492 W8).
+extern const struct rclc_service_type_t {{ service_struct_name }}__nros_type;
 
 // ============================================================================
 // Typed service path (phase-417 W5.e)
@@ -159,9 +101,9 @@ const struct rclc_service_type_t* {{ service_struct_name }}_get_type_support(voi
 ///
 /// `request` is fully deserialized and valid for the duration of the call;
 /// `response` is zero-initialized and yours to fill. Both point into the
-/// {{ service_struct_name }}_service_handler_t you registered, so neither
+/// {{ service_struct_name }}__service_handler_t you registered, so neither
 /// outlives this call — copy out anything you retain.
-typedef void (*{{ service_struct_name }}_handler_fn_t)(
+typedef void (*{{ service_struct_name }}__handler_fn_t)(
     const {{ request_struct_name }}* request, {{ response_struct_name }}* response, void* context);
 
 /// Caller-owned storage + callback for a typed {{ service_name }} server.
@@ -170,41 +112,46 @@ typedef void (*{{ service_struct_name }}_handler_fn_t)(
 /// has (static, or a struct member alongside the `rcl_service_t`). It must
 /// outlive the service.
 ///
-/// Heap fields (RFC-0033 `mode = "heap"`): the trampoline `_init`s both structs
-/// before your handler runs and `_fini`s both after it returns, so a heap field
-/// you assign on the response must be a pointer `nros_platform_free` can
-/// release — the same contract `{{ response_struct_name }}_fini` documents.
-typedef struct {{ service_struct_name }}_service_handler_t {
+/// Nothing here allocates: both payloads point at the `__Storage` members
+/// beside them (phase-492 W7). A response string or sequence your handler
+/// points elsewhere must outlive the call, because the reply is serialized
+/// after your handler returns.
+typedef struct {{ service_struct_name }}__service_handler_t {
     /// Your typed handler. Installed by
-    /// {{ service_struct_name }}_service_handler_init().
-    {{ service_struct_name }}_handler_fn_t callback;
+    /// {{ service_struct_name }}__service_handler_init().
+    {{ service_struct_name }}__handler_fn_t callback;
     /// Forwarded to `callback` verbatim.
     void* context;
-    /// Request storage the trampoline deserializes into.
+    /// Request the trampoline deserializes into, wired to `request_storage`.
     {{ request_struct_name }} request;
-    /// Response storage your handler fills.
+    /// Response your handler fills, re-wired to `response_storage` before each
+    /// call.
     {{ response_struct_name }} response;
+    /// The bytes behind `request`'s strings and sequences.
+    {{ request_struct_name }}__Storage request_storage;
+    /// The bytes behind `response`'s strings and sequences.
+    {{ response_struct_name }}__Storage response_storage;
     /// Last NROS_SERVICE_TYPED_* code; RCLC_SERVICE_TYPED_OK after a good call.
     int32_t last_error;
     /// Count of refused requests since init. Monotonic.
     uint32_t error_count;
-} {{ service_struct_name }}_service_handler_t;
+} {{ service_struct_name }}__service_handler_t;
 
 /// Install `callback` + `context` and zero both payload structs.
 ///
 /// Returns RCL_RET_INVALID_ARGUMENT if `handler` or `callback` is NULL — a
 /// handler with no callback can only ever refuse, so it is rejected here rather
 /// than at the first request.
-static inline rcl_ret_t {{ service_struct_name }}_service_handler_init(
-    {{ service_struct_name }}_service_handler_t* handler,
-    {{ service_struct_name }}_handler_fn_t callback, void* context) {
+static inline rcl_ret_t {{ service_struct_name }}__service_handler_init(
+    {{ service_struct_name }}__service_handler_t* handler,
+    {{ service_struct_name }}__handler_fn_t callback, void* context) {
     if (handler == NULL || callback == NULL) {
         return RCL_RET_INVALID_ARGUMENT;
     }
     handler->callback = callback;
     handler->context = context;
-    {{ request_struct_name }}_init(&handler->request);
-    {{ response_struct_name }}_init(&handler->response);
+    {{ request_struct_name }}__init_in(&handler->request, &handler->request_storage);
+    {{ response_struct_name }}__init_in(&handler->response, &handler->response_storage);
     handler->last_error = RCLC_SERVICE_TYPED_OK;
     handler->error_count = 0;
     return RCL_RET_OK;
@@ -212,42 +159,38 @@ static inline rcl_ret_t {{ service_struct_name }}_service_handler_init(
 
 /// The `rclc_service_callback_t` the executor actually calls. Not for direct
 /// use — pass it, with a handler as `context`, via
-/// {{ service_struct_name }}_service_init() below.
-static inline bool {{ service_struct_name }}_service_handle_request(
+/// {{ service_struct_name }}__service_init() below.
+static inline bool {{ service_struct_name }}__service_handle_request(
     const uint8_t* request_data, size_t request_len, uint8_t* response_data,
     size_t response_capacity, size_t* response_len, void* context) {
-    {{ service_struct_name }}_service_handler_t* handler =
-        ({{ service_struct_name }}_service_handler_t*) context;
+    {{ service_struct_name }}__service_handler_t* handler =
+        ({{ service_struct_name }}__service_handler_t*) context;
     if (response_len != NULL) {
         *response_len = 0;
     }
     if (handler == NULL || handler->callback == NULL) {
         rclc_service_typed_report_error(RCLC_SERVICE_TYPED_ERR_NO_CALLBACK,
-                                        {{ service_struct_name }}_get_type_name());
+                                        {{ service_struct_name }}__get_type_name());
         return false;
     }
 
-    {{ request_struct_name }}_init(&handler->request);
-    if ({{ request_struct_name }}_deserialize(&handler->request, request_data, request_len) != 0) {
-        /* A half-decoded request is not a request. Release whatever the partial
-           decode allocated, refuse, and say so — the executor sends nothing on
-           `false`, so the peer sees a timeout rather than a wrong answer. */
-        {{ request_struct_name }}_fini(&handler->request);
+    if ({{ request_struct_name }}__deserialize(&handler->request, request_data, request_len) != 0) {
+        /* A half-decoded request is not a request. Refuse, and say so — the
+           executor sends nothing on `false`, so the peer sees a timeout rather
+           than a wrong answer. */
         handler->last_error = RCLC_SERVICE_TYPED_ERR_REQUEST_DESERIALIZE;
         handler->error_count++;
         rclc_service_typed_report_error(handler->last_error,
-                                        {{ service_struct_name }}_get_type_name());
+                                        {{ service_struct_name }}__get_type_name());
         return false;
     }
 
-    {{ response_struct_name }}_init(&handler->response);
+    {{ response_struct_name }}__init_in(&handler->response, &handler->response_storage);
     handler->callback(&handler->request, &handler->response, handler->context);
 
     size_t written = 0;
-    int32_t rc = {{ response_struct_name }}_serialize(&handler->response, response_data,
+    int32_t rc = {{ response_struct_name }}__serialize(&handler->response, response_data,
                                                       response_capacity, &written);
-    {{ request_struct_name }}_fini(&handler->request);
-    {{ response_struct_name }}_fini(&handler->response);
     if (rc != 0) {
         /* Oversized (or otherwise unencodable). `_serialize` writes only what
            fits and reports -1; forwarding `written` here would put a truncated
@@ -255,7 +198,7 @@ static inline bool {{ service_struct_name }}_service_handle_request(
         handler->last_error = RCLC_SERVICE_TYPED_ERR_RESPONSE_SERIALIZE;
         handler->error_count++;
         rclc_service_typed_report_error(handler->last_error,
-                                        {{ service_struct_name }}_get_type_name());
+                                        {{ service_struct_name }}__get_type_name());
         return false;
     }
     if (response_len != NULL) {
@@ -267,12 +210,11 @@ static inline bool {{ service_struct_name }}_service_handle_request(
 
 /// Create a typed {{ service_name }} server: `rclc_service_init_with_qos` with
 /// this type's support and the services default QoS. Register it, with its
-/// handler, through {{ service_struct_name }}_executor_add_service().
-static inline rcl_ret_t {{ service_struct_name }}_service_init(
+/// handler, through {{ service_struct_name }}__executor_add_service().
+static inline rcl_ret_t {{ service_struct_name }}__service_init(
     struct rcl_service_t* service, const struct rcl_node_t* node, const char* service_name) {
-    return rclc_service_init_with_qos(service, node,
-                                      {{ service_struct_name }}_get_type_support(), service_name,
-                                      NULL);
+    return rclc_service_init_with_qos(service, node, &{{ service_struct_name }}__nros_type,
+                                      service_name, NULL);
 }
 
 /// Add a typed {{ service_name }} server to an executor: the forwarder onto
@@ -282,18 +224,18 @@ static inline rcl_ret_t {{ service_struct_name }}_service_init(
 /// request and response storage live in the handler here.
 ///
 /// phase-487 W2 — the trampoline used to be bound at CREATION, by
-/// {{ service_struct_name }}_service_init(), and stored in the service struct
+/// {{ service_struct_name }}__service_init(), and stored in the service struct
 /// until registration. The executor arena owns a dispatched server's callback
 /// now and the struct keeps none, so the binding moved here, which is also
 /// where rclc binds its handler. The handler must outlive the registration.
-static inline rcl_ret_t {{ service_struct_name }}_executor_add_service(
+static inline rcl_ret_t {{ service_struct_name }}__executor_add_service(
     struct rclc_executor_t* executor, struct rcl_service_t* service,
-    {{ service_struct_name }}_service_handler_t* handler) {
+    {{ service_struct_name }}__service_handler_t* handler) {
     if (handler == NULL || handler->callback == NULL) {
         return RCL_RET_INVALID_ARGUMENT;
     }
     return rclc_executor_add_service_raw(executor, service,
-                                         {{ service_struct_name }}_service_handle_request, handler);
+                                         {{ service_struct_name }}__service_handle_request, handler);
 }
 
 // ============================================================================
@@ -306,84 +248,81 @@ static inline rcl_ret_t {{ service_struct_name }}_executor_add_service(
 // same reason.
 //
 // The two send/take helpers take a CALLER-SUPPLIED scratch buffer rather than
-// declaring one internally. `<Msg>_publish` can size its own because the
-// message pack emits {{ constant_prefix }}-style TX/RX bounds; the service pack
+// declaring one internally. A message's serialiser buffer can be sized because the
+// message pack emits `__TX_MAX_SERIALIZED_SIZE`-style bounds; the service pack
 // emits none yet (see the report for phase-417 W5.e), and a `static inline`
 // with a hidden 256-byte array is exactly the cliff issue 0896 removed from the
 // message path. An explicit buffer has no cliff and no allocator.
 
 /// Typed response handler for {{ service_name }}.
 ///
-/// `response` points into the {{ service_struct_name }}_client_handler_t you
+/// `response` points into the {{ service_struct_name }}__client_handler_t you
 /// registered and does not outlive the call.
-typedef void (*{{ service_struct_name }}_response_fn_t)(
+typedef void (*{{ service_struct_name }}__response_fn_t)(
     const {{ response_struct_name }}* response, void* context);
 
 /// Caller-owned response storage + callback for a typed {{ service_name }}
 /// client. Must outlive the client.
-typedef struct {{ service_struct_name }}_client_handler_t {
-    {{ service_struct_name }}_response_fn_t callback;
+typedef struct {{ service_struct_name }}__client_handler_t {
+    {{ service_struct_name }}__response_fn_t callback;
     void* context;
     {{ response_struct_name }} response;
+    {{ response_struct_name }}__Storage response_storage;
     int32_t last_error;
     uint32_t error_count;
-} {{ service_struct_name }}_client_handler_t;
+} {{ service_struct_name }}__client_handler_t;
 
 /// Install `callback` + `context` and zero the response storage.
-static inline rcl_ret_t {{ service_struct_name }}_client_handler_init(
-    {{ service_struct_name }}_client_handler_t* handler,
-    {{ service_struct_name }}_response_fn_t callback, void* context) {
+static inline rcl_ret_t {{ service_struct_name }}__client_handler_init(
+    {{ service_struct_name }}__client_handler_t* handler,
+    {{ service_struct_name }}__response_fn_t callback, void* context) {
     if (handler == NULL || callback == NULL) {
         return RCL_RET_INVALID_ARGUMENT;
     }
     handler->callback = callback;
     handler->context = context;
-    {{ response_struct_name }}_init(&handler->response);
+    {{ response_struct_name }}__init_in(&handler->response, &handler->response_storage);
     handler->last_error = RCLC_SERVICE_TYPED_OK;
     handler->error_count = 0;
     return RCL_RET_OK;
 }
 
 /// The `rclc_response_callback_t` the executor calls. Not for direct use —
-/// install it with {{ service_struct_name }}_client_set_response_callback().
-static inline void {{ service_struct_name }}_client_handle_response(const uint8_t* response,
+/// install it with {{ service_struct_name }}__client_set_response_callback().
+static inline void {{ service_struct_name }}__client_handle_response(const uint8_t* response,
                                                                     size_t response_len,
                                                                     void* context) {
-    {{ service_struct_name }}_client_handler_t* handler =
-        ({{ service_struct_name }}_client_handler_t*) context;
+    {{ service_struct_name }}__client_handler_t* handler =
+        ({{ service_struct_name }}__client_handler_t*) context;
     if (handler == NULL || handler->callback == NULL) {
         rclc_service_typed_report_error(RCLC_SERVICE_TYPED_ERR_NO_CALLBACK,
-                                        {{ service_struct_name }}_get_type_name());
+                                        {{ service_struct_name }}__get_type_name());
         return;
     }
-    {{ response_struct_name }}_init(&handler->response);
-    if ({{ response_struct_name }}_deserialize(&handler->response, response, response_len) != 0) {
-        {{ response_struct_name }}_fini(&handler->response);
-        {{ response_struct_name }}_init(&handler->response);
+    if ({{ response_struct_name }}__deserialize(&handler->response, response, response_len) != 0) {
         handler->last_error = RCLC_SERVICE_TYPED_ERR_RESPONSE_DESERIALIZE;
         handler->error_count++;
         rclc_service_typed_report_error(handler->last_error,
-                                        {{ service_struct_name }}_get_type_name());
-        /* The user callback is NOT invoked. Handing it a zeroed struct would be
-           indistinguishable from a server that answered with defaults. */
+                                        {{ service_struct_name }}__get_type_name());
+        /* The user callback is NOT invoked. Handing it a half-decoded struct
+           would be indistinguishable from a server that answered it. */
         return;
     }
     handler->last_error = RCLC_SERVICE_TYPED_OK;
     handler->callback(&handler->response, handler->context);
-    {{ response_struct_name }}_fini(&handler->response);
 }
 
 /// Route this client's replies through the typed handler. The client must
 /// already be added (`rclc_executor_add_client`): since phase-487 W2 the
 /// executor arena owns the response callback, so there is nowhere to keep it
 /// before registration (`RCL_RET_NOT_INIT`).
-static inline rcl_ret_t {{ service_struct_name }}_client_set_response_callback(
-    struct rcl_client_t* client, {{ service_struct_name }}_client_handler_t* handler) {
+static inline rcl_ret_t {{ service_struct_name }}__client_set_response_callback(
+    struct rcl_client_t* client, {{ service_struct_name }}__client_handler_t* handler) {
     if (handler == NULL || handler->callback == NULL) {
         return RCL_RET_INVALID_ARGUMENT;
     }
     return rclc_client_set_response_callback(
-        client, {{ service_struct_name }}_client_handle_response, handler);
+        client, {{ service_struct_name }}__client_handle_response, handler);
 }
 
 /// Serialize `request` into `scratch` and send it asynchronously.
@@ -393,16 +332,16 @@ static inline rcl_ret_t {{ service_struct_name }}_client_set_response_callback(
 /// RCLC_SERVICE_TYPED_ERR_REQUEST_SERIALIZE is reported and
 /// RCL_RET_INVALID_ARGUMENT returned when the request does not fit; nothing is
 /// sent.
-static inline rcl_ret_t {{ service_struct_name }}_client_send_request(
+static inline rcl_ret_t {{ service_struct_name }}__client_send_request(
     struct rcl_client_t* client, const {{ request_struct_name }}* request, uint8_t* scratch,
     size_t scratch_size) {
     size_t written = 0;
     if (request == NULL || scratch == NULL) {
         return RCL_RET_INVALID_ARGUMENT;
     }
-    if ({{ request_struct_name }}_serialize(request, scratch, scratch_size, &written) != 0) {
+    if ({{ request_struct_name }}__serialize(request, scratch, scratch_size, &written) != 0) {
         rclc_service_typed_report_error(RCLC_SERVICE_TYPED_ERR_REQUEST_SERIALIZE,
-                                        {{ service_struct_name }}_get_type_name());
+                                        {{ service_struct_name }}__get_type_name());
         return RCL_RET_INVALID_ARGUMENT;
     }
     return rclc_client_send_request_async(client, scratch, written);
@@ -411,10 +350,11 @@ static inline rcl_ret_t {{ service_struct_name }}_client_send_request(
 /// Poll for the reply and deserialize it into caller-owned `response`.
 ///
 /// Returns RCLC_RET_TRY_AGAIN while no reply has arrived — the same code
-/// `rclc_client_take_response` uses, so a polling loop is unchanged. On a CDR
-/// failure `response` is left zeroed rather than half-filled, and
-/// RCLC_SERVICE_TYPED_ERR_RESPONSE_DESERIALIZE is reported.
-static inline rcl_ret_t {{ service_struct_name }}_client_take_response(
+/// `rclc_client_take_response` uses, so a polling loop is unchanged. `response`
+/// must be wired ({{ response_struct_name }}__init_in). On a CDR failure
+/// RCLC_SERVICE_TYPED_ERR_RESPONSE_DESERIALIZE is reported and RCL_RET_ERROR
+/// returned; `response` is then not a reply.
+static inline rcl_ret_t {{ service_struct_name }}__client_take_response(
     struct rcl_client_t* client, {{ response_struct_name }}* response, uint8_t* scratch,
     size_t scratch_size) {
     size_t received = 0;
@@ -426,12 +366,9 @@ static inline rcl_ret_t {{ service_struct_name }}_client_take_response(
     if (ret != RCL_RET_OK) {
         return ret;
     }
-    {{ response_struct_name }}_init(response);
-    if ({{ response_struct_name }}_deserialize(response, scratch, received) != 0) {
-        {{ response_struct_name }}_fini(response);
-        {{ response_struct_name }}_init(response);
+    if ({{ response_struct_name }}__deserialize(response, scratch, received) != 0) {
         rclc_service_typed_report_error(RCLC_SERVICE_TYPED_ERR_RESPONSE_DESERIALIZE,
-                                        {{ service_struct_name }}_get_type_name());
+                                        {{ service_struct_name }}__get_type_name());
         return RCL_RET_ERROR;
     }
     return RCL_RET_OK;
@@ -443,7 +380,7 @@ static inline rcl_ret_t {{ service_struct_name }}_client_take_response(
 ///
 /// Two scratch buffers because the request and the reply are on the wire at the
 /// same time; neither is retained past the call.
-static inline rcl_ret_t {{ service_struct_name }}_client_call(
+static inline rcl_ret_t {{ service_struct_name }}__client_call(
     struct rcl_client_t* client, const {{ request_struct_name }}* request,
     {{ response_struct_name }}* response, uint8_t* request_scratch, size_t request_scratch_size,
     uint8_t* response_scratch, size_t response_scratch_size) {
@@ -454,10 +391,10 @@ static inline rcl_ret_t {{ service_struct_name }}_client_call(
         response_scratch == NULL) {
         return RCL_RET_INVALID_ARGUMENT;
     }
-    if ({{ request_struct_name }}_serialize(request, request_scratch, request_scratch_size,
+    if ({{ request_struct_name }}__serialize(request, request_scratch, request_scratch_size,
                                             &written) != 0) {
         rclc_service_typed_report_error(RCLC_SERVICE_TYPED_ERR_REQUEST_SERIALIZE,
-                                        {{ service_struct_name }}_get_type_name());
+                                        {{ service_struct_name }}__get_type_name());
         return RCL_RET_INVALID_ARGUMENT;
     }
     ret = rclc_client_call(client, request_scratch, written, response_scratch,
@@ -465,12 +402,9 @@ static inline rcl_ret_t {{ service_struct_name }}_client_call(
     if (ret != RCL_RET_OK) {
         return ret;
     }
-    {{ response_struct_name }}_init(response);
-    if ({{ response_struct_name }}_deserialize(response, response_scratch, received) != 0) {
-        {{ response_struct_name }}_fini(response);
-        {{ response_struct_name }}_init(response);
+    if ({{ response_struct_name }}__deserialize(response, response_scratch, received) != 0) {
         rclc_service_typed_report_error(RCLC_SERVICE_TYPED_ERR_RESPONSE_DESERIALIZE,
-                                        {{ service_struct_name }}_get_type_name());
+                                        {{ service_struct_name }}__get_type_name());
         return RCL_RET_ERROR;
     }
     return RCL_RET_OK;
@@ -479,35 +413,5 @@ static inline rcl_ret_t {{ service_struct_name }}_client_call(
 #ifdef __cplusplus
 }
 #endif
-
-{%- if has_view_request %}
-
-/// Borrowed (zero-copy) view of {{ request_struct_name }} (RFC-0033 `view`, issue 0346).
-/// Borrowed fields point into the source buffer — the raw service/action callback
-/// bytes — and are valid ONLY while it lives. Copy out anything retained.
-typedef struct {{ request_struct_name }}_View {
-{%- for field in request_fields %}
-{{- c.view_field_decl(field) }}
-{%- endfor %}
-} {{ request_struct_name }}_View;
-
-/// Deserialize into a borrowed view (no allocation, so no `_fini` is required).
-int32_t {{ request_struct_name }}_deserialize_view({{ request_struct_name }}_View* out, const uint8_t* buffer, size_t buffer_size);
-{%- endif %}
-
-{%- if has_view_response %}
-
-/// Borrowed (zero-copy) view of {{ response_struct_name }} (RFC-0033 `view`, issue 0346).
-/// Borrowed fields point into the source buffer — the raw service/action callback
-/// bytes — and are valid ONLY while it lives. Copy out anything retained.
-typedef struct {{ response_struct_name }}_View {
-{%- for field in response_fields %}
-{{- c.view_field_decl(field) }}
-{%- endfor %}
-} {{ response_struct_name }}_View;
-
-/// Deserialize into a borrowed view (no allocation, so no `_fini` is required).
-int32_t {{ response_struct_name }}_deserialize_view({{ response_struct_name }}_View* out, const uint8_t* buffer, size_t buffer_size);
-{%- endif %}
 
 #endif // {{ guard_name }}

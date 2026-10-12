@@ -45,7 +45,10 @@ static struct {
     rclc_executor_t executor;
     // The message the callback is handed: the executor deserializes INTO it
     // (rclc's shape), so it must outlive the subscription — trivially true here.
-    std_msgs_msg_string msg;
+    std_msgs__msg__String msg;
+    // The bytes behind `msg.data` (phase-492 W7): the deserializer writes into
+    // the `capacity` these give and refuses a longer sample. Nothing allocates.
+    std_msgs__msg__String__Storage msg_storage;
 } app;
 
 static rclc_logger_t g_logger;
@@ -66,15 +69,15 @@ static void emit(rcl_log_severity_t severity, const char* text, const char* file
 // rclc's callback shape: a DESERIALIZED message. A sample that cannot be decoded
 // into `app.msg` never reaches here — the executor drops and counts it.
 static void subscription_callback(const void* msgin, void* context) {
-    const std_msgs_msg_string* msg = (const std_msgs_msg_string*)msgin;
+    const std_msgs__msg__String* msg = (const std_msgs__msg__String*)msgin;
     listener_context_t* ctx = (listener_context_t*)context;
     ctx->message_count++;
 
     // The marker the e2e greps for (`nros_tests::output` owns the constant),
     // sized from the payload's own bound plus the decoration.
-    char line[sizeof(msg->data) + 16u];
+    char line[sizeof(app.msg_storage.data) + 16u];
     size_t len = append_str(line, sizeof(line), 0u, "I heard: [");
-    len = append_str(line, sizeof(line), len, msg->data);
+    len = append_str(line, sizeof(line), len, msg->data.data);
     len = append_str(line, sizeof(line), len, "]");
     line[len] = '\0';
     emit(RCLC_LOG_SEVERITY_INFO, line, __FILE__, __LINE__);
@@ -92,13 +95,14 @@ int nros_app_main(int argc, char** argv) {
     RCLC_CHECK_RET(rclc_node_init_default(&app.node, "listener", "/", &app.support), 1);
     g_logger = rclc_node_get_logger(&app.node);
 
-    RCLC_CHECK_RET(rclc_subscription_init_default(&app.subscription, &app.node,
-                                                  std_msgs_msg_string_get_type_support(),
-                                                  "/chatter"),
+    RCLC_CHECK_RET(rclc_subscription_init_default(
+                       &app.subscription, &app.node,
+                       ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String), "/chatter"),
                    1);
 
     RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support, 4), 1);
-    RCLC_CHECK_RET(std_msgs_msg_string_executor_add_subscription(
+    std_msgs__msg__String__init_in(&app.msg, &app.msg_storage);
+    RCLC_CHECK_RET(rclc_executor_add_subscription_with_context(
                        &app.executor, &app.subscription, &app.msg, subscription_callback,
                        &app.listener_ctx, RCLC_EXECUTOR_ON_NEW_DATA),
                    1);

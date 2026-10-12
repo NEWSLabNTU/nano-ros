@@ -49,7 +49,7 @@ int nros_app_main(int argc, char** argv) {
 
     // Polling-mode subscription — the validated receive path is poll-only.
     RCLC_CHECK_RET(rclc_polling_subscription_init(&app.subscription, &app.node,
-                                                  std_msgs_msg_int32_get_type_support(),
+                                                  ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
                                                   "/chatter"),
                    1);
     printf("Waiting for Int32 messages on /chatter...\n");
@@ -61,9 +61,9 @@ int nros_app_main(int argc, char** argv) {
         int32_t n =
             rclc_polling_subscription_take_validated(&app.subscription, buf, sizeof(buf), &status);
         if (n > 0) {
-            std_msgs_msg_int32 msg;
-            std_msgs_msg_int32_init(&msg);
-            if (std_msgs_msg_int32_deserialize(&msg, buf, (size_t)n) == 0) {
+            std_msgs__msg__Int32 msg;
+            memset(&msg, 0, sizeof(msg));
+            if (std_msgs__msg__Int32__deserialize(&msg, buf, (size_t)n) == 0) {
                 count++;
                 const char* crc = status.crc_valid == 1   ? "ok"
                                   : status.crc_valid == 0 ? "FAIL"

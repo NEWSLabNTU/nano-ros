@@ -1346,7 +1346,7 @@ pub type RawSubscriptionCallback =
 /// `msg` must point to writable storage of the type this deserialiser was
 /// generated for; `buffer` is valid for `buffer_size` bytes during the call.
 pub type RawMessageDeserializeFn =
-    unsafe extern "C" fn(msg: *mut core::ffi::c_void, buffer: *const u8, buffer_size: usize) -> i32;
+    unsafe extern "C" fn(buffer: *const u8, buffer_size: usize, msg: *mut core::ffi::c_void) -> i32;
 
 /// phase-417 W5.a — a subscription callback that receives the DESERIALISED
 /// message rather than its CDR bytes.

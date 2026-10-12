@@ -33,7 +33,7 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=scripts/lib/grep-q.sh
 source "$root/scripts/lib/grep-q.sh"
-golden="$root/packages/cli/rosidl-codegen/tests/fixtures/fingerprint-corpus/expected/inline/Shapes.h"
+golden="$root/packages/cli/rosidl-codegen/tests/fixtures/fingerprint-corpus/expected/inline/fingerprint_corpus/msg/shapes.h"
 [ -r "$golden" ] || { echo "FAIL: no golden header at $golden" >&2; exit 1; }
 
 for tool in gcc g++; do
@@ -210,7 +210,7 @@ else
     gen="$work/gen"
     mkdir -p "$gen/msg"
     printf 'int32 v\n' > "$gen/msg/Tiny.msg"
-    hdr_rel="nano_ros_c/probe_pkg/msg/probe_pkg_msg_tiny.h"
+    hdr_rel="nano_ros_c/probe_pkg/msg/tiny.h"
     cat > "$gen/CMakeLists.txt" <<CMAKE
 cmake_minimum_required(VERSION 3.20)
 project(nros_codegen_freshness_probe C)

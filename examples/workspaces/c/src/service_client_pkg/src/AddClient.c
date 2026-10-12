@@ -28,14 +28,14 @@ typedef struct {
 } add_client_t;
 
 static void send_next(add_client_t* self) {
-    example_interfaces_srv_add_two_ints_request req;
-    example_interfaces_srv_add_two_ints_request_init(&req);
+    example_interfaces__srv__AddTwoInts_Request req;
+    memset(&req, 0, sizeof(req));
     req.a = self->a;
     req.b = 1;
     uint8_t buf[64];
     size_t n = 0;
     int32_t n_rc =
-        example_interfaces_srv_add_two_ints_request_serialize(&req, buf, sizeof(buf), &n);
+        example_interfaces__srv__AddTwoInts_Request__serialize(&req, buf, sizeof(buf), &n);
     if (n_rc == 0 && nros_cpp_service_client_send_request(self->client, buf, n) == 0) {
         self->in_flight = true;
         self->waits = 0;
@@ -51,17 +51,17 @@ static void on_tick(void* ctx) {
         size_t rlen = 0;
         if (nros_cpp_service_client_take_response(self->client, resp, sizeof(resp), &rlen) == 0 &&
             rlen > 0) {
-            example_interfaces_srv_add_two_ints_response r;
-            if (example_interfaces_srv_add_two_ints_response_deserialize(&r, resp, rlen) == 0) {
+            example_interfaces__srv__AddTwoInts_Response r;
+            if (example_interfaces__srv__AddTwoInts_Response__deserialize(&r, resp, rlen) == 0) {
                 self->in_flight = false;
                 printf("[service_client_pkg] sum: %lld\n", (long long)r.sum);
                 /* republish the result on /sum (std_msgs/Int32, generated serializer) */
-                std_msgs_msg_int32 sum_msg;
-                std_msgs_msg_int32_init(&sum_msg);
+                std_msgs__msg__Int32 sum_msg;
+                memset(&sum_msg, 0, sizeof(sum_msg));
                 sum_msg.data = (int32_t)r.sum;
                 uint8_t pbuf[16];
                 size_t plen = 0;
-                if (std_msgs_msg_int32_serialize(&sum_msg, pbuf, sizeof(pbuf), &plen) == 0) {
+                if (std_msgs__msg__Int32__serialize(&sum_msg, pbuf, sizeof(pbuf), &plen) == 0) {
                     (void)nros_cpp_publish_raw(self->pub, pbuf, plen);
                 }
             }
@@ -84,13 +84,13 @@ static rcl_ret_t add_client_configure(const nros_cpp_node_t* node, void* executo
     self->waits = 0;
 
     int32_t rc = nros_cpp_service_client_create(
-        node, "/add_two_ints", example_interfaces_srv_add_two_ints_get_type_name(),
-        example_interfaces_srv_add_two_ints_get_type_hash(), rclc_c_qos_default(), self->client);
+        node, "/add_two_ints", example_interfaces__srv__AddTwoInts__get_type_name(),
+        example_interfaces__srv__AddTwoInts__get_type_hash(), rclc_c_qos_default(), self->client);
     if (rc != 0) {
         return rc;
     }
-    rc = nros_cpp_publisher_create(node, "/sum", std_msgs_msg_int32_get_type_name(),
-                                   std_msgs_msg_int32_get_type_hash(), rclc_c_qos_default(),
+    rc = nros_cpp_publisher_create(node, "/sum", std_msgs__msg__Int32__get_type_name(),
+                                   std_msgs__msg__Int32__get_type_hash(), rclc_c_qos_default(),
                                    self->pub);
     if (rc != 0) {
         return rc;

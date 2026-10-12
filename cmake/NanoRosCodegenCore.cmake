@@ -815,8 +815,8 @@ endfunction()
 # three lists (headers / C sources / Rust FFI `.rs`) in the caller's scope.
 # CPP: `<pkg>_<kind>_<name>.hpp` + a split `_types.rs`+`_exports.rs` pair per
 # part (phase-306 W1: msg→1 pair, srv→request+response, action→goal+result+
-# feedback) + the `<pkg>.hpp` umbrella + `mod.rs`. C:
-# `<pkg>_<kind>_<name>.{h,c}` + the `<pkg>.h` umbrella. Names are CamelCase→snake,
+# feedback) + the `<pkg>.hpp` umbrella + `mod.rs`. C (phase-492 W7, rosidl's
+# names): `<kind>/<rosidl_snake>.{h,c}` + the `<pkg>.h` umbrella. Names are CamelCase→snake,
 # package `-`→`_`. The canonical generator feeds these to add_custom_command
 # OUTPUT (must match codegen exactly); the Zephyr generator concatenates them for
 # its mtime "needs-regen" check.
@@ -841,6 +841,13 @@ function(_nros_predict_generated_outputs _hdr_var _src_var _rs_var)
             message(FATAL_ERROR "_nros_predict_generated_outputs: unknown interface extension '${_ext}' (${_file})")
         endif()
         set(_base "${_P_OUTPUT_DIR}/${_kind}/${_c_pkg}_${_kind}_${_name_lower}")
+        # phase-492 W7 — C takes rosidl's file names: `<kind>/<rosidl_snake>.{h,c}`,
+        # rosidl's `convert_camel_case_to_lower_case_underscore` (two passes;
+        # `UInt8` -> `u_int8`, `Float32MultiArray` -> `float32_multi_array`), the
+        # same rule as `rosidl_codegen::utils::to_rosidl_snake_case`.
+        string(REGEX REPLACE "(.)([A-Z][a-z]+)" "\\1_\\2" _rosidl_snake "${_name}")
+        string(REGEX REPLACE "([a-z0-9])([A-Z])" "\\1_\\2" _rosidl_snake "${_rosidl_snake}")
+        string(TOLOWER "${_rosidl_snake}" _rosidl_snake)
         if(_P_LANGUAGE STREQUAL "CPP")
             list(APPEND _headers "${_base}.hpp")
             if(_kind STREQUAL "msg")
@@ -854,8 +861,8 @@ function(_nros_predict_generated_outputs _hdr_var _src_var _rs_var)
                 list(APPEND _rs "${_part}_types.rs" "${_part}_exports.rs")
             endforeach()
         else()
-            list(APPEND _headers "${_base}.h")
-            list(APPEND _sources "${_base}.c")
+            list(APPEND _headers "${_P_OUTPUT_DIR}/${_kind}/${_rosidl_snake}.h")
+            list(APPEND _sources "${_P_OUTPUT_DIR}/${_kind}/${_rosidl_snake}.c")
         endif()
     endforeach()
     if(_P_LANGUAGE STREQUAL "CPP")

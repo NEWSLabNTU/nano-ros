@@ -2443,7 +2443,7 @@ unsafe fn typed_dispatch_one(
     len: usize,
     desc_idx: u8,
 ) -> bool {
-    let rc = unsafe { (entry.deserialize)(entry.msg, data, len) };
+    let rc = unsafe { (entry.deserialize)(data, len, entry.msg) };
     if rc != 0 {
         report_typed_deserialize_failure(rc, len);
         return false;

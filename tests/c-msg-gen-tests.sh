@@ -123,10 +123,10 @@ GEN_DIR="$BUILD_DIR/nano_ros_c/native_c_custom_msg"
 
 # Check for expected generated files
 EXPECTED_FILES=(
-    "msg/native_c_custom_msg_msg_temperature.h"
-    "msg/native_c_custom_msg_msg_temperature.c"
-    "msg/native_c_custom_msg_msg_sensor_data.h"
-    "msg/native_c_custom_msg_msg_sensor_data.c"
+    "msg/temperature.h"
+    "msg/temperature.c"
+    "msg/sensor_data.h"
+    "msg/sensor_data.c"
     "native_c_custom_msg.h"
 )
 

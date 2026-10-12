@@ -35,7 +35,7 @@
 ///
 /// Gated by `check-codegen-version-surface`, which fails when the surface
 /// generated code names changes and this constant does not.
-pub const NROS_CODEGEN_VERSION: u32 = 13;
+pub const NROS_CODEGEN_VERSION: u32 = 14;
 
 /// The oldest codegen version this runtime still accepts.
 ///
@@ -198,11 +198,27 @@ pub const NROS_CODEGEN_VERSION: u32 = 13;
 /// version rather than by a wall of undeclared identifiers. Rust and C++ trees
 /// are unaffected, but the version is one number for all three.
 ///
+/// RAISED to 14 with [`NROS_CODEGEN_VERSION`] (phase-492 W7/W8, RFC-0089
+/// "Messages take rosidl's C names AND its member shape" and
+/// "`ROSIDL_GET_*_TYPE_SUPPORT` adopted as a pass-through"). Generated C
+/// messages take rosidl's names (`std_msgs__msg__String` in
+/// `<std_msgs/msg/string.h>`) and member shape (`rosidl_runtime_c__String`,
+/// `__Sequence`, wired by a generated `__Storage` + `__init_in`); the type
+/// descriptors `rclc_message_type_t` / `rclc_service_type_t` /
+/// `rclc_action_type_t` gained codec slots and the generated
+/// `<pkg>__<sub>__<Name>__nros_type` fills them; the typed helpers
+/// (`<Msg>_publish`, `<Msg>_executor_add_subscription*`, `_subscribe*`) and
+/// `rclc_executor_add_subscription_typed{,_sized}` retired for `rcl_publish`
+/// and rclc's six-argument `rclc_executor_add_subscription_with_context`. A
+/// version-13 C tree names a descriptor layout and entry points this runtime
+/// no longer has, so it is refused by version. Rust and C++ trees are
+/// unaffected, but the version is one number for all three.
+///
 /// The range `[NROS_CODEGEN_VERSION_MIN, NROS_CODEGEN_VERSION]` is expressed to
 /// C and C++ as a SET OF DEFINED SYMBOLS rather than as a comparison — see
 /// `nros-build-helpers`' codegen-version anchor — so there is no range check on
 /// that side that could itself be wrong.
-pub const NROS_CODEGEN_VERSION_MIN: u32 = 13;
+pub const NROS_CODEGEN_VERSION_MIN: u32 = 14;
 
 /// Does `emitted` fall in the range this runtime accepts?
 ///

@@ -28,7 +28,7 @@
  *       packages/api/nros-c/tests/compile/typed_service_storage_mismatch_probe.c
  */
 
-#include "Probe.srv.h"
+#include "fingerprint_corpus/srv/probe.h"
 
 #include "nros/client.h"
 #include "nros/service.h"
@@ -39,20 +39,20 @@
  * pointers are not interchangeable — and they are the same "shape" to a
  * reader. Written against `void *` this compiles and then decodes a request
  * into response storage. */
-static void swapped_payload_handler(const fingerprint_corpus_srv_probe_response* request,
-                                    fingerprint_corpus_srv_probe_request* response, void* context) {
+static void swapped_payload_handler(const fingerprint_corpus__srv__Probe_Response* request,
+                                    fingerprint_corpus__srv__Probe_Request* response, void* context) {
     (void)request;
     (void)response;
     (void)context;
 }
 
-static fingerprint_corpus_srv_probe_service_handler_t g_handler;
+static fingerprint_corpus__srv__Probe__service_handler_t g_handler;
 
 static rcl_ret_t install_swapped_handler(void) {
     /* Expected: incompatible pointer type — the parameter is a
-     * `fingerprint_corpus_srv_probe_handler_fn_t`, and the compiler names both
+     * `fingerprint_corpus__srv__Probe__handler_fn_t`, and the compiler names both
      * function types. */
-    return fingerprint_corpus_srv_probe_service_handler_init(&g_handler, swapped_payload_handler,
+    return fingerprint_corpus__srv__Probe__service_handler_init(&g_handler, swapped_payload_handler,
                                                              NULL);
 }
 
@@ -61,14 +61,14 @@ static rcl_ret_t install_swapped_handler(void) {
  * `..._client_handler_t` and `..._service_handler_t` differ by exactly the
  * request storage the server needs, so the server trampoline would deserialize
  * a request off the end of the block. */
-static fingerprint_corpus_srv_probe_client_handler_t g_wrong_block;
+static fingerprint_corpus__srv__Probe__client_handler_t g_wrong_block;
 static struct rcl_service_t g_service;
 
 static rcl_ret_t bring_up_with_client_block(struct rclc_executor_t* executor) {
     /* Expected: incompatible pointer type, naming both handler structs. Since
      * phase-487 W2 the handler is bound at registration, so this is the call
      * that takes it. */
-    return fingerprint_corpus_srv_probe_executor_add_service(executor, &g_service, &g_wrong_block);
+    return fingerprint_corpus__srv__Probe__executor_add_service(executor, &g_service, &g_wrong_block);
 }
 
 const void* nros_typed_service_mismatch_anchors[] = {

@@ -301,11 +301,10 @@ static const rclc_subscription_callback_with_context_t k_typed_sub_cb = typed_su
  * this argument is what stops compiling. */
 static rcl_ret_t register_typed_subscription(struct rclc_executor_t* executor,
                                               struct rcl_subscription_t* subscription, void* msg,
-                                              rclc_message_deserialize_fn_t deserialize,
                                               void* context) {
-    return rclc_executor_add_subscription_typed(executor, subscription, msg, deserialize,
-                                                k_typed_sub_cb, context,
-                                                RCLC_EXECUTOR_ON_NEW_DATA);
+    return rclc_executor_add_subscription_with_context(executor, subscription, msg,
+                                                       k_typed_sub_cb, context,
+                                                       RCLC_EXECUTOR_ON_NEW_DATA);
 }
 
 /* Silence "defined but not used" without needing a main(). */

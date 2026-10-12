@@ -119,8 +119,8 @@ int nros_app_main(int argc, char** argv) {
     memset(&app, 0, sizeof(app));
 
     rclc_action_type_t fibonacci_type = {
-        .type_name = example_interfaces_action_fibonacci_get_type_name(),
-        .type_hash = example_interfaces_action_fibonacci_get_type_hash(),
+        .type_name = example_interfaces__action__Fibonacci__get_type_name(),
+        .type_hash = example_interfaces__action__Fibonacci__get_type_hash(),
         .goal_serialized_size_max = 8,
         .result_serialized_size_max = 264,
         .feedback_serialized_size_max = 264,

@@ -812,6 +812,24 @@ typedef enum rclc_guard_condition_state_t {
 } rclc_guard_condition_state_t;
 
 /**
+ * upstream rmw's publisher pre-allocation handle, declared INCOMPLETE
+ * (phase-492 W8).
+ *
+ * `rcl_publish(&pub, &msg, NULL)` compiles because a pointer to an incomplete
+ * type is fine; declaring one (`rmw_publisher_allocation_t a;`) does not,
+ * because nano-ros has no pre-allocation to hand out: the transmit buffer is
+ * already bounded at build time. Pass NULL.
+ */
+typedef struct rmw_publisher_allocation_t rmw_publisher_allocation_t;
+
+/**
+ * upstream rmw's subscription pre-allocation handle, declared INCOMPLETE
+ * (phase-492 W8): a pointer to one compiles, so NULL can be passed; declaring
+ * one does not. nano-ros has no pre-allocation to hand out.
+ */
+typedef struct rmw_subscription_allocation_t rmw_subscription_allocation_t;
+
+/**
  * Clock structure.
  */
 typedef struct rcl_clock_t {
@@ -1427,6 +1445,30 @@ typedef struct rcl_node_t {
 } rcl_node_t;
 
 /**
+ * A type-erased CDR serialiser for one message type (phase-492 W8).
+ *
+ * Writes `msg` (a pointer to the generated struct) into `buffer[..capacity]`
+ * with its 4-byte encapsulation header, stores the byte count in `*out_len`,
+ * and returns 0; any failure (buffer too small, a field past its `.msg`
+ * bound, a NULL `data` with a nonzero `size`) returns nonzero. Never
+ * allocates.
+ */
+typedef int32_t (*rclc_message_serialize_fn_t)(const void *msg,
+                                               uint8_t *buffer,
+                                               size_t capacity,
+                                               size_t *out_len);
+
+/**
+ * A type-erased CDR deserialiser for one message type (phase-492 W8).
+ *
+ * Reads `buffer[..len]` into `msg` (a pointer to the generated struct, its
+ * strings and sequences wired to caller memory) and returns 0; a malformed
+ * sample or a field that does not fit its `capacity` returns nonzero and the
+ * field is not written. Never allocates.
+ */
+typedef int32_t (*rclc_message_deserialize_fn_t)(const uint8_t *buffer, size_t len, void *msg);
+
+/**
  * Action type information.
  */
 typedef struct rclc_action_type_t {
@@ -1450,6 +1492,32 @@ typedef struct rclc_action_type_t {
    * Maximum serialized size of feedback message
    */
   size_t feedback_serialized_size_max;
+  /**
+   * phase-492 W8 — the goal part's serialiser (NULL in a descriptor built
+   * from names alone). Generated as `<pkg>__action__<Name>__nros_type`,
+   * what `ROSIDL_GET_ACTION_TYPE_SUPPORT(pkg, action, Name)` yields.
+   */
+  rclc_message_serialize_fn_t goal_serialize;
+  /**
+   * The goal part's deserialiser.
+   */
+  rclc_message_deserialize_fn_t goal_deserialize;
+  /**
+   * The result part's serialiser.
+   */
+  rclc_message_serialize_fn_t result_serialize;
+  /**
+   * The result part's deserialiser.
+   */
+  rclc_message_deserialize_fn_t result_deserialize;
+  /**
+   * The feedback part's serialiser.
+   */
+  rclc_message_serialize_fn_t feedback_serialize;
+  /**
+   * The feedback part's deserialiser.
+   */
+  rclc_message_deserialize_fn_t feedback_deserialize;
 } rclc_action_type_t;
 
 /**
@@ -1747,6 +1815,47 @@ typedef struct rcl_action_server_options_t {
 } rcl_action_server_options_t;
 
 /**
+ * Message type descriptor: what `ROSIDL_GET_MSG_TYPE_SUPPORT(pkg, msg, Name)`
+ * yields.
+ *
+ * The generated `<pkg>__msg__<Name>__nros_type` is a `static const` of this
+ * type in read-only memory. It carries the type's NAME and HASH (what the RMW
+ * needs to create an entity) and, since phase-492 W8 (RFC-0089
+ * "`ROSIDL_GET_*_TYPE_SUPPORT` adopted as a pass-through"), its CODEC, so
+ * `rcl_publish` and `rclc_executor_add_subscription_with_context` work on the
+ * generated struct with rclc's arguments. It is NOT rosidl's
+ * `rosidl_message_type_support_t`, which stays undeclared: that struct's
+ * members (`typesupport_identifier`, `data`, `func`) are a dispatcher this
+ * descriptor does not have.
+ */
+typedef struct rclc_message_type_t {
+  /**
+   * Type name (e.g., "std_msgs::msg::dds_::Int32")
+   */
+  const char *type_name;
+  /**
+   * Type hash (RIHS format)
+   */
+  const char *type_hash;
+  /**
+   * Largest CDR payload this type can arrive as, encapsulation header
+   * included (the generated `__RX_MAX_SERIALIZED_SIZE`). 0 = unbounded or
+   * unknown.
+   */
+  size_t serialized_size_max;
+  /**
+   * The type's serialiser; NULL in a descriptor built from names alone, which
+   * `rcl_publish` refuses with `RCL_RET_UNSUPPORTED`.
+   */
+  rclc_message_serialize_fn_t serialize;
+  /**
+   * The type's deserialiser; NULL in a descriptor built from names alone,
+   * which `rclc_executor_add_subscription_with_context` refuses.
+   */
+  rclc_message_deserialize_fn_t deserialize;
+} rclc_message_type_t;
+
+/**
  * A subscription the executor dispatches (rclc's `rcl_subscription_t`).
  *
  * phase-487 W1 (RFC-0096 D9, the C amendment): an entity the executor
@@ -1796,6 +1905,13 @@ typedef struct rcl_subscription_t {
    * Pointer to parent node
    */
   struct rclc_node_ref_t node;
+  /**
+   * phase-492 W8 — the descriptor this subscription was created with, kept
+   * so `rclc_executor_add_subscription_with_context` deserialises through
+   * its codec with rclc's arguments. Descriptors are generated
+   * `static const`s, so the pointer outlives the subscription.
+   */
+  const struct rclc_message_type_t *type_support;
   /**
    * QoS settings (stored during init, used by executor registration)
    */
@@ -1894,6 +2010,12 @@ typedef struct rcl_publisher_t {
    * Pointer to parent node
    */
   struct rclc_node_ref_t node;
+  /**
+   * phase-492 W8 — the descriptor this publisher was created with, kept so
+   * `rcl_publish` can serialise through its codec. Descriptors are generated
+   * `static const`s, so the pointer outlives the publisher.
+   */
+  const struct rclc_message_type_t *type_support;
   /**
    * Inline opaque storage for the RMW publisher handle.
    * Avoids heap allocation — managed by rclc_publisher_init_default/fini.
@@ -2028,32 +2150,15 @@ typedef struct rcl_node_options_t {
 } rcl_node_options_t;
 
 /**
- * phase-417 W5.a — the deserialiser handed to
- * [`rclc_executor_add_subscription_typed`].
- *
- * Writes the CDR bytes at `buffer[..buffer_size]` into `msg`, which is storage
- * the CALLER owns. Returns `0` on success, non-zero on failure. This is the
- * type-erased form of the generated `<Msg>_deserialize`, which already has
- * exactly this contract; generated headers emit a `<Msg>_deserialize_erased`
- * with this signature so no call goes through a cast function pointer.
- */
-typedef int32_t (*rclc_message_deserialize_fn_t)(void *msg,
-                                                 const uint8_t *buffer,
-                                                 size_t buffer_size);
-
-/**
  * phase-417 W5.a — a subscription callback that receives the DESERIALISED
  * message, the shape rclc delivers
- * (`rclc_subscription_callback_with_context_t`).
+ * (`rclc_subscription_callback_with_context_t`, the alias `<rclc/executor.h>`
+ * declares).
  *
- * `msg` is the caller's own storage, populated by this subscription's
- * [`rclc_message_deserialize_fn_t`] immediately before the call. It is valid
- * for the duration of the call and is overwritten by the next dispatch — copy
- * out anything retained.
- *
- * The `context` parameter is why this is the analog of rclc's
- * *with-context* callback rather than its bare `void (*)(const void *)`: C has
- * no closures and every other callback in this API already carries one.
+ * `msg` is the caller's own storage, populated by the subscription type's
+ * deserialiser immediately before the call. It is valid for the duration of
+ * the call and is overwritten by the next dispatch — copy out anything
+ * retained.
  */
 typedef void (*rclc_typed_subscription_callback_t)(const void *msg, void *context);
 
@@ -2518,27 +2623,6 @@ typedef struct rcl_publisher_options_t {
 } rcl_publisher_options_t;
 
 /**
- * Message type information.
- *
- * This structure describes a ROS message type for use with publishers
- * and subscribers.
- */
-typedef struct rclc_message_type_t {
-  /**
-   * Type name (e.g., "std_msgs::msg::dds_::Int32")
-   */
-  const char *type_name;
-  /**
-   * Type hash (RIHS format)
-   */
-  const char *type_hash;
-  /**
-   * Maximum serialized size (0 = dynamic/unknown)
-   */
-  size_t serialized_size_max;
-} rclc_message_type_t;
-
-/**
  * A service server the CALLER drains, with no executor (phase-487 W2).
  *
  * The C counterpart of C++'s `nros::PollService<S>`. Nothing dispatches it,
@@ -2564,10 +2648,13 @@ typedef struct rclc_polling_service_t {
 } rclc_polling_service_t;
 
 /**
- * Service type information.
+ * Service type descriptor: what `ROSIDL_GET_SRV_TYPE_SUPPORT(pkg, srv, Name)`
+ * yields (phase-492 W8).
  *
- * Provides type name and hash for a ROS 2 service type.
- * Used by generated code from `nano_ros_generate_interfaces()`.
+ * Generated as `<pkg>__srv__<Name>__nros_type`. The four codec slots are the
+ * request and response parts' serialisers, with the
+ * [`rclc_message_serialize_fn_t`] / [`rclc_message_deserialize_fn_t`]
+ * contracts; NULL where the descriptor was built from names alone.
  */
 typedef struct rclc_service_type_t {
   /**
@@ -2578,6 +2665,22 @@ typedef struct rclc_service_type_t {
    * Type hash (RIHS format)
    */
   const char *type_hash;
+  /**
+   * The request part's serialiser.
+   */
+  rclc_message_serialize_fn_t request_serialize;
+  /**
+   * The request part's deserialiser.
+   */
+  rclc_message_deserialize_fn_t request_deserialize;
+  /**
+   * The response part's serialiser.
+   */
+  rclc_message_serialize_fn_t response_serialize;
+  /**
+   * The response part's deserialiser.
+   */
+  rclc_message_deserialize_fn_t response_deserialize;
 } rclc_service_type_t;
 
 /**
@@ -2681,6 +2784,11 @@ typedef struct rclc_polling_subscription_t {
    * teardown after the node's (`RCLC_RET_STALE_NODE`).
    */
   struct rclc_node_ref_t node;
+  /**
+   * phase-492 W8 — the descriptor this subscription was created with, kept
+   * so [`rclc_polling_subscription_take`] deserialises through its codec.
+   */
+  const struct rclc_message_type_t *type_support;
   /**
    * Inline storage for the `RawSubscription`. Internal: treat as opaque.
    */
@@ -5050,109 +5158,64 @@ bool rclc_executor_trigger_index(const struct rclc_executor_trigger_handle_t *ha
                                  void *obj);
 
 /**
- * phase-417 W5.a (RFC-0089 stage 5) — add a subscription that delivers a
- * **deserialised message** into storage the CALLER owns.
- *
- * The rclc-shaped registration:
+ * rclc's `rclc_executor_add_subscription_with_context`, argument for argument
+ * (phase-492 W8):
  *
  * ```c
- * rclc_executor_add_subscription(&exec, &sub, &msg, &cb, ON_NEW_DATA);
  * rclc_executor_add_subscription_with_context(&exec, &sub, &msg, &cb, &ctx, ON_NEW_DATA);
- * rclc_executor_add_subscription_typed(&exec, &sub, &msg, MyMsg_deserialize_erased,
- *                                      &cb, &ctx, RCLC_EXECUTOR_ON_NEW_DATA);
  * ```
  *
- * One argument more than rclc's, and it is the only one: `rclc_message_type_t`
- * carries a type NAME and a type HASH and no deserialiser, so the function
- * that writes this type into `msg` has to arrive from somewhere. Generated
- * headers collapse it away, so a ported line is rclc's six arguments in rclc's
- * order:
- * `MyMsg_executor_add_subscription(&exec, &sub, &msg, &cb, &ctx, RCLC_EXECUTOR_ON_NEW_DATA)`.
+ * The deserialiser and the receive-buffer hint come from the descriptor the
+ * subscription was created with (`ROSIDL_GET_MSG_TYPE_SUPPORT(...)`, kept on
+ * the struct by `rclc_subscription_init_*`), which is why this takes no more
+ * arguments than rclc's. Before phase-492 the descriptor had no codec, so the
+ * typed registration carried a seventh argument and a generated per-type
+ * macro collapsed it away; both are gone.
  *
  * The CONTEXT-LESS `rclc_executor_add_subscription` (a `void (*)(const void*)`
- * callback) is deliberately absent: adapting it needs a trampoline that
- * remembers the original function pointer, and state in the wrapper is
- * RFC-0019/0020's violation rather than an ergonomic. `nros/rcl_compat.h`
- * records the same refusal.
+ * callback) stays refused: adapting it needs a trampoline that remembers the
+ * original function pointer, and state in the wrapper is RFC-0019/0020's
+ * violation rather than an ergonomic. `<rcl/types.h>` records the refusal.
  *
- * **No allocator is involved, and none is needed.** The caller owning the
- * storage IS the mechanism — the same one rclc uses. The C ledger recorded our
- * byte-oriented delivery as forced by "no allocator"; the compared surface
- * operates under the same constraint, so the stated reason was refuted by the
- * thing it was compared against (issue 1022, W-C3).
- *
- * The byte-oriented [`rclc_executor_add_subscription_raw`] is untouched and stays.
- * This is additive; a raw subscriber is a legitimate thing to want.
+ * **No allocator is involved, and none is needed.** The caller owning `msg`
+ * (its strings and sequences wired by `<Msg>__init_in`) IS the mechanism — the
+ * same one rclc uses.
  *
  * # What the callback sees when decoding fails
- * **Nothing — it is not called.** A non-zero return from `deserialize` drops
- * the sample, leaves `msg` as it was, counts a `subscription_errors` in the
- * spin result, and emits a rate-limited `nros_log` error naming the sample
- * length and the return code. Dispatching anyway would hand the callback the
- * PREVIOUS message under the impression it was the new one, which is exactly
- * the "compile and differ" RFC-0089 forbids.
+ * **Nothing — it is not called.** A sample that does not decode (malformed, or
+ * a string or sequence longer than the `capacity` the caller wired) is
+ * dropped, counted as a `subscription_errors` in the spin result, and logged
+ * (rate-limited) with its length and the return code. Dispatching anyway would
+ * hand the callback the PREVIOUS message as if it were the new one.
  *
- * A message too large for the caller's storage arrives here as that same
- * failure and never as a truncation: a bounded string whose wire length
- * exceeds its declared capacity fails in `rclc_cdr_read_string`
- * (`str_len > max_len`), and a bounded sequence fails on
- * `len > capacity` — both return `-1` rather than writing a short value.
- *
- * # What is read from the subscription
- * What describes the ENTITY — topic, type name, type hash, QoS, node binding,
- * and the scheduling context requested via
- * `rclc_subscription_init_with_options`. The typed callback and its `context`
- * are supplied here, exactly as rclc's
- * `rclc_executor_add_subscription_with_context` does, and the arena entry
- * owns them; the subscription struct has had no callback field since
- * phase-487 W1.
+ * # Returns
+ * * `RCL_RET_OK` on success
+ * * `RCL_RET_INVALID_ARGUMENT` — a NULL `executor` / `subscription` / `msg` /
+ *   `callback`
+ * * `RCL_RET_UNSUPPORTED` — the subscription's descriptor carries no
+ *   deserialiser (one built from type names alone); register it with
+ *   `rclc_executor_add_subscription_raw` instead
+ * * otherwise as the raw registration
  *
  * # Safety
  * * `executor` and `subscription` must be valid, initialised objects.
- * * `msg` must point to writable storage of the type `deserialize` writes, and
- *   must stay valid for as long as the subscription is registered. Nothing
- *   here allocates it, copies it, or frees it.
+ * * `msg` must point to writable storage of the subscription's type and stay
+ *   valid for as long as the subscription is registered. Nothing here
+ *   allocates it, copies it, or frees it.
  */
 NROS_PUBLIC
-rcl_ret_t rclc_executor_add_subscription_typed(struct rclc_executor_t *executor,
-                                               struct rcl_subscription_t *subscription,
-                                               void *msg,
-                                               rclc_message_deserialize_fn_t deserialize,
-                                               rclc_typed_subscription_callback_t callback,
-                                               void *context,
-                                               enum rclc_executor_handle_invocation_t invocation);
-
-/**
- * phase-417 W5.a — [`rclc_executor_add_subscription_typed`] with the
- * receive-buffer hint stated by the caller.
- *
- * `rx_bytes` is the same hint the raw path takes (issue 0896 / phase-403 W5):
- * the bytes this subscription expects to receive, sizing BOTH the backend's
- * payload size class and the executor's arena slot. `0` means "this caller
- * states nothing" and falls back to the image default — never a claim of zero
- * bytes. A typed caller normally HAS the number, because its message type
- * computes one (`<Msg>_RX_MAX_SERIALIZED_SIZE`), which is why the generated
- * macro passes it and the plain form above exists only for a type with no
- * bound.
- *
- * # Safety
- * See [`rclc_executor_add_subscription_typed`].
- */
-NROS_PUBLIC
-rcl_ret_t rclc_executor_add_subscription_typed_sized(struct rclc_executor_t *executor,
-                                                     struct rcl_subscription_t *subscription,
-                                                     void *msg,
-                                                     rclc_message_deserialize_fn_t deserialize,
-                                                     rclc_typed_subscription_callback_t callback,
-                                                     void *context,
-                                                     enum rclc_executor_handle_invocation_t invocation,
-                                                     uint32_t rx_bytes);
+rcl_ret_t rclc_executor_add_subscription_with_context(struct rclc_executor_t *executor,
+                                                      struct rcl_subscription_t *subscription,
+                                                      void *msg,
+                                                      rclc_typed_subscription_callback_t callback,
+                                                      void *context,
+                                                      enum rclc_executor_handle_invocation_t invocation);
 
 /**
  * phase-417 stage 6 — register a BYTE-oriented subscription, supplying its
  * callback HERE rather than at `*_init`.
  *
- * This is the raw-path sibling of [`rclc_executor_add_subscription_typed`].
+ * This is the raw-path sibling of [`rclc_executor_add_subscription_with_context`].
  * `rclc_subscription_init_default` takes no callback (rclc's arity), so the
  * byte callback that used to ride on `nros_subscription_init` is supplied at
  * registration, which is where rclc supplies it
@@ -5168,7 +5231,7 @@ rcl_ret_t rclc_executor_add_subscription_typed_sized(struct rclc_executor_t *exe
  * callback an init call had stored in the struct.
  *
  * # Returns
- * As [`rclc_executor_add_subscription_typed`]; `RCL_RET_INVALID_ARGUMENT`
+ * As [`rclc_executor_add_subscription_with_context`]; `RCL_RET_INVALID_ARGUMENT`
  * for a NULL `callback`, since an entry with nothing to dispatch would hold a
  * subscriber and a slot for no reader.
  *
@@ -5485,7 +5548,7 @@ rcl_ret_t rclc_executor_remove_action_client(struct rclc_executor_t *executor,
  *
  * The subscription stays INITIALIZED: it can be re-added, or finalised with
  * `rcl_subscription_fini`. Call this BEFORE `fini`. Typed message storage
- * handed to `rclc_executor_add_subscription_typed*` is not written again
+ * handed to `rclc_executor_add_subscription_with_context` is not written again
  * after this returns.
  *
  * # Returns
@@ -6855,6 +6918,58 @@ rcl_ret_t rclc_publish_raw(const struct rcl_publisher_t *publisher,
                            size_t len);
 
 /**
+ * Publish a message — rcl's `rcl_publish`, serialising through the
+ * descriptor this publisher was created with (phase-492 W8).
+ *
+ * ```c
+ * std_msgs__msg__String msg;          // wired by __init_in, or by hand
+ * rcl_publish(&publisher, &msg, NULL);
+ * ```
+ *
+ * `ros_message` points at the generated struct of the publisher's type. It is
+ * serialised by the descriptor's codec into a transmit buffer on this call's
+ * stack whose size is BOUNDED AT BUILD TIME, then handed to the backend:
+ *
+ * * the type's own receive bound (`serialized_size_max`) picks the smaller
+ *   256-byte class when it fits;
+ * * otherwise, or when the sample does not fit the smaller class (a caller
+ *   that pointed a string at a buffer larger than `__Storage` sizes), the
+ *   image's message buffer size (`NROS_SUBSCRIPTION_BUFFER_SIZE`, the bound
+ *   the image derives over every type it carries).
+ *
+ * No heap, ever (RFC-0105 D10): nothing here, in the serialiser or in the
+ * generated struct allocates. A sample larger than the image's message buffer
+ * is refused with `RCL_RET_ERROR`; `rclc_publisher_publish_streamed` is the
+ * entry point for payloads past that bound.
+ *
+ * # Parameters
+ * * `publisher` — an initialised publisher
+ * * `ros_message` — the message, of the publisher's type
+ * * `allocation` — MUST be NULL. `rmw_publisher_allocation_t` is declared
+ *   incomplete: nano-ros has no pre-allocation to offer.
+ *
+ * # Returns
+ * * `RCL_RET_OK` on success
+ * * `RCL_RET_INVALID_ARGUMENT` — a NULL `publisher` / `ros_message`, or a
+ *   non-NULL `allocation`
+ * * `RCL_RET_NOT_INIT` — the publisher is not initialised
+ * * `RCL_RET_UNSUPPORTED` — the publisher's descriptor carries no serialiser
+ *   (one built from type names alone); use `rclc_publish_raw`
+ * * `RCL_RET_ERROR` — the message did not serialise (a field past its `.msg`
+ *   bound, a NULL `data` with nonzero `size`, or larger than the image's
+ *   message buffer)
+ * * `RCLC_RET_PUBLISH_FAILED` — the backend refused the sample
+ *
+ * # Safety
+ * * `publisher` must point at a valid publisher.
+ * * `ros_message` must point at a message of the publisher's type.
+ */
+NROS_PUBLIC
+rcl_ret_t rcl_publish(const struct rcl_publisher_t *publisher,
+                      const void *ros_message,
+                      struct rmw_publisher_allocation_t *allocation);
+
+/**
  * Phase 124.E.1 — streamed publish.
  *
  * Two callbacks: `size_cb` reports the total payload length once,
@@ -8024,10 +8139,9 @@ NROS_PUBLIC struct rcl_subscription_options_t rcl_subscription_get_default_optio
  *   does not do.
  *
  * So the callback is supplied where rclc supplies it, at registration:
- * `rclc_executor_add_subscription_typed` for the typed path (rclc's
- * `rclc_executor_add_subscription_with_context` shape) and
- * `rclc_executor_add_subscription_raw` for the byte path, which has no rclc
- * counterpart and therefore keeps an `nros_` name.
+ * `rclc_executor_add_subscription_with_context` for the typed path (rclc's
+ * own, phase-492 W8) and `rclc_executor_add_subscription_raw` for the byte
+ * path, which has no rclc counterpart and therefore takes an ours-only name.
  *
  * The typesupport parameter stays `const rclc_message_type_t *` rather than
  * taking `rosidl_message_type_support_t`'s name: a rosidl typesupport's
@@ -8215,6 +8329,41 @@ NROS_PUBLIC
 int32_t rclc_polling_subscription_take_serialized(struct rclc_polling_subscription_t *subscription,
                                                   uint8_t *buf,
                                                   size_t buf_len);
+
+/**
+ * Take one sample from a polling subscription and DESERIALISE it into
+ * `ros_message` through the subscription's descriptor — the typed sibling of
+ * [`rclc_polling_subscription_take_serialized`] (phase-492 W8).
+ *
+ * This is the `rcl_take` analog. `rcl_take` itself is not declared: it takes
+ * an `rcl_subscription_t`, which here is executor-owned (phase-487 W1, RFC-0096
+ * D9) and has no subscriber of its own to take from, so the upstream name with
+ * this contract would compile and differ. A subscription the caller drains is
+ * an `rclc_polling_subscription_t`, and this is its take.
+ *
+ * `ros_message` is the generated struct of the subscription's type, its strings
+ * and sequences wired to caller memory (`<Msg>__init_in`). The sample is read
+ * into the subscription's own receive buffer and decoded from there; nothing
+ * allocates.
+ *
+ * # Returns
+ * * `RCL_RET_OK` — one sample was taken and decoded into `ros_message`
+ * * `RCLC_RET_TRY_AGAIN` — nothing to take
+ * * `RCL_RET_INVALID_ARGUMENT` — a NULL argument, or a non-NULL `allocation`
+ * * `RCLC_RET_BAD_SEQUENCE` — not initialised
+ * * `RCL_RET_UNSUPPORTED` — the descriptor carries no deserialiser
+ * * `RCL_RET_ERROR` — the transport failed, or the sample did not decode (a
+ *   field larger than its `capacity`): the sample is consumed and
+ *   `ros_message` is not a valid message
+ *
+ * # Safety
+ * * `subscription` must be an initialised polling subscription.
+ * * `ros_message` must point at a message of the subscription's type.
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_polling_subscription_take(struct rclc_polling_subscription_t *subscription,
+                                         void *ros_message,
+                                         struct rmw_subscription_allocation_t *allocation);
 
 /**
  * Phase 252 / issue 0073 — non-blocking poll that ALSO returns the E2E

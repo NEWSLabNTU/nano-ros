@@ -46,8 +46,35 @@ const PROBE_SRV: &str = include_str!("../tests/fixtures/fingerprint-corpus/srv/P
 const PROBE_ACTION: &str = include_str!("../tests/fixtures/fingerprint-corpus/action/Probe.action");
 const CODEGEN_TOML: &str = include_str!("../tests/fixtures/fingerprint-corpus/nros-codegen.toml");
 
-/// Storage-mode variants the corpus is generated under. `inline` is the default
-/// path; the configured file exercises `heap` + `view` (issues 0343–0346),
+/// phase-492 W7 — stock ROS messages under their REAL package names, so the C
+/// goldens are laid out as rosidl lays them out (`std_msgs/msg/string.h`) and
+/// the `nros-c` compile and run probes can include them as a ported file would.
+/// `(package, type, source)`; emitted under the `rosidl/` key prefix.
+const ROSIDL_MSGS: &[(&str, &str, &str)] = &[
+    (
+        "builtin_interfaces",
+        "Time",
+        include_str!("../tests/fixtures/fingerprint-corpus/rosidl/builtin_interfaces/msg/Time.msg"),
+    ),
+    (
+        "std_msgs",
+        "Header",
+        include_str!("../tests/fixtures/fingerprint-corpus/rosidl/std_msgs/msg/Header.msg"),
+    ),
+    (
+        "std_msgs",
+        "String",
+        include_str!("../tests/fixtures/fingerprint-corpus/rosidl/std_msgs/msg/String.msg"),
+    ),
+    (
+        "sensor_msgs",
+        "LaserScan",
+        include_str!("../tests/fixtures/fingerprint-corpus/rosidl/sensor_msgs/msg/LaserScan.msg"),
+    ),
+];
+
+/// Storage-mode variants the corpus is generated under. `owned` is the default
+/// path; the configured file exercises `heap` + `borrowed` (issues 0343–0346),
 /// which have their own emitter arms and must move the fingerprint when they
 /// change.
 fn resolvers() -> Vec<(&'static str, CapacityResolver)> {
@@ -120,14 +147,21 @@ pub fn emit_corpus() -> BTreeMap<String, String> {
                     .map(|g| g.message_rs)
                     .map_err(|e| e.to_string()),
             );
+            // phase-492 W7 — the C artifacts are laid out as rosidl lays them
+            // out (`fingerprint_corpus/msg/shapes.h`), so the goldens COMPILE
+            // as a tree: `just check c` builds every one of them.
+            let c_stem = format!(
+                "fingerprint_corpus/msg/{}",
+                crate::utils::to_rosidl_snake_case(name)
+            );
             put(
-                &format!("{name}.h"),
+                &format!("{c_stem}.h"),
                 generate_c_message_package(CORPUS, name, &m, "h", &r)
                     .map(|g| g.header)
                     .map_err(|e| e.to_string()),
             );
             put(
-                &format!("{name}.c"),
+                &format!("{c_stem}.c"),
                 generate_c_message_package(CORPUS, name, &m, "h", &r)
                     .map(|g| g.source)
                     .map_err(|e| e.to_string()),
@@ -151,13 +185,13 @@ pub fn emit_corpus() -> BTreeMap<String, String> {
                     .map_err(|e| e.to_string()),
                 );
                 put(
-                    "Probe.srv.h",
+                    "fingerprint_corpus/srv/probe.h",
                     generate_c_service_package(CORPUS, "Probe", &sv, "h", &r)
                         .map(|g| g.header)
                         .map_err(|e| e.to_string()),
                 );
                 put(
-                    "Probe.srv.c",
+                    "fingerprint_corpus/srv/probe.c",
                     generate_c_service_package(CORPUS, "Probe", &sv, "h", &r)
                         .map(|g| g.source)
                         .map_err(|e| e.to_string()),
@@ -183,19 +217,43 @@ pub fn emit_corpus() -> BTreeMap<String, String> {
                     .map_err(|e| e.to_string()),
                 );
                 put(
-                    "Probe.action.h",
+                    "fingerprint_corpus/action/probe.h",
                     generate_c_action_package(CORPUS, "Probe", &ac, "h", &r)
                         .map(|g| g.header)
                         .map_err(|e| e.to_string()),
                 );
                 put(
-                    "Probe.action.c",
+                    "fingerprint_corpus/action/probe.c",
                     generate_c_action_package(CORPUS, "Probe", &ac, "h", &r)
                         .map(|g| g.source)
                         .map_err(|e| e.to_string()),
                 );
             }
             Err(_) => put("Probe.action.parse", Err("parse-error".into())),
+        }
+    }
+
+    // phase-492 W7 — the rosidl-laid-out arm (see `ROSIDL_MSGS`).
+    let empty = CapacityResolver::empty();
+    for (pkg, name, src) in ROSIDL_MSGS {
+        let res = parse_message(src)
+            .map_err(|_| "parse-error".to_string())
+            .and_then(|m| {
+                generate_c_message_package(pkg, name, &m, "h", &empty).map_err(|e| e.to_string())
+            });
+        let stem = crate::utils::to_rosidl_snake_case(name);
+        for (ext, body) in [
+            ("h", res.as_ref().map(|g| g.header.clone())),
+            ("c", res.as_ref().map(|g| g.source.clone())),
+        ] {
+            let (tag, body) = match body {
+                Ok(s) => ("ok", s),
+                Err(e) => ("err", e.clone()),
+            };
+            out.insert(
+                format!("rosidl/{pkg}/msg/{stem}.{ext}"),
+                format!("// emit:{tag}\n{body}"),
+            );
         }
     }
     out
@@ -253,7 +311,10 @@ mod tests {
         let out = generate_c_message_package(CORPUS, "Shapes", &m, "h", &r)
             .expect("corpus msg must generate");
         for shape in [
-            "bool", "int64_t", "double", "char", // primitives + string
+            "bool",
+            "int64_t",
+            "double",
+            "rosidl_runtime_c__String", // primitives + string
         ] {
             assert!(
                 out.header.contains(shape),

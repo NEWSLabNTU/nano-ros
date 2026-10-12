@@ -135,7 +135,7 @@ static int32_t loopback_read(void* user_data, uint8_t* buf, size_t len, uint32_t
 
 typedef struct {
     rcl_publisher_t* publisher;
-    std_msgs_msg_int32 message;
+    std_msgs__msg__Int32 message;
     int32_t tick;
 } demo_ctx_t;
 
@@ -166,8 +166,8 @@ static void timer_callback(rcl_timer_t* timer, void* arg) {
     ctx->message.data = ctx->tick++;
     // Phase 212.M native/c sweep — replace the never-defined
     // `nros_publisher_publish` symbol with the canonical typed
-    // helper `std_msgs_msg_int32_publish` (same shape talker uses).
-    (void)std_msgs_msg_int32_publish(ctx->publisher, &ctx->message);
+    // `rcl_publish` (phase-492 W8, as the talker does).
+    (void)rcl_publish(ctx->publisher, &ctx->message, NULL);
 }
 
 /* --------------------------------------------------------------
@@ -217,13 +217,13 @@ int nros_app_main(int argc, char** argv) {
     RCLC_CHECK_RET(rclc_node_init_default(&app.node, "loopback_demo", "/", &app.support), 1);
 
     RCLC_CHECK_RET(rclc_publisher_init_default(&app.publisher, &app.node,
-                                               std_msgs_msg_int32_get_type_support(),
+                                               ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
                                                "/loopback_chatter"),
                    1);
 
     app.demo_ctx.publisher = &app.publisher;
     app.demo_ctx.tick = 0;
-    std_msgs_msg_int32_init(&app.demo_ctx.message);
+    memset(&app.demo_ctx.message, 0, sizeof(app.demo_ctx.message));
 
     RCLC_CHECK_RET(rcl_timer_init(&app.timer, &app.support, 500ULL * 1000 * 1000 /* 500ms */,
                                   timer_callback, &app.demo_ctx),

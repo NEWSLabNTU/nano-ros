@@ -19,6 +19,7 @@
 #define NROS_TESTS_STUB_RMW_BACKEND_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 /** The backend name this registers under. Pass it as the `rmw` selector to
@@ -74,5 +75,12 @@ void nros_stub_rmw_set_accept_entities(bool accept);
  *  runtime released has left this count, which is how a probe sees it leave
  *  the graph. */
 int32_t nros_stub_rmw_live_entities(void);
+
+/** phase-492 W8 — the bytes of the last publish the stub accepted (accept mode
+ *  only; outside it every publish is refused), and their length in `*len`. */
+const uint8_t* nros_stub_rmw_last_payload(size_t* len);
+
+/** phase-492 W8 — publishes the stub has accepted since process start. */
+uint32_t nros_stub_rmw_publish_count(void);
 
 #endif /* NROS_TESTS_STUB_RMW_BACKEND_H */

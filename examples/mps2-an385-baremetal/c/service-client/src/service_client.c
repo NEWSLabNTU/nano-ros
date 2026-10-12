@@ -38,8 +38,8 @@ static struct {
     rcl_node_t node;
     rcl_client_t client;
     rclc_executor_t executor;
-    example_interfaces_srv_add_two_ints_request request;
-    example_interfaces_srv_add_two_ints_response response;
+    example_interfaces__srv__AddTwoInts_Request request;
+    example_interfaces__srv__AddTwoInts_Response response;
     uint8_t req_buf[256];
     uint8_t resp_buf[256];
 } app;
@@ -87,8 +87,8 @@ int nros_app_main(int argc, char** argv) {
     (void)argv;
 
     rclc_service_type_t add_two_ints_type = {
-        .type_name = example_interfaces_srv_add_two_ints_get_type_name(),
-        .type_hash = example_interfaces_srv_add_two_ints_get_type_hash(),
+        .type_name = example_interfaces__srv__AddTwoInts__get_type_name(),
+        .type_hash = example_interfaces__srv__AddTwoInts__get_type_hash(),
     };
 
     // `NROS_ENTRY_LOCATOR` is the one producer of the compile-time connect
@@ -104,13 +104,13 @@ int nros_app_main(int argc, char** argv) {
     RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support, 4), 1);
     RCLC_CHECK_RET(rclc_executor_add_client(&app.executor, &app.client), 1);
 
-    example_interfaces_srv_add_two_ints_request_init(&app.request);
-    example_interfaces_srv_add_two_ints_response_init(&app.response);
+    memset(&app.request, 0, sizeof(app.request));
+    memset(&app.response, 0, sizeof(app.response));
     app.request.a = 2;
     app.request.b = 3;
 
     int exit_code = 0;
-    rcl_ret_t ret = example_interfaces_srv_add_two_ints_client_call(
+    rcl_ret_t ret = example_interfaces__srv__AddTwoInts__client_call(
         &app.client, &app.request, &app.response, app.req_buf, sizeof(app.req_buf), app.resp_buf,
         sizeof(app.resp_buf));
     if (ret == RCL_RET_OK) {
@@ -132,8 +132,6 @@ int nros_app_main(int argc, char** argv) {
         exit_code = 1;
     }
 
-    example_interfaces_srv_add_two_ints_request_fini(&app.request);
-    example_interfaces_srv_add_two_ints_response_fini(&app.response);
     rclc_executor_fini(&app.executor);
     rcl_client_fini(&app.client);
     rcl_node_fini(&app.node);

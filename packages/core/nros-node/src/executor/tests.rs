@@ -6561,9 +6561,9 @@ struct TypedProbeMsg {
 /// The erased form of a generated `<Msg>_deserialize`: writes into caller
 /// storage, returns 0 / non-zero.
 unsafe extern "C" fn typed_probe_deserialize(
-    msg: *mut core::ffi::c_void,
     buffer: *const u8,
     buffer_size: usize,
+    msg: *mut core::ffi::c_void,
 ) -> i32 {
     let bytes = unsafe { core::slice::from_raw_parts(buffer, buffer_size) };
     let Ok(mut reader) = CdrReader::new_with_header(bytes) else {
@@ -6583,9 +6583,9 @@ unsafe extern "C" fn typed_probe_deserialize(
 /// exactly this way; `rclc_cdr_read_string` errors on `str_len > max_len`
 /// rather than truncating).
 unsafe extern "C" fn typed_probe_deserialize_refuses(
-    _msg: *mut core::ffi::c_void,
     _buffer: *const u8,
     _buffer_size: usize,
+    _msg: *mut core::ffi::c_void,
 ) -> i32 {
     -1
 }

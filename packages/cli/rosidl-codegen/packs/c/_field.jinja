@@ -1,36 +1,105 @@
 {#-
-  Issue 0345 — the C payload arms shared by every C emitter.
+  The C payload arms shared by every C emitter (message, service, action).
 
-  Why: `message_c.c.jinja` implemented RFC-0033 `heap` (malloc on deserialize,
-  freed by a generated `{Struct}_fini`), while `service_c.*` / `action_c.*`
-  carried owned-only clones AND emitted no `_fini` at all. Since the C storage
-  mode was resolved for all three (issue 0343), a heap-configured `.srv` field
-  got the heap TYPE with an owned serde body — code that does not compile.
+  phase-492 W7 (RFC-0089 "Messages take rosidl's C names AND its member
+  shape"): a string member is `rosidl_runtime_c__String`, a sequence member is
+  `rosidl_runtime_c__<elem>__Sequence` / `<pkg>__msg__<Name>__Sequence`, both
+  `{data, size, capacity}` over memory the CALLER owns. Nothing here allocates:
 
-  The C ownership convention (RFC-0033): payloads ride the raw `(data, len)`
-  callbacks and the USER owns the struct — they call `_deserialize` and then
-  `_fini`. Services and actions are identical in that respect
-  (`rclc_service_callback_t` hands the callback `request_data`/`request_len`,
-  never a typed struct), so heap needs no framework or ownership change — only
-  these arms plus a `_fini` per payload struct.
+  * `__Storage` holds the arrays RFC-0033's capacities size, and
+    `__init_in(&msg, &storage)` points every string and sequence at them;
+  * the deserialiser writes into `capacity` and FAILS (nonzero) when a field
+    does not fit, before writing a byte of it -- it never grows a buffer;
+  * a `.msg` bound (`string<=N`, `T[<=N]`) is checked in both directions.
+
+  Issue 0345's `heap` arms (malloc in `_deserialize`, a generated `_fini`) are
+  gone: a caller that wants heap memory points `data` at its own block.
 
   Macro params: `field`, `var` (struct pointer expression, e.g. `msg`), `sname`
-  (struct name, used in comments and the `_fini` reference).
-
-  Must stay byte-identical in output to what message_c.c.jinja emitted before.
+  (struct name), `st` (storage pointer expression).
 -#}
-{%- macro fini_field(field, var, sname) -%}
-{%- if field.is_heap %}
-{%- if field.is_sequence and field.element_struct_name != "" %}
-    // Release each nested element's own heap fields before freeing the array.
-    for (size_t i = 0; i < {{ var }}->{{ field.name }}.size; ++i) {
-        {{ field.element_struct_name }}_fini(&{{ var }}->{{ field.name }}.data[i]);
-    }
+
+{#- One member of the `__Storage` struct for `field`; empty for a member that
+    owns no out-of-line bytes (a scalar, a fixed array of scalars). -#}
+{%- macro storage_decl(field) -%}
+{%- if field.is_string %}
+    char {{ field.name }}[{{ field.str_bytes }}];
+{%- elif field.is_sequence and field.is_primitive_element %}
+    {{ field.elem_type }} {{ field.name }}[{{ field.sequence_capacity }}];
+{%- elif field.is_sequence and field.is_string_element %}
+    rosidl_runtime_c__String {{ field.name }}[{{ field.sequence_capacity }}];
+    char {{ field.name }}__chars[{{ field.sequence_capacity }}][{{ field.elem_str_bytes }}];
+{%- elif field.is_sequence %}
+    {{ field.elem_type }} {{ field.name }}[{{ field.sequence_capacity }}];
+    {{ field.elem_type }}__Storage {{ field.name }}__storage[{{ field.sequence_capacity }}];
+{%- elif field.is_array and field.is_string_element %}
+    char {{ field.name }}[{{ field.array_size }}][{{ field.elem_str_bytes }}];
+{%- elif field.is_array and not field.is_primitive_element %}
+    {{ field.elem_type }}__Storage {{ field.name }}[{{ field.array_size }}];
+{%- elif field.is_nested %}
+    {{ field.nested_struct_name }}__Storage {{ field.name }};
 {%- endif %}
-    nros_platform_free({{ var }}->{{ field.name }}.data);
-    {{ var }}->{{ field.name }}.data = NULL;
+{%- endmacro -%}
+
+{#- Point one member of `var` at its `__Storage` bytes in `st`. -#}
+{%- macro init_field(field, var, st) -%}
+{%- if field.is_string %}
+    {{ var }}->{{ field.name }}.data = {{ st }}->{{ field.name }};
+    {{ var }}->{{ field.name }}.data[0] = '\0';
     {{ var }}->{{ field.name }}.size = 0;
-    {{ var }}->{{ field.name }}.capacity = 0;
+    {{ var }}->{{ field.name }}.capacity = sizeof({{ st }}->{{ field.name }});
+{%- elif field.is_sequence and field.is_primitive_element %}
+    {{ var }}->{{ field.name }}.data = {{ st }}->{{ field.name }};
+    {{ var }}->{{ field.name }}.size = 0;
+    {{ var }}->{{ field.name }}.capacity = {{ field.sequence_capacity }};
+{%- elif field.is_sequence and field.is_string_element %}
+    for (size_t i = 0; i < {{ field.sequence_capacity }}; ++i) {
+        {{ st }}->{{ field.name }}[i].data = {{ st }}->{{ field.name }}__chars[i];
+        {{ st }}->{{ field.name }}[i].data[0] = '\0';
+        {{ st }}->{{ field.name }}[i].size = 0;
+        {{ st }}->{{ field.name }}[i].capacity = sizeof({{ st }}->{{ field.name }}__chars[i]);
+    }
+    {{ var }}->{{ field.name }}.data = {{ st }}->{{ field.name }};
+    {{ var }}->{{ field.name }}.size = 0;
+    {{ var }}->{{ field.name }}.capacity = {{ field.sequence_capacity }};
+{%- elif field.is_sequence %}
+    for (size_t i = 0; i < {{ field.sequence_capacity }}; ++i) {
+        {{ field.elem_type }}__init_in(&{{ st }}->{{ field.name }}[i], &{{ st }}->{{ field.name }}__storage[i]);
+    }
+    {{ var }}->{{ field.name }}.data = {{ st }}->{{ field.name }};
+    {{ var }}->{{ field.name }}.size = 0;
+    {{ var }}->{{ field.name }}.capacity = {{ field.sequence_capacity }};
+{%- elif field.is_array and field.is_string_element %}
+    for (size_t i = 0; i < {{ field.array_size }}; ++i) {
+        {{ var }}->{{ field.name }}[i].data = {{ st }}->{{ field.name }}[i];
+        {{ var }}->{{ field.name }}[i].data[0] = '\0';
+        {{ var }}->{{ field.name }}[i].size = 0;
+        {{ var }}->{{ field.name }}[i].capacity = sizeof({{ st }}->{{ field.name }}[i]);
+    }
+{%- elif field.is_array and not field.is_primitive_element %}
+    for (size_t i = 0; i < {{ field.array_size }}; ++i) {
+        {{ field.elem_type }}__init_in(&{{ var }}->{{ field.name }}[i], &{{ st }}->{{ field.name }}[i]);
+    }
+{%- elif field.is_nested %}
+    {{ field.nested_struct_name }}__init_in(&{{ var }}->{{ field.name }}, &{{ st }}->{{ field.name }});
+{%- endif %}
+{%- endmacro -%}
+
+{#- Write one `rosidl_runtime_c__String` expression `s` (bound 0 = none). -#}
+{%- macro ser_string(s, bound) %}
+    if ({{ s }}.size > 0 && {{ s }}.data == NULL) return -1;
+{%- if bound %}
+    if ({{ s }}.size > {{ bound }}) return -1;
+{%- endif %}
+    if (rclc_cdr_write_string_n(&ptr, end, origin, {{ s }}.data != NULL ? {{ s }}.data : "", {{ s }}.size) < 0) return -1;
+{%- endmacro -%}
+
+{#- Read one `rosidl_runtime_c__String` expression `s` into its own capacity. -#}
+{%- macro deser_string(s, bound) %}
+    if (rclc_cdr_read_string(&ptr, end, origin, {{ s }}.data, {{ s }}.capacity) < 0) return -1;
+    {{ s }}.size = strlen({{ s }}.data);
+{%- if bound %}
+    if ({{ s }}.size > {{ bound }}) return -1;
 {%- endif %}
 {%- endmacro -%}
 
@@ -38,34 +107,34 @@
 {%- if field.is_primitive %}
     if (rclc_cdr_{{ field.cdr_write_method }}(&ptr, end, origin, {{ var }}->{{ field.name }}) < 0) return -1;
 {%- elif field.is_string %}
-{%- if field.is_heap %}
-    if (rclc_cdr_write_string(&ptr, end, origin, {{ var }}->{{ field.name }}.data ? {{ var }}->{{ field.name }}.data : "") < 0) return -1;
-{%- else %}
-    if (rclc_cdr_write_string(&ptr, end, origin, {{ var }}->{{ field.name }}) < 0) return -1;
-{%- endif %}
+{{- ser_string(var ~ "->" ~ field.name, field.str_bound) }}
 {%- elif field.is_array %}
     for (size_t i = 0; i < {{ field.array_size }}; ++i) {
 {%- if field.is_primitive_element %}
         if (rclc_cdr_{{ field.element_cdr_write_method }}(&ptr, end, origin, {{ var }}->{{ field.name }}[i]) < 0) return -1;
 {%- elif field.is_string_element %}
-        if (rclc_cdr_write_string(&ptr, end, origin, {{ var }}->{{ field.name }}[i]) < 0) return -1;
+    {{- ser_string(var ~ "->" ~ field.name ~ "[i]", field.elem_str_bound) }}
 {%- else %}
-        if ({{ field.element_struct_name }}_serialize_inline(&{{ var }}->{{ field.name }}[i], &ptr, end, origin) < 0) return -1;
+        if ({{ field.element_struct_name }}__serialize_inline(&{{ var }}->{{ field.name }}[i], &ptr, end, origin) < 0) return -1;
 {%- endif %}
     }
 {%- elif field.is_sequence %}
-    if (rclc_cdr_write_u32(&ptr, end, origin, {{ var }}->{{ field.name }}.size) < 0) return -1;
+    if ({{ var }}->{{ field.name }}.size > 0 && {{ var }}->{{ field.name }}.data == NULL) return -1;
+{%- if field.seq_bound %}
+    if ({{ var }}->{{ field.name }}.size > {{ field.seq_bound }}) return -1;
+{%- endif %}
+    if (rclc_cdr_write_u32(&ptr, end, origin, (uint32_t){{ var }}->{{ field.name }}.size) < 0) return -1;
     for (size_t i = 0; i < {{ var }}->{{ field.name }}.size; ++i) {
 {%- if field.is_primitive_element %}
         if (rclc_cdr_{{ field.element_cdr_write_method }}(&ptr, end, origin, {{ var }}->{{ field.name }}.data[i]) < 0) return -1;
 {%- elif field.is_string_element %}
-        if (rclc_cdr_write_string(&ptr, end, origin, {{ var }}->{{ field.name }}.data[i]) < 0) return -1;
+    {{- ser_string(var ~ "->" ~ field.name ~ ".data[i]", field.elem_str_bound) }}
 {%- else %}
-        if ({{ field.element_struct_name }}_serialize_inline(&{{ var }}->{{ field.name }}.data[i], &ptr, end, origin) < 0) return -1;
+        if ({{ field.element_struct_name }}__serialize_inline(&{{ var }}->{{ field.name }}.data[i], &ptr, end, origin) < 0) return -1;
 {%- endif %}
     }
 {%- else %}
-    if ({{ field.nested_struct_name }}_serialize_inline(&{{ var }}->{{ field.name }}, &ptr, end, origin) < 0) return -1;
+    if ({{ field.nested_struct_name }}__serialize_inline(&{{ var }}->{{ field.name }}, &ptr, end, origin) < 0) return -1;
 {%- endif %}
 {%- endmacro -%}
 
@@ -73,93 +142,41 @@
 {%- if field.is_primitive %}
     if (rclc_cdr_{{ field.cdr_read_method }}(&ptr, end, origin, &{{ var }}->{{ field.name }}) < 0) return -1;
 {%- elif field.is_string %}
-{%- if field.is_heap %}
-    {
-        // Heap string (RFC-0033): CDR length (incl. null) is 4-byte aligned;
-        // read it, then raw-copy the bytes (chars need no alignment). Freed by
-        // {{ sname }}_fini.
-        uint32_t slen;
-        if (rclc_cdr_read_u32(&ptr, end, origin, &slen) < 0) return -1;
-        if ((size_t)(end - ptr) < slen) return -1;
-        if (slen > 0) {
-            {{ var }}->{{ field.name }}.data = nros_platform_malloc(slen);
-            if ({{ var }}->{{ field.name }}.data == NULL) return -1;
-            memcpy({{ var }}->{{ field.name }}.data, ptr, slen);
-            {{ var }}->{{ field.name }}.data[slen - 1] = '\0'; // ensure NUL-terminated
-            {{ var }}->{{ field.name }}.size = slen - 1;
-            {{ var }}->{{ field.name }}.capacity = slen;
-        } else {
-            {{ var }}->{{ field.name }}.data = NULL;
-            {{ var }}->{{ field.name }}.size = 0;
-            {{ var }}->{{ field.name }}.capacity = 0;
-        }
-        ptr += slen;
-    }
-{%- else %}
-    if (rclc_cdr_read_string(&ptr, end, origin, {{ var }}->{{ field.name }}, sizeof({{ var }}->{{ field.name }})) < 0) return -1;
-{%- endif %}
+{{- deser_string(var ~ "->" ~ field.name, field.str_bound) }}
 {%- elif field.is_array %}
     for (size_t i = 0; i < {{ field.array_size }}; ++i) {
 {%- if field.is_primitive_element %}
         if (rclc_cdr_{{ field.element_cdr_read_method }}(&ptr, end, origin, &{{ var }}->{{ field.name }}[i]) < 0) return -1;
 {%- elif field.is_string_element %}
-        if (rclc_cdr_read_string(&ptr, end, origin, {{ var }}->{{ field.name }}[i], sizeof({{ var }}->{{ field.name }}[i])) < 0) return -1;
+    {{- deser_string(var ~ "->" ~ field.name ~ "[i]", field.elem_str_bound) }}
 {%- else %}
-        if ({{ field.element_struct_name }}_deserialize_inline(&{{ var }}->{{ field.name }}[i], &ptr, end, origin) < 0) return -1;
+        if ({{ field.element_struct_name }}__deserialize_inline(&{{ var }}->{{ field.name }}[i], &ptr, end, origin) < 0) return -1;
 {%- endif %}
     }
 {%- elif field.is_sequence %}
     {
         uint32_t len;
         if (rclc_cdr_read_u32(&ptr, end, origin, &len) < 0) return -1;
-{%- if field.is_heap %}
-        // Heap sequence (RFC-0033): allocate exactly `len` elements; freed by
-        // {{ sname }}_fini. A re-deserialize leaks the prior buffer unless
-        // the caller _fini's first.
-        if (len > 0) {
-            // `len` is wire data: a bare `(size_t)len * sizeof` wraps on a
-            // 32-bit target and under-allocates (issue 1149's class).
-            size_t bytelen;
-            if (rclc_cdr_seq_byte_len(len, sizeof(*{{ var }}->{{ field.name }}.data), SIZE_MAX, &bytelen) < 0) return -1;
-            {{ var }}->{{ field.name }}.data = nros_platform_malloc(bytelen);
-            if ({{ var }}->{{ field.name }}.data == NULL) return -1;
-        } else {
-            {{ var }}->{{ field.name }}.data = NULL;
-        }
-        {{ var }}->{{ field.name }}.size = len;
-        {{ var }}->{{ field.name }}.capacity = len;
-        for (size_t i = 0; i < len; ++i) {
-{%- if field.is_string_element %}
-            if (rclc_cdr_read_string(&ptr, end, origin, {{ var }}->{{ field.name }}.data[i], sizeof(*{{ var }}->{{ field.name }}.data)) < 0) {
-{%- elif field.is_primitive_element %}
-            if (rclc_cdr_{{ field.element_cdr_read_method }}(&ptr, end, origin, &{{ var }}->{{ field.name }}.data[i]) < 0) {
-{%- else %}
-            if ({{ field.element_struct_name }}_deserialize_inline(&{{ var }}->{{ field.name }}.data[i], &ptr, end, origin) < 0) {
+        /* Refused BEFORE a byte is written: a sample larger than the storage
+           the caller wired is an error, never a truncation or a grown buffer. */
+        if ((size_t)len > {{ var }}->{{ field.name }}.capacity) return -1;
+{%- if field.seq_bound %}
+        if (len > {{ field.seq_bound }}u) return -1;
 {%- endif %}
-                nros_platform_free({{ var }}->{{ field.name }}.data);
-                {{ var }}->{{ field.name }}.data = NULL;
-                {{ var }}->{{ field.name }}.size = 0;
-                {{ var }}->{{ field.name }}.capacity = 0;
-                return -1;
-            }
-        }
-    }
-{%- else %}
-        {{ var }}->{{ field.name }}.size = len;
-        if (len > {{ field.sequence_capacity }}) return -1;
+        if (len > 0 && {{ var }}->{{ field.name }}.data == NULL) return -1;
         for (size_t i = 0; i < len; ++i) {
 {%- if field.is_primitive_element %}
             if (rclc_cdr_{{ field.element_cdr_read_method }}(&ptr, end, origin, &{{ var }}->{{ field.name }}.data[i]) < 0) return -1;
 {%- elif field.is_string_element %}
-            if (rclc_cdr_read_string(&ptr, end, origin, {{ var }}->{{ field.name }}.data[i], sizeof({{ var }}->{{ field.name }}.data[i])) < 0) return -1;
+        {{- deser_string(var ~ "->" ~ field.name ~ ".data[i]", field.elem_str_bound) }}
 {%- else %}
-            if ({{ field.element_struct_name }}_deserialize_inline(&{{ var }}->{{ field.name }}.data[i], &ptr, end, origin) < 0) return -1;
+            if ({{ field.element_struct_name }}__deserialize_inline(&{{ var }}->{{ field.name }}.data[i], &ptr, end, origin) < 0) return -1;
 {%- endif %}
         }
+        {{ var }}->{{ field.name }}.size = len;
     }
-{%- endif %}
 {%- else %}
-    if ({{ field.nested_struct_name }}_deserialize_inline(&{{ var }}->{{ field.name }}, &ptr, end, origin) < 0) return -1;
+    if ({{ field.nested_struct_name }}__deserialize_inline(&{{ var }}->{{ field.name }}, &ptr, end, origin) < 0) return -1;
 {%- endif %}
 {%- endmacro -%}
 
@@ -173,7 +190,8 @@
 {%- endmacro -%}
 
 {#- Issue 0346 — C borrowed deserialize arm: `view_read_fn` sets pointers
-    into `buffer` (no malloc, no fini); other fields copy exactly as owned. -#}
+    into `buffer` (no copy); other fields read exactly as owned, through the
+    `data`/`capacity` the caller wired. -#}
 {%- macro view_deser_field(field, var, sname) -%}
 {%- if field.is_view %}
     if ({{ field.view_read_fn }}(&ptr, end, origin, &{{ var }}->{{ field.name }}) < 0) return -1;
@@ -182,3 +200,223 @@
 {%- endif %}
 {%- endmacro -%}
 
+{#- ======================================================================
+    One payload struct's HEADER block: constants, the struct, its
+    `__Sequence`, its `__Storage`, the refused rosidl allocators, and the
+    codec declarations. Used by message, service and action headers alike.
+    ====================================================================== -#}
+{%- macro payload_h(sname, label, fields, has_fields, constants, has_view) %}
+// ----------------------------------------------------------------------------
+// {{ label }}
+// ----------------------------------------------------------------------------
+
+// Constants
+{%- for constant in constants %}
+#define {{ sname }}__{{ constant.name }} {{ constant.value }}
+{%- endfor %}
+
+/// {{ label }}. rosidl's member shape: every string and sequence is
+/// `{data, size, capacity}` over memory the caller owns.
+typedef struct {{ sname }} {
+{%- for field in fields %}
+    {{ field | c_type }} {{ field.name }}{{ field | c_array_suffix }};
+{%- endfor %}
+{%- if not has_fields %}
+    uint8_t structure_needs_at_least_one_member;
+{%- endif %}
+} {{ sname }};
+
+/// A sequence of {{ sname }}, in rosidl's shape.
+typedef struct {{ sname }}__Sequence {
+    {{ sname }}* data;
+    size_t size;
+    size_t capacity;
+} {{ sname }}__Sequence;
+
+/// The bytes every string and sequence of {{ sname }} points at after
+/// {{ sname }}__init_in(). Sized by RFC-0033's capacities (`nros-codegen.toml`).
+/// Ours (ours-only, RFC-0089's `_in` rule): micro-ROS's
+/// `create_static_message_memory` without the runtime introspection.
+typedef struct {{ sname }}__Storage {
+{%- for field in fields %}
+{{- storage_decl(field) }}
+{%- endfor %}
+    uint8_t _reserved; /* keeps the struct non-empty */
+} {{ sname }}__Storage;
+
+/// Zero `msg` and point every string and sequence of it at `storage`.
+/// Allocates nothing; `storage` must outlive every use of `msg`.
+///
+/// rosidl's {{ sname }}__init / __fini / __create / __destroy and the
+/// __Sequence__init / __fini pair allocate, so they are NOT declared here: a
+/// ported call fails to compile and names this function instead. A caller that
+/// wants different bytes (micro-ROS's `msg.data.data = buf;
+/// msg.data.capacity = sizeof buf;`) sets `data` / `capacity` itself.
+void {{ sname }}__init_in({{ sname }}* msg, {{ sname }}__Storage* storage);
+
+#define {{ sname }}__init(...) rosidl_allocates__use__{{ sname }}__init_in
+#define {{ sname }}__fini(...) rosidl_allocates__use__{{ sname }}__init_in
+#define {{ sname }}__create(...) rosidl_allocates__use__{{ sname }}__init_in
+#define {{ sname }}__destroy(...) rosidl_allocates__use__{{ sname }}__init_in
+#define {{ sname }}__Sequence__init(...) rosidl_allocates__point__{{ sname }}__Sequence__data_at_caller_memory
+#define {{ sname }}__Sequence__fini(...) rosidl_allocates__point__{{ sname }}__Sequence__data_at_caller_memory
+#define {{ sname }}__Sequence__create(...) rosidl_allocates__point__{{ sname }}__Sequence__data_at_caller_memory
+#define {{ sname }}__Sequence__destroy(...) rosidl_allocates__point__{{ sname }}__Sequence__data_at_caller_memory
+
+/// Serialize to CDR (a fresh 4-byte encapsulation header, then the fields).
+/// Returns 0 on success, -1 on error -- including a buffer too small, a string
+/// or sequence past its `.msg` bound, or a NULL `data` with a nonzero `size`.
+/// On success `*serialized_size` holds the bytes written.
+int32_t {{ sname }}__serialize(const {{ sname }}* msg, uint8_t* buffer, size_t buffer_size, size_t* serialized_size);
+
+/// Deserialize from CDR into `msg`, through the `data` / `capacity` the caller
+/// wired (normally by {{ sname }}__init_in). Returns 0 on success and -1 when
+/// the bytes are malformed or a field does not fit its `capacity` -- refused
+/// before a byte of that field is written. Never allocates, never grows a
+/// buffer.
+int32_t {{ sname }}__deserialize({{ sname }}* msg, const uint8_t* buffer, size_t buffer_size);
+
+/// Serialize inline into an already-open CDR stream (no encapsulation header);
+/// used by parent payloads that embed this type.
+int32_t {{ sname }}__serialize_inline(const {{ sname }}* msg, uint8_t** ptr_ref, const uint8_t* end, const uint8_t* origin);
+
+/// Deserialize inline from an already-open CDR stream (no encapsulation
+/// header).
+int32_t {{ sname }}__deserialize_inline({{ sname }}* msg, const uint8_t** ptr_ref, const uint8_t* end, const uint8_t* origin);
+{%- if has_view %}
+
+/// Borrowed (zero-copy) view of {{ sname }} — RFC-0033 `view` mode.
+/// `mode = "view"` fields point directly into the CDR receive buffer (set by
+/// {{ sname }}__deserialize_view) and are valid ONLY while it lives. Every
+/// other field reads exactly as {{ sname }}__deserialize does, through the
+/// `data` / `capacity` the caller wired on `out`.
+typedef struct {{ sname }}__View {
+{%- for field in fields %}
+{{- view_field_decl(field) }}
+{%- endfor %}
+} {{ sname }}__View;
+
+/// Deserialize into a borrowed view. Returns 0 on success, -1 on error.
+int32_t {{ sname }}__deserialize_view({{ sname }}__View* out, const uint8_t* buffer, size_t buffer_size);
+{%- endif %}
+{%- endmacro -%}
+
+{#- ======================================================================
+    One payload struct's SOURCE block: `__init_in`, the codec, and the two
+    type-erased adapters a descriptor points at.
+    ====================================================================== -#}
+{%- macro payload_c(sname, fields, has_fields, has_view) %}
+// ----------------------------------------------------------------------------
+// {{ sname }}
+// ----------------------------------------------------------------------------
+
+void {{ sname }}__init_in({{ sname }}* msg, {{ sname }}__Storage* storage) {
+    if (msg == NULL || storage == NULL) return;
+    memset(msg, 0, sizeof(*msg));
+{%- for field in fields %}
+{{- init_field(field, "msg", "storage") }}
+{%- endfor %}
+}
+
+int32_t {{ sname }}__serialize_inline(const {{ sname }}* msg, uint8_t** ptr_ref, const uint8_t* end, const uint8_t* origin) {
+    if (msg == NULL || ptr_ref == NULL || *ptr_ref == NULL) return -1;
+    uint8_t* ptr = *ptr_ref;
+    (void)origin; // may be unused for empty structs
+    // phase-303 W4 (#0267) — XCDR2 DHEADER wrap (no-op / returns -1 under XCDR1).
+    int64_t __dh = rclc_cdr_begin_dheader(&ptr, end, origin);
+    if (__dh < -1) return -1;
+{%- if has_fields %}
+{%- for field in fields %}
+{{- ser_field(field, "msg") }}
+{%- endfor %}
+{%- else %}
+    // Issue 1293 — rosidl's padding member (`structure_needs_at_least_one_member`):
+    // every stock typesupport writes it and refuses a payload without it.
+    if (rclc_cdr_write_u8(&ptr, end, origin, 0) < 0) return -1;
+{%- endif %}
+    if (rclc_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
+    *ptr_ref = ptr;
+    return 0;
+}
+
+int32_t {{ sname }}__serialize(const {{ sname }}* msg, uint8_t* buffer, size_t buffer_size, size_t* serialized_size) {
+    if (msg == NULL || buffer == NULL) return -1;
+    uint8_t* ptr = buffer;
+    const uint8_t* end = buffer + buffer_size;
+    // The edition-appropriate CDR encapsulation header (XCDR1 `00 01` or XCDR2
+    // DELIMITED `00 09`) — phase-303 W4 (#0267).
+    if (rclc_cdr_write_encaps_header(&ptr, end) < 0) return -1;
+    const uint8_t* origin = ptr; // CDR alignment origin (after header)
+    if ({{ sname }}__serialize_inline(msg, &ptr, end, origin) < 0) return -1;
+    if (serialized_size != NULL) {
+        *serialized_size = (size_t)(ptr - buffer);
+    }
+    return 0;
+}
+
+int32_t {{ sname }}__deserialize_inline({{ sname }}* msg, const uint8_t** ptr_ref, const uint8_t* end, const uint8_t* origin) {
+    if (msg == NULL || ptr_ref == NULL || *ptr_ref == NULL) return -1;
+    const uint8_t* ptr = *ptr_ref;
+    // phase-303 W4 (#0267) — XCDR2 DHEADER read (no-op / -1 under XCDR1).
+    int64_t __dh = rclc_cdr_begin_dheader_read(&ptr, end, origin);
+    if (__dh < -1) return -1;
+    (void)origin;
+{%- if has_fields %}
+{%- for field in fields %}
+{{- deser_field(field, "msg", sname) }}
+{%- endfor %}
+{%- else %}
+    // Issue 1293 — the padding byte every stock peer sends.
+    {
+        uint8_t __pad;
+        if (rclc_cdr_read_u8(&ptr, end, origin, &__pad) < 0) return -1;
+    }
+{%- endif %}
+    if (rclc_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;
+    *ptr_ref = ptr;
+    return 0;
+}
+
+int32_t {{ sname }}__deserialize({{ sname }}* msg, const uint8_t* buffer, size_t buffer_size) {
+    if (msg == NULL || buffer == NULL) return -1;
+    const uint8_t* ptr = buffer;
+    const uint8_t* end = buffer + buffer_size;
+    // Skip the CDR encapsulation header.
+    if (buffer_size < 4) return -1;
+    ptr += 4;
+    const uint8_t* origin = ptr; // CDR alignment origin (after header)
+    return {{ sname }}__deserialize_inline(msg, &ptr, end, origin) < 0 ? -1 : 0;
+}
+{%- if has_view %}
+
+// RFC-0033 `view` (Phase 235): `mode = "view"` fields are pointed into
+// `buffer` (zero-copy); every other field reads as the owned deserializer does.
+// `out` is NOT zeroed: its non-view strings and sequences read through the
+// `data` / `capacity` the caller wired.
+int32_t {{ sname }}__deserialize_view({{ sname }}__View* out, const uint8_t* buffer, size_t buffer_size) {
+    if (out == NULL || buffer == NULL) return -1;
+    const uint8_t* ptr = buffer;
+    const uint8_t* end = buffer + buffer_size;
+    if (buffer_size < 4) return -1;
+    ptr += 4;
+    const uint8_t* origin = ptr; // CDR alignment origin (after header)
+    (void)origin;
+{%- if has_fields %}
+{%- for field in fields %}
+{{- view_deser_field(field, "out", sname) }}
+{%- endfor %}
+{%- endif %}
+    return 0;
+}
+{%- endif %}
+
+// The type-erased codec a descriptor points at (phase-492 W8). Real functions
+// with the erased signature, never a cast of the typed ones: a call through a
+// function pointer of another type is undefined, and a CFI build traps on it.
+static int32_t {{ sname }}__nros_serialize_erased(const void* msg, uint8_t* buffer, size_t capacity, size_t* out_len) {
+    return {{ sname }}__serialize((const {{ sname }}*)msg, buffer, capacity, out_len);
+}
+static int32_t {{ sname }}__nros_deserialize_erased(const uint8_t* buffer, size_t len, void* msg) {
+    return {{ sname }}__deserialize(({{ sname }}*)msg, buffer, len);
+}
+{%- endmacro -%}

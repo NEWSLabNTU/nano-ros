@@ -68,9 +68,9 @@ static rclc_goal_response_t goal_callback(rcl_action_server_t* server,
     (void)goal;
 
     // Deserialize goal using generated function
-    example_interfaces_action_fibonacci_goal goal_msg;
-    if (example_interfaces_action_fibonacci_goal_deserialize(&goal_msg, goal_request, goal_len) !=
-        0) {
+    example_interfaces__action__Fibonacci_Goal goal_msg;
+    if (example_interfaces__action__Fibonacci_Goal__deserialize(&goal_msg, goal_request,
+                                                                goal_len) != 0) {
         fprintf(stderr, "Failed to deserialize goal\n");
         return RCLC_GOAL_REJECT;
     }
@@ -124,8 +124,9 @@ static void accepted_callback(rcl_action_server_t* server, const rclc_goal_handl
     }
 
     // Compute Fibonacci sequence with feedback
-    example_interfaces_action_fibonacci_feedback fb;
-    example_interfaces_action_fibonacci_feedback_init(&fb);
+    example_interfaces__action__Fibonacci_Feedback fb;
+    example_interfaces__action__Fibonacci_Feedback__Storage fb_storage;
+    example_interfaces__action__Fibonacci_Feedback__init_in(&fb, &fb_storage);
 
     for (int32_t i = 0; i <= order; i++) {
         int32_t val;
@@ -142,7 +143,7 @@ static void accepted_callback(rcl_action_server_t* server, const rclc_goal_handl
         // Publish feedback using generated serialize
         uint8_t fb_buf[512];
         size_t fb_len = 0;
-        int32_t fb_len_rc = example_interfaces_action_fibonacci_feedback_serialize(
+        int32_t fb_len_rc = example_interfaces__action__Fibonacci_Feedback__serialize(
             &fb, fb_buf, sizeof(fb_buf), &fb_len);
         if (fb_len_rc == 0) {
             ret = rclc_action_publish_feedback(server, goal, fb_buf, fb_len);
@@ -155,14 +156,15 @@ static void accepted_callback(rcl_action_server_t* server, const rclc_goal_handl
     }
 
     // Send result — copy feedback sequence to result
-    example_interfaces_action_fibonacci_result result;
-    example_interfaces_action_fibonacci_result_init(&result);
+    example_interfaces__action__Fibonacci_Result result;
+    example_interfaces__action__Fibonacci_Result__Storage result_storage;
+    example_interfaces__action__Fibonacci_Result__init_in(&result, &result_storage);
     result.sequence.size = fb.sequence.size;
     memcpy(result.sequence.data, fb.sequence.data, fb.sequence.size * sizeof(int32_t));
 
     uint8_t result_buf[512];
     size_t result_len = 0;
-    int32_t result_len_rc = example_interfaces_action_fibonacci_result_serialize(
+    int32_t result_len_rc = example_interfaces__action__Fibonacci_Result__serialize(
         &result, result_buf, sizeof(result_buf), &result_len);
     if (result_len_rc == 0) {
         ret = rclc_action_succeed(server, goal, result_buf, result_len);
@@ -212,8 +214,8 @@ int nros_app_main(int argc, char** argv) {
     // Build action type info using generated type name/hash
     // Sequence capacity: 4-byte CDR header + 4-byte length + 64*4-byte data = 264
     rclc_action_type_t fibonacci_type = {
-        .type_name = example_interfaces_action_fibonacci_get_type_name(),
-        .type_hash = example_interfaces_action_fibonacci_get_type_hash(),
+        .type_name = example_interfaces__action__Fibonacci__get_type_name(),
+        .type_hash = example_interfaces__action__Fibonacci__get_type_hash(),
         .goal_serialized_size_max = 8,
         .result_serialized_size_max = 264,
         .feedback_serialized_size_max = 264,

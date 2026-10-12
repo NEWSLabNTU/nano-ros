@@ -2,20 +2,26 @@
 //
 // Owned-serialize a message, deserialize into the borrowed view, and assert the
 // view fields point INTO the CDR buffer (zero-copy) with correct values. Built
-// against the generated `e2e_msgs_msg_borrowed.{h,c}` (emitted by the
+// against the generated `e2e_msgs/msg/borrowed.{h,c}` (emitted by the
 // rosidl-codegen `emit_c_borrowed_e2e` test) + linked to `libnros_c.a` for the
-// CDR readers. Driven by `tests/borrowed_c_e2e.sh`.
+// CDR readers.
+//
+// phase-492 W7: the owned message is rosidl-shaped — its string and sequences
+// point at a `__Storage` the caller owns, wired by `__init_in`.
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
 
-#include "e2e_msgs_msg_borrowed.h"
+#include <e2e_msgs/msg/borrowed.h>
+
+static e2e_msgs__msg__Borrowed__Storage g_storage;
 
 int main(void) {
-    e2e_msgs_msg_borrowed msg;
-    e2e_msgs_msg_borrowed_init(&msg);
+    e2e_msgs__msg__Borrowed msg;
+    e2e_msgs__msg__Borrowed__init_in(&msg, &g_storage);
     msg.width = 0xDEADBEEFu;
-    strcpy(msg.label, "hello");
+    strcpy(msg.label.data, "hello");
+    msg.label.size = 5;
     msg.data.size = 4;
     msg.data.data[0] = 10;
     msg.data.data[1] = 20;
@@ -27,10 +33,12 @@ int main(void) {
 
     uint8_t buf[1024];
     size_t n = 0;
-    assert(e2e_msgs_msg_borrowed_serialize(&msg, buf, sizeof buf, &n) == 0);
+    assert(e2e_msgs__msg__Borrowed__serialize(&msg, buf, sizeof buf, &n) == 0);
 
-    e2e_msgs_msg_borrowed_View view;
-    assert(e2e_msgs_msg_borrowed_deserialize_view(&view, buf, n) == 0);
+    // Every field of this type is `mode = "view"`, so the view needs no wiring.
+    e2e_msgs__msg__Borrowed__View view;
+    memset(&view, 0, sizeof view);
+    assert(e2e_msgs__msg__Borrowed__deserialize_view(&view, buf, n) == 0);
 
     // Copied scalar.
     assert(view.width == 0xDEADBEEFu);

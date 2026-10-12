@@ -203,6 +203,10 @@
   },
   "c:message_deserialize_fn_t": {
     "verdict": "extension",
-    "why": "phase-417 W5.a — the erased deserialiser a typed subscription carries. Emitted per message as a REAL function (`<Msg>_deserialize_erased`), never a cast of `<Msg>_deserialize`: calling through a mismatched function-pointer type is UB and CFI traps on it. rosidl has no counterpart because its type support carries the dispatcher inline; ours is a flat descriptor (`type_name`, `type_hash`, `serialized_size_max`), so the deserialiser travels beside it."
+    "why": "phase-492 W8 — the deserialiser slot of the type descriptor (`rclc_message_type_t::deserialize`, and the request/response/goal/result/feedback slots of the service and action descriptors): `(const uint8_t *buf, size_t len, void *msg) -> int32_t`, writing into caller-owned storage and refusing a field that does not fit its capacity. Generated per type as a REAL function with the erased signature (`<Msg>__nros_deserialize_erased`), never a cast of `<Msg>__deserialize`: calling through a mismatched function-pointer type is UB and CFI traps on it. rosidl has no counterpart because its type support carries a `func` dispatcher instead, which RFC-0089 declines to claim; the descriptor carries the codec directly so `rclc_executor_add_subscription_with_context` takes rclc's six arguments."
+  },
+  "c:message_serialize_fn_t": {
+    "verdict": "extension",
+    "why": "phase-492 W8 — the serialiser slot of the type descriptor (`rclc_message_type_t::serialize` and the service/action part slots): `(const void *msg, uint8_t *buf, size_t cap, size_t *out_len) -> int32_t`, the codec `rcl_publish` serialises through into its bounded transmit buffer. Generated per type as `<Msg>__nros_serialize_erased`, a real function with the erased signature. Ours: rosidl's type support reaches its serialiser through the `func` dispatcher RFC-0089 declines to claim."
   }
 }

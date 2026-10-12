@@ -577,30 +577,71 @@ c: c-fmt
             "packages/api/nros-c/tests/compile/$probe.c" || exit 1; \
     done
 
-    # ...and typed delivery's NEGATIVE control must FAIL. `msg` is the one
-    # argument of the six that does not come from the type token, and the FFI
-    # takes it as `void *`, so the wrong struct's storage would compile and then
-    # be overwritten with a message of another type on every dispatch -- with no
-    # allocator anywhere to notice. -Werror because in C an incompatible pointer
-    # in a conditional is only a WARNING (the asymmetry
-    # `rcl_node_init_reorder_probe` records one lane down); C++ rejects it
-    # outright. The positive control above compiles the SAME macro, so a guard
-    # that rejected everything would be caught there rather than read as rigour.
-    echo "  - phase-417 W5.a: typed delivery REFUSES storage of the wrong type"
-    test -f packages/api/nros-c/tests/compile/typed_subscription_storage_mismatch_probe.c || { \
-        echo "ERROR: typed_subscription_storage_mismatch_probe.c is MISSING -- an" >&2; \
-        echo "       expected-failure check passes on a missing file." >&2; exit 1; }
-    if cc -fsyntax-only -std=c11 -Wall -Wextra -Werror \
+    # phase-492 W7/W8 — rosidl's message names and member shape, and the
+    # typesupport pass-through, as a PORTED file writes them. Both TUs include
+    # the committed codegen goldens of stock Humble interfaces, laid out as
+    # rosidl lays them out (`expected/rosidl/std_msgs/msg/string.h`), so a pack
+    # edit that changes the generated shape fails here in seconds. -Werror:
+    # the manual-buffer idiom must compile UNCHANGED, warnings included. The
+    # must-NOT-compile half is four `cxx-syntax-verdict` fixture rows
+    # (`c_rosidl_*`, consumer `tests/c_rosidl_refusals.rs`, issue 1620's shape).
+    echo "  - phase-492 W7/W8: micro-ROS manual-buffer idiom + ROSIDL_GET_MSG_TYPE_SUPPORT talker/listener"
+    for probe in rosidl_manual_buffer_idiom rosidl_talker_listener; do \
+        test -f "packages/api/nros-c/tests/compile/$probe.c" || { \
+            echo "ERROR: $probe.c is MISSING -- this check passes on absence." >&2; exit 1; }; \
+        cc -fsyntax-only -std=c11 -Wall -Wextra -Werror \
+            -I"$gen/nros-c-generated" \
+            -Ipackages/api/nros-c/include \
+            -Ipackages/platform/nros-platform-api/include \
+            -Ipackages/cli/rosidl-codegen/tests/fixtures/fingerprint-corpus/expected/rosidl \
+            "packages/api/nros-c/tests/compile/$probe.c" || exit 1; \
+    done
+    # Every committed C golden COMPILES, -Werror, as the tree a consumer gets:
+    # the corpus's every field shape under both storage arms (`inline`,
+    # `configured`) and the stock interfaces (`rosidl`). Replaces the C heap
+    # compile check that phase-492 W7 retired with the C heap arm, and which no
+    # lane ever ran (it was `#[ignore]`d).
+    echo "  - phase-492 W7: every generated C golden compiles (-Werror)"
+    _goldens=packages/cli/rosidl-codegen/tests/fixtures/fingerprint-corpus/expected
+    _golden_n=0
+    for _arm in inline configured rosidl; do \
+        while IFS= read -r _tu; do \
+            cc -fsyntax-only -std=c11 -Wall -Wextra -Werror \
+                -I"$gen/nros-c-generated" \
+                -Ipackages/api/nros-c/include \
+                -Ipackages/platform/nros-platform-api/include \
+                -I"$_goldens/$_arm" "$_tu" || exit 1; \
+            _golden_n=$((_golden_n + 1)); \
+        done < <(git ls-files -- "$_goldens/$_arm/*.c"); \
+    done
+    [ "$_golden_n" -ge 16 ] || { echo "ERROR: compiled only $_golden_n C goldens -- the corpus" >&2; \
+        echo "       lost its C arm, so this check asserts nothing." >&2; exit 1; }
+    # The run half: a string past its `capacity` is refused with no byte
+    # written past it, and `__init_in` + serialize + deserialize + `rcl_publish`
+    # allocate NOTHING under an interposed counting allocator (with a control
+    # proving the counter is live). Links the rosidl goldens' `.c`, this lane's
+    # archive and the stub backend, whose accept mode records the published
+    # bytes so the probe compares them with the serialiser's.
+    echo "  - phase-492 W7/W8: capacity is a limit; nothing allocates (run)"
+    test -f packages/api/nros-c/tests/run/rosidl_message_no_alloc.c || { \
+        echo "ERROR: rosidl_message_no_alloc.c is MISSING -- this check passes on absence." >&2; \
+        exit 1; }
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
         -I"$gen/nros-c-generated" \
         -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
-        packages/api/nros-c/tests/compile/typed_subscription_storage_mismatch_probe.c \
-        2>tmp/typed-subscription-storage-mismatch.log; then \
-        echo "ERROR: typed_subscription_storage_mismatch_probe.c COMPILED. The" >&2; \
-        echo "       generated <Msg>_executor_add_subscription macro is handing the" >&2; \
-        echo "       FFI's void* msg through unchecked, so storage of the wrong type" >&2; \
-        echo "       now registers silently. See packs/c/message.h.jinja." >&2; exit 1; \
-    fi
+        -Ipackages/api/nros-c/tests/run \
+        -I"$_goldens/rosidl" \
+        packages/api/nros-c/tests/run/rosidl_message_no_alloc.c \
+        packages/api/nros-c/tests/run/stub_rmw_backend.c \
+        "$_goldens/rosidl/std_msgs/msg/string.c" \
+        "$_goldens/rosidl/std_msgs/msg/header.c" \
+        "$_goldens/rosidl/builtin_interfaces/msg/time.c" \
+        "$_goldens/rosidl/sensor_msgs/msg/laser_scan.c" \
+        "$nros_c_lib" -lpthread -ldl -lm \
+        -o tmp/rosidl_message_no_alloc
+    ./tmp/rosidl_message_no_alloc
     # phase-454 W10 — the DECLARED QoS depth, C's half.
     #
     # Same shape as the C++ pair at the bottom of `check cpp`, and for the same

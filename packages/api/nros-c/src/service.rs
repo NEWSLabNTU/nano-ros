@@ -2319,6 +2319,10 @@ mod verification {
         rclc_service_type_t {
             type_name: type_name.as_ptr() as *const core::ffi::c_char,
             type_hash: type_hash.as_ptr() as *const core::ffi::c_char,
+            request_serialize: None,
+            request_deserialize: None,
+            response_serialize: None,
+            response_deserialize: None,
         }
     }
 

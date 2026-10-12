@@ -185,9 +185,9 @@ pub fn generate_nros_service_package(
     let request_msg = format!("{service_name}_Request");
     let response_msg = format!("{service_name}_Response");
     // Issues 0343/0344 — Rust srv/action share the message deserialize macro
-    // (`_nros_field.jinja`) so `heap` works here, and `view` emits a
-    // `{Payload}View` since issue 0346. The policy table lives on
-    // `ensure_supported_storage_for_payload`.
+    // (`_nros_field.jinja`) so `heap` works here; `borrowed` still has no view
+    // type, and the C emitter has no `_fini` to free heap fields with. The
+    // policy table lives on `ensure_supported_storage_for_payload`.
     ensure_supported_storage_for_payload(
         "service",
         PayloadLang::Rust,
@@ -316,9 +316,9 @@ pub fn generate_nros_inline_service(
     let request_msg = format!("{service_name}_Request");
     let response_msg = format!("{service_name}_Response");
     // Issues 0343/0344 — Rust srv/action share the message deserialize macro
-    // (`_nros_field.jinja`) so `heap` works here, and `view` emits a
-    // `{Payload}View` since issue 0346. The policy table lives on
-    // `ensure_supported_storage_for_payload`.
+    // (`_nros_field.jinja`) so `heap` works here; `borrowed` still has no view
+    // type, and the C emitter has no `_fini` to free heap fields with. The
+    // policy table lives on `ensure_supported_storage_for_payload`.
     ensure_supported_storage_for_payload(
         "service",
         PayloadLang::Rust,
@@ -447,8 +447,9 @@ pub fn generate_c_service_package(
     // Every name derives from one stem — see `generator::naming`.
     let names = artifact_names(Surface::C, Kind::Srv, package_name, service_name);
     let service_struct_name = names.stem.clone();
-    let request_struct_name = format!("{}_request", names.stem);
-    let response_struct_name = format!("{}_response", names.stem);
+    // rosidl: `<pkg>__srv__<Name>_Request` / `_Response`.
+    let request_struct_name = format!("{}_Request", names.stem);
+    let response_struct_name = format!("{}_Response", names.stem);
     let guard_name = names.include_guard;
     let constant_prefix = names.constant_prefix;
     let header_name = names.header;
@@ -484,18 +485,10 @@ pub fn generate_c_service_package(
         if let Some(FieldType::NamespacedType { package, name }) = field_type {
             let pkg = package.as_deref().unwrap_or(package_name);
             let dep = to_c_package_name(pkg);
-            let header_filename = artifact_names(Surface::C, Kind::Msg, pkg, name).header;
-            let type_header = if dep != c_pkg_name {
-                // Cross-package: include with subdirectory path.
-                if !dependencies.contains(&dep) {
-                    dependencies.push(dep.clone());
-                }
-                format!("{}/msg/{}", dep, header_filename)
-            } else {
-                // Intra-package: the srv .h lives at <pkg>/srv/, so the
-                // msg header is one level up in ../msg/.
-                format!("../msg/{}", header_filename)
-            };
+            if dep != c_pkg_name && !dependencies.contains(&dep) {
+                dependencies.push(dep.clone());
+            }
+            let type_header = crate::generator::naming::c_msg_header_path(pkg, name);
             if !type_includes.contains(&type_header) {
                 type_includes.push(type_header);
             }
@@ -507,9 +500,9 @@ pub fn generate_c_service_package(
     let request_msg = format!("{service_name}_Request");
     let response_msg = format!("{service_name}_Response");
     // Issues 0343/0344 — Rust srv/action share the message deserialize macro
-    // (`_nros_field.jinja`) so `heap` works here, and `view` emits a
-    // `{Payload}View` since issue 0346. The policy table lives on
-    // `ensure_supported_storage_for_payload`.
+    // (`_nros_field.jinja`) so `heap` works here; `borrowed` still has no view
+    // type, and the C emitter has no `_fini` to free heap fields with. The
+    // policy table lives on `ensure_supported_storage_for_payload`.
     ensure_supported_storage_for_payload(
         "service",
         PayloadLang::C,
@@ -565,7 +558,9 @@ pub fn generate_c_service_package(
     let has_response_fields = !response_fields.is_empty();
 
     // Generate header
+    let include_path = format!("{c_pkg_name}/srv/{header_name}");
     let header_template = ServiceCHeaderTemplate {
+        c_package_name: c_pkg_name.clone(),
         has_view_request: request_fields.iter().any(|f| f.is_view),
         has_view_response: response_fields.iter().any(|f| f.is_view),
         package_name,
@@ -596,7 +591,8 @@ pub fn generate_c_service_package(
         package_name,
         service_name,
         type_hash,
-        header_name: header_name.clone(),
+        c_package_name: c_pkg_name.clone(),
+        include_path,
         service_struct_name,
         request_struct_name,
         response_struct_name,

@@ -309,9 +309,9 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  * SWAPPING a callback on a live entity, not supplying one at registration.
  *
  * So the callback moved to where rclc puts it:
- *   - typed path: `rclc_executor_add_subscription_typed(exec, sub, msg,
- *     deserialize, cb, ctx, invocation)`, which the generated per-type macro
- *     collapses to rclc's six arguments in rclc's order;
+ *   - typed path: `rclc_executor_add_subscription_with_context(exec, sub,
+ *     msg, cb, ctx, invocation)` — rclc's own, since phase-492 W8 put the
+ *     codec in the descriptor;
  *   - byte path: `rclc_executor_add_subscription_raw(exec, sub, cb, ctx,
  *     invocation)` and `rclc_executor_add_service_raw(exec, service, cb, ctx)`.
  *     These keep the `nros_` prefix on purpose: rclc's `add_subscription` and
@@ -322,16 +322,17 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  *
  * `rclc_publisher_init_default` and friends spell their third parameter
  * `const struct rclc_message_type_t *` (or `rclc_service_type_t`), not
- * `rosidl_message_type_support_t`. Settled 2026-09-04 and unchanged by the
- * rename: a rosidl typesupport's MEMBERS are its contract — the
- * `typesupport_identifier`, the `data`, and the `func` dispatcher that
- * resolves the implementation at runtime — against our flat `type_name` /
- * `type_hash` / `serialized_size_max`. Adopting the name would claim a
- * dispatcher we do not have, and the "compiles and differs" that follows is
- * exactly what RFC-0089 forbids. It costs a ported call site nothing, because
- * the argument comes from OUR codegen either way: `ROSIDL_GET_MSG_TYPE_SUPPORT`
- * does not exist here, so a ported line that tries to produce one fails to
- * compile.
+ * `rosidl_message_type_support_t`. Settled 2026-09-04, narrowed 2026-10-12
+ * (phase-492 W8): `ROSIDL_GET_MSG_TYPE_SUPPORT(pkg, msg, Name)` is adopted and
+ * yields our descriptor, so a ported init line compiles unchanged; the STRUCT
+ * stays undeclared, because a rosidl typesupport's MEMBERS are its contract —
+ * the `typesupport_identifier`, the `data`, and the `func` dispatcher that
+ * resolves the implementation at runtime — against our `type_name` /
+ * `type_hash` / `serialized_size_max` / `serialize` / `deserialize`. Adopting the name would claim
+ * a dispatcher we do not have, and the "compiles and differs" that follows is exactly what RFC-0089
+ * forbids. It costs a ported call site nothing, because the argument comes from OUR codegen either
+ * way: `ROSIDL_GET_MSG_TYPE_SUPPORT` does not exist here, so a ported line that tries to produce
+ * one fails to compile.
  *
  * ═══════════════════════════════════════════════════════════════════════════
  * 4. Still refused: `rclc_timer_init_default`
@@ -493,36 +494,19 @@ typedef rclc_typed_subscription_callback_t rclc_subscription_callback_with_conte
  * RFC-0019/0020's violation rather than an ergonomic. `rclc_service_callback_t`
  * and `rclc_client_callback_t` are refused on the same argument.
  *
- * ── `rclc_executor_add_subscription_with_context`: REFUSED, by ARITY ─────
+ * ── `rclc_executor_add_subscription_with_context`: ADOPTED (phase-492 W8) ─
  *
  *   rclc: rcl_ret_t rclc_executor_add_subscription_with_context(
  *             rclc_executor_t *executor, rcl_subscription_t *subscription,
  *             void *msg, rclc_subscription_callback_with_context_t callback,
  *             void *context, rclc_executor_handle_invocation_t invocation)
- *   ours: rcl_ret_t rclc_executor_add_subscription_typed(
- *             struct rclc_executor_t *executor,
- *             struct rcl_subscription_t *subscription, void *msg,
- *             rclc_message_deserialize_fn_t deserialize,
- *             rclc_typed_subscription_callback_t callback, void *context,
- *             enum rclc_executor_handle_invocation_t invocation)
  *
- * This section predicted "a direct six-argument alias". It cannot be one: ours
- * takes SEVEN. The extra argument is `deserialize`, and it is FORCED rather
- * than chosen — a rosidl typesupport carries the `func` dispatcher that finds
- * the deserialiser, and `rclc_message_type_t` (which section 2 declines to
- * alias for exactly this reason) is a flat descriptor with no such slot. So the
- * function that writes the message into `msg` has to arrive from somewhere, and
- * a `static inline` in this file has nowhere to get it: the header knows the
- * ENTITY, not the TYPE.
- *
- * CODEGEN knows the type, which is why the ported LINE is six arguments after
- * all — generated per message rather than written here:
- *
- *     <Msg>_executor_add_subscription(&exec, &sub, &msg, cb, &ctx, ON_NEW_DATA)
- *
- * rclc's six, in rclc's order (`packs/c/message.h.jinja`). The macro also routes
- * `msg` through `1 ? (msg) : (<Msg>*)0`, so storage of the wrong type is a
- * diagnostic naming both types — which rclc's `void *` slot cannot give.
+ * Ours is the same six arguments. It was refused here by ARITY while
+ * `rclc_message_type_t` had no codec: the deserialiser had to arrive as a
+ * seventh argument, and a generated per-type macro collapsed it away. The
+ * descriptor now carries `serialize` / `deserialize` and the subscription keeps
+ * the descriptor it was created with, so the registration reads the
+ * deserialiser from there and the macro is gone.
  *
  * ── `rclc_executor_add_service{,_with_context}`: REFUSED, by DATA ───────
  *
@@ -545,24 +529,24 @@ typedef rclc_typed_subscription_callback_t rclc_subscription_callback_with_conte
  * service path is no longer missing: phase-417 W5.e ships it per service, out
  * of `packs/c/service.h.jinja` —
  *
- *     void cb(const <Srv>_request *request, <Srv>_response *response,
+ *     void cb(const <Srv>_Request *request, <Srv>_Response *response,
  *             void *context);
  *
- *     <Srv>_service_handler_init(&handler, cb, &ctx);
- *     <Srv>_service_init(&service, &node, "/name");
- *     <Srv>_executor_add_service(&executor, &service, &handler);
+ *     <Srv>__service_handler_init(&handler, cb, &ctx);
+ *     <Srv>__service_init(&service, &node, "/name");
+ *     <Srv>__executor_add_service(&executor, &service, &handler);
  *
  * — the CALLER owning both payload structs, which is exactly what rclc's
  * `request_msg` / `response_msg` arguments are for, and the callback carrying
  * the `void *context` rclc puts behind its separate `_with_context`
  * registration. The client half is the same shape one entity over
- * (`<Srv>_client_handler_t`, `<Srv>_client_set_response_callback`).
+ * (`<Srv>__client_handler_t`, `<Srv>__client_set_response_callback`).
  *
  * The REGISTRATION still cannot be aliased, and for a reason the subscription's
  * does not share. Ours carries ONE context word, so it cannot take rclc's
  * `request_msg` and `response_msg` as two separate caller arguments: both
  * payload structs travel together inside the generated
- * `<Srv>_service_handler_t`, which is also where the generated trampoline finds
+ * `<Srv>__service_handler_t`, which is also where the generated trampoline finds
  * them. Collapsing two caller arguments into one block is not something a name
  * can hide. And ours RETURNS a value where rclc's callback returns `void` —
  * that return is what decides whether a malformed request puts a reply on the

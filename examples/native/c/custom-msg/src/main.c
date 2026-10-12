@@ -17,24 +17,28 @@ int main(void) {
     printf("Testing generated C message bindings...\n\n");
 
     // Test Temperature message
-    native_c_custom_msg_msg_temperature temp;
-    native_c_custom_msg_msg_temperature_init(&temp);
+    // The caller owns every string's bytes (phase-492 W7): `__init_in` points
+    // `frame_id` at the `__Storage` beside the message. Nothing allocates.
+    static native_c_custom_msg__msg__Temperature__Storage temp_storage;
+    native_c_custom_msg__msg__Temperature temp;
+    native_c_custom_msg__msg__Temperature__init_in(&temp, &temp_storage);
 
     temp.temperature = 25.5;
     temp.variance = 0.1;
-    strncpy(temp.frame_id, "sensor_frame", sizeof(temp.frame_id) - 1);
+    snprintf(temp.frame_id.data, temp.frame_id.capacity, "%s", "sensor_frame");
+    temp.frame_id.size = strlen(temp.frame_id.data);
 
     printf("Temperature message:\n");
     printf("  temperature: %.2f\n", temp.temperature);
     printf("  variance: %.2f\n", temp.variance);
-    printf("  frame_id: %s\n", temp.frame_id);
+    printf("  frame_id: %s\n", temp.frame_id.data);
 
     // Test serialization
     uint8_t buffer[256];
     size_t serialized_size = 0;
 
-    int32_t result = native_c_custom_msg_msg_temperature_serialize(&temp, buffer, sizeof(buffer),
-                                                                   &serialized_size);
+    int32_t result = native_c_custom_msg__msg__Temperature__serialize(&temp, buffer, sizeof(buffer),
+                                                                      &serialized_size);
     if (result == 0) {
         printf("  Serialized size: %zu bytes\n", serialized_size);
     } else {
@@ -42,13 +46,14 @@ int main(void) {
     }
 
     // Test deserialization
-    native_c_custom_msg_msg_temperature temp2;
-    native_c_custom_msg_msg_temperature_init(&temp2);
+    static native_c_custom_msg__msg__Temperature__Storage temp2_storage;
+    native_c_custom_msg__msg__Temperature temp2;
+    native_c_custom_msg__msg__Temperature__init_in(&temp2, &temp2_storage);
 
-    result = native_c_custom_msg_msg_temperature_deserialize(&temp2, buffer, serialized_size);
+    result = native_c_custom_msg__msg__Temperature__deserialize(&temp2, buffer, serialized_size);
     if (result == 0) {
         printf("  Deserialized temperature: %.2f\n", temp2.temperature);
-        printf("  Deserialized frame_id: %s\n", temp2.frame_id);
+        printf("  Deserialized frame_id: %s\n", temp2.frame_id.data);
     } else {
         printf("  Deserialization failed: %d\n", result);
     }
@@ -56,8 +61,8 @@ int main(void) {
     printf("\n");
 
     // Test SensorData message
-    native_c_custom_msg_msg_sensor_data sensor;
-    native_c_custom_msg_msg_sensor_data_init(&sensor);
+    native_c_custom_msg__msg__SensorData sensor;
+    memset(&sensor, 0, sizeof(sensor));
 
     sensor.sensor_id = 42;
     sensor.acceleration[0] = 0.1f;
@@ -73,8 +78,8 @@ int main(void) {
 
     // Test serialization
     serialized_size = 0;
-    result = native_c_custom_msg_msg_sensor_data_serialize(&sensor, buffer, sizeof(buffer),
-                                                           &serialized_size);
+    result = native_c_custom_msg__msg__SensorData__serialize(&sensor, buffer, sizeof(buffer),
+                                                             &serialized_size);
     if (result == 0) {
         printf("  Serialized size: %zu bytes\n", serialized_size);
     } else {

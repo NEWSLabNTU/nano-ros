@@ -277,12 +277,19 @@ fn the_committed_c_and_cpp_goldens_state_the_same_bound() {
 
     let mut compared = 0;
     let mut problems = Vec::new();
-    for h in walk(&golden_dir()).expect("walk goldens") {
-        if h.extension().and_then(|e| e.to_str()) != Some("h") {
+    // phase-492 W7 — the C golden sits where rosidl puts it
+    // (`<mode>/fingerprint_corpus/msg/bounded.h`) and the C++ one beside the
+    // corpus name (`<mode>/Bounded.hpp`), so pair them through the naming rule.
+    for hpp in walk(&golden_dir()).expect("walk goldens") {
+        if hpp.extension().and_then(|e| e.to_str()) != Some("hpp") {
             continue;
         }
-        let hpp = h.with_extension("hpp");
-        if !hpp.exists() {
+        let stem = hpp.file_stem().unwrap().to_string_lossy().to_string();
+        let h = hpp.parent().unwrap().join(format!(
+            "fingerprint_corpus/msg/{}.h",
+            rosidl_codegen::utils::to_rosidl_snake_case(&stem)
+        ));
+        if !h.exists() {
             continue;
         }
         let (c_src, cpp_src) = (

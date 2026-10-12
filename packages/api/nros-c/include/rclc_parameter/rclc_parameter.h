@@ -97,37 +97,12 @@ typedef struct rclc_parameter_options_t {
     bool low_mem_mode;
 } rclc_parameter_options_t;
 
-/* rosidl's C runtime shapes. Guarded with upstream's include guards, so a
+/* rosidl's C runtime shapes, from their one definition site in nano-ros
+ * (phase-492 W7). Each is guarded with upstream's include guard, so a
  * translation unit that already has rosidl's definition (same layout) keeps
  * it. */
-#ifndef ROSIDL_RUNTIME_C__STRING_H_
-#define ROSIDL_RUNTIME_C__STRING_H_
-typedef struct rosidl_runtime_c__String {
-    char* data;
-    size_t size;
-    size_t capacity;
-} rosidl_runtime_c__String;
-typedef struct rosidl_runtime_c__String__Sequence {
-    rosidl_runtime_c__String* data;
-    size_t size;
-    size_t capacity;
-} rosidl_runtime_c__String__Sequence;
-#endif
-
-#ifndef ROSIDL_RUNTIME_C__PRIMITIVES_SEQUENCE_H_
-#define ROSIDL_RUNTIME_C__PRIMITIVES_SEQUENCE_H_
-#define NROS__ROSIDL_SEQ(NAME, T)                                                                  \
-    typedef struct rosidl_runtime_c__##NAME##__Sequence {                                          \
-        T* data;                                                                                   \
-        size_t size;                                                                               \
-        size_t capacity;                                                                           \
-    } rosidl_runtime_c__##NAME##__Sequence;
-NROS__ROSIDL_SEQ(octet, uint8_t)
-NROS__ROSIDL_SEQ(boolean, bool)
-NROS__ROSIDL_SEQ(int64, int64_t)
-NROS__ROSIDL_SEQ(double, double)
-#undef NROS__ROSIDL_SEQ
-#endif
+#include <rosidl_runtime_c/primitives_sequence.h>
+#include <rosidl_runtime_c/string.h>
 
 #ifndef RCL_INTERFACES__MSG__DETAIL__PARAMETER_VALUE__STRUCT_H_
 #define RCL_INTERFACES__MSG__DETAIL__PARAMETER_VALUE__STRUCT_H_

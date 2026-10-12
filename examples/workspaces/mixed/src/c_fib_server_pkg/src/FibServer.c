@@ -40,8 +40,8 @@ static int32_t fib_server_on_goal(const uint8_t goal_id[16], const uint8_t* data
                                   void* ctx) {
     fib_server_t* self = (fib_server_t*)ctx;
 
-    example_interfaces_action_fibonacci_goal goal;
-    if (example_interfaces_action_fibonacci_goal_deserialize(&goal, data, len) != 0) {
+    example_interfaces__action__Fibonacci_Goal goal;
+    if (example_interfaces__action__Fibonacci_Goal__deserialize(&goal, data, len) != 0) {
         /* issue 0737 — say why. A silent reject is indistinguishable from
          * a request that never arrived. */
         fprintf(stderr, "[c_fib_server_pkg] goal REJECTED — deserialize failed, %zu byte(s)\n",
@@ -74,8 +74,9 @@ static void on_tick(void* ctx) {
         return;
     }
 
-    example_interfaces_action_fibonacci_result result;
-    example_interfaces_action_fibonacci_result_init(&result);
+    example_interfaces__action__Fibonacci_Result result;
+    example_interfaces__action__Fibonacci_Result__Storage result_storage;
+    example_interfaces__action__Fibonacci_Result__init_in(&result, &result_storage);
     for (int32_t i = 0; i <= self->order; i++) {
         int32_t val;
         if (i == 0) {
@@ -92,7 +93,7 @@ static void on_tick(void* ctx) {
     uint8_t buf[512];
     size_t n = 0;
     int32_t n_rc =
-        example_interfaces_action_fibonacci_result_serialize(&result, buf, sizeof(buf), &n);
+        example_interfaces__action__Fibonacci_Result__serialize(&result, buf, sizeof(buf), &n);
     if (n_rc != 0) {
         return;
     }
@@ -114,14 +115,14 @@ static rcl_ret_t fib_server_configure(const nros_cpp_node_t* node, void* executo
     self->goal_count = 0;
 
     int32_t rc = nros_cpp_action_server_create(
-        node, "/fibonacci", example_interfaces_action_fibonacci_get_type_name(),
-        example_interfaces_action_fibonacci_get_type_hash(), rclc_c_qos_default(), self->server);
+        node, "/fibonacci", example_interfaces__action__Fibonacci__get_type_name(),
+        example_interfaces__action__Fibonacci__get_type_hash(), rclc_c_qos_default(), self->server);
     if (rc != 0) {
         return rc;
     }
     rc = nros_cpp_action_server_register(self->server, executor, "/fibonacci",
-                                         example_interfaces_action_fibonacci_get_type_name(),
-                                         example_interfaces_action_fibonacci_get_type_hash(),
+                                         example_interfaces__action__Fibonacci__get_type_name(),
+                                         example_interfaces__action__Fibonacci__get_type_hash(),
                                          /*sched_context=*/0);
     if (rc != 0) {
         return rc;

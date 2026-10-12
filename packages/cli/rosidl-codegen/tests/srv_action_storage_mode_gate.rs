@@ -143,56 +143,44 @@ fn borrowed_service_payload_gets_a_view_type() {
     );
 }
 
-/// 0345 — C heap works, and the generated `_fini` is what makes the ownership
-/// expressible. Without the fini the struct would allocate with no way to free.
+/// phase-492 W7 — RFC-0033 `heap` left the C emitter, and a shared config that
+/// says `heap` for a service or action payload must still generate C: the
+/// member is rosidl's caller-owned `{data, size, capacity}`, and nothing in the
+/// generated code allocates or frees. (Issue 0345 gave C a malloc'ing
+/// deserialiser and a `_fini`; both are gone.)
 #[test]
-fn heap_on_a_c_service_payload_generates_with_a_fini() {
+fn heap_on_a_c_service_payload_generates_caller_owned() {
     let r = resolver(r#""test_msgs/Adder_Request.values" = { cap = 8, mode = "heap" }"#);
     let pkg =
         generate_c_service_package("test_msgs", "Adder", &parse_service(SRV).unwrap(), "h", &r)
-            .expect("C heap on service payloads is supported since 0345");
-
+            .expect("a heap entry is a storage hint for C");
     assert!(
         pkg.header
-            .contains("void test_msgs_srv_adder_request_fini("),
-        "header must declare the payload fini:\n{}",
+            .contains("test_msgs__srv__Adder_Request__init_in("),
+        "the payload is wired by __init_in:\n{}",
         pkg.header
     );
-    assert!(
-        pkg.source.contains("nros_platform_free(msg->values.data)"),
-        "fini must free the heap sequence:\n{}",
-        pkg.source
-    );
-    assert!(
-        pkg.source.contains("nros_platform_malloc"),
-        "deserialize must allocate the heap sequence:\n{}",
-        pkg.source
-    );
-    // The allocator seam must be included, or the TU fails with an implicit
-    // declaration (that was the one real bug this change introduced).
-    assert!(
-        pkg.source.contains("#include <nros/platform.h>"),
-        "the platform allocator header must be included:\n{}",
-        pkg.source
-    );
+    for text in [&pkg.header, &pkg.source] {
+        assert!(!text.contains("nros_platform_malloc"), "{text}");
+        assert!(!text.contains("nros_platform_free"), "{text}");
+    }
 }
 
 #[test]
-fn heap_on_a_c_action_payload_generates_with_a_fini() {
+fn heap_on_a_c_action_payload_generates_caller_owned() {
     let r = resolver(r#""test_msgs/Move_Goal.waypoints" = { cap = 8, mode = "heap" }"#);
     let pkg = generate_c_action_package("test_msgs", "Move", &parse_action(ACT).unwrap(), "h", &r)
-        .expect("C heap on action payloads is supported since 0345");
+        .expect("a heap entry is a storage hint for C");
     assert!(
-        pkg.header.contains("void test_msgs_action_move_goal_fini("),
-        "header must declare the goal fini:\n{}",
+        pkg.header
+            .contains("test_msgs__action__Move_Goal__init_in("),
+        "the goal is wired by __init_in:\n{}",
         pkg.header
     );
-    assert!(
-        pkg.source
-            .contains("nros_platform_free(msg->waypoints.data)"),
-        "goal fini must free the heap sequence:\n{}",
-        pkg.source
-    );
+    for text in [&pkg.header, &pkg.source] {
+        assert!(!text.contains("nros_platform_malloc"), "{text}");
+        assert!(!text.contains("nros_platform_free"), "{text}");
+    }
 }
 
 // ── the untouched paths ─────────────────────────────────────────────────────

@@ -76,6 +76,8 @@ pub unsafe extern "C" fn rclc_rosout_publisher_init(
             type_name: name.as_ptr() as *const c_char,
             type_hash: hash.as_ptr() as *const c_char,
             serialized_size_max: rosout::TX_BUF,
+            serialize: None,
+            deserialize: None,
         };
 
         let bounded;
@@ -86,13 +88,21 @@ pub unsafe extern "C" fn rclc_rosout_publisher_init(
             qos
         };
         // "/rosout\0" — absolute, so no namespace or remap moves it.
-        crate::publisher::rclc_publisher_init_with_qos(
+        let rc = crate::publisher::rclc_publisher_init_with_qos(
             publisher,
             node,
             &type_info,
             c"/rosout".as_ptr(),
             qos,
-        )
+        );
+        // The descriptor above lives in this frame, so the publisher must not
+        // keep it (phase-492 W8): `rcl_publish` on it answers UNSUPPORTED
+        // rather than reading a dead stack slot. The rosout records go out
+        // through `rclc_publish_raw`.
+        if !publisher.is_null() {
+            (*publisher).type_support = core::ptr::null();
+        }
+        rc
     }
     #[cfg(not(feature = "rosout"))]
     {

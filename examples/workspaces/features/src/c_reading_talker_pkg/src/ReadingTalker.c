@@ -28,15 +28,15 @@ typedef struct {
 static void on_tick(void* ctx) {
     reading_talker_t* self = (reading_talker_t*)ctx;
 
-    custom_msgs_msg_reading msg;
-    custom_msgs_msg_reading_init(&msg);
+    custom_msgs__msg__Reading msg;
+    memset(&msg, 0, sizeof(msg));
     msg.temperature = 20.0 + (double)self->count * 0.5;
     msg.humidity = 50.0;
     msg.sequence = self->count;
 
     uint8_t buf[64];
     size_t n = 0;
-    if (custom_msgs_msg_reading_serialize(&msg, buf, sizeof(buf), &n) == 0 &&
+    if (custom_msgs__msg__Reading__serialize(&msg, buf, sizeof(buf), &n) == 0 &&
         nros_cpp_publish_raw(self->pub, buf, n) == 0) {
         printf("[reading_talker] sent seq=%d temp=%.1f\n", (int)msg.sequence, msg.temperature);
     }
@@ -50,7 +50,7 @@ static rcl_ret_t reading_talker_configure(const nros_cpp_node_t* node, void* exe
     setvbuf(stdout, NULL, _IOLBF, 0);
     self->count = 0;
     int32_t rc =
-        nros_cpp_publisher_create(node, "/reading", custom_msgs_msg_reading_get_type_name(), "",
+        nros_cpp_publisher_create(node, "/reading", custom_msgs__msg__Reading__get_type_name(), "",
                                   rclc_c_qos_default(), self->pub);
     if (rc != 0) {
         return rc;

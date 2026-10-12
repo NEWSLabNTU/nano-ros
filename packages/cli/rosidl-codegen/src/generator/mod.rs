@@ -490,38 +490,47 @@ mod tests {
     #[test]
     fn test_c_simple_message_generation() {
         let msg = parse_message("int32 x\nfloat64 y\nbool flag\n").unwrap();
-        let type_hash = "abc123";
-
-        let result = generate_c_message_package(
+        let pkg = generate_c_message_package(
             "test_msgs",
             "Point",
             &msg,
-            type_hash,
+            "abc123",
             &crate::config::CapacityResolver::empty(),
+        )
+        .unwrap();
+
+        // rosidl's names (phase-492 W7).
+        assert!(pkg.header.contains("#ifndef TEST_MSGS__MSG__POINT_H_"));
+        assert!(
+            pkg.header
+                .contains("typedef struct test_msgs__msg__Point {")
         );
-        assert!(result.is_ok());
-
-        let pkg = result.unwrap();
-
-        // Check header file
-        assert!(pkg.header.contains("#ifndef TEST_MSGS_MSG_POINT_H"));
-        assert!(pkg.header.contains("typedef struct test_msgs_msg_point"));
         assert!(pkg.header.contains("int32_t x"));
         assert!(pkg.header.contains("double y"));
         assert!(pkg.header.contains("bool flag"));
-        assert!(pkg.header.contains("test_msgs_msg_point_init"));
-        assert!(pkg.header.contains("test_msgs_msg_point_serialize"));
-        assert!(pkg.header.contains("test_msgs_msg_point_deserialize"));
+        assert!(pkg.header.contains("test_msgs__msg__Point__init_in("));
+        assert!(pkg.header.contains("test_msgs__msg__Point__serialize("));
+        assert!(pkg.header.contains("test_msgs__msg__Point__deserialize("));
+        assert!(
+            pkg.header
+                .contains("extern const rclc_message_type_t test_msgs__msg__Point__nros_type;")
+        );
+        // rosidl's allocating init is refused, naming the alternative.
+        assert!(pkg.header.contains(
+            "#define test_msgs__msg__Point__init(...) rosidl_allocates__use__test_msgs__msg__Point__init_in"
+        ));
 
-        // Check source file
-        assert!(pkg.source.contains("test_msgs_msg_point.h"));
+        assert!(pkg.source.contains("#include \"test_msgs/msg/point.h\""));
         assert!(pkg.source.contains("rclc_cdr_write_i32"));
         assert!(pkg.source.contains("rclc_cdr_write_f64"));
         assert!(pkg.source.contains("rclc_cdr_write_bool"));
+        assert!(
+            pkg.source
+                .contains(".serialize = test_msgs__msg__Point__nros_serialize_erased")
+        );
 
-        // Check file names
-        assert_eq!(pkg.header_name, "test_msgs_msg_point.h");
-        assert_eq!(pkg.source_name, "test_msgs_msg_point.c");
+        assert_eq!(pkg.header_name, "point.h");
+        assert_eq!(pkg.source_name, "point.c");
     }
 
     /// Emit the generated borrowed C header+source to `tmp/borrowed_e2e/` for
@@ -546,7 +555,9 @@ mod tests {
             .ancestors()
             .nth(3)
             .unwrap()
-            .join("tmp/borrowed_e2e");
+            .join("tmp/borrowed_e2e/e2e_msgs/msg");
+        // phase-492 W7 — rosidl's layout, so the driver includes
+        // `<e2e_msgs/msg/borrowed.h>` with `tmp/borrowed_e2e` on the path.
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join(&pkg.header_name), &pkg.header).unwrap();
         std::fs::write(dir.join(&pkg.source_name), &pkg.source).unwrap();
@@ -615,7 +626,7 @@ mod tests {
 
         // Owned struct + the borrowed.h include + the view + the decl.
         assert!(
-            h.contains("typedef struct test_msgs_msg_image {"),
+            h.contains("typedef struct test_msgs__msg__Image {"),
             "owned struct missing:\n{h}"
         );
         assert!(
@@ -623,7 +634,7 @@ mod tests {
             "borrowed include missing:\n{h}"
         );
         assert!(
-            h.contains("typedef struct test_msgs_msg_image_View {"),
+            h.contains("typedef struct test_msgs__msg__Image__View {"),
             "view missing:\n{h}"
         );
         assert!(
@@ -637,7 +648,7 @@ mod tests {
             "owned scalar missing from view:\n{h}"
         );
         assert!(
-            h.contains("int32_t test_msgs_msg_image_deserialize_view("),
+            h.contains("int32_t test_msgs__msg__Image__deserialize_view("),
             "borrowed deserialize decl missing:\n{h}"
         );
 
@@ -860,20 +871,22 @@ mod tests {
     #[test]
     fn test_c_message_with_string() {
         let msg = parse_message("string name\n").unwrap();
-        let type_hash = "def456";
-
-        let result = generate_c_message_package(
+        let pkg = generate_c_message_package(
             "std_msgs",
             "String",
             &msg,
-            type_hash,
+            "def456",
             &crate::config::CapacityResolver::empty(),
-        );
-        assert!(result.is_ok());
-
-        let pkg = result.unwrap();
-        assert!(pkg.header.contains("char name[256]"));
-        assert!(pkg.source.contains("rclc_cdr_write_string"));
+        )
+        .unwrap();
+        // rosidl's member shape; the bytes live in `__Storage`.
+        assert!(pkg.header.contains("rosidl_runtime_c__String name;"));
+        assert!(pkg.header.contains("char name[257];"));
+        assert!(pkg.source.contains("rclc_cdr_write_string_n"));
+        assert!(pkg.source.contains(
+            "rclc_cdr_read_string(&ptr, end, origin, msg->name.data, msg->name.capacity)"
+        ));
+        assert_eq!(pkg.header_name, "string.h");
     }
 
     #[test]
@@ -898,6 +911,7 @@ mod tests {
     #[test]
     fn test_c_per_field_capacity_config() {
         // RFC-0033: big unbounded sequence + small unbounded string, one message.
+        // Since phase-492 W7 the capacities size `__Storage`, not the struct.
         let msg = parse_message("uint8[] pixels\nstring label\n").unwrap();
         let resolver = crate::config::CapacityResolver::from_toml_str(
             r#"
@@ -908,16 +922,20 @@ mod tests {
         )
         .unwrap();
         let pkg = generate_c_message_package("my_msgs", "Frame", &msg, "h", &resolver).unwrap();
-        // Sequence capacity reflected in both the inline struct and the count.
         assert!(
-            pkg.header.contains("data[921600]"),
-            "seq cap missing:\n{}",
+            pkg.header
+                .contains("rosidl_runtime_c__uint8__Sequence pixels;"),
+            "seq member missing:\n{}",
             pkg.header
         );
-        // Small string char buffer.
         assert!(
-            pkg.header.contains("char label[16]"),
-            "string cap missing:\n{}",
+            pkg.header.contains("uint8_t pixels[921600];"),
+            "seq storage cap missing:\n{}",
+            pkg.header
+        );
+        assert!(
+            pkg.header.contains("char label[17];"),
+            "string storage cap missing:\n{}",
             pkg.header
         );
         assert!(!pkg.header.contains("[64]"));
@@ -1081,235 +1099,159 @@ mod tests {
     }
 
     #[test]
-    fn test_c_heap_primitive_sequence() {
-        // RFC-0033 mode = "heap" → rclc-style `{ T* data; size_t size, capacity; }`.
-        let msg = parse_message("uint8[] data\n").unwrap();
+    fn test_c_heap_mode_is_a_storage_hint_and_never_allocates() {
+        // phase-492 W7: RFC-0033 `heap` left the C emitter. A shared config
+        // that says `heap` (for the Rust and C++ packs) still generates C, in
+        // rosidl's caller-owned shape, and nothing in it allocates.
+        let msg =
+            parse_message("uint8[] data\nstring label\nstring[] tags\ngeometry_msgs/Point[] pts\n")
+                .unwrap();
         let resolver = crate::config::CapacityResolver::from_toml_str(
             r#"
             [fields]
-            "my_msgs/Blob.data" = { cap = 0, mode = "heap" }
-            "#,
-        )
-        .unwrap();
-        let pkg = generate_c_message_package("my_msgs", "Blob", &msg, "h", &resolver).unwrap();
-        // Heap struct in the header (pointer + size + capacity, no inline array).
-        assert!(
-            pkg.header
-                .contains("struct { uint8_t* data; size_t size; size_t capacity; } data"),
-            "heap struct missing:\n{}",
-            pkg.header
-        );
-        assert!(pkg.header.contains("_fini"), "fini decl missing");
-        // Deserialize mallocs via the platform allocator; fini frees.
-        assert!(
-            pkg.source.contains("nros_platform_malloc"),
-            "{}",
-            pkg.source
-        );
-        assert!(pkg.source.contains("nros_platform_free"), "{}", pkg.source);
-        assert!(!pkg.header.contains("data[64]"));
-    }
-
-    #[test]
-    fn test_c_heap_string() {
-        // RFC-0033 mode = "heap" on a string → rclc rosidl_runtime_c__String shape.
-        let msg = parse_message("string label\n").unwrap();
-        let resolver = crate::config::CapacityResolver::from_toml_str(
-            r#"
-            [fields]
+            "my_msgs/M.data" = { cap = 0, mode = "heap" }
             "my_msgs/M.label" = { cap = 0, mode = "heap" }
-            "#,
-        )
-        .unwrap();
-        let pkg = generate_c_message_package("my_msgs", "M", &msg, "h", &resolver).unwrap();
-        assert!(
-            pkg.header
-                .contains("struct { char* data; size_t size; size_t capacity; } label"),
-            "heap string struct missing:\n{}",
-            pkg.header
-        );
-        assert!(
-            pkg.source.contains("nros_platform_malloc"),
-            "{}",
-            pkg.source
-        );
-        assert!(pkg.source.contains("memcpy"), "{}", pkg.source);
-        assert!(!pkg.header.contains("char label[256]"));
-    }
-
-    #[test]
-    fn test_c_heap_seq_of_strings() {
-        // RFC-0033 heap string[] → heap array of fixed-capacity char[N] elements.
-        let msg = parse_message("string[] tags\n").unwrap();
-        let resolver = crate::config::CapacityResolver::from_toml_str(
-            r#"
-            [fields]
             "my_msgs/M.tags" = { cap = 0, mode = "heap" }
-            "#,
-        )
-        .unwrap();
-        let pkg = generate_c_message_package("my_msgs", "M", &msg, "h", &resolver).unwrap();
-        assert!(
-            pkg.header
-                .contains("struct { char (*data)[256]; size_t size; size_t capacity; } tags"),
-            "heap string[] struct missing:\n{}",
-            pkg.header
-        );
-        // Per-element read_string into the malloc'd char[N] rows.
-        assert!(
-            pkg.source.contains("rclc_cdr_read_string"),
-            "{}",
-            pkg.source
-        );
-        assert!(
-            pkg.source.contains("nros_platform_malloc"),
-            "{}",
-            pkg.source
-        );
-    }
-
-    #[test]
-    fn test_c_heap_seq_of_nested() {
-        // RFC-0033 heap `Point[]` → heap array of nested structs; per-element
-        // `_fini` releases each element's own heap fields before the array free.
-        let msg = parse_message("geometry_msgs/Point[] pts\n").unwrap();
-        let resolver = crate::config::CapacityResolver::from_toml_str(
-            r#"
-            [fields]
             "my_msgs/M.pts" = { cap = 0, mode = "heap" }
             "#,
         )
         .unwrap();
         let pkg = generate_c_message_package("my_msgs", "M", &msg, "h", &resolver).unwrap();
-        assert!(
-            pkg.header.contains(
-                "struct { struct geometry_msgs_msg_point* data; size_t size; size_t capacity; } pts"
-            ),
-            "heap nested-seq struct missing:\n{}",
-            pkg.header
-        );
-        // Per-element deserialize_inline + per-element _fini in cleanup.
+        for member in [
+            "rosidl_runtime_c__uint8__Sequence data;",
+            "rosidl_runtime_c__String label;",
+            "rosidl_runtime_c__String__Sequence tags;",
+            "geometry_msgs__msg__Point__Sequence pts;",
+        ] {
+            assert!(
+                pkg.header.contains(member),
+                "{member} missing:\n{}",
+                pkg.header
+            );
+        }
+        for (what, text) in [("header", &pkg.header), ("source", &pkg.source)] {
+            for alloc in [
+                "malloc",
+                "nros_platform_free",
+                "void my_msgs__msg__M__fini(",
+            ] {
+                assert!(!text.contains(alloc), "{what} still names {alloc}:\n{text}");
+            }
+        }
         assert!(
             pkg.source
-                .contains("geometry_msgs_msg_point_deserialize_inline"),
-            "{}",
-            pkg.source
+                .contains("geometry_msgs__msg__Point__deserialize_inline")
         );
-        assert!(
-            pkg.source.contains("geometry_msgs_msg_point_fini"),
-            "per-element fini missing:\n{}",
-            pkg.source
-        );
+        assert!(pkg.source.contains("geometry_msgs__msg__Point__init_in("));
     }
 
     #[test]
     fn test_c_simple_service_generation() {
         let srv = parse_service("int32 a\nint32 b\n---\nint32 sum\n").unwrap();
-        let type_hash = "srv123";
-
-        let result = generate_c_service_package(
+        let pkg = generate_c_service_package(
             "test_srvs",
             "AddTwoInts",
             &srv,
-            type_hash,
+            "srv123",
             &crate::config::CapacityResolver::empty(),
-        );
-        assert!(result.is_ok());
+        )
+        .unwrap();
 
-        let pkg = result.unwrap();
-
-        // Check header file
-        assert!(pkg.header.contains("#ifndef TEST_SRVS_SRV_ADD_TWO_INTS_H"));
         assert!(
             pkg.header
-                .contains("typedef struct test_srvs_srv_add_two_ints_request")
+                .contains("#ifndef TEST_SRVS__SRV__ADD_TWO_INTS_H_")
         );
         assert!(
             pkg.header
-                .contains("typedef struct test_srvs_srv_add_two_ints_response")
+                .contains("typedef struct test_srvs__srv__AddTwoInts_Request {")
+        );
+        assert!(
+            pkg.header
+                .contains("typedef struct test_srvs__srv__AddTwoInts_Response {")
         );
         assert!(pkg.header.contains("int32_t a"));
         assert!(pkg.header.contains("int32_t b"));
         assert!(pkg.header.contains("int32_t sum"));
+        assert!(pkg.header.contains(
+            "extern const struct rclc_service_type_t test_srvs__srv__AddTwoInts__nros_type;"
+        ));
 
-        // Check source file
         assert!(
             pkg.source
-                .contains("test_srvs_srv_add_two_ints_request_init")
+                .contains("test_srvs__srv__AddTwoInts_Request__init_in")
         );
         assert!(
             pkg.source
-                .contains("test_srvs_srv_add_two_ints_response_init")
+                .contains("test_srvs__srv__AddTwoInts_Response__init_in")
         );
         assert!(
             pkg.source
-                .contains("test_srvs_srv_add_two_ints_request_serialize")
+                .contains("test_srvs__srv__AddTwoInts_Request__serialize")
         );
         assert!(
             pkg.source
-                .contains("test_srvs_srv_add_two_ints_response_serialize")
+                .contains("test_srvs__srv__AddTwoInts_Response__serialize")
+        );
+        assert!(
+            pkg.source
+                .contains("#include \"test_srvs/srv/add_two_ints.h\"")
         );
 
-        // Check file names
-        assert_eq!(pkg.header_name, "test_srvs_srv_add_two_ints.h");
-        assert_eq!(pkg.source_name, "test_srvs_srv_add_two_ints.c");
+        assert_eq!(pkg.header_name, "add_two_ints.h");
+        assert_eq!(pkg.source_name, "add_two_ints.c");
     }
 
     #[test]
     fn test_c_simple_action_generation() {
         let action =
             parse_action("int32 order\n---\nint32 result_code\n---\nint32 progress\n").unwrap();
-        let type_hash = "act456";
-
-        let result = generate_c_action_package(
+        let pkg = generate_c_action_package(
             "test_actions",
             "Fibonacci",
             &action,
-            type_hash,
+            "act456",
             &crate::config::CapacityResolver::empty(),
-        );
-        assert!(result.is_ok());
+        )
+        .unwrap();
 
-        let pkg = result.unwrap();
-
-        // Check header file
         assert!(
             pkg.header
-                .contains("#ifndef TEST_ACTIONS_ACTION_FIBONACCI_H")
+                .contains("#ifndef TEST_ACTIONS__ACTION__FIBONACCI_H_")
         );
         assert!(
             pkg.header
-                .contains("typedef struct test_actions_action_fibonacci_goal")
+                .contains("typedef struct test_actions__action__Fibonacci_Goal {")
         );
         assert!(
             pkg.header
-                .contains("typedef struct test_actions_action_fibonacci_result")
+                .contains("typedef struct test_actions__action__Fibonacci_Result {")
         );
         assert!(
             pkg.header
-                .contains("typedef struct test_actions_action_fibonacci_feedback")
+                .contains("typedef struct test_actions__action__Fibonacci_Feedback {")
         );
         assert!(pkg.header.contains("int32_t order"));
         assert!(pkg.header.contains("int32_t result_code"));
         assert!(pkg.header.contains("int32_t progress"));
 
-        // Check source file
         assert!(
             pkg.source
-                .contains("test_actions_action_fibonacci_goal_init")
+                .contains("test_actions__action__Fibonacci_Goal__init_in")
         );
         assert!(
             pkg.source
-                .contains("test_actions_action_fibonacci_result_init")
+                .contains("test_actions__action__Fibonacci_Result__init_in")
         );
         assert!(
             pkg.source
-                .contains("test_actions_action_fibonacci_feedback_init")
+                .contains("test_actions__action__Fibonacci_Feedback__init_in")
         );
+        assert!(pkg.source.contains(
+            ".goal_deserialize = test_actions__action__Fibonacci_Goal__nros_deserialize_erased"
+        ));
 
-        // Check file names
-        assert_eq!(pkg.header_name, "test_actions_action_fibonacci.h");
-        assert_eq!(pkg.source_name, "test_actions_action_fibonacci.c");
+        assert_eq!(pkg.header_name, "fibonacci.h");
+        assert_eq!(pkg.source_name, "fibonacci.c");
     }
 
     // ========================================================================

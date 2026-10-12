@@ -24,12 +24,12 @@ typedef struct {
 
 static void on_tick(void* ctx) {
     talker_t* self = (talker_t*)ctx;
-    std_msgs_msg_int32 msg;
-    std_msgs_msg_int32_init(&msg);
+    std_msgs__msg__Int32 msg;
+    memset(&msg, 0, sizeof(msg));
     msg.data = self->count;
     uint8_t buf[16];
     size_t n = 0;
-    if (std_msgs_msg_int32_serialize(&msg, buf, sizeof(buf), &n) == 0 &&
+    if (std_msgs__msg__Int32__serialize(&msg, buf, sizeof(buf), &n) == 0 &&
         nros_cpp_publish_raw(self->pub, buf, n) == 0) {
         printf("Published: %d\n", (int)self->count);
     }
@@ -39,7 +39,7 @@ static void on_tick(void* ctx) {
 static rcl_ret_t talker_configure(const nros_cpp_node_t* node, void* executor, talker_t* self) {
     setvbuf(stdout, NULL, _IONBF, 0);
     self->count = 0;
-    int32_t rc = nros_cpp_publisher_create(node, "/chatter", std_msgs_msg_int32_get_type_name(), "",
+    int32_t rc = nros_cpp_publisher_create(node, "/chatter", std_msgs__msg__Int32__get_type_name(), "",
                                            rclc_c_qos_default(), self->pub);
     if (rc != 0) {
         return rc;
