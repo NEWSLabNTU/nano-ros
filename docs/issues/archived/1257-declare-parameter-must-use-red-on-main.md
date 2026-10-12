@@ -1,10 +1,11 @@
 ---
 id: 1257
 title: "`packages/api/nros` does not compile under `-D warnings`: two `declare_parameter` results dropped, red on main since 2026-09-09"
-status: open
+status: resolved
 area: api, params, ci
 severity: medium
 found: 2026-09-10
+resolved: 2026-10-12
 related: [1203, 0793, phase-427]
 ---
 
@@ -54,3 +55,27 @@ just check required-features-tests
 ```
 
 Both errors reproduce with no local changes.
+
+## Resolution (2026-10-12)
+
+Both sites were fixed by `f316429529` (issue 1272): each launch parameter is
+now declared on its own node through `declare_parameter_on`, and a refusal
+that leaves the parameter absent logs and returns `NodeDeclError::Runtime`
+(`node_runtime.rs` 1390 and 1881). It no longer drops the result.
+
+That fix moved the call to a method the guard did not cover:
+`declare_parameter` was `#[must_use]`, and `declare_parameter_on` was not.
+`declare_parameter_on` is now `#[must_use]` too. Every in-tree caller already
+uses the result, so no call site changed.
+
+Measured (`cargo check` of `nros` with `std,alloc,rmw-cffi,param-services` and
+`RUSTFLAGS=-D warnings`; `node_runtime` is gated on `rmw-cffi`):
+
+- tree as fixed: rc=0;
+- result dropped at the 1390 site, attribute present: rc=101,
+  `unused return value of Executor::declare_parameter_on that must be used`;
+- result dropped and attribute removed (the guard as it was): rc=0, so the gap
+  was real.
+
+`just check required-features-tests`, the lane this issue was red in: rc=0,
+38/38.

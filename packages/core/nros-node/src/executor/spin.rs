@@ -12030,6 +12030,12 @@ impl<'s> Executor<'s> {
     }
 
     /// Declare a parameter with a value on a named node.
+    ///
+    /// `#[must_use]` for the reason [`declare_parameter`](Self::declare_parameter)
+    /// carries it: issue 1257's two dropped results moved to THIS method when
+    /// they were fixed, so the attribute on the wrapper alone guarded nothing
+    /// a launch-seed site could still drop.
+    #[must_use]
     pub fn declare_parameter_on(
         &mut self,
         node: super::node_record::NodeId,
