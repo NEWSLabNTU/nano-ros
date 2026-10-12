@@ -32,9 +32,13 @@ setup:
     # only knows `virt`). Build does NOT need it, so provision best-effort: the
     # fork's source-build wants qemu deps that aren't always present, and that
     # must not block the build phase (the e2e step gates on its presence).
-    if command -v qemu-system-riscv32 &>/dev/null \
-            && qemu-system-riscv32 -machine help 2>/dev/null | grep -q '\besp32c3\b'; then
-        echo "Espressif qemu-system-riscv32 already installed: $(qemu-system-riscv32 --version | head -1)"
+    # Issue 1851 — probe the binary the recipes run (the QEMU ladder over the
+    # `esp32-qemu` row), not whatever `qemu-system-riscv32` PATH names.
+    source scripts/lib/qemu-bin.sh
+    source scripts/lib/grep-q.sh
+    esp_qemu=+R+
+    if "$esp_qemu" -machine help 2>/dev/null | nros_grep_q '\besp32c3\b' -; then
+        echo "Espressif qemu-system-riscv32 already installed: $("$esp_qemu" --version | head -1)"
     else
         # Phase 197.3 — the Espressif QEMU fork is the source-built
         # [tool.esp32-qemu] in nros-sdk-index.toml; provision it via nros.
@@ -48,9 +52,11 @@ doctor:
     bash scripts/dev/deprecated-scope-alias.sh esp32 doctor "just doctor esp32"
     set +e
     fail=0
-    if command -v qemu-system-riscv32 &>/dev/null \
-            && qemu-system-riscv32 -machine help 2>/dev/null | grep -q '\besp32c3\b'; then
-        echo "  [OK] qemu-system-riscv32 (Espressif fork, esp32c3 machine)"
+    source scripts/lib/qemu-bin.sh
+    source scripts/lib/grep-q.sh
+    esp_qemu=+R+
+    if "$esp_qemu" -machine help 2>/dev/null | nros_grep_q '\besp32c3\b' -; then
+        echo "  [OK] qemu-system-riscv32 (Espressif fork, esp32c3 machine): $esp_qemu"
     else
         echo "  [MISSING] Espressif qemu-system-riscv32 with esp32c3 machine (run: just esp32 setup)"
         fail=1
@@ -292,7 +298,8 @@ test-basic: build-qemu
     echo "ESP32-C3 QEMU boot test"
     echo "========================"
     echo ""
-    if ! command -v qemu-system-riscv32 &>/dev/null; then
+    source scripts/lib/qemu-bin.sh
+    if ! esp_qemu="$(nros_qemu_bin qemu-system-riscv32 esp32-qemu noprefix)"; then
         echo "WARNING: qemu-system-riscv32 not found - skipping runtime test"
         echo "Flash images are at: $(bash -c 'source scripts/build/build-root.sh; nros_build_dir "$NROS_KIND_ESP32_QEMU"')/"
         exit 0
@@ -304,7 +311,7 @@ test-basic: build-qemu
     trap 'rm -f "$tmpfile"' EXIT
     # issue 1741 — QEMU is bounded by a deadline that ESCALATES.
     . scripts/lib/deadline.sh
-    "${NROS_DEADLINE[@]}" 20 qemu-system-riscv32 -M esp32c3 -icount 3 -nographic \
+    "${NROS_DEADLINE[@]}" 20 "$esp_qemu" -M esp32c3 -icount 3 -nographic \
         -drive "file=$esp32_qemu_dir/esp32-qemu-talker.bin,if=mtd,format=raw" \
         -nic none \
         > "$tmpfile" 2>&1 || true
@@ -360,7 +367,8 @@ talker: build-qemu
     #!/usr/bin/env bash
     set -e
     source scripts/build/build-root.sh
-    qemu-system-riscv32 -M esp32c3 -icount 3 -nographic \
+    source scripts/lib/qemu-bin.sh
+    "$(nros_qemu_bin qemu-system-riscv32 esp32-qemu noprefix)" -M esp32c3 -icount 3 -nographic \
         -drive "file=$(nros_build_dir "$NROS_KIND_ESP32_QEMU")/esp32-qemu-talker.bin,if=mtd,format=raw" \
         -nic user,model=open_eth
 
@@ -369,7 +377,8 @@ listener: build-qemu
     #!/usr/bin/env bash
     set -e
     source scripts/build/build-root.sh
-    qemu-system-riscv32 -M esp32c3 -icount 3 -nographic \
+    source scripts/lib/qemu-bin.sh
+    "$(nros_qemu_bin qemu-system-riscv32 esp32-qemu noprefix)" -M esp32c3 -icount 3 -nographic \
         -drive "file=$(nros_build_dir "$NROS_KIND_ESP32_QEMU")/esp32-qemu-listener.bin,if=mtd,format=raw" \
         -nic user,model=open_eth
 

@@ -231,6 +231,15 @@ store-source-readers:
 artifact-path-literals:
     @python3 scripts/check/check-artifact-path-literals.py
 
+# Issue 1851 — which QEMU binary runs is ONE ladder (QEMU_SYSTEM_<ARCH>,
+# build/qemu, the pinned store copy, PATH): `nros_qemu_bin` in
+# scripts/lib/qemu-bin.sh, `nros_tests::qemu::qemu_system_cmd` in Rust. This
+# refuses a `qemu-system-*` launched or probed by bare name in code.
+# Buildless, ~0.2 s; self-tests its matcher on each run.
+[private]
+qemu-one-ladder:
+    @python3 scripts/check/check-qemu-one-ladder.py
+
 # phase-484 W4d — a cmake board module (`cmake/board/nano-ros-board-<x>.cmake`)
 # is claimed by exactly one board descriptor's `cmake_module`, and every claim
 # names an existing file. `nros build` emits the descriptor's module rather

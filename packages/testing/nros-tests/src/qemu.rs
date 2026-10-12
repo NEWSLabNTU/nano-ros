@@ -41,36 +41,70 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// Phase 127.D + Phase 143 — pick the `qemu-system-arm` binary to use.
+/// Issue 1851 — the ONE ladder for a QEMU system binary (`qemu-system-arm`,
+/// `qemu-system-riscv64`, `qemu-system-aarch64`, …):
 ///
-/// Selection order:
-///   1. `QEMU_SYSTEM_ARM` env var (developer override / CI pin).
-///   2. Project-local patched build at
-///      `<project_root>/build/qemu/bin/qemu-system-arm` (built by
-///      `just qemu setup-qemu`, includes the LAN9118 RX-flush patch
-///      and ships qemu ≥ 7.2 so `-netdev dgram,local.type=unix,…`
-///      works for NuttX / ThreadX multi-instance tests).
-///   3. System `qemu-system-arm` on `$PATH` — kept as fallback so
-///      contributors who ran a minimal `just setup` still produce
-///      the documented `[SKIPPED]` rather than an exec error.
-pub fn qemu_system_arm_path() -> std::ffi::OsString {
-    if let Some(env) = std::env::var_os("QEMU_SYSTEM_ARM") {
+///   1. `QEMU_SYSTEM_<ARCH>` (e.g. `QEMU_SYSTEM_ARM`) — developer override /
+///      CI pin.
+///   2. The project-local prefix `<project_root>/build/qemu/bin/` (made by
+///      `just qemu setup-qemu` / `just native setup`).
+///   3. The `nros setup` store, at the PINNED `[tool.qemu]` version.
+///   4. `$PATH`, so a host that never ran setup still produces the documented
+///      `[SKIPPED]` rather than an exec error.
+///
+/// Its shell twin is `nros_qemu_bin` (`scripts/lib/qemu-bin.sh`); the two must
+/// answer alike, which is why neither the tests nor the recipes may launch a
+/// `qemu-system-*` by bare name (gate `check-qemu-one-ladder`). Before this,
+/// the ARM resolver had all four rungs while the RISC-V and AArch64 launchers
+/// here and every `just` recipe had one or two each.
+pub fn qemu_system_path(exe: &str) -> std::ffi::OsString {
+    qemu_system_path_in(exe, "qemu", true)
+}
+
+/// [`qemu_system_path`] with the store row and the project-prefix rung named.
+/// The ESP32 binary is a different QEMU (Espressif's fork, `[tool.esp32-qemu]`)
+/// that the project prefix never holds, so it skips rung 2.
+pub(crate) fn qemu_system_path_in(
+    exe: &str,
+    tool: &str,
+    project_prefix: bool,
+) -> std::ffi::OsString {
+    let arch = exe.strip_prefix("qemu-system-").unwrap_or(exe);
+    let var = format!("QEMU_SYSTEM_{}", arch.to_ascii_uppercase());
+    if let Some(env) = std::env::var_os(&var) {
         return env;
     }
-    // phase-334 W2.b step 2 — the Rust mirror of `nros_build_dir`. Unlike the
-    // other families this one has no shell twin to move: `QEMU_PREFIX` in
-    // just/qemu-baremetal.just is a parse-time `absolute_path()` and stays a
-    // literal (a known, recorded exception), so the two spellings agree by the
-    // derivation emitting today's path rather than by both being migrated.
-    let patched = crate::build_dir(crate::kind::QEMU, &["bin"]).join("qemu-system-arm");
-    if patched.exists() {
-        return patched.into_os_string();
+    if project_prefix {
+        // phase-334 W2.b step 2 — the Rust mirror of `nros_build_dir`.
+        let local = crate::build_dir(crate::kind::QEMU, &["bin"]).join(exe);
+        if local.exists() {
+            return local.into_os_string();
+        }
     }
-    // `nros setup` store qemu (the patched `11.0.0-nros*` dist).
-    if let Some(store) = crate::nros_store_bin("qemu", "qemu-system-arm") {
+    if let Some(store) = crate::nros_store_bin(tool, exe) {
         return store.into_os_string();
     }
-    std::ffi::OsString::from("qemu-system-arm")
+    std::ffi::OsString::from(exe)
+}
+
+/// A fresh [`Command`] for [`qemu_system_path`]`(exe)`.
+pub fn qemu_system_cmd(exe: &str) -> Command {
+    Command::new(qemu_system_path(exe))
+}
+
+/// Whether [`qemu_system_path`]`(exe)` runs (`--version` succeeds).
+pub fn qemu_system_available(exe: &str) -> bool {
+    qemu_system_cmd(exe)
+        .arg("--version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
+/// `qemu-system-arm` through [`qemu_system_path`].
+pub fn qemu_system_arm_path() -> std::ffi::OsString {
+    qemu_system_path("qemu-system-arm")
 }
 
 /// Convenience wrapper around [`qemu_system_arm_path`] that returns
@@ -934,7 +968,7 @@ impl QemuProcess {
             )));
         }
 
-        let mut cmd = Command::new("qemu-system-riscv32");
+        let mut cmd = qemu_system_cmd("qemu-system-riscv32");
         cmd.args([
             "-M",
             "virt",
@@ -995,7 +1029,7 @@ impl QemuProcess {
             )));
         }
 
-        let mut cmd = Command::new("qemu-system-riscv64");
+        let mut cmd = qemu_system_cmd("qemu-system-riscv64");
         cmd.args([
             "-M",
             "virt",
@@ -1040,7 +1074,7 @@ impl QemuProcess {
             )));
         }
 
-        let mut cmd = Command::new("qemu-system-riscv64");
+        let mut cmd = qemu_system_cmd("qemu-system-riscv64");
         cmd.args([
             "-M",
             "virt",
@@ -1081,7 +1115,7 @@ impl QemuProcess {
 
         let mac = format!("52:54:00:12:34:{:02x}", 0x56u8 + peer_index);
 
-        let mut cmd = Command::new("qemu-system-riscv64");
+        let mut cmd = qemu_system_cmd("qemu-system-riscv64");
         cmd.args([
             "-M",
             "virt",
@@ -1208,13 +1242,7 @@ pub fn require_mcast_loopback_route(group: &str) {
 
 /// Check if QEMU RISC-V 64-bit is available
 pub fn is_qemu_riscv64_available() -> bool {
-    Command::new("qemu-system-riscv64")
-        .arg("--version")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+    qemu_system_available("qemu-system-riscv64")
 }
 
 /// Phase 127.B.5 — does the host's `qemu-system-arm` support
@@ -1231,7 +1259,7 @@ pub fn qemu_supports_dgram_unix() -> bool {
 /// (added in 7.2). Checking the ARM binary's help here would be wrong, so the
 /// ThreadX-RV64 two-node test gates on this and falls back to `socket,mcast`.
 pub fn qemu_riscv64_supports_dgram_unix() -> bool {
-    qemu_cmd_supports_dgram(Command::new("qemu-system-riscv64"))
+    qemu_cmd_supports_dgram(qemu_system_cmd("qemu-system-riscv64"))
 }
 
 /// `-netdev help` lists backend types one per line; "dgram" appears iff

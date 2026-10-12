@@ -107,10 +107,13 @@ if [ ! -f "$BINARY" ]; then
     exit 1
 fi
 
-# Check QEMU is installed
-if ! command -v qemu-system-arm &>/dev/null; then
+# Issue 1851 — the binary the QEMU ladder picks (QEMU_SYSTEM_ARM, build/qemu,
+# the pinned store copy, then PATH), the same one the tests run.
+# shellcheck source=../lib/qemu-bin.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/qemu-bin.sh"
+if ! QEMU_ARM="$(nros_qemu_bin qemu-system-arm)"; then
     echo "Error: qemu-system-arm not found"
-    echo "Install with: sudo apt install qemu-system-arm"
+    echo "Install with: nros setup --tool qemu   (prebuilt, no sudo)"
     exit 1
 fi
 
@@ -122,7 +125,7 @@ fi
 # With sleep=on (default), WFI advances virtual time at wall-clock speed
 # via QEMU_CLOCK_VIRTUAL_RT. See docs/reference/qemu-icount.md.
 QEMU_CMD=(
-    qemu-system-arm
+    "$QEMU_ARM"
     -cpu cortex-m3
     -machine mps2-an385
     -nographic

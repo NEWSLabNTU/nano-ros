@@ -5444,13 +5444,14 @@ _orchestrate verb tier="everything":
     # `just qemu setup` output) and for `base` (no qemu in
     # that tier). Best-effort: silent if qemu missing entirely.
     if [[ "{{verb}}" == "doctor" && "{{tier}}" != "base" && "{{tier}}" != "quickstart" && "{{tier}}" != "minimal" && "{{tier}}" != "default" ]]; then
-        if command -v qemu-system-arm >/dev/null 2>&1; then
-            ver=$(qemu-system-arm --version 2>/dev/null | head -1 | sed -E 's/^[^0-9]*([0-9]+\.[0-9]+).*/\1/')
+        # Issue 1851 — the qemu-system-arm the recipes and tests run.
+        if qbin="$(bash -c '. scripts/lib/qemu-bin.sh; nros_qemu_bin qemu-system-arm')"; then
+            ver=$("$qbin" --version 2>/dev/null | head -1 | sed -E 's/^[^0-9]*([0-9]+\.[0-9]+).*/\1/')
             major=${ver%%.*}
             minor=${ver##*.}
             if [ -n "$ver" ] && ! { [ "$major" -gt 7 ] || { [ "$major" -eq 7 ] && [ "$minor" -ge 2 ]; }; }; then
                 echo "================================================================="
-                echo "  REMINDER — system qemu-system-arm is $ver (< 7.2)."
+                echo "  REMINDER — qemu-system-arm ($qbin) is $ver (< 7.2)."
                 echo "================================================================="
                 echo "  NuttX DDS multi-instance + ThreadX RV64 DDS tests need"
                 echo "  '-netdev dgram,local.type=unix,...' from QEMU 7.2+."

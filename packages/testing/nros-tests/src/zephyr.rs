@@ -406,7 +406,7 @@ impl ZephyrProcess {
                     .filter(|p| p.exists())
                     .unwrap_or_else(|| binary.to_path_buf());
 
-                let mut cmd = Command::new("qemu-system-aarch64");
+                let mut cmd = crate::qemu::qemu_system_cmd("qemu-system-aarch64");
                 cmd.args([
                     "-cpu",
                     "cortex-a53",

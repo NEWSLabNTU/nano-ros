@@ -3,7 +3,8 @@ set working-directory := '..'
 # Phase 143 — patched qemu-system-arm built by `just qemu setup-qemu`.
 # Used by NuttX QEMU recipes so the `-netdev dgram,local.type=unix,…`
 # multi-instance path works on Ubuntu jammy (system qemu 6.2 too old).
-QEMU_BIN := absolute_path("build/qemu") / "bin/qemu-system-arm"
+# issue 1851 — the binary the QEMU ladder picks (scripts/lib/qemu-bin.sh).
+QEMU_BIN := `bash -c '. scripts/lib/qemu-bin.sh; nros_qemu_bin qemu-system-arm || true'`
 
 default:
     @just --list --justfile {{source_file()}}
@@ -654,38 +655,9 @@ doctor:
     # QEMU 6.2's `socket,mcast=` cannot do this reliably; the
     # documented workaround uses `-netdev dgram,local.type=unix,...`,
     # which was introduced in QEMU 7.2.
-    # Phase 143 — patched build at {{QEMU_BIN}} is the primary path
-    # picked up automatically by `nros_tests::qemu::qemu_system_arm_path`.
-    if [ -x {{QEMU_BIN}} ]; then
-        ver=$({{QEMU_BIN}} --version 2>/dev/null | head -1)
-        echo "  [OK] patched qemu-system-arm: {{QEMU_BIN}} ($ver)"
-    elif command -v qemu-system-arm &>/dev/null; then
-        ver=$(qemu-system-arm --version 2>/dev/null | head -1 | sed -E 's/^[^0-9]*([0-9]+\.[0-9]+).*/\1/')
-        major=${ver%%.*}
-        minor=${ver##*.}
-        if [ -n "$ver" ] && { [ "$major" -gt 7 ] || { [ "$major" -eq 7 ] && [ "$minor" -ge 2 ]; }; }; then
-            echo "  [OK] system qemu-system-arm ($ver, fallback path; >= 7.2 — supports -netdev dgram unix)"
-        else
-            echo "  [WARN] system qemu-system-arm ($ver) < 7.2 AND patched build absent —"
-            echo "         NuttX DDS multi-instance tests need '-netdev dgram,local.type=unix,...'"
-            echo "         which was introduced in QEMU 7.2."
-            echo ""
-            echo "         Primary remedy (no sudo, portable): just qemu setup-qemu"
-            echo "         Fallback (system-wide, requires sudo):"
-            if [ -f /etc/os-release ] && grep -q '^ID=ubuntu' /etc/os-release; then
-                codename=$(. /etc/os-release; echo "$VERSION_CODENAME")
-                echo "           Ubuntu detected ($codename). Canonical server-backports PPA:"
-                echo "             sudo add-apt-repository ppa:canonical-server/server-backports"
-                echo "             nros setup --system   (composes the install command for this host)"
-                echo "           https://launchpad.net/~canonical-server/+archive/ubuntu/server-backports"
-            else
-                echo "           Build from source: https://www.qemu.org/download/#source"
-            fi
-        fi
-    else
-        echo "  [MISSING] qemu-system-arm — run \`just qemu setup-qemu\` (recommended)"
-        echo "            or \`just workspace apt-packages\` for the system binary."
-    fi
+    # Issue 1851 — the binary the recipes run, from the one QEMU ladder.
+    source scripts/lib/qemu-bin.sh
+    nros_qemu_report qemu-system-arm 7.2 || fail=1
     exit $fail
 
 # =============================================================================
@@ -728,7 +700,7 @@ _run-qemu example binary:
     trap 'kill $PID 2>/dev/null; wait $PID 2>/dev/null; exit 130' INT TERM
     # -icount shift=auto: sync virtual clock with wall-clock for proper sleep/timeout
     # -device virtio-net-device: MMIO transport (NuttX virtio-net driver)
-    {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} -M virt -cpu cortex-a7 -nographic \
+    "{{QEMU_BIN}}" -M virt -cpu cortex-a7 -nographic \
         -icount shift=auto \
         -kernel "$NX_ARTIFACTS/armv7a-nuttx-eabihf/$NX_DIR/{{binary}}" \
         -netdev user,id=net0 -device virtio-net-device,netdev=net0 &
