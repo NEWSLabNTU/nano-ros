@@ -1151,22 +1151,30 @@ pub fn store_root() -> std::path::PathBuf {
     nros_build_paths::store::root()
 }
 
-/// Resolve a tool binary from the `nros setup` shared store
-/// (`$NROS_HOME/sdk/<tool>/<version>/bin/<exe>`, else `~/.nros/sdk/...`),
-/// mirroring `nros-cli-core`'s `store_root` + `tool_prefix` layout. Returns the
-/// first version dir carrying `exe`. Lets the test harness discover tools that
-/// `nros setup <board>` installed — without it the resolvers only see the
-/// `build/<tool>/` (`just`-built) path or the system PATH.
+/// Resolve a tool binary from the `nros setup` shared store, at the version
+/// this checkout's `nros-sdk-index.toml` PINS:
+/// `<store>/sdk/<tool>/<pinned version>/bin/<exe>`.
+///
+/// Issue 1851 — this used to return the first version directory `read_dir`
+/// listed that carried `exe`. The store is shared between checkouts and
+/// accumulates (issue 0500), so on a host holding `qemu/11.0.0-nros2` and
+/// `qemu/11.0.0-nros6` the answer was whichever the filesystem happened to list
+/// first, not the pin. The path is now CONSTRUCTED from the pin, as issue 1546
+/// prescribes for every store consumer (`nros_build_paths::sdk_pinned_version`).
+/// No pin (no index, or a row commented out) means no store rung.
 pub fn nros_store_bin(tool: &str, exe: &str) -> Option<std::path::PathBuf> {
-    let root = store_root().join("sdk");
-    for entry in std::fs::read_dir(root.join(tool)).ok()?.flatten() {
-        let cand = entry.path().join("bin").join(exe);
-        if cand.is_file() {
-            assert_store_bin_loadable(tool, &cand);
-            return Some(cand);
-        }
+    let version = nros_build_paths::sdk_pinned_version(tool)?;
+    let cand = store_root()
+        .join("sdk")
+        .join(tool)
+        .join(version)
+        .join("bin")
+        .join(exe);
+    if !cand.is_file() {
+        return None;
     }
-    None
+    assert_store_bin_loadable(tool, &cand);
+    Some(cand)
 }
 
 /// A provisioned tool must be able to LOAD, not merely exist.

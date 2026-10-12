@@ -1,7 +1,9 @@
 set working-directory := '..'
 
 # Phase 143 — patched qemu-system-arm built by `just qemu setup-qemu`.
-QEMU_BIN := absolute_path("build/qemu") / "bin/qemu-system-arm"
+# issue 1851 — the binary the QEMU ladder picks (scripts/lib/qemu-bin.sh):
+# QEMU_SYSTEM_ARM, build/qemu, the pinned store copy, then PATH.
+QEMU_BIN := `bash -c '. scripts/lib/qemu-bin.sh; nros_qemu_bin qemu-system-arm || true'`
 
 default:
     @just --list --justfile {{source_file()}}
@@ -568,7 +570,7 @@ trace example="talker":
     # QEMU with semihosting ignores SIGINT — we must kill explicitly.
     QEMU_PID=""
     trap 'if [ -n "$QEMU_PID" ]; then kill $QEMU_PID 2>/dev/null; wait $QEMU_PID 2>/dev/null; fi; exit 130' INT TERM
-    "${NROS_DEADLINE[@]}" 60 {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} \
+    "${NROS_DEADLINE[@]}" 60 "{{QEMU_BIN}}" \
         -cpu cortex-m3 -machine mps2-an385 -nographic \
         -icount shift=auto \
         -semihosting-config enable=on,target=native \
@@ -622,7 +624,7 @@ _run-qemu example binary:
     cd "{{justfile_directory()}}/$FR_LEAF" && \
         cargo build $(nros_cargo_profile_args_for "$FR_PROFILE") $fr_tdir_flag
     trap 'kill $PID 2>/dev/null; wait $PID 2>/dev/null; exit 130' INT TERM
-    {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} -cpu cortex-m3 -machine mps2-an385 -nographic \
+    "{{QEMU_BIN}}" -cpu cortex-m3 -machine mps2-an385 -nographic \
         -icount shift=auto \
         -semihosting-config enable=on,target=native \
         -kernel "$fr_artifacts/thumbv7m-none-eabi/$FR_DIR/{{binary}}" \

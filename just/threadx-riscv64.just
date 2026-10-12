@@ -92,12 +92,9 @@ doctor:
         echo "             (gcc-riscv64-unknown-elf + picolibc-riscv64-unknown-elf)"
         fail=1
     fi
-    if command -v qemu-system-riscv64 &>/dev/null; then
-        echo "  [OK] qemu-system-riscv64"
-    else
-        echo "  [MISSING] qemu-system-riscv64 (run: nros setup --tool qemu — prebuilt, no sudo; or just threadx_riscv64 setup) — 0368 F2"
-        fail=1
-    fi
+    # Issue 1851 — the binary the recipes run, from the one QEMU ladder.
+    source scripts/lib/qemu-bin.sh
+    nros_qemu_report qemu-system-riscv64 - || fail=1
     # Host `idlc` (Cyclone DDS IDL compiler) — needed only for the Cyclone
     # fixtures (`build-fixture-extras`), which self-provision Cyclone with
     # BUILD_IDLC=OFF and so cannot produce idlc themselves. Advisory (not
@@ -548,7 +545,8 @@ _run-qemu example binary peer_index:
     THREADX_CONFIG_DIR="$rv_config" NETX_CONFIG_DIR="$rv_config" cargo build $(nros_cargo_profile_arg_string) $TX_ARGS $tx_tdir_flag
     MAC="52:54:00:12:34:$(printf '%02x' $((0x56 + {{peer_index}})))"
     trap 'kill $PID 2>/dev/null; wait $PID 2>/dev/null; exit 130' INT TERM
-    qemu-system-riscv64 -M virt -m 256M -bios none -nographic \
+    source "{{justfile_directory()}}/scripts/lib/qemu-bin.sh"
+    "$(nros_qemu_bin qemu-system-riscv64)" -M virt -m 256M -bios none -nographic \
         -global virtio-mmio.force-legacy=false \
         -kernel "$tx_artifacts/riscv64gc-unknown-none-elf/$TX_DIR/{{binary}}" \
         -netdev user,id=net0 \

@@ -160,6 +160,9 @@ export NROS_KIND_CHECK_SKIPS="check-skips"
 export NROS_KIND_FIXTURE_MAKE_DRIVER="fixture-make-driver"
 export NROS_KIND_LINK_DETERMINISM="link-determinism"
 export NROS_KIND_PX4_MSGS_CODEGEN="px4-msgs-codegen"
+# Issue 1851 — the project-local QEMU prefix (`build/qemu`), rung 2 of the
+# QEMU ladder (scripts/lib/qemu-bin.sh); Rust twin `kind::QEMU`.
+export NROS_KIND_QEMU="qemu"
 export NROS_KIND_QEMU_ZENOH_PICO="qemu-zenoh-pico"
 export NROS_KIND_ROS_EDITIONS="ros-editions"
 export NROS_KIND_SIZES_PROBE="sizes-probe"

@@ -19,7 +19,7 @@ use nros_tests::{
     alloc::port_of,
     matrix::{Lang, PlatformId, Workload},
 };
-use std::{path::PathBuf, process::Command, time::Duration};
+use std::{path::PathBuf, time::Duration};
 
 /// Issue 0342 — this cell's allocator slot. The firmware bakes the port into
 /// its deploy locator (`fixtures/orchestration_tiers_freertos/entry/Cargo.toml`)
@@ -54,14 +54,6 @@ fn assert_fixture_port() {
          (`port_of(FreertosMps2, Rust, RealtimeTiers)` = {ROUTER_PORT}); expected a line \
          `{expected}` in {manifest}"
     );
-}
-
-fn tool_on_path(tool: &str) -> bool {
-    Command::new(tool)
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
 }
 
 /// Resolve the prebuilt multi-tier freertos firmware ELF (debug — the build
@@ -101,8 +93,8 @@ fn multi_tier_freertos_firmware_builds_and_boots_run_tiers() -> nros_tests::Test
     );
     let bin = firmware()?;
     assert!(bin.is_file(), "firmware ELF missing at {}", bin.display());
-    if !tool_on_path("qemu-system-arm") {
-        nros_tests::unmet!("qemu-system-arm not on PATH");
+    if !nros_tests::qemu::qemu_system_available("qemu-system-arm") {
+        nros_tests::unmet!("qemu-system-arm not found (env, build/qemu, store, PATH)");
     }
 
     // Boot on QEMU (no router). `run_tiers_entry` prints the unique
@@ -137,8 +129,8 @@ fn multi_tier_freertos_firmware_connects_over_slirp_and_runs_tiers() -> nros_tes
         &[nros_tests::matrix::PlatformId::FreertosMps2],
         "the multi-tier FreeRTOS firmware",
     );
-    if !tool_on_path("qemu-system-arm") {
-        nros_tests::unmet!("qemu-system-arm not on PATH");
+    if !nros_tests::qemu::qemu_system_available("qemu-system-arm") {
+        nros_tests::unmet!("qemu-system-arm not found (env, build/qemu, store, PATH)");
     }
     nros_tests::fixtures::require_zenohd();
     // Release fixture — debug zenoh-pico on the emulated M3 is too slow to finish

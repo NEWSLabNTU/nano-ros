@@ -93,8 +93,11 @@ if [ ! -f "$BINARY" ]; then
     exit 1
 fi
 
-# Check QEMU is installed
-if ! command -v qemu-system-riscv32 &>/dev/null; then
+# Issue 1851 — the binary the QEMU ladder picks over the `esp32-qemu` row
+# (QEMU_SYSTEM_RISCV32, the pinned store copy, then PATH).
+# shellcheck source=../lib/qemu-bin.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/qemu-bin.sh"
+if ! QEMU_RV32="$(nros_qemu_bin qemu-system-riscv32 esp32-qemu noprefix)"; then
     echo "Error: qemu-system-riscv32 not found"
     echo "Install Espressif's QEMU fork with ESP32-C3 support"
     exit 1
@@ -102,7 +105,7 @@ fi
 
 # Build QEMU command
 QEMU_CMD=(
-    qemu-system-riscv32
+    "$QEMU_RV32"
     -M esp32c3
     -icount 3
     -nographic

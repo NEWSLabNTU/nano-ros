@@ -41,14 +41,12 @@ use std::{
 /// installed. `activate.sh` deliberately keeps qemu OFF the global PATH (the
 /// `build/<tool>` convention), so PATH was never going to bridge it; the
 /// resolver has to.
+///
+/// Issue 1851 — the rungs are [`crate::qemu::qemu_system_path`]'s, over the
+/// `esp32-qemu` row and without the project prefix (which holds the upstream
+/// QEMU, not Espressif's).
 pub fn qemu_system_riscv32_path() -> std::ffi::OsString {
-    if let Some(env) = std::env::var_os("QEMU_SYSTEM_RISCV32") {
-        return env;
-    }
-    if let Some(store) = crate::nros_store_bin("esp32-qemu", "qemu-system-riscv32") {
-        return store.into_os_string();
-    }
-    std::ffi::OsString::from("qemu-system-riscv32")
+    crate::qemu::qemu_system_path_in("qemu-system-riscv32", "esp32-qemu", false)
 }
 
 /// Convenience wrapper around [`qemu_system_riscv32_path`]. Prefer this over

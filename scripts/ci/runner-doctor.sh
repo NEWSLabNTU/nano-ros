@@ -491,37 +491,36 @@ _nros_runner_check_qemu() {
     local root fail=0
     root="$(_nros_runner_repo_root)"
 
-    # The project-local patched build is the PRIMARY path (phase-143): the test
-    # harness resolves it itself, so a host with it needs nothing from the
-    # system. Check it first for that reason, not merely as a fallback.
-    local patched="$root/build/qemu/bin/qemu-system-arm"
-    if [ -x "$patched" ]; then
-        _nros_runner_ok "patched qemu-system-arm: $patched ($("$patched" --version 2>/dev/null | head -1))"
-    elif command -v qemu-system-arm >/dev/null 2>&1; then
-        local ver major minor
+    # Issue 1851 — the binary the recipes and tests run, from the one QEMU
+    # ladder (QEMU_SYSTEM_ARM, build/qemu, the pinned store copy, then PATH).
+    # The project-local build is still rung 2, ahead of the store.
+    # shellcheck source=../lib/qemu-bin.sh
+    . "$root/scripts/lib/qemu-bin.sh"
+    local qbin ver major minor
+    if qbin="$(nros_qemu_bin qemu-system-arm)"; then
         # `|| true` because this file is also SOURCED by runner-provision.sh,
         # which runs under `set -e` + `pipefail`: a `head -1` that closes the
         # pipe early would otherwise abort provisioning inside a probe.
-        ver="$(qemu-system-arm --version 2>/dev/null | head -1 \
+        ver="$("$qbin" --version 2>/dev/null | head -1 \
                | sed -E 's/^[^0-9]*([0-9]+\.[0-9]+).*/\1/' || true)"
         major="${ver%%.*}"; minor="${ver##*.}"
         if [ -n "$ver" ] && { [ "$major" -gt 7 ] || { [ "$major" -eq 7 ] && [ "$minor" -ge 2 ]; }; }; then
-            _nros_runner_ok "system qemu-system-arm $ver (>= 7.2, supports -netdev dgram unix)"
+            _nros_runner_ok "qemu-system-arm $ver (>= 7.2, supports -netdev dgram unix): $qbin"
         else
-            _nros_runner_missing "qemu-system-arm is $ver — the RTOS multi-instance cells need >= 7.2"
+            _nros_runner_missing "qemu-system-arm is $ver ($qbin) — the RTOS multi-instance cells need >= 7.2"
             _nros_runner_fix "-netdev dgram,local.type=unix is a 7.2 feature; below it the"
             _nros_runner_fix "NuttX and ThreadX-RV64 DDS cells fail as delivery timeouts."
             _nros_runner_fix "scripts/ci/runner-provision.sh nros-qemu   (builds build/qemu, no sudo)"
             fail=1
         fi
     else
-        _nros_runner_missing "no qemu-system-arm (neither $patched nor PATH)"
+        _nros_runner_missing "no qemu-system-arm (QEMU_SYSTEM_ARM, $root/build/qemu, the store, PATH)"
         _nros_runner_fix "scripts/ci/runner-provision.sh nros-qemu"
         fail=1
     fi
 
-    if command -v qemu-system-riscv64 >/dev/null 2>&1; then
-        _nros_runner_ok "qemu-system-riscv64"
+    if qbin="$(nros_qemu_bin qemu-system-riscv64)"; then
+        _nros_runner_ok "qemu-system-riscv64: $qbin"
     else
         _nros_runner_missing "no qemu-system-riscv64 — the ThreadX-RV64 and NuttX-RISCV cells cannot run"
         _nros_runner_fix "scripts/ci/runner-provision.sh nros-qemu"

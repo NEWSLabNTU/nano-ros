@@ -6,7 +6,10 @@ LOG_DIR := "test-logs"
 
 # Project-local patched QEMU prefix (built by `just qemu setup-qemu`).
 QEMU_PREFIX := absolute_path("build/qemu")
-QEMU_BIN := QEMU_PREFIX / "bin/qemu-system-arm"
+QEMU_LOCAL := QEMU_PREFIX / "bin/qemu-system-arm"
+# issue 1851 — the binary the QEMU ladder picks (scripts/lib/qemu-bin.sh):
+# QEMU_SYSTEM_ARM, the prefix above, the pinned store copy, then PATH.
+QEMU_BIN := `bash -c '. scripts/lib/qemu-bin.sh; nros_qemu_bin qemu-system-arm || true'`
 
 # Cargo target profile subdir (e.g. `nros-relwithdebinfo`, `release`, `debug`) —
 # the fixture ELFs land under target/<triple>/<PROFILE_DIR>/. Must track the
@@ -70,7 +73,7 @@ setup-qemu:
     #!/usr/bin/env bash
     set -euo pipefail
     prefix={{QEMU_PREFIX}}
-    bin={{QEMU_BIN}}
+    bin={{QEMU_LOCAL}}
     if [ -x "$bin" ]; then
         echo "qemu: $bin present"
         "$bin" --version | head -1
@@ -81,8 +84,8 @@ setup-qemu:
     "$nros" setup --tool qemu --prefix "$prefix" --index "$(pwd)/nros-sdk-index.toml"
     "$bin" --version | head -1
 
-# Print the path to the patched qemu-system-arm binary. Empty if
-# `just qemu setup-qemu` hasn't been run.
+# Print the qemu-system-arm the QEMU ladder picks (issue 1851): the bare name
+# when no rung answers.
 qemu-bin:
     @echo {{QEMU_BIN}}
 
@@ -92,7 +95,7 @@ qemu-bin:
 [group("debug")]
 test-patched verbose="":
     @just qemu setup-qemu
-    QEMU_SYSTEM_ARM={{QEMU_BIN}} just qemu test {{verbose}}
+    QEMU_SYSTEM_ARM={{QEMU_LOCAL}} just qemu test {{verbose}}
 
 # Build QEMU ARM bare-metal examples
 [group("main")]
@@ -275,7 +278,7 @@ FIXTURE_TARGET := absolute_path("build/cargo-fixtures/baremetal") / "thumbv7m-no
 test-basic verbose="": _require-profile-dir build-fixtures
     ./tests/run-test.sh --name qemu-basic --log {{LOG_DIR}}/latest/qemu-basic.log \
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
-        {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} -cpu cortex-m3 -machine lm3s6965evb -nographic \
+        "{{QEMU_BIN}}" -cpu cortex-m3 -machine lm3s6965evb -nographic \
             -semihosting-config enable=on,target=native \
             -kernel {{FIXTURE_TARGET}}/qemu-rs-test
 
@@ -284,7 +287,7 @@ test-basic verbose="": _require-profile-dir build-fixtures
 test-wcet verbose="": _require-profile-dir build-fixtures
     ./tests/run-test.sh --name qemu-wcet-bench --log {{LOG_DIR}}/latest/qemu-wcet-bench.log \
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
-        {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} -cpu cortex-m3 -machine lm3s6965evb -nographic \
+        "{{QEMU_BIN}}" -cpu cortex-m3 -machine lm3s6965evb -nographic \
             -semihosting-config enable=on,target=native \
             -kernel {{FIXTURE_TARGET}}/qemu-rs-wcet-bench
 
@@ -305,7 +308,7 @@ wcet-artifact log=(LOG_DIR / "latest/qemu-wcet-bench.log"):
 test-lan9118 verbose="": _require-profile-dir build-fixtures
     ./tests/run-test.sh --name qemu-lan9118 --log {{LOG_DIR}}/latest/qemu-lan9118.log \
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
-        {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} -cpu cortex-m3 -machine mps2-an385 -nographic \
+        "{{QEMU_BIN}}" -cpu cortex-m3 -machine mps2-an385 -nographic \
             -semihosting-config enable=on,target=native \
             -kernel {{FIXTURE_TARGET}}/qemu-rs-lan9118
 
@@ -355,7 +358,7 @@ test-rtic-main-e2e verbose="": _require-profile-dir build-rtic-main-e2e
     sleep 0.5
     ./tests/run-test.sh --name qemu-rtic-main-e2e --log {{LOG_DIR}}/latest/qemu-rtic-main-e2e.log \
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
-        {{ if path_exists(QEMU_BIN) == "true" { QEMU_BIN } else { "qemu-system-arm" } }} -cpu cortex-m3 -machine mps2-an385 -nographic \
+        "{{QEMU_BIN}}" -cpu cortex-m3 -machine mps2-an385 -nographic \
             -icount shift=auto \
             -semihosting-config enable=on,target=native \
             -kernel "$rtic_artifacts/thumbv7m-none-eabi/{{PROFILE_DIR}}/qemu-rtic-main-e2e" \
@@ -377,7 +380,7 @@ test-all verbose="":
 
 # Check if QEMU is installed
 check:
-    @which qemu-system-arm > /dev/null || (echo "Error: qemu-system-arm not found. Install with: nros setup --system" && exit 1)
+    @bash -c '. scripts/lib/qemu-bin.sh; nros_qemu_report qemu-system-arm 7.2'
     @echo "QEMU ARM is installed"
 
 # CI: check + test
@@ -414,7 +417,7 @@ test-zenoh: build
     echo "Ubuntu 22.04 ships QEMU 6.2.0 which has TAP issues."
     echo ""
     echo "Current QEMU version:"
-    qemu-system-arm --version | head -1
+    "{{QEMU_BIN}}" --version | head -1
     echo ""
     echo "To run manually:"
     echo "  Terminal 1: ZENOH_CONFIG_OVERRIDE='listen/endpoints=[\"tcp/0.0.0.0:7447\"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd"
@@ -495,59 +498,9 @@ doctor:
         echo "  [MISSING] arm-none-eabi-gcc (run: nros setup --tool arm-none-eabi-gcc — prebuilt, no sudo; or apt gcc-arm-none-eabi) — 0368 F2"
         fail=1
     fi
-    if [ -x {{QEMU_BIN}} ]; then
-        ver=$({{QEMU_BIN}} --version 2>/dev/null | head -1)
-        echo "  [OK] patched qemu-system-arm: {{QEMU_BIN}} ($ver)"
-    else
-        echo "  [MISSING] patched qemu-system-arm (run: just qemu setup-qemu)"
-        fail=1
-    fi
-    if command -v qemu-system-arm &>/dev/null; then
-        ver=$(qemu-system-arm --version 2>/dev/null | head -1 | sed -E 's/^[^0-9]*([0-9]+\.[0-9]+).*/\1/')
-        major=${ver%%.*}
-        minor=${ver##*.}
-        # Phase 127.B.5 — `-netdev dgram,local.type=unix,...` (the
-        # supported workaround for QEMU 6.2's broken cross-process
-        # `socket,mcast=` delivery) was introduced in QEMU 7.2.
-        # NuttX DDS / RTPS multi-instance tests need it.
-        if [ -n "$ver" ] && { [ "$major" -gt 7 ] || { [ "$major" -eq 7 ] && [ "$minor" -ge 2 ]; }; }; then
-            echo "  [OK] system qemu-system-arm ($ver, fallback path; >= 7.2 — supports -netdev dgram unix)"
-        elif [ -x {{QEMU_BIN}} ]; then
-            # Phase 143 — patched build is the primary path and is
-            # already OK above; demote the system-binary warning to
-            # an informational note so users aren't pressured to
-            # touch system packages.
-            echo "  [INFO] system qemu-system-arm ($ver) < 7.2 — patched build at {{QEMU_BIN}} is the active path; nothing to do."
-        else
-            echo "  [WARN] system qemu-system-arm ($ver) < 7.2 AND patched build absent."
-            echo "         Primary remedy (no sudo, portable across distros):"
-            echo ""
-            echo "           just qemu setup-qemu"
-            echo ""
-            echo "         (builds third-party/qemu/qemu @ stable-11.0 with the"
-            echo "         LAN9118 RX-flush patch into build/qemu/bin/qemu-system-arm;"
-            echo "         picked up automatically by the test harness via Phase 143's"
-            echo "         qemu_system_arm_path() resolver — no env-var needed.)"
-            echo ""
-            echo "         Fallback (system-wide, requires sudo):"
-            if [ -f /etc/os-release ] && grep -q '^ID=ubuntu' /etc/os-release; then
-                codename=$(. /etc/os-release; echo "$VERSION_CODENAME")
-                echo "           Ubuntu detected ($codename). Canonical server-backports PPA:"
-                echo "             sudo add-apt-repository ppa:canonical-server/server-backports"
-                echo "             nros setup --system   (composes the install command for this host)"
-                echo "           https://launchpad.net/~canonical-server/+archive/ubuntu/server-backports"
-            else
-                echo "           Build from source: https://www.qemu.org/download/#source"
-            fi
-        fi
-    else
-        echo "  [MISSING] system qemu-system-arm (apt path). The patched"
-        echo "            build at {{QEMU_BIN}} is the recommended path —"
-        echo "            run \`just qemu setup-qemu\` to produce it."
-        # No fail bump: if the patched build is in place, the system
-        # binary is unused. The patched-binary check above already
-        # bumped fail when {{QEMU_BIN}} was absent.
-    fi
+    # Issue 1851 — the binary the recipes run, from the one QEMU ladder.
+    source scripts/lib/qemu-bin.sh
+    nros_qemu_report qemu-system-arm 7.2 || fail=1
     exit $fail
 
 # Build zenoh-pico for ARM Cortex-M3 (required for QEMU examples)
@@ -625,7 +578,7 @@ clean: clean-zenoh-pico
 _run-qemu-mps2 binary: _require-profile-dir build-fixtures
     #!/usr/bin/env bash
     trap 'kill $PID 2>/dev/null; wait $PID 2>/dev/null; exit 130' INT TERM
-    qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic \
+    "{{QEMU_BIN}}" -cpu cortex-m3 -machine mps2-an385 -nographic \
         -icount shift=auto \
         -semihosting-config enable=on,target=native \
         -kernel "{{binary}}" \
