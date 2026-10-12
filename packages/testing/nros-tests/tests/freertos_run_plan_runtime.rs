@@ -138,10 +138,15 @@ fn require_freertos_qemu_prereqs() -> Option<String> {
         return Some("arm-none-eabi-gcc not found".to_string());
     }
     if !is_freertos_available() {
-        return Some("FREERTOS_DIR not set or invalid — run `just freertos setup`".to_string());
+        return Some(
+            "no FreeRTOS kernel tree provisioned — run `just freertos setup`, or set FREERTOS_DIR"
+                .to_string(),
+        );
     }
     if !is_lwip_available() {
-        return Some("LWIP_DIR not set or invalid — run `just freertos setup`".to_string());
+        return Some(
+            "no lwIP tree provisioned — run `just freertos setup`, or set LWIP_DIR".to_string(),
+        );
     }
     if !is_qemu_available() {
         return Some("qemu-system-arm not found".to_string());

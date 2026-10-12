@@ -25,10 +25,8 @@ fn nuttx_integration_shell_smoke() {
             "arm-none-eabi-gcc not on PATH — install gcc-arm-none-eabi for NuttX builds"
         );
     }
-    if std::env::var("NUTTX_DIR").is_err() {
-        nros_tests::unmet!(
-            "NUTTX_DIR unset — point at a configured NuttX checkout (`apps/` sibling)"
-        );
+    if nros_tests::sdk_tree::sdk_tree("nuttx-kernel").is_none() {
+        nros_tests::unmet!("no NuttX kernel tree provisioned — `just nuttx setup` (issue 1833)");
     }
 
     let root = nros_tests::project_root();

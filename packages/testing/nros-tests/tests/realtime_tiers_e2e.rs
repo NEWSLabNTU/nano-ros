@@ -558,10 +558,14 @@ fn require_cell_env(boot: Boot) {
         }
         Boot::FreertosMps2 => {
             if !freertos::is_freertos_available() {
-                nros_tests::unmet!("FREERTOS_DIR not set or invalid");
+                nros_tests::unmet!(
+                    "no FreeRTOS kernel tree provisioned — run `just freertos setup`, or set FREERTOS_DIR"
+                );
             }
             if !freertos::is_lwip_available() {
-                nros_tests::unmet!("LWIP_DIR not set or invalid");
+                nros_tests::unmet!(
+                    "no lwIP tree provisioned — run `just freertos setup`, or set LWIP_DIR"
+                );
             }
             if !freertos::is_arm_gcc_available() {
                 nros_tests::unmet!("arm-none-eabi-gcc not found");

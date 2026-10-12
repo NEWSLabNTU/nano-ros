@@ -49,8 +49,7 @@ const WINDOW: Duration = Duration::from_secs(30);
 fn require_freertos() {
     if !freertos::is_freertos_available() {
         nros_tests::unmet!(
-            "FREERTOS_DIR not set or invalid — `just freertos setup`, then \
-             export FREERTOS_DIR=$PWD/third-party/freertos/kernel"
+            "no FreeRTOS kernel tree provisioned — run `just freertos setup`, or set FREERTOS_DIR"
         );
     }
 }

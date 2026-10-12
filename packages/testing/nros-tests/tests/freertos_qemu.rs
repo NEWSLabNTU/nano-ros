@@ -48,13 +48,11 @@ use std::time::Duration;
 fn require_freertos() {
     if !is_freertos_available() {
         nros_tests::unmet!(
-            "FREERTOS_DIR not set or invalid — run `just freertos setup` + `source .envrc`"
+            "no FreeRTOS kernel tree provisioned — run `just freertos setup`, or set FREERTOS_DIR"
         );
     }
     if !is_lwip_available() {
-        nros_tests::unmet!(
-            "LWIP_DIR not set or invalid — run `just freertos setup` + `source .envrc`"
-        );
+        nros_tests::unmet!("no lwIP tree provisioned — run `just freertos setup`, or set LWIP_DIR");
     }
     if !is_arm_gcc_available() {
         nros_tests::unmet!(

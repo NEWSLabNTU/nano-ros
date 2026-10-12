@@ -48,7 +48,7 @@ fn fixture() -> PathBuf {
 fn require_nuttx_setup() {
     if !is_nuttx_available() {
         nros_tests::unmet!(
-            "NUTTX_DIR unset / NuttX submodule not provisioned — run `just nuttx setup`"
+            "no NuttX kernel tree provisioned — run `just nuttx setup`, or set NUTTX_DIR"
         );
     }
     if !is_arm_gcc_available() {

@@ -16,19 +16,17 @@ use std::{
 // Prerequisite detection
 // =============================================================================
 
-/// `FREERTOS_DIR` env var set and points to a valid kernel source tree.
+/// A FreeRTOS kernel tree is provisioned (issue 1833: `FREERTOS_DIR` or the checkout or the store) and is a valid kernel source tree.
 pub fn is_freertos_available() -> bool {
-    std::env::var("FREERTOS_DIR")
-        .ok()
-        .map(|dir| Path::new(&dir).join("tasks.c").exists())
+    crate::sdk_tree::sdk_tree("freertos-kernel")
+        .map(|dir| dir.join("tasks.c").exists())
         .unwrap_or(false)
 }
 
-/// `LWIP_DIR` env var set and points to a valid lwIP source tree.
+/// A lwIP tree is provisioned (issue 1833: `LWIP_DIR` or the checkout or the store) and is a valid lwIP source tree.
 pub fn is_lwip_available() -> bool {
-    std::env::var("LWIP_DIR")
-        .ok()
-        .map(|dir| Path::new(&dir).join("src/include/lwip/init.h").exists())
+    crate::sdk_tree::sdk_tree("lwip")
+        .map(|dir| dir.join("src/include/lwip/init.h").exists())
         .unwrap_or(false)
 }
 

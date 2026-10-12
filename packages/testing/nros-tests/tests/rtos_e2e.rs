@@ -282,10 +282,13 @@ impl Platform {
         match self {
             Platform::Freertos => {
                 if !freertos::is_freertos_available() {
-                    return Err("FREERTOS_DIR not set or invalid".to_string());
+                    return Err("no FreeRTOS kernel tree provisioned — run `just freertos setup`, or set FREERTOS_DIR".to_string());
                 }
                 if !freertos::is_lwip_available() {
-                    return Err("LWIP_DIR not set or invalid".to_string());
+                    return Err(
+                        "no lwIP tree provisioned — run `just freertos setup`, or set LWIP_DIR"
+                            .to_string(),
+                    );
                 }
                 if !freertos::is_arm_gcc_available() {
                     return Err("arm-none-eabi-gcc not found".to_string());
@@ -297,7 +300,7 @@ impl Platform {
             }
             Platform::Nuttx => {
                 if !nuttx::is_nuttx_available() {
-                    return Err("NUTTX_DIR not set or invalid".to_string());
+                    return Err("no NuttX kernel tree provisioned — run `just nuttx setup`, or set NUTTX_DIR".to_string());
                 }
                 if !nuttx::is_nuttx_configured() {
                     return Err("NuttX not configured".to_string());
@@ -323,7 +326,7 @@ impl Platform {
             }
             Platform::ThreadxLinux => {
                 if !threadx_linux::is_threadx_available() {
-                    return Err("THREADX_DIR not set or invalid".to_string());
+                    return Err("no ThreadX kernel tree provisioned — run `just threadx_linux setup`, or set THREADX_DIR".to_string());
                 }
                 if !threadx_linux::is_nsos_netx_available() {
                     return Err(
@@ -334,10 +337,10 @@ impl Platform {
             }
             Platform::ThreadxRiscv64 => {
                 if !threadx_riscv64::is_threadx_available() {
-                    return Err("THREADX_DIR not set or invalid".to_string());
+                    return Err("no ThreadX kernel tree provisioned — run `just threadx_linux setup`, or set THREADX_DIR".to_string());
                 }
                 if !threadx_riscv64::is_netx_available() {
-                    return Err("NETX_DIR not set or invalid".to_string());
+                    return Err("no NetX Duo tree provisioned — run `just threadx_riscv64 setup`, or set NETX_DIR".to_string());
                 }
                 if !threadx_riscv64::is_riscv_gcc_available() {
                     return Err("riscv64-unknown-elf-gcc not found".to_string());
