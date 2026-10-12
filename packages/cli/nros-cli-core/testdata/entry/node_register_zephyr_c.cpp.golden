@@ -10,7 +10,7 @@
 #include <nros/boot_config.h>
 #include <nros/component.hpp>
 #include <nros/main.hpp>
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 
 // C component factory + configure seam (RCLC_C_COMPONENT); the
