@@ -697,7 +697,7 @@ target_link_libraries({pkg_sym}_{node_name}_component
         r#"#pragma once
 
 #include <nros/component.hpp>
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 
 #include "std_msgs.hpp"
 
@@ -860,6 +860,9 @@ nano_ros_add_node({node_name} CLASS {pkg_sym}::{class_name} TYPED
 #include <stdio.h>
 
 #include <nros/component.h>
+#include <rcl/rcl.h>
+#include <rclc/executor.h>
+#include <rclc/rclc.h>
 #include <std_msgs/msg/int32.h>
 
 typedef struct {{
@@ -1433,7 +1436,7 @@ ament_package()
 
 #include <cstdio>
 
-#include <nros/nros.hpp>
+#include <rclcpp/rclcpp.hpp>
 #include "std_msgs.hpp"
 
 int main(int argc, char** argv) {{
@@ -1598,6 +1601,15 @@ mod tests {
             cm.contains("nano_ros_add_executable(baz src/main.cpp)"),
             "{cm}"
         );
+        // Both starters include the API at upstream's paths.
+        let c_src = fs::read_to_string(dc.path().join("src/main.c")).unwrap();
+        assert!(c_src.contains("#include <rcl/rcl.h>") && c_src.contains("#include <rclc/rclc.h>"));
+        let cpp_src = fs::read_to_string(dpp.path().join("src/main.cpp")).unwrap();
+        assert!(
+            cpp_src.contains("#include <rclcpp/rclcpp.hpp>"),
+            "{cpp_src}"
+        );
+        assert!(!cpp_src.contains("<nros/nros.hpp>"), "{cpp_src}");
     }
 
     #[test]
