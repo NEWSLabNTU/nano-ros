@@ -12,4 +12,8 @@
 #![no_std]
 #![no_main]
 
-nros::main!(panic = "platform");
+// The panic handler is the board's crate-root item (`[board.entry]
+// crate_root_extra`), carried by the generated selection package with the
+// board crate (issue 1305) -- the same pair a generated workspace entry
+// gets, whose image says `panic = "own"` for the same reason.
+nros::main!(panic = "own");
