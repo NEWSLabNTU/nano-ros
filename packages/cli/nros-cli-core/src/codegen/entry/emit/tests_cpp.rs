@@ -330,7 +330,8 @@ fn typed_emit_rclcpp_shape_hands_its_qos_overrides_to_the_handle() {
         ),
         (
             "qos_overrides./system/availability.subscription.liveliness_lease_duration",
-            "500",
+            // Nanoseconds, rclcpp's unit (issue 1855); baked as 500 ms.
+            "500000000",
         ),
     ])
     .expect("fixture overrides lower");
