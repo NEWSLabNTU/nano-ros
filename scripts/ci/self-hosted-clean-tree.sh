@@ -71,21 +71,40 @@ if [ -n "${CARGO_TARGET_DIR:-}" ]; then
     fail=1
 fi
 cargo_home="${CARGO_HOME:-$HOME/.cargo}"
+# shellcheck source=scripts/lib/grep-q.sh
+. "$(dirname "$0")/../lib/grep-q.sh"
 for cfg in "$cargo_home/config.toml" "$cargo_home/config"; do
-    if [ -f "$cfg" ] && grep -Eq '^[[:space:]]*target-dir[[:space:]]*=' "$cfg"; then
-        say "FAIL: $cfg sets build.target-dir — same hole as CARGO_TARGET_DIR."
-        fail=1
-    fi
+    [ -f "$cfg" ] || continue
+    rc=0
+    nros_grep_q -E '^[[:space:]]*target-dir[[:space:]]*=' "$cfg" || rc=$?
+    case "$rc" in
+        0) say "FAIL: $cfg sets build.target-dir — same hole as CARGO_TARGET_DIR."
+           fail=1 ;;
+        1) ;;
+        *) say "FAIL: could not read $cfg (grep rc=$rc)"
+           fail=1 ;;
+    esac
 done
 
 # --- clean --------------------------------------------------------------------
 if [ "$mode" = clean ]; then
+    # Say what an earlier job left, so every run's log is evidence that the
+    # clean had something to do (or did not) rather than a bare "ok".
+    subs="$(git submodule status 2>/dev/null | grep -c -v '^-' || true)"
+    stale="$(git status --porcelain=v1 --ignored=matching --untracked-files=normal)"
+    say "found: ${subs:-0} submodule worktree(s), $(printf '%s' "$stale" | grep -c . || true) untracked/ignored top-level entr(y/ies)"
+    printf '%s\n' "$stale" | grep . | head -20 | sed 's/^/    /' || true
     # Every submodule worktree, including ones this job will never touch: a
     # leftover one is exactly what a provisioning verb mistakes for "present".
     # `deinit --force` empties the worktree and drops the registration; the
     # object store in .git/modules stays, so re-initialising costs a checkout,
     # not a clone.
-    git submodule deinit --all --force --quiet 2>/dev/null || true
+    # Only the initialised ones: `deinit --all` also visits every never-
+    # initialised entry and warns once per submodule about a config it lacks.
+    git submodule status 2>/dev/null | awk '$0 !~ /^-/ { print $2 }' \
+        | while IFS= read -r sub; do
+            git submodule --quiet deinit --force -- "$sub"
+          done
     # A submodule directory that is no longer in .gitmodules (a moved or retired
     # one) is invisible to `deinit`, and is an embedded repo to `clean`, which
     # needs `-ff` to remove it.
