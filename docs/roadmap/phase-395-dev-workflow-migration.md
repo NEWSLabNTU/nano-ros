@@ -926,3 +926,10 @@ about the dev and CI workflow this phase owns.
 | [#0996](../issues/0996-ci-workflow-audit-tier-promises.md) | phase-413 | the CI workflow audit's findings that remain after phase-413's waves landed |
 | [#1155](../issues/1155-arch-flags-tests-in-no-lane.md) | phase-413 | `nros-board-common`'s `arch_flags` tests run in no lane |
 
+## Open issues that name this phase
+
+Open issues whose `related:` names this phase (listed 2026-10-12, so the
+link runs both ways). Listing one here records the link, not a claim that
+this phase will fix it.
+
+- [issue 1177](../issues/1177-no-alloc-nros-c-lane-runs-only-on-schedule.md) — `check::workspace-features` gates no merge, so its reds are found by embedded consumers -- two so far, and the tier i …

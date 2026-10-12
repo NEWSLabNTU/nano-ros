@@ -1161,3 +1161,11 @@ I13's DTCM rings); I14 is the no-DMA alternative and is independent.
       `a_stream_at_its_rate_checked_late_is_not_judged_slow`; the board
       rerun is the island's W4. The operator's 29773 of 30000 was two ticks
       dropped under the log-floor stall, measured on the board; not open.)
+
+## Open issues that name this phase
+
+Open issues whose `related:` names this phase (listed 2026-10-12, so the
+link runs both ways). Listing one here records the link, not a claim that
+this phase will fix it.
+
+- [issue 0880](../issues/0880-tcm-unused-while-sram-exhausted.md) — 192 KiB of tightly-coupled memory sits at 0 % while SRAM is exhausted — the Zephyr images place nothing in ITCM or DTCM

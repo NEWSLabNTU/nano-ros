@@ -4,7 +4,7 @@ title: "Derived scheduling is quantitatively inert — no WCET in the model, so 
 status: open
 type: limitation
 area: orchestration
-related: [phase-296, rfc-0052, 0403, 0404]
+related: [phase-296, rfc-0052, 0403, 0404, phase-357]
 ---
 
 ## Original finding (phase-296 W5.5–W5.11, 2026-07-24)

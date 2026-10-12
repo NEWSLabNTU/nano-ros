@@ -8,7 +8,7 @@ type: bug
 area: ci
 severity: medium
 found: 2026-09-12
-related: [1350, 0996, 1177, 1158]
+related: [1350, 0996, 1177, 1158, phase-466, phase-489]
 ---
 
 ## What happens

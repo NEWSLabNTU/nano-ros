@@ -8,7 +8,7 @@ type: bug
 area: [ci, tooling, zephyr]
 severity: high
 found: 2026-09-22
-related: [1389, 1360, 1158, 1387, 1482, 1481]
+related: [1389, 1360, 1158, 1387, 1482, 1481, phase-466]
 ---
 
 ## What happens

@@ -4,7 +4,7 @@ title: "The generated-entry runtime test starts no peers of its own, so a row wh
 status: open
 type: tech-debt
 area: [testing, rmw]
-related: [1310, 1758, 1009]
+related: [1310, 1758, 1009, phase-445]
 ---
 
 # What happens

@@ -221,3 +221,11 @@ run as a fast one.
   This phase makes the same work cheaper, not smaller.
 - Disk exhaustion as a correctness problem (issue 1353). W1, W2 and W6 should
   relieve it, but closing it is that issue's job.
+
+## Open issues that name this phase
+
+Open issues whose `related:` names this phase (listed 2026-10-12, so the
+link runs both ways). Listing one here records the link, not a claim that
+this phase will fix it.
+
+- [issue 1177](../issues/1177-no-alloc-nros-c-lane-runs-only-on-schedule.md) — `check::workspace-features` gates no merge, so its reds are found by embedded consumers -- two so far, and the tier i …

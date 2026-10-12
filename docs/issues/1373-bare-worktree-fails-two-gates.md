@@ -7,7 +7,7 @@ type: bug
 area: [tooling, testing]
 severity: medium
 found: 2026-09-18
-related: [issue-0650, issue-0702, issue-0840, issue-1068]
+related: [issue-0650, issue-0702, issue-0840, issue-1068, phase-478]
 ---
 
 ## What happens

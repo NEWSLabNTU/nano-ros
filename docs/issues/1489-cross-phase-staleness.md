@@ -7,7 +7,7 @@ status: open
 type: bug
 area: docs, tooling, ci
 severity: medium
-related: [419, 1226, 0196, phase-417, phase-444]
+related: [419, 1226, 0196, phase-417, phase-444, phase-478]
 found: 2026-09-25
 ---
 

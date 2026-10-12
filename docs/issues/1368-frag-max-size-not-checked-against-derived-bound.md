@@ -8,7 +8,7 @@ type: bug
 area: rmw, zenoh, cmake, zephyr, sizing
 severity: medium
 found: 2026-09-18
-related: [issue-0940, issue-0963, issue-1181, phase-40, phase-403]
+related: [issue-0940, issue-0963, issue-1181, phase-40, phase-403, phase-460, phase-478]
 ---
 
 ## What the two numbers are

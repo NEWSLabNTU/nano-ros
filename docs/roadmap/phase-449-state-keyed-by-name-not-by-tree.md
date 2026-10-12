@@ -471,3 +471,12 @@ unpacked, unusable SDK that the verb cannot repair.
   when that phase was archived (2026-10-12). W2 removes one of its causes; the
   issue stays open until a scheduled tier-2 run reaches its cells. Homing it here
   gives it an owner. It does not make the other stages this phase's work.
+
+## Open issues that name this phase
+
+Open issues whose `related:` names this phase (listed 2026-10-12, so the
+link runs both ways). Listing one here records the link, not a claim that
+this phase will fix it.
+
+- [issue 1158](../issues/1158-tier2-lane-has-produced-no-verdict-for-six-days.md) — The tier-2 lane has produced no runtime verdict in six consecutive scheduled runs, and no pre-merge event can produce …
+- [issue 1399](../issues/1399-zephyr-shared-store-build-dir-has-no-lock.md) — Two checkouts building the same Zephyr leaf into the shared store workspace collide with no lock — west's sanity chec …

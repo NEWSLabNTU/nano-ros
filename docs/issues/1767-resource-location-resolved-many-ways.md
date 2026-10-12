@@ -7,7 +7,7 @@ type: tech-debt
 area: build
 severity: medium
 found: 2026-10-09
-related: [0196, 0460, 0491, 0500, 0616, 1025, 1280, 1527, 1558, 1560, RFC-0014, RFC-0049, RFC-0072, RFC-0094, RFC-0101]
+related: [0196, 0460, 0491, 0500, 0616, 1025, 1280, 1527, 1558, 1560, RFC-0014, RFC-0049, RFC-0072, RFC-0094, RFC-0101, phase-484]
 ---
 
 ## What this is

@@ -6,7 +6,7 @@ title: "A Zephyr workspace compiles the nano-ros MODULE of whichever checkout
 status: open
 type: bug
 area: ci, zephyr, build
-related: [issue-1158, phase-440, phase-431, rfc-0095, rfc-0079, phase-449]
+related: [issue-1158, phase-440, phase-431, rfc-0095, rfc-0079, phase-449, phase-445, phase-478]
 ---
 
 ## Problem

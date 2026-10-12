@@ -6,7 +6,7 @@ type: bug
 area: cli, tooling
 severity: medium
 found: 2026-09-06
-related: [1120, 0475, 1018, phase-424, phase-330]
+related: [1120, 0475, 1018, phase-424, phase-330, phase-460, phase-478]
 ---
 
 **Home: [phase-330](../roadmap/phase-330-system-model-as-build-artifact.md)** — re-homed 2026-10-12 from phase-424, which is archived.

@@ -289,3 +289,11 @@ point: it is not in progress, and it will not start itself.
   surfaces that gate could not reach.
 * Documentation content beyond the shape it teaches. W3 is about the build shape
   being current, not a rewrite of the book.
+
+## Open issues that name this phase
+
+Open issues whose `related:` names this phase (listed 2026-10-12, so the
+link runs both ways). Listing one here records the link, not a claim that
+this phase will fix it.
+
+- [issue 1453](../issues/1453-template-copy-out-not-merge-gating.md) — `check-template-copy-out` sat red on `main` unseen because it runs on `schedule` only — the defect's class is gated c …

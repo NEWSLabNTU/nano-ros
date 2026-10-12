@@ -8,7 +8,7 @@ type: bug
 area: [build, zephyr]
 severity: medium
 found: 2026-09-20
-related: [issue-1379, issue-1258, issue-1016, phase-440, phase-449]
+related: [issue-1379, issue-1258, issue-1016, phase-440, phase-449, phase-478]
 ---
 
 ## What happens

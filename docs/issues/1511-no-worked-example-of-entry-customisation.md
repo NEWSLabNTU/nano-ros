@@ -5,7 +5,7 @@ status: open
 type: docs
 area: docs, examples, tooling
 severity: medium
-related: [1288, 0865, rfc-0065, rfc-0098, phase-445]
+related: [1288, 0865, rfc-0065, rfc-0098, phase-445, phase-477]
 found: 2026-09-27
 ---
 

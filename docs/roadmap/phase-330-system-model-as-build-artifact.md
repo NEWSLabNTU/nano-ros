@@ -774,3 +774,11 @@ completed:
   agent may not push; sequencing needs the maintainer.
 - **Nine workspaces at once (W2).** The dims differ per workspace, so W1's
   schema must be complete before the family migrates, or 0380 recurs at scale.
+
+## Open issues that name this phase
+
+Open issues whose `related:` names this phase (listed 2026-10-12, so the
+link runs both ways). Listing one here records the link, not a claim that
+this phase will fix it.
+
+- [issue 1121](../issues/1121-contract-sidecar-has-no-model-freshness-edge.md) — Adding a `<stem>.contract.yaml` does not invalidate the SystemModel it feeds — `nros sync` leaves the stale model in …
