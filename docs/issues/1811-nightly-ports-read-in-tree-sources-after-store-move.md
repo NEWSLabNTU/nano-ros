@@ -54,3 +54,70 @@ from there, or `build-zenoh-pico`'s presence test asks `nros locate`. A gate
 that refuses a new `$FREERTOS_DIR`/`$THREADX_DIR`/`$NETX_DIR` read outside
 `sdk-env.just` keeps the class closed. Acceptance is the next 07:13Z nightly
 building all four ports.
+
+## Fix (2026-10-12)
+
+Two other changes on `main` fixed most of this while this issue was open, and
+they are the fix of record:
+
+- `6c98b7510f` (phase-484 W3c): `nros_locate_sdk_trees` in
+  `scripts/build/cargo.sh` sets the four variables through
+  `nros_locate_source`, and every `freertos`, `threadx_linux` and
+  `threadx_riscv64` recipe that reads one calls it first. So does
+  `check-sched-dim-arms-compile.sh`.
+- `f7f722a94c` (issue 1833): the `nros-tests` source probes ask the build's
+  ladder (`nros_tests::sdk_tree`), and `check-store-source-readers` rejects a
+  direct Rust `env::var` read.
+
+This issue adds what those two did not cover:
+
+- **The shell rule.** `check-store-source-readers` now also rejects a `just`
+  recipe or script that reads `$FREERTOS_DIR`, `$LWIP_DIR`, `$THREADX_DIR` or
+  `$NETX_DIR` without first calling `nros_locate_sdk_trees` or
+  `nros_locate_source` (earlier in the same recipe, or earlier in the script).
+  It has a self-test. On `main` it reports nothing. Removing the first locate
+  call in `just/freertos.just` makes it report 6 reads.
+- **zenoh-pico.** `scripts/qemu/build-zenoh-pico.sh` locates zenoh-pico. It
+  was allowlisted as "dev: builds zenoh-pico in the checkout", but
+  `just setup qemu` runs it and it writes only to `nros_build_dir`. This is
+  the `Error: zenoh-pico submodule not found` that stopped the live-peer board
+  jobs.
+- **The doctor.** `just workspace doctor` asked whether the four variables
+  were exported, which reported a correct setup as incomplete. It now asks
+  `nros locate`.
+
+## What the first CI runs on the fix showed (2026-10-12)
+
+Nightly run 38215925408 and `live-peer` run 38215928263 ran on the first
+version of this fix. Both ThreadX ports built and tested green. FreeRTOS built
+every row but one. The `live-peer` board jobs got past `just setup`. Three more
+defects came out from behind the first one, and this issue fixes them too:
+
+- **`realtime-c` got no board facts.** The workspace has two bringups
+  (`demo_bringup`, `smp_bringup`), and `nros ws board-facts` refused to pick
+  one even when the configure named the image (`--deploy freertos`). With no
+  board facts, `FREERTOS_PORT` never reached cargo, and `zpico-sys` panicked.
+  The verb now lets the named deploy or board choose the bringup. It still
+  refuses when the name matches no bringup or more than one, and when no name
+  is given. Unit test: `the_named_deploy_picks_the_bringup`.
+- **The nightly ran `just <platform> test` unscoped.** `realtime_tiers` runs
+  every platform's rows in one test, so the FreeRTOS job booted the NuttX
+  riscv and threadx-linux rows too. Their fixtures were never built there, and
+  since issue 1758 a missing fixture is a failure. The step now runs
+  `just test <platform>`, which sets `NROS_TEST_COORDS` to that platform's
+  rows.
+- **`just setup <scope>` left the pinned nightly without `rust-src`.** The
+  first thing to touch that nightly was `rust-targets`' `rustup +<nightly>
+  target add`, which auto-installs the channel with no components. The
+  board-zephyr job's `mps2_an385` C talker then failed build-std
+  (`…/library/Cargo.lock does not exist`). `rust-targets` now installs the
+  channel and the components `tools/rust-toolchain.toml` declares first.
+
+A fourth, the `nros-tests` probes reading the variables directly, was issue
+1833's and is fixed on `main`.
+
+Not this issue: the three NuttX Rust e2e cells fail with `ConnectionFailed`,
+on `main` as well (issue 1838).
+
+Acceptance is unchanged: a nightly that builds all four ports, and a
+`live-peer` run whose board jobs get past `just setup`.

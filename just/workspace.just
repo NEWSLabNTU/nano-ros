@@ -584,18 +584,22 @@ doctor:
         fi
     fi
 
-    # --- toolchain env vars (exported by .envrc with sensible defaults) ---
-    env_missing=()
-    for v in NUTTX_DIR THREADX_DIR NETX_DIR FREERTOS_DIR LWIP_DIR; do
-        if [ -z "${!v:-}" ]; then
-            env_missing+=("$v")
-        fi
+    # --- RTOS source trees ---
+    # Issue 1811 — FreeRTOS, lwIP, ThreadX and NetX Duo are store-first
+    # (phase-484 W3c) and deliberately NOT exported, so asking whether their
+    # variables are in the shell reported a correct setup as incomplete.
+    # Ask the ladder instead; NUTTX_DIR is still a recipe-scoped export.
+    src_missing=()
+    for s in freertos-kernel lwip threadx threadx-netxduo; do
+        dir="$(source scripts/build/cargo.sh && nros_locate_source "$s")" || dir=""
+        [ -n "$dir" ] || src_missing+=("$s")
     done
-    if [ ${#env_missing[@]} -eq 0 ]; then
-        echo "  [OK] toolchain env vars exported"
+    [ -n "${NUTTX_DIR:-}" ] || src_missing+=("NUTTX_DIR")
+    if [ ${#src_missing[@]} -eq 0 ]; then
+        echo "  [OK] RTOS source trees located"
     else
-        echo "  [INFO] toolchain env vars not in shell: ${env_missing[*]}"
-        echo "        Run 'direnv allow' or 'source .envrc' to export defaults."
+        echo "  [INFO] RTOS source trees not provisioned: ${src_missing[*]}"
+        echo "        Run 'nros setup --source <name>' for each (or just setup <platform>)."
     fi
 
     exit $fail
