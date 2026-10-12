@@ -22,16 +22,16 @@
 // On real bare-metal: link a board crate that forwards the
 // platform-bare-metal feature instead.
 
-// nros modular includes
+// rclc include paths; nros/ holds the nano-ros-only entry and check helpers
 #include <nros/app_main.h>
-#include <nros/init.h>
+#include <rclc/init.h>
 #include <nros/log.h>
-#include <nros/node.h>
-#include <nros/publisher.h>
-#include <nros/timer.h>
-#include <nros/executor.h>
-#include <nros/guard_condition.h>
-#include <nros/clock.h>
+#include <rclc/node.h>
+#include <rclc/publisher.h>
+#include <rclc/timer.h>
+#include <rclc/executor.h>
+#include <rcl/guard_condition.h>
+#include <rcl/time.h>
 
 // ============================================================================
 // Message Definition (statically allocated)

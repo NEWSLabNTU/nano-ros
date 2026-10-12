@@ -31,10 +31,10 @@
 
 #include <nros/app_main.h>
 #include <nros/check.h>
-#include <nros/clock.h>
-#include <nros/executor.h>
-#include <nros/init.h>
-#include <nros/node.h>
+#include <rcl/time.h>
+#include <rclc/executor.h>
+#include <rclc/init.h>
+#include <rclc/node.h>
 #include <rclc_parameter/rclc_parameter.h>
 
 /* Static allocation — all nros structs live in .bss, not on the stack. */

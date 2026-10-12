@@ -11,14 +11,14 @@
 #include <stdint.h>
 #include <string.h>
 
-#include <nros/action.h>
+#include <rclc/action_server.h>
 #include <nros/app_main.h>
 #include <nros/check.h>
-#include <nros/executor.h>
-#include <nros/init.h>
+#include <rclc/executor.h>
+#include <rclc/init.h>
 #include <nros/log.h>
-#include <nros/node.h>
-#include <nros/rcl_compat.h>
+#include <rclc/node.h>
+#include <rcl/rcl.h>
 
 #include "example_interfaces.h"
 

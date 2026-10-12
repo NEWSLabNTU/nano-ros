@@ -2,7 +2,7 @@
 
 #include <nros/component.hpp>
 #include <nros/nros.hpp>
-#include <nros/types.h> /* rcl_node_t — the C half's handle on this node */
+#include <rclc/types.h> /* rcl_node_t — the C half's handle on this node */
 
 #include "std_msgs.hpp"
 
