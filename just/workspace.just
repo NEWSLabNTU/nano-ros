@@ -724,6 +724,17 @@ rust-targets:
         [ -n "$t" ] || continue
         rustup target add "$t"
     done < <(nros_rust_targets rustup)
+    # Issue 1811 — the pinned nightly WITH its declared components, first.
+    # `rustup +<channel>` auto-installs a missing channel with the minimal
+    # profile and no components, so on a host whose first touch of it was the
+    # line below there was no `rust-src`, and every build-std image failed
+    # with `…/library/Cargo.lock does not exist`. `just setup <scope>` reaches
+    # this recipe and not `rust-pinned-toolchains` (measured: the live-peer
+    # board-zephyr job). Same two-step form as that recipe, for its reason.
+    rustup toolchain install --profile minimal "{{NIGHTLY}}"
+    for c in $(awk '/^components *=/ { sub(/^[^=]*= */, ""); gsub(/[][",]/, " "); print; exit }' tools/rust-toolchain.toml); do
+        rustup component add --toolchain "{{NIGHTLY}}" "$c"
+    done
     rustup +{{NIGHTLY}} target add thumbv7m-none-eabi
     if rustc +{{NIGHTLY}} --print target-list 2>/dev/null | grep -q armv7a-nuttx-eabi; then
         echo "  armv7a-nuttx-eabi (NuttX Tier 3): supported via nightly + build-std"
