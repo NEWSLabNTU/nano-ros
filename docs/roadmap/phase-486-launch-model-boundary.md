@@ -1,6 +1,6 @@
 # Phase 486 — the launch model carries what every realizer reads; nano-ros's own facts move to an overlay
 
-**Status (2026-10-13). W0–W4 and W7 LANDED (W4 #2034, W7 #2038); W5 landed in play_launch (`ca7eb1a`, its phase 86 W1–W4) and W6 in rlm (`v0.1.55`/`v0.1.56`). W7's tier 2 ran and gave no verdict: the build stage failed on issue 1844, now fixed (#2052), so a rerun is due. W8 redesigned 2026-10-13 against a generic rlm (below); W9 open. Design revised 2026-10-12 and 2026-10-13 (below).** Implements RFC-0060's
+**Status (2026-10-13). W0–W4, W7 and W8a–W8c LANDED (W4 #2034, W7 #2038, W8a #2067, W8b rlm `v0.1.57`, W8c this pin bump); W5 landed in play_launch (`ca7eb1a`, its phase 86 W1–W4) and W6 in rlm (`v0.1.55`/`v0.1.56`). W9 in review (#2076). The 0.6.0 deletion of `[deploy.*]`/`[param_services]` is ready and HELD for the version bump (issue 1809, draft #2081). Design revised 2026-10-12 and 2026-10-13 (below).** Implements RFC-0060's
 [2026-10-10 amendment](../design/0060-launch-toolchain-three-layers.md#amendment-2026-10-10--what-the-systemmodel-may-carry-and-where-nano-ross-own-facts-go)
 and RFC-0100's
 [2026-10-10 ruling](../design/0100-rmw-agnostic-sizing-model.md#ruling-2026-10-10--a-stated-fact-earns-a-file-whatever-it-came-from).
@@ -599,6 +599,24 @@ it:
 - **No rlm call removed by W8b remains.** Measured, not argued: nano-ros's
   CLI, orchestration IR and proc-macro were built and tested against rlm
   W8b through a local `[patch]`.
+
+### W8c result (2026-10-13)
+
+- **One commit, both pins:** play_launch `15258108` → `465dba4` (its rlm
+  `v0.1.57` bump) and rlm `v0.1.56` → `v0.1.57` in the four manifests, both
+  workspace locks, the nine board leaf locks and `nros-launch-resolve`'s.
+  Each lock moves only rlm's packages (`0.1.10` → `0.1.11`, tag and hash).
+  The two NuttX FFI locks cannot resolve without a NuttX libc checkout, so
+  their four rlm entries were edited to match the sibling NuttX board lock
+  exactly (checked entry for entry).
+- **Byte-identical, measured like W7:** every example workspace synced with
+  main's CLI and resolver and with this commit's. 78 resolved models differ
+  ONLY in the resolver's version stamp (`meta` … `version`, the play_launch
+  commit); 74 entity-facts outputs and 78 entity inventories are identical.
+- **Acceptance:** `check-launch-model-boundary` passes with an EMPTY
+  allowlist (1314 Rust files). rlm's crate names no realizer (rlm
+  `v0.1.56`/`v0.1.57`). nros-cli-core 1873/1873, nros-orchestration-ir +
+  nros-macros 280/280.
 
 ## W9 — the carriers the old rule kept (follow-up, measured per road)
 
