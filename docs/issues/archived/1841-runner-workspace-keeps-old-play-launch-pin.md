@@ -1,12 +1,13 @@
 ---
 id: 1841
 title: "After a play_launch pin bump, the L3 queue job on a persistent self-hosted runner refuses at `just setup`: its workspace keeps the old submodule commit"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [ci]
 related: [1585, 1081, 1365]
 found: 2026-10-12
+resolved: 2026-10-13
 ---
 
 ## Measured
@@ -118,7 +119,20 @@ commit one with a modified tracked file and an untracked one.
   the modified file overwritten), selftest rc=1.
 - Restored: rc=0.
 
-**Not yet proven live.** The acceptance above is an L3 job on a persistent
-runner getting past `setup` after a pin bump. The runners still sit on
-`d23720c7` against pin `15258108`, so the first L3 run carrying this change is
-that test; this issue closes on its log.
+Landed as #2059.
+
+## 2026-10-13 — resolved: proven on a persistent runner
+
+#2059's merge-group L3, run 38293838064 on `nano-ros-runner-newslab-133`,
+whose workspace still held `d23720c7` against pin `15258108`:
+
+```
+setup: packages/cli/third-party/play_launch is at d23720c7, not the recorded pin, and dirty — a CI workspace
+  authors nothing, so this is an earlier job's residue (issue 1841). Discarding:
+     M src/ros-launch-resolve/parser/Cargo.lock
+Submodule path 'packages/cli/third-party/play_launch': checked out '152581080d90346aaa7c8c91faf4537fba6c9711'
+```
+
+L3 (cross build + link): **success** — the first green L3 since #2038. The
+residue was a single rewritten lockfile inside layer 2, i.e. an earlier job's
+build, not anything authored.
