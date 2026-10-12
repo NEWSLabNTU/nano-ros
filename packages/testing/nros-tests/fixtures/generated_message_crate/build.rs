@@ -29,7 +29,7 @@
 
 use rosidl_codegen::generate_message_package;
 use rosidl_parser::parse_message;
-use std::{collections::HashSet, env, fs, path::PathBuf};
+use std::{collections::BTreeSet, env, fs, path::PathBuf};
 
 /// `SimpleMsg` -> `simple_msg`, the module name the emitted code itself uses
 /// for a message (the emitter's `to_snake_case` is not public API and these
@@ -85,7 +85,7 @@ fn main() {
         let path = msg_dir.join(format!("{name}.msg"));
         let text = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {name}.msg: {e}"));
         let message = parse_message(&text).unwrap_or_else(|e| panic!("parse {name}.msg: {e:?}"));
-        let generated = generate_message_package("test_msgs", name, &message, &HashSet::new())
+        let generated = generate_message_package("test_msgs", name, &message, &BTreeSet::new())
             .unwrap_or_else(|e| panic!("generate {name}: {e:?}"));
         let module = snake_case(name);
         // No `use rosidl_runtime_rs` is injected around either half: every
