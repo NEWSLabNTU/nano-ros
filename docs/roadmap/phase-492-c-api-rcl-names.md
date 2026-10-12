@@ -425,3 +425,24 @@ sees zero allocations across publish and take.
   them.
 - Also: `declared_qos.h` no longer says a C component hands `nros_cpp_qos_t`
   (W4 part 2 moved components onto `rclc_qos_t`).
+
+### 2026-10-13 — the public headers are freestanding
+
+- Ruling (maintainer, 2026-10-13): a user includes the C API only at
+  upstream's paths; `<nros/*.h>` is internal (to be renamed into `rclc` later),
+  and the public headers must be freestanding so a part with no libc can
+  include them.
+- Measured: all 51 upstream-path headers failed `-ffreestanding -nostdinc`.
+  Exactly two hosted includes reached the umbrella: `log.h`'s `<stdio.h>`, for
+  an inline `vsnprintf` in `rclc_log_emit_fmt_at`, and `view.h`'s
+  `<string.h>`, for a bit-cast `memcpy`. (`check.h`'s `<stdio.h>` was already
+  gated on `__STDC_HOSTED__`.)
+- `rclc_log_emit_fmt_at` moved into `c-stubs/log_fmt.c` beside
+  `rclc_log_emit_fmt`, sharing one truncating renderer. That was the follow-up
+  its own comment named. `view.h` bit-casts with an inline byte copy.
+- Eight example components called `memset` and had received `<string.h>`
+  through a generated message header via `view.h`; they include it now.
+- Gate `check-c-api-freestanding-headers` (fast line): every tracked public
+  header (57, everything outside `nros/`) compiles on its own with
+  `-ffreestanding -nostdinc`, with a negative control. Against main's headers
+  it fails 51 of 57.

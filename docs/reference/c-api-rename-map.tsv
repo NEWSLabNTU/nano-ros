@@ -330,6 +330,7 @@ NROS__BUILDLESS_ASSERT	NROS__BUILDLESS_ASSERT	build	build or configuration fact
 NROS__LE_VIEW_COMMON	NROS__LE_VIEW_COMMON	build	build or configuration fact
 NROS__LE_VIEW_FLT	NROS__LE_VIEW_FLT	build	build or configuration fact
 NROS__LE_VIEW_INT	NROS__LE_VIEW_INT	build	build or configuration fact
+NROS__VIEW_BITCOPY	NROS__VIEW_BITCOPY	build	build or configuration fact
 nros_a	rclc_a	ours	ours-only
 nros_accepted_callback_t	rclc_accepted_callback_t	ours	ours-only
 nros_action_abort	rclc_action_abort	ours	ours-only

@@ -24,14 +24,27 @@
 #ifndef NROS_VIEW_H
 #define NROS_VIEW_H
 
+#include <stddef.h>
 #include <stdint.h>
-#include <string.h>
 
 #include "nros/cdr.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* Bit-cast by byte copy, so this header needs no `<string.h>`: the C API's
+ * public headers are freestanding (only `<stddef.h>`, `<stdint.h>`,
+ * `<stdbool.h>`, `<stdarg.h>`), which `check-c-api-freestanding-headers`
+ * holds. A macro rather than a function so it adds no public symbol.
+ * Compilers fold the loop into a register move, as they do memcpy. */
+#define NROS__VIEW_BITCOPY(dst, src, n)                                                            \
+    do {                                                                                           \
+        unsigned char* bc_dst_ = (unsigned char*)(dst);                                            \
+        const unsigned char* bc_src_ = (const unsigned char*)(src);                                \
+        for (size_t bc_i_ = 0; bc_i_ < (n); ++bc_i_)                                               \
+            bc_dst_[bc_i_] = bc_src_[bc_i_];                                                       \
+    } while (0)
 
 /** Borrowed UTF-8 string view (excludes the CDR trailing NUL from @c size). */
 typedef struct {
@@ -130,14 +143,14 @@ static inline int32_t rclc_cdr_borrow_bytes(const uint8_t** ptr, const uint8_t* 
         UT u = 0;                                                                                  \
         if (i >= v.count) {                                                                        \
             CT zero;                                                                               \
-            memcpy(&zero, &u, sizeof(CT));                                                         \
+            NROS__VIEW_BITCOPY(&zero, &u, sizeof(CT));                                             \
             return zero;                                                                           \
         }                                                                                          \
         const uint8_t* p = v.bytes + i * sizeof(CT);                                               \
         for (size_t b = 0; b < sizeof(CT); ++b)                                                    \
             u |= (UT)p[b] << (8u * b);                                                             \
         CT out;                                                                                    \
-        memcpy(&out, &u, sizeof(CT));                                                              \
+        NROS__VIEW_BITCOPY(&out, &u, sizeof(CT));                                                  \
         return out;                                                                                \
     }
 
@@ -149,14 +162,14 @@ static inline int32_t rclc_cdr_borrow_bytes(const uint8_t** ptr, const uint8_t* 
         UT u = 0;                                                                                  \
         if (i >= v.count) {                                                                        \
             CT zero;                                                                               \
-            memcpy(&zero, &u, sizeof(CT));                                                         \
+            NROS__VIEW_BITCOPY(&zero, &u, sizeof(CT));                                             \
             return zero;                                                                           \
         }                                                                                          \
         const uint8_t* p = v.bytes + i * sizeof(CT);                                               \
         for (size_t b = 0; b < sizeof(CT); ++b)                                                    \
             u |= (UT)p[b] << (8u * b);                                                             \
         CT out;                                                                                    \
-        memcpy(&out, &u, sizeof(CT));                                                              \
+        NROS__VIEW_BITCOPY(&out, &u, sizeof(CT));                                                  \
         return out;                                                                                \
     }
 

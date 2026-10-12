@@ -14,7 +14,48 @@
 
 #include <stdarg.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
+
+/* Render `fmt` into `buf`, marking truncation with "..." in place, and
+ * return the length to emit (0 = nothing to emit). Shared by both entry
+ * points below so they truncate identically. */
+static size_t render(char* buf, size_t cap, const char* fmt, va_list args) {
+    int written = vsnprintf(buf, cap, fmt, args);
+    if (written <= 0) {
+        return 0;
+    }
+    size_t n = (size_t)written;
+    if (n >= cap) {
+        /* `vsnprintf` returns the would-have-written length on overflow but
+         * writes at most `cap - 1` bytes. Append "..." inside the buffer. */
+        n = cap - 1;
+        if (n >= 3) {
+            buf[n - 3] = '.';
+            buf[n - 2] = '.';
+            buf[n - 1] = '.';
+        }
+    }
+    return n;
+}
+
+/* phase-417 W4.d — the located entry point every `RCLC_LOG_*` macro expands
+ * to. It was `static inline` in <nros/log.h> until phase-492 moved it here so
+ * that header needs no `<stdio.h>`. */
+void rclc_log_emit_fmt_at(rclc_logger_t logger, rcl_log_severity_t severity, const char* file,
+                          uint32_t line, const char* fmt, ...) {
+    if (logger == NULL || fmt == NULL) {
+        return;
+    }
+    char buf[NROS_LOG_FMT_BUFFER_SIZE];
+    va_list args;
+    va_start(args, fmt);
+    size_t n = render(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    if (n > 0) {
+        rclc_log_emit_at(logger, severity, buf, n, file, line);
+    }
+}
 
 void rclc_log_emit_fmt(rclc_logger_t logger,
                        rcl_log_severity_t severity,
@@ -28,22 +69,10 @@ void rclc_log_emit_fmt(rclc_logger_t logger,
     char buf[256];
     va_list args;
     va_start(args, fmt);
-    int written = vsnprintf(buf, sizeof(buf), fmt, args);
+    size_t n = render(buf, sizeof(buf), fmt, args);
     va_end(args);
-    if (written <= 0) {
+    if (n == 0) {
         return;
-    }
-    size_t n = (size_t) written;
-    if (n >= sizeof(buf)) {
-        /* `vsnprintf` returns the would-have-written length on
-         * overflow but writes at most `sizeof(buf) - 1` bytes.
-         * Append "..." inside the buffer to mark truncation. */
-        n = sizeof(buf) - 1;
-        if (n >= 3) {
-            buf[n - 3] = '.';
-            buf[n - 2] = '.';
-            buf[n - 1] = '.';
-        }
     }
     rclc_log_emit(logger, severity, buf, n);
 }
