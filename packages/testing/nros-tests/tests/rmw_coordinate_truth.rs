@@ -444,8 +444,12 @@ const RUN_BUDGET: std::time::Duration = std::time::Duration::from_secs(20);
 /// Run one entry to completion, or kill it at [`RUN_BUDGET`].
 ///
 /// Returns `(exit status if it exited on its own, combined output)`.
-fn run_entry(bin: &Path) -> (Option<std::process::ExitStatus>, String) {
+fn run_entry(bin: &Path, env: &[(String, String)]) -> (Option<std::process::ExitStatus>, String) {
     let mut cmd = Command::new(bin);
+    // Issue 1819 — the row's peer, started by THIS test, named to the entry.
+    for (k, v) in env {
+        cmd.env(k, v);
+    }
     cmd.stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
     // The DDS bus is pinned to loopback by a profile FILE, never by a variable
@@ -492,6 +496,101 @@ fn run_entry(bin: &Path) -> (Option<std::process::ExitStatus>, String) {
     (status, text)
 }
 
+/// Issue 1819 — the peers this test starts for itself, so a row whose session
+/// cannot open is a finding, never "this host runs no router".
+struct Peers {
+    zenoh: Option<nros_tests::fixtures::ZenohRouter>,
+    xrce: Option<nros_tests::fixtures::XrceAgent>,
+}
+
+impl Peers {
+    fn zenoh_locator(&self) -> Option<String> {
+        self.zenoh.as_ref().map(|r| r.locator())
+    }
+    fn xrce_locator(&self) -> Option<String> {
+        self.xrce.as_ref().map(|a| format!("udp/{}", a.addr()))
+    }
+}
+
+/// The `[[node]]` endpoints of a bridge row's tracked `nros-bridge.toml`, as
+/// `(name, rmw)`. A plain line reader: the file is ours and flat, and the test
+/// crate needs no TOML dependency for two keys.
+fn bridge_nodes(row_dir: &Path) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let Ok(rd) = std::fs::read_dir(row_dir.join("src")) else {
+        return out;
+    };
+    for pkg in rd.flatten() {
+        let Ok(text) = std::fs::read_to_string(pkg.path().join("nros-bridge.toml")) else {
+            continue;
+        };
+        let (mut name, mut rmw, mut in_node) = (None::<String>, None::<String>, false);
+        let mut flush = |name: &mut Option<String>, rmw: &mut Option<String>| {
+            if let (Some(n), Some(r)) = (name.take(), rmw.take()) {
+                out.push((n, r));
+            }
+        };
+        for line in text.lines().map(str::trim) {
+            if line.starts_with('[') {
+                if in_node {
+                    flush(&mut name, &mut rmw);
+                }
+                in_node = line == "[[node]]";
+                continue;
+            }
+            let Some((k, v)) = line.split_once('=') else {
+                continue;
+            };
+            let v = v.trim().trim_matches('"').to_string();
+            match k.trim() {
+                "name" if in_node => name = Some(v),
+                "rmw" if in_node => rmw = Some(v),
+                _ => {}
+            }
+        }
+        if in_node {
+            flush(&mut name, &mut rmw);
+        }
+    }
+    out
+}
+
+/// Which peer a backend needs, or `None` for one that needs none (DDS).
+fn peer_locator(peers: &Peers, rmw: &str) -> Option<String> {
+    match rmw {
+        "zenoh" => peers.zenoh_locator(),
+        "xrce" => peers.xrce_locator(),
+        _ => None,
+    }
+}
+
+/// The env that points `row`'s entry at the peers: `NROS_LOCATOR` for its own
+/// backend, and `NROS_BRIDGE_<NODE>_LOCATOR` (the bridge's per-endpoint
+/// override, `nros_rmw_bridge` config.rs) for each bridge endpoint.
+fn row_peer_env(row: &nros_tests::fixtures::lane::Row, peers: &Peers) -> Vec<(String, String)> {
+    let mut env = Vec::new();
+    if let Some(loc) = peer_locator(peers, &row.coord.2) {
+        env.push(("NROS_LOCATOR".to_string(), loc));
+    }
+    let dir = nros_tests::project_root().join(&row.dir);
+    for (name, rmw) in bridge_nodes(&dir) {
+        if let Some(loc) = peer_locator(peers, &rmw) {
+            let key: String = name
+                .chars()
+                .map(|c| {
+                    if c.is_ascii_alphanumeric() {
+                        c.to_ascii_uppercase()
+                    } else {
+                        '_'
+                    }
+                })
+                .collect();
+            env.push((format!("NROS_BRIDGE_{key}_LOCATOR"), loc));
+        }
+    }
+    env
+}
+
 /// Issue 1310 — a row's entry must actually REGISTER ITS NODES, not merely
 /// link the backend its coordinate names.
 ///
@@ -499,13 +598,14 @@ fn run_entry(bin: &Path) -> (Option<std::process::ExitStatus>, String) {
 /// runnable with no peer: an entry that reaches
 /// [`ENTRY_NODE_REGISTER_ERROR`](nros_tests::output::ENTRY_NODE_REGISTER_ERROR)
 /// FAILS, because that is a defect in the image regardless of what else is on
-/// the bus. An entry that never got that far — no router, no XRCE Agent — is a
-/// PRECONDITION this host does not meet and is reported as such, per row, so a
-/// skip can never read as coverage.
+/// the bus. Since issue 1819 the test starts the router and XRCE Agent the rows
+/// need and names them to each entry (`NROS_LOCATOR`, and per-endpoint
+/// `NROS_BRIDGE_<NODE>_LOCATOR` for a bridge), so an entry that still does not
+/// get that far FAILS too. A peer that cannot start is an unmet precondition.
 #[test]
 fn a_rows_entry_registers_its_nodes_at_runtime() {
     let mut ran = 0usize;
-    let mut no_peer: Vec<String> = Vec::new();
+    let mut no_session: Vec<String> = Vec::new();
     let mut failed: Vec<String> = Vec::new();
     let mut promised = 0usize;
     let mut targets: Vec<(&nros_tests::fixtures::lane::Row, PathBuf)> = Vec::new();
@@ -519,15 +619,52 @@ fn a_rows_entry_registers_its_nodes_at_runtime() {
     }
     let located = targets.len();
 
+    // Issue 1819 — start the peers the located rows need, here, rather than
+    // relying on whatever this host happens to run. Measured before: on a host
+    // with no router or Agent 23 of 24 rows were a stderr note and the test
+    // passed. A peer that cannot start is an unmet precondition (issue 1758),
+    // never a reason to under-test.
+    let needs = |want: &str| {
+        targets.iter().any(|(row, _)| {
+            row.coord.2 == want
+                || bridge_nodes(&nros_tests::project_root().join(&row.dir))
+                    .iter()
+                    .any(|(_, rmw)| rmw == want)
+        })
+    };
+    let peers = Peers {
+        zenoh: needs("zenoh").then(|| {
+            nros_tests::fixtures::ZenohRouter::start_unique().unwrap_or_else(|e| {
+                nros_tests::unmet!("a row needs a zenoh router and none could start: {e}")
+            })
+        }),
+        xrce: needs("xrce").then(|| {
+            nros_tests::fixtures::XrceAgent::start_unique().unwrap_or_else(|e| {
+                nros_tests::unmet!("a row needs an XRCE Agent and none could start: {e}")
+            })
+        }),
+    };
+    if peers.xrce.is_some() {
+        // The Agent's accept loop needs a moment before a client's session
+        // opens (the same settle `bridge_mixed_rmw` measured).
+        std::thread::sleep(std::time::Duration::from_secs(1));
+    }
+    let envs: Vec<Vec<(String, String)>> = targets
+        .iter()
+        .map(|(row, _)| row_peer_env(row, &peers))
+        .collect();
+
     // Issue 1690 — each row on the pool, each bounded by RUN_BUDGET, each
     // timed. Run one after another, the rows' SUM outlived nextest's 60 s
     // terminate, so a slow or hung row killed the whole test with no message
     // naming it. Now the slowest row bounds the wall time and a hang is a
     // per-row verdict below.
     let started = std::time::Instant::now();
-    let runs = par_map(&targets, |(_, bin)| {
+    let indexed: Vec<usize> = (0..targets.len()).collect();
+    let runs = par_map(&indexed, |&i| {
+        let bin = &targets[i].1;
         let t0 = std::time::Instant::now();
-        let (status, text) = run_entry(bin);
+        let (status, text) = run_entry(bin, &envs[i]);
         (status, text, t0.elapsed())
     });
     let wall = started.elapsed();
@@ -582,9 +719,9 @@ fn a_rows_entry_registers_its_nodes_at_runtime() {
             ));
             continue;
         }
-        // The session never came up (no router, no Agent), or the entry
-        // stopped somewhere else entirely: this host owes it a peer. Reported
-        // per row with the reason, never counted as coverage.
+        // Issue 1819 — this test started the peer the row needs, so a session
+        // that never came up is the ENTRY's fault (wrong locator, wrong
+        // backend, a hang), not the host's. It fails below with the reason.
         let why = if status.is_none() {
             // Issue 1690 — a hang names itself: the row, the binary and the
             // budget it outlived, instead of a suite-level TIMEOUT.
@@ -593,11 +730,11 @@ fn a_rows_entry_registers_its_nodes_at_runtime() {
                 bin.display()
             )
         } else if text.contains(nros_tests::output::SESSION_OPEN_FAILED_MARKER) {
-            "the backend refused the session (this host runs no peer for it)".to_string()
+            "the backend refused the session although its peer was started for it".to_string()
         } else {
             "did not reach node registration".to_string()
         };
-        no_peer.push(format!("  {} ({}) — {why}", row.id, row.coord.2));
+        no_session.push(format!("  {} ({}) — {why}", row.id, row.coord.2));
     }
 
     if located == 0 {
@@ -613,23 +750,14 @@ fn a_rows_entry_registers_its_nodes_at_runtime() {
         failed.join("\n"),
     );
 
-    if ran == 0 {
-        let why = if no_peer.is_empty() {
-            "no workspace_fixture row has a built artifact in this lane".to_string()
-        } else {
-            format!(
-                "every row needs a peer this host lacks:\n{}",
-                no_peer.join("\n")
-            )
-        };
-        nros_tests::unmet!("no generated entry could be RUN here — {why}");
-    }
-    if !no_peer.is_empty() {
-        eprintln!(
-            "rmw-coordinate-truth: ran {ran} entr{}; {} reported a missing peer:\n{}",
-            if ran == 1 { "y" } else { "ies" },
-            no_peer.len(),
-            no_peer.join("\n"),
-        );
-    }
+    assert!(
+        no_session.is_empty(),
+        "{} generated entr{} did not register with the peer this test started for {} \
+         (issue 1819 — a missing peer is no longer an excuse):\n{}",
+        no_session.len(),
+        if no_session.len() == 1 { "y" } else { "ies" },
+        if no_session.len() == 1 { "it" } else { "them" },
+        no_session.join("\n"),
+    );
+    eprintln!("rmw-coordinate-truth: {ran} of {located} entries registered");
 }
