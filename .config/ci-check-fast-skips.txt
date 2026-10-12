@@ -5,6 +5,6 @@
 # Format: <gate name><TAB><why CI cannot give it its input>
 #
 ivc-fsp	the NVIDIA Orin SPE FSP tree is proprietary and cannot be provisioned on a hosted runner (phase-418 418.4)
-zephyr-workspace-foreign-checkout	inspects a developer host's provisioned Zephyr workspaces for one owned by another checkout; a fresh CI checkout has none by construction (issue 1387)
-artifact-identity-budget	reads a built workspace fixture tree; check-fast is buildless by contract, and no CI lane verifies it yet (issue 1832)
-sizes-header-mirrors	reads built nros-c/nros-cpp header mirrors; check-fast is buildless by contract. Lanes that build fixtures configure with Unix Makefiles, which the gate compares since issue 1832 (it read build.ninja only before)
+zephyr-workspace-foreign-checkout	its SUBJECT is a provisioned Zephyr workspace, which a fresh CI checkout never has; its RULE runs here regardless (the self-test builds foreign and own synthetic workspaces on every invocation), and the full scan is verified instead after `just build tier1` in run-matrix.yml's 'Build-tree gates (issue 1832)' step, where a skip fails
+artifact-identity-budget	reads the built `mixed` workspace fixture tree; check-fast is buildless by contract; verified instead after `just build tier1` in run-matrix.yml's 'Build-tree gates (issue 1832)' step, where a skip fails
+sizes-header-mirrors	reads built nros-c/nros-cpp header mirrors (Ninja or, since issue 1832, Makefile dirs); check-fast is buildless by contract; verified instead after `just build tier1` in run-matrix.yml's 'Build-tree gates (issue 1832)' step, where a skip fails
