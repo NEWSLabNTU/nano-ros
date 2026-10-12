@@ -850,6 +850,19 @@ mod component_scaffold {
 
         let source = fs::read_to_string(dir.join("src/Talker.c")).unwrap();
         assert!(source.contains("RCLC_C_COMPONENT(c_talker_t, talker_configure)"));
+        // The C API at rcl/rclc's include paths; `<nros/component.h>` stays for
+        // the nano-ros-only `RCLC_C_COMPONENT`.
+        for inc in [
+            "<rcl/rcl.h>",
+            "<rclc/rclc.h>",
+            "<rclc/executor.h>",
+            "<nros/component.h>",
+        ] {
+            assert!(
+                source.contains(&format!("#include {inc}")),
+                "missing {inc}:\n{source}"
+            );
+        }
         assert!(source.contains("rclc_publisher_init_default("));
         assert!(source.contains("rclc_timer_init_with_context("));
         assert!(
@@ -889,6 +902,8 @@ mod component_scaffold {
         let hpp = fs::read_to_string(dir.join("include/cpp_talker/Talker.hpp")).unwrap();
         assert!(hpp.contains("::rclcpp::Result configure(::rclcpp::Node& node);"));
         assert!(hpp.contains("#include <nros/component.hpp>"));
+        assert!(hpp.contains("#include <rclcpp/rclcpp.hpp>"));
+        assert!(!hpp.contains("<nros/nros.hpp>"));
         assert!(
             !hpp.contains("register_node") && !hpp.contains("NodeContext"),
             "typed C++ scaffold header must not carry the declarative seam:\n{hpp}"
