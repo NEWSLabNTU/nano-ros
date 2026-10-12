@@ -3,8 +3,9 @@
 ///
 /// `client_configure` creates a service client + a timer that polls: the first
 /// tick sends ONE fixed request (2, 3); later ticks poll the reply and print
-/// the sum, then the client goes quiet. (Poll model — clients move to
-/// callbacks when the C/C++ callback wave lands.)
+/// the sum, then the client goes quiet. Poll model, with the generated typed
+/// helpers (`example_interfaces__srv__AddTwoInts__client_{send_request,
+/// take_response}`) over the C API.
 
 #include <stddef.h>
 #include <stdint.h>
@@ -12,74 +13,64 @@
 
 #include <nros/component.h>
 
+#include <example_interfaces/srv/add_two_ints.h>
+
 typedef struct {
-    _Alignas(8) uint8_t storage[NROS_C_SERVICE_CLIENT_STORAGE_SIZE];
-    void* executor;
+    rcl_client_t client;
+    rcl_timer_t timer;
     int64_t a;
     int64_t b;
     int awaiting;
     int done;
 } add_client_t;
 
-static int64_t read_i64_le(const uint8_t* p) {
-    uint64_t v = 0;
-    int i;
-    for (i = 0; i < 8; ++i) {
-        v |= (uint64_t)p[i] << (8 * i);
-    }
-    return (int64_t)v;
-}
-
-static void write_i64_le(uint8_t* p, int64_t x) {
-    uint64_t v = (uint64_t)x;
-    int i;
-    for (i = 0; i < 8; ++i) {
-        p[i] = (uint8_t)(v >> (8 * i));
-    }
-}
-
-static void on_tick(void* ctx) {
+static void on_tick(rcl_timer_t* timer, void* ctx) {
+    (void)timer;
     add_client_t* self = (add_client_t*)ctx;
+    uint8_t scratch[64];
     if (self->done) {
         return;
     }
     if (!self->awaiting) {
-        uint8_t req[20];
-        req[0] = 0x00;
-        req[1] = 0x01;
-        req[2] = 0x00;
-        req[3] = 0x00;
-        write_i64_le(req + 4, self->a);
-        write_i64_le(req + 12, self->b);
-        if (nros_cpp_service_client_send_request(self->storage, req, sizeof(req)) == 0) {
+        example_interfaces__srv__AddTwoInts_Request req = {.a = self->a, .b = self->b};
+        if (example_interfaces__srv__AddTwoInts__client_send_request(
+                &self->client, &req, scratch, sizeof(scratch)) == RCL_RET_OK) {
             self->awaiting = 1;
         }
         return;
     }
-    uint8_t resp[64];
-    size_t len = 0;
-    if (nros_cpp_service_client_take_response(self->storage, resp, sizeof(resp), &len) == 0 &&
-        len >= 12) {
-        int64_t sum = read_i64_le(resp + 4);
-        printf("Result of add_two_ints: %lld\n", (long long)sum);
+    example_interfaces__srv__AddTwoInts_Response resp;
+    if (example_interfaces__srv__AddTwoInts__client_take_response(&self->client, &resp, scratch,
+                                                                  sizeof(scratch)) == RCL_RET_OK) {
+        printf("Result of add_two_ints: %lld\n", (long long)resp.sum);
         self->done = 1;
     }
 }
 
-static rcl_ret_t client_configure(const nros_cpp_node_t* node, void* executor, add_client_t* self) {
+static rcl_ret_t client_configure(rcl_node_t* node, rclc_executor_t* executor, add_client_t* self) {
     setvbuf(stdout, NULL, _IONBF, 0);
-    self->executor = executor;
     self->a = 2;
     self->b = 3;
-    int32_t rc =
-        nros_cpp_service_client_create(node, "/add_two_ints", "example_interfaces/srv/AddTwoInts",
-                                       "", rclc_c_qos_default(), self->storage);
-    if (rc != 0) {
+    self->awaiting = 0;
+    self->done = 0;
+    self->client = rcl_get_zero_initialized_client();
+    rcl_ret_t rc = rclc_client_init_default(
+        &self->client, node, ROSIDL_GET_SRV_TYPE_SUPPORT(example_interfaces, srv, AddTwoInts),
+        "/add_two_ints");
+    if (rc != RCL_RET_OK) {
         return rc;
     }
-    size_t timer_handle;
-    rc = nros_cpp_timer_create(executor, /*period_ms=*/1000, on_tick, self, &timer_handle);
-    if (rc == 0) {
+    rc = rclc_executor_attach_client(executor, &self->client);
+    if (rc != RCL_RET_OK) {
+        return rc;
+    }
+    self->timer = rcl_get_zero_initialized_timer();
+    rc = rclc_timer_init_with_context(&self->timer, 1000ULL * 1000000ULL, on_tick, self);
+    if (rc != RCL_RET_OK) {
+        return rc;
+    }
+    rc = rclc_executor_add_timer(executor, &self->timer);
+    if (rc == RCL_RET_OK) {
         printf("Sending request\n");
     }
     return rc;

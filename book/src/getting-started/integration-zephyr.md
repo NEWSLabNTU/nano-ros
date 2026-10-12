@@ -108,51 +108,46 @@ nros_components_register_node(talker_lib
 
 ```c
 // apps/my_app/src/Talker.c
-// `talker_configure` creates a raw publisher on `/chatter` + a timer that
-// publishes a CDR-encoded Int32 counter each tick. `RCLC_C_COMPONENT` emits
-// the C-ABI factory/configure the Zephyr typed Entry carrier calls.
+// `talker_configure` creates a publisher on `/chatter` + a timer that
+// publishes an Int32 counter each tick, with the C API. `RCLC_C_COMPONENT`
+// emits the C-ABI factory/configure the Zephyr typed Entry carrier calls.
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 
 #include <nros/component.h>
+#include <std_msgs/msg/int32.h>
 
 typedef struct {
-    _Alignas(8) uint8_t pub[NROS_C_PUBLISHER_STORAGE_SIZE];
+    rcl_publisher_t pub;
+    rcl_timer_t timer;
     int32_t count;
 } talker_t;
 
-static void write_u32_le(uint8_t* p, uint32_t v) {
-    p[0] = (uint8_t)v;
-    p[1] = (uint8_t)(v >> 8);
-    p[2] = (uint8_t)(v >> 16);
-    p[3] = (uint8_t)(v >> 24);
-}
-
-static void on_tick(void* ctx) {
+static void on_tick(rcl_timer_t* timer, void* ctx) {
+    (void)timer;
     talker_t* self = (talker_t*)ctx;
-    /* std_msgs/Int32 CDR: 4-byte encapsulation header (CDR_LE) + int32 data. */
-    uint8_t buf[8];
-    buf[0] = 0x00;
-    buf[1] = 0x01;
-    buf[2] = 0x00;
-    buf[3] = 0x00;
-    write_u32_le(buf + 4, (uint32_t)self->count);
-    if (nros_cpp_publish_raw(self->pub, buf, sizeof(buf)) == 0) {
+    std_msgs__msg__Int32 msg = {.data = self->count};
+    if (rcl_publish(&self->pub, &msg, NULL) == RCL_RET_OK) {
         printf("Published: %d\n", (int)self->count);
     }
     self->count++;
 }
 
-static rcl_ret_t talker_configure(const nros_cpp_node_t* node, void* executor, talker_t* self) {
+static rcl_ret_t talker_configure(rcl_node_t* node, rclc_executor_t* executor, talker_t* self) {
     self->count = 0;
-    int32_t rc = nros_cpp_publisher_create(node, "/chatter", "std_msgs::msg::dds_::Int32_", "",
-                                           rclc_c_qos_default(), self->pub);
-    if (rc != 0) {
+    self->pub = rcl_get_zero_initialized_publisher();
+    rcl_ret_t rc = rclc_publisher_init_default(
+        &self->pub, node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32), "/chatter");
+    if (rc != RCL_RET_OK) {
         return rc;
     }
-    size_t timer_handle;
-    return nros_cpp_timer_create(executor, /*period_ms=*/500, on_tick, self, &timer_handle);
+    self->timer = rcl_get_zero_initialized_timer();
+    rc = rclc_timer_init_with_context(&self->timer, 500000000ULL, on_tick, self);
+    if (rc != RCL_RET_OK) {
+        return rc;
+    }
+    return rclc_executor_add_timer(executor, &self->timer);
 }
 
 RCLC_C_COMPONENT(talker_t, talker_configure)
@@ -162,11 +157,9 @@ See [`examples/templates/zephyr-byo/app/src/Talker.c`](https://github.com/NEWSLa
 for the up-to-date source (this is that BYO starter's talker, only stripped
 of its file header comment; the canonical in-tree
 [`examples/zephyr/c/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr/c/talker)
-uses the generated **typed** `std_msgs/String` bindings instead of raw CDR).
-Note the `nros_cpp_*` symbol prefix: those are C-ABI
-functions from `nros-cpp` (the `cpp` is a namespace prefix, not C++
-linkage) — a C component links against them directly, and shares the same
-executor + node as a C++ component would.
+publishes `std_msgs/String` the same way). The component uses the C API only:
+`configure` is handed an `rcl_node_t *` and an `rclc_executor_t *` over the
+carrier's own node and executor, so it shares both with a C++ component.
 
 Its configuration is in [Configure](#configure) below. You do not choose the
 language API: the module renders it from the app, and the typed Zephyr carrier

@@ -25,6 +25,23 @@ use crate::{
 pub type rclc_subscription_raw_callback_t =
     Option<unsafe extern "C" fn(data: *const u8, len: usize, context: *mut c_void)>;
 
+/// phase-492 W4 — callback for a VALIDATED raw subscription
+/// (`rclc_executor_add_subscription_raw_validated`): the CDR bytes plus the
+/// sample's E2E integrity status as three scalars — the sequence `gap` since the
+/// previous sample, whether it is a `duplicate`, and `crc_valid` (`1` valid,
+/// `0` invalid, `-1` no CRC carried). Scalars rather than a struct pointer so
+/// the executor hands them over without a wrapper holding state (RFC-0019/0020).
+pub type rclc_subscription_validated_callback_t = Option<
+    unsafe extern "C" fn(
+        data: *const u8,
+        len: usize,
+        gap: i64,
+        duplicate: bool,
+        crc_valid: i8,
+        context: *mut c_void,
+    ),
+>;
+
 /// Subscription callback that also receives the sample's wire **attachment**
 /// (Phase 189.M3.4 — the C analog of the Rust
 /// `node.subscription(t).generic(..).message_info()` builder path). Used by

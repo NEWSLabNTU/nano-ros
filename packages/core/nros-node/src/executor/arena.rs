@@ -3304,6 +3304,15 @@ pub(crate) unsafe fn service_client_raw_try_process<const REPLY_BUF: usize>(
     if !entry.pending {
         return Ok(false);
     }
+    // phase-492 W4 — a client registered WITHOUT a response callback is the
+    // polling shape (`rclc_client_take_response`): its reply belongs to that
+    // call. Taking it here dropped it, because there was no callback to hand
+    // it to and `pending` was cleared — so a C component that sent a request
+    // and polled from a timer never saw a single reply while the server
+    // answered every one. Leave it in the handle for the poll.
+    if entry.callback.is_none() {
+        return Ok(false);
+    }
 
     // Clear the waker flag if set (consumed by this check).
     entry.reply_ready.store(false, Ordering::Release);
@@ -3314,10 +3323,9 @@ pub(crate) unsafe fn service_client_raw_try_process<const REPLY_BUF: usize>(
     match entry.handle.take_response_raw(&mut entry.reply_buffer) {
         Ok(Some((len, _seq))) => {
             entry.pending = false;
-            // Phase 8 — hooked inside the `Some(cb)` arm. The callback is
-            // optional here, so a client registered without one completes
-            // the reply and emits nothing; the not-pending and `Ok(None)`
-            // paths return before this point.
+            // Phase 8 — hooked inside the `Some(cb)` arm. A client with no
+            // callback never reaches here (see above); the not-pending and
+            // `Ok(None)` paths return before this point too.
             if let Some(cb) = entry.callback {
                 trace_cb_start(desc_idx);
                 unsafe { cb(entry.reply_buffer.as_ptr(), len, entry.context) };

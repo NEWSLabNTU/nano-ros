@@ -48,11 +48,15 @@ root nor the entry is yours to write.
 A C Node pkg is a **typed component** (RFC-0043): no `main()`. It defines a
 state struct + a `configure(node, executor, self)` function and exports the
 C-ABI factory/configure seam via `RCLC_C_COMPONENT(StateT, configure_fn)` — the
-typed Entry creates the node and runs `configure` on the real executor.
+typed Entry creates the node and runs `configure` on the real executor. The
+component is written against the **C API**: `configure` receives an
+`rcl_node_t *` and an `rclc_executor_t *` over the entry's own node and
+executor, so a C and a C++ component in one image share both.
 
 ```cmake
-# Raw `/chatter` publisher carries the type name as a string → no generated C
-# bindings needed (so no nros_find_interfaces for this pkg).
+# std_msgs is declared in package.xml (`<depend>std_msgs</depend>`), which
+# generates its C bindings for this package.
+find_package(std_msgs REQUIRED)
 nano_ros_auto_add_library(talker_lib STATIC src/Talker.c)
 
 nros_components_register_node(talker_lib
@@ -66,28 +70,33 @@ nros_components_register_node(talker_lib
 ```c
 #include <stdint.h>
 #include <nros/component.h>
+#include <std_msgs/msg/int32.h>
 
 typedef struct {
-    _Alignas(8) uint8_t pub[NROS_C_PUBLISHER_STORAGE_SIZE];
+    rcl_publisher_t pub;
+    rcl_timer_t timer;
     int32_t count;
 } c_talker_pkg_t;
 
-static void on_tick(void* ctx) {
+static void on_tick(rcl_timer_t* timer, void* ctx) {
+    (void)timer;
     c_talker_pkg_t* self = (c_talker_pkg_t*)ctx;
-    uint8_t buf[8] = {0x00, 0x01, 0x00, 0x00};  /* CDR_LE header + LE int32 */
-    buf[4] = (uint8_t)self->count;
-    (void)nros_cpp_publish_raw(self->pub, buf, sizeof(buf));
+    std_msgs__msg__Int32 msg = {.data = self->count};
+    (void)rcl_publish(&self->pub, &msg, NULL);
     self->count++;
 }
 
-static rcl_ret_t talker_configure(const nros_cpp_node_t* node, void* executor,
-                                   c_talker_pkg_t* self) {
+static rcl_ret_t talker_configure(rcl_node_t* node, rclc_executor_t* executor,
+                                  c_talker_pkg_t* self) {
     self->count = 0;
-    int32_t rc = nros_cpp_publisher_create(node, "/chatter",
-        "std_msgs::msg::dds_::Int32_", "", rclc_c_qos_default(), self->pub);
-    if (rc != 0) return rc;
-    size_t timer;
-    return nros_cpp_timer_create(executor, /*period_ms=*/1000, on_tick, self, &timer);
+    self->pub = rcl_get_zero_initialized_publisher();
+    rcl_ret_t rc = rclc_publisher_init_default(
+        &self->pub, node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32), "/chatter");
+    if (rc != RCL_RET_OK) return rc;
+    self->timer = rcl_get_zero_initialized_timer();
+    rc = rclc_timer_init_with_context(&self->timer, 1000000000ULL, on_tick, self);
+    if (rc != RCL_RET_OK) return rc;
+    return rclc_executor_add_timer(executor, &self->timer);
 }
 
 RCLC_C_COMPONENT(c_talker_pkg_t, talker_configure)

@@ -4,8 +4,8 @@
 /// Publishes a monotonic counter on /ctrl every 10 ms (std_msgs/Int32,
 /// generated C serializer). The cmake CALLBACK_GROUPS declares the "ctrl"
 /// group ID; system.toml [[node_overrides]] maps it to the [tiers.high] tier.
-/// The nros codegen emits nros_cpp_create_sched_context + nros_cpp_node_create_ex
-/// to bind this node's timer to the high-priority sched context (RFC-0015 §4.2).
+/// The generated entry creates this node on the high-priority sched context, so
+/// every entity the component creates on it lands there (RFC-0015 §4.2).
 
 #include <stddef.h>
 #include <stdint.h>
@@ -16,36 +16,39 @@
 #include "std_msgs.h"
 
 typedef struct {
-    _Alignas(8) uint8_t pub[NROS_C_PUBLISHER_STORAGE_SIZE];
+    rcl_publisher_t pub;
+    rcl_timer_t timer;
     int32_t count;
 } ctrl_t;
 
-static void on_tick(void* ctx) {
+static void on_tick(rcl_timer_t* timer, void* ctx) {
+    (void)timer;
     ctrl_t* self = (ctrl_t*)ctx;
     std_msgs__msg__Int32 msg;
     memset(&msg, 0, sizeof(msg));
     msg.data = self->count;
-    uint8_t buf[16];
-    size_t len = 0;
-    if (std_msgs__msg__Int32__serialize(&msg, buf, sizeof(buf), &len) == 0 &&
-        nros_cpp_publish_raw(self->pub, buf, len) == 0) {
+    if (rcl_publish(&self->pub, &msg, NULL) == RCL_RET_OK) {
         printf("[ctrl] tick=%d\n", (int)self->count);
     }
     self->count++;
 }
 
-static rcl_ret_t ctrl_configure(const nros_cpp_node_t* node, void* executor, ctrl_t* self) {
+static rcl_ret_t ctrl_configure(rcl_node_t* node, rclc_executor_t* executor, ctrl_t* self) {
     /* Line-buffer stdout so each tick flushes immediately when piped. */
     setvbuf(stdout, NULL, _IOLBF, 0);
     self->count = 0;
-    int32_t rc = nros_cpp_publisher_create(node, "/ctrl", std_msgs__msg__Int32__get_type_name(),
-                                           std_msgs__msg__Int32__get_type_hash(), rclc_c_qos_default(),
-                                           self->pub);
-    if (rc != 0) {
+    self->pub = rcl_get_zero_initialized_publisher();
+    rcl_ret_t rc = rclc_publisher_init_default(
+        &self->pub, node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32), "/ctrl");
+    if (rc != RCL_RET_OK) {
         return rc;
     }
-    size_t timer_handle;
-    return nros_cpp_timer_create(executor, /*period_ms=*/10, on_tick, self, &timer_handle);
+    self->timer = rcl_get_zero_initialized_timer();
+    rcl_ret_t trc = rclc_timer_init_with_context(&self->timer, 10ULL * 1000000ULL, on_tick, self);
+    if (trc != RCL_RET_OK) {
+        return trc;
+    }
+    return rclc_executor_add_timer(executor, &self->timer);
 }
 
 RCLC_C_COMPONENT(ctrl_t, ctrl_configure)

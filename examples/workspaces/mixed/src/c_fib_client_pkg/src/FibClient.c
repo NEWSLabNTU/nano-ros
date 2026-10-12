@@ -2,10 +2,10 @@
 /// @brief pure-C workspace — A4 actions: the Fibonacci action CLIENT, typed component
 /// (RFC-0043 / phase-263). The C projection of the Rust `action_client_pkg`.
 ///
-/// POLL-model (`nros_cpp_action_client_{send_goal_async,get_result_async,poll}` +
-/// `set_callbacks`), not a blocking call — a component callback must never block the executor.
-/// A 500 ms timer tick pumps `nros_cpp_action_client_poll` (which drains the GET-query replies
-/// and dispatches them into the registered callbacks) and drives a small state machine:
+/// Async, with the C API (`rclc_action_send_goal_async` / `rclc_action_get_result_async` +
+/// the goal-response and result callbacks), not a blocking call — a component callback must
+/// never block the executor. A 500 ms timer tick pumps `rclc_action_client_poll` (which drains
+/// the replies and dispatches them into the callbacks) and drives a small state machine:
 ///   idle → send_goal_async(order=10) → (goal-response cb: accepted) → get_result_async →
 ///   (result cb: deserialize the sequence + PRINT last element) → done.
 /// A wait counter re-sends if a goal/result reply never arrives (the first request(s) can be
@@ -31,18 +31,19 @@ enum fib_phase {
 };
 
 typedef struct {
-    _Alignas(8) uint8_t client[NROS_C_ACTION_CLIENT_STORAGE_SIZE];
-    uint8_t goal_id[16];
+    rcl_action_client_t client;
+    rcl_timer_t timer;
+    rclc_goal_uuid_t goal_id;
     int phase;
     int waits; /* ticks waited in the current phase (resend guard) */
 } fib_client_t;
 
-/// Goal-response callback (fired from poll()): on accept, advance to request the result; on
+/// Goal-response callback: on accept, advance to request the result; on
 /// reject, fall back to idle to resend.
-static void on_goal_response(bool accepted, const uint8_t goal_id[16], void* ctx) {
+static void on_goal_response(const rclc_goal_uuid_t* goal_id, bool accepted, void* ctx) {
     fib_client_t* self = (fib_client_t*)ctx;
     if (accepted) {
-        memcpy(self->goal_id, goal_id, 16);
+        self->goal_id = *goal_id;
         self->phase = FIB_NEED_RESULT;
         self->waits = 0;
         printf("[c_fib_client_pkg] goal accepted\n");
@@ -51,10 +52,10 @@ static void on_goal_response(bool accepted, const uint8_t goal_id[16], void* ctx
     }
 }
 
-/// Result callback (fired from poll()): deserialize the Fibonacci sequence and print its last
+/// Result callback: deserialize the Fibonacci sequence and print its last
 /// element — the cross-process round-trip proof.
-static void on_result(const uint8_t goal_id[16], int32_t status, const uint8_t* data, size_t len,
-                      void* ctx) {
+static void on_result(const rclc_goal_uuid_t* goal_id, rclc_goal_status_t status,
+                      const uint8_t* data, size_t len, void* ctx) {
     (void)goal_id;
     (void)status;
     fib_client_t* self = (fib_client_t*)ctx;
@@ -77,24 +78,22 @@ static void on_result(const uint8_t goal_id[16], int32_t status, const uint8_t* 
 }
 
 static void send_goal(fib_client_t* self) {
-    example_interfaces__action__Fibonacci_Goal goal;
-    memset(&goal, 0, sizeof(goal));
-    goal.order = 10;
+    example_interfaces__action__Fibonacci_Goal goal = {.order = 10};
     uint8_t buf[64];
     size_t n = 0;
-    int32_t n_rc = example_interfaces__action__Fibonacci_Goal__serialize(&goal, buf, sizeof(buf), &n);
-    if (n_rc == 0 &&
-        nros_cpp_action_client_send_goal_async(self->client, buf, n, &self->goal_id) == 0) {
+    if (example_interfaces__action__Fibonacci_Goal__serialize(&goal, buf, sizeof(buf), &n) == 0 &&
+        rclc_action_send_goal_async(&self->client, buf, n, &self->goal_id) == RCL_RET_OK) {
         self->phase = FIB_GOAL_SENT;
         self->waits = 0;
     }
 }
 
-static void on_tick(void* ctx) {
+static void on_tick(rcl_timer_t* timer, void* ctx) {
+    (void)timer;
     fib_client_t* self = (fib_client_t*)ctx;
 
-    /* Pump pending replies → fires the goal-response / result callbacks. */
-    nros_cpp_action_client_poll(self->client);
+    /* Pump pending replies -> fires the goal-response / result callbacks. */
+    (void)rclc_action_client_poll(&self->client);
 
     switch (self->phase) {
     case FIB_IDLE:
@@ -106,7 +105,7 @@ static void on_tick(void* ctx) {
         }
         break;
     case FIB_NEED_RESULT:
-        if (nros_cpp_action_client_get_result_async(self->client, &self->goal_id) == 0) {
+        if (rclc_action_get_result_async(&self->client, &self->goal_id) == RCL_RET_OK) {
             self->phase = FIB_AWAIT_RESULT;
             self->waits = 0;
         }
@@ -122,25 +121,37 @@ static void on_tick(void* ctx) {
     }
 }
 
-static rcl_ret_t fib_client_configure(const nros_cpp_node_t* node, void* executor,
+static rcl_ret_t fib_client_configure(rcl_node_t* node, rclc_executor_t* executor,
                                       fib_client_t* self) {
     setvbuf(stdout, NULL, _IOLBF, 0);
     self->phase = FIB_IDLE;
     self->waits = 0;
 
-    int32_t rc = nros_cpp_action_client_create(
-        node, "/fibonacci", example_interfaces__action__Fibonacci__get_type_name(),
-        example_interfaces__action__Fibonacci__get_type_hash(), rclc_c_qos_default(), self->client);
-    if (rc != 0) {
+    self->client = rcl_action_get_zero_initialized_client();
+    rcl_ret_t rc = rcl_action_client_init(
+        &self->client, node, ROSIDL_GET_ACTION_TYPE_SUPPORT(example_interfaces, action, Fibonacci),
+        "/fibonacci", NULL);
+    if (rc != RCL_RET_OK) {
         return rc;
     }
-    rc = nros_cpp_action_client_set_callbacks(self->client, on_goal_response, /*feedback=*/NULL,
-                                              on_result, self);
-    if (rc != 0) {
+    rc = rclc_action_client_set_goal_response_callback(&self->client, on_goal_response, self);
+    if (rc != RCL_RET_OK) {
         return rc;
     }
-    size_t timer_handle;
-    return nros_cpp_timer_create(executor, /*period_ms=*/500, on_tick, self, &timer_handle);
+    rc = rclc_action_client_set_result_callback(&self->client, on_result, self);
+    if (rc != RCL_RET_OK) {
+        return rc;
+    }
+    rc = rclc_executor_attach_action_client(executor, &self->client);
+    if (rc != RCL_RET_OK) {
+        return rc;
+    }
+    self->timer = rcl_get_zero_initialized_timer();
+    rc = rclc_timer_init_with_context(&self->timer, 500ULL * 1000000ULL, on_tick, self);
+    if (rc != RCL_RET_OK) {
+        return rc;
+    }
+    return rclc_executor_add_timer(executor, &self->timer);
 }
 
 RCLC_C_COMPONENT(fib_client_t, fib_client_configure)

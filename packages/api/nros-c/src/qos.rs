@@ -174,7 +174,8 @@ pub struct rclc_qos_t {
 // mirror-deviation record for `liveliness_kind` and left standing because the
 // three application surfaces "move together or not at all". They moved
 // together, in one commit: this file,
-// `nros-c/include/nros/component.h`'s `rclc_c_qos_default()` and
+// the C++ FFI's default profile (`component.h`'s `rclc_c_qos_default()` until
+// phase-492 W4 retired that C mirror) and
 // `nros-cpp`'s `QoS` constructor.
 //
 // What forced it: issue 1329 gives each C backend its OWN QoS mask instead of

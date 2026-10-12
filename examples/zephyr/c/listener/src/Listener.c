@@ -1,9 +1,9 @@
 /// @file Listener.c
 /// @brief Zephyr C listener — typed component (RFC-0043 / phase-244.C2).
 ///
-/// A stateful C component: `listener_configure` binds the `on_raw` callback (by
-/// identity, fn-ptr + self ctx) as a raw zero-copy subscription on `/chatter`,
-/// decoding each sample with the GENERATED typed C deserializer
+/// A stateful C component: `listener_configure` binds the `on_msg` callback (by
+/// identity, fn-ptr + self ctx) to a subscription on `/chatter` with the C API;
+/// the executor decodes each sample with the GENERATED typed C deserializer
 /// (`nros_find_interfaces(LANGUAGE C)` in CMakeLists — phase-277 W4; was
 /// hand-rolled CDR) and logging the official ROS 2 demo line
 /// (`I heard: [Hello World: N]`). `RCLC_C_COMPONENT` emits the C-ABI factory +
@@ -20,6 +20,7 @@
 #include <std_msgs/msg/string.h>
 
 typedef struct {
+    rcl_subscription_t sub;
     int recv;
     /* Decoded message lives in the component (not the callback stack):
      * String is ~256 B and RTOS dispatch stacks are small. */
@@ -29,24 +30,28 @@ typedef struct {
     std_msgs__msg__String__Storage msg_storage;
 } listener_t;
 
-static void on_raw(const uint8_t* data, size_t len, void* ctx) {
+/* issue 0737 — a sample that fails to decode never reaches this callback: the
+ * executor drops it, counts it and LOGS it (rate-limited), so a rejected
+ * sample is never indistinguishable from one that never arrived. */
+static void on_msg(const void* msgin, void* ctx) {
     listener_t* self = (listener_t*)ctx;
-    if (std_msgs__msg__String__deserialize(&self->msg, data, len) == 0) {
-        printf("I heard: [%s]\n", self->msg.data.data);
-        self->recv++;
-    }
+    const std_msgs__msg__String* msg = (const std_msgs__msg__String*)msgin;
+    printf("I heard: [%s]\n", msg->data.data);
+    self->recv++;
 }
 
-static rcl_ret_t listener_configure(const nros_cpp_node_t* node, void* executor, listener_t* self) {
+static rcl_ret_t listener_configure(rcl_node_t* node, rclc_executor_t* executor, listener_t* self) {
     setvbuf(stdout, NULL, _IONBF, 0);
-    (void)executor; /* node-scoped sub; executor unused */
     std_msgs__msg__String__init_in(&self->msg, &self->msg_storage);
-    size_t handle;
-    int32_t rc =
-        nros_cpp_subscription_register(node, "/chatter", std_msgs__msg__String__get_type_name(), "",
-                                       rclc_c_qos_default(), on_raw, self, &handle,
-                                       /*options=*/NULL); /* phase-402: NULL = defaults */
-    if (rc == 0) {
+    self->sub = rcl_get_zero_initialized_subscription();
+    rcl_ret_t rc = rclc_subscription_init_default(
+        &self->sub, node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String), "/chatter");
+    if (rc != RCL_RET_OK) {
+        return rc;
+    }
+    rc = rclc_executor_add_subscription_with_context(executor, &self->sub, &self->msg, on_msg, self,
+                                                     RCLC_EXECUTOR_ON_NEW_DATA);
+    if (rc == RCL_RET_OK) {
         /* Readiness markers the harness greps before driving the talker.
          * The first is the SHARED one every nano-ros listener prints
          * (`nros_tests::output::LISTENER_READY_MARKER`, phase-342 W7); the

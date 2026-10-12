@@ -21,11 +21,13 @@
 #include <nros/component.h>
 
 typedef struct {
-    _Alignas(8) uint8_t pub[NROS_C_PUBLISHER_STORAGE_SIZE];
+    rcl_publisher_t pub;
+    rcl_timer_t timer;
     int32_t count;
 } reading_talker_t;
 
-static void on_tick(void* ctx) {
+static void on_tick(rcl_timer_t* timer, void* ctx) {
+    (void)timer;
     reading_talker_t* self = (reading_talker_t*)ctx;
 
     custom_msgs__msg__Reading msg;
@@ -34,29 +36,30 @@ static void on_tick(void* ctx) {
     msg.humidity = 50.0;
     msg.sequence = self->count;
 
-    uint8_t buf[64];
-    size_t n = 0;
-    if (custom_msgs__msg__Reading__serialize(&msg, buf, sizeof(buf), &n) == 0 &&
-        nros_cpp_publish_raw(self->pub, buf, n) == 0) {
+    if (rcl_publish(&self->pub, &msg, NULL) == RCL_RET_OK) {
         printf("[reading_talker] sent seq=%d temp=%.1f\n", (int)msg.sequence, msg.temperature);
     }
     self->count++;
 }
 
-static rcl_ret_t reading_talker_configure(const nros_cpp_node_t* node, void* executor,
+static rcl_ret_t reading_talker_configure(rcl_node_t* node, rclc_executor_t* executor,
                                           reading_talker_t* self) {
     /* Line-buffer stdout so each `sent seq=` flushes immediately when piped (the
      * test reads the output live; glibc block-buffers a pipe otherwise). */
     setvbuf(stdout, NULL, _IOLBF, 0);
     self->count = 0;
-    int32_t rc =
-        nros_cpp_publisher_create(node, "/reading", custom_msgs__msg__Reading__get_type_name(), "",
-                                  rclc_c_qos_default(), self->pub);
-    if (rc != 0) {
+    self->pub = rcl_get_zero_initialized_publisher();
+    rcl_ret_t rc = rclc_publisher_init_default(
+        &self->pub, node, ROSIDL_GET_MSG_TYPE_SUPPORT(custom_msgs, msg, Reading), "/reading");
+    if (rc != RCL_RET_OK) {
         return rc;
     }
-    size_t timer_handle;
-    return nros_cpp_timer_create(executor, /*period_ms=*/1000, on_tick, self, &timer_handle);
+    self->timer = rcl_get_zero_initialized_timer();
+    rcl_ret_t trc = rclc_timer_init_with_context(&self->timer, 1000ULL * 1000000ULL, on_tick, self);
+    if (trc != RCL_RET_OK) {
+        return trc;
+    }
+    return rclc_executor_add_timer(executor, &self->timer);
 }
 
 RCLC_C_COMPONENT(reading_talker_t, reading_talker_configure)

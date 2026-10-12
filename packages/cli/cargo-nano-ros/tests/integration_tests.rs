@@ -842,20 +842,23 @@ mod component_scaffold {
         let cmake = fs::read_to_string(dir.join("CMakeLists.txt")).unwrap();
         assert!(cmake.contains("project(c_talker VERSION 0.1.0 LANGUAGES C CXX)"));
         // RFC-0048 ament shape: find_package + the add_node verb (language is
-        // inferred from the .c source); typed C component (RFC-0043) — raw
-        // publisher, no generated bindings.
+        // inferred from the .c source); typed C component (RFC-0043) on the C
+        // API with the generated std_msgs bindings (phase-492 W4).
         assert!(cmake.contains("find_package(nano_ros REQUIRED)"));
+        assert!(cmake.contains("find_package(std_msgs REQUIRED)"));
         assert!(cmake.contains("nano_ros_add_node(talker CLASS c_talker::Talker TYPED"));
 
         let source = fs::read_to_string(dir.join("src/Talker.c")).unwrap();
         assert!(source.contains("RCLC_C_COMPONENT(c_talker_t, talker_configure)"));
-        assert!(source.contains("nros_cpp_publisher_create("));
-        assert!(source.contains("nros_cpp_timer_create("));
+        assert!(source.contains("rclc_publisher_init_default("));
+        assert!(source.contains("rclc_timer_init_with_context("));
+        assert!(!source.contains("nros_cpp_"), "a C component never calls the C++ FFI:\n{source}");
         assert!(
             !source.contains("NROS_NODE_REGISTER"),
             "typed C scaffold must not emit the legacy declarative seam:\n{source}"
         );
-        assert!(dir.join("package.xml").is_file());
+        let package_xml = fs::read_to_string(dir.join("package.xml")).unwrap();
+        assert!(package_xml.contains("<depend>std_msgs</depend>"));
     }
 
     #[test]

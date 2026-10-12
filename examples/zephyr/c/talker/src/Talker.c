@@ -18,44 +18,47 @@
 #include <std_msgs/msg/string.h>
 
 typedef struct {
-    _Alignas(8) uint8_t pub[NROS_C_PUBLISHER_STORAGE_SIZE];
+    rcl_publisher_t pub;
+    rcl_timer_t timer;
     int32_t count;
-    /* Message + CDR scratch live in the component (not the tick stack):
-     * String is ~256 B and RTOS timer/app stacks are small. */
+    /* The message lives in the component (not the tick stack): String is
+     * ~256 B and RTOS timer/app stacks are small. */
     std_msgs__msg__String msg;
     /* The bytes behind `msg.data` (phase-492 W7), wired once in configure. */
     std_msgs__msg__String__Storage msg_storage;
-    uint8_t buf[300];
 } talker_t;
 
-static void on_tick(void* ctx) {
+static void on_tick(rcl_timer_t* timer, void* ctx) {
+    (void)timer;
     talker_t* self = (talker_t*)ctx;
     /* Pre-increment so the first payload is "Hello World: 1", matching the
      * official ROS 2 demo talker. */
     self->count++;
     snprintf(self->msg.data.data, self->msg.data.capacity, "Hello World: %d", (int)self->count);
     self->msg.data.size = strlen(self->msg.data.data);
-    /* Serialize via the generated typed serializer, publish through the
-     * component (nros-cpp) raw seam. Buffer: 4-byte CDR header + 4-byte
-     * length + payload + NUL. */
-    size_t len = 0;
-    if (std_msgs__msg__String__serialize(&self->msg, self->buf, sizeof(self->buf), &len) == 0 &&
-        nros_cpp_publish_raw(self->pub, self->buf, len) == 0) {
+    /* `rcl_publish` serializes into a buffer bounded at build time from the
+     * type's declared size (phase-492 W8). */
+    if (rcl_publish(&self->pub, &self->msg, NULL) == RCL_RET_OK) {
         printf("Publishing: '%s'\n", self->msg.data.data);
     }
 }
 
-static rcl_ret_t talker_configure(const nros_cpp_node_t* node, void* executor, talker_t* self) {
+static rcl_ret_t talker_configure(rcl_node_t* node, rclc_executor_t* executor, talker_t* self) {
     setvbuf(stdout, NULL, _IONBF, 0);
     self->count = 0;
     std_msgs__msg__String__init_in(&self->msg, &self->msg_storage);
-    int32_t rc = nros_cpp_publisher_create(node, "/chatter", std_msgs__msg__String__get_type_name(),
-                                           "", rclc_c_qos_default(), self->pub);
-    if (rc != 0) {
+    self->pub = rcl_get_zero_initialized_publisher();
+    rcl_ret_t rc = rclc_publisher_init_default(
+        &self->pub, node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String), "/chatter");
+    if (rc != RCL_RET_OK) {
         return rc;
     }
-    size_t timer_handle;
-    return nros_cpp_timer_create(executor, /*period_ms=*/500, on_tick, self, &timer_handle);
+    self->timer = rcl_get_zero_initialized_timer();
+    rcl_ret_t trc = rclc_timer_init_with_context(&self->timer, 500ULL * 1000000ULL, on_tick, self);
+    if (trc != RCL_RET_OK) {
+        return trc;
+    }
+    return rclc_executor_add_timer(executor, &self->timer);
 }
 
 RCLC_C_COMPONENT(talker_t, talker_configure)
