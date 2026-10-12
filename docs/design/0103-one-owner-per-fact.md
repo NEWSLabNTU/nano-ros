@@ -4,7 +4,7 @@ title: "One owner per fact: every configuration fact and every resource location
   has one authored home, and every road reads the resolved answer"
 status: Draft
 since: 2026-10
-last-reviewed: 2026-10-10
+last-reviewed: 2026-10-12
 implements-tracked-by: [phase-484]
 supersedes: []
 superseded-by: null
@@ -134,15 +134,19 @@ knob symbol WITHOUT a prompt and first `osource`s a file the
 
 A reconfigure without a wipe follows the generated file both ways (4.4:
 13 → 11 → back to the guest default 5), because Kconfig parsed it and Zephyr
-re-runs Kconfig when a parsed file changes.
+re-runs Kconfig when a parsed file changes. (On 3.7 a switch from a
+system.toml rendering BACK to the guest file keeps the last value until a
+pristine build; 4.4 returns to the module default — measured in W5b's M4.)
 
 A conditional prompt is rejected: it turns the conflict into a warning and
 drops the user's value, which is the silent-ignore class this RFC exists to
 remove. Values are delivered as Kconfig DEFAULTS rather than a conf fragment,
 so phase-481's `EXTRA_CONF_FILE` ordering question disappears. The generated
 file is parsed by Kconfig, so it is in Zephyr's own reconfigure inputs. The
-error names the symbol's definition site; the hook names the generated file
-`<build>/nros/Kconfig.from-system-toml` so that site reads as the answer.
+hook names the generated file `<build>/nros/Kconfig.from-system-toml`.
+Kconfig's own error names only the MODULE's definition site (W5b, M3), so the
+hook refuses a knob `-DCONFIG_*` or conf line itself first, naming
+`system.toml` and the override channel.
 
 ### D2b — Zephyr: the split with phase-481
 
@@ -232,7 +236,7 @@ which order, so the two phases do not build the same carrier twice.
 | measure M1–M4 below, on 3.7 and 4.4 | 484 W5b |
 | `Kconfig.from-system-toml` in the hook, the prompt-less knob section, the override channel, the fragment dropping knob rows | 484 W5b |
 | the fixture drivers' KNOB `-DCONFIG_*` move to the override channel (endpoint ones stay) | 484 W5b |
-| choices / endpoint / domain to D2a, if M1/M2 are green | 484, later |
+| choices / endpoint / domain to D2a, if M1/M2 are green — M1 measured RED (2026-10-12), so they stay | — |
 
 These rows read "481" until 2026-10-12: phase-481 archived without them and
 they were folded back into phase-484 W5b.
@@ -553,11 +557,24 @@ Still open:
 
 1. **Out-of-tree NuttX and PX4 builds.** Until they exist those three trees
    cannot be shared read-only; the RFC does not depend on it.
-2. **Error text.** Kconfig's refusal names the symbol and its definition
-   site, not `system.toml`; the hook should also print which `system.toml`
-   line owns the knob. Wording, not mechanism.
+2. ~~**Error text.**~~ Answered by W5b (M3): Kconfig's refusal names ONE
+   definition, the module's, so the hook refuses a `-DCONFIG_<knob>` and a
+   conf-file knob line itself first, naming `system.toml`, the `env` row and
+   `-DNROS_OVERRIDE_<ID>`; Kconfig's error stays the backstop for files the
+   hook does not read (board fragments, snippets).
 
 ## Changelog
+
+- 2026-10-12 — D2b measured (phase-484 W5b), and built. M1 red on 3.7 and
+  4.4 — a prompt-less `choice` aborts configure before any assignment is
+  read — so choices, endpoint and domain stay in the fragment. M2 green only
+  when the generated default repeats the module definition's `if` and
+  `depends on` (outside them it leaks a value into an image whose RMW leaves
+  the symbol undefined), which is how the hook renders it. M3 green, with a
+  correction to D2a: the error does not name the generated file, so the hook
+  words the refusal (§6 item 2). M4 green, including what menuconfig shows.
+  The guest's prompts are a committed render (`zephyr/Kconfig.knob-prompts`),
+  copied by the hook, so a guest needs no CLI.
 
 - 2026-10-12 — D2b ownership: the Zephyr hook (M1–M4, `Kconfig.from-system-
   toml`, the prompt-less knob section, the override channel) moves from

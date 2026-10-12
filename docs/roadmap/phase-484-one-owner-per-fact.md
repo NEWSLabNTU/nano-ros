@@ -2,8 +2,8 @@
 
 **Status (2026-10-12).** W0, W1, W3, W4 (but W4b-2), W6 and W7a/W7b landed; W2
 has four leftovers; W5a in progress (slices 1-6; `[board.knobs]` →
-`[knobs]` left); W5b folded in from
-phase-481, not started; W8 waits on a release. Implements
+`[knobs]` left); W5b (folded in from phase-481) measured and built — M1 red
+so choices/endpoint/domain stay in the fragment; W8 waits on a release. Implements
 [RFC-0103](../design/0103-one-owner-per-fact.md). Tracks issues
 [1767](../issues/1767-resource-location-resolved-many-ways.md) and
 [1768](../issues/archived/1768-build-wiring-census-misses-link-script-macro.md).
@@ -518,7 +518,8 @@ spellings because it only matches a literal first argument.
   writes `Kconfig.from-system-toml`, the module's knob section goes
   prompt-less, the fragment drops its knob rows, `-DNROS_OVERRIDE_<ID>`
   replaces the fixture drivers' knob `-DCONFIG_*`. Choices, endpoint and domain
-  stay in the fragment unless M1/M2 are green.
+  stay in the fragment unless M1/M2 are green. **Done 2026-10-12** — see
+  "W5b — M1–M4 measured" and "W5b — built" below.
 
   **Checked against the tree on 2026-10-12, before folding in.** 481 built
   the conf-FRAGMENT renderer (`nros ws leaf-system --kconfig-out`, the
@@ -635,6 +636,54 @@ does not touch Kconfig). Identical on both lines unless noted:
   3.7 keeps the last value (13) where 4.4 returns to the module default (5) —
   a project that deletes its `system.toml` on 3.7 keeps the old values until a
   pristine build.
+
+**W5b — built (2026-10-12).** The 59 registry knob symbols are prompt-less in
+`zephyr/Kconfig` (the prompt text survives as a comment above each), and the
+knob section `osource`s `$(KCONFIG_BINARY_DIR)/../nros/Kconfig.from-system-toml`
+first. The `module_ext_root` hook always writes it: for a project with a
+`system.toml`, `nros ws leaf-system --kconfig-defaults-out` renders every knob
+under its module definition's `if`/`depends on`, with the image's `[image.<id>]
+env` value — or a `-DNROS_OVERRIDE_<ID>=<v>`, provenance "on the command line
+(this build only)" — as a `default`; for a guest it copies
+`zephyr/Kconfig.knob-prompts`, rendered by `gen-knob-registry.py` beside the
+section, so a guest needs no CLI. One list: `knobs.toml` renders the section,
+the guest prompts, `KCONFIG_KNOBS` (Rust) and `NROS_KNOB_KCONFIG_*` (cmake);
+`check-zephyr-kconfig-knobs` now also holds the prompts file. The fragment
+keeps choices, endpoint and domain; its knob rows are gone. The hook refuses,
+before Kconfig and naming `system.toml`, the `env` row and the override, both
+a `-DCONFIG_<knob>` (cached `CONFIG_`/`CLI_CONFIG_` included) and a knob line in
+any conf file the build names, the image's own `conf` or the default
+`prj.conf`; `-DNROS_OVERRIDE_*` on a guest is refused, naming `-DCONFIG_*`.
+Override sites: the one tree site was the boot-report fixture's
+`arena-exhausted.conf` (`CONFIG_NROS_EXECUTOR_ARENA_SIZE=32`), now the row's
+`west_overrides = { EXECUTOR_ARENA_SIZE = "32" }` (`fixtures-manifest.py
+west-overrides` → `zephyr-fixture-leaves.sh`); no fixture driver passed a knob
+`-DCONFIG_*` (their locator / agent-port / domain ones are endpoint and domain,
+which stay).
+
+Acceptance, against `examples/zephyr/c/talker` (`zephyr_zenoh`) and a scratch
+guest, `native_sim/native/64`, on 3.7 AND 4.4, configure only: plain → OK;
+`-DNROS_OVERRIDE_EXECUTOR_ARENA_SIZE=32` → `.config` 32, and `-U` of it on a
+re-configure → 0 (the default); `-DCONFIG_NROS_EXECUTOR_ARENA_SIZE=32` →
+refused by the hook; a conf file with `CONFIG_NROS_EXECUTOR_ARENA_SIZE=32` →
+refused by the hook; guest `prj.conf` 4096 → 4096, re-configure with `-DCONFIG`
+8192 → 8192; guest `-DNROS_OVERRIDE_*` → refused. menuconfig (kconfiglib under
+`ninja menuconfig`'s own environment): the system.toml project's knobs are
+invisible with no prompt, the guest's visible with theirs, on both lines.
+
+Zephyr tier-2 cells (3.7; `NROS_FIXTURE_COORDS=lane-coords-tier2 just zephyr
+build-fixtures`, then `just test-select` over the Zephyr tests under the tier-2
+coordinates): all 8 tier-2 leaves built — six `zephyr,c,cyclonedds`, the
+`zephyr-cortex-m,c,zenoh` talker and the boot-report image, whose `.config`
+carries the override's 32. Green: the four `cyclonedds_c` boot smokes, the
+cyclonedds C pubsub / service / action e2e, `zephyr_cortex_m_c_zenoh_pubsub_e2e`
+and `zephyr_cortex_m_c_boot_report_names_arena_exhaustion` (the override cell).
+Not green, neither from W5b: seven native↔Zephyr tests need the in-lane LINUX
+talker fixture, which a Zephyr-only build does not make; and
+`a_shared_cmake_input_marks_the_image_stale` failed in the parallel run and
+PASSES solo — it truncates-and-restores `cmake/NanoRosCodegenCore.cmake` while
+other cells resolve the same fixture, and one of them recorded the file in the
+`.nros-srcbaseline` at size 0 mid-write.
 
 **Acceptance:** W5a — the registry is the only list (gate); every knob's
 env/TOML/Kconfig spelling derives from its id; one build per road shows
