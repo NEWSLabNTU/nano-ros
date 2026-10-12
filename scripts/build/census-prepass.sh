@@ -81,6 +81,8 @@ if [ -n "${NROS_FIXTURE_COORDS:-}" ]; then
 fi
 
 source "$repo_root/scripts/build/cargo.sh"
+# shellcheck source=scripts/build/leaf-cache.sh
+source "$repo_root/scripts/build/leaf-cache.sh"
 # Resolved on first use: a builder with nothing in scope (a cargo-only
 # platform's rows) must not need a current CLI to learn that.
 nros_cli=""
@@ -137,6 +139,24 @@ while IFS=$'\t' read -r dir image; do
             ;;
     esac
     echo "census-prepass: $dir $image"
+    # Issue 1848 -- `take --offline` BUILDS the host sibling image, and an
+    # offline build can only use crates already in the cache. Ask `take` which
+    # image that is (it owns the choice) and warm that image's cache first, as
+    # `workspace-fixtures-build.sh` does before its own offline builds. On a
+    # runner whose only rows are cross images, nothing else has fetched the
+    # host image's graph, and the take died on `failed to download` with
+    # `--frozen was specified`.
+    plan_rc=0
+    plan="$(cd "$repo_root/$dir" && "$nros_cli" ws entity-census take --image "$image" \
+        --workspace . --plan)" || plan_rc=$?
+    if [ "$plan_rc" -ne 0 ]; then
+        echo "census-prepass: \`take --plan\` failed for $dir $image (exit $plan_rc)" >&2
+        exit 1
+    fi
+    producer="$(printf '%s\n' "$plan" | sed -n 's/^producer //p' | head -n 1)"
+    if [ -n "$producer" ]; then
+        nros_warm_leaf_cache "$repo_root/$dir" "$producer"
+    fi
     ( cd "$repo_root/$dir" && "$nros_cli" ws entity-census take --image "$image" \
         --workspace . --offline )
 done <<< "$rows"

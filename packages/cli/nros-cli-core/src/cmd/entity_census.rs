@@ -185,6 +185,14 @@ pub struct TakeArgs {
     #[arg(long)]
     pub offline: bool,
 
+    /// Decide, build nothing: print `producer <bringup>:<image>` for the host
+    /// image this take would build, or only the reason there is nothing to
+    /// take. A script that runs `take --offline` asks this first, so it can
+    /// warm that image's cargo cache, because an `--offline` build can only
+    /// use crates already fetched (issue 1848, the class of issue 0967).
+    #[arg(long, conflicts_with = "leaf")]
+    pub plan: bool,
+
     /// Give up on a census run that has not exited in this many seconds.
     #[arg(long, default_value = "60", value_name = "SECS")]
     pub timeout_secs: u64,
@@ -505,6 +513,10 @@ fn take_census(args: TakeArgs) -> Result<()> {
         );
     };
     let native_q = plan::qualified(&bringup, native_id);
+    if args.plan {
+        println!("producer {native_q}");
+        return Ok(());
+    }
     let entry = crate::builder::entry::package_name(native_id);
     println!("entity-census take {asked_q}: taking the census with `{native_q}` ({entry})");
 
