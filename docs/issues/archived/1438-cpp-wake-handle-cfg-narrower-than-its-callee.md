@@ -3,12 +3,13 @@ id: 1438
 title: "`nros_cpp_executor_wake_handle` is gated on `rmw-cffi` alone while the
   `wake_raw_ptr` it calls needs `alloc` too, so a no-alloc C++ image does not
   compile — and the first tier-2 run that ever reached the build is how we found out"
-status: open
+status: resolved
 type: bug
 area: cpp, core, ci
 severity: high
 found: 2026-09-21
-related: [1431, 1389, 1158, 1284]
+resolved: 2026-10-12
+related: [1449, 1431, 1389, 1158, 1284]
 ---
 
 ## What happens
@@ -87,3 +88,24 @@ Acceptance is a tier-2 or nightly C++ embedded cell compiling `nros-cpp` for the
 no-alloc combination, plus a lane that builds `rmw-cffi` WITHOUT `alloc` so the
 next divergence is caught by a gate rather than by a lane that spent a month
 unable to reach its own build stage.
+
+## Resolution (2026-10-12) — a duplicate of issue 1449, fixed there
+
+Issue 1449 was filed for the same defect and resolved by `469a50b534`. It took
+remedy (2) above: the export stays `cfg(feature = "rmw-cffi")` and its body has
+its own `#[cfg(feature = "alloc")]`, so a no-alloc image gets NULL. NULL is the
+answer it already gave for "no wake object". Remedy (1) was measured worse,
+because `zephyr_run_tiers.c` declares and calls the symbol unguarded.
+
+The "lane that builds `rmw-cffi` WITHOUT `alloc`" this issue asked for became a
+STATIC gate instead, `check-cffi-cfg-implication` (fast line). 1449 explains
+why: a host `cargo check` of `nros-cpp` without `std` is not a configuration
+any image builds, so it would test an invented combination. Re-measured
+2026-10-12:
+
+- gate on main: rc=0;
+- mutation, removing the inner `#[cfg(feature = "alloc")]` from
+  `nros_cpp_executor_wake_handle`'s body: rc=1, naming
+  `lib.rs:5509 ... calls Executor::wake_raw_ptr, which is
+  cfg(all(feature = "alloc", feature = "rmw-cffi"))`;
+- restored: rc=0.

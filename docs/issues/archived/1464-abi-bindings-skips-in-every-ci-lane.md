@@ -2,12 +2,13 @@
 id: 1464
 title: "`check-abi-bindings` skips in every CI lane — no image installs
   bindgen-cli, so nothing has ever verified the committed bindgen output"
-status: open
+status: resolved
 type: bug
 area: [ci, tooling]
 severity: medium
 found: 2026-09-23
 related: [1226, 1040, 1043]
+resolved: 2026-10-12
 ---
 
 ## What happens
@@ -164,3 +165,21 @@ therefore still skips in the lane until then.
 `[SKIPPED] abi-bindings: bindgen-cli not installed`. Confirm it on the first
 `check` run after `images` publishes, then add the `NROS_ABI_BINDINGS_STRICT`
 belt above and archive.
+
+## Resolution (2026-10-12)
+
+Fixed by `f52b25451e`: `ci-base` installs the pinned bindgen-cli. The skip can
+no longer come back silently, because `2879191a3a` made the skip ledger a
+contract: `scripts/ci/check-fast-skip-allowlist.sh` fails CI on any skip not
+listed in `.config/ci-check-fast-skips.txt`, and `abi-bindings` is not listed.
+
+Measured:
+
+- merge-group CI run 38217072055 (green):
+  `check-fast-skip-allowlist: OK (4 allowlisted skip(s), none unexpected)`.
+  The four are `ivc-fsp`, `zephyr-workspace-foreign-checkout`,
+  `artifact-identity-budget` and `sizes-header-mirrors`, so `abi-bindings` ran
+  and passed in CI.
+- mutation: the same allowlist run over a ledger that adds
+  `abi-bindings	bindgen-cli not found` gives rc=1, naming it; the
+  unmodified ledger gives rc=0.
