@@ -4,8 +4,8 @@
 upstream and are pinned. W3 is issue 1272 (`f316429529`) and W5 is issue 1270
 (`8604a25ac7`), and both issues are archived. W4 and W6 landed on 2026-09-10/11,
 and so did the follow-ups F1–F3. Left: W7, the downstream Autoware Safety Island
-end to end, which is consumer-side; and issue 1271's remaining half (homed
-below). The 2026-09-11 line said W3 and W5 were open. The launch contract gains a
+end to end, which is consumer-side. Issue 1271, homed below, resolved on
+2026-10-13. The 2026-09-11 line said W3 and W5 were open. The launch contract gains a
 per-node `params:` section that states each parameter's NAME and TYPE. Sizing
 the parameter store and the parameter services moves from built-in worst cases
 to what the contract declares, with board configuration supplying the one
@@ -427,4 +427,4 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1271](../issues/1271-param-service-reply-overflow-is-silent.md) | a parameter service request or reply that does not fit is dropped silently. Half landed in `8604a25ac`; the remainder is sizing the reply buffer from the declarations, which is F3's subject |
+| ~~[#1271](../issues/archived/1271-param-service-reply-overflow-is-silent.md)~~ | RESOLVED 2026-10-13. A set request past a wire cap is answered per parameter with a reason, and a cut `list_parameters` is logged once. F3 had already sized the reply buffer. |

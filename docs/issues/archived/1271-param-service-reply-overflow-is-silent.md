@@ -2,7 +2,7 @@
 id: 1271
 title: "A parameter service request or reply that does not fit is dropped
   silently: no reply, no log, and the client only times out"
-status: open
+status: resolved
 type: bug
 area: core
 severity: medium
@@ -70,3 +70,37 @@ case, issue 1268).
 Still open: answering with `SetParametersResult.reason` instead of dropping,
 flagging `list_parameters` truncation, and sizing the reply buffer from the
 declared parameters (phase-446 W4).
+
+## Resolution (2026-10-13)
+
+The three open items are done. Phase-446 F3 had already derived the reply
+buffer from the declared parameters. This change does the other two.
+
+- **A set request past a wire cap is answered, not dropped.**
+  - `set_parameters` gives such a parameter its own
+    `successful = false` result, with `CAPACITY_EXCEEDED_REASON`, and still
+    applies and answers the others. "Past a cap" means a value whose string
+    or array is past the message's 256 B / 64 elements, or a name past 256 B.
+  - The handler reads the whole value regardless, so the next parameter
+    starts in the right place.
+  - A request with more than 64 parameters is answered whole.
+  - `set_parameters_atomically` refuses such a batch with its reason and
+    applies none of it.
+  - The two set handlers never needed the generated message's storage: they
+    borrow each name and stage one value at a time.
+  - The name-list requests (get, describe, types, and list's prefixes) keep
+    the cap. Their replies have no field that could carry a reason, so the
+    once-per-service log line stays the report there.
+- **A cut `list_parameters` is reported.** The reply is still sent, cut to
+  64 names and 64 prefixes, and the node logs one warning per service
+  (`ParamServiceFailure::ListTruncated`). `ListParametersResult` has no field
+  for it. The book's parameter section now states both bounds.
+
+Tests (`parameter_services::tests`), each failing on the previous code:
+
+- `set_parameters_answers_an_over_cap_parameter_and_applies_the_rest`: a
+  65-element byte array and a 300-byte name between two good parameters.
+- `set_parameters_past_64_is_answered_whole`: 70 parameters.
+- `set_parameters_atomically_refuses_an_over_cap_batch_with_a_reason`
+- `a_truncated_list_is_answered_and_reported_once`: a 70-slot store, two
+  requests, one report.

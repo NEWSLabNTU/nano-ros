@@ -42,9 +42,13 @@ use crate::config::PARAM_SERVICE_BUFFER_SIZE;
 /// Capacity of every sequence member in the generated `rcl_interfaces` types
 /// (`heapless::Vec<_, 64>`).
 ///
-/// The streaming readers enforce it so an over-long sequence fails the request
-/// exactly where the generated `Deserialize` would have — `CapacityExceeded`
-/// before the handler sees anything, no reply sent. Drift guard:
+/// The streaming readers of the NAME-list requests (get, describe, types, and
+/// list's prefixes) enforce it, so an over-long sequence fails the request
+/// exactly where the generated `Deserialize` would have: `CapacityExceeded`
+/// before the handler sees anything, no reply sent. The two SET handlers do
+/// not (issue 1271): they borrow each name and stage one value at a time, so
+/// they answer a parameter past a cap with its own failed result instead of
+/// dropping the request. Drift guard:
 /// `wire_capacities_match_the_generated_messages`.
 pub(crate) const WIRE_SEQ_CAP: usize = 64;
 

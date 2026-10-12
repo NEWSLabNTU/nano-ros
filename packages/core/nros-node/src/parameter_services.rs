@@ -383,6 +383,23 @@ fn read_wire_string<'r>(reader: &mut CdrReader<'r>) -> Result<&'r str, DeserErro
     Ok(s)
 }
 
+/// Issue 1271 -- a sequence length inside one parameter VALUE. Past
+/// [`WIRE_SEQ_CAP`] the value is refused (`err` gets `CapacityExceeded`) but
+/// the elements are still read, so the request stays in step and every other
+/// parameter is answered. A length the request cannot hold fails at the
+/// element reads (`UnexpectedEof`), which bounds the loop by the request size.
+#[inline]
+fn lenient_seq_len(
+    reader: &mut CdrReader<'_>,
+    err: &mut Option<ValueConversionError>,
+) -> Result<usize, DeserError> {
+    let len = reader.read_sequence_len()?;
+    if len > WIRE_SEQ_CAP {
+        *err = err.or(Some(ValueConversionError::CapacityExceeded));
+    }
+    Ok(len)
+}
+
 /// The oracle builds its reply strings with `let _ = push_str(...)` into a
 /// `heapless::String<256>`, and `push_str` is all-or-nothing — so a value too
 /// long for the wire message reaches the wire as the EMPTY string, not as a
@@ -546,9 +563,15 @@ fn read_parameter_value_into(
     let bool_value = reader.read_bool()?;
     let integer_value = reader.read_i64()?;
     let double_value = reader.read_f64()?;
-    let string_value = read_wire_string(reader)?;
-
+    // Issue 1271 -- a field past a wire cap is this VALUE's failure, not the
+    // request's: it is read whole (so the next parameter starts where it
+    // should) and answered as `CapacityExceeded`. It used to be a decode
+    // error, which dropped the whole request with no reply.
     let mut err: Option<ValueConversionError> = None;
+    let string_value = reader.read_string()?;
+    if string_value.len() > WIRE_STRING_CAP {
+        err = Some(ValueConversionError::CapacityExceeded);
+    }
     match type_ {
         0 => *staged = InternalValue::NotSet,
         1 => *staged = InternalValue::Bool(bool_value),
@@ -573,7 +596,7 @@ fn read_parameter_value_into(
         }
     }
 
-    for _ in 0..read_wire_seq_len(reader)? {
+    for _ in 0..lenient_seq_len(reader, &mut err)? {
         let b = reader.read_u8()?;
         if let InternalValue::ByteArray(v) = &mut *staged
             && v.push(b).is_err()
@@ -581,7 +604,7 @@ fn read_parameter_value_into(
             err = err.or(Some(ValueConversionError::CapacityExceeded));
         }
     }
-    for _ in 0..read_wire_seq_len(reader)? {
+    for _ in 0..lenient_seq_len(reader, &mut err)? {
         let b = reader.read_bool()?;
         if let InternalValue::BoolArray(v) = &mut *staged
             && v.push(b).is_err()
@@ -589,7 +612,7 @@ fn read_parameter_value_into(
             err = err.or(Some(ValueConversionError::CapacityExceeded));
         }
     }
-    for _ in 0..read_wire_seq_len(reader)? {
+    for _ in 0..lenient_seq_len(reader, &mut err)? {
         let i = reader.read_i64()?;
         if let InternalValue::IntegerArray(v) = &mut *staged
             && v.push(i).is_err()
@@ -597,7 +620,7 @@ fn read_parameter_value_into(
             err = err.or(Some(ValueConversionError::CapacityExceeded));
         }
     }
-    for _ in 0..read_wire_seq_len(reader)? {
+    for _ in 0..lenient_seq_len(reader, &mut err)? {
         let d = reader.read_f64()?;
         if let InternalValue::DoubleArray(v) = &mut *staged
             && v.push(d).is_err()
@@ -605,8 +628,11 @@ fn read_parameter_value_into(
             err = err.or(Some(ValueConversionError::CapacityExceeded));
         }
     }
-    for _ in 0..read_wire_seq_len(reader)? {
-        let s = read_wire_string(reader)?;
+    for _ in 0..lenient_seq_len(reader, &mut err)? {
+        let s = reader.read_string()?;
+        if s.len() > WIRE_STRING_CAP {
+            err = err.or(Some(ValueConversionError::CapacityExceeded));
+        }
         if let InternalValue::StringArray(v) = &mut *staged {
             // Push an empty string, then fill it where it lives: a
             // `String<MAX_STRING_VALUE_LEN>` built first and pushed after is
@@ -697,15 +723,27 @@ pub(crate) fn stream_set_parameters(
     reader: &mut CdrReader<'_>,
     writer: &mut CdrWriter<'_>,
 ) -> Result<(), TransportError> {
-    let count = read_wire_seq_len(reader).map_err(deser_failed)?;
+    // Issue 1271 -- no wire cap on the COUNT or the NAME here: this handler
+    // borrows each name and stages one value at a time, so neither needs the
+    // generated message's storage. Every parameter gets its own result; one
+    // that does not fit is refused with a reason instead of the whole request
+    // being dropped with none (the reply's own size is still bounded by the
+    // reply buffer, and an overflow there is reported).
+    let count = reader.read_sequence_len().map_err(deser_failed)?;
     writer.write_sequence_len(count).map_err(ser_failed)?;
 
     for _ in 0..count {
-        let name = read_wire_string(reader).map_err(deser_failed)?;
+        let name = reader.read_string().map_err(deser_failed)?;
         // issue 0323 — an over-capacity or unknown-type value is REJECTED, not
         // truncated and then reported as success.
         // RFC-0105 D10.2 — decoded into, and applied from, the staging slot.
-        match read_parameter_value_into(reader, staged).map_err(deser_failed)? {
+        let value = read_parameter_value_into(reader, staged).map_err(deser_failed)?;
+        let value = if name.len() > WIRE_STRING_CAP {
+            Err(ValueConversionError::CapacityExceeded)
+        } else {
+            value
+        };
+        match value {
             Err(e) => write_set_result(writer, false, e.reason()),
             Ok(()) => {
                 let result = server.apply_staged(node, name, staged);
@@ -747,10 +785,14 @@ pub(crate) fn stream_set_parameters_atomically(
     // malformed TAIL failing the request (no reply at all), which is what
     // deserializing the whole message used to guarantee.
     let mut pass = rewind(body, version).map_err(deser_failed)?;
-    let count = read_wire_seq_len(&mut pass).map_err(deser_failed)?;
+    // Issue 1271 -- read leniently, as `stream_set_parameters` does: a count,
+    // name or value past a wire cap fails the BATCH with its reason rather
+    // than dropping the request with no reply.
+    let count = pass.read_sequence_len().map_err(deser_failed)?;
     let mut can_set_all = true;
     for _ in 0..count {
-        let name = read_wire_string(&mut pass).map_err(deser_failed)?;
+        let name = pass.read_string().map_err(deser_failed)?;
+        let fits = name.len() <= WIRE_STRING_CAP;
         let Ok(()) = read_parameter_value_into(&mut pass, staged).map_err(deser_failed)? else {
             // issue 0323 — the truncation used to happen inside this
             // pre-check, so an over-capacity value passed validation and
@@ -762,7 +804,7 @@ pub(crate) fn stream_set_parameters_atomically(
         // min/max/step, and issue 1151's undeclared refusal — without
         // applying it. One predicate, so the pre-check cannot pass a value the
         // apply would then refuse.
-        if !server.check_apply(node, name, staged).is_success() {
+        if !fits || !server.check_apply(node, name, staged).is_success() {
             can_set_all = false;
         }
     }
@@ -771,9 +813,9 @@ pub(crate) fn stream_set_parameters_atomically(
         // Pass 2 — apply. Every value converted in pass 1; skip rather than
         // unwrap so a future divergence cannot panic mid-batch.
         let mut pass = rewind(body, version).map_err(deser_failed)?;
-        let count = read_wire_seq_len(&mut pass).map_err(deser_failed)?;
+        let count = pass.read_sequence_len().map_err(deser_failed)?;
         for _ in 0..count {
-            let name = read_wire_string(&mut pass).map_err(deser_failed)?;
+            let name = pass.read_string().map_err(deser_failed)?;
             let Ok(()) = read_parameter_value_into(&mut pass, staged).map_err(deser_failed)? else {
                 continue;
             };
@@ -792,11 +834,17 @@ pub(crate) fn stream_set_parameters_atomically(
 /// only scratch is the borrowed prefixes: `&str` into the receive buffer for
 /// the request's filters, `&str` into the store for the deduplicated reply
 /// prefixes. Bounded by the wire capacity, no copies, no `alloc`.
+///
+/// `truncated` is set when more names or prefixes matched than the reply
+/// holds ([`WIRE_SEQ_CAP`] each). The reply is still a correct prefix of the
+/// answer; the caller reports the cut (issue 1271), because
+/// `ListParametersResult` has no field for it.
 pub(crate) fn stream_list_parameters<'r>(
     server: &ParameterServer,
     node: NodeKey,
     reader: &mut CdrReader<'r>,
     writer: &mut CdrWriter<'_>,
+    truncated: &mut bool,
 ) -> Result<(), TransportError> {
     let prefix_count = read_wire_seq_len(reader).map_err(deser_failed)?;
     let mut filters: heapless::Vec<&'r str, WIRE_SEQ_CAP> = heapless::Vec::new();
@@ -827,11 +875,13 @@ pub(crate) fn stream_list_parameters<'r>(
         }
         if name_count < WIRE_SEQ_CAP {
             name_count += 1;
+        } else {
+            *truncated = true;
         }
         if let Some(dot) = name.rfind('.') {
             let prefix = &name[..dot];
-            if !prefixes.contains(&prefix) {
-                let _ = prefixes.push(prefix);
+            if !prefixes.contains(&prefix) && prefixes.push(prefix).is_err() {
+                *truncated = true;
             }
         }
     }
@@ -1454,8 +1504,9 @@ impl ParamService {
 /// fixed, the buffer is a knob, and a transport failure is neither.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ParamServiceFailure {
-    /// The request did not deserialize: malformed, or past a fixed wire cap
-    /// ([`WIRE_SEQ_CAP`] elements, [`WIRE_STRING_CAP`]-byte strings).
+    /// The request did not deserialize: malformed, or a NAME-list request past
+    /// a fixed wire cap ([`WIRE_SEQ_CAP`] elements, [`WIRE_STRING_CAP`]-byte
+    /// strings). A set request past a cap is answered instead (issue 1271).
     Malformed,
     /// The request is larger than the EXECUTOR's request buffer: the backend
     /// held it and said how much room it needed (`BufferTooSmall`).
@@ -1473,6 +1524,11 @@ enum ParamServiceFailure {
     ReplyTooLarge,
     /// Anything else: the backend refused the take or the send.
     Transport,
+    /// Not a dropped request: a `list_parameters` reply was ANSWERED with
+    /// fewer names or prefixes than matched, because the reply message holds
+    /// [`WIRE_SEQ_CAP`] of each. `ListParametersResult` has no field to say
+    /// so, so the log line is the one place it is stated (issue 1271).
+    ListTruncated,
 }
 
 impl ParamServiceFailure {
@@ -1489,7 +1545,7 @@ impl ParamServiceFailure {
 
 /// Bits per service in [`ParameterServiceServers::reported`]: one per
 /// [`ParamServiceFailure`] kind.
-const FAILURE_KINDS: u32 = 5;
+const FAILURE_KINDS: u32 = 6;
 
 /// Holds the 6 ROS 2 parameter service servers for a node.
 ///
@@ -1516,10 +1572,11 @@ pub struct ParameterServiceServers {
     /// reported against the service a ROS 2 tool actually called.
     fqn: crate::names::ResolvedName,
     /// Issue 1271 -- which (service, failure kind) pairs have been logged.
-    /// Bit `service * FAILURE_KINDS + kind`. Never cleared: the cause is a cap
+    /// Bit `service * FAILURE_KINDS + kind`, 36 bits, hence `u64`. Never
+    /// cleared: the cause is a cap
     /// or a knob, neither of which changes while the image runs, so a second
     /// line would only repeat the first.
-    reported: u32,
+    reported: u64,
 }
 
 impl ParameterServiceServers {
@@ -1598,12 +1655,17 @@ impl ParameterServiceServers {
         );
         count += self.settle(ParamService::SetAtomically, r, cap);
 
+        let mut truncated = false;
         let r = self.list_parameters.handle.handle_request_raw(
             &mut request[..],
             &mut reply[..],
-            |reader, writer| stream_list_parameters(server, node, reader, writer),
+            |reader, writer| stream_list_parameters(server, node, reader, writer, &mut truncated),
         );
-        count += self.settle(ParamService::List, r, cap);
+        let answered = self.settle(ParamService::List, r, cap);
+        if answered > 0 && truncated {
+            self.note_list_truncated();
+        }
+        count += answered;
 
         let r = self.describe_parameters.handle.handle_request_raw(
             &mut request[..],
@@ -1649,7 +1711,7 @@ impl ParameterServiceServers {
     #[inline(never)]
     fn note_failure(&mut self, service: ParamService, e: &TransportError, cap: usize) {
         let kind = ParamServiceFailure::of(e);
-        let bit = 1u32 << (service as u32 * FAILURE_KINDS + kind as u32);
+        let bit = 1u64 << (service as u32 * FAILURE_KINDS + kind as u32);
         if self.reported & bit != 0 {
             return;
         }
@@ -1660,8 +1722,9 @@ impl ParameterServiceServers {
             ParamServiceFailure::Malformed => nros_log::log_error!(
                 nros_log::get_logger("nros"),
                 "parameter service {}/{}: a request was dropped with no reply -- it did not \
-                 deserialize. A request may carry at most {} names and {}-byte strings (fixed \
-                 wire caps). The client times out. Logged once for this service (issue 1271).",
+                 deserialize. A name-list request may carry at most {} names and {}-byte \
+                 strings (fixed wire caps). The client times out. Logged once for this service \
+                 (issue 1271).",
                 fqn,
                 svc,
                 WIRE_SEQ_CAP,
@@ -1708,7 +1771,34 @@ impl ParameterServiceServers {
                 svc,
                 e
             ),
+            // Reported by `note_list_truncated`; no `TransportError` maps here.
+            ParamServiceFailure::ListTruncated => {}
         }
+    }
+
+    /// Issue 1271 -- a `list_parameters` reply that was answered SHORT: more
+    /// names or prefixes matched than the reply message holds. Once, like
+    /// [`Self::note_failure`]; a warning, because the client did get a reply.
+    #[cold]
+    #[inline(never)]
+    fn note_list_truncated(&mut self) {
+        let bit = 1u64
+            << (ParamService::List as u32 * FAILURE_KINDS
+                + ParamServiceFailure::ListTruncated as u32);
+        if self.reported & bit != 0 {
+            return;
+        }
+        self.reported |= bit;
+        nros_log::log_warn!(
+            nros_log::get_logger("nros"),
+            "parameter service {}/list_parameters: the reply was cut to {} names / {} prefixes \
+             -- more matched than an rcl_interfaces ListParametersResult holds, and the message \
+             has no field to say so. Ask with a narrower prefix or depth. Logged once for this \
+             service (issue 1271).",
+            self.fqn.as_str(),
+            WIRE_SEQ_CAP,
+            WIRE_SEQ_CAP
+        );
     }
 }
 
@@ -2155,10 +2245,10 @@ mod tests {
             .load_error(TransportError::BufferTooSmall);
         assert_eq!(set.process(&mut server, &mut staged(), &mut buffers), 0);
 
-        let inbox = 1u32
+        let inbox = 1u64
             << (ParamService::Set as u32 * FAILURE_KINDS
                 + ParamServiceFailure::InboxOverflow as u32);
-        let buffer = 1u32
+        let buffer = 1u64
             << (ParamService::Get as u32 * FAILURE_KINDS
                 + ParamServiceFailure::RequestTooLarge as u32);
         assert_eq!(
@@ -2193,7 +2283,7 @@ mod tests {
             set.get_parameters.handle.sent.borrow().is_empty(),
             "nothing may be sent for a reply that was cut off"
         );
-        let reply_overflow = 1u32
+        let reply_overflow = 1u64
             << (ParamService::Get as u32 * FAILURE_KINDS
                 + ParamServiceFailure::ReplyTooLarge as u32);
         assert_eq!(
@@ -2881,7 +2971,7 @@ mod tests {
         ] {
             let request = list_request(prefixes, depth);
             let streamed = run_streaming(&encode(&*request), |reader, writer| {
-                stream_list_parameters(&server, NODE, reader, writer)
+                stream_list_parameters(&server, NODE, reader, writer, &mut false)
             });
             let oracle = handle_list_parameters(&server, NODE, &request);
             assert_eq!(
@@ -3238,7 +3328,7 @@ mod tests {
 
         let request = Box::new(ListParametersRequest::default());
         let streamed = run_streaming(&encode(&*request), |reader, writer| {
-            stream_list_parameters(&server, TALKER, reader, writer)
+            stream_list_parameters(&server, TALKER, reader, writer, &mut false)
         });
         let reply: Box<ListParametersResponse> = decode_boxed(&streamed);
         let names: AllocVec<&str> = reply.result.names.iter().map(|n| n.as_str()).collect();
@@ -3702,7 +3792,7 @@ mod tests {
         // The worst list REPLY is the unfiltered one: every name and every
         // prefix.
         let list_reply = run_streaming(&encode(&*list_request(&[])), |r, w| {
-            stream_list_parameters(&server, NODE, r, w)
+            stream_list_parameters(&server, NODE, r, w, &mut false)
         });
         check("list_parameters reply", list_reply.len(), bound.list_reply);
 
@@ -4087,5 +4177,201 @@ mod tests {
             used >= core::mem::size_of::<InternalValue>(),
             "a frame holding one ParameterValue measured only {used} B"
         );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Issue 1271 -- a request past a wire cap is ANSWERED where it can be
+    // ═══════════════════════════════════════════════════════════════════════
+    //
+    // The generated request types cannot hold these requests (64 parameters,
+    // 256-byte strings), so they are written field by field here, in the
+    // order `rcl_interfaces/msg/Parameter` serializes.
+
+    /// One `Parameter` whose value is an integer.
+    fn write_int_param(w: &mut CdrWriter<'_>, name: &str, v: i64) {
+        write_param(w, name, 2, v, &[]);
+    }
+
+    /// One `Parameter`: `type_`, an integer, and `bytes` as its byte array.
+    fn write_param(w: &mut CdrWriter<'_>, name: &str, type_: u8, int: i64, bytes: &[u8]) {
+        w.write_string(name).unwrap();
+        w.write_u8(type_).unwrap();
+        w.write_bool(false).unwrap();
+        w.write_i64(int).unwrap();
+        w.write_f64(0.0).unwrap();
+        w.write_string("").unwrap();
+        w.write_sequence_len(bytes.len()).unwrap();
+        for b in bytes {
+            w.write_u8(*b).unwrap();
+        }
+        for _ in 0..4 {
+            // bool, integer, double and string arrays: empty
+            w.write_sequence_len(0).unwrap();
+        }
+    }
+
+    /// Encode a set request: a sequence of `params.len()` parameters.
+    fn raw_set_request(params: impl Fn(&mut CdrWriter<'_>), count: usize) -> AllocVec<u8> {
+        let mut buf = vec![0u8; WIRE_BUF];
+        let len = {
+            let mut w = CdrWriter::new_with_header(&mut buf).unwrap();
+            w.write_sequence_len(count).unwrap();
+            params(&mut w);
+            w.position()
+        };
+        buf.truncate(len);
+        buf
+    }
+
+    /// Read a streamed `SetParametersResponse` (or `_atomically`'s single
+    /// result when `atomic`) as `(successful, reason)` pairs, by hand: past 64
+    /// results the generated type cannot hold it either.
+    fn read_set_results(reply: &[u8], atomic: bool) -> AllocVec<(bool, alloc::string::String)> {
+        let mut r = CdrReader::new_with_header(reply).unwrap();
+        let n = if atomic {
+            1
+        } else {
+            r.read_sequence_len().unwrap()
+        };
+        let out = (0..n)
+            .map(|_| {
+                let ok = r.read_bool().unwrap();
+                (ok, alloc::string::String::from(r.read_string().unwrap()))
+            })
+            .collect();
+        assert_eq!(
+            r.remaining(),
+            0,
+            "the reply ends where its last result does"
+        );
+        out
+    }
+
+    /// A parameter past a wire cap fails ALONE, with a reason: the others in
+    /// the same request are applied and answered. Both over-cap shapes are
+    /// here -- a 65-element byte array and a 300-byte name -- between two
+    /// good parameters, so a reader that lost its place would fail the second.
+    #[test]
+    fn set_parameters_answers_an_over_cap_parameter_and_applies_the_rest() {
+        let mut server = leaked_server();
+        assert!(server.declare(NODE, "rate", InternalValue::Integer(1)));
+        assert!(server.declare(NODE, "gain", InternalValue::Integer(1)));
+        let long_name = "n".repeat(300);
+        let request = raw_set_request(
+            |w| {
+                write_int_param(w, "rate", 7);
+                write_param(w, "blob", 5, 0, &[0u8; WIRE_SEQ_CAP + 1]);
+                write_int_param(w, &long_name, 3);
+                write_int_param(w, "gain", 9);
+            },
+            4,
+        );
+        let reply = run_streaming(&request, |r, w| {
+            stream_set_parameters(&mut server, &mut staged(), NODE, r, w)
+        });
+        let results = read_set_results(&reply, false);
+        assert_eq!(results.len(), 4, "one result per parameter, none dropped");
+        assert!(results[0].0 && results[3].0, "the good parameters succeed");
+        for (i, (ok, reason)) in results.iter().enumerate().skip(1).take(2) {
+            assert!(!ok, "parameter {i} is past a wire cap");
+            assert_eq!(reason, CAPACITY_EXCEEDED_REASON, "parameter {i}'s reason");
+        }
+        assert_eq!(server.get_integer(NODE, "rate"), Some(7));
+        assert_eq!(server.get_integer(NODE, "gain"), Some(9));
+    }
+
+    /// More than 64 parameters in one request: every one is answered and
+    /// applied. The generated message stops at 64, which used to drop the
+    /// whole request with no reply.
+    #[test]
+    fn set_parameters_past_64_is_answered_whole() {
+        let mut server = leaked_server();
+        assert!(server.declare(NODE, "rate", InternalValue::Integer(1)));
+        let count = WIRE_SEQ_CAP + 6;
+        let request = raw_set_request(
+            |w| {
+                for i in 0..count {
+                    write_int_param(w, "rate", i as i64);
+                }
+            },
+            count,
+        );
+        let reply = run_streaming(&request, |r, w| {
+            stream_set_parameters(&mut server, &mut staged(), NODE, r, w)
+        });
+        let results = read_set_results(&reply, false);
+        assert_eq!(results.len(), count);
+        assert!(results.iter().all(|(ok, _)| *ok));
+        assert_eq!(server.get_integer(NODE, "rate"), Some(count as i64 - 1));
+    }
+
+    /// The atomic variant refuses the BATCH with a reason, and applies none of
+    /// it -- including the good parameter ahead of the over-cap one.
+    #[test]
+    fn set_parameters_atomically_refuses_an_over_cap_batch_with_a_reason() {
+        let mut server = leaked_server();
+        assert!(server.declare(NODE, "rate", InternalValue::Integer(1)));
+        let request = raw_set_request(
+            |w| {
+                write_int_param(w, "rate", 7);
+                write_param(w, "blob", 5, 0, &[0u8; WIRE_SEQ_CAP + 1]);
+            },
+            2,
+        );
+        let reply = run_streaming(&request, |r, w| {
+            stream_set_parameters_atomically(&mut server, &mut staged(), NODE, r, w)
+        });
+        let results = read_set_results(&reply, true);
+        assert_eq!(results, [(false, ATOMIC_FAILURE_REASON.into())]);
+        assert_eq!(server.get_integer(NODE, "rate"), Some(1), "nothing applied");
+    }
+
+    /// A `list_parameters` reply cut to the message's 64 names is still
+    /// ANSWERED, and the cut is reported once: `ListParametersResult` has no
+    /// field for it.
+    #[cfg(not(feature = "rmw-cffi"))]
+    #[test]
+    fn a_truncated_list_is_answered_and_reported_once() {
+        use core::mem::MaybeUninit;
+        let slots: &'static mut [MaybeUninit<nros_params::ParameterSlot>] = Box::leak(
+            (0..WIRE_SEQ_CAP + 6)
+                .map(|_| MaybeUninit::uninit())
+                .collect::<AllocVec<_>>()
+                .into_boxed_slice(),
+        );
+        let mut server = ParameterServer::new_in(nros_params::ParameterTable::init_in(slots));
+        for i in 0..WIRE_SEQ_CAP + 6 {
+            let name = alloc::format!("p{i}");
+            assert!(server.declare(NODE, &name, InternalValue::Integer(0)));
+        }
+        let mut set = one_set_of_six();
+        let mut buffers = ParamServiceBuffers::try_with_capacity(1 << 16).expect("host heap");
+        let truncated = 1u64
+            << (ParamService::List as u32 * FAILURE_KINDS
+                + ParamServiceFailure::ListTruncated as u32);
+        for _ in 0..2 {
+            queue_list(&set);
+            assert_eq!(
+                set.process(&mut server, &mut staged(), &mut buffers),
+                1,
+                "a truncated list is still an answered request"
+            );
+            assert_eq!(set.reported, truncated, "reported once, as a truncation");
+        }
+        let sent = set.list_parameters.handle.sent.borrow();
+        let (_, bytes, len) = &sent[0];
+        let mut r = CdrReader::new_with_header(&bytes[..*len]).unwrap();
+        assert_eq!(r.read_sequence_len().unwrap(), WIRE_SEQ_CAP);
+    }
+
+    /// Queue one `list_parameters` request (no prefixes, any depth).
+    #[cfg(not(feature = "rmw-cffi"))]
+    fn queue_list(set: &ParameterServiceServers) {
+        let mut buf = [0u8; 256];
+        let mut w = CdrWriter::new_with_header(&mut buf).unwrap();
+        w.write_sequence_len(0).unwrap();
+        w.write_u64(0).unwrap();
+        let len = w.position();
+        set.list_parameters.handle.load(buf, len);
     }
 }

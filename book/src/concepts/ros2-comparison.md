@@ -285,7 +285,12 @@ Rust through `Executor::declare_parameter` and `Node::parameter`.
   `~/set_parameters` / `~/list_parameters` / …) when the
   `param-services` feature is enabled. This pulls in ROS 2 wire compat:
   declared parameters are visible to `ros2 param list /<node>` and
-  `ros2 param set`.
+  `ros2 param set`. The services use the `rcl_interfaces` message
+  bounds: a `list_parameters` reply carries at most 64 names and 64
+  prefixes, and when more match it is cut there and the node logs one
+  warning (the reply message has no field to say so). A `set_parameters`
+  request is answered per parameter, so a value or name past those bounds
+  gets `successful = false` with a reason while the rest are applied.
 
 **What we drop, and why**
 
