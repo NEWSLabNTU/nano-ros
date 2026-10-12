@@ -16,6 +16,10 @@ name = "service_client"
 # NuttX on the QEMU ARM virt machine.
 [image.qemu-armv7a-nuttx]
 board = "nuttx"
+# `main.rs` says `nros::main!(panic = "platform")`; stated here too so
+# the generated selection package does not also link the board's
+# crate-root panic provider (RFC-0077, issue 1305).
+panic = "platform"
 locator = "tcp/10.0.2.2:8210"
 
 # SITE config for this board (RFC-0072 §5): where THIS checkout keeps the

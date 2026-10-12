@@ -14,6 +14,10 @@ name = "param_talker"
 # this fixture's own: `nros_tests::alloc::port_of(NuttxArm, Rust, Params)`.
 [image.qemu-armv7a-nuttx]
 board = "nuttx"
+# `main.rs` says `nros::main!(panic = "platform")`; stated here too so
+# the generated selection package does not also link the board's
+# crate-root panic provider (RFC-0077, issue 1305).
+panic = "platform"
 locator = "tcp/10.0.2.2:8270"
 
 [board_config."qemu-armv7a-nuttx"]

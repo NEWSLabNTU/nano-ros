@@ -16,6 +16,10 @@ name = "action_client"
 # FreeRTOS on MPS2-AN385 (QEMU).
 [image.mps2-an385-freertos]
 board = "freertos"
+# `main.rs` says `nros::main!(panic = "platform")`; stated here too so
+# the generated selection package does not also link the board's
+# crate-root panic provider (RFC-0077, issue 1305).
+panic = "platform"
 locator = "tcp/10.0.2.2:7820"
 ip = "10.0.2.16"
 gateway = "10.0.2.2"
