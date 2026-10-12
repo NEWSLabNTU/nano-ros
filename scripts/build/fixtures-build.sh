@@ -378,6 +378,9 @@ if [ "${#cargo_records[@]}" -gt 0 ]; then
     # probe so the two cannot build a row two ways.
     # shellcheck source=scripts/build/leaf-settings.sh
     source scripts/build/leaf-settings.sh
+    # shellcheck source=scripts/build/board-facts.sh
+    source scripts/build/board-facts.sh
+    export -f nros_board_facts
     export -f nros_leaf_settings_path nros_leaf_settings_cwd nros_leaf_settings_args \
               nros_leaf_settings_target_dir_flag nros_leaf_row_image \
               nros_leaf_strip_row_image nros_leaf_lock
@@ -475,10 +478,10 @@ if [ "${#cargo_records[@]}" -gt 0 ]; then
             nros_leaf_lock "$dir" nros_fixture_build_leaf_row \
                 "$dir" "$image" "$envstr" "$args" "$tdir_flag" || return 1
         else
+            # Issue 1844 — the one spelling every shell lane shares. OPTIONAL:
+            # this arm also builds host bins that resolve no board.
             local facts=""
-            if [ -x "$NROS_CLI" ]; then
-                facts="$(NROS_REPO_DIR="$NROS_REPO_ROOT" "$NROS_CLI" ws board-facts "$dir" 2>/dev/null || true)"
-            fi
+            facts="$(nros_board_facts "$dir" optional)"
             # shellcheck disable=SC2086
             # `if`, not an and-list: the comment above records that a false
             # and-list is itself a failing command under `.SHELLFLAGS := -eu`.

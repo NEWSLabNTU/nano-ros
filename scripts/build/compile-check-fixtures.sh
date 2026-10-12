@@ -42,6 +42,9 @@ source "$repo_root/scripts/build/build-root.sh"
 # the script's runnable form) with the Rust fixture resolver.
 # shellcheck source=scripts/build/launch-resolver-identity.sh
 source "$repo_root/scripts/build/launch-resolver-identity.sh"
+# issue 1844 — the board facts a cross-build row's own cargo command needs.
+# shellcheck source=board-facts.sh
+source "$repo_root/scripts/build/board-facts.sh"
 
 out_root="$(nros_build_dir "$NROS_KIND_COMPILE_CHECK")"
 mkdir -p "$out_root"
@@ -657,13 +660,24 @@ stage_and_cross_build() {
     # the directory `dev` writes to. That is why this maps by hand instead of
     # calling `nros profile args`, which speaks profile names.
     NROS_REPO_ROOT="$repo_root" nros_seed_leaf_lock "$staged/$subdir"
+    # Issue 1844 — the board facts, from the invoker. This is a cargo dir with
+    # no generated `nros-cargo.toml` (a workspace-shaped fixture, or an entry
+    # inside one), so nothing else carries `FREERTOS_PORT` & co. since
+    # phase-484 W2b. REQUIRED: every row here cross-compiles for a board, and
+    # a soft skip is what let this lane build only in a shell that still
+    # exported an old `activate.sh` port.
+    local facts
+    facts="$(NROS_CLI="${NROS_CLI_BIN:-${NROS_CLI:-$(command -v nros || true)}}" \
+        NROS_REPO_ROOT="$repo_root" nros_board_facts "$staged/$subdir" required)" || return 2
     local profile
     for profile in ${profiles//,/ }; do
         local profile_flag=()
         # profile-literal-ok: dir vocabulary: `profile` here is a manifest target-directory name
         [ "$profile" = "release" ] && profile_flag=(--release)
         echo "   -- profile: $profile"
+        # shellcheck disable=SC2086 # one KEY=VALUE word per line
         ( cd "$staged/$subdir" \
+            && export $facts \
             && NROS_PLATFORM_FREERTOS_SRC="$repo_root/packages/platform/nros-platform-freertos/src" \
                NROS_PLATFORM_CFFI_INCLUDE="$repo_root/packages/platform/nros-platform-api/include" \
                cargo build "${profile_flag[@]}" --target "$target" -p "$pkg" )
