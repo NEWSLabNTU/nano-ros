@@ -1,12 +1,12 @@
 ---
 id: 1811
 title: "After phase-484 moved source trees into the store, four nightly RTOS port jobs still look for them in-tree or through retired exports"
-status: open
+status: resolved
 type: bug
 area: [ci, build]
 severity: high
 found: 2026-10-11
-related: [phase-484, 1758]
+related: [phase-484, 1758, 1836, 1846, 1847, 1848, 1853]
 ---
 
 ## Measured
@@ -213,3 +213,30 @@ would save this job a download on every run.
 
 The same run also showed a router start failure in the ci-image board job:
 `rmw_zenohd ... logging system isn't initialized`. That is issue 1853.
+
+## Resolution (2026-10-13)
+
+Both acceptance conditions are met on `main`:
+
+- **All four ports build.** The dispatched nightly 38251102237
+  (`199f34afbd`) passed every port job (`freertos`, `nuttx`, `qemu`,
+  `threadx_linux`, `threadx_riscv64`) and every Zephyr 3.7 and 4.4 cell.
+  The FreeRTOS e2e passed `realtime_tiers` (PR #2049), and the NuttX e2e
+  passed 9/9 once issue 1836 was fixed.
+- **The live-peer board jobs get past setup and run their cells.** In
+  live-peer 38308680086 (`d6eccb3696`, after PR #2069), the Zephyr board job
+  installed SDK 0.16.8 and built `zephyr/mps2_an385/c/talker/zenoh`. Its two
+  recorded cells passed: `pubsub_zephyr_cortex_m_ros2_interop_e2e` and
+  `qos_zephyr_ros2_interop_e2e`. The ci-image board job also reached its
+  cells.
+
+Defects found on the way, filed separately:
+
+- issue 1836: NuttX Rust images dropped the deploy locator.
+- issues 1847/1848: the census prepass built offline against a cold cache.
+- issue 1846: the live-peer host job fills its runner disk.
+- issue 1853: the ci-image job's `rmw_zenohd` exits before listening. It
+  failed the same way again in run 38308680086.
+
+The last two keep live-peer red, but neither is about where a port finds its
+sources.
