@@ -64,7 +64,9 @@ build-one example rmw="zenoh" board="native_sim/native/64":
     source scripts/build/zephyr-toolchain.sh
     export ZEPHYR_TOOLCHAIN_VARIANT="$(nros_zephyr_toolchain_variant "{{board}}")"
     # issue 1811 — the SDK this Zephyr tree pins, not the registry's highest.
-    _sdk_env="$(nros_zephyr_sdk_env "{{board}}" "$workspace/zephyr")"
+    if ! _sdk_env="$(nros_zephyr_sdk_env "{{board}}" "$workspace/zephyr")"; then
+        exit 1
+    fi
     [ -n "$_sdk_env" ] && export "$_sdk_env"
     # Host codegen tool — nros_generate_interfaces() needs it (version-independent).
     nros_cargo_ensure_codegen_c
