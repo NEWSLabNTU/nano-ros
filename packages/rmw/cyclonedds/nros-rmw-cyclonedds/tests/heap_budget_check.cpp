@@ -84,7 +84,7 @@ int main() {
     //
     // No budget is defined here, so the image-level predicate is silent. That
     // is the state every existing image is in until a board states
-    // `[board.knobs.memory] heap_bytes`, and it must stay a no-op.
+    // `[knobs.memory] heap_bytes`, and it must stay a no-op.
     check(!kHeapBudgetStated, "this TU states no budget");
     check(!heap_budget_is_short(), "an image with no stated budget is never refused");
     check(kRequiredHeapBytes == need, "the image constant is the formula at its own knobs");

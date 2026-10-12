@@ -161,7 +161,7 @@ fn every_stated_executor_backing_meets_the_measured_default() {
                         let is_board_toml = conf.ends_with("nros-board.toml");
                         let (key, remedy) = if is_board_toml {
                             (
-                                "[board.knobs.executor] backing_u64s".to_string(),
+                                "[knobs.executor] backing_u64s".to_string(),
                                 format!(
                                     "Restate it as {default}; the pool subtracts the same \
                                      rung, so there is nothing else to edit."

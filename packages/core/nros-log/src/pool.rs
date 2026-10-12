@@ -39,7 +39,7 @@ use crate::Logger;
 /// The `NROS_LOG_DYNAMIC_LOGGERS` knob, resolved once by `build.rs` on the
 /// RFC-0049 ladder: the environment (which is where an image's
 /// `[image.<id>] env` lands) > Kconfig `CONFIG_NROS_LOG_DYNAMIC_LOGGERS` /
-/// the board's `[board.knobs.log] dynamic_loggers` > 16. Linux host boards
+/// the board's `[knobs.log] dynamic_loggers` > 16. Linux host boards
 /// state 32; MCU boards keep 16. `0` declines the arena entirely (creation
 /// always fails, lookup still works), which is the right build for an image
 /// whose loggers are all `static`.

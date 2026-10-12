@@ -1145,7 +1145,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // `nano_ros_entry()` passes it to the descriptor producer as
                 // `--heap-budget-bytes`, so `[target] heap_budget_bytes` is
                 // stated and Cyclone's D11 boot check is armed on this road.
-                // Absent when the board states no `[board.knobs.memory]
+                // Absent when the board states no `[knobs.memory]
                 // heap_bytes`, which keeps the field REFUSED -- "nobody said".
                 a.push(board_heap_configure_arg(
                     descriptor,
@@ -3569,7 +3569,7 @@ fn entries_for_other_boards(
 /// launch file (`<bringup>/launch/<stem>.contract.yaml`), folded into the
 /// resolved SystemModel — which is where phase-412 already put the statement of
 /// what an image creates when it retired the `ENTITIES` argument.
-/// `[board.knobs.memory] heap_bytes` for the board this image names.
+/// `[knobs.memory] heap_bytes` for the board this image names.
 ///
 /// The RFC-0049 board rung, read off the descriptor's own file. The leaf road
 /// reaches the same number through `NROS_BOARD_TOML`, which `board_facts`
@@ -3605,7 +3605,7 @@ fn board_heap_budget(
 /// Issue 1653 — the BOARD heap as a configure argument, for the two drivers
 /// whose configure line `nros build` writes (cmake, and west's cmake zone).
 ///
-/// `-DNROS_BOARD_HEAP_BUDGET_BYTES=<n>` when the board states `[board.knobs.memory]
+/// `-DNROS_BOARD_HEAP_BUDGET_BYTES=<n>` when the board states `[knobs.memory]
 /// heap_bytes`; the configure never reads the board file itself (RFC-0064 R5 D4).
 /// ONE spelling for both arms: the west arm had none, which is the half issue
 /// 1653 left open.
@@ -6049,7 +6049,7 @@ mod board_heap_tests {
              entry_kind = \"hosted-main\"\nsupported_netstacks = []\n",
         );
         if let Some(h) = heap {
-            text.push_str(&format!("[board.knobs.memory]\nheap_bytes = {h}\n"));
+            text.push_str(&format!("[knobs.memory]\nheap_bytes = {h}\n"));
         }
         std::fs::write(dir.join("nros-board.toml"), text).unwrap();
         std::fs::write(

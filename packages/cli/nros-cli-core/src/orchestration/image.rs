@@ -184,7 +184,7 @@ pub struct ImageBlock {
     /// `build/<image>/nros-cargo.toml` WITHOUT `force`, so a lane that exports
     /// the variable still wins.
     ///
-    /// Board facts belong in the board descriptor's `[board.knobs]`, not here:
+    /// Board facts belong in the board descriptor's `[knobs]`, not here:
     /// this is for a number that differs between two images of the SAME board.
     /// The ONE reader is `nros_orchestration_ir::leaf_system`, the same reader
     /// that answers for the deployment identity beside it.

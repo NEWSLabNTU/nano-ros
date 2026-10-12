@@ -5708,7 +5708,7 @@ pub fn build_rosout_talker() -> TestResult<&'static Path> {
 
 /// phase-479 W5 (RFC-0102 D5) — resolve the prebuilt `log-arena-probe`
 /// fixture binary (`packages/testing/nros-tests/bins/log-arena-probe`). Built
-/// for the `native` board (which states `[board.knobs.log] dynamic_loggers`)
+/// for the `native` board (which states `[knobs.log] dynamic_loggers`)
 /// with an `[image.native] env` that states `NROS_LOG_DYNAMIC_LOGGERS`, so the
 /// capacity it reports says which rung won. Consumed by
 /// `tests/log_arena_knob.rs`. Own Cargo workspace, built through its leaf's

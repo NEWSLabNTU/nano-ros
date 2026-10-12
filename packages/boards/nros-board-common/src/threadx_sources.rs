@@ -157,7 +157,7 @@ pub fn add_threadx_hooks_source(build: &mut cc::Build) {
 ///
 /// # Why it is resolved here and not passed in
 ///
-/// The number has exactly one home — `[board.knobs.executor] backing_u64s` in
+/// The number has exactly one home — `[knobs.executor] backing_u64s` in
 /// the board's `nros-board.toml`, plus the `NROS_EXECUTOR_BACKING_U64S` env
 /// front-end that outranks it (RFC-0049). Both readers walk the same ladder
 /// through `BuildRungs`, so they cannot disagree. Writing the subtrahend down a

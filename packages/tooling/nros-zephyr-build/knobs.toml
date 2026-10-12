@@ -6,7 +6,7 @@
 #            only where today's symbol differs; no Kconfig symbol is renamed
 #            (phase-481 owns them). The zenoh pools read the RMW-agnostic
 #            DEMAND symbol, which is why the id is not the Kconfig stem.
-#   TOML     `[knobs.<toml>]` — the `[board.knobs]` / platform key, where one exists
+#   TOML     `[knobs.<toml>]` — the board / platform key, where one exists
 #
 # Edit here, then run `python3 scripts/gen-knob-registry.py`; the generated
 # Rust beside it is checked by `just check knob-registry`.
@@ -441,7 +441,7 @@ past the capacity falls back to the parent logger and warns once.
 
 Size it from a measurement: the boot report records the slots in use
 against this capacity, and `just mem-report` prices the arenas.
-A board states its own default in [board.knobs.log] dynamic_loggers;
+A board states its own default in [knobs.log] dynamic_loggers;
 this Kconfig value outranks it, and the environment outranks both.
 '''
 

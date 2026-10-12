@@ -498,8 +498,14 @@ impl BuildRungs {
         let board_name = env.board.filter(|s| !s.is_empty());
 
         let board = env.board_toml.filter(|s| !s.is_empty()).map(|raw| {
-            BoardKnobsFile::load_for_board(Path::new(&raw), board_name.as_deref())
-                .unwrap_or_else(|e| panic!("NROS_BOARD_TOML={raw}: {e}"))
+            let file = BoardKnobsFile::load_for_board(Path::new(&raw), board_name.as_deref())
+                .unwrap_or_else(|e| panic!("NROS_BOARD_TOML={raw}: {e}"));
+            // RFC-0103 D6 — a descriptor still on `[board.knobs]` is read, and
+            // says so once per build script.
+            if let Some(notice) = file.deprecation_notice() {
+                emit(format!("cargo:warning=nros: {raw}: {notice}"));
+            }
+            file
         });
 
         let search = build_search_path();
@@ -1672,9 +1678,10 @@ pub enum ConfigError {
         path: String,
         boards: String,
     },
-    /// phase-445 W2 — a file states knobs both at the top level and under a
-    /// `[[board]]`. Two rungs in one file for the same board, with no rule for
-    /// which wins, is refused rather than merged.
+    /// phase-445 W2 / RFC-0103 D6 — a file states knobs both at the top level
+    /// (`[knobs]`, canonical) and under a `[[board]]` (the legacy
+    /// `[board.knobs]`). Two rungs in one file for the same board, with no rule
+    /// for which wins, is refused rather than merged.
     BoardKnobsStatedTwice {
         path: String,
     },
@@ -1739,9 +1746,9 @@ impl std::fmt::Display for ConfigError {
             ),
             ConfigError::BoardKnobsStatedTwice { path } => write!(
                 f,
-                "{path}: states `[knobs]` at the top level AND `[board.knobs]` under a board. \
-                 The board rung is `[board.knobs]` (the CLI refuses a top-level `[knobs]`); \
-                 move the top-level table under the board."
+                "{path}: states `[knobs]` at the top level AND the legacy `[board.knobs]` under \
+                 a board. The board rung is the top-level `[knobs]` (RFC-0103 D6); move the \
+                 `[board.knobs]` table there."
             ),
             ConfigError::UnknownTransport {
                 platform,
@@ -3103,8 +3110,17 @@ pub struct BoardKnobsFile {
     /// parser for one file. Only what a BUILD SCRIPT has to know is named.
     #[serde(default, rename = "board")]
     pub boards: Vec<BoardEntryFacts>,
+    /// RFC-0103 D6 — the board rung of the RFC-0049 ladder, spelled `[knobs]`
+    /// at the top level: the file kind says the owner, and it applies to every
+    /// `[[board]]` the file declares. After [`Self::load_for_board`] this also
+    /// holds a selected legacy `[board.knobs]` (see [`Self::legacy_board_knobs`]).
     #[serde(default)]
     pub knobs: Knobs,
+    /// Set by [`Self::parse_for_board`] when [`Self::knobs`] came from the
+    /// DEPRECATED per-entry `[board.knobs]` spelling, read until phase-484 W8.
+    /// [`Self::deprecation_notice`] is what a reader prints.
+    #[serde(skip)]
+    pub legacy_board_knobs: bool,
     // The rest of nros-board.toml (board descriptor tables) is ignored
     // here — parsed by the board registry, not the knob ladder.
     #[serde(flatten)]
@@ -3123,19 +3139,18 @@ pub struct BoardEntryFacts {
     /// fact somebody declared.
     #[serde(default)]
     pub capabilities: BTreeMap<String, bool>,
-    /// phase-445 W2 — `[board.knobs]`, the board rung of the RFC-0049 ladder.
+    /// phase-445 W2 — `[board.knobs]`, the LEGACY spelling of the board rung
+    /// (RFC-0103 D6 moved it to a top-level `[knobs]`; this is read, with a
+    /// deprecation, until phase-484 W8).
     ///
     /// Held RAW and typed only once selected ([`BoardKnobsFile::load_for_board`]
     /// hoists it into [`BoardKnobsFile::knobs`], which every consumer reads).
     /// Raw because two entries are compared for AGREEMENT when no board is
     /// named, and `Knobs` has no equality.
     ///
-    /// Why under the board and not at the top level: the CLI's `BoardFile`
-    /// denies a top-level `[knobs]`, so until this field existed NO shipped
-    /// descriptor could carry a knob at all — the top-level table this reader
-    /// already parsed was unreachable from the one file format that has to
-    /// load. Per-board for the same reason as issue 1143's capabilities: a
-    /// file may declare several boards.
+    /// Why it was under the board: the CLI's `BoardFile` used to deny a
+    /// top-level `[knobs]`. RFC-0103 D6 reversed that — the file kind already
+    /// says who owns the section, so the board prefix restated it.
     #[serde(default)]
     pub knobs: Option<toml::Value>,
     /// phase-484 W4b (RFC-0103 D1) — `[board.net]`, the board's own network
@@ -3369,8 +3384,10 @@ impl BoardKnobsFile {
     /// Load a board file and resolve its knob rung for `board` (`NROS_BOARD`).
     ///
     /// [`Self::knobs`] is the one field every consumer reads. It comes from the
-    /// selected entry's `[board.knobs]`; a top-level `[knobs]` (an out-of-tree
-    /// file the CLI never loads) is still honoured when no board states any.
+    /// top-level `[knobs]` (RFC-0103 D6, applies to every `[[board]]`), or —
+    /// deprecated, until phase-484 W8 — from the selected entry's
+    /// `[board.knobs]`, which sets [`Self::legacy_board_knobs`]. A file stating
+    /// both is refused.
     pub fn load_for_board(path: &Path, board: Option<&str>) -> Result<Self, ConfigError> {
         let text = fs::read_to_string(path).map_err(|e| ConfigError::Io {
             path: path.display().to_string(),
@@ -3391,20 +3408,42 @@ impl BoardKnobsFile {
             source,
         };
         let mut file: Self = toml::from_str(text).map_err(parse)?;
+        let top_level = text
+            .parse::<toml::Table>()
+            .map(|t| t.contains_key("knobs"))
+            .unwrap_or(false);
+        let legacy = file.boards.iter().any(|b| b.knobs.is_some());
+        if top_level && legacy {
+            return Err(ConfigError::BoardKnobsStatedTwice {
+                path: path.to_string(),
+            });
+        }
         if let Some(raw) = file.select_board_knobs(board, path)? {
-            let top_level = text
-                .parse::<toml::Table>()
-                .map(|t| t.contains_key("knobs"))
-                .unwrap_or(false);
-            if top_level {
-                return Err(ConfigError::BoardKnobsStatedTwice {
-                    path: path.to_string(),
-                });
-            }
             file.knobs = raw.try_into().map_err(parse)?;
+            file.legacy_board_knobs = true;
         }
         Ok(file)
     }
+
+    /// The deprecation a reader prints when this file used the legacy
+    /// `[board.knobs]` spelling, in the knob registry's own words
+    /// (`DEPRECATION_TEMPLATE`, the sentence a legacy env spelling gets).
+    /// `None` for a file on the canonical `[knobs]`.
+    #[must_use]
+    pub fn deprecation_notice(&self) -> Option<String> {
+        self.legacy_board_knobs.then(board_knobs_deprecation_notice)
+    }
+}
+
+/// RFC-0103 D6 — the one sentence both board-descriptor parsers print for the
+/// legacy `[board.knobs]` spelling: the knob registry's
+/// [`nros_zephyr_build::DEPRECATION_TEMPLATE`], so a section and an env
+/// variable are retired in the same words.
+#[must_use]
+pub fn board_knobs_deprecation_notice() -> String {
+    nros_zephyr_build::DEPRECATION_TEMPLATE
+        .replace("{legacy}", "`[board.knobs]`")
+        .replace("{env}", "`[knobs]` (top level, RFC-0103 D6)")
 }
 
 #[cfg(test)]
@@ -3431,7 +3470,7 @@ mod board_capability_tests {
         assert!(f.capabilities.is_empty());
     }
 
-    /// phase-445 W2 — `[board.knobs]` IS the board rung: a single-board file
+    /// phase-445 W2 — the LEGACY `[board.knobs]` is still the board rung: a single-board file
     /// needs no name, and the value lands in `knobs`, where every consumer
     /// (`BuildRungs::*_rungs`, `nros config explain`, zpico's runner) reads.
     #[test]
@@ -3447,6 +3486,49 @@ mod board_capability_tests {
         // this board's — `file()` is the raw parse with no selection.
         let raw = file("[[board]]\nnames = [\"e\"]\n\n[board.knobs.net]\nmax_udp_sockets = 2\n");
         assert_eq!(raw.knobs.net.max_udp_sockets, None);
+    }
+
+    /// RFC-0103 D6 — the canonical spelling is a top-level `[knobs]`, which
+    /// applies to EVERY `[[board]]` in the file and is not a deprecation.
+    #[test]
+    fn top_level_knobs_are_the_canonical_board_rung() {
+        let text = "[[board]]\nnames = [\"a\"]\n\n[[board]]\nnames = [\"b\"]\n\n\
+                    [knobs.net]\nmax_udp_sockets = 4\n";
+        for board in [None, Some("a"), Some("b")] {
+            let f = BoardKnobsFile::parse_for_board(text, board, "t").expect("parse");
+            assert_eq!(f.knobs.net.max_udp_sockets, Some(4), "{board:?}");
+            assert!(!f.legacy_board_knobs);
+            assert_eq!(f.deprecation_notice(), None);
+        }
+    }
+
+    /// The legacy `[board.knobs]` is still READ, and says so: the notice names
+    /// the canonical `[knobs]` and the phase that retires it.
+    #[test]
+    fn legacy_board_knobs_are_read_with_a_deprecation() {
+        let f = BoardKnobsFile::parse_for_board(
+            "[[board]]\nnames = [\"e\"]\n\n[board.knobs.net]\nmax_udp_sockets = 2\n",
+            None,
+            "t",
+        )
+        .expect("parse");
+        assert_eq!(f.knobs.net.max_udp_sockets, Some(2));
+        let notice = f.deprecation_notice().expect("legacy spelling must warn");
+        assert!(notice.contains("`[board.knobs]`"), "{notice}");
+        assert!(notice.contains("`[knobs]`"), "{notice}");
+        assert!(notice.contains("W8"), "{notice}");
+    }
+
+    /// A typo under the canonical table fails naming the key.
+    #[test]
+    fn a_misspelled_top_level_knob_is_an_error() {
+        let err = BoardKnobsFile::parse_for_board(
+            "[[board]]\nnames = [\"e\"]\n[knobs.net]\nmax_udp_sokets = 2\n",
+            None,
+            "t",
+        )
+        .expect_err("typo must not parse");
+        assert!(err.to_string().contains("max_udp_sokets"), "{err}");
     }
 
     /// Several boards that differ are selected by name, and REFUSED unnamed.
@@ -3486,6 +3568,18 @@ mod board_capability_tests {
             "[knobs.net]\nmax_udp_sockets = 1\n\n[[board]]\nnames = [\"e\"]\n\
              [board.knobs.net]\nmax_udp_sockets = 2\n",
             None,
+            "t",
+        )
+        .expect_err("two rungs in one file");
+        assert!(
+            matches!(err, ConfigError::BoardKnobsStatedTwice { .. }),
+            "{err}"
+        );
+        // Also when the legacy table sits on an entry the build did not select.
+        let err = BoardKnobsFile::parse_for_board(
+            "[knobs.net]\nmax_udp_sockets = 1\n\n[[board]]\nnames = [\"a\"]\n\n\
+             [[board]]\nnames = [\"b\"]\n[board.knobs.net]\nmax_udp_sockets = 2\n",
+            Some("a"),
             "t",
         )
         .expect_err("two rungs in one file");

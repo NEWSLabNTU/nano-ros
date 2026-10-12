@@ -320,7 +320,7 @@ impl RegistrationPath {
 /// capacities themselves — `MAX_STRING_VALUE_LEN`, `MAX_ARRAY_LEN`,
 /// `MAX_BYTE_ARRAY_LEN` — are deliberately NOT in `[params]`, and putting them
 /// there is the change a future reader will want to make. They are RFC-0100 D1
-/// **target** facts, owned by the board descriptor's `[board.knobs.params]`,
+/// **target** facts, owned by the board descriptor's `[knobs.params]`,
 /// because an MCU and a PC want different string lengths for the same node. A
 /// contract can only say whether a capacity is needed AT ALL; the number is the
 /// board's, and the build refuses when the board states none. So the image

@@ -1,8 +1,8 @@
 # Phase 484 -- one owner per fact: resource locations and configuration
 
 **Status (2026-10-12).** W0, W1, W3, W4 (but W4b-2), W6 and W7a/W7b landed; W2
-has four leftovers; W5a in progress (slices 1-6; `[board.knobs]` →
-`[knobs]` left); W5b (folded in from phase-481) measured and built — M1 red
+has four leftovers; W5a in progress (slices 1-6 and `[board.knobs]` →
+`[knobs]` done); W5b (folded in from phase-481) measured and built — M1 red
 so choices/endpoint/domain stay in the fragment; W8 waits on a release. Implements
 [RFC-0103](../design/0103-one-owner-per-fact.md). Tracks issues
 [1767](../issues/1767-resource-location-resolved-many-ways.md) and
@@ -646,8 +646,12 @@ spellings because it only matches a literal first argument.
   omission, for the fragment's rows only; once knobs become prompt-less
   defaults the `-D` is a Kconfig error again, and the channel is what replaces
   it.
-- `[board.knobs]` → `[knobs]` rides W5a (the descriptor parser already refuses
-  both at once).
+- ~~`[board.knobs]` → `[knobs]` rides W5a.~~ Done: the top-level `[knobs]` is
+  the canonical board rung in both parsers (typed, every `[[board]]` in the
+  file), the five tracked descriptors moved, `[board.knobs]` is read with the
+  registry's deprecation sentence until W8, a file stating both is refused,
+  and `no_in_tree_board_descriptor_uses_legacy_board_knobs` keeps it out of
+  the tree.
 
 **W5a progress.** Slice 1 (#1961): `nros-zephyr-build/knobs.toml`, 86 rows,
 generated into `KNOBS` + a derived `KCONFIG_PAIRS`; `knob()` reads every
@@ -935,7 +939,9 @@ verb's answer is used as given.
   names one". Same pass for the other aliases this phase keeps:
   `ZENOH_LOCATOR` (runtime alias of `NROS_LOCATOR`), the `ZPICO_SMOLTCP_*`
   knob aliases, the env-spelled `[image.<id>] env` knob rows W5 keeps until
-  W5b lands.
+  W5b lands. And the legacy `[board.knobs]` section spelling: both descriptor
+  parsers (`BoardKnobsFile::parse_for_board`, the CLI's `BoardFile::parse`)
+  stop accepting it and refuse it naming `[knobs]`.
 - ~~Issue 1768 (census classifier + fail on UNCLASSIFIED).~~ Done (W7a): the `linker-script` role knows `link_script!`; gate `build-wiring-classified`.
 - `canonical-build-path.md`, the book's configuration and getting-started
   pages, CLAUDE.md pointers.

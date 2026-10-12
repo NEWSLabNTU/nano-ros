@@ -1780,15 +1780,19 @@ pub fn run() {
     // (`nros board-facts`) and names WHICH `[[board]]` when a file declares
     // several — `packages/boards/nros-board-nuttx` declares two that differ in
     // ISA, so a file-level answer would be issue 0606 one table over. Read
-    // BEFORE the load: phase-445 W2 made `[board.knobs]` per-entry, so the knob
+    // BEFORE the load: phase-445 W2 made the legacy `[board.knobs]` per-entry, so the knob
     // rung needs the name as much as the capabilities below do.
     println!("cargo:rerun-if-env-changed=NROS_BOARD");
     let board_name = env_get("NROS_BOARD");
     let board_knobs = env_get("NROS_BOARD_TOML").map(|path| {
         let p = PathBuf::from(&path);
         println!("cargo:rerun-if-changed={}", p.display());
-        platform_config::BoardKnobsFile::load_for_board(&p, board_name.as_deref())
-            .unwrap_or_else(|e| panic!("{path}: {e}"))
+        let file = platform_config::BoardKnobsFile::load_for_board(&p, board_name.as_deref())
+            .unwrap_or_else(|e| panic!("{path}: {e}"));
+        if let Some(notice) = file.deprecation_notice() {
+            println!("cargo:warning=nros: {path}: {notice}");
+        }
+        file
     });
     let tx_knobs = match (&platforms_tree, platform_name) {
         (Some(tree), Some(name)) => {

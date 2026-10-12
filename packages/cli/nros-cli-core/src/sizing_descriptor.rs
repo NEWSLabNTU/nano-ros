@@ -369,7 +369,7 @@ pub struct DescriptorInputs<'a> {
     pub target_triple: Option<String>,
     /// Is the target the host? Decides whether an absent triple is an answer.
     pub host_build: bool,
-    /// `[board.knobs.memory] heap_bytes`, the RFC-0049 board rung.
+    /// `[knobs.memory] heap_bytes`, the RFC-0049 board rung.
     pub heap_budget_bytes: Option<usize>,
     /// The entry's language, for the registration path.
     pub language: Option<EntryLanguage>,
@@ -502,7 +502,7 @@ fn target_facts(inputs: &DescriptorInputs<'_>) -> Target {
     if inputs.heap_budget_bytes.is_none() {
         t.refuse(
             "heap_budget_bytes",
-            "the board states no `[board.knobs.memory] heap_bytes`, so there is no budget to \
+            "the board states no `[knobs.memory] heap_bytes`, so there is no budget to \
              assert against (RFC-0100 D11)",
         );
     }
@@ -2015,7 +2015,7 @@ pub struct ModelImage<'a> {
     pub target_triple: Option<String>,
     /// Is the target the host? Decides whether an absent triple is an answer.
     pub host_build: bool,
-    /// `[board.knobs.memory] heap_bytes`, when this road knows it.
+    /// `[knobs.memory] heap_bytes`, when this road knows it.
     pub heap_budget_bytes: Option<usize>,
     /// The backend this image links, when the image names one.
     pub rmw: Option<String>,
@@ -2685,7 +2685,7 @@ fn backend_dispatch(rmw: &str) -> Option<BackendDispatch> {
     }
 }
 
-/// `[board.knobs.memory] heap_bytes`, the RFC-0049 board rung.
+/// `[knobs.memory] heap_bytes`, the RFC-0049 board rung.
 ///
 /// Read through the board's own descriptor, which `board_facts` has already
 /// located as `NROS_BOARD_TOML` — so this does not re-discover the board and
@@ -4538,7 +4538,7 @@ mod tests {
     /// looked and found nothing" — so the three literals stand.
     ///
     /// The heap budget is the exception and is NOT a refusal leaking through:
-    /// it is the BOARD's `[board.knobs.memory] heap_bytes`, which this road
+    /// it is the BOARD's `[knobs.memory] heap_bytes`, which this road
     /// does have. It is asserted rather than excluded, because a test that
     /// only said "empty" would also pass if the board rung stopped travelling.
     ///

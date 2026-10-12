@@ -35,8 +35,8 @@
 #      name is ANSWERED and the two roads name ONE descriptor instead of two.
 #
 # esp32's two real hardware budgets are BOARD facts and already sit at the
-# board rung — `[board.knobs.net] max_udp_sockets` and
-# `[board.knobs.executor] arena_size` in `nros-board-esp32-qemu/nros-board.toml`
+# board rung — `[knobs.net] max_udp_sockets` and
+# `[knobs.executor] arena_size` in `nros-board-esp32-qemu/nros-board.toml`
 # (phase-445 W2/W6). The platform rung has nothing left to add for it.
 names = ["bare-metal", "esp32"]
 

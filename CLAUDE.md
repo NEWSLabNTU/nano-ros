@@ -1373,7 +1373,7 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   check-board-projections`, the `board-projections` gate, and CLAUDE.md's own "never commit
   the sidecar include line" rule — a rule that had already been broken twice, which is what
   a rule guarding a generated file in git looks like. Where a leaf `[env]` row goes now:
-  a hardware budget → the board descriptor's `[board.knobs]`; a link-set choice →
+  a hardware budget → the board descriptor's `[knobs]`; a link-set choice →
   `[image.<id>] transport = "serial"`, which IMPLIES `ZPICO_NO_SMOLTCP=1` + `NROS_LINK_IP=0`;
   a knob only this image wants → **`[image.<id>] env`, the RFC-0049 APP rung**; a pool the
   declarations answer → nothing, it is derived. Gates: `check-example-cargo-dirs` (no tracked

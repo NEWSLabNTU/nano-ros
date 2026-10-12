@@ -149,7 +149,7 @@ pub struct SizingDescriptorArgs {
     #[arg(long)]
     pub host_build: bool,
 
-    /// `--from-model`: `[board.knobs.memory] heap_bytes`, when the caller knows it.
+    /// `--from-model`: `[knobs.memory] heap_bytes`, when the caller knows it.
     #[arg(long, value_name = "BYTES")]
     pub heap_budget_bytes: Option<usize>,
 

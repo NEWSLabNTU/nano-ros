@@ -122,7 +122,7 @@ BELOW the lane front-end. A C/C++ leaf's rows ride the same unforced `[env]` as
 a `--config` file on every cargo command its cmake configure spawns (issue
 1712); the Zephyr west road does not deliver them (issue 1721).
 
-Reach for `[board.knobs]` first. The test is not "is it a number" but **does it
+Reach for `[knobs]` first. The test is not "is it a number" but **does it
 differ between two images of the same board**: the esp32 executor arena is the
 same on every image because the DRAM is, so it is a board fact;
 `ZPICO_SUBSCRIBER_LARGE_SIZE` differs between the esp32 talker (whose pool the
@@ -394,7 +394,7 @@ configuration is non-empty:
 
 Per-image configuration is supported because it is real: images on different
 platforms routinely want different logging and feature sets. Where a value
-must be the same for every image, it belongs on the board (`[board.knobs]`) or
+must be the same for every image, it belongs on the board (`[knobs]`) or
 the platform — one file, not one statement per image.
 
 ## Amendment — D1 follows RFC-0103, D6 reaches single-package leaves (2026-10-11)

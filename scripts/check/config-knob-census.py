@@ -373,7 +373,7 @@ KNOB_CLASS = {
         "DERIVED by phase-454 W6.c from codegen's schema walk (RFC-0100 [types]); "
         "forwarded to the C++ TUs, which cannot read cargo's [env] themselves",
     ),
-    # RFC-0100 D11 — the board's `[board.knobs.memory] heap_bytes`, carried to
+    # RFC-0100 D11 — the board's `[knobs.memory] heap_bytes`, carried to
     # the one backend that allocates everything. A FACT the ladder resolves
     # against, not a knob it resolves: nobody tunes it here, the board states it.
     "NROS_CYCLONEDDS_HEAP_BUDGET_BYTES": (

@@ -1,6 +1,6 @@
 # phase-479 W5 (RFC-0102 D5) — the acceptance fixture for NROS_LOG_DYNAMIC_LOGGERS.
 #
-# The `native` board states `[board.knobs.log] dynamic_loggers = 32`
+# The `native` board states `[knobs.log] dynamic_loggers = 32`
 # (packages/boards/linux/nros-board.toml). This image states 24 through the
 # RFC-0049 APP rung, which must win, and `tests/log_arena_knob.rs` asserts the
 # capacity the built binary reports. 24 is deliberately neither the board's
