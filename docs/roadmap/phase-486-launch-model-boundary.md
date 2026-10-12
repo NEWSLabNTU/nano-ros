@@ -196,7 +196,7 @@ changes.
   one without a re-resolve) and `model_location::ensure_model` (the
   proc-macro, `nros-build` and the CLI's own resolves), on its resolve and
   fresh paths.
-- **Agreement:** `overlay_agrees_with_model_projection` compares the overlay
+- **Agreement:** `overlay_agrees_with_model_projection` (renamed at W7, see below) compared the overlay
   with rlm's own `parse_system_config` + `apply_to_launch` +
   `lifecycle_autostart` for every tracked `system.toml`. It passes, with 3 of
   them stating something. Mutation: dropping the lifecycle read turns it red.
@@ -368,6 +368,37 @@ fixture is byte-identical except for the removed fields; a nano-ros
 carry `features`, and nothing in nano-ros noticed. Tier 2 run
 (`just build-test-fixtures lane=tier2` + `just ci matrix`), since codegen and
 cmake inputs moved.
+
+### W7 result (2026-10-12)
+
+- **Step 1 was already done upstream:** play_launch `main` (`15258108`) pins
+  rlm `v0.1.56` (its phase 86 W5, `af13c3b7`).
+- **One commit moves both:** rlm `v0.1.40` → `v0.1.56` in the four manifests
+  that name it and all twelve locks (four packages each, version and source
+  only; the two NuttX FFI locks were edited to the same lines by hand, since
+  their `libc` patch source lives in an uninitialised submodule), and the
+  `play_launch` pin `d23720c7` → `15258108`, a fast-forward. Registry pin set:
+  0 pins moved.
+- **API absorbed:** one site. A contract's `Trigger::Timer` gained `jitter`
+  (`v0.1.49`, play_launch phase85-D1); `entity_census` counts timers by
+  `rate_hz` and now says `..`. No nano-ros reader takes a timer's release
+  jitter yet; a contract stating one is accepted and the value is unused. `ParamValue::StrList`,
+  `ScopeInfo.ns` and `NodeInstance.on_exit` broke nothing: every nano-ros
+  literal already ends in `..Default::default()`.
+- **W1's agreement test is repurposed**, since rlm no longer projects the
+  switches it compared against: `overlay_is_the_only_home_of_the_switches`
+  asserts that rlm's own `apply_to_launch` writes NO `execution.features` for
+  any tracked `system.toml`, that the overlay still states the switches of
+  the bringups that have them, and that the lifecycle default agrees with
+  rlm's `lifecycle_autostart()` while it exists (W8 deletes it).
+- **Byte-identical to W4's, measured:** W4's CLI with its resolver vs this
+  CLI with the new one, each resolving its OWN models (91 per side, all
+  paired; every new model is schema 2 and none carries `features`):
+  `entity-facts` 126/126, `entity-inventory` 91/91, `sizing-descriptor
+  --from-model` 91/91, typed C entries 89/89, typed C++ entries 89/89; the
+  rest error identically on both sides (4 facts, 2+2 entries). The lifecycle
+  autostart those entries emit now comes from the overlay alone: the new
+  resolver projects `[lifecycle]` onto no node (play_launch phase 86 W0).
 
 ## W8 — retirement
 

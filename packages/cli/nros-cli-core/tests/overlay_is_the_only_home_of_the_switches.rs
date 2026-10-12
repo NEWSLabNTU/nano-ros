@@ -1,11 +1,14 @@
-//! phase-486 W1 — the nano-ros overlay (`nros.toml`) states exactly what rlm
-//! projects into the SystemModel today, for every tracked `system.toml`.
+//! phase-486 W7 — the capability switches live in the nano-ros overlay
+//! (`nros.toml`) and nowhere else, for every tracked `system.toml`.
 //!
-//! This is W3's safety net: W3 moves every reader from the model's
-//! `execution.features` / lifecycle default to the overlay, and that move is
-//! byte-identical only while the two agree. The comparison is against rlm's
-//! OWN parser and projection (`parse_system_config` + `apply_to_launch` +
-//! `lifecycle_autostart`), never a second spelling of them.
+//! Until rlm `v0.1.55` this test was W1's safety net: the overlay had to state
+//! exactly what rlm projected into `execution.features`, because W3 moved the
+//! readers from one to the other. From `v0.1.55` rlm projects nothing there
+//! (its W6), so the test now asserts that boundary against rlm's OWN parser
+//! and projection (`parse_system_config` + `apply_to_launch`): the model
+//! carries no switch, and the overlay still carries every bringup's. The
+//! lifecycle default is compared with rlm's `lifecycle_autostart()` while that
+//! accessor exists (deleted at W8).
 
 use std::path::{Path, PathBuf};
 
@@ -49,7 +52,7 @@ fn autostart_name(a: Autostart) -> &'static str {
 }
 
 #[test]
-fn overlay_agrees_with_the_model_projection_for_every_tracked_system_toml() {
+fn the_model_carries_no_switch_and_the_overlay_carries_every_bringups() {
     let root = repo_root();
     let files = tracked_system_tomls(&root);
     assert!(
@@ -77,9 +80,7 @@ fn overlay_agrees_with_the_model_projection_for_every_tracked_system_toml() {
         if !overlay.is_empty() {
             stating += 1;
         }
-        if overlay.features != exec.features
-            || overlay.lifecycle_autostart.as_deref() != model_lifecycle
-        {
+        if !exec.features.is_empty() || overlay.lifecycle_autostart.as_deref() != model_lifecycle {
             disagreements.push(format!(
                 "{}: model features {:?} / lifecycle {:?}, overlay {:?} / {:?}",
                 f.strip_prefix(&root).unwrap_or(f).display(),
@@ -92,7 +93,7 @@ fn overlay_agrees_with_the_model_projection_for_every_tracked_system_toml() {
     }
     assert!(
         disagreements.is_empty(),
-        "overlay and model disagree:\n{}",
+        "the model carries a nano-ros switch, or the lifecycle default disagrees:\n{}",
         disagreements.join("\n")
     );
     // The bringups the W0 census names (features, managed, safety) state
