@@ -1555,6 +1555,15 @@ pub struct SourcePackage {
     /// excludes the cross-only trees, `rosidl` among them.
     #[serde(default)]
     pub build_stage: bool,
+    /// Issue 1834 — the tree's own build WRITES into it (NuttX is configured
+    /// and built in place: `.config`, `include/nuttx/config.h`, the
+    /// `nros-nuttx-export-<arch>/` snapshots). `nros_build_paths::locate`
+    /// then does not put the whole tree on a build script's rerun watch —
+    /// cargo takes the newest mtime under a watched directory, so one arch's
+    /// kernel build would re-run every other arch's scripts and read their
+    /// fixtures as stale. Callers watch the files they actually read.
+    #[serde(default)]
+    pub builds_in_place: bool,
     /// Does the build have this ALREADY, from somewhere that is not our
     /// vendored copy?
     ///
@@ -1591,6 +1600,7 @@ impl Default for SourcePackage {
             shallow: true,
             recursive: true,
             build_stage: false,
+            builds_in_place: false,
             check: None,
         }
     }

@@ -885,6 +885,9 @@ pub mod locate {
         /// keeps upstream's version, and its checkout `dest` is where a
         /// contributor's EDIT lives (the local-edit rung).
         pub submodule: bool,
+        /// `builds_in_place = true` (issue 1834): the tree's own build writes
+        /// into it, so [`try_source`] does not watch the whole tree.
+        pub builds_in_place: bool,
     }
 
     /// Which rung answered.
@@ -1242,6 +1245,10 @@ pub mod locate {
                 continue;
             };
             let v = v.trim();
+            if k.trim() == "builds_in_place" {
+                row.builds_in_place = v.split('#').next().map(str::trim) == Some("true");
+                continue;
+            }
             let Some(v) = v.strip_prefix('"').and_then(|v| v.split('"').next()) else {
                 continue;
             };
@@ -1308,7 +1315,15 @@ pub mod locate {
                         println!("cargo:warning={name}: {} — {}", s.rung, s.saw);
                     }
                 }
-                Ok(crate::watch_path(&crate::canonical(&a.path)))
+                // Issue 1834 — a tree its own build writes into is not watched
+                // whole (see `watch_path`: cargo takes the newest mtime under
+                // the path); its callers watch the files they read.
+                let path = crate::canonical(&a.path);
+                if row.builds_in_place {
+                    Ok(path)
+                } else {
+                    Ok(crate::watch_path(&path))
+                }
             }
             Err(r) => {
                 // Watch what an absent copy would become, so provisioning it
@@ -1363,6 +1378,14 @@ location = \"store\"
             let r = row_from_index(INDEX, "rosidl").unwrap();
             assert!(r.in_store && r.env.is_none());
             assert!(row_from_index(INDEX, "nope").is_none());
+        }
+
+        #[test]
+        fn builds_in_place_is_a_bare_bool() {
+            let idx = "[source.nuttx-kernel]\nversion = \"12\"\nbuilds_in_place = true # in place\n\n[source.lwip]\nversion = \"2\"\nbuilds_in_place = false\n";
+            assert!(row_from_index(idx, "nuttx-kernel").unwrap().builds_in_place);
+            assert!(!row_from_index(idx, "lwip").unwrap().builds_in_place);
+            assert!(!row_from_index(INDEX, "zenoh-pico").unwrap().builds_in_place);
         }
 
         #[test]
