@@ -440,7 +440,8 @@ fn typed_emit_rclcpp_shape_constructs_with_handle() {
     // longer exists stays GREEN while every generated entry fails to
     // compile. Both directions are pinned here.
     assert!(src.contains("#include <new> // placement-new into the component arena slot"));
-    assert!(src.contains("#include <nros/nros.hpp>"));
+    assert!(src.contains("#include <rclcpp/rclcpp.hpp>"));
+    assert!(!src.contains("<nros/nros.hpp>"));
     assert!(
         !src.contains("component_node.hpp"),
         "the rclcpp entry must not include the DELETED component_node.hpp"
