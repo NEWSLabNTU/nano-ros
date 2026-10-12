@@ -1,8 +1,24 @@
 # Phase 467 — the last thirteen `gap` rows: a design study, not an implementation
 
 **Number shared until 2026-10-12** with the board-files phase, now
-[phase-496](archived/phase-496-board-files-state-board-facts.md). An older `phase-467 W1` or
+[phase-496](phase-496-board-files-state-board-facts.md). An older `phase-467 W1` or
 `W2` reference means that doc; this study's references are by `Row` and `Q`.
+
+**Status (2026-10-13). CLOSED and archived: the ledger holds no `gap` row.**
+Every row in `docs/reference/api-parity-ledger/*.json` now has a final
+verdict (1,161 extension, 1,040 divergence, 723 declined, 45 rename, 7
+their-rename). The four rows the 2026-09-28 line left open went as follows:
+
+- `c:logging_rosout_enabled` became `divergence` / `adopt` with issue 1589: the
+  function is present with upstream's name and signature.
+- `rust:init_with_args` became `divergence` / `adopt-bounded` in phase-482 W5
+  (2026-10-07): `-p`, `--param` and `--params-file` are honoured when `nros`
+  has `param-services`.
+- `cpp:Client::wait_for_service` became `divergence` / `refuse-loud`
+  (2026-09-28, closing what phase-456 W9 recorded).
+- `c:lifecycle_change_state` is `divergence`. It had shipped with issue 1587
+  (#1587 in the table below), so the 2026-09-28 line was wrong to list Row 9
+  as left; only three of its four rows were.
 
 **Status (AMENDED 2026-09-28). THE STUDY WAS EXECUTED. Eight of the thirteen
 rows have SHIPPED and the ledger is at 5 repo-wide, down from 13 when this was
@@ -60,8 +76,8 @@ answers "what do I do Monday".
 
 Implements RFC-0089 (the compile-or-conform rule and the four dispositions) and
 RFC-0036 (a divergence must name a platform constraint, never a preference).
-Continues [phase-417](archived/phase-417-ros2-api-adoption.md) §"Disposition before
-implementation" and [phase-444](archived/phase-444-rmw-fix-up.md) §"The ROS 2 gap list".
+Continues [phase-417](phase-417-ros2-api-adoption.md) §"Disposition before
+implementation" and [phase-444](phase-444-rmw-fix-up.md) §"The ROS 2 gap list".
 Neither is superseded; this phase owns the thirteen rows and nothing else.
 
 ## What this measures, and where the tree disagreed with the brief
@@ -130,7 +146,7 @@ not:
 4. **`rust:Time::to_ros_msg` had a hard blocker with an issue already open**,
    and it was not the one the row names. **RESOLVED, and the row has since
    SHIPPED — see "Q3 … LANDED".** Issue 1428
-   ([docs/issues/archived/1428-builtin-interfaces-generated-three-times-none-canonical.md](../issues/archived/1428-builtin-interfaces-generated-three-times-none-canonical.md))
+   ([docs/issues/archived/1428-builtin-interfaces-generated-three-times-none-canonical.md](../../issues/archived/1428-builtin-interfaces-generated-three-times-none-canonical.md))
    measured that `builtin_interfaces` is pre-generated **three times** under
    `packages/interfaces/` — `nros-builtin-interfaces`,
    `nros-builtin-interfaces-diag`, `nros-builtin-interfaces-clock`, byte-
@@ -1493,7 +1509,7 @@ currently false.
    them into an edge". True, but the zenoh inputs are a standing SUBSCRIBER
    with history and Cyclone's are polled reads with `nullptr` listeners, which
    is a large asymmetry in what "turning them into an edge" costs.
-6. **[phase-417](archived/phase-417-ros2-api-adoption.md)** §"(4) Our own three
+6. **[phase-417](phase-417-ros2-api-adoption.md)** §"(4) Our own three
    languages disagree" lists `cpp:Publisher::get_gid` under "Rust exposes
    `MessageInfo::publisher_gid`, C++ does not". The 2026-09-23 re-read refuted
    exactly that: no language exposes a publisher's own gid, and
@@ -1518,7 +1534,7 @@ currently false.
   so. Ten of the thirteen cannot be closed without a compile, and three of the
   four decisions change a signature whose only real cost is that compile.
 * **No live peer.** Q1 option (b) and Row 7's zenoh half both need the
-  router-and-peer lane [phase-444](archived/phase-444-rmw-fix-up.md) W2 still owes, and
+  router-and-peer lane [phase-444](phase-444-rmw-fix-up.md) W2 still owes, and
   neither should be attempted from reading.
 * **`rcutils/src/logging.c` was not read**, because it is not on this machine
   and getting it needs either apt sources (`sudo`) or a fetch from upstream.
