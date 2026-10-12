@@ -4,9 +4,11 @@
 2026-10-12; the phase is NOT complete.** Acceptance: bullet 1 is MET for Rust and now for C/C++ (issue 1296,
 resolved). Bullet 2 is MET for the 34 single-package Rust leaves on the
 generated selection package (issue 1305 phase C, 2026-10-12: the mps2
-bare-metal, FreeRTOS, NuttX, ThreadX-Linux and RTIC examples) and NOT MET for
-the classes still outside it, chiefly the native leaves, whose ROS edition is
-still a cargo feature axis (issue 1305; a switch there fails at `nros sync`, naming both
+bare-metal, FreeRTOS, NuttX, ThreadX-Linux and RTIC examples; phase D the same
+day: the six native examples, whose RMW and ROS edition are now declared per
+image) and NOT MET for the classes still outside it: two copy-out templates
+(issue 1829), the dormant ESP32 leaves (issue 1525) and the C/C++ apps on a
+cargo link root (issue 1305; a switch there fails at `nros sync`, naming both
 crates). Bullet 3 was not measured. Bullet 4 holds for TRACKED files, and since
 issue 1404 (resolved) `nros sync` also removes a stale GENERATED workspace root
 left on disk. Bullet 5 is MET since 2026-10-12 (issue 1289, resolved): its `rg`
@@ -44,10 +46,8 @@ workspace root build file, both gated.
 get an image — holds for Rust and not for the other two roads:
 
 * **issue 1305** — the one-line board switch is TRUE for a single-package Rust
-  leaf on its generated selection package (W4c; 34 in-tree leaves since phase C)
-  and still FALSE for the leaves outside it: the native examples (their ROS
-  edition is still a cargo feature that `just ros_editions build-e2e-fixtures`
-  selects per build, and the selection derives one edition per system), the
+  leaf on its generated selection package (W4c; 40 in-tree leaves since phase D,
+  the native examples included) and still FALSE for the leaves outside it: the
   copy-out templates, board-specific test fixtures, C/C++
   apps on a cargo link root, the rv-virt-threadx staticlibs and the dormant
   ESP32 leaves. `leaf_settings::NOT_ON_THE_SELECTION` lists them with reasons.
@@ -265,7 +265,18 @@ esp32 stack budgets.
   now also rejects a migrated leaf that names a board crate, and
   `every_cargo_leaf_outside_the_open_classes_uses_its_selection_package` walks
   every tracked leaf against `NOT_ON_THE_SELECTION`. **The box stays open for
-  the classes in that list**, the native leaves' edition axis first.
+  the classes in that list.**
+  **W4c phase D — the native leaves (2026-10-12, `fix/1305-native-images`).**
+  The six `examples/native/rust/*` leaves declare one image per RMW × ROS
+  edition (`native`, `native_xrce`, `native_cyclonedds`, `native_jazzy`, …);
+  `[image.<id>] ros_edition` joins `rmw` on RFC-0031's ladder (RFC-0056
+  amended) and lowers through `facade::derive`. A cargo leaf builds one named
+  image (`nros sync --image <id>`, `nros build <id>`); fixture rows name the
+  image (`image = "native_xrce"`), which is part of the row's group key and
+  test-side selector; rows of one leaf build under a per-leaf lock because its
+  images share one selection dir. Issue 1305 records the measurements. Left in
+  `NOT_ON_THE_SELECTION`: two templates (1829), ESP32 (1525), the C/C++ apps
+  on a cargo link root, and leaves outside D6 by shape.
   `nros sync` / `nros build` write `build/<image>/nros-cargo.toml` (board
   `cargo_config` + per-image `target-dir` + resolved `[env]` incl. the entity
   facts + in-repo patch rows) and the generated entry
@@ -487,8 +498,10 @@ esp32 stack budgets.
   shows that line only, and the FreeRTOS image boots in QEMU and publishes 27
   messages to a router in 30 s. Phase C (2026-10-12) moved the mps2
   bare-metal, FreeRTOS, NuttX, ThreadX-Linux and RTIC examples onto the same
-  package (34 leaves). NOT MET yet for the leaves outside it — the native
-  examples first (issue 1305).** Earlier measurement, before W4c: one line changed,
+  package (34 leaves), and phase D the six native examples (40). NOT MET yet
+  for the single-package leaves outside it: two copy-out templates (issue
+  1829), the dormant ESP32 leaves (issue 1525) and the twelve mps2 C/C++ apps
+  on a cargo link root (issue 1305).** Earlier measurement, before W4c: one line changed,
   `nros sync` reported `done.`, `nros build` failed with
   `cannot find nros_board_<new_board> in the crate root`. A single-package
   leaf is its own entry, so it still names its board crate in

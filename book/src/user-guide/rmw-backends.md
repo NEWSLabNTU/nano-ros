@@ -100,7 +100,7 @@ into `NanoRos::NanoRos`. No `build/install/` prefix, no
 `find_package(NrosRmwCyclonedds)` deleted both.
 
 **Availability follows from config — the build provisions Cyclone.**
-Selecting `cyclonedds` (`-DNROS_RMW=cyclonedds` / `--features rmw-cyclonedds`)
+Selecting `cyclonedds` (`-DNROS_RMW=cyclonedds` / `[image.<id>] rmw = "cyclonedds"`)
 is your whole responsibility; `nros_provide_cyclonedds()` resolves the library:
 a prebuilt install you point at (`-DCMAKE_PREFIX_PATH=<install>` /
 `-DCycloneDDS_DIR=`), else **self-provision from source** — by default the pinned
@@ -187,46 +187,44 @@ for the full selection-and-lowering model and precedence rules.
 
 ### Cargo.toml (Rust)
 
-Lowered form of the declared RMW. The selection point is the **board crate**
-(RFC-0031's phase-248 C5b amendment): an app declares one `rmw-<x>` feature
-that activates the backend dep *and* forwards to the board crate's matching
-feature. Codegen no longer emits `nros/rmw-<x>` or `nros/platform-<y>` — the
-board brings both.
+You write none of it. The board crate's `rmw-<x>` feature is the lowered
+form of the declared RMW (RFC-0031's phase-248 C5b amendment: the board crate
+is the selection point, and brings the backend and the platform), and the CLI
+writes it:
+
+* in a WORKSPACE, `[image.<id>].rmw` in the bringup's `system.toml` is the
+  declaration, and the Entry pkg's generated manifest carries the lowered form;
+* in a single-package example, the same key in the example's own
+  `system.toml`, lowered into its generated `<pkg>_nros_selection` package
+  (`build/nros/selection`, issue 1305). An example that runs on several
+  backends declares one image per RMW and builds the one it names:
 
 ```toml
-[features]
-default = ["rmw-zenoh"]
-# Each `rmw-*` activates the app-owned optional backend dep and forwards to
-# the board crate, which is what actually selects the backend.
-rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-linux/rmw-zenoh"]
-rmw-cyclonedds = [
-    "nros/rmw-cyclonedds",              # the marker feature; see below
-    "dep:nros-rmw-cyclonedds-sys",
-    "nros-board-linux/rmw-cyclonedds",
-]
+# system.toml
+[system]
+name = "native_talker"
+rmw = "zenoh"
+default_images = ["native"]
+
+[image_defaults]
+board = "native"
+
+[image.native]
+
+[image.native_cyclonedds]
+rmw = "cyclonedds"
 ```
 
-In a WORKSPACE you write none of this: `[image.<id>].rmw` in the bringup's
-`system.toml` is the declaration, and the Entry pkg's generated manifest carries
-the lowered form. The block above is the standalone copy-out shape, where there
-is no bringup to declare it in.
-
-# Cyclone DDS backend — Rust runtime sees the generic rmw-cffi C-ABI
-# vtable; actual Cyclone wiring lives C++-side under
-# packages/rmw/cyclonedds/nros-rmw-cyclonedds/ and is selected at CMake
-# configure time via -DNROS_RMW=cyclonedds. The Rust
-# manifest only carries the `rmw-cffi` feature; no Rust shim dep.
-[dependencies]
-nros = { path = "<...>/packages/api/nros",
-         default-features = false,
-         features = ["std", "rmw-cffi", "platform-posix"] }
+```bash
+nros sync --image native_cyclonedds && nros build native_cyclonedds
 ```
 
-Each example also calls `<backend>::register()` from `main()` before
-`Executor::open` — this drags the rlib's CGU into the binary so the
-linkme distributed-slice walker finds the backend. C/C++ builds rely
-on the CMake-emitted strong stub from `nano_ros_link_rmw(... RMW <x>)`
-instead.
+The example's `Cargo.toml` names only `<pkg>_nros_selection = { path =
+"build/nros/selection" }` — never `rmw-<x>` / `ros-<edition>` features. (The
+`nros` umbrella's `rmw-cyclonedds` is a MARKER the generated package adds for
+a Cyclone image: the generic path then registers type descriptors.) No
+example calls `<backend>::register()` either: `nros::main!` boots through the
+board crate, whose `rmw-<x>` feature links the backend and registers it.
 
 For C++ consumers, the declared RMW lowers to the CMake cache var:
 

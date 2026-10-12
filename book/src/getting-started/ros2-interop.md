@@ -136,12 +136,24 @@ nano-ros uses the same wire format as `rmw_zenoh_cpp`:
 
 ### ROS 2 Editions
 
-Three editions ship as Cargo features / `--ros-edition` values (RFC-0056):
-`ros-humble` (default; `TypeHashNotSupported` key expressions, XCDR1),
-`ros-iron`, and `ros-jazzy` (both RIHS01 type hashes). Pick the edition
-matching the ROS 2 install you interop with — a Humble-edition image
-against a Jazzy bus (or vice versa) discovers nothing, because the key
-expressions differ.
+Three editions are supported (RFC-0056): `humble` (default;
+`TypeHashNotSupported` key expressions, XCDR1), `iron`, and `jazzy` (both
+RIHS01 type hashes). Pick the edition matching the ROS 2 install you
+interop with — a Humble-edition image against a Jazzy bus (or vice versa)
+discovers nothing, because the key expressions differ.
+
+The edition is declared like the RMW, per image, in `system.toml`:
+`[image.<id>] ros_edition = "jazzy"` (over `[image_defaults]`, then
+`[system] ros_edition`). `nros sync --image <id>` generates the messages
+for that edition and `nros build <id>` builds the image; the
+`ros-<edition>` cargo features are what the build lowers it to, not
+something you pass. The native examples declare `native_jazzy`,
+`native_xrce_jazzy`, … for this:
+
+```bash
+cd examples/native/rust/talker
+nros sync --image native_jazzy && nros build native_jazzy
+```
 
 ## Troubleshooting
 

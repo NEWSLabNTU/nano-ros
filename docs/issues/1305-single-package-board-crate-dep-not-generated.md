@@ -9,6 +9,96 @@ found: 2026-09-11
 related: [rfc-0098, rfc-0065, phase-445]
 ---
 
+## 2026-10-12 (phase D) — the native leaves: one image per RMW × edition (still OPEN)
+
+The six `examples/native/rust/{talker,listener,service-*,action-*}` leaves are
+on the selection package (branch `fix/1305-native-images`). Their RMW and ROS
+EDITION are now declared per image (RFC-0031, and RFC-0056 as amended): each
+declares `native` (zenoh, humble, `default_images`), `native_xrce`,
+`native_cyclonedds`, and the three again for `iron` and `jazzy`. Their
+`rmw-*` / `ros-*` / `default` features and the backend optional deps are
+gone; `link-tls` (and the listener's `unstable-zenoh-api`) stay leaf features
+over an optional `nros-rmw-zenoh`, because the capability registry
+(`capability_resolver::CAPABILITIES`) does not declare them.
+
+What it took:
+
+- **`[image.<id>] ros_edition` / `[image_defaults] ros_edition`.** The fields
+  already parsed (`ImageBlock`); nothing read them. `SystemToml::
+  image_ros_edition` resolves image > defaults > system > humble, a typo at
+  any rung a hard error naming its table. `facade::derive` takes the resolved
+  edition (one writer: `write_facade` and `write_leaf_selection`), and puts it
+  on the BOARD crate as well as the umbrella — `nros-board-linux` gained
+  `ros-{humble,iron,jazzy}` forwarding to its backends, because the zenoh
+  keyexpr gates the RIHS01 tail on `nros-rmw-zenoh`'s own feature and
+  `nros/ros-jazzy` reaches only `nros-node`. rlm's `system_config` parser has
+  no top-level `deny_unknown_fields` and ignores `[image*]`; nano-ros's own
+  `SystemToml` / `ImageBlock` already declared the key, and
+  `orchestration-ir::leaf_system` walks `toml::Value`, so no external schema
+  had to move.
+- **A cargo leaf with several images.** `nros sync --image <id>` (selection,
+  `build/<id>/nros-cargo.toml`, and message codegen for that image's edition),
+  `nros build <id>` (one image per invocation: the images share one selection
+  dir and one `generated/`), `nros ws leaf-system --image <id>
+  [--write-settings]`. The settings file names its image in `NROS_IMAGE`, and
+  `nros::main!` reads that image (`leaf_system::read_image`). Sync records the
+  edition `generated/` holds (`generated/.nros-ros-edition`); `nros build <id>`
+  refuses an image of another edition, naming `nros sync --image <id>`.
+- **Fixture rows.** The 12 xrce/cyclonedds rows say `image = "native_<rmw>"`;
+  the six explicit `rmw-zenoh` rows were duplicates of the plain rows and are
+  gone. The image rides the row's cargo args as `--nros-image=<id>`, so the
+  group key (`nros_fixture_group_slug`), the build and the staleness probe
+  separate two images by the computation that already separated two feature
+  sets; `leaf-settings.sh` is its one reader. The test side's `Selector`
+  gained `image`; `groups::select_rmw_row` answers `build_example_rmw` from the
+  row's COORDINATE for a leaf that selects by image.
+- **The same-leaf race.** Every row of a settings-road leaf writes its image's
+  selection and settings (`ws leaf-system --write-settings`) and builds INSIDE
+  `nros_leaf_lock` (`flock` on `<leaf>/build/nros/.leaf.lock`); the probe takes
+  the same lock. Rows of different leaves still run in parallel. Measured on
+  `fixtures-build.sh linux rust` (rc=0, 76 rows, make -j): every one of the 22
+  rows of the six leaves carries its own backend — the 6 plain + 4 link-tls/
+  multicast rows zenoh symbols only, the 6 `native_xrce` rows `uxr_` only, the
+  6 `native_cyclonedds` rows `dds_create*` only.
+- **`std` on the host board's backends.** The leaves used to add `std` on their
+  own `nros-rmw-zenoh`; without it the backend's `log` output vanished and
+  `nano2nano`'s GID / sequence / peer-mode / TLS tests read nothing. The board
+  is hosted by construction, so it carries `std` now.
+- **`just ros_editions build-e2e-fixtures`** builds images, not features
+  (`native_<rmw>_<edition>`); jazzy/zenoh measured rc=0, six binaries, each
+  with a `RIHS01_` hash and no `TypeHashNotSupported`.
+
+**`bins/in-place-subscriptions` stays exempt, with the cause measured.** It is
+not a writer bug: `entry::image_dependency_lines` gives the host board crate
+`census` + `profile` on EVERY road (issue 1419, phase-463 W7 — the generated
+host entry is a census and profile producer), and the hand-written manifest
+lacks them. Built both ways and compared with `just mem-report`:
+`nros::metadata_mode::state::STATE` +75,992 B and `EXECUTOR_BACKING` 20,864 →
+45,440 B (the 34,816-byte arena). Migrating would change the image issue 1340
+measures. The eight `matched no recorded subscription row` warnings were a
+second, runtime defect: `metadata_mode::begin_node` armed the registration
+observer on every boot of a `census` image, census run or not, so EVERY
+generated host entry (and now the native listener) logged one per
+subscription. The observer now WARNS only in a census run
+(`census_hooks::recording_run`); the join is still attempted.
+
+**What is left (why this stays open).** Single-package cargo leaves still
+naming a board crate by hand:
+
+- `examples/templates/local-msg-package/src/rust_consumer` and
+  `examples/templates/multi-package-workspace/src/pkg_rust_publisher`
+  (`nros-board-linux`) — waiting on the copy-out lane (issue 1829);
+- the dormant `examples/esp32-c3-baremetal/rust/{talker,listener}` (issue
+  1525);
+- the twelve `examples/mps2-an385-baremetal/{c,cpp}/*` C/C++ apps on a cargo
+  link root, whose own `main.rs` names `cortex_m_rt`.
+
+Out of scope by shape, not waiting: `bins/qemu-baremetal-main-e2e` and
+`bins/rtic-run-plan-e2e` call `nros_board_mps2_an385::exit_success()` (board
+code, not a board choice), `fixtures/*` are harness-templated, the
+rv-virt-threadx staticlibs are linked by a CMake image, `log-arena-probe`
+names no board (issue 1815), and `bins/in-place-subscriptions` above.
+
 ## 2026-10-12 (phase C) — the sweep: 34 leaves on the selection package (still OPEN)
 
 Phase C moved every leaf in the mechanical classes, one commit per family
