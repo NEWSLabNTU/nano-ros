@@ -741,7 +741,7 @@ jobs:
       # command on a single-branch clone took 2 s. Reproduced in
       # nano-ros-ci:humble after checkout's exact fetch: all branches still
       # running at a 180 s cap, `main` alone 5-6 s, unshallowed (13 752 commits).
-      # `timeout` turns any future stall into a red step in minutes.
+      # The deadline turns any future stall into a red step in minutes.
       - name: Fetch commit history for the citation gates (commits only)
         timeout-minutes: 6
         run: |
@@ -754,7 +754,8 @@ jobs:
             # keeps this step correct whatever runs before it.
             git fetch --no-tags --quiet --depth=1 origin \
               "+refs/heads/$base:refs/remotes/origin/$base"
-            timeout 300 git fetch --no-tags --quiet --filter=tree:0 --unshallow \
+            . scripts/lib/deadline.sh
+            "${NROS_DEADLINE[@]}" 300 git fetch --no-tags --quiet --filter=tree:0 --unshallow \
               origin "+refs/heads/$base:refs/remotes/origin/$base"
           fi
           test "$(git rev-parse --is-shallow-repository)" = false

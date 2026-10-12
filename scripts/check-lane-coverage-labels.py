@@ -146,14 +146,16 @@ def self_test() -> None:
         "NEGATIVE CONTROL FAILED: 'full compile tier for every PR' was accepted (issue 1616)"
     assert not pr_tier_claims("check (fast + PR source gates; full compile tier on nightly/manual)")
 
-    bad_hdr = good.replace(
-        "# nano-ros", "# the compile tier runs on PR + nightly only\n# nano-ros", 1
+    # PREPENDED, so the claim is always inside `header()`'s 60 lines. This
+    # replaced the first "# nano-ros" and ran only `if bad_hdr != good`, and
+    # gate.yml contains no such line, so the control never ran. A comment that
+    # happened to say `# nano-ros-ci:humble` 700 lines down then gave it an
+    # anchor OUTSIDE the header, and it failed as if the gate were broken.
+    bad_hdr = "# the compile tier runs on PR + nightly only\n" + good
+    assert scan(bad_hdr), (
+        "NEGATIVE CONTROL FAILED: a header claiming PR compile-tier coverage "
+        "was accepted"
     )
-    if bad_hdr != good:
-        assert scan(bad_hdr), (
-            "NEGATIVE CONTROL FAILED: a header claiming PR compile-tier coverage "
-            "was accepted"
-        )
 
     # And the gate must not fire when the claim is TRUE.
     widened = re.sub(
