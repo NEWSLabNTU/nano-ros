@@ -46,12 +46,13 @@ NROS_CODEGEN_TARGET_ARG = $(if $(NROS_BRINGUP_IMAGE),--target $(NROS_BRINGUP_IMA
 # No commas in either branch: `$(if)` splits its arguments on them.
 NROS_CODEGEN_IMAGE_NOTE = $(if $(NROS_BRINGUP_IMAGE),image $(NROS_BRINGUP_IMAGE),NO IMAGE PINNED - this bake takes the system-wide defaults including the HOST tier tables; re-stage with `--image <id>` (issue 1396))
 
-# Where the host `nros` CLI lives. Mirrors scripts/build/cargo.sh::nros_cli_bin.
-# Post-Phase-218 canonical path is `packages/cli/target/release/nros` (built
-# by `just setup-cli`); fall back to `~/.nros/bin/nros` (transitional) then PATH.
+# Where the host `nros` CLI lives: ASK scripts/build/cargo.sh::nros_cli_bin
+# ($NROS_CLI, this checkout's `just setup-cli` build, PATH, the store) rather
+# than restate it. Issue 1850's follow-up: the restatement here had drifted —
+# no `$NROS_CLI` rung, and the store ahead of PATH. A bare `nros` is the last
+# resort only when the resolver itself answers nothing.
 NROS_BIN ?= $(or \
-    $(wildcard $(NROS_REPO_DIR)/packages/cli/target/release/nros), \
-    $(wildcard $(HOME)/.nros/bin/nros), \
+    $(shell bash -c '. "$$1/scripts/build/cargo.sh" && nros_cli_bin' _ '$(NROS_REPO_DIR)' 2>/dev/null), \
     nros)
 
 # Build target triple — inherits the shared shell's resolution when present.

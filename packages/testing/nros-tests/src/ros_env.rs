@@ -1129,22 +1129,11 @@ pub fn e2e_setup_zenoh(example: &str) -> (DockerRosEnv, std::path::PathBuf, u8, 
 }
 
 /// Locate the host-built `nros` CLI binary, for bind-mounting into a codegen
-/// container ([`DockerRosEnv::generate`]). Prefers the in-tree release build,
-/// then `PATH`. `None` when neither is present (the caller then fails, `unmet!`).
+/// container ([`DockerRosEnv::generate`]). The one test-side ladder,
+/// [`crate::nros_cli_bin_path`]: `$NROS_CLI`, this checkout's build, `PATH`,
+/// the store. `None` when none is present (the caller then fails, `unmet!`).
 pub fn host_nros_bin() -> Option<std::path::PathBuf> {
-    let in_tree = crate::project_root().join("packages/cli/target/release/nros");
-    if in_tree.is_file() {
-        return Some(in_tree);
-    }
-    let out = Command::new("bash")
-        .args(["-lc", "command -v nros"])
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    (!path.is_empty()).then(|| std::path::PathBuf::from(path))
+    crate::nros_cli_bin_path()
 }
 
 /// Is `docker` on PATH and the daemon reachable?

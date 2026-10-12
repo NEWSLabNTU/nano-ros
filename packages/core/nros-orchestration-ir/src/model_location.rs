@@ -395,7 +395,8 @@ impl LaunchResolverLadder<'_> {
 /// Where `just setup-launch-resolve` puts the helper inside checkout `root`:
 /// it is its OWN cargo workspace, so it lands under
 /// `packages/cli/nros-launch-resolve/target/release/`, not beside an in-tree
-/// `nros` in `packages/cli/target/release/`.
+/// `nros` in `packages/cli/target/release/`. The ONE Rust spelling of that
+/// build output; the `nros` twin is `nros_build_paths::nros_cli_in_checkout`.
 pub fn launch_resolver_in_checkout(root: &Path) -> PathBuf {
     root.join("packages/cli")
         .join(LAUNCH_RESOLVER)

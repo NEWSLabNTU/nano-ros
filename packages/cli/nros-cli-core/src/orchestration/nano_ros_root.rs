@@ -235,6 +235,7 @@ mod tests {
     fn an_in_tree_binary_answers_with_its_own_checkout() {
         let tmp = tempfile::tempdir().unwrap();
         let checkout = fake_checkout(&tmp.path().join("checkout"));
+        // host-tool-path-ok: synthetic checkout under test — the layout is the fixture.
         let exe = checkout.join("packages/cli/target/release/nros");
         std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
         std::fs::write(&exe, "").unwrap();
@@ -258,6 +259,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let parent = fake_checkout(&tmp.path().join("parent"));
         let worktree = fake_checkout(&parent.join(".claude/worktrees/agent-x"));
+        // host-tool-path-ok: synthetic checkout under test — the layout is the fixture.
         let exe = parent.join("packages/cli/target/release/nros");
         std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
         std::fs::write(&exe, "").unwrap();
