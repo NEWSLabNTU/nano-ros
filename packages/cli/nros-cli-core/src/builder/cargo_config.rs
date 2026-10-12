@@ -443,7 +443,7 @@ build-std = ["core", "alloc"]
             target_dir: PathBuf::from(
                 "/nros/examples/workspaces/rust/build/esp32-zenoh/esp32_entry/target",
             ),
-            env: BTreeMap::from([("NROS_DECLARED_NODES".into(), "2".into())]),
+            env: BTreeMap::from([("NROS_DECLARED_INFRA_QUERYABLES".into(), "param".into())]),
             path_env: BTreeMap::new(),
             patches: BTreeMap::new(),
             build_hint: None,
@@ -603,7 +603,10 @@ build-std = ["core", "alloc"]
         // A lane that sets the same variable must win (RFC-0049's ladder).
         let body = render(&spec(), &cfg_path()).unwrap();
         let v = parsed(&body);
-        assert_eq!(v["env"]["NROS_DECLARED_NODES"].as_str(), Some("2"));
+        assert_eq!(
+            v["env"]["NROS_DECLARED_INFRA_QUERYABLES"].as_str(),
+            Some("param")
+        );
         assert!(!body.contains("force = true"), "{body}");
     }
 

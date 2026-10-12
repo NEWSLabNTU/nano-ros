@@ -483,3 +483,87 @@ fn scratch(name: &str) -> PathBuf {
     fs::create_dir_all(&dir).expect("create the scratch dir");
     dir
 }
+
+/// phase-486 W9 -- an image whose model describes NO wiring states the two
+/// facts its retired carriers used to send: `[image] model_nodes`
+/// (`NROS_DECLARED_NODES`) and, given the closure's bound tables,
+/// `[types] max_wire_bound_bytes` (`NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE`).
+///
+/// Both are MODEL facts, so the unwired file must state what the wired one
+/// states for the same model: the same node count and the same closure maximum.
+/// Without tables the wire bound stays ABSENT -- the carrier's own guard never
+/// ran there -- and nothing else is stated.
+#[test]
+fn an_unwired_image_states_the_retired_carriers_facts_as_the_wired_road_does() {
+    let dir = scratch("unwired");
+    let model = resolve("policies", &dir);
+    let loaded = nros_orchestration_ir::overlay::LoadedModel::bare(model.clone());
+    let inv =
+        EntityInventory::from_model("fixture", &loaded).expect("the fixture describes wiring");
+    let tables = [std_msgs_bound_table()];
+    let image = |build_dir: &Path, wiring, tables: &[PathBuf]| {
+        write_for_model(&ModelImage {
+            build_dir,
+            entry: "policies",
+            wiring,
+            target_triple: Some("thumbv7em-none-eabihf".into()),
+            host_build: false,
+            heap_budget_bytes: Some(65_536),
+            rmw: Some("zenoh".into()),
+            bound_inventories: tables,
+            horizon: ModelHorizon::new("a cmake entry"),
+        })
+        .expect("the descriptor is written")
+    };
+    let wired = image(&dir.join("wired"), Wiring::Composed(&inv), &tables).expect("written");
+    let params = nros_cli_core::entity_inventory::ParamDeclarations::Absent;
+    let infra = nros_cli_core::entity_inventory::InfraServices::from_model(&loaded, None);
+    let unwired = |build_dir: &Path, tables: &[PathBuf]| {
+        image(
+            build_dir,
+            Wiring::Unwired {
+                params: &params,
+                infra,
+                model_nodes: Some(infra.model_nodes),
+                roots: &[],
+            },
+            tables,
+        )
+        .expect("the model's node count is a stated fact")
+    };
+
+    let nodes = model.structure.nodes.len();
+    assert!(nodes > 0, "the fixture has nodes");
+    let with_tables = unwired(&dir.join("unwired"), &tables);
+    assert_eq!(with_tables.desc.image.model_nodes().stated(), Some(&nodes));
+    assert_eq!(wired.desc.image.model_nodes().stated(), Some(&nodes));
+    // The fixture's closure carries unbounded types, so both roads REFUSE the
+    // maximum (the carrier's `derived` guard would not have fired either) --
+    // what this asserts is that the unwired road reaches the SAME rule over the
+    // same tables, not a number.
+    let (bound, wired_bound) = (
+        with_tables.desc.types.max_wire_bound_bytes(),
+        wired.desc.types.max_wire_bound_bytes(),
+    );
+    assert_ne!(
+        bound.tag(),
+        "absent",
+        "handed tables, the field is answered"
+    );
+    assert_eq!(bound.tag(), wired_bound.tag());
+    assert_eq!(bound.stated(), wired_bound.stated());
+    assert_eq!(bound.refusal(), wired_bound.refusal());
+    // Nothing a wired file states from its inventory leaks into this one.
+    assert!(with_tables.desc.endpoints.is_empty());
+    assert_eq!(with_tables.desc.image.node_count().tag(), "absent");
+
+    let without_tables = unwired(&dir.join("bare"), &[]);
+    assert_eq!(
+        without_tables.desc.types.max_wire_bound_bytes().tag(),
+        "absent"
+    );
+    assert_eq!(
+        without_tables.desc.image.model_nodes().stated(),
+        Some(&nodes)
+    );
+}

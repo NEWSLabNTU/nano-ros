@@ -213,11 +213,11 @@ fn resolve_queryable_default() -> QueryableSizing {
     // rebuilding produces a byte-identical image, which is exactly how this was
     // found.
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_INFRA_QUERYABLES");
-    // phase-426 W3 — the parameter services are PER NODE now, so the image's
-    // node count is a term in this pool. Same watch discipline as its two
-    // siblings: an entry that gains a node changes the number this script
-    // must produce.
-    println!("cargo:rerun-if-env-changed=NROS_DECLARED_NODES");
+    // phase-426 W3 — the parameter services are PER NODE, so the image's node
+    // count is a term in this pool. phase-486 W9 retired its carrier
+    // (`NROS_DECLARED_NODES`) onto the descriptor's `[image] model_nodes`; the
+    // descriptor file's content edge (`load_for_build_script`) re-runs this
+    // script when it moves.
     // Issue 1649 -- the application's service-server count and the
     // transient-local count come from the sizing DESCRIPTOR only; the two
     // `NROS_DECLARED_*` carriers that used to be watched here were retired
@@ -245,7 +245,7 @@ fn resolve_queryable_default() -> QueryableSizing {
     // -- i.e. none on that road, exactly as before.
     let infra = declared_fact("NROS_DECLARED_INFRA_QUERYABLES");
     let declared = app_count_from(infra.as_deref(), described_service_server_queryables);
-    let nodes = declared_fact("NROS_DECLARED_NODES");
+    let nodes = described_model_nodes();
     let tl = transient_local_publishers();
     QueryableSizing {
         default: queryable_default_from(
@@ -365,6 +365,16 @@ fn described_service_server_queryables() -> Option<usize> {
     desc.image.service_server_queryables().stated().copied()
 }
 
+/// phase-486 W9 -- `[image] model_nodes`, the count the parameter services are
+/// registered over, from the named descriptor. `None` (no descriptor, or the
+/// field absent) is read by [`declared_nodes`] as ONE node, which is what the
+/// retired `NROS_DECLARED_NODES` carrier's absence meant. Spelled as the
+/// carrier's text so the rules below keep their one parser.
+fn described_model_nodes() -> Option<String> {
+    let desc = nros_sizing_descriptor::from_build_env().unwrap_or_else(|e| panic!("{e}"))?;
+    desc.image.model_nodes().stated().map(usize::to_string)
+}
+
 /// RFC-0100 D6's LOUD half, for the one term here that can be a worst case.
 fn warn_worst_case(reason: &str, bound: usize) {
     println!(
@@ -436,7 +446,7 @@ fn queryable_floor_from(
 }
 
 // phase-426 W3 — `declared_nodes`: how many nodes claim a set of parameter
-// services. `NROS_DECLARED_NODES` is a COUNT of the model's nodes; absent is
+// services. `[image] model_nodes` is a COUNT of the model's nodes; absent is
 // ONE (the pre-W3 number), and a malformed value panics rather than falling
 // back. Shared since issue 1743 (`nros_sizing_descriptor::infra`).
 
@@ -529,8 +539,10 @@ fn resolve_liveliness_default() -> usize {
     // The same three inputs, watched the same way, as the queryable table;
     // `declared_fact` / `from_build_env` emit their own rerun edges.
     let infra = declared_fact("NROS_DECLARED_INFRA_QUERYABLES");
-    let nodes = declared_fact("NROS_DECLARED_NODES");
     let desc = nros_sizing_descriptor::from_build_env().unwrap_or_else(|e| panic!("{e}"));
+    let nodes = desc
+        .as_ref()
+        .and_then(|d| d.image.model_nodes().stated().map(usize::to_string));
     let entities = desc
         .as_ref()
         .and_then(|d| d.image.entity_liveliness_tokens().stated().copied());
@@ -860,7 +872,7 @@ mod queryable_default_tests {
     }
 
     #[test]
-    #[should_panic(expected = "NROS_DECLARED_NODES")]
+    #[should_panic(expected = "node count")]
     fn a_malformed_node_count_is_not_silently_one() {
         declared_nodes(Some("several"));
     }

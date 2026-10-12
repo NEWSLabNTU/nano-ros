@@ -655,12 +655,9 @@ READ_CALLEES = {
     # then have to be told apart from a stated `0`, which is that knob's
     # documented opt-out.
     "env_opt_usize_laddered",
-    # issue 1199 — the DECLARED road's readers. Each takes the env NAME as a
-    # parameter, so the census sees the literal at the call site rather than
-    # inside the helper.
-    "env_usize_declared",
-    # issue 1595 -- `env_usize_declared` with a descriptor rung before the carrier.
-    "env_usize_declared_or",
+    # issue 1199's DECLARED-road readers (`env_usize_declared`, and issue
+    # 1595's `env_usize_declared_or`) were deleted with the take-buffer carrier
+    # they last served (phase-486 W9).
     # issue 1649 -- the ladder with the descriptor's fact where a retired
     # DECLARED carrier used to sit.
     "env_usize_described",

@@ -123,10 +123,10 @@ pub enum Sub {
     #[command(name = "seed-lock")]
     SeedLock(SeedLockArgs),
 
-    /// phase-392 W5.b/W5.c — print the ENTITY figures a backend sizes its
-    /// tables from (`NROS_DECLARED_INFRA_QUERYABLES`,
-    /// `NROS_DECLARED_NODES`), as `KEY=VALUE` lines, for whoever is
-    /// about to invoke cargo.
+    /// phase-392 W5.b/W5.c — print the ENTITY figure a backend sizes its
+    /// tables from (`NROS_DECLARED_INFRA_QUERYABLES`; the node count moved
+    /// onto the sizing descriptor, phase-486 W9), as `KEY=VALUE` lines, for
+    /// whoever is about to invoke cargo.
     ///
     /// Same delivery seam and same reason as `board-facts`: the process
     /// environment is the only carrier that reaches a workspace member's cargo

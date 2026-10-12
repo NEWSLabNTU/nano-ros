@@ -216,10 +216,6 @@ UNRESOLVED_EXEMPTIONS = Exemptions(
             "`links` metadata flags (\"1\"), not locations",
         ("packages/core/nros-node/build.rs", "env_opt_string", "name"):
             "count-knob reader; callers pass `NROS_DECLARED_*` / `NROS_MAX_*` count names",
-        ("packages/core/nros-node/build.rs", "env_usize_declared_or", "declared"):
-            "count-knob reader; `declared` is an `NROS_DECLARED_*` count carrier",
-        ("packages/core/nros-node/build.rs", "env_usize_declared", "declared"):
-            "count-knob reader; `declared` is an `NROS_DECLARED_*` count carrier",
         ("packages/rmw/zenoh/nros-zpico-build/src/runner.rs", "build_zenoh_pico_unified", "env_var"):
             "`if_env` of a platform manifest's `[[extra_sources]]` — a presence flag "
             "selecting sources, not a location",

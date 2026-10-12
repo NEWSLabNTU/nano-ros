@@ -668,8 +668,8 @@ pub const DERIVED_CLOSURE_ENV_KEYS: &[&str] = &["NROS_SUBSCRIPTION_BUFFER_SIZE"]
 /// derives it from the FACTS this road carries (RFC-0098 D7, phase-445 W1).
 ///
 /// `nros-zpico-build` sizes the queryable table from the sizing descriptor's
-/// `[image] service_server_queryables` + `NROS_DECLARED_INFRA_QUERYABLES` +
-/// `NROS_DECLARED_NODES`, adding the parameter and lifecycle costs defined
+/// `[image] service_server_queryables` + `[image] model_nodes` +
+/// `NROS_DECLARED_INFRA_QUERYABLES`, adding the parameter and lifecycle costs defined
 /// beside the code that registers them. Carrying the facts rather than the
 /// count is issue 0460's rule: a count computed here would have to restate
 /// those costs, and a second statement of them is how they drift.
@@ -1060,7 +1060,13 @@ pub struct LeafEnv {
 pub fn leaf_env(leaf: &Path, who: &str) -> LeafEnv {
     use crate::entity_inventory::Derivation;
 
-    let model_facts = leaf_model_facts(leaf).unwrap_or_default();
+    // ONE read of the leaf's model, for the facts and for its node count.
+    let model = leaf_model(leaf);
+    let model_facts = model
+        .as_ref()
+        .map(crate::cmd::entity_facts::facts_from_model)
+        .unwrap_or_default();
+    let model_nodes = model.as_ref().map_or(0, |m| m.structure.nodes.len());
     let manifest = manifest_infra(leaf);
     let bare_facts = || leaf_facts(&model_facts, manifest);
 
@@ -1097,7 +1103,7 @@ pub fn leaf_env(leaf: &Path, who: &str) -> LeafEnv {
     }
     with_leaf_monitor_rows(leaf, &mut inv);
     let facts = leaf_facts(&model_facts, manifest);
-    with_fact_infra(&mut inv, &facts);
+    with_fact_infra(&mut inv, &facts, model_nodes);
     match inv.derive() {
         Derivation::Derived(knobs) => {
             // Issue 1125 — the payload classes need a SECOND inventory (the
@@ -1160,7 +1166,16 @@ pub fn leaf_env(leaf: &Path, who: &str) -> LeafEnv {
 /// (model UNIONED with the manifest's features, [`leaf_facts`]), so the
 /// inventory and the carried facts now describe one image. No fact, no change:
 /// an undescribed leaf keeps the inventory it always had.
-pub fn with_fact_infra(inv: &mut EntityInventory, facts: &BTreeMap<String, String>) {
+///
+/// `model_nodes` is the leaf model's `structure.nodes` (zero with no model). It
+/// rode in `facts` as `NROS_DECLARED_NODES` until phase-486 W9 moved that
+/// carrier onto the sizing descriptor's `[image] model_nodes`; the leaf's
+/// descriptor states the same count from the same model ([`leaf_model`]).
+pub fn with_fact_infra(
+    inv: &mut EntityInventory,
+    facts: &BTreeMap<String, String>,
+    model_nodes: usize,
+) {
     let Some(infra) = facts.get("NROS_DECLARED_INFRA_QUERYABLES") else {
         return;
     };
@@ -1169,10 +1184,6 @@ pub fn with_fact_infra(inv: &mut EntityInventory, facts: &BTreeMap<String, Strin
             Some(f) => f,
             None => return,
         };
-    let model_nodes = facts
-        .get("NROS_DECLARED_NODES")
-        .and_then(|n| n.trim().parse::<usize>().ok())
-        .unwrap_or(0);
     let had = inv.infra();
     inv.set_infra(crate::entity_inventory::InfraServices {
         param_services: had.param_services || param_services,
@@ -1336,7 +1347,7 @@ mod tests {
     /// the talker's one publisher and one node, short by exactly those.
     #[test]
     fn the_declared_families_reach_the_stated_pools() {
-        let derive = |facts: &[(&str, &str)]| {
+        let derive = |facts: &[(&str, &str)], model_nodes: usize| {
             let mut inv = EntityInventory::new("t");
             let (pkg, component, declaration) = declaration_from_probe(TALKER).unwrap();
             inv.insert(ComponentEntities {
@@ -1345,21 +1356,18 @@ mod tests {
                 component,
                 declaration,
             });
-            with_fact_infra(&mut inv, &tests::facts(facts));
+            with_fact_infra(&mut inv, &tests::facts(facts), model_nodes);
             let Derivation::Derived(k) = inv.derive() else {
                 panic!("derives");
             };
             k
         };
         // Negative control: no fact, the inventory the leaf always had.
-        let bare = derive(&[]);
-        let none = derive(&[("NROS_DECLARED_INFRA_QUERYABLES", "none")]);
+        let bare = derive(&[], 0);
+        let none = derive(&[("NROS_DECLARED_INFRA_QUERYABLES", "none")], 0);
         assert_eq!(bare.max_publishers, none.max_publishers);
         assert_eq!(bare.max_nodes, none.max_nodes);
-        let lc = derive(&[
-            ("NROS_DECLARED_INFRA_QUERYABLES", "lifecycle"),
-            ("NROS_DECLARED_NODES", "1"),
-        ]);
+        let lc = derive(&[("NROS_DECLARED_INFRA_QUERYABLES", "lifecycle")], 1);
         assert_eq!(
             lc.max_publishers,
             bare.max_publishers + 1,
@@ -1451,13 +1459,13 @@ nros = { version = "*", features = ["std", "param-services"] }
             panic!()
         };
         let payload = crate::leaf_payload_classes::PayloadClasses::Derived(Default::default());
-        let f = facts(&[
-            ("NROS_DECLARED_INFRA_QUERYABLES", "none"),
-            ("NROS_DECLARED_NODES", "1"),
-        ]);
+        let f = facts(&[("NROS_DECLARED_INFRA_QUERYABLES", "none")]);
         let out = render_env_sidecar_with_facts(&k, &payload, &refused_take(), "t", &f);
         let rows = env_rows(&out);
-        assert_eq!(rows["NROS_DECLARED_NODES"], "1");
+        assert!(
+            !rows.contains_key("NROS_DECLARED_NODES"),
+            "phase-486 W9: {out}"
+        );
         assert_eq!(rows["NROS_DECLARED_INFRA_QUERYABLES"], "none");
         assert!(!rows.contains_key("ZPICO_MAX_QUERYABLES"), "{out}");
     }

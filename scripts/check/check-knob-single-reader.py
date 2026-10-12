@@ -464,6 +464,31 @@ RETIRED = {
         # The leaf-road acceptance test names both to assert they are ABSENT.
         cite=("packages/cli/nros-cli-core/tests/sizing_descriptor_leaf_road.rs",),
     ),
+    # phase-486 W9 -- the two carriers RFC-0100's 2026-10-03 ruling KEPT for a
+    # contract-less image, which wrote no descriptor. The 2026-10-10 ruling
+    # ("a stated fact earns a file, whatever it came from") gives that image
+    # one: the model's node count and the closure's wire bound are MODEL facts,
+    # so `Wiring::Unwired` states both, and every road that sent either carrier
+    # names that file.
+    "the node-count and take-buffer `NROS_DECLARED_*` carriers": Retired(
+        what="NROS_DECLARED_NODES, NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE",
+        resolves_now=(
+            "the sizing descriptor: `[image] model_nodes` (nros-zpico-build, "
+            "nros-rmw-xrce-cffi) and `[types] max_wire_bound_bytes` (nros-node)"
+        ),
+        wave="phase-486 W9",
+        forbid=[
+            (":(glob)cmake/**/*.cmake", r"NROS_DECLARED_(NODES|SUBSCRIPTION_BUFFER_SIZE)[;=]"),
+            (":(glob)zephyr/**/*.cmake", r"_nros_resolve_(derivable_)?knob\(NROS_DECLARED_(NODES|SUBSCRIPTION_BUFFER_SIZE)\b"),
+            (":(glob)packages/**/*.rs", r'"NROS_DECLARED_(NODES|SUBSCRIPTION_BUFFER_SIZE)'),
+        ],
+        # The leaf-road acceptance test and the leaf env test name the node
+        # carrier to assert it is ABSENT.
+        cite=(
+            "packages/cli/nros-cli-core/tests/sizing_descriptor_leaf_road.rs",
+            "packages/cli/nros-cli-core/src/leaf_entity_env.rs",
+        ),
+    ),
     "the `nros-metadata.json` `entities` reader": Retired(
         what="the Rust reader of a component's declared entities in nros-metadata.json",
         resolves_now=(
@@ -614,18 +639,10 @@ _D12_UNMEASURED = (
 # owns; these carry the RESOLVED number for the cmake road. They pointed at
 # issue 1408 while it was open, which was a reason that would have decayed the
 # day it closed -- hence `ByDesign`.
-# RFC-0100 ruling of 2026-10-03 (issue 1655): what earns a descriptor FILE is
-# a stated entity fact, and a closure-only or model-only fact on its own does
-# not. These two deliver exactly such a fact to a CONTRACT-LESS image -- the
-# closure's largest bound (`RX_BUF`), and the parameter-service node count of a
-# model with no wiring -- so where a descriptor is named its own field ranks
-# first, and where none is, the carrier is the delivery.
-_CONTRACTLESS = (
-    "delivers a fact that exists without a contract to an image that has no "
-    "descriptor file by design (RFC-0100 D4, ruled 2026-10-03, issue 1655); "
-    "where a descriptor is named its own field ranks first"
-)
-
+# RFC-0100 ruling of 2026-10-03 (issue 1655): what earned a descriptor FILE was
+# a stated entity fact. Its 2026-10-10 successor ("a stated fact earns a file,
+# whatever it came from") retired the two carriers this ruling kept for a
+# contract-less image (phase-486 W9); the feature token below is the one left.
 _CONTRACTLESS_FEATURE = (
     "a FEATURE token (`execution.features`: param / lifecycle services) that "
     "exists for a model with no wiring, i.e. for the contract-less images that "
@@ -640,23 +657,20 @@ _BOARD_CAPACITY = (
 )
 
 KEPT = {
-    # Issue 1595 (resolved): `[types] max_wire_bound_bytes` states the closure
-    # bound and `nros-node` reads it FIRST, measured equal to this carrier.
-    # What keeps the carrier is not a field or a reader but the FILE: cmake
-    # emits it whenever the message-bound closure derived, contract or not,
-    # and a contract-less image writes no descriptor -- ruled by design
-    # (RFC-0100 D4, 2026-10-03, issue 1655).
-    "NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE": ByDesign(100, "D4", _CONTRACTLESS),
     # ---- the queryable raw inputs ----------------------------------------
-    "NROS_DECLARED_NODES": ByDesign(100, "D4", _CONTRACTLESS),
+    # `NROS_DECLARED_NODES` and `NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE` are
+    # RETIRED above (phase-486 W9).
+    #
     # Issue 1655 ruling: the feature token is a MODEL-only fact. It exists
     # for a model with no wiring at all (`declared_infra` is always emitted,
     # contract or not), and "no stated entity fact => no file" (RFC-0100 D4,
-    # 2026-10-03) means exactly those images have no descriptor -- so the
-    # carrier is the delivery there by design, and a descriptor field would
-    # duplicate it on the images that have one without retiring it anywhere.
-    # Measured: dropping it on the native configure moves ZPICO_MAX_QUERYABLES
-    # 6 -> 23 (the table becomes undeclared).
+    # 2026-10-03) meant exactly those images had no descriptor -- so the
+    # carrier was the delivery there by design. phase-486 W9 changed the
+    # premise: every resolved model's image now states `[image] model_nodes`
+    # and so has a file. This carrier can follow onto a descriptor field the
+    # same way; W9 retired only the two it was scoped to. Measured: dropping it
+    # on the native configure moves ZPICO_MAX_QUERYABLES 6 -> 23 (the table
+    # becomes undeclared).
     "NROS_DECLARED_INFRA_QUERYABLES": ByDesign(100, "D4", _CONTRACTLESS_FEATURE),
     # ---- the parameter store (was 1408, then 1407; the road is D12's) ----
     "NROS_DECLARED_MAX_STRING_VALUE_LEN": ByDesign(100, "D1", _BOARD_CAPACITY),

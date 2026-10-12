@@ -611,6 +611,68 @@ question about the road, never the field). Today a multi-entry configure and
 a Zephyr west entry name none, so W9 starts with those roads or does not
 start.
 
+(That last sentence was stale when written: a Zephyr west entry has named its
+descriptor since issue 1407, and a multi-entry configure its shared runtime's
+since issue 1649. Every road that sent either carrier names one.)
+
+### W9 result (2026-10-13)
+
+- **Where the facts live now.** `[image] model_nodes` (new, schema-additive)
+  is the model's `structure.nodes`: the MAX over a shared runtime's models,
+  and a standalone leaf's `[[component]]` count. It is NOT `[image]
+  node_count`, which is the node TABLE and holds a slot for the lifecycle
+  family's executor node (issue 1740). Stating one for the other is wrong both
+  ways: it under-sizes the table or over-counts the parameter services.
+  `[types] max_wire_bound_bytes` was already the take buffer's field (issue
+  1595).
+- **The unwired image states both.** `Wiring::Unwired` gained `model_nodes`
+  (`Some` wherever the carrier was sent, `None` for a standalone leaf that
+  declares no entities, whose declaration is the opt-in). With bound tables
+  handed (the cmake roads) it states the closure maximum through the same
+  `closure_wire_bound` the wired road calls. Zero nodes is stated as absent,
+  because every consumer floors the count at one, so an empty model still
+  writes no file.
+- **Readers.** `nros-zpico-build` (queryable table, liveliness pool) and
+  `nros-rmw-xrce-cffi` (service-server slots) read `model_nodes`; `nros-node`
+  reads `RX_BUF` from the descriptor and the crate default only. Producers
+  deleted: the cmake fold and emission (`NROS_ENTITY_NODES_MAX`,
+  `_nros_take_buffer_env`), `entity_facts::facts_from_model` /
+  `facts_from_leaf`, the leaf env's node row (`with_fact_infra` now takes the
+  count from the model it reads once). `check-knob-single-reader` has a
+  RETIRED entry, wave "phase-486 W9", forbidding both spellings in cmake,
+  zephyr and Rust.
+- **Measured, 1649's method:** every build-script `out/` file and generated
+  config header, main (A, carriers on) vs this branch (B, carriers retired),
+  normalised for checkout paths and cargo hashes, with a negative control C
+  (main with the node carrier dropped and no descriptor field):
+
+  | road | image | A vs B | A vs C |
+  | --- | --- | --- | --- |
+  | cmake multi-entry | `workspaces/cpp` `native`, 7 entries, `param_services` temporarily on (reverted) | 0 of 96 | `ZPICO_MAX_QUERYABLES` 22→16, `ZPICO_MAX_LIVELINESS` 29→23 |
+  | cargo workspace | `workspaces/features` `native_rust_custom_msg` (unwired), `native_rust_qos` (wired), `native_rust_params_xrce` | 0 of 91 (one cargo hash inside a path in XRCE's vendor record) | queryables 25→19 and 18→12, liveliness 38→31 and 26→20 |
+  | cargo leaf | `native/rust/talker` | 0 | not sensitive (1 node, no service family) |
+  | standalone cmake leaf | `native/cpp/talker` | 0 | not sensitive (as above) |
+
+  The XRCE image has one node, so it cannot move; no tracked XRCE image has
+  two. The take-buffer carrier was emitted by NONE of these configures: every
+  closure measured carries unbounded types, so cmake's own guard refused it.
+  Its retirement rests on issue 1595's reader measurement (a descriptor
+  stating X sizes `RX_BUF` exactly as the carrier X did) plus
+  `an_unwired_image_states_the_retired_carriers_facts_as_the_wired_road_does`
+  (the unwired road answers the same maximum over the same tables as the
+  wired one).
+- **Not measured: Zephyr west.** It carried neither carrier, but its
+  descriptors now state `model_nodes`. By reading, no west consumer uses it:
+  the queryable table returns before the node count when no infrastructure
+  fact arrives (west sends none), west states `ZPICO_MAX_LIVELINESS` and
+  `ZPICO_MAX_QUERYABLES` itself, and XRCE's slot rule returns on the same
+  absent fact. The build was attempted and failed on main and here alike:
+  the shared Zephyr workspace registers no nano-ros module for these
+  worktrees (`undefined symbol NROS`).
+- **Left for later:** `NROS_DECLARED_INFRA_QUERYABLES`. Its KEPT reason was
+  that a contract-less image has no file. Every resolved model's image now
+  has one, so it can follow onto a descriptor field the same way.
+
 ## Migration
 
 **nano-ros users: nothing to rewrite.** Every key a user writes today keeps its

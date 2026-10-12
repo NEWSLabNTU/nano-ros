@@ -129,16 +129,11 @@ function(nros_fold_entity_facts _out)
             if(_infra MATCHES "lifecycle")
                 set_property(GLOBAL PROPERTY NROS_ENTITY_INFRA_LIFECYCLE TRUE)
             endif()
-        elseif(_line MATCHES "^NROS_DECLARED_NODES=([0-9]+)$")
-            # phase-426 W3 -- the ROS parameter services are registered once
-            # PER NODE, so this is a term in the queryable pool. MAX across the
-            # configure's models: the shared staticlib holds the largest, and
-            # the pool is sized once.
-            get_property(_have GLOBAL PROPERTY NROS_ENTITY_NODES_MAX)
-            if(NOT _have OR CMAKE_MATCH_1 GREATER _have)
-                set_property(GLOBAL PROPERTY NROS_ENTITY_NODES_MAX "${CMAKE_MATCH_1}")
-            endif()
         endif()
+        # phase-486 W9 -- the node count (`NROS_DECLARED_NODES`, MAX across the
+        # configure's models) is no longer carried: the sizing descriptor's
+        # `[image] model_nodes` states it, the runtime file the same MAX
+        # (`InfraServices::union`).
     endforeach()
 endfunction()
 
@@ -274,55 +269,14 @@ endfunction()
 # their `claimed_slot_bytes` already price each receive region, so a bound
 # table delivered here would price nothing the rows do not.
 
-# _nros_take_buffer_env(<out-var>)
+# _nros_take_buffer_env -- RETIRED (phase-486 W9).
 #
-# issue 1233 — the TAKE BUFFER, and it needed its own carrier rather than a row
-# in `_nros_payload_facts_env` above. That is almost certainly why it was left
-# behind when 1122 swept the payload trio onto this road: it does not fit that
-# function's guard, and the guard is not incidental.
-#
-# The payload classes require `BASIS subscribed`, because on the `closure` basis
-# they count large TYPES in the linked closure and under-count an image with two
-# subscriptions on one large type. This knob is the opposite. Its producer says
-# so where it publishes it:
-#
-#     Buffer 1, the runtime-owned take buffer: ONE global size for every ENTITY
-#     in the image (`RX_BUF` is a const generic and the C/C++ path is
-#     type-erased), so it must hold the largest type the image could receive --
-#     and, because `DEFAULT_TX_BUF` aliases it, the largest it could publish.
-#     BASIS `closure`, always. Narrowing this one is the under-derivation.
-#
-# So the correct guard here is the WHOLE-BOUNDS status, not the payload status
-# and not the basis: `NROS_MESSAGE_BOUNDS_STATUS derived` means every type in
-# the closure carried a bound, which is exactly the condition under which the
-# maximum over them is an upper bound. Applying the payload guard would have
-# refused every image whose join answered on the closure basis -- which for this
-# fact is all of them.
-#
-# What a leafless CMake image got before this: the crate default of 1024 for a
-# buffer its own configure had already measured, and `DEFAULT_TX_BUF` aliases
-# it, so the publish side took the same default. Issue 1122's shape, on the
-# fourth size knob.
-function(_nros_take_buffer_env _out_var)
-    set(${_out_var} "" PARENT_SCOPE)
-    if(NOT COMMAND nros_message_bounds_knobs_file)
-        return()
-    endif()
-    nros_message_bounds_knobs_file(_knobs)
-    if(NOT EXISTS "${_knobs}")
-        return()
-    endif()
-    include("${_knobs}")
-    if(NOT NROS_MESSAGE_BOUNDS_STATUS STREQUAL "derived")
-        return()
-    endif()
-    if(NOT DEFINED NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE)
-        return()
-    endif()
-    set(${_out_var}
-        "NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE=${NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE}"
-        PARENT_SCOPE)
-endfunction()
+# It carried `NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE` (issue 1233): the take
+# buffer's closure maximum, guarded on `NROS_MESSAGE_BOUNDS_STATUS derived`. The
+# sizing descriptor's `[types] max_wire_bound_bytes` is the same maximum over
+# the same registered tables (issue 1595), and since W9 an image whose model
+# describes no wiring states it too, so every image this carrier reached names
+# a descriptor that states it.
 
 # _nros_entity_budget_env(<out-var>)
 #
@@ -351,8 +305,8 @@ endfunction()
 # under-counting HALTS the board -- but the ceiling failure is a named
 # `NodeError::NodeTableFull`, which is a property of the FAILURE and not of the
 # road the number arrived on, and the same count already reached the resolver
-# road. The take buffer moves on its own carrier below
-# (`_nros_take_buffer_env`) because its guard is the MESSAGE-BOUND status, not
+# road. The take buffer moved on its own carrier (`_nros_take_buffer_env`,
+# retired by phase-486 W9) because its guard is the MESSAGE-BOUND status, not
 # this one.
 #
 # ADDED by issue 1198 (phase-448 W6): `NROS_EXECUTOR_MAX_SC`, the executor's
@@ -411,8 +365,8 @@ function(_nros_entity_budget_env _out_var)
     # knows only from the model it was composed with -- on a multi-entry
     # configure, ONE entry's model. The consumer completes it instead, as it
     # does the queryable table: `nros-zpico-build` adds the node and
-    # infrastructure tokens from `NROS_DECLARED_NODES` /
-    # `NROS_DECLARED_INFRA_QUERYABLES` to the descriptor's `[image]
+    # infrastructure tokens from `NROS_DECLARED_INFRA_QUERYABLES` and the
+    # descriptor's `[image] model_nodes` to its `[image]
     # entity_liveliness_tokens` (issue 1713; it kept the zpico default of 16
     # until then, short for a param + lifecycle image).
     set(_out "")
@@ -625,10 +579,6 @@ function(nros_entity_facts_env _target)
     # stays (below).
     set(_payload_env "")
     _nros_entity_budget_env(_budget_env)
-    _nros_take_buffer_env(_take_buf_env)
-    if(_take_buf_env)
-        list(APPEND _payload_env "${_take_buf_env}")
-    endif()
     if(_budget_env)
         list(APPEND _payload_env ${_budget_env})
     endif()
@@ -705,15 +655,9 @@ function(nros_entity_facts_env _target)
     endif()
     set(_env "NROS_DECLARED_INFRA_QUERYABLES=${_infra}")
 
-    # phase-426 W3 -- how many nodes claim a set of parameter services. Sent
-    # unconditionally when known, even with `_infra` "none": the consumer owns
-    # what a node COSTS (`PARAM_SERVICE_QUERYABLES`, beside the code that
-    # creates the servers), and this side only states the count. Absent means
-    # undeclared, which the consumer reads as one -- the pre-W3 number.
-    _nros_entity_fact(_nodes NROS_ENTITY_NODES_MAX)
-    if(NOT _nodes STREQUAL "")
-        list(APPEND _env "NROS_DECLARED_NODES=${_nodes}")
-    endif()
+    # phase-426 W3 -- how many nodes claim a set of parameter services. Not
+    # carried since phase-486 W9: the sizing descriptor's `[image] model_nodes`
+    # states it, on every image this configure names a descriptor for.
 
     # Issue 1649 -- the application's own counts (service servers, three per
     # action server, and the transient-local cache queryables) are NOT carried

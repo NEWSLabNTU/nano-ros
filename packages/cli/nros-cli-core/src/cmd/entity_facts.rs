@@ -77,7 +77,8 @@ pub struct EntityFactsArgs {
     pub leaf: Option<PathBuf>,
 }
 
-/// The two facts, in emission order.
+/// The fact this verb still carries (issue 1649 and phase-486 W9 moved the
+/// others onto the sizing descriptor).
 ///
 /// A pure function over the model, with file IO and the environment lifted out:
 /// a sizing rule verified by reading is how this campaign's other defects
@@ -90,21 +91,10 @@ pub fn facts_from_model(
         "NROS_DECLARED_INFRA_QUERYABLES".to_string(),
         declared_infra(model).to_string(),
     );
-    // phase-426 W3 — the third fact, and it is a COUNT rather than a cost, for
-    // the same reason the two above split that way: the ROS parameter services
-    // are registered once per node, so the consumer multiplies its own
-    // `PARAM_SERVICE_QUERYABLES` by this. Stating "the image needs 18 slots"
-    // here would put the number in two places again.
-    //
-    // Always emitted, never abstained: unlike the wiring an application
-    // declares, `structure.nodes` is what a launch file IS. A model that
-    // resolves has nodes; one with none is an empty system, and a zero here
-    // would be a claim the consumer must not act on — so it floors at one, on
-    // the consumer's side, where the pool is.
-    out.insert(
-        "NROS_DECLARED_NODES".to_string(),
-        model.structure.nodes.len().to_string(),
-    );
+    // phase-426 W3's node count rode here as `NROS_DECLARED_NODES` until
+    // phase-486 W9, which moved it onto the sizing descriptor's `[image]
+    // model_nodes`: a MODEL fact, so an image with no wiring states it too and
+    // every road this verb feeds names that descriptor.
     out
 }
 
@@ -145,8 +135,9 @@ fn declared_infra(model: &nros_orchestration_ir::overlay::LoadedModel) -> &'stat
 /// than saying nothing (`nros_record_leaf_entity_facts`).
 ///
 /// **Nodes** are the `[[component]]` rows: one component is one
-/// `Node::create`, which is the same thing `structure.nodes` counts. The
-/// consumer floors it at one.
+/// `Node::create`, which is the same thing `structure.nodes` counts. The count
+/// reaches the consumers as the leaf descriptor's `[image] model_nodes`
+/// (phase-486 W9), not from here.
 pub fn facts_from_leaf(dir: &std::path::Path) -> Result<Option<BTreeMap<String, String>>> {
     let leaf = nros_orchestration_ir::leaf_system::read(dir)
         .map_err(|e| eyre::eyre!(e))?
@@ -174,7 +165,6 @@ pub fn facts_from_leaf(dir: &std::path::Path) -> Result<Option<BTreeMap<String, 
         "NROS_DECLARED_INFRA_QUERYABLES".to_string(),
         infra.token().to_string(),
     );
-    out.insert("NROS_DECLARED_NODES".to_string(), nodes.to_string());
     Ok(Some(out))
 }
 
@@ -249,10 +239,10 @@ mod tests {
         let m = model(EMPTY);
         assert_eq!(declared_infra(&m.clone()), "none");
         let f = facts_from_model(&m.clone());
-        // Issue 1649 -- only the two facts with no descriptor field travel.
+        // Issue 1649 / phase-486 W9 -- only the fact with no descriptor field
+        // travels.
         assert!(
-            f.keys()
-                .all(|k| k == "NROS_DECLARED_INFRA_QUERYABLES" || k == "NROS_DECLARED_NODES"),
+            f.keys().all(|k| k == "NROS_DECLARED_INFRA_QUERYABLES"),
             "{f:?}"
         );
         // The infrastructure half is still answered — that is W5.b1, and it is
@@ -296,27 +286,13 @@ mod tests {
         );
         let f = facts_from_model(&m.clone());
         assert_eq!(f["NROS_DECLARED_INFRA_QUERYABLES"], "lifecycle");
-        // phase-426 W3 — the node count, the second name. Issue 1649 retired
-        // the application's service-server and transient-local counts onto the
-        // sizing descriptor, so even a model that declares a service server
-        // emits only these two. The `len` assertion is the contract — a third
-        // name that arrives without a consumer must fail here.
-        assert_eq!(f["NROS_DECLARED_NODES"], "0");
-        assert_eq!(f.len(), 2);
-    }
-
-    /// phase-426 W3 — the node count reaches the queryable pool, because the
-    /// ROS parameter services are registered once per node.
-    #[test]
-    fn the_node_count_is_reported_for_the_parameter_service_pool() {
-        let m = model(
-            "meta:\n  version: 1\nstructure:\n  nodes:\n    /talker:\n      scope: root\n\
-             \n      pkg: demo\n      exec: talker\n    /listener:\n      scope: root\n\
-             \n      pkg: demo\n      exec: listener\nexecution:\n  features:\n  - param_services\n",
-        );
-        let f = facts_from_model(&m.clone());
-        assert_eq!(f["NROS_DECLARED_NODES"], "2");
-        assert_eq!(f["NROS_DECLARED_INFRA_QUERYABLES"], "param");
+        // Issue 1649 retired the application's service-server and
+        // transient-local counts onto the sizing descriptor, and phase-486 W9
+        // the node count (`[image] model_nodes`), so even a model that declares
+        // a service server emits only this one. The `len` assertion is the
+        // contract — a second name that arrives without a consumer must fail
+        // here.
+        assert_eq!(f.len(), 1);
     }
 
     // ---- issue 1142: the standalone-leaf road ---------------------------
@@ -335,7 +311,7 @@ mod tests {
     /// opens no queryable, so the application count is zero — which is an
     /// ANSWER, and the whole difference from the guessed budget.
     #[test]
-    fn an_action_client_leaf_states_the_infrastructure_and_node_facts() {
+    fn an_action_client_leaf_states_the_infrastructure_fact() {
         let td = leaf_dir(&format!(
             "{LEAF_HEAD}\n[[component]]\npkg = \"p\"\nname = \"fibonacci_action_client\"\n\
              entities = [\"action_client:example_interfaces/action/Fibonacci:/fibonacci\"]\n\
@@ -343,10 +319,10 @@ mod tests {
         ));
         let f = facts_from_leaf(td.path()).unwrap().expect("declared");
         assert_eq!(f["NROS_DECLARED_INFRA_QUERYABLES"], "none");
-        assert_eq!(f["NROS_DECLARED_NODES"], "1");
-        // Issue 1649 -- the application's counts ride the leaf's sizing
-        // descriptor; this road emits the model road's two.
-        assert_eq!(f.len(), 2, "the leaf road emits the model road's two");
+        // Issue 1649 / phase-486 W9 -- the application's counts and the node
+        // count ride the leaf's sizing descriptor; this road emits the model
+        // road's one.
+        assert_eq!(f.len(), 1, "the leaf road emits the model road's one");
     }
 
     /// `[system] features` is the infrastructure half, the same key and the
@@ -383,18 +359,6 @@ mod tests {
         assert!(facts_from_leaf(td.path()).unwrap().is_none());
     }
 
-    /// One node per `[[component]]`, so a two-component leaf pays the
-    /// parameter family twice — the consumer multiplies.
-    #[test]
-    fn the_node_count_is_the_component_count() {
-        let td = leaf_dir(&format!(
-            "{LEAF_HEAD}\n[[component]]\npkg = \"p\"\nname = \"a\"\nentities = [\"timer\"]\n\
-             \n[[component]]\npkg = \"p\"\nname = \"b\"\nentities = [\"timer\"]\n{LEAF_IMAGE}"
-        ));
-        let f = facts_from_leaf(td.path()).unwrap().expect("declared");
-        assert_eq!(f["NROS_DECLARED_NODES"], "2");
-    }
-
     /// A malformed entity string names the entry rather than deriving a budget
     /// from the rows it could read.
     #[test]
@@ -405,19 +369,5 @@ mod tests {
         ));
         let e = facts_from_leaf(td.path()).unwrap_err().to_string();
         assert!(e.contains("nonsense"), "{e}");
-    }
-
-    /// It is a COUNT, not a cost. This verb never states
-    /// `PARAM_SERVICE_QUERYABLES` — the consumer owns that number, beside the
-    /// code that creates the servers (issue 0827's split).
-    #[test]
-    fn the_node_count_is_stated_even_when_no_capability_uses_it() {
-        let m = model(
-            "meta:\n  version: 1\nstructure:\n  nodes:\n    /solo:\n      scope: root\n\
-             \n      pkg: demo\n      exec: solo\n",
-        );
-        let f = facts_from_model(&m.clone());
-        assert_eq!(f["NROS_DECLARED_NODES"], "1");
-        assert_eq!(f["NROS_DECLARED_INFRA_QUERYABLES"], "none");
     }
 }

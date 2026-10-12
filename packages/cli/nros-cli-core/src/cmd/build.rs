@@ -825,13 +825,14 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                         crate::sizing_descriptor::Wiring::Unwired {
                             params: &params,
                             infra,
+                            model_nodes: Some(infra.model_nodes),
                             roots: &[root.as_path()],
                         },
                     )) {
                         Ok(Some(written)) => {
                             eprintln!(
-                                "nros build:   sizing descriptor (parameter store only, issue \
-                                 1706) → {}",
+                                "nros build:   sizing descriptor (no wiring: the model's \
+                                 facts only, issue 1706, phase-486 W9) → {}",
                                 written.path.display()
                             );
                             path_env.insert(
