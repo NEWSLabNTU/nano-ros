@@ -426,7 +426,10 @@ single-package project or a materialized entry.
 //    pkg that is the only member of this package.
 nros::main!();
 
-// 2. Single-node, explicit board type.
+// 2. DEPRECATED: an explicit board type. The board belongs in
+//    `system.toml`; an out-of-tree board crate states its own type in
+//    `[package.metadata.nros.board] type = "::my_board::MyBoard"`, which
+//    form 1 reads (phase-484 W4g). Retired in phase-484 W8.
 nros::main!(board = LinuxBoard);
 
 // 3. Multi-node (CANONICAL): name your INPUT — the Bringup pkg, and

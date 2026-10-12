@@ -2,9 +2,9 @@
 rfc: 0103
 title: "One owner per fact: every configuration fact and every resource location
   has one authored home, and every road reads the resolved answer"
-status: Draft
+status: Stable
 since: 2026-10
-last-reviewed: 2026-10-12
+last-reviewed: 2026-10-13
 implements-tracked-by: [phase-484, phase-497]
 supersedes: []
 superseded-by: null
@@ -624,6 +624,13 @@ Still open:
    hook does not read (board fragments, snippets).
 
 ## Changelog
+
+- 2026-10-13 — **Stable.** Phase-484 W1–W7 implemented D1–D9 as amended
+  above; issue 1767 archived with a per-resource resolution, and the
+  three locations it still found more than one way (host-tool binaries, QEMU,
+  the generated-header names) were fixed as issues 1850, 1851 and 1852. D10's network tables, bridge and multi-NIC boards are phase-497.
+  Old names (legacy knob spellings, `[board.knobs]`, the `NANO_ROS_*` cmake
+  aliases, `nros::main!(board =)`) retire in phase-484 W8, after a release.
 
 - 2026-10-12 — D6 amended: the `nros` binary knows its own SDK root (a
   release's `share/nano-ros`, an in-tree build's checkout), so `activate.sh`

@@ -315,6 +315,27 @@ descriptor, optional for single-node) + per-language manifests (Cargo `[package.
 the embedded direct-mode runtime file (`config.toml` retired; root `nros.toml` rejected). → RFC-0004
 (config) + RFC-0031 (RMW selection).
 
+**One owner per fact** → RFC-0103 (Stable). Every configuration fact and every
+resource location has one authored home, chosen by who owns it, and every
+other carrier is generated from it:
+
+- **Selections** (board, RMW, domain, locator, IP, transport) live in the
+  image's `system.toml`. The board's descriptor supplies network defaults
+  (`[board.net]`), and every board family merges the image's deploy overlay
+  over them.
+- **Knobs** have one registry row each
+  (`packages/tooling/nros-zephyr-build/knobs.toml`), from which the env
+  spelling `NROS_<GROUP>_<NAME>`, the Kconfig symbol and the Zephyr knob
+  section are generated. On Zephyr the symbols are prompt-less defaults
+  rendered from `system.toml`, so a second source is a Kconfig error.
+- **Locations** go through one ladder (`nros_build_paths::locate`, `nros
+  locate --why`): override > project `[sources]` > local edit > the store
+  (`$NROS_HOME`) > the checkout. Tooling exports no location, so a linked
+  worktree cannot inherit another checkout's trees.
+
+The map of how this meets the three build roads is
+[canonical-build-path.md](../reference/canonical-build-path.md).
+
 ## 6. Language API surfaces
 
 - C++ surface mirrors rclcpp over typed extern "C" FFI to `nros-node` → RFC-0018.

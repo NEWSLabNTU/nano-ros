@@ -210,17 +210,29 @@ or export in your shell.
 
 ### SDK paths
 
-Auto-resolved by `nros setup <board>`; override if SDKs live elsewhere.
+You normally set none of these. `nros setup` puts each vendored source tree
+in the shared store, and every build finds it through one ladder (RFC-0103
+D3): an environment override, then your project's `[sources]` in
+`system.toml`, then a checkout submodule you are editing, then the store,
+then the checkout's own copy. Ask where a tree came from with
+`nros locate <name> --why`.
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `FREERTOS_DIR` | `third-party/freertos/kernel` | FreeRTOS kernel source |
-| `FREERTOS_PORT` | `GCC/ARM_CM3` | FreeRTOS portable layer |
-| `LWIP_DIR` | `third-party/freertos/lwip` | lwIP source |
-| `FREERTOS_CONFIG_DIR` | Board crate's `config/` | `FreeRTOSConfig.h` |
-| `NUTTX_DIR` / `NUTTX_APPS_DIR` | `third-party/nuttx/…` | NuttX RTOS + apps |
-| `THREADX_DIR` / `NETX_DIR` | `third-party/threadx/…` | ThreadX + NetX Duo |
-| `THREADX_CONFIG_DIR` / `NETX_CONFIG_DIR` | Board crate's `config/` | `tx_user.h` / `nx_user.h` |
+Set one of these variables only to build against a tree of your own:
+
+| Variable | Tree |
+|----------|------|
+| `FREERTOS_DIR` / `LWIP_DIR` | FreeRTOS kernel / lwIP |
+| `THREADX_DIR` / `NETX_DIR` | ThreadX / NetX Duo |
+| `NUTTX_DIR` / `NUTTX_APPS_DIR` | NuttX RTOS / apps |
+| `CYCLONEDDS_SOURCE_DIR` | Cyclone DDS source |
+
+For a tree that belongs to one project, prefer `[sources] <name> = "<path>"`
+in its `system.toml` (project-relative) over an exported variable, which
+every build in that shell inherits.
+
+`FREERTOS_PORT`, `FREERTOS_CONFIG_DIR`, `THREADX_CONFIG_DIR` and
+`NETX_CONFIG_DIR` are not yours to set: they are facts about the board, stated
+in its `nros-board.toml` and carried to the build from there.
 
 Buffer-tuning vars (`ZPICO_*`, `XRCE_*`, `NROS_*`) are optional — see the
 [Environment Variables Reference](../reference/environment-variables.md).

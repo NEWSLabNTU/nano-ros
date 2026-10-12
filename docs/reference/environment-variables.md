@@ -66,22 +66,28 @@ Examples use `ExecutorConfig::from_env()` for configuration:
 | `SSID`           | WiFi network name for ESP32 examples                                                               | Required for `build-examples-esp32` |
 | `PASSWORD`       | WiFi password for ESP32 examples                                                                   | Required for `build-examples-esp32` |
 
-### FreeRTOS / NuttX / ThreadX SDK Paths
+### Vendored source trees
 
-These are auto-resolved by justfile recipes (defaulting to `external/` paths from `just setup freertos` / `just setup nuttx` / `just setup threadx_linux`). Override via env vars if sources are elsewhere.
+You normally set none of these. `nros setup` puts each tree in the shared
+store, and every build locates it through one ladder (RFC-0103 D3): this
+variable, then the project's `[sources]` row in `system.toml`, then a checkout
+submodule you are editing, then the store, then the checkout's own copy.
+`nros locate <name> --why` prints which rung answered. Set a variable only to
+build against a tree of your own.
 
-| Variable              | Default                      | Description                        |
-|-----------------------|------------------------------|------------------------------------|
-| `FREERTOS_DIR`        | `third-party/freertos/kernel`   | FreeRTOS kernel source             |
-| `FREERTOS_PORT`       | `GCC/ARM_CM3`                | FreeRTOS portable layer            |
-| `LWIP_DIR`            | `third-party/freertos/lwip`              | lwIP source                        |
-| `FREERTOS_CONFIG_DIR` | Board crate's `config/`      | `FreeRTOSConfig.h` + `lwipopts.h` |
-| `NUTTX_DIR`           | `third-party/nuttx/nuttx`             | NuttX RTOS source                  |
-| `NUTTX_APPS_DIR`      | `third-party/nuttx/nuttx-apps`        | NuttX apps source                  |
-| `THREADX_DIR`         | `third-party/threadx/kernel`           | ThreadX kernel source              |
-| `THREADX_CONFIG_DIR`  | Board crate's `config/`      | ThreadX config (`tx_user.h`)       |
-| `NETX_DIR`            | `third-party/threadx/netxduo`           | NetX Duo source                    |
-| `NETX_CONFIG_DIR`     | Board crate's `config/`      | NetX Duo config (`nx_user.h`)      |
+| Variable                 | Tree                         |
+|--------------------------|------------------------------|
+| `FREERTOS_DIR`           | FreeRTOS kernel source       |
+| `LWIP_DIR`               | lwIP source                  |
+| `NUTTX_DIR`              | NuttX RTOS source            |
+| `NUTTX_APPS_DIR`         | NuttX apps source            |
+| `THREADX_DIR`            | ThreadX kernel source        |
+| `NETX_DIR`               | NetX Duo source              |
+| `CYCLONEDDS_SOURCE_DIR`  | Cyclone DDS source           |
+
+`FREERTOS_PORT`, `FREERTOS_CONFIG_DIR`, `THREADX_CONFIG_DIR` and
+`NETX_CONFIG_DIR` are board facts: each board's `nros-board.toml` states
+them, and the build carries them from there. They are not user inputs.
 
 ## Buffer Tuning
 
