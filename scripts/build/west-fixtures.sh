@@ -383,6 +383,9 @@ while IFS= read -r record; do
     # included, names `zephyr` rather than leaving the variant unset, which is
     # what CMake 4 rejects. Shared rule: scripts/build/zephyr-toolchain.sh.
     tc_env=(ZEPHYR_TOOLCHAIN_VARIANT="$(nros_zephyr_toolchain_variant "$board")")
+    # issue 1811 — the SDK this Zephyr tree pins, not the registry's highest.
+    _sdk_env="$(nros_zephyr_sdk_env "$board" "$ZEPHYR_BASE")"
+    [ -n "$_sdk_env" ] && tc_env+=("$_sdk_env")
     # The stamp gate is `output` EXISTS, for both builders — not west's exit
     # code. A `west-configure` row is expected to stop before linking, and a
     # `west-build` row that exits 0 without its image is not built either. One
