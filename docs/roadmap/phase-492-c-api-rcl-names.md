@@ -313,3 +313,49 @@ sees zero allocations across publish and take.
     `nano_ros_ROOT`, which the re-root helper does not cover. The fixtures here
     were built with `nano_ros_ROOT` set to the worktree.
 
+
+### 2026-10-12 — W1.b: a name upstream has takes upstream's contract
+
+- Found while designing W4 part 2: W1's map adopted every parity
+  `systematic` row, and `systematic` is a SPELLING match. Sixteen functions
+  and callback types landed on rcl/rclc names over a different arity or
+  callback contract, which RFC-0089 rule 2 forbids — among them the very names
+  `<nros/rcl_compat.h>` §4 and `tests/compile/node_timer_accessors.c` said were
+  refused (`rcl_timer_init`, `rcl_node_get_domain_id`).
+- Conformed (rcl's signature, so the name stays): the six `rcl_*_fini` of
+  publisher / subscription / service / client / action client / action server
+  take `(entity, node)`; `rcl_clock_init(type, &clock, &allocator)`;
+  `rclc_support_init(&support, argc, argv, &allocator)` (`--ros-args` is
+  refused — no C ROS-argument parser); `rclc_executor_init(&executor,
+  &support.context, n, &allocator)`; `rcl_action_client_init(client, node,
+  type_support, name, options)`; `rcl_node_get_domain_id` writes `size_t`,
+  `rcl_timer_get_time_since_last_call` `int64_t`, `rcl_clock_get_now` the
+  nanosecond count; `rclc_executor_remove_*` take `const`. New types:
+  `rcl_allocator_t` + `rcl_get_default_allocator()` (accepted, never allocates;
+  a caller-supplied allocator is refused) and `rcl_context_t`, the
+  `context` member of `rclc_support_t`.
+- Distinct `rclc_` names where the contract differs:
+  `rclc_timer_init_with_context` / `rclc_timer_callback_with_context_t` (and
+  NO witness argument: the support was a validity check the init never read,
+  and a hosted C component has none), `rclc_clock_get_now_time`,
+  `rclc_node_resolve_name`, `rclc_action_server_init_with_callbacks`,
+  `rclc_action_publish_feedback_raw`, `rclc_action_server_goal_exists`,
+  `rclc_{subscription,service}_raw_callback_t`,
+  `rclc_executor_attach_{client,action_client,action_server}`,
+  `rclc_{publisher,subscription}_get_*_count`, `rclc_support_init_with_locator`.
+  `rclc_subscription_callback_with_context_t` is the definition (identical to
+  rclc's); its alias is gone.
+- The baked-RMW rung (`<nros/baked_rmw.h>`, issue 1531) covers both support
+  inits: `rclc_support_init` forwards to the seam `nros_c_support_init_baked`,
+  `rclc_support_init_with_locator` to `rclc_support_init_rmw`; the lane probe
+  pins both.
+- Class fix: `check-c-api-upstream-signatures` (fast line) compares every name
+  the C headers share with humble rcl / rcl_action / rcl_lifecycle / rclc /
+  rclc_lifecycle / rclc_parameter against a committed snapshot
+  (`docs/reference/upstream-c-signatures.tsv`). A function conforms when an
+  upstream call site compiles against ours unchanged; a callback type only
+  when identical. Ruled exceptions live in
+  `.config/c-api-upstream-signature-deviations.txt` (the executor trigger
+  family), and a stale ruling fails. The rename generator no longer adopts a
+  `systematic` row without a measured conformance (`SIGNATURE_CONFORMED`).
+- Ledger rows are re-keyed in W6 against `just check api-parity`.

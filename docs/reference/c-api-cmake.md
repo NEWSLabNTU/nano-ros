@@ -108,13 +108,13 @@ the service client stashes the executor pointer on
 Canonical call pattern (C):
 
 ```c
-rclc_support_init(&support, locator, domain_id);
+rclc_support_init_with_locator(&support, locator, domain_id);
 rclc_node_init_default(&node, "c_action_client", "/", &support);
-rcl_action_client_init(&client, &node, "/fibonacci", &type_info);
+rcl_action_client_init(&client, &node, &type_info, "/fibonacci", NULL);
 rclc_action_client_set_feedback_callback(&client, on_feedback, NULL);
 rclc_action_client_set_result_callback(&client, on_result, NULL);
 
-rclc_executor_init(&executor, &support, /*pool=*/4);
+rclc_executor_init(&executor, &support.context, /*pool=*/4, NULL);
 rclc_executor_register_action_client(&executor, &client);
 
 /* Warm-up: let zenoh discover the action server. */

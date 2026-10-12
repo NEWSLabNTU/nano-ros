@@ -132,14 +132,15 @@ int nros_app_main(int argc, char** argv) {
         .feedback_serialized_size_max = 264,
     };
 
-    RCLC_CHECK_RET(rclc_support_init(&app.support, locator, domain_id), 1);
+    RCLC_CHECK_RET(rclc_support_init_with_locator(&app.support, locator, domain_id), 1);
     printf("Support initialized\n");
     RCLC_CHECK_RET(rclc_node_init_default(&app.node, "fibonacci_action_client", "/", &app.support),
                    1);
     printf("Node created: %s\n", rcl_node_get_name(&app.node));
 
     RCLC_CHECK_RET(
-        rcl_action_client_init(&app.action_client, &app.node, "/fibonacci", &fibonacci_type), 1);
+        rcl_action_client_init(&app.action_client, &app.node, &fibonacci_type, "/fibonacci", NULL),
+        1);
     printf("Action client created: /fibonacci\n");
 
     RCLC_SOFTCHECK(
@@ -147,8 +148,8 @@ int nros_app_main(int argc, char** argv) {
     RCLC_SOFTCHECK(
         rclc_action_client_set_result_callback(&app.action_client, result_callback, NULL));
 
-    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support, 4), 1);
-    RCLC_CHECK_RET(rclc_executor_add_action_client(&app.executor, &app.action_client), 1);
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 4, NULL), 1);
+    RCLC_CHECK_RET(rclc_executor_attach_action_client(&app.executor, &app.action_client), 1);
     rcl_ret_t ret = RCL_RET_OK;
 
     // Warm-up: spin to allow Zenoh to discover the server's queryables
@@ -252,7 +253,7 @@ cleanup:
     // Cleanup
     printf("\nShutting down...\n");
     rclc_executor_fini(&app.executor);
-    rcl_action_client_fini(&app.action_client);
+    rcl_action_client_fini(&app.action_client, &app.node);
     rcl_node_fini(&app.node);
     rclc_support_fini(&app.support);
 

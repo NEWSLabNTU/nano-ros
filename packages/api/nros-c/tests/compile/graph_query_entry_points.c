@@ -83,15 +83,15 @@ int main(void) {
     (void)p_subs_info;
 
     /* phase-444 — the matched-count pair, on the ENTITY receiver upstream
-       uses (`rcl_publisher_get_subscription_count`). Declared here rather
+       uses (`rclc_publisher_get_subscription_count`). Declared here rather
        than in their own TU because the weakening is in the SIGNATURE: an
        executor parameter rcl does not take, and a `rcl_ret_t` return in
        place of rcl's `rcl_ret_t`-plus-out-parameter shape. A pointer pins
        both; a call would not. */
     rcl_ret_t (*p_pub_sub_count)(const struct rcl_publisher_t*, struct rclc_executor_t*, size_t*) =
-        rcl_publisher_get_subscription_count;
+        rclc_publisher_get_subscription_count;
     rcl_ret_t (*p_sub_pub_count)(const struct rcl_subscription_t*, struct rclc_executor_t*,
-                                 size_t*) = rcl_subscription_get_publisher_count;
+                                 size_t*) = rclc_subscription_get_publisher_count;
 
     (void)p_pub_sub_count;
     (void)p_sub_pub_count;

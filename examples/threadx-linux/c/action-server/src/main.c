@@ -146,7 +146,7 @@ static void accepted_callback(rcl_action_server_t* server, const rclc_goal_handl
         int32_t fb_len_rc = example_interfaces__action__Fibonacci_Feedback__serialize(
             &fb, fb_buf, sizeof(fb_buf), &fb_len);
         if (fb_len_rc == 0) {
-            ret = rclc_action_publish_feedback(server, goal, fb_buf, fb_len);
+            ret = rclc_action_publish_feedback_raw(server, goal, fb_buf, fb_len);
             if (ret != RCL_RET_OK) {
                 fprintf(stderr, "Failed to publish feedback: %d\n", ret);
             } else {
@@ -221,21 +221,21 @@ int nros_app_main(int argc, char** argv) {
         .feedback_serialized_size_max = 264,
     };
 
-    RCLC_CHECK_RET(rclc_support_init(&app.support, locator, domain_id), 1);
+    RCLC_CHECK_RET(rclc_support_init_with_locator(&app.support, locator, domain_id), 1);
     printf("Support initialized\n");
     RCLC_CHECK_RET(rclc_node_init_default(&app.node, "fibonacci_action_server", "/", &app.support),
                    1);
     printf("Node created: %s\n", rcl_node_get_name(&app.node));
 
-    RCLC_CHECK_RET(rcl_action_server_init(&app.action_server, &app.node, "/fibonacci",
-                                          &fibonacci_type, goal_callback, cancel_callback,
-                                          accepted_callback, &app.ctx),
+    RCLC_CHECK_RET(rclc_action_server_init_with_callbacks(
+                       &app.action_server, &app.node, "/fibonacci", &fibonacci_type, goal_callback,
+                       cancel_callback, accepted_callback, &app.ctx),
                    1);
     printf("Action server created: /fibonacci\n");
 
-    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support, 8), 1);
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 8, NULL), 1);
     g_executor = &app.executor;
-    RCLC_CHECK_RET(rclc_executor_add_action_server(&app.executor, &app.action_server), 1);
+    RCLC_CHECK_RET(rclc_executor_attach_action_server(&app.executor, &app.action_server), 1);
 
     // Set up signal handler
     signal(SIGINT, signal_handler);
@@ -253,7 +253,7 @@ int nros_app_main(int argc, char** argv) {
     printf("\nShutting down...\n");
     printf("Total goals handled: %d\n", app.ctx.goal_count);
     rclc_executor_fini(&app.executor);
-    rcl_action_server_fini(&app.action_server);
+    rcl_action_server_fini(&app.action_server, &app.node);
     rcl_node_fini(&app.node);
     rclc_support_fini(&app.support);
 

@@ -391,7 +391,7 @@ template <typename A> class Server {
     /// `succeed`, ...) because goals live in the server's static arena.
     ///
     /// Mirrors C's `rclc_accepted_callback_t` (passed at
-    /// `rcl_action_server_init`) and Rust's third argument to
+    /// `rclc_action_server_init_with_callbacks`) and Rust's third argument to
     /// `create_action_server_with_callbacks(goal, cancel, accepted)`. Without
     /// it a C++ user who returned ACCEPT_AND_DEFER was never told the goal had
     /// been accepted.
@@ -607,7 +607,7 @@ template <typename A> class Server {
     /// Is `goal_id` a goal this server still knows about? — phase-417 W4.b.
     ///
     /// rcl's `rcl_action_server_goal_exists`, and C's
-    /// `rcl_action_server_goal_exists`. TRUE while the goal is ACTIVE and
+    /// `rclc_action_server_goal_exists`. TRUE while the goal is ACTIVE and
     /// while its completed result is still retained for a later `get_result`,
     /// which is rcl's own window. A predicate rather than a `Result`, because
     /// the ported idiom is a guard.

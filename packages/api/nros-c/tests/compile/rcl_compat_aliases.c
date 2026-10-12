@@ -123,11 +123,11 @@ static rcl_ret_t (*const k_srv_init_default)(rcl_service_t*, const rcl_node_t*,
  * (RFC-0089's compile-or-conform rule).
  */
 static rcl_ret_t (*const k_add_sub_raw)(
-    struct rclc_executor_t*, struct rcl_subscription_t*, rclc_subscription_callback_t, void*,
+    struct rclc_executor_t*, struct rcl_subscription_t*, rclc_subscription_raw_callback_t, void*,
     enum rclc_executor_handle_invocation_t) = rclc_executor_add_subscription_raw;
 static rcl_ret_t (*const k_add_srv_raw)(struct rclc_executor_t*, struct rcl_service_t*,
-                                         rclc_service_callback_t,
-                                         void*) = rclc_executor_add_service_raw;
+                                        rclc_service_raw_callback_t,
+                                        void*) = rclc_executor_add_service_raw;
 
 /* ── 2. A ported file's own shape: rcl types, rcl zero-init, rcl codes ─── */
 
@@ -300,11 +300,10 @@ static const rclc_subscription_callback_with_context_t k_typed_sub_cb = typed_su
  * alias were ever re-spelled as its own function type and one of the two moved,
  * this argument is what stops compiling. */
 static rcl_ret_t register_typed_subscription(struct rclc_executor_t* executor,
-                                              struct rcl_subscription_t* subscription, void* msg,
-                                              void* context) {
-    return rclc_executor_add_subscription_with_context(executor, subscription, msg,
-                                                       k_typed_sub_cb, context,
-                                                       RCLC_EXECUTOR_ON_NEW_DATA);
+                                             struct rcl_subscription_t* subscription, void* msg,
+                                             void* context) {
+    return rclc_executor_add_subscription_with_context(executor, subscription, msg, k_typed_sub_cb,
+                                                       context, RCLC_EXECUTOR_ON_NEW_DATA);
 }
 
 /* Silence "defined but not used" without needing a main(). */

@@ -119,7 +119,7 @@ int nros_app_main(int argc, char** argv) {
     memset(&app, 0, sizeof(app));
 
     // Initialize support context
-    RCLC_CHECK_RET(rclc_support_init(&app.support, locator, domain_id), 1);
+    RCLC_CHECK_RET(rclc_support_init_with_locator(&app.support, locator, domain_id), 1);
     printf("Support initialized\n");
     RCLC_CHECK_RET(rclc_node_init_default(&app.node, "listener", "/", &app.support), 1);
     printf("Node created: %s\n", rcl_node_get_name(&app.node));
@@ -136,7 +136,7 @@ int nros_app_main(int argc, char** argv) {
     printf("Subscriber created for topic: %s\n",
            rcl_subscription_get_topic_name(&app.subscription));
 
-    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support, 4), 1);
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 4, NULL), 1);
     g_executor = &app.executor;
     /* phase-417 W5.a — rclc's registration, argument for argument:
      *
@@ -171,7 +171,7 @@ int nros_app_main(int argc, char** argv) {
     printf("\nShutting down...\n");
     printf("Total messages received: %d\n", app.listener_ctx.message_count);
     rclc_executor_fini(&app.executor);
-    rcl_subscription_fini(&app.subscription);
+    rcl_subscription_fini(&app.subscription, &app.node);
     rcl_node_fini(&app.node);
     rclc_support_fini(&app.support);
 

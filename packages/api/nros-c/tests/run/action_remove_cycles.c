@@ -100,7 +100,7 @@ typedef struct {
 
 static void rig_open(rig_t* rig, struct rclc_support_t* support, const char* node_name) {
     rig->executor = rclc_executor_get_zero_initialized_executor();
-    CHECK_RET(rclc_executor_init(&rig->executor, support, MAX_HANDLES), RCL_RET_OK,
+    CHECK_RET(rclc_executor_init(&rig->executor, &support->context, MAX_HANDLES, NULL), RCL_RET_OK,
               "executor initialised");
     rcl_node_options_t opts = rcl_node_get_default_options();
     rig->node = rcl_get_zero_initialized_node();
@@ -128,13 +128,13 @@ static void server_cycles(struct rclc_support_t* support) {
     int completed = 0;
     for (int i = 0; i < CYCLES; i++) {
         struct rcl_action_server_t server = rcl_action_get_zero_initialized_server();
-        if (rcl_action_server_init(&server, &rig.node, "fibonacci", &ACTION_TYPE, reject_goal, NULL,
-                                   NULL, NULL) != RCL_RET_OK) {
+        if (rclc_action_server_init_with_callbacks(&server, &rig.node, "fibonacci", &ACTION_TYPE,
+                                                   reject_goal, NULL, NULL, NULL) != RCL_RET_OK) {
             fprintf(stderr, "FAIL: server cycle %d: init\n", i);
             s_failures++;
             break;
         }
-        rcl_ret_t r = rclc_executor_add_action_server(&rig.executor, &server);
+        rcl_ret_t r = rclc_executor_attach_action_server(&rig.executor, &server);
         if (r != RCL_RET_OK) {
             fprintf(stderr, "FAIL: server cycle %d: add returned %d\n", i, (int)r);
             s_failures++;
@@ -171,7 +171,7 @@ static void server_cycles(struct rclc_support_t* support) {
             CHECK_RET(rclc_executor_remove_action_server(&rig.executor, &server),
                       RCLC_RET_NOT_FOUND, "a second remove finds nothing");
         }
-        CHECK_RET(rcl_action_server_fini(&server), RCL_RET_OK, "fini after remove");
+        CHECK_RET(rcl_action_server_fini(&server, &rig.node), RCL_RET_OK, "fini after remove");
         completed++;
     }
     CHECK(completed == CYCLES, "every server cycle completed");
@@ -197,12 +197,13 @@ static void client_cycles(struct rclc_support_t* support) {
     int completed = 0;
     for (int i = 0; i < CYCLES; i++) {
         struct rcl_action_client_t client = rcl_action_get_zero_initialized_client();
-        if (rcl_action_client_init(&client, &rig.node, "fibonacci", &ACTION_TYPE) != RCL_RET_OK) {
+        if (rcl_action_client_init(&client, &rig.node, &ACTION_TYPE, "fibonacci", NULL) !=
+            RCL_RET_OK) {
             fprintf(stderr, "FAIL: client cycle %d: init\n", i);
             s_failures++;
             break;
         }
-        rcl_ret_t r = rclc_executor_add_action_client(&rig.executor, &client);
+        rcl_ret_t r = rclc_executor_attach_action_client(&rig.executor, &client);
         if (r != RCL_RET_OK) {
             fprintf(stderr, "FAIL: client cycle %d: add returned %d\n", i, (int)r);
             s_failures++;
@@ -231,7 +232,7 @@ static void client_cycles(struct rclc_support_t* support) {
             s_failures++;
             break;
         }
-        CHECK_RET(rcl_action_client_fini(&client), RCL_RET_OK, "fini after remove");
+        CHECK_RET(rcl_action_client_fini(&client, &rig.node), RCL_RET_OK, "fini after remove");
         completed++;
     }
     CHECK(completed == CYCLES, "every client cycle completed");
@@ -257,18 +258,19 @@ static void fini_alone_exhausts(struct rclc_support_t* support) {
     rcl_ret_t failed_with = RCL_RET_OK;
     for (int i = 0; i < CYCLES; i++) {
         servers[i] = rcl_action_get_zero_initialized_server();
-        CHECK_RET(rcl_action_server_init(&servers[i], &rig.node, "fibonacci", &ACTION_TYPE,
-                                         reject_goal, NULL, NULL, NULL),
+        CHECK_RET(rclc_action_server_init_with_callbacks(&servers[i], &rig.node, "fibonacci",
+                                                         &ACTION_TYPE, reject_goal, NULL, NULL,
+                                                         NULL),
                   RCL_RET_OK, "control: init");
-        rcl_ret_t r = rclc_executor_add_action_server(&rig.executor, &servers[i]);
+        rcl_ret_t r = rclc_executor_attach_action_server(&rig.executor, &servers[i]);
         if (r != RCL_RET_OK) {
             failed_at = i;
             failed_with = r;
-            (void)rcl_action_server_fini(&servers[i]);
+            (void)rcl_action_server_fini(&servers[i], &rig.node);
             break;
         }
         /* fini WITHOUT remove — the teardown every C image used before 1609. */
-        CHECK_RET(rcl_action_server_fini(&servers[i]), RCL_RET_OK, "control: fini");
+        CHECK_RET(rcl_action_server_fini(&servers[i], &rig.node), RCL_RET_OK, "control: fini");
     }
     CHECK(failed_at >= 0, "an executor that never runs out proves nothing: fini alone must "
                           "exhaust it, or the positive loop measured nothing");

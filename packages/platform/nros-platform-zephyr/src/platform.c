@@ -54,9 +54,9 @@
  * both arms keep compiling everywhere. */
 uint64_t nros_platform_clock_ns(void) {
     if (IS_ENABLED(CONFIG_TIMER_HAS_64BIT_CYCLE_COUNTER)) {
-        return (uint64_t) k_cyc_to_ns_floor64(k_cycle_get_64());
+        return (uint64_t)k_cyc_to_ns_floor64(k_cycle_get_64());
     }
-    return (uint64_t) k_ticks_to_ns_floor64(k_uptime_ticks());
+    return (uint64_t)k_ticks_to_ns_floor64(k_uptime_ticks());
 }
 
 uint64_t nros_platform_clock_resolution_ns(void) {
@@ -64,13 +64,13 @@ uint64_t nros_platform_clock_resolution_ns(void) {
         /* One cycle. `sys_clock_hw_cycles_per_sec()` rather than the
          * Kconfig constant because a driver may only know its frequency
          * at runtime (CONFIG_TIMER_READS_ITS_FREQUENCY_AT_RUNTIME). */
-        const uint64_t hz = (uint64_t) sys_clock_hw_cycles_per_sec();
+        const uint64_t hz = (uint64_t)sys_clock_hw_cycles_per_sec();
         if (hz != 0U) {
             const uint64_t ns = 1000000000ULL / hz;
             return ns == 0U ? 1U : ns;
         }
     }
-    return (uint64_t) k_ticks_to_ns_floor64(1);
+    return (uint64_t)k_ticks_to_ns_floor64(1);
 }
 
 /* issue 0758 — the Zephyr wall-clock epoch, acquired once over SNTP.
@@ -106,18 +106,18 @@ static uint64_t nros_zephyr_epoch_offset_get(void) {
      * one atomic_t on 32-bit targets, and the value is written exactly once, so
      * a single retry is sufficient — this is not a general seqlock. */
     for (int attempt = 0; attempt < 2; attempt++) {
-        uint32_t hi1 = (uint32_t) atomic_get(&nros_zephyr_epoch_offset_hi);
-        uint32_t lo = (uint32_t) atomic_get(&nros_zephyr_epoch_offset_lo);
-        uint32_t hi2 = (uint32_t) atomic_get(&nros_zephyr_epoch_offset_hi);
+        uint32_t hi1 = (uint32_t)atomic_get(&nros_zephyr_epoch_offset_hi);
+        uint32_t lo = (uint32_t)atomic_get(&nros_zephyr_epoch_offset_lo);
+        uint32_t hi2 = (uint32_t)atomic_get(&nros_zephyr_epoch_offset_hi);
         if (hi1 == hi2) {
-            return ((uint64_t) hi1 << 32) | (uint64_t) lo;
+            return ((uint64_t)hi1 << 32) | (uint64_t)lo;
         }
     }
     return 0;
 }
 
-int nros_platform_epoch_acquire_sntp(const char *server, uint32_t timeout_ms);
-int nros_platform_epoch_acquire_sntp(const char *server, uint32_t timeout_ms) {
+int nros_platform_epoch_acquire_sntp(const char* server, uint32_t timeout_ms);
+int nros_platform_epoch_acquire_sntp(const char* server, uint32_t timeout_ms) {
     if (server == NULL || server[0] == '\0') {
         return -EINVAL;
     }
@@ -131,12 +131,12 @@ int nros_platform_epoch_acquire_sntp(const char *server, uint32_t timeout_ms) {
     /* `fraction` is a 32-bit binary fraction of a second. Scale to us via a
      * 64-bit intermediate; >> 32 rather than / 2^32 so no division is emitted
      * on targets without one. */
-    uint64_t frac_us = ((uint64_t) ts.fraction * 1000000ULL) >> 32;
+    uint64_t frac_us = ((uint64_t)ts.fraction * 1000000ULL) >> 32;
     uint64_t now_us = ts.seconds * 1000000ULL + frac_us;
     uint64_t mono_us = nros_platform_clock_ns() / 1000ULL;
     uint64_t offset = now_us - mono_us;
-    atomic_set(&nros_zephyr_epoch_offset_lo, (atomic_val_t) (uint32_t) offset);
-    atomic_set(&nros_zephyr_epoch_offset_hi, (atomic_val_t) (uint32_t) (offset >> 32));
+    atomic_set(&nros_zephyr_epoch_offset_lo, (atomic_val_t)(uint32_t)offset);
+    atomic_set(&nros_zephyr_epoch_offset_hi, (atomic_val_t)(uint32_t)(offset >> 32));
     return 0;
 }
 
@@ -173,9 +173,9 @@ uint64_t nros_platform_epoch_us(void) {
  * memcpy'd the NEW size out of the old block (a documented best-effort
  * over-read); rlsf's own reallocate retires that too. */
 
-extern void *nros_zephyr_heap_alloc(size_t size);
-extern void *nros_zephyr_heap_realloc(void *ptr, size_t size);
-extern void nros_zephyr_heap_free(void *ptr);
+extern void* nros_zephyr_heap_alloc(size_t size);
+extern void* nros_zephyr_heap_realloc(void* ptr, size_t size);
+extern void nros_zephyr_heap_free(void* ptr);
 
 /* phase-460 W5 / issue 1424 -- the heap's high-water mark, into the one record
  * a console-less board can be asked for after the fact.
@@ -224,8 +224,7 @@ static inline void nros_zephyr_note_heap_to_boot_report(void) {
 #ifdef CONFIG_NROS_BOOT_REPORT
     extern size_t nros_zephyr_heap_capacity(void);
     extern size_t nros_zephyr_heap_peak(void);
-    nros_boot_report_note_heap(nros_zephyr_heap_peak(),
-                               nros_zephyr_heap_capacity());
+    nros_boot_report_note_heap(nros_zephyr_heap_peak(), nros_zephyr_heap_capacity());
 #endif
 }
 
@@ -254,22 +253,21 @@ static inline void nros_zephyr_note_heap_to_boot_report(void) {
  * Not `_Noreturn`: with the knob off it returns, and the caller goes on to
  * return NULL exactly as it always did. */
 static void nros_zephyr_heap_exhaustion_is_fatal(size_t size, size_t capacity) {
-    (void) size;
-    (void) capacity;
+    (void)size;
+    (void)capacity;
     if (IS_ENABLED(CONFIG_NROS_HEAP_EXHAUSTION_IS_FATAL)) {
-        static const char msg[] =
-            "platform heap exhausted (see the HEAP EXHAUSTED line above, and "
-            "the boot report's failed_alloc_size)";
+        static const char msg[] = "platform heap exhausted (see the HEAP EXHAUSTED line above, and "
+                                  "the boot report's failed_alloc_size)";
         nros_platform_panic(msg, sizeof(msg) - 1);
     }
 }
 
 static struct k_spinlock nros_heap_lock;
 
-void *nros_platform_alloc(size_t size) {
+void* nros_platform_alloc(size_t size) {
     if (size == 0) return NULL;
     k_spinlock_key_t key = k_spin_lock(&nros_heap_lock);
-    void *out = nros_zephyr_heap_alloc(size);
+    void* out = nros_zephyr_heap_alloc(size);
     k_spin_unlock(&nros_heap_lock, key);
     /* Both outcomes, and before the printk below: an allocation that succeeded
      * may have set a new peak, and one that failed is the reading that explains
@@ -321,7 +319,7 @@ void *nros_platform_alloc(size_t size) {
          * postpones the second. The walk is O(free blocks), which is why it
          * runs here and nowhere else, and it is under the funnel's lock like
          * every other call into the arena. */
-        extern int nros_zephyr_heap_free_shape(size_t size, size_t *largest, size_t *total);
+        extern int nros_zephyr_heap_free_shape(size_t size, size_t * largest, size_t * total);
         size_t largest_free = 0;
         size_t free_total = 0;
         k_spinlock_key_t shape_key = k_spin_lock(&nros_heap_lock);
@@ -330,8 +328,8 @@ void *nros_platform_alloc(size_t size) {
         printk("nros: HEAP EXHAUSTED (%s): request %zu bytes, arena %zu bytes, "
                "free %zu bytes, largest free block %zu bytes, caller %p\n"
                "      (addr2line -f -e zephyr.elf %p to name it; %s)\n",
-               fragmented ? "FRAGMENTED" : "TOO SMALL", size, capacity, free_total,
-               largest_free, __builtin_return_address(0), __builtin_return_address(0),
+               fragmented ? "FRAGMENTED" : "TOO SMALL", size, capacity, free_total, largest_free,
+               __builtin_return_address(0), __builtin_return_address(0),
                fragmented ? "the bytes are free and no hole the size-class search "
                             "reaches holds the request (the largest may still exceed it: "
                             "TLSF skips the request's own class) -- a larger "
@@ -343,9 +341,9 @@ void *nros_platform_alloc(size_t size) {
     return out;
 }
 
-void *nros_platform_realloc(void *ptr, size_t size) {
+void* nros_platform_realloc(void* ptr, size_t size) {
     k_spinlock_key_t key = k_spin_lock(&nros_heap_lock);
-    void *out = nros_zephyr_heap_realloc(ptr, size);
+    void* out = nros_zephyr_heap_realloc(ptr, size);
     k_spin_unlock(&nros_heap_lock, key);
     /* A grow-in-place or a copy-to-larger raises the outstanding bytes exactly
      * as an alloc does, so this is the second of the two places the peak can
@@ -355,7 +353,7 @@ void *nros_platform_realloc(void *ptr, size_t size) {
     return out;
 }
 
-void nros_platform_dealloc(void *ptr) {
+void nros_platform_dealloc(void* ptr) {
     k_spinlock_key_t key = k_spin_lock(&nros_heap_lock);
     nros_zephyr_heap_free(ptr);
     k_spin_unlock(&nros_heap_lock, key);
@@ -395,9 +393,13 @@ extern size_t nros_zephyr_heap_capacity(void);
 extern size_t nros_zephyr_heap_used(void);
 extern size_t nros_zephyr_heap_peak(void);
 
-size_t nros_platform_heap_used_bytes(void) { return nros_zephyr_heap_used(); }
+size_t nros_platform_heap_used_bytes(void) {
+    return nros_zephyr_heap_used();
+}
 
-size_t nros_platform_heap_total_bytes(void) { return nros_zephyr_heap_capacity(); }
+size_t nros_platform_heap_total_bytes(void) {
+    return nros_zephyr_heap_capacity();
+}
 
 /* High-water mark, for sizing CONFIG_NROS_ZEPHYR_HEAP_SIZE from a measurement
  * rather than from a round number.
@@ -406,22 +408,24 @@ size_t nros_platform_heap_total_bytes(void) { return nros_zephyr_heap_capacity()
  * other port would need a stub plus a regenerated cffi binding to carry a
  * figure only this port can produce. `nros_zephyr_heap_peak()` is reachable
  * directly by anything Zephyr-side that wants it. */
-size_t nros_zephyr_platform_heap_peak_bytes(void) { return nros_zephyr_heap_peak(); }
+size_t nros_zephyr_platform_heap_peak_bytes(void) {
+    return nros_zephyr_heap_peak();
+}
 
 /* ---- Sleep ---- */
 
 void nros_platform_sleep_us(size_t us) {
     if (us == 0) return;
-    k_usleep((int32_t) us);
+    k_usleep((int32_t)us);
 }
 
 void nros_platform_sleep_ms(size_t ms) {
     if (ms == 0) return;
-    k_msleep((int32_t) ms);
+    k_msleep((int32_t)ms);
 }
 
 void nros_platform_sleep_s(size_t s) {
-    k_sleep(K_SECONDS((int32_t) s));
+    k_sleep(K_SECONDS((int32_t)s));
 }
 
 /* ---- Yield ---- */
@@ -488,7 +492,7 @@ static void nros_rand_init(void) {
      * they satisfy what this issue asks: reset twice, get two ids. */
     uint32_t seed = nros_rand_seed_carry;
     seed = nros_rand_mix(seed ^ k_cycle_get_32());
-    seed = nros_rand_mix(seed ^ (uint32_t) k_uptime_get_32());
+    seed = nros_rand_mix(seed ^ (uint32_t)k_uptime_get_32());
     seed = nros_rand_mix(seed ^ sys_rand32_get());
 
     /* Carry a DIFFERENT value forward than the one seeding this boot, so a
@@ -534,9 +538,15 @@ static uint32_t nros_rand_u32(void) {
 
 #endif
 
-uint8_t  nros_platform_random_u8(void)   { return (uint8_t)  NROS_RAND_U32(); }
-uint16_t nros_platform_random_u16(void)  { return (uint16_t) NROS_RAND_U32(); }
-uint32_t nros_platform_random_u32(void)  { return NROS_RAND_U32(); }
+uint8_t nros_platform_random_u8(void) {
+    return (uint8_t)NROS_RAND_U32();
+}
+uint16_t nros_platform_random_u16(void) {
+    return (uint16_t)NROS_RAND_U32();
+}
+uint32_t nros_platform_random_u32(void) {
+    return NROS_RAND_U32();
+}
 
 uint64_t nros_platform_random_u64(void) {
     uint64_t hi = NROS_RAND_U32();
@@ -544,19 +554,19 @@ uint64_t nros_platform_random_u64(void) {
     return (hi << 32) | lo;
 }
 
-void nros_platform_random_fill(void *buf, size_t len) {
+void nros_platform_random_fill(void* buf, size_t len) {
 #if defined(CONFIG_TEST_RANDOM_GENERATOR) && !defined(CONFIG_ENTROPY_GENERATOR)
     /* Byte-wise from the same stream, so `fill` cannot disagree with the
      * scalar draws about which generator is in use. Filling from
      * `sys_rand_get` here while the scalars used the seeded PRNG is exactly
      * how a zid ends up deterministic while everything else looks fine. */
-    uint8_t *p = (uint8_t *) buf;
+    uint8_t* p = (uint8_t*)buf;
     size_t i = 0;
     while (i < len) {
         uint32_t v = nros_rand_u32();
         size_t n = (len - i) < 4u ? (len - i) : 4u;
         for (size_t k = 0; k < n; k++) {
-            p[i + k] = (uint8_t) (v >> (8u * k));
+            p[i + k] = (uint8_t)(v >> (8u * k));
         }
         i += n;
     }
@@ -570,7 +580,7 @@ void nros_platform_random_fill(void *buf, size_t len) {
 /* The wall clock IS the SNTP epoch above (issue 0758), in the unit this
  * symbol speaks. It used to be a hard `return 0`, which left the epoch
  * reachable only through `nros_platform_epoch_us`: every reader of the wall
- * clock -- `rclc_clock_get_now_ns(SYSTEM_TIME)`, `rclcpp::Clock().now()`,
+ * clock -- `rcl_clock_get_now(SYSTEM_TIME)`, `rclcpp::Clock().now()`,
  * `nros_core::Clock::system()`, the executor's `default_epoch_us` -- reads
  * THIS symbol, so an image that had acquired its epoch still read 0 (and fell
  * back to boot-relative time) everywhere a caller asked for the wall. The
@@ -589,11 +599,9 @@ uint64_t nros_platform_time_now_ns(void) {
 
 #ifdef CONFIG_POSIX_API
 
-int nros_zephyr_task_create(pthread_t *thread,
-                            void *(*entry)(void *),
-                            void *arg);
+int nros_zephyr_task_create(pthread_t* thread, void* (*entry)(void*), void* arg);
 
-void nros_platform_task_attr_init(nros_platform_task_attr_t *attr) {
+void nros_platform_task_attr_init(nros_platform_task_attr_t* attr) {
     if (attr == NULL) {
         return;
     }
@@ -647,11 +655,11 @@ static int nros_zephyr_native_priority(int32_t priority) {
     }
     int want;
     if (NROS_PLATFORM_PRIORITY_IS_RAW(priority)) {
-        want = (int) NROS_PLATFORM_PRIORITY_RAW_VALUE(priority);
+        want = (int)NROS_PLATFORM_PRIORITY_RAW_VALUE(priority);
     } else if (priority >= 0) {
         int32_t band =
             priority > NROS_PLATFORM_PRIORITY_MAX ? NROS_PLATFORM_PRIORITY_MAX : priority;
-        want = lo + (int) (((int64_t) band * (hi - lo)) / NROS_PLATFORM_PRIORITY_MAX);
+        want = lo + (int)(((int64_t)band * (hi - lo)) / NROS_PLATFORM_PRIORITY_MAX);
     } else {
         return -1;
     }
@@ -661,16 +669,15 @@ static int nros_zephyr_native_priority(int32_t priority) {
 #else
     /* No POSIX scheduling option in this image: nothing can be asked for, and
      * pretending otherwise would put us back to a silently dropped attribute. */
-    (void) priority;
+    (void)priority;
     return -1;
 #endif
 }
 
-int nros_zephyr_task_create_prio(pthread_t *thread, void *(*entry)(void *), void *arg,
-                                 int native_priority, const char *name);
+int nros_zephyr_task_create_prio(pthread_t* thread, void* (*entry)(void*), void* arg,
+                                 int native_priority, const char* name);
 
-int8_t nros_platform_task_init(void *task, void *attr,
-                               void *(*entry)(void *), void *arg) {
+int8_t nros_platform_task_init(void* task, void* attr, void* (*entry)(void*), void* arg) {
     /* phase-364 W1 — see the posix port: INVALID for a caller-side
      * impossibility, NOMEM for a refused create (this port reaches Zephyr's
      * pthread layer, so it inherits EAGAIN-on-exhaustion semantics). */
@@ -686,7 +693,7 @@ int8_t nros_platform_task_init(void *task, void *attr,
      * requested `stack_bytes` cannot be applied here and is deliberately not
      * silently pretended to be. A caller needing an exact Zephyr stack should
      * declare the thread in the image, which is the Zephyr-native answer. */
-    const nros_platform_task_attr_t *a = (const nros_platform_task_attr_t *) attr;
+    const nros_platform_task_attr_t* a = (const nros_platform_task_attr_t*)attr;
 
     /* issue 0852 — `priority` IS honoured. It used to be discarded along with
      * `stack_bytes`, under the one comment above, but the reasoning that
@@ -695,8 +702,8 @@ int8_t nros_platform_task_init(void *task, void *attr,
      * `pthread_attr_setschedparam`, and there is no alignment constraint in the
      * way. Accepting a priority and silently dropping it is the failure
      * RFC-0079 is about, and it cost issue 0852 six wrong hypotheses. */
-    int native = nros_zephyr_native_priority(a != NULL ? a->priority
-                                                       : NROS_PLATFORM_PRIORITY_INHERIT);
+    int native =
+        nros_zephyr_native_priority(a != NULL ? a->priority : NROS_PLATFORM_PRIORITY_INHERIT);
 
     /* `name` IS honoured, for the same reason `priority` above is.
      *
@@ -713,35 +720,34 @@ int8_t nros_platform_task_init(void *task, void *attr,
      * only be told apart by stack base -- one of them holding 13.7% of the
      * core with nothing to say what it was -- while the identical code on
      * FreeRTOS traces as `nros_app` and `nros_tier@1`. */
-    const char *name = (a != NULL) ? a->name : NULL;
+    const char* name = (a != NULL) ? a->name : NULL;
 
-    return nros_zephyr_task_create_prio((pthread_t *) task, entry, arg, native, name) == 0
+    return nros_zephyr_task_create_prio((pthread_t*)task, entry, arg, native, name) == 0
                ? NROS_PLATFORM_RET_OK
                : NROS_PLATFORM_RET_NOMEM;
 }
 
-
-int8_t nros_platform_task_join(void *task) {
+int8_t nros_platform_task_join(void* task) {
     if (task == NULL) return -1;
-    return pthread_join(*(pthread_t *) task, NULL) == 0 ? 0 : -1;
+    return pthread_join(*(pthread_t*)task, NULL) == 0 ? 0 : -1;
 }
 
-int8_t nros_platform_task_detach(void *task) {
+int8_t nros_platform_task_detach(void* task) {
     if (task == NULL) return -1;
-    return pthread_detach(*(pthread_t *) task) == 0 ? 0 : -1;
+    return pthread_detach(*(pthread_t*)task) == 0 ? 0 : -1;
 }
 
-int8_t nros_platform_task_cancel(void *task) {
+int8_t nros_platform_task_cancel(void* task) {
     if (task == NULL) return -1;
-    return pthread_cancel(*(pthread_t *) task) == 0 ? 0 : -1;
+    return pthread_cancel(*(pthread_t*)task) == 0 ? 0 : -1;
 }
 
 void nros_platform_task_exit(void) {
     pthread_exit(NULL);
 }
 
-void nros_platform_task_free(void **task) {
-    (void) task;  /* caller-owned pthread_t storage */
+void nros_platform_task_free(void** task) {
+    (void)task; /* caller-owned pthread_t storage */
 }
 
 /* phase-360 W5 follow-up — the probe lives WITH the implementation that owns
@@ -770,12 +776,24 @@ size_t nros_platform_task_storage_align(void) {
  *
  * This replaces a hand-computed table in `zpico-sys` that guessed OTHER
  * platforms' struct sizes with `≈` and a "2× safety margin". */
-size_t nros_platform_mutex_storage_size(void) { return sizeof(pthread_mutex_t); }
-size_t nros_platform_mutex_storage_align(void) { return _Alignof(pthread_mutex_t); }
-size_t nros_platform_mutex_rec_storage_size(void) { return sizeof(pthread_mutex_t); }
-size_t nros_platform_mutex_rec_storage_align(void) { return _Alignof(pthread_mutex_t); }
-size_t nros_platform_condvar_storage_size(void) { return sizeof(pthread_cond_t); }
-size_t nros_platform_condvar_storage_align(void) { return _Alignof(pthread_cond_t); }
+size_t nros_platform_mutex_storage_size(void) {
+    return sizeof(pthread_mutex_t);
+}
+size_t nros_platform_mutex_storage_align(void) {
+    return _Alignof(pthread_mutex_t);
+}
+size_t nros_platform_mutex_rec_storage_size(void) {
+    return sizeof(pthread_mutex_t);
+}
+size_t nros_platform_mutex_rec_storage_align(void) {
+    return _Alignof(pthread_mutex_t);
+}
+size_t nros_platform_condvar_storage_size(void) {
+    return sizeof(pthread_cond_t);
+}
+size_t nros_platform_condvar_storage_align(void) {
+    return _Alignof(pthread_cond_t);
+}
 
 _Static_assert(NROS_PLATFORM_MUTEX_STORAGE_SIZE >= sizeof(pthread_mutex_t),
                "NROS_PLATFORM_MUTEX_STORAGE_SIZE too small for this port");
@@ -786,79 +804,86 @@ _Static_assert(NROS_PLATFORM_CONDVAR_STORAGE_SIZE >= sizeof(pthread_cond_t),
 _Static_assert(NROS_PLATFORM_TASK_STORAGE_SIZE >= sizeof(pthread_t),
                "NROS_PLATFORM_TASK_STORAGE_SIZE too small for this port");
 
-
 /* ---- Mutex ---- */
 
-int8_t nros_platform_mutex_init(void *m) {
+int8_t nros_platform_mutex_init(void* m) {
     if (m == NULL) return -1;
-    return pthread_mutex_init((pthread_mutex_t *) m, NULL) == 0 ? 0 : -1;
+    return pthread_mutex_init((pthread_mutex_t*)m, NULL) == 0 ? 0 : -1;
 }
 
-int8_t nros_platform_mutex_drop(void *m) {
+int8_t nros_platform_mutex_drop(void* m) {
     if (m == NULL) return 0;
-    return pthread_mutex_destroy((pthread_mutex_t *) m) == 0 ? 0 : -1;
+    return pthread_mutex_destroy((pthread_mutex_t*)m) == 0 ? 0 : -1;
 }
 
-int8_t nros_platform_mutex_lock(void *m) {
+int8_t nros_platform_mutex_lock(void* m) {
     if (m == NULL) return -1;
-    return pthread_mutex_lock((pthread_mutex_t *) m) == 0 ? 0 : -1;
+    return pthread_mutex_lock((pthread_mutex_t*)m) == 0 ? 0 : -1;
 }
 
-int8_t nros_platform_mutex_try_lock(void *m) {
+int8_t nros_platform_mutex_try_lock(void* m) {
     if (m == NULL) return -1;
-    int rc = pthread_mutex_trylock((pthread_mutex_t *) m);
-    if (rc == 0)       return 0;
-    if (rc == EBUSY)   return 1;
+    int rc = pthread_mutex_trylock((pthread_mutex_t*)m);
+    if (rc == 0) return 0;
+    if (rc == EBUSY) return 1;
     return -1;
 }
 
-int8_t nros_platform_mutex_unlock(void *m) {
+int8_t nros_platform_mutex_unlock(void* m) {
     if (m == NULL) return -1;
-    return pthread_mutex_unlock((pthread_mutex_t *) m) == 0 ? 0 : -1;
+    return pthread_mutex_unlock((pthread_mutex_t*)m) == 0 ? 0 : -1;
 }
 
-int8_t nros_platform_mutex_rec_init(void *m) {
+int8_t nros_platform_mutex_rec_init(void* m) {
     if (m == NULL) return -1;
     pthread_mutexattr_t attr;
     if (pthread_mutexattr_init(&attr) != 0) return -1;
     if (pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE) != 0) {
-        (void) pthread_mutexattr_destroy(&attr);
+        (void)pthread_mutexattr_destroy(&attr);
         return -1;
     }
-    int rc = pthread_mutex_init((pthread_mutex_t *) m, &attr);
-    (void) pthread_mutexattr_destroy(&attr);
+    int rc = pthread_mutex_init((pthread_mutex_t*)m, &attr);
+    (void)pthread_mutexattr_destroy(&attr);
     return rc == 0 ? 0 : -1;
 }
-int8_t nros_platform_mutex_rec_drop(void *m)     { return nros_platform_mutex_drop(m); }
-int8_t nros_platform_mutex_rec_lock(void *m)     { return nros_platform_mutex_lock(m); }
-int8_t nros_platform_mutex_rec_try_lock(void *m) { return nros_platform_mutex_try_lock(m); }
-int8_t nros_platform_mutex_rec_unlock(void *m)   { return nros_platform_mutex_unlock(m); }
+int8_t nros_platform_mutex_rec_drop(void* m) {
+    return nros_platform_mutex_drop(m);
+}
+int8_t nros_platform_mutex_rec_lock(void* m) {
+    return nros_platform_mutex_lock(m);
+}
+int8_t nros_platform_mutex_rec_try_lock(void* m) {
+    return nros_platform_mutex_try_lock(m);
+}
+int8_t nros_platform_mutex_rec_unlock(void* m) {
+    return nros_platform_mutex_unlock(m);
+}
 
 /* ---- Condvars ---- */
 
-int8_t nros_platform_condvar_init(void *cv) {
+int8_t nros_platform_condvar_init(void* cv) {
     if (cv == NULL) return -1;
     pthread_condattr_t attr;
     if (pthread_condattr_init(&attr) != 0) return -1;
-    (void) pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
-    int rc = pthread_cond_init((pthread_cond_t *) cv, &attr);
-    (void) pthread_condattr_destroy(&attr);
+    (void)pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
+    int rc = pthread_cond_init((pthread_cond_t*)cv, &attr);
+    (void)pthread_condattr_destroy(&attr);
     return rc == 0 ? 0 : -1;
 }
 
-int8_t nros_platform_condvar_drop(void *cv) {
+int8_t nros_platform_condvar_drop(void* cv) {
     if (cv == NULL) return 0;
-    return pthread_cond_destroy((pthread_cond_t *) cv) == 0 ? 0 : -1;
+    return pthread_cond_destroy((pthread_cond_t*)cv) == 0 ? 0 : -1;
 }
 
-int8_t nros_platform_condvar_signal(void *cv) {
+int8_t nros_platform_condvar_signal(void* cv) {
     if (cv == NULL) return -1;
-    return pthread_cond_signal((pthread_cond_t *) cv) == 0 ? 0 : -1;
+    return pthread_cond_signal((pthread_cond_t*)cv) == 0 ? 0 : -1;
 }
 
-int8_t nros_platform_condvar_signal_all(void *cv) {
+int8_t nros_platform_condvar_signal_all(void* cv) {
     if (cv == NULL) return -1;
-    return pthread_cond_broadcast((pthread_cond_t *) cv) == 0 ? 0 : -1;
+    return pthread_cond_broadcast((pthread_cond_t*)cv) == 0 ? 0 : -1;
 }
 
 /* Phase 124.B.7.a — ISR-safe signal.
@@ -869,27 +894,24 @@ int8_t nros_platform_condvar_signal_all(void *cv) {
  * the ISR path on a kernel build that rejects it, we'll need a
  * dedicated k_sem fallback. Track in the platform integration
  * tests. */
-int8_t nros_platform_condvar_signal_from_isr(void *cv) {
+int8_t nros_platform_condvar_signal_from_isr(void* cv) {
     if (cv == NULL) return -1;
-    return pthread_cond_signal((pthread_cond_t *) cv) == 0 ? 0 : -1;
+    return pthread_cond_signal((pthread_cond_t*)cv) == 0 ? 0 : -1;
 }
 
-int8_t nros_platform_condvar_wait(void *cv, void *m) {
+int8_t nros_platform_condvar_wait(void* cv, void* m) {
     if (cv == NULL || m == NULL) return -1;
-    return pthread_cond_wait((pthread_cond_t *) cv,
-                             (pthread_mutex_t *) m) == 0 ? 0 : -1;
+    return pthread_cond_wait((pthread_cond_t*)cv, (pthread_mutex_t*)m) == 0 ? 0 : -1;
 }
 
-int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) {
+int8_t nros_platform_condvar_wait_until(void* cv, void* m, uint64_t abstime_ms) {
     if (cv == NULL || m == NULL) return -1;
     struct timespec ts = {
-        .tv_sec = (time_t) (abstime_ms / 1000U),
-        .tv_nsec = (long) ((abstime_ms % 1000U) * 1000000U),
+        .tv_sec = (time_t)(abstime_ms / 1000U),
+        .tv_nsec = (long)((abstime_ms % 1000U) * 1000000U),
     };
-    int rc = pthread_cond_timedwait((pthread_cond_t *) cv,
-                                    (pthread_mutex_t *) m,
-                                    &ts);
-    if (rc == 0)         return 0;
+    int rc = pthread_cond_timedwait((pthread_cond_t*)cv, (pthread_mutex_t*)m, &ts);
+    if (rc == 0) return 0;
     if (rc == ETIMEDOUT) return 1;
     return -1;
 }
@@ -909,18 +931,18 @@ int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) 
  * That needs storage of at least `sizeof(void *)`, which every caller
  * provides on this 32-bit ABI. */
 
-#define NROS_Z_HANDLE(ptr) (*(void **) (ptr))
+#define NROS_Z_HANDLE(ptr) (*(void**)(ptr))
 
-int8_t nros_platform_mutex_init(void *m) {
+int8_t nros_platform_mutex_init(void* m) {
     if (m == NULL) return -1;
-/* RFC-0034 D6 -- allocations here go through `nros_platform_alloc`, NOT
- * `k_malloc` directly. On Zephyr both reach `_system_heap` today, so the
- * distinction looks cosmetic; it is not. The funnel is what lets the arena's
- * ALGORITHM be swapped (a constant-time allocator for the real-time tier)
- * without hunting every allocation site in the tree. A direct `k_malloc` here
- * would keep allocating from the kernel heap after the funnel moved, silently
- * splitting the one arena D6 exists to keep whole. */
-    struct k_mutex *mu = nros_platform_alloc(sizeof(struct k_mutex));
+    /* RFC-0034 D6 -- allocations here go through `nros_platform_alloc`, NOT
+     * `k_malloc` directly. On Zephyr both reach `_system_heap` today, so the
+     * distinction looks cosmetic; it is not. The funnel is what lets the arena's
+     * ALGORITHM be swapped (a constant-time allocator for the real-time tier)
+     * without hunting every allocation site in the tree. A direct `k_malloc` here
+     * would keep allocating from the kernel heap after the funnel moved, silently
+     * splitting the one arena D6 exists to keep whole. */
+    struct k_mutex* mu = nros_platform_alloc(sizeof(struct k_mutex));
     if (mu == NULL) return -1;
     if (k_mutex_init(mu) != 0) {
         nros_platform_dealloc(mu);
@@ -930,36 +952,36 @@ int8_t nros_platform_mutex_init(void *m) {
     return 0;
 }
 
-int8_t nros_platform_mutex_drop(void *m) {
+int8_t nros_platform_mutex_drop(void* m) {
     if (m == NULL) return 0;
-    struct k_mutex *mu = NROS_Z_HANDLE(m);
+    struct k_mutex* mu = NROS_Z_HANDLE(m);
     if (mu == NULL) return 0;
     nros_platform_dealloc(mu);
     NROS_Z_HANDLE(m) = NULL;
     return 0;
 }
 
-int8_t nros_platform_mutex_lock(void *m) {
+int8_t nros_platform_mutex_lock(void* m) {
     if (m == NULL) return -1;
-    struct k_mutex *mu = NROS_Z_HANDLE(m);
+    struct k_mutex* mu = NROS_Z_HANDLE(m);
     if (mu == NULL) return -1;
     return k_mutex_lock(mu, K_FOREVER) == 0 ? 0 : -1;
 }
 
-int8_t nros_platform_mutex_try_lock(void *m) {
+int8_t nros_platform_mutex_try_lock(void* m) {
     if (m == NULL) return -1;
-    struct k_mutex *mu = NROS_Z_HANDLE(m);
+    struct k_mutex* mu = NROS_Z_HANDLE(m);
     if (mu == NULL) return -1;
     /* 0 = acquired, 1 = would block (ABI's `try` contract), -1 = error. */
     int rc = k_mutex_lock(mu, K_NO_WAIT);
-    if (rc == 0)      return 0;
+    if (rc == 0) return 0;
     if (rc == -EBUSY) return 1;
     return -1;
 }
 
-int8_t nros_platform_mutex_unlock(void *m) {
+int8_t nros_platform_mutex_unlock(void* m) {
     if (m == NULL) return -1;
-    struct k_mutex *mu = NROS_Z_HANDLE(m);
+    struct k_mutex* mu = NROS_Z_HANDLE(m);
     if (mu == NULL) return -1;
     return k_mutex_unlock(mu) == 0 ? 0 : -1;
 }
@@ -967,15 +989,25 @@ int8_t nros_platform_mutex_unlock(void *m) {
 /* `k_mutex` is recursive for the owning thread (`lock_count`, see
  * zephyr/kernel/mutex.c), which is exactly what the ABI requires of
  * `mutex_rec_*` — zenoh-pico deadlocks on a non-recursive one. */
-int8_t nros_platform_mutex_rec_init(void *m)     { return nros_platform_mutex_init(m); }
-int8_t nros_platform_mutex_rec_drop(void *m)     { return nros_platform_mutex_drop(m); }
-int8_t nros_platform_mutex_rec_lock(void *m)     { return nros_platform_mutex_lock(m); }
-int8_t nros_platform_mutex_rec_try_lock(void *m) { return nros_platform_mutex_try_lock(m); }
-int8_t nros_platform_mutex_rec_unlock(void *m)   { return nros_platform_mutex_unlock(m); }
+int8_t nros_platform_mutex_rec_init(void* m) {
+    return nros_platform_mutex_init(m);
+}
+int8_t nros_platform_mutex_rec_drop(void* m) {
+    return nros_platform_mutex_drop(m);
+}
+int8_t nros_platform_mutex_rec_lock(void* m) {
+    return nros_platform_mutex_lock(m);
+}
+int8_t nros_platform_mutex_rec_try_lock(void* m) {
+    return nros_platform_mutex_try_lock(m);
+}
+int8_t nros_platform_mutex_rec_unlock(void* m) {
+    return nros_platform_mutex_unlock(m);
+}
 
-int8_t nros_platform_condvar_init(void *cv) {
+int8_t nros_platform_condvar_init(void* cv) {
     if (cv == NULL) return -1;
-    struct k_condvar *c = nros_platform_alloc(sizeof(struct k_condvar));
+    struct k_condvar* c = nros_platform_alloc(sizeof(struct k_condvar));
     if (c == NULL) return -1;
     if (k_condvar_init(c) != 0) {
         nros_platform_dealloc(c);
@@ -985,51 +1017,49 @@ int8_t nros_platform_condvar_init(void *cv) {
     return 0;
 }
 
-int8_t nros_platform_condvar_drop(void *cv) {
+int8_t nros_platform_condvar_drop(void* cv) {
     if (cv == NULL) return 0;
-    struct k_condvar *c = NROS_Z_HANDLE(cv);
+    struct k_condvar* c = NROS_Z_HANDLE(cv);
     if (c == NULL) return 0;
     nros_platform_dealloc(c);
     NROS_Z_HANDLE(cv) = NULL;
     return 0;
 }
 
-int8_t nros_platform_condvar_signal(void *cv) {
+int8_t nros_platform_condvar_signal(void* cv) {
     if (cv == NULL) return -1;
-    struct k_condvar *c = NROS_Z_HANDLE(cv);
+    struct k_condvar* c = NROS_Z_HANDLE(cv);
     if (c == NULL) return -1;
     return k_condvar_signal(c) == 0 ? 0 : -1;
 }
 
-int8_t nros_platform_condvar_signal_all(void *cv) {
+int8_t nros_platform_condvar_signal_all(void* cv) {
     if (cv == NULL) return -1;
-    struct k_condvar *c = NROS_Z_HANDLE(cv);
+    struct k_condvar* c = NROS_Z_HANDLE(cv);
     if (c == NULL) return -1;
     return k_condvar_broadcast(c) >= 0 ? 0 : -1;
 }
 
-int8_t nros_platform_condvar_wait(void *cv, void *m) {
+int8_t nros_platform_condvar_wait(void* cv, void* m) {
     if (cv == NULL || m == NULL) return -1;
-    struct k_condvar *c = NROS_Z_HANDLE(cv);
-    struct k_mutex *mu = NROS_Z_HANDLE(m);
+    struct k_condvar* c = NROS_Z_HANDLE(cv);
+    struct k_mutex* mu = NROS_Z_HANDLE(m);
     if (c == NULL || mu == NULL) return -1;
     return k_condvar_wait(c, mu, K_FOREVER) == 0 ? 0 : -1;
 }
 
-int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) {
+int8_t nros_platform_condvar_wait_until(void* cv, void* m, uint64_t abstime_ms) {
     if (cv == NULL || m == NULL) return -1;
-    struct k_condvar *c = NROS_Z_HANDLE(cv);
-    struct k_mutex *mu = NROS_Z_HANDLE(m);
+    struct k_condvar* c = NROS_Z_HANDLE(cv);
+    struct k_mutex* mu = NROS_Z_HANDLE(m);
     if (c == NULL || mu == NULL) return -1;
     /* `abstime_ms` is on the same monotonic epoch as the platform clock;
      * k_condvar_wait takes a RELATIVE timeout. */
     uint64_t now_ms = nros_platform_clock_ns() / 1000000ULL;
-    k_timeout_t rel = (abstime_ms > now_ms)
-                          ? K_MSEC((uint32_t) (abstime_ms - now_ms))
-                          : K_NO_WAIT;
+    k_timeout_t rel = (abstime_ms > now_ms) ? K_MSEC((uint32_t)(abstime_ms - now_ms)) : K_NO_WAIT;
     int rc = k_condvar_wait(c, mu, rel);
-    if (rc == 0)         return 0;
-    if (rc == -EAGAIN)   return 1; /* timed out — the ABI's `1` */
+    if (rc == 0) return 0;
+    if (rc == -EAGAIN) return 1; /* timed out — the ABI's `1` */
     return -1;
 }
 
@@ -1053,28 +1083,27 @@ int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) 
 
 struct nros_z_task {
     struct k_thread thread;
-    k_thread_stack_t *stack;
-    void *(*entry)(void *);
-    void *arg;
+    k_thread_stack_t* stack;
+    void* (*entry)(void*);
+    void* arg;
 };
 
-static void nros_z_task_trampoline(void *p1, void *p2, void *p3) {
-    (void) p2;
-    (void) p3;
-    struct nros_z_task *t = (struct nros_z_task *) p1;
-    (void) t->entry(t->arg);
+static void nros_z_task_trampoline(void* p1, void* p2, void* p3) {
+    (void)p2;
+    (void)p3;
+    struct nros_z_task* t = (struct nros_z_task*)p1;
+    (void)t->entry(t->arg);
 }
 
-int8_t nros_platform_task_init(void *task, void *attr,
-                               void *(*entry)(void *), void *arg) {
+int8_t nros_platform_task_init(void* task, void* attr, void* (*entry)(void*), void* arg) {
     /* Only `name` is read here. `priority` and `stack_bytes` remain unhandled
      * on this path -- it hardcodes K_PRIO_PREEMPT(5) and
      * NROS_Z_TASK_STACK_SIZE -- which is a separate gap and is left
      * alone rather than half-fixed. This path is the non-CONFIG_POSIX_API
      * build and is not the one CI exercises. */
-    const nros_platform_task_attr_t *a = (const nros_platform_task_attr_t *) attr;
+    const nros_platform_task_attr_t* a = (const nros_platform_task_attr_t*)attr;
     if (task == NULL || entry == NULL) return -1;
-    struct nros_z_task *t = nros_platform_alloc(sizeof(struct nros_z_task));
+    struct nros_z_task* t = nros_platform_alloc(sizeof(struct nros_z_task));
     if (t == NULL) return -1;
     t->stack = k_thread_stack_alloc(NROS_Z_TASK_STACK_SIZE, 0);
     if (t->stack == NULL) {
@@ -1083,33 +1112,32 @@ int8_t nros_platform_task_init(void *task, void *attr,
     }
     t->entry = entry;
     t->arg = arg;
-    k_thread_create(&t->thread, t->stack, NROS_Z_TASK_STACK_SIZE,
-                    nros_z_task_trampoline, t, NULL, NULL,
-                    K_PRIO_PREEMPT(5), 0, K_NO_WAIT);
+    k_thread_create(&t->thread, t->stack, NROS_Z_TASK_STACK_SIZE, nros_z_task_trampoline, t, NULL,
+                    NULL, K_PRIO_PREEMPT(5), 0, K_NO_WAIT);
     /* Best-effort, as on the POSIX path: an unnamed thread is what this did
      * before, so a refusal must not fail the spawn. */
     if (a != NULL && a->name != NULL) {
-        (void) k_thread_name_set(&t->thread, a->name);
+        (void)k_thread_name_set(&t->thread, a->name);
     }
     NROS_Z_HANDLE(task) = t;
     return 0;
 }
 
-int8_t nros_platform_task_join(void *task) {
+int8_t nros_platform_task_join(void* task) {
     if (task == NULL) return -1;
-    struct nros_z_task *t = NROS_Z_HANDLE(task);
+    struct nros_z_task* t = NROS_Z_HANDLE(task);
     if (t == NULL) return -1;
     return k_thread_join(&t->thread, K_FOREVER) == 0 ? 0 : -1;
 }
 
-int8_t nros_platform_task_detach(void *task) {
-    (void) task; /* Zephyr threads need no detach; storage is freed by _free. */
+int8_t nros_platform_task_detach(void* task) {
+    (void)task; /* Zephyr threads need no detach; storage is freed by _free. */
     return 0;
 }
 
-int8_t nros_platform_task_cancel(void *task) {
+int8_t nros_platform_task_cancel(void* task) {
     if (task == NULL) return -1;
-    struct nros_z_task *t = NROS_Z_HANDLE(task);
+    struct nros_z_task* t = NROS_Z_HANDLE(task);
     if (t == NULL) return -1;
     k_thread_abort(&t->thread);
     return 0;
@@ -1119,11 +1147,11 @@ void nros_platform_task_exit(void) {
     k_thread_abort(k_current_get());
 }
 
-void nros_platform_task_free(void **task) {
+void nros_platform_task_free(void** task) {
     if (task == NULL || *task == NULL) return;
-    struct nros_z_task *t = (struct nros_z_task *) *task;
+    struct nros_z_task* t = (struct nros_z_task*)*task;
     if (t->stack != NULL) {
-        (void) k_thread_stack_free(t->stack);
+        (void)k_thread_stack_free(t->stack);
     }
     nros_platform_dealloc(t);
     *task = NULL;
@@ -1140,24 +1168,41 @@ size_t nros_platform_task_storage_align(void) {
 
 #else /* no CONFIG_DYNAMIC_THREAD */
 
-int8_t nros_platform_task_init(void *task, void *attr,
-                               void *(*entry)(void *), void *arg) {
-    (void) task; (void) attr; (void) entry; (void) arg;
+int8_t nros_platform_task_init(void* task, void* attr, void* (*entry)(void*), void* arg) {
+    (void)task;
+    (void)attr;
+    (void)entry;
+    (void)arg;
     /* Needs CONFIG_POSIX_API, or CONFIG_DYNAMIC_THREAD +
      * CONFIG_THREAD_STACK_INFO for a dynamically allocated stack. */
     return -1;
 }
-int8_t nros_platform_task_join(void *task)   { (void) task; return -1; }
-int8_t nros_platform_task_detach(void *task) { (void) task; return -1; }
-int8_t nros_platform_task_cancel(void *task) { (void) task; return -1; }
+int8_t nros_platform_task_join(void* task) {
+    (void)task;
+    return -1;
+}
+int8_t nros_platform_task_detach(void* task) {
+    (void)task;
+    return -1;
+}
+int8_t nros_platform_task_cancel(void* task) {
+    (void)task;
+    return -1;
+}
 void nros_platform_task_exit(void) {}
-void nros_platform_task_free(void **task)    { (void) task; }
+void nros_platform_task_free(void** task) {
+    (void)task;
+}
 
 /* This arm cannot start a task at all (`task_init` returns -1), so there is no
  * storage to size. Zero is the honest answer, not a guess that would let a
  * caller allocate for a task it can never create. */
-size_t nros_platform_task_storage_size(void)  { return 0; }
-size_t nros_platform_task_storage_align(void) { return 1; }
+size_t nros_platform_task_storage_size(void) {
+    return 0;
+}
+size_t nros_platform_task_storage_align(void) {
+    return 1;
+}
 
 #endif /* CONFIG_DYNAMIC_THREAD */
 
@@ -1174,18 +1219,18 @@ size_t nros_platform_task_storage_align(void) { return 1; }
  *   kernel build, no Kconfig gate.
  * ============================================================ */
 
-int8_t nros_platform_wake_init(void *w) {
+int8_t nros_platform_wake_init(void* w) {
     if (w == NULL) return -1;
-    k_sem_init((struct k_sem *) w, 0u, 1u);
+    k_sem_init((struct k_sem*)w, 0u, 1u);
     return 0;
 }
 
-int8_t nros_platform_wake_drop(void *w) {
+int8_t nros_platform_wake_drop(void* w) {
     /* k_sem has no destructor; reset to a known-empty state so any
      * stale waiter (impossible if the caller respects ownership)
      * sees -EAGAIN on the next take. */
     if (w == NULL) return 0;
-    k_sem_reset((struct k_sem *) w);
+    k_sem_reset((struct k_sem*)w);
     return 0;
 }
 
@@ -1197,34 +1242,34 @@ int8_t nros_platform_wake_drop(void *w) {
  * whole tick late on every period. The absolute form expires on tick
  * `now + n`, i.e. between n-1 and n ticks of wall time; a wait that ends
  * early is harmless to the executor, which re-parks for the rest. */
-int8_t nros_platform_wake_wait_ms(void *w, uint32_t timeout_ms) {
+int8_t nros_platform_wake_wait_ms(void* w, uint32_t timeout_ms) {
     if (w == NULL) return -1;
     k_timeout_t to;
     if (timeout_ms == 0u) {
         to = K_NO_WAIT;
     } else {
 #ifdef CONFIG_TIMEOUT_64BIT
-        to = K_TIMEOUT_ABS_TICKS(k_uptime_ticks() + (int64_t) k_ms_to_ticks_ceil64(timeout_ms));
+        to = K_TIMEOUT_ABS_TICKS(k_uptime_ticks() + (int64_t)k_ms_to_ticks_ceil64(timeout_ms));
 #else
         to = K_MSEC(timeout_ms);
 #endif
     }
-    int rc = k_sem_take((struct k_sem *) w, to);
-    if (rc == 0)        return 0;
-    if (rc == -EAGAIN)  return 1;
+    int rc = k_sem_take((struct k_sem*)w, to);
+    if (rc == 0) return 0;
+    if (rc == -EAGAIN) return 1;
     return -1;
 }
 
-int8_t nros_platform_wake_signal(void *w) {
+int8_t nros_platform_wake_signal(void* w) {
     if (w == NULL) return -1;
-    k_sem_give((struct k_sem *) w);
+    k_sem_give((struct k_sem*)w);
     return 0;
 }
 
-int8_t nros_platform_wake_signal_from_isr(void *w) {
+int8_t nros_platform_wake_signal_from_isr(void* w) {
     if (w == NULL) return -1;
     /* k_sem_give is documented ISR-safe on Zephyr. */
-    k_sem_give((struct k_sem *) w);
+    k_sem_give((struct k_sem*)w);
     return 0;
 }
 
@@ -1253,11 +1298,11 @@ size_t nros_platform_wake_storage_align(void) {
  *
  * Contract, matching `ParkUntilFn`: 0 = signalled, 1 = deadline expired,
  * -1 = cannot park. */
-int8_t nros_platform_wake_park_until_us(void *w, uint64_t deadline_us) {
+int8_t nros_platform_wake_park_until_us(void* w, uint64_t deadline_us) {
     if (w == NULL) return -1;
-    k_timeout_t to = (deadline_us == 0u) ? K_NO_WAIT : K_USEC((int64_t) deadline_us);
-    int rc = k_sem_take((struct k_sem *) w, to);
-    if (rc == 0)       return 0;
+    k_timeout_t to = (deadline_us == 0u) ? K_NO_WAIT : K_USEC((int64_t)deadline_us);
+    int rc = k_sem_take((struct k_sem*)w, to);
+    if (rc == 0) return 0;
     if (rc == -EAGAIN) return 1;
     return -1;
 }
@@ -1270,14 +1315,13 @@ int8_t nros_platform_wake_park_until_us(void *w, uint64_t deadline_us) {
  * high on ThreadX and wrong low on POSIX). Rounded up, so a tick rate that
  * does not divide a second is never reported finer than it is. */
 uint64_t nros_platform_wake_park_granularity_us(void) {
-    return (uint64_t) ((1000000 + CONFIG_SYS_CLOCK_TICKS_PER_SEC - 1)
-                       / CONFIG_SYS_CLOCK_TICKS_PER_SEC);
+    return (uint64_t)((1000000 + CONFIG_SYS_CLOCK_TICKS_PER_SEC - 1) /
+                      CONFIG_SYS_CLOCK_TICKS_PER_SEC);
 }
 
 /* phase-359 W10 — opaque-storage sizing for `task`, the sibling of the wake
  * probes above. `task_init`'s contract says the implementor decides the size;
  * these let a caller ASK instead of hard-coding it (issue 0570's trap). */
-
 
 /* ============================================================
  *   Critical section (Phase 121.9)
@@ -1286,11 +1330,11 @@ uint64_t nros_platform_wake_park_granularity_us(void) {
  * accepts the same value back. Reentrant: Zephyr's port layer stacks
  * the key word correctly across nested calls. */
 uint32_t nros_platform_critical_section_acquire(void) {
-    return (uint32_t) irq_lock();
+    return (uint32_t)irq_lock();
 }
 
 void nros_platform_critical_section_release(uint32_t token) {
-    irq_unlock((unsigned int) token);
+    irq_unlock((unsigned int)token);
 }
 
 /* ============================================================
@@ -1315,22 +1359,19 @@ LOG_MODULE_REGISTER(nros, CONFIG_LOG_DEFAULT_LEVEL);
 
 #define NROS_PLATFORM_LOG_BUFSZ 1280
 
-static void nros_platform_log_format(char *out, size_t out_sz,
-                                     const uint8_t *name_ptr, uintptr_t name_len,
-                                     const uint8_t *msg_ptr,  uintptr_t msg_len) {
+static void nros_platform_log_format(char* out, size_t out_sz, const uint8_t* name_ptr,
+                                     uintptr_t name_len, const uint8_t* msg_ptr,
+                                     uintptr_t msg_len) {
     if (name_ptr != NULL && name_len > 0) {
-        snprintf(out, out_sz, "%.*s: %.*s",
-                 (int) name_len, (const char *) name_ptr,
-                 (int) msg_len,  (const char *) msg_ptr);
+        snprintf(out, out_sz, "%.*s: %.*s", (int)name_len, (const char*)name_ptr, (int)msg_len,
+                 (const char*)msg_ptr);
     } else {
-        snprintf(out, out_sz, "%.*s",
-                 (int) msg_len, (const char *) msg_ptr);
+        snprintf(out, out_sz, "%.*s", (int)msg_len, (const char*)msg_ptr);
     }
 }
 
-void nros_platform_log_write(uint8_t severity,
-                             const uint8_t *name_ptr, uintptr_t name_len,
-                             const uint8_t *msg_ptr,  uintptr_t msg_len) {
+void nros_platform_log_write(uint8_t severity, const uint8_t* name_ptr, uintptr_t name_len,
+                             const uint8_t* msg_ptr, uintptr_t msg_len) {
     if (msg_ptr == NULL && msg_len > 0) {
         return;
     }
@@ -1339,18 +1380,28 @@ void nros_platform_log_write(uint8_t severity,
 #ifdef CONFIG_LOG
     switch (severity) {
     case 5: /* Fatal */
-    case 4: /* Error */ LOG_ERR("%s", buf); break;
-    case 3: /* Warn  */ LOG_WRN("%s", buf); break;
-    case 2: /* Info  */ LOG_INF("%s", buf); break;
+    case 4: /* Error */
+        LOG_ERR("%s", buf);
+        break;
+    case 3: /* Warn  */
+        LOG_WRN("%s", buf);
+        break;
+    case 2: /* Info  */
+        LOG_INF("%s", buf);
+        break;
     case 1: /* Debug */
-    case 0: /* Trace */ LOG_DBG("%s", buf); break;
-    default:            LOG_INF("%s", buf); break;
+    case 0: /* Trace */
+        LOG_DBG("%s", buf);
+        break;
+    default:
+        LOG_INF("%s", buf);
+        break;
     }
 #else
-    static const char *labels[] = {
+    static const char* labels[] = {
         "[TRACE]", "[DEBUG]", "[INFO]", "[WARN]", "[ERROR]", "[FATAL]",
     };
-    const char *label = severity <= 5 ? labels[severity] : "[?]";
+    const char* label = severity <= 5 ? labels[severity] : "[?]";
     printk("%s %s\n", label, buf);
 #endif
 }
@@ -1386,10 +1437,10 @@ void nros_platform_log_flush(void) {
 /* Provided by the native-simulator runtime (linked into every native_sim
  * image). Prototype declared locally so this module does not couple to the
  * board-local `<nsi_cmdline.h>` include path. */
-extern void nsi_get_test_cmd_line_args(int *argc, char ***argv);
+extern void nsi_get_test_cmd_line_args(int* argc, char*** argv);
 
-const char *nros_runtime_locator_override(void) {
-    static const char *cached;
+const char* nros_runtime_locator_override(void) {
+    static const char* cached;
     static int resolved;
     if (resolved) {
         return cached;
@@ -1397,7 +1448,7 @@ const char *nros_runtime_locator_override(void) {
     resolved = 1;
     cached = NULL;
     int argc = 0;
-    char **argv = NULL;
+    char** argv = NULL;
     nsi_get_test_cmd_line_args(&argc, &argv);
     static const char prefix[] = "--nros-locator=";
     const size_t plen = sizeof(prefix) - 1;
@@ -1409,7 +1460,7 @@ const char *nros_runtime_locator_override(void) {
     return cached;
 }
 #else
-const char *nros_runtime_locator_override(void) {
+const char* nros_runtime_locator_override(void) {
     return NULL;
 }
 #endif
@@ -1429,10 +1480,9 @@ const char *nros_runtime_locator_override(void) {
  * override hook — still gets to run it. Spinning here would silently defeat
  * that.
  */
-__attribute__((weak))
-_Noreturn void nros_platform_panic(const char *msg, size_t len) {
+__attribute__((weak)) _Noreturn void nros_platform_panic(const char* msg, size_t len) {
     if (msg != NULL && len > 0) {
-        printk("nros: PANIC %.*s\n", (int) len, msg);
+        printk("nros: PANIC %.*s\n", (int)len, msg);
     } else {
         printk("nros: PANIC\n");
     }

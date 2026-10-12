@@ -102,8 +102,8 @@
 // consumer of this header has no such file, gets an empty table, and compiles
 // exactly as before.
 #if defined(__has_include)
-#if __has_include(<nros/rclc_declared_qos_generated.h>)
-#include <nros/rclc_declared_qos_generated.h>
+#if __has_include(<nros/nros_declared_qos_generated.h>)
+#include <nros/nros_declared_qos_generated.h>
 #endif
 #endif
 

@@ -147,7 +147,7 @@ int main(void) {
     CHECK(rclc_support_init_rmw(&support, NULL, 0, "w4d_named_loggers", NROS_STUB_RMW_NAME) ==
               RCL_RET_OK,
           "support init");
-    CHECK(rclc_executor_init(&executor, &support, 8) == RCL_RET_OK, "executor init");
+    CHECK(rclc_executor_init(&executor, &support.context, 8, NULL) == RCL_RET_OK, "executor init");
     CHECK(rclc_executor_node_init(&executor, &alpha, "w4d_alpha", NULL) == RCL_RET_OK,
           "alpha node init");
     CHECK(rclc_executor_node_init(&executor, &beta, "w4d_beta", NULL) == RCL_RET_OK,
@@ -227,13 +227,11 @@ int main(void) {
               "an UNSET child reads its parent's level (RFC-0102 D2)");
         CHECK(rclc_logger_get_child(beta_log, "costmap") == child, "get_child is idempotent");
         CHECK(rclc_logger_get_child(beta_log,
-                                    "this_suffix_is_long_enough_to_exceed_the_48_byte_cap") ==
-                  NULL,
+                                    "this_suffix_is_long_enough_to_exceed_the_48_byte_cap") == NULL,
               "an over-long child is NULL, never a substitute handle");
         rclc_logger_t top = rclc_logger_get_child(rclc_log_default_logger(), "w4d_c_top");
         (void)rclc_logger_get_name(top, cname, sizeof cname);
-        CHECK(strcmp(cname, "w4d_c_top") == 0, "the catch-all's child is top-level: \"%s\"",
-              cname);
+        CHECK(strcmp(cname, "w4d_c_top") == 0, "the catch-all's child is top-level: \"%s\"", cname);
     }
 
     (void)rclc_executor_fini(&executor);

@@ -54,7 +54,8 @@
  * =================================================================== */
 
 static void probe_service_handler(const fingerprint_corpus__srv__Probe_Request* request,
-                                  fingerprint_corpus__srv__Probe_Response* response, void* context) {
+                                  fingerprint_corpus__srv__Probe_Response* response,
+                                  void* context) {
     int64_t total = 0;
     size_t i;
 
@@ -77,8 +78,8 @@ static struct rcl_service_t g_probe_service;
 
 static rcl_ret_t bring_up_typed_service(struct rclc_executor_t* executor,
                                         const struct rcl_node_t* node) {
-    rcl_ret_t ret = fingerprint_corpus__srv__Probe__service_handler_init(&g_probe_handler,
-                                                                      probe_service_handler, NULL);
+    rcl_ret_t ret = fingerprint_corpus__srv__Probe__service_handler_init(
+        &g_probe_handler, probe_service_handler, NULL);
     if (ret != RCL_RET_OK) {
         return ret;
     }
@@ -88,7 +89,7 @@ static rcl_ret_t bring_up_typed_service(struct rclc_executor_t* executor,
     }
     /* phase-487 W2: the handler is bound where rclc binds it, at registration. */
     return fingerprint_corpus__srv__Probe__executor_add_service(executor, &g_probe_service,
-                                                             &g_probe_handler);
+                                                                &g_probe_handler);
 }
 
 /* A refused request is queryable without a logger — `last_error` is one of the
@@ -100,7 +101,7 @@ static bool typed_service_is_healthy(void) {
 }
 
 /* ===================================================================
- * 2. The trampoline really is an `rclc_service_callback_t`.
+ * 2. The trampoline really is an `rclc_service_raw_callback_t`.
  *
  * A function POINTER, so a drift between the generated trampoline's argument
  * list and the executor's callback ABI is a compile error here rather than an
@@ -108,7 +109,7 @@ static bool typed_service_is_healthy(void) {
  * the assertion the whole file exists for.
  * =================================================================== */
 
-static const rclc_service_callback_t k_trampoline =
+static const rclc_service_raw_callback_t k_trampoline =
     fingerprint_corpus__srv__Probe__service_handle_request;
 
 /* ===================================================================
@@ -141,12 +142,12 @@ static rcl_ret_t drive_typed_client(void) {
     rcl_ret_t ret;
 
     ret = fingerprint_corpus__srv__Probe__client_handler_init(&g_probe_client_handler,
-                                                           probe_response_handler, NULL);
+                                                              probe_response_handler, NULL);
     if (ret != RCL_RET_OK) {
         return ret;
     }
     ret = fingerprint_corpus__srv__Probe__client_set_response_callback(&g_probe_client,
-                                                                    &g_probe_client_handler);
+                                                                       &g_probe_client_handler);
     if (ret != RCL_RET_OK) {
         return ret;
     }
@@ -172,8 +173,8 @@ static rcl_ret_t drive_typed_client(void) {
     /* ...and the blocking convenience, which forwards to `rclc_client_call` so
      * the timeout and the executor spin stay where they already live. */
     ret = fingerprint_corpus__srv__Probe__client_call(&g_probe_client, &request, &response,
-                                                   request_scratch, sizeof(request_scratch),
-                                                   response_scratch, sizeof(response_scratch));
+                                                      request_scratch, sizeof(request_scratch),
+                                                      response_scratch, sizeof(response_scratch));
 
     return ret;
 }

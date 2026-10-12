@@ -59,7 +59,7 @@ extern const struct rclc_service_type_t {{ service_struct_name }}__nros_type;
 // ============================================================================
 //
 // Everything above is bytes: `rclc_service_init_default` takes an
-// `rclc_service_callback_t`, which is
+// `rclc_service_raw_callback_t`, which is
 // `(const uint8_t*, size_t, uint8_t*, size_t, size_t*, void*) -> bool`, so
 // every C service in the tree had to call `_request_deserialize` and
 // `_response_serialize` by hand at the top and bottom of its handler. The
@@ -69,7 +69,7 @@ extern const struct rclc_service_type_t {{ service_struct_name }}__nros_type;
 // This is rclc's shape, not a new one:
 //
 //     rclc_executor_add_service(executor, service, &req, &res, callback)
-//     void (*rclc_service_callback_t)(const void* req, void* res)
+//     void (*rclc_service_raw_callback_t)(const void* req, void* res)
 //
 // The caller owns BOTH the request and the response storage, which is what
 // keeps an allocator off the delivery path. Ours differs in two ways, both
@@ -157,7 +157,7 @@ static inline rcl_ret_t {{ service_struct_name }}__service_handler_init(
     return RCL_RET_OK;
 }
 
-/// The `rclc_service_callback_t` the executor actually calls. Not for direct
+/// The `rclc_service_raw_callback_t` the executor actually calls. Not for direct
 /// use — pass it, with a handler as `context`, via
 /// {{ service_struct_name }}__service_init() below.
 static inline bool {{ service_struct_name }}__service_handle_request(
@@ -243,7 +243,7 @@ static inline rcl_ret_t {{ service_struct_name }}__executor_add_service(
 // ============================================================================
 //
 // The mirror of the server half. rclc's is
-// `rclc_executor_add_client(executor, client, &res, callback)` with
+// `rclc_executor_attach_client(executor, client, &res, callback)` with
 // `void (*rclc_client_callback_t)(const void*)`; ours adds the context, for the
 // same reason.
 //
@@ -313,7 +313,7 @@ static inline void {{ service_struct_name }}__client_handle_response(const uint8
 }
 
 /// Route this client's replies through the typed handler. The client must
-/// already be added (`rclc_executor_add_client`): since phase-487 W2 the
+/// already be added (`rclc_executor_attach_client`): since phase-487 W2 the
 /// executor arena owns the response callback, so there is nowhere to keep it
 /// before registration (`RCL_RET_NOT_INIT`).
 static inline rcl_ret_t {{ service_struct_name }}__client_set_response_callback(

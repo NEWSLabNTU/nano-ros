@@ -158,10 +158,10 @@ static void demo_platform_time(void) {
 
     // Get time using platform abstraction
     rcl_clock_t clock = rclc_clock_get_zero_initialized();
-    (void)rcl_clock_init(&clock, RCLC_CLOCK_STEADY_TIME);
+    (void)rcl_clock_init(RCLC_CLOCK_STEADY_TIME, &clock, NULL);
 
     rclc_time_t t1, t2;
-    (void)rcl_clock_get_now(&clock, &t1);
+    (void)rclc_clock_get_now_time(&clock, &t1);
 
     // Sleep for 100ms using platform sleep
     printf("Sleeping for 100ms...\n");
@@ -171,7 +171,7 @@ static void demo_platform_time(void) {
     struct timespec ts = {0, 100000000}; // 100ms
     nanosleep(&ts, NULL);
 
-    (void)rcl_clock_get_now(&clock, &t2);
+    (void)rclc_clock_get_now_time(&clock, &t2);
 
     int64_t elapsed_ns = rclc_time_to_nanoseconds(&t2) - rclc_time_to_nanoseconds(&t1);
     printf("Elapsed time: %.3f ms\n", (double)elapsed_ns / 1000000.0);
@@ -274,7 +274,7 @@ int nros_app_main(int argc, char** argv) {
 
     // Initialize support
     app.support = rclc_support_get_zero_initialized();
-    rcl_ret_t ret = rclc_support_init(&app.support, locator, domain_id);
+    rcl_ret_t ret = rclc_support_init_with_locator(&app.support, locator, domain_id);
     if (ret != RCL_RET_OK) {
         fprintf(stderr, "Failed to init support: %d\n", ret);
         return 1;
@@ -287,7 +287,7 @@ int nros_app_main(int argc, char** argv) {
     // `rclc_executor_node_init`, not the legacy `rclc_node_init_default`, which
     // leaves the node reaching no executor at all.
     app.executor = rclc_executor_get_zero_initialized_executor();
-    ret = rclc_executor_init(&app.executor, &app.support, 4);
+    ret = rclc_executor_init(&app.executor, &app.support.context, 4, NULL);
     if (ret != RCL_RET_OK) {
         fprintf(stderr, "Failed to init executor: %d\n", ret);
         exit_code = 1;
@@ -322,7 +322,7 @@ int nros_app_main(int argc, char** argv) {
 
     // Initialize timer (500ms period)
     app.timer = rcl_get_zero_initialized_timer();
-    ret = rcl_timer_init(&app.timer, &app.support, 500000000ULL, timer_callback, NULL);
+    ret = rclc_timer_init_with_context(&app.timer, 500000000ULL, timer_callback, NULL);
     if (ret != RCL_RET_OK) {
         fprintf(stderr, "Failed to init timer: %d\n", ret);
         exit_code = 1;
@@ -369,7 +369,7 @@ cleanup_timer:
     printf("Timer finalized\n");
 
 cleanup_publisher:
-    (void)rcl_publisher_fini(&app.publisher);
+    (void)rcl_publisher_fini(&app.publisher, &app.node);
     printf("Publisher finalized\n");
 
 cleanup_node:

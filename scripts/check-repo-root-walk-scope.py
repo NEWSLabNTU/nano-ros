@@ -194,7 +194,7 @@ def self_test() -> list[str]:
     files at real depths, so the root derivation is what is under test."""
     cases = [
         # (rel, text, want_violation, label)
-        ("justfile", "x:\n    find . -name 'rclc_declared_qos_generated.h'\n", True,
+        ("justfile", "x:\n    find . -name 'nros_declared_qos_generated.h'\n", True,
          "just recipe: find . (cwd is the checkout root)"),
         ("justfile", "x:\n    find . -path ./.claude -prune -o -name '*.h' -print\n", False,
          "just recipe: find . that prunes .claude"),

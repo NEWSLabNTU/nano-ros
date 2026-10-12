@@ -111,7 +111,7 @@ int nros_app_main(int argc, char** argv) {
         .type_hash = example_interfaces__srv__AddTwoInts__get_type_hash(),
     };
 
-    RCLC_CHECK_RET(rclc_support_init(&app.support, locator, domain_id), 1);
+    RCLC_CHECK_RET(rclc_support_init_with_locator(&app.support, locator, domain_id), 1);
     printf("Support initialized\n");
     RCLC_CHECK_RET(rclc_node_init_default(&app.node, "add_two_ints_client_cb", "/", &app.support),
                    1);
@@ -122,8 +122,8 @@ int nros_app_main(int argc, char** argv) {
     printf("Client created for service: %s\n", rcl_client_get_service_name(&app.client));
 
     // Clients must be registered with an executor before use.
-    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support, 4), 1);
-    RCLC_CHECK_RET(rclc_executor_add_client(&app.executor, &app.client), 1);
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 4, NULL), 1);
+    RCLC_CHECK_RET(rclc_executor_attach_client(&app.executor, &app.client), 1);
 
     // Register the reply callback. It fires at spin, not via poll.
     RCLC_CHECK_RET(
@@ -177,7 +177,7 @@ int nros_app_main(int argc, char** argv) {
 
     printf("\nShutting down...\n");
     rclc_executor_fini(&app.executor);
-    rcl_client_fini(&app.client);
+    rcl_client_fini(&app.client, &app.node);
     rcl_node_fini(&app.node);
     rclc_support_fini(&app.support);
 

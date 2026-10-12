@@ -107,8 +107,9 @@ int nros_app_main(int argc, char** argv) {
     // `NROS_ENTRY_LOCATOR` is the one producer of the compile-time connect
     // configuration (`<nros/entry_config.h>`, issue 0946); on this leaf it is
     // the empty bottom rung — baking `system.toml`'s locator is issue 1512's.
-    RCLC_CHECK_RET(
-        rclc_support_init(&app.support, NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID), 1);
+    RCLC_CHECK_RET(rclc_support_init_with_locator(&app.support, NROS_ENTRY_LOCATOR,
+                                                  (uint8_t)NROS_ENTRY_DOMAIN_ID),
+                   1);
     RCLC_CHECK_RET(rclc_node_init_default(&app.node, "add_two_ints_server", "/", &app.support), 1);
     g_logger = rclc_node_get_logger(&app.node);
 
@@ -119,7 +120,7 @@ int nros_app_main(int argc, char** argv) {
         example_interfaces__srv__AddTwoInts__service_init(&app.service, &app.node, "/add_two_ints"),
         1);
 
-    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support, 4), 1);
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 4, NULL), 1);
     RCLC_CHECK_RET(example_interfaces__srv__AddTwoInts__executor_add_service(
                        &app.executor, &app.service, &app.handler),
                    1);
@@ -134,7 +135,7 @@ int nros_app_main(int argc, char** argv) {
     }
 
     rclc_executor_fini(&app.executor);
-    rcl_service_fini(&app.service);
+    rcl_service_fini(&app.service, &app.node);
     rcl_node_fini(&app.node);
     rclc_support_fini(&app.support);
     return 0;

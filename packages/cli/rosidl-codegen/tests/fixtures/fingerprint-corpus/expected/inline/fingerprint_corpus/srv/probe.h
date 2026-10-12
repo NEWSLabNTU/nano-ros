@@ -22,10 +22,12 @@
 #define NROS_EMITTED_CODEGEN_VERSION 14
 
 #ifndef NROS_CODEGEN_VERSION
-#error "nros: the generated config header did not define NROS_CODEGEN_VERSION. This generated artifact cannot tell whether the runtime accepts it; rebuild the nano-ros runtime so its config header is regenerated."
-#elif NROS_EMITTED_CODEGEN_VERSION < NROS_CODEGEN_VERSION_MIN \
-   || NROS_EMITTED_CODEGEN_VERSION > NROS_CODEGEN_VERSION
-#error "nros: this generated tree was emitted at a codegen version the runtime does not accept (see NROS_EMITTED_CODEGEN_VERSION above against NROS_CODEGEN_VERSION_MIN..NROS_CODEGEN_VERSION in nros_config_generated.h). Regenerate it against the runtime you are building: `nros sync` in a consumer workspace."
+#error                                                                                             \
+    "nros: the generated config header did not define NROS_CODEGEN_VERSION. This generated artifact cannot tell whether the runtime accepts it; rebuild the nano-ros runtime so its config header is regenerated."
+#elif NROS_EMITTED_CODEGEN_VERSION < NROS_CODEGEN_VERSION_MIN ||                                   \
+    NROS_EMITTED_CODEGEN_VERSION > NROS_CODEGEN_VERSION
+#error                                                                                             \
+    "nros: this generated tree was emitted at a codegen version the runtime does not accept (see NROS_EMITTED_CODEGEN_VERSION above against NROS_CODEGEN_VERSION_MIN..NROS_CODEGEN_VERSION in nros_config_generated.h). Regenerate it against the runtime you are building: `nros sync` in a consumer workspace."
 #endif
 
 #ifdef __cplusplus
@@ -53,8 +55,8 @@ typedef struct fingerprint_corpus__srv__Probe_Request__Sequence {
 } fingerprint_corpus__srv__Probe_Request__Sequence;
 
 /// The bytes every string and sequence of fingerprint_corpus__srv__Probe_Request points at after
-/// fingerprint_corpus__srv__Probe_Request__init_in(). Sized by RFC-0033's capacities (`nros-codegen.toml`).
-/// Ours (ours-only, RFC-0089's `_in` rule): micro-ROS's
+/// fingerprint_corpus__srv__Probe_Request__init_in(). Sized by RFC-0033's capacities
+/// (`nros-codegen.toml`). Ours (ours-only, RFC-0089's `_in` rule): micro-ROS's
 /// `create_static_message_memory` without the runtime introspection.
 typedef struct fingerprint_corpus__srv__Probe_Request__Storage {
     int64_t items[64];
@@ -70,37 +72,55 @@ typedef struct fingerprint_corpus__srv__Probe_Request__Storage {
 /// ported call fails to compile and names this function instead. A caller that
 /// wants different bytes (micro-ROS's `msg.data.data = buf;
 /// msg.data.capacity = sizeof buf;`) sets `data` / `capacity` itself.
-void fingerprint_corpus__srv__Probe_Request__init_in(fingerprint_corpus__srv__Probe_Request* msg, fingerprint_corpus__srv__Probe_Request__Storage* storage);
+void fingerprint_corpus__srv__Probe_Request__init_in(
+    fingerprint_corpus__srv__Probe_Request* msg,
+    fingerprint_corpus__srv__Probe_Request__Storage* storage);
 
-#define fingerprint_corpus__srv__Probe_Request__init(...) rosidl_allocates__use__fingerprint_corpus__srv__Probe_Request__init_in
-#define fingerprint_corpus__srv__Probe_Request__fini(...) rosidl_allocates__use__fingerprint_corpus__srv__Probe_Request__init_in
-#define fingerprint_corpus__srv__Probe_Request__create(...) rosidl_allocates__use__fingerprint_corpus__srv__Probe_Request__init_in
-#define fingerprint_corpus__srv__Probe_Request__destroy(...) rosidl_allocates__use__fingerprint_corpus__srv__Probe_Request__init_in
-#define fingerprint_corpus__srv__Probe_Request__Sequence__init(...) rosidl_allocates__point__fingerprint_corpus__srv__Probe_Request__Sequence__data_at_caller_memory
-#define fingerprint_corpus__srv__Probe_Request__Sequence__fini(...) rosidl_allocates__point__fingerprint_corpus__srv__Probe_Request__Sequence__data_at_caller_memory
-#define fingerprint_corpus__srv__Probe_Request__Sequence__create(...) rosidl_allocates__point__fingerprint_corpus__srv__Probe_Request__Sequence__data_at_caller_memory
-#define fingerprint_corpus__srv__Probe_Request__Sequence__destroy(...) rosidl_allocates__point__fingerprint_corpus__srv__Probe_Request__Sequence__data_at_caller_memory
+#define fingerprint_corpus__srv__Probe_Request__init(...)                                          \
+    rosidl_allocates__use__fingerprint_corpus__srv__Probe_Request__init_in
+#define fingerprint_corpus__srv__Probe_Request__fini(...)                                          \
+    rosidl_allocates__use__fingerprint_corpus__srv__Probe_Request__init_in
+#define fingerprint_corpus__srv__Probe_Request__create(...)                                        \
+    rosidl_allocates__use__fingerprint_corpus__srv__Probe_Request__init_in
+#define fingerprint_corpus__srv__Probe_Request__destroy(...)                                       \
+    rosidl_allocates__use__fingerprint_corpus__srv__Probe_Request__init_in
+#define fingerprint_corpus__srv__Probe_Request__Sequence__init(...)                                \
+    rosidl_allocates__point__fingerprint_corpus__srv__Probe_Request__Sequence__data_at_caller_memory
+#define fingerprint_corpus__srv__Probe_Request__Sequence__fini(...)                                \
+    rosidl_allocates__point__fingerprint_corpus__srv__Probe_Request__Sequence__data_at_caller_memory
+#define fingerprint_corpus__srv__Probe_Request__Sequence__create(...)                              \
+    rosidl_allocates__point__fingerprint_corpus__srv__Probe_Request__Sequence__data_at_caller_memory
+#define fingerprint_corpus__srv__Probe_Request__Sequence__destroy(...)                             \
+    rosidl_allocates__point__fingerprint_corpus__srv__Probe_Request__Sequence__data_at_caller_memory
 
 /// Serialize to CDR (a fresh 4-byte encapsulation header, then the fields).
 /// Returns 0 on success, -1 on error -- including a buffer too small, a string
 /// or sequence past its `.msg` bound, or a NULL `data` with a nonzero `size`.
 /// On success `*serialized_size` holds the bytes written.
-int32_t fingerprint_corpus__srv__Probe_Request__serialize(const fingerprint_corpus__srv__Probe_Request* msg, uint8_t* buffer, size_t buffer_size, size_t* serialized_size);
+int32_t
+fingerprint_corpus__srv__Probe_Request__serialize(const fingerprint_corpus__srv__Probe_Request* msg,
+                                                  uint8_t* buffer, size_t buffer_size,
+                                                  size_t* serialized_size);
 
 /// Deserialize from CDR into `msg`, through the `data` / `capacity` the caller
-/// wired (normally by fingerprint_corpus__srv__Probe_Request__init_in). Returns 0 on success and -1 when
-/// the bytes are malformed or a field does not fit its `capacity` -- refused
-/// before a byte of that field is written. Never allocates, never grows a
-/// buffer.
-int32_t fingerprint_corpus__srv__Probe_Request__deserialize(fingerprint_corpus__srv__Probe_Request* msg, const uint8_t* buffer, size_t buffer_size);
+/// wired (normally by fingerprint_corpus__srv__Probe_Request__init_in). Returns 0 on success and -1
+/// when the bytes are malformed or a field does not fit its `capacity` -- refused before a byte of
+/// that field is written. Never allocates, never grows a buffer.
+int32_t
+fingerprint_corpus__srv__Probe_Request__deserialize(fingerprint_corpus__srv__Probe_Request* msg,
+                                                    const uint8_t* buffer, size_t buffer_size);
 
 /// Serialize inline into an already-open CDR stream (no encapsulation header);
 /// used by parent payloads that embed this type.
-int32_t fingerprint_corpus__srv__Probe_Request__serialize_inline(const fingerprint_corpus__srv__Probe_Request* msg, uint8_t** ptr_ref, const uint8_t* end, const uint8_t* origin);
+int32_t fingerprint_corpus__srv__Probe_Request__serialize_inline(
+    const fingerprint_corpus__srv__Probe_Request* msg, uint8_t** ptr_ref, const uint8_t* end,
+    const uint8_t* origin);
 
 /// Deserialize inline from an already-open CDR stream (no encapsulation
 /// header).
-int32_t fingerprint_corpus__srv__Probe_Request__deserialize_inline(fingerprint_corpus__srv__Probe_Request* msg, const uint8_t** ptr_ref, const uint8_t* end, const uint8_t* origin);
+int32_t fingerprint_corpus__srv__Probe_Request__deserialize_inline(
+    fingerprint_corpus__srv__Probe_Request* msg, const uint8_t** ptr_ref, const uint8_t* end,
+    const uint8_t* origin);
 
 // ----------------------------------------------------------------------------
 // Probe response
@@ -124,8 +144,8 @@ typedef struct fingerprint_corpus__srv__Probe_Response__Sequence {
 } fingerprint_corpus__srv__Probe_Response__Sequence;
 
 /// The bytes every string and sequence of fingerprint_corpus__srv__Probe_Response points at after
-/// fingerprint_corpus__srv__Probe_Response__init_in(). Sized by RFC-0033's capacities (`nros-codegen.toml`).
-/// Ours (ours-only, RFC-0089's `_in` rule): micro-ROS's
+/// fingerprint_corpus__srv__Probe_Response__init_in(). Sized by RFC-0033's capacities
+/// (`nros-codegen.toml`). Ours (ours-only, RFC-0089's `_in` rule): micro-ROS's
 /// `create_static_message_memory` without the runtime introspection.
 typedef struct fingerprint_corpus__srv__Probe_Response__Storage {
     rosidl_runtime_c__String lines[64];
@@ -142,37 +162,54 @@ typedef struct fingerprint_corpus__srv__Probe_Response__Storage {
 /// ported call fails to compile and names this function instead. A caller that
 /// wants different bytes (micro-ROS's `msg.data.data = buf;
 /// msg.data.capacity = sizeof buf;`) sets `data` / `capacity` itself.
-void fingerprint_corpus__srv__Probe_Response__init_in(fingerprint_corpus__srv__Probe_Response* msg, fingerprint_corpus__srv__Probe_Response__Storage* storage);
+void fingerprint_corpus__srv__Probe_Response__init_in(
+    fingerprint_corpus__srv__Probe_Response* msg,
+    fingerprint_corpus__srv__Probe_Response__Storage* storage);
 
-#define fingerprint_corpus__srv__Probe_Response__init(...) rosidl_allocates__use__fingerprint_corpus__srv__Probe_Response__init_in
-#define fingerprint_corpus__srv__Probe_Response__fini(...) rosidl_allocates__use__fingerprint_corpus__srv__Probe_Response__init_in
-#define fingerprint_corpus__srv__Probe_Response__create(...) rosidl_allocates__use__fingerprint_corpus__srv__Probe_Response__init_in
-#define fingerprint_corpus__srv__Probe_Response__destroy(...) rosidl_allocates__use__fingerprint_corpus__srv__Probe_Response__init_in
-#define fingerprint_corpus__srv__Probe_Response__Sequence__init(...) rosidl_allocates__point__fingerprint_corpus__srv__Probe_Response__Sequence__data_at_caller_memory
-#define fingerprint_corpus__srv__Probe_Response__Sequence__fini(...) rosidl_allocates__point__fingerprint_corpus__srv__Probe_Response__Sequence__data_at_caller_memory
-#define fingerprint_corpus__srv__Probe_Response__Sequence__create(...) rosidl_allocates__point__fingerprint_corpus__srv__Probe_Response__Sequence__data_at_caller_memory
-#define fingerprint_corpus__srv__Probe_Response__Sequence__destroy(...) rosidl_allocates__point__fingerprint_corpus__srv__Probe_Response__Sequence__data_at_caller_memory
+#define fingerprint_corpus__srv__Probe_Response__init(...)                                         \
+    rosidl_allocates__use__fingerprint_corpus__srv__Probe_Response__init_in
+#define fingerprint_corpus__srv__Probe_Response__fini(...)                                         \
+    rosidl_allocates__use__fingerprint_corpus__srv__Probe_Response__init_in
+#define fingerprint_corpus__srv__Probe_Response__create(...)                                       \
+    rosidl_allocates__use__fingerprint_corpus__srv__Probe_Response__init_in
+#define fingerprint_corpus__srv__Probe_Response__destroy(...)                                      \
+    rosidl_allocates__use__fingerprint_corpus__srv__Probe_Response__init_in
+#define fingerprint_corpus__srv__Probe_Response__Sequence__init(...)                               \
+    rosidl_allocates__point__fingerprint_corpus__srv__Probe_Response__Sequence__data_at_caller_memory
+#define fingerprint_corpus__srv__Probe_Response__Sequence__fini(...)                               \
+    rosidl_allocates__point__fingerprint_corpus__srv__Probe_Response__Sequence__data_at_caller_memory
+#define fingerprint_corpus__srv__Probe_Response__Sequence__create(...)                             \
+    rosidl_allocates__point__fingerprint_corpus__srv__Probe_Response__Sequence__data_at_caller_memory
+#define fingerprint_corpus__srv__Probe_Response__Sequence__destroy(...)                            \
+    rosidl_allocates__point__fingerprint_corpus__srv__Probe_Response__Sequence__data_at_caller_memory
 
 /// Serialize to CDR (a fresh 4-byte encapsulation header, then the fields).
 /// Returns 0 on success, -1 on error -- including a buffer too small, a string
 /// or sequence past its `.msg` bound, or a NULL `data` with a nonzero `size`.
 /// On success `*serialized_size` holds the bytes written.
-int32_t fingerprint_corpus__srv__Probe_Response__serialize(const fingerprint_corpus__srv__Probe_Response* msg, uint8_t* buffer, size_t buffer_size, size_t* serialized_size);
+int32_t fingerprint_corpus__srv__Probe_Response__serialize(
+    const fingerprint_corpus__srv__Probe_Response* msg, uint8_t* buffer, size_t buffer_size,
+    size_t* serialized_size);
 
 /// Deserialize from CDR into `msg`, through the `data` / `capacity` the caller
-/// wired (normally by fingerprint_corpus__srv__Probe_Response__init_in). Returns 0 on success and -1 when
-/// the bytes are malformed or a field does not fit its `capacity` -- refused
-/// before a byte of that field is written. Never allocates, never grows a
-/// buffer.
-int32_t fingerprint_corpus__srv__Probe_Response__deserialize(fingerprint_corpus__srv__Probe_Response* msg, const uint8_t* buffer, size_t buffer_size);
+/// wired (normally by fingerprint_corpus__srv__Probe_Response__init_in). Returns 0 on success and
+/// -1 when the bytes are malformed or a field does not fit its `capacity` -- refused before a byte
+/// of that field is written. Never allocates, never grows a buffer.
+int32_t
+fingerprint_corpus__srv__Probe_Response__deserialize(fingerprint_corpus__srv__Probe_Response* msg,
+                                                     const uint8_t* buffer, size_t buffer_size);
 
 /// Serialize inline into an already-open CDR stream (no encapsulation header);
 /// used by parent payloads that embed this type.
-int32_t fingerprint_corpus__srv__Probe_Response__serialize_inline(const fingerprint_corpus__srv__Probe_Response* msg, uint8_t** ptr_ref, const uint8_t* end, const uint8_t* origin);
+int32_t fingerprint_corpus__srv__Probe_Response__serialize_inline(
+    const fingerprint_corpus__srv__Probe_Response* msg, uint8_t** ptr_ref, const uint8_t* end,
+    const uint8_t* origin);
 
 /// Deserialize inline from an already-open CDR stream (no encapsulation
 /// header).
-int32_t fingerprint_corpus__srv__Probe_Response__deserialize_inline(fingerprint_corpus__srv__Probe_Response* msg, const uint8_t** ptr_ref, const uint8_t* end, const uint8_t* origin);
+int32_t fingerprint_corpus__srv__Probe_Response__deserialize_inline(
+    fingerprint_corpus__srv__Probe_Response* msg, const uint8_t** ptr_ref, const uint8_t* end,
+    const uint8_t* origin);
 
 // ============================================================================
 // Service Type Support
@@ -201,7 +238,7 @@ extern const struct rclc_service_type_t fingerprint_corpus__srv__Probe__nros_typ
 // ============================================================================
 //
 // Everything above is bytes: `rclc_service_init_default` takes an
-// `rclc_service_callback_t`, which is
+// `rclc_service_raw_callback_t`, which is
 // `(const uint8_t*, size_t, uint8_t*, size_t, size_t*, void*) -> bool`, so
 // every C service in the tree had to call `_request_deserialize` and
 // `_response_serialize` by hand at the top and bottom of its handler. The
@@ -211,7 +248,7 @@ extern const struct rclc_service_type_t fingerprint_corpus__srv__Probe__nros_typ
 // This is rclc's shape, not a new one:
 //
 //     rclc_executor_add_service(executor, service, &req, &res, callback)
-//     void (*rclc_service_callback_t)(const void* req, void* res)
+//     void (*rclc_service_raw_callback_t)(const void* req, void* res)
 //
 // The caller owns BOTH the request and the response storage, which is what
 // keeps an allocator off the delivery path. Ours differs in two ways, both
@@ -246,7 +283,8 @@ extern const struct rclc_service_type_t fingerprint_corpus__srv__Probe__nros_typ
 /// fingerprint_corpus__srv__Probe__service_handler_t you registered, so neither
 /// outlives this call — copy out anything you retain.
 typedef void (*fingerprint_corpus__srv__Probe__handler_fn_t)(
-    const fingerprint_corpus__srv__Probe_Request* request, fingerprint_corpus__srv__Probe_Response* response, void* context);
+    const fingerprint_corpus__srv__Probe_Request* request,
+    fingerprint_corpus__srv__Probe_Response* response, void* context);
 
 /// Caller-owned storage + callback for a typed Probe server.
 ///
@@ -293,20 +331,21 @@ static inline rcl_ret_t fingerprint_corpus__srv__Probe__service_handler_init(
     handler->callback = callback;
     handler->context = context;
     fingerprint_corpus__srv__Probe_Request__init_in(&handler->request, &handler->request_storage);
-    fingerprint_corpus__srv__Probe_Response__init_in(&handler->response, &handler->response_storage);
+    fingerprint_corpus__srv__Probe_Response__init_in(&handler->response,
+                                                     &handler->response_storage);
     handler->last_error = RCLC_SERVICE_TYPED_OK;
     handler->error_count = 0;
     return RCL_RET_OK;
 }
 
-/// The `rclc_service_callback_t` the executor actually calls. Not for direct
+/// The `rclc_service_raw_callback_t` the executor actually calls. Not for direct
 /// use — pass it, with a handler as `context`, via
 /// fingerprint_corpus__srv__Probe__service_init() below.
 static inline bool fingerprint_corpus__srv__Probe__service_handle_request(
     const uint8_t* request_data, size_t request_len, uint8_t* response_data,
     size_t response_capacity, size_t* response_len, void* context) {
     fingerprint_corpus__srv__Probe__service_handler_t* handler =
-        (fingerprint_corpus__srv__Probe__service_handler_t*) context;
+        (fingerprint_corpus__srv__Probe__service_handler_t*)context;
     if (response_len != NULL) {
         *response_len = 0;
     }
@@ -316,7 +355,8 @@ static inline bool fingerprint_corpus__srv__Probe__service_handle_request(
         return false;
     }
 
-    if (fingerprint_corpus__srv__Probe_Request__deserialize(&handler->request, request_data, request_len) != 0) {
+    if (fingerprint_corpus__srv__Probe_Request__deserialize(&handler->request, request_data,
+                                                            request_len) != 0) {
         /* A half-decoded request is not a request. Refuse, and say so — the
            executor sends nothing on `false`, so the peer sees a timeout rather
            than a wrong answer. */
@@ -327,12 +367,13 @@ static inline bool fingerprint_corpus__srv__Probe__service_handle_request(
         return false;
     }
 
-    fingerprint_corpus__srv__Probe_Response__init_in(&handler->response, &handler->response_storage);
+    fingerprint_corpus__srv__Probe_Response__init_in(&handler->response,
+                                                     &handler->response_storage);
     handler->callback(&handler->request, &handler->response, handler->context);
 
     size_t written = 0;
-    int32_t rc = fingerprint_corpus__srv__Probe_Response__serialize(&handler->response, response_data,
-                                                      response_capacity, &written);
+    int32_t rc = fingerprint_corpus__srv__Probe_Response__serialize(
+        &handler->response, response_data, response_capacity, &written);
     if (rc != 0) {
         /* Oversized (or otherwise unencodable). `_serialize` writes only what
            fits and reports -1; forwarding `written` here would put a truncated
@@ -353,8 +394,9 @@ static inline bool fingerprint_corpus__srv__Probe__service_handle_request(
 /// Create a typed Probe server: `rclc_service_init_with_qos` with
 /// this type's support and the services default QoS. Register it, with its
 /// handler, through fingerprint_corpus__srv__Probe__executor_add_service().
-static inline rcl_ret_t fingerprint_corpus__srv__Probe__service_init(
-    struct rcl_service_t* service, const struct rcl_node_t* node, const char* service_name) {
+static inline rcl_ret_t fingerprint_corpus__srv__Probe__service_init(struct rcl_service_t* service,
+                                                                     const struct rcl_node_t* node,
+                                                                     const char* service_name) {
     return rclc_service_init_with_qos(service, node, &fingerprint_corpus__srv__Probe__nros_type,
                                       service_name, NULL);
 }
@@ -376,8 +418,8 @@ static inline rcl_ret_t fingerprint_corpus__srv__Probe__executor_add_service(
     if (handler == NULL || handler->callback == NULL) {
         return RCL_RET_INVALID_ARGUMENT;
     }
-    return rclc_executor_add_service_raw(executor, service,
-                                         fingerprint_corpus__srv__Probe__service_handle_request, handler);
+    return rclc_executor_add_service_raw(
+        executor, service, fingerprint_corpus__srv__Probe__service_handle_request, handler);
 }
 
 // ============================================================================
@@ -385,7 +427,7 @@ static inline rcl_ret_t fingerprint_corpus__srv__Probe__executor_add_service(
 // ============================================================================
 //
 // The mirror of the server half. rclc's is
-// `rclc_executor_add_client(executor, client, &res, callback)` with
+// `rclc_executor_attach_client(executor, client, &res, callback)` with
 // `void (*rclc_client_callback_t)(const void*)`; ours adds the context, for the
 // same reason.
 //
@@ -423,7 +465,8 @@ static inline rcl_ret_t fingerprint_corpus__srv__Probe__client_handler_init(
     }
     handler->callback = callback;
     handler->context = context;
-    fingerprint_corpus__srv__Probe_Response__init_in(&handler->response, &handler->response_storage);
+    fingerprint_corpus__srv__Probe_Response__init_in(&handler->response,
+                                                     &handler->response_storage);
     handler->last_error = RCLC_SERVICE_TYPED_OK;
     handler->error_count = 0;
     return RCL_RET_OK;
@@ -432,16 +475,17 @@ static inline rcl_ret_t fingerprint_corpus__srv__Probe__client_handler_init(
 /// The `rclc_response_callback_t` the executor calls. Not for direct use —
 /// install it with fingerprint_corpus__srv__Probe__client_set_response_callback().
 static inline void fingerprint_corpus__srv__Probe__client_handle_response(const uint8_t* response,
-                                                                    size_t response_len,
-                                                                    void* context) {
+                                                                          size_t response_len,
+                                                                          void* context) {
     fingerprint_corpus__srv__Probe__client_handler_t* handler =
-        (fingerprint_corpus__srv__Probe__client_handler_t*) context;
+        (fingerprint_corpus__srv__Probe__client_handler_t*)context;
     if (handler == NULL || handler->callback == NULL) {
         rclc_service_typed_report_error(RCLC_SERVICE_TYPED_ERR_NO_CALLBACK,
                                         fingerprint_corpus__srv__Probe__get_type_name());
         return;
     }
-    if (fingerprint_corpus__srv__Probe_Response__deserialize(&handler->response, response, response_len) != 0) {
+    if (fingerprint_corpus__srv__Probe_Response__deserialize(&handler->response, response,
+                                                             response_len) != 0) {
         handler->last_error = RCLC_SERVICE_TYPED_ERR_RESPONSE_DESERIALIZE;
         handler->error_count++;
         rclc_service_typed_report_error(handler->last_error,
@@ -455,7 +499,7 @@ static inline void fingerprint_corpus__srv__Probe__client_handle_response(const 
 }
 
 /// Route this client's replies through the typed handler. The client must
-/// already be added (`rclc_executor_add_client`): since phase-487 W2 the
+/// already be added (`rclc_executor_attach_client`): since phase-487 W2 the
 /// executor arena owns the response callback, so there is nowhere to keep it
 /// before registration (`RCL_RET_NOT_INIT`).
 static inline rcl_ret_t fingerprint_corpus__srv__Probe__client_set_response_callback(
@@ -475,13 +519,14 @@ static inline rcl_ret_t fingerprint_corpus__srv__Probe__client_set_response_call
 /// RCL_RET_INVALID_ARGUMENT returned when the request does not fit; nothing is
 /// sent.
 static inline rcl_ret_t fingerprint_corpus__srv__Probe__client_send_request(
-    struct rcl_client_t* client, const fingerprint_corpus__srv__Probe_Request* request, uint8_t* scratch,
-    size_t scratch_size) {
+    struct rcl_client_t* client, const fingerprint_corpus__srv__Probe_Request* request,
+    uint8_t* scratch, size_t scratch_size) {
     size_t written = 0;
     if (request == NULL || scratch == NULL) {
         return RCL_RET_INVALID_ARGUMENT;
     }
-    if (fingerprint_corpus__srv__Probe_Request__serialize(request, scratch, scratch_size, &written) != 0) {
+    if (fingerprint_corpus__srv__Probe_Request__serialize(request, scratch, scratch_size,
+                                                          &written) != 0) {
         rclc_service_typed_report_error(RCLC_SERVICE_TYPED_ERR_REQUEST_SERIALIZE,
                                         fingerprint_corpus__srv__Probe__get_type_name());
         return RCL_RET_INVALID_ARGUMENT;
@@ -497,8 +542,8 @@ static inline rcl_ret_t fingerprint_corpus__srv__Probe__client_send_request(
 /// RCLC_SERVICE_TYPED_ERR_RESPONSE_DESERIALIZE is reported and RCL_RET_ERROR
 /// returned; `response` is then not a reply.
 static inline rcl_ret_t fingerprint_corpus__srv__Probe__client_take_response(
-    struct rcl_client_t* client, fingerprint_corpus__srv__Probe_Response* response, uint8_t* scratch,
-    size_t scratch_size) {
+    struct rcl_client_t* client, fingerprint_corpus__srv__Probe_Response* response,
+    uint8_t* scratch, size_t scratch_size) {
     size_t received = 0;
     rcl_ret_t ret;
     if (response == NULL || scratch == NULL) {
@@ -524,8 +569,8 @@ static inline rcl_ret_t fingerprint_corpus__srv__Probe__client_take_response(
 /// same time; neither is retained past the call.
 static inline rcl_ret_t fingerprint_corpus__srv__Probe__client_call(
     struct rcl_client_t* client, const fingerprint_corpus__srv__Probe_Request* request,
-    fingerprint_corpus__srv__Probe_Response* response, uint8_t* request_scratch, size_t request_scratch_size,
-    uint8_t* response_scratch, size_t response_scratch_size) {
+    fingerprint_corpus__srv__Probe_Response* response, uint8_t* request_scratch,
+    size_t request_scratch_size, uint8_t* response_scratch, size_t response_scratch_size) {
     size_t written = 0;
     size_t received = 0;
     rcl_ret_t ret;
@@ -533,8 +578,8 @@ static inline rcl_ret_t fingerprint_corpus__srv__Probe__client_call(
         response_scratch == NULL) {
         return RCL_RET_INVALID_ARGUMENT;
     }
-    if (fingerprint_corpus__srv__Probe_Request__serialize(request, request_scratch, request_scratch_size,
-                                            &written) != 0) {
+    if (fingerprint_corpus__srv__Probe_Request__serialize(request, request_scratch,
+                                                          request_scratch_size, &written) != 0) {
         rclc_service_typed_report_error(RCLC_SERVICE_TYPED_ERR_REQUEST_SERIALIZE,
                                         fingerprint_corpus__srv__Probe__get_type_name());
         return RCL_RET_INVALID_ARGUMENT;
@@ -544,7 +589,8 @@ static inline rcl_ret_t fingerprint_corpus__srv__Probe__client_call(
     if (ret != RCL_RET_OK) {
         return ret;
     }
-    if (fingerprint_corpus__srv__Probe_Response__deserialize(response, response_scratch, received) != 0) {
+    if (fingerprint_corpus__srv__Probe_Response__deserialize(response, response_scratch,
+                                                             received) != 0) {
         rclc_service_typed_report_error(RCLC_SERVICE_TYPED_ERR_RESPONSE_DESERIALIZE,
                                         fingerprint_corpus__srv__Probe__get_type_name());
         return RCL_RET_ERROR;

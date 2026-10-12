@@ -126,7 +126,7 @@ int nros_app_main(int argc, char** argv) {
         .feedback_serialized_size_max = 264,
     };
 
-    RCLC_CHECK_RET(rclc_support_init(&app.support, locator, domain_id), 1);
+    RCLC_CHECK_RET(rclc_support_init_with_locator(&app.support, locator, domain_id), 1);
     RCLC_CHECK_RET(rclc_node_init_default(&app.node, "raw_goal_probe", "/", &app.support), 1);
     // The RAW arms live on the polling (L1) core — `polling_client_core()`
     // returns NULL for an executor-mode client, so this must be init_polling.

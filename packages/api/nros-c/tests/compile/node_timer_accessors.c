@@ -39,13 +39,12 @@ int main(void) {
      * domain, so a bare return would have to spend it on "cannot answer" —
      * which is the defect issue 1008 was. If someone "simplifies" this to a
      * value return, this line stops compiling. */
-    /* NOT renamed to `rcl_node_get_domain_id`: upstream writes a `size_t *`
-     * and ours writes a `uint32_t *`. In C that mismatch is a WARNING, so a
-     * ported `size_t id; rcl_node_get_domain_id(&node, &id);` would compile
-     * and leave half of `id` uninitialised — the out-parameter type is
-     * authored at the CALL SITE, which is what separates this from the
-     * typesupport handle RFC-0089 settled we keep. */
-    rcl_ret_t (*p_domain)(const struct rcl_node_t*, uint32_t*) = rcl_node_get_domain_id;
+    /* rcl's out-type, `size_t *` (phase-492 W1.b). It was `uint32_t *` under
+     * this name for a while, which C only WARNS about: a ported
+     * `size_t id; rcl_node_get_domain_id(&node, &id);` compiled and left half
+     * of `id` uninitialised. The assignment is to a FUNCTION POINTER, where
+     * the types must match exactly, so a regression is a build failure. */
+    rcl_ret_t (*p_domain)(const struct rcl_node_t*, size_t*) = rcl_node_get_domain_id;
 
     /* Caller-owned buffer, not rcl's `const char *` return: we have no
      * allocator and the node struct holds no composed FQN. The trailing
@@ -64,14 +63,15 @@ int main(void) {
      * validators we do not ship, and an argument we ignore is the inert-
      * parameter defect RFC-0089 is written to end. */
     rcl_ret_t (*p_resolve)(const struct rcl_node_t*, const char*, bool, char*, size_t) =
-        rcl_node_resolve_name;
+        rclc_node_resolve_name;
 
     /* --- timer accessors (ledger: c:timer_is_canceled, c:timer_is_ready,
      * c:timer_get_time_since_last_call) ----------------------------------- */
 
     rcl_ret_t (*p_canceled)(const struct rcl_timer_t*, bool*) = rcl_timer_is_canceled;
     rcl_ret_t (*p_ready)(const struct rcl_timer_t*, bool*) = rcl_timer_is_ready;
-    rcl_ret_t (*p_since)(const struct rcl_timer_t*, uint64_t*) = rcl_timer_get_time_since_last_call;
+    /* rcl's `rcl_time_point_value_t *` (int64_t) since phase-492 W1.b. */
+    rcl_ret_t (*p_since)(const struct rcl_timer_t*, int64_t*) = rcl_timer_get_time_since_last_call;
 
     /* phase-417 stage 3 (issue 1049, and the deleted ledger row
      * `c:timer_get_time_until_next_call`) — status return + a SIGNED out-param,

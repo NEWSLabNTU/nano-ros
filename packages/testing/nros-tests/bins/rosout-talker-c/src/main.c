@@ -42,7 +42,8 @@ int nros_app_main(int argc, char** argv) {
         locator = NROS_ENTRY_LOCATOR;
     }
     const char* domain_str = getenv("ROS_DOMAIN_ID");
-    uint8_t domain_id = domain_str != NULL ? (uint8_t)atoi(domain_str) : (uint8_t)NROS_ENTRY_DOMAIN_ID;
+    uint8_t domain_id =
+        domain_str != NULL ? (uint8_t)atoi(domain_str) : (uint8_t)NROS_ENTRY_DOMAIN_ID;
     int records = env_int("ROSOUT_PROBE_RECORDS", 60);
     int period_ms = env_int("ROSOUT_PROBE_PERIOD_MS", 250);
 
@@ -51,10 +52,10 @@ int nros_app_main(int argc, char** argv) {
         printf("ROSOUT_PROBE_NOT_BUILT\n");
         return 3;
     }
-    RCLC_CHECK_RET(rclc_support_init(&app.support, locator, domain_id), 1);
+    RCLC_CHECK_RET(rclc_support_init_with_locator(&app.support, locator, domain_id), 1);
     RCLC_CHECK_RET(rclc_node_init_default(&app.node, "rosout_talker", "/", &app.support), 1);
     RCLC_CHECK_RET(rclc_rosout_publisher_init(&app.rosout, &app.node, NULL), 1);
-    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support, 1), 1);
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 1, NULL), 1);
 
     rclc_logger_t probe = rclc_node_get_logger(&app.node);
     if (rclc_rosout_enable() != RCL_RET_OK) {
@@ -82,7 +83,7 @@ int nros_app_main(int argc, char** argv) {
     printf("ROSOUT_PROBE_DONE pumped=%zu\n", total);
 
     rclc_executor_fini(&app.executor);
-    rcl_publisher_fini(&app.rosout);
+    rcl_publisher_fini(&app.rosout, &app.node);
     rcl_node_fini(&app.node);
     rclc_support_fini(&app.support);
     return 0;

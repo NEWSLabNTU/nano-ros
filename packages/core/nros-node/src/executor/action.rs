@@ -1448,7 +1448,7 @@ impl ActionServerRawHandle {
     /// Is `goal_id` a goal this server still knows about? — phase-417 W4.b.
     ///
     /// The raw twin of [`ActionServerHandle::goal_exists`], and what the C
-    /// surface's `rcl_action_server_goal_exists` and the C++
+    /// surface's `rclc_action_server_goal_exists` and the C++
     /// `Server<A>::goal_exists` both resolve to. Active OR completed-with-a-
     /// retained-result; `false` once the slot is gone from the executor.
     pub fn goal_exists(&self, executor: &Executor, goal_id: &nros_core::GoalId) -> bool {

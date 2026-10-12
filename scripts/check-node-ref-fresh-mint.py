@@ -16,7 +16,7 @@ That is not a slightly-weak check. It reads as coverage:
     verb whose `# Returns` block documented the verdict (PR #1064);
   * `rcl_node_is_valid` claimed to check "the generation it was bound at" on an
     `rcl_node_t` that stores no such generation;
-  * and in `rcl_node_resolve_name` the inert guard stood in front of
+  * and in `rclc_node_resolve_name` the inert guard stood in front of
     `get_executor(&mut executor._opaque)`, so a finalised executor produced
     `RCL_RET_OK` out of zeroed storage rather than a refusal.
 

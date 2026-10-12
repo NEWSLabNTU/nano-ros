@@ -345,9 +345,8 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  *             rcl_timer_t *timer, rclc_support_t *support,
  *             const uint64_t timeout_ns, const rcl_timer_callback_t callback)
  *   ours: rcl_ret_t rclc_timer_init_with_context(
- *             struct rcl_timer_t *timer, const struct rcl_node_t *node,
- *             uint64_t period_ns, rclc_timer_callback_with_context_t callback,
- *             void *context)
+ *             struct rcl_timer_t *timer, uint64_t period_ns,
+ *             rclc_timer_callback_with_context_t callback, void *context)
  *
  *   rcl_timer_callback_t               = void (*)(rcl_timer_t *, int64_t last_call_time)
  *   rclc_timer_callback_with_context_t = void (*)(struct rcl_timer_t *, void *context)
@@ -368,10 +367,10 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  * arity and its `context`. phase-492 W1.b: the W3 rename had spelled it
  * `rcl_timer_init` and its callback type `rcl_timer_callback_t`, i.e. took
  * upstream's names over exactly this contract; `check-c-api-upstream-signatures`
- * now refuses that. It takes the NODE rather than the support, which every
- * caller has — including a C component the generated entry hosts, which has
- * no support. Closing the gap for real needs a decision about what our timer
- * callback receives, not a rename.
+ * now refuses that. It takes no support either: the support was a validity
+ * witness the init never otherwise read, and a C component the generated
+ * entry hosts has none. Closing the gap for real needs a decision about what
+ * our timer callback receives, not a rename.
  *
  * ── The CLOCK, though, is taken (phase-430 W1) ────────────────────────────
  *
@@ -383,8 +382,8 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  *             const rcl_timer_callback_t callback, rcl_allocator_t allocator)
  *
  * — clock SECOND, immediately after the timer. `rclc_timer_init_on_clock`
- * takes an `rcl_clock_t *` in exactly that position, ahead of the node,
- * which is RFC-0089's "C takes rcl's spellings"
+ * takes an `rcl_clock_t *` in exactly that position, which is RFC-0089's
+ * "C takes rcl's spellings"
  * applied to the half of the spelling that survives our callback contract.
  *
  * It is a SECOND verb rather than a widened `rclc_timer_init_with_context` because C has no

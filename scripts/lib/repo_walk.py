@@ -13,7 +13,7 @@ repository:
 
 * `.claude/worktrees/*` — every parallel agent session's linked worktree, each
   holding its own build output. Measured 2026-09-29: `find . -name
-  rclc_declared_qos_generated.h` returned 19 where this tree held 1.
+  nros_declared_qos_generated.h` returned 19 where this tree held 1.
 * submodules — a walk goes straight through a gitlink into another repository.
   Same day: 44 `*.contract.yaml` against 17 tracked, the 27-file gap all in
   `play_launch`.

@@ -26,10 +26,10 @@ static rcl_ret_t (*const kAddTimer)(struct rclc_executor_t*,
                                     struct rcl_timer_t*) = rclc_executor_add_timer;
 /* phase-487 W2: the service add takes its callback, as rclc's does. */
 static rcl_ret_t (*const kAddService)(struct rclc_executor_t*, struct rcl_service_t*,
-                                      rclc_service_callback_t,
+                                      rclc_service_raw_callback_t,
                                       void*) = rclc_executor_add_service_raw;
 static rcl_ret_t (*const kAddClient)(struct rclc_executor_t*,
-                                     struct rcl_client_t*) = rclc_executor_add_client;
+                                     struct rcl_client_t*) = rclc_executor_attach_client;
 
 /* 2. The deprecated aliases still resolve, to the SAME functions. */
 static rcl_ret_t (*const kOldTimer)(struct rclc_executor_t*,

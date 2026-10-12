@@ -14,8 +14,10 @@
  * "compiles and differs" RFC-0089 forbids, so the collision must be fatal at
  * the earliest point it is KNOWABLE, which is the preprocessor.
  *
- * `RCL_RET_OK` stands in for the whole real header here. Defining it is what
- * `#include <rcl/types.h>` does, and this repo has no rcl to include -- it is
+ * `RCL__TYPES_H_` -- the real header's include guard -- stands in for the whole
+ * real header here. Defining it is what `#include <rcl/types.h>` does (phase-492
+ * W3: `RCL_RET_OK` stopped being a usable sentinel once our own generated
+ * header defines the `RCL_RET_*` names), and this repo has no rcl to include -- it is
  * not a dependency, and the parity tooling reads rcl from an out-of-tree
  * checkout for the same reason. Using the sentinel keeps the probe runnable on
  * a host with no ROS, which is the condition every check in this lane holds to.
@@ -25,7 +27,7 @@
  */
 
 /* Stand-in for `#include <rcl/types.h>` having already been processed. */
-#define RCL_RET_OK 0
+#define RCL__TYPES_H_
 
 #include "nros/rcl_compat.h"
 

@@ -1,7 +1,7 @@
 /* phase-430 W1 — the C timer verb takes a clock, and the clock DECIDES.
  *
- * `rcl_timer_init` never took one, so a C caller could not make a ROS-time
- * timer at all while `rcl_timer_init` and our own C++ `Node::create_timer`
+ * `rclc_timer_init_with_context` never took one, so a C caller could not make a ROS-time
+ * timer at all while `rclc_timer_init_with_context` and our own C++ `Node::create_timer`
  * both could. `rclc_timer_init_on_clock` closes that, taking its
  * `rcl_clock_t *` in the position `rcl_timer_init` puts it.
  *
@@ -112,14 +112,15 @@ int main(void) {
               RCL_RET_OK, "support opened on the stub backend");
 
     struct rclc_executor_t executor = rclc_executor_get_zero_initialized_executor();
-    CHECK_RET(rclc_executor_init(&executor, &support, 8), RCL_RET_OK, "executor initialised");
+    CHECK_RET(rclc_executor_init(&executor, &support.context, 8, NULL), RCL_RET_OK,
+              "executor initialised");
 
     /* Two clocks, and the simulated one is STOPPED at a fixed instant before
      * either timer exists — the state a paused simulator leaves behind. */
     struct rcl_clock_t ros_clock = rclc_clock_get_zero_initialized();
     struct rcl_clock_t steady_clock = rclc_clock_get_zero_initialized();
-    CHECK_RET(rcl_clock_init(&ros_clock, RCLC_CLOCK_ROS_TIME), RCL_RET_OK, "ROS clock init");
-    CHECK_RET(rcl_clock_init(&steady_clock, RCLC_CLOCK_STEADY_TIME), RCL_RET_OK,
+    CHECK_RET(rcl_clock_init(RCLC_CLOCK_ROS_TIME, &ros_clock, NULL), RCL_RET_OK, "ROS clock init");
+    CHECK_RET(rcl_clock_init(RCLC_CLOCK_STEADY_TIME, &steady_clock, NULL), RCL_RET_OK,
               "steady clock init");
 
     const int64_t sim_epoch_ns = 1000000000ll; /* 1 s, arbitrary and frozen */
@@ -134,11 +135,10 @@ int main(void) {
      * wall timer's period is short against the spin loop below. */
     struct rcl_timer_t ros_timer = rcl_get_zero_initialized_timer();
     struct rcl_timer_t wall_timer = rcl_get_zero_initialized_timer();
-    CHECK_RET(
-        rclc_timer_init_on_clock(&ros_timer, &ros_clock, &support, 1000000ull, ros_timer_cb, NULL),
-        RCL_RET_OK, "ROS-time timer created on the ROS clock");
-    CHECK_RET(rcl_timer_init(&wall_timer, &support, 1000000ull, wall_timer_cb, NULL), RCL_RET_OK,
-              "the pre-existing clock-less verb still creates a wall timer");
+    CHECK_RET(rclc_timer_init_on_clock(&ros_timer, &ros_clock, 1000000ull, ros_timer_cb, NULL),
+              RCL_RET_OK, "ROS-time timer created on the ROS clock");
+    CHECK_RET(rclc_timer_init_with_context(&wall_timer, 1000000ull, wall_timer_cb, NULL),
+              RCL_RET_OK, "the pre-existing clock-less verb still creates a wall timer");
     CHECK(ros_timer.clock == &ros_clock, "the ROS timer kept its clock, as rcl's does");
     CHECK(wall_timer.clock == NULL, "the wall timer has no clock");
 
@@ -174,13 +174,13 @@ int main(void) {
     /* --- 3. The refusals the verb owes its caller. ------------------------- */
     struct rcl_timer_t rejected = rcl_get_zero_initialized_timer();
     struct rcl_clock_t uninit_clock = rclc_clock_get_zero_initialized();
-    CHECK_RET(rclc_timer_init_on_clock(&rejected, &uninit_clock, &support, 1000000ull, ros_timer_cb,
-                                       NULL),
+    CHECK_RET(rclc_timer_init_on_clock(&rejected, &uninit_clock, 1000000ull, ros_timer_cb, NULL),
               RCL_RET_NOT_INIT,
               "a clock the caller never initialised is REFUSED, not treated as a wall clock");
-    CHECK_RET(rclc_timer_init_on_clock(&rejected, NULL, &support, 1000000ull, ros_timer_cb, NULL),
+    CHECK_RET(rclc_timer_init_on_clock(&rejected, NULL, 1000000ull, ros_timer_cb, NULL),
               RCL_RET_INVALID_ARGUMENT,
-              "the clock-taking verb requires a clock; the clock-less form is rcl_timer_init");
+              "the clock-taking verb requires a clock; the clock-less form is "
+              "rclc_timer_init_with_context");
     CHECK(rejected.state == RCLC_TIMER_STATE_UNINITIALIZED, "a refused init left the timer alone");
 
     CHECK(nros_stub_rmw_drive_io_calls() > 0, "the stub backend was actually driven");

@@ -61,7 +61,7 @@
 #                                `nano_ros_node_register()` claims the include
 #                                dir, and a deferred render -- after the entry
 #                                has resolved the model that states the depths --
-#                                writes `<nros/rclc_declared_qos_generated.h>`
+#                                writes `<nros/nros_declared_qos_generated.h>`
 #                                into it, so `NROS_SUBSCRIBE` static_asserts the
 #                                QoS at each call site against it.
 #

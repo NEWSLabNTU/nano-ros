@@ -206,14 +206,14 @@ int nros_app_main(int argc, char** argv) {
     /* 2. Spin up the nros stack pointed at the `custom://` locator.
      *    Active RMW backend (zenoh-pico) routes every wire frame
      *    through our ops above. */
-    (void)rcl_clock_init(&app.clock, RCLC_CLOCK_SYSTEM_TIME);
+    (void)rcl_clock_init(RCLC_CLOCK_SYSTEM_TIME, &app.clock, NULL);
     /* phase-426 W4 — the `nros_parameter_server_t` that stood here is GONE. It
      * was initialised and never touched again: no declare, no get, no set. A
      * caller-storage store is a SECOND store (`ros2 param` reads the
      * executor's), so the one thing it demonstrated to a reader copying this
      * file out was the defect this phase removes. `examples/native/c/
      * parameters` is where a C image's parameters are shown. */
-    RCLC_CHECK_RET(rclc_support_init(&app.support, "custom://loopback", 0), 1);
+    RCLC_CHECK_RET(rclc_support_init_with_locator(&app.support, "custom://loopback", 0), 1);
     RCLC_CHECK_RET(rclc_node_init_default(&app.node, "loopback_demo", "/", &app.support), 1);
 
     RCLC_CHECK_RET(rclc_publisher_init_default(&app.publisher, &app.node,
@@ -225,10 +225,10 @@ int nros_app_main(int argc, char** argv) {
     app.demo_ctx.tick = 0;
     memset(&app.demo_ctx.message, 0, sizeof(app.demo_ctx.message));
 
-    RCLC_CHECK_RET(rcl_timer_init(&app.timer, &app.support, 500ULL * 1000 * 1000 /* 500ms */,
-                                  timer_callback, &app.demo_ctx),
+    RCLC_CHECK_RET(rclc_timer_init_with_context(&app.timer, 500ULL * 1000 * 1000 /* 500ms */,
+                                                timer_callback, &app.demo_ctx),
                    1);
-    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support, 4), 1);
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 4, NULL), 1);
     RCLC_CHECK_RET(rclc_executor_add_timer(&app.executor, &app.timer), 1);
     g_executor = &app.executor;
 
@@ -251,7 +251,7 @@ int nros_app_main(int argc, char** argv) {
 
     /* 3. Teardown — exercises the transport's close callback. */
     (void)rcl_timer_fini(&app.timer);
-    (void)rcl_publisher_fini(&app.publisher);
+    (void)rcl_publisher_fini(&app.publisher, &app.node);
     (void)rcl_node_fini(&app.node);
     (void)rclc_executor_fini(&app.executor);
     (void)rclc_support_fini(&app.support);

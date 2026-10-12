@@ -376,7 +376,7 @@ pub(super) fn cdr_op_rust_method(op: rosidl_lower::CdrOp) -> String {
 /// | `borrowed` | rejected — see below | rejected | n/a |
 ///
 /// **C heap (0345).** The premise 0343/0344 recorded — that supporting heap in C
-/// would need every consumer taught to free — was wrong: `rclc_service_callback_t`
+/// would need every consumer taught to free — was wrong: `rclc_service_raw_callback_t`
 /// hands the callback `request_data`/`request_len`, so nros-c never builds a typed
 /// payload struct at all. The CALLER declares it and calls `_deserialize`, exactly
 /// as for messages, so the caller `_fini`s it — the RFC-0033 contract, unchanged.

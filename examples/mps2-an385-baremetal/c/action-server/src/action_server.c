@@ -166,7 +166,7 @@ static void accepted_callback(rcl_action_server_t* server, const rclc_goal_handl
         size_t fb_len = 0;
         if (example_interfaces__action__Fibonacci_Feedback__serialize(
                 fb, app.fb_buf, sizeof(app.fb_buf), &fb_len) == 0) {
-            ret = rclc_action_publish_feedback(server, goal, app.fb_buf, fb_len);
+            ret = rclc_action_publish_feedback_raw(server, goal, app.fb_buf, fb_len);
             if (ret != RCL_RET_OK) {
                 emit_num(RCLC_LOG_SEVERITY_ERROR, "Failed to publish feedback: ", ret, __FILE__,
                          __LINE__);
@@ -208,18 +208,19 @@ int nros_app_main(int argc, char** argv) {
     // `NROS_ENTRY_LOCATOR` is the one producer of the compile-time connect
     // configuration (`<nros/entry_config.h>`, issue 0946); on this leaf it is
     // the empty bottom rung — baking `system.toml`'s locator is issue 1512's.
-    RCLC_CHECK_RET(
-        rclc_support_init(&app.support, NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID), 1);
+    RCLC_CHECK_RET(rclc_support_init_with_locator(&app.support, NROS_ENTRY_LOCATOR,
+                                                  (uint8_t)NROS_ENTRY_DOMAIN_ID),
+                   1);
     RCLC_CHECK_RET(rclc_node_init_default(&app.node, "fibonacci_action_server", "/", &app.support),
                    1);
     g_logger = rclc_node_get_logger(&app.node);
 
-    RCLC_CHECK_RET(rcl_action_server_init(&app.action_server, &app.node, "/fibonacci",
-                                          &fibonacci_type, goal_callback, cancel_callback,
-                                          accepted_callback, &app.ctx),
+    RCLC_CHECK_RET(rclc_action_server_init_with_callbacks(
+                       &app.action_server, &app.node, "/fibonacci", &fibonacci_type, goal_callback,
+                       cancel_callback, accepted_callback, &app.ctx),
                    1);
-    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support, 8), 1);
-    RCLC_CHECK_RET(rclc_executor_add_action_server(&app.executor, &app.action_server), 1);
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 8, NULL), 1);
+    RCLC_CHECK_RET(rclc_executor_attach_action_server(&app.executor, &app.action_server), 1);
 
     // The readiness marker the harness waits on (`expect_ready`, phase-342 W7).
     emit(RCLC_LOG_SEVERITY_INFO, "Waiting for action goals", __FILE__, __LINE__);
@@ -231,7 +232,7 @@ int nros_app_main(int argc, char** argv) {
     }
 
     rclc_executor_fini(&app.executor);
-    rcl_action_server_fini(&app.action_server);
+    rcl_action_server_fini(&app.action_server, &app.node);
     rcl_node_fini(&app.node);
     rclc_support_fini(&app.support);
     return 0;

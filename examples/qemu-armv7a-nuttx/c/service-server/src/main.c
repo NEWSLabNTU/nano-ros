@@ -122,7 +122,7 @@ int nros_app_main(int argc, char** argv) {
     // Zero-initialize all static state
     memset(&app, 0, sizeof(app));
 
-    RCLC_CHECK_RET(rclc_support_init(&app.support, locator, domain_id), 1);
+    RCLC_CHECK_RET(rclc_support_init_with_locator(&app.support, locator, domain_id), 1);
     printf("Support initialized\n");
     RCLC_CHECK_RET(rclc_node_init_default(&app.node, "add_two_ints_server", "/", &app.support), 1);
     printf("Node created: %s\n", rcl_node_get_name(&app.node));
@@ -139,7 +139,7 @@ int nros_app_main(int argc, char** argv) {
         1);
     printf("Service created: %s\n", rcl_service_get_service_name(&app.service));
 
-    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support, 4), 1);
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 4, NULL), 1);
     g_executor = &app.executor;
     RCLC_CHECK_RET(example_interfaces__srv__AddTwoInts__executor_add_service(
                        &app.executor, &app.service, &app.handler),
@@ -168,7 +168,7 @@ int nros_app_main(int argc, char** argv) {
                 (int)app.handler.last_error);
     }
     rclc_executor_fini(&app.executor);
-    rcl_service_fini(&app.service);
+    rcl_service_fini(&app.service, &app.node);
     rcl_node_fini(&app.node);
     rclc_support_fini(&app.support);
 

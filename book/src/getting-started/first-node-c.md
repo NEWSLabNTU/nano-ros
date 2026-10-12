@@ -132,7 +132,7 @@ int nros_app_main(int argc, char** argv) {
     // 2. rclc_executor_init() / rclc_node_init_default()
     // 3. rclc_publisher_init_default(&pub, &node,
     //        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32), "/chatter")
-    // 4. rcl_timer_init() with a 1 Hz period; the callback calls
+    // 4. rclc_timer_init_with_context() with a 1 Hz period; the callback calls
     //        rcl_publish(&pub, &msg, NULL)
     // 5. rclc_executor_spin() until SIGINT
 }

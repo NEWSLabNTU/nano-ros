@@ -168,8 +168,9 @@ int nros_app_main(int argc, char** argv) {
     // the empty bottom rung, which the linked backend substitutes its own
     // default for; baking this image's `[image.*] locator` from `system.toml`
     // is what the runtime lane needs and is tracked on issue 1512.
-    RCLC_CHECK_RET(
-        rclc_support_init(&app.support, NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID), 1);
+    RCLC_CHECK_RET(rclc_support_init_with_locator(&app.support, NROS_ENTRY_LOCATOR,
+                                                  (uint8_t)NROS_ENTRY_DOMAIN_ID),
+                   1);
     RCLC_CHECK_RET(rclc_node_init_default(&app.node, "talker", "/", &app.support), 1);
     g_logger = rclc_node_get_logger(&app.node);
 
@@ -183,9 +184,9 @@ int nros_app_main(int argc, char** argv) {
     std_msgs__msg__String__init_in(&app.talker_ctx.message, &app.talker_ctx.message_storage);
 
     RCLC_CHECK_RET(
-        rcl_timer_init(&app.timer, &app.support, 1000000000ULL, timer_callback, &app.talker_ctx),
+        rclc_timer_init_with_context(&app.timer, 1000000000ULL, timer_callback, &app.talker_ctx),
         1);
-    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support, 4), 1);
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 4, NULL), 1);
     RCLC_CHECK_RET(rclc_executor_add_timer(&app.executor, &app.timer), 1);
 
     // Spin forever with a 100 ms period. There is no signal to cancel on and no
@@ -198,7 +199,7 @@ int nros_app_main(int argc, char** argv) {
 
     rclc_executor_fini(&app.executor);
     rcl_timer_fini(&app.timer);
-    rcl_publisher_fini(&app.publisher);
+    rcl_publisher_fini(&app.publisher, &app.node);
     rcl_node_fini(&app.node);
     rclc_support_fini(&app.support);
     return 0;

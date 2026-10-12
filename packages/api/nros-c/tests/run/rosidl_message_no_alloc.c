@@ -273,8 +273,8 @@ static void rcl_publish_serialises_through_the_descriptor(void) {
     rc = rcl_publish(&s_publisher, &big, NULL);
     CHECK(rc == RCL_RET_ERROR, "an over-image-buffer message was not refused (%d)", rc);
 
-    (void)rcl_publisher_fini(&s_named_publisher);
-    (void)rcl_publisher_fini(&s_publisher);
+    (void)rcl_publisher_fini(&s_named_publisher, &s_node);
+    (void)rcl_publisher_fini(&s_publisher, &s_node);
     (void)rcl_node_fini(&s_node);
     (void)rclc_support_fini(&s_support);
 }

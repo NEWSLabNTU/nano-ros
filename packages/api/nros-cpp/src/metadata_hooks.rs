@@ -693,7 +693,9 @@ mod census_hooks_reach_every_api {
         assert_eq!(rc, RCL_RET_OK, "the metadata backend must open");
 
         let mut executor = alloc::boxed::Box::new(rclc_executor_get_zero_initialized_executor());
-        let rc = unsafe { rclc_executor_init(&mut *executor, &*support, 8) };
+        let rc = unsafe {
+            rclc_executor_init(&mut *executor, &mut support.context, 8, core::ptr::null())
+        };
         assert_eq!(rc, RCL_RET_OK);
 
         let mut node = alloc::boxed::Box::new(rcl_get_zero_initialized_node());
@@ -709,9 +711,8 @@ mod census_hooks_reach_every_api {
 
         let mut timer = alloc::boxed::Box::new(rcl_get_zero_initialized_timer());
         let rc = unsafe {
-            rcl_timer_init(
+            rclc_timer_init_with_context(
                 &mut *timer,
-                &*support,
                 50_000_000,
                 Some(timer_noop),
                 core::ptr::null_mut(),
@@ -800,8 +801,8 @@ mod census_hooks_reach_every_api {
         nros::metadata_mode::reset();
     }
 
-    /// A C timer registered before ANY node -- legal (`rcl_timer_init` needs
-    /// only a support context; `nros-c`'s `timer_clock_source.c` does it). The
+    /// A C timer registered before ANY node -- legal (`rclc_timer_init_with_context` takes
+    /// no node; `nros-c`'s `timer_clock_source.c` does it). The
     /// slot is counted under the executor scope instead of panicking the
     /// process, which is what a bare `record` with no current node would do in
     /// every native image that links the recorder.
@@ -824,14 +825,15 @@ mod census_hooks_reach_every_api {
         assert_eq!(rc, RCL_RET_OK);
         let mut executor = alloc::boxed::Box::new(rclc_executor_get_zero_initialized_executor());
         assert_eq!(
-            unsafe { rclc_executor_init(&mut *executor, &*support, 4) },
+            unsafe {
+                rclc_executor_init(&mut *executor, &mut support.context, 4, core::ptr::null())
+            },
             RCL_RET_OK
         );
         let mut timer = alloc::boxed::Box::new(rcl_get_zero_initialized_timer());
         let rc = unsafe {
-            rcl_timer_init(
+            rclc_timer_init_with_context(
                 &mut *timer,
-                &*support,
                 10_000_000,
                 Some(timer_noop),
                 core::ptr::null_mut(),

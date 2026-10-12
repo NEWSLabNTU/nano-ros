@@ -35,7 +35,7 @@ int main(void) {
     }
 
     rclc_support_t support = rclc_support_get_zero_initialized();
-    if (rclc_support_init(&support, locator, 0) != 0) {
+    if (rclc_support_init_with_locator(&support, locator, 0) != 0) {
         fprintf(stderr, "rclc_support_init failed (locator=%s)\n", locator);
         return 1;
     }

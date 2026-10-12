@@ -150,20 +150,22 @@ int nros_app_main(int argc, char** argv) {
     // the empty bottom rung — baking `system.toml`'s locator is issue 1512's.
     example_interfaces__action__Fibonacci_Feedback__init_in(&app.fb, &app.fb_storage);
     example_interfaces__action__Fibonacci_Result__init_in(&app.result, &app.result_storage);
-    RCLC_CHECK_RET(
-        rclc_support_init(&app.support, NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID), 1);
+    RCLC_CHECK_RET(rclc_support_init_with_locator(&app.support, NROS_ENTRY_LOCATOR,
+                                                  (uint8_t)NROS_ENTRY_DOMAIN_ID),
+                   1);
     RCLC_CHECK_RET(rclc_node_init_default(&app.node, "fibonacci_action_client", "/", &app.support),
                    1);
     g_logger = rclc_node_get_logger(&app.node);
 
     RCLC_CHECK_RET(
-        rcl_action_client_init(&app.action_client, &app.node, "/fibonacci", &fibonacci_type), 1);
+        rcl_action_client_init(&app.action_client, &app.node, &fibonacci_type, "/fibonacci", NULL),
+        1);
     RCLC_SOFTCHECK(
         rclc_action_client_set_feedback_callback(&app.action_client, feedback_callback, NULL));
     RCLC_SOFTCHECK(
         rclc_action_client_set_result_callback(&app.action_client, result_callback, NULL));
-    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support, 4), 1);
-    RCLC_CHECK_RET(rclc_executor_add_action_client(&app.executor, &app.action_client), 1);
+    RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 4, NULL), 1);
+    RCLC_CHECK_RET(rclc_executor_attach_action_client(&app.executor, &app.action_client), 1);
 
     // Let discovery settle before the first goal, as the FreeRTOS sibling does.
     for (int i = 0; i < 300; i++) {
@@ -227,7 +229,7 @@ int nros_app_main(int argc, char** argv) {
 
 cleanup:
     rclc_executor_fini(&app.executor);
-    rcl_action_client_fini(&app.action_client);
+    rcl_action_client_fini(&app.action_client, &app.node);
     rcl_node_fini(&app.node);
     rclc_support_fini(&app.support);
     return (ret == RCL_RET_OK) ? 0 : 1;

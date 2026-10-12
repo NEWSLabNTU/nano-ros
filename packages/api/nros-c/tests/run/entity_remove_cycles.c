@@ -138,7 +138,7 @@ typedef struct {
     rcl_ret_t (*init)(entity_t*, rig_t*);
     rcl_ret_t (*add)(rig_t*, entity_t*);
     rcl_ret_t (*remove)(rig_t*, entity_t*);
-    rcl_ret_t (*fini)(entity_t*);
+    rcl_ret_t (*fini)(entity_t*, rig_t*);
 } kind_t;
 
 /* ---- subscription ------------------------------------------------------- */
@@ -154,8 +154,8 @@ static rcl_ret_t sub_add(rig_t* rig, entity_t* e) {
 static rcl_ret_t sub_remove(rig_t* rig, entity_t* e) {
     return rclc_executor_remove_subscription(&rig->executor, &e->sub);
 }
-static rcl_ret_t sub_fini(entity_t* e) {
-    return rcl_subscription_fini(&e->sub);
+static rcl_ret_t sub_fini(entity_t* e, rig_t* rig) {
+    return rcl_subscription_fini(&e->sub, &rig->node);
 }
 
 /* ---- subscription with message info (issue 1668) ------------------------ */
@@ -169,7 +169,7 @@ static rcl_ret_t sub_info_add(rig_t* rig, entity_t* e) {
 
 static rcl_ret_t timer_init(entity_t* e, rig_t* rig) {
     e->timer = rcl_get_zero_initialized_timer();
-    return rcl_timer_init(&e->timer, rig->support, 1000000000ULL, on_timer, NULL);
+    return rclc_timer_init_with_context(&e->timer, 1000000000ULL, on_timer, NULL);
 }
 static rcl_ret_t timer_add(rig_t* rig, entity_t* e) {
     return rclc_executor_add_timer(&rig->executor, &e->timer);
@@ -177,7 +177,8 @@ static rcl_ret_t timer_add(rig_t* rig, entity_t* e) {
 static rcl_ret_t timer_remove(rig_t* rig, entity_t* e) {
     return rclc_executor_remove_timer(&rig->executor, &e->timer);
 }
-static rcl_ret_t timer_fini(entity_t* e) {
+static rcl_ret_t timer_fini(entity_t* e, rig_t* rig) {
+    (void)rig;
     return rcl_timer_fini(&e->timer);
 }
 
@@ -193,8 +194,8 @@ static rcl_ret_t service_add(rig_t* rig, entity_t* e) {
 static rcl_ret_t service_remove(rig_t* rig, entity_t* e) {
     return rclc_executor_remove_service(&rig->executor, &e->service);
 }
-static rcl_ret_t service_fini(entity_t* e) {
-    return rcl_service_fini(&e->service);
+static rcl_ret_t service_fini(entity_t* e, rig_t* rig) {
+    return rcl_service_fini(&e->service, &rig->node);
 }
 
 /* ---- client ------------------------------------------------------------- */
@@ -204,13 +205,13 @@ static rcl_ret_t client_init(entity_t* e, rig_t* rig) {
     return rclc_client_init_default(&e->client, &rig->node, &SRV_TYPE, "/remove_cycles");
 }
 static rcl_ret_t client_add(rig_t* rig, entity_t* e) {
-    return rclc_executor_add_client(&rig->executor, &e->client);
+    return rclc_executor_attach_client(&rig->executor, &e->client);
 }
 static rcl_ret_t client_remove(rig_t* rig, entity_t* e) {
     return rclc_executor_remove_client(&rig->executor, &e->client);
 }
-static rcl_ret_t client_fini(entity_t* e) {
-    return rcl_client_fini(&e->client);
+static rcl_ret_t client_fini(entity_t* e, rig_t* rig) {
+    return rcl_client_fini(&e->client, &rig->node);
 }
 
 static const kind_t KINDS[] = {
@@ -224,7 +225,7 @@ static const kind_t KINDS[] = {
 static void rig_open(rig_t* rig, struct rclc_support_t* support, const char* node_name) {
     rig->support = support;
     rig->executor = rclc_executor_get_zero_initialized_executor();
-    CHECK_RET(rclc_executor_init(&rig->executor, support, MAX_HANDLES), RCL_RET_OK,
+    CHECK_RET(rclc_executor_init(&rig->executor, &support->context, MAX_HANDLES, NULL), RCL_RET_OK,
               "executor initialised");
     rcl_node_options_t opts = rcl_node_get_default_options();
     rig->node = rcl_get_zero_initialized_node();
@@ -299,7 +300,7 @@ static void cycles(const kind_t* k, struct rclc_support_t* support) {
         if (i == 0) {
             CHECK_RET(k->remove(&rig, &e), RCLC_RET_NOT_FOUND, "a second remove finds nothing");
         }
-        CHECK_RET(k->fini(&e), RCL_RET_OK, "fini after remove");
+        CHECK_RET(k->fini(&e, &rig), RCL_RET_OK, "fini after remove");
         completed++;
     }
     CHECK(completed == target, "every cycle completed");
@@ -327,11 +328,11 @@ static void fini_alone_exhausts(const kind_t* k, struct rclc_support_t* support)
         if (r != RCL_RET_OK) {
             failed_at = i;
             failed_with = r;
-            (void)k->fini(&entities[i]);
+            (void)k->fini(&entities[i], &rig);
             break;
         }
         /* fini WITHOUT remove — the teardown every C image used before 1631. */
-        CHECK_RET(k->fini(&entities[i]), RCL_RET_OK, "control: fini");
+        CHECK_RET(k->fini(&entities[i], &rig), RCL_RET_OK, "control: fini");
     }
     CHECK(failed_at >= 0, "an executor that never runs out proves nothing: fini alone must "
                           "exhaust it, or the positive loop measured nothing");
@@ -358,7 +359,7 @@ static void wrong_executor_is_not_found(const kind_t* k, struct rclc_support_t* 
     CHECK_RET(k->remove(&b, &e), RCLC_RET_NOT_FOUND, "remove on B finds nothing");
     CHECK(rclc_executor_get_handle_count(&a.executor) == 1, "and A still holds it");
     CHECK_RET(k->remove(&a, &e), RCL_RET_OK, "remove on A");
-    CHECK_RET(k->fini(&e), RCL_RET_OK, "fini");
+    CHECK_RET(k->fini(&e, &a), RCL_RET_OK, "fini");
     rig_close(&b);
     rig_close(&a);
 }

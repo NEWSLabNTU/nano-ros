@@ -1358,7 +1358,7 @@ pub type RawMessageDeserializeFn =
 ///
 /// The `context` parameter is what makes this the analog of rclc's
 /// `rclc_subscription_callback_with_context_t` rather than its context-free
-/// `rclc_subscription_callback_t` — C has no closures, and every other callback
+/// `rclc_subscription_raw_callback_t` — C has no closures, and every other callback
 /// in this API already carries one, so dropping it would have been the odd
 /// shape rather than the faithful one.
 ///
