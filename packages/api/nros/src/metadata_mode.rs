@@ -324,12 +324,20 @@ pub fn listen_for_registrations() {
         } else {
             crate::node_metadata::BufferedRow::TypedBound
         };
+        // Issue 1305 — the miss is news only in a CENSUS run. `metadata-mode`
+        // is linked into every generated host image (`nros-board-linux/
+        // census`, issue 1419) and `begin_node` arms this observer on a normal
+        // boot too, where no backend records subscription rows, so the join
+        // fails every time: it logged one warning per subscription on every
+        // boot of every host image. The join is still attempted (a harness
+        // that drives the recorder directly reads its answer).
         if !record_subscription_registration(
             reg.topic,
             reg.type_name,
             reg.in_place_capable,
             buffered,
-        ) {
+        ) && crate::census_hooks::recording_run()
+        {
             nros_log::log_warn!(
                 nros_log::get_logger("nros::metadata_mode"),
                 "registration of `{}` ({}) matched no recorded subscription row; its \
