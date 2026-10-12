@@ -637,7 +637,7 @@ macro(nros_resolve_corrosion)
                 "configure does not fetch it (RFC-0104 D10).\n"
                 "  Install it:  nros setup --tool corrosion\n"
                 "  (or `nros setup <board>`, which provisions it with the rest of "
-                "the board's tools).")
+                "the board's tools for every board with a CMake road — issue 1839).")
         endif()
         set(NROS_CORROSION_REPORTED ON)
         unset(_nros_corrosion_candidates)

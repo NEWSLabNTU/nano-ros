@@ -143,7 +143,8 @@ Either way, at configure time nano-ros's `bootstrap.cmake` runs
 `(NROS_PLATFORM, NROS_RMW)` pair needs. That is correct on a
 developer machine and wrong in hermetic CI — see the next section.
 Corrosion is never fetched at configure time: without it in the SDK store
-the configure stops and names `nros setup --tool corrosion`.
+the configure stops and names `nros setup --tool corrosion`. `nros setup
+<board>` installs it too, for every board with a CMake road.
 
 ## Air-gapped / mirrored CI
 
@@ -156,7 +157,8 @@ The offline contract, all of it:
    the Cyclone fork — `tools/setup.sh` derives the per-target list
    from `nros-sdk-index.toml`, which is the single manifest of what
    comes from where).
-3. **Pre-install Corrosion**: `nros setup --tool corrosion` stages it
+3. **Pre-install Corrosion**: `nros setup --tool corrosion` (or the
+   `nros setup <board>` you already run) stages it
    into the SDK store, where the configure finds it without the
    network. Verify the configure line prints
    `nano-ros: Corrosion <ver> via <origin>` — never infer the version

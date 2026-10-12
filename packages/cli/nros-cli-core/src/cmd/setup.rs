@@ -1783,19 +1783,19 @@ pub fn resolve_packages<'i>(index: &'i SdkIndex, board: &str) -> Result<Vec<&'i 
 /// orthogonal to the board: the board contributes its platform/toolchain
 /// packages, the chosen RMW its host daemon/tool (`zenohd` / `xrce-agent` /
 /// `cyclonedds`) — no `board×rmw` pair enumeration. `rmw=None` defaults to
-/// `zenoh`. A legacy index with no `[rmw.*]` table returns the board set
-/// unchanged; an unknown RMW name errors (listing the known ones).
+/// `zenoh`. A legacy index with no `[rmw.*]` table adds no RMW packages; an
+/// unknown RMW name errors (listing the known ones). The board's build-road
+/// tool ([`road_build_tool`]) is folded in last.
 pub fn resolve_packages_with_rmw<'i>(
     index: &'i SdkIndex,
     board: &str,
     rmw: Option<&str>,
 ) -> Result<Vec<&'i str>> {
     let mut packages = resolve_packages(index, board)?;
-    if index.rmw.is_empty() {
-        return Ok(packages); // legacy index without the RMW axis
-    }
+    // A legacy index without the RMW axis contributes no RMW packages.
     let rmw = rmw.unwrap_or("zenoh");
     match index.rmw.get(rmw) {
+        _ if index.rmw.is_empty() => {}
         Some(entry) => {
             for pkg in &entry.packages {
                 let p = pkg.as_str();
@@ -1813,7 +1813,41 @@ pub fn resolve_packages_with_rmw<'i>(
             );
         }
     }
+    if let Some(tool) = road_build_tool(index, board)
+        && !packages.contains(&tool)
+    {
+        packages.push(tool);
+    }
     Ok(packages)
+}
+
+/// The index `[tool.*]` key of the CMake-to-cargo bridge every CMake-road
+/// configure resolves (`nros_resolve_corrosion()`, root `CMakeLists.txt`).
+pub const CMAKE_ROAD_TOOL: &str = "corrosion";
+
+/// The build-road tool a board's set must carry, if any (issue 1839).
+///
+/// RFC-0104 D10 took Corrosion's configure-time fetch away: a configure with no
+/// Corrosion in the store refuses and names `nros setup`. The board's
+/// `packages` list never named it, because the fetch used to cover for it, so
+/// the book's own `nros setup native` produced a host every C/C++ configure
+/// refused. Whether a board needs it is not authored per board — that would be
+/// a second, hand-kept answer to a question the builder already decides. It is
+/// [`crate::builder::plan::driver_for`] asked for a graph that crosses
+/// languages: a platform whose answer is `Driver::CMake` reaches
+/// `nros_resolve_corrosion()`, and one that answers `West` (Zephyr, which ships
+/// its own cmake project) or refuses (esp32) never does. A Rust-only image on
+/// a CMake-capable board does not use it; `nros setup` does not know the
+/// language, so it provisions for the road the board can take, exactly as it
+/// already provisions Rust for every board (issue 1304).
+///
+/// `None` also for a board with no `platform` (nothing to ask) and for an index
+/// with no `[tool.corrosion]` (a legacy or test index — nothing to install).
+pub fn road_build_tool<'i>(index: &'i SdkIndex, board: &str) -> Option<&'i str> {
+    use crate::builder::plan::{Driver, driver_for};
+    let platform = index.board.get(board)?.platform.as_deref()?;
+    let (key, _) = index.tool.get_key_value(CMAKE_ROAD_TOOL)?;
+    (driver_for(platform, true) == Ok(Driver::CMake)).then_some(key.as_str())
 }
 
 /// How `name` would be provisioned on `host`, per the index.
@@ -4039,6 +4073,87 @@ mod tests {
         assert_eq!(
             resolve_packages_with_rmw(&legacy, "native", None).unwrap(),
             vec!["zenohd"]
+        );
+    }
+
+    #[test]
+    fn cmake_road_boards_carry_corrosion_and_others_do_not() {
+        // Issue 1839. A synthetic index, so the rule is bound independently of
+        // what the shipped index happens to list.
+        let idx = SdkIndex::parse(
+            "[tool.corrosion]\nversion=\"1\"\n[tool.zenohd]\nversion=\"1\"\n\
+             [rmw.zenoh]\npackages=[\"zenohd\"]\n\
+             [board.native]\nplatform=\"posix\"\npackages=[]\n\
+             [board.fr]\nplatform=\"freertos\"\npackages=[\"qemu\"]\n\
+             [board.zephyr]\nplatform=\"zephyr\"\npackages=[]\n\
+             [board.esp]\nplatform=\"esp32\"\npackages=[]\n\
+             [board.bare]\npackages=[]\n",
+        )
+        .unwrap();
+        assert_eq!(
+            resolve_packages_with_rmw(&idx, "native", None).unwrap(),
+            vec!["zenohd", "corrosion"]
+        );
+        assert!(
+            resolve_packages_with_rmw(&idx, "fr", None)
+                .unwrap()
+                .contains(&"corrosion")
+        );
+        // West ships its own cmake project; esp32 has no cross-language road;
+        // a board with no platform has nothing to ask.
+        for b in ["zephyr", "esp", "bare"] {
+            assert!(
+                !resolve_packages_with_rmw(&idx, b, None)
+                    .unwrap()
+                    .contains(&"corrosion"),
+                "{b}"
+            );
+        }
+        // An index without the tool installs nothing it cannot name.
+        let no_tool = SdkIndex::parse("[board.native]\nplatform=\"posix\"\npackages=[]\n").unwrap();
+        assert!(road_build_tool(&no_tool, "native").is_none());
+    }
+
+    #[test]
+    fn shipped_index_native_setup_provisions_what_a_cmake_configure_needs() {
+        // Issue 1839, against the REAL index: the book's `nros setup native
+        // --rmw <any>` must plan the tool `nros_resolve_corrosion()` refuses
+        // without, and so must every board whose platform takes the cmake road.
+        let path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../nros-sdk-index.toml");
+        let idx = SdkIndex::load(&path).unwrap();
+        assert!(
+            idx.tool.contains_key(CMAKE_ROAD_TOOL),
+            "nros-sdk-index.toml lost [tool.{CMAKE_ROAD_TOOL}]"
+        );
+        for rmw in idx.rmw.keys() {
+            let set = resolve_packages_with_rmw(&idx, "native", Some(rmw)).unwrap();
+            assert!(
+                set.contains(&CMAKE_ROAD_TOOL),
+                "native --rmw {rmw}: {set:?}"
+            );
+        }
+        for (name, b) in &idx.board {
+            let platform = b.platform.as_deref().unwrap_or_else(|| {
+                panic!("[board.{name}] has no platform, so its road cannot be asked")
+            });
+            let cmake = crate::builder::plan::driver_for(platform, true)
+                == Ok(crate::builder::plan::Driver::CMake);
+            let set = resolve_packages_with_rmw(&idx, name, None).unwrap();
+            assert_eq!(
+                set.contains(&CMAKE_ROAD_TOOL),
+                cmake,
+                "[board.{name}] {set:?}"
+            );
+        }
+        // And the refusal that names this verb is the one the configure prints.
+        let cmake = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../../cmake/NanoRosCorrosion.cmake"),
+        )
+        .unwrap();
+        assert!(
+            cmake.contains("nros setup --tool corrosion") && cmake.contains("nros setup <board>")
         );
     }
 

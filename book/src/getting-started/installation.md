@@ -398,7 +398,11 @@ nros setup <board> --rmw <zenoh|xrce|cyclonedds>
 
 `nros setup` resolves the board's package set **union** the RMW's host
 packages and fetches them all — prebuilt cross-toolchain + emulator +
-RMW daemon + board SDK sources. `--rmw` defaults to `zenoh`.
+RMW daemon + board SDK sources. `--rmw` defaults to `zenoh`. For every
+board with a CMake build road (all of them except Zephyr, which builds
+with `west`) it also installs the pinned **Corrosion**, the CMake-to-cargo
+bridge a C/C++ configure needs: a configure never fetches it, and without
+it in the SDK store the configure stops and names this command.
 
 | Command | Provisions |
 |---|---|
