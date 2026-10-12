@@ -1116,7 +1116,7 @@ mod board_crate_tests {
     const NOT_ON_THE_SELECTION: &[(&str, &str)] = &[
         (
             "examples/native/rust/",
-            "the ROS EDITION is a cargo feature here: `just ros-editions \
+            "the ROS EDITION is a cargo feature here: `just ros_editions \
              build-e2e-fixtures` builds all six with `--features \"rmw-<x> \
              ros-<edition>\"`, and the selection derives ONE edition from `[system] \
              ros_edition`, so a leaf needing two editions waits for that lane to \

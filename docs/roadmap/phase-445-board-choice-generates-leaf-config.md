@@ -46,7 +46,7 @@ get an image — holds for Rust and not for the other two roads:
 * **issue 1305** — the one-line board switch is TRUE for a single-package Rust
   leaf on its generated selection package (W4c; 34 in-tree leaves since phase C)
   and still FALSE for the leaves outside it: the native examples (their ROS
-  edition is still a cargo feature that `just ros-editions build-e2e-fixtures`
+  edition is still a cargo feature that `just ros_editions build-e2e-fixtures`
   selects per build, and the selection derives one edition per system), the
   copy-out templates, board-specific test fixtures, C/C++
   apps on a cargo link root, the rv-virt-threadx staticlibs and the dormant

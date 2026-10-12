@@ -59,7 +59,7 @@ talker's old manifest failed the walk, naming that leaf.
   — in scope by RFC-0031 (the RMW is `[image] rmw`; the cargo feature is the
   lowering target) and RFC-0056 (the edition is `[system] ros_edition`), and
   `fixtures.toml` rows already take `image = "<id>"`. The RMW axis alone could
-  become one image per RMW. They stopped on the EDITION: `just ros-editions
+  become one image per RMW. They stopped on the EDITION: `just ros_editions
   build-e2e-fixtures` builds all six with `--features "rmw-<x> ros-<edition>"`
   for iron and jazzy, while the selection package derives one edition from
   `[system] ros_edition` — a leaf that needs two editions has no spelling here
