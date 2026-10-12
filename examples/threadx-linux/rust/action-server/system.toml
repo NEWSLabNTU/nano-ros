@@ -16,6 +16,10 @@ name = "fibonacci_action_server"
 # ThreadX's Linux simulator (a hosted process).
 [image.threadx-linux]
 board = "threadx-linux"
+# `main.rs` says `nros::main!(panic = "platform")`; stated here too so
+# the generated selection package does not also link the board's
+# crate-root panic provider (RFC-0077, issue 1305).
+panic = "platform"
 locator = "tcp/127.0.0.1:9020"
 
 # SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
