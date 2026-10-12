@@ -84,3 +84,30 @@ INSPECT under `set -e` (issue 1249), and because a pipe destroys it.
 - Negative control: with a deliberately bad `--repo`, the run emits the
   `::warning::` and the captured `gh` output, rather than `armed #N`.
 - The `armed #N` line is only printed when the API call actually succeeded.
+
+## 2026-10-12 — the `--repo` fix exposed a second fault; still never arms
+
+`2c123e5362` fixed both faults above (no `--repo`; the `tee` that hid the exit
+status), and the job now reports honestly — which is how the second fault
+shows: **0 of the 40 most recent runs armed anything.** Every one ends
+
+```
+GraphQL: Resource not accessible by integration (enablePullRequestAutoMerge)
+##[warning]could not arm auto-merge on #NNNN
+```
+
+The workflow grants `permissions: pull-requests: write` only.
+`enablePullRequestAutoMerge` also needs `contents: write`; on `main`, whose
+merge queue makes arming an enqueue, that is a contents operation. Every pull
+request armed in the meantime was armed by its author's own `gh pr merge
+--auto`, which is why nothing looked wrong. The job stayed green because it
+deliberately turns a failed arm into a warning, and a permission refusal is
+not the PR state that rule was written for.
+
+Fix: `contents: write` beside `pull-requests: write` (still no checkout, so
+nothing from the PR runs under the token), and a permission refusal now fails
+the job instead of warning.
+
+**Not yet verified:** `pull_request_target` runs the workflow from the BASE
+branch, so the fix takes effect only once it is on `main`. Close this when
+the first run after that prints `armed #N` for a PR its author did not arm.

@@ -94,6 +94,13 @@ on:
     types: [opened, reopened, ready_for_review, synchronize]
 
 permissions:
+  # Issue 1338 (second fault) -- `enablePullRequestAutoMerge` needs CONTENTS
+  # write as well: with `pull-requests: write` alone GitHub answers
+  # `Resource not accessible by integration`, and it did on every run of the
+  # 40 measured on 2026-10-12 (0 armed). On a branch with a merge queue,
+  # arming is an enqueue, which is a contents operation. Still no checkout:
+  # the job runs `gh` against the API and executes nothing from the PR.
+  contents: write
   pull-requests: write
 
 concurrency:
@@ -200,6 +207,12 @@ jobs:
           sed 's/^/  /' /tmp/arm.log
           if [ "$rc" -eq 0 ]; then
             echo "armed #$NUMBER"
+          elif grep -q 'Resource not accessible by integration' /tmp/arm.log; then
+            # Issue 1338 -- a PERMISSION refusal is not a PR state; it is this
+            # workflow being unable to do its job for every PR, which a
+            # warning hid for a month. Fail loudly instead.
+            echo "::error::arm-auto-merge lacks the token permission to arm #$NUMBER (issue 1338)"
+            exit 1
           else
             # Never fail the workflow for this. A PR that cannot be armed yet
             # (queued, closed, conflicting) is a state to report, not a red X
