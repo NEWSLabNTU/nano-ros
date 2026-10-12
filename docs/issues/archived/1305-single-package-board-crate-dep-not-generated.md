@@ -10,89 +10,117 @@ found: 2026-09-11
 related: [rfc-0098, rfc-0065, phase-445]
 ---
 
-## 2026-10-13 (phase E) — the last three classes; RESOLVED
+## 2026-10-13 (phase E) — the last classes; RESOLVED
 
-Every single-package leaf that named a board crate by hand and could take the
-selection package now does (branch `fix/1305-remaining-leaves`). What is left in
-`leaf_settings::NOT_ON_THE_SELECTION` is out of scope BY SHAPE only:
-`bins/in-place-subscriptions` (1340's witness), `bins/qemu-baremetal-main-e2e`
-and `bins/rtic-run-plan-e2e` (board code in the node), `fixtures/*`
-(harness-templated), `examples/rv-virt-threadx/rust/*` (libs a CMake image
-links) and `log-arena-probe` (names no board). The sweep
+Every single-package leaf ON A SUPPORTED BOARD that named a board crate by
+hand now depends on its generated selection package (branch
+`fix/1305-remaining-leaves`). 69 leaves are on it (was 40).
 
-```sh
-git ls-files -z '*system.toml' | xargs -0 -n1 dirname | sort -u | while read -r d; do
-  [ -f "$d/Cargo.toml" ] && grep -lE '^\s*nros-board-[a-z0-9-]+\s*=' "$d/Cargo.toml"; done
-```
+**The walk could not see 15 of them.** The gate
+(`every_cargo_leaf_outside_the_open_classes_uses_its_selection_package`)
+iterated `git ls-files '*system.toml'`, so a cargo leaf with NO `system.toml`
+was never visited, and the first version of this section called the class
+done while 15 `examples/native/rust/*` leaves with a hand-written `main`
+still named `nros-board-linux` (issue 0196's shape: reach narrower than the
+rule). The walk now also asks every tracked `[package]` manifest under
+`examples/` that has no `system.toml`: naming a board crate makes it a stray
+(`named_board_crates`). Run on the pre-migration tree it went red naming
+exactly those 15 (rc=101).
 
-prints exactly those 14 manifests (6 rv-virt-threadx, 3 bins, 5 fixtures) and
-nothing else. 56 leaves are on the selection package (was 40).
+Out of scope, and the walk says why WITHOUT naming a path for the platform:
+
+- **unsupported board** — a leaf whose board crate `packages/boards/
+  board-support.toml` marks `tier = "scaffold"` is skipped
+  (`scaffold_board_crates`). Today that is the dormant ESP32 (issue 1525,
+  code kept untouched): `examples/esp32-c3-baremetal/rust/{talker,listener}`
+  still name `nros-board-esp32-qemu` and were NOT migrated. Mutation: that
+  row set to `tier = 2` → the walk names both ESP32 leaves (rc=101);
+  restored → rc=0. The walk also asserts the rule matched at least one leaf.
+- **by shape** (`NOT_ON_THE_SELECTION`, each with its reason):
+  `bins/in-place-subscriptions` (1340's witness), `bins/qemu-baremetal-main-e2e`
+  and `bins/rtic-run-plan-e2e` (board code in the node), `fixtures/*`
+  (harness-templated), `examples/rv-virt-threadx/rust/*` (libs a CMake image
+  links), `log-arena-probe` (names no board).
+
+Sweep (examples): `git grep -lE '^nros-board-' -- 'examples/**/Cargo.toml'`
+prints the 6 rv-virt-threadx manifests (by shape) and the 2 ESP32 ones
+(dormant) and nothing else.
+
+**Not covered by the walk:** tracked `[package]` manifests under
+`packages/testing/` with no `system.toml` that name a board crate (18
+`nros-tests/bins/*`, 2 `nros-bench/*`, 3 under `fixtures/`). They are test
+harness programs, not example leaves; whether they belong to this rule is
+open.
 
 **Templates** (`local-msg-package/src/rust_consumer`,
-`multi-package-workspace/src/pkg_rust_publisher`). Issue 1829 was resolved, so
-they moved. They are workspace PACKAGES that are also leaves, and the
-workspace arm of `nros sync` never wrote a selection: the first copy-out run
-failed at sync's metadata probe (`failed to load manifest for dependency
+`multi-package-workspace/src/pkg_rust_publisher`; issue 1829 resolved). They
+are workspace PACKAGES that are also leaves, and the workspace arm of `nros
+sync` never wrote a selection: the first copy-out run failed at sync's
+metadata probe (`failed to load manifest for dependency
 `rust_consumer_nros_selection``). Sync's workspace arm now writes each such
 package's selection (`leaf_settings::write_selection`) before its first cargo
-call, exactly as the single-package arm does. Each package `.gitignore` gained
-`/build/`, since a copied-out tree has no repo-root ignore. Measured:
-`scripts/check-template-copy-out.sh local-msg-package multi-package-workspace`
-rc=0 (2 and 3 artifacts; it was rc=1 with the migration alone). The README's
-own flow on a copy outside the checkout — `nros sync` at the workspace, then
-plain `cargo build` in the package — rc=0 for both; each binary opens its
-session against a router and ends `nros: application complete`, the same
-output as a copy built from the old manifests.
+call, as the single-package arm does. Each package `.gitignore` gained
+`/build/`. Measured: `scripts/check-template-copy-out.sh local-msg-package
+multi-package-workspace` rc=0 (2 and 3 artifacts; rc=1 with the migration
+alone). The README's own flow on a copy outside the checkout (`nros sync`,
+then plain `cargo build` in the package) rc=0 for both; each binary opens its
+session against a router and ends `nros: application complete`, the same as a
+copy built from the old manifests.
 
 **mps2 C/C++ apps on a cargo link root** (the twelve
-`mps2-an385-baremetal/{c,cpp}/*`). No new mechanism: their `main.rs` reaches
-the board's re-exports through the selection package, the path `nros::main!`
-emits for a Rust leaf (`use <pkg>_nros_selection::nros_board_mps2_an385::{Config,
-entry, run_bare}`). `main.rs` never named `cortex_m_rt` itself — `entry` was
-already the board's re-export — so nothing had to be re-exported; the board
-crate, `nros-rmw-zenoh`, `cortex-m` and `cortex-m-rt` left the manifests. Each
-image states `panic = "platform"`, because `nros-c`'s `panic-platform` is the
-image's handler and the selection would otherwise also link
-`panic-semihosting`. `nros-c` keeps its `platform-mps2-an385` arm: it is the C
-API's own per-board selection (issue 1512 shape (a)), not a board crate. The
-C `main.rs` files stay identical but for that one `use` line. Measured:
-`fixtures-build.sh baremetal c` and `… cpp` rc=0 (12 rows);
-`test_qemu_baremetal_capi_e2e` 6/6 PASS (c/cpp × pubsub/service/action, run
-solo). Against images built from the old manifests just before: text +16 to
-+28 B, data −4 B, bss 0 to −16 B per image; still one `rust_begin_unwind`,
-no `panic_semihosting` symbol.
+`mps2-an385-baremetal/{c,cpp}/*`). Their `main.rs` reaches the board's
+re-exports through the selection package, the path `nros::main!` emits for a
+Rust leaf (`use <pkg>_nros_selection::nros_board_mps2_an385::{Config, entry,
+run_bare}`); it never named `cortex_m_rt` itself (`entry` was already the
+board's re-export). The board crate, `nros-rmw-zenoh`, `cortex-m` and
+`cortex-m-rt` left the manifests; each image states `panic = "platform"`
+(`nros-c`'s `panic-platform` is the handler). `nros-c` keeps its
+`platform-mps2-an385` arm: the C API's own per-board selection (issue 1512),
+not a board crate. Measured: `fixtures-build.sh baremetal c` and `… cpp` rc=0
+(12 rows); `test_qemu_baremetal_capi_e2e` 6/6 PASS (solo). Against images from
+the old manifests: text +16 to +28 B, data −4 B, bss 0 to −16 B; still one
+`rust_begin_unwind`, no `panic_semihosting`.
 
-**Dormant ESP32** (`esp32-c3-baremetal/rust/{talker,listener}`). The macro's
-ESP32 arm emitted `#[::esp_hal::main]`, and `esp_hal::main`'s own expansion
-names `esp_hal::__macro_implementation::__entry` by a RELATIVE path whenever
-the calling package has no `esp-hal` of its own (`proc_macro_crate`). So for a
-leaf on its selection the macro now brings `esp_hal` into the crate root from
-the board (`nros-board-esp32-qemu` gained `#[doc(hidden)] pub use esp_hal;`)
-and writes `#[esp_hal::main]`; every other entry keeps the absolute path
-(unit-tested both ways). `esp-backtrace` and the `esp_app_desc!` item come from
-the descriptor's `crate_root_*` through the selection's `lib.rs`. Built here
-(`riscv32imc-unknown-none-elf` is installed): `nros sync` rc=0, and `nros
-build` compiled and linked both, then exited 1 on a PRE-EXISTING pin drift
-(`allocator-api2`, `esp-alloc`, `linked_list_allocator` in no pinned range),
-which the unmigrated manifest hits identically. Talker vs the old manifest:
-text 766,938 → 766,930, data 5,612 → 5,616, bss 211,352 → 211,360;
-`esp_app_desc` and `main` at the same addresses. In Espressif QEMU
-(`-M esp32c3`, open_eth) against a router on 9800, the migrated pair
-published 225 and heard 219 in 60 s. No esp32 lane was revived (issue 1525).
+**15 native leaves with a hand-written `main`** (`action-client-async`,
+`action-client-rtic`, `action-server-rtic`, `custom-msg`,
+`custom-transport-{talker,listener}`, `lifecycle-node`, `listener-rtic`,
+`serial-{talker,listener}`, `service-client-async`,
+`service-client-callback`, `service-client-rtic`, `service-server-rtic`,
+`talker-rtic`). Each gained a `system.toml` (board `native`, no
+`[[component]]` — they open their own `Executor`); `main.rs` calls
+`<pkg>_nros_selection::nros_board_linux::register_linked_rmw()`. The seven
+that had an `rmw-*` feature axis declare `native`, `native_xrce` and
+`native_cyclonedds` images, as phase D's six do; the serial pair declares
+`rmw = "xrce"`; `lifecycle-node` declares `features = ["lifecycle"]` (a
+registry capability, lowered to `nros/lifecycle-services`). The `rmw-*`
+features, `ros-humble` and the backend deps left the manifests;
+`custom-transport-*` keep `nros-rmw-zenoh` only for `link-custom` (not a
+registry capability), and every leaf keeps `nros-platform-cffi
+[posix-c-port]`, which its `main.rs` uses directly. The duplicate
+`service-client-callback` `rmw-zenoh` fixture row went (its resolver now takes
+the plain row). Measured: `fixtures-build.sh linux rust` rc=0 (75 rows); `nm`
+on each of the 15 artifacts: 13 link zenoh only, the serial pair XRCE only, no
+cyclone; `lifecycle-node` carries the lifecycle services. Tests: `nano2nano`
+`test_rtic_pattern_{communication,service,action}`, `custom_transport_loopback`
+(`--features rmw`), `native_async_roundtrip_e2e` (2), `custom_msg` (7), `xrce`
+`test_xrce_serial_{talker,listener}_starts` + `test_xrce_serial_communication`,
+`interop_e2e` `zenoh_lifecycle_full_cycle`, and
+`native_api` `test_service_callback_interop_rust_client_{c,cpp}_server`
+(CALLBACK_RESULT) — all PASS.
 
-**The gate.** `every_cargo_leaf_outside_the_open_classes_uses_its_selection_package`
-already walked every tracked `system.toml`, templates and C/C++ roots
-included; their exemptions are gone, and its floor is 56. Mutations, each
-confirmed applied: `nros-board-mps2-an385` re-added beside the C talker's
-selection → walk rc=101 naming the leaf, and `nros sync` rc=1 ("depends on its
-generated selection package … AND names the board crate"); the template's and
-the ESP32 talker's old manifests restored → rc=101 naming each leaf.
-Restored → rc=0 and sync rc=0.
+**The gate.** Exemptions for the migrated classes are gone; floor 69.
+Mutations, each confirmed applied: `nros-board-linux` re-added beside
+`talker-rtic`'s selection → walk rc=101 and `nros sync` rc=1 ("depends on its
+generated selection package … AND names the board crate"); `nros-board-mps2-an385`
+beside the C talker's → rc=101 and sync rc=1; a template's old manifest
+restored → rc=101 naming it; restored → rc=0 each time.
 
-**Docs.** Every page that still said a single-package Rust leaf names its
-board crate (the README, ten book pages, two guides, `examples/README.md`,
-and the 51 generated example READMEs, via `gen-example-readmes.py`) now says
-the board line is the whole switch.
+**Docs.** Every page that still said a single-package Rust leaf names its board
+crate (the README, ten book pages, `docs/guides/creating-examples.md`,
+`examples/README.md`, and the generated example READMEs) now says the board
+line is the whole switch, on a supported board. The ESP32 guide and the ESP32
+example READMEs are unchanged in substance (dormant; the guide's link now
+points here).
 
 ## 2026-10-12 (phase D) — the native leaves: one image per RMW × edition (still OPEN)
 

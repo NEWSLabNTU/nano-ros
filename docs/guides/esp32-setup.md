@@ -200,9 +200,9 @@ its own entry, so it still names its board crate by hand in `[dependencies]`
 dependency for a workspace entry only, so a board change that touches just
 `system.toml` makes `nros sync` report success and `nros build` fail inside the
 leaf's own crate with `cannot find nros_board_<old> in the crate root`. Change
-both, until
-[issue 1305](../issues/1305-single-package-board-crate-dep-not-generated.md)
-closes.
+both. ESP32 is dormant (issue 1525), so these leaves were left out of the
+migration that closed
+[issue 1305](../issues/archived/1305-single-package-board-crate-dep-not-generated.md).
 
 ## QEMU ESP32-C3 Testing
 

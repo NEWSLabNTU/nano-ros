@@ -2,14 +2,15 @@
 
 **Status (2026-10-13). Re-measured on main 2026-10-11, bullet 5 on
 2026-10-12, bullet 2 on 2026-10-13; the phase is NOT complete.** Acceptance: bullet 1 is MET for Rust and now for C/C++ (issue 1296,
-resolved). Bullet 2 is MET for every single-package leaf that can take the
-generated selection package — 56 of them (issue 1305, resolved 2026-10-13:
-phase C the mps2 bare-metal, FreeRTOS, NuttX, ThreadX-Linux and RTIC examples;
-phase D the six native examples, whose RMW and ROS edition are declared per
-image; phase E the two copy-out templates' Rust packages, the twelve mps2
-C/C++ apps on a cargo link root and the dormant ESP32 leaves). The leaves
-still naming a board crate are out of scope by shape and listed in
-`leaf_settings::NOT_ON_THE_SELECTION`. Bullet 3 was not measured. Bullet 4 holds for TRACKED files, and since
+resolved). Bullet 2 is MET for every single-package leaf on a supported board
+— 69 of them on the generated selection package (issue 1305, resolved
+2026-10-13: phase C the mps2 bare-metal, FreeRTOS, NuttX, ThreadX-Linux and
+RTIC examples; phase D the six native examples, whose RMW and ROS edition are
+declared per image; phase E the two copy-out templates' Rust packages, the
+twelve mps2 C/C++ apps on a cargo link root and 15 native examples with a
+hand-written `main`). The leaves still naming a board crate are out of scope:
+by shape (`leaf_settings::NOT_ON_THE_SELECTION`), or because their board is
+`tier = "scaffold"` in `board-support.toml` (the dormant ESP32, issue 1525). Bullet 3 was not measured. Bullet 4 holds for TRACKED files, and since
 issue 1404 (resolved) `nros sync` also removes a stale GENERATED workspace root
 left on disk. Bullet 5 is MET since 2026-10-12 (issue 1289, resolved): its `rg`
 was narrowed to the DEPLOYMENT tables (`deploy|entry`) and returns nothing, and
@@ -47,11 +48,13 @@ workspace root build file, both gated.
 get an image — holds for Rust and not for the other two roads:
 
 * ~~**issue 1305** — the one-line board switch is false for a single-package
-  Rust leaf.~~ RESOLVED 2026-10-13: 56 in-tree leaves are on their generated
+  Rust leaf.~~ RESOLVED 2026-10-13: 69 in-tree leaves are on their generated
   selection package (W4c phases C–E), templates, mps2 C/C++ cargo link roots
-  and ESP32 included. What still names a board crate is out of scope by shape
-  (board code in the node, harness-templated fixtures, the rv-virt-threadx
-  libs a CMake image links), listed in `leaf_settings::NOT_ON_THE_SELECTION`.
+  and the native hand-written-`main` examples included. What still names a
+  board crate is out of scope by shape (board code in the node,
+  harness-templated fixtures, the rv-virt-threadx libs a CMake image links;
+  `leaf_settings::NOT_ON_THE_SELECTION`) or because its board is a scaffold
+  (the dormant ESP32, issue 1525).
 * ~~**issue 1296** — `nros build` does not resolve a single-package C/C++
   leaf.~~ RESOLVED 2026-10-11, together with 1308: `nros build` now configures
   the leaf's OWN `CMakeLists.txt` into `build/<image>/cmake`
@@ -279,7 +282,7 @@ esp32 stack budgets.
   images share one selection dir. Issue 1305 records the measurements. Left in
   `NOT_ON_THE_SELECTION`: two templates (1829), ESP32 (1525), the C/C++ apps
   on a cargo link root, and leaves outside D6 by shape.
-  **W4c phase E — the last three classes (2026-10-13,
+  **W4c phase E — the last classes (2026-10-13,
   `fix/1305-remaining-leaves`; issue 1305 RESOLVED).** The templates' Rust
   packages (workspace sync now writes a member leaf's selection before its
   first cargo call; `check-template-copy-out.sh` rc=0 on both, and the README's
@@ -287,11 +290,15 @@ esp32 stack budgets.
   twelve mps2 C/C++ apps (their `main.rs` reaches `entry`/`run_bare`/`Config`
   through `<pkg>_nros_selection::nros_board_mps2_an385`; images state
   `panic = "platform"`; `fixtures-build.sh baremetal c|cpp` rc=0,
-  `test_qemu_baremetal_capi_e2e` 6/6), and the ESP32 pair (the macro brings
-  `esp_hal` in from the board's re-export; built here, and in Espressif QEMU
-  225 published / 219 heard in 60 s). 56 leaves on the selection; the walk
-  test's exemptions for those classes are gone, mutation-checked. With 1305
-  resolved, D6 is met for every single-package leaf, so the box is ticked.
+  `test_qemu_baremetal_capi_e2e` 6/6), and 15 native examples with a
+  hand-written `main` that the walk could not see (it visited only leaves
+  with a `system.toml`; it now also asks every image-less `[package]` under
+  `examples/`). Each gained a `system.toml`; `fixtures-build.sh linux rust`
+  rc=0 and their consuming tests pass. 69 leaves on the selection; ESP32
+  (dormant, issue 1525) is excluded by its `tier = "scaffold"` registry row,
+  not by path, and was not touched. Mutation-checked. With 1305 resolved, D6
+  is met for every single-package leaf on a supported board, so the box is
+  ticked.
   `nros sync` / `nros build` write `build/<image>/nros-cargo.toml` (board
   `cargo_config` + per-image `target-dir` + resolved `[env]` incl. the entity
   facts + in-repo patch rows) and the generated entry
@@ -515,8 +522,9 @@ esp32 stack budgets.
   bare-metal, FreeRTOS, NuttX, ThreadX-Linux and RTIC examples onto the same
   package (34 leaves), phase D the six native examples (40), and phase E
   (2026-10-13) the two copy-out templates' Rust packages, the twelve mps2
-  C/C++ apps on a cargo link root and the two ESP32 leaves (56; issue 1305
-  resolved). A C/C++ app on a cargo link root is a bare-metal-only shape: its
+  C/C++ apps on a cargo link root and 15 native hand-written-`main` examples
+  (69; issue 1305 resolved). The dormant ESP32 leaves (issue 1525) are out of
+  scope. A C/C++ app on a cargo link root is a bare-metal-only shape: its
   `main.rs` calls that board's `run_bare` and `nros-c` keeps its per-board
   platform arm, so for it the manifest names no board crate but a switch to
   an RTOS board means the CMake road, not one line.** Earlier measurement, before W4c: one line changed,

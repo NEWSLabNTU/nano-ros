@@ -140,8 +140,8 @@ which `nros sync` and `nros build` write for the image's board, and
 `"freertos"` and re-running `nros sync && nros build` builds the FreeRTOS image
 with no other edit. The other bare-metal, FreeRTOS, NuttX, ThreadX-Linux and
 RTIC Rust examples take the same dependency, and so do the native ones, the
-copy-out templates' Rust packages, the C/C++ apps on this board's cargo link
-root and the ESP32 examples. A package that names a board crate beside it is
+copy-out templates' Rust packages and the C/C++ apps on this board's cargo
+link root. A package that names a board crate beside it is
 refused at `nros sync`, naming the crate
 ([issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)).
 In a workspace the entry is generated, so there the board line is the only
