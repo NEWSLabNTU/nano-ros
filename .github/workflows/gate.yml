@@ -717,11 +717,24 @@ jobs:
       # its own branch's commits passes on the PR, but the queue's rebase
       # changes those hashes, so the merge group sees them dangle. A failed
       # fetch fails the step rather than letting the gates skip again.
+      #
+      # The BASE BRANCH only, never a bare `origin`. actions/checkout creates the
+      # remote with the default `+refs/heads/*` refspec, so `--unshallow origin`
+      # pulls the history of EVERY branch on the repository; in the CI image it
+      # ran 85 minutes until the runner was torn down, twice, while the same
+      # command on a single-branch clone took 2 s. Reproduced in
+      # nano-ros-ci:humble after checkout's exact fetch: all branches still
+      # running at a 180 s cap, `main` alone 6 s, unshallowed (13 752 commits).
+      # `timeout` turns any future stall into a red step in minutes.
       - name: Fetch commit history for the citation gates (commits only)
+        timeout-minutes: 6
         run: |
+          base="${GITHUB_BASE_REF:-main}"
           if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
-            git fetch --no-tags --quiet --filter=tree:0 --unshallow origin
+            timeout 300 git fetch --no-tags --quiet --filter=tree:0 --unshallow \
+              origin "+refs/heads/$base:refs/remotes/origin/$base"
           fi
+          test "$(git rev-parse --is-shallow-repository)" = false
           git rev-list --count HEAD
 
       # Four more fast-line gates read SOURCES this job never checked out, so
@@ -736,6 +749,7 @@ jobs:
       # submodules, 2.4 s and 6 MiB for the Zephyr slice, and all four gates
       # then verify.
       - name: Provision the sources the fast-line source gates read
+        timeout-minutes: 8
         run: |
           git submodule update --init --depth 1 \
             packages/rmw/zenoh/zpico-sys/zenoh-pico \
