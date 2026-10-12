@@ -42,12 +42,12 @@ host-only-reason = "the Linux host board"
 # `__FORCE_LINK_CFFI` anchor that keeps `libnros_platform_posix.a` in the link).
 # This is the board-driven platform-selection point, mirroring C5a's RMW gate:
 # the umbrella `nros` dep below stays platform-agnostic (no `platform-posix`).
-nros-platform = { version = "0.5.0", path = "../../platform/nros-platform", default-features = false, features = ["platform-posix"] }
+nros-platform = { version = "0.6.0", path = "../../platform/nros-platform", default-features = false, features = ["platform-posix"] }
 # issue 0710 — the platform-ABI log sink moved to `nros_platform_cffi::log`, so
 # the boot funnel that installs it names the crate that owns the ABI. The
 # umbrella above already PULLS this crate (see the note); naming it directly is
 # what lets this board's `run`/`run_tiers` call `log::init_default()`.
-nros-platform-cffi = { version = "0.5.0", path = "../../platform/nros-platform-cffi", features = ["posix-c-port"] }
+nros-platform-cffi = { version = "0.6.0", path = "../../platform/nros-platform-cffi", features = ["posix-c-port"] }
 # Phase 212.N.7 step-3.5 — Executor + ExecutorComponentRuntime so
 # `BoardEntry::run` installs a live component runtime sink on the
 # `RuntimeCtx` before invoking the user `setup` closure. `rmw-cffi`
@@ -63,7 +63,7 @@ nros-platform-cffi = { version = "0.5.0", path = "../../platform/nros-platform-c
 # `from_env` reads the process environment. Naming it changes nothing about what links
 # — it linked before too — it only stops the standard library arriving in a
 # build that never asked for it (ARCHITECTURE §2, clause (a)).
-nros = { version = "0.5.0", path = "../../api/nros", default-features = false, features = ["alloc", "std", "env", "rmw-cffi", "macros"] }
+nros = { version = "0.6.0", path = "../../api/nros", default-features = false, features = ["alloc", "std", "env", "rmw-cffi", "macros"] }
 # Phase 264 W3 — the family driver inits the default log sink at boot so a Node
 # pkg's `log_info!` reaches stdout/stderr without per-app `nros_log::init`
 # (board-agnostic Node pkgs can't pick the sink). Host → the platform sink.
@@ -71,7 +71,7 @@ nros = { version = "0.5.0", path = "../../api/nros", default-features = false, f
 # dispatch auto-install. Cargo unifies the feature into any image holding this
 # crate; consumers with no port (host tools, the test harness) never get the
 # link requirement. Gated by `check-board-log-sink.py`.
-nros-log = { version = "0.5.0", path = "../../core/nros-log", default-features = false, features = ["alloc"] }
+nros-log = { version = "0.6.0", path = "../../core/nros-log", default-features = false, features = ["alloc"] }
 # phase-338 W3 — the `log` facade's host sink. nano-ros has TWO logging stacks
 # split by board: posix + mps2-baremetal init `nros_log`, while freertos, nuttx
 # and threadx bridge `log`. The node bodies inherited that split, so a Node pkg

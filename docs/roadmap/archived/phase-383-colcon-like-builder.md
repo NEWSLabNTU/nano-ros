@@ -1,6 +1,6 @@
 # phase-383 — `nros build`, the colcon-like builder (implement RFC-0065)
 
-**Archived 2026-10-11.** W1-W9 and W10.a/c/d landed. W10.b, deleting `[deploy.*]` build-field parsing, is a 0.6.0 action and moved to [issue 1809](../../issues/1809-deploy-build-fields-removal-waits-on-0-6-0.md).
+**Archived 2026-10-11.** W1-W9 and W10.a/c/d landed. W10.b, deleting `[deploy.*]` build-field parsing, is a 0.6.0 action and moved to [issue 1809](../../issues/archived/1809-deploy-build-fields-removal-waits-on-0-6-0.md).
 
 **Implements:** [RFC-0065](../../design/0065-colcon-like-workspace-builder.md) (D1–D14)
 **Amends in passing:** [RFC-0024](../../design/0024-multi-node-workspace-layout.md) §2.4/§9,

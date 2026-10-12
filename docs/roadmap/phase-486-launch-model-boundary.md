@@ -618,16 +618,14 @@ it:
   `v0.1.56`/`v0.1.57`). nros-cli-core 1873/1873, nros-orchestration-ir +
   nros-macros 280/280.
 
-### The 0.6.0 step (issue 1809) — ready, held for the bump (2026-10-13)
+### The 0.6.0 step (issue 1809) — landed with the bump (2026-10-13)
 
 W8a kept the build fields of `[deploy.*]` and the typed `[param_services]`
-parsing with a warning until 0.6.0. The deletion that follows is on branch
-`feat/1809-deploy-removal`, on top of W8a, and is HELD for the 0.6.0 version
-bump (maintainer decision 2026-10-12). Issue 1809 lists what it deletes. Both
-tables are then refused by name through one helper,
+parsing with a warning until 0.6.0. They are deleted in the same change that
+bumps the bundle to 0.6.0. Both tables are refused by name through one helper,
 `nros_orchestration_ir::retired_tables`, which every nano-ros reader of a
-`system.toml` calls. It does not depend on W8c: rlm `v0.1.57` already reads
-neither table.
+`system.toml` calls (issue 1809, archived). It does not depend on W8c: rlm
+`v0.1.57` reads neither table.
 
 ## W9 — the carriers the old rule kept (follow-up, measured per road)
 

@@ -61,7 +61,7 @@ host-only-reason = "CycloneDDS backend; the C library is host-built"
 
 [dependencies]
 # K.7.3 schema introspection trait + types.
-nros-serdes = { version = "0.5.0", path = "../../../core/nros-serdes", default-features = false }
+nros-serdes = { version = "0.6.0", path = "../../../core/nros-serdes", default-features = false }
 # Phase 248 (C2) — install this backend's per-type descriptor registrar
 # into the generic `nros_rmw::type_descriptor` seam, so the agnostic core
 # (`nros-node`) reaches Cyclone descriptors without a named dep on us.
@@ -69,7 +69,7 @@ nros-serdes = { version = "0.5.0", path = "../../../core/nros-serdes", default-f
 # `subscription_supports_in_place` and `process_raw_in_place` NULL, so every
 # subscription claims a receive region. Declared here so `nros-node` never
 # prices one of them at the in-place row, whatever a shared descriptor says.
-nros-rmw = { version = "0.5.0", path = "../../../core/nros-rmw", default-features = false, features = ["buffered-dispatch"] }
+nros-rmw = { version = "0.6.0", path = "../../../core/nros-rmw", default-features = false, features = ["buffered-dispatch"] }
 # Fixed-capacity index map for the registry.
 heapless = { workspace = true }
 # Multi-thread guard: spin lock on hosted, critical-section on bare-metal.

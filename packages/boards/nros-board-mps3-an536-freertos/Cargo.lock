@@ -182,7 +182,7 @@ checksum = "6b947ae49db0d222b1dbc6b113ce7248a3fc3a6ca21b696717bfc000ba4484d8"
 
 [[package]]
 name = "nros"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "log",
  "nros-core",
@@ -205,7 +205,7 @@ dependencies = [
 
 [[package]]
 name = "nros-board-common"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "cc",
  "nros-build-paths",
@@ -247,7 +247,7 @@ dependencies = [
 
 [[package]]
 name = "nros-build-paths"
-version = "0.5.0"
+version = "0.6.0"
 
 [[package]]
 name = "nros-builtin-interfaces"
@@ -260,14 +260,14 @@ dependencies = [
 
 [[package]]
 name = "nros-cc-flags"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "cc",
 ]
 
 [[package]]
 name = "nros-core"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "heapless",
  "log",
@@ -296,18 +296,18 @@ dependencies = [
 
 [[package]]
 name = "nros-entry-lower"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "nros-executor-layout"
-version = "0.5.0"
+version = "0.6.0"
 
 [[package]]
 name = "nros-log"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "heapless",
  "nros-platform-config",
@@ -317,7 +317,7 @@ dependencies = [
 
 [[package]]
 name = "nros-macros"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "nros-entry-lower",
  "nros-orchestration-ir",
@@ -332,7 +332,7 @@ dependencies = [
 
 [[package]]
 name = "nros-node"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "atomic-waker",
  "heapless",
@@ -354,7 +354,7 @@ dependencies = [
 
 [[package]]
 name = "nros-orchestration-ir"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "indexmap",
  "nros-build-paths",
@@ -372,7 +372,7 @@ dependencies = [
 
 [[package]]
 name = "nros-params"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "heapless",
  "nros-board-common",
@@ -382,7 +382,7 @@ dependencies = [
 
 [[package]]
 name = "nros-pkg-index"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "eyre",
  "quick-xml",
@@ -393,7 +393,7 @@ dependencies = [
 
 [[package]]
 name = "nros-platform"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "nros-platform-api",
  "nros-platform-cffi",
@@ -403,11 +403,11 @@ dependencies = [
 
 [[package]]
 name = "nros-platform-api"
-version = "0.5.0"
+version = "0.6.0"
 
 [[package]]
 name = "nros-platform-cffi"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "nros-log",
  "nros-platform-api",
@@ -425,7 +425,7 @@ dependencies = [
 
 [[package]]
 name = "nros-rmw"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "heapless",
  "nros-core",
@@ -434,7 +434,7 @@ dependencies = [
 
 [[package]]
 name = "nros-rmw-cffi"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "cc",
  "nros-board-common",
@@ -448,7 +448,7 @@ dependencies = [
 
 [[package]]
 name = "nros-rmw-zenoh"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "atomic-waker",
  "heapless",
@@ -466,7 +466,7 @@ dependencies = [
 
 [[package]]
 name = "nros-serdes"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "heapless",
 ]
@@ -502,11 +502,11 @@ dependencies = [
 
 [[package]]
 name = "nros-zephyr-build"
-version = "0.5.0"
+version = "0.6.0"
 
 [[package]]
 name = "nros-zpico-build"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "cc",
  "nros-board-common",
@@ -919,7 +919,7 @@ checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
 
 [[package]]
 name = "zpico-sys"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "nros-smoltcp",
  "nros-zpico-build",

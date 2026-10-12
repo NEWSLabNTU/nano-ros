@@ -91,7 +91,7 @@ checksum = "6b947ae49db0d222b1dbc6b113ce7248a3fc3a6ca21b696717bfc000ba4484d8"
 
 [[package]]
 name = "nros-board-common"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "cc",
  "nros-build-paths",
@@ -103,18 +103,18 @@ dependencies = [
 
 [[package]]
 name = "nros-build-paths"
-version = "0.5.0"
+version = "0.6.0"
 
 [[package]]
 name = "nros-cc-flags"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "cc",
 ]
 
 [[package]]
 name = "nros-platform-api"
-version = "0.5.0"
+version = "0.6.0"
 
 [[package]]
 name = "nros-platform-config"
@@ -147,11 +147,11 @@ dependencies = [
 
 [[package]]
 name = "nros-zephyr-build"
-version = "0.5.0"
+version = "0.6.0"
 
 [[package]]
 name = "nros-zpico-build"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "cc",
  "nros-board-common",
@@ -332,7 +332,7 @@ dependencies = [
 
 [[package]]
 name = "zpico-sys"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "nros-smoltcp",
  "nros-zpico-build",

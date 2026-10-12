@@ -210,10 +210,10 @@ cortex-r = []
 [dependencies]
 # Trait definitions live in this standalone crate so platform crates can
 # impl them without creating a cycle back through nros-platform.
-nros-platform-api = { version = "0.5.0", path = "../nros-platform-api" }
+nros-platform-api = { version = "0.6.0", path = "../nros-platform-api" }
 # Phase 123.A.1.x.2 — POSIX Rust crate deleted; the directory at
 # `../nros-platform-posix/` now holds the C port only.
-nros-platform-cffi = { version = "0.5.0", path = "../nros-platform-cffi", optional = true }
+nros-platform-cffi = { version = "0.6.0", path = "../nros-platform-cffi", optional = true }
 # phase-391 W3 — the Zephyr rlsf arena (zpico-alloc's FreeListHeap is
 # rlsf-backed since W2). Hosted HERE because this crate is in BOTH Zephyr
 # lanes' graphs (the C lane via nros-c's `platform-zephyr` feature, the Rust
