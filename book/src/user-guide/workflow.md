@@ -118,8 +118,11 @@ Switching board is editing `[image.<id>] board` and re-running `nros sync`.
 The platform, the rustc triple, the linker flags, the cross compiler and
 the pool budgets all follow from that one word — none of them is yours to
 write. The board *crate* follows too in a workspace, where the entry is
-generated; a single-package **Rust** project is its own entry, still names
-its board crate in `[dependencies]`, and today the two must move together
+generated, and in a single-package **Rust** project that depends on its
+generated `<pkg>_nros_selection` package (the bare-metal, FreeRTOS, NuttX,
+ThreadX-Linux and RTIC examples do); one
+that still names its board crate in `[dependencies]` (the native examples)
+must move the two together
 ([issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1305-single-package-board-crate-dep-not-generated.md)).
 
 Supported pairs: `posix / freertos / nuttx / threadx / zephyr / esp32 /

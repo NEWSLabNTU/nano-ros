@@ -146,15 +146,23 @@ kept — they are the Rust spelling of node registration, the counterpart of
 `nros_components_register_node` in a C/C++ package's `CMakeLists.txt`, not a
 deployment (issue 1289).
 
-**The exception a contributor will hit.** A single-package leaf *is* its own
-entry, so it still names its board crate by hand in `[dependencies]` —
-`nros-board-mps2-an385 = { version = "*" }` and so on. RFC-0098 D6 generates
-that dependency for a *generated workspace entry* only. So editing
-`[image.*] board` alone makes `nros sync` report success and `nros build` fail
-inside the leaf's own crate with `cannot find nros_board_<old> in the crate
-root`. Change both until
-[issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1305-single-package-board-crate-dep-not-generated.md)
-closes.
+**A single-package Rust leaf names no board crate.** It is its own entry, so
+something has to give `nros::main!` the board: a generated package. The leaf
+declares one fixed dependency,
+`<pkg>_nros_selection = { path = "build/nros/selection" }` (target-scoped when
+the node must also build for the host probe), and `nros sync` / `nros build`
+write that package for the image's board — the board crate with its features,
+the RMW backend, `nros-platform`'s platform feature and the runtime and panic
+crates (RFC-0098 D6). So a new leaf names none of those, and switching
+`[image.*] board` is the only edit. If `main.rs` says
+`nros::main!(panic = "platform")`, state `panic = "platform"` in the
+`[image.*]` too, or the package also links the board's panic handler. Naming
+a board crate beside the selection package is refused at `nros sync`, and a
+unit test walks every in-tree leaf for it. The leaves still outside this shape
+(native examples with an RMW feature axis, C/C++ apps on a cargo link root,
+board-specific test fixtures) are listed with their reasons in
+`leaf_settings::NOT_ON_THE_SELECTION`; see
+[issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1305-single-package-board-crate-dep-not-generated.md).
 
 ### C / C++ (CMake)
 

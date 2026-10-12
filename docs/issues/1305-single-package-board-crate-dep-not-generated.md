@@ -9,6 +9,71 @@ found: 2026-09-11
 related: [rfc-0098, rfc-0065, phase-445]
 ---
 
+## 2026-10-12 (phase C) — the sweep: 34 leaves on the selection package (still OPEN)
+
+Phase C moved every leaf in the mechanical classes, one commit per family
+(branch `fix/1305-phase-c-sweep`). Each family was built with `nros sync &&
+nros build` in every leaf and with its `fixtures-build.sh` lane, then
+smoke-run:
+
+| family | leaves | fixtures | smoke |
+| --- | --- | --- | --- |
+| mps2 bare-metal | listener, serial-talker, serial-listener, talker-xrce | `baremetal rust` rc=0, 21 rows | talker + listener in QEMU, router on 10500: 29 published, 27 "I heard" |
+| mps2 FreeRTOS | all six | `freertos rust` rc=0, 8 rows | talker + listener, router on 7800: "Application setup complete", 27 published, 25 heard |
+| NuttX | all six + `bins/param-store-nuttx-qemu-arm` | `nuttx rust` rc=0, 8 rows | NOT green: `rtos_e2e` pubsub fails with `Executor::open failed: Transport(ConnectionFailed)` for the migrated images AND for images rebuilt from the unmigrated manifests, so not caused by this |
+| ThreadX | the six threadx-linux leaves + `bins/param-store-threadx-riscv64` | `threadx-linux rust` rc=0, 8 rows; riscv64 param-store row rc=0 | threadx-linux pair, router on 9000: 19 published, 19 heard; `param_store_carve` riscv64 PASS |
+| RTIC | the eight `*-rtic*` leaves | `baremetal rust` rc=0, 21 rows | talker-rtic + listener-rtic, router on 10200: 29 published, 27 heard |
+
+What the sweep needed besides the mechanical edit:
+
+- **`panic = "platform"` in the image.** The 20 FreeRTOS, NuttX and ThreadX
+  leaves whose `main.rs` says so now state it in their `[image.*]`, so the
+  selection does not also link the board's crate-root panic provider.
+- **Board features from the image.** `builder::entry::image_link_features`
+  derives `serial` from `transport = "serial"` (and drops the IP link feature
+  `ethernet`, which the mps2 crate refuses beside it) and `xrce-transport`
+  from `rmw = "xrce"` over that link. Only features the crate declares are
+  named. Unit-tested, with a tripwire that the mps2 crate still declares the
+  three literals. Applied to a leaf's selection only: a workspace entry takes
+  the board's defaults from its facade, which knows no image, and no in-tree
+  workspace image declares a serial transport.
+- **RTIC keeps `rtic` and the PAC.** The board crate (`rtic` feature, derived
+  from the board key), the RMW backend, `cortex-m` and the panic crate moved.
+- **Test bins keep their own `nros-platform` features** (`alloc-stats`, and
+  on riscv64 `global-allocator` / `critical-section`), minus the platform
+  feature. The riscv64 bin's DCE anchor names the selection package.
+
+**The gate.** `check_board_crate_dependency` now refuses a leaf that depends
+on its selection package AND names a board crate. A new test,
+`every_cargo_leaf_outside_the_open_classes_uses_its_selection_package`, walks
+every tracked cargo-road leaf: each must depend on its selection package or
+match `leaf_settings::NOT_ON_THE_SELECTION`. An exemption that matches no
+leaf fails, so the list can only shrink. Mutation: adding
+`nros-board-mps2-an385-freertos` back to the migrated FreeRTOS talker gave
+`nros sync` rc=1 and the test module rc=101; restoring the threadx-linux
+talker's old manifest failed the walk, naming that leaf.
+
+**What is left (why this stays open).** `NOT_ON_THE_SELECTION`, with reasons:
+
+- **native examples** (`examples/native/rust/*`, `bins/in-place-subscriptions`)
+  — the design item. Their RMW and ROS edition are cargo FEATURES that fixture
+  rows select (`--no-default-features --features rmw-xrce`, `ros-jazzy`,
+  `link-tls`). To move, each RMW has to become an image
+  (`[image.native_xrce] rmw = "xrce"`) and the rows have to name images. Not
+  decided here.
+- **templates** (`examples/templates/*`) — the copy-out lane is red (issue
+  1829), so a migrated template cannot be proven outside the checkout.
+- **board-specific test fixtures** — `bins/qemu-baremetal-main-e2e` and
+  `bins/rtic-run-plan-e2e` call `nros_board_mps2_an385::exit_success()` from
+  the node; `fixtures/*` use harness-templated manifests or a custom `main`.
+- **C/C++ apps on a cargo link root** (`mps2-an385-baremetal/{c,cpp}/*`) —
+  their own `main.rs` names `cortex_m_rt`.
+- **rv-virt-threadx** Rust staticlibs (a CMake image links them) and the
+  dormant ESP32 leaves (issue 1525: no fixture row).
+- `log-arena-probe` names no board crate at all (issue 1815) and needs nothing.
+
+Zephyr Rust leaves are on the west road and are not cargo-road leaves.
+
 ## 2026-10-12 (later) — the selection package lands; two leaves migrated (still OPEN)
 
 The re-scoped fix is implemented, and proven on two leaves. The example sweep

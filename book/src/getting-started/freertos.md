@@ -109,12 +109,13 @@ names and the locator differ. Nothing about the deployment lives in
 any more.
 
 For a C or C++ leaf, switching board really is editing `[image.<id>] board`
-(a cross build still passes its own `-DCMAKE_TOOLCHAIN_FILE`). For the **Rust**
-leaf it is two lines, not one: a single-package leaf is its own entry, so it
-still names the board crate in `[dependencies]`, and `nros sync` writes its
-patch rows from the manifest rather than from the image. Move
-`nros-board-mps2-an385-freertos` with the `board =` line or the build fails
-inside your own `src/main.rs` — that is
+(a cross build still passes its own `-DCMAKE_TOOLCHAIN_FILE`). The **Rust**
+leaf switches on the same one line: it names no board crate, only
+`freertos_rs_talker_nros_selection = { path = "build/nros/selection" }`, a
+package `nros sync` and `nros build` generate for the image's board (with
+`nros-board-mps2-an385-freertos`, its RMW and `nros-platform`'s FreeRTOS
+feature). Its image also states `panic = "platform"`, as its `main.rs` does,
+so that package does not add the board's own panic handler. See
 [issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1305-single-package-board-crate-dep-not-generated.md).
 
 Task stacks / priorities come from the board crate's defaults (Cargo

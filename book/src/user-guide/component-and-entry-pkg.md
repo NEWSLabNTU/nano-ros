@@ -308,13 +308,15 @@ resolves through the companion `src/lib.rs` cargo auto-wires alongside the
 binary target. No `build.rs`, no launch file (one is synthesised in-memory), no
 hand-written boot glue.
 
-Switching board here is **not** yet the one-line edit it is in a workspace. A
-single-package leaf is its own entry, so it still names its board crate in its
-own `[dependencies]`; the generated board-crate dependency (RFC-0098 D6) reaches
-the *generated* workspace entry only. Change `[image.*] board` alone and `nros
-sync` reports success while the build fails in `nros::main!` with `cannot find
-nros_board_<new_board> in the crate root` — move the `[dependencies]` line in
-the same edit. Tracked as
+Switching board here is the same one-line edit it is in a workspace, provided
+the package depends on its generated selection package instead of a board
+crate: `<pkg>_nros_selection = { path = "build/nros/selection" }`, which
+`nros sync` / `nros build` write for the image's board (RFC-0098 D6) and
+`nros::main!` reaches the board through. The in-tree bare-metal, FreeRTOS,
+NuttX, ThreadX-Linux and RTIC examples do. A
+package that still names its board crate in `[dependencies]` (the native
+examples, whose RMW is a cargo feature) has to move that line with
+`[image.*] board`; `nros sync` refuses the mismatch, naming both crates. See
 [issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1305-single-package-board-crate-dep-not-generated.md).
 
 Build it the same two ways a workspace is built:
